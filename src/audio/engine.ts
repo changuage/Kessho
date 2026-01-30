@@ -1,0 +1,1830 @@
+/**
+ * Audio Engine
+ * 
+ * Main audio graph management with:
+ * - Poly synth pad (6 voices)
+ * - Granular effect (AudioWorklet)
+ * - Algorithmic reverb (AudioWorklet)
+ * - Rhodes/Bell lead synth with delay
+ * - Ocean sample player
+ * - Master limiter
+ * - Deterministic scheduling
+ */
+
+import {
+  HarmonyState,
+  createHarmonyState,
+  updateHarmonyState,
+  getCurrentPhraseIndex,
+  getTimeUntilNextPhrase,
+  PHRASE_LENGTH,
+} from './harmony';
+import { getScaleNotesInRange, midiToFreq } from './scales';
+import { createRng, generateRandomSequence, getUtcBucket, computeSeed, rngFloat } from './rng';
+import type { SliderState } from '../ui/state';
+
+// Worklet URLs from public folder - these are plain JS files that work in production
+// Use absolute URLs for Safari compatibility
+const getWorkletUrl = (filename: string): string => {
+  const base = window.location.origin + window.location.pathname.replace(/\/[^/]*$/, '');
+  return `${base}/worklets/${filename}`;
+};
+const granulatorWorkletUrl = getWorkletUrl('granulator.worklet.js');
+const reverbWorkletUrl = getWorkletUrl('reverb.worklet.js');
+const oceanWorkletUrl = getWorkletUrl('ocean.worklet.js');
+
+// Voice structure for poly synth
+interface Voice {
+  osc1: OscillatorNode;       // sine
+  osc2: OscillatorNode;       // triangle  
+  osc3: OscillatorNode;       // sawtooth (detuned)
+  osc4: OscillatorNode;       // sawtooth
+  osc1Gain: GainNode;
+  osc2Gain: GainNode;
+  osc3Gain: GainNode;
+  osc4Gain: GainNode;
+  noise?: AudioBufferSourceNode;
+  noiseGain: GainNode;
+  filter: BiquadFilterNode;
+  warmthFilter: BiquadFilterNode;    // Low shelf for warmth
+  presenceFilter: BiquadFilterNode;  // Peaking EQ for presence
+  gain: GainNode;
+  saturation: WaveShaperNode;
+  envelope: GainNode;
+  active: boolean;
+  targetFreq: number;
+}
+
+export interface EngineState {
+  isRunning: boolean;
+  harmonyState: HarmonyState | null;
+  currentSeed: number;
+  currentBucket: string;
+  currentFilterFreq: number;
+}
+
+export class AudioEngine {
+  private ctx: AudioContext | null = null;
+  private masterGain: GainNode | null = null;
+  private limiter: DynamicsCompressorNode | null = null;
+  private mediaStreamDest: MediaStreamAudioDestinationNode | null = null;
+  private voices: Voice[] = [];
+  private granulatorNode: AudioWorkletNode | null = null;
+  private reverbNode: AudioWorkletNode | null = null;
+  private reverbOutputGain: GainNode | null = null;
+  private granulatorInputGain: GainNode | null = null;
+  private granularWetHPF: BiquadFilterNode | null = null;
+  private granularWetLPF: BiquadFilterNode | null = null;
+  private granularReverbSend: GainNode | null = null;
+  private granularDirect: GainNode | null = null;
+
+  private synthBus: GainNode | null = null;
+  private dryBus: GainNode | null = null;
+  private synthReverbSend: GainNode | null = null;
+  private synthDirect: GainNode | null = null;
+
+  // Lead synth (Rhodes/Bell) with delay
+  private leadGain: GainNode | null = null;
+  private leadDelayL: DelayNode | null = null;
+  private leadDelayR: DelayNode | null = null;
+  private leadDelayFeedbackL: GainNode | null = null;
+  private leadDelayFeedbackR: GainNode | null = null;
+  private leadDelayMix: GainNode | null = null;
+  private leadDry: GainNode | null = null;
+  private leadMerger: ChannelMergerNode | null = null;
+  private leadFilter: BiquadFilterNode | null = null;
+  private leadReverbSend: GainNode | null = null;
+  private leadDelayReverbSend: GainNode | null = null;
+  private leadMelodyTimer: number | null = null;
+  private leadNoteTimeouts: number[] = [];  // Track scheduled note timeouts
+
+  // Ocean waves worklet
+  private oceanNode: AudioWorkletNode | null = null;
+  private oceanGain: GainNode | null = null;
+  private oceanFilter: BiquadFilterNode | null = null;  // Shared filter for all ocean sources
+
+  // Ocean sample player (real beach recording)
+  private oceanSampleBuffer: AudioBuffer | null = null;
+  private oceanSampleSource: AudioBufferSourceNode | null = null;
+  private oceanSampleGain: GainNode | null = null;
+  private oceanSampleLoaded = false;
+
+  private harmonyState: HarmonyState | null = null;
+  private phraseTimer: number | null = null;
+  private currentSeed = 0;
+  private currentBucket = '';
+  private sliderState: SliderState | null = null;
+  private sliderStateJson = '';
+  private lastHardness = -1;  // Track to avoid unnecessary saturation curve updates
+  private rng: (() => number) | null = null;
+  private isRunning = false;
+  
+  // Filter modulation - random walk
+  private filterModValue = 0.5;  // 0-1, current random walk position
+  private filterModVelocity = 0;  // Current velocity for smooth random walk
+  private filterModTimer: number | null = null;
+  private currentFilterFreq = 1000;  // Current filter frequency for UI display
+
+  private onStateChange: ((state: EngineState) => void) | null = null;
+
+  constructor() {
+    // Empty constructor
+  }
+
+  setStateChangeCallback(callback: (state: EngineState) => void) {
+    this.onStateChange = callback;
+  }
+
+  private notifyStateChange() {
+    if (this.onStateChange) {
+      this.onStateChange({
+        isRunning: this.isRunning,
+        harmonyState: this.harmonyState,
+        currentSeed: this.currentSeed,
+        currentBucket: this.currentBucket,
+        currentFilterFreq: this.currentFilterFreq,
+      });
+    }
+  }
+
+  // Getter for current filter frequency (for live UI updates)
+  getCurrentFilterFreq(): number {
+    return this.currentFilterFreq;
+  }
+
+  // Get the MediaStream for iOS background audio (connect to HTML audio element)
+  getMediaStream(): MediaStream | null {
+    return this.mediaStreamDest?.stream || null;
+  }
+
+  // Public resume method for iOS media session
+  resume(): void {
+    if (this.ctx?.state === 'suspended') {
+      this.ctx.resume();
+    }
+  }
+
+  // Public suspend method for iOS media session
+  suspend(): void {
+    if (this.ctx?.state === 'running') {
+      this.ctx.suspend();
+    }
+  }
+
+  // Play a silent buffer to unlock iOS audio context
+  private unlockAudioContext(): void {
+    if (!this.ctx) return;
+    
+    // Create and play a silent buffer
+    const buffer = this.ctx.createBuffer(1, 1, 22050);
+    const source = this.ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(this.ctx.destination);
+    source.start(0);
+  }
+
+  async start(sliderState: SliderState): Promise<void> {
+    if (this.isRunning) return;
+
+    this.sliderState = sliderState;
+    this.sliderStateJson = JSON.stringify(sliderState);
+
+    // Create AudioContext with iOS-friendly settings
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) {
+      console.error('Web Audio API not supported');
+      throw new Error('Web Audio API not supported in this browser');
+    }
+    
+    this.ctx = new AudioContextClass();
+    console.log('AudioContext created, state:', this.ctx.state);
+    
+    // iOS Safari requires resume to be called in response to user interaction
+    // The context may be in 'suspended' state initially
+    if (this.ctx.state === 'suspended') {
+      console.log('AudioContext suspended, attempting resume...');
+      await this.ctx.resume();
+      console.log('AudioContext resumed, state:', this.ctx.state);
+    }
+    
+    // iOS audio unlock with silent buffer
+    this.unlockAudioContext();
+
+    // Register worklets with error handling
+    console.log('Loading worklets from:', granulatorWorkletUrl);
+    try {
+      await this.ctx.audioWorklet.addModule(granulatorWorkletUrl);
+      console.log('Granulator worklet loaded');
+    } catch (e) {
+      console.error('Failed to load granulator worklet:', e);
+      throw e;
+    }
+    
+    try {
+      await this.ctx.audioWorklet.addModule(reverbWorkletUrl);
+      console.log('Reverb worklet loaded');
+    } catch (e) {
+      console.error('Failed to load reverb worklet:', e);
+      throw e;
+    }
+    
+    try {
+      await this.ctx.audioWorklet.addModule(oceanWorkletUrl);
+      console.log('Ocean worklet loaded');
+    } catch (e) {
+      console.error('Failed to load ocean worklet:', e);
+      throw e;
+    }
+
+    // Create audio graph
+    await this.createAudioGraph();
+
+    // Initialize harmony
+    this.initializeHarmony();
+
+    // Start voices
+    this.startVoices();
+
+    // Start phrase scheduling
+    this.schedulePhraseUpdates();
+    
+    // Start filter modulation
+    this.startFilterModulation();
+
+    // Start lead melody if enabled
+    this.startLeadMelody();
+
+    // Media session is now handled in App.tsx for proper iOS support
+
+    this.isRunning = true;
+    this.notifyStateChange();
+  }
+
+  stop(): void {
+    if (!this.isRunning) return;
+
+    // Stop phrase timer
+    if (this.phraseTimer !== null) {
+      clearTimeout(this.phraseTimer);
+      this.phraseTimer = null;
+    }
+
+    // Stop lead melody timer
+    if (this.leadMelodyTimer !== null) {
+      clearTimeout(this.leadMelodyTimer);
+      this.leadMelodyTimer = null;
+    }
+    
+    // Stop filter modulation timer
+    if (this.filterModTimer !== null) {
+      clearInterval(this.filterModTimer);
+      this.filterModTimer = null;
+    }
+
+    // Stop voices
+    for (const voice of this.voices) {
+      try {
+        voice.osc1.stop();
+        voice.osc2.stop();
+        voice.osc3.stop();
+        voice.osc4.stop();
+        voice.noise?.stop();
+      } catch {
+        // Ignore
+      }
+    }
+    this.voices = [];
+
+    // Stop ocean sample
+    try {
+      this.oceanSampleSource?.stop();
+    } catch {
+      // Ignore
+    }
+    this.oceanSampleSource = null;
+
+    // Close context
+    this.ctx?.close();
+    this.ctx = null;
+
+    this.isRunning = false;
+    this.notifyStateChange();
+  }
+
+  updateParams(sliderState: SliderState): void {
+    if (!this.ctx || !this.isRunning) return;
+
+    const oldJson = this.sliderStateJson;
+    this.sliderState = sliderState;
+    this.sliderStateJson = JSON.stringify(sliderState);
+
+    // Apply continuous parameters immediately with smoothing
+    this.applyParams(sliderState);
+
+    // If seed-affecting params changed, recompute seed
+    if (oldJson !== this.sliderStateJson) {
+      this.recomputeSeed();
+    }
+  }
+
+  private async createAudioGraph(): Promise<void> {
+    if (!this.ctx) return;
+
+    const ctx = this.ctx;
+
+    // Master chain
+    this.masterGain = ctx.createGain();
+    this.masterGain.gain.value = this.sliderState?.masterVolume ?? 0.7;
+
+    // Limiter (dynamics compressor configured as limiter)
+    this.limiter = ctx.createDynamicsCompressor();
+    this.limiter.threshold.value = -3;
+    this.limiter.knee.value = 0;
+    this.limiter.ratio.value = 20;
+    this.limiter.attack.value = 0.001;
+    this.limiter.release.value = 0.1;
+
+    // Synth bus (before granular)
+    this.synthBus = ctx.createGain();
+
+    // Dry bus (bypass granular) - just a splitter, level controlled by synthDirect
+    this.dryBus = ctx.createGain();
+    this.dryBus.gain.value = 1.0;
+
+    // Synth reverb send and direct gain (independent, not crossfade)
+    this.synthReverbSend = ctx.createGain();
+    this.synthReverbSend.gain.value = this.sliderState?.synthReverbSend ?? 0.7;
+
+    this.synthDirect = ctx.createGain();
+    this.synthDirect.gain.value = this.sliderState?.synthLevel ?? 0.6;
+
+    // Granular worklet
+    this.granulatorNode = new AudioWorkletNode(ctx, 'granulator', {
+      numberOfInputs: 1,
+      numberOfOutputs: 1,
+      outputChannelCount: [2],
+    });
+
+    // Granular input gain (for feedback control)
+    this.granulatorInputGain = ctx.createGain();
+
+    // Granular wet filters
+    this.granularWetHPF = ctx.createBiquadFilter();
+    this.granularWetHPF.type = 'highpass';
+    this.granularWetHPF.frequency.value = this.sliderState?.wetHPF ?? 500;
+
+    this.granularWetLPF = ctx.createBiquadFilter();
+    this.granularWetLPF.type = 'lowpass';
+    this.granularWetLPF.frequency.value = this.sliderState?.wetLPF ?? 8000;
+
+    // Granular reverb send and direct gain (independent, not crossfade)
+    this.granularReverbSend = ctx.createGain();
+    this.granularReverbSend.gain.value = this.sliderState?.granularReverbSend ?? 0.8;
+
+    this.granularDirect = ctx.createGain();
+    this.granularDirect.gain.value = this.sliderState?.granularLevel ?? 0.4;
+
+    // Reverb worklet
+    this.reverbNode = new AudioWorkletNode(ctx, 'reverb', {
+      numberOfInputs: 1,
+      numberOfOutputs: 1,
+      outputChannelCount: [2],
+    });
+
+    // Reverb output level
+    this.reverbOutputGain = ctx.createGain();
+    this.reverbOutputGain.gain.value = this.sliderState?.reverbLevel ?? 1.0;
+
+    // Lead synth (Rhodes/Bell) with stereo ping-pong delay
+    this.leadGain = ctx.createGain();
+    this.leadGain.gain.value = this.sliderState?.leadLevel ?? 0.4;
+
+    this.leadFilter = ctx.createBiquadFilter();
+    this.leadFilter.type = 'lowpass';
+    this.leadFilter.frequency.value = 4000;
+    this.leadFilter.Q.value = 0.7;
+
+    // Stereo ping-pong delay
+    this.leadDelayL = ctx.createDelay(2);
+    this.leadDelayR = ctx.createDelay(2);
+    const delayTime = (this.sliderState?.leadDelayTime ?? 375) / 1000;
+    this.leadDelayL.delayTime.value = delayTime;
+    this.leadDelayR.delayTime.value = delayTime * 0.75; // Offset for stereo effect
+
+    this.leadDelayFeedbackL = ctx.createGain();
+    this.leadDelayFeedbackR = ctx.createGain();
+    const feedback = this.sliderState?.leadDelayFeedback ?? 0.4;
+    this.leadDelayFeedbackL.gain.value = feedback;
+    this.leadDelayFeedbackR.gain.value = feedback;
+
+    this.leadDelayMix = ctx.createGain();
+    this.leadDelayMix.gain.value = this.sliderState?.leadDelayMix ?? 0.35;
+
+    this.leadDry = ctx.createGain();
+    this.leadDry.gain.value = 1.0;
+
+    this.leadMerger = ctx.createChannelMerger(2);
+
+    this.leadReverbSend = ctx.createGain();
+    this.leadReverbSend.gain.value = this.sliderState?.leadReverbSend ?? 0.5;
+
+    this.leadDelayReverbSend = ctx.createGain();
+    this.leadDelayReverbSend.gain.value = this.sliderState?.leadDelayReverbSend ?? 0.4;
+
+    // Ocean waves worklet (stereo output, no input)
+    this.oceanNode = new AudioWorkletNode(ctx, 'ocean-processor', {
+      numberOfInputs: 0,
+      numberOfOutputs: 1,
+      outputChannelCount: [2],
+    });
+    // Send sample rate to ocean processor
+    this.oceanNode.port.postMessage({ type: 'setSampleRate', sampleRate: ctx.sampleRate });
+    // Send seed for deterministic randomness
+    this.oceanNode.port.postMessage({ type: 'setSeed', seed: this.currentSeed });
+
+    this.oceanGain = ctx.createGain();
+    this.oceanGain.gain.value = this.sliderState?.oceanWaveSynthEnabled ? (this.sliderState?.oceanWaveSynthLevel ?? 0.4) : 0;
+
+    // Ocean sample player gain (starts at 0, crossfades in when enabled)
+    this.oceanSampleGain = ctx.createGain();
+    this.oceanSampleGain.gain.value = 0;
+
+    // Create voices
+    await this.createVoices();
+
+    // Connect graph:
+    // Voices -> SynthBus -> GranulatorInput -> Granulator -> WetHPF -> WetLPF -> GranularReverbSend -> Reverb -> Master
+    //                                                                         -> GranularDirect -----------------> Master
+    //                    -> DryBus --------------------------------------------------------> Reverb
+
+    for (const voice of this.voices) {
+      voice.envelope.connect(this.synthBus);
+    }
+
+    this.synthBus.connect(this.granulatorInputGain);
+    this.synthBus.connect(this.dryBus);
+
+    this.granulatorInputGain.connect(this.granulatorNode);
+    this.granulatorNode.connect(this.granularWetHPF);
+    this.granularWetHPF.connect(this.granularWetLPF);
+    
+    // Split granular output: reverb send and direct to master
+    this.granularWetLPF.connect(this.granularReverbSend);
+    this.granularWetLPF.connect(this.granularDirect);
+    
+    this.granularReverbSend.connect(this.reverbNode);
+    this.granularDirect.connect(this.masterGain);
+
+    // Split dry synth output: reverb send and direct to master
+    this.dryBus.connect(this.synthReverbSend);
+    this.dryBus.connect(this.synthDirect);
+    
+    this.synthReverbSend.connect(this.reverbNode);
+    this.synthDirect.connect(this.masterGain);
+
+    this.reverbNode.connect(this.reverbOutputGain);
+    this.reverbOutputGain.connect(this.masterGain);
+
+    // Lead synth signal path:
+    // LeadGain -> LeadFilter -> LeadDry -----------------> Master
+    //                       -> LeadDelayL -> LeadDelayFeedbackL -> LeadDelayR -> LeadDelayFeedbackR -> LeadDelayL (ping-pong)
+    //                                     -> Merger(L)           -> Merger(R)
+    //                       -> LeadReverbSend -> Reverb
+    this.leadGain.connect(this.leadFilter);
+    this.leadFilter.connect(this.leadDry);
+    this.leadDry.connect(this.masterGain);
+
+    // Ping-pong delay routing
+    this.leadFilter.connect(this.leadDelayL);
+    this.leadDelayL.connect(this.leadDelayFeedbackL);
+    this.leadDelayFeedbackL.connect(this.leadDelayR);
+    this.leadDelayR.connect(this.leadDelayFeedbackR);
+    this.leadDelayFeedbackR.connect(this.leadDelayL); // Ping-pong feedback
+
+    // Merge delays to stereo
+    this.leadDelayL.connect(this.leadMerger, 0, 0); // Left channel
+    this.leadDelayR.connect(this.leadMerger, 0, 1); // Right channel
+    this.leadMerger.connect(this.leadDelayMix);
+    this.leadDelayMix.connect(this.masterGain);
+
+    // Lead delay reverb send (delay output also feeds reverb)
+    this.leadDelayMix.connect(this.leadDelayReverbSend);
+    this.leadDelayReverbSend.connect(this.reverbNode);
+
+    // Lead reverb send (dry lead to reverb)
+    this.leadFilter.connect(this.leadReverbSend);
+    this.leadReverbSend.connect(this.reverbNode);
+
+    // Ocean waves -> OceanGain -> OceanFilter -> Master
+    // Ocean sample -> OceanSampleGain -> OceanFilter -> Master
+    this.oceanFilter = ctx.createBiquadFilter();
+    this.oceanFilter.type = this.sliderState?.oceanFilterType ?? 'lowpass';
+    this.oceanFilter.frequency.value = this.sliderState?.oceanFilterCutoff ?? 8000;
+    this.oceanFilter.Q.value = 0.5 + (this.sliderState?.oceanFilterResonance ?? 0.1) * 10;
+
+    this.oceanNode.connect(this.oceanGain);
+    this.oceanGain.connect(this.oceanFilter);
+    this.oceanSampleGain.connect(this.oceanFilter);
+    this.oceanFilter.connect(this.masterGain);
+
+    this.masterGain.connect(this.limiter);
+    this.limiter.connect(ctx.destination);
+    
+    // Also connect to MediaStreamDestination for iOS background audio
+    // This allows an HTML audio element to play the Web Audio output
+    this.mediaStreamDest = ctx.createMediaStreamDestination();
+    this.limiter.connect(this.mediaStreamDest);
+
+    // Load ocean sample asynchronously
+    this.loadOceanSample();
+
+    // Apply initial params
+    this.applyParams(this.sliderState!);
+  }
+
+  private async createVoices(): Promise<void> {
+    if (!this.ctx) return;
+
+    const ctx = this.ctx;
+
+    // Create saturation curve
+    const saturationCurve = this.createSaturationCurve(this.sliderState?.hardness ?? 0.3);
+
+    // Get initial oscillator gains based on oscBrightness
+    const oscGains = this.getOscillatorGains(this.sliderState?.oscBrightness ?? 2);
+
+    for (let i = 0; i < 6; i++) {
+      // Oscillators - 4 types for morphing
+      const osc1 = ctx.createOscillator();
+      osc1.type = 'sine';        // Softest
+
+      const osc2 = ctx.createOscillator();
+      osc2.type = 'triangle';    // Soft
+
+      const osc3 = ctx.createOscillator();
+      osc3.type = 'sawtooth';    // Bright (will be detuned)
+
+      const osc4 = ctx.createOscillator();
+      osc4.type = 'sawtooth';    // Bright
+
+      // Per-oscillator gain nodes for mixing
+      const osc1Gain = ctx.createGain();
+      osc1Gain.gain.value = oscGains.sine;
+
+      const osc2Gain = ctx.createGain();
+      osc2Gain.gain.value = oscGains.triangle;
+
+      const osc3Gain = ctx.createGain();
+      osc3Gain.gain.value = oscGains.sawDetuned;
+
+      const osc4Gain = ctx.createGain();
+      osc4Gain.gain.value = oscGains.saw;
+
+      // Noise
+      const noiseBuffer = this.createNoiseBuffer(ctx, 2);
+      const noise = ctx.createBufferSource();
+      noise.buffer = noiseBuffer;
+      noise.loop = true;
+
+      const noiseGain = ctx.createGain();
+      noiseGain.gain.value = (this.sliderState?.airNoise ?? 0.1) * 0.1;
+
+      // Filter
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 2000;
+      filter.Q.value = 1;
+
+      // Warmth filter (low shelf - boosts lows for warmth)
+      const warmthFilter = ctx.createBiquadFilter();
+      warmthFilter.type = 'lowshelf';
+      warmthFilter.frequency.value = 250;
+      warmthFilter.gain.value = 0;
+
+      // Presence filter (peaking EQ - controls mid-high presence without harshness)
+      const presenceFilter = ctx.createBiquadFilter();
+      presenceFilter.type = 'peaking';
+      presenceFilter.frequency.value = 3000;
+      presenceFilter.Q.value = 0.8;
+      presenceFilter.gain.value = 0;
+
+      // Saturation
+      const saturation = ctx.createWaveShaper();
+      saturation.curve = saturationCurve;
+      saturation.oversample = '2x';
+
+      // Voice gain
+      const gain = ctx.createGain();
+      gain.gain.value = 0.15;
+
+      // Envelope gain
+      const envelope = ctx.createGain();
+      envelope.gain.value = 0;
+
+      // Connect voice chain: oscs -> oscGains -> filter -> warmth -> presence -> saturation -> gain -> envelope
+      osc1.connect(osc1Gain);
+      osc2.connect(osc2Gain);
+      osc3.connect(osc3Gain);
+      osc4.connect(osc4Gain);
+      
+      osc1Gain.connect(filter);
+      osc2Gain.connect(filter);
+      osc3Gain.connect(filter);
+      osc4Gain.connect(filter);
+      
+      noise.connect(noiseGain);
+      noiseGain.connect(filter);
+
+      filter.connect(warmthFilter);
+      warmthFilter.connect(presenceFilter);
+      presenceFilter.connect(saturation);
+      saturation.connect(gain);
+      gain.connect(envelope);
+
+      this.voices.push({
+        osc1,
+        osc2,
+        osc3,
+        osc4,
+        osc1Gain,
+        osc2Gain,
+        osc3Gain,
+        osc4Gain,
+        noise,
+        noiseGain,
+        filter,
+        warmthFilter,
+        presenceFilter,
+        gain,
+        saturation,
+        envelope,
+        active: false,
+        targetFreq: 0,
+      });
+    }
+  }
+
+  /**
+   * Get oscillator gain values based on oscBrightness setting
+   * 0 = Sine (soft, pure)
+   * 1 = Triangle (soft harmonics)
+   * 2 = Saw + Triangle mix (balanced)
+   * 3 = Sawtooth (bright, full harmonics)
+   */
+  private getOscillatorGains(oscBrightness: number): { sine: number; triangle: number; sawDetuned: number; saw: number } {
+    switch (Math.round(oscBrightness)) {
+      case 0: // Sine - pure, soft
+        return { sine: 1.0, triangle: 0.0, sawDetuned: 0.0, saw: 0.0 };
+      case 1: // Triangle - soft harmonics
+        return { sine: 0.2, triangle: 0.8, sawDetuned: 0.0, saw: 0.0 };
+      case 2: // Saw + Triangle mix - balanced ambient
+        return { sine: 0.0, triangle: 0.4, sawDetuned: 0.3, saw: 0.3 };
+      case 3: // Sawtooth - bright, full harmonics
+        return { sine: 0.0, triangle: 0.0, sawDetuned: 0.5, saw: 0.5 };
+      default:
+        return { sine: 0.0, triangle: 0.4, sawDetuned: 0.3, saw: 0.3 };
+    }
+  }
+
+  private createNoiseBuffer(ctx: AudioContext, duration: number): AudioBuffer {
+    const sampleRate = ctx.sampleRate;
+    const length = sampleRate * duration;
+    const buffer = ctx.createBuffer(2, length, sampleRate);
+
+    // Use deterministic noise if we have RNG, otherwise use Math.random
+    const rng = this.rng || Math.random;
+
+    // Crossfade length for seamless looping (50ms)
+    const fadeLength = Math.floor(sampleRate * 0.05);
+
+    for (let channel = 0; channel < 2; channel++) {
+      const data = buffer.getChannelData(channel);
+      
+      // Generate noise
+      for (let i = 0; i < length; i++) {
+        data[i] = rng() * 2 - 1;
+      }
+      
+      // Crossfade the end into the beginning for seamless loop
+      for (let i = 0; i < fadeLength; i++) {
+        const fadeOut = 1 - (i / fadeLength);  // 1 -> 0
+        const fadeIn = i / fadeLength;          // 0 -> 1
+        
+        // Blend end samples with beginning samples
+        const endIndex = length - fadeLength + i;
+        const startIndex = i;
+        
+        // Mix: end fades out, start fades in
+        const blended = data[endIndex] * fadeOut + data[startIndex] * fadeIn;
+        data[endIndex] = blended;
+      }
+    }
+
+    return buffer;
+  }
+
+  private createSaturationCurve(hardness: number): Float32Array<ArrayBuffer> {
+    const samples = 256;
+    const buffer = new ArrayBuffer(samples * 4);
+    const curve = new Float32Array(buffer);
+    const drive = 1 + hardness * 3;
+
+    for (let i = 0; i < samples; i++) {
+      const x = (i / (samples - 1)) * 2 - 1;
+      // Soft clip with variable drive
+      curve[i] = Math.tanh(x * drive) / Math.tanh(drive);
+    }
+
+    return curve;
+  }
+
+  private startVoices(): void {
+    if (!this.ctx) return;
+
+    for (const voice of this.voices) {
+      voice.osc1.start();
+      voice.osc2.start();
+      voice.osc3.start();
+      voice.osc4.start();
+      voice.noise?.start();
+    }
+  }
+
+  private initializeHarmony(): void {
+    if (!this.sliderState) return;
+
+    // Compute seed
+    this.currentBucket = getUtcBucket(this.sliderState.seedWindow);
+    this.currentSeed = computeSeed(this.currentBucket, this.sliderStateJson);
+    this.rng = createRng(`${this.currentBucket}|${this.sliderStateJson}|E_ROOT`);
+
+    // Create harmony state
+    this.harmonyState = createHarmonyState(
+      `${this.currentBucket}|${this.sliderStateJson}|E_ROOT`,
+      this.sliderState.tension,
+      this.sliderState.chordRate,
+      this.sliderState.voicingSpread,
+      this.sliderState.detune,
+      this.sliderState.scaleMode,
+      this.sliderState.manualScale,
+      this.sliderState.rootNote ?? 4
+    );
+
+    // Apply initial chord
+    this.applyChord(this.harmonyState.currentChord.frequencies);
+
+    // Send random sequence to granulator
+    this.sendGranulatorRandomSequence();
+
+    this.notifyStateChange();
+  }
+
+  private recomputeSeed(): void {
+    if (!this.sliderState) return;
+
+    this.currentBucket = getUtcBucket(this.sliderState.seedWindow);
+    this.currentSeed = computeSeed(this.currentBucket, this.sliderStateJson);
+    this.rng = createRng(`${this.currentBucket}|${this.sliderStateJson}|E_ROOT`);
+
+    // Send new random sequence to granulator
+    this.sendGranulatorRandomSequence();
+
+    this.notifyStateChange();
+  }
+
+  private sendGranulatorRandomSequence(): void {
+    if (!this.granulatorNode || !this.rng) return;
+
+    // Generate 10000 random values for grain scheduling
+    const sequence = generateRandomSequence(this.rng, 10000);
+    this.granulatorNode.port.postMessage({
+      type: 'randomSequence',
+      sequence,
+    });
+  }
+
+  private schedulePhraseUpdates(): void {
+    const scheduleNext = () => {
+      const timeUntilNext = getTimeUntilNextPhrase();
+      this.phraseTimer = window.setTimeout(() => {
+        this.onPhraseBoundary();
+        scheduleNext();
+      }, timeUntilNext * 1000);
+    };
+
+    scheduleNext();
+  }
+
+  private startFilterModulation(): void {
+    // Modulate filter between min and max cutoff using random walk
+    // Speed controls how fast it wanders
+    const updateIntervalMs = 100; // Update every 100ms for smooth movement
+    
+    this.filterModTimer = window.setInterval(() => {
+      if (!this.sliderState) return;
+      
+      // Calculate speed factor based on mod speed setting
+      // Higher modSpeed = slower movement (more phrases per wander)
+      // Base movement scaled so it's visible
+      const baseSpeed = 0.02; // Base speed per update
+      const speedFactor = this.sliderState.filterModSpeed > 0 
+        ? baseSpeed / this.sliderState.filterModSpeed
+        : 0;
+      
+      // Random walk with momentum
+      // Add random acceleration
+      const randomAccel = (Math.random() - 0.5) * speedFactor * 2;
+      this.filterModVelocity += randomAccel;
+      
+      // Dampen velocity to prevent wild swings
+      this.filterModVelocity *= 0.92;
+      
+      // Clamp velocity
+      const maxVelocity = speedFactor * 4;
+      this.filterModVelocity = Math.max(-maxVelocity, Math.min(maxVelocity, this.filterModVelocity));
+      
+      // Apply velocity to position
+      this.filterModValue += this.filterModVelocity;
+      
+      // Hard clamp to valid range (no soft bounce - can stay at poles)
+      this.filterModValue = Math.max(0, Math.min(1, this.filterModValue));
+      
+      // Apply the modulated filter
+      this.applyFilterModulation();
+    }, updateIntervalMs);
+  }
+  
+  private applyFilterModulation(): void {
+    if (!this.sliderState) return;
+    
+    const minCutoff = this.sliderState.filterCutoffMin;
+    const maxCutoff = this.sliderState.filterCutoffMax;
+    
+    // Use random walk value directly (already 0 to 1 range)
+    const modAmount = this.filterModValue;
+    
+    // Interpolate between min and max (logarithmic for more natural frequency sweep)
+    const logMin = Math.log(minCutoff);
+    const logMax = Math.log(maxCutoff);
+    const cutoff = Math.exp(logMin + (logMax - logMin) * modAmount);
+    
+    // Update tracked frequency for UI (always update, even if no ctx)
+    this.currentFilterFreq = cutoff;
+    
+    if (!this.ctx) return;
+    
+    // Apply Q boost at low cutoffs for more noticeable effect
+    const baseQ = this.sliderState.filterQ;
+    const qBoost = cutoff < 200 ? (200 - cutoff) / 200 * 4 : 0;
+    const finalQ = Math.min(baseQ + qBoost, 15);
+    
+    // Apply to all voice filters
+    const now = this.ctx.currentTime;
+    for (const voice of this.voices) {
+      voice.filter.frequency.setTargetAtTime(cutoff, now, 0.05);
+      voice.filter.Q.setTargetAtTime(finalQ, now, 0.05);
+    }
+  }
+
+  private onPhraseBoundary(): void {
+    if (!this.harmonyState || !this.sliderState) return;
+
+    const phraseIndex = getCurrentPhraseIndex();
+
+    // Update harmony state
+    this.harmonyState = updateHarmonyState(
+      this.harmonyState,
+      `${this.currentBucket}|${this.sliderStateJson}|E_ROOT`,
+      phraseIndex,
+      this.sliderState.tension,
+      this.sliderState.chordRate,
+      this.sliderState.voicingSpread,
+      this.sliderState.detune,
+      this.sliderState.scaleMode,
+      this.sliderState.manualScale,
+      this.sliderState.rootNote ?? 4
+    );
+
+    // Apply new chord with crossfade
+    this.applyChord(this.harmonyState.currentChord.frequencies, true);
+
+    // Reseed granulator at phrase boundary
+    this.sendGranulatorRandomSequence();
+
+    this.notifyStateChange();
+  }
+
+  private applyChord(frequencies: number[], crossfade = false): void {
+    if (!this.ctx || !this.sliderState || !this.rng) return;
+
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+    const detune = this.sliderState.detune;
+    const waveSpread = this.sliderState.waveSpread; // Max stagger time in seconds
+    const rng = this.rng; // Capture for use in loop
+
+    // Get ADSR from synth settings
+    const attack = this.sliderState.synthAttack;
+    const decay = this.sliderState.synthDecay;
+    const sustain = this.sliderState.synthSustain;
+    const release = this.sliderState.synthRelease;
+
+    // Generate random stagger offsets for each voice using the RNG for determinism
+    const voiceOffsets: number[] = [];
+    for (let i = 0; i < this.voices.length; i++) {
+      // Use RNG to get a random offset between 0 and waveSpread
+      voiceOffsets.push(rng() * waveSpread);
+    }
+    // Sort offsets so voices come in at staggered but consistent intervals
+    voiceOffsets.sort((a, b) => a - b);
+
+    for (let i = 0; i < this.voices.length; i++) {
+      const voice = this.voices[i];
+      const freq = frequencies[i] || frequencies[0];
+      const voiceDelay = voiceOffsets[i]; // Staggered entry time for this voice
+
+      // Calculate frequency values
+      const detuneOsc2 = -detune;
+      const detuneOsc3 = detune;
+      const freq1 = freq;  // sine - base
+      const freq2 = freq * Math.pow(2, detuneOsc2 / 1200);  // triangle - detuned down
+      const freq3 = freq * Math.pow(2, detuneOsc3 / 1200);  // saw - detuned up
+      const freq4 = freq;  // saw - base
+
+      if (crossfade && voice.active) {
+        // ADSR crossfade - old notes release while new attack
+        const startTime = now + voiceDelay;
+        
+        // Cancel any scheduled values and start release on old note
+        // Keep the old frequency during release!
+        voice.envelope.gain.cancelScheduledValues(startTime);
+        voice.envelope.gain.setTargetAtTime(0, startTime, release / 4);
+        
+        // After release completes, change frequency and start new attack
+        // Wait for ~3 time constants (95% of release) before changing pitch
+        const pitchChangeTime = startTime + release * 0.5;
+        
+        // Change frequencies at the same time as new attack starts
+        voice.osc1.frequency.setValueAtTime(freq1, pitchChangeTime);
+        voice.osc2.frequency.setValueAtTime(freq2, pitchChangeTime);
+        voice.osc3.frequency.setValueAtTime(freq3, pitchChangeTime);
+        voice.osc4.frequency.setValueAtTime(freq4, pitchChangeTime);
+        
+        // Start new attack from near-zero
+        voice.envelope.gain.setTargetAtTime(1.0, pitchChangeTime, attack / 3);
+        voice.envelope.gain.setTargetAtTime(sustain, pitchChangeTime + attack, decay / 3);
+      } else {
+        // Simple ADSR attack - fresh start
+        const startTime = now + voiceDelay;
+        
+        // Set frequencies immediately for this voice
+        voice.osc1.frequency.setValueAtTime(freq1, startTime);
+        voice.osc2.frequency.setValueAtTime(freq2, startTime);
+        voice.osc3.frequency.setValueAtTime(freq3, startTime);
+        voice.osc4.frequency.setValueAtTime(freq4, startTime);
+        
+        // Start envelope from 0 with full attack time
+        voice.envelope.gain.cancelScheduledValues(startTime);
+        voice.envelope.gain.setValueAtTime(0, startTime);
+        voice.envelope.gain.setTargetAtTime(1.0, startTime, attack / 3);
+        voice.envelope.gain.setTargetAtTime(sustain, startTime + attack, decay / 3);
+      }
+
+      voice.targetFreq = freq;
+      voice.active = true;
+    }
+  }
+
+  private applyParams(state: SliderState): void {
+    if (!this.ctx) return;
+
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+    const smoothTime = 0.05;
+
+    // Master volume
+    this.masterGain?.gain.setTargetAtTime(state.masterVolume, now, smoothTime);
+
+    // Voice parameters
+    // Filter cutoff modulates between filterCutoffMin and filterCutoffMax
+    const minCutoff = Math.min(state.filterCutoffMin, state.filterCutoffMax);
+    const maxCutoff = Math.max(state.filterCutoffMin, state.filterCutoffMax);
+    
+    // Use current random walk value for modulated cutoff
+    const modAmount = this.filterModValue;  // 0-1
+    const cutoff = minCutoff + (maxCutoff - minCutoff) * modAmount;
+    
+    // Q (bandwidth/angle) is set directly from filterQ
+    const filterQ = state.filterQ;
+    
+    // Resonance adds a peak boost at the cutoff frequency, modulated by hardness
+    const resonanceBoost = state.filterResonance * (0.7 + state.hardness * 0.6);
+    
+    // Combined Q: base Q plus resonance boost
+    // At very low cutoffs, increase Q for more aggressive filtering
+    const lowCutoffBoost = cutoff < 200 ? (1 - cutoff / 200) * 4 : 0;
+    const effectiveQ = filterQ + resonanceBoost * 8 + lowCutoffBoost;
+    
+    // Warmth: low shelf boost (0 to +8dB)
+    const warmthGain = state.warmth * 8;
+    
+    // Presence: peaking EQ (-6dB to +6dB) - helps cut or boost mids
+    // At 0.5 = neutral, below = cut harsh mids, above = boost presence
+    const presenceGain = (state.presence - 0.5) * 12;
+
+    // Get oscillator mix based on oscBrightness
+    const oscGains = this.getOscillatorGains(state.oscBrightness);
+
+    for (const voice of this.voices) {
+      // Oscillator mixing based on oscBrightness
+      voice.osc1Gain.gain.setTargetAtTime(oscGains.sine, now, smoothTime);
+      voice.osc2Gain.gain.setTargetAtTime(oscGains.triangle, now, smoothTime);
+      voice.osc3Gain.gain.setTargetAtTime(oscGains.sawDetuned, now, smoothTime);
+      voice.osc4Gain.gain.setTargetAtTime(oscGains.saw, now, smoothTime);
+
+      // Main filter
+      voice.filter.type = state.filterType;
+      voice.filter.frequency.setTargetAtTime(cutoff, now, smoothTime);
+      voice.filter.Q.setTargetAtTime(effectiveQ, now, smoothTime);
+      
+      // Warmth (low shelf)
+      voice.warmthFilter.gain.setTargetAtTime(warmthGain, now, smoothTime);
+      
+      // Presence (peaking mid-high EQ)
+      voice.presenceFilter.gain.setTargetAtTime(presenceGain, now, smoothTime);
+      
+      // Noise level
+      voice.noiseGain.gain.setTargetAtTime(state.airNoise * 0.1, now, smoothTime);
+    }
+
+    // Only update saturation curve when hardness changes (avoid audio glitches)
+    if (state.hardness !== this.lastHardness) {
+      this.lastHardness = state.hardness;
+      const newCurve = this.createSaturationCurve(state.hardness);
+      for (const voice of this.voices) {
+        voice.saturation.curve = newCurve;
+      }
+    }
+
+    // Granular parameters
+    if (this.granulatorNode) {
+      this.granulatorNode.port.postMessage({
+        type: 'params',
+        params: {
+          grainSizeMin: state.grainSizeMin,
+          grainSizeMax: state.grainSizeMax,
+          density: state.density,
+          spray: state.spray,
+          jitter: state.jitter,
+          probability: state.grainProbability,
+          pitchMode: state.grainPitchMode,
+          pitchSpread: state.pitchSpread,
+          stereoSpread: state.stereoSpread,
+          feedback: Math.min(state.feedback, 0.35),
+          level: state.granularLevel,
+        },
+      });
+    }
+
+    // Granular filters
+    this.granularWetHPF?.frequency.setTargetAtTime(state.wetHPF, now, smoothTime);
+    this.granularWetLPF?.frequency.setTargetAtTime(state.wetLPF, now, smoothTime);
+
+    // Granular levels (independent: direct level and reverb send)
+    // granularLevel controls direct output to master
+    // granularReverbSend controls how much goes to reverb (additive, not crossfade)
+    this.granularDirect?.gain.setTargetAtTime(state.granularLevel, now, smoothTime);
+    this.granularReverbSend?.gain.setTargetAtTime(state.granularReverbSend, now, smoothTime);
+
+    // Synth levels (independent: direct level and reverb send)
+    // synthLevel controls direct output to master
+    // synthReverbSend controls how much goes to reverb (additive, not crossfade)
+    this.synthDirect?.gain.setTargetAtTime(state.synthLevel, now, smoothTime);
+    this.synthReverbSend?.gain.setTargetAtTime(state.synthReverbSend, now, smoothTime);
+
+    // Lead reverb send
+    this.leadReverbSend?.gain.setTargetAtTime(state.leadReverbSend, now, smoothTime);
+
+    // Reverb parameters
+    if (this.reverbNode) {
+      this.reverbNode.port.postMessage({
+        type: 'params',
+        params: {
+          type: state.reverbType,
+          decay: state.reverbDecay,
+          size: state.reverbSize,
+          diffusion: state.reverbDiffusion,
+          modulation: state.reverbModulation,
+          predelay: state.predelay,
+          damping: state.damping,
+          width: state.width,
+        },
+      });
+    }
+
+    // Reverb output level
+    this.reverbOutputGain?.gain.setTargetAtTime(state.reverbLevel, now, smoothTime);
+
+    // Lead synth parameters
+    this.leadGain?.gain.setTargetAtTime(state.leadEnabled ? state.leadLevel : 0, now, smoothTime);
+    
+    // Delay parameters
+    const delayTime = state.leadDelayTime / 1000;
+    this.leadDelayL?.delayTime.setTargetAtTime(delayTime, now, smoothTime);
+    this.leadDelayR?.delayTime.setTargetAtTime(delayTime * 0.75, now, smoothTime);
+    this.leadDelayFeedbackL?.gain.setTargetAtTime(state.leadDelayFeedback, now, smoothTime);
+    this.leadDelayFeedbackR?.gain.setTargetAtTime(state.leadDelayFeedback, now, smoothTime);
+    this.leadDelayMix?.gain.setTargetAtTime(state.leadDelayMix, now, smoothTime);
+    this.leadReverbSend?.gain.setTargetAtTime(state.leadReverbSend, now, smoothTime);
+    this.leadDelayReverbSend?.gain.setTargetAtTime(state.leadDelayReverbSend, now, smoothTime);
+
+    // Check if Euclidean settings changed - if so, reschedule immediately
+    const euclideanChanged = this.sliderState && (
+      state.leadEuclideanMasterEnabled !== this.sliderState.leadEuclideanMasterEnabled ||
+      state.leadEuclid1Enabled !== this.sliderState.leadEuclid1Enabled ||
+      state.leadEuclid2Enabled !== this.sliderState.leadEuclid2Enabled ||
+      state.leadEuclid3Enabled !== this.sliderState.leadEuclid3Enabled ||
+      state.leadEuclid4Enabled !== this.sliderState.leadEuclid4Enabled
+    );
+
+    // Start/stop lead melody based on enabled state
+    if (state.leadEnabled && this.leadMelodyTimer === null) {
+      this.startLeadMelody();
+    } else if (!state.leadEnabled && this.leadMelodyTimer !== null) {
+      clearTimeout(this.leadMelodyTimer);
+      this.leadMelodyTimer = null;
+      // Also clear scheduled notes
+      for (const timeout of this.leadNoteTimeouts) {
+        clearTimeout(timeout);
+      }
+      this.leadNoteTimeouts = [];
+    } else if (state.leadEnabled && euclideanChanged) {
+      // Reschedule when Euclidean settings change
+      this.startLeadMelody();
+    }
+
+    // Ocean waves parameters
+    // Wave synth volume (crossfades based on enabled state)
+    this.oceanGain?.gain.setTargetAtTime(
+      state.oceanWaveSynthEnabled ? state.oceanWaveSynthLevel : 0, 
+      now, 
+      smoothTime
+    );
+    
+    // Ocean sample volume (crossfades based on enabled state)
+    this.oceanSampleGain?.gain.setTargetAtTime(
+      state.oceanSampleEnabled ? state.oceanSampleLevel : 0, 
+      now, 
+      smoothTime
+    );
+
+    // Ocean filter parameters
+    if (this.oceanFilter) {
+      this.oceanFilter.type = state.oceanFilterType;
+      this.oceanFilter.frequency.setTargetAtTime(state.oceanFilterCutoff, now, smoothTime);
+      // Q: 0.5 to 10.5 based on resonance 0-1
+      this.oceanFilter.Q.setTargetAtTime(0.5 + state.oceanFilterResonance * 10, now, smoothTime);
+    }
+
+    // Start sample playback if enabled and not already playing
+    if (state.oceanSampleEnabled && this.oceanSampleLoaded && !this.oceanSampleSource) {
+      this.startOceanSamplePlayback();
+    }
+    
+    // Ocean worklet parameters (wave synthesis only - no rocks)
+    if (this.oceanNode) {
+      const oceanParams = this.oceanNode.parameters;
+      const setParam = (name: string, value: number) => {
+        const param = oceanParams.get(name);
+        if (param) param.setTargetAtTime(value, now, smoothTime);
+      };
+      
+      setParam('intensity', state.oceanWaveSynthLevel);
+      setParam('waveDurationMin', state.oceanDurationMin);
+      setParam('waveDurationMax', state.oceanDurationMax);
+      setParam('waveIntervalMin', state.oceanIntervalMin);
+      setParam('waveIntervalMax', state.oceanIntervalMax);
+      setParam('foamMin', state.oceanFoamMin);
+      setParam('foamMax', state.oceanFoamMax);
+      setParam('depthMin', state.oceanDepthMin);
+      setParam('depthMax', state.oceanDepthMax);
+      // Disable rock synthesis by setting pebbles to 0
+      setParam('pebblesMin', 0);
+      setParam('pebblesMax', 0);
+    }
+  }
+
+  /**
+   * Load the ocean sample (Ghetary beach recording)
+   */
+  private async loadOceanSample(): Promise<void> {
+    if (!this.ctx) return;
+
+    try {
+      // Use public folder path (works in both dev and production)
+      const base = window.location.origin + window.location.pathname.replace(/\/[^/]*$/, '');
+      const response = await fetch(`${base}/samples/Ghetary-Waves-Rocks_cl-normalized.ogg`);
+      if (!response.ok) {
+        console.warn('Ocean sample not found, sample playback disabled');
+        return;
+      }
+      
+      const arrayBuffer = await response.arrayBuffer();
+      this.oceanSampleBuffer = await this.ctx.decodeAudioData(arrayBuffer);
+      this.oceanSampleLoaded = true;
+      console.log('Ocean sample loaded:', this.oceanSampleBuffer.duration.toFixed(1), 'seconds');
+      
+      // Start playback if sample is enabled
+      if (this.sliderState?.oceanSampleEnabled) {
+        this.startOceanSamplePlayback();
+      }
+    } catch (e) {
+      console.warn('Failed to load ocean sample:', e);
+    }
+  }
+
+  /**
+   * Start ocean sample playback with seamless looping
+   */
+  private startOceanSamplePlayback(): void {
+    if (!this.ctx || !this.oceanSampleBuffer || !this.oceanSampleGain) return;
+
+    // Stop previous source if any
+    try {
+      this.oceanSampleSource?.stop();
+    } catch {
+      // Ignore
+    }
+
+    // Create new source
+    this.oceanSampleSource = this.ctx.createBufferSource();
+    this.oceanSampleSource.buffer = this.oceanSampleBuffer;
+    this.oceanSampleSource.loop = true;
+    
+    // Connect and start
+    this.oceanSampleSource.connect(this.oceanSampleGain);
+    this.oceanSampleSource.start();
+    
+    console.log('Ocean sample playback started');
+  }
+
+  /**
+   * Play a Rhodes/Gamelan note using FM synthesis
+   * Creates a tone from soft Rhodes piano to metallic gamelan
+   * Timbre parameter (0-1) controls the sound from soft Rhodes to gamelan
+   */
+  private playLeadNote(frequency: number, velocity: number = 0.8, timbre: number = 0.5): void {
+    if (!this.ctx || !this.leadGain || !this.sliderState) return;
+    if (!this.sliderState.leadEnabled) return;
+
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+    
+    // ADSR from settings
+    const attack = this.sliderState.leadAttack;
+    const decay = this.sliderState.leadDecay;
+    const sustain = this.sliderState.leadSustain;
+    const release = this.sliderState.leadRelease;
+
+    // Timbre controls: 0 = soft Rhodes, 1 = gamelan metallophone
+    // Gamelan characteristics: inharmonic partials, gentle beating, warm shimmer
+
+    // === CARRIER LAYER (main tone) ===
+    const carrier = ctx.createOscillator();
+    carrier.type = 'sine';
+    carrier.frequency.value = frequency;
+
+    // Second carrier slightly detuned for gamelan beating/shimmer effect
+    const carrier2 = ctx.createOscillator();
+    carrier2.type = 'sine';
+    // Gentle beating - reduced detuning for softer effect
+    const beatDetune = timbre * 2; // Up to 2 cents detuning (reduced from 3)
+    carrier2.frequency.value = frequency * Math.pow(2, beatDetune / 1200);
+
+    const carrier2Gain = ctx.createGain();
+    carrier2Gain.gain.value = timbre * 0.5; // Softer beating carrier
+
+    // === MODULATOR 1: Primary timbre shaping ===
+    const modulator = ctx.createOscillator();
+    modulator.type = 'sine';
+    // Rhodes: ratio ~1.0, Gamelan: gentler inharmonic ratio
+    const fmRatio = 1.0 + timbre * 1.4; // Reduced from 1.76 for softer character
+    modulator.frequency.value = frequency * fmRatio;
+
+    const modGain = ctx.createGain();
+    // Reduced modulation index for softer, less harsh tone
+    const baseIndex = 0.25 + timbre * 1.8; // Reduced from 0.3 + timbre * 3.0
+    const modIndex = frequency * baseIndex * velocity;
+    modGain.gain.value = modIndex;
+
+    // === MODULATOR 2: Gamelan metallic partials (softened) ===
+    const modulator2 = ctx.createOscillator();
+    modulator2.type = 'sine';
+    // Lower inharmonic ratio for warmer gamelan tone
+    const fmRatio2 = 2.0 + timbre * 2.0; // Reduced from 3.4
+    modulator2.frequency.value = frequency * fmRatio2;
+
+    const modGain2 = ctx.createGain();
+    modGain2.gain.value = frequency * (0.08 + timbre * 0.35); // Reduced from 0.1 + 0.7
+
+    // === MODULATOR 3: High partial for gentle shimmer (greatly reduced) ===
+    const modulator3 = ctx.createOscillator();
+    modulator3.type = 'sine';
+    // Lower ratio for less harsh upper partials
+    modulator3.frequency.value = frequency * (3.0 + timbre * 2.5); // Reduced from 4.0 + 4.5
+
+    const modGain3 = ctx.createGain();
+    // Much gentler - only subtle shimmer at high timbre
+    modGain3.gain.value = frequency * Math.max(0, (timbre - 0.5) * 0.4); // Reduced threshold and amount
+
+    // === MODULATOR 4: Sub-harmonic resonance (warm gong-like) ===
+    const modulator4 = ctx.createOscillator();
+    modulator4.type = 'sine';
+    // Sub-octave for warmth and depth
+    modulator4.frequency.value = frequency * (0.5 + timbre * 0.15);
+
+    const modGain4 = ctx.createGain();
+    // Gentle sub-harmonic warmth
+    modGain4.gain.value = frequency * Math.max(0, (timbre - 0.4) * 0.25); // Reduced
+
+    // === AMPLITUDE ENVELOPE ===
+    const envelope = ctx.createGain();
+    envelope.gain.value = 0;
+
+    const envelope2 = ctx.createGain();
+    envelope2.gain.value = 0;
+
+    // Output gain with velocity
+    const outputGain = ctx.createGain();
+    const volumeCompensation = 1.0 - timbre * 0.15;
+    outputGain.gain.value = velocity * 0.3 * volumeCompensation;
+
+    // === CONNECT FM CHAIN ===
+    // Modulators -> Carrier frequency
+    modulator.connect(modGain);
+    modGain.connect(carrier.frequency);
+    modGain.connect(carrier2.frequency);
+
+    modulator2.connect(modGain2);
+    modGain2.connect(carrier.frequency);
+    modGain2.connect(carrier2.frequency);
+
+    modulator3.connect(modGain3);
+    modGain3.connect(carrier.frequency);
+
+    modulator4.connect(modGain4);
+    modGain4.connect(carrier.frequency);
+
+    // Carriers -> Envelope -> Output
+    carrier.connect(envelope);
+    carrier2.connect(carrier2Gain);
+    carrier2Gain.connect(envelope2);
+    
+    envelope.connect(outputGain);
+    envelope2.connect(outputGain);
+    outputGain.connect(this.leadGain);
+
+    // === START OSCILLATORS ===
+    carrier.start(now);
+    carrier2.start(now);
+    modulator.start(now);
+    modulator2.start(now);
+    modulator3.start(now);
+    modulator4.start(now);
+
+    // === ENVELOPE SHAPING ===
+    // Softer attack for gamelan - not as harsh/percussive
+    const effectiveAttack = attack * (1.0 - timbre * 0.6); // Reduced from 0.9 for gentler attack
+    
+    // Main envelope
+    envelope.gain.setValueAtTime(0, now);
+    envelope.gain.linearRampToValueAtTime(1.0, now + effectiveAttack);
+    envelope.gain.linearRampToValueAtTime(sustain, now + effectiveAttack + decay);
+
+    // Beating carrier envelope (slightly delayed for gentle shimmer)
+    envelope2.gain.setValueAtTime(0, now);
+    envelope2.gain.linearRampToValueAtTime(0.6, now + effectiveAttack * 1.3); // Softer, slower
+    envelope2.gain.linearRampToValueAtTime(sustain * 0.8, now + effectiveAttack + decay);
+    
+    // === MODULATION ENVELOPE (brightness decay) ===
+    // Gentler brightness decay for warmer sustained tone
+    const modDecayTime = 0.4 + (1.0 - timbre) * 0.4; // Slightly longer decay
+    const modDecayLevel = 0.08 + (1.0 - timbre) * 0.15; // Higher sustain level = warmer
+    
+    modGain.gain.setValueAtTime(modIndex, now);
+    modGain.gain.exponentialRampToValueAtTime(
+      modIndex * modDecayLevel, 
+      now + effectiveAttack + modDecayTime
+    );
+
+    // Second modulator decay (gentler for softer metallic character)
+    modGain2.gain.exponentialRampToValueAtTime(
+      modGain2.gain.value * 0.1, // Reduced from 0.05 for more sustain
+      now + effectiveAttack + modDecayTime * 0.9
+    );
+
+    // Third modulator (high shimmer) decays gently
+    if (modGain3.gain.value > 0) {
+      modGain3.gain.exponentialRampToValueAtTime(
+        Math.max(0.001, modGain3.gain.value * 0.01),
+        now + effectiveAttack + modDecayTime * 0.4
+      );
+    }
+
+    // === RELEASE & CLEANUP ===
+    const noteEndTime = now + effectiveAttack + decay + 0.5;
+    const stopTime = noteEndTime + release;
+
+    envelope.gain.setValueAtTime(sustain, noteEndTime);
+    envelope.gain.exponentialRampToValueAtTime(0.001, stopTime);
+    
+    envelope2.gain.setValueAtTime(sustain * 0.9, noteEndTime);
+    envelope2.gain.exponentialRampToValueAtTime(0.001, stopTime);
+
+    // Stop oscillators
+    carrier.stop(stopTime + 0.1);
+    carrier2.stop(stopTime + 0.1);
+    modulator.stop(stopTime + 0.1);
+    modulator2.stop(stopTime + 0.1);
+    modulator3.stop(stopTime + 0.1);
+    modulator4.stop(stopTime + 0.1);
+
+    // Cleanup
+    setTimeout(() => {
+      try {
+        carrier.disconnect();
+        carrier2.disconnect();
+        carrier2Gain.disconnect();
+        modulator.disconnect();
+        modulator2.disconnect();
+        modulator3.disconnect();
+        modulator4.disconnect();
+        modGain.disconnect();
+        modGain2.disconnect();
+        modGain3.disconnect();
+        modGain4.disconnect();
+        envelope.disconnect();
+        envelope2.disconnect();
+        outputGain.disconnect();
+      } catch {
+        // Ignore cleanup errors
+      }
+    }, (stopTime - now + 0.2) * 1000);
+  }
+
+  /**
+   * Euclidean rhythm presets inspired by Indonesian gamelan and Steve Reich
+   * These patterns reflect traditional colotomic structures, interlocking rhythms, and phasing
+   */
+  private readonly EUCLIDEAN_PRESETS: Record<string, { steps: number; hits: number; rotation: number; name: string }> = {
+    // === GAMELAN PATTERNS ===
+    // Lancaran - 16-beat cycle, gong on beat 16, kenong on 8, kempul on 4, 12
+    'lancaran': { steps: 16, hits: 4, rotation: 0, name: 'Lancaran (16-beat)' },
+    // Ketawang - 16-beat with 2 kenong, sparser
+    'ketawang': { steps: 16, hits: 2, rotation: 0, name: 'Ketawang (sparse)' },
+    // Ladrang - 32-beat cycle with specific accents
+    'ladrang': { steps: 32, hits: 8, rotation: 0, name: 'Ladrang (32-beat)' },
+    // Gangsaran - fast, dense 8-beat pattern
+    'gangsaran': { steps: 8, hits: 4, rotation: 0, name: 'Gangsaran (fast)' },
+    // Kotekan-style interlocking - 8 steps, 3 hits (common pattern)
+    'kotekan': { steps: 8, hits: 3, rotation: 1, name: 'Kotekan (interlocking)' },
+    // Kotekan counterpart - interlocks with kotekan when offset
+    'kotekan2': { steps: 8, hits: 3, rotation: 4, name: 'Kotekan B (counter)' },
+    // Srepegan - medium tempo 16-beat
+    'srepegan': { steps: 16, hits: 6, rotation: 2, name: 'Srepegan (medium)' },
+    // Sampak - fast 8-beat with 5 hits
+    'sampak': { steps: 8, hits: 5, rotation: 0, name: 'Sampak (dense)' },
+    // Ayak-ayakan - 16-beat with 3 hits, sparse and flowing
+    'ayak': { steps: 16, hits: 3, rotation: 4, name: 'Ayak-ayakan (flowing)' },
+    // Bonang panerus - high density interlocking
+    'bonang': { steps: 12, hits: 5, rotation: 2, name: 'Bonang (12-beat)' },
+    
+    // === STEVE REICH / MINIMALIST PATTERNS ===
+    // Classic phasing pattern from "Clapping Music"
+    'clapping': { steps: 12, hits: 8, rotation: 0, name: 'Clapping Music (12/8)' },
+    // Phase shifted version for polyrhythmic layering
+    'clappingB': { steps: 12, hits: 8, rotation: 5, name: 'Clapping B (phase)' },
+    // 3 against 4 polyrhythm base
+    'poly3v4': { steps: 12, hits: 3, rotation: 0, name: '3 vs 4 (triplet)' },
+    // 4 against 3 counterpart
+    'poly4v3': { steps: 12, hits: 4, rotation: 0, name: '4 vs 3 (quarter)' },
+    // 5 against 4 - quintuplet feel
+    'poly5v4': { steps: 20, hits: 5, rotation: 0, name: '5 vs 4 (quint)' },
+    // 7 beat additive pattern
+    'additive7': { steps: 7, hits: 4, rotation: 0, name: 'Additive 7' },
+    // 11 beat additive - prime number creates long cycle
+    'additive11': { steps: 11, hits: 5, rotation: 0, name: 'Additive 11' },
+    // 13 beat additive - longer prime cycle
+    'additive13': { steps: 13, hits: 5, rotation: 0, name: 'Additive 13' },
+    // Music for 18 Musicians inspired - 12 beat with 7 hits
+    'reich18': { steps: 12, hits: 7, rotation: 3, name: 'Reich 18 (12/7)' },
+    // Drumming-inspired pattern
+    'drumming': { steps: 8, hits: 6, rotation: 1, name: 'Drumming (8/6)' },
+    
+    // === POLYRHYTHMIC COMBINATIONS ===
+    // Very sparse - creates space
+    'sparse': { steps: 16, hits: 1, rotation: 0, name: 'Sparse (16/1)' },
+    // Ultra-dense - machine gun
+    'dense': { steps: 8, hits: 7, rotation: 0, name: 'Dense (8/7)' },
+    // Long cycle sparse
+    'longSparse': { steps: 32, hits: 3, rotation: 0, name: 'Long Sparse (32/3)' },
+    
+    // Custom - uses slider values
+    'custom': { steps: 16, hits: 4, rotation: 0, name: 'Custom' },
+  };
+
+  /**
+   * Generate a Euclidean rhythm pattern
+   * Distributes N hits as evenly as possible across K steps
+   * Based on Bjorklund's algorithm
+   */
+  private generateEuclideanPattern(steps: number, hits: number, rotation: number = 0): boolean[] {
+    if (hits >= steps) {
+      return new Array(steps).fill(true);
+    }
+    if (hits <= 0) {
+      return new Array(steps).fill(false);
+    }
+
+    // Bjorklund's algorithm
+    let pattern: number[][] = [];
+    let remainder: number[][] = [];
+
+    for (let i = 0; i < hits; i++) {
+      pattern.push([1]);
+    }
+    for (let i = 0; i < steps - hits; i++) {
+      remainder.push([0]);
+    }
+
+    while (remainder.length > 1) {
+      const newPattern: number[][] = [];
+      const minLen = Math.min(pattern.length, remainder.length);
+      
+      for (let i = 0; i < minLen; i++) {
+        newPattern.push([...pattern[i], ...remainder[i]]);
+      }
+      
+      if (pattern.length > remainder.length) {
+        remainder = pattern.slice(minLen);
+      } else {
+        remainder = remainder.slice(minLen);
+      }
+      
+      pattern = newPattern;
+    }
+
+    // Flatten and combine
+    const result: boolean[] = [];
+    for (const p of [...pattern, ...remainder]) {
+      for (const val of p) {
+        result.push(val === 1);
+      }
+    }
+
+    // Apply rotation
+    const rotatedResult: boolean[] = [];
+    for (let i = 0; i < result.length; i++) {
+      rotatedResult.push(result[(i + rotation) % result.length]);
+    }
+
+    return rotatedResult;
+  }
+
+  /**
+   * Schedule sparse melody notes for the lead synth
+   * Supports both random mode and multi-lane Euclidean sequencer
+   */
+  private scheduleLeadMelody(): void {
+    if (!this.sliderState || !this.harmonyState || !this.rng) return;
+    
+    // Clear any previously scheduled note timeouts
+    for (const timeout of this.leadNoteTimeouts) {
+      clearTimeout(timeout);
+    }
+    this.leadNoteTimeouts = [];
+    
+    if (!this.sliderState.leadEnabled) {
+      // If lead is disabled, stop scheduling
+      if (this.leadMelodyTimer !== null) {
+        clearTimeout(this.leadMelodyTimer);
+        this.leadMelodyTimer = null;
+      }
+      return;
+    }
+
+    const rng = this.rng;
+    const scale = this.harmonyState.scaleFamily;
+    const baseOctaveOffset = this.sliderState.leadOctave;
+    const octaveRange = this.sliderState.leadOctaveRange ?? 2;
+    const phraseDuration = PHRASE_LENGTH * 1000; // in ms
+
+    // Scheduled notes with timing, note range, and level
+    interface ScheduledNote {
+      timing: number;
+      noteMin: number;
+      noteMax: number;
+      level: number;
+    }
+    const scheduledNotes: ScheduledNote[] = [];
+
+    // Check if Euclidean master mode is enabled
+    if (this.sliderState.leadEuclideanMasterEnabled) {
+      // Multi-lane Euclidean sequencer mode
+      const tempo = this.sliderState.leadEuclideanTempo;
+
+      // Process each lane
+      const lanes = [
+        {
+          enabled: this.sliderState.leadEuclid1Enabled,
+          preset: this.sliderState.leadEuclid1Preset,
+          steps: this.sliderState.leadEuclid1Steps,
+          hits: this.sliderState.leadEuclid1Hits,
+          rotation: this.sliderState.leadEuclid1Rotation,
+          noteMin: this.sliderState.leadEuclid1NoteMin,
+          noteMax: this.sliderState.leadEuclid1NoteMax,
+          level: this.sliderState.leadEuclid1Level,
+        },
+        {
+          enabled: this.sliderState.leadEuclid2Enabled,
+          preset: this.sliderState.leadEuclid2Preset,
+          steps: this.sliderState.leadEuclid2Steps,
+          hits: this.sliderState.leadEuclid2Hits,
+          rotation: this.sliderState.leadEuclid2Rotation,
+          noteMin: this.sliderState.leadEuclid2NoteMin,
+          noteMax: this.sliderState.leadEuclid2NoteMax,
+          level: this.sliderState.leadEuclid2Level,
+        },
+        {
+          enabled: this.sliderState.leadEuclid3Enabled,
+          preset: this.sliderState.leadEuclid3Preset,
+          steps: this.sliderState.leadEuclid3Steps,
+          hits: this.sliderState.leadEuclid3Hits,
+          rotation: this.sliderState.leadEuclid3Rotation,
+          noteMin: this.sliderState.leadEuclid3NoteMin,
+          noteMax: this.sliderState.leadEuclid3NoteMax,
+          level: this.sliderState.leadEuclid3Level,
+        },
+        {
+          enabled: this.sliderState.leadEuclid4Enabled,
+          preset: this.sliderState.leadEuclid4Preset,
+          steps: this.sliderState.leadEuclid4Steps,
+          hits: this.sliderState.leadEuclid4Hits,
+          rotation: this.sliderState.leadEuclid4Rotation,
+          noteMin: this.sliderState.leadEuclid4NoteMin,
+          noteMax: this.sliderState.leadEuclid4NoteMax,
+          level: this.sliderState.leadEuclid4Level,
+        },
+      ];
+
+      for (const lane of lanes) {
+        if (!lane.enabled) continue;
+
+        // Get pattern parameters from preset or custom
+        let steps: number, hits: number, rotation: number;
+        if (lane.preset === 'custom') {
+          steps = lane.steps;
+          hits = lane.hits;
+          rotation = lane.rotation;
+        } else {
+          const preset = this.EUCLIDEAN_PRESETS[lane.preset] || this.EUCLIDEAN_PRESETS.lancaran;
+          steps = preset.steps;
+          hits = preset.hits;
+          // User rotation is additive to preset's base rotation
+          rotation = (preset.rotation + lane.rotation) % steps;
+        }
+
+        // Generate pattern for this lane
+        const pattern = this.generateEuclideanPattern(steps, hits, rotation);
+        const patternDuration = phraseDuration / tempo;
+        const stepDuration = patternDuration / steps;
+        const cycles = Math.ceil(tempo);
+
+        for (let cycle = 0; cycle < cycles; cycle++) {
+          const cycleOffset = cycle * patternDuration;
+          for (let i = 0; i < pattern.length; i++) {
+            if (pattern[i]) {
+              const timing = cycleOffset + (i * stepDuration);
+              if (timing < phraseDuration) {
+                scheduledNotes.push({
+                  timing,
+                  noteMin: lane.noteMin,
+                  noteMax: lane.noteMax,
+                  level: lane.level,
+                });
+              }
+            }
+          }
+        }
+      }
+
+      // Sort by timing
+      scheduledNotes.sort((a, b) => a.timing - b.timing);
+
+    } else {
+      // Original random mode - use global lead octave settings
+      const density = this.sliderState.leadDensity;
+      const notesThisPhrase = Math.max(1, Math.round(density * 3 + rng() * 2));
+      const baseLow = 64 + (baseOctaveOffset * 12);
+      const baseHigh = baseLow + (octaveRange * 12);
+      
+      for (let i = 0; i < notesThisPhrase; i++) {
+        const timing = rng() * phraseDuration;
+        scheduledNotes.push({
+          timing,
+          noteMin: baseLow,
+          noteMax: baseHigh,
+          level: 1.0,
+        });
+      }
+      
+      scheduledNotes.sort((a, b) => a.timing - b.timing);
+    }
+
+    // Schedule each note
+    for (const note of scheduledNotes) {
+      // Get available scale notes within this lane's note range (using master root note)
+      const rootNote = this.sliderState.rootNote ?? 4; // E default
+      let availableNotes = getScaleNotesInRange(scale, Math.max(24, note.noteMin), Math.min(108, note.noteMax), rootNote);
+      
+      // If no scale notes in range, find the nearest scale note to the target range
+      if (availableNotes.length === 0) {
+        const midPoint = (note.noteMin + note.noteMax) / 2;
+        // Get all scale notes in playable range
+        const allScaleNotes = getScaleNotesInRange(scale, 24, 108, rootNote);
+        if (allScaleNotes.length === 0) continue;
+        
+        // Find nearest note to the midpoint of the requested range
+        let nearestNote = allScaleNotes[0];
+        let nearestDistance = Math.abs(allScaleNotes[0] - midPoint);
+        for (const scaleNote of allScaleNotes) {
+          const distance = Math.abs(scaleNote - midPoint);
+          if (distance < nearestDistance) {
+            nearestDistance = distance;
+            nearestNote = scaleNote;
+          }
+        }
+        availableNotes = [nearestNote];
+      }
+
+      const noteIndex = Math.floor(rng() * availableNotes.length);
+      const midiNote = availableNotes[noteIndex];
+      const frequency = midiToFreq(midiNote);
+      const velocity = rngFloat(rng, 0.5 * note.level, 0.9 * note.level);
+      
+      const timbreMin = this.sliderState.leadTimbreMin;
+      const timbreMax = this.sliderState.leadTimbreMax;
+      const timbre = rngFloat(rng, timbreMin, timbreMax);
+
+      // Track the timeout so we can cancel it if state changes
+      const timeoutId = window.setTimeout(() => {
+        // Remove from tracking array
+        const idx = this.leadNoteTimeouts.indexOf(timeoutId);
+        if (idx > -1) this.leadNoteTimeouts.splice(idx, 1);
+        // Play the note
+        this.playLeadNote(frequency, velocity, timbre);
+      }, note.timing);
+      this.leadNoteTimeouts.push(timeoutId);
+    }
+
+    // Schedule next phrase
+    const timeUntilNextPhrase = getTimeUntilNextPhrase() * 1000;
+    this.leadMelodyTimer = window.setTimeout(() => {
+      this.scheduleLeadMelody();
+    }, timeUntilNextPhrase);
+  }
+
+  /**
+   * Start or restart lead melody scheduling
+   */
+  private startLeadMelody(): void {
+    // Clear existing timer
+    if (this.leadMelodyTimer !== null) {
+      clearTimeout(this.leadMelodyTimer);
+      this.leadMelodyTimer = null;
+    }
+    
+    // Clear any scheduled note timeouts
+    for (const timeout of this.leadNoteTimeouts) {
+      clearTimeout(timeout);
+    }
+    this.leadNoteTimeouts = [];
+
+    if (this.sliderState?.leadEnabled) {
+      this.scheduleLeadMelody();
+    }
+  }
+
+  getState(): EngineState {
+    return {
+      isRunning: this.isRunning,
+      harmonyState: this.harmonyState,
+      currentSeed: this.currentSeed,
+      currentBucket: this.currentBucket,
+      currentFilterFreq: this.currentFilterFreq,
+    };
+  }
+}
+
+// Singleton instance
+export const audioEngine = new AudioEngine();

@@ -1,0 +1,40 @@
+```
+                    MASTER (Purple)
+                         |
+                         |
+                         ▲
+                        ╱ ╲
+                       ╱   ╲
+                      ╱     ╲
+                     ╱       ╲
+    SEND (Red) ────●─────────●──── SYNTH (Blue)
+                   │    ❄    │
+                   │         │
+                   │         │
+                   ●         ●
+                  ╱           ╲
+                 ╱             ╲
+     REVERB (Orange)         GRANULAR (Cyan)
+               │
+               │
+               ▼
+          LEAD (Green)
+
+
+SNOWFLAKE UI - 6-PRONG PARAMETER CONTROL
+
+Each ● represents a draggable handle that controls:
+- Distance from center = parameter value (0-100%)
+- Color-coded for easy identification
+- Hover/drag for interaction
+
+Controls:
+  ▶/■  Start/Stop (bottom center)
+  ⚙️   Advanced Settings (below snowflake)
+
+Features:
+  ❄   Randomly generated unique shape each session
+  ♪   Center icon animates when playing
+  ✨  Glowing effects on active prongs
+  📱  Touch-friendly for mobile devices
+```
