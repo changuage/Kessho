@@ -922,12 +922,30 @@ export class AudioEngine {
     const detune = this.sliderState.detune;
     const waveSpread = this.sliderState.waveSpread; // Max stagger time in seconds
     const rng = this.rng; // Capture for use in loop
+    const voiceMask = this.sliderState.synthVoiceMask || 63; // Default to all 6 voices
+    const octaveShift = this.sliderState.synthOctave || 0; // Octave shift (-2 to +2)
+    const octaveMultiplier = Math.pow(2, octaveShift); // 0.25, 0.5, 1, 2, or 4
+
+    // Apply octave shift to all frequencies
+    frequencies = frequencies.map(f => f * octaveMultiplier);
 
     // Get ADSR from synth settings
     const attack = this.sliderState.synthAttack;
     const decay = this.sliderState.synthDecay;
     const sustain = this.sliderState.synthSustain;
     const release = this.sliderState.synthRelease;
+
+    // Filter frequencies based on voice mask - only include notes for enabled voices
+    const enabledFrequencies: number[] = [];
+    for (let i = 0; i < Math.min(6, frequencies.length); i++) {
+      if (voiceMask & (1 << i)) {
+        enabledFrequencies.push(frequencies[i]);
+      }
+    }
+    // If mask would result in no voices, use at least the first frequency
+    if (enabledFrequencies.length === 0) {
+      enabledFrequencies.push(frequencies[0]);
+    }
 
     // Generate random stagger offsets for each voice using the RNG for determinism
     const voiceOffsets: number[] = [];
@@ -940,7 +958,25 @@ export class AudioEngine {
 
     for (let i = 0; i < this.voices.length; i++) {
       const voice = this.voices[i];
-      const freq = frequencies[i] || frequencies[0];
+      const isVoiceEnabled = (voiceMask & (1 << i)) !== 0;
+      
+      if (!isVoiceEnabled) {
+        // Silence this voice
+        if (voice.active) {
+          const startTime = now;
+          voice.envelope.gain.cancelScheduledValues(startTime);
+          voice.envelope.gain.setTargetAtTime(0, startTime, release / 4);
+          voice.active = false;
+        }
+        continue;
+      }
+      
+      // Map enabled voice index to the filtered frequency list
+      let enabledIndex = 0;
+      for (let j = 0; j < i; j++) {
+        if (voiceMask & (1 << j)) enabledIndex++;
+      }
+      const freq = enabledFrequencies[enabledIndex % enabledFrequencies.length] || frequencies[0];
       const voiceDelay = voiceOffsets[i]; // Staggered entry time for this voice
 
       // Calculate frequency values

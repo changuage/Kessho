@@ -872,6 +872,15 @@ const App: React.FC = () => {
   const [showPresetList, setShowPresetList] = useState(false);
   const [presetsLoading, setPresetsLoading] = useState(true);
   
+  // Preset Morph state
+  const [morphPresetA, setMorphPresetA] = useState<SavedPreset | null>(null);
+  const [morphPresetB, setMorphPresetB] = useState<SavedPreset | null>(null);
+  const [morphPosition, setMorphPosition] = useState(0); // 0 = full A, 100 = full B
+  const [morphMode, setMorphMode] = useState<'manual' | 'auto'>('manual');
+  const [morphPlayPhrases, setMorphPlayPhrases] = useState(16);
+  const [morphTransitionPhrases, setMorphTransitionPhrases] = useState(4);
+  const [morphLoadTarget, setMorphLoadTarget] = useState<'a' | 'b' | null>(null); // For advanced UI load dialog
+  
   // UI mode: 'snowflake' or 'advanced'
   const [uiMode, setUiMode] = useState<'snowflake' | 'advanced'>('snowflake');
 
@@ -1133,8 +1142,212 @@ const App: React.FC = () => {
     }
   };
 
-  // Load preset from list
-  const handleLoadPresetFromList = (preset: SavedPreset) => {
+  // Lerp between two preset states based on morph position (0-100)
+  const lerpPresets = useCallback((presetA: SavedPreset, presetB: SavedPreset, t: number): SliderState => {
+    const stateA = { ...DEFAULT_STATE, ...presetA.state };
+    const stateB = { ...DEFAULT_STATE, ...presetB.state };
+    const result = { ...stateA };
+    const tNorm = t / 100; // Normalize to 0-1
+    
+    // Interpolate all numeric values
+    const numericKeys: (keyof SliderState)[] = [
+      'masterVolume', 'synthLevel', 'granularLevel', 'synthReverbSend', 'granularReverbSend',
+      'leadReverbSend', 'leadDelayReverbSend', 'reverbLevel', 'randomness', 'tension',
+      'chordRate', 'voicingSpread', 'waveSpread', 'detune', 'synthAttack', 'synthDecay',
+      'synthSustain', 'synthRelease', 'synthVoiceMask', 'synthOctave', 'hardness', 'oscBrightness',
+      'filterCutoffMin', 'filterCutoffMax', 'filterModSpeed', 'filterResonance', 'filterQ',
+      'warmth', 'presence', 'airNoise', 'reverbDecay', 'reverbSize', 'reverbDiffusion',
+      'reverbModulation', 'predelay', 'damping', 'width', 'grainProbability', 'grainSizeMin',
+      'grainSizeMax', 'density', 'spray', 'jitter', 'pitchSpread', 'stereoSpread', 'feedback',
+      'wetHPF', 'wetLPF', 'leadLevel', 'leadAttack', 'leadDecay', 'leadSustain', 'leadRelease',
+      'leadDelayTime', 'leadDelayFeedback', 'leadDelayMix', 'leadDensity', 'leadOctave',
+      'leadOctaveRange', 'leadTimbreMin', 'leadTimbreMax', 'leadEuclideanTempo',
+      'oceanSampleLevel', 'oceanWaveSynthLevel', 'oceanFilterCutoff', 'oceanFilterResonance',
+      'oceanDurationMin', 'oceanDurationMax', 'oceanIntervalMin', 'oceanIntervalMax',
+      'oceanFoamMin', 'oceanFoamMax', 'oceanDepthMin', 'oceanDepthMax',
+    ];
+    
+    for (const key of numericKeys) {
+      const valA = stateA[key];
+      const valB = stateB[key];
+      if (typeof valA === 'number' && typeof valB === 'number') {
+        (result as Record<string, unknown>)[key] = valA + (valB - valA) * tNorm;
+      }
+    }
+    
+    // Snap discrete values at 50%
+    const discreteKeys: (keyof SliderState)[] = [
+      'seedWindow', 'scaleMode', 'manualScale', 'filterType', 'reverbEngine', 'reverbType', 'grainPitchMode'
+    ];
+    for (const key of discreteKeys) {
+      (result as Record<string, unknown>)[key] = tNorm < 0.5 ? stateA[key] : stateB[key];
+    }
+    
+    // Snap boolean values at 50%
+    const boolKeys: (keyof SliderState)[] = [
+      'leadEnabled', 'leadEuclideanMasterEnabled', 'leadEuclid1Enabled', 'leadEuclid2Enabled',
+      'leadEuclid3Enabled', 'leadEuclid4Enabled', 'oceanSampleEnabled', 'oceanWaveSynthEnabled'
+    ];
+    for (const key of boolKeys) {
+      (result as Record<string, unknown>)[key] = tNorm < 0.5 ? stateA[key] : stateB[key];
+    }
+    
+    return result;
+  }, []);
+
+  // Store captured state for morph reference (when no preset is loaded)
+  // This captures the state BEFORE any morph preset is loaded
+  const morphCapturedStateRef = useRef<SliderState | null>(null);
+
+  // Load preset into morph slot (A or B)
+  const handleLoadPresetToSlot = useCallback((preset: SavedPreset, slot: 'a' | 'b') => {
+    if (slot === 'a') {
+      setMorphPresetA(preset);
+      // When loading A, capture current state for B to use as fallback
+      // But only if B is not already loaded
+      if (!morphPresetB) {
+        morphCapturedStateRef.current = { ...state };
+      }
+    } else {
+      setMorphPresetB(preset);
+      // When loading B, capture current state for A to use as fallback
+      // But only if A is not already loaded
+      if (!morphPresetA) {
+        morphCapturedStateRef.current = { ...state };
+      }
+    }
+    setMorphLoadTarget(null);
+  }, [state, morphPresetA, morphPresetB]);
+
+  // Handle morph slider change
+  const handleMorphPositionChange = useCallback((newPosition: number) => {
+    setMorphPosition(newPosition);
+    
+    // Inline apply morph to ensure state updates correctly
+    if (!morphPresetA && !morphPresetB) return;
+    
+    const fallbackState = morphCapturedStateRef.current || DEFAULT_STATE;
+    const effectiveA: SavedPreset = morphPresetA || { name: 'Current', timestamp: '', state: fallbackState };
+    const effectiveB: SavedPreset = morphPresetB || { name: 'Current', timestamp: '', state: fallbackState };
+    
+    if (morphPresetA && morphPresetB && morphPresetA.name === morphPresetB.name) return;
+    
+    const morphedState = lerpPresets(effectiveA, effectiveB, newPosition);
+    setState(morphedState);
+    audioEngine.updateParams(morphedState);
+  }, [morphPresetA, morphPresetB, lerpPresets]);
+
+  // Auto-cycle morph effect - continuous smooth animation
+  const morphStartTimeRef = useRef<number>(Date.now());
+  const lastMorphPosRef = useRef<number>(0);
+  const manualPositionOnEnterRef = useRef<number>(0); // Track position when entering auto mode
+  
+  useEffect(() => {
+    if (morphMode !== 'auto' || !engineState.isRunning || (!morphPresetA && !morphPresetB)) {
+      return;
+    }
+    
+    const PHRASE_LENGTH = 8; // 8 seconds per phrase
+    const playDuration = morphPlayPhrases * PHRASE_LENGTH * 1000; // ms
+    const transitionDuration = morphTransitionPhrases * PHRASE_LENGTH * 1000; // ms
+    const holdDuration = PHRASE_LENGTH * 1000; // Hold current position for 1 phrase before transitioning
+    const totalCycleDuration = (playDuration + transitionDuration) * 2; // Full A→B→A cycle
+    
+    // Capture the current manual position when entering auto mode
+    morphStartTimeRef.current = Date.now();
+    manualPositionOnEnterRef.current = morphPosition;
+    lastMorphPosRef.current = -1; // Force first update
+    
+    const fallbackState = morphCapturedStateRef.current || DEFAULT_STATE;
+    const effectiveA: SavedPreset = morphPresetA || { name: 'Current', timestamp: '', state: fallbackState };
+    const effectiveB: SavedPreset = morphPresetB || { name: 'Current', timestamp: '', state: fallbackState };
+    const samePreset = morphPresetA && morphPresetB && morphPresetA.name === morphPresetB.name;
+    
+    // Calculate the target position to transition to after the hold period
+    // If manual position is closer to A (0-50%), transition to A, else transition to B
+    const startPos = manualPositionOnEnterRef.current;
+    const targetAfterHold = startPos <= 50 ? 0 : 100;
+    
+    const animate = () => {
+      const elapsed = Date.now() - morphStartTimeRef.current;
+      
+      let newPos: number;
+      
+      // Phase 1: Hold at the manual position for 1 phrase
+      if (elapsed < holdDuration) {
+        newPos = startPos;
+      }
+      // Phase 2: Transition from manual position to target (A or B)
+      else if (elapsed < holdDuration + transitionDuration) {
+        const transitionElapsed = elapsed - holdDuration;
+        const t = transitionElapsed / transitionDuration;
+        newPos = Math.round(startPos + (targetAfterHold - startPos) * t);
+      }
+      // Phase 3: Normal auto-cycle continues from the target
+      else {
+        // Offset time to account for hold and initial transition
+        const cycleElapsed = elapsed - holdDuration - transitionDuration;
+        // If we transitioned to A (0), start cycle from A playing phase
+        // If we transitioned to B (100), start cycle from B playing phase
+        const cycleOffset = targetAfterHold === 0 ? 0 : playDuration + transitionDuration;
+        const posInCycle = (cycleElapsed + cycleOffset) % totalCycleDuration;
+        
+        if (posInCycle < playDuration) {
+          // Playing A
+          newPos = 0;
+        } else if (posInCycle < playDuration + transitionDuration) {
+          // Transitioning A → B (smooth)
+          const transitionElapsed = posInCycle - playDuration;
+          newPos = Math.round((transitionElapsed / transitionDuration) * 100);
+        } else if (posInCycle < playDuration * 2 + transitionDuration) {
+          // Playing B
+          newPos = 100;
+        } else {
+          // Transitioning B → A (smooth)
+          const transitionElapsed = posInCycle - (playDuration * 2 + transitionDuration);
+          newPos = Math.round((1 - transitionElapsed / transitionDuration) * 100);
+        }
+      }
+      
+      // Only update if position changed
+      if (lastMorphPosRef.current !== newPos) {
+        lastMorphPosRef.current = newPos;
+        setMorphPosition(newPos);
+        
+        // Apply morph inline (not inside state setter)
+        if (!samePreset) {
+          const morphedState = lerpPresets(effectiveA, effectiveB, newPos);
+          setState(morphedState);
+          audioEngine.updateParams(morphedState);
+        }
+      }
+    };
+    
+    // Run at 10Hz for smooth animation (same as random walk)
+    const intervalId = window.setInterval(animate, 100);
+    animate(); // Run immediately
+    
+    return () => clearInterval(intervalId);
+  }, [morphMode, engineState.isRunning, morphPresetA, morphPresetB, morphPlayPhrases, morphTransitionPhrases, lerpPresets]);
+
+  // Load preset from list - modified to support morph slots in advanced mode
+  const handleLoadPresetFromList = useCallback((preset: SavedPreset) => {
+    // If in advanced mode and a morph target is set, load to that slot
+    if (uiMode === 'advanced' && morphLoadTarget) {
+      handleLoadPresetToSlot(preset, morphLoadTarget);
+      setShowPresetList(false);
+      return;
+    }
+    
+    // In simple mode, capture current state BEFORE loading, then load to slot A
+    if (uiMode === 'snowflake') {
+      // Capture state before loading so B can morph from original
+      morphCapturedStateRef.current = { ...state };
+      setMorphPresetA(preset);
+      setMorphPosition(0); // Reset to full A
+    }
+    
+    // Apply the preset directly
     const newState = { ...DEFAULT_STATE, ...preset.state };
     setState(newState);
     audioEngine.updateParams(newState);
@@ -1170,7 +1383,7 @@ const App: React.FC = () => {
     }
     
     setShowPresetList(false);
-  };
+  }, [uiMode, morphLoadTarget, handleLoadPresetToSlot]);
 
   // Delete preset - just removes from UI list (can't delete files from browser)
   const handleDeletePreset = (index: number) => {
@@ -1399,6 +1612,13 @@ const App: React.FC = () => {
             onChange={handleSliderChange}
             {...sliderProps('leadLevel')}
           />
+          <Slider
+            label="Waves Level"
+            value={state.oceanSampleLevel}
+            paramKey="oceanSampleLevel"
+            onChange={handleSliderChange}
+            {...sliderProps('oceanSampleLevel')}
+          />
           
           <div style={{ marginTop: '12px', borderTop: '1px solid #333', paddingTop: '12px' }}>
             <div style={{ fontSize: '0.85rem', color: '#888', marginBottom: '8px' }}>Reverb Sends</div>
@@ -1486,6 +1706,276 @@ const App: React.FC = () => {
           <div style={{ fontSize: '0.75rem', color: '#666', marginTop: '-8px', marginBottom: '8px' }}>
             Speed of value drift for range sliders (double-click any slider)
           </div>
+        </CollapsiblePanel>
+
+        {/* Preset Morph */}
+        <CollapsiblePanel
+          id="morph"
+          title="Preset Morph"
+          isMobile={isMobile}
+          isExpanded={expandedPanels.has('morph')}
+          onToggle={togglePanel}
+        >
+          {/* Slot A - Dropdown */}
+          <div style={{ marginBottom: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#6ee7b7' }}>Slot A</span>
+              {morphPresetA && (
+                <button
+                  onClick={() => { setMorphPresetA(null); setMorphPosition(0); }}
+                  style={{
+                    padding: '2px 6px',
+                    fontSize: '0.6rem',
+                    background: 'transparent',
+                    border: '1px solid #ef4444',
+                    borderRadius: '3px',
+                    color: '#fca5a5',
+                    cursor: 'pointer',
+                  }}
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+            <select
+              value={morphPresetA?.name || ''}
+              onChange={(e) => {
+                const presetName = e.target.value;
+                if (presetName === '') {
+                  setMorphPresetA(null);
+                } else {
+                  const preset = savedPresets.find(p => p.name === presetName);
+                  if (preset) {
+                    // Capture current state before loading
+                    if (!morphPresetB) {
+                      morphCapturedStateRef.current = { ...state };
+                    }
+                    setMorphPresetA(preset);
+                  }
+                }
+              }}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                background: morphPresetA 
+                  ? 'linear-gradient(135deg, #064e3b, #022c22)' 
+                  : 'rgba(30, 30, 40, 0.8)',
+                border: `1px solid ${morphPresetA ? '#10b981' : '#444'}`,
+                borderRadius: '6px',
+                fontSize: '0.8rem',
+                color: morphPresetA ? '#6ee7b7' : '#888',
+                cursor: 'pointer',
+                appearance: 'none',
+                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236ee7b7'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
+                backgroundRepeat: 'no-repeat',
+                backgroundPosition: 'right 8px center',
+                backgroundSize: '16px',
+                paddingRight: '32px',
+              }}
+            >
+              <option value="" style={{ background: '#1a1a2e', color: '#888' }}>
+                (empty - using current)
+              </option>
+              {savedPresets.map((preset) => (
+                <option 
+                  key={preset.name} 
+                  value={preset.name}
+                  style={{ background: '#1a1a2e', color: '#6ee7b7' }}
+                >
+                  {preset.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Morph Position Slider */}
+          <div style={{ marginBottom: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+              <span style={{ fontSize: '0.7rem', opacity: 0.8 }}>Morph Position</span>
+              <span style={{ fontSize: '0.7rem', color: '#888' }}>{morphPosition}%</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '0.65rem', color: '#6ee7b7' }}>A</span>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                step="1"
+                value={morphPosition}
+                onChange={(e) => handleMorphPositionChange(parseInt(e.target.value))}
+                disabled={!morphPresetA && !morphPresetB}
+                style={{
+                  flex: 1,
+                  height: '6px',
+                  cursor: (!morphPresetA && !morphPresetB) ? 'not-allowed' : 'pointer',
+                  opacity: (!morphPresetA && !morphPresetB) ? 0.4 : 1,
+                }}
+              />
+              <span style={{ fontSize: '0.65rem', color: '#a78bfa' }}>B</span>
+            </div>
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'center', 
+              marginTop: '4px', 
+              fontSize: '0.65rem', 
+              color: '#888' 
+            }}>
+              {morphPosition === 0 ? 'Full A' : 
+               morphPosition === 100 ? 'Full B' : 
+               `${100 - morphPosition}% A + ${morphPosition}% B`}
+            </div>
+          </div>
+
+          {/* Slot B - Dropdown */}
+          <div style={{ marginBottom: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#a78bfa' }}>Slot B</span>
+              {morphPresetB && (
+                <button
+                  onClick={() => { setMorphPresetB(null); setMorphPosition(0); }}
+                  style={{
+                    padding: '2px 6px',
+                    fontSize: '0.6rem',
+                    background: 'transparent',
+                    border: '1px solid #ef4444',
+                    borderRadius: '3px',
+                    color: '#fca5a5',
+                    cursor: 'pointer',
+                  }}
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+            <select
+              value={morphPresetB?.name || ''}
+              onChange={(e) => {
+                const presetName = e.target.value;
+                if (presetName === '') {
+                  setMorphPresetB(null);
+                } else {
+                  const preset = savedPresets.find(p => p.name === presetName);
+                  if (preset) {
+                    // Capture current state before loading
+                    if (!morphPresetA) {
+                      morphCapturedStateRef.current = { ...state };
+                    }
+                    setMorphPresetB(preset);
+                  }
+                }
+              }}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                background: morphPresetB 
+                  ? 'linear-gradient(135deg, #4c1d95, #2e1065)' 
+                  : 'rgba(30, 30, 40, 0.8)',
+                border: `1px solid ${morphPresetB ? '#8b5cf6' : '#444'}`,
+                borderRadius: '6px',
+                fontSize: '0.8rem',
+                color: morphPresetB ? '#c4b5fd' : '#888',
+                cursor: 'pointer',
+                appearance: 'none',
+                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23a78bfa'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
+                backgroundRepeat: 'no-repeat',
+                backgroundPosition: 'right 8px center',
+                backgroundSize: '16px',
+                paddingRight: '32px',
+              }}
+            >
+              <option value="" style={{ background: '#1a1a2e', color: '#888' }}>
+                (empty - using current)
+              </option>
+              {savedPresets.map((preset) => (
+                <option 
+                  key={preset.name} 
+                  value={preset.name}
+                  style={{ background: '#1a1a2e', color: '#c4b5fd' }}
+                >
+                  {preset.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Mode Toggle */}
+          <div style={{ marginBottom: '12px', paddingTop: '8px', borderTop: '1px solid #333' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+              <span style={{ fontSize: '0.7rem', opacity: 0.8 }}>Mode:</span>
+              <button
+                onClick={() => setMorphMode('manual')}
+                style={{
+                  padding: '4px 12px',
+                  fontSize: '0.7rem',
+                  background: morphMode === 'manual' ? 'linear-gradient(135deg, #374151, #1f2937)' : 'transparent',
+                  border: `1px solid ${morphMode === 'manual' ? '#6b7280' : '#444'}`,
+                  borderRadius: '4px',
+                  color: morphMode === 'manual' ? '#fff' : '#666',
+                  cursor: 'pointer',
+                }}
+              >
+                Manual
+              </button>
+              <button
+                onClick={() => setMorphMode('auto')}
+                style={{
+                  padding: '4px 12px',
+                  fontSize: '0.7rem',
+                  background: morphMode === 'auto' ? 'linear-gradient(135deg, #374151, #1f2937)' : 'transparent',
+                  border: `1px solid ${morphMode === 'auto' ? '#6b7280' : '#444'}`,
+                  borderRadius: '4px',
+                  color: morphMode === 'auto' ? '#fff' : '#666',
+                  cursor: 'pointer',
+                }}
+              >
+                Auto-Cycle
+              </button>
+            </div>
+          </div>
+
+          {/* Auto-Cycle Settings */}
+          {morphMode === 'auto' && (
+            <div style={{ 
+              padding: '12px', 
+              background: 'rgba(30, 30, 40, 0.4)', 
+              borderRadius: '6px',
+              border: '1px solid #333'
+            }}>
+              <div style={{ marginBottom: '12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <span style={{ fontSize: '0.7rem', opacity: 0.8 }}>Play Phrases</span>
+                  <span style={{ fontSize: '0.7rem', color: '#888' }}>{morphPlayPhrases}</span>
+                </div>
+                <input
+                  type="range"
+                  min="4"
+                  max="64"
+                  step="4"
+                  value={morphPlayPhrases}
+                  onChange={(e) => setMorphPlayPhrases(parseInt(e.target.value))}
+                  style={{ width: '100%', height: '6px', cursor: 'pointer' }}
+                />
+              </div>
+              <div style={{ marginBottom: '8px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <span style={{ fontSize: '0.7rem', opacity: 0.8 }}>Morph Phrases</span>
+                  <span style={{ fontSize: '0.7rem', color: '#888' }}>{morphTransitionPhrases}</span>
+                </div>
+                <input
+                  type="range"
+                  min="2"
+                  max="32"
+                  step="2"
+                  value={morphTransitionPhrases}
+                  onChange={(e) => setMorphTransitionPhrases(parseInt(e.target.value))}
+                  style={{ width: '100%', height: '6px', cursor: 'pointer' }}
+                />
+              </div>
+              <div style={{ fontSize: '0.65rem', color: '#666', textAlign: 'center' }}>
+                Cycle: {morphPlayPhrases}→morph({morphTransitionPhrases})→{morphPlayPhrases}→morph({morphTransitionPhrases})
+              </div>
+            </div>
+          )}
         </CollapsiblePanel>
 
         {/* Harmony */}
@@ -1672,6 +2162,98 @@ const App: React.FC = () => {
                   );
                 })()}
               </svg>
+            </div>
+          </div>
+          
+          {/* Voice Mask - toggles for which chord voices play */}
+          <div style={{ marginBottom: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+              <span style={{ fontSize: '0.7rem', opacity: 0.8 }}>Voice Mask</span>
+              <span style={{ fontSize: '0.6rem', color: '#888' }}>
+                {[1, 2, 3, 4, 5, 6].filter(v => (state.synthVoiceMask || 63) & (1 << (v - 1))).join(' ')}
+              </span>
+            </div>
+            <div style={{ display: 'flex', gap: '4px', justifyContent: 'space-between' }}>
+              {[1, 2, 3, 4, 5, 6].map(voice => {
+                const bit = 1 << (voice - 1);
+                const isEnabled = ((state.synthVoiceMask || 63) & bit) !== 0;
+                return (
+                  <button
+                    key={voice}
+                    onClick={() => {
+                      const currentMask = state.synthVoiceMask || 63;
+                      let newMask = currentMask ^ bit; // Toggle the bit
+                      // Ensure at least one voice is enabled
+                      if (newMask === 0) newMask = bit;
+                      handleSliderChange('synthVoiceMask', newMask);
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: '6px 0',
+                      fontSize: '0.75rem',
+                      fontWeight: isEnabled ? 'bold' : 'normal',
+                      color: isEnabled ? '#fff' : '#666',
+                      background: isEnabled 
+                        ? `linear-gradient(135deg, hsl(${210 + voice * 25}, 60%, 35%), hsl(${210 + voice * 25}, 60%, 25%))`
+                        : 'rgba(30, 30, 40, 0.6)',
+                      border: `1px solid ${isEnabled ? `hsl(${210 + voice * 25}, 60%, 50%)` : '#444'}`,
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                    }}
+                    title={`Voice ${voice} (${voice === 1 ? 'Bass' : voice === 6 ? 'High' : 'Mid'})`}
+                  >
+                    {voice}
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              marginTop: '2px', 
+              fontSize: '0.55rem', 
+              color: '#555' 
+            }}>
+              <span>Bass</span>
+              <span>High</span>
+            </div>
+          </div>
+          
+          {/* Synth Octave slider */}
+          <div style={{ marginBottom: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+              <span style={{ fontSize: '0.7rem', opacity: 0.8 }}>Octave</span>
+              <span style={{ fontSize: '0.65rem', color: '#888' }}>
+                {state.synthOctave === 0 ? '0' : (state.synthOctave > 0 ? `+${state.synthOctave}` : state.synthOctave)}
+              </span>
+            </div>
+            <div style={{ display: 'flex', gap: '4px', justifyContent: 'space-between' }}>
+              {[-2, -1, 0, 1, 2].map(oct => {
+                const isSelected = state.synthOctave === oct;
+                return (
+                  <button
+                    key={oct}
+                    onClick={() => handleSliderChange('synthOctave', oct)}
+                    style={{
+                      flex: 1,
+                      padding: '6px 0',
+                      fontSize: '0.75rem',
+                      fontWeight: isSelected ? 'bold' : 'normal',
+                      color: isSelected ? '#fff' : '#666',
+                      background: isSelected 
+                        ? 'linear-gradient(135deg, hsl(260, 50%, 40%), hsl(260, 50%, 30%))'
+                        : 'rgba(30, 30, 40, 0.6)',
+                      border: `1px solid ${isSelected ? 'hsl(260, 50%, 55%)' : '#444'}`,
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    {oct === 0 ? '0' : (oct > 0 ? `+${oct}` : oct)}
+                  </button>
+                );
+              })}
             </div>
           </div>
         </CollapsiblePanel>
@@ -2552,7 +3134,20 @@ const App: React.FC = () => {
 
                   // Generate pattern for visualization
                   const presetData: Record<string, { steps: number; hits: number; rotation: number }> = {
-                    // Gamelan
+                    // Polyrhythmic / Complex
+                    sparse: { steps: 16, hits: 1, rotation: 0 },
+                    dense: { steps: 8, hits: 7, rotation: 0 },
+                    longSparse: { steps: 32, hits: 3, rotation: 0 },
+                    poly3v4: { steps: 12, hits: 3, rotation: 0 },
+                    poly4v3: { steps: 12, hits: 4, rotation: 0 },
+                    poly5v3: { steps: 15, hits: 5, rotation: 0 },
+                    poly5v4: { steps: 20, hits: 5, rotation: 0 },
+                    poly7v4: { steps: 28, hits: 7, rotation: 0 },
+                    poly5v7: { steps: 35, hits: 5, rotation: 0 },
+                    prime17: { steps: 17, hits: 7, rotation: 0 },
+                    prime19: { steps: 19, hits: 7, rotation: 0 },
+                    prime23: { steps: 23, hits: 9, rotation: 0 },
+                    // Indonesian Gamelan
                     lancaran: { steps: 16, hits: 4, rotation: 0 },
                     ketawang: { steps: 16, hits: 2, rotation: 0 },
                     ladrang: { steps: 32, hits: 8, rotation: 0 },
@@ -2563,21 +3158,28 @@ const App: React.FC = () => {
                     sampak: { steps: 8, hits: 5, rotation: 0 },
                     ayak: { steps: 16, hits: 3, rotation: 4 },
                     bonang: { steps: 12, hits: 5, rotation: 2 },
-                    // Reich / Minimalist
+                    // World Rhythms
+                    tresillo: { steps: 8, hits: 3, rotation: 0 },
+                    cinquillo: { steps: 8, hits: 5, rotation: 0 },
+                    rumba: { steps: 16, hits: 5, rotation: 0 },
+                    bossa: { steps: 16, hits: 5, rotation: 3 },
+                    son: { steps: 16, hits: 7, rotation: 0 },
+                    shiko: { steps: 16, hits: 5, rotation: 0 },
+                    soukous: { steps: 12, hits: 7, rotation: 0 },
+                    gahu: { steps: 16, hits: 7, rotation: 0 },
+                    bembe: { steps: 12, hits: 7, rotation: 0 },
+                    aksak9: { steps: 9, hits: 5, rotation: 0 },
+                    aksak7: { steps: 7, hits: 3, rotation: 0 },
+                    clave23: { steps: 8, hits: 2, rotation: 0 },
+                    clave32: { steps: 8, hits: 3, rotation: 0 },
+                    // Steve Reich / Experimental
                     clapping: { steps: 12, hits: 8, rotation: 0 },
                     clappingB: { steps: 12, hits: 8, rotation: 5 },
-                    poly3v4: { steps: 12, hits: 3, rotation: 0 },
-                    poly4v3: { steps: 12, hits: 4, rotation: 0 },
-                    poly5v4: { steps: 20, hits: 5, rotation: 0 },
                     additive7: { steps: 7, hits: 4, rotation: 0 },
                     additive11: { steps: 11, hits: 5, rotation: 0 },
                     additive13: { steps: 13, hits: 5, rotation: 0 },
                     reich18: { steps: 12, hits: 7, rotation: 3 },
                     drumming: { steps: 8, hits: 6, rotation: 1 },
-                    // Polyrhythmic
-                    sparse: { steps: 16, hits: 1, rotation: 0 },
-                    dense: { steps: 8, hits: 7, rotation: 0 },
-                    longSparse: { steps: 32, hits: 3, rotation: 0 },
                   };
                   
                   const patternSteps = preset === 'custom' ? steps : (presetData[preset]?.steps || 16);
@@ -2708,7 +3310,21 @@ const App: React.FC = () => {
                               marginBottom: '6px',
                             }}
                           >
-                            <optgroup label="Gamelan">
+                            <optgroup label="Polyrhythmic / Complex">
+                              <option value="sparse">Sparse (16/1)</option>
+                              <option value="dense">Dense (8/7)</option>
+                              <option value="longSparse">Long Sparse (32/3)</option>
+                              <option value="poly3v4">3 vs 4 (12/3)</option>
+                              <option value="poly4v3">4 vs 3 (12/4)</option>
+                              <option value="poly5v3">5 vs 3 (15/5)</option>
+                              <option value="poly5v4">5 vs 4 (20/5)</option>
+                              <option value="poly7v4">7 vs 4 (28/7)</option>
+                              <option value="poly5v7">5 vs 7 (35/5)</option>
+                              <option value="prime17">Prime 17 (17/7)</option>
+                              <option value="prime19">Prime 19 (19/7)</option>
+                              <option value="prime23">Prime 23 (23/9)</option>
+                            </optgroup>
+                            <optgroup label="Indonesian Gamelan">
                               <option value="lancaran">Lancaran (16/4)</option>
                               <option value="ketawang">Ketawang (16/2)</option>
                               <option value="ladrang">Ladrang (32/8)</option>
@@ -2720,22 +3336,29 @@ const App: React.FC = () => {
                               <option value="ayak">Ayak (16/3)</option>
                               <option value="bonang">Bonang (12/5)</option>
                             </optgroup>
-                            <optgroup label="Reich / Minimalist">
+                            <optgroup label="World Rhythms">
+                              <option value="tresillo">Tresillo (8/3)</option>
+                              <option value="cinquillo">Cinquillo (8/5)</option>
+                              <option value="rumba">Rumba (16/5)</option>
+                              <option value="bossa">Bossa Nova (16/5)</option>
+                              <option value="son">Son Clave (16/7)</option>
+                              <option value="shiko">Shiko (16/5)</option>
+                              <option value="soukous">Soukous (12/7)</option>
+                              <option value="gahu">Gahu (16/7)</option>
+                              <option value="bembe">Bembé (12/7)</option>
+                              <option value="aksak9">Aksak 9 (9/5)</option>
+                              <option value="aksak7">Aksak 7 (7/3)</option>
+                              <option value="clave23">Clave 2+3 (8/2)</option>
+                              <option value="clave32">Clave 3+2 (8/3)</option>
+                            </optgroup>
+                            <optgroup label="Steve Reich / Experimental">
                               <option value="clapping">Clapping Music (12/8)</option>
                               <option value="clappingB">Clapping B (12/8 r:5)</option>
-                              <option value="poly3v4">3 vs 4 (12/3)</option>
-                              <option value="poly4v3">4 vs 3 (12/4)</option>
-                              <option value="poly5v4">5 vs 4 (20/5)</option>
                               <option value="additive7">Additive 7 (7/4)</option>
                               <option value="additive11">Additive 11 (11/5)</option>
                               <option value="additive13">Additive 13 (13/5)</option>
                               <option value="reich18">Reich 18 (12/7)</option>
                               <option value="drumming">Drumming (8/6)</option>
-                            </optgroup>
-                            <optgroup label="Polyrhythmic">
-                              <option value="sparse">Sparse (16/1)</option>
-                              <option value="dense">Dense (8/7)</option>
-                              <option value="longSparse">Long Sparse (32/3)</option>
                             </optgroup>
                             <option value="custom">Custom</option>
                           </select>
@@ -2957,14 +3580,6 @@ const App: React.FC = () => {
               {state.oceanSampleEnabled ? '● Playing Sample' : '○ Sample Off'}
             </button>
           </div>
-
-          <Slider
-            label="Sample Level"
-            value={state.oceanSampleLevel}
-            paramKey="oceanSampleLevel"
-            onChange={handleSliderChange}
-            {...sliderProps('oceanSampleLevel')}
-          />
 
           {/* Wave Synth Toggle */}
           <div style={{ marginTop: '16px', ...styles.sliderGroup }}>

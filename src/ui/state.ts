@@ -39,6 +39,8 @@ export interface SliderState {
   synthDecay: number;         // 0.01..8 seconds
   synthSustain: number;       // 0..1 level
   synthRelease: number;       // 0.01..16 seconds
+  synthVoiceMask: number;     // 1..63 binary mask for which voices play (1=voice1, 2=voice2, 4=voice3, etc)
+  synthOctave: number;        // -2..+2 octave shift
 
   // Timbre
   hardness: number;           // 0..1 step 0.01
@@ -307,6 +309,8 @@ export const DEFAULT_STATE: SliderState = {
   synthDecay: 1.0,
   synthSustain: 0.8,
   synthRelease: 12.0,
+  synthVoiceMask: 63,  // All 6 voices (binary 111111)
+  synthOctave: 0,      // No octave shift
 
   // Timbre
   hardness: 0.3,
@@ -459,6 +463,8 @@ const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> = {
   synthDecay: { min: 0.01, max: 8, step: 0.01 },
   synthSustain: { min: 0, max: 1, step: 0.01 },
   synthRelease: { min: 0.01, max: 30, step: 0.01 },
+  synthVoiceMask: { min: 1, max: 63, step: 1 },
+  synthOctave: { min: -2, max: 2, step: 1 },
   hardness: { min: 0, max: 1, step: 0.01 },
   oscBrightness: { min: 0, max: 3, step: 1 },
   filterCutoffMin: { min: 40, max: 8000, step: 10 },
