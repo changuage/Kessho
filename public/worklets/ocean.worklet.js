@@ -1,6 +1,7 @@
 /**
  * Ocean Waves AudioWorklet
  * 
+ * Simplified version without rock/pebble modal synthesis for lower CPU usage.
  * Two independent wave generators that can overlap.
  */
 
@@ -13,13 +14,6 @@ function mulberry32(seed) {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
-
-// Mode ratios from real beach rock sample analysis
-const MODE_RATIOS = [1.00, 1.30, 1.52, 2.27];
-const MODE_GAINS = [0.80, 0.64, 1.00, 0.71];
-
-// Max concurrent rock voices
-const MAX_ROCKS = 12;
 
 class OceanProcessor extends AudioWorkletProcessor {
   constructor() {
@@ -42,35 +36,9 @@ class OceanProcessor extends AudioWorkletProcessor {
     this.rumbleLpfL = 0;
     this.rumbleLpfR = 0;
     
-    // Rock output lowpass for smoothing
-    this.rockLpfL = 0;
-    this.rockLpfR = 0;
-    
     // Initialize generators
     this.gen1 = this.createGenerator(0);
     this.gen2 = this.createGenerator(0.5);
-    
-    // Initialize rock voice pool
-    this.rocks = [];
-    for (let i = 0; i < MAX_ROCKS; i++) {
-      this.rocks.push({
-        active: false,
-        phase: 0,
-        duration: 0,
-        baseFreq: 400,
-        amplitude: 0,
-        pan: 0,
-        size: 0.5,
-        modeFreqs: [400, 588, 836, 1144],
-        modeQs: [40, 32, 26, 20],
-        m0_bp1: 0, m0_bp2: 0,
-        m1_bp1: 0, m1_bp2: 0,
-        m2_bp1: 0, m2_bp2: 0,
-        m3_bp1: 0, m3_bp2: 0,
-        impulsePhase: 0,
-        impulseDuration: 0,
-      });
-    }
     
     this.port.onmessage = (e) => {
       if (e.data.type === 'setSeed') {
@@ -97,6 +65,7 @@ class OceanProcessor extends AudioWorkletProcessor {
       { name: 'foamMax', defaultValue: 0.5, minValue: 0, maxValue: 1 },
       { name: 'depthMin', defaultValue: 0.3, minValue: 0, maxValue: 1 },
       { name: 'depthMax', defaultValue: 0.7, minValue: 0, maxValue: 1 },
+      // Rock params kept for API compatibility but ignored
       { name: 'pebblesMin', defaultValue: 0, minValue: 0, maxValue: 1 },
       { name: 'pebblesMax', defaultValue: 0.3, minValue: 0, maxValue: 1 },
       { name: 'pebbleSizeMin', defaultValue: 0.2, minValue: 0, maxValue: 1 },
@@ -124,13 +93,9 @@ class OceanProcessor extends AudioWorkletProcessor {
         panOffset: (this.rng() - 0.5) * 0.6,
         foam: 0.3,
         depth: 0.5,
-        pebbles: 0.2,
-        pebbleSize: 0.4,
       },
       lpfStateL: 0,
       lpfStateR: 0,
-      hpfStateL: 0,
-      hpfStateR: 0,
     };
   }
 
@@ -138,7 +103,7 @@ class OceanProcessor extends AudioWorkletProcessor {
     return min + this.rng() * (max - min);
   }
 
-  startNewWave(gen, durationMin, durationMax, foamMin, foamMax, depthMin, depthMax, pebblesMin, pebblesMax, pebbleSizeMin, pebbleSizeMax) {
+  startNewWave(gen, durationMin, durationMax, foamMin, foamMax, depthMin, depthMax) {
     gen.currentWave = {
       active: true,
       phase: 0,
@@ -147,131 +112,8 @@ class OceanProcessor extends AudioWorkletProcessor {
       panOffset: (this.rng() - 0.5) * 0.8,
       foam: this.randomRange(foamMin, foamMax),
       depth: this.randomRange(depthMin, depthMax),
-      pebbles: this.randomRange(pebblesMin, pebblesMax),
-      pebbleSize: this.randomRange(pebbleSizeMin, pebbleSizeMax),
     };
     gen.timeSinceLastWave = 0;
-  }
-
-  spawnRock(rockSize, wavePan, freqMin, freqMax, qBase, decayMin, decayMax, attackMs) {
-    let target = null;
-    let oldestPhase = 0;
-    let oldestRock = null;
-    
-    for (const rock of this.rocks) {
-      if (!rock.active) {
-        target = rock;
-        break;
-      }
-      if (rock.phase > oldestPhase) {
-        oldestPhase = rock.phase;
-        oldestRock = rock;
-      }
-    }
-    
-    if (!target && oldestRock) {
-      target = oldestRock;
-    }
-    if (!target) return;
-    
-    const baseFreq = freqMin + (1 - rockSize) * (freqMax - freqMin);
-    const freqJitter = 0.92 + this.rng() * 0.16;
-    
-    const modeFreqs = [
-      baseFreq * freqJitter * MODE_RATIOS[0] * (0.96 + this.rng() * 0.08),
-      baseFreq * freqJitter * MODE_RATIOS[1] * (0.94 + this.rng() * 0.12),
-      baseFreq * freqJitter * MODE_RATIOS[2] * (0.92 + this.rng() * 0.16),
-      baseFreq * freqJitter * MODE_RATIOS[3] * (0.90 + this.rng() * 0.20),
-    ];
-    
-    const q = qBase + rockSize * (qBase * 0.8);
-    const modeQs = [
-      q * (0.9 + this.rng() * 0.2),
-      q * 0.75 * (0.9 + this.rng() * 0.2),
-      q * 0.55 * (0.9 + this.rng() * 0.2),
-      q * 0.40 * (0.9 + this.rng() * 0.2),
-    ];
-    
-    const durationMs = decayMin + rockSize * (decayMax - decayMin);
-    const impulseDurationMs = attackMs * (0.8 + this.rng() * 0.4);
-    
-    target.active = true;
-    target.phase = 0;
-    target.duration = Math.floor(this._sampleRate * durationMs / 1000);
-    target.baseFreq = baseFreq * freqJitter;
-    target.amplitude = 0.4 + this.rng() * 0.6;
-    target.pan = wavePan + (this.rng() - 0.5) * 1.2;
-    target.pan = Math.max(-1, Math.min(1, target.pan));
-    target.size = rockSize;
-    target.modeFreqs = modeFreqs;
-    target.modeQs = modeQs;
-    target.impulsePhase = 0;
-    target.impulseDuration = Math.floor(this._sampleRate * impulseDurationMs / 1000);
-    
-    target.m0_bp1 = 0; target.m0_bp2 = 0;
-    target.m1_bp1 = 0; target.m1_bp2 = 0;
-    target.m2_bp1 = 0; target.m2_bp2 = 0;
-    target.m3_bp1 = 0; target.m3_bp2 = 0;
-  }
-
-  processMode(input, freq, Q, bp1, bp2) {
-    const omega = 2 * Math.PI * freq / this._sampleRate;
-    const newBp1 = bp1 + omega * (input - bp1 - bp2 / Q);
-    const newBp2 = bp2 + omega * newBp1;
-    return [newBp1, newBp1, newBp2];
-  }
-
-  processRock(rock, brightness) {
-    if (!rock.active) return [0, 0];
-    
-    rock.phase += 1 / rock.duration;
-    if (rock.phase >= 1) {
-      rock.active = false;
-      return [0, 0];
-    }
-    
-    let excitation = 0;
-    let transientNoise = 0;
-    
-    if (rock.impulsePhase < 1) {
-      const impulseEnv = Math.exp(-rock.impulsePhase * 6);
-      const noiseComponent = (this.rng() - 0.5) * 2;
-      excitation = impulseEnv * (0.6 + noiseComponent * 0.4);
-      
-      const clickEnv = Math.exp(-rock.impulsePhase * 12);
-      transientNoise = noiseComponent * clickEnv * 0.5;
-      
-      rock.impulsePhase += 1 / rock.impulseDuration;
-    } else {
-      excitation = (this.rng() - 0.5) * 0.02;
-    }
-    
-    let [out0, newBp1_0, newBp2_0] = this.processMode(excitation, rock.modeFreqs[0], rock.modeQs[0], rock.m0_bp1, rock.m0_bp2);
-    let [out1, newBp1_1, newBp2_1] = this.processMode(excitation, rock.modeFreqs[1], rock.modeQs[1], rock.m1_bp1, rock.m1_bp2);
-    let [out2, newBp1_2, newBp2_2] = this.processMode(excitation, rock.modeFreqs[2], rock.modeQs[2], rock.m2_bp1, rock.m2_bp2);
-    let [out3, newBp1_3, newBp2_3] = this.processMode(excitation, rock.modeFreqs[3], rock.modeQs[3], rock.m3_bp1, rock.m3_bp2);
-    
-    rock.m0_bp1 = newBp1_0; rock.m0_bp2 = newBp2_0;
-    rock.m1_bp1 = newBp1_1; rock.m1_bp2 = newBp2_1;
-    rock.m2_bp1 = newBp1_2; rock.m2_bp2 = newBp2_2;
-    rock.m3_bp1 = newBp1_3; rock.m3_bp2 = newBp2_3;
-    
-    const g0 = 1.0;
-    const g1 = 0.35 + brightness * 0.50;
-    const g2 = 0.25 + brightness * 0.45;
-    const g3 = 0.15 + brightness * 0.40;
-    const modalSum = out0 * g0 + out1 * g1 + out2 * g2 + out3 * g3;
-    
-    const combined = modalSum + transientNoise * (0.3 + brightness * 0.4);
-    
-    const decayRate = 5 + (1 - rock.size) * 10;
-    const env = Math.exp(-rock.phase * decayRate) * rock.amplitude;
-    
-    const panL = Math.cos((rock.pan + 1) * Math.PI / 4);
-    const panR = Math.sin((rock.pan + 1) * Math.PI / 4);
-    
-    const sample = combined * env * 0.4;
-    return [sample * panL, sample * panR];
   }
 
   waveEnvelope(phase) {
@@ -290,24 +132,6 @@ class OceanProcessor extends AudioWorkletProcessor {
     if (phase < 0.2 || phase > 0.6) return 0;
     const t = (phase - 0.2) / 0.4;
     return Math.sin(t * Math.PI);
-  }
-
-  rockDensityEnvelope(phase) {
-    if (phase < 0.35 || phase > 0.98) return 0;
-    
-    const crashPeak = phase >= 0.35 && phase < 0.50 
-      ? Math.exp(-Math.pow((phase - 0.42) / 0.06, 2)) * 1.5 
-      : 0;
-    
-    const sustain = phase >= 0.45 && phase < 0.85
-      ? 0.6 * (1 - (phase - 0.45) / 0.40 * 0.3)
-      : 0;
-    
-    const tail = phase >= 0.80 && phase < 0.98
-      ? 0.25 * Math.exp(-(phase - 0.80) / 0.15)
-      : 0;
-    
-    return crashPeak + sustain + tail;
   }
 
   process(_inputs, outputs, parameters) {
@@ -329,18 +153,6 @@ class OceanProcessor extends AudioWorkletProcessor {
     const foamMax = parameters.foamMax[0];
     const depthMin = parameters.depthMin[0];
     const depthMax = parameters.depthMax[0];
-    const pebblesMin = parameters.pebblesMin[0];
-    const pebblesMax = parameters.pebblesMax[0];
-    const pebbleSizeMin = parameters.pebbleSizeMin[0];
-    const pebbleSizeMax = parameters.pebbleSizeMax[0];
-    const rockLevel = parameters.rockLevel[0];
-    const rockFreqMin = parameters.rockFreqMin[0];
-    const rockFreqMax = parameters.rockFreqMax[0];
-    const rockQBase = parameters.rockQBase[0];
-    const rockDecayMin = parameters.rockDecayMin[0];
-    const rockDecayMax = parameters.rockDecayMax[0];
-    const rockBrightness = parameters.rockBrightness[0];
-    const rockAttack = parameters.rockAttack[0];
 
     for (let i = 0; i < blockSize; i++) {
       let sampleL = 0;
@@ -354,8 +166,7 @@ class OceanProcessor extends AudioWorkletProcessor {
       if (!this.gen1.currentWave.active && this.gen1.timeSinceLastWave >= this.gen1.nextWaveInterval) {
         this.startNewWave(
           this.gen1, waveDurationMin, waveDurationMax, 
-          foamMin, foamMax, depthMin, depthMax,
-          pebblesMin, pebblesMax, pebbleSizeMin, pebbleSizeMax
+          foamMin, foamMax, depthMin, depthMax
         );
         this.gen1.nextWaveInterval = Math.floor(this._sampleRate * this.randomRange(waveIntervalMin, waveIntervalMax));
       }
@@ -385,20 +196,6 @@ class OceanProcessor extends AudioWorkletProcessor {
           foamL += foamNoise * foamEnv * panL * 0.5 * wave.foam;
           foamR += foamNoise * foamEnv * panR * 0.5 * wave.foam;
           
-          if (wave.pebbles > 0) {
-            const rockEnv = this.rockDensityEnvelope(wave.phase);
-            if (rockEnv > 0) {
-              const spawnProb = wave.pebbles * rockEnv * 0.012;
-              if (this.rng() < spawnProb) {
-                this.spawnRock(
-                  wave.pebbleSize, wave.panOffset,
-                  rockFreqMin, rockFreqMax, rockQBase,
-                  rockDecayMin, rockDecayMax, rockAttack
-                );
-              }
-            }
-          }
-          
           depthAmount += env * wave.depth;
         }
       }
@@ -408,8 +205,7 @@ class OceanProcessor extends AudioWorkletProcessor {
       if (!this.gen2.currentWave.active && this.gen2.timeSinceLastWave >= this.gen2.nextWaveInterval) {
         this.startNewWave(
           this.gen2, waveDurationMin, waveDurationMax,
-          foamMin, foamMax, depthMin, depthMax,
-          pebblesMin, pebblesMax, pebbleSizeMin, pebbleSizeMax
+          foamMin, foamMax, depthMin, depthMax
         );
         const wave2Offset = this.randomRange(wave2OffsetMin, wave2OffsetMax);
         this.gen2.nextWaveInterval = Math.floor(this._sampleRate * (this.randomRange(waveIntervalMin, waveIntervalMax) + wave2Offset));
@@ -440,55 +236,33 @@ class OceanProcessor extends AudioWorkletProcessor {
           foamL += foamNoise * foamEnv * panL * 0.4 * wave.foam;
           foamR += foamNoise * foamEnv * panR * 0.4 * wave.foam;
           
-          if (wave.pebbles > 0) {
-            const rockEnv = this.rockDensityEnvelope(wave.phase);
-            if (rockEnv > 0) {
-              const spawnProb = wave.pebbles * rockEnv * 0.010;
-              if (this.rng() < spawnProb) {
-                this.spawnRock(
-                  wave.pebbleSize, -wave.panOffset,
-                  rockFreqMin, rockFreqMax, rockQBase,
-                  rockDecayMin, rockDecayMax, rockAttack
-                );
-              }
-            }
-          }
-          
           depthAmount += env * wave.depth;
         }
       }
       
-      // Process all active rock voices
-      let rockL = 0;
-      let rockR = 0;
-      for (const rock of this.rocks) {
-        if (rock.active) {
-          const [rl, rr] = this.processRock(rock, rockBrightness);
-          rockL += rl;
-          rockR += rr;
-        }
-      }
-      
-      this.rockLpfL += (rockL * rockLevel - this.rockLpfL) * 0.8;
-      this.rockLpfR += (rockR * rockLevel - this.rockLpfR) * 0.8;
-      
+      // Deep rumble layer
       const rumbleNoise = (this.rng() - 0.5) * 2;
       this.rumbleLpfL += (rumbleNoise - this.rumbleLpfL) * 0.005;
       this.rumbleLpfR += ((this.rng() - 0.5) * 2 - this.rumbleLpfR) * 0.005;
       
+      // Foam filtering
       this.foamLpfL += (foamL - this.foamLpfL) * 0.3;
       this.foamLpfR += (foamR - this.foamLpfR) * 0.3;
       
+      // Combine layers
       const avgDepth = (depthMin + depthMax) / 2;
-      const combinedL = sampleL + this.rumbleLpfL * (depthAmount + avgDepth * 0.2) * 0.4 + this.foamLpfL + this.rockLpfL;
-      const combinedR = sampleR + this.rumbleLpfR * (depthAmount + avgDepth * 0.2) * 0.4 + this.foamLpfR + this.rockLpfR;
+      const combinedL = sampleL + this.rumbleLpfL * (depthAmount + avgDepth * 0.2) * 0.4 + this.foamLpfL;
+      const combinedR = sampleR + this.rumbleLpfR * (depthAmount + avgDepth * 0.2) * 0.4 + this.foamLpfR;
       
+      // Master lowpass
       this.masterLpfL += (combinedL - this.masterLpfL) * 0.35;
       this.masterLpfR += (combinedR - this.masterLpfR) * 0.35;
       
+      // DC blocking highpass
       this.masterHpfL += (this.masterLpfL - this.masterHpfL) * 0.0005;
       this.masterHpfR += (this.masterLpfR - this.masterHpfR) * 0.0005;
       
+      // Final output with soft clipping
       const finalL = (this.masterLpfL - this.masterHpfL) * intensity * 0.6;
       const finalR = (this.masterLpfR - this.masterHpfR) * intensity * 0.6;
       

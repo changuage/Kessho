@@ -2,6 +2,7 @@
  * Ambient Reverb AudioWorklet Processor
  * 
  * Implements a smooth Feedback Delay Network (FDN) reverb designed for ambient music.
+ * Optimized with block-rate modulation and linear interpolation.
  */
 
 // Interpolated delay line for smooth modulation
@@ -17,26 +18,14 @@ class SmoothDelay {
     this.writeIndex = (this.writeIndex + 1) % this.size;
   }
 
+  // Optimized: Linear interpolation instead of cubic Hermite
   readInterpolated(delaySamples) {
     const readPos = this.writeIndex - delaySamples;
     const readIndex = ((readPos % this.size) + this.size) % this.size;
-    const frac = readIndex - Math.floor(readIndex);
-    const i0 = Math.floor(readIndex) % this.size;
+    const i0 = Math.floor(readIndex);
+    const frac = readIndex - i0;
     const i1 = (i0 + 1) % this.size;
-    const im1 = (i0 - 1 + this.size) % this.size;
-    const i2 = (i0 + 2) % this.size;
-    
-    const y0 = this.buffer[im1];
-    const y1 = this.buffer[i0];
-    const y2 = this.buffer[i1];
-    const y3 = this.buffer[i2];
-    
-    const c0 = y1;
-    const c1 = 0.5 * (y2 - y0);
-    const c2 = y0 - 2.5 * y1 + 2 * y2 - 0.5 * y3;
-    const c3 = 0.5 * (y3 - y0) + 1.5 * (y1 - y2);
-    
-    return ((c3 * frac + c2) * frac + c1) * frac + c0;
+    return this.buffer[i0] * (1 - frac) + this.buffer[i1] * frac;
   }
 
   read(delaySamples) {
@@ -195,6 +184,12 @@ class ReverbProcessor extends AudioWorkletProcessor {
     this.updatePreset();
     this.updatePredelay();
 
+    // Block-rate modulation values (computed once per block)
+    this.blockMod1 = 0;
+    this.blockMod2 = 0;
+    this.blockMod3 = 0;
+    this.blockMod4 = 0;
+
     this.port.onmessage = (event) => {
       const data = event.data;
       if (data.type === 'params') {
@@ -280,24 +275,31 @@ class ReverbProcessor extends AudioWorkletProcessor {
     const preset = PRESETS[this.params.type] || PRESETS.hall;
     const modDepth = preset.modDepth * modulation;
 
+    // OPTIMIZATION: Block-rate modulation - compute once per block instead of per sample
+    this.modPhase1 += modRate1 * blockSize / sampleRate;
+    this.modPhase2 += modRate2 * blockSize / sampleRate;
+    this.modPhase3 += modRate3 * blockSize / sampleRate;
+    this.modPhase4 += modRate4 * blockSize / sampleRate;
+    if (this.modPhase1 > 1) this.modPhase1 -= 1;
+    if (this.modPhase2 > 1) this.modPhase2 -= 1;
+    if (this.modPhase3 > 1) this.modPhase3 -= 1;
+    if (this.modPhase4 > 1) this.modPhase4 -= 1;
+
+    const tri1 = 1 - Math.abs(2 * this.modPhase1 - 1);
+    const tri2 = 1 - Math.abs(2 * this.modPhase2 - 1);
+    const tri3 = 1 - Math.abs(2 * this.modPhase3 - 1);
+    const tri4 = 1 - Math.abs(2 * this.modPhase4 - 1);
+    
+    this.blockMod1 = (tri1 - 0.5) * modDepth;
+    this.blockMod2 = (tri2 - 0.5) * modDepth;
+    this.blockMod3 = (tri3 - 0.5) * modDepth;
+    this.blockMod4 = (tri4 - 0.5) * modDepth;
+
     for (let i = 0; i < blockSize; i++) {
       const inL = inputL[i] || 0;
       const inR = inputR[i] || 0;
 
       this.smoothDamping += (targetDamping - this.smoothDamping) * 0.0001;
-
-      this.modPhase1 += modRate1 / sampleRate;
-      this.modPhase2 += modRate2 / sampleRate;
-      this.modPhase3 += modRate3 / sampleRate;
-      this.modPhase4 += modRate4 / sampleRate;
-      if (this.modPhase1 > 1) this.modPhase1 -= 1;
-      if (this.modPhase2 > 1) this.modPhase2 -= 1;
-      if (this.modPhase3 > 1) this.modPhase3 -= 1;
-      if (this.modPhase4 > 1) this.modPhase4 -= 1;
-
-      const tri1 = 1 - Math.abs(2 * this.modPhase1 - 1);
-      const tri2 = 1 - Math.abs(2 * this.modPhase2 - 1);
-      const tri3 = 1 - Math.abs(2 * this.modPhase3 - 1);
       const tri4 = 1 - Math.abs(2 * this.modPhase4 - 1);
       
       const mod1 = (tri1 - 0.5) * modDepth;
@@ -313,9 +315,10 @@ class ReverbProcessor extends AudioWorkletProcessor {
       const diffInL = this.preDiffuserL.process(delayedL);
       const diffInR = this.preDiffuserR.process(delayedR);
 
+      // Use block-rate modulation values
       const reads = [];
       for (let j = 0; j < 8; j++) {
-        const modAmount = j < 2 ? mod1 : j < 4 ? mod2 : j < 6 ? mod3 : mod4;
+        const modAmount = j < 2 ? this.blockMod1 : j < 4 ? this.blockMod2 : j < 6 ? this.blockMod3 : this.blockMod4;
         const modOffset = modAmount * this.fdnDelayTimes[j] * 0.015;
         const delayTime = Math.max(1, this.fdnDelayTimes[j] + modOffset);
         reads.push(this.fdnDelays[j].readInterpolated(delayTime));

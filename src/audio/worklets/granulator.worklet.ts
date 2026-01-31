@@ -58,6 +58,22 @@ class GranulatorProcessor extends AudioWorkletProcessor {
   private randomIndex = 0;
   private initialized = false;
 
+  // Performance monitoring
+  private perfEnabled = false;
+  private perfTotalTime = 0;
+  private perfCount = 0;
+  private perfSamplesSinceReport = 0;
+  private perfReportInterval = 48000; // ~1 second
+
+  // Pre-computed pan lookup table (avoid Math.cos/sin per grain per sample)
+  private panTableL: Float32Array;
+  private panTableR: Float32Array;
+  private readonly PAN_TABLE_SIZE = 256;
+
+  // Pre-computed Hann window lookup table
+  private hannTable: Float32Array;
+  private readonly HANN_TABLE_SIZE = 1024;
+
   // Parameters with defaults
   private params: GranulatorParams = {
     grainSizeMin: 20,
@@ -83,9 +99,27 @@ class GranulatorProcessor extends AudioWorkletProcessor {
       new Float32Array(this.bufferSize),
     ];
 
+    // Pre-compute pan lookup table (constant power panning)
+    this.panTableL = new Float32Array(this.PAN_TABLE_SIZE);
+    this.panTableR = new Float32Array(this.PAN_TABLE_SIZE);
+    for (let i = 0; i < this.PAN_TABLE_SIZE; i++) {
+      // Map index to pan value -1 to 1
+      const pan = (i / (this.PAN_TABLE_SIZE - 1)) * 2 - 1;
+      const panAngle = (pan + 1) * 0.25 * Math.PI;
+      this.panTableL[i] = Math.cos(panAngle);
+      this.panTableR[i] = Math.sin(panAngle);
+    }
+
+    // Pre-compute Hann window lookup table
+    this.hannTable = new Float32Array(this.HANN_TABLE_SIZE);
+    for (let i = 0; i < this.HANN_TABLE_SIZE; i++) {
+      const phase = i / (this.HANN_TABLE_SIZE - 1);
+      this.hannTable[i] = 0.5 * (1 - Math.cos(2 * Math.PI * phase));
+    }
+
     // Pre-allocate grain pool
     this.grains = [];
-    for (let i = 0; i < 100; i++) {
+    for (let i = 0; i < 64; i++) {  // Reduced from 100 to 64 max grains
       this.grains.push({
         startSample: 0,
         position: 0,
@@ -101,8 +135,21 @@ class GranulatorProcessor extends AudioWorkletProcessor {
     };
   }
 
+  // Fast pan lookup (avoids trig per sample)
+  private getPan(pan: number): { l: number; r: number } {
+    const index = Math.floor(((pan + 1) * 0.5) * (this.PAN_TABLE_SIZE - 1));
+    const clampedIndex = Math.max(0, Math.min(this.PAN_TABLE_SIZE - 1, index));
+    return { l: this.panTableL[clampedIndex], r: this.panTableR[clampedIndex] };
+  }
+
   private handleMessage(data: { type: string; [key: string]: unknown }) {
     switch (data.type) {
+      case 'enablePerf':
+        this.perfEnabled = data.enabled as boolean;
+        this.perfTotalTime = 0;
+        this.perfCount = 0;
+        this.perfSamplesSinceReport = 0;
+        break;
       case 'params':
         Object.assign(this.params, data.params);
         this.updateTimings();
@@ -178,10 +225,12 @@ class GranulatorProcessor extends AudioWorkletProcessor {
     grain.active = true;
   }
 
-  // Hann window function for smooth grain envelopes
+  // Hann window using lookup table (avoids Math.cos per sample)
   private hannWindow(position: number, length: number): number {
     const phase = position / length;
-    return 0.5 * (1 - Math.cos(2 * Math.PI * phase));
+    const index = Math.floor(phase * (this.HANN_TABLE_SIZE - 1));
+    const clampedIndex = Math.max(0, Math.min(this.HANN_TABLE_SIZE - 1, index));
+    return this.hannTable[clampedIndex];
   }
 
   // Linear interpolation for buffer read
@@ -213,6 +262,8 @@ class GranulatorProcessor extends AudioWorkletProcessor {
     const outputR = output[1];
     const blockSize = outputL.length;
 
+    const perfStart = this.perfEnabled ? performance.now() : 0;
+
     // Process each sample
     for (let i = 0; i < blockSize; i++) {
       // Write input to circular buffer
@@ -235,7 +286,8 @@ class GranulatorProcessor extends AudioWorkletProcessor {
       let wetL = 0;
       let wetR = 0;
 
-      for (const grain of this.grains) {
+      for (let g = 0; g < this.grains.length; g++) {
+        const grain = this.grains[g];
         if (!grain.active) continue;
 
         // Read from buffer with pitch shift
@@ -246,13 +298,11 @@ class GranulatorProcessor extends AudioWorkletProcessor {
         // Apply Hann window envelope
         const envelope = this.hannWindow(grain.startSample, grain.length);
 
-        // Apply panning (constant power)
-        const panAngle = (grain.pan + 1) * 0.25 * Math.PI;
-        const panL = Math.cos(panAngle);
-        const panR = Math.sin(panAngle);
+        // Apply panning using lookup table (avoids trig per grain per sample)
+        const pan = this.getPan(grain.pan);
 
-        wetL += sampleL * envelope * panL;
-        wetR += sampleR * envelope * panR;
+        wetL += sampleL * envelope * pan.l;
+        wetR += sampleR * envelope * pan.r;
 
         // Advance grain
         grain.startSample++;
@@ -276,6 +326,28 @@ class GranulatorProcessor extends AudioWorkletProcessor {
       const level = this.params.wetMix;
       outputL[i] = wetL * level;
       outputR[i] = wetR * level;
+    }
+
+    // Performance reporting
+    if (this.perfEnabled) {
+      const elapsed = performance.now() - perfStart;
+      this.perfTotalTime += elapsed;
+      this.perfCount++;
+      this.perfSamplesSinceReport += blockSize;
+      
+      if (this.perfSamplesSinceReport >= this.perfReportInterval && this.perfCount > 0) {
+        const avgMs = this.perfTotalTime / this.perfCount;
+        const budgetMs = (blockSize / sampleRate) * 1000;
+        this.port.postMessage({
+          type: 'perf',
+          name: 'granulator',
+          cpuPercent: (avgMs / budgetMs) * 100,
+          avgTimeMs: avgMs,
+        });
+        this.perfTotalTime = 0;
+        this.perfCount = 0;
+        this.perfSamplesSinceReport = 0;
+      }
     }
 
     return true;

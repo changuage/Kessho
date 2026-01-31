@@ -1331,72 +1331,79 @@ export class AudioEngine {
     const release = this.sliderState.leadRelease;
 
     // Timbre controls: 0 = soft Rhodes, 1 = gamelan metallophone
-    // Gamelan characteristics: inharmonic partials, gentle beating, warm shimmer
+    // OPTIMIZATION: At low timbre (Rhodes), use fewer oscillators
 
     // === CARRIER (main tone) ===
     const carrier = ctx.createOscillator();
     carrier.type = 'sine';
     carrier.frequency.value = frequency;
 
-    // Second carrier slightly detuned for gamelan beating/shimmer effect
-    const carrier2 = ctx.createOscillator();
-    carrier2.type = 'sine';
-    // Gentle beating - reduced detuning for softer effect
-    const beatDetune = timbre * 2; // Up to 2 cents detuning
-    carrier2.frequency.value = frequency * Math.pow(2, beatDetune / 1200);
+    // Nodes that may or may not be created based on timbre
+    let carrier2: OscillatorNode | null = null;
+    let carrier2Gain: GainNode | null = null;
+    let modulator3: OscillatorNode | null = null;
+    let modGain3: GainNode | null = null;
+    let modulator4: OscillatorNode | null = null;
+    let modGain4: GainNode | null = null;
+    let envelope2: GainNode | null = null;
 
-    const carrier2Gain = ctx.createGain();
-    carrier2Gain.gain.value = timbre * 0.5; // Softer beating carrier
+    // Only create second carrier if timbre > 0.1 (gamelan shimmer)
+    if (timbre > 0.1) {
+      carrier2 = ctx.createOscillator();
+      carrier2.type = 'sine';
+      const beatDetune = timbre * 2;
+      carrier2.frequency.value = frequency * Math.pow(2, beatDetune / 1200);
 
-    // === MODULATOR 1: Primary timbre shaping ===
+      carrier2Gain = ctx.createGain();
+      carrier2Gain.gain.value = timbre * 0.5;
+
+      envelope2 = ctx.createGain();
+      envelope2.gain.value = 0;
+    }
+
+    // === MODULATOR 1: Primary timbre shaping (always needed) ===
     const modulator = ctx.createOscillator();
     modulator.type = 'sine';
-    // Rhodes: ratio ~1.0, Gamelan: gentler inharmonic ratio
     const fmRatio = 1.0 + timbre * 1.4;
     modulator.frequency.value = frequency * fmRatio;
 
     const modGain = ctx.createGain();
-    // Reduced modulation index for softer, less harsh tone
     const baseIndex = 0.25 + timbre * 1.8;
     const modIndex = frequency * baseIndex * velocity;
     modGain.gain.value = modIndex;
 
-    // === MODULATOR 2: Gamelan metallic partials (softened) ===
+    // === MODULATOR 2: Metallic partials (always needed for character) ===
     const modulator2 = ctx.createOscillator();
     modulator2.type = 'sine';
-    // Lower inharmonic ratio for warmer gamelan tone
     const fmRatio2 = 2.0 + timbre * 2.0;
     modulator2.frequency.value = frequency * fmRatio2;
 
     const modGain2 = ctx.createGain();
     modGain2.gain.value = frequency * (0.08 + timbre * 0.35);
 
-    // === MODULATOR 3: High partial for gentle shimmer (greatly reduced) ===
-    const modulator3 = ctx.createOscillator();
-    modulator3.type = 'sine';
-    // Lower ratio for less harsh upper partials
-    modulator3.frequency.value = frequency * (3.0 + timbre * 2.5);
+    // === MODULATOR 3: Only at high timbre (> 0.5) ===
+    if (timbre > 0.5) {
+      modulator3 = ctx.createOscillator();
+      modulator3.type = 'sine';
+      modulator3.frequency.value = frequency * (3.0 + timbre * 2.5);
 
-    const modGain3 = ctx.createGain();
-    // Much gentler - only subtle shimmer at high timbre
-    modGain3.gain.value = frequency * Math.max(0, (timbre - 0.5) * 0.4);
+      modGain3 = ctx.createGain();
+      modGain3.gain.value = frequency * (timbre - 0.5) * 0.4;
+    }
 
-    // === MODULATOR 4: Sub-harmonic resonance (warm gong-like) ===
-    const modulator4 = ctx.createOscillator();
-    modulator4.type = 'sine';
-    // Sub-octave for warmth and depth
-    modulator4.frequency.value = frequency * (0.5 + timbre * 0.15);
+    // === MODULATOR 4: Only at high timbre (> 0.4) ===
+    if (timbre > 0.4) {
+      modulator4 = ctx.createOscillator();
+      modulator4.type = 'sine';
+      modulator4.frequency.value = frequency * (0.5 + timbre * 0.15);
 
-    const modGain4 = ctx.createGain();
-    // Gentle sub-harmonic warmth
-    modGain4.gain.value = frequency * Math.max(0, (timbre - 0.4) * 0.25);
+      modGain4 = ctx.createGain();
+      modGain4.gain.value = frequency * (timbre - 0.4) * 0.25;
+    }
 
-    // === AMPLITUDE ENVELOPES ===
+    // === AMPLITUDE ENVELOPE ===
     const envelope = ctx.createGain();
     envelope.gain.value = 0;
-
-    const envelope2 = ctx.createGain();
-    envelope2.gain.value = 0;
 
     // Output gain with velocity
     const outputGain = ctx.createGain();
@@ -1404,53 +1411,57 @@ export class AudioEngine {
     outputGain.gain.value = velocity * 0.3 * volumeCompensation;
 
     // === CONNECT FM CHAIN ===
-    // Modulators -> Carrier frequency
     modulator.connect(modGain);
     modGain.connect(carrier.frequency);
-    modGain.connect(carrier2.frequency);
+    if (carrier2) modGain.connect(carrier2.frequency);
 
     modulator2.connect(modGain2);
     modGain2.connect(carrier.frequency);
-    modGain2.connect(carrier2.frequency);
+    if (carrier2) modGain2.connect(carrier2.frequency);
 
-    modulator3.connect(modGain3);
-    modGain3.connect(carrier.frequency);
+    if (modulator3 && modGain3) {
+      modulator3.connect(modGain3);
+      modGain3.connect(carrier.frequency);
+    }
 
-    modulator4.connect(modGain4);
-    modGain4.connect(carrier.frequency);
+    if (modulator4 && modGain4) {
+      modulator4.connect(modGain4);
+      modGain4.connect(carrier.frequency);
+    }
 
     // Carriers -> Envelopes -> Output
     carrier.connect(envelope);
-    carrier2.connect(carrier2Gain);
-    carrier2Gain.connect(envelope2);
+    if (carrier2 && carrier2Gain && envelope2) {
+      carrier2.connect(carrier2Gain);
+      carrier2Gain.connect(envelope2);
+      envelope2.connect(outputGain);
+    }
     
     envelope.connect(outputGain);
-    envelope2.connect(outputGain);
     outputGain.connect(this.leadGain);
 
     // === START OSCILLATORS ===
     carrier.start(now);
-    carrier2.start(now);
+    carrier2?.start(now);
     modulator.start(now);
     modulator2.start(now);
-    modulator3.start(now);
-    modulator4.start(now);
+    modulator3?.start(now);
+    modulator4?.start(now);
 
     // === ENVELOPE SHAPING ===
-    // Softer attack for gamelan - not as harsh/percussive
     const effectiveAttack = attack * (1.0 - timbre * 0.6);
     
-    // Main envelope
     envelope.gain.setValueAtTime(0, now);
     envelope.gain.linearRampToValueAtTime(1.0, now + effectiveAttack);
     envelope.gain.linearRampToValueAtTime(sustain, now + effectiveAttack + decay);
 
-    // Beating carrier envelope (slightly delayed for gentle shimmer)
-    envelope2.gain.setValueAtTime(0, now);
-    envelope2.gain.linearRampToValueAtTime(0.6, now + effectiveAttack * 1.3);
-    envelope2.gain.linearRampToValueAtTime(sustain * 0.8, now + effectiveAttack + decay);
+    if (envelope2) {
+      envelope2.gain.setValueAtTime(0, now);
+      envelope2.gain.linearRampToValueAtTime(0.6, now + effectiveAttack * 1.3);
+      envelope2.gain.linearRampToValueAtTime(sustain * 0.8, now + effectiveAttack + decay);
+    }
     
-    // === MODULATION ENVELOPE (brightness decay) ===
+    // === MODULATION ENVELOPE ===
     const modDecayTime = 0.4 + (1.0 - timbre) * 0.4;
     const modDecayLevel = 0.08 + (1.0 - timbre) * 0.15;
     
@@ -1460,14 +1471,12 @@ export class AudioEngine {
       now + effectiveAttack + modDecayTime
     );
 
-    // Second modulator decay
     modGain2.gain.exponentialRampToValueAtTime(
       modGain2.gain.value * 0.1,
       now + effectiveAttack + modDecayTime * 0.9
     );
 
-    // Third modulator (high shimmer) decays gently
-    if (modGain3.gain.value > 0) {
+    if (modGain3 && modGain3.gain.value > 0) {
       modGain3.gain.exponentialRampToValueAtTime(
         Math.max(0.001, modGain3.gain.value * 0.01),
         now + effectiveAttack + modDecayTime * 0.4
@@ -1481,33 +1490,35 @@ export class AudioEngine {
     envelope.gain.setValueAtTime(sustain, noteEndTime);
     envelope.gain.exponentialRampToValueAtTime(0.001, stopTime);
     
-    envelope2.gain.setValueAtTime(sustain * 0.9, noteEndTime);
-    envelope2.gain.exponentialRampToValueAtTime(0.001, stopTime);
+    if (envelope2) {
+      envelope2.gain.setValueAtTime(sustain * 0.9, noteEndTime);
+      envelope2.gain.exponentialRampToValueAtTime(0.001, stopTime);
+    }
 
     // Stop oscillators
     carrier.stop(stopTime + 0.1);
-    carrier2.stop(stopTime + 0.1);
+    carrier2?.stop(stopTime + 0.1);
     modulator.stop(stopTime + 0.1);
     modulator2.stop(stopTime + 0.1);
-    modulator3.stop(stopTime + 0.1);
-    modulator4.stop(stopTime + 0.1);
+    modulator3?.stop(stopTime + 0.1);
+    modulator4?.stop(stopTime + 0.1);
 
     // Cleanup
     setTimeout(() => {
       try {
         carrier.disconnect();
-        carrier2.disconnect();
-        carrier2Gain.disconnect();
+        carrier2?.disconnect();
+        carrier2Gain?.disconnect();
         modulator.disconnect();
         modulator2.disconnect();
-        modulator3.disconnect();
-        modulator4.disconnect();
+        modulator3?.disconnect();
+        modulator4?.disconnect();
         modGain.disconnect();
         modGain2.disconnect();
-        modGain3.disconnect();
-        modGain4.disconnect();
+        modGain3?.disconnect();
+        modGain4?.disconnect();
         envelope.disconnect();
-        envelope2.disconnect();
+        envelope2?.disconnect();
         outputGain.disconnect();
       } catch {
         // Ignore cleanup errors

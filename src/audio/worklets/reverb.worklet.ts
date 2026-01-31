@@ -39,28 +39,15 @@ class SmoothDelay {
     this.writeIndex = (this.writeIndex + 1) % this.size;
   }
 
-  // Read with cubic interpolation for even smoother modulation
+  // Read with linear interpolation (sufficient for slow modulation)
   readInterpolated(delaySamples: number): number {
     const readPos = this.writeIndex - delaySamples;
-    const readIndex = ((readPos % this.size) + this.size) % this.size;
-    const frac = readIndex - Math.floor(readIndex);
-    const i0 = Math.floor(readIndex) % this.size;
+    const readPosWrapped = ((readPos % this.size) + this.size);
+    const i0 = Math.floor(readPosWrapped) % this.size;
     const i1 = (i0 + 1) % this.size;
-    const im1 = (i0 - 1 + this.size) % this.size;
-    const i2 = (i0 + 2) % this.size;
+    const frac = readPosWrapped - Math.floor(readPosWrapped);
     
-    // Cubic Hermite interpolation for smoother results
-    const y0 = this.buffer[im1];
-    const y1 = this.buffer[i0];
-    const y2 = this.buffer[i1];
-    const y3 = this.buffer[i2];
-    
-    const c0 = y1;
-    const c1 = 0.5 * (y2 - y0);
-    const c2 = y0 - 2.5 * y1 + 2 * y2 - 0.5 * y3;
-    const c3 = 0.5 * (y3 - y0) + 1.5 * (y1 - y2);
-    
-    return ((c3 * frac + c2) * frac + c1) * frac + c0;
+    return this.buffer[i0] + (this.buffer[i1] - this.buffer[i0]) * frac;
   }
 
   read(delaySamples: number): number {
@@ -71,32 +58,39 @@ class SmoothDelay {
 
 // Cascaded allpass diffuser - multiple stages for heavy smearing
 class DiffuserChain {
-  private stages: { delay: SmoothDelay; feedback: number; delaySamples: number }[] = [];
+  private delays: SmoothDelay[];
+  private feedbacks: Float32Array;
+  private delaySamplesList: Float32Array;
+  private stageCount: number;
 
   constructor(delaySamples: number[], feedback: number) {
-    for (const samples of delaySamples) {
-      this.stages.push({
-        delay: new SmoothDelay(samples + 100),
-        feedback,
-        delaySamples: samples,
-      });
+    this.stageCount = delaySamples.length;
+    this.delays = [];
+    this.feedbacks = new Float32Array(this.stageCount);
+    this.delaySamplesList = new Float32Array(this.stageCount);
+    
+    for (let i = 0; i < this.stageCount; i++) {
+      this.delays.push(new SmoothDelay(delaySamples[i] + 100));
+      this.feedbacks[i] = feedback;
+      this.delaySamplesList[i] = delaySamples[i];
     }
   }
 
   process(input: number): number {
     let x = input;
-    for (const stage of this.stages) {
-      const delayed = stage.delay.read(stage.delaySamples);
-      const v = x - delayed * stage.feedback;
-      stage.delay.write(v);
-      x = delayed + v * stage.feedback;
+    for (let i = 0; i < this.stageCount; i++) {
+      const delayed = this.delays[i].read(this.delaySamplesList[i]);
+      const fb = this.feedbacks[i];
+      const v = x - delayed * fb;
+      this.delays[i].write(v);
+      x = delayed + v * fb;
     }
     return x;
   }
 
   setFeedback(fb: number) {
-    for (const stage of this.stages) {
-      stage.feedback = fb;
+    for (let i = 0; i < this.stageCount; i++) {
+      this.feedbacks[i] = fb;
     }
   }
 }
@@ -209,6 +203,13 @@ class ReverbProcessor extends AudioWorkletProcessor {
   private fdnDamped = new Float64Array(8);
   private fdnMixed = new Float64Array(8);
 
+  // Performance monitoring
+  private perfEnabled = false;
+  private perfTotalTime = 0;
+  private perfCount = 0;
+  private perfSamplesSinceReport = 0;
+  private perfReportInterval = 48000; // ~1 second
+
   constructor() {
     super();
 
@@ -254,7 +255,12 @@ class ReverbProcessor extends AudioWorkletProcessor {
 
     this.port.onmessage = (event) => {
       const data = event.data;
-      if (data.type === 'params') {
+      if (data.type === 'enablePerf') {
+        this.perfEnabled = data.enabled;
+        this.perfTotalTime = 0;
+        this.perfCount = 0;
+        this.perfSamplesSinceReport = 0;
+      } else if (data.type === 'params') {
         Object.assign(this.params, data.params);
         this.updatePreset();
         this.updatePredelay();
@@ -338,15 +344,40 @@ class ReverbProcessor extends AudioWorkletProcessor {
     const targetDamping = this.params.damping;
     const width = this.params.width;
     const modulation = this.params.modulation;
-    
+
+    const preset = PRESETS[this.params.type] || PRESETS.hall;
+    const modDepth = preset.modDepth * modulation;
+
+    const perfStart = this.perfEnabled ? performance.now() : 0;
+
+    // Pre-compute modulation values ONCE per block (ultra-slow LFO, negligible change per 128 samples)
     // Ultra-slow LFO rates (0.02-0.06 Hz = 16-50 second cycles)
+    const blockPhaseIncrement = blockSize / sampleRate;
     const modRate1 = 0.023;
     const modRate2 = 0.031;
     const modRate3 = 0.041;
     const modRate4 = 0.053;
-
-    const preset = PRESETS[this.params.type] || PRESETS.hall;
-    const modDepth = preset.modDepth * modulation;
+    
+    // Smooth triangle wave modulation (less harsh than sine at extremes)
+    const tri1 = 1 - Math.abs(2 * this.modPhase1 - 1);
+    const tri2 = 1 - Math.abs(2 * this.modPhase2 - 1);
+    const tri3 = 1 - Math.abs(2 * this.modPhase3 - 1);
+    const tri4 = 1 - Math.abs(2 * this.modPhase4 - 1);
+    
+    const mod1 = (tri1 - 0.5) * modDepth;
+    const mod2 = (tri2 - 0.5) * modDepth;
+    const mod3 = (tri3 - 0.5) * modDepth;
+    const mod4 = (tri4 - 0.5) * modDepth;
+    
+    // Update phases once per block
+    this.modPhase1 += modRate1 * blockPhaseIncrement;
+    this.modPhase2 += modRate2 * blockPhaseIncrement;
+    this.modPhase3 += modRate3 * blockPhaseIncrement;
+    this.modPhase4 += modRate4 * blockPhaseIncrement;
+    if (this.modPhase1 > 1) this.modPhase1 -= 1;
+    if (this.modPhase2 > 1) this.modPhase2 -= 1;
+    if (this.modPhase3 > 1) this.modPhase3 -= 1;
+    if (this.modPhase4 > 1) this.modPhase4 -= 1;
 
     for (let i = 0; i < blockSize; i++) {
       const inL = inputL[i] || 0;
@@ -354,27 +385,6 @@ class ReverbProcessor extends AudioWorkletProcessor {
 
       // Smooth parameter changes
       this.smoothDamping += (targetDamping - this.smoothDamping) * 0.0001;
-
-      // Update ultra-slow modulation phases
-      this.modPhase1 += modRate1 / sampleRate;
-      this.modPhase2 += modRate2 / sampleRate;
-      this.modPhase3 += modRate3 / sampleRate;
-      this.modPhase4 += modRate4 / sampleRate;
-      if (this.modPhase1 > 1) this.modPhase1 -= 1;
-      if (this.modPhase2 > 1) this.modPhase2 -= 1;
-      if (this.modPhase3 > 1) this.modPhase3 -= 1;
-      if (this.modPhase4 > 1) this.modPhase4 -= 1;
-
-      // Smooth triangle wave modulation (less harsh than sine at extremes)
-      const tri1 = 1 - Math.abs(2 * this.modPhase1 - 1);
-      const tri2 = 1 - Math.abs(2 * this.modPhase2 - 1);
-      const tri3 = 1 - Math.abs(2 * this.modPhase3 - 1);
-      const tri4 = 1 - Math.abs(2 * this.modPhase4 - 1);
-      
-      const mod1 = (tri1 - 0.5) * modDepth;
-      const mod2 = (tri2 - 0.5) * modDepth;
-      const mod3 = (tri3 - 0.5) * modDepth;
-      const mod4 = (tri4 - 0.5) * modDepth;
 
       // Predelay
       this.predelayL.write(inL);
@@ -444,6 +454,28 @@ class ReverbProcessor extends AudioWorkletProcessor {
       // Output 100% wet (level controlled externally by reverbOutputGain)
       outputL[i] = wetL;
       outputR[i] = wetR;
+    }
+
+    // Performance reporting
+    if (this.perfEnabled) {
+      const elapsed = performance.now() - perfStart;
+      this.perfTotalTime += elapsed;
+      this.perfCount++;
+      this.perfSamplesSinceReport += blockSize;
+      
+      if (this.perfSamplesSinceReport >= this.perfReportInterval && this.perfCount > 0) {
+        const avgMs = this.perfTotalTime / this.perfCount;
+        const budgetMs = (blockSize / sampleRate) * 1000;
+        this.port.postMessage({
+          type: 'perf',
+          name: 'reverb',
+          cpuPercent: (avgMs / budgetMs) * 100,
+          avgTimeMs: avgMs,
+        });
+        this.perfTotalTime = 0;
+        this.perfCount = 0;
+        this.perfSamplesSinceReport = 0;
+      }
     }
 
     return true;
