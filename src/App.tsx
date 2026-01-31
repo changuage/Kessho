@@ -15,8 +15,9 @@ import {
 } from './ui/state';
 import { audioEngine, EngineState } from './audio/engine';
 import { SCALE_FAMILIES } from './audio/scales';
-import { formatChordDegrees, getTimeUntilNextPhrase } from './audio/harmony';
+import { formatChordDegrees, getTimeUntilNextPhrase, calculateDriftedRoot } from './audio/harmony';
 import SnowflakeUI from './ui/SnowflakeUI';
+import { CircleOfFifths } from './ui/CircleOfFifths';
 
 // File input ref for loading presets
 const fileInputRef = { current: null as HTMLInputElement | null };
@@ -873,6 +874,7 @@ const App: React.FC = () => {
     currentSeed: 0,
     currentBucket: '',
     currentFilterFreq: 1000,
+    cofCurrentStep: 0,
   });
 
   const [countdown, setCountdown] = useState(0);
@@ -1852,6 +1854,83 @@ const App: React.FC = () => {
             ]}
             onChange={(v) => handleSelectChange('rootNote', parseInt(v, 10))}
           />
+          
+          {/* Circle of Fifths Drift */}
+          <div style={{ 
+            marginTop: '16px', 
+            marginBottom: '8px', 
+            padding: '12px',
+            background: '#1a1a1a',
+            borderRadius: '8px',
+            border: '1px solid #333',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+              <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: state.cofDriftEnabled ? '#4ade80' : '#666' }}>
+                Circle of Fifths Drift
+              </span>
+              <button
+                onClick={() => handleSelectChange('cofDriftEnabled', !state.cofDriftEnabled)}
+                style={{
+                  padding: '4px 12px',
+                  fontSize: '0.7rem',
+                  fontWeight: 'bold',
+                  background: state.cofDriftEnabled ? '#22c55e' : '#333',
+                  border: 'none',
+                  borderRadius: '4px',
+                  color: state.cofDriftEnabled ? '#000' : '#888',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                }}
+              >
+                {state.cofDriftEnabled ? 'ON' : 'OFF'}
+              </button>
+            </div>
+            
+            <CircleOfFifths
+              homeRoot={state.rootNote}
+              currentStep={engineState.cofCurrentStep}
+              driftRange={state.cofDriftRange}
+              driftDirection={state.cofDriftDirection}
+              enabled={state.cofDriftEnabled}
+              size={160}
+            />
+            
+            {state.cofDriftEnabled && (
+              <>
+                <div style={{ marginTop: '12px' }}>
+                  <Slider
+                    label="Drift Rate (phrases)"
+                    value={state.cofDriftRate}
+                    paramKey="cofDriftRate"
+                    onChange={handleSliderChange}
+                  />
+                </div>
+                <div style={{ marginTop: '8px' }}>
+                  <Select
+                    label="Drift Direction"
+                    value={state.cofDriftDirection}
+                    options={[
+                      { value: 'cw', label: '↻ Clockwise (sharps)' },
+                      { value: 'ccw', label: '↺ Counter-clockwise (flats)' },
+                      { value: 'random', label: '⟷ Random' },
+                    ]}
+                    onChange={(v) => handleSelectChange('cofDriftDirection', v)}
+                  />
+                </div>
+                <div style={{ marginTop: '8px' }}>
+                  <Slider
+                    label="Drift Range (max steps)"
+                    value={state.cofDriftRange}
+                    paramKey="cofDriftRange"
+                    onChange={handleSliderChange}
+                  />
+                </div>
+                <div style={{ fontSize: '0.7rem', color: '#666', marginTop: '4px', textAlign: 'center' }}>
+                  Key drifts using pivot chord transitions for smooth modulation
+                </div>
+              </>
+            )}
+          </div>
           <Select
             label="Seed Window"
             value={state.seedWindow}
@@ -4006,6 +4085,16 @@ const App: React.FC = () => {
             {engineState.harmonyState?.scaleFamily.name || '—'}
           </span>
         </div>
+        {state.cofDriftEnabled && (
+          <div style={styles.debugRow}>
+            <span style={styles.debugLabel}>CoF Key:</span>
+            <span style={styles.debugValue}>
+              {['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'][
+                calculateDriftedRoot(state.rootNote, engineState.cofCurrentStep)
+              ]} (step: {engineState.cofCurrentStep > 0 ? '+' : ''}{engineState.cofCurrentStep})
+            </span>
+          </div>
+        )}
         <div style={styles.debugRow}>
           <span style={styles.debugLabel}>Current Chord:</span>
           <span style={styles.debugValue}>

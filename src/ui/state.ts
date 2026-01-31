@@ -26,6 +26,13 @@ export interface SliderState {
   randomness: number;         // 0..1 step 0.01
   rootNote: number;           // 0..11 (C=0, C#=1, ..., B=11) - master root note
 
+  // Circle of Fifths Drift
+  cofDriftEnabled: boolean;   // Enable automatic key drift around circle of fifths
+  cofDriftRate: number;       // 1..8 phrases between key changes (1=every phrase, 8=rarely)
+  cofDriftDirection: 'cw' | 'ccw' | 'random';  // Clockwise, counter-clockwise, or random
+  cofDriftRange: number;      // 1..6 - max steps away from home key before returning
+  cofCurrentStep: number;     // -6..6 - current position relative to home key on circle
+
   // Harmony/Pitch
   scaleMode: 'auto' | 'manual';
   manualScale: string;        // Scale family name
@@ -299,6 +306,13 @@ export const DEFAULT_STATE: SliderState = {
   randomness: 0.5,
   rootNote: 4, // E (C=0, C#=1, D=2, D#=3, E=4, F=5, F#=6, G=7, G#=8, A=9, A#=10, B=11)
 
+  // Circle of Fifths Drift
+  cofDriftEnabled: false,
+  cofDriftRate: 2,        // Every 2 phrases by default
+  cofDriftDirection: 'cw',
+  cofDriftRange: 3,       // Max 3 steps away from home
+  cofCurrentStep: 0,      // Start at home key
+
   // Harmony/Pitch
   scaleMode: 'auto',
   manualScale: 'E Dorian',
@@ -551,6 +565,9 @@ const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> = {
   oceanDepthMax: { min: 0, max: 1, step: 0.01 },
   // Random Walk
   randomWalkSpeed: { min: 0.1, max: 5, step: 0.1 },
+  // Circle of Fifths Drift
+  cofDriftRate: { min: 1, max: 8, step: 1 },
+  cofDriftRange: { min: 1, max: 6, step: 1 },
 };
 
 /**

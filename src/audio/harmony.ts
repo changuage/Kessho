@@ -14,6 +14,10 @@ export const PHRASE_LENGTH = 16;
 // Voice count for the poly synth
 export const VOICE_COUNT = 6;
 
+// Circle of Fifths sequence: each step is +7 semitones mod 12
+// Starting from C (0): C, G, D, A, E, B, F#, C#, G#, D#, A#, F
+const COF_SEQUENCE = [0, 7, 2, 9, 4, 11, 6, 1, 8, 3, 10, 5];
+
 export interface ChordVoicing {
   midiNotes: number[];
   frequencies: number[];
@@ -25,6 +29,80 @@ export interface HarmonyState {
   nextPhraseTime: number;
   phrasesUntilChange: number;
   chordDegrees: number[];
+}
+
+export interface CircleOfFifthsConfig {
+  enabled: boolean;
+  driftRate: number;          // 1..8 phrases between key changes
+  direction: 'cw' | 'ccw' | 'random';
+  range: number;              // 1..6 max steps from home
+  currentStep: number;        // -6..6 current position
+  phraseCounter: number;      // Counter for drift rate timing
+}
+
+/**
+ * Find the index in the circle for a given semitone value
+ */
+function semitoneToCoFIndex(semitone: number): number {
+  return COF_SEQUENCE.indexOf(semitone % 12);
+}
+
+/**
+ * Calculate the effective root note based on home key and step offset
+ */
+export function calculateDriftedRoot(homeRoot: number, stepOffset: number): number {
+  const homeIndex = semitoneToCoFIndex(homeRoot);
+  const driftedIndex = ((homeIndex + stepOffset) % 12 + 12) % 12;
+  return COF_SEQUENCE[driftedIndex];
+}
+
+/**
+ * Update Circle of Fifths drift state at phrase boundary
+ * Returns new step offset and updated counter
+ */
+export function updateCircleOfFifthsDrift(
+  config: CircleOfFifthsConfig,
+  rng: () => number
+): { newStep: number; newCounter: number; didDrift: boolean } {
+  if (!config.enabled) {
+    return { newStep: 0, newCounter: 0, didDrift: false };
+  }
+
+  // Increment phrase counter
+  let newCounter = config.phraseCounter + 1;
+  
+  // Check if it's time to drift
+  if (newCounter < config.driftRate) {
+    return { newStep: config.currentStep, newCounter, didDrift: false };
+  }
+
+  // Time to drift - reset counter
+  newCounter = 0;
+
+  // Determine drift direction
+  let driftDir: number;
+  if (config.direction === 'random') {
+    driftDir = rng() < 0.5 ? 1 : -1;
+  } else {
+    driftDir = config.direction === 'cw' ? 1 : -1;
+  }
+
+  // Calculate potential new step
+  let newStep = config.currentStep + driftDir;
+
+  // Boundary behavior: bounce back if at range limit
+  if (Math.abs(newStep) > config.range) {
+    // Reverse direction and head back toward home
+    newStep = config.currentStep - driftDir;
+    // If still out of range (edge case), just stay at current
+    if (Math.abs(newStep) > config.range) {
+      newStep = config.currentStep;
+    }
+  }
+
+  // Always drift when it's time (simplified - removed complex pivot logic)
+  const didDrift = newStep !== config.currentStep;
+  return { newStep, newCounter, didDrift };
 }
 
 /**

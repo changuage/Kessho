@@ -18,6 +18,9 @@ import {
   getCurrentPhraseIndex,
   getTimeUntilNextPhrase,
   PHRASE_LENGTH,
+  CircleOfFifthsConfig,
+  updateCircleOfFifthsDrift,
+  calculateDriftedRoot,
 } from './harmony';
 import { getScaleNotesInRange, midiToFreq } from './scales';
 import { createRng, generateRandomSequence, getUtcBucket, computeSeed, rngFloat } from './rng';
@@ -61,6 +64,7 @@ export interface EngineState {
   currentSeed: number;
   currentBucket: string;
   currentFilterFreq: number;
+  cofCurrentStep: number;
 }
 
 export class AudioEngine {
@@ -110,7 +114,16 @@ export class AudioEngine {
   private oceanSampleLoaded = false;
 
   private harmonyState: HarmonyState | null = null;
+  private cofConfig: CircleOfFifthsConfig = {
+    enabled: false,
+    driftRate: 2,
+    direction: 'cw',
+    range: 3,
+    currentStep: 0,
+    phraseCounter: 0,
+  };
   private phraseTimer: number | null = null;
+  private effectiveRoot = 4;  // Current root note including CoF drift
   private currentSeed = 0;
   private currentBucket = '';
   private sliderState: SliderState | null = null;
@@ -144,6 +157,7 @@ export class AudioEngine {
         currentSeed: this.currentSeed,
         currentBucket: this.currentBucket,
         currentFilterFreq: this.currentFilterFreq,
+        cofCurrentStep: this.cofConfig.currentStep,
       });
     }
   }
@@ -318,6 +332,17 @@ export class AudioEngine {
     const oldSeedWindow = this.sliderState?.seedWindow;
     this.sliderState = sliderState;
     this.sliderStateJson = JSON.stringify(sliderState);
+
+    // Update Circle of Fifths config from slider state
+    this.cofConfig.enabled = sliderState.cofDriftEnabled ?? false;
+    this.cofConfig.driftRate = sliderState.cofDriftRate ?? 2;
+    this.cofConfig.direction = sliderState.cofDriftDirection ?? 'cw';
+    this.cofConfig.range = sliderState.cofDriftRange ?? 3;
+    // Reset step if CoF is disabled
+    if (!this.cofConfig.enabled) {
+      this.cofConfig.currentStep = 0;
+      this.cofConfig.phraseCounter = 0;
+    }
 
     // Apply continuous parameters immediately with smoothing
     this.applyParams(sliderState);
@@ -897,8 +922,64 @@ export class AudioEngine {
     if (!this.harmonyState || !this.sliderState) return;
 
     const phraseIndex = getCurrentPhraseIndex();
+    const homeRoot = this.sliderState.rootNote ?? 4;
+    let forceNewChord = false;
 
-    // Update harmony state
+    // Update Circle of Fifths drift
+    if (this.cofConfig.enabled && this.rng) {
+      const driftResult = updateCircleOfFifthsDrift(
+        this.cofConfig,
+        this.rng
+      );
+      
+      console.log('[CoF] Drift check:', {
+        enabled: this.cofConfig.enabled,
+        phraseCounter: this.cofConfig.phraseCounter,
+        driftRate: this.cofConfig.driftRate,
+        currentStep: this.cofConfig.currentStep,
+        newStep: driftResult.newStep,
+        didDrift: driftResult.didDrift,
+        newCounter: driftResult.newCounter
+      });
+      
+      // Force new chord if we drifted to a new key
+      if (driftResult.didDrift) {
+        forceNewChord = true;
+        console.log('[CoF] Key change! Forcing new chord.');
+      }
+      
+      this.cofConfig.currentStep = driftResult.newStep;
+      this.cofConfig.phraseCounter = driftResult.newCounter;
+      
+      // Update slider state to reflect the current step (for UI sync)
+      if (this.sliderState.cofCurrentStep !== driftResult.newStep) {
+        this.sliderState = {
+          ...this.sliderState,
+          cofCurrentStep: driftResult.newStep
+        };
+      }
+    }
+
+    // Calculate effective root note (home + drift offset)
+    const effectiveRoot = this.cofConfig.enabled 
+      ? calculateDriftedRoot(homeRoot, this.cofConfig.currentStep)
+      : homeRoot;
+    
+    // Store for use by lead synth and other components
+    this.effectiveRoot = effectiveRoot;
+
+    console.log('[CoF] Effective root:', effectiveRoot, '(home:', homeRoot, 'step:', this.cofConfig.currentStep, ')');
+
+    // If we drifted, force the harmony state to generate a new chord immediately
+    if (forceNewChord) {
+      // Reset phrasesUntilChange to 1 to force new chord generation
+      this.harmonyState = {
+        ...this.harmonyState,
+        phrasesUntilChange: 1
+      };
+    }
+
+    // Update harmony state with effective root
     this.harmonyState = updateHarmonyState(
       this.harmonyState,
       `${this.currentBucket}|${this.sliderStateJson}|E_ROOT`,
@@ -909,7 +990,7 @@ export class AudioEngine {
       this.sliderState.detune,
       this.sliderState.scaleMode,
       this.sliderState.manualScale,
-      this.sliderState.rootNote ?? 4
+      effectiveRoot
     );
 
     // Apply new chord with crossfade
@@ -1797,8 +1878,8 @@ export class AudioEngine {
 
     // Schedule each note
     for (const note of scheduledNotes) {
-      // Get available scale notes within this lane's note range (using master root note)
-      const rootNote = this.sliderState.rootNote ?? 4; // E default
+      // Get available scale notes within this lane's note range (using effective root with CoF drift)
+      const rootNote = this.effectiveRoot; // Uses drifted root from Circle of Fifths
       let availableNotes = getScaleNotesInRange(scale, Math.max(24, note.noteMin), Math.min(108, note.noteMax), rootNote);
       
       // If no scale notes in range, find the nearest scale note to the target range
@@ -1876,6 +1957,7 @@ export class AudioEngine {
       currentSeed: this.currentSeed,
       currentBucket: this.currentBucket,
       currentFilterFreq: this.currentFilterFreq,
+      cofCurrentStep: this.cofConfig.currentStep,
     };
   }
 }
