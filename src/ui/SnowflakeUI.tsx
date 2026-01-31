@@ -415,7 +415,6 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
   const handleRadius = 14 * scaleFactor;
   const handleRadiusActive = 18 * scaleFactor;
   const labelFontSize = Math.max(9, 11 * scaleFactor);
-  const labelWidth = 70 * scaleFactor;
   const labelHeight = 20 * scaleFactor;
   
   // Calculate button positions - halfway between canvas edge and screen edge
