@@ -13,7 +13,7 @@ export interface ScaleFamily {
 }
 
 export const SCALE_FAMILIES: readonly ScaleFamily[] = [
-  // Consonant - Major/Bright (tension 0 - 0.5)
+  // Consonant - Major/Bright (tension 0 - 0.25)
   {
     name: 'E Major Pentatonic',
     intervals: [0, 2, 4, 7, 9],
@@ -30,59 +30,59 @@ export const SCALE_FAMILIES: readonly ScaleFamily[] = [
     name: 'E Lydian',
     intervals: [0, 2, 4, 6, 7, 9, 11],
     tensionLevel: 'consonant',
-    tensionValue: 0.2,
+    tensionValue: 0.10,
   },
   {
     name: 'E Mixolydian',
     intervals: [0, 2, 4, 5, 7, 9, 10],
     tensionLevel: 'consonant',
-    tensionValue: 0.3,
+    tensionValue: 0.18,
   },
   {
     name: 'E Minor Pentatonic',
     intervals: [0, 3, 5, 7, 10],
     tensionLevel: 'consonant',
-    tensionValue: 0.4,
+    tensionValue: 0.22,
   },
   {
     name: 'E Dorian',
     intervals: [0, 2, 3, 5, 7, 9, 10],
     tensionLevel: 'consonant',
-    tensionValue: 0.5,
+    tensionValue: 0.25,
   },
 
-  // Color/Tension (tension 0.5 - 0.8)
+  // Color/Tension (tension 0.25 - 0.55)
   {
     name: 'E Aeolian',
     intervals: [0, 2, 3, 5, 7, 8, 10],
     tensionLevel: 'color',
-    tensionValue: 0.6,
+    tensionValue: 0.35,
   },
   {
     name: 'E Harmonic Minor',
     intervals: [0, 2, 3, 5, 7, 8, 11],
     tensionLevel: 'color',
-    tensionValue: 0.7,
+    tensionValue: 0.5,
   },
   {
     name: 'E Melodic Minor',
     intervals: [0, 2, 3, 5, 7, 9, 11],
     tensionLevel: 'color',
-    tensionValue: 0.8,
+    tensionValue: 0.55,
   },
 
-  // High tension (tension 0.8 - 1.0)
+  // High tension (tension 0.55 - 1.0)
   {
     name: 'E Octatonic Half-Whole',
     intervals: [0, 1, 3, 4, 6, 7, 9, 10],
     tensionLevel: 'high',
-    tensionValue: 0.9,
+    tensionValue: 0.85,
   },
   {
     name: 'E Phrygian Dominant',
     intervals: [0, 1, 4, 5, 7, 8, 10],
     tensionLevel: 'high',
-    tensionValue: 1.0,
+    tensionValue: 0.9,
   },
 ] as const;
 
@@ -90,17 +90,19 @@ export const SCALE_FAMILIES: readonly ScaleFamily[] = [
  * Get scales within a tension band
  */
 export function getScalesInTensionBand(tension: number): ScaleFamily[] {
-  if (tension <= 0.5) {
+  if (tension <= 0.25) {
     return SCALE_FAMILIES.filter((s) => s.tensionLevel === 'consonant');
-  } else if (tension <= 0.8) {
+  } else if (tension <= 0.55) {
     // Include some consonant for smooth transitions
     return SCALE_FAMILIES.filter(
       (s) => s.tensionLevel === 'consonant' || s.tensionLevel === 'color'
     );
-  } else {
+  } else if (tension <= 0.8) {
     return SCALE_FAMILIES.filter(
       (s) => s.tensionLevel === 'color' || s.tensionLevel === 'high'
     );
+  } else {
+    return SCALE_FAMILIES.filter((s) => s.tensionLevel === 'high');
   }
 }
 
@@ -113,12 +115,13 @@ export function selectScaleFamily(
 ): ScaleFamily {
   const candidates = getScalesInTensionBand(tension);
 
-  // Weight by proximity to tension value - power of 1.5 for balanced falloff
+  // Weight by proximity to tension value using power 1.5 for stronger falloff
+  // At distance=0: weight ≈ 89 (strongest)
+  // At distance=0.1: weight ≈ 10.5 (much weaker)
+  // Gives ~75% combined for Maj Pent + Major at tension 0
   const weights = candidates.map((s) => {
     const distance = Math.abs(s.tensionValue - tension);
-    // Power 1.5 weighting: sharp enough for preference, but no single scale dominates
-    const base = 1 / (distance + 0.08);
-    return Math.pow(base, 1.5);
+    return Math.pow(1 / (distance + 0.05), 1.5);
   });
 
   const totalWeight = weights.reduce((a, b) => a + b, 0);

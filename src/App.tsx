@@ -62,8 +62,19 @@ const setupIOSMediaSession = async () => {
 };
 
 // Connect the audio element to Web Audio MediaStream (call after engine starts)
+// Only on iOS/mobile to avoid double audio on desktop
 const connectMediaSessionToWebAudio = () => {
   if (!mediaSessionAudio) return;
+  
+  // Only connect on iOS/mobile - desktop browsers play fine without this
+  // and connecting causes double audio
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  
+  if (!isIOS && !isMobile) {
+    console.log('Skipping MediaStream audio element on desktop to avoid double audio');
+    return;
+  }
   
   const stream = audioEngine.getMediaStream();
   if (stream) {
@@ -880,6 +891,13 @@ const App: React.FC = () => {
   const [morphPlayPhrases, setMorphPlayPhrases] = useState(16);
   const [morphTransitionPhrases, setMorphTransitionPhrases] = useState(4);
   const [morphLoadTarget, setMorphLoadTarget] = useState<'a' | 'b' | null>(null); // For advanced UI load dialog
+  const [morphCountdown, setMorphCountdown] = useState<{ phase: string; phrasesLeft: number } | null>(null);
+  
+  // Refs for phrase settings - used in animation loop to avoid restarting effect
+  const morphPlayPhrasesRef = useRef(morphPlayPhrases);
+  const morphTransitionPhrasesRef = useRef(morphTransitionPhrases);
+  useEffect(() => { morphPlayPhrasesRef.current = morphPlayPhrases; }, [morphPlayPhrases]);
+  useEffect(() => { morphTransitionPhrasesRef.current = morphTransitionPhrases; }, [morphTransitionPhrases]);
   
   // UI mode: 'snowflake' or 'advanced'
   const [uiMode, setUiMode] = useState<'snowflake' | 'advanced'>('snowflake');
@@ -1069,7 +1087,16 @@ const App: React.FC = () => {
 
   // Handle slider change
   const handleSliderChange = useCallback((key: keyof SliderState, value: number) => {
-    setState((prev) => ({ ...prev, [key]: value }));
+    setState((prev) => {
+      const newState = { ...prev, [key]: value };
+      
+      // Auto-disable granular when level is 0
+      if (key === 'granularLevel' && value === 0) {
+        newState.granularEnabled = false;
+      }
+      
+      return newState;
+    });
   }, []);
 
   // Helper to create slider props with dual mode support
@@ -1149,7 +1176,46 @@ const App: React.FC = () => {
     const result = { ...stateA };
     const tNorm = t / 100; // Normalize to 0-1
     
-    // Interpolate all numeric values
+    // Define parent-child relationships for conditional morphing
+    // If parent boolean is OFF in the target preset, don't morph child sliders
+    const parentChildMap: Record<string, (keyof SliderState)[]> = {
+      granularEnabled: [
+        'granularLevel', 'granularReverbSend', 'grainProbability', 'grainSizeMin', 'grainSizeMax',
+        'density', 'spray', 'jitter', 'pitchSpread', 'stereoSpread', 'feedback', 'wetHPF', 'wetLPF'
+      ],
+      leadEnabled: [
+        'leadLevel', 'leadAttack', 'leadDecay', 'leadSustain', 'leadRelease',
+        'leadDelayTime', 'leadDelayFeedback', 'leadDelayMix', 'leadDensity',
+        'leadOctave', 'leadOctaveRange', 'leadTimbreMin', 'leadTimbreMax',
+        'leadReverbSend', 'leadDelayReverbSend'
+      ],
+      leadEuclideanMasterEnabled: [
+        'leadEuclideanTempo'
+      ],
+      oceanSampleEnabled: [
+        'oceanSampleLevel', 'oceanFilterCutoff', 'oceanFilterResonance',
+        'oceanDurationMin', 'oceanDurationMax', 'oceanIntervalMin', 'oceanIntervalMax',
+        'oceanFoamMin', 'oceanFoamMax', 'oceanDepthMin', 'oceanDepthMax'
+      ],
+      oceanWaveSynthEnabled: [
+        'oceanWaveSynthLevel'
+      ]
+    };
+    
+    // Determine which keys should be snapped (not morphed) based on parent boolean state
+    const keysToSnap = new Set<keyof SliderState>();
+    for (const [parentKey, childKeys] of Object.entries(parentChildMap)) {
+      const parentA = stateA[parentKey as keyof SliderState];
+      const parentB = stateB[parentKey as keyof SliderState];
+      // If either preset has the parent OFF, snap the children instead of morphing
+      if (!parentA || !parentB) {
+        for (const childKey of childKeys) {
+          keysToSnap.add(childKey);
+        }
+      }
+    }
+    
+    // Interpolate all numeric values (except those that should snap)
     const numericKeys: (keyof SliderState)[] = [
       'masterVolume', 'synthLevel', 'granularLevel', 'synthReverbSend', 'granularReverbSend',
       'leadReverbSend', 'leadDelayReverbSend', 'reverbLevel', 'randomness', 'tension',
@@ -1171,7 +1237,12 @@ const App: React.FC = () => {
       const valA = stateA[key];
       const valB = stateB[key];
       if (typeof valA === 'number' && typeof valB === 'number') {
-        (result as Record<string, unknown>)[key] = valA + (valB - valA) * tNorm;
+        // If this key should snap (parent is off), snap at 50% instead of morphing
+        if (keysToSnap.has(key)) {
+          (result as Record<string, unknown>)[key] = tNorm < 0.5 ? valA : valB;
+        } else {
+          (result as Record<string, unknown>)[key] = valA + (valB - valA) * tNorm;
+        }
       }
     }
     
@@ -1185,11 +1256,16 @@ const App: React.FC = () => {
     
     // Snap boolean values at 50%
     const boolKeys: (keyof SliderState)[] = [
-      'leadEnabled', 'leadEuclideanMasterEnabled', 'leadEuclid1Enabled', 'leadEuclid2Enabled',
+      'granularEnabled', 'leadEnabled', 'leadEuclideanMasterEnabled', 'leadEuclid1Enabled', 'leadEuclid2Enabled',
       'leadEuclid3Enabled', 'leadEuclid4Enabled', 'oceanSampleEnabled', 'oceanWaveSynthEnabled'
     ];
     for (const key of boolKeys) {
       (result as Record<string, unknown>)[key] = tNorm < 0.5 ? stateA[key] : stateB[key];
+    }
+    
+    // Auto-disable granular if level is 0
+    if (result.granularLevel === 0) {
+      result.granularEnabled = false;
     }
     
     return result;
@@ -1242,21 +1318,31 @@ const App: React.FC = () => {
   const lastMorphPosRef = useRef<number>(0);
   const manualPositionOnEnterRef = useRef<number>(0); // Track position when entering auto mode
   
+  // Phase tracking for auto-cycle (to avoid jumps when durations change)
+  type MorphPhase = 'hold' | 'entry' | 'playA' | 'morphAB' | 'playB' | 'morphBA';
+  const currentPhaseRef = useRef<MorphPhase>('hold');
+  const phaseStartTimeRef = useRef<number>(Date.now());
+  const phaseDurationRef = useRef<number>(0); // Duration locked at phase start
+  
   useEffect(() => {
     if (morphMode !== 'auto' || !engineState.isRunning || (!morphPresetA && !morphPresetB)) {
+      setMorphCountdown(null);
       return;
     }
     
     const PHRASE_LENGTH = 8; // 8 seconds per phrase
-    const playDuration = morphPlayPhrases * PHRASE_LENGTH * 1000; // ms
-    const transitionDuration = morphTransitionPhrases * PHRASE_LENGTH * 1000; // ms
-    const holdDuration = PHRASE_LENGTH * 1000; // Hold current position for 1 phrase before transitioning
-    const totalCycleDuration = (playDuration + transitionDuration) * 2; // Full A→B→A cycle
+    // Use refs for phrase settings to avoid restarting effect when they change
+    const getPlayDuration = () => morphPlayPhrasesRef.current * PHRASE_LENGTH * 1000;
+    const getTransitionDuration = () => morphTransitionPhrasesRef.current * PHRASE_LENGTH * 1000;
+    const HOLD_DURATION = PHRASE_LENGTH * 1000; // Hold current position for 1 phrase before transitioning
     
     // Capture the current manual position when entering auto mode
     morphStartTimeRef.current = Date.now();
     manualPositionOnEnterRef.current = morphPosition;
     lastMorphPosRef.current = -1; // Force first update
+    
+    // Capture initial transition duration for the entry transition (won't change mid-transition)
+    const initialTransitionDuration = getTransitionDuration();
     
     const fallbackState = morphCapturedStateRef.current || DEFAULT_STATE;
     const effectiveA: SavedPreset = morphPresetA || { name: 'Current', timestamp: '', state: fallbackState };
@@ -1268,45 +1354,115 @@ const App: React.FC = () => {
     const startPos = manualPositionOnEnterRef.current;
     const targetAfterHold = startPos <= 50 ? 0 : 100;
     
+    // If already at the target (within 5%), skip hold and transition phases
+    const alreadyAtTarget = (targetAfterHold === 0 && startPos <= 5) || (targetAfterHold === 100 && startPos >= 95);
+    
+    // Initialize phase tracking
+    if (alreadyAtTarget) {
+      // Start directly in the appropriate play phase
+      currentPhaseRef.current = targetAfterHold === 0 ? 'playA' : 'playB';
+      phaseStartTimeRef.current = Date.now();
+      phaseDurationRef.current = getPlayDuration();
+    } else {
+      currentPhaseRef.current = 'hold';
+      phaseStartTimeRef.current = Date.now();
+      phaseDurationRef.current = HOLD_DURATION;
+    }
+    
+    // Helper to transition to next phase
+    const transitionToPhase = (phase: MorphPhase) => {
+      currentPhaseRef.current = phase;
+      phaseStartTimeRef.current = Date.now();
+      // Lock duration at phase start - won't change until next phase
+      if (phase === 'playA' || phase === 'playB') {
+        phaseDurationRef.current = getPlayDuration();
+      } else if (phase === 'morphAB' || phase === 'morphBA') {
+        phaseDurationRef.current = getTransitionDuration();
+      } else if (phase === 'entry') {
+        phaseDurationRef.current = initialTransitionDuration;
+      }
+    };
+    
     const animate = () => {
-      const elapsed = Date.now() - morphStartTimeRef.current;
+      const now = Date.now();
+      const phaseElapsed = now - phaseStartTimeRef.current;
+      const phaseDuration = phaseDurationRef.current;
       
       let newPos: number;
+      let phaseName: string;
+      let timeLeftInPhase: number;
       
-      // Phase 1: Hold at the manual position for 1 phrase
-      if (elapsed < holdDuration) {
-        newPos = startPos;
-      }
-      // Phase 2: Transition from manual position to target (A or B)
-      else if (elapsed < holdDuration + transitionDuration) {
-        const transitionElapsed = elapsed - holdDuration;
-        const t = transitionElapsed / transitionDuration;
-        newPos = Math.round(startPos + (targetAfterHold - startPos) * t);
-      }
-      // Phase 3: Normal auto-cycle continues from the target
-      else {
-        // Offset time to account for hold and initial transition
-        const cycleElapsed = elapsed - holdDuration - transitionDuration;
-        // If we transitioned to A (0), start cycle from A playing phase
-        // If we transitioned to B (100), start cycle from B playing phase
-        const cycleOffset = targetAfterHold === 0 ? 0 : playDuration + transitionDuration;
-        const posInCycle = (cycleElapsed + cycleOffset) % totalCycleDuration;
-        
-        if (posInCycle < playDuration) {
-          // Playing A
+      // Check for phase transitions and calculate position
+      switch (currentPhaseRef.current) {
+        case 'hold':
+          newPos = startPos;
+          phaseName = 'Hold';
+          timeLeftInPhase = Math.max(0, phaseDuration - phaseElapsed);
+          if (phaseElapsed >= phaseDuration) {
+            transitionToPhase('entry');
+          }
+          break;
+          
+        case 'entry':
+          if (phaseDuration > 0) {
+            const t = Math.min(1, phaseElapsed / phaseDuration);
+            newPos = Math.round(startPos + (targetAfterHold - startPos) * t);
+          } else {
+            newPos = targetAfterHold;
+          }
+          phaseName = targetAfterHold === 0 ? 'Morph → A' : 'Morph → B';
+          timeLeftInPhase = Math.max(0, phaseDuration - phaseElapsed);
+          if (phaseElapsed >= phaseDuration) {
+            transitionToPhase(targetAfterHold === 0 ? 'playA' : 'playB');
+          }
+          break;
+          
+        case 'playA':
           newPos = 0;
-        } else if (posInCycle < playDuration + transitionDuration) {
-          // Transitioning A → B (smooth)
-          const transitionElapsed = posInCycle - playDuration;
-          newPos = Math.round((transitionElapsed / transitionDuration) * 100);
-        } else if (posInCycle < playDuration * 2 + transitionDuration) {
-          // Playing B
+          phaseName = 'Playing A';
+          timeLeftInPhase = Math.max(0, phaseDuration - phaseElapsed);
+          if (phaseElapsed >= phaseDuration) {
+            transitionToPhase('morphAB');
+          }
+          break;
+          
+        case 'morphAB':
+          {
+            const t = phaseDuration > 0 ? Math.min(1, phaseElapsed / phaseDuration) : 1;
+            newPos = Math.round(t * 100);
+          }
+          phaseName = 'Morph A→B';
+          timeLeftInPhase = Math.max(0, phaseDuration - phaseElapsed);
+          if (phaseElapsed >= phaseDuration) {
+            transitionToPhase('playB');
+          }
+          break;
+          
+        case 'playB':
           newPos = 100;
-        } else {
-          // Transitioning B → A (smooth)
-          const transitionElapsed = posInCycle - (playDuration * 2 + transitionDuration);
-          newPos = Math.round((1 - transitionElapsed / transitionDuration) * 100);
-        }
+          phaseName = 'Playing B';
+          timeLeftInPhase = Math.max(0, phaseDuration - phaseElapsed);
+          if (phaseElapsed >= phaseDuration) {
+            transitionToPhase('morphBA');
+          }
+          break;
+          
+        case 'morphBA':
+          {
+            const t = phaseDuration > 0 ? Math.min(1, phaseElapsed / phaseDuration) : 1;
+            newPos = Math.round((1 - t) * 100);
+          }
+          phaseName = 'Morph B→A';
+          timeLeftInPhase = Math.max(0, phaseDuration - phaseElapsed);
+          if (phaseElapsed >= phaseDuration) {
+            transitionToPhase('playA');
+          }
+          break;
+          
+        default:
+          newPos = 0;
+          phaseName = 'Unknown';
+          timeLeftInPhase = 0;
       }
       
       // Only update if position changed
@@ -1321,14 +1477,21 @@ const App: React.FC = () => {
           audioEngine.updateParams(morphedState);
         }
       }
+      
+      // Update countdown UI
+      const phrasesLeft = Math.ceil(timeLeftInPhase / (PHRASE_LENGTH * 1000));
+      setMorphCountdown({ phase: phaseName, phrasesLeft });
     };
     
     // Run at 10Hz for smooth animation (same as random walk)
     const intervalId = window.setInterval(animate, 100);
     animate(); // Run immediately
     
-    return () => clearInterval(intervalId);
-  }, [morphMode, engineState.isRunning, morphPresetA, morphPresetB, morphPlayPhrases, morphTransitionPhrases, lerpPresets]);
+    return () => {
+      clearInterval(intervalId);
+      setMorphCountdown(null);
+    };
+  }, [morphMode, engineState.isRunning, morphPresetA, morphPresetB, lerpPresets]);
 
   // Load preset from list - modified to support morph slots in advanced mode
   const handleLoadPresetFromList = useCallback((preset: SavedPreset) => {
@@ -1339,16 +1502,19 @@ const App: React.FC = () => {
       return;
     }
     
-    // In simple mode, capture current state BEFORE loading, then load to slot A
-    if (uiMode === 'snowflake') {
-      // Capture state before loading so B can morph from original
-      morphCapturedStateRef.current = { ...state };
-      setMorphPresetA(preset);
-      setMorphPosition(0); // Reset to full A
+    // Capture current state BEFORE loading, then load to slot A
+    morphCapturedStateRef.current = { ...state };
+    setMorphPresetA(preset);
+    setMorphPosition(0); // Reset to full A
+    
+    // Apply the preset directly, with auto-disable for zero-level features
+    const newState = { ...DEFAULT_STATE, ...preset.state };
+    
+    // Auto-disable granular if level is 0
+    if (newState.granularLevel === 0) {
+      newState.granularEnabled = false;
     }
     
-    // Apply the preset directly
-    const newState = { ...DEFAULT_STATE, ...preset.state };
     setState(newState);
     audioEngine.updateParams(newState);
     
@@ -1403,6 +1569,12 @@ const App: React.FC = () => {
         if (preset.state) {
           // Merge with defaults to handle missing keys
           const newState = { ...DEFAULT_STATE, ...preset.state };
+          
+          // Auto-disable granular if level is 0
+          if (newState.granularLevel === 0) {
+            newState.granularEnabled = false;
+          }
+          
           setState(newState);
           audioEngine.updateParams(newState);
           
@@ -1751,6 +1923,43 @@ const App: React.FC = () => {
                       morphCapturedStateRef.current = { ...state };
                     }
                     setMorphPresetA(preset);
+                    
+                    // Apply the preset settings (with auto-disable for zero-level features)
+                    const newState = { ...DEFAULT_STATE, ...preset.state };
+                    if (newState.granularLevel === 0) {
+                      newState.granularEnabled = false;
+                    }
+                    setState(newState);
+                    audioEngine.updateParams(newState);
+                    setMorphPosition(0); // Reset to full A
+                    
+                    // Restore dual slider state if present
+                    if (preset.dualRanges && Object.keys(preset.dualRanges).length > 0) {
+                      const newDualModes = new Set<keyof SliderState>();
+                      const newDualRanges: DualSliderState = {};
+                      const newWalkPositions: Record<string, number> = {};
+                      
+                      Object.entries(preset.dualRanges).forEach(([key, range]) => {
+                        const paramKey = key as keyof SliderState;
+                        newDualModes.add(paramKey);
+                        newDualRanges[paramKey] = range;
+                        const walkPos = Math.random();
+                        newWalkPositions[key] = walkPos;
+                        randomWalkRef.current[paramKey] = {
+                          position: walkPos,
+                          velocity: (Math.random() - 0.5) * 0.02,
+                        };
+                      });
+                      
+                      setDualSliderModes(newDualModes);
+                      setDualSliderRanges(newDualRanges);
+                      setRandomWalkPositions(newWalkPositions);
+                    } else {
+                      setDualSliderModes(new Set());
+                      setDualSliderRanges({});
+                      setRandomWalkPositions({});
+                      randomWalkRef.current = {};
+                    }
                   }
                 }
               }}
@@ -1974,6 +2183,25 @@ const App: React.FC = () => {
               <div style={{ fontSize: '0.65rem', color: '#666', textAlign: 'center' }}>
                 Cycle: {morphPlayPhrases}→morph({morphTransitionPhrases})→{morphPlayPhrases}→morph({morphTransitionPhrases})
               </div>
+              
+              {/* Countdown Display */}
+              {morphCountdown && engineState.isRunning && (
+                <div style={{ 
+                  marginTop: '12px', 
+                  padding: '8px 12px', 
+                  background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.2))',
+                  borderRadius: '6px',
+                  border: '1px solid rgba(139, 92, 246, 0.4)',
+                  textAlign: 'center'
+                }}>
+                  <div style={{ fontSize: '0.65rem', color: '#a5b4fc', marginBottom: '2px' }}>
+                    {morphCountdown.phase}
+                  </div>
+                  <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#c4b5fd' }}>
+                    {morphCountdown.phrasesLeft} phrase{morphCountdown.phrasesLeft !== 1 ? 's' : ''}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </CollapsiblePanel>
@@ -2650,6 +2878,37 @@ const App: React.FC = () => {
           isExpanded={expandedPanels.has('granular')}
           onToggle={togglePanel}
         >
+          {/* Enable toggle */}
+          <div style={styles.sliderGroup}>
+            <div style={styles.sliderLabel}>
+              <span>Granular Enabled</span>
+              <span style={{ 
+                color: state.granularEnabled ? '#10b981' : '#6b7280',
+                fontWeight: 'bold'
+              }}>
+                {state.granularEnabled ? 'ON' : 'OFF'}
+              </span>
+            </div>
+            <button
+              onClick={() => handleSelectChange('granularEnabled', !state.granularEnabled)}
+              style={{
+                width: '100%',
+                padding: '10px',
+                borderRadius: '6px',
+                border: 'none',
+                cursor: 'pointer',
+                fontWeight: 'bold',
+                background: state.granularEnabled 
+                  ? 'linear-gradient(135deg, #10b981, #059669)' 
+                  : 'rgba(255, 255, 255, 0.1)',
+                color: state.granularEnabled ? 'white' : '#9ca3af',
+                transition: 'all 0.2s',
+              }}
+            >
+              {state.granularEnabled ? '● Active' : '○ Bypassed'}
+            </button>
+          </div>
+
           <Slider
             label="Grain Probability"
             value={state.grainProbability}

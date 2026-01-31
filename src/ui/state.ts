@@ -67,6 +67,7 @@ export interface SliderState {
   width: number;              // 0..1 step 0.01
 
   // Granular
+  granularEnabled: boolean;    // on/off toggle for granular processing
   grainProbability: number;   // 0..1 step 0.01 - chance each grain triggers
   grainSizeMin: number;       // 5..60 ms step 1 - minimum grain size
   grainSizeMax: number;       // 20..200 ms step 1 - maximum grain size
@@ -199,6 +200,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'predelay',
   'damping',
   'width',
+  'granularEnabled',
   'grainProbability',
   'grainSizeMin',
   'grainSizeMax',
@@ -337,6 +339,7 @@ export const DEFAULT_STATE: SliderState = {
   width: 0.85,
 
   // Granular
+  granularEnabled: true,
   grainProbability: 0.8,
   grainSizeMin: 20,
   grainSizeMax: 80,

@@ -118,6 +118,7 @@ export class AudioEngine {
   private lastHardness = -1;  // Track to avoid unnecessary saturation curve updates
   private rng: (() => number) | null = null;
   private isRunning = false;
+  private seedLocked = false; // When true, don't recompute seed on param changes (for morphing)
   
   // Filter modulation - random walk
   private filterModValue = 0.5;  // 0-1, current random walk position
@@ -314,15 +315,15 @@ export class AudioEngine {
   updateParams(sliderState: SliderState): void {
     if (!this.ctx || !this.isRunning) return;
 
-    const oldJson = this.sliderStateJson;
+    const oldSeedWindow = this.sliderState?.seedWindow;
     this.sliderState = sliderState;
     this.sliderStateJson = JSON.stringify(sliderState);
 
     // Apply continuous parameters immediately with smoothing
     this.applyParams(sliderState);
 
-    // If seed-affecting params changed, recompute seed
-    if (oldJson !== this.sliderStateJson) {
+    // Only recompute seed if seedWindow setting changed (not on every param change)
+    if (oldSeedWindow !== sliderState.seedWindow) {
       this.recomputeSeed();
     }
   }
@@ -753,14 +754,14 @@ export class AudioEngine {
   private initializeHarmony(): void {
     if (!this.sliderState) return;
 
-    // Compute seed
+    // Compute seed based on time bucket only (not slider values)
     this.currentBucket = getUtcBucket(this.sliderState.seedWindow);
-    this.currentSeed = computeSeed(this.currentBucket, this.sliderStateJson);
-    this.rng = createRng(`${this.currentBucket}|${this.sliderStateJson}|E_ROOT`);
+    this.currentSeed = computeSeed(this.currentBucket, 'E_ROOT');
+    this.rng = createRng(`${this.currentBucket}|E_ROOT`);
 
     // Create harmony state
     this.harmonyState = createHarmonyState(
-      `${this.currentBucket}|${this.sliderStateJson}|E_ROOT`,
+      `${this.currentBucket}|E_ROOT`,
       this.sliderState.tension,
       this.sliderState.chordRate,
       this.sliderState.voicingSpread,
@@ -779,12 +780,18 @@ export class AudioEngine {
     this.notifyStateChange();
   }
 
+  // Lock/unlock seed to prevent changes during morphing
+  setSeedLocked(locked: boolean): void {
+    this.seedLocked = locked;
+  }
+
   private recomputeSeed(): void {
     if (!this.sliderState) return;
+    if (this.seedLocked) return; // Don't recompute if locked
 
     this.currentBucket = getUtcBucket(this.sliderState.seedWindow);
-    this.currentSeed = computeSeed(this.currentBucket, this.sliderStateJson);
-    this.rng = createRng(`${this.currentBucket}|${this.sliderStateJson}|E_ROOT`);
+    this.currentSeed = computeSeed(this.currentBucket, 'E_ROOT');
+    this.rng = createRng(`${this.currentBucket}|E_ROOT`);
 
     // Send new random sequence to granulator
     this.sendGranulatorRandomSequence();
@@ -1127,10 +1134,11 @@ export class AudioEngine {
     this.granularWetLPF?.frequency.setTargetAtTime(state.wetLPF, now, smoothTime);
 
     // Granular levels (independent: direct level and reverb send)
-    // granularLevel controls direct output to master
-    // granularReverbSend controls how much goes to reverb (additive, not crossfade)
-    this.granularDirect?.gain.setTargetAtTime(state.granularLevel, now, smoothTime);
-    this.granularReverbSend?.gain.setTargetAtTime(state.granularReverbSend, now, smoothTime);
+    // When granularEnabled is false, mute the output
+    const granularLevel = state.granularEnabled ? state.granularLevel : 0;
+    const granularReverbSend = state.granularEnabled ? state.granularReverbSend : 0;
+    this.granularDirect?.gain.setTargetAtTime(granularLevel, now, smoothTime);
+    this.granularReverbSend?.gain.setTargetAtTime(granularReverbSend, now, smoothTime);
 
     // Synth levels (independent: direct level and reverb send)
     // synthLevel controls direct output to master
@@ -1325,7 +1333,7 @@ export class AudioEngine {
     // Timbre controls: 0 = soft Rhodes, 1 = gamelan metallophone
     // Gamelan characteristics: inharmonic partials, gentle beating, warm shimmer
 
-    // === CARRIER LAYER (main tone) ===
+    // === CARRIER (main tone) ===
     const carrier = ctx.createOscillator();
     carrier.type = 'sine';
     carrier.frequency.value = frequency;
@@ -1334,7 +1342,7 @@ export class AudioEngine {
     const carrier2 = ctx.createOscillator();
     carrier2.type = 'sine';
     // Gentle beating - reduced detuning for softer effect
-    const beatDetune = timbre * 2; // Up to 2 cents detuning (reduced from 3)
+    const beatDetune = timbre * 2; // Up to 2 cents detuning
     carrier2.frequency.value = frequency * Math.pow(2, beatDetune / 1200);
 
     const carrier2Gain = ctx.createGain();
@@ -1344,12 +1352,12 @@ export class AudioEngine {
     const modulator = ctx.createOscillator();
     modulator.type = 'sine';
     // Rhodes: ratio ~1.0, Gamelan: gentler inharmonic ratio
-    const fmRatio = 1.0 + timbre * 1.4; // Reduced from 1.76 for softer character
+    const fmRatio = 1.0 + timbre * 1.4;
     modulator.frequency.value = frequency * fmRatio;
 
     const modGain = ctx.createGain();
     // Reduced modulation index for softer, less harsh tone
-    const baseIndex = 0.25 + timbre * 1.8; // Reduced from 0.3 + timbre * 3.0
+    const baseIndex = 0.25 + timbre * 1.8;
     const modIndex = frequency * baseIndex * velocity;
     modGain.gain.value = modIndex;
 
@@ -1357,21 +1365,21 @@ export class AudioEngine {
     const modulator2 = ctx.createOscillator();
     modulator2.type = 'sine';
     // Lower inharmonic ratio for warmer gamelan tone
-    const fmRatio2 = 2.0 + timbre * 2.0; // Reduced from 3.4
+    const fmRatio2 = 2.0 + timbre * 2.0;
     modulator2.frequency.value = frequency * fmRatio2;
 
     const modGain2 = ctx.createGain();
-    modGain2.gain.value = frequency * (0.08 + timbre * 0.35); // Reduced from 0.1 + 0.7
+    modGain2.gain.value = frequency * (0.08 + timbre * 0.35);
 
     // === MODULATOR 3: High partial for gentle shimmer (greatly reduced) ===
     const modulator3 = ctx.createOscillator();
     modulator3.type = 'sine';
     // Lower ratio for less harsh upper partials
-    modulator3.frequency.value = frequency * (3.0 + timbre * 2.5); // Reduced from 4.0 + 4.5
+    modulator3.frequency.value = frequency * (3.0 + timbre * 2.5);
 
     const modGain3 = ctx.createGain();
     // Much gentler - only subtle shimmer at high timbre
-    modGain3.gain.value = frequency * Math.max(0, (timbre - 0.5) * 0.4); // Reduced threshold and amount
+    modGain3.gain.value = frequency * Math.max(0, (timbre - 0.5) * 0.4);
 
     // === MODULATOR 4: Sub-harmonic resonance (warm gong-like) ===
     const modulator4 = ctx.createOscillator();
@@ -1381,9 +1389,9 @@ export class AudioEngine {
 
     const modGain4 = ctx.createGain();
     // Gentle sub-harmonic warmth
-    modGain4.gain.value = frequency * Math.max(0, (timbre - 0.4) * 0.25); // Reduced
+    modGain4.gain.value = frequency * Math.max(0, (timbre - 0.4) * 0.25);
 
-    // === AMPLITUDE ENVELOPE ===
+    // === AMPLITUDE ENVELOPES ===
     const envelope = ctx.createGain();
     envelope.gain.value = 0;
 
@@ -1411,7 +1419,7 @@ export class AudioEngine {
     modulator4.connect(modGain4);
     modGain4.connect(carrier.frequency);
 
-    // Carriers -> Envelope -> Output
+    // Carriers -> Envelopes -> Output
     carrier.connect(envelope);
     carrier2.connect(carrier2Gain);
     carrier2Gain.connect(envelope2);
@@ -1430,7 +1438,7 @@ export class AudioEngine {
 
     // === ENVELOPE SHAPING ===
     // Softer attack for gamelan - not as harsh/percussive
-    const effectiveAttack = attack * (1.0 - timbre * 0.6); // Reduced from 0.9 for gentler attack
+    const effectiveAttack = attack * (1.0 - timbre * 0.6);
     
     // Main envelope
     envelope.gain.setValueAtTime(0, now);
@@ -1439,13 +1447,12 @@ export class AudioEngine {
 
     // Beating carrier envelope (slightly delayed for gentle shimmer)
     envelope2.gain.setValueAtTime(0, now);
-    envelope2.gain.linearRampToValueAtTime(0.6, now + effectiveAttack * 1.3); // Softer, slower
+    envelope2.gain.linearRampToValueAtTime(0.6, now + effectiveAttack * 1.3);
     envelope2.gain.linearRampToValueAtTime(sustain * 0.8, now + effectiveAttack + decay);
     
     // === MODULATION ENVELOPE (brightness decay) ===
-    // Gentler brightness decay for warmer sustained tone
-    const modDecayTime = 0.4 + (1.0 - timbre) * 0.4; // Slightly longer decay
-    const modDecayLevel = 0.08 + (1.0 - timbre) * 0.15; // Higher sustain level = warmer
+    const modDecayTime = 0.4 + (1.0 - timbre) * 0.4;
+    const modDecayLevel = 0.08 + (1.0 - timbre) * 0.15;
     
     modGain.gain.setValueAtTime(modIndex, now);
     modGain.gain.exponentialRampToValueAtTime(
@@ -1453,9 +1460,9 @@ export class AudioEngine {
       now + effectiveAttack + modDecayTime
     );
 
-    // Second modulator decay (gentler for softer metallic character)
+    // Second modulator decay
     modGain2.gain.exponentialRampToValueAtTime(
-      modGain2.gain.value * 0.1, // Reduced from 0.05 for more sustain
+      modGain2.gain.value * 0.1,
       now + effectiveAttack + modDecayTime * 0.9
     );
 

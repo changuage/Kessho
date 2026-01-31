@@ -204,6 +204,11 @@ class ReverbProcessor extends AudioWorkletProcessor {
   // Feedback gain
   private feedbackGain = 0.85;
 
+  // Pre-allocated arrays to avoid GC during process()
+  private fdnReads = new Float64Array(8);
+  private fdnDamped = new Float64Array(8);
+  private fdnMixed = new Float64Array(8);
+
   constructor() {
     super();
 
@@ -298,18 +303,17 @@ class ReverbProcessor extends AudioWorkletProcessor {
   }
 
   // Hadamard-like mixing for FDN (orthogonal matrix)
-  private mixFDN(state: number[]): number[] {
+  // Writes to pre-allocated fdnMixed array to avoid allocations
+  private mixFDN(state: Float64Array): void {
     const s = 0.3535533905932738; // 1/sqrt(8)
-    return [
-      s * (state[0] + state[1] + state[2] + state[3] + state[4] + state[5] + state[6] + state[7]),
-      s * (state[0] - state[1] + state[2] - state[3] + state[4] - state[5] + state[6] - state[7]),
-      s * (state[0] + state[1] - state[2] - state[3] + state[4] + state[5] - state[6] - state[7]),
-      s * (state[0] - state[1] - state[2] + state[3] + state[4] - state[5] - state[6] + state[7]),
-      s * (state[0] + state[1] + state[2] + state[3] - state[4] - state[5] - state[6] - state[7]),
-      s * (state[0] - state[1] + state[2] - state[3] - state[4] + state[5] - state[6] + state[7]),
-      s * (state[0] + state[1] - state[2] - state[3] - state[4] - state[5] + state[6] + state[7]),
-      s * (state[0] - state[1] - state[2] + state[3] - state[4] + state[5] + state[6] - state[7]),
-    ];
+    this.fdnMixed[0] = s * (state[0] + state[1] + state[2] + state[3] + state[4] + state[5] + state[6] + state[7]);
+    this.fdnMixed[1] = s * (state[0] - state[1] + state[2] - state[3] + state[4] - state[5] + state[6] - state[7]);
+    this.fdnMixed[2] = s * (state[0] + state[1] - state[2] - state[3] + state[4] + state[5] - state[6] - state[7]);
+    this.fdnMixed[3] = s * (state[0] - state[1] - state[2] + state[3] + state[4] - state[5] - state[6] + state[7]);
+    this.fdnMixed[4] = s * (state[0] + state[1] + state[2] + state[3] - state[4] - state[5] - state[6] - state[7]);
+    this.fdnMixed[5] = s * (state[0] - state[1] + state[2] - state[3] - state[4] + state[5] - state[6] + state[7]);
+    this.fdnMixed[6] = s * (state[0] + state[1] - state[2] - state[3] - state[4] - state[5] + state[6] + state[7]);
+    this.fdnMixed[7] = s * (state[0] - state[1] - state[2] + state[3] - state[4] + state[5] + state[6] - state[7]);
   }
 
   process(
@@ -382,28 +386,26 @@ class ReverbProcessor extends AudioWorkletProcessor {
       const diffInL = this.preDiffuserL.process(delayedL);
       const diffInR = this.preDiffuserR.process(delayedR);
 
-      // Read from FDN delay lines with modulation
-      const reads: number[] = [];
+      // Read from FDN delay lines with modulation (using pre-allocated array)
       for (let j = 0; j < 8; j++) {
         // Different modulation per delay line for richness
         const modAmount = j < 2 ? mod1 : j < 4 ? mod2 : j < 6 ? mod3 : mod4;
         const modOffset = modAmount * this.fdnDelayTimes[j] * 0.015;
         const delayTime = Math.max(1, this.fdnDelayTimes[j] + modOffset);
-        reads.push(this.fdnDelays[j].readInterpolated(delayTime));
+        this.fdnReads[j] = this.fdnDelays[j].readInterpolated(delayTime);
       }
 
-      // Apply damping
-      const damped: number[] = [];
+      // Apply damping (using pre-allocated array)
       for (let j = 0; j < 8; j++) {
-        damped.push(this.fdnDampers[j].process(reads[j], this.smoothDamping));
+        this.fdnDamped[j] = this.fdnDampers[j].process(this.fdnReads[j], this.smoothDamping);
       }
 
-      // Mix through Hadamard matrix
-      const mixed = this.mixFDN(damped);
+      // Mix through Hadamard matrix (writes to this.fdnMixed)
+      this.mixFDN(this.fdnDamped);
 
       // Mid-diffusion on mixed signal
-      const midL = this.midDiffuserL.process((mixed[0] + mixed[2] + mixed[4] + mixed[6]) * 0.25);
-      const midR = this.midDiffuserR.process((mixed[1] + mixed[3] + mixed[5] + mixed[7]) * 0.25);
+      const midL = this.midDiffuserL.process((this.fdnMixed[0] + this.fdnMixed[2] + this.fdnMixed[4] + this.fdnMixed[6]) * 0.25);
+      const midR = this.midDiffuserR.process((this.fdnMixed[1] + this.fdnMixed[3] + this.fdnMixed[5] + this.fdnMixed[7]) * 0.25);
 
       // Inject input to first channels, apply feedback, write back
       const inputGain = 0.2;
@@ -413,13 +415,13 @@ class ReverbProcessor extends AudioWorkletProcessor {
         else inject = diffInR * inputGain;
         
         // Soft clip to prevent runaway
-        const value = softClip(mixed[j] * this.feedbackGain + inject);
+        const value = softClip(this.fdnMixed[j] * this.feedbackGain + inject);
         this.fdnDelays[j].write(value);
       }
 
       // Collect outputs with cross-mixing for more density
-      let rawL = (reads[0] + reads[2] + reads[4] + reads[6] + reads[1] * 0.3 + reads[3] * 0.3) * 0.5;
-      let rawR = (reads[1] + reads[3] + reads[5] + reads[7] + reads[0] * 0.3 + reads[2] * 0.3) * 0.5;
+      let rawL = (this.fdnReads[0] + this.fdnReads[2] + this.fdnReads[4] + this.fdnReads[6] + this.fdnReads[1] * 0.3 + this.fdnReads[3] * 0.3) * 0.5;
+      let rawR = (this.fdnReads[1] + this.fdnReads[3] + this.fdnReads[5] + this.fdnReads[7] + this.fdnReads[0] * 0.3 + this.fdnReads[2] * 0.3) * 0.5;
 
       // Add mid-diffused signal
       rawL = rawL * 0.7 + midL * 0.3;
