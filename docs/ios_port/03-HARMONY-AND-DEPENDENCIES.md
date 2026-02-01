@@ -122,6 +122,7 @@
 // Circle of Fifths sequence: semitone values at each position
 const COF_SEQUENCE = [0, 7, 2, 9, 4, 11, 6, 1, 8, 3, 10, 5];
 // Positions:          C  G  D  A  E  B  F# C# G# D# A# F
+// COF Labels:         0  1  2  3  4  5  6  7  8  9  10 11
 
 function calculateDriftedRoot(homeRoot: number, stepOffset: number): number {
     // Find home key's position on the circle
@@ -139,6 +140,50 @@ function calculateDriftedRoot(homeRoot: number, stepOffset: number): number {
 // driftedIndex = 5 (one step clockwise)
 // Returns: COF_SEQUENCE[5] = 11 (B)
 ```
+
+## Circle of Fifths Path Calculation (for Morph)
+
+When morphing between presets with different root notes, calculate the shortest path on the CoF:
+
+```typescript
+function calculateCoFPath(fromSemitone: number, toSemitone: number): { steps: number; path: number[] } {
+    const fromIndex = COF_SEQUENCE.indexOf(fromSemitone % 12);
+    const toIndex = COF_SEQUENCE.indexOf(toSemitone % 12);
+    
+    // Calculate clockwise and counter-clockwise distances
+    const cwDistance = (toIndex - fromIndex + 12) % 12;
+    const ccwDistance = (fromIndex - toIndex + 12) % 12;
+    
+    // Choose shortest path (prefer CW if equal)
+    const useCW = cwDistance <= ccwDistance;
+    const steps = useCW ? cwDistance : -ccwDistance;
+    
+    // Build path of semitones
+    const path: number[] = [];
+    const direction = useCW ? 1 : -1;
+    for (let i = 0; i <= Math.abs(steps); i++) {
+        const pathIndex = (fromIndex + i * direction + 12) % 12;
+        path.push(COF_SEQUENCE[pathIndex]);
+    }
+    
+    return { steps, path };
+}
+
+// Example: E(4) → G(7)
+// E is at index 4, G is at index 1
+// CW distance: (1 - 4 + 12) % 12 = 9 steps
+// CCW distance: (4 - 1 + 12) % 12 = 3 steps
+// CCW is shorter → steps = -3
+// Path: [4, 9, 2, 7] = [E, A, D, G]
+```
+
+### Key Implementation Notes for iOS
+
+1. **COF Index vs Semitone**: The CoF uses indices 0-11 representing positions on the circle. These map to semitones via `COF_SEQUENCE`. Don't confuse the two!
+
+2. **Negative Steps**: Negative steps mean counter-clockwise (toward flats). The path is still built correctly by using `direction = -1`.
+
+3. **Path Includes Endpoints**: The returned path includes both the start and end semitones.
 
 ## Phrase Boundary Timing
 
@@ -167,24 +212,26 @@ The engine schedules:
 
 ## Scale Families
 
+Scale names are now **generic** (e.g., "Dorian" instead of "E Dorian"). The root note is a separate parameter, allowing dynamic key changes.
+
 ```typescript
 export const SCALE_FAMILIES: readonly ScaleFamily[] = [
     // Consonant (tension 0 - 0.25)
-    { name: 'E Major Pentatonic', intervals: [0, 2, 4, 7, 9], tensionValue: 0.0 },
-    { name: 'E Major (Ionian)', intervals: [0, 2, 4, 5, 7, 9, 11], tensionValue: 0.05 },
-    { name: 'E Lydian', intervals: [0, 2, 4, 6, 7, 9, 11], tensionValue: 0.10 },
-    { name: 'E Mixolydian', intervals: [0, 2, 4, 5, 7, 9, 10], tensionValue: 0.18 },
-    { name: 'E Minor Pentatonic', intervals: [0, 3, 5, 7, 10], tensionValue: 0.22 },
-    { name: 'E Dorian', intervals: [0, 2, 3, 5, 7, 9, 10], tensionValue: 0.25 },
+    { name: 'Major Pentatonic', intervals: [0, 2, 4, 7, 9], tensionValue: 0.0 },
+    { name: 'Major (Ionian)', intervals: [0, 2, 4, 5, 7, 9, 11], tensionValue: 0.05 },
+    { name: 'Lydian', intervals: [0, 2, 4, 6, 7, 9, 11], tensionValue: 0.10 },
+    { name: 'Mixolydian', intervals: [0, 2, 4, 5, 7, 9, 10], tensionValue: 0.18 },
+    { name: 'Minor Pentatonic', intervals: [0, 3, 5, 7, 10], tensionValue: 0.22 },
+    { name: 'Dorian', intervals: [0, 2, 3, 5, 7, 9, 10], tensionValue: 0.25 },
     
     // Color (tension 0.25 - 0.55)
-    { name: 'E Aeolian', intervals: [0, 2, 3, 5, 7, 8, 10], tensionValue: 0.35 },
-    { name: 'E Harmonic Minor', intervals: [0, 2, 3, 5, 7, 8, 11], tensionValue: 0.5 },
-    { name: 'E Melodic Minor', intervals: [0, 2, 3, 5, 7, 9, 11], tensionValue: 0.55 },
+    { name: 'Aeolian', intervals: [0, 2, 3, 5, 7, 8, 10], tensionValue: 0.35 },
+    { name: 'Harmonic Minor', intervals: [0, 2, 3, 5, 7, 8, 11], tensionValue: 0.5 },
+    { name: 'Melodic Minor', intervals: [0, 2, 3, 5, 7, 9, 11], tensionValue: 0.55 },
     
     // High tension (tension 0.55 - 1.0)
-    { name: 'E Octatonic Half-Whole', intervals: [0, 1, 3, 4, 6, 7, 9, 10], tensionValue: 0.85 },
-    { name: 'E Phrygian Dominant', intervals: [0, 1, 4, 5, 7, 8, 10], tensionValue: 0.9 },
+    { name: 'Octatonic Half-Whole', intervals: [0, 1, 3, 4, 6, 7, 9, 10], tensionValue: 0.85 },
+    { name: 'Phrygian Dominant', intervals: [0, 1, 4, 5, 7, 8, 10], tensionValue: 0.9 },
 ];
 ```
 
@@ -206,9 +253,9 @@ struct ScaleFamily {
 }
 
 let SCALE_FAMILIES: [ScaleFamily] = [
-    ScaleFamily(name: "E Major Pentatonic", intervals: [0, 2, 4, 7, 9], 
+    ScaleFamily(name: "Major Pentatonic", intervals: [0, 2, 4, 7, 9], 
                 tensionLevel: .consonant, tensionValue: 0.0),
-    // ... all scales
+    // ... all scales (use generic names, combine with rootNote for display)
 ]
 
 // HarmonyGenerator.swift

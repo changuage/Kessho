@@ -297,6 +297,45 @@ Smoothly blend between two saved presets.
 2. Load a different preset into **Slot B**
 3. Use the **Morph slider** to blend between them (0%=A, 100%=B)
 4. All parameters smoothly interpolate
+5. Enable **Auto-cycle** to automatically morph back and forth
+
+#### Circle of Fifths Key Transitions
+
+When morphing between presets with different root notes, the key transition follows the **Circle of Fifths** for smooth, musical modulation:
+
+| From Key | To Key | Path | Steps |
+|----------|--------|------|-------|
+| G | E | G → D → A → E | 3 (counter-clockwise) |
+| E | G | E → A → D → G | 3 (counter-clockwise) |
+| C | F# | C → G → D → A → E → B → F# | 6 (clockwise) |
+
+The key changes are distributed evenly across the morph duration, creating a smooth harmonic journey rather than an abrupt key change.
+
+#### Smart CoF Toggle During Morph
+
+When morphing between presets with different **Circle of Fifths Drift** settings:
+
+| Scenario | Behavior |
+|----------|----------|
+| **Off → On** | CoF turns ON immediately when leaving the "off" preset, allowing the key walk to happen during morph |
+| **On → Off** | CoF stays ON during the entire morph (key walk completes), only turns OFF upon arrival at destination |
+| **On → On** | CoF stays ON, key walks between the two root notes |
+| **Off → Off** | CoF stays OFF, instant key change at 50% |
+
+This ensures the musical key transition always happens smoothly via the Circle of Fifths, regardless of whether either preset has drift enabled.
+
+#### Dual Slider Morphing
+
+Presets can contain **dual sliders** (range parameters with min/max values). Morphing handles these intelligently:
+
+| Scenario | Behavior |
+|----------|----------|
+| **Single → Single** | Normal linear interpolation |
+| **Single → Dual** | Creates dual slider with both handles at the single value, then independently morphs each handle to the target min/max |
+| **Dual → Single** | Both min and max handles independently morph toward the single target value, converging at 100% |
+| **Dual → Dual** | Min morphs to min, max morphs to max independently |
+
+This ensures smooth transitions even when presets have different slider modes. The random walk behavior automatically activates/deactivates as the dual slider range opens or closes during the morph.
 
 ---
 

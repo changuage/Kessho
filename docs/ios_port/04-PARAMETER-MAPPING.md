@@ -93,7 +93,8 @@ The `SliderState` interface contains **120+ parameters** organized into sections
 | Parameter | Type | Range | Default | Audio Target | UI Location |
 |-----------|------|-------|---------|--------------|-------------|
 | `scaleMode` | enum | 'auto'\|'manual' | 'auto' | Scale selection logic | Advanced → Harmony |
-| `manualScale` | string | scale name | 'E Dorian' | `getScaleByName()` | Advanced → Harmony |
+| `manualScale` | string | scale name | 'Dorian' | `getScaleByName()` | Advanced → Harmony |
+| `rootNote` | number | 0-11 | 4 (E) | Root note (C=0, C#=1, ... B=11) | Advanced → Harmony |
 | `tension` | number | 0-1 | 0.3 | Scale selection weights, chord size | Snowflake hexagon |
 | `chordRate` | number | 8-64 | 32 | Seconds between chord changes | Advanced → Harmony |
 | `voicingSpread` | number | 0-1 | 0.5 | Octave displacement probability | Advanced → Harmony |

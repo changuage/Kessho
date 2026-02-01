@@ -11,6 +11,12 @@ interface SavedPreset {
     name: string;       // User-friendly preset name
     timestamp: number;  // Unix timestamp (ms) when saved
     state: SliderState; // All 120+ parameters
+    dualRanges?: Record<string, { min: number; max: number }>;  // Optional dual slider ranges
+}
+
+interface DualRange {
+    min: number;  // Lower bound of random walk range
+    max: number;  // Upper bound of random walk range
 }
 ```
 
@@ -45,15 +51,312 @@ interface SavedPreset {
         "cofPreferRelative": true,
         
         // === Harmony ===
-        "chordComplexity": 0.4,
-        "voicingWidth": 1.5,
-        "rootNote": 60,            // C4
-        "scaleFamily": "major",
-        "scaleMode": 0,
+        "rootNote": 4,             // 0-11 (C=0, E=4, etc.)
+        "scaleMode": "auto",       // "auto" | "manual"
+        "manualScale": "Dorian",   // Generic scale name (no root prefix)
+        "tension": 0.15,
+        "chordRate": 32,
+        "voicingSpread": 0.5,
         
         // ... 100+ more parameters
     }
 }
+```
+
+### Scale Name Format Change
+
+**Important:** Scale names are now **generic** (e.g., "Dorian" instead of "E Dorian"). The root note is stored separately in `rootNote` (0-11).
+
+| Old Format | New Format |
+|------------|------------|
+| `"manualScale": "E Dorian"` | `"manualScale": "Dorian"` |
+| `"manualScale": "E Major Pentatonic"` | `"manualScale": "Major Pentatonic"` |
+
+### Dual Slider Ranges
+
+Presets can optionally include `dualRanges` for parameters that use range-based random walk:
+
+```json
+{
+    "name": "Wave Out",
+    "state": { ... },
+    "dualRanges": {
+        "synthReverbSend": { "min": 0.02, "max": 0.39 },
+        "oceanSampleLevel": { "min": 0, "max": 0.65 },
+        "granularReverbSend": { "min": 0.53, "max": 1 }
+    }
+}
+```
+
+When `dualRanges` is present for a parameter, the app enables dual-handle slider mode with random walk between min/max.
+
+### Preset Morphing with Dual Sliders
+
+When morphing between presets with different slider modes, the system interpolates intelligently:
+
+| Scenario | Interpolation Behavior |
+|----------|------------------------|
+| Single A → Single B | Linear interpolation of state value |
+| Single A → Dual B | Create dual at A's value, morph handles to B's min/max |
+| Dual A → Single B | Morph both A's min/max toward B's single value |
+| Dual A → Dual B | Min→min, max→max independent interpolation |
+
+### Circle of Fifths Key Transitions During Morph
+
+When morphing between presets with different root notes, the key transition follows the **Circle of Fifths** for smooth, musical modulation rather than abrupt key changes.
+
+#### Direction-Aware Morphing
+
+The system must track the **direction** of the morph because the slider semantics (0=A, 100=B) don't change, but which preset is the "source" vs "target" depends on which way the user is moving:
+
+| Direction | Slider Movement | Source Root | Target Root |
+|-----------|-----------------|-------------|-------------|
+| A → B | 0% → 100% | Preset A's current root (accounting for any active CoF drift) | Preset B's home root |
+| B → A | 100% → 0% | Preset B's current root | Preset A's home root |
+
+**Critical Implementation Detail:** Capture the source root **once** when leaving an endpoint, then use it consistently throughout the morph. The destination preset's `rootNote` may have been updated by CoF drift in the engine, so always use the **home** root from the preset state for the target.
+
+#### CoF Path Calculation
+
+```swift
+func calculateCoFPath(from: Int, to: Int) -> (steps: Int, path: [Int]) {
+    let cofSequence = [0, 7, 2, 9, 4, 11, 6, 1, 8, 3, 10, 5]
+    let fromIndex = cofSequence.firstIndex(of: from % 12)!
+    let toIndex = cofSequence.firstIndex(of: to % 12)!
+    
+    // Calculate CW and CCW distances
+    let cwDistance = (toIndex - fromIndex + 12) % 12
+    let ccwDistance = (fromIndex - toIndex + 12) % 12
+    
+    // Choose shortest path (prefer CW if equal)
+    let useCW = cwDistance <= ccwDistance
+    let steps = useCW ? cwDistance : -ccwDistance
+    
+    // Build path
+    var path: [Int] = []
+    let direction = useCW ? 1 : -1
+    for i in 0...abs(steps) {
+        let pathIndex = (fromIndex + i * direction + 12) % 12
+        path.append(cofSequence[pathIndex])
+    }
+    
+    return (steps, path)
+}
+
+// Example: E(4) → G(7)
+// CW: E→B→F#→C#→G#→D#→A#→F→C→G = 9 steps
+// CCW: E→A→D→G = 3 steps
+// Result: CCW is shorter, path = [4, 9, 2, 7], steps = -3
+```
+
+#### Morph Position to Key Mapping
+
+Key changes are evenly distributed across the morph:
+
+```swift
+func getMorphedRootNote(from: Int, to: Int, morphPosition: Double) -> Int {
+    let (steps, path) = calculateCoFPath(from: from, to: to)
+    let totalSteps = abs(steps)
+    
+    guard totalSteps > 0 else { return from }
+    
+    // For N steps, change at positions: 100/(N+1), 200/(N+1), ...
+    let segmentSize = 100.0 / Double(totalSteps + 1)
+    let pathIndex = min(Int((morphPosition + segmentSize / 2) / segmentSize), totalSteps)
+    
+    return path[pathIndex]
+}
+
+// Example: 3 steps (E→A→D→G)
+// segmentSize = 100/4 = 25%
+// At 0-12%: E, 13-37%: A, 38-62%: D, 63-100%: G
+```
+
+#### Smart CoF Toggle
+
+When presets have different `cofDriftEnabled` values, the system ensures CoF is ON during the key walk:
+
+```swift
+func getCofEnabledDuringMorph(cofOnA: Bool, cofOnB: Bool, t: Double) -> Bool {
+    let atEndpointA = t == 0
+    let atEndpointB = t == 100
+    
+    if cofOnA && cofOnB {
+        return true  // Both on: stay on
+    } else if !cofOnA && !cofOnB {
+        return false // Both off: stay off
+    } else if !cofOnA && cofOnB {
+        // Off → On: turn ON immediately when leaving A
+        return !atEndpointA
+    } else {
+        // On → Off: stay ON until arriving at B
+        return !atEndpointB
+    }
+}
+```
+
+| Scenario | Behavior | Rationale |
+|----------|----------|-----------|
+| **Off → On** | Turn ON immediately (t > 0) | Allow CoF walk during morph |
+| **On → Off** | Stay ON until arrival (t == 100) | Complete CoF walk before disabling |
+
+#### State Management for Morph
+
+```swift
+class MorphState {
+    var capturedStartRoot: Int? = nil      // Captured when morph begins
+    var direction: MorphDirection? = nil   // .toA or .toB
+    var lastEndpoint: Int = 0              // 0 or 100
+    
+    func handlePositionChange(newPosition: Int, presetA: SavedPreset, presetB: SavedPreset, currentCofStep: Int) {
+        let wasAtA = lastEndpoint == 0
+        let wasAtB = lastEndpoint == 100
+        let leavingA = wasAtA && newPosition > 0
+        let leavingB = wasAtB && newPosition < 100
+        
+        // Update endpoint tracking
+        if newPosition == 0 {
+            lastEndpoint = 0
+            direction = nil
+            capturedStartRoot = nil
+        } else if newPosition == 100 {
+            lastEndpoint = 100
+            direction = nil
+            capturedStartRoot = nil
+        }
+        
+        // Capture starting root when first leaving an endpoint
+        if leavingA && capturedStartRoot == nil {
+            direction = .toB
+            let stateA = presetA.state
+            capturedStartRoot = stateA.cofDriftEnabled
+                ? calculateDriftedRoot(stateA.rootNote, currentCofStep)
+                : stateA.rootNote
+        } else if leavingB && capturedStartRoot == nil {
+            direction = .toA
+            let stateB = presetB.state
+            capturedStartRoot = stateB.cofDriftEnabled
+                ? calculateDriftedRoot(stateB.rootNote, currentCofStep)
+                : stateB.rootNote
+        }
+    }
+}
+```
+
+### Debugging Pitfalls (Lessons Learned)
+
+During the web implementation, several subtle bugs were discovered that iOS developers should avoid:
+
+#### 1. **Direction Not Tracked**
+**Bug:** Always used preset A's root as "from" and B's root as "to", regardless of slider direction.
+**Symptom:** When morphing B→A (100→0), the key path was calculated backwards, ending at A's key at 0% but progressing through the wrong intermediate keys.
+**Fix:** Track direction based on which endpoint the user is leaving from.
+
+#### 2. **Start Root Recalculated During Morph**
+**Bug:** The "from" root was recalculated each frame using the current CoF step, which keeps incrementing.
+**Symptom:** If CoF drift was active, the start root kept changing during the morph, causing the path to shift.
+**Fix:** Capture the effective root **once** when leaving an endpoint, store in a ref/property, and use that consistently.
+
+#### 3. **CoF Path Position vs Slider Position**
+**Bug:** When morphing B→A (100→0), used the slider position directly (100→0) for CoF path calculation.
+**Symptom:** The CoF path went backwards—arrived at the start key when reaching destination.
+**Fix:** For B→A direction, use `cofMorphT = 100 - t` so the path progresses correctly (0→100 as slider goes 100→0).
+
+#### 4. **homeRoot Changes During Morph**
+**Bug:** The UI's Circle of Fifths visualization used `state.rootNote` for calculating current position.
+**Symptom:** Since `state.rootNote` is updated during morph (via `result.rootNote = currentRoot`), the CoF index was calculated wrong, showing B instead of E.
+**Fix:** Pass `morphStartRoot` as a separate prop and use it during morph instead of the changing `homeRoot`.
+
+#### 5. **CoF Toggle Timing**
+**Bug:** CoF was snapped at 50% like other boolean parameters.
+**Symptom:** When morphing Off→On, CoF didn't turn on until 50%, so only half the key walk happened.
+**Fix:** Special handling - turn ON immediately when leaving "off" preset, turn OFF only when arriving at "off" preset.
+
+**iOS Implementation:**
+
+```swift
+struct MorphResult {
+    let state: SliderState
+    let dualRanges: [String: DualRange]
+    let dualModes: Set<String>
+    let morphCoFInfo: MorphCoFInfo?
+}
+
+struct MorphCoFInfo {
+    let isMorphing: Bool
+    let startRoot: Int      // Captured starting root
+    let effectiveRoot: Int  // Current root during morph
+    let targetRoot: Int     // Destination root
+    let cofStep: Int        // Current step on path
+    let totalSteps: Int     // Total steps in path
+}
+
+func lerpPresets(
+    _ presetA: SavedPreset, 
+    _ presetB: SavedPreset, 
+    t: Double,
+    capturedStartRoot: Int?,
+    direction: MorphDirection
+) -> MorphResult {
+    let stateA = presetA.state
+    let stateB = presetB.state
+    let tNorm = t / 100.0
+    
+    // Determine CoF path based on direction
+    let fromRoot: Int
+    let toRoot: Int
+    let cofMorphT: Double
+    
+    if direction == .toB {
+        fromRoot = capturedStartRoot ?? stateA.rootNote
+        toRoot = stateB.rootNote
+        cofMorphT = t
+    } else {
+        fromRoot = capturedStartRoot ?? stateB.rootNote
+        toRoot = stateA.rootNote
+        cofMorphT = 100 - t  // Invert for B→A direction
+    }
+    
+    // Get morphed root via CoF path
+    let (cofStep, totalSteps, currentRoot) = getMorphedRootNote(from: fromRoot, to: toRoot, morphPosition: cofMorphT)
+    
+    var result = stateA
+    result.rootNote = currentRoot
+    
+    // ... interpolate other values using tNorm ...
+    
+    // Smart CoF toggle
+    result.cofDriftEnabled = getCofEnabledDuringMorph(
+        cofOnA: stateA.cofDriftEnabled,
+        cofOnB: stateB.cofDriftEnabled,
+        t: t
+    )
+    
+    let morphCoFInfo = fromRoot != toRoot ? MorphCoFInfo(
+        isMorphing: true,
+        startRoot: fromRoot,
+        effectiveRoot: currentRoot,
+        targetRoot: toRoot,
+        cofStep: cofStep,
+        totalSteps: totalSteps
+    ) : nil
+    
+    return MorphResult(
+        state: result,
+        dualRanges: resultDualRanges,
+        dualModes: resultDualModes,
+        morphCoFInfo: morphCoFInfo
+    )
+}
+```
+
+**Valid scale names:**
+- `Major Pentatonic`, `Major (Ionian)`, `Lydian`, `Mixolydian`
+- `Minor Pentatonic`, `Dorian`, `Aeolian`
+- `Harmonic Minor`, `Melodic Minor`
+- `Octatonic Half-Whole`, `Phrygian Dominant`
+
+**Backwards Compatibility:** When loading old presets with "E " prefix, strip the prefix before lookup.
 ```
 
 ## Bundled Presets
@@ -98,11 +401,12 @@ struct SliderState: Codable, Equatable {
     var cofPreferRelative: Bool = true
     
     // === Harmony ===
-    var chordComplexity: Double = 0.5
-    var voicingWidth: Double = 1.5
-    var rootNote: Int = 60
-    var scaleFamily: String = "major"
-    var scaleMode: Int = 0
+    var rootNote: Int = 4              // 0-11 (C=0, E=4, etc.)
+    var scaleMode: String = "auto"     // "auto" | "manual"
+    var manualScale: String = "Dorian" // Generic scale name (no root prefix)
+    var tension: Double = 0.3
+    var chordRate: Double = 32
+    var voicingSpread: Double = 0.5
     
     // === Synth ADSR ===
     var synthAttack: Double = 0.1
@@ -184,21 +488,35 @@ struct SliderState: Codable, Equatable {
 ### SavedPreset Model
 
 ```swift
+// DualRange.swift
+struct DualRange: Codable, Equatable {
+    let min: Double
+    let max: Double
+}
+
 // SavedPreset.swift
 struct SavedPreset: Codable, Identifiable, Equatable {
     var id: UUID = UUID()
     let name: String
     let timestamp: Double  // Unix ms
     let state: SliderState
+    let dualRanges: [String: DualRange]?  // Optional dual slider ranges
     
     enum CodingKeys: String, CodingKey {
-        case name, timestamp, state
+        case name, timestamp, state, dualRanges
     }
     
-    init(name: String, state: SliderState) {
+    init(name: String, state: SliderState, dualRanges: [String: DualRange]? = nil) {
         self.name = name
         self.timestamp = Date().timeIntervalSince1970 * 1000
         self.state = state
+        self.dualRanges = dualRanges
+    }
+    
+    /// Returns true if this preset has any dual slider ranges
+    var hasDualRanges: Bool {
+        guard let ranges = dualRanges else { return false }
+        return !ranges.isEmpty
     }
 }
 ```

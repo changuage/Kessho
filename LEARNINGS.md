@@ -48,21 +48,21 @@ i
 The scale selection system uses a weighted probability algorithm to choose scales based on a tension slider (0.0 - 1.0). The goal is to have predictable, musical scale transitions where each tension value has a "home" scale that dominates the probability.
 
 ### Scale Positions (tensionValue)
-Scales are positioned along the tension spectrum:
+Scales are positioned along the tension spectrum. Scale names are now **generic** (the root note is a separate parameter):
 
 | Scale | Tension Value | Level |
 |-------|---------------|-------|
-| E Major Pentatonic | 0.00 | consonant |
-| E Major (Ionian) | 0.05 | consonant |
-| E Lydian | 0.10 | consonant |
-| E Mixolydian | 0.18 | consonant |
-| E Minor Pentatonic | 0.22 | consonant |
-| E Dorian | 0.25 | consonant |
-| E Aeolian | 0.35 | color |
-| E Harmonic Minor | 0.50 | color |
-| E Melodic Minor | 0.55 | color |
-| E Octatonic Half-Whole | 0.85 | high |
-| E Phrygian Dominant | 0.90 | high |
+| Major Pentatonic | 0.00 | consonant |
+| Major (Ionian) | 0.05 | consonant |
+| Lydian | 0.10 | consonant |
+| Mixolydian | 0.18 | consonant |
+| Minor Pentatonic | 0.22 | consonant |
+| Dorian | 0.25 | consonant |
+| Aeolian | 0.35 | color |
+| Harmonic Minor | 0.50 | color |
+| Melodic Minor | 0.55 | color |
+| Octatonic Half-Whole | 0.85 | high |
+| Phrygian Dominant | 0.90 | high |
 
 ### Weighting Formula
 ```typescript
@@ -108,3 +108,81 @@ Before weighting, scales are filtered by tension band:
   - 1.0 → linear falloff
   - 1.5 → moderate curve (current)
   - 2.0 → sharp dropoff
+
+---
+
+## Circle of Fifths Morph System
+
+### Overview
+When morphing between presets with different root notes, the key transition follows the Circle of Fifths (CoF) for smooth, musical modulation rather than abrupt key changes.
+
+### Key Components
+
+#### 1. Direction-Aware Morphing
+The morph system tracks which direction the user is moving:
+- **A → B (0% → 100%)**: Captures A's current root (accounting for any active CoF drift)
+- **B → A (100% → 0%)**: Captures B's current root
+
+This is critical because the slider position semantics (0=A, 100=B) don't change, but the *musical* direction of the morph matters for calculating the correct CoF path.
+
+#### 2. CoF Path Calculation
+```typescript
+// Calculate shortest path on Circle of Fifths
+calculateCoFPath(fromSemitone, toSemitone): { steps, path }
+
+// Steps can be positive (clockwise/sharps) or negative (counter-clockwise/flats)
+// Path is array of semitones to traverse
+```
+
+Example: E(4) → G(7)
+- Clockwise: E→B→F#→C#→G#→D#→A#→F→C→G = 9 steps
+- Counter-clockwise: E→A→D→G = 3 steps
+- **Result**: CCW is shorter, path = [E, A, D, G], steps = -3
+
+#### 3. Morph Position to CoF Step Mapping
+Key changes are distributed evenly across the morph:
+```typescript
+// For N steps, change at positions: 100/(N+1), 200/(N+1), ... N*100/(N+1)
+// Example: 3 steps → change at 25%, 50%, 75%
+segmentSize = 100 / (totalSteps + 1)
+pathIndex = floor((morphPosition + segmentSize/2) / segmentSize)
+```
+
+#### 4. Smart CoF Toggle
+When presets have different `cofDriftEnabled` values:
+
+| Scenario | Behavior | Rationale |
+|----------|----------|-----------|
+| **Off → On** | Turn ON immediately (t > 0) | Allow CoF walk during morph |
+| **On → Off** | Stay ON until arrival (t < 100) | Complete CoF walk before disabling |
+| **Same** | Use that value | No special handling needed |
+
+### Implementation Details
+
+```typescript
+// In lerpPresets():
+if (direction === 'toB') {
+  fromRoot = capturedStartRoot ?? stateA.rootNote;
+  toRoot = stateB.rootNote;
+  cofMorphT = t; // 0→100 maps directly
+} else {
+  fromRoot = capturedStartRoot ?? stateB.rootNote;
+  toRoot = stateA.rootNote;
+  cofMorphT = 100 - t; // Invert for B→A direction
+}
+```
+
+### State Management
+
+| Ref | Purpose |
+|-----|---------|
+| `morphCapturedStartRootRef` | Captures the effective root when morph begins |
+| `morphDirectionRef` | Tracks 'toA' or 'toB' direction |
+| `lastMorphEndpointRef` | Tracks last visited endpoint (0 or 100) |
+
+### Visual Feedback
+The Circle of Fifths UI component shows:
+- **Blue segment**: Home key of current preset
+- **Green segment**: Current key position during morph
+- **Highlighted path**: All keys that will be traversed
+- **Gray segments**: Keys within drift range (when CoF drift enabled)

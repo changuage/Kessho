@@ -15,37 +15,37 @@ export interface ScaleFamily {
 export const SCALE_FAMILIES: readonly ScaleFamily[] = [
   // Consonant - Major/Bright (tension 0 - 0.25)
   {
-    name: 'E Major Pentatonic',
+    name: 'Major Pentatonic',
     intervals: [0, 2, 4, 7, 9],
     tensionLevel: 'consonant',
     tensionValue: 0.0,
   },
   {
-    name: 'E Major (Ionian)',
+    name: 'Major (Ionian)',
     intervals: [0, 2, 4, 5, 7, 9, 11],
     tensionLevel: 'consonant',
     tensionValue: 0.05,
   },
   {
-    name: 'E Lydian',
+    name: 'Lydian',
     intervals: [0, 2, 4, 6, 7, 9, 11],
     tensionLevel: 'consonant',
     tensionValue: 0.10,
   },
   {
-    name: 'E Mixolydian',
+    name: 'Mixolydian',
     intervals: [0, 2, 4, 5, 7, 9, 10],
     tensionLevel: 'consonant',
     tensionValue: 0.18,
   },
   {
-    name: 'E Minor Pentatonic',
+    name: 'Minor Pentatonic',
     intervals: [0, 3, 5, 7, 10],
     tensionLevel: 'consonant',
     tensionValue: 0.22,
   },
   {
-    name: 'E Dorian',
+    name: 'Dorian',
     intervals: [0, 2, 3, 5, 7, 9, 10],
     tensionLevel: 'consonant',
     tensionValue: 0.25,
@@ -53,19 +53,19 @@ export const SCALE_FAMILIES: readonly ScaleFamily[] = [
 
   // Color/Tension (tension 0.25 - 0.55)
   {
-    name: 'E Aeolian',
+    name: 'Aeolian',
     intervals: [0, 2, 3, 5, 7, 8, 10],
     tensionLevel: 'color',
     tensionValue: 0.35,
   },
   {
-    name: 'E Harmonic Minor',
+    name: 'Harmonic Minor',
     intervals: [0, 2, 3, 5, 7, 8, 11],
     tensionLevel: 'color',
     tensionValue: 0.5,
   },
   {
-    name: 'E Melodic Minor',
+    name: 'Melodic Minor',
     intervals: [0, 2, 3, 5, 7, 9, 11],
     tensionLevel: 'color',
     tensionValue: 0.55,
@@ -73,13 +73,13 @@ export const SCALE_FAMILIES: readonly ScaleFamily[] = [
 
   // High tension (tension 0.55 - 1.0)
   {
-    name: 'E Octatonic Half-Whole',
+    name: 'Octatonic Half-Whole',
     intervals: [0, 1, 3, 4, 6, 7, 9, 10],
     tensionLevel: 'high',
     tensionValue: 0.85,
   },
   {
-    name: 'E Phrygian Dominant',
+    name: 'Phrygian Dominant',
     intervals: [0, 1, 4, 5, 7, 8, 10],
     tensionLevel: 'high',
     tensionValue: 0.9,

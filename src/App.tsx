@@ -17,7 +17,12 @@ import { audioEngine, EngineState } from './audio/engine';
 import { SCALE_FAMILIES } from './audio/scales';
 import { formatChordDegrees, getTimeUntilNextPhrase, calculateDriftedRoot } from './audio/harmony';
 import SnowflakeUI from './ui/SnowflakeUI';
-import { CircleOfFifths } from './ui/CircleOfFifths';
+import { CircleOfFifths, getMorphedRootNote } from './ui/CircleOfFifths';
+import CloudPresets from './ui/CloudPresets';
+import { fetchPresetById, isCloudEnabled } from './cloud/supabase';
+
+// Note names for display
+const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 
 // File input ref for loading presets
 const fileInputRef = { current: null as HTMLInputElement | null };
@@ -895,6 +900,20 @@ const App: React.FC = () => {
   const [morphLoadTarget, setMorphLoadTarget] = useState<'a' | 'b' | null>(null); // For advanced UI load dialog
   const [morphCountdown, setMorphCountdown] = useState<{ phase: string; phrasesLeft: number } | null>(null);
   
+  // Upload slot choice dialog
+  const [uploadSlotDialogOpen, setUploadSlotDialogOpen] = useState(false);
+  const [pendingUploadPreset, setPendingUploadPreset] = useState<SavedPreset | null>(null);
+  
+  // Morph CoF visualization state
+  const [morphCoFViz, setMorphCoFViz] = useState<{
+    isMorphing: boolean;
+    startRoot: number;      // Original starting root (captured at morph start)
+    effectiveRoot: number;
+    targetRoot: number;
+    cofStep: number;
+    totalSteps: number;
+  } | null>(null);
+  
   // Refs for phrase settings - used in animation loop to avoid restarting effect
   const morphPlayPhrasesRef = useRef(morphPlayPhrases);
   const morphTransitionPhrasesRef = useRef(morphTransitionPhrases);
@@ -1045,6 +1064,18 @@ const App: React.FC = () => {
       setSavedPresets(presets);
       setPresetsLoading(false);
     });
+
+    // Check for cloud preset in URL (?cloud=presetId)
+    const urlParams = new URLSearchParams(window.location.search);
+    const cloudPresetId = urlParams.get('cloud');
+    if (cloudPresetId && isCloudEnabled()) {
+      fetchPresetById(cloudPresetId).then((preset) => {
+        if (preset) {
+          setState(preset.data);
+          console.log(`Loaded cloud preset: ${preset.name} by ${preset.author}`);
+        }
+      });
+    }
   }, []);
 
   // Engine state callback
@@ -1171,12 +1202,128 @@ const App: React.FC = () => {
     }
   };
 
+  // Result type for lerpPresets - includes both state and dual ranges
+  interface LerpResult {
+    state: SliderState;
+    dualRanges: DualSliderState;
+    dualModes: Set<keyof SliderState>;
+    // CoF morph visualization info
+    morphCoFInfo?: {
+      isMorphing: boolean;
+      effectiveRoot: number;   // Current root during morph (stepping through CoF)
+      targetRoot: number;      // Final destination root
+      cofStep: number;         // Current CoF step relative to start
+      totalSteps: number;      // Total steps in the journey
+    };
+  }
+
   // Lerp between two preset states based on morph position (0-100)
-  const lerpPresets = useCallback((presetA: SavedPreset, presetB: SavedPreset, t: number): SliderState => {
+  // capturedStartRoot: if provided, use this as the starting root (for consistent morphing)
+  // currentCofStep: fallback CoF drift step if capturedStartRoot not provided
+  // direction: 'toB' (A→B, 0→100) or 'toA' (B→A, 100→0)
+  const lerpPresets = useCallback((presetA: SavedPreset, presetB: SavedPreset, t: number, currentCofStep: number = 0, capturedStartRoot?: number, direction: 'toA' | 'toB' = 'toB'): LerpResult => {
     const stateA = { ...DEFAULT_STATE, ...presetA.state };
     const stateB = { ...DEFAULT_STATE, ...presetB.state };
     const result = { ...stateA };
     const tNorm = t / 100; // Normalize to 0-1
+    
+    // Handle rootNote via Circle of Fifths path
+    // Direction determines which preset we're morphing FROM and TO:
+    // - 'toB': morph A → B (slider 0→100), capturedStartRoot is A's effective root
+    // - 'toA': morph B → A (slider 100→0), capturedStartRoot is B's effective root
+    let fromRoot: number;
+    let toRoot: number;
+    let cofMorphT: number; // The t value to use for CoF path progression
+    
+    if (direction === 'toB') {
+      // Morphing A → B: from A's root (or captured) to B's root
+      fromRoot = capturedStartRoot !== undefined
+        ? capturedStartRoot
+        : (stateA.cofDriftEnabled 
+            ? calculateDriftedRoot(stateA.rootNote, currentCofStep)
+            : stateA.rootNote);
+      toRoot = stateB.rootNote;
+      cofMorphT = t; // 0→100 maps directly
+    } else {
+      // Morphing B → A: from B's root (or captured) to A's root
+      fromRoot = capturedStartRoot !== undefined
+        ? capturedStartRoot
+        : (stateB.cofDriftEnabled 
+            ? calculateDriftedRoot(stateB.rootNote, currentCofStep)
+            : stateB.rootNote);
+      toRoot = stateA.rootNote;
+      cofMorphT = 100 - t; // 100→0 needs to become 0→100 for path progression
+    }
+    
+    // Get the morphed root note stepping through CoF
+    const { currentRoot, cofStep, totalSteps } = getMorphedRootNote(fromRoot, toRoot, cofMorphT);
+    result.rootNote = currentRoot;
+    
+    // Scale transition: snap at 50% (or when we've completed the CoF journey)
+    // For a musical feel, snap scale when we're halfway or past
+    result.scaleMode = tNorm < 0.5 ? stateA.scaleMode : stateB.scaleMode;
+    result.manualScale = tNorm < 0.5 ? stateA.manualScale : stateB.manualScale;
+    
+    // Build morph CoF info for visualization
+    const morphCoFInfo = (fromRoot !== toRoot) ? {
+      isMorphing: true,
+      startRoot: fromRoot,      // Original starting root (captured at morph start)
+      effectiveRoot: currentRoot,
+      targetRoot: toRoot,
+      cofStep,
+      totalSteps
+    } : undefined;
+    
+    // Compute interpolated dual ranges
+    const dualRangesA = presetA.dualRanges || {};
+    const dualRangesB = presetB.dualRanges || {};
+    const resultDualRanges: DualSliderState = {};
+    const resultDualModes = new Set<keyof SliderState>();
+    
+    // Get all keys that have dual ranges in either preset
+    const allDualKeys = new Set([
+      ...Object.keys(dualRangesA),
+      ...Object.keys(dualRangesB)
+    ]);
+    
+    for (const keyStr of allDualKeys) {
+      const key = keyStr as keyof SliderState;
+      const rangeA = dualRangesA[keyStr];
+      const rangeB = dualRangesB[keyStr];
+      const valA = typeof stateA[key] === 'number' ? stateA[key] as number : 0;
+      const valB = typeof stateB[key] === 'number' ? stateB[key] as number : 0;
+      
+      let morphedMin: number;
+      let morphedMax: number;
+      
+      if (rangeA && rangeB) {
+        // Dual A → Dual B: morph min→min, max→max
+        morphedMin = rangeA.min + (rangeB.min - rangeA.min) * tNorm;
+        morphedMax = rangeA.max + (rangeB.max - rangeA.max) * tNorm;
+      } else if (rangeA && !rangeB) {
+        // Dual A → Single B: both min and max morph toward B's single value
+        morphedMin = rangeA.min + (valB - rangeA.min) * tNorm;
+        morphedMax = rangeA.max + (valB - rangeA.max) * tNorm;
+      } else if (!rangeA && rangeB) {
+        // Single A → Dual B: start both at A's value, morph to B's min/max
+        morphedMin = valA + (rangeB.min - valA) * tNorm;
+        morphedMax = valA + (rangeB.max - valA) * tNorm;
+      } else {
+        // Neither has dual - shouldn't happen given allDualKeys
+        continue;
+      }
+      
+      // Only add to dual ranges if min !== max (i.e., it's still a range)
+      // At t=0 for Single→Dual, min===max (both at valA)
+      // At t=100 for Dual→Single, min===max (both at valB)
+      const isEffectivelyDual = Math.abs(morphedMax - morphedMin) > 0.001;
+      
+      if (isEffectivelyDual) {
+        resultDualModes.add(key);
+        resultDualRanges[key] = { min: morphedMin, max: morphedMax };
+      }
+      // If not effectively dual, just use the interpolated state value (already computed)
+    }
     
     // Define parent-child relationships for conditional morphing
     // If parent boolean is OFF in the target preset, don't morph child sliders
@@ -1233,6 +1380,7 @@ const App: React.FC = () => {
       'oceanSampleLevel', 'oceanWaveSynthLevel', 'oceanFilterCutoff', 'oceanFilterResonance',
       'oceanDurationMin', 'oceanDurationMax', 'oceanIntervalMin', 'oceanIntervalMax',
       'oceanFoamMin', 'oceanFoamMax', 'oceanDepthMin', 'oceanDepthMax',
+      'cofDriftRate', 'cofDriftRange',
     ];
     
     for (const key of numericKeys) {
@@ -1248,15 +1396,15 @@ const App: React.FC = () => {
       }
     }
     
-    // Snap discrete values at 50%
+    // Snap discrete values at 50% (scaleMode and manualScale handled above with rootNote)
     const discreteKeys: (keyof SliderState)[] = [
-      'seedWindow', 'scaleMode', 'manualScale', 'filterType', 'reverbEngine', 'reverbType', 'grainPitchMode'
+      'seedWindow', 'filterType', 'reverbEngine', 'reverbType', 'grainPitchMode', 'cofDriftDirection'
     ];
     for (const key of discreteKeys) {
       (result as Record<string, unknown>)[key] = tNorm < 0.5 ? stateA[key] : stateB[key];
     }
     
-    // Snap boolean values at 50%
+    // Snap boolean values at 50% (except cofDriftEnabled which has special handling)
     const boolKeys: (keyof SliderState)[] = [
       'granularEnabled', 'leadEnabled', 'leadEuclideanMasterEnabled', 'leadEuclid1Enabled', 'leadEuclid2Enabled',
       'leadEuclid3Enabled', 'leadEuclid4Enabled', 'oceanSampleEnabled', 'oceanWaveSynthEnabled'
@@ -1265,26 +1413,103 @@ const App: React.FC = () => {
       (result as Record<string, unknown>)[key] = tNorm < 0.5 ? stateA[key] : stateB[key];
     }
     
+    // Special handling for cofDriftEnabled:
+    // - Off → On: Turn ON immediately when leaving the "off" preset (so CoF walk happens during morph)
+    // - On → Off: Keep ON during entire morph (do CoF walk), only turn OFF when arriving at target
+    const cofOnA = stateA.cofDriftEnabled;
+    const cofOnB = stateB.cofDriftEnabled;
+    const atEndpointA = t === 0;
+    const atEndpointB = t === 100;
+    
+    if (cofOnA && cofOnB) {
+      // Both on: stay on
+      result.cofDriftEnabled = true;
+    } else if (!cofOnA && !cofOnB) {
+      // Both off: stay off
+      result.cofDriftEnabled = false;
+    } else if (!cofOnA && cofOnB) {
+      // A is off, B is on: turn ON as soon as we leave A (t > 0)
+      result.cofDriftEnabled = !atEndpointA;
+    } else {
+      // A is on, B is off: stay ON until we arrive at B (t < 100)
+      result.cofDriftEnabled = !atEndpointB;
+    }
+    
     // Auto-disable granular if level is 0
     if (result.granularLevel === 0) {
       result.granularEnabled = false;
     }
     
-    return result;
+    return { state: result, dualRanges: resultDualRanges, dualModes: resultDualModes, morphCoFInfo };
   }, []);
 
   // Store captured state for morph reference (when no preset is loaded)
   // This captures the state BEFORE any morph preset is loaded
   const morphCapturedStateRef = useRef<SliderState | null>(null);
+  const morphCapturedDualRangesRef = useRef<Record<string, { min: number; max: number }> | null>(null);
+  // Capture the effective starting root (accounting for CoF drift) when morph begins
+  const morphCapturedStartRootRef = useRef<number | null>(null);
+  // Track morph direction: 'toB' when going 0→100, 'toA' when going 100→0
+  const morphDirectionRef = useRef<'toA' | 'toB' | null>(null);
+  // Track last endpoint visited (0 or 100) to detect when morph starts
+  const lastMorphEndpointRef = useRef<0 | 100>(0);
 
   // Load preset into morph slot (A or B)
   const handleLoadPresetToSlot = useCallback((preset: SavedPreset, slot: 'a' | 'b') => {
+    // Convert current dualSliderRanges to serializable format
+    const currentDualRanges: Record<string, { min: number; max: number }> = {};
+    dualSliderModes.forEach(key => {
+      const range = dualSliderRanges[key];
+      if (range) {
+        currentDualRanges[key as string] = { min: range.min, max: range.max };
+      }
+    });
+    
     if (slot === 'a') {
       setMorphPresetA(preset);
       // When loading A, capture current state for B to use as fallback
       // But only if B is not already loaded
       if (!morphPresetB) {
         morphCapturedStateRef.current = { ...state };
+        morphCapturedDualRangesRef.current = currentDualRanges;
+      }
+      
+      // Apply the preset immediately when loading to slot A
+      const newState = { ...DEFAULT_STATE, ...preset.state };
+      if (newState.granularLevel === 0) {
+        newState.granularEnabled = false;
+      }
+      setState(newState);
+      audioEngine.updateParams(newState);
+      audioEngine.resetCofDrift();
+      setMorphPosition(0); // Reset to full A
+      
+      // Restore dual slider state if present
+      if (preset.dualRanges && Object.keys(preset.dualRanges).length > 0) {
+        const newDualModes = new Set<keyof SliderState>();
+        const newDualRanges: DualSliderState = {};
+        const newWalkPositions: Record<string, number> = {};
+        
+        Object.entries(preset.dualRanges).forEach(([key, range]) => {
+          const paramKey = key as keyof SliderState;
+          newDualModes.add(paramKey);
+          newDualRanges[paramKey] = range;
+          const walkPos = Math.random();
+          newWalkPositions[key] = walkPos;
+          randomWalkRef.current[paramKey] = {
+            position: walkPos,
+            velocity: (Math.random() - 0.5) * 0.02,
+          };
+        });
+        
+        setDualSliderModes(newDualModes);
+        setDualSliderRanges(newDualRanges);
+        setRandomWalkPositions(newWalkPositions);
+      } else {
+        setDualSliderModes(new Set());
+        setDualSliderRanges({});
+        setRandomWalkPositions({});
+        randomWalkRef.current = {};
       }
     } else {
       setMorphPresetB(preset);
@@ -1292,10 +1517,11 @@ const App: React.FC = () => {
       // But only if A is not already loaded
       if (!morphPresetA) {
         morphCapturedStateRef.current = { ...state };
+        morphCapturedDualRangesRef.current = currentDualRanges;
       }
     }
     setMorphLoadTarget(null);
-  }, [state, morphPresetA, morphPresetB]);
+  }, [state, morphPresetA, morphPresetB, dualSliderModes, dualSliderRanges]);
 
   // Handle morph slider change
   const handleMorphPositionChange = useCallback((newPosition: number) => {
@@ -1305,20 +1531,95 @@ const App: React.FC = () => {
     if (!morphPresetA && !morphPresetB) return;
     
     const fallbackState = morphCapturedStateRef.current || DEFAULT_STATE;
-    const effectiveA: SavedPreset = morphPresetA || { name: 'Current', timestamp: '', state: fallbackState };
-    const effectiveB: SavedPreset = morphPresetB || { name: 'Current', timestamp: '', state: fallbackState };
+    const fallbackDualRanges = morphCapturedDualRangesRef.current || undefined;
+    const effectiveA: SavedPreset = morphPresetA || { name: 'Current', timestamp: '', state: fallbackState, dualRanges: fallbackDualRanges };
+    const effectiveB: SavedPreset = morphPresetB || { name: 'Current', timestamp: '', state: fallbackState, dualRanges: fallbackDualRanges };
     
     if (morphPresetA && morphPresetB && morphPresetA.name === morphPresetB.name) return;
     
-    const morphedState = lerpPresets(effectiveA, effectiveB, newPosition);
-    setState(morphedState);
-    audioEngine.updateParams(morphedState);
-  }, [morphPresetA, morphPresetB, lerpPresets]);
+    // Detect morph direction and capture starting root when leaving an endpoint
+    const wasAtA = lastMorphEndpointRef.current === 0;
+    const wasAtB = lastMorphEndpointRef.current === 100;
+    const leavingA = wasAtA && newPosition > 0;
+    const leavingB = wasAtB && newPosition < 100;
+    
+    // Update endpoint tracking when reaching endpoints
+    if (newPosition === 0) {
+      lastMorphEndpointRef.current = 0;
+      morphDirectionRef.current = null;
+      morphCapturedStartRootRef.current = null;
+    } else if (newPosition === 100) {
+      lastMorphEndpointRef.current = 100;
+      morphDirectionRef.current = null;
+      morphCapturedStartRootRef.current = null;
+    }
+    
+    // Capture starting root when first leaving an endpoint
+    if (leavingA && morphCapturedStartRootRef.current === null) {
+      // Starting morph from A towards B
+      morphDirectionRef.current = 'toB';
+      const stateA = { ...DEFAULT_STATE, ...effectiveA.state };
+      morphCapturedStartRootRef.current = stateA.cofDriftEnabled
+        ? calculateDriftedRoot(stateA.rootNote, engineState.cofCurrentStep)
+        : stateA.rootNote;
+    } else if (leavingB && morphCapturedStartRootRef.current === null) {
+      // Starting morph from B towards A
+      morphDirectionRef.current = 'toA';
+      const stateB = { ...DEFAULT_STATE, ...effectiveB.state };
+      morphCapturedStartRootRef.current = stateB.cofDriftEnabled
+        ? calculateDriftedRoot(stateB.rootNote, engineState.cofCurrentStep)
+        : stateB.rootNote;
+    }
+    
+    const direction = morphDirectionRef.current || 'toB';
+    const morphResult = lerpPresets(effectiveA, effectiveB, newPosition, engineState.cofCurrentStep, morphCapturedStartRootRef.current ?? undefined, direction);
+    setState(morphResult.state);
+    audioEngine.updateParams(morphResult.state);
+    
+    // Update CoF morph visualization (clear at endpoints - we've arrived)
+    const atEndpoint = newPosition === 0 || newPosition === 100;
+    setMorphCoFViz(atEndpoint ? null : (morphResult.morphCoFInfo || null));
+    
+    // Reset CoF drift when reaching an endpoint
+    if (atEndpoint) {
+      audioEngine.resetCofDrift();
+    }
+    
+    // Apply interpolated dual ranges
+    setDualSliderModes(morphResult.dualModes);
+    setDualSliderRanges(morphResult.dualRanges);
+    
+    // Initialize random walk for any new dual sliders and update positions state
+    const newWalkPositions: Record<string, number> = {};
+    morphResult.dualModes.forEach(key => {
+      if (!randomWalkRef.current[key]) {
+        const walkPos = Math.random();
+        randomWalkRef.current[key] = {
+          position: walkPos,
+          velocity: (Math.random() - 0.5) * 0.02,
+        };
+      }
+      // Always sync ref to state for all active dual sliders
+      newWalkPositions[key as string] = randomWalkRef.current[key]?.position ?? 0.5;
+    });
+    setRandomWalkPositions(newWalkPositions);
+    
+    // Clean up refs for sliders that are no longer dual
+    Object.keys(randomWalkRef.current).forEach(key => {
+      if (!morphResult.dualModes.has(key as keyof SliderState)) {
+        delete randomWalkRef.current[key as keyof SliderState];
+      }
+    });
+  }, [morphPresetA, morphPresetB, lerpPresets, engineState.cofCurrentStep]);
 
   // Auto-cycle morph effect - continuous smooth animation
   const morphStartTimeRef = useRef<number>(Date.now());
   const lastMorphPosRef = useRef<number>(0);
   const manualPositionOnEnterRef = useRef<number>(0); // Track position when entering auto mode
+  const cofCurrentStepRef = useRef<number>(0); // Current CoF step for morph calculations
+  
+  // Keep CoF step ref up to date
+  useEffect(() => { cofCurrentStepRef.current = engineState.cofCurrentStep; }, [engineState.cofCurrentStep]);
   
   // Phase tracking for auto-cycle (to avoid jumps when durations change)
   type MorphPhase = 'hold' | 'entry' | 'playA' | 'morphAB' | 'playB' | 'morphBA';
@@ -1347,8 +1648,9 @@ const App: React.FC = () => {
     const initialTransitionDuration = getTransitionDuration();
     
     const fallbackState = morphCapturedStateRef.current || DEFAULT_STATE;
-    const effectiveA: SavedPreset = morphPresetA || { name: 'Current', timestamp: '', state: fallbackState };
-    const effectiveB: SavedPreset = morphPresetB || { name: 'Current', timestamp: '', state: fallbackState };
+    const fallbackDualRanges = morphCapturedDualRangesRef.current || undefined;
+    const effectiveA: SavedPreset = morphPresetA || { name: 'Current', timestamp: '', state: fallbackState, dualRanges: fallbackDualRanges };
+    const effectiveB: SavedPreset = morphPresetB || { name: 'Current', timestamp: '', state: fallbackState, dualRanges: fallbackDualRanges };
     const samePreset = morphPresetA && morphPresetB && morphPresetA.name === morphPresetB.name;
     
     // Calculate the target position to transition to after the hold period
@@ -1378,10 +1680,31 @@ const App: React.FC = () => {
       // Lock duration at phase start - won't change until next phase
       if (phase === 'playA' || phase === 'playB') {
         phaseDurationRef.current = getPlayDuration();
+        // Clear captured start root and direction at play phases
+        morphCapturedStartRootRef.current = null;
+        morphDirectionRef.current = null;
+        // Update endpoint tracking
+        lastMorphEndpointRef.current = phase === 'playA' ? 0 : 100;
       } else if (phase === 'morphAB' || phase === 'morphBA') {
         phaseDurationRef.current = getTransitionDuration();
+        // Set direction based on phase
+        morphDirectionRef.current = phase === 'morphAB' ? 'toB' : 'toA';
+        // Capture the starting root for this morph phase
+        const sourcePreset = phase === 'morphAB' ? effectiveA : effectiveB;
+        const sourceState = { ...DEFAULT_STATE, ...sourcePreset.state };
+        morphCapturedStartRootRef.current = sourceState.cofDriftEnabled
+          ? calculateDriftedRoot(sourceState.rootNote, cofCurrentStepRef.current)
+          : sourceState.rootNote;
       } else if (phase === 'entry') {
         phaseDurationRef.current = initialTransitionDuration;
+        // Set direction based on target
+        morphDirectionRef.current = targetAfterHold === 100 ? 'toB' : 'toA';
+        // Capture the starting root for entry transition
+        const sourcePreset = startPos <= 50 ? effectiveA : effectiveB;
+        const sourceState = { ...DEFAULT_STATE, ...sourcePreset.state };
+        morphCapturedStartRootRef.current = sourceState.cofDriftEnabled
+          ? calculateDriftedRoot(sourceState.rootNote, cofCurrentStepRef.current)
+          : sourceState.rootNote;
       }
     };
     
@@ -1474,9 +1797,45 @@ const App: React.FC = () => {
         
         // Apply morph inline (not inside state setter)
         if (!samePreset) {
-          const morphedState = lerpPresets(effectiveA, effectiveB, newPos);
-          setState(morphedState);
-          audioEngine.updateParams(morphedState);
+          const direction = morphDirectionRef.current || 'toB';
+          const morphResult = lerpPresets(effectiveA, effectiveB, newPos, cofCurrentStepRef.current, morphCapturedStartRootRef.current ?? undefined, direction);
+          setState(morphResult.state);
+          audioEngine.updateParams(morphResult.state);
+          
+          // Update CoF morph visualization (clear at endpoints - we've arrived)
+          const atEndpoint = newPos === 0 || newPos === 100;
+          setMorphCoFViz(atEndpoint ? null : (morphResult.morphCoFInfo || null));
+          
+          // Reset CoF drift when reaching an endpoint
+          if (atEndpoint) {
+            audioEngine.resetCofDrift();
+          }
+          
+          // Apply interpolated dual ranges
+          setDualSliderModes(morphResult.dualModes);
+          setDualSliderRanges(morphResult.dualRanges);
+          
+          // Initialize random walk for any new dual sliders and update positions state
+          const newWalkPositions: Record<string, number> = {};
+          morphResult.dualModes.forEach(key => {
+            if (!randomWalkRef.current[key]) {
+              const walkPos = Math.random();
+              randomWalkRef.current[key] = {
+                position: walkPos,
+                velocity: (Math.random() - 0.5) * 0.02,
+              };
+            }
+            // Always sync ref to state for all active dual sliders
+            newWalkPositions[key as string] = randomWalkRef.current[key]?.position ?? 0.5;
+          });
+          setRandomWalkPositions(newWalkPositions);
+          
+          // Clean up refs for sliders that are no longer dual
+          Object.keys(randomWalkRef.current).forEach(key => {
+            if (!morphResult.dualModes.has(key as keyof SliderState)) {
+              delete randomWalkRef.current[key as keyof SliderState];
+            }
+          });
         }
       }
       
@@ -1492,6 +1851,7 @@ const App: React.FC = () => {
     return () => {
       clearInterval(intervalId);
       setMorphCountdown(null);
+      setMorphCoFViz(null); // Clear CoF morph visualization
     };
   }, [morphMode, engineState.isRunning, morphPresetA, morphPresetB, lerpPresets]);
 
@@ -1506,6 +1866,16 @@ const App: React.FC = () => {
     
     // Capture current state BEFORE loading, then load to slot A
     morphCapturedStateRef.current = { ...state };
+    // Also capture current dual ranges
+    const currentDualRanges: Record<string, { min: number; max: number }> = {};
+    dualSliderModes.forEach(key => {
+      const range = dualSliderRanges[key];
+      if (range) {
+        currentDualRanges[key as string] = { min: range.min, max: range.max };
+      }
+    });
+    morphCapturedDualRangesRef.current = currentDualRanges;
+    
     setMorphPresetA(preset);
     setMorphPosition(0); // Reset to full A
     
@@ -1517,8 +1887,11 @@ const App: React.FC = () => {
       newState.granularEnabled = false;
     }
     
+    console.log('[handleLoadPresetFromList] preset.state.cofDriftEnabled:', preset.state.cofDriftEnabled);
+    console.log('[handleLoadPresetFromList] newState.cofDriftEnabled:', newState.cofDriftEnabled);
     setState(newState);
     audioEngine.updateParams(newState);
+    audioEngine.resetCofDrift(); // Reset CoF drift when loading preset
     
     // Restore dual slider state if present
     if (preset.dualRanges && Object.keys(preset.dualRanges).length > 0) {
@@ -1551,7 +1924,7 @@ const App: React.FC = () => {
     }
     
     setShowPresetList(false);
-  }, [uiMode, morphLoadTarget, handleLoadPresetToSlot]);
+  }, [uiMode, morphLoadTarget, handleLoadPresetToSlot, state, dualSliderModes, dualSliderRanges]);
 
   // Delete preset - just removes from UI list (can't delete files from browser)
   const handleDeletePreset = (index: number) => {
@@ -1567,56 +1940,66 @@ const App: React.FC = () => {
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
-        const preset = JSON.parse(e.target?.result as string);
-        if (preset.state) {
+        const parsed = JSON.parse(e.target?.result as string);
+        if (parsed.state) {
           // Merge with defaults to handle missing keys
-          const newState = { ...DEFAULT_STATE, ...preset.state };
+          const newState = { ...DEFAULT_STATE, ...parsed.state };
           
           // Auto-disable granular if level is 0
           if (newState.granularLevel === 0) {
             newState.granularEnabled = false;
           }
           
-          setState(newState);
-          audioEngine.updateParams(newState);
-          
-          // Restore dual slider state if present
-          if (preset.dualRanges && Object.keys(preset.dualRanges).length > 0) {
-            const newDualModes = new Set<keyof SliderState>();
-            const newDualRanges: DualSliderState = {};
-            const newWalkPositions: Record<string, number> = {};
-            
-            Object.entries(preset.dualRanges).forEach(([key, range]) => {
-              const paramKey = key as keyof SliderState;
-              newDualModes.add(paramKey);
-              newDualRanges[paramKey] = range as { min: number; max: number };
-              const walkPos = Math.random();
-              newWalkPositions[key] = walkPos;
-              randomWalkRef.current[paramKey] = {
-                position: walkPos,
-                velocity: (Math.random() - 0.5) * 0.02,
-              };
-            });
-            
-            setDualSliderModes(newDualModes);
-            setDualSliderRanges(newDualRanges);
-            setRandomWalkPositions(newWalkPositions);
-          } else {
-            // No dual ranges - reset to single mode
-            setDualSliderModes(new Set());
-            setDualSliderRanges({});
-            setRandomWalkPositions({});
-            randomWalkRef.current = {};
-          }
+          // Create the preset object
+          const importedPreset: SavedPreset = {
+            name: parsed.name || file.name.replace('.json', ''),
+            timestamp: parsed.timestamp || new Date().toISOString(),
+            state: newState,
+            dualRanges: parsed.dualRanges,
+          };
           
           // Add to preset list for display
-          const importedPreset: SavedPreset = {
-            name: preset.name || file.name.replace('.json', ''),
-            timestamp: preset.timestamp || new Date().toISOString(),
-            state: newState,
-            dualRanges: preset.dualRanges,
-          };
-          setSavedPresets([...savedPresets, importedPreset]);
+          setSavedPresets(prev => [...prev, importedPreset]);
+          
+          // In advanced mode, show dialog to choose slot A or B
+          if (uiMode === 'advanced') {
+            setPendingUploadPreset(importedPreset);
+            setUploadSlotDialogOpen(true);
+          } else {
+            // In snowflake mode, just apply directly
+            setState(newState);
+            audioEngine.updateParams(newState);
+            audioEngine.resetCofDrift(); // Reset CoF drift when loading preset
+            
+            // Restore dual slider state if present
+            if (parsed.dualRanges && Object.keys(parsed.dualRanges).length > 0) {
+              const newDualModes = new Set<keyof SliderState>();
+              const newDualRanges: DualSliderState = {};
+              const newWalkPositions: Record<string, number> = {};
+              
+              Object.entries(parsed.dualRanges).forEach(([key, range]) => {
+                const paramKey = key as keyof SliderState;
+                newDualModes.add(paramKey);
+                newDualRanges[paramKey] = range as { min: number; max: number };
+                const walkPos = Math.random();
+                newWalkPositions[key] = walkPos;
+                randomWalkRef.current[paramKey] = {
+                  position: walkPos,
+                  velocity: (Math.random() - 0.5) * 0.02,
+                };
+              });
+              
+              setDualSliderModes(newDualModes);
+              setDualSliderRanges(newDualRanges);
+              setRandomWalkPositions(newWalkPositions);
+            } else {
+              // No dual ranges - reset to single mode
+              setDualSliderModes(new Set());
+              setDualSliderRanges({});
+              setRandomWalkPositions({});
+              randomWalkRef.current = {};
+            }
+          }
         }
       } catch (err) {
         console.error('Failed to load preset:', err);
@@ -1626,6 +2009,28 @@ const App: React.FC = () => {
     reader.readAsText(file);
     // Reset input so same file can be loaded again
     event.target.value = '';
+  };
+
+  // Handle slot choice from upload dialog
+  const handleUploadSlotChoice = (slot: 'a' | 'b') => {
+    if (!pendingUploadPreset) return;
+    
+    // Capture current state before loading
+    morphCapturedStateRef.current = { ...state };
+    const currentDualRanges: Record<string, { min: number; max: number }> = {};
+    dualSliderModes.forEach(key => {
+      const range = dualSliderRanges[key];
+      if (range) {
+        currentDualRanges[key as string] = { min: range.min, max: range.max };
+      }
+    });
+    morphCapturedDualRangesRef.current = currentDualRanges;
+    
+    handleLoadPresetToSlot(pendingUploadPreset, slot);
+    
+    // Close dialog and clear pending preset
+    setUploadSlotDialogOpen(false);
+    setPendingUploadPreset(null);
   };
 
   // Render snowflake UI
@@ -1888,11 +2293,15 @@ const App: React.FC = () => {
             
             <CircleOfFifths
               homeRoot={state.rootNote}
-              currentStep={engineState.cofCurrentStep}
+              currentStep={morphCoFViz ? morphCoFViz.cofStep : engineState.cofCurrentStep}
               driftRange={state.cofDriftRange}
               driftDirection={state.cofDriftDirection}
               enabled={state.cofDriftEnabled}
               size={160}
+              isMorphing={!!morphCoFViz}
+              morphStartRoot={morphCoFViz?.startRoot}
+              morphTargetRoot={morphCoFViz?.targetRoot}
+              morphProgress={morphPosition}
             />
             
             {state.cofDriftEnabled && (
@@ -1997,9 +2406,17 @@ const App: React.FC = () => {
                 } else {
                   const preset = savedPresets.find(p => p.name === presetName);
                   if (preset) {
-                    // Capture current state before loading
+                    // Capture current state and dual ranges before loading
                     if (!morphPresetB) {
                       morphCapturedStateRef.current = { ...state };
+                      const currentDualRanges: Record<string, { min: number; max: number }> = {};
+                      dualSliderModes.forEach(key => {
+                        const range = dualSliderRanges[key];
+                        if (range) {
+                          currentDualRanges[key as string] = { min: range.min, max: range.max };
+                        }
+                      });
+                      morphCapturedDualRangesRef.current = currentDualRanges;
                     }
                     setMorphPresetA(preset);
                     
@@ -2008,8 +2425,12 @@ const App: React.FC = () => {
                     if (newState.granularLevel === 0) {
                       newState.granularEnabled = false;
                     }
+                    console.log('[Slot A Load] preset.state.cofDriftEnabled:', preset.state.cofDriftEnabled);
+                    console.log('[Slot A Load] newState.cofDriftEnabled:', newState.cofDriftEnabled);
+                    console.log('[Slot A Load] Full newState:', JSON.stringify(newState, null, 2).slice(0, 500));
                     setState(newState);
                     audioEngine.updateParams(newState);
+                    audioEngine.resetCofDrift(); // Reset CoF drift when loading preset
                     setMorphPosition(0); // Reset to full A
                     
                     // Restore dual slider state if present
@@ -2064,9 +2485,9 @@ const App: React.FC = () => {
               <option value="" style={{ background: '#1a1a2e', color: '#888' }}>
                 (empty - using current)
               </option>
-              {savedPresets.map((preset) => (
+              {savedPresets.map((preset, idx) => (
                 <option 
-                  key={preset.name} 
+                  key={`${preset.name}-${idx}`} 
                   value={preset.name}
                   style={{ background: '#1a1a2e', color: '#6ee7b7' }}
                 >
@@ -2144,9 +2565,17 @@ const App: React.FC = () => {
                 } else {
                   const preset = savedPresets.find(p => p.name === presetName);
                   if (preset) {
-                    // Capture current state before loading
+                    // Capture current state and dual ranges before loading
                     if (!morphPresetA) {
                       morphCapturedStateRef.current = { ...state };
+                      const currentDualRanges: Record<string, { min: number; max: number }> = {};
+                      dualSliderModes.forEach(key => {
+                        const range = dualSliderRanges[key];
+                        if (range) {
+                          currentDualRanges[key as string] = { min: range.min, max: range.max };
+                        }
+                      });
+                      morphCapturedDualRangesRef.current = currentDualRanges;
                     }
                     setMorphPresetB(preset);
                   }
@@ -2174,9 +2603,9 @@ const App: React.FC = () => {
               <option value="" style={{ background: '#1a1a2e', color: '#888' }}>
                 (empty - using current)
               </option>
-              {savedPresets.map((preset) => (
+              {savedPresets.map((preset, idx) => (
                 <option 
-                  key={preset.name} 
+                  key={`${preset.name}-${idx}`} 
                   value={preset.name}
                   style={{ background: '#1a1a2e', color: '#c4b5fd' }}
                 >
@@ -2285,6 +2714,17 @@ const App: React.FC = () => {
           )}
         </CollapsiblePanel>
 
+        {/* Cloud Presets */}
+        <CloudPresets
+          currentState={state}
+          onLoadPreset={(presetState, _name) => {
+            setState(presetState);
+            if (engineState.isRunning) {
+              audioEngine.updateParams(presetState);
+            }
+          }}
+        />
+
         {/* Harmony */}
         <CollapsiblePanel
           id="harmony"
@@ -2306,7 +2746,7 @@ const App: React.FC = () => {
             <Select
               label="Scale Family"
               value={state.manualScale}
-              options={SCALE_FAMILIES.map((s) => ({ value: s.name, label: s.name }))}
+              options={SCALE_FAMILIES.map((s) => ({ value: s.name, label: `${NOTE_NAMES[state.rootNote]} ${s.name}` }))}
               onChange={(v) => handleSelectChange('manualScale', v)}
             />
           )}
@@ -3459,9 +3899,8 @@ const App: React.FC = () => {
                   
                   // Helper to convert MIDI note to name relative to root
                   const midiToNoteName = (midi: number): string => {
-                    const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
                     const noteInOctave = midi % 12;
-                    const noteName = noteNames[noteInOctave];
+                    const noteName = NOTE_NAMES[noteInOctave];
                     // Calculate octave relative to root (root2 = 0, root3 = 1, etc.)
                     const octaveFromRoot = Math.floor((midi - rootMidi) / 12);
                     return `${noteName}${octaveFromRoot}`;
@@ -4082,14 +4521,16 @@ const App: React.FC = () => {
         <div style={styles.debugRow}>
           <span style={styles.debugLabel}>Scale Family:</span>
           <span style={styles.debugValue}>
-            {engineState.harmonyState?.scaleFamily.name || '—'}
+            {engineState.harmonyState?.scaleFamily.name 
+              ? `${NOTE_NAMES[state.cofDriftEnabled ? calculateDriftedRoot(state.rootNote, engineState.cofCurrentStep) : state.rootNote]} ${engineState.harmonyState.scaleFamily.name}`
+              : '—'}
           </span>
         </div>
         {state.cofDriftEnabled && (
           <div style={styles.debugRow}>
             <span style={styles.debugLabel}>CoF Key:</span>
             <span style={styles.debugValue}>
-              {['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'][
+              {NOTE_NAMES[
                 calculateDriftedRoot(state.rootNote, engineState.cofCurrentStep)
               ]} (step: {engineState.cofCurrentStep > 0 ? '+' : ''}{engineState.cofCurrentStep})
             </span>
@@ -4116,6 +4557,107 @@ const App: React.FC = () => {
           </span>
         </div>
       </div>
+
+      {/* Upload Slot Choice Dialog */}
+      {uploadSlotDialogOpen && pendingUploadPreset && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.8)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 10000,
+        }}>
+          <div style={{
+            background: 'linear-gradient(180deg, #1a1a2e, #0f0f1a)',
+            border: '1px solid #444',
+            borderRadius: '12px',
+            padding: '24px',
+            minWidth: '280px',
+            textAlign: 'center',
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
+          }}>
+            <div style={{ fontSize: '1rem', marginBottom: '8px', color: '#e0e0e0' }}>
+              Load to which slot?
+            </div>
+            <div style={{ fontSize: '0.8rem', color: '#888', marginBottom: '20px' }}>
+              "{pendingUploadPreset.name}"
+            </div>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+              <button
+                onClick={() => handleUploadSlotChoice('a')}
+                style={{
+                  padding: '12px 32px',
+                  fontSize: '1rem',
+                  fontWeight: 'bold',
+                  background: 'linear-gradient(135deg, #064e3b, #022c22)',
+                  border: '2px solid #10b981',
+                  borderRadius: '8px',
+                  color: '#6ee7b7',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'linear-gradient(135deg, #065f46, #064e3b)';
+                  e.currentTarget.style.transform = 'scale(1.05)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'linear-gradient(135deg, #064e3b, #022c22)';
+                  e.currentTarget.style.transform = 'scale(1)';
+                }}
+              >
+                Slot A
+              </button>
+              <button
+                onClick={() => handleUploadSlotChoice('b')}
+                style={{
+                  padding: '12px 32px',
+                  fontSize: '1rem',
+                  fontWeight: 'bold',
+                  background: 'linear-gradient(135deg, #4c1d95, #2e1065)',
+                  border: '2px solid #8b5cf6',
+                  borderRadius: '8px',
+                  color: '#a78bfa',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'linear-gradient(135deg, #5b21b6, #4c1d95)';
+                  e.currentTarget.style.transform = 'scale(1.05)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'linear-gradient(135deg, #4c1d95, #2e1065)';
+                  e.currentTarget.style.transform = 'scale(1)';
+                }}
+              >
+                Slot B
+              </button>
+            </div>
+            <button
+              onClick={() => {
+                setUploadSlotDialogOpen(false);
+                setPendingUploadPreset(null);
+              }}
+              style={{
+                marginTop: '16px',
+                padding: '8px 20px',
+                fontSize: '0.8rem',
+                background: 'transparent',
+                border: '1px solid #666',
+                borderRadius: '6px',
+                color: '#888',
+                cursor: 'pointer',
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

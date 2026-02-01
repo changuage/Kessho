@@ -186,6 +186,14 @@ export class AudioEngine {
     }
   }
 
+  // Reset Circle of Fifths drift to home key (step 0)
+  // Call this when loading a preset or when morph completes
+  resetCofDrift(): void {
+    this.cofConfig.currentStep = 0;
+    this.cofConfig.phraseCounter = 0;
+    this.notifyStateChange();
+  }
+
   // Play a silent buffer to unlock iOS audio context
   private unlockAudioContext(): void {
     if (!this.ctx) return;
@@ -327,8 +335,7 @@ export class AudioEngine {
   }
 
   updateParams(sliderState: SliderState): void {
-    if (!this.ctx || !this.isRunning) return;
-
+    // Always update stored state and CoF config, even when not running
     const oldSeedWindow = this.sliderState?.seedWindow;
     this.sliderState = sliderState;
     this.sliderStateJson = JSON.stringify(sliderState);
@@ -343,6 +350,9 @@ export class AudioEngine {
       this.cofConfig.currentStep = 0;
       this.cofConfig.phraseCounter = 0;
     }
+
+    // Only apply audio parameters if engine is running
+    if (!this.ctx || !this.isRunning) return;
 
     // Apply continuous parameters immediately with smoothing
     this.applyParams(sliderState);
@@ -585,6 +595,20 @@ export class AudioEngine {
 
     const ctx = this.ctx;
 
+    // Clear any existing voices first (in case of restart)
+    for (const voice of this.voices) {
+      try {
+        voice.osc1.stop();
+        voice.osc2.stop();
+        voice.osc3.stop();
+        voice.osc4.stop();
+        voice.noise?.stop();
+      } catch {
+        // Already stopped or never started
+      }
+    }
+    this.voices = [];
+
     // Create saturation curve
     const saturationCurve = this.createSaturationCurve(this.sliderState?.hardness ?? 0.3);
 
@@ -780,11 +804,16 @@ export class AudioEngine {
     if (!this.ctx) return;
 
     for (const voice of this.voices) {
-      voice.osc1.start();
-      voice.osc2.start();
-      voice.osc3.start();
-      voice.osc4.start();
-      voice.noise?.start();
+      try {
+        voice.osc1.start();
+        voice.osc2.start();
+        voice.osc3.start();
+        voice.osc4.start();
+        voice.noise?.start();
+      } catch (e) {
+        // Already started - this is OK if restarting
+        console.warn('Voice already started, skipping');
+      }
     }
   }
 
@@ -944,20 +973,9 @@ export class AudioEngine {
         this.rng
       );
       
-      console.log('[CoF] Drift check:', {
-        enabled: this.cofConfig.enabled,
-        phraseCounter: this.cofConfig.phraseCounter,
-        driftRate: this.cofConfig.driftRate,
-        currentStep: this.cofConfig.currentStep,
-        newStep: driftResult.newStep,
-        didDrift: driftResult.didDrift,
-        newCounter: driftResult.newCounter
-      });
-      
       // Force new chord if we drifted to a new key
       if (driftResult.didDrift) {
         forceNewChord = true;
-        console.log('[CoF] Key change! Forcing new chord.');
       }
       
       this.cofConfig.currentStep = driftResult.newStep;
@@ -979,8 +997,6 @@ export class AudioEngine {
     
     // Store for use by lead synth and other components
     this.effectiveRoot = effectiveRoot;
-
-    console.log('[CoF] Effective root:', effectiveRoot, '(home:', homeRoot, 'step:', this.cofConfig.currentStep, ')');
 
     // If we drifted, force the harmony state to generate a new chord immediately
     if (forceNewChord) {
