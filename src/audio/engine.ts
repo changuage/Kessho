@@ -554,12 +554,24 @@ export class AudioEngine {
     this.oceanFilter.connect(this.masterGain);
 
     this.masterGain.connect(this.limiter);
-    this.limiter.connect(ctx.destination);
     
-    // Also connect to MediaStreamDestination for iOS background audio
-    // This allows an HTML audio element to play the Web Audio output
-    this.mediaStreamDest = ctx.createMediaStreamDestination();
-    this.limiter.connect(this.mediaStreamDest);
+    // Detect iOS/mobile - these need MediaStream for background audio
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    
+    if (isIOS || isMobile) {
+      // On mobile: ONLY connect to MediaStreamDestination
+      // The HTML audio element will play this stream
+      // Do NOT also connect to ctx.destination or you get double audio!
+      this.mediaStreamDest = ctx.createMediaStreamDestination();
+      this.limiter.connect(this.mediaStreamDest);
+      console.log('Mobile detected: Audio routed through MediaStream only (no double audio)');
+    } else {
+      // On desktop: Connect directly to destination (no MediaStream needed)
+      this.limiter.connect(ctx.destination);
+      this.mediaStreamDest = null;
+      console.log('Desktop detected: Audio routed directly to destination');
+    }
 
     // Load ocean sample asynchronously
     this.loadOceanSample();
