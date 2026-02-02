@@ -10,6 +10,7 @@
 
 // This file runs in AudioWorklet context
 interface GranulatorParams {
+  maxGrains: number;      // 0..128 - maximum concurrent grains
   grainSizeMin: number;   // ms - minimum grain size
   grainSizeMax: number;   // ms - maximum grain size
   density: number;        // grains/sec
@@ -76,6 +77,7 @@ class GranulatorProcessor extends AudioWorkletProcessor {
 
   // Parameters with defaults
   private params: GranulatorParams = {
+    maxGrains: 64,
     grainSizeMin: 20,
     grainSizeMax: 80,
     density: 20,
@@ -117,9 +119,9 @@ class GranulatorProcessor extends AudioWorkletProcessor {
       this.hannTable[i] = 0.5 * (1 - Math.cos(2 * Math.PI * phase));
     }
 
-    // Pre-allocate grain pool
+    // Pre-allocate grain pool (will be resized when maxGrains param changes)
     this.grains = [];
-    for (let i = 0; i < 64; i++) {  // Reduced from 100 to 64 max grains
+    for (let i = 0; i < this.params.maxGrains; i++) {
       this.grains.push({
         startSample: 0,
         position: 0,
@@ -201,10 +203,16 @@ class GranulatorProcessor extends AudioWorkletProcessor {
         this.perfCount = 0;
         this.perfSamplesSinceReport = 0;
         break;
-      case 'params':
+      case 'params': {
+        const oldMaxGrains = this.params.maxGrains;
         Object.assign(this.params, data.params);
         this.updateTimings();
+        // Resize grain pool if maxGrains changed
+        if (this.params.maxGrains !== oldMaxGrains) {
+          this.resizeGrainPool(this.params.maxGrains);
+        }
         break;
+      }
       case 'randomSequence':
         this.randomSequence = data.sequence as Float32Array;
         this.randomIndex = 0;
@@ -214,6 +222,27 @@ class GranulatorProcessor extends AudioWorkletProcessor {
         this.randomSequence = data.sequence as Float32Array;
         this.randomIndex = 0;
         break;
+    }
+  }
+
+  private resizeGrainPool(newSize: number) {
+    // If shrinking, just deactivate excess grains
+    if (newSize < this.grains.length) {
+      for (let i = newSize; i < this.grains.length; i++) {
+        this.grains[i].active = false;
+      }
+      this.grains.length = newSize;
+    }
+    // If growing, add new inactive grains
+    while (this.grains.length < newSize) {
+      this.grains.push({
+        startSample: 0,
+        position: 0,
+        length: 0,
+        playbackRate: 1,
+        pan: 0,
+        active: false,
+      });
     }
   }
 

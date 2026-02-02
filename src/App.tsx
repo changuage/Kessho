@@ -3590,6 +3590,13 @@ const App: React.FC = () => {
           </div>
 
           <Slider
+            label="Max Grains"
+            value={state.maxGrains}
+            paramKey="maxGrains"
+            onChange={handleSliderChange}
+            {...sliderProps('maxGrains')}
+          />
+          <Slider
             label="Grain Probability"
             value={state.grainProbability}
             paramKey="grainProbability"

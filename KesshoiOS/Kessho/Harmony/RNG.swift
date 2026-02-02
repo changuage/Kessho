@@ -6,8 +6,9 @@ func xmur3(_ str: String) -> () -> UInt32 {
     var h: UInt32 = 1779033703 ^ UInt32(str.count)
     
     for char in str.utf8 {
-        h = h ^ UInt32(char)
-        h = h &* 3432918353
+        // Match JS: Math.imul(h ^ str.charCodeAt(i), 3432918353)
+        // XOR and multiply must be in same expression
+        h = (h ^ UInt32(char)) &* 3432918353
         h = (h << 13) | (h >> 19)
     }
     

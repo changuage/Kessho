@@ -76,6 +76,7 @@ export interface SliderState {
 
   // Granular
   granularEnabled: boolean;    // on/off toggle for granular processing
+  maxGrains: number;           // 0..128 step 1 - maximum concurrent grains
   grainProbability: number;   // 0..1 step 0.01 - chance each grain triggers
   grainSizeMin: number;       // 5..60 ms step 1 - minimum grain size
   grainSizeMax: number;       // 20..200 ms step 1 - maximum grain size
@@ -219,6 +220,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'damping',
   'width',
   'granularEnabled',
+  'maxGrains',
   'grainProbability',
   'grainSizeMin',
   'grainSizeMax',
@@ -375,6 +377,7 @@ export const DEFAULT_STATE: SliderState = {
 
   // Granular
   granularEnabled: true,
+  maxGrains: 64,
   grainProbability: 0.8,
   grainSizeMin: 20,
   grainSizeMax: 80,
@@ -531,6 +534,7 @@ const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> = {
   damping: { min: 0, max: 1, step: 0.01 },
   width: { min: 0, max: 1, step: 0.01 },
   grainProbability: { min: 0, max: 1, step: 0.01 },
+  maxGrains: { min: 0, max: 128, step: 1 },
   grainSizeMin: { min: 5, max: 60, step: 1 },
   grainSizeMax: { min: 20, max: 200, step: 1 },
   density: { min: 5, max: 80, step: 1 },

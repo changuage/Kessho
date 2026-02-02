@@ -391,6 +391,7 @@ class AudioEngine {
             min: Float(currentParams.grainSizeMin / 1000.0),  // Convert ms to seconds
             max: Float(currentParams.grainSizeMax / 1000.0)
         )
+        granularProcessor?.setMaxGrains(Int(currentParams.maxGrains))
         granularProcessor?.setSpray(Float(currentParams.spray / 1000.0))  // Convert ms to seconds
         granularProcessor?.setJitter(Float(currentParams.jitter / 100.0))  // Normalize
         granularProcessor?.setFeedback(Float(currentParams.feedback))
@@ -672,23 +673,27 @@ class AudioEngine {
         guard !scaleNotes.isEmpty else { return }
         
         // Schedule notes at random times within the phrase
-        for _ in 0..<notesThisPhrase {
+        for noteIndex in 0..<notesThisPhrase {
             let timing = rng() * phraseDuration
             let velocity = Float(rng() * 0.4 + 0.3)
             
-            // Pick a note from scale
-            if let note = scaleNotes.randomElement() {
-                let workItem = DispatchWorkItem { [weak self] in
-                    guard let self = self, self.isRunning else { return }
-                    self.leadSynth?.randomizeTimbre()
-                    self.leadSynth?.randomizeExpression()
-                    self.leadSynth?.randomizeDelay()
-                    self.leadSynth?.playNote(midiNote: note, velocity: velocity)
-                }
-                
-                scheduledLeadNotes.append(workItem)
-                DispatchQueue.main.asyncAfter(deadline: .now() + timing, execute: workItem)
+            // Pick a note from scale using seeded RNG (not .randomElement())
+            let noteIdx = Int(rng() * Double(scaleNotes.count)) % scaleNotes.count
+            let note = scaleNotes[noteIdx]
+            
+            // Create per-note RNG for timbre/expression/delay randomization
+            let noteRng = createRng("\(currentBucket)|\(currentSeed)|lead|\(phraseIndex)|\(noteIndex)")
+            
+            let workItem = DispatchWorkItem { [weak self] in
+                guard let self = self, self.isRunning else { return }
+                self.leadSynth?.randomizeTimbre(noteRng)
+                self.leadSynth?.randomizeExpression(noteRng)
+                self.leadSynth?.randomizeDelay(noteRng)
+                self.leadSynth?.playNote(midiNote: note, velocity: velocity)
             }
+            
+            scheduledLeadNotes.append(workItem)
+            DispatchQueue.main.asyncAfter(deadline: .now() + timing, execute: workItem)
         }
     }
     
@@ -807,19 +812,32 @@ class AudioEngine {
         // Get scale notes for quantization
         let scaleNotes = getScaleNotesInRange(scale: scale, lowMidi: 24, highMidi: 108, rootNote: effectiveRoot)
         
+        // Get phrase index for deterministic RNG
+        let phraseIndex = getCurrentPhraseIndex()
+        
         // Schedule each note using DispatchQueue for precise timing
-        for note in scheduledNotes {
+        for (noteIndex, note) in scheduledNotes.enumerated() {
+            // Create per-note RNG for deterministic note selection and randomization
+            let noteRng = createRng("\(currentBucket)|\(currentSeed)|euclid|\(phraseIndex)|\(noteIndex)")
+            
+            // Pick note from scale in range using seeded RNG (not .randomElement())
+            let availableNotes = scaleNotes.filter { $0 >= note.noteMin && $0 <= note.noteMax }
+            let midiNote: Int
+            if !availableNotes.isEmpty {
+                let idx = Int(noteRng() * Double(availableNotes.count)) % availableNotes.count
+                midiNote = availableNotes[idx]
+            } else if let first = scaleNotes.first {
+                midiNote = first
+            } else {
+                continue
+            }
+            
             let workItem = DispatchWorkItem { [weak self] in
                 guard let self = self, self.isRunning else { return }
-                
-                // Pick note from scale in range
-                let availableNotes = scaleNotes.filter { $0 >= note.noteMin && $0 <= note.noteMax }
-                if let midiNote = availableNotes.randomElement() ?? scaleNotes.first {
-                    self.leadSynth?.randomizeTimbre()
-                    self.leadSynth?.randomizeExpression()
-                    self.leadSynth?.randomizeDelay()
-                    self.leadSynth?.playNote(midiNote: midiNote, velocity: note.level)
-                }
+                self.leadSynth?.randomizeTimbre(noteRng)
+                self.leadSynth?.randomizeExpression(noteRng)
+                self.leadSynth?.randomizeDelay(noteRng)
+                self.leadSynth?.playNote(midiNote: midiNote, velocity: note.level)
             }
             
             scheduledEuclideanNotes.append(workItem)

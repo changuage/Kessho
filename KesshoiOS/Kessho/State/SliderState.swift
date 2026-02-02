@@ -69,6 +69,7 @@ struct SliderState: Codable, Equatable {
     
     // Granular
     var granularEnabled: Bool = true
+    var maxGrains: Double = 64
     var grainProbability: Double = 0.8
     var grainSizeMin: Double = 20
     var grainSizeMax: Double = 80

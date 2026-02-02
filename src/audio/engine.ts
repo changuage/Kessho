@@ -1233,6 +1233,7 @@ export class AudioEngine {
       this.granulatorNode.port.postMessage({
         type: 'params',
         params: {
+          maxGrains: state.maxGrains,
           grainSizeMin: state.grainSizeMin,
           grainSizeMax: state.grainSizeMax,
           density: state.density,

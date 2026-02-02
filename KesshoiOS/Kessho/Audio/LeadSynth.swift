@@ -316,41 +316,41 @@ class LeadSynth {
         self.octaveRange = range
     }
     
-    /// Randomize timbre within range for each note
-    func randomizeTimbre() {
+    /// Randomize timbre within range for each note (deterministic with seeded RNG)
+    func randomizeTimbre(_ rng: () -> Double) {
         let range = timbreMax - timbreMin
-        currentTimbre = timbreMin + Float.random(in: 0...1) * range
+        currentTimbre = timbreMin + Float(rng()) * range
     }
     
-    /// Randomize expression params (vibrato + glide) within their ranges for each note
-    func randomizeExpression() {
+    /// Randomize expression params (vibrato + glide) within their ranges for each note (deterministic with seeded RNG)
+    func randomizeExpression(_ rng: () -> Double) {
         // Randomize vibrato depth
         let depthRange = vibratoDepthMax - vibratoDepthMin
-        vibratoDepth = vibratoDepthMin + Float.random(in: 0...1) * depthRange
+        vibratoDepth = vibratoDepthMin + Float(rng()) * depthRange
         
         // Randomize vibrato rate
         let rateRange = vibratoRateMax - vibratoRateMin
-        vibratoRate = vibratoRateMin + Float.random(in: 0...1) * rateRange
+        vibratoRate = vibratoRateMin + Float(rng()) * rateRange
         
         // Randomize glide
         let glideRange = glideMax - glideMin
-        let glideValue = glideMin + Float.random(in: 0...1) * glideRange
+        let glideValue = glideMin + Float(rng()) * glideRange
         glideRate = 0.9 + glideValue * 0.099
     }
     
-    /// Randomize delay params within their ranges for each note
-    func randomizeDelay() {
+    /// Randomize delay params within their ranges for each note (deterministic with seeded RNG)
+    func randomizeDelay(_ rng: () -> Double) {
         // Randomize delay time
         let timeRange = delayTimeMax - delayTimeMin
-        delayTime = delayTimeMin + Float.random(in: 0...1) * timeRange
+        delayTime = delayTimeMin + Float(rng()) * timeRange
         
         // Randomize delay feedback
         let feedbackRange = delayFeedbackMax - delayFeedbackMin
-        delayFeedback = delayFeedbackMin + Float.random(in: 0...1) * feedbackRange
+        delayFeedback = delayFeedbackMin + Float(rng()) * feedbackRange
         
         // Randomize delay mix
         let mixRange = delayMixMax - delayMixMin
-        delayMix = delayMixMin + Float.random(in: 0...1) * mixRange
+        delayMix = delayMixMin + Float(rng()) * mixRange
     }
     
     /// Clear delay buffers

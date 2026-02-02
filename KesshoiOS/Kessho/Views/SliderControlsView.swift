@@ -47,7 +47,7 @@ struct SliderControlsView: View {
                     ParameterSlider(
                         label: "Granular",
                         value: $appState.state.granularLevel,
-                        range: 0...2,
+                        range: 0...1,
                         icon: "sparkles"
                     )
                     
@@ -61,7 +61,7 @@ struct SliderControlsView: View {
                     ParameterSlider(
                         label: "Reverb",
                         value: $appState.state.reverbLevel,
-                        range: 0...2,
+                        range: 0...1,
                         icon: "waveform.path"
                     )
                 }
@@ -270,7 +270,7 @@ struct SliderControlsView: View {
                     ParameterSlider(
                         label: "Mod Speed",
                         value: $appState.state.filterModSpeed,
-                        range: 0...16,
+                        range: 0.1...5,
                         icon: "waveform.path.ecg"
                     )
                     
@@ -442,6 +442,13 @@ struct SliderControlsView: View {
                 CollapsibleSection(title: "Granular", icon: "sparkles", expanded: $expandedSections) {
                     Toggle("Enabled", isOn: $appState.state.granularEnabled)
                         .foregroundColor(.white)
+                    
+                    ParameterSlider(
+                        label: "Max Grains",
+                        value: $appState.state.maxGrains,
+                        range: 0...128,
+                        icon: "square.grid.3x3.fill"
+                    )
                     
                     ParameterSlider(
                         label: "Probability",

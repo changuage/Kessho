@@ -77,7 +77,7 @@ class GranularProcessor {
     
     // Active grains
     private var grains: [Grain] = []
-    private let maxGrains = 64
+    private var maxGrains: Int = 64
     
     // Timing
     private var samplesSinceLastGrain: Int = 0
@@ -328,6 +328,14 @@ class GranularProcessor {
     
     func setPositionSpread(_ spread: Float) {
         self.positionSpread = spread
+    }
+    
+    func setMaxGrains(_ count: Int) {
+        maxGrains = max(0, min(128, count))
+        // Trim active grains if needed
+        while grains.count > maxGrains {
+            grains.removeLast()
+        }
     }
     
     func setProbability(_ probability: Float) {

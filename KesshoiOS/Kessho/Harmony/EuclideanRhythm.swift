@@ -184,7 +184,7 @@ class EuclideanSequencer {
     
     /// Process a time tick, returns notes to play (MIDI note, velocity)
     /// Called at regular intervals from AudioEngine
-    func tick(scale: ScaleFamily, rootNote: Int) -> [(midiNote: Int, velocity: Float)] {
+    func tick(scale: ScaleFamily, rootNote: Int, rng: () -> Double) -> [(midiNote: Int, velocity: Float)] {
         guard masterEnabled else { return [] }
         
         tickCounter += 1
@@ -196,25 +196,25 @@ class EuclideanSequencer {
         
         // Process each lane
         if lane1.advance() {
-            if let note = pickNote(from: scaleNotes, min: lane1.noteMin, max: lane1.noteMax) {
+            if let note = pickNote(from: scaleNotes, min: lane1.noteMin, max: lane1.noteMax, rng: rng) {
                 notes.append((note, lane1.level))
             }
         }
         
         if lane2.advance() {
-            if let note = pickNote(from: scaleNotes, min: lane2.noteMin, max: lane2.noteMax) {
+            if let note = pickNote(from: scaleNotes, min: lane2.noteMin, max: lane2.noteMax, rng: rng) {
                 notes.append((note, lane2.level))
             }
         }
         
         if lane3.advance() {
-            if let note = pickNote(from: scaleNotes, min: lane3.noteMin, max: lane3.noteMax) {
+            if let note = pickNote(from: scaleNotes, min: lane3.noteMin, max: lane3.noteMax, rng: rng) {
                 notes.append((note, lane3.level))
             }
         }
         
         if lane4.advance() {
-            if let note = pickNote(from: scaleNotes, min: lane4.noteMin, max: lane4.noteMax) {
+            if let note = pickNote(from: scaleNotes, min: lane4.noteMin, max: lane4.noteMax, rng: rng) {
                 notes.append((note, lane4.level))
             }
         }
@@ -230,25 +230,25 @@ class EuclideanSequencer {
         
         // Process each lane
         if lane1.advance() {
-            if let note = pickNote(from: scaleNotes, min: lane1.noteMin, max: lane1.noteMax) {
+            if let note = pickNote(from: scaleNotes, min: lane1.noteMin, max: lane1.noteMax, rng: rng) {
                 notes.append((note, lane1.level))
             }
         }
         
         if lane2.advance() {
-            if let note = pickNote(from: scaleNotes, min: lane2.noteMin, max: lane2.noteMax) {
+            if let note = pickNote(from: scaleNotes, min: lane2.noteMin, max: lane2.noteMax, rng: rng) {
                 notes.append((note, lane2.level))
             }
         }
         
         if lane3.advance() {
-            if let note = pickNote(from: scaleNotes, min: lane3.noteMin, max: lane3.noteMax) {
+            if let note = pickNote(from: scaleNotes, min: lane3.noteMin, max: lane3.noteMax, rng: rng) {
                 notes.append((note, lane3.level))
             }
         }
         
         if lane4.advance() {
-            if let note = pickNote(from: scaleNotes, min: lane4.noteMin, max: lane4.noteMax) {
+            if let note = pickNote(from: scaleNotes, min: lane4.noteMin, max: lane4.noteMax, rng: rng) {
                 notes.append((note, lane4.level))
             }
         }
@@ -256,14 +256,16 @@ class EuclideanSequencer {
         return notes
     }
     
-    /// Pick a note from scale within the given MIDI range
-    private func pickNote(from scaleNotes: [Int], min: Int, max: Int) -> Int? {
+    /// Pick a note from scale within the given MIDI range (deterministic with seeded RNG)
+    private func pickNote(from scaleNotes: [Int], min: Int, max: Int, rng: () -> Double) -> Int? {
         let inRange = scaleNotes.filter { $0 >= min && $0 <= max }
         guard !inRange.isEmpty else {
             // Fallback: just use the range midpoint
             return (min + max) / 2
         }
-        return inRange.randomElement()
+        // Use seeded RNG instead of .randomElement() for cross-platform determinism
+        let index = Int(rng() * Double(inRange.count)) % inRange.count
+        return inRange[index]
     }
     
     /// Reset all lanes
