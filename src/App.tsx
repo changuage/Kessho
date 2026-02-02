@@ -126,11 +126,6 @@ const checkPresetCompatibility = (preset: SavedPreset): string[] => {
     warnings.push(`Reverb type "${preset.state.reverbType}" is iOS-only and will use "hall" instead.`);
   }
   
-  // Check for reverbQuality 'eco' which uses Apple reverb on iOS
-  if (preset.state.reverbQuality === 'eco') {
-    warnings.push(`Reverb quality "eco" uses Apple's reverb on iOS. Using "lite" mode instead.`);
-  }
-  
   return warnings;
 };
 
@@ -141,11 +136,6 @@ const normalizePresetForWeb = (state: SliderState): SliderState => {
   // Replace iOS-only reverb types with 'hall'
   if (normalized.reverbType && IOS_ONLY_REVERB_TYPES.has(normalized.reverbType)) {
     normalized.reverbType = 'hall';
-  }
-  
-  // Replace 'eco' quality with 'lite'
-  if (normalized.reverbQuality === 'eco') {
-    normalized.reverbQuality = 'lite';
   }
   
   return normalized;
@@ -992,6 +982,76 @@ const App: React.FC = () => {
   const [randomWalkPositions, setRandomWalkPositions] = useState<Record<string, number>>({});
   const randomWalkRef = useRef<RandomWalkStates>({});
 
+  // Lead expression trigger positions (0-1 within each range, updated on each note)
+  const [leadExpressionPositions, setLeadExpressionPositions] = useState<{
+    vibratoDepth: number;
+    vibratoRate: number;
+    glide: number;
+  }>({ vibratoDepth: 0.5, vibratoRate: 0.5, glide: 0.5 });
+
+  // Track which expression params are in dual (range) mode vs single mode
+  const [expressionDualModes, setExpressionDualModes] = useState<{
+    vibratoDepth: boolean;
+    vibratoRate: boolean;
+    glide: boolean;
+  }>({ vibratoDepth: true, vibratoRate: true, glide: true });
+
+  // Toggle expression dual mode
+  const toggleExpressionDualMode = useCallback((param: 'vibratoDepth' | 'vibratoRate' | 'glide') => {
+    setExpressionDualModes(prev => {
+      const isDual = prev[param];
+      if (isDual) {
+        // Switching from dual to single - set min=max at the midpoint
+        if (param === 'vibratoDepth') {
+          const mid = (state.leadVibratoDepthMin + state.leadVibratoDepthMax) / 2;
+          setState(s => ({ ...s, leadVibratoDepthMin: mid, leadVibratoDepthMax: mid }));
+        } else if (param === 'vibratoRate') {
+          const mid = (state.leadVibratoRateMin + state.leadVibratoRateMax) / 2;
+          setState(s => ({ ...s, leadVibratoRateMin: mid, leadVibratoRateMax: mid }));
+        } else {
+          const mid = (state.leadGlideMin + state.leadGlideMax) / 2;
+          setState(s => ({ ...s, leadGlideMin: mid, leadGlideMax: mid }));
+        }
+      }
+      return { ...prev, [param]: !isDual };
+    });
+  }, [state.leadVibratoDepthMin, state.leadVibratoDepthMax, state.leadVibratoRateMin, state.leadVibratoRateMax, state.leadGlideMin, state.leadGlideMax]);
+
+  // Track which delay params are in dual (range) mode vs single mode
+  const [delayDualModes, setDelayDualModes] = useState<{
+    time: boolean;
+    feedback: boolean;
+    mix: boolean;
+  }>({ time: true, feedback: true, mix: true });
+
+  // Track last triggered delay values for the indicator
+  const [leadDelayPositions, setLeadDelayPositions] = useState<{
+    time: number;
+    feedback: number;
+    mix: number;
+  }>({ time: 0.5, feedback: 0.5, mix: 0.5 });
+
+  // Toggle delay dual mode
+  const toggleDelayDualMode = useCallback((param: 'time' | 'feedback' | 'mix') => {
+    setDelayDualModes(prev => {
+      const isDual = prev[param];
+      if (isDual) {
+        // Switching from dual to single - set min=max at the midpoint
+        if (param === 'time') {
+          const mid = (state.leadDelayTimeMin + state.leadDelayTimeMax) / 2;
+          setState(s => ({ ...s, leadDelayTimeMin: mid, leadDelayTimeMax: mid }));
+        } else if (param === 'feedback') {
+          const mid = (state.leadDelayFeedbackMin + state.leadDelayFeedbackMax) / 2;
+          setState(s => ({ ...s, leadDelayFeedbackMin: mid, leadDelayFeedbackMax: mid }));
+        } else {
+          const mid = (state.leadDelayMixMin + state.leadDelayMixMax) / 2;
+          setState(s => ({ ...s, leadDelayMixMin: mid, leadDelayMixMax: mid }));
+        }
+      }
+      return { ...prev, [param]: !isDual };
+    });
+  }, [state.leadDelayTimeMin, state.leadDelayTimeMax, state.leadDelayFeedbackMin, state.leadDelayFeedbackMax, state.leadDelayMixMin, state.leadDelayMixMax]);
+
   // Toggle dual slider mode for a parameter
   const handleToggleDualMode = useCallback((key: keyof SliderState) => {
     setDualSliderModes(prev => {
@@ -1125,6 +1185,16 @@ const App: React.FC = () => {
   // Engine state callback
   useEffect(() => {
     audioEngine.setStateChangeCallback(setEngineState);
+  }, []);
+
+  // Lead expression trigger callback
+  useEffect(() => {
+    audioEngine.setLeadExpressionCallback(setLeadExpressionPositions);
+  }, []);
+
+  // Lead delay trigger callback
+  useEffect(() => {
+    audioEngine.setLeadDelayCallback(setLeadDelayPositions);
   }, []);
 
   // Countdown timer
@@ -2376,7 +2446,7 @@ const App: React.FC = () => {
               morphProgress={morphPosition}
               onSelectRoot={(semitone) => {
                 setState(prev => ({ ...prev, rootNote: semitone }));
-                engineRef.current?.resetCofDrift?.();
+                audioEngine.resetCofDrift();
               }}
             />
             
@@ -3884,63 +3954,580 @@ const App: React.FC = () => {
             </div>
           </div>
 
-          {/* Expression Section */}
+          {/* Expression Section - per-note random ranges with trigger indicator */}
           <div style={{ marginTop: '12px', borderTop: '1px solid #333', paddingTop: '12px' }}>
-            <div style={{ fontSize: '0.85rem', color: '#888', marginBottom: '8px' }}>Expression</div>
-            <Slider
-              label="Vibrato Depth"
-              value={state.leadVibratoDepth}
-              paramKey="leadVibratoDepth"
-              onChange={handleSliderChange}
-              {...sliderProps('leadVibratoDepth')}
-            />
-            <div style={{ fontSize: '0.65rem', color: '#666', marginTop: '-8px', marginBottom: '8px' }}>
-              {(state.leadVibratoDepth * 0.5).toFixed(2)} semitones
-            </div>
-            <Slider
-              label="Vibrato Rate"
-              value={state.leadVibratoRate}
-              paramKey="leadVibratoRate"
-              onChange={handleSliderChange}
-              {...sliderProps('leadVibratoRate')}
-            />
-            <div style={{ fontSize: '0.65rem', color: '#666', marginTop: '-8px', marginBottom: '8px' }}>
-              {(2 + state.leadVibratoRate * 6).toFixed(1)} Hz
-            </div>
-            <Slider
-              label="Glide"
-              value={state.leadGlide}
-              paramKey="leadGlide"
-              onChange={handleSliderChange}
-              {...sliderProps('leadGlide')}
-            />
-            <div style={{ fontSize: '0.65rem', color: '#666', marginTop: '-8px', marginBottom: '8px' }}>
-              Portamento between notes
+            <div style={{ fontSize: '0.85rem', color: '#888', marginBottom: '12px' }}>Expression (per note)</div>
+            
+            {/* Vibrato Depth */}
+            {expressionDualModes.vibratoDepth ? (
+              // Dual mode - range slider
+              <div style={styles.sliderGroup}>
+                <div style={styles.sliderLabel}>
+                  <span>
+                    Vibrato Depth
+                    <span style={styles.dualModeIndicator}>⟷ range</span>
+                  </span>
+                  <span>
+                    {(state.leadVibratoDepthMin * 0.5).toFixed(2)} - {(state.leadVibratoDepthMax * 0.5).toFixed(2)} st
+                    <span style={{ color: '#10b981', marginLeft: '8px' }}>
+                      ({((state.leadVibratoDepthMin + leadExpressionPositions.vibratoDepth * (state.leadVibratoDepthMax - state.leadVibratoDepthMin)) * 0.5).toFixed(2)})
+                    </span>
+                  </span>
+                </div>
+                <div 
+                  style={styles.dualSliderContainer}
+                  onDoubleClick={() => toggleExpressionDualMode('vibratoDepth')}
+                  title="Double-click for single value mode"
+                >
+                  <div style={{
+                    ...styles.dualSliderTrack,
+                    left: `${state.leadVibratoDepthMin * 100}%`,
+                    width: `${(state.leadVibratoDepthMax - state.leadVibratoDepthMin) * 100}%`,
+                    background: 'linear-gradient(90deg, rgba(16, 185, 129, 0.6), rgba(5, 150, 105, 0.6))',
+                  }} />
+                  <div
+                    style={{ ...styles.dualSliderThumb, left: `${state.leadVibratoDepthMin * 100}%`, background: '#10b981' }}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      const container = e.currentTarget.parentElement;
+                      if (!container) return;
+                      const move = (me: MouseEvent) => {
+                        const rect = container.getBoundingClientRect();
+                        const pct = Math.max(0, Math.min(100, ((me.clientX - rect.left) / rect.width) * 100));
+                        handleSliderChange('leadVibratoDepthMin', Math.min(pct / 100, state.leadVibratoDepthMax));
+                      };
+                      const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+                      window.addEventListener('mousemove', move);
+                      window.addEventListener('mouseup', up);
+                    }}
+                  />
+                  <div
+                    style={{ ...styles.dualSliderThumb, left: `${state.leadVibratoDepthMax * 100}%`, background: '#10b981' }}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      const container = e.currentTarget.parentElement;
+                      if (!container) return;
+                      const move = (me: MouseEvent) => {
+                        const rect = container.getBoundingClientRect();
+                        const pct = Math.max(0, Math.min(100, ((me.clientX - rect.left) / rect.width) * 100));
+                        handleSliderChange('leadVibratoDepthMax', Math.max(pct / 100, state.leadVibratoDepthMin));
+                      };
+                      const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+                      window.addEventListener('mousemove', move);
+                      window.addEventListener('mouseup', up);
+                    }}
+                  />
+                  <div style={{
+                    ...styles.dualSliderWalkIndicator,
+                    left: `${(state.leadVibratoDepthMin + leadExpressionPositions.vibratoDepth * (state.leadVibratoDepthMax - state.leadVibratoDepthMin)) * 100}%`,
+                    background: '#10b981',
+                    boxShadow: '0 0 8px rgba(16, 185, 129, 0.8)',
+                  }} />
+                </div>
+              </div>
+            ) : (
+              // Single mode - regular slider
+              <div style={styles.sliderGroup}>
+                <div style={styles.sliderLabel}>
+                  <span>Vibrato Depth</span>
+                  <span>{(state.leadVibratoDepthMin * 0.5).toFixed(2)} st</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  value={state.leadVibratoDepthMin}
+                  onChange={(e) => {
+                    const v = parseFloat(e.target.value);
+                    handleSliderChange('leadVibratoDepthMin', v);
+                    handleSliderChange('leadVibratoDepthMax', v);
+                  }}
+                  onDoubleClick={() => toggleExpressionDualMode('vibratoDepth')}
+                  style={styles.slider}
+                  title="Double-click for range mode"
+                />
+              </div>
+            )}
+
+            {/* Vibrato Rate */}
+            {expressionDualModes.vibratoRate ? (
+              <div style={styles.sliderGroup}>
+                <div style={styles.sliderLabel}>
+                  <span>
+                    Vibrato Rate
+                    <span style={styles.dualModeIndicator}>⟷ range</span>
+                  </span>
+                  <span>
+                    {(2 + state.leadVibratoRateMin * 6).toFixed(1)} - {(2 + state.leadVibratoRateMax * 6).toFixed(1)} Hz
+                    <span style={{ color: '#8b5cf6', marginLeft: '8px' }}>
+                      ({(2 + (state.leadVibratoRateMin + leadExpressionPositions.vibratoRate * (state.leadVibratoRateMax - state.leadVibratoRateMin)) * 6).toFixed(1)})
+                    </span>
+                  </span>
+                </div>
+                <div 
+                  style={styles.dualSliderContainer}
+                  onDoubleClick={() => toggleExpressionDualMode('vibratoRate')}
+                  title="Double-click for single value mode"
+                >
+                  <div style={{
+                    ...styles.dualSliderTrack,
+                    left: `${state.leadVibratoRateMin * 100}%`,
+                    width: `${(state.leadVibratoRateMax - state.leadVibratoRateMin) * 100}%`,
+                    background: 'linear-gradient(90deg, rgba(139, 92, 246, 0.6), rgba(124, 58, 237, 0.6))',
+                  }} />
+                  <div
+                    style={{ ...styles.dualSliderThumb, left: `${state.leadVibratoRateMin * 100}%`, background: '#8b5cf6' }}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      const container = e.currentTarget.parentElement;
+                      if (!container) return;
+                      const move = (me: MouseEvent) => {
+                        const rect = container.getBoundingClientRect();
+                        const pct = Math.max(0, Math.min(100, ((me.clientX - rect.left) / rect.width) * 100));
+                        handleSliderChange('leadVibratoRateMin', Math.min(pct / 100, state.leadVibratoRateMax));
+                      };
+                      const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+                      window.addEventListener('mousemove', move);
+                      window.addEventListener('mouseup', up);
+                    }}
+                  />
+                  <div
+                    style={{ ...styles.dualSliderThumb, left: `${state.leadVibratoRateMax * 100}%`, background: '#8b5cf6' }}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      const container = e.currentTarget.parentElement;
+                      if (!container) return;
+                      const move = (me: MouseEvent) => {
+                        const rect = container.getBoundingClientRect();
+                        const pct = Math.max(0, Math.min(100, ((me.clientX - rect.left) / rect.width) * 100));
+                        handleSliderChange('leadVibratoRateMax', Math.max(pct / 100, state.leadVibratoRateMin));
+                      };
+                      const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+                      window.addEventListener('mousemove', move);
+                      window.addEventListener('mouseup', up);
+                    }}
+                  />
+                  <div style={{
+                    ...styles.dualSliderWalkIndicator,
+                    left: `${(state.leadVibratoRateMin + leadExpressionPositions.vibratoRate * (state.leadVibratoRateMax - state.leadVibratoRateMin)) * 100}%`,
+                    background: '#8b5cf6',
+                    boxShadow: '0 0 8px rgba(139, 92, 246, 0.8)',
+                  }} />
+                </div>
+              </div>
+            ) : (
+              <div style={styles.sliderGroup}>
+                <div style={styles.sliderLabel}>
+                  <span>Vibrato Rate</span>
+                  <span>{(2 + state.leadVibratoRateMin * 6).toFixed(1)} Hz</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  value={state.leadVibratoRateMin}
+                  onChange={(e) => {
+                    const v = parseFloat(e.target.value);
+                    handleSliderChange('leadVibratoRateMin', v);
+                    handleSliderChange('leadVibratoRateMax', v);
+                  }}
+                  onDoubleClick={() => toggleExpressionDualMode('vibratoRate')}
+                  style={styles.slider}
+                  title="Double-click for range mode"
+                />
+              </div>
+            )}
+
+            {/* Glide */}
+            {expressionDualModes.glide ? (
+              <div style={styles.sliderGroup}>
+                <div style={styles.sliderLabel}>
+                  <span>
+                    Glide (Portamento)
+                    <span style={styles.dualModeIndicator}>⟷ range</span>
+                  </span>
+                  <span>
+                    {(state.leadGlideMin * 100).toFixed(0)} - {(state.leadGlideMax * 100).toFixed(0)}%
+                    <span style={{ color: '#f59e0b', marginLeft: '8px' }}>
+                      ({((state.leadGlideMin + leadExpressionPositions.glide * (state.leadGlideMax - state.leadGlideMin)) * 100).toFixed(0)})
+                    </span>
+                  </span>
+                </div>
+                <div 
+                  style={styles.dualSliderContainer}
+                  onDoubleClick={() => toggleExpressionDualMode('glide')}
+                  title="Double-click for single value mode"
+                >
+                  <div style={{
+                    ...styles.dualSliderTrack,
+                    left: `${state.leadGlideMin * 100}%`,
+                    width: `${(state.leadGlideMax - state.leadGlideMin) * 100}%`,
+                    background: 'linear-gradient(90deg, rgba(245, 158, 11, 0.6), rgba(217, 119, 6, 0.6))',
+                  }} />
+                  <div
+                    style={{ ...styles.dualSliderThumb, left: `${state.leadGlideMin * 100}%`, background: '#f59e0b' }}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      const container = e.currentTarget.parentElement;
+                      if (!container) return;
+                      const move = (me: MouseEvent) => {
+                        const rect = container.getBoundingClientRect();
+                        const pct = Math.max(0, Math.min(100, ((me.clientX - rect.left) / rect.width) * 100));
+                        handleSliderChange('leadGlideMin', Math.min(pct / 100, state.leadGlideMax));
+                      };
+                      const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+                      window.addEventListener('mousemove', move);
+                      window.addEventListener('mouseup', up);
+                    }}
+                  />
+                  <div
+                    style={{ ...styles.dualSliderThumb, left: `${state.leadGlideMax * 100}%`, background: '#f59e0b' }}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      const container = e.currentTarget.parentElement;
+                      if (!container) return;
+                      const move = (me: MouseEvent) => {
+                        const rect = container.getBoundingClientRect();
+                        const pct = Math.max(0, Math.min(100, ((me.clientX - rect.left) / rect.width) * 100));
+                        handleSliderChange('leadGlideMax', Math.max(pct / 100, state.leadGlideMin));
+                      };
+                      const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+                      window.addEventListener('mousemove', move);
+                      window.addEventListener('mouseup', up);
+                    }}
+                  />
+                  <div style={{
+                    ...styles.dualSliderWalkIndicator,
+                    left: `${(state.leadGlideMin + leadExpressionPositions.glide * (state.leadGlideMax - state.leadGlideMin)) * 100}%`,
+                    background: '#f59e0b',
+                    boxShadow: '0 0 8px rgba(245, 158, 11, 0.8)',
+                  }} />
+                </div>
+              </div>
+            ) : (
+              <div style={styles.sliderGroup}>
+                <div style={styles.sliderLabel}>
+                  <span>Glide (Portamento)</span>
+                  <span>{(state.leadGlideMin * 100).toFixed(0)}%</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  value={state.leadGlideMin}
+                  onChange={(e) => {
+                    const v = parseFloat(e.target.value);
+                    handleSliderChange('leadGlideMin', v);
+                    handleSliderChange('leadGlideMax', v);
+                  }}
+                  onDoubleClick={() => toggleExpressionDualMode('glide')}
+                  style={styles.slider}
+                  title="Double-click for range mode"
+                />
+              </div>
+            )}
+
+            <div style={{ 
+              fontSize: '0.7rem', 
+              color: '#666', 
+              textAlign: 'center',
+              marginTop: '8px'
+            }}>
+              {(expressionDualModes.vibratoDepth || expressionDualModes.vibratoRate || expressionDualModes.glide) 
+                ? 'Each note picks random value • Double-click to toggle range mode' 
+                : 'Double-click slider for range mode'}
             </div>
           </div>
 
-          {/* Delay Section */}
+          {/* Delay Section - per-note random ranges with trigger indicator */}
           <div style={{ marginTop: '12px', borderTop: '1px solid #333', paddingTop: '12px' }}>
-            <div style={{ fontSize: '0.85rem', color: '#888', marginBottom: '8px' }}>Delay Effect</div>
-            <Slider
-              label="Delay Time"
-              value={state.leadDelayTime}
-              paramKey="leadDelayTime"
-              unit="ms"
-              onChange={handleSliderChange}
-            />
-            <Slider
-              label="Delay Feedback"
-              value={state.leadDelayFeedback}
-              paramKey="leadDelayFeedback"
-              onChange={handleSliderChange}
-            />
-            <Slider
-              label="Delay Mix"
-              value={state.leadDelayMix}
-              paramKey="leadDelayMix"
-              onChange={handleSliderChange}
-            />
+            <div style={{ fontSize: '0.85rem', color: '#888', marginBottom: '12px' }}>Delay Effect (per note)</div>
+            
+            {/* Delay Time */}
+            {delayDualModes.time ? (
+              // Dual mode - range slider
+              <div style={styles.sliderGroup}>
+                <div style={styles.sliderLabel}>
+                  <span>
+                    Delay Time
+                    <span style={styles.dualModeIndicator}>⟷ range</span>
+                  </span>
+                  <span>
+                    {state.leadDelayTimeMin.toFixed(0)} - {state.leadDelayTimeMax.toFixed(0)} ms
+                    <span style={{ color: '#8b5cf6', marginLeft: '8px' }}>
+                      ({(state.leadDelayTimeMin + leadDelayPositions.time * (state.leadDelayTimeMax - state.leadDelayTimeMin)).toFixed(0)})
+                    </span>
+                  </span>
+                </div>
+                <div 
+                  style={styles.dualSliderContainer}
+                  onDoubleClick={() => toggleDelayDualMode('time')}
+                  title="Double-click for single value mode"
+                >
+                  <div style={{
+                    ...styles.dualSliderTrack,
+                    left: `${(state.leadDelayTimeMin / 1000) * 100}%`,
+                    width: `${((state.leadDelayTimeMax - state.leadDelayTimeMin) / 1000) * 100}%`,
+                    background: 'linear-gradient(90deg, rgba(139, 92, 246, 0.6), rgba(124, 58, 237, 0.6))',
+                  }} />
+                  <div
+                    style={{ ...styles.dualSliderThumb, left: `${(state.leadDelayTimeMin / 1000) * 100}%`, background: '#8b5cf6' }}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      const container = e.currentTarget.parentElement;
+                      if (!container) return;
+                      const move = (me: MouseEvent) => {
+                        const rect = container.getBoundingClientRect();
+                        const pct = Math.max(0, Math.min(100, ((me.clientX - rect.left) / rect.width) * 100));
+                        handleSliderChange('leadDelayTimeMin', Math.min(pct * 10, state.leadDelayTimeMax));
+                      };
+                      const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+                      window.addEventListener('mousemove', move);
+                      window.addEventListener('mouseup', up);
+                    }}
+                  />
+                  <div
+                    style={{ ...styles.dualSliderThumb, left: `${(state.leadDelayTimeMax / 1000) * 100}%`, background: '#8b5cf6' }}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      const container = e.currentTarget.parentElement;
+                      if (!container) return;
+                      const move = (me: MouseEvent) => {
+                        const rect = container.getBoundingClientRect();
+                        const pct = Math.max(0, Math.min(100, ((me.clientX - rect.left) / rect.width) * 100));
+                        handleSliderChange('leadDelayTimeMax', Math.max(pct * 10, state.leadDelayTimeMin));
+                      };
+                      const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+                      window.addEventListener('mousemove', move);
+                      window.addEventListener('mouseup', up);
+                    }}
+                  />
+                  <div style={{
+                    ...styles.dualSliderWalkIndicator,
+                    left: `${((state.leadDelayTimeMin + leadDelayPositions.time * (state.leadDelayTimeMax - state.leadDelayTimeMin)) / 1000) * 100}%`,
+                    background: '#8b5cf6',
+                    boxShadow: '0 0 8px rgba(139, 92, 246, 0.8)',
+                  }} />
+                </div>
+              </div>
+            ) : (
+              // Single mode - regular slider
+              <div style={styles.sliderGroup}>
+                <div style={styles.sliderLabel}>
+                  <span>Delay Time</span>
+                  <span>{state.leadDelayTimeMin.toFixed(0)} ms</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={1000}
+                  step={10}
+                  value={state.leadDelayTimeMin}
+                  onChange={(e) => {
+                    const v = parseFloat(e.target.value);
+                    handleSliderChange('leadDelayTimeMin', v);
+                    handleSliderChange('leadDelayTimeMax', v);
+                  }}
+                  onDoubleClick={() => toggleDelayDualMode('time')}
+                  style={styles.slider}
+                  title="Double-click for range mode"
+                />
+              </div>
+            )}
+
+            {/* Delay Feedback */}
+            {delayDualModes.feedback ? (
+              <div style={styles.sliderGroup}>
+                <div style={styles.sliderLabel}>
+                  <span>
+                    Delay Feedback
+                    <span style={styles.dualModeIndicator}>⟷ range</span>
+                  </span>
+                  <span>
+                    {(state.leadDelayFeedbackMin * 100).toFixed(0)} - {(state.leadDelayFeedbackMax * 100).toFixed(0)}%
+                    <span style={{ color: '#a855f7', marginLeft: '8px' }}>
+                      ({((state.leadDelayFeedbackMin + leadDelayPositions.feedback * (state.leadDelayFeedbackMax - state.leadDelayFeedbackMin)) * 100).toFixed(0)})
+                    </span>
+                  </span>
+                </div>
+                <div 
+                  style={styles.dualSliderContainer}
+                  onDoubleClick={() => toggleDelayDualMode('feedback')}
+                  title="Double-click for single value mode"
+                >
+                  <div style={{
+                    ...styles.dualSliderTrack,
+                    left: `${(state.leadDelayFeedbackMin / 0.8) * 100}%`,
+                    width: `${((state.leadDelayFeedbackMax - state.leadDelayFeedbackMin) / 0.8) * 100}%`,
+                    background: 'linear-gradient(90deg, rgba(168, 85, 247, 0.6), rgba(147, 51, 234, 0.6))',
+                  }} />
+                  <div
+                    style={{ ...styles.dualSliderThumb, left: `${(state.leadDelayFeedbackMin / 0.8) * 100}%`, background: '#a855f7' }}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      const container = e.currentTarget.parentElement;
+                      if (!container) return;
+                      const move = (me: MouseEvent) => {
+                        const rect = container.getBoundingClientRect();
+                        const pct = Math.max(0, Math.min(100, ((me.clientX - rect.left) / rect.width) * 100));
+                        handleSliderChange('leadDelayFeedbackMin', Math.min((pct / 100) * 0.8, state.leadDelayFeedbackMax));
+                      };
+                      const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+                      window.addEventListener('mousemove', move);
+                      window.addEventListener('mouseup', up);
+                    }}
+                  />
+                  <div
+                    style={{ ...styles.dualSliderThumb, left: `${(state.leadDelayFeedbackMax / 0.8) * 100}%`, background: '#a855f7' }}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      const container = e.currentTarget.parentElement;
+                      if (!container) return;
+                      const move = (me: MouseEvent) => {
+                        const rect = container.getBoundingClientRect();
+                        const pct = Math.max(0, Math.min(100, ((me.clientX - rect.left) / rect.width) * 100));
+                        handleSliderChange('leadDelayFeedbackMax', Math.max((pct / 100) * 0.8, state.leadDelayFeedbackMin));
+                      };
+                      const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+                      window.addEventListener('mousemove', move);
+                      window.addEventListener('mouseup', up);
+                    }}
+                  />
+                  <div style={{
+                    ...styles.dualSliderWalkIndicator,
+                    left: `${((state.leadDelayFeedbackMin + leadDelayPositions.feedback * (state.leadDelayFeedbackMax - state.leadDelayFeedbackMin)) / 0.8) * 100}%`,
+                    background: '#a855f7',
+                    boxShadow: '0 0 8px rgba(168, 85, 247, 0.8)',
+                  }} />
+                </div>
+              </div>
+            ) : (
+              <div style={styles.sliderGroup}>
+                <div style={styles.sliderLabel}>
+                  <span>Delay Feedback</span>
+                  <span>{(state.leadDelayFeedbackMin * 100).toFixed(0)}%</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={0.8}
+                  step={0.01}
+                  value={state.leadDelayFeedbackMin}
+                  onChange={(e) => {
+                    const v = parseFloat(e.target.value);
+                    handleSliderChange('leadDelayFeedbackMin', v);
+                    handleSliderChange('leadDelayFeedbackMax', v);
+                  }}
+                  onDoubleClick={() => toggleDelayDualMode('feedback')}
+                  style={styles.slider}
+                  title="Double-click for range mode"
+                />
+              </div>
+            )}
+
+            {/* Delay Mix */}
+            {delayDualModes.mix ? (
+              <div style={styles.sliderGroup}>
+                <div style={styles.sliderLabel}>
+                  <span>
+                    Delay Mix
+                    <span style={styles.dualModeIndicator}>⟷ range</span>
+                  </span>
+                  <span>
+                    {(state.leadDelayMixMin * 100).toFixed(0)} - {(state.leadDelayMixMax * 100).toFixed(0)}%
+                    <span style={{ color: '#c084fc', marginLeft: '8px' }}>
+                      ({((state.leadDelayMixMin + leadDelayPositions.mix * (state.leadDelayMixMax - state.leadDelayMixMin)) * 100).toFixed(0)})
+                    </span>
+                  </span>
+                </div>
+                <div 
+                  style={styles.dualSliderContainer}
+                  onDoubleClick={() => toggleDelayDualMode('mix')}
+                  title="Double-click for single value mode"
+                >
+                  <div style={{
+                    ...styles.dualSliderTrack,
+                    left: `${state.leadDelayMixMin * 100}%`,
+                    width: `${(state.leadDelayMixMax - state.leadDelayMixMin) * 100}%`,
+                    background: 'linear-gradient(90deg, rgba(192, 132, 252, 0.6), rgba(168, 85, 247, 0.6))',
+                  }} />
+                  <div
+                    style={{ ...styles.dualSliderThumb, left: `${state.leadDelayMixMin * 100}%`, background: '#c084fc' }}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      const container = e.currentTarget.parentElement;
+                      if (!container) return;
+                      const move = (me: MouseEvent) => {
+                        const rect = container.getBoundingClientRect();
+                        const pct = Math.max(0, Math.min(100, ((me.clientX - rect.left) / rect.width) * 100));
+                        handleSliderChange('leadDelayMixMin', Math.min(pct / 100, state.leadDelayMixMax));
+                      };
+                      const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+                      window.addEventListener('mousemove', move);
+                      window.addEventListener('mouseup', up);
+                    }}
+                  />
+                  <div
+                    style={{ ...styles.dualSliderThumb, left: `${state.leadDelayMixMax * 100}%`, background: '#c084fc' }}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      const container = e.currentTarget.parentElement;
+                      if (!container) return;
+                      const move = (me: MouseEvent) => {
+                        const rect = container.getBoundingClientRect();
+                        const pct = Math.max(0, Math.min(100, ((me.clientX - rect.left) / rect.width) * 100));
+                        handleSliderChange('leadDelayMixMax', Math.max(pct / 100, state.leadDelayMixMin));
+                      };
+                      const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+                      window.addEventListener('mousemove', move);
+                      window.addEventListener('mouseup', up);
+                    }}
+                  />
+                  <div style={{
+                    ...styles.dualSliderWalkIndicator,
+                    left: `${(state.leadDelayMixMin + leadDelayPositions.mix * (state.leadDelayMixMax - state.leadDelayMixMin)) * 100}%`,
+                    background: '#c084fc',
+                    boxShadow: '0 0 8px rgba(192, 132, 252, 0.8)',
+                  }} />
+                </div>
+              </div>
+            ) : (
+              <div style={styles.sliderGroup}>
+                <div style={styles.sliderLabel}>
+                  <span>Delay Mix</span>
+                  <span>{(state.leadDelayMixMin * 100).toFixed(0)}%</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  value={state.leadDelayMixMin}
+                  onChange={(e) => {
+                    const v = parseFloat(e.target.value);
+                    handleSliderChange('leadDelayMixMin', v);
+                    handleSliderChange('leadDelayMixMax', v);
+                  }}
+                  onDoubleClick={() => toggleDelayDualMode('mix')}
+                  style={styles.slider}
+                  title="Double-click for range mode"
+                />
+              </div>
+            )}
+
+            <div style={{ 
+              fontSize: '0.7rem', 
+              color: '#666', 
+              textAlign: 'center',
+              marginTop: '8px'
+            }}>
+              {(delayDualModes.time || delayDualModes.feedback || delayDualModes.mix) 
+                ? 'Each note picks random value • Double-click to toggle range mode' 
+                : 'Double-click slider for range mode'}
+            </div>
           </div>
 
           {/* Euclidean Polyrhythm Sequencer Section */}

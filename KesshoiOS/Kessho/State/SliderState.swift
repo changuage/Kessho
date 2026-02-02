@@ -89,17 +89,23 @@ struct SliderState: Codable, Equatable {
     var leadDecay: Double = 0.8
     var leadSustain: Double = 0.3
     var leadRelease: Double = 2.0
-    var leadDelayTime: Double = 375
-    var leadDelayFeedback: Double = 0.4
-    var leadDelayMix: Double = 0.35
+    var leadDelayTimeMin: Double = 300   // Min delay time in ms
+    var leadDelayTimeMax: Double = 450   // Max delay time in ms
+    var leadDelayFeedbackMin: Double = 0.3
+    var leadDelayFeedbackMax: Double = 0.5
+    var leadDelayMixMin: Double = 0.25
+    var leadDelayMixMax: Double = 0.45
     var leadDensity: Double = 0.5
     var leadOctave: Int = 1
     var leadOctaveRange: Int = 2
     var leadTimbreMin: Double = 0.2
     var leadTimbreMax: Double = 0.6
-    var leadVibratoDepth: Double = 0.2  // 0-1, maps to 0-0.5 semitones
-    var leadVibratoRate: Double = 0.5   // 0-1, maps to 2-8 Hz
-    var leadGlide: Double = 0.3         // 0-1, portamento speed
+    var leadVibratoDepthMin: Double = 0.1  // 0-1, maps to 0-0.5 semitones
+    var leadVibratoDepthMax: Double = 0.3
+    var leadVibratoRateMin: Double = 0.3   // 0-1, maps to 2-8 Hz
+    var leadVibratoRateMax: Double = 0.7
+    var leadGlideMin: Double = 0.2         // 0-1, portamento speed
+    var leadGlideMax: Double = 0.4
     
     // Euclidean Rhythms
     var leadEuclideanMasterEnabled: Bool = false
@@ -172,6 +178,12 @@ struct SliderState: Codable, Equatable {
     var filterCutoff: Double?  // Old single-value filter cutoff
     var brightness: Double?  // Old brightness param
     var reverbMix: Double?  // Old reverb mix
+    var leadDelayTime: Double?  // Old single-value delay time
+    var leadDelayFeedback: Double?  // Old single-value delay feedback
+    var leadDelayMix: Double?  // Old single-value delay mix
+    var leadVibratoDepth: Double?  // Old single-value vibrato depth
+    var leadVibratoRate: Double?  // Old single-value vibrato rate
+    var leadGlide: Double?  // Old single-value glide
 }
 
 /// Dual range for sliders in range mode - matches web app

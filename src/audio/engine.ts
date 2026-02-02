@@ -140,6 +140,8 @@ export class AudioEngine {
   private currentFilterFreq = 1000;  // Current filter frequency for UI display
 
   private onStateChange: ((state: EngineState) => void) | null = null;
+  private onLeadExpressionTrigger: ((expression: { vibratoDepth: number; vibratoRate: number; glide: number }) => void) | null = null;
+  private onLeadDelayTrigger: ((delay: { time: number; feedback: number; mix: number }) => void) | null = null;
 
   constructor() {
     // Empty constructor
@@ -147,6 +149,14 @@ export class AudioEngine {
 
   setStateChangeCallback(callback: (state: EngineState) => void) {
     this.onStateChange = callback;
+  }
+
+  setLeadExpressionCallback(callback: (expression: { vibratoDepth: number; vibratoRate: number; glide: number }) => void) {
+    this.onLeadExpressionTrigger = callback;
+  }
+
+  setLeadDelayCallback(callback: (delay: { time: number; feedback: number; mix: number }) => void) {
+    this.onLeadDelayTrigger = callback;
   }
 
   private notifyStateChange() {
@@ -443,18 +453,18 @@ export class AudioEngine {
     // Stereo ping-pong delay
     this.leadDelayL = ctx.createDelay(2);
     this.leadDelayR = ctx.createDelay(2);
-    const delayTime = (this.sliderState?.leadDelayTime ?? 375) / 1000;
+    const delayTime = (this.sliderState?.leadDelayTimeMin ?? 375) / 1000;
     this.leadDelayL.delayTime.value = delayTime;
     this.leadDelayR.delayTime.value = delayTime * 0.75; // Offset for stereo effect
 
     this.leadDelayFeedbackL = ctx.createGain();
     this.leadDelayFeedbackR = ctx.createGain();
-    const feedback = this.sliderState?.leadDelayFeedback ?? 0.4;
+    const feedback = this.sliderState?.leadDelayFeedbackMin ?? 0.4;
     this.leadDelayFeedbackL.gain.value = feedback;
     this.leadDelayFeedbackR.gain.value = feedback;
 
     this.leadDelayMix = ctx.createGain();
-    this.leadDelayMix.gain.value = this.sliderState?.leadDelayMix ?? 0.35;
+    this.leadDelayMix.gain.value = this.sliderState?.leadDelayMixMin ?? 0.35;
 
     this.leadDry = ctx.createGain();
     this.leadDry.gain.value = 1.0;
@@ -1282,13 +1292,8 @@ export class AudioEngine {
     // Lead synth parameters
     this.leadGain?.gain.setTargetAtTime(state.leadEnabled ? state.leadLevel : 0, now, smoothTime);
     
-    // Delay parameters
-    const delayTime = state.leadDelayTime / 1000;
-    this.leadDelayL?.delayTime.setTargetAtTime(delayTime, now, smoothTime);
-    this.leadDelayR?.delayTime.setTargetAtTime(delayTime * 0.75, now, smoothTime);
-    this.leadDelayFeedbackL?.gain.setTargetAtTime(state.leadDelayFeedback, now, smoothTime);
-    this.leadDelayFeedbackR?.gain.setTargetAtTime(state.leadDelayFeedback, now, smoothTime);
-    this.leadDelayMix?.gain.setTargetAtTime(state.leadDelayMix, now, smoothTime);
+    // Delay parameters are now per-note (randomized in playLeadNote)
+    // Only update reverb sends here
     this.leadReverbSend?.gain.setTargetAtTime(state.leadReverbSend, now, smoothTime);
     this.leadDelayReverbSend?.gain.setTargetAtTime(state.leadDelayReverbSend, now, smoothTime);
 
@@ -1440,10 +1445,71 @@ export class AudioEngine {
     const sustain = this.sliderState.leadSustain;
     const release = this.sliderState.leadRelease;
     
-    // Vibrato and glide settings
-    const vibratoDepth = this.sliderState.leadVibratoDepth * 0.5; // 0-0.5 semitones
-    const vibratoRate = 2 + this.sliderState.leadVibratoRate * 6; // 2-8 Hz
-    const glide = this.sliderState.leadGlide;
+    // Vibrato and glide settings - pick random values within ranges (like timbre)
+    const vibratoDepthMin = this.sliderState.leadVibratoDepthMin;
+    const vibratoDepthMax = this.sliderState.leadVibratoDepthMax;
+    const vibratoDepthNorm = vibratoDepthMin + Math.random() * (vibratoDepthMax - vibratoDepthMin);
+    const vibratoDepth = vibratoDepthNorm * 0.5; // 0-0.5 semitones
+    
+    const vibratoRateMin = this.sliderState.leadVibratoRateMin;
+    const vibratoRateMax = this.sliderState.leadVibratoRateMax;
+    const vibratoRateNorm = vibratoRateMin + Math.random() * (vibratoRateMax - vibratoRateMin);
+    const vibratoRate = 2 + vibratoRateNorm * 6; // 2-8 Hz
+    
+    const glideMin = this.sliderState.leadGlideMin;
+    const glideMax = this.sliderState.leadGlideMax;
+    const glide = glideMin + Math.random() * (glideMax - glideMin);
+
+    // Notify UI of the triggered expression values (normalized 0-1 positions within ranges)
+    if (this.onLeadExpressionTrigger) {
+      this.onLeadExpressionTrigger({
+        vibratoDepth: vibratoDepthMax > vibratoDepthMin 
+          ? (vibratoDepthNorm - vibratoDepthMin) / (vibratoDepthMax - vibratoDepthMin) 
+          : 0.5,
+        vibratoRate: vibratoRateMax > vibratoRateMin 
+          ? (vibratoRateNorm - vibratoRateMin) / (vibratoRateMax - vibratoRateMin) 
+          : 0.5,
+        glide: glideMax > glideMin 
+          ? (glide - glideMin) / (glideMax - glideMin) 
+          : 0.5,
+      });
+    }
+
+    // Delay settings - pick random values within ranges (like expression)
+    const delayTimeMin = this.sliderState.leadDelayTimeMin;
+    const delayTimeMax = this.sliderState.leadDelayTimeMax;
+    const delayTime = delayTimeMin + Math.random() * (delayTimeMax - delayTimeMin);
+    
+    const delayFeedbackMin = this.sliderState.leadDelayFeedbackMin;
+    const delayFeedbackMax = this.sliderState.leadDelayFeedbackMax;
+    const delayFeedback = delayFeedbackMin + Math.random() * (delayFeedbackMax - delayFeedbackMin);
+    
+    const delayMixMin = this.sliderState.leadDelayMixMin;
+    const delayMixMax = this.sliderState.leadDelayMixMax;
+    const delayMix = delayMixMin + Math.random() * (delayMixMax - delayMixMin);
+
+    // Update delay nodes with randomized values
+    const smoothTime = 0.05;
+    this.leadDelayL?.delayTime.setTargetAtTime(delayTime / 1000, now, smoothTime);
+    this.leadDelayR?.delayTime.setTargetAtTime((delayTime / 1000) * 0.75, now, smoothTime);
+    this.leadDelayFeedbackL?.gain.setTargetAtTime(delayFeedback, now, smoothTime);
+    this.leadDelayFeedbackR?.gain.setTargetAtTime(delayFeedback, now, smoothTime);
+    this.leadDelayMix?.gain.setTargetAtTime(delayMix, now, smoothTime);
+
+    // Notify UI of the triggered delay values (normalized 0-1 positions within ranges)
+    if (this.onLeadDelayTrigger) {
+      this.onLeadDelayTrigger({
+        time: delayTimeMax > delayTimeMin 
+          ? (delayTime - delayTimeMin) / (delayTimeMax - delayTimeMin) 
+          : 0.5,
+        feedback: delayFeedbackMax > delayFeedbackMin 
+          ? (delayFeedback - delayFeedbackMin) / (delayFeedbackMax - delayFeedbackMin) 
+          : 0.5,
+        mix: delayMixMax > delayMixMin 
+          ? (delayMix - delayMixMin) / (delayMixMax - delayMixMin) 
+          : 0.5,
+      });
+    }
 
     // Timbre controls: 0 = soft Rhodes, 1 = gamelan metallophone
     // OPTIMIZATION: At low timbre (Rhodes), use fewer oscillators

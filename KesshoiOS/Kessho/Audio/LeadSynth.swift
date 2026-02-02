@@ -27,27 +27,39 @@ class LeadSynth {
     private var sustain: Float = 0.4
     private var release: Float = 0.8
     
-    // Glide
-    private var glideRate: Float = 0.995  // Portamento speed
+    // Glide (min/max for per-note randomization)
+    private var glideRate: Float = 0.995  // Current portamento speed
+    private var glideMin: Float = 0.2
+    private var glideMax: Float = 0.4
     
-    // Vibrato
+    // Vibrato (min/max for per-note randomization)
     private var vibratoPhase: Float = 0
-    private var vibratoDepth: Float = 0.1  // semitones
-    private var vibratoRate: Float = 5     // Hz
+    private var vibratoDepth: Float = 0.1  // semitones (current value)
+    private var vibratoRate: Float = 5     // Hz (current value)
+    private var vibratoDepthMin: Float = 0.05
+    private var vibratoDepthMax: Float = 0.15
+    private var vibratoRateMin: Float = 4.0
+    private var vibratoRateMax: Float = 6.0
     
     // Timbre: 0 = soft Rhodes, 1 = metallic gamelan
     private var timbreMin: Float = 0.2
     private var timbreMax: Float = 0.6
     private var currentTimbre: Float = 0.4
     
-    // Stereo ping-pong delay
+    // Stereo ping-pong delay (min/max for per-note randomization)
     private var delayBufferL: [Float] = []
     private var delayBufferR: [Float] = []
     private var delayWriteIndexL: Int = 0
     private var delayWriteIndexR: Int = 0
-    private var delayTime: Float = 0.375     // seconds
-    private var delayFeedback: Float = 0.4
-    private var delayMix: Float = 0.35
+    private var delayTime: Float = 0.375     // seconds (current value)
+    private var delayFeedback: Float = 0.4   // current value
+    private var delayMix: Float = 0.35       // current value
+    private var delayTimeMin: Float = 0.3
+    private var delayTimeMax: Float = 0.45
+    private var delayFeedbackMin: Float = 0.3
+    private var delayFeedbackMax: Float = 0.5
+    private var delayMixMin: Float = 0.25
+    private var delayMixMax: Float = 0.45
     private let maxDelayTime: Float = 1.0    // 1 second max
     
     // Octave
@@ -254,14 +266,22 @@ class LeadSynth {
         self.enabled = enabled
     }
     
-    func setGlide(_ rate: Float) {
-        // 0 = instant, 1 = very slow glide
-        self.glideRate = 0.9 + rate * 0.099
+    func setGlideRange(min: Float, max: Float) {
+        self.glideMin = min
+        self.glideMax = max
+        // Set current to middle of range
+        let mid = (min + max) / 2
+        self.glideRate = 0.9 + mid * 0.099
     }
     
-    func setVibrato(depth: Float, rate: Float) {
-        self.vibratoDepth = depth
-        self.vibratoRate = rate
+    func setVibratoRange(depthMin: Float, depthMax: Float, rateMin: Float, rateMax: Float) {
+        self.vibratoDepthMin = depthMin
+        self.vibratoDepthMax = depthMax
+        self.vibratoRateMin = rateMin
+        self.vibratoRateMax = rateMax
+        // Set current to middle of ranges
+        self.vibratoDepth = (depthMin + depthMax) / 2
+        self.vibratoRate = (rateMin + rateMax) / 2
     }
     
     func setTimbreRange(min: Float, max: Float) {
@@ -271,10 +291,17 @@ class LeadSynth {
         self.currentTimbre = (min + max) / 2
     }
     
-    func setDelay(time: Float, feedback: Float, mix: Float) {
-        self.delayTime = min(time, maxDelayTime)
-        self.delayFeedback = min(feedback, 0.95)  // Cap to prevent runaway
-        self.delayMix = mix
+    func setDelayRange(timeMin: Float, timeMax: Float, feedbackMin: Float, feedbackMax: Float, mixMin: Float, mixMax: Float) {
+        self.delayTimeMin = Swift.min(timeMin, maxDelayTime)
+        self.delayTimeMax = Swift.min(timeMax, maxDelayTime)
+        self.delayFeedbackMin = Swift.min(feedbackMin, 0.95)
+        self.delayFeedbackMax = Swift.min(feedbackMax, 0.95)
+        self.delayMixMin = mixMin
+        self.delayMixMax = mixMax
+        // Set current to middle of ranges
+        self.delayTime = (delayTimeMin + delayTimeMax) / 2
+        self.delayFeedback = (delayFeedbackMin + delayFeedbackMax) / 2
+        self.delayMix = (delayMixMin + delayMixMax) / 2
     }
     
     func setADSR(attack: Float, decay: Float, sustain: Float, release: Float) {
@@ -293,6 +320,37 @@ class LeadSynth {
     func randomizeTimbre() {
         let range = timbreMax - timbreMin
         currentTimbre = timbreMin + Float.random(in: 0...1) * range
+    }
+    
+    /// Randomize expression params (vibrato + glide) within their ranges for each note
+    func randomizeExpression() {
+        // Randomize vibrato depth
+        let depthRange = vibratoDepthMax - vibratoDepthMin
+        vibratoDepth = vibratoDepthMin + Float.random(in: 0...1) * depthRange
+        
+        // Randomize vibrato rate
+        let rateRange = vibratoRateMax - vibratoRateMin
+        vibratoRate = vibratoRateMin + Float.random(in: 0...1) * rateRange
+        
+        // Randomize glide
+        let glideRange = glideMax - glideMin
+        let glideValue = glideMin + Float.random(in: 0...1) * glideRange
+        glideRate = 0.9 + glideValue * 0.099
+    }
+    
+    /// Randomize delay params within their ranges for each note
+    func randomizeDelay() {
+        // Randomize delay time
+        let timeRange = delayTimeMax - delayTimeMin
+        delayTime = delayTimeMin + Float.random(in: 0...1) * timeRange
+        
+        // Randomize delay feedback
+        let feedbackRange = delayFeedbackMax - delayFeedbackMin
+        delayFeedback = delayFeedbackMin + Float.random(in: 0...1) * feedbackRange
+        
+        // Randomize delay mix
+        let mixRange = delayMixMax - delayMixMin
+        delayMix = delayMixMin + Float.random(in: 0...1) * mixRange
     }
     
     /// Clear delay buffers

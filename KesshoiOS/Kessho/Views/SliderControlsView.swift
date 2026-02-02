@@ -656,25 +656,31 @@ struct SliderControlsView: View {
                         .font(.subheadline)
                         .foregroundColor(.white.opacity(0.6))
                     
-                    ParameterSlider(
+                    DualRangeSlider(
                         label: "Vibrato Depth",
-                        value: $appState.state.leadVibratoDepth,
+                        minValue: $appState.state.leadVibratoDepthMin,
+                        maxValue: $appState.state.leadVibratoDepthMax,
                         range: 0...1,
-                        icon: "waveform.path"
+                        icon: "waveform.path",
+                        color: .green
                     )
                     
-                    ParameterSlider(
+                    DualRangeSlider(
                         label: "Vibrato Rate",
-                        value: $appState.state.leadVibratoRate,
+                        minValue: $appState.state.leadVibratoRateMin,
+                        maxValue: $appState.state.leadVibratoRateMax,
                         range: 0...1,
-                        icon: "metronome"
+                        icon: "metronome",
+                        color: .green
                     )
                     
-                    ParameterSlider(
+                    DualRangeSlider(
                         label: "Glide",
-                        value: $appState.state.leadGlide,
+                        minValue: $appState.state.leadGlideMin,
+                        maxValue: $appState.state.leadGlideMax,
                         range: 0...1,
-                        icon: "point.topleft.down.curvedto.point.bottomright.up"
+                        icon: "point.topleft.down.curvedto.point.bottomright.up",
+                        color: .green
                     )
                     
                     Divider().background(Color.white.opacity(0.2))
@@ -683,26 +689,32 @@ struct SliderControlsView: View {
                         .font(.subheadline)
                         .foregroundColor(.white.opacity(0.6))
                     
-                    ParameterSlider(
+                    DualRangeSlider(
                         label: "Time",
-                        value: $appState.state.leadDelayTime,
+                        minValue: $appState.state.leadDelayTimeMin,
+                        maxValue: $appState.state.leadDelayTimeMax,
                         range: 0...1000,
                         unit: "ms",
-                        icon: "clock"
+                        icon: "clock",
+                        color: .purple
                     )
                     
-                    ParameterSlider(
+                    DualRangeSlider(
                         label: "Feedback",
-                        value: $appState.state.leadDelayFeedback,
+                        minValue: $appState.state.leadDelayFeedbackMin,
+                        maxValue: $appState.state.leadDelayFeedbackMax,
                         range: 0...0.8,
-                        icon: "arrow.triangle.2.circlepath"
+                        icon: "arrow.triangle.2.circlepath",
+                        color: .purple
                     )
                     
-                    ParameterSlider(
+                    DualRangeSlider(
                         label: "Mix",
-                        value: $appState.state.leadDelayMix,
+                        minValue: $appState.state.leadDelayMixMin,
+                        maxValue: $appState.state.leadDelayMixMax,
                         range: 0...1,
-                        icon: "slider.horizontal.3"
+                        icon: "slider.horizontal.3",
+                        color: .purple
                     )
                 }
                 
@@ -1379,6 +1391,193 @@ struct DebugRow: View {
             Spacer()
             Text(value)
                 .foregroundColor(.cyan)
+        }
+    }
+}
+
+// MARK: - Dual Range Slider (for expression/delay per-note randomization)
+/// A slider that can toggle between single value and min/max range modes via double-tap
+/// Used for parameters that randomize per note (expression, delay)
+/// In dual mode: each note picks a random value within min/max range
+/// In single mode: all notes use the same value
+struct DualRangeSlider: View {
+    let label: String
+    @Binding var minValue: Double
+    @Binding var maxValue: Double
+    let range: ClosedRange<Double>
+    var unit: String = ""
+    var icon: String = "slider.horizontal.3"
+    var color: Color = .green
+    
+    /// Track if we're in dual (range) mode or single mode
+    /// Single mode = min and max are the same value
+    private var isDualMode: Bool {
+        abs(maxValue - minValue) > 0.001
+    }
+    
+    var body: some View {
+        VStack(spacing: 8) {
+            HStack {
+                Image(systemName: icon)
+                    .foregroundColor(color.opacity(0.6))
+                    .frame(width: 20)
+                
+                Text(label)
+                    .foregroundColor(.white.opacity(0.8))
+                
+                if isDualMode {
+                    Text("RANGE")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(color)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 2)
+                        .background(color.opacity(0.2))
+                        .cornerRadius(4)
+                }
+                
+                Spacer()
+                
+                Text(formattedValue)
+                    .font(.system(.body, design: .monospaced))
+                    .foregroundColor(.white.opacity(0.6))
+            }
+            
+            if isDualMode {
+                // Dual mode: show min/max sliders
+                HStack {
+                    Text("Min")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.5))
+                        .frame(width: 28)
+                    Slider(
+                        value: Binding(
+                            get: { minValue },
+                            set: { newMin in
+                                minValue = Swift.min(newMin, maxValue)
+                            }
+                        ),
+                        in: range
+                    )
+                    .tint(color.opacity(0.7))
+                    Text(formatSingleValue(minValue))
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(color.opacity(0.8))
+                        .frame(width: 44)
+                }
+                
+                HStack {
+                    Text("Max")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.5))
+                        .frame(width: 28)
+                    Slider(
+                        value: Binding(
+                            get: { maxValue },
+                            set: { newMax in
+                                maxValue = Swift.max(newMax, minValue)
+                            }
+                        ),
+                        in: range
+                    )
+                    .tint(color)
+                    Text(formatSingleValue(maxValue))
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(color)
+                        .frame(width: 44)
+                }
+                
+                // Range visualization
+                GeometryReader { geo in
+                    let rangeSpan = range.upperBound - range.lowerBound
+                    let minPos = (minValue - range.lowerBound) / rangeSpan
+                    let maxPos = (maxValue - range.lowerBound) / rangeSpan
+                    
+                    ZStack(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(Color.white.opacity(0.1))
+                        
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(LinearGradient(
+                                colors: [color.opacity(0.4), color.opacity(0.7)],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            ))
+                            .frame(width: geo.size.width * (maxPos - minPos))
+                            .offset(x: geo.size.width * minPos)
+                    }
+                    .frame(height: 6)
+                }
+                .frame(height: 6)
+                .padding(.top, 2)
+                
+                // Hint text
+                Text("Double-tap for single value")
+                    .font(.system(size: 9))
+                    .foregroundColor(.white.opacity(0.3))
+            } else {
+                // Single mode: one slider controlling both min and max
+                Slider(
+                    value: Binding(
+                        get: { minValue },
+                        set: { newVal in
+                            minValue = newVal
+                            maxValue = newVal
+                        }
+                    ),
+                    in: range
+                )
+                .tint(color)
+                
+                // Hint text
+                Text("Double-tap for range mode")
+                    .font(.system(size: 9))
+                    .foregroundColor(.white.opacity(0.3))
+            }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2) {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                toggleMode()
+            }
+        }
+    }
+    
+    private func toggleMode() {
+        if isDualMode {
+            // Switch to single mode: set both to midpoint
+            let mid = (minValue + maxValue) / 2
+            minValue = mid
+            maxValue = mid
+        } else {
+            // Switch to dual mode: spread 20% around current value
+            let rangeSpan = range.upperBound - range.lowerBound
+            let spread = rangeSpan * 0.1  // 10% each direction
+            minValue = Swift.max(range.lowerBound, minValue - spread)
+            maxValue = Swift.min(range.upperBound, maxValue + spread)
+        }
+    }
+    
+    private var formattedValue: String {
+        if isDualMode {
+            if range.upperBound >= 100 {
+                return String(format: "%.0f~%.0f%@", minValue, maxValue, unit)
+            } else {
+                return String(format: "%.2f~%.2f%@", minValue, maxValue, unit)
+            }
+        } else {
+            if range.upperBound >= 100 {
+                return String(format: "%.0f%@", minValue, unit)
+            } else {
+                return String(format: "%.2f%@", minValue, unit)
+            }
+        }
+    }
+    
+    private func formatSingleValue(_ val: Double) -> String {
+        if range.upperBound >= 100 {
+            return String(format: "%.0f", val)
+        } else {
+            return String(format: "%.2f", val)
         }
     }
 }

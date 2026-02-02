@@ -96,17 +96,23 @@ export interface SliderState {
   leadDecay: number;          // 0.01..4 seconds
   leadSustain: number;        // 0..1 level
   leadRelease: number;        // 0.01..8 seconds
-  leadDelayTime: number;      // 0..1000 ms step 10
-  leadDelayFeedback: number;  // 0..0.8 step 0.01
-  leadDelayMix: number;       // 0..1 step 0.01
+  leadDelayTimeMin: number;      // 0..1000 ms step 10
+  leadDelayTimeMax: number;      // 0..1000 ms step 10
+  leadDelayFeedbackMin: number;  // 0..0.8 step 0.01
+  leadDelayFeedbackMax: number;  // 0..0.8 step 0.01
+  leadDelayMixMin: number;       // 0..1 step 0.01
+  leadDelayMixMax: number;       // 0..1 step 0.01
   leadDensity: number;        // 0.1..2 notes per phrase (sparseness)
   leadOctave: number;         // -1, 0, 1, 2 octave offset
   leadOctaveRange: number;    // 1..4 - how many octaves to span for random notes
   leadTimbreMin: number;      // 0..1 - min timbre (0=soft rhodes, 1=bell)
   leadTimbreMax: number;      // 0..1 - max timbre (0=soft rhodes, 1=bell)
-  leadVibratoDepth: number;   // 0..1 - vibrato depth (0=none, 1=0.5 semitones)
-  leadVibratoRate: number;    // 0..1 - vibrato rate (maps to 2-8 Hz)
-  leadGlide: number;          // 0..1 - portamento/glide speed
+  leadVibratoDepthMin: number;  // 0..1 - min vibrato depth (0=none, 1=0.5 semitones)
+  leadVibratoDepthMax: number;  // 0..1 - max vibrato depth
+  leadVibratoRateMin: number;   // 0..1 - min vibrato rate (maps to 2-8 Hz)
+  leadVibratoRateMax: number;   // 0..1 - max vibrato rate
+  leadGlideMin: number;         // 0..1 - min portamento/glide speed
+  leadGlideMax: number;         // 0..1 - max portamento/glide speed
   // Euclidean sequencer for lead - 4 independent lanes for polyrhythmic patterns
   leadEuclideanMasterEnabled: boolean;  // master on/off (off = random mode)
   leadEuclideanTempo: number;           // 0.25..12 - tempo multiplier for all lanes
@@ -231,17 +237,23 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'leadDecay',
   'leadSustain',
   'leadRelease',
-  'leadDelayTime',
-  'leadDelayFeedback',
-  'leadDelayMix',
+  'leadDelayTimeMin',
+  'leadDelayTimeMax',
+  'leadDelayFeedbackMin',
+  'leadDelayFeedbackMax',
+  'leadDelayMixMin',
+  'leadDelayMixMax',
   'leadDensity',
   'leadOctave',
   'leadOctaveRange',
   'leadTimbreMin',
   'leadTimbreMax',
-  'leadVibratoDepth',
-  'leadVibratoRate',
-  'leadGlide',
+  'leadVibratoDepthMin',
+  'leadVibratoDepthMax',
+  'leadVibratoRateMin',
+  'leadVibratoRateMax',
+  'leadGlideMin',
+  'leadGlideMax',
   'leadEuclideanMasterEnabled',
   'leadEuclideanTempo',
   'leadEuclid1Enabled',
@@ -383,17 +395,23 @@ export const DEFAULT_STATE: SliderState = {
   leadDecay: 0.8,
   leadSustain: 0.3,
   leadRelease: 2.0,
-  leadDelayTime: 375,
-  leadDelayFeedback: 0.4,
-  leadDelayMix: 0.35,
+  leadDelayTimeMin: 375,
+  leadDelayTimeMax: 375,
+  leadDelayFeedbackMin: 0.4,
+  leadDelayFeedbackMax: 0.4,
+  leadDelayMixMin: 0.35,
+  leadDelayMixMax: 0.35,
   leadDensity: 0.5,
   leadOctave: 1,
   leadOctaveRange: 2,
   leadTimbreMin: 0.2,
   leadTimbreMax: 0.6,
-  leadVibratoDepth: 0,
-  leadVibratoRate: 0,
-  leadGlide: 0,
+  leadVibratoDepthMin: 0,
+  leadVibratoDepthMax: 0,
+  leadVibratoRateMin: 0,
+  leadVibratoRateMax: 0,
+  leadGlideMin: 0,
+  leadGlideMax: 0,
   // Euclidean sequencer for lead - 4 lanes for polyrhythms
   leadEuclideanMasterEnabled: false,
   leadEuclideanTempo: 1,
@@ -528,17 +546,23 @@ const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> = {
   leadDecay: { min: 0.01, max: 4, step: 0.01 },
   leadSustain: { min: 0, max: 1, step: 0.01 },
   leadRelease: { min: 0.01, max: 8, step: 0.01 },
-  leadDelayTime: { min: 0, max: 1000, step: 10 },
-  leadDelayFeedback: { min: 0, max: 0.8, step: 0.01 },
-  leadDelayMix: { min: 0, max: 1, step: 0.01 },
+  leadDelayTimeMin: { min: 0, max: 1000, step: 10 },
+  leadDelayTimeMax: { min: 0, max: 1000, step: 10 },
+  leadDelayFeedbackMin: { min: 0, max: 0.8, step: 0.01 },
+  leadDelayFeedbackMax: { min: 0, max: 0.8, step: 0.01 },
+  leadDelayMixMin: { min: 0, max: 1, step: 0.01 },
+  leadDelayMixMax: { min: 0, max: 1, step: 0.01 },
   leadDensity: { min: 0.1, max: 12, step: 0.1 },
   leadOctave: { min: -1, max: 2, step: 1 },
   leadOctaveRange: { min: 1, max: 4, step: 1 },
   leadTimbreMin: { min: 0, max: 1, step: 0.01 },
   leadTimbreMax: { min: 0, max: 1, step: 0.01 },
-  leadVibratoDepth: { min: 0, max: 1, step: 0.01 },
-  leadVibratoRate: { min: 0, max: 1, step: 0.01 },
-  leadGlide: { min: 0, max: 1, step: 0.01 },
+  leadVibratoDepthMin: { min: 0, max: 1, step: 0.01 },
+  leadVibratoDepthMax: { min: 0, max: 1, step: 0.01 },
+  leadVibratoRateMin: { min: 0, max: 1, step: 0.01 },
+  leadVibratoRateMax: { min: 0, max: 1, step: 0.01 },
+  leadGlideMin: { min: 0, max: 1, step: 0.01 },
+  leadGlideMax: { min: 0, max: 1, step: 0.01 },
   // Euclidean sequencer - shared for all lanes
   leadEuclideanTempo: { min: 0.25, max: 12, step: 0.25 },
   leadEuclid1Steps: { min: 4, max: 32, step: 1 },

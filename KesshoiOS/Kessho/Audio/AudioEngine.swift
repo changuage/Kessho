@@ -453,15 +453,23 @@ class AudioEngine {
             min: Float(currentParams.leadTimbreMin),
             max: Float(currentParams.leadTimbreMax)
         )
-        leadSynth?.setDelay(
-            time: Float(currentParams.leadDelayTime / 1000.0),  // Convert ms to seconds
-            feedback: Float(currentParams.leadDelayFeedback),
-            mix: Float(currentParams.leadDelayMix)
+        leadSynth?.setDelayRange(
+            timeMin: Float(currentParams.leadDelayTimeMin / 1000.0),  // Convert ms to seconds
+            timeMax: Float(currentParams.leadDelayTimeMax / 1000.0),
+            feedbackMin: Float(currentParams.leadDelayFeedbackMin),
+            feedbackMax: Float(currentParams.leadDelayFeedbackMax),
+            mixMin: Float(currentParams.leadDelayMixMin),
+            mixMax: Float(currentParams.leadDelayMixMax)
         )
-        leadSynth?.setGlide(Float(currentParams.leadGlide))
-        leadSynth?.setVibrato(
-            depth: Float(currentParams.leadVibratoDepth * 0.5),  // 0-0.5 semitones
-            rate: Float(2 + currentParams.leadVibratoRate * 6)   // 2-8 Hz
+        leadSynth?.setGlideRange(
+            min: Float(currentParams.leadGlideMin),
+            max: Float(currentParams.leadGlideMax)
+        )
+        leadSynth?.setVibratoRange(
+            depthMin: Float(currentParams.leadVibratoDepthMin * 0.5),  // 0-0.5 semitones
+            depthMax: Float(currentParams.leadVibratoDepthMax * 0.5),
+            rateMin: Float(2 + currentParams.leadVibratoRateMin * 6),  // 2-8 Hz
+            rateMax: Float(2 + currentParams.leadVibratoRateMax * 6)
         )
         leadSynth?.setOctave(
             shift: currentParams.leadOctave,
@@ -673,6 +681,8 @@ class AudioEngine {
                 let workItem = DispatchWorkItem { [weak self] in
                     guard let self = self, self.isRunning else { return }
                     self.leadSynth?.randomizeTimbre()
+                    self.leadSynth?.randomizeExpression()
+                    self.leadSynth?.randomizeDelay()
                     self.leadSynth?.playNote(midiNote: note, velocity: velocity)
                 }
                 
@@ -806,6 +816,8 @@ class AudioEngine {
                 let availableNotes = scaleNotes.filter { $0 >= note.noteMin && $0 <= note.noteMax }
                 if let midiNote = availableNotes.randomElement() ?? scaleNotes.first {
                     self.leadSynth?.randomizeTimbre()
+                    self.leadSynth?.randomizeExpression()
+                    self.leadSynth?.randomizeDelay()
                     self.leadSynth?.playNote(midiNote: midiNote, velocity: note.level)
                 }
             }
