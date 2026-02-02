@@ -91,13 +91,23 @@ class OceanSynth {
     }
     
     // System random for organic wave variation (matching web app's Math.random())
-    // Ocean synth intentionally uses non-seeded random for natural wave timing
+    // NOTE: Now using seeded RNG for determinism, matching web app's mulberry32
+    private var rngFn: (() -> Double)?
+    
     private func rng() -> Float {
-        return Float.random(in: 0...1)
+        if let fn = rngFn {
+            return Float(fn())
+        }
+        return Float.random(in: 0...1)  // Fallback if no seed set
     }
     
     private func randomRange(_ min: Float, _ max: Float) -> Float {
-        return Float.random(in: min...max)
+        return min + rng() * (max - min)
+    }
+    
+    /// Set the RNG seed for deterministic wave generation (matches web app)
+    func setSeed(_ seed: Int) {
+        rngFn = mulberry32(UInt32(seed & 0xFFFFFFFF))
     }
     
     /// Wave envelope: attack² / peak / decay^1.5 (matching web app)

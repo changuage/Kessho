@@ -1722,8 +1722,9 @@ export class AudioEngine {
       );
     }
 
-    // === RELEASE & CLEANUP ===
-    const noteEndTime = now + effectiveAttack + decay + 0.5;
+    // === HOLD & RELEASE ===
+    const hold = this.sliderState.leadHold;
+    const noteEndTime = now + effectiveAttack + decay + hold;
     const stopTime = noteEndTime + release;
 
     envelope.gain.setValueAtTime(sustain, noteEndTime);

@@ -89,6 +89,7 @@ struct SliderState: Codable, Equatable {
     var leadAttack: Double = 0.01
     var leadDecay: Double = 0.8
     var leadSustain: Double = 0.3
+    var leadHold: Double = 0.5     // How long to hold at sustain level
     var leadRelease: Double = 2.0
     var leadDelayTimeMin: Double = 375   // Delay time in ms (min=max for single mode)
     var leadDelayTimeMax: Double = 375

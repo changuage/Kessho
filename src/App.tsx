@@ -4008,6 +4008,26 @@ const App: React.FC = () => {
               <span style={{ fontSize: '0.7rem', marginTop: '4px', color: '#4aff9e' }}>S</span>
               <span style={{ fontSize: '0.6rem', color: '#666' }}>{(state.leadSustain * 100).toFixed(0)}%</span>
             </div>
+            {/* Hold slider */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 }}>
+              <input
+                type="range"
+                min="0"
+                max="4"
+                step="0.01"
+                value={state.leadHold}
+                onChange={(e) => handleSliderChange('leadHold', parseFloat(e.target.value))}
+                style={{
+                  writingMode: 'vertical-lr',
+                  direction: 'rtl',
+                  height: '80px',
+                  width: '20px',
+                  cursor: 'pointer',
+                } as React.CSSProperties}
+              />
+              <span style={{ fontSize: '0.7rem', marginTop: '4px', color: '#ffff4a' }}>H</span>
+              <span style={{ fontSize: '0.6rem', color: '#666' }}>{state.leadHold.toFixed(1)}s</span>
+            </div>
             {/* Release slider */}
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 }}>
               <input
@@ -4032,10 +4052,10 @@ const App: React.FC = () => {
             <div style={{ flex: 2, height: '100%', marginLeft: '8px' }}>
               <svg width="100%" height="100%" viewBox="0 0 100 80" preserveAspectRatio="none">
                 {(() => {
-                  const totalTime = state.leadAttack + state.leadDecay + 0.5 + state.leadRelease;
+                  const totalTime = state.leadAttack + state.leadDecay + state.leadHold + state.leadRelease;
                   const aEnd = (state.leadAttack / totalTime) * 100;
                   const dEnd = ((state.leadAttack + state.leadDecay) / totalTime) * 100;
-                  const sEnd = ((state.leadAttack + state.leadDecay + 0.5) / totalTime) * 100;
+                  const sEnd = ((state.leadAttack + state.leadDecay + state.leadHold) / totalTime) * 100;
                   const sustainY = (1 - state.leadSustain) * 80;
                   return (
                     <>

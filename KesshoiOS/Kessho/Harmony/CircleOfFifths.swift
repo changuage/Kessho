@@ -104,46 +104,4 @@ class CircleOfFifthsState: ObservableObject {
             return (name: COF_ORDER[i], angle: angle, isHome: isHome, isCurrent: isCurrent)
         }
     }
-    
-    /// Calculate the shortest path on the circle between two positions
-    static func shortestPath(from: Int, to: Int) -> [Int] {
-        if from == to { return [from] }
-        
-        // Calculate clockwise and counter-clockwise distances
-        let cwDist = (to - from + 12) % 12
-        let ccwDist = (from - to + 12) % 12
-        
-        var path: [Int] = [from]
-        
-        if cwDist <= ccwDist {
-            // Go clockwise
-            var pos = from
-            while pos != to {
-                pos = (pos + 1) % 12
-                path.append(pos)
-            }
-        } else {
-            // Go counter-clockwise
-            var pos = from
-            while pos != to {
-                pos = (pos - 1 + 12) % 12
-                path.append(pos)
-            }
-        }
-        
-        return path
-    }
-}
-
-/// Convert Circle of Fifths position to angle (for UI)
-func cofPositionToAngle(_ position: Int) -> Double {
-    return Double(position) * 30.0 - 90.0  // 30° per step, starting at top
-}
-
-/// Get note name for a semitone value
-func semitoneToNoteName(_ semitone: Int) -> String {
-    if let index = COF_SEMITONES.firstIndex(of: semitone % 12) {
-        return COF_ORDER[index]
-    }
-    return NOTE_NAMES[semitone % 12]
 }

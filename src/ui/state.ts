@@ -96,6 +96,7 @@ export interface SliderState {
   leadAttack: number;         // 0.001..2 seconds
   leadDecay: number;          // 0.01..4 seconds
   leadSustain: number;        // 0..1 level
+  leadHold: number;           // 0..4 seconds - how long to hold at sustain level
   leadRelease: number;        // 0.01..8 seconds
   leadDelayTimeMin: number;      // 0..1000 ms step 10
   leadDelayTimeMax: number;      // 0..1000 ms step 10
@@ -397,6 +398,7 @@ export const DEFAULT_STATE: SliderState = {
   leadAttack: 0.01,
   leadDecay: 0.8,
   leadSustain: 0.3,
+  leadHold: 0.5,
   leadRelease: 2.0,
   leadDelayTimeMin: 375,
   leadDelayTimeMax: 375,
@@ -549,6 +551,7 @@ const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> = {
   leadAttack: { min: 0.001, max: 2, step: 0.001 },
   leadDecay: { min: 0.01, max: 4, step: 0.01 },
   leadSustain: { min: 0, max: 1, step: 0.01 },
+  leadHold: { min: 0, max: 4, step: 0.01 },
   leadRelease: { min: 0.01, max: 8, step: 0.01 },
   leadDelayTimeMin: { min: 0, max: 1000, step: 10 },
   leadDelayTimeMax: { min: 0, max: 1000, step: 10 },

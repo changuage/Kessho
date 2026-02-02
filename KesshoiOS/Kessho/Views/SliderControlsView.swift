@@ -691,6 +691,14 @@ struct SliderControlsView: View {
                     )
                     
                     ParameterSlider(
+                        label: "Hold",
+                        value: $appState.state.leadHold,
+                        range: 0...4,
+                        unit: "s",
+                        icon: "pause.circle"
+                    )
+                    
+                    ParameterSlider(
                         label: "Release",
                         value: $appState.state.leadRelease,
                         range: 0.01...8,
@@ -1123,6 +1131,7 @@ struct ADSRVisualization: View {
     let attack: Double
     let decay: Double
     let sustain: Double
+    var hold: Double = 0.5  // Default for main synth (doesn't have configurable hold)
     let release: Double
     
     var body: some View {
@@ -1131,10 +1140,10 @@ struct ADSRVisualization: View {
             let height = geometry.size.height
             
             // Normalize times for display
-            let totalTime = attack + decay + 0.3 + release  // 0.3 for sustain hold
+            let totalTime = attack + decay + hold + release
             let aX = CGFloat(attack / totalTime) * width
             let dX = CGFloat(decay / totalTime) * width
-            let sX: CGFloat = 0.3 / CGFloat(totalTime) * width
+            let sX: CGFloat = hold / CGFloat(totalTime) * width
             let rX = CGFloat(release / totalTime) * width
             
             let sustainY = height * CGFloat(1 - sustain)

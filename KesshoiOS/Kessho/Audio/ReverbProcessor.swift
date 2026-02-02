@@ -150,7 +150,9 @@ class ReverbProcessor {
     private var currentType: ReverbType = .cathedral
     
     // Parameters matching web app presets
-    private var decay: Float = 0.8
+    private var baseDecay: Float = 0.92   // Preset's base decay (set by setType)
+    private var userDecay: Float = 0.9    // User slider decay (0-1)
+    private var decay: Float = 0.8        // Effective decay (computed from baseDecay + userDecay)
     private var wetDryMix: Float = 30
     private var size: Float = 1.0
     private var diffusion: Float = 0.8
@@ -262,11 +264,12 @@ class ReverbProcessor {
     /// Apply a reverb preset
     func applyPreset(_ preset: ReverbPreset) {
         let p = preset.params
-        self.decay = p.decay
+        self.baseDecay = p.decay  // Store preset's decay as baseDecay
         self.damping = p.damping
         self.diffusion = p.diffusion
         self.size = p.size
         self.modulation = p.modDepth
+        updateEffectiveDecay()  // Recalculate effective decay
         updateDiffuserFeedback()
     }
     
@@ -335,9 +338,8 @@ class ReverbProcessor {
         let mixed = mixFDN(damped)
         
         // Calculate feedback gain with decay curve
-        // Longer decays for ambient music
-        let effectiveDecay = 0.85 + decay * 0.14  // Range 0.85 to 0.99
-        let feedbackGain = min(0.998, effectiveDecay)
+        // Uses web formula: baseDecay + (1 - baseDecay) * userDecay * 0.9 (precomputed in self.decay)
+        let feedbackGain = min(0.998, decay)
         
         // Soft clip and write back to delays
         let inputGain: Float = 0.18
@@ -415,7 +417,13 @@ class ReverbProcessor {
     // MARK: - Parameter Setters
     
     func setDecay(_ decay: Float) {
-        self.decay = min(max(decay, 0), 1)
+        self.userDecay = min(max(decay, 0), 1)
+        updateEffectiveDecay()
+    }
+    
+    /// Calculate effective decay using web formula: baseDecay + (1 - baseDecay) * userDecay * 0.9
+    private func updateEffectiveDecay() {
+        self.decay = baseDecay + (1 - baseDecay) * userDecay * 0.9
     }
     
     func setWetDryMix(_ mix: Float) {
@@ -489,11 +497,12 @@ class ReverbProcessor {
         
         // Apply FDN parameters for web-compatible presets
         if let params = type.fdnParams {
-            self.decay = params.decay
+            self.baseDecay = params.decay  // Store preset's decay as baseDecay
             self.damping = params.damping
             self.diffusion = params.diffusion
             self.size = params.size
             self.modulation = params.modDepth
+            updateEffectiveDecay()  // Recalculate effective decay
             updateDiffuserFeedback()
         }
         

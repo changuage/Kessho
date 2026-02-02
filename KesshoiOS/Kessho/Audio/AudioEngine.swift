@@ -451,6 +451,7 @@ class AudioEngine {
             attack: Float(currentParams.leadAttack),
             decay: Float(currentParams.leadDecay),
             sustain: Float(currentParams.leadSustain),
+            hold: Float(currentParams.leadHold),
             release: Float(currentParams.leadRelease)
         )
         leadSynth?.setTimbreRange(
@@ -486,6 +487,7 @@ class AudioEngine {
         // Update ocean wave synth with proper min/max ranges (not averaged values)
         oceanSynth?.setEnabled(currentParams.oceanWaveSynthEnabled)
         oceanSynth?.setLevel(Float(currentParams.oceanWaveSynthLevel))
+        oceanSynth?.setSeed(currentSeed)  // Set seeded RNG for deterministic wave generation
         oceanSynth?.setWaveDuration(
             min: Float(currentParams.oceanDurationMin),
             max: Float(currentParams.oceanDurationMax)

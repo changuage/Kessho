@@ -25,6 +25,8 @@ class LeadSynth {
     private var attack: Float = 0.1
     private var decay: Float = 0.3
     private var sustain: Float = 0.4
+    private var hold: Float = 0.5      // How long to hold at sustain level
+    private var holdCounter: Float = 0 // Counts down hold time in samples
     private var release: Float = 0.8
     
     // Glide (min/max for per-note randomization)
@@ -233,12 +235,16 @@ class LeadSynth {
             envelope -= (envelope - sustain) * decayRate
             if envelope <= sustain + 0.001 {
                 envelope = sustain
+                holdCounter = hold * sampleRate  // Initialize hold countdown
                 envelopeStage = .sustain
             }
             
         case .sustain:
-            // Auto-release after sustain for ambient feel
-            envelopeStage = .release
+            // Hold at sustain level for specified duration before auto-release
+            holdCounter -= 1
+            if holdCounter <= 0 {
+                envelopeStage = .release
+            }
             
         case .release:
             envelope -= envelope * releaseRate
@@ -304,10 +310,11 @@ class LeadSynth {
         self.delayMix = (delayMixMin + delayMixMax) / 2
     }
     
-    func setADSR(attack: Float, decay: Float, sustain: Float, release: Float) {
+    func setADSR(attack: Float, decay: Float, sustain: Float, hold: Float, release: Float) {
         self.attack = attack
         self.decay = decay
         self.sustain = sustain
+        self.hold = hold
         self.release = release
     }
     
