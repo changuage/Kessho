@@ -12,7 +12,7 @@ struct SliderControlsView: View {
             return "32 stages • Best sound • Higher battery usage"
         case "balanced":
             return "16 stages • Good sound • Moderate battery"
-        case "eco":
+        case "lite":
             return "Apple Reverb • Basic sound • Best battery"
         default:
             return ""
@@ -47,7 +47,7 @@ struct SliderControlsView: View {
                     ParameterSlider(
                         label: "Granular",
                         value: $appState.state.granularLevel,
-                        range: 0...1,
+                        range: 0...2,
                         icon: "sparkles"
                     )
                     
@@ -61,7 +61,7 @@ struct SliderControlsView: View {
                     ParameterSlider(
                         label: "Reverb",
                         value: $appState.state.reverbLevel,
-                        range: 0...1,
+                        range: 0...2,
                         icon: "waveform.path"
                     )
                 }
@@ -86,7 +86,6 @@ struct SliderControlsView: View {
                         label: "Walk Speed",
                         value: $appState.state.randomWalkSpeed,
                         range: 0.1...5,
-                        unit: "x",
                         icon: "figure.walk"
                     )
                     
@@ -96,8 +95,8 @@ struct SliderControlsView: View {
                             get: { Double(appState.state.chordRate) },
                             set: { appState.state.chordRate = Int($0) }
                         ),
-                        range: 1...16,
-                        unit: " phrases",
+                        range: 8...64,
+                        unit: "s",
                         icon: "clock"
                     )
                     
@@ -122,7 +121,7 @@ struct SliderControlsView: View {
                     ParameterSlider(
                         label: "Wave Spread",
                         value: $appState.state.waveSpread,
-                        range: 0...8,
+                        range: 0...30,
                         icon: "water.waves"
                     )
                     
@@ -271,7 +270,7 @@ struct SliderControlsView: View {
                     ParameterSlider(
                         label: "Mod Speed",
                         value: $appState.state.filterModSpeed,
-                        range: 0.1...5,
+                        range: 0...16,
                         icon: "waveform.path.ecg"
                     )
                     
@@ -343,7 +342,7 @@ struct SliderControlsView: View {
                         Picker("Quality", selection: $appState.state.reverbQuality) {
                             Text("Ultra").tag("ultra")
                             Text("Balanced").tag("balanced")
-                            Text("Eco").tag("eco")
+                            Text("Lite").tag("lite")
                         }
                         .pickerStyle(.segmented)
                         .frame(width: 180)
@@ -357,8 +356,7 @@ struct SliderControlsView: View {
                     ParameterSlider(
                         label: "Decay",
                         value: $appState.state.reverbDecay,
-                        range: 0.5...20,
-                        unit: "s",
+                        range: 0...1,
                         icon: "arrow.triangle.branch"
                     )
                     
@@ -561,7 +559,8 @@ struct SliderControlsView: View {
                     ParameterSlider(
                         label: "Density",
                         value: $appState.state.leadDensity,
-                        range: 0...1,
+                        range: 0.1...12,
+                        unit: "/phrase",
                         icon: "square.grid.2x2"
                     )
                     
@@ -823,6 +822,7 @@ struct SliderControlsView: View {
                             Text("Lowpass").tag("lowpass")
                             Text("Highpass").tag("highpass")
                             Text("Bandpass").tag("bandpass")
+                            Text("Notch").tag("notch")
                         }
                         .pickerStyle(.menu)
                         .accentColor(.cyan)
@@ -852,7 +852,7 @@ struct SliderControlsView: View {
                     ParameterSlider(
                         label: "Duration Min",
                         value: $appState.state.oceanDurationMin,
-                        range: 2...20,
+                        range: 2...15,
                         unit: "s",
                         icon: "clock"
                     )
@@ -860,7 +860,7 @@ struct SliderControlsView: View {
                     ParameterSlider(
                         label: "Duration Max",
                         value: $appState.state.oceanDurationMax,
-                        range: 4...30,
+                        range: 2...15,
                         unit: "s",
                         icon: "clock"
                     )
@@ -868,7 +868,7 @@ struct SliderControlsView: View {
                     ParameterSlider(
                         label: "Interval Min",
                         value: $appState.state.oceanIntervalMin,
-                        range: 2...20,
+                        range: 3...20,
                         unit: "s",
                         icon: "timer"
                     )
@@ -876,7 +876,7 @@ struct SliderControlsView: View {
                     ParameterSlider(
                         label: "Interval Max",
                         value: $appState.state.oceanIntervalMax,
-                        range: 5...40,
+                        range: 3...20,
                         unit: "s",
                         icon: "timer"
                     )

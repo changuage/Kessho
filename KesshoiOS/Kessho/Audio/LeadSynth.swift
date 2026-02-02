@@ -60,7 +60,7 @@ class LeadSynth {
     private var delayFeedbackMax: Float = 0.5
     private var delayMixMin: Float = 0.25
     private var delayMixMax: Float = 0.45
-    private let maxDelayTime: Float = 1.0    // 1 second max
+    private let maxDelayTime: Float = 2.0    // 2 seconds max (matches web app)
     
     // Octave
     private var octaveShift: Int = 0

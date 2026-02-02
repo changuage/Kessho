@@ -58,7 +58,7 @@ struct SliderState: Codable, Equatable {
     // Reverb
     var reverbEngine: String = "algorithmic"
     var reverbType: String = "cathedral"
-    var reverbQuality: String = "balanced"  // ultra, balanced, eco
+    var reverbQuality: String = "balanced"  // ultra, balanced, lite
     var reverbDecay: Double = 0.9
     var reverbSize: Double = 2.0
     var reverbDiffusion: Double = 1.0

@@ -366,8 +366,8 @@ class AudioEngine {
             reverbProcessor?.setQuality(.ultra)
         } else if currentParams.reverbQuality == "balanced" {
             reverbProcessor?.setQuality(.balanced)
-        } else if currentParams.reverbQuality == "eco" {
-            reverbProcessor?.setQuality(.eco)
+        } else if currentParams.reverbQuality == "lite" {
+            reverbProcessor?.setQuality(.lite)
         }
         
         // Update reverb type (preset)

@@ -4,13 +4,13 @@ import AVFoundation
 enum ReverbQuality: String, CaseIterable {
     case ultra = "Ultra"        // 32 stages - best sound, most battery
     case balanced = "Balanced"  // 16 stages - good sound, moderate battery  
-    case eco = "Eco"            // AVAudioUnitReverb - decent sound, best battery
+    case lite = "Lite"          // AVAudioUnitReverb - decent sound, best battery
     
     var description: String {
         switch self {
         case .ultra: return "Ultra (32 stages)"
         case .balanced: return "Balanced (16 stages)"
-        case .eco: return "Eco (Apple Reverb)"
+        case .lite: return "Lite (Apple Reverb)"
         }
     }
 }
