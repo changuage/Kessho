@@ -662,7 +662,7 @@ struct SliderControlsView: View {
                         maxValue: $appState.state.leadVibratoDepthMax,
                         range: 0...1,
                         icon: "waveform.path",
-                        color: .green
+                        color: .orange
                     )
                     
                     DualRangeSlider(
@@ -671,7 +671,7 @@ struct SliderControlsView: View {
                         maxValue: $appState.state.leadVibratoRateMax,
                         range: 0...1,
                         icon: "metronome",
-                        color: .green
+                        color: .orange
                     )
                     
                     DualRangeSlider(
@@ -680,7 +680,7 @@ struct SliderControlsView: View {
                         maxValue: $appState.state.leadGlideMax,
                         range: 0...1,
                         icon: "point.topleft.down.curvedto.point.bottomright.up",
-                        color: .green
+                        color: .orange
                     )
                     
                     Divider().background(Color.white.opacity(0.2))

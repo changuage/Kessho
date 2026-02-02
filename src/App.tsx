@@ -3974,7 +3974,7 @@ const App: React.FC = () => {
                   </span>
                   <span>
                     {(state.leadVibratoDepthMin * 0.5).toFixed(2)} - {(state.leadVibratoDepthMax * 0.5).toFixed(2)} st
-                    <span style={{ color: '#10b981', marginLeft: '8px' }}>
+                    <span style={{ color: '#f59e0b', marginLeft: '8px' }}>
                       ({((state.leadVibratoDepthMin + leadExpressionPositions.vibratoDepth * (state.leadVibratoDepthMax - state.leadVibratoDepthMin)) * 0.5).toFixed(2)})
                     </span>
                   </span>
@@ -3988,10 +3988,10 @@ const App: React.FC = () => {
                     ...styles.dualSliderTrack,
                     left: `${state.leadVibratoDepthMin * 100}%`,
                     width: `${(state.leadVibratoDepthMax - state.leadVibratoDepthMin) * 100}%`,
-                    background: 'linear-gradient(90deg, rgba(16, 185, 129, 0.6), rgba(5, 150, 105, 0.6))',
+                    background: 'linear-gradient(90deg, rgba(245, 158, 11, 0.6), rgba(217, 119, 6, 0.6))',
                   }} />
                   <div
-                    style={{ ...styles.dualSliderThumb, left: `${state.leadVibratoDepthMin * 100}%`, background: '#10b981' }}
+                    style={{ ...styles.dualSliderThumb, left: `${state.leadVibratoDepthMin * 100}%`, background: '#f59e0b' }}
                     onMouseDown={(e) => {
                       e.preventDefault();
                       const container = e.currentTarget.parentElement;
@@ -4007,7 +4007,7 @@ const App: React.FC = () => {
                     }}
                   />
                   <div
-                    style={{ ...styles.dualSliderThumb, left: `${state.leadVibratoDepthMax * 100}%`, background: '#10b981' }}
+                    style={{ ...styles.dualSliderThumb, left: `${state.leadVibratoDepthMax * 100}%`, background: '#f59e0b' }}
                     onMouseDown={(e) => {
                       e.preventDefault();
                       const container = e.currentTarget.parentElement;
@@ -4025,8 +4025,8 @@ const App: React.FC = () => {
                   <div style={{
                     ...styles.dualSliderWalkIndicator,
                     left: `${(state.leadVibratoDepthMin + leadExpressionPositions.vibratoDepth * (state.leadVibratoDepthMax - state.leadVibratoDepthMin)) * 100}%`,
-                    background: '#10b981',
-                    boxShadow: '0 0 8px rgba(16, 185, 129, 0.8)',
+                    background: '#f59e0b',
+                    boxShadow: '0 0 8px rgba(245, 158, 11, 0.8)',
                   }} />
                 </div>
               </div>
@@ -4065,7 +4065,7 @@ const App: React.FC = () => {
                   </span>
                   <span>
                     {(2 + state.leadVibratoRateMin * 6).toFixed(1)} - {(2 + state.leadVibratoRateMax * 6).toFixed(1)} Hz
-                    <span style={{ color: '#8b5cf6', marginLeft: '8px' }}>
+                    <span style={{ color: '#f59e0b', marginLeft: '8px' }}>
                       ({(2 + (state.leadVibratoRateMin + leadExpressionPositions.vibratoRate * (state.leadVibratoRateMax - state.leadVibratoRateMin)) * 6).toFixed(1)})
                     </span>
                   </span>
@@ -4079,10 +4079,10 @@ const App: React.FC = () => {
                     ...styles.dualSliderTrack,
                     left: `${state.leadVibratoRateMin * 100}%`,
                     width: `${(state.leadVibratoRateMax - state.leadVibratoRateMin) * 100}%`,
-                    background: 'linear-gradient(90deg, rgba(139, 92, 246, 0.6), rgba(124, 58, 237, 0.6))',
+                    background: 'linear-gradient(90deg, rgba(245, 158, 11, 0.6), rgba(217, 119, 6, 0.6))',
                   }} />
                   <div
-                    style={{ ...styles.dualSliderThumb, left: `${state.leadVibratoRateMin * 100}%`, background: '#8b5cf6' }}
+                    style={{ ...styles.dualSliderThumb, left: `${state.leadVibratoRateMin * 100}%`, background: '#f59e0b' }}
                     onMouseDown={(e) => {
                       e.preventDefault();
                       const container = e.currentTarget.parentElement;
@@ -4098,7 +4098,7 @@ const App: React.FC = () => {
                     }}
                   />
                   <div
-                    style={{ ...styles.dualSliderThumb, left: `${state.leadVibratoRateMax * 100}%`, background: '#8b5cf6' }}
+                    style={{ ...styles.dualSliderThumb, left: `${state.leadVibratoRateMax * 100}%`, background: '#f59e0b' }}
                     onMouseDown={(e) => {
                       e.preventDefault();
                       const container = e.currentTarget.parentElement;
@@ -4116,8 +4116,8 @@ const App: React.FC = () => {
                   <div style={{
                     ...styles.dualSliderWalkIndicator,
                     left: `${(state.leadVibratoRateMin + leadExpressionPositions.vibratoRate * (state.leadVibratoRateMax - state.leadVibratoRateMin)) * 100}%`,
-                    background: '#8b5cf6',
-                    boxShadow: '0 0 8px rgba(139, 92, 246, 0.8)',
+                    background: '#f59e0b',
+                    boxShadow: '0 0 8px rgba(245, 158, 11, 0.8)',
                   }} />
                 </div>
               </div>
