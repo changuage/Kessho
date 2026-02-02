@@ -1449,9 +1449,11 @@ const App: React.FC = () => {
       ],
       leadEnabled: [
         'leadLevel', 'leadAttack', 'leadDecay', 'leadSustain', 'leadRelease',
-        'leadDelayTime', 'leadDelayFeedback', 'leadDelayMix', 'leadDensity',
+        'leadDelayTimeMin', 'leadDelayTimeMax', 'leadDelayFeedbackMin', 'leadDelayFeedbackMax',
+        'leadDelayMixMin', 'leadDelayMixMax', 'leadDensity',
         'leadOctave', 'leadOctaveRange', 'leadTimbreMin', 'leadTimbreMax',
-        'leadReverbSend', 'leadDelayReverbSend'
+        'leadVibratoDepthMin', 'leadVibratoDepthMax', 'leadVibratoRateMin', 'leadVibratoRateMax',
+        'leadGlideMin', 'leadGlideMax', 'leadReverbSend', 'leadDelayReverbSend'
       ],
       leadEuclideanMasterEnabled: [
         'leadEuclideanTempo'
@@ -1490,8 +1492,11 @@ const App: React.FC = () => {
       'reverbModulation', 'predelay', 'damping', 'width', 'grainProbability', 'grainSizeMin',
       'grainSizeMax', 'density', 'spray', 'jitter', 'pitchSpread', 'stereoSpread', 'feedback',
       'wetHPF', 'wetLPF', 'leadLevel', 'leadAttack', 'leadDecay', 'leadSustain', 'leadRelease',
-      'leadDelayTime', 'leadDelayFeedback', 'leadDelayMix', 'leadDensity', 'leadOctave',
-      'leadOctaveRange', 'leadTimbreMin', 'leadTimbreMax', 'leadEuclideanTempo',
+      'leadDelayTimeMin', 'leadDelayTimeMax', 'leadDelayFeedbackMin', 'leadDelayFeedbackMax',
+      'leadDelayMixMin', 'leadDelayMixMax', 'leadDensity', 'leadOctave',
+      'leadOctaveRange', 'leadTimbreMin', 'leadTimbreMax',
+      'leadVibratoDepthMin', 'leadVibratoDepthMax', 'leadVibratoRateMin', 'leadVibratoRateMax',
+      'leadGlideMin', 'leadGlideMax', 'leadEuclideanTempo',
       'oceanSampleLevel', 'oceanWaveSynthLevel', 'oceanFilterCutoff', 'oceanFilterResonance',
       'oceanDurationMin', 'oceanDurationMax', 'oceanIntervalMin', 'oceanIntervalMax',
       'oceanFoamMin', 'oceanFoamMax', 'oceanDepthMin', 'oceanDepthMax',
