@@ -918,36 +918,24 @@ struct SliderControlsView: View {
                         .font(.subheadline)
                         .foregroundColor(.white.opacity(0.6))
                     
-                    ParameterSlider(
-                        label: "Duration Min",
-                        value: $appState.state.oceanDurationMin,
+                    DualRangeSlider(
+                        label: "Duration",
+                        minValue: $appState.state.oceanDurationMin,
+                        maxValue: $appState.state.oceanDurationMax,
                         range: 2...15,
                         unit: "s",
-                        icon: "clock"
+                        icon: "clock",
+                        color: .blue
                     )
                     
-                    ParameterSlider(
-                        label: "Duration Max",
-                        value: $appState.state.oceanDurationMax,
-                        range: 2...15,
-                        unit: "s",
-                        icon: "clock"
-                    )
-                    
-                    ParameterSlider(
-                        label: "Interval Min",
-                        value: $appState.state.oceanIntervalMin,
+                    DualRangeSlider(
+                        label: "Interval",
+                        minValue: $appState.state.oceanIntervalMin,
+                        maxValue: $appState.state.oceanIntervalMax,
                         range: 3...20,
                         unit: "s",
-                        icon: "timer"
-                    )
-                    
-                    ParameterSlider(
-                        label: "Interval Max",
-                        value: $appState.state.oceanIntervalMax,
-                        range: 3...20,
-                        unit: "s",
-                        icon: "timer"
+                        icon: "timer",
+                        color: .blue
                     )
                     
                     Divider().background(Color.white.opacity(0.2))
@@ -956,32 +944,22 @@ struct SliderControlsView: View {
                         .font(.subheadline)
                         .foregroundColor(.white.opacity(0.6))
                     
-                    ParameterSlider(
-                        label: "Foam Min",
-                        value: $appState.state.oceanFoamMin,
+                    DualRangeSlider(
+                        label: "Foam",
+                        minValue: $appState.state.oceanFoamMin,
+                        maxValue: $appState.state.oceanFoamMax,
                         range: 0...1,
-                        icon: "bubble.left.and.bubble.right"
+                        icon: "bubble.left.and.bubble.right",
+                        color: .blue
                     )
                     
-                    ParameterSlider(
-                        label: "Foam Max",
-                        value: $appState.state.oceanFoamMax,
+                    DualRangeSlider(
+                        label: "Depth",
+                        minValue: $appState.state.oceanDepthMin,
+                        maxValue: $appState.state.oceanDepthMax,
                         range: 0...1,
-                        icon: "bubble.left.and.bubble.right"
-                    )
-                    
-                    ParameterSlider(
-                        label: "Depth Min",
-                        value: $appState.state.oceanDepthMin,
-                        range: 0...1,
-                        icon: "arrow.down.to.line"
-                    )
-                    
-                    ParameterSlider(
-                        label: "Depth Max",
-                        value: $appState.state.oceanDepthMax,
-                        range: 0...1,
-                        icon: "arrow.down.to.line"
+                        icon: "arrow.down.to.line",
+                        color: .blue
                     )
                 }
                 

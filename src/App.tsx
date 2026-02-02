@@ -994,7 +994,7 @@ const App: React.FC = () => {
     vibratoDepth: boolean;
     vibratoRate: boolean;
     glide: boolean;
-  }>({ vibratoDepth: true, vibratoRate: true, glide: true });
+  }>({ vibratoDepth: false, vibratoRate: false, glide: false });
 
   // Toggle expression dual mode
   const toggleExpressionDualMode = useCallback((param: 'vibratoDepth' | 'vibratoRate' | 'glide') => {
@@ -1022,7 +1022,7 @@ const App: React.FC = () => {
     time: boolean;
     feedback: boolean;
     mix: boolean;
-  }>({ time: true, feedback: true, mix: true });
+  }>({ time: false, feedback: false, mix: false });
 
   // Track last triggered delay values for the indicator
   const [leadDelayPositions, setLeadDelayPositions] = useState<{
@@ -1051,6 +1051,47 @@ const App: React.FC = () => {
       return { ...prev, [param]: !isDual };
     });
   }, [state.leadDelayTimeMin, state.leadDelayTimeMax, state.leadDelayFeedbackMin, state.leadDelayFeedbackMax, state.leadDelayMixMin, state.leadDelayMixMax]);
+
+  // Track which ocean params are in dual (range) mode vs single mode
+  // Default to dual mode (blue range sliders)
+  const [oceanDualModes, setOceanDualModes] = useState<{
+    duration: boolean;
+    interval: boolean;
+    foam: boolean;
+    depth: boolean;
+  }>({ duration: true, interval: true, foam: true, depth: true });
+
+  // Track last random walk positions for ocean params
+  const [oceanPositions, setOceanPositions] = useState<{
+    duration: number;
+    interval: number;
+    foam: number;
+    depth: number;
+  }>({ duration: 0.5, interval: 0.5, foam: 0.5, depth: 0.5 });
+
+  // Toggle ocean dual mode
+  const toggleOceanDualMode = useCallback((param: 'duration' | 'interval' | 'foam' | 'depth') => {
+    setOceanDualModes(prev => {
+      const isDual = prev[param];
+      if (isDual) {
+        // Switching from dual to single - set min=max at the midpoint
+        if (param === 'duration') {
+          const mid = (state.oceanDurationMin + state.oceanDurationMax) / 2;
+          setState(s => ({ ...s, oceanDurationMin: mid, oceanDurationMax: mid }));
+        } else if (param === 'interval') {
+          const mid = (state.oceanIntervalMin + state.oceanIntervalMax) / 2;
+          setState(s => ({ ...s, oceanIntervalMin: mid, oceanIntervalMax: mid }));
+        } else if (param === 'foam') {
+          const mid = (state.oceanFoamMin + state.oceanFoamMax) / 2;
+          setState(s => ({ ...s, oceanFoamMin: mid, oceanFoamMax: mid }));
+        } else {
+          const mid = (state.oceanDepthMin + state.oceanDepthMax) / 2;
+          setState(s => ({ ...s, oceanDepthMin: mid, oceanDepthMax: mid }));
+        }
+      }
+      return { ...prev, [param]: !isDual };
+    });
+  }, [state.oceanDurationMin, state.oceanDurationMax, state.oceanIntervalMin, state.oceanIntervalMax, state.oceanFoamMin, state.oceanFoamMax, state.oceanDepthMin, state.oceanDepthMax]);
 
   // Toggle dual slider mode for a parameter
   const handleToggleDualMode = useCallback((key: keyof SliderState) => {
@@ -5123,71 +5164,375 @@ const App: React.FC = () => {
               <div style={{ marginTop: '12px', marginBottom: '8px' }}>
                 <span style={{ fontSize: '0.85rem', color: '#aaa' }}>Wave Timing</span>
               </div>
-              <Slider
-                label="Duration Min"
-                value={state.oceanDurationMin}
-                paramKey="oceanDurationMin"
-                unit="s"
-                onChange={handleSliderChange}
-                {...sliderProps('oceanDurationMin')}
-              />
-              <Slider
-                label="Duration Max"
-                value={state.oceanDurationMax}
-                paramKey="oceanDurationMax"
-                unit="s"
-                onChange={handleSliderChange}
-                {...sliderProps('oceanDurationMax')}
-              />
-              <Slider
-                label="Interval Min"
-                value={state.oceanIntervalMin}
-                paramKey="oceanIntervalMin"
-                unit="s"
-                onChange={handleSliderChange}
-                {...sliderProps('oceanIntervalMin')}
-              />
-              <Slider
-                label="Interval Max"
-                value={state.oceanIntervalMax}
-                paramKey="oceanIntervalMax"
-                unit="s"
-                onChange={handleSliderChange}
-                {...sliderProps('oceanIntervalMax')}
-              />
+              
+              {/* Duration - dual slider */}
+              {oceanDualModes.duration ? (
+                <div style={styles.sliderGroup}>
+                  <div style={styles.sliderLabel}>
+                    <span>
+                      Duration
+                      <span style={styles.dualModeIndicator}>⟷ range</span>
+                    </span>
+                    <span>
+                      {state.oceanDurationMin.toFixed(1)} - {state.oceanDurationMax.toFixed(1)} s
+                      <span style={{ color: '#3b82f6', marginLeft: '8px' }}>
+                        ({(state.oceanDurationMin + oceanPositions.duration * (state.oceanDurationMax - state.oceanDurationMin)).toFixed(1)})
+                      </span>
+                    </span>
+                  </div>
+                  <div 
+                    style={styles.dualSliderContainer}
+                    onDoubleClick={() => toggleOceanDualMode('duration')}
+                    title="Double-click for single value mode"
+                  >
+                    <div style={{
+                      ...styles.dualSliderTrack,
+                      left: `${((state.oceanDurationMin - 2) / 13) * 100}%`,
+                      width: `${((state.oceanDurationMax - state.oceanDurationMin) / 13) * 100}%`,
+                      background: 'linear-gradient(90deg, rgba(59, 130, 246, 0.6), rgba(37, 99, 235, 0.6))',
+                    }} />
+                    <div
+                      style={{ ...styles.dualSliderThumb, left: `${((state.oceanDurationMin - 2) / 13) * 100}%`, background: '#3b82f6' }}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        const container = e.currentTarget.parentElement;
+                        if (!container) return;
+                        const move = (me: MouseEvent) => {
+                          const rect = container.getBoundingClientRect();
+                          const pct = Math.max(0, Math.min(1, (me.clientX - rect.left) / rect.width));
+                          const val = 2 + pct * 13;
+                          handleSliderChange('oceanDurationMin', Math.min(val, state.oceanDurationMax));
+                        };
+                        const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+                        window.addEventListener('mousemove', move);
+                        window.addEventListener('mouseup', up);
+                      }}
+                    />
+                    <div
+                      style={{ ...styles.dualSliderThumb, left: `${((state.oceanDurationMax - 2) / 13) * 100}%`, background: '#3b82f6' }}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        const container = e.currentTarget.parentElement;
+                        if (!container) return;
+                        const move = (me: MouseEvent) => {
+                          const rect = container.getBoundingClientRect();
+                          const pct = Math.max(0, Math.min(1, (me.clientX - rect.left) / rect.width));
+                          const val = 2 + pct * 13;
+                          handleSliderChange('oceanDurationMax', Math.max(val, state.oceanDurationMin));
+                        };
+                        const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+                        window.addEventListener('mousemove', move);
+                        window.addEventListener('mouseup', up);
+                      }}
+                    />
+                    <div style={{
+                      ...styles.dualSliderWalkIndicator,
+                      left: `${((state.oceanDurationMin + oceanPositions.duration * (state.oceanDurationMax - state.oceanDurationMin) - 2) / 13) * 100}%`,
+                      background: '#3b82f6',
+                      boxShadow: '0 0 8px rgba(59, 130, 246, 0.8)',
+                    }} />
+                  </div>
+                </div>
+              ) : (
+                <div style={styles.sliderGroup}>
+                  <div style={styles.sliderLabel}>
+                    <span>Duration</span>
+                    <span>{state.oceanDurationMin.toFixed(1)} s</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={2}
+                    max={15}
+                    step={0.5}
+                    value={state.oceanDurationMin}
+                    onChange={(e) => {
+                      const v = parseFloat(e.target.value);
+                      handleSliderChange('oceanDurationMin', v);
+                      handleSliderChange('oceanDurationMax', v);
+                    }}
+                    onDoubleClick={() => toggleOceanDualMode('duration')}
+                    style={styles.slider}
+                    title="Double-click for range mode"
+                  />
+                </div>
+              )}
+
+              {/* Interval - dual slider */}
+              {oceanDualModes.interval ? (
+                <div style={styles.sliderGroup}>
+                  <div style={styles.sliderLabel}>
+                    <span>
+                      Interval
+                      <span style={styles.dualModeIndicator}>⟷ range</span>
+                    </span>
+                    <span>
+                      {state.oceanIntervalMin.toFixed(1)} - {state.oceanIntervalMax.toFixed(1)} s
+                      <span style={{ color: '#3b82f6', marginLeft: '8px' }}>
+                        ({(state.oceanIntervalMin + oceanPositions.interval * (state.oceanIntervalMax - state.oceanIntervalMin)).toFixed(1)})
+                      </span>
+                    </span>
+                  </div>
+                  <div 
+                    style={styles.dualSliderContainer}
+                    onDoubleClick={() => toggleOceanDualMode('interval')}
+                    title="Double-click for single value mode"
+                  >
+                    <div style={{
+                      ...styles.dualSliderTrack,
+                      left: `${((state.oceanIntervalMin - 3) / 17) * 100}%`,
+                      width: `${((state.oceanIntervalMax - state.oceanIntervalMin) / 17) * 100}%`,
+                      background: 'linear-gradient(90deg, rgba(59, 130, 246, 0.6), rgba(37, 99, 235, 0.6))',
+                    }} />
+                    <div
+                      style={{ ...styles.dualSliderThumb, left: `${((state.oceanIntervalMin - 3) / 17) * 100}%`, background: '#3b82f6' }}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        const container = e.currentTarget.parentElement;
+                        if (!container) return;
+                        const move = (me: MouseEvent) => {
+                          const rect = container.getBoundingClientRect();
+                          const pct = Math.max(0, Math.min(1, (me.clientX - rect.left) / rect.width));
+                          const val = 3 + pct * 17;
+                          handleSliderChange('oceanIntervalMin', Math.min(val, state.oceanIntervalMax));
+                        };
+                        const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+                        window.addEventListener('mousemove', move);
+                        window.addEventListener('mouseup', up);
+                      }}
+                    />
+                    <div
+                      style={{ ...styles.dualSliderThumb, left: `${((state.oceanIntervalMax - 3) / 17) * 100}%`, background: '#3b82f6' }}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        const container = e.currentTarget.parentElement;
+                        if (!container) return;
+                        const move = (me: MouseEvent) => {
+                          const rect = container.getBoundingClientRect();
+                          const pct = Math.max(0, Math.min(1, (me.clientX - rect.left) / rect.width));
+                          const val = 3 + pct * 17;
+                          handleSliderChange('oceanIntervalMax', Math.max(val, state.oceanIntervalMin));
+                        };
+                        const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+                        window.addEventListener('mousemove', move);
+                        window.addEventListener('mouseup', up);
+                      }}
+                    />
+                    <div style={{
+                      ...styles.dualSliderWalkIndicator,
+                      left: `${((state.oceanIntervalMin + oceanPositions.interval * (state.oceanIntervalMax - state.oceanIntervalMin) - 3) / 17) * 100}%`,
+                      background: '#3b82f6',
+                      boxShadow: '0 0 8px rgba(59, 130, 246, 0.8)',
+                    }} />
+                  </div>
+                </div>
+              ) : (
+                <div style={styles.sliderGroup}>
+                  <div style={styles.sliderLabel}>
+                    <span>Interval</span>
+                    <span>{state.oceanIntervalMin.toFixed(1)} s</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={3}
+                    max={20}
+                    step={0.5}
+                    value={state.oceanIntervalMin}
+                    onChange={(e) => {
+                      const v = parseFloat(e.target.value);
+                      handleSliderChange('oceanIntervalMin', v);
+                      handleSliderChange('oceanIntervalMax', v);
+                    }}
+                    onDoubleClick={() => toggleOceanDualMode('interval')}
+                    style={styles.slider}
+                    title="Double-click for range mode"
+                  />
+                </div>
+              )}
 
               {/* Wave Character */}
               <div style={{ marginTop: '12px', borderTop: '1px solid #333', paddingTop: '12px' }}>
                 <span style={{ fontSize: '0.85rem', color: '#aaa' }}>Wave Character</span>
               </div>
-              <Slider
-                label="Foam Min"
-                value={state.oceanFoamMin}
-                paramKey="oceanFoamMin"
-                onChange={handleSliderChange}
-                {...sliderProps('oceanFoamMin')}
-              />
-              <Slider
-                label="Foam Max"
-                value={state.oceanFoamMax}
-                paramKey="oceanFoamMax"
-                onChange={handleSliderChange}
-                {...sliderProps('oceanFoamMax')}
-              />
-              <Slider
-                label="Depth Min"
-                value={state.oceanDepthMin}
-                paramKey="oceanDepthMin"
-                onChange={handleSliderChange}
-                {...sliderProps('oceanDepthMin')}
-              />
-              <Slider
-                label="Depth Max"
-                value={state.oceanDepthMax}
-                paramKey="oceanDepthMax"
-                onChange={handleSliderChange}
-                {...sliderProps('oceanDepthMax')}
-              />
+
+              {/* Foam - dual slider */}
+              {oceanDualModes.foam ? (
+                <div style={styles.sliderGroup}>
+                  <div style={styles.sliderLabel}>
+                    <span>
+                      Foam
+                      <span style={styles.dualModeIndicator}>⟷ range</span>
+                    </span>
+                    <span>
+                      {(state.oceanFoamMin * 100).toFixed(0)} - {(state.oceanFoamMax * 100).toFixed(0)}%
+                      <span style={{ color: '#3b82f6', marginLeft: '8px' }}>
+                        ({((state.oceanFoamMin + oceanPositions.foam * (state.oceanFoamMax - state.oceanFoamMin)) * 100).toFixed(0)}%)
+                      </span>
+                    </span>
+                  </div>
+                  <div 
+                    style={styles.dualSliderContainer}
+                    onDoubleClick={() => toggleOceanDualMode('foam')}
+                    title="Double-click for single value mode"
+                  >
+                    <div style={{
+                      ...styles.dualSliderTrack,
+                      left: `${state.oceanFoamMin * 100}%`,
+                      width: `${(state.oceanFoamMax - state.oceanFoamMin) * 100}%`,
+                      background: 'linear-gradient(90deg, rgba(59, 130, 246, 0.6), rgba(37, 99, 235, 0.6))',
+                    }} />
+                    <div
+                      style={{ ...styles.dualSliderThumb, left: `${state.oceanFoamMin * 100}%`, background: '#3b82f6' }}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        const container = e.currentTarget.parentElement;
+                        if (!container) return;
+                        const move = (me: MouseEvent) => {
+                          const rect = container.getBoundingClientRect();
+                          const pct = Math.max(0, Math.min(1, (me.clientX - rect.left) / rect.width));
+                          handleSliderChange('oceanFoamMin', Math.min(pct, state.oceanFoamMax));
+                        };
+                        const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+                        window.addEventListener('mousemove', move);
+                        window.addEventListener('mouseup', up);
+                      }}
+                    />
+                    <div
+                      style={{ ...styles.dualSliderThumb, left: `${state.oceanFoamMax * 100}%`, background: '#3b82f6' }}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        const container = e.currentTarget.parentElement;
+                        if (!container) return;
+                        const move = (me: MouseEvent) => {
+                          const rect = container.getBoundingClientRect();
+                          const pct = Math.max(0, Math.min(1, (me.clientX - rect.left) / rect.width));
+                          handleSliderChange('oceanFoamMax', Math.max(pct, state.oceanFoamMin));
+                        };
+                        const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+                        window.addEventListener('mousemove', move);
+                        window.addEventListener('mouseup', up);
+                      }}
+                    />
+                    <div style={{
+                      ...styles.dualSliderWalkIndicator,
+                      left: `${(state.oceanFoamMin + oceanPositions.foam * (state.oceanFoamMax - state.oceanFoamMin)) * 100}%`,
+                      background: '#3b82f6',
+                      boxShadow: '0 0 8px rgba(59, 130, 246, 0.8)',
+                    }} />
+                  </div>
+                </div>
+              ) : (
+                <div style={styles.sliderGroup}>
+                  <div style={styles.sliderLabel}>
+                    <span>Foam</span>
+                    <span>{(state.oceanFoamMin * 100).toFixed(0)}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={state.oceanFoamMin}
+                    onChange={(e) => {
+                      const v = parseFloat(e.target.value);
+                      handleSliderChange('oceanFoamMin', v);
+                      handleSliderChange('oceanFoamMax', v);
+                    }}
+                    onDoubleClick={() => toggleOceanDualMode('foam')}
+                    style={styles.slider}
+                    title="Double-click for range mode"
+                  />
+                </div>
+              )}
+
+              {/* Depth - dual slider */}
+              {oceanDualModes.depth ? (
+                <div style={styles.sliderGroup}>
+                  <div style={styles.sliderLabel}>
+                    <span>
+                      Depth
+                      <span style={styles.dualModeIndicator}>⟷ range</span>
+                    </span>
+                    <span>
+                      {(state.oceanDepthMin * 100).toFixed(0)} - {(state.oceanDepthMax * 100).toFixed(0)}%
+                      <span style={{ color: '#3b82f6', marginLeft: '8px' }}>
+                        ({((state.oceanDepthMin + oceanPositions.depth * (state.oceanDepthMax - state.oceanDepthMin)) * 100).toFixed(0)}%)
+                      </span>
+                    </span>
+                  </div>
+                  <div 
+                    style={styles.dualSliderContainer}
+                    onDoubleClick={() => toggleOceanDualMode('depth')}
+                    title="Double-click for single value mode"
+                  >
+                    <div style={{
+                      ...styles.dualSliderTrack,
+                      left: `${state.oceanDepthMin * 100}%`,
+                      width: `${(state.oceanDepthMax - state.oceanDepthMin) * 100}%`,
+                      background: 'linear-gradient(90deg, rgba(59, 130, 246, 0.6), rgba(37, 99, 235, 0.6))',
+                    }} />
+                    <div
+                      style={{ ...styles.dualSliderThumb, left: `${state.oceanDepthMin * 100}%`, background: '#3b82f6' }}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        const container = e.currentTarget.parentElement;
+                        if (!container) return;
+                        const move = (me: MouseEvent) => {
+                          const rect = container.getBoundingClientRect();
+                          const pct = Math.max(0, Math.min(1, (me.clientX - rect.left) / rect.width));
+                          handleSliderChange('oceanDepthMin', Math.min(pct, state.oceanDepthMax));
+                        };
+                        const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+                        window.addEventListener('mousemove', move);
+                        window.addEventListener('mouseup', up);
+                      }}
+                    />
+                    <div
+                      style={{ ...styles.dualSliderThumb, left: `${state.oceanDepthMax * 100}%`, background: '#3b82f6' }}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        const container = e.currentTarget.parentElement;
+                        if (!container) return;
+                        const move = (me: MouseEvent) => {
+                          const rect = container.getBoundingClientRect();
+                          const pct = Math.max(0, Math.min(1, (me.clientX - rect.left) / rect.width));
+                          handleSliderChange('oceanDepthMax', Math.max(pct, state.oceanDepthMin));
+                        };
+                        const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+                        window.addEventListener('mousemove', move);
+                        window.addEventListener('mouseup', up);
+                      }}
+                    />
+                    <div style={{
+                      ...styles.dualSliderWalkIndicator,
+                      left: `${(state.oceanDepthMin + oceanPositions.depth * (state.oceanDepthMax - state.oceanDepthMin)) * 100}%`,
+                      background: '#3b82f6',
+                      boxShadow: '0 0 8px rgba(59, 130, 246, 0.8)',
+                    }} />
+                  </div>
+                </div>
+              ) : (
+                <div style={styles.sliderGroup}>
+                  <div style={styles.sliderLabel}>
+                    <span>Depth</span>
+                    <span>{(state.oceanDepthMin * 100).toFixed(0)}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={state.oceanDepthMin}
+                    onChange={(e) => {
+                      const v = parseFloat(e.target.value);
+                      handleSliderChange('oceanDepthMin', v);
+                      handleSliderChange('oceanDepthMax', v);
+                    }}
+                    onDoubleClick={() => toggleOceanDualMode('depth')}
+                    style={styles.slider}
+                    title="Double-click for range mode"
+                  />
+                </div>
+              )}
             </>
           )}
 
