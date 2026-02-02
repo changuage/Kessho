@@ -1,0 +1,471 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		/* App files */
+		A1000001 /* KesshoApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000001; };
+		A1000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000002; };
+		A1000003 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B1000003; };
+		
+		/* Audio Engine */
+		A1000010 /* AudioEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000010; };
+		A1000011 /* SynthVoice.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000011; };
+		A1000012 /* GranularProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000012; };
+		A1000013 /* ReverbProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000013; };
+		A1000014 /* LeadSynth.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000014; };
+		A1000015 /* OceanSynth.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000015; };
+		
+		/* Harmony */
+		A1000020 /* Scales.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000020; };
+		A1000021 /* Harmony.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000021; };
+		A1000022 /* CircleOfFifths.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000022; };
+		A1000023 /* RNG.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000023; };
+		
+		/* State */
+		A1000030 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000030; };
+		A1000031 /* PresetManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000031; };
+		A1000032 /* SliderState.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000032; };
+		
+		/* Views */
+		A1000040 /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000040; };
+		A1000041 /* CircleOfFifthsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000041; };
+		A1000042 /* SnowflakeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000042; };
+		A1000043 /* PresetListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000043; };
+		A1000044 /* SliderComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000044; };
+		
+		/* Presets */
+		A1000050 /* Presets in Resources */ = {isa = PBXBuildFile; fileRef = B1000050; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		/* App */
+		C1000000 /* Kessho.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Kessho.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B1000001 /* KesshoApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KesshoApp.swift; sourceTree = "<group>"; };
+		B1000002 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		B1000003 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		B1000004 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		
+		/* Audio */
+		B1000010 /* AudioEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioEngine.swift; sourceTree = "<group>"; };
+		B1000011 /* SynthVoice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SynthVoice.swift; sourceTree = "<group>"; };
+		B1000012 /* GranularProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GranularProcessor.swift; sourceTree = "<group>"; };
+		B1000013 /* ReverbProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReverbProcessor.swift; sourceTree = "<group>"; };
+		B1000014 /* LeadSynth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeadSynth.swift; sourceTree = "<group>"; };
+		B1000015 /* OceanSynth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OceanSynth.swift; sourceTree = "<group>"; };
+		
+		/* Harmony */
+		B1000020 /* Scales.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Scales.swift; sourceTree = "<group>"; };
+		B1000021 /* Harmony.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Harmony.swift; sourceTree = "<group>"; };
+		B1000022 /* CircleOfFifths.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CircleOfFifths.swift; sourceTree = "<group>"; };
+		B1000023 /* RNG.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RNG.swift; sourceTree = "<group>"; };
+		
+		/* State */
+		B1000030 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+		B1000031 /* PresetManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetManager.swift; sourceTree = "<group>"; };
+		B1000032 /* SliderState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SliderState.swift; sourceTree = "<group>"; };
+		
+		/* Views */
+		B1000040 /* MainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainView.swift; sourceTree = "<group>"; };
+		B1000041 /* CircleOfFifthsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CircleOfFifthsView.swift; sourceTree = "<group>"; };
+		B1000042 /* SnowflakeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnowflakeView.swift; sourceTree = "<group>"; };
+		B1000043 /* PresetListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetListView.swift; sourceTree = "<group>"; };
+		B1000044 /* SliderComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SliderComponents.swift; sourceTree = "<group>"; };
+		
+		/* Presets folder */
+		B1000050 /* Presets */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Presets; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		D1000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		E1000000 = {
+			isa = PBXGroup;
+			children = (
+				E1000001 /* Kessho */,
+				E1000099 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		E1000099 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				C1000000 /* Kessho.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		E1000001 /* Kessho */ = {
+			isa = PBXGroup;
+			children = (
+				B1000001 /* KesshoApp.swift */,
+				B1000002 /* ContentView.swift */,
+				B1000004 /* Info.plist */,
+				B1000003 /* Assets.xcassets */,
+				E1000010 /* Audio */,
+				E1000020 /* Harmony */,
+				E1000030 /* State */,
+				E1000040 /* Views */,
+				B1000050 /* Presets */,
+			);
+			path = Kessho;
+			sourceTree = "<group>";
+		};
+		E1000010 /* Audio */ = {
+			isa = PBXGroup;
+			children = (
+				B1000010 /* AudioEngine.swift */,
+				B1000011 /* SynthVoice.swift */,
+				B1000012 /* GranularProcessor.swift */,
+				B1000013 /* ReverbProcessor.swift */,
+				B1000014 /* LeadSynth.swift */,
+				B1000015 /* OceanSynth.swift */,
+			);
+			path = Audio;
+			sourceTree = "<group>";
+		};
+		E1000020 /* Harmony */ = {
+			isa = PBXGroup;
+			children = (
+				B1000020 /* Scales.swift */,
+				B1000021 /* Harmony.swift */,
+				B1000022 /* CircleOfFifths.swift */,
+				B1000023 /* RNG.swift */,
+			);
+			path = Harmony;
+			sourceTree = "<group>";
+		};
+		E1000030 /* State */ = {
+			isa = PBXGroup;
+			children = (
+				B1000030 /* AppState.swift */,
+				B1000031 /* PresetManager.swift */,
+				B1000032 /* SliderState.swift */,
+			);
+			path = State;
+			sourceTree = "<group>";
+		};
+		E1000040 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				B1000040 /* MainView.swift */,
+				B1000041 /* CircleOfFifthsView.swift */,
+				B1000042 /* SnowflakeView.swift */,
+				B1000043 /* PresetListView.swift */,
+				B1000044 /* SliderComponents.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		F1000000 /* Kessho */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = G1000000 /* Build configuration list for PBXNativeTarget "Kessho" */;
+			buildPhases = (
+				F1000001 /* Sources */,
+				D1000001 /* Frameworks */,
+				F1000002 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Kessho;
+			productName = Kessho;
+			productReference = C1000000 /* Kessho.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		H1000000 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1500;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					F1000000 = {
+						CreatedOnToolsVersion = 15.0;
+					};
+				};
+			};
+			buildConfigurationList = G1000001 /* Build configuration list for PBXProject "Kessho" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = E1000000;
+			productRefGroup = E1000099 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				F1000000 /* Kessho */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		F1000002 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A1000003 /* Assets.xcassets in Resources */,
+				A1000050 /* Presets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		F1000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A1000001 /* KesshoApp.swift in Sources */,
+				A1000002 /* ContentView.swift in Sources */,
+				A1000010 /* AudioEngine.swift in Sources */,
+				A1000011 /* SynthVoice.swift in Sources */,
+				A1000012 /* GranularProcessor.swift in Sources */,
+				A1000013 /* ReverbProcessor.swift in Sources */,
+				A1000014 /* LeadSynth.swift in Sources */,
+				A1000015 /* OceanSynth.swift in Sources */,
+				A1000020 /* Scales.swift in Sources */,
+				A1000021 /* Harmony.swift in Sources */,
+				A1000022 /* CircleOfFifths.swift in Sources */,
+				A1000023 /* RNG.swift in Sources */,
+				A1000030 /* AppState.swift in Sources */,
+				A1000031 /* PresetManager.swift in Sources */,
+				A1000032 /* SliderState.swift in Sources */,
+				A1000040 /* MainView.swift in Sources */,
+				A1000041 /* CircleOfFifthsView.swift in Sources */,
+				A1000042 /* SnowflakeView.swift in Sources */,
+				A1000043 /* PresetListView.swift in Sources */,
+				A1000044 /* SliderComponents.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		J1000000 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		J1000001 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		J1000002 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Kessho/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Kessho;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.music";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.kessho.generativemusic;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		J1000003 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Kessho/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Kessho;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.music";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.kessho.generativemusic;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		G1000000 /* Build configuration list for PBXNativeTarget "Kessho" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				J1000002 /* Debug */,
+				J1000003 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		G1000001 /* Build configuration list for PBXProject "Kessho" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				J1000000 /* Debug */,
+				J1000001 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = H1000000 /* Project object */;
+}

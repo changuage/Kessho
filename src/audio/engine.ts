@@ -1264,6 +1264,7 @@ export class AudioEngine {
         type: 'params',
         params: {
           type: state.reverbType,
+          quality: state.reverbQuality,  // ultra, balanced, lite
           decay: state.reverbDecay,
           size: state.reverbSize,
           diffusion: state.reverbDiffusion,
@@ -1438,14 +1439,47 @@ export class AudioEngine {
     const decay = this.sliderState.leadDecay;
     const sustain = this.sliderState.leadSustain;
     const release = this.sliderState.leadRelease;
+    
+    // Vibrato and glide settings
+    const vibratoDepth = this.sliderState.leadVibratoDepth * 0.5; // 0-0.5 semitones
+    const vibratoRate = 2 + this.sliderState.leadVibratoRate * 6; // 2-8 Hz
+    const glide = this.sliderState.leadGlide;
 
     // Timbre controls: 0 = soft Rhodes, 1 = gamelan metallophone
     // OPTIMIZATION: At low timbre (Rhodes), use fewer oscillators
+
+    // === VIBRATO LFO ===
+    let vibratoLfo: OscillatorNode | null = null;
+    let vibratoGain: GainNode | null = null;
+    
+    if (vibratoDepth > 0.001) {
+      vibratoLfo = ctx.createOscillator();
+      vibratoLfo.type = 'sine';
+      vibratoLfo.frequency.value = vibratoRate;
+      
+      vibratoGain = ctx.createGain();
+      // Convert semitones to frequency cents for detune
+      // Vibrato depth in semitones * 100 = cents
+      vibratoGain.gain.value = vibratoDepth * 100;
+    }
 
     // === CARRIER (main tone) ===
     const carrier = ctx.createOscillator();
     carrier.type = 'sine';
     carrier.frequency.value = frequency;
+    
+    // Apply glide - start from slightly different frequency if glide > 0
+    if (glide > 0.01) {
+      const glideStart = frequency * (1 + (Math.random() - 0.5) * glide * 0.2);
+      carrier.frequency.setValueAtTime(glideStart, now);
+      carrier.frequency.exponentialRampToValueAtTime(frequency, now + glide * 0.3);
+    }
+    
+    // Connect vibrato LFO to carrier detune
+    if (vibratoLfo && vibratoGain) {
+      vibratoLfo.connect(vibratoGain);
+      vibratoGain.connect(carrier.detune);
+    }
 
     // Nodes that may or may not be created based on timbre
     let carrier2: OscillatorNode | null = null;
@@ -1462,6 +1496,18 @@ export class AudioEngine {
       carrier2.type = 'sine';
       const beatDetune = timbre * 2;
       carrier2.frequency.value = frequency * Math.pow(2, beatDetune / 1200);
+      
+      // Apply glide to carrier2 as well
+      if (glide > 0.01) {
+        const glideStart = carrier2.frequency.value * (1 + (Math.random() - 0.5) * glide * 0.2);
+        carrier2.frequency.setValueAtTime(glideStart, now);
+        carrier2.frequency.exponentialRampToValueAtTime(carrier2.frequency.value, now + glide * 0.3);
+      }
+      
+      // Connect vibrato to carrier2 detune
+      if (vibratoGain) {
+        vibratoGain.connect(carrier2.detune);
+      }
 
       carrier2Gain = ctx.createGain();
       carrier2Gain.gain.value = timbre * 0.5;
@@ -1550,6 +1596,7 @@ export class AudioEngine {
     outputGain.connect(this.leadGain);
 
     // === START OSCILLATORS ===
+    vibratoLfo?.start(now);
     carrier.start(now);
     carrier2?.start(now);
     modulator.start(now);
@@ -1605,6 +1652,7 @@ export class AudioEngine {
     }
 
     // Stop oscillators
+    vibratoLfo?.stop(stopTime + 0.1);
     carrier.stop(stopTime + 0.1);
     carrier2?.stop(stopTime + 0.1);
     modulator.stop(stopTime + 0.1);
@@ -1615,6 +1663,8 @@ export class AudioEngine {
     // Cleanup
     setTimeout(() => {
       try {
+        vibratoLfo?.disconnect();
+        vibratoGain?.disconnect();
         carrier.disconnect();
         carrier2?.disconnect();
         carrier2Gain?.disconnect();

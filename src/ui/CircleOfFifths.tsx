@@ -93,6 +93,8 @@ interface CircleOfFifthsProps {
   morphStartRoot?: number;    // Starting root note for the morph path
   morphTargetRoot?: number;   // Target root note during morph
   morphProgress?: number;     // 0-100 morph progress
+  // Tap to select callback
+  onSelectRoot?: (semitone: number) => void;  // Called when user taps a note to select as root
 }
 
 export const CircleOfFifths: React.FC<CircleOfFifthsProps> = ({
@@ -105,7 +107,8 @@ export const CircleOfFifths: React.FC<CircleOfFifthsProps> = ({
   isMorphing = false,
   morphStartRoot,
   morphTargetRoot,
-  morphProgress = 0
+  morphProgress = 0,
+  onSelectRoot
 }) => {
   const center = size / 2;
   const outerRadius = size * 0.42;
@@ -241,13 +244,15 @@ export const CircleOfFifths: React.FC<CircleOfFifthsProps> = ({
       <circle cx={center} cy={center} r={outerRadius} fill="#1a1a1a" />
       
       {/* Segments */}
-      {COF_SEQUENCE.map((_, index) => (
+      {COF_SEQUENCE.map((semitone, index) => (
         <path
           key={index}
           d={getArcPath(index, innerRadius, outerRadius)}
           fill={getSegmentColor(index)}
           stroke="#0a0a0a"
           strokeWidth={1}
+          style={{ cursor: onSelectRoot ? 'pointer' : 'default' }}
+          onClick={() => onSelectRoot?.(semitone)}
         />
       ))}
       
@@ -265,6 +270,7 @@ export const CircleOfFifths: React.FC<CircleOfFifthsProps> = ({
             fontWeight={index === currentIndex || index === homeIndex ? 'bold' : 'normal'}
             textAnchor="middle"
             dominantBaseline="central"
+            style={{ cursor: onSelectRoot ? 'pointer' : 'default', pointerEvents: 'none' }}
           >
             {label}
           </text>

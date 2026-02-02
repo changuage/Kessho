@@ -53,6 +53,18 @@ class GranulatorProcessor extends AudioWorkletProcessor {
     this.randomSequence = new Float32Array(0);
     this.randomIndex = 0;
     this.initialized = false;
+    
+    // Pink noise generator state (matching iOS implementation)
+    this.pinkB0 = 0;
+    this.pinkB1 = 0;
+    this.pinkB2 = 0;
+    this.pinkB3 = 0;
+    this.pinkB4 = 0;
+    this.pinkB5 = 0;
+    this.pinkB6 = 0;
+    this.silentSamples = 0;
+    this.noiseBufferFilled = false;
+    
     this.params = {
       grainSizeMin: 20,
       grainSizeMax: 80,
@@ -70,6 +82,38 @@ class GranulatorProcessor extends AudioWorkletProcessor {
     this.port.onmessage = (event) => {
       this.handleMessage(event.data);
     };
+    
+    // Pre-fill buffer with pink noise for initial texture
+    this.fillNoiseBuffer();
+  }
+  
+  // Generate pink noise sample (matching iOS pink noise algorithm)
+  generatePinkNoise() {
+    const white = Math.random() * 2 - 1;
+    
+    // Pink noise filter (Paul Kellet's method)
+    this.pinkB0 = 0.99886 * this.pinkB0 + white * 0.0555179;
+    this.pinkB1 = 0.99332 * this.pinkB1 + white * 0.0750759;
+    this.pinkB2 = 0.96900 * this.pinkB2 + white * 0.1538520;
+    this.pinkB3 = 0.86650 * this.pinkB3 + white * 0.3104856;
+    this.pinkB4 = 0.55000 * this.pinkB4 + white * 0.5329522;
+    this.pinkB5 = -0.7616 * this.pinkB5 - white * 0.0168980;
+    
+    const pink = this.pinkB0 + this.pinkB1 + this.pinkB2 + this.pinkB3 + 
+                 this.pinkB4 + this.pinkB5 + this.pinkB6 + white * 0.5362;
+    this.pinkB6 = white * 0.115926;
+    
+    return pink * 0.2;  // Scale down to match iOS
+  }
+  
+  // Fill buffer with pink noise for texture when no input
+  fillNoiseBuffer() {
+    for (let i = 0; i < this.bufferSize; i++) {
+      const sample = this.generatePinkNoise();
+      this.buffer[0][i] = sample;
+      this.buffer[1][i] = sample * (1 + (Math.random() - 0.5) * 0.1);  // Slight stereo variation
+    }
+    this.noiseBufferFilled = true;
   }
 
   handleMessage(data) {
@@ -169,8 +213,25 @@ class GranulatorProcessor extends AudioWorkletProcessor {
     const blockSize = outputL.length;
 
     for (let i = 0; i < blockSize; i++) {
-      const inL = inputL[i] || 0;
-      const inR = inputR[i] || 0;
+      let inL = inputL[i] || 0;
+      let inR = inputR[i] || 0;
+      
+      // Detect silence and mix in pink noise for texture (matching iOS behavior)
+      const inputLevel = Math.abs(inL) + Math.abs(inR);
+      if (inputLevel < 0.001) {
+        this.silentSamples++;
+        // After 0.5 seconds of silence, start blending in pink noise
+        if (this.silentSamples > sampleRate * 0.5) {
+          const noiseL = this.generatePinkNoise();
+          const noiseR = this.generatePinkNoise();
+          // Gradual blend over 2 seconds
+          const blendFactor = Math.min(1.0, (this.silentSamples - sampleRate * 0.5) / (sampleRate * 2));
+          inL = noiseL * blendFactor * 0.3;
+          inR = noiseR * blendFactor * 0.3;
+        }
+      } else {
+        this.silentSamples = 0;
+      }
 
       this.buffer[0][this.writePos] = inL;
       this.buffer[1][this.writePos] = inR;

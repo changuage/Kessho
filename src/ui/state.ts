@@ -65,6 +65,7 @@ export interface SliderState {
   // Space
   reverbEngine: 'algorithmic' | 'convolution';
   reverbType: 'plate' | 'hall' | 'cathedral' | 'darkHall';
+  reverbQuality: 'ultra' | 'balanced' | 'lite';  // ultra=8-channel FDN, balanced=8-ch optimized, lite=4-channel FDN
   reverbDecay: number;        // 0..1 step 0.01 (longer tail)
   reverbSize: number;         // 0.5..3.0 step 0.1 (room size)
   reverbDiffusion: number;    // 0..1 step 0.01 (smear amount)
@@ -103,6 +104,9 @@ export interface SliderState {
   leadOctaveRange: number;    // 1..4 - how many octaves to span for random notes
   leadTimbreMin: number;      // 0..1 - min timbre (0=soft rhodes, 1=bell)
   leadTimbreMax: number;      // 0..1 - max timbre (0=soft rhodes, 1=bell)
+  leadVibratoDepth: number;   // 0..1 - vibrato depth (0=none, 1=0.5 semitones)
+  leadVibratoRate: number;    // 0..1 - vibrato rate (maps to 2-8 Hz)
+  leadGlide: number;          // 0..1 - portamento/glide speed
   // Euclidean sequencer for lead - 4 independent lanes for polyrhythmic patterns
   leadEuclideanMasterEnabled: boolean;  // master on/off (off = random mode)
   leadEuclideanTempo: number;           // 0.25..12 - tempo multiplier for all lanes
@@ -200,6 +204,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'airNoise',
   'reverbEngine',
   'reverbType',
+  'reverbQuality',
   'reverbDecay',
   'reverbSize',
   'reverbDiffusion',
@@ -234,6 +239,9 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'leadOctaveRange',
   'leadTimbreMin',
   'leadTimbreMax',
+  'leadVibratoDepth',
+  'leadVibratoRate',
+  'leadGlide',
   'leadEuclideanMasterEnabled',
   'leadEuclideanTempo',
   'leadEuclid1Enabled',
@@ -344,6 +352,7 @@ export const DEFAULT_STATE: SliderState = {
   // Space
   reverbEngine: 'algorithmic',
   reverbType: 'cathedral',
+  reverbQuality: 'balanced',  // ultra, balanced, lite
   reverbDecay: 0.9,
   reverbSize: 2.0,
   reverbDiffusion: 1.0,
@@ -382,6 +391,9 @@ export const DEFAULT_STATE: SliderState = {
   leadOctaveRange: 2,
   leadTimbreMin: 0.2,
   leadTimbreMax: 0.6,
+  leadVibratoDepth: 0,
+  leadVibratoRate: 0,
+  leadGlide: 0,
   // Euclidean sequencer for lead - 4 lanes for polyrhythms
   leadEuclideanMasterEnabled: false,
   leadEuclideanTempo: 1,
@@ -524,6 +536,9 @@ const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> = {
   leadOctaveRange: { min: 1, max: 4, step: 1 },
   leadTimbreMin: { min: 0, max: 1, step: 0.01 },
   leadTimbreMax: { min: 0, max: 1, step: 0.01 },
+  leadVibratoDepth: { min: 0, max: 1, step: 0.01 },
+  leadVibratoRate: { min: 0, max: 1, step: 0.01 },
+  leadGlide: { min: 0, max: 1, step: 0.01 },
   // Euclidean sequencer - shared for all lanes
   leadEuclideanTempo: { min: 0.25, max: 12, step: 0.25 },
   leadEuclid1Steps: { min: 4, max: 32, step: 1 },
@@ -654,11 +669,34 @@ export function decodeStateFromUrl(search: string): SliderState | null {
           state.manualScale = value;
         } else if (key === 'reverbEngine' && (value === 'algorithmic' || value === 'convolution')) {
           state.reverbEngine = value;
-        } else if (
-          key === 'reverbType' &&
-          ['plate', 'hall', 'cathedral', 'darkHall'].includes(value)
-        ) {
-          state.reverbType = value as SliderState['reverbType'];
+        } else if (key === 'reverbType') {
+          // Handle iOS-only reverb presets by mapping to closest web-compatible preset
+          const webCompatibleTypes = ['plate', 'hall', 'cathedral', 'darkHall'];
+          const iOSOnlyMapping: Record<string, SliderState['reverbType']> = {
+            smallRoom: 'plate',
+            mediumRoom: 'plate',
+            largeRoom: 'hall',
+            mediumHall: 'hall',
+            largeHall: 'hall',
+            mediumChamber: 'hall',
+            largeChamber: 'cathedral',
+            largeRoom2: 'hall',
+            mediumHall2: 'hall',
+            mediumHall3: 'darkHall',
+            largeHall2: 'cathedral',
+          };
+          
+          if (webCompatibleTypes.includes(value)) {
+            state.reverbType = value as SliderState['reverbType'];
+          } else if (iOSOnlyMapping[value]) {
+            // iOS-only preset detected - use mapped fallback
+            state.reverbType = iOSOnlyMapping[value];
+            console.log(`iOS-only reverb type "${value}" mapped to "${iOSOnlyMapping[value]}"`);
+          } else {
+            // Unknown reverb type - default to cathedral
+            state.reverbType = 'cathedral';
+            console.warn(`Unknown reverb type "${value}" - defaulting to cathedral`);
+          }
         } else if (
           key === 'filterType' &&
           ['lowpass', 'bandpass', 'highpass', 'notch'].includes(value)

@@ -14,6 +14,7 @@
 
 interface ReverbParams {
   type: 'plate' | 'hall' | 'cathedral' | 'darkHall';
+  quality: 'ultra' | 'balanced' | 'lite';  // ultra=8-ch FDN, balanced=8-ch optimized, lite=4-ch FDN
   predelay: number;  // ms
   damping: number;   // 0-1
   width: number;     // 0-1
@@ -155,6 +156,7 @@ const DIFFUSER_TIMES_BASE = [
 class ReverbProcessor extends AudioWorkletProcessor {
   private params: ReverbParams = {
     type: 'hall',
+    quality: 'balanced',  // ultra, balanced, lite
     decay: 0.8,
     size: 1.5,
     modulation: 0.3,

@@ -110,6 +110,47 @@ interface SavedPreset {
   dualRanges?: Record<string, { min: number; max: number }>;  // Optional for backward compatibility
 }
 
+// iOS-only reverb types that won't work on web
+const IOS_ONLY_REVERB_TYPES = new Set([
+  'smallRoom', 'mediumRoom', 'largeRoom', 'mediumHall', 'largeHall',
+  'mediumChamber', 'largeChamber', 'largeRoom2', 'mediumHall2', 
+  'mediumHall3', 'largeHall2'
+]);
+
+// Check preset for iOS-only settings and return warnings
+const checkPresetCompatibility = (preset: SavedPreset): string[] => {
+  const warnings: string[] = [];
+  
+  // Check for iOS-only reverb type
+  if (preset.state.reverbType && IOS_ONLY_REVERB_TYPES.has(preset.state.reverbType)) {
+    warnings.push(`Reverb type "${preset.state.reverbType}" is iOS-only and will use "hall" instead.`);
+  }
+  
+  // Check for reverbQuality 'eco' which uses Apple reverb on iOS
+  if (preset.state.reverbQuality === 'eco') {
+    warnings.push(`Reverb quality "eco" uses Apple's reverb on iOS. Using "lite" mode instead.`);
+  }
+  
+  return warnings;
+};
+
+// Normalize iOS-only settings to web-compatible values
+const normalizePresetForWeb = (state: SliderState): SliderState => {
+  const normalized = { ...state };
+  
+  // Replace iOS-only reverb types with 'hall'
+  if (normalized.reverbType && IOS_ONLY_REVERB_TYPES.has(normalized.reverbType)) {
+    normalized.reverbType = 'hall';
+  }
+  
+  // Replace 'eco' quality with 'lite'
+  if (normalized.reverbQuality === 'eco') {
+    normalized.reverbQuality = 'lite';
+  }
+  
+  return normalized;
+};
+
 // Load presets by fetching the manifest from public/presets
 const loadPresetsFromFolder = async (): Promise<SavedPreset[]> => {
   const presets: SavedPreset[] = [];
@@ -1402,7 +1443,7 @@ const App: React.FC = () => {
     
     // Snap discrete values at 50% (scaleMode and manualScale handled above with rootNote)
     const discreteKeys: (keyof SliderState)[] = [
-      'seedWindow', 'filterType', 'reverbEngine', 'reverbType', 'grainPitchMode', 'cofDriftDirection'
+      'seedWindow', 'filterType', 'reverbEngine', 'reverbType', 'reverbQuality', 'grainPitchMode', 'cofDriftDirection'
     ];
     for (const key of discreteKeys) {
       (result as Record<string, unknown>)[key] = tNorm < 0.5 ? stateA[key] : stateB[key];
@@ -1460,6 +1501,21 @@ const App: React.FC = () => {
 
   // Load preset into morph slot (A or B)
   const handleLoadPresetToSlot = useCallback((preset: SavedPreset, slot: 'a' | 'b') => {
+    // Check for iOS-only settings and warn user
+    const warnings = checkPresetCompatibility(preset);
+    if (warnings.length > 0) {
+      console.warn('[Preset Compatibility]', warnings);
+      setTimeout(() => {
+        alert(`⚠️ Preset Compatibility Notice:\n\n${warnings.join('\n')}`);
+      }, 100);
+    }
+    
+    // Normalize iOS-only settings
+    const normalizedPreset: SavedPreset = {
+      ...preset,
+      state: normalizePresetForWeb(preset.state)
+    };
+    
     // Convert current dualSliderRanges to serializable format
     const currentDualRanges: Record<string, { min: number; max: number }> = {};
     dualSliderModes.forEach(key => {
@@ -1470,7 +1526,7 @@ const App: React.FC = () => {
     });
     
     if (slot === 'a') {
-      setMorphPresetA(preset);
+      setMorphPresetA(normalizedPreset);
       // When loading A, capture current state for B to use as fallback
       // But only if B is not already loaded
       if (!morphPresetB) {
@@ -1479,7 +1535,7 @@ const App: React.FC = () => {
       }
       
       // Apply the preset immediately when loading to slot A
-      const newState = { ...DEFAULT_STATE, ...preset.state };
+      const newState = { ...DEFAULT_STATE, ...normalizedPreset.state };
       if (newState.granularLevel === 0) {
         newState.granularEnabled = false;
       }
@@ -1489,12 +1545,12 @@ const App: React.FC = () => {
       setMorphPosition(0); // Reset to full A
       
       // Restore dual slider state if present
-      if (preset.dualRanges && Object.keys(preset.dualRanges).length > 0) {
+      if (normalizedPreset.dualRanges && Object.keys(normalizedPreset.dualRanges).length > 0) {
         const newDualModes = new Set<keyof SliderState>();
         const newDualRanges: DualSliderState = {};
         const newWalkPositions: Record<string, number> = {};
         
-        Object.entries(preset.dualRanges).forEach(([key, range]) => {
+        Object.entries(normalizedPreset.dualRanges).forEach(([key, range]) => {
           const paramKey = key as keyof SliderState;
           newDualModes.add(paramKey);
           newDualRanges[paramKey] = range;
@@ -1516,7 +1572,7 @@ const App: React.FC = () => {
         randomWalkRef.current = {};
       }
     } else {
-      setMorphPresetB(preset);
+      setMorphPresetB(normalizedPreset);
       // When loading B, capture current state for A to use as fallback
       // But only if A is not already loaded
       if (!morphPresetA) {
@@ -1883,8 +1939,20 @@ const App: React.FC = () => {
     setMorphPresetA(preset);
     setMorphPosition(0); // Reset to full A
     
+    // Check for iOS-only settings and warn user
+    const warnings = checkPresetCompatibility(preset);
+    if (warnings.length > 0) {
+      console.warn('[Preset Compatibility]', warnings);
+      // Show non-blocking warning after a short delay
+      setTimeout(() => {
+        alert(`⚠️ Preset Compatibility Notice:\n\n${warnings.join('\n')}`);
+      }, 100);
+    }
+    
     // Apply the preset directly, with auto-disable for zero-level features
-    const newState = { ...DEFAULT_STATE, ...preset.state };
+    // Also normalize iOS-only settings to web-compatible values
+    const normalizedState = normalizePresetForWeb(preset.state);
+    const newState = { ...DEFAULT_STATE, ...normalizedState };
     
     // Auto-disable granular if level is 0
     if (newState.granularLevel === 0) {
@@ -2306,6 +2374,10 @@ const App: React.FC = () => {
               morphStartRoot={morphCoFViz?.startRoot}
               morphTargetRoot={morphCoFViz?.targetRoot}
               morphProgress={morphPosition}
+              onSelectRoot={(semitone) => {
+                setState(prev => ({ ...prev, rootNote: semitone }));
+                engineRef.current?.resetCofDrift?.();
+              }}
             />
             
             {state.cofDriftEnabled && (
@@ -3341,6 +3413,16 @@ const App: React.FC = () => {
             ]}
             onChange={(v) => handleSelectChange('reverbType', v)}
           />
+          <Select
+            label="Reverb Quality"
+            value={state.reverbQuality}
+            options={[
+              { value: 'ultra', label: 'Ultra (32 diffusers)' },
+              { value: 'balanced', label: 'Balanced (16 diffusers)' },
+              { value: 'lite', label: 'Lite (4-ch FDN)' },
+            ]}
+            onChange={(v) => handleSelectChange('reverbQuality', v)}
+          />
           <Slider
             label="Decay"
             value={state.reverbDecay}
@@ -3799,6 +3881,41 @@ const App: React.FC = () => {
                   );
                 })()}
               </svg>
+            </div>
+          </div>
+
+          {/* Expression Section */}
+          <div style={{ marginTop: '12px', borderTop: '1px solid #333', paddingTop: '12px' }}>
+            <div style={{ fontSize: '0.85rem', color: '#888', marginBottom: '8px' }}>Expression</div>
+            <Slider
+              label="Vibrato Depth"
+              value={state.leadVibratoDepth}
+              paramKey="leadVibratoDepth"
+              onChange={handleSliderChange}
+              {...sliderProps('leadVibratoDepth')}
+            />
+            <div style={{ fontSize: '0.65rem', color: '#666', marginTop: '-8px', marginBottom: '8px' }}>
+              {(state.leadVibratoDepth * 0.5).toFixed(2)} semitones
+            </div>
+            <Slider
+              label="Vibrato Rate"
+              value={state.leadVibratoRate}
+              paramKey="leadVibratoRate"
+              onChange={handleSliderChange}
+              {...sliderProps('leadVibratoRate')}
+            />
+            <div style={{ fontSize: '0.65rem', color: '#666', marginTop: '-8px', marginBottom: '8px' }}>
+              {(2 + state.leadVibratoRate * 6).toFixed(1)} Hz
+            </div>
+            <Slider
+              label="Glide"
+              value={state.leadGlide}
+              paramKey="leadGlide"
+              onChange={handleSliderChange}
+              {...sliderProps('leadGlide')}
+            />
+            <div style={{ fontSize: '0.65rem', color: '#666', marginTop: '-8px', marginBottom: '8px' }}>
+              Portamento between notes
             </div>
           </div>
 

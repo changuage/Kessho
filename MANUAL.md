@@ -121,10 +121,12 @@ System-wide settings affecting generation behavior.
 
 | Control | Options/Range | Description |
 |---------|---------------|-------------|
-| **Root Note** | C, C#, D... B | The home key for all harmony (default: E) |
+| **Root Note** | C, C#, D... B | The home key for all harmony (tap to change via Circle of Fifths popup) |
 | **Seed Window** | Hour / Day | How often the generation seed changes |
 | **Randomness** | 0-100% | Amount of variation in generated patterns |
-| **Random Walk Speed** | 0.1-5x | Speed of value drift for range-based parameters |
+| **Random Walk Speed** | 0.1-5x | Speed of value drift for dual sliders (range mode parameters) |
+
+**Root Note Selection**: Tapping the current root note opens a Circle of Fifths popup for quick key selection. The selected key becomes the new home key for all harmony generation and Circle of Fifths drift.
 
 ---
 
@@ -200,6 +202,7 @@ Creates the spatial environment for all sounds.
 |---------|---------------|-------------|
 | **Reverb Engine** | Algorithmic / Convolution | Algorithm type |
 | **Reverb Type** | Plate / Hall / Cathedral / Dark Hall | Preset character |
+| **Reverb Quality** | Ultra / Balanced / Lite | Processing quality (see below) |
 | **Decay** | 0-100% | Reverb tail length |
 | **Size** | 0.5-3.0 | Virtual room size |
 | **Diffusion** | 0-100% | How smeared/smooth the reverb is |
@@ -207,6 +210,20 @@ Creates the spatial environment for all sounds.
 | **Predelay** | 0-100 ms | Gap before reverb starts |
 | **Damping** | 0-100% | High-frequency absorption |
 | **Width** | 0-100% | Stereo spread |
+
+#### Reverb Quality Modes
+
+The FDN (Feedback Delay Network) reverb offers three quality levels:
+
+| Mode | FDN Channels | Diffuser Stages | CPU Usage | Best For |
+|------|-------------|-----------------|-----------|----------|
+| **Ultra** | 8 | 32 (10+6+6+10) | High | Maximum smoothness, dense tails |
+| **Balanced** | 8 | 16 (6+4+6) | Medium | Default quality, good balance |
+| **Lite** | 4 | 8 | Low | Battery saving, older devices |
+
+- **Ultra**: Maximum diffusion with 32 allpass stages creates the smoothest, most lush reverb tails. Best for headphone listening or when CPU isn't a concern.
+- **Balanced**: The standard quality with excellent sound. Recommended for most use cases.
+- **Lite**: Reduced 4-channel FDN with fewer diffusers. Suitable for mobile devices or when running other audio applications.
 
 ---
 
@@ -301,15 +318,33 @@ Smoothly blend between two saved presets.
 
 #### Circle of Fifths Key Transitions
 
-When morphing between presets with different root notes, the key transition follows the **Circle of Fifths** for smooth, musical modulation:
+When morphing between presets with different root notes, the key transition follows the **Circle of Fifths** for smooth, musical modulation instead of jumping directly.
 
-| From Key | To Key | Path | Steps |
-|----------|--------|------|-------|
-| G | E | G → D → A → E | 3 (counter-clockwise) |
-| E | G | E → A → D → G | 3 (counter-clockwise) |
-| C | F# | C → G → D → A → E → B → F# | 6 (clockwise) |
+**How it works:**
+1. The morph system calculates the **shortest path** around the Circle of Fifths between the source and destination keys
+2. Key changes are **distributed evenly** across the morph duration
+3. Each intermediate key is visited in sequence, creating a harmonic journey
 
-The key changes are distributed evenly across the morph duration, creating a smooth harmonic journey rather than an abrupt key change.
+**Path Examples:**
+
+| From Key | To Key | Path | Steps | Direction |
+|----------|--------|------|-------|-----------|
+| E | B | E → B | 1 | Clockwise |
+| E | A | E → A | 1 | Counter-clockwise |
+| G | E | G → D → A → E | 3 | Counter-clockwise |
+| C | F# | C → F → Bb → Eb → Ab → Db → F# | 6 | Counter-clockwise |
+| C | F# | C → G → D → A → E → B → F# | 6 | Clockwise (same distance) |
+
+**Morph Timeline Example** (E → G, 3 steps, 10-second morph):
+
+| Morph % | Time | Key |
+|---------|------|-----|
+| 0% | 0s | E (start) |
+| 33% | 3.3s | A |
+| 66% | 6.6s | D |
+| 100% | 10s | G (destination) |
+
+The key changes are distributed evenly across the morph duration, creating a smooth harmonic journey rather than an abrupt key change. Each intermediate key plays for an equal portion of the morph time.
 
 #### Smart CoF Toggle During Morph
 
@@ -684,12 +719,24 @@ Sets the maximum distance from home before bouncing back:
 
 ---
 
-## Keyboard Shortcuts
+## Keyboard Shortcuts & Interactions
 
-| Key | Action |
-|-----|--------|
-| **Space** | Start/Stop |
+| Key/Action | Result |
+|------------|--------|
+| **Space** | Start/Stop audio |
 | **Double-click slider** | Toggle range mode (dual slider) |
+| **Tap Root Note** | Opens key selection popup (Circle of Fifths display) |
+
+### Dual Slider (Range Mode)
+
+Double-clicking any slider converts it to a **dual slider** with two handles (min/max). When in range mode:
+
+- The actual value **randomly walks** between the min and max handles
+- **Random Walk Speed** (in Global settings) controls how fast values drift (0.1x = slow, 5x = fast)
+- Each phrase boundary updates the random walk targets
+- Double-click again to return to single-value mode
+
+This creates organic, evolving textures as parameters gently shift within your defined range.
 
 ---
 
