@@ -1061,8 +1061,8 @@ const App: React.FC = () => {
     depth: boolean;
   }>({ duration: true, interval: true, foam: true, depth: true });
 
-  // Track last random walk positions for ocean params
-  const [oceanPositions, setOceanPositions] = useState<{
+  // Track last random walk positions for ocean params (read-only for now, updated by random walk system)
+  const [oceanPositions] = useState<{
     duration: number;
     interval: number;
     foam: number;
