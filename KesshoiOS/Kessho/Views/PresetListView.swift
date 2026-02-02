@@ -165,33 +165,126 @@ struct PresetRow: View {
     }
 }
 
-/// Morph slider control
+/// Morph slider control with full settings (matching web app)
 struct MorphControl: View {
     @EnvironmentObject var appState: AppState
     
     var body: some View {
         VStack(spacing: 12) {
+            // Preset A/B labels
             HStack {
-                Text(appState.morphPresetA?.name.replacingOccurrences(of: "_", with: " ") ?? "A")
+                Text(appState.morphPresetA?.name.replacingOccurrences(of: "_", with: " ") ?? "(empty)")
+                    .font(.caption)
+                    .foregroundColor(appState.morphPresetA != nil ? .white.opacity(0.9) : .secondary)
+                    .lineLimit(1)
+                
+                Spacer()
+                
+                Text(appState.morphPresetB?.name.replacingOccurrences(of: "_", with: " ") ?? "(empty)")
+                    .font(.caption)
+                    .foregroundColor(appState.morphPresetB != nil ? .white.opacity(0.9) : .secondary)
+                    .lineLimit(1)
+            }
+            
+            // Morph slider
+            Slider(value: Binding(
+                get: { appState.morphPosition },
+                set: { appState.setMorphPosition($0) }
+            ), in: 0...100)
+            .disabled(appState.morphPresetB == nil || appState.morphMode == "auto")
+            
+            Text("\(Int(appState.morphPosition))%")
+                .font(.caption)
+                .foregroundColor(.secondary)
+            
+            Divider().background(Color.white.opacity(0.2))
+            
+            // Mode toggle
+            HStack {
+                Text("Mode:")
                     .font(.caption)
                     .foregroundColor(.secondary)
                 
                 Spacer()
                 
-                Text(appState.morphPresetB?.name.replacingOccurrences(of: "_", with: " ") ?? "B")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                Picker("Mode", selection: $appState.morphMode) {
+                    Text("Manual").tag("manual")
+                    Text("Auto-Cycle").tag("auto")
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 180)
+                .onChange(of: appState.morphMode) { newMode in
+                    if newMode == "auto" && appState.morphPresetA != nil && appState.morphPresetB != nil {
+                        appState.startAutoMorph()
+                    } else if newMode == "manual" {
+                        appState.stopAutoMorph()
+                    }
+                }
             }
             
-            Slider(value: Binding(
-                get: { appState.morphPosition },
-                set: { appState.setMorphPosition($0) }
-            ), in: 0...100)
-            .disabled(appState.morphPresetB == nil)
-            
-            Text("\(Int(appState.morphPosition))%")
-                .font(.caption)
-                .foregroundColor(.secondary)
+            // Auto-cycle settings (shown when auto mode)
+            if appState.morphMode == "auto" {
+                VStack(spacing: 8) {
+                    // Play Phrases slider
+                    HStack {
+                        Text("Play Phrases")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Text("\(appState.morphPlayPhrases)")
+                            .font(.caption2)
+                            .foregroundColor(.white.opacity(0.7))
+                    }
+                    Slider(value: Binding(
+                        get: { Double(appState.morphPlayPhrases) },
+                        set: { appState.morphPlayPhrases = Int($0) }
+                    ), in: 4...64, step: 4)
+                    
+                    // Morph Phrases slider
+                    HStack {
+                        Text("Morph Phrases")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Text("\(appState.morphTransitionPhrases)")
+                            .font(.caption2)
+                            .foregroundColor(.white.opacity(0.7))
+                    }
+                    Slider(value: Binding(
+                        get: { Double(appState.morphTransitionPhrases) },
+                        set: { appState.morphTransitionPhrases = Int($0) }
+                    ), in: 2...32, step: 2)
+                    
+                    // Cycle description
+                    Text("Cycle: \(appState.morphPlayPhrases)→morph(\(appState.morphTransitionPhrases))→\(appState.morphPlayPhrases)→morph(\(appState.morphTransitionPhrases))")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                    
+                    // Phase countdown (when running)
+                    if appState.autoMorphEnabled && !appState.morphPhase.isEmpty {
+                        VStack(spacing: 4) {
+                            Text(appState.morphPhase)
+                                .font(.caption2)
+                                .foregroundColor(.purple.opacity(0.9))
+                            Text("\(appState.autoMorphPhrasesRemaining) phrase\(appState.autoMorphPhrasesRemaining != 1 ? "s" : "") left")
+                                .font(.headline)
+                                .foregroundColor(.purple)
+                        }
+                        .padding(8)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(Color.purple.opacity(0.15))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(Color.purple.opacity(0.4), lineWidth: 1)
+                                )
+                        )
+                    }
+                }
+                .padding(.top, 8)
+            }
         }
         .padding(.vertical, 8)
     }

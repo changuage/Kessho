@@ -30,17 +30,28 @@ class AppState: ObservableObject {
     @Published var currentChordDegrees: [Int] = []
     @Published var currentScaleName: String = ""
     
-    // Morph state
+    // Morph state (matching web app)
     @Published var morphPresetA: SavedPreset?
     @Published var morphPresetB: SavedPreset?
     @Published var morphPosition: Double = 0  // 0-100
     @Published var morphMode: String = "manual"  // "manual", "auto"
     @Published var autoMorphEnabled: Bool = false
     @Published var autoMorphPhrasesRemaining: Int = 0
+    @Published var morphPlayPhrases: Int = 16     // How long to stay at each preset
+    @Published var morphTransitionPhrases: Int = 8  // How long the transition takes
+    @Published var morphPhase: String = ""        // "Playing A", "Morphing to B", etc.
     
     // Auto-morph timer
     private var autoMorphTimer: Timer?
-    private var autoMorphDuration: Int = 4  // phrases between morphs
+    private var autoMorphCurrentPhase: AutoMorphPhase = .playingA
+    private var phrasesInCurrentPhase: Int = 0
+    
+    private enum AutoMorphPhase {
+        case playingA
+        case morphingToB
+        case playingB
+        case morphingToA
+    }
     
     // Random walk timer for dual sliders
     private var randomWalkTimer: Timer?
@@ -370,26 +381,30 @@ class AppState: ObservableObject {
         return a + (b - a) * t
     }
     
-    // MARK: - Auto-Morph Cycle (matching web app)
+    // MARK: - Auto-Morph Cycle (matching web app's play/morph cycle)
     
     /// Start automatic morphing cycle between presets
-    func startAutoMorph(phraseDuration: Int = 4) {
+    func startAutoMorph() {
         guard savedPresets.count >= 2 else { return }
         
         autoMorphEnabled = true
-        autoMorphDuration = phraseDuration
-        autoMorphPhrasesRemaining = phraseDuration
+        autoMorphCurrentPhase = .playingA
+        phrasesInCurrentPhase = 0
+        autoMorphPhrasesRemaining = morphPlayPhrases
+        morphPhase = "Playing \(morphPresetA?.name ?? "A")"
         
-        // Pick initial presets
+        // Pick initial presets if not set
         if morphPresetA == nil {
             morphPresetA = savedPresets.randomElement()
         }
-        morphPresetB = savedPresets.filter { $0.id != morphPresetA?.id }.randomElement()
+        if morphPresetB == nil {
+            morphPresetB = savedPresets.filter { $0.id != morphPresetA?.id }.randomElement()
+        }
         
-        // Start timer (16 seconds per phrase)
+        // Start timer - tick every phrase (16 seconds)
         autoMorphTimer?.invalidate()
-        autoMorphTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            self?.tickAutoMorph()
+        autoMorphTimer = Timer.scheduledTimer(withTimeInterval: 16.0, repeats: true) { [weak self] _ in
+            self?.tickAutoMorphPhrase()
         }
     }
     
@@ -398,27 +413,76 @@ class AppState: ObservableObject {
         autoMorphEnabled = false
         autoMorphTimer?.invalidate()
         autoMorphTimer = nil
+        morphPhase = ""
     }
     
-    private func tickAutoMorph() {
-        guard autoMorphEnabled, let presetA = morphPresetA, let presetB = morphPresetB else { return }
+    private func tickAutoMorphPhrase() {
+        guard autoMorphEnabled else { return }
         
-        // Increment morph position smoothly
-        let step = 100.0 / Double(autoMorphDuration * 16)  // 16 ticks per phrase
-        morphPosition = min(100, morphPosition + step)
+        phrasesInCurrentPhase += 1
         
-        // Apply morphed state
+        switch autoMorphCurrentPhase {
+        case .playingA:
+            autoMorphPhrasesRemaining = morphPlayPhrases - phrasesInCurrentPhase
+            if phrasesInCurrentPhase >= morphPlayPhrases {
+                // Start morphing to B
+                autoMorphCurrentPhase = .morphingToB
+                phrasesInCurrentPhase = 0
+                autoMorphPhrasesRemaining = morphTransitionPhrases
+                morphPhase = "Morphing to \(morphPresetB?.name ?? "B")"
+            }
+            
+        case .morphingToB:
+            autoMorphPhrasesRemaining = morphTransitionPhrases - phrasesInCurrentPhase
+            // Smoothly increase morph position
+            let progress = Double(phrasesInCurrentPhase) / Double(morphTransitionPhrases)
+            morphPosition = progress * 100.0
+            applyMorphedState()
+            
+            if phrasesInCurrentPhase >= morphTransitionPhrases {
+                morphPosition = 100.0
+                autoMorphCurrentPhase = .playingB
+                phrasesInCurrentPhase = 0
+                autoMorphPhrasesRemaining = morphPlayPhrases
+                morphPhase = "Playing \(morphPresetB?.name ?? "B")"
+            }
+            
+        case .playingB:
+            autoMorphPhrasesRemaining = morphPlayPhrases - phrasesInCurrentPhase
+            if phrasesInCurrentPhase >= morphPlayPhrases {
+                // Pick new target preset and start morphing back
+                morphPresetA = morphPresetB
+                morphPresetB = savedPresets.filter { $0.id != morphPresetA?.id }.randomElement()
+                autoMorphCurrentPhase = .morphingToA
+                phrasesInCurrentPhase = 0
+                autoMorphPhrasesRemaining = morphTransitionPhrases
+                morphPhase = "Morphing to \(morphPresetB?.name ?? "next")"
+            }
+            
+        case .morphingToA:
+            autoMorphPhrasesRemaining = morphTransitionPhrases - phrasesInCurrentPhase
+            // Smoothly increase morph position (now going 0 → 100 to new B)
+            let progress = Double(phrasesInCurrentPhase) / Double(morphTransitionPhrases)
+            morphPosition = progress * 100.0
+            applyMorphedState()
+            
+            if phrasesInCurrentPhase >= morphTransitionPhrases {
+                morphPosition = 100.0
+                autoMorphCurrentPhase = .playingB
+                phrasesInCurrentPhase = 0
+                autoMorphPhrasesRemaining = morphPlayPhrases
+                morphPhase = "Playing \(morphPresetB?.name ?? "B")"
+                // Swap A and B for next cycle
+                morphPresetA = morphPresetB
+            }
+        }
+    }
+    
+    private func applyMorphedState() {
+        guard let presetA = morphPresetA, let presetB = morphPresetB else { return }
         let morphedState = lerpPresets(presetA.state, presetB.state, t: morphPosition / 100.0)
         state = morphedState
-        
-        // Check if we've completed this morph
-        if morphPosition >= 100 {
-            // Move to next pair
-            morphPresetA = morphPresetB
-            morphPresetB = savedPresets.filter { $0.id != morphPresetA?.id }.randomElement()
-            morphPosition = 0
-            autoMorphPhrasesRemaining = autoMorphDuration
-        }
+        audioEngine.updateParams(state)
     }
     
     /// Toggle auto-morph on/off

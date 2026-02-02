@@ -237,6 +237,9 @@ class AudioEngine {
             try engine.start()
             isRunning = true
             
+            // Send initial random sequence to granular processor
+            sendGranulatorRandomSequence()
+            
             // Start scheduling
             startPhraseScheduler()
             startNoteScheduler()
@@ -480,14 +483,24 @@ class AudioEngine {
         // Update Euclidean sequencer
         updateEuclideanSequencer()
         
-        // Update ocean wave synth
+        // Update ocean wave synth with proper min/max ranges (not averaged values)
         oceanSynth?.setEnabled(currentParams.oceanWaveSynthEnabled)
         oceanSynth?.setLevel(Float(currentParams.oceanWaveSynthLevel))
-        oceanSynth?.setParameters(
-            intensity: Float((currentParams.oceanDepthMin + currentParams.oceanDepthMax) / 2),
-            steepness: 0.5,  // Default
-            spacing: Float((currentParams.oceanDurationMin + currentParams.oceanDurationMax) / 2 / 10.0),
-            foam: Float((currentParams.oceanFoamMin + currentParams.oceanFoamMax) / 2)
+        oceanSynth?.setWaveDuration(
+            min: Float(currentParams.oceanDurationMin),
+            max: Float(currentParams.oceanDurationMax)
+        )
+        oceanSynth?.setWaveInterval(
+            min: Float(currentParams.oceanIntervalMin),
+            max: Float(currentParams.oceanIntervalMax)
+        )
+        oceanSynth?.setFoam(
+            min: Float(currentParams.oceanFoamMin),
+            max: Float(currentParams.oceanFoamMax)
+        )
+        oceanSynth?.setDepth(
+            min: Float(currentParams.oceanDepthMin),
+            max: Float(currentParams.oceanDepthMax)
         )
         
         // Update ocean sample player
@@ -547,6 +560,13 @@ class AudioEngine {
         seq.lanes[3].regeneratePattern()
     }
     
+    /// Send pre-seeded random sequence to granular processor for deterministic synthesis (matching web app)
+    private func sendGranulatorRandomSequence() {
+        let rng = createRng("\(currentBucket)|\(currentSeed)|granular")
+        let sequence = generateRandomSequence(rng, count: 10000)
+        granularProcessor?.setRandomSequence(sequence)
+    }
+    
     // MARK: - Scheduling
     
     private func startPhraseScheduler() {
@@ -570,6 +590,9 @@ class AudioEngine {
         // Update Circle of Fifths
         let rng = createRng("\(currentBucket)|\(currentSeed)|cof")
         let didDrift = cofState.updateAtPhraseBoundary(rng: rng)
+        
+        // Reseed granular processor for this phrase
+        sendGranulatorRandomSequence()
         
         // Update harmony
         if let state = harmonyState {

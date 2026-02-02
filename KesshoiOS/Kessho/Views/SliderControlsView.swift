@@ -47,7 +47,7 @@ struct SliderControlsView: View {
                     ParameterSlider(
                         label: "Granular",
                         value: $appState.state.granularLevel,
-                        range: 0...1,
+                        range: 0...2,
                         icon: "sparkles"
                     )
                     
@@ -61,9 +61,71 @@ struct SliderControlsView: View {
                     ParameterSlider(
                         label: "Reverb",
                         value: $appState.state.reverbLevel,
-                        range: 0...1,
+                        range: 0...2,
                         icon: "waveform.path"
                     )
+                }
+                
+                // MARK: - Harmony Section (matching web app's Harmony / Pitch panel)
+                CollapsibleSection(title: "Harmony", icon: "music.quarternote.3", expanded: $expandedSections) {
+                    // Root Note picker (0-11 semitones)
+                    HStack {
+                        Image(systemName: "tuningfork")
+                            .foregroundColor(.white.opacity(0.5))
+                            .frame(width: 20)
+                        Text("Root Note")
+                            .font(.subheadline)
+                            .foregroundColor(.white.opacity(0.8))
+                        Spacer()
+                        Picker("Root Note", selection: $appState.state.rootNote) {
+                            ForEach(0..<12, id: \.self) { semitone in
+                                Text(NOTE_NAMES[semitone]).tag(semitone)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .accentColor(.white)
+                    }
+                    .padding(.vertical, 4)
+                    
+                    // Scale Mode picker (auto/manual)
+                    HStack {
+                        Image(systemName: "slider.horizontal.3")
+                            .foregroundColor(.white.opacity(0.5))
+                            .frame(width: 20)
+                        Text("Scale Mode")
+                            .font(.subheadline)
+                            .foregroundColor(.white.opacity(0.8))
+                        Spacer()
+                        Picker("Scale Mode", selection: $appState.state.scaleMode) {
+                            Text("Auto").tag("auto")
+                            Text("Manual").tag("manual")
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(width: 150)
+                    }
+                    .padding(.vertical, 4)
+                    
+                    // Manual scale family picker (only shown when scaleMode is "manual")
+                    if appState.state.scaleMode == "manual" {
+                        HStack {
+                            Image(systemName: "music.note.list")
+                                .foregroundColor(.white.opacity(0.5))
+                                .frame(width: 20)
+                            Text("Scale Family")
+                                .font(.subheadline)
+                                .foregroundColor(.white.opacity(0.8))
+                            Spacer()
+                            Picker("Scale Family", selection: $appState.state.manualScale) {
+                                ForEach(SCALE_FAMILIES, id: \.name) { scale in
+                                    Text("\(NOTE_NAMES[appState.state.rootNote]) \(scale.name)")
+                                        .tag(scale.name)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .accentColor(.white)
+                        }
+                        .padding(.vertical, 4)
+                    }
                 }
                 
                 // MARK: - Character Section
@@ -270,7 +332,7 @@ struct SliderControlsView: View {
                     ParameterSlider(
                         label: "Mod Speed",
                         value: $appState.state.filterModSpeed,
-                        range: 0.1...5,
+                        range: 0...16,
                         icon: "waveform.path.ecg"
                     )
                     

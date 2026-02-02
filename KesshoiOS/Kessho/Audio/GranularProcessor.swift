@@ -75,6 +75,10 @@ class GranularProcessor {
     private var feedbackWriteIndex: Int = 0
     private let feedbackBufferSize: Int = 44100  // 1 second
     
+    // Pre-seeded random sequence (matching web app for determinism)
+    private var randomSequence: [Float] = []
+    private var randomIndex: Int = 0
+    
     // Active grains
     private var grains: [Grain] = []
     private var maxGrains: Int = 64
@@ -127,8 +131,16 @@ class GranularProcessor {
         generateNoiseBuffer()
     }
     
+    /// Get next value from pre-seeded random sequence (matching web app)
+    private func nextRandom() -> Float {
+        if randomSequence.isEmpty { return 0.5 }
+        let value = randomSequence[randomIndex]
+        randomIndex = (randomIndex + 1) % randomSequence.count
+        return value
+    }
+    
     private func generateNoiseBuffer() {
-        // Generate pink-ish noise as source material
+        // Generate pink-ish noise as source material (uses system random - this is just for initial texture)
         let bufferLength = Int(sampleRate * 4)  // 4 seconds
         sampleBuffer = [Float](repeating: 0, count: bufferLength)
         
@@ -154,15 +166,16 @@ class GranularProcessor {
     }
     
     private func generateStereoSample() -> (Float, Float) {
-        // Apply spray - randomize timing between grains
-        let sprayOffset = Int(Float.random(in: -spray...spray) * Float(baseSamplesPerGrain) * 0.5)
+        // Apply spray - randomize timing between grains (using seeded random)
+        let sprayRand = nextRandom() * 2 - 1  // Convert 0-1 to -1...1
+        let sprayOffset = Int(sprayRand * spray * Float(baseSamplesPerGrain) * 0.5)
         let adjustedSamplesPerGrain = max(100, samplesPerGrain + sprayOffset)
         
-        // Check if we should spawn a new grain (with probability check)
+        // Check if we should spawn a new grain (with probability check using seeded random)
         samplesSinceLastGrain += 1
         if samplesSinceLastGrain >= adjustedSamplesPerGrain && grains.count < maxGrains {
             // Probability gate - only spawn if random check passes
-            if Float.random(in: 0...1) <= probability {
+            if nextRandom() <= probability {
                 spawnGrain()
             }
             samplesSinceLastGrain = 0
@@ -184,8 +197,9 @@ class GranularProcessor {
                 sample = getSampleAt(position: grain.position, pitch: grain.pitch)
             }
             
-            // Apply jitter - micro pitch variations during grain
-            let jitterAmount = Float.random(in: -jitter...jitter) * 0.01
+            // Apply jitter - micro pitch variations during grain (using seeded random)
+            let jitterRand = nextRandom() * 2 - 1  // Convert 0-1 to -1...1
+            let jitterAmount = jitterRand * jitter * 0.01
             let jitteredSample = sample * (1 + jitterAmount)
             
             // Apply envelope using Hann window lookup table (matching web app)
@@ -257,28 +271,39 @@ class GranularProcessor {
     }
     
     private func spawnGrain() {
-        let grainLength = Int(Float.random(in: grainSizeMin...grainSizeMax) * sampleRate)
-        let startPos = Int.random(in: 0..<max(1, sampleBuffer.count - grainLength))
+        // Grain size using seeded random
+        let sizeRange = grainSizeMax - grainSizeMin
+        let grainLength = Int((grainSizeMin + nextRandom() * sizeRange) * sampleRate)
+        
+        // Start position using seeded random
+        let maxStartPos = max(1, sampleBuffer.count - grainLength)
+        let startPos = Int(nextRandom() * Float(maxStartPos))
         
         // Pitch based on mode using pitchSpread in semitones
         let pitch: Float
         if pitchMode == 1 {
             // Harmonic mode - use semitone intervals (matching web app)
-            let interval = harmonicIntervals.randomElement() ?? 0
+            let intervalIndex = Int(nextRandom() * Float(harmonicIntervals.count))
+            let interval = harmonicIntervals[min(intervalIndex, harmonicIntervals.count - 1)]
             pitch = pow(2, interval / 12)  // Convert semitones to frequency ratio
         } else {
             // Random mode - use pitchSpread parameter (semitones)
-            pitch = pow(2, Float.random(in: -pitchSpread...pitchSpread) / 12)
+            let pitchRand = nextRandom() * 2 - 1  // -1 to 1
+            pitch = pow(2, (pitchRand * pitchSpread) / 12)
         }
         
-        // Decide whether to use feedback buffer
-        let usesFeedback = feedback > 0 && Float.random(in: 0...1) < feedback * 0.5
+        // Decide whether to use feedback buffer (using seeded random)
+        let usesFeedback = feedback > 0 && nextRandom() < feedback * 0.5
         
-        // Calculate stereo position using stereoSpread and lookup table (matching web)
-        let panPosition = Float.random(in: -1...1) * stereoSpread
+        // Calculate stereo position using stereoSpread and lookup table (using seeded random)
+        let panRand = nextRandom() * 2 - 1  // -1 to 1
+        let panPosition = panRand * stereoSpread
         let panIndex = Int((panPosition + 1) * 0.5 * Float(PAN_TABLE_SIZE - 1)).clamped(to: 0...(PAN_TABLE_SIZE - 1))
         let panL = panTableL[panIndex]
         let panR = panTableR[panIndex]
+        
+        // Amplitude using seeded random
+        let amplitude = 0.3 + nextRandom() * 0.5  // 0.3 to 0.8
         
         let grain = Grain(
             position: usesFeedback ? feedbackWriteIndex : startPos,
@@ -286,7 +311,7 @@ class GranularProcessor {
             length: grainLength,
             elapsed: 0,
             pitch: pitch,
-            amplitude: Float.random(in: 0.3...0.8),
+            amplitude: amplitude,
             panL: panL,
             panR: panR,
             usesFeedback: usesFeedback
@@ -370,6 +395,12 @@ class GranularProcessor {
     func setWetFilters(hpf: Float, lpf: Float) {
         self.wetHPFFreq = max(20, min(hpf, 20000))
         self.wetLPFFreq = max(20, min(lpf, 20000))
+    }
+    
+    /// Set pre-seeded random sequence for deterministic granular synthesis (matching web app)
+    func setRandomSequence(_ sequence: [Float]) {
+        self.randomSequence = sequence
+        self.randomIndex = 0
     }
     
     /// Load a sample buffer for granular processing
