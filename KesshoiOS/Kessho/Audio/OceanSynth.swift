@@ -276,26 +276,4 @@ class OceanSynth {
         self.depthMin = Swift.min(Swift.max(min, 0), 1)
         self.depthMax = Swift.min(Swift.max(max, 0), 1)
     }
-    
-    func setSeed(_ seed: Int) {
-        self.rngState = UInt32(truncatingIfNeeded: seed)
-        // Reinitialize generators
-        gen1.timeSinceLastWave = 0
-        gen1.nextWaveInterval = Int(sampleRate * randomRange(5, 10))
-        gen2.timeSinceLastWave = Int(sampleRate * 4)
-        gen2.nextWaveInterval = Int(sampleRate * randomRange(7, 12))
-    }
-    
-    // Backwards compatibility
-    func setWaveIntensity(_ i: Float) { setIntensity(i) }
-    func setWaveSteepness(_ s: Float) { /* mapped to foam */ setFoam(min: s * 0.2, max: s * 0.5) }
-    func setWaveSpacing(_ s: Float) { setWaveInterval(min: 5 + s * 5, max: 12 + s * 5) }
-    func setFoamAmount(_ f: Float) { setFoam(min: f * 0.2, max: f) }
-    func setWaveRate(_ rate: Float) { setWaveInterval(min: 5 - rate * 2, max: 12 - rate * 4) }
-    func setParameters(intensity: Float, steepness: Float, spacing: Float, foam: Float) {
-        setIntensity(intensity)
-        setWaveSteepness(steepness)
-        setWaveSpacing(spacing)
-        setFoamAmount(foam)
-    }
 }

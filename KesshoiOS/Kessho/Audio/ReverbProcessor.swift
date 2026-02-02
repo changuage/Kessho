@@ -292,7 +292,7 @@ class ReverbProcessor {
         // Pre-diffusion (6 stages for Ultra, 3 for Balanced)
         var diffInL = delayedL
         var diffInR = delayedR
-        if quality != .eco {
+        if quality != .lite {
             diffInL = preDiffuserL.process(delayedL, stages: quality == .ultra ? 6 : 3)
             diffInR = preDiffuserR.process(delayedR, stages: quality == .ultra ? 6 : 3)
         }
@@ -354,7 +354,7 @@ class ReverbProcessor {
                     reads[0] * 0.25 + reads[2] * 0.2) * 0.4
         
         // Post-diffusion (6 stages for Ultra, 3 for Balanced)
-        if quality != .eco {
+        if quality != .lite {
             rawL = postDiffuserL.process(rawL, stages: quality == .ultra ? 6 : 3)
             rawR = postDiffuserR.process(rawR, stages: quality == .ultra ? 6 : 3)
         }
@@ -459,10 +459,10 @@ class ReverbProcessor {
     /// Set quality mode (affects CPU usage and sound quality)
     func setQuality(_ quality: ReverbQuality) {
         self.quality = quality
-        self.useCustomReverb = (quality != .eco)
+        self.useCustomReverb = (quality != .lite)
         
-        // Update Apple reverb preset based on current parameters for eco mode
-        if quality == .eco {
+        // Update Apple reverb preset based on current parameters for lite mode
+        if quality == .lite {
             updateAppleReverbPreset()
         }
     }
@@ -497,8 +497,8 @@ class ReverbProcessor {
             updateDiffuserFeedback()
         }
         
-        // Update Apple reverb for eco mode
-        if quality == .eco {
+        // Update Apple reverb for lite mode
+        if quality == .lite {
             updateAppleReverbPreset()
         }
     }
@@ -533,8 +533,8 @@ class ReverbProcessor {
         setWidth(width)
         setDamping(damping)
         
-        // Update Apple reverb for eco mode
-        if quality == .eco {
+        // Update Apple reverb for lite mode
+        if quality == .lite {
             updateAppleReverbPreset()
         }
     }

@@ -527,10 +527,64 @@ These intentionally use system random for organic variation:
 
 ---
 
+## 9. Known Issues & Discrepancies
+
+### 9.1 Critical Parity Issues (Must Fix)
+
+| Issue | File | Line | Description | Status |
+|-------|------|------|-------------|--------|
+| Harmonic pitchSpread ignored | GranularProcessor.swift | ~285 | iOS ignores `pitchSpread` in harmonic mode - uses all 11 intervals always. Web limits by `(pitchSpread/12) * intervals.length` | ☐ OPEN |
+| ~~`.eco` quality undefined~~ | ~~ReverbProcessor.swift~~ | ~~295,357,462,501,537~~ | ~~Code uses `.eco` but enum only has `.lite` - compile error~~ | ✅ FIXED |
+| ~~`rngState` never declared~~ | ~~OceanSynth.swift~~ | ~~281~~ | ~~`setSeed()` references `self.rngState` but property doesn't exist~~ | ✅ FIXED |
+| Feedback lacks soft-clip | GranularProcessor.swift | ~230 | iOS uses raw feedback; web uses `Math.tanh()` saturation | ☐ OPEN |
+| Jitter applied differently | GranularProcessor.swift | ~180 | iOS applies jitter as amplitude; web as position offset | ☐ OPEN |
+
+### 9.2 Medium Parity Issues (Should Fix)
+
+| Issue | File | Line | Description | Status |
+|-------|------|------|-------------|--------|
+| LeadSynth sustain auto-releases | LeadSynth.swift | ~envelope | Sustain stage immediately transitions to release (zero duration) | ☐ OPEN |
+| Decay curve differs | ReverbProcessor.swift | ~feedbackGain | iOS: `0.85 + decay * 0.14`. Web: multiplicative blend with preset | ☐ OPEN |
+| Lite mode uses AVAudioUnitReverb | ReverbProcessor.swift | - | Web has custom 4-ch FDN; iOS falls back to Apple reverb | ☐ OPEN |
+
+### 9.3 Dead/Unused Code (Should Remove)
+
+| Code | File | Line | Type | Priority |
+|------|------|------|------|----------|
+| `pitchVariation` property | GranularProcessor.swift | 51 | Unused property | 🔴 High |
+| `positionSpread` property | GranularProcessor.swift | 52 | Unused property | 🔴 High |
+| `onEuclideanTick()` | AudioEngine.swift | 872 | Empty legacy method | 🔴 High |
+| `tick()` methods | EuclideanRhythm.swift | 187,226 | Replaced by pre-scheduling | 🔴 High |
+| `updateFromState()` | EuclideanRhythm.swift | 136 | Never called | 🔴 High |
+| `updateCircleOfFifthsDrift()` | CircleOfFifths.swift | 58 | Unused + structs | 🔴 High |
+| ~~Backwards compat methods~~ | ~~OceanSynth.swift~~ | ~~290-299~~ | ~~6 unused methods~~ | ✅ REMOVED |
+| Duplicate `ReverbPreset` enum | ReverbProcessor.swift | 163-175 | Redundant with `ReverbType` | 🟡 Medium |
+| `envelope2` property | LeadSynth.swift | 23 | Never read | 🟡 Medium |
+| `octaveShift`/`octaveRange` | LeadSynth.swift | - | Set but never read | 🟡 Medium |
+| Helper functions | Harmony.swift | 109,135,185 | Never called | 🟡 Medium |
+| Helper functions | CircleOfFifths.swift | 109,139,144 | Never called | 🟡 Medium |
+
+### 9.4 Performance Issues (Audio Thread Safety)
+
+| Issue | File | Severity | Description | Fix |
+|-------|------|----------|-------------|-----|
+| Array mutation in audio | GranularProcessor.swift | 🔴 HIGH | `grains.append()` / `remove(at:)` allocates memory | Use pre-allocated pool |
+| Array allocation in callback | AudioEngine.swift | 🔴 HIGH | Creates `[Float]` array every ~100ms in tap | Pre-allocate and reuse |
+| Float.random() on audio thread | OceanSynth.swift, SynthVoice.swift | 🔴 HIGH | System random may lock; 10+ calls/sample | Use inline LCG PRNG |
+| Struct copying in loop | GranularProcessor.swift | 🟡 MED | Copies Grain struct per sample per grain | Use `withUnsafeMutableBufferPointer` |
+| Redundant filter calc | SynthVoice.swift | 🟡 MED | Computes coefficients every sample | Cache when params change |
+| Timer on main thread | AudioEngine.swift | 🟡 MED | Note scheduling jitter from UI blocking | Use dedicated queue |
+| Multiple sin() calls | LeadSynth.swift | 🟡 MED | 6 sin() calls per sample | Use sine lookup table |
+| Division per sample | All synths | 🟢 LOW | `freq / sampleRate` computed per sample | Pre-compute inverse |
+
+---
+
 ## Version History
 
 | Date | Changes | Author |
 |------|---------|--------|
+| 2026-02-03 | Added Known Issues section with parity, dead code, and performance findings | Audit |
+| 2026-02-02 | Fixed 8 parity issues, changed default scale to Major (Ionian) | - |
 | 2024-XX-XX | Initial comprehensive checklist | - |
 
 ---
@@ -540,4 +594,5 @@ These intentionally use system random for organic variation:
 - Web is the source of truth for all parameter ranges and defaults
 - iOS may have additional reverb presets that map to web equivalents
 - Filter modulation uses system random on both platforms (intentional)
+- Ocean synth uses system random on both platforms (intentional - organic variation)
 - All other random sources must be seeded for reproducibility
