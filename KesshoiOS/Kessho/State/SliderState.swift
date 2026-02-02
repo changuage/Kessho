@@ -14,7 +14,7 @@ struct SliderState: Codable, Equatable {
     var reverbLevel: Double = 1.0
     
     // Seed
-    var seedWindow: String = "hour"  // "minute", "hour", "day"
+    var seedWindow: String = "hour"  // "hour", "day" (matching web app)
     var randomness: Double = 0.5
     
     // Root Note & CoF Drift
@@ -27,7 +27,7 @@ struct SliderState: Codable, Equatable {
     
     // Harmony
     var scaleMode: String = "auto"  // "auto", "manual"
-    var manualScale: String = "Dorian"
+    var manualScale: String = "Major (Ionian)"
     var tension: Double = 0.3
     var chordRate: Int = 32
     var voicingSpread: Double = 0.5
@@ -44,7 +44,7 @@ struct SliderState: Codable, Equatable {
     
     // Synth Timbre
     var hardness: Double = 0.3
-    var oscBrightness: Double = 2.0
+    var oscBrightness: Int = 2  // 0=sine, 1=triangle, 2=saw+tri, 3=sawtooth
     var filterType: String = "lowpass"
     var filterCutoffMin: Double = 400
     var filterCutoffMax: Double = 3000

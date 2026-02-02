@@ -337,7 +337,7 @@ export const DEFAULT_STATE: SliderState = {
 
   // Harmony/Pitch
   scaleMode: 'auto',
-  manualScale: 'Dorian',
+  manualScale: 'Major (Ionian)',
   tension: 0.3,
   chordRate: 32,
   voicingSpread: 0.5,

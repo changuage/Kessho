@@ -19,9 +19,6 @@ class OceanSynth {
     private var depthMin: Float = 0.3
     private var depthMax: Float = 0.7
     
-    // Seeded RNG for deterministic randomness
-    private var rngState: UInt32 = 12345
-    
     // Wave generators (matching web app's 2-generator system)
     private struct WaveGenerator {
         var timeSinceLastWave: Int = 0
@@ -93,18 +90,14 @@ class OceanSynth {
         }
     }
     
-    // Mulberry32 PRNG (matching web app)
+    // System random for organic wave variation (matching web app's Math.random())
+    // Ocean synth intentionally uses non-seeded random for natural wave timing
     private func rng() -> Float {
-        rngState &+= 0x6d2b79f5
-        var t = rngState
-        t = (t ^ (t >> 15)) &* (t | 1)
-        t ^= t &+ ((t ^ (t >> 7)) &* (t | 61))
-        let result = (t ^ (t >> 14))
-        return Float(result) / Float(UInt32.max)
+        return Float.random(in: 0...1)
     }
     
     private func randomRange(_ min: Float, _ max: Float) -> Float {
-        return min + rng() * (max - min)
+        return Float.random(in: min...max)
     }
     
     /// Wave envelope: attack² / peak / decay^1.5 (matching web app)
