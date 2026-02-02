@@ -107,7 +107,6 @@ export const CircleOfFifths: React.FC<CircleOfFifthsProps> = ({
   morphTargetRoot,
   morphProgress = 0
 }) => {
-  const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
   const center = size / 2;
   const outerRadius = size * 0.42;
   const innerRadius = size * 0.25;

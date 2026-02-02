@@ -1213,6 +1213,7 @@ const App: React.FC = () => {
     // CoF morph visualization info
     morphCoFInfo?: {
       isMorphing: boolean;
+      startRoot: number;       // Original starting root (captured at morph start)
       effectiveRoot: number;   // Current root during morph (stepping through CoF)
       targetRoot: number;      // Final destination root
       cofStep: number;         // Current CoF step relative to start
