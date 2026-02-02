@@ -1071,7 +1071,10 @@ const App: React.FC = () => {
     if (cloudPresetId && isCloudEnabled()) {
       fetchPresetById(cloudPresetId).then((preset) => {
         if (preset) {
-          setState(preset.data);
+          const newState = { ...DEFAULT_STATE, ...preset.data };
+          setState(newState);
+          audioEngine.updateParams(newState);
+          audioEngine.resetCofDrift();
           console.log(`Loaded cloud preset: ${preset.name} by ${preset.author}`);
         }
       });
@@ -2718,10 +2721,10 @@ const App: React.FC = () => {
         <CloudPresets
           currentState={state}
           onLoadPreset={(presetState, _name) => {
-            setState(presetState);
-            if (engineState.isRunning) {
-              audioEngine.updateParams(presetState);
-            }
+            const newState = { ...DEFAULT_STATE, ...presetState };
+            setState(newState);
+            audioEngine.updateParams(newState);
+            audioEngine.resetCofDrift();
           }}
         />
 
