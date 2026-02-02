@@ -1665,6 +1665,28 @@ const App: React.FC = () => {
       audioEngine.resetCofDrift();
       setMorphPosition(0); // Reset to full A
       
+      // Update ocean dual modes based on whether min !== max in the loaded state
+      setOceanDualModes({
+        duration: Math.abs(newState.oceanDurationMax - newState.oceanDurationMin) > 0.01,
+        interval: Math.abs(newState.oceanIntervalMax - newState.oceanIntervalMin) > 0.01,
+        foam: Math.abs(newState.oceanFoamMax - newState.oceanFoamMin) > 0.001,
+        depth: Math.abs(newState.oceanDepthMax - newState.oceanDepthMin) > 0.001,
+      });
+      
+      // Update expression dual modes based on whether min !== max in the loaded state
+      setExpressionDualModes({
+        vibratoDepth: Math.abs(newState.leadVibratoDepthMax - newState.leadVibratoDepthMin) > 0.001,
+        vibratoRate: Math.abs(newState.leadVibratoRateMax - newState.leadVibratoRateMin) > 0.001,
+        glide: Math.abs(newState.leadGlideMax - newState.leadGlideMin) > 0.001,
+      });
+      
+      // Update delay dual modes based on whether min !== max in the loaded state
+      setDelayDualModes({
+        time: Math.abs(newState.leadDelayTimeMax - newState.leadDelayTimeMin) > 0.1,
+        feedback: Math.abs(newState.leadDelayFeedbackMax - newState.leadDelayFeedbackMin) > 0.001,
+        mix: Math.abs(newState.leadDelayMixMax - newState.leadDelayMixMin) > 0.001,
+      });
+      
       // Restore dual slider state if present
       if (normalizedPreset.dualRanges && Object.keys(normalizedPreset.dualRanges).length > 0) {
         const newDualModes = new Set<keyof SliderState>();
@@ -2085,6 +2107,28 @@ const App: React.FC = () => {
     setState(newState);
     audioEngine.updateParams(newState);
     audioEngine.resetCofDrift(); // Reset CoF drift when loading preset
+    
+    // Update ocean dual modes based on whether min !== max in the loaded state
+    setOceanDualModes({
+      duration: Math.abs(newState.oceanDurationMax - newState.oceanDurationMin) > 0.01,
+      interval: Math.abs(newState.oceanIntervalMax - newState.oceanIntervalMin) > 0.01,
+      foam: Math.abs(newState.oceanFoamMax - newState.oceanFoamMin) > 0.001,
+      depth: Math.abs(newState.oceanDepthMax - newState.oceanDepthMin) > 0.001,
+    });
+    
+    // Update expression dual modes based on whether min !== max in the loaded state
+    setExpressionDualModes({
+      vibratoDepth: Math.abs(newState.leadVibratoDepthMax - newState.leadVibratoDepthMin) > 0.001,
+      vibratoRate: Math.abs(newState.leadVibratoRateMax - newState.leadVibratoRateMin) > 0.001,
+      glide: Math.abs(newState.leadGlideMax - newState.leadGlideMin) > 0.001,
+    });
+    
+    // Update delay dual modes based on whether min !== max in the loaded state
+    setDelayDualModes({
+      time: Math.abs(newState.leadDelayTimeMax - newState.leadDelayTimeMin) > 0.1,
+      feedback: Math.abs(newState.leadDelayFeedbackMax - newState.leadDelayFeedbackMin) > 0.001,
+      mix: Math.abs(newState.leadDelayMixMax - newState.leadDelayMixMin) > 0.001,
+    });
     
     // Restore dual slider state if present
     if (preset.dualRanges && Object.keys(preset.dualRanges).length > 0) {
