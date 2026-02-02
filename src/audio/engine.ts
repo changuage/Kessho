@@ -142,6 +142,7 @@ export class AudioEngine {
   private onStateChange: ((state: EngineState) => void) | null = null;
   private onLeadExpressionTrigger: ((expression: { vibratoDepth: number; vibratoRate: number; glide: number }) => void) | null = null;
   private onLeadDelayTrigger: ((delay: { time: number; feedback: number; mix: number }) => void) | null = null;
+  private onOceanWaveTrigger: ((wave: { duration: number; interval: number; foam: number; depth: number }) => void) | null = null;
 
   constructor() {
     // Empty constructor
@@ -157,6 +158,10 @@ export class AudioEngine {
 
   setLeadDelayCallback(callback: (delay: { time: number; feedback: number; mix: number }) => void) {
     this.onLeadDelayTrigger = callback;
+  }
+
+  setOceanWaveCallback(callback: (wave: { duration: number; interval: number; foam: number; depth: number }) => void) {
+    this.onOceanWaveTrigger = callback;
   }
 
   private notifyStateChange() {
@@ -487,6 +492,17 @@ export class AudioEngine {
     this.oceanNode.port.postMessage({ type: 'setSampleRate', sampleRate: ctx.sampleRate });
     // Send seed for deterministic randomness
     this.oceanNode.port.postMessage({ type: 'setSeed', seed: this.currentSeed });
+    // Listen for wave trigger messages from worklet for UI updates
+    this.oceanNode.port.onmessage = (e) => {
+      if (e.data.type === 'waveStarted' && this.onOceanWaveTrigger) {
+        this.onOceanWaveTrigger({
+          duration: e.data.duration,
+          interval: e.data.interval,
+          foam: e.data.foam,
+          depth: e.data.depth,
+        });
+      }
+    };
 
     this.oceanGain = ctx.createGain();
     this.oceanGain.gain.value = this.sliderState?.oceanWaveSynthEnabled ? (this.sliderState?.oceanWaveSynthLevel ?? 0.4) : 0;

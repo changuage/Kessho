@@ -1061,8 +1061,8 @@ const App: React.FC = () => {
     depth: boolean;
   }>({ duration: true, interval: true, foam: true, depth: true });
 
-  // Track last random walk positions for ocean params (read-only for now, updated by random walk system)
-  const [oceanPositions] = useState<{
+  // Track random walk positions for ocean params (updated by ocean worklet)
+  const [oceanPositions, setOceanPositions] = useState<{
     duration: number;
     interval: number;
     foam: number;
@@ -1236,6 +1236,11 @@ const App: React.FC = () => {
   // Lead delay trigger callback
   useEffect(() => {
     audioEngine.setLeadDelayCallback(setLeadDelayPositions);
+  }, []);
+
+  // Ocean wave trigger callback
+  useEffect(() => {
+    audioEngine.setOceanWaveCallback(setOceanPositions);
   }, []);
 
   // Countdown timer

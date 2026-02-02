@@ -103,17 +103,43 @@ class OceanProcessor extends AudioWorkletProcessor {
     return min + this.rng() * (max - min);
   }
 
-  startNewWave(gen, durationMin, durationMax, foamMin, foamMax, depthMin, depthMax) {
+  startNewWave(gen, genId, durationMin, durationMax, intervalMin, intervalMax, foamMin, foamMax, depthMin, depthMax) {
+    // Calculate normalized positions for UI display
+    const durationValue = this.randomRange(durationMin, durationMax);
+    const intervalValue = this.randomRange(intervalMin, intervalMax);
+    const foamValue = this.randomRange(foamMin, foamMax);
+    const depthValue = this.randomRange(depthMin, depthMax);
+    
     gen.currentWave = {
       active: true,
       phase: 0,
-      duration: Math.floor(this._sampleRate * this.randomRange(durationMin, durationMax)),
+      duration: Math.floor(this._sampleRate * durationValue),
       amplitude: 0.6 + this.rng() * 0.4,
       panOffset: (this.rng() - 0.5) * 0.8,
-      foam: this.randomRange(foamMin, foamMax),
-      depth: this.randomRange(depthMin, depthMax),
+      foam: foamValue,
+      depth: depthValue,
     };
     gen.timeSinceLastWave = 0;
+    
+    // Notify main thread of wave parameters for UI indicator
+    // Only send from gen1 to avoid too frequent updates
+    if (genId === 1) {
+      this.port.postMessage({
+        type: 'waveStarted',
+        duration: durationMax > durationMin 
+          ? (durationValue - durationMin) / (durationMax - durationMin) 
+          : 0.5,
+        interval: intervalMax > intervalMin 
+          ? (intervalValue - intervalMin) / (intervalMax - intervalMin) 
+          : 0.5,
+        foam: foamMax > foamMin 
+          ? (foamValue - foamMin) / (foamMax - foamMin) 
+          : 0.5,
+        depth: depthMax > depthMin 
+          ? (depthValue - depthMin) / (depthMax - depthMin) 
+          : 0.5,
+      });
+    }
   }
 
   waveEnvelope(phase) {
@@ -165,7 +191,8 @@ class OceanProcessor extends AudioWorkletProcessor {
       this.gen1.timeSinceLastWave++;
       if (!this.gen1.currentWave.active && this.gen1.timeSinceLastWave >= this.gen1.nextWaveInterval) {
         this.startNewWave(
-          this.gen1, waveDurationMin, waveDurationMax, 
+          this.gen1, 1, waveDurationMin, waveDurationMax,
+          waveIntervalMin, waveIntervalMax,
           foamMin, foamMax, depthMin, depthMax
         );
         this.gen1.nextWaveInterval = Math.floor(this._sampleRate * this.randomRange(waveIntervalMin, waveIntervalMax));
@@ -204,7 +231,8 @@ class OceanProcessor extends AudioWorkletProcessor {
       this.gen2.timeSinceLastWave++;
       if (!this.gen2.currentWave.active && this.gen2.timeSinceLastWave >= this.gen2.nextWaveInterval) {
         this.startNewWave(
-          this.gen2, waveDurationMin, waveDurationMax,
+          this.gen2, 2, waveDurationMin, waveDurationMax,
+          waveIntervalMin, waveIntervalMax,
           foamMin, foamMax, depthMin, depthMax
         );
         const wave2Offset = this.randomRange(wave2OffsetMin, wave2OffsetMax);
