@@ -89,23 +89,23 @@ struct SliderState: Codable, Equatable {
     var leadDecay: Double = 0.8
     var leadSustain: Double = 0.3
     var leadRelease: Double = 2.0
-    var leadDelayTimeMin: Double = 300   // Min delay time in ms
-    var leadDelayTimeMax: Double = 450   // Max delay time in ms
-    var leadDelayFeedbackMin: Double = 0.3
-    var leadDelayFeedbackMax: Double = 0.5
-    var leadDelayMixMin: Double = 0.25
-    var leadDelayMixMax: Double = 0.45
+    var leadDelayTimeMin: Double = 375   // Delay time in ms (min=max for single mode)
+    var leadDelayTimeMax: Double = 375
+    var leadDelayFeedbackMin: Double = 0.4
+    var leadDelayFeedbackMax: Double = 0.4
+    var leadDelayMixMin: Double = 0.35
+    var leadDelayMixMax: Double = 0.35
     var leadDensity: Double = 0.5
     var leadOctave: Int = 1
     var leadOctaveRange: Int = 2
     var leadTimbreMin: Double = 0.2
     var leadTimbreMax: Double = 0.6
-    var leadVibratoDepthMin: Double = 0.1  // 0-1, maps to 0-0.5 semitones
-    var leadVibratoDepthMax: Double = 0.3
-    var leadVibratoRateMin: Double = 0.3   // 0-1, maps to 2-8 Hz
-    var leadVibratoRateMax: Double = 0.7
-    var leadGlideMin: Double = 0.2         // 0-1, portamento speed
-    var leadGlideMax: Double = 0.4
+    var leadVibratoDepthMin: Double = 0  // 0-1, maps to 0-0.5 semitones (min=max for single mode)
+    var leadVibratoDepthMax: Double = 0
+    var leadVibratoRateMin: Double = 0   // 0-1, maps to 2-8 Hz (min=max for single mode)
+    var leadVibratoRateMax: Double = 0
+    var leadGlideMin: Double = 0         // 0-1, portamento speed (min=max for single mode)
+    var leadGlideMax: Double = 0
     
     // Euclidean Rhythms
     var leadEuclideanMasterEnabled: Bool = false
