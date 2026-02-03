@@ -167,6 +167,141 @@ export interface SliderState {
   // Synth chord sequencer toggle (when false, synth only plays from Euclidean triggers)
   synthChordSequencerEnabled: boolean;
 
+  // ─── Ikeda-Style Drum Synth ───
+  drumEnabled: boolean;                    // Master on/off
+  drumLevel: number;                       // 0..1 master volume
+  drumReverbSend: number;                  // 0..1 send to main reverb
+  
+  // Voice 1: Sub (low sine pulse, felt more than heard)
+  drumSubFreq: number;                     // 30..100 Hz
+  drumSubDecay: number;                    // 20..500 ms
+  drumSubLevel: number;                    // 0..1
+  drumSubTone: number;                     // 0..1 (0=pure sine, 1=add harmonics)
+  
+  // Voice 2: Kick (sine with pitch envelope)
+  drumKickFreq: number;                    // 40..150 Hz (end frequency)
+  drumKickPitchEnv: number;                // 0..48 semitones (pitch sweep amount)
+  drumKickPitchDecay: number;              // 5..100 ms (pitch envelope decay)
+  drumKickDecay: number;                   // 30..500 ms (amplitude decay)
+  drumKickLevel: number;                   // 0..1
+  drumKickClick: number;                   // 0..1 (transient click amount)
+  
+  // Voice 3: Click (impulse/noise burst - the "data" sound)
+  drumClickDecay: number;                  // 1..80 ms
+  drumClickFilter: number;                 // 500..15000 Hz highpass
+  drumClickTone: number;                   // 0..1 (0=pure impulse, 1=noise burst)
+  drumClickLevel: number;                  // 0..1
+  drumClickResonance: number;              // 0..1 (filter resonance for metallic tone)
+  
+  // Voice 4: Beep Hi (high frequency sine ping)
+  drumBeepHiFreq: number;                  // 2000..12000 Hz
+  drumBeepHiAttack: number;                // 0..20 ms
+  drumBeepHiDecay: number;                 // 10..500 ms
+  drumBeepHiLevel: number;                 // 0..1
+  drumBeepHiTone: number;                  // 0..1 (0=pure, 1=FM modulated)
+  
+  // Voice 5: Beep Lo (lower pitched ping/blip)
+  drumBeepLoFreq: number;                  // 150..2000 Hz
+  drumBeepLoAttack: number;                // 0..30 ms
+  drumBeepLoDecay: number;                 // 10..500 ms
+  drumBeepLoLevel: number;                 // 0..1
+  drumBeepLoTone: number;                  // 0..1 (0=sine, 1=square-ish)
+  
+  // Voice 6: Noise (filtered noise burst - hi-hat/texture)
+  drumNoiseFilterFreq: number;             // 500..15000 Hz (center/cutoff)
+  drumNoiseFilterQ: number;                // 0.5..15 resonance
+  drumNoiseFilterType: 'lowpass' | 'bandpass' | 'highpass';
+  drumNoiseDecay: number;                  // 5..300 ms
+  drumNoiseLevel: number;                  // 0..1
+  drumNoiseAttack: number;                 // 0..10 ms
+  
+  // Drum Random Trigger Mode (probability-based like lead random)
+  drumRandomEnabled: boolean;              // Master random enable
+  drumRandomDensity: number;               // 0..1 global probability scale
+  drumRandomSubProb: number;               // 0..1 per-voice probability
+  drumRandomKickProb: number;
+  drumRandomClickProb: number;
+  drumRandomBeepHiProb: number;
+  drumRandomBeepLoProb: number;
+  drumRandomNoiseProb: number;
+  drumRandomMinInterval: number;           // 30..500 ms
+  drumRandomMaxInterval: number;           // 50..2000 ms
+  
+  // Drum Euclidean Sequencer (4 lanes, separate from lead Euclidean)
+  drumEuclidMasterEnabled: boolean;        // Master enable
+  drumEuclidBaseBPM: number;               // Base BPM (40-240)
+  drumEuclidTempo: number;                 // 0.25..4 tempo multiplier
+  drumEuclidSwing: number;                 // 0..100% swing
+  drumEuclidDivision: number;              // 4, 8, 16, 32
+  
+  // Drum Euclidean Lane 1
+  drumEuclid1Enabled: boolean;
+  drumEuclid1Preset: string;
+  drumEuclid1Steps: number;
+  drumEuclid1Hits: number;
+  drumEuclid1Rotation: number;
+  drumEuclid1TargetSub: boolean;
+  drumEuclid1TargetKick: boolean;
+  drumEuclid1TargetClick: boolean;
+  drumEuclid1TargetBeepHi: boolean;
+  drumEuclid1TargetBeepLo: boolean;
+  drumEuclid1TargetNoise: boolean;
+  drumEuclid1Probability: number;
+  drumEuclid1VelocityMin: number;          // 0..1 velocity range
+  drumEuclid1VelocityMax: number;
+  drumEuclid1Level: number;
+  
+  // Drum Euclidean Lane 2
+  drumEuclid2Enabled: boolean;
+  drumEuclid2Preset: string;
+  drumEuclid2Steps: number;
+  drumEuclid2Hits: number;
+  drumEuclid2Rotation: number;
+  drumEuclid2TargetSub: boolean;
+  drumEuclid2TargetKick: boolean;
+  drumEuclid2TargetClick: boolean;
+  drumEuclid2TargetBeepHi: boolean;
+  drumEuclid2TargetBeepLo: boolean;
+  drumEuclid2TargetNoise: boolean;
+  drumEuclid2Probability: number;
+  drumEuclid2VelocityMin: number;
+  drumEuclid2VelocityMax: number;
+  drumEuclid2Level: number;
+  
+  // Drum Euclidean Lane 3
+  drumEuclid3Enabled: boolean;
+  drumEuclid3Preset: string;
+  drumEuclid3Steps: number;
+  drumEuclid3Hits: number;
+  drumEuclid3Rotation: number;
+  drumEuclid3TargetSub: boolean;
+  drumEuclid3TargetKick: boolean;
+  drumEuclid3TargetClick: boolean;
+  drumEuclid3TargetBeepHi: boolean;
+  drumEuclid3TargetBeepLo: boolean;
+  drumEuclid3TargetNoise: boolean;
+  drumEuclid3Probability: number;
+  drumEuclid3VelocityMin: number;
+  drumEuclid3VelocityMax: number;
+  drumEuclid3Level: number;
+  
+  // Drum Euclidean Lane 4
+  drumEuclid4Enabled: boolean;
+  drumEuclid4Preset: string;
+  drumEuclid4Steps: number;
+  drumEuclid4Hits: number;
+  drumEuclid4Rotation: number;
+  drumEuclid4TargetSub: boolean;
+  drumEuclid4TargetKick: boolean;
+  drumEuclid4TargetClick: boolean;
+  drumEuclid4TargetBeepHi: boolean;
+  drumEuclid4TargetBeepLo: boolean;
+  drumEuclid4TargetNoise: boolean;
+  drumEuclid4Probability: number;
+  drumEuclid4VelocityMin: number;
+  drumEuclid4VelocityMax: number;
+  drumEuclid4Level: number;
+
   // Ocean Waves
   oceanSampleEnabled: boolean;   // on/off toggle for real sample
   oceanSampleLevel: number;      // 0..1 step 0.01 - sample volume
@@ -312,6 +447,116 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'leadEuclid4Probability',
   'leadEuclid4Source',
   'synthChordSequencerEnabled',
+  // Drum Synth
+  'drumEnabled',
+  'drumLevel',
+  'drumReverbSend',
+  'drumSubFreq',
+  'drumSubDecay',
+  'drumSubLevel',
+  'drumSubTone',
+  'drumKickFreq',
+  'drumKickPitchEnv',
+  'drumKickPitchDecay',
+  'drumKickDecay',
+  'drumKickLevel',
+  'drumKickClick',
+  'drumClickDecay',
+  'drumClickFilter',
+  'drumClickTone',
+  'drumClickLevel',
+  'drumClickResonance',
+  'drumBeepHiFreq',
+  'drumBeepHiAttack',
+  'drumBeepHiDecay',
+  'drumBeepHiLevel',
+  'drumBeepHiTone',
+  'drumBeepLoFreq',
+  'drumBeepLoAttack',
+  'drumBeepLoDecay',
+  'drumBeepLoLevel',
+  'drumBeepLoTone',
+  'drumNoiseFilterFreq',
+  'drumNoiseFilterQ',
+  'drumNoiseFilterType',
+  'drumNoiseDecay',
+  'drumNoiseLevel',
+  'drumNoiseAttack',
+  'drumRandomEnabled',
+  'drumRandomDensity',
+  'drumRandomSubProb',
+  'drumRandomKickProb',
+  'drumRandomClickProb',
+  'drumRandomBeepHiProb',
+  'drumRandomBeepLoProb',
+  'drumRandomNoiseProb',
+  'drumRandomMinInterval',
+  'drumRandomMaxInterval',
+  'drumEuclidMasterEnabled',
+  'drumEuclidBaseBPM',
+  'drumEuclidTempo',
+  'drumEuclidSwing',
+  'drumEuclidDivision',
+  'drumEuclid1Enabled',
+  'drumEuclid1Preset',
+  'drumEuclid1Steps',
+  'drumEuclid1Hits',
+  'drumEuclid1Rotation',
+  'drumEuclid1TargetSub',
+  'drumEuclid1TargetKick',
+  'drumEuclid1TargetClick',
+  'drumEuclid1TargetBeepHi',
+  'drumEuclid1TargetBeepLo',
+  'drumEuclid1TargetNoise',
+  'drumEuclid1Probability',
+  'drumEuclid1VelocityMin',
+  'drumEuclid1VelocityMax',
+  'drumEuclid1Level',
+  'drumEuclid2Enabled',
+  'drumEuclid2Preset',
+  'drumEuclid2Steps',
+  'drumEuclid2Hits',
+  'drumEuclid2Rotation',
+  'drumEuclid2TargetSub',
+  'drumEuclid2TargetKick',
+  'drumEuclid2TargetClick',
+  'drumEuclid2TargetBeepHi',
+  'drumEuclid2TargetBeepLo',
+  'drumEuclid2TargetNoise',
+  'drumEuclid2Probability',
+  'drumEuclid2VelocityMin',
+  'drumEuclid2VelocityMax',
+  'drumEuclid2Level',
+  'drumEuclid3Enabled',
+  'drumEuclid3Preset',
+  'drumEuclid3Steps',
+  'drumEuclid3Hits',
+  'drumEuclid3Rotation',
+  'drumEuclid3TargetSub',
+  'drumEuclid3TargetKick',
+  'drumEuclid3TargetClick',
+  'drumEuclid3TargetBeepHi',
+  'drumEuclid3TargetBeepLo',
+  'drumEuclid3TargetNoise',
+  'drumEuclid3Probability',
+  'drumEuclid3VelocityMin',
+  'drumEuclid3VelocityMax',
+  'drumEuclid3Level',
+  'drumEuclid4Enabled',
+  'drumEuclid4Preset',
+  'drumEuclid4Steps',
+  'drumEuclid4Hits',
+  'drumEuclid4Rotation',
+  'drumEuclid4TargetSub',
+  'drumEuclid4TargetKick',
+  'drumEuclid4TargetClick',
+  'drumEuclid4TargetBeepHi',
+  'drumEuclid4TargetBeepLo',
+  'drumEuclid4TargetNoise',
+  'drumEuclid4Probability',
+  'drumEuclid4VelocityMin',
+  'drumEuclid4VelocityMax',
+  'drumEuclid4Level',
   // Ocean
   'oceanSampleEnabled',
   'oceanSampleLevel',
@@ -490,6 +735,141 @@ export const DEFAULT_STATE: SliderState = {
   // Synth chord sequencer toggle
   synthChordSequencerEnabled: true,
 
+  // ─── Ikeda-Style Drum Synth ───
+  drumEnabled: false,
+  drumLevel: 0.7,
+  drumReverbSend: 0.3,
+  
+  // Voice 1: Sub (deep sine pulse)
+  drumSubFreq: 50,
+  drumSubDecay: 150,
+  drumSubLevel: 0.8,
+  drumSubTone: 0.1,
+  
+  // Voice 2: Kick (sine with pitch sweep)
+  drumKickFreq: 55,
+  drumKickPitchEnv: 24,     // Start 2 octaves higher
+  drumKickPitchDecay: 30,   // Fast pitch drop
+  drumKickDecay: 200,
+  drumKickLevel: 0.7,
+  drumKickClick: 0.3,       // Subtle click transient
+  
+  // Voice 3: Click (the signature Ikeda "data" sound)
+  drumClickDecay: 5,
+  drumClickFilter: 4000,    // Highpass filter
+  drumClickTone: 0.3,       // Mostly impulse
+  drumClickLevel: 0.6,
+  drumClickResonance: 0.4,  // Slight metallic ring
+  
+  // Voice 4: Beep Hi (high pitched notification ping)
+  drumBeepHiFreq: 4000,
+  drumBeepHiAttack: 1,
+  drumBeepHiDecay: 80,
+  drumBeepHiLevel: 0.5,
+  drumBeepHiTone: 0.2,
+  
+  // Voice 5: Beep Lo (lower blip, Morse-code feel)
+  drumBeepLoFreq: 400,
+  drumBeepLoAttack: 2,
+  drumBeepLoDecay: 100,
+  drumBeepLoLevel: 0.5,
+  drumBeepLoTone: 0.1,
+  
+  // Voice 6: Noise (hi-hat/texture)
+  drumNoiseFilterFreq: 8000,
+  drumNoiseFilterQ: 1,
+  drumNoiseFilterType: 'highpass' as const,
+  drumNoiseDecay: 30,
+  drumNoiseLevel: 0.4,
+  drumNoiseAttack: 0,
+  
+  // Random trigger mode
+  drumRandomEnabled: false,
+  drumRandomDensity: 0.3,
+  drumRandomSubProb: 0.1,
+  drumRandomKickProb: 0.15,
+  drumRandomClickProb: 0.4,
+  drumRandomBeepHiProb: 0.2,
+  drumRandomBeepLoProb: 0.15,
+  drumRandomNoiseProb: 0.25,
+  drumRandomMinInterval: 80,
+  drumRandomMaxInterval: 400,
+  
+  // Euclidean sequencer (4 lanes)
+  drumEuclidMasterEnabled: false,
+  drumEuclidBaseBPM: 120,
+  drumEuclidTempo: 1,
+  drumEuclidSwing: 0,
+  drumEuclidDivision: 16,
+  
+  // Lane 1 - Click pattern (primary rhythm)
+  drumEuclid1Enabled: true,
+  drumEuclid1Preset: 'lancaran',
+  drumEuclid1Steps: 16,
+  drumEuclid1Hits: 5,
+  drumEuclid1Rotation: 0,
+  drumEuclid1TargetSub: false,
+  drumEuclid1TargetKick: false,
+  drumEuclid1TargetClick: true,
+  drumEuclid1TargetBeepHi: false,
+  drumEuclid1TargetBeepLo: false,
+  drumEuclid1TargetNoise: false,
+  drumEuclid1Probability: 1.0,
+  drumEuclid1VelocityMin: 0.8,
+  drumEuclid1VelocityMax: 0.8,
+  drumEuclid1Level: 0.8,
+  
+  // Lane 2 - Sub pattern (bass pulse)
+  drumEuclid2Enabled: true,
+  drumEuclid2Preset: 'gangsaran',
+  drumEuclid2Steps: 16,
+  drumEuclid2Hits: 4,
+  drumEuclid2Rotation: 0,
+  drumEuclid2TargetSub: true,
+  drumEuclid2TargetKick: false,
+  drumEuclid2TargetClick: false,
+  drumEuclid2TargetBeepHi: false,
+  drumEuclid2TargetBeepLo: false,
+  drumEuclid2TargetNoise: false,
+  drumEuclid2Probability: 1.0,
+  drumEuclid2VelocityMin: 0.8,
+  drumEuclid2VelocityMax: 0.8,
+  drumEuclid2Level: 0.9,
+  
+  // Lane 3 - Beep Hi (sparse accents)
+  drumEuclid3Enabled: false,
+  drumEuclid3Preset: 'sparse',
+  drumEuclid3Steps: 8,
+  drumEuclid3Hits: 2,
+  drumEuclid3Rotation: 1,
+  drumEuclid3TargetSub: false,
+  drumEuclid3TargetKick: false,
+  drumEuclid3TargetClick: false,
+  drumEuclid3TargetBeepHi: true,
+  drumEuclid3TargetBeepLo: false,
+  drumEuclid3TargetNoise: false,
+  drumEuclid3Probability: 0.8,
+  drumEuclid3VelocityMin: 0.8,
+  drumEuclid3VelocityMax: 0.8,
+  drumEuclid3Level: 0.6,
+  
+  // Lane 4 - Noise (hi-hat texture)
+  drumEuclid4Enabled: false,
+  drumEuclid4Preset: 'dense',
+  drumEuclid4Steps: 16,
+  drumEuclid4Hits: 8,
+  drumEuclid4Rotation: 0,
+  drumEuclid4TargetSub: false,
+  drumEuclid4TargetKick: false,
+  drumEuclid4TargetClick: false,
+  drumEuclid4TargetBeepHi: false,
+  drumEuclid4TargetBeepLo: false,
+  drumEuclid4TargetNoise: true,
+  drumEuclid4Probability: 0.7,
+  drumEuclid4VelocityMin: 0.8,
+  drumEuclid4VelocityMax: 0.8,
+  drumEuclid4Level: 0.5,
+
   // Ocean Waves
   oceanSampleEnabled: false,
   oceanSampleLevel: 0.5,
@@ -581,6 +961,8 @@ const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> = {
   wetHPF: { min: 200, max: 3000, step: 50 },
   wetLPF: { min: 3000, max: 12000, step: 200 },
   leadLevel: { min: 0, max: 1, step: 0.01 },
+  drumLevel: { min: 0, max: 1, step: 0.01 },
+  drumReverbSend: { min: 0, max: 1, step: 0.01 },
   leadAttack: { min: 0.001, max: 2, step: 0.001 },
   leadDecay: { min: 0.01, max: 4, step: 0.01 },
   leadSustain: { min: 0, max: 1, step: 0.01 },
@@ -633,6 +1015,38 @@ const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> = {
   leadEuclid4NoteMax: { min: 36, max: 96, step: 1 },
   leadEuclid4Level: { min: 0, max: 1, step: 0.01 },
   leadEuclid4Probability: { min: 0, max: 1, step: 0.01 },
+  // Drum Euclidean sequencer
+  drumEuclidBaseBPM: { min: 40, max: 240, step: 1 },
+  drumEuclidTempo: { min: 0.25, max: 4, step: 0.25 },
+  drumEuclidSwing: { min: 0, max: 100, step: 1 },
+  drumEuclid1Steps: { min: 4, max: 32, step: 1 },
+  drumEuclid1Hits: { min: 1, max: 16, step: 1 },
+  drumEuclid1Rotation: { min: 0, max: 31, step: 1 },
+  drumEuclid1Probability: { min: 0, max: 1, step: 0.01 },
+  drumEuclid1VelocityMin: { min: 0, max: 1, step: 0.01 },
+  drumEuclid1VelocityMax: { min: 0, max: 1, step: 0.01 },
+  drumEuclid1Level: { min: 0, max: 1, step: 0.01 },
+  drumEuclid2Steps: { min: 4, max: 32, step: 1 },
+  drumEuclid2Hits: { min: 1, max: 16, step: 1 },
+  drumEuclid2Rotation: { min: 0, max: 31, step: 1 },
+  drumEuclid2Probability: { min: 0, max: 1, step: 0.01 },
+  drumEuclid2VelocityMin: { min: 0, max: 1, step: 0.01 },
+  drumEuclid2VelocityMax: { min: 0, max: 1, step: 0.01 },
+  drumEuclid2Level: { min: 0, max: 1, step: 0.01 },
+  drumEuclid3Steps: { min: 4, max: 32, step: 1 },
+  drumEuclid3Hits: { min: 1, max: 16, step: 1 },
+  drumEuclid3Rotation: { min: 0, max: 31, step: 1 },
+  drumEuclid3Probability: { min: 0, max: 1, step: 0.01 },
+  drumEuclid3VelocityMin: { min: 0, max: 1, step: 0.01 },
+  drumEuclid3VelocityMax: { min: 0, max: 1, step: 0.01 },
+  drumEuclid3Level: { min: 0, max: 1, step: 0.01 },
+  drumEuclid4Steps: { min: 4, max: 32, step: 1 },
+  drumEuclid4Hits: { min: 1, max: 16, step: 1 },
+  drumEuclid4Rotation: { min: 0, max: 31, step: 1 },
+  drumEuclid4Probability: { min: 0, max: 1, step: 0.01 },
+  drumEuclid4VelocityMin: { min: 0, max: 1, step: 0.01 },
+  drumEuclid4VelocityMax: { min: 0, max: 1, step: 0.01 },
+  drumEuclid4Level: { min: 0, max: 1, step: 0.01 },
   // Ocean
   oceanSampleLevel: { min: 0, max: 1, step: 0.01 },
   oceanWaveSynthLevel: { min: 0, max: 1, step: 0.01 },

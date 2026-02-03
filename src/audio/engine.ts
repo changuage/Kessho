@@ -6,6 +6,7 @@
  * - Granular effect (AudioWorklet)
  * - Algorithmic reverb (AudioWorklet)
  * - Rhodes/Bell lead synth with delay
+ * - Ikeda-style drum synth
  * - Ocean sample player
  * - Master limiter
  * - Deterministic scheduling
@@ -24,6 +25,7 @@ import {
 } from './harmony';
 import { getScaleNotesInRange, midiToFreq } from './scales';
 import { createRng, generateRandomSequence, getUtcBucket, computeSeed, rngFloat } from './rng';
+import { DrumSynth, DrumVoiceType } from './drumSynth';
 import type { SliderState } from '../ui/state';
 
 // Worklet URLs from public folder - these are plain JS files that work in production
@@ -102,6 +104,9 @@ export class AudioEngine {
   private leadMelodyTimer: number | null = null;
   private leadNoteTimeouts: number[] = [];  // Track scheduled note timeouts
 
+  // Ikeda-style drum synth
+  private drumSynth: DrumSynth | null = null;
+
   // Ocean waves worklet
   private oceanNode: AudioWorkletNode | null = null;
   private oceanGain: GainNode | null = null;
@@ -143,6 +148,7 @@ export class AudioEngine {
   private onLeadExpressionTrigger: ((expression: { vibratoDepth: number; vibratoRate: number; glide: number }) => void) | null = null;
   private onLeadDelayTrigger: ((delay: { time: number; feedback: number; mix: number }) => void) | null = null;
   private onOceanWaveTrigger: ((wave: { duration: number; interval: number; foam: number; depth: number }) => void) | null = null;
+  private onDrumTrigger: ((voice: DrumVoiceType, velocity: number) => void) | null = null;
 
   constructor() {
     // Empty constructor
@@ -162,6 +168,14 @@ export class AudioEngine {
 
   setOceanWaveCallback(callback: (wave: { duration: number; interval: number; foam: number; depth: number }) => void) {
     this.onOceanWaveTrigger = callback;
+  }
+
+  setDrumTriggerCallback(callback: (voice: DrumVoiceType, velocity: number) => void) {
+    this.onDrumTrigger = callback;
+    // Pass through to drum synth if it exists
+    if (this.drumSynth) {
+      this.drumSynth.setDrumTriggerCallback(callback);
+    }
   }
 
   private notifyStateChange() {
@@ -277,8 +291,23 @@ export class AudioEngine {
     // Create audio graph
     await this.createAudioGraph();
 
-    // Initialize harmony
+    // Initialize harmony (sets rng)
     this.initializeHarmony();
+
+    // Create drum synth (needs rng from initializeHarmony)
+    if (this.ctx && this.rng && this.masterGain && this.reverbNode) {
+      this.drumSynth = new DrumSynth(
+        this.ctx,
+        this.masterGain,
+        this.reverbNode,
+        this.sliderState!,
+        this.rng
+      );
+      // Pass through drum trigger callback if set
+      if (this.onDrumTrigger) {
+        this.drumSynth.setDrumTriggerCallback(this.onDrumTrigger);
+      }
+    }
 
     // Start voices
     this.startVoices();
@@ -291,6 +320,11 @@ export class AudioEngine {
 
     // Start lead melody if enabled
     this.startLeadMelody();
+
+    // Start drum synth if enabled
+    if (this.drumSynth) {
+      this.drumSynth.start();
+    }
 
     // Media session is now handled in App.tsx for proper iOS support
 
@@ -340,6 +374,12 @@ export class AudioEngine {
       // Ignore
     }
     this.oceanSampleSource = null;
+
+    // Stop drum synth
+    if (this.drumSynth) {
+      this.drumSynth.dispose();
+      this.drumSynth = null;
+    }
 
     // Close context
     this.ctx?.close();
@@ -394,6 +434,11 @@ export class AudioEngine {
 
     // Apply continuous parameters immediately with smoothing
     this.applyParams(sliderState);
+
+    // Update drum synth params
+    if (this.drumSynth) {
+      this.drumSynth.updateParams(sliderState);
+    }
 
     // Only recompute seed if seedWindow setting changed (not on every param change)
     if (oldSeedWindow !== sliderState.seedWindow) {
@@ -634,6 +679,8 @@ export class AudioEngine {
 
     // Load ocean sample asynchronously
     this.loadOceanSample();
+
+    // Note: DrumSynth is created in start() after initializeHarmony() sets rng
 
     // Apply initial params
     this.applyParams(this.sliderState!);

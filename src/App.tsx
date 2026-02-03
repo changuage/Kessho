@@ -2427,6 +2427,13 @@ const App: React.FC = () => {
             {...sliderProps('leadLevel')}
           />
           <Slider
+            label="Drum Level"
+            value={state.drumLevel}
+            paramKey="drumLevel"
+            onChange={handleSliderChange}
+            {...sliderProps('drumLevel')}
+          />
+          <Slider
             label="Waves Level"
             value={state.oceanSampleLevel}
             paramKey="oceanSampleLevel"
@@ -2449,6 +2456,13 @@ const App: React.FC = () => {
               paramKey="granularReverbSend"
               onChange={handleSliderChange}
               {...sliderProps('granularReverbSend')}
+            />
+            <Slider
+              label="Drum → Reverb"
+              value={state.drumReverbSend}
+              paramKey="drumReverbSend"
+              onChange={handleSliderChange}
+              {...sliderProps('drumReverbSend')}
             />
             <Slider
               label="Lead → Reverb"
@@ -5741,6 +5755,999 @@ const App: React.FC = () => {
             onChange={handleSliderChange}
             {...sliderProps('oceanFilterResonance')}
           />
+        </CollapsiblePanel>
+
+        {/* Ikeda Drum Synth */}
+        <CollapsiblePanel
+          id="drums"
+          title="Drum Synth (Ikeda)"
+          isMobile={isMobile}
+          isExpanded={expandedPanels.has('drums')}
+          onToggle={togglePanel}
+        >
+          {/* Master Enable */}
+          <div style={styles.sliderGroup}>
+            <div style={styles.sliderLabel}>
+              <span>Drum Synth</span>
+              <span style={{ 
+                color: state.drumEnabled ? '#10b981' : '#6b7280',
+                fontWeight: 'bold'
+              }}>
+                {state.drumEnabled ? 'ON' : 'OFF'}
+              </span>
+            </div>
+            <button
+              onClick={() => handleSelectChange('drumEnabled', !state.drumEnabled)}
+              style={{
+                width: '100%',
+                padding: '10px',
+                borderRadius: '6px',
+                border: 'none',
+                cursor: 'pointer',
+                fontWeight: 'bold',
+                background: state.drumEnabled 
+                  ? 'linear-gradient(135deg, #ef4444, #dc2626)' 
+                  : 'rgba(255, 255, 255, 0.1)',
+                color: state.drumEnabled ? 'white' : '#9ca3af',
+                transition: 'all 0.2s',
+              }}
+            >
+              {state.drumEnabled ? '● Active' : '○ Off'}
+            </button>
+          </div>
+
+          <Slider
+            label="Level"
+            value={state.drumLevel}
+            paramKey="drumLevel"
+            onChange={handleSliderChange}
+            {...sliderProps('drumLevel')}
+          />
+          <Slider
+            label="Reverb Send"
+            value={state.drumReverbSend}
+            paramKey="drumReverbSend"
+            onChange={handleSliderChange}
+            {...sliderProps('drumReverbSend')}
+          />
+
+          {/* Voice 1: Sub */}
+          <div style={{ marginTop: '16px', borderTop: '1px solid #333', paddingTop: '12px' }}>
+            <span style={{ fontSize: '0.85rem', color: '#ef4444' }}>Voice 1: Sub (Low Pulse)</span>
+          </div>
+          <Slider
+            label="Frequency"
+            value={state.drumSubFreq}
+            paramKey="drumSubFreq"
+            unit=" Hz"
+            onChange={handleSliderChange}
+            {...sliderProps('drumSubFreq')}
+          />
+          <Slider
+            label="Decay"
+            value={state.drumSubDecay}
+            paramKey="drumSubDecay"
+            unit=" ms"
+            onChange={handleSliderChange}
+            {...sliderProps('drumSubDecay')}
+          />
+          <Slider
+            label="Level"
+            value={state.drumSubLevel}
+            paramKey="drumSubLevel"
+            onChange={handleSliderChange}
+            {...sliderProps('drumSubLevel')}
+          />
+          <Slider
+            label="Harmonics"
+            value={state.drumSubTone}
+            paramKey="drumSubTone"
+            onChange={handleSliderChange}
+            {...sliderProps('drumSubTone')}
+          />
+
+          {/* Voice 2: Kick */}
+          <div style={{ marginTop: '16px', borderTop: '1px solid #333', paddingTop: '12px' }}>
+            <span style={{ fontSize: '0.85rem', color: '#f97316' }}>Voice 2: Kick (Punch)</span>
+          </div>
+          <Slider
+            label="Frequency"
+            value={state.drumKickFreq}
+            paramKey="drumKickFreq"
+            unit=" Hz"
+            onChange={handleSliderChange}
+            {...sliderProps('drumKickFreq')}
+          />
+          <Slider
+            label="Pitch Sweep"
+            value={state.drumKickPitchEnv}
+            paramKey="drumKickPitchEnv"
+            unit=" st"
+            onChange={handleSliderChange}
+            {...sliderProps('drumKickPitchEnv')}
+          />
+          <Slider
+            label="Pitch Decay"
+            value={state.drumKickPitchDecay}
+            paramKey="drumKickPitchDecay"
+            unit=" ms"
+            onChange={handleSliderChange}
+            {...sliderProps('drumKickPitchDecay')}
+          />
+          <Slider
+            label="Amp Decay"
+            value={state.drumKickDecay}
+            paramKey="drumKickDecay"
+            unit=" ms"
+            onChange={handleSliderChange}
+            {...sliderProps('drumKickDecay')}
+          />
+          <Slider
+            label="Level"
+            value={state.drumKickLevel}
+            paramKey="drumKickLevel"
+            onChange={handleSliderChange}
+            {...sliderProps('drumKickLevel')}
+          />
+          <Slider
+            label="Click Transient"
+            value={state.drumKickClick}
+            paramKey="drumKickClick"
+            onChange={handleSliderChange}
+            {...sliderProps('drumKickClick')}
+          />
+
+          {/* Voice 3: Click */}
+          <div style={{ marginTop: '16px', borderTop: '1px solid #333', paddingTop: '12px' }}>
+            <span style={{ fontSize: '0.85rem', color: '#eab308' }}>Voice 3: Click (Data)</span>
+          </div>
+          <Slider
+            label="Decay"
+            value={state.drumClickDecay}
+            paramKey="drumClickDecay"
+            unit=" ms"
+            onChange={handleSliderChange}
+            {...sliderProps('drumClickDecay')}
+          />
+          <Slider
+            label="HP Filter"
+            value={state.drumClickFilter}
+            paramKey="drumClickFilter"
+            unit=" Hz"
+            logarithmic
+            onChange={handleSliderChange}
+            {...sliderProps('drumClickFilter')}
+          />
+          <Slider
+            label="Tone (Impulse/Noise)"
+            value={state.drumClickTone}
+            paramKey="drumClickTone"
+            onChange={handleSliderChange}
+            {...sliderProps('drumClickTone')}
+          />
+          <Slider
+            label="Resonance"
+            value={state.drumClickResonance}
+            paramKey="drumClickResonance"
+            onChange={handleSliderChange}
+            {...sliderProps('drumClickResonance')}
+          />
+          <Slider
+            label="Level"
+            value={state.drumClickLevel}
+            paramKey="drumClickLevel"
+            onChange={handleSliderChange}
+            {...sliderProps('drumClickLevel')}
+          />
+
+          {/* Voice 4: Beep Hi */}
+          <div style={{ marginTop: '16px', borderTop: '1px solid #333', paddingTop: '12px' }}>
+            <span style={{ fontSize: '0.85rem', color: '#22c55e' }}>Voice 4: Beep Hi (Ping)</span>
+          </div>
+          <Slider
+            label="Frequency"
+            value={state.drumBeepHiFreq}
+            paramKey="drumBeepHiFreq"
+            unit=" Hz"
+            logarithmic
+            onChange={handleSliderChange}
+            {...sliderProps('drumBeepHiFreq')}
+          />
+          <Slider
+            label="Attack"
+            value={state.drumBeepHiAttack}
+            paramKey="drumBeepHiAttack"
+            unit=" ms"
+            onChange={handleSliderChange}
+            {...sliderProps('drumBeepHiAttack')}
+          />
+          <Slider
+            label="Decay"
+            value={state.drumBeepHiDecay}
+            paramKey="drumBeepHiDecay"
+            unit=" ms"
+            onChange={handleSliderChange}
+            {...sliderProps('drumBeepHiDecay')}
+          />
+          <Slider
+            label="FM Tone"
+            value={state.drumBeepHiTone}
+            paramKey="drumBeepHiTone"
+            onChange={handleSliderChange}
+            {...sliderProps('drumBeepHiTone')}
+          />
+          <Slider
+            label="Level"
+            value={state.drumBeepHiLevel}
+            paramKey="drumBeepHiLevel"
+            onChange={handleSliderChange}
+            {...sliderProps('drumBeepHiLevel')}
+          />
+
+          {/* Voice 5: Beep Lo */}
+          <div style={{ marginTop: '16px', borderTop: '1px solid #333', paddingTop: '12px' }}>
+            <span style={{ fontSize: '0.85rem', color: '#06b6d4' }}>Voice 5: Beep Lo (Blip)</span>
+          </div>
+          <Slider
+            label="Frequency"
+            value={state.drumBeepLoFreq}
+            paramKey="drumBeepLoFreq"
+            unit=" Hz"
+            onChange={handleSliderChange}
+            {...sliderProps('drumBeepLoFreq')}
+          />
+          <Slider
+            label="Attack"
+            value={state.drumBeepLoAttack}
+            paramKey="drumBeepLoAttack"
+            unit=" ms"
+            onChange={handleSliderChange}
+            {...sliderProps('drumBeepLoAttack')}
+          />
+          <Slider
+            label="Decay"
+            value={state.drumBeepLoDecay}
+            paramKey="drumBeepLoDecay"
+            unit=" ms"
+            onChange={handleSliderChange}
+            {...sliderProps('drumBeepLoDecay')}
+          />
+          <Slider
+            label="Tone (Sine/Square)"
+            value={state.drumBeepLoTone}
+            paramKey="drumBeepLoTone"
+            onChange={handleSliderChange}
+            {...sliderProps('drumBeepLoTone')}
+          />
+          <Slider
+            label="Level"
+            value={state.drumBeepLoLevel}
+            paramKey="drumBeepLoLevel"
+            onChange={handleSliderChange}
+            {...sliderProps('drumBeepLoLevel')}
+          />
+
+          {/* Voice 6: Noise */}
+          <div style={{ marginTop: '16px', borderTop: '1px solid #333', paddingTop: '12px' }}>
+            <span style={{ fontSize: '0.85rem', color: '#8b5cf6' }}>Voice 6: Noise (Hi-Hat)</span>
+          </div>
+          <Select
+            label="Filter Type"
+            value={state.drumNoiseFilterType}
+            options={[
+              { value: 'lowpass', label: 'Lowpass' },
+              { value: 'bandpass', label: 'Bandpass' },
+              { value: 'highpass', label: 'Highpass' },
+            ]}
+            onChange={(v) => handleSelectChange('drumNoiseFilterType', v)}
+          />
+          <Slider
+            label="Filter Freq"
+            value={state.drumNoiseFilterFreq}
+            paramKey="drumNoiseFilterFreq"
+            unit=" Hz"
+            logarithmic
+            onChange={handleSliderChange}
+            {...sliderProps('drumNoiseFilterFreq')}
+          />
+          <Slider
+            label="Filter Q"
+            value={state.drumNoiseFilterQ}
+            paramKey="drumNoiseFilterQ"
+            onChange={handleSliderChange}
+            {...sliderProps('drumNoiseFilterQ')}
+          />
+          <Slider
+            label="Attack"
+            value={state.drumNoiseAttack}
+            paramKey="drumNoiseAttack"
+            unit=" ms"
+            onChange={handleSliderChange}
+            {...sliderProps('drumNoiseAttack')}
+          />
+          <Slider
+            label="Decay"
+            value={state.drumNoiseDecay}
+            paramKey="drumNoiseDecay"
+            unit=" ms"
+            onChange={handleSliderChange}
+            {...sliderProps('drumNoiseDecay')}
+          />
+          <Slider
+            label="Level"
+            value={state.drumNoiseLevel}
+            paramKey="drumNoiseLevel"
+            onChange={handleSliderChange}
+            {...sliderProps('drumNoiseLevel')}
+          />
+
+          {/* Random Trigger Mode */}
+          <div style={{ marginTop: '16px', borderTop: '1px solid #333', paddingTop: '12px' }}>
+            <span style={{ fontSize: '0.85rem', color: '#f472b6' }}>Random Triggers</span>
+          </div>
+          <div style={styles.sliderGroup}>
+            <div style={styles.sliderLabel}>
+              <span>Random Mode</span>
+              <span style={{ 
+                color: state.drumRandomEnabled ? '#10b981' : '#6b7280',
+                fontWeight: 'bold'
+              }}>
+                {state.drumRandomEnabled ? 'ON' : 'OFF'}
+              </span>
+            </div>
+            <button
+              onClick={() => handleSelectChange('drumRandomEnabled', !state.drumRandomEnabled)}
+              style={{
+                width: '100%',
+                padding: '8px',
+                borderRadius: '6px',
+                border: 'none',
+                cursor: 'pointer',
+                fontWeight: 'bold',
+                background: state.drumRandomEnabled 
+                  ? 'linear-gradient(135deg, #f472b6, #ec4899)' 
+                  : 'rgba(255, 255, 255, 0.1)',
+                color: state.drumRandomEnabled ? 'white' : '#9ca3af',
+                transition: 'all 0.2s',
+              }}
+            >
+              {state.drumRandomEnabled ? '● Random Active' : '○ Random Off'}
+            </button>
+          </div>
+          {state.drumRandomEnabled && (
+            <>
+              <Slider
+                label="Density"
+                value={state.drumRandomDensity}
+                paramKey="drumRandomDensity"
+                onChange={handleSliderChange}
+                {...sliderProps('drumRandomDensity')}
+              />
+              <Slider
+                label="Min Interval"
+                value={state.drumRandomMinInterval}
+                paramKey="drumRandomMinInterval"
+                unit=" ms"
+                onChange={handleSliderChange}
+                {...sliderProps('drumRandomMinInterval')}
+              />
+              <Slider
+                label="Max Interval"
+                value={state.drumRandomMaxInterval}
+                paramKey="drumRandomMaxInterval"
+                unit=" ms"
+                onChange={handleSliderChange}
+                {...sliderProps('drumRandomMaxInterval')}
+              />
+              <div style={{ fontSize: '0.75rem', color: '#888', marginTop: '8px' }}>Per-Voice Probability:</div>
+              <Slider
+                label="Sub"
+                value={state.drumRandomSubProb}
+                paramKey="drumRandomSubProb"
+                onChange={handleSliderChange}
+                {...sliderProps('drumRandomSubProb')}
+              />
+              <Slider
+                label="Kick"
+                value={state.drumRandomKickProb}
+                paramKey="drumRandomKickProb"
+                onChange={handleSliderChange}
+                {...sliderProps('drumRandomKickProb')}
+              />
+              <Slider
+                label="Click"
+                value={state.drumRandomClickProb}
+                paramKey="drumRandomClickProb"
+                onChange={handleSliderChange}
+                {...sliderProps('drumRandomClickProb')}
+              />
+              <Slider
+                label="Beep Hi"
+                value={state.drumRandomBeepHiProb}
+                paramKey="drumRandomBeepHiProb"
+                onChange={handleSliderChange}
+                {...sliderProps('drumRandomBeepHiProb')}
+              />
+              <Slider
+                label="Beep Lo"
+                value={state.drumRandomBeepLoProb}
+                paramKey="drumRandomBeepLoProb"
+                onChange={handleSliderChange}
+                {...sliderProps('drumRandomBeepLoProb')}
+              />
+              <Slider
+                label="Noise"
+                value={state.drumRandomNoiseProb}
+                paramKey="drumRandomNoiseProb"
+                onChange={handleSliderChange}
+                {...sliderProps('drumRandomNoiseProb')}
+              />
+            </>
+          )}
+
+          {/* Euclidean Sequencer */}
+          <div style={{ marginTop: '16px', borderTop: '1px solid #333', paddingTop: '12px' }}>
+            <span style={{ fontSize: '0.85rem', color: '#a855f7' }}>Euclidean Sequencer</span>
+          </div>
+          <div style={styles.sliderGroup}>
+            <div style={styles.sliderLabel}>
+              <span>Euclidean Mode</span>
+              <span style={{ 
+                color: state.drumEuclidMasterEnabled ? '#10b981' : '#6b7280',
+                fontWeight: 'bold'
+              }}>
+                {state.drumEuclidMasterEnabled ? 'ON' : 'OFF'}
+              </span>
+            </div>
+            <button
+              onClick={() => handleSelectChange('drumEuclidMasterEnabled', !state.drumEuclidMasterEnabled)}
+              style={{
+                width: '100%',
+                padding: '8px',
+                borderRadius: '6px',
+                border: 'none',
+                cursor: 'pointer',
+                fontWeight: 'bold',
+                background: state.drumEuclidMasterEnabled 
+                  ? 'linear-gradient(135deg, #a855f7, #9333ea)' 
+                  : 'rgba(255, 255, 255, 0.1)',
+                color: state.drumEuclidMasterEnabled ? 'white' : '#9ca3af',
+                transition: 'all 0.2s',
+              }}
+            >
+              {state.drumEuclidMasterEnabled ? '● Euclidean Active' : '○ Euclidean Off'}
+            </button>
+          </div>
+          {state.drumEuclidMasterEnabled && (
+            <>
+              <Slider
+                label="Base BPM"
+                value={state.drumEuclidBaseBPM}
+                paramKey="drumEuclidBaseBPM"
+                unit="bpm"
+                min={40}
+                max={240}
+                step={1}
+                onChange={handleSliderChange}
+              />
+              <Slider
+                label="Tempo"
+                value={state.drumEuclidTempo}
+                paramKey="drumEuclidTempo"
+                unit="x"
+                onChange={handleSliderChange}
+                {...sliderProps('drumEuclidTempo')}
+              />
+              <Slider
+                label="Swing"
+                value={state.drumEuclidSwing}
+                paramKey="drumEuclidSwing"
+                unit="%"
+                onChange={handleSliderChange}
+                {...sliderProps('drumEuclidSwing')}
+              />
+              <Select
+                label="Division"
+                value={state.drumEuclidDivision.toString()}
+                options={[
+                  { value: '4', label: '1/4 (Quarter)' },
+                  { value: '8', label: '1/8 (Eighth)' },
+                  { value: '16', label: '1/16 (Sixteenth)' },
+                  { value: '32', label: '1/32 (Thirty-second)' },
+                ]}
+                onChange={(v) => handleSelectChange('drumEuclidDivision', parseInt(v))}
+              />
+
+              {/* Drum Euclidean Lanes */}
+              {[1, 2, 3, 4].map((laneNum) => {
+                const laneColors = ['#ef4444', '#f97316', '#22c55e', '#8b5cf6'];
+                const laneColor = laneColors[laneNum - 1];
+                const voiceIcons: Record<string, string> = {
+                  sub: '◉', kick: '●', click: '▪', beepHi: '△', beepLo: '▽', noise: '≋'
+                };
+                const voiceNames: Record<string, string> = {
+                  sub: 'Sub (Deep Pulse)', kick: 'Kick (Punch)', click: 'Click (Data)', 
+                  beepHi: 'Beep Hi (Ping)', beepLo: 'Beep Lo (Blip)', noise: 'Noise (Hi-Hat)'
+                };
+                const voiceOrder = ['sub', 'kick', 'click', 'beepHi', 'beepLo', 'noise'] as const;
+                
+                // Type-safe key access
+                const enabledKey = `drumEuclid${laneNum}Enabled` as keyof typeof state;
+                const presetKey = `drumEuclid${laneNum}Preset` as keyof typeof state;
+                const stepsKey = `drumEuclid${laneNum}Steps` as keyof typeof state;
+                const hitsKey = `drumEuclid${laneNum}Hits` as keyof typeof state;
+                const rotationKey = `drumEuclid${laneNum}Rotation` as keyof typeof state;
+                const targetSubKey = `drumEuclid${laneNum}TargetSub` as keyof typeof state;
+                const targetKickKey = `drumEuclid${laneNum}TargetKick` as keyof typeof state;
+                const targetClickKey = `drumEuclid${laneNum}TargetClick` as keyof typeof state;
+                const targetBeepHiKey = `drumEuclid${laneNum}TargetBeepHi` as keyof typeof state;
+                const targetBeepLoKey = `drumEuclid${laneNum}TargetBeepLo` as keyof typeof state;
+                const targetNoiseKey = `drumEuclid${laneNum}TargetNoise` as keyof typeof state;
+                const probabilityKey = `drumEuclid${laneNum}Probability` as keyof typeof state;
+                const velocityMinKey = `drumEuclid${laneNum}VelocityMin` as keyof typeof state;
+                const velocityMaxKey = `drumEuclid${laneNum}VelocityMax` as keyof typeof state;
+                const levelKey = `drumEuclid${laneNum}Level` as keyof typeof state;
+                
+                const isEnabled = state[enabledKey] as boolean;
+                const preset = state[presetKey] as string;
+                const steps = state[stepsKey] as number;
+                const hits = state[hitsKey] as number;
+                const rotation = state[rotationKey] as number;
+                
+                // Handle both new boolean toggles and legacy single Target property
+                const legacyTargetKey = `drumEuclid${laneNum}Target` as keyof typeof state;
+                const legacyTarget = (state as any)[legacyTargetKey] as string | undefined;
+                const voiceToggles: Record<string, boolean> = {
+                  sub: (state[targetSubKey] as boolean | undefined) ?? (legacyTarget === 'sub'),
+                  kick: (state[targetKickKey] as boolean | undefined) ?? (legacyTarget === 'kick'),
+                  click: (state[targetClickKey] as boolean | undefined) ?? (legacyTarget === 'click'),
+                  beepHi: (state[targetBeepHiKey] as boolean | undefined) ?? (legacyTarget === 'beepHi'),
+                  beepLo: (state[targetBeepLoKey] as boolean | undefined) ?? (legacyTarget === 'beepLo'),
+                  noise: (state[targetNoiseKey] as boolean | undefined) ?? (legacyTarget === 'noise'),
+                };
+                const voiceKeyMap: Record<string, keyof typeof state> = {
+                  sub: targetSubKey, kick: targetKickKey, click: targetClickKey,
+                  beepHi: targetBeepHiKey, beepLo: targetBeepLoKey, noise: targetNoiseKey,
+                };
+                const probability = state[probabilityKey] as number;
+                const velocityMin = state[velocityMinKey] as number;
+                const velocityMax = state[velocityMaxKey] as number;
+                const level = state[levelKey] as number;
+                
+                // Check if velocity is in dual mode (min !== max)
+                const isVelocityDual = velocityMin !== velocityMax;
+                
+                // Preset data (same as lead Euclidean)
+                const presetData: Record<string, { steps: number; hits: number; rotation: number }> = {
+                  // Polyrhythmic / Complex
+                  sparse: { steps: 16, hits: 1, rotation: 0 },
+                  dense: { steps: 8, hits: 7, rotation: 0 },
+                  longSparse: { steps: 32, hits: 3, rotation: 0 },
+                  poly3v4: { steps: 12, hits: 3, rotation: 0 },
+                  poly4v3: { steps: 12, hits: 4, rotation: 0 },
+                  poly5v4: { steps: 20, hits: 5, rotation: 0 },
+                  // Indonesian Gamelan
+                  lancaran: { steps: 16, hits: 4, rotation: 0 },
+                  ketawang: { steps: 16, hits: 2, rotation: 0 },
+                  ladrang: { steps: 32, hits: 8, rotation: 0 },
+                  gangsaran: { steps: 8, hits: 4, rotation: 0 },
+                  kotekan: { steps: 8, hits: 3, rotation: 1 },
+                  kotekan2: { steps: 8, hits: 3, rotation: 4 },
+                  srepegan: { steps: 16, hits: 6, rotation: 2 },
+                  sampak: { steps: 8, hits: 5, rotation: 0 },
+                  ayak: { steps: 16, hits: 3, rotation: 4 },
+                  bonang: { steps: 12, hits: 5, rotation: 2 },
+                  // World Rhythms
+                  tresillo: { steps: 8, hits: 3, rotation: 0 },
+                  cinquillo: { steps: 8, hits: 5, rotation: 0 },
+                  rumba: { steps: 16, hits: 5, rotation: 0 },
+                  bossa: { steps: 16, hits: 5, rotation: 3 },
+                  son: { steps: 16, hits: 7, rotation: 0 },
+                  shiko: { steps: 16, hits: 5, rotation: 0 },
+                  soukous: { steps: 12, hits: 7, rotation: 0 },
+                  gahu: { steps: 16, hits: 7, rotation: 0 },
+                  bembe: { steps: 12, hits: 7, rotation: 0 },
+                  // Steve Reich / Experimental
+                  clapping: { steps: 12, hits: 8, rotation: 0 },
+                  clappingB: { steps: 12, hits: 8, rotation: 5 },
+                  additive7: { steps: 7, hits: 4, rotation: 0 },
+                  additive11: { steps: 11, hits: 5, rotation: 0 },
+                  additive13: { steps: 13, hits: 5, rotation: 0 },
+                  reich18: { steps: 12, hits: 7, rotation: 3 },
+                  drumming: { steps: 8, hits: 6, rotation: 1 },
+                };
+                
+                // Calculate actual pattern values (preset or custom)
+                const patternSteps = preset === 'custom' ? steps : (presetData[preset]?.steps || 16);
+                const patternHits = preset === 'custom' ? hits : (presetData[preset]?.hits || 4);
+                const baseRotation = preset === 'custom' ? 0 : (presetData[preset]?.rotation || 0);
+                const patternRotation = (baseRotation + rotation) % patternSteps;
+                
+                // Generate Euclidean pattern (Bjorklund's algorithm)
+                const generatePattern = (s: number, h: number, r: number): boolean[] => {
+                  const pattern: boolean[] = [];
+                  if (h === 0) {
+                    for (let i = 0; i < s; i++) pattern.push(false);
+                  } else if (h >= s) {
+                    for (let i = 0; i < s; i++) pattern.push(true);
+                  } else {
+                    let groups: number[][] = [];
+                    for (let i = 0; i < h; i++) groups.push([1]);
+                    for (let i = 0; i < s - h; i++) groups.push([0]);
+                    
+                    while (groups.length > 1) {
+                      const ones = groups.filter(g => g[0] === 1);
+                      const zeros = groups.filter(g => g[0] === 0);
+                      if (zeros.length === 0) break;
+                      
+                      const combined: number[][] = [];
+                      const minLen = Math.min(ones.length, zeros.length);
+                      for (let i = 0; i < minLen; i++) {
+                        combined.push([...ones[i], ...zeros[i]]);
+                      }
+                      const remainder = ones.length > zeros.length ? ones.slice(minLen) : zeros.slice(minLen);
+                      if (remainder.length === 0 || remainder.length === groups.length - minLen) {
+                        groups = [...combined, ...remainder];
+                        break;
+                      }
+                      groups = [...combined, ...remainder];
+                    }
+                    
+                    for (const g of groups) {
+                      for (const v of g) pattern.push(v === 1);
+                    }
+                  }
+                  return [...pattern.slice(r % pattern.length), ...pattern.slice(0, r % pattern.length)];
+                };
+                
+                const pattern = generatePattern(patternSteps, patternHits, patternRotation);
+                
+                return (
+                  <div 
+                    key={laneNum}
+                    style={{
+                      marginTop: laneNum === 1 ? '12px' : '8px',
+                      padding: '10px',
+                      background: isEnabled ? `${laneColor}15` : 'rgba(255,255,255,0.02)',
+                      borderRadius: '8px',
+                      border: `1px solid ${isEnabled ? laneColor : '#333'}`,
+                      opacity: isEnabled ? 1 : 0.6,
+                    }}
+                  >
+                    {/* Lane header */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: isEnabled ? '8px' : '0' }}>
+                      <button
+                        onClick={() => handleSelectChange(enabledKey, !isEnabled)}
+                        style={{
+                          width: '24px',
+                          height: '24px',
+                          borderRadius: '50%',
+                          border: 'none',
+                          cursor: 'pointer',
+                          background: isEnabled ? laneColor : 'rgba(255,255,255,0.15)',
+                          color: isEnabled ? 'white' : '#666',
+                          fontSize: '12px',
+                          fontWeight: 'bold',
+                        }}
+                      >
+                        {laneNum}
+                      </button>
+                      <span style={{ 
+                        fontSize: '0.8rem', 
+                        color: isEnabled ? laneColor : '#666',
+                        fontWeight: isEnabled ? 'bold' : 'normal',
+                        flex: 1,
+                      }}>
+                        Lane {laneNum} {isEnabled ? '' : '(off)'}
+                      </span>
+                      {isEnabled && (
+                        <span style={{ fontSize: '0.7rem', color: '#888' }}>
+                          {voiceOrder.filter(v => voiceToggles[v]).map(v => voiceIcons[v]).join('')} • {patternHits}/{patternSteps}
+                        </span>
+                      )}
+                    </div>
+
+                    {isEnabled && (
+                      <>
+                        {/* Pattern visualization */}
+                        <div style={{ 
+                          display: 'flex', 
+                          flexWrap: 'wrap', 
+                          gap: '2px',
+                          marginBottom: '8px',
+                          justifyContent: 'center',
+                        }}>
+                          {pattern.map((hit, i) => (
+                            <div
+                              key={i}
+                              style={{
+                                width: patternSteps > 16 ? '8px' : '12px',
+                                height: patternSteps > 16 ? '8px' : '12px',
+                                borderRadius: '50%',
+                                background: hit ? laneColor : 'rgba(255,255,255,0.15)',
+                                boxShadow: hit ? `0 0 6px ${laneColor}` : 'none',
+                              }}
+                            />
+                          ))}
+                        </div>
+                        
+                        {/* Pattern Preset Selector */}
+                        <select
+                          value={preset}
+                          onChange={(e) => handleSelectChange(presetKey, e.target.value)}
+                          style={{
+                            width: '100%',
+                            padding: '6px',
+                            borderRadius: '4px',
+                            border: `1px solid ${laneColor}40`,
+                            background: 'rgba(0,0,0,0.4)',
+                            color: '#eee',
+                            cursor: 'pointer',
+                            fontSize: '0.75rem',
+                            marginBottom: '6px',
+                          }}
+                        >
+                          <optgroup label="Polyrhythmic / Complex">
+                            <option value="sparse">Sparse (16/1)</option>
+                            <option value="dense">Dense (8/7)</option>
+                            <option value="longSparse">Long Sparse (32/3)</option>
+                            <option value="poly3v4">3 vs 4 (12/3)</option>
+                            <option value="poly4v3">4 vs 3 (12/4)</option>
+                            <option value="poly5v4">5 vs 4 (20/5)</option>
+                          </optgroup>
+                          <optgroup label="Indonesian Gamelan">
+                            <option value="lancaran">Lancaran (16/4)</option>
+                            <option value="ketawang">Ketawang (16/2)</option>
+                            <option value="ladrang">Ladrang (32/8)</option>
+                            <option value="gangsaran">Gangsaran (8/4)</option>
+                            <option value="kotekan">Kotekan A (8/3)</option>
+                            <option value="kotekan2">Kotekan B (8/3 r:4)</option>
+                            <option value="srepegan">Srepegan (16/6)</option>
+                            <option value="sampak">Sampak (8/5)</option>
+                            <option value="ayak">Ayak (16/3)</option>
+                            <option value="bonang">Bonang (12/5)</option>
+                          </optgroup>
+                          <optgroup label="World Rhythms">
+                            <option value="tresillo">Tresillo (8/3)</option>
+                            <option value="cinquillo">Cinquillo (8/5)</option>
+                            <option value="rumba">Rumba (16/5)</option>
+                            <option value="bossa">Bossa Nova (16/5)</option>
+                            <option value="son">Son Clave (16/7)</option>
+                            <option value="shiko">Shiko (16/5)</option>
+                            <option value="soukous">Soukous (12/7)</option>
+                            <option value="gahu">Gahu (16/7)</option>
+                            <option value="bembe">Bembé (12/7)</option>
+                          </optgroup>
+                          <optgroup label="Steve Reich / Experimental">
+                            <option value="clapping">Clapping Music (12/8)</option>
+                            <option value="clappingB">Clapping B (12/8 r:5)</option>
+                            <option value="additive7">Additive 7 (7/4)</option>
+                            <option value="additive11">Additive 11 (11/5)</option>
+                            <option value="additive13">Additive 13 (13/5)</option>
+                            <option value="reich18">Reich 18 (12/7)</option>
+                            <option value="drumming">Drumming (8/6)</option>
+                          </optgroup>
+                          <option value="custom">Custom</option>
+                        </select>
+                        
+                        {/* Voice toggle buttons row */}
+                        <div style={{ 
+                          display: 'flex', 
+                          gap: '4px', 
+                          marginBottom: '8px',
+                          justifyContent: 'space-between'
+                        }}>
+                          {voiceOrder.map(voice => {
+                            const isOn = voiceToggles[voice];
+                            const toggleKey = voiceKeyMap[voice];
+                            return (
+                              <button
+                                key={voice}
+                                onClick={() => handleSelectChange(toggleKey, !isOn)}
+                                title={voiceNames[voice]}
+                                style={{
+                                  flex: 1,
+                                  padding: '6px 2px',
+                                  borderRadius: '4px',
+                                  border: isOn ? `2px solid ${laneColor}` : '1px solid #444',
+                                  background: isOn ? `${laneColor}40` : 'rgba(0,0,0,0.3)',
+                                  color: isOn ? laneColor : '#666',
+                                  cursor: 'pointer',
+                                  fontSize: '1rem',
+                                  fontWeight: 'bold',
+                                  transition: 'all 0.15s ease',
+                                }}
+                              >
+                                {voiceIcons[voice]}
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {/* Custom mode: Steps & Hits sliders */}
+                        {preset === 'custom' && (
+                          <div style={{ display: 'flex', gap: '8px', marginBottom: '4px' }}>
+                            <div style={{ flex: 1 }}>
+                              <Slider 
+                                label="Steps" 
+                                value={steps} 
+                                paramKey={stepsKey} 
+                                onChange={handleSliderChange} 
+                                {...sliderProps(stepsKey)} 
+                              />
+                            </div>
+                            <div style={{ flex: 1 }}>
+                              <Slider 
+                                label="Hits" 
+                                value={hits} 
+                                paramKey={hitsKey} 
+                                onChange={handleSliderChange} 
+                                {...sliderProps(hitsKey)} 
+                              />
+                            </div>
+                          </div>
+                        )}
+                        
+                        {/* Probability and Rotation row - matching lead Euclidean format */}
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                          {/* Probability slider */}
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: '0.65rem', color: '#888', marginBottom: '2px' }}>Probability {Math.round(probability * 100)}%</div>
+                            <input
+                              type="range"
+                              min="0"
+                              max="1"
+                              step="0.05"
+                              value={probability}
+                              onChange={(e) => handleSliderChange(probabilityKey as keyof SliderState, parseFloat(e.target.value))}
+                              style={{ width: '100%', cursor: 'pointer' }}
+                            />
+                          </div>
+                          
+                          {/* Rotation buttons */}
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: '70px' }}>
+                            <div style={{ fontSize: '0.65rem', color: '#888', marginBottom: '2px' }}>Rotate: {rotation}</div>
+                            <div style={{ display: 'flex', gap: '4px' }}>
+                              <button
+                                onClick={() => {
+                                  const newRot = (rotation + 1) % patternSteps;
+                                  handleSliderChange(rotationKey as keyof SliderState, newRot);
+                                }}
+                                style={{
+                                  padding: '4px 8px',
+                                  background: `${laneColor}30`,
+                                  border: `1px solid ${laneColor}60`,
+                                  borderRadius: '4px',
+                                  color: laneColor,
+                                  cursor: 'pointer',
+                                  fontSize: '0.8rem',
+                                  fontWeight: 'bold',
+                                }}
+                                title="Rotate pattern left"
+                              >
+                                ←
+                              </button>
+                              <button
+                                onClick={() => {
+                                  const newRot = (rotation - 1 + patternSteps) % patternSteps;
+                                  handleSliderChange(rotationKey as keyof SliderState, newRot);
+                                }}
+                                style={{
+                                  padding: '4px 8px',
+                                  background: `${laneColor}30`,
+                                  border: `1px solid ${laneColor}60`,
+                                  borderRadius: '4px',
+                                  color: laneColor,
+                                  cursor: 'pointer',
+                                  fontSize: '0.8rem',
+                                  fontWeight: 'bold',
+                                }}
+                                title="Rotate pattern right"
+                              >
+                                →
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Level row - full width with dual mode on double-click */}
+                        <div style={{ marginTop: '8px' }}>
+                          <div style={{ fontSize: '0.65rem', color: '#888', marginBottom: '2px' }}>
+                            Level {isVelocityDual 
+                              ? <span style={{ color: laneColor }}>{Math.round(velocityMin * 100)}–{Math.round(velocityMax * 100)}%</span>
+                              : `${Math.round(velocityMin * 100)}%`
+                            }
+                            {isVelocityDual && <span style={{ color: laneColor, marginLeft: '4px', fontSize: '0.6rem' }}>⟷ range</span>}
+                          </div>
+                          {isVelocityDual ? (
+                            // Dual mode - custom range slider
+                            <div 
+                              style={styles.dualSliderContainer}
+                              onDoubleClick={() => {
+                                // Switch to single: set both to midpoint
+                                const mid = (velocityMin + velocityMax) / 2;
+                                handleSliderChange(velocityMinKey as keyof SliderState, mid);
+                                handleSliderChange(velocityMaxKey as keyof SliderState, mid);
+                              }}
+                              title="Double-click for single value mode"
+                            >
+                              <div style={{
+                                ...styles.dualSliderTrack,
+                                left: `${velocityMin * 100}%`,
+                                width: `${(velocityMax - velocityMin) * 100}%`,
+                                background: `linear-gradient(90deg, ${laneColor}99, ${laneColor}cc)`,
+                              }} />
+                              <div
+                                style={{ ...styles.dualSliderThumb, left: `${velocityMin * 100}%`, background: laneColor }}
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  const container = e.currentTarget.parentElement;
+                                  if (!container) return;
+                                  const move = (me: MouseEvent) => {
+                                    const rect = container.getBoundingClientRect();
+                                    const pct = Math.max(0, Math.min(100, ((me.clientX - rect.left) / rect.width) * 100));
+                                    handleSliderChange(velocityMinKey as keyof SliderState, Math.min(pct / 100, velocityMax));
+                                  };
+                                  const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+                                  window.addEventListener('mousemove', move);
+                                  window.addEventListener('mouseup', up);
+                                }}
+                              />
+                              <div
+                                style={{ ...styles.dualSliderThumb, left: `${velocityMax * 100}%`, background: laneColor }}
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  const container = e.currentTarget.parentElement;
+                                  if (!container) return;
+                                  const move = (me: MouseEvent) => {
+                                    const rect = container.getBoundingClientRect();
+                                    const pct = Math.max(0, Math.min(100, ((me.clientX - rect.left) / rect.width) * 100));
+                                    handleSliderChange(velocityMaxKey as keyof SliderState, Math.max(pct / 100, velocityMin));
+                                  };
+                                  const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+                                  window.addEventListener('mousemove', move);
+                                  window.addEventListener('mouseup', up);
+                                }}
+                              />
+                            </div>
+                          ) : (
+                            // Single mode - regular slider
+                            <input
+                              type="range"
+                              min="0"
+                              max="1"
+                              step="0.05"
+                              value={velocityMin}
+                              onChange={(e) => {
+                                const val = parseFloat(e.target.value);
+                                handleSliderChange(velocityMinKey as keyof SliderState, val);
+                                handleSliderChange(velocityMaxKey as keyof SliderState, val);
+                              }}
+                              onDoubleClick={() => {
+                                // Switch to dual: spread 20% around current value
+                                const current = velocityMin;
+                                const spread = 0.1;
+                                const newMin = Math.max(0, current - spread);
+                                const newMax = Math.min(1, current + spread);
+                                handleSliderChange(velocityMinKey as keyof SliderState, newMin);
+                                handleSliderChange(velocityMaxKey as keyof SliderState, newMax);
+                              }}
+                              style={{ width: '100%', cursor: 'pointer' }}
+                              title="Double-click for range mode"
+                            />
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+            </>
+          )}
+
+          <div style={{ fontSize: '0.65rem', color: '#666', textAlign: 'center', marginTop: '8px' }}>
+            Minimalist percussion inspired by Ryoji Ikeda
+          </div>
         </CollapsiblePanel>
       </div>
 

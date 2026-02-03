@@ -39,6 +39,7 @@ const MACRO_SLIDERS: MacroSlider[] = [
   { key: 'synthLevel', label: 'Synth', min: 0, max: 1, color: '#C4724E' },            // Muted orange
   { key: 'granularLevel', label: 'Granular', min: 0, max: 4, color: '#7B9A6D' },      // Sage green
   { key: 'leadLevel', label: 'Lead', min: 0, max: 1, color: '#D4A520' },              // Mustard gold
+  { key: 'drumLevel', label: 'Drum', min: 0, max: 1, color: '#8B5CF6' },              // Purple
   { key: 'synthReverbSend', label: 'Synth Verb', min: 0, max: 1, color: '#C4808A' },  // Dusty rose
   { key: 'granularReverbSend', label: 'Gran Verb', min: 0, max: 1, color: '#A8C490' },// Light green
 ];

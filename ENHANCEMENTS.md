@@ -161,6 +161,574 @@ Add a reverb on/off toggle to save CPU when reverb is not needed. Defaults to ON
 
 ---
 
+## Ryoji Ikeda-Style Drum Synth
+
+### Overview
+Add a minimalist, data-driven percussion synthesizer inspired by Ryoji Ikeda's aesthetic: sharp digital impulses, pure sine beeps, sub-bass pulses, noise bursts, and mathematical precision. Features its own probability-based random triggering and a dedicated 4-lane Euclidean sequencer.
+
+### Sound Design Philosophy
+Ryoji Ikeda's signature sound elements:
+- **Extreme precision** - clicks and impulses measured in milliseconds
+- **Pure tones** - sine waves, no harmonics
+- **Dynamic range** - silence to full volume instantly
+- **Frequency extremes** - sub-bass (20-60Hz) and ultra-highs (8-16kHz)
+- **Digital artifacts** - intentional bit reduction, sample rate effects
+- **Polyrhythmic patterns** - mathematical, interlocking sequences
+
+---
+
+### Phase 1: Drum Voice Architecture
+
+#### 1.1 Drum Voice Types (6 voices)
+
+| Voice | Name | Sound Source | Typical Use |
+|-------|------|--------------|-------------|
+| 1 | **Sub** | Low sine (30-80Hz) | Bass pulse, felt more than heard |
+| 2 | **Kick** | Sine w/ pitch env (80-200Hz) | Percussive thump |
+| 3 | **Click** | Impulse/noise burst | Sharp transient, the "data" sound |
+| 4 | **Beep Hi** | High sine (2-8kHz) | Melodic ping, notification tone |
+| 5 | **Beep Lo** | Mid sine (200-800Hz) | Lower pitched tone |
+| 6 | **Noise** | Filtered white noise | Texture, hi-hat substitute |
+
+#### 1.2 Per-Voice Parameters
+
+```typescript
+interface DrumVoiceParams {
+  // Pitch
+  frequency: number;      // Base frequency (Hz)
+  pitchEnvAmount: number; // Pitch envelope depth (semitones, for kick)
+  pitchEnvDecay: number;  // Pitch envelope decay time (ms)
+  
+  // Amplitude Envelope
+  attack: number;         // 0-50ms (most voices use 0-2ms)
+  decay: number;          // 5-500ms
+  
+  // Tone
+  noiseAmount: number;    // 0-1, blend noise with tone
+  bitDepth: number;       // 4-16 bits (lo-fi effect)
+  
+  // Level
+  level: number;          // 0-1 output gain
+}
+```
+
+#### 1.3 Voice Synthesis Details
+
+**Sub (Voice 1):**
+```
+Oscillator: Sine @ 30-80Hz
+Envelope: Attack 0ms, Decay 50-200ms
+Character: Pure, clean sub-bass pulse
+```
+
+**Kick (Voice 2):**
+```
+Oscillator: Sine @ 80-200Hz with pitch envelope
+Pitch Env: Start at 2-4x base freq, decay to base in 20-80ms
+Envelope: Attack 0ms, Decay 50-300ms
+Character: Classic 808-style but cleaner
+```
+
+**Click (Voice 3):**
+```
+Source: Single-sample impulse OR 1-5ms noise burst
+Filter: Optional highpass @ 2kHz
+Envelope: Attack 0ms, Decay 1-20ms
+Character: Digital, precise, "data transmission" sound
+```
+
+**Beep Hi (Voice 4):**
+```
+Oscillator: Sine @ 2000-8000Hz
+Envelope: Attack 0-5ms, Decay 20-200ms
+Character: Notification ping, sonar, digital chirp
+```
+
+**Beep Lo (Voice 5):**
+```
+Oscillator: Sine @ 200-800Hz
+Envelope: Attack 0-5ms, Decay 20-200ms  
+Character: Lower melodic tone, Morse code feel
+```
+
+**Noise (Voice 6):**
+```
+Source: White noise
+Filter: Bandpass or Highpass, adjustable cutoff
+Envelope: Attack 0-2ms, Decay 10-100ms
+Character: Hi-hat, static burst, texture
+```
+
+---
+
+### Phase 2: Random Probability Engine
+
+#### 2.1 Per-Voice Random Triggering
+Each voice has its own probability-based random trigger system (similar to existing lead synth random mode):
+
+```typescript
+interface DrumRandomParams {
+  enabled: boolean;           // Random mode on/off
+  probability: number;        // 0-1, chance per tick
+  minInterval: number;        // Minimum ms between triggers
+  maxInterval: number;        // Maximum ms between triggers
+  velocityMin: number;        // 0-1 random velocity range
+  velocityMax: number;        // 0-1
+}
+```
+
+#### 2.2 Global Random Parameters
+```typescript
+interface DrumGlobalParams {
+  randomMasterEnabled: boolean;  // Enable/disable all random triggers
+  randomDensity: number;         // 0-1 scales all probabilities
+  randomSync: boolean;           // Sync to global tempo subdivisions
+}
+```
+
+---
+
+### Phase 3: Euclidean Sequencer (4 lanes)
+
+#### 3.1 Dedicated Drum Euclidean Sequencer
+Separate from the existing lead/synth Euclidean sequencer:
+
+```typescript
+interface DrumEuclidLane {
+  enabled: boolean;
+  steps: number;              // 2-32
+  hits: number;               // 1-steps
+  rotation: number;           // 0 to steps-1
+  preset: EuclideanPreset;    // Custom or named pattern
+  target: DrumVoiceTarget;    // 'sub'|'kick'|'click'|'beepHi'|'beepLo'|'noise'
+  probability: number;        // 0-1 per-hit probability
+  velocityMin: number;        // Random velocity range
+  velocityMax: number;
+  level: number;              // Lane output level
+}
+```
+
+#### 3.2 Sequencer Master Controls
+```typescript
+interface DrumEuclidMaster {
+  enabled: boolean;           // Master enable
+  tempo: number;              // BPM (can sync to global or independent)
+  tempoSync: boolean;         // Lock to main tempo
+  swing: number;              // 0-100% swing amount
+  division: TempoDiv;         // 1/4, 1/8, 1/16, 1/32
+}
+```
+
+---
+
+### Phase 4: State Schema
+
+```typescript
+interface SliderState {
+  // ... existing properties ...
+  
+  // ─── Drum Synth Master ───
+  drumEnabled: boolean;                    // Master on/off
+  drumLevel: number;                       // 0-1 master volume
+  drumReverbSend: number;                  // 0-1 send to main reverb
+  drumBitCrush: number;                    // 4-16 bit depth (16 = off)
+  
+  // ─── Voice 1: Sub ───
+  drumSubFreq: number;                     // 30-80 Hz
+  drumSubDecay: number;                    // 50-500 ms
+  drumSubLevel: number;                    // 0-1
+  
+  // ─── Voice 2: Kick ───
+  drumKickFreq: number;                    // 40-200 Hz
+  drumKickPitchEnv: number;                // 0-48 semitones
+  drumKickPitchDecay: number;              // 10-100 ms
+  drumKickDecay: number;                   // 50-500 ms
+  drumKickLevel: number;                   // 0-1
+  
+  // ─── Voice 3: Click ───
+  drumClickDecay: number;                  // 1-50 ms
+  drumClickFilter: number;                 // Highpass freq 500-10000 Hz
+  drumClickNoiseAmount: number;            // 0-1 (0=impulse, 1=noise)
+  drumClickLevel: number;                  // 0-1
+  
+  // ─── Voice 4: Beep Hi ───
+  drumBeepHiFreq: number;                  // 2000-12000 Hz
+  drumBeepHiAttack: number;                // 0-20 ms
+  drumBeepHiDecay: number;                 // 10-500 ms
+  drumBeepHiLevel: number;                 // 0-1
+  
+  // ─── Voice 5: Beep Lo ───
+  drumBeepLoFreq: number;                  // 200-2000 Hz
+  drumBeepLoAttack: number;                // 0-20 ms
+  drumBeepLoDecay: number;                 // 10-500 ms
+  drumBeepLoLevel: number;                 // 0-1
+  
+  // ─── Voice 6: Noise ───
+  drumNoiseFilter: number;                 // Cutoff freq 500-15000 Hz
+  drumNoiseFilterQ: number;                // 0.5-10 resonance
+  drumNoiseDecay: number;                  // 5-200 ms
+  drumNoiseLevel: number;                  // 0-1
+  
+  // ─── Drum Random Mode ───
+  drumRandomEnabled: boolean;              // Master random enable
+  drumRandomDensity: number;               // 0-1 global probability scale
+  drumRandomSub: number;                   // 0-1 per-voice probability
+  drumRandomKick: number;
+  drumRandomClick: number;
+  drumRandomBeepHi: number;
+  drumRandomBeepLo: number;
+  drumRandomNoise: number;
+  drumRandomMinInterval: number;           // 50-2000 ms
+  drumRandomMaxInterval: number;           // 50-2000 ms
+  
+  // ─── Drum Euclidean Lane 1 ───
+  drumEuclid1Enabled: boolean;
+  drumEuclid1Steps: number;
+  drumEuclid1Hits: number;
+  drumEuclid1Rotation: number;
+  drumEuclid1Preset: string;
+  drumEuclid1Target: 'sub'|'kick'|'click'|'beepHi'|'beepLo'|'noise';
+  drumEuclid1Probability: number;
+  drumEuclid1Level: number;
+  
+  // ─── Drum Euclidean Lane 2 ───
+  drumEuclid2Enabled: boolean;
+  drumEuclid2Steps: number;
+  drumEuclid2Hits: number;
+  drumEuclid2Rotation: number;
+  drumEuclid2Preset: string;
+  drumEuclid2Target: 'sub'|'kick'|'click'|'beepHi'|'beepLo'|'noise';
+  drumEuclid2Probability: number;
+  drumEuclid2Level: number;
+  
+  // ─── Drum Euclidean Lane 3 ───
+  drumEuclid3Enabled: boolean;
+  drumEuclid3Steps: number;
+  drumEuclid3Hits: number;
+  drumEuclid3Rotation: number;
+  drumEuclid3Preset: string;
+  drumEuclid3Target: 'sub'|'kick'|'click'|'beepHi'|'beepLo'|'noise';
+  drumEuclid3Probability: number;
+  drumEuclid3Level: number;
+  
+  // ─── Drum Euclidean Lane 4 ───
+  drumEuclid4Enabled: boolean;
+  drumEuclid4Steps: number;
+  drumEuclid4Hits: number;
+  drumEuclid4Rotation: number;
+  drumEuclid4Preset: string;
+  drumEuclid4Target: 'sub'|'kick'|'click'|'beepHi'|'beepLo'|'noise';
+  drumEuclid4Probability: number;
+  drumEuclid4Level: number;
+  
+  // ─── Drum Euclidean Master ───
+  drumEuclidMasterEnabled: boolean;
+  drumEuclidTempo: number;                 // BPM
+  drumEuclidTempoSync: boolean;            // Sync to global tempo
+  drumEuclidSwing: number;                 // 0-100%
+  drumEuclidDivision: number;              // 4, 8, 16, 32
+}
+```
+
+---
+
+### Phase 5: Engine Implementation
+
+#### 5.1 DrumSynth Class Structure
+
+```typescript
+class DrumSynth {
+  private ctx: AudioContext;
+  private masterGain: GainNode;
+  private reverbSend: GainNode;
+  private bitCrusher: AudioWorkletNode;  // Optional
+  
+  // Voice nodes (created on-demand for each trigger)
+  private voicePool: Map<string, DrumVoice>;
+  
+  // Scheduling
+  private euclidScheduler: DrumEuclidScheduler;
+  private randomScheduler: DrumRandomScheduler;
+  
+  // Public methods
+  triggerVoice(voice: DrumVoiceType, velocity: number, time?: number): void;
+  applyParams(state: SliderState): void;
+  start(): void;
+  stop(): void;
+}
+```
+
+#### 5.2 Voice Trigger Implementation
+
+```typescript
+triggerSub(velocity: number, time: number): void {
+  const osc = this.ctx.createOscillator();
+  const gain = this.ctx.createGain();
+  
+  osc.type = 'sine';
+  osc.frequency.value = this.params.drumSubFreq;
+  
+  gain.gain.setValueAtTime(velocity, time);
+  gain.gain.exponentialRampToValueAtTime(
+    0.001, 
+    time + this.params.drumSubDecay / 1000
+  );
+  
+  osc.connect(gain);
+  gain.connect(this.masterGain);
+  
+  osc.start(time);
+  osc.stop(time + this.params.drumSubDecay / 1000 + 0.01);
+}
+
+triggerKick(velocity: number, time: number): void {
+  const osc = this.ctx.createOscillator();
+  const gain = this.ctx.createGain();
+  
+  osc.type = 'sine';
+  
+  // Pitch envelope: start high, decay to base freq
+  const startFreq = this.params.drumKickFreq * 
+    Math.pow(2, this.params.drumKickPitchEnv / 12);
+  osc.frequency.setValueAtTime(startFreq, time);
+  osc.frequency.exponentialRampToValueAtTime(
+    this.params.drumKickFreq,
+    time + this.params.drumKickPitchDecay / 1000
+  );
+  
+  // Amplitude envelope
+  gain.gain.setValueAtTime(velocity, time);
+  gain.gain.exponentialRampToValueAtTime(
+    0.001,
+    time + this.params.drumKickDecay / 1000
+  );
+  
+  osc.connect(gain);
+  gain.connect(this.masterGain);
+  
+  osc.start(time);
+  osc.stop(time + this.params.drumKickDecay / 1000 + 0.01);
+}
+
+triggerClick(velocity: number, time: number): void {
+  // Two modes: impulse or noise burst
+  if (this.params.drumClickNoiseAmount < 0.5) {
+    // Impulse mode: single sample or very short buffer
+    this.playImpulse(velocity, time);
+  } else {
+    // Noise burst mode
+    const noise = this.createNoiseBuffer(this.params.drumClickDecay);
+    const source = this.ctx.createBufferSource();
+    const filter = this.ctx.createBiquadFilter();
+    const gain = this.ctx.createGain();
+    
+    filter.type = 'highpass';
+    filter.frequency.value = this.params.drumClickFilter;
+    
+    gain.gain.setValueAtTime(velocity, time);
+    gain.gain.exponentialRampToValueAtTime(
+      0.001,
+      time + this.params.drumClickDecay / 1000
+    );
+    
+    source.buffer = noise;
+    source.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.masterGain);
+    
+    source.start(time);
+  }
+}
+```
+
+#### 5.3 Bit Crusher (Optional AudioWorklet)
+
+```javascript
+// drum-bitcrush.worklet.js
+class BitCrushProcessor extends AudioWorkletProcessor {
+  static get parameterDescriptors() {
+    return [{ name: 'bits', defaultValue: 16, minValue: 1, maxValue: 16 }];
+  }
+  
+  process(inputs, outputs, parameters) {
+    const input = inputs[0];
+    const output = outputs[0];
+    const bits = parameters.bits[0];
+    const step = Math.pow(0.5, bits);
+    
+    for (let channel = 0; channel < input.length; channel++) {
+      for (let i = 0; i < input[channel].length; i++) {
+        output[channel][i] = step * Math.floor(input[channel][i] / step + 0.5);
+      }
+    }
+    return true;
+  }
+}
+```
+
+---
+
+### Phase 6: UI Design
+
+#### 6.1 Drum Synth Panel Layout
+
+```
+┌─ Drum Synth ────────────────────────────────────────────────┐
+│ [✓ Enabled]  Level: [====○====]  Reverb: [===○===]         │
+│                                                              │
+│ ─── Voices ───                                               │
+│ Sub:     [30 Hz ▼]  Decay: [===]  Level: [===]              │
+│ Kick:    [60 Hz ▼]  Pitch: [===]  Decay: [===]  Level: [===]│
+│ Click:   Decay: [===]  Filter: [===]  Noise: [○]  Level: [===]│
+│ Beep Hi: [4kHz ▼]  Atk: [=]  Decay: [===]  Level: [===]     │
+│ Beep Lo: [400Hz ▼]  Atk: [=]  Decay: [===]  Level: [===]    │
+│ Noise:   Filter: [===]  Q: [=]  Decay: [===]  Level: [===]  │
+│                                                              │
+│ ─── Random Triggers ───                                      │
+│ [✓ Enabled]  Density: [====○====]                           │
+│ Interval: [100ms] to [500ms]                                 │
+│ Sub: [===]  Kick: [===]  Click: [===]                        │
+│ BeepHi: [===]  BeepLo: [===]  Noise: [===]                   │
+│                                                              │
+│ ─── Euclidean Sequencer ───                                  │
+│ [✓ Enabled]  [Sync ✓]  Division: [1/16 ▼]  Swing: [===]     │
+│                                                              │
+│ Lane 1: [✓] Target: [Click ▼]  Prob: [===]  Level: [===]    │
+│   [● ○ ○ ● ○ ○ ● ○ ○ ● ○ ○ ● ○ ○ ○]  Steps: 16  Hits: 5    │
+│                                                              │
+│ Lane 2: [✓] Target: [Sub ▼]  Prob: [===]  Level: [===]      │
+│   [● ○ ○ ○ ● ○ ○ ○ ● ○ ○ ○ ● ○ ○ ○]  Steps: 16  Hits: 4    │
+│                                                              │
+│ Lane 3: [ ] Target: [Beep Hi ▼]  ...                        │
+│ Lane 4: [ ] Target: [Noise ▼]  ...                          │
+└──────────────────────────────────────────────────────────────┘
+```
+
+#### 6.2 Compact Voice Presets
+Quick-select common Ikeda-style configurations:
+
+| Preset | Description |
+|--------|-------------|
+| **Minimal** | Sub + Click only, sparse random |
+| **Data Stream** | Fast clicks, occasional beeps |
+| **Pulse** | Sub-heavy, steady Euclidean |
+| **Glitch** | All voices, high random density |
+| **Morse** | Beeps only, rhythmic patterns |
+
+---
+
+### Implementation Order
+
+1. **State schema** - Add all drum parameters to SliderState
+2. **Default values** - Set musical defaults
+3. **DrumSynth class** - Basic voice triggering
+4. **Voice implementations** - All 6 voice types
+5. **Random scheduler** - Probability-based triggers
+6. **Euclidean scheduler** - 4-lane pattern sequencer
+7. **Bit crusher worklet** - Optional lo-fi effect
+8. **UI panel** - All controls
+9. **Preset integration** - Save/load drum settings
+10. **iOS parity** - Port to Swift/AVAudioEngine
+
+---
+
+### Default Parameter Values
+
+```typescript
+// Drum Master
+drumEnabled: false,
+drumLevel: 0.7,
+drumReverbSend: 0.2,
+drumBitCrush: 16,  // 16 = no crush
+
+// Sub
+drumSubFreq: 50,
+drumSubDecay: 150,
+drumSubLevel: 0.8,
+
+// Kick  
+drumKickFreq: 60,
+drumKickPitchEnv: 24,
+drumKickPitchDecay: 30,
+drumKickDecay: 200,
+drumKickLevel: 0.7,
+
+// Click
+drumClickDecay: 5,
+drumClickFilter: 4000,
+drumClickNoiseAmount: 0.3,
+drumClickLevel: 0.6,
+
+// Beep Hi
+drumBeepHiFreq: 4000,
+drumBeepHiAttack: 1,
+drumBeepHiDecay: 80,
+drumBeepHiLevel: 0.5,
+
+// Beep Lo
+drumBeepLoFreq: 400,
+drumBeepLoAttack: 2,
+drumBeepLoDecay: 100,
+drumBeepLoLevel: 0.5,
+
+// Noise
+drumNoiseFilter: 8000,
+drumNoiseFilterQ: 1,
+drumNoiseDecay: 30,
+drumNoiseLevel: 0.4,
+
+// Random
+drumRandomEnabled: false,
+drumRandomDensity: 0.3,
+drumRandomSub: 0.1,
+drumRandomKick: 0.15,
+drumRandomClick: 0.4,
+drumRandomBeepHi: 0.2,
+drumRandomBeepLo: 0.15,
+drumRandomNoise: 0.25,
+drumRandomMinInterval: 100,
+drumRandomMaxInterval: 500,
+
+// Euclidean (all 4 lanes)
+drumEuclid[1-4]Enabled: false,
+drumEuclid[1-4]Steps: 16,
+drumEuclid[1-4]Hits: 4,
+drumEuclid[1-4]Rotation: 0,
+drumEuclid[1-4]Preset: 'custom',
+drumEuclid[1-4]Target: 'click',
+drumEuclid[1-4]Probability: 1.0,
+drumEuclid[1-4]Level: 0.7,
+
+// Euclidean Master
+drumEuclidMasterEnabled: false,
+drumEuclidTempo: 120,
+drumEuclidTempoSync: true,
+drumEuclidSwing: 0,
+drumEuclidDivision: 16,
+```
+
+---
+
+### Testing Checklist
+
+- [ ] Each voice triggers correctly with proper envelope
+- [ ] Pitch envelope on kick sounds musical
+- [ ] Click impulse vs noise modes both work
+- [ ] Bit crusher effect audible at low bit depths
+- [ ] Random triggers respect probability and interval settings
+- [ ] Euclidean patterns generate correctly
+- [ ] Multiple Euclidean lanes play simultaneously
+- [ ] Probability per-hit works in Euclidean
+- [ ] Tempo sync locks to global BPM
+- [ ] Swing affects timing appropriately
+- [ ] Reverb send routes to main reverb
+- [ ] All parameters save/load in presets
+- [ ] UI controls responsive and clear
+- [ ] CPU usage acceptable with all features enabled
+- [ ] iOS parity complete
+
+---
+
 ### Version History
 
 | Date | Changes |
@@ -168,3 +736,4 @@ Add a reverb on/off toggle to save CPU when reverb is not needed. Defaults to ON
 | 2026-02-03 | Initial enhancement spec created |
 | 2026-02-03 | Web implementation complete - all features working |
 | 2026-02-03 | Reverb enable toggle added for CPU savings |
+| 2026-02-03 | Ryoji Ikeda drum synth spec added |

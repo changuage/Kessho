@@ -1,5 +1,44 @@
 # Development Learnings
 
+## DrumSynth RNG Initialization Order
+
+### Problem
+DrumSynth was not being created because it depends on `rng` (random number generator), which wasn't initialized when `createAudioGraph()` was called.
+
+**Symptom:**
+- Console log: `[Engine] No rng - DrumSynth NOT created`
+- No drum sounds despite UI showing drums enabled
+
+### Cause
+The initialization order in `start()`:
+1. `createAudioGraph()` - tried to create DrumSynth here, but `rng` is null
+2. `initializeHarmony()` - this is where `rng` is actually set
+
+### Solution
+Move DrumSynth creation to AFTER `initializeHarmony()` in the `start()` method:
+
+```typescript
+// In start():
+await this.createAudioGraph();
+this.initializeHarmony();  // Sets this.rng
+
+// Create drum synth AFTER initializeHarmony sets rng
+if (this.ctx && this.rng && this.masterGain && this.reverbNode) {
+  this.drumSynth = new DrumSynth(
+    this.ctx,
+    this.masterGain,
+    this.reverbNode,
+    this.sliderState!,
+    this.rng
+  );
+}
+```
+
+### Key Insight
+When adding new components that depend on shared resources (like `rng`), always check the initialization order in the engine's `start()` method. Dependencies must be created/initialized before the components that need them.
+
+---
+
 ## Windows Group Policy Bypass for Node.js
 
 ### Problem
