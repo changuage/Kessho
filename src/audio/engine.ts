@@ -2316,8 +2316,8 @@ export class AudioEngine {
           // Parse synth voice index from source (e.g., 'synth1' -> 0)
           const voiceIndex = parseInt(noteSource.replace('synth', '')) - 1;
           // Calculate note duration based on synth ADSR - note lasts through attack+decay+sustain portion
-          const synthAttack = this.sliderState.synthAttack;
-          const synthDecay = this.sliderState.synthDecay;
+          const synthAttack = this.sliderState?.synthAttack ?? 0.1;
+          const synthDecay = this.sliderState?.synthDecay ?? 0.3;
           // Give the note some sustain time before releasing (at least 0.3s or equal to attack+decay)
           const noteDuration = synthAttack + synthDecay + Math.max(0.3, synthAttack + synthDecay);
           this.triggerSynthVoice(voiceIndex, frequency, velocity, noteDuration);

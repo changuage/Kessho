@@ -6225,10 +6225,8 @@ const App: React.FC = () => {
                 value={state.drumEuclidBaseBPM}
                 paramKey="drumEuclidBaseBPM"
                 unit="bpm"
-                min={40}
-                max={240}
-                step={1}
                 onChange={handleSliderChange}
+                {...sliderProps('drumEuclidBaseBPM')}
               />
               <Slider
                 label="Tempo"
@@ -6312,7 +6310,7 @@ const App: React.FC = () => {
                 const probability = state[probabilityKey] as number;
                 const velocityMin = state[velocityMinKey] as number;
                 const velocityMax = state[velocityMaxKey] as number;
-                const level = state[levelKey] as number;
+                const _level = state[levelKey] as number;
                 
                 // Check if velocity is in dual mode (min !== max)
                 const isVelocityDual = velocityMin !== velocityMax;
