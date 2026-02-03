@@ -168,6 +168,14 @@ struct SliderControlsView: View {
                         range: 0...1,
                         icon: "arrow.up.and.down"
                     )
+                    
+                    // Synth Chord Sequencer Toggle
+                    Toggle("Synth Chord Sequencer", isOn: $appState.state.synthChordSequencerEnabled)
+                        .foregroundColor(.white)
+                    
+                    Text("When off, synth voices only play from Euclidean triggers")
+                        .font(.caption2)
+                        .foregroundColor(.white.opacity(0.4))
                 }
                 
                 // MARK: - Synth Oscillator Section
@@ -817,7 +825,9 @@ struct SliderControlsView: View {
                         rotation: $appState.state.leadEuclid1Rotation,
                         noteMin: $appState.state.leadEuclid1NoteMin,
                         noteMax: $appState.state.leadEuclid1NoteMax,
-                        level: $appState.state.leadEuclid1Level
+                        level: $appState.state.leadEuclid1Level,
+                        probability: $appState.state.leadEuclid1Probability,
+                        source: $appState.state.leadEuclid1Source
                     )
                     
                     // Lane 2
@@ -830,7 +840,9 @@ struct SliderControlsView: View {
                         rotation: $appState.state.leadEuclid2Rotation,
                         noteMin: $appState.state.leadEuclid2NoteMin,
                         noteMax: $appState.state.leadEuclid2NoteMax,
-                        level: $appState.state.leadEuclid2Level
+                        level: $appState.state.leadEuclid2Level,
+                        probability: $appState.state.leadEuclid2Probability,
+                        source: $appState.state.leadEuclid2Source
                     )
                     
                     // Lane 3
@@ -843,7 +855,9 @@ struct SliderControlsView: View {
                         rotation: $appState.state.leadEuclid3Rotation,
                         noteMin: $appState.state.leadEuclid3NoteMin,
                         noteMax: $appState.state.leadEuclid3NoteMax,
-                        level: $appState.state.leadEuclid3Level
+                        level: $appState.state.leadEuclid3Level,
+                        probability: $appState.state.leadEuclid3Probability,
+                        source: $appState.state.leadEuclid3Source
                     )
                     
                     // Lane 4
@@ -856,7 +870,9 @@ struct SliderControlsView: View {
                         rotation: $appState.state.leadEuclid4Rotation,
                         noteMin: $appState.state.leadEuclid4NoteMin,
                         noteMax: $appState.state.leadEuclid4NoteMax,
-                        level: $appState.state.leadEuclid4Level
+                        level: $appState.state.leadEuclid4Level,
+                        probability: $appState.state.leadEuclid4Probability,
+                        source: $appState.state.leadEuclid4Source
                     )
                 }
                 
@@ -1240,6 +1256,8 @@ struct EuclideanLaneView: View {
     @Binding var noteMin: Int
     @Binding var noteMax: Int
     @Binding var level: Double
+    @Binding var probability: Double
+    @Binding var source: String
     
     @State private var isExpanded = false
     
@@ -1248,6 +1266,16 @@ struct EuclideanLaneView: View {
         "srepegan", "sampak", "ayak", "bonang", "clapping", "clappingB",
         "poly3v4", "poly4v3", "poly5v4", "additive7", "additive11", "additive13",
         "reich18", "drumming", "sparse", "dense", "longSparse", "custom"
+    ]
+    
+    private let sources = [
+        ("lead", "Lead"),
+        ("synth1", "Synth 1"),
+        ("synth2", "Synth 2"),
+        ("synth3", "Synth 3"),
+        ("synth4", "Synth 4"),
+        ("synth5", "Synth 5"),
+        ("synth6", "Synth 6")
     ]
     
     var body: some View {
@@ -1327,6 +1355,32 @@ struct EuclideanLaneView: View {
                     range: 0...1,
                     icon: "speaker.wave.2"
                 )
+                
+                // Probability
+                ParameterSlider(
+                    label: "Probability",
+                    value: $probability,
+                    range: 0...1,
+                    icon: "dice"
+                )
+                
+                // Source picker
+                HStack {
+                    Image(systemName: "music.note.list")
+                        .foregroundColor(.white.opacity(0.5))
+                        .frame(width: 20)
+                    Text("Source")
+                        .font(.subheadline)
+                        .foregroundColor(.white.opacity(0.8))
+                    Spacer()
+                    Picker("Source", selection: $source) {
+                        ForEach(sources, id: \.0) { value, label in
+                            Text(label).tag(value)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .accentColor(.cyan)
+                }
             }
         }
         .padding()

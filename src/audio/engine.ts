@@ -369,6 +369,29 @@ export class AudioEngine {
     // Only apply audio parameters if engine is running
     if (!this.ctx || !this.isRunning) return;
 
+    // If synth chord sequencer was just disabled, silence all synth voices
+    // BUT only if no Euclidean lanes are using synth sources
+    if (sliderState.synthChordSequencerEnabled === false && this.voices.length > 0) {
+      const euclideanUsesSynth = [
+        sliderState.leadEuclid1Enabled && sliderState.leadEuclid1Source !== 'lead',
+        sliderState.leadEuclid2Enabled && sliderState.leadEuclid2Source !== 'lead',
+        sliderState.leadEuclid3Enabled && sliderState.leadEuclid3Source !== 'lead',
+        sliderState.leadEuclid4Enabled && sliderState.leadEuclid4Source !== 'lead',
+      ].some(Boolean);
+
+      if (!euclideanUsesSynth) {
+        const now = this.ctx.currentTime;
+        const release = sliderState.synthRelease || 1.0;
+        for (const voice of this.voices) {
+          if (voice.active) {
+            voice.envelope.gain.cancelScheduledValues(now);
+            voice.envelope.gain.setTargetAtTime(0, now, release / 4);
+            voice.active = false;
+          }
+        }
+      }
+    }
+
     // Apply continuous parameters immediately with smoothing
     this.applyParams(sliderState);
 
@@ -863,8 +886,10 @@ export class AudioEngine {
       this.sliderState.rootNote ?? 4
     );
 
-    // Apply initial chord
-    this.applyChord(this.harmonyState.currentChord.frequencies);
+    // Apply initial chord (if synth chord sequencer is enabled)
+    if (this.sliderState.synthChordSequencerEnabled !== false) {
+      this.applyChord(this.harmonyState.currentChord.frequencies);
+    }
 
     // Send random sequence to granulator
     this.sendGranulatorRandomSequence();
@@ -1047,8 +1072,10 @@ export class AudioEngine {
       effectiveRoot
     );
 
-    // Apply new chord with crossfade
-    this.applyChord(this.harmonyState.currentChord.frequencies, true);
+    // Apply new chord with crossfade (if synth chord sequencer is enabled)
+    if (this.sliderState.synthChordSequencerEnabled !== false) {
+      this.applyChord(this.harmonyState.currentChord.frequencies, true);
+    }
 
     // Reseed granulator at phrase boundary
     this.sendGranulatorRandomSequence();
@@ -1171,6 +1198,95 @@ export class AudioEngine {
       voice.targetFreq = freq;
       voice.active = true;
     }
+  }
+
+  /**
+   * Trigger a single synth voice with a specific frequency.
+   * Used by Euclidean sequencer to play individual synth notes.
+   * @param voiceIndex Which voice (0-5) to trigger
+   * @param frequency Note frequency in Hz
+   * @param velocity Volume/intensity (0-1)
+   * @param noteDuration Optional duration in seconds; if provided, schedules release after this time
+   */
+  triggerSynthVoice(voiceIndex: number, frequency: number, velocity: number, noteDuration?: number): void {
+    if (!this.ctx || !this.sliderState || voiceIndex < 0 || voiceIndex >= this.voices.length) return;
+
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+    const voice = this.voices[voiceIndex];
+    
+    if (!voice) return;
+    
+    const detune = this.sliderState.detune;
+
+    // Get ADSR from synth settings
+    const attack = this.sliderState.synthAttack;
+    const decay = this.sliderState.synthDecay;
+    const sustain = this.sliderState.synthSustain * velocity;
+    const release = this.sliderState.synthRelease;
+
+    // Apply octave shift if set
+    const octaveShift = this.sliderState.synthOctave || 0;
+    const octaveMultiplier = Math.pow(2, octaveShift);
+    const freq = frequency * octaveMultiplier;
+
+    // Calculate frequency values for 4 oscillators
+    const detuneOsc2 = -detune;
+    const detuneOsc3 = detune;
+    const freq1 = freq;  // sine - base
+    const freq2 = freq * Math.pow(2, detuneOsc2 / 1200);  // triangle - detuned down
+    const freq3 = freq * Math.pow(2, detuneOsc3 / 1200);  // saw - detuned up
+    const freq4 = freq;  // saw - base
+
+    // If voice is active, crossfade; otherwise fresh attack
+    if (voice.active) {
+      // Crossfade - release old note, attack new
+      voice.envelope.gain.cancelScheduledValues(now);
+      voice.envelope.gain.setTargetAtTime(0, now, release / 4);
+      
+      const pitchChangeTime = now + release * 0.5;
+      
+      voice.osc1.frequency.setValueAtTime(freq1, pitchChangeTime);
+      voice.osc2.frequency.setValueAtTime(freq2, pitchChangeTime);
+      voice.osc3.frequency.setValueAtTime(freq3, pitchChangeTime);
+      voice.osc4.frequency.setValueAtTime(freq4, pitchChangeTime);
+      
+      voice.envelope.gain.setTargetAtTime(1.0, pitchChangeTime, attack / 3);
+      voice.envelope.gain.setTargetAtTime(sustain, pitchChangeTime + attack, decay / 3);
+      
+      // Schedule release if duration is specified (Euclidean sequencer notes)
+      if (noteDuration !== undefined) {
+        const releaseTime = now + noteDuration;
+        voice.envelope.gain.setTargetAtTime(0, releaseTime, release / 3);
+        setTimeout(() => {
+          voice.active = false;
+        }, (noteDuration + release) * 1000);
+      }
+    } else {
+      // Fresh attack
+      voice.osc1.frequency.setValueAtTime(freq1, now);
+      voice.osc2.frequency.setValueAtTime(freq2, now);
+      voice.osc3.frequency.setValueAtTime(freq3, now);
+      voice.osc4.frequency.setValueAtTime(freq4, now);
+      
+      voice.envelope.gain.cancelScheduledValues(now);
+      voice.envelope.gain.setValueAtTime(0, now);
+      voice.envelope.gain.setTargetAtTime(1.0, now, attack / 3);
+      voice.envelope.gain.setTargetAtTime(sustain, now + attack, decay / 3);
+      
+      // Schedule release if duration is specified (Euclidean sequencer notes)
+      if (noteDuration !== undefined) {
+        const releaseTime = now + noteDuration;
+        voice.envelope.gain.setTargetAtTime(0, releaseTime, release / 3);
+        // Mark voice inactive after release completes
+        setTimeout(() => {
+          voice.active = false;
+        }, (noteDuration + release) * 1000);
+      }
+    }
+
+    voice.targetFreq = freq;
+    voice.active = true;
   }
 
   private applyParams(state: SliderState): void {
@@ -1320,13 +1436,27 @@ export class AudioEngine {
       state.leadEuclid1Enabled !== this.sliderState.leadEuclid1Enabled ||
       state.leadEuclid2Enabled !== this.sliderState.leadEuclid2Enabled ||
       state.leadEuclid3Enabled !== this.sliderState.leadEuclid3Enabled ||
-      state.leadEuclid4Enabled !== this.sliderState.leadEuclid4Enabled
+      state.leadEuclid4Enabled !== this.sliderState.leadEuclid4Enabled ||
+      state.leadEuclid1Source !== this.sliderState.leadEuclid1Source ||
+      state.leadEuclid2Source !== this.sliderState.leadEuclid2Source ||
+      state.leadEuclid3Source !== this.sliderState.leadEuclid3Source ||
+      state.leadEuclid4Source !== this.sliderState.leadEuclid4Source
     );
 
-    // Start/stop lead melody based on enabled state
-    if (state.leadEnabled && this.leadMelodyTimer === null) {
+    // Check if Euclidean has any synth-source lanes enabled (independent of lead)
+    const euclideanSynthLanesEnabled = state.leadEuclideanMasterEnabled && (
+      (state.leadEuclid1Enabled && state.leadEuclid1Source !== 'lead') ||
+      (state.leadEuclid2Enabled && state.leadEuclid2Source !== 'lead') ||
+      (state.leadEuclid3Enabled && state.leadEuclid3Source !== 'lead') ||
+      (state.leadEuclid4Enabled && state.leadEuclid4Source !== 'lead')
+    );
+
+    // Start/stop lead melody based on enabled state OR Euclidean synth lanes
+    const shouldSchedule = state.leadEnabled || euclideanSynthLanesEnabled;
+    
+    if (shouldSchedule && this.leadMelodyTimer === null) {
       this.startLeadMelody();
-    } else if (!state.leadEnabled && this.leadMelodyTimer !== null) {
+    } else if (!shouldSchedule && this.leadMelodyTimer !== null) {
       clearTimeout(this.leadMelodyTimer);
       this.leadMelodyTimer = null;
       // Also clear scheduled notes
@@ -1334,7 +1464,7 @@ export class AudioEngine {
         clearTimeout(timeout);
       }
       this.leadNoteTimeouts = [];
-    } else if (state.leadEnabled && euclideanChanged) {
+    } else if (shouldSchedule && euclideanChanged) {
       // Reschedule when Euclidean settings change
       this.startLeadMelody();
     }
@@ -1901,8 +2031,17 @@ export class AudioEngine {
     }
     this.leadNoteTimeouts = [];
     
-    if (!this.sliderState.leadEnabled) {
-      // If lead is disabled, stop scheduling
+    // Check if Euclidean has any synth-source lanes enabled
+    const euclideanSynthLanesEnabled = this.sliderState.leadEuclideanMasterEnabled && (
+      (this.sliderState.leadEuclid1Enabled && this.sliderState.leadEuclid1Source !== 'lead') ||
+      (this.sliderState.leadEuclid2Enabled && this.sliderState.leadEuclid2Source !== 'lead') ||
+      (this.sliderState.leadEuclid3Enabled && this.sliderState.leadEuclid3Source !== 'lead') ||
+      (this.sliderState.leadEuclid4Enabled && this.sliderState.leadEuclid4Source !== 'lead')
+    );
+    
+    // Only skip if lead is disabled AND no Euclidean synth lanes are active
+    if (!this.sliderState.leadEnabled && !euclideanSynthLanesEnabled) {
+      // If lead is disabled and no Euclidean synth lanes, stop scheduling
       if (this.leadMelodyTimer !== null) {
         clearTimeout(this.leadMelodyTimer);
         this.leadMelodyTimer = null;
@@ -1916,12 +2055,14 @@ export class AudioEngine {
     const octaveRange = this.sliderState.leadOctaveRange ?? 2;
     const phraseDuration = PHRASE_LENGTH * 1000; // in ms
 
-    // Scheduled notes with timing, note range, and level
+    // Scheduled notes with timing, note range, level, probability, and source
     interface ScheduledNote {
       timing: number;
       noteMin: number;
       noteMax: number;
       level: number;
+      probability: number;
+      source: 'lead' | 'synth1' | 'synth2' | 'synth3' | 'synth4' | 'synth5' | 'synth6';
     }
     const scheduledNotes: ScheduledNote[] = [];
 
@@ -1941,6 +2082,8 @@ export class AudioEngine {
           noteMin: this.sliderState.leadEuclid1NoteMin,
           noteMax: this.sliderState.leadEuclid1NoteMax,
           level: this.sliderState.leadEuclid1Level,
+          probability: this.sliderState.leadEuclid1Probability ?? 1.0,
+          source: this.sliderState.leadEuclid1Source ?? 'lead' as const,
         },
         {
           enabled: this.sliderState.leadEuclid2Enabled,
@@ -1951,6 +2094,8 @@ export class AudioEngine {
           noteMin: this.sliderState.leadEuclid2NoteMin,
           noteMax: this.sliderState.leadEuclid2NoteMax,
           level: this.sliderState.leadEuclid2Level,
+          probability: this.sliderState.leadEuclid2Probability ?? 1.0,
+          source: this.sliderState.leadEuclid2Source ?? 'lead' as const,
         },
         {
           enabled: this.sliderState.leadEuclid3Enabled,
@@ -1961,6 +2106,8 @@ export class AudioEngine {
           noteMin: this.sliderState.leadEuclid3NoteMin,
           noteMax: this.sliderState.leadEuclid3NoteMax,
           level: this.sliderState.leadEuclid3Level,
+          probability: this.sliderState.leadEuclid3Probability ?? 1.0,
+          source: this.sliderState.leadEuclid3Source ?? 'lead' as const,
         },
         {
           enabled: this.sliderState.leadEuclid4Enabled,
@@ -1971,6 +2118,8 @@ export class AudioEngine {
           noteMin: this.sliderState.leadEuclid4NoteMin,
           noteMax: this.sliderState.leadEuclid4NoteMax,
           level: this.sliderState.leadEuclid4Level,
+          probability: this.sliderState.leadEuclid4Probability ?? 1.0,
+          source: this.sliderState.leadEuclid4Source ?? 'lead' as const,
         },
       ];
 
@@ -2008,10 +2157,35 @@ export class AudioEngine {
                   noteMin: lane.noteMin,
                   noteMax: lane.noteMax,
                   level: lane.level,
+                  probability: lane.probability,
+                  source: lane.source,
                 });
               }
             }
           }
+        }
+      }
+
+      // Check if any enabled lane uses 'lead' as source
+      const anyLaneUsesLead = lanes.some(lane => lane.enabled && lane.source === 'lead');
+      
+      // If no lanes use lead AND lead is enabled, add random lead notes as well
+      if (!anyLaneUsesLead && this.sliderState.leadEnabled) {
+        const density = this.sliderState.leadDensity;
+        const notesThisPhrase = Math.max(1, Math.round(density * 3 + rng() * 2));
+        const baseLow = 64 + (baseOctaveOffset * 12);
+        const baseHigh = baseLow + (octaveRange * 12);
+        
+        for (let i = 0; i < notesThisPhrase; i++) {
+          const timing = rng() * phraseDuration;
+          scheduledNotes.push({
+            timing,
+            noteMin: baseLow,
+            noteMax: baseHigh,
+            level: 1.0,
+            probability: 1.0,
+            source: 'lead',
+          });
         }
       }
 
@@ -2032,6 +2206,8 @@ export class AudioEngine {
           noteMin: baseLow,
           noteMax: baseHigh,
           level: 1.0,
+          probability: 1.0,
+          source: 'lead',
         });
       }
       
@@ -2040,6 +2216,9 @@ export class AudioEngine {
 
     // Schedule each note
     for (const note of scheduledNotes) {
+      // Probability check - skip note if random value exceeds probability
+      if (rng() > note.probability) continue;
+
       // Get available scale notes within this lane's note range (using effective root with CoF drift)
       const rootNote = this.effectiveRoot; // Uses drifted root from Circle of Fifths
       let availableNotes = getScaleNotesInRange(scale, Math.max(24, note.noteMin), Math.min(108, note.noteMax), rootNote);
@@ -2073,13 +2252,28 @@ export class AudioEngine {
       const timbreMax = this.sliderState.leadTimbreMax;
       const timbre = rngFloat(rng, timbreMin, timbreMax);
 
+      // Capture source for closure
+      const noteSource = note.source;
+
       // Track the timeout so we can cancel it if state changes
       const timeoutId = window.setTimeout(() => {
         // Remove from tracking array
         const idx = this.leadNoteTimeouts.indexOf(timeoutId);
         if (idx > -1) this.leadNoteTimeouts.splice(idx, 1);
-        // Play the note
-        this.playLeadNote(frequency, velocity, timbre);
+        
+        // Route to appropriate sound source
+        if (noteSource === 'lead') {
+          this.playLeadNote(frequency, velocity, timbre);
+        } else {
+          // Parse synth voice index from source (e.g., 'synth1' -> 0)
+          const voiceIndex = parseInt(noteSource.replace('synth', '')) - 1;
+          // Calculate note duration based on synth ADSR - note lasts through attack+decay+sustain portion
+          const synthAttack = this.sliderState.synthAttack;
+          const synthDecay = this.sliderState.synthDecay;
+          // Give the note some sustain time before releasing (at least 0.3s or equal to attack+decay)
+          const noteDuration = synthAttack + synthDecay + Math.max(0.3, synthAttack + synthDecay);
+          this.triggerSynthVoice(voiceIndex, frequency, velocity, noteDuration);
+        }
       }, note.timing);
       this.leadNoteTimeouts.push(timeoutId);
     }
@@ -2107,7 +2301,16 @@ export class AudioEngine {
     }
     this.leadNoteTimeouts = [];
 
-    if (this.sliderState?.leadEnabled) {
+    // Check if Euclidean has any synth-source lanes enabled
+    const euclideanSynthLanesEnabled = this.sliderState?.leadEuclideanMasterEnabled && (
+      (this.sliderState.leadEuclid1Enabled && this.sliderState.leadEuclid1Source !== 'lead') ||
+      (this.sliderState.leadEuclid2Enabled && this.sliderState.leadEuclid2Source !== 'lead') ||
+      (this.sliderState.leadEuclid3Enabled && this.sliderState.leadEuclid3Source !== 'lead') ||
+      (this.sliderState.leadEuclid4Enabled && this.sliderState.leadEuclid4Source !== 'lead')
+    );
+
+    // Start scheduling if lead is enabled OR if Euclidean has synth lanes
+    if (this.sliderState?.leadEnabled || euclideanSynthLanesEnabled) {
       this.scheduleLeadMelody();
     }
   }

@@ -127,6 +127,8 @@ export interface SliderState {
   leadEuclid1NoteMin: number;    // 36..96 MIDI note - low end of note range
   leadEuclid1NoteMax: number;    // 36..96 MIDI note - high end of note range
   leadEuclid1Level: number;      // 0..1 velocity/level for this lane
+  leadEuclid1Probability: number; // 0..1 probability of triggering each hit
+  leadEuclid1Source: 'lead' | 'synth1' | 'synth2' | 'synth3' | 'synth4' | 'synth5' | 'synth6';
   // Lane 2
   leadEuclid2Enabled: boolean;
   leadEuclid2Preset: string;
@@ -136,6 +138,8 @@ export interface SliderState {
   leadEuclid2NoteMin: number;
   leadEuclid2NoteMax: number;
   leadEuclid2Level: number;
+  leadEuclid2Probability: number;
+  leadEuclid2Source: 'lead' | 'synth1' | 'synth2' | 'synth3' | 'synth4' | 'synth5' | 'synth6';
   // Lane 3
   leadEuclid3Enabled: boolean;
   leadEuclid3Preset: string;
@@ -145,6 +149,8 @@ export interface SliderState {
   leadEuclid3NoteMin: number;
   leadEuclid3NoteMax: number;
   leadEuclid3Level: number;
+  leadEuclid3Probability: number;
+  leadEuclid3Source: 'lead' | 'synth1' | 'synth2' | 'synth3' | 'synth4' | 'synth5' | 'synth6';
   // Lane 4
   leadEuclid4Enabled: boolean;
   leadEuclid4Preset: string;
@@ -154,6 +160,11 @@ export interface SliderState {
   leadEuclid4NoteMin: number;
   leadEuclid4NoteMax: number;
   leadEuclid4Level: number;
+  leadEuclid4Probability: number;
+  leadEuclid4Source: 'lead' | 'synth1' | 'synth2' | 'synth3' | 'synth4' | 'synth5' | 'synth6';
+  
+  // Synth chord sequencer toggle (when false, synth only plays from Euclidean triggers)
+  synthChordSequencerEnabled: boolean;
 
   // Ocean Waves
   oceanSampleEnabled: boolean;   // on/off toggle for real sample
@@ -267,6 +278,8 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'leadEuclid1NoteMin',
   'leadEuclid1NoteMax',
   'leadEuclid1Level',
+  'leadEuclid1Probability',
+  'leadEuclid1Source',
   'leadEuclid2Enabled',
   'leadEuclid2Preset',
   'leadEuclid2Steps',
@@ -275,6 +288,8 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'leadEuclid2NoteMin',
   'leadEuclid2NoteMax',
   'leadEuclid2Level',
+  'leadEuclid2Probability',
+  'leadEuclid2Source',
   'leadEuclid3Enabled',
   'leadEuclid3Preset',
   'leadEuclid3Steps',
@@ -283,6 +298,8 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'leadEuclid3NoteMin',
   'leadEuclid3NoteMax',
   'leadEuclid3Level',
+  'leadEuclid3Probability',
+  'leadEuclid3Source',
   'leadEuclid4Enabled',
   'leadEuclid4Preset',
   'leadEuclid4Steps',
@@ -291,6 +308,9 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'leadEuclid4NoteMin',
   'leadEuclid4NoteMax',
   'leadEuclid4Level',
+  'leadEuclid4Probability',
+  'leadEuclid4Source',
+  'synthChordSequencerEnabled',
   // Ocean
   'oceanSampleEnabled',
   'oceanSampleLevel',
@@ -429,6 +449,8 @@ export const DEFAULT_STATE: SliderState = {
   leadEuclid1NoteMin: 64,  // E4 (root octave 2)
   leadEuclid1NoteMax: 76,  // E5 (root octave 3)
   leadEuclid1Level: 0.8,
+  leadEuclid1Probability: 1.0,
+  leadEuclid1Source: 'lead' as const,
   // Lane 2 - interlocking (kotekan) - higher register
   leadEuclid2Enabled: false,
   leadEuclid2Preset: 'kotekan',
@@ -438,6 +460,8 @@ export const DEFAULT_STATE: SliderState = {
   leadEuclid2NoteMin: 76,  // E5 (root octave 3)
   leadEuclid2NoteMax: 88,  // E6 (root octave 4)
   leadEuclid2Level: 0.6,
+  leadEuclid2Probability: 1.0,
+  leadEuclid2Source: 'lead' as const,
   // Lane 3 - sparse accent - bass register
   leadEuclid3Enabled: false,
   leadEuclid3Preset: 'ketawang',
@@ -447,6 +471,8 @@ export const DEFAULT_STATE: SliderState = {
   leadEuclid3NoteMin: 52,  // E3 (root octave 1)
   leadEuclid3NoteMax: 64,  // E4 (root octave 2)
   leadEuclid3Level: 0.9,
+  leadEuclid3Probability: 1.0,
+  leadEuclid3Source: 'lead' as const,
   // Lane 4 - fill/texture - sparkle register
   leadEuclid4Enabled: false,
   leadEuclid4Preset: 'srepegan',
@@ -456,6 +482,11 @@ export const DEFAULT_STATE: SliderState = {
   leadEuclid4NoteMin: 88,  // E6 (root octave 4)
   leadEuclid4NoteMax: 96,  // C7
   leadEuclid4Level: 0.5,
+  leadEuclid4Probability: 1.0,
+  leadEuclid4Source: 'lead' as const,
+  
+  // Synth chord sequencer toggle
+  synthChordSequencerEnabled: true,
 
   // Ocean Waves
   oceanSampleEnabled: false,
@@ -578,24 +609,28 @@ const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> = {
   leadEuclid1NoteMin: { min: 36, max: 96, step: 1 },
   leadEuclid1NoteMax: { min: 36, max: 96, step: 1 },
   leadEuclid1Level: { min: 0, max: 1, step: 0.01 },
+  leadEuclid1Probability: { min: 0, max: 1, step: 0.01 },
   leadEuclid2Steps: { min: 4, max: 32, step: 1 },
   leadEuclid2Hits: { min: 1, max: 16, step: 1 },
   leadEuclid2Rotation: { min: 0, max: 31, step: 1 },
   leadEuclid2NoteMin: { min: 36, max: 96, step: 1 },
   leadEuclid2NoteMax: { min: 36, max: 96, step: 1 },
   leadEuclid2Level: { min: 0, max: 1, step: 0.01 },
+  leadEuclid2Probability: { min: 0, max: 1, step: 0.01 },
   leadEuclid3Steps: { min: 4, max: 32, step: 1 },
   leadEuclid3Hits: { min: 1, max: 16, step: 1 },
   leadEuclid3Rotation: { min: 0, max: 31, step: 1 },
   leadEuclid3NoteMin: { min: 36, max: 96, step: 1 },
   leadEuclid3NoteMax: { min: 36, max: 96, step: 1 },
   leadEuclid3Level: { min: 0, max: 1, step: 0.01 },
+  leadEuclid3Probability: { min: 0, max: 1, step: 0.01 },
   leadEuclid4Steps: { min: 4, max: 32, step: 1 },
   leadEuclid4Hits: { min: 1, max: 16, step: 1 },
   leadEuclid4Rotation: { min: 0, max: 31, step: 1 },
   leadEuclid4NoteMin: { min: 36, max: 96, step: 1 },
   leadEuclid4NoteMax: { min: 36, max: 96, step: 1 },
   leadEuclid4Level: { min: 0, max: 1, step: 0.01 },
+  leadEuclid4Probability: { min: 0, max: 1, step: 0.01 },
   // Ocean
   oceanSampleLevel: { min: 0, max: 1, step: 0.01 },
   oceanWaveSynthLevel: { min: 0, max: 1, step: 0.01 },

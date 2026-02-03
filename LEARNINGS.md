@@ -219,3 +219,75 @@ enum FDNPresetConfig {
 ```
 
 This is separate from `ReverbType` which is the public UI-facing enum that includes both cross-platform presets and iOS-only Apple factory presets.
+
+---
+
+## Euclidean Sequencer Multi-Source Architecture
+
+### Overview
+The Euclidean sequencer can trigger multiple sound sources (Lead synth, Synth voices 1-6) independently of whether those sources are "enabled" via their primary toggles.
+
+### Key Architecture Decisions
+
+#### 1. Independent Scheduling Paths
+The `scheduleLeadMelody()` function handles ALL Euclidean note scheduling, not just lead notes. This means:
+- Lead melody scheduling must run if **either** Lead is enabled **OR** any Euclidean lane uses a synth source
+- The function name is historical - it now handles all rhythmic note scheduling
+
+```typescript
+// In applyParams() - start scheduling if either condition is true
+const euclideanSynthLanesEnabled = state.leadEuclideanMasterEnabled && (
+  (state.leadEuclid1Enabled && state.leadEuclid1Source !== 'lead') ||
+  (state.leadEuclid2Enabled && state.leadEuclid2Source !== 'lead') ||
+  // ... etc
+);
+const shouldSchedule = state.leadEnabled || euclideanSynthLanesEnabled;
+```
+
+#### 2. Synth Chord Sequencer vs Euclidean Independence
+When `synthChordSequencerEnabled` is off, the code silences all synth voices. But this would kill Euclidean synth notes! The solution:
+
+```typescript
+// Only silence voices if chord sequencer is off AND no Euclidean lanes use synth
+if (sliderState.synthChordSequencerEnabled === false && this.voices.length > 0) {
+  const euclideanUsesSynth = /* check if any lane uses synth source */;
+  if (!euclideanUsesSynth) {
+    // Safe to silence all voices
+  }
+}
+```
+
+#### 3. triggerSynthVoice with Duration
+Synth voices normally sustain indefinitely (for chord pads). For Euclidean rhythmic notes, we need automatic release:
+
+```typescript
+triggerSynthVoice(voiceIndex: number, frequency: number, velocity: number, noteDuration?: number): void {
+  // ... envelope attack/decay/sustain ...
+  
+  if (noteDuration !== undefined) {
+    const releaseTime = now + noteDuration;
+    voice.envelope.gain.setTargetAtTime(0, releaseTime, release / 3);
+    setTimeout(() => { voice.active = false; }, (noteDuration + release) * 1000);
+  }
+}
+```
+
+The duration is calculated based on ADSR: `attack + decay + max(0.3, attack + decay)`
+
+#### 4. State Properties per Lane
+Each Euclidean lane has:
+- `leadEuclid[1-4]Probability` (0.0-1.0) - Chance each hit actually triggers
+- `leadEuclid[1-4]Source` ('lead' | 'synth1' | ... | 'synth6') - Target sound source
+
+### Common Pitfalls
+
+1. **Early return blocking synth lanes**: `scheduleLeadMelody()` may return early if `leadEnabled` is false. Must check for synth lanes first.
+
+2. **State change detection**: Must detect changes to source settings, not just enabled toggles:
+   ```typescript
+   const euclideanChanged = /* ... */ ||
+     state.leadEuclid1Source !== this.sliderState.leadEuclid1Source ||
+     // ... etc
+   ```
+
+3. **startLeadMelody guard**: The `startLeadMelody()` wrapper also has an enabled check - must update both locations.

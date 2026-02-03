@@ -149,6 +149,19 @@ struct SliderState: Codable, Equatable {
     var leadEuclid4NoteMax: Int = 96
     var leadEuclid4Level: Double = 0.5
     
+    // Euclidean Probability & Source (per lane)
+    var leadEuclid1Probability: Double = 1.0
+    var leadEuclid1Source: String = "lead"  // "lead", "synth1"..."synth6"
+    var leadEuclid2Probability: Double = 1.0
+    var leadEuclid2Source: String = "lead"
+    var leadEuclid3Probability: Double = 1.0
+    var leadEuclid3Source: String = "lead"
+    var leadEuclid4Probability: Double = 1.0
+    var leadEuclid4Source: String = "lead"
+    
+    // Synth Chord Sequencer Toggle
+    var synthChordSequencerEnabled: Bool = true
+    
     // Ocean
     var oceanSampleEnabled: Bool = false
     var oceanSampleLevel: Double = 0.5

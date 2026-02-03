@@ -422,6 +422,12 @@ class AppState: ObservableObject {
         result.leadEuclid4NoteMax = lerpInt(a.leadEuclid4NoteMax, b.leadEuclid4NoteMax, t)
         result.leadEuclid4Level = lerp(a.leadEuclid4Level, b.leadEuclid4Level, t)
         
+        // Euclidean probability (lerp)
+        result.leadEuclid1Probability = lerp(a.leadEuclid1Probability, b.leadEuclid1Probability, t)
+        result.leadEuclid2Probability = lerp(a.leadEuclid2Probability, b.leadEuclid2Probability, t)
+        result.leadEuclid3Probability = lerp(a.leadEuclid3Probability, b.leadEuclid3Probability, t)
+        result.leadEuclid4Probability = lerp(a.leadEuclid4Probability, b.leadEuclid4Probability, t)
+        
         // === Ocean ===
         result.oceanSampleLevel = lerp(a.oceanSampleLevel, b.oceanSampleLevel, t)
         result.oceanWaveSynthLevel = lerp(a.oceanWaveSynthLevel, b.oceanWaveSynthLevel, t)
@@ -469,6 +475,13 @@ class AppState: ObservableObject {
             result.leadEuclid3Preset = b.leadEuclid3Preset
             result.leadEuclid4Enabled = b.leadEuclid4Enabled
             result.leadEuclid4Preset = b.leadEuclid4Preset
+            // Euclidean sources (discrete)
+            result.leadEuclid1Source = b.leadEuclid1Source
+            result.leadEuclid2Source = b.leadEuclid2Source
+            result.leadEuclid3Source = b.leadEuclid3Source
+            result.leadEuclid4Source = b.leadEuclid4Source
+            // Synth chord sequencer
+            result.synthChordSequencerEnabled = b.synthChordSequencerEnabled
             // Ocean
             result.oceanSampleEnabled = b.oceanSampleEnabled
             result.oceanWaveSynthEnabled = b.oceanWaveSynthEnabled

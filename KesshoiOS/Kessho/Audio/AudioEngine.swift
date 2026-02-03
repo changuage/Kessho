@@ -642,11 +642,19 @@ class AudioEngine {
             }
         }
         
+        // Check if Euclidean has any synth-source lanes enabled (independent of leadEnabled)
+        let euclideanSynthLanesEnabled = currentParams.leadEuclideanMasterEnabled && (
+            (currentParams.leadEuclid1Enabled && currentParams.leadEuclid1Source != "lead") ||
+            (currentParams.leadEuclid2Enabled && currentParams.leadEuclid2Source != "lead") ||
+            (currentParams.leadEuclid3Enabled && currentParams.leadEuclid3Source != "lead") ||
+            (currentParams.leadEuclid4Enabled && currentParams.leadEuclid4Source != "lead")
+        )
+        
         // Pre-schedule notes for this phrase (matching web's precise scheduling)
-        if currentParams.leadEnabled {
+        if currentParams.leadEnabled || euclideanSynthLanesEnabled {
             if currentParams.leadEuclideanMasterEnabled {
                 scheduleEuclideanPhrase()
-            } else {
+            } else if currentParams.leadEnabled {
                 scheduleRandomLeadPhrase()
             }
         }
@@ -765,9 +773,18 @@ class AudioEngine {
         }
         scheduledEuclideanNotes.removeAll()
         
-        guard currentParams.leadEnabled,
-              currentParams.leadEuclideanMasterEnabled,
+        guard currentParams.leadEuclideanMasterEnabled,
               let harmony = harmonyState else { return }
+        
+        // Check if any synth-source lanes are enabled (independent of leadEnabled)
+        let euclideanSynthLanesEnabled = 
+            (currentParams.leadEuclid1Enabled && currentParams.leadEuclid1Source != "lead") ||
+            (currentParams.leadEuclid2Enabled && currentParams.leadEuclid2Source != "lead") ||
+            (currentParams.leadEuclid3Enabled && currentParams.leadEuclid3Source != "lead") ||
+            (currentParams.leadEuclid4Enabled && currentParams.leadEuclid4Source != "lead")
+        
+        // Only proceed if lead is enabled OR synth lanes are active
+        guard currentParams.leadEnabled || euclideanSynthLanesEnabled else { return }
         
         let phraseDuration = PHRASE_LENGTH  // 16 seconds
         let tempo = currentParams.leadEuclideanTempo
@@ -780,6 +797,8 @@ class AudioEngine {
             let noteMin: Int
             let noteMax: Int
             let level: Float
+            let probability: Double
+            let source: String
         }
         var scheduledNotes: [ScheduledNote] = []
         
@@ -788,19 +807,23 @@ class AudioEngine {
             (enabled: currentParams.leadEuclid1Enabled, preset: currentParams.leadEuclid1Preset,
              steps: currentParams.leadEuclid1Steps, hits: currentParams.leadEuclid1Hits,
              rotation: currentParams.leadEuclid1Rotation, noteMin: currentParams.leadEuclid1NoteMin,
-             noteMax: currentParams.leadEuclid1NoteMax, level: Float(currentParams.leadEuclid1Level)),
+             noteMax: currentParams.leadEuclid1NoteMax, level: Float(currentParams.leadEuclid1Level),
+             probability: currentParams.leadEuclid1Probability, source: currentParams.leadEuclid1Source),
             (enabled: currentParams.leadEuclid2Enabled, preset: currentParams.leadEuclid2Preset,
              steps: currentParams.leadEuclid2Steps, hits: currentParams.leadEuclid2Hits,
              rotation: currentParams.leadEuclid2Rotation, noteMin: currentParams.leadEuclid2NoteMin,
-             noteMax: currentParams.leadEuclid2NoteMax, level: Float(currentParams.leadEuclid2Level)),
+             noteMax: currentParams.leadEuclid2NoteMax, level: Float(currentParams.leadEuclid2Level),
+             probability: currentParams.leadEuclid2Probability, source: currentParams.leadEuclid2Source),
             (enabled: currentParams.leadEuclid3Enabled, preset: currentParams.leadEuclid3Preset,
              steps: currentParams.leadEuclid3Steps, hits: currentParams.leadEuclid3Hits,
              rotation: currentParams.leadEuclid3Rotation, noteMin: currentParams.leadEuclid3NoteMin,
-             noteMax: currentParams.leadEuclid3NoteMax, level: Float(currentParams.leadEuclid3Level)),
+             noteMax: currentParams.leadEuclid3NoteMax, level: Float(currentParams.leadEuclid3Level),
+             probability: currentParams.leadEuclid3Probability, source: currentParams.leadEuclid3Source),
             (enabled: currentParams.leadEuclid4Enabled, preset: currentParams.leadEuclid4Preset,
              steps: currentParams.leadEuclid4Steps, hits: currentParams.leadEuclid4Hits,
              rotation: currentParams.leadEuclid4Rotation, noteMin: currentParams.leadEuclid4NoteMin,
-             noteMax: currentParams.leadEuclid4NoteMax, level: Float(currentParams.leadEuclid4Level))
+             noteMax: currentParams.leadEuclid4NoteMax, level: Float(currentParams.leadEuclid4Level),
+             probability: currentParams.leadEuclid4Probability, source: currentParams.leadEuclid4Source)
         ]
         
         for lane in lanes {
@@ -850,11 +873,42 @@ class AudioEngine {
                                 timing: timing,
                                 noteMin: lane.noteMin,
                                 noteMax: lane.noteMax,
-                                level: lane.level
+                                level: lane.level,
+                                probability: lane.probability,
+                                source: lane.source
                             ))
                         }
                     }
                 }
+            }
+        }
+        
+        // Check if any enabled lane uses "lead" as source
+        let anyLaneUsesLead = lanes.contains { $0.enabled && $0.source == "lead" }
+        
+        // If no lanes use lead AND lead is enabled, add random lead notes as well
+        // (matching web app behavior)
+        if !anyLaneUsesLead && currentParams.leadEnabled {
+            let density = currentParams.leadDensity
+            let baseOctaveOffset = currentParams.leadOctave
+            let octaveRange = currentParams.leadOctaveRange
+            let baseLow = 64 + (baseOctaveOffset * 12)
+            let baseHigh = baseLow + (octaveRange * 12)
+            
+            let phraseIdx = getCurrentPhraseIndex()
+            let rng = createRng("\(currentBucket)|\(currentSeed)|lead|\(phraseIdx)")
+            let notesThisPhrase = max(1, Int(density * 3 + rng() * 2))
+            
+            for _ in 0..<notesThisPhrase {
+                let timing = rng() * phraseDuration
+                scheduledNotes.append(ScheduledNote(
+                    timing: timing,
+                    noteMin: baseLow,
+                    noteMax: baseHigh,
+                    level: 1.0,
+                    probability: 1.0,
+                    source: "lead"
+                ))
             }
         }
         
@@ -872,6 +926,11 @@ class AudioEngine {
             // Create per-note RNG for deterministic note selection and randomization
             let noteRng = createRng("\(currentBucket)|\(currentSeed)|euclid|\(phraseIndex)|\(noteIndex)")
             
+            // Probability check - skip note if random value exceeds probability
+            if noteRng() > note.probability {
+                continue
+            }
+            
             // Pick note from scale in range using seeded RNG (not .randomElement())
             let availableNotes = scaleNotes.filter { $0 >= note.noteMin && $0 <= note.noteMax }
             let midiNote: Int
@@ -884,12 +943,32 @@ class AudioEngine {
                 continue
             }
             
+            // Capture source for closure
+            let noteSource = note.source
+            let noteLevel = note.level
+            let frequency = midiToFreq(midiNote)
+            
+            // Calculate synth note duration based on ADSR
+            let synthAttack = currentParams.synthAttack
+            let synthDecay = currentParams.synthDecay
+            let noteDuration = synthAttack + synthDecay + max(0.3, synthAttack + synthDecay)
+            
             let workItem = DispatchWorkItem { [weak self] in
                 guard let self = self, self.isRunning else { return }
-                self.leadSynth?.randomizeTimbre(noteRng)
-                self.leadSynth?.randomizeExpression(noteRng)
-                self.leadSynth?.randomizeDelay(noteRng)
-                self.leadSynth?.playNote(midiNote: midiNote, velocity: note.level)
+                
+                // Route to appropriate sound source
+                if noteSource == "lead" {
+                    self.leadSynth?.randomizeTimbre(noteRng)
+                    self.leadSynth?.randomizeExpression(noteRng)
+                    self.leadSynth?.randomizeDelay(noteRng)
+                    self.leadSynth?.playNote(midiNote: midiNote, velocity: noteLevel)
+                } else if noteSource.hasPrefix("synth") {
+                    // Parse synth voice index from source (e.g., "synth1" -> 0)
+                    if let voiceNumber = Int(noteSource.replacingOccurrences(of: "synth", with: "")) {
+                        let voiceIndex = voiceNumber - 1
+                        self.triggerSynthVoice(voiceIndex: voiceIndex, frequency: Float(frequency), velocity: noteLevel, noteDuration: noteDuration)
+                    }
+                }
             }
             
             scheduledEuclideanNotes.append(workItem)
@@ -970,10 +1049,31 @@ class AudioEngine {
     }
     
     private func triggerChord(_ chord: ChordVoicing) {
+        // Check if chord sequencer is enabled
+        guard currentParams.synthChordSequencerEnabled else { return }
+        
         for (i, freq) in chord.frequencies.enumerated() where i < synthVoices.count {
             let rng = createRng("\(currentSeed)|voice|\(i)")
             let velocity = Float(rngFloat(rng, min: 0.5, max: 0.8))
             synthVoices[i].trigger(frequency: Float(freq), velocity: velocity)
+        }
+    }
+    
+    /// Trigger a single synth voice for Euclidean sequencing
+    /// - Parameters:
+    ///   - voiceIndex: Which voice (0-5) to trigger
+    ///   - frequency: Note frequency in Hz
+    ///   - velocity: Volume/intensity (0-1)
+    ///   - noteDuration: How long before release (seconds)
+    private func triggerSynthVoice(voiceIndex: Int, frequency: Float, velocity: Float, noteDuration: TimeInterval) {
+        guard voiceIndex >= 0 && voiceIndex < synthVoices.count else { return }
+        
+        let voice = synthVoices[voiceIndex]
+        voice.trigger(frequency: frequency, velocity: velocity)
+        
+        // Schedule release after duration
+        DispatchQueue.main.asyncAfter(deadline: .now() + noteDuration) { [weak voice] in
+            voice?.release()
         }
     }
     

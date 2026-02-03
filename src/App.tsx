@@ -3025,6 +3025,33 @@ const App: React.FC = () => {
             {...sliderProps('detune')}
           />
 
+          {/* Synth Chord Sequencer Toggle */}
+          <div style={{ marginTop: '12px', marginBottom: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: '0.85rem', color: '#aaa' }}>Synth Chord Sequencer</span>
+              <button
+                onClick={() => handleSelectChange('synthChordSequencerEnabled', !state.synthChordSequencerEnabled)}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontWeight: 'bold',
+                  background: state.synthChordSequencerEnabled !== false
+                    ? 'linear-gradient(135deg, #22c55e, #16a34a)' 
+                    : 'rgba(255, 255, 255, 0.1)',
+                  color: state.synthChordSequencerEnabled !== false ? 'white' : '#9ca3af',
+                  fontSize: '0.75rem',
+                }}
+              >
+                {state.synthChordSequencerEnabled !== false ? '● ON' : '○ OFF'}
+              </button>
+            </div>
+            <div style={{ fontSize: '0.65rem', color: '#666', marginTop: '4px' }}>
+              When off, synth pads won't play chord changes (use with Euclidean synth sources)
+            </div>
+          </div>
+
           {/* Visual ADSR Curve for Synth */}
           <div style={{ marginTop: '12px', marginBottom: '8px' }}>
             <span style={{ fontSize: '0.85rem', color: '#aaa' }}>Synth Envelope (ADSR)</span>
@@ -4646,134 +4673,145 @@ const App: React.FC = () => {
                 : 'Double-click slider for range mode'}
             </div>
           </div>
+        </CollapsiblePanel>
 
-          {/* Euclidean Polyrhythm Sequencer Section */}
-          <div style={{ marginTop: '12px', borderTop: '1px solid #333', paddingTop: '12px' }}>
-            <div style={{ fontSize: '0.85rem', color: '#888', marginBottom: '8px' }}>Euclidean Polyrhythm Sequencer</div>
+        {/* Euclidean Polyrhythm Sequencer */}
+        <CollapsiblePanel
+          id="euclidean"
+          title="Euclidean Sequencer"
+          isMobile={isMobile}
+          isExpanded={expandedPanels.has('euclidean')}
+          onToggle={togglePanel}
+        >
             
-            {/* Master Enable toggle */}
-            <div style={styles.sliderGroup}>
-              <div style={styles.sliderLabel}>
-                <span>Sequencer Mode</span>
-                <span style={{ 
-                  color: state.leadEuclideanMasterEnabled ? '#8b5cf6' : '#6b7280',
-                  fontWeight: 'bold'
-                }}>
-                  {state.leadEuclideanMasterEnabled ? 'EUCLIDEAN' : 'RANDOM'}
-                </span>
-              </div>
-              <button
-                onClick={() => handleSelectChange('leadEuclideanMasterEnabled', !state.leadEuclideanMasterEnabled)}
-                style={{
-                  width: '100%',
-                  padding: '10px',
-                  borderRadius: '6px',
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontWeight: 'bold',
-                  background: state.leadEuclideanMasterEnabled 
-                    ? 'linear-gradient(135deg, #8b5cf6, #7c3aed)' 
-                    : 'rgba(255, 255, 255, 0.1)',
-                  color: state.leadEuclideanMasterEnabled ? 'white' : '#9ca3af',
-                  transition: 'all 0.2s',
-                }}
-              >
-                {state.leadEuclideanMasterEnabled ? '● Polyrhythmic Patterns' : '○ Random Notes'}
-              </button>
+          {/* Master Enable toggle */}
+          <div style={styles.sliderGroup}>
+            <div style={styles.sliderLabel}>
+              <span>Euclidean Mode</span>
+              <span style={{ 
+                color: state.leadEuclideanMasterEnabled ? '#8b5cf6' : '#6b7280',
+                fontWeight: 'bold'
+              }}>
+                {state.leadEuclideanMasterEnabled ? 'ON' : 'OFF'}
+              </span>
             </div>
+            <button
+              onClick={() => handleSelectChange('leadEuclideanMasterEnabled', !state.leadEuclideanMasterEnabled)}
+              style={{
+                width: '100%',
+                padding: '10px',
+                borderRadius: '6px',
+                border: 'none',
+                cursor: 'pointer',
+                fontWeight: 'bold',
+                background: state.leadEuclideanMasterEnabled 
+                  ? 'linear-gradient(135deg, #8b5cf6, #7c3aed)' 
+                  : 'rgba(255, 255, 255, 0.1)',
+                color: state.leadEuclideanMasterEnabled ? 'white' : '#9ca3af',
+                transition: 'all 0.2s',
+              }}
+            >
+              {state.leadEuclideanMasterEnabled ? '● Active - Using Patterns' : '○ Inactive - Lead Uses Random'}
+            </button>
+          </div>
+          <div style={{ fontSize: '0.65rem', color: '#666', marginTop: '4px', marginBottom: '12px' }}>
+            When ON, enabled lanes trigger notes. When OFF, Lead synth uses random timing.
+          </div>
 
-            {/* Tempo control (always visible when enabled) */}
-            {state.leadEuclideanMasterEnabled && (
-              <>
-                <Slider
-                  label="Pattern Tempo"
-                  value={state.leadEuclideanTempo}
-                  paramKey="leadEuclideanTempo"
-                  unit="x"
-                  onChange={handleSliderChange}
-                />
-                <div style={{ fontSize: '0.65rem', color: '#666', marginTop: '-8px', marginBottom: '12px' }}>
-                  Speed multiplier for all lanes
-                </div>
+          {/* Tempo control */}
+          <Slider
+            label="Pattern Tempo"
+            value={state.leadEuclideanTempo}
+            paramKey="leadEuclideanTempo"
+            unit="x"
+            onChange={handleSliderChange}
+          />
+          <div style={{ fontSize: '0.65rem', color: '#666', marginTop: '-8px', marginBottom: '12px' }}>
+            Speed multiplier for all lanes
+          </div>
 
-                {/* 4 Lane Controls */}
-                {[1, 2, 3, 4].map((laneNum) => {
-                  const laneColors = ['#f59e0b', '#10b981', '#3b82f6', '#ec4899'];
-                  const laneColor = laneColors[laneNum - 1];
-                  const enabledKey = `leadEuclid${laneNum}Enabled` as keyof typeof state;
-                  const presetKey = `leadEuclid${laneNum}Preset` as keyof typeof state;
-                  const stepsKey = `leadEuclid${laneNum}Steps` as keyof typeof state;
-                  const hitsKey = `leadEuclid${laneNum}Hits` as keyof typeof state;
-                  const rotationKey = `leadEuclid${laneNum}Rotation` as keyof typeof state;
-                  const noteMinKey = `leadEuclid${laneNum}NoteMin` as keyof typeof state;
-                  const noteMaxKey = `leadEuclid${laneNum}NoteMax` as keyof typeof state;
-                  const levelKey = `leadEuclid${laneNum}Level` as keyof typeof state;
-                  
-                  const isEnabled = state[enabledKey] as boolean;
-                  const preset = state[presetKey] as string;
-                  const steps = state[stepsKey] as number;
-                  const hits = state[hitsKey] as number;
-                  const rotation = state[rotationKey] as number;
-                  const noteMin = state[noteMinKey] as number;
-                  const noteMax = state[noteMaxKey] as number;
-                  const level = state[levelKey] as number;
+          {/* 4 Lane Controls */}
+          {[1, 2, 3, 4].map((laneNum) => {
+            const laneColors = ['#f59e0b', '#10b981', '#3b82f6', '#ec4899'];
+            const laneColor = laneColors[laneNum - 1];
+            const enabledKey = `leadEuclid${laneNum}Enabled` as keyof typeof state;
+            const presetKey = `leadEuclid${laneNum}Preset` as keyof typeof state;
+            const stepsKey = `leadEuclid${laneNum}Steps` as keyof typeof state;
+            const hitsKey = `leadEuclid${laneNum}Hits` as keyof typeof state;
+            const rotationKey = `leadEuclid${laneNum}Rotation` as keyof typeof state;
+            const noteMinKey = `leadEuclid${laneNum}NoteMin` as keyof typeof state;
+            const noteMaxKey = `leadEuclid${laneNum}NoteMax` as keyof typeof state;
+            const levelKey = `leadEuclid${laneNum}Level` as keyof typeof state;
+            const probabilityKey = `leadEuclid${laneNum}Probability` as keyof typeof state;
+            const sourceKey = `leadEuclid${laneNum}Source` as keyof typeof state;
+            
+            const isEnabled = state[enabledKey] as boolean;
+            const preset = state[presetKey] as string;
+            const steps = state[stepsKey] as number;
+            const hits = state[hitsKey] as number;
+            const rotation = state[rotationKey] as number;
+            const noteMin = state[noteMinKey] as number;
+            const noteMax = state[noteMaxKey] as number;
+            const level = state[levelKey] as number;
+            const probability = (state[probabilityKey] as number) ?? 1.0;
+            const source = (state[sourceKey] as string) ?? 'lead';
 
-                  // Get root note from state (0=C, 1=C#, ..., 4=E, ..., 11=B)
-                  // Root at octave 2: C2=36, so rootMidi = 36 + rootNote
-                  const rootMidi = 36 + state.rootNote;
-                  
-                  // Helper to convert MIDI note to name relative to root
-                  const midiToNoteName = (midi: number): string => {
-                    const noteInOctave = midi % 12;
-                    const noteName = NOTE_NAMES[noteInOctave];
-                    // Calculate octave relative to root (root2 = 0, root3 = 1, etc.)
-                    const octaveFromRoot = Math.floor((midi - rootMidi) / 12);
-                    return `${noteName}${octaveFromRoot}`;
-                  };
-                  
-                  // Get octave markers based on root note (root3, root4, root5, root6)
-                  const rootOctaveMarkers = [rootMidi + 12, rootMidi + 24, rootMidi + 36, rootMidi + 48];
+            // Get root note from state (0=C, 1=C#, ..., 4=E, ..., 11=B)
+            // Root at octave 2: C2=36, so rootMidi = 36 + rootNote
+            const rootMidi = 36 + state.rootNote;
+            
+            // Helper to convert MIDI note to name relative to root
+            const midiToNoteName = (midi: number): string => {
+              const noteInOctave = midi % 12;
+              const noteName = NOTE_NAMES[noteInOctave];
+              // Calculate octave relative to root (root2 = 0, root3 = 1, etc.)
+              const octaveFromRoot = Math.floor((midi - rootMidi) / 12);
+              return `${noteName}${octaveFromRoot}`;
+            };
+            
+            // Get octave markers based on root note (root3, root4, root5, root6)
+            const rootOctaveMarkers = [rootMidi + 12, rootMidi + 24, rootMidi + 36, rootMidi + 48];
 
-                  // Generate pattern for visualization
-                  const presetData: Record<string, { steps: number; hits: number; rotation: number }> = {
-                    // Polyrhythmic / Complex
-                    sparse: { steps: 16, hits: 1, rotation: 0 },
-                    dense: { steps: 8, hits: 7, rotation: 0 },
-                    longSparse: { steps: 32, hits: 3, rotation: 0 },
-                    poly3v4: { steps: 12, hits: 3, rotation: 0 },
-                    poly4v3: { steps: 12, hits: 4, rotation: 0 },
-                    poly5v3: { steps: 15, hits: 5, rotation: 0 },
-                    poly5v4: { steps: 20, hits: 5, rotation: 0 },
-                    poly7v4: { steps: 28, hits: 7, rotation: 0 },
-                    poly5v7: { steps: 35, hits: 5, rotation: 0 },
-                    prime17: { steps: 17, hits: 7, rotation: 0 },
-                    prime19: { steps: 19, hits: 7, rotation: 0 },
-                    prime23: { steps: 23, hits: 9, rotation: 0 },
-                    // Indonesian Gamelan
-                    lancaran: { steps: 16, hits: 4, rotation: 0 },
-                    ketawang: { steps: 16, hits: 2, rotation: 0 },
-                    ladrang: { steps: 32, hits: 8, rotation: 0 },
-                    gangsaran: { steps: 8, hits: 4, rotation: 0 },
-                    kotekan: { steps: 8, hits: 3, rotation: 1 },
-                    kotekan2: { steps: 8, hits: 3, rotation: 4 },
-                    srepegan: { steps: 16, hits: 6, rotation: 2 },
-                    sampak: { steps: 8, hits: 5, rotation: 0 },
-                    ayak: { steps: 16, hits: 3, rotation: 4 },
-                    bonang: { steps: 12, hits: 5, rotation: 2 },
-                    // World Rhythms
-                    tresillo: { steps: 8, hits: 3, rotation: 0 },
-                    cinquillo: { steps: 8, hits: 5, rotation: 0 },
-                    rumba: { steps: 16, hits: 5, rotation: 0 },
-                    bossa: { steps: 16, hits: 5, rotation: 3 },
-                    son: { steps: 16, hits: 7, rotation: 0 },
-                    shiko: { steps: 16, hits: 5, rotation: 0 },
-                    soukous: { steps: 12, hits: 7, rotation: 0 },
-                    gahu: { steps: 16, hits: 7, rotation: 0 },
-                    bembe: { steps: 12, hits: 7, rotation: 0 },
-                    aksak9: { steps: 9, hits: 5, rotation: 0 },
-                    aksak7: { steps: 7, hits: 3, rotation: 0 },
-                    clave23: { steps: 8, hits: 2, rotation: 0 },
-                    clave32: { steps: 8, hits: 3, rotation: 0 },
+            // Generate pattern for visualization
+            const presetData: Record<string, { steps: number; hits: number; rotation: number }> = {
+              // Polyrhythmic / Complex
+              sparse: { steps: 16, hits: 1, rotation: 0 },
+              dense: { steps: 8, hits: 7, rotation: 0 },
+              longSparse: { steps: 32, hits: 3, rotation: 0 },
+              poly3v4: { steps: 12, hits: 3, rotation: 0 },
+              poly4v3: { steps: 12, hits: 4, rotation: 0 },
+              poly5v3: { steps: 15, hits: 5, rotation: 0 },
+              poly5v4: { steps: 20, hits: 5, rotation: 0 },
+              poly7v4: { steps: 28, hits: 7, rotation: 0 },
+              poly5v7: { steps: 35, hits: 5, rotation: 0 },
+              prime17: { steps: 17, hits: 7, rotation: 0 },
+              prime19: { steps: 19, hits: 7, rotation: 0 },
+              prime23: { steps: 23, hits: 9, rotation: 0 },
+              // Indonesian Gamelan
+              lancaran: { steps: 16, hits: 4, rotation: 0 },
+              ketawang: { steps: 16, hits: 2, rotation: 0 },
+              ladrang: { steps: 32, hits: 8, rotation: 0 },
+              gangsaran: { steps: 8, hits: 4, rotation: 0 },
+              kotekan: { steps: 8, hits: 3, rotation: 1 },
+              kotekan2: { steps: 8, hits: 3, rotation: 4 },
+              srepegan: { steps: 16, hits: 6, rotation: 2 },
+              sampak: { steps: 8, hits: 5, rotation: 0 },
+              ayak: { steps: 16, hits: 3, rotation: 4 },
+              bonang: { steps: 12, hits: 5, rotation: 2 },
+              // World Rhythms
+              tresillo: { steps: 8, hits: 3, rotation: 0 },
+              cinquillo: { steps: 8, hits: 5, rotation: 0 },
+              rumba: { steps: 16, hits: 5, rotation: 0 },
+              bossa: { steps: 16, hits: 5, rotation: 3 },
+              son: { steps: 16, hits: 7, rotation: 0 },
+              shiko: { steps: 16, hits: 5, rotation: 0 },
+              soukous: { steps: 12, hits: 7, rotation: 0 },
+              gahu: { steps: 16, hits: 7, rotation: 0 },
+              bembe: { steps: 12, hits: 7, rotation: 0 },
+              aksak9: { steps: 9, hits: 5, rotation: 0 },
+              aksak7: { steps: 7, hits: 3, rotation: 0 },
+              clave23: { steps: 8, hits: 2, rotation: 0 },
+              clave32: { steps: 8, hits: 3, rotation: 0 },
                     // Steve Reich / Experimental
                     clapping: { steps: 12, hits: 8, rotation: 0 },
                     clappingB: { steps: 12, hits: 8, rotation: 5 },
@@ -5101,6 +5139,50 @@ const App: React.FC = () => {
                             </div>
                           </div>
 
+                          {/* Probability and Source row */}
+                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '8px' }}>
+                            {/* Probability slider */}
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: '0.65rem', color: '#888', marginBottom: '2px' }}>Probability {Math.round(probability * 100)}%</div>
+                              <input
+                                type="range"
+                                min="0"
+                                max="1"
+                                step="0.05"
+                                value={probability}
+                                onChange={(e) => handleSliderChange(probabilityKey as keyof SliderState, parseFloat(e.target.value))}
+                                style={{ width: '100%', cursor: 'pointer' }}
+                              />
+                            </div>
+                            
+                            {/* Sound Source dropdown */}
+                            <div style={{ minWidth: '80px' }}>
+                              <div style={{ fontSize: '0.65rem', color: '#888', marginBottom: '2px' }}>Source</div>
+                              <select
+                                value={source}
+                                onChange={(e) => handleSelectChange(sourceKey, e.target.value)}
+                                style={{
+                                  width: '100%',
+                                  padding: '4px',
+                                  borderRadius: '4px',
+                                  border: `1px solid ${laneColor}40`,
+                                  background: 'rgba(0,0,0,0.4)',
+                                  color: source === 'lead' ? '#D4A520' : '#C4724E',
+                                  cursor: 'pointer',
+                                  fontSize: '0.7rem',
+                                }}
+                              >
+                                <option value="lead">Lead</option>
+                                <option value="synth1">Synth 1</option>
+                                <option value="synth2">Synth 2</option>
+                                <option value="synth3">Synth 3</option>
+                                <option value="synth4">Synth 4</option>
+                                <option value="synth5">Synth 5</option>
+                                <option value="synth6">Synth 6</option>
+                              </select>
+                            </div>
+                          </div>
+
                           {/* Custom controls - only show when custom is selected */}
                           {preset === 'custom' && (
                             <div style={{ marginTop: '8px', display: 'flex', gap: '6px' }}>
@@ -5136,11 +5218,8 @@ const App: React.FC = () => {
                   );
                 })}
 
-                <div style={{ fontSize: '0.65rem', color: '#666', textAlign: 'center', marginTop: '4px' }}>
-                  Enable multiple lanes for interlocking gamelan-style polyrhythms
-                </div>
-              </>
-            )}
+          <div style={{ fontSize: '0.65rem', color: '#666', textAlign: 'center', marginTop: '4px' }}>
+            Enable multiple lanes for interlocking gamelan-style polyrhythms
           </div>
         </CollapsiblePanel>
 
