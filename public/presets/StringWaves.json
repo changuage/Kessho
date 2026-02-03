@@ -94,6 +94,21 @@
                   "leadEuclid1Source":  "lead",
                   "leadEuclid2Source":  "lead",
                   "leadEuclid3Source":  "lead",
-                  "leadEuclid4Source":  "lead"
+                  "leadEuclid4Source":  "lead",
+                  "leadGlideMax":  0,
+                  "leadVibratoRateMin":  0,
+                  "reverbQuality":  "balanced",
+                  "leadVibratoDepthMax":  0,
+                  "leadHold":  0.5,
+                  "leadVibratoDepthMin":  0,
+                  "leadVibratoRateMax":  0,
+                  "maxGrains":  64,
+                  "leadGlideMin":  0,
+                  "leadDelayTimeMin":  860,
+                  "leadDelayTimeMax":  860,
+                  "leadDelayFeedbackMin":  0.63,
+                  "leadDelayFeedbackMax":  0.63,
+                  "leadDelayMixMin":  0.35,
+                  "leadDelayMixMax":  0.35
               }
 }

@@ -148,6 +148,7 @@
                   "leadEuclid1Source":  "lead",
                   "leadEuclid2Source":  "lead",
                   "leadEuclid3Source":  "lead",
-                  "leadEuclid4Source":  "lead"
+                  "leadEuclid4Source":  "lead",
+                  "leadHold":  0.5
               }
 }
