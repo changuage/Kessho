@@ -22,6 +22,7 @@ class AudioEngine {
     private var leadSynth: LeadSynth?
     private var oceanSynth: OceanSynth?
     private var oceanSamplePlayer: OceanSamplePlayer?
+    private var drumSynth: DrumSynth?
     
     // Euclidean sequencer for lead
     private var euclideanSequencer: EuclideanSequencer?
@@ -38,6 +39,7 @@ class AudioEngine {
     private let granularMixer = AVAudioMixerNode()
     private let leadMixer = AVAudioMixerNode()
     private let oceanMixer = AVAudioMixerNode()
+    private let drumMixer = AVAudioMixerNode()
     private let dryMixer = AVAudioMixerNode()
     private let reverbSend = AVAudioMixerNode()
     private let masterMixer = AVAudioMixerNode()
@@ -137,6 +139,7 @@ class AudioEngine {
         engine.attach(synthMixer)
         engine.attach(granularMixer)
         engine.attach(leadMixer)
+        engine.attach(drumMixer)
         engine.attach(dryMixer)
         engine.attach(reverbSend)
         engine.attach(masterMixer)
@@ -146,6 +149,7 @@ class AudioEngine {
         engine.connect(granularMixer, to: dryMixer, format: format)
         engine.connect(leadMixer, to: dryMixer, format: format)
         engine.connect(oceanMixer, to: dryMixer, format: format)
+        engine.connect(drumMixer, to: dryMixer, format: format)
         
         // Setup reverb
         if let reverb = reverbProcessor {
@@ -155,6 +159,7 @@ class AudioEngine {
             engine.connect(synthMixer, to: reverbSend, format: format)
             engine.connect(granularMixer, to: reverbSend, format: format)
             engine.connect(leadMixer, to: reverbSend, format: format)
+            engine.connect(drumMixer, to: reverbSend, format: format)
             engine.connect(reverbSend, to: reverb.node, format: format)
             
             // Reverb output to master
@@ -243,6 +248,10 @@ class AudioEngine {
         initializeHarmony()
         updateEuclideanSequencer()
         
+        // Create DrumSynth AFTER initializeHarmony sets up RNG
+        // This is a critical learning from the web implementation!
+        createDrumSynth()
+        
         do {
             try engine.start()
             isRunning = true
@@ -261,12 +270,36 @@ class AudioEngine {
                 oceanSamplePlayer?.startPlayback()
             }
             
+            // Start drum synth if enabled
+            drumSynth?.start()
+            
             // Apply initial parameters
             applyParams()
             
         } catch {
             print("Failed to start audio engine: \(error)")
         }
+    }
+    
+    /// Create DrumSynth after harmony is initialized (provides RNG)
+    /// This must be called AFTER initializeHarmony() - critical learning from web implementation!
+    private func createDrumSynth() {
+        let format = AVAudioFormat(standardFormatWithSampleRate: 44100, channels: 2)!
+        
+        drumSynth = DrumSynth()
+        
+        // Set up seeded RNG for deterministic randomness
+        let rng = createRng("\(currentBucket)|\(currentSeed)|drum")
+        drumSynth?.setRng(rng)
+        
+        // Attach and connect to drum mixer
+        if let drum = drumSynth {
+            engine.attach(drum.node)
+            engine.connect(drum.node, to: drumMixer, format: format)
+        }
+        
+        // Set initial parameters
+        drumSynth?.updateParams(currentParams)
     }
     
     func stop() {
@@ -301,6 +334,9 @@ class AudioEngine {
         
         // Stop ocean sample
         oceanSamplePlayer?.stopPlayback()
+        
+        // Stop drum synth
+        drumSynth?.stop()
         
         // Fade out voices
         for voice in synthVoices {
@@ -375,6 +411,9 @@ class AudioEngine {
         
         // Lead level
         leadMixer.outputVolume = Float(currentParams.leadEnabled ? currentParams.leadLevel : 0)
+        
+        // Drum level (uses reverb send internally)
+        drumMixer.outputVolume = Float(currentParams.drumEnabled ? currentParams.drumLevel : 0)
         
         // Reverb sends (mute if reverbEnabled is false to save CPU)
         let reverbMultiplier = currentParams.reverbEnabled ? 1.0 : 0.0
@@ -530,6 +569,9 @@ class AudioEngine {
             cutoff: Float(currentParams.oceanFilterCutoff),
             resonance: Float(currentParams.oceanFilterResonance)
         )
+        
+        // Update drum synth
+        drumSynth?.updateParams(currentParams)
     }
     
     /// Update Euclidean sequencer lanes from current parameters

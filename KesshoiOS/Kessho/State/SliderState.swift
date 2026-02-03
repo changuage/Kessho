@@ -163,6 +163,141 @@ struct SliderState: Codable, Equatable {
     // Synth Chord Sequencer Toggle
     var synthChordSequencerEnabled: Bool = true
     
+    // ─── Ikeda-Style Drum Synth ───
+    var drumEnabled: Bool = false
+    var drumLevel: Double = 0.7
+    var drumReverbSend: Double = 0.3
+    
+    // Voice 1: Sub (deep sine pulse)
+    var drumSubFreq: Double = 50
+    var drumSubDecay: Double = 150
+    var drumSubLevel: Double = 0.8
+    var drumSubTone: Double = 0.1
+    
+    // Voice 2: Kick (sine with pitch sweep)
+    var drumKickFreq: Double = 55
+    var drumKickPitchEnv: Double = 24
+    var drumKickPitchDecay: Double = 30
+    var drumKickDecay: Double = 200
+    var drumKickLevel: Double = 0.7
+    var drumKickClick: Double = 0.3
+    
+    // Voice 3: Click (the signature Ikeda "data" sound)
+    var drumClickDecay: Double = 5
+    var drumClickFilter: Double = 4000
+    var drumClickTone: Double = 0.3
+    var drumClickLevel: Double = 0.6
+    var drumClickResonance: Double = 0.4
+    
+    // Voice 4: Beep Hi (high pitched notification ping)
+    var drumBeepHiFreq: Double = 4000
+    var drumBeepHiAttack: Double = 1
+    var drumBeepHiDecay: Double = 80
+    var drumBeepHiLevel: Double = 0.5
+    var drumBeepHiTone: Double = 0.2
+    
+    // Voice 5: Beep Lo (lower blip, Morse-code feel)
+    var drumBeepLoFreq: Double = 400
+    var drumBeepLoAttack: Double = 2
+    var drumBeepLoDecay: Double = 100
+    var drumBeepLoLevel: Double = 0.5
+    var drumBeepLoTone: Double = 0.1
+    
+    // Voice 6: Noise (hi-hat/texture)
+    var drumNoiseFilterFreq: Double = 8000
+    var drumNoiseFilterQ: Double = 1
+    var drumNoiseFilterType: String = "highpass"
+    var drumNoiseDecay: Double = 30
+    var drumNoiseLevel: Double = 0.4
+    var drumNoiseAttack: Double = 0
+    
+    // Random trigger mode
+    var drumRandomEnabled: Bool = false
+    var drumRandomDensity: Double = 0.3
+    var drumRandomSubProb: Double = 0.1
+    var drumRandomKickProb: Double = 0.15
+    var drumRandomClickProb: Double = 0.4
+    var drumRandomBeepHiProb: Double = 0.2
+    var drumRandomBeepLoProb: Double = 0.15
+    var drumRandomNoiseProb: Double = 0.25
+    var drumRandomMinInterval: Double = 80
+    var drumRandomMaxInterval: Double = 400
+    
+    // Euclidean sequencer (4 lanes)
+    var drumEuclidMasterEnabled: Bool = false
+    var drumEuclidBaseBPM: Double = 120
+    var drumEuclidTempo: Double = 1
+    var drumEuclidSwing: Double = 0
+    var drumEuclidDivision: Int = 16
+    
+    // Lane 1 - Click pattern (primary rhythm)
+    var drumEuclid1Enabled: Bool = true
+    var drumEuclid1Preset: String = "lancaran"
+    var drumEuclid1Steps: Int = 16
+    var drumEuclid1Hits: Int = 5
+    var drumEuclid1Rotation: Int = 0
+    var drumEuclid1TargetSub: Bool = false
+    var drumEuclid1TargetKick: Bool = false
+    var drumEuclid1TargetClick: Bool = true
+    var drumEuclid1TargetBeepHi: Bool = false
+    var drumEuclid1TargetBeepLo: Bool = false
+    var drumEuclid1TargetNoise: Bool = false
+    var drumEuclid1Probability: Double = 1.0
+    var drumEuclid1VelocityMin: Double = 0.8
+    var drumEuclid1VelocityMax: Double = 0.8
+    var drumEuclid1Level: Double = 0.8
+    
+    // Lane 2 - Sub pattern (bass pulse)
+    var drumEuclid2Enabled: Bool = true
+    var drumEuclid2Preset: String = "gangsaran"
+    var drumEuclid2Steps: Int = 16
+    var drumEuclid2Hits: Int = 4
+    var drumEuclid2Rotation: Int = 0
+    var drumEuclid2TargetSub: Bool = true
+    var drumEuclid2TargetKick: Bool = false
+    var drumEuclid2TargetClick: Bool = false
+    var drumEuclid2TargetBeepHi: Bool = false
+    var drumEuclid2TargetBeepLo: Bool = false
+    var drumEuclid2TargetNoise: Bool = false
+    var drumEuclid2Probability: Double = 1.0
+    var drumEuclid2VelocityMin: Double = 0.8
+    var drumEuclid2VelocityMax: Double = 0.8
+    var drumEuclid2Level: Double = 0.9
+    
+    // Lane 3 - Beep Hi (sparse accents)
+    var drumEuclid3Enabled: Bool = false
+    var drumEuclid3Preset: String = "sparse"
+    var drumEuclid3Steps: Int = 8
+    var drumEuclid3Hits: Int = 2
+    var drumEuclid3Rotation: Int = 1
+    var drumEuclid3TargetSub: Bool = false
+    var drumEuclid3TargetKick: Bool = false
+    var drumEuclid3TargetClick: Bool = false
+    var drumEuclid3TargetBeepHi: Bool = true
+    var drumEuclid3TargetBeepLo: Bool = false
+    var drumEuclid3TargetNoise: Bool = false
+    var drumEuclid3Probability: Double = 0.8
+    var drumEuclid3VelocityMin: Double = 0.8
+    var drumEuclid3VelocityMax: Double = 0.8
+    var drumEuclid3Level: Double = 0.6
+    
+    // Lane 4 - Noise (hi-hat texture)
+    var drumEuclid4Enabled: Bool = false
+    var drumEuclid4Preset: String = "dense"
+    var drumEuclid4Steps: Int = 16
+    var drumEuclid4Hits: Int = 8
+    var drumEuclid4Rotation: Int = 0
+    var drumEuclid4TargetSub: Bool = false
+    var drumEuclid4TargetKick: Bool = false
+    var drumEuclid4TargetClick: Bool = false
+    var drumEuclid4TargetBeepHi: Bool = false
+    var drumEuclid4TargetBeepLo: Bool = false
+    var drumEuclid4TargetNoise: Bool = true
+    var drumEuclid4Probability: Double = 0.7
+    var drumEuclid4VelocityMin: Double = 0.8
+    var drumEuclid4VelocityMax: Double = 0.8
+    var drumEuclid4Level: Double = 0.5
+    
     // Ocean
     var oceanSampleEnabled: Bool = false
     var oceanSampleLevel: Double = 0.5

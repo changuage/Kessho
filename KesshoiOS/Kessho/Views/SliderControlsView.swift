@@ -59,6 +59,20 @@ struct SliderControlsView: View {
                     )
                     
                     ParameterSlider(
+                        label: "Ocean",
+                        value: $appState.state.oceanSampleLevel,
+                        range: 0...1,
+                        icon: "water.waves"
+                    )
+                    
+                    ParameterSlider(
+                        label: "Drums",
+                        value: $appState.state.drumLevel,
+                        range: 0...1,
+                        icon: "circle.hexagonpath"
+                    )
+                    
+                    ParameterSlider(
                         label: "Reverb",
                         value: $appState.state.reverbLevel,
                         range: 0...2,
@@ -320,6 +334,18 @@ struct SliderControlsView: View {
                         .pickerStyle(.menu)
                         .accentColor(.cyan)
                     }
+                    
+                    // Filter Response Visualization
+                    FilterResponseView(
+                        filterType: appState.state.filterType,
+                        cutoffMin: appState.state.filterCutoffMin,
+                        cutoffMax: appState.state.filterCutoffMax,
+                        resonance: appState.state.filterResonance,
+                        q: appState.state.filterQ,
+                        modSpeed: appState.state.filterModSpeed,
+                        isRunning: appState.audioEngine.isRunning
+                    )
+                    .padding(.vertical, 4)
                     
                     ParameterSlider(
                         label: "Cutoff Min",
@@ -702,6 +728,17 @@ struct SliderControlsView: View {
                         .font(.subheadline)
                         .foregroundColor(.white.opacity(0.6))
                     
+                    // ADSHR Visualization (matching webapp's SVG envelope)
+                    ADSRVisualization(
+                        attack: appState.state.leadAttack,
+                        decay: appState.state.leadDecay,
+                        sustain: appState.state.leadSustain,
+                        hold: appState.state.leadHold,
+                        release: appState.state.leadRelease
+                    )
+                    .frame(height: 60)
+                    .padding(.bottom, 4)
+                    
                     ParameterSlider(
                         label: "Attack",
                         value: $appState.state.leadAttack,
@@ -746,6 +783,13 @@ struct SliderControlsView: View {
                     Text("Timbre")
                         .font(.subheadline)
                         .foregroundColor(.white.opacity(0.6))
+                    
+                    // Timbre Range Visualization (Rhodes → Gamelan gradient)
+                    TimbreRangeView(
+                        timbreMin: appState.state.leadTimbreMin,
+                        timbreMax: appState.state.leadTimbreMax
+                    )
+                    .padding(.vertical, 4)
                     
                     ParameterSlider(
                         label: "Timbre Min",
@@ -1011,6 +1055,415 @@ struct SliderControlsView: View {
                         range: 0...1,
                         icon: "arrow.down.to.line",
                         color: .blue
+                    )
+                }
+                
+                // MARK: - Drum Synth Section
+                CollapsibleSection(title: "Drum Synth", icon: "metronome", expanded: $expandedSections) {
+                    Toggle("Enabled", isOn: $appState.state.drumEnabled)
+                        .foregroundColor(.white)
+                    
+                    ParameterSlider(
+                        label: "Level",
+                        value: $appState.state.drumLevel,
+                        range: 0...1,
+                        icon: "speaker.wave.2"
+                    )
+                    
+                    ParameterSlider(
+                        label: "Reverb Send",
+                        value: $appState.state.drumReverbSend,
+                        range: 0...1,
+                        icon: "waveform.path"
+                    )
+                    
+                    Divider().background(Color.white.opacity(0.2))
+                    
+                    // Sub Voice
+                    Text("Sub (Deep Pulse)")
+                        .font(.subheadline)
+                        .foregroundColor(.cyan.opacity(0.8))
+                    
+                    ParameterSlider(
+                        label: "Frequency",
+                        value: $appState.state.drumSubFreq,
+                        range: 30...100,
+                        unit: "Hz",
+                        icon: "waveform"
+                    )
+                    
+                    ParameterSlider(
+                        label: "Decay",
+                        value: $appState.state.drumSubDecay,
+                        range: 20...500,
+                        unit: "ms",
+                        icon: "arrow.down.right"
+                    )
+                    
+                    ParameterSlider(
+                        label: "Level",
+                        value: $appState.state.drumSubLevel,
+                        range: 0...1,
+                        icon: "speaker.wave.2"
+                    )
+                    
+                    Divider().background(Color.white.opacity(0.2))
+                    
+                    // Kick Voice
+                    Text("Kick")
+                        .font(.subheadline)
+                        .foregroundColor(.cyan.opacity(0.8))
+                    
+                    ParameterSlider(
+                        label: "Frequency",
+                        value: $appState.state.drumKickFreq,
+                        range: 40...150,
+                        unit: "Hz",
+                        icon: "waveform"
+                    )
+                    
+                    ParameterSlider(
+                        label: "Pitch Sweep",
+                        value: $appState.state.drumKickPitchEnv,
+                        range: 0...48,
+                        unit: "st",
+                        icon: "arrow.up.right"
+                    )
+                    
+                    ParameterSlider(
+                        label: "Decay",
+                        value: $appState.state.drumKickDecay,
+                        range: 30...500,
+                        unit: "ms",
+                        icon: "arrow.down.right"
+                    )
+                    
+                    ParameterSlider(
+                        label: "Level",
+                        value: $appState.state.drumKickLevel,
+                        range: 0...1,
+                        icon: "speaker.wave.2"
+                    )
+                    
+                    Divider().background(Color.white.opacity(0.2))
+                    
+                    // Click Voice
+                    Text("Click (Data Sound)")
+                        .font(.subheadline)
+                        .foregroundColor(.cyan.opacity(0.8))
+                    
+                    ParameterSlider(
+                        label: "Decay",
+                        value: $appState.state.drumClickDecay,
+                        range: 1...80,
+                        unit: "ms",
+                        icon: "arrow.down.right"
+                    )
+                    
+                    ParameterSlider(
+                        label: "Filter",
+                        value: $appState.state.drumClickFilter,
+                        range: 500...15000,
+                        unit: "Hz",
+                        icon: "line.diagonal"
+                    )
+                    
+                    ParameterSlider(
+                        label: "Level",
+                        value: $appState.state.drumClickLevel,
+                        range: 0...1,
+                        icon: "speaker.wave.2"
+                    )
+                    
+                    Divider().background(Color.white.opacity(0.2))
+                    
+                    // Beep Hi Voice
+                    Text("Beep Hi")
+                        .font(.subheadline)
+                        .foregroundColor(.cyan.opacity(0.8))
+                    
+                    ParameterSlider(
+                        label: "Frequency",
+                        value: $appState.state.drumBeepHiFreq,
+                        range: 2000...12000,
+                        unit: "Hz",
+                        icon: "waveform"
+                    )
+                    
+                    ParameterSlider(
+                        label: "Decay",
+                        value: $appState.state.drumBeepHiDecay,
+                        range: 10...500,
+                        unit: "ms",
+                        icon: "arrow.down.right"
+                    )
+                    
+                    ParameterSlider(
+                        label: "Level",
+                        value: $appState.state.drumBeepHiLevel,
+                        range: 0...1,
+                        icon: "speaker.wave.2"
+                    )
+                    
+                    Divider().background(Color.white.opacity(0.2))
+                    
+                    // Beep Lo Voice
+                    Text("Beep Lo")
+                        .font(.subheadline)
+                        .foregroundColor(.cyan.opacity(0.8))
+                    
+                    ParameterSlider(
+                        label: "Frequency",
+                        value: $appState.state.drumBeepLoFreq,
+                        range: 150...2000,
+                        unit: "Hz",
+                        icon: "waveform"
+                    )
+                    
+                    ParameterSlider(
+                        label: "Decay",
+                        value: $appState.state.drumBeepLoDecay,
+                        range: 10...500,
+                        unit: "ms",
+                        icon: "arrow.down.right"
+                    )
+                    
+                    ParameterSlider(
+                        label: "Level",
+                        value: $appState.state.drumBeepLoLevel,
+                        range: 0...1,
+                        icon: "speaker.wave.2"
+                    )
+                    
+                    Divider().background(Color.white.opacity(0.2))
+                    
+                    // Noise Voice
+                    Text("Noise (Hi-Hat)")
+                        .font(.subheadline)
+                        .foregroundColor(.cyan.opacity(0.8))
+                    
+                    ParameterSlider(
+                        label: "Filter Freq",
+                        value: $appState.state.drumNoiseFilterFreq,
+                        range: 500...15000,
+                        unit: "Hz",
+                        icon: "line.diagonal"
+                    )
+                    
+                    ParameterSlider(
+                        label: "Decay",
+                        value: $appState.state.drumNoiseDecay,
+                        range: 5...300,
+                        unit: "ms",
+                        icon: "arrow.down.right"
+                    )
+                    
+                    ParameterSlider(
+                        label: "Level",
+                        value: $appState.state.drumNoiseLevel,
+                        range: 0...1,
+                        icon: "speaker.wave.2"
+                    )
+                }
+                
+                // MARK: - Drum Random Mode Section
+                CollapsibleSection(title: "Drum Random", icon: "dice", expanded: $expandedSections) {
+                    Toggle("Enabled", isOn: $appState.state.drumRandomEnabled)
+                        .foregroundColor(.white)
+                    
+                    ParameterSlider(
+                        label: "Density",
+                        value: $appState.state.drumRandomDensity,
+                        range: 0...1,
+                        icon: "square.grid.3x3.fill"
+                    )
+                    
+                    DualRangeSlider(
+                        label: "Interval",
+                        minValue: $appState.state.drumRandomMinInterval,
+                        maxValue: $appState.state.drumRandomMaxInterval,
+                        range: 30...2000,
+                        unit: "ms",
+                        icon: "timer",
+                        color: .orange
+                    )
+                    
+                    Divider().background(Color.white.opacity(0.2))
+                    
+                    Text("Voice Probabilities")
+                        .font(.subheadline)
+                        .foregroundColor(.white.opacity(0.6))
+                    
+                    ParameterSlider(
+                        label: "Sub",
+                        value: $appState.state.drumRandomSubProb,
+                        range: 0...1,
+                        icon: "waveform.path.badge.minus"
+                    )
+                    
+                    ParameterSlider(
+                        label: "Kick",
+                        value: $appState.state.drumRandomKickProb,
+                        range: 0...1,
+                        icon: "circle.fill"
+                    )
+                    
+                    ParameterSlider(
+                        label: "Click",
+                        value: $appState.state.drumRandomClickProb,
+                        range: 0...1,
+                        icon: "hand.tap"
+                    )
+                    
+                    ParameterSlider(
+                        label: "Beep Hi",
+                        value: $appState.state.drumRandomBeepHiProb,
+                        range: 0...1,
+                        icon: "bell"
+                    )
+                    
+                    ParameterSlider(
+                        label: "Beep Lo",
+                        value: $appState.state.drumRandomBeepLoProb,
+                        range: 0...1,
+                        icon: "bell.fill"
+                    )
+                    
+                    ParameterSlider(
+                        label: "Noise",
+                        value: $appState.state.drumRandomNoiseProb,
+                        range: 0...1,
+                        icon: "waveform.circle"
+                    )
+                }
+                
+                // MARK: - Drum Euclidean Section
+                CollapsibleSection(title: "Drum Euclidean", icon: "circle.dotted", expanded: $expandedSections) {
+                    Toggle("Enabled", isOn: $appState.state.drumEuclidMasterEnabled)
+                        .foregroundColor(.white)
+                    
+                    ParameterSlider(
+                        label: "Base BPM",
+                        value: $appState.state.drumEuclidBaseBPM,
+                        range: 40...240,
+                        unit: "BPM",
+                        icon: "metronome"
+                    )
+                    
+                    ParameterSlider(
+                        label: "Tempo",
+                        value: $appState.state.drumEuclidTempo,
+                        range: 0.25...4,
+                        icon: "speedometer"
+                    )
+                    
+                    ParameterSlider(
+                        label: "Swing",
+                        value: $appState.state.drumEuclidSwing,
+                        range: 0...100,
+                        unit: "%",
+                        icon: "arrow.left.and.right"
+                    )
+                    
+                    HStack {
+                        Image(systemName: "divide")
+                            .foregroundColor(.white.opacity(0.5))
+                            .frame(width: 20)
+                        Text("Division")
+                            .foregroundColor(.white.opacity(0.8))
+                        Spacer()
+                        Picker("Division", selection: $appState.state.drumEuclidDivision) {
+                            Text("1/4").tag(4)
+                            Text("1/8").tag(8)
+                            Text("1/16").tag(16)
+                            Text("1/32").tag(32)
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(width: 200)
+                    }
+                    
+                    Divider().background(Color.white.opacity(0.2))
+                    
+                    // Lane 1
+                    DrumEuclidLaneView(
+                        laneNumber: 1,
+                        enabled: $appState.state.drumEuclid1Enabled,
+                        preset: $appState.state.drumEuclid1Preset,
+                        steps: $appState.state.drumEuclid1Steps,
+                        hits: $appState.state.drumEuclid1Hits,
+                        rotation: $appState.state.drumEuclid1Rotation,
+                        targetSub: $appState.state.drumEuclid1TargetSub,
+                        targetKick: $appState.state.drumEuclid1TargetKick,
+                        targetClick: $appState.state.drumEuclid1TargetClick,
+                        targetBeepHi: $appState.state.drumEuclid1TargetBeepHi,
+                        targetBeepLo: $appState.state.drumEuclid1TargetBeepLo,
+                        targetNoise: $appState.state.drumEuclid1TargetNoise,
+                        probability: $appState.state.drumEuclid1Probability,
+                        velocityMin: $appState.state.drumEuclid1VelocityMin,
+                        velocityMax: $appState.state.drumEuclid1VelocityMax
+                    )
+                    
+                    Divider().background(Color.white.opacity(0.2))
+                    
+                    // Lane 2
+                    DrumEuclidLaneView(
+                        laneNumber: 2,
+                        enabled: $appState.state.drumEuclid2Enabled,
+                        preset: $appState.state.drumEuclid2Preset,
+                        steps: $appState.state.drumEuclid2Steps,
+                        hits: $appState.state.drumEuclid2Hits,
+                        rotation: $appState.state.drumEuclid2Rotation,
+                        targetSub: $appState.state.drumEuclid2TargetSub,
+                        targetKick: $appState.state.drumEuclid2TargetKick,
+                        targetClick: $appState.state.drumEuclid2TargetClick,
+                        targetBeepHi: $appState.state.drumEuclid2TargetBeepHi,
+                        targetBeepLo: $appState.state.drumEuclid2TargetBeepLo,
+                        targetNoise: $appState.state.drumEuclid2TargetNoise,
+                        probability: $appState.state.drumEuclid2Probability,
+                        velocityMin: $appState.state.drumEuclid2VelocityMin,
+                        velocityMax: $appState.state.drumEuclid2VelocityMax
+                    )
+                    
+                    Divider().background(Color.white.opacity(0.2))
+                    
+                    // Lane 3
+                    DrumEuclidLaneView(
+                        laneNumber: 3,
+                        enabled: $appState.state.drumEuclid3Enabled,
+                        preset: $appState.state.drumEuclid3Preset,
+                        steps: $appState.state.drumEuclid3Steps,
+                        hits: $appState.state.drumEuclid3Hits,
+                        rotation: $appState.state.drumEuclid3Rotation,
+                        targetSub: $appState.state.drumEuclid3TargetSub,
+                        targetKick: $appState.state.drumEuclid3TargetKick,
+                        targetClick: $appState.state.drumEuclid3TargetClick,
+                        targetBeepHi: $appState.state.drumEuclid3TargetBeepHi,
+                        targetBeepLo: $appState.state.drumEuclid3TargetBeepLo,
+                        targetNoise: $appState.state.drumEuclid3TargetNoise,
+                        probability: $appState.state.drumEuclid3Probability,
+                        velocityMin: $appState.state.drumEuclid3VelocityMin,
+                        velocityMax: $appState.state.drumEuclid3VelocityMax
+                    )
+                    
+                    Divider().background(Color.white.opacity(0.2))
+                    
+                    // Lane 4
+                    DrumEuclidLaneView(
+                        laneNumber: 4,
+                        enabled: $appState.state.drumEuclid4Enabled,
+                        preset: $appState.state.drumEuclid4Preset,
+                        steps: $appState.state.drumEuclid4Steps,
+                        hits: $appState.state.drumEuclid4Hits,
+                        rotation: $appState.state.drumEuclid4Rotation,
+                        targetSub: $appState.state.drumEuclid4TargetSub,
+                        targetKick: $appState.state.drumEuclid4TargetKick,
+                        targetClick: $appState.state.drumEuclid4TargetClick,
+                        targetBeepHi: $appState.state.drumEuclid4TargetBeepHi,
+                        targetBeepLo: $appState.state.drumEuclid4TargetBeepLo,
+                        targetNoise: $appState.state.drumEuclid4TargetNoise,
+                        probability: $appState.state.drumEuclid4Probability,
+                        velocityMin: $appState.state.drumEuclid4VelocityMin,
+                        velocityMax: $appState.state.drumEuclid4VelocityMax
                     )
                 }
                 
@@ -1288,11 +1741,72 @@ struct EuclideanLaneView: View {
     
     @State private var isExpanded = false
     
-    private let presets = [
-        "lancaran", "ketawang", "ladrang", "gangsaran", "kotekan", "kotekan2",
-        "srepegan", "sampak", "ayak", "bonang", "clapping", "clappingB",
-        "poly3v4", "poly4v3", "poly5v4", "additive7", "additive11", "additive13",
-        "reich18", "drumming", "sparse", "dense", "longSparse", "custom"
+    // Lane colors matching webapp (orange, green, blue, pink)
+    private var laneColor: Color {
+        switch laneNumber {
+        case 1: return Color(red: 245/255, green: 158/255, blue: 11/255)  // #f59e0b orange
+        case 2: return Color(red: 16/255, green: 185/255, blue: 129/255)  // #10b981 green
+        case 3: return Color(red: 59/255, green: 130/255, blue: 246/255)  // #3b82f6 blue
+        case 4: return Color(red: 236/255, green: 72/255, blue: 153/255)  // #ec4899 pink
+        default: return .cyan
+        }
+    }
+    
+    // Full preset list matching webapp with all categories
+    private let presets: [(category: String, items: [(value: String, label: String)])] = [
+        ("Polyrhythmic / Complex", [
+            ("sparse", "Sparse (16/1)"),
+            ("dense", "Dense (8/7)"),
+            ("longSparse", "Long Sparse (32/3)"),
+            ("poly3v4", "3 vs 4 (12/3)"),
+            ("poly4v3", "4 vs 3 (12/4)"),
+            ("poly5v3", "5 vs 3 (15/5)"),
+            ("poly5v4", "5 vs 4 (20/5)"),
+            ("poly7v4", "7 vs 4 (28/7)"),
+            ("poly5v7", "5 vs 7 (35/5)"),
+            ("prime17", "Prime 17 (17/7)"),
+            ("prime19", "Prime 19 (19/7)"),
+            ("prime23", "Prime 23 (23/9)")
+        ]),
+        ("Indonesian Gamelan", [
+            ("lancaran", "Lancaran (16/4)"),
+            ("ketawang", "Ketawang (16/2)"),
+            ("ladrang", "Ladrang (32/8)"),
+            ("gangsaran", "Gangsaran (8/4)"),
+            ("kotekan", "Kotekan A (8/3)"),
+            ("kotekan2", "Kotekan B (8/3 r:4)"),
+            ("srepegan", "Srepegan (16/6)"),
+            ("sampak", "Sampak (8/5)"),
+            ("ayak", "Ayak (16/3)"),
+            ("bonang", "Bonang (12/5)")
+        ]),
+        ("World Rhythms", [
+            ("tresillo", "Tresillo (8/3)"),
+            ("cinquillo", "Cinquillo (8/5)"),
+            ("rumba", "Rumba (16/5)"),
+            ("bossa", "Bossa Nova (16/5)"),
+            ("son", "Son Clave (16/7)"),
+            ("shiko", "Shiko (16/5)"),
+            ("soukous", "Soukous (12/7)"),
+            ("gahu", "Gahu (16/7)"),
+            ("bembe", "Bembé (12/7)"),
+            ("aksak9", "Aksak 9 (9/5)"),
+            ("aksak7", "Aksak 7 (7/3)"),
+            ("clave23", "Clave 2+3 (8/2)"),
+            ("clave32", "Clave 3+2 (8/3)")
+        ]),
+        ("Steve Reich / Experimental", [
+            ("clapping", "Clapping Music (12/8)"),
+            ("clappingB", "Clapping B (12/8 r:5)"),
+            ("additive7", "Additive 7 (7/4)"),
+            ("additive11", "Additive 11 (11/5)"),
+            ("additive13", "Additive 13 (13/5)"),
+            ("reich18", "Reich 18 (12/7)"),
+            ("drumming", "Drumming (8/6)")
+        ]),
+        ("Custom", [
+            ("custom", "Custom")
+        ])
     ]
     
     private let sources = [
@@ -1305,14 +1819,42 @@ struct EuclideanLaneView: View {
         ("synth6", "Synth 6")
     ]
     
+    // Convert MIDI note to name
+    private func midiToNoteName(_ midi: Int) -> String {
+        let noteNames = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+        let octave = (midi / 12) - 1
+        let note = midi % 12
+        return "\(noteNames[note])\(octave)"
+    }
+    
     var body: some View {
         VStack(spacing: 8) {
-            // Lane header
+            // Lane header with colored toggle button
             HStack {
-                Toggle("Lane \(laneNumber)", isOn: $enabled)
-                    .foregroundColor(.white)
+                Button(action: { enabled.toggle() }) {
+                    ZStack {
+                        Circle()
+                            .fill(enabled ? laneColor : Color.white.opacity(0.15))
+                            .frame(width: 28, height: 28)
+                        Text("\(laneNumber)")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(enabled ? .white : Color.white.opacity(0.5))
+                    }
+                }
+                
+                Text("Lane \(laneNumber)")
+                    .font(.subheadline)
+                    .fontWeight(enabled ? .bold : .regular)
+                    .foregroundColor(enabled ? laneColor : Color.white.opacity(0.5))
                 
                 Spacer()
+                
+                // Note range display
+                if enabled {
+                    Text("\(midiToNoteName(noteMin))–\(midiToNoteName(noteMax))")
+                        .font(.caption)
+                        .foregroundColor(Color.white.opacity(0.6))
+                }
                 
                 Button(action: { isExpanded.toggle() }) {
                     Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
@@ -1321,98 +1863,192 @@ struct EuclideanLaneView: View {
             }
             
             if isExpanded && enabled {
-                // Preset picker
-                HStack {
-                    Text("Preset")
-                        .font(.caption)
-                        .foregroundColor(.white.opacity(0.6))
-                    Spacer()
-                    Picker("Preset", selection: $preset) {
-                        ForEach(presets, id: \.self) { p in
-                            Text(p).tag(p)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .accentColor(.cyan)
-                }
-                
-                // Pattern visualization
-                EuclideanPatternView(steps: steps, hits: hits, rotation: rotation)
+                // Pattern visualization with lane color
+                EuclideanPatternView(steps: steps, hits: hits, rotation: rotation, color: laneColor)
                     .frame(height: 30)
                 
-                // Steps/Hits/Rotation
-                HStack(spacing: 16) {
-                    VStack {
-                        Text("Steps")
-                            .font(.caption2)
-                            .foregroundColor(.white.opacity(0.5))
-                        Stepper("\(steps)", value: $steps, in: 2...32)
-                            .labelsHidden()
-                    }
-                    
-                    VStack {
-                        Text("Hits")
-                            .font(.caption2)
-                            .foregroundColor(.white.opacity(0.5))
-                        Stepper("\(hits)", value: $hits, in: 1...steps)
-                            .labelsHidden()
-                    }
-                    
-                    VStack {
-                        Text("Rot")
-                            .font(.caption2)
-                            .foregroundColor(.white.opacity(0.5))
-                        Stepper("\(rotation)", value: $rotation, in: 0...(steps - 1))
-                            .labelsHidden()
-                    }
-                }
-                
-                // Note range
-                HStack {
-                    Text("Notes: \(noteMin)-\(noteMax)")
-                        .font(.caption)
-                        .foregroundColor(.white.opacity(0.6))
-                    Spacer()
-                }
-                
-                // Level
-                ParameterSlider(
-                    label: "Level",
-                    value: $level,
-                    range: 0...1,
-                    icon: "speaker.wave.2"
-                )
-                
-                // Probability
-                ParameterSlider(
-                    label: "Probability",
-                    value: $probability,
-                    range: 0...1,
-                    icon: "dice"
-                )
-                
-                // Source picker
-                HStack {
-                    Image(systemName: "music.note.list")
-                        .foregroundColor(.white.opacity(0.5))
-                        .frame(width: 20)
-                    Text("Source")
-                        .font(.subheadline)
-                        .foregroundColor(.white.opacity(0.8))
-                    Spacer()
-                    Picker("Source", selection: $source) {
-                        ForEach(sources, id: \.0) { value, label in
-                            Text(label).tag(value)
+                // Preset picker with sections
+                Menu {
+                    ForEach(presets, id: \.category) { category in
+                        Section(header: Text(category.category)) {
+                            ForEach(category.items, id: \.value) { item in
+                                Button(action: { preset = item.value }) {
+                                    HStack {
+                                        Text(item.label)
+                                        if preset == item.value {
+                                            Image(systemName: "checkmark")
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
-                    .pickerStyle(.menu)
-                    .accentColor(.cyan)
+                } label: {
+                    HStack {
+                        Text("Preset: \(preset)")
+                            .font(.caption)
+                            .foregroundColor(laneColor)
+                        Spacer()
+                        Image(systemName: "chevron.down")
+                            .font(.caption)
+                            .foregroundColor(laneColor)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(laneColor.opacity(0.15))
+                    .cornerRadius(6)
+                }
+                
+                // Note Range sliders
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Note Range")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.6))
+                    
+                    // Visual range bar
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            // Background
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(Color.white.opacity(0.1))
+                            
+                            // Active range
+                            let minPct = CGFloat(noteMin - 36) / 60.0
+                            let maxPct = CGFloat(noteMax - 36) / 60.0
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(LinearGradient(
+                                    colors: [laneColor.opacity(0.5), laneColor],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                ))
+                                .frame(width: max(3, (maxPct - minPct) * geo.size.width))
+                                .offset(x: minPct * geo.size.width)
+                        }
+                    }
+                    .frame(height: 16)
+                    
+                    HStack(spacing: 12) {
+                        VStack(alignment: .leading) {
+                            Text("Low: \(midiToNoteName(noteMin))")
+                                .font(.caption2)
+                                .foregroundColor(.white.opacity(0.5))
+                            Slider(value: Binding(
+                                get: { Double(noteMin) },
+                                set: { noteMin = min(Int($0), noteMax) }
+                            ), in: 36...96, step: 1)
+                            .tint(laneColor)
+                        }
+                        VStack(alignment: .leading) {
+                            Text("High: \(midiToNoteName(noteMax))")
+                                .font(.caption2)
+                                .foregroundColor(.white.opacity(0.5))
+                            Slider(value: Binding(
+                                get: { Double(noteMax) },
+                                set: { noteMax = max(Int($0), noteMin) }
+                            ), in: 36...96, step: 1)
+                            .tint(laneColor)
+                        }
+                    }
+                }
+                
+                // Custom Steps/Hits (only when custom preset)
+                if preset == "custom" {
+                    HStack(spacing: 16) {
+                        VStack {
+                            Text("Steps")
+                                .font(.caption2)
+                                .foregroundColor(.white.opacity(0.5))
+                            Stepper("\(steps)", value: $steps, in: 2...32)
+                                .labelsHidden()
+                        }
+                        
+                        VStack {
+                            Text("Hits")
+                                .font(.caption2)
+                                .foregroundColor(.white.opacity(0.5))
+                            Stepper("\(hits)", value: $hits, in: 1...steps)
+                                .labelsHidden()
+                        }
+                    }
+                }
+                
+                // Level and Rotation row
+                HStack(spacing: 12) {
+                    // Level slider
+                    VStack(alignment: .leading) {
+                        Text("Level \(Int(level * 100))%")
+                            .font(.caption2)
+                            .foregroundColor(.white.opacity(0.5))
+                        Slider(value: $level, in: 0...1)
+                            .tint(laneColor)
+                    }
+                    
+                    // Rotation with arrow buttons
+                    VStack {
+                        Text("Rotate: \(rotation)")
+                            .font(.caption2)
+                            .foregroundColor(.white.opacity(0.5))
+                        HStack(spacing: 4) {
+                            Button(action: {
+                                rotation = (rotation + 1) % max(1, steps)
+                            }) {
+                                Text("←")
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundColor(laneColor)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(laneColor.opacity(0.2))
+                                    .cornerRadius(4)
+                            }
+                            Button(action: {
+                                rotation = (rotation - 1 + max(1, steps)) % max(1, steps)
+                            }) {
+                                Text("→")
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundColor(laneColor)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(laneColor.opacity(0.2))
+                                    .cornerRadius(4)
+                            }
+                        }
+                    }
+                }
+                
+                // Probability and Source row
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading) {
+                        Text("Probability \(Int(probability * 100))%")
+                            .font(.caption2)
+                            .foregroundColor(.white.opacity(0.5))
+                        Slider(value: $probability, in: 0...1)
+                            .tint(laneColor)
+                    }
+                    
+                    // Source picker
+                    VStack(alignment: .leading) {
+                        Text("Source")
+                            .font(.caption2)
+                            .foregroundColor(.white.opacity(0.5))
+                        Picker("Source", selection: $source) {
+                            ForEach(sources, id: \.0) { value, label in
+                                Text(label).tag(value)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .accentColor(source == "lead" ? Color(red: 212/255, green: 165/255, blue: 32/255) : Color(red: 196/255, green: 114/255, blue: 78/255))
+                    }
                 }
             }
         }
-        .padding()
-        .background(Color.white.opacity(0.03))
+        .padding(10)
+        .background(enabled ? laneColor.opacity(0.08) : Color.white.opacity(0.02))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(enabled ? laneColor : Color.white.opacity(0.1), lineWidth: 1)
+        )
         .cornerRadius(8)
+        .opacity(enabled ? 1.0 : 0.6)
     }
 }
 
@@ -1421,6 +2057,7 @@ struct EuclideanPatternView: View {
     let steps: Int
     let hits: Int
     let rotation: Int
+    var color: Color = .cyan
     
     var pattern: [Bool] {
         generateEuclideanPattern(steps: steps, hits: hits, rotation: rotation)
@@ -1428,14 +2065,18 @@ struct EuclideanPatternView: View {
     
     var body: some View {
         GeometryReader { geometry in
-            let stepWidth = geometry.size.width / CGFloat(steps)
+            let availableWidth = geometry.size.width - CGFloat(steps - 1) * 2
+            let stepSize = min(availableWidth / CGFloat(steps), steps > 16 ? 8 : 12)
             
-            HStack(spacing: 1) {
+            HStack(spacing: 2) {
+                Spacer()
                 ForEach(0..<steps, id: \.self) { i in
-                    Rectangle()
-                        .fill(pattern[i] ? Color.cyan : Color.white.opacity(0.1))
-                        .frame(width: max(stepWidth - 2, 4))
+                    Circle()
+                        .fill(pattern[i] ? color : Color.white.opacity(0.15))
+                        .frame(width: stepSize, height: stepSize)
+                        .shadow(color: pattern[i] ? color.opacity(0.6) : .clear, radius: 3)
                 }
+                Spacer()
             }
         }
     }
@@ -1446,7 +2087,7 @@ struct EuclideanPatternView: View {
         }
         
         var pattern = [Bool]()
-        var remainder = [Int](repeating: 1, count: hits)
+        let remainder = [Int](repeating: 1, count: hits)
         var counts = [Int](repeating: 0, count: steps - hits)
         
         var divisor = steps - hits
@@ -1719,6 +2360,415 @@ struct DualRangeSlider: View {
     }
 }
 
+// MARK: - Drum Euclidean Lane View
+struct DrumEuclidLaneView: View {
+    let laneNumber: Int
+    @Binding var enabled: Bool
+    @Binding var preset: String
+    @Binding var steps: Int
+    @Binding var hits: Int
+    @Binding var rotation: Int
+    @Binding var targetSub: Bool
+    @Binding var targetKick: Bool
+    @Binding var targetClick: Bool
+    @Binding var targetBeepHi: Bool
+    @Binding var targetBeepLo: Bool
+    @Binding var targetNoise: Bool
+    @Binding var probability: Double
+    @Binding var velocityMin: Double
+    @Binding var velocityMax: Double
+    
+    // Lane colors matching webapp: red, orange, green, purple
+    private var laneColor: Color {
+        let colors: [Color] = [
+            Color(red: 0.937, green: 0.267, blue: 0.267), // #ef4444 red
+            Color(red: 0.976, green: 0.451, blue: 0.086), // #f97316 orange  
+            Color(red: 0.133, green: 0.773, blue: 0.369), // #22c55e green
+            Color(red: 0.545, green: 0.361, blue: 0.965)  // #8b5cf6 purple
+        ]
+        return colors[(laneNumber - 1) % colors.count]
+    }
+    
+    // Voice icons matching webapp
+    private let voiceData: [(id: String, icon: String, name: String)] = [
+        ("sub", "◉", "Sub (Deep Pulse)"),
+        ("kick", "●", "Kick (Punch)"),
+        ("click", "▪", "Click (Data)"),
+        ("beepHi", "△", "Beep Hi (Ping)"),
+        ("beepLo", "▽", "Beep Lo (Blip)"),
+        ("noise", "≋", "Noise (Hi-Hat)")
+    ]
+    
+    // Full preset list with category groupings matching webapp
+    private let presetGroups: [(name: String, presets: [(id: String, label: String, steps: Int, hits: Int, rotation: Int)])] = [
+        ("Polyrhythmic / Complex", [
+            ("sparse", "Sparse (16/1)", 16, 1, 0),
+            ("dense", "Dense (8/7)", 8, 7, 0),
+            ("longSparse", "Long Sparse (32/3)", 32, 3, 0),
+            ("poly3v4", "3 vs 4 (12/3)", 12, 3, 0),
+            ("poly4v3", "4 vs 3 (12/4)", 12, 4, 0),
+            ("poly5v4", "5 vs 4 (20/5)", 20, 5, 0)
+        ]),
+        ("Indonesian Gamelan", [
+            ("lancaran", "Lancaran (16/4)", 16, 4, 0),
+            ("ketawang", "Ketawang (16/2)", 16, 2, 0),
+            ("ladrang", "Ladrang (32/8)", 32, 8, 0),
+            ("gangsaran", "Gangsaran (8/4)", 8, 4, 0),
+            ("kotekan", "Kotekan A (8/3)", 8, 3, 1),
+            ("kotekan2", "Kotekan B (8/3 r:4)", 8, 3, 4),
+            ("srepegan", "Srepegan (16/6)", 16, 6, 2),
+            ("sampak", "Sampak (8/5)", 8, 5, 0),
+            ("ayak", "Ayak (16/3)", 16, 3, 4),
+            ("bonang", "Bonang (12/5)", 12, 5, 2)
+        ]),
+        ("World Rhythms", [
+            ("tresillo", "Tresillo (8/3)", 8, 3, 0),
+            ("cinquillo", "Cinquillo (8/5)", 8, 5, 0),
+            ("rumba", "Rumba (16/5)", 16, 5, 0),
+            ("bossa", "Bossa Nova (16/5)", 16, 5, 3),
+            ("son", "Son Clave (16/7)", 16, 7, 0),
+            ("shiko", "Shiko (16/5)", 16, 5, 0),
+            ("soukous", "Soukous (12/7)", 12, 7, 0),
+            ("gahu", "Gahu (16/7)", 16, 7, 0),
+            ("bembe", "Bembé (12/7)", 12, 7, 0)
+        ]),
+        ("Steve Reich / Experimental", [
+            ("clapping", "Clapping Music (12/8)", 12, 8, 0),
+            ("clappingB", "Clapping B (12/8 r:5)", 12, 8, 5),
+            ("additive7", "Additive 7 (7/4)", 7, 4, 0),
+            ("additive11", "Additive 11 (11/5)", 11, 5, 0),
+            ("additive13", "Additive 13 (13/5)", 13, 5, 0),
+            ("reich18", "Reich 18 (12/7)", 12, 7, 3),
+            ("drumming", "Drumming (8/6)", 8, 6, 1)
+        ])
+    ]
+    
+    // Get preset data by id
+    private func getPresetData(_ id: String) -> (steps: Int, hits: Int, rotation: Int)? {
+        for group in presetGroups {
+            if let p = group.presets.first(where: { $0.id == id }) {
+                return (p.steps, p.hits, p.rotation)
+            }
+        }
+        return nil
+    }
+    
+    // Calculate pattern values
+    private var patternSteps: Int {
+        preset == "custom" ? steps : (getPresetData(preset)?.steps ?? 16)
+    }
+    private var patternHits: Int {
+        preset == "custom" ? hits : (getPresetData(preset)?.hits ?? 4)
+    }
+    private var patternRotation: Int {
+        let baseRot = preset == "custom" ? 0 : (getPresetData(preset)?.rotation ?? 0)
+        return (baseRot + rotation) % max(1, patternSteps)
+    }
+    
+    // Generate Euclidean pattern
+    private var pattern: [Bool] {
+        EuclideanPatternView.generatePattern(steps: patternSteps, hits: patternHits, rotation: patternRotation)
+    }
+    
+    // Active voice string for header
+    private var activeVoicesString: String {
+        var result = ""
+        if targetSub { result += "◉" }
+        if targetKick { result += "●" }
+        if targetClick { result += "▪" }
+        if targetBeepHi { result += "△" }
+        if targetBeepLo { result += "▽" }
+        if targetNoise { result += "≋" }
+        return result
+    }
+    
+    // Check if velocity is in dual range mode
+    private var isVelocityDual: Bool { velocityMin != velocityMax }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Lane header with colored toggle button
+            HStack(spacing: 8) {
+                Button(action: { enabled.toggle() }) {
+                    Text("\(laneNumber)")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(enabled ? .white : Color.white.opacity(0.5))
+                        .frame(width: 24, height: 24)
+                        .background(enabled ? laneColor : Color.white.opacity(0.15))
+                        .clipShape(Circle())
+                }
+                
+                Text("Lane \(laneNumber)")
+                    .font(.subheadline)
+                    .fontWeight(enabled ? .bold : .regular)
+                    .foregroundColor(enabled ? laneColor : Color.white.opacity(0.5))
+                
+                if !enabled {
+                    Text("(off)")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.4))
+                }
+                
+                Spacer()
+                
+                if enabled {
+                    Text("\(activeVoicesString) • \(patternHits)/\(patternSteps)")
+                        .font(.caption2)
+                        .foregroundColor(.white.opacity(0.6))
+                }
+            }
+            
+            if enabled {
+                // Pattern visualization with lane color
+                EuclideanPatternView(pattern: pattern, color: laneColor)
+                    .frame(height: 28)
+                
+                // Preset picker with grouped options
+                Menu {
+                    ForEach(presetGroups, id: \.name) { group in
+                        Section(group.name) {
+                            ForEach(group.presets, id: \.id) { p in
+                                Button(p.label) { preset = p.id }
+                            }
+                        }
+                    }
+                    Divider()
+                    Button("Custom") { preset = "custom" }
+                } label: {
+                    HStack {
+                        Text(preset == "custom" ? "Custom" : 
+                             presetGroups.flatMap { $0.presets }.first { $0.id == preset }?.label ?? preset)
+                            .font(.caption)
+                            .foregroundColor(.white)
+                        Spacer()
+                        Image(systemName: "chevron.down")
+                            .font(.caption2)
+                            .foregroundColor(laneColor)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.black.opacity(0.4))
+                    .cornerRadius(6)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(laneColor.opacity(0.4), lineWidth: 1)
+                    )
+                }
+                
+                // Voice toggle buttons with icons
+                HStack(spacing: 4) {
+                    ForEach(voiceData, id: \.id) { voice in
+                        let isOn = voiceBinding(for: voice.id)
+                        Button(action: { isOn.wrappedValue.toggle() }) {
+                            Text(voice.icon)
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundColor(isOn.wrappedValue ? laneColor : Color.white.opacity(0.4))
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 32)
+                                .background(isOn.wrappedValue ? laneColor.opacity(0.25) : Color.black.opacity(0.3))
+                                .cornerRadius(4)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .stroke(isOn.wrappedValue ? laneColor : Color.white.opacity(0.2), lineWidth: isOn.wrappedValue ? 2 : 1)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                
+                // Custom mode: Steps & Hits
+                if preset == "custom" {
+                    HStack(spacing: 16) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Steps: \(steps)")
+                                .font(.caption2)
+                                .foregroundColor(.white.opacity(0.6))
+                            Slider(value: Binding(
+                                get: { Double(steps) },
+                                set: { steps = Int($0) }
+                            ), in: 2...32, step: 1)
+                            .tint(laneColor)
+                        }
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Hits: \(hits)")
+                                .font(.caption2)
+                                .foregroundColor(.white.opacity(0.6))
+                            Slider(value: Binding(
+                                get: { Double(hits) },
+                                set: { hits = min(Int($0), steps) }
+                            ), in: 1...Double(steps), step: 1)
+                            .tint(laneColor)
+                        }
+                    }
+                }
+                
+                // Probability and Rotation row
+                HStack(spacing: 12) {
+                    // Probability slider
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Probability \(Int(probability * 100))%")
+                            .font(.caption2)
+                            .foregroundColor(.white.opacity(0.6))
+                        Slider(value: $probability, in: 0...1)
+                            .tint(.orange)
+                    }
+                    .frame(maxWidth: .infinity)
+                    
+                    // Rotation with arrow buttons
+                    VStack(spacing: 2) {
+                        Text("Rotate: \(rotation)")
+                            .font(.caption2)
+                            .foregroundColor(.white.opacity(0.6))
+                        HStack(spacing: 4) {
+                            Button("←") {
+                                rotation = (rotation + 1) % max(1, patternSteps)
+                            }
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(laneColor)
+                            .frame(width: 32, height: 24)
+                            .background(laneColor.opacity(0.2))
+                            .cornerRadius(4)
+                            .overlay(RoundedRectangle(cornerRadius: 4).stroke(laneColor.opacity(0.5), lineWidth: 1))
+                            
+                            Button("→") {
+                                rotation = (rotation - 1 + patternSteps) % max(1, patternSteps)
+                            }
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(laneColor)
+                            .frame(width: 32, height: 24)
+                            .background(laneColor.opacity(0.2))
+                            .cornerRadius(4)
+                            .overlay(RoundedRectangle(cornerRadius: 4).stroke(laneColor.opacity(0.5), lineWidth: 1))
+                        }
+                    }
+                    .frame(width: 80)
+                }
+                
+                // Velocity range (dual slider like webapp)
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("Level")
+                            .font(.caption2)
+                            .foregroundColor(.white.opacity(0.6))
+                        if isVelocityDual {
+                            Text("\(Int(velocityMin * 100))–\(Int(velocityMax * 100))%")
+                                .font(.caption2)
+                                .foregroundColor(laneColor)
+                            Text("⟷ range")
+                                .font(.system(size: 9))
+                                .foregroundColor(laneColor)
+                        } else {
+                            Text("\(Int(velocityMin * 100))%")
+                                .font(.caption2)
+                                .foregroundColor(.white.opacity(0.6))
+                        }
+                        Spacer()
+                        Text("tap for range")
+                            .font(.system(size: 9))
+                            .foregroundColor(.white.opacity(0.3))
+                    }
+                    
+                    // Visual range bar
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            // Background track
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(Color.white.opacity(0.1))
+                                .frame(height: 6)
+                            
+                            // Active range
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(LinearGradient(
+                                    colors: [laneColor.opacity(0.6), laneColor],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                ))
+                                .frame(width: CGFloat(velocityMax - velocityMin) * geo.size.width, height: 6)
+                                .offset(x: CGFloat(velocityMin) * geo.size.width)
+                        }
+                    }
+                    .frame(height: 6)
+                    .onTapGesture {
+                        // Toggle between single and dual mode
+                        if isVelocityDual {
+                            let mid = (velocityMin + velocityMax) / 2
+                            velocityMin = mid
+                            velocityMax = mid
+                        } else {
+                            velocityMin = max(0, velocityMin - 0.2)
+                            velocityMax = min(1, velocityMax + 0.2)
+                        }
+                    }
+                    
+                    // Dual sliders for min/max
+                    HStack(spacing: 8) {
+                        VStack {
+                            Text("Min")
+                                .font(.system(size: 9))
+                                .foregroundColor(.white.opacity(0.4))
+                            Slider(value: $velocityMin, in: 0...1)
+                                .tint(laneColor.opacity(0.6))
+                                .onChange(of: velocityMin) { _, newVal in
+                                    if newVal > velocityMax { velocityMax = newVal }
+                                }
+                        }
+                        VStack {
+                            Text("Max")
+                                .font(.system(size: 9))
+                                .foregroundColor(.white.opacity(0.4))
+                            Slider(value: $velocityMax, in: 0...1)
+                                .tint(laneColor)
+                                .onChange(of: velocityMax) { _, newVal in
+                                    if newVal < velocityMin { velocityMin = newVal }
+                                }
+                        }
+                    }
+                }
+            }
+        }
+        .padding(10)
+        .background(enabled ? laneColor.opacity(0.08) : Color.white.opacity(0.02))
+        .cornerRadius(8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(enabled ? laneColor : Color.white.opacity(0.15), lineWidth: 1)
+        )
+        .opacity(enabled ? 1 : 0.6)
+    }
+    
+    // Helper to get binding for voice toggles
+    private func voiceBinding(for id: String) -> Binding<Bool> {
+        switch id {
+        case "sub": return $targetSub
+        case "kick": return $targetKick
+        case "click": return $targetClick
+        case "beepHi": return $targetBeepHi
+        case "beepLo": return $targetBeepLo
+        case "noise": return $targetNoise
+        default: return .constant(false)
+        }
+    }
+}
+
+// MARK: - Voice Toggle Button
+struct VoiceToggle: View {
+    let label: String
+    @Binding var isOn: Bool
+    
+    var body: some View {
+        Button(action: { isOn.toggle() }) {
+            Text(label)
+                .font(.caption)
+                .fontWeight(isOn ? .bold : .regular)
+                .foregroundColor(isOn ? .black : .white.opacity(0.6))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(isOn ? Color.cyan : Color.white.opacity(0.1))
+                .cornerRadius(4)
+        }
+    }
+}
+
 // MARK: - Reusable Parameter Slider
 struct ParameterSlider: View {
     let label: String
@@ -1924,6 +2974,299 @@ extension ParameterSlider {
         self.range = Double(range.lowerBound)...Double(range.upperBound)
         self.unit = unit
         self.icon = icon
+    }
+}
+
+// MARK: - Filter Response Visualization
+/// Shows filter response curve with min/max cutoff range and live frequency indicator
+struct FilterResponseView: View {
+    let filterType: String
+    let cutoffMin: Double
+    let cutoffMax: Double
+    let resonance: Double
+    let q: Double
+    let modSpeed: Double
+    var liveFrequency: Double? = nil
+    var isRunning: Bool = false
+    
+    private let minFreq: Double = 40
+    private let maxFreq: Double = 8000
+    
+    /// Convert frequency to X position (log scale)
+    private func freqToX(_ freq: Double, width: CGFloat) -> CGFloat {
+        let logMin = log(minFreq)
+        let logMax = log(maxFreq)
+        let logFreq = log(max(minFreq, min(maxFreq, freq)))
+        return CGFloat((logFreq - logMin) / (logMax - logMin)) * width
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Filter Response (Mod Range)")
+                .font(.caption)
+                .foregroundColor(.white.opacity(0.6))
+            
+            GeometryReader { geo in
+                let width = geo.size.width
+                let height = geo.size.height
+                let minCutoffX = freqToX(cutoffMin, width: width)
+                let maxCutoffX = freqToX(cutoffMax, width: width)
+                let liveX = liveFrequency.map { freqToX($0, width: width) }
+                
+                // Resonance peak height
+                let resPeak = min(resonance * 15, 20)
+                // Q affects slope sharpness
+                let qFactor = min(q, 12)
+                
+                let baseY: CGFloat = height * 0.3  // Top of response (0dB)
+                let floorY: CGFloat = height * 0.85  // Bottom (attenuated)
+                
+                ZStack {
+                    // Background
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.black.opacity(0.3))
+                    
+                    // Grid line
+                    Path { path in
+                        path.move(to: CGPoint(x: 0, y: height * 0.5))
+                        path.addLine(to: CGPoint(x: width, y: height * 0.5))
+                    }
+                    .stroke(Color.white.opacity(0.1), lineWidth: 0.5)
+                    
+                    // Mod range indicator (shaded area)
+                    Rectangle()
+                        .fill(Color.blue.opacity(0.15))
+                        .frame(width: max(2, maxCutoffX - minCutoffX))
+                        .offset(x: minCutoffX - width/2 + (maxCutoffX - minCutoffX)/2)
+                    
+                    // Min cutoff line
+                    Path { path in
+                        path.move(to: CGPoint(x: minCutoffX, y: 0))
+                        path.addLine(to: CGPoint(x: minCutoffX, y: height))
+                    }
+                    .stroke(Color.blue.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                    
+                    // Max cutoff line
+                    Path { path in
+                        path.move(to: CGPoint(x: maxCutoffX, y: 0))
+                        path.addLine(to: CGPoint(x: maxCutoffX, y: height))
+                    }
+                    .stroke(Color.orange.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                    
+                    // Live frequency indicator (green line)
+                    if isRunning, let liveX = liveX {
+                        Path { path in
+                            path.move(to: CGPoint(x: liveX, y: 0))
+                            path.addLine(to: CGPoint(x: liveX, y: height))
+                        }
+                        .stroke(Color.green, style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                        
+                        // Live frequency text
+                        Text("\(Int(liveFrequency ?? 0)) Hz")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(.green)
+                            .shadow(color: .green.opacity(0.5), radius: 4)
+                            .position(x: width/2, y: 12)
+                    }
+                    
+                    // Filter curve at min cutoff (faded)
+                    filterCurvePath(cutoffX: minCutoffX, width: width, baseY: baseY, floorY: floorY, resPeak: resPeak, qFactor: qFactor)
+                        .stroke(Color.blue.opacity(0.5), lineWidth: 1.5)
+                    
+                    // Filter curve at max cutoff
+                    filterCurvePath(cutoffX: maxCutoffX, width: width, baseY: baseY, floorY: floorY, resPeak: resPeak, qFactor: qFactor)
+                        .stroke(Color.orange.opacity(0.9), lineWidth: 2)
+                    
+                    // Fill under max curve
+                    filterCurvePath(cutoffX: maxCutoffX, width: width, baseY: baseY, floorY: floorY, resPeak: resPeak, qFactor: qFactor, closed: true)
+                        .fill(Color.orange.opacity(0.1))
+                    
+                    // Frequency labels
+                    HStack {
+                        Text("40Hz")
+                            .font(.system(size: 8))
+                            .foregroundColor(.white.opacity(0.3))
+                        Spacer()
+                        Text("500Hz")
+                            .font(.system(size: 8))
+                            .foregroundColor(.white.opacity(0.3))
+                        Spacer()
+                        Text("8kHz")
+                            .font(.system(size: 8))
+                            .foregroundColor(.white.opacity(0.3))
+                    }
+                    .padding(.horizontal, 4)
+                    .offset(y: height/2 - 8)
+                    
+                    // Q indicator
+                    Text("Q:\(String(format: "%.1f", q))")
+                        .font(.system(size: 8))
+                        .foregroundColor(.blue.opacity(0.6))
+                        .position(x: width - 20, y: 10)
+                    
+                    // Mod speed indicator
+                    Text("~\(String(format: "%.1f", modSpeed)) phrases")
+                        .font(.system(size: 8))
+                        .foregroundColor(.green.opacity(0.6))
+                        .position(x: 40, y: 10)
+                }
+            }
+            .frame(height: 100)
+            .cornerRadius(8)
+        }
+    }
+    
+    /// Generate filter curve path based on filter type
+    private func filterCurvePath(cutoffX: CGFloat, width: CGFloat, baseY: CGFloat, floorY: CGFloat, resPeak: CGFloat, qFactor: CGFloat, closed: Bool = false) -> Path {
+        Path { path in
+            let dropWidth = max(15, 35 - qFactor * 1.5)
+            let riseWidth = max(15, 35 - qFactor * 1.5)
+            let slopeSharpness = min(5 + qFactor * 1.5, 25)
+            
+            switch filterType {
+            case "lowpass":
+                path.move(to: CGPoint(x: 0, y: baseY))
+                path.addLine(to: CGPoint(x: max(0, cutoffX - 15), y: baseY))
+                path.addQuadCurve(
+                    to: CGPoint(x: cutoffX, y: baseY - resPeak),
+                    control: CGPoint(x: cutoffX - 5, y: baseY)
+                )
+                path.addQuadCurve(
+                    to: CGPoint(x: min(width, cutoffX + dropWidth), y: floorY - 5),
+                    control: CGPoint(x: cutoffX + slopeSharpness * 0.5, y: baseY + 5)
+                )
+                path.addLine(to: CGPoint(x: width, y: floorY))
+                
+            case "highpass":
+                path.move(to: CGPoint(x: 0, y: floorY))
+                path.addLine(to: CGPoint(x: max(0, cutoffX - riseWidth), y: floorY - 5))
+                path.addQuadCurve(
+                    to: CGPoint(x: cutoffX, y: baseY - resPeak),
+                    control: CGPoint(x: cutoffX - slopeSharpness * 0.5, y: baseY + 5)
+                )
+                path.addQuadCurve(
+                    to: CGPoint(x: min(width, cutoffX + 15), y: baseY),
+                    control: CGPoint(x: cutoffX + 5, y: baseY)
+                )
+                path.addLine(to: CGPoint(x: width, y: baseY))
+                
+            case "bandpass":
+                let bpWidth = max(20, 50 - qFactor * 3)
+                path.move(to: CGPoint(x: 0, y: floorY))
+                path.addLine(to: CGPoint(x: max(0, cutoffX - bpWidth), y: floorY - 5))
+                path.addQuadCurve(
+                    to: CGPoint(x: cutoffX, y: baseY - resPeak),
+                    control: CGPoint(x: cutoffX - bpWidth * 0.4, y: baseY + 8)
+                )
+                path.addQuadCurve(
+                    to: CGPoint(x: min(width, cutoffX + bpWidth), y: floorY - 5),
+                    control: CGPoint(x: cutoffX + bpWidth * 0.4, y: baseY + 8)
+                )
+                path.addLine(to: CGPoint(x: width, y: floorY))
+                
+            case "notch":
+                let notchWidth = max(15, 40 - qFactor * 2)
+                path.move(to: CGPoint(x: 0, y: baseY))
+                path.addLine(to: CGPoint(x: max(0, cutoffX - notchWidth), y: baseY))
+                path.addQuadCurve(
+                    to: CGPoint(x: cutoffX, y: floorY),
+                    control: CGPoint(x: cutoffX - notchWidth * 0.3, y: baseY)
+                )
+                path.addQuadCurve(
+                    to: CGPoint(x: min(width, cutoffX + notchWidth), y: baseY),
+                    control: CGPoint(x: cutoffX + notchWidth * 0.3, y: baseY)
+                )
+                path.addLine(to: CGPoint(x: width, y: baseY))
+                
+            default:
+                path.move(to: CGPoint(x: 0, y: baseY))
+                path.addLine(to: CGPoint(x: width, y: baseY))
+            }
+            
+            if closed {
+                path.addLine(to: CGPoint(x: width, y: floorY + 10))
+                path.addLine(to: CGPoint(x: 0, y: floorY + 10))
+                path.closeSubpath()
+            }
+        }
+    }
+}
+
+// MARK: - Lead Timbre Range Visualization
+/// Shows a gradient bar representing timbre range from Rhodes (warm) to Gamelan (bright)
+struct TimbreRangeView: View {
+    let timbreMin: Double
+    let timbreMax: Double
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("Timbre Range")
+                    .font(.caption)
+                    .foregroundColor(.white.opacity(0.6))
+                Spacer()
+                Text("\(Int(timbreMin * 100))% – \(Int(timbreMax * 100))%")
+                    .font(.caption)
+                    .foregroundColor(.cyan.opacity(0.8))
+            }
+            
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    // Background gradient showing full range
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 0.4, green: 0.3, blue: 0.2),  // Rhodes (warm brown)
+                                    Color(red: 0.6, green: 0.5, blue: 0.3),  // Middle
+                                    Color(red: 0.8, green: 0.7, blue: 0.3),  // Gamelan (metallic gold)
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .opacity(0.3)
+                    
+                    // Active range highlight
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 0.4, green: 0.3, blue: 0.2),  // Rhodes
+                                    Color(red: 0.8, green: 0.7, blue: 0.3),  // Gamelan
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .frame(width: geo.size.width * CGFloat(timbreMax - timbreMin))
+                        .offset(x: geo.size.width * CGFloat(timbreMin))
+                    
+                    // Min/Max markers
+                    Rectangle()
+                        .fill(Color.white.opacity(0.8))
+                        .frame(width: 2, height: 16)
+                        .offset(x: geo.size.width * CGFloat(timbreMin) - 1)
+                    
+                    Rectangle()
+                        .fill(Color.white.opacity(0.8))
+                        .frame(width: 2, height: 16)
+                        .offset(x: geo.size.width * CGFloat(timbreMax) - 1)
+                }
+            }
+            .frame(height: 16)
+            
+            // Labels
+            HStack {
+                Text("Rhodes")
+                    .font(.system(size: 9))
+                    .foregroundColor(.white.opacity(0.4))
+                Spacer()
+                Text("Gamelan")
+                    .font(.system(size: 9))
+                    .foregroundColor(.white.opacity(0.4))
+            }
+        }
     }
 }
 

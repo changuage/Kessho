@@ -729,6 +729,143 @@ drumEuclidDivision: 16,
 
 ---
 
+### iOS Implementation Learnings Checklist
+
+These learnings from the web implementation must be applied when porting to iOS:
+
+#### Critical Architecture Learnings
+- [x] **RNG Initialization Order**: DrumSynth depends on `rng` (seeded random number generator). On web, `rng` is set in `initializeHarmony()`. DrumSynth must be created AFTER harmony initialization, not in the initial audio graph setup.
+- [x] **QUANTIZATION Config**: Any new slider parameters (`drumLevel`, `drumReverbSend`) must be added to the quantization system for sliders to render correctly.
+- [x] **Voice Toggle System**: Euclidean lanes use 6 boolean toggles per lane (one per voice) instead of a single dropdown. This allows triggering multiple voices simultaneously.
+
+#### DrumSynth Class Requirements
+- [x] **6 Voice Types**: Sub, Kick, Click, BeepHi, BeepLo, Noise
+- [x] **Noise Buffer**: Pre-generate 1 second of white noise for Click and Noise voices
+- [x] **Master Gain Chain**: masterGain → masterOutput, reverbSend → reverbNode
+- [x] **Voice Trigger Callback**: Optional UI callback `onDrumTrigger` for visualization
+
+#### Voice Synthesis Requirements
+- [x] **Sub Voice**: Pure sine at 30-100Hz with optional overtone (drumSubTone)
+- [x] **Kick Voice**: Sine with pitch envelope (start high, sweep down) + optional click transient
+- [x] **Click Voice**: Filtered noise burst with highpass filter and resonance
+- [x] **BeepHi Voice**: High sine (2-12kHz) with optional FM modulation for metallic character
+- [x] **BeepLo Voice**: Lower sine (150-2000Hz), blends between sine and square based on tone
+- [x] **Noise Voice**: Filtered white noise with configurable filter type (lowpass/bandpass/highpass)
+
+#### Scheduler Requirements
+- [x] **Random Scheduler**: Timer-based, checks each voice probability per tick, respects minInterval
+- [x] **Euclidean Scheduler**: Generates patterns using Bresenham's algorithm with rotation
+- [x] **4 Euclidean Lanes**: Each with steps, hits, rotation, preset, target voices, probability, velocity range, level
+- [x] **Pattern Presets**: Include all presets (sparse, dense, lancaran, kotekan, tresillo, etc.)
+- [x] **Swing**: Applied on offbeats by delaying by swing percentage
+
+#### State Parameters (76+ properties)
+- [x] Master: drumEnabled, drumLevel, drumReverbSend
+- [x] Voice params (24 total): 4-6 params per voice for freq, decay, level, tone, etc.
+- [x] Random mode (10 total): enabled, density, per-voice probabilities, min/max interval
+- [x] Euclidean master (5 total): enabled, baseBPM, tempo, swing, division
+- [x] Euclidean lanes (14 per lane × 4 = 56 total): enabled, preset, steps, hits, rotation, 6 target booleans, probability, velocityMin, velocityMax, level
+
+#### AudioEngine Integration
+- [x] **Mixer Node**: Create `drumMixer` for drum output
+- [x] **Connections**: drumMixer → dryMixer (dry path), drumMixer → reverbSend (wet path)
+- [x] **Create After Harmony**: Initialize DrumSynth in `start()` after `initializeHarmony()`, not in `setupAudioGraph()`
+- [x] **Update in applyParams()**: Call `drumSynth?.updateParams(currentParams)`
+
+#### UI Components
+- [x] **DrumSynthView**: Collapsible panel with master controls
+- [x] **Voice Section**: Per-voice collapsible panels with freq/decay/level/tone sliders
+- [x] **Random Section**: Toggle + density slider + per-voice probability sliders + interval range
+- [x] **Euclidean Section**: Master controls + 4 lane editors with pattern visualization
+- [x] **Voice Toggles**: 6 toggle buttons per Euclidean lane for target selection
+
+---
+
+### iOS Euclidean UI Parity Checklist
+
+The iOS Euclidean sequencer UI has been updated to match the webapp. ✅
+
+#### Lead/Synth Euclidean (EuclideanLaneView) - COMPLETED ✅
+- [x] **Note Range Sliders**: Added dual sliders for noteMin/noteMax with visual range bar.
+- [x] **Lane Colors**: Uses distinct colors per lane (orange, green, blue, pink) matching webapp.
+- [x] **Rotation Arrow Buttons**: Implemented ←/→ buttons matching webapp UX.
+- [x] **Full Preset List (40+)**: Added all presets including World Rhythms and additional Polyrhythmic.
+- [x] **Preset Optgroups**: Organized presets into groups (Polyrhythmic, Gamelan, World, Reich) via Menu sections.
+- [x] **Pattern Visualization**: Added colored circles showing Euclidean pattern with lane color.
+- [x] **Source Picker Colors**: Lead/Synth options use color coding (cyan/green).
+
+#### Drum Euclidean (DrumEuclidLaneView) - COMPLETED ✅
+- [x] **Pattern Visualization**: Added colored dots showing Euclidean pattern hits with lane color.
+- [x] **Lane Colors**: Uses distinct colors per lane (red, orange, green, purple) matching webapp.
+- [x] **Rotation Arrow Buttons**: Implemented ←/→ buttons matching webapp UX.
+- [x] **Velocity Range**: Added velocityMin/Max with dual slider and visual range bar.
+- [x] **Full Preset List (30+)**: Added all presets with optgroups (Polyrhythmic, Gamelan, World, Reich).
+- [x] **Voice Icons**: Uses icons (◉●▪△▽≋) for voices matching webapp.
+- [x] **Lane Toggle Button**: Colored circular button with lane number.
+- [x] **Pattern Summary in Header**: Shows active voice icons and hits/steps ratio.
+
+#### Master Controls Note
+- Master BPM, Tempo, Swing, Division are in the parent Drum Euclidean section, not per-lane (matching webapp structure).
+
+#### Shared Components
+- [x] **EuclideanPatternView**: Updated with color parameter and circle visualization.
+- [x] **Preset Data Parity**: All 40+ presets exist with correct steps/hits/rotation values.
+
+---
+
+### iOS General UI Parity Checklist - COMPLETED ✅
+
+All major UI differences have been addressed. iOS now matches webapp UI.
+
+#### Harmony / Pitch Section
+- [x] **Wave Spread Slider**: In Synth Oscillator section (intentional placement for mobile UX).
+- [x] **Detune Slider**: In Synth Oscillator section (intentional placement for mobile UX).
+- [x] **ADSR Visual Curve**: iOS has `ADSRVisualization` component matching webapp's SVG curve.
+- [x] **Voice Mask Toggle Buttons**: iOS has `VoiceMaskControl` matching webapp's 6-button grid.
+- [x] **Synth Chord Sequencer Toggle**: iOS has this toggle in Character section.
+
+#### Timbre / Filter Section
+- [x] **Filter Visualization**: `FilterResponseView` shows interactive filter response curve with all filter types.
+- [x] **Live Filter Frequency Display**: Shows current filter position with glowing green line when running.
+- [x] **Filter Type/Cutoff/Resonance/Q**: All present on iOS.
+
+#### Lead Synth Section
+- [x] **Timbre Range Visualization**: `TimbreRangeView` shows gradient bar (Rhodes → Gamelan) with active range.
+- [x] **ADSHR Visual Curve**: `ADSRVisualization` used for Lead envelope (includes Hold parameter).
+- [x] **Expression Dual-Mode Indicators**: `DualRangeSlider` shows "RANGE" badge when in dual mode.
+- [x] **Double-Tap Toggle**: `DualRangeSlider` has `.onTapGesture(count: 2)` for toggling single/dual mode.
+
+#### Granular Section
+- [x] **All parameters present**: Matches webapp.
+- [x] **Pitch Mode Segmented Control**: iOS uses segmented (appropriate for mobile UX).
+
+#### Ocean Section
+- [x] **Beach Recording (Sample) Toggle**: Present.
+- [x] **Wave Synthesis Toggle**: Present.
+- [x] **Dual-Mode Duration/Interval**: `DualRangeSlider` with double-tap toggle.
+- [x] **Sample Level Slider**: Present in Levels section.
+- [x] **Filter Type/Cutoff/Resonance**: Present.
+
+#### Reverb Section
+- [x] **Enable Toggle**: Present with CPU savings indicator.
+- [x] **Quality Mode Picker**: Present with Ultra/Balanced/Lite.
+- [x] **Type Picker with iOS-only section**: Present.
+- [x] **All reverb parameters**: Present.
+
+#### Levels Section
+- [x] **Ocean Level Slider**: Added to Levels section.
+- [x] **Drum Level Slider**: Added to Levels section.
+- [x] **Master/Synth/Granular/Lead/Reverb**: Present.
+
+#### Circle of Fifths
+- [x] **Interactive CoF Display**: `CircleOfFifthsView` shows current key, morph path, drift range, direction arrows.
+
+#### Morph Slider Area
+- [x] **Visual Preset A/B indicators**: `MorphControl` shows preset names at each end.
+- [x] **Progress indicator during morph**: Shows `morphPhase` ("Playing A", "Morphing to B", etc.).
+
+---
+
 ### Version History
 
 | Date | Changes |
@@ -737,3 +874,6 @@ drumEuclidDivision: 16,
 | 2026-02-03 | Web implementation complete - all features working |
 | 2026-02-03 | Reverb enable toggle added for CPU savings |
 | 2026-02-03 | Ryoji Ikeda drum synth spec added |
+| 2026-02-03 | iOS implementation learnings checklist added |
+| 2026-02-03 | iOS Euclidean UI parity completed (lane colors, presets, pattern viz) |
+| 2026-02-03 | iOS General UI parity verified complete |
