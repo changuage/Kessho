@@ -4,6 +4,104 @@ This document tracks planned enhancements and their implementation status.
 
 ---
 
+## Advanced UI Panel Restructure
+
+### Overview
+Reorganize the Advanced UI from a single long scrolling panel into clearly separated window sections, each with its own icon. This improves navigation, reduces cognitive load, and groups related controls logically.
+
+### Implementation Status: Web [x] | iOS [ ]
+
+### Panel Structure
+
+| Panel | Icon | Description | Contents |
+|-------|------|-------------|----------|
+| **Global** | ◎ | Master controls & presets | Master Mixer, Global/Seed, Scale Mode, Tension, Preset Morph, Cloud Presets |
+| **Synth + Lead** | ∿ | Melodic instruments | Harmony/Pitch (minus Scale/Tension), Timbre, Lead Synth, Euclidean Sequencer |
+| **Drum Synth** | ⋮⋮ | Percussion | All DrumSynth controls (voices, Euclidean, master) |
+| **FX** | ◈ | Effects processing | Space (Reverb), Granular, Wave (Ocean) |
+
+**Note:** Debug panel appears at the bottom of every window section (not a separate panel).
+
+### Icon Alternatives
+Consider these minimalist Unicode icons for each panel:
+
+| Panel | Option A | Option B | Option C |
+|-------|----------|----------|----------|
+| Global | ◎ (bullseye) | ⊕ (circled plus) | ⌂ (home) |
+| Synth + Lead | ♪ (note) | ⎎ (wave) | ≋ (triple wave) |
+| Drum Synth | ◇ (diamond) | ⬡ (hexagon) | ⊡ (squared dot) |
+| FX | ◈ (diamond target) | ✦ (star) | ⋮⋮ (dots) |
+
+### Parameter Relocations
+
+| Parameter | From | To |
+|-----------|------|-----|
+| `scaleMode` | Harmony/Pitch | Global |
+| `manualScale` | Harmony/Pitch | Global |
+| `tension` | Harmony/Pitch | Global |
+
+### Global Panel Contents
+- **Master Mixer**: masterVolume, synthLevel, granularLevel, reverbLevel, all send levels
+- **Global/Seed**: seedWindow, randomness, rootNote
+- **Circle of Fifths Drift**: cofDriftEnabled, cofDriftRate, cofDriftDirection, cofDriftRange
+- **Scale & Tension**: scaleMode, manualScale, tension (moved from Harmony)
+- **Preset Morph**: morphValue, morphDuration, preset A/B selection
+- **Cloud Presets**: Load/save from Supabase
+- **Debug** (bottom): Debug controls always visible
+
+### Synth + Lead Panel Contents
+- **Harmony/Pitch**: chordRate, voicingSpread, waveSpread, detune (Scale/Tension removed)
+- **Synth ADSR**: synthAttack, synthDecay, synthSustain, synthRelease
+- **Synth Voices**: synthVoiceMask, synthOctave
+- **Timbre**: hardness, oscBrightness, filterType, filterCutoff, filterResonance, warmth, presence, airNoise
+- **Lead Synth**: All lead parameters (enabled, level, ADSR, delay, etc.)
+- **Euclidean Sequencer**: All 4 lanes with steps, hits, rotation, probability, source
+- **Debug** (bottom): Debug controls always visible
+
+### Drum Synth Panel Contents
+- All 6 drum voices (Sub, Kick, Snare, Hi-hat, Click, Noise)
+- Drum Euclidean (4 lanes)
+- Drum master (level, reverb send, tempo, swing)
+- **Debug** (bottom): Debug controls always visible
+
+### FX Panel Contents
+- **Space (Reverb)**: reverbEnabled, reverbEngine, reverbType, reverbQuality, decay, size, diffusion, modulation, predelay, damping, width
+- **Granular**: granularEnabled, all grain parameters
+- **Wave (Ocean)**: oceanSampleLevel, oceanFilterCutoff, all ocean parameters
+- **Debug** (bottom): Debug controls always visible
+
+### UI/UX Considerations
+- Each panel has a header bar with icon + title
+- Panels can be collapsed/expanded independently
+- Active panel indicated with highlight color
+- Panel state persisted in localStorage
+- Debug section duplicated at bottom of each panel for easy access
+- Mobile: Swipe between panels or accordion style
+- Web: Tab bar at top or sidebar navigation
+
+### Implementation Checklist
+
+#### Web
+- [ ] Create panel container component with icon + title + collapse
+- [ ] Separate Advanced.tsx into 4 panel components
+- [ ] Add tab bar or navigation between panels
+- [ ] Move Scale Mode + Tension to Global panel
+- [ ] Add Debug section to bottom of each panel
+- [ ] Persist panel collapse state to localStorage
+- [ ] Update App.tsx to render new panel structure
+- [ ] Responsive: stack vertically on mobile
+
+#### iOS
+- [ ] Create panel container view with icon + title + collapse
+- [ ] Separate SliderControlsView into 4 sections
+- [ ] Add TabView or navigation between panels
+- [ ] Move Scale Mode + Tension to Global panel
+- [ ] Add Debug section to bottom of each panel
+- [ ] Persist panel state with @AppStorage
+- [ ] Update MainView to render new panel structure
+
+---
+
 ## Euclidean Sequencer Enhancement
 
 ### Overview

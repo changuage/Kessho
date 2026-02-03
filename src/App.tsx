@@ -402,6 +402,40 @@ const styles = {
     color: 'white',
     fontSize: '0.9rem',
   } as React.CSSProperties,
+  tabBar: {
+    display: 'flex',
+    justifyContent: 'center',
+    gap: '4px',
+    padding: '8px 16px',
+    background: 'rgba(15, 25, 40, 0.6)',
+    borderRadius: '12px',
+    marginBottom: '16px',
+    border: '1px solid rgba(100, 150, 200, 0.2)',
+  } as React.CSSProperties,
+  tab: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    alignItems: 'center',
+    gap: '4px',
+    padding: '8px 16px',
+    background: 'transparent',
+    border: 'none',
+    borderRadius: '8px',
+    color: '#666',
+    fontSize: '0.75rem',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    minWidth: '60px',
+  } as React.CSSProperties,
+  tabActive: {
+    background: 'rgba(168, 85, 247, 0.2)',
+    color: '#a855f7',
+    border: '1px solid rgba(168, 85, 247, 0.4)',
+  } as React.CSSProperties,
+  tabIcon: {
+    fontSize: '1.2rem',
+    lineHeight: 1,
+  } as React.CSSProperties,
   debugPanel: {
     background: 'rgba(15, 25, 40, 0.4)',
     borderRadius: '12px',
@@ -975,6 +1009,10 @@ const App: React.FC = () => {
       return next;
     });
   }, []);
+
+  // Active tab for Advanced UI panels
+  type AdvancedTab = 'global' | 'synth' | 'drums' | 'fx';
+  const [activeTab, setActiveTab] = useState<AdvancedTab>('global');
 
   // Dual slider state - tracks which sliders are in dual mode and their ranges
   const [dualSliderModes, setDualSliderModes] = useState<Set<keyof SliderState>>(new Set());
@@ -2388,8 +2426,55 @@ const App: React.FC = () => {
         </div>
       )}
 
+      {/* Tab Bar */}
+      <div style={styles.tabBar}>
+        <button
+          style={{
+            ...styles.tab,
+            ...(activeTab === 'global' ? styles.tabActive : {}),
+          }}
+          onClick={() => setActiveTab('global')}
+        >
+          <span style={styles.tabIcon}>◎</span>
+          <span>Global</span>
+        </button>
+        <button
+          style={{
+            ...styles.tab,
+            ...(activeTab === 'synth' ? styles.tabActive : {}),
+          }}
+          onClick={() => setActiveTab('synth')}
+        >
+          <span style={styles.tabIcon}>∿</span>
+          <span>Synth</span>
+        </button>
+        <button
+          style={{
+            ...styles.tab,
+            ...(activeTab === 'drums' ? styles.tabActive : {}),
+          }}
+          onClick={() => setActiveTab('drums')}
+        >
+          <span style={styles.tabIcon}>⋮⋮</span>
+          <span>Drums</span>
+        </button>
+        <button
+          style={{
+            ...styles.tab,
+            ...(activeTab === 'fx' ? styles.tabActive : {}),
+          }}
+          onClick={() => setActiveTab('fx')}
+        >
+          <span style={styles.tabIcon}>◈</span>
+          <span>FX</span>
+        </button>
+      </div>
+
       {/* Parameter Grid */}
       <div style={styles.grid}>
+        {/* === GLOBAL TAB === */}
+        {activeTab === 'global' && (
+          <>
         {/* Master Mixer */}
         <CollapsiblePanel
           id="mixer"
@@ -2593,15 +2678,6 @@ const App: React.FC = () => {
               </>
             )}
           </div>
-          <Select
-            label="Seed Window"
-            value={state.seedWindow}
-            options={[
-              { value: 'hour', label: 'Hour (changes hourly)' },
-              { value: 'day', label: 'Day (changes daily)' },
-            ]}
-            onChange={(v) => handleSelectChange('seedWindow', v)}
-          />
           <Slider
             label="Randomness"
             value={state.randomness}
@@ -2618,6 +2694,44 @@ const App: React.FC = () => {
           />
           <div style={{ fontSize: '0.75rem', color: '#666', marginTop: '-8px', marginBottom: '8px' }}>
             Speed of value drift for range sliders (double-click any slider)
+          </div>
+          
+          {/* Scale & Tension (moved from Harmony) */}
+          <div style={{ marginTop: '12px', borderTop: '1px solid #333', paddingTop: '12px' }}>
+            <div style={{ fontSize: '0.85rem', color: '#888', marginBottom: '8px' }}>Scale & Tension</div>
+            <Select
+              label="Scale Mode"
+              value={state.scaleMode}
+              options={[
+                { value: 'auto', label: 'Auto (tension-based)' },
+                { value: 'manual', label: 'Manual' },
+              ]}
+              onChange={(v) => handleSelectChange('scaleMode', v)}
+            />
+            {state.scaleMode === 'manual' && (
+              <Select
+                label="Scale Family"
+                value={state.manualScale}
+                options={SCALE_FAMILIES.map((s) => ({ value: s.name, label: `${NOTE_NAMES[state.rootNote]} ${s.name}` }))}
+                onChange={(v) => handleSelectChange('manualScale', v)}
+              />
+            )}
+            <Slider
+              label="Tension"
+              value={state.tension}
+              paramKey="tension"
+              onChange={handleSliderChange}
+              {...sliderProps('tension')}
+            />
+            <Select
+              label="Seed Window"
+              value={state.seedWindow}
+              options={[
+                { value: 'hour', label: 'Hour (changes hourly)' },
+                { value: 'day', label: 'Day (changes daily)' },
+              ]}
+              onChange={(v) => handleSelectChange('seedWindow', v)}
+            />
           </div>
         </CollapsiblePanel>
 
@@ -2974,39 +3088,18 @@ const App: React.FC = () => {
             audioEngine.resetCofDrift();
           }}
         />
+        </>)}
 
+        {/* === SYNTH + LEAD TAB === */}
+        {activeTab === 'synth' && (<>
         {/* Harmony */}
         <CollapsiblePanel
           id="harmony"
-          title="Harmony / Pitch"
+          title="Pad Synth"
           isMobile={isMobile}
           isExpanded={expandedPanels.has('harmony')}
           onToggle={togglePanel}
         >
-          <Select
-            label="Scale Mode"
-            value={state.scaleMode}
-            options={[
-              { value: 'auto', label: 'Auto (tension-based)' },
-              { value: 'manual', label: 'Manual' },
-            ]}
-            onChange={(v) => handleSelectChange('scaleMode', v)}
-          />
-          {state.scaleMode === 'manual' && (
-            <Select
-              label="Scale Family"
-              value={state.manualScale}
-              options={SCALE_FAMILIES.map((s) => ({ value: s.name, label: `${NOTE_NAMES[state.rootNote]} ${s.name}` }))}
-              onChange={(v) => handleSelectChange('manualScale', v)}
-            />
-          )}
-          <Slider
-            label="Tension"
-            value={state.tension}
-            paramKey="tension"
-            onChange={handleSliderChange}
-            {...sliderProps('tension')}
-          />
           <Slider
             label="Chord Rate"
             value={state.chordRate}
@@ -3285,7 +3378,7 @@ const App: React.FC = () => {
         {/* Timbre */}
         <CollapsiblePanel
           id="timbre"
-          title="Timbre"
+          title="Pad Timbre"
           isMobile={isMobile}
           isExpanded={expandedPanels.has('timbre')}
           onToggle={togglePanel}
@@ -3585,7 +3678,10 @@ const App: React.FC = () => {
             {...sliderProps('airNoise')}
           />
         </CollapsiblePanel>
+        </>)}
 
+        {/* === FX TAB === */}
+        {activeTab === 'fx' && (<>
         {/* Space */}
         <CollapsiblePanel
           id="space"
@@ -3862,7 +3958,10 @@ const App: React.FC = () => {
             {...sliderProps('wetLPF')}
           />
         </CollapsiblePanel>
+        </>)}
 
+        {/* === SYNTH + LEAD TAB (continued) === */}
+        {activeTab === 'synth' && (<>
         {/* Lead Synth (Rhodes/Bell) */}
         <CollapsiblePanel
           id="lead"
@@ -5267,7 +5366,10 @@ const App: React.FC = () => {
             Enable multiple lanes for interlocking gamelan-style polyrhythms
           </div>
         </CollapsiblePanel>
+        </>)}
 
+        {/* === FX TAB (continued) === */}
+        {activeTab === 'fx' && (<>
         {/* Ocean Waves */}
         <CollapsiblePanel
           id="ocean"
@@ -5756,11 +5858,14 @@ const App: React.FC = () => {
             {...sliderProps('oceanFilterResonance')}
           />
         </CollapsiblePanel>
+        </>)}
 
-        {/* Ikeda Drum Synth */}
+        {/* === DRUMS TAB === */}
+        {activeTab === 'drums' && (<>
+        {/* Drum Synth */}
         <CollapsiblePanel
           id="drums"
-          title="Drum Synth (Ikeda)"
+          title="Drum Synth"
           isMobile={isMobile}
           isExpanded={expandedPanels.has('drums')}
           onToggle={togglePanel}
@@ -6742,9 +6847,10 @@ const App: React.FC = () => {
           )}
 
           <div style={{ fontSize: '0.65rem', color: '#666', textAlign: 'center', marginTop: '8px' }}>
-            Minimalist percussion inspired by Ryoji Ikeda
+            Minimalist percussion synthesis
           </div>
         </CollapsiblePanel>
+        </>)}
       </div>
 
       {/* Debug Panel */}
