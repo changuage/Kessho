@@ -176,24 +176,34 @@ class SynthVoice {
     }
     
     private func updateEnvelope() {
-        let attackRate = 1.0 / (attack * sampleRate + 1)
-        let decayRate = 1.0 / (decay * sampleRate + 1)
-        let releaseRate = 1.0 / (release * sampleRate + 1)
+        // Time constants for exponential approach (matching web's setTargetAtTime)
+        // setTargetAtTime reaches 63.2% of target after timeConstant
+        // Using attack/3 as timeConstant like web app
+        let attackTimeConstant = attack / 3
+        let decayTimeConstant = decay / 3
+        let releaseTimeConstant = release / 4  // release / 4 from web app
+        
+        // Exponential coefficients (1 - e^(-1/(timeConstant * sampleRate)))
+        let attackCoeff = 1.0 - exp(-invSampleRate / attackTimeConstant)
+        let decayCoeff = 1.0 - exp(-invSampleRate / decayTimeConstant)
+        let releaseCoeff = 1.0 - exp(-invSampleRate / releaseTimeConstant)
         
         switch envelopeStage {
         case .off:
             envelope = 0
             
         case .attack:
-            envelope += attackRate
-            if envelope >= 1 {
+            // Exponential approach to 1.0 (matching web's setTargetAtTime)
+            envelope += (1.0 - envelope) * attackCoeff
+            if envelope >= 0.99 {
                 envelope = 1
                 envelopeStage = .decay
             }
             
         case .decay:
-            envelope -= (envelope - sustain) * decayRate
-            if envelope <= sustain + 0.001 {
+            // Exponential approach to sustain
+            envelope += (sustain - envelope) * decayCoeff
+            if abs(envelope - sustain) < 0.001 {
                 envelope = sustain
                 envelopeStage = .sustain
             }
@@ -202,7 +212,8 @@ class SynthVoice {
             envelope = sustain
             
         case .release:
-            envelope -= envelope * releaseRate
+            // Exponential approach to 0
+            envelope += (0 - envelope) * releaseCoeff
             if envelope < 0.001 {
                 envelope = 0
                 envelopeStage = .off

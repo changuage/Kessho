@@ -64,15 +64,15 @@ class GranularProcessor {
     private var wetHPFFreq: Float = 20        // High-pass filter on wet
     private var wetLPFFreq: Float = 20000     // Low-pass filter on wet
     
-    // Sample buffer
-    private var sampleBuffer: [Float] = []
+    // Sample buffer (for loading external samples)
     private var sampleRate: Float = 44100
     private var invSampleRate: Float = 1.0 / 44100  // Pre-computed to avoid division per sample
     
-    // Feedback buffer for grain recycling
-    private var feedbackBuffer: [Float] = []
-    private var feedbackWriteIndex: Int = 0
-    private let feedbackBufferSize: Int = 44100  // 1 second
+    // Circular buffer for input (stereo) - feedback writes back to same buffer like web app
+    private var inputBufferL: [Float] = []
+    private var inputBufferR: [Float] = []
+    private var inputWriteIndex: Int = 0
+    private let inputBufferSize: Int = 44100 * 4  // 4 seconds matching sampleBuffer
     
     // Pre-seeded random sequence (matching web app for determinism)
     private var randomSequence: [Float] = []
@@ -94,25 +94,23 @@ class GranularProcessor {
     ]
     
     struct Grain {
-        var position: Int        // Current position in source
-        var startPosition: Int   // Where this grain started
+        var position: Int        // Start position in buffer (set at spawn, includes spray+jitter)
+        var startSample: Int     // Current sample within grain (0 to length)
         var length: Int          // Total grain length in samples
-        var elapsed: Int         // Samples elapsed
-        var pitch: Float         // Pitch ratio
-        var amplitude: Float     // Envelope amplitude
+        var playbackRate: Float  // Pitch as playback rate multiplier
         var panL: Float          // Left channel gain
         var panR: Float          // Right channel gain
-        var usesFeedback: Bool   // Whether to read from feedback buffer
         var active: Bool         // Whether this grain slot is in use (for pool-based allocation)
     }
     
     init() {
-        feedbackBuffer = [Float](repeating: 0, count: feedbackBufferSize)
+        inputBufferL = [Float](repeating: 0, count: inputBufferSize)
+        inputBufferR = [Float](repeating: 0, count: inputBufferSize)
         
         // Pre-allocate grain pool (matching web app pattern - avoids allocation on audio thread)
         grains = (0..<128).map { _ in
-            Grain(position: 0, startPosition: 0, length: 0, elapsed: 0, pitch: 1.0,
-                  amplitude: 0, panL: 0.5, panR: 0.5, usesFeedback: false, active: false)
+            Grain(position: 0, startSample: 0, length: 0, playbackRate: 1.0,
+                  panL: 0.5, panR: 0.5, active: false)
         }
         
         node = AVAudioSourceNode { [weak self] _, _, frameCount, audioBufferList -> OSStatus in
@@ -146,14 +144,12 @@ class GranularProcessor {
     }
     
     private func generateNoiseBuffer() {
-        // Generate pink-ish noise as source material (uses system random - this is just for initial texture)
-        let bufferLength = Int(sampleRate * 4)  // 4 seconds
-        sampleBuffer = [Float](repeating: 0, count: bufferLength)
-        
+        // Generate pink-ish noise as initial source material (uses system random - this is just for initial texture)
+        // Write to both L and R input buffers (matching stereo architecture)
         var b0: Float = 0, b1: Float = 0, b2: Float = 0
         var b3: Float = 0, b4: Float = 0, b5: Float = 0, b6: Float = 0
         
-        for i in 0..<bufferLength {
+        for i in 0..<inputBufferSize {
             let white = Float.random(in: -1...1)
             
             // Pink noise filter
@@ -167,16 +163,13 @@ class GranularProcessor {
             let pink = b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362
             b6 = white * 0.115926
             
-            sampleBuffer[i] = pink * 0.2
+            let sample = pink * 0.2
+            inputBufferL[i] = sample
+            inputBufferR[i] = sample
         }
     }
     
     private func generateStereoSample() -> (Float, Float) {
-        // Apply spray - randomize timing between grains (using seeded random)
-        let sprayRand = nextRandom() * 2 - 1  // Convert 0-1 to -1...1
-        let sprayOffset = Int(sprayRand * spray * Float(baseSamplesPerGrain) * 0.5)
-        let adjustedSamplesPerGrain = max(100, samplesPerGrain + sprayOffset)
-        
         // Count active grains (using pointer access to avoid struct copying)
         var activeCount = 0
         grains.withUnsafeBufferPointer { buffer in
@@ -185,70 +178,59 @@ class GranularProcessor {
             }
         }
         
-        // Check if we should spawn a new grain (with probability check using seeded random)
+        // Check if we should spawn a new grain
         samplesSinceLastGrain += 1
-        if samplesSinceLastGrain >= adjustedSamplesPerGrain && activeCount < maxGrains {
-            // Probability gate - only spawn if random check passes
-            if nextRandom() <= probability {
-                spawnGrain()
-            }
+        if samplesSinceLastGrain >= samplesPerGrain && activeCount < maxGrains {
+            spawnGrain()
             samplesSinceLastGrain = 0
         }
         
-        var left: Float = 0
-        var right: Float = 0
+        var wetL: Float = 0
+        var wetR: Float = 0
         
         // Process active grains (pool-based with direct pointer access to avoid struct copying)
         grains.withUnsafeMutableBufferPointer { buffer in
             for i in 0..<buffer.count {
                 guard buffer[i].active else { continue }
                 
-                // Apply jitter as position offset (matching web app)
-                // Jitter is in ms, convert to samples and apply as offset
-                let jitterSamples = Int(jitter * sampleRate / 1000.0)
-                let jitterRand = nextRandom() * 2 - 1  // Convert 0-1 to -1...1
-                let jitterOffset = Int(jitterRand * Float(jitterSamples))
-                let jitteredPosition = buffer[i].position + jitterOffset
-                
-                // Get sample from appropriate buffer with jittered position
-                let sample: Float
-                if buffer[i].usesFeedback {
-                    sample = getSampleFromFeedback(position: jitteredPosition, pitch: buffer[i].pitch)
-                } else {
-                    sample = getSampleAt(position: jitteredPosition, pitch: buffer[i].pitch)
-                }
+                // Read from buffer with pitch shift (matching web: position + startSample * playbackRate)
+                let readPos = Float(buffer[i].position) + Float(buffer[i].startSample) * buffer[i].playbackRate
+                let sampleL = readInputBuffer(channel: 0, position: readPos)
+                let sampleR = readInputBuffer(channel: 1, position: readPos)
                 
                 // Apply envelope using Hann window lookup table (matching web app)
-                let t = Float(buffer[i].elapsed) / Float(buffer[i].length)
-                let hannIndex = Int(t * Float(HANN_TABLE_SIZE - 1)).clamped(to: 0...(HANN_TABLE_SIZE - 1))
+                let phase = Float(buffer[i].startSample) / Float(buffer[i].length)
+                let hannIndex = Int(phase * Float(HANN_TABLE_SIZE - 1)).clamped(to: 0...(HANN_TABLE_SIZE - 1))
                 let env = hannTable[hannIndex]
                 
-                let output = sample * env * buffer[i].amplitude
-                
                 // Apply stereo spread using pre-computed pan gains
-                left += output * buffer[i].panL
-                right += output * buffer[i].panR
+                wetL += sampleL * env * buffer[i].panL
+                wetR += sampleR * env * buffer[i].panR
                 
                 // Advance grain
-                buffer[i].position += Int(buffer[i].pitch)
-                buffer[i].elapsed += 1
+                buffer[i].startSample += 1
                 
                 // Deactivate finished grains (no array removal - just mark inactive)
-                if buffer[i].elapsed >= buffer[i].length {
+                if buffer[i].startSample >= buffer[i].length {
                     buffer[i].active = false
                 }
             }
         }
         
-        // Apply wet filters in stereo (matching web app - don't collapse to mono!)
-        let filteredL = applyWetFiltersL(left)
-        let filteredR = applyWetFiltersR(right)
+        // Apply wet filters in stereo
+        let filteredL = applyWetFiltersL(wetL)
+        let filteredR = applyWetFiltersR(wetR)
         
-        // Write to feedback buffer with tanh saturation (matching web app)
-        // Web uses: Math.tanh(wet * feedback)
-        let feedbackMono = (filteredL + filteredR) * 0.5
-        feedbackBuffer[feedbackWriteIndex] = tanh(feedbackMono * feedback)
-        feedbackWriteIndex = (feedbackWriteIndex + 1) % feedbackBufferSize
+        // Soft clip feedback to prevent runaway (matching web app)
+        let feedbackL = tanh(filteredL * feedback)
+        let feedbackR = tanh(filteredR * feedback)
+        
+        // Add feedback to input buffer (matching web app - writes back to same buffer)
+        inputBufferL[inputWriteIndex] += feedbackL
+        inputBufferR[inputWriteIndex] += feedbackR
+        
+        // Advance write position
+        inputWriteIndex = (inputWriteIndex + 1) % inputBufferSize
         
         return (filteredL * 0.3, filteredR * 0.3)
     }
@@ -285,73 +267,73 @@ class GranularProcessor {
         return lpfStateR
     }
     
+    /// Linear interpolation for buffer read (matching web app's readBuffer)
+    private func readInputBuffer(channel: Int, position: Float) -> Float {
+        let buffer = channel == 0 ? inputBufferL : inputBufferR
+        guard !buffer.isEmpty else { return 0 }
+        let pos = ((Int(position) % inputBufferSize) + inputBufferSize) % inputBufferSize
+        let frac = position - Float(Int(position))
+        let next = (pos + 1) % inputBufferSize
+        return buffer[pos] * (1 - frac) + buffer[next] * frac
+    }
+    
     private func spawnGrain() {
+        // Probability check - skip grain based on probability (matching web app)
+        if nextRandom() > probability {
+            return
+        }
+        
         // Find an inactive grain slot (pool-based allocation)
         guard let slotIndex = grains.firstIndex(where: { !$0.active }) else {
             return  // No free slots
         }
         
-        // Grain size using seeded random
+        // Grain size using seeded random (matching web: randomSize in ms converted to samples)
         let sizeRange = grainSizeMax - grainSizeMin
-        let grainLength = Int((grainSizeMin + nextRandom() * sizeRange) * sampleRate)
+        let randomSize = grainSizeMin + nextRandom() * sizeRange
+        let grainSamples = Int(randomSize * sampleRate)
         
-        // Start position using seeded random
-        let maxStartPos = max(1, sampleBuffer.count - grainLength)
-        let startPos = Int(nextRandom() * Float(maxStartPos))
+        // Convert spray and jitter from ms to samples (matching web app)
+        let spraySamples = Int((spray / 1000.0) * sampleRate)
+        let jitterSamples = Int((jitter / 1000.0) * sampleRate)
         
-        // Pitch based on mode using pitchSpread in semitones
-        let pitch: Float
+        // Random position in buffer with spray (matching web app)
+        let basePos = ((inputWriteIndex - spraySamples) + inputBufferSize) % inputBufferSize
+        let sprayOffset = Int(nextRandom() * Float(spraySamples))
+        let jitterOffset = Int((nextRandom() - 0.5) * 2 * Float(jitterSamples))
+        let startPos = ((basePos - sprayOffset + jitterOffset) + inputBufferSize) % inputBufferSize
+        
+        // Pitch based on mode using pitchSpread in semitones (matching web app)
+        let pitchOffset: Float
         if pitchMode == 1 {
             // Harmonic mode - limit intervals by pitchSpread (matching web app)
             // Web: maxIntervalIndex = Math.floor((pitchSpread / 12) * HARMONIC_INTERVALS.length)
             let maxIntervalIndex = max(1, Int((pitchSpread / 12.0) * Float(harmonicIntervals.count)))
             let availableCount = min(maxIntervalIndex, harmonicIntervals.count)
             let intervalIndex = Int(nextRandom() * Float(availableCount))
-            let interval = harmonicIntervals[min(intervalIndex, availableCount - 1)]
-            pitch = pow(2, interval / 12)  // Convert semitones to frequency ratio
+            pitchOffset = harmonicIntervals[min(intervalIndex, availableCount - 1)]
         } else {
             // Random mode - use pitchSpread parameter (semitones)
-            let pitchRand = nextRandom() * 2 - 1  // -1 to 1
-            pitch = pow(2, (pitchRand * pitchSpread) / 12)
+            pitchOffset = (nextRandom() - 0.5) * 2 * pitchSpread
         }
+        let playbackRate = pow(2, pitchOffset / 12)
         
-        // Decide whether to use feedback buffer (using seeded random)
-        let usesFeedback = feedback > 0 && nextRandom() < feedback * 0.5
-        
-        // Calculate stereo position using stereoSpread and lookup table (using seeded random)
-        let panRand = nextRandom() * 2 - 1  // -1 to 1
-        let panPosition = panRand * stereoSpread
-        let panIndex = Int((panPosition + 1) * 0.5 * Float(PAN_TABLE_SIZE - 1)).clamped(to: 0...(PAN_TABLE_SIZE - 1))
+        // Stereo spread (matching web app)
+        let pan = (nextRandom() - 0.5) * 2 * stereoSpread
+        let panIndex = Int((pan + 1) * 0.5 * Float(PAN_TABLE_SIZE - 1)).clamped(to: 0...(PAN_TABLE_SIZE - 1))
         let panL = panTableL[panIndex]
         let panR = panTableR[panIndex]
         
-        // Amplitude using seeded random
-        let amplitude = 0.3 + nextRandom() * 0.5  // 0.3 to 0.8
-        
         // Activate grain in pre-allocated slot (no allocation)
         grains[slotIndex] = Grain(
-            position: usesFeedback ? feedbackWriteIndex : startPos,
-            startPosition: usesFeedback ? feedbackWriteIndex : startPos,
-            length: grainLength,
-            elapsed: 0,
-            pitch: pitch,
-            amplitude: amplitude,
+            position: startPos,
+            startSample: 0,
+            length: grainSamples,
+            playbackRate: playbackRate,
             panL: panL,
             panR: panR,
-            usesFeedback: usesFeedback,
             active: true
         )
-    }
-    
-    private func getSampleAt(position: Int, pitch: Float) -> Float {
-        guard !sampleBuffer.isEmpty else { return 0 }
-        let pos = position % sampleBuffer.count
-        return sampleBuffer[pos]
-    }
-    
-    private func getSampleFromFeedback(position: Int, pitch: Float) -> Float {
-        let pos = position % feedbackBufferSize
-        return feedbackBuffer[pos]
     }
     
     // MARK: - Public Interface
@@ -424,16 +406,29 @@ class GranularProcessor {
         self.randomIndex = 0
     }
     
-    /// Load a sample buffer for granular processing
+    /// Load a mono sample buffer for granular processing (copies to both L and R)
     func loadSample(_ samples: [Float], sampleRate: Float) {
-        self.sampleBuffer = samples
         self.sampleRate = sampleRate
         self.invSampleRate = 1.0 / sampleRate
+        // Copy samples to input buffers (mono to stereo)
+        let copyLength = min(samples.count, inputBufferSize)
+        for i in 0..<copyLength {
+            inputBufferL[i] = samples[i]
+            inputBufferR[i] = samples[i]
+        }
     }
     
-    /// Clear feedback buffer
+    /// Clear input/feedback buffers
     func clearFeedback() {
-        feedbackBuffer = [Float](repeating: 0, count: feedbackBufferSize)
-        feedbackWriteIndex = 0
+        inputBufferL = [Float](repeating: 0, count: inputBufferSize)
+        inputBufferR = [Float](repeating: 0, count: inputBufferSize)
+        inputWriteIndex = 0
+    }
+    
+    /// Write input samples to buffer (call from audio callback with live audio)
+    func writeInput(left: Float, right: Float) {
+        inputBufferL[inputWriteIndex] = left
+        inputBufferR[inputWriteIndex] = right
+        // Note: inputWriteIndex is advanced in generateStereoSample after processing
     }
 }

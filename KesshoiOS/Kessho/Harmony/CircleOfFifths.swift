@@ -2,8 +2,9 @@ import Foundation
 
 /// Circle of Fifths logic for key drift and display
 
-/// Circle of Fifths order (by semitone): C, G, D, A, E, B, F#/Gb, C#/Db, Ab, Eb, Bb, F
-let COF_ORDER = ["C", "G", "D", "A", "E", "B", "F#", "C#", "Ab", "Eb", "Bb", "F"]
+/// Circle of Fifths order (by semitone): C, G, D, A, E, B, F#, C#, G#, D#, A#, F
+/// Uses sharps consistently (matching web app) - enharmonically equivalent to flats
+let COF_ORDER = ["C", "G", "D", "A", "E", "B", "F#", "C#", "G#", "D#", "A#", "F"]
 
 /// Semitone values for each CoF position
 let COF_SEMITONES = [0, 7, 2, 9, 4, 11, 6, 1, 8, 3, 10, 5]

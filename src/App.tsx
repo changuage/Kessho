@@ -2102,8 +2102,6 @@ const App: React.FC = () => {
       newState.granularEnabled = false;
     }
     
-    console.log('[handleLoadPresetFromList] preset.state.cofDriftEnabled:', preset.state.cofDriftEnabled);
-    console.log('[handleLoadPresetFromList] newState.cofDriftEnabled:', newState.cofDriftEnabled);
     setState(newState);
     audioEngine.updateParams(newState);
     audioEngine.resetCofDrift(); // Reset CoF drift when loading preset
@@ -2666,9 +2664,6 @@ const App: React.FC = () => {
                     if (newState.granularLevel === 0) {
                       newState.granularEnabled = false;
                     }
-                    console.log('[Slot A Load] preset.state.cofDriftEnabled:', preset.state.cofDriftEnabled);
-                    console.log('[Slot A Load] newState.cofDriftEnabled:', newState.cofDriftEnabled);
-                    console.log('[Slot A Load] Full newState:', JSON.stringify(newState, null, 2).slice(0, 500));
                     setState(newState);
                     audioEngine.updateParams(newState);
                     audioEngine.resetCofDrift(); // Reset CoF drift when loading preset

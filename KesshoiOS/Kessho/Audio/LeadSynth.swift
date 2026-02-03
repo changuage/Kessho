@@ -237,7 +237,9 @@ class LeadSynth {
     }
     
     private func updateEnvelope() {
-        let attackRate = 1.0 / (attack * sampleRate + 1)
+        // Timbre-based attack shortening (matching web app: effectiveAttack = attack * (1.0 - timbre * 0.6))
+        let effectiveAttack = attack * (1.0 - currentTimbre * 0.6)
+        let attackRate = 1.0 / (effectiveAttack * sampleRate + 1)
         let decayRate = 1.0 / (decay * sampleRate + 1)
         let releaseRate = 1.0 / (release * sampleRate + 1)
         

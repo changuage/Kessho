@@ -582,15 +582,139 @@ These intentionally use system random for organic variation:
 
 ---
 
+## 10. Comprehensive Parity Audit (February 2026)
+
+### 10.1 SynthVoice Parity
+
+| Feature | Web | iOS | Status |
+|---------|-----|-----|--------|
+| 4 oscillators (sine/tri/saw/saw) | ✓ | ✓ | ✅ Match |
+| Oscillator mix by brightness | ✓ | ✓ | ✅ Match |
+| Detune calculation (cents→ratio) | ✓ | ✓ | ✅ Match |
+| Filter (BiquadFilter vs SVF) | BiquadFilter | Custom SVF | ⚠️ Different impl |
+| Warmth (low shelf) | Low shelf 250Hz | 1-pole approx | ⚠️ Minor |
+| Presence (peaking EQ) | Peaking 3kHz | Bandpass approx | ⚠️ Minor |
+| Saturation (tanh) | ✓ | ✓ | ✅ Match |
+| Oversample on saturation | 2x | None | ⚠️ Minor aliasing |
+| ~~Envelope attack~~ | ~~Exponential~~ | ~~Linear~~ | ✅ FIXED: Exponential |
+| Air noise | Pre-computed buffer | Inline LCG | ⚠️ Minor |
+
+### 10.2 GranularProcessor Parity
+
+| Feature | Web | iOS | Status |
+|---------|-----|-----|--------|
+| Grain pool allocation | ✓ | ✓ | ✅ Match |
+| Density/probability | ✓ | ✓ | ✅ Match |
+| Pitch modes (random/harmonic) | ✓ | ✓ | ✅ Match |
+| pitchSpread limits intervals | ✓ | ✓ | ✅ Match |
+| Hann window lookup | ✓ | ✓ | ✅ Match |
+| Pan lookup table | ✓ | ✓ | ✅ Match |
+| tanh feedback saturation | ✓ | ✓ | ✅ Match |
+| Pre-seeded RNG | ✓ | ✓ | ✅ Match |
+| ~~**Spray**~~ | ~~Position offset~~ | ~~**Timing offset**~~ | ✅ FIXED: Position offset |
+| ~~**Jitter**~~ | ~~One-time at spawn~~ | ~~**Per-sample recalc**~~ | ✅ FIXED: One-time at spawn |
+| ~~**Feedback architecture**~~ | ~~Into input buffer~~ | ~~**Separate buffer**~~ | ✅ FIXED: Into same buffer |
+| Wet HPF/LPF | None | Has filters | ⚠️ Minor (extra) |
+
+### 10.3 LeadSynth Parity
+
+| Feature | Web | iOS | Status |
+|---------|-----|-----|--------|
+| FM architecture (2 carriers, 4 mods) | ✓ | ✓ | ✅ Match |
+| FM ratios by timbre | ✓ | ✓ | ✅ Match |
+| FM modulation indices | ✓ | ✓ | ✅ Match |
+| Carrier 2 gamelan shimmer | ✓ | ✓ | ✅ Match |
+| Ping-pong delay | ✓ | ✓ | ✅ Match |
+| Output level (0.6) | ✓ | ✓ | ✅ Match |
+| Vibrato scaling | 0-0.5 semitones, 2-8Hz | 0.05-0.15 st, 4-6Hz | ⚠️ Minor |
+| Glide curve | Scheduled ramp | Per-sample smooth | ⚠️ Minor |
+| ~~ADSR attack shortening by timbre~~ | ~~Yes~~ | ~~**Missing**~~ | ✅ FIXED |
+| Per-note randomization | Auto in playNote | Requires explicit call | ⚠️ Minor |
+
+### 10.4 ReverbProcessor Parity
+
+| Feature | Web | iOS | Status |
+|---------|-----|-----|--------|
+| 8-ch FDN with Hadamard | ✓ | ✓ | ✅ Match |
+| FDN delay times | ✓ | ✓ | ✅ Match |
+| Diffuser chains (pre/mid/post) | ✓ | ✓ | ✅ Match |
+| Diffuser times | ✓ | ✓ | ✅ Match |
+| Modulation phases/rates | ✓ | ✓ | ✅ Match |
+| Damping (OnePole) | ✓ | ✓ | ✅ Match |
+| DC blocker | ✓ | ✓ | ✅ Match |
+| Soft clip | ✓ | ✓ | ✅ Match |
+| Presets (plate/hall/cathedral/darkHall) | ✓ | ✓ | ✅ Match |
+| Decay formula | `base + (1-base)*user*0.9` | ✓ | ✅ Match |
+| Max decay clamp | 0.995 | 0.998 | ⚠️ Minor |
+| Predelay max | 300ms | 500ms | ⚠️ Minor |
+| Stereo tap weights | Uniform | Graduated | ⚠️ Minor |
+| Diffuser stage control | Always all | By quality mode | ⚠️ Minor |
+| **Lite mode** | 4-ch FDN | **AVAudioUnitReverb** | ⚠️ Intentional |
+
+### 10.5 OceanSynth Parity
+
+| Feature | Web | iOS | Status |
+|---------|-----|-----|--------|
+| 2 wave generators | ✓ | ✓ | ✅ Match |
+| Wave envelope shape | ✓ | ✓ | ✅ Match |
+| Foam envelope | ✓ | ✓ | ✅ Match |
+| Duration/interval ranges | ✓ | ✓ | ✅ Match |
+| Pan offset | ✓ | ✓ | ✅ Match |
+| Noise filtering (LPF coeffs) | ✓ | ✓ | ✅ Match |
+| Rumble layer | ✓ | ✓ | ✅ Match |
+| Master HPF/LPF | ✓ | ✓ | ✅ Match |
+| tanh soft clip | ✓ | ✓ | ✅ Match |
+| RNG default seed | Always 12345 | Falls back to system | ⚠️ Minor |
+
+### 10.6 Harmony/Scales Parity
+
+| Feature | Web | iOS | Status |
+|---------|-----|-----|--------|
+| 11 scales with intervals | ✓ | ✓ | ✅ Match |
+| Tension values | ✓ | ✓ | ✅ Match |
+| Tension bands | ✓ | ✓ | ✅ Match |
+| Weighting formula | `1/(d+0.05)^1.5` | ✓ | ✅ Match |
+| Chord generation | ✓ | ✓ | ✅ Match |
+| Voicing spread | ✓ | ✓ | ✅ Match |
+| Root note handling | ✓ | ✓ | ✅ Match |
+| Circle of Fifths semitones | ✓ | ✓ | ✅ Match |
+| CoF drift logic | ✓ | ✓ | ✅ Match |
+| mulberry32 PRNG | ✓ | ✓ | ✅ Match |
+| ~~**CoF labels**~~ | ~~Sharps (G#, D#, A#)~~ | ~~**Flats (Ab, Eb, Bb)**~~ | ✅ FIXED: Uses sharps |
+| xmur3 hash | charCodeAt (UTF-16) | UTF-8 | ⚠️ Minor (ASCII same) |
+
+---
+
+### Summary of Critical Issues
+
+All major issues have been fixed:
+
+| Issue | File | Status |
+|-------|------|--------|
+| ~~Spray as timing not position~~ | GranularProcessor.swift | ✅ FIXED |
+| ~~Jitter per-sample not spawn~~ | GranularProcessor.swift | ✅ FIXED |
+| ~~Feedback separate buffer~~ | GranularProcessor.swift | ✅ FIXED |
+| ~~CoF labels flats vs sharps~~ | CircleOfFifths.swift | ✅ FIXED |
+| ~~SynthVoice envelope linear~~ | SynthVoice.swift | ✅ FIXED |
+| ~~LeadSynth attack shortening~~ | LeadSynth.swift | ✅ FIXED |
+
+### Summary Counts
+
+| Status | Count |
+|--------|-------|
+| ✅ Match | ~55 |
+| ✅ Fixed | 6 |
+| ⚠️ Minor Diff | ~17 |
+| ❌ Major Diff | 0 |
+
+---
+
 ## Version History
 
 | Date | Changes | Author |
 |------|---------|--------|
-| 2025-02-03 | Final cleanup: Division per sample optimization (invSampleRate), renamed ReverbPreset→FDNPresetConfig, documented Lite mode as intentional | Audit |
-| 2025-02-03 | Performance fixes: Struct copying (withUnsafeMutableBufferPointer), timer jitter (DispatchSourceTimer), sine lookup table (LeadSynth), cached filter coefficients (SynthVoice) | Audit |
-| 2025-02-03 | Major fixes: GranularProcessor parity (jitter, feedback, pitchSpread), dead code removal (13+ functions/properties), performance (pool allocation, pre-allocated buffers, inline LCG) | Audit |
-| 2025-02-03 | Second audit pass: Fixed dead code file locations (Harmony.swift not CircleOfFifths.swift), removed incorrect line references, verified past audit accuracy | Audit |
-| 2025-02-03 | Added Ocean RNG parity issue, clarified LeadSynth sustain, reverb decay formula, added 3 dead code items in CircleOfFifths.swift | Audit |
+| 2025-02-03 | Fixed all major parity issues: GranularProcessor spray/jitter/feedback architecture, CoF labels sharps, SynthVoice exponential envelope, LeadSynth timbre-based attack | Audit |
+| 2025-02-03 | Comprehensive parity audit: Found 4 major issues (granular spray/jitter/feedback, CoF labels) | Audit |
 | 2025-02-03 | Added Known Issues section with parity, dead code, and performance findings | Audit |
 | 2025-02-02 | Fixed 8 parity issues, changed default scale to Major (Ionian) | - |
 | 2024-XX-XX | Initial comprehensive checklist | - |

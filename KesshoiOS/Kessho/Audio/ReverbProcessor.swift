@@ -218,6 +218,11 @@ class ReverbProcessor {
     // Hadamard mixing scale (1/sqrt(8))
     private let mixScale: Float = 0.3535533905932738
     
+    // Pre-allocated arrays for audio thread (avoid allocations in processStereo)
+    private var reads8: [Float] = [Float](repeating: 0, count: 8)
+    private var damped8: [Float] = [Float](repeating: 0, count: 8)
+    private var mixed8: [Float] = [Float](repeating: 0, count: 8)
+    
     // Block processing optimization
     private var blockCounter: Int = 0
     private let blockSize: Int = 32
@@ -300,8 +305,7 @@ class ReverbProcessor {
             diffInR = preDiffuserR.process(delayedR, stages: quality == .ultra ? 6 : 3)
         }
         
-        // Read from FDN delays with smooth modulation
-        var reads: [Float] = []
+        // Read from FDN delays with smooth modulation (using pre-allocated array)
         for i in 0..<8 {
             let modIndex = i / 2
             let tri = currentModValues[modIndex]
@@ -311,31 +315,30 @@ class ReverbProcessor {
             let delayTime = max(1, fdnDelayTimes[i] * effectiveSize + modOffset)
             
             // Use interpolated read for smooth modulation (no zipper noise)
-            reads.append(fdnDelays[i].readInterpolated(delayTime))
+            reads8[i] = fdnDelays[i].readInterpolated(delayTime)
         }
         
-        // Apply damping (one-pole lowpass per delay)
-        var damped: [Float] = []
+        // Apply damping (one-pole lowpass per delay, using pre-allocated array)
         for i in 0..<8 {
-            damped.append(fdnDampers[i].process(reads[i], coeff: damping))
+            damped8[i] = fdnDampers[i].process(reads8[i], coeff: damping)
         }
         
         // Mid-diffusion (only in Ultra mode for CPU savings)
         if quality == .ultra {
-            let midL = (damped[0] + damped[2] + damped[4] + damped[6]) * 0.5
-            let midR = (damped[1] + damped[3] + damped[5] + damped[7]) * 0.5
+            let midL = (damped8[0] + damped8[2] + damped8[4] + damped8[6]) * 0.5
+            let midR = (damped8[1] + damped8[3] + damped8[5] + damped8[7]) * 0.5
             let diffMidL = midDiffuserL.process(midL)
             let diffMidR = midDiffuserR.process(midR)
             
             // Inject mid-diffused signal back
-            damped[0] = damped[0] * 0.7 + diffMidL * 0.3
-            damped[2] = damped[2] * 0.7 + diffMidL * 0.3
-            damped[1] = damped[1] * 0.7 + diffMidR * 0.3
-            damped[3] = damped[3] * 0.7 + diffMidR * 0.3
+            damped8[0] = damped8[0] * 0.7 + diffMidL * 0.3
+            damped8[2] = damped8[2] * 0.7 + diffMidL * 0.3
+            damped8[1] = damped8[1] * 0.7 + diffMidR * 0.3
+            damped8[3] = damped8[3] * 0.7 + diffMidR * 0.3
         }
         
-        // Hadamard mixing (orthogonal 8x8 matrix)
-        let mixed = mixFDN(damped)
+        // Hadamard mixing (orthogonal 8x8 matrix, in-place to avoid allocation)
+        mixFDNInPlace(damped8, out: &mixed8)
         
         // Calculate feedback gain with decay curve
         // Uses web formula: baseDecay + (1 - baseDecay) * userDecay * 0.9 (precomputed in self.decay)
@@ -345,15 +348,15 @@ class ReverbProcessor {
         let inputGain: Float = 0.18
         for i in 0..<8 {
             let inject = i < 4 ? diffInL * inputGain : diffInR * inputGain
-            let value = softClip(mixed[i] * feedbackGain + inject)
+            let value = softClip(mixed8[i] * feedbackGain + inject)
             fdnDelays[i].write(value)
         }
         
         // Collect stereo output with decorrelated taps
-        var rawL = (reads[0] * 1.0 + reads[2] * 0.9 + reads[4] * 0.8 + reads[6] * 0.7 +
-                    reads[1] * 0.25 + reads[3] * 0.2) * 0.4
-        var rawR = (reads[1] * 1.0 + reads[3] * 0.9 + reads[5] * 0.8 + reads[7] * 0.7 +
-                    reads[0] * 0.25 + reads[2] * 0.2) * 0.4
+        var rawL = (reads8[0] * 1.0 + reads8[2] * 0.9 + reads8[4] * 0.8 + reads8[6] * 0.7 +
+                    reads8[1] * 0.25 + reads8[3] * 0.2) * 0.4
+        var rawR = (reads8[1] * 1.0 + reads8[3] * 0.9 + reads8[5] * 0.8 + reads8[7] * 0.7 +
+                    reads8[0] * 0.25 + reads8[2] * 0.2) * 0.4
         
         // Post-diffusion (6 stages for Ultra, 3 for Balanced)
         if quality != .lite {
@@ -391,6 +394,19 @@ class ReverbProcessor {
             s * (state[0] + state[1] - state[2] - state[3] - state[4] - state[5] + state[6] + state[7]),
             s * (state[0] - state[1] - state[2] + state[3] - state[4] + state[5] + state[6] - state[7])
         ]
+    }
+    
+    /// Hadamard 8x8 mixing matrix (in-place version to avoid allocation in audio thread)
+    private func mixFDNInPlace(_ state: [Float], out: inout [Float]) {
+        let s = mixScale
+        out[0] = s * (state[0] + state[1] + state[2] + state[3] + state[4] + state[5] + state[6] + state[7])
+        out[1] = s * (state[0] - state[1] + state[2] - state[3] + state[4] - state[5] + state[6] - state[7])
+        out[2] = s * (state[0] + state[1] - state[2] - state[3] + state[4] + state[5] - state[6] - state[7])
+        out[3] = s * (state[0] - state[1] - state[2] + state[3] + state[4] - state[5] - state[6] + state[7])
+        out[4] = s * (state[0] + state[1] + state[2] + state[3] - state[4] - state[5] - state[6] - state[7])
+        out[5] = s * (state[0] - state[1] + state[2] - state[3] - state[4] + state[5] - state[6] + state[7])
+        out[6] = s * (state[0] + state[1] - state[2] - state[3] - state[4] - state[5] + state[6] + state[7])
+        out[7] = s * (state[0] - state[1] - state[2] + state[3] - state[4] + state[5] + state[6] - state[7])
     }
     
     /// Asymmetric soft clipper (matches web app)

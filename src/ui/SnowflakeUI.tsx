@@ -195,7 +195,6 @@ function drawArm(
 }
 
 const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanced, onTogglePlay, onLoadPreset, presets, isPlaying }) => {
-  console.log('SnowflakeUI rendering', { state, isPlaying });
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [dragging, setDragging] = useState<number | null>(null);
   const [hovering, setHovering] = useState<number | null>(null);
