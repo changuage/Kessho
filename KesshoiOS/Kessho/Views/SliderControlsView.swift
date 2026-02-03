@@ -1,9 +1,27 @@
 import SwiftUI
 
+/// Tab options for the Advanced UI panels
+enum AdvancedTab: String, CaseIterable {
+    case global = "Global"
+    case synth = "Synth"
+    case drums = "Drum Synth"
+    case fx = "FX"
+    
+    var icon: String {
+        switch self {
+        case .global: return "◎"
+        case .synth: return "∿"
+        case .drums: return "⋮⋮"
+        case .fx: return "◈"
+        }
+    }
+}
+
 /// Slider controls view with all parameters organized by section
 struct SliderControlsView: View {
     @EnvironmentObject var appState: AppState
     @State private var expandedSections: Set<String> = ["Levels", "Character"]
+    @State private var activeTab: AdvancedTab = .global
     
     /// Description text for current reverb quality mode
     private var reverbQualityDescription: String {
@@ -26,15 +44,40 @@ struct SliderControlsView: View {
     }
     
     var body: some View {
-        ScrollView {
-            VStack(spacing: 16) {
-                // MARK: - Levels Section
-                CollapsibleSection(title: "Levels", icon: "speaker.wave.3", expanded: $expandedSections) {
-                    ParameterSlider(
-                        label: "Master",
-                        value: $appState.state.masterVolume,
-                        range: 0...1,
-                        icon: "speaker.wave.3"
+        VStack(spacing: 0) {
+            // Tab Bar
+            HStack(spacing: 4) {
+                ForEach(AdvancedTab.allCases, id: \.self) { tab in
+                    Button(action: { activeTab = tab }) {
+                        VStack(spacing: 2) {
+                            Text(tab.icon)
+                                .font(.system(size: 16))
+                            Text(tab.rawValue)
+                                .font(.caption2)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .background(activeTab == tab ? Color.purple.opacity(0.2) : Color.clear)
+                        .foregroundColor(activeTab == tab ? .purple : .white.opacity(0.6))
+                        .cornerRadius(8)
+                    }
+                }
+            }
+            .padding(.horizontal)
+            .padding(.vertical, 8)
+            .background(Color.black.opacity(0.3))
+            
+            ScrollView {
+                VStack(spacing: 16) {
+                    // MARK: - GLOBAL TAB
+                    if activeTab == .global {
+                    // MARK: - Levels Section
+                    CollapsibleSection(title: "Levels", icon: "speaker.wave.3", expanded: $expandedSections) {
+                        ParameterSlider(
+                            label: "Master",
+                            value: $appState.state.masterVolume,
+                            range: 0...1,
+                            icon: "speaker.wave.3"
                     )
                     
                     ParameterSlider(
@@ -191,9 +234,12 @@ struct SliderControlsView: View {
                         .font(.caption2)
                         .foregroundColor(.white.opacity(0.4))
                 }
+                } // End Global Tab
                 
+                // MARK: - SYNTH TAB
+                if activeTab == .synth {
                 // MARK: - Synth Oscillator Section
-                CollapsibleSection(title: "Synth Oscillator", icon: "waveform", expanded: $expandedSections) {
+                CollapsibleSection(title: "Pad Synth", icon: "waveform", expanded: $expandedSections) {
                     // Oscillator Brightness (0-3)
                     ParameterSlider(
                         label: "Brightness",
@@ -248,7 +294,7 @@ struct SliderControlsView: View {
                 }
                 
                 // MARK: - Synth Timbre Section
-                CollapsibleSection(title: "Synth Timbre", icon: "slider.horizontal.3", expanded: $expandedSections) {
+                CollapsibleSection(title: "Pad Timbre", icon: "slider.horizontal.3", expanded: $expandedSections) {
                     ParameterSlider(
                         label: "Warmth",
                         value: $appState.state.warmth,
@@ -384,7 +430,10 @@ struct SliderControlsView: View {
                         icon: "q.circle"
                     )
                 }
+                } // End Synth Tab (part 1)
                 
+                // MARK: - FX TAB
+                if activeTab == .fx {
                 // MARK: - Reverb Section
                 CollapsibleSection(title: "Reverb", icon: "waveform.path.ecg.rectangle", expanded: $expandedSections) {
                     // Reverb Enable toggle
@@ -680,7 +729,10 @@ struct SliderControlsView: View {
                         icon: "line.diagonal"
                     )
                 }
+                } // End FX Tab (part 1)
                 
+                // MARK: - SYNTH TAB (continued)
+                if activeTab == .synth {
                 // MARK: - Lead Synth Section
                 CollapsibleSection(title: "Lead Synth", icon: "music.note", expanded: $expandedSections) {
                     Toggle("Enabled", isOn: $appState.state.leadEnabled)
@@ -946,7 +998,10 @@ struct SliderControlsView: View {
                         source: $appState.state.leadEuclid4Source
                     )
                 }
+                } // End Synth Tab (part 2)
                 
+                // MARK: - FX TAB (continued)
+                if activeTab == .fx {
                 // MARK: - Ocean Section
                 CollapsibleSection(title: "Ocean", icon: "water.waves", expanded: $expandedSections) {
                     Toggle("Sample Enabled", isOn: $appState.state.oceanSampleEnabled)
@@ -1057,7 +1112,10 @@ struct SliderControlsView: View {
                         color: .blue
                     )
                 }
+                } // End FX Tab
                 
+                // MARK: - DRUMS TAB
+                if activeTab == .drums {
                 // MARK: - Drum Synth Section
                 CollapsibleSection(title: "Drum Synth", icon: "metronome", expanded: $expandedSections) {
                     Toggle("Enabled", isOn: $appState.state.drumEnabled)
@@ -1466,7 +1524,10 @@ struct SliderControlsView: View {
                         velocityMax: $appState.state.drumEuclid4VelocityMax
                     )
                 }
+                } // End Drums Tab
                 
+                // MARK: - GLOBAL TAB (continued)
+                if activeTab == .global {
                 // MARK: - Seed & Timing Section
                 CollapsibleSection(title: "Seed & Timing", icon: "clock", expanded: $expandedSections) {
                     HStack {
@@ -1535,13 +1596,15 @@ struct SliderControlsView: View {
                         icon: "ruler"
                     )
                 }
+                } // End Global Tab (continued)
                 
-                // MARK: - Debug Info Section
+                // MARK: - Debug Info Section (visible on all tabs)
                 CollapsibleSection(title: "Debug Info", icon: "ladybug", expanded: $expandedSections) {
                     DebugInfoView()
                 }
             }
             .padding()
+            }
         }
     }
 }

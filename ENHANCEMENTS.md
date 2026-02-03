@@ -9,7 +9,7 @@ This document tracks planned enhancements and their implementation status.
 ### Overview
 Reorganize the Advanced UI from a single long scrolling panel into clearly separated window sections, each with its own icon. This improves navigation, reduces cognitive load, and groups related controls logically.
 
-### Implementation Status: Web [x] | iOS [ ]
+### Implementation Status: Web [x] | iOS [x]
 
 ### Panel Structure
 
