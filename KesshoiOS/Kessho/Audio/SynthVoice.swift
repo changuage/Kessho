@@ -39,6 +39,14 @@ class SynthVoice {
     private var filterType: Int = 0  // 0=lowpass, 1=highpass, 2=bandpass, 3=notch
     private var filterState: [Float] = [0, 0]
     
+    // Cached filter coefficients (avoid computing tan() every sample)
+    private var cachedFilterCutoff: Float = 0
+    private var cachedFilterQ: Float = 0
+    private var filterG: Float = 0
+    private var filterA1: Float = 0
+    private var filterA2: Float = 0
+    private var filterA3: Float = 0
+    
     // Saturation (tanh waveshaper matching web app)
     private var hardness: Float = 0.3
     
@@ -58,10 +66,14 @@ class SynthVoice {
     // Octave shift
     private var octaveShift: Int = 0
     
+    // Inline LCG for noise generation (avoids Float.random() on audio thread)
+    private var noiseSeed: UInt32 = 12345
+    
     // Voice enabled (for voice mask)
     var isEnabled: Bool = true
     
     private let sampleRate: Float = 44100
+    private let invSampleRate: Float = 1.0 / 44100  // Pre-computed to avoid division per sample
     
     enum EnvelopeStage {
         case off, attack, decay, sustain, release
@@ -112,17 +124,19 @@ class SynthVoice {
         // Mix oscillators based on oscBrightness gains
         var osc = osc1 * osc1Gain + osc2 * osc2Gain + osc3 * osc3Gain + osc4 * osc4Gain
         
-        // Add air noise
+        // Add air noise (uses inline LCG to avoid Float.random() on audio thread)
         if airNoise > 0 {
-            let noise = Float.random(in: -1...1) * airNoise * 0.1
-            osc += noise
+            // Inline LCG: fast deterministic noise
+            noiseSeed = noiseSeed &* 1664525 &+ 1013904223
+            let noise = (Float(noiseSeed) / Float(UInt32.max)) * 2 - 1
+            osc += noise * airNoise * 0.1
         }
         
-        // Update phases
-        phase1 += freq1 / sampleRate
-        phase2 += freq2 / sampleRate
-        phase3 += freq3 / sampleRate
-        phase4 += freq4 / sampleRate
+        // Update phases (using pre-computed inverse for efficiency)
+        phase1 += freq1 * invSampleRate
+        phase2 += freq2 * invSampleRate
+        phase3 += freq3 * invSampleRate
+        phase4 += freq4 * invSampleRate
         
         // Wrap phases
         if phase1 >= 1 { phase1 -= 1 }
@@ -198,18 +212,24 @@ class SynthVoice {
     
     private func applyFilter(_ input: Float) -> Float {
         // SVF (State Variable Filter) with selectable output
-        let omega = 2 * Float.pi * filterCutoff / sampleRate
-        let g = tan(omega / 2)
-        let k = 1 / max(filterQ, 0.5)
-        let resonanceBoost = 1 + filterResonance * 3
+        // Recalculate coefficients only when filter params change
+        if filterCutoff != cachedFilterCutoff || filterQ != cachedFilterQ {
+            cachedFilterCutoff = filterCutoff
+            cachedFilterQ = filterQ
+            let omega = 2 * Float.pi * filterCutoff / sampleRate
+            filterG = tan(omega / 2)
+            let k = 1 / max(filterQ, 0.5)
+            filterA1 = 1 / (1 + filterG * (filterG + k))
+            filterA2 = filterG * filterA1
+            filterA3 = filterG * filterA2
+        }
         
-        let a1 = 1 / (1 + g * (g + k))
-        let a2 = g * a1
-        let a3 = g * a2
+        let resonanceBoost = 1 + filterResonance * 3
+        let k = 1 / max(filterQ, 0.5)
         
         let v3 = input - filterState[1]
-        let v1 = a1 * filterState[0] + a2 * v3
-        let v2 = filterState[1] + a2 * filterState[0] + a3 * v3
+        let v1 = filterA1 * filterState[0] + filterA2 * v3
+        let v2 = filterState[1] + filterA2 * filterState[0] + filterA3 * v3
         
         filterState[0] = 2 * v1 - filterState[0]
         filterState[1] = 2 * v2 - filterState[1]

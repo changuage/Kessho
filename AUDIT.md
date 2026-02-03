@@ -533,12 +533,12 @@ These intentionally use system random for organic variation:
 
 | Issue | File | Line | Description | Status |
 |-------|------|------|-------------|--------|
-| Harmonic pitchSpread ignored | GranularProcessor.swift | ~285 | iOS ignores `pitchSpread` in harmonic mode - uses all 11 intervals always. Web limits by `(pitchSpread/12) * intervals.length` | ☐ OPEN |
+| ~~Harmonic pitchSpread ignored~~ | ~~GranularProcessor.swift~~ | ~~~285~~ | ~~iOS ignores `pitchSpread` in harmonic mode~~ Fixed: Now limits intervals by `(pitchSpread/12) * intervals.length` | ☑ FIXED |
 | ~~Ocean RNG not seeded~~ | ~~OceanSynth.swift~~ | ~~95~~ | ~~iOS uses `Float.random()`~~ Fixed: Added `setSeed()` with `mulberry32` RNG, called from AudioEngine with `currentSeed` | ☑ FIXED |
 | ~~`.eco` quality undefined~~ | ~~ReverbProcessor.swift~~ | ~~295,357,462,501,537~~ | ~~Code uses `.eco` but enum only has `.lite` - compile error~~ | ✅ FIXED |
 | ~~`rngState` never declared~~ | ~~OceanSynth.swift~~ | ~~281~~ | ~~`setSeed()` references `self.rngState` but property doesn't exist~~ | ✅ FIXED |
-| Feedback lacks soft-clip | GranularProcessor.swift | ~235 | iOS uses raw `feedback * mono`; web uses `Math.tanh(wet * feedback)` saturation | ☐ OPEN |
-| Jitter applied differently | GranularProcessor.swift | ~180 | iOS applies jitter as amplitude; web as position offset | ☐ OPEN |
+| ~~Feedback lacks soft-clip~~ | ~~GranularProcessor.swift~~ | ~~~235~~ | ~~iOS uses raw `feedback * mono`~~ Fixed: Now uses `tanh(feedbackMono * feedback)` saturation | ☑ FIXED |
+| ~~Jitter applied differently~~ | ~~GranularProcessor.swift~~ | ~~~180~~ | ~~iOS applies jitter as amplitude~~ Fixed: Now applies jitter as position offset | ☑ FIXED |
 
 ### 9.2 Medium Parity Issues (Should Fix)
 
@@ -546,39 +546,39 @@ These intentionally use system random for organic variation:
 |-------|------|------|-------------|--------|
 | LeadSynth sustain zero-duration | LeadSynth.swift | 234-235 | ~~Sustain stage immediately transitions to release.~~ Fixed: added `hold` property with countdown timer. Both platforms now use configurable `leadHold` parameter (default 0.5s) | ☑ FIXED |
 | ~~Reverb decay ignores preset~~ | ~~ReverbProcessor.swift~~ | ~~339~~ | ~~iOS: `0.85 + decay * 0.14`~~ Fixed: Added `baseDecay`/`userDecay` separation with web formula `baseDecay + (1-baseDecay) * userDecay * 0.9` | ☑ FIXED |
-| Lite mode uses AVAudioUnitReverb | ReverbProcessor.swift | - | Web has custom 4-ch FDN; iOS falls back to Apple reverb | ☐ OPEN |
+| Lite mode uses AVAudioUnitReverb | ReverbProcessor.swift | - | **INTENTIONAL**: Lite mode uses Apple's built-in reverb for battery efficiency. Web uses custom FDN; iOS Ultra/Balanced modes use matching FDN. | ☐ WON'T FIX |
 
 ### 9.3 Dead/Unused Code (Should Remove)
 
 | Code | File | Line | Type | Priority |
 |------|------|------|------|----------|
-| `pitchVariation` property | GranularProcessor.swift | 51 | Unused property | 🔴 High |
-| `positionSpread` property | GranularProcessor.swift | 52 | Unused property | 🔴 High |
-| `onEuclideanTick()` | AudioEngine.swift | 872 | Empty legacy method | 🔴 High |
-| `tick()` methods | EuclideanRhythm.swift | 187,226 | Replaced by pre-scheduling | 🔴 High |
-| `updateFromState()` | EuclideanRhythm.swift | 136 | Never called | 🔴 High |
-| `updateCircleOfFifthsDrift()` | CircleOfFifths.swift | 58 | Unused + structs | 🔴 High |
+| ~~`pitchVariation` property~~ | ~~GranularProcessor.swift~~ | ~~51~~ | ~~Unused property~~ | ✅ REMOVED |
+| ~~`positionSpread` property~~ | ~~GranularProcessor.swift~~ | ~~52~~ | ~~Unused property~~ | ✅ REMOVED |
+| ~~`onEuclideanTick()`~~ | ~~AudioEngine.swift~~ | ~~872~~ | ~~Empty legacy method~~ | ✅ REMOVED |
+| ~~`tick()` methods~~ | ~~EuclideanRhythm.swift~~ | ~~187,226~~ | ~~Replaced by pre-scheduling~~ | ✅ REMOVED |
+| ~~`updateFromState()`~~ | ~~EuclideanRhythm.swift~~ | ~~136~~ | ~~Never called~~ | ✅ REMOVED |
+| ~~`updateCircleOfFifthsDrift()`~~ | ~~Harmony.swift~~ | ~~58~~ | ~~Duplicate of class method~~ | ✅ REMOVED |
+| ~~`getCurrentPhraseBoundary()`~~ | ~~Harmony.swift~~ | ~~109~~ | ~~Never called~~ | ✅ REMOVED |
 | ~~`shortestPath()`~~ | ~~CircleOfFifths.swift~~ | ~~109~~ | ~~Never called~~ | ✅ REMOVED |
 | ~~`cofPositionToAngle()`~~ | ~~CircleOfFifths.swift~~ | ~~139~~ | ~~Never called~~ | ✅ REMOVED |
 | ~~`semitoneToNoteName()`~~ | ~~CircleOfFifths.swift~~ | ~~144~~ | ~~Never called~~ | ✅ REMOVED |
 | ~~Backwards compat methods~~ | ~~OceanSynth.swift~~ | ~~290-299~~ | ~~6 unused methods~~ | ✅ REMOVED |
-| Duplicate `ReverbPreset` enum | ReverbProcessor.swift | 163-175 | Redundant with `ReverbType` | 🟡 Medium |
-| `envelope2` property | LeadSynth.swift | 23 | Never read | 🟡 Medium |
-| `octaveShift`/`octaveRange` | LeadSynth.swift | - | Set but never read | 🟡 Medium |
-| Helper functions | Harmony.swift | 109,135,185 | Never called | 🟡 Medium |
+| ~~`envelope2` property~~ | ~~LeadSynth.swift~~ | ~~23~~ | ~~Never read~~ | ✅ REMOVED |
+| ~~`octaveShift`/`octaveRange`~~ | ~~LeadSynth.swift~~ | - | ~~Set but never read~~ | ✅ REMOVED |
+| ~~Duplicate `ReverbPreset` enum~~ | ~~ReverbProcessor.swift~~ | ~~163-175~~ | ~~Redundant with `ReverbType`~~ Renamed to `FDNPresetConfig` for clarity | ✅ RENAMED |
 
 ### 9.4 Performance Issues (Audio Thread Safety)
 
 | Issue | File | Severity | Description | Fix |
 |-------|------|----------|-------------|-----|
-| Array mutation in audio | GranularProcessor.swift | 🔴 HIGH | `grains.append()` / `remove(at:)` allocates memory | Use pre-allocated pool |
-| Array allocation in callback | AudioEngine.swift | 🔴 HIGH | Creates `[Float]` array every ~100ms in tap | Pre-allocate and reuse |
-| Float.random() on audio thread | OceanSynth.swift, SynthVoice.swift | 🔴 HIGH | System random may lock; 10+ calls/sample | Use inline LCG PRNG |
-| Struct copying in loop | GranularProcessor.swift | 🟡 MED | Copies Grain struct per sample per grain | Use `withUnsafeMutableBufferPointer` |
-| Redundant filter calc | SynthVoice.swift | 🟡 MED | Computes coefficients every sample | Cache when params change |
-| Timer on main thread | AudioEngine.swift | 🟡 MED | Note scheduling jitter from UI blocking | Use dedicated queue |
-| Multiple sin() calls | LeadSynth.swift | 🟡 MED | 6 sin() calls per sample | Use sine lookup table |
-| Division per sample | All synths | 🟢 LOW | `freq / sampleRate` computed per sample | Pre-compute inverse |
+| ~~Array mutation in audio~~ | ~~GranularProcessor.swift~~ | ~~🔴 HIGH~~ | ~~`grains.append()` / `remove(at:)` allocates memory~~ | ✅ FIXED: Pool-based allocation |
+| ~~Array allocation in callback~~ | ~~AudioEngine.swift~~ | ~~🔴 HIGH~~ | ~~Creates `[Float]` array every ~100ms in tap~~ | ✅ FIXED: Pre-allocated buffer |
+| ~~Float.random() on audio thread~~ | ~~SynthVoice.swift~~ | ~~🔴 HIGH~~ | ~~System random may lock~~ | ✅ FIXED: Inline LCG PRNG |
+| ~~Struct copying in loop~~ | ~~GranularProcessor.swift~~ | ~~🟡 MED~~ | ~~Copies Grain struct per sample per grain~~ | ✅ FIXED: `withUnsafeMutableBufferPointer` |
+| ~~Redundant filter calc~~ | ~~SynthVoice.swift~~ | ~~🟡 MED~~ | ~~Computes coefficients every sample~~ | ✅ FIXED: Cached when params change |
+| ~~Timer on main thread~~ | ~~AudioEngine.swift~~ | ~~🟡 MED~~ | ~~Note scheduling jitter from UI blocking~~ | ✅ FIXED: Dedicated `DispatchSourceTimer` queue |
+| ~~Multiple sin() calls~~ | ~~LeadSynth.swift~~ | ~~🟡 MED~~ | ~~6 sin() calls per sample~~ | ✅ FIXED: Sine lookup table |
+| ~~Division per sample~~ | ~~All synths~~ | ~~🟢 LOW~~ | ~~`freq / sampleRate` computed per sample~~ | ✅ FIXED: Pre-computed `invSampleRate` |
 
 ---
 
@@ -586,6 +586,10 @@ These intentionally use system random for organic variation:
 
 | Date | Changes | Author |
 |------|---------|--------|
+| 2025-02-03 | Final cleanup: Division per sample optimization (invSampleRate), renamed ReverbPreset→FDNPresetConfig, documented Lite mode as intentional | Audit |
+| 2025-02-03 | Performance fixes: Struct copying (withUnsafeMutableBufferPointer), timer jitter (DispatchSourceTimer), sine lookup table (LeadSynth), cached filter coefficients (SynthVoice) | Audit |
+| 2025-02-03 | Major fixes: GranularProcessor parity (jitter, feedback, pitchSpread), dead code removal (13+ functions/properties), performance (pool allocation, pre-allocated buffers, inline LCG) | Audit |
+| 2025-02-03 | Second audit pass: Fixed dead code file locations (Harmony.swift not CircleOfFifths.swift), removed incorrect line references, verified past audit accuracy | Audit |
 | 2025-02-03 | Added Ocean RNG parity issue, clarified LeadSynth sustain, reverb decay formula, added 3 dead code items in CircleOfFifths.swift | Audit |
 | 2025-02-03 | Added Known Issues section with parity, dead code, and performance findings | Audit |
 | 2025-02-02 | Fixed 8 parity issues, changed default scale to Major (Ionian) | - |

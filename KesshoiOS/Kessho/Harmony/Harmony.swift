@@ -47,68 +47,10 @@ func calculateDriftedRoot(homeRoot: Int, stepOffset: Int) -> Int {
     return COF_SEQUENCE[driftedIndex]
 }
 
-/// Result of Circle of Fifths drift update
-struct DriftResult {
-    var newStep: Int
-    var newCounter: Int
-    var didDrift: Bool
-}
-
-/// Update Circle of Fifths drift state at phrase boundary
-func updateCircleOfFifthsDrift(
-    config: CircleOfFifthsConfig,
-    rng: () -> Double
-) -> DriftResult {
-    if !config.enabled {
-        return DriftResult(newStep: 0, newCounter: 0, didDrift: false)
-    }
-    
-    // Increment phrase counter
-    var newCounter = config.phraseCounter + 1
-    
-    // Check if it's time to drift
-    if newCounter < config.driftRate {
-        return DriftResult(newStep: config.currentStep, newCounter: newCounter, didDrift: false)
-    }
-    
-    // Time to drift - reset counter
-    newCounter = 0
-    
-    // Determine drift direction
-    var driftDir: Int
-    if config.direction == "random" {
-        driftDir = rng() < 0.5 ? 1 : -1
-    } else {
-        driftDir = config.direction == "cw" ? 1 : -1
-    }
-    
-    // Calculate potential new step
-    var newStep = config.currentStep + driftDir
-    
-    // Boundary behavior: bounce back if at range limit
-    if abs(newStep) > config.range {
-        // Reverse direction and head back toward home
-        newStep = config.currentStep - driftDir
-        // If still out of range (edge case), just stay at current
-        if abs(newStep) > config.range {
-            newStep = config.currentStep
-        }
-    }
-    
-    let didDrift = newStep != config.currentStep
-    return DriftResult(newStep: newStep, newCounter: newCounter, didDrift: didDrift)
-}
-
 /// Get the next phrase boundary time (epoch seconds)
 func getNextPhraseBoundary() -> Double {
     let nowSec = Date().timeIntervalSince1970
     return ceil(nowSec / PHRASE_LENGTH) * PHRASE_LENGTH
-}
-
-/// Get current phrase boundary time
-func getCurrentPhraseBoundary() -> Double {
-    let nowSec = Date().timeIntervalSince1970
-    return floor(nowSec / PHRASE_LENGTH) * PHRASE_LENGTH
 }
 
 /// Get time until next phrase boundary in seconds

@@ -186,3 +186,36 @@ The Circle of Fifths UI component shows:
 - **Green segment**: Current key position during morph
 - **Highlighted path**: All keys that will be traversed
 - **Gray segments**: Keys within drift range (when CoF drift enabled)
+
+---
+
+## iOS Reverb Quality Modes
+
+### Overview
+iOS offers three reverb quality modes that balance sound quality vs battery consumption:
+
+| Mode | Implementation | Stages | Battery | Sound |
+|------|----------------|--------|---------|-------|
+| **Ultra** | Custom FDN | 32 | High | Best (matches web) |
+| **Balanced** | Custom FDN | 16 | Medium | Good |
+| **Lite** | AVAudioUnitReverb | Apple | Best | Decent |
+
+### Lite Mode Design Decision
+Lite mode **intentionally** uses Apple's built-in `AVAudioUnitReverb` instead of the custom FDN algorithm. This is NOT a parity issue.
+
+**Rationale:**
+- Web runs on plugged-in devices; iOS is battery-limited
+- Apple's reverb is highly optimized for their hardware
+- Users can choose Ultra/Balanced for web-matching sound
+- Lite provides battery-conscious alternative for long listening sessions
+
+### FDN Preset Config
+The internal `FDNPresetConfig` enum (renamed from `ReverbPreset`) stores FDN-specific parameters:
+```swift
+enum FDNPresetConfig {
+    case plate, hall, cathedral, darkHall, ambient
+    // Returns: (decay, damping, diffusion, size, modDepth)
+}
+```
+
+This is separate from `ReverbType` which is the public UI-facing enum that includes both cross-platform presets and iOS-only Apple factory presets.

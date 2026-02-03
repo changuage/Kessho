@@ -161,8 +161,8 @@ class ReverbProcessor {
     private var width: Float = 0.8
     private var damping: Float = 0.5
     
-    // Preset definitions matching web app
-    enum ReverbPreset {
+    // FDN preset configurations (internal - not to be confused with public ReverbType enum)
+    enum FDNPresetConfig {
         case plate, hall, cathedral, darkHall, ambient
         
         var params: (decay: Float, damping: Float, diffusion: Float, size: Float, modDepth: Float) {
@@ -262,7 +262,7 @@ class ReverbProcessor {
     }
     
     /// Apply a reverb preset
-    func applyPreset(_ preset: ReverbPreset) {
+    func applyPreset(_ preset: FDNPresetConfig) {
         let p = preset.params
         self.baseDecay = p.decay  // Store preset's decay as baseDecay
         self.damping = p.damping

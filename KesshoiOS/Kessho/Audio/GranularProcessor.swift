@@ -48,10 +48,8 @@ class GranularProcessor {
     private var density: Float = 0.5          // 0-1, grains per second
     private var grainSizeMin: Float = 0.05    // seconds
     private var grainSizeMax: Float = 0.2     // seconds
-    private var pitchVariation: Float = 0.1   // semitones variation (legacy)
-    private var positionSpread: Float = 0.5   // how much to vary playback position
     
-    // New granular params matching web app
+    // Granular params matching web app
     private var probability: Float = 0.8      // 0-1, chance of triggering each grain
     private var stereoSpread: Float = 0.6     // 0-1, stereo width
     private var pitchSpread: Float = 3.0      // semitones, pitch variation range
@@ -69,6 +67,7 @@ class GranularProcessor {
     // Sample buffer
     private var sampleBuffer: [Float] = []
     private var sampleRate: Float = 44100
+    private var invSampleRate: Float = 1.0 / 44100  // Pre-computed to avoid division per sample
     
     // Feedback buffer for grain recycling
     private var feedbackBuffer: [Float] = []
@@ -104,10 +103,17 @@ class GranularProcessor {
         var panL: Float          // Left channel gain
         var panR: Float          // Right channel gain
         var usesFeedback: Bool   // Whether to read from feedback buffer
+        var active: Bool         // Whether this grain slot is in use (for pool-based allocation)
     }
     
     init() {
         feedbackBuffer = [Float](repeating: 0, count: feedbackBufferSize)
+        
+        // Pre-allocate grain pool (matching web app pattern - avoids allocation on audio thread)
+        grains = (0..<128).map { _ in
+            Grain(position: 0, startPosition: 0, length: 0, elapsed: 0, pitch: 1.0,
+                  amplitude: 0, panL: 0.5, panR: 0.5, usesFeedback: false, active: false)
+        }
         
         node = AVAudioSourceNode { [weak self] _, _, frameCount, audioBufferList -> OSStatus in
             guard let self = self else { return noErr }
@@ -171,9 +177,17 @@ class GranularProcessor {
         let sprayOffset = Int(sprayRand * spray * Float(baseSamplesPerGrain) * 0.5)
         let adjustedSamplesPerGrain = max(100, samplesPerGrain + sprayOffset)
         
+        // Count active grains (using pointer access to avoid struct copying)
+        var activeCount = 0
+        grains.withUnsafeBufferPointer { buffer in
+            for i in 0..<buffer.count {
+                if buffer[i].active { activeCount += 1 }
+            }
+        }
+        
         // Check if we should spawn a new grain (with probability check using seeded random)
         samplesSinceLastGrain += 1
-        if samplesSinceLastGrain >= adjustedSamplesPerGrain && grains.count < maxGrains {
+        if samplesSinceLastGrain >= adjustedSamplesPerGrain && activeCount < maxGrains {
             // Probability gate - only spawn if random check passes
             if nextRandom() <= probability {
                 spawnGrain()
@@ -184,45 +198,45 @@ class GranularProcessor {
         var left: Float = 0
         var right: Float = 0
         
-        // Process active grains
-        var i = 0
-        while i < grains.count {
-            var grain = grains[i]
-            
-            // Get sample from appropriate buffer
-            let sample: Float
-            if grain.usesFeedback {
-                sample = getSampleFromFeedback(position: grain.position, pitch: grain.pitch)
-            } else {
-                sample = getSampleAt(position: grain.position, pitch: grain.pitch)
-            }
-            
-            // Apply jitter - micro pitch variations during grain (using seeded random)
-            let jitterRand = nextRandom() * 2 - 1  // Convert 0-1 to -1...1
-            let jitterAmount = jitterRand * jitter * 0.01
-            let jitteredSample = sample * (1 + jitterAmount)
-            
-            // Apply envelope using Hann window lookup table (matching web app)
-            let t = Float(grain.elapsed) / Float(grain.length)
-            let hannIndex = Int(t * Float(HANN_TABLE_SIZE - 1)).clamped(to: 0...(HANN_TABLE_SIZE - 1))
-            let env = hannTable[hannIndex]
-            
-            let output = jitteredSample * env * grain.amplitude
-            
-            // Apply stereo spread using pre-computed pan gains
-            left += output * grain.panL
-            right += output * grain.panR
-            
-            // Advance grain
-            grain.position += Int(grain.pitch)
-            grain.elapsed += 1
-            grains[i] = grain
-            
-            // Remove finished grains
-            if grain.elapsed >= grain.length {
-                grains.remove(at: i)
-            } else {
-                i += 1
+        // Process active grains (pool-based with direct pointer access to avoid struct copying)
+        grains.withUnsafeMutableBufferPointer { buffer in
+            for i in 0..<buffer.count {
+                guard buffer[i].active else { continue }
+                
+                // Apply jitter as position offset (matching web app)
+                // Jitter is in ms, convert to samples and apply as offset
+                let jitterSamples = Int(jitter * sampleRate / 1000.0)
+                let jitterRand = nextRandom() * 2 - 1  // Convert 0-1 to -1...1
+                let jitterOffset = Int(jitterRand * Float(jitterSamples))
+                let jitteredPosition = buffer[i].position + jitterOffset
+                
+                // Get sample from appropriate buffer with jittered position
+                let sample: Float
+                if buffer[i].usesFeedback {
+                    sample = getSampleFromFeedback(position: jitteredPosition, pitch: buffer[i].pitch)
+                } else {
+                    sample = getSampleAt(position: jitteredPosition, pitch: buffer[i].pitch)
+                }
+                
+                // Apply envelope using Hann window lookup table (matching web app)
+                let t = Float(buffer[i].elapsed) / Float(buffer[i].length)
+                let hannIndex = Int(t * Float(HANN_TABLE_SIZE - 1)).clamped(to: 0...(HANN_TABLE_SIZE - 1))
+                let env = hannTable[hannIndex]
+                
+                let output = sample * env * buffer[i].amplitude
+                
+                // Apply stereo spread using pre-computed pan gains
+                left += output * buffer[i].panL
+                right += output * buffer[i].panR
+                
+                // Advance grain
+                buffer[i].position += Int(buffer[i].pitch)
+                buffer[i].elapsed += 1
+                
+                // Deactivate finished grains (no array removal - just mark inactive)
+                if buffer[i].elapsed >= buffer[i].length {
+                    buffer[i].active = false
+                }
             }
         }
         
@@ -230,9 +244,10 @@ class GranularProcessor {
         let filteredL = applyWetFiltersL(left)
         let filteredR = applyWetFiltersR(right)
         
-        // Write to feedback buffer (mono sum for feedback is OK)
+        // Write to feedback buffer with tanh saturation (matching web app)
+        // Web uses: Math.tanh(wet * feedback)
         let feedbackMono = (filteredL + filteredR) * 0.5
-        feedbackBuffer[feedbackWriteIndex] = feedbackMono * feedback
+        feedbackBuffer[feedbackWriteIndex] = tanh(feedbackMono * feedback)
         feedbackWriteIndex = (feedbackWriteIndex + 1) % feedbackBufferSize
         
         return (filteredL * 0.3, filteredR * 0.3)
@@ -271,6 +286,11 @@ class GranularProcessor {
     }
     
     private func spawnGrain() {
+        // Find an inactive grain slot (pool-based allocation)
+        guard let slotIndex = grains.firstIndex(where: { !$0.active }) else {
+            return  // No free slots
+        }
+        
         // Grain size using seeded random
         let sizeRange = grainSizeMax - grainSizeMin
         let grainLength = Int((grainSizeMin + nextRandom() * sizeRange) * sampleRate)
@@ -282,9 +302,12 @@ class GranularProcessor {
         // Pitch based on mode using pitchSpread in semitones
         let pitch: Float
         if pitchMode == 1 {
-            // Harmonic mode - use semitone intervals (matching web app)
-            let intervalIndex = Int(nextRandom() * Float(harmonicIntervals.count))
-            let interval = harmonicIntervals[min(intervalIndex, harmonicIntervals.count - 1)]
+            // Harmonic mode - limit intervals by pitchSpread (matching web app)
+            // Web: maxIntervalIndex = Math.floor((pitchSpread / 12) * HARMONIC_INTERVALS.length)
+            let maxIntervalIndex = max(1, Int((pitchSpread / 12.0) * Float(harmonicIntervals.count)))
+            let availableCount = min(maxIntervalIndex, harmonicIntervals.count)
+            let intervalIndex = Int(nextRandom() * Float(availableCount))
+            let interval = harmonicIntervals[min(intervalIndex, availableCount - 1)]
             pitch = pow(2, interval / 12)  // Convert semitones to frequency ratio
         } else {
             // Random mode - use pitchSpread parameter (semitones)
@@ -305,7 +328,8 @@ class GranularProcessor {
         // Amplitude using seeded random
         let amplitude = 0.3 + nextRandom() * 0.5  // 0.3 to 0.8
         
-        let grain = Grain(
+        // Activate grain in pre-allocated slot (no allocation)
+        grains[slotIndex] = Grain(
             position: usesFeedback ? feedbackWriteIndex : startPos,
             startPosition: usesFeedback ? feedbackWriteIndex : startPos,
             length: grainLength,
@@ -314,10 +338,9 @@ class GranularProcessor {
             amplitude: amplitude,
             panL: panL,
             panR: panR,
-            usesFeedback: usesFeedback
+            usesFeedback: usesFeedback,
+            active: true
         )
-        
-        grains.append(grain)
     }
     
     private func getSampleAt(position: Int, pitch: Float) -> Float {
@@ -347,19 +370,17 @@ class GranularProcessor {
         self.grainSizeMax = Swift.max(min, max)
     }
     
-    func setPitchVariation(_ semitones: Float) {
-        self.pitchVariation = semitones
-    }
-    
-    func setPositionSpread(_ spread: Float) {
-        self.positionSpread = spread
-    }
-    
     func setMaxGrains(_ count: Int) {
         maxGrains = max(0, min(128, count))
-        // Trim active grains if needed
-        while grains.count > maxGrains {
-            grains.removeLast()
+        // Deactivate excess grains if needed (pool-based - no array mutation)
+        var activeCount = 0
+        for i in 0..<grains.count {
+            if grains[i].active {
+                activeCount += 1
+                if activeCount > maxGrains {
+                    grains[i].active = false
+                }
+            }
         }
     }
     
@@ -407,6 +428,7 @@ class GranularProcessor {
     func loadSample(_ samples: [Float], sampleRate: Float) {
         self.sampleBuffer = samples
         self.sampleRate = sampleRate
+        self.invSampleRate = 1.0 / sampleRate
     }
     
     /// Clear feedback buffer

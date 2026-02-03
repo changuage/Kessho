@@ -1,5 +1,30 @@
 import AVFoundation
 
+// Pre-computed sine lookup table for fast FM synthesis
+private let SINE_TABLE_SIZE = 2048
+private var sineTable: [Float] = {
+    var table = [Float](repeating: 0, count: SINE_TABLE_SIZE)
+    for i in 0..<SINE_TABLE_SIZE {
+        table[i] = sin(Float(i) / Float(SINE_TABLE_SIZE) * 2 * .pi)
+    }
+    return table
+}()
+
+/// Fast sine approximation using lookup table with linear interpolation
+@inline(__always)
+private func fastSin(_ phase: Float) -> Float {
+    // phase is 0-1, wrap to positive
+    var p = phase
+    if p < 0 { p += 1 }
+    if p >= 1 { p -= 1 }
+    let scaledPhase = p * Float(SINE_TABLE_SIZE)
+    let index = Int(scaledPhase)
+    let frac = scaledPhase - Float(index)
+    let i0 = index & (SINE_TABLE_SIZE - 1)
+    let i1 = (index + 1) & (SINE_TABLE_SIZE - 1)
+    return sineTable[i0] + frac * (sineTable[i1] - sineTable[i0])
+}
+
 /// Lead melody synthesizer - monophonic with FM synthesis (Rhodes→Gamelan morph), glide, and stereo ping-pong delay
 /// Matches web app: timbre 0 = soft Rhodes, timbre 1 = metallic gamelan
 class LeadSynth {
@@ -20,7 +45,6 @@ class LeadSynth {
     
     // Envelope
     private var envelope: Float = 0
-    private var envelope2: Float = 0  // Second carrier envelope
     private var envelopeStage: EnvelopeStage = .off
     private var attack: Float = 0.1
     private var decay: Float = 0.3
@@ -64,11 +88,8 @@ class LeadSynth {
     private var delayMixMax: Float = 0.45
     private let maxDelayTime: Float = 2.0    // 2 seconds max (matches web app)
     
-    // Octave
-    private var octaveShift: Int = 0
-    private var octaveRange: Int = 2
-    
     private let sampleRate: Float = 44100
+    private let invSampleRate: Float = 1.0 / 44100  // Pre-computed to avoid division per sample
     
     enum EnvelopeStage {
         case off, attack, decay, sustain, release
@@ -112,10 +133,10 @@ class LeadSynth {
         // Glide toward target frequency
         frequency += (targetFrequency - frequency) * (1 - glideRate)
         
-        // Apply vibrato
-        vibratoPhase += vibratoRate / sampleRate
+        // Apply vibrato (use standard sin for vibrato - only 1 call per sample)
+        vibratoPhase += vibratoRate * invSampleRate
         if vibratoPhase > 1 { vibratoPhase -= 1 }
-        let vibrato = sin(vibratoPhase * 2 * .pi) * vibratoDepth
+        let vibrato = fastSin(vibratoPhase) * vibratoDepth
         let modulatedFreq = frequency * pow(2, vibrato / 12)
         
         let timbre = currentTimbre
@@ -134,15 +155,15 @@ class LeadSynth {
         let modIndex3 = timbre > 0.5 ? modulatedFreq * (timbre - 0.5) * 0.4 : 0
         let modIndex4 = timbre > 0.4 ? modulatedFreq * (timbre - 0.4) * 0.25 : 0
         
-        // === MODULATORS ===
-        let mod1 = sin(mod1Phase * 2 * .pi) * modIndex1 / modulatedFreq
-        let mod2 = sin(mod2Phase * 2 * .pi) * modIndex2 / modulatedFreq
-        let mod3 = sin(mod3Phase * 2 * .pi) * modIndex3 / modulatedFreq
-        let mod4 = sin(mod4Phase * 2 * .pi) * modIndex4 / modulatedFreq
+        // === MODULATORS (using fast sine lookup) ===
+        let mod1 = fastSin(mod1Phase) * modIndex1 / modulatedFreq
+        let mod2 = fastSin(mod2Phase) * modIndex2 / modulatedFreq
+        let mod3 = fastSin(mod3Phase) * modIndex3 / modulatedFreq
+        let mod4 = fastSin(mod4Phase) * modIndex4 / modulatedFreq
         
-        // === CARRIER 1 (main tone) ===
+        // === CARRIER 1 (main tone - using fast sine) ===
         let fmAmount = mod1 + mod2 + mod3 + mod4
-        var carrier1 = sin(carrier1Phase * 2 * .pi + fmAmount)
+        var carrier1 = fastSin(carrier1Phase + fmAmount / (2 * .pi))
         
         // === CARRIER 2 (gamelan shimmer - only when timbre > 0.1) ===
         var carrier2: Float = 0
@@ -150,13 +171,13 @@ class LeadSynth {
             // Slight detuning for beating effect
             let beatDetune = timbre * 2.0 / 1200.0  // cents to ratio
             let carrier2Freq = modulatedFreq * pow(2, beatDetune)
-            carrier2 = sin(carrier2Phase * 2 * .pi + fmAmount) * timbre * 0.5
-            carrier2Phase += carrier2Freq / sampleRate
+            carrier2 = fastSin(carrier2Phase + fmAmount / (2 * .pi)) * timbre * 0.5
+            carrier2Phase += carrier2Freq * invSampleRate
             if carrier2Phase >= 1 { carrier2Phase -= 1 }
         }
         
-        // Update modulator phases
-        let phaseInc = modulatedFreq / sampleRate
+        // Update modulator phases (using pre-computed inverse for efficiency)
+        let phaseInc = modulatedFreq * invSampleRate
         carrier1Phase += phaseInc
         mod1Phase += phaseInc * fmRatio1
         mod2Phase += phaseInc * fmRatio2
@@ -316,11 +337,6 @@ class LeadSynth {
         self.sustain = sustain
         self.hold = hold
         self.release = release
-    }
-    
-    func setOctave(shift: Int, range: Int) {
-        self.octaveShift = shift
-        self.octaveRange = range
     }
     
     /// Randomize timbre within range for each note (deterministic with seeded RNG)

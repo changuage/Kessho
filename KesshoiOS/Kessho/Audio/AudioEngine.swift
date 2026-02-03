@@ -48,6 +48,7 @@ class AudioEngine {
     // Granular input tap for live synth processing
     private var granularInputBuffer: AVAudioPCMBuffer?
     private var granularInputWriteIndex: Int = 0
+    private var granularSampleBuffer: [Float] = []  // Pre-allocated buffer for audio thread
     
     // MARK: - State
     private var isRunning = false
@@ -60,6 +61,12 @@ class AudioEngine {
     // Scheduling
     private var phraseTimer: Timer?
     private var noteTimer: Timer?
+    
+    // Dedicated queue for audio scheduling (avoids main thread jitter)
+    private let audioSchedulingQueue = DispatchQueue(label: "com.kessho.audioScheduling", qos: .userInteractive)
+    private var phraseTimerSource: DispatchSourceTimer?
+    private var noteTimerSource: DispatchSourceTimer?
+    private var filterModTimerSource: DispatchSourceTimer?
     
     // Filter modulation - random walk (matching web app)
     private var filterModValue: Double = 0.5  // 0-1, current position
@@ -190,6 +197,9 @@ class AudioEngine {
         granularInputBuffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: bufferSize)
         granularInputBuffer?.frameLength = bufferSize
         
+        // Pre-allocate sample buffer to avoid allocation on audio thread
+        granularSampleBuffer = [Float](repeating: 0, count: Int(bufferSize))
+        
         // Install tap to capture synth output
         synthMixer.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, time in
             self?.processGranularInput(buffer: buffer)
@@ -215,11 +225,11 @@ class AudioEngine {
         // Periodically update granular processor with new audio
         // Only update when we've accumulated enough samples
         if granularInputWriteIndex % 4410 == 0 {  // Every ~100ms
-            var samples = [Float](repeating: 0, count: bufferCapacity)
-            for i in 0..<bufferCapacity {
-                samples[i] = outputData[i]
+            // Copy to pre-allocated buffer (avoids allocation on audio thread)
+            for i in 0..<min(bufferCapacity, granularSampleBuffer.count) {
+                granularSampleBuffer[i] = outputData[i]
             }
-            granular.loadSample(samples, sampleRate: Float(inputBuffer.format.sampleRate))
+            granular.loadSample(granularSampleBuffer, sampleRate: Float(inputBuffer.format.sampleRate))
         }
     }
     
@@ -262,12 +272,21 @@ class AudioEngine {
     func stop() {
         guard isRunning else { return }
         
+        // Cancel old Timer-based timers (if any)
         phraseTimer?.invalidate()
         noteTimer?.invalidate()
         euclideanTimer?.invalidate()
         phraseTimer = nil
         noteTimer = nil
         euclideanTimer = nil
+        
+        // Cancel DispatchSource timers
+        phraseTimerSource?.cancel()
+        noteTimerSource?.cancel()
+        filterModTimerSource?.cancel()
+        phraseTimerSource = nil
+        noteTimerSource = nil
+        filterModTimerSource = nil
         
         // Cancel all pre-scheduled notes
         for item in scheduledEuclideanNotes {
@@ -476,10 +495,8 @@ class AudioEngine {
             rateMin: Float(2 + currentParams.leadVibratoRateMin * 6),  // 2-8 Hz
             rateMax: Float(2 + currentParams.leadVibratoRateMax * 6)
         )
-        leadSynth?.setOctave(
-            shift: currentParams.leadOctave,
-            range: currentParams.leadOctaveRange
-        )
+        // Note: leadOctave/leadOctaveRange are used directly in scheduleLeadMelodyPhrase()
+        // to calculate note range, not passed to the synth
         
         // Update Euclidean sequencer
         updateEuclideanSequencer()
@@ -572,17 +589,22 @@ class AudioEngine {
     // MARK: - Scheduling
     
     private func startPhraseScheduler() {
-        // Schedule at phrase boundaries
+        // Schedule at phrase boundaries using dedicated queue (avoids main thread jitter)
         let timeUntilNext = getTimeUntilNextPhrase()
         
-        phraseTimer = Timer.scheduledTimer(withTimeInterval: timeUntilNext, repeats: false) { [weak self] _ in
-            self?.onPhraseBoundary()
+        phraseTimerSource?.cancel()
+        phraseTimerSource = DispatchSource.makeTimerSource(queue: audioSchedulingQueue)
+        
+        // Initial one-shot to align with phrase boundary, then repeating
+        phraseTimerSource?.schedule(deadline: .now() + timeUntilNext)
+        phraseTimerSource?.setEventHandler { [weak self] in
+            guard let self = self, self.isRunning else { return }
+            self.onPhraseBoundary()
             
-            // Start repeating timer
-            self?.phraseTimer = Timer.scheduledTimer(withTimeInterval: PHRASE_LENGTH, repeats: true) { [weak self] _ in
-                self?.onPhraseBoundary()
-            }
+            // Switch to repeating timer after initial alignment
+            self.phraseTimerSource?.schedule(deadline: .now() + PHRASE_LENGTH, repeating: PHRASE_LENGTH)
         }
+        phraseTimerSource?.resume()
     }
     
     private func onPhraseBoundary() {
@@ -633,10 +655,15 @@ class AudioEngine {
     }
     
     private func startNoteScheduler() {
-        // Schedule note events at regular intervals
-        noteTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
-            self?.onNoteEvent()
+        // Schedule note events at regular intervals using dedicated queue
+        noteTimerSource?.cancel()
+        noteTimerSource = DispatchSource.makeTimerSource(queue: audioSchedulingQueue)
+        noteTimerSource?.schedule(deadline: .now(), repeating: 0.5)
+        noteTimerSource?.setEventHandler { [weak self] in
+            guard let self = self, self.isRunning else { return }
+            self.onNoteEvent()
         }
+        noteTimerSource?.resume()
     }
     
     private func onNoteEvent() {
@@ -870,20 +897,16 @@ class AudioEngine {
         }
     }
     
-    /// Legacy tick method - no longer used for timing, kept for reference
-    private func onEuclideanTick() {
-        // Replaced by scheduleEuclideanPhrase() for precise pre-scheduling
-    }
-    
     private func startFilterModulation() {
-        // Filter modulation runs at 100ms intervals (matching web app)
-        Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] timer in
-            guard let self = self, self.isRunning else {
-                timer.invalidate()
-                return
-            }
+        // Filter modulation runs at 100ms intervals using dedicated queue
+        filterModTimerSource?.cancel()
+        filterModTimerSource = DispatchSource.makeTimerSource(queue: audioSchedulingQueue)
+        filterModTimerSource?.schedule(deadline: .now(), repeating: 0.1)
+        filterModTimerSource?.setEventHandler { [weak self] in
+            guard let self = self, self.isRunning else { return }
             self.updateFilterModulation()
         }
+        filterModTimerSource?.resume()
     }
     
     /// Random walk filter modulation (matching web app exactly)
