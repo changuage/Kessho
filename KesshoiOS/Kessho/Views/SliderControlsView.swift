@@ -1116,7 +1116,8 @@ struct SliderControlsView: View {
                 
                 // MARK: - DRUMS TAB
                 if activeTab == .drums {
-                // MARK: - Drum Synth Section
+                
+                // MARK: - Drum Synth Master Section
                 CollapsibleSection(title: "Drum Synth", icon: "metronome", expanded: $expandedSections) {
                     Toggle("Enabled", isOn: $appState.state.drumEnabled)
                         .foregroundColor(.white)
@@ -1134,199 +1135,411 @@ struct SliderControlsView: View {
                         range: 0...1,
                         icon: "waveform.path"
                     )
-                    
-                    Divider().background(Color.white.opacity(0.2))
-                    
-                    // Sub Voice
-                    Text("Sub (Deep Pulse)")
-                        .font(.subheadline)
-                        .foregroundColor(.cyan.opacity(0.8))
-                    
-                    ParameterSlider(
-                        label: "Frequency",
-                        value: $appState.state.drumSubFreq,
-                        range: 30...100,
-                        unit: "Hz",
-                        icon: "waveform"
-                    )
-                    
-                    ParameterSlider(
-                        label: "Decay",
-                        value: $appState.state.drumSubDecay,
-                        range: 20...500,
-                        unit: "ms",
-                        icon: "arrow.down.right"
-                    )
-                    
-                    ParameterSlider(
-                        label: "Level",
-                        value: $appState.state.drumSubLevel,
-                        range: 0...1,
-                        icon: "speaker.wave.2"
-                    )
-                    
-                    Divider().background(Color.white.opacity(0.2))
-                    
-                    // Kick Voice
-                    Text("Kick")
-                        .font(.subheadline)
-                        .foregroundColor(.cyan.opacity(0.8))
-                    
-                    ParameterSlider(
-                        label: "Frequency",
-                        value: $appState.state.drumKickFreq,
-                        range: 40...150,
-                        unit: "Hz",
-                        icon: "waveform"
-                    )
-                    
-                    ParameterSlider(
-                        label: "Pitch Sweep",
-                        value: $appState.state.drumKickPitchEnv,
-                        range: 0...48,
-                        unit: "st",
-                        icon: "arrow.up.right"
-                    )
-                    
-                    ParameterSlider(
-                        label: "Decay",
-                        value: $appState.state.drumKickDecay,
-                        range: 30...500,
-                        unit: "ms",
-                        icon: "arrow.down.right"
-                    )
-                    
-                    ParameterSlider(
-                        label: "Level",
-                        value: $appState.state.drumKickLevel,
-                        range: 0...1,
-                        icon: "speaker.wave.2"
-                    )
-                    
-                    Divider().background(Color.white.opacity(0.2))
-                    
-                    // Click Voice
-                    Text("Click (Data Sound)")
-                        .font(.subheadline)
-                        .foregroundColor(.cyan.opacity(0.8))
-                    
-                    ParameterSlider(
-                        label: "Decay",
-                        value: $appState.state.drumClickDecay,
-                        range: 1...80,
-                        unit: "ms",
-                        icon: "arrow.down.right"
-                    )
-                    
-                    ParameterSlider(
-                        label: "Filter",
-                        value: $appState.state.drumClickFilter,
-                        range: 500...15000,
-                        unit: "Hz",
-                        icon: "line.diagonal"
-                    )
-                    
-                    ParameterSlider(
-                        label: "Level",
-                        value: $appState.state.drumClickLevel,
-                        range: 0...1,
-                        icon: "speaker.wave.2"
-                    )
-                    
-                    Divider().background(Color.white.opacity(0.2))
-                    
-                    // Beep Hi Voice
-                    Text("Beep Hi")
-                        .font(.subheadline)
-                        .foregroundColor(.cyan.opacity(0.8))
-                    
-                    ParameterSlider(
-                        label: "Frequency",
-                        value: $appState.state.drumBeepHiFreq,
-                        range: 2000...12000,
-                        unit: "Hz",
-                        icon: "waveform"
-                    )
-                    
-                    ParameterSlider(
-                        label: "Decay",
-                        value: $appState.state.drumBeepHiDecay,
-                        range: 10...500,
-                        unit: "ms",
-                        icon: "arrow.down.right"
-                    )
-                    
-                    ParameterSlider(
-                        label: "Level",
-                        value: $appState.state.drumBeepHiLevel,
-                        range: 0...1,
-                        icon: "speaker.wave.2"
-                    )
-                    
-                    Divider().background(Color.white.opacity(0.2))
-                    
-                    // Beep Lo Voice
-                    Text("Beep Lo")
-                        .font(.subheadline)
-                        .foregroundColor(.cyan.opacity(0.8))
-                    
-                    ParameterSlider(
-                        label: "Frequency",
-                        value: $appState.state.drumBeepLoFreq,
-                        range: 150...2000,
-                        unit: "Hz",
-                        icon: "waveform"
-                    )
-                    
-                    ParameterSlider(
-                        label: "Decay",
-                        value: $appState.state.drumBeepLoDecay,
-                        range: 10...500,
-                        unit: "ms",
-                        icon: "arrow.down.right"
-                    )
-                    
-                    ParameterSlider(
-                        label: "Level",
-                        value: $appState.state.drumBeepLoLevel,
-                        range: 0...1,
-                        icon: "speaker.wave.2"
-                    )
-                    
-                    Divider().background(Color.white.opacity(0.2))
-                    
-                    // Noise Voice
-                    Text("Noise (Hi-Hat)")
-                        .font(.subheadline)
-                        .foregroundColor(.cyan.opacity(0.8))
-                    
-                    ParameterSlider(
-                        label: "Filter Freq",
-                        value: $appState.state.drumNoiseFilterFreq,
-                        range: 500...15000,
-                        unit: "Hz",
-                        icon: "line.diagonal"
-                    )
-                    
-                    ParameterSlider(
-                        label: "Decay",
-                        value: $appState.state.drumNoiseDecay,
-                        range: 5...300,
-                        unit: "ms",
-                        icon: "arrow.down.right"
-                    )
-                    
-                    ParameterSlider(
-                        label: "Level",
-                        value: $appState.state.drumNoiseLevel,
-                        range: 0...1,
-                        icon: "speaker.wave.2"
-                    )
                 }
                 
-                // MARK: - Drum Random Mode Section
-                CollapsibleSection(title: "Drum Random", icon: "dice", expanded: $expandedSections) {
-                    Toggle("Enabled", isOn: $appState.state.drumRandomEnabled)
+                // MARK: - Sub Voice Section
+                CollapsibleSection(
+                    title: "Sub (Deep Pulse)",
+                    icon: "waveform.path.badge.minus",
+                    titleColor: .red,
+                    expanded: $expandedSections,
+                    content: {
+                        ParameterSlider(
+                            label: "Frequency",
+                            value: $appState.state.drumSubFreq,
+                            range: 30...100,
+                            unit: "Hz",
+                            icon: "waveform"
+                        )
+                        
+                        ParameterSlider(
+                            label: "Decay",
+                            value: $appState.state.drumSubDecay,
+                            range: 20...500,
+                            unit: "ms",
+                            icon: "arrow.down.right"
+                        )
+                        
+                        ParameterSlider(
+                            label: "Level",
+                            value: $appState.state.drumSubLevel,
+                            range: 0...1,
+                            icon: "speaker.wave.2"
+                        )
+                        
+                        ParameterSlider(
+                            label: "Harmonics",
+                            value: $appState.state.drumSubTone,
+                            range: 0...1,
+                            icon: "waveform.circle"
+                        )
+                    },
+                    headerAction: {
+                        Button(action: {
+                            appState.audioEngine.triggerDrumVoice(.sub, velocity: 0.8)
+                        }) {
+                            Text("◉")
+                                .font(.system(size: 18))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 2)
+                                .background(Color.red.opacity(0.2))
+                                .foregroundColor(.red)
+                                .cornerRadius(4)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .stroke(Color.red, lineWidth: 1)
+                                )
+                        }
+                    }
+                )
+                
+                // MARK: - Kick Voice Section
+                CollapsibleSection(
+                    title: "Kick (Punch)",
+                    icon: "circle.fill",
+                    titleColor: .orange,
+                    expanded: $expandedSections,
+                    content: {
+                        ParameterSlider(
+                            label: "Frequency",
+                            value: $appState.state.drumKickFreq,
+                            range: 40...150,
+                            unit: "Hz",
+                            icon: "waveform"
+                        )
+                        
+                        ParameterSlider(
+                            label: "Pitch Sweep",
+                            value: $appState.state.drumKickPitchEnv,
+                            range: 0...48,
+                            unit: "st",
+                            icon: "arrow.up.right"
+                        )
+                        
+                        ParameterSlider(
+                            label: "Pitch Decay",
+                            value: $appState.state.drumKickPitchDecay,
+                            range: 5...100,
+                            unit: "ms",
+                            icon: "arrow.down.right"
+                        )
+                        
+                        ParameterSlider(
+                            label: "Amp Decay",
+                            value: $appState.state.drumKickDecay,
+                            range: 30...500,
+                            unit: "ms",
+                            icon: "arrow.down.right"
+                        )
+                        
+                        ParameterSlider(
+                            label: "Level",
+                            value: $appState.state.drumKickLevel,
+                            range: 0...1,
+                            icon: "speaker.wave.2"
+                        )
+                        
+                        ParameterSlider(
+                            label: "Click Transient",
+                            value: $appState.state.drumKickClick,
+                            range: 0...1,
+                            icon: "hand.tap"
+                        )
+                    },
+                    headerAction: {
+                        Button(action: {
+                            appState.audioEngine.triggerDrumVoice(.kick, velocity: 0.8)
+                        }) {
+                            Text("●")
+                                .font(.system(size: 18))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 2)
+                                .background(Color.orange.opacity(0.2))
+                                .foregroundColor(.orange)
+                                .cornerRadius(4)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .stroke(Color.orange, lineWidth: 1)
+                                )
+                        }
+                    }
+                )
+                
+                // MARK: - Click Voice Section
+                CollapsibleSection(
+                    title: "Click (Data)",
+                    icon: "hand.tap",
+                    titleColor: .yellow,
+                    expanded: $expandedSections,
+                    content: {
+                        ParameterSlider(
+                            label: "Decay",
+                            value: $appState.state.drumClickDecay,
+                            range: 1...80,
+                            unit: "ms",
+                            icon: "arrow.down.right"
+                        )
+                        
+                        ParameterSlider(
+                            label: "HP Filter",
+                            value: $appState.state.drumClickFilter,
+                            range: 500...15000,
+                            unit: "Hz",
+                            icon: "line.diagonal"
+                        )
+                        
+                        ParameterSlider(
+                            label: "Tone (Impulse/Noise)",
+                            value: $appState.state.drumClickTone,
+                            range: 0...1,
+                            icon: "waveform.circle"
+                        )
+                        
+                        ParameterSlider(
+                            label: "Resonance",
+                            value: $appState.state.drumClickResonance,
+                            range: 0...1,
+                            icon: "waveform"
+                        )
+                        
+                        ParameterSlider(
+                            label: "Level",
+                            value: $appState.state.drumClickLevel,
+                            range: 0...1,
+                            icon: "speaker.wave.2"
+                        )
+                    },
+                    headerAction: {
+                        Button(action: {
+                            appState.audioEngine.triggerDrumVoice(.click, velocity: 0.8)
+                        }) {
+                            Text("▪")
+                                .font(.system(size: 18))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 2)
+                                .background(Color.yellow.opacity(0.2))
+                                .foregroundColor(.yellow)
+                                .cornerRadius(4)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .stroke(Color.yellow, lineWidth: 1)
+                                )
+                        }
+                    }
+                )
+                
+                // MARK: - Beep Hi Voice Section
+                CollapsibleSection(
+                    title: "Beep Hi (Ping)",
+                    icon: "bell",
+                    titleColor: .green,
+                    expanded: $expandedSections,
+                    content: {
+                        ParameterSlider(
+                            label: "Frequency",
+                            value: $appState.state.drumBeepHiFreq,
+                            range: 2000...12000,
+                            unit: "Hz",
+                            icon: "waveform"
+                        )
+                        
+                        ParameterSlider(
+                            label: "Attack",
+                            value: $appState.state.drumBeepHiAttack,
+                            range: 0...20,
+                            unit: "ms",
+                            icon: "arrow.up.right"
+                        )
+                        
+                        ParameterSlider(
+                            label: "Decay",
+                            value: $appState.state.drumBeepHiDecay,
+                            range: 10...500,
+                            unit: "ms",
+                            icon: "arrow.down.right"
+                        )
+                        
+                        ParameterSlider(
+                            label: "FM Tone",
+                            value: $appState.state.drumBeepHiTone,
+                            range: 0...1,
+                            icon: "waveform.circle"
+                        )
+                        
+                        ParameterSlider(
+                            label: "Level",
+                            value: $appState.state.drumBeepHiLevel,
+                            range: 0...1,
+                            icon: "speaker.wave.2"
+                        )
+                    },
+                    headerAction: {
+                        Button(action: {
+                            appState.audioEngine.triggerDrumVoice(.beepHi, velocity: 0.8)
+                        }) {
+                            Text("△")
+                                .font(.system(size: 18))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 2)
+                                .background(Color.green.opacity(0.2))
+                                .foregroundColor(.green)
+                                .cornerRadius(4)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .stroke(Color.green, lineWidth: 1)
+                                )
+                        }
+                    }
+                )
+                
+                // MARK: - Beep Lo Voice Section
+                CollapsibleSection(
+                    title: "Beep Lo (Blip)",
+                    icon: "bell.fill",
+                    titleColor: .cyan,
+                    expanded: $expandedSections,
+                    content: {
+                        ParameterSlider(
+                            label: "Frequency",
+                            value: $appState.state.drumBeepLoFreq,
+                            range: 150...2000,
+                            unit: "Hz",
+                            icon: "waveform"
+                        )
+                        
+                        ParameterSlider(
+                            label: "Attack",
+                            value: $appState.state.drumBeepLoAttack,
+                            range: 0...30,
+                            unit: "ms",
+                            icon: "arrow.up.right"
+                        )
+                        
+                        ParameterSlider(
+                            label: "Decay",
+                            value: $appState.state.drumBeepLoDecay,
+                            range: 10...500,
+                            unit: "ms",
+                            icon: "arrow.down.right"
+                        )
+                        
+                        ParameterSlider(
+                            label: "Tone (Sine/Square)",
+                            value: $appState.state.drumBeepLoTone,
+                            range: 0...1,
+                            icon: "waveform.circle"
+                        )
+                        
+                        ParameterSlider(
+                            label: "Level",
+                            value: $appState.state.drumBeepLoLevel,
+                            range: 0...1,
+                            icon: "speaker.wave.2"
+                        )
+                    },
+                    headerAction: {
+                        Button(action: {
+                            appState.audioEngine.triggerDrumVoice(.beepLo, velocity: 0.8)
+                        }) {
+                            Text("▽")
+                                .font(.system(size: 18))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 2)
+                                .background(Color.cyan.opacity(0.2))
+                                .foregroundColor(.cyan)
+                                .cornerRadius(4)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .stroke(Color.cyan, lineWidth: 1)
+                                )
+                        }
+                    }
+                )
+                
+                // MARK: - Noise Voice Section
+                CollapsibleSection(
+                    title: "Noise (Hi-Hat)",
+                    icon: "waveform.circle",
+                    titleColor: .purple,
+                    expanded: $expandedSections,
+                    content: {
+                        HStack {
+                            Image(systemName: "line.diagonal")
+                                .foregroundColor(.white.opacity(0.5))
+                                .frame(width: 20)
+                            Text("Filter Type")
+                                .foregroundColor(.white.opacity(0.8))
+                            Spacer()
+                            Picker("Filter", selection: $appState.state.drumNoiseFilterType) {
+                                Text("LP").tag("lowpass")
+                                Text("BP").tag("bandpass")
+                                Text("HP").tag("highpass")
+                            }
+                            .pickerStyle(.segmented)
+                            .frame(width: 150)
+                        }
+                        
+                        ParameterSlider(
+                            label: "Filter Freq",
+                            value: $appState.state.drumNoiseFilterFreq,
+                            range: 500...15000,
+                            unit: "Hz",
+                            icon: "line.diagonal"
+                        )
+                        
+                        ParameterSlider(
+                            label: "Filter Q",
+                            value: $appState.state.drumNoiseFilterQ,
+                            range: 0.5...15,
+                            icon: "waveform"
+                        )
+                        
+                        ParameterSlider(
+                            label: "Attack",
+                            value: $appState.state.drumNoiseAttack,
+                            range: 0...10,
+                            unit: "ms",
+                            icon: "arrow.up.right"
+                        )
+                        
+                        ParameterSlider(
+                            label: "Decay",
+                            value: $appState.state.drumNoiseDecay,
+                            range: 5...300,
+                            unit: "ms",
+                            icon: "arrow.down.right"
+                        )
+                        
+                        ParameterSlider(
+                            label: "Level",
+                            value: $appState.state.drumNoiseLevel,
+                            range: 0...1,
+                            icon: "speaker.wave.2"
+                        )
+                    },
+                    headerAction: {
+                        Button(action: {
+                            appState.audioEngine.triggerDrumVoice(.noise, velocity: 0.8)
+                        }) {
+                            Text("≋")
+                                .font(.system(size: 18))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 2)
+                                .background(Color.purple.opacity(0.2))
+                                .foregroundColor(.purple)
+                                .cornerRadius(4)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .stroke(Color.purple, lineWidth: 1)
+                                )
+                        }
+                    }
+                )
+                
+                // MARK: - Sequencer Section (Random + Euclidean Basic Controls)
+                CollapsibleSection(title: "Sequencer", icon: "metronome.fill", expanded: $expandedSections) {
+                    // Random triggers
+                    Toggle("Random Triggers", isOn: $appState.state.drumRandomEnabled)
                         .foregroundColor(.white)
                     
                     ParameterSlider(
@@ -1393,11 +1606,11 @@ struct SliderControlsView: View {
                         range: 0...1,
                         icon: "waveform.circle"
                     )
-                }
-                
-                // MARK: - Drum Euclidean Section
-                CollapsibleSection(title: "Drum Euclidean", icon: "circle.dotted", expanded: $expandedSections) {
-                    Toggle("Enabled", isOn: $appState.state.drumEuclidMasterEnabled)
+                    
+                    Divider().background(Color.white.opacity(0.2))
+                    
+                    // Euclidean Basic Controls
+                    Toggle("Euclidean Mode", isOn: $appState.state.drumEuclidMasterEnabled)
                         .foregroundColor(.white)
                     
                     ParameterSlider(
@@ -1439,10 +1652,10 @@ struct SliderControlsView: View {
                         .pickerStyle(.segmented)
                         .frame(width: 200)
                     }
-                    
-                    Divider().background(Color.white.opacity(0.2))
-                    
-                    // Lane 1
+                }
+                
+                // MARK: - Euclidean Lane 1 Section
+                CollapsibleSection(title: "Euclidean Lane 1", icon: "circle.dotted", titleColor: .red, expanded: $expandedSections) {
                     DrumEuclidLaneView(
                         laneNumber: 1,
                         enabled: $appState.state.drumEuclid1Enabled,
@@ -1460,10 +1673,10 @@ struct SliderControlsView: View {
                         velocityMin: $appState.state.drumEuclid1VelocityMin,
                         velocityMax: $appState.state.drumEuclid1VelocityMax
                     )
-                    
-                    Divider().background(Color.white.opacity(0.2))
-                    
-                    // Lane 2
+                }
+                
+                // MARK: - Euclidean Lane 2 Section
+                CollapsibleSection(title: "Euclidean Lane 2", icon: "circle.dotted", titleColor: .orange, expanded: $expandedSections) {
                     DrumEuclidLaneView(
                         laneNumber: 2,
                         enabled: $appState.state.drumEuclid2Enabled,
@@ -1481,10 +1694,10 @@ struct SliderControlsView: View {
                         velocityMin: $appState.state.drumEuclid2VelocityMin,
                         velocityMax: $appState.state.drumEuclid2VelocityMax
                     )
-                    
-                    Divider().background(Color.white.opacity(0.2))
-                    
-                    // Lane 3
+                }
+                
+                // MARK: - Euclidean Lane 3 Section
+                CollapsibleSection(title: "Euclidean Lane 3", icon: "circle.dotted", titleColor: .green, expanded: $expandedSections) {
                     DrumEuclidLaneView(
                         laneNumber: 3,
                         enabled: $appState.state.drumEuclid3Enabled,
@@ -1502,10 +1715,10 @@ struct SliderControlsView: View {
                         velocityMin: $appState.state.drumEuclid3VelocityMin,
                         velocityMax: $appState.state.drumEuclid3VelocityMax
                     )
-                    
-                    Divider().background(Color.white.opacity(0.2))
-                    
-                    // Lane 4
+                }
+                
+                // MARK: - Euclidean Lane 4 Section
+                CollapsibleSection(title: "Euclidean Lane 4", icon: "circle.dotted", titleColor: .purple, expanded: $expandedSections) {
                     DrumEuclidLaneView(
                         laneNumber: 4,
                         enabled: $appState.state.drumEuclid4Enabled,
@@ -1524,6 +1737,7 @@ struct SliderControlsView: View {
                         velocityMax: $appState.state.drumEuclid4VelocityMax
                     )
                 }
+                
                 } // End Drums Tab
                 
                 // MARK: - GLOBAL TAB (continued)
@@ -1610,11 +1824,22 @@ struct SliderControlsView: View {
 }
 
 // MARK: - Collapsible Section
-struct CollapsibleSection<Content: View>: View {
+struct CollapsibleSection<Content: View, HeaderAction: View>: View {
     let title: String
     let icon: String
+    var titleColor: Color = .white
     @Binding var expanded: Set<String>
     @ViewBuilder let content: Content
+    var headerAction: (() -> HeaderAction)?
+    
+    init(title: String, icon: String, titleColor: Color = .white, expanded: Binding<Set<String>>, @ViewBuilder content: () -> Content, headerAction: (() -> HeaderAction)? = nil) {
+        self.title = title
+        self.icon = icon
+        self.titleColor = titleColor
+        self._expanded = expanded
+        self.content = content()
+        self.headerAction = headerAction
+    }
     
     var isExpanded: Bool {
         expanded.contains(title)
@@ -1623,33 +1848,40 @@ struct CollapsibleSection<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Header
-            Button(action: {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    if isExpanded {
-                        expanded.remove(title)
-                    } else {
-                        expanded.insert(title)
+            HStack {
+                Button(action: {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        if isExpanded {
+                            expanded.remove(title)
+                        } else {
+                            expanded.insert(title)
+                        }
+                    }
+                }) {
+                    HStack {
+                        Image(systemName: icon)
+                            .foregroundColor(titleColor == .white ? .cyan : titleColor)
+                            .frame(width: 24)
+                        
+                        Text(title)
+                            .font(.headline)
+                            .foregroundColor(titleColor)
+                        
+                        Spacer()
                     }
                 }
-            }) {
-                HStack {
-                    Image(systemName: icon)
-                        .foregroundColor(.cyan)
-                        .frame(width: 24)
-                    
-                    Text(title)
-                        .font(.headline)
-                        .foregroundColor(.white)
-                    
-                    Spacer()
-                    
-                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                        .foregroundColor(.white.opacity(0.5))
+                
+                if let action = headerAction {
+                    action()
                 }
-                .padding()
-                .background(Color.white.opacity(0.08))
-                .cornerRadius(isExpanded ? 12 : 12, corners: isExpanded ? [.topLeft, .topRight] : .allCorners)
+                
+                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                    .foregroundColor(.white.opacity(0.5))
+                    .padding(.trailing, 4)
             }
+            .padding()
+            .background(Color.white.opacity(0.08))
+            .cornerRadius(isExpanded ? 12 : 12, corners: isExpanded ? [.topLeft, .topRight] : .allCorners)
             
             // Content
             if isExpanded {
@@ -1661,6 +1893,13 @@ struct CollapsibleSection<Content: View>: View {
                 .cornerRadius(12, corners: [.bottomLeft, .bottomRight])
             }
         }
+    }
+}
+
+// Convenience init for sections without header action
+extension CollapsibleSection where HeaderAction == EmptyView {
+    init(title: String, icon: String, titleColor: Color = .white, expanded: Binding<Set<String>>, @ViewBuilder content: () -> Content) {
+        self.init(title: title, icon: icon, titleColor: titleColor, expanded: expanded, content: content, headerAction: nil)
     }
 }
 

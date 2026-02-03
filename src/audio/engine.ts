@@ -223,6 +223,46 @@ export class AudioEngine {
     this.notifyStateChange();
   }
 
+  // Trigger a drum voice manually for sound design testing
+  // Works even when global play is off
+  async triggerDrumVoice(voice: DrumVoiceType, velocity: number = 0.8, externalState?: SliderState): Promise<void> {
+    // Create AudioContext if needed
+    if (!this.ctx) {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      this.ctx = new AudioContextClass();
+    }
+    
+    // Resume context if suspended (iOS requirement)
+    if (this.ctx.state === 'suspended') {
+      await this.ctx.resume();
+    }
+    
+    // Use external state if internal is not available
+    const stateToUse = this.sliderState ?? externalState;
+    if (!stateToUse) {
+      console.warn('No slider state available for drum trigger');
+      return;
+    }
+    
+    // If we have an existing drumSynth, update its params and use it
+    if (this.drumSynth) {
+      if (externalState) {
+        this.drumSynth.updateParams(externalState);
+      }
+      this.drumSynth.triggerVoice(voice, velocity);
+      return;
+    }
+    
+    // Create a temporary drum synth for testing
+    const tempGain = this.ctx.createGain();
+    tempGain.gain.value = 1.0; // Ensure full volume
+    tempGain.connect(this.ctx.destination);
+    const tempReverb = this.ctx.createGain(); // Dummy reverb node (not connected)
+    
+    const tempDrumSynth = new DrumSynth(this.ctx, tempGain, tempReverb, stateToUse, () => Math.random());
+    tempDrumSynth.triggerVoice(voice, velocity);
+  }
+
   // Play a silent buffer to unlock iOS audio context
   private unlockAudioContext(): void {
     if (!this.ctx) return;

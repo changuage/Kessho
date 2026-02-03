@@ -370,6 +370,24 @@ class AudioEngine {
         notifyStateChange()
     }
     
+    /// Trigger a drum voice manually for sound design testing
+    func triggerDrumVoice(_ type: DrumVoiceType, velocity: Float = 0.8) {
+        // Ensure engine is initialized even if not running
+        if drumSynth == nil {
+            // Try to start the engine briefly to create drum synth
+            do {
+                if !engine.isRunning {
+                    try engine.start()
+                }
+                createDrumSynth()
+            } catch {
+                print("Failed to start engine for drum test: \(error)")
+                return
+            }
+        }
+        drumSynth?.triggerVoice(type, velocity: velocity)
+    }
+    
     // MARK: - Internal Methods
     
     private func updateBucket() {

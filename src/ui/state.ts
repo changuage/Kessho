@@ -963,6 +963,45 @@ const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> = {
   leadLevel: { min: 0, max: 1, step: 0.01 },
   drumLevel: { min: 0, max: 1, step: 0.01 },
   drumReverbSend: { min: 0, max: 1, step: 0.01 },
+  // Drum Synth Voice Parameters
+  // Voice 1: Sub
+  drumSubFreq: { min: 30, max: 100, step: 1 },
+  drumSubDecay: { min: 20, max: 500, step: 5 },
+  drumSubLevel: { min: 0, max: 1, step: 0.01 },
+  drumSubTone: { min: 0, max: 1, step: 0.01 },
+  // Voice 2: Kick
+  drumKickFreq: { min: 40, max: 150, step: 1 },
+  drumKickPitchEnv: { min: 0, max: 48, step: 1 },
+  drumKickPitchDecay: { min: 5, max: 100, step: 1 },
+  drumKickDecay: { min: 30, max: 500, step: 5 },
+  drumKickLevel: { min: 0, max: 1, step: 0.01 },
+  drumKickClick: { min: 0, max: 1, step: 0.01 },
+  // Voice 3: Click
+  drumClickDecay: { min: 1, max: 80, step: 1 },
+  drumClickFilter: { min: 500, max: 15000, step: 100 },
+  drumClickTone: { min: 0, max: 1, step: 0.01 },
+  drumClickLevel: { min: 0, max: 1, step: 0.01 },
+  drumClickResonance: { min: 0, max: 1, step: 0.01 },
+  // Voice 4: Beep Hi
+  drumBeepHiFreq: { min: 2000, max: 12000, step: 100 },
+  drumBeepHiAttack: { min: 0, max: 20, step: 0.5 },
+  drumBeepHiDecay: { min: 10, max: 500, step: 5 },
+  drumBeepHiLevel: { min: 0, max: 1, step: 0.01 },
+  drumBeepHiTone: { min: 0, max: 1, step: 0.01 },
+  // Voice 5: Beep Lo
+  drumBeepLoFreq: { min: 150, max: 2000, step: 10 },
+  drumBeepLoAttack: { min: 0, max: 30, step: 0.5 },
+  drumBeepLoDecay: { min: 10, max: 500, step: 5 },
+  drumBeepLoLevel: { min: 0, max: 1, step: 0.01 },
+  drumBeepLoTone: { min: 0, max: 1, step: 0.01 },
+  // Voice 6: Noise
+  drumNoiseFilterFreq: { min: 500, max: 15000, step: 100 },
+  drumNoiseFilterQ: { min: 0.5, max: 15, step: 0.1 },
+  drumNoiseDecay: { min: 5, max: 300, step: 5 },
+  drumNoiseLevel: { min: 0, max: 1, step: 0.01 },
+  drumNoiseAttack: { min: 0, max: 10, step: 0.5 },
+  // Drum Random Trigger
+  drumRandomDensity: { min: 0, max: 1, step: 0.01 },
   leadAttack: { min: 0.001, max: 2, step: 0.001 },
   leadDecay: { min: 0.01, max: 4, step: 0.01 },
   leadSustain: { min: 0, max: 1, step: 0.01 },
