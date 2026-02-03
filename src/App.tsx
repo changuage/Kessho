@@ -6310,7 +6310,6 @@ const App: React.FC = () => {
                 const probability = state[probabilityKey] as number;
                 const velocityMin = state[velocityMinKey] as number;
                 const velocityMax = state[velocityMaxKey] as number;
-                const _level = state[levelKey] as number;
                 
                 // Check if velocity is in dual mode (min !== max)
                 const isVelocityDual = velocityMin !== velocityMax;
