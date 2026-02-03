@@ -6284,7 +6284,6 @@ const App: React.FC = () => {
                 const probabilityKey = `drumEuclid${laneNum}Probability` as keyof typeof state;
                 const velocityMinKey = `drumEuclid${laneNum}VelocityMin` as keyof typeof state;
                 const velocityMaxKey = `drumEuclid${laneNum}VelocityMax` as keyof typeof state;
-                const levelKey = `drumEuclid${laneNum}Level` as keyof typeof state;
                 
                 const isEnabled = state[enabledKey] as boolean;
                 const preset = state[presetKey] as string;
