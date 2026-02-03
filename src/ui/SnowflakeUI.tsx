@@ -26,8 +26,11 @@ interface SnowflakeUIProps {
 }
 
 // Macro slider configuration
+// 6 prongs starting from top, going clockwise: Reverb, Synth, Granular, Lead, Drum, Wave
+// Length = level, Width/complexity = reverb send (except Reverb which has no send)
 interface MacroSlider {
-  key: keyof SliderState;
+  key: keyof SliderState;           // Level parameter (controls prong length)
+  reverbSendKey?: keyof SliderState; // Reverb send parameter (controls prong width/complexity)
   label: string;
   min: number;
   max: number;
@@ -35,13 +38,12 @@ interface MacroSlider {
 }
 
 const MACRO_SLIDERS: MacroSlider[] = [
-  { key: 'reverbLevel', label: 'Reverb', min: 0, max: 2, color: '#5A7B8A' },          // Slate blue
-  { key: 'synthLevel', label: 'Synth', min: 0, max: 1, color: '#C4724E' },            // Muted orange
-  { key: 'granularLevel', label: 'Granular', min: 0, max: 4, color: '#7B9A6D' },      // Sage green
-  { key: 'leadLevel', label: 'Lead', min: 0, max: 1, color: '#D4A520' },              // Mustard gold
-  { key: 'drumLevel', label: 'Drum', min: 0, max: 1, color: '#8B5CF6' },              // Purple
-  { key: 'synthReverbSend', label: 'Synth Verb', min: 0, max: 1, color: '#C4808A' },  // Dusty rose
-  { key: 'granularReverbSend', label: 'Gran Verb', min: 0, max: 1, color: '#A8C490' },// Light green
+  { key: 'reverbLevel', reverbSendKey: 'reverbDecay', label: 'Reverb', min: 0, max: 2, color: '#E8DCC4' },          // Warm cream - width = decay
+  { key: 'synthLevel', reverbSendKey: 'synthReverbSend', label: 'Synth', min: 0, max: 1, color: '#C4724E' },        // Muted orange
+  { key: 'granularLevel', reverbSendKey: 'granularReverbSend', label: 'Granular', min: 0, max: 4, color: '#7B9A6D' }, // Sage green
+  { key: 'leadLevel', reverbSendKey: 'leadReverbSend', label: 'Lead', min: 0, max: 1, color: '#D4A520' },            // Mustard gold
+  { key: 'drumLevel', reverbSendKey: 'drumReverbSend', label: 'Drum', min: 0, max: 1, color: '#8B5CF6' },            // Purple
+  { key: 'oceanSampleLevel', reverbSendKey: 'oceanFilterCutoff', label: 'Wave', min: 0, max: 1, color: '#5A7B8A' }, // Slate blue - width = filter cutoff
 ];
 
 // Logarithmic scaling: lower values get more slider space
@@ -61,11 +63,31 @@ function sliderPositionToValue(position: number, min: number, max: number): numb
 }
 
 // Get normalized arm values (0-1) from current state - with log scaling for display
-function getArmValues(state: SliderState): number[] {
-  return MACRO_SLIDERS.map(slider => {
+// Returns { lengths, widths } where lengths are based on level and widths on reverb send (or filter cutoff for Wave)
+function getArmValues(state: SliderState): { lengths: number[], widths: number[] } {
+  const lengths = MACRO_SLIDERS.map(slider => {
     const value = state[slider.key] as number;
     return Math.max(0, Math.min(1, valueToSliderPosition(value, slider.min, slider.max)));
   });
+  
+  const widths = MACRO_SLIDERS.map(slider => {
+    if (!slider.reverbSendKey) return 0.3; // No width control, use base width
+    const sendValue = state[slider.reverbSendKey] as number;
+    let normalized: number;
+    // Special case: oceanFilterCutoff is 40-12000 Hz, normalize to 0-1
+    if (slider.reverbSendKey === 'oceanFilterCutoff') {
+      normalized = Math.max(0, Math.min(1, (sendValue - 40) / (12000 - 40)));
+    } else {
+      normalized = Math.max(0, Math.min(1, sendValue)); // 0-1 directly for reverb send/decay
+    }
+    // Apply exponential curve so lower values show more complexity
+    // Drum gets very aggressive curve (0.1): 1% → 63%, 5% → 78%, 10% → 79%
+    // Others use sqrt curve (0.5): 25% → 50%, 50% → 71%
+    const exponent = slider.reverbSendKey === 'drumReverbSend' ? 0.1 : 0.5;
+    return Math.pow(normalized, exponent);
+  });
+  
+  return { lengths, widths };
 }
 
 // Seeded random for consistent branch patterns
@@ -77,31 +99,40 @@ function seededRandom(seed: number) {
 }
 
 // Draw a single arm with recursive branching
+// complexity (0-1) controls prong LENGTH (how far it extends)
+// width (0-1) controls THICKNESS and branch density (reverb send amount)
+// highlightColor (optional) - if provided, branches glow with this color
 function drawArm(
   ctx: CanvasRenderingContext2D,
-  complexity: number,  // 0-1, controls branch depth and density
+  complexity: number,  // 0-1, controls prong length and main structure
+  width: number,       // 0-1, controls line thickness and branch density (reverb send)
   armIndex: number,
   maxLength: number,
-  baseWidth: number
+  baseWidth: number,
+  highlightColor?: string  // Optional highlight color for branches when dragging width
 ) {
   const rng = seededRandom(armIndex * 1000 + 42);
   
-  // Complexity affects everything
-  const maxDepth = Math.floor(1 + complexity * 3);  // 1-4 levels deep
-  const branchProbability = 0.4 + complexity * 0.5; // 40-90% chance of branching
+  // Width affects branch density and line thickness (reduced by ~20% for cleaner look)
+  const widthMultiplier = 0.4 + width * 1.2; // 0.4x to 1.6x thickness
+  const branchDensity = 0.2 + width * 0.6;   // 20-80% branch probability based on width
   
-  // Main stem length scales with complexity
+  // Complexity affects depth and length
+  const maxDepth = Math.floor(1 + complexity * 3);  // 1-4 levels deep
+  const branchProbability = branchDensity;
+  
+  // Main stem length scales with complexity (length)
   const stemLength = maxLength * (0.3 + complexity * 0.7);
   
-  // Number of main shoots along the primary stem (more as complexity increases)
-  const numMainShoots = Math.floor(2 + complexity * 4);  // 2-6 main shoots
+  // Number of main shoots - more with higher width (reduced from 2-6 to 2-5)
+  const numMainShoots = Math.floor(2 + width * 3);  // 2-5 main shoots based on width
   
-  // Draw the main stem first
+  // Draw the main stem first - thickness based on width
   ctx.beginPath();
   ctx.moveTo(0, 0);
   ctx.lineTo(stemLength, 0);
   ctx.strokeStyle = 'rgba(220, 235, 255, 0.95)';
-  ctx.lineWidth = baseWidth;
+  ctx.lineWidth = baseWidth * widthMultiplier;
   ctx.lineCap = 'round';
   ctx.stroke();
   
@@ -111,8 +142,8 @@ function drawArm(
     const t = 0.2 + (i / numMainShoots) * 0.7;
     const shootX = stemLength * t;
     
-    // Shoot length decreases toward the tip
-    const shootLength = stemLength * (0.5 - t * 0.3) * (0.6 + complexity * 0.4);
+    // Shoot length decreases toward the tip, also affected by width
+    const shootLength = stemLength * (0.5 - t * 0.3) * (0.4 + width * 0.6);
     
     // Branch angle - steeper near base, flatter near tip
     const shootAngle = 0.8 - t * 0.3 + rng() * 0.2;  // ~45-30 degrees
@@ -122,14 +153,14 @@ function drawArm(
       shootX, 0,
       shootAngle,
       shootLength,
-      baseWidth * 0.7,
+      baseWidth * 0.7 * widthMultiplier,
       1
     );
   }
   
-  // End crystal
+  // End crystal - size based on width (reduced by 20%)
   ctx.beginPath();
-  ctx.arc(stemLength, 0, baseWidth * 0.6, 0, Math.PI * 2);
+  ctx.arc(stemLength, 0, baseWidth * 0.5 * widthMultiplier, 0, Math.PI * 2);
   ctx.fillStyle = 'rgba(230, 245, 255, 0.9)';
   ctx.fill();
   
@@ -138,7 +169,7 @@ function drawArm(
     y: number, 
     angle: number, 
     length: number, 
-    width: number, 
+    branchWidth: number, 
     depth: number
   ) {
     if (depth > maxDepth || length < 4) return;
@@ -147,18 +178,27 @@ function drawArm(
     const endX = x + Math.cos(angle) * length;
     const endY = y + Math.sin(angle) * length;
     
-    // Draw the branch line
+    // Draw the branch line - use highlight color if provided
     ctx.beginPath();
     ctx.moveTo(x, y);
     ctx.lineTo(endX, endY);
-    ctx.strokeStyle = `rgba(220, 235, 255, ${0.85 - depth * 0.12})`;
-    ctx.lineWidth = Math.max(1, width);
+    if (highlightColor) {
+      // Highlighted: glow with the highlight color
+      ctx.strokeStyle = highlightColor;
+      ctx.shadowColor = highlightColor;
+      ctx.shadowBlur = 8;
+    } else {
+      ctx.strokeStyle = `rgba(220, 235, 255, ${0.85 - depth * 0.12})`;
+      ctx.shadowBlur = 0;
+    }
+    ctx.lineWidth = Math.max(1, branchWidth);
     ctx.lineCap = 'round';
     ctx.stroke();
+    ctx.shadowBlur = 0;  // Reset shadow
     
-    // Add sub-branches based on complexity
+    // Add sub-branches based on width (reverb send controls complexity)
     if (depth < maxDepth) {
-      const numBranches = Math.floor(1 + complexity * 2);  // 1-3 sub-branches
+      const numBranches = Math.floor(1 + branchDensity * 2.5);  // 1-3 sub-branches based on reverb send
       
       for (let i = 0; i < numBranches; i++) {
         if (rng() > branchProbability) continue;
@@ -172,7 +212,7 @@ function drawArm(
         const branchAngle = 0.7 + rng() * 0.5;
         
         const subLength = length * (0.45 + rng() * 0.25);
-        const subWidth = width * 0.65;
+        const subWidth = branchWidth * 0.65;
         
         // Sub-branch (same side as parent, creating feather pattern)
         drawBranch(
@@ -185,20 +225,32 @@ function drawArm(
       }
     }
     
-    // Tiny crystal at branch ends
+    // Tiny crystal at branch ends (reduced by 20%)
     if (depth >= maxDepth - 1 || length < 10) {
       ctx.beginPath();
-      ctx.arc(endX, endY, width * 0.8, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(220, 240, 255, 0.8)';
+      ctx.arc(endX, endY, branchWidth * 0.65, 0, Math.PI * 2);
+      if (highlightColor) {
+        ctx.fillStyle = highlightColor;
+        ctx.shadowColor = highlightColor;
+        ctx.shadowBlur = 6;
+      } else {
+        ctx.fillStyle = 'rgba(220, 240, 255, 0.8)';
+      }
       ctx.fill();
+      ctx.shadowBlur = 0;
     }
   }
 }
 
 const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanced, onTogglePlay, onLoadPreset, presets, isPlaying }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [dragging, setDragging] = useState<number | null>(null);
+  const [dragging, setDragging] = useState<number | null>(null);  // Dragging prong handle (level)
   const [hovering, setHovering] = useState<number | null>(null);
+  const [draggingWidth, setDraggingWidth] = useState<number | null>(null);  // Dragging prong body (reverb send)
+  const [hoveringWidth, setHoveringWidth] = useState<number | null>(null);
+  const dragStartXRef = useRef<number>(0);  // Track start X position for tangential drag
+  const dragStartYRef = useRef<number>(0);  // Track start Y position for tangential drag
+  const dragStartValueRef = useRef<number>(0);  // Track initial reverb send value
   // Special drag states: 'hexagon' for tension, 'ring' for master volume
   const [specialDrag, setSpecialDrag] = useState<'hexagon' | 'ring' | null>(null);
   const [specialHover, setSpecialHover] = useState<'hexagon' | 'ring' | null>(null);
@@ -277,7 +329,7 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
     ctx.fillStyle = '#0a0a12';
     ctx.fillRect(0, 0, canvasSize, canvasSize);
 
-    const armValues = getArmValues(state);
+    const { lengths: armLengths, widths: armWidths } = getArmValues(state);
 
     // Only draw arms if master volume > 0
     if (masterScale > 0.01) {
@@ -286,8 +338,13 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
       ctx.translate(centerX, centerY);
     
     for (let arm = 0; arm < 6; arm++) {
-      const complexity = armValues[arm];
+      const length = armLengths[arm];    // Level controls length
+      const width = armWidths[arm];       // Reverb send controls width/complexity
       const rotation = (arm * Math.PI * 2) / 6 - Math.PI / 2; // Start at top
+      
+      // Highlight branches when width is being dragged (tangential drag)
+      const isWidthActive = draggingWidth === arm || hoveringWidth === arm;
+      const highlightColor = isWidthActive ? MACRO_SLIDERS[arm].color : undefined;
       
       // Draw arm with 2-fold mirror symmetry (across the arm axis)
       for (const mirror of [1, -1]) {
@@ -298,7 +355,7 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
         // Start from edge of center hexagon
         ctx.translate(baseRadius * 0.7, 0);
         
-        drawArm(ctx, complexity, arm, maxArmLength, 3);
+        drawArm(ctx, length, width, arm, maxArmLength, 3, highlightColor);
         
         ctx.restore();
       }
@@ -333,7 +390,7 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
     
     ctx.restore();
 
-  }, [state, isPlaying, centerX, centerY, canvasSize, scaleFactor, baseRadius, maxProngLength, maxArmLength, hexagonScale]);
+  }, [state, isPlaying, centerX, centerY, canvasSize, scaleFactor, baseRadius, maxProngLength, maxArmLength, hexagonScale, draggingWidth, hoveringWidth]);
 
   // Handle pointer events for prong dragging
   const handlePointerDown = useCallback((index: number, e: React.PointerEvent) => {
@@ -373,6 +430,34 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
       return;
     }
     
+    // Handle width drag (reverb send or filter cutoff) - tangential movement
+    if (draggingWidth !== null) {
+      const slider = MACRO_SLIDERS[draggingWidth];
+      if (slider.reverbSendKey) {
+        // Calculate tangential movement (perpendicular to prong direction)
+        const prongAngle = (draggingWidth * 60 - 90) * (Math.PI / 180);
+        // Tangent is perpendicular to the prong direction
+        const tangentX = -Math.sin(prongAngle);
+        const tangentY = Math.cos(prongAngle);
+        // Project movement onto tangent (using both X and Y deltas)
+        const deltaX = x - dragStartXRef.current;
+        const deltaY = y - dragStartYRef.current;
+        const tangentMovement = deltaX * tangentX + deltaY * tangentY;
+        // Scale: ~100 pixels = full range
+        const sensitivity = 100;
+        const normalizedValue = Math.max(0, Math.min(1, dragStartValueRef.current + tangentMovement / sensitivity));
+        
+        // Convert to actual value - special case for oceanFilterCutoff
+        if (slider.reverbSendKey === 'oceanFilterCutoff') {
+          const hzValue = 40 + normalizedValue * (12000 - 40);
+          onChange(slider.reverbSendKey, hzValue);
+        } else {
+          onChange(slider.reverbSendKey, normalizedValue);
+        }
+      }
+      return;
+    }
+    
     if (dragging === null) return;
     
     const slider = MACRO_SLIDERS[dragging];
@@ -384,10 +469,11 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
     const value = sliderPositionToValue(normalizedDistance, slider.min, slider.max);
     
     onChange(slider.key, value);
-  }, [dragging, specialDrag, onChange, centerX, centerY, baseHexRadius, outerRingRadius]);
+  }, [dragging, draggingWidth, specialDrag, onChange, centerX, centerY, baseHexRadius, outerRingRadius]);
 
   const handlePointerUp = useCallback((e: React.PointerEvent) => {
     setDragging(null);
+    setDraggingWidth(null);
     setSpecialDrag(null);
     (e.target as Element).releasePointerCapture(e.pointerId);
   }, []);
@@ -544,23 +630,91 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
             const value = state[slider.key] as number;
             const pos = getProngPosition(index, value);
             const isActive = dragging === index || hovering === index;
+            const isWidthActive = draggingWidth === index || hoveringWidth === index;
+            const hasReverbSend = !!slider.reverbSendKey;
+            const reverbSendValue = hasReverbSend ? (state[slider.reverbSendKey!] as number) : 0;
+            // Normalize for drag calculation - oceanFilterCutoff is 40-12000Hz, others are 0-1
+            const normalizedSendValue = slider.reverbSendKey === 'oceanFilterCutoff' 
+              ? (reverbSendValue - 40) / (12000 - 40)
+              : reverbSendValue;
             
             return (
               <g key={index}>
-                {/* Prong line */}
+                {/* Visible prong line */}
                 <line
                   x1={centerX + Math.cos(pos.angle) * baseHexRadius}
                   y1={centerY + Math.sin(pos.angle) * baseHexRadius}
                   x2={pos.x}
                   y2={pos.y}
-                  stroke={isActive ? slider.color : 'rgba(255,255,255,0.3)'}
-                  strokeWidth={isActive ? 3 : 2}
+                  stroke={isWidthActive ? slider.color : (isActive ? slider.color : 'rgba(255,255,255,0.3)')}
+                  strokeWidth={isWidthActive ? 8 : (isActive ? 3 : 2)}
                   strokeLinecap="round"
                   style={{ 
-                    filter: isActive ? `drop-shadow(0 0 8px ${slider.color})` : 'none',
+                    filter: isWidthActive ? `drop-shadow(0 0 12px ${slider.color})` : (isActive ? `drop-shadow(0 0 8px ${slider.color})` : 'none'),
                     transition: 'all 0.15s ease-out',
+                    pointerEvents: 'none',
                   }}
                 />
+                {/* Wide invisible hit area for reverb send drag (4x wider) */}
+                {hasReverbSend && (
+                  <line
+                    x1={centerX + Math.cos(pos.angle) * baseHexRadius}
+                    y1={centerY + Math.sin(pos.angle) * baseHexRadius}
+                    x2={pos.x}
+                    y2={pos.y}
+                    stroke="transparent"
+                    strokeWidth={32 * scaleFactor}
+                    strokeLinecap="round"
+                    style={{ 
+                      cursor: 'ew-resize',
+                      pointerEvents: 'stroke',
+                    }}
+                    onPointerDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      // Store relative position (matching handlePointerMove calculation)
+                      const rect = (e.currentTarget.closest('svg') as SVGElement)?.getBoundingClientRect();
+                      if (rect) {
+                        dragStartXRef.current = e.clientX - rect.left;
+                        dragStartYRef.current = e.clientY - rect.top;
+                      }
+                      setDraggingWidth(index);
+                      dragStartValueRef.current = normalizedSendValue;
+                      (e.target as Element).setPointerCapture(e.pointerId);
+                    }}
+                    onPointerEnter={() => setHoveringWidth(index)}
+                    onPointerLeave={() => setHoveringWidth(null)}
+                  />
+                )}
+                
+                {/* Width label - shown when hovering or dragging prong body */}
+                {hasReverbSend && (isWidthActive) && (
+                  <g style={{ pointerEvents: 'none' }}>
+                    <rect 
+                      x={pos.x - 40 * scaleFactor} 
+                      y={pos.y + (pos.y > centerY ? -40 : 20) * scaleFactor} 
+                      width={80 * scaleFactor} 
+                      height={22 * scaleFactor} 
+                      rx={4} 
+                      fill="rgba(0,0,0,0.85)" 
+                      stroke={slider.color} 
+                    />
+                    <text 
+                      x={pos.x} 
+                      y={pos.y + (pos.y > centerY ? -25 : 35) * scaleFactor} 
+                      textAnchor="middle" 
+                      fill="white" 
+                      fontSize={10 * scaleFactor} 
+                      fontWeight="bold"
+                    >
+                      {slider.reverbSendKey === 'oceanFilterCutoff' 
+                        ? `Filter: ${Math.round(reverbSendValue / 1000)}kHz`
+                        : slider.reverbSendKey === 'reverbDecay'
+                        ? `Decay: ${Math.round(reverbSendValue * 100)}%`
+                        : `Verb: ${Math.round(reverbSendValue * 100)}%`}
+                    </text>
+                  </g>
+                )}
                 
                 {/* Handle - larger touch target on mobile */}
                 <circle

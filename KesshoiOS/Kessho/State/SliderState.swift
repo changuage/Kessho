@@ -166,7 +166,7 @@ struct SliderState: Codable, Equatable {
     // ─── Ikeda-Style Drum Synth ───
     var drumEnabled: Bool = false
     var drumLevel: Double = 0.7
-    var drumReverbSend: Double = 0.3
+    var drumReverbSend: Double = 0.06
     
     // Voice 1: Sub (deep sine pulse)
     var drumSubFreq: Double = 50

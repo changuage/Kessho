@@ -738,7 +738,7 @@ export const DEFAULT_STATE: SliderState = {
   // ─── Ikeda-Style Drum Synth ───
   drumEnabled: false,
   drumLevel: 0.7,
-  drumReverbSend: 0.3,
+  drumReverbSend: 0.06,
   
   // Voice 1: Sub (deep sine pulse)
   drumSubFreq: 50,

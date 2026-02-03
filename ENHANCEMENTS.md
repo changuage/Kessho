@@ -866,6 +866,85 @@ All major UI differences have been addressed. iOS now matches webapp UI.
 
 ---
 
+## Snowflake UI Enhancement (Simple Mode)
+
+### Overview
+Enhance the Simple UI snowflake with dual-parameter control per prong: length controls level, width/complexity controls a secondary parameter (reverb send, decay, or filter cutoff).
+
+### Implementation Status: Web ✓ | iOS ✓
+
+### 6-Prong Configuration
+
+| Prong | Position | Level Key (Length) | Width Key | Label |
+|-------|----------|-------------------|-----------|-------|
+| 1 | Top (12:00) | reverbLevel | reverbDecay | Reverb / Decay |
+| 2 | 2:00 | synthLevel | synthReverbSend | Synth / Verb |
+| 3 | 4:00 | granularLevel | granularReverbSend | Granular / Verb |
+| 4 | 6:00 | leadLevel | leadReverbSend | Lead / Verb |
+| 5 | 8:00 | drumLevel | drumReverbSend | Drum / Verb |
+| 6 | 10:00 | oceanSampleLevel | oceanFilterCutoff | Wave / Filter |
+
+### Interaction Model
+- **Radial drag on handle** → Controls level (prong length)
+- **Tangential drag on prong body** → Controls width parameter (reverb send/decay/filter)
+- **Wide invisible hit area** (4x prong width) for easier interaction
+
+### Visual Representation
+- **Prong length** = Level value (with log scaling)
+- **Branch complexity** = Width value (reverb send/decay/filter)
+  - Line thickness multiplier: 0.4x-1.6x
+  - Branch density: 20%-80%
+  - Number of main shoots: 2-5
+  - Number of sub-branches: 1-3
+  - End crystal size (scaled down 20%)
+
+### Exponential Width Curves
+Width values use exponential curves so lower percentages show more visual complexity:
+
+| Parameter | Exponent | Effect |
+|-----------|----------|--------|
+| Drum reverb send | 0.1 | 1%→63%, 5%→78%, very aggressive |
+| Others (synth, granular, lead, wave, reverb decay) | 0.5 | 25%→50%, 50%→71%, sqrt curve |
+
+### Color Scheme
+| Prong | Color | Hex |
+|-------|-------|-----|
+| Reverb | Warm cream | #E8DCC4 |
+| Synth | Muted orange | #C4724E |
+| Granular | Sage green | #7B9A6D |
+| Lead | Mustard gold | #D4A520 |
+| Drum | Purple | #8B5CF6 |
+| Wave | Slate blue | #5A7B8A |
+
+### Highlight on Width Drag
+- Branches glow with prong color when width is being dragged
+- Uses `shadowColor` and `shadowBlur` for glow effect
+- End crystals also glow when highlighted
+
+### Labels on Hover/Drag
+| Prong | Label Format |
+|-------|--------------|
+| Reverb | "Decay: XX%" |
+| Synth/Granular/Lead/Drum | "Verb: XX%" |
+| Wave | "Filter: XkHz" |
+
+### Default Values Changed
+- `drumReverbSend`: 0.06 (6%, was 30%)
+
+### iOS Implementation Checklist
+- [x] **SnowflakeView.swift**: Update to 6 prongs with new configuration
+- [x] **Prong colors**: Match web colors (#E8DCC4, #C4724E, etc.)
+- [x] **Width parameter mapping**: Add reverbSendKey equivalent per prong
+- [x] **Tangential drag gesture**: Implement side-to-side drag on prong body
+- [x] **Width hit area**: 4x prong width for easier interaction
+- [x] **Exponential curves**: 0.1 for drum, 0.5 for others
+- [x] **Branch complexity**: Reduce density by 20% (match web)
+- [x] **Labels**: Show appropriate label (Decay/Verb/Filter) on drag
+- [x] **Highlight effect**: Glow branches when width dragging
+- [x] **Default drumReverbSend**: 0.06
+
+---
+
 ### Version History
 
 | Date | Changes |
@@ -877,3 +956,5 @@ All major UI differences have been addressed. iOS now matches webapp UI.
 | 2026-02-03 | iOS implementation learnings checklist added |
 | 2026-02-03 | iOS Euclidean UI parity completed (lane colors, presets, pattern viz) |
 | 2026-02-03 | iOS General UI parity verified complete |
+| 2026-02-03 | Snowflake UI enhancement: 6 prongs with dual-parameter control |
+| 2026-02-03 | iOS Snowflake UI complete: tangential drag, exponential curves, all prong colors |
