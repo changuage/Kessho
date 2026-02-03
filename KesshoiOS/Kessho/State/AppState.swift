@@ -458,6 +458,7 @@ class AppState: ObservableObject {
             // Synth
             result.filterType = b.filterType
             // Reverb
+            result.reverbEnabled = b.reverbEnabled
             result.reverbEngine = b.reverbEngine
             result.reverbType = b.reverbType
             result.reverbQuality = b.reverbQuality

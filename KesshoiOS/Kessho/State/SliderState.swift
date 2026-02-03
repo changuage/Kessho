@@ -56,6 +56,7 @@ struct SliderState: Codable, Equatable {
     var airNoise: Double = 0.15
     
     // Reverb
+    var reverbEnabled: Bool = true
     var reverbEngine: String = "algorithmic"
     var reverbType: String = "cathedral"
     var reverbQuality: String = "balanced"  // ultra, balanced, lite

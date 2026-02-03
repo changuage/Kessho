@@ -1387,22 +1387,24 @@ export class AudioEngine {
 
     // Granular levels (independent: direct level and reverb send)
     // When granularEnabled is false, mute the output
+    // When reverbEnabled is false, mute reverb send to save CPU
     const granularLevel = state.granularEnabled ? state.granularLevel : 0;
-    const granularReverbSend = state.granularEnabled ? state.granularReverbSend : 0;
+    const granularReverbSend = (state.granularEnabled && state.reverbEnabled) ? state.granularReverbSend : 0;
     this.granularDirect?.gain.setTargetAtTime(granularLevel, now, smoothTime);
     this.granularReverbSend?.gain.setTargetAtTime(granularReverbSend, now, smoothTime);
 
     // Synth levels (independent: direct level and reverb send)
     // synthLevel controls direct output to master
     // synthReverbSend controls how much goes to reverb (additive, not crossfade)
+    // When reverbEnabled is false, mute reverb send to save CPU
     this.synthDirect?.gain.setTargetAtTime(state.synthLevel, now, smoothTime);
-    this.synthReverbSend?.gain.setTargetAtTime(state.synthReverbSend, now, smoothTime);
+    this.synthReverbSend?.gain.setTargetAtTime(state.reverbEnabled ? state.synthReverbSend : 0, now, smoothTime);
 
-    // Lead reverb send
-    this.leadReverbSend?.gain.setTargetAtTime(state.leadReverbSend, now, smoothTime);
+    // Lead reverb send (mute if reverb disabled)
+    this.leadReverbSend?.gain.setTargetAtTime(state.reverbEnabled ? state.leadReverbSend : 0, now, smoothTime);
 
-    // Reverb parameters
-    if (this.reverbNode) {
+    // Reverb parameters (only update if enabled to save CPU)
+    if (this.reverbNode && state.reverbEnabled) {
       this.reverbNode.port.postMessage({
         type: 'params',
         params: {
@@ -1419,16 +1421,15 @@ export class AudioEngine {
       });
     }
 
-    // Reverb output level
-    this.reverbOutputGain?.gain.setTargetAtTime(state.reverbLevel, now, smoothTime);
+    // Reverb output level (mute if disabled)
+    this.reverbOutputGain?.gain.setTargetAtTime(state.reverbEnabled ? state.reverbLevel : 0, now, smoothTime);
 
     // Lead synth parameters
     this.leadGain?.gain.setTargetAtTime(state.leadEnabled ? state.leadLevel : 0, now, smoothTime);
     
     // Delay parameters are now per-note (randomized in playLeadNote)
-    // Only update reverb sends here
-    this.leadReverbSend?.gain.setTargetAtTime(state.leadReverbSend, now, smoothTime);
-    this.leadDelayReverbSend?.gain.setTargetAtTime(state.leadDelayReverbSend, now, smoothTime);
+    // Only update reverb sends here (mute if reverb disabled)
+    this.leadDelayReverbSend?.gain.setTargetAtTime(state.reverbEnabled ? state.leadDelayReverbSend : 0, now, smoothTime);
 
     // Check if Euclidean settings changed - if so, reschedule immediately
     const euclideanChanged = this.sliderState && (

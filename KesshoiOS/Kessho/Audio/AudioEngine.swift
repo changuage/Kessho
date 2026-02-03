@@ -376,10 +376,11 @@ class AudioEngine {
         // Lead level
         leadMixer.outputVolume = Float(currentParams.leadEnabled ? currentParams.leadLevel : 0)
         
-        // Reverb sends
-        let synthReverbAmount = Float(currentParams.synthReverbSend * currentParams.reverbLevel)
-        let granularReverbAmount = Float(currentParams.granularReverbSend * currentParams.reverbLevel)
-        let leadReverbAmount = Float(currentParams.leadReverbSend * currentParams.reverbLevel)
+        // Reverb sends (mute if reverbEnabled is false to save CPU)
+        let reverbMultiplier = currentParams.reverbEnabled ? 1.0 : 0.0
+        let synthReverbAmount = Float(currentParams.synthReverbSend * currentParams.reverbLevel * reverbMultiplier)
+        let granularReverbAmount = Float(currentParams.granularReverbSend * currentParams.reverbLevel * reverbMultiplier)
+        let leadReverbAmount = Float(currentParams.leadReverbSend * currentParams.reverbLevel * reverbMultiplier)
         
         // Update reverb quality mode
         if let quality = ReverbQuality(rawValue: currentParams.reverbQuality.capitalized) {

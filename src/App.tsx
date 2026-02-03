@@ -3580,6 +3580,37 @@ const App: React.FC = () => {
           isExpanded={expandedPanels.has('space')}
           onToggle={togglePanel}
         >
+          {/* Reverb Enable toggle */}
+          <div style={styles.sliderGroup}>
+            <div style={styles.sliderLabel}>
+              <span>Reverb</span>
+              <span style={{ 
+                color: state.reverbEnabled ? '#10b981' : '#6b7280',
+                fontWeight: 'bold'
+              }}>
+                {state.reverbEnabled ? 'ON' : 'OFF'}
+              </span>
+            </div>
+            <button
+              onClick={() => handleSelectChange('reverbEnabled', !state.reverbEnabled)}
+              style={{
+                width: '100%',
+                padding: '10px',
+                borderRadius: '6px',
+                border: 'none',
+                cursor: 'pointer',
+                fontWeight: 'bold',
+                background: state.reverbEnabled 
+                  ? 'linear-gradient(135deg, #10b981, #059669)' 
+                  : 'rgba(255, 255, 255, 0.1)',
+                color: state.reverbEnabled ? 'white' : '#9ca3af',
+                transition: 'all 0.2s',
+              }}
+            >
+              {state.reverbEnabled ? '● Active' : '○ Bypassed (saves CPU)'}
+            </button>
+          </div>
+
           <Select
             label="Reverb Engine"
             value={state.reverbEngine}

@@ -147,9 +147,24 @@ interface SliderState {
 
 ---
 
+## Reverb Enable Toggle (CPU Saver)
+
+### Overview
+Add a reverb on/off toggle to save CPU when reverb is not needed. Defaults to ON.
+
+### Implementation (IMPLEMENTED ✓)
+- [x] **State**: Add `reverbEnabled: boolean` to `SliderState` (default: true)
+- [x] **Engine**: Mute all reverb sends when disabled (synth, granular, lead, leadDelay)
+- [x] **Engine**: Skip reverb parameter updates when disabled
+- [x] **UI**: Add toggle button in Space panel with "Active" / "Bypassed (saves CPU)" states
+- [x] **iOS**: Full parity - SliderState, AudioEngine, SliderControlsView, AppState updated
+
+---
+
 ### Version History
 
 | Date | Changes |
 |------|---------|
 | 2026-02-03 | Initial enhancement spec created |
 | 2026-02-03 | Web implementation complete - all features working |
+| 2026-02-03 | Reverb enable toggle added for CPU savings |

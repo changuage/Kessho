@@ -63,6 +63,7 @@ export interface SliderState {
   airNoise: number;           // 0..1 step 0.01
 
   // Space
+  reverbEnabled: boolean;     // on/off toggle for reverb (saves CPU when off)
   reverbEngine: 'algorithmic' | 'convolution';
   reverbType: 'plate' | 'hall' | 'cathedral' | 'darkHall';
   reverbQuality: 'ultra' | 'balanced' | 'lite';  // ultra=8-channel FDN, balanced=8-ch optimized, lite=4-channel FDN
@@ -385,6 +386,7 @@ export const DEFAULT_STATE: SliderState = {
   airNoise: 0.15,
 
   // Space
+  reverbEnabled: true,
   reverbEngine: 'algorithmic',
   reverbType: 'cathedral',
   reverbQuality: 'balanced',  // ultra, balanced, lite

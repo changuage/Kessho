@@ -361,6 +361,33 @@ struct SliderControlsView: View {
                 
                 // MARK: - Reverb Section
                 CollapsibleSection(title: "Reverb", icon: "waveform.path.ecg.rectangle", expanded: $expandedSections) {
+                    // Reverb Enable toggle
+                    HStack {
+                        Image(systemName: appState.state.reverbEnabled ? "power.circle.fill" : "power.circle")
+                            .foregroundColor(appState.state.reverbEnabled ? .green : .gray)
+                            .frame(width: 20)
+                        Text("Reverb")
+                            .foregroundColor(.white.opacity(0.8))
+                        Spacer()
+                        Button(action: {
+                            appState.state.reverbEnabled.toggle()
+                        }) {
+                            Text(appState.state.reverbEnabled ? "● Active" : "○ Bypassed (saves CPU)")
+                                .font(.caption)
+                                .fontWeight(.bold)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(
+                                    appState.state.reverbEnabled
+                                        ? LinearGradient(colors: [.green, .green.opacity(0.7)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                                        : LinearGradient(colors: [.gray.opacity(0.3), .gray.opacity(0.2)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                                )
+                                .foregroundColor(appState.state.reverbEnabled ? .white : .gray)
+                                .cornerRadius(6)
+                        }
+                    }
+                    .padding(.bottom, 8)
+                    
                     // Reverb type picker
                     HStack {
                         Image(systemName: "waveform")
