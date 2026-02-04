@@ -384,19 +384,32 @@ class AppState: ObservableObject {
     // MARK: - Preset Management
     
     func loadPreset(_ preset: SavedPreset) {
-        state = preset.state
-        audioEngine.resetCofDrift()
+        // Check if we should apply preset A values directly:
+        // - Only apply if we're at endpoint 0 (near position 0)
+        // - OR if no preset B is loaded yet (not in morph mode)
+        // At endpoint 1 (position ~100), we should keep the current B values
+        let atEndpoint0 = morphPosition <= 1
+        let shouldApplyPresetA = atEndpoint0 || morphPresetB == nil
+        
+        // Always update the morph slot
         morphPresetA = preset
-        morphPosition = 0
         
-        // Load dual ranges from preset (if any)
-        dualRanges = preset.dualRanges ?? [:]
-        randomWalkValues.removeAll()
-        
-        // Initialize walk values for loaded dual ranges
-        for (key, range) in dualRanges {
-            randomWalkValues[key] = (range.min + range.max) / 2
+        if shouldApplyPresetA {
+            state = preset.state
+            audioEngine.resetCofDrift()
+            morphPosition = 0
+            
+            // Load dual ranges from preset (if any)
+            dualRanges = preset.dualRanges ?? [:]
+            randomWalkValues.removeAll()
+            
+            // Initialize walk values for loaded dual ranges
+            for (key, range) in dualRanges {
+                randomWalkValues[key] = (range.min + range.max) / 2
+            }
         }
+        // If at endpoint B or mid-morph, just update morphPresetA
+        // The setMorphPosition will recalculate if user moves the slider
     }
     
     func saveCurrentAsPreset(name: String) {
