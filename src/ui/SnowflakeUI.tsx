@@ -747,6 +747,84 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
                   onPointerLeave={() => setHovering(null)}
                 />
                 
+                {/* Width crossbar - perpendicular line past the handle for reverb send control */}
+                {hasReverbSend && (() => {
+                  // Position the crossbar just past the handle circle
+                  const crossbarDistance = (isActive ? handleRadiusActive : handleRadius) + 8 * scaleFactor;
+                  const crossbarCenterX = pos.x + Math.cos(pos.angle) * crossbarDistance;
+                  const crossbarCenterY = pos.y + Math.sin(pos.angle) * crossbarDistance;
+                  // Perpendicular direction (90 degrees from prong angle)
+                  const perpX = -Math.sin(pos.angle);
+                  const perpY = Math.cos(pos.angle);
+                  // Crossbar length based on width value (longer = more reverb send)
+                  const baseLength = 20 * scaleFactor;
+                  const maxLength = 40 * scaleFactor;
+                  const crossbarHalfLength = baseLength + normalizedSendValue * (maxLength - baseLength);
+                  
+                  return (
+                    <>
+                      {/* Visible crossbar line */}
+                      <line
+                        x1={crossbarCenterX - perpX * crossbarHalfLength}
+                        y1={crossbarCenterY - perpY * crossbarHalfLength}
+                        x2={crossbarCenterX + perpX * crossbarHalfLength}
+                        y2={crossbarCenterY + perpY * crossbarHalfLength}
+                        stroke={isWidthActive ? slider.color : `${slider.color}99`}
+                        strokeWidth={isWidthActive ? 6 : 4}
+                        strokeLinecap="round"
+                        style={{ 
+                          filter: isWidthActive ? `drop-shadow(0 0 8px ${slider.color})` : 'none',
+                          transition: 'all 0.15s ease-out',
+                          pointerEvents: 'none',
+                        }}
+                      />
+                      {/* Wide invisible hit area for crossbar (easy to tap on mobile) */}
+                      <line
+                        x1={crossbarCenterX - perpX * (crossbarHalfLength + 10 * scaleFactor)}
+                        y1={crossbarCenterY - perpY * (crossbarHalfLength + 10 * scaleFactor)}
+                        x2={crossbarCenterX + perpX * (crossbarHalfLength + 10 * scaleFactor)}
+                        y2={crossbarCenterY + perpY * (crossbarHalfLength + 10 * scaleFactor)}
+                        stroke="transparent"
+                        strokeWidth={28 * scaleFactor}
+                        strokeLinecap="round"
+                        style={{ 
+                          cursor: 'ew-resize',
+                          pointerEvents: 'stroke',
+                        }}
+                        onPointerDown={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          const rect = (e.currentTarget.closest('svg') as SVGElement)?.getBoundingClientRect();
+                          if (rect) {
+                            dragStartXRef.current = e.clientX - rect.left;
+                            dragStartYRef.current = e.clientY - rect.top;
+                          }
+                          setDraggingWidth(index);
+                          dragStartValueRef.current = normalizedSendValue;
+                          (e.target as Element).setPointerCapture(e.pointerId);
+                        }}
+                        onPointerEnter={() => setHoveringWidth(index)}
+                        onPointerLeave={() => setHoveringWidth(null)}
+                      />
+                      {/* End caps for visual clarity */}
+                      <circle
+                        cx={crossbarCenterX - perpX * crossbarHalfLength}
+                        cy={crossbarCenterY - perpY * crossbarHalfLength}
+                        r={3 * scaleFactor}
+                        fill={isWidthActive ? slider.color : `${slider.color}99`}
+                        style={{ pointerEvents: 'none' }}
+                      />
+                      <circle
+                        cx={crossbarCenterX + perpX * crossbarHalfLength}
+                        cy={crossbarCenterY + perpY * crossbarHalfLength}
+                        r={3 * scaleFactor}
+                        fill={isWidthActive ? slider.color : `${slider.color}99`}
+                        style={{ pointerEvents: 'none' }}
+                      />
+                    </>
+                  );
+                })()}
+                
                 {/* Label */}
                 <g style={{ pointerEvents: 'none' }}>
                   <text
