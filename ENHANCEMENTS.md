@@ -6,7 +6,7 @@ This document tracks planned enhancements and their implementation status.
 
 ## Morph Endpoint Behavior Fixes (Feb 2026)
 
-### Implementation Status: Web [x] | iOS [ ]
+### Implementation Status: Web [x] | iOS [partial]
 
 ### Problem
 1. **Main Morph**: When at position 100 (fully at Preset B), changing Preset A would incorrectly update all parameters to Preset A values
@@ -32,8 +32,12 @@ This ensures preset A values only apply when:
 - At endpoint 0 (position ≈ 0)
 - OR no preset B is loaded yet
 
+**iOS**: Same logic applied to `loadPreset()` in AppState.swift.
+
 #### Drum Morph Override Fix
 Created new function `clearDrumMorphEndpointOverrides(voice, endpoint)` that selectively clears only the specified endpoint's overrides, preserving the other endpoint's user edits.
+
+**iOS**: Not yet implemented - iOS drum synth doesn't have the per-voice preset/morph system.
 
 #### Drum Dual Slider Persistence Fix
 Modified the dual slider reset logic to check current morph position:
@@ -46,10 +50,13 @@ const shouldResetDualModes = (isPresetA && !atEndpoint1) || (!isPresetA && !atEn
 
 Dual modes only reset when the changed preset affects the current position.
 
+**iOS**: Not yet implemented - requires drum voice preset system first.
+
 ### Files Changed
 - `src/audio/morphUtils.ts` - New shared morph utilities
 - `src/audio/drumMorph.ts` - Added `clearDrumMorphEndpointOverrides`
 - `src/App.tsx` - Updated preset loading and dual mode reset logic
+- `KesshoiOS/Kessho/State/AppState.swift` - Fixed main morph preset loading
 
 ---
 
