@@ -17,6 +17,7 @@
    - [Space (Reverb)](#space-reverb)
    - [Granular](#granular)
    - [Lead Synth](#lead-synth)
+   - [Drum Synth](#drum-synth)
    - [Ocean Waves](#ocean-waves)
    - [Preset Morph](#preset-morph)
 5. [Scale System Explained](#scale-system-explained)
@@ -75,14 +76,23 @@ Understanding how sound flows through Kessho helps you shape your mix effectivel
 │  LEAD SYNTH  │──→ [Filter] ──┬──→ [Lead Dry]─│         │──┼──→ │         │
 │  (Rhodes/    │               │               │         │  │    │         │
 │   Bell)      │               ├──→ [Lead Rev] │         │  │    │         │
-│              │               │               └─────────┘  │    │         │
-│              │               └──→ [Ping-Pong Delay] ──────┼──→ │         │
-└──────────────┘                        │                   │    │         │
-                                        └──→ [Delay Rev] ───┘    │         │
-┌──────────────┐                                                 │         │
-│ OCEAN WAVES  │──→ [Ocean Filter] ─────────────────────────────→│         │
-│ (Sample +    │                                                 │         │
-│  Synthesis)  │                                                 └─────────┘
+│              │               │               │         │  │    │         │
+│              │               └──→ [Ping-Pong Delay] ───┼──→ │         │
+└──────────────┘                        │                │    │         │
+                                        └──→ [Delay Rev]─┘    │         │
+┌──────────────┐                                               │         │
+│  DRUM SYNTH  │──┬──→ [Voice Levels] ─────────────────────────│         │
+│  (6 voices)  │  │                                            │         │
+│              │  └──→ [Per-Voice Sends] ──→ ┌─────────────┐   │         │
+└──────────────┘                             │ STEREO DELAY│───│         │
+                                             │ (Ping-Pong) │   │         │
+                                             │  L: 1/8d    │   │         │
+                                             │  R: 1/4     │   │         │
+                                             └─────────────┘   │         │
+┌──────────────┐                                               │         │
+│ OCEAN WAVES  │──→ [Ocean Filter] ────────────────────────────│         │
+│ (Sample +    │                                               │         │
+│  Synthesis)  │                                               └─────────┘
 └──────────────┘
 ```
 
@@ -90,9 +100,10 @@ Understanding how sound flows through Kessho helps you shape your mix effectivel
 1. **Pad Synth** → Splits to direct output and reverb send
 2. **Granular** → Processes pad audio, filtered (HPF/LPF), splits to direct and reverb
 3. **Lead Synth** → Through filter, splits to dry, reverb, and ping-pong delay
-4. **Ocean Waves** → Through ocean filter, direct to master
-5. **Reverb** → All reverb sends mix together and output to master
-6. **Master** → All signals sum, through limiter, to speakers
+4. **Drum Synth** → 6 voices with individual levels, per-voice delay sends to stereo ping-pong delay
+5. **Ocean Waves** → Through ocean filter, direct to master
+6. **Reverb** → All reverb sends mix together and output to master
+7. **Master** → All signals sum, through limiter, to speakers
 
 ---
 
@@ -112,6 +123,7 @@ Controls the overall volume balance between sound sources.
 | **Lead Reverb Send** | 0-100% | How much lead synth feeds into reverb |
 | **Lead Delay Reverb Send** | 0-100% | How much lead delay output feeds into reverb |
 | **Reverb Level** | 0-200% | Reverb output level |
+| **Drum Level** | 0-100% | Master level for all drum synth voices |
 
 ---
 
@@ -283,6 +295,142 @@ Enable **Euclidean Mode** for polyrhythmic patterns with up to 4 lanes.
 | **Rotation** | Pattern phase offset |
 | **Note Range** | MIDI note range for this lane |
 | **Level** | Velocity for this lane |
+
+---
+
+### Drum Synth
+
+A generative percussion synthesizer with 6 synthesized voices, Euclidean sequencing, and stereo ping-pong delay.
+
+#### Master Controls
+
+| Control | Options/Range | Description |
+|---------|---------------|-------------|
+| **Drum Enable** | ON/OFF | Toggle the entire drum synth |
+| **Mode** | Off / Euclidean / Random | Sequencing mode |
+| **Master Level** | 0-100% | Overall drum output volume |
+
+#### Euclidean Sequencer
+
+When Mode is set to **Euclidean**, four lanes generate polyrhythmic patterns:
+
+| Control | Range | Description |
+|---------|-------|-------------|
+| **Steps** | 1-16 | Pattern length |
+| **Pulses** | 0-Steps | Hits distributed via Euclidean algorithm |
+| **Rotation** | 0 to Steps-1 | Rotate the pattern |
+| **Voice** | Sub/Kick/Click/BeepHi/BeepLo/Noise | Which drum voice this lane triggers |
+| **Level** | 0-100% | Hit velocity for this lane |
+| **Base BPM** | 40-200 | Tempo for all lanes |
+
+#### Random Mode
+
+In **Random** mode, drums trigger probabilistically:
+
+| Control | Range | Description |
+|---------|-------|-------------|
+| **Density** | 0-100% | Probability of triggering each voice |
+| **Interval** | 50-2000ms | Time between potential triggers |
+
+#### Preset Morph System
+
+Blend between two drum synthesis presets:
+
+| Control | Description |
+|---------|-------------|
+| **Preset A/B** | Select presets for each morph slot |
+| **Morph** | 0-100% crossfade position (0%=A, 100%=B) |
+| **Auto Mode** | OFF, Ping-Pong, Forward | Automatic morphing |
+| **Auto Cycle** | 10-120 sec | Duration of one morph cycle |
+| **Random Range** | 0-100% | Per-trigger random morph deviation |
+
+The morph system interpolates all synthesis parameters between presets A and B. **Random Range** adds per-hit variation—with 50% random range and morph at 30%, each hit's actual morph value varies between approximately 5%-55%.
+
+#### The Six Voices
+
+Each voice has individual **Level** and **Delay Send** controls, plus unique synthesis parameters:
+
+##### Sub
+Deep sine-wave sub-bass hit.
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| **Pitch** | 20-80 Hz | Fundamental frequency |
+| **Decay** | 50-800 ms | Amplitude envelope decay |
+
+##### Kick
+Pitched kick drum with frequency sweep.
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| **Pitch** | 30-120 Hz | Base frequency |
+| **Sweep** | 0-100% | Pitch drop amount |
+| **Decay** | 50-500 ms | Envelope decay time |
+
+##### Click
+High-frequency transient click.
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| **Pitch** | 800-8000 Hz | Click frequency |
+| **Decay** | 1-50 ms | Very short decay |
+
+##### BeepHi
+High-pitched tonal beep.
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| **Pitch** | 400-4000 Hz | Tone frequency |
+| **Decay** | 20-300 ms | Envelope decay |
+
+##### BeepLo
+Lower-pitched tonal beep.
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| **Pitch** | 80-800 Hz | Tone frequency |
+| **Decay** | 20-300 ms | Envelope decay |
+
+##### Noise
+Filtered noise percussion.
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| **Filter** | 200-12000 Hz | Bandpass center frequency |
+| **Decay** | 10-500 ms | Envelope decay |
+| **Tone** | 0-100% | Noise color (dark to bright) |
+
+#### Stereo Ping-Pong Delay
+
+A tempo-synced stereo delay effect with independent left/right timing:
+
+| Control | Options/Range | Description |
+|---------|---------------|-------------|
+| **Delay Enable** | ON/OFF | Toggle the delay effect |
+| **Left Time** | Note division | Delay time for left channel |
+| **Right Time** | Note division | Delay time for right channel |
+| **Feedback** | 0-90% | Delay regeneration |
+| **Mix** | 0-100% | Wet/dry balance |
+| **Filter** | 0-100% | Delay high-cut (darker at lower values) |
+
+##### Note Division Options
+Delay times sync to the Euclidean **Base BPM**:
+
+| Value | Description |
+|-------|-------------|
+| 1/1 | Whole note |
+| 1/2 | Half note |
+| 1/2d | Dotted half note |
+| 1/4 | Quarter note |
+| 1/4d | Dotted quarter note |
+| 1/4t | Quarter note triplet |
+| 1/8 | Eighth note |
+| 1/8d | Dotted eighth note |
+| 1/8t | Eighth note triplet |
+| 1/16 | Sixteenth note |
+| 1/16d | Dotted sixteenth |
+| 1/16t | Sixteenth triplet |
+| 1/32 | Thirty-second note |
+
+##### Per-Voice Delay Sends
+Each of the 6 voices has its own **Delay Send** slider (0-100%). This allows precise control over which percussion elements use the delay effect. For example:
+- Set **Click** delay send high for rhythmic echoes
+- Keep **Sub** delay send low to avoid muddy low-end
+- Use moderate **BeepHi** send for shimmering repeats
 
 ---
 
