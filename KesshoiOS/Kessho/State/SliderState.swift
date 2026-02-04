@@ -168,6 +168,21 @@ struct SliderState: Codable, Equatable {
     var drumLevel: Double = 0.7
     var drumReverbSend: Double = 0.06
     
+    // ─── Drum Stereo Ping-Pong Delay ───
+    var drumDelayEnabled: Bool = false
+    var drumDelayNoteL: String = "1/8d"       // Note division for left: 1/4, 1/8, 1/8d, 1/16, etc.
+    var drumDelayNoteR: String = "1/4"        // Note division for right
+    var drumDelayFeedback: Double = 0.4       // 0..0.95 feedback amount
+    var drumDelayMix: Double = 0.3            // 0..1 wet/dry mix
+    var drumDelayFilter: Double = 0.5         // 0..1 lowpass (0=dark, 1=bright)
+    // Per-voice delay sends
+    var drumSubDelaySend: Double = 0.0
+    var drumKickDelaySend: Double = 0.2
+    var drumClickDelaySend: Double = 0.5
+    var drumBeepHiDelaySend: Double = 0.6
+    var drumBeepLoDelaySend: Double = 0.4
+    var drumNoiseDelaySend: Double = 0.7
+    
     // Voice 1: Sub (deep sine pulse)
     var drumSubFreq: Double = 50
     var drumSubDecay: Double = 150

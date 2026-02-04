@@ -6073,6 +6073,99 @@ const App: React.FC = () => {
             onChange={handleSliderChange}
             {...sliderProps('drumReverbSend')}
           />
+          
+          {/* Delay Effect */}
+          <div style={{ marginTop: '12px', padding: '8px', background: 'rgba(100, 200, 255, 0.1)', borderRadius: '6px', border: '1px solid rgba(100, 200, 255, 0.3)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+              <span style={{ color: '#64c8ff', fontSize: '0.85rem', fontWeight: 'bold' }}>Stereo Delay</span>
+              <button
+                onClick={() => handleSliderChange('drumDelayEnabled', !state.drumDelayEnabled)}
+                style={{
+                  padding: '2px 8px',
+                  fontSize: '0.75rem',
+                  background: state.drumDelayEnabled ? 'rgba(100, 200, 255, 0.3)' : 'transparent',
+                  border: '1px solid #64c8ff',
+                  borderRadius: '4px',
+                  color: state.drumDelayEnabled ? '#fff' : '#64c8ff',
+                  cursor: 'pointer'
+                }}
+              >
+                {state.drumDelayEnabled ? 'ON' : 'OFF'}
+              </button>
+              <span style={{ color: '#888', fontSize: '0.7rem' }}>@ {state.drumEuclidBaseBPM} BPM</span>
+            </div>
+            {state.drumDelayEnabled && (
+              <>
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ fontSize: '0.75rem', color: '#aaa', marginBottom: '4px', display: 'block' }}>Left</label>
+                    <select
+                      value={state.drumDelayNoteL}
+                      onChange={(e) => handleSliderChange('drumDelayNoteL', e.target.value)}
+                      style={{ width: '100%', padding: '6px', background: '#1a1a2e', color: '#fff', border: '1px solid #64c8ff', borderRadius: '4px', fontSize: '0.85rem' }}
+                    >
+                      <option value="1/1">1/1</option>
+                      <option value="1/2">1/2</option>
+                      <option value="1/2d">1/2 dotted</option>
+                      <option value="1/4">1/4</option>
+                      <option value="1/4d">1/4 dotted</option>
+                      <option value="1/4t">1/4 triplet</option>
+                      <option value="1/8">1/8</option>
+                      <option value="1/8d">1/8 dotted</option>
+                      <option value="1/8t">1/8 triplet</option>
+                      <option value="1/16">1/16</option>
+                      <option value="1/16d">1/16 dotted</option>
+                      <option value="1/16t">1/16 triplet</option>
+                      <option value="1/32">1/32</option>
+                    </select>
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ fontSize: '0.75rem', color: '#aaa', marginBottom: '4px', display: 'block' }}>Right</label>
+                    <select
+                      value={state.drumDelayNoteR}
+                      onChange={(e) => handleSliderChange('drumDelayNoteR', e.target.value)}
+                      style={{ width: '100%', padding: '6px', background: '#1a1a2e', color: '#fff', border: '1px solid #64c8ff', borderRadius: '4px', fontSize: '0.85rem' }}
+                    >
+                      <option value="1/1">1/1</option>
+                      <option value="1/2">1/2</option>
+                      <option value="1/2d">1/2 dotted</option>
+                      <option value="1/4">1/4</option>
+                      <option value="1/4d">1/4 dotted</option>
+                      <option value="1/4t">1/4 triplet</option>
+                      <option value="1/8">1/8</option>
+                      <option value="1/8d">1/8 dotted</option>
+                      <option value="1/8t">1/8 triplet</option>
+                      <option value="1/16">1/16</option>
+                      <option value="1/16d">1/16 dotted</option>
+                      <option value="1/16t">1/16 triplet</option>
+                      <option value="1/32">1/32</option>
+                    </select>
+                  </div>
+                </div>
+                <Slider
+                  label="Feedback"
+                  value={state.drumDelayFeedback}
+                  paramKey="drumDelayFeedback"
+                  onChange={handleSliderChange}
+                  {...sliderProps('drumDelayFeedback')}
+                />
+                <Slider
+                  label="Mix"
+                  value={state.drumDelayMix}
+                  paramKey="drumDelayMix"
+                  onChange={handleSliderChange}
+                  {...sliderProps('drumDelayMix')}
+                />
+                <Slider
+                  label="Filter"
+                  value={state.drumDelayFilter}
+                  paramKey="drumDelayFilter"
+                  onChange={handleSliderChange}
+                  {...sliderProps('drumDelayFilter')}
+                />
+              </>
+            )}
+          </div>
         </CollapsiblePanel>
 
         {/* Voice 1: Sub */}
@@ -6187,6 +6280,15 @@ const App: React.FC = () => {
             onChange={handleSliderChange}
             {...sliderProps('drumSubSub')}
           />
+          {state.drumDelayEnabled && (
+            <Slider
+              label="Delay Send"
+              value={state.drumSubDelaySend}
+              paramKey="drumSubDelaySend"
+              onChange={handleSliderChange}
+              {...sliderProps('drumSubDelaySend')}
+            />
+          )}
         </CollapsiblePanel>
 
         {/* Voice 2: Kick */}
@@ -6309,6 +6411,15 @@ const App: React.FC = () => {
             onChange={handleSliderChange}
             {...sliderProps('drumKickTone')}
           />
+          {state.drumDelayEnabled && (
+            <Slider
+              label="Delay Send"
+              value={state.drumKickDelaySend}
+              paramKey="drumKickDelaySend"
+              onChange={handleSliderChange}
+              {...sliderProps('drumKickDelaySend')}
+            />
+          )}
         </CollapsiblePanel>
 
         {/* Voice 3: Click */}
@@ -6447,6 +6558,15 @@ const App: React.FC = () => {
             onChange={handleSliderChange}
             {...sliderProps('drumClickStereoWidth')}
           />
+          {state.drumDelayEnabled && (
+            <Slider
+              label="Delay Send"
+              value={state.drumClickDelaySend}
+              paramKey="drumClickDelaySend"
+              onChange={handleSliderChange}
+              {...sliderProps('drumClickDelaySend')}
+            />
+          )}
         </CollapsiblePanel>
 
         {/* Voice 4: Beep Hi */}
@@ -6570,6 +6690,15 @@ const App: React.FC = () => {
             onChange={handleSliderChange}
             {...sliderProps('drumBeepHiBrightness')}
           />
+          {state.drumDelayEnabled && (
+            <Slider
+              label="Delay Send"
+              value={state.drumBeepHiDelaySend}
+              paramKey="drumBeepHiDelaySend"
+              onChange={handleSliderChange}
+              {...sliderProps('drumBeepHiDelaySend')}
+            />
+          )}
         </CollapsiblePanel>
 
         {/* Voice 5: Beep Lo */}
@@ -6693,6 +6822,15 @@ const App: React.FC = () => {
             onChange={handleSliderChange}
             {...sliderProps('drumBeepLoPluckDamp')}
           />
+          {state.drumDelayEnabled && (
+            <Slider
+              label="Delay Send"
+              value={state.drumBeepLoDelaySend}
+              paramKey="drumBeepLoDelaySend"
+              onChange={handleSliderChange}
+              {...sliderProps('drumBeepLoDelaySend')}
+            />
+          )}
         </CollapsiblePanel>
 
         {/* Voice 6: Noise */}
@@ -6834,6 +6972,15 @@ const App: React.FC = () => {
             onChange={handleSliderChange}
             {...sliderProps('drumNoiseColorLFO')}
           />
+          {state.drumDelayEnabled && (
+            <Slider
+              label="Delay Send"
+              value={state.drumNoiseDelaySend}
+              paramKey="drumNoiseDelaySend"
+              onChange={handleSliderChange}
+              {...sliderProps('drumNoiseDelaySend')}
+            />
+          )}
         </CollapsiblePanel>
 
         {/* Sequencer */}

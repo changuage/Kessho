@@ -297,6 +297,21 @@ export interface SliderState {
   drumNoiseMorphAuto: boolean;
   drumNoiseMorphSpeed: number;
   drumNoiseMorphMode: 'linear' | 'pingpong' | 'random';
+
+  // ─── Drum Stereo Ping-Pong Delay ───
+  drumDelayEnabled: boolean;               // Master delay on/off
+  drumDelayNoteL: string;                  // Note division for left: '1/4', '1/8', '1/8d', '1/16', etc.
+  drumDelayNoteR: string;                  // Note division for right
+  drumDelayFeedback: number;               // 0..0.9 feedback amount
+  drumDelayMix: number;                    // 0..1 wet/dry mix
+  drumDelayFilter: number;                 // 0..1 lowpass (0=dark, 1=bright)
+  // Per-voice delay sends
+  drumSubDelaySend: number;                // 0..1 send amount
+  drumKickDelaySend: number;
+  drumClickDelaySend: number;
+  drumBeepHiDelaySend: number;
+  drumBeepLoDelaySend: number;
+  drumNoiseDelaySend: number;
   
   // Drum Random Trigger Mode (probability-based like lead random)
   drumRandomEnabled: boolean;              // Master random enable
@@ -634,6 +649,18 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'drumNoiseMorphAuto',
   'drumNoiseMorphSpeed',
   'drumNoiseMorphMode',
+  'drumDelayEnabled',
+  'drumDelayNoteL',
+  'drumDelayNoteR',
+  'drumDelayFeedback',
+  'drumDelayMix',
+  'drumDelayFilter',
+  'drumSubDelaySend',
+  'drumKickDelaySend',
+  'drumClickDelaySend',
+  'drumBeepHiDelaySend',
+  'drumBeepLoDelaySend',
+  'drumNoiseDelaySend',
   'drumRandomEnabled',
   'drumRandomDensity',
   'drumRandomSubProb',
@@ -1010,6 +1037,21 @@ export const DEFAULT_STATE: SliderState = {
   drumNoiseMorphSpeed: 4,
   drumNoiseMorphMode: 'pingpong' as const,
 
+  // Drum delay effect
+  drumDelayEnabled: false,
+  drumDelayNoteL: '1/8d' as const,   // Dotted 8th (classic ping-pong)
+  drumDelayNoteR: '1/4' as const,    // Quarter note
+  drumDelayFeedback: 0.4,            // 0-0.95
+  drumDelayMix: 0.3,                 // Wet/dry mix
+  drumDelayFilter: 0.5,              // Low-pass filter cutoff (0=dark, 1=bright)
+  // Per-voice delay sends
+  drumSubDelaySend: 0.0,
+  drumKickDelaySend: 0.2,
+  drumClickDelaySend: 0.5,
+  drumBeepHiDelaySend: 0.6,
+  drumBeepLoDelaySend: 0.4,
+  drumNoiseDelaySend: 0.7,
+
   // Random trigger mode
   drumRandomEnabled: false,
   drumRandomDensity: 0.3,
@@ -1270,6 +1312,17 @@ const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> = {
   drumBeepLoMorphSpeed: { min: 1, max: 32, step: 1 },
   drumNoiseMorph: { min: 0, max: 1, step: 0.01 },
   drumNoiseMorphSpeed: { min: 1, max: 32, step: 1 },
+  // Drum Delay Effect
+  drumDelayFeedback: { min: 0, max: 0.95, step: 0.01 },
+  drumDelayMix: { min: 0, max: 1, step: 0.01 },
+  drumDelayFilter: { min: 0, max: 1, step: 0.01 },
+  // Per-voice delay sends
+  drumSubDelaySend: { min: 0, max: 1, step: 0.01 },
+  drumKickDelaySend: { min: 0, max: 1, step: 0.01 },
+  drumClickDelaySend: { min: 0, max: 1, step: 0.01 },
+  drumBeepHiDelaySend: { min: 0, max: 1, step: 0.01 },
+  drumBeepLoDelaySend: { min: 0, max: 1, step: 0.01 },
+  drumNoiseDelaySend: { min: 0, max: 1, step: 0.01 },
   // Drum Random Trigger
   drumRandomDensity: { min: 0, max: 1, step: 0.01 },
   leadAttack: { min: 0.001, max: 2, step: 0.001 },

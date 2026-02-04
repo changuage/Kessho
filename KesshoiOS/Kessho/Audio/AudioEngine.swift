@@ -40,6 +40,10 @@ class AudioEngine {
     private let leadMixer = AVAudioMixerNode()
     private let oceanMixer = AVAudioMixerNode()
     private let drumMixer = AVAudioMixerNode()
+    private let drumDelaySendMixer = AVAudioMixerNode()  // Delay send from drums
+    private let drumDelayMixer = AVAudioMixerNode()      // Delay wet output
+    private var drumDelayL: AVAudioUnitDelay?            // Left channel delay
+    private var drumDelayR: AVAudioUnitDelay?            // Right channel delay
     private let dryMixer = AVAudioMixerNode()
     private let reverbSend = AVAudioMixerNode()
     private let masterMixer = AVAudioMixerNode()
@@ -140,9 +144,14 @@ class AudioEngine {
         engine.attach(granularMixer)
         engine.attach(leadMixer)
         engine.attach(drumMixer)
+        engine.attach(drumDelaySendMixer)
+        engine.attach(drumDelayMixer)
         engine.attach(dryMixer)
         engine.attach(reverbSend)
         engine.attach(masterMixer)
+        
+        // Setup drum stereo ping-pong delay
+        setupDrumDelay(format: format)
         
         // Connect dry path
         engine.connect(synthMixer, to: dryMixer, format: format)
@@ -150,6 +159,7 @@ class AudioEngine {
         engine.connect(leadMixer, to: dryMixer, format: format)
         engine.connect(oceanMixer, to: dryMixer, format: format)
         engine.connect(drumMixer, to: dryMixer, format: format)
+        engine.connect(drumDelayMixer, to: dryMixer, format: format)  // Delay wet goes to dry path
         
         // Setup reverb
         if let reverb = reverbProcessor {
@@ -296,12 +306,104 @@ class AudioEngine {
         if let drum = drumSynth {
             engine.attach(drum.node)
             engine.connect(drum.node, to: drumMixer, format: format)
+            // Also connect to delay send
+            engine.connect(drum.node, to: drumDelaySendMixer, format: format)
         }
         
         // Set initial parameters
         drumSynth?.updateParams(currentParams)
     }
     
+    // Note division to beat fraction mapping (matching web app)
+    private let noteDivisions: [String: Double] = [
+        "1/1": 4.0,       // Whole note (4 beats)
+        "1/2": 2.0,       // Half note
+        "1/2d": 3.0,      // Dotted half
+        "1/4": 1.0,       // Quarter note
+        "1/4d": 1.5,      // Dotted quarter
+        "1/4t": 2.0/3.0,  // Quarter triplet
+        "1/8": 0.5,       // Eighth note
+        "1/8d": 0.75,     // Dotted eighth
+        "1/8t": 1.0/3.0,  // Eighth triplet
+        "1/16": 0.25,     // Sixteenth
+        "1/16d": 0.375,   // Dotted sixteenth
+        "1/16t": 1.0/6.0, // Sixteenth triplet
+        "1/32": 0.125     // Thirty-second
+    ]
+    
+    /// Convert note division string to time in seconds based on BPM
+    private func noteToSeconds(_ note: String, bpm: Double) -> Double {
+        let beats = noteDivisions[note] ?? 0.5  // Default to 1/8
+        return (60.0 / bpm) * beats
+    }
+    
+    /// Setup stereo ping-pong delay for drum synth
+    private func setupDrumDelay(format: AVAudioFormat) {
+        // Create left and right delays
+        drumDelayL = AVAudioUnitDelay()
+        drumDelayR = AVAudioUnitDelay()
+        
+        guard let delayL = drumDelayL, let delayR = drumDelayR else { return }
+        
+        // Configure delays with initial values
+        let bpm = currentParams.drumEuclidBaseBPM
+        delayL.delayTime = noteToSeconds(currentParams.drumDelayNoteL, bpm: bpm)
+        delayR.delayTime = noteToSeconds(currentParams.drumDelayNoteR, bpm: bpm)
+        delayL.feedback = Float(currentParams.drumDelayFeedback * 50)  // AVAudioUnitDelay uses 0-100 scale
+        delayR.feedback = Float(currentParams.drumDelayFeedback * 50)
+        delayL.wetDryMix = 100  // Fully wet, we'll control mix with mixer volume
+        delayR.wetDryMix = 100
+        delayL.lowPassCutoff = Float(500 * pow(32, currentParams.drumDelayFilter))
+        delayR.lowPassCutoff = Float(500 * pow(32, currentParams.drumDelayFilter))
+        
+        // Attach delays
+        engine.attach(delayL)
+        engine.attach(delayR)
+        
+        // Create stereo splitter for ping-pong effect
+        // Input -> both delays -> panned outputs
+        engine.connect(drumDelaySendMixer, to: delayL, format: format)
+        engine.connect(drumDelaySendMixer, to: delayR, format: format)
+        
+        // Create panners for stereo positioning
+        let pannerL = AVAudioMixerNode()
+        let pannerR = AVAudioMixerNode()
+        engine.attach(pannerL)
+        engine.attach(pannerR)
+        pannerL.pan = -0.8  // Hard left
+        pannerR.pan = 0.8   // Hard right
+        
+        // Connect delays through panners to output
+        engine.connect(delayL, to: pannerL, format: format)
+        engine.connect(delayR, to: pannerR, format: format)
+        engine.connect(pannerL, to: drumDelayMixer, format: format)
+        engine.connect(pannerR, to: drumDelayMixer, format: format)
+        
+        // Set initial mix level (disabled by default)
+        drumDelayMixer.outputVolume = currentParams.drumDelayEnabled ? Float(currentParams.drumDelayMix) : 0
+        drumDelaySendMixer.outputVolume = 0.5  // Moderate send level
+    }
+    
+    /// Update drum delay parameters
+    private func updateDrumDelay() {
+        let bpm = currentParams.drumEuclidBaseBPM
+        
+        if let delayL = drumDelayL {
+            delayL.delayTime = noteToSeconds(currentParams.drumDelayNoteL, bpm: bpm)
+            delayL.feedback = Float(min(currentParams.drumDelayFeedback * 50, 95))  // Cap at 95%
+            delayL.lowPassCutoff = Float(500 * pow(32, currentParams.drumDelayFilter))
+        }
+        
+        if let delayR = drumDelayR {
+            delayR.delayTime = noteToSeconds(currentParams.drumDelayNoteR, bpm: bpm)
+            delayR.feedback = Float(min(currentParams.drumDelayFeedback * 50, 95))
+            delayR.lowPassCutoff = Float(500 * pow(32, currentParams.drumDelayFilter))
+        }
+        
+        // Update mix level
+        drumDelayMixer.outputVolume = currentParams.drumDelayEnabled ? Float(currentParams.drumDelayMix) : 0
+    }
+
     func stop() {
         guard isRunning else { return }
         
@@ -590,6 +692,9 @@ class AudioEngine {
         
         // Update drum synth
         drumSynth?.updateParams(currentParams)
+        
+        // Update drum delay
+        updateDrumDelay()
     }
     
     /// Update Euclidean sequencer lanes from current parameters

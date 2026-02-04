@@ -25,6 +25,31 @@ import { getMorphedParams, DrumMorphManager } from './drumMorph';
 
 export type DrumVoiceType = 'sub' | 'kick' | 'click' | 'beepHi' | 'beepLo' | 'noise';
 
+// Note division to beat fraction mapping
+const NOTE_DIVISIONS: Record<string, number> = {
+  '1/1': 4,       // Whole note (4 beats)
+  '1/2': 2,       // Half note
+  '1/2d': 3,      // Dotted half
+  '1/4': 1,       // Quarter note
+  '1/4d': 1.5,    // Dotted quarter
+  '1/4t': 2/3,    // Quarter triplet
+  '1/8': 0.5,     // Eighth note
+  '1/8d': 0.75,   // Dotted eighth
+  '1/8t': 1/3,    // Eighth triplet
+  '1/16': 0.25,   // Sixteenth
+  '1/16d': 0.375, // Dotted sixteenth
+  '1/16t': 1/6,   // Sixteenth triplet
+  '1/32': 0.125,  // Thirty-second
+};
+
+/**
+ * Convert note division string to time in seconds based on BPM
+ */
+export function noteToSeconds(note: string, bpm: number): number {
+  const beats = NOTE_DIVISIONS[note] ?? 0.5; // Default to 1/8
+  return (60 / bpm) * beats;
+}
+
 export class DrumSynth {
   private ctx: AudioContext;
   private masterGain: GainNode;
@@ -63,6 +88,20 @@ export class DrumSynth {
   // Callback for morph trigger visualization (per-trigger random position)
   private onMorphTrigger: ((voice: DrumVoiceType, morphPosition: number) => void) | null = null;
 
+  // Stereo ping-pong delay
+  private delayLeftNode: DelayNode | null = null;
+  private delayRightNode: DelayNode | null = null;
+  private delayFeedbackL: GainNode | null = null;
+  private delayFeedbackR: GainNode | null = null;
+  private delayFilterL: BiquadFilterNode | null = null;
+  private delayFilterR: BiquadFilterNode | null = null;
+  private delayWetGain: GainNode | null = null;
+  
+  // Per-voice delay sends
+  private delaySends: Record<DrumVoiceType, GainNode | null> = {
+    sub: null, kick: null, click: null, beepHi: null, beepLo: null, noise: null
+  };
+
   constructor(
     ctx: AudioContext,
     masterOutput: AudioNode,
@@ -90,8 +129,104 @@ export class DrumSynth {
     
     // Pre-generate noise buffer
     this.createNoiseBuffer();
+    
+    // Create stereo ping-pong delay
+    this.createDelayEffect(masterOutput);
   }
   
+  /**
+   * Create stereo ping-pong delay effect
+   * Left and right channels have independent delay times for ping-pong feel
+   */
+  private createDelayEffect(masterOutput: AudioNode): void {
+    const p = this.params;
+    
+    // Create delay nodes (max 2 seconds)
+    const bpm = p.drumEuclidBaseBPM ?? 120;
+    
+    this.delayLeftNode = this.ctx.createDelay(4);  // Max 4 seconds for slow tempos
+    this.delayRightNode = this.ctx.createDelay(4);
+    this.delayLeftNode.delayTime.value = noteToSeconds(p.drumDelayNoteL ?? '1/8d', bpm);
+    this.delayRightNode.delayTime.value = noteToSeconds(p.drumDelayNoteR ?? '1/4', bpm);
+    
+    // Create feedback gain nodes
+    this.delayFeedbackL = this.ctx.createGain();
+    this.delayFeedbackR = this.ctx.createGain();
+    const feedback = p.drumDelayFeedback ?? 0.4;
+    this.delayFeedbackL.gain.value = feedback;
+    this.delayFeedbackR.gain.value = feedback;
+    
+    // Create low-pass filters for each channel (delay darkening)
+    this.delayFilterL = this.ctx.createBiquadFilter();
+    this.delayFilterR = this.ctx.createBiquadFilter();
+    this.delayFilterL.type = 'lowpass';
+    this.delayFilterR.type = 'lowpass';
+    const filterFreq = this.calculateDelayFilterFreq(p.drumDelayFilter ?? 0.5);
+    this.delayFilterL.frequency.value = filterFreq;
+    this.delayFilterR.frequency.value = filterFreq;
+    this.delayFilterL.Q.value = 0.7;
+    this.delayFilterR.Q.value = 0.7;
+    
+    // Create wet level gain
+    this.delayWetGain = this.ctx.createGain();
+    this.delayWetGain.gain.value = (p.drumDelayEnabled ?? false) ? (p.drumDelayMix ?? 0.3) : 0;
+    
+    // Create per-voice delay send nodes
+    const voiceTypes: DrumVoiceType[] = ['sub', 'kick', 'click', 'beepHi', 'beepLo', 'noise'];
+    for (const voice of voiceTypes) {
+      this.delaySends[voice] = this.ctx.createGain();
+      const sendKey = `drum${voice.charAt(0).toUpperCase() + voice.slice(1)}DelaySend` as keyof SliderState;
+      this.delaySends[voice]!.gain.value = (p[sendKey] as number) ?? 0;
+    }
+    
+    // Create stereo merger for output
+    const merger = this.ctx.createChannelMerger(2);
+    
+    // Connect per-voice sends to both delay lines
+    for (const voice of voiceTypes) {
+      const sendNode = this.delaySends[voice]!;
+      sendNode.connect(this.delayLeftNode);
+      sendNode.connect(this.delayRightNode);
+    }
+    
+    // Left delay chain: delay -> filter -> feedback -> right delay (ping-pong)
+    this.delayLeftNode.connect(this.delayFilterL);
+    this.delayFilterL.connect(this.delayFeedbackL);
+    this.delayFeedbackL.connect(this.delayRightNode); // Cross-feed for ping-pong
+    
+    // Right delay chain: delay -> filter -> feedback -> left delay (ping-pong)
+    this.delayRightNode.connect(this.delayFilterR);
+    this.delayFilterR.connect(this.delayFeedbackR);
+    this.delayFeedbackR.connect(this.delayLeftNode); // Cross-feed for ping-pong
+    
+    // Output: both filtered signals to stereo output
+    // Left delay output goes to left channel
+    this.delayFilterL.connect(merger, 0, 0);
+    // Right delay output goes to right channel
+    this.delayFilterR.connect(merger, 0, 1);
+    
+    // Merger -> wet gain -> master output
+    merger.connect(this.delayWetGain);
+    this.delayWetGain.connect(masterOutput);
+  }
+  
+  /**
+   * Calculate delay filter frequency from 0-1 parameter
+   * 0 = dark (500Hz), 0.5 = medium (4kHz), 1 = bright (16kHz)
+   */
+  private calculateDelayFilterFreq(filterParam: number): number {
+    // Exponential curve from 500Hz to 16000Hz
+    return 500 * Math.pow(32, filterParam);
+  }
+  
+  /**
+   * Get the delay send node for a specific voice
+   * Used by voice triggers to route audio to delay
+   */
+  getDelaySend(voice: DrumVoiceType): GainNode | null {
+    return this.delaySends[voice];
+  }
+
   setDrumTriggerCallback(callback: (voice: DrumVoiceType, velocity: number) => void): void {
     this.onDrumTrigger = callback;
   }
@@ -132,6 +267,9 @@ export class DrumSynth {
       smoothTime
     );
     
+    // Update delay parameters
+    this.updateDelayParams(params, now, smoothTime);
+    
     // Start/stop schedulers based on enabled state
     if (params.drumEnabled) {
       if (params.drumRandomEnabled && !this.randomScheduleTimer) {
@@ -151,6 +289,58 @@ export class DrumSynth {
     }
   }
   
+  /**
+   * Update all delay-related parameters
+   */
+  private updateDelayParams(params: SliderState, now: number, smoothTime: number): void {
+    const bpm = params.drumEuclidBaseBPM ?? 120;
+    
+    // Update delay times based on note divisions and BPM
+    if (this.delayLeftNode) {
+      const timeL = noteToSeconds(params.drumDelayNoteL ?? '1/8d', bpm);
+      this.delayLeftNode.delayTime.setTargetAtTime(timeL, now, smoothTime);
+    }
+    if (this.delayRightNode) {
+      const timeR = noteToSeconds(params.drumDelayNoteR ?? '1/4', bpm);
+      this.delayRightNode.delayTime.setTargetAtTime(timeR, now, smoothTime);
+    }
+    
+    // Update feedback
+    const feedback = params.drumDelayFeedback ?? 0.4;
+    if (this.delayFeedbackL) {
+      this.delayFeedbackL.gain.setTargetAtTime(feedback, now, smoothTime);
+    }
+    if (this.delayFeedbackR) {
+      this.delayFeedbackR.gain.setTargetAtTime(feedback, now, smoothTime);
+    }
+    
+    // Update filter
+    const filterFreq = this.calculateDelayFilterFreq(params.drumDelayFilter ?? 0.5);
+    if (this.delayFilterL) {
+      this.delayFilterL.frequency.setTargetAtTime(filterFreq, now, smoothTime);
+    }
+    if (this.delayFilterR) {
+      this.delayFilterR.frequency.setTargetAtTime(filterFreq, now, smoothTime);
+    }
+    
+    // Update wet level (mute if delay disabled)
+    if (this.delayWetGain) {
+      const wetLevel = (params.drumDelayEnabled ?? false) ? (params.drumDelayMix ?? 0.3) : 0;
+      this.delayWetGain.gain.setTargetAtTime(wetLevel, now, smoothTime);
+    }
+    
+    // Update per-voice delay sends
+    const voiceTypes: DrumVoiceType[] = ['sub', 'kick', 'click', 'beepHi', 'beepLo', 'noise'];
+    for (const voice of voiceTypes) {
+      const sendNode = this.delaySends[voice];
+      if (sendNode) {
+        const sendKey = `drum${voice.charAt(0).toUpperCase() + voice.slice(1)}DelaySend` as keyof SliderState;
+        const sendLevel = (params[sendKey] as number) ?? 0;
+        sendNode.gain.setTargetAtTime(sendLevel, now, smoothTime);
+      }
+    }
+  }
+
   start(): void {
     if (!this.params.drumEnabled) return;
     
@@ -306,6 +496,10 @@ export class DrumSynth {
     }
     gain.connect(this.masterGain);
     gain.connect(this.reverbSend);
+    // Connect to delay send
+    if (this.delaySends.sub) {
+      gain.connect(this.delaySends.sub);
+    }
     
     osc.start(time);
     osc.stop(time + decayTime + 0.01);
@@ -315,6 +509,10 @@ export class DrumSynth {
       gain2.gain.exponentialRampToValueAtTime(0.001, time + decayTime * 0.7);
       osc2.connect(gain2);
       gain2.connect(this.masterGain);
+      // Also send harmonics to delay
+      if (this.delaySends.sub) {
+        gain2.connect(this.delaySends.sub);
+      }
       osc2.start(time);
       osc2.stop(time + decayTime + 0.01);
     }
@@ -324,6 +522,10 @@ export class DrumSynth {
       subGain.gain.exponentialRampToValueAtTime(0.001, time + decayTime * 1.2);
       subOsc.connect(subGain);
       subGain.connect(this.masterGain);
+      // Also send sub-octave to delay
+      if (this.delaySends.sub) {
+        subGain.connect(this.delaySends.sub);
+      }
       subOsc.start(time);
       subOsc.stop(time + decayTime + 0.02);
     }
@@ -454,6 +656,10 @@ export class DrumSynth {
     }
     gain.connect(this.masterGain);
     gain.connect(this.reverbSend);
+    // Connect to delay send
+    if (this.delaySends.kick) {
+      gain.connect(this.delaySends.kick);
+    }
     
     osc.start(time);
     osc.stop(time + decay + 0.01);
@@ -461,6 +667,9 @@ export class DrumSynth {
     if (clickOsc && clickGain) {
       clickOsc.connect(clickGain);
       clickGain.connect(this.masterGain);
+      if (this.delaySends.kick) {
+        clickGain.connect(this.delaySends.kick);
+      }
       clickOsc.start(time);
       clickOsc.stop(time + 0.01);
     }
@@ -469,6 +678,9 @@ export class DrumSynth {
       bodyOsc.connect(bodyFilter);
       bodyFilter.connect(bodyGain);
       bodyGain.connect(this.masterGain);
+      if (this.delaySends.kick) {
+        bodyGain.connect(this.delaySends.kick);
+      }
       bodyOsc.start(time);
       bodyOsc.stop(time + decay + 0.01);
     }
@@ -478,6 +690,9 @@ export class DrumSynth {
       tailFilter.connect(tailGain);
       tailGain.connect(this.masterGain);
       tailGain.connect(this.reverbSend);
+      if (this.delaySends.kick) {
+        tailGain.connect(this.delaySends.kick);
+      }
       tailSource.start(time);
       tailSource.stop(time + decay * 1.5 + 0.01);
     }
@@ -570,6 +785,9 @@ export class DrumSynth {
     filter.connect(gain);
     gain.connect(this.masterGain);
     gain.connect(this.reverbSend);
+    if (this.delaySends.click) {
+      gain.connect(this.delaySends.click);
+    }
     
     source.start(time);
     source.stop(time + actualDecay + 0.01);
@@ -601,6 +819,9 @@ export class DrumSynth {
     filter.connect(gain);
     gain.connect(this.masterGain);
     gain.connect(this.reverbSend);
+    if (this.delaySends.click) {
+      gain.connect(this.delaySends.click);
+    }
     
     source.start(time);
     source.stop(time + actualDecay + 0.01);
@@ -632,6 +853,9 @@ export class DrumSynth {
     filter.connect(gain);
     gain.connect(this.masterGain);
     gain.connect(this.reverbSend);
+    if (this.delaySends.click) {
+      gain.connect(this.delaySends.click);
+    }
     
     osc.start(time);
     osc.stop(time + decay + 0.01);
@@ -673,6 +897,9 @@ export class DrumSynth {
       gain.connect(panner);
       panner.connect(this.masterGain);
       panner.connect(this.reverbSend);
+      if (this.delaySends.click) {
+        panner.connect(this.delaySends.click);
+      }
       
       source.start(grainTime);
       source.stop(grainTime + grainDecay + 0.01);
@@ -725,6 +952,9 @@ export class DrumSynth {
     const mainGain = this.ctx.createGain();
     mainGain.connect(this.masterGain);
     mainGain.connect(this.reverbSend);
+    if (this.delaySends.beepHi) {
+      mainGain.connect(this.delaySends.beepHi);
+    }
     
     // Brightness filter
     const brightnessFilter = this.ctx.createBiquadFilter();
@@ -898,6 +1128,9 @@ export class DrumSynth {
     lastNode.connect(gain);
     gain.connect(this.masterGain);
     gain.connect(this.reverbSend);
+    if (this.delaySends.beepLo) {
+      gain.connect(this.delaySends.beepLo);
+    }
     
     osc.start(time);
     osc.stop(time + attack + decay + 0.01);
@@ -960,10 +1193,16 @@ export class DrumSynth {
     dampFilter.connect(outputGain);
     outputGain.connect(this.masterGain);
     outputGain.connect(this.reverbSend);
+    if (this.delaySends.beepLo) {
+      outputGain.connect(this.delaySends.beepLo);
+    }
     
     osc.connect(oscGain);
     oscGain.connect(this.masterGain);
     oscGain.connect(this.reverbSend);
+    if (this.delaySends.beepLo) {
+      oscGain.connect(this.delaySends.beepLo);
+    }
     
     source.start(time);
     source.stop(time + exciteTime + 0.01);
@@ -1100,6 +1339,9 @@ export class DrumSynth {
     
     outputGain.connect(this.masterGain);
     outputGain.connect(this.reverbSend);
+    if (this.delaySends.noise) {
+      outputGain.connect(this.delaySends.noise);
+    }
     
     // Handle density (sparse noise bursts)
     if (density < 0.9) {
