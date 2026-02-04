@@ -149,6 +149,12 @@ export class AudioEngine {
   private onLeadDelayTrigger: ((delay: { time: number; feedback: number; mix: number }) => void) | null = null;
   private onOceanWaveTrigger: ((wave: { duration: number; interval: number; foam: number; depth: number }) => void) | null = null;
   private onDrumTrigger: ((voice: DrumVoiceType, velocity: number) => void) | null = null;
+  private onDrumMorphTrigger: ((voice: DrumVoiceType, morphPosition: number) => void) | null = null;
+  
+  // Pending morph ranges to apply when drumSynth is created
+  private pendingMorphRanges: Record<DrumVoiceType, { min: number; max: number } | null> = {
+    sub: null, kick: null, click: null, beepHi: null, beepLo: null, noise: null
+  };
 
   constructor() {
     // Empty constructor
@@ -175,6 +181,22 @@ export class AudioEngine {
     // Pass through to drum synth if it exists
     if (this.drumSynth) {
       this.drumSynth.setDrumTriggerCallback(callback);
+    }
+  }
+
+  setDrumMorphTriggerCallback(callback: (voice: DrumVoiceType, morphPosition: number) => void) {
+    this.onDrumMorphTrigger = callback;
+    // Pass through to drum synth if it exists
+    if (this.drumSynth) {
+      this.drumSynth.setMorphTriggerCallback(callback);
+    }
+  }
+
+  setDrumMorphRange(voice: DrumVoiceType, range: { min: number; max: number } | null) {
+    // Store for later if drumSynth doesn't exist yet
+    this.pendingMorphRanges[voice] = range;
+    if (this.drumSynth) {
+      this.drumSynth.setMorphRange(voice, range);
     }
   }
 
@@ -346,6 +368,17 @@ export class AudioEngine {
       // Pass through drum trigger callback if set
       if (this.onDrumTrigger) {
         this.drumSynth.setDrumTriggerCallback(this.onDrumTrigger);
+      }
+      // Pass through morph trigger callback if set
+      if (this.onDrumMorphTrigger) {
+        this.drumSynth.setMorphTriggerCallback(this.onDrumMorphTrigger);
+      }
+      // Apply any pending morph ranges
+      for (const voice of Object.keys(this.pendingMorphRanges) as DrumVoiceType[]) {
+        const range = this.pendingMorphRanges[voice];
+        if (range) {
+          this.drumSynth.setMorphRange(voice, range);
+        }
       }
     }
 

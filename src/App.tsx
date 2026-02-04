@@ -5,7 +5,7 @@
  * Wires up to audio engine with deterministic state management.
  */
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   SliderState,
   DEFAULT_STATE,
@@ -16,6 +16,8 @@ import {
 import { audioEngine, EngineState } from './audio/engine';
 import { SCALE_FAMILIES } from './audio/scales';
 import { formatChordDegrees, getTimeUntilNextPhrase, calculateDriftedRoot } from './audio/harmony';
+import { getPresetNames, DrumVoiceType as DrumPresetVoice } from './audio/drumPresets';
+import { applyMorphToState } from './audio/drumMorph';
 import SnowflakeUI from './ui/SnowflakeUI';
 import { CircleOfFifths, getMorphedRootNote } from './ui/CircleOfFifths';
 import CloudPresets from './ui/CloudPresets';
@@ -1113,6 +1115,16 @@ const App: React.FC = () => {
     depth: number;
   }>({ duration: 0.5, interval: 0.5, foam: 0.5, depth: 0.5 });
 
+  // Track last triggered drum morph positions (per-trigger random values)
+  const [drumMorphPositions, setDrumMorphPositions] = useState<{
+    sub: number;
+    kick: number;
+    click: number;
+    beepHi: number;
+    beepLo: number;
+    noise: number;
+  }>({ sub: 0.5, kick: 0.5, click: 0.5, beepHi: 0.5, beepLo: 0.5, noise: 0.5 });
+
   // Toggle ocean dual mode
   const toggleOceanDualMode = useCallback((param: 'duration' | 'interval' | 'foam' | 'depth') => {
     setOceanDualModes(prev => {
@@ -1138,6 +1150,22 @@ const App: React.FC = () => {
   }, [state.oceanDurationMin, state.oceanDurationMax, state.oceanIntervalMin, state.oceanIntervalMax, state.oceanFoamMin, state.oceanFoamMax, state.oceanDepthMin, state.oceanDepthMax]);
 
   // Toggle dual slider mode for a parameter
+  // Drum morph keys - these use per-trigger randomization, not random walk
+  const drumMorphKeys = useMemo(() => new Set<keyof SliderState>([
+    'drumSubMorph', 'drumKickMorph', 'drumClickMorph',
+    'drumBeepHiMorph', 'drumBeepLoMorph', 'drumNoiseMorph'
+  ]), []);
+
+  // Map drum morph keys to voice names for engine API
+  const drumMorphKeyToVoice = useMemo<Record<string, DrumPresetVoice>>(() => ({
+    drumSubMorph: 'sub',
+    drumKickMorph: 'kick',
+    drumClickMorph: 'click',
+    drumBeepHiMorph: 'beepHi',
+    drumBeepLoMorph: 'beepLo',
+    drumNoiseMorph: 'noise'
+  }), []);
+
   const handleToggleDualMode = useCallback((key: keyof SliderState) => {
     setDualSliderModes(prev => {
       const next = new Set(prev);
@@ -1167,33 +1195,55 @@ const App: React.FC = () => {
           const min = Math.max(info.min, currentVal - rangeSize / 2);
           const max = Math.min(info.max, currentVal + rangeSize / 2);
           setDualSliderRanges(r => ({ ...r, [key]: { min, max } }));
-          // Initialize random walk with random starting position
-          randomWalkRef.current[key] = {
-            position: Math.random(),
-            velocity: (Math.random() - 0.5) * 0.02,
-          };
-          setRandomWalkPositions(p => ({ ...p, [key]: randomWalkRef.current[key]!.position }));
+          // Only initialize random walk for non-drum-morph keys
+          // Drum morph keys use per-trigger randomization instead
+          if (!drumMorphKeys.has(key)) {
+            randomWalkRef.current[key] = {
+              position: Math.random(),
+              velocity: (Math.random() - 0.5) * 0.02,
+            };
+            setRandomWalkPositions(p => ({ ...p, [key]: randomWalkRef.current[key]!.position }));
+          }
         }
       }
       return next;
     });
-  }, [dualSliderRanges, randomWalkPositions, state]);
+  }, [dualSliderRanges, randomWalkPositions, state, drumMorphKeys]);
 
   // Update dual slider range
   const handleDualRangeChange = useCallback((key: keyof SliderState, min: number, max: number) => {
     setDualSliderRanges(prev => ({ ...prev, [key]: { min, max } }));
   }, []);
 
-  // Random walk animation
+  // Update engine morph ranges when dual mode changes for drum morph sliders
   useEffect(() => {
-    if (dualSliderModes.size === 0) return;
+    if (!audioEngine.setDrumMorphRange) return;
+    drumMorphKeys.forEach(key => {
+      const voice = drumMorphKeyToVoice[key];
+      if (!voice) return; // Guard against undefined
+      if (dualSliderModes.has(key)) {
+        const range = dualSliderRanges[key];
+        if (range) {
+          audioEngine.setDrumMorphRange(voice, range);
+        }
+      } else {
+        audioEngine.setDrumMorphRange(voice, null);
+      }
+    });
+  }, [dualSliderModes, dualSliderRanges, drumMorphKeys, drumMorphKeyToVoice]);
+
+  // Random walk animation (excludes drum morph keys - they use per-trigger randomization)
+  useEffect(() => {
+    // Filter out drum morph keys - they use per-trigger random, not random walk
+    const walkKeys = Array.from(dualSliderModes).filter(key => !drumMorphKeys.has(key));
+    if (walkKeys.length === 0) return;
 
     const animate = () => {
       const speed = state.randomWalkSpeed;
       const updates: Record<string, number> = {};
       let hasUpdates = false;
 
-      dualSliderModes.forEach(key => {
+      walkKeys.forEach(key => {
         const walk = randomWalkRef.current[key];
         const range = dualSliderRanges[key];
         if (!walk || !range) return;
@@ -1224,10 +1274,10 @@ const App: React.FC = () => {
       if (hasUpdates) {
         setRandomWalkPositions(prev => ({ ...prev, ...updates }));
         
-        // Update actual parameter values for the audio engine
+        // Update actual parameter values for the audio engine (only for walk keys, not drum morph)
         setState(prev => {
           const newState = { ...prev };
-          dualSliderModes.forEach(key => {
+          walkKeys.forEach(key => {
             const range = dualSliderRanges[key];
             const walkPos = updates[key] ?? randomWalkPositions[key] ?? 0.5;
             if (range) {
@@ -1242,7 +1292,7 @@ const App: React.FC = () => {
     // Run at 10 Hz for smooth but efficient animation
     const intervalId = window.setInterval(animate, 100);
     return () => clearInterval(intervalId);
-  }, [dualSliderModes, dualSliderRanges, state.randomWalkSpeed]);
+  }, [dualSliderModes, dualSliderRanges, state.randomWalkSpeed, drumMorphKeys]);
 
   // Load presets from folder on mount
   useEffect(() => {
@@ -1287,6 +1337,50 @@ const App: React.FC = () => {
     audioEngine.setOceanWaveCallback(setOceanPositions);
   }, []);
 
+  // Drum morph trigger callback (per-trigger random morph position)
+  // Updates both the indicator position AND the individual parameter sliders
+  useEffect(() => {
+    if (audioEngine.setDrumMorphTriggerCallback) {
+      audioEngine.setDrumMorphTriggerCallback((voice, morphPosition) => {
+        // Update the indicator position
+        setDrumMorphPositions(prev => ({ ...prev, [voice]: morphPosition }));
+        
+        // Map voice to morph key and update slider state with morphed values
+        const voiceToMorphKey: Record<string, keyof SliderState> = {
+          sub: 'drumSubMorph',
+          kick: 'drumKickMorph',
+          click: 'drumClickMorph',
+          beepHi: 'drumBeepHiMorph',
+          beepLo: 'drumBeepLoMorph',
+          noise: 'drumNoiseMorph',
+        };
+        const morphKey = voiceToMorphKey[voice];
+        
+        // Only update individual sliders if the option is enabled
+        // Use a functional update to access the latest stateRef if needed, but here we use the functional update of setState
+        if (morphKey) {
+          setState(prev => {
+            // Check if updates are enabled
+            if (!prev.drumRandomMorphUpdate) return prev;
+
+            // Convert normalized position (0-1) back to actual morph value using the range
+            const range = dualSliderRanges[morphKey];
+            const actualMorphValue = range 
+              ? range.min + morphPosition * (range.max - range.min)
+              : prev[morphKey] as number;
+            
+            // Create state with the random morph value
+            const stateWithMorph = { ...prev, [morphKey]: actualMorphValue };
+            
+            // Apply morphed preset values to the sliders
+            const morphedParams = applyMorphToState(stateWithMorph, voice as any);
+            return { ...stateWithMorph, ...morphedParams };
+          });
+        }
+      });
+    }
+  }, [dualSliderRanges]);
+
   // Countdown timer
   useEffect(() => {
     if (engineState.isRunning) {
@@ -1323,13 +1417,30 @@ const App: React.FC = () => {
   }, [state, engineState.isRunning]);
 
   // Handle slider change
-  const handleSliderChange = useCallback((key: keyof SliderState, value: number) => {
+  const handleSliderChange = useCallback((key: keyof SliderState, value: number | string) => {
     setState((prev) => {
-      const newState = { ...prev, [key]: value };
+      let newState = { ...prev, [key]: value };
       
       // Auto-disable granular when level is 0
       if (key === 'granularLevel' && value === 0) {
         newState.granularEnabled = false;
+      }
+      
+      // When drum morph slider or preset selectors change, apply morphed values to sliders
+      const morphKeys: Record<string, DrumPresetVoice> = {
+        drumSubMorph: 'sub', drumSubPresetA: 'sub', drumSubPresetB: 'sub',
+        drumKickMorph: 'kick', drumKickPresetA: 'kick', drumKickPresetB: 'kick',
+        drumClickMorph: 'click', drumClickPresetA: 'click', drumClickPresetB: 'click',
+        drumBeepHiMorph: 'beepHi', drumBeepHiPresetA: 'beepHi', drumBeepHiPresetB: 'beepHi',
+        drumBeepLoMorph: 'beepLo', drumBeepLoPresetA: 'beepLo', drumBeepLoPresetB: 'beepLo',
+        drumNoiseMorph: 'noise', drumNoisePresetA: 'noise', drumNoisePresetB: 'noise',
+      };
+      
+      const voice = morphKeys[key];
+      if (voice) {
+        // Apply morphed preset values to the state
+        const morphedParams = applyMorphToState(newState, voice);
+        newState = { ...newState, ...morphedParams };
       }
       
       return newState;
@@ -1343,13 +1454,23 @@ const App: React.FC = () => {
     walkPosition?: number;
     onToggleDual: (key: keyof SliderState) => void;
     onDualRangeChange: (key: keyof SliderState, min: number, max: number) => void;
-  } => ({
-    isDualMode: dualSliderModes.has(paramKey),
-    dualRange: dualSliderRanges[paramKey],
-    walkPosition: randomWalkPositions[paramKey],
-    onToggleDual: handleToggleDualMode,
-    onDualRangeChange: handleDualRangeChange,
-  }), [dualSliderModes, dualSliderRanges, randomWalkPositions, handleToggleDualMode, handleDualRangeChange]);
+  } => {
+    // For drum morph keys, use per-trigger positions instead of random walk
+    let walkPos = randomWalkPositions[paramKey];
+    if (drumMorphKeys.has(paramKey)) {
+      const voice = drumMorphKeyToVoice[paramKey];
+      if (voice) {
+        walkPos = drumMorphPositions[voice];
+      }
+    }
+    return {
+      isDualMode: dualSliderModes.has(paramKey),
+      dualRange: dualSliderRanges[paramKey],
+      walkPosition: walkPos,
+      onToggleDual: handleToggleDualMode,
+      onDualRangeChange: handleDualRangeChange,
+    };
+  }, [dualSliderModes, dualSliderRanges, randomWalkPositions, drumMorphPositions, drumMorphKeys, drumMorphKeyToVoice, handleToggleDualMode, handleDualRangeChange]);
 
   // Handle select change
   const handleSelectChange = useCallback(<K extends keyof SliderState>(key: K, value: SliderState[K]) => {
@@ -5876,35 +5997,66 @@ const App: React.FC = () => {
           isExpanded={expandedPanels.has('drums')}
           onToggle={togglePanel}
         >
-          {/* Master Enable */}
-          <div style={styles.sliderGroup}>
-            <div style={styles.sliderLabel}>
-              <span>Drum Synth</span>
-              <span style={{ 
-                color: state.drumEnabled ? '#10b981' : '#6b7280',
-                fontWeight: 'bold'
-              }}>
-                {state.drumEnabled ? 'ON' : 'OFF'}
-              </span>
+          {/* Master Enable + Slider Morph Toggle */}
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+            <div style={{ flex: 1 }}>
+              <div style={styles.sliderLabel}>
+                <span>Drum Synth</span>
+                <span style={{ 
+                  color: state.drumEnabled ? '#10b981' : '#6b7280',
+                  fontWeight: 'bold'
+                }}>
+                  {state.drumEnabled ? 'ON' : 'OFF'}
+                </span>
+              </div>
+              <button
+                onClick={() => handleSelectChange('drumEnabled', !state.drumEnabled)}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontWeight: 'bold',
+                  background: state.drumEnabled 
+                    ? 'linear-gradient(135deg, #ef4444, #dc2626)' 
+                    : 'rgba(255, 255, 255, 0.1)',
+                  color: state.drumEnabled ? 'white' : '#9ca3af',
+                  transition: 'all 0.2s',
+                }}
+              >
+                {state.drumEnabled ? '● Active' : '○ Off'}
+              </button>
             </div>
-            <button
-              onClick={() => handleSelectChange('drumEnabled', !state.drumEnabled)}
-              style={{
-                width: '100%',
-                padding: '10px',
-                borderRadius: '6px',
-                border: 'none',
-                cursor: 'pointer',
-                fontWeight: 'bold',
-                background: state.drumEnabled 
-                  ? 'linear-gradient(135deg, #ef4444, #dc2626)' 
-                  : 'rgba(255, 255, 255, 0.1)',
-                color: state.drumEnabled ? 'white' : '#9ca3af',
-                transition: 'all 0.2s',
-              }}
-            >
-              {state.drumEnabled ? '● Active' : '○ Off'}
-            </button>
+            <div style={{ flex: 1 }}>
+              <div style={styles.sliderLabel}>
+                <span>Slider Updates</span>
+                <span style={{ 
+                  color: state.drumRandomMorphUpdate ? '#10b981' : '#6b7280',
+                  fontWeight: 'bold'
+                }}>
+                  {state.drumRandomMorphUpdate ? 'ON' : 'OFF'}
+                </span>
+              </div>
+              <button
+                onClick={() => handleSelectChange('drumRandomMorphUpdate', !state.drumRandomMorphUpdate)}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontWeight: 'bold',
+                  background: state.drumRandomMorphUpdate 
+                    ? 'linear-gradient(135deg, #10b981, #059669)' 
+                    : 'rgba(255, 255, 255, 0.1)',
+                  color: state.drumRandomMorphUpdate ? 'white' : '#9ca3af',
+                  transition: 'all 0.2s',
+                }}
+              >
+                {state.drumRandomMorphUpdate ? '● Animate' : '○ Static'}
+              </button>
+            </div>
           </div>
 
           <Slider
@@ -5939,6 +6091,33 @@ const App: React.FC = () => {
             >◉</button>
           }
         >
+          {/* Morph Controls */}
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
+            <select
+              value={state.drumSubPresetA}
+              onChange={(e) => handleSliderChange('drumSubPresetA', e.target.value)}
+              style={{ flex: 1, minWidth: '80px', padding: '4px', background: '#1a1a2e', color: '#fff', border: '1px solid #ef4444', borderRadius: '4px', fontSize: '0.75rem' }}
+              title="Preset A"
+            >
+              {getPresetNames('sub').map(name => <option key={name} value={name}>{name}</option>)}
+            </select>
+            <select
+              value={state.drumSubPresetB}
+              onChange={(e) => handleSliderChange('drumSubPresetB', e.target.value)}
+              style={{ flex: 1, minWidth: '80px', padding: '4px', background: '#1a1a2e', color: '#fff', border: '1px solid #ef4444', borderRadius: '4px', fontSize: '0.75rem' }}
+              title="Preset B"
+            >
+              {getPresetNames('sub').map(name => <option key={name} value={name}>{name}</option>)}
+            </select>
+          </div>
+          <Slider
+            label="A ↔ B Morph"
+            value={state.drumSubMorph}
+            paramKey="drumSubMorph"
+            onChange={handleSliderChange}
+            {...sliderProps('drumSubMorph')}
+          />
+          {/* Core Parameters */}
           <Slider
             label="Frequency"
             value={state.drumSubFreq}
@@ -5970,6 +6149,44 @@ const App: React.FC = () => {
             onChange={handleSliderChange}
             {...sliderProps('drumSubTone')}
           />
+          {/* New Synthesis Parameters */}
+          <Slider
+            label="Shape (Sin→Saw)"
+            value={state.drumSubShape}
+            paramKey="drumSubShape"
+            onChange={handleSliderChange}
+            {...sliderProps('drumSubShape')}
+          />
+          <Slider
+            label="Pitch Envelope"
+            value={state.drumSubPitchEnv}
+            paramKey="drumSubPitchEnv"
+            unit=" st"
+            onChange={handleSliderChange}
+            {...sliderProps('drumSubPitchEnv')}
+          />
+          <Slider
+            label="Pitch Decay"
+            value={state.drumSubPitchDecay}
+            paramKey="drumSubPitchDecay"
+            unit=" ms"
+            onChange={handleSliderChange}
+            {...sliderProps('drumSubPitchDecay')}
+          />
+          <Slider
+            label="Drive"
+            value={state.drumSubDrive}
+            paramKey="drumSubDrive"
+            onChange={handleSliderChange}
+            {...sliderProps('drumSubDrive')}
+          />
+          <Slider
+            label="Sub Octave"
+            value={state.drumSubSub}
+            paramKey="drumSubSub"
+            onChange={handleSliderChange}
+            {...sliderProps('drumSubSub')}
+          />
         </CollapsiblePanel>
 
         {/* Voice 2: Kick */}
@@ -5988,6 +6205,33 @@ const App: React.FC = () => {
             >●</button>
           }
         >
+          {/* Morph Controls */}
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
+            <select
+              value={state.drumKickPresetA}
+              onChange={(e) => handleSliderChange('drumKickPresetA', e.target.value)}
+              style={{ flex: 1, minWidth: '80px', padding: '4px', background: '#1a1a2e', color: '#fff', border: '1px solid #f97316', borderRadius: '4px', fontSize: '0.75rem' }}
+              title="Preset A"
+            >
+              {getPresetNames('kick').map(name => <option key={name} value={name}>{name}</option>)}
+            </select>
+            <select
+              value={state.drumKickPresetB}
+              onChange={(e) => handleSliderChange('drumKickPresetB', e.target.value)}
+              style={{ flex: 1, minWidth: '80px', padding: '4px', background: '#1a1a2e', color: '#fff', border: '1px solid #f97316', borderRadius: '4px', fontSize: '0.75rem' }}
+              title="Preset B"
+            >
+              {getPresetNames('kick').map(name => <option key={name} value={name}>{name}</option>)}
+            </select>
+          </div>
+          <Slider
+            label="A ↔ B Morph"
+            value={state.drumKickMorph}
+            paramKey="drumKickMorph"
+            onChange={handleSliderChange}
+            {...sliderProps('drumKickMorph')}
+          />
+          {/* Core Parameters */}
           <Slider
             label="Frequency"
             value={state.drumKickFreq}
@@ -6036,6 +6280,35 @@ const App: React.FC = () => {
             onChange={handleSliderChange}
             {...sliderProps('drumKickClick')}
           />
+          {/* New Synthesis Parameters */}
+          <Slider
+            label="Body"
+            value={state.drumKickBody}
+            paramKey="drumKickBody"
+            onChange={handleSliderChange}
+            {...sliderProps('drumKickBody')}
+          />
+          <Slider
+            label="Punch"
+            value={state.drumKickPunch}
+            paramKey="drumKickPunch"
+            onChange={handleSliderChange}
+            {...sliderProps('drumKickPunch')}
+          />
+          <Slider
+            label="Tail"
+            value={state.drumKickTail}
+            paramKey="drumKickTail"
+            onChange={handleSliderChange}
+            {...sliderProps('drumKickTail')}
+          />
+          <Slider
+            label="Tone/Drive"
+            value={state.drumKickTone}
+            paramKey="drumKickTone"
+            onChange={handleSliderChange}
+            {...sliderProps('drumKickTone')}
+          />
         </CollapsiblePanel>
 
         {/* Voice 3: Click */}
@@ -6054,6 +6327,47 @@ const App: React.FC = () => {
             >▪</button>
           }
         >
+          {/* Morph Controls */}
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
+            <select
+              value={state.drumClickPresetA}
+              onChange={(e) => handleSliderChange('drumClickPresetA', e.target.value)}
+              style={{ flex: 1, minWidth: '80px', padding: '4px', background: '#1a1a2e', color: '#fff', border: '1px solid #eab308', borderRadius: '4px', fontSize: '0.75rem' }}
+              title="Preset A"
+            >
+              {getPresetNames('click').map(name => <option key={name} value={name}>{name}</option>)}
+            </select>
+            <select
+              value={state.drumClickPresetB}
+              onChange={(e) => handleSliderChange('drumClickPresetB', e.target.value)}
+              style={{ flex: 1, minWidth: '80px', padding: '4px', background: '#1a1a2e', color: '#fff', border: '1px solid #eab308', borderRadius: '4px', fontSize: '0.75rem' }}
+              title="Preset B"
+            >
+              {getPresetNames('click').map(name => <option key={name} value={name}>{name}</option>)}
+            </select>
+          </div>
+          <Slider
+            label="A ↔ B Morph"
+            value={state.drumClickMorph}
+            paramKey="drumClickMorph"
+            onChange={handleSliderChange}
+            {...sliderProps('drumClickMorph')}
+          />
+          {/* Synthesis Mode */}
+          <div style={{ marginBottom: '8px' }}>
+            <label style={{ fontSize: '0.75rem', color: '#888', marginBottom: '4px', display: 'block' }}>Mode</label>
+            <select
+              value={state.drumClickMode}
+              onChange={(e) => handleSliderChange('drumClickMode', e.target.value)}
+              style={{ width: '100%', padding: '6px', background: '#1a1a2e', color: '#fff', border: '1px solid #eab308', borderRadius: '4px', fontSize: '0.85rem' }}
+            >
+              <option value="impulse">Impulse (Sharp)</option>
+              <option value="noise">Noise (Burst)</option>
+              <option value="tonal">Tonal (Pitched)</option>
+              <option value="granular">Granular (Texture)</option>
+            </select>
+          </div>
+          {/* Core Parameters */}
           <Slider
             label="Decay"
             value={state.drumClickDecay}
@@ -6093,6 +6407,46 @@ const App: React.FC = () => {
             onChange={handleSliderChange}
             {...sliderProps('drumClickLevel')}
           />
+          {/* New Synthesis Parameters */}
+          <Slider
+            label="Pitch"
+            value={state.drumClickPitch}
+            paramKey="drumClickPitch"
+            unit=" Hz"
+            logarithmic
+            onChange={handleSliderChange}
+            {...sliderProps('drumClickPitch')}
+          />
+          <Slider
+            label="Pitch Envelope"
+            value={state.drumClickPitchEnv}
+            paramKey="drumClickPitchEnv"
+            unit=" st"
+            onChange={handleSliderChange}
+            {...sliderProps('drumClickPitchEnv')}
+          />
+          <Slider
+            label="Grain Count"
+            value={state.drumClickGrainCount}
+            paramKey="drumClickGrainCount"
+            onChange={handleSliderChange}
+            {...sliderProps('drumClickGrainCount')}
+          />
+          <Slider
+            label="Grain Spread"
+            value={state.drumClickGrainSpread}
+            paramKey="drumClickGrainSpread"
+            unit=" ms"
+            onChange={handleSliderChange}
+            {...sliderProps('drumClickGrainSpread')}
+          />
+          <Slider
+            label="Stereo Width"
+            value={state.drumClickStereoWidth}
+            paramKey="drumClickStereoWidth"
+            onChange={handleSliderChange}
+            {...sliderProps('drumClickStereoWidth')}
+          />
         </CollapsiblePanel>
 
         {/* Voice 4: Beep Hi */}
@@ -6111,6 +6465,33 @@ const App: React.FC = () => {
             >△</button>
           }
         >
+          {/* Morph Controls */}
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
+            <select
+              value={state.drumBeepHiPresetA}
+              onChange={(e) => handleSliderChange('drumBeepHiPresetA', e.target.value)}
+              style={{ flex: 1, minWidth: '80px', padding: '4px', background: '#1a1a2e', color: '#fff', border: '1px solid #22c55e', borderRadius: '4px', fontSize: '0.75rem' }}
+              title="Preset A"
+            >
+              {getPresetNames('beepHi').map(name => <option key={name} value={name}>{name}</option>)}
+            </select>
+            <select
+              value={state.drumBeepHiPresetB}
+              onChange={(e) => handleSliderChange('drumBeepHiPresetB', e.target.value)}
+              style={{ flex: 1, minWidth: '80px', padding: '4px', background: '#1a1a2e', color: '#fff', border: '1px solid #22c55e', borderRadius: '4px', fontSize: '0.75rem' }}
+              title="Preset B"
+            >
+              {getPresetNames('beepHi').map(name => <option key={name} value={name}>{name}</option>)}
+            </select>
+          </div>
+          <Slider
+            label="A ↔ B Morph"
+            value={state.drumBeepHiMorph}
+            paramKey="drumBeepHiMorph"
+            onChange={handleSliderChange}
+            {...sliderProps('drumBeepHiMorph')}
+          />
+          {/* Core Parameters */}
           <Slider
             label="Frequency"
             value={state.drumBeepHiFreq}
@@ -6152,6 +6533,43 @@ const App: React.FC = () => {
             onChange={handleSliderChange}
             {...sliderProps('drumBeepHiLevel')}
           />
+          {/* New Synthesis Parameters */}
+          <Slider
+            label="Inharmonic"
+            value={state.drumBeepHiInharmonic}
+            paramKey="drumBeepHiInharmonic"
+            onChange={handleSliderChange}
+            {...sliderProps('drumBeepHiInharmonic')}
+          />
+          <Slider
+            label="Partials"
+            value={state.drumBeepHiPartials}
+            paramKey="drumBeepHiPartials"
+            onChange={handleSliderChange}
+            {...sliderProps('drumBeepHiPartials')}
+          />
+          <Slider
+            label="Shimmer"
+            value={state.drumBeepHiShimmer}
+            paramKey="drumBeepHiShimmer"
+            onChange={handleSliderChange}
+            {...sliderProps('drumBeepHiShimmer')}
+          />
+          <Slider
+            label="Shimmer Rate"
+            value={state.drumBeepHiShimmerRate}
+            paramKey="drumBeepHiShimmerRate"
+            unit=" Hz"
+            onChange={handleSliderChange}
+            {...sliderProps('drumBeepHiShimmerRate')}
+          />
+          <Slider
+            label="Brightness"
+            value={state.drumBeepHiBrightness}
+            paramKey="drumBeepHiBrightness"
+            onChange={handleSliderChange}
+            {...sliderProps('drumBeepHiBrightness')}
+          />
         </CollapsiblePanel>
 
         {/* Voice 5: Beep Lo */}
@@ -6170,6 +6588,33 @@ const App: React.FC = () => {
             >▽</button>
           }
         >
+          {/* Morph Controls */}
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
+            <select
+              value={state.drumBeepLoPresetA}
+              onChange={(e) => handleSliderChange('drumBeepLoPresetA', e.target.value)}
+              style={{ flex: 1, minWidth: '80px', padding: '4px', background: '#1a1a2e', color: '#fff', border: '1px solid #06b6d4', borderRadius: '4px', fontSize: '0.75rem' }}
+              title="Preset A"
+            >
+              {getPresetNames('beepLo').map(name => <option key={name} value={name}>{name}</option>)}
+            </select>
+            <select
+              value={state.drumBeepLoPresetB}
+              onChange={(e) => handleSliderChange('drumBeepLoPresetB', e.target.value)}
+              style={{ flex: 1, minWidth: '80px', padding: '4px', background: '#1a1a2e', color: '#fff', border: '1px solid #06b6d4', borderRadius: '4px', fontSize: '0.75rem' }}
+              title="Preset B"
+            >
+              {getPresetNames('beepLo').map(name => <option key={name} value={name}>{name}</option>)}
+            </select>
+          </div>
+          <Slider
+            label="A ↔ B Morph"
+            value={state.drumBeepLoMorph}
+            paramKey="drumBeepLoMorph"
+            onChange={handleSliderChange}
+            {...sliderProps('drumBeepLoMorph')}
+          />
+          {/* Core Parameters */}
           <Slider
             label="Frequency"
             value={state.drumBeepLoFreq}
@@ -6210,6 +6655,44 @@ const App: React.FC = () => {
             onChange={handleSliderChange}
             {...sliderProps('drumBeepLoLevel')}
           />
+          {/* New Synthesis Parameters */}
+          <Slider
+            label="Pitch Envelope"
+            value={state.drumBeepLoPitchEnv}
+            paramKey="drumBeepLoPitchEnv"
+            unit=" st"
+            onChange={handleSliderChange}
+            {...sliderProps('drumBeepLoPitchEnv')}
+          />
+          <Slider
+            label="Pitch Decay"
+            value={state.drumBeepLoPitchDecay}
+            paramKey="drumBeepLoPitchDecay"
+            unit=" ms"
+            onChange={handleSliderChange}
+            {...sliderProps('drumBeepLoPitchDecay')}
+          />
+          <Slider
+            label="Body"
+            value={state.drumBeepLoBody}
+            paramKey="drumBeepLoBody"
+            onChange={handleSliderChange}
+            {...sliderProps('drumBeepLoBody')}
+          />
+          <Slider
+            label="Pluck"
+            value={state.drumBeepLoPluck}
+            paramKey="drumBeepLoPluck"
+            onChange={handleSliderChange}
+            {...sliderProps('drumBeepLoPluck')}
+          />
+          <Slider
+            label="Pluck Damping"
+            value={state.drumBeepLoPluckDamp}
+            paramKey="drumBeepLoPluckDamp"
+            onChange={handleSliderChange}
+            {...sliderProps('drumBeepLoPluckDamp')}
+          />
         </CollapsiblePanel>
 
         {/* Voice 6: Noise */}
@@ -6228,6 +6711,33 @@ const App: React.FC = () => {
             >≋</button>
           }
         >
+          {/* Morph Controls */}
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
+            <select
+              value={state.drumNoisePresetA}
+              onChange={(e) => handleSliderChange('drumNoisePresetA', e.target.value)}
+              style={{ flex: 1, minWidth: '80px', padding: '4px', background: '#1a1a2e', color: '#fff', border: '1px solid #8b5cf6', borderRadius: '4px', fontSize: '0.75rem' }}
+              title="Preset A"
+            >
+              {getPresetNames('noise').map(name => <option key={name} value={name}>{name}</option>)}
+            </select>
+            <select
+              value={state.drumNoisePresetB}
+              onChange={(e) => handleSliderChange('drumNoisePresetB', e.target.value)}
+              style={{ flex: 1, minWidth: '80px', padding: '4px', background: '#1a1a2e', color: '#fff', border: '1px solid #8b5cf6', borderRadius: '4px', fontSize: '0.75rem' }}
+              title="Preset B"
+            >
+              {getPresetNames('noise').map(name => <option key={name} value={name}>{name}</option>)}
+            </select>
+          </div>
+          <Slider
+            label="A ↔ B Morph"
+            value={state.drumNoiseMorph}
+            paramKey="drumNoiseMorph"
+            onChange={handleSliderChange}
+            {...sliderProps('drumNoiseMorph')}
+          />
+          {/* Core Parameters */}
           <Select
             label="Filter Type"
             value={state.drumNoiseFilterType}
@@ -6278,6 +6788,51 @@ const App: React.FC = () => {
             paramKey="drumNoiseLevel"
             onChange={handleSliderChange}
             {...sliderProps('drumNoiseLevel')}
+          />
+          {/* New Synthesis Parameters */}
+          <Slider
+            label="Formant"
+            value={state.drumNoiseFormant}
+            paramKey="drumNoiseFormant"
+            onChange={handleSliderChange}
+            {...sliderProps('drumNoiseFormant')}
+          />
+          <Slider
+            label="Breath"
+            value={state.drumNoiseBreath}
+            paramKey="drumNoiseBreath"
+            onChange={handleSliderChange}
+            {...sliderProps('drumNoiseBreath')}
+          />
+          <Slider
+            label="Filter Envelope"
+            value={state.drumNoiseFilterEnv}
+            paramKey="drumNoiseFilterEnv"
+            onChange={handleSliderChange}
+            {...sliderProps('drumNoiseFilterEnv')}
+          />
+          <Slider
+            label="Filter Env Decay"
+            value={state.drumNoiseFilterEnvDecay}
+            paramKey="drumNoiseFilterEnvDecay"
+            unit=" ms"
+            onChange={handleSliderChange}
+            {...sliderProps('drumNoiseFilterEnvDecay')}
+          />
+          <Slider
+            label="Density"
+            value={state.drumNoiseDensity}
+            paramKey="drumNoiseDensity"
+            onChange={handleSliderChange}
+            {...sliderProps('drumNoiseDensity')}
+          />
+          <Slider
+            label="Color LFO"
+            value={state.drumNoiseColorLFO}
+            paramKey="drumNoiseColorLFO"
+            unit=" Hz"
+            onChange={handleSliderChange}
+            {...sliderProps('drumNoiseColorLFO')}
           />
         </CollapsiblePanel>
 

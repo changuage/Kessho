@@ -1056,3 +1056,256 @@ Width values use exponential curves so lower percentages show more visual comple
 | 2026-02-03 | iOS General UI parity verified complete |
 | 2026-02-03 | Snowflake UI enhancement: 6 prongs with dual-parameter control |
 | 2026-02-03 | iOS Snowflake UI complete: tangential drag, exponential curves, all prong colors |
+
+| 2026-02-04 | Drum Voice Morphing & Dual Preset System spec added |
+
+---
+
+## Drum Voice Morphing & Dual Preset System
+
+### Overview
+Expand the drum synthesizer from 6 basic voices into a deeply morphable sound design system capable of producing everything from ASMR ear candy to Ikeda-style data glitches to ambient percussion. Each voice gets additional synthesis parameters plus a dual-preset morph system where two presets define the endpoints and a single morph slider interpolates all parameters between them.
+
+### Design Philosophy
+- **Minimalist Ikeda aesthetic** at one extreme
+- **ASMR ear candy textures** at another extreme  
+- **Ambient/textural drums** as a third dimension
+- **Continuous morphing** between any two sonic states
+- **Deterministic** - same seed produces same results
+
+### Implementation Status: Web [ ] | iOS [ ]
+
+---
+
+### Part 1: New Synthesis Parameters Per Voice
+
+Each of the 6 voices gains additional parameters to unlock new sonic territories.
+
+#### Voice 1: Sub (◉)
+**Current**: Simple sine with decay
+**New Capabilities**: Room thump, underwater bubble, felt bass
+
+| Parameter | Range | Default | Description |
+|-----------|-------|---------|-------------|
+| `drumSubShape` | 0-1 | 0 | 0=sine, 0.5=triangle, 1=filtered saw |
+| `drumSubPitchEnv` | -48..+48 | 0 | Semitones pitch sweep (neg=rise) |
+| `drumSubPitchDecay` | 5-500 | 50 | Pitch envelope decay ms |
+| `drumSubDrive` | 0-1 | 0 | Soft saturation/warmth |
+| `drumSubSub` | 0-1 | 0 | Sub-octave mix (octave down) |
+
+**Unlocked Sounds**: Thump, Bubble (pitch rise), Deep pulse, Warm bass
+
+#### Voice 2: Kick (●)
+**Current**: Sine with pitch envelope + click layer
+**New Capabilities**: Soft tap, boomy ambient, tight punch
+
+| Parameter | Range | Default | Description |
+|-----------|-------|---------|-------------|
+| `drumKickBody` | 0-1 | 0.5 | 0=tight, 1=boomy/ambient |
+| `drumKickPunch` | 0-1 | 0.5 | Transient sharpness |
+| `drumKickTail` | 0-1 | 0 | Reverberant tail amount |
+| `drumKickTone` | 0-1 | 0 | Harmonic content |
+
+**Unlocked Sounds**: Tap, Ambient boom, Tight punch, Soft thud
+
+#### Voice 3: Click (▪)
+**Current**: Filtered noise impulse
+**New Capabilities**: Crinkle, tick, blip, dust, granular micro-hits
+
+| Parameter | Range | Default | Description |
+|-----------|-------|---------|-------------|
+| `drumClickPitch` | 200-8000 | 2000 | Center pitch for tonal mode |
+| `drumClickPitchEnv` | -48..+48 | 0 | Pitch sweep semitones |
+| `drumClickMode` | string | 'impulse' | 'impulse', 'noise', 'tonal', 'granular' |
+| `drumClickGrainCount` | 1-8 | 1 | Micro-grains per trigger |
+| `drumClickGrainSpread` | 0-50 | 0 | Grain timing spread ms |
+| `drumClickStereoWidth` | 0-1 | 0 | Stereo spread of grains |
+
+**Unlocked Sounds**: Tick, Blip, Crinkle, Dust, Data glitch
+
+#### Voice 4: BeepHi (△)
+**Current**: High sine with optional FM
+**New Capabilities**: Glass, bell, shimmer, metallic ring
+
+| Parameter | Range | Default | Description |
+|-----------|-------|---------|-------------|
+| `drumBeepHiInharmonic` | 0-1 | 0 | Inharmonic partial detune |
+| `drumBeepHiPartials` | 1-6 | 1 | Number of partials |
+| `drumBeepHiShimmer` | 0-1 | 0 | Vibrato/chorus amount |
+| `drumBeepHiShimmerRate` | 0.5-12 | 4 | Shimmer LFO rate Hz |
+| `drumBeepHiBrightness` | 0-1 | 0.5 | Spectral tilt |
+
+**Unlocked Sounds**: Glass ting, Bell, Shimmer, Crystal, Metallic ping
+
+#### Voice 5: BeepLo (▽)
+**Current**: Sine/square blip
+**New Capabilities**: Droplet, pluck, bubble, muted tap
+
+| Parameter | Range | Default | Description |
+|-----------|-------|---------|-------------|
+| `drumBeepLoPitchEnv` | -48..+48 | 0 | Pitch envelope (neg=rise for droplet) |
+| `drumBeepLoPitchDecay` | 5-500 | 50 | Pitch env decay ms |
+| `drumBeepLoBody` | 0-1 | 0.3 | Resonance/body warmth |
+| `drumBeepLoPluck` | 0-1 | 0 | Karplus-Strong pluck amount |
+| `drumBeepLoPluckDamp` | 0-1 | 0.5 | Pluck damping (0=bright, 1=muted) |
+
+**Unlocked Sounds**: Droplet, Bubble, Pluck, Muted tap, Blip
+
+#### Voice 6: Noise (≋)
+**Current**: Filtered noise burst
+**New Capabilities**: Breath, whisper, scrape, texture
+
+| Parameter | Range | Default | Description |
+|-----------|-------|---------|-------------|
+| `drumNoiseFormant` | 0-1 | 0 | Vowel formant morph (a->e->i->o->u) |
+| `drumNoiseBreath` | 0-1 | 0 | Breathiness/air amount |
+| `drumNoiseFilterEnv` | -1..+1 | 0 | Filter envelope direction |
+| `drumNoiseFilterEnvDecay` | 5-2000 | 100 | Filter env decay ms |
+| `drumNoiseDensity` | 0-1 | 1 | 0=sparse dust, 1=dense hiss |
+| `drumNoiseColorLFO` | 0-10 | 0 | Filter modulation rate Hz |
+
+**Unlocked Sounds**: Breath, Whisper, Scrape, Dust, Texture, Hiss
+
+---
+
+### Part 2: Dual Preset Morph System
+
+#### Concept
+Each drum voice has:
+1. **Preset A** - defines all parameter values at morph position 0
+2. **Preset B** - defines all parameter values at morph position 1  
+3. **Morph Slider** - 0-1 interpolates between A and B
+
+When morph = 0.5, all parameters are at the midpoint between presets.
+
+#### Preset Data Structure
+
+`	ypescript
+interface DrumVoicePreset {
+  name: string;
+  voice: 'sub' | 'kick' | 'click' | 'beepHi' | 'beepLo' | 'noise';
+  params: Record<string, number | string>;
+  tags: string[];  // 'asmr', 'ikeda', 'ambient', 'texture', etc.
+}
+`
+
+---
+
+### Part 3: Preset Library (64+ Presets)
+
+#### Sub Presets (10)
+| Name | Character |
+|------|-----------|
+| Classic Sub | Ikeda-style felt bass |
+| Deep Thump | Room-filling thud |
+| Bubble Up | Rising bubble |
+| Warm Pulse | Analog warmth |
+| Data Pulse | Digital heartbeat |
+| Subterranean | Extremely low |
+| Soft Touch | Gentle |
+| Pressure Wave | Physical |
+| Sine Ping | Clean |
+| Rumble | Textured |
+
+#### Kick Presets (10)
+| Name | Character |
+|------|-----------|
+| Ikeda Kick | Sharp digital |
+| Ambient Boom | Spacious |
+| Soft Tap | ASMR finger tap |
+| Tight Punch | Punchy |
+| 808 Deep | Classic 808 |
+| Paper Thud | Muted |
+| Room Kick | Natural |
+| Click Kick | Clicky |
+| Pillow | Extremely soft |
+| Heartbeat | Organic |
+
+#### Click Presets (12)
+| Name | Character |
+|------|-----------|
+| Data Point | Classic Ikeda |
+| Tick | Clock tick |
+| Blip | Soft digital |
+| Crinkle | Paper texture |
+| Dust | Vinyl crackle |
+| Glitch | Digital error |
+| Tap | Finger tap |
+| Spark | Electric |
+| Pop | Bubble pop |
+| Static | Radio static |
+| Scratch | Record scratch |
+| Micro Hit | Tiny impact |
+
+#### BeepHi Presets (10)
+| Name | Character |
+|------|-----------|
+| Data Ping | Classic Ikeda |
+| Glass | Wine glass |
+| Bell | Small bell |
+| Crystal | Crystalline |
+| Shimmer | Evolving |
+| Chime | Wind chime |
+| Metallic | Industrial |
+| Whistle | High pitch |
+| Sparkle | Magical |
+| Tink | Tiny metal |
+
+#### BeepLo Presets (10)
+| Name | Character |
+|------|-----------|
+| Blip | Classic blip |
+| Droplet | Water drop |
+| Bubble | Underwater |
+| Pluck | String pluck |
+| Muted Tap | Soft impact |
+| Bloop | Cartoon |
+| Ping | Sonar ping |
+| Woody | Wood block |
+| Soft Ping | Gentle |
+| Chirp | Bird-like |
+
+#### Noise Presets (12)
+| Name | Character |
+|------|-----------|
+| Hi-Hat | Classic hat |
+| Breath | Soft air |
+| Whisper | Voice-like |
+| Dust | Vinyl |
+| Texture | Ambient |
+| Scrape | Friction |
+| Hiss | White noise |
+| Shaker | Percussion |
+| Ocean Spray | Water mist |
+| Steam | Pressure release |
+| Rustle | Leaves |
+| Static | Electronic |
+
+---
+
+### Part 4: Implementation Checklist
+
+#### Phase 1: State & Parameters
+- [ ] Add 31 new synthesis parameters to state.ts
+- [ ] Add 36 morph parameters (6 voices x 6 params each)
+- [ ] Add QUANTIZATION ranges
+- [ ] Add to STATE_KEYS
+
+#### Phase 2: Preset System
+- [ ] Create drumPresets.ts with 64 presets
+- [ ] Create drumMorph.ts interpolation logic
+- [ ] Implement preset loading in drumSynth.ts
+
+#### Phase 3: Synthesis Expansion
+- [ ] Sub: shape, pitch env, drive, sub-octave
+- [ ] Kick: body, punch, tail, tone
+- [ ] Click: modes, pitch, grains
+- [ ] BeepHi: partials, shimmer, inharmonicity
+- [ ] BeepLo: pitch env, pluck (Karplus-Strong)
+- [ ] Noise: formant, density, filter env
+
+#### Phase 4: UI
+- [ ] Add preset dropdowns to voice panels
+- [ ] Add morph slider per voice
+- [ ] Add new parameter sliders
+

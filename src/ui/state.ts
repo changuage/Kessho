@@ -177,7 +177,12 @@ export interface SliderState {
   drumSubDecay: number;                    // 20..500 ms
   drumSubLevel: number;                    // 0..1
   drumSubTone: number;                     // 0..1 (0=pure sine, 1=add harmonics)
-  
+  drumSubShape: number;                    // 0..1 (0=sine, 0.5=triangle, 1=saw)
+  drumSubPitchEnv: number;                 // -48..+48 semitones pitch sweep
+  drumSubPitchDecay: number;               // 5..500 ms pitch envelope decay
+  drumSubDrive: number;                    // 0..1 soft saturation
+  drumSubSub: number;                      // 0..1 sub-octave mix
+
   // Voice 2: Kick (sine with pitch envelope)
   drumKickFreq: number;                    // 40..150 Hz (end frequency)
   drumKickPitchEnv: number;                // 0..48 semitones (pitch sweep amount)
@@ -185,28 +190,48 @@ export interface SliderState {
   drumKickDecay: number;                   // 30..500 ms (amplitude decay)
   drumKickLevel: number;                   // 0..1
   drumKickClick: number;                   // 0..1 (transient click amount)
-  
+  drumKickBody: number;                    // 0..1 (0=tight, 1=boomy)
+  drumKickPunch: number;                   // 0..1 transient sharpness
+  drumKickTail: number;                    // 0..1 reverberant tail
+  drumKickTone: number;                    // 0..1 harmonic content
+
   // Voice 3: Click (impulse/noise burst - the "data" sound)
   drumClickDecay: number;                  // 1..80 ms
   drumClickFilter: number;                 // 500..15000 Hz highpass
   drumClickTone: number;                   // 0..1 (0=pure impulse, 1=noise burst)
   drumClickLevel: number;                  // 0..1
   drumClickResonance: number;              // 0..1 (filter resonance for metallic tone)
-  
+  drumClickPitch: number;                  // 200..8000 Hz tonal mode pitch
+  drumClickPitchEnv: number;               // -48..+48 semitones pitch sweep
+  drumClickMode: 'impulse' | 'noise' | 'tonal' | 'granular';
+  drumClickGrainCount: number;             // 1..8 micro-grains per trigger
+  drumClickGrainSpread: number;            // 0..50 ms grain timing spread
+  drumClickStereoWidth: number;            // 0..1 stereo spread of grains
+
   // Voice 4: Beep Hi (high frequency sine ping)
   drumBeepHiFreq: number;                  // 2000..12000 Hz
   drumBeepHiAttack: number;                // 0..20 ms
   drumBeepHiDecay: number;                 // 10..500 ms
   drumBeepHiLevel: number;                 // 0..1
   drumBeepHiTone: number;                  // 0..1 (0=pure, 1=FM modulated)
-  
+  drumBeepHiInharmonic: number;            // 0..1 inharmonic partial detune
+  drumBeepHiPartials: number;              // 1..6 number of partials
+  drumBeepHiShimmer: number;               // 0..1 vibrato/chorus amount
+  drumBeepHiShimmerRate: number;           // 0.5..12 Hz shimmer LFO rate
+  drumBeepHiBrightness: number;            // 0..1 spectral tilt
+
   // Voice 5: Beep Lo (lower pitched ping/blip)
   drumBeepLoFreq: number;                  // 150..2000 Hz
   drumBeepLoAttack: number;                // 0..30 ms
   drumBeepLoDecay: number;                 // 10..500 ms
   drumBeepLoLevel: number;                 // 0..1
   drumBeepLoTone: number;                  // 0..1 (0=sine, 1=square-ish)
-  
+  drumBeepLoPitchEnv: number;              // -48..+48 semitones (neg=rise for droplet)
+  drumBeepLoPitchDecay: number;            // 5..500 ms pitch env decay
+  drumBeepLoBody: number;                  // 0..1 resonance/body warmth
+  drumBeepLoPluck: number;                 // 0..1 Karplus-Strong pluck amount
+  drumBeepLoPluckDamp: number;             // 0..1 pluck damping (0=bright, 1=muted)
+
   // Voice 6: Noise (filtered noise burst - hi-hat/texture)
   drumNoiseFilterFreq: number;             // 500..15000 Hz (center/cutoff)
   drumNoiseFilterQ: number;                // 0.5..15 resonance
@@ -214,6 +239,64 @@ export interface SliderState {
   drumNoiseDecay: number;                  // 5..300 ms
   drumNoiseLevel: number;                  // 0..1
   drumNoiseAttack: number;                 // 0..10 ms
+  drumNoiseFormant: number;                // 0..1 vowel formant morph
+  drumNoiseBreath: number;                 // 0..1 breathiness/air
+  drumNoiseFilterEnv: number;              // -1..+1 filter envelope direction
+  drumNoiseFilterEnvDecay: number;         // 5..2000 ms filter env decay
+  drumNoiseDensity: number;                // 0..1 (0=sparse dust, 1=dense)
+  drumNoiseColorLFO: number;               // 0..10 Hz filter modulation rate
+  
+  // Per-trigger per-parameter update option
+  drumRandomMorphUpdate: boolean;          // Update individual parameter sliders on random morph trigger
+
+  // ─── Drum Voice Morph System ───
+  // Sub morph
+  drumSubPresetA: string;                  // Preset name for morph position 0
+  drumSubPresetB: string;                  // Preset name for morph position 1
+  drumSubMorph: number;                    // 0..1 interpolation position
+  drumSubMorphAuto: boolean;               // Auto-morph enabled
+  drumSubMorphSpeed: number;               // Phrases per morph cycle
+  drumSubMorphMode: 'linear' | 'pingpong' | 'random';
+
+  // Kick morph
+  drumKickPresetA: string;
+  drumKickPresetB: string;
+  drumKickMorph: number;
+  drumKickMorphAuto: boolean;
+  drumKickMorphSpeed: number;
+  drumKickMorphMode: 'linear' | 'pingpong' | 'random';
+
+  // Click morph
+  drumClickPresetA: string;
+  drumClickPresetB: string;
+  drumClickMorph: number;
+  drumClickMorphAuto: boolean;
+  drumClickMorphSpeed: number;
+  drumClickMorphMode: 'linear' | 'pingpong' | 'random';
+
+  // BeepHi morph
+  drumBeepHiPresetA: string;
+  drumBeepHiPresetB: string;
+  drumBeepHiMorph: number;
+  drumBeepHiMorphAuto: boolean;
+  drumBeepHiMorphSpeed: number;
+  drumBeepHiMorphMode: 'linear' | 'pingpong' | 'random';
+
+  // BeepLo morph
+  drumBeepLoPresetA: string;
+  drumBeepLoPresetB: string;
+  drumBeepLoMorph: number;
+  drumBeepLoMorphAuto: boolean;
+  drumBeepLoMorphSpeed: number;
+  drumBeepLoMorphMode: 'linear' | 'pingpong' | 'random';
+
+  // Noise morph
+  drumNoisePresetA: string;
+  drumNoisePresetB: string;
+  drumNoiseMorph: number;
+  drumNoiseMorphAuto: boolean;
+  drumNoiseMorphSpeed: number;
+  drumNoiseMorphMode: 'linear' | 'pingpong' | 'random';
   
   // Drum Random Trigger Mode (probability-based like lead random)
   drumRandomEnabled: boolean;              // Master random enable
@@ -455,33 +538,102 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'drumSubDecay',
   'drumSubLevel',
   'drumSubTone',
+  'drumSubShape',
+  'drumSubPitchEnv',
+  'drumSubPitchDecay',
+  'drumSubDrive',
+  'drumSubSub',
   'drumKickFreq',
   'drumKickPitchEnv',
   'drumKickPitchDecay',
   'drumKickDecay',
   'drumKickLevel',
   'drumKickClick',
+  'drumKickBody',
+  'drumKickPunch',
+  'drumKickTail',
+  'drumKickTone',
   'drumClickDecay',
   'drumClickFilter',
   'drumClickTone',
   'drumClickLevel',
   'drumClickResonance',
+  'drumClickPitch',
+  'drumClickPitchEnv',
+  'drumClickMode',
+  'drumClickGrainCount',
+  'drumClickGrainSpread',
+  'drumClickStereoWidth',
   'drumBeepHiFreq',
   'drumBeepHiAttack',
   'drumBeepHiDecay',
   'drumBeepHiLevel',
   'drumBeepHiTone',
+  'drumBeepHiInharmonic',
+  'drumBeepHiPartials',
+  'drumBeepHiShimmer',
+  'drumBeepHiShimmerRate',
+  'drumBeepHiBrightness',
   'drumBeepLoFreq',
   'drumBeepLoAttack',
   'drumBeepLoDecay',
   'drumBeepLoLevel',
   'drumBeepLoTone',
+  'drumBeepLoPitchEnv',
+  'drumBeepLoPitchDecay',
+  'drumBeepLoBody',
+  'drumBeepLoPluck',
+  'drumBeepLoPluckDamp',
   'drumNoiseFilterFreq',
   'drumNoiseFilterQ',
   'drumNoiseFilterType',
   'drumNoiseDecay',
   'drumNoiseLevel',
   'drumNoiseAttack',
+  'drumNoiseFormant',
+  'drumNoiseBreath',
+  'drumNoiseFilterEnv',
+  'drumNoiseFilterEnvDecay',
+  'drumNoiseDensity',
+  'drumNoiseColorLFO',
+  'drumRandomMorphUpdate',
+  // Drum Voice Morph System
+  'drumSubPresetA',
+  'drumSubPresetB',
+  'drumSubMorph',
+  'drumSubMorphAuto',
+  'drumSubMorphSpeed',
+  'drumSubMorphMode',
+  'drumKickPresetA',
+  'drumKickPresetB',
+  'drumKickMorph',
+  'drumKickMorphAuto',
+  'drumKickMorphSpeed',
+  'drumKickMorphMode',
+  'drumClickPresetA',
+  'drumClickPresetB',
+  'drumClickMorph',
+  'drumClickMorphAuto',
+  'drumClickMorphSpeed',
+  'drumClickMorphMode',
+  'drumBeepHiPresetA',
+  'drumBeepHiPresetB',
+  'drumBeepHiMorph',
+  'drumBeepHiMorphAuto',
+  'drumBeepHiMorphSpeed',
+  'drumBeepHiMorphMode',
+  'drumBeepLoPresetA',
+  'drumBeepLoPresetB',
+  'drumBeepLoMorph',
+  'drumBeepLoMorphAuto',
+  'drumBeepLoMorphSpeed',
+  'drumBeepLoMorphMode',
+  'drumNoisePresetA',
+  'drumNoisePresetB',
+  'drumNoiseMorph',
+  'drumNoiseMorphAuto',
+  'drumNoiseMorphSpeed',
+  'drumNoiseMorphMode',
   'drumRandomEnabled',
   'drumRandomDensity',
   'drumRandomSubProb',
@@ -745,7 +897,12 @@ export const DEFAULT_STATE: SliderState = {
   drumSubDecay: 150,
   drumSubLevel: 0.8,
   drumSubTone: 0.1,
-  
+  drumSubShape: 0,            // Pure sine
+  drumSubPitchEnv: 0,         // No pitch sweep
+  drumSubPitchDecay: 50,
+  drumSubDrive: 0,            // No saturation
+  drumSubSub: 0,              // No sub-octave
+
   // Voice 2: Kick (sine with pitch sweep)
   drumKickFreq: 55,
   drumKickPitchEnv: 24,     // Start 2 octaves higher
@@ -753,28 +910,48 @@ export const DEFAULT_STATE: SliderState = {
   drumKickDecay: 200,
   drumKickLevel: 0.7,
   drumKickClick: 0.3,       // Subtle click transient
-  
+  drumKickBody: 0.5,        // Medium body
+  drumKickPunch: 0.5,       // Medium punch
+  drumKickTail: 0,          // No tail
+  drumKickTone: 0,          // Pure sine
+
   // Voice 3: Click (the signature Ikeda "data" sound)
   drumClickDecay: 5,
   drumClickFilter: 4000,    // Highpass filter
   drumClickTone: 0.3,       // Mostly impulse
   drumClickLevel: 0.6,
   drumClickResonance: 0.4,  // Slight metallic ring
-  
+  drumClickPitch: 2000,     // Tonal mode pitch
+  drumClickPitchEnv: 0,     // No pitch sweep
+  drumClickMode: 'impulse' as const,
+  drumClickGrainCount: 1,   // Single hit
+  drumClickGrainSpread: 0,  // No spread
+  drumClickStereoWidth: 0,  // Mono
+
   // Voice 4: Beep Hi (high pitched notification ping)
   drumBeepHiFreq: 4000,
   drumBeepHiAttack: 1,
   drumBeepHiDecay: 80,
   drumBeepHiLevel: 0.5,
   drumBeepHiTone: 0.2,
-  
+  drumBeepHiInharmonic: 0,  // Pure harmonic
+  drumBeepHiPartials: 1,    // Single partial
+  drumBeepHiShimmer: 0,     // No shimmer
+  drumBeepHiShimmerRate: 4, // Default rate
+  drumBeepHiBrightness: 0.5, // Neutral brightness
+
   // Voice 5: Beep Lo (lower blip, Morse-code feel)
   drumBeepLoFreq: 400,
   drumBeepLoAttack: 2,
   drumBeepLoDecay: 100,
   drumBeepLoLevel: 0.5,
   drumBeepLoTone: 0.1,
-  
+  drumBeepLoPitchEnv: 0,    // No pitch envelope
+  drumBeepLoPitchDecay: 50,
+  drumBeepLoBody: 0.3,      // Light body
+  drumBeepLoPluck: 0,       // No pluck
+  drumBeepLoPluckDamp: 0.5, // Medium damping
+
   // Voice 6: Noise (hi-hat/texture)
   drumNoiseFilterFreq: 8000,
   drumNoiseFilterQ: 1,
@@ -782,7 +959,57 @@ export const DEFAULT_STATE: SliderState = {
   drumNoiseDecay: 30,
   drumNoiseLevel: 0.4,
   drumNoiseAttack: 0,
-  
+  drumNoiseFormant: 0,      // No formant
+  drumNoiseBreath: 0,       // No breath
+  drumNoiseFilterEnv: 0,    // No filter envelope
+  drumNoiseFilterEnvDecay: 100,
+  drumNoiseDensity: 1,      // Dense
+  drumNoiseColorLFO: 0,     // No color modulation
+  drumRandomMorphUpdate: false, // Don't update sliders by default (saves performance)
+
+  // ─── Drum Voice Morph System ───
+  drumSubPresetA: 'Classic Sub',
+  drumSubPresetB: 'Classic Sub',
+  drumSubMorph: 0,
+  drumSubMorphAuto: false,
+  drumSubMorphSpeed: 4,
+  drumSubMorphMode: 'pingpong' as const,
+
+  drumKickPresetA: 'Ikeda Kick',
+  drumKickPresetB: 'Ikeda Kick',
+  drumKickMorph: 0,
+  drumKickMorphAuto: false,
+  drumKickMorphSpeed: 4,
+  drumKickMorphMode: 'pingpong' as const,
+
+  drumClickPresetA: 'Data Point',
+  drumClickPresetB: 'Data Point',
+  drumClickMorph: 0,
+  drumClickMorphAuto: false,
+  drumClickMorphSpeed: 4,
+  drumClickMorphMode: 'pingpong' as const,
+
+  drumBeepHiPresetA: 'Data Ping',
+  drumBeepHiPresetB: 'Data Ping',
+  drumBeepHiMorph: 0,
+  drumBeepHiMorphAuto: false,
+  drumBeepHiMorphSpeed: 4,
+  drumBeepHiMorphMode: 'pingpong' as const,
+
+  drumBeepLoPresetA: 'Blip',
+  drumBeepLoPresetB: 'Blip',
+  drumBeepLoMorph: 0,
+  drumBeepLoMorphAuto: false,
+  drumBeepLoMorphSpeed: 4,
+  drumBeepLoMorphMode: 'pingpong' as const,
+
+  drumNoisePresetA: 'Hi-Hat',
+  drumNoisePresetB: 'Hi-Hat',
+  drumNoiseMorph: 0,
+  drumNoiseMorphAuto: false,
+  drumNoiseMorphSpeed: 4,
+  drumNoiseMorphMode: 'pingpong' as const,
+
   // Random trigger mode
   drumRandomEnabled: false,
   drumRandomDensity: 0.3,
@@ -969,6 +1196,11 @@ const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> = {
   drumSubDecay: { min: 20, max: 15000, step: 1 },
   drumSubLevel: { min: 0, max: 1, step: 0.01 },
   drumSubTone: { min: 0, max: 1, step: 0.01 },
+  drumSubShape: { min: 0, max: 1, step: 0.01 },
+  drumSubPitchEnv: { min: -48, max: 48, step: 1 },
+  drumSubPitchDecay: { min: 5, max: 500, step: 1 },
+  drumSubDrive: { min: 0, max: 1, step: 0.01 },
+  drumSubSub: { min: 0, max: 1, step: 0.01 },
   // Voice 2: Kick
   drumKickFreq: { min: 40, max: 150, step: 1 },
   drumKickPitchEnv: { min: 0, max: 48, step: 1 },
@@ -976,30 +1208,68 @@ const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> = {
   drumKickDecay: { min: 30, max: 15000, step: 1 },
   drumKickLevel: { min: 0, max: 1, step: 0.01 },
   drumKickClick: { min: 0, max: 1, step: 0.01 },
+  drumKickBody: { min: 0, max: 1, step: 0.01 },
+  drumKickPunch: { min: 0, max: 1, step: 0.01 },
+  drumKickTail: { min: 0, max: 1, step: 0.01 },
+  drumKickTone: { min: 0, max: 1, step: 0.01 },
   // Voice 3: Click
   drumClickDecay: { min: 1, max: 15000, step: 1 },
   drumClickFilter: { min: 500, max: 15000, step: 100 },
   drumClickTone: { min: 0, max: 1, step: 0.01 },
   drumClickLevel: { min: 0, max: 1, step: 0.01 },
   drumClickResonance: { min: 0, max: 1, step: 0.01 },
+  drumClickPitch: { min: 200, max: 8000, step: 10 },
+  drumClickPitchEnv: { min: -48, max: 48, step: 1 },
+  drumClickGrainCount: { min: 1, max: 8, step: 1 },
+  drumClickGrainSpread: { min: 0, max: 50, step: 1 },
+  drumClickStereoWidth: { min: 0, max: 1, step: 0.01 },
   // Voice 4: Beep Hi
   drumBeepHiFreq: { min: 2000, max: 12000, step: 100 },
-  drumBeepHiAttack: { min: 0, max: 5000, step: 1 },
+  drumBeepHiAttack: { min: 0.1, max: 5000, step: 1 },
   drumBeepHiDecay: { min: 10, max: 15000, step: 1 },
   drumBeepHiLevel: { min: 0, max: 1, step: 0.01 },
   drumBeepHiTone: { min: 0, max: 1, step: 0.01 },
+  drumBeepHiInharmonic: { min: 0, max: 1, step: 0.01 },
+  drumBeepHiPartials: { min: 1, max: 6, step: 1 },
+  drumBeepHiShimmer: { min: 0, max: 1, step: 0.01 },
+  drumBeepHiShimmerRate: { min: 0.5, max: 12, step: 0.1 },
+  drumBeepHiBrightness: { min: 0, max: 1, step: 0.01 },
   // Voice 5: Beep Lo
   drumBeepLoFreq: { min: 150, max: 2000, step: 10 },
-  drumBeepLoAttack: { min: 0, max: 5000, step: 1 },
+  drumBeepLoAttack: { min: 0.1, max: 5000, step: 1 },
   drumBeepLoDecay: { min: 10, max: 15000, step: 1 },
   drumBeepLoLevel: { min: 0, max: 1, step: 0.01 },
   drumBeepLoTone: { min: 0, max: 1, step: 0.01 },
+  drumBeepLoPitchEnv: { min: -48, max: 48, step: 1 },
+  drumBeepLoPitchDecay: { min: 5, max: 500, step: 1 },
+  drumBeepLoBody: { min: 0, max: 1, step: 0.01 },
+  drumBeepLoPluck: { min: 0, max: 1, step: 0.01 },
+  drumBeepLoPluckDamp: { min: 0, max: 1, step: 0.01 },
   // Voice 6: Noise
   drumNoiseFilterFreq: { min: 500, max: 15000, step: 100 },
   drumNoiseFilterQ: { min: 0.5, max: 15, step: 0.1 },
   drumNoiseDecay: { min: 5, max: 15000, step: 1 },
   drumNoiseLevel: { min: 0, max: 1, step: 0.01 },
-  drumNoiseAttack: { min: 0, max: 5000, step: 1 },
+  drumNoiseAttack: { min: 0.1, max: 5000, step: 1 },
+  drumNoiseFormant: { min: 0, max: 1, step: 0.01 },
+  drumNoiseBreath: { min: 0, max: 1, step: 0.01 },
+  drumNoiseFilterEnv: { min: -1, max: 1, step: 0.01 },
+  drumNoiseFilterEnvDecay: { min: 5, max: 2000, step: 1 },
+  drumNoiseDensity: { min: 0, max: 1, step: 0.01 },
+  drumNoiseColorLFO: { min: 0, max: 10, step: 0.1 },
+  // Drum Voice Morph
+  drumSubMorph: { min: 0, max: 1, step: 0.01 },
+  drumSubMorphSpeed: { min: 1, max: 32, step: 1 },
+  drumKickMorph: { min: 0, max: 1, step: 0.01 },
+  drumKickMorphSpeed: { min: 1, max: 32, step: 1 },
+  drumClickMorph: { min: 0, max: 1, step: 0.01 },
+  drumClickMorphSpeed: { min: 1, max: 32, step: 1 },
+  drumBeepHiMorph: { min: 0, max: 1, step: 0.01 },
+  drumBeepHiMorphSpeed: { min: 1, max: 32, step: 1 },
+  drumBeepLoMorph: { min: 0, max: 1, step: 0.01 },
+  drumBeepLoMorphSpeed: { min: 1, max: 32, step: 1 },
+  drumNoiseMorph: { min: 0, max: 1, step: 0.01 },
+  drumNoiseMorphSpeed: { min: 1, max: 32, step: 1 },
   // Drum Random Trigger
   drumRandomDensity: { min: 0, max: 1, step: 0.01 },
   leadAttack: { min: 0.001, max: 2, step: 0.001 },

@@ -1,23 +1,27 @@
 /**
- * Ikeda-Style Drum Synthesizer
+ * Ikeda-Style Drum Synthesizer - Enhanced with Morphable Voices
  * 
- * Minimalist percussion synthesizer inspired by Ryoji Ikeda's aesthetic:
+ * Minimalist percussion synthesizer inspired by Ryoji Ikeda's aesthetic,
+ * expanded with deep sound design parameters and preset morphing:
  * - Sharp digital impulses and clicks
  * - Pure sine beeps at frequency extremes
- * - Sub-bass pulses
- * - Filtered noise bursts
+ * - Sub-bass pulses with waveshaping
+ * - Filtered noise bursts with formant control
+ * - Karplus-Strong pluck synthesis
+ * - Granular micro-hit textures
  * - Mathematical precision with probability-based triggering
  * 
  * 6 voice types:
- * 1. Sub - Low sine pulse (30-100Hz), felt more than heard
- * 2. Kick - Sine with pitch envelope for punch
- * 3. Click - Impulse/noise burst, the "data" sound
- * 4. Beep Hi - High frequency sine ping (2-12kHz)
- * 5. Beep Lo - Lower pitched blip (150-2000Hz)
- * 6. Noise - Filtered noise burst (hi-hat/texture)
+ * 1. Sub - Low sine/triangle pulse with drive & sub-octave
+ * 2. Kick - Sine with pitch envelope, body, punch, tail
+ * 3. Click - Multi-mode: impulse/noise/tonal/granular
+ * 4. Beep Hi - Inharmonic partials with shimmer LFO
+ * 5. Beep Lo - Pitched blip with Karplus-Strong pluck option
+ * 6. Noise - Filtered noise with formant, breath, filter envelope
  */
 
 import type { SliderState } from '../ui/state';
+import { getMorphedParams, DrumMorphManager } from './drumMorph';
 
 export type DrumVoiceType = 'sub' | 'kick' | 'click' | 'beepHi' | 'beepLo' | 'noise';
 
@@ -44,8 +48,20 @@ export class DrumSynth {
   // RNG for deterministic randomness
   private rng: () => number;
   
+  // Morph system
+  private morphManager: DrumMorphManager;
+  private morphAnimationFrame: number | null = null;
+  
+  // Morph ranges for per-trigger randomization (like delay/expression)
+  private morphRanges: Record<DrumVoiceType, { min: number; max: number } | null> = {
+    sub: null, kick: null, click: null, beepHi: null, beepLo: null, noise: null
+  };
+  
   // Callback for UI visualization
   private onDrumTrigger: ((voice: DrumVoiceType, velocity: number) => void) | null = null;
+  
+  // Callback for morph trigger visualization (per-trigger random position)
+  private onMorphTrigger: ((voice: DrumVoiceType, morphPosition: number) => void) | null = null;
 
   constructor(
     ctx: AudioContext,
@@ -69,6 +85,9 @@ export class DrumSynth {
     this.masterGain.connect(masterOutput);
     this.reverbSend.connect(reverbNode);
     
+    // Initialize morph manager
+    this.morphManager = new DrumMorphManager();
+    
     // Pre-generate noise buffer
     this.createNoiseBuffer();
   }
@@ -77,6 +96,14 @@ export class DrumSynth {
     this.onDrumTrigger = callback;
   }
   
+  setMorphTriggerCallback(callback: (voice: DrumVoiceType, morphPosition: number) => void): void {
+    this.onMorphTrigger = callback;
+  }
+  
+  setMorphRange(voice: DrumVoiceType, range: { min: number; max: number } | null): void {
+    this.morphRanges[voice] = range;
+  }
+
   private createNoiseBuffer(): void {
     // Create 1 second of white noise
     const length = this.ctx.sampleRate;
@@ -175,37 +202,108 @@ export class DrumSynth {
   }
   
   /**
-   * Voice 1: Sub - Deep sine pulse, felt more than heard
+   * Voice 1: Sub - Deep sine/triangle pulse with drive and sub-octave
+   * New params: shape, pitchEnv, pitchDecay, drive, sub
    */
   private triggerSub(velocity: number, time: number): void {
     const p = this.params;
     
+    // Get random morph value within range if range is set (per-trigger randomization)
+    const range = this.morphRanges.sub;
+    let morphValue: number | undefined;
+    if (range) {
+      morphValue = range.min + Math.random() * (range.max - range.min);
+      // Notify UI of triggered morph position (normalized 0-1 within range)
+      if (this.onMorphTrigger) {
+        const normalizedPos = range.max > range.min
+          ? (morphValue - range.min) / (range.max - range.min)
+          : 0.5;
+        this.onMorphTrigger('sub', normalizedPos);
+      }
+    }
+    
+    // Get morphed params if presets are loaded
+    const morphed = getMorphedParams(p, 'sub', morphValue);
+    
+    // Use morphed values if available, otherwise fall back to direct params
+    const freq = (morphed.drumSubFreq as number) ?? p.drumSubFreq;
+    const decay = (morphed.drumSubDecay as number) ?? p.drumSubDecay;
+    const level = (morphed.drumSubLevel as number) ?? p.drumSubLevel;
+    const tone = (morphed.drumSubTone as number) ?? p.drumSubTone;
+    const shape = (morphed.drumSubShape as number) ?? p.drumSubShape ?? 0;
+    const pitchEnv = (morphed.drumSubPitchEnv as number) ?? p.drumSubPitchEnv ?? 0;
+    const pitchDecayTime = (morphed.drumSubPitchDecay as number) ?? p.drumSubPitchDecay ?? 50;
+    const drive = (morphed.drumSubDrive as number) ?? p.drumSubDrive ?? 0;
+    const subOctave = (morphed.drumSubSub as number) ?? p.drumSubSub ?? 0;
+    
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
     
-    osc.type = 'sine';
-    osc.frequency.value = p.drumSubFreq;
+    // Wave shape: 0 = sine, 0.5 = triangle, 1 = saw-like
+    if (shape < 0.33) {
+      osc.type = 'sine';
+    } else if (shape < 0.66) {
+      osc.type = 'triangle';
+    } else {
+      osc.type = 'sawtooth';
+    }
+    
+    // Pitch envelope
+    const startFreq = freq * Math.pow(2, pitchEnv / 12);
+    osc.frequency.setValueAtTime(startFreq, time);
+    osc.frequency.exponentialRampToValueAtTime(freq, time + pitchDecayTime / 1000);
     
     // Add subtle harmonics based on tone parameter
     let osc2: OscillatorNode | null = null;
     let gain2: GainNode | null = null;
-    if (p.drumSubTone > 0.05) {
+    if (tone > 0.05) {
       osc2 = this.ctx.createOscillator();
       osc2.type = 'sine';
-      osc2.frequency.value = p.drumSubFreq * 2; // Octave up
+      osc2.frequency.value = freq * 2; // Octave up
       gain2 = this.ctx.createGain();
-      gain2.gain.value = p.drumSubTone * 0.3 * velocity * p.drumSubLevel;
+      gain2.gain.value = tone * 0.3 * velocity * level;
+    }
+    
+    // Sub-octave oscillator for extra weight
+    let subOsc: OscillatorNode | null = null;
+    let subGain: GainNode | null = null;
+    if (subOctave > 0.05) {
+      subOsc = this.ctx.createOscillator();
+      subOsc.type = 'sine';
+      subOsc.frequency.value = freq / 2; // Octave down
+      subGain = this.ctx.createGain();
+      subGain.gain.value = subOctave * 0.5 * velocity * level;
+    }
+    
+    // Waveshaper for drive/saturation
+    let waveshaper: WaveShaperNode | null = null;
+    if (drive > 0.05) {
+      waveshaper = this.ctx.createWaveShaper();
+      const samples = 256;
+      const curve = new Float32Array(samples);
+      const driveAmount = drive * 10;
+      for (let i = 0; i < samples; i++) {
+        const x = (i * 2) / samples - 1;
+        curve[i] = Math.tanh(x * driveAmount) / Math.tanh(driveAmount);
+      }
+      waveshaper.curve = curve;
+      waveshaper.oversample = '2x';
     }
     
     // Envelope: instant attack, exponential decay
-    const level = velocity * p.drumSubLevel;
-    const decayTime = p.drumSubDecay / 1000;
+    const outputLevel = velocity * level;
+    const decayTime = decay / 1000;
     
-    gain.gain.setValueAtTime(level, time);
+    gain.gain.setValueAtTime(outputLevel, time);
     gain.gain.exponentialRampToValueAtTime(0.001, time + decayTime);
     
-    // Connect and schedule
-    osc.connect(gain);
+    // Connect chain
+    if (waveshaper) {
+      osc.connect(waveshaper);
+      waveshaper.connect(gain);
+    } else {
+      osc.connect(gain);
+    }
     gain.connect(this.masterGain);
     gain.connect(this.reverbSend);
     
@@ -220,13 +318,51 @@ export class DrumSynth {
       osc2.start(time);
       osc2.stop(time + decayTime + 0.01);
     }
+    
+    if (subOsc && subGain) {
+      subGain.gain.setValueAtTime(subGain.gain.value, time);
+      subGain.gain.exponentialRampToValueAtTime(0.001, time + decayTime * 1.2);
+      subOsc.connect(subGain);
+      subGain.connect(this.masterGain);
+      subOsc.start(time);
+      subOsc.stop(time + decayTime + 0.02);
+    }
   }
   
   /**
-   * Voice 2: Kick - Sine with pitch envelope for punch
+   * Voice 2: Kick - Sine with pitch envelope, body, punch, tail
+   * New params: body, punch, tail, tone
    */
   private triggerKick(velocity: number, time: number): void {
     const p = this.params;
+    
+    // Get random morph value within range if range is set (per-trigger randomization)
+    const range = this.morphRanges.kick;
+    let morphValue: number | undefined;
+    if (range) {
+      morphValue = range.min + Math.random() * (range.max - range.min);
+      if (this.onMorphTrigger) {
+        const normalizedPos = range.max > range.min
+          ? (morphValue - range.min) / (range.max - range.min)
+          : 0.5;
+        this.onMorphTrigger('kick', normalizedPos);
+      }
+    }
+    
+    // Get morphed params if presets are loaded
+    const morphed = getMorphedParams(p, 'kick', morphValue);
+    
+    // Use morphed values if available
+    const freq = (morphed.drumKickFreq as number) ?? p.drumKickFreq;
+    const pitchEnv = (morphed.drumKickPitchEnv as number) ?? p.drumKickPitchEnv;
+    const pitchDecay = ((morphed.drumKickPitchDecay as number) ?? p.drumKickPitchDecay) / 1000;
+    const decay = ((morphed.drumKickDecay as number) ?? p.drumKickDecay) / 1000;
+    const level = (morphed.drumKickLevel as number) ?? p.drumKickLevel;
+    const click = (morphed.drumKickClick as number) ?? p.drumKickClick;
+    const body = (morphed.drumKickBody as number) ?? p.drumKickBody ?? 0.5;
+    const punch = (morphed.drumKickPunch as number) ?? p.drumKickPunch ?? 0.5;
+    const tail = (morphed.drumKickTail as number) ?? p.drumKickTail ?? 0;
+    const tone = (morphed.drumKickTone as number) ?? p.drumKickTone ?? 0;
     
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
@@ -234,39 +370,93 @@ export class DrumSynth {
     osc.type = 'sine';
     
     // Pitch envelope: start high, sweep down to base frequency
-    const startFreq = p.drumKickFreq * Math.pow(2, p.drumKickPitchEnv / 12);
-    const pitchDecay = p.drumKickPitchDecay / 1000;
+    // Punch affects how dramatic the pitch drop is
+    const punchMultiplier = 0.5 + punch * 1.5;
+    const startFreq = freq * Math.pow(2, (pitchEnv * punchMultiplier) / 12);
     
     osc.frequency.setValueAtTime(startFreq, time);
-    osc.frequency.exponentialRampToValueAtTime(p.drumKickFreq, time + pitchDecay);
+    osc.frequency.exponentialRampToValueAtTime(freq, time + pitchDecay);
     
-    // Click transient (optional high-frequency burst)
+    // Click transient (high-frequency burst for attack)
     let clickOsc: OscillatorNode | null = null;
     let clickGain: GainNode | null = null;
-    if (p.drumKickClick > 0.05) {
+    if (click > 0.05) {
       clickOsc = this.ctx.createOscillator();
       clickOsc.type = 'triangle';
-      clickOsc.frequency.value = 3000;
+      clickOsc.frequency.value = 3000 + punch * 2000;
       clickGain = this.ctx.createGain();
-      const clickLevel = p.drumKickClick * velocity * p.drumKickLevel * 0.5;
+      const clickLevel = click * velocity * level * 0.5;
       clickGain.gain.setValueAtTime(clickLevel, time);
       clickGain.gain.exponentialRampToValueAtTime(0.001, time + 0.005);
     }
     
+    // Body layer - adds mid-frequency content
+    let bodyOsc: OscillatorNode | null = null;
+    let bodyGain: GainNode | null = null;
+    let bodyFilter: BiquadFilterNode | null = null;
+    if (body > 0.1) {
+      bodyOsc = this.ctx.createOscillator();
+      bodyOsc.type = 'triangle';
+      bodyOsc.frequency.value = freq * 1.5;
+      bodyFilter = this.ctx.createBiquadFilter();
+      bodyFilter.type = 'lowpass';
+      bodyFilter.frequency.value = freq * 4;
+      bodyGain = this.ctx.createGain();
+      const bodyLevel = body * velocity * level * 0.4;
+      bodyGain.gain.setValueAtTime(bodyLevel, time);
+      bodyGain.gain.exponentialRampToValueAtTime(0.001, time + decay * 0.6);
+    }
+    
+    // Tail layer - adds sustain/room feel
+    let tailSource: AudioBufferSourceNode | null = null;
+    let tailFilter: BiquadFilterNode | null = null;
+    let tailGain: GainNode | null = null;
+    if (tail > 0.1 && this.noiseBuffer) {
+      tailSource = this.ctx.createBufferSource();
+      tailSource.buffer = this.noiseBuffer;
+      tailFilter = this.ctx.createBiquadFilter();
+      tailFilter.type = 'lowpass';
+      tailFilter.frequency.value = freq * 2;
+      tailFilter.Q.value = 2;
+      tailGain = this.ctx.createGain();
+      const tailLevel = tail * velocity * level * 0.2;
+      tailGain.gain.setValueAtTime(0, time);
+      tailGain.gain.linearRampToValueAtTime(tailLevel, time + decay * 0.1);
+      tailGain.gain.exponentialRampToValueAtTime(0.001, time + decay * 1.5);
+    }
+    
+    // Tone adds harmonic distortion
+    let waveshaper: WaveShaperNode | null = null;
+    if (tone > 0.05) {
+      waveshaper = this.ctx.createWaveShaper();
+      const samples = 256;
+      const curve = new Float32Array(samples);
+      const driveAmount = tone * 5;
+      for (let i = 0; i < samples; i++) {
+        const x = (i * 2) / samples - 1;
+        curve[i] = Math.tanh(x * driveAmount) / Math.tanh(driveAmount);
+      }
+      waveshaper.curve = curve;
+    }
+    
     // Amplitude envelope
-    const level = velocity * p.drumKickLevel;
-    const decayTime = p.drumKickDecay / 1000;
+    const outputLevel = velocity * level;
     
-    gain.gain.setValueAtTime(level, time);
-    gain.gain.exponentialRampToValueAtTime(0.001, time + decayTime);
+    gain.gain.setValueAtTime(outputLevel, time);
+    gain.gain.exponentialRampToValueAtTime(0.001, time + decay);
     
-    // Connect
-    osc.connect(gain);
+    // Connect main chain
+    if (waveshaper) {
+      osc.connect(waveshaper);
+      waveshaper.connect(gain);
+    } else {
+      osc.connect(gain);
+    }
     gain.connect(this.masterGain);
     gain.connect(this.reverbSend);
     
     osc.start(time);
-    osc.stop(time + decayTime + 0.01);
+    osc.stop(time + decay + 0.01);
     
     if (clickOsc && clickGain) {
       clickOsc.connect(clickGain);
@@ -274,14 +464,89 @@ export class DrumSynth {
       clickOsc.start(time);
       clickOsc.stop(time + 0.01);
     }
+    
+    if (bodyOsc && bodyFilter && bodyGain) {
+      bodyOsc.connect(bodyFilter);
+      bodyFilter.connect(bodyGain);
+      bodyGain.connect(this.masterGain);
+      bodyOsc.start(time);
+      bodyOsc.stop(time + decay + 0.01);
+    }
+    
+    if (tailSource && tailFilter && tailGain) {
+      tailSource.connect(tailFilter);
+      tailFilter.connect(tailGain);
+      tailGain.connect(this.masterGain);
+      tailGain.connect(this.reverbSend);
+      tailSource.start(time);
+      tailSource.stop(time + decay * 1.5 + 0.01);
+    }
   }
   
   /**
-   * Voice 3: Click - Impulse/noise burst, the signature "data" sound
+   * Voice 3: Click - Multi-mode: impulse/noise/tonal/granular
+   * New params: pitch, pitchEnv, mode, grainCount, grainSpread, stereoWidth
    */
   private triggerClick(velocity: number, time: number): void {
     const p = this.params;
     
+    if (!this.noiseBuffer) return;
+    
+    // Get random morph value within range if range is set (per-trigger randomization)
+    const range = this.morphRanges.click;
+    let morphValue: number | undefined;
+    if (range) {
+      morphValue = range.min + Math.random() * (range.max - range.min);
+      if (this.onMorphTrigger) {
+        const normalizedPos = range.max > range.min
+          ? (morphValue - range.min) / (range.max - range.min)
+          : 0.5;
+        this.onMorphTrigger('click', normalizedPos);
+      }
+    }
+    
+    // Get morphed params if presets are loaded
+    const morphed = getMorphedParams(p, 'click', morphValue);
+    
+    // Use morphed values if available
+    const decay = ((morphed.drumClickDecay as number) ?? p.drumClickDecay) / 1000;
+    const filterFreq = (morphed.drumClickFilter as number) ?? p.drumClickFilter;
+    const tone = (morphed.drumClickTone as number) ?? p.drumClickTone;
+    const level = (morphed.drumClickLevel as number) ?? p.drumClickLevel;
+    const resonance = (morphed.drumClickResonance as number) ?? p.drumClickResonance;
+    const pitch = (morphed.drumClickPitch as number) ?? p.drumClickPitch ?? 2000;
+    const pitchEnv = (morphed.drumClickPitchEnv as number) ?? p.drumClickPitchEnv ?? 0;
+    const mode = (morphed.drumClickMode as string) ?? p.drumClickMode ?? 'impulse';
+    const grainCount = (morphed.drumClickGrainCount as number) ?? p.drumClickGrainCount ?? 1;
+    const grainSpread = (morphed.drumClickGrainSpread as number) ?? p.drumClickGrainSpread ?? 0;
+    const stereoWidth = (morphed.drumClickStereoWidth as number) ?? p.drumClickStereoWidth ?? 0;
+    
+    const outputLevel = velocity * level;
+    
+    // Different synthesis modes
+    switch (mode) {
+      case 'impulse':
+        this.triggerClickImpulse(time, outputLevel, decay, filterFreq, resonance, tone);
+        break;
+      case 'noise':
+        this.triggerClickNoise(time, outputLevel, decay, filterFreq, resonance, tone);
+        break;
+      case 'tonal':
+        this.triggerClickTonal(time, outputLevel, decay, pitch, pitchEnv, filterFreq);
+        break;
+      case 'granular':
+        this.triggerClickGranular(time, outputLevel, decay, grainCount, grainSpread, filterFreq, stereoWidth);
+        break;
+      default:
+        this.triggerClickImpulse(time, outputLevel, decay, filterFreq, resonance, tone);
+    }
+  }
+  
+  /** Click mode: Impulse - very short sharp transient */
+  private triggerClickImpulse(
+    time: number, level: number, decay: number, 
+    filterFreq: number, resonance: number, tone: number
+  ): void {
     if (!this.noiseBuffer) return;
     
     const source = this.ctx.createBufferSource();
@@ -290,20 +555,17 @@ export class DrumSynth {
     
     source.buffer = this.noiseBuffer;
     
-    // Highpass filter for that sharp digital character
+    // Highpass filter for sharp digital character
     filter.type = 'highpass';
-    filter.frequency.value = p.drumClickFilter;
-    filter.Q.value = 0.5 + p.drumClickResonance * 15; // Resonance for metallic ring
+    filter.frequency.value = filterFreq;
+    filter.Q.value = 0.5 + resonance * 15;
     
-    // Mix between impulse (very short) and noise burst based on tone
-    const decayTime = p.drumClickDecay / 1000;
-    const actualDecay = decayTime * (0.2 + p.drumClickTone * 0.8); // Shorter for impulse
+    // Shorter decay for impulse feel
+    const actualDecay = decay * (0.1 + tone * 0.2);
     
-    const level = velocity * p.drumClickLevel;
     gain.gain.setValueAtTime(level, time);
     gain.gain.exponentialRampToValueAtTime(0.001, time + actualDecay);
     
-    // Connect
     source.connect(filter);
     filter.connect(gain);
     gain.connect(this.masterGain);
@@ -313,105 +575,11 @@ export class DrumSynth {
     source.stop(time + actualDecay + 0.01);
   }
   
-  /**
-   * Voice 4: Beep Hi - High frequency sine ping
-   */
-  private triggerBeepHi(velocity: number, time: number): void {
-    const p = this.params;
-    
-    const osc = this.ctx.createOscillator();
-    const gain = this.ctx.createGain();
-    
-    osc.type = 'sine';
-    osc.frequency.value = p.drumBeepHiFreq;
-    
-    // FM modulation for metallic character (optional)
-    let modOsc: OscillatorNode | null = null;
-    let modGain: GainNode | null = null;
-    if (p.drumBeepHiTone > 0.1) {
-      modOsc = this.ctx.createOscillator();
-      modOsc.type = 'sine';
-      modOsc.frequency.value = p.drumBeepHiFreq * 2.01; // Slight detune for FM
-      modGain = this.ctx.createGain();
-      modGain.gain.value = p.drumBeepHiTone * p.drumBeepHiFreq * 0.3;
-      modOsc.connect(modGain);
-      modGain.connect(osc.frequency);
-    }
-    
-    // Attack/decay envelope
-    const attack = p.drumBeepHiAttack / 1000;
-    const decay = p.drumBeepHiDecay / 1000;
-    const level = velocity * p.drumBeepHiLevel;
-    
-    gain.gain.setValueAtTime(0, time);
-    gain.gain.linearRampToValueAtTime(level, time + attack);
-    gain.gain.exponentialRampToValueAtTime(0.001, time + attack + decay);
-    
-    // Connect
-    osc.connect(gain);
-    gain.connect(this.masterGain);
-    gain.connect(this.reverbSend);
-    
-    osc.start(time);
-    osc.stop(time + attack + decay + 0.01);
-    
-    if (modOsc) {
-      modOsc.start(time);
-      modOsc.stop(time + attack + decay + 0.01);
-    }
-  }
-  
-  /**
-   * Voice 5: Beep Lo - Lower pitched blip/ping
-   */
-  private triggerBeepLo(velocity: number, time: number): void {
-    const p = this.params;
-    
-    const osc = this.ctx.createOscillator();
-    const gain = this.ctx.createGain();
-    
-    // Blend between sine and square based on tone
-    osc.type = p.drumBeepLoTone > 0.5 ? 'square' : 'sine';
-    osc.frequency.value = p.drumBeepLoFreq;
-    
-    // If using square, filter to soften harmonics
-    let filter: BiquadFilterNode | null = null;
-    if (p.drumBeepLoTone > 0.5) {
-      filter = this.ctx.createBiquadFilter();
-      filter.type = 'lowpass';
-      filter.frequency.value = p.drumBeepLoFreq * 4;
-      filter.Q.value = 0.7;
-    }
-    
-    // Attack/decay envelope
-    const attack = p.drumBeepLoAttack / 1000;
-    const decay = p.drumBeepLoDecay / 1000;
-    const level = velocity * p.drumBeepLoLevel;
-    
-    gain.gain.setValueAtTime(0, time);
-    gain.gain.linearRampToValueAtTime(level, time + attack);
-    gain.gain.exponentialRampToValueAtTime(0.001, time + attack + decay);
-    
-    // Connect
-    if (filter) {
-      osc.connect(filter);
-      filter.connect(gain);
-    } else {
-      osc.connect(gain);
-    }
-    gain.connect(this.masterGain);
-    gain.connect(this.reverbSend);
-    
-    osc.start(time);
-    osc.stop(time + attack + decay + 0.01);
-  }
-  
-  /**
-   * Voice 6: Noise - Filtered noise burst (hi-hat/texture)
-   */
-  private triggerNoise(velocity: number, time: number): void {
-    const p = this.params;
-    
+  /** Click mode: Noise - longer filtered noise burst */
+  private triggerClickNoise(
+    time: number, level: number, decay: number,
+    filterFreq: number, resonance: number, tone: number
+  ): void {
     if (!this.noiseBuffer) return;
     
     const source = this.ctx.createBufferSource();
@@ -420,28 +588,553 @@ export class DrumSynth {
     
     source.buffer = this.noiseBuffer;
     
-    // Filter type and settings
-    filter.type = p.drumNoiseFilterType;
-    filter.frequency.value = p.drumNoiseFilterFreq;
-    filter.Q.value = p.drumNoiseFilterQ;
+    filter.type = 'bandpass';
+    filter.frequency.value = filterFreq;
+    filter.Q.value = 1 + resonance * 10;
     
-    // Attack/decay envelope
-    const attack = p.drumNoiseAttack / 1000;
-    const decay = p.drumNoiseDecay / 1000;
-    const level = velocity * p.drumNoiseLevel;
+    const actualDecay = decay * (0.5 + tone * 0.5);
     
-    gain.gain.setValueAtTime(0, time);
-    gain.gain.linearRampToValueAtTime(level, time + attack);
-    gain.gain.exponentialRampToValueAtTime(0.001, time + attack + decay);
+    gain.gain.setValueAtTime(level, time);
+    gain.gain.exponentialRampToValueAtTime(0.001, time + actualDecay);
     
-    // Connect
     source.connect(filter);
     filter.connect(gain);
     gain.connect(this.masterGain);
     gain.connect(this.reverbSend);
     
     source.start(time);
+    source.stop(time + actualDecay + 0.01);
+  }
+  
+  /** Click mode: Tonal - pitched sine click with pitch envelope */
+  private triggerClickTonal(
+    time: number, level: number, decay: number,
+    pitch: number, pitchEnv: number, filterFreq: number
+  ): void {
+    const osc = this.ctx.createOscillator();
+    const filter = this.ctx.createBiquadFilter();
+    const gain = this.ctx.createGain();
+    
+    osc.type = 'sine';
+    
+    // Apply pitch envelope
+    const startPitch = pitch * Math.pow(2, pitchEnv / 12);
+    osc.frequency.setValueAtTime(startPitch, time);
+    osc.frequency.exponentialRampToValueAtTime(pitch, time + decay * 0.3);
+    
+    filter.type = 'lowpass';
+    filter.frequency.value = filterFreq;
+    
+    gain.gain.setValueAtTime(level, time);
+    gain.gain.exponentialRampToValueAtTime(0.001, time + decay);
+    
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.masterGain);
+    gain.connect(this.reverbSend);
+    
+    osc.start(time);
+    osc.stop(time + decay + 0.01);
+  }
+  
+  /** Click mode: Granular - multiple micro-hits spread in time */
+  private triggerClickGranular(
+    time: number, level: number, decay: number,
+    grainCount: number, grainSpread: number, filterFreq: number, stereoWidth: number
+  ): void {
+    if (!this.noiseBuffer) return;
+    
+    const spreadTime = grainSpread / 1000;
+    const grainLevel = level / Math.sqrt(grainCount);
+    
+    for (let i = 0; i < grainCount; i++) {
+      const grainTime = time + this.rng() * spreadTime;
+      const grainDecay = decay * (0.5 + this.rng() * 0.5);
+      
+      const source = this.ctx.createBufferSource();
+      const filter = this.ctx.createBiquadFilter();
+      const gain = this.ctx.createGain();
+      const panner = this.ctx.createStereoPanner();
+      
+      source.buffer = this.noiseBuffer;
+      
+      filter.type = 'highpass';
+      filter.frequency.value = filterFreq * (0.8 + this.rng() * 0.4);
+      filter.Q.value = 2;
+      
+      // Stereo spread
+      panner.pan.value = (this.rng() * 2 - 1) * stereoWidth;
+      
+      gain.gain.setValueAtTime(grainLevel, grainTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, grainTime + grainDecay);
+      
+      source.connect(filter);
+      filter.connect(gain);
+      gain.connect(panner);
+      panner.connect(this.masterGain);
+      panner.connect(this.reverbSend);
+      
+      source.start(grainTime);
+      source.stop(grainTime + grainDecay + 0.01);
+    }
+  }
+  
+  /**
+   * Voice 4: Beep Hi - Inharmonic partials with shimmer LFO
+   * New params: inharmonic, partials, shimmer, shimmerRate, brightness
+   */
+  private triggerBeepHi(velocity: number, time: number): void {
+    const p = this.params;
+    
+    // Get random morph value within range if range is set (per-trigger randomization)
+    const range = this.morphRanges.beepHi;
+    let morphValue: number | undefined;
+    if (range) {
+      morphValue = range.min + Math.random() * (range.max - range.min);
+      if (this.onMorphTrigger) {
+        const normalizedPos = range.max > range.min
+          ? (morphValue - range.min) / (range.max - range.min)
+          : 0.5;
+        this.onMorphTrigger('beepHi', normalizedPos);
+      }
+    }
+    
+    // Get morphed params if presets are loaded
+    const morphed = getMorphedParams(p, 'beepHi', morphValue);
+    
+    // Use morphed values if available
+    const freq = (morphed.drumBeepHiFreq as number) ?? p.drumBeepHiFreq;
+    const attack = ((morphed.drumBeepHiAttack as number) ?? p.drumBeepHiAttack) / 1000;
+    const decay = ((morphed.drumBeepHiDecay as number) ?? p.drumBeepHiDecay) / 1000;
+    const level = (morphed.drumBeepHiLevel as number) ?? p.drumBeepHiLevel;
+    const tone = (morphed.drumBeepHiTone as number) ?? p.drumBeepHiTone;
+    const inharmonic = (morphed.drumBeepHiInharmonic as number) ?? p.drumBeepHiInharmonic ?? 0;
+    const partials = (morphed.drumBeepHiPartials as number) ?? p.drumBeepHiPartials ?? 1;
+    const shimmer = (morphed.drumBeepHiShimmer as number) ?? p.drumBeepHiShimmer ?? 0;
+    const shimmerRate = (morphed.drumBeepHiShimmerRate as number) ?? p.drumBeepHiShimmerRate ?? 4;
+    const brightness = (morphed.drumBeepHiBrightness as number) ?? p.drumBeepHiBrightness ?? 0.5;
+    
+    const outputLevel = velocity * level;
+    const numPartials = Math.max(1, Math.round(partials));
+    
+    // Create oscillators for each partial
+    const oscillators: OscillatorNode[] = [];
+    const gains: GainNode[] = [];
+    
+    // Main output gain
+    const mainGain = this.ctx.createGain();
+    mainGain.connect(this.masterGain);
+    mainGain.connect(this.reverbSend);
+    
+    // Brightness filter
+    const brightnessFilter = this.ctx.createBiquadFilter();
+    brightnessFilter.type = 'lowpass';
+    brightnessFilter.frequency.value = freq * (1 + brightness * 4);
+    brightnessFilter.connect(mainGain);
+    
+    // LFO for shimmer
+    let lfo: OscillatorNode | null = null;
+    let lfoGain: GainNode | null = null;
+    if (shimmer > 0.01) {
+      lfo = this.ctx.createOscillator();
+      lfo.type = 'sine';
+      lfo.frequency.value = shimmerRate;
+      lfoGain = this.ctx.createGain();
+      lfoGain.gain.value = shimmer * 0.3 * outputLevel;
+      lfo.connect(lfoGain);
+      lfoGain.connect(mainGain.gain);
+    }
+    
+    for (let i = 0; i < numPartials; i++) {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      
+      osc.type = 'sine';
+      
+      // Calculate partial frequency with inharmonicity
+      // Inharmonic = 0: harmonic series (1, 2, 3, 4...)
+      // Inharmonic = 1: detuned/bell-like (1, 2.1, 3.3, 4.7...)
+      const harmonicRatio = i + 1;
+      const inharmonicOffset = Math.pow(harmonicRatio, 1 + inharmonic * 0.5) - harmonicRatio;
+      const partialFreq = freq * (harmonicRatio + inharmonicOffset * inharmonic);
+      
+      osc.frequency.value = partialFreq;
+      
+      // Level falls off for higher partials
+      const partialLevel = outputLevel / numPartials / Math.pow(harmonicRatio, 0.5);
+      
+      gain.gain.setValueAtTime(0, time);
+      gain.gain.linearRampToValueAtTime(partialLevel, time + attack);
+      gain.gain.exponentialRampToValueAtTime(0.001, time + attack + decay);
+      
+      osc.connect(gain);
+      gain.connect(brightnessFilter);
+      
+      oscillators.push(osc);
+      gains.push(gain);
+    }
+    
+    // FM modulation for metallic character (from original tone param)
+    let modOsc: OscillatorNode | null = null;
+    let modGain: GainNode | null = null;
+    if (tone > 0.1) {
+      modOsc = this.ctx.createOscillator();
+      modOsc.type = 'sine';
+      modOsc.frequency.value = freq * 2.01;
+      modGain = this.ctx.createGain();
+      modGain.gain.value = tone * freq * 0.3;
+      modOsc.connect(modGain);
+      // Modulate the first oscillator's frequency
+      if (oscillators.length > 0) {
+        modGain.connect(oscillators[0].frequency);
+      }
+    }
+    
+    // Start all oscillators
+    oscillators.forEach(osc => {
+      osc.start(time);
+      osc.stop(time + attack + decay + 0.01);
+    });
+    
+    if (lfo) {
+      lfo.start(time);
+      lfo.stop(time + attack + decay + 0.01);
+    }
+    
+    if (modOsc) {
+      modOsc.start(time);
+      modOsc.stop(time + attack + decay + 0.01);
+    }
+  }
+  
+  /**
+   * Voice 5: Beep Lo - Pitched blip with Karplus-Strong pluck option
+   * New params: pitchEnv, pitchDecay, body, pluck, pluckDamp
+   */
+  private triggerBeepLo(velocity: number, time: number): void {
+    const p = this.params;
+    
+    // Get random morph value within range if range is set (per-trigger randomization)
+    const range = this.morphRanges.beepLo;
+    let morphValue: number | undefined;
+    if (range) {
+      morphValue = range.min + Math.random() * (range.max - range.min);
+      if (this.onMorphTrigger) {
+        const normalizedPos = range.max > range.min
+          ? (morphValue - range.min) / (range.max - range.min)
+          : 0.5;
+        this.onMorphTrigger('beepLo', normalizedPos);
+      }
+    }
+    
+    // Get morphed params if presets are loaded
+    const morphed = getMorphedParams(p, 'beepLo', morphValue);
+    
+    // Use morphed values if available
+    const freq = (morphed.drumBeepLoFreq as number) ?? p.drumBeepLoFreq;
+    const attack = ((morphed.drumBeepLoAttack as number) ?? p.drumBeepLoAttack) / 1000;
+    const decay = ((morphed.drumBeepLoDecay as number) ?? p.drumBeepLoDecay) / 1000;
+    const level = (morphed.drumBeepLoLevel as number) ?? p.drumBeepLoLevel;
+    const tone = (morphed.drumBeepLoTone as number) ?? p.drumBeepLoTone;
+    const pitchEnv = (morphed.drumBeepLoPitchEnv as number) ?? p.drumBeepLoPitchEnv ?? 0;
+    const pitchDecayTime = ((morphed.drumBeepLoPitchDecay as number) ?? p.drumBeepLoPitchDecay ?? 50) / 1000;
+    const body = (morphed.drumBeepLoBody as number) ?? p.drumBeepLoBody ?? 0.3;
+    const pluck = (morphed.drumBeepLoPluck as number) ?? p.drumBeepLoPluck ?? 0;
+    const pluckDamp = (morphed.drumBeepLoPluckDamp as number) ?? p.drumBeepLoPluckDamp ?? 0.5;
+    
+    const outputLevel = velocity * level;
+    
+    // If pluck is high, use Karplus-Strong synthesis
+    if (pluck > 0.3) {
+      this.triggerBeepLoPluck(time, outputLevel, freq, decay, pluck, pluckDamp, body);
+      return;
+    }
+    
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    
+    // Blend between sine and square based on tone
+    osc.type = tone > 0.5 ? 'square' : 'sine';
+    
+    // Pitch envelope
+    const startFreq = freq * Math.pow(2, pitchEnv / 12);
+    osc.frequency.setValueAtTime(startFreq, time);
+    osc.frequency.exponentialRampToValueAtTime(freq, time + pitchDecayTime);
+    
+    // If using square, filter to soften harmonics
+    let filter: BiquadFilterNode | null = null;
+    if (tone > 0.5) {
+      filter = this.ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = freq * 4;
+      filter.Q.value = 0.7;
+    }
+    
+    // Body resonance filter
+    let bodyFilter: BiquadFilterNode | null = null;
+    if (body > 0.1) {
+      bodyFilter = this.ctx.createBiquadFilter();
+      bodyFilter.type = 'peaking';
+      bodyFilter.frequency.value = freq * 1.5;
+      bodyFilter.Q.value = 2 + body * 5;
+      bodyFilter.gain.value = body * 6;
+    }
+    
+    // Attack/decay envelope
+    gain.gain.setValueAtTime(0, time);
+    gain.gain.linearRampToValueAtTime(outputLevel, time + attack);
+    gain.gain.exponentialRampToValueAtTime(0.001, time + attack + decay);
+    
+    // Connect chain
+    let lastNode: AudioNode = osc;
+    if (filter) {
+      lastNode.connect(filter);
+      lastNode = filter;
+    }
+    if (bodyFilter) {
+      lastNode.connect(bodyFilter);
+      lastNode = bodyFilter;
+    }
+    lastNode.connect(gain);
+    gain.connect(this.masterGain);
+    gain.connect(this.reverbSend);
+    
+    osc.start(time);
+    osc.stop(time + attack + decay + 0.01);
+  }
+  
+  /**
+   * Karplus-Strong pluck synthesis for BeepLo
+   * Creates string-like tones using filtered noise delay
+   */
+  private triggerBeepLoPluck(
+    time: number, level: number, freq: number,
+    decay: number, pluck: number, pluckDamp: number, body: number
+  ): void {
+    if (!this.noiseBuffer) return;
+    
+    // For Web Audio Karplus-Strong, we create a short noise burst
+    // followed by a filtered delay line. Since Web Audio doesn't
+    // have feedback delays easily, we'll approximate with filtered noise
+    // and resonant filter combination.
+    
+    const source = this.ctx.createBufferSource();
+    const exciteGain = this.ctx.createGain();
+    const bodyFilter = this.ctx.createBiquadFilter();
+    const dampFilter = this.ctx.createBiquadFilter();
+    const outputGain = this.ctx.createGain();
+    
+    // Short noise burst as excitation
+    source.buffer = this.noiseBuffer;
+    
+    // Very short burst
+    const exciteTime = 0.005;
+    exciteGain.gain.setValueAtTime(level * pluck, time);
+    exciteGain.gain.exponentialRampToValueAtTime(0.001, time + exciteTime);
+    
+    // Body resonance - creates the pitched character
+    bodyFilter.type = 'bandpass';
+    bodyFilter.frequency.value = freq;
+    bodyFilter.Q.value = 50 + body * 150; // High Q for resonance
+    
+    // Damping filter - controls how quickly highs die out
+    dampFilter.type = 'lowpass';
+    dampFilter.frequency.value = freq * (2 + (1 - pluckDamp) * 4);
+    
+    // Output envelope
+    outputGain.gain.setValueAtTime(level, time);
+    outputGain.gain.exponentialRampToValueAtTime(0.001, time + decay);
+    
+    // Add a sine oscillator at the fundamental for purity
+    const osc = this.ctx.createOscillator();
+    const oscGain = this.ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    oscGain.gain.setValueAtTime(level * (1 - pluck) * 0.5, time);
+    oscGain.gain.exponentialRampToValueAtTime(0.001, time + decay);
+    
+    // Connect
+    source.connect(exciteGain);
+    exciteGain.connect(bodyFilter);
+    bodyFilter.connect(dampFilter);
+    dampFilter.connect(outputGain);
+    outputGain.connect(this.masterGain);
+    outputGain.connect(this.reverbSend);
+    
+    osc.connect(oscGain);
+    oscGain.connect(this.masterGain);
+    oscGain.connect(this.reverbSend);
+    
+    source.start(time);
+    source.stop(time + exciteTime + 0.01);
+    osc.start(time);
+    osc.stop(time + decay + 0.01);
+  }
+  
+  /**
+   * Voice 6: Noise - Filtered noise with formant, breath, filter envelope
+   * New params: formant, breath, filterEnv, filterEnvDecay, density, colorLFO
+   */
+  private triggerNoise(velocity: number, time: number): void {
+    const p = this.params;
+    
+    if (!this.noiseBuffer) return;
+    
+    // Get random morph value within range if range is set (per-trigger randomization)
+    const range = this.morphRanges.noise;
+    let morphValue: number | undefined;
+    if (range) {
+      morphValue = range.min + Math.random() * (range.max - range.min);
+      if (this.onMorphTrigger) {
+        const normalizedPos = range.max > range.min
+          ? (morphValue - range.min) / (range.max - range.min)
+          : 0.5;
+        this.onMorphTrigger('noise', normalizedPos);
+      }
+    }
+    
+    // Get morphed params if presets are loaded
+    const morphed = getMorphedParams(p, 'noise', morphValue);
+    
+    // Use morphed values if available
+    const filterFreq = (morphed.drumNoiseFilterFreq as number) ?? p.drumNoiseFilterFreq;
+    const filterQ = (morphed.drumNoiseFilterQ as number) ?? p.drumNoiseFilterQ;
+    const filterType = (morphed.drumNoiseFilterType as BiquadFilterType) ?? p.drumNoiseFilterType;
+    const decay = ((morphed.drumNoiseDecay as number) ?? p.drumNoiseDecay) / 1000;
+    const level = (morphed.drumNoiseLevel as number) ?? p.drumNoiseLevel;
+    const attack = ((morphed.drumNoiseAttack as number) ?? p.drumNoiseAttack) / 1000;
+    const formant = (morphed.drumNoiseFormant as number) ?? p.drumNoiseFormant ?? 0;
+    const breath = (morphed.drumNoiseBreath as number) ?? p.drumNoiseBreath ?? 0;
+    const filterEnv = (morphed.drumNoiseFilterEnv as number) ?? p.drumNoiseFilterEnv ?? 0;
+    const filterEnvDecay = ((morphed.drumNoiseFilterEnvDecay as number) ?? p.drumNoiseFilterEnvDecay ?? 100) / 1000;
+    const density = (morphed.drumNoiseDensity as number) ?? p.drumNoiseDensity ?? 1;
+    const colorLFO = (morphed.drumNoiseColorLFO as number) ?? p.drumNoiseColorLFO ?? 0;
+    
+    const outputLevel = velocity * level;
+    
+    // Create noise source
+    const source = this.ctx.createBufferSource();
+    const mainFilter = this.ctx.createBiquadFilter();
+    const outputGain = this.ctx.createGain();
+    
+    source.buffer = this.noiseBuffer;
+    
+    // Main filter with envelope
+    mainFilter.type = filterType;
+    mainFilter.Q.value = filterQ;
+    
+    // Filter envelope
+    const filterEnvAmount = filterEnv * filterFreq;
+    const startFilterFreq = Math.max(20, Math.min(20000, filterFreq + filterEnvAmount));
+    mainFilter.frequency.setValueAtTime(startFilterFreq, time);
+    mainFilter.frequency.exponentialRampToValueAtTime(
+      Math.max(20, filterFreq), 
+      time + filterEnvDecay
+    );
+    
+    // Formant filter bank (vowel-like resonances)
+    let formantFilters: BiquadFilterNode[] = [];
+    let formantGain: GainNode | null = null;
+    if (formant > 0.05) {
+      formantGain = this.ctx.createGain();
+      formantGain.gain.value = formant;
+      
+      // Simplified formant frequencies (like an "a" vowel)
+      const formantFreqs = [700, 1200, 2500];
+      formantFilters = formantFreqs.map((freq) => {
+        const f = this.ctx.createBiquadFilter();
+        f.type = 'bandpass';
+        f.frequency.value = freq;
+        f.Q.value = 5 + formant * 10;
+        return f;
+      });
+    }
+    
+    // Breath texture (modulated amplitude)
+    let breathLFO: OscillatorNode | null = null;
+    let breathLFOGain: GainNode | null = null;
+    if (breath > 0.05) {
+      breathLFO = this.ctx.createOscillator();
+      breathLFO.type = 'sine';
+      breathLFO.frequency.value = 8 + Math.random() * 4;
+      breathLFOGain = this.ctx.createGain();
+      breathLFOGain.gain.value = breath * 0.3 * outputLevel;
+      breathLFO.connect(breathLFOGain);
+      breathLFOGain.connect(outputGain.gain);
+    }
+    
+    // Color LFO (filter modulation)
+    let colorLFONode: OscillatorNode | null = null;
+    let colorLFOGain: GainNode | null = null;
+    if (colorLFO > 0.01) {
+      colorLFONode = this.ctx.createOscillator();
+      colorLFONode.type = 'sine';
+      colorLFONode.frequency.value = colorLFO;
+      colorLFOGain = this.ctx.createGain();
+      colorLFOGain.gain.value = filterFreq * 0.3;
+      colorLFONode.connect(colorLFOGain);
+      colorLFOGain.connect(mainFilter.frequency);
+    }
+    
+    // Amplitude envelope
+    outputGain.gain.setValueAtTime(0, time);
+    outputGain.gain.linearRampToValueAtTime(outputLevel, time + attack);
+    outputGain.gain.exponentialRampToValueAtTime(0.001, time + attack + decay);
+    
+    // Connect main chain
+    source.connect(mainFilter);
+    mainFilter.connect(outputGain);
+    
+    // Add formant layer
+    if (formantFilters.length > 0 && formantGain) {
+      const formantMix = this.ctx.createGain();
+      formantMix.gain.value = 1 / formantFilters.length;
+      
+      formantFilters.forEach(f => {
+        source.connect(f);
+        f.connect(formantMix);
+      });
+      formantMix.connect(formantGain);
+      formantGain.connect(outputGain);
+    }
+    
+    outputGain.connect(this.masterGain);
+    outputGain.connect(this.reverbSend);
+    
+    // Handle density (sparse noise bursts)
+    if (density < 0.9) {
+      // Create a gain modulation for sparse feel
+      const sparseGain = this.ctx.createGain();
+      const sparseOsc = this.ctx.createOscillator();
+      sparseOsc.type = 'square';
+      sparseOsc.frequency.value = 20 + density * 80;
+      const sparseOscGain = this.ctx.createGain();
+      sparseOscGain.gain.value = 0.5;
+      sparseOsc.connect(sparseOscGain);
+      sparseOscGain.connect(sparseGain.gain);
+      sparseGain.gain.value = 0.5;
+      
+      // Insert into chain
+      mainFilter.disconnect();
+      mainFilter.connect(sparseGain);
+      sparseGain.connect(outputGain);
+      
+      sparseOsc.start(time);
+      sparseOsc.stop(time + attack + decay + 0.01);
+    }
+    
+    source.start(time);
     source.stop(time + attack + decay + 0.01);
+    
+    if (breathLFO) {
+      breathLFO.start(time);
+      breathLFO.stop(time + attack + decay + 0.01);
+    }
+    
+    if (colorLFONode) {
+      colorLFONode.start(time);
+      colorLFONode.stop(time + attack + decay + 0.01);
+    }
   }
   
   // ═══════════════════════════════════════════════════════════════════════════
@@ -720,6 +1413,11 @@ export class DrumSynth {
   
   dispose(): void {
     this.stop();
+    this.morphManager.reset();
+    if (this.morphAnimationFrame) {
+      cancelAnimationFrame(this.morphAnimationFrame);
+      this.morphAnimationFrame = null;
+    }
     this.masterGain.disconnect();
     this.reverbSend.disconnect();
   }
