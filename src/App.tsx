@@ -26,6 +26,14 @@ import { fetchPresetById, isCloudEnabled } from './cloud/supabase';
 // Note names for display
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 
+// Unicode symbols with text variation selector (U+FE0E) to prevent emoji rendering on mobile
+const TEXT_SYMBOLS = {
+  play: '▶\uFE0E',
+  stop: '■\uFE0E',
+  range: '⟷\uFE0E',
+  random: '⟷\uFE0E',
+} as const;
+
 // File input ref for loading presets
 const fileInputRef = { current: null as HTMLInputElement | null };
 
@@ -2500,7 +2508,7 @@ const App: React.FC = () => {
             onClick={handleStart}
             title="Start"
           >
-            ▶
+            {TEXT_SYMBOLS.play}
           </button>
         ) : (
           <button
@@ -2508,7 +2516,7 @@ const App: React.FC = () => {
             onClick={handleStop}
             title="Stop"
           >
-            ■
+            {TEXT_SYMBOLS.stop}
           </button>
         )}
         <button
@@ -2819,7 +2827,7 @@ const App: React.FC = () => {
                     options={[
                       { value: 'cw', label: '↻ Clockwise (sharps)' },
                       { value: 'ccw', label: '↺ Counter-clockwise (flats)' },
-                      { value: 'random', label: '⟷ Random' },
+                      { value: 'random', label: `${TEXT_SYMBOLS.random} Random` },
                     ]}
                     onChange={(v) => handleSelectChange('cofDriftDirection', v)}
                   />

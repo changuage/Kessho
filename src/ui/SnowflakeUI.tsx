@@ -9,6 +9,12 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { SliderState } from './state';
 
+// Unicode symbols with text variation selector (U+FE0E) to prevent emoji rendering on mobile
+const TEXT_SYMBOLS = {
+  play: '▶\uFE0E',
+  stop: '■\uFE0E',
+} as const;
+
 export interface SavedPreset {
   name: string;
   timestamp: string;
@@ -524,7 +530,7 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
         }} 
         onClick={onTogglePlay}
       >
-        {isPlaying ? '■' : '▶'}
+        {isPlaying ? TEXT_SYMBOLS.stop : TEXT_SYMBOLS.play}
       </button>
 
       {/* Snowflake centered */}

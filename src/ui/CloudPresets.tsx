@@ -16,6 +16,11 @@ import {
 } from '../cloud/supabase';
 import { SliderState } from './state';
 
+// Unicode symbols with text variation selector (U+FE0E) to prevent emoji rendering on mobile
+const TEXT_SYMBOLS = {
+  play: '▶\uFE0E',
+} as const;
+
 interface CloudPresetsProps {
   currentState: SliderState;
   onLoadPreset: (state: SliderState, name: string) => void;
@@ -408,7 +413,7 @@ export const CloudPresets: React.FC<CloudPresetsProps> = ({ currentState, onLoad
                       {preset.description && ` • ${preset.description.slice(0, 40)}${preset.description.length > 40 ? '...' : ''}`}
                     </p>
                   </div>
-                  <span style={styles.presetPlays}>▶ {preset.plays}</span>
+                  <span style={styles.presetPlays}>{TEXT_SYMBOLS.play} {preset.plays}</span>
                   <button style={styles.loadButton}>Load</button>
                 </div>
               ))
