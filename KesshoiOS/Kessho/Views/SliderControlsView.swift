@@ -3261,9 +3261,15 @@ struct ParameterSlider: View {
                         in: 0...1
                     )
                     .tint(.cyan)
+                    .onChange(of: value) { _, newValue in
+                        appState.handleSliderChange(key: paramKey, value: newValue)
+                    }
                 } else {
                     Slider(value: $value, in: range)
                         .tint(.cyan)
+                        .onChange(of: value) { _, newValue in
+                            appState.handleSliderChange(key: paramKey, value: newValue)
+                        }
                 }
             }
         }

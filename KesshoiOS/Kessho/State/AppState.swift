@@ -56,6 +56,14 @@ class AppState: ObservableObject {
     // Random walk timer for dual sliders
     private var randomWalkTimer: Timer?
     
+    // Track last state for detecting changes at morph endpoints
+    private var lastStateSnapshot: SliderState?
+    
+    // Track manual overrides during mid-morph (key -> (value, morphPosition))
+    private var morphManualOverrides: [String: (value: Double, morphPosition: Double)] = [:]
+    private var morphDirection: String = "toB"  // "toA" or "toB"
+    private var lastMorphEndpoint: Double = 0  // 0 or 100
+    
     // MARK: - Audio Engine
     let audioEngine = AudioEngine()
     
@@ -143,6 +151,9 @@ class AppState: ObservableObject {
         dualRanges[key] = DualRange(min: min, max: max)
         randomWalkValues[key] = currentValue
         walkPhases[key] = 0
+        
+        // Update morph preset dualRanges at endpoints (Rule 2)
+        updateMorphPresetDualRange(key: key, range: DualRange(min: min, max: max))
     }
     
     /// Disable dual mode for a parameter
@@ -150,6 +161,9 @@ class AppState: ObservableObject {
         dualRanges.removeValue(forKey: key)
         randomWalkValues.removeValue(forKey: key)
         walkPhases.removeValue(forKey: key)
+        
+        // Update morph preset dualRanges at endpoints (Rule 2)
+        removeMorphPresetDualRange(key: key)
     }
     
     /// Toggle dual mode for a parameter
@@ -164,6 +178,183 @@ class AppState: ObservableObject {
     /// Update dual range min/max
     func updateDualRange(for key: String, min: Double, max: Double) {
         dualRanges[key] = DualRange(min: min, max: max)
+        
+        // Update morph preset dualRanges at endpoints (Rule 2)
+        updateMorphPresetDualRange(key: key, range: DualRange(min: min, max: max))
+    }
+    
+    /// Update morph preset's dualRanges at endpoints
+    private func updateMorphPresetDualRange(key: String, range: DualRange) {
+        let isMorphActive = morphPresetA != nil || morphPresetB != nil
+        guard isMorphActive else { return }
+        
+        if morphPosition == 0, let presetA = morphPresetA {
+            var dualRanges = presetA.dualRanges ?? [:]
+            dualRanges[key] = range
+            morphPresetA = SavedPreset(
+                name: presetA.name,
+                timestamp: presetA.timestamp,
+                state: presetA.state,
+                dualRanges: dualRanges
+            )
+        } else if morphPosition == 100, let presetB = morphPresetB {
+            var dualRanges = presetB.dualRanges ?? [:]
+            dualRanges[key] = range
+            morphPresetB = SavedPreset(
+                name: presetB.name,
+                timestamp: presetB.timestamp,
+                state: presetB.state,
+                dualRanges: dualRanges
+            )
+        }
+    }
+    
+    /// Remove key from morph preset's dualRanges at endpoints
+    private func removeMorphPresetDualRange(key: String) {
+        let isMorphActive = morphPresetA != nil || morphPresetB != nil
+        guard isMorphActive else { return }
+        
+        if morphPosition == 0, let presetA = morphPresetA {
+            var dualRanges = presetA.dualRanges ?? [:]
+            dualRanges.removeValue(forKey: key)
+            morphPresetA = SavedPreset(
+                name: presetA.name,
+                timestamp: presetA.timestamp,
+                state: presetA.state,
+                dualRanges: dualRanges.isEmpty ? nil : dualRanges
+            )
+        } else if morphPosition == 100, let presetB = morphPresetB {
+            var dualRanges = presetB.dualRanges ?? [:]
+            dualRanges.removeValue(forKey: key)
+            morphPresetB = SavedPreset(
+                name: presetB.name,
+                timestamp: presetB.timestamp,
+                state: presetB.state,
+                dualRanges: dualRanges.isEmpty ? nil : dualRanges
+            )
+        }
+    }
+    
+    // MARK: - Slider Change Handling for Morph
+    
+    /// Call this when a slider value changes to handle morph preset updates
+    /// Rule 1: Mid-morph changes are temporary overrides
+    /// Rule 2: Endpoint changes (0% or 100%) update the respective preset permanently
+    func handleSliderChange(key: String, value: Double) {
+        let isMorphActive = morphPresetA != nil || morphPresetB != nil
+        guard isMorphActive else { return }
+        
+        if morphPosition == 0, let presetA = morphPresetA {
+            // At endpoint A: update preset A permanently
+            var newState = presetA.state
+            updateSliderStateValue(&newState, key: key, value: value)
+            morphPresetA = SavedPreset(
+                name: presetA.name,
+                timestamp: presetA.timestamp,
+                state: newState,
+                dualRanges: presetA.dualRanges
+            )
+        } else if morphPosition == 100, let presetB = morphPresetB {
+            // At endpoint B: update preset B permanently
+            var newState = presetB.state
+            updateSliderStateValue(&newState, key: key, value: value)
+            morphPresetB = SavedPreset(
+                name: presetB.name,
+                timestamp: presetB.timestamp,
+                state: newState,
+                dualRanges: presetB.dualRanges
+            )
+        } else {
+            // Mid-morph: store as temporary override
+            morphManualOverrides[key] = (value: value, morphPosition: morphPosition)
+        }
+    }
+    
+    /// Helper to update a SliderState property by key
+    private func updateSliderStateValue(_ state: inout SliderState, key: String, value: Double) {
+        switch key {
+        case "masterVolume": state.masterVolume = value
+        case "synthLevel": state.synthLevel = value
+        case "granularLevel": state.granularLevel = value
+        case "synthReverbSend": state.synthReverbSend = value
+        case "granularReverbSend": state.granularReverbSend = value
+        case "leadReverbSend": state.leadReverbSend = value
+        case "leadDelayReverbSend": state.leadDelayReverbSend = value
+        case "reverbLevel": state.reverbLevel = value
+        case "randomness": state.randomness = value
+        case "tension": state.tension = value
+        case "chordRate": state.chordRate = value
+        case "voicingSpread": state.voicingSpread = value
+        case "waveSpread": state.waveSpread = value
+        case "detune": state.detune = value
+        case "synthOctave": state.synthOctave = Int(value)
+        case "synthAttack": state.synthAttack = value
+        case "synthDecay": state.synthDecay = value
+        case "synthSustain": state.synthSustain = value
+        case "synthRelease": state.synthRelease = value
+        case "hardness": state.hardness = value
+        case "brightness": state.brightness = value
+        case "filterCutoffMin": state.filterCutoffMin = value
+        case "filterCutoffMax": state.filterCutoffMax = value
+        case "filterModSpeed": state.filterModSpeed = value
+        case "filterResonance": state.filterResonance = value
+        case "filterQ": state.filterQ = value
+        case "warmth": state.warmth = value
+        case "presence": state.presence = value
+        case "air": state.air = value
+        case "reverbDecay": state.reverbDecay = value
+        case "reverbSize": state.reverbSize = value
+        case "reverbDiffusion": state.reverbDiffusion = value
+        case "reverbModulation": state.reverbModulation = value
+        case "reverbPredelay": state.reverbPredelay = value
+        case "reverbDamping": state.reverbDamping = value
+        case "reverbWidth": state.reverbWidth = value
+        case "granularProbability": state.granularProbability = value
+        case "granularSizeMin": state.granularSizeMin = value
+        case "granularSizeMax": state.granularSizeMax = value
+        case "granularDensity": state.granularDensity = value
+        case "granularSpray": state.granularSpray = value
+        case "granularJitter": state.granularJitter = value
+        case "granularPitchSpread": state.granularPitchSpread = value
+        case "granularStereoSpread": state.granularStereoSpread = value
+        case "granularFeedback": state.granularFeedback = value
+        case "granularWetHPF": state.granularWetHPF = value
+        case "granularWetLPF": state.granularWetLPF = value
+        case "leadLevel": state.leadLevel = value
+        case "leadAttack": state.leadAttack = value
+        case "leadDecay": state.leadDecay = value
+        case "leadSustain": state.leadSustain = value
+        case "leadRelease": state.leadRelease = value
+        case "leadDensity": state.leadDensity = value
+        case "leadOctave": state.leadOctave = Int(value)
+        case "leadOctaveRange": state.leadOctaveRange = Int(value)
+        case "leadTimbreMin": state.leadTimbreMin = value
+        case "leadTimbreMax": state.leadTimbreMax = value
+        case "leadDelayTime": state.leadDelayTime = value
+        case "leadDelayFeedback": state.leadDelayFeedback = value
+        case "leadDelayMix": state.leadDelayMix = value
+        case "oceanSampleLevel": state.oceanSampleLevel = value
+        case "oceanSynthLevel": state.oceanSynthLevel = value
+        case "oceanFilterCutoff": state.oceanFilterCutoff = value
+        case "oceanFilterResonance": state.oceanFilterResonance = value
+        case "oceanDurationMin": state.oceanDurationMin = value
+        case "oceanDurationMax": state.oceanDurationMax = value
+        case "oceanIntervalMin": state.oceanIntervalMin = value
+        case "oceanIntervalMax": state.oceanIntervalMax = value
+        case "oceanFoamMin": state.oceanFoamMin = value
+        case "oceanFoamMax": state.oceanFoamMax = value
+        case "oceanDepthMin": state.oceanDepthMin = value
+        case "oceanDepthMax": state.oceanDepthMax = value
+        case "drumLevel": state.drumLevel = value
+        case "drumSubMorph": state.drumSubMorph = value
+        case "drumKickMorph": state.drumKickMorph = value
+        case "drumClickMorph": state.drumClickMorph = value
+        case "drumBeepHiMorph": state.drumBeepHiMorph = value
+        case "drumBeepLoMorph": state.drumBeepLoMorph = value
+        case "drumNoiseMorph": state.drumNoiseMorph = value
+        case "randomWalkSpeed": state.randomWalkSpeed = value
+        default: break
+        }
     }
     
     private func loadPresets() {

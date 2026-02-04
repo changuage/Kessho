@@ -330,3 +330,80 @@ Each Euclidean lane has:
    ```
 
 3. **startLeadMelody guard**: The `startLeadMelody()` wrapper also has an enabled check - must update both locations.
+
+---
+
+## Preset Morph Override System
+
+### Overview
+When morphing between two presets, users can modify parameters mid-morph. The system handles these edits with position-aware logic to preserve musical intent.
+
+### Rules
+
+#### Rule 1: Mid-Morph Changes are Temporary
+When modifying a slider between 0% and 100%:
+- The new value is applied immediately
+- It's stored as a temporary override with the current morph position
+- As the user continues morphing, the value **blends** from the override toward the destination preset
+- The blend uses remaining distance: if override at 30% while moving to 100%, value transitions smoothly over the remaining 70%
+
+#### Rule 2: Endpoint Changes are Permanent
+When at exactly 0% or 100%:
+- Changes **permanently update** that endpoint's preset
+- At 0%: Updates Preset A's `state` and/or `dualRanges`
+- At 100%: Updates Preset B's `state` and/or `dualRanges`
+- This includes numeric values, dual mode toggles, and range adjustments
+
+### Implementation
+
+```typescript
+// Ref to track manual overrides with their morph position
+const morphManualOverridesRef = useRef<Record<string, { value: number; morphPosition: number }>>({});
+
+// In handleSliderChange:
+if (isMorphActive && isNumericMorphableKey) {
+  if (morphPosition === 0 && morphPresetA) {
+    // Endpoint A: update preset permanently
+    setMorphPresetA(prev => ({ ...prev, state: { ...prev.state, [key]: value } }));
+  } else if (morphPosition === 100 && morphPresetB) {
+    // Endpoint B: update preset permanently
+    setMorphPresetB(prev => ({ ...prev, state: { ...prev.state, [key]: value } }));
+  } else {
+    // Mid-morph: store temporary override
+    morphManualOverridesRef.current[key] = { value, morphPosition };
+  }
+}
+```
+
+### Dual Mode Persistence
+
+The same rules apply to dual mode changes:
+- **Toggle dual mode at endpoint**: Updates preset's `dualRanges` (adds or removes the key)
+- **Change dual range at endpoint**: Updates preset's `dualRanges[key]` min/max
+- **Mid-morph changes**: Local state only, not persisted to presets
+
+This ensures that when you modify a slider to dual mode while at 100%, morphing back to 0% and then to 100% again will preserve your dual mode setting.
+
+### Blend Calculation
+
+```typescript
+// In handleMorphPositionChange:
+Object.entries(morphManualOverridesRef.current).forEach(([key, override]) => {
+  const direction = morphDirectionRef.current;
+  const destination = direction === 'toB' ? morphPresetB.state[key] : morphPresetA.state[key];
+  
+  // Calculate blend based on remaining distance to destination
+  const overridePos = override.morphPosition;
+  const currentPos = newPosition;
+  const destPos = direction === 'toB' ? 100 : 0;
+  
+  const totalDistance = Math.abs(destPos - overridePos);
+  const traveledDistance = Math.abs(currentPos - overridePos);
+  const blendT = Math.min(1, traveledDistance / Math.max(1, totalDistance));
+  
+  lerpedState[key] = override.value + (destination - override.value) * blendT;
+});
+```
+
+### Key Insight
+This system allows users to "scrub" through a morph, make adjustments, and continue without losing context. The temporary override behavior prevents jarring jumps when resuming the morph, while endpoint persistence ensures intentional changes are saved.

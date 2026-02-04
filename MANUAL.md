@@ -520,6 +520,28 @@ Presets can contain **dual sliders** (range parameters with min/max values). Mor
 
 This ensures smooth transitions even when presets have different slider modes. The random walk behavior automatically activates/deactivates as the dual slider range opens or closes during the morph.
 
+#### Editing Presets During Morph
+
+You can modify parameters while morphing, with intelligent handling based on your morph position:
+
+**At Endpoints (0% or 100%):**
+Changes are **permanently saved** to the respective preset:
+- At **0%**: Edits update Preset A
+- At **100%**: Edits update Preset B
+
+This includes:
+- Slider value changes
+- Toggling dual mode (single ↔ range)
+- Adjusting dual slider min/max handles
+
+**Mid-Morph (between endpoints):**
+Changes are treated as **temporary overrides**:
+- The new value is applied immediately
+- As you continue morphing, the value smoothly blends toward the destination preset
+- When you reach an endpoint, the override is cleared
+
+This behavior applies to all morphable parameters including drum synth morph sliders.
+
 ---
 
 ## Scale System Explained
