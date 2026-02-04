@@ -692,6 +692,33 @@ const DualSlider: React.FC<DualSliderProps> = ({
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState<'min' | 'max' | null>(null);
+  
+  // Long press detection for mobile (toggle dual mode)
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressTriggeredRef = useRef(false);
+  const LONG_PRESS_DURATION = 400; // ms
+  
+  const handleLongPressStart = (e: React.TouchEvent) => {
+    longPressTriggeredRef.current = false;
+    longPressTimerRef.current = setTimeout(() => {
+      longPressTriggeredRef.current = true;
+      // Haptic feedback if available
+      if (navigator.vibrate) navigator.vibrate(50);
+      onToggleDual(paramKey);
+    }, LONG_PRESS_DURATION);
+  };
+  
+  const handleLongPressEnd = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+  
+  const handleLongPressMove = () => {
+    // Cancel long press if finger moves (user is dragging, not pressing)
+    handleLongPressEnd();
+  };
 
   // Calculate position percentage from value
   const valueToPercent = (val: number) => {
@@ -796,8 +823,11 @@ const DualSlider: React.FC<DualSliderProps> = ({
           value={sliderValue}
           onChange={handleChange}
           onDoubleClick={handleDoubleClick}
+          onTouchStart={handleLongPressStart}
+          onTouchEnd={handleLongPressEnd}
+          onTouchMove={handleLongPressMove}
           style={styles.slider}
-          title="Double-click for range mode"
+          title="Double-click or long-press for range mode"
         />
       </div>
     );
@@ -836,7 +866,10 @@ const DualSlider: React.FC<DualSliderProps> = ({
         ref={containerRef}
         style={styles.dualSliderContainer}
         onDoubleClick={handleDoubleClick}
-        title="Double-click for single value mode"
+        onTouchStart={handleLongPressStart}
+        onTouchEnd={handleLongPressEnd}
+        onTouchMove={handleLongPressMove}
+        title="Double-click or long-press for single value mode"
       >
         {/* Range track */}
         <div
