@@ -45,6 +45,27 @@ class DrumSynth {
     // Callback for UI visualization
     var onDrumTrigger: ((DrumVoiceType, Float) -> Void)?
     
+    // Callback for morph trigger visualization (per-trigger random position)
+    var onMorphTrigger: ((DrumVoiceType, Double) -> Void)?
+    
+    // Morph ranges for per-trigger randomization (like delay/expression)
+    private var morphRanges: [DrumVoiceType: (min: Double, max: Double)?] = [
+        .sub: nil, .kick: nil, .click: nil, .beepHi: nil, .beepLo: nil, .noise: nil
+    ]
+    
+    // Morph manager for auto-morph (exposed for external access)
+    let morphManager = DrumMorphManager()
+    
+    // Per-voice delay send levels (used for output mixing)
+    private var delaySendLevels: [DrumVoiceType: Float] = [
+        .sub: 0, .kick: 0.2, .click: 0.5, .beepHi: 0.6, .beepLo: 0.4, .noise: 0.7
+    ]
+    
+    // Separate delay output buffer for stereo ping-pong delay
+    private var delayOutputBuffer: [Float] = []
+    private var delayBufferWriteIndex: Int = 0
+    private let delayBufferSize = 4410  // ~100ms at 44.1kHz
+    
     // Euclidean scheduling
     private var euclidCurrentStep: [Int] = [0, 0, 0, 0]
     private var lastScheduleTime: TimeInterval = 0
@@ -109,6 +130,7 @@ class DrumSynth {
         var pluckBuffer: [Float] = []  // For Karplus-Strong
         var pluckIndex: Int = 0
         var shimmerPhase: Float = 0  // For shimmer LFO
+        var delaySend: Float = 0     // Per-voice delay send level
         
         struct VoiceParams {
             // Sub
@@ -207,9 +229,9 @@ class DrumSynth {
             else { return noErr }
             
             for frame in 0..<Int(frameCount) {
-                let sample = self.generateSample()
-                leftBuffer[frame] = sample * self.masterLevel
-                rightBuffer[frame] = sample * self.masterLevel
+                let (mainSample, _) = self.generateSampleWithDelay()
+                leftBuffer[frame] = mainSample * self.masterLevel
+                rightBuffer[frame] = mainSample * self.masterLevel
             }
             
             return noErr
@@ -229,11 +251,13 @@ class DrumSynth {
     }
     
     /// Generate one audio sample by summing all active voices
-    private func generateSample() -> Float {
+    /// Returns (mainOutput, delayOutput) for routing to delay send
+    private func generateSampleWithDelay() -> (main: Float, delay: Float) {
         voiceLock.lock()
         defer { voiceLock.unlock() }
         
         var output: Float = 0
+        var delayOutput: Float = 0
         var newActiveVoices: [ActiveVoice] = []
         
         for var voice in activeVoices {
@@ -242,12 +266,19 @@ class DrumSynth {
                 newActiveVoices.append(voice)
             }
             output += sample
+            // Route sample to delay based on per-voice send level
+            delayOutput += sample * voice.delaySend
         }
         
         activeVoices = newActiveVoices
         
-        // Soft clip to prevent harsh distortion
-        return tanh(output)
+        // Soft clip both outputs
+        return (tanh(output), tanh(delayOutput))
+    }
+    
+    /// Get current delay output level for routing
+    func getDelayOutputLevel() -> Float {
+        return params.drumDelayEnabled ? Float(params.drumDelayMix) : 0
     }
     
     /// Process a single voice and return (sample, isFinished)
@@ -620,6 +651,26 @@ class DrumSynth {
         return (filtered * voice.envelope, false)
     }
     
+    // MARK: - Morph System
+    
+    /// Set morph range for per-trigger randomization
+    func setMorphRange(_ voice: DrumVoiceType, range: (min: Double, max: Double)?) {
+        morphRanges[voice] = range
+    }
+    
+    /// Get morphed parameter value, respecting morph range for per-trigger randomization
+    private func getMorphedParamValue(
+        for type: DrumVoiceType,
+        morphedParams: [String: Any],
+        sliderValue: Double,
+        key: String
+    ) -> Double {
+        if let morphed = morphedParams[key] as? Double {
+            return morphed
+        }
+        return sliderValue
+    }
+    
     // MARK: - Voice Triggering
     
     func triggerVoice(_ type: DrumVoiceType, velocity: Float = 0.8) {
@@ -631,91 +682,120 @@ class DrumSynth {
             activeVoices.removeFirst()
         }
         
+        // Get random morph value within range if range is set (per-trigger randomization)
+        let range = morphRanges[type] ?? nil
+        var morphValue: Double? = nil
+        if let r = range {
+            morphValue = r.min + Double.random(in: 0...1) * (r.max - r.min)
+            // Notify UI of triggered morph position (normalized 0-1 within range)
+            let normalizedPos = r.max > r.min
+                ? (morphValue! - r.min) / (r.max - r.min)
+                : 0.5
+            DispatchQueue.main.async { [weak self] in
+                self?.onMorphTrigger?(type, normalizedPos)
+            }
+        }
+        
+        // Only use morphed params when per-trigger randomization is active
+        // Otherwise use slider values directly (which already have morph applied in UI)
+        let morphedParams = range != nil ? getMorphedParams(state: params, voice: type, morphOverride: morphValue) : [:]
+        
         var voiceParams = ActiveVoice.VoiceParams()
         var level: Float = 1.0
+        var delaySend: Float = 0
         
         switch type {
         case .sub:
-            voiceParams.subFreq = Float(params.drumSubFreq)
-            voiceParams.subDecay = Float(params.drumSubDecay) / 1000
-            voiceParams.subTone = Float(params.drumSubTone)
-            voiceParams.subShape = Float(params.drumSubShape)
-            voiceParams.subPitchEnv = Float(params.drumSubPitchEnv)
-            voiceParams.subPitchDecay = Float(params.drumSubPitchDecay) / 1000
-            voiceParams.subDrive = Float(params.drumSubDrive)
-            voiceParams.subSub = Float(params.drumSubSub)
-            level = Float(params.drumSubLevel)
+            voiceParams.subFreq = Float(morphedParams["drumSubFreq"] as? Double ?? params.drumSubFreq)
+            voiceParams.subDecay = Float(morphedParams["drumSubDecay"] as? Double ?? params.drumSubDecay) / 1000
+            voiceParams.subTone = Float(morphedParams["drumSubTone"] as? Double ?? params.drumSubTone)
+            voiceParams.subShape = Float(morphedParams["drumSubShape"] as? Double ?? params.drumSubShape)
+            voiceParams.subPitchEnv = Float(morphedParams["drumSubPitchEnv"] as? Double ?? params.drumSubPitchEnv)
+            voiceParams.subPitchDecay = Float(morphedParams["drumSubPitchDecay"] as? Double ?? params.drumSubPitchDecay) / 1000
+            voiceParams.subDrive = Float(morphedParams["drumSubDrive"] as? Double ?? params.drumSubDrive)
+            voiceParams.subSub = Float(morphedParams["drumSubSub"] as? Double ?? params.drumSubSub)
+            level = Float(morphedParams["drumSubLevel"] as? Double ?? params.drumSubLevel)
+            delaySend = Float(params.drumSubDelaySend)
             
         case .kick:
-            voiceParams.kickFreq = Float(params.drumKickFreq)
-            voiceParams.kickPitchEnv = Float(params.drumKickPitchEnv)
-            voiceParams.kickPitchDecay = Float(params.drumKickPitchDecay) / 1000
-            voiceParams.kickDecay = Float(params.drumKickDecay) / 1000
-            voiceParams.kickClick = Float(params.drumKickClick)
-            voiceParams.kickBody = Float(params.drumKickBody)
-            voiceParams.kickPunch = Float(params.drumKickPunch)
-            voiceParams.kickTail = Float(params.drumKickTail)
-            voiceParams.kickTone = Float(params.drumKickTone)
-            level = Float(params.drumKickLevel)
+            voiceParams.kickFreq = Float(morphedParams["drumKickFreq"] as? Double ?? params.drumKickFreq)
+            voiceParams.kickPitchEnv = Float(morphedParams["drumKickPitchEnv"] as? Double ?? params.drumKickPitchEnv)
+            voiceParams.kickPitchDecay = Float(morphedParams["drumKickPitchDecay"] as? Double ?? params.drumKickPitchDecay) / 1000
+            voiceParams.kickDecay = Float(morphedParams["drumKickDecay"] as? Double ?? params.drumKickDecay) / 1000
+            voiceParams.kickClick = Float(morphedParams["drumKickClick"] as? Double ?? params.drumKickClick)
+            voiceParams.kickBody = Float(morphedParams["drumKickBody"] as? Double ?? params.drumKickBody)
+            voiceParams.kickPunch = Float(morphedParams["drumKickPunch"] as? Double ?? params.drumKickPunch)
+            voiceParams.kickTail = Float(morphedParams["drumKickTail"] as? Double ?? params.drumKickTail)
+            voiceParams.kickTone = Float(morphedParams["drumKickTone"] as? Double ?? params.drumKickTone)
+            level = Float(morphedParams["drumKickLevel"] as? Double ?? params.drumKickLevel)
+            delaySend = Float(params.drumKickDelaySend)
             
         case .click:
-            voiceParams.clickDecay = Float(params.drumClickDecay) / 1000
-            voiceParams.clickFilter = Float(params.drumClickFilter)
-            voiceParams.clickTone = Float(params.drumClickTone)
-            voiceParams.clickResonance = Float(params.drumClickResonance)
-            voiceParams.clickPitch = Float(params.drumClickPitch)
-            voiceParams.clickPitchEnv = Float(params.drumClickPitchEnv)
-            voiceParams.clickMode = params.drumClickMode
-            voiceParams.clickGrainCount = params.drumClickGrainCount
-            voiceParams.clickGrainSpread = Float(params.drumClickGrainSpread)
-            voiceParams.clickStereoWidth = Float(params.drumClickStereoWidth)
-            level = Float(params.drumClickLevel)
+            voiceParams.clickDecay = Float(morphedParams["drumClickDecay"] as? Double ?? params.drumClickDecay) / 1000
+            voiceParams.clickFilter = Float(morphedParams["drumClickFilter"] as? Double ?? params.drumClickFilter)
+            voiceParams.clickTone = Float(morphedParams["drumClickTone"] as? Double ?? params.drumClickTone)
+            voiceParams.clickResonance = Float(morphedParams["drumClickResonance"] as? Double ?? params.drumClickResonance)
+            voiceParams.clickPitch = Float(morphedParams["drumClickPitch"] as? Double ?? params.drumClickPitch)
+            voiceParams.clickPitchEnv = Float(morphedParams["drumClickPitchEnv"] as? Double ?? params.drumClickPitchEnv)
+            voiceParams.clickMode = morphedParams["drumClickMode"] as? String ?? params.drumClickMode
+            voiceParams.clickGrainCount = morphedParams["drumClickGrainCount"] as? Int ?? params.drumClickGrainCount
+            voiceParams.clickGrainSpread = Float(morphedParams["drumClickGrainSpread"] as? Double ?? params.drumClickGrainSpread)
+            voiceParams.clickStereoWidth = Float(morphedParams["drumClickStereoWidth"] as? Double ?? params.drumClickStereoWidth)
+            level = Float(morphedParams["drumClickLevel"] as? Double ?? params.drumClickLevel)
+            delaySend = Float(params.drumClickDelaySend)
             
         case .beepHi:
-            voiceParams.beepHiFreq = Float(params.drumBeepHiFreq)
-            voiceParams.beepHiAttack = Float(params.drumBeepHiAttack) / 1000
-            voiceParams.beepHiDecay = Float(params.drumBeepHiDecay) / 1000
-            voiceParams.beepHiTone = Float(params.drumBeepHiTone)
-            voiceParams.beepHiInharmonic = Float(params.drumBeepHiInharmonic)
-            voiceParams.beepHiPartials = params.drumBeepHiPartials
-            voiceParams.beepHiShimmer = Float(params.drumBeepHiShimmer)
-            voiceParams.beepHiShimmerRate = Float(params.drumBeepHiShimmerRate)
-            voiceParams.beepHiBrightness = Float(params.drumBeepHiBrightness)
-            level = Float(params.drumBeepHiLevel)
+            voiceParams.beepHiFreq = Float(morphedParams["drumBeepHiFreq"] as? Double ?? params.drumBeepHiFreq)
+            voiceParams.beepHiAttack = Float(morphedParams["drumBeepHiAttack"] as? Double ?? params.drumBeepHiAttack) / 1000
+            voiceParams.beepHiDecay = Float(morphedParams["drumBeepHiDecay"] as? Double ?? params.drumBeepHiDecay) / 1000
+            voiceParams.beepHiTone = Float(morphedParams["drumBeepHiTone"] as? Double ?? params.drumBeepHiTone)
+            voiceParams.beepHiInharmonic = Float(morphedParams["drumBeepHiInharmonic"] as? Double ?? params.drumBeepHiInharmonic)
+            voiceParams.beepHiPartials = morphedParams["drumBeepHiPartials"] as? Int ?? params.drumBeepHiPartials
+            voiceParams.beepHiShimmer = Float(morphedParams["drumBeepHiShimmer"] as? Double ?? params.drumBeepHiShimmer)
+            voiceParams.beepHiShimmerRate = Float(morphedParams["drumBeepHiShimmerRate"] as? Double ?? params.drumBeepHiShimmerRate)
+            voiceParams.beepHiBrightness = Float(morphedParams["drumBeepHiBrightness"] as? Double ?? params.drumBeepHiBrightness)
+            level = Float(morphedParams["drumBeepHiLevel"] as? Double ?? params.drumBeepHiLevel)
+            delaySend = Float(params.drumBeepHiDelaySend)
             
         case .beepLo:
-            voiceParams.beepLoFreq = Float(params.drumBeepLoFreq)
-            voiceParams.beepLoAttack = Float(params.drumBeepLoAttack) / 1000
-            voiceParams.beepLoDecay = Float(params.drumBeepLoDecay) / 1000
-            voiceParams.beepLoTone = Float(params.drumBeepLoTone)
-            voiceParams.beepLoPitchEnv = Float(params.drumBeepLoPitchEnv)
-            voiceParams.beepLoPitchDecay = Float(params.drumBeepLoPitchDecay) / 1000
-            voiceParams.beepLoBody = Float(params.drumBeepLoBody)
-            voiceParams.beepLoPluck = Float(params.drumBeepLoPluck)
-            voiceParams.beepLoPluckDamp = Float(params.drumBeepLoPluckDamp)
-            level = Float(params.drumBeepLoLevel)
+            voiceParams.beepLoFreq = Float(morphedParams["drumBeepLoFreq"] as? Double ?? params.drumBeepLoFreq)
+            voiceParams.beepLoAttack = Float(morphedParams["drumBeepLoAttack"] as? Double ?? params.drumBeepLoAttack) / 1000
+            voiceParams.beepLoDecay = Float(morphedParams["drumBeepLoDecay"] as? Double ?? params.drumBeepLoDecay) / 1000
+            voiceParams.beepLoTone = Float(morphedParams["drumBeepLoTone"] as? Double ?? params.drumBeepLoTone)
+            voiceParams.beepLoPitchEnv = Float(morphedParams["drumBeepLoPitchEnv"] as? Double ?? params.drumBeepLoPitchEnv)
+            voiceParams.beepLoPitchDecay = Float(morphedParams["drumBeepLoPitchDecay"] as? Double ?? params.drumBeepLoPitchDecay) / 1000
+            voiceParams.beepLoBody = Float(morphedParams["drumBeepLoBody"] as? Double ?? params.drumBeepLoBody)
+            voiceParams.beepLoPluck = Float(morphedParams["drumBeepLoPluck"] as? Double ?? params.drumBeepLoPluck)
+            voiceParams.beepLoPluckDamp = Float(morphedParams["drumBeepLoPluckDamp"] as? Double ?? params.drumBeepLoPluckDamp)
+            level = Float(morphedParams["drumBeepLoLevel"] as? Double ?? params.drumBeepLoLevel)
+            delaySend = Float(params.drumBeepLoDelaySend)
             
         case .noise:
-            voiceParams.noiseFilterFreq = Float(params.drumNoiseFilterFreq)
-            voiceParams.noiseFilterQ = Float(params.drumNoiseFilterQ)
-            voiceParams.noiseFilterType = params.drumNoiseFilterType
-            voiceParams.noiseAttack = Float(params.drumNoiseAttack) / 1000
-            voiceParams.noiseDecay = Float(params.drumNoiseDecay) / 1000
-            voiceParams.noiseFormant = Float(params.drumNoiseFormant)
-            voiceParams.noiseBreath = Float(params.drumNoiseBreath)
-            voiceParams.noiseFilterEnv = Float(params.drumNoiseFilterEnv)
-            voiceParams.noiseFilterEnvDecay = Float(params.drumNoiseFilterEnvDecay) / 1000
-            voiceParams.noiseDensity = Float(params.drumNoiseDensity)
-            voiceParams.noiseColorLFO = Float(params.drumNoiseColorLFO)
-            level = Float(params.drumNoiseLevel)
+            voiceParams.noiseFilterFreq = Float(morphedParams["drumNoiseFilterFreq"] as? Double ?? params.drumNoiseFilterFreq)
+            voiceParams.noiseFilterQ = Float(morphedParams["drumNoiseFilterQ"] as? Double ?? params.drumNoiseFilterQ)
+            voiceParams.noiseFilterType = morphedParams["drumNoiseFilterType"] as? String ?? params.drumNoiseFilterType
+            voiceParams.noiseAttack = Float(morphedParams["drumNoiseAttack"] as? Double ?? params.drumNoiseAttack) / 1000
+            voiceParams.noiseDecay = Float(morphedParams["drumNoiseDecay"] as? Double ?? params.drumNoiseDecay) / 1000
+            voiceParams.noiseFormant = Float(morphedParams["drumNoiseFormant"] as? Double ?? params.drumNoiseFormant)
+            voiceParams.noiseBreath = Float(morphedParams["drumNoiseBreath"] as? Double ?? params.drumNoiseBreath)
+            voiceParams.noiseFilterEnv = Float(morphedParams["drumNoiseFilterEnv"] as? Double ?? params.drumNoiseFilterEnv)
+            voiceParams.noiseFilterEnvDecay = Float(morphedParams["drumNoiseFilterEnvDecay"] as? Double ?? params.drumNoiseFilterEnvDecay) / 1000
+            voiceParams.noiseDensity = Float(morphedParams["drumNoiseDensity"] as? Double ?? params.drumNoiseDensity)
+            voiceParams.noiseColorLFO = Float(morphedParams["drumNoiseColorLFO"] as? Double ?? params.drumNoiseColorLFO)
+            level = Float(morphedParams["drumNoiseLevel"] as? Double ?? params.drumNoiseLevel)
+            delaySend = Float(params.drumNoiseDelaySend)
         }
+        
+        // Store delay send level for this voice
+        delaySendLevels[type] = delaySend
         
         let voice = ActiveVoice(
             type: type,
             velocity: velocity,
             level: level,
             params: voiceParams,
-            noiseIndex: Int.random(in: 0..<noiseBufferSize)
+            noiseIndex: Int.random(in: 0..<noiseBufferSize),
+            delaySend: delaySend
         )
         
         activeVoices.append(voice)
@@ -733,6 +813,14 @@ class DrumSynth {
         self.enabled = params.drumEnabled
         self.masterLevel = Float(params.drumLevel)
         self.reverbSendLevel = Float(params.drumReverbSend)
+        
+        // Update per-voice delay send levels
+        delaySendLevels[.sub] = Float(params.drumSubDelaySend)
+        delaySendLevels[.kick] = Float(params.drumKickDelaySend)
+        delaySendLevels[.click] = Float(params.drumClickDelaySend)
+        delaySendLevels[.beepHi] = Float(params.drumBeepHiDelaySend)
+        delaySendLevels[.beepLo] = Float(params.drumBeepLoDelaySend)
+        delaySendLevels[.noise] = Float(params.drumNoiseDelaySend)
         
         // Start/stop schedulers based on enabled state
         if params.drumEnabled {

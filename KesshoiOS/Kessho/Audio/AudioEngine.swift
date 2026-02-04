@@ -81,6 +81,12 @@ class AudioEngine {
     // Callback for state updates
     var onStateChange: ((EngineStateUpdate) -> Void)?
     
+    // Callback for drum morph triggers (for UI visualization)
+    var onDrumMorphTrigger: ((DrumVoiceType, Float) -> Void)?
+    
+    // Callback for drum triggers (for UI visualization)
+    var onDrumTrigger: ((DrumVoiceType, Float) -> Void)?
+    
     // MARK: - Initialization
     
     init() {
@@ -302,6 +308,16 @@ class AudioEngine {
         let rng = createRng("\(currentBucket)|\(currentSeed)|drum")
         drumSynth?.setRng(rng)
         
+        // Wire up drum trigger callback for UI visualization
+        drumSynth?.onDrumTrigger = { [weak self] voiceType, velocity in
+            self?.onDrumTrigger?(voiceType, velocity)
+        }
+        
+        // Wire up morph trigger callback for UI visualization
+        drumSynth?.onMorphTrigger = { [weak self] voiceType, morphValue in
+            self?.onDrumMorphTrigger?(voiceType, morphValue)
+        }
+        
         // Attach and connect to drum mixer
         if let drum = drumSynth {
             engine.attach(drum.node)
@@ -488,6 +504,19 @@ class AudioEngine {
             }
         }
         drumSynth?.triggerVoice(type, velocity: velocity)
+    }
+    
+    /// Set morph range for a drum voice (for randomization during playback)
+    /// - Parameters:
+    ///   - voiceType: The drum voice to set morph range for
+    ///   - range: Tuple of (min, max) morph values (0-1), or nil to disable
+    func setDrumMorphRange(_ voiceType: DrumVoiceType, range: (min: Double, max: Double)?) {
+        drumSynth?.setMorphRange(voiceType, range: range)
+    }
+    
+    /// Get the current morph manager for external access
+    func getDrumMorphManager() -> DrumMorphManager? {
+        return drumSynth?.morphManager
     }
     
     // MARK: - Internal Methods
