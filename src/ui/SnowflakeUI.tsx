@@ -13,6 +13,8 @@ import { SliderState } from './state';
 const TEXT_SYMBOLS = {
   play: '▶\uFE0E',
   stop: '■\uFE0E',
+  hexagon: '⬡\uFE0E',
+  sparkle: '✲\uFE0E',
 } as const;
 
 export interface SavedPreset {
@@ -848,10 +850,10 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
           }} 
           onClick={() => setShowPresets(!showPresets)}
         >
-          ⬡
+          {TEXT_SYMBOLS.hexagon}
         </button>
         <button style={styles.advancedButton} onClick={onShowAdvanced}>
-          ✲
+          {TEXT_SYMBOLS.sparkle}
         </button>
       </div>
     </div>

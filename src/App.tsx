@@ -32,6 +32,20 @@ const TEXT_SYMBOLS = {
   stop: '■\uFE0E',
   range: '⟷\uFE0E',
   random: '⟷\uFE0E',
+  download: '⬇\uFE0E',
+  upload: '⬆\uFE0E',
+  hexagon: '⬡\uFE0E',
+  sparkle: '✲\uFE0E',
+  target: '◎\uFE0E',
+  filledCircle: '●\uFE0E',
+  emptyCircle: '○\uFE0E',
+  // Drum voice icons
+  drumSub: '◉\uFE0E',
+  drumKick: '●\uFE0E',
+  drumClick: '▪\uFE0E',
+  drumBeepHi: '△\uFE0E',
+  drumBeepLo: '▽\uFE0E',
+  drumNoise: '≋\uFE0E',
 } as const;
 
 // File input ref for loading presets
@@ -2524,28 +2538,28 @@ const App: React.FC = () => {
           onClick={handleSavePreset}
           title="Save Preset"
         >
-          ⬇
+          {TEXT_SYMBOLS.download}
         </button>
         <button
           style={{ ...styles.iconButton, ...styles.presetButton }}
           onClick={() => fileInputRef.current?.click()}
           title="Import Preset"
         >
-          ⬆
+          {TEXT_SYMBOLS.upload}
         </button>
         <button
           style={{ ...styles.iconButton, ...styles.presetButton }}
           onClick={() => setShowPresetList(!showPresetList)}
           title={showPresetList ? 'Hide Presets' : 'Load Preset'}
         >
-          ⬡{savedPresets.length > 0 && <span style={styles.badge}>{savedPresets.length}</span>}
+          {TEXT_SYMBOLS.hexagon}{savedPresets.length > 0 && <span style={styles.badge}>{savedPresets.length}</span>}
         </button>
         <button
           style={{ ...styles.iconButton, ...styles.simpleButton }}
           onClick={() => setUiMode('snowflake')}
           title="Simple Mode"
         >
-          ✲
+          {TEXT_SYMBOLS.sparkle}
         </button>
         <input
           ref={(el) => (fileInputRef.current = el)}
@@ -2603,7 +2617,7 @@ const App: React.FC = () => {
           }}
           onClick={() => setActiveTab('global')}
         >
-          <span style={styles.tabIcon}>◎</span>
+          <span style={styles.tabIcon}>{TEXT_SYMBOLS.target}</span>
           <span>Global</span>
         </button>
         <button
@@ -6222,7 +6236,7 @@ const App: React.FC = () => {
               onClick={(e) => { e.stopPropagation(); audioEngine.triggerDrumVoice('sub', 0.8, state); }}
               style={{ padding: '2px 8px', fontSize: '1rem', background: 'rgba(239, 68, 68, 0.2)', border: '1px solid #ef4444', borderRadius: '4px', color: '#ef4444', cursor: 'pointer', lineHeight: 1 }}
               title="Test Sub"
-            >◉</button>
+            >{TEXT_SYMBOLS.drumSub}</button>
           }
         >
           {/* Morph Controls */}
@@ -6345,7 +6359,7 @@ const App: React.FC = () => {
               onClick={(e) => { e.stopPropagation(); audioEngine.triggerDrumVoice('kick', 0.8, state); }}
               style={{ padding: '2px 8px', fontSize: '1rem', background: 'rgba(249, 115, 22, 0.2)', border: '1px solid #f97316', borderRadius: '4px', color: '#f97316', cursor: 'pointer', lineHeight: 1 }}
               title="Test Kick"
-            >●</button>
+            >{TEXT_SYMBOLS.drumKick}</button>
           }
         >
           {/* Morph Controls */}
@@ -6476,7 +6490,7 @@ const App: React.FC = () => {
               onClick={(e) => { e.stopPropagation(); audioEngine.triggerDrumVoice('click', 0.8, state); }}
               style={{ padding: '2px 8px', fontSize: '1rem', background: 'rgba(234, 179, 8, 0.2)', border: '1px solid #eab308', borderRadius: '4px', color: '#eab308', cursor: 'pointer', lineHeight: 1 }}
               title="Test Click"
-            >▪</button>
+            >{TEXT_SYMBOLS.drumClick}</button>
           }
         >
           {/* Morph Controls */}
@@ -6623,7 +6637,7 @@ const App: React.FC = () => {
               onClick={(e) => { e.stopPropagation(); audioEngine.triggerDrumVoice('beepHi', 0.8, state); }}
               style={{ padding: '2px 8px', fontSize: '1rem', background: 'rgba(34, 197, 94, 0.2)', border: '1px solid #22c55e', borderRadius: '4px', color: '#22c55e', cursor: 'pointer', lineHeight: 1 }}
               title="Test Beep Hi"
-            >△</button>
+            >{TEXT_SYMBOLS.drumBeepHi}</button>
           }
         >
           {/* Morph Controls */}
@@ -6755,7 +6769,7 @@ const App: React.FC = () => {
               onClick={(e) => { e.stopPropagation(); audioEngine.triggerDrumVoice('beepLo', 0.8, state); }}
               style={{ padding: '2px 8px', fontSize: '1rem', background: 'rgba(6, 182, 212, 0.2)', border: '1px solid #06b6d4', borderRadius: '4px', color: '#06b6d4', cursor: 'pointer', lineHeight: 1 }}
               title="Test Beep Lo"
-            >▽</button>
+            >{TEXT_SYMBOLS.drumBeepLo}</button>
           }
         >
           {/* Morph Controls */}
@@ -6887,7 +6901,7 @@ const App: React.FC = () => {
               onClick={(e) => { e.stopPropagation(); audioEngine.triggerDrumVoice('noise', 0.8, state); }}
               style={{ padding: '2px 8px', fontSize: '1rem', background: 'rgba(139, 92, 246, 0.2)', border: '1px solid #8b5cf6', borderRadius: '4px', color: '#8b5cf6', cursor: 'pointer', lineHeight: 1 }}
               title="Test Noise"
-            >≋</button>
+            >{TEXT_SYMBOLS.drumNoise}</button>
           }
         >
           {/* Morph Controls */}
