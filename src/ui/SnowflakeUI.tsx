@@ -303,13 +303,9 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
   }, []);
   
   // Calculate canvas size based on viewport - fully responsive
-  // Reserve space for play button + settings icon
-  // Mobile (< 768px): use 87.5% of smaller dimension (25% larger than before)
-  // Desktop: use 70% of smaller dimension, capped at 550px
+  // Use 87.5% of smaller dimension (25% larger than original 70%)
   const smallerDimension = Math.min(windowSize.width, windowSize.height - 100);
-  const isMobile = windowSize.width < 768;
-  const sizeMultiplier = isMobile ? 0.875 : 0.7;
-  const canvasSize = Math.max(250, Math.min(smallerDimension * sizeMultiplier, isMobile ? 600 : 550));
+  const canvasSize = Math.max(250, Math.min(smallerDimension * 0.875, 700));
   const centerX = canvasSize / 2;
   const centerY = canvasSize / 2;
   
