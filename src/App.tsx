@@ -1238,6 +1238,9 @@ const App: React.FC = () => {
   }), []);
 
   const handleToggleDualMode = useCallback((key: keyof SliderState) => {
+    const keyStr = key as string;
+    const isMorphActive = morphPresetA !== null || morphPresetB !== null;
+    
     setDualSliderModes(prev => {
       const next = new Set(prev);
       if (next.has(key)) {
@@ -1256,6 +1259,31 @@ const App: React.FC = () => {
           return newRanges;
         });
         delete randomWalkRef.current[key];
+        
+        // Update morph preset dualRanges at endpoints (Rule 2)
+        if (isMorphActive) {
+          if (morphPosition === 0 && morphPresetA) {
+            setMorphPresetA(prev => {
+              if (!prev) return null;
+              const newDualRanges = { ...prev.dualRanges };
+              delete newDualRanges[keyStr];
+              return {
+                ...prev,
+                dualRanges: Object.keys(newDualRanges).length > 0 ? newDualRanges : undefined
+              };
+            });
+          } else if (morphPosition === 100 && morphPresetB) {
+            setMorphPresetB(prev => {
+              if (!prev) return null;
+              const newDualRanges = { ...prev.dualRanges };
+              delete newDualRanges[keyStr];
+              return {
+                ...prev,
+                dualRanges: Object.keys(newDualRanges).length > 0 ? newDualRanges : undefined
+              };
+            });
+          }
+        }
       } else {
         // Switching from single to dual - initialize range centered on current value
         next.add(key);
@@ -1275,16 +1303,48 @@ const App: React.FC = () => {
             };
             setRandomWalkPositions(p => ({ ...p, [key]: randomWalkRef.current[key]!.position }));
           }
+          
+          // Update morph preset dualRanges at endpoints (Rule 2)
+          if (isMorphActive) {
+            if (morphPosition === 0 && morphPresetA) {
+              setMorphPresetA(prev => prev ? {
+                ...prev,
+                dualRanges: { ...prev.dualRanges, [keyStr]: { min, max } }
+              } : null);
+            } else if (morphPosition === 100 && morphPresetB) {
+              setMorphPresetB(prev => prev ? {
+                ...prev,
+                dualRanges: { ...prev.dualRanges, [keyStr]: { min, max } }
+              } : null);
+            }
+          }
         }
       }
       return next;
     });
-  }, [dualSliderRanges, randomWalkPositions, state, drumMorphKeys]);
+  }, [dualSliderRanges, randomWalkPositions, state, drumMorphKeys, morphPosition, morphPresetA, morphPresetB]);
 
   // Update dual slider range
   const handleDualRangeChange = useCallback((key: keyof SliderState, min: number, max: number) => {
     setDualSliderRanges(prev => ({ ...prev, [key]: { min, max } }));
-  }, []);
+    
+    // Update morph preset dualRanges at endpoints (Rule 2)
+    const isMorphActive = morphPresetA !== null || morphPresetB !== null;
+    if (isMorphActive) {
+      const keyStr = key as string;
+      if (morphPosition === 0 && morphPresetA) {
+        setMorphPresetA(prev => prev ? {
+          ...prev,
+          dualRanges: { ...prev.dualRanges, [keyStr]: { min, max } }
+        } : null);
+      } else if (morphPosition === 100 && morphPresetB) {
+        setMorphPresetB(prev => prev ? {
+          ...prev,
+          dualRanges: { ...prev.dualRanges, [keyStr]: { min, max } }
+        } : null);
+      }
+    }
+  }, [morphPosition, morphPresetA, morphPresetB]);
 
   // Update engine morph ranges when dual mode changes for drum morph sliders
   useEffect(() => {
