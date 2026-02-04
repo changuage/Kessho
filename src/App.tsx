@@ -1549,26 +1549,26 @@ const App: React.FC = () => {
 
   // Handle slider change
   const handleSliderChange = useCallback((key: keyof SliderState, value: number | string) => {
-    // Rule 1: Mid-morph changes are temporary overrides
-    // Rule 2: Endpoint changes (0% or 100%) update the respective preset permanently
-    const isNumericMorphableKey = typeof value === 'number';
+    // Rule 1: Mid-morph changes are temporary overrides (numeric only)
+    // Rule 2: Endpoint changes (0% or 100%) update the respective preset permanently (all types)
+    const isNumericValue = typeof value === 'number';
     const isMorphActive = morphPresetA !== null || morphPresetB !== null;
     
-    if (isMorphActive && isNumericMorphableKey) {
+    if (isMorphActive) {
       if (morphPosition === 0 && morphPresetA) {
-        // At endpoint A: update preset A permanently
+        // At endpoint A: update preset A permanently (both numeric and string values)
         setMorphPresetA(prev => prev ? {
           ...prev,
           state: { ...prev.state, [key]: value }
         } : null);
       } else if (morphPosition === 100 && morphPresetB) {
-        // At endpoint B: update preset B permanently  
+        // At endpoint B: update preset B permanently (both numeric and string values)
         setMorphPresetB(prev => prev ? {
           ...prev,
           state: { ...prev.state, [key]: value }
         } : null);
-      } else if (morphPosition > 0 && morphPosition < 100) {
-        // Mid-morph: store as temporary override
+      } else if (morphPosition > 0 && morphPosition < 100 && isNumericValue) {
+        // Mid-morph: store as temporary override (numeric only)
         morphManualOverridesRef.current[key] = {
           value: value as number,
           morphPosition
