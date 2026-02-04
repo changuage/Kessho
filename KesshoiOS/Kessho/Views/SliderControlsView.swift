@@ -1155,9 +1155,10 @@ struct SliderControlsView: View {
                         ParameterSlider(
                             label: "Decay",
                             value: $appState.state.drumSubDecay,
-                            range: 20...500,
+                            range: 20...15000,
                             unit: "ms",
-                            icon: "arrow.down.right"
+                            icon: "arrow.down.right",
+                            logarithmic: true
                         )
                         
                         ParameterSlider(
@@ -1219,17 +1220,19 @@ struct SliderControlsView: View {
                         ParameterSlider(
                             label: "Pitch Decay",
                             value: $appState.state.drumKickPitchDecay,
-                            range: 5...100,
+                            range: 5...1000,
                             unit: "ms",
-                            icon: "arrow.down.right"
+                            icon: "arrow.down.right",
+                            logarithmic: true
                         )
                         
                         ParameterSlider(
                             label: "Amp Decay",
                             value: $appState.state.drumKickDecay,
-                            range: 30...500,
+                            range: 30...15000,
                             unit: "ms",
-                            icon: "arrow.down.right"
+                            icon: "arrow.down.right",
+                            logarithmic: true
                         )
                         
                         ParameterSlider(
@@ -1275,8 +1278,11 @@ struct SliderControlsView: View {
                         ParameterSlider(
                             label: "Decay",
                             value: $appState.state.drumClickDecay,
-                            range: 1...80,
+                            range: 1...15000,
                             unit: "ms",
+                            icon: "arrow.down.right",
+                            logarithmic: true
+                        )
                             icon: "arrow.down.right"
                         )
                         
@@ -1346,17 +1352,19 @@ struct SliderControlsView: View {
                         ParameterSlider(
                             label: "Attack",
                             value: $appState.state.drumBeepHiAttack,
-                            range: 0...20,
+                            range: 0...5000,
                             unit: "ms",
-                            icon: "arrow.up.right"
+                            icon: "arrow.up.right",
+                            logarithmic: true
                         )
                         
                         ParameterSlider(
                             label: "Decay",
                             value: $appState.state.drumBeepHiDecay,
-                            range: 10...500,
+                            range: 10...15000,
                             unit: "ms",
-                            icon: "arrow.down.right"
+                            icon: "arrow.down.right",
+                            logarithmic: true
                         )
                         
                         ParameterSlider(
@@ -1410,17 +1418,19 @@ struct SliderControlsView: View {
                         ParameterSlider(
                             label: "Attack",
                             value: $appState.state.drumBeepLoAttack,
-                            range: 0...30,
+                            range: 0...5000,
                             unit: "ms",
-                            icon: "arrow.up.right"
+                            icon: "arrow.up.right",
+                            logarithmic: true
                         )
                         
                         ParameterSlider(
                             label: "Decay",
                             value: $appState.state.drumBeepLoDecay,
-                            range: 10...500,
+                            range: 10...15000,
                             unit: "ms",
-                            icon: "arrow.down.right"
+                            icon: "arrow.down.right",
+                            logarithmic: true
                         )
                         
                         ParameterSlider(
@@ -1497,17 +1507,19 @@ struct SliderControlsView: View {
                         ParameterSlider(
                             label: "Attack",
                             value: $appState.state.drumNoiseAttack,
-                            range: 0...10,
+                            range: 0...5000,
                             unit: "ms",
-                            icon: "arrow.up.right"
+                            icon: "arrow.up.right",
+                            logarithmic: true
                         )
                         
                         ParameterSlider(
                             label: "Decay",
                             value: $appState.state.drumNoiseDecay,
-                            range: 5...300,
+                            range: 5...15000,
                             unit: "ms",
-                            icon: "arrow.down.right"
+                            icon: "arrow.down.right",
+                            logarithmic: true
                         )
                         
                         ParameterSlider(
@@ -3079,8 +3091,28 @@ struct ParameterSlider: View {
     let range: ClosedRange<Double>
     var unit: String = ""
     var icon: String = "slider.horizontal.3"
+    var logarithmic: Bool = false  // Use exponential curve for fine control at low end
     
     @EnvironmentObject var appState: AppState
+    
+    // Logarithmic curve constant (matches web LOG_CURVE = 2.5)
+    private let logCurve: Double = 2.5
+    
+    /// Convert actual value to slider position (0-1) with logarithmic scaling
+    private func valueToSlider(_ val: Double) -> Double {
+        if !logarithmic { return val }
+        let minVal = max(range.lowerBound, 0.001) // Avoid log(0)
+        let normalized = (val - minVal) / (range.upperBound - minVal)
+        return pow(max(0, normalized), 1.0 / logCurve)
+    }
+    
+    /// Convert slider position (0-1) to actual value with logarithmic scaling
+    private func sliderToValue(_ pos: Double) -> Double {
+        if !logarithmic { return pos }
+        let minVal = max(range.lowerBound, 0.001)
+        let curved = pow(pos, logCurve)
+        return minVal + curved * (range.upperBound - minVal)
+    }
     
     /// Check if this slider is in dual mode
     private var isDualMode: Bool {
@@ -3219,8 +3251,20 @@ struct ParameterSlider: View {
                     }
                 }
             } else {
-                Slider(value: $value, in: range)
+                // Use logarithmic binding if enabled
+                if logarithmic {
+                    Slider(
+                        value: Binding(
+                            get: { valueToSlider(value) },
+                            set: { value = sliderToValue($0) }
+                        ),
+                        in: 0...1
+                    )
                     .tint(.cyan)
+                } else {
+                    Slider(value: $value, in: range)
+                        .tint(.cyan)
+                }
             }
         }
         .contentShape(Rectangle())
@@ -3261,6 +3305,17 @@ extension ParameterSlider {
         self.range = range
         self.unit = unit
         self.icon = icon
+        self.logarithmic = false
+    }
+    
+    init(label: String, value: Binding<Double>, range: ClosedRange<Double>, unit: String = "", icon: String = "slider.horizontal.3", logarithmic: Bool) {
+        self.label = label
+        self.paramKey = label.lowercased().replacingOccurrences(of: " ", with: "")
+        self._value = value
+        self.range = range
+        self.unit = unit
+        self.icon = icon
+        self.logarithmic = logarithmic
     }
 }
 
@@ -3276,6 +3331,7 @@ extension ParameterSlider {
         self.range = Double(range.lowerBound)...Double(range.upperBound)
         self.unit = unit
         self.icon = icon
+        self.logarithmic = false
     }
 }
 

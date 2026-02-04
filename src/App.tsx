@@ -5952,6 +5952,7 @@ const App: React.FC = () => {
             value={state.drumSubDecay}
             paramKey="drumSubDecay"
             unit=" ms"
+            logarithmic
             onChange={handleSliderChange}
             {...sliderProps('drumSubDecay')}
           />
@@ -6008,6 +6009,7 @@ const App: React.FC = () => {
             value={state.drumKickPitchDecay}
             paramKey="drumKickPitchDecay"
             unit=" ms"
+            logarithmic
             onChange={handleSliderChange}
             {...sliderProps('drumKickPitchDecay')}
           />
@@ -6016,6 +6018,7 @@ const App: React.FC = () => {
             value={state.drumKickDecay}
             paramKey="drumKickDecay"
             unit=" ms"
+            logarithmic
             onChange={handleSliderChange}
             {...sliderProps('drumKickDecay')}
           />
@@ -6056,6 +6059,7 @@ const App: React.FC = () => {
             value={state.drumClickDecay}
             paramKey="drumClickDecay"
             unit=" ms"
+            logarithmic
             onChange={handleSliderChange}
             {...sliderProps('drumClickDecay')}
           />
@@ -6121,6 +6125,7 @@ const App: React.FC = () => {
             value={state.drumBeepHiAttack}
             paramKey="drumBeepHiAttack"
             unit=" ms"
+            logarithmic
             onChange={handleSliderChange}
             {...sliderProps('drumBeepHiAttack')}
           />
@@ -6129,6 +6134,7 @@ const App: React.FC = () => {
             value={state.drumBeepHiDecay}
             paramKey="drumBeepHiDecay"
             unit=" ms"
+            logarithmic
             onChange={handleSliderChange}
             {...sliderProps('drumBeepHiDecay')}
           />
@@ -6177,6 +6183,7 @@ const App: React.FC = () => {
             value={state.drumBeepLoAttack}
             paramKey="drumBeepLoAttack"
             unit=" ms"
+            logarithmic
             onChange={handleSliderChange}
             {...sliderProps('drumBeepLoAttack')}
           />
@@ -6185,6 +6192,7 @@ const App: React.FC = () => {
             value={state.drumBeepLoDecay}
             paramKey="drumBeepLoDecay"
             unit=" ms"
+            logarithmic
             onChange={handleSliderChange}
             {...sliderProps('drumBeepLoDecay')}
           />
@@ -6251,6 +6259,7 @@ const App: React.FC = () => {
             value={state.drumNoiseAttack}
             paramKey="drumNoiseAttack"
             unit=" ms"
+            logarithmic
             onChange={handleSliderChange}
             {...sliderProps('drumNoiseAttack')}
           />
@@ -6259,6 +6268,7 @@ const App: React.FC = () => {
             value={state.drumNoiseDecay}
             paramKey="drumNoiseDecay"
             unit=" ms"
+            logarithmic
             onChange={handleSliderChange}
             {...sliderProps('drumNoiseDecay')}
           />
