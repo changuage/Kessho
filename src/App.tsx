@@ -17,7 +17,8 @@ import { audioEngine, EngineState } from './audio/engine';
 import { SCALE_FAMILIES } from './audio/scales';
 import { formatChordDegrees, getTimeUntilNextPhrase, calculateDriftedRoot } from './audio/harmony';
 import { getPresetNames, DrumVoiceType as DrumPresetVoice } from './audio/drumPresets';
-import { applyMorphToState } from './audio/drumMorph';
+import { applyMorphToState, setDrumMorphOverride, clearDrumMorphOverrides, clearDrumMorphEndpointOverrides, clearMidMorphOverrides, setDrumMorphDualRangeOverride, getDrumMorphDualRangeOverrides, interpolateDrumMorphDualRanges } from './audio/drumMorph';
+import { isInMidMorph, isAtEndpoint0 } from './audio/morphUtils';
 import SnowflakeUI from './ui/SnowflakeUI';
 import { CircleOfFifths, getMorphedRootNote } from './ui/CircleOfFifths';
 import CloudPresets from './ui/CloudPresets';
@@ -1241,6 +1242,23 @@ const App: React.FC = () => {
     const keyStr = key as string;
     const isMorphActive = morphPresetA !== null || morphPresetB !== null;
     
+    // Check if this is a drum synth param and get its voice/morph key
+    let drumVoice: DrumPresetVoice | null = null;
+    let drumMorphKey: keyof SliderState | null = null;
+    if (keyStr.startsWith('drumSub') && !keyStr.includes('Morph') && !keyStr.includes('Preset')) {
+      drumVoice = 'sub'; drumMorphKey = 'drumSubMorph';
+    } else if (keyStr.startsWith('drumKick') && !keyStr.includes('Morph') && !keyStr.includes('Preset')) {
+      drumVoice = 'kick'; drumMorphKey = 'drumKickMorph';
+    } else if (keyStr.startsWith('drumClick') && !keyStr.includes('Morph') && !keyStr.includes('Preset')) {
+      drumVoice = 'click'; drumMorphKey = 'drumClickMorph';
+    } else if (keyStr.startsWith('drumBeepHi') && !keyStr.includes('Morph') && !keyStr.includes('Preset')) {
+      drumVoice = 'beepHi'; drumMorphKey = 'drumBeepHiMorph';
+    } else if (keyStr.startsWith('drumBeepLo') && !keyStr.includes('Morph') && !keyStr.includes('Preset')) {
+      drumVoice = 'beepLo'; drumMorphKey = 'drumBeepLoMorph';
+    } else if (keyStr.startsWith('drumNoise') && !keyStr.includes('Morph') && !keyStr.includes('Preset')) {
+      drumVoice = 'noise'; drumMorphKey = 'drumNoiseMorph';
+    }
+    
     setDualSliderModes(prev => {
       const next = new Set(prev);
       if (next.has(key)) {
@@ -1284,6 +1302,20 @@ const App: React.FC = () => {
             });
           }
         }
+        
+        // Update drum morph dual range override at endpoints
+        if (drumVoice && drumMorphKey) {
+          const drumMorphPosition = state[drumMorphKey] as number;
+          const currentVal = state[key] as number;
+          // Use tolerance for endpoint detection
+          const isAtEndpoint0 = drumMorphPosition < 0.001;
+          const isAtEndpoint1 = drumMorphPosition > 0.999;
+          if (isAtEndpoint0) {
+            setDrumMorphDualRangeOverride(drumVoice, keyStr, false, currentVal, undefined, 0);
+          } else if (isAtEndpoint1) {
+            setDrumMorphDualRangeOverride(drumVoice, keyStr, false, currentVal, undefined, 1);
+          }
+        }
       } else {
         // Switching from single to dual - initialize range centered on current value
         next.add(key);
@@ -1318,6 +1350,20 @@ const App: React.FC = () => {
               } : null);
             }
           }
+          
+          // Update drum morph dual range override at endpoints
+          if (drumVoice && drumMorphKey) {
+            const drumMorphPosition = state[drumMorphKey] as number;
+            const currentVal = state[key] as number;
+            // Use tolerance for endpoint detection
+            const isAtEndpoint0 = drumMorphPosition < 0.001;
+            const isAtEndpoint1 = drumMorphPosition > 0.999;
+            if (isAtEndpoint0) {
+              setDrumMorphDualRangeOverride(drumVoice, keyStr, true, currentVal, { min, max }, 0);
+            } else if (isAtEndpoint1) {
+              setDrumMorphDualRangeOverride(drumVoice, keyStr, true, currentVal, { min, max }, 1);
+            }
+          }
         }
       }
       return next;
@@ -1328,10 +1374,11 @@ const App: React.FC = () => {
   const handleDualRangeChange = useCallback((key: keyof SliderState, min: number, max: number) => {
     setDualSliderRanges(prev => ({ ...prev, [key]: { min, max } }));
     
+    const keyStr = key as string;
+    
     // Update morph preset dualRanges at endpoints (Rule 2)
     const isMorphActive = morphPresetA !== null || morphPresetB !== null;
     if (isMorphActive) {
-      const keyStr = key as string;
       if (morphPosition === 0 && morphPresetA) {
         setMorphPresetA(prev => prev ? {
           ...prev,
@@ -1344,7 +1391,38 @@ const App: React.FC = () => {
         } : null);
       }
     }
-  }, [morphPosition, morphPresetA, morphPresetB]);
+    
+    // Check if this is a drum synth param and update drum morph override
+    let drumVoice: DrumPresetVoice | null = null;
+    let drumMorphKey: keyof SliderState | null = null;
+    if (keyStr.startsWith('drumSub') && !keyStr.includes('Morph') && !keyStr.includes('Preset')) {
+      drumVoice = 'sub'; drumMorphKey = 'drumSubMorph';
+    } else if (keyStr.startsWith('drumKick') && !keyStr.includes('Morph') && !keyStr.includes('Preset')) {
+      drumVoice = 'kick'; drumMorphKey = 'drumKickMorph';
+    } else if (keyStr.startsWith('drumClick') && !keyStr.includes('Morph') && !keyStr.includes('Preset')) {
+      drumVoice = 'click'; drumMorphKey = 'drumClickMorph';
+    } else if (keyStr.startsWith('drumBeepHi') && !keyStr.includes('Morph') && !keyStr.includes('Preset')) {
+      drumVoice = 'beepHi'; drumMorphKey = 'drumBeepHiMorph';
+    } else if (keyStr.startsWith('drumBeepLo') && !keyStr.includes('Morph') && !keyStr.includes('Preset')) {
+      drumVoice = 'beepLo'; drumMorphKey = 'drumBeepLoMorph';
+    } else if (keyStr.startsWith('drumNoise') && !keyStr.includes('Morph') && !keyStr.includes('Preset')) {
+      drumVoice = 'noise'; drumMorphKey = 'drumNoiseMorph';
+    }
+    
+    // Update drum morph dual range override at endpoints
+    if (drumVoice && drumMorphKey) {
+      const drumMorphPosition = state[drumMorphKey] as number;
+      const currentVal = state[key] as number;
+      // Use tolerance for endpoint detection
+      const isAtEndpoint0 = drumMorphPosition < 0.001;
+      const isAtEndpoint1 = drumMorphPosition > 0.999;
+      if (isAtEndpoint0) {
+        setDrumMorphDualRangeOverride(drumVoice, keyStr, true, currentVal, { min, max }, 0);
+      } else if (isAtEndpoint1) {
+        setDrumMorphDualRangeOverride(drumVoice, keyStr, true, currentVal, { min, max }, 1);
+      }
+    }
+  }, [morphPosition, morphPresetA, morphPresetB, state]);
 
   // Update engine morph ranges when dual mode changes for drum morph sliders
   useEffect(() => {
@@ -1576,8 +1654,54 @@ const App: React.FC = () => {
       }
     }
     
+    // ═══════════════════════════════════════════════════════════════════════
+    // DRUM SYNTH PARAMETER OVERRIDE SYSTEM
+    // When a drum synth param (like drumSubFreq) is changed at a drum morph
+    // endpoint (0 or 1), save as override so it persists during morph
+    // ═══════════════════════════════════════════════════════════════════════
+    const keyStr = key as string;
+    
+    // Detect which voice this param belongs to based on prefix
+    let drumVoice: DrumPresetVoice | null = null;
+    let drumMorphKey: keyof SliderState | null = null;
+    
+    if (keyStr.startsWith('drumSub') && !keyStr.includes('Morph') && !keyStr.includes('Preset')) {
+      drumVoice = 'sub';
+      drumMorphKey = 'drumSubMorph';
+    } else if (keyStr.startsWith('drumKick') && !keyStr.includes('Morph') && !keyStr.includes('Preset')) {
+      drumVoice = 'kick';
+      drumMorphKey = 'drumKickMorph';
+    } else if (keyStr.startsWith('drumClick') && !keyStr.includes('Morph') && !keyStr.includes('Preset')) {
+      drumVoice = 'click';
+      drumMorphKey = 'drumClickMorph';
+    } else if (keyStr.startsWith('drumBeepHi') && !keyStr.includes('Morph') && !keyStr.includes('Preset')) {
+      drumVoice = 'beepHi';
+      drumMorphKey = 'drumBeepHiMorph';
+    } else if (keyStr.startsWith('drumBeepLo') && !keyStr.includes('Morph') && !keyStr.includes('Preset')) {
+      drumVoice = 'beepLo';
+      drumMorphKey = 'drumBeepLoMorph';
+    } else if (keyStr.startsWith('drumNoise') && !keyStr.includes('Morph') && !keyStr.includes('Preset')) {
+      drumVoice = 'noise';
+      drumMorphKey = 'drumNoiseMorph';
+    }
+    
+    // If this is a drum synth param, check for drum morph endpoint and save override
+    if (drumVoice && drumMorphKey && isNumericValue) {
+      // Get current drum morph position for this voice from state
+      // We need to read from the current state, so we'll do this inside setState
+    }
+    
     setState((prev) => {
       let newState = { ...prev, [key]: value };
+      
+      // Handle drum synth param override at any morph position
+      // Works like the main morph system: endpoint changes are permanent,
+      // mid-morph changes blend toward destination
+      if (drumVoice && drumMorphKey && isNumericValue) {
+        const drumMorphPosition = prev[drumMorphKey] as number; // 0-1
+        // Store override at current morph position (works for both endpoints and mid-morph)
+        setDrumMorphOverride(drumVoice, keyStr, value as number, drumMorphPosition);
+      }
       
       // Auto-disable granular when level is 0
       if (key === 'granularLevel' && value === 0) {
@@ -1596,6 +1720,26 @@ const App: React.FC = () => {
       
       const voice = morphKeys[key];
       if (voice) {
+        // Clear only the relevant endpoint's overrides when a preset changes
+        // This preserves user edits at the OTHER endpoint
+        if (keyStr.includes('PresetA')) {
+          clearDrumMorphEndpointOverrides(voice, 0);
+        } else if (keyStr.includes('PresetB')) {
+          clearDrumMorphEndpointOverrides(voice, 1);
+        }
+        
+        // Clear mid-morph overrides when reaching an endpoint (keep endpoint edits)
+        if (keyStr.includes('Morph') && !keyStr.includes('Auto') && !keyStr.includes('Speed') && !keyStr.includes('Mode')) {
+          const morphValue = value as number;
+          // Use tolerance for endpoint detection since sliders might not hit exactly 0 or 1
+          const isAtEndpoint0 = morphValue < 0.001;
+          const isAtEndpoint1 = morphValue > 0.999;
+          
+          if (isAtEndpoint0 || isAtEndpoint1) {
+            clearMidMorphOverrides(voice);
+          }
+        }
+        
         // Apply morphed preset values to the state
         const morphedParams = applyMorphToState(newState, voice);
         newState = { ...newState, ...morphedParams };
@@ -1603,7 +1747,123 @@ const App: React.FC = () => {
       
       return newState;
     });
-  }, [morphPosition, morphPresetA, morphPresetB, setMorphPresetA, setMorphPresetB]);
+    
+    // Map of voice to its drum synth param prefixes
+    const voiceParamPrefixes: Record<DrumPresetVoice, string> = {
+      sub: 'drumSub', kick: 'drumKick', click: 'drumClick',
+      beepHi: 'drumBeepHi', beepLo: 'drumBeepLo', noise: 'drumNoise',
+    };
+    
+    // Map preset keys to their voice
+    const presetVoiceMap: Record<string, DrumPresetVoice> = {
+      drumSubPresetA: 'sub', drumSubPresetB: 'sub',
+      drumKickPresetA: 'kick', drumKickPresetB: 'kick',
+      drumClickPresetA: 'click', drumClickPresetB: 'click',
+      drumBeepHiPresetA: 'beepHi', drumBeepHiPresetB: 'beepHi',
+      drumBeepLoPresetA: 'beepLo', drumBeepLoPresetB: 'beepLo',
+      drumNoisePresetA: 'noise', drumNoisePresetB: 'noise',
+    };
+    
+    // Map voice to its morph key to get current position
+    const voiceMorphKeys: Record<DrumPresetVoice, keyof SliderState> = {
+      sub: 'drumSubMorph', kick: 'drumKickMorph', click: 'drumClickMorph',
+      beepHi: 'drumBeepHiMorph', beepLo: 'drumBeepLoMorph', noise: 'drumNoiseMorph',
+    };
+    
+    // When a preset changes, only reset dual slider modes/ranges if we're at that endpoint
+    // If preset A changes and we're at endpoint 1 (B), preserve the current dual modes
+    const presetVoice = presetVoiceMap[key];
+    if (presetVoice) {
+      const prefix = voiceParamPrefixes[presetVoice];
+      const morphKey = voiceMorphKeys[presetVoice];
+      const currentMorph = state[morphKey] as number;
+      
+      // Determine if we should reset dual modes
+      // Only reset if we're at the endpoint matching the changed preset
+      const isPresetA = keyStr.includes('PresetA');
+      const atEndpoint0 = currentMorph < 0.01;
+      const atEndpoint1 = currentMorph > 0.99;
+      
+      // Reset dual modes only if:
+      // - Preset A changed and we're at endpoint 0 (or mid-morph)
+      // - Preset B changed and we're at endpoint 1 (or mid-morph)
+      const shouldResetDualModes = (isPresetA && !atEndpoint1) || (!isPresetA && !atEndpoint0);
+      
+      if (shouldResetDualModes) {
+        // Reset all dual modes for params starting with this prefix (excluding Morph/Preset keys)
+        setDualSliderModes(prev => {
+          const next = new Set(prev);
+          for (const mode of prev) {
+            const modeStr = mode as string;
+            if (modeStr.startsWith(prefix) && !modeStr.includes('Morph') && !modeStr.includes('Preset')) {
+              next.delete(mode);
+            }
+          }
+          return next;
+        });
+        // Also clear the ranges
+        setDualSliderRanges(prev => {
+          const newRanges = { ...prev };
+          for (const rangeKey of Object.keys(prev)) {
+            if (rangeKey.startsWith(prefix) && !rangeKey.includes('Morph') && !rangeKey.includes('Preset')) {
+              delete newRanges[rangeKey as keyof typeof newRanges];
+            }
+          }
+          return newRanges;
+        });
+      }
+    }
+    
+    // Apply interpolated dual range overrides for drum morph
+    // This happens at EVERY morph position, not just endpoints
+    // Mimics lerpPresets behavior: ranges interpolate smoothly, mode only snaps when range collapses
+    const drumMorphVoiceKeys: Record<string, DrumPresetVoice> = {
+      drumSubMorph: 'sub', drumKickMorph: 'kick', drumClickMorph: 'click',
+      drumBeepHiMorph: 'beepHi', drumBeepLoMorph: 'beepLo', drumNoiseMorph: 'noise',
+    };
+    
+    const morphVoice = drumMorphVoiceKeys[key];
+    if (morphVoice && keyStr.includes('Morph') && !keyStr.includes('Auto') && !keyStr.includes('Speed') && !keyStr.includes('Mode')) {
+      const morphValue = value as number;
+      
+      // Build current values map for fallback
+      // We need to read current state values for the interpolation
+      const currentValues: Record<string, number> = {};
+      const overrides = getDrumMorphDualRangeOverrides(morphVoice);
+      for (const param of Object.keys(overrides)) {
+        const stateVal = state[param as keyof SliderState];
+        if (typeof stateVal === 'number') {
+          currentValues[param] = stateVal;
+        }
+      }
+      
+      // Get interpolated dual ranges for all params
+      const interpolatedRanges = interpolateDrumMorphDualRanges(morphVoice, morphValue, currentValues);
+      
+      // Apply the interpolated states
+      for (const [param, interpState] of Object.entries(interpolatedRanges)) {
+        const paramKey = param as keyof SliderState;
+        
+        if (interpState.isDualMode && interpState.range) {
+          // Interpolated to dual mode - enable and set range
+          setDualSliderModes(prev => new Set([...prev, paramKey]));
+          setDualSliderRanges(prev => ({ ...prev, [paramKey]: interpState.range! }));
+        } else {
+          // Interpolated to single mode - disable dual
+          setDualSliderModes(prev => {
+            const next = new Set(prev);
+            next.delete(paramKey);
+            return next;
+          });
+          setDualSliderRanges(prev => {
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            const { [paramKey]: _, ...rest } = prev;
+            return rest as typeof prev;
+          });
+        }
+      }
+    }
+  }, [morphPosition, morphPresetA, morphPresetB, setMorphPresetA, setMorphPresetB, state]);
 
   // Helper to create slider props with dual mode support
   const sliderProps = useCallback((paramKey: keyof SliderState): {
@@ -1983,65 +2243,75 @@ const App: React.FC = () => {
         morphCapturedDualRangesRef.current = currentDualRanges;
       }
       
-      // Apply the preset immediately when loading to slot A
-      const newState = { ...DEFAULT_STATE, ...normalizedPreset.state };
-      if (newState.granularLevel === 0) {
-        newState.granularEnabled = false;
-      }
-      setState(newState);
-      audioEngine.updateParams(newState);
-      audioEngine.resetCofDrift();
-      setMorphPosition(0); // Reset to full A
+      // Check if we should apply preset A values directly:
+      // - Only apply if we're at endpoint 0 (near position 0)
+      // - OR if no preset B is loaded yet (not in morph mode)
+      // At endpoint 1 (position ~100), we should keep the current B values
+      const atEndpoint0 = isAtEndpoint0(morphPosition, true);
+      const shouldApplyPresetA = atEndpoint0 || !morphPresetB;
       
-      // Update ocean dual modes based on whether min !== max in the loaded state
-      setOceanDualModes({
-        duration: Math.abs(newState.oceanDurationMax - newState.oceanDurationMin) > 0.01,
-        interval: Math.abs(newState.oceanIntervalMax - newState.oceanIntervalMin) > 0.01,
-        foam: Math.abs(newState.oceanFoamMax - newState.oceanFoamMin) > 0.001,
-        depth: Math.abs(newState.oceanDepthMax - newState.oceanDepthMin) > 0.001,
-      });
-      
-      // Update expression dual modes based on whether min !== max in the loaded state
-      setExpressionDualModes({
-        vibratoDepth: Math.abs(newState.leadVibratoDepthMax - newState.leadVibratoDepthMin) > 0.001,
-        vibratoRate: Math.abs(newState.leadVibratoRateMax - newState.leadVibratoRateMin) > 0.001,
-        glide: Math.abs(newState.leadGlideMax - newState.leadGlideMin) > 0.001,
-      });
-      
-      // Update delay dual modes based on whether min !== max in the loaded state
-      setDelayDualModes({
-        time: Math.abs(newState.leadDelayTimeMax - newState.leadDelayTimeMin) > 0.1,
-        feedback: Math.abs(newState.leadDelayFeedbackMax - newState.leadDelayFeedbackMin) > 0.001,
-        mix: Math.abs(newState.leadDelayMixMax - newState.leadDelayMixMin) > 0.001,
-      });
-      
-      // Restore dual slider state if present
-      if (normalizedPreset.dualRanges && Object.keys(normalizedPreset.dualRanges).length > 0) {
-        const newDualModes = new Set<keyof SliderState>();
-        const newDualRanges: DualSliderState = {};
-        const newWalkPositions: Record<string, number> = {};
+      if (shouldApplyPresetA) {
+        // Apply the preset immediately when loading to slot A (and at or near position 0)
+        const newState = { ...DEFAULT_STATE, ...normalizedPreset.state };
+        if (newState.granularLevel === 0) {
+          newState.granularEnabled = false;
+        }
+        setState(newState);
+        audioEngine.updateParams(newState);
+        audioEngine.resetCofDrift();
+        // Don't reset morph position - keep it where user had it
         
-        Object.entries(normalizedPreset.dualRanges).forEach(([key, range]) => {
-          const paramKey = key as keyof SliderState;
-          newDualModes.add(paramKey);
-          newDualRanges[paramKey] = range;
-          const walkPos = Math.random();
-          newWalkPositions[key] = walkPos;
-          randomWalkRef.current[paramKey] = {
-            position: walkPos,
-            velocity: (Math.random() - 0.5) * 0.02,
-          };
+        // Update ocean dual modes based on whether min !== max in the loaded state
+        setOceanDualModes({
+          duration: Math.abs(newState.oceanDurationMax - newState.oceanDurationMin) > 0.01,
+          interval: Math.abs(newState.oceanIntervalMax - newState.oceanIntervalMin) > 0.01,
+          foam: Math.abs(newState.oceanFoamMax - newState.oceanFoamMin) > 0.001,
+          depth: Math.abs(newState.oceanDepthMax - newState.oceanDepthMin) > 0.001,
         });
         
-        setDualSliderModes(newDualModes);
-        setDualSliderRanges(newDualRanges);
-        setRandomWalkPositions(newWalkPositions);
-      } else {
-        setDualSliderModes(new Set());
-        setDualSliderRanges({});
-        setRandomWalkPositions({});
-        randomWalkRef.current = {};
+        // Update expression dual modes based on whether min !== max in the loaded state
+        setExpressionDualModes({
+          vibratoDepth: Math.abs(newState.leadVibratoDepthMax - newState.leadVibratoDepthMin) > 0.001,
+          vibratoRate: Math.abs(newState.leadVibratoRateMax - newState.leadVibratoRateMin) > 0.001,
+          glide: Math.abs(newState.leadGlideMax - newState.leadGlideMin) > 0.001,
+        });
+        
+        // Update delay dual modes based on whether min !== max in the loaded state
+        setDelayDualModes({
+          time: Math.abs(newState.leadDelayTimeMax - newState.leadDelayTimeMin) > 0.1,
+          feedback: Math.abs(newState.leadDelayFeedbackMax - newState.leadDelayFeedbackMin) > 0.001,
+          mix: Math.abs(newState.leadDelayMixMax - newState.leadDelayMixMin) > 0.001,
+        });
+        
+        // Restore dual slider state if present
+        if (normalizedPreset.dualRanges && Object.keys(normalizedPreset.dualRanges).length > 0) {
+          const newDualModes = new Set<keyof SliderState>();
+          const newDualRanges: DualSliderState = {};
+          const newWalkPositions: Record<string, number> = {};
+          
+          Object.entries(normalizedPreset.dualRanges).forEach(([key, range]) => {
+            const paramKey = key as keyof SliderState;
+            newDualModes.add(paramKey);
+            newDualRanges[paramKey] = range;
+            const walkPos = Math.random();
+            newWalkPositions[key] = walkPos;
+            randomWalkRef.current[paramKey] = {
+              position: walkPos,
+              velocity: (Math.random() - 0.5) * 0.02,
+            };
+          });
+          
+          setDualSliderModes(newDualModes);
+          setDualSliderRanges(newDualRanges);
+          setRandomWalkPositions(newWalkPositions);
+        } else {
+          setDualSliderModes(new Set());
+          setDualSliderRanges({});
+          setRandomWalkPositions({});
+          randomWalkRef.current = {};
+        }
       }
+      // If in mid-morph, the useEffect will handle applying the interpolated state
     } else {
       setMorphPresetB(normalizedPreset);
       // When loading B, capture current state for A to use as fallback
@@ -2053,6 +2323,125 @@ const App: React.FC = () => {
     }
     setMorphLoadTarget(null);
   }, [state, morphPresetA, morphPresetB, dualSliderModes, dualSliderRanges]);
+
+  // Reapply morph interpolation when a preset changes while in mid-morph
+  // This ensures that if you're at position 50 and load a new preset A or B,
+  // the state reflects the interpolated values, not just the raw preset
+  const prevMorphPresetARef = useRef<SavedPreset | null>(null);
+  const prevMorphPresetBRef = useRef<SavedPreset | null>(null);
+  
+  useEffect(() => {
+    const presetAChanged = morphPresetA !== prevMorphPresetARef.current;
+    const presetBChanged = morphPresetB !== prevMorphPresetBRef.current;
+    
+    prevMorphPresetARef.current = morphPresetA;
+    prevMorphPresetBRef.current = morphPresetB;
+    
+    // Only reapply if a preset changed and we're in mid-morph
+    if (!presetAChanged && !presetBChanged) return;
+    if (!morphPresetA && !morphPresetB) return;
+    
+    // Check if we're in mid-morph (not at endpoints) using shared utility
+    // Main morph uses 0-100 scale
+    if (!isInMidMorph(morphPosition, true)) return;
+    
+    // Reapply the morph at current position
+    const fallbackState = morphCapturedStateRef.current || DEFAULT_STATE;
+    const fallbackDualRanges = morphCapturedDualRangesRef.current || undefined;
+    const effectiveA: SavedPreset = morphPresetA || { name: 'Current', timestamp: '', state: fallbackState, dualRanges: fallbackDualRanges };
+    const effectiveB: SavedPreset = morphPresetB || { name: 'Current', timestamp: '', state: fallbackState, dualRanges: fallbackDualRanges };
+    
+    // Determine direction based on which preset changed
+    const direction = morphDirectionRef.current || 'toB';
+    const morphResult = lerpPresets(effectiveA, effectiveB, morphPosition, engineState.cofCurrentStep, morphCapturedStartRootRef.current ?? undefined, direction);
+    
+    // Apply the interpolated state
+    setState(prev => ({ ...prev, ...morphResult.state }));
+    audioEngine.updateParams(morphResult.state);
+    
+    // Apply interpolated dual ranges
+    setDualSliderModes(morphResult.dualModes);
+    setDualSliderRanges(morphResult.dualRanges);
+    
+  }, [morphPresetA, morphPresetB, morphPosition, lerpPresets, engineState.cofCurrentStep]);
+
+  // Reapply drum morph interpolation when a drum preset changes while in mid-morph
+  // This mirrors the main morph system's behavior
+  const prevDrumPresetsRef = useRef<Record<string, string>>({});
+  
+  useEffect(() => {
+    // Check each drum voice for preset changes
+    const drumVoices: DrumPresetVoice[] = ['sub', 'kick', 'click', 'beepHi', 'beepLo', 'noise'];
+    const presetKeys: Record<DrumPresetVoice, { a: keyof SliderState; b: keyof SliderState; morph: keyof SliderState }> = {
+      sub: { a: 'drumSubPresetA', b: 'drumSubPresetB', morph: 'drumSubMorph' },
+      kick: { a: 'drumKickPresetA', b: 'drumKickPresetB', morph: 'drumKickMorph' },
+      click: { a: 'drumClickPresetA', b: 'drumClickPresetB', morph: 'drumClickMorph' },
+      beepHi: { a: 'drumBeepHiPresetA', b: 'drumBeepHiPresetB', morph: 'drumBeepHiMorph' },
+      beepLo: { a: 'drumBeepLoPresetA', b: 'drumBeepLoPresetB', morph: 'drumBeepLoMorph' },
+      noise: { a: 'drumNoisePresetA', b: 'drumNoisePresetB', morph: 'drumNoiseMorph' },
+    };
+    
+    for (const voice of drumVoices) {
+      const keys = presetKeys[voice];
+      const presetA = state[keys.a] as string;
+      const presetB = state[keys.b] as string;
+      const morphValue = state[keys.morph] as number;
+      
+      const prevA = prevDrumPresetsRef.current[keys.a];
+      const prevB = prevDrumPresetsRef.current[keys.b];
+      
+      const presetAChanged = presetA !== prevA;
+      const presetBChanged = presetB !== prevB;
+      
+      // Update refs
+      prevDrumPresetsRef.current[keys.a] = presetA;
+      prevDrumPresetsRef.current[keys.b] = presetB;
+      
+      // Only reapply if a preset changed and we're in mid-morph
+      if (!presetAChanged && !presetBChanged) continue;
+      
+      // Check if we're in mid-morph (not at endpoints) using shared utility
+      // Drum morph uses 0-1 scale
+      if (!isInMidMorph(morphValue)) continue;
+      
+      // Reapply the morphed values using applyMorphToState
+      // This recalculates interpolation with the new preset
+      const morphedParams = applyMorphToState(state, voice);
+      setState(prev => ({ ...prev, ...morphedParams }));
+      
+      // Also reapply dual range interpolation if there are overrides
+      const currentValues: Record<string, number> = {};
+      const overrides = getDrumMorphDualRangeOverrides(voice);
+      for (const param of Object.keys(overrides)) {
+        const stateVal = state[param as keyof SliderState];
+        if (typeof stateVal === 'number') {
+          currentValues[param] = stateVal;
+        }
+      }
+      
+      const interpolatedRanges = interpolateDrumMorphDualRanges(voice, morphValue, currentValues);
+      
+      for (const [param, interpState] of Object.entries(interpolatedRanges)) {
+        const paramKey = param as keyof SliderState;
+        
+        if (interpState.isDualMode && interpState.range) {
+          setDualSliderModes(prev => new Set([...prev, paramKey]));
+          setDualSliderRanges(prev => ({ ...prev, [paramKey]: interpState.range! }));
+        } else {
+          setDualSliderModes(prev => {
+            const next = new Set(prev);
+            next.delete(paramKey);
+            return next;
+          });
+          setDualSliderRanges(prev => {
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            const { [paramKey]: _, ...rest } = prev;
+            return rest as typeof prev;
+          });
+        }
+      }
+    }
+  }, [state]);
 
   // Handle morph slider change
   const handleMorphPositionChange = useCallback((newPosition: number) => {
@@ -2450,7 +2839,7 @@ const App: React.FC = () => {
     morphCapturedDualRangesRef.current = currentDualRanges;
     
     setMorphPresetA(preset);
-    setMorphPosition(0); // Reset to full A
+    // Don't reset morph position - keep it where user had it
     
     // Check for iOS-only settings and warn user
     const warnings = checkPresetCompatibility(preset);
@@ -2462,74 +2851,84 @@ const App: React.FC = () => {
       }, 100);
     }
     
-    // Apply the preset directly, with auto-disable for zero-level features
-    // Also normalize iOS-only settings to web-compatible values
-    const normalizedState = normalizePresetForWeb(preset.state);
-    const newState = { ...DEFAULT_STATE, ...normalizedState };
+    // Check if we should apply preset A values directly:
+    // - Only apply if we're at endpoint 0 (near position 0)
+    // - OR if no preset B is loaded yet (not in morph mode)
+    // At endpoint 1 (position ~100), we should keep the current B values
+    const atEndpoint0 = isAtEndpoint0(morphPosition, true);
+    const shouldApplyPresetA = atEndpoint0 || !morphPresetB;
     
-    // Auto-disable granular if level is 0
-    if (newState.granularLevel === 0) {
-      newState.granularEnabled = false;
-    }
-    
-    setState(newState);
-    audioEngine.updateParams(newState);
-    audioEngine.resetCofDrift(); // Reset CoF drift when loading preset
-    
-    // Update ocean dual modes based on whether min !== max in the loaded state
-    setOceanDualModes({
-      duration: Math.abs(newState.oceanDurationMax - newState.oceanDurationMin) > 0.01,
-      interval: Math.abs(newState.oceanIntervalMax - newState.oceanIntervalMin) > 0.01,
-      foam: Math.abs(newState.oceanFoamMax - newState.oceanFoamMin) > 0.001,
-      depth: Math.abs(newState.oceanDepthMax - newState.oceanDepthMin) > 0.001,
-    });
-    
-    // Update expression dual modes based on whether min !== max in the loaded state
-    setExpressionDualModes({
-      vibratoDepth: Math.abs(newState.leadVibratoDepthMax - newState.leadVibratoDepthMin) > 0.001,
-      vibratoRate: Math.abs(newState.leadVibratoRateMax - newState.leadVibratoRateMin) > 0.001,
-      glide: Math.abs(newState.leadGlideMax - newState.leadGlideMin) > 0.001,
-    });
-    
-    // Update delay dual modes based on whether min !== max in the loaded state
-    setDelayDualModes({
-      time: Math.abs(newState.leadDelayTimeMax - newState.leadDelayTimeMin) > 0.1,
-      feedback: Math.abs(newState.leadDelayFeedbackMax - newState.leadDelayFeedbackMin) > 0.001,
-      mix: Math.abs(newState.leadDelayMixMax - newState.leadDelayMixMin) > 0.001,
-    });
-    
-    // Restore dual slider state if present
-    if (preset.dualRanges && Object.keys(preset.dualRanges).length > 0) {
-      const newDualModes = new Set<keyof SliderState>();
-      const newDualRanges: DualSliderState = {};
-      const newWalkPositions: Record<string, number> = {};
+    if (shouldApplyPresetA) {
+      // Apply the preset directly, with auto-disable for zero-level features
+      // Also normalize iOS-only settings to web-compatible values
+      const normalizedState = normalizePresetForWeb(preset.state);
+      const newState = { ...DEFAULT_STATE, ...normalizedState };
       
-      Object.entries(preset.dualRanges).forEach(([key, range]) => {
-        const paramKey = key as keyof SliderState;
-        newDualModes.add(paramKey);
-        newDualRanges[paramKey] = range;
-        // Initialize random walk with random starting position
-        const walkPos = Math.random();
-        newWalkPositions[key] = walkPos;
-        randomWalkRef.current[paramKey] = {
-          position: walkPos,
-          velocity: (Math.random() - 0.5) * 0.02,
-        };
+      // Auto-disable granular if level is 0
+      if (newState.granularLevel === 0) {
+        newState.granularEnabled = false;
+      }
+      
+      setState(newState);
+      audioEngine.updateParams(newState);
+      audioEngine.resetCofDrift(); // Reset CoF drift when loading preset
+      
+      // Update ocean dual modes based on whether min !== max in the loaded state
+      setOceanDualModes({
+        duration: Math.abs(newState.oceanDurationMax - newState.oceanDurationMin) > 0.01,
+        interval: Math.abs(newState.oceanIntervalMax - newState.oceanIntervalMin) > 0.01,
+        foam: Math.abs(newState.oceanFoamMax - newState.oceanFoamMin) > 0.001,
+        depth: Math.abs(newState.oceanDepthMax - newState.oceanDepthMin) > 0.001,
       });
       
-      setDualSliderModes(newDualModes);
-      setDualSliderRanges(newDualRanges);
-      setRandomWalkPositions(newWalkPositions);
-    } else {
-      // No dual ranges in preset - reset to single mode
-      setDualSliderModes(new Set());
-      setDualSliderRanges({});
-      setRandomWalkPositions({});
-      randomWalkRef.current = {};
+      // Update expression dual modes based on whether min !== max in the loaded state
+      setExpressionDualModes({
+        vibratoDepth: Math.abs(newState.leadVibratoDepthMax - newState.leadVibratoDepthMin) > 0.001,
+        vibratoRate: Math.abs(newState.leadVibratoRateMax - newState.leadVibratoRateMin) > 0.001,
+        glide: Math.abs(newState.leadGlideMax - newState.leadGlideMin) > 0.001,
+      });
+      
+      // Update delay dual modes based on whether min !== max in the loaded state
+      setDelayDualModes({
+        time: Math.abs(newState.leadDelayTimeMax - newState.leadDelayTimeMin) > 0.1,
+        feedback: Math.abs(newState.leadDelayFeedbackMax - newState.leadDelayFeedbackMin) > 0.001,
+        mix: Math.abs(newState.leadDelayMixMax - newState.leadDelayMixMin) > 0.001,
+      });
+      
+      // Restore dual slider state if present
+      if (preset.dualRanges && Object.keys(preset.dualRanges).length > 0) {
+        const newDualModes = new Set<keyof SliderState>();
+        const newDualRanges: DualSliderState = {};
+        const newWalkPositions: Record<string, number> = {};
+        
+        Object.entries(preset.dualRanges).forEach(([key, range]) => {
+          const paramKey = key as keyof SliderState;
+          newDualModes.add(paramKey);
+          newDualRanges[paramKey] = range;
+          // Initialize random walk with random starting position
+          const walkPos = Math.random();
+          newWalkPositions[key] = walkPos;
+          randomWalkRef.current[paramKey] = {
+            position: walkPos,
+            velocity: (Math.random() - 0.5) * 0.02,
+          };
+        });
+        
+        setDualSliderModes(newDualModes);
+        setDualSliderRanges(newDualRanges);
+        setRandomWalkPositions(newWalkPositions);
+      } else {
+        // No dual ranges in preset - reset to single mode
+        setDualSliderModes(new Set());
+        setDualSliderRanges({});
+        setRandomWalkPositions({});
+        randomWalkRef.current = {};
+      }
     }
+    // If in mid-morph, the useEffect will handle applying the interpolated state
     
     setShowPresetList(false);
-  }, [uiMode, morphLoadTarget, handleLoadPresetToSlot, state, dualSliderModes, dualSliderRanges]);
+  }, [uiMode, morphLoadTarget, handleLoadPresetToSlot, state, dualSliderModes, dualSliderRanges, morphPresetB, morphPosition]);
 
   // Delete preset - just removes from UI list (can't delete files from browser)
   const handleDeletePreset = (index: number) => {
@@ -3119,43 +3518,53 @@ const App: React.FC = () => {
                     }
                     setMorphPresetA(preset);
                     
-                    // Apply the preset settings (with auto-disable for zero-level features)
-                    const newState = { ...DEFAULT_STATE, ...preset.state };
-                    if (newState.granularLevel === 0) {
-                      newState.granularEnabled = false;
-                    }
-                    setState(newState);
-                    audioEngine.updateParams(newState);
-                    audioEngine.resetCofDrift(); // Reset CoF drift when loading preset
-                    setMorphPosition(0); // Reset to full A
+                    // Check if we should apply preset A values directly:
+                    // - Only apply if we're at endpoint 0 (near position 0)
+                    // - OR if no preset B is loaded yet (not in morph mode)
+                    // At endpoint 1 (position ~100), we should keep the current B values
+                    const atEndpoint0 = isAtEndpoint0(morphPosition, true);
+                    const shouldApplyPresetA = atEndpoint0 || !morphPresetB;
                     
-                    // Restore dual slider state if present
-                    if (preset.dualRanges && Object.keys(preset.dualRanges).length > 0) {
-                      const newDualModes = new Set<keyof SliderState>();
-                      const newDualRanges: DualSliderState = {};
-                      const newWalkPositions: Record<string, number> = {};
+                    if (shouldApplyPresetA) {
+                      // Apply the preset settings (with auto-disable for zero-level features)
+                      const newState = { ...DEFAULT_STATE, ...preset.state };
+                      if (newState.granularLevel === 0) {
+                        newState.granularEnabled = false;
+                      }
+                      setState(newState);
+                      audioEngine.updateParams(newState);
+                      audioEngine.resetCofDrift(); // Reset CoF drift when loading preset
+                      // Don't reset morph position - keep it where user had it
                       
-                      Object.entries(preset.dualRanges).forEach(([key, range]) => {
-                        const paramKey = key as keyof SliderState;
-                        newDualModes.add(paramKey);
-                        newDualRanges[paramKey] = range;
-                        const walkPos = Math.random();
-                        newWalkPositions[key] = walkPos;
-                        randomWalkRef.current[paramKey] = {
-                          position: walkPos,
-                          velocity: (Math.random() - 0.5) * 0.02,
-                        };
-                      });
-                      
-                      setDualSliderModes(newDualModes);
-                      setDualSliderRanges(newDualRanges);
-                      setRandomWalkPositions(newWalkPositions);
-                    } else {
-                      setDualSliderModes(new Set());
-                      setDualSliderRanges({});
-                      setRandomWalkPositions({});
-                      randomWalkRef.current = {};
+                      // Restore dual slider state if present
+                      if (preset.dualRanges && Object.keys(preset.dualRanges).length > 0) {
+                        const newDualModes = new Set<keyof SliderState>();
+                        const newDualRanges: DualSliderState = {};
+                        const newWalkPositions: Record<string, number> = {};
+                        
+                        Object.entries(preset.dualRanges).forEach(([key, range]) => {
+                          const paramKey = key as keyof SliderState;
+                          newDualModes.add(paramKey);
+                          newDualRanges[paramKey] = range;
+                          const walkPos = Math.random();
+                          newWalkPositions[key] = walkPos;
+                          randomWalkRef.current[paramKey] = {
+                            position: walkPos,
+                            velocity: (Math.random() - 0.5) * 0.02,
+                          };
+                        });
+                        
+                        setDualSliderModes(newDualModes);
+                        setDualSliderRanges(newDualRanges);
+                        setRandomWalkPositions(newWalkPositions);
+                      } else {
+                        setDualSliderModes(new Set());
+                        setDualSliderRanges({});
+                        setRandomWalkPositions({});
+                        randomWalkRef.current = {};
+                      }
                     }
+                    // If in mid-morph, the useEffect will handle applying the interpolated state
                   }
                 }
               }}
