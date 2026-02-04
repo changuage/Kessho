@@ -698,7 +698,7 @@ const DualSlider: React.FC<DualSliderProps> = ({
   const longPressTriggeredRef = useRef(false);
   const LONG_PRESS_DURATION = 400; // ms
   
-  const handleLongPressStart = (e: React.TouchEvent) => {
+  const handleLongPressStart = (_e: React.TouchEvent) => {
     longPressTriggeredRef.current = false;
     longPressTimerRef.current = setTimeout(() => {
       longPressTriggeredRef.current = true;
