@@ -173,6 +173,11 @@ struct SliderState: Codable, Equatable {
     var drumSubDecay: Double = 150
     var drumSubLevel: Double = 0.8
     var drumSubTone: Double = 0.1
+    var drumSubShape: Double = 0            // 0..1 (0=sine, 0.5=triangle, 1=saw)
+    var drumSubPitchEnv: Double = 0         // -48..+48 semitones pitch sweep
+    var drumSubPitchDecay: Double = 50      // 5..500 ms pitch envelope decay
+    var drumSubDrive: Double = 0            // 0..1 soft saturation
+    var drumSubSub: Double = 0              // 0..1 sub-octave mix
     
     // Voice 2: Kick (sine with pitch sweep)
     var drumKickFreq: Double = 55
@@ -181,6 +186,10 @@ struct SliderState: Codable, Equatable {
     var drumKickDecay: Double = 200
     var drumKickLevel: Double = 0.7
     var drumKickClick: Double = 0.3
+    var drumKickBody: Double = 0.3          // 0..1 (0=tight, 1=boomy)
+    var drumKickPunch: Double = 0.8         // 0..1 transient sharpness
+    var drumKickTail: Double = 0            // 0..1 reverberant tail
+    var drumKickTone: Double = 0            // 0..1 harmonic content
     
     // Voice 3: Click (the signature Ikeda "data" sound)
     var drumClickDecay: Double = 5
@@ -188,6 +197,12 @@ struct SliderState: Codable, Equatable {
     var drumClickTone: Double = 0.3
     var drumClickLevel: Double = 0.6
     var drumClickResonance: Double = 0.4
+    var drumClickPitch: Double = 2000       // 200..8000 Hz tonal mode pitch
+    var drumClickPitchEnv: Double = 0       // -48..+48 semitones pitch sweep
+    var drumClickMode: String = "impulse"   // impulse, noise, tonal, granular
+    var drumClickGrainCount: Int = 1        // 1..8 micro-grains per trigger
+    var drumClickGrainSpread: Double = 0    // 0..50 ms grain timing spread
+    var drumClickStereoWidth: Double = 0    // 0..1 stereo spread
     
     // Voice 4: Beep Hi (high pitched notification ping)
     var drumBeepHiFreq: Double = 4000
@@ -195,6 +210,11 @@ struct SliderState: Codable, Equatable {
     var drumBeepHiDecay: Double = 80
     var drumBeepHiLevel: Double = 0.5
     var drumBeepHiTone: Double = 0.2
+    var drumBeepHiInharmonic: Double = 0    // 0..1 inharmonic partial detune
+    var drumBeepHiPartials: Int = 1         // 1..6 number of partials
+    var drumBeepHiShimmer: Double = 0       // 0..1 vibrato/chorus amount
+    var drumBeepHiShimmerRate: Double = 4   // 0.5..12 Hz shimmer LFO rate
+    var drumBeepHiBrightness: Double = 0.5  // 0..1 spectral tilt
     
     // Voice 5: Beep Lo (lower blip, Morse-code feel)
     var drumBeepLoFreq: Double = 400
@@ -202,6 +222,11 @@ struct SliderState: Codable, Equatable {
     var drumBeepLoDecay: Double = 100
     var drumBeepLoLevel: Double = 0.5
     var drumBeepLoTone: Double = 0.1
+    var drumBeepLoPitchEnv: Double = 0      // -48..+48 semitones (neg=rise for droplet)
+    var drumBeepLoPitchDecay: Double = 50   // 5..500 ms pitch env decay
+    var drumBeepLoBody: Double = 0.3        // 0..1 resonance/body warmth
+    var drumBeepLoPluck: Double = 0         // 0..1 Karplus-Strong pluck amount
+    var drumBeepLoPluckDamp: Double = 0.5   // 0..1 pluck damping (0=bright, 1=muted)
     
     // Voice 6: Noise (hi-hat/texture)
     var drumNoiseFilterFreq: Double = 8000
@@ -210,6 +235,64 @@ struct SliderState: Codable, Equatable {
     var drumNoiseDecay: Double = 30
     var drumNoiseLevel: Double = 0.4
     var drumNoiseAttack: Double = 0
+    var drumNoiseFormant: Double = 0        // 0..1 vowel formant morph
+    var drumNoiseBreath: Double = 0         // 0..1 breathiness/air
+    var drumNoiseFilterEnv: Double = 0      // -1..+1 filter envelope direction
+    var drumNoiseFilterEnvDecay: Double = 100  // 5..2000 ms filter env decay
+    var drumNoiseDensity: Double = 1        // 0..1 (0=sparse dust, 1=dense)
+    var drumNoiseColorLFO: Double = 0       // 0..10 Hz filter modulation rate
+    
+    // Per-trigger morph update option
+    var drumRandomMorphUpdate: Bool = false  // Update sliders on random morph trigger
+    
+    // ─── Drum Voice Morph System ───
+    // Sub morph
+    var drumSubPresetA: String = "Classic Sub"
+    var drumSubPresetB: String = "Deep Thump"
+    var drumSubMorph: Double = 0
+    var drumSubMorphAuto: Bool = false
+    var drumSubMorphSpeed: Double = 8
+    var drumSubMorphMode: String = "linear"  // linear, pingpong, random
+    
+    // Kick morph
+    var drumKickPresetA: String = "Ikeda Kick"
+    var drumKickPresetB: String = "Ambient Boom"
+    var drumKickMorph: Double = 0
+    var drumKickMorphAuto: Bool = false
+    var drumKickMorphSpeed: Double = 8
+    var drumKickMorphMode: String = "linear"
+    
+    // Click morph
+    var drumClickPresetA: String = "Data Point"
+    var drumClickPresetB: String = "Crinkle"
+    var drumClickMorph: Double = 0
+    var drumClickMorphAuto: Bool = false
+    var drumClickMorphSpeed: Double = 8
+    var drumClickMorphMode: String = "linear"
+    
+    // BeepHi morph
+    var drumBeepHiPresetA: String = "Data Ping"
+    var drumBeepHiPresetB: String = "Glass"
+    var drumBeepHiMorph: Double = 0
+    var drumBeepHiMorphAuto: Bool = false
+    var drumBeepHiMorphSpeed: Double = 8
+    var drumBeepHiMorphMode: String = "linear"
+    
+    // BeepLo morph
+    var drumBeepLoPresetA: String = "Blip"
+    var drumBeepLoPresetB: String = "Droplet"
+    var drumBeepLoMorph: Double = 0
+    var drumBeepLoMorphAuto: Bool = false
+    var drumBeepLoMorphSpeed: Double = 8
+    var drumBeepLoMorphMode: String = "linear"
+    
+    // Noise morph
+    var drumNoisePresetA: String = "Hi-Hat"
+    var drumNoisePresetB: String = "Breath"
+    var drumNoiseMorph: Double = 0
+    var drumNoiseMorphAuto: Bool = false
+    var drumNoiseMorphSpeed: Double = 8
+    var drumNoiseMorphMode: String = "linear"
     
     // Random trigger mode
     var drumRandomEnabled: Bool = false

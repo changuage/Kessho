@@ -105,12 +105,21 @@ class DrumSynth {
         let params: VoiceParams
         var noiseIndex: Int = 0
         var filterState: Float = 0  // For single-pole filter
+        var filterState2: Float = 0 // For second filter stage
+        var pluckBuffer: [Float] = []  // For Karplus-Strong
+        var pluckIndex: Int = 0
+        var shimmerPhase: Float = 0  // For shimmer LFO
         
         struct VoiceParams {
             // Sub
             var subFreq: Float = 50
             var subDecay: Float = 0.15
             var subTone: Float = 0.1
+            var subShape: Float = 0           // 0=sine, 0.5=triangle, 1=saw
+            var subPitchEnv: Float = 0        // semitones
+            var subPitchDecay: Float = 0.05   // seconds
+            var subDrive: Float = 0           // saturation
+            var subSub: Float = 0             // sub-octave mix
             
             // Kick
             var kickFreq: Float = 55
@@ -118,24 +127,44 @@ class DrumSynth {
             var kickPitchDecay: Float = 0.03
             var kickDecay: Float = 0.2
             var kickClick: Float = 0.3
+            var kickBody: Float = 0.3         // boomy resonance
+            var kickPunch: Float = 0.8        // transient sharpness
+            var kickTail: Float = 0           // reverberant tail
+            var kickTone: Float = 0           // harmonic content
             
             // Click
             var clickDecay: Float = 0.005
             var clickFilter: Float = 4000
             var clickTone: Float = 0.3
             var clickResonance: Float = 0.4
+            var clickPitch: Float = 2000      // tonal mode pitch
+            var clickPitchEnv: Float = 0      // pitch sweep
+            var clickMode: String = "impulse" // impulse, noise, tonal, granular
+            var clickGrainCount: Int = 1
+            var clickGrainSpread: Float = 0
+            var clickStereoWidth: Float = 0
             
             // BeepHi
             var beepHiFreq: Float = 4000
             var beepHiAttack: Float = 0.001
             var beepHiDecay: Float = 0.08
             var beepHiTone: Float = 0.2
+            var beepHiInharmonic: Float = 0   // partial detune
+            var beepHiPartials: Int = 1       // number of partials
+            var beepHiShimmer: Float = 0      // vibrato/chorus
+            var beepHiShimmerRate: Float = 4  // LFO rate Hz
+            var beepHiBrightness: Float = 0.5 // spectral tilt
             
             // BeepLo
             var beepLoFreq: Float = 400
             var beepLoAttack: Float = 0.002
             var beepLoDecay: Float = 0.1
             var beepLoTone: Float = 0.1
+            var beepLoPitchEnv: Float = 0     // semitones
+            var beepLoPitchDecay: Float = 0.05 // seconds
+            var beepLoBody: Float = 0.3       // resonance
+            var beepLoPluck: Float = 0        // Karplus-Strong amount
+            var beepLoPluckDamp: Float = 0.5  // pluck damping
             
             // Noise
             var noiseFilterFreq: Float = 8000
@@ -143,6 +172,12 @@ class DrumSynth {
             var noiseFilterType: String = "highpass"
             var noiseAttack: Float = 0
             var noiseDecay: Float = 0.03
+            var noiseFormant: Float = 0       // vowel formant morph
+            var noiseBreath: Float = 0        // breathiness
+            var noiseFilterEnv: Float = 0     // filter envelope direction
+            var noiseFilterEnvDecay: Float = 0.1 // seconds
+            var noiseDensity: Float = 1       // 0=sparse, 1=dense
+            var noiseColorLFO: Float = 0      // filter mod rate Hz
         }
     }
     
@@ -252,17 +287,54 @@ class DrumSynth {
         
         voice.envelope = exp(-voice.time / (decay * 0.3))
         
-        // Main oscillator
-        let freq = p.subFreq
+        // Pitch envelope
+        var freq = p.subFreq
+        if abs(p.subPitchEnv) > 0.1 {
+            let pitchMult = pow(2, p.subPitchEnv / 12)
+            let pitchEnvVal = exp(-voice.time / (p.subPitchDecay * 0.3))
+            freq = p.subFreq + (p.subFreq * (pitchMult - 1)) * pitchEnvVal
+        }
+        
+        // Main oscillator with shape morphing
         voice.phase += freq * invSampleRate
         if voice.phase >= 1 { voice.phase -= 1 }
-        var osc = sin(voice.phase * 2 * .pi)
+        
+        var osc: Float
+        if p.subShape < 0.33 {
+            // Sine to triangle blend
+            let blend = p.subShape / 0.33
+            let sine = sin(voice.phase * 2 * .pi)
+            let tri = 4 * abs(voice.phase - 0.5) - 1
+            osc = sine * (1 - blend) + tri * blend
+        } else if p.subShape < 0.66 {
+            // Triangle to saw blend
+            let blend = (p.subShape - 0.33) / 0.33
+            let tri = 4 * abs(voice.phase - 0.5) - 1
+            let saw = 2 * voice.phase - 1
+            osc = tri * (1 - blend) + saw * blend
+        } else {
+            // Mostly saw
+            osc = 2 * voice.phase - 1
+        }
+        
+        // Sub-octave
+        if p.subSub > 0.05 {
+            voice.phase2 += (freq * 0.5) * invSampleRate
+            if voice.phase2 >= 1 { voice.phase2 -= 1 }
+            let subOsc = sin(voice.phase2 * 2 * .pi)
+            osc = osc * (1 - p.subSub) + subOsc * p.subSub
+        }
         
         // Optional overtone
         if p.subTone > 0.05 {
-            voice.phase2 += freq * 2 * invSampleRate
-            if voice.phase2 >= 1 { voice.phase2 -= 1 }
-            osc += sin(voice.phase2 * 2 * .pi) * p.subTone * 0.3
+            voice.modPhase += freq * 2 * invSampleRate
+            if voice.modPhase >= 1 { voice.modPhase -= 1 }
+            osc += sin(voice.modPhase * 2 * .pi) * p.subTone * 0.3
+        }
+        
+        // Drive/saturation
+        if p.subDrive > 0.05 {
+            osc = tanh(osc * (1 + p.subDrive * 3))
         }
         
         return (osc * voice.envelope, false)
@@ -270,28 +342,41 @@ class DrumSynth {
     
     private func processKickVoice(_ voice: inout ActiveVoice) -> (Float, Bool) {
         let p = voice.params
-        let ampDecay = p.kickDecay
+        let ampDecay = p.kickDecay * (1 + p.kickBody * 2)  // Body extends decay
         
         if voice.time >= ampDecay * 3 { return (0, true) }
         
         // Pitch envelope
-        let pitchDecay = p.kickPitchDecay
+        let pitchDecay = p.kickPitchDecay * (1 - p.kickPunch * 0.5)  // Punch shortens pitch decay
         let startFreq = p.kickFreq * pow(2, p.kickPitchEnv / 12)
         let currentFreq = p.kickFreq + (startFreq - p.kickFreq) * exp(-voice.time / (pitchDecay * 0.3))
         
-        // Amplitude envelope
-        voice.envelope = exp(-voice.time / (ampDecay * 0.3))
+        // Amplitude envelope with tail
+        var env = exp(-voice.time / (ampDecay * 0.3))
+        if p.kickTail > 0.1 {
+            let tailEnv = exp(-voice.time / (ampDecay * 2))
+            env = env * (1 - p.kickTail) + tailEnv * p.kickTail
+        }
+        voice.envelope = env
         
         // Main oscillator
         voice.phase += currentFreq * invSampleRate
         if voice.phase >= 1 { voice.phase -= 1 }
         var osc = sin(voice.phase * 2 * .pi)
         
-        // Click transient
-        if p.kickClick > 0.05 && voice.time < 0.01 {
+        // Harmonic content (tone)
+        if p.kickTone > 0.1 {
+            voice.modPhase += currentFreq * 2 * invSampleRate
+            if voice.modPhase >= 1 { voice.modPhase -= 1 }
+            osc += sin(voice.modPhase * 2 * .pi) * p.kickTone * 0.3
+        }
+        
+        // Click transient with punch control
+        if p.kickClick > 0.05 && voice.time < 0.015 {
+            let clickDecay: Float = 0.002 / (1 + p.kickPunch)
             voice.phase2 += 3000 * invSampleRate
             if voice.phase2 >= 1 { voice.phase2 -= 1 }
-            let clickEnv = exp(-voice.time / 0.002)
+            let clickEnv = exp(-voice.time / clickDecay)
             osc += sin(voice.phase2 * 2 * .pi) * p.kickClick * clickEnv * 0.5
         }
         
@@ -307,20 +392,43 @@ class DrumSynth {
         // Envelope
         voice.envelope = exp(-voice.time / (decay * 0.3))
         
-        // Noise with highpass filter
-        let noiseIdx = (voice.noiseIndex + 1) % noiseBufferSize
-        voice.noiseIndex = noiseIdx
-        let noise = noiseBuffer[noiseIdx]
+        var sample: Float = 0
         
-        // Simple 1-pole highpass filter
-        let hpCoeff = exp(-2 * .pi * p.clickFilter * invSampleRate)
-        let hpOut = noise - voice.filterState
-        voice.filterState = noise * (1 - hpCoeff) + voice.filterState * hpCoeff
+        if p.clickMode == "tonal" {
+            // Tonal click with pitch envelope
+            var freq = p.clickPitch
+            if abs(p.clickPitchEnv) > 0.1 {
+                let pitchMult = pow(2, p.clickPitchEnv / 12)
+                let pitchEnvVal = exp(-voice.time / (decay * 0.5))
+                freq = p.clickPitch + (p.clickPitch * (pitchMult - 1)) * pitchEnvVal
+            }
+            voice.phase += freq * invSampleRate
+            if voice.phase >= 1 { voice.phase -= 1 }
+            sample = sin(voice.phase * 2 * .pi)
+        } else {
+            // Noise-based (impulse, noise, granular)
+            let noiseIdx = (voice.noiseIndex + 1) % noiseBufferSize
+            voice.noiseIndex = noiseIdx
+            var noise = noiseBuffer[noiseIdx]
+            
+            // Density modulation for granular
+            if p.clickMode == "granular" || p.clickTone > 0.5 {
+                // Add some tonal content
+                voice.phase += p.clickPitch * invSampleRate
+                if voice.phase >= 1 { voice.phase -= 1 }
+                noise = noise * (1 - p.clickTone) + sin(voice.phase * 2 * .pi) * p.clickTone
+            }
+            
+            // Highpass filter
+            let hpCoeff = exp(-2 * .pi * p.clickFilter * invSampleRate)
+            let hpOut = noise - voice.filterState
+            voice.filterState = noise * (1 - hpCoeff) + voice.filterState * hpCoeff
+            
+            // Add resonance
+            sample = hpOut + voice.filterState * p.clickResonance
+        }
         
-        // Add resonance (feedback)
-        let resonantNoise = hpOut + voice.filterState * p.clickResonance
-        
-        return (resonantNoise * voice.envelope, false)
+        return (sample * voice.envelope, false)
     }
     
     private func processBeepHiVoice(_ voice: inout ActiveVoice) -> (Float, Bool) {
@@ -333,25 +441,43 @@ class DrumSynth {
         
         // Attack/decay envelope
         if voice.time < attack {
-            voice.envelope = voice.time / attack
+            voice.envelope = attack > 0 ? voice.time / attack : 1.0
         } else {
             voice.envelope = exp(-(voice.time - attack) / (decay * 0.3))
         }
         
-        // Main oscillator
-        let freq = p.beepHiFreq
-        voice.phase += freq * invSampleRate
+        // Shimmer LFO
+        var freqMod: Float = 0
+        if p.beepHiShimmer > 0.01 {
+            voice.shimmerPhase += p.beepHiShimmerRate * invSampleRate
+            if voice.shimmerPhase >= 1 { voice.shimmerPhase -= 1 }
+            freqMod = sin(voice.shimmerPhase * 2 * .pi) * p.beepHiShimmer * 0.02
+        }
+        
+        // Main oscillator with partials
+        let baseFreq = p.beepHiFreq * (1 + freqMod)
+        voice.phase += baseFreq * invSampleRate
         if voice.phase >= 1 { voice.phase -= 1 }
-        var osc = sin(voice.phase * 2 * .pi)
+        
+        var osc = sin(voice.phase * 2 * .pi) * (1 - p.beepHiBrightness * 0.3)
+        
+        // Add partials
+        for i in 2...p.beepHiPartials {
+            let partialRatio = Float(i) * (1 + p.beepHiInharmonic * 0.03 * Float(i - 1))
+            let partialAmp = 1.0 / Float(i) * p.beepHiBrightness
+            voice.modPhase += baseFreq * partialRatio * invSampleRate
+            if voice.modPhase >= 1 { voice.modPhase -= 1 }
+            osc += sin(voice.modPhase * 2 * .pi) * partialAmp
+        }
         
         // FM modulation for metallic character
         if p.beepHiTone > 0.1 {
-            let modFreq = freq * 2.01
-            voice.modPhase += modFreq * invSampleRate
-            if voice.modPhase >= 1 { voice.modPhase -= 1 }
-            let modDepth = p.beepHiTone * freq * 0.3
-            let fm = sin(voice.modPhase * 2 * .pi) * modDepth / freq
-            osc = sin((voice.phase + fm) * 2 * .pi)
+            let modFreq = baseFreq * 2.01
+            voice.phase2 += modFreq * invSampleRate
+            if voice.phase2 >= 1 { voice.phase2 -= 1 }
+            let modDepth = p.beepHiTone * baseFreq * 0.3
+            let fm = sin(voice.phase2 * 2 * .pi) * modDepth / baseFreq
+            osc = osc * 0.7 + sin((voice.phase + fm) * 2 * .pi) * 0.3
         }
         
         return (osc * voice.envelope, false)
@@ -367,13 +493,19 @@ class DrumSynth {
         
         // Attack/decay envelope
         if voice.time < attack {
-            voice.envelope = voice.time / attack
+            voice.envelope = attack > 0 ? voice.time / attack : 1.0
         } else {
             voice.envelope = exp(-(voice.time - attack) / (decay * 0.3))
         }
         
-        // Blend between sine and square based on tone
-        let freq = p.beepLoFreq
+        // Pitch envelope (negative = pitch rises, like a droplet)
+        var freq = p.beepLoFreq
+        if abs(p.beepLoPitchEnv) > 0.1 {
+            let pitchMult = pow(2, p.beepLoPitchEnv / 12)
+            let pitchEnvVal = exp(-voice.time / (p.beepLoPitchDecay * 0.3))
+            freq = p.beepLoFreq + (p.beepLoFreq * (pitchMult - 1)) * pitchEnvVal
+        }
+        
         voice.phase += freq * invSampleRate
         if voice.phase >= 1 { voice.phase -= 1 }
         
@@ -386,6 +518,30 @@ class DrumSynth {
             osc = voice.filterState
         } else {
             osc = sin(voice.phase * 2 * .pi)
+        }
+        
+        // Body resonance (2-pole filter for warmth)
+        if p.beepLoBody > 0.1 {
+            let bodyFreq = freq * 1.5
+            let bodyCoeff = exp(-2 * .pi * bodyFreq * invSampleRate)
+            voice.filterState2 = voice.filterState2 * bodyCoeff + osc * (1 - bodyCoeff) * p.beepLoBody
+            osc += voice.filterState2 * 0.3
+        }
+        
+        // Karplus-Strong pluck simulation (simplified)
+        if p.beepLoPluck > 0.1 && voice.pluckBuffer.isEmpty {
+            // Initialize pluck buffer on first sample
+            let bufferSize = Int(sampleRate / freq)
+            voice.pluckBuffer = (0..<bufferSize).map { _ in Float.random(in: -1...1) }
+        }
+        if p.beepLoPluck > 0.1 && !voice.pluckBuffer.isEmpty {
+            let bufSize = voice.pluckBuffer.count
+            let idx = voice.pluckIndex % bufSize
+            let nextIdx = (idx + 1) % bufSize
+            let pluckSample = (voice.pluckBuffer[idx] + voice.pluckBuffer[nextIdx]) * 0.5 * (1 - p.beepLoPluckDamp * 0.3)
+            voice.pluckBuffer[idx] = pluckSample
+            voice.pluckIndex += 1
+            osc = osc * (1 - p.beepLoPluck) + pluckSample * p.beepLoPluck
         }
         
         return (osc * voice.envelope, false)
@@ -406,13 +562,45 @@ class DrumSynth {
             voice.envelope = exp(-(voice.time - attack) / (decay * 0.3))
         }
         
-        // Noise source
+        // Filter envelope
+        var filterFreq = p.noiseFilterFreq
+        if abs(p.noiseFilterEnv) > 0.01 {
+            let filterEnvVal = exp(-voice.time / (p.noiseFilterEnvDecay * 0.3))
+            filterFreq = p.noiseFilterFreq * (1 + p.noiseFilterEnv * filterEnvVal)
+            filterFreq = max(200, min(15000, filterFreq))
+        }
+        
+        // Filter color LFO
+        if p.noiseColorLFO > 0.1 {
+            voice.shimmerPhase += p.noiseColorLFO * invSampleRate
+            if voice.shimmerPhase >= 1 { voice.shimmerPhase -= 1 }
+            let lfoMod = sin(voice.shimmerPhase * 2 * .pi) * 0.3
+            filterFreq = filterFreq * (1 + lfoMod)
+        }
+        
+        // Noise source with density
         let noiseIdx = (voice.noiseIndex + 1) % noiseBufferSize
         voice.noiseIndex = noiseIdx
-        let noise = noiseBuffer[noiseIdx]
+        var noise = noiseBuffer[noiseIdx]
         
-        // Filter
-        let filterFreq = p.noiseFilterFreq
+        // Sparse noise for dust-like sounds
+        if p.noiseDensity < 0.9 {
+            let threshold = 1 - p.noiseDensity
+            if abs(noise) < threshold {
+                noise = 0
+            }
+        }
+        
+        // Breath/breathiness (add formant-like character)
+        if p.noiseBreath > 0.1 {
+            // Simple resonant filter for breath
+            let breathFreq: Float = 1500 + p.noiseFormant * 1500
+            let breathCoeff = exp(-2 * .pi * breathFreq * invSampleRate)
+            voice.filterState2 = voice.filterState2 * breathCoeff * 0.9 + noise * (1 - breathCoeff)
+            noise = noise * (1 - p.noiseBreath) + voice.filterState2 * p.noiseBreath
+        }
+        
+        // Main filter
         let coeff = exp(-2 * .pi * filterFreq * invSampleRate)
         
         var filtered: Float
@@ -420,7 +608,6 @@ class DrumSynth {
             filtered = noise - voice.filterState
             voice.filterState = noise * (1 - coeff) + voice.filterState * coeff
         } else if p.noiseFilterType == "bandpass" {
-            // Simple bandpass (lowpass then highpass)
             let lp = voice.filterState * coeff + noise * (1 - coeff)
             filtered = noise - lp
             voice.filterState = lp
@@ -452,6 +639,11 @@ class DrumSynth {
             voiceParams.subFreq = Float(params.drumSubFreq)
             voiceParams.subDecay = Float(params.drumSubDecay) / 1000
             voiceParams.subTone = Float(params.drumSubTone)
+            voiceParams.subShape = Float(params.drumSubShape)
+            voiceParams.subPitchEnv = Float(params.drumSubPitchEnv)
+            voiceParams.subPitchDecay = Float(params.drumSubPitchDecay) / 1000
+            voiceParams.subDrive = Float(params.drumSubDrive)
+            voiceParams.subSub = Float(params.drumSubSub)
             level = Float(params.drumSubLevel)
             
         case .kick:
@@ -460,6 +652,10 @@ class DrumSynth {
             voiceParams.kickPitchDecay = Float(params.drumKickPitchDecay) / 1000
             voiceParams.kickDecay = Float(params.drumKickDecay) / 1000
             voiceParams.kickClick = Float(params.drumKickClick)
+            voiceParams.kickBody = Float(params.drumKickBody)
+            voiceParams.kickPunch = Float(params.drumKickPunch)
+            voiceParams.kickTail = Float(params.drumKickTail)
+            voiceParams.kickTone = Float(params.drumKickTone)
             level = Float(params.drumKickLevel)
             
         case .click:
@@ -467,6 +663,12 @@ class DrumSynth {
             voiceParams.clickFilter = Float(params.drumClickFilter)
             voiceParams.clickTone = Float(params.drumClickTone)
             voiceParams.clickResonance = Float(params.drumClickResonance)
+            voiceParams.clickPitch = Float(params.drumClickPitch)
+            voiceParams.clickPitchEnv = Float(params.drumClickPitchEnv)
+            voiceParams.clickMode = params.drumClickMode
+            voiceParams.clickGrainCount = params.drumClickGrainCount
+            voiceParams.clickGrainSpread = Float(params.drumClickGrainSpread)
+            voiceParams.clickStereoWidth = Float(params.drumClickStereoWidth)
             level = Float(params.drumClickLevel)
             
         case .beepHi:
@@ -474,6 +676,11 @@ class DrumSynth {
             voiceParams.beepHiAttack = Float(params.drumBeepHiAttack) / 1000
             voiceParams.beepHiDecay = Float(params.drumBeepHiDecay) / 1000
             voiceParams.beepHiTone = Float(params.drumBeepHiTone)
+            voiceParams.beepHiInharmonic = Float(params.drumBeepHiInharmonic)
+            voiceParams.beepHiPartials = params.drumBeepHiPartials
+            voiceParams.beepHiShimmer = Float(params.drumBeepHiShimmer)
+            voiceParams.beepHiShimmerRate = Float(params.drumBeepHiShimmerRate)
+            voiceParams.beepHiBrightness = Float(params.drumBeepHiBrightness)
             level = Float(params.drumBeepHiLevel)
             
         case .beepLo:
@@ -481,6 +688,11 @@ class DrumSynth {
             voiceParams.beepLoAttack = Float(params.drumBeepLoAttack) / 1000
             voiceParams.beepLoDecay = Float(params.drumBeepLoDecay) / 1000
             voiceParams.beepLoTone = Float(params.drumBeepLoTone)
+            voiceParams.beepLoPitchEnv = Float(params.drumBeepLoPitchEnv)
+            voiceParams.beepLoPitchDecay = Float(params.drumBeepLoPitchDecay) / 1000
+            voiceParams.beepLoBody = Float(params.drumBeepLoBody)
+            voiceParams.beepLoPluck = Float(params.drumBeepLoPluck)
+            voiceParams.beepLoPluckDamp = Float(params.drumBeepLoPluckDamp)
             level = Float(params.drumBeepLoLevel)
             
         case .noise:
@@ -489,6 +701,12 @@ class DrumSynth {
             voiceParams.noiseFilterType = params.drumNoiseFilterType
             voiceParams.noiseAttack = Float(params.drumNoiseAttack) / 1000
             voiceParams.noiseDecay = Float(params.drumNoiseDecay) / 1000
+            voiceParams.noiseFormant = Float(params.drumNoiseFormant)
+            voiceParams.noiseBreath = Float(params.drumNoiseBreath)
+            voiceParams.noiseFilterEnv = Float(params.drumNoiseFilterEnv)
+            voiceParams.noiseFilterEnvDecay = Float(params.drumNoiseFilterEnvDecay) / 1000
+            voiceParams.noiseDensity = Float(params.drumNoiseDensity)
+            voiceParams.noiseColorLFO = Float(params.drumNoiseColorLFO)
             level = Float(params.drumNoiseLevel)
         }
         
