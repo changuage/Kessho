@@ -48,38 +48,6 @@ const TEXT_SYMBOLS = {
   drumNoise: '≋\uFE0E',
 } as const;
 
-// Long press hook for mobile touch support (alternative to double-click)
-const useLongPress = (callback: () => void, duration = 400) => {
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const triggeredRef = useRef(false);
-  
-  const onTouchStart = useCallback(() => {
-    triggeredRef.current = false;
-    timerRef.current = setTimeout(() => {
-      triggeredRef.current = true;
-      if (navigator.vibrate) navigator.vibrate(50);
-      callback();
-    }, duration);
-  }, [callback, duration]);
-  
-  const onTouchEnd = useCallback(() => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-  }, []);
-  
-  const onTouchMove = useCallback(() => {
-    // Cancel if finger moves (user is dragging)
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-  }, []);
-  
-  return { onTouchStart, onTouchEnd, onTouchMove };
-};
-
 // Inline long-press helper for elements that can't use hooks (IIFEs, etc.)
 // Returns event handlers to spread onto an element
 const createLongPressHandlers = (callback: () => void, duration = 400) => {
