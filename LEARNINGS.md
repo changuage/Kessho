@@ -407,3 +407,79 @@ Object.entries(morphManualOverridesRef.current).forEach(([key, override]) => {
 
 ### Key Insight
 This system allows users to "scrub" through a morph, make adjustments, and continue without losing context. The temporary override behavior prevents jarring jumps when resuming the morph, while endpoint persistence ensures intentional changes are saved.
+
+---
+
+## Morph Endpoint Detection and Selective Override Clearing
+
+### Problem
+When in a morph system with two presets (A at position 0, B at position 1), user edits at one endpoint were being lost when the OTHER endpoint's preset was changed.
+
+**Symptoms:**
+1. At position 100 (B), user switches slider to dual mode
+2. User changes Preset A dropdown
+3. Dual slider reverts to single mode (user edit lost)
+
+### Root Cause
+The code was clearing ALL overrides when ANY preset changed:
+```typescript
+if (keyStr.includes('PresetA') || keyStr.includes('PresetB')) {
+  clearDrumMorphOverrides(voice);  // Clears EVERYTHING
+}
+```
+
+### Solution
+
+**1. Selective Override Clearing**
+
+Created a function to clear only endpoint-specific overrides:
+```typescript
+export function clearDrumMorphEndpointOverrides(voice: DrumVoiceType, endpoint: 0 | 1): void {
+  const overrides = drumMorphOverrides[voice];
+  for (const param of Object.keys(overrides)) {
+    if (override.isEndpoint) {
+      if ((endpoint === 0 && override.morphPosition < 0.01) ||
+          (endpoint === 1 && override.morphPosition > 0.99)) {
+        delete overrides[param];
+      }
+    }
+  }
+  // Also clear dual range overrides for this endpoint only
+  // ...
+}
+```
+
+**2. Conditional UI Reset**
+
+Only reset dual slider modes when the preset change affects the current position:
+```typescript
+const isPresetA = keyStr.includes('PresetA');
+const atEndpoint0 = currentMorph < 0.01;
+const atEndpoint1 = currentMorph > 0.99;
+
+// Only reset if changing the preset we're currently at
+const shouldResetDualModes = (isPresetA && !atEndpoint1) || (!isPresetA && !atEndpoint0);
+
+if (shouldResetDualModes) {
+  // Reset dual modes...
+}
+```
+
+**3. Skip State Application at Opposite Endpoint**
+
+For the main morph, only apply preset A values if at endpoint 0:
+```typescript
+const atEndpoint0 = isAtEndpoint0(morphPosition, true);
+const shouldApplyPresetA = atEndpoint0 || !morphPresetB;
+
+if (shouldApplyPresetA) {
+  // Apply preset A state...
+}
+```
+
+### Key Insight
+When building dual-endpoint morph systems:
+- User edits at each endpoint should be stored separately
+- Changing one endpoint's source should only affect that endpoint's data
+- UI state (like dual/single mode) must also respect this separation
+- Always check "which endpoint am I at?" before clearing or applying state

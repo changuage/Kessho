@@ -4,6 +4,55 @@ This document tracks planned enhancements and their implementation status.
 
 ---
 
+## Morph Endpoint Behavior Fixes (Feb 2026)
+
+### Implementation Status: Web [x] | iOS [ ]
+
+### Problem
+1. **Main Morph**: When at position 100 (fully at Preset B), changing Preset A would incorrectly update all parameters to Preset A values
+2. **Drum Morph**: Changing Preset A while at B would clear all user overrides including those at endpoint B
+3. **Drum Dual Sliders**: Switching to dual mode at endpoint B, then changing Preset A, would revert the slider to single mode
+
+### Solution
+
+#### Main Morph Fix
+Changed the preset loading logic from:
+```typescript
+const inMidMorph = morphPresetB && isInMidMorph(morphPosition, true);
+if (!inMidMorph) { /* apply preset A values */ }
+```
+to:
+```typescript
+const atEndpoint0 = isAtEndpoint0(morphPosition, true);
+const shouldApplyPresetA = atEndpoint0 || !morphPresetB;
+if (shouldApplyPresetA) { /* apply preset A values */ }
+```
+
+This ensures preset A values only apply when:
+- At endpoint 0 (position ≈ 0)
+- OR no preset B is loaded yet
+
+#### Drum Morph Override Fix
+Created new function `clearDrumMorphEndpointOverrides(voice, endpoint)` that selectively clears only the specified endpoint's overrides, preserving the other endpoint's user edits.
+
+#### Drum Dual Slider Persistence Fix
+Modified the dual slider reset logic to check current morph position:
+```typescript
+const isPresetA = keyStr.includes('PresetA');
+const atEndpoint0 = currentMorph < 0.01;
+const atEndpoint1 = currentMorph > 0.99;
+const shouldResetDualModes = (isPresetA && !atEndpoint1) || (!isPresetA && !atEndpoint0);
+```
+
+Dual modes only reset when the changed preset affects the current position.
+
+### Files Changed
+- `src/audio/morphUtils.ts` - New shared morph utilities
+- `src/audio/drumMorph.ts` - Added `clearDrumMorphEndpointOverrides`
+- `src/App.tsx` - Updated preset loading and dual mode reset logic
+
+---
+
 ## Advanced UI Panel Restructure
 
 ### Overview
