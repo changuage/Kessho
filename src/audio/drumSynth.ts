@@ -412,8 +412,9 @@ export class DrumSynth {
       }
     }
     
-    // Get morphed params if presets are loaded
-    const morphed = getMorphedParams(p, 'sub', morphValue);
+    // Only use morphed params when per-trigger randomization is active
+    // Otherwise use slider values directly (which already have morph applied in UI)
+    const morphed = range ? getMorphedParams(p, 'sub', morphValue) : {};
     
     // Use morphed values if available, otherwise fall back to direct params
     const freq = (morphed.drumSubFreq as number) ?? p.drumSubFreq;
@@ -551,8 +552,8 @@ export class DrumSynth {
       }
     }
     
-    // Get morphed params if presets are loaded
-    const morphed = getMorphedParams(p, 'kick', morphValue);
+    // Only use morphed params when per-trigger randomization is active
+    const morphed = range ? getMorphedParams(p, 'kick', morphValue) : {};
     
     // Use morphed values if available
     const freq = (morphed.drumKickFreq as number) ?? p.drumKickFreq;
@@ -720,8 +721,8 @@ export class DrumSynth {
       }
     }
     
-    // Get morphed params if presets are loaded
-    const morphed = getMorphedParams(p, 'click', morphValue);
+    // Only use morphed params when per-trigger randomization is active
+    const morphed = range ? getMorphedParams(p, 'click', morphValue) : {};
     
     // Use morphed values if available
     const decay = ((morphed.drumClickDecay as number) ?? p.drumClickDecay) / 1000;
@@ -926,8 +927,8 @@ export class DrumSynth {
       }
     }
     
-    // Get morphed params if presets are loaded
-    const morphed = getMorphedParams(p, 'beepHi', morphValue);
+    // Only use morphed params when per-trigger randomization is active
+    const morphed = range ? getMorphedParams(p, 'beepHi', morphValue) : {};
     
     // Use morphed values if available
     const freq = (morphed.drumBeepHiFreq as number) ?? p.drumBeepHiFreq;
@@ -1057,8 +1058,8 @@ export class DrumSynth {
       }
     }
     
-    // Get morphed params if presets are loaded
-    const morphed = getMorphedParams(p, 'beepLo', morphValue);
+    // Only use morphed params when per-trigger randomization is active
+    const morphed = range ? getMorphedParams(p, 'beepLo', morphValue) : {};
     
     // Use morphed values if available
     const freq = (morphed.drumBeepLoFreq as number) ?? p.drumBeepLoFreq;
@@ -1232,8 +1233,8 @@ export class DrumSynth {
       }
     }
     
-    // Get morphed params if presets are loaded
-    const morphed = getMorphedParams(p, 'noise', morphValue);
+    // Only use morphed params when per-trigger randomization is active
+    const morphed = range ? getMorphedParams(p, 'noise', morphValue) : {};
     
     // Use morphed values if available
     const filterFreq = (morphed.drumNoiseFilterFreq as number) ?? p.drumNoiseFilterFreq;
