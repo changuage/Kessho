@@ -6079,7 +6079,7 @@ const App: React.FC = () => {
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
               <span style={{ color: '#64c8ff', fontSize: '0.85rem', fontWeight: 'bold' }}>Stereo Delay</span>
               <button
-                onClick={() => handleSliderChange('drumDelayEnabled', !state.drumDelayEnabled)}
+                onClick={() => handleSelectChange('drumDelayEnabled', !state.drumDelayEnabled)}
                 style={{
                   padding: '2px 8px',
                   fontSize: '0.75rem',
