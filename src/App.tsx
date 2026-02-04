@@ -48,6 +48,54 @@ const TEXT_SYMBOLS = {
   drumNoise: '≋\uFE0E',
 } as const;
 
+// Long press hook for mobile touch support (alternative to double-click)
+const useLongPress = (callback: () => void, duration = 400) => {
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const triggeredRef = useRef(false);
+  
+  const onTouchStart = useCallback(() => {
+    triggeredRef.current = false;
+    timerRef.current = setTimeout(() => {
+      triggeredRef.current = true;
+      if (navigator.vibrate) navigator.vibrate(50);
+      callback();
+    }, duration);
+  }, [callback, duration]);
+  
+  const onTouchEnd = useCallback(() => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  }, []);
+  
+  const onTouchMove = useCallback(() => {
+    // Cancel if finger moves (user is dragging)
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  }, []);
+  
+  return { onTouchStart, onTouchEnd, onTouchMove };
+};
+
+// Inline long-press helper for elements that can't use hooks (IIFEs, etc.)
+// Returns event handlers to spread onto an element
+const createLongPressHandlers = (callback: () => void, duration = 400) => {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  return {
+    onTouchStart: () => {
+      timer = setTimeout(() => {
+        if (navigator.vibrate) navigator.vibrate(50);
+        callback();
+      }, duration);
+    },
+    onTouchEnd: () => { if (timer) { clearTimeout(timer); timer = null; } },
+    onTouchMove: () => { if (timer) { clearTimeout(timer); timer = null; } },
+  };
+};
+
 // File input ref for loading presets
 const fileInputRef = { current: null as HTMLInputElement | null };
 
@@ -7591,7 +7639,12 @@ const App: React.FC = () => {
                       handleSliderChange(velocityMinKey as keyof SliderState, mid);
                       handleSliderChange(velocityMaxKey as keyof SliderState, mid);
                     }}
-                    title="Double-click for single value mode"
+                    {...createLongPressHandlers(() => {
+                      const mid = (velocityMin + velocityMax) / 2;
+                      handleSliderChange(velocityMinKey as keyof SliderState, mid);
+                      handleSliderChange(velocityMaxKey as keyof SliderState, mid);
+                    })}
+                    title="Double-click or long-press for single value mode"
                   >
                     <div style={{
                       ...styles.dualSliderTrack,
@@ -7652,8 +7705,16 @@ const App: React.FC = () => {
                       handleSliderChange(velocityMinKey as keyof SliderState, newMin);
                       handleSliderChange(velocityMaxKey as keyof SliderState, newMax);
                     }}
+                    {...createLongPressHandlers(() => {
+                      const current = velocityMin;
+                      const spread = 0.1;
+                      const newMin = Math.max(0, current - spread);
+                      const newMax = Math.min(1, current + spread);
+                      handleSliderChange(velocityMinKey as keyof SliderState, newMin);
+                      handleSliderChange(velocityMaxKey as keyof SliderState, newMax);
+                    })}
                     style={{ width: '100%', cursor: 'pointer' }}
-                    title="Double-click for range mode"
+                    title="Double-click or long-press for range mode"
                   />
                 )}
               </div>
@@ -7796,8 +7857,8 @@ const App: React.FC = () => {
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: '70px' }}><div style={{ fontSize: '0.65rem', color: '#888', marginBottom: '2px' }}>Rotate: {rotation}</div><div style={{ display: 'flex', gap: '4px' }}><button onClick={() => handleSliderChange(rotationKey as keyof SliderState, (rotation + 1) % patternSteps)} style={{ padding: '4px 8px', background: `${laneColor}30`, border: `1px solid ${laneColor}60`, borderRadius: '4px', color: laneColor, cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}>←</button><button onClick={() => handleSliderChange(rotationKey as keyof SliderState, (rotation - 1 + patternSteps) % patternSteps)} style={{ padding: '4px 8px', background: `${laneColor}30`, border: `1px solid ${laneColor}60`, borderRadius: '4px', color: laneColor, cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}>→</button></div></div>
               </div>
               <div style={{ marginTop: '8px' }}>
-                <div style={{ fontSize: '0.65rem', color: '#888', marginBottom: '2px' }}>Level {isVelocityDual ? <span style={{ color: laneColor }}>{Math.round(velocityMin * 100)}–{Math.round(velocityMax * 100)}%</span> : `${Math.round(velocityMin * 100)}%`}{isVelocityDual && <span style={{ color: laneColor, marginLeft: '4px', fontSize: '0.6rem' }}>⟷ range</span>}</div>
-                <input type="range" min="0" max="1" step="0.05" value={velocityMin} onChange={(e) => { const val = parseFloat(e.target.value); handleSliderChange(velocityMinKey as keyof SliderState, val); handleSliderChange(velocityMaxKey as keyof SliderState, val); }} onDoubleClick={() => { handleSliderChange(velocityMinKey as keyof SliderState, Math.max(0, velocityMin - 0.1)); handleSliderChange(velocityMaxKey as keyof SliderState, Math.min(1, velocityMin + 0.1)); }} style={{ width: '100%', cursor: 'pointer' }} title="Double-click for range mode" />
+                <div style={{ fontSize: '0.65rem', color: '#888', marginBottom: '2px' }}>Level {isVelocityDual ? <span style={{ color: laneColor }}>{Math.round(velocityMin * 100)}–{Math.round(velocityMax * 100)}%</span> : `${Math.round(velocityMin * 100)}%`}{isVelocityDual && <span style={{ color: laneColor, marginLeft: '4px', fontSize: '0.6rem' }}>{TEXT_SYMBOLS.range} range</span>}</div>
+                <input type="range" min="0" max="1" step="0.05" value={velocityMin} onChange={(e) => { const val = parseFloat(e.target.value); handleSliderChange(velocityMinKey as keyof SliderState, val); handleSliderChange(velocityMaxKey as keyof SliderState, val); }} onDoubleClick={() => { handleSliderChange(velocityMinKey as keyof SliderState, Math.max(0, velocityMin - 0.1)); handleSliderChange(velocityMaxKey as keyof SliderState, Math.min(1, velocityMin + 0.1)); }} {...createLongPressHandlers(() => { handleSliderChange(velocityMinKey as keyof SliderState, Math.max(0, velocityMin - 0.1)); handleSliderChange(velocityMaxKey as keyof SliderState, Math.min(1, velocityMin + 0.1)); })} style={{ width: '100%', cursor: 'pointer' }} title="Double-click or long-press for range mode" />
               </div>
             </CollapsiblePanel>
           );
@@ -7852,7 +7913,7 @@ const App: React.FC = () => {
               <div style={{ display: 'flex', gap: '4px', marginBottom: '8px', justifyContent: 'space-between' }}>{voiceOrder.map(voice => { const isOn = voiceToggles[voice]; return (<button key={voice} onClick={() => handleSelectChange(voiceKeyMap[voice], !isOn)} title={voiceNames[voice]} style={{ flex: 1, padding: '6px 2px', borderRadius: '4px', border: isOn ? `2px solid ${laneColor}` : '1px solid #444', background: isOn ? `${laneColor}40` : 'rgba(0,0,0,0.3)', color: isOn ? laneColor : '#666', cursor: 'pointer', fontSize: '1rem', fontWeight: 'bold' }}>{voiceIcons[voice]}</button>); })}</div>
               {preset === 'custom' && (<div style={{ display: 'flex', gap: '8px', marginBottom: '4px' }}><div style={{ flex: 1 }}><Slider label="Steps" value={steps} paramKey={stepsKey} onChange={handleSliderChange} {...sliderProps(stepsKey)} /></div><div style={{ flex: 1 }}><Slider label="Hits" value={hits} paramKey={hitsKey} onChange={handleSliderChange} {...sliderProps(hitsKey)} /></div></div>)}
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}><div style={{ flex: 1 }}><div style={{ fontSize: '0.65rem', color: '#888', marginBottom: '2px' }}>Probability {Math.round(probability * 100)}%</div><input type="range" min="0" max="1" step="0.05" value={probability} onChange={(e) => handleSliderChange(probabilityKey as keyof SliderState, parseFloat(e.target.value))} style={{ width: '100%', cursor: 'pointer' }} /></div><div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: '70px' }}><div style={{ fontSize: '0.65rem', color: '#888', marginBottom: '2px' }}>Rotate: {rotation}</div><div style={{ display: 'flex', gap: '4px' }}><button onClick={() => handleSliderChange(rotationKey as keyof SliderState, (rotation + 1) % patternSteps)} style={{ padding: '4px 8px', background: `${laneColor}30`, border: `1px solid ${laneColor}60`, borderRadius: '4px', color: laneColor, cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}>←</button><button onClick={() => handleSliderChange(rotationKey as keyof SliderState, (rotation - 1 + patternSteps) % patternSteps)} style={{ padding: '4px 8px', background: `${laneColor}30`, border: `1px solid ${laneColor}60`, borderRadius: '4px', color: laneColor, cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}>→</button></div></div></div>
-              <div style={{ marginTop: '8px' }}><div style={{ fontSize: '0.65rem', color: '#888', marginBottom: '2px' }}>Level {isVelocityDual ? <span style={{ color: laneColor }}>{Math.round(velocityMin * 100)}–{Math.round(velocityMax * 100)}%</span> : `${Math.round(velocityMin * 100)}%`}{isVelocityDual && <span style={{ color: laneColor, marginLeft: '4px', fontSize: '0.6rem' }}>⟷ range</span>}</div><input type="range" min="0" max="1" step="0.05" value={velocityMin} onChange={(e) => { const val = parseFloat(e.target.value); handleSliderChange(velocityMinKey as keyof SliderState, val); handleSliderChange(velocityMaxKey as keyof SliderState, val); }} onDoubleClick={() => { handleSliderChange(velocityMinKey as keyof SliderState, Math.max(0, velocityMin - 0.1)); handleSliderChange(velocityMaxKey as keyof SliderState, Math.min(1, velocityMin + 0.1)); }} style={{ width: '100%', cursor: 'pointer' }} title="Double-click for range mode" /></div>
+              <div style={{ marginTop: '8px' }}><div style={{ fontSize: '0.65rem', color: '#888', marginBottom: '2px' }}>Level {isVelocityDual ? <span style={{ color: laneColor }}>{Math.round(velocityMin * 100)}–{Math.round(velocityMax * 100)}%</span> : `${Math.round(velocityMin * 100)}%`}{isVelocityDual && <span style={{ color: laneColor, marginLeft: '4px', fontSize: '0.6rem' }}>{TEXT_SYMBOLS.range} range</span>}</div><input type="range" min="0" max="1" step="0.05" value={velocityMin} onChange={(e) => { const val = parseFloat(e.target.value); handleSliderChange(velocityMinKey as keyof SliderState, val); handleSliderChange(velocityMaxKey as keyof SliderState, val); }} onDoubleClick={() => { handleSliderChange(velocityMinKey as keyof SliderState, Math.max(0, velocityMin - 0.1)); handleSliderChange(velocityMaxKey as keyof SliderState, Math.min(1, velocityMin + 0.1)); }} {...createLongPressHandlers(() => { handleSliderChange(velocityMinKey as keyof SliderState, Math.max(0, velocityMin - 0.1)); handleSliderChange(velocityMaxKey as keyof SliderState, Math.min(1, velocityMin + 0.1)); })} style={{ width: '100%', cursor: 'pointer' }} title="Double-click or long-press for range mode" /></div>
             </CollapsiblePanel>
           );
         })()}
@@ -7906,7 +7967,7 @@ const App: React.FC = () => {
               <div style={{ display: 'flex', gap: '4px', marginBottom: '8px', justifyContent: 'space-between' }}>{voiceOrder.map(voice => { const isOn = voiceToggles[voice]; return (<button key={voice} onClick={() => handleSelectChange(voiceKeyMap[voice], !isOn)} title={voiceNames[voice]} style={{ flex: 1, padding: '6px 2px', borderRadius: '4px', border: isOn ? `2px solid ${laneColor}` : '1px solid #444', background: isOn ? `${laneColor}40` : 'rgba(0,0,0,0.3)', color: isOn ? laneColor : '#666', cursor: 'pointer', fontSize: '1rem', fontWeight: 'bold' }}>{voiceIcons[voice]}</button>); })}</div>
               {preset === 'custom' && (<div style={{ display: 'flex', gap: '8px', marginBottom: '4px' }}><div style={{ flex: 1 }}><Slider label="Steps" value={steps} paramKey={stepsKey} onChange={handleSliderChange} {...sliderProps(stepsKey)} /></div><div style={{ flex: 1 }}><Slider label="Hits" value={hits} paramKey={hitsKey} onChange={handleSliderChange} {...sliderProps(hitsKey)} /></div></div>)}
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}><div style={{ flex: 1 }}><div style={{ fontSize: '0.65rem', color: '#888', marginBottom: '2px' }}>Probability {Math.round(probability * 100)}%</div><input type="range" min="0" max="1" step="0.05" value={probability} onChange={(e) => handleSliderChange(probabilityKey as keyof SliderState, parseFloat(e.target.value))} style={{ width: '100%', cursor: 'pointer' }} /></div><div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: '70px' }}><div style={{ fontSize: '0.65rem', color: '#888', marginBottom: '2px' }}>Rotate: {rotation}</div><div style={{ display: 'flex', gap: '4px' }}><button onClick={() => handleSliderChange(rotationKey as keyof SliderState, (rotation + 1) % patternSteps)} style={{ padding: '4px 8px', background: `${laneColor}30`, border: `1px solid ${laneColor}60`, borderRadius: '4px', color: laneColor, cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}>←</button><button onClick={() => handleSliderChange(rotationKey as keyof SliderState, (rotation - 1 + patternSteps) % patternSteps)} style={{ padding: '4px 8px', background: `${laneColor}30`, border: `1px solid ${laneColor}60`, borderRadius: '4px', color: laneColor, cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}>→</button></div></div></div>
-              <div style={{ marginTop: '8px' }}><div style={{ fontSize: '0.65rem', color: '#888', marginBottom: '2px' }}>Level {isVelocityDual ? <span style={{ color: laneColor }}>{Math.round(velocityMin * 100)}–{Math.round(velocityMax * 100)}%</span> : `${Math.round(velocityMin * 100)}%`}{isVelocityDual && <span style={{ color: laneColor, marginLeft: '4px', fontSize: '0.6rem' }}>⟷ range</span>}</div><input type="range" min="0" max="1" step="0.05" value={velocityMin} onChange={(e) => { const val = parseFloat(e.target.value); handleSliderChange(velocityMinKey as keyof SliderState, val); handleSliderChange(velocityMaxKey as keyof SliderState, val); }} onDoubleClick={() => { handleSliderChange(velocityMinKey as keyof SliderState, Math.max(0, velocityMin - 0.1)); handleSliderChange(velocityMaxKey as keyof SliderState, Math.min(1, velocityMin + 0.1)); }} style={{ width: '100%', cursor: 'pointer' }} title="Double-click for range mode" /></div>
+              <div style={{ marginTop: '8px' }}><div style={{ fontSize: '0.65rem', color: '#888', marginBottom: '2px' }}>Level {isVelocityDual ? <span style={{ color: laneColor }}>{Math.round(velocityMin * 100)}–{Math.round(velocityMax * 100)}%</span> : `${Math.round(velocityMin * 100)}%`}{isVelocityDual && <span style={{ color: laneColor, marginLeft: '4px', fontSize: '0.6rem' }}>{TEXT_SYMBOLS.range} range</span>}</div><input type="range" min="0" max="1" step="0.05" value={velocityMin} onChange={(e) => { const val = parseFloat(e.target.value); handleSliderChange(velocityMinKey as keyof SliderState, val); handleSliderChange(velocityMaxKey as keyof SliderState, val); }} onDoubleClick={() => { handleSliderChange(velocityMinKey as keyof SliderState, Math.max(0, velocityMin - 0.1)); handleSliderChange(velocityMaxKey as keyof SliderState, Math.min(1, velocityMin + 0.1)); }} {...createLongPressHandlers(() => { handleSliderChange(velocityMinKey as keyof SliderState, Math.max(0, velocityMin - 0.1)); handleSliderChange(velocityMaxKey as keyof SliderState, Math.min(1, velocityMin + 0.1)); })} style={{ width: '100%', cursor: 'pointer' }} title="Double-click or long-press for range mode" /></div>
             </CollapsiblePanel>
           );
         })()}
