@@ -1489,6 +1489,33 @@ const App: React.FC = () => {
 
   // Handle slider change
   const handleSliderChange = useCallback((key: keyof SliderState, value: number | string) => {
+    // Rule 1: Mid-morph changes are temporary overrides
+    // Rule 2: Endpoint changes (0% or 100%) update the respective preset permanently
+    const isNumericMorphableKey = typeof value === 'number';
+    const isMorphActive = morphPresetA !== null || morphPresetB !== null;
+    
+    if (isMorphActive && isNumericMorphableKey) {
+      if (morphPosition === 0 && morphPresetA) {
+        // At endpoint A: update preset A permanently
+        setMorphPresetA(prev => prev ? {
+          ...prev,
+          state: { ...prev.state, [key]: value }
+        } : null);
+      } else if (morphPosition === 100 && morphPresetB) {
+        // At endpoint B: update preset B permanently  
+        setMorphPresetB(prev => prev ? {
+          ...prev,
+          state: { ...prev.state, [key]: value }
+        } : null);
+      } else if (morphPosition > 0 && morphPosition < 100) {
+        // Mid-morph: store as temporary override
+        morphManualOverridesRef.current[key] = {
+          value: value as number,
+          morphPosition
+        };
+      }
+    }
+    
     setState((prev) => {
       let newState = { ...prev, [key]: value };
       
@@ -1516,7 +1543,7 @@ const App: React.FC = () => {
       
       return newState;
     });
-  }, []);
+  }, [morphPosition, morphPresetA, morphPresetB, setMorphPresetA, setMorphPresetB]);
 
   // Helper to create slider props with dual mode support
   const sliderProps = useCallback((paramKey: keyof SliderState): {
@@ -1855,6 +1882,11 @@ const App: React.FC = () => {
   const morphDirectionRef = useRef<'toA' | 'toB' | null>(null);
   // Track last endpoint visited (0 or 100) to detect when morph starts
   const lastMorphEndpointRef = useRef<0 | 100>(0);
+  
+  // Manual override tracking for mid-morph parameter changes
+  // Stores { value, morphPosition } for each manually adjusted parameter
+  // These are temporary - cleared when reaching an endpoint
+  const morphManualOverridesRef = useRef<Record<string, { value: number; morphPosition: number }>>({});
 
   // Load preset into morph slot (A or B)
   const handleLoadPresetToSlot = useCallback((preset: SavedPreset, slot: 'a' | 'b') => {
@@ -2012,16 +2044,58 @@ const App: React.FC = () => {
     
     const direction = morphDirectionRef.current || 'toB';
     const morphResult = lerpPresets(effectiveA, effectiveB, newPosition, engineState.cofCurrentStep, morphCapturedStartRootRef.current ?? undefined, direction);
-    setState(morphResult.state);
-    audioEngine.updateParams(morphResult.state);
+    
+    // Apply manual overrides with smooth blending toward destination
+    // For each override, interpolate from override value to destination based on remaining morph distance
+    const overrides = morphManualOverridesRef.current;
+    const finalState = { ...morphResult.state };
+    
+    for (const [key, override] of Object.entries(overrides)) {
+      const typedKey = key as keyof SliderState;
+      const lerpedValue = morphResult.state[typedKey];
+      if (typeof lerpedValue !== 'number') continue;
+      
+      // Determine destination based on morph direction
+      const stateA = { ...DEFAULT_STATE, ...effectiveA.state };
+      const stateB = { ...DEFAULT_STATE, ...effectiveB.state };
+      const destValue = direction === 'toB' 
+        ? (stateB[typedKey] as number) 
+        : (stateA[typedKey] as number);
+      const destPosition = direction === 'toB' ? 100 : 0;
+      
+      // Calculate blend factor: 0 at override position, 1 at destination
+      const overridePos = override.morphPosition;
+      const totalDistance = Math.abs(destPosition - overridePos);
+      const currentDistance = Math.abs(newPosition - overridePos);
+      
+      if (totalDistance > 0) {
+        // Moving toward destination
+        const progressTowardDest = (direction === 'toB' && newPosition >= overridePos) ||
+                                   (direction === 'toA' && newPosition <= overridePos);
+        
+        if (progressTowardDest) {
+          // Blend from override value toward destination
+          const blendFactor = Math.min(1, currentDistance / totalDistance);
+          const blendedValue = override.value + (destValue - override.value) * blendFactor;
+          (finalState as Record<string, unknown>)[key] = blendedValue;
+        } else {
+          // Moving away from destination (back toward origin) - keep override value
+          (finalState as Record<string, unknown>)[key] = override.value;
+        }
+      }
+    }
+    
+    setState(finalState);
+    audioEngine.updateParams(finalState);
     
     // Update CoF morph visualization (clear at endpoints - we've arrived)
     const atEndpoint = newPosition === 0 || newPosition === 100;
     setMorphCoFViz(atEndpoint ? null : (morphResult.morphCoFInfo || null));
     
-    // Reset CoF drift when reaching an endpoint
+    // Reset CoF drift and clear manual overrides when reaching an endpoint
     if (atEndpoint) {
       audioEngine.resetCofDrift();
+      morphManualOverridesRef.current = {};  // Clear temporary overrides
     }
     
     // Apply interpolated dual ranges
