@@ -749,16 +749,17 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
                 
                 {/* Width crossbar - perpendicular line past the handle for reverb send control */}
                 {hasReverbSend && (() => {
-                  // Position the crossbar just past the handle circle
-                  const crossbarDistance = (isActive ? handleRadiusActive : handleRadius) + 8 * scaleFactor;
+                  // Position the crossbar about a diameter away from the handle circle
+                  const handleR = isActive ? handleRadiusActive : handleRadius;
+                  const crossbarDistance = handleR * 2.5;  // ~1 diameter gap from edge
                   const crossbarCenterX = pos.x + Math.cos(pos.angle) * crossbarDistance;
                   const crossbarCenterY = pos.y + Math.sin(pos.angle) * crossbarDistance;
                   // Perpendicular direction (90 degrees from prong angle)
                   const perpX = -Math.sin(pos.angle);
                   const perpY = Math.cos(pos.angle);
-                  // Crossbar length based on width value (longer = more reverb send)
-                  const baseLength = 20 * scaleFactor;
-                  const maxLength = 40 * scaleFactor;
+                  // Crossbar length based on width value (shorter range)
+                  const baseLength = 12 * scaleFactor;
+                  const maxLength = 24 * scaleFactor;
                   const crossbarHalfLength = baseLength + normalizedSendValue * (maxLength - baseLength);
                   
                   return (
