@@ -3090,6 +3090,7 @@ const App: React.FC = () => {
             bottom: 0,
             background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
             display: 'flex',
+            flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
             zIndex: 9999,
@@ -3102,9 +3103,19 @@ const App: React.FC = () => {
               fontWeight: 300,
               letterSpacing: '0.1em',
               textShadow: '0 0 40px rgba(255,255,255,0.3)',
-              fontFamily: "'Noto Sans JP', 'Hiragino Sans', 'Yu Gothic', sans-serif",
+              fontFamily: "'Zen Maru Gothic', sans-serif",
             }}>
               結晶
+            </span>
+            <span style={{
+              fontSize: 'min(6vw, 36px)',
+              color: 'rgba(255,255,255,0.8)',
+              fontWeight: 300,
+              letterSpacing: '0.2em',
+              marginTop: '0.5em',
+              fontFamily: "Avenir, 'Avenir Next', -apple-system, BlinkMacSystemFont, sans-serif",
+            }}>
+              kesshō
             </span>
           </div>
         )}
