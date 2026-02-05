@@ -2203,6 +2203,9 @@ const App: React.FC = () => {
       scriptProcessorRef.current = null;
     }
     
+    // Collect all downloads to execute sequentially (mobile Chrome blocks rapid downloads)
+    const pendingDownloads: Array<{ filename: string; blob: Blob }> = [];
+    
     // Export WAV if selected
     if (recordFormats.wav) {
       const leftBuffers = wavBuffersRef.current[0];
@@ -2222,34 +2225,23 @@ const App: React.FC = () => {
         const sampleRate = ctx?.sampleRate || 48000;
         const wavBuffer = encodeWav24bit(leftChannel, rightChannel, sampleRate);
         const blob = new Blob([wavBuffer], { type: 'audio/wav' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `kessho-${timestamp}.wav`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        pendingDownloads.push({ filename: `kessho-${timestamp}.wav`, blob });
         
-        console.log(`WAV exported: ${totalSamples} samples at ${sampleRate}Hz, 24-bit`);
+        console.log(`WAV prepared: ${totalSamples} samples at ${sampleRate}Hz, 24-bit`);
       }
     }
     
     wavBuffersRef.current = [[], []];
     
     // Stop and export WebM if selected
+    let webmPending = false;
     if (recordFormats.webm && mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      webmPending = true;
       // Set up export callback before stopping
       mediaRecorderRef.current.onstop = () => {
         const blob = new Blob(recordedChunksRef.current, { type: 'audio/webm' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `kessho-${timestamp}.webm`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        pendingDownloads.push({ filename: `kessho-${timestamp}.webm`, blob });
+        webmPending = false;
 
         if (recordingStreamDestRef.current && limiterNode) {
           try {
@@ -2258,7 +2250,7 @@ const App: React.FC = () => {
           recordingStreamDestRef.current = null;
         }
         
-        console.log('WebM exported');
+        console.log('WebM prepared');
       };
       
       mediaRecorderRef.current.stop();
@@ -2282,7 +2274,7 @@ const App: React.FC = () => {
       processor.disconnect();
       stemProcessorsRef.current[stemName as StemName] = null;
       
-      // Export stem WAV
+      // Prepare stem WAV
       const leftBuffers = stemBuffersRef.current[stemName as StemName][0];
       const rightBuffers = stemBuffersRef.current[stemName as StemName][1];
       const totalSamples = leftBuffers.reduce((acc, buf) => acc + buf.length, 0);
@@ -2299,21 +2291,60 @@ const App: React.FC = () => {
         
         const wavBuffer = encodeWav24bit(leftChannel, rightChannel, sampleRate);
         const blob = new Blob([wavBuffer], { type: 'audio/wav' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `kessho-${timestamp}-${stemName}.wav`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        pendingDownloads.push({ filename: `kessho-${timestamp}-${stemName}.wav`, blob });
         
-        console.log(`Stem exported: ${stemName} - ${totalSamples} samples at ${sampleRate}Hz, 24-bit`);
+        console.log(`Stem prepared: ${stemName} - ${totalSamples} samples at ${sampleRate}Hz, 24-bit`);
       }
       
       // Clear buffer
       stemBuffersRef.current[stemName as StemName] = [[], []];
     }
+    
+    // Download all files sequentially with delay for mobile Chrome compatibility
+    // Mobile browsers block rapid programmatic downloads as popup prevention
+    const downloadSequentially = async (downloads: Array<{ filename: string; blob: Blob }>, index: number) => {
+      if (index >= downloads.length) return;
+      
+      const { filename, blob } = downloads[index];
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      
+      console.log(`Exported: ${filename}`);
+      
+      // Delay before next download (500ms for mobile compatibility)
+      // Mobile Chrome needs time between downloads to avoid blocking
+      if (index < downloads.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+      URL.revokeObjectURL(url);
+      
+      // Download next file
+      await downloadSequentially(downloads, index + 1);
+    };
+    
+    // Wait for WebM to be ready if needed, then start sequential downloads
+    const startDownloads = async () => {
+      // Wait for WebM onstop callback if WebM recording was active
+      if (webmPending) {
+        let waitCount = 0;
+        while (webmPending && waitCount < 50) { // Max 5 seconds wait
+          await new Promise(resolve => setTimeout(resolve, 100));
+          waitCount++;
+        }
+      }
+      
+      if (pendingDownloads.length > 0) {
+        await downloadSequentially(pendingDownloads, 0);
+      }
+    };
+    
+    // Start downloads with a brief initial delay
+    setTimeout(() => startDownloads(), 100);
     
     setIsRecording(false);
     setRecordingDuration(0);
