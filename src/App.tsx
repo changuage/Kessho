@@ -1074,6 +1074,12 @@ const App: React.FC = () => {
   const [recordingDuration, setRecordingDuration] = useState(0);
   // Format selection - can record both simultaneously
   const [recordFormats, setRecordFormats] = useState({ webm: true, wav: false });
+  
+  // Playback timer state
+  const [playbackTimerEnabled, setPlaybackTimerEnabled] = useState(false);
+  const [playbackTimerMinutes, setPlaybackTimerMinutes] = useState(30); // Default 30 minutes
+  const [playbackTimerRemaining, setPlaybackTimerRemaining] = useState<number | null>(null);
+  const playbackTimerIntervalRef = useRef<number | null>(null);
   // Stem recording options (which buses to record pre-reverb)
   const [recordStems, setRecordStems] = useState({
     synth: false,
@@ -2041,7 +2047,62 @@ const App: React.FC = () => {
     // Recording must be stopped manually
     stopIOSMediaSession();
     audioEngine.stop();
+    
+    // Clear playback timer
+    if (playbackTimerIntervalRef.current) {
+      clearInterval(playbackTimerIntervalRef.current);
+      playbackTimerIntervalRef.current = null;
+    }
+    setPlaybackTimerRemaining(null);
   };
+  
+  // Playback timer effect - starts countdown when playback starts
+  useEffect(() => {
+    // Clear any existing interval first
+    if (playbackTimerIntervalRef.current) {
+      clearInterval(playbackTimerIntervalRef.current);
+      playbackTimerIntervalRef.current = null;
+    }
+    
+    if (engineState.isRunning && playbackTimerEnabled) {
+      // Start or restart the countdown
+      // If no remaining time set, initialize from minutes setting
+      if (playbackTimerRemaining === null) {
+        const totalSeconds = playbackTimerMinutes * 60;
+        setPlaybackTimerRemaining(totalSeconds);
+      }
+      
+      // Start the interval
+      playbackTimerIntervalRef.current = window.setInterval(() => {
+        setPlaybackTimerRemaining(prev => {
+          if (prev === null || prev <= 1) {
+            // Timer reached zero - stop playback
+            if (playbackTimerIntervalRef.current) {
+              clearInterval(playbackTimerIntervalRef.current);
+              playbackTimerIntervalRef.current = null;
+            }
+            // Use setTimeout to avoid state update during render
+            setTimeout(() => {
+              audioEngine.stop();
+              stopIOSMediaSession();
+            }, 0);
+            return null;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    } else if (!engineState.isRunning) {
+      // Playback stopped - clear timer state
+      setPlaybackTimerRemaining(null);
+    }
+    
+    return () => {
+      if (playbackTimerIntervalRef.current) {
+        clearInterval(playbackTimerIntervalRef.current);
+        playbackTimerIntervalRef.current = null;
+      }
+    };
+  }, [engineState.isRunning, playbackTimerEnabled]);
   
   // Arm recording - will start recording when playback starts
   const handleArmRecording = () => {
@@ -4566,6 +4627,148 @@ const App: React.FC = () => {
               <div style={{ fontSize: '0.7rem', color: '#f87171', marginTop: '4px' }}>
                 Recording in progress...
               </div>
+            </div>
+          )}
+        </CollapsiblePanel>
+
+        {/* Playback Timer */}
+        <CollapsiblePanel
+          id="playback-timer"
+          title="Playback Timer"
+          isMobile={isMobile}
+          isExpanded={expandedPanels.has('playback-timer')}
+          onToggle={togglePanel}
+        >
+          {/* Timer Enable Toggle */}
+          <div style={{ marginBottom: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ fontSize: '0.85rem', color: '#aaa' }}>Auto-Stop Timer</div>
+                <div style={{ fontSize: '0.65rem', color: '#666', marginTop: '2px' }}>
+                  Automatically stop playback after set duration
+                </div>
+              </div>
+              <button
+                onClick={() => setPlaybackTimerEnabled(!playbackTimerEnabled)}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: '6px',
+                  border: `1px solid ${playbackTimerEnabled ? '#f59e0b' : '#444'}`,
+                  background: playbackTimerEnabled 
+                    ? 'linear-gradient(135deg, #b45309, #92400e)' 
+                    : 'rgba(30, 30, 40, 0.8)',
+                  color: playbackTimerEnabled ? '#fcd34d' : '#888',
+                  cursor: 'pointer',
+                  fontWeight: 'bold',
+                  fontSize: '0.85rem',
+                }}
+              >
+                {playbackTimerEnabled ? 'ON' : 'OFF'}
+              </button>
+            </div>
+          </div>
+
+          {/* Duration Selection */}
+          <div style={{ marginBottom: '16px' }}>
+            <div style={{ fontSize: '0.85rem', color: '#aaa', marginBottom: '8px' }}>
+              Duration {engineState.isRunning && playbackTimerEnabled && <span style={{ color: '#f59e0b', fontSize: '0.7rem' }}>(click to reset)</span>}
+            </div>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+              {[5, 15, 30, 60, 90, 120].map(mins => (
+                <button
+                  key={mins}
+                  onClick={() => {
+                    setPlaybackTimerMinutes(mins);
+                    // If timer is running, reset to the new duration
+                    if (engineState.isRunning && playbackTimerEnabled) {
+                      setPlaybackTimerRemaining(mins * 60);
+                    }
+                  }}
+                  style={{
+                    padding: '8px 12px',
+                    borderRadius: '6px',
+                    border: `1px solid ${playbackTimerMinutes === mins ? '#f59e0b' : '#444'}`,
+                    background: playbackTimerMinutes === mins 
+                      ? 'linear-gradient(135deg, #b45309, #92400e)' 
+                      : 'rgba(30, 30, 40, 0.8)',
+                    color: playbackTimerMinutes === mins ? '#fcd34d' : '#888',
+                    cursor: 'pointer',
+                    fontSize: '0.8rem',
+                    minWidth: '50px',
+                  }}
+                >
+                  {mins >= 60 ? `${mins / 60}h` : `${mins}m`}
+                </button>
+              ))}
+              {/* Custom time input */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <input
+                  type="number"
+                  min="1"
+                  max="480"
+                  value={![5, 15, 30, 60, 90, 120].includes(playbackTimerMinutes) ? playbackTimerMinutes : ''}
+                  placeholder="Custom"
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10);
+                    if (!isNaN(val) && val >= 1 && val <= 480) {
+                      setPlaybackTimerMinutes(val);
+                      if (engineState.isRunning && playbackTimerEnabled) {
+                        setPlaybackTimerRemaining(val * 60);
+                      }
+                    }
+                  }}
+                  style={{
+                    width: '60px',
+                    padding: '8px',
+                    borderRadius: '6px',
+                    border: `1px solid ${![5, 15, 30, 60, 90, 120].includes(playbackTimerMinutes) ? '#f59e0b' : '#444'}`,
+                    background: ![5, 15, 30, 60, 90, 120].includes(playbackTimerMinutes)
+                      ? 'linear-gradient(135deg, #b45309, #92400e)'
+                      : 'rgba(30, 30, 40, 0.8)',
+                    color: ![5, 15, 30, 60, 90, 120].includes(playbackTimerMinutes) ? '#fcd34d' : '#888',
+                    fontSize: '0.8rem',
+                    textAlign: 'center',
+                  }}
+                />
+                <span style={{ fontSize: '0.75rem', color: '#666' }}>min</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Timer Status */}
+          {playbackTimerEnabled && playbackTimerRemaining !== null && (
+            <div style={{ 
+              padding: '12px', 
+              background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(180, 83, 9, 0.2))',
+              borderRadius: '8px',
+              border: '1px solid rgba(245, 158, 11, 0.4)',
+              textAlign: 'center',
+            }}>
+              <div style={{ 
+                fontSize: '1.5rem', 
+                fontWeight: 'bold', 
+                color: '#fcd34d',
+              }}>
+                ⏱ {Math.floor(playbackTimerRemaining / 60)}:{(playbackTimerRemaining % 60).toString().padStart(2, '0')}
+              </div>
+              <div style={{ fontSize: '0.7rem', color: '#f59e0b', marginTop: '4px' }}>
+                Remaining until auto-stop
+              </div>
+            </div>
+          )}
+
+          {/* Info when enabled but not running */}
+          {playbackTimerEnabled && playbackTimerRemaining === null && !engineState.isRunning && (
+            <div style={{ 
+              padding: '12px', 
+              background: 'rgba(245, 158, 11, 0.1)',
+              borderRadius: '8px',
+              border: '1px solid rgba(245, 158, 11, 0.2)',
+              textAlign: 'center',
+              fontSize: '0.75rem',
+              color: '#d97706',
+            }}>
+              Timer will start when playback begins ({playbackTimerMinutes} min)
             </div>
           )}
         </CollapsiblePanel>
