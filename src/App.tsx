@@ -2130,6 +2130,16 @@ const App: React.FC = () => {
       'oceanDurationMin', 'oceanDurationMax', 'oceanIntervalMin', 'oceanIntervalMax',
       'oceanFoamMin', 'oceanFoamMax', 'oceanDepthMin', 'oceanDepthMax',
       'cofDriftRate', 'cofDriftRange',
+      // Drum morph positions - should interpolate when master morph changes
+      'drumSubMorph', 'drumKickMorph', 'drumClickMorph',
+      'drumBeepHiMorph', 'drumBeepLoMorph', 'drumNoiseMorph',
+      // Drum voice params - should interpolate when master morph changes
+      'drumLevel', 'drumSubFreq', 'drumSubDecay', 'drumSubLevel', 'drumSubTone',
+      'drumKickFreq', 'drumKickPitchEnv', 'drumKickPitchDecay', 'drumKickDecay', 'drumKickLevel', 'drumKickClick',
+      'drumClickDecay', 'drumClickFilterFreq', 'drumClickFilterQ', 'drumClickLevel',
+      'drumBeepHiFreq', 'drumBeepHiAttack', 'drumBeepHiDecay', 'drumBeepHiTone', 'drumBeepHiLevel',
+      'drumBeepLoFreq', 'drumBeepLoAttack', 'drumBeepLoDecay', 'drumBeepLoTone', 'drumBeepLoLevel',
+      'drumNoiseFilterFreq', 'drumNoiseFilterQ', 'drumNoiseAttack', 'drumNoiseDecay', 'drumNoiseLevel',
     ];
     
     for (const key of numericKeys) {
@@ -2147,7 +2157,12 @@ const App: React.FC = () => {
     
     // Snap discrete values at 50% (scaleMode and manualScale handled above with rootNote)
     const discreteKeys: (keyof SliderState)[] = [
-      'seedWindow', 'filterType', 'reverbEngine', 'reverbType', 'reverbQuality', 'grainPitchMode', 'cofDriftDirection'
+      'seedWindow', 'filterType', 'reverbEngine', 'reverbType', 'reverbQuality', 'grainPitchMode', 'cofDriftDirection',
+      // Drum preset names and discrete settings should snap at 50%
+      'drumSubPresetA', 'drumSubPresetB', 'drumKickPresetA', 'drumKickPresetB',
+      'drumClickPresetA', 'drumClickPresetB', 'drumBeepHiPresetA', 'drumBeepHiPresetB',
+      'drumBeepLoPresetA', 'drumBeepLoPresetB', 'drumNoisePresetA', 'drumNoisePresetB',
+      'drumNoiseFilterType',
     ];
     for (const key of discreteKeys) {
       (result as Record<string, unknown>)[key] = tNorm < 0.5 ? stateA[key] : stateB[key];
@@ -2156,7 +2171,11 @@ const App: React.FC = () => {
     // Snap boolean values at 50% (except cofDriftEnabled which has special handling)
     const boolKeys: (keyof SliderState)[] = [
       'granularEnabled', 'leadEnabled', 'leadEuclideanMasterEnabled', 'leadEuclid1Enabled', 'leadEuclid2Enabled',
-      'leadEuclid3Enabled', 'leadEuclid4Enabled', 'oceanSampleEnabled', 'oceanWaveSynthEnabled'
+      'leadEuclid3Enabled', 'leadEuclid4Enabled', 'oceanSampleEnabled', 'oceanWaveSynthEnabled',
+      // Drum synth booleans
+      'drumEnabled', 'drumRandomEnabled',
+      'drumSubMorphAuto', 'drumKickMorphAuto', 'drumClickMorphAuto',
+      'drumBeepHiMorphAuto', 'drumBeepLoMorphAuto', 'drumNoiseMorphAuto',
     ];
     for (const key of boolKeys) {
       (result as Record<string, unknown>)[key] = tNorm < 0.5 ? stateA[key] : stateB[key];

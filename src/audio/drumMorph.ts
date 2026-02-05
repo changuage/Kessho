@@ -327,9 +327,11 @@ export function interpolatePresets(
       
       if (override.isEndpoint) {
         // Endpoint override: replace the appropriate preset value
-        if (override.morphPosition === 0) {
+        // Use tolerance-based detection matching setDrumMorphOverride
+        if (override.morphPosition < 0.01) {
           valueA = override.value;
         } else {
+          // morphPosition > 0.99 (endpoint 1)
           valueB = override.value;
         }
       } else {
