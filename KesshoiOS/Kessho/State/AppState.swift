@@ -809,6 +809,115 @@ class AppState: ObservableObject {
         // === Random Walk ===
         result.randomWalkSpeed = lerp(a.randomWalkSpeed, b.randomWalkSpeed, t)
         
+        // === Drum System ===
+        result.drumLevel = lerp(a.drumLevel, b.drumLevel, t)
+        result.drumReverbSend = lerp(a.drumReverbSend, b.drumReverbSend, t)
+        result.drumDelayFeedback = lerp(a.drumDelayFeedback, b.drumDelayFeedback, t)
+        result.drumDelayMix = lerp(a.drumDelayMix, b.drumDelayMix, t)
+        result.drumDelayFilter = lerp(a.drumDelayFilter, b.drumDelayFilter, t)
+        // Delay sends
+        result.drumSubDelaySend = lerp(a.drumSubDelaySend, b.drumSubDelaySend, t)
+        result.drumKickDelaySend = lerp(a.drumKickDelaySend, b.drumKickDelaySend, t)
+        result.drumClickDelaySend = lerp(a.drumClickDelaySend, b.drumClickDelaySend, t)
+        result.drumBeepHiDelaySend = lerp(a.drumBeepHiDelaySend, b.drumBeepHiDelaySend, t)
+        result.drumBeepLoDelaySend = lerp(a.drumBeepLoDelaySend, b.drumBeepLoDelaySend, t)
+        result.drumNoiseDelaySend = lerp(a.drumNoiseDelaySend, b.drumNoiseDelaySend, t)
+        
+        // Drum voice morph positions (interpolate during master morph)
+        result.drumSubMorph = lerp(a.drumSubMorph, b.drumSubMorph, t)
+        result.drumKickMorph = lerp(a.drumKickMorph, b.drumKickMorph, t)
+        result.drumClickMorph = lerp(a.drumClickMorph, b.drumClickMorph, t)
+        result.drumBeepHiMorph = lerp(a.drumBeepHiMorph, b.drumBeepHiMorph, t)
+        result.drumBeepLoMorph = lerp(a.drumBeepLoMorph, b.drumBeepLoMorph, t)
+        result.drumNoiseMorph = lerp(a.drumNoiseMorph, b.drumNoiseMorph, t)
+        result.drumSubMorphSpeed = lerp(a.drumSubMorphSpeed, b.drumSubMorphSpeed, t)
+        result.drumKickMorphSpeed = lerp(a.drumKickMorphSpeed, b.drumKickMorphSpeed, t)
+        result.drumClickMorphSpeed = lerp(a.drumClickMorphSpeed, b.drumClickMorphSpeed, t)
+        result.drumBeepHiMorphSpeed = lerp(a.drumBeepHiMorphSpeed, b.drumBeepHiMorphSpeed, t)
+        result.drumBeepLoMorphSpeed = lerp(a.drumBeepLoMorphSpeed, b.drumBeepLoMorphSpeed, t)
+        result.drumNoiseMorphSpeed = lerp(a.drumNoiseMorphSpeed, b.drumNoiseMorphSpeed, t)
+        
+        // Drum voice params (Sub)
+        result.drumSubFreq = lerp(a.drumSubFreq, b.drumSubFreq, t)
+        result.drumSubDecay = lerp(a.drumSubDecay, b.drumSubDecay, t)
+        result.drumSubLevel = lerp(a.drumSubLevel, b.drumSubLevel, t)
+        result.drumSubTone = lerp(a.drumSubTone, b.drumSubTone, t)
+        result.drumSubShape = lerp(a.drumSubShape, b.drumSubShape, t)
+        result.drumSubPitchEnv = lerp(a.drumSubPitchEnv, b.drumSubPitchEnv, t)
+        result.drumSubPitchDecay = lerp(a.drumSubPitchDecay, b.drumSubPitchDecay, t)
+        result.drumSubDrive = lerp(a.drumSubDrive, b.drumSubDrive, t)
+        result.drumSubSub = lerp(a.drumSubSub, b.drumSubSub, t)
+        
+        // Drum voice params (Kick)
+        result.drumKickFreq = lerp(a.drumKickFreq, b.drumKickFreq, t)
+        result.drumKickPitchEnv = lerp(a.drumKickPitchEnv, b.drumKickPitchEnv, t)
+        result.drumKickPitchDecay = lerp(a.drumKickPitchDecay, b.drumKickPitchDecay, t)
+        result.drumKickDecay = lerp(a.drumKickDecay, b.drumKickDecay, t)
+        result.drumKickLevel = lerp(a.drumKickLevel, b.drumKickLevel, t)
+        result.drumKickClick = lerp(a.drumKickClick, b.drumKickClick, t)
+        result.drumKickBody = lerp(a.drumKickBody, b.drumKickBody, t)
+        result.drumKickPunch = lerp(a.drumKickPunch, b.drumKickPunch, t)
+        result.drumKickTail = lerp(a.drumKickTail, b.drumKickTail, t)
+        result.drumKickTone = lerp(a.drumKickTone, b.drumKickTone, t)
+        
+        // Drum voice params (Click)
+        result.drumClickDecay = lerp(a.drumClickDecay, b.drumClickDecay, t)
+        result.drumClickFilter = lerp(a.drumClickFilter, b.drumClickFilter, t)
+        result.drumClickTone = lerp(a.drumClickTone, b.drumClickTone, t)
+        result.drumClickLevel = lerp(a.drumClickLevel, b.drumClickLevel, t)
+        result.drumClickResonance = lerp(a.drumClickResonance, b.drumClickResonance, t)
+        result.drumClickPitch = lerp(a.drumClickPitch, b.drumClickPitch, t)
+        result.drumClickPitchEnv = lerp(a.drumClickPitchEnv, b.drumClickPitchEnv, t)
+        result.drumClickGrainCount = lerpInt(a.drumClickGrainCount, b.drumClickGrainCount, t)
+        result.drumClickGrainSpread = lerp(a.drumClickGrainSpread, b.drumClickGrainSpread, t)
+        result.drumClickStereoWidth = lerp(a.drumClickStereoWidth, b.drumClickStereoWidth, t)
+        
+        // Drum voice params (BeepHi)
+        result.drumBeepHiFreq = lerp(a.drumBeepHiFreq, b.drumBeepHiFreq, t)
+        result.drumBeepHiAttack = lerp(a.drumBeepHiAttack, b.drumBeepHiAttack, t)
+        result.drumBeepHiDecay = lerp(a.drumBeepHiDecay, b.drumBeepHiDecay, t)
+        result.drumBeepHiLevel = lerp(a.drumBeepHiLevel, b.drumBeepHiLevel, t)
+        result.drumBeepHiTone = lerp(a.drumBeepHiTone, b.drumBeepHiTone, t)
+        result.drumBeepHiInharmonic = lerp(a.drumBeepHiInharmonic, b.drumBeepHiInharmonic, t)
+        result.drumBeepHiPartials = lerpInt(a.drumBeepHiPartials, b.drumBeepHiPartials, t)
+        result.drumBeepHiShimmer = lerp(a.drumBeepHiShimmer, b.drumBeepHiShimmer, t)
+        result.drumBeepHiShimmerRate = lerp(a.drumBeepHiShimmerRate, b.drumBeepHiShimmerRate, t)
+        result.drumBeepHiBrightness = lerp(a.drumBeepHiBrightness, b.drumBeepHiBrightness, t)
+        
+        // Drum voice params (BeepLo)
+        result.drumBeepLoFreq = lerp(a.drumBeepLoFreq, b.drumBeepLoFreq, t)
+        result.drumBeepLoAttack = lerp(a.drumBeepLoAttack, b.drumBeepLoAttack, t)
+        result.drumBeepLoDecay = lerp(a.drumBeepLoDecay, b.drumBeepLoDecay, t)
+        result.drumBeepLoLevel = lerp(a.drumBeepLoLevel, b.drumBeepLoLevel, t)
+        result.drumBeepLoTone = lerp(a.drumBeepLoTone, b.drumBeepLoTone, t)
+        result.drumBeepLoPitchEnv = lerp(a.drumBeepLoPitchEnv, b.drumBeepLoPitchEnv, t)
+        result.drumBeepLoPitchDecay = lerp(a.drumBeepLoPitchDecay, b.drumBeepLoPitchDecay, t)
+        result.drumBeepLoBody = lerp(a.drumBeepLoBody, b.drumBeepLoBody, t)
+        result.drumBeepLoPluck = lerp(a.drumBeepLoPluck, b.drumBeepLoPluck, t)
+        result.drumBeepLoPluckDamp = lerp(a.drumBeepLoPluckDamp, b.drumBeepLoPluckDamp, t)
+        
+        // Drum voice params (Noise)
+        result.drumNoiseFilterFreq = lerp(a.drumNoiseFilterFreq, b.drumNoiseFilterFreq, t)
+        result.drumNoiseFilterQ = lerp(a.drumNoiseFilterQ, b.drumNoiseFilterQ, t)
+        result.drumNoiseDecay = lerp(a.drumNoiseDecay, b.drumNoiseDecay, t)
+        result.drumNoiseLevel = lerp(a.drumNoiseLevel, b.drumNoiseLevel, t)
+        result.drumNoiseAttack = lerp(a.drumNoiseAttack, b.drumNoiseAttack, t)
+        result.drumNoiseFormant = lerp(a.drumNoiseFormant, b.drumNoiseFormant, t)
+        result.drumNoiseBreath = lerp(a.drumNoiseBreath, b.drumNoiseBreath, t)
+        result.drumNoiseFilterEnv = lerp(a.drumNoiseFilterEnv, b.drumNoiseFilterEnv, t)
+        result.drumNoiseFilterEnvDecay = lerp(a.drumNoiseFilterEnvDecay, b.drumNoiseFilterEnvDecay, t)
+        result.drumNoiseDensity = lerp(a.drumNoiseDensity, b.drumNoiseDensity, t)
+        result.drumNoiseColorLFO = lerp(a.drumNoiseColorLFO, b.drumNoiseColorLFO, t)
+        
+        // Random trigger probabilities
+        result.drumRandomDensity = lerp(a.drumRandomDensity, b.drumRandomDensity, t)
+        result.drumRandomSubProb = lerp(a.drumRandomSubProb, b.drumRandomSubProb, t)
+        result.drumRandomKickProb = lerp(a.drumRandomKickProb, b.drumRandomKickProb, t)
+        result.drumRandomClickProb = lerp(a.drumRandomClickProb, b.drumRandomClickProb, t)
+        result.drumRandomBeepHiProb = lerp(a.drumRandomBeepHiProb, b.drumRandomBeepHiProb, t)
+        result.drumRandomBeepLoProb = lerp(a.drumRandomBeepLoProb, b.drumRandomBeepLoProb, t)
+        result.drumRandomNoiseProb = lerp(a.drumRandomNoiseProb, b.drumRandomNoiseProb, t)
+        
         // === Snap discrete values at 50% (Issue 7 fix: include all discrete params) ===
         if t >= 0.5 {
             // Global
@@ -851,6 +960,41 @@ class AppState: ObservableObject {
             result.oceanSampleEnabled = b.oceanSampleEnabled
             result.oceanWaveSynthEnabled = b.oceanWaveSynthEnabled
             result.oceanFilterType = b.oceanFilterType
+            // Drum (booleans)
+            result.drumEnabled = b.drumEnabled
+            result.drumDelayEnabled = b.drumDelayEnabled
+            result.drumRandomEnabled = b.drumRandomEnabled
+            result.drumRandomMorphUpdate = b.drumRandomMorphUpdate
+            result.drumSubMorphAuto = b.drumSubMorphAuto
+            result.drumKickMorphAuto = b.drumKickMorphAuto
+            result.drumClickMorphAuto = b.drumClickMorphAuto
+            result.drumBeepHiMorphAuto = b.drumBeepHiMorphAuto
+            result.drumBeepLoMorphAuto = b.drumBeepLoMorphAuto
+            result.drumNoiseMorphAuto = b.drumNoiseMorphAuto
+            // Drum (preset names)
+            result.drumSubPresetA = b.drumSubPresetA
+            result.drumSubPresetB = b.drumSubPresetB
+            result.drumKickPresetA = b.drumKickPresetA
+            result.drumKickPresetB = b.drumKickPresetB
+            result.drumClickPresetA = b.drumClickPresetA
+            result.drumClickPresetB = b.drumClickPresetB
+            result.drumBeepHiPresetA = b.drumBeepHiPresetA
+            result.drumBeepHiPresetB = b.drumBeepHiPresetB
+            result.drumBeepLoPresetA = b.drumBeepLoPresetA
+            result.drumBeepLoPresetB = b.drumBeepLoPresetB
+            result.drumNoisePresetA = b.drumNoisePresetA
+            result.drumNoisePresetB = b.drumNoisePresetB
+            // Drum (other discrete)
+            result.drumDelayNoteL = b.drumDelayNoteL
+            result.drumDelayNoteR = b.drumDelayNoteR
+            result.drumSubMorphMode = b.drumSubMorphMode
+            result.drumKickMorphMode = b.drumKickMorphMode
+            result.drumClickMorphMode = b.drumClickMorphMode
+            result.drumBeepHiMorphMode = b.drumBeepHiMorphMode
+            result.drumBeepLoMorphMode = b.drumBeepLoMorphMode
+            result.drumNoiseMorphMode = b.drumNoiseMorphMode
+            result.drumClickMode = b.drumClickMode
+            result.drumNoiseFilterType = b.drumNoiseFilterType
         }
         
         // Handle root note via Circle of Fifths path walking
