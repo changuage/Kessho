@@ -1012,6 +1012,26 @@ const CollapsiblePanel: React.FC<CollapsiblePanelProps> = ({
 
 // Main App
 const App: React.FC = () => {
+  // Splash screen state
+  const [showSplash, setShowSplash] = useState(true);
+  const [splashOpacity, setSplashOpacity] = useState(0);
+  
+  // Splash screen animation
+  useEffect(() => {
+    // Fade in
+    const fadeInTimer = setTimeout(() => setSplashOpacity(1), 100);
+    // Hold
+    const holdTimer = setTimeout(() => setSplashOpacity(0), 2500);
+    // Hide splash
+    const hideTimer = setTimeout(() => setShowSplash(false), 3500);
+    
+    return () => {
+      clearTimeout(fadeInTimer);
+      clearTimeout(holdTimer);
+      clearTimeout(hideTimer);
+    };
+  }, []);
+  
   // Load initial state from URL or defaults
   const [state, setState] = useState<SliderState>(() => {
     const urlState = decodeStateFromUrl(window.location.search);
@@ -3059,7 +3079,37 @@ const App: React.FC = () => {
   // Render snowflake UI
   if (uiMode === 'snowflake') {
     return (
-      <SnowflakeUI
+      <>
+        {/* Splash Screen */}
+        {showSplash && (
+          <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            opacity: splashOpacity,
+            transition: 'opacity 1s ease-in-out',
+            pointerEvents: showSplash ? 'auto' : 'none',
+          }}>
+            <span style={{
+              fontSize: 'min(20vw, 120px)',
+              color: 'white',
+              fontWeight: 300,
+              letterSpacing: '0.1em',
+              textShadow: '0 0 40px rgba(255,255,255,0.3)',
+              fontFamily: "'Noto Sans JP', 'Hiragino Sans', 'Yu Gothic', sans-serif",
+            }}>
+              結晶
+            </span>
+          </div>
+        )}
+        <SnowflakeUI
         state={state}
         onChange={handleSliderChange}
         onShowAdvanced={() => setUiMode('advanced')}
@@ -3068,6 +3118,7 @@ const App: React.FC = () => {
         presets={savedPresets}
         isPlaying={engineState.isRunning}
       />
+      </>
     );
   }
 
