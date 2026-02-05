@@ -1174,6 +1174,10 @@ struct SliderControlsView: View {
                             range: 0...1,
                             icon: "waveform.circle"
                         )
+                        
+                        // Morph controls
+                        DrumVoiceMorphView(voice: .sub, voiceColor: .red)
+                            .environmentObject(appState)
                     },
                     headerAction: {
                         Button(action: {
@@ -1248,6 +1252,10 @@ struct SliderControlsView: View {
                             range: 0...1,
                             icon: "hand.tap"
                         )
+                        
+                        // Morph controls
+                        DrumVoiceMorphView(voice: .kick, voiceColor: .orange)
+                            .environmentObject(appState)
                     },
                     headerAction: {
                         Button(action: {
@@ -1314,6 +1322,10 @@ struct SliderControlsView: View {
                             range: 0...1,
                             icon: "speaker.wave.2"
                         )
+                        
+                        // Morph controls
+                        DrumVoiceMorphView(voice: .click, voiceColor: .yellow)
+                            .environmentObject(appState)
                     },
                     headerAction: {
                         Button(action: {
@@ -1380,6 +1392,10 @@ struct SliderControlsView: View {
                             range: 0...1,
                             icon: "speaker.wave.2"
                         )
+                        
+                        // Morph controls
+                        DrumVoiceMorphView(voice: .beepHi, voiceColor: .green)
+                            .environmentObject(appState)
                     },
                     headerAction: {
                         Button(action: {
@@ -1446,6 +1462,10 @@ struct SliderControlsView: View {
                             range: 0...1,
                             icon: "speaker.wave.2"
                         )
+                        
+                        // Morph controls
+                        DrumVoiceMorphView(voice: .beepLo, voiceColor: .cyan)
+                            .environmentObject(appState)
                     },
                     headerAction: {
                         Button(action: {
@@ -1528,6 +1548,10 @@ struct SliderControlsView: View {
                             range: 0...1,
                             icon: "speaker.wave.2"
                         )
+                        
+                        // Morph controls
+                        DrumVoiceMorphView(voice: .noise, voiceColor: .purple)
+                            .environmentObject(appState)
                     },
                     headerAction: {
                         Button(action: {
@@ -3631,6 +3655,163 @@ struct TimbreRangeView: View {
                     .foregroundColor(.white.opacity(0.4))
             }
         }
+    }
+}
+
+// MARK: - Drum Voice Morph View
+
+/// Reusable view for drum voice morph controls (Preset A/B selection + morph slider)
+struct DrumVoiceMorphView: View {
+    @EnvironmentObject var appState: AppState
+    let voice: DrumVoiceType
+    let voiceColor: Color
+    
+    // Get preset names for this voice
+    private var presetNames: [String] {
+        getPresetNames(voice: voice)
+    }
+    
+    // Get bindings based on voice type
+    private var presetABinding: Binding<String> {
+        switch voice {
+        case .sub: return $appState.state.drumSubPresetA
+        case .kick: return $appState.state.drumKickPresetA
+        case .click: return $appState.state.drumClickPresetA
+        case .beepHi: return $appState.state.drumBeepHiPresetA
+        case .beepLo: return $appState.state.drumBeepLoPresetA
+        case .noise: return $appState.state.drumNoisePresetA
+        }
+    }
+    
+    private var presetBBinding: Binding<String> {
+        switch voice {
+        case .sub: return $appState.state.drumSubPresetB
+        case .kick: return $appState.state.drumKickPresetB
+        case .click: return $appState.state.drumClickPresetB
+        case .beepHi: return $appState.state.drumBeepHiPresetB
+        case .beepLo: return $appState.state.drumBeepLoPresetB
+        case .noise: return $appState.state.drumNoisePresetB
+        }
+    }
+    
+    private var morphBinding: Binding<Double> {
+        switch voice {
+        case .sub: return $appState.state.drumSubMorph
+        case .kick: return $appState.state.drumKickMorph
+        case .click: return $appState.state.drumClickMorph
+        case .beepHi: return $appState.state.drumBeepHiMorph
+        case .beepLo: return $appState.state.drumBeepLoMorph
+        case .noise: return $appState.state.drumNoiseMorph
+        }
+    }
+    
+    private var presetAKey: String {
+        switch voice {
+        case .sub: return "drumSubPresetA"
+        case .kick: return "drumKickPresetA"
+        case .click: return "drumClickPresetA"
+        case .beepHi: return "drumBeepHiPresetA"
+        case .beepLo: return "drumBeepLoPresetA"
+        case .noise: return "drumNoisePresetA"
+        }
+    }
+    
+    private var presetBKey: String {
+        switch voice {
+        case .sub: return "drumSubPresetB"
+        case .kick: return "drumKickPresetB"
+        case .click: return "drumClickPresetB"
+        case .beepHi: return "drumBeepHiPresetB"
+        case .beepLo: return "drumBeepLoPresetB"
+        case .noise: return "drumNoisePresetB"
+        }
+    }
+    
+    var body: some View {
+        VStack(spacing: 8) {
+            // Preset A/B selectors in a row
+            HStack(spacing: 8) {
+                // Preset A
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Preset A")
+                        .font(.caption2)
+                        .foregroundColor(.white.opacity(0.5))
+                    
+                    Picker("A", selection: Binding(
+                        get: { presetABinding.wrappedValue },
+                        set: { newValue in
+                            presetABinding.wrappedValue = newValue
+                            appState.handleDrumPresetChange(key: presetAKey)
+                        }
+                    )) {
+                        ForEach(presetNames, id: \.self) { name in
+                            Text(name).tag(name)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .tint(voiceColor)
+                    .frame(maxWidth: .infinity)
+                    .background(voiceColor.opacity(0.1))
+                    .cornerRadius(6)
+                }
+                
+                // Preset B
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Preset B")
+                        .font(.caption2)
+                        .foregroundColor(.white.opacity(0.5))
+                    
+                    Picker("B", selection: Binding(
+                        get: { presetBBinding.wrappedValue },
+                        set: { newValue in
+                            presetBBinding.wrappedValue = newValue
+                            appState.handleDrumPresetChange(key: presetBKey)
+                        }
+                    )) {
+                        ForEach(presetNames, id: \.self) { name in
+                            Text(name).tag(name)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .tint(voiceColor)
+                    .frame(maxWidth: .infinity)
+                    .background(voiceColor.opacity(0.1))
+                    .cornerRadius(6)
+                }
+            }
+            
+            // Morph slider
+            HStack {
+                Text("A")
+                    .font(.caption)
+                    .foregroundColor(.white.opacity(0.5))
+                
+                Slider(value: Binding(
+                    get: { morphBinding.wrappedValue },
+                    set: { newValue in
+                        morphBinding.wrappedValue = newValue
+                        appState.handleDrumMorphChange(voice: voice, morphValue: newValue)
+                    }
+                ), in: 0...1)
+                .tint(voiceColor)
+                
+                Text("B")
+                    .font(.caption)
+                    .foregroundColor(.white.opacity(0.5))
+            }
+            
+            // Morph percentage
+            Text("\(Int(morphBinding.wrappedValue * 100))%")
+                .font(.caption2)
+                .foregroundColor(.white.opacity(0.4))
+        }
+        .padding(8)
+        .background(voiceColor.opacity(0.05))
+        .cornerRadius(8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(voiceColor.opacity(0.2), lineWidth: 1)
+        )
     }
 }
 

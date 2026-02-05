@@ -152,8 +152,18 @@ class AppState: ObservableObject {
         randomWalkValues[key] = currentValue
         walkPhases[key] = 0
         
-        // Update morph preset dualRanges at endpoints (Rule 2)
-        updateMorphPresetDualRange(key: key, range: DualRange(min: min, max: max))
+        // Check if this is a drum parameter
+        if getDrumVoice(for: key) != nil {
+            handleDrumDualSliderChange(
+                key: key,
+                isDualMode: true,
+                value: currentValue,
+                range: (min: min, max: max)
+            )
+        } else {
+            // Update morph preset dualRanges at endpoints (Rule 2)
+            updateMorphPresetDualRange(key: key, range: DualRange(min: min, max: max))
+        }
     }
     
     /// Disable dual mode for a parameter
@@ -162,8 +172,18 @@ class AppState: ObservableObject {
         randomWalkValues.removeValue(forKey: key)
         walkPhases.removeValue(forKey: key)
         
-        // Update morph preset dualRanges at endpoints (Rule 2)
-        removeMorphPresetDualRange(key: key)
+        // Check if this is a drum parameter
+        if getDrumVoice(for: key) != nil {
+            handleDrumDualSliderChange(
+                key: key,
+                isDualMode: false,
+                value: 0,
+                range: nil
+            )
+        } else {
+            // Update morph preset dualRanges at endpoints (Rule 2)
+            removeMorphPresetDualRange(key: key)
+        }
     }
     
     /// Toggle dual mode for a parameter
@@ -179,8 +199,18 @@ class AppState: ObservableObject {
     func updateDualRange(for key: String, min: Double, max: Double) {
         dualRanges[key] = DualRange(min: min, max: max)
         
-        // Update morph preset dualRanges at endpoints (Rule 2)
-        updateMorphPresetDualRange(key: key, range: DualRange(min: min, max: max))
+        // Check if this is a drum parameter
+        if getDrumVoice(for: key) != nil {
+            handleDrumDualSliderChange(
+                key: key,
+                isDualMode: true,
+                value: (min + max) / 2,
+                range: (min: min, max: max)
+            )
+        } else {
+            // Update morph preset dualRanges at endpoints (Rule 2)
+            updateMorphPresetDualRange(key: key, range: DualRange(min: min, max: max))
+        }
     }
     
     /// Update morph preset's dualRanges at endpoints
@@ -241,6 +271,12 @@ class AppState: ObservableObject {
     /// Rule 1: Mid-morph changes are temporary overrides
     /// Rule 2: Endpoint changes (0% or 100%) update the respective preset permanently
     func handleSliderChange(key: String, value: Double) {
+        // Check if this is a drum parameter and handle with drum morph system
+        if getDrumVoice(for: key) != nil {
+            handleDrumSliderChange(key: key, value: value)
+            return
+        }
+        
         let isMorphActive = morphPresetA != nil || morphPresetB != nil
         guard isMorphActive else { return }
         
@@ -268,6 +304,130 @@ class AppState: ObservableObject {
             // Mid-morph: store as temporary override
             morphManualOverrides[key] = (value: value, morphPosition: morphPosition)
         }
+    }
+    
+    // MARK: - Drum Morph Override Handling
+    
+    /// Map of drum param prefix to voice type
+    private static let drumParamPrefixes: [String: DrumVoiceType] = [
+        "drumSub": .sub, "drumKick": .kick, "drumClick": .click,
+        "drumBeepHi": .beepHi, "drumBeepLo": .beepLo, "drumNoise": .noise
+    ]
+    
+    /// Map of drum preset keys to voice type
+    private static let drumPresetVoiceMap: [String: DrumVoiceType] = [
+        "drumSubPresetA": .sub, "drumSubPresetB": .sub,
+        "drumKickPresetA": .kick, "drumKickPresetB": .kick,
+        "drumClickPresetA": .click, "drumClickPresetB": .click,
+        "drumBeepHiPresetA": .beepHi, "drumBeepHiPresetB": .beepHi,
+        "drumBeepLoPresetA": .beepLo, "drumBeepLoPresetB": .beepLo,
+        "drumNoisePresetA": .noise, "drumNoisePresetB": .noise
+    ]
+    
+    /// Get the voice type for a drum parameter key
+    private func getDrumVoice(for key: String) -> DrumVoiceType? {
+        for (prefix, voice) in Self.drumParamPrefixes {
+            if key.hasPrefix(prefix) && !key.contains("Morph") && !key.contains("Preset") {
+                return voice
+            }
+        }
+        return nil
+    }
+    
+    /// Get the morph position for a drum voice
+    private func getDrumMorphPosition(for voice: DrumVoiceType) -> Double {
+        switch voice {
+        case .sub: return state.drumSubMorph
+        case .kick: return state.drumKickMorph
+        case .click: return state.drumClickMorph
+        case .beepHi: return state.drumBeepHiMorph
+        case .beepLo: return state.drumBeepLoMorph
+        case .noise: return state.drumNoiseMorph
+        }
+    }
+    
+    /// Handle drum synth slider changes for morph override tracking
+    func handleDrumSliderChange(key: String, value: Double) {
+        guard let voice = getDrumVoice(for: key) else { return }
+        
+        let morphPosition = getDrumMorphPosition(for: voice)
+        setDrumMorphOverride(voice: voice, param: key, value: value, morphPosition: morphPosition)
+    }
+    
+    /// Handle drum preset changes - clear appropriate endpoint overrides
+    func handleDrumPresetChange(key: String) {
+        guard let voice = Self.drumPresetVoiceMap[key] else { return }
+        
+        let isPresetA = key.contains("PresetA")
+        let morphPosition = getDrumMorphPosition(for: voice)
+        
+        // Only reset dual modes if the preset change affects current position
+        let atEndpoint0 = morphPosition < 0.01
+        let atEndpoint1 = morphPosition > 0.99
+        
+        if isPresetA {
+            // Clear endpoint 0 overrides
+            clearDrumMorphEndpointOverrides(voice: voice, endpoint: 0)
+            
+            // Only reset dual modes if not at endpoint 1
+            if !atEndpoint1 {
+                clearDrumDualModesForVoice(voice)
+            }
+        } else {
+            // Clear endpoint 1 overrides
+            clearDrumMorphEndpointOverrides(voice: voice, endpoint: 1)
+            
+            // Only reset dual modes if not at endpoint 0
+            if !atEndpoint0 {
+                clearDrumDualModesForVoice(voice)
+            }
+        }
+    }
+    
+    /// Handle drum morph position changes - clear mid-morph overrides at endpoints
+    func handleDrumMorphChange(voice: DrumVoiceType, morphValue: Double) {
+        let atEndpoint = morphValue < 0.01 || morphValue > 0.99
+        if atEndpoint {
+            clearMidMorphOverrides(voice: voice)
+        }
+    }
+    
+    /// Clear dual modes for a drum voice's parameters
+    private func clearDrumDualModesForVoice(_ voice: DrumVoiceType) {
+        let prefix: String
+        switch voice {
+        case .sub: prefix = "drumSub"
+        case .kick: prefix = "drumKick"
+        case .click: prefix = "drumClick"
+        case .beepHi: prefix = "drumBeepHi"
+        case .beepLo: prefix = "drumBeepLo"
+        case .noise: prefix = "drumNoise"
+        }
+        
+        // Remove dual ranges for this voice
+        dualRanges = dualRanges.filter { key, _ in
+            !(key.hasPrefix(prefix) && !key.contains("Morph") && !key.contains("Preset"))
+        }
+    }
+    
+    /// Handle dual slider changes for drum morph
+    func handleDrumDualSliderChange(
+        key: String,
+        isDualMode: Bool,
+        value: Double,
+        range: (min: Double, max: Double)?
+    ) {
+        guard let voice = getDrumVoice(for: key) else { return }
+        
+        let morphPosition = getDrumMorphPosition(for: voice)
+        setDrumMorphDualRangeOverride(
+            voice: voice,
+            param: key,
+            isDualMode: isDualMode,
+            value: value,
+            range: range,
+            morphPosition: morphPosition
+        )
     }
     
     /// Helper to update a SliderState property by key
