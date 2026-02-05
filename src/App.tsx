@@ -3095,7 +3095,6 @@ const App: React.FC = () => {
             zIndex: 9999,
             opacity: splashOpacity,
             transition: 'opacity 1s ease-in-out',
-            pointerEvents: showSplash ? 'auto' : 'none',
           }}>
             <span style={{
               fontSize: 'min(20vw, 120px)',
@@ -3109,15 +3108,22 @@ const App: React.FC = () => {
             </span>
           </div>
         )}
-        <SnowflakeUI
-        state={state}
-        onChange={handleSliderChange}
-        onShowAdvanced={() => setUiMode('advanced')}
-        onTogglePlay={engineState.isRunning ? handleStop : handleStart}
-        onLoadPreset={handleLoadPresetFromList}
-        presets={savedPresets}
-        isPlaying={engineState.isRunning}
-      />
+        {/* Hide SnowflakeUI until splash is done */}
+        <div style={{ 
+          opacity: showSplash ? 0 : 1,
+          transition: 'opacity 0.5s ease-in-out',
+          visibility: showSplash ? 'hidden' : 'visible',
+        }}>
+          <SnowflakeUI
+            state={state}
+            onChange={handleSliderChange}
+            onShowAdvanced={() => setUiMode('advanced')}
+            onTogglePlay={engineState.isRunning ? handleStop : handleStart}
+            onLoadPreset={handleLoadPresetFromList}
+            presets={savedPresets}
+            isPlaying={engineState.isRunning}
+          />
+        </div>
       </>
     );
   }
