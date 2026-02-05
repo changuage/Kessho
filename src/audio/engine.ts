@@ -2446,6 +2446,16 @@ export class AudioEngine {
       cofCurrentStep: this.cofConfig.currentStep,
     };
   }
+
+  // Recording support - get audio context
+  getAudioContext(): AudioContext | null {
+    return this.ctx;
+  }
+
+  // Recording support - get limiter node (final output before destination)
+  getLimiterNode(): DynamicsCompressorNode | null {
+    return this.limiter;
+  }
 }
 
 // Singleton instance

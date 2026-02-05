@@ -13,6 +13,7 @@ import { SliderState } from './state';
 const TEXT_SYMBOLS = {
   play: '▶\uFE0E',
   stop: '■\uFE0E',
+  record: '●\uFE0E',
   hexagon: '⬡\uFE0E',
   sparkle: '✲\uFE0E',
 } as const;
@@ -31,6 +32,13 @@ interface SnowflakeUIProps {
   onLoadPreset: (preset: SavedPreset) => void;
   presets: SavedPreset[];
   isPlaying: boolean;
+  // Recording
+  isRecording?: boolean;
+  isRecordingArmed?: boolean;
+  recordingDuration?: number;
+  onStartRecording?: () => void;
+  onStopRecording?: () => void;
+  onArmRecording?: () => void;
 }
 
 // Macro slider configuration
@@ -250,7 +258,7 @@ function drawArm(
   }
 }
 
-const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanced, onTogglePlay, onLoadPreset, presets, isPlaying }) => {
+const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanced, onTogglePlay, onLoadPreset, presets, isPlaying, isRecording, isRecordingArmed, recordingDuration, onStartRecording, onStopRecording, onArmRecording }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [dragging, setDragging] = useState<number | null>(null);  // Dragging prong handle (level)
   const [hovering, setHovering] = useState<number | null>(null);
@@ -525,19 +533,81 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
 
   return (
     <div style={styles.container}>
-      {/* Play button - positioned between top edge and canvas */}
-      <button 
-        style={{
-          ...(isPlaying ? styles.stopButton : styles.playButton),
-          position: 'absolute',
-          top: Math.max(10, playButtonTop),
-          left: '50%',
-          transform: 'translateX(-50%)',
-        }} 
-        onClick={onTogglePlay}
-      >
-        {isPlaying ? TEXT_SYMBOLS.stop : TEXT_SYMBOLS.play}
-      </button>
+      {/* Play and Record buttons - positioned between top edge and canvas */}
+      <div style={{
+        position: 'absolute',
+        top: Math.max(10, playButtonTop),
+        left: '50%',
+        transform: 'translateX(-50%)',
+        display: 'flex',
+        gap: '30px',
+        alignItems: 'center',
+      }}>
+        <button 
+          style={isPlaying ? styles.stopButton : styles.playButton} 
+          onClick={onTogglePlay}
+        >
+          {isPlaying ? TEXT_SYMBOLS.stop : TEXT_SYMBOLS.play}
+        </button>
+        {/* Record button - always visible, can arm before playing */}
+        {onStartRecording && onStopRecording && (
+          <button
+            style={{
+              width: '15px',
+              height: '15px',
+              borderRadius: '50%',
+              border: isRecordingArmed ? '2px solid #FF4444' : 'none',
+              cursor: 'pointer',
+              // Idle: muted desaturated brownish-red, Armed: dark red, Recording: bright red
+              background: isRecording 
+                ? '#FF4444' 
+                : isRecordingArmed 
+                  ? '#6a1010'
+                  : '#5a3535',
+              boxShadow: isRecording 
+                ? '0 0 12px rgba(255, 68, 68, 0.8)' 
+                : isRecordingArmed
+                  ? '0 0 8px rgba(255, 68, 68, 0.4)'
+                  : '0 2px 6px rgba(0,0,0,0.4)',
+              animation: isRecording 
+                ? 'pulse 1s ease-in-out infinite' 
+                : isRecordingArmed 
+                  ? 'pulse 2s ease-in-out infinite'
+                  : 'none',
+              position: 'relative',
+              opacity: 1,
+              transition: 'all 0.2s',
+            }}
+            onClick={() => {
+              if (isRecording) {
+                onStopRecording();
+              } else if (isPlaying) {
+                onStartRecording();
+              } else if (onArmRecording) {
+                // Not playing - toggle armed state
+                onArmRecording();
+              }
+            }}
+            title={isRecording ? 'Stop Recording' : isRecordingArmed ? 'Recording armed - will start with playback' : isPlaying ? 'Start Recording' : 'Arm Recording (will start with playback)'}
+          >
+            {(isRecording || isRecordingArmed) && recordingDuration !== undefined && recordingDuration > 0 && (
+              <span style={{
+                position: 'absolute',
+                top: '-8px',
+                right: '-8px',
+                fontSize: '0.55rem',
+                background: '#FF4444',
+                color: 'white',
+                padding: '2px 5px',
+                borderRadius: '8px',
+                fontWeight: 'bold',
+              }}>
+                {Math.floor(recordingDuration / 60)}:{(recordingDuration % 60).toString().padStart(2, '0')}
+              </span>
+            )}
+          </button>
+        )}
+      </div>
 
       {/* Snowflake centered */}
       <div style={styles.snowflakeWrapper}>
@@ -922,7 +992,7 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
           left: '50%',
           transform: 'translateX(-50%)',
           display: 'flex',
-          gap: '20px',
+          gap: '23px',
           alignItems: 'center',
         }}
       >
@@ -997,8 +1067,8 @@ const styles: { [key: string]: React.CSSProperties } = {
     justifyContent: 'center',
   },
   stopButton: {
-    padding: '8px',
-    fontSize: '1.5rem',
+    padding: '0',
+    fontSize: '1.875rem',
     fontWeight: 'bold',
     border: 'none',
     borderRadius: '50%',
@@ -1012,6 +1082,8 @@ const styles: { [key: string]: React.CSSProperties } = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
+    lineHeight: 0.8,
+    paddingBottom: '5px',
   },
   advancedButton: {
     padding: '8px',

@@ -31,6 +31,7 @@ const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 
 const TEXT_SYMBOLS = {
   play: '▶\uFE0E',
   stop: '■\uFE0E',
+  record: '●\uFE0E',
   range: '⟷\uFE0E',
   random: '⟷\uFE0E',
   download: '⬇\uFE0E',
@@ -350,6 +351,18 @@ const styles = {
   } as React.CSSProperties,
   stopButton: {
     color: '#ED5A24',
+  } as React.CSSProperties,
+  recordButton: {
+    color: '#FF4444',
+  } as React.CSSProperties,
+  recordArmedButton: {
+    color: '#FF4444',
+    border: '2px solid #FF4444',
+    animation: 'pulse 2s ease-in-out infinite',
+  } as React.CSSProperties,
+  recordingButton: {
+    color: '#FF4444',
+    animation: 'pulse 1s ease-in-out infinite',
   } as React.CSSProperties,
   shareButton: {
     color: 'rgba(255,255,255,0.7)',
@@ -1016,14 +1029,38 @@ const App: React.FC = () => {
   const [showSplash, setShowSplash] = useState(true);
   const [splashOpacity, setSplashOpacity] = useState(0);
   
+  // Recording state
+  const [isRecording, setIsRecording] = useState(false);
+  const [isRecordingArmed, setIsRecordingArmed] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  // Format selection - can record both simultaneously
+  const [recordFormats, setRecordFormats] = useState({ webm: true, wav: false });
+  // Stem recording options (which buses to record pre-reverb)
+  const [recordStems, setRecordStems] = useState({
+    synth: false,
+    lead: false,
+    drums: false,
+    waves: false,
+    granular: false,
+    reverb: false,
+  });
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
+  const recordingStartTimeRef = useRef<number>(0);
+  const recordingIntervalRef = useRef<number | null>(null);
+  const recordingStreamDestRef = useRef<MediaStreamAudioDestinationNode | null>(null);
+  // WAV recording refs
+  const wavBuffersRef = useRef<Float32Array[][]>([[], []]); // [leftChannels, rightChannels]
+  const scriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
+
   // Splash screen animation
   useEffect(() => {
     // Fade in
     const fadeInTimer = setTimeout(() => setSplashOpacity(1), 100);
     // Hold
-    const holdTimer = setTimeout(() => setSplashOpacity(0), 2500);
+    const holdTimer = setTimeout(() => setSplashOpacity(0), 3750);
     // Hide splash
-    const hideTimer = setTimeout(() => setShowSplash(false), 3500);
+    const hideTimer = setTimeout(() => setShowSplash(false), 5250);
     
     return () => {
       clearTimeout(fadeInTimer);
@@ -1926,6 +1963,15 @@ const App: React.FC = () => {
       
       // Connect the MediaStream to the audio element for iOS background playback
       connectMediaSessionToWebAudio();
+      
+      // If recording was armed, start recording now
+      if (isRecordingArmed) {
+        setIsRecordingArmed(false);
+        // Small delay to ensure audio context is fully running
+        setTimeout(() => {
+          handleStartRecording();
+        }, 50);
+      }
     } catch (err) {
       console.error('Failed to start audio:', err);
       alert(`Audio failed to start: ${err instanceof Error ? err.message : String(err)}\n\nCheck console for details.`);
@@ -1933,8 +1979,242 @@ const App: React.FC = () => {
   };
 
   const handleStop = () => {
+    // Don't stop recording when stopping playback - let tails continue
+    // Recording must be stopped manually
     stopIOSMediaSession();
     audioEngine.stop();
+  };
+  
+  // Arm recording - will start recording when playback starts
+  const handleArmRecording = () => {
+    setIsRecordingArmed(prev => !prev);
+  };
+
+  // WAV encoding helper - creates 24-bit 48kHz WAV
+  const encodeWav24bit = (leftChannel: Float32Array, rightChannel: Float32Array, sampleRate: number): ArrayBuffer => {
+    const numChannels = 2;
+    const bitsPerSample = 24;
+    const bytesPerSample = bitsPerSample / 8;
+    const numSamples = leftChannel.length;
+    const dataSize = numSamples * numChannels * bytesPerSample;
+    const headerSize = 44;
+    const buffer = new ArrayBuffer(headerSize + dataSize);
+    const view = new DataView(buffer);
+    
+    // Helper to write string
+    const writeString = (offset: number, str: string) => {
+      for (let i = 0; i < str.length; i++) {
+        view.setUint8(offset + i, str.charCodeAt(i));
+      }
+    };
+    
+    // RIFF header
+    writeString(0, 'RIFF');
+    view.setUint32(4, 36 + dataSize, true);
+    writeString(8, 'WAVE');
+    
+    // fmt chunk
+    writeString(12, 'fmt ');
+    view.setUint32(16, 16, true); // chunk size
+    view.setUint16(20, 1, true); // PCM format
+    view.setUint16(22, numChannels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * numChannels * bytesPerSample, true); // byte rate
+    view.setUint16(32, numChannels * bytesPerSample, true); // block align
+    view.setUint16(34, bitsPerSample, true);
+    
+    // data chunk
+    writeString(36, 'data');
+    view.setUint32(40, dataSize, true);
+    
+    // Write interleaved 24-bit samples
+    let offset = 44;
+    for (let i = 0; i < numSamples; i++) {
+      // Left channel - clamp and convert to 24-bit signed integer
+      const leftSample = Math.max(-1, Math.min(1, leftChannel[i]));
+      const leftInt = Math.floor(leftSample * 8388607); // 2^23 - 1
+      view.setUint8(offset, leftInt & 0xFF);
+      view.setUint8(offset + 1, (leftInt >> 8) & 0xFF);
+      view.setUint8(offset + 2, (leftInt >> 16) & 0xFF);
+      offset += 3;
+      
+      // Right channel
+      const rightSample = Math.max(-1, Math.min(1, rightChannel[i]));
+      const rightInt = Math.floor(rightSample * 8388607);
+      view.setUint8(offset, rightInt & 0xFF);
+      view.setUint8(offset + 1, (rightInt >> 8) & 0xFF);
+      view.setUint8(offset + 2, (rightInt >> 16) & 0xFF);
+      offset += 3;
+    }
+    
+    return buffer;
+  };
+
+  // Recording functions
+  const handleStartRecording = () => {
+    const ctx = audioEngine.getAudioContext();
+    const limiterNode = audioEngine.getLimiterNode();
+    if (!ctx || !limiterNode) {
+      console.error('Audio context not available for recording');
+      return;
+    }
+    
+    // Must have at least one format selected
+    if (!recordFormats.webm && !recordFormats.wav) {
+      alert('Please select at least one recording format (WebM or WAV)');
+      return;
+    }
+
+    try {
+      // Always capture WAV data (for WAV output or both)
+      if (recordFormats.wav || recordFormats.webm) {
+        // WAV recording using ScriptProcessorNode for raw PCM capture
+        wavBuffersRef.current = [[], []];
+        const bufferSize = 4096;
+        const scriptProcessor = ctx.createScriptProcessor(bufferSize, 2, 2);
+        
+        scriptProcessor.onaudioprocess = (e) => {
+          const leftData = e.inputBuffer.getChannelData(0);
+          const rightData = e.inputBuffer.getChannelData(1);
+          // Copy the data since the buffer is reused
+          wavBuffersRef.current[0].push(new Float32Array(leftData));
+          wavBuffersRef.current[1].push(new Float32Array(rightData));
+        };
+        
+        limiterNode.connect(scriptProcessor);
+        scriptProcessor.connect(ctx.destination); // Required for processing to work
+        scriptProcessorRef.current = scriptProcessor;
+      }
+      
+      // WebM recording using MediaRecorder (if selected)
+      if (recordFormats.webm) {
+        const streamDest = ctx.createMediaStreamDestination();
+        limiterNode.connect(streamDest);
+        recordingStreamDestRef.current = streamDest;
+
+        const mediaRecorder = new MediaRecorder(streamDest.stream, {
+          mimeType: 'audio/webm;codecs=opus',
+          audioBitsPerSecond: 256000,
+        });
+
+        recordedChunksRef.current = [];
+
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            recordedChunksRef.current.push(event.data);
+          }
+        };
+
+        mediaRecorder.start(1000);
+        mediaRecorderRef.current = mediaRecorder;
+      }
+      
+      recordingStartTimeRef.current = Date.now();
+      setIsRecording(true);
+      setRecordingDuration(0);
+
+      recordingIntervalRef.current = window.setInterval(() => {
+        setRecordingDuration(Math.floor((Date.now() - recordingStartTimeRef.current) / 1000));
+      }, 1000);
+
+      const formats = [recordFormats.webm && 'WebM', recordFormats.wav && 'WAV'].filter(Boolean).join(' + ');
+      console.log(`Recording started: ${formats}`);
+    } catch (err) {
+      console.error('Failed to start recording:', err);
+    }
+  };
+
+  const handleStopRecording = () => {
+    if (recordingIntervalRef.current) {
+      clearInterval(recordingIntervalRef.current);
+      recordingIntervalRef.current = null;
+    }
+    
+    const ctx = audioEngine.getAudioContext();
+    const limiterNode = audioEngine.getLimiterNode();
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    
+    // Stop ScriptProcessor for WAV
+    if (scriptProcessorRef.current) {
+      if (limiterNode) {
+        try {
+          limiterNode.disconnect(scriptProcessorRef.current);
+        } catch (e) { /* ignore */ }
+      }
+      scriptProcessorRef.current.disconnect();
+      scriptProcessorRef.current = null;
+    }
+    
+    // Export WAV if selected
+    if (recordFormats.wav) {
+      const leftBuffers = wavBuffersRef.current[0];
+      const rightBuffers = wavBuffersRef.current[1];
+      const totalSamples = leftBuffers.reduce((acc, buf) => acc + buf.length, 0);
+      
+      if (totalSamples > 0) {
+        const leftChannel = new Float32Array(totalSamples);
+        const rightChannel = new Float32Array(totalSamples);
+        let offset = 0;
+        for (let i = 0; i < leftBuffers.length; i++) {
+          leftChannel.set(leftBuffers[i], offset);
+          rightChannel.set(rightBuffers[i], offset);
+          offset += leftBuffers[i].length;
+        }
+        
+        const sampleRate = ctx?.sampleRate || 48000;
+        const wavBuffer = encodeWav24bit(leftChannel, rightChannel, sampleRate);
+        const blob = new Blob([wavBuffer], { type: 'audio/wav' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `kessho-${timestamp}.wav`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        console.log(`WAV exported: ${totalSamples} samples at ${sampleRate}Hz, 24-bit`);
+      }
+    }
+    
+    wavBuffersRef.current = [[], []];
+    
+    // Stop and export WebM if selected
+    if (recordFormats.webm && mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      // Set up export callback before stopping
+      mediaRecorderRef.current.onstop = () => {
+        const blob = new Blob(recordedChunksRef.current, { type: 'audio/webm' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `kessho-${timestamp}.webm`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        if (recordingStreamDestRef.current && limiterNode) {
+          try {
+            limiterNode.disconnect(recordingStreamDestRef.current);
+          } catch (e) { /* ignore */ }
+          recordingStreamDestRef.current = null;
+        }
+        
+        console.log('WebM exported');
+      };
+      
+      mediaRecorderRef.current.stop();
+    }
+    
+    setIsRecording(false);
+    setRecordingDuration(0);
+    console.log('Recording stopped');
+  };
+
+  const formatRecordingTime = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   // Save preset to file in presets folder
@@ -3108,12 +3388,14 @@ const App: React.FC = () => {
               結晶
             </span>
             <span style={{
-              fontSize: 'min(6vw, 36px)',
+              fontSize: 'min(8.5vw, 51px)',
               color: 'rgba(255,255,255,0.8)',
               fontWeight: 300,
-              letterSpacing: '0.2em',
+              letterSpacing: '0.28em',
               marginTop: '0.5em',
+              textTransform: 'lowercase',
               fontFamily: "Avenir, 'Avenir Next', -apple-system, BlinkMacSystemFont, sans-serif",
+              textAlign: 'center',
             }}>
               kesshō
             </span>
@@ -3133,6 +3415,12 @@ const App: React.FC = () => {
             onLoadPreset={handleLoadPresetFromList}
             presets={savedPresets}
             isPlaying={engineState.isRunning}
+            isRecording={isRecording}
+            isRecordingArmed={isRecordingArmed}
+            recordingDuration={recordingDuration}
+            onStartRecording={handleStartRecording}
+            onStopRecording={handleStopRecording}
+            onArmRecording={handleArmRecording}
           />
         </div>
       </>
@@ -3142,16 +3430,8 @@ const App: React.FC = () => {
   // Render advanced UI
   return (
     <div style={styles.container}>
-      {/* Header */}
-      <div style={styles.header}>
-        <h1 style={styles.title}>Kessho</h1>
-        <p style={styles.subtitle}>
-          Auditory Snowflakes
-        </p>
-      </div>
-
-      {/* Controls */}
-      <div style={styles.controls}>
+      {/* Controls - centered */}
+      <div style={{ ...styles.controls, paddingTop: '12px' }}>
         {!engineState.isRunning ? (
           <button
             style={{ ...styles.iconButton, ...styles.startButton }}
@@ -3169,6 +3449,42 @@ const App: React.FC = () => {
             {TEXT_SYMBOLS.stop}
           </button>
         )}
+        {/* Record button - can arm before playing */}
+        <button
+          style={{ 
+            ...styles.iconButton, 
+            ...(isRecording ? styles.recordingButton : isRecordingArmed ? styles.recordArmedButton : styles.recordButton),
+            position: 'relative',
+            opacity: 1,
+          }}
+          onClick={() => {
+            if (isRecording) {
+              handleStopRecording();
+            } else if (engineState.isRunning) {
+              handleStartRecording();
+            } else {
+              handleArmRecording();
+            }
+          }}
+          title={isRecording ? `Recording ${formatRecordingTime(recordingDuration)} - Click to stop` : isRecordingArmed ? 'Recording armed - will start with playback (click to disarm)' : (engineState.isRunning ? 'Start Recording' : 'Arm Recording (will start with playback)')}
+        >
+          {TEXT_SYMBOLS.record}
+          {isRecording && (
+            <span style={{
+              position: 'absolute',
+              top: '-6px',
+              right: '-6px',
+              fontSize: '0.55rem',
+              background: '#FF4444',
+              color: 'white',
+              padding: '1px 4px',
+              borderRadius: '8px',
+              fontWeight: 'bold',
+            }}>
+              {formatRecordingTime(recordingDuration)}
+            </span>
+          )}
+        </button>
         <button
           style={{ ...styles.iconButton, ...styles.presetButton }}
           onClick={handleSavePreset}
@@ -3182,13 +3498,6 @@ const App: React.FC = () => {
           title="Import Preset"
         >
           {TEXT_SYMBOLS.upload}
-        </button>
-        <button
-          style={{ ...styles.iconButton, ...styles.presetButton }}
-          onClick={() => setShowPresetList(!showPresetList)}
-          title={showPresetList ? 'Hide Presets' : 'Load Preset'}
-        >
-          {TEXT_SYMBOLS.hexagon}{savedPresets.length > 0 && <span style={styles.badge}>{savedPresets.length}</span>}
         </button>
         <button
           style={{ ...styles.iconButton, ...styles.simpleButton }}
@@ -3916,6 +4225,123 @@ const App: React.FC = () => {
             audioEngine.resetCofDrift();
           }}
         />
+
+        {/* Recording */}
+        <CollapsiblePanel
+          id="recording"
+          title="Recording"
+          isMobile={isMobile}
+          isExpanded={expandedPanels.has('recording')}
+          onToggle={togglePanel}
+        >
+          {/* Format Selection - can select both */}
+          <div style={{ marginBottom: '16px' }}>
+            <div style={{ fontSize: '0.85rem', color: '#aaa', marginBottom: '4px' }}>Output Format</div>
+            <div style={{ fontSize: '0.65rem', color: '#666', marginBottom: '8px' }}>
+              Select one or both formats to record simultaneously
+            </div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                onClick={() => setRecordFormats(prev => ({ ...prev, webm: !prev.webm }))}
+                disabled={isRecording}
+                style={{
+                  flex: 1,
+                  padding: '10px',
+                  borderRadius: '6px',
+                  border: `1px solid ${recordFormats.webm ? '#22c55e' : '#444'}`,
+                  background: recordFormats.webm ? 'linear-gradient(135deg, #166534, #14532d)' : 'rgba(30, 30, 40, 0.8)',
+                  color: recordFormats.webm ? '#86efac' : '#888',
+                  cursor: isRecording ? 'not-allowed' : 'pointer',
+                  opacity: isRecording ? 0.5 : 1,
+                }}
+              >
+                <div style={{ fontWeight: 'bold', fontSize: '0.85rem' }}>{recordFormats.webm ? '●' : '○'} WebM</div>
+                <div style={{ fontSize: '0.65rem', opacity: 0.8 }}>Opus · ~2 MB/min</div>
+              </button>
+              <button
+                onClick={() => setRecordFormats(prev => ({ ...prev, wav: !prev.wav }))}
+                disabled={isRecording}
+                style={{
+                  flex: 1,
+                  padding: '10px',
+                  borderRadius: '6px',
+                  border: `1px solid ${recordFormats.wav ? '#22c55e' : '#444'}`,
+                  background: recordFormats.wav ? 'linear-gradient(135deg, #166534, #14532d)' : 'rgba(30, 30, 40, 0.8)',
+                  color: recordFormats.wav ? '#86efac' : '#888',
+                  cursor: isRecording ? 'not-allowed' : 'pointer',
+                  opacity: isRecording ? 0.5 : 1,
+                }}
+              >
+                <div style={{ fontWeight: 'bold', fontSize: '0.85rem' }}>{recordFormats.wav ? '●' : '○'} WAV</div>
+                <div style={{ fontSize: '0.65rem', opacity: 0.8 }}>24-bit 48kHz · ~17 MB/min</div>
+              </button>
+            </div>
+          </div>
+
+          {/* Stem Recording Options */}
+          <div style={{ marginBottom: '16px', paddingTop: '12px', borderTop: '1px solid #333' }}>
+            <div style={{ fontSize: '0.85rem', color: '#aaa', marginBottom: '8px' }}>
+              Stem Recording (Pre-Reverb)
+            </div>
+            <div style={{ fontSize: '0.65rem', color: '#666', marginBottom: '12px' }}>
+              Record individual engine outputs before reverb send
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+              {[
+                { key: 'synth', label: 'Synth' },
+                { key: 'lead', label: 'Lead' },
+                { key: 'drums', label: 'Drums' },
+                { key: 'waves', label: 'Waves' },
+                { key: 'granular', label: 'Granular' },
+                { key: 'reverb', label: 'Reverb' },
+              ].map(({ key, label }) => (
+                <button
+                  key={key}
+                  onClick={() => setRecordStems(prev => ({ ...prev, [key]: !prev[key as keyof typeof prev] }))}
+                  disabled={isRecording}
+                  style={{
+                    padding: '8px',
+                    borderRadius: '6px',
+                    border: `1px solid ${recordStems[key as keyof typeof recordStems] ? '#3b82f6' : '#444'}`,
+                    background: recordStems[key as keyof typeof recordStems] 
+                      ? 'linear-gradient(135deg, #1e40af, #1e3a8a)' 
+                      : 'rgba(30, 30, 40, 0.8)',
+                    color: recordStems[key as keyof typeof recordStems] ? '#93c5fd' : '#888',
+                    cursor: isRecording ? 'not-allowed' : 'pointer',
+                    opacity: isRecording ? 0.5 : 1,
+                    fontSize: '0.75rem',
+                    fontWeight: recordStems[key as keyof typeof recordStems] ? 'bold' : 'normal',
+                  }}
+                >
+                  {recordStems[key as keyof typeof recordStems] ? '●' : '○'} {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Recording Status */}
+          {isRecording && (
+            <div style={{ 
+              padding: '12px', 
+              background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.2), rgba(185, 28, 28, 0.2))',
+              borderRadius: '8px',
+              border: '1px solid rgba(239, 68, 68, 0.4)',
+              textAlign: 'center',
+            }}>
+              <div style={{ 
+                fontSize: '1.5rem', 
+                fontWeight: 'bold', 
+                color: '#fca5a5',
+                animation: 'pulse 1s ease-in-out infinite',
+              }}>
+                ● {formatRecordingTime(recordingDuration)}
+              </div>
+              <div style={{ fontSize: '0.7rem', color: '#f87171', marginTop: '4px' }}>
+                Recording in progress...
+              </div>
+            </div>
+          )}
+        </CollapsiblePanel>
         </>)}
 
         {/* === SYNTH + LEAD TAB === */}
@@ -8623,6 +9049,19 @@ const App: React.FC = () => {
             {engineState.harmonyState?.phrasesUntilChange || '—'}
           </span>
         </div>
+      </div>
+
+      {/* Footer with kanji */}
+      <div style={{
+        textAlign: 'center',
+        padding: '20px 0 30px 0',
+        fontFamily: "'Zen Maru Gothic', sans-serif",
+        fontSize: 'min(10vw, 48px)',
+        color: 'rgba(255,255,255,0.4)',
+        fontWeight: 300,
+        letterSpacing: '0.1em',
+      }}>
+        結晶
       </div>
 
       {/* Upload Slot Choice Dialog */}
