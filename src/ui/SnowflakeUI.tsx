@@ -345,9 +345,24 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Clear canvas with dark background
-    ctx.fillStyle = '#0a0a12';
-    ctx.fillRect(0, 0, canvasSize, canvasSize);
+    // Clear canvas with transparent background first
+    ctx.clearRect(0, 0, canvasSize, canvasSize);
+    
+    // EXPERIMENTAL: Draw radial gradient background that fades to transparent at edges
+    // Original was: ctx.fillStyle = '#0a0a12'; ctx.fillRect(0, 0, canvasSize, canvasSize);
+    const bgGradient = ctx.createRadialGradient(
+      centerX, centerY, 0,
+      centerX, centerY, canvasSize / 2
+    );
+    bgGradient.addColorStop(0, '#0a0a12');      // Dark center
+    bgGradient.addColorStop(0.7, '#0a0a12');    // Stay solid until 70%
+    bgGradient.addColorStop(0.85, 'rgba(10, 10, 18, 0.7)');  // Start fading
+    bgGradient.addColorStop(0.92, 'rgba(10, 10, 18, 0.3)');  // More transparent
+    bgGradient.addColorStop(1, 'rgba(10, 10, 18, 0)');       // Fully transparent at edge
+    ctx.fillStyle = bgGradient;
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, canvasSize / 2, 0, Math.PI * 2);
+    ctx.fill();
 
     const { lengths: armLengths, widths: armWidths } = getArmValues(state);
 
@@ -638,6 +653,25 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
             transition: 'opacity 0.5s ease-in-out',
           }}
         >
+          {/* Soft halo glow behind the outer ring - EXPERIMENTAL, remove if not wanted */}
+          <defs>
+            <filter id="ringHaloBlur" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur in="SourceGraphic" stdDeviation="12" />
+            </filter>
+          </defs>
+          <circle
+            cx={centerX}
+            cy={centerY}
+            r={outerRingRadius}
+            fill="none"
+            stroke="rgba(60,113,129,0.25)"
+            strokeWidth={20}
+            style={{ 
+              filter: 'url(#ringHaloBlur)',
+              pointerEvents: 'none',
+            }}
+          />
+          
           {/* Outer ring for Master Volume */}
           <circle
             cx={centerX}
@@ -1041,7 +1075,15 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
   canvas: {
     borderRadius: '50%',
-    boxShadow: '0 0 60px rgba(100, 150, 220, 0.2), inset 0 0 40px rgba(100, 150, 220, 0.1)',
+    // EXPERIMENTAL soft halo edge - original was just the boxShadow below
+    // Original: boxShadow: '0 0 60px rgba(100, 150, 220, 0.2), inset 0 0 40px rgba(100, 150, 220, 0.1)',
+    boxShadow: `
+      0 0 30px rgba(60, 113, 129, 0.3),
+      0 0 60px rgba(60, 113, 129, 0.2),
+      0 0 100px rgba(60, 113, 129, 0.15),
+      0 0 150px rgba(22, 33, 62, 0.4),
+      inset 0 0 40px rgba(100, 150, 220, 0.1)
+    `,
   },
   svgOverlay: {
     position: 'absolute',

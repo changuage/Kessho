@@ -1030,19 +1030,30 @@ const App: React.FC = () => {
   const [showSplash, setShowSplash] = useState(true);
   const [splashOpacity, setSplashOpacity] = useState(0);
   
-  // Splash gradient colors - randomly initialized
+  // Splash gradient colors - procedurally generated from app's color palette
   const [splashGradient] = useState(() => {
+    // App color palette (from SnowflakeUI prongs):
+    // #E8DCC4 warm cream, #C4724E muted orange, #7B9A6D sage green
+    // #D4A520 mustard gold, #8B5CF6 purple, #5A7B8A slate blue
+    // #3C7181 teal, #C1930A gold accent
     const palettes = [
-      // Warm coral / red-orange (original)
-      { inner: '#E1633B', mid: '#D75336', outer: '#8B2500' },
-      // Pale yellow field + orange halo + dark red
-      { inner: '#F5DEB3', mid: '#E8842A', outer: '#8B0000' },
-      // Soft coral to deep crimson
-      { inner: '#FF7F7F', mid: '#DC5B3E', outer: '#6B1A1A' },
-      // Peach to burnt orange
-      { inner: '#FFDAB9', mid: '#E07020', outer: '#8B3A00' },
+      { baseHue: 25, name: 'orange' },   // Muted orange (#C4724E)
+      { baseHue: 95, name: 'sage' },     // Sage green (#7B9A6D)  
+      { baseHue: 45, name: 'gold' },     // Mustard gold (#D4A520)
+      { baseHue: 265, name: 'purple' },  // Purple (#8B5CF6)
+      { baseHue: 200, name: 'slate' },   // Slate blue (#5A7B8A)
+      { baseHue: 190, name: 'teal' },    // Teal (#3C7181)
     ];
-    return palettes[Math.floor(Math.random() * palettes.length)];
+    
+    const palette = palettes[Math.floor(Math.random() * palettes.length)];
+    const hueVariation = (Math.random() - 0.5) * 20;
+    
+    // Muted, desaturated colors to blend with dark theme
+    const inner = `hsl(${palette.baseHue + hueVariation}, ${30 + Math.random() * 15}%, ${40 + Math.random() * 12}%)`;
+    const mid = `hsl(${palette.baseHue}, ${35 + Math.random() * 12}%, ${30 + Math.random() * 8}%)`;
+    const outer = `hsl(${palette.baseHue - 10}, ${25 + Math.random() * 10}%, ${15 + Math.random() * 6}%)`;
+    
+    return { inner, mid, outer };
   });
   
   // Window size for splash gradient circle sizing
@@ -3570,30 +3581,22 @@ const App: React.FC = () => {
             opacity: splashOpacity,
             transition: 'opacity 1s ease-in-out',
           }}>
-            {/* SVG filter for grain effect */}
-            <svg style={{ position: 'absolute', width: 0, height: 0 }}>
-              <defs>
-                <filter id="splashGrain" x="0%" y="0%" width="100%" height="100%">
-                  <feTurbulence type="fractalNoise" baseFrequency="0.015" numOctaves="2" result="noise" seed={Math.random() * 100} />
-                  <feColorMatrix type="saturate" values="0" result="monoNoise" />
-                  <feBlend in="SourceGraphic" in2="monoNoise" mode="soft-light" />
-                </filter>
-              </defs>
-            </svg>
-            
-            {/* Gradient circle behind text */}
+            {/* Gradient circle behind text with fuzzy halo edge */}
             <div style={{
               position: 'absolute',
-              width: circleSize,
-              height: circleSize,
+              width: circleSize * 1.5,
+              height: circleSize * 1.5,
               borderRadius: '50%',
               background: `radial-gradient(circle at center, 
                 ${splashGradient.inner} 0%, 
-                ${splashGradient.mid} 40%, 
-                ${splashGradient.outer} 70%,
-                transparent 100%)`,
-              filter: 'url(#splashGrain) blur(8px)',
-              opacity: 0.7,
+                ${splashGradient.mid} 30%, 
+                ${splashGradient.outer} 50%,
+                rgba(22, 33, 62, 0.6) 65%,
+                rgba(15, 52, 96, 0.3) 75%,
+                rgba(26, 26, 46, 0.1) 85%,
+                transparent 95%)`,
+              filter: 'blur(15px)',
+              opacity: 0.85,
             }} />
             
             <span style={{
