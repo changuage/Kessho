@@ -17,7 +17,7 @@ import { audioEngine, EngineState } from './audio/engine';
 import { SCALE_FAMILIES } from './audio/scales';
 import { formatChordDegrees, getTimeUntilNextPhrase, calculateDriftedRoot } from './audio/harmony';
 import { getPresetNames, DrumVoiceType as DrumPresetVoice } from './audio/drumPresets';
-import { applyMorphToState, setDrumMorphOverride, clearDrumMorphOverrides, clearDrumMorphEndpointOverrides, clearMidMorphOverrides, setDrumMorphDualRangeOverride, getDrumMorphDualRangeOverrides, interpolateDrumMorphDualRanges } from './audio/drumMorph';
+import { applyMorphToState, setDrumMorphOverride, clearDrumMorphEndpointOverrides, clearMidMorphOverrides, setDrumMorphDualRangeOverride, getDrumMorphDualRangeOverrides, interpolateDrumMorphDualRanges } from './audio/drumMorph';
 import { isInMidMorph, isAtEndpoint0 } from './audio/morphUtils';
 import SnowflakeUI from './ui/SnowflakeUI';
 import { CircleOfFifths, getMorphedRootNote } from './ui/CircleOfFifths';
@@ -2136,7 +2136,7 @@ const App: React.FC = () => {
       // Drum voice params - should interpolate when master morph changes
       'drumLevel', 'drumSubFreq', 'drumSubDecay', 'drumSubLevel', 'drumSubTone',
       'drumKickFreq', 'drumKickPitchEnv', 'drumKickPitchDecay', 'drumKickDecay', 'drumKickLevel', 'drumKickClick',
-      'drumClickDecay', 'drumClickFilterFreq', 'drumClickFilterQ', 'drumClickLevel',
+      'drumClickDecay', 'drumClickFilter', 'drumClickResonance', 'drumClickLevel', 'drumClickTone', 'drumClickPitch', 'drumClickPitchEnv',
       'drumBeepHiFreq', 'drumBeepHiAttack', 'drumBeepHiDecay', 'drumBeepHiTone', 'drumBeepHiLevel',
       'drumBeepLoFreq', 'drumBeepLoAttack', 'drumBeepLoDecay', 'drumBeepLoTone', 'drumBeepLoLevel',
       'drumNoiseFilterFreq', 'drumNoiseFilterQ', 'drumNoiseAttack', 'drumNoiseDecay', 'drumNoiseLevel',
