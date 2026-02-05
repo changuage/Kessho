@@ -1030,6 +1030,33 @@ const App: React.FC = () => {
   const [showSplash, setShowSplash] = useState(true);
   const [splashOpacity, setSplashOpacity] = useState(0);
   
+  // Splash gradient colors - randomly initialized
+  const [splashGradient] = useState(() => {
+    const palettes = [
+      // Warm coral / red-orange (original)
+      { inner: '#E1633B', mid: '#D75336', outer: '#8B2500' },
+      // Pale yellow field + orange halo + dark red
+      { inner: '#F5DEB3', mid: '#E8842A', outer: '#8B0000' },
+      // Soft coral to deep crimson
+      { inner: '#FF7F7F', mid: '#DC5B3E', outer: '#6B1A1A' },
+      // Peach to burnt orange
+      { inner: '#FFDAB9', mid: '#E07020', outer: '#8B3A00' },
+    ];
+    return palettes[Math.floor(Math.random() * palettes.length)];
+  });
+  
+  // Window size for splash gradient circle sizing
+  const [windowSize, setWindowSize] = useState({ 
+    width: typeof window !== 'undefined' ? window.innerWidth : 800, 
+    height: typeof window !== 'undefined' ? window.innerHeight : 600 
+  });
+  
+  useEffect(() => {
+    const handleResize = () => setWindowSize({ width: window.innerWidth, height: window.innerHeight });
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+  
   // Recording state
   const [isRecording, setIsRecording] = useState(false);
   const [isRecordingArmed, setIsRecordingArmed] = useState(false);
@@ -3519,7 +3546,15 @@ const App: React.FC = () => {
     return (
       <>
         {/* Splash Screen */}
-        {showSplash && (
+        {showSplash && (() => {
+          // Calculate circle size matching snowflake UI
+          const smallerDimension = Math.min(windowSize.width, windowSize.height - 100);
+          const isMobile = windowSize.width < 1024;
+          const circleSize = isMobile 
+            ? Math.max(250, Math.min(smallerDimension * 0.875, 650))
+            : Math.max(200, Math.min(smallerDimension * 0.7, 550));
+          
+          return (
           <div style={{
             position: 'fixed',
             top: 0,
@@ -3535,6 +3570,32 @@ const App: React.FC = () => {
             opacity: splashOpacity,
             transition: 'opacity 1s ease-in-out',
           }}>
+            {/* SVG filter for grain effect */}
+            <svg style={{ position: 'absolute', width: 0, height: 0 }}>
+              <defs>
+                <filter id="splashGrain" x="0%" y="0%" width="100%" height="100%">
+                  <feTurbulence type="fractalNoise" baseFrequency="0.015" numOctaves="2" result="noise" seed={Math.random() * 100} />
+                  <feColorMatrix type="saturate" values="0" result="monoNoise" />
+                  <feBlend in="SourceGraphic" in2="monoNoise" mode="soft-light" />
+                </filter>
+              </defs>
+            </svg>
+            
+            {/* Gradient circle behind text */}
+            <div style={{
+              position: 'absolute',
+              width: circleSize,
+              height: circleSize,
+              borderRadius: '50%',
+              background: `radial-gradient(circle at center, 
+                ${splashGradient.inner} 0%, 
+                ${splashGradient.mid} 40%, 
+                ${splashGradient.outer} 70%,
+                transparent 100%)`,
+              filter: 'url(#splashGrain) blur(8px)',
+              opacity: 0.7,
+            }} />
+            
             <span style={{
               fontSize: 'min(20vw, 120px)',
               color: 'white',
@@ -3542,6 +3603,8 @@ const App: React.FC = () => {
               letterSpacing: '0.1em',
               textShadow: '0 0 40px rgba(255,255,255,0.3)',
               fontFamily: "'Zen Maru Gothic', sans-serif",
+              position: 'relative',
+              zIndex: 1,
             }}>
               結晶
             </span>
@@ -3554,11 +3617,14 @@ const App: React.FC = () => {
               textTransform: 'lowercase',
               fontFamily: "Avenir, 'Avenir Next', -apple-system, BlinkMacSystemFont, sans-serif",
               textAlign: 'center',
+              position: 'relative',
+              zIndex: 1,
             }}>
               kesshō
             </span>
           </div>
-        )}
+          );
+        })()}
         {/* Hide SnowflakeUI until splash is done */}
         <div style={{ 
           opacity: showSplash ? 0 : 1,
