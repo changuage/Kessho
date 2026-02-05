@@ -2456,6 +2456,71 @@ export class AudioEngine {
   getLimiterNode(): DynamicsCompressorNode | null {
     return this.limiter;
   }
+
+  // ===== STEM RECORDING SUPPORT =====
+  // Get individual bus nodes for stem recording (pre-reverb)
+  
+  /**
+   * Get synth bus output (dry synth before reverb send)
+   * This is the synthDirect node which carries the dry synth signal to master
+   */
+  getSynthStemNode(): GainNode | null {
+    return this.synthDirect;
+  }
+
+  /**
+   * Get lead bus output (dry lead before reverb send)
+   * This is the leadDry node which carries the dry lead signal to master
+   */
+  getLeadStemNode(): GainNode | null {
+    return this.leadDry;
+  }
+
+  /**
+   * Get drums bus output (drum master gain, includes delay)
+   * Returns the drumSynth's internal master gain
+   */
+  getDrumsStemNode(): GainNode | null {
+    return this.drumSynth?.getMasterGain() ?? null;
+  }
+
+  /**
+   * Get waves/ocean bus output (ocean sample + ocean synth after filter)
+   * This is the oceanFilter node which receives both ocean sources
+   */
+  getWavesStemNode(): BiquadFilterNode | null {
+    return this.oceanFilter;
+  }
+
+  /**
+   * Get granular bus output (granular direct to master)
+   * This is the granularDirect node carrying processed granular audio
+   */
+  getGranularStemNode(): GainNode | null {
+    return this.granularDirect;
+  }
+
+  /**
+   * Get reverb output (wet reverb signal)
+   * This is the reverbOutputGain node carrying the reverb wet signal
+   */
+  getReverbStemNode(): GainNode | null {
+    return this.reverbOutputGain;
+  }
+
+  /**
+   * Get all stem nodes as an object for easy iteration
+   */
+  getAllStemNodes(): Record<string, AudioNode | null> {
+    return {
+      synth: this.getSynthStemNode(),
+      lead: this.getLeadStemNode(),
+      drums: this.getDrumsStemNode(),
+      waves: this.getWavesStemNode(),
+      granular: this.getGranularStemNode(),
+      reverb: this.getReverbStemNode(),
+    };
+  }
 }
 
 // Singleton instance

@@ -1052,6 +1052,25 @@ const App: React.FC = () => {
   // WAV recording refs
   const wavBuffersRef = useRef<Float32Array[][]>([[], []]); // [leftChannels, rightChannels]
   const scriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
+  
+  // Stem recording refs - separate buffers and processors for each stem
+  type StemName = 'synth' | 'lead' | 'drums' | 'waves' | 'granular' | 'reverb';
+  const stemBuffersRef = useRef<Record<StemName, Float32Array[][]>>({
+    synth: [[], []],
+    lead: [[], []],
+    drums: [[], []],
+    waves: [[], []],
+    granular: [[], []],
+    reverb: [[], []],
+  });
+  const stemProcessorsRef = useRef<Record<StemName, ScriptProcessorNode | null>>({
+    synth: null,
+    lead: null,
+    drums: null,
+    waves: null,
+    granular: null,
+    reverb: null,
+  });
 
   // Splash screen animation
   useEffect(() => {
@@ -2109,6 +2128,43 @@ const App: React.FC = () => {
         mediaRecorderRef.current = mediaRecorder;
       }
       
+      // Set up stem recording for each enabled stem
+      const stemNodes = audioEngine.getAllStemNodes();
+      const enabledStems = Object.entries(recordStems).filter(([, enabled]) => enabled);
+      
+      for (const [stemName, isEnabled] of enabledStems) {
+        if (!isEnabled) continue;
+        
+        const stemNode = stemNodes[stemName];
+        if (!stemNode) {
+          console.warn(`Stem node not available for ${stemName}`);
+          continue;
+        }
+        
+        // Clear previous buffers
+        stemBuffersRef.current[stemName as StemName] = [[], []];
+        
+        // Create ScriptProcessor for this stem
+        const bufferSize = 4096;
+        const stemProcessor = ctx.createScriptProcessor(bufferSize, 2, 2);
+        
+        const stemNameCapture = stemName as StemName;
+        stemProcessor.onaudioprocess = (e) => {
+          const leftData = e.inputBuffer.getChannelData(0);
+          const rightData = e.inputBuffer.getChannelData(1);
+          // Copy the data since the buffer is reused
+          stemBuffersRef.current[stemNameCapture][0].push(new Float32Array(leftData));
+          stemBuffersRef.current[stemNameCapture][1].push(new Float32Array(rightData));
+        };
+        
+        // Connect stem node to its processor
+        stemNode.connect(stemProcessor);
+        stemProcessor.connect(ctx.destination); // Required for processing to work
+        stemProcessorsRef.current[stemName as StemName] = stemProcessor;
+        
+        console.log(`Stem recording started for: ${stemName}`);
+      }
+      
       recordingStartTimeRef.current = Date.now();
       setIsRecording(true);
       setRecordingDuration(0);
@@ -2118,7 +2174,9 @@ const App: React.FC = () => {
       }, 1000);
 
       const formats = [recordFormats.webm && 'WebM', recordFormats.wav && 'WAV'].filter(Boolean).join(' + ');
-      console.log(`Recording started: ${formats}`);
+      const stemCount = Object.values(recordStems).filter(Boolean).length;
+      const stemInfo = stemCount > 0 ? ` + ${stemCount} stems` : '';
+      console.log(`Recording started: ${formats}${stemInfo}`);
     } catch (err) {
       console.error('Failed to start recording:', err);
     }
@@ -2204,6 +2262,57 @@ const App: React.FC = () => {
       };
       
       mediaRecorderRef.current.stop();
+    }
+    
+    // Stop and export stem recordings
+    const stemNodes = audioEngine.getAllStemNodes();
+    const sampleRate = ctx?.sampleRate || 48000;
+    
+    for (const [stemName, processor] of Object.entries(stemProcessorsRef.current)) {
+      if (!processor) continue;
+      
+      const stemNode = stemNodes[stemName];
+      
+      // Disconnect the processor
+      if (stemNode) {
+        try {
+          stemNode.disconnect(processor);
+        } catch (e) { /* ignore */ }
+      }
+      processor.disconnect();
+      stemProcessorsRef.current[stemName as StemName] = null;
+      
+      // Export stem WAV
+      const leftBuffers = stemBuffersRef.current[stemName as StemName][0];
+      const rightBuffers = stemBuffersRef.current[stemName as StemName][1];
+      const totalSamples = leftBuffers.reduce((acc, buf) => acc + buf.length, 0);
+      
+      if (totalSamples > 0) {
+        const leftChannel = new Float32Array(totalSamples);
+        const rightChannel = new Float32Array(totalSamples);
+        let offset = 0;
+        for (let i = 0; i < leftBuffers.length; i++) {
+          leftChannel.set(leftBuffers[i], offset);
+          rightChannel.set(rightBuffers[i], offset);
+          offset += leftBuffers[i].length;
+        }
+        
+        const wavBuffer = encodeWav24bit(leftChannel, rightChannel, sampleRate);
+        const blob = new Blob([wavBuffer], { type: 'audio/wav' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `kessho-${timestamp}-${stemName}.wav`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        console.log(`Stem exported: ${stemName} - ${totalSamples} samples at ${sampleRate}Hz, 24-bit`);
+      }
+      
+      // Clear buffer
+      stemBuffersRef.current[stemName as StemName] = [[], []];
     }
     
     setIsRecording(false);

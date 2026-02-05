@@ -248,6 +248,14 @@ export class DrumSynth {
       data[i] = Math.random() * 2 - 1;
     }
   }
+
+  /**
+   * Get the master gain node for stem recording
+   * This captures all drum output before it goes to the engine's master
+   */
+  getMasterGain(): GainNode {
+    return this.masterGain;
+  }
   
   updateParams(params: SliderState): void {
     this.params = params;
