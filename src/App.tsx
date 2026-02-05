@@ -6,6 +6,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import JSZip from 'jszip';
 import {
   SliderState,
   DEFAULT_STATE,
@@ -2203,8 +2204,8 @@ const App: React.FC = () => {
       scriptProcessorRef.current = null;
     }
     
-    // Collect all downloads to execute sequentially (mobile Chrome blocks rapid downloads)
-    const pendingDownloads: Array<{ filename: string; blob: Blob }> = [];
+    // Collect all files for zip archive
+    const filesToZip: Array<{ filename: string; blob: Blob }> = [];
     
     // Export WAV if selected
     if (recordFormats.wav) {
@@ -2225,7 +2226,7 @@ const App: React.FC = () => {
         const sampleRate = ctx?.sampleRate || 48000;
         const wavBuffer = encodeWav24bit(leftChannel, rightChannel, sampleRate);
         const blob = new Blob([wavBuffer], { type: 'audio/wav' });
-        pendingDownloads.push({ filename: `kessho-${timestamp}.wav`, blob });
+        filesToZip.push({ filename: `kessho-${timestamp}.wav`, blob });
         
         console.log(`WAV prepared: ${totalSamples} samples at ${sampleRate}Hz, 24-bit`);
       }
@@ -2240,7 +2241,7 @@ const App: React.FC = () => {
       // Set up export callback before stopping
       mediaRecorderRef.current.onstop = () => {
         const blob = new Blob(recordedChunksRef.current, { type: 'audio/webm' });
-        pendingDownloads.push({ filename: `kessho-${timestamp}.webm`, blob });
+        filesToZip.push({ filename: `kessho-${timestamp}.webm`, blob });
         webmPending = false;
 
         if (recordingStreamDestRef.current && limiterNode) {
@@ -2291,7 +2292,7 @@ const App: React.FC = () => {
         
         const wavBuffer = encodeWav24bit(leftChannel, rightChannel, sampleRate);
         const blob = new Blob([wavBuffer], { type: 'audio/wav' });
-        pendingDownloads.push({ filename: `kessho-${timestamp}-${stemName}.wav`, blob });
+        filesToZip.push({ filename: `kessho-${timestamp}-${stemName}.wav`, blob });
         
         console.log(`Stem prepared: ${stemName} - ${totalSamples} samples at ${sampleRate}Hz, 24-bit`);
       }
@@ -2300,35 +2301,8 @@ const App: React.FC = () => {
       stemBuffersRef.current[stemName as StemName] = [[], []];
     }
     
-    // Download all files sequentially with delay for mobile Chrome compatibility
-    // Mobile browsers block rapid programmatic downloads as popup prevention
-    const downloadSequentially = async (downloads: Array<{ filename: string; blob: Blob }>, index: number) => {
-      if (index >= downloads.length) return;
-      
-      const { filename, blob } = downloads[index];
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      
-      console.log(`Exported: ${filename}`);
-      
-      // Delay before next download (500ms for mobile compatibility)
-      // Mobile Chrome needs time between downloads to avoid blocking
-      if (index < downloads.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 500));
-      }
-      URL.revokeObjectURL(url);
-      
-      // Download next file
-      await downloadSequentially(downloads, index + 1);
-    };
-    
-    // Wait for WebM to be ready if needed, then start sequential downloads
-    const startDownloads = async () => {
+    // Create and download zip archive (or single file if only one)
+    const createAndDownloadArchive = async () => {
       // Wait for WebM onstop callback if WebM recording was active
       if (webmPending) {
         let waitCount = 0;
@@ -2338,13 +2312,57 @@ const App: React.FC = () => {
         }
       }
       
-      if (pendingDownloads.length > 0) {
-        await downloadSequentially(pendingDownloads, 0);
+      if (filesToZip.length === 0) {
+        console.log('No files to export');
+        return;
       }
+      
+      // If only one file, download directly (no need for zip)
+      if (filesToZip.length === 1) {
+        const { filename, blob } = filesToZip[0];
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        console.log(`Exported: ${filename}`);
+        return;
+      }
+      
+      // Multiple files: create a zip archive
+      console.log(`Creating zip archive with ${filesToZip.length} files...`);
+      const zip = new JSZip();
+      
+      // Add all files to zip
+      for (const { filename, blob } of filesToZip) {
+        zip.file(filename, blob);
+      }
+      
+      // Generate zip blob
+      const zipBlob = await zip.generateAsync({ 
+        type: 'blob',
+        compression: 'DEFLATE',
+        compressionOptions: { level: 6 } // Balance between speed and compression
+      });
+      
+      // Download zip
+      const url = URL.createObjectURL(zipBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `kessho-${timestamp}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      console.log(`Exported: kessho-${timestamp}.zip (${filesToZip.length} files)`);
     };
     
-    // Start downloads with a brief initial delay
-    setTimeout(() => startDownloads(), 100);
+    // Start archive creation with a brief initial delay
+    setTimeout(() => createAndDownloadArchive(), 100);
     
     setIsRecording(false);
     setRecordingDuration(0);
