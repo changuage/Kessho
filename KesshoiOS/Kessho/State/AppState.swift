@@ -41,6 +41,14 @@ class AppState: ObservableObject {
     @Published var morphTransitionPhrases: Int = 8  // How long the transition takes
     @Published var morphPhase: String = ""        // "Playing A", "Morphing to B", etc.
     
+    // Recording state
+    @Published var recordingState: RecordingState = .idle
+    @Published var recordingDuration: TimeInterval = 0
+    @Published var recordMain: Bool = true
+    @Published var recordingEnabledStems: Set<RecordingStem> = []
+    @Published var showRecordingSettings: Bool = false
+    @Published var lastRecordedFiles: [URL] = []
+    
     // Auto-morph timer
     private var autoMorphTimer: Timer?
     private var autoMorphCurrentPhase: AutoMorphPhase = .playingA
@@ -67,6 +75,9 @@ class AppState: ObservableObject {
     // MARK: - Audio Engine
     let audioEngine = AudioEngine()
     
+    // MARK: - Audio Recorder
+    let audioRecorder = AudioRecorder()
+    
     // MARK: - Preset Manager
     let presetManager = PresetManager()
     
@@ -74,6 +85,7 @@ class AppState: ObservableObject {
     
     init() {
         setupBindings()
+        setupRecorder()
         loadPresets()
         startRandomWalkTimer()
     }
@@ -539,6 +551,80 @@ class AppState: ObservableObject {
         } else {
             start()
         }
+    }
+    
+    // MARK: - Recording Control
+    
+    /// Set up the audio recorder with engine nodes
+    private func setupRecorder() {
+        audioEngine.configureRecorder(audioRecorder)
+        
+        audioRecorder.onStateChange = { [weak self] state in
+            Task { @MainActor in
+                self?.recordingState = state
+            }
+        }
+        
+        audioRecorder.onDurationUpdate = { [weak self] duration in
+            Task { @MainActor in
+                self?.recordingDuration = duration
+            }
+        }
+    }
+    
+    /// Arm recording - prepares to record on next play
+    func armRecording() {
+        audioRecorder.enabledStems = recordingEnabledStems
+        audioRecorder.recordMain = recordMain
+        audioRecorder.arm()
+    }
+    
+    /// Disarm recording
+    func disarmRecording() {
+        audioRecorder.disarm()
+    }
+    
+    /// Start recording immediately
+    func startRecording() {
+        audioRecorder.enabledStems = recordingEnabledStems
+        audioRecorder.recordMain = recordMain
+        _ = audioRecorder.startRecording()
+    }
+    
+    /// Stop recording and save files
+    func stopRecording() {
+        lastRecordedFiles = audioRecorder.stopRecording()
+    }
+    
+    /// Toggle recording state
+    func toggleRecording() {
+        switch recordingState {
+        case .idle:
+            startRecording()
+        case .armed:
+            startRecording()
+        case .recording:
+            stopRecording()
+        }
+    }
+    
+    /// Toggle stem enabled for recording
+    func toggleStemRecording(_ stem: RecordingStem) {
+        if recordingEnabledStems.contains(stem) {
+            recordingEnabledStems.remove(stem)
+        } else {
+            recordingEnabledStems.insert(stem)
+        }
+    }
+    
+    /// Get formatted recording duration string
+    var formattedRecordingDuration: String {
+        AudioRecorder.formatDuration(recordingDuration)
+    }
+    
+    /// Get list of saved recordings
+    var savedRecordings: [URL] {
+        audioRecorder.getSavedRecordings()
     }
     
     // MARK: - Preset Management

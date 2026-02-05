@@ -1286,4 +1286,65 @@ class AudioEngine {
             ))
         }
     }
+    
+    // MARK: - Recording Support
+    
+    /// Get the underlying AVAudioEngine for recording
+    func getEngine() -> AVAudioEngine {
+        return engine
+    }
+    
+    /// Get the master mixer node for main recording
+    func getMasterMixer() -> AVAudioMixerNode {
+        return masterMixer
+    }
+    
+    /// Get the synth mixer node for stem recording
+    func getSynthMixer() -> AVAudioMixerNode {
+        return synthMixer
+    }
+    
+    /// Get the lead mixer node for stem recording
+    func getLeadMixer() -> AVAudioMixerNode {
+        return leadMixer
+    }
+    
+    /// Get the drum mixer node for stem recording
+    func getDrumMixer() -> AVAudioMixerNode {
+        return drumMixer
+    }
+    
+    /// Get the ocean/waves mixer node for stem recording
+    func getOceanMixer() -> AVAudioMixerNode {
+        return oceanMixer
+    }
+    
+    /// Get the granular mixer node for stem recording
+    func getGranularMixer() -> AVAudioMixerNode {
+        return granularMixer
+    }
+    
+    /// Get the reverb send mixer node for stem recording
+    func getReverbSend() -> AVAudioMixerNode {
+        return reverbSend
+    }
+    
+    /// Get the reverb processor node for stem recording (if available)
+    func getReverbNode() -> AVAudioNode? {
+        return reverbProcessor?.node
+    }
+    
+    /// Configure an AudioRecorder with all necessary nodes
+    func configureRecorder(_ recorder: AudioRecorder) {
+        recorder.configure(
+            engine: engine,
+            masterMixer: masterMixer,
+            synthMixer: synthMixer,
+            leadMixer: leadMixer,
+            drumMixer: drumMixer,
+            oceanMixer: oceanMixer,
+            granularMixer: granularMixer,
+            reverbNode: reverbProcessor?.node
+        )
+    }
 }
