@@ -1266,6 +1266,7 @@ export class DrumSynth {
     const outputGain = this.ctx.createGain();
     
     source.buffer = this.noiseBuffer;
+    source.loop = true; // Loop the noise buffer for long attack/decay times
     
     // Main filter with envelope
     mainFilter.type = filterType;
