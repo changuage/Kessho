@@ -618,6 +618,7 @@ interface CenterNodeProps {
   isValidDropTarget: boolean;
   isDragSource: boolean;
   nodeColor?: string;  // Current node color for dynamic theming
+  isMobile?: boolean;  // Hide outer rings on mobile
   onClick: () => void;
   onDragStart: (e: React.MouseEvent | React.TouchEvent) => void;
   onLongHover?: (show: boolean, screenX: number, screenY: number) => void;  // Long hover callback for tracker
@@ -633,6 +634,7 @@ const CenterNode: React.FC<CenterNodeProps> = ({
   isValidDropTarget: _isValidDropTarget,
   isDragSource,
   nodeColor,
+  isMobile,
   onClick,
   onDragStart,
   onLongHover,
@@ -781,17 +783,19 @@ const CenterNode: React.FC<CenterNodeProps> = ({
         
         return (
           <>
-            {/* Outer ambient glow circle */}
-            <circle
-              cx={x}
-              cy={y}
-              r={glowR}
-              fill="none"
-              stroke={isPlaying ? dynamicGlow : 'rgba(232, 220, 196, 0.1)'}
-              strokeWidth={1}
-              filter="url(#glow)"
-              style={{ opacity: isPlaying ? 0.8 : 0.4, transition: isMorphing ? 'none' : 'stroke 0.3s ease-out, opacity 0.3s ease-out' }}
-            />
+            {/* Outer ambient glow circle - hidden on mobile */}
+            {!isMobile && (
+              <circle
+                cx={x}
+                cy={y}
+                r={glowR}
+                fill="none"
+                stroke={isPlaying ? dynamicGlow : 'rgba(232, 220, 196, 0.1)'}
+                strokeWidth={1}
+                filter="url(#glow)"
+                style={{ opacity: isPlaying ? 0.8 : 0.4, transition: isMorphing ? 'none' : 'stroke 0.3s ease-out, opacity 0.3s ease-out' }}
+              />
+            )}
             
             {/* Background fill circle */}
             <circle
@@ -803,19 +807,21 @@ const CenterNode: React.FC<CenterNodeProps> = ({
               style={{ transition: isMorphing ? 'none' : 'fill 0.3s ease-out' }}
             />
             
-            {/* Outer circle ring */}
-            <circle
-              cx={x}
-              cy={y}
-              r={outerR}
-              fill="none"
-              stroke={isPlaying ? dynamicColor : COLORS.centerNodeBorder}
-              strokeWidth={1.5}
-              style={{ 
-                opacity: isDragSource ? 0.5 : 1,
-                transition: isMorphing ? 'none' : 'all 0.3s ease-out, stroke 0.3s ease-out',
-              }}
-            />
+            {/* Outer circle ring - hidden on mobile */}
+            {!isMobile && (
+              <circle
+                cx={x}
+                cy={y}
+                r={outerR}
+                fill="none"
+                stroke={isPlaying ? dynamicColor : COLORS.centerNodeBorder}
+                strokeWidth={1.5}
+                style={{ 
+                  opacity: isDragSource ? 0.5 : 1,
+                  transition: isMorphing ? 'none' : 'all 0.3s ease-out, stroke 0.3s ease-out',
+                }}
+              />
+            )}
             
             {/* Middle circle ring */}
             <circle
@@ -3119,12 +3125,13 @@ export const DiamondJourneyUI: React.FC<DiamondJourneyUIProps> = ({
         }
       } else if (dragState.fromPosition === 'center' && fromNode) {
         // Connection FROM center = start connection
-        // Only allow ONE start connection from center
-        const hasStartConnection = config.connections.some(
-          c => c.fromNodeId === fromNode.id
-        );
-        
-        if (!hasStartConnection && targetNode && targetNode.presetId && targetNode.presetId !== '__CENTER__') {
+        // Only allow ONE start connection from center - replace existing if present
+        if (targetNode && targetNode.presetId && targetNode.presetId !== '__CENTER__') {
+          // Remove any existing start connection from center
+          const filteredConnections = config.connections.filter(
+            c => c.fromNodeId !== fromNode.id
+          );
+          
           console.log('Creating connection from START to', targetNode.id);
           const newConnection: JourneyConnection = {
             id: generateJourneyId(),
@@ -3136,7 +3143,7 @@ export const DiamondJourneyUI: React.FC<DiamondJourneyUIProps> = ({
           
           onConfigChange({
             ...config,
-            connections: [...config.connections, newConnection],
+            connections: [...filteredConnections, newConnection],
           });
         }
       } else if (targetNode && targetNode.presetId && targetNode.presetId !== '__CENTER__') {
@@ -3563,21 +3570,10 @@ export const DiamondJourneyUI: React.FC<DiamondJourneyUIProps> = ({
     });
   }, [config]);
   
-  // Check if center already has a start connection (only allow one)
-  const hasStartConnection = useMemo(() => {
-    if (!config) return false;
-    const centerNode = config.nodes.find(n => n.position === 'center');
-    if (!centerNode) return false;
-    return config.connections.some(c => c.fromNodeId === centerNode.id);
-  }, [config]);
-  
   // Determine if ghost lines should be shown and from which position
   const ghostLinesSource = useMemo((): DiamondPosition | null => {
-    // Show ghost lines when dragging (but not from center if start connection exists)
+    // Show ghost lines when dragging (center can always drag to replace start connection)
     if (dragState.isDragging && dragState.fromPosition) {
-      if (dragState.fromPosition === 'center' && hasStartConnection) {
-        return null;
-      }
       return dragState.fromPosition;
     }
     // Show ghost lines when node popup is open
@@ -3585,7 +3581,7 @@ export const DiamondJourneyUI: React.FC<DiamondJourneyUIProps> = ({
       return popupNode.position;
     }
     return null;
-  }, [dragState.isDragging, dragState.fromPosition, popup.type, popupNode?.position, hasStartConnection]);
+  }, [dragState.isDragging, dragState.fromPosition, popup.type, popupNode?.position]);
   
   // Get current and next node for mobile status bar
   const currentPlayingNode = config?.nodes.find(n => n.id === state.currentNodeId);
@@ -4266,6 +4262,7 @@ export const DiamondJourneyUI: React.FC<DiamondJourneyUIProps> = ({
             isValidDropTarget={dragState.isDragging && dragState.fromPosition !== 'center'}
             isDragSource={dragState.isDragging && dragState.fromPosition === 'center'}
             nodeColor={activeNodeColor}
+            isMobile={isMobileDevice}
             onClick={handleCenterClick}
             onLongHover={isTouchDevice ? undefined : handleTrackerLongHover}
             onDragStart={(e) => {

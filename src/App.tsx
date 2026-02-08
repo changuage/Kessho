@@ -4030,6 +4030,9 @@ const App: React.FC = () => {
             isRecording={isRecording}
             recordingDuration={recordingDuration}
             onStopRecording={handleStopRecording}
+            journeyState={journey.state}
+            journeyConfig={journey.config}
+            isJourneyPlaying={isJourneyPlaying}
           />
         </div>
       </>

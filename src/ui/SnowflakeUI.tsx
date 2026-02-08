@@ -8,6 +8,8 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { SliderState, SavedPreset } from './state';
+import { JourneyState, JourneyConfig, JourneyNode } from '../audio/journeyTypes';
+import { PHRASE_LENGTH } from '../audio/harmony';
 
 // Unicode symbols with text variation selector (U+FE0E) to prevent emoji rendering on mobile
 const TEXT_SYMBOLS = {
@@ -42,6 +44,10 @@ interface SnowflakeUIProps {
   isRecording?: boolean;
   recordingDuration?: number;
   onStopRecording?: () => void;
+  // Journey status bar (shown when journey is playing)
+  journeyState?: JourneyState;
+  journeyConfig?: JourneyConfig | null;
+  isJourneyPlaying?: boolean;
 }
 
 // Macro slider configuration
@@ -261,7 +267,18 @@ function drawArm(
   }
 }
 
-const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanced, onShowJourney, onTogglePlay, onLoadPreset, presets, isPlaying, isRecording, recordingDuration, onStopRecording }) => {
+// Status bar colors (matching DiamondJourneyUI)
+const STATUS_COLORS = {
+  popup: 'rgba(20, 20, 35, 0.5)',
+  popupBorder: 'rgba(232, 220, 196, 0.3)',
+  text: '#E8DCC4',
+  textMuted: 'rgba(232, 220, 196, 0.5)',
+  filledNode: '#7B9A6D',
+  morphingConnection: '#B8E0FF',
+  endConnection: 'rgba(220, 235, 255, 0.7)',
+};
+
+const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanced, onShowJourney, onTogglePlay, onLoadPreset, presets, isPlaying, isRecording, recordingDuration, onStopRecording, journeyState, journeyConfig, isJourneyPlaying }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [dragging, setDragging] = useState<number | null>(null);  // Dragging prong handle (level)
   const [hovering, setHovering] = useState<number | null>(null);
@@ -276,6 +293,9 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
   const [showPresets, setShowPresets] = useState(false);
   const [showControls, setShowControls] = useState(true);
   const hideTimerRef = useRef<number | null>(null);
+  
+  // Journey status bar expanded state
+  const [statusBarExpanded, setStatusBarExpanded] = useState(false);
   
   // Auto-hide controls after inactivity
   const resetHideTimer = useCallback(() => {
@@ -551,6 +571,347 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
 
   return (
     <div style={styles.container}>
+      {/* Journey status bar - expandable compact view */}
+      {isJourneyPlaying && journeyState && journeyConfig && (() => {
+        // Get current and next playing node info
+        const currentNode = journeyConfig.nodes.find((n: JourneyNode) => n.id === journeyState.currentNodeId);
+        const nextNode = journeyConfig.nodes.find((n: JourneyNode) => n.id === journeyState.nextNodeId);
+        const plannedNode = journeyConfig.nodes.find((n: JourneyNode) => n.id === journeyState.plannedNextNodeId);
+        
+        // Calculate time remaining
+        const phraseDuration = journeyState.resolvedPhraseDuration || currentNode?.phraseLength || 1;
+        const morphDuration = journeyState.resolvedMorphDuration || 2;
+        const phraseTimeTotal = phraseDuration * PHRASE_LENGTH;
+        const phraseTimeRemaining = phraseTimeTotal * (1 - journeyState.phraseProgress);
+        const morphTimeTotal = morphDuration * PHRASE_LENGTH;
+        const morphTimeRemaining = morphTimeTotal * (1 - journeyState.morphProgress);
+        
+        const formatTime = (seconds: number) => {
+          const mins = Math.floor(seconds / 60);
+          const secs = Math.floor(seconds % 60);
+          if (mins > 0) {
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
+          }
+          return `${secs}s`;
+        };
+        
+        const isExpanded = statusBarExpanded;
+        const isNextEnd = plannedNode?.position === 'center' || plannedNode?.presetId === '__CENTER__';
+        const isNextSelf = plannedNode?.id === journeyState.currentNodeId;
+        
+        const getPhaseDisplay = () => {
+          switch (journeyState.phase) {
+            case 'playing': return 'Playing';
+            case 'morphing': return 'Morphing';
+            case 'self-loop': return 'Looping';
+            case 'ending': return 'Ending';
+            default: return journeyState.phase;
+          }
+        };
+        
+        return (
+          <div
+            onClick={(e) => {
+              e.stopPropagation();
+              setStatusBarExpanded(!statusBarExpanded);
+            }}
+            onTouchEnd={(e) => {
+              e.stopPropagation();
+            }}
+            style={{
+              position: 'fixed',
+              top: 8,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              zIndex: 1000,
+              background: STATUS_COLORS.popup,
+              backdropFilter: 'blur(4px)',
+              WebkitBackdropFilter: 'blur(4px)',
+              border: `1px solid ${STATUS_COLORS.popupBorder}`,
+              borderRadius: isExpanded ? 12 : 20,
+              padding: isExpanded ? '12px 16px' : '6px 14px',
+              display: 'flex',
+              flexDirection: isExpanded ? 'column' : 'row',
+              alignItems: isExpanded ? 'stretch' : 'center',
+              gap: isExpanded ? 10 : 10,
+              boxShadow: `0 4px 16px rgba(0,0,0,0.3)`,
+              fontFamily: "'Avenir', 'Avenir Next', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+              color: STATUS_COLORS.text,
+              pointerEvents: 'auto',
+              cursor: 'pointer',
+              minWidth: isExpanded ? 180 : undefined,
+              transition: 'all 0.2s ease',
+            }}
+          >
+            {isExpanded ? (
+              // === EXPANDED VIEW ===
+              <>
+                {/* Phase indicator header */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    background: journeyState.phase === 'morphing' 
+                      ? STATUS_COLORS.morphingConnection 
+                      : journeyState.phase === 'ending' 
+                        ? STATUS_COLORS.endConnection 
+                        : (currentNode?.color || STATUS_COLORS.filledNode),
+                    boxShadow: `0 0 8px ${journeyState.phase === 'morphing' 
+                      ? STATUS_COLORS.morphingConnection 
+                      : journeyState.phase === 'ending' 
+                        ? STATUS_COLORS.endConnection 
+                        : (currentNode?.color || STATUS_COLORS.filledNode)}`,
+                  }} />
+                  <span style={{ 
+                    fontSize: 11, 
+                    fontWeight: 600, 
+                    letterSpacing: '0.05em',
+                    textTransform: 'uppercase',
+                    color: journeyState.phase === 'morphing' 
+                      ? STATUS_COLORS.morphingConnection 
+                      : journeyState.phase === 'ending' 
+                        ? STATUS_COLORS.endConnection 
+                        : (currentNode?.color || STATUS_COLORS.filledNode),
+                  }}>
+                    {getPhaseDisplay()}
+                  </span>
+                </div>
+                
+                {/* Current preset */}
+                {currentNode?.presetName && (
+                  <div>
+                    <div style={{ fontSize: 9, color: STATUS_COLORS.textMuted, marginBottom: 2, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                      Current
+                    </div>
+                    <div style={{ 
+                      fontSize: 12, 
+                      fontWeight: 500,
+                      color: currentNode.color || STATUS_COLORS.filledNode,
+                    }}>
+                      {currentNode.presetName}
+                    </div>
+                  </div>
+                )}
+                
+                {/* Phrase progress (playing/self-loop) */}
+                {(journeyState.phase === 'playing' || journeyState.phase === 'self-loop') && (
+                  <div>
+                    <div style={{ fontSize: 9, color: STATUS_COLORS.textMuted, marginBottom: 2, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                      Phrase ({Math.round(journeyState.phraseProgress * 100)}%)
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ 
+                        flex: 1,
+                        height: 4, 
+                        background: 'rgba(255,255,255,0.1)', 
+                        borderRadius: 2,
+                        overflow: 'hidden',
+                      }}>
+                        <div style={{ 
+                          width: `${journeyState.phraseProgress * 100}%`, 
+                          height: '100%', 
+                          background: currentNode?.color || STATUS_COLORS.filledNode,
+                          borderRadius: 2,
+                        }} />
+                      </div>
+                      <span style={{ fontSize: 10, color: STATUS_COLORS.text, minWidth: 35, textAlign: 'right' }}>
+                        {formatTime(phraseTimeRemaining)}
+                      </span>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Morph progress */}
+                {journeyState.phase === 'morphing' && nextNode && (
+                  <div>
+                    <div style={{ fontSize: 9, color: STATUS_COLORS.textMuted, marginBottom: 2, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                      Morphing to
+                    </div>
+                    <div style={{ 
+                      fontSize: 11, 
+                      color: nextNode.color || STATUS_COLORS.filledNode,
+                      marginBottom: 4,
+                    }}>
+                      {nextNode.presetName}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ 
+                        flex: 1, 
+                        height: 4, 
+                        background: 'rgba(255,255,255,0.1)', 
+                        borderRadius: 2,
+                        overflow: 'hidden',
+                      }}>
+                        <div style={{ 
+                          width: `${journeyState.morphProgress * 100}%`, 
+                          height: '100%', 
+                          background: STATUS_COLORS.morphingConnection,
+                          borderRadius: 2,
+                        }} />
+                      </div>
+                      <span style={{ fontSize: 10, color: STATUS_COLORS.text, minWidth: 35, textAlign: 'right' }}>
+                        {formatTime(morphTimeRemaining)}
+                      </span>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Ending progress */}
+                {journeyState.phase === 'ending' && (
+                  <div>
+                    <div style={{ fontSize: 9, color: STATUS_COLORS.textMuted, marginBottom: 2, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                      Fading out
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ 
+                        flex: 1, 
+                        height: 4, 
+                        background: 'rgba(255,255,255,0.1)', 
+                        borderRadius: 2,
+                        overflow: 'hidden',
+                      }}>
+                        <div style={{ 
+                          width: `${journeyState.morphProgress * 100}%`, 
+                          height: '100%', 
+                          background: STATUS_COLORS.endConnection,
+                          borderRadius: 2,
+                        }} />
+                      </div>
+                      <span style={{ fontSize: 10, color: STATUS_COLORS.text, minWidth: 35, textAlign: 'right' }}>
+                        {formatTime(morphTimeRemaining)}
+                      </span>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Next stop */}
+                {(journeyState.phase === 'playing' || journeyState.phase === 'self-loop') && plannedNode && (
+                  <div style={{ marginTop: 2, paddingTop: 6, borderTop: `1px solid ${STATUS_COLORS.popupBorder}` }}>
+                    <div style={{ fontSize: 9, color: STATUS_COLORS.textMuted, marginBottom: 2, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                      Next
+                    </div>
+                    <div style={{ 
+                      fontSize: 11, 
+                      color: isNextEnd ? STATUS_COLORS.endConnection : (isNextSelf ? currentNode?.color : plannedNode.color) || STATUS_COLORS.filledNode,
+                    }}>
+                      {isNextEnd ? '⬡ End' : (isNextSelf ? '↺ Self-loop' : plannedNode.presetName)}
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              // === COMPACT VIEW ===
+              <>
+                {/* Phase dot */}
+                <div style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: '50%',
+                  background: journeyState.phase === 'morphing' 
+                    ? STATUS_COLORS.morphingConnection 
+                    : journeyState.phase === 'ending' 
+                      ? STATUS_COLORS.endConnection 
+                      : (currentNode?.color || STATUS_COLORS.filledNode),
+                  boxShadow: `0 0 6px ${journeyState.phase === 'morphing' 
+                    ? STATUS_COLORS.morphingConnection 
+                    : journeyState.phase === 'ending' 
+                      ? STATUS_COLORS.endConnection 
+                      : (currentNode?.color || STATUS_COLORS.filledNode)}`,
+                }} />
+                
+                {/* Current/Morphing info with progress */}
+                {journeyState.phase === 'morphing' && nextNode ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ 
+                      fontSize: 10, 
+                      color: currentNode?.color || STATUS_COLORS.textMuted,
+                      maxWidth: 60,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}>
+                      {currentNode?.presetName || '?'}
+                    </span>
+                    <span style={{ fontSize: 9, color: STATUS_COLORS.textMuted }}>→</span>
+                    <span style={{ 
+                      fontSize: 10, 
+                      color: nextNode.color || STATUS_COLORS.filledNode,
+                      maxWidth: 60,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}>
+                      {nextNode.presetName || 'END'}
+                    </span>
+                    <div style={{ 
+                      width: 40, 
+                      height: 3, 
+                      background: 'rgba(255,255,255,0.15)', 
+                      borderRadius: 2,
+                      overflow: 'hidden',
+                    }}>
+                      <div style={{ 
+                        width: `${journeyState.morphProgress * 100}%`, 
+                        height: '100%', 
+                        background: STATUS_COLORS.morphingConnection,
+                        borderRadius: 2,
+                      }} />
+                    </div>
+                  </div>
+                ) : journeyState.phase === 'ending' ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontSize: 10, color: STATUS_COLORS.endConnection }}>Ending</span>
+                    <div style={{ 
+                      width: 40, 
+                      height: 3, 
+                      background: 'rgba(255,255,255,0.15)', 
+                      borderRadius: 2,
+                      overflow: 'hidden',
+                    }}>
+                      <div style={{ 
+                        width: `${journeyState.morphProgress * 100}%`, 
+                        height: '100%', 
+                        background: STATUS_COLORS.endConnection,
+                        borderRadius: 2,
+                      }} />
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ 
+                      fontSize: 10, 
+                      color: currentNode?.color || STATUS_COLORS.filledNode,
+                      maxWidth: 80,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      fontWeight: 500,
+                    }}>
+                      {currentNode?.presetName || '?'}
+                    </span>
+                    <div style={{ 
+                      width: 40, 
+                      height: 3, 
+                      background: 'rgba(255,255,255,0.15)', 
+                      borderRadius: 2,
+                      overflow: 'hidden',
+                    }}>
+                      <div style={{ 
+                        width: `${journeyState.phraseProgress * 100}%`, 
+                        height: '100%', 
+                        background: currentNode?.color || STATUS_COLORS.filledNode,
+                        borderRadius: 2,
+                      }} />
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        );
+      })()}
+      
       {/* Play button and Preset button - positioned between top edge and canvas */}
       <div style={{
         position: 'absolute',
