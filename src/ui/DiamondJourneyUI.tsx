@@ -3080,7 +3080,8 @@ export const DiamondJourneyUI: React.FC<DiamondJourneyUIProps> = ({
   onConfigChange,
   onPlay,
   onStop,
-  onSelectPreset,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  onSelectPreset: _onSelectPreset, // Not used - preset selection handled internally via handleAddPreset
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
