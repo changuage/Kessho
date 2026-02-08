@@ -12,7 +12,6 @@ import {
   JourneyNode,
   JourneyConnection,
   DiamondPosition,
-  JOURNEY_DEFAULTS,
   createSimpleJourney,
   createDiamondJourney,
   createJourneyConnection,
