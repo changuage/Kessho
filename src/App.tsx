@@ -3992,12 +3992,6 @@ const App: React.FC = () => {
             onLoadPreset={handleLoadPresetFromList}
             presets={savedPresets}
             isPlaying={engineState.isRunning || isJourneyPlaying}
-            isRecording={isRecording}
-            isRecordingArmed={isRecordingArmed}
-            recordingDuration={recordingDuration}
-            onStartRecording={handleStartRecording}
-            onStopRecording={handleStopRecording}
-            onArmRecording={handleArmRecording}
           />
         </div>
       </>
@@ -4062,20 +4056,25 @@ const App: React.FC = () => {
             </span>
           )}
         </button>
-        <button
-          style={{ ...styles.iconButton, ...styles.presetButton }}
-          onClick={handleSavePreset}
-          title="Save Preset"
-        >
-          {TEXT_SYMBOLS.download}
-        </button>
-        <button
-          style={{ ...styles.iconButton, ...styles.presetButton }}
-          onClick={() => fileInputRef.current?.click()}
-          title="Import Preset"
-        >
-          {TEXT_SYMBOLS.upload}
-        </button>
+        {/* Save/Import preset buttons - hidden during recording */}
+        {!isRecording && (
+          <>
+            <button
+              style={{ ...styles.iconButton, ...styles.presetButton }}
+              onClick={handleSavePreset}
+              title="Save Preset"
+            >
+              {TEXT_SYMBOLS.download}
+            </button>
+            <button
+              style={{ ...styles.iconButton, ...styles.presetButton }}
+              onClick={() => fileInputRef.current?.click()}
+              title="Import Preset"
+            >
+              {TEXT_SYMBOLS.upload}
+            </button>
+          </>
+        )}
         <button
           style={{ ...styles.iconButton, ...styles.simpleButton, color: 'rgba(184, 224, 255, 0.7)' }}
           onClick={() => setUiMode('journey')}

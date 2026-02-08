@@ -31,13 +31,6 @@ interface SnowflakeUIProps {
   onLoadPreset: (preset: SavedPreset) => void;
   presets: SavedPreset[];
   isPlaying: boolean;
-  // Recording
-  isRecording?: boolean;
-  isRecordingArmed?: boolean;
-  recordingDuration?: number;
-  onStartRecording?: () => void;
-  onStopRecording?: () => void;
-  onArmRecording?: () => void;
 }
 
 // Macro slider configuration
@@ -257,7 +250,7 @@ function drawArm(
   }
 }
 
-const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanced, onShowJourney, onTogglePlay, onLoadPreset, presets, isPlaying, isRecording, isRecordingArmed, recordingDuration, onStartRecording, onStopRecording, onArmRecording }) => {
+const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanced, onShowJourney, onTogglePlay, onLoadPreset, presets, isPlaying }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [dragging, setDragging] = useState<number | null>(null);  // Dragging prong handle (level)
   const [hovering, setHovering] = useState<number | null>(null);
@@ -547,7 +540,7 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
 
   return (
     <div style={styles.container}>
-      {/* Play and Record buttons - positioned between top edge and canvas */}
+      {/* Play button and Preset button - positioned between top edge and canvas */}
       <div style={{
         position: 'absolute',
         top: Math.max(10, playButtonTop),
@@ -563,64 +556,18 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
         >
           {isPlaying ? TEXT_SYMBOLS.stop : TEXT_SYMBOLS.play}
         </button>
-        {/* Record button - always visible, can arm before playing */}
-        {onStartRecording && onStopRecording && (
-          <button
-            style={{
-              width: '15px',
-              height: '15px',
-              borderRadius: '50%',
-              border: isRecordingArmed ? '2px solid #FF4444' : 'none',
-              cursor: 'pointer',
-              // Idle: muted desaturated brownish-red, Armed: dark red, Recording: bright red
-              background: isRecording 
-                ? '#FF4444' 
-                : isRecordingArmed 
-                  ? '#6a1010'
-                  : '#5a3535',
-              boxShadow: isRecording 
-                ? '0 0 12px rgba(255, 68, 68, 0.8)' 
-                : isRecordingArmed
-                  ? '0 0 8px rgba(255, 68, 68, 0.4)'
-                  : '0 2px 6px rgba(0,0,0,0.4)',
-              animation: isRecording 
-                ? 'pulse 1s ease-in-out infinite' 
-                : isRecordingArmed 
-                  ? 'pulse 2s ease-in-out infinite'
-                  : 'none',
-              position: 'relative',
-              opacity: 1,
-              transition: 'all 0.2s',
-            }}
-            onClick={() => {
-              if (isRecording) {
-                onStopRecording();
-              } else if (isPlaying) {
-                onStartRecording();
-              } else if (onArmRecording) {
-                // Not playing - toggle armed state
-                onArmRecording();
-              }
-            }}
-            title={isRecording ? 'Stop Recording' : isRecordingArmed ? 'Recording armed - will start with playback' : isPlaying ? 'Start Recording' : 'Arm Recording (will start with playback)'}
-          >
-            {(isRecording || isRecordingArmed) && recordingDuration !== undefined && recordingDuration > 0 && (
-              <span style={{
-                position: 'absolute',
-                top: '-8px',
-                right: '-8px',
-                fontSize: '0.55rem',
-                background: '#FF4444',
-                color: 'white',
-                padding: '2px 5px',
-                borderRadius: '8px',
-                fontWeight: 'bold',
-              }}>
-                {Math.floor(recordingDuration / 60)}:{(recordingDuration % 60).toString().padStart(2, '0')}
-              </span>
-            )}
-          </button>
-        )}
+        {/* Preset button - moved here from bottom */}
+        <button 
+          style={{
+            ...styles.advancedButton,
+            color: showPresets ? '#ED5A24' : 'rgba(255,255,255,0.6)',
+            fontSize: '18px',
+          }} 
+          onClick={() => setShowPresets(!showPresets)}
+          title="Presets"
+        >
+          {TEXT_SYMBOLS.hexagon}
+        </button>
       </div>
 
       {/* Snowflake centered */}
@@ -1018,6 +965,7 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
       )}
 
       {/* Bottom buttons - positioned between canvas and bottom edge */}
+      {/* Journey diamond and Advanced sparkle only (preset moved to top) */}
       <div
         style={{
           position: 'absolute',
@@ -1029,15 +977,6 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
           alignItems: 'center',
         }}
       >
-        <button 
-          style={{
-            ...styles.advancedButton,
-            color: showPresets ? '#ED5A24' : 'rgba(255,255,255,0.6)',
-          }} 
-          onClick={() => setShowPresets(!showPresets)}
-        >
-          {TEXT_SYMBOLS.hexagon}
-        </button>
         {onShowJourney && (
           <button 
             style={{
