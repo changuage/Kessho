@@ -71,7 +71,7 @@ const COLORS = {
   centerNodeBorder: '#B8E0FF',             // Icy snowflake blue
   centerNodePlaying: '#B8E0FF',            // Icy snowflake blue
   // Popups
-  popup: 'rgba(20, 20, 35, 0.95)',
+  popup: 'rgba(20, 20, 35, 0.5)',
   popupBorder: 'rgba(232, 220, 196, 0.3)',
   popupGlow: 'rgba(232, 220, 196, 0.1)',
   // Diamond frame
@@ -282,20 +282,6 @@ const DiamondNode: React.FC<DiamondNodeProps> = ({
             }}
           />
         </>
-      )}
-      
-      {/* Valid drop target highlight */}
-      {isValidDropTarget && (
-        <circle
-          cx={x}
-          cy={y}
-          r={size / 2 + 14}
-          fill="none"
-          stroke={COLORS.dragGhost}
-          strokeWidth={1.5}
-          strokeDasharray="4,6"
-          style={{ opacity: 0.7 }}
-        />
       )}
       
       {/* Node background glow - hexagon for filled, circle for empty */}
@@ -747,11 +733,21 @@ const CenterNode: React.FC<CenterNodeProps> = ({
     if (dragStartPos.current && !dragStarted.current) {
       // Didn't move enough - treat as tap
       e.stopPropagation();
+      e.preventDefault(); // Prevent synthetic click event on touch devices
       onClick();
     }
     dragStartPos.current = null;
     dragStarted.current = false;
     pendingEvent.current = null;
+  };
+  
+  // Prevent click events that might fire after touch (synthetic clicks)
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    // On touch devices, we already handled the tap in handleTouchEnd
+    // On mouse devices, we handle click in handleMouseUp
+    // So this handler just prevents bubbling
   };
   
   return (
@@ -768,6 +764,7 @@ const CenterNode: React.FC<CenterNodeProps> = ({
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
+      onClick={handleClick}
     >
       {/* Center node uses circles (not hexagon like preset nodes) */}
       {(() => {
@@ -795,20 +792,6 @@ const CenterNode: React.FC<CenterNodeProps> = ({
               filter="url(#glow)"
               style={{ opacity: isPlaying ? 0.8 : 0.4, transition: isMorphing ? 'none' : 'stroke 0.3s ease-out, opacity 0.3s ease-out' }}
             />
-            
-            {/* Valid drop target highlight */}
-            {isValidDropTarget && (
-              <circle
-                cx={x}
-                cy={y}
-                r={size / 2 + 14}
-                fill="none"
-                stroke={COLORS.dragGhost}
-                strokeWidth={1.5}
-                strokeDasharray="4,6"
-                style={{ opacity: 0.7 }}
-              />
-            )}
             
             {/* Background fill circle */}
             <circle
@@ -1526,6 +1509,98 @@ const DragLine: React.FC<DragLineProps> = ({ fromX, fromY, toX, toY }) => {
   );
 };
 
+// Ghost connection lines showing possible connections from a source node
+interface GhostConnectionLinesProps {
+  fromPosition: DiamondPosition;
+  fromNodeId: string;
+  centerX: number;
+  centerY: number;
+  radius: number;
+  filledPositions: DiamondPosition[]; // Only show lines to filled nodes
+  existingConnections: JourneyConnection[]; // Existing connections to exclude
+  nodes: JourneyNode[]; // All nodes to map positions to IDs
+}
+
+const GhostConnectionLines: React.FC<GhostConnectionLinesProps> = ({
+  fromPosition,
+  fromNodeId,
+  centerX,
+  centerY,
+  radius,
+  filledPositions,
+  existingConnections,
+  nodes,
+}) => {
+  const allPositions: DiamondPosition[] = ['left', 'top', 'right', 'bottom', 'center'];
+  
+  // Get valid target positions (different from source, filled, and no existing connection)
+  const targetPositions = allPositions.filter(pos => {
+    if (pos === fromPosition) return false;
+    if (pos !== 'center' && !filledPositions.includes(pos)) return false;
+    
+    // Check if connection already exists from source to this target
+    const targetNode = nodes.find(n => n.position === pos);
+    if (!targetNode) return false;
+    
+    const connectionExists = existingConnections.some(
+      c => c.fromNodeId === fromNodeId && c.toNodeId === targetNode.id
+    );
+    return !connectionExists;
+  });
+  
+  return (
+    <g style={{ pointerEvents: 'none' }}>
+      {targetPositions.map(targetPos => {
+        // Use the same path calculation as the actual connections
+        const pathD = calculateCurvedPath(
+          fromPosition,
+          targetPos,
+          centerX,
+          centerY,
+          radius
+        );
+        
+        const toCoords = getDiamondCoordinates(targetPos, centerX, centerY, radius);
+        
+        return (
+          <g key={targetPos}>
+            {/* Faint glow */}
+            <path
+              d={pathD}
+              fill="none"
+              stroke={COLORS.dragGhost}
+              strokeWidth={3}
+              filter="url(#glow)"
+              opacity={0.1}
+            />
+            {/* Dotted ghost line */}
+            <path
+              d={pathD}
+              fill="none"
+              stroke={COLORS.dragGhost}
+              strokeWidth={1.5}
+              strokeDasharray="6,8"
+              strokeLinecap="round"
+              opacity={0.25}
+            />
+            {/* Small target indicator */}
+            <circle
+              cx={toCoords.x}
+              cy={toCoords.y}
+              r={targetPos === 'center' ? CENTER_NODE_SIZE / 2 + 8 : NODE_BASE_SIZE / 2 + 6}
+              fill="none"
+              stroke={COLORS.dragGhost}
+              strokeWidth={1.5}
+              strokeDasharray="4,4"
+              opacity={0.2}
+            />
+          </g>
+        );
+      })}
+    </g>
+  );
+};
+
 // ============================================================================
 // POPUP COMPONENTS
 // ============================================================================
@@ -1535,6 +1610,7 @@ interface NodePopupProps {
   outgoingConnections: Array<{ connection: JourneyConnection; targetName: string; targetColor: string; normalizedProbability: number }>;
   x: number;
   y: number;
+  isMobile?: boolean;
   onChangePhraseMin: (phrases: number) => void;
   onChangePhraseMax: (phrases: number) => void;
   onTogglePhraseDual: () => void;
@@ -1549,6 +1625,7 @@ const NodePopup: React.FC<NodePopupProps> = ({
   outgoingConnections,
   x,
   y,
+  isMobile = false,
   onChangePhraseMin,
   onChangePhraseMax,
   onTogglePhraseDual,
@@ -1629,9 +1706,8 @@ const NodePopup: React.FC<NodePopupProps> = ({
       newY = y + rect.height + 20;
     }
     
-    if (newX !== x || newY !== y) {
-      setAdjustedPos({ x: newX, y: newY });
-    }
+    // Always update adjustedPos when x,y props change
+    setAdjustedPos({ x: newX, y: newY });
   }, [x, y]);
   
   // Report bounding rect to parent after position adjustments
@@ -1652,17 +1728,17 @@ const NodePopup: React.FC<NodePopupProps> = ({
       data-popup="true"
       style={{
         position: 'fixed',
-        left: adjustedPos.x,
-        top: adjustedPos.y,
-        transform: 'translate(-50%, -100%) translateY(-12px)',
+        left: isMobile ? '50%' : adjustedPos.x,
+        top: isMobile ? 12 : adjustedPos.y,
+        transform: isMobile ? 'translateX(-50%)' : 'translate(-50%, -100%) translateY(-12px)',
         background: COLORS.popup,
-        backdropFilter: 'blur(12px)',
-        WebkitBackdropFilter: 'blur(12px)',
+        backdropFilter: 'blur(4px)',
+        WebkitbackdropFilter: 'blur(4px)',
         border: `1px solid ${COLORS.popupBorder}`,
         borderRadius: 12,
-        padding: '14px 18px',
-        minWidth: 180,
-        maxWidth: 220,
+        padding: isMobile ? '10px 14px' : '14px 18px',
+        minWidth: isMobile ? 200 : 180,
+        maxWidth: isMobile ? 260 : 220,
         boxShadow: `0 8px 32px rgba(0,0,0,0.4), 0 0 1px ${COLORS.popupGlow}, inset 0 1px 0 ${COLORS.popupGlow}`,
         fontFamily: "'Avenir', 'Avenir Next', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
         color: COLORS.text,
@@ -1680,7 +1756,7 @@ const NodePopup: React.FC<NodePopupProps> = ({
       </style>
       <div style={{ 
         fontWeight: '500', 
-        marginBottom: 14, 
+        marginBottom: isMobile ? 8 : 14, 
         color: node.color || COLORS.filledNode,
         fontSize: 11,
         letterSpacing: '0.02em',
@@ -1688,14 +1764,14 @@ const NodePopup: React.FC<NodePopupProps> = ({
         {node.presetName}
       </div>
       
-      <div style={{ marginBottom: 14 }}>
+      <div style={{ marginBottom: isMobile ? 8 : 14 }}>
         <div style={{ 
           display: 'flex', 
           justifyContent: 'space-between',
           alignItems: 'flex-start',
           fontSize: 9, 
           color: COLORS.textMuted, 
-          marginBottom: 8, 
+          marginBottom: isMobile ? 4 : 8, 
           textTransform: 'uppercase', 
           letterSpacing: '0.1em' 
         }}>
@@ -1927,17 +2003,17 @@ const NodePopup: React.FC<NodePopupProps> = ({
       
       {/* Outgoing Connections Section */}
       {outgoingConnections.length > 0 && (
-        <div style={{ marginBottom: 14 }}>
+        <div style={{ marginBottom: isMobile ? 8 : 14 }}>
           <div style={{ 
             fontSize: 10, 
             color: COLORS.textMuted, 
-            marginBottom: 8, 
+            marginBottom: isMobile ? 4 : 8, 
             textTransform: 'uppercase', 
             letterSpacing: '0.1em' 
           }}>
             Outgoing Connections
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: isMobile ? 4 : 6 }}>
             {outgoingConnections.map(({ connection, targetName, targetColor, normalizedProbability }) => (
               <div 
                 key={connection.id}
@@ -2030,38 +2106,40 @@ const NodePopup: React.FC<NodePopupProps> = ({
         </div>
       )}
       
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', flexDirection: 'row', gap: 8 }}>
         <button
           onClick={onChangePreset}
           style={{
-            padding: '10px 14px',
+            flex: 1,
+            padding: '8px 10px',
             background: 'rgba(255,255,255,0.05)',
             color: COLORS.text,
             border: '1px solid rgba(255,255,255,0.15)',
             borderRadius: 6,
             cursor: 'pointer',
             fontFamily: 'inherit',
-            fontSize: 12,
+            fontSize: 11,
             transition: 'all 0.15s ease',
           }}
         >
-          Change Preset
+          Change
         </button>
         <button
           onClick={onRemove}
           style={{
-            padding: '10px 14px',
+            flex: 1,
+            padding: '8px 10px',
             background: 'rgba(196, 114, 78, 0.15)',
             color: '#C4724E',
             border: '1px solid rgba(196, 114, 78, 0.4)',
             borderRadius: 6,
             cursor: 'pointer',
             fontFamily: 'inherit',
-            fontSize: 12,
+            fontSize: 11,
             transition: 'all 0.15s ease',
           }}
         >
-          Remove Node
+          Remove
         </button>
       </div>
     </div>
@@ -2198,9 +2276,8 @@ const ConnectionPopup: React.FC<ConnectionPopupProps> = ({
       newY = y + rect.height + 20;
     }
     
-    if (newX !== x || newY !== y) {
-      setAdjustedPos({ x: newX, y: newY });
-    }
+    // Always update adjustedPos when x,y props change
+    setAdjustedPos({ x: newX, y: newY });
   }, [x, y, adjacentRect]);
   
   return (
@@ -2214,8 +2291,8 @@ const ConnectionPopup: React.FC<ConnectionPopupProps> = ({
         // Only apply centering transform when not adjacent to another popup
         transform: adjacentRect ? 'none' : 'translate(-50%, -100%) translateY(-12px)',
         background: COLORS.popup,
-        backdropFilter: 'blur(12px)',
-        WebkitBackdropFilter: 'blur(12px)',
+        backdropFilter: 'blur(4px)',
+        WebkitbackdropFilter: 'blur(4px)',
         border: `1px solid ${COLORS.popupBorder}`,
         borderRadius: 12,
         padding: '14px 18px',
@@ -2535,6 +2612,7 @@ interface AddPresetPopupProps {
   presets: SavedPreset[];
   x: number;
   y: number;
+  isMobile?: boolean;
   onSelectPreset: (preset: SavedPreset) => void;
 }
 
@@ -2542,6 +2620,7 @@ const AddPresetPopup: React.FC<AddPresetPopupProps> = ({
   presets,
   x,
   y,
+  isMobile = false,
   onSelectPreset,
 }) => {
   const popupRef = useRef<HTMLDivElement>(null);
@@ -2571,9 +2650,8 @@ const AddPresetPopup: React.FC<AddPresetPopupProps> = ({
       newY = y + rect.height + 20; // Move below instead
     }
     
-    if (newX !== x || newY !== y) {
-      setAdjustedPos({ x: newX, y: newY });
-    }
+    // Always update adjustedPos when x,y props change
+    setAdjustedPos({ x: newX, y: newY });
   }, [x, y]);
   
   return (
@@ -2584,10 +2662,10 @@ const AddPresetPopup: React.FC<AddPresetPopupProps> = ({
         position: 'fixed',
         left: adjustedPos.x,
         top: adjustedPos.y,
-        transform: 'translate(-50%, -100%) translateY(-12px)',
+        transform: isMobile ? 'translate(-50%, 0)' : 'translate(-50%, -100%) translateY(-12px)',
         background: COLORS.popup,
-        backdropFilter: 'blur(12px)',
-        WebkitBackdropFilter: 'blur(12px)',
+        backdropFilter: 'blur(4px)',
+        WebkitbackdropFilter: 'blur(4px)',
         border: `1px solid ${COLORS.popupBorder}`,
         borderRadius: 12,
         padding: '14px 18px',
@@ -2703,9 +2781,8 @@ const JourneyTrackerPopup: React.FC<JourneyTrackerPopupProps> = ({
       newY = y - (rect.bottom - viewportHeight + padding);
     }
     
-    if (newX !== x || newY !== y) {
-      setAdjustedPos({ x: newX, y: newY });
-    }
+    // Always update adjustedPos when x,y props change
+    setAdjustedPos({ x: newX, y: newY });
   }, [x, y]);
   
   // Get current and next node info
@@ -2763,8 +2840,8 @@ const JourneyTrackerPopup: React.FC<JourneyTrackerPopupProps> = ({
         top: adjustedPos.y,
         transform: 'translate(-50%, -100%) translateY(-20px)',
         background: COLORS.popup,
-        backdropFilter: 'blur(12px)',
-        WebkitBackdropFilter: 'blur(12px)',
+        backdropFilter: 'blur(4px)',
+        WebkitbackdropFilter: 'blur(4px)',
         border: `1px solid ${COLORS.popupBorder}`,
         borderRadius: 12,
         padding: '12px 16px',
@@ -3091,8 +3168,12 @@ export const DiamondJourneyUI: React.FC<DiamondJourneyUIProps> = ({
   const [secondaryPopup, setSecondaryPopup] = useState<PopupState>({ type: null, x: 0, y: 0 });
   // Track the node popup's bounding rect for positioning secondary popup adjacent to it
   const [nodePopupRect, setNodePopupRect] = useState<DOMRect | null>(null);
-  // Journey tracker popup (long hover on center node)
+  // Journey tracker popup (long hover on center node, or tap on mobile)
   const [trackerPopup, setTrackerPopup] = useState<{show: boolean, x: number, y: number}>({show: false, x: 0, y: 0});
+  // Track if device is touch-capable (for mobile-specific behaviors)
+  // Detect true mobile (touch + small screen) vs desktop with touch capability
+  const isTouchDevice = useMemo(() => 'ontouchstart' in window || navigator.maxTouchPoints > 0, []);
+  const isMobileDevice = useMemo(() => isTouchDevice && window.innerWidth < 1024, [isTouchDevice]);
   const [dragState, setDragState] = useState<DragState>({
     isDragging: false,
     fromNodeId: null,
@@ -3320,7 +3401,12 @@ export const DiamondJourneyUI: React.FC<DiamondJourneyUIProps> = ({
         }
       } else if (dragState.fromPosition === 'center' && fromNode) {
         // Connection FROM center = start connection
-        if (targetNode && targetNode.presetId && targetNode.presetId !== '__CENTER__') {
+        // Only allow ONE start connection from center
+        const hasStartConnection = config.connections.some(
+          c => c.fromNodeId === fromNode.id
+        );
+        
+        if (!hasStartConnection && targetNode && targetNode.presetId && targetNode.presetId !== '__CENTER__') {
           console.log('Creating connection from START to', targetNode.id);
           const newConnection: JourneyConnection = {
             id: generateJourneyId(),
@@ -3330,16 +3416,10 @@ export const DiamondJourneyUI: React.FC<DiamondJourneyUIProps> = ({
             probability: JOURNEY_DEFAULTS.probability,
           };
           
-          const exists = config.connections.some(
-            c => c.fromNodeId === fromNode.id && c.toNodeId === targetNode.id
-          );
-          
-          if (!exists) {
-            onConfigChange({
-              ...config,
-              connections: [...config.connections, newConnection],
-            });
-          }
+          onConfigChange({
+            ...config,
+            connections: [...config.connections, newConnection],
+          });
         }
       } else if (targetNode && targetNode.presetId && targetNode.presetId !== '__CENTER__') {
         // Regular preset to preset connection
@@ -3398,24 +3478,71 @@ export const DiamondJourneyUI: React.FC<DiamondJourneyUIProps> = ({
     
     console.log('Node clicked:', node.position, 'isEmpty:', !node.presetId, 'at', screenX, screenY);
     
+    // If a node popup is already open, clicking another node creates a connection (if valid)
+    // In ALL cases when popup is open and different node clicked, close popup and don't open new one
+    if (popup.type === 'node' && popup.nodeId && popup.nodeId !== node.id && config) {
+      const fromNode = config.nodes.find(n => n.id === popup.nodeId);
+      
+      // Only create connection if target has a preset (not empty or center)
+      if (fromNode && node.presetId && node.presetId !== '__CENTER__') {
+        console.log('Creating connection from popup node to clicked node:', fromNode.presetName, '->', node.presetName);
+        
+        // Check if connection already exists
+        const exists = config.connections.some(
+          c => c.fromNodeId === fromNode.id && c.toNodeId === node.id
+        );
+        
+        if (!exists) {
+          const newConnection: JourneyConnection = {
+            id: generateJourneyId(),
+            fromNodeId: fromNode.id,
+            toNodeId: node.id,
+            morphDuration: JOURNEY_DEFAULTS.morphDuration,
+            probability: JOURNEY_DEFAULTS.probability,
+          };
+          
+          onConfigChange({
+            ...config,
+            connections: [...config.connections, newConnection],
+          });
+        }
+      }
+      
+      // Always close the popup when clicking another node during connection mode
+      // Don't open the target node's popup
+      setPopup({ type: null, x: 0, y: 0 });
+      return;
+    }
+    
+    // For mobile (touch + small screen), position popup at the very top of the screen
+    // For desktop (even with touch), position near the clicked node
+    let popupX = screenX;
+    let popupY = screenY;
+    const isMobile = isTouchDevice && window.innerWidth < 1024;
+    if (isMobile) {
+      // Position popup centered at top of viewport
+      popupX = window.innerWidth / 2;
+      popupY = 12; // Same as status bar position
+    }
+    
     if (!node.presetId) {
       // Empty slot - show add preset popup
       setPopup({
         type: 'addPreset',
         position: node.position,
-        x: screenX,
-        y: screenY,
+        x: popupX,
+        y: popupY,
       });
     } else {
       // Filled node - show edit popup
       setPopup({
         type: 'node',
         nodeId: node.id,
-        x: screenX,
-        y: screenY,
+        x: popupX,
+        y: popupY,
       });
     }
-  }, [dragState.isDragging]);
+  }, [dragState.isDragging, popup.type, popup.nodeId, config, onConfigChange, isTouchDevice]);
   
   // Handle connection click
   const handleConnectionClick = useCallback((connection: JourneyConnection, screenX: number, screenY: number) => {
@@ -3429,17 +3556,90 @@ export const DiamondJourneyUI: React.FC<DiamondJourneyUIProps> = ({
   
   // Handle center play/stop
   const handleCenterClick = useCallback(() => {
+    // If a node popup is open, clicking center creates connection to END
+    if (popup.type === 'node' && popup.nodeId && config) {
+      const fromNode = config.nodes.find(n => n.id === popup.nodeId);
+      const centerNode = config.nodes.find(n => n.position === 'center');
+      
+      if (fromNode && centerNode && fromNode.presetId && fromNode.presetId !== '__CENTER__') {
+        console.log('Creating connection from popup node to END:', fromNode.presetName);
+        
+        // Check if connection already exists
+        const exists = config.connections.some(
+          c => c.fromNodeId === fromNode.id && c.toNodeId === centerNode.id
+        );
+        
+        if (!exists) {
+          const newConnection: JourneyConnection = {
+            id: generateJourneyId(),
+            fromNodeId: fromNode.id,
+            toNodeId: centerNode.id,
+            morphDuration: JOURNEY_DEFAULTS.morphDuration,
+            probability: JOURNEY_DEFAULTS.probability,
+          };
+          
+          onConfigChange({
+            ...config,
+            connections: [...config.connections, newConnection],
+          });
+        }
+        
+        // Close the popup after creating connection
+        setPopup({ type: null, x: 0, y: 0 });
+        return;
+      }
+    }
+    
     if (state.phase === 'idle' || state.phase === 'ended') {
       onPlay();
     } else {
       onStop();
     }
-  }, [state.phase, onPlay, onStop]);
+  }, [state.phase, onPlay, onStop, popup.type, popup.nodeId, config, onConfigChange]);
   
-  // Handle long hover on center node for tracker popup
+  // Handle long hover on center node for tracker popup (desktop)
   const handleTrackerLongHover = useCallback((show: boolean, screenX: number, screenY: number) => {
     setTrackerPopup({ show, x: screenX, y: screenY });
   }, []);
+  
+  // Debounce ref to prevent double-firing on touch (touchend + click both fire)
+  const lastBackgroundTapTime = useRef(0);
+  
+  // Handle background tap to toggle tracker popup (mobile)
+  const handleBackgroundTap = useCallback((e: React.TouchEvent | React.MouseEvent) => {
+    // Only on touch devices
+    if (!isTouchDevice) return;
+    
+    // Debounce - ignore if triggered within 300ms of last tap
+    const now = Date.now();
+    if (now - lastBackgroundTapTime.current < 300) return;
+    lastBackgroundTapTime.current = now;
+    
+    // Only when journey is playing
+    if (state.phase !== 'playing' && state.phase !== 'morphing' && state.phase !== 'self-loop' && state.phase !== 'ending') return;
+    
+    // Check if tap was on an interactive element
+    const target = e.target as HTMLElement;
+    const tagName = target.tagName?.toLowerCase();
+    if (target.closest('[data-popup]') || 
+        target.closest('button') || 
+        tagName === 'circle' || 
+        tagName === 'path' ||
+        tagName === 'g' ||
+        tagName === 'svg' ||
+        target.closest('g[style*="cursor: pointer"]') ||
+        target.closest('svg')) {
+      return;
+    }
+    
+    // Toggle the tracker popup at top-center of screen
+    // y=160 positions popup nicely near top (popup appears above this point due to transform)
+    setTrackerPopup(prev => ({
+      show: !prev.show,
+      x: window.innerWidth / 2,
+      y: 160,
+    }));
+  }, [isTouchDevice, state.phase]);
 
   // Handle popup actions - phrase length with dual mode support
   const handleChangePhraseMin = useCallback((nodeId: string, phrases: number) => {
@@ -3636,9 +3836,49 @@ export const DiamondJourneyUI: React.FC<DiamondJourneyUIProps> = ({
   const popupConnection = popup.connectionId ? config?.connections.find(c => c.id === popup.connectionId) : null;
   const secondaryPopupConnection = secondaryPopup.connectionId ? config?.connections.find(c => c.id === secondaryPopup.connectionId) : null;
   
+  // Compute filled positions for ghost connection lines
+  const filledPositions = useMemo(() => {
+    if (!config) return [] as DiamondPosition[];
+    return (['left', 'top', 'right', 'bottom'] as DiamondPosition[]).filter(pos => {
+      const node = config.nodes.find(n => n.position === pos);
+      return node && node.presetId && node.presetId !== '__CENTER__';
+    });
+  }, [config]);
+  
+  // Check if center already has a start connection (only allow one)
+  const hasStartConnection = useMemo(() => {
+    if (!config) return false;
+    const centerNode = config.nodes.find(n => n.position === 'center');
+    if (!centerNode) return false;
+    return config.connections.some(c => c.fromNodeId === centerNode.id);
+  }, [config]);
+  
+  // Determine if ghost lines should be shown and from which position
+  const ghostLinesSource = useMemo((): DiamondPosition | null => {
+    // Show ghost lines when dragging (but not from center if start connection exists)
+    if (dragState.isDragging && dragState.fromPosition) {
+      if (dragState.fromPosition === 'center' && hasStartConnection) {
+        return null;
+      }
+      return dragState.fromPosition;
+    }
+    // Show ghost lines when node popup is open
+    if (popup.type === 'node' && popupNode?.position) {
+      return popupNode.position;
+    }
+    return null;
+  }, [dragState.isDragging, dragState.fromPosition, popup.type, popupNode?.position, hasStartConnection]);
+  
+  // Get current and next node for mobile status bar
+  const currentPlayingNode = config?.nodes.find(n => n.id === state.currentNodeId);
+  const nextPlayingNode = config?.nodes.find(n => n.id === state.nextNodeId);
+  const isPlaying = state.phase === 'playing' || state.phase === 'morphing' || state.phase === 'self-loop' || state.phase === 'ending';
+  
   return (
     <div 
       ref={containerRef}
+      onClick={handleBackgroundTap}
+      onTouchEnd={handleBackgroundTap}
       style={{
         width: '100%',
         height: '100%',
@@ -3649,6 +3889,345 @@ export const DiamondJourneyUI: React.FC<DiamondJourneyUIProps> = ({
         overflow: 'hidden',
       }}
     >
+      {/* Expandable status bar at top of screen (both mobile and desktop) */}
+      {isPlaying && (() => {
+        // Calculate time remaining
+        const phraseDuration = state.resolvedPhraseDuration || currentPlayingNode?.phraseLength || 1;
+        const morphDuration = state.resolvedMorphDuration || 2;
+        const phraseTimeTotal = phraseDuration * PHRASE_LENGTH;
+        const phraseTimeRemaining = phraseTimeTotal * (1 - state.phraseProgress);
+        const morphTimeTotal = morphDuration * PHRASE_LENGTH;
+        const morphTimeRemaining = morphTimeTotal * (1 - state.morphProgress);
+        
+        const formatTime = (seconds: number) => {
+          const mins = Math.floor(seconds / 60);
+          const secs = Math.floor(seconds % 60);
+          if (mins > 0) {
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
+          }
+          return `${secs}s`;
+        };
+        
+        const isExpanded = trackerPopup.show;
+        
+        // Get planned next node for expanded view
+        const plannedNode = config?.nodes.find(n => n.id === state.plannedNextNodeId);
+        const isNextEnd = plannedNode?.position === 'center' || plannedNode?.presetId === '__CENTER__';
+        const isNextSelf = plannedNode?.id === state.currentNodeId;
+        
+        const getPhaseDisplay = () => {
+          switch (state.phase) {
+            case 'playing': return 'Playing';
+            case 'morphing': return 'Morphing';
+            case 'self-loop': return 'Looping';
+            case 'ending': return 'Ending';
+            default: return state.phase;
+          }
+        };
+        
+        return (
+          <div
+            onClick={(e) => {
+              e.stopPropagation();
+              setTrackerPopup(prev => ({ ...prev, show: !prev.show }));
+            }}
+            onTouchEnd={(e) => {
+              e.stopPropagation();
+            }}
+            style={{
+              position: 'fixed',
+              top: 8,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              zIndex: 1000,
+              background: COLORS.popup,
+              backdropFilter: 'blur(4px)',
+              WebkitBackdropFilter: 'blur(4px)',
+              border: `1px solid ${COLORS.popupBorder}`,
+              borderRadius: isExpanded ? 12 : 20,
+              padding: isExpanded ? '12px 16px' : '6px 14px',
+              display: 'flex',
+              flexDirection: isExpanded ? 'column' : 'row',
+              alignItems: isExpanded ? 'stretch' : 'center',
+              gap: isExpanded ? 10 : 10,
+              boxShadow: `0 4px 16px rgba(0,0,0,0.3)`,
+              fontFamily: "'Avenir', 'Avenir Next', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+              color: COLORS.text,
+              pointerEvents: 'auto',
+              cursor: 'pointer',
+              minWidth: isExpanded ? 180 : undefined,
+              transition: 'all 0.2s ease',
+            }}
+          >
+              {isExpanded ? (
+                // === EXPANDED VIEW ===
+                <>
+                  {/* Phase indicator header */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: '50%',
+                      background: state.phase === 'morphing' 
+                        ? COLORS.morphingConnection 
+                        : state.phase === 'ending' 
+                          ? COLORS.endConnection 
+                          : (currentPlayingNode?.color || COLORS.filledNode),
+                      boxShadow: `0 0 8px ${state.phase === 'morphing' 
+                        ? COLORS.morphingConnection 
+                        : state.phase === 'ending' 
+                          ? COLORS.endConnection 
+                          : (currentPlayingNode?.color || COLORS.filledNode)}`,
+                    }} />
+                    <span style={{ 
+                      fontSize: 11, 
+                      fontWeight: 600, 
+                      letterSpacing: '0.05em',
+                      textTransform: 'uppercase',
+                      color: state.phase === 'morphing' 
+                        ? COLORS.morphingConnection 
+                        : state.phase === 'ending' 
+                          ? COLORS.endConnection 
+                          : (currentPlayingNode?.color || COLORS.filledNode),
+                    }}>
+                      {getPhaseDisplay()}
+                    </span>
+                  </div>
+                  
+                  {/* Current preset */}
+                  {currentPlayingNode?.presetName && (
+                    <div>
+                      <div style={{ fontSize: 9, color: COLORS.textMuted, marginBottom: 2, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                        Current
+                      </div>
+                      <div style={{ 
+                        fontSize: 12, 
+                        fontWeight: 500,
+                        color: currentPlayingNode.color || COLORS.filledNode,
+                      }}>
+                        {currentPlayingNode.presetName}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Phrase progress (playing/self-loop) */}
+                  {(state.phase === 'playing' || state.phase === 'self-loop') && (
+                    <div>
+                      <div style={{ fontSize: 9, color: COLORS.textMuted, marginBottom: 2, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                        Phrase ({Math.round(state.phraseProgress * 100)}%)
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ 
+                          flex: 1,
+                          height: 4, 
+                          background: 'rgba(255,255,255,0.1)', 
+                          borderRadius: 2,
+                          overflow: 'hidden',
+                        }}>
+                          <div style={{ 
+                            width: `${state.phraseProgress * 100}%`, 
+                            height: '100%', 
+                            background: currentPlayingNode?.color || COLORS.filledNode,
+                            borderRadius: 2,
+                          }} />
+                        </div>
+                        <span style={{ fontSize: 10, color: COLORS.text, minWidth: 35, textAlign: 'right' }}>
+                          {formatTime(phraseTimeRemaining)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Morph progress */}
+                  {state.phase === 'morphing' && nextPlayingNode && (
+                    <div>
+                      <div style={{ fontSize: 9, color: COLORS.textMuted, marginBottom: 2, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                        Morphing to
+                      </div>
+                      <div style={{ 
+                        fontSize: 11, 
+                        color: nextPlayingNode.color || COLORS.filledNode,
+                        marginBottom: 4,
+                      }}>
+                        {nextPlayingNode.presetName}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ 
+                          flex: 1, 
+                          height: 4, 
+                          background: 'rgba(255,255,255,0.1)', 
+                          borderRadius: 2,
+                          overflow: 'hidden',
+                        }}>
+                          <div style={{ 
+                            width: `${state.morphProgress * 100}%`, 
+                            height: '100%', 
+                            background: COLORS.morphingConnection,
+                            borderRadius: 2,
+                          }} />
+                        </div>
+                        <span style={{ fontSize: 10, color: COLORS.text, minWidth: 35, textAlign: 'right' }}>
+                          {formatTime(morphTimeRemaining)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Ending progress */}
+                  {state.phase === 'ending' && (
+                    <div>
+                      <div style={{ fontSize: 9, color: COLORS.textMuted, marginBottom: 2, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                        Fading out
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ 
+                          flex: 1, 
+                          height: 4, 
+                          background: 'rgba(255,255,255,0.1)', 
+                          borderRadius: 2,
+                          overflow: 'hidden',
+                        }}>
+                          <div style={{ 
+                            width: `${state.morphProgress * 100}%`, 
+                            height: '100%', 
+                            background: COLORS.endConnection,
+                            borderRadius: 2,
+                          }} />
+                        </div>
+                        <span style={{ fontSize: 10, color: COLORS.text, minWidth: 35, textAlign: 'right' }}>
+                          {formatTime(morphTimeRemaining)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Next stop */}
+                  {(state.phase === 'playing' || state.phase === 'self-loop') && plannedNode && (
+                    <div style={{ marginTop: 2, paddingTop: 6, borderTop: `1px solid ${COLORS.popupBorder}` }}>
+                      <div style={{ fontSize: 9, color: COLORS.textMuted, marginBottom: 2, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                        Next
+                      </div>
+                      <div style={{ 
+                        fontSize: 11, 
+                        color: isNextEnd ? COLORS.endConnection : (isNextSelf ? currentPlayingNode?.color : plannedNode.color) || COLORS.filledNode,
+                      }}>
+                        {isNextEnd ? '⬡ End' : (isNextSelf ? '↺ Self-loop' : plannedNode.presetName)}
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                // === COMPACT VIEW ===
+                <>
+                  {/* Phase dot */}
+                  <div style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: '50%',
+                    background: state.phase === 'morphing' 
+                      ? COLORS.morphingConnection 
+                      : state.phase === 'ending' 
+                        ? COLORS.endConnection 
+                        : (currentPlayingNode?.color || COLORS.filledNode),
+                    boxShadow: `0 0 6px ${state.phase === 'morphing' 
+                      ? COLORS.morphingConnection 
+                      : state.phase === 'ending' 
+                        ? COLORS.endConnection 
+                        : (currentPlayingNode?.color || COLORS.filledNode)}`,
+                  }} />
+                  
+                  {/* Current/Morphing info with progress */}
+                  {state.phase === 'morphing' && nextPlayingNode ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ 
+                        fontSize: 10, 
+                        color: currentPlayingNode?.color || COLORS.textMuted,
+                        maxWidth: 60,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}>
+                        {currentPlayingNode?.presetName || '?'}
+                      </span>
+                      <span style={{ fontSize: 9, color: COLORS.textMuted }}>→</span>
+                      <span style={{ 
+                        fontSize: 10, 
+                        color: nextPlayingNode.color || COLORS.filledNode,
+                        maxWidth: 60,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}>
+                        {nextPlayingNode.presetName || 'END'}
+                      </span>
+                      <div style={{ 
+                        width: 40, 
+                        height: 3, 
+                        background: 'rgba(255,255,255,0.15)', 
+                        borderRadius: 2,
+                        overflow: 'hidden',
+                      }}>
+                        <div style={{ 
+                          width: `${state.morphProgress * 100}%`, 
+                          height: '100%', 
+                          background: COLORS.morphingConnection,
+                          borderRadius: 2,
+                        }} />
+                      </div>
+                    </div>
+                  ) : state.phase === 'ending' ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: 10, color: COLORS.endConnection }}>Ending</span>
+                      <div style={{ 
+                        width: 40, 
+                        height: 3, 
+                        background: 'rgba(255,255,255,0.15)', 
+                        borderRadius: 2,
+                        overflow: 'hidden',
+                      }}>
+                        <div style={{ 
+                          width: `${state.morphProgress * 100}%`, 
+                          height: '100%', 
+                          background: COLORS.endConnection,
+                          borderRadius: 2,
+                        }} />
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ 
+                        fontSize: 10, 
+                        color: currentPlayingNode?.color || COLORS.filledNode,
+                        maxWidth: 80,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        fontWeight: 500,
+                      }}>
+                        {currentPlayingNode?.presetName || '?'}
+                      </span>
+                      <div style={{ 
+                        width: 40, 
+                        height: 3, 
+                        background: 'rgba(255,255,255,0.15)', 
+                        borderRadius: 2,
+                        overflow: 'hidden',
+                      }}>
+                        <div style={{ 
+                          width: `${state.phraseProgress * 100}%`, 
+                          height: '100%', 
+                          background: currentPlayingNode?.color || COLORS.filledNode,
+                          borderRadius: 2,
+                        }} />
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+          </div>
+        );
+      })()}
+      
       {/* Ambient halo gradient background */}
       <div
         style={{
@@ -3675,7 +4254,13 @@ export const DiamondJourneyUI: React.FC<DiamondJourneyUIProps> = ({
         ref={svgRef}
         width={dimensions.width}
         height={dimensions.height}
-        style={{ overflow: 'visible', position: 'relative', zIndex: 1 }}
+        style={{ 
+          overflow: 'visible', 
+          position: 'relative', 
+          zIndex: 1,
+          touchAction: 'none',
+          overscrollBehavior: 'contain'
+        }}
       >
         {/* Definitions */}
         <defs>
@@ -3884,6 +4469,26 @@ export const DiamondJourneyUI: React.FC<DiamondJourneyUIProps> = ({
           <DragLine {...dragLineCoords} />
         )}
         
+        {/* Ghost connection lines showing possible connections */}
+        {ghostLinesSource && config && (() => {
+          // Find the source node ID for the ghost lines
+          const sourceNode = config.nodes.find(n => n.position === ghostLinesSource);
+          if (!sourceNode) return null;
+          
+          return (
+            <GhostConnectionLines
+              fromPosition={ghostLinesSource}
+              fromNodeId={sourceNode.id}
+              centerX={centerX}
+              centerY={centerY}
+              radius={radius}
+              filledPositions={filledPositions}
+              existingConnections={config.connections}
+              nodes={config.nodes}
+            />
+          );
+        })()}
+        
         {/* Preset nodes at cardinal positions */}
         {(['left', 'top', 'right', 'bottom'] as DiamondPosition[]).map((position) => {
           const node = getNodeByPosition(position);
@@ -3944,7 +4549,7 @@ export const DiamondJourneyUI: React.FC<DiamondJourneyUIProps> = ({
             isDragSource={dragState.isDragging && dragState.fromPosition === 'center'}
             nodeColor={activeNodeColor}
             onClick={handleCenterClick}
-            onLongHover={handleTrackerLongHover}
+            onLongHover={isTouchDevice ? undefined : handleTrackerLongHover}
             onDragStart={(e) => {
                 const centerNode = config.nodes.find(n => n.position === 'center');
                 if (centerNode) {
@@ -3979,6 +4584,7 @@ export const DiamondJourneyUI: React.FC<DiamondJourneyUIProps> = ({
             }
             x={popup.x}
             y={popup.y}
+            isMobile={isMobileDevice}
             onChangePhraseMin={(phrases) => handleChangePhraseMin(popupNode.id, phrases)}
             onChangePhraseMax={(phrases) => handleChangePhraseMax(popupNode.id, phrases)}
             onTogglePhraseDual={() => handleTogglePhraseDual(popupNode.id)}
@@ -4049,17 +4655,8 @@ export const DiamondJourneyUI: React.FC<DiamondJourneyUIProps> = ({
           presets={presets}
           x={popup.x}
           y={popup.y}
+          isMobile={isMobileDevice}
           onSelectPreset={(preset) => handleAddPreset(preset, popup.position!)}
-        />
-      )}
-      
-      {/* Journey tracker popup (long hover on center node) */}
-      {trackerPopup.show && config && (
-        <JourneyTrackerPopup
-          x={trackerPopup.x}
-          y={trackerPopup.y}
-          state={state}
-          config={config}
         />
       )}
     </div>

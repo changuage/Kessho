@@ -1088,6 +1088,11 @@ const App: React.FC = () => {
   const [playbackTimerMinutes, setPlaybackTimerMinutes] = useState(30); // Default 30 minutes
   const [playbackTimerRemaining, setPlaybackTimerRemaining] = useState<number | null>(null);
   const playbackTimerIntervalRef = useRef<number | null>(null);
+  
+  // Track if user has loaded a preset (for auto-loading default on first play)
+  const hasLoadedPresetRef = useRef(false);
+  // Track if user has interacted with any UI element (sliders, buttons, etc.)
+  const hasUserInteractedRef = useRef(false);
   // Stem recording options (which buses to record pre-reverb)
   const [recordStems, setRecordStems] = useState({
     synth: false,
@@ -1784,6 +1789,9 @@ const App: React.FC = () => {
 
   // Handle slider change
   const handleSliderChange = useCallback((key: keyof SliderState, value: number | string) => {
+    // Mark that user has interacted with the UI
+    hasUserInteractedRef.current = true;
+    
     // Block slider changes when journey mode is playing
     if (isJourneyPlaying) {
       console.log('[Journey] Slider change blocked - journey is playing');
@@ -2055,6 +2063,8 @@ const App: React.FC = () => {
 
   // Handle select change
   const handleSelectChange = useCallback(<K extends keyof SliderState>(key: K, value: SliderState[K]) => {
+    // Mark that user has interacted with the UI
+    hasUserInteractedRef.current = true;
     setState((prev) => ({ ...prev, [key]: value }));
   }, []);
 
@@ -2064,8 +2074,27 @@ const App: React.FC = () => {
       // Setup iOS media session FIRST (must be synchronous from user gesture)
       setupIOSMediaSession();
       
+      // Auto-load String Waves 1 if user hasn't loaded any preset or interacted with UI
+      let stateToStart = state;
+      if (!hasLoadedPresetRef.current && !hasUserInteractedRef.current) {
+        const defaultPreset = savedPresets.find(p => p.name === 'String Waves 1');
+        if (defaultPreset) {
+          console.log('[App] Auto-loading default preset: String Waves 1');
+          hasLoadedPresetRef.current = true;
+          // Apply preset state
+          const normalizedState = { ...DEFAULT_STATE, ...defaultPreset.state };
+          // Preserve user preference keys
+          for (const key of USER_PREFERENCE_KEYS) {
+            (normalizedState as Record<string, unknown>)[key] = state[key];
+          }
+          setState(normalizedState);
+          setMorphPresetA(defaultPreset);
+          stateToStart = normalizedState;
+        }
+      }
+      
       // Then start the audio engine
-      await audioEngine.start(state);
+      await audioEngine.start(stateToStart);
       
       // Connect the MediaStream to the audio element for iOS background playback
       connectMediaSessionToWebAudio();
@@ -2839,6 +2868,9 @@ const App: React.FC = () => {
 
   // Load preset into morph slot (A or B)
   const handleLoadPresetToSlot = useCallback((preset: SavedPreset, slot: 'a' | 'b') => {
+    // Mark that user has loaded a preset (disables auto-load on first play)
+    hasLoadedPresetRef.current = true;
+    
     // Check for iOS-only settings and warn user
     const warnings = checkPresetCompatibility(preset);
     if (warnings.length > 0) {
@@ -3470,6 +3502,9 @@ const App: React.FC = () => {
 
   // Load preset from list - modified to support morph slots in advanced mode
   const handleLoadPresetFromList = useCallback((preset: SavedPreset) => {
+    // Mark that user has loaded a preset (disables auto-load on first play)
+    hasLoadedPresetRef.current = true;
+    
     // If in advanced mode and a morph target is set, load to that slot
     if (uiMode === 'advanced' && morphLoadTarget) {
       handleLoadPresetToSlot(preset, morphLoadTarget);
