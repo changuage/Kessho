@@ -4,6 +4,127 @@ This document tracks planned enhancements and their implementation status.
 
 ---
 
+## Journey Mode - Diamond Matrix UI (Feb 2026)
+
+### Implementation Status: Web [x] | iOS [ ]
+
+### Overview
+
+Journey Mode is a new way to experience Kessho that automatically morphs between presets over time. Users configure a "journey" with up to 4 presets positioned in a diamond pattern, then press play to let the app smoothly transition between them.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         JOURNEY MODE ARCHITECTURE                            │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐
+│  DiamondJourneyUI│────▶│   journeyState   │────▶│     App.tsx      │
+│   (Visual UI)    │     │   (State Hook)   │     │  (Audio Control) │
+└──────────────────┘     └──────────────────┘     └──────────────────┘
+         │                        │                        │
+         │                        │                        │
+         ▼                        ▼                        ▼
+┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐
+│  journeyTypes.ts │     │ JourneyModeView  │     │   audioEngine    │
+│   (Type Defs)    │     │  (UI Wrapper)    │     │  (Sound Output)  │
+└──────────────────┘     └──────────────────┘     └──────────────────┘
+```
+
+### Diamond Matrix Layout
+
+```
+                    ◎ P2 (top/12:00)
+                   ╱    ╲
+       ◎ P1 ────  ◉ START ────  ◎ P3
+      (left)       ╲    ╱      (right)
+                    ◎ P4 (bottom/6:00)
+```
+
+- **P1-P4**: Four preset slots at cardinal positions
+- **START (Center)**: Journey begins here, optionally ends here
+- **Connections**: Curved paths between nodes with probability weights
+
+### Node Colors by Position
+
+| Position | Color | Hex |
+|----------|-------|-----|
+| Left (P1) | Cyan | `#4fc3f7` |
+| Top (P2) | Orange | `#C4724E` |
+| Right (P3) | Green | `#7B9A6D` |
+| Bottom (P4) | Gold | `#D4A520` |
+| Center | Purple | `#8B5CF6` |
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `src/audio/journeyTypes.ts` | Type definitions, constants, helper functions |
+| `src/ui/journeyState.ts` | Main state management hook (`useJourney`) |
+| `src/ui/DiamondJourneyUI.tsx` | Visual diamond matrix UI component |
+| `src/ui/JourneyModeView.tsx` | Wrapper connecting UI to audio |
+| `src/App.tsx` | Journey callbacks, morph animation, integration |
+
+### State Machine Phases
+
+| Phase | Description |
+|-------|-------------|
+| `idle` | Journey not playing |
+| `playing` | At a node, playing its preset |
+| `morphing` | Transitioning between two nodes |
+| `self-loop` | Node connecting to itself (phrase repeat) |
+| `ending` | Fading out to center node |
+| `ended` | Journey complete |
+
+### Morph Flow (Continuous Alternating)
+
+The morph system alternates direction to avoid audio glitches:
+
+```
+1. Start: A=Preset1, position=0
+2. Morph 1 (toB): B=Preset2, morph 0→100
+3. Morph 2 (toA): A=Preset3, morph 100→0
+4. Morph 3 (toB): B=Preset4, morph 0→100
+5. Morph 4 (toA): A=Preset5, morph 100→0
+   ... continues alternating
+```
+
+This ensures smooth audio transitions - the next preset always loads into the opposite slot from where we just arrived.
+
+### Timing System
+
+- **PHRASE_LENGTH**: 16 seconds (from `harmony.ts`)
+- **msPerPhrase**: `PHRASE_LENGTH * 1000` milliseconds
+- All durations specified in phrases (e.g., "play for 4 phrases" = 64 seconds)
+
+### Key Implementation Details
+
+#### React State Timing Fix
+Journey morph uses refs (`journeyPresetARef`, `journeyPresetBRef`) updated synchronously to avoid stale closure issues with React's async state updates.
+
+#### Integration Points
+- **handleJourneyLoadPreset**: Loads initial preset, starts audio
+- **handleJourneyMorphTo**: Animates morph to target preset
+- **handleJourneyEnd**: Cleans up, unlocks sliders
+- **handleStop**: Now also stops journey playback
+
+#### UI State Persistence
+Journey state is managed at App.tsx level so switching between UI modes (Snowflake/Advanced/Journey) preserves playback state.
+
+### Debug Panel Info
+
+When journey is playing, Debug Panel shows:
+- Phase (playing/morphing/etc.)
+- Current preset name
+- Next preset name
+- Phrases left / Morph progress
+- Time remaining
+- Morph direction (toA/toB)
+- Morph position (0-100%)
+
+---
+
 ## Morph Endpoint Behavior Fixes (Feb 2026)
 
 ### Implementation Status: Web [x] | iOS [partial]
@@ -1945,3 +2066,4 @@ function calculateCurvedPath(
 - [ ] High contrast mode support
 
 ---
+max

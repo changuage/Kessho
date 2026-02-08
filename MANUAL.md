@@ -20,9 +20,16 @@
    - [Drum Synth](#drum-synth)
    - [Ocean Waves](#ocean-waves)
    - [Preset Morph](#preset-morph)
-5. [Scale System Explained](#scale-system-explained)
-6. [Circle of Fifths Deep Dive](#circle-of-fifths-deep-dive)
-7. [Tips for Creating Atmospheres](#tips-for-creating-atmospheres)
+5. [Journey Mode](#journey-mode)
+   - [The Diamond Matrix](#the-diamond-matrix)
+   - [Setting Up a Journey](#setting-up-a-journey)
+   - [Node Colors](#node-colors)
+   - [Playing a Journey](#playing-a-journey)
+   - [How Morphing Works](#how-morphing-works)
+   - [Journey Timing](#journey-timing)
+6. [Scale System Explained](#scale-system-explained)
+7. [Circle of Fifths Deep Dive](#circle-of-fifths-deep-dive)
+8. [Tips for Creating Atmospheres](#tips-for-creating-atmospheres)
 
 ---
 
@@ -541,6 +548,102 @@ Changes are treated as **temporary overrides**:
 - When you reach an endpoint, the override is cleared
 
 This behavior applies to all morphable parameters including drum synth morph sliders.
+
+---
+
+## Journey Mode
+
+Journey Mode is an automated preset morphing experience that takes you on a musical journey through multiple presets. Instead of manually adjusting the morph slider, Journey Mode automatically transitions between presets over time, creating evolving ambient soundscapes.
+
+### The Diamond Matrix
+
+Journey Mode uses a **Diamond Matrix UI** with up to 4 presets positioned around a central starting point:
+
+```
+                    ◎ Top (P2)
+                   ╱    ╲
+     Left (P1) ◎  ◉ START ◎  Right (P3)
+                   ╲    ╱
+                    ◎ Bottom (P4)
+```
+
+- **Center (START)**: The journey begins and optionally ends here
+- **4 Cardinal Positions**: Place presets at Top, Right, Bottom, and Left
+- **Curved Connections**: Visible paths show possible transitions between presets
+
+### Setting Up a Journey
+
+1. **Open Journey Mode**: Select "Journey" from the view selector
+2. **Add Presets**: Click on empty node slots (circles) to add presets
+   - Choose from existing presets or current settings
+   - Each position gets a unique color for easy identification
+3. **Configure Connections**: Click connection lines between nodes to set:
+   - **Probability Weight**: How likely this transition is (higher = more likely)
+   - **Duration**: How many phrases to play at the destination (1 phrase = 16 seconds)
+4. **Set Journey Length**: Choose how many total phrases the journey should run
+
+### Node Colors
+
+Each position has a distinctive color:
+
+| Position | Color |
+|----------|-------|
+| Left | Cyan |
+| Top | Orange |
+| Right | Green |
+| Bottom | Gold |
+| Center | Purple |
+
+### Playing a Journey
+
+1. **Press Play**: Click the play button to start the journey
+2. **Watch the Morph**: The UI shows which nodes are active and the morph progress
+3. **Smooth Transitions**: Presets smoothly blend into each other over each phrase
+4. **Random Path**: Each transition is randomly selected based on connection weights
+5. **Press Stop**: Click stop at any time to end the journey (in any UI mode)
+
+### How Morphing Works
+
+Journey Mode uses a continuous alternating morph pattern:
+
+1. Journey starts at the first preset (loaded as Preset A, morph at 0%)
+2. When transitioning to the next preset, it loads as Preset B
+3. Morph smoothly animates from 0% → 100%
+4. For the next transition, the new preset loads as Preset A
+5. Morph smoothly animates from 100% → 0%
+6. This pattern alternates, providing seamless audio transitions
+
+### Journey Timing
+
+- **1 Phrase = 16 seconds**: All durations are measured in phrases
+- **Play Duration**: How long to stay at each node before transitioning
+- **Journey Length**: Total number of phrases for the entire journey
+
+### Integration with Other UI Modes
+
+Journey playback continues even when switching to Snowflake or Advanced UI:
+- **Play/Stop Button**: Shows "Stop" when journey is playing (in any UI)
+- **Sliders**: Remain locked during journey playback to prevent conflicts
+- **Debug Panel**: Shows detailed journey state information
+
+### Journey Debug Info
+
+When enabled, the Debug Panel shows:
+- **Phase**: Current journey state (playing, morphing, ending, etc.)
+- **Current Preset**: Name of the preset currently playing
+- **Next Preset**: Name of the upcoming preset
+- **Phrases Left**: How many phrases remain at current node
+- **Morph Progress**: Percentage through current transition
+- **Direction**: Whether morphing toward A (100→0) or B (0→100)
+- **Position**: Current morph slider position
+
+### Tips for Great Journeys
+
+1. **Contrasting Presets**: Choose presets with different characters for interesting transitions
+2. **Weighted Probabilities**: Set higher weights for your favorite transitions
+3. **Self-Loops**: Connections from a node to itself extend time at that preset
+4. **Longer Phrases**: Use longer durations for more gradual, meditative transitions
+5. **Return to Center**: Enable "Return to Center" for journeys that end where they began
 
 ---
 
