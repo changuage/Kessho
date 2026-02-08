@@ -9,12 +9,7 @@ import React, { useState, useCallback } from 'react';
 import { JourneyUI } from './JourneyUI';
 import { useJourney } from './journeyState';
 import { 
-  JourneyConfig, 
-  JourneyNode, 
-  JourneyConnection,
   JOURNEY_NODE_COLORS,
-  generateJourneyId,
-  calculateNodePositions,
 } from '../audio/journeyTypes';
 import { SavedPreset, DEFAULT_STATE } from './state';
 
@@ -232,7 +227,7 @@ export const JourneyDemo: React.FC = () => {
                 <button
                   key={preset.name}
                   onClick={() => handleAddPreset(preset)}
-                  disabled={journey.config && journey.config.nodes.length >= 4}
+                  disabled={journey.config ? journey.config.nodes.length >= 4 : false}
                   style={{
                     padding: '8px 12px',
                     background: journey.config?.nodes.some(n => n.presetName === preset.name)
@@ -336,7 +331,7 @@ export const JourneyDemo: React.FC = () => {
               
               <button
                 onClick={() => journey.removeNode(selectedNode.id)}
-                disabled={journey.config && journey.config.nodes.length <= 2}
+                                disabled={journey.config ? journey.config.nodes.length <= 2 : false}
                 style={{
                   width: '100%',
                   padding: '8px',

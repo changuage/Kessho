@@ -14,14 +14,12 @@
  * - Pulsing glow on active node
  */
 
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   JourneyConfig,
   JourneyState,
   JourneyNode,
   JourneyConnection,
-  JourneyPhase,
-  JOURNEY_DEFAULTS,
   JOURNEY_NODE_COLORS,
   positionToAngle,
   positionToCoordinates,
