@@ -641,7 +641,14 @@ class AppState: ObservableObject {
         morphPresetA = preset
         
         if shouldApplyPresetA {
+            // Preserve user preference keys (like reverbQuality) that shouldn't change with presets
+            let savedReverbQuality = state.reverbQuality
+            
             state = preset.state
+            
+            // Restore user preferences
+            state.reverbQuality = savedReverbQuality
+            
             audioEngine.resetCofDrift()
             morphPosition = 0
             
@@ -676,9 +683,15 @@ class AppState: ObservableObject {
         
         guard let presetA = morphPresetA, let presetB = morphPresetB else { return }
         
+        // Preserve user preference keys before morphing
+        let savedReverbQuality = state.reverbQuality
+        
         let t = position / 100.0
         let morphedState = lerpPresets(presetA.state, presetB.state, t: t)
         state = morphedState
+        
+        // Restore user preferences after morphing
+        state.reverbQuality = savedReverbQuality
         
         // Morph dual ranges between presets
         dualRanges = lerpDualRanges(
@@ -1016,11 +1029,11 @@ class AppState: ObservableObject {
             result.manualScale = b.manualScale
             // Synth
             result.filterType = b.filterType
-            // Reverb
+            // Reverb - note: reverbQuality is a user preference, not morphed
             result.reverbEnabled = b.reverbEnabled
             result.reverbEngine = b.reverbEngine
             result.reverbType = b.reverbType
-            result.reverbQuality = b.reverbQuality
+            // reverbQuality excluded - preserved from current state in setMorphPosition
             // Granular
             result.granularEnabled = b.granularEnabled
             result.grainPitchMode = b.grainPitchMode

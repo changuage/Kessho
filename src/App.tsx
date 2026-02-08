@@ -162,6 +162,12 @@ const IOS_ONLY_REVERB_TYPES = new Set([
   'mediumHall3', 'largeHall2'
 ]);
 
+// User preference keys - these are audio processing settings, not musical elements
+// They should NOT change when loading presets or morphing between them
+const USER_PREFERENCE_KEYS: (keyof SliderState)[] = [
+  'reverbQuality',  // Ultra/Balanced/Lite - affects CPU usage, not sound character
+];
+
 // Check preset for iOS-only settings and return warnings
 const checkPresetCompatibility = (preset: SavedPreset): string[] => {
   const warnings: string[] = [];
@@ -2759,8 +2765,9 @@ const App: React.FC = () => {
     }
     
     // Snap discrete values at 50% (scaleMode and manualScale handled above with rootNote)
+    // Note: reverbQuality is excluded - it's a user preference, not a musical parameter
     const discreteKeys: (keyof SliderState)[] = [
-      'seedWindow', 'filterType', 'reverbEngine', 'reverbType', 'reverbQuality', 'grainPitchMode', 'cofDriftDirection',
+      'seedWindow', 'filterType', 'reverbEngine', 'reverbType', 'grainPitchMode', 'cofDriftDirection',
       // Drum preset names and discrete settings should snap at 50%
       'drumSubPresetA', 'drumSubPresetB', 'drumKickPresetA', 'drumKickPresetB',
       'drumClickPresetA', 'drumClickPresetB', 'drumBeepHiPresetA', 'drumBeepHiPresetB',
@@ -2874,7 +2881,11 @@ const App: React.FC = () => {
       
       if (shouldApplyPresetA) {
         // Apply the preset immediately when loading to slot A (and at or near position 0)
+        // Preserve user preference keys (like reverbQuality) that shouldn't change with presets
         const newState = { ...DEFAULT_STATE, ...normalizedPreset.state };
+        for (const key of USER_PREFERENCE_KEYS) {
+          (newState as Record<string, unknown>)[key] = state[key];
+        }
         if (newState.granularLevel === 0) {
           newState.granularEnabled = false;
         }
@@ -2977,9 +2988,15 @@ const App: React.FC = () => {
     const direction = morphDirectionRef.current || 'toB';
     const morphResult = lerpPresets(effectiveA, effectiveB, morphPosition, engineState.cofCurrentStep, morphCapturedStartRootRef.current ?? undefined, direction);
     
+    // Preserve user preference keys (like reverbQuality) that shouldn't change with morphing
+    const stateWithPrefs = { ...morphResult.state };
+    for (const key of USER_PREFERENCE_KEYS) {
+      (stateWithPrefs as Record<string, unknown>)[key] = state[key];
+    }
+    
     // Apply the interpolated state
-    setState(prev => ({ ...prev, ...morphResult.state }));
-    audioEngine.updateParams(morphResult.state);
+    setState(prev => ({ ...prev, ...stateWithPrefs }));
+    audioEngine.updateParams(stateWithPrefs);
     
     // Apply interpolated dual ranges
     setDualSliderModes(morphResult.dualModes);
@@ -3120,6 +3137,11 @@ const App: React.FC = () => {
     // For each override, interpolate from override value to destination based on remaining morph distance
     const overrides = morphManualOverridesRef.current;
     const finalState = { ...morphResult.state };
+    
+    // Preserve user preference keys (like reverbQuality) that shouldn't change with morphing
+    for (const key of USER_PREFERENCE_KEYS) {
+      (finalState as unknown as Record<string, unknown>)[key] = state[key];
+    }
     
     for (const [key, override] of Object.entries(overrides)) {
       const typedKey = key as keyof SliderState;
@@ -3383,8 +3405,15 @@ const App: React.FC = () => {
         if (!samePreset) {
           const direction = morphDirectionRef.current || 'toB';
           const morphResult = lerpPresets(effectiveA, effectiveB, newPos, cofCurrentStepRef.current, morphCapturedStartRootRef.current ?? undefined, direction);
-          setState(morphResult.state);
-          audioEngine.updateParams(morphResult.state);
+          
+          // Preserve user preference keys (like reverbQuality) that shouldn't change with morphing
+          const stateWithPrefs = { ...morphResult.state };
+          for (const key of USER_PREFERENCE_KEYS) {
+            (stateWithPrefs as Record<string, unknown>)[key] = state[key];
+          }
+          
+          setState(stateWithPrefs);
+          audioEngine.updateParams(stateWithPrefs);
           
           // Update CoF morph visualization (clear at endpoints - we've arrived)
           const atEndpoint = newPos === 0 || newPos === 100;
@@ -3486,6 +3515,11 @@ const App: React.FC = () => {
       const normalizedState = normalizePresetForWeb(preset.state);
       const newState = { ...DEFAULT_STATE, ...normalizedState };
       
+      // Preserve user preference keys (like reverbQuality) that shouldn't change with presets
+      for (const key of USER_PREFERENCE_KEYS) {
+        (newState as Record<string, unknown>)[key] = state[key];
+      }
+      
       // Auto-disable granular if level is 0
       if (newState.granularLevel === 0) {
         newState.granularEnabled = false;
@@ -3570,6 +3604,11 @@ const App: React.FC = () => {
         if (parsed.state) {
           // Merge with defaults to handle missing keys
           const newState = { ...DEFAULT_STATE, ...parsed.state };
+          
+          // Preserve user preference keys (like reverbQuality) that shouldn't change with presets
+          for (const key of USER_PREFERENCE_KEYS) {
+            (newState as Record<string, unknown>)[key] = state[key];
+          }
           
           // Auto-disable granular if level is 0
           if (newState.granularLevel === 0) {
@@ -3782,9 +3821,15 @@ const App: React.FC = () => {
         direction
       );
       
+      // Preserve user preference keys (like reverbQuality) that shouldn't change with morphing
+      const stateWithPrefs = { ...morphResult.state };
+      for (const key of USER_PREFERENCE_KEYS) {
+        (stateWithPrefs as Record<string, unknown>)[key] = state[key];
+      }
+      
       // Apply the morphed state
-      setState(morphResult.state);
-      audioEngine.updateParams(morphResult.state);
+      setState(stateWithPrefs);
+      audioEngine.updateParams(stateWithPrefs);
       
       // Update CoF morph visualization (clear at endpoints)
       const atEndpoint = newPosition === 0 || newPosition === 100;

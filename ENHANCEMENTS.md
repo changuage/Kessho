@@ -242,7 +242,8 @@ Consider these minimalist Unicode icons for each panel:
 - **Debug** (bottom): Debug controls always visible
 
 ### FX Panel Contents
-- **Space (Reverb)**: reverbEnabled, reverbEngine, reverbType, reverbQuality, decay, size, diffusion, modulation, predelay, damping, width
+- **Space (Reverb)**: reverbEnabled, reverbEngine, reverbType, decay, size, diffusion, modulation, predelay, damping, width
+  - Note: reverbQuality (Ultra/Balanced/Lite) is a user preference and is NOT affected by presets or morphing
 - **Granular**: granularEnabled, all grain parameters
 - **Wave (Ocean)**: oceanSampleLevel, oceanFilterCutoff, all ocean parameters
 - **Debug** (bottom): Debug controls always visible
