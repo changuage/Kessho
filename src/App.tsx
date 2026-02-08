@@ -16,7 +16,7 @@ import {
 } from './ui/state';
 import { audioEngine, EngineState } from './audio/engine';
 import { SCALE_FAMILIES } from './audio/scales';
-import { formatChordDegrees, getTimeUntilNextPhrase, calculateDriftedRoot } from './audio/harmony';
+import { formatChordDegrees, getTimeUntilNextPhrase, calculateDriftedRoot, PHRASE_LENGTH } from './audio/harmony';
 import { getPresetNames, DrumVoiceType as DrumPresetVoice } from './audio/drumPresets';
 import { applyMorphToState, setDrumMorphOverride, clearDrumMorphEndpointOverrides, clearMidMorphOverrides, setDrumMorphDualRangeOverride, getDrumMorphDualRangeOverrides, interpolateDrumMorphDualRanges } from './audio/drumMorph';
 import { isInMidMorph, isAtEndpoint0 } from './audio/morphUtils';
@@ -24,6 +24,8 @@ import SnowflakeUI from './ui/SnowflakeUI';
 import { CircleOfFifths, getMorphedRootNote } from './ui/CircleOfFifths';
 import CloudPresets from './ui/CloudPresets';
 import { fetchPresetById, isCloudEnabled } from './cloud/supabase';
+import JourneyModeView from './ui/JourneyModeView';
+import { useJourney } from './ui/journeyState';
 
 // Note names for display
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -1166,6 +1168,10 @@ const App: React.FC = () => {
   const [morphLoadTarget, setMorphLoadTarget] = useState<'a' | 'b' | null>(null); // For advanced UI load dialog
   const [morphCountdown, setMorphCountdown] = useState<{ phase: string; phrasesLeft: number } | null>(null);
   
+  // Refs for journey mode animation - updated synchronously to avoid stale closures
+  const journeyPresetARef = useRef<SavedPreset | null>(null);
+  const journeyPresetBRef = useRef<SavedPreset | null>(null);
+  
   // Upload slot choice dialog
   const [uploadSlotDialogOpen, setUploadSlotDialogOpen] = useState(false);
   const [pendingUploadPreset, setPendingUploadPreset] = useState<SavedPreset | null>(null);
@@ -1186,8 +1192,26 @@ const App: React.FC = () => {
   useEffect(() => { morphPlayPhrasesRef.current = morphPlayPhrases; }, [morphPlayPhrases]);
   useEffect(() => { morphTransitionPhrasesRef.current = morphTransitionPhrases; }, [morphTransitionPhrases]);
   
-  // UI mode: 'snowflake' or 'advanced'
-  const [uiMode, setUiMode] = useState<'snowflake' | 'advanced'>('snowflake');
+  // UI mode: 'snowflake', 'advanced', or 'journey'
+  const [uiMode, setUiMode] = useState<'snowflake' | 'advanced' | 'journey'>('snowflake');
+  
+  // Journey mode playing state - when true, sliders should be read-only
+  const [isJourneyPlaying, setIsJourneyPlaying] = useState(false);
+  
+  // Journey morph direction tracking - alternates between toB (0→100) and toA (100→0)
+  const journeyMorphDirectionRef = useRef<'toB' | 'toA'>('toB');
+  
+  // Journey mode state - managed at App level so it persists across UI mode switches
+  // Note: The callbacks are defined later in the file, so we use refs to avoid stale closures
+  const journeyLoadPresetRef = useRef<(presetName: string) => void>(() => {});
+  const journeyMorphToRef = useRef<(presetName: string, duration: number) => void>(() => {});
+  
+  // Journey uses phrase-based timing (1 phrase = 16 seconds by default)
+  const journey = useJourney(
+    PHRASE_LENGTH,
+    (presetName, duration) => journeyMorphToRef.current(presetName, duration),
+    (presetName) => journeyLoadPresetRef.current(presetName)
+  );
 
   // Mobile detection
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
@@ -1360,6 +1384,9 @@ const App: React.FC = () => {
   }), []);
 
   const handleToggleDualMode = useCallback((key: keyof SliderState) => {
+    // Block changes when journey mode is playing
+    if (isJourneyPlaying) return;
+    
     const keyStr = key as string;
     const isMorphActive = morphPresetA !== null || morphPresetB !== null;
     
@@ -1489,10 +1516,13 @@ const App: React.FC = () => {
       }
       return next;
     });
-  }, [dualSliderRanges, randomWalkPositions, state, drumMorphKeys, morphPosition, morphPresetA, morphPresetB]);
+  }, [isJourneyPlaying, dualSliderRanges, randomWalkPositions, state, drumMorphKeys, morphPosition, morphPresetA, morphPresetB]);
 
   // Update dual slider range
   const handleDualRangeChange = useCallback((key: keyof SliderState, min: number, max: number) => {
+    // Block changes when journey mode is playing
+    if (isJourneyPlaying) return;
+    
     setDualSliderRanges(prev => ({ ...prev, [key]: { min, max } }));
     
     const keyStr = key as string;
@@ -1543,7 +1573,7 @@ const App: React.FC = () => {
         setDrumMorphDualRangeOverride(drumVoice, keyStr, true, currentVal, { min, max }, 1);
       }
     }
-  }, [morphPosition, morphPresetA, morphPresetB, state]);
+  }, [isJourneyPlaying, morphPosition, morphPresetA, morphPresetB, state]);
 
   // Update engine morph ranges when dual mode changes for drum morph sliders
   useEffect(() => {
@@ -1748,6 +1778,12 @@ const App: React.FC = () => {
 
   // Handle slider change
   const handleSliderChange = useCallback((key: keyof SliderState, value: number | string) => {
+    // Block slider changes when journey mode is playing
+    if (isJourneyPlaying) {
+      console.log('[Journey] Slider change blocked - journey is playing');
+      return;
+    }
+    
     // Rule 1: Mid-morph changes are temporary overrides (numeric only)
     // Rule 2: Endpoint changes (0% or 100%) update the respective preset permanently (all types)
     const isNumericValue = typeof value === 'number';
@@ -1984,7 +2020,7 @@ const App: React.FC = () => {
         }
       }
     }
-  }, [morphPosition, morphPresetA, morphPresetB, setMorphPresetA, setMorphPresetB, state]);
+  }, [isJourneyPlaying, morphPosition, morphPresetA, morphPresetB, setMorphPresetA, setMorphPresetB, state]);
 
   // Helper to create slider props with dual mode support
   const sliderProps = useCallback((paramKey: keyof SliderState): {
@@ -2047,6 +2083,16 @@ const App: React.FC = () => {
     // Recording must be stopped manually
     stopIOSMediaSession();
     audioEngine.stop();
+    
+    // Stop journey playback if running
+    if (isJourneyPlaying) {
+      journey.stop();
+      if (journeyMorphAnimationRef.current) {
+        cancelAnimationFrame(journeyMorphAnimationRef.current);
+        journeyMorphAnimationRef.current = null;
+      }
+      setIsJourneyPlaying(false);
+    }
     
     // Clear playback timer
     if (playbackTimerIntervalRef.current) {
@@ -3171,7 +3217,7 @@ const App: React.FC = () => {
       return;
     }
     
-    const PHRASE_LENGTH = 8; // 8 seconds per phrase
+    // PHRASE_LENGTH is imported from harmony.ts (16 seconds per phrase)
     // Use refs for phrase settings to avoid restarting effect when they change
     const getPlayDuration = () => morphPlayPhrasesRef.current * PHRASE_LENGTH * 1000;
     const getTransitionDuration = () => morphTransitionPhrasesRef.current * PHRASE_LENGTH * 1000;
@@ -3613,6 +3659,203 @@ const App: React.FC = () => {
     setPendingUploadPreset(null);
   };
 
+  // ========================================================================
+  // JOURNEY MODE CALLBACKS
+  // ========================================================================
+  
+  // Journey mode: load a preset by name (used at journey start)
+  const handleJourneyLoadPreset = useCallback(async (presetName: string) => {
+    const preset = savedPresets.find(p => p.name === presetName);
+    if (!preset) {
+      console.warn('[Journey] Preset not found:', presetName);
+      return;
+    }
+    
+    console.log('[Journey] Loading preset:', presetName);
+    
+    // Mark journey as playing (locks sliders)
+    setIsJourneyPlaying(true);
+    
+    // Load preset as preset A
+    handleLoadPresetFromList(preset);
+    
+    // Reset morph position and direction for new journey
+    setMorphPosition(0);
+    setMorphPresetB(null);
+    journeyMorphDirectionRef.current = 'toB'; // First morph will go A→B (0→100)
+    
+    // Update refs synchronously for animation loop
+    journeyPresetARef.current = preset;
+    journeyPresetBRef.current = null;
+    
+    // Start audio engine if not already running
+    if (!engineState.isRunning) {
+      console.log('[Journey] Starting audio engine');
+      try {
+        setupIOSMediaSession();
+        await audioEngine.start(preset.state);
+        connectMediaSessionToWebAudio();
+      } catch (err) {
+        console.error('[Journey] Failed to start audio:', err);
+      }
+    }
+  }, [savedPresets, handleLoadPresetFromList, engineState.isRunning, audioEngine, setupIOSMediaSession, connectMediaSessionToWebAudio]);
+  
+  // Journey mode: morph to a target preset over specified duration
+  const journeyMorphAnimationRef = useRef<number | null>(null);
+  
+  const handleJourneyMorphTo = useCallback((targetPresetName: string, durationPhrases: number) => {
+    const preset = savedPresets.find(p => p.name === targetPresetName);
+    if (!preset) {
+      console.warn('[Journey] Target preset not found:', targetPresetName);
+      return;
+    }
+    
+    const direction = journeyMorphDirectionRef.current;
+    console.log('[Journey] Morphing to:', targetPresetName, 'over', durationPhrases, 'phrases', 'direction:', direction);
+    
+    // Cancel any existing morph animation
+    if (journeyMorphAnimationRef.current) {
+      cancelAnimationFrame(journeyMorphAnimationRef.current);
+    }
+    
+    // Calculate duration in milliseconds using phrase-based timing
+    // 1 phrase = PHRASE_LENGTH seconds (default 16s)
+    const msPerPhrase = PHRASE_LENGTH * 1000;
+    const durationMs = durationPhrases * msPerPhrase;
+    
+    console.log('[Journey] Morph duration:', durationMs, 'ms (', durationPhrases, 'phrases x', PHRASE_LENGTH, 's)');
+    
+    // Determine start and end positions based on direction
+    // toB: Load target into B, morph 0→100
+    // toA: Load target into A, morph 100→0
+    const startPosition = direction === 'toB' ? 0 : 100;
+    const endPosition = direction === 'toB' ? 100 : 0;
+    
+    // Update refs SYNCHRONOUSLY before animation starts to avoid stale closures
+    // The refs will be read by the animation loop
+    if (direction === 'toB') {
+      journeyPresetBRef.current = preset;
+      setMorphPresetB(preset);
+    } else {
+      journeyPresetARef.current = preset;
+      setMorphPresetA(preset);
+    }
+    
+    // Capture both presets for use in animation loop (using refs for current values)
+    const animPresetA = journeyPresetARef.current;
+    const animPresetB = journeyPresetBRef.current;
+    
+    if (!animPresetA || !animPresetB) {
+      console.warn('[Journey] Missing preset for morph. A:', animPresetA?.name, 'B:', animPresetB?.name);
+      return;
+    }
+    
+    console.log('[Journey] Animation presets - A:', animPresetA.name, 'B:', animPresetB.name);
+    
+    const startTime = performance.now();
+    
+    const animateMorph = (now: number) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(1, elapsed / durationMs);
+      
+      // Ease-in-out curve for smoother morphing
+      const eased = progress < 0.5
+        ? 2 * progress * progress
+        : 1 - Math.pow(-2 * progress + 2, 2) / 2;
+      
+      // Interpolate from start to end position
+      const rawPosition = startPosition + (endPosition - startPosition) * eased;
+      // Round to 1 decimal place to avoid long decimal percentages
+      const newPosition = Math.round(rawPosition * 10) / 10;
+      
+      // Update position state
+      setMorphPosition(newPosition);
+      
+      // Apply lerp directly using captured presets (not stale closures)
+      const morphResult = lerpPresets(
+        animPresetA,
+        animPresetB,
+        newPosition,
+        engineState.cofCurrentStep,
+        undefined, // startRoot
+        direction
+      );
+      
+      // Apply the morphed state
+      setState(morphResult.state);
+      audioEngine.updateParams(morphResult.state);
+      
+      // Update CoF morph visualization (clear at endpoints)
+      const atEndpoint = newPosition === 0 || newPosition === 100;
+      setMorphCoFViz(atEndpoint ? null : (morphResult.morphCoFInfo || null));
+      
+      if (atEndpoint) {
+        audioEngine.resetCofDrift();
+      }
+      
+      // Apply interpolated dual ranges
+      setDualSliderModes(morphResult.dualModes);
+      setDualSliderRanges(morphResult.dualRanges);
+      
+      if (progress < 1) {
+        journeyMorphAnimationRef.current = requestAnimationFrame(animateMorph);
+      } else {
+        // Morph complete - alternate direction for next morph
+        console.log('[Journey] Morph complete at position:', endPosition);
+        journeyMorphDirectionRef.current = direction === 'toB' ? 'toA' : 'toB';
+        journeyMorphAnimationRef.current = null;
+      }
+    };
+    
+    journeyMorphAnimationRef.current = requestAnimationFrame(animateMorph);
+  }, [savedPresets, lerpPresets, engineState.cofCurrentStep, audioEngine]);
+  
+  // Journey mode: handle journey end
+  const handleJourneyEnd = useCallback(() => {
+    // Cancel any ongoing morph animation
+    if (journeyMorphAnimationRef.current) {
+      cancelAnimationFrame(journeyMorphAnimationRef.current);
+      journeyMorphAnimationRef.current = null;
+    }
+    
+    // Unlock sliders
+    setIsJourneyPlaying(false);
+    
+    // Keep the last preset playing - don't stop audio
+    // User can manually stop if desired
+  }, []);
+  
+  // Update refs for journey hook callbacks
+  useEffect(() => {
+    journeyLoadPresetRef.current = handleJourneyLoadPreset;
+    journeyMorphToRef.current = handleJourneyMorphTo;
+  }, [handleJourneyLoadPreset, handleJourneyMorphTo]);
+  
+  // Cleanup journey animation on unmount
+  useEffect(() => {
+    return () => {
+      if (journeyMorphAnimationRef.current) {
+        cancelAnimationFrame(journeyMorphAnimationRef.current);
+      }
+    };
+  }, []);
+
+  // Render journey mode UI
+  if (uiMode === 'journey') {
+    return (
+      <JourneyModeView
+        presets={savedPresets}
+        journey={journey}
+        onJourneyEnd={handleJourneyEnd}
+        onStopAudio={handleStop}
+        onShowSnowflake={() => setUiMode('snowflake')}
+        onShowAdvanced={() => setUiMode('advanced')}
+        isPlaying={engineState.isRunning}
+      />
+    );
+  }
+
   // Render snowflake UI
   if (uiMode === 'snowflake') {
     return (
@@ -3699,10 +3942,11 @@ const App: React.FC = () => {
             state={state}
             onChange={handleSliderChange}
             onShowAdvanced={() => setUiMode('advanced')}
-            onTogglePlay={engineState.isRunning ? handleStop : handleStart}
+            onShowJourney={() => setUiMode('journey')}
+            onTogglePlay={(engineState.isRunning || isJourneyPlaying) ? handleStop : handleStart}
             onLoadPreset={handleLoadPresetFromList}
             presets={savedPresets}
-            isPlaying={engineState.isRunning}
+            isPlaying={engineState.isRunning || isJourneyPlaying}
             isRecording={isRecording}
             isRecordingArmed={isRecordingArmed}
             recordingDuration={recordingDuration}
@@ -3720,7 +3964,7 @@ const App: React.FC = () => {
     <div style={styles.container}>
       {/* Controls - centered */}
       <div style={{ ...styles.controls, paddingTop: '12px' }}>
-        {!engineState.isRunning ? (
+        {!(engineState.isRunning || isJourneyPlaying) ? (
           <button
             style={{ ...styles.iconButton, ...styles.startButton }}
             onClick={handleStart}
@@ -3786,6 +4030,13 @@ const App: React.FC = () => {
           title="Import Preset"
         >
           {TEXT_SYMBOLS.upload}
+        </button>
+        <button
+          style={{ ...styles.iconButton, ...styles.simpleButton, color: 'rgba(184, 224, 255, 0.7)' }}
+          onClick={() => setUiMode('journey')}
+          title="Journey Mode"
+        >
+          ◇
         </button>
         <button
           style={{ ...styles.iconButton, ...styles.simpleButton }}
@@ -9479,6 +9730,77 @@ const App: React.FC = () => {
             {engineState.harmonyState?.phrasesUntilChange || '—'}
           </span>
         </div>
+        
+        {/* Journey Debug Info */}
+        {isJourneyPlaying && journey.config && (
+          <>
+            <div style={{ borderTop: '1px solid #333', margin: '8px 0', paddingTop: '8px' }}>
+              <span style={{ color: '#a855f7', fontSize: '0.7rem', fontWeight: 'bold' }}>Journey Mode</span>
+            </div>
+            <div style={styles.debugRow}>
+              <span style={styles.debugLabel}>Phase:</span>
+              <span style={styles.debugValue}>{journey.state.phase}</span>
+            </div>
+            <div style={styles.debugRow}>
+              <span style={styles.debugLabel}>Current:</span>
+              <span style={styles.debugValue}>
+                {journey.config.nodes.find(n => n.id === journey.state.currentNodeId)?.presetName || '—'}
+              </span>
+            </div>
+            {journey.state.phase === 'morphing' && (
+              <>
+                <div style={styles.debugRow}>
+                  <span style={styles.debugLabel}>Morphing To:</span>
+                  <span style={styles.debugValue}>
+                    {journey.config.nodes.find(n => n.id === journey.state.nextNodeId)?.presetName || '—'}
+                  </span>
+                </div>
+                <div style={styles.debugRow}>
+                  <span style={styles.debugLabel}>Morph Progress:</span>
+                  <span style={styles.debugValue}>
+                    {(journey.state.morphProgress * 100).toFixed(0)}%
+                  </span>
+                </div>
+                <div style={styles.debugRow}>
+                  <span style={styles.debugLabel}>Morph Time Left:</span>
+                  <span style={styles.debugValue}>
+                    {((journey.state.resolvedMorphDuration * (1 - journey.state.morphProgress)) * PHRASE_LENGTH).toFixed(1)}s
+                  </span>
+                </div>
+              </>
+            )}
+            {journey.state.phase === 'playing' && (
+              <>
+                <div style={styles.debugRow}>
+                  <span style={styles.debugLabel}>Phrases Left:</span>
+                  <span style={styles.debugValue}>
+                    {Math.ceil(journey.state.resolvedPhraseDuration * (1 - journey.state.phraseProgress))}
+                  </span>
+                </div>
+                <div style={styles.debugRow}>
+                  <span style={styles.debugLabel}>Phrase Time Left:</span>
+                  <span style={styles.debugValue}>
+                    {((journey.state.resolvedPhraseDuration * (1 - journey.state.phraseProgress)) * PHRASE_LENGTH).toFixed(1)}s
+                  </span>
+                </div>
+                <div style={styles.debugRow}>
+                  <span style={styles.debugLabel}>Next Preset:</span>
+                  <span style={styles.debugValue}>
+                    {journey.config.nodes.find(n => n.id === journey.state.plannedNextNodeId)?.presetName || '—'}
+                  </span>
+                </div>
+              </>
+            )}
+            <div style={styles.debugRow}>
+              <span style={styles.debugLabel}>Morph Direction:</span>
+              <span style={styles.debugValue}>{journeyMorphDirectionRef.current}</span>
+            </div>
+            <div style={styles.debugRow}>
+              <span style={styles.debugLabel}>Morph Pos:</span>
+              <span style={styles.debugValue}>{morphPosition}%</span>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Footer with kanji */}

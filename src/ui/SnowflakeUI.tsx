@@ -7,7 +7,7 @@
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { SliderState } from './state';
+import { SliderState, SavedPreset } from './state';
 
 // Unicode symbols with text variation selector (U+FE0E) to prevent emoji rendering on mobile
 const TEXT_SYMBOLS = {
@@ -16,18 +16,17 @@ const TEXT_SYMBOLS = {
   record: '●\uFE0E',
   hexagon: '⬡\uFE0E',
   sparkle: '✲\uFE0E',
+  diamond: '◇\uFE0E',
 } as const;
 
-export interface SavedPreset {
-  name: string;
-  timestamp: string;
-  state: SliderState;
-}
+// Re-export SavedPreset for backwards compatibility
+export type { SavedPreset };
 
 interface SnowflakeUIProps {
   state: SliderState;
   onChange: (key: keyof SliderState, value: number) => void;
   onShowAdvanced: () => void;
+  onShowJourney?: () => void;
   onTogglePlay: () => void;
   onLoadPreset: (preset: SavedPreset) => void;
   presets: SavedPreset[];
@@ -258,7 +257,7 @@ function drawArm(
   }
 }
 
-const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanced, onTogglePlay, onLoadPreset, presets, isPlaying, isRecording, isRecordingArmed, recordingDuration, onStartRecording, onStopRecording, onArmRecording }) => {
+const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanced, onShowJourney, onTogglePlay, onLoadPreset, presets, isPlaying, isRecording, isRecordingArmed, recordingDuration, onStartRecording, onStopRecording, onArmRecording }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [dragging, setDragging] = useState<number | null>(null);  // Dragging prong handle (level)
   const [hovering, setHovering] = useState<number | null>(null);
@@ -1039,6 +1038,17 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
         >
           {TEXT_SYMBOLS.hexagon}
         </button>
+        {onShowJourney && (
+          <button 
+            style={{
+              ...styles.advancedButton,
+              color: 'rgba(184, 224, 255, 0.7)',
+            }} 
+            onClick={onShowJourney}
+          >
+            {TEXT_SYMBOLS.diamond}
+          </button>
+        )}
         <button style={styles.advancedButton} onClick={onShowAdvanced}>
           {TEXT_SYMBOLS.sparkle}
         </button>

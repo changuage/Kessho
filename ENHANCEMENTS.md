@@ -1365,3 +1365,583 @@ interface DrumVoicePreset {
 - [ ] Add morph slider per voice
 - [ ] Add new parameter sliders
 
+---
+
+## Journey Mode: Diamond Matrix Layout
+
+### Implementation Status: Web [DEMO] | iOS [ ]
+
+### Overview
+A preset chaining system that allows users to create evolving sonic journeys by connecting up to 4 presets with probabilistic transitions. Uses a **Diamond Matrix** layout with START/END in the center and presets at cardinal positions.
+
+### Design Philosophy
+- **Minimalist elegance** - matches Snowflake UI aesthetic
+- **Intuitive drag-to-connect** - no side panels or menus needed
+- **Visual feedback** - see phrase progress, morph duration, and probabilities at a glance
+- **Loopable patterns** - curved connections allow any-to-any routing including self-loops
+
+---
+
+### Implementation Progress
+
+#### ✅ Phase 1: Core Types & State (COMPLETE)
+- [x] Created `src/audio/journeyTypes.ts` with full TypeScript interfaces
+- [x] Created `src/ui/journeyState.ts` with React hooks (`useJourney`)
+- [x] JourneyConfig, JourneyNode, JourneyConnection types
+- [x] JourneyState with phases: idle, playing, morphing, self-loop, ending, ended
+- [x] Pre-selected `plannedNextNodeId` for tracker display
+- [x] Dual mode support for phrase lengths and morph durations (min/max ranges)
+- [x] Stale closure fixes using refs for callbacks
+
+#### ✅ Phase 2: Diamond Matrix Rendering (COMPLETE)
+- [x] Created `DiamondJourneyUI.tsx` component (~4000 lines)
+- [x] Diamond layout with 4 cardinal positions + center
+- [x] Empty slot placeholders with + icon
+- [x] Filled preset nodes with 2-letter initials and preset colors
+- [x] Node size animation for phrase progress (shrinks as phrase plays)
+- [x] Warm, organic color palette matching Snowflake UI
+- [x] Animated halo around diamond that lerps between preset colors
+
+#### ✅ Phase 3: Connection Rendering (COMPLETE)
+- [x] Curved Bezier paths calculated around center
+- [x] START connections from center (green) and END connections to center (blue)
+- [x] Connection arc thickness based on probability
+- [x] Dot visualization for morph duration on arcs
+- [x] Animated flowing dots during active morph phase
+- [x] Self-loop arcs that curve outward and back to same node
+- [x] Proper curve direction (clockwise/counterclockwise) based on position
+
+#### ✅ Phase 4: Drag-to-Connect Interaction (COMPLETE)
+- [x] Drag start detection on node edges
+- [x] Ghost connection line during drag
+- [x] Valid drop target highlighting
+- [x] Connection creation on successful drop
+- [x] Self-loop creation when dropping on same node
+- [x] Drag to center creates END connection
+- [x] Drag from center creates START connection
+
+#### ✅ Phase 5: Inline Editing (COMPLETE)
+- [x] Node tap → popup with phrase length (dual mode), change preset, remove
+- [x] Connection tap → popup with morph duration (dual mode), probability slider, delete
+- [x] Empty slot tap → preset selector dropdown
+- [x] Secondary popup for connection details from node popup
+- [x] Dismiss popup on outside click
+- [x] 2-column layout for min/max dual mode sliders
+- [x] Font: Avenir with reduced sizes for elegance
+
+#### ✅ Phase 6: Journey Tracker Popup (COMPLETE)
+- [x] Long hover (600ms) on center node shows tracker popup
+- [x] Displays current phase with colored indicator dot
+- [x] Shows current preset name being played
+- [x] Phrase progress bar (animated, shows completion %)
+- [x] Morph progress bar during transitions
+- [x] Time remaining display
+- [x] Next stop prediction (uses pre-selected `plannedNextNodeId`)
+- [x] Fixed progress bar CSS (minWidth, removed transition conflicts)
+
+#### ✅ Phase 7: Animation Loop Fixes (COMPLETE)
+- [x] Fixed animation loop not stopping on journey end
+- [x] Added `shouldContinue` flag to prevent RAF leak
+- [x] Stale closure fixes for `onMorphTo` and `onLoadPreset` callbacks
+- [x] Proper cleanup on unmount
+
+#### 🔄 Phase 8: Audio Integration (IN PROGRESS)
+- [ ] Wire `onLoadPreset` callback to load actual preset from saved presets
+- [ ] Wire `onMorphTo` callback to trigger preset morph with duration
+- [ ] Connect to existing morph slider system (0-100 range)
+- [ ] Implement fadeout during 'ending' phase
+- [ ] Test with real presets and audio engine
+
+#### ⏳ Phase 9: Main App Integration (PLANNED)
+- [ ] Add Journey Mode route/view accessible from main app
+- [ ] Add diamond icon (◇) to Snowflake UI header
+- [ ] Add diamond icon to Advanced UI header
+- [ ] Navigation between main UI and Journey Mode
+- [ ] Persist journey configs to localStorage
+- [ ] Journey mode uses app's actual saved presets
+
+---
+
+### Diamond Matrix Layout
+
+```
+                        ◎ P2
+                       (12:00)
+                      ╱      ╲
+                     ╱        ╲
+                    ╱          ╲
+                   ╱            ╲
+                  ╱              ╲
+                 ╱                ╲
+      ◎ P1 ────╱───── ◉ ─────────╲───── ◎ P3
+     (9:00)   ╱    START/END      ╲    (3:00)
+              │                    │
+              │                    │
+              │                    │
+              ╲                    ╱
+               ╲                  ╱
+                ╲                ╱
+                 ╲              ╱
+                  ╲            ╱
+                   ╲          ╱
+                    ╲        ╱
+                     ╲      ╱
+                        ◎ P4
+                       (6:00)
+```
+
+**Positions:**
+- **CENTER**: START/END node (dual purpose)
+- **12:00** (Top): Preset slot 2
+- **3:00** (Right): Preset slot 3  
+- **6:00** (Bottom): Preset slot 4
+- **9:00** (Left): Preset slot 1
+
+---
+
+### Connection Flow & Curved Paths
+
+Connections curve **around the center** to avoid overlapping, creating elegant loop patterns.
+
+```
+Example: P1 → P2 → P3 → P1 (triangle loop)
+
+                        ◎ P2
+                       ╱╲   ╲
+                      ╱  ╲   ╲
+                     ╱    ╲   ╲
+                    ╱      ╲   ╲
+         ╭────────╱────────╲───╲────────╮
+        ╱       ╱            ╲  ╲        ╲
+      ◎ P1 ───╱───── ◉ ──────╲──╲─────── ◎ P3
+       ╲     ╱                 ╲  ↑        ╱
+        ╲   ╱                   ╲ │       ╱
+         ╲ ╱                     ╲│      ╱
+          ╳═══════════════════════╪═════╯
+         ╱                        │
+        ╱                         │
+       ↓                          │
+      (Connection from P3 back to P1 curves around bottom)
+```
+
+**Connection Rules:**
+- **START → P**: Drag from center to any preset position
+- **P → P**: Curved arc that bows away from center
+- **P → END**: Return to center, triggers stop or loop restart
+
+---
+
+### Two-Preset Infinite Loop Example
+
+```
+Simple A ↔ B oscillation:
+
+                        ◎ (empty)
+                      
+                      
+      ◎ A ←════╮  ◉  ╭═════→ ◎ B
+              │ END │
+              │     │
+              ╰─────╯
+         (morph connection curves around bottom)
+                      
+                        ◎ (empty)
+
+Connection visualization:
+- A → B: curves around top of center
+- B → A: curves around bottom of center
+- Creates elegant figure-8 or infinity loop pattern
+```
+
+---
+
+### Visual Feedback System
+
+#### 1. Node State Indicators
+
+| State | Visual |
+|-------|--------|
+| **Empty slot** | Dotted circle outline, dim |
+| **Has preset** | Solid filled circle with preset initial |
+| **Currently playing** | Pulsing glow, brighter |
+| **Shrinking during phrase** | Node radius decreases as phrase progresses |
+
+**Phrase Progress Visualization:**
+```
+Start of phrase:     ●────────────────
+                    (full size)
+
+Mid phrase:          ◉────────────────
+                    (medium size)
+
+End of phrase:       ○────────────────
+                    (minimum size, about to transition)
+```
+
+#### 2. Connection Arc Indicators
+
+| Property | Visual |
+|----------|--------|
+| **Morph duration** | Number of dots on the arc (more dots = longer morph) |
+| **Probability** | Line thickness (thicker = higher probability) |
+| **Currently morphing** | Dots animate/flow along the arc |
+| **Can be edited** | Subtle glow on hover |
+
+**Morph Duration Dots:**
+```
+Short morph (1 phrase):   ○──●──○
+Medium morph (2 phrases): ○──●──●──○
+Long morph (4 phrases):   ○──●──●──●──●──○
+```
+
+#### 3. Center Node (START/END)
+
+| State | Visual |
+|-------|--------|
+| **Idle/Start** | Double ring, dim |
+| **Playing journey** | Inner ring pulsing |
+| **About to end** | Glowing, drawing attention |
+
+---
+
+### Drag-to-Connect Interaction
+
+#### Creating Connections
+
+1. **START → First Preset**
+   - Drag from center node outward
+   - Highlight valid preset slots
+   - Drop on slot = set as first preset in journey
+
+2. **Preset → Preset**
+   - Start drag from edge of preset node
+   - Ghost line follows cursor, curves around center
+   - Drop on another preset = create connection
+   - Drop on same preset = create self-loop
+
+3. **Preset → END**
+   - Drag to center node
+   - Creates termination point
+
+#### Visual Drag Feedback
+
+```
+During drag from P1:
+
+                        ◎ P2 (glowing - valid target)
+                       ╱
+                      ╱
+                     ╱ ← ghost line curves
+                    ╱
+      [P1]─────────╱──── ◉ ───────────── ◎ P3 (glowing)
+     (dragging)             
+                            
+                        ◎ P4 (glowing - valid target)
+```
+
+---
+
+### Editing Nodes & Connections (No Side Panel)
+
+#### Node Tap/Click → Popup
+
+```
+┌─────────────────────────┐
+│  Preset A               │
+├─────────────────────────┤
+│  Phrase Length: [4] ▼   │
+│  ──────────────────     │
+│  [Change Preset]        │
+│  [Remove Node]          │
+└─────────────────────────┘
+```
+
+#### Connection Tap/Click → Popup
+
+```
+┌─────────────────────────┐
+│  A → B                  │
+├─────────────────────────┤
+│  Morph Duration: [2] ▼  │
+│  Probability: [●●●○○]   │
+│  ──────────────────     │
+│  [Delete Connection]    │
+└─────────────────────────┘
+```
+
+#### Empty Slot Tap → Add Preset
+
+```
+┌─────────────────────────┐
+│  Add Preset             │
+├─────────────────────────┤
+│  [Recent Presets...]    │
+│  [Browse All...]        │
+└─────────────────────────┘
+```
+
+---
+
+### Color Scheme
+
+| Element | Color | Hex |
+|---------|-------|-----|
+| **Empty slot** | Dim gray | `#444` |
+| **Filled preset** | Snowflake blue | `#4fc3f7` |
+| **Playing/active** | Bright cyan | `#00e5ff` |
+| **Connection line** | Light blue | `#81d4fa` |
+| **Morphing** | Animated gradient | `#4fc3f7 → #00e5ff` |
+| **Drag ghost line** | Orange | `#ff9800` |
+| **END glow** | Warm amber | `#ffb74d` |
+| **Background** | Dark | `#1a1a2e` |
+
+---
+
+### Journey Configuration
+
+```typescript
+interface JourneyNode {
+  id: string;
+  position: 'center' | 'top' | 'right' | 'bottom' | 'left';
+  presetId?: string;           // undefined = empty slot
+  presetName?: string;
+  phraseLengthBars: number;    // 2, 4, 8, 16
+}
+
+interface JourneyConnection {
+  id: string;
+  fromNodeId: string;
+  toNodeId: string;
+  morphDurationPhrases: number; // 1, 2, 4
+  probability: number;         // 0-1
+}
+
+interface JourneyConfig {
+  nodes: JourneyNode[];
+  connections: JourneyConnection[];
+  loopOnEnd: boolean;          // true = restart, false = stop
+  globalTempo?: number;        // optional tempo override
+}
+```
+
+---
+
+### Implementation Checklist
+
+#### Phase 1: Core Types & State ✅
+- [x] Create `src/audio/journeyTypes.ts` with interfaces
+- [x] Create `src/ui/journeyState.ts` with React hooks
+- [x] Add journey config to app state (or separate context)
+
+#### Phase 2: Diamond Matrix Rendering ✅
+- [x] Create `JourneyUI.tsx` component
+- [x] Render diamond layout with 4 cardinal positions + center
+- [x] Draw empty slot placeholders (dotted circles)
+- [x] Draw filled preset nodes with initials
+- [x] Implement node size animation for phrase progress
+
+#### Phase 3: Connection Rendering ✅
+- [x] Calculate curved Bezier paths around center
+- [x] Draw connection arcs with proper curvature direction
+- [x] Add dots along arcs for morph duration visualization
+- [x] Vary line thickness based on probability
+- [x] Add flowing animation for active morph
+
+#### Phase 4: Drag-to-Connect Interaction ✅
+- [x] Detect drag start on node edge
+- [x] Render ghost connection line during drag
+- [x] Highlight valid drop targets
+- [x] Create connection on successful drop
+- [x] Handle self-loop creation
+- [x] Handle drag to center (END connection)
+
+#### Phase 5: Inline Editing (No Side Panel) ✅
+- [x] Node tap → popup with phrase length, change preset, remove
+- [x] Connection tap → popup with morph duration, probability, delete
+- [x] Empty slot tap → preset browser popup
+- [x] Dismiss popup on outside tap
+
+#### Phase 6: Playback Integration 🔄
+- [x] Visual sync: node shrink, arc animation
+- [x] Journey tracker popup with progress bars
+- [ ] Connect to audio engine for phrase boundaries
+- [ ] Implement probabilistic transition selection
+- [ ] Trigger morph between presets
+- [ ] Handle END node (stop or loop restart)
+
+#### Phase 7: Audio Integration (NEXT)
+- [ ] Create JourneyModeView component (not demo)
+- [ ] Wire `onLoadPreset(presetName)` to `handlePresetLoad`
+- [ ] Wire `onMorphTo(presetName, duration)` to start morph animation
+- [ ] Calculate morph duration in ms from bars
+- [ ] Animate morph slider from 0→100 over duration
+- [ ] Implement fadeout during 'ending' phase (reduce master volume)
+- [ ] Handle journey end (stop audio or keep last preset playing)
+
+#### Phase 8: Main App Integration
+- [ ] Add `/journey` route to App.tsx router
+- [ ] Create JourneyModeView that wraps DiamondJourneyUI
+- [ ] Add diamond icon (◇) button to SnowflakeUI header
+- [ ] Add diamond icon (◇) button to Advanced UI header  
+- [ ] Pass real saved presets to Journey Mode
+- [ ] Navigation: click diamond → journey mode, back button → main UI
+- [ ] Journey mode inherits current audio engine state
+
+#### Phase 9: Persistence & Presets
+- [ ] Save/load journey configs to localStorage
+- [ ] Journey preset library (pre-built journeys)
+- [ ] Export/import journey as JSON
+
+---
+
+### Audio Integration Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     JourneyModeView                         │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │               DiamondJourneyUI                       │   │
+│  │  - Visual diamond matrix                             │   │
+│  │  - Drag-to-connect                                   │   │
+│  │  - Journey tracker popup                             │   │
+│  └─────────────────────────────────────────────────────┘   │
+│                           │                                 │
+│           ┌───────────────┼───────────────┐                │
+│           ▼               ▼               ▼                │
+│    onLoadPreset    onMorphTo      onJourneyEnd            │
+│           │               │               │                │
+└───────────┼───────────────┼───────────────┼────────────────┘
+            │               │               │
+            ▼               ▼               ▼
+┌─────────────────────────────────────────────────────────────┐
+│                      App.tsx                                │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │  handleJourneyLoadPreset(name)                       │   │
+│  │    → Find preset in savedPresets                     │   │
+│  │    → setMorphPresetA(preset)                         │   │
+│  │    → setMorphPosition(0)                             │   │
+│  │    → Apply preset state to engine                    │   │
+│  └─────────────────────────────────────────────────────┘   │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │  handleJourneyMorphTo(name, durationBars)            │   │
+│  │    → Find preset in savedPresets                     │   │
+│  │    → setMorphPresetB(preset)                         │   │
+│  │    → Calculate duration in ms                        │   │
+│  │    → Animate morphPosition from 0 → 100              │   │
+│  │    → On complete: swap B→A, clear B                  │   │
+│  └─────────────────────────────────────────────────────┘   │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │  handleJourneyEnd()                                  │   │
+│  │    → Optional: fade out master volume                │   │
+│  │    → Keep last preset playing (or stop)              │   │
+│  └─────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Morph Animation Strategy
+
+During Journey Mode morphs, we animate the morph slider programmatically:
+
+```typescript
+function handleJourneyMorphTo(presetName: string, durationBars: number) {
+  // 1. Find and set destination preset
+  const preset = savedPresets.find(p => p.name === presetName);
+  if (!preset) return;
+  setMorphPresetB(preset);
+  
+  // 2. Calculate duration in milliseconds
+  const msPerBar = (60 / bpm) * 4 * 1000;
+  const durationMs = durationBars * msPerBar;
+  
+  // 3. Animate morph position from current → 100
+  const startPosition = morphPosition;
+  const startTime = performance.now();
+  
+  function animateMorph(now: number) {
+    const elapsed = now - startTime;
+    const progress = Math.min(1, elapsed / durationMs);
+    const newPosition = startPosition + (100 - startPosition) * progress;
+    
+    setMorphPosition(newPosition);
+    
+    if (progress < 1) {
+      requestAnimationFrame(animateMorph);
+    } else {
+      // Morph complete - swap presets
+      setMorphPresetA(morphPresetB);
+      setMorphPresetB(null);
+      setMorphPosition(0);
+    }
+  }
+  
+  requestAnimationFrame(animateMorph);
+}
+```
+
+### Journey Mode Entry Points
+
+**From Snowflake UI:**
+```
+┌────────────────────────────────────────┐
+│  ◇ Journey  |  ⚙️ Advanced  |  ☁️ Cloud │  ← Header bar
+├────────────────────────────────────────┤
+│                                        │
+│          [Snowflake Visual]            │
+│                                        │
+└────────────────────────────────────────┘
+```
+
+**From Advanced UI:**
+```
+┌────────────────────────────────────────┐
+│  ❄️ Simple  |  ◇ Journey  |  ☁️ Cloud  │  ← Header bar
+├────────────────────────────────────────┤
+│                                        │
+│          [Advanced Sliders]            │
+│                                        │
+└────────────────────────────────────────┘
+```
+
+---
+
+### Curved Path Calculation
+
+For connections that curve around the center:
+
+```typescript
+function calculateCurvedPath(
+  fromPos: Position,
+  toPos: Position,
+  centerPos: Position,
+  curveDirection: 'clockwise' | 'counterclockwise'
+): string {
+  // Calculate control points that bow away from center
+  const midpoint = getMidpoint(fromPos, toPos);
+  const directionFromCenter = normalize(subtract(midpoint, centerPos));
+  
+  // Push control point away from center
+  const curveOffset = 80; // pixels
+  const sign = curveDirection === 'clockwise' ? 1 : -1;
+  const controlPoint = add(midpoint, scale(perpendicular(directionFromCenter), curveOffset * sign));
+  
+  return `M ${fromPos.x} ${fromPos.y} Q ${controlPoint.x} ${controlPoint.y} ${toPos.x} ${toPos.y}`;
+}
+```
+
+**Curve Direction Rules:**
+- Going "forward" around the diamond (P1→P2→P3→P4): clockwise curves
+- Going "backward" (P4→P3→P2→P1): counterclockwise curves
+- This ensures opposing connections don't overlap
+
+---
+
+### Accessibility Considerations
+
+- [ ] Keyboard navigation between nodes
+- [ ] Tab order: Center → P1 → P2 → P3 → P4
+- [ ] Enter to activate node (open popup)
+- [ ] Arrow keys to select connections from active node
+- [ ] Screen reader labels for all interactive elements
+- [ ] High contrast mode support
+
+---

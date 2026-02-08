@@ -10,6 +10,15 @@
 
 import { SCALE_FAMILIES } from '../audio/scales';
 
+/**
+ * Saved preset structure
+ */
+export interface SavedPreset {
+  name: string;
+  timestamp: string;
+  state: SliderState;
+}
+
 export interface SliderState {
   // Master Mixer
   masterVolume: number;       // 0..1 step 0.01
