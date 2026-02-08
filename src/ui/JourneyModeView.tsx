@@ -138,7 +138,6 @@ export const JourneyModeView: React.FC<JourneyModeViewProps> = ({
         <button style={styles.navButton} onClick={onShowSnowflake}>
           {TEXT_SYMBOLS.snowflake}
         </button>
-        <span style={styles.diamondIndicator}>{TEXT_SYMBOLS.diamond}</span>
         <button style={styles.navButton} onClick={onShowAdvanced}>
           {TEXT_SYMBOLS.sparkle}
         </button>
@@ -184,7 +183,7 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
   navButton: {
     padding: 8,
-    fontSize: '1.5rem',
+    fontSize: '1.58rem',
     fontWeight: 'bold',
     border: 'none',
     borderRadius: '50%',
@@ -193,8 +192,8 @@ const styles: { [key: string]: React.CSSProperties } = {
     color: 'rgba(255, 255, 255, 0.6)',
     transition: 'all 0.2s',
     textShadow: '0 2px 8px rgba(0, 0, 0, 0.5)',
-    width: 44,
-    height: 44,
+    width: 46,
+    height: 46,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',

@@ -102,11 +102,11 @@ export interface JourneyCallbacks {
  * Color palette for journey nodes - uses colors from the app's design
  */
 export const JOURNEY_NODE_COLORS = [
-  '#4fc3f7', // Cyan - primary active color
+  '#8B5CF6', // Purple - drum
   '#C4724E', // Muted orange - synth
   '#7B9A6D', // Sage green - granular
   '#D4A520', // Mustard gold - lead
-  '#8B5CF6', // Purple - drum
+  '#4fc3f7', // Cyan - primary active color
   '#5A7B8A', // Slate blue - wave
   '#E8DCC4', // Warm cream - reverb
 ];

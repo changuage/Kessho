@@ -419,7 +419,7 @@ const styles = {
     zIndex: 1000,
   } as React.CSSProperties,
   simpleButton: {
-    color: '#a5c4d4',
+    color: 'rgba(255,255,255,0.7)',
   } as React.CSSProperties,
   grid: {
     display: 'grid',
@@ -3992,6 +3992,9 @@ const App: React.FC = () => {
             onLoadPreset={handleLoadPresetFromList}
             presets={savedPresets}
             isPlaying={engineState.isRunning || isJourneyPlaying}
+            isRecording={isRecording}
+            recordingDuration={recordingDuration}
+            onStopRecording={handleStopRecording}
           />
         </div>
       </>
@@ -4056,38 +4059,34 @@ const App: React.FC = () => {
             </span>
           )}
         </button>
-        {/* Save/Import preset buttons - hidden during recording */}
-        {!isRecording && (
-          <>
-            <button
-              style={{ ...styles.iconButton, ...styles.presetButton }}
-              onClick={handleSavePreset}
-              title="Save Preset"
-            >
-              {TEXT_SYMBOLS.download}
-            </button>
-            <button
-              style={{ ...styles.iconButton, ...styles.presetButton }}
-              onClick={() => fileInputRef.current?.click()}
-              title="Import Preset"
-            >
-              {TEXT_SYMBOLS.upload}
-            </button>
-          </>
-        )}
+        {/* Save/Import preset buttons */}
         <button
-          style={{ ...styles.iconButton, ...styles.simpleButton, color: 'rgba(184, 224, 255, 0.7)' }}
+          style={{ ...styles.iconButton, ...styles.presetButton }}
+          onClick={handleSavePreset}
+          title="Save Preset"
+        >
+          {TEXT_SYMBOLS.download}
+        </button>
+        <button
+          style={{ ...styles.iconButton, ...styles.presetButton }}
+          onClick={() => fileInputRef.current?.click()}
+          title="Import Preset"
+        >
+          {TEXT_SYMBOLS.upload}
+        </button>
+        <button
+          style={{ ...styles.iconButton, ...styles.simpleButton }}
           onClick={() => setUiMode('journey')}
           title="Journey Mode"
         >
-          ◇
+          ⟡
         </button>
         <button
           style={{ ...styles.iconButton, ...styles.simpleButton }}
           onClick={() => setUiMode('snowflake')}
           title="Simple Mode"
         >
-          {TEXT_SYMBOLS.sparkle}
+          ❄︎
         </button>
         <input
           ref={(el) => (fileInputRef.current = el)}

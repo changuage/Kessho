@@ -16,8 +16,15 @@ const TEXT_SYMBOLS = {
   record: '●\uFE0E',
   hexagon: '⬡\uFE0E',
   sparkle: '✲\uFE0E',
-  diamond: '◇\uFE0E',
+  diamond: '⟡\uFE0E',
 } as const;
+
+// Format recording time as M:SS
+function formatRecordingTime(seconds: number): string {
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
 
 // Re-export SavedPreset for backwards compatibility
 export type { SavedPreset };
@@ -31,6 +38,10 @@ interface SnowflakeUIProps {
   onLoadPreset: (preset: SavedPreset) => void;
   presets: SavedPreset[];
   isPlaying: boolean;
+  // Recording display (read-only - recording controlled from Advanced UI)
+  isRecording?: boolean;
+  recordingDuration?: number;
+  onStopRecording?: () => void;
 }
 
 // Macro slider configuration
@@ -250,7 +261,7 @@ function drawArm(
   }
 }
 
-const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanced, onShowJourney, onTogglePlay, onLoadPreset, presets, isPlaying }) => {
+const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanced, onShowJourney, onTogglePlay, onLoadPreset, presets, isPlaying, isRecording, recordingDuration, onStopRecording }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [dragging, setDragging] = useState<number | null>(null);  // Dragging prong handle (level)
   const [hovering, setHovering] = useState<number | null>(null);
@@ -536,7 +547,7 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
   const topGap = canvasTop;
   const bottomGap = windowSize.height - canvasBottom;
   const playButtonTop = topGap / 2 - 22; // Center of top gap, offset by half button height
-  const advancedButtonBottom = bottomGap / 2 - 20; // Center of bottom gap
+  const advancedButtonBottom = bottomGap / 2 - 22; // Center of bottom gap, offset by half of 44px button height
 
   return (
     <div style={styles.container}>
@@ -556,18 +567,48 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
         >
           {isPlaying ? TEXT_SYMBOLS.stop : TEXT_SYMBOLS.play}
         </button>
-        {/* Preset button - moved here from bottom */}
-        <button 
-          style={{
-            ...styles.advancedButton,
-            color: showPresets ? '#ED5A24' : 'rgba(255,255,255,0.6)',
-            fontSize: '18px',
-          }} 
-          onClick={() => setShowPresets(!showPresets)}
-          title="Presets"
-        >
-          {TEXT_SYMBOLS.hexagon}
-        </button>
+        {/* Preset button OR Recording indicator (when recording is active) */}
+        {isRecording ? (
+          <button 
+            style={{
+              ...styles.advancedButton,
+              color: '#FF4444',
+              position: 'relative',
+            }} 
+            onClick={onStopRecording}
+            title={`Recording ${formatRecordingTime(recordingDuration || 0)} - Click to stop`}
+          >
+            <span style={{
+              animation: 'pulse 1.5s ease-in-out infinite',
+            }}>
+              {TEXT_SYMBOLS.record}
+            </span>
+            <span style={{
+              position: 'absolute',
+              top: '-4px',
+              right: '-8px',
+              fontSize: '0.5rem',
+              background: '#FF4444',
+              color: 'white',
+              padding: '1px 4px',
+              borderRadius: '8px',
+              fontWeight: 'bold',
+            }}>
+              {formatRecordingTime(recordingDuration || 0)}
+            </span>
+          </button>
+        ) : (
+          <button 
+            style={{
+              ...styles.advancedButton,
+              color: showPresets ? '#ED5A24' : 'rgba(255,255,255,0.6)',
+            }} 
+            onClick={() => setShowPresets(!showPresets)}
+            title="Presets"
+          >
+            {TEXT_SYMBOLS.hexagon}
+          </button>
+        )}
       </div>
 
       {/* Snowflake centered */}
@@ -897,12 +938,12 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
       </div>
       </div>
 
-      {/* Preset popup - appears above bottom buttons */}
+      {/* Preset popup - appears below the top preset button */}
       {showPresets && (
         <div
           style={{
             position: 'absolute',
-            bottom: Math.max(70, advancedButtonBottom + 60),
+            top: Math.max(60, playButtonTop + 55),
             left: '50%',
             transform: 'translateX(-50%)',
             background: 'rgba(10, 10, 24, 0.85)',
@@ -964,8 +1005,7 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
         </div>
       )}
 
-      {/* Bottom buttons - positioned between canvas and bottom edge */}
-      {/* Journey diamond and Advanced sparkle only (preset moved to top) */}
+      {/* Bottom buttons - Journey diamond and Advanced sparkle */}
       <div
         style={{
           position: 'absolute',
@@ -979,10 +1019,7 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
       >
         {onShowJourney && (
           <button 
-            style={{
-              ...styles.advancedButton,
-              color: 'rgba(184, 224, 255, 0.7)',
-            }} 
+            style={styles.advancedButton} 
             onClick={onShowJourney}
           >
             {TEXT_SYMBOLS.diamond}
@@ -1042,7 +1079,7 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
   playButton: {
     padding: '8px',
-    fontSize: '1.5rem',
+    fontSize: '1.32rem',
     fontWeight: 'bold',
     border: 'none',
     borderRadius: '50%',
@@ -1051,15 +1088,15 @@ const styles: { [key: string]: React.CSSProperties } = {
     color: '#FFFFFF',
     transition: 'all 0.2s',
     textShadow: '0 2px 8px rgba(0,0,0,0.5)',
-    width: '44px',
-    height: '44px',
+    width: '39px',
+    height: '39px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
   },
   stopButton: {
     padding: '0',
-    fontSize: '1.875rem',
+    fontSize: '1.65rem',
     fontWeight: 'bold',
     border: 'none',
     borderRadius: '50%',
@@ -1068,8 +1105,8 @@ const styles: { [key: string]: React.CSSProperties } = {
     color: '#ED5A24',
     transition: 'all 0.2s',
     textShadow: '0 2px 8px rgba(0,0,0,0.5)',
-    width: '44px',
-    height: '44px',
+    width: '40px',
+    height: '40px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1077,8 +1114,8 @@ const styles: { [key: string]: React.CSSProperties } = {
     paddingBottom: '5px',
   },
   advancedButton: {
-    padding: '8px',
-    fontSize: '1.5rem',
+    padding: '10px',
+    fontSize: '1.58rem',
     fontWeight: 'bold',
     border: 'none',
     borderRadius: '50%',
@@ -1087,8 +1124,8 @@ const styles: { [key: string]: React.CSSProperties } = {
     color: 'rgba(255,255,255,0.6)',
     transition: 'all 0.2s',
     textShadow: '0 2px 8px rgba(0,0,0,0.5)',
-    width: '44px',
-    height: '44px',
+    width: '46px',
+    height: '46px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
