@@ -157,7 +157,7 @@ const DiamondNode: React.FC<DiamondNodeProps> = ({
   isMorphingTo,
   phraseProgress,
   isEmpty,
-  isValidDropTarget,
+  isValidDropTarget: _isValidDropTarget,
   isDragSource,
   onClick,
   onDragStart,
@@ -630,7 +630,7 @@ const CenterNode: React.FC<CenterNodeProps> = ({
   isPlaying,
   isEnding,
   isMorphing,
-  isValidDropTarget,
+  isValidDropTarget: _isValidDropTarget,
   isDragSource,
   nodeColor,
   onClick,
@@ -1733,7 +1733,7 @@ const NodePopup: React.FC<NodePopupProps> = ({
         transform: isMobile ? 'translateX(-50%)' : 'translate(-50%, -100%) translateY(-12px)',
         background: COLORS.popup,
         backdropFilter: 'blur(4px)',
-        WebkitbackdropFilter: 'blur(4px)',
+        WebkitBackdropFilter: 'blur(4px)',
         border: `1px solid ${COLORS.popupBorder}`,
         borderRadius: 12,
         padding: isMobile ? '10px 14px' : '14px 18px',
@@ -2292,7 +2292,7 @@ const ConnectionPopup: React.FC<ConnectionPopupProps> = ({
         transform: adjacentRect ? 'none' : 'translate(-50%, -100%) translateY(-12px)',
         background: COLORS.popup,
         backdropFilter: 'blur(4px)',
-        WebkitbackdropFilter: 'blur(4px)',
+        WebkitBackdropFilter: 'blur(4px)',
         border: `1px solid ${COLORS.popupBorder}`,
         borderRadius: 12,
         padding: '14px 18px',
@@ -2665,7 +2665,7 @@ const AddPresetPopup: React.FC<AddPresetPopupProps> = ({
         transform: isMobile ? 'translate(-50%, 0)' : 'translate(-50%, -100%) translateY(-12px)',
         background: COLORS.popup,
         backdropFilter: 'blur(4px)',
-        WebkitbackdropFilter: 'blur(4px)',
+        WebkitBackdropFilter: 'blur(4px)',
         border: `1px solid ${COLORS.popupBorder}`,
         borderRadius: 12,
         padding: '14px 18px',
@@ -2732,288 +2732,6 @@ const AddPresetPopup: React.FC<AddPresetPopupProps> = ({
           No presets saved yet. Create presets in the Snowflake or Advanced UI first.
         </div>
       )}
-    </div>
-  );
-};
-
-// ============================================================================
-// JOURNEY TRACKER POPUP
-// ============================================================================
-
-interface JourneyTrackerPopupProps {
-  x: number;
-  y: number;
-  state: JourneyState;
-  config: JourneyConfig | null;
-}
-
-const JourneyTrackerPopup: React.FC<JourneyTrackerPopupProps> = ({
-  x,
-  y,
-  state,
-  config,
-}) => {
-  const popupRef = useRef<HTMLDivElement>(null);
-  const [adjustedPos, setAdjustedPos] = useState({ x, y });
-  
-  // Adjust popup position to stay within viewport
-  useEffect(() => {
-    if (!popupRef.current) return;
-    
-    const rect = popupRef.current.getBoundingClientRect();
-    const padding = 10;
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
-    
-    let newX = x;
-    let newY = y;
-    
-    if (rect.right > viewportWidth - padding) {
-      newX = x - (rect.right - viewportWidth + padding);
-    }
-    if (rect.left < padding) {
-      newX = x + (padding - rect.left);
-    }
-    if (rect.top < padding) {
-      newY = y + rect.height + 20;
-    }
-    if (rect.bottom > viewportHeight - padding) {
-      newY = y - (rect.bottom - viewportHeight + padding);
-    }
-    
-    // Always update adjustedPos when x,y props change
-    setAdjustedPos({ x: newX, y: newY });
-  }, [x, y]);
-  
-  // Get current and next node info
-  const currentNode = config?.nodes.find(n => n.id === state.currentNodeId);
-  const nextNode = config?.nodes.find(n => n.id === state.nextNodeId);
-  
-  // Calculate times using PHRASE_LENGTH constant
-  const PHRASE_SECONDS = PHRASE_LENGTH;
-  const phraseDuration = state.resolvedPhraseDuration || currentNode?.phraseLength || 1;
-  const morphDuration = state.resolvedMorphDuration || 2;
-  
-  const phraseTimeTotal = phraseDuration * PHRASE_SECONDS;
-  const phraseTimeRemaining = phraseTimeTotal * (1 - state.phraseProgress);
-  const morphTimeTotal = morphDuration * PHRASE_SECONDS;
-  const morphTimeRemaining = morphTimeTotal * (1 - state.morphProgress);
-  
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    if (mins > 0) {
-      return `${mins}:${secs.toString().padStart(2, '0')}`;
-    }
-    return `${secs}s`;
-  };
-  
-  const getPhaseDisplay = () => {
-    switch (state.phase) {
-      case 'playing': return 'Playing';
-      case 'morphing': return 'Morphing';
-      case 'self-loop': return 'Looping';
-      case 'ending': return 'Ending';
-      case 'ended': return 'Ended';
-      case 'idle': return 'Idle';
-      default: return state.phase;
-    }
-  };
-  
-  const getPhaseColor = () => {
-    switch (state.phase) {
-      case 'playing': return currentNode?.color || COLORS.filledNode;
-      case 'morphing': return COLORS.morphingConnection;
-      case 'self-loop': return currentNode?.color || COLORS.filledNode;
-      case 'ending': return COLORS.endConnection;
-      default: return COLORS.textMuted;
-    }
-  };
-  
-  return (
-    <div
-      ref={popupRef}
-      data-popup="true"
-      style={{
-        position: 'fixed',
-        left: adjustedPos.x,
-        top: adjustedPos.y,
-        transform: 'translate(-50%, -100%) translateY(-20px)',
-        background: COLORS.popup,
-        backdropFilter: 'blur(4px)',
-        WebkitbackdropFilter: 'blur(4px)',
-        border: `1px solid ${COLORS.popupBorder}`,
-        borderRadius: 12,
-        padding: '12px 16px',
-        minWidth: 160,
-        boxShadow: `0 8px 32px rgba(0,0,0,0.4), 0 0 1px ${COLORS.popupGlow}, inset 0 1px 0 ${COLORS.popupGlow}`,
-        fontFamily: "'Avenir', 'Avenir Next', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-        color: COLORS.text,
-        zIndex: 1001,
-        pointerEvents: 'none',
-      }}
-    >
-      {/* Phase indicator */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-        <div style={{
-          width: 8,
-          height: 8,
-          borderRadius: '50%',
-          background: getPhaseColor(),
-          boxShadow: `0 0 8px ${getPhaseColor()}`,
-        }} />
-        <span style={{ 
-          fontSize: 11, 
-          fontWeight: 600, 
-          letterSpacing: '0.05em',
-          textTransform: 'uppercase',
-          color: getPhaseColor(),
-        }}>
-          {getPhaseDisplay()}
-        </span>
-      </div>
-      
-      {/* Current preset */}
-      {currentNode && currentNode.presetName && (
-        <div style={{ marginBottom: 8 }}>
-          <div style={{ fontSize: 9, color: COLORS.textMuted, marginBottom: 2, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-            Current
-          </div>
-          <div style={{ 
-            fontSize: 12, 
-            fontWeight: 500,
-            color: currentNode.color || COLORS.filledNode,
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            maxWidth: 140,
-          }}>
-            {currentNode.presetName}
-          </div>
-        </div>
-      )}
-      
-      {/* Phrase progress */}
-      {(state.phase === 'playing' || state.phase === 'self-loop') && (
-        <div style={{ marginBottom: 8 }}>
-          <div style={{ fontSize: 9, color: COLORS.textMuted, marginBottom: 2, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-            Phrase ({Math.round(state.phraseProgress * 100)}%)
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{ 
-              flex: 1,
-              minWidth: 80,
-              height: 4, 
-              background: 'rgba(255,255,255,0.1)', 
-              borderRadius: 2,
-              overflow: 'hidden',
-            }}>
-              <div style={{ 
-                width: `${Math.max(0, Math.min(100, state.phraseProgress * 100))}%`, 
-                height: '100%', 
-                background: currentNode?.color || COLORS.filledNode,
-                borderRadius: 2,
-              }} />
-            </div>
-            <span style={{ fontSize: 10, color: COLORS.text, minWidth: 35, textAlign: 'right' }}>
-              {formatTime(phraseTimeRemaining)}
-            </span>
-          </div>
-        </div>
-      )}
-      
-      {/* Morph progress */}
-      {state.phase === 'morphing' && nextNode && (
-        <div style={{ marginBottom: 8 }}>
-          <div style={{ fontSize: 9, color: COLORS.textMuted, marginBottom: 2, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-            Morphing to
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-            <span style={{ 
-              fontSize: 11, 
-              color: nextNode.color || COLORS.filledNode,
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              maxWidth: 100,
-            }}>
-              {nextNode.presetName}
-            </span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{ 
-              flex: 1, 
-              height: 4, 
-              background: 'rgba(255,255,255,0.1)', 
-              borderRadius: 2,
-              overflow: 'hidden',
-              minWidth: 80,
-            }}>
-              <div style={{ 
-                width: `${Math.max(0, Math.min(100, state.morphProgress * 100))}%`, 
-                height: '100%', 
-                background: COLORS.morphingConnection,
-                borderRadius: 2,
-              }} />
-            </div>
-            <span style={{ fontSize: 10, color: COLORS.text, minWidth: 35, textAlign: 'right' }}>
-              {formatTime(morphTimeRemaining)}
-            </span>
-          </div>
-        </div>
-      )}
-      
-      {/* Ending progress */}
-      {state.phase === 'ending' && (
-        <div style={{ marginBottom: 8 }}>
-          <div style={{ fontSize: 9, color: COLORS.textMuted, marginBottom: 2, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-            Fading out
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{ 
-              flex: 1, 
-              height: 4, 
-              background: 'rgba(255,255,255,0.1)', 
-              borderRadius: 2,
-              overflow: 'hidden',
-              minWidth: 80,
-            }}>
-              <div style={{ 
-                width: `${Math.max(0, Math.min(100, state.morphProgress * 100))}%`, 
-                height: '100%', 
-                background: COLORS.endConnection,
-                borderRadius: 2,
-              }} />
-            </div>
-            <span style={{ fontSize: 10, color: COLORS.text, minWidth: 35, textAlign: 'right' }}>
-              {formatTime(morphTimeRemaining)}
-            </span>
-          </div>
-        </div>
-      )}
-      
-      {/* Next stop - uses pre-selected plannedNextNodeId */}
-      {(state.phase === 'playing' || state.phase === 'self-loop') && state.plannedNextNodeId && (() => {
-        const plannedNode = config?.nodes.find(n => n.id === state.plannedNextNodeId);
-        if (!plannedNode) return null;
-        
-        const isEnd = plannedNode.position === 'center' || plannedNode.presetId === '__CENTER__';
-        const isSelf = plannedNode.id === state.currentNodeId;
-        
-        return (
-          <div style={{ marginTop: 6, paddingTop: 6, borderTop: `1px solid ${COLORS.popupBorder}` }}>
-            <div style={{ fontSize: 9, color: COLORS.textMuted, marginBottom: 2, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-              Next
-            </div>
-            <div style={{ 
-              fontSize: 11, 
-              color: isEnd ? COLORS.endConnection : (isSelf ? currentNode?.color : plannedNode.color) || COLORS.filledNode,
-            }}>
-              {isEnd ? '⬡ End' : (isSelf ? '↺ Self-loop' : plannedNode.presetName)}
-            </div>
-          </div>
-        );
-      })()}
     </div>
   );
 };
