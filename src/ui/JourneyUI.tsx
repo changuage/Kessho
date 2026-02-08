@@ -20,12 +20,7 @@ import {
   JourneyState,
   JourneyNode,
   JourneyConnection,
-  JOURNEY_NODE_COLORS,
   positionToAngle,
-  positionToCoordinates,
-  calculateNodePositions,
-  createJourneyNode,
-  createJourneyConnection,
   generateJourneyId,
 } from '../audio/journeyTypes';
 import { SavedPreset } from './state';
