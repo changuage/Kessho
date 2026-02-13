@@ -2946,8 +2946,30 @@ const App: React.FC = () => {
       // If not effectively dual, just use the interpolated state value (already computed)
     }
     
+    // === Engine enable/level fade: treat disabled engines as level=0 for smooth morph ===
+    // When one preset has an engine ON and the other OFF, override the OFF side's
+    // level to 0 so the morph smoothly fades the engine in/out instead of snapping.
+    const engineLevelMap: Record<string, keyof SliderState> = {
+      granularEnabled: 'granularLevel',
+      leadEnabled: 'leadLevel',
+      lead2Enabled: 'lead2Level',
+      drumEnabled: 'drumLevel',
+      oceanSampleEnabled: 'oceanSampleLevel',
+      oceanWaveSynthEnabled: 'oceanWaveSynthLevel',
+    };
+    for (const [enableKey, levelKey] of Object.entries(engineLevelMap)) {
+      const enabledA = stateA[enableKey as keyof SliderState];
+      const enabledB = stateB[enableKey as keyof SliderState];
+      if (!enabledA && enabledB) {
+        // A has engine OFF → treat A's level as 0 (fade in from silence)
+        (stateA as Record<string, unknown>)[levelKey] = 0;
+      } else if (enabledA && !enabledB) {
+        // B has engine OFF → treat B's level as 0 (fade out to silence)
+        (stateB as Record<string, unknown>)[levelKey] = 0;
+      }
+    }
+
     // Define parent-child relationships for conditional morphing
-    // If parent boolean is OFF in the target preset, don't morph child sliders
     const parentChildMap: Record<string, (keyof SliderState)[]> = {
       granularEnabled: [
         'granularLevel', 'granularReverbSend', 'grainProbability', 'grainSizeMin', 'grainSizeMax',
@@ -2961,8 +2983,20 @@ const App: React.FC = () => {
         'leadVibratoDepthMin', 'leadVibratoDepthMax', 'leadVibratoRateMin', 'leadVibratoRateMax',
         'leadGlideMin', 'leadGlideMax', 'leadReverbSend', 'leadDelayReverbSend'
       ],
+      lead2Enabled: [
+        'lead2Level'
+      ],
       leadEuclideanMasterEnabled: [
         'leadEuclideanTempo'
+      ],
+      drumEnabled: [
+        'drumLevel', 'drumReverbSend',
+        'drumSubFreq', 'drumSubDecay', 'drumSubLevel', 'drumSubTone',
+        'drumKickFreq', 'drumKickPitchEnv', 'drumKickPitchDecay', 'drumKickDecay', 'drumKickLevel', 'drumKickClick',
+        'drumClickDecay', 'drumClickFilter', 'drumClickResonance', 'drumClickLevel', 'drumClickTone', 'drumClickPitch', 'drumClickPitchEnv',
+        'drumBeepHiFreq', 'drumBeepHiAttack', 'drumBeepHiDecay', 'drumBeepHiTone', 'drumBeepHiLevel',
+        'drumBeepLoFreq', 'drumBeepLoAttack', 'drumBeepLoDecay', 'drumBeepLoTone', 'drumBeepLoLevel',
+        'drumNoiseFilterFreq', 'drumNoiseFilterQ', 'drumNoiseAttack', 'drumNoiseDecay', 'drumNoiseLevel'
       ],
       oceanSampleEnabled: [
         'oceanSampleLevel', 'oceanFilterCutoff', 'oceanFilterResonance',
@@ -2975,12 +3009,13 @@ const App: React.FC = () => {
     };
     
     // Determine which keys should be snapped (not morphed) based on parent boolean state
+    // Only snap children when BOTH presets have the engine OFF.
+    // When one is ON and the other OFF, children morph normally (level fades from 0).
     const keysToSnap = new Set<keyof SliderState>();
     for (const [parentKey, childKeys] of Object.entries(parentChildMap)) {
       const parentA = stateA[parentKey as keyof SliderState];
       const parentB = stateB[parentKey as keyof SliderState];
-      // If either preset has the parent OFF, snap the children instead of morphing
-      if (!parentA || !parentB) {
+      if (!parentA && !parentB) {
         for (const childKey of childKeys) {
           keysToSnap.add(childKey);
         }
@@ -3003,6 +3038,7 @@ const App: React.FC = () => {
       'lead1OctaveRange',
       'leadVibratoDepthMin', 'leadVibratoDepthMax', 'leadVibratoRateMin', 'leadVibratoRateMax',
       'leadGlideMin', 'leadGlideMax', 'leadEuclideanTempo',
+      'lead2Level',
       'oceanSampleLevel', 'oceanWaveSynthLevel', 'oceanFilterCutoff', 'oceanFilterResonance',
       'oceanDurationMin', 'oceanDurationMax', 'oceanIntervalMin', 'oceanIntervalMax',
       'oceanFoamMin', 'oceanFoamMax', 'oceanDepthMin', 'oceanDepthMax',
@@ -3011,7 +3047,7 @@ const App: React.FC = () => {
       'drumSubMorph', 'drumKickMorph', 'drumClickMorph',
       'drumBeepHiMorph', 'drumBeepLoMorph', 'drumNoiseMorph',
       // Drum voice params - should interpolate when master morph changes
-      'drumLevel', 'drumSubFreq', 'drumSubDecay', 'drumSubLevel', 'drumSubTone',
+      'drumLevel', 'drumReverbSend', 'drumSubFreq', 'drumSubDecay', 'drumSubLevel', 'drumSubTone',
       'drumKickFreq', 'drumKickPitchEnv', 'drumKickPitchDecay', 'drumKickDecay', 'drumKickLevel', 'drumKickClick',
       'drumClickDecay', 'drumClickFilter', 'drumClickResonance', 'drumClickLevel', 'drumClickTone', 'drumClickPitch', 'drumClickPitchEnv',
       'drumBeepHiFreq', 'drumBeepHiAttack', 'drumBeepHiDecay', 'drumBeepHiTone', 'drumBeepHiLevel',
@@ -3046,12 +3082,14 @@ const App: React.FC = () => {
       (result as Record<string, unknown>)[key] = tNorm < 0.5 ? stateA[key] : stateB[key];
     }
     
-    // Snap boolean values at 50% (except cofDriftEnabled which has special handling)
+    // Snap boolean values at 50% (except engine enables and cofDriftEnabled which have special handling)
+    const atEndpointA = t === 0;
+    const atEndpointB = t === 100;
     const boolKeys: (keyof SliderState)[] = [
-      'granularEnabled', 'leadEnabled', 'lead1UseCustomAdsr', 'leadEuclideanMasterEnabled', 'leadEuclid1Enabled', 'leadEuclid2Enabled',
-      'leadEuclid3Enabled', 'leadEuclid4Enabled', 'oceanSampleEnabled', 'oceanWaveSynthEnabled',
-      // Drum synth booleans
-      'drumEnabled', 'drumRandomEnabled',
+      'lead1UseCustomAdsr', 'leadEuclideanMasterEnabled', 'leadEuclid1Enabled', 'leadEuclid2Enabled',
+      'leadEuclid3Enabled', 'leadEuclid4Enabled',
+      // Drum synth booleans (not drumEnabled - handled below)
+      'drumRandomEnabled',
       'drumSubMorphAuto', 'drumKickMorphAuto', 'drumClickMorphAuto',
       'drumBeepHiMorphAuto', 'drumBeepLoMorphAuto', 'drumNoiseMorphAuto',
     ];
@@ -3059,13 +3097,36 @@ const App: React.FC = () => {
       (result as Record<string, unknown>)[key] = tNorm < 0.5 ? stateA[key] : stateB[key];
     }
     
+    // Special handling for engine enable booleans:
+    // When one preset has the engine ON and the other OFF, keep the engine ON during
+    // the morph so the level can fade smoothly. Only turn OFF at the disabled endpoint.
+    const engineEnableKeys: (keyof SliderState)[] = [
+      'granularEnabled', 'leadEnabled', 'lead2Enabled',
+      'drumEnabled', 'oceanSampleEnabled', 'oceanWaveSynthEnabled',
+    ];
+    for (const key of engineEnableKeys) {
+      const onA = stateA[key];
+      const onB = stateB[key];
+      if (onA && onB) {
+        // Both on: stay on
+        (result as Record<string, unknown>)[key] = true;
+      } else if (!onA && !onB) {
+        // Both off: stay off
+        (result as Record<string, unknown>)[key] = false;
+      } else if (!onA && onB) {
+        // A off, B on: enable as soon as we leave A (t > 0)
+        (result as Record<string, unknown>)[key] = !atEndpointA;
+      } else {
+        // A on, B off: stay on until we arrive at B (t < 100)
+        (result as Record<string, unknown>)[key] = !atEndpointB;
+      }
+    }
+    
     // Special handling for cofDriftEnabled:
     // - Off → On: Turn ON immediately when leaving the "off" preset (so CoF walk happens during morph)
     // - On → Off: Keep ON during entire morph (do CoF walk), only turn OFF when arriving at target
     const cofOnA = stateA.cofDriftEnabled;
     const cofOnB = stateB.cofDriftEnabled;
-    const atEndpointA = t === 0;
-    const atEndpointB = t === 100;
     
     if (cofOnA && cofOnB) {
       // Both on: stay on
