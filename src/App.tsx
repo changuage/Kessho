@@ -3224,9 +3224,81 @@ const App: React.FC = () => {
         morphCapturedStateRef.current = { ...state };
         morphCapturedDualRangesRef.current = currentDualRanges;
       }
+
+      // Check if we should apply preset B values directly:
+      // - Only apply if we're at endpoint 1 (near position 100)
+      // - OR if no preset A is loaded yet (not in morph mode)
+      // At endpoint 0 (position ~0), we should keep the current A values
+      const atEndpoint1 = isAtEndpoint1(morphPosition, true);
+      const shouldApplyPresetB = atEndpoint1 || !morphPresetA;
+
+      if (shouldApplyPresetB) {
+        // Apply the preset immediately when loading to slot B (and at or near position 100)
+        // Preserve user preference keys (like reverbQuality) that shouldn't change with presets
+        const newState = { ...DEFAULT_STATE, ...normalizedPreset.state };
+        for (const key of USER_PREFERENCE_KEYS) {
+          (newState as Record<string, unknown>)[key] = state[key];
+        }
+        if (newState.granularLevel === 0) {
+          newState.granularEnabled = false;
+        }
+        setState(newState);
+        audioEngine.updateParams(newState);
+        audioEngine.resetCofDrift();
+
+        // Update ocean dual modes based on whether min !== max in the loaded state
+        setOceanDualModes({
+          duration: Math.abs(newState.oceanDurationMax - newState.oceanDurationMin) > 0.01,
+          interval: Math.abs(newState.oceanIntervalMax - newState.oceanIntervalMin) > 0.01,
+          foam: Math.abs(newState.oceanFoamMax - newState.oceanFoamMin) > 0.001,
+          depth: Math.abs(newState.oceanDepthMax - newState.oceanDepthMin) > 0.001,
+        });
+
+        // Update expression dual modes based on whether min !== max in the loaded state
+        setExpressionDualModes({
+          vibratoDepth: Math.abs(newState.leadVibratoDepthMax - newState.leadVibratoDepthMin) > 0.001,
+          vibratoRate: Math.abs(newState.leadVibratoRateMax - newState.leadVibratoRateMin) > 0.001,
+          glide: Math.abs(newState.leadGlideMax - newState.leadGlideMin) > 0.001,
+        });
+
+        // Update delay dual modes based on whether min !== max in the loaded state
+        setDelayDualModes({
+          time: Math.abs(newState.leadDelayTimeMax - newState.leadDelayTimeMin) > 0.1,
+          feedback: Math.abs(newState.leadDelayFeedbackMax - newState.leadDelayFeedbackMin) > 0.001,
+          mix: Math.abs(newState.leadDelayMixMax - newState.leadDelayMixMin) > 0.001,
+        });
+
+        // Restore dual slider state if present
+        if (normalizedPreset.dualRanges && Object.keys(normalizedPreset.dualRanges).length > 0) {
+          const newDualModes = new Set<keyof SliderState>();
+          const newDualRanges: DualSliderState = {};
+          const newWalkPositions: Record<string, number> = {};
+
+          Object.entries(normalizedPreset.dualRanges).forEach(([key, range]) => {
+            const paramKey = key as keyof SliderState;
+            newDualModes.add(paramKey);
+            newDualRanges[paramKey] = range;
+            const walkPos = Math.random();
+            newWalkPositions[key] = walkPos;
+            randomWalkRef.current[paramKey] = {
+              position: walkPos,
+              velocity: (Math.random() - 0.5) * 0.02,
+            };
+          });
+
+          setDualSliderModes(newDualModes);
+          setDualSliderRanges(newDualRanges);
+          setRandomWalkPositions(newWalkPositions);
+        } else {
+          setDualSliderModes(new Set());
+          setDualSliderRanges({});
+          setRandomWalkPositions({});
+          randomWalkRef.current = {};
+        }
+      }
     }
     setMorphLoadTarget(null);
-  }, [state, morphPresetA, morphPresetB, dualSliderModes, dualSliderRanges]);
+  }, [state, morphPresetA, morphPresetB, dualSliderModes, dualSliderRanges, morphPosition]);
 
   // Reapply morph interpolation when a preset changes while in mid-morph
   // This ensures that if you're at position 50 and load a new preset A or B,
@@ -5001,6 +5073,74 @@ const App: React.FC = () => {
                       morphCapturedDualRangesRef.current = currentDualRanges;
                     }
                     setMorphPresetB(normalizedPreset);
+
+                    // Check if we should apply preset B values directly:
+                    // - Only apply if we're at endpoint 1 (near position 100)
+                    // - OR if no preset A is loaded yet (not in morph mode)
+                    // At endpoint 0 (position ~0), we should keep the current A values
+                    const atEndpoint1 = isAtEndpoint1(morphPosition, true);
+                    const shouldApplyPresetB = atEndpoint1 || !morphPresetA;
+
+                    if (shouldApplyPresetB) {
+                      // Apply the preset settings (with auto-disable for zero-level features)
+                      const newState = { ...DEFAULT_STATE, ...normalizedPreset.state };
+                      if (newState.granularLevel === 0) {
+                        newState.granularEnabled = false;
+                      }
+                      setState(newState);
+                      audioEngine.updateParams(newState);
+                      audioEngine.resetCofDrift();
+
+                      // Update ocean dual modes
+                      setOceanDualModes({
+                        duration: Math.abs(newState.oceanDurationMax - newState.oceanDurationMin) > 0.01,
+                        interval: Math.abs(newState.oceanIntervalMax - newState.oceanIntervalMin) > 0.01,
+                        foam: Math.abs(newState.oceanFoamMax - newState.oceanFoamMin) > 0.001,
+                        depth: Math.abs(newState.oceanDepthMax - newState.oceanDepthMin) > 0.001,
+                      });
+
+                      // Update expression dual modes
+                      setExpressionDualModes({
+                        vibratoDepth: Math.abs(newState.leadVibratoDepthMax - newState.leadVibratoDepthMin) > 0.001,
+                        vibratoRate: Math.abs(newState.leadVibratoRateMax - newState.leadVibratoRateMin) > 0.001,
+                        glide: Math.abs(newState.leadGlideMax - newState.leadGlideMin) > 0.001,
+                      });
+
+                      // Update delay dual modes
+                      setDelayDualModes({
+                        time: Math.abs(newState.leadDelayTimeMax - newState.leadDelayTimeMin) > 0.1,
+                        feedback: Math.abs(newState.leadDelayFeedbackMax - newState.leadDelayFeedbackMin) > 0.001,
+                        mix: Math.abs(newState.leadDelayMixMax - newState.leadDelayMixMin) > 0.001,
+                      });
+
+                      // Restore dual slider state if present
+                      if (normalizedPreset.dualRanges && Object.keys(normalizedPreset.dualRanges).length > 0) {
+                        const newDualModes = new Set<keyof SliderState>();
+                        const newDualRanges: DualSliderState = {};
+                        const newWalkPositions: Record<string, number> = {};
+
+                        Object.entries(normalizedPreset.dualRanges).forEach(([key, range]) => {
+                          const paramKey = key as keyof SliderState;
+                          newDualModes.add(paramKey);
+                          newDualRanges[paramKey] = range;
+                          const walkPos = Math.random();
+                          newWalkPositions[key] = walkPos;
+                          randomWalkRef.current[paramKey] = {
+                            position: walkPos,
+                            velocity: (Math.random() - 0.5) * 0.02,
+                          };
+                        });
+
+                        setDualSliderModes(newDualModes);
+                        setDualSliderRanges(newDualRanges);
+                        setRandomWalkPositions(newWalkPositions);
+                      } else {
+                        setDualSliderModes(new Set());
+                        setDualSliderRanges({});
+                        setRandomWalkPositions({});
+                        randomWalkRef.current = {};
+                      }
+                    }
                   }
                 }
               }}
