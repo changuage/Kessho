@@ -1927,12 +1927,10 @@ export class AudioEngine {
     const vibratoDepthMin = this.sliderState.leadVibratoDepthMin;
     const vibratoDepthMax = this.sliderState.leadVibratoDepthMax;
     const vibratoDepthNorm = vibratoDepthMin + Math.random() * (vibratoDepthMax - vibratoDepthMin);
-    const vibratoDepth = vibratoDepthNorm * 0.5;
 
     const vibratoRateMin = this.sliderState.leadVibratoRateMin;
     const vibratoRateMax = this.sliderState.leadVibratoRateMax;
     const vibratoRateNorm = vibratoRateMin + Math.random() * (vibratoRateMax - vibratoRateMin);
-    const vibratoRate = 2 + vibratoRateNorm * 6;
 
     const glideMin = this.sliderState.leadGlideMin;
     const glideMax = this.sliderState.leadGlideMax;
@@ -2001,7 +1999,7 @@ export class AudioEngine {
     const hold = this.sliderState.lead1Hold;
 
     // Play the 4op FM note — outputs into this.leadGain (shared bus)
-    const stopTime = playLead4opFMNote(ctx, this.leadGain, noteFreq, effectiveVelocity, effectiveMorphed, hold);
+    playLead4opFMNote(ctx, this.leadGain, noteFreq, effectiveVelocity, effectiveMorphed, hold);
 
     // If glide, schedule frequency ramp on all carriers (handled inside playLead4opFMNote is per-note)
     // Vibrato: add LFO modulation if depth > threshold

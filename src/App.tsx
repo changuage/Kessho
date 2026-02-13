@@ -20,7 +20,7 @@ import { formatChordDegrees, getTimeUntilNextPhrase, calculateDriftedRoot, PHRAS
 import { getPresetNames, DrumVoiceType as DrumPresetVoice } from './audio/drumPresets';
 import { applyMorphToState, setDrumMorphOverride, clearDrumMorphEndpointOverrides, clearMidMorphOverrides, setDrumMorphDualRangeOverride, getDrumMorphDualRangeOverrides, interpolateDrumMorphDualRanges } from './audio/drumMorph';
 import { isInMidMorph, isAtEndpoint0 } from './audio/morphUtils';
-import { type Lead4opFMManifestEntry, getLead4opFMPresetList } from './audio/lead4opfm';
+import { getLead4opFMPresetList } from './audio/lead4opfm';
 import SnowflakeUI from './ui/SnowflakeUI';
 import { CircleOfFifths, getMorphedRootNote } from './ui/CircleOfFifths';
 import CloudPresets from './ui/CloudPresets';
@@ -239,7 +239,7 @@ const normalizePresetForWeb = (state: SliderState): SliderState => {
   ];
   for (const [oldKey, newKey] of adsrhMap) {
     if (typeof raw[oldKey] === 'number' && typeof raw[newKey as string] !== 'number') {
-      (normalized as Record<string, unknown>)[newKey] = raw[oldKey] as number;
+      (normalized as unknown as Record<string, unknown>)[newKey] = raw[oldKey] as number;
     }
   }
 
@@ -269,20 +269,20 @@ const normalizePresetForWeb = (state: SliderState): SliderState => {
     if (typeof defaultValue === 'number') {
       if (typeof value === 'number') {
         if (!Number.isFinite(value)) {
-          (merged as Record<string, unknown>)[key] = defaultValue;
+          (merged as unknown as Record<string, unknown>)[key] = defaultValue;
         }
       } else if (typeof value === 'string' && value.trim() !== '' && Number.isFinite(Number(value))) {
-        (merged as Record<string, unknown>)[key] = Number(value);
+        (merged as unknown as Record<string, unknown>)[key] = Number(value);
       } else {
-        (merged as Record<string, unknown>)[key] = defaultValue;
+        (merged as unknown as Record<string, unknown>)[key] = defaultValue;
       }
     } else if (typeof defaultValue === 'boolean') {
       if (typeof value !== 'boolean') {
-        (merged as Record<string, unknown>)[key] = defaultValue;
+        (merged as unknown as Record<string, unknown>)[key] = defaultValue;
       }
     } else if (typeof defaultValue === 'string') {
       if (typeof value !== 'string') {
-        (merged as Record<string, unknown>)[key] = defaultValue;
+        (merged as unknown as Record<string, unknown>)[key] = defaultValue;
       }
     }
   }
@@ -1391,7 +1391,7 @@ const App: React.FC = () => {
   }>({ vibratoDepth: 0.5, vibratoRate: 0.5, glide: 0.5 });
 
   // Lead 4op FM preset list (loaded async from manifest)
-  const [lead4opPresets, setLead4opPresets] = useState<Lead4opFMManifestEntry[]>([]);
+  const [lead4opPresets, setLead4opPresets] = useState<Array<{ id: string; name: string }>>([]);
   useEffect(() => {
     getLead4opFMPresetList().then(setLead4opPresets).catch(() => {
       // Fallback if manifest fails — use embedded defaults
