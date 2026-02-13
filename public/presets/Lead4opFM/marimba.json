@@ -1,0 +1,58 @@
+{
+  "id": "marimba",
+  "name": "Marimba",
+  "engine": "Lead4opFM",
+  "method": "new",
+  "operators": 4,
+  "algorithm": "split",
+  "xy": {
+    "xLevel": 1.05,
+    "xPan": -0.25,
+    "yLevel": 0.9,
+    "yPan": 0.25
+  },
+  "params": {
+    "beatDetune": 2,
+    "carrier2Mix": 0.35,
+    "mod1": {
+      "ratio": 4,
+      "index": 1,
+      "decay": 0.2,
+      "sustain": 0.05
+    },
+    "mod2": {
+      "ratio": 10,
+      "index": 0.4,
+      "decay": 0.12
+    },
+    "mod3": {
+      "ratio": 20,
+      "index": 0.15,
+      "decay": 0.08
+    },
+    "mod4": {
+      "ratio": 0.5,
+      "index": 0.2,
+      "decay": 0.35
+    },
+    "envelope": {
+      "attack": 0.003,
+      "decay": 0.2,
+      "sustain": 0.2,
+      "release": 1.8
+    },
+    "filter": {
+      "freq": 2800,
+      "q": 1
+    },
+    "transient": {
+      "click": 0.4,
+      "noise": 0.25,
+      "duration": 35,
+      "decay": 90,
+      "filter": 2000,
+      "type": "brown"
+    },
+    "gain": 0.75
+  }
+}

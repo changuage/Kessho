@@ -1,0 +1,58 @@
+{
+  "id": "glockenspiel",
+  "name": "Glockenspiel",
+  "engine": "Lead4opFM",
+  "method": "new",
+  "operators": 4,
+  "algorithm": "stack",
+  "xy": {
+    "xLevel": 0.9,
+    "xPan": -0.38,
+    "yLevel": 1.1,
+    "yPan": 0.38
+  },
+  "params": {
+    "beatDetune": 1,
+    "carrier2Mix": 0.2,
+    "mod1": {
+      "ratio": 2.76,
+      "index": 2.5,
+      "decay": 0.15,
+      "sustain": 0.03
+    },
+    "mod2": {
+      "ratio": 5.4,
+      "index": 1.2,
+      "decay": 0.1
+    },
+    "mod3": {
+      "ratio": 8.93,
+      "index": 0.6,
+      "decay": 0.06
+    },
+    "mod4": {
+      "ratio": 0.5,
+      "index": 0.1,
+      "decay": 0.2
+    },
+    "envelope": {
+      "attack": 0.0005,
+      "decay": 0.12,
+      "sustain": 0.15,
+      "release": 3
+    },
+    "filter": {
+      "freq": 10000,
+      "q": 0.8
+    },
+    "transient": {
+      "click": 0.8,
+      "noise": 0.05,
+      "duration": 10,
+      "decay": 200,
+      "filter": 8000,
+      "type": "filtered"
+    },
+    "gain": 0.65
+  }
+}

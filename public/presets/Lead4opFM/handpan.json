@@ -1,0 +1,58 @@
+{
+  "id": "handpan",
+  "name": "Handpan",
+  "engine": "Lead4opFM",
+  "method": "new",
+  "operators": 4,
+  "algorithm": "parallel",
+  "xy": {
+    "xLevel": 1,
+    "xPan": -0.28,
+    "yLevel": 1,
+    "yPan": 0.28
+  },
+  "params": {
+    "beatDetune": 3,
+    "carrier2Mix": 0.7,
+    "mod1": {
+      "ratio": 2,
+      "index": 0.6,
+      "decay": 0.6,
+      "sustain": 0.2
+    },
+    "mod2": {
+      "ratio": 3,
+      "index": 0.35,
+      "decay": 0.5
+    },
+    "mod3": {
+      "ratio": 4.03,
+      "index": 0.2,
+      "decay": 0.35
+    },
+    "mod4": {
+      "ratio": 0.5,
+      "index": 0.15,
+      "decay": 0.7
+    },
+    "envelope": {
+      "attack": 0.01,
+      "decay": 0.5,
+      "sustain": 0.55,
+      "release": 4.5
+    },
+    "filter": {
+      "freq": 3000,
+      "q": 0.7
+    },
+    "transient": {
+      "click": 0.2,
+      "noise": 0.1,
+      "duration": 20,
+      "decay": 80,
+      "filter": 2000,
+      "type": "pink"
+    },
+    "gain": 0.65
+  }
+}

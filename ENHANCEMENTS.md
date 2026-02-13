@@ -264,6 +264,211 @@ Expand drum synth with dual-preset morph per voice: Preset A + Preset B + morph 
 
 ---
 
+## 4-Operator FM Lead Synth (Lead4opFM)
+
+**Status**: Web ✓ | iOS pending
+
+### Overview
+Replaced the old timbre-interpolated Rhodes/Gamelan lead with a full 4-operator FM synthesis engine driven by loadable JSON presets. Supports dual-lead architecture: Lead 1 (Preset A ↔ B morph) and Lead 2 (Preset C ↔ D morph).
+
+### Architecture
+```
+JSON Presets → morphPresets(A, B, t) → Lead4opFMMorphedParams → playLead4opFMNote()
+```
+
+**Key File**: `src/audio/lead4opfm.ts` (634 lines)
+
+### FM Algorithms (5 routing modes)
+| Algorithm | Routing |
+|-----------|---------|
+| `parallel` | All 4 modulators → both carriers (additive) |
+| `stack` | Mod4→Mod3→Mod2→Mod1→Carriers (serial chain) |
+| `split` | Mod1+Mod3→Carrier1, Mod2+Mod4→Carrier2 (branched) |
+| `cross` | Mod1+Mod2→Carrier1, Mod3+Mod4→Carrier2 (cross-coupled) |
+| `dx17` | DX7 Algorithm 17 topology |
+
+### Per-Note Signal Chain
+```
+4 Modulators (FM) → 2 Carriers → 2 Envelopes → 2 Filters (LPF)
+  → X/Y Gain + Stereo Pan → Transient Layer → Output Gain → Lead Bus
+```
+
+### Preset Format (JSON)
+Each preset contains:
+- **XY stereo routing**: `xLevel`, `xPan`, `yLevel`, `yPan`
+- **4 modulators**: ratio, index, decay, sustain (mod1 only)
+- **Envelope**: ADSR (attack, decay, sustain, release)
+- **Filter**: frequency + Q
+- **Transient layer**: click, noise, duration, decay, filter, type (white/pink/brown/filtered)
+- **Beat detune**: cents offset for carrier2
+- **Carrier2 mix**: blend level for second carrier
+
+### Morph System
+All numeric parameters interpolate linearly via `lerp(a, b, t)`. Discrete values (algorithm, transient type) snap at 50% morph position. Algorithm mode can be set to `'snap'` (crossover at 50%) or `'presetA'` (always use A's algorithm).
+
+### 16 FM Presets
+calliope, celesta, church bell, gamelan, glockenspiel, hand drum, handpan, kalimba, marimba, mbira, rhodes, singing bowl, soft rhodes, tongue drum, vibraphone, xylophone
+
+Loaded from `public/presets/Lead4opFM/manifest.json` with per-preset JSON files. Two defaults (soft_rhodes, gamelan) are embedded as fallbacks.
+
+### Key Learnings
+- **Preset cache**: `Map<string, Lead4opFMPreset>` avoids refetching. Manifest also cached.
+- **Cleanup scheduling**: Each note schedules oscillator stops at `stopTime + 0.1s`, then `setTimeout` disconnects all nodes.
+- **Transient types**: Pink/brown noise use state-variable filters; `filtered` type uses bandpass.
+
+---
+
+## Lead4opFM Preset Editor Page
+
+**Status**: Web ✓
+
+### Overview
+Standalone HTML page (`public/lead4opfm-preset-editor.html`) for designing and auditioning 4-op FM presets outside the main app. Features real-time sound preview, A/B comparison, JSON export, and algorithm visualization.
+
+### Features
+- **Real-time preview**: Play notes with current settings, hear changes immediately
+- **A/B comparison**: Store two versions, toggle between them, copy A→B or B→A
+- **Algorithm selector**: Switch between all 5 FM routing modes
+- **Full parameter control**: All modulator ratios/indices/decays, envelope ADSR, filter, transient layer, XY stereo, gain
+- **Preset management**: Load from manifest, save edits, export JSON
+- **Linked from**: fm-modal-methodology-demo.html, fm-modal-demo.html
+
+### Architecture
+Self-contained HTML page using Web Audio API directly (no React/Vite). Fetches presets from `presets/Lead4opFM/manifest.json`.
+
+---
+
+## Lead Tab (Dedicated UI Panel)
+
+**Status**: Web ✓ | iOS pending
+
+### Overview
+Separated the lead synth controls from the Synth tab into a dedicated **Lead** tab (♪ icon) in the main navigation bar. This gives the 4op FM synth's many parameters proper screen space.
+
+### Tab Structure
+```
+Global (◎) | Synth (∿) | Lead (♪) | Drums (⋮⋮) | FX (◈)
+```
+
+### Lead Tab Contents
+- **Enable toggle** (leadEnabled)
+- **Note density** (lead1Density), **Octave offset** (lead1Octave), **Octave range** (lead1OctaveRange)
+- **Lead 1 — Preset Morph**: Preset A/B selectors, dual-range morph slider with random walk indicator
+- **Lead 1 — ADSR**: Custom ADSR toggle, Attack/Decay/Sustain/Hold/Release sliders
+- **Morph auto/speed**: Auto-morph toggle with speed control
+- **Algorithm mode**: Snap vs Preset A
+- **Lead 2 — Preset Morph**: Preset C/D selectors, independent morph slider + ADSR
+- **Expression**: Vibrato depth/rate, glide time
+- **Delay**: Time/feedback/mix with dual-range sliders, reverb send
+- **Euclidean sequencer**: 4 lanes with steps/hits/rotation/probability/source
+
+---
+
+## Delay Dual Range System
+
+**Status**: Web ✓ | iOS partial
+
+### Overview
+Extended the dual-range slider system (already used for generic `dualRanges`) to dedicated delay parameters: time, feedback, and mix. Each can independently toggle between single-value and min/max range mode.
+
+### State Parameters
+```typescript
+leadDelayTimeMin / leadDelayTimeMax       // 0–1000ms, step 10
+leadDelayFeedbackMin / leadDelayFeedbackMax  // 0–0.8, step 0.01
+leadDelayMixMin / leadDelayMixMax          // 0–1, step 0.01
+```
+
+### Dual Mode Toggle
+- **Double-click** (desktop) or **long-press** (mobile) toggles dual↔single mode
+- When collapsing to single: takes midpoint of min/max
+- When expanding to dual: sets ±5% range around current value
+
+### Auto-Load Fix
+Delay dual modes now auto-detect on preset load:
+```typescript
+setDelayDualModes({
+  time: Math.abs(normalizedState.leadDelayTimeMax - normalizedState.leadDelayTimeMin) > 0.1,
+  feedback: Math.abs(normalizedState.leadDelayFeedbackMax - normalizedState.leadDelayFeedbackMin) > 0.001,
+  mix: Math.abs(normalizedState.leadDelayMixMax - normalizedState.leadDelayMixMin) > 0.001,
+});
+```
+
+### Key Learnings
+- Dual range detection uses threshold comparison (not equality) to handle floating point
+- Delay params need dedicated min/max state pairs rather than the generic `dualRanges` system because the engine reads them directly per audio tick
+
+---
+
+## Lead Parameter Namespace Migration (lead1* Prefix)
+
+**Status**: Web ✓ | iOS pending
+
+### Overview
+Renamed shared lead parameters to `lead1*` namespace to support future independent Lead 2 controls. Added legacy migration in `normalizePresetForWeb()` for backward compatibility with old presets and cloud saves.
+
+### Renamed Parameters
+| Old Name | New Name |
+|----------|----------|
+| `leadDensity` | `lead1Density` |
+| `leadOctave` | `lead1Octave` |
+| `leadOctaveRange` | `lead1OctaveRange` |
+| `leadAttack` | `lead1Attack` |
+| `leadDecay` | `lead1Decay` |
+| `leadSustain` | `lead1Sustain` |
+| `leadHold` | `lead1Hold` |
+| `leadRelease` | `lead1Release` |
+| `leadUseCustomAdsr` | `lead1UseCustomAdsr` |
+| `leadTimbreMin/Max` | `lead1MorphMin/Max` |
+
+### Intentionally Shared (NOT renamed)
+- `leadEnabled` — master toggle for entire lead bus
+- `leadLevel` — master output gain (distinct from `lead1Level`/`lead2Level` per-voice velocity)
+- `leadReverbSend`, `leadDelayReverbSend` — shared FX sends
+- `leadDelay*`, `leadVibrato*`, `leadGlide*`, `leadEuclid*` — shared across both leads
+
+### Files Changed
+- **state.ts**: Type, keys, defaults, PARAM_INFO
+- **App.tsx**: UI sliders, save/export lists, bool keys, normalizer with legacy migration
+- **engine.ts**: `playLeadNote()`, `getLeadMorphedParams()`, hold time
+- **All 6 preset JSONs**: Updated to new field names
+
+### Legacy Migration Pattern
+```typescript
+// Check old exists AND new doesn't (avoids overwriting)
+if (typeof raw.leadAttack === 'number' && typeof raw.lead1Attack !== 'number') {
+  normalized.lead1Attack = raw.leadAttack;
+}
+```
+
+---
+
+## Preset System Updates
+
+**Status**: Web ✓
+
+### Cleanup
+- Deleted 5 unwanted preset files, reduced manifest to 6 active presets
+- Updated `public/presets/manifest.json` to reference only active files
+
+### Active Presets (6)
+| Preset | Description |
+|--------|-------------|
+| Gamelantest | Gamelan-style metallic textures |
+| Lasers | Sharp synthetic tones |
+| Static_frequencies | Static ambient with custom ADSR (attack=2, decay=0.01, sustain=0, hold=0) |
+| StringWavesR | String-like waves with delay dual ranges |
+| StringWavesTest | Test preset with explicit lead1UseCustomAdsr |
+| ZoneOut1 | Ambient zone-out with delay dual ranges |
+
+### Parameter Updates Applied
+All 6 presets updated to use:
+- `lead1MorphMin/Max` (replacing `leadTimbreMin/Max`)
+- `lead1Density`, `lead1Octave`, `lead1OctaveRange`
+- `lead1Attack`, `lead1Decay`, `lead1Sustain`, `lead1Hold`, `lead1Release`
+- `leadDelayTimeMin/Max`, `leadDelayFeedbackMin/Max`, `leadDelayMixMin/Max` (dual range)
+
+---
+
 ## UI Refinements
 
 **Status**: Complete ✓

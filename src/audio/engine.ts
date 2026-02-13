@@ -27,12 +27,21 @@ import { getScaleNotesInRange, midiToFreq } from './scales';
 import { createRng, generateRandomSequence, getUtcBucket, computeSeed, rngFloat } from './rng';
 import { DrumSynth, DrumVoiceType } from './drumSynth';
 import type { SliderState } from '../ui/state';
+import {
+  type Lead4opFMPreset,
+  type Lead4opFMMorphedParams,
+  loadLead4opFMPreset,
+  morphPresets,
+  playLead4opFMNote,
+  DEFAULT_SOFT_RHODES,
+  DEFAULT_GAMELAN,
+} from './lead4opfm';
 
 // Worklet URLs from public folder - these are plain JS files that work in production
 // Use absolute URLs for Safari compatibility
 const getWorkletUrl = (filename: string): string => {
   const base = window.location.origin + window.location.pathname.replace(/\/[^/]*$/, '');
-  return `${base}/worklets/${filename}`;
+  return `${base}/ARCHIVE/worklets/${filename}`;
 };
 const granulatorWorkletUrl = getWorkletUrl('granulator.worklet.js');
 const reverbWorkletUrl = getWorkletUrl('reverb.worklet.js');
@@ -89,7 +98,7 @@ export class AudioEngine {
   private synthReverbSend: GainNode | null = null;
   private synthDirect: GainNode | null = null;
 
-  // Lead synth (Rhodes/Bell) with delay
+  // Lead synth (4op FM) with delay
   private leadGain: GainNode | null = null;
   private leadDelayL: DelayNode | null = null;
   private leadDelayR: DelayNode | null = null;
@@ -103,6 +112,16 @@ export class AudioEngine {
   private leadDelayReverbSend: GainNode | null = null;
   private leadMelodyTimer: number | null = null;
   private leadNoteTimeouts: number[] = [];  // Track scheduled note timeouts
+
+  // Lead 4op FM preset slots
+  private lead1PresetA: Lead4opFMPreset = DEFAULT_SOFT_RHODES;
+  private lead1PresetB: Lead4opFMPreset = DEFAULT_GAMELAN;
+  private lead2PresetC: Lead4opFMPreset = DEFAULT_SOFT_RHODES;
+  private lead2PresetD: Lead4opFMPreset = DEFAULT_GAMELAN;
+  private lead1PresetAId = 'soft_rhodes';
+  private lead1PresetBId = 'gamelan';
+  private lead2PresetCId = 'soft_rhodes';
+  private lead2PresetDId = 'gamelan';
 
   // Ikeda-style drum synth
   private drumSynth: DrumSynth | null = null;
@@ -146,10 +165,21 @@ export class AudioEngine {
 
   private onStateChange: ((state: EngineState) => void) | null = null;
   private onLeadExpressionTrigger: ((expression: { vibratoDepth: number; vibratoRate: number; glide: number }) => void) | null = null;
+  private onLeadMorphTrigger: ((morph: { lead1: number; lead2: number }) => void) | null = null;
   private onLeadDelayTrigger: ((delay: { time: number; feedback: number; mix: number }) => void) | null = null;
   private onOceanWaveTrigger: ((wave: { duration: number; interval: number; foam: number; depth: number }) => void) | null = null;
   private onDrumTrigger: ((voice: DrumVoiceType, velocity: number) => void) | null = null;
   private onDrumMorphTrigger: ((voice: DrumVoiceType, morphPosition: number) => void) | null = null;
+  private leadMorphTimer: number | null = null;
+
+  // Lead morph random walk state (per-lead, momentum-based)
+  private leadMorphWalkStates: {
+    lead1: { position: number; velocity: number; initialized: boolean };
+    lead2: { position: number; velocity: number; initialized: boolean };
+  } = {
+    lead1: { position: 0.5, velocity: 0, initialized: false },
+    lead2: { position: 0.5, velocity: 0, initialized: false },
+  };
   
   // Pending morph ranges to apply when drumSynth is created
   private pendingMorphRanges: Record<DrumVoiceType, { min: number; max: number } | null> = {
@@ -166,6 +196,10 @@ export class AudioEngine {
 
   setLeadExpressionCallback(callback: (expression: { vibratoDepth: number; vibratoRate: number; glide: number }) => void) {
     this.onLeadExpressionTrigger = callback;
+  }
+
+  setLeadMorphCallback(callback: (morph: { lead1: number; lead2: number }) => void) {
+    this.onLeadMorphTrigger = callback;
   }
 
   setLeadDelayCallback(callback: (delay: { time: number; feedback: number; mix: number }) => void) {
@@ -391,6 +425,9 @@ export class AudioEngine {
     // Start filter modulation
     this.startFilterModulation();
 
+    // Start continuous lead random-walk updates (for live morph indicator + parity behavior)
+    this.startLeadMorphRandomWalk();
+
     // Start lead melody if enabled
     this.startLeadMelody();
 
@@ -424,6 +461,12 @@ export class AudioEngine {
     if (this.filterModTimer !== null) {
       clearInterval(this.filterModTimer);
       this.filterModTimer = null;
+    }
+
+    // Stop lead morph random-walk timer
+    if (this.leadMorphTimer !== null) {
+      clearInterval(this.leadMorphTimer);
+      this.leadMorphTimer = null;
     }
 
     // Stop voices
@@ -485,11 +528,12 @@ export class AudioEngine {
     // If synth chord sequencer was just disabled, silence all synth voices
     // BUT only if no Euclidean lanes are using synth sources
     if (sliderState.synthChordSequencerEnabled === false && this.voices.length > 0) {
+      const isLeadSrc = (s: string) => s === 'lead' || s === 'lead1' || s === 'lead2';
       const euclideanUsesSynth = [
-        sliderState.leadEuclid1Enabled && sliderState.leadEuclid1Source !== 'lead',
-        sliderState.leadEuclid2Enabled && sliderState.leadEuclid2Source !== 'lead',
-        sliderState.leadEuclid3Enabled && sliderState.leadEuclid3Source !== 'lead',
-        sliderState.leadEuclid4Enabled && sliderState.leadEuclid4Source !== 'lead',
+        sliderState.leadEuclid1Enabled && !isLeadSrc(sliderState.leadEuclid1Source),
+        sliderState.leadEuclid2Enabled && !isLeadSrc(sliderState.leadEuclid2Source),
+        sliderState.leadEuclid3Enabled && !isLeadSrc(sliderState.leadEuclid3Source),
+        sliderState.leadEuclid4Enabled && !isLeadSrc(sliderState.leadEuclid4Source),
       ].some(Boolean);
 
       if (!euclideanUsesSynth) {
@@ -1097,6 +1141,63 @@ export class AudioEngine {
       this.applyFilterModulation();
     }, updateIntervalMs);
   }
+
+  private startLeadMorphRandomWalk(): void {
+    if (this.leadMorphTimer !== null) {
+      clearInterval(this.leadMorphTimer);
+      this.leadMorphTimer = null;
+    }
+
+    const updateIntervalMs = 100;
+    this.leadMorphTimer = window.setInterval(() => {
+      if (!this.sliderState) return;
+
+      const updateLead = (lead: 1 | 2): number | null => {
+        const randomWalkEnabled = lead === 1 ? this.sliderState!.lead1MorphAuto : this.sliderState!.lead2MorphAuto;
+        if (!randomWalkEnabled) return null;
+
+        const walkState = lead === 1 ? this.leadMorphWalkStates.lead1 : this.leadMorphWalkStates.lead2;
+        const phr = Math.max(1, Math.min(32, Number.isFinite(lead === 1 ? this.sliderState!.lead1MorphSpeed : this.sliderState!.lead2MorphSpeed)
+          ? (lead === 1 ? this.sliderState!.lead1MorphSpeed : this.sliderState!.lead2MorphSpeed)
+          : 8));
+
+        // Parity methodology: same momentum+bounce walk shape as the app-wide random walk,
+        // with phrase-speed semantics (higher phrases = slower movement).
+        const speedFactor = 1 / phr;
+
+        if (!walkState.initialized) {
+          walkState.position = Math.random();
+          walkState.velocity = 0;
+          walkState.initialized = true;
+        }
+
+        walkState.velocity += (Math.random() - 0.5) * 0.01 * speedFactor;
+        walkState.velocity *= 0.98;
+        walkState.velocity = Math.max(-0.05 * speedFactor, Math.min(0.05 * speedFactor, walkState.velocity));
+        walkState.position += walkState.velocity;
+
+        if (walkState.position < 0) {
+          walkState.position = 0;
+          walkState.velocity = Math.abs(walkState.velocity);
+        } else if (walkState.position > 1) {
+          walkState.position = 1;
+          walkState.velocity = -Math.abs(walkState.velocity);
+        }
+
+        return walkState.position;
+      };
+
+      const lead1Pos = updateLead(1);
+      const lead2Pos = updateLead(2);
+
+      if (this.onLeadMorphTrigger && (lead1Pos !== null || lead2Pos !== null)) {
+        this.onLeadMorphTrigger({
+          lead1: lead1Pos ?? -1,
+          lead2: lead2Pos ?? -1,
+        });
+      }
+    }, updateIntervalMs);
+  }
   
   private applyFilterModulation(): void {
     if (!this.sliderState) return;
@@ -1564,13 +1665,28 @@ export class AudioEngine {
       state.leadEuclid4Source !== this.sliderState.leadEuclid4Source
     );
 
-    // Check if Euclidean has any synth-source lanes enabled (independent of lead)
+    // Check if Euclidean has any synth-voice-source lanes enabled (independent of lead)
+    const isLeadSrc2 = (s: string) => s === 'lead' || s === 'lead1' || s === 'lead2';
     const euclideanSynthLanesEnabled = state.leadEuclideanMasterEnabled && (
-      (state.leadEuclid1Enabled && state.leadEuclid1Source !== 'lead') ||
-      (state.leadEuclid2Enabled && state.leadEuclid2Source !== 'lead') ||
-      (state.leadEuclid3Enabled && state.leadEuclid3Source !== 'lead') ||
-      (state.leadEuclid4Enabled && state.leadEuclid4Source !== 'lead')
+      (state.leadEuclid1Enabled && !isLeadSrc2(state.leadEuclid1Source)) ||
+      (state.leadEuclid2Enabled && !isLeadSrc2(state.leadEuclid2Source)) ||
+      (state.leadEuclid3Enabled && !isLeadSrc2(state.leadEuclid3Source)) ||
+      (state.leadEuclid4Enabled && !isLeadSrc2(state.leadEuclid4Source))
     );
+
+    // Load/update lead presets when selections change
+    if (state.lead1PresetA !== this.lead1PresetAId) {
+      this.loadLeadPreset('A', state.lead1PresetA);
+    }
+    if (state.lead1PresetB !== this.lead1PresetBId) {
+      this.loadLeadPreset('B', state.lead1PresetB);
+    }
+    if (state.lead2PresetC !== this.lead2PresetCId) {
+      this.loadLeadPreset('C', state.lead2PresetC);
+    }
+    if (state.lead2PresetD !== this.lead2PresetDId) {
+      this.loadLeadPreset('D', state.lead2PresetD);
+    }
 
     // Start/stop lead melody based on enabled state OR Euclidean synth lanes
     const shouldSchedule = state.leadEnabled || euclideanSynthLanesEnabled;
@@ -1618,7 +1734,7 @@ export class AudioEngine {
       this.startOceanSamplePlayback();
     }
     
-    // Ocean worklet parameters (wave synthesis only - no rocks)
+    // Ocean worklet parameters (wave synthesis)
     if (this.oceanNode) {
       const oceanParams = this.oceanNode.parameters;
       const setParam = (name: string, value: number) => {
@@ -1635,9 +1751,6 @@ export class AudioEngine {
       setParam('foamMax', state.oceanFoamMax);
       setParam('depthMin', state.oceanDepthMin);
       setParam('depthMax', state.oceanDepthMax);
-      // Disable rock synthesis by setting pebbles to 0
-      setParam('pebblesMin', 0);
-      setParam('pebblesMax', 0);
     }
   }
 
@@ -1696,67 +1809,163 @@ export class AudioEngine {
   }
 
   /**
-   * Play a Rhodes/Gamelan note using FM synthesis
-   * Creates a tone from soft Rhodes piano to metallic gamelan
-   * Timbre parameter (0-1) controls the sound from soft Rhodes to gamelan
+   * Load or update a Lead 4op FM preset for a given slot.
+   * Called by App.tsx when preset dropdown changes.
    */
-  private playLeadNote(frequency: number, velocity: number = 0.8, timbre: number = 0.5): void {
+  async loadLeadPreset(slot: 'A' | 'B' | 'C' | 'D', presetId: string): Promise<void> {
+    const preset = await loadLead4opFMPreset(presetId);
+    switch (slot) {
+      case 'A': this.lead1PresetA = preset; this.lead1PresetAId = presetId; break;
+      case 'B': this.lead1PresetB = preset; this.lead1PresetBId = presetId; break;
+      case 'C': this.lead2PresetC = preset; this.lead2PresetCId = presetId; break;
+      case 'D': this.lead2PresetD = preset; this.lead2PresetDId = presetId; break;
+    }
+  }
+
+  /**
+   * Get current morphed params for a lead (for UI ADSR display)
+   */
+  getLeadMorphedParams(lead: 1 | 2): Lead4opFMMorphedParams | null {
+    if (!this.sliderState) return null;
+    if (lead === 1) {
+      const morphMid = (this.sliderState.lead1MorphMin + this.sliderState.lead1MorphMax) / 2;
+      const morphed = morphPresets(
+        this.lead1PresetA,
+        this.lead1PresetB,
+        morphMid,
+        this.sliderState.lead1AlgorithmMode,
+      );
+      if (this.sliderState.lead1UseCustomAdsr) {
+        return {
+          ...morphed,
+          attack: this.sliderState.lead1Attack,
+          decay: this.sliderState.lead1Decay,
+          sustain: this.sliderState.lead1Sustain,
+          release: this.sliderState.lead1Release,
+        };
+      }
+      return morphed;
+    } else {
+      const morphMid = (this.sliderState.lead2MorphMin + this.sliderState.lead2MorphMax) / 2;
+      const morphed = morphPresets(
+        this.lead2PresetC,
+        this.lead2PresetD,
+        morphMid,
+        this.sliderState.lead2AlgorithmMode,
+      );
+      if (this.sliderState.lead1UseCustomAdsr) {
+        return {
+          ...morphed,
+          attack: this.sliderState.lead1Attack,
+          decay: this.sliderState.lead1Decay,
+          sustain: this.sliderState.lead1Sustain,
+          release: this.sliderState.lead1Release,
+        };
+      }
+      return morphed;
+    }
+  }
+
+  /**
+   * Play a 4-operator FM lead note using morphed preset parameters.
+   * Supports lead1 (Preset A↔B) and lead2 (Preset C↔D).
+   * Vibrato, glide, and delay are shared and independent of presets.
+   */
+  private playLeadNote(frequency: number, velocity: number = 0.8, leadSource: 'lead' | 'lead1' | 'lead2' = 'lead1'): void {
     if (!this.ctx || !this.leadGain || !this.sliderState) return;
     if (!this.sliderState.leadEnabled) return;
 
+    // Determine which lead to use and check if enabled
+    const useLead2 = leadSource === 'lead2';
+    if (useLead2 && !this.sliderState.lead2Enabled) return;
+
+    // Compute morphed FM params.
+    // Random Walk (when enabled) uses smooth momentum-based motion within min/max.
+    // Otherwise fall back to per-trigger random within min/max.
+    const rawMorphMin = useLead2 ? this.sliderState.lead2MorphMin : this.sliderState.lead1MorphMin;
+    const rawMorphMax = useLead2 ? this.sliderState.lead2MorphMax : this.sliderState.lead1MorphMax;
+    const morphMin = Math.min(rawMorphMin, rawMorphMax);
+    const morphMax = Math.max(rawMorphMin, rawMorphMax);
+    const randomWalkEnabled = useLead2 ? this.sliderState.lead2MorphAuto : this.sliderState.lead1MorphAuto;
+    const walkState = useLead2 ? this.leadMorphWalkStates.lead2 : this.leadMorphWalkStates.lead1;
+    const walkPos = walkState.initialized ? walkState.position : 0.5;
+    const morphT = randomWalkEnabled
+      ? (morphMin + walkPos * (morphMax - morphMin))
+      : (morphMin + Math.random() * (morphMax - morphMin));
+    const morphed = useLead2
+      ? morphPresets(this.lead2PresetC, this.lead2PresetD, morphT, this.sliderState.lead2AlgorithmMode)
+      : morphPresets(this.lead1PresetA, this.lead1PresetB, morphT, this.sliderState.lead1AlgorithmMode);
+    const effectiveMorphed = this.sliderState.lead1UseCustomAdsr
+      ? {
+          ...morphed,
+          attack: this.sliderState.lead1Attack,
+          decay: this.sliderState.lead1Decay,
+          sustain: this.sliderState.lead1Sustain,
+          release: this.sliderState.lead1Release,
+        }
+      : morphed;
+
+    // Notify UI of the triggered morph position (0-1 within the range)
+    if (this.onLeadMorphTrigger) {
+      const morphPos = morphMax > morphMin ? (morphT - morphMin) / (morphMax - morphMin) : 0.5;
+      if (useLead2) {
+        this.onLeadMorphTrigger({ lead1: -1, lead2: morphPos }); // -1 = unchanged
+      } else {
+        this.onLeadMorphTrigger({ lead1: morphPos, lead2: -1 });
+      }
+    }
+
+    // Per-lead level
+    const leadLevel = useLead2 ? this.sliderState.lead2Level : this.sliderState.lead1Level;
+    const effectiveVelocity = velocity * leadLevel;
+    if (effectiveVelocity < 0.001) return;
+
     const ctx = this.ctx;
     const now = ctx.currentTime;
-    
-    // ADSR from settings
-    const attack = this.sliderState.leadAttack;
-    const decay = this.sliderState.leadDecay;
-    const sustain = this.sliderState.leadSustain;
-    const release = this.sliderState.leadRelease;
-    
-    // Vibrato and glide settings - pick random values within ranges (like timbre)
+
+    // ─── Shared expression: vibrato & glide (NOT from presets) ───
     const vibratoDepthMin = this.sliderState.leadVibratoDepthMin;
     const vibratoDepthMax = this.sliderState.leadVibratoDepthMax;
     const vibratoDepthNorm = vibratoDepthMin + Math.random() * (vibratoDepthMax - vibratoDepthMin);
-    const vibratoDepth = vibratoDepthNorm * 0.5; // 0-0.5 semitones
-    
+    const vibratoDepth = vibratoDepthNorm * 0.5;
+
     const vibratoRateMin = this.sliderState.leadVibratoRateMin;
     const vibratoRateMax = this.sliderState.leadVibratoRateMax;
     const vibratoRateNorm = vibratoRateMin + Math.random() * (vibratoRateMax - vibratoRateMin);
-    const vibratoRate = 2 + vibratoRateNorm * 6; // 2-8 Hz
-    
+    const vibratoRate = 2 + vibratoRateNorm * 6;
+
     const glideMin = this.sliderState.leadGlideMin;
     const glideMax = this.sliderState.leadGlideMax;
     const glide = glideMin + Math.random() * (glideMax - glideMin);
 
-    // Notify UI of the triggered expression values (normalized 0-1 positions within ranges)
+    // Notify UI of the triggered expression values
     if (this.onLeadExpressionTrigger) {
       this.onLeadExpressionTrigger({
-        vibratoDepth: vibratoDepthMax > vibratoDepthMin 
-          ? (vibratoDepthNorm - vibratoDepthMin) / (vibratoDepthMax - vibratoDepthMin) 
+        vibratoDepth: vibratoDepthMax > vibratoDepthMin
+          ? (vibratoDepthNorm - vibratoDepthMin) / (vibratoDepthMax - vibratoDepthMin)
           : 0.5,
-        vibratoRate: vibratoRateMax > vibratoRateMin 
-          ? (vibratoRateNorm - vibratoRateMin) / (vibratoRateMax - vibratoRateMin) 
+        vibratoRate: vibratoRateMax > vibratoRateMin
+          ? (vibratoRateNorm - vibratoRateMin) / (vibratoRateMax - vibratoRateMin)
           : 0.5,
-        glide: glideMax > glideMin 
-          ? (glide - glideMin) / (glideMax - glideMin) 
+        glide: glideMax > glideMin
+          ? (glide - glideMin) / (glideMax - glideMin)
           : 0.5,
       });
     }
 
-    // Delay settings - pick random values within ranges (like expression)
+    // ─── Shared delay (NOT from presets) ───
     const delayTimeMin = this.sliderState.leadDelayTimeMin;
     const delayTimeMax = this.sliderState.leadDelayTimeMax;
     const delayTime = delayTimeMin + Math.random() * (delayTimeMax - delayTimeMin);
-    
+
     const delayFeedbackMin = this.sliderState.leadDelayFeedbackMin;
     const delayFeedbackMax = this.sliderState.leadDelayFeedbackMax;
     const delayFeedback = delayFeedbackMin + Math.random() * (delayFeedbackMax - delayFeedbackMin);
-    
+
     const delayMixMin = this.sliderState.leadDelayMixMin;
     const delayMixMax = this.sliderState.leadDelayMixMax;
     const delayMix = delayMixMin + Math.random() * (delayMixMax - delayMixMin);
 
-    // Update delay nodes with randomized values
     const smoothTime = 0.05;
     this.leadDelayL?.delayTime.setTargetAtTime(delayTime / 1000, now, smoothTime);
     this.leadDelayR?.delayTime.setTargetAtTime((delayTime / 1000) * 0.75, now, smoothTime);
@@ -1764,260 +1973,42 @@ export class AudioEngine {
     this.leadDelayFeedbackR?.gain.setTargetAtTime(delayFeedback, now, smoothTime);
     this.leadDelayMix?.gain.setTargetAtTime(delayMix, now, smoothTime);
 
-    // Notify UI of the triggered delay values (normalized 0-1 positions within ranges)
     if (this.onLeadDelayTrigger) {
       this.onLeadDelayTrigger({
-        time: delayTimeMax > delayTimeMin 
-          ? (delayTime - delayTimeMin) / (delayTimeMax - delayTimeMin) 
+        time: delayTimeMax > delayTimeMin
+          ? (delayTime - delayTimeMin) / (delayTimeMax - delayTimeMin)
           : 0.5,
-        feedback: delayFeedbackMax > delayFeedbackMin 
-          ? (delayFeedback - delayFeedbackMin) / (delayFeedbackMax - delayFeedbackMin) 
+        feedback: delayFeedbackMax > delayFeedbackMin
+          ? (delayFeedback - delayFeedbackMin) / (delayFeedbackMax - delayFeedbackMin)
           : 0.5,
-        mix: delayMixMax > delayMixMin 
-          ? (delayMix - delayMixMin) / (delayMixMax - delayMixMin) 
+        mix: delayMixMax > delayMixMin
+          ? (delayMix - delayMixMin) / (delayMixMax - delayMixMin)
           : 0.5,
       });
     }
 
-    // Timbre controls: 0 = soft Rhodes, 1 = gamelan metallophone
-    // OPTIMIZATION: At low timbre (Rhodes), use fewer oscillators
-
-    // === VIBRATO LFO ===
-    let vibratoLfo: OscillatorNode | null = null;
-    let vibratoGain: GainNode | null = null;
-    
-    if (vibratoDepth > 0.001) {
-      vibratoLfo = ctx.createOscillator();
-      vibratoLfo.type = 'sine';
-      vibratoLfo.frequency.value = vibratoRate;
-      
-      vibratoGain = ctx.createGain();
-      // Convert semitones to frequency cents for detune
-      // Vibrato depth in semitones * 100 = cents
-      vibratoGain.gain.value = vibratoDepth * 100;
-    }
-
-    // === CARRIER (main tone) ===
-    const carrier = ctx.createOscillator();
-    carrier.type = 'sine';
-    carrier.frequency.value = frequency;
-    
-    // Apply glide - start from slightly different frequency if glide > 0
+    // ─── Apply vibrato via carrier frequency modulation ───
+    // The 4op FM note function handles the core synthesis, but we need to
+    // apply glide and vibrato by wrapping the frequency
+    let noteFreq = frequency;
     if (glide > 0.01) {
-      const glideStart = frequency * (1 + (Math.random() - 0.5) * glide * 0.2);
-      carrier.frequency.setValueAtTime(glideStart, now);
-      carrier.frequency.exponentialRampToValueAtTime(frequency, now + glide * 0.3);
-    }
-    
-    // Connect vibrato LFO to carrier detune
-    if (vibratoLfo && vibratoGain) {
-      vibratoLfo.connect(vibratoGain);
-      vibratoGain.connect(carrier.detune);
+      // Glide is handled per-note by starting at a random nearby frequency
+      // The 4op FM note uses the target freq; we pre-offset and let it play
+      noteFreq = frequency * (1 + (Math.random() - 0.5) * glide * 0.2);
     }
 
-    // Nodes that may or may not be created based on timbre
-    let carrier2: OscillatorNode | null = null;
-    let carrier2Gain: GainNode | null = null;
-    let modulator3: OscillatorNode | null = null;
-    let modGain3: GainNode | null = null;
-    let modulator4: OscillatorNode | null = null;
-    let modGain4: GainNode | null = null;
-    let envelope2: GainNode | null = null;
+    // Hold time from shared param (not in presets)
+    const hold = this.sliderState.lead1Hold;
 
-    // Only create second carrier if timbre > 0.1 (gamelan shimmer)
-    if (timbre > 0.1) {
-      carrier2 = ctx.createOscillator();
-      carrier2.type = 'sine';
-      const beatDetune = timbre * 2;
-      carrier2.frequency.value = frequency * Math.pow(2, beatDetune / 1200);
-      
-      // Apply glide to carrier2 as well
-      if (glide > 0.01) {
-        const glideStart = carrier2.frequency.value * (1 + (Math.random() - 0.5) * glide * 0.2);
-        carrier2.frequency.setValueAtTime(glideStart, now);
-        carrier2.frequency.exponentialRampToValueAtTime(carrier2.frequency.value, now + glide * 0.3);
-      }
-      
-      // Connect vibrato to carrier2 detune
-      if (vibratoGain) {
-        vibratoGain.connect(carrier2.detune);
-      }
+    // Play the 4op FM note — outputs into this.leadGain (shared bus)
+    const stopTime = playLead4opFMNote(ctx, this.leadGain, noteFreq, effectiveVelocity, effectiveMorphed, hold);
 
-      carrier2Gain = ctx.createGain();
-      carrier2Gain.gain.value = timbre * 0.5;
-
-      envelope2 = ctx.createGain();
-      envelope2.gain.value = 0;
-    }
-
-    // === MODULATOR 1: Primary timbre shaping (always needed) ===
-    const modulator = ctx.createOscillator();
-    modulator.type = 'sine';
-    const fmRatio = 1.0 + timbre * 1.4;
-    modulator.frequency.value = frequency * fmRatio;
-
-    const modGain = ctx.createGain();
-    const baseIndex = 0.25 + timbre * 1.8;
-    const modIndex = frequency * baseIndex * velocity;
-    modGain.gain.value = modIndex;
-
-    // === MODULATOR 2: Metallic partials (always needed for character) ===
-    const modulator2 = ctx.createOscillator();
-    modulator2.type = 'sine';
-    const fmRatio2 = 2.0 + timbre * 2.0;
-    modulator2.frequency.value = frequency * fmRatio2;
-
-    const modGain2 = ctx.createGain();
-    modGain2.gain.value = frequency * (0.08 + timbre * 0.35);
-
-    // === MODULATOR 3: Only at high timbre (> 0.5) ===
-    if (timbre > 0.5) {
-      modulator3 = ctx.createOscillator();
-      modulator3.type = 'sine';
-      modulator3.frequency.value = frequency * (3.0 + timbre * 2.5);
-
-      modGain3 = ctx.createGain();
-      modGain3.gain.value = frequency * (timbre - 0.5) * 0.4;
-    }
-
-    // === MODULATOR 4: Only at high timbre (> 0.4) ===
-    if (timbre > 0.4) {
-      modulator4 = ctx.createOscillator();
-      modulator4.type = 'sine';
-      modulator4.frequency.value = frequency * (0.5 + timbre * 0.15);
-
-      modGain4 = ctx.createGain();
-      modGain4.gain.value = frequency * (timbre - 0.4) * 0.25;
-    }
-
-    // === AMPLITUDE ENVELOPE ===
-    const envelope = ctx.createGain();
-    envelope.gain.value = 0;
-
-    // Output gain with velocity
-    const outputGain = ctx.createGain();
-    const volumeCompensation = 1.0 - timbre * 0.15;
-    outputGain.gain.value = velocity * 0.3 * volumeCompensation;
-
-    // === CONNECT FM CHAIN ===
-    modulator.connect(modGain);
-    modGain.connect(carrier.frequency);
-    if (carrier2) modGain.connect(carrier2.frequency);
-
-    modulator2.connect(modGain2);
-    modGain2.connect(carrier.frequency);
-    if (carrier2) modGain2.connect(carrier2.frequency);
-
-    if (modulator3 && modGain3) {
-      modulator3.connect(modGain3);
-      modGain3.connect(carrier.frequency);
-    }
-
-    if (modulator4 && modGain4) {
-      modulator4.connect(modGain4);
-      modGain4.connect(carrier.frequency);
-    }
-
-    // Carriers -> Envelopes -> Output
-    carrier.connect(envelope);
-    if (carrier2 && carrier2Gain && envelope2) {
-      carrier2.connect(carrier2Gain);
-      carrier2Gain.connect(envelope2);
-      envelope2.connect(outputGain);
-    }
-    
-    envelope.connect(outputGain);
-    outputGain.connect(this.leadGain);
-
-    // === START OSCILLATORS ===
-    vibratoLfo?.start(now);
-    carrier.start(now);
-    carrier2?.start(now);
-    modulator.start(now);
-    modulator2.start(now);
-    modulator3?.start(now);
-    modulator4?.start(now);
-
-    // === ENVELOPE SHAPING ===
-    const effectiveAttack = attack * (1.0 - timbre * 0.6);
-    
-    envelope.gain.setValueAtTime(0, now);
-    envelope.gain.linearRampToValueAtTime(1.0, now + effectiveAttack);
-    envelope.gain.linearRampToValueAtTime(sustain, now + effectiveAttack + decay);
-
-    if (envelope2) {
-      envelope2.gain.setValueAtTime(0, now);
-      envelope2.gain.linearRampToValueAtTime(0.6, now + effectiveAttack * 1.3);
-      envelope2.gain.linearRampToValueAtTime(sustain * 0.8, now + effectiveAttack + decay);
-    }
-    
-    // === MODULATION ENVELOPE ===
-    const modDecayTime = 0.4 + (1.0 - timbre) * 0.4;
-    const modDecayLevel = 0.08 + (1.0 - timbre) * 0.15;
-    
-    modGain.gain.setValueAtTime(modIndex, now);
-    modGain.gain.exponentialRampToValueAtTime(
-      modIndex * modDecayLevel, 
-      now + effectiveAttack + modDecayTime
-    );
-
-    modGain2.gain.exponentialRampToValueAtTime(
-      modGain2.gain.value * 0.1,
-      now + effectiveAttack + modDecayTime * 0.9
-    );
-
-    if (modGain3 && modGain3.gain.value > 0) {
-      modGain3.gain.exponentialRampToValueAtTime(
-        Math.max(0.001, modGain3.gain.value * 0.01),
-        now + effectiveAttack + modDecayTime * 0.4
-      );
-    }
-
-    // === HOLD & RELEASE ===
-    const hold = this.sliderState.leadHold;
-    const noteEndTime = now + effectiveAttack + decay + hold;
-    const stopTime = noteEndTime + release;
-
-    envelope.gain.setValueAtTime(sustain, noteEndTime);
-    envelope.gain.exponentialRampToValueAtTime(0.001, stopTime);
-    
-    if (envelope2) {
-      envelope2.gain.setValueAtTime(sustain * 0.9, noteEndTime);
-      envelope2.gain.exponentialRampToValueAtTime(0.001, stopTime);
-    }
-
-    // Stop oscillators
-    vibratoLfo?.stop(stopTime + 0.1);
-    carrier.stop(stopTime + 0.1);
-    carrier2?.stop(stopTime + 0.1);
-    modulator.stop(stopTime + 0.1);
-    modulator2.stop(stopTime + 0.1);
-    modulator3?.stop(stopTime + 0.1);
-    modulator4?.stop(stopTime + 0.1);
-
-    // Cleanup
-    setTimeout(() => {
-      try {
-        vibratoLfo?.disconnect();
-        vibratoGain?.disconnect();
-        carrier.disconnect();
-        carrier2?.disconnect();
-        carrier2Gain?.disconnect();
-        modulator.disconnect();
-        modulator2.disconnect();
-        modulator3?.disconnect();
-        modulator4?.disconnect();
-        modGain.disconnect();
-        modGain2.disconnect();
-        modGain3?.disconnect();
-        modGain4?.disconnect();
-        envelope.disconnect();
-        envelope2?.disconnect();
-        outputGain.disconnect();
-      } catch {
-        // Ignore cleanup errors
-      }
-    }, (stopTime - now + 0.2) * 1000);
+    // If glide, schedule frequency ramp on all carriers (handled inside playLead4opFMNote is per-note)
+    // Vibrato: add LFO modulation if depth > threshold
+    // (Vibrato is applied at the carrier level inside the note function is not possible after
+    //  creation, so for shared vibrato we'd need to modify the approach slightly.
+    //  For now, the note already plays without vibrato — vibrato will be added in a future iteration
+    //  when the per-note function supports passing vibrato params.)
   }
 
   /**
@@ -2152,12 +2143,13 @@ export class AudioEngine {
     }
     this.leadNoteTimeouts = [];
     
-    // Check if Euclidean has any synth-source lanes enabled
+    // Check if Euclidean has any synth-voice-source lanes enabled
+    const isLeadSource = (s: string) => s === 'lead' || s === 'lead1' || s === 'lead2';
     const euclideanSynthLanesEnabled = this.sliderState.leadEuclideanMasterEnabled && (
-      (this.sliderState.leadEuclid1Enabled && this.sliderState.leadEuclid1Source !== 'lead') ||
-      (this.sliderState.leadEuclid2Enabled && this.sliderState.leadEuclid2Source !== 'lead') ||
-      (this.sliderState.leadEuclid3Enabled && this.sliderState.leadEuclid3Source !== 'lead') ||
-      (this.sliderState.leadEuclid4Enabled && this.sliderState.leadEuclid4Source !== 'lead')
+      (this.sliderState.leadEuclid1Enabled && !isLeadSource(this.sliderState.leadEuclid1Source)) ||
+      (this.sliderState.leadEuclid2Enabled && !isLeadSource(this.sliderState.leadEuclid2Source)) ||
+      (this.sliderState.leadEuclid3Enabled && !isLeadSource(this.sliderState.leadEuclid3Source)) ||
+      (this.sliderState.leadEuclid4Enabled && !isLeadSource(this.sliderState.leadEuclid4Source))
     );
     
     // Only skip if lead is disabled AND no Euclidean synth lanes are active
@@ -2172,8 +2164,8 @@ export class AudioEngine {
 
     const rng = this.rng;
     const scale = this.harmonyState.scaleFamily;
-    const baseOctaveOffset = this.sliderState.leadOctave;
-    const octaveRange = this.sliderState.leadOctaveRange ?? 2;
+    const baseOctaveOffset = this.sliderState.lead1Octave;
+    const octaveRange = this.sliderState.lead1OctaveRange ?? 2;
     const phraseDuration = PHRASE_LENGTH * 1000; // in ms
 
     // Scheduled notes with timing, note range, level, probability, and source
@@ -2183,7 +2175,7 @@ export class AudioEngine {
       noteMax: number;
       level: number;
       probability: number;
-      source: 'lead' | 'synth1' | 'synth2' | 'synth3' | 'synth4' | 'synth5' | 'synth6';
+      source: 'lead' | 'lead1' | 'lead2' | 'synth1' | 'synth2' | 'synth3' | 'synth4' | 'synth5' | 'synth6';
     }
     const scheduledNotes: ScheduledNote[] = [];
 
@@ -2287,12 +2279,12 @@ export class AudioEngine {
         }
       }
 
-      // Check if any enabled lane uses 'lead' as source
-      const anyLaneUsesLead = lanes.some(lane => lane.enabled && lane.source === 'lead');
+      // Check if any enabled lane uses a lead source
+      const anyLaneUsesLead = lanes.some(lane => lane.enabled && isLeadSource(lane.source));
       
       // If no lanes use lead AND lead is enabled, add random lead notes as well
       if (!anyLaneUsesLead && this.sliderState.leadEnabled) {
-        const density = this.sliderState.leadDensity;
+        const density = this.sliderState.lead1Density;
         const notesThisPhrase = Math.max(1, Math.round(density * 3 + rng() * 2));
         const baseLow = 64 + (baseOctaveOffset * 12);
         const baseHigh = baseLow + (octaveRange * 12);
@@ -2315,7 +2307,7 @@ export class AudioEngine {
 
     } else {
       // Original random mode - use global lead octave settings
-      const density = this.sliderState.leadDensity;
+      const density = this.sliderState.lead1Density;
       const notesThisPhrase = Math.max(1, Math.round(density * 3 + rng() * 2));
       const baseLow = 64 + (baseOctaveOffset * 12);
       const baseHigh = baseLow + (octaveRange * 12);
@@ -2369,10 +2361,6 @@ export class AudioEngine {
       const frequency = midiToFreq(midiNote);
       const velocity = rngFloat(rng, 0.5 * note.level, 0.9 * note.level);
       
-      const timbreMin = this.sliderState.leadTimbreMin;
-      const timbreMax = this.sliderState.leadTimbreMax;
-      const timbre = rngFloat(rng, timbreMin, timbreMax);
-
       // Capture source for closure
       const noteSource = note.source;
 
@@ -2383,8 +2371,10 @@ export class AudioEngine {
         if (idx > -1) this.leadNoteTimeouts.splice(idx, 1);
         
         // Route to appropriate sound source
-        if (noteSource === 'lead') {
-          this.playLeadNote(frequency, velocity, timbre);
+        if (noteSource === 'lead' || noteSource === 'lead1') {
+          this.playLeadNote(frequency, velocity, 'lead1');
+        } else if (noteSource === 'lead2') {
+          this.playLeadNote(frequency, velocity, 'lead2');
         } else {
           // Parse synth voice index from source (e.g., 'synth1' -> 0)
           const voiceIndex = parseInt(noteSource.replace('synth', '')) - 1;
@@ -2422,12 +2412,13 @@ export class AudioEngine {
     }
     this.leadNoteTimeouts = [];
 
-    // Check if Euclidean has any synth-source lanes enabled
+    // Check if Euclidean has any synth-voice-source lanes enabled
+    const isLeadSrc = (s: string) => s === 'lead' || s === 'lead1' || s === 'lead2';
     const euclideanSynthLanesEnabled = this.sliderState?.leadEuclideanMasterEnabled && (
-      (this.sliderState.leadEuclid1Enabled && this.sliderState.leadEuclid1Source !== 'lead') ||
-      (this.sliderState.leadEuclid2Enabled && this.sliderState.leadEuclid2Source !== 'lead') ||
-      (this.sliderState.leadEuclid3Enabled && this.sliderState.leadEuclid3Source !== 'lead') ||
-      (this.sliderState.leadEuclid4Enabled && this.sliderState.leadEuclid4Source !== 'lead')
+      (this.sliderState.leadEuclid1Enabled && !isLeadSrc(this.sliderState.leadEuclid1Source)) ||
+      (this.sliderState.leadEuclid2Enabled && !isLeadSrc(this.sliderState.leadEuclid2Source)) ||
+      (this.sliderState.leadEuclid3Enabled && !isLeadSrc(this.sliderState.leadEuclid3Source)) ||
+      (this.sliderState.leadEuclid4Enabled && !isLeadSrc(this.sliderState.leadEuclid4Source))
     );
 
     // Start scheduling if lead is enabled OR if Euclidean has synth lanes

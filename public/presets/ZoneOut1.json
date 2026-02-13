@@ -71,17 +71,17 @@
         "oceanPebbleSizeMax": 0.6,
         "leadEnabled": true,
         "leadLevel": 0.11,
-        "leadAttack": 0.01,
-        "leadDecay": 0.8,
-        "leadSustain": 0.3,
-        "leadRelease": 2,
-        "leadDelayTime": 375,
-        "leadDelayFeedback": 0.4,
-        "leadDelayMix": 0.35,
-        "leadDensity": 1,
-        "leadOctave": 0,
-        "leadTimbreMin": 0,
-        "leadTimbreMax": 0,
+        "lead1Attack": 0.01,
+        "lead1Decay": 0.8,
+        "lead1Sustain": 0.3,
+        "lead1Release": 2,
+        "leadDelayTime": 800,
+        "leadDelayFeedback": 0.37,
+        "leadDelayMix": 0.58,
+        "lead1Density": 1,
+        "lead1Octave": 0,
+        "lead1MorphMin": 0,
+        "lead1MorphMax": 0,
         "reverbEnabled": true,
         "synthChordSequencerEnabled": true,
         "leadEuclid1Probability": 1,
@@ -96,17 +96,17 @@
         "leadVibratoRateMin": 0,
         "reverbQuality": "balanced",
         "leadVibratoDepthMax": 0,
-        "leadHold": 0.5,
+        "lead1Hold": 0.5,
         "leadVibratoDepthMin": 0,
         "leadVibratoRateMax": 0,
         "maxGrains": 64,
         "leadGlideMin": 0,
-        "leadDelayTimeMin": 375,
-        "leadDelayTimeMax": 375,
-        "leadDelayFeedbackMin": 0.4,
-        "leadDelayFeedbackMax": 0.4,
-        "leadDelayMixMin": 0.35,
-        "leadDelayMixMax": 0.35,
+        "leadDelayTimeMin": 600,
+        "leadDelayTimeMax": 1000,
+        "leadDelayFeedbackMin": 0.1,
+        "leadDelayFeedbackMax": 0.63,
+        "leadDelayMixMin": 0.25,
+        "leadDelayMixMax": 0.91,
         "drumEnabled": false,
         "drumLevel": 0.7,
         "drumReverbSend": 0.3,
@@ -296,5 +296,47 @@
         "drumEuclid4TargetBeepHi": false,
         "drumEuclid4TargetBeepLo": false,
         "drumEuclid4TargetNoise": true
+    },
+    "dualRanges": {
+           "synthLevel": {
+      "min": 0,
+      "max": 0.24000000000000002
+    },
+    "granularLevel": {
+      "min": 0.07,
+      "max": 0.68
+    },
+    "leadLevel": {
+      "min": 0,
+      "max": 0.31
+    },
+    "oceanSampleLevel": {
+      "min": 0,
+      "max": 0.55
+    },
+    "synthReverbSend": {
+      "min": 0,
+      "max": 0.36
+    },
+    "granularReverbSend": {
+      "min": 0.65,
+      "max": 1
+    },
+    "reverbLevel": {
+      "min": 1.1500000000000001,
+      "max": 1.98
+    },
+    "hardness": {
+      "min": 0.19999999999999998,
+      "max": 0.68
+    },
+    "airNoise": {
+      "min": 0.04999999999999999,
+      "max": 0.39
+    },
+    "presence": {
+      "min": 0.19999999999999998,
+      "max": 0.53
+    }
     }
 }

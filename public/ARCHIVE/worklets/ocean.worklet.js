@@ -1,7 +1,7 @@
 /**
  * Ocean Waves AudioWorklet
  * 
- * Simplified version without rock/pebble modal synthesis for lower CPU usage.
+ * Simplified version for low CPU usage.
  * Two independent wave generators that can overlap.
  */
 
@@ -35,7 +35,7 @@ class OceanProcessor extends AudioWorkletProcessor {
     // Deep rumble layer
     this.rumbleLpfL = 0;
     this.rumbleLpfR = 0;
-    
+
     // Initialize generators
     this.gen1 = this.createGenerator(0);
     this.gen2 = this.createGenerator(0.5);
@@ -65,19 +65,6 @@ class OceanProcessor extends AudioWorkletProcessor {
       { name: 'foamMax', defaultValue: 0.5, minValue: 0, maxValue: 1 },
       { name: 'depthMin', defaultValue: 0.3, minValue: 0, maxValue: 1 },
       { name: 'depthMax', defaultValue: 0.7, minValue: 0, maxValue: 1 },
-      // Rock params kept for API compatibility but ignored
-      { name: 'pebblesMin', defaultValue: 0, minValue: 0, maxValue: 1 },
-      { name: 'pebblesMax', defaultValue: 0.3, minValue: 0, maxValue: 1 },
-      { name: 'pebbleSizeMin', defaultValue: 0.2, minValue: 0, maxValue: 1 },
-      { name: 'pebbleSizeMax', defaultValue: 0.6, minValue: 0, maxValue: 1 },
-      { name: 'rockLevel', defaultValue: 0.6, minValue: 0, maxValue: 1 },
-      { name: 'rockFreqMin', defaultValue: 260, minValue: 100, maxValue: 500 },
-      { name: 'rockFreqMax', defaultValue: 550, minValue: 300, maxValue: 1200 },
-      { name: 'rockQBase', defaultValue: 18, minValue: 5, maxValue: 50 },
-      { name: 'rockDecayMin', defaultValue: 8, minValue: 3, maxValue: 50 },
-      { name: 'rockDecayMax', defaultValue: 60, minValue: 20, maxValue: 150 },
-      { name: 'rockBrightness', defaultValue: 0.85, minValue: 0, maxValue: 1 },
-      { name: 'rockAttack', defaultValue: 0.5, minValue: 0.2, maxValue: 3 },
     ];
   }
 
@@ -169,6 +156,12 @@ class OceanProcessor extends AudioWorkletProcessor {
     const blockSize = outL.length;
     
     const intensity = parameters.intensity[0];
+    if (intensity <= 0.0001) {
+      outL.fill(0);
+      outR.fill(0);
+      return true;
+    }
+
     const waveDurationMin = parameters.waveDurationMin[0];
     const waveDurationMax = parameters.waveDurationMax[0];
     const waveIntervalMin = parameters.waveIntervalMin[0];

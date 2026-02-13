@@ -420,10 +420,6 @@ struct SliderState: Codable, Equatable {
     var oceanMix: Double?
     var oceanWave2OffsetMin: Double?
     var oceanWave2OffsetMax: Double?
-    var oceanPebblesMin: Double?
-    var oceanPebblesMax: Double?
-    var oceanPebbleSizeMin: Double?
-    var oceanPebbleSizeMax: Double?
     var filterCutoff: Double?  // Old single-value filter cutoff
     var brightness: Double?  // Old brightness param
     var reverbMix: Double?  // Old reverb mix

@@ -1,0 +1,58 @@
+{
+  "id": "tongue_drum",
+  "name": "Tongue Drum",
+  "engine": "Lead4opFM",
+  "method": "new",
+  "operators": 4,
+  "algorithm": "parallel",
+  "xy": {
+    "xLevel": 1,
+    "xPan": -0.22,
+    "yLevel": 0.92,
+    "yPan": 0.22
+  },
+  "params": {
+    "beatDetune": 1,
+    "carrier2Mix": 0.25,
+    "mod1": {
+      "ratio": 2,
+      "index": 0.4,
+      "decay": 0.7,
+      "sustain": 0.25
+    },
+    "mod2": {
+      "ratio": 3,
+      "index": 0.15,
+      "decay": 0.6
+    },
+    "mod3": {
+      "ratio": 4,
+      "index": 0.05,
+      "decay": 0.4
+    },
+    "mod4": {
+      "ratio": 0.5,
+      "index": 0.08,
+      "decay": 0.8
+    },
+    "envelope": {
+      "attack": 0.02,
+      "decay": 0.6,
+      "sustain": 0.65,
+      "release": 5
+    },
+    "filter": {
+      "freq": 2500,
+      "q": 0.6
+    },
+    "transient": {
+      "click": 0.15,
+      "noise": 0.08,
+      "duration": 25,
+      "decay": 60,
+      "filter": 1800,
+      "type": "pink"
+    },
+    "gain": 0.6
+  }
+}

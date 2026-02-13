@@ -171,7 +171,7 @@ Comparing [src/ui/state.ts](src/ui/state.ts) with [KesshoiOS/Kessho/State/Slider
 | `randomWalkSpeed` | `number` | 1.0 | 0.1..5 step 0.1 | `Double` | 1.0 | [ ] Match |
 
 ### 1.13 Legacy Fields (iOS only - backward compatibility)
-- [ ] `oceanMix`, `oceanWave2OffsetMin/Max`, `oceanPebblesMin/Max` - iOS has these as optionals
+- [ ] `oceanMix`, `oceanWave2OffsetMin/Max` - iOS has these as optionals
 - [ ] `filterCutoff` (old single-value), `brightness`, `reverbMix` - iOS has as optionals
 - [ ] `leadDelayTime/Feedback/Mix` (old single-value), `leadVibratoDepth/Rate`, `leadGlide` - iOS optionals
 

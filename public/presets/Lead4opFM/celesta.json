@@ -1,0 +1,58 @@
+{
+  "id": "celesta",
+  "name": "Celesta",
+  "engine": "Lead4opFM",
+  "method": "new",
+  "operators": 4,
+  "algorithm": "stack",
+  "xy": {
+    "xLevel": 0.92,
+    "xPan": -0.34,
+    "yLevel": 1.05,
+    "yPan": 0.34
+  },
+  "params": {
+    "beatDetune": 0.8,
+    "carrier2Mix": 0.25,
+    "mod1": {
+      "ratio": 2,
+      "index": 0.6,
+      "decay": 0.25,
+      "sustain": 0.08
+    },
+    "mod2": {
+      "ratio": 4,
+      "index": 0.3,
+      "decay": 0.18
+    },
+    "mod3": {
+      "ratio": 6,
+      "index": 0.15,
+      "decay": 0.12
+    },
+    "mod4": {
+      "ratio": 0.5,
+      "index": 0.05,
+      "decay": 0.35
+    },
+    "envelope": {
+      "attack": 0.002,
+      "decay": 0.2,
+      "sustain": 0.3,
+      "release": 2.5
+    },
+    "filter": {
+      "freq": 6500,
+      "q": 0.7
+    },
+    "transient": {
+      "click": 0.45,
+      "noise": 0.05,
+      "duration": 12,
+      "decay": 140,
+      "filter": 5500,
+      "type": "filtered"
+    },
+    "gain": 0.6
+  }
+}

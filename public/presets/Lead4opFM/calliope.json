@@ -1,0 +1,58 @@
+{
+  "id": "calliope",
+  "name": "CALIOPE",
+  "engine": "Lead4opFM",
+  "method": "new",
+  "operators": 4,
+  "algorithm": "dx17",
+  "xy": {
+    "xLevel": 1.2,
+    "xPan": 0,
+    "yLevel": 0,
+    "yPan": 0
+  },
+  "params": {
+    "beatDetune": 0.2,
+    "carrier2Mix": 0.12,
+    "mod1": {
+      "ratio": 1,
+      "index": 1.25,
+      "decay": 0.55,
+      "sustain": 0.45
+    },
+    "mod2": {
+      "ratio": 1,
+      "index": 1.05,
+      "decay": 0.48
+    },
+    "mod3": {
+      "ratio": 2,
+      "index": 0.95,
+      "decay": 0.44
+    },
+    "mod4": {
+      "ratio": 2,
+      "index": 0.8,
+      "decay": 0.4
+    },
+    "envelope": {
+      "attack": 0.003,
+      "decay": 0.45,
+      "sustain": 0.42,
+      "release": 2.4
+    },
+    "filter": {
+      "freq": 7600,
+      "q": 1.1
+    },
+    "transient": {
+      "click": 0.08,
+      "noise": 0.03,
+      "duration": 15,
+      "decay": 90,
+      "filter": 5200,
+      "type": "filtered"
+    },
+    "gain": 0.66
+  }
+}

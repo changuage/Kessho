@@ -24,3 +24,7 @@ npm-debug.log*
 
 # TypeScript cache
 *.tsbuildinfo
+
+# Large local sample assets (keep out of Git status scans)
+SampleTransients/
+public/samples/

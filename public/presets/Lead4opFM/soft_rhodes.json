@@ -1,0 +1,59 @@
+{
+  "id": "soft_rhodes",
+  "name": "Soft Rhodes",
+  "engine": "Lead4opFM",
+  "method": "new",
+  "operators": 4,
+  "algorithm": "parallel",
+  "source": "src/audio/engine.ts lead timbre≈0",
+  "xy": {
+    "xLevel": 1,
+    "xPan": -0.2,
+    "yLevel": 0.9,
+    "yPan": 0.2
+  },
+  "params": {
+    "beatDetune": 0,
+    "carrier2Mix": 0,
+    "mod1": {
+      "ratio": 1,
+      "index": 0.25,
+      "decay": 0.8,
+      "sustain": 0.23
+    },
+    "mod2": {
+      "ratio": 2,
+      "index": 0.08,
+      "decay": 0.72
+    },
+    "mod3": {
+      "ratio": 3,
+      "index": 0,
+      "decay": 0.3
+    },
+    "mod4": {
+      "ratio": 0.5,
+      "index": 0,
+      "decay": 0.3
+    },
+    "envelope": {
+      "attack": 0.01,
+      "decay": 0.8,
+      "sustain": 0.3,
+      "release": 2
+    },
+    "filter": {
+      "freq": 4000,
+      "q": 0.7
+    },
+    "transient": {
+      "click": 0.08,
+      "noise": 0.02,
+      "duration": 12,
+      "decay": 130,
+      "filter": 4200,
+      "type": "filtered"
+    },
+    "gain": 0.34
+  }
+}

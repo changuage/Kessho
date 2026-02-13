@@ -103,22 +103,47 @@ export interface SliderState {
   // Lead Synth (Rhodes/Bell)
   leadEnabled: boolean;       // on/off toggle
   leadLevel: number;          // 0..1 step 0.01
-  leadAttack: number;         // 0.001..2 seconds
-  leadDecay: number;          // 0.01..4 seconds
-  leadSustain: number;        // 0..1 level
-  leadHold: number;           // 0..4 seconds - how long to hold at sustain level
-  leadRelease: number;        // 0.01..8 seconds
+  lead1UseCustomAdsr: boolean; // when true, use lead ADSR sliders instead of preset ADSR
+  lead1Attack: number;         // 0.001..2 seconds
+  lead1Decay: number;          // 0.01..4 seconds
+  lead1Sustain: number;        // 0..1 level
+  lead1Hold: number;           // 0..4 seconds - how long to hold at sustain level
+  lead1Release: number;        // 0.01..8 seconds
   leadDelayTimeMin: number;      // 0..1000 ms step 10
   leadDelayTimeMax: number;      // 0..1000 ms step 10
   leadDelayFeedbackMin: number;  // 0..0.8 step 0.01
   leadDelayFeedbackMax: number;  // 0..0.8 step 0.01
   leadDelayMixMin: number;       // 0..1 step 0.01
   leadDelayMixMax: number;       // 0..1 step 0.01
-  leadDensity: number;        // 0.1..2 notes per phrase (sparseness)
-  leadOctave: number;         // -1, 0, 1, 2 octave offset
-  leadOctaveRange: number;    // 1..4 - how many octaves to span for random notes
-  leadTimbreMin: number;      // 0..1 - min timbre (0=soft rhodes, 1=bell)
-  leadTimbreMax: number;      // 0..1 - max timbre (0=soft rhodes, 1=bell)
+  lead1Density: number;       // 0.1..2 notes per phrase (sparseness)
+  lead1Octave: number;        // -1, 0, 1, 2 octave offset
+  lead1OctaveRange: number;   // 1..4 - how many octaves to span for random notes
+  leadTimbreMin: number;      // 0..1 - min timbre (LEGACY, ignored by 4op FM engine)
+  leadTimbreMax: number;      // 0..1 - max timbre (LEGACY, ignored by 4op FM engine)
+
+  // Lead 1 — 4op FM preset morph (A ↔ B)
+  lead1PresetA: string;       // Lead4opFM preset id (default: soft_rhodes)
+  lead1PresetB: string;       // Lead4opFM preset id (default: gamelan)
+  lead1MorphMin: number;      // 0..1 morph range min (single mode: min=max)
+  lead1MorphMax: number;      // 0..1 morph range max
+  lead1MorphAuto: boolean;    // Auto-morph enabled
+  lead1MorphSpeed: number;    // Phrases per morph cycle (1..32)
+  lead1MorphMode: 'linear' | 'pingpong' | 'random';
+  lead1AlgorithmMode: 'snap' | 'presetA'; // snap=switch at 50%, presetA=always use A's
+  lead1Level: number;         // 0..1 level for lead 1
+
+  // Lead 2 — 4op FM preset morph (C ↔ D)
+  lead2Enabled: boolean;      // on/off (default off)
+  lead2PresetC: string;       // Lead4opFM preset id (default: soft_rhodes)
+  lead2PresetD: string;       // Lead4opFM preset id (default: gamelan)
+  lead2MorphMin: number;      // 0..1 morph range min (single mode: min=max)
+  lead2MorphMax: number;      // 0..1 morph range max
+  lead2MorphAuto: boolean;    // Auto-morph enabled
+  lead2MorphSpeed: number;    // Phrases per morph cycle (1..32)
+  lead2MorphMode: 'linear' | 'pingpong' | 'random';
+  lead2AlgorithmMode: 'snap' | 'presetA'; // snap=switch at 50%, presetA=always use C's
+  lead2Level: number;         // 0..1 level for lead 2
+
   leadVibratoDepthMin: number;  // 0..1 - min vibrato depth (0=none, 1=0.5 semitones)
   leadVibratoDepthMax: number;  // 0..1 - max vibrato depth
   leadVibratoRateMin: number;   // 0..1 - min vibrato rate (maps to 2-8 Hz)
@@ -138,7 +163,7 @@ export interface SliderState {
   leadEuclid1NoteMax: number;    // 36..96 MIDI note - high end of note range
   leadEuclid1Level: number;      // 0..1 velocity/level for this lane
   leadEuclid1Probability: number; // 0..1 probability of triggering each hit
-  leadEuclid1Source: 'lead' | 'synth1' | 'synth2' | 'synth3' | 'synth4' | 'synth5' | 'synth6';
+  leadEuclid1Source: 'lead' | 'lead1' | 'lead2' | 'synth1' | 'synth2' | 'synth3' | 'synth4' | 'synth5' | 'synth6';
   // Lane 2
   leadEuclid2Enabled: boolean;
   leadEuclid2Preset: string;
@@ -149,7 +174,7 @@ export interface SliderState {
   leadEuclid2NoteMax: number;
   leadEuclid2Level: number;
   leadEuclid2Probability: number;
-  leadEuclid2Source: 'lead' | 'synth1' | 'synth2' | 'synth3' | 'synth4' | 'synth5' | 'synth6';
+  leadEuclid2Source: 'lead' | 'lead1' | 'lead2' | 'synth1' | 'synth2' | 'synth3' | 'synth4' | 'synth5' | 'synth6';
   // Lane 3
   leadEuclid3Enabled: boolean;
   leadEuclid3Preset: string;
@@ -160,7 +185,7 @@ export interface SliderState {
   leadEuclid3NoteMax: number;
   leadEuclid3Level: number;
   leadEuclid3Probability: number;
-  leadEuclid3Source: 'lead' | 'synth1' | 'synth2' | 'synth3' | 'synth4' | 'synth5' | 'synth6';
+  leadEuclid3Source: 'lead' | 'lead1' | 'lead2' | 'synth1' | 'synth2' | 'synth3' | 'synth4' | 'synth5' | 'synth6';
   // Lane 4
   leadEuclid4Enabled: boolean;
   leadEuclid4Preset: string;
@@ -171,7 +196,7 @@ export interface SliderState {
   leadEuclid4NoteMax: number;
   leadEuclid4Level: number;
   leadEuclid4Probability: number;
-  leadEuclid4Source: 'lead' | 'synth1' | 'synth2' | 'synth3' | 'synth4' | 'synth5' | 'synth6';
+  leadEuclid4Source: 'lead' | 'lead1' | 'lead2' | 'synth1' | 'synth2' | 'synth3' | 'synth4' | 'synth5' | 'synth6';
   
   // Synth chord sequencer toggle (when false, synth only plays from Euclidean triggers)
   synthChordSequencerEnabled: boolean;
@@ -490,21 +515,43 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'wetLPF',
   'leadEnabled',
   'leadLevel',
-  'leadAttack',
-  'leadDecay',
-  'leadSustain',
-  'leadRelease',
+  'lead1UseCustomAdsr',
+  'lead1Attack',
+  'lead1Decay',
+  'lead1Sustain',
+  'lead1Release',
   'leadDelayTimeMin',
   'leadDelayTimeMax',
   'leadDelayFeedbackMin',
   'leadDelayFeedbackMax',
   'leadDelayMixMin',
   'leadDelayMixMax',
-  'leadDensity',
-  'leadOctave',
-  'leadOctaveRange',
+  'lead1Density',
+  'lead1Octave',
+  'lead1OctaveRange',
   'leadTimbreMin',
   'leadTimbreMax',
+  // Lead 1 morph
+  'lead1PresetA',
+  'lead1PresetB',
+  'lead1MorphMin',
+  'lead1MorphMax',
+  'lead1MorphAuto',
+  'lead1MorphSpeed',
+  'lead1MorphMode',
+  'lead1AlgorithmMode',
+  'lead1Level',
+  // Lead 2 morph
+  'lead2Enabled',
+  'lead2PresetC',
+  'lead2PresetD',
+  'lead2MorphMin',
+  'lead2MorphMax',
+  'lead2MorphAuto',
+  'lead2MorphSpeed',
+  'lead2MorphMode',
+  'lead2AlgorithmMode',
+  'lead2Level',
   'leadVibratoDepthMin',
   'leadVibratoDepthMax',
   'leadVibratoRateMin',
@@ -850,22 +897,44 @@ export const DEFAULT_STATE: SliderState = {
   // Lead Synth (Rhodes/Bell)
   leadEnabled: false,
   leadLevel: 0.4,
-  leadAttack: 0.01,
-  leadDecay: 0.8,
-  leadSustain: 0.3,
-  leadHold: 0.5,
-  leadRelease: 2.0,
+  lead1UseCustomAdsr: false,
+  lead1Attack: 0.01,
+  lead1Decay: 0.8,
+  lead1Sustain: 0.3,
+  lead1Hold: 0.5,
+  lead1Release: 2.0,
   leadDelayTimeMin: 375,
   leadDelayTimeMax: 375,
   leadDelayFeedbackMin: 0.4,
   leadDelayFeedbackMax: 0.4,
   leadDelayMixMin: 0.35,
   leadDelayMixMax: 0.35,
-  leadDensity: 0.5,
-  leadOctave: 1,
-  leadOctaveRange: 2,
+  lead1Density: 0.5,
+  lead1Octave: 1,
+  lead1OctaveRange: 2,
   leadTimbreMin: 0.2,
   leadTimbreMax: 0.6,
+  // Lead 1 — 4op FM preset morph
+  lead1PresetA: 'soft_rhodes',
+  lead1PresetB: 'gamelan',
+  lead1MorphMin: 0,
+  lead1MorphMax: 0,
+  lead1MorphAuto: false,
+  lead1MorphSpeed: 8,
+  lead1MorphMode: 'pingpong' as const,
+  lead1AlgorithmMode: 'snap' as const,
+  lead1Level: 0.8,
+  // Lead 2 — 4op FM preset morph
+  lead2Enabled: false,
+  lead2PresetC: 'soft_rhodes',
+  lead2PresetD: 'gamelan',
+  lead2MorphMin: 0,
+  lead2MorphMax: 0,
+  lead2MorphAuto: false,
+  lead2MorphSpeed: 8,
+  lead2MorphMode: 'pingpong' as const,
+  lead2AlgorithmMode: 'snap' as const,
+  lead2Level: 0.6,
   leadVibratoDepthMin: 0,
   leadVibratoDepthMax: 0,
   leadVibratoRateMin: 0,
@@ -1334,22 +1403,31 @@ const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> = {
   drumNoiseDelaySend: { min: 0, max: 1, step: 0.01 },
   // Drum Random Trigger
   drumRandomDensity: { min: 0, max: 1, step: 0.01 },
-  leadAttack: { min: 0.001, max: 2, step: 0.001 },
-  leadDecay: { min: 0.01, max: 4, step: 0.01 },
-  leadSustain: { min: 0, max: 1, step: 0.01 },
-  leadHold: { min: 0, max: 4, step: 0.01 },
-  leadRelease: { min: 0.01, max: 8, step: 0.01 },
+  lead1Attack: { min: 0.001, max: 2, step: 0.001 },
+  lead1Decay: { min: 0.01, max: 4, step: 0.01 },
+  lead1Sustain: { min: 0, max: 1, step: 0.01 },
+  lead1Hold: { min: 0, max: 4, step: 0.01 },
+  lead1Release: { min: 0.01, max: 8, step: 0.01 },
   leadDelayTimeMin: { min: 0, max: 1000, step: 10 },
   leadDelayTimeMax: { min: 0, max: 1000, step: 10 },
   leadDelayFeedbackMin: { min: 0, max: 0.8, step: 0.01 },
   leadDelayFeedbackMax: { min: 0, max: 0.8, step: 0.01 },
   leadDelayMixMin: { min: 0, max: 1, step: 0.01 },
   leadDelayMixMax: { min: 0, max: 1, step: 0.01 },
-  leadDensity: { min: 0.1, max: 12, step: 0.1 },
-  leadOctave: { min: -1, max: 2, step: 1 },
-  leadOctaveRange: { min: 1, max: 4, step: 1 },
+  lead1Density: { min: 0.1, max: 12, step: 0.1 },
+  lead1Octave: { min: -1, max: 2, step: 1 },
+  lead1OctaveRange: { min: 1, max: 4, step: 1 },
   leadTimbreMin: { min: 0, max: 1, step: 0.01 },
   leadTimbreMax: { min: 0, max: 1, step: 0.01 },
+  // Lead 1/2 morph
+  lead1MorphMin: { min: 0, max: 1, step: 0.01 },
+  lead1MorphMax: { min: 0, max: 1, step: 0.01 },
+  lead1MorphSpeed: { min: 1, max: 32, step: 1 },
+  lead1Level: { min: 0, max: 1, step: 0.01 },
+  lead2MorphMin: { min: 0, max: 1, step: 0.01 },
+  lead2MorphMax: { min: 0, max: 1, step: 0.01 },
+  lead2MorphSpeed: { min: 1, max: 32, step: 1 },
+  lead2Level: { min: 0, max: 1, step: 0.01 },
   leadVibratoDepthMin: { min: 0, max: 1, step: 0.01 },
   leadVibratoDepthMax: { min: 0, max: 1, step: 0.01 },
   leadVibratoRateMin: { min: 0, max: 1, step: 0.01 },
@@ -1567,6 +1645,29 @@ export function decodeStateFromUrl(search: string): SliderState | null {
           state.grainPitchMode = value as SliderState['grainPitchMode'];
         } else if (key === 'leadEnabled') {
           state.leadEnabled = value === 'true';
+        // Lead 1/2 morph params
+        } else if (key === 'lead1PresetA') {
+          state.lead1PresetA = value;
+        } else if (key === 'lead1PresetB') {
+          state.lead1PresetB = value;
+        } else if (key === 'lead1MorphAuto') {
+          state.lead1MorphAuto = value === 'true';
+        } else if (key === 'lead1MorphMode' && ['linear', 'pingpong', 'random'].includes(value)) {
+          state.lead1MorphMode = value as 'linear' | 'pingpong' | 'random';
+        } else if (key === 'lead1AlgorithmMode' && ['snap', 'presetA'].includes(value)) {
+          state.lead1AlgorithmMode = value as 'snap' | 'presetA';
+        } else if (key === 'lead2Enabled') {
+          state.lead2Enabled = value === 'true';
+        } else if (key === 'lead2PresetC') {
+          state.lead2PresetC = value;
+        } else if (key === 'lead2PresetD') {
+          state.lead2PresetD = value;
+        } else if (key === 'lead2MorphAuto') {
+          state.lead2MorphAuto = value === 'true';
+        } else if (key === 'lead2MorphMode' && ['linear', 'pingpong', 'random'].includes(value)) {
+          state.lead2MorphMode = value as 'linear' | 'pingpong' | 'random';
+        } else if (key === 'lead2AlgorithmMode' && ['snap', 'presetA'].includes(value)) {
+          state.lead2AlgorithmMode = value as 'snap' | 'presetA';
         } else if (key === 'leadEuclideanMasterEnabled') {
           state.leadEuclideanMasterEnabled = value === 'true';
         } else if (key === 'leadEuclid1Enabled') {

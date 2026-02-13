@@ -1,13 +1,10 @@
 {
   "files": [
-    "Bright_Bells.json",
-    "Dark_Textures.json",
-    "Ethereal_Ambient.json",
     "Gamelantest.json",
     "Lasers.json",
-    "StringWaves.json",
+    "Static_frequencies.json",
     "StringWavesR.json",
-    "WaveOut.json",
+    "StringWavesTest.json",
     "ZoneOut1.json"
   ]
 }

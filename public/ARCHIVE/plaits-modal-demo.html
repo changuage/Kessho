@@ -1,0 +1,3870 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sound Engine Comparison - Plaits vs Faust Physical Modeling</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #0f3460 100%);
+      color: #eee;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    
+    h1 {
+      text-align: center;
+      margin-bottom: 8px;
+      color: #00d4aa;
+      text-shadow: 0 0 20px rgba(0, 212, 170, 0.3);
+    }
+    
+    .subtitle {
+      text-align: center;
+      color: #888;
+      margin-bottom: 20px;
+      font-size: 0.9rem;
+    }
+    
+    .badge {
+      display: inline-block;
+      background: #00d4aa;
+      color: #1a1a2e;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 0.7rem;
+      font-weight: bold;
+      margin-left: 5px;
+    }
+    
+    .container { max-width: 1000px; margin: 0 auto; }
+    
+    .section {
+      background: rgba(22, 33, 62, 0.9);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+      border: 1px solid #2a3a5e;
+    }
+    
+    .section h2 {
+      margin-bottom: 15px;
+      color: #00d4aa;
+      font-size: 1rem;
+    }
+    
+    /* Status indicator */
+    .status {
+      padding: 10px 15px;
+      border-radius: 8px;
+      margin-bottom: 15px;
+      font-size: 0.9rem;
+    }
+    
+    .status.loading { background: #3a4a7e; }
+    .status.ready { background: #1a5a3a; }
+    .status.error { background: #5a1a1a; }
+    
+    /* Engine selector */
+    .engines {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+    
+    .engine-btn {
+      padding: 12px 10px;
+      border: 2px solid #3a4a7e;
+      border-radius: 8px;
+      background: transparent;
+      color: #fff;
+      cursor: pointer;
+      font-size: 0.8rem;
+      transition: all 0.2s;
+      text-align: center;
+    }
+    
+    .engine-btn:hover { border-color: #00d4aa; background: rgba(0, 212, 170, 0.1); }
+    .engine-btn.active { border-color: #00d4aa; background: rgba(0, 212, 170, 0.25); }
+    .engine-btn .num { font-size: 0.65rem; color: #888; display: block; }
+    
+    /* Presets */
+    .presets {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 15px;
+    }
+    
+    .preset-btn {
+      padding: 8px 14px;
+      border: none;
+      border-radius: 16px;
+      cursor: pointer;
+      font-size: 0.8rem;
+      transition: all 0.2s;
+      background: #2a3a5e;
+      color: #fff;
+    }
+    
+    .preset-btn:hover { background: #3a4a7e; }
+    .preset-btn.active { background: #00d4aa; color: #1a1a2e; font-weight: 600; }
+    
+    /* Controls */
+    .controls {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 15px;
+    }
+    
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    
+    .control-group label {
+      font-size: 0.8rem;
+      color: #aaa;
+      display: flex;
+      justify-content: space-between;
+    }
+    
+    .control-group input[type="range"] {
+      width: 100%;
+      height: 8px;
+      border-radius: 4px;
+      -webkit-appearance: none;
+      background: #2a3a5e;
+    }
+    
+    .control-group input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #00d4aa;
+      cursor: pointer;
+    }
+    
+    /* Keyboard */
+    .keyboard {
+      display: flex;
+      justify-content: center;
+      gap: 2px;
+      padding: 20px 0;
+      overflow-x: auto;
+    }
+    
+    .key {
+      width: 42px;
+      height: 140px;
+      border-radius: 0 0 6px 6px;
+      cursor: pointer;
+      transition: all 0.08s;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      padding-bottom: 10px;
+      font-size: 0.7rem;
+      color: #666;
+      user-select: none;
+    }
+    
+    .key.white {
+      background: linear-gradient(180deg, #f5f5f5 0%, #d8d8d8 100%);
+      border: 1px solid #bbb;
+    }
+    
+    .key.black {
+      background: linear-gradient(180deg, #444 0%, #222 100%);
+      width: 28px;
+      height: 90px;
+      margin: 0 -14px;
+      z-index: 1;
+      color: #666;
+      border: 1px solid #111;
+    }
+    
+    .key:active, .key.playing {
+      transform: translateY(3px);
+    }
+    
+    .key.white:active, .key.white.playing {
+      background: linear-gradient(180deg, #00d4aa 0%, #00a080 100%);
+    }
+    
+    .key.black:active, .key.black.playing {
+      background: linear-gradient(180deg, #006655 0%, #004433 100%);
+    }
+    
+    /* Comparison section */
+    .comparison {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    
+    @media (max-width: 700px) {
+      .comparison { grid-template-columns: 1fr; }
+    }
+    
+    .comparison-card {
+      background: rgba(0,0,0,0.3);
+      border-radius: 8px;
+      padding: 15px;
+    }
+    
+    .comparison-card h3 {
+      font-size: 0.9rem;
+      margin-bottom: 10px;
+      color: #aaa;
+    }
+    
+    .comparison-card ul {
+      list-style: none;
+      font-size: 0.85rem;
+      line-height: 1.8;
+    }
+    
+    .comparison-card .check { color: #00d4aa; }
+    .comparison-card .cross { color: #ff6b6b; }
+    
+    /* Spectrum */
+    .spectrum {
+      height: 80px;
+      background: #111;
+      border-radius: 8px;
+      margin-top: 15px;
+      overflow: hidden;
+    }
+    
+    .spectrum canvas {
+      width: 100%;
+      height: 100%;
+    }
+    
+    .info {
+      font-size: 0.8rem;
+      color: #888;
+      background: rgba(0,0,0,0.3);
+      padding: 12px;
+      border-radius: 8px;
+      margin-top: 15px;
+      line-height: 1.5;
+    }
+    
+    .info code {
+      background: #2a3a5e;
+      padding: 2px 6px;
+      border-radius: 3px;
+      color: #00d4aa;
+    }
+    
+    /* Engine Toggle */
+    .engine-toggle {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 15px;
+      justify-content: center;
+    }
+    
+    .engine-toggle-btn {
+      padding: 12px 24px;
+      border: 3px solid #3a4a7e;
+      border-radius: 12px;
+      background: rgba(0,0,0,0.3);
+      color: #fff;
+      cursor: pointer;
+      font-size: 1rem;
+      font-weight: 600;
+      transition: all 0.2s;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-width: 160px;
+    }
+    
+    .engine-toggle-btn:hover { border-color: #00d4aa; }
+    .engine-toggle-btn.active.plaits { border-color: #00d4aa; background: rgba(0, 212, 170, 0.2); }
+    .engine-toggle-btn.active.faust { border-color: #ff9f43; background: rgba(255, 159, 67, 0.2); }
+    
+    .engine-toggle-btn .badge-small {
+      font-size: 0.65rem;
+      padding: 2px 6px;
+      border-radius: 8px;
+      margin-top: 4px;
+    }
+    
+    .engine-toggle-btn.plaits .badge-small { background: #00d4aa; color: #1a1a2e; }
+    .engine-toggle-btn.faust .badge-small { background: #ff9f43; color: #1a1a2e; }
+    
+    /* Faust-specific controls */
+    .faust-section { display: none; }
+    .faust-section.visible { display: block; }
+    .plaits-section.hidden { display: none; }
+    
+    .exciter-buttons {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+    
+    .exciter-btn {
+      padding: 8px 14px;
+      border: 2px solid #3a4a7e;
+      border-radius: 6px;
+      background: transparent;
+      color: #fff;
+      cursor: pointer;
+      font-size: 0.85rem;
+      transition: all 0.2s;
+    }
+    
+    .exciter-btn:hover { border-color: #ff9f43; }
+    .exciter-btn.active { border-color: #ff9f43; background: rgba(255, 159, 67, 0.2); }
+    
+    .mode-display {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+      font-size: 0.7rem;
+    }
+    
+    .mode-indicator {
+      padding: 3px 8px;
+      background: rgba(255, 159, 67, 0.15);
+      border: 1px solid rgba(255, 159, 67, 0.3);
+      border-radius: 10px;
+      color: #ff9f43;
+    }
+    
+    .faust-color { color: #ff9f43 !important; }
+    .faust-border { border-color: #ff9f43 !important; }
+    
+    /* Performance HUD */
+    .perf-hud {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      background: rgba(0, 0, 0, 0.85);
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 10px 15px;
+      font-family: 'Menlo', 'Monaco', monospace;
+      font-size: 11px;
+      color: #0f0;
+      z-index: 9999;
+      min-width: 200px;
+      display: none;
+    }
+    .perf-hud.visible { display: block; }
+    .perf-hud h4 { margin: 0 0 8px 0; color: #0ff; font-size: 12px; }
+    .perf-hud .row { display: flex; justify-content: space-between; margin: 3px 0; }
+    .perf-hud .label { color: #888; }
+    .perf-hud .value { color: #0f0; }
+    .perf-hud .value.warn { color: #ff0; }
+    .perf-hud .value.error { color: #f00; }
+    .perf-toggle {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      background: rgba(0, 0, 0, 0.5);
+      border: 1px solid #333;
+      border-radius: 4px;
+      padding: 5px 10px;
+      color: #888;
+      cursor: pointer;
+      font-size: 10px;
+      z-index: 9998;
+    }
+    .perf-toggle:hover { color: #0f0; border-color: #0f0; }
+    .test-toggle {
+      position: fixed;
+      top: 10px;
+      right: 70px;
+      padding: 6px 12px;
+      background: rgba(0,0,0,0.8);
+      border: 1px solid #9b59b6;
+      color: #9b59b6;
+      font-family: monospace;
+      font-size: 12px;
+      cursor: pointer;
+      border-radius: 4px;
+      z-index: 9998;
+    }
+    .test-toggle:hover { color: #be90d4; border-color: #be90d4; }
+    .test-toggle.active { background: #9b59b6; color: #000; }
+  </style>
+</head>
+<body>
+  <!-- Performance HUD -->
+  <button class="perf-toggle" id="perf-toggle">HUD</button>
+  <button class="test-toggle" id="test-toggle">🧪 Test</button>
+  <div class="perf-hud" id="perf-hud">
+    <h4>⚡ Performance</h4>
+    <div class="row"><span class="label">Sample Rate:</span><span class="value" id="hud-sr">--</span></div>
+    <div class="row"><span class="label">Active Voices:</span><span class="value" id="hud-voices">0</span></div>
+    <div class="row"><span class="label">Events/seq:</span><span class="value" id="hud-events">0</span></div>
+    <div class="row"><span class="label">Dropped:</span><span class="value" id="hud-dropped">0</span></div>
+    <div class="row"><span class="label">Peak dB:</span><span class="value" id="hud-peak">-∞</span></div>
+    <div class="row"><span class="label">Engine:</span><span class="value" id="hud-engine">--</span></div>
+  </div>
+  
+  <div class="container">
+    <h1>Sound Engine Comparison</h1>
+    <p class="subtitle">Plaits WASM vs Faust-Style Physical Modeling</p>
+    <p style="text-align: center; margin-bottom: 15px;">
+      <a href="../fm-modal-demo.html" style="color: #f59e0b; text-decoration: none; font-size: 0.9rem; margin-right: 20px;">🎹 4-Op FM →</a>
+      <a href="fm-modal-6op-demo.html" style="color: #e74c3c; text-decoration: none; font-size: 0.9rem;">🎛️ 6-Op FM + Transients →</a>
+    </p>
+    
+    <div class="section">
+      <div class="engine-toggle">
+        <button class="engine-toggle-btn plaits active" id="toggle-plaits" onclick="setActiveEngine('plaits', document.getElementById('param-sync').checked)">
+          Plaits
+          <span class="badge-small">WASM</span>
+        </button>
+        <button class="engine-toggle-btn faust" id="toggle-faust" onclick="setActiveEngine('faust', document.getElementById('param-sync').checked)">
+          Faust Modal
+          <span class="badge-small">Physical</span>
+        </button>
+        <label style="margin-left: 16px; display: inline-flex; align-items: center; gap: 6px; color: #999; font-size: 12px;">
+          <input type="checkbox" id="param-sync" checked style="width: 14px; height: 14px;">
+          Sync params
+        </label>
+      </div>
+      <div id="param-mapping-info" style="margin-top: 8px; padding: 8px 12px; background: rgba(255,255,255,0.03); border-radius: 6px; font-size: 11px; color: #888; display: none;">
+        <strong>Linked parameters:</strong> brightness↔harmonics, color↔material, character↔structure, decay↔decay
+      </div>
+      <div class="status loading" id="status">Loading Plaits WASM module...</div>
+    </div>
+    
+    <div class="section plaits-section" id="plaits-engines-section">
+      <h2>Plaits Synthesis Engine</h2>
+      <div class="engines" id="engines"></div>
+    </div>
+    
+    <div class="section plaits-section" id="plaits-presets-section">
+      <h2>Plaits Presets</h2>
+      <div class="presets" id="presets"></div>
+    </div>
+    
+    <div class="section faust-section" id="faust-presets-section">
+      <h2 class="faust-color">Faust Physical Presets</h2>
+      <div class="presets" id="faust-presets"></div>
+    </div>
+    
+    <div class="section plaits-section" id="plaits-params-section">
+      <h2>Plaits Parameters</h2>
+      <div class="controls">
+        <div class="control-group">
+          <label>Harmonics <span id="harmonics-val">0.50</span></label>
+          <input type="range" id="harmonics" min="0" max="1" step="0.01" value="0.5">
+        </div>
+        <div class="control-group">
+          <label>Timbre <span id="timbre-val">0.50</span></label>
+          <input type="range" id="timbre" min="0" max="1" step="0.01" value="0.5">
+        </div>
+        <div class="control-group">
+          <label>Morph <span id="morph-val">0.50</span></label>
+          <input type="range" id="morph" min="0" max="1" step="0.01" value="0.5">
+        </div>
+        <div class="control-group">
+          <label>Decay <span id="decay-val">0.60</span></label>
+          <input type="range" id="decay" min="0" max="1" step="0.01" value="0.6">
+        </div>
+        <div class="control-group">
+          <label>FM Amount <span id="fm-val">0.00</span></label>
+          <input type="range" id="fm" min="0" max="1" step="0.01" value="0">
+        </div>
+        <div class="control-group">
+          <label>Aux Mix <span id="fade-val">0.00</span></label>
+          <input type="range" id="fade" min="0" max="1" step="0.01" value="0">
+        </div>
+      </div>
+    </div>
+    
+    <div class="section faust-section" id="faust-params-section">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+        <h2 class="faust-color" style="margin: 0;">Faust Physical Parameters</h2>
+        <label style="font-size: 0.8rem; color: #888; display: flex; align-items: center; gap: 6px;">
+          <input type="checkbox" id="worklet-toggle" checked style="width: 16px; height: 16px;">
+          <span>Worklet DSP <span style="color: #0f0; font-size: 0.7rem;">(efficient)</span></span>
+        </label>
+      </div>
+      <div class="controls">
+        <div class="control-group">
+          <label>Brightness <span id="faust-brightness-val">0.65</span></label>
+          <input type="range" id="faust-brightness" min="0" max="1" step="0.01" value="0.65">
+        </div>
+        <div class="control-group">
+          <label>Structure <span id="faust-structure-val">0.20</span></label>
+          <input type="range" id="faust-structure" min="0" max="1" step="0.01" value="0.2">
+        </div>
+        <div class="control-group">
+          <label>Position <span id="faust-position-val">0.25</span></label>
+          <input type="range" id="faust-position" min="0" max="1" step="0.01" value="0.25">
+        </div>
+        <div class="control-group">
+          <label>Modes <span id="faust-modes-val">8</span></label>
+          <input type="range" id="faust-modes" min="2" max="16" step="1" value="8">
+        </div>
+        <div class="control-group">
+          <label>Material <span id="faust-material-val">0.50</span></label>
+          <input type="range" id="faust-material" min="0" max="1" step="0.01" value="0.5">
+        </div>
+        <div class="control-group">
+          <label>Size <span id="faust-size-val">0.50</span></label>
+          <input type="range" id="faust-size" min="0" max="1" step="0.01" value="0.5">
+        </div>
+      </div>
+      
+      <div style="margin-top: 15px;">
+        <label style="font-size: 0.85rem; color: #aaa;">Exciter Type</label>
+        <div class="exciter-buttons" id="exciter-buttons">
+          <button class="exciter-btn active" data-type="impulse">Impulse</button>
+          <button class="exciter-btn" data-type="noise">Noise Burst</button>
+          <button class="exciter-btn" data-type="mallet">Mallet</button>
+          <button class="exciter-btn" data-type="bow">Bow</button>
+          <button class="exciter-btn" data-type="pluck">Pluck</button>
+        </div>
+      </div>
+      
+      <h3 style="color: #ff9f43; margin-top: 20px; font-size: 0.95rem;">Click & Noise Types</h3>
+      <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 15px;">
+        <div>
+          <label style="font-size: 0.8rem; color: #888;">Click Shape</label>
+          <div class="exciter-buttons" id="click-type-buttons" style="margin-top: 5px;">
+            <button class="exciter-btn click-type-btn active" data-type="spike">Spike</button>
+            <button class="exciter-btn click-type-btn" data-type="sine">Sine</button>
+            <button class="exciter-btn click-type-btn" data-type="square">Square</button>
+            <button class="exciter-btn click-type-btn" data-type="filtered">Filtered</button>
+            <button class="exciter-btn click-type-btn" data-type="bipolar">Bipolar</button>
+          </div>
+        </div>
+        <div>
+          <label style="font-size: 0.8rem; color: #888;">Noise Color</label>
+          <div class="exciter-buttons" id="noise-type-buttons" style="margin-top: 5px;">
+            <button class="exciter-btn noise-type-btn active" data-type="white">White</button>
+            <button class="exciter-btn noise-type-btn" data-type="pink">Pink</button>
+            <button class="exciter-btn noise-type-btn" data-type="brown">Brown</button>
+            <button class="exciter-btn noise-type-btn" data-type="crackle">Crackle</button>
+            <button class="exciter-btn noise-type-btn" data-type="samplehold">S&H</button>
+          </div>
+        </div>
+      </div>
+      
+      <!-- EXCITER: Click Envelope -->
+      <div style="background: rgba(255,159,67,0.1); border: 1px solid rgba(255,159,67,0.3); border-radius: 8px; padding: 12px; margin-top: 15px;">
+        <h3 style="color: #ff9f43; margin: 0 0 8px 0; font-size: 0.9rem;">⚡ Click Envelope <span style="font-weight: normal; font-size: 0.75rem; color: #888;">(instant ~5ms transient)</span></h3>
+        <div class="controls">
+          <div class="control-group">
+            <label>Click Amount <span id="faust-click-val">0.00</span></label>
+            <input type="range" id="faust-click" min="0" max="1" step="0.01" value="0">
+          </div>
+        </div>
+      </div>
+      
+      <!-- EXCITER: Noise Envelope -->
+      <div style="background: rgba(0,212,170,0.1); border: 1px solid rgba(0,212,170,0.3); border-radius: 8px; padding: 12px; margin-top: 10px;">
+        <h3 style="color: #00d4aa; margin: 0 0 8px 0; font-size: 0.9rem;">🌊 Noise/Friction Envelope <span style="font-weight: normal; font-size: 0.75rem; color: #888;">(Attack → Duration → Decay)</span></h3>
+        <div class="controls">
+          <div class="control-group">
+            <label>Attack <span id="faust-attack-val">0.001s</span></label>
+            <input type="range" id="faust-attack" min="0.0005" max="3" step="0.01" value="0.001">
+          </div>
+          <div class="control-group">
+            <label>Amount <span style="font-size: 0.7rem; color: #888;">(bow friction)</span> <span id="faust-noise-amt-val">0.10</span></label>
+            <input type="range" id="faust-noise-amt" min="0" max="1" step="0.01" value="0.1">
+          </div>
+          <div class="control-group">
+            <label>Duration <span style="font-size: 0.7rem; color: #888;">(friction time)</span> <span id="faust-noise-dur-val">40ms</span></label>
+            <input type="range" id="faust-noise-dur" min="5" max="15000" step="10" value="40">
+          </div>
+          <div class="control-group">
+            <label>Decay Rate <span id="faust-noise-decay-val">50</span></label>
+            <input type="range" id="faust-noise-decay" min="0.1" max="300" step="0.1" value="50">
+          </div>
+          <div class="control-group">
+            <label>Filter Freq <span id="faust-filter-freq-val">1.0×</span></label>
+            <input type="range" id="faust-filter-freq" min="0.1" max="4" step="0.1" value="1">
+          </div>
+          <div class="control-group">
+            <label>Filter Q <span id="faust-filter-q-val">1.0</span></label>
+            <input type="range" id="faust-filter-q" min="0.1" max="10" step="0.1" value="1">
+          </div>
+        </div>
+      </div>
+      
+      <!-- RESONATOR: Modal Envelope -->
+      <div style="background: rgba(231,76,60,0.1); border: 1px solid rgba(231,76,60,0.3); border-radius: 8px; padding: 12px; margin-top: 10px;">
+        <h3 style="color: #e74c3c; margin: 0 0 8px 0; font-size: 0.9rem;">🔔 Resonator Envelope <span style="font-weight: normal; font-size: 0.75rem; color: #888;">(Bow Hold → Resonator Decay)</span></h3>
+        <div class="controls">
+          <div class="control-group">
+            <label>Bow Hold <span style="font-size: 0.7rem; color: #888;">(sustain)</span> <span id="faust-sustain-val">0.0s</span></label>
+            <input type="range" id="faust-sustain" min="0" max="20" step="0.1" value="0">
+          </div>
+          <div class="control-group">
+            <label>Decay <span id="faust-decay-val">2.5s</span></label>
+            <input type="range" id="faust-decay" min="0.2" max="20" step="0.1" value="2.5">
+          </div>
+          <div class="control-group">
+            <label>Damping <span id="faust-damping-val">0.30</span></label>
+            <input type="range" id="faust-damping" min="0" max="1" step="0.01" value="0.3">
+          </div>
+        </div>
+      </div>
+      
+      <!-- RESONATOR: Tuning -->
+      <div style="background: rgba(155,89,182,0.1); border: 1px solid rgba(155,89,182,0.3); border-radius: 8px; padding: 12px; margin-top: 10px;">
+        <h3 style="color: #9b59b6; margin: 0 0 8px 0; font-size: 0.9rem;">🎵 Resonator Tuning <span style="font-weight: normal; font-size: 0.75rem; color: #888;">(pitch spread, harmonicity)</span></h3>
+        <div class="controls">
+          <div class="control-group">
+            <label>Mode Detuning <span id="faust-detune-val">3¢</span></label>
+            <input type="range" id="faust-detune" min="0" max="50" step="1" value="3">
+          </div>
+          <div class="control-group">
+            <label>Mode Rolloff <span id="faust-rolloff-val">0.82</span></label>
+            <input type="range" id="faust-rolloff" min="0.5" max="0.99" step="0.01" value="0.82">
+          </div>
+          <div class="control-group">
+            <label>Inharmonicity <span id="faust-inharm-val">0.00</span></label>
+            <input type="range" id="faust-inharm" min="0" max="1" step="0.01" value="0">
+          </div>
+        </div>
+      </div>
+      
+      <!-- MODE RATIOS (advanced) -->
+      <div style="background: rgba(52,73,94,0.3); border: 1px solid rgba(52,73,94,0.5); border-radius: 8px; padding: 12px; margin-top: 10px;">
+        <h3 style="color: #95a5a6; margin: 0 0 8px 0; font-size: 0.9rem;">🎼 Mode Ratios <span style="font-weight: normal; font-size: 0.75rem; color: #666;">(from preset - read only)</span></h3>
+        <div class="mode-display" id="mode-display"></div>
+      </div>
+      
+      <!-- EFFECTS (worklet only) -->
+      <div style="background: rgba(46,204,113,0.1); border: 1px solid rgba(46,204,113,0.3); border-radius: 8px; padding: 12px; margin-top: 10px;">
+        <h3 style="color: #2ecc71; margin: 0 0 8px 0; font-size: 0.9rem;">✨ Effects <span style="font-weight: normal; font-size: 0.75rem; color: #888;">(Worklet DSP only)</span></h3>
+        <div style="display: flex; gap: 30px; flex-wrap: wrap;">
+          <!-- Reverb -->
+          <div style="flex: 1; min-width: 180px;">
+            <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 0.85rem; color: #ccc;">
+              <input type="checkbox" id="reverb-enabled" checked style="width: 16px; height: 16px;">
+              <span>Reverb</span>
+            </label>
+            <div class="controls" style="display: grid; gap: 8px;">
+              <div class="control-group">
+                <label>Mix <span id="reverb-mix-val">25%</span></label>
+                <input type="range" id="reverb-mix" min="0" max="1" step="0.01" value="0.25">
+              </div>
+              <div class="control-group">
+                <label>Decay <span id="reverb-decay-val">0.85</span></label>
+                <input type="range" id="reverb-decay" min="0.3" max="0.99" step="0.01" value="0.85">
+              </div>
+              <div class="control-group">
+                <label>Damping <span id="reverb-damping-val">0.50</span></label>
+                <input type="range" id="reverb-damping" min="0" max="0.95" step="0.01" value="0.5">
+              </div>
+            </div>
+          </div>
+          <!-- Saturation -->
+          <div style="flex: 1; min-width: 180px;">
+            <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 0.85rem; color: #ccc;">
+              <input type="checkbox" id="saturation-enabled" checked style="width: 16px; height: 16px;">
+              <span>Saturation</span>
+            </label>
+            <div class="controls" style="display: grid; gap: 8px;">
+              <div class="control-group">
+                <label>Drive <span id="saturation-drive-val">0.30</span></label>
+                <input type="range" id="saturation-drive" min="0" max="1" step="0.01" value="0.3">
+              </div>
+            </div>
+          </div>
+          <!-- Output Gain -->
+          <div style="flex: 1; min-width: 180px;">
+            <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 0.85rem; color: #ccc;">
+              <span>🔊 Output Gain</span>
+            </label>
+            <div class="controls" style="display: grid; gap: 8px;">
+              <div class="control-group">
+                <label>Level <span id="faust-gain-val">1.50</span></label>
+                <input type="range" id="faust-gain" min="0.1" max="4" step="0.05" value="1.5">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h2>Keyboard (A-L keys or click)</h2>
+      <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+        <button id="octave-down" style="padding: 8px 16px; background: #333; color: #fff; border: 1px solid #555; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: bold;">−</button>
+        <span style="font-family: monospace; font-size: 14px; color: #ccc;">Octave: <span id="octave-display">4</span></span>
+        <button id="octave-up" style="padding: 8px 16px; background: #333; color: #fff; border: 1px solid #555; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: bold;">+</button>
+        <span style="font-size: 11px; color: #666; margin-left: 8px;">Z/X keys or click</span>
+      </div>
+      <div class="keyboard" id="keyboard"></div>
+      <div class="spectrum">
+        <canvas id="spectrum-canvas"></canvas>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h2>Engine Comparison</h2>
+      <div class="comparison">
+        <div class="comparison-card">
+          <h3 style="color: #00d4aa;">Plaits WASM</h3>
+          <ul>
+            <li><span class="check">✓</span> 16 synthesis engines</li>
+            <li><span class="check">✓</span> LPG (Low-Pass Gate) response</li>
+            <li><span class="check">✓</span> Coupled resonator modes</li>
+            <li><span class="check">✓</span> Internal FM between partials</li>
+            <li><span class="check">✓</span> Optimized WASM performance</li>
+            <li><span class="check">✓</span> Nonlinear amplitude-dependent decay</li>
+          </ul>
+        </div>
+        <div class="comparison-card">
+          <h3 style="color: #ff9f43;">Faust Physical Modeling</h3>
+          <ul>
+            <li><span class="check">✓</span> Multiple exciter types (mallet/bow/pluck)</li>
+            <li><span class="check">✓</span> Material-based parameters</li>
+            <li><span class="check">✓</span> Configurable modal mode count</li>
+            <li><span class="check">✓</span> Position-dependent strike timbre</li>
+            <li><span class="check">✓</span> Pure WebAudio implementation</li>
+            <li><span class="check">✓</span> Organic resonator decay curves</li>
+          </ul>
+        </div>
+      </div>
+      
+      <div class="info">
+        <strong>Plaits:</strong> Uses 24 modal resonators with sympathetic string coupling. The LPG models a vactrol's nonlinear response.<br><br>
+        <strong>Faust:</strong> Implements exciter → resonator → space architecture. The <code>material</code> parameter controls roughness/loss, <code>structure</code> controls harmonic vs inharmonic mode spacing, and <code>position</code> affects which modes are emphasized (like striking at different points).
+      </div>
+    </div>
+    
+    <!-- Testing & Profiling Panel (Phase 5) -->
+    <div class="section" id="test-panel-section" style="display: none;">
+      <h2>🧪 Testing & Profiling</h2>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+        <div class="card" style="background: rgba(0,0,0,0.2); padding: 16px; border-radius: 8px;">
+          <h4 style="margin: 0 0 12px 0; color: #00d4aa;">Stress Test</h4>
+          <div class="controls" style="display: grid; gap: 8px;">
+            <div class="control-group">
+              <label>Notes <span id="stress-notes-val">50</span></label>
+              <input type="range" id="stress-notes" min="10" max="200" step="10" value="50">
+            </div>
+            <div class="control-group">
+              <label>Delay <span id="stress-delay-val">50ms</span></label>
+              <input type="range" id="stress-delay" min="0" max="200" step="10" value="50">
+            </div>
+            <div style="display: flex; gap: 8px; margin-top: 8px;">
+              <button id="run-stress-test" style="flex: 1; padding: 8px; background: #00d4aa; color: #000; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
+                ▶ Run Test
+              </button>
+              <button id="stop-stress-test" style="flex: 1; padding: 8px; background: #ff4444; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
+                ■ Stop
+              </button>
+            </div>
+          </div>
+        </div>
+        
+        <div class="card" style="background: rgba(0,0,0,0.2); padding: 16px; border-radius: 8px;">
+          <h4 style="margin: 0 0 12px 0; color: #ff9f43;">Latency Stats</h4>
+          <div id="latency-display" style="font-family: monospace; font-size: 12px; line-height: 1.8;">
+            <div>Avg: <span id="lat-avg">--</span></div>
+            <div>P95: <span id="lat-p95">--</span></div>
+            <div>Max: <span id="lat-max">--</span></div>
+            <div>Samples: <span id="lat-samples">--</span></div>
+          </div>
+          <button id="generate-report" style="margin-top: 12px; width: 100%; padding: 8px; background: #333; color: #fff; border: 1px solid #555; border-radius: 4px; cursor: pointer;">
+            📊 Generate Report
+          </button>
+        </div>
+      </div>
+      
+      <div class="card" style="background: rgba(0,0,0,0.2); padding: 16px; border-radius: 8px; margin-top: 16px;">
+        <h4 style="margin: 0 0 12px 0; color: #9b59b6;">Preset Comparison</h4>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <button class="preset-compare-btn" data-presets="gold_tongue_drum,gold_kalimba,gold_handpan" style="padding: 6px 12px; background: #333; color: #fff; border: 1px solid #555; border-radius: 4px; cursor: pointer;">
+            Compare Gold Tonal
+          </button>
+          <button class="preset-compare-btn" data-presets="gold_raindrops,gold_stream_bed,gold_forest_insects" style="padding: 6px 12px; background: #333; color: #fff; border: 1px solid #555; border-radius: 4px; cursor: pointer;">
+            Compare Nature FX
+          </button>
+          <button class="preset-compare-btn" data-presets="kalimba,vibraphone,gamelan" style="padding: 6px 12px; background: #333; color: #fff; border: 1px solid #555; border-radius: 4px; cursor: pointer;">
+            Compare Classics
+          </button>
+        </div>
+        <div id="comparison-results" style="margin-top: 12px; font-family: monospace; font-size: 11px; max-height: 120px; overflow-y: auto; background: rgba(0,0,0,0.3); padding: 8px; border-radius: 4px; display: none;">
+        </div>
+      </div>
+      
+      <div style="margin-top: 12px; font-size: 11px; color: #666;">
+        💡 Tip: Open DevTools console for detailed profiling output. Access <code>window.Profiler</code> for programmatic testing.
+      </div>
+    </div>
+  </div>
+
+  <script src="woscillators.js"></script>
+  <script>
+    // ===== PLAITS ENGINES =====
+    const ENGINES = [
+      { id: 0, name: 'Virtual Analog', category: 'Classic' },
+      { id: 1, name: 'Waveshaping', category: 'Classic' },
+      { id: 2, name: 'FM', category: 'Classic' },
+      { id: 3, name: 'Grain', category: 'Complex' },
+      { id: 4, name: 'Additive', category: 'Complex' },
+      { id: 5, name: 'Wavetable', category: 'Complex' },
+      { id: 6, name: 'Chord', category: 'Complex' },
+      { id: 7, name: 'Speech', category: 'Complex' },
+      { id: 8, name: 'Swarm', category: 'Noise/Perc' },
+      { id: 9, name: 'Noise', category: 'Noise/Perc' },
+      { id: 10, name: 'Particle', category: 'Noise/Perc' },
+      { id: 11, name: 'String', category: 'Physical' },
+      { id: 12, name: 'Modal', category: 'Physical' },
+      { id: 13, name: 'Bass Drum', category: 'Drums' },
+      { id: 14, name: 'Snare', category: 'Drums' },
+      { id: 15, name: 'Hi-Hat', category: 'Drums' },
+    ];
+
+    // ===== PARAMETER SCHEMA =====
+    // Centralized parameter definitions for consistent handling
+    const PARAM_SCHEMA = {
+      // Core modal params
+      brightness: { min: 0, max: 1, default: 0.5, units: '', curve: 'linear', engine: ['faust'] },
+      damping: { min: 0, max: 1, default: 0.3, units: '', curve: 'linear', engine: ['faust'] },
+      structure: { min: 0, max: 1, default: 0.2, units: '', curve: 'linear', engine: ['faust'] },
+      position: { min: 0, max: 1, default: 0.3, units: '', curve: 'linear', engine: ['faust'] },
+      decay: { min: 0.1, max: 20, default: 3.0, units: 's', curve: 'log', engine: ['faust'] },
+      numModes: { min: 2, max: 16, default: 6, units: '', curve: 'linear', engine: ['faust'] },
+      material: { min: 0, max: 1, default: 0.4, units: '', curve: 'linear', engine: ['faust'] },
+      size: { min: 0.1, max: 2, default: 0.5, units: '', curve: 'linear', engine: ['faust'] },
+      // Exciter params
+      attack: { min: 0.0005, max: 3, default: 0.001, units: 's', curve: 'log', engine: ['faust'] },
+      noiseAmount: { min: 0, max: 1, default: 0.1, units: '', curve: 'linear', engine: ['faust'] },
+      noiseDuration: { min: 5, max: 15000, default: 40, units: 'ms', curve: 'log', engine: ['faust'] },
+      noiseDecay: { min: 0.1, max: 300, default: 50, units: '', curve: 'log', engine: ['faust'] },
+      clickAmount: { min: 0, max: 1, default: 0, units: '', curve: 'linear', engine: ['faust'] },
+      sustain: { min: 0, max: 20, default: 0, units: 's', curve: 'linear', engine: ['faust'] },
+      filterFreq: { min: 0.1, max: 4, default: 1.0, units: '×', curve: 'linear', engine: ['faust'] },
+      filterQ: { min: 0.1, max: 10, default: 1.0, units: '', curve: 'log', engine: ['faust'] },
+      // Resonator tuning
+      detune: { min: 0, max: 50, default: 3, units: '¢', curve: 'linear', engine: ['faust'] },
+      rolloff: { min: 0.5, max: 0.99, default: 0.85, units: '', curve: 'linear', engine: ['faust'] },
+      inharmonicity: { min: 0, max: 1, default: 0, units: '', curve: 'linear', engine: ['faust'] },
+      // Plaits params
+      harmonics: { min: 0, max: 1, default: 0.5, units: '', curve: 'linear', engine: ['plaits'] },
+      timbre: { min: 0, max: 1, default: 0.5, units: '', curve: 'linear', engine: ['plaits'] },
+      morph: { min: 0, max: 1, default: 0.5, units: '', curve: 'linear', engine: ['plaits'] },
+      plaitsDecay: { min: 0, max: 1, default: 0.5, units: '', curve: 'linear', engine: ['plaits'] },
+      fm: { min: 0, max: 1, default: 0, units: '', curve: 'linear', engine: ['plaits'] },
+      fade: { min: 0, max: 1, default: 0, units: '', curve: 'linear', engine: ['plaits'] }
+    };
+
+    // Clamp value to schema range
+    function clampParam(name, value) {
+      const schema = PARAM_SCHEMA[name];
+      if (!schema) return value;
+      const clamped = Math.max(schema.min, Math.min(schema.max, value));
+      if (clamped !== value) {
+        console.warn(`[ParamSchema] ${name} clamped: ${value} → ${clamped} (range: ${schema.min}-${schema.max})`);
+      }
+      return clamped;
+    }
+
+    // Get default value from schema
+    function getParamDefault(name) {
+      const schema = PARAM_SCHEMA[name];
+      return schema ? schema.default : 0;
+    }
+
+    // ===== INSTRUMENT PRESETS =====
+    // Tuned to match Faust organic sound: higher decay, better morph for inharmonicity
+    const PRESETS = {
+      kalimba: {
+        name: 'Kalimba',
+        engine: 12, // Modal
+        harmonics: 0.42,  // Slightly dark fundamental
+        timbre: 0.58,     // Bright attack texture
+        morph: 0.18,      // Low inharmonicity (tine-like)
+        decay: 0.78,      // Longer sustain for organic ring
+        fm: 0,
+        fade: 0.05
+      },
+      mbira: {
+        name: 'Mbira',
+        engine: 12,
+        harmonics: 0.38,  // Darker, buzzy character
+        timbre: 0.48,
+        morph: 0.28,      // More buzz/inharmonicity
+        decay: 0.82,
+        fm: 0.03,         // Slight FM for metallic buzz
+        fade: 0.18
+      },
+      handpan: {
+        name: 'Handpan',
+        engine: 12,
+        harmonics: 0.52,  // Rich harmonic content
+        timbre: 0.38,     // Softer attack (mallet-like)
+        morph: 0.08,      // Very harmonic (tuned membrane)
+        decay: 0.88,      // Long sustain
+        fm: 0,
+        fade: 0.12
+      },
+      hand_drum: {
+        name: 'Hand Drum',
+        engine: 12,
+        harmonics: 0.48,
+        timbre: 0.42,     // Soft hand strike
+        morph: 0.35,      // Membrane inharmonicity
+        decay: 0.72,
+        fm: 0,
+        fade: 0.15
+      },
+      tongue_drum: {
+        name: 'Tongue Drum',
+        engine: 12,
+        harmonics: 0.45,
+        timbre: 0.40,
+        morph: 0.05,      // Very harmonic (tuned steel)
+        decay: 0.90,
+        fm: 0,
+        fade: 0.10
+      },
+      vibraphone: {
+        name: 'Vibraphone',
+        engine: 12,
+        harmonics: 0.62,  // Bright metal bars
+        timbre: 0.52,
+        morph: 0.45,      // Bar inharmonicity (f, 4f, 10f pattern)
+        decay: 0.92,      // Very long sustain
+        fm: 0,
+        fade: 0.08
+      },
+      marimba: {
+        name: 'Marimba',
+        engine: 12,
+        harmonics: 0.32,  // Warm wood character
+        timbre: 0.55,
+        morph: 0.22,      // Wood bar modes
+        decay: 0.65,      // Medium sustain (dampened wood)
+        fm: 0,
+        fade: 0.04
+      },
+      glockenspiel: {
+        name: 'Glockenspiel',
+        engine: 12,
+        harmonics: 0.85,  // Very bright metal
+        timbre: 0.68,
+        morph: 0.55,      // Bar inharmonicity
+        decay: 0.88,
+        fm: 0,
+        fade: 0.15
+      },
+      bells: {
+        name: 'Bells',
+        engine: 12,
+        harmonics: 0.75,  // Bright bell metal
+        timbre: 0.72,
+        morph: 0.68,      // Very inharmonic (bell partials)
+        decay: 0.98,      // Maximum sustain
+        fm: 0.08,
+        fade: 0.22
+      },
+      gamelan: {
+        name: 'Gamelan',
+        engine: 12,
+        harmonics: 0.58,
+        timbre: 0.52,
+        morph: 0.72,      // Beating paired modes
+        decay: 0.95,      // Very long ring
+        fm: 0.06,
+        fade: 0.28
+      },
+      singing_bowl: {
+        name: 'Singing Bowl',
+        engine: 12,
+        harmonics: 0.48,
+        timbre: 0.32,     // Soft mallet/bow attack
+        morph: 0.55,      // Inharmonic bowl modes
+        decay: 0.99,      // Extremely long sustain
+        fm: 0.02,
+        fade: 0.35
+      },
+      rhodes: {
+        name: 'Rhodes',
+        engine: 2, // FM engine for tine + tone bar
+        harmonics: 0.42,
+        timbre: 0.38,
+        morph: 0.22,
+        decay: 0.72,
+        fm: 0.12,         // Essential for Rhodes bark
+        fade: 0.02
+      },
+      electric_piano: {
+        name: 'Electric Piano',
+        engine: 2, // FM
+        harmonics: 0.48,
+        timbre: 0.42,
+        morph: 0.18,
+        decay: 0.75,
+        fm: 0.08,
+        fade: 0.05
+      },
+      string_pluck: {
+        name: 'String Pluck',
+        engine: 11, // String model
+        harmonics: 0.48,
+        timbre: 0.42,     // Soft pluck
+        morph: 0.25,
+        decay: 0.75,
+        fm: 0,
+        fade: 0.02
+      },
+      string_bow: {
+        name: 'Bowed String',
+        engine: 11,
+        harmonics: 0.52,
+        timbre: 0.65,     // Bow friction texture
+        morph: 0.75,      // Sustained bow mode
+        decay: 0.45,
+        fm: 0.04,
+        fade: 0.12
+      },
+      bass_drum: {
+        name: 'Bass Drum',
+        engine: 13,
+        harmonics: 0.5,
+        timbre: 0.5,
+        morph: 0.4,
+        decay: 0.6,
+        fm: 0,
+        fade: 0
+      },
+      snare: {
+        name: 'Snare',
+        engine: 14,
+        harmonics: 0.5,
+        timbre: 0.5,
+        morph: 0.5,
+        decay: 0.5,
+        fm: 0,
+        fade: 0.3
+      }
+    };
+
+    // ===== FAUST PHYSICAL MODELING PRESETS =====
+    // More distinct presets with physically-accurate mode ratios
+    const FAUST_PRESETS = {
+      // Organic tuned percussion - bar with tine buzz
+      kalimba: {
+        name: 'Kalimba',
+        modes: [1, 2.92, 5.4, 8.93, 13.34],  // Bar modes (n^2 approx)
+        brightness: 0.78,
+        damping: 0.28,
+        structure: 0.12,
+        position: 0.18,
+        decay: 2.2,
+        numModes: 5,
+        material: 0.55,  // Metallic tine
+        size: 0.38,
+        exciter: 'pluck',
+        attack: 0.001,
+        noiseAmount: 0.35,  // Thumb scrape
+        noiseDuration: 0.025,
+        clickAmount: 0.45,  // Pluck attack
+        clickType: 'filtered',
+        rolloff: 0.82,
+        detune: 6,
+        filterFreq: 2.8
+      },
+      
+      // Circular membrane - Bessel function zeros
+      hand_drum: {
+        name: 'Hand Drum',
+        modes: [1, 1.59, 2.14, 2.30, 2.65, 2.92, 3.16, 3.50],  // Bessel J0 zeros
+        brightness: 0.38,
+        damping: 0.55,
+        structure: 0.45,
+        position: 0.55,  // Off-center strike
+        decay: 0.9,
+        numModes: 8,
+        material: 0.72,  // Skin/membrane
+        size: 0.85,
+        exciter: 'mallet',
+        attack: 0.008,
+        noiseAmount: 0.5,  // Slap noise
+        noiseDuration: 0.04,
+        noiseType: 'brown',  // Low rumble
+        clickAmount: 0.6,
+        clickType: 'sine',  // Thump
+        rolloff: 0.72,
+        detune: 12,
+        filterFreq: 0.6  // Dark
+      },
+      
+      // Electric piano - tine + tonebar FM interaction
+      rhodes: {
+        name: 'Rhodes',
+        modes: [1, 2, 3, 4.02, 5.01, 6.03, 7.02],  // Near-harmonic with slight stretch
+        brightness: 0.52,
+        damping: 0.48,
+        structure: 0.08,
+        position: 0.42,
+        decay: 4.2,
+        numModes: 7,
+        material: 0.28,
+        size: 0.48,
+        exciter: 'mallet',
+        attack: 0.003,
+        noiseAmount: 0.08,
+        noiseDuration: 0.015,
+        clickAmount: 0.7,  // Hammer bark
+        clickType: 'bipolar',
+        rolloff: 0.94,
+        detune: 1.5,
+        filterFreq: 1.4
+      },
+      
+      // Zimbabwean mbira - buzzy lamellaphone
+      mbira: {
+        name: 'Mbira',
+        modes: [1, 2.94, 5.38, 8.76, 13.1, 18.4],  // Bar modes
+        brightness: 0.68,
+        damping: 0.22,
+        structure: 0.25,
+        position: 0.12,  // Near base
+        decay: 3.5,
+        numModes: 6,
+        material: 0.62,
+        size: 0.32,
+        exciter: 'pluck',
+        attack: 0.0008,
+        noiseAmount: 0.55,  // Bottle buzz
+        noiseDuration: 0.3,  // Long buzz
+        noiseDecay: 8,  // Slow decay = sustained buzz
+        noiseType: 'crackle',  // Buzzy rattle
+        clickAmount: 0.5,
+        clickType: 'spike',
+        rolloff: 0.78,
+        detune: 15,  // Beating partials
+        filterFreq: 2.2,
+        inharmonicity: 0.08
+      },
+      
+      // UFO drum - paired beating modes
+      handpan: {
+        name: 'Handpan',
+        modes: [1, 1.015, 2, 2.02, 3, 3.025, 4.03, 5.02],  // Paired modes for beats
+        brightness: 0.48,
+        damping: 0.12,
+        structure: 0.72,  // Very inharmonic
+        position: 0.32,
+        decay: 5.5,
+        numModes: 8,
+        material: 0.22,
+        size: 0.78,
+        exciter: 'mallet',
+        attack: 0.015,
+        noiseAmount: 0.12,
+        noiseDuration: 0.03,
+        clickAmount: 0.25,
+        clickType: 'sine',
+        rolloff: 0.92,
+        detune: 2,
+        filterFreq: 0.85
+      },
+      
+      // Steel tongue drum - very pure, mellow
+      tongue_drum: {
+        name: 'Tongue Drum',
+        modes: [1, 2.0, 3.0, 4.0, 5.0, 6.0],  // Perfect harmonics
+        brightness: 0.32,
+        damping: 0.08,
+        structure: 0.0,  // Pure harmonic
+        position: 0.25,
+        decay: 6.0,
+        numModes: 6,
+        material: 0.15,  // Smooth metal
+        size: 0.72,
+        exciter: 'mallet',
+        attack: 0.025,  // Soft mallet
+        noiseAmount: 0.05,
+        noiseDuration: 0.02,
+        clickAmount: 0.1,
+        rolloff: 0.96,  // Very little rolloff
+        detune: 0.5,
+        filterFreq: 0.7
+      },
+      
+      // Tibetan bowl - extremely long, shimmery
+      singing_bowl: {
+        name: 'Singing Bowl',
+        modes: [1, 2.71, 5.15, 8.43, 12.56, 17.6],  // Bowl modes
+        brightness: 0.38,
+        damping: 0.03,  // Almost no damping
+        structure: 0.68,
+        position: 0.38,
+        decay: 18.0,  // Very long
+        numModes: 6,
+        material: 0.12,
+        size: 0.62,
+        exciter: 'bow',
+        attack: 0.8,  // Slow bow onset
+        noiseAmount: 0.65,  // Bow friction
+        noiseDuration: 5.0,  // Sustained friction
+        noiseDecay: 0.2,
+        noiseType: 'pink',
+        sustain: 4.0,
+        clickAmount: 0.0,
+        rolloff: 0.97,
+        detune: 0.8,
+        filterFreq: 0.9,
+        filterQ: 2.5
+      },
+      
+      // Javanese gamelan - beating paired gongs
+      gamelan: {
+        name: 'Gamelan',
+        modes: [1, 1.025, 2.5, 2.55, 5.0, 5.1, 7.5, 7.6],  // Closely-paired for ombak
+        brightness: 0.72,
+        damping: 0.06,
+        structure: 0.82,  // Very inharmonic
+        position: 0.28,
+        decay: 12.0,
+        numModes: 8,
+        material: 0.18,
+        size: 0.58,
+        exciter: 'mallet',
+        attack: 0.006,
+        noiseAmount: 0.08,
+        noiseDuration: 0.02,
+        clickAmount: 0.55,
+        clickType: 'filtered',
+        rolloff: 0.88,
+        detune: 25,  // Strong beating
+        filterFreq: 1.6
+      },
+      
+      // Orchestra bells - bright, glassy, fast attack
+      glockenspiel: {
+        name: 'Glockenspiel',
+        modes: [1, 2.76, 5.4, 8.93, 13.3],  // Bar modes (n^2)
+        brightness: 0.95,  // Very bright
+        damping: 0.25,
+        structure: 0.62,
+        position: 0.12,
+        decay: 3.5,
+        numModes: 5,
+        material: 0.08,  // Glass-like
+        size: 0.22,
+        exciter: 'impulse',
+        attack: 0.0003,  // Extremely fast
+        noiseAmount: 0.02,
+        noiseDuration: 0.008,
+        clickAmount: 0.85,  // Sharp attack
+        clickType: 'spike',
+        rolloff: 0.75,  // More overtone rolloff
+        detune: 1,
+        filterFreq: 3.8  // Bright filter
+      },
+      
+      // Jazz vibraphone - warm, motor tremolo character
+      vibraphone: {
+        name: 'Vibraphone',
+        modes: [1, 4, 10, 20],  // Wide spacing (bar with tube resonators)
+        brightness: 0.58,
+        damping: 0.18,
+        structure: 0.75,
+        position: 0.22,
+        decay: 7.0,
+        numModes: 4,
+        material: 0.2,
+        size: 0.52,
+        exciter: 'mallet',
+        attack: 0.01,
+        noiseAmount: 0.06,
+        noiseDuration: 0.025,
+        clickAmount: 0.35,
+        clickType: 'sine',
+        rolloff: 0.94,
+        detune: 3,
+        filterFreq: 1.1
+      },
+      
+      // Orchestral marimba - woody, dark
+      marimba: {
+        name: 'Marimba',
+        modes: [1, 4, 10, 20],  // Bar modes with resonator
+        brightness: 0.35,  // Dark
+        damping: 0.42,
+        structure: 0.7,
+        position: 0.3,
+        decay: 1.8,
+        numModes: 4,
+        material: 0.78,  // Woody
+        size: 0.68,
+        exciter: 'mallet',
+        attack: 0.012,
+        noiseAmount: 0.25,  // Mallet thud
+        noiseDuration: 0.035,
+        noiseType: 'brown',
+        clickAmount: 0.4,
+        clickType: 'sine',
+        rolloff: 0.82,
+        detune: 2,
+        filterFreq: 0.65  // Low pass
+      },
+      
+      // Wurlitzer-style - more reedy
+      electric_piano: {
+        name: 'Electric Piano',
+        modes: [1, 2.01, 3.02, 4.05, 5.03, 6.08, 7.15],  // Slightly stretched
+        brightness: 0.62,
+        damping: 0.52,
+        structure: 0.05,
+        position: 0.38,
+        decay: 2.8,
+        numModes: 7,
+        material: 0.45,
+        size: 0.45,
+        exciter: 'mallet',
+        attack: 0.002,
+        noiseAmount: 0.1,
+        noiseDuration: 0.012,
+        clickAmount: 0.58,
+        clickType: 'filtered',
+        rolloff: 0.9,
+        detune: 3,
+        filterFreq: 1.3
+      },
+      
+      // Church bells - highly inharmonic
+      bells: {
+        name: 'Bells',
+        modes: [1, 1.18, 1.56, 2.0, 2.09, 2.56, 2.79, 3.25, 4.03],  // Real bell partials
+        brightness: 0.7,
+        damping: 0.05,
+        structure: 0.92,  // Very inharmonic
+        position: 0.18,
+        decay: 14.0,
+        numModes: 9,
+        material: 0.1,
+        size: 0.55,
+        exciter: 'impulse',
+        attack: 0.001,
+        noiseAmount: 0.04,
+        noiseDuration: 0.015,
+        clickAmount: 0.75,
+        clickType: 'spike',
+        rolloff: 0.92,
+        detune: 4,
+        filterFreq: 1.8
+      },
+      
+      // Wood block - dry, clacky
+      wooden_block: {
+        name: 'Wooden Block',
+        modes: [1, 2.57, 4.65, 7.18, 10.2],  // Free bar modes
+        brightness: 0.65,
+        damping: 0.72,  // Very damped
+        structure: 0.55,
+        position: 0.4,
+        decay: 0.35,  // Very short
+        numModes: 5,
+        material: 0.88,  // Very woody
+        size: 0.35,
+        exciter: 'impulse',
+        attack: 0.0005,
+        noiseAmount: 0.45,  // Wood impact
+        noiseDuration: 0.018,
+        noiseType: 'brown',
+        clickAmount: 0.8,
+        clickType: 'sine',
+        rolloff: 0.7,
+        detune: 8,
+        filterFreq: 1.4
+      },
+      
+      // Wine glass - ethereal, pure harmonics
+      bowed_glass: {
+        name: 'Bowed Glass',
+        modes: [1, 2.0, 3.0, 4.0, 5.0, 6.0],  // Nearly pure harmonics
+        brightness: 0.88,
+        damping: 0.02,  // Almost no damping
+        structure: 0.15,
+        position: 0.42,
+        decay: 16.0,
+        numModes: 6,
+        material: 0.02,  // Glass-like
+        size: 0.38,
+        exciter: 'bow',
+        attack: 0.6,
+        noiseAmount: 0.55,
+        noiseDuration: 4.0,
+        noiseDecay: 0.15,
+        noiseType: 'pink',
+        sustain: 5.0,
+        clickAmount: 0.0,
+        rolloff: 0.98,
+        detune: 0.3,
+        filterFreq: 2.5,
+        filterQ: 3.5
+      },
+      
+      // ===== ORGANIC NATURE SOUNDS =====
+      // Single water droplet
+      rain_drop: {
+        name: 'Rain Drop',
+        modes: [1, 2.8, 5.2, 9.1],  // Hollow cavity resonance
+        brightness: 0.92,
+        damping: 0.78,
+        structure: 0.25,
+        position: 0.5,
+        decay: 0.25,  // Very short
+        numModes: 4,
+        material: 0.0,  // Water
+        size: 0.08,  // Tiny
+        exciter: 'impulse',
+        attack: 0.0002,
+        noiseAmount: 0.15,
+        noiseDuration: 0.008,
+        clickAmount: 0.95,  // Sharp plop
+        clickType: 'filtered',
+        rolloff: 0.65,
+        detune: 3,
+        filterFreq: 3.2
+      },
+      
+      // Shimmering tubes
+      wind_chime: {
+        name: 'Wind Chimes',
+        modes: [1, 2.76, 5.4, 8.93, 13.3],  // Tube modes
+        brightness: 0.92,
+        damping: 0.04,
+        structure: 0.68,
+        position: 0.08,  // Near edge
+        decay: 10.0,
+        numModes: 5,
+        material: 0.05,
+        size: 0.18,
+        exciter: 'noise',
+        attack: 0.002,
+        noiseAmount: 0.2,
+        noiseDuration: 0.05,
+        noiseType: 'pink',
+        clickAmount: 0.6,
+        clickType: 'spike',
+        rolloff: 0.78,
+        detune: 5,
+        filterFreq: 3.5
+      },
+      
+      // Hollow bamboo tone
+      bamboo: {
+        name: 'Bamboo',
+        modes: [1, 2.76, 5.4, 8.93],  // Clamped bar
+        brightness: 0.48,
+        damping: 0.58,
+        structure: 0.52,
+        position: 0.32,
+        decay: 0.8,
+        numModes: 4,
+        material: 0.82,  // Very woody
+        size: 0.48,
+        exciter: 'impulse',
+        attack: 0.003,
+        noiseAmount: 0.55,
+        noiseDuration: 0.025,
+        noiseType: 'brown',
+        clickAmount: 0.65,
+        clickType: 'sine',
+        rolloff: 0.75,
+        detune: 6,
+        filterFreq: 0.8
+      },
+      
+      // Resonant water vessel
+      water_bowl: {
+        name: 'Water Bowl',
+        modes: [1, 2.1, 4.5, 8.2, 13.1],
+        brightness: 0.35,
+        damping: 0.12,
+        structure: 0.58,
+        position: 0.45,
+        decay: 7.5,
+        numModes: 5,
+        material: 0.28,
+        size: 0.75,
+        exciter: 'mallet',
+        attack: 0.02,
+        noiseAmount: 0.18,
+        noiseDuration: 0.04,
+        clickAmount: 0.3,
+        clickType: 'sine',
+        rolloff: 0.9,
+        detune: 2,
+        filterFreq: 0.7
+      },
+      
+      // Lithophone - ancient stone percussion
+      stone_bell: {
+        name: 'Stone Bell',
+        modes: [1, 1.72, 3.05, 4.88, 7.2],  // Irregular stone modes
+        brightness: 0.28,
+        damping: 0.38,
+        structure: 0.72,
+        position: 0.28,
+        decay: 2.8,
+        numModes: 5,
+        material: 0.75,
+        size: 0.65,
+        exciter: 'mallet',
+        attack: 0.008,
+        noiseAmount: 0.35,
+        noiseDuration: 0.03,
+        noiseType: 'brown',
+        clickAmount: 0.5,
+        clickType: 'sine',
+        rolloff: 0.78,
+        detune: 10,
+        filterFreq: 0.55
+      },
+      
+      // ===== AMBIENT DRONES =====
+      // Long sustained textures - hold note or trigger with sustain for continuous sound
+      vinyl_hiss: {
+        name: 'Vinyl Hiss',
+        modes: [1, 2.7, 5.1, 9.3, 15.2],
+        brightness: 0.12,
+        damping: 0.02,
+        structure: 0.05,
+        position: 0.85,
+        decay: 12.0,
+        numModes: 6,
+        material: 0.9,
+        size: 0.3,
+        exciter: 'bow',
+        noiseType: 'crackle',
+        clickType: 'filtered',
+        noiseAmount: 0.95,
+        noiseDuration: 6.0,
+        noiseDecay: 0.2,
+        clickAmount: 0.0,
+        attack: 0.8,
+        sustain: 5.0,
+        filterFreq: 1.2,
+        filterQ: 0.3,
+        rolloff: 0.92,
+        detune: 8
+      },
+      fire_ambience: {
+        name: 'Fire Ambience',
+        modes: [1, 1.3, 1.8, 2.5, 3.7],
+        brightness: 0.25,
+        damping: 0.03,
+        structure: 0.15,
+        position: 0.7,
+        decay: 10.0,
+        numModes: 8,
+        material: 0.7,
+        size: 0.5,
+        exciter: 'bow',
+        noiseType: 'brown',
+        clickType: 'spike',
+        noiseAmount: 0.9,
+        noiseDuration: 8.0,
+        noiseDecay: 0.15,
+        clickAmount: 0.0,
+        attack: 1.2,
+        sustain: 6.0,
+        filterFreq: 0.4,
+        filterQ: 0.5,
+        rolloff: 0.90,
+        detune: 5
+      },
+      ocean_wash: {
+        name: 'Ocean Wash',
+        modes: [1, 1.02, 1.05, 1.08, 1.12, 1.17],
+        brightness: 0.08,
+        damping: 0.01,
+        structure: 0.03,
+        position: 0.5,
+        decay: 18.0,
+        numModes: 8,
+        material: 0.05,
+        size: 1.0,
+        exciter: 'bow',
+        noiseType: 'brown',
+        clickType: 'spike',
+        noiseAmount: 1.0,
+        noiseDuration: 10.0,
+        noiseDecay: 0.08,
+        clickAmount: 0.0,
+        attack: 2.5,
+        sustain: 8.0,
+        filterFreq: 0.3,
+        filterQ: 0.3,
+        rolloff: 0.98,
+        detune: 2
+      },
+      wind_drone: {
+        name: 'Wind Drone',
+        modes: [1, 1.5, 2.0, 3.0, 4.5],
+        brightness: 0.2,
+        damping: 0.02,
+        structure: 0.1,
+        position: 0.4,
+        decay: 12.0,
+        numModes: 6,
+        material: 0.1,
+        size: 0.9,
+        exciter: 'bow',
+        noiseType: 'pink',
+        clickType: 'spike',
+        noiseAmount: 0.95,
+        noiseDuration: 8.0,
+        noiseDecay: 0.1,
+        clickAmount: 0.0,
+        attack: 2.0,
+        sustain: 6.0,
+        filterFreq: 0.6,
+        filterQ: 3.0,
+        rolloff: 0.94,
+        detune: 4
+      },
+      forest_hum: {
+        name: 'Forest Hum',
+        modes: [1, 1.8, 2.9, 4.2, 6.1],
+        brightness: 0.35,
+        damping: 0.04,
+        structure: 0.25,
+        position: 0.3,
+        decay: 10.0,
+        numModes: 7,
+        material: 0.3,
+        size: 0.6,
+        exciter: 'bow',
+        noiseType: 'pink',
+        clickType: 'sine',
+        noiseAmount: 0.8,
+        noiseDuration: 6.0,
+        noiseDecay: 0.2,
+        clickAmount: 0.0,
+        attack: 1.5,
+        sustain: 5.0,
+        inharmonicity: 0.08,
+        filterFreq: 1.0,
+        filterQ: 1.5,
+        rolloff: 0.88,
+        detune: 6
+      },
+      night_insects: {
+        name: 'Night Insects',
+        modes: [1, 1.003, 1.007, 2.0, 2.005, 3.002],
+        brightness: 0.6,
+        damping: 0.05,
+        structure: 0.4,
+        position: 0.25,
+        decay: 8.0,
+        numModes: 8,
+        material: 0.35,
+        size: 0.08,
+        exciter: 'bow',
+        noiseType: 'samplehold',
+        clickType: 'square',
+        noiseAmount: 0.85,
+        noiseDuration: 6.0,
+        noiseDecay: 0.15,
+        clickAmount: 0.0,
+        attack: 1.0,
+        sustain: 5.0,
+        detune: 5,
+        inharmonicity: 0.03,
+        filterFreq: 3.0,
+        filterQ: 4.0,
+        rolloff: 0.86
+      },
+      
+      // ===== ASMR EAR CANDY =====
+      crystal_tine: {
+        name: 'Crystal Tine',
+        modes: [1, 3.0, 5.8, 9.2, 13.5],
+        brightness: 0.95,
+        damping: 0.03,
+        structure: 0.8,
+        position: 0.08,
+        decay: 15.0,
+        numModes: 8,
+        material: 0.02,
+        size: 0.2,
+        exciter: 'pluck'
+      },
+      whisper_metal: {
+        name: 'Whisper Metal',
+        modes: [1, 2.4, 4.8, 8.0],
+        brightness: 0.3,
+        damping: 0.12,
+        structure: 0.55,
+        position: 0.45,
+        decay: 12.0,
+        numModes: 6,
+        material: 0.15,
+        size: 0.4,
+        exciter: 'noise'
+      },
+      soft_bells: {
+        name: 'Soft Bells',
+        modes: [1, 2.2, 2.9, 4.0, 5.3],
+        brightness: 0.4,
+        damping: 0.18,
+        structure: 0.7,
+        position: 0.35,
+        decay: 8.0,
+        numModes: 7,
+        material: 0.2,
+        size: 0.5,
+        exciter: 'mallet'
+      },
+      glass_harp: {
+        name: 'Glass Harp',
+        modes: [1, 2.0, 4.0, 8.0],
+        brightness: 0.7,
+        damping: 0.02,
+        structure: 0.3,
+        position: 0.5,
+        decay: 18.0,
+        numModes: 5,
+        material: 0.05,
+        size: 0.35,
+        exciter: 'bow'
+      },
+      tingle_drops: {
+        name: 'Tingle Drops',
+        modes: [1, 3.5, 7.2, 12.0],
+        brightness: 0.88,
+        damping: 0.5,
+        structure: 0.65,
+        position: 0.2,
+        decay: 0.8,
+        numModes: 5,
+        material: 0.08,
+        size: 0.12,
+        exciter: 'impulse'
+      },
+      breathy_chime: {
+        name: 'Breathy Chime',
+        modes: [1, 1.5, 2.0, 2.5, 3.0, 3.5],
+        brightness: 0.5,
+        damping: 0.06,
+        structure: 0.1,
+        position: 0.4,
+        decay: 10.0,
+        numModes: 8,
+        material: 0.3,
+        size: 0.45,
+        exciter: 'noise'
+      },
+      silk_resonance: {
+        name: 'Silk Resonance',
+        modes: [1, 2, 3, 4, 5, 6],
+        brightness: 0.35,
+        damping: 0.04,
+        structure: 0.0,
+        position: 0.5,
+        decay: 20.0,
+        numModes: 8,
+        material: 0.1,
+        size: 0.55,
+        exciter: 'bow'
+      },
+      
+      // ===== RYOJI IKEDA / DATA SOUND DESIGN =====
+      data_click: {
+        name: 'Data Click',
+        modes: [1],  // Single pure tone
+        brightness: 1.0,
+        damping: 0.95,  // Ultra-short
+        structure: 0.0,  // Pure harmonic
+        position: 0.5,
+        decay: 0.03,  // 30ms click
+        numModes: 1,
+        material: 0.0,  // Pure/clean
+        size: 0.1,  // High pitch
+        exciter: 'impulse'
+      },
+      test_tone: {
+        name: 'Test Tone',
+        modes: [1],  // Single sine
+        brightness: 0.5,
+        damping: 0.0,  // No damping = pure sustain
+        structure: 0.0,  // Perfect harmonic
+        position: 0.5,
+        decay: 2.0,
+        numModes: 1,
+        material: 0.0,
+        size: 0.5,
+        exciter: 'impulse'
+      },
+      micro_burst: {
+        name: 'Micro Burst',
+        modes: [1, 1.01, 1.02],  // Tight cluster = beating
+        brightness: 0.95,
+        damping: 0.85,
+        structure: 0.02,
+        position: 0.5,
+        decay: 0.08,
+        numModes: 3,
+        material: 0.0,
+        size: 0.05,  // Ultra high
+        exciter: 'noise'
+      },
+      datamatics: {
+        name: 'Datamatics',
+        modes: [1, 2, 4, 8, 16],  // Octave stacking
+        brightness: 0.85,
+        damping: 0.7,
+        structure: 0.0,
+        position: 0.3,
+        decay: 0.15,
+        numModes: 5,
+        material: 0.0,
+        size: 0.2,
+        exciter: 'impulse'
+      },
+      matrix: {
+        name: 'Matrix',
+        modes: [1, 1.5, 2, 3, 4.5],  // Fifths stacking
+        brightness: 0.7,
+        damping: 0.6,
+        structure: 0.1,
+        position: 0.4,
+        decay: 0.2,
+        numModes: 5,
+        material: 0.05,
+        size: 0.3,
+        exciter: 'impulse'
+      },
+      supercodex: {
+        name: 'Supercodex',
+        modes: [1, 1.001, 2, 2.002, 4, 4.004],  // Micro-detuned octaves
+        brightness: 0.9,
+        damping: 0.4,
+        structure: 0.0,
+        position: 0.5,
+        decay: 0.5,
+        numModes: 6,
+        material: 0.0,
+        size: 0.15,
+        exciter: 'impulse'
+      },
+      static_burst: {
+        name: 'Static Burst',
+        modes: [1, 2.3, 5.7, 11.3],  // Prime-ish ratios
+        brightness: 1.0,
+        damping: 0.9,
+        structure: 0.8,
+        position: 0.5,
+        decay: 0.05,
+        numModes: 4,
+        material: 0.0,
+        size: 0.08,
+        exciter: 'noise'
+      },
+      sine_dust: {
+        name: 'Sine Dust',
+        modes: [1],
+        brightness: 0.3,
+        damping: 0.8,
+        structure: 0.0,
+        position: 0.5,
+        decay: 0.1,
+        numModes: 1,
+        material: 0.0,
+        size: 0.25,
+        exciter: 'impulse'
+      },
+      c4i: {
+        name: 'C4I',
+        modes: [1, 2, 3, 4, 5, 6, 7, 8],  // Full harmonic series
+        brightness: 0.6,
+        damping: 0.3,
+        structure: 0.0,
+        position: 0.15,
+        decay: 0.25,
+        numModes: 8,
+        material: 0.0,
+        size: 0.4,
+        exciter: 'impulse'
+      },
+      formula: {
+        name: 'Formula',
+        modes: [1, 1.618, 2.618, 4.236],  // Golden ratio
+        brightness: 0.75,
+        damping: 0.5,
+        structure: 0.3,
+        position: 0.35,
+        decay: 0.3,
+        numModes: 4,
+        material: 0.02,
+        size: 0.35,
+        exciter: 'impulse'
+      },
+      continuum: {
+        name: 'Continuum',
+        modes: [1, 1.0001, 1.0002, 1.0003],  // Ultra-slow beating
+        brightness: 0.4,
+        damping: 0.0,
+        structure: 0.0,
+        position: 0.5,
+        decay: 30.0,  // Very long sustain
+        numModes: 4,
+        material: 0.0,
+        size: 0.5,
+        exciter: 'bow'
+      },
+      zero_one: {
+        name: '0|1',
+        modes: [1, 2],  // Binary octave
+        brightness: 0.95,
+        damping: 0.98,
+        structure: 0.0,
+        position: 0.5,
+        decay: 0.015,  // 15ms impulse
+        numModes: 2,
+        material: 0.0,
+        size: 0.12,
+        exciter: 'impulse'
+      },
+
+      // ===== GOLD PRESETS (Curated for production use) =====
+      
+      // 1. Tongue Drum – warm, mellow, meditative
+      gold_tongue_drum: {
+        name: '🥇 Tongue Drum',
+        intent: 'Warm meditative tones, perfect for ambient and healing music',
+        modes: [1, 2.02, 3.01, 4.08, 5.03, 6.12, 7.05],
+        brightness: 0.45,
+        damping: 0.25,
+        structure: 0.35,
+        position: 0.4,
+        decay: 2.5,
+        numModes: 7,
+        material: 0.15,
+        size: 0.7,
+        exciter: 'mallet',
+        rolloff: 0.88,
+        filterFreq: 1.2,  // multiplier
+        polyphonyCap: 8,
+        reverbMix: 0.35,
+        saturationDrive: 0.15
+      },
+
+      // 2. Kalimba Bright – sparkly african thumb piano
+      gold_kalimba: {
+        name: '🥇 Kalimba Bright',
+        intent: 'Sparkly thumb piano with singing overtones',
+        modes: [1, 2.92, 5.4, 8.93, 13.34],
+        brightness: 0.75,
+        damping: 0.18,
+        structure: 0.5,
+        position: 0.25,
+        decay: 2.0,
+        numModes: 5,
+        material: 0.35,
+        size: 0.35,
+        exciter: 'pluck',
+        rolloff: 0.82,
+        filterFreq: 2.0,
+        polyphonyCap: 12,
+        reverbMix: 0.3,
+        saturationDrive: 0.2
+      },
+
+      // 3. Handpan-ish – UFO drum tones
+      gold_handpan: {
+        name: '🥇 Handpan',
+        intent: 'Rich, hollow UFO-drum tones with long sustain',
+        modes: [1, 2.14, 2.99, 4.24, 5.68, 7.25, 9.02],
+        brightness: 0.55,
+        damping: 0.15,
+        structure: 0.65,
+        position: 0.3,
+        decay: 3.5,
+        numModes: 7,
+        material: 0.25,
+        size: 0.85,
+        exciter: 'mallet',
+        rolloff: 0.9,
+        filterFreq: 0.9,
+        polyphonyCap: 6,
+        reverbMix: 0.4,
+        saturationDrive: 0.1
+      },
+
+      // 4. Raindrops – percussive water droplets
+      gold_raindrops: {
+        name: '🥇 Raindrops',
+        intent: 'Delicate water droplet percussion, ASMR-friendly',
+        modes: [1, 2.7, 5.1, 8.2],
+        brightness: 0.85,
+        damping: 0.6,
+        structure: 0.15,
+        position: 0.45,
+        decay: 0.4,
+        numModes: 4,
+        material: 0.0,
+        size: 0.15,
+        exciter: 'impulse',
+        rolloff: 0.75,
+        filterFreq: 2.5,
+        polyphonyCap: 16,
+        reverbMix: 0.5,
+        saturationDrive: 0.05
+      },
+
+      // 5. Stream Bed – river stones, pebbles
+      gold_stream_bed: {
+        name: '🥇 Stream Bed',
+        intent: 'Natural river stone clicks and clacks',
+        modes: [1, 1.52, 2.31, 3.42, 4.68],
+        brightness: 0.6,
+        damping: 0.55,
+        structure: 0.3,
+        position: 0.6,
+        decay: 0.25,
+        numModes: 5,
+        material: 0.5,
+        size: 0.25,
+        exciter: 'impulse',
+        rolloff: 0.8,
+        filterFreq: 1.5,
+        polyphonyCap: 16,
+        reverbMix: 0.45,
+        saturationDrive: 0.08
+      },
+
+      // 6. Wind Bed – ethereal breath tones  
+      gold_wind_bed: {
+        name: '🥇 Wind Bed',
+        intent: 'Ethereal wind-blown resonances, perfect as background texture',
+        modes: [1, 1.005, 2.0, 2.01, 3.0, 3.015],
+        brightness: 0.35,
+        damping: 0.08,
+        structure: 0.8,
+        position: 0.5,
+        decay: 6.0,
+        numModes: 6,
+        material: 0.05,
+        size: 1.5,
+        exciter: 'bow',
+        rolloff: 0.95,
+        filterFreq: 0.6,
+        polyphonyCap: 4,
+        reverbMix: 0.6,
+        saturationDrive: 0.05
+      },
+
+      // 7. Forest Insects – cicadas, crickets
+      gold_forest_insects: {
+        name: '🥇 Forest Insects',
+        intent: 'Organic insect chirps and buzzes for nature soundscapes',
+        modes: [1, 1.02, 2.98, 3.05, 6.1, 6.15],
+        brightness: 0.8,
+        damping: 0.45,
+        structure: 0.25,
+        position: 0.35,
+        decay: 0.15,
+        numModes: 6,
+        material: 0.2,
+        size: 0.08,
+        exciter: 'impulse',
+        rolloff: 0.7,
+        filterFreq: 3.0,
+        polyphonyCap: 16,
+        reverbMix: 0.25,
+        saturationDrive: 0.12
+      },
+
+      // 8. Bird Chirps – melodic bird-like tones
+      gold_bird_chirps: {
+        name: '🥇 Bird Chirps',
+        intent: 'Melodic bird-like tones, great for nature and ambient',
+        modes: [1, 2.5, 4.2, 6.8, 10.1],
+        brightness: 0.9,
+        damping: 0.5,
+        structure: 0.2,
+        position: 0.2,
+        decay: 0.3,
+        numModes: 5,
+        material: 0.1,
+        size: 0.1,
+        exciter: 'pluck',
+        rolloff: 0.72,
+        filterFreq: 3.5,
+        polyphonyCap: 12,
+        reverbMix: 0.35,
+        saturationDrive: 0.1
+      },
+
+      // 9. ASMR Ear Candy – ultra-detailed, intimate sounds
+      gold_asmr_candy: {
+        name: '🥇 ASMR Ear Candy',
+        intent: 'Ultra-detailed intimate sounds for ASMR and close-mic feel',
+        modes: [1, 1.5, 2.25, 3.38, 5.06],
+        brightness: 0.7,
+        damping: 0.35,
+        structure: 0.4,
+        position: 0.3,
+        decay: 0.5,
+        numModes: 5,
+        material: 0.15,
+        size: 0.2,
+        exciter: 'pluck',
+        rolloff: 0.78,
+        filterFreq: 2.2,
+        polyphonyCap: 10,
+        reverbMix: 0.2,
+        saturationDrive: 0.25
+      },
+
+      // 10. Ambient Bow Glass – bowed wine glass drones
+      gold_bow_glass: {
+        name: '🥇 Bowed Glass',
+        intent: 'Ethereal bowed wine glass tones, haunting and beautiful',
+        modes: [1, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0],
+        brightness: 0.5,
+        damping: 0.05,
+        structure: 0.7,
+        position: 0.45,
+        decay: 8.0,
+        numModes: 8,
+        material: 0.0,
+        size: 0.55,
+        exciter: 'bow',
+        rolloff: 0.92,
+        filterFreq: 0.8,
+        polyphonyCap: 4,
+        reverbMix: 0.55,
+        saturationDrive: 0.08
+      }
+    };
+
+    // ===== UNIFIED ENGINE INTERFACE (Phase 4) =====
+    // Abstract layer for controlling both Plaits WASM and Faust Modal engines
+    
+    const UnifiedEngine = {
+      // Parameter translation map: unified → engine-specific
+      parameterMap: {
+        // Core tonal parameters (shared concepts)
+        brightness: {
+          plaits: { param: 'harmonics', transform: x => x },
+          faust: { param: 'brightness', transform: x => x }
+        },
+        color: {
+          plaits: { param: 'timbre', transform: x => x },
+          faust: { param: 'material', transform: x => x }
+        },
+        character: {
+          plaits: { param: 'morph', transform: x => x },
+          faust: { param: 'structure', transform: x => x }
+        },
+        decay: {
+          plaits: { param: 'decay', transform: x => x },
+          faust: { param: 'decay', transform: x => x * 10 } // Plaits 0-1 → Faust 0-10s
+        },
+        
+        // Engine-specific (no direct mapping)
+        fm: { plaits: { param: 'fm', transform: x => x }, faust: null },
+        fade: { plaits: { param: 'fade', transform: x => x }, faust: null },
+        damping: { plaits: null, faust: { param: 'damping', transform: x => x } },
+        position: { plaits: null, faust: { param: 'position', transform: x => x } },
+        size: { plaits: null, faust: { param: 'size', transform: x => x } },
+        numModes: { plaits: null, faust: { param: 'numModes', transform: x => x } }
+      },
+      
+      // Current unified state
+      state: {
+        brightness: 0.5,
+        color: 0.5,
+        character: 0.5,
+        decay: 0.5,
+        // Engine-specific state stored separately
+        plaits: { fm: 0, fade: 0 },
+        faust: { damping: 0.3, position: 0.5, size: 0.5, numModes: 8 }
+      },
+      
+      // Set a unified parameter
+      setParam(name, value) {
+        this.state[name] = value;
+        
+        // Apply to active engine
+        if (activeEngine === 'plaits') {
+          this.applyToPlaits(name, value);
+        } else {
+          this.applyToFaust(name, value);
+        }
+      },
+      
+      // Apply parameter to Plaits
+      applyToPlaits(name, value) {
+        const mapping = this.parameterMap[name];
+        if (!mapping || !mapping.plaits) return;
+        
+        const { param, transform } = mapping.plaits;
+        const transformedValue = transform(value);
+        
+        // Update slider
+        const slider = document.getElementById(param);
+        if (slider) {
+          slider.value = transformedValue;
+          const display = document.getElementById(`${param}-val`);
+          if (display) display.textContent = transformedValue.toFixed(2);
+        }
+      },
+      
+      // Apply parameter to Faust
+      applyToFaust(name, value) {
+        const mapping = this.parameterMap[name];
+        if (!mapping || !mapping.faust) return;
+        
+        const { param, transform } = mapping.faust;
+        const transformedValue = transform(value);
+        
+        // Update slider
+        const slider = document.getElementById(`faust-${param}`);
+        if (slider) {
+          slider.value = transformedValue;
+          const display = document.getElementById(`faust-${param}-val`);
+          if (display) {
+            const suffix = param === 'decay' ? 's' : '';
+            display.textContent = transformedValue.toFixed(2) + suffix;
+          }
+        }
+      },
+      
+      // Sync unified state from current engine's sliders
+      syncFromCurrentEngine() {
+        if (activeEngine === 'plaits') {
+          this.state.brightness = getSliderValue('harmonics');
+          this.state.color = getSliderValue('timbre');
+          this.state.character = getSliderValue('morph');
+          this.state.decay = getSliderValue('decay');
+          this.state.plaits.fm = getSliderValue('fm');
+          this.state.plaits.fade = getSliderValue('fade');
+        } else {
+          this.state.brightness = getSliderValue('faust-brightness');
+          this.state.color = getSliderValue('faust-material');
+          this.state.character = getSliderValue('faust-structure');
+          this.state.decay = getSliderValue('faust-decay') / 10; // Normalize to 0-1
+          this.state.faust.damping = getSliderValue('faust-damping');
+          this.state.faust.position = getSliderValue('faust-position');
+          this.state.faust.size = getSliderValue('faust-size');
+          this.state.faust.numModes = getSliderValue('faust-modes');
+        }
+      },
+      
+      // Transfer mapped params when switching engines
+      transferToEngine(targetEngine) {
+        // First sync from current engine
+        this.syncFromCurrentEngine();
+        
+        // Apply shared params to target
+        const sharedParams = ['brightness', 'color', 'character', 'decay'];
+        
+        if (targetEngine === 'plaits') {
+          sharedParams.forEach(param => this.applyToPlaits(param, this.state[param]));
+          // Restore Plaits-specific
+          this.applyToPlaits('fm', this.state.plaits.fm);
+          this.applyToPlaits('fade', this.state.plaits.fade);
+        } else {
+          sharedParams.forEach(param => this.applyToFaust(param, this.state[param]));
+          // Restore Faust-specific
+          const faust = this.state.faust;
+          document.getElementById('faust-damping').value = faust.damping;
+          document.getElementById('faust-position').value = faust.position;
+          document.getElementById('faust-size').value = faust.size;
+          document.getElementById('faust-modes').value = faust.numModes;
+          document.getElementById('faust-damping-val').textContent = faust.damping.toFixed(2);
+          document.getElementById('faust-position-val').textContent = faust.position.toFixed(2);
+          document.getElementById('faust-size-val').textContent = faust.size.toFixed(2);
+          document.getElementById('faust-modes-val').textContent = Math.round(faust.numModes);
+        }
+      },
+      
+      // Get current engine capabilities
+      getCapabilities(engine) {
+        return {
+          plaits: {
+            name: 'Plaits WASM',
+            type: 'wavetable',
+            polyphony: 1, // Monophonic per oscillator
+            engines: 16,
+            params: ['harmonics', 'timbre', 'morph', 'decay', 'fm', 'fade'],
+            latency: 'low'
+          },
+          faust: {
+            name: 'Faust Modal',
+            type: 'physical-model',
+            polyphony: 16, // Via worklet
+            presets: Object.keys(FAUST_PRESETS).length,
+            params: ['brightness', 'damping', 'structure', 'position', 'decay', 'numModes', 'material', 'size'],
+            latency: 'medium'
+          }
+        }[engine];
+      },
+      
+      // Play note through current engine
+      async play(midiNote, velocity = 1) {
+        return playNote(midiNote, velocity);
+      }
+    };
+
+    // ===== TESTING & PROFILING (Phase 5) =====
+    const Profiler = {
+      // Latency measurements
+      latencies: [],
+      maxLatencySamples: 100,
+      
+      // CPU/memory tracking
+      frameTimings: [],
+      lastFrameTime: 0,
+      
+      // Test state
+      isStressTesting: false,
+      stressTestInterval: null,
+      
+      // Measure note trigger latency
+      measureLatency(startTime) {
+        const latency = performance.now() - startTime;
+        this.latencies.push(latency);
+        if (this.latencies.length > this.maxLatencySamples) {
+          this.latencies.shift();
+        }
+        return latency;
+      },
+      
+      // Get latency stats
+      getLatencyStats() {
+        if (this.latencies.length === 0) return { avg: 0, min: 0, max: 0, p95: 0 };
+        const sorted = [...this.latencies].sort((a, b) => a - b);
+        const sum = sorted.reduce((a, b) => a + b, 0);
+        return {
+          avg: sum / sorted.length,
+          min: sorted[0],
+          max: sorted[sorted.length - 1],
+          p95: sorted[Math.floor(sorted.length * 0.95)] || sorted[sorted.length - 1],
+          samples: sorted.length
+        };
+      },
+      
+      // Track frame timing for CPU profiling
+      trackFrame() {
+        const now = performance.now();
+        if (this.lastFrameTime > 0) {
+          const delta = now - this.lastFrameTime;
+          this.frameTimings.push(delta);
+          if (this.frameTimings.length > 60) this.frameTimings.shift();
+        }
+        this.lastFrameTime = now;
+        return this.getFrameStats();
+      },
+      
+      getFrameStats() {
+        if (this.frameTimings.length === 0) return { avgFps: 0, minFps: 0 };
+        const avg = this.frameTimings.reduce((a, b) => a + b, 0) / this.frameTimings.length;
+        const max = Math.max(...this.frameTimings);
+        return {
+          avgFps: 1000 / avg,
+          minFps: 1000 / max,
+          avgMs: avg,
+          maxMs: max
+        };
+      },
+      
+      // Stress test: rapid note triggering
+      async runStressTest(options = {}) {
+        const {
+          noteCount = 50,
+          delayMs = 50,
+          randomVelocity = true,
+          randomNotes = true,
+          baseNote = 60,
+          noteRange = 24
+        } = options;
+        
+        if (this.isStressTesting) {
+          console.warn('[Profiler] Stress test already running');
+          return;
+        }
+        
+        this.isStressTesting = true;
+        this.latencies = [];
+        const startTotal = performance.now();
+        
+        console.log(`[Profiler] Starting stress test: ${noteCount} notes, ${delayMs}ms delay`);
+        
+        for (let i = 0; i < noteCount; i++) {
+          if (!this.isStressTesting) break;
+          
+          const noteStart = performance.now();
+          const note = randomNotes ? baseNote + Math.floor(Math.random() * noteRange) : baseNote;
+          const velocity = randomVelocity ? 0.3 + Math.random() * 0.7 : 1;
+          
+          await playNote(note, velocity);
+          this.measureLatency(noteStart);
+          
+          if (delayMs > 0) {
+            await new Promise(r => setTimeout(r, delayMs));
+          }
+        }
+        
+        const totalTime = performance.now() - startTotal;
+        const stats = this.getLatencyStats();
+        
+        console.log(`[Profiler] Stress test complete:`);
+        console.log(`  Total time: ${totalTime.toFixed(1)}ms`);
+        console.log(`  Notes played: ${stats.samples}`);
+        console.log(`  Latency - Avg: ${stats.avg.toFixed(2)}ms, P95: ${stats.p95.toFixed(2)}ms, Max: ${stats.max.toFixed(2)}ms`);
+        console.log(`  Effective rate: ${(stats.samples / totalTime * 1000).toFixed(1)} notes/sec`);
+        
+        this.isStressTesting = false;
+        return { totalTime, stats, notesPerSec: stats.samples / totalTime * 1000 };
+      },
+      
+      stopStressTest() {
+        this.isStressTesting = false;
+        if (this.stressTestInterval) {
+          clearInterval(this.stressTestInterval);
+          this.stressTestInterval = null;
+        }
+        console.log('[Profiler] Stress test stopped');
+      },
+      
+      // Preset comparison test
+      async comparePresets(presetKeys, options = {}) {
+        const { notesPerPreset = 10, delayMs = 80 } = options;
+        const results = {};
+        
+        console.log(`[Profiler] Comparing ${presetKeys.length} presets...`);
+        
+        for (const key of presetKeys) {
+          if (!FAUST_PRESETS[key]) {
+            console.warn(`[Profiler] Preset not found: ${key}`);
+            continue;
+          }
+          
+          loadFaustPreset(key);
+          await new Promise(r => setTimeout(r, 100)); // Let preset settle
+          
+          const startTime = performance.now();
+          this.latencies = [];
+          
+          for (let i = 0; i < notesPerPreset; i++) {
+            const noteStart = performance.now();
+            await playNote(60 + i % 12, 0.8);
+            this.measureLatency(noteStart);
+            await new Promise(r => setTimeout(r, delayMs));
+          }
+          
+          const totalTime = performance.now() - startTime;
+          results[key] = {
+            preset: FAUST_PRESETS[key].name,
+            latency: this.getLatencyStats(),
+            totalTime
+          };
+        }
+        
+        console.log('[Profiler] Preset comparison results:');
+        Object.entries(results).forEach(([key, r]) => {
+          console.log(`  ${r.preset}: avg ${r.latency.avg.toFixed(2)}ms, p95 ${r.latency.p95.toFixed(2)}ms`);
+        });
+        
+        return results;
+      },
+      
+      // Memory snapshot
+      getMemoryInfo() {
+        if (performance.memory) {
+          return {
+            usedHeap: (performance.memory.usedJSHeapSize / 1024 / 1024).toFixed(2) + ' MB',
+            totalHeap: (performance.memory.totalJSHeapSize / 1024 / 1024).toFixed(2) + ' MB',
+            limit: (performance.memory.jsHeapSizeLimit / 1024 / 1024).toFixed(2) + ' MB'
+          };
+        }
+        return { note: 'Memory API not available (Chrome only)' };
+      },
+      
+      // Full diagnostic report
+      generateReport() {
+        const report = {
+          timestamp: new Date().toISOString(),
+          engine: activeEngine,
+          workletEnabled: useWorklet,
+          preset: activeEngine === 'faust' ? faustCurrentPreset?.name : 'N/A',
+          audio: {
+            sampleRate: audioCtx?.sampleRate || 'N/A',
+            state: audioCtx?.state || 'N/A',
+            baseLatency: audioCtx?.baseLatency ? (audioCtx.baseLatency * 1000).toFixed(2) + 'ms' : 'N/A'
+          },
+          performance: {
+            activeVoices,
+            totalEvents,
+            droppedEvents,
+            latency: this.getLatencyStats(),
+            frames: this.getFrameStats()
+          },
+          memory: this.getMemoryInfo(),
+          capabilities: UnifiedEngine.getCapabilities(activeEngine)
+        };
+        
+        console.log('[Profiler] Diagnostic Report:', JSON.stringify(report, null, 2));
+        return report;
+      }
+    };
+    
+    // Expose profiler globally for console access
+    window.Profiler = Profiler;
+    window.UnifiedEngine = UnifiedEngine;
+
+    // ===== AUDIO ENGINE =====
+    let audioCtx = null;
+    let analyser = null;
+    let masterGain = null;
+    let oscillator = null;
+    let isReady = false;
+    
+    let currentEngine = 12; // Plaits engine
+    let activeEngine = 'plaits'; // 'plaits' or 'faust'
+    let faustExciterType = 'impulse';
+    let faustClickType = 'spike';  // spike, sine, square, filtered, bipolar
+    let faustNoiseType = 'white';  // white, pink, brown, crackle, samplehold
+    let faustCurrentPreset = FAUST_PRESETS.kalimba;
+    
+    // ===== WORKLET ENGINE =====
+    let modalWorkletNode = null;
+    let workletReady = false;
+    let useWorklet = true;  // Use AudioWorklet by default (more efficient)
+    
+    // ===== PERFORMANCE HUD =====
+    let hudVisible = false;
+    let activeVoices = 0;
+    let totalEvents = 0;
+    let droppedEvents = 0;
+    let peakLevel = -Infinity;
+    let hudUpdateInterval = null;
+    
+    function setupHUD() {
+      const toggle = document.getElementById('perf-toggle');
+      const hud = document.getElementById('perf-hud');
+      
+      toggle.onclick = () => {
+        hudVisible = !hudVisible;
+        hud.classList.toggle('visible', hudVisible);
+        toggle.style.display = hudVisible ? 'none' : 'block';
+        if (hudVisible && !hudUpdateInterval) {
+          hudUpdateInterval = setInterval(updateHUD, 100);
+        }
+      };
+      
+      // Close HUD on click
+      hud.onclick = (e) => {
+        if (e.target === hud || e.target.tagName === 'H4') {
+          hudVisible = false;
+          hud.classList.remove('visible');
+          toggle.style.display = 'block';
+        }
+      };
+    }
+    
+    function updateHUD() {
+      if (!hudVisible) return;
+      
+      // Sample rate
+      const sr = audioCtx ? `${audioCtx.sampleRate} Hz` : '--';
+      document.getElementById('hud-sr').textContent = sr;
+      
+      // Active voices
+      document.getElementById('hud-voices').textContent = activeVoices;
+      
+      // Events count
+      document.getElementById('hud-events').textContent = totalEvents;
+      
+      // Dropped events
+      const droppedEl = document.getElementById('hud-dropped');
+      droppedEl.textContent = droppedEvents;
+      droppedEl.className = 'value' + (droppedEvents > 0 ? ' warn' : '');
+      
+      // Peak level from analyser
+      if (analyser) {
+        const dataArray = new Float32Array(analyser.frequencyBinCount);
+        analyser.getFloatTimeDomainData(dataArray);
+        let max = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+          const abs = Math.abs(dataArray[i]);
+          if (abs > max) max = abs;
+        }
+        if (max > 0) {
+          const dB = 20 * Math.log10(max);
+          if (dB > peakLevel) peakLevel = dB;
+          const peakEl = document.getElementById('hud-peak');
+          peakEl.textContent = peakLevel.toFixed(1) + ' dB';
+          peakEl.className = 'value' + (peakLevel > -3 ? ' error' : peakLevel > -6 ? ' warn' : '');
+        }
+        // Decay peak slowly
+        peakLevel = Math.max(peakLevel - 0.5, -Infinity);
+      }
+      
+      // Engine + worklet mode
+      const engineText = activeEngine.toUpperCase() + (activeEngine === 'faust' ? (useWorklet ? ' (Worklet)' : ' (Legacy)') : '');
+      document.getElementById('hud-engine').textContent = engineText;
+    }
+    
+    function trackVoiceStart() {
+      activeVoices++;
+      totalEvents++;
+    }
+    
+    function trackVoiceEnd() {
+      activeVoices = Math.max(0, activeVoices - 1);
+    }
+    
+    async function initAudio() {
+      const status = document.getElementById('status');
+      
+      try {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        if (audioCtx.state === 'suspended') {
+          await audioCtx.resume();
+        }
+        
+        // Initialize woscillators
+        const { wosc } = window.woscillators;
+        await wosc.loadOscillator(audioCtx);
+        
+        // Create the oscillator
+        oscillator = wosc.createOscillator(audioCtx);
+        
+        // Create master gain
+        masterGain = audioCtx.createGain();
+        masterGain.gain.value = 0.6;
+        
+        // Create analyser
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 2048;
+        analyser.smoothingTimeConstant = 0.85;
+        
+        // Connect: oscillator -> gain -> analyser -> destination
+        oscillator.connect(masterGain);
+        masterGain.connect(analyser);
+        analyser.connect(audioCtx.destination);
+        
+        // Configure for triggered mode
+        oscillator.modTriggerPatched = true;
+        oscillator.modLevelPatched = false;
+        
+        // Start (it will wait for triggers)
+        oscillator.start();
+        
+        isReady = true;
+        status.className = 'status ready';
+        status.textContent = '✓ Plaits WASM loaded and ready!';
+        
+        // Load modal worklet for Faust engine
+        await initModalWorklet();
+        
+        drawSpectrum();
+        
+      } catch (err) {
+        console.error('Failed to initialize:', err);
+        status.className = 'status error';
+        status.textContent = '✗ Failed to load: ' + err.message;
+      }
+    }
+    
+    // Initialize modal synthesis worklet
+    async function initModalWorklet() {
+      if (!audioCtx) return;
+      
+      try {
+        await audioCtx.audioWorklet.addModule('worklets/modal.worklet.js');
+        
+        modalWorkletNode = new AudioWorkletNode(audioCtx, 'modal-processor', {
+          numberOfInputs: 0,
+          numberOfOutputs: 1,
+          outputChannelCount: [2],
+          processorOptions: {
+            sampleRate: audioCtx.sampleRate,
+            maxVoices: 16,
+            maxModes: 16
+          }
+        });
+        
+        // Connect worklet to analyser (which goes to destination)
+        modalWorkletNode.connect(analyser);
+        
+        // Handle messages from worklet
+        modalWorkletNode.port.onmessage = (event) => {
+          const { type, count } = event.data;
+          if (type === 'voiceCount') {
+            activeVoices = count;
+          }
+        };
+        
+        workletReady = true;
+        console.log('[Modal Worklet] Initialized successfully');
+      } catch (err) {
+        console.warn('[Modal Worklet] Failed to load, falling back to legacy mode:', err);
+        useWorklet = false;
+        workletReady = false;
+      }
+    }
+    
+    // Send updated parameters to worklet
+    function updateWorkletParams() {
+      if (!workletReady || !modalWorkletNode) return;
+      
+      modalWorkletNode.port.postMessage({
+        type: 'params',
+        data: {
+          brightness: getSliderValue('faust-brightness'),
+          damping: getSliderValue('faust-damping'),
+          structure: getSliderValue('faust-structure'),
+          position: getSliderValue('faust-position'),
+          decay: getSliderValue('faust-decay'),
+          material: getSliderValue('faust-material'),
+          size: getSliderValue('faust-size'),
+          attack: getSliderValue('faust-attack'),
+          noiseAmount: getSliderValue('faust-noise-amt'),
+          noiseDuration: getSliderValue('faust-noise-dur') / 1000, // ms to seconds
+          noiseDecay: getSliderValue('faust-noise-decay'),
+          clickAmount: getSliderValue('faust-click'),
+          sustain: getSliderValue('faust-sustain'),
+          filterFreq: getSliderValue('faust-filter-freq'),
+          filterQ: getSliderValue('faust-filter-q'),
+          detuneAmount: getSliderValue('faust-detune'),
+          rolloff: getSliderValue('faust-rolloff'),
+          inharmonicity: getSliderValue('faust-inharm'),
+          exciterType: faustExciterType,
+          noiseType: faustNoiseType,
+          clickType: faustClickType,
+          filterType: getFilterTypeForExciter(faustExciterType),
+          modes: faustCurrentPreset.modes || [1, 2, 3, 4, 5, 6],
+          // Effects
+          reverbEnabled: document.getElementById('reverb-enabled').checked,
+          reverbMix: getSliderValue('reverb-mix'),
+          reverbDecay: getSliderValue('reverb-decay'),
+          reverbDamping: getSliderValue('reverb-damping'),
+          saturationEnabled: document.getElementById('saturation-enabled').checked,
+          saturationDrive: getSliderValue('saturation-drive'),
+          outputGain: getSliderValue('faust-gain')
+        }
+      });
+    }
+    
+    // Get filter type based on exciter
+    function getFilterTypeForExciter(exciterType) {
+      switch(exciterType) {
+        case 'impulse': return 'highpass';
+        case 'noise': return 'bandpass';
+        case 'mallet': return 'lowpass';
+        case 'bow': return 'bandpass';
+        case 'pluck': return 'highpass';
+        default: return 'bandpass';
+      }
+    }
+
+    function triggerNote(midiNote, velocity = 1) {
+      if (!oscillator || !isReady) return;
+      
+      // Reset trigger first (required for retriggering)
+      oscillator.modTrigger = 0;
+      
+      // Set parameters
+      oscillator.engine = currentEngine;
+      oscillator.note = midiNote;
+      oscillator.harmonics = getSliderValue('harmonics');
+      oscillator.timbre = getSliderValue('timbre');
+      oscillator.morph = getSliderValue('morph');
+      oscillator.decay = getSliderValue('decay');
+      oscillator.frequencyModulationAmount = getSliderValue('fm') * 2;
+      oscillator.fade = getSliderValue('fade');
+      
+      // Trigger on next frame (ensure reset is processed first)
+      requestAnimationFrame(() => {
+        oscillator.modTrigger = velocity;
+      });
+    }
+    
+    function getSliderValue(id) {
+      return parseFloat(document.getElementById(id).value);
+    }
+    
+    // ===== FAUST PHYSICAL MODELING ENGINE =====
+    
+    // Calculate mode frequencies based on preset and structure
+    function calculateFaustModes(fundamental, structure, brightness, numModes) {
+      const modes = [];
+      const presetModes = faustCurrentPreset.modes;
+      
+      for (let i = 0; i < numModes; i++) {
+        let ratio;
+        
+        if (i < presetModes.length) {
+          const inharmonicRatio = presetModes[i];
+          const harmonicRatio = i + 1;
+          ratio = harmonicRatio + (inharmonicRatio - harmonicRatio) * (1 - structure);
+        } else {
+          const harmonicRatio = i + 1;
+          const barRatio = Math.pow(i + 1, 2) * 0.5;
+          ratio = harmonicRatio + (barRatio - harmonicRatio) * structure * 0.3;
+        }
+        
+        const freq = fundamental * ratio;
+        
+        if (freq > 30 && freq < 18000) {
+          const positionFactor = Math.sin(Math.PI * (i + 1) * getSliderValue('faust-position'));
+          const brightnessFactor = Math.pow(brightness, i * 0.25);  // Less aggressive rolloff
+          const amplitude = Math.abs(positionFactor) * brightnessFactor / Math.sqrt(i + 1);  // sqrt for gentler rolloff
+          
+          modes.push({
+            freq: freq,
+            amplitude: Math.max(0.05, amplitude),  // Higher minimum
+            ratio: ratio
+          });
+        }
+      }
+      
+      return modes;
+    }
+    
+    // Update mode display
+    function updateFaustModeDisplay(modes) {
+      const display = document.getElementById('mode-display');
+      if (!display) return;
+      display.innerHTML = modes.slice(0, 8).map((m, i) => 
+        `<span class="mode-indicator">M${i+1}: ${m.freq.toFixed(0)}Hz (×${m.ratio.toFixed(2)})</span>`
+      ).join('');
+    }
+    
+    // Play Faust modal voice
+    async function playFaustVoice(frequency, velocity = 1) {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (audioCtx.state === 'suspended') {
+        await audioCtx.resume();
+      }
+      
+      // Ensure analyser exists
+      if (!analyser) {
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 2048;
+        analyser.smoothingTimeConstant = 0.85;
+        analyser.connect(audioCtx.destination);
+        drawSpectrum();
+      }
+      
+      if (!masterGain) {
+        masterGain = audioCtx.createGain();
+        masterGain.gain.value = 0.6;
+        masterGain.connect(analyser);
+      }
+      
+      // Use worklet if available
+      if (useWorklet && workletReady && modalWorkletNode) {
+        // Update parameters before trigger
+        updateWorkletParams();
+        
+        // Send trigger event to worklet
+        modalWorkletNode.port.postMessage({
+          type: 'trigger',
+          data: {
+            frequency: frequency,
+            velocity: velocity,
+            time: audioCtx.currentTime,
+            seed: Math.random()
+          }
+        });
+        
+        // Still update mode display for UI
+        const size = getSliderValue('faust-size');
+        const structure = getSliderValue('faust-structure');
+        const brightness = getSliderValue('faust-brightness');
+        const numModes = Math.floor(getSliderValue('faust-modes'));
+        const sizedFreq = frequency * (0.5 + size);
+        const modes = calculateFaustModes(sizedFreq, structure, brightness, numModes);
+        updateFaustModeDisplay(modes);
+        
+        totalEvents++; // HUD tracking
+        return;
+      }
+      
+      // === Legacy node-spawning approach (fallback) ===
+      
+      const brightness = getSliderValue('faust-brightness');
+      const damping = getSliderValue('faust-damping');
+      const structure = getSliderValue('faust-structure');
+      const decay = getSliderValue('faust-decay');
+      const numModes = Math.floor(getSliderValue('faust-modes'));
+      const material = getSliderValue('faust-material');
+      const size = getSliderValue('faust-size');
+      
+      // Apply size to fundamental frequency
+      const sizedFreq = frequency * (0.5 + size);
+      
+      // Calculate modes
+      const modes = calculateFaustModes(sizedFreq, structure, brightness, numModes);
+      updateFaustModeDisplay(modes);
+      
+      const now = audioCtx.currentTime;
+      
+      // Voice gain node - level controlled by slider
+      const voiceGain = audioCtx.createGain();
+      const gainLevel = getSliderValue('faust-gain');
+      voiceGain.gain.value = velocity * gainLevel;
+      voiceGain.connect(masterGain);
+      trackVoiceStart(); // HUD tracking
+      
+      // Exciter characteristics - read from sliders with exciter type as modifier
+      let attackTime = getSliderValue('faust-attack');
+      let noiseAmount = getSliderValue('faust-noise-amt');
+      let noiseDuration = getSliderValue('faust-noise-dur') / 1000; // Convert ms to seconds
+      let noiseDecayRate = getSliderValue('faust-noise-decay');
+      let clickAmount = getSliderValue('faust-click');
+      let sustainTime = getSliderValue('faust-sustain');
+      const filterFreqMult = getSliderValue('faust-filter-freq');
+      let noiseFilterFreq = frequency * filterFreqMult;
+      let noiseFilterQ = getSliderValue('faust-filter-q');
+      
+      // Exciter type sets filter type and applies modifiers
+      let noiseFilterType = 'bandpass';
+      switch(faustExciterType) {
+        case 'impulse':
+          noiseFilterType = 'highpass';
+          break;
+        case 'noise':
+          noiseFilterType = 'bandpass';
+          break;
+        case 'mallet':
+          noiseFilterType = 'lowpass';
+          break;
+        case 'bow':
+          noiseFilterType = 'bandpass';
+          break;
+        case 'pluck':
+          noiseFilterType = 'highpass';
+          break;
+      }
+      
+      // Click transient for impulse/pluck excitation
+      if (clickAmount > 0) {
+        const clickDur = 0.005;
+        const clickBuffer = audioCtx.createBuffer(1, audioCtx.sampleRate * clickDur, audioCtx.sampleRate);
+        const clickData = clickBuffer.getChannelData(0);
+        const clickFreq = frequency * 4; // High frequency for click
+        
+        for (let i = 0; i < clickData.length; i++) {
+          const t = i / clickData.length;
+          const tSec = i / audioCtx.sampleRate;
+          let sample = 0;
+          
+          switch(faustClickType) {
+            case 'spike':
+              // Sharp exponential spike
+              sample = (1 - t * 2) * Math.exp(-t * 500);
+              break;
+            case 'sine':
+              // Damped sine burst
+              sample = Math.sin(2 * Math.PI * clickFreq * tSec) * Math.exp(-t * 300);
+              break;
+            case 'square':
+              // Damped square pulse
+              sample = (Math.sin(2 * Math.PI * clickFreq * tSec) > 0 ? 1 : -1) * Math.exp(-t * 400);
+              break;
+            case 'filtered':
+              // Bandlimited click (sum of harmonics)
+              for (let h = 1; h <= 8; h++) {
+                sample += Math.sin(2 * Math.PI * clickFreq * h * tSec * 0.25) / h;
+              }
+              sample *= Math.exp(-t * 350) * 0.5;
+              break;
+            case 'bipolar':
+              // Bipolar waveform (positive then negative)
+              sample = Math.sin(Math.PI * t * 4) * Math.exp(-t * 250);
+              break;
+          }
+          clickData[i] = sample;
+        }
+        
+        const clickSource = audioCtx.createBufferSource();
+        clickSource.buffer = clickBuffer;
+        const clickGain = audioCtx.createGain();
+        clickGain.gain.value = clickAmount * velocity;
+        clickSource.connect(clickGain);
+        clickGain.connect(voiceGain);
+        clickSource.start(now);
+      }
+      
+      // Noise exciter with selectable color
+      if (noiseAmount > 0) {
+        const noiseBuffer = audioCtx.createBuffer(1, audioCtx.sampleRate * noiseDuration, audioCtx.sampleRate);
+        const noiseData = noiseBuffer.getChannelData(0);
+        const filterFactor = 1 - material * 0.5;
+        
+        // State variables for noise generation
+        let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;  // Pink noise
+        let brownState = 0;  // Brown noise
+        let lastSample = 0;  // Sample & hold
+        let sampleHoldCounter = 0;
+        const sampleHoldRate = Math.floor(audioCtx.sampleRate / 2000);  // ~2kHz rate
+        
+        for (let i = 0; i < noiseData.length; i++) {
+          const t = i / noiseData.length;
+          const envelope = Math.exp(-t * noiseDecayRate) * filterFactor;
+          let sample = 0;
+          const white = Math.random() * 2 - 1;
+          
+          switch(faustNoiseType) {
+            case 'white':
+              sample = white;
+              break;
+            case 'pink':
+              // Paul Kellet's pink noise algorithm
+              b0 = 0.99886 * b0 + white * 0.0555179;
+              b1 = 0.99332 * b1 + white * 0.0750759;
+              b2 = 0.96900 * b2 + white * 0.1538520;
+              b3 = 0.86650 * b3 + white * 0.3104856;
+              b4 = 0.55000 * b4 + white * 0.5329522;
+              b5 = -0.7616 * b5 - white * 0.0168980;
+              sample = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362) * 0.11;
+              b6 = white * 0.115926;
+              break;
+            case 'brown':
+              // Brownian noise (integrated white noise)
+              brownState = (brownState + white * 0.02) * 0.998;
+              sample = brownState * 3.5;
+              break;
+            case 'crackle':
+              // Sparse impulse crackle
+              if (Math.random() < 0.03) {
+                sample = (Math.random() > 0.5 ? 1 : -1) * (0.5 + Math.random() * 0.5);
+              } else {
+                sample = 0;
+              }
+              break;
+            case 'samplehold':
+              // Sample and hold - stepped noise
+              sampleHoldCounter++;
+              if (sampleHoldCounter >= sampleHoldRate) {
+                lastSample = white;
+                sampleHoldCounter = 0;
+              }
+              sample = lastSample;
+              break;
+          }
+          
+          noiseData[i] = sample * envelope;
+        }
+        
+        const noiseSource = audioCtx.createBufferSource();
+        noiseSource.buffer = noiseBuffer;
+        
+        const noiseGain = audioCtx.createGain();
+        noiseGain.gain.value = noiseAmount * velocity;
+        
+        const noiseFilter = audioCtx.createBiquadFilter();
+        noiseFilter.type = noiseFilterType;
+        noiseFilter.frequency.value = noiseFilterFreq;
+        noiseFilter.Q.value = noiseFilterQ;
+        
+        noiseSource.connect(noiseFilter);
+        noiseFilter.connect(noiseGain);
+        noiseGain.connect(voiceGain);
+        noiseSource.start(now);
+      }
+      
+      // Get resonator tuning parameters
+      const detuneAmount = getSliderValue('faust-detune');
+      const rolloff = getSliderValue('faust-rolloff');
+      const inharmonicity = getSliderValue('faust-inharm');
+      
+      // Create oscillator for each mode (modal resonators)
+      modes.forEach((mode, i) => {
+        const osc = audioCtx.createOscillator();
+        osc.type = 'sine';
+        
+        // Apply inharmonicity stretch (piano-like)
+        const inharmonicStretch = 1 + inharmonicity * i * i * 0.001;
+        osc.frequency.value = mode.freq * inharmonicStretch;
+        
+        // Detuning for organic feel (controllable amount)
+        const detune = (Math.random() - 0.5) * detuneAmount * 2 * (1 + material);
+        osc.detune.value = detune;
+        
+        // Mode-specific decay using controllable rolloff
+        const materialDecayMod = 1 - material * 0.5;
+        const modeDecay = decay * (1 - damping * 0.7) * Math.pow(rolloff, i) * materialDecayMod;
+        
+        // Gain envelope
+        const modeGain = audioCtx.createGain();
+        const amp = mode.amplitude * 0.6;
+        
+        // Attack and decay envelope
+        modeGain.gain.setValueAtTime(0, now);
+        modeGain.gain.linearRampToValueAtTime(amp, now + attackTime);
+        
+        if (sustainTime > 0) {
+          // Bow-like sustained
+          modeGain.gain.setValueAtTime(amp * 0.7, now + attackTime + sustainTime);
+          modeGain.gain.exponentialRampToValueAtTime(0.0001, now + attackTime + sustainTime + modeDecay);
+        } else {
+          modeGain.gain.exponentialRampToValueAtTime(0.0001, now + attackTime + modeDecay);
+        }
+        
+        osc.connect(modeGain);
+        modeGain.connect(voiceGain);
+        
+        osc.start(now);
+        osc.stop(now + attackTime + sustainTime + modeDecay + 0.1);
+      });
+      
+      // Cleanup
+      const maxDecay = decay * (1 - damping * 0.7) + sustainTime + 0.5;
+      setTimeout(() => {
+        voiceGain.disconnect();
+        trackVoiceEnd(); // HUD tracking
+      }, maxDecay * 1000);
+    }
+    
+    // Universal play function
+    async function playNote(midiNote, velocity = 1) {
+      const frequency = 440 * Math.pow(2, (midiNote - 69) / 12);
+      
+      if (activeEngine === 'faust') {
+        await playFaustVoice(frequency, velocity);
+      } else {
+        if (!isReady) await initAudio();
+        triggerNote(midiNote, velocity);
+      }
+    }
+    
+    // Engine toggle
+    function setActiveEngine(engine, preserveParams = true) {
+      // Transfer shared parameters when switching (if enabled)
+      if (preserveParams && activeEngine !== engine) {
+        UnifiedEngine.transferToEngine(engine);
+      }
+      
+      activeEngine = engine;
+      
+      // Update toggle buttons
+      document.getElementById('toggle-plaits').classList.toggle('active', engine === 'plaits');
+      document.getElementById('toggle-faust').classList.toggle('active', engine === 'faust');
+      
+      // Show/hide sections
+      const plaitsSections = document.querySelectorAll('.plaits-section');
+      const faustSections = document.querySelectorAll('.faust-section');
+      
+      plaitsSections.forEach(s => s.classList.toggle('hidden', engine === 'faust'));
+      faustSections.forEach(s => s.classList.toggle('visible', engine === 'faust'));
+      
+      // Update status with engine capabilities
+      const status = document.getElementById('status');
+      const caps = UnifiedEngine.getCapabilities(engine);
+      
+      if (engine === 'faust') {
+        status.className = 'status ready';
+        status.textContent = `✓ ${caps.name} ready (${caps.polyphony}-voice, ${caps.presets} presets)`;
+        status.style.background = 'rgba(255, 159, 67, 0.3)';
+      } else {
+        if (isReady) {
+          status.className = 'status ready';
+          status.textContent = `✓ ${caps.name} loaded (${caps.engines} engines)`;
+          status.style.background = '';
+        }
+      }
+    }
+
+    // ===== UI FUNCTIONS =====
+    
+    function buildEngineButtons() {
+      const container = document.getElementById('engines');
+      ENGINES.forEach(eng => {
+        const btn = document.createElement('button');
+        btn.className = 'engine-btn' + (eng.id === currentEngine ? ' active' : '');
+        btn.innerHTML = `<span class="num">${eng.id}</span>${eng.name}`;
+        btn.onclick = () => {
+          currentEngine = eng.id;
+          document.querySelectorAll('.engine-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+        };
+        container.appendChild(btn);
+      });
+    }
+    
+    function buildPresetButtons() {
+      const container = document.getElementById('presets');
+      Object.entries(PRESETS).forEach(([key, preset]) => {
+        const btn = document.createElement('button');
+        btn.className = 'preset-btn';
+        btn.textContent = preset.name;
+        btn.onclick = () => loadPreset(key);
+        container.appendChild(btn);
+      });
+    }
+    
+    function loadPreset(presetKey) {
+      const preset = PRESETS[presetKey];
+      if (!preset) return;
+      
+      currentEngine = preset.engine;
+      
+      document.getElementById('harmonics').value = preset.harmonics;
+      document.getElementById('timbre').value = preset.timbre;
+      document.getElementById('morph').value = preset.morph;
+      document.getElementById('decay').value = preset.decay;
+      document.getElementById('fm').value = preset.fm;
+      document.getElementById('fade').value = preset.fade;
+      
+      // Update displays
+      document.getElementById('harmonics-val').textContent = preset.harmonics.toFixed(2);
+      document.getElementById('timbre-val').textContent = preset.timbre.toFixed(2);
+      document.getElementById('morph-val').textContent = preset.morph.toFixed(2);
+      document.getElementById('decay-val').textContent = preset.decay.toFixed(2);
+      document.getElementById('fm-val').textContent = preset.fm.toFixed(2);
+      document.getElementById('fade-val').textContent = preset.fade.toFixed(2);
+      
+      // Update engine button
+      document.querySelectorAll('.engine-btn').forEach(btn => {
+        const engId = parseInt(btn.querySelector('.num').textContent);
+        btn.classList.toggle('active', engId === preset.engine);
+      });
+      
+      // Update preset button
+      document.querySelectorAll('.preset-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.textContent === preset.name);
+      });
+    }
+    
+    // Faust preset functions
+    function buildFaustPresetButtons() {
+      const container = document.getElementById('faust-presets');
+      Object.entries(FAUST_PRESETS).forEach(([key, preset]) => {
+        const btn = document.createElement('button');
+        btn.className = 'preset-btn';
+        btn.textContent = preset.name;
+        btn.onclick = () => loadFaustPreset(key);
+        container.appendChild(btn);
+      });
+    }
+    
+    function loadFaustPreset(presetKey) {
+      const preset = FAUST_PRESETS[presetKey];
+      if (!preset) return;
+      
+      faustCurrentPreset = preset;
+      faustExciterType = preset.exciter;
+      
+      // Load core params with schema validation
+      const brightness = clampParam('brightness', preset.brightness);
+      const damping = clampParam('damping', preset.damping);
+      const structure = clampParam('structure', preset.structure);
+      const position = clampParam('position', preset.position);
+      const decay = clampParam('decay', preset.decay);
+      const numModes = clampParam('numModes', preset.numModes);
+      const material = clampParam('material', preset.material);
+      const size = clampParam('size', preset.size);
+      
+      document.getElementById('faust-brightness').value = brightness;
+      document.getElementById('faust-damping').value = damping;
+      document.getElementById('faust-structure').value = structure;
+      document.getElementById('faust-position').value = position;
+      document.getElementById('faust-decay').value = decay;
+      document.getElementById('faust-modes').value = numModes;
+      document.getElementById('faust-material').value = material;
+      document.getElementById('faust-size').value = size;
+      
+      // Update displays
+      document.getElementById('faust-brightness-val').textContent = brightness.toFixed(2);
+      document.getElementById('faust-damping-val').textContent = damping.toFixed(2);
+      document.getElementById('faust-structure-val').textContent = structure.toFixed(2);
+      document.getElementById('faust-position-val').textContent = position.toFixed(2);
+      document.getElementById('faust-decay-val').textContent = decay.toFixed(1) + 's';
+      document.getElementById('faust-modes-val').textContent = numModes;
+      document.getElementById('faust-material-val').textContent = material.toFixed(2);
+      document.getElementById('faust-size-val').textContent = size.toFixed(2);
+      
+      // Update exciter buttons and set exciter slider defaults
+      document.querySelectorAll('.exciter-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.type === preset.exciter);
+      });
+      
+      // Set exciter slider defaults based on exciter type
+      const exciterDefaults = {
+        impulse: { attack: 0.0005, noiseAmt: 0.08, noiseDur: 15, noiseDecay: 200, click: 0.4, sustain: 0, filterFreq: 2.0, filterQ: 1.0 },
+        noise: { attack: 0.008, noiseAmt: 0.6, noiseDur: 120, noiseDecay: 15, click: 0, sustain: 0, filterFreq: 1.5, filterQ: 0.5 },
+        mallet: { attack: 0.025, noiseAmt: 0.15, noiseDur: 50, noiseDecay: 40, click: 0, sustain: 0, filterFreq: 0.8, filterQ: 0.7 },
+        bow: { attack: 0.5, noiseAmt: 0.7, noiseDur: 3000, noiseDecay: 0.5, click: 0, sustain: 3.0, filterFreq: 1.2, filterQ: 3.0 },
+        pluck: { attack: 0.002, noiseAmt: 0.3, noiseDur: 60, noiseDecay: 60, click: 0.2, sustain: 0, filterFreq: 0.5, filterQ: 1.0 }
+      };
+      
+      const defaults = exciterDefaults[preset.exciter];
+      if (defaults) {
+        // Use preset-specific values if defined, otherwise use exciter defaults
+        // All values validated through schema
+        const attack = clampParam('attack', preset.attack ?? defaults.attack);
+        const noiseAmt = clampParam('noiseAmount', preset.noiseAmount ?? defaults.noiseAmt);
+        // noiseDuration: presets store seconds, UI uses ms
+        const noiseDurSec = preset.noiseDuration ?? (defaults.noiseDur / 1000);
+        const noiseDur = clampParam('noiseDuration', noiseDurSec * 1000);
+        const noiseDecay = clampParam('noiseDecay', preset.noiseDecay ?? defaults.noiseDecay);
+        const click = clampParam('clickAmount', preset.clickAmount ?? defaults.click);
+        const sustain = clampParam('sustain', preset.sustain ?? defaults.sustain);
+        // filterFreq is stored as multiplier (0.1-4)
+        const filterFreq = clampParam('filterFreq', preset.filterFreq ?? defaults.filterFreq);
+        const filterQ = clampParam('filterQ', preset.filterQ ?? defaults.filterQ);
+        
+        document.getElementById('faust-attack').value = attack;
+        document.getElementById('faust-noise-amt').value = noiseAmt;
+        document.getElementById('faust-noise-dur').value = noiseDur;
+        document.getElementById('faust-noise-decay').value = noiseDecay;
+        document.getElementById('faust-click').value = click;
+        document.getElementById('faust-sustain').value = sustain;
+        document.getElementById('faust-filter-freq').value = filterFreq;
+        document.getElementById('faust-filter-q').value = filterQ;
+        
+        // Update exciter displays
+        document.getElementById('faust-attack-val').textContent = attack.toFixed(3) + 's';
+        document.getElementById('faust-noise-amt-val').textContent = noiseAmt.toFixed(2);
+        document.getElementById('faust-noise-dur-val').textContent = Math.round(noiseDur) + 'ms';
+        document.getElementById('faust-noise-decay-val').textContent = Math.round(noiseDecay);
+        document.getElementById('faust-click-val').textContent = click.toFixed(2);
+        document.getElementById('faust-sustain-val').textContent = sustain.toFixed(1) + 's';
+        document.getElementById('faust-filter-freq-val').textContent = filterFreq.toFixed(1) + '×';
+        document.getElementById('faust-filter-q-val').textContent = filterQ.toFixed(1);
+      }
+      
+      // Set click type - use preset value or reset to spike default
+      faustClickType = preset.clickType ?? 'spike';
+      document.querySelectorAll('.click-type-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.type === faustClickType);
+      });
+      
+      // Set noise type - use preset value or reset to white default
+      faustNoiseType = preset.noiseType ?? 'white';
+      document.querySelectorAll('.noise-type-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.type === faustNoiseType);
+      });
+      
+      // Set resonator tuning - use schema defaults with preset overrides
+      const detune = clampParam('detune', preset.detune ?? getParamDefault('detune'));
+      const rolloff = clampParam('rolloff', preset.rolloff ?? getParamDefault('rolloff'));
+      const inharmonicity = clampParam('inharmonicity', preset.inharmonicity ?? getParamDefault('inharmonicity'));
+      document.getElementById('faust-detune').value = detune;
+      document.getElementById('faust-rolloff').value = rolloff;
+      document.getElementById('faust-inharm').value = inharmonicity;
+      // Detune slider is already in cents (0-50), display directly
+      document.getElementById('faust-detune-val').textContent = Math.round(detune) + '¢';
+      document.getElementById('faust-rolloff-val').textContent = rolloff.toFixed(2);
+      document.getElementById('faust-inharm-val').textContent = inharmonicity.toFixed(2);
+      
+      // Update Faust preset buttons
+      document.querySelectorAll('#faust-presets .preset-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.textContent === preset.name);
+      });
+      
+      // Apply preset effect settings if defined (gold presets have these)
+      if (preset.reverbMix !== undefined) {
+        const reverbMix = Math.max(0, Math.min(1, preset.reverbMix));
+        document.getElementById('reverb-mix').value = reverbMix;
+        document.getElementById('reverb-mix-val').textContent = Math.round(reverbMix * 100) + '%';
+      }
+      if (preset.reverbDecay !== undefined) {
+        const reverbDecay = Math.max(0.3, Math.min(0.99, preset.reverbDecay));
+        document.getElementById('reverb-decay').value = reverbDecay;
+        document.getElementById('reverb-decay-val').textContent = reverbDecay.toFixed(2);
+      }
+      if (preset.reverbDamping !== undefined) {
+        const reverbDamping = Math.max(0, Math.min(0.95, preset.reverbDamping));
+        document.getElementById('reverb-damping').value = reverbDamping;
+        document.getElementById('reverb-damping-val').textContent = reverbDamping.toFixed(2);
+      }
+      if (preset.saturationDrive !== undefined) {
+        const satDrive = Math.max(0, Math.min(1, preset.saturationDrive));
+        document.getElementById('saturation-drive').value = satDrive;
+        document.getElementById('saturation-drive-val').textContent = satDrive.toFixed(2);
+      }
+      
+      // Update worklet with new effect params
+      if (workletReady && modalWorkletNode) {
+        updateWorkletParams();
+      }
+    }
+    
+    function setupFaustSliders() {
+      const sliders = [
+        { id: 'faust-brightness', suffix: '' },
+        { id: 'faust-damping', suffix: '' },
+        { id: 'faust-structure', suffix: '' },
+        { id: 'faust-position', suffix: '' },
+        { id: 'faust-decay', suffix: 's', decimals: 1 },
+        { id: 'faust-modes', suffix: '', decimals: 0 },
+        { id: 'faust-material', suffix: '' },
+        { id: 'faust-size', suffix: '' }
+      ];
+      
+      sliders.forEach(({ id, suffix, decimals = 2 }) => {
+        const slider = document.getElementById(id);
+        if (!slider) return;
+        slider.oninput = () => {
+          const val = parseFloat(slider.value);
+          document.getElementById(`${id}-val`).textContent = 
+            decimals === 0 ? Math.floor(val) + suffix : val.toFixed(decimals) + suffix;
+        };
+      });
+    }
+    
+    function setupExciterButtons() {
+      document.querySelectorAll('.exciter-btn').forEach(btn => {
+        btn.onclick = () => {
+          faustExciterType = btn.dataset.type;
+          document.querySelectorAll('.exciter-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          
+          // Set exciter slider defaults based on type
+          const exciterDefaults = {
+            impulse: { attack: 0.0005, noiseAmt: 0.08, noiseDur: 15, noiseDecay: 200, click: 0.4, sustain: 0, filterFreq: 2.0, filterQ: 1.0 },
+            noise: { attack: 0.008, noiseAmt: 0.6, noiseDur: 120, noiseDecay: 15, click: 0, sustain: 0, filterFreq: 1.5, filterQ: 0.5 },
+            mallet: { attack: 0.025, noiseAmt: 0.15, noiseDur: 50, noiseDecay: 40, click: 0, sustain: 0, filterFreq: 0.8, filterQ: 0.7 },
+            bow: { attack: 0.25, noiseAmt: 0.35, noiseDur: 600, noiseDecay: 3, click: 0, sustain: 0.5, filterFreq: 1.2, filterQ: 3.0 },
+            pluck: { attack: 0.002, noiseAmt: 0.3, noiseDur: 60, noiseDecay: 60, click: 0.2, sustain: 0, filterFreq: 0.5, filterQ: 1.0 }
+          };
+          
+          const defaults = exciterDefaults[btn.dataset.type];
+          if (defaults) {
+            document.getElementById('faust-attack').value = defaults.attack;
+            document.getElementById('faust-noise-amt').value = defaults.noiseAmt;
+            document.getElementById('faust-noise-dur').value = defaults.noiseDur;
+            document.getElementById('faust-noise-decay').value = defaults.noiseDecay;
+            document.getElementById('faust-click').value = defaults.click;
+            document.getElementById('faust-sustain').value = defaults.sustain;
+            document.getElementById('faust-filter-freq').value = defaults.filterFreq;
+            document.getElementById('faust-filter-q').value = defaults.filterQ;
+            
+            // Update displays
+            document.getElementById('faust-attack-val').textContent = defaults.attack.toFixed(3) + 's';
+            document.getElementById('faust-noise-amt-val').textContent = defaults.noiseAmt.toFixed(2);
+            document.getElementById('faust-noise-dur-val').textContent = defaults.noiseDur + 'ms';
+            document.getElementById('faust-noise-decay-val').textContent = defaults.noiseDecay;
+            document.getElementById('faust-click-val').textContent = defaults.click.toFixed(2);
+            document.getElementById('faust-sustain-val').textContent = defaults.sustain.toFixed(1) + 's';
+            document.getElementById('faust-filter-freq-val').textContent = defaults.filterFreq.toFixed(1) + '×';
+            document.getElementById('faust-filter-q-val').textContent = defaults.filterQ.toFixed(1);
+          }
+        };
+      });
+    }
+    
+    function setupExciterSliders() {
+      const exciterSliders = [
+        { id: 'faust-attack', suffix: 's', decimals: 3 },
+        { id: 'faust-noise-amt', suffix: '', decimals: 2 },
+        { id: 'faust-noise-dur', suffix: 'ms', decimals: 0 },
+        { id: 'faust-noise-decay', suffix: '', decimals: 0 },
+        { id: 'faust-click', suffix: '', decimals: 2 },
+        { id: 'faust-sustain', suffix: 's', decimals: 1 },
+        { id: 'faust-filter-freq', suffix: '×', decimals: 1 },
+        { id: 'faust-filter-q', suffix: '', decimals: 1 },
+        { id: 'faust-detune', suffix: '¢', decimals: 0 },
+        { id: 'faust-rolloff', suffix: '', decimals: 2 },
+        { id: 'faust-inharm', suffix: '', decimals: 2 }
+      ];
+      
+      exciterSliders.forEach(({ id, suffix, decimals }) => {
+        const slider = document.getElementById(id);
+        if (!slider) return;
+        slider.oninput = () => {
+          const val = parseFloat(slider.value);
+          document.getElementById(`${id}-val`).textContent = 
+            decimals === 0 ? Math.floor(val) + suffix : val.toFixed(decimals) + suffix;
+        };
+      });
+    }
+    
+    function setupClickTypeButtons() {
+      document.querySelectorAll('#click-type-buttons .exciter-btn').forEach(btn => {
+        btn.onclick = () => {
+          faustClickType = btn.dataset.type;
+          document.querySelectorAll('#click-type-buttons .exciter-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+        };
+      });
+    }
+    
+    function setupNoiseTypeButtons() {
+      document.querySelectorAll('#noise-type-buttons .exciter-btn').forEach(btn => {
+        btn.onclick = () => {
+          faustNoiseType = btn.dataset.type;
+          document.querySelectorAll('#noise-type-buttons .exciter-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+        };
+      });
+    }
+    
+    function setupEffectsControls() {
+      // Reverb controls
+      const reverbSliders = [
+        { id: 'reverb-mix', suffix: '%', mult: 100, decimals: 0 },
+        { id: 'reverb-decay', suffix: '', mult: 1, decimals: 2 },
+        { id: 'reverb-damping', suffix: '', mult: 1, decimals: 2 }
+      ];
+      
+      reverbSliders.forEach(({ id, suffix, mult, decimals }) => {
+        const slider = document.getElementById(id);
+        if (!slider) return;
+        slider.oninput = () => {
+          const val = parseFloat(slider.value) * mult;
+          document.getElementById(`${id}-val`).textContent = 
+            decimals === 0 ? Math.round(val) + suffix : val.toFixed(decimals) + suffix;
+          updateWorkletParams();
+        };
+      });
+      
+      // Saturation controls
+      const satSlider = document.getElementById('saturation-drive');
+      if (satSlider) {
+        satSlider.oninput = () => {
+          document.getElementById('saturation-drive-val').textContent = parseFloat(satSlider.value).toFixed(2);
+          updateWorkletParams();
+        };
+      }
+      
+      // Output gain control
+      const gainSlider = document.getElementById('faust-gain');
+      if (gainSlider) {
+        gainSlider.oninput = () => {
+          document.getElementById('faust-gain-val').textContent = parseFloat(gainSlider.value).toFixed(2);
+          updateWorkletParams();
+        };
+      }
+      
+      // Effect toggles
+      document.getElementById('reverb-enabled').addEventListener('change', updateWorkletParams);
+      document.getElementById('saturation-enabled').addEventListener('change', updateWorkletParams);
+    }
+    
+    // Octave shift state
+    let currentOctave = 4;  // Base octave (C4 = MIDI 60)
+    const MIN_OCTAVE = 0;
+    const MAX_OCTAVE = 8;
+    
+    function updateOctaveDisplay() {
+      document.getElementById('octave-display').textContent = currentOctave;
+      document.getElementById('octave-down').disabled = currentOctave <= MIN_OCTAVE;
+      document.getElementById('octave-up').disabled = currentOctave >= MAX_OCTAVE;
+    }
+    
+    function shiftOctave(delta) {
+      const newOctave = currentOctave + delta;
+      if (newOctave >= MIN_OCTAVE && newOctave <= MAX_OCTAVE) {
+        currentOctave = newOctave;
+        updateOctaveDisplay();
+      }
+    }
+    
+    function buildKeyboard() {
+      const keyboard = document.getElementById('keyboard');
+      // Base notes (relative to octave 4, will be shifted by currentOctave)
+      const baseNotes = [
+        { note: 'C', baseMidi: 0, type: 'white', key: 'a' },
+        { note: 'C#', baseMidi: 1, type: 'black', key: 'w' },
+        { note: 'D', baseMidi: 2, type: 'white', key: 's' },
+        { note: 'D#', baseMidi: 3, type: 'black', key: 'e' },
+        { note: 'E', baseMidi: 4, type: 'white', key: 'd' },
+        { note: 'F', baseMidi: 5, type: 'white', key: 'f' },
+        { note: 'F#', baseMidi: 6, type: 'black', key: 't' },
+        { note: 'G', baseMidi: 7, type: 'white', key: 'g' },
+        { note: 'G#', baseMidi: 8, type: 'black', key: 'y' },
+        { note: 'A', baseMidi: 9, type: 'white', key: 'h' },
+        { note: 'A#', baseMidi: 10, type: 'black', key: 'u' },
+        { note: 'B', baseMidi: 11, type: 'white', key: 'j' },
+        { note: 'C+', baseMidi: 12, type: 'white', key: 'k' },
+        { note: 'C#+', baseMidi: 13, type: 'black', key: 'o' },
+        { note: 'D+', baseMidi: 14, type: 'white', key: 'l' },
+        { note: 'D#+', baseMidi: 15, type: 'black', key: 'p' },
+        { note: 'E+', baseMidi: 16, type: 'white', key: ';' },
+        { note: 'F+', baseMidi: 17, type: 'white', key: "'" },
+      ];
+      
+      // Helper to get actual MIDI note with octave shift
+      function getMidiNote(baseMidi) {
+        return 60 + baseMidi + (currentOctave - 4) * 12;
+      }
+      
+      baseNotes.forEach(n => {
+        const key = document.createElement('div');
+        key.className = `key ${n.type}`;
+        key.textContent = n.key.toUpperCase();
+        key.dataset.baseMidi = n.baseMidi;
+        key.dataset.key = n.key;
+        
+        key.onmousedown = async (e) => {
+          e.preventDefault();
+          key.classList.add('playing');
+          await playNote(getMidiNote(n.baseMidi));
+        };
+        key.onmouseup = () => key.classList.remove('playing');
+        key.onmouseleave = () => key.classList.remove('playing');
+        
+        keyboard.appendChild(key);
+      });
+      
+      // Keyboard controls
+      const keyMap = {};
+      baseNotes.forEach(n => keyMap[n.key] = n);
+      
+      document.addEventListener('keydown', async (e) => {
+        if (e.repeat) return;
+        const keyLower = e.key.toLowerCase();
+        
+        // Octave shift keys
+        if (keyLower === 'z') {
+          shiftOctave(-1);
+          return;
+        }
+        if (keyLower === 'x') {
+          shiftOctave(1);
+          return;
+        }
+        
+        const n = keyMap[keyLower];
+        if (n) {
+          const keyEl = document.querySelector(`.key[data-key="${n.key}"]`);
+          if (keyEl) keyEl.classList.add('playing');
+          await playNote(getMidiNote(n.baseMidi));
+        }
+      });
+      
+      // Octave button handlers
+      document.getElementById('octave-down').addEventListener('click', () => shiftOctave(-1));
+      document.getElementById('octave-up').addEventListener('click', () => shiftOctave(1));
+      updateOctaveDisplay();
+      
+      document.addEventListener('keyup', (e) => {
+        const n = keyMap[e.key.toLowerCase()];
+        if (n) {
+          const keyEl = document.querySelector(`.key[data-key="${n.key}"]`);
+          if (keyEl) keyEl.classList.remove('playing');
+        }
+      });
+    }
+    
+    function setupSliders() {
+      const sliders = ['harmonics', 'timbre', 'morph', 'decay', 'fm', 'fade'];
+      sliders.forEach(id => {
+        const slider = document.getElementById(id);
+        slider.oninput = () => {
+          const val = parseFloat(slider.value);
+          document.getElementById(`${id}-val`).textContent = val.toFixed(2);
+        };
+      });
+    }
+    
+    function drawSpectrum() {
+      const canvas = document.getElementById('spectrum-canvas');
+      const ctx = canvas.getContext('2d');
+      
+      function resize() {
+        canvas.width = canvas.offsetWidth * window.devicePixelRatio;
+        canvas.height = canvas.offsetHeight * window.devicePixelRatio;
+      }
+      resize();
+      window.addEventListener('resize', resize);
+      
+      function draw() {
+        requestAnimationFrame(draw);
+        
+        if (!analyser) return;
+        
+        const bufferLength = analyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+        analyser.getByteFrequencyData(dataArray);
+        
+        ctx.fillStyle = '#111';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        const barWidth = canvas.width / bufferLength * 2.5;
+        let x = 0;
+        
+        for (let i = 0; i < bufferLength; i++) {
+          const barHeight = (dataArray[i] / 255) * canvas.height;
+          
+          // Color based on active engine: Plaits = teal (160), Faust = orange (30)
+          const baseHue = activeEngine === 'faust' ? 30 : 160;
+          const hue = baseHue + (dataArray[i] / 255) * 20;
+          ctx.fillStyle = `hsl(${hue}, 70%, ${25 + (dataArray[i] / 255) * 35}%)`;
+          
+          ctx.fillRect(x, canvas.height - barHeight, barWidth - 1, barHeight);
+          x += barWidth;
+          
+          if (x > canvas.width) break;
+        }
+      }
+      
+      draw();
+    }
+    
+    // ===== INITIALIZE =====
+    buildEngineButtons();
+    buildPresetButtons();
+    buildFaustPresetButtons();
+    buildKeyboard();
+    setupSliders();
+    setupFaustSliders();
+    setupExciterButtons();
+    setupExciterSliders();
+    setupClickTypeButtons();
+    setupNoiseTypeButtons();
+    setupHUD();
+    setupEffectsControls();
+    setupTestPanel();
+    
+    // Test panel setup function
+    function setupTestPanel() {
+      const testToggle = document.getElementById('test-toggle');
+      const testPanel = document.getElementById('test-panel-section');
+      
+      // Toggle test panel visibility
+      testToggle.addEventListener('click', () => {
+        const isVisible = testPanel.style.display !== 'none';
+        testPanel.style.display = isVisible ? 'none' : 'block';
+        testToggle.classList.toggle('active', !isVisible);
+      });
+      
+      // Stress test controls
+      const stressNotesSlider = document.getElementById('stress-notes');
+      const stressDelaySlider = document.getElementById('stress-delay');
+      
+      stressNotesSlider.addEventListener('input', () => {
+        document.getElementById('stress-notes-val').textContent = stressNotesSlider.value;
+      });
+      stressDelaySlider.addEventListener('input', () => {
+        document.getElementById('stress-delay-val').textContent = stressDelaySlider.value + 'ms';
+      });
+      
+      // Run stress test
+      document.getElementById('run-stress-test').addEventListener('click', async () => {
+        const noteCount = parseInt(stressNotesSlider.value);
+        const delayMs = parseInt(stressDelaySlider.value);
+        
+        document.getElementById('run-stress-test').disabled = true;
+        document.getElementById('run-stress-test').textContent = '⏳ Running...';
+        
+        await Profiler.runStressTest({ noteCount, delayMs });
+        updateLatencyDisplay();
+        
+        document.getElementById('run-stress-test').disabled = false;
+        document.getElementById('run-stress-test').textContent = '▶ Run Test';
+      });
+      
+      // Stop stress test
+      document.getElementById('stop-stress-test').addEventListener('click', () => {
+        Profiler.stopStressTest();
+      });
+      
+      // Generate report
+      document.getElementById('generate-report').addEventListener('click', () => {
+        const report = Profiler.generateReport();
+        console.log('[Test Panel] Report generated - check console');
+        alert('Report generated! Check the browser console (F12) for details.');
+      });
+      
+      // Preset comparison buttons
+      document.querySelectorAll('.preset-compare-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const presets = btn.dataset.presets.split(',');
+          const resultsDiv = document.getElementById('comparison-results');
+          const originalText = btn.textContent;
+          
+          btn.disabled = true;
+          btn.textContent = '⏳ Testing...';
+          resultsDiv.style.display = 'block';
+          resultsDiv.innerHTML = 'Running comparison...';
+          
+          const results = await Profiler.comparePresets(presets);
+          
+          // Display results
+          let html = '';
+          Object.entries(results).forEach(([key, r]) => {
+            html += `<div style="margin-bottom: 4px;">`;
+            html += `<strong>${r.preset}:</strong> `;
+            html += `avg ${r.latency.avg.toFixed(2)}ms, `;
+            html += `p95 ${r.latency.p95.toFixed(2)}ms`;
+            html += `</div>`;
+          });
+          resultsDiv.innerHTML = html;
+          
+          btn.disabled = false;
+          btn.textContent = originalText;
+        });
+      });
+    }
+    
+    // Update latency display helper
+    function updateLatencyDisplay() {
+      const stats = Profiler.getLatencyStats();
+      document.getElementById('lat-avg').textContent = stats.avg.toFixed(2) + 'ms';
+      document.getElementById('lat-p95').textContent = stats.p95.toFixed(2) + 'ms';
+      document.getElementById('lat-max').textContent = stats.max.toFixed(2) + 'ms';
+      document.getElementById('lat-samples').textContent = stats.samples;
+    }
+    
+    // Param sync toggle - show/hide mapping info
+    const paramSyncCheckbox = document.getElementById('param-sync');
+    const paramMappingInfo = document.getElementById('param-mapping-info');
+    paramSyncCheckbox.addEventListener('change', (e) => {
+      paramMappingInfo.style.display = e.target.checked ? 'block' : 'none';
+    });
+    // Show mapping info by default since sync is checked
+    paramMappingInfo.style.display = 'block';
+    
+    // Worklet toggle
+    document.getElementById('worklet-toggle').addEventListener('change', (e) => {
+      useWorklet = e.target.checked;
+      console.log(`[Engine] Worklet DSP ${useWorklet ? 'enabled' : 'disabled'}`);
+    });
+    
+    // Load default presets
+    loadPreset('kalimba');
+    loadFaustPreset('kalimba');
+    
+    // Touch support
+    document.addEventListener('touchstart', async (e) => {
+      if (e.target.classList.contains('key')) {
+        e.preventDefault();
+        e.target.classList.add('playing');
+        await playNote(parseInt(e.target.dataset.midi));
+      }
+    }, { passive: false });
+    
+    document.addEventListener('touchend', () => {
+      document.querySelectorAll('.key.playing').forEach(k => k.classList.remove('playing'));
+    });
+    
+    // Click anywhere to init audio (for browsers that require user gesture)
+    document.addEventListener('click', async () => {
+      if (!isReady && activeEngine === 'plaits') {
+        await initAudio();
+      }
+    }, { once: true });
+  </script>
+</body>
+</html>

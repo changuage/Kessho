@@ -1,0 +1,58 @@
+{
+  "id": "singing_bowl",
+  "name": "Singing Bowl",
+  "engine": "Lead4opFM",
+  "method": "new",
+  "operators": 4,
+  "algorithm": "parallel",
+  "xy": {
+    "xLevel": 0.95,
+    "xPan": -0.4,
+    "yLevel": 1.05,
+    "yPan": 0.4
+  },
+  "params": {
+    "beatDetune": 2,
+    "carrier2Mix": 0.8,
+    "mod1": {
+      "ratio": 2.71,
+      "index": 0.3,
+      "decay": 1.5,
+      "sustain": 0.3
+    },
+    "mod2": {
+      "ratio": 5.15,
+      "index": 0.15,
+      "decay": 1.2
+    },
+    "mod3": {
+      "ratio": 8.43,
+      "index": 0.08,
+      "decay": 0.8
+    },
+    "mod4": {
+      "ratio": 0.5,
+      "index": 0.05,
+      "decay": 1.8
+    },
+    "envelope": {
+      "attack": 0.05,
+      "decay": 2,
+      "sustain": 0.7,
+      "release": 8
+    },
+    "filter": {
+      "freq": 4500,
+      "q": 0.5
+    },
+    "transient": {
+      "click": 0.15,
+      "noise": 0.08,
+      "duration": 30,
+      "decay": 50,
+      "filter": 3000,
+      "type": "pink"
+    },
+    "gain": 0.55
+  }
+}

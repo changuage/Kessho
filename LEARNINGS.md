@@ -483,3 +483,82 @@ When building dual-endpoint morph systems:
 - Changing one endpoint's source should only affect that endpoint's data
 - UI state (like dual/single mode) must also respect this separation
 - Always check "which endpoint am I at?" before clearing or applying state
+
+---
+
+## Lead Parameter Renaming: Shared → Per-Lead Namespace
+
+### Overview
+As the app evolved from a single lead synth to a dual-lead architecture (Lead 1 with Preset A↔B morph, Lead 2 with Preset C↔D morph), several "shared" parameters were renamed to the `lead1` namespace to allow future `lead2` equivalents.
+
+### Renamed Parameters
+
+| Old Name | New Name | Notes |
+|----------|----------|-------|
+| `leadDensity` | `lead1Density` | Notes per phrase |
+| `leadOctave` | `lead1Octave` | Octave offset (-1 to 2) |
+| `leadOctaveRange` | `lead1OctaveRange` | Octave span (1-4) |
+| `leadAttack` | `lead1Attack` | ADSR attack time |
+| `leadDecay` | `lead1Decay` | ADSR decay time |
+| `leadSustain` | `lead1Sustain` | ADSR sustain level |
+| `leadHold` | `lead1Hold` | Hold time at sustain |
+| `leadRelease` | `lead1Release` | ADSR release time |
+| `leadUseCustomAdsr` | `lead1UseCustomAdsr` | Toggle preset vs custom ADSR |
+| `leadTimbreMin/Max` | `lead1MorphMin/Max` | Legacy timbre → FM morph range |
+
+### Parameters NOT Renamed (Intentionally Shared)
+| Parameter | Reason |
+|-----------|--------|
+| `leadEnabled` | Master toggle for entire lead bus |
+| `leadLevel` | Master output gain for lead bus (`leadGain.gain`) — distinct from `lead1Level`/`lead2Level` which are per-voice velocity scales |
+| `leadReverbSend` | Shared reverb send level |
+| `leadDelayReverbSend` | Shared delay→reverb send |
+| `leadDelay*` | Delay is shared across both leads |
+| `leadVibrato*` | Expression params are shared |
+| `leadGlide*` | Glide is shared |
+| `leadEuclid*` | Euclidean sequencer is shared |
+
+### Legacy Migration in normalizePresetForWeb()
+
+Old presets (and cloud saves) still use the original names. The normalizer handles migration automatically:
+
+```typescript
+// Legacy density/octave rename
+if (typeof raw.leadDensity === 'number' && typeof raw.lead1Density !== 'number') {
+  normalized.lead1Density = raw.leadDensity as number;
+}
+// Same pattern for leadOctave, leadOctaveRange
+
+// Legacy ADSHR rename
+const adsrhMap: [string, keyof SliderState][] = [
+  ['leadAttack', 'lead1Attack'], ['leadDecay', 'lead1Decay'],
+  ['leadSustain', 'lead1Sustain'], ['leadHold', 'lead1Hold'],
+  ['leadRelease', 'lead1Release'],
+];
+for (const [oldKey, newKey] of adsrhMap) {
+  if (typeof raw[oldKey] === 'number' && typeof raw[newKey] !== 'number') {
+    normalized[newKey] = raw[oldKey];
+  }
+}
+
+// Legacy leadUseCustomAdsr → lead1UseCustomAdsr
+if (typeof raw.leadUseCustomAdsr === 'boolean' && typeof raw.lead1UseCustomAdsr !== 'boolean') {
+  normalized.lead1UseCustomAdsr = raw.leadUseCustomAdsr;
+}
+
+// Legacy timbre → morph (pre-existing migration)
+// leadTimbreMin/Max auto-maps to lead1MorphMin/Max when morph values are 0/0
+```
+
+### Files Changed
+- **state.ts**: Type definition, keys array, DEFAULT_STATE, PARAM_INFO
+- **App.tsx**: UI sliders, save/export key lists, bool keys for morph, normalizer migration
+- **engine.ts**: `playLeadNote()`, `getLeadMorphedParams()`, hold time read
+- **All 6 preset JSONs**: Updated to new field names
+
+### Key Insight
+When renaming state properties in a system with cloud saves and local presets:
+1. **Always add legacy migration** in the normalizer — old presets must still load
+2. **Migration checks both old AND new** — `typeof raw.oldName === 'number' && typeof raw.newName !== 'number'` prevents overwriting when both exist
+3. **`{ ...DEFAULT_STATE, ...normalized }` provides safety net** — any missing key falls back to defaults
+4. **Leave `leadTimbreMin/Max` in state.ts type/defaults** — the normalizer still references them for old preset migration, even though no UI or engine reads them

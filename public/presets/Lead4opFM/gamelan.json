@@ -1,0 +1,58 @@
+{
+  "id": "gamelan",
+  "name": "Gamelan",
+  "engine": "Lead4opFM",
+  "method": "new",
+  "operators": 4,
+  "algorithm": "cross",
+  "xy": {
+    "xLevel": 0.95,
+    "xPan": -0.35,
+    "yLevel": 1.05,
+    "yPan": 0.35
+  },
+  "params": {
+    "beatDetune": 25,
+    "carrier2Mix": 0.65,
+    "mod1": {
+      "ratio": 2.4,
+      "index": 2,
+      "decay": 0.45,
+      "sustain": 0.08
+    },
+    "mod2": {
+      "ratio": 4,
+      "index": 0.8,
+      "decay": 0.35
+    },
+    "mod3": {
+      "ratio": 5.5,
+      "index": 0.5,
+      "decay": 0.2
+    },
+    "mod4": {
+      "ratio": 0.65,
+      "index": 0.3,
+      "decay": 0.6
+    },
+    "envelope": {
+      "attack": 0.002,
+      "decay": 0.35,
+      "sustain": 0.3,
+      "release": 6
+    },
+    "filter": {
+      "freq": 7000,
+      "q": 1
+    },
+    "transient": {
+      "click": 0.5,
+      "noise": 0.15,
+      "duration": 25,
+      "decay": 80,
+      "filter": 5000,
+      "type": "filtered"
+    },
+    "gain": 0.7
+  }
+}

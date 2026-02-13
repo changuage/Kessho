@@ -1,0 +1,104 @@
+{
+  "engine": "Lead4opFM",
+  "version": 1,
+  "generatedAt": "2026-02-13T16:07:08.946Z",
+  "source": "public/fm-modal-methodology-demo.html",
+  "presets": [
+    {
+      "id": "calliope",
+      "name": "CALIOPE",
+      "file": "calliope.json",
+      "algorithm": "dx17"
+    },
+    {
+      "id": "celesta",
+      "name": "Celesta",
+      "file": "celesta.json",
+      "algorithm": "stack"
+    },
+    {
+      "id": "bell",
+      "name": "Church Bell",
+      "file": "bell.json",
+      "algorithm": "cross"
+    },
+    {
+      "id": "gamelan",
+      "name": "Gamelan",
+      "file": "gamelan.json",
+      "algorithm": "cross"
+    },
+    {
+      "id": "glockenspiel",
+      "name": "Glockenspiel",
+      "file": "glockenspiel.json",
+      "algorithm": "stack"
+    },
+    {
+      "id": "hand_drum",
+      "name": "Hand Drum",
+      "file": "hand_drum.json",
+      "algorithm": "stack"
+    },
+    {
+      "id": "handpan",
+      "name": "Handpan",
+      "file": "handpan.json",
+      "algorithm": "parallel"
+    },
+    {
+      "id": "kalimba",
+      "name": "Kalimba",
+      "file": "kalimba.json",
+      "algorithm": "split"
+    },
+    {
+      "id": "marimba",
+      "name": "Marimba",
+      "file": "marimba.json",
+      "algorithm": "split"
+    },
+    {
+      "id": "mbira",
+      "name": "Mbira",
+      "file": "mbira.json",
+      "algorithm": "cross"
+    },
+    {
+      "id": "rhodes",
+      "name": "Rhodes",
+      "file": "rhodes.json",
+      "algorithm": "parallel"
+    },
+    {
+      "id": "singing_bowl",
+      "name": "Singing Bowl",
+      "file": "singing_bowl.json",
+      "algorithm": "parallel"
+    },
+    {
+      "id": "soft_rhodes",
+      "name": "Soft Rhodes",
+      "file": "soft_rhodes.json",
+      "algorithm": "parallel"
+    },
+    {
+      "id": "tongue_drum",
+      "name": "Tongue Drum",
+      "file": "tongue_drum.json",
+      "algorithm": "parallel"
+    },
+    {
+      "id": "vibraphone",
+      "name": "Vibraphone",
+      "file": "vibraphone.json",
+      "algorithm": "split"
+    },
+    {
+      "id": "xylophone",
+      "name": "Xylophone",
+      "file": "xylophone.json",
+      "algorithm": "stack"
+    }
+  ]
+}

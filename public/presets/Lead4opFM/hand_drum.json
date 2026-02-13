@@ -1,0 +1,58 @@
+{
+  "id": "hand_drum",
+  "name": "Hand Drum",
+  "engine": "Lead4opFM",
+  "method": "new",
+  "operators": 4,
+  "algorithm": "stack",
+  "xy": {
+    "xLevel": 1.1,
+    "xPan": -0.2,
+    "yLevel": 0.85,
+    "yPan": 0.2
+  },
+  "params": {
+    "beatDetune": 15,
+    "carrier2Mix": 0.6,
+    "mod1": {
+      "ratio": 1.59,
+      "index": 2,
+      "decay": 0.12,
+      "sustain": 0.02
+    },
+    "mod2": {
+      "ratio": 2.14,
+      "index": 1.2,
+      "decay": 0.08
+    },
+    "mod3": {
+      "ratio": 2.65,
+      "index": 0.8,
+      "decay": 0.05
+    },
+    "mod4": {
+      "ratio": 0.8,
+      "index": 0.5,
+      "decay": 0.15
+    },
+    "envelope": {
+      "attack": 0.002,
+      "decay": 0.08,
+      "sustain": 0.1,
+      "release": 0.8
+    },
+    "filter": {
+      "freq": 1800,
+      "q": 1.5
+    },
+    "transient": {
+      "click": 0.7,
+      "noise": 0.6,
+      "duration": 40,
+      "decay": 60,
+      "filter": 1500,
+      "type": "brown"
+    },
+    "gain": 0.85
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "id": "mbira",
+  "name": "Mbira",
+  "engine": "Lead4opFM",
+  "method": "new",
+  "operators": 4,
+  "algorithm": "cross",
+  "xy": {
+    "xLevel": 0.95,
+    "xPan": -0.3,
+    "yLevel": 1,
+    "yPan": 0.3
+  },
+  "params": {
+    "beatDetune": 18,
+    "carrier2Mix": 0.55,
+    "mod1": {
+      "ratio": 2.94,
+      "index": 1.8,
+      "decay": 0.35,
+      "sustain": 0.15
+    },
+    "mod2": {
+      "ratio": 5.38,
+      "index": 0.7,
+      "decay": 0.25
+    },
+    "mod3": {
+      "ratio": 8.76,
+      "index": 0.4,
+      "decay": 0.12
+    },
+    "mod4": {
+      "ratio": 0.5,
+      "index": 0.25,
+      "decay": 0.5
+    },
+    "envelope": {
+      "attack": 0.001,
+      "decay": 0.2,
+      "sustain": 0.35,
+      "release": 3
+    },
+    "filter": {
+      "freq": 5500,
+      "q": 1.8
+    },
+    "transient": {
+      "click": 0.3,
+      "noise": 0.5,
+      "duration": 80,
+      "decay": 20,
+      "filter": 2500,
+      "type": "white"
+    },
+    "gain": 0.72
+  }
+}

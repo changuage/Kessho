@@ -1,0 +1,58 @@
+{
+  "id": "bell",
+  "name": "Church Bell",
+  "engine": "Lead4opFM",
+  "method": "new",
+  "operators": 4,
+  "algorithm": "cross",
+  "xy": {
+    "xLevel": 0.95,
+    "xPan": -0.42,
+    "yLevel": 1.1,
+    "yPan": 0.42
+  },
+  "params": {
+    "beatDetune": 8,
+    "carrier2Mix": 0.7,
+    "mod1": {
+      "ratio": 2,
+      "index": 2.2,
+      "decay": 0.8,
+      "sustain": 0.2
+    },
+    "mod2": {
+      "ratio": 3,
+      "index": 1,
+      "decay": 0.6
+    },
+    "mod3": {
+      "ratio": 4.2,
+      "index": 0.6,
+      "decay": 0.45
+    },
+    "mod4": {
+      "ratio": 0.5,
+      "index": 0.3,
+      "decay": 1
+    },
+    "envelope": {
+      "attack": 0.001,
+      "decay": 1,
+      "sustain": 0.4,
+      "release": 7
+    },
+    "filter": {
+      "freq": 6000,
+      "q": 0.8
+    },
+    "transient": {
+      "click": 0.7,
+      "noise": 0.2,
+      "duration": 40,
+      "decay": 60,
+      "filter": 4000,
+      "type": "filtered"
+    },
+    "gain": 0.6
+  }
+}
