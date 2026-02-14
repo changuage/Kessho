@@ -163,6 +163,35 @@ const IOS_ONLY_REVERB_TYPES = new Set([
   'mediumHall3', 'largeHall2'
 ]);
 
+// Decorative snowflake state shown before user interacts.
+// All arms appear at ~75% length/width so the snowflake looks inviting.
+// Values are computed so valueToSliderPosition(v, min, max) ≈ 0.75 for each arm.
+const SNOWFLAKE_WELCOME_STATE: SliderState = {
+  ...DEFAULT_STATE,
+  masterVolume: 0.75,
+  tension: 0.15,
+  // Arm lengths (level keys) — 75% on log curve ≈ 0.487 of linear range
+  reverbLevel: 0.97,       // max 2
+  synthLevel: 0.49,        // max 1
+  granularLevel: 1.95,     // max 4 (snowflake scale)
+  leadLevel: 0.49,         // max 1
+  drumLevel: 0.49,         // max 1
+  oceanSampleLevel: 0.49,  // max 1
+  // Arm widths (reverb send / secondary keys) — 75% visual width
+  reverbDecay: 0.56,
+  synthReverbSend: 0.56,
+  granularReverbSend: 0.56,
+  leadReverbSend: 0.56,
+  drumReverbSend: 0.06,    // uses 0.1 exponent; 0.06^0.1 ≈ 0.75
+  oceanFilterCutoff: 6800,  // normalized ≈ 0.56 of 40–12000
+  // Enable all engines so the "disabled → 0" normalization doesn't zero them
+  granularEnabled: true,
+  leadEnabled: true,
+  drumEnabled: true,
+  oceanSampleEnabled: true,
+  oceanWaveSynthEnabled: true,
+};
+
 // User preference keys - these are audio processing settings, not musical elements
 // They should NOT change when loading presets or morphing between them
 const USER_PREFERENCE_KEYS: (keyof SliderState)[] = [
@@ -286,7 +315,15 @@ const normalizePresetForWeb = (state: SliderState): SliderState => {
       }
     }
   }
-  
+
+  // ── Zero level for disabled engines ──
+  // When an engine is off, force its mix level to 0 so no audio leaks through.
+  if (merged.granularEnabled === false)       merged.granularLevel = 0;
+  if (merged.leadEnabled === false)           merged.leadLevel = 0;
+  if (merged.drumEnabled === false)           merged.drumLevel = 0;
+  if (merged.oceanSampleEnabled === false)    merged.oceanSampleLevel = 0;
+  if (merged.oceanWaveSynthEnabled === false) merged.oceanWaveSynthLevel = 0;
+
   return merged;
 };
 
@@ -1303,6 +1340,14 @@ const App: React.FC = () => {
   
   // UI mode: 'snowflake', 'advanced', or 'journey'
   const [uiMode, setUiMode] = useState<'snowflake' | 'advanced' | 'journey'>('snowflake');
+
+  // Snowflake welcome state: show decorative 75% arms until user interacts
+  const [snowflakeActivated, setSnowflakeActivated] = useState(false);
+  // Separate display state for welcome mode — user can drag arms visually without affecting real state
+  const [welcomeDisplayState, setWelcomeDisplayState] = useState<SliderState>(SNOWFLAKE_WELCOME_STATE);
+  const handleWelcomeSliderChange = useCallback((key: keyof SliderState, value: number) => {
+    setWelcomeDisplayState(prev => ({ ...prev, [key]: value }));
+  }, []);
   
   // Journey mode playing state - when true, sliders should be read-only
   const [isJourneyPlaying, setIsJourneyPlaying] = useState(false);
@@ -2285,6 +2330,8 @@ const App: React.FC = () => {
   // Start/Stop
   const handleStart = async () => {
     try {
+      // Activate snowflake on first play
+      if (!snowflakeActivated) setSnowflakeActivated(true);
       // Setup iOS media session FIRST (must be synchronous from user gesture)
       setupIOSMediaSession();
       
@@ -2946,76 +2993,38 @@ const App: React.FC = () => {
       // If not effectively dual, just use the interpolated state value (already computed)
     }
     
-    // === Engine enable/level fade: treat disabled engines as level=0 for smooth morph ===
-    // When one preset has an engine ON and the other OFF, override the OFF side's
-    // level to 0 so the morph smoothly fades the engine in/out instead of snapping.
-    const engineLevelMap: Record<string, keyof SliderState> = {
-      granularEnabled: 'granularLevel',
-      leadEnabled: 'leadLevel',
-      lead2Enabled: 'lead2Level',
-      drumEnabled: 'drumLevel',
-      oceanSampleEnabled: 'oceanSampleLevel',
-      oceanWaveSynthEnabled: 'oceanWaveSynthLevel',
-    };
-    for (const [enableKey, levelKey] of Object.entries(engineLevelMap)) {
-      const enabledA = stateA[enableKey as keyof SliderState];
-      const enabledB = stateB[enableKey as keyof SliderState];
-      if (!enabledA && enabledB) {
-        // A has engine OFF → treat A's level as 0 (fade in from silence)
-        (stateA as Record<string, unknown>)[levelKey] = 0;
-      } else if (enabledA && !enabledB) {
-        // B has engine OFF → treat B's level as 0 (fade out to silence)
-        (stateB as Record<string, unknown>)[levelKey] = 0;
-      }
-    }
-
     // Define parent-child relationships for conditional morphing
+    // If parent boolean is OFF in the target preset, don't morph child sliders
     const parentChildMap: Record<string, (keyof SliderState)[]> = {
       granularEnabled: [
-        'granularLevel', 'granularReverbSend', 'grainProbability', 'grainSizeMin', 'grainSizeMax',
+        'granularReverbSend', 'grainProbability', 'grainSizeMin', 'grainSizeMax',
         'density', 'spray', 'jitter', 'pitchSpread', 'stereoSpread', 'feedback', 'wetHPF', 'wetLPF'
       ],
       leadEnabled: [
-        'leadLevel', 'lead1Attack', 'lead1Decay', 'lead1Sustain', 'lead1Release',
+        'lead1Attack', 'lead1Decay', 'lead1Sustain', 'lead1Release',
         'leadDelayTimeMin', 'leadDelayTimeMax', 'leadDelayFeedbackMin', 'leadDelayFeedbackMax',
         'leadDelayMixMin', 'leadDelayMixMax', 'lead1Density',
         'lead1Octave', 'lead1OctaveRange',
         'leadVibratoDepthMin', 'leadVibratoDepthMax', 'leadVibratoRateMin', 'leadVibratoRateMax',
         'leadGlideMin', 'leadGlideMax', 'leadReverbSend', 'leadDelayReverbSend'
       ],
-      lead2Enabled: [
-        'lead2Level'
-      ],
       leadEuclideanMasterEnabled: [
         'leadEuclideanTempo'
       ],
-      drumEnabled: [
-        'drumLevel', 'drumReverbSend',
-        'drumSubFreq', 'drumSubDecay', 'drumSubLevel', 'drumSubTone',
-        'drumKickFreq', 'drumKickPitchEnv', 'drumKickPitchDecay', 'drumKickDecay', 'drumKickLevel', 'drumKickClick',
-        'drumClickDecay', 'drumClickFilter', 'drumClickResonance', 'drumClickLevel', 'drumClickTone', 'drumClickPitch', 'drumClickPitchEnv',
-        'drumBeepHiFreq', 'drumBeepHiAttack', 'drumBeepHiDecay', 'drumBeepHiTone', 'drumBeepHiLevel',
-        'drumBeepLoFreq', 'drumBeepLoAttack', 'drumBeepLoDecay', 'drumBeepLoTone', 'drumBeepLoLevel',
-        'drumNoiseFilterFreq', 'drumNoiseFilterQ', 'drumNoiseAttack', 'drumNoiseDecay', 'drumNoiseLevel'
-      ],
       oceanSampleEnabled: [
-        'oceanSampleLevel', 'oceanFilterCutoff', 'oceanFilterResonance',
+        'oceanFilterCutoff', 'oceanFilterResonance',
         'oceanDurationMin', 'oceanDurationMax', 'oceanIntervalMin', 'oceanIntervalMax',
         'oceanFoamMin', 'oceanFoamMax', 'oceanDepthMin', 'oceanDepthMax'
-      ],
-      oceanWaveSynthEnabled: [
-        'oceanWaveSynthLevel'
       ]
     };
     
     // Determine which keys should be snapped (not morphed) based on parent boolean state
-    // Only snap children when BOTH presets have the engine OFF.
-    // When one is ON and the other OFF, children morph normally (level fades from 0).
     const keysToSnap = new Set<keyof SliderState>();
     for (const [parentKey, childKeys] of Object.entries(parentChildMap)) {
       const parentA = stateA[parentKey as keyof SliderState];
       const parentB = stateB[parentKey as keyof SliderState];
-      if (!parentA && !parentB) {
+      // If either preset has the parent OFF, snap the children instead of morphing
+      if (!parentA || !parentB) {
         for (const childKey of childKeys) {
           keysToSnap.add(childKey);
         }
@@ -3038,7 +3047,6 @@ const App: React.FC = () => {
       'lead1OctaveRange',
       'leadVibratoDepthMin', 'leadVibratoDepthMax', 'leadVibratoRateMin', 'leadVibratoRateMax',
       'leadGlideMin', 'leadGlideMax', 'leadEuclideanTempo',
-      'lead2Level',
       'oceanSampleLevel', 'oceanWaveSynthLevel', 'oceanFilterCutoff', 'oceanFilterResonance',
       'oceanDurationMin', 'oceanDurationMax', 'oceanIntervalMin', 'oceanIntervalMax',
       'oceanFoamMin', 'oceanFoamMax', 'oceanDepthMin', 'oceanDepthMax',
@@ -3047,7 +3055,7 @@ const App: React.FC = () => {
       'drumSubMorph', 'drumKickMorph', 'drumClickMorph',
       'drumBeepHiMorph', 'drumBeepLoMorph', 'drumNoiseMorph',
       // Drum voice params - should interpolate when master morph changes
-      'drumLevel', 'drumReverbSend', 'drumSubFreq', 'drumSubDecay', 'drumSubLevel', 'drumSubTone',
+      'drumLevel', 'drumSubFreq', 'drumSubDecay', 'drumSubLevel', 'drumSubTone',
       'drumKickFreq', 'drumKickPitchEnv', 'drumKickPitchDecay', 'drumKickDecay', 'drumKickLevel', 'drumKickClick',
       'drumClickDecay', 'drumClickFilter', 'drumClickResonance', 'drumClickLevel', 'drumClickTone', 'drumClickPitch', 'drumClickPitchEnv',
       'drumBeepHiFreq', 'drumBeepHiAttack', 'drumBeepHiDecay', 'drumBeepHiTone', 'drumBeepHiLevel',
@@ -3082,13 +3090,11 @@ const App: React.FC = () => {
       (result as Record<string, unknown>)[key] = tNorm < 0.5 ? stateA[key] : stateB[key];
     }
     
-    // Snap boolean values at 50% (except engine enables and cofDriftEnabled which have special handling)
-    const atEndpointA = t === 0;
-    const atEndpointB = t === 100;
+    // Snap boolean values at 50% (except engine toggles and cofDriftEnabled which have special handling)
     const boolKeys: (keyof SliderState)[] = [
       'lead1UseCustomAdsr', 'leadEuclideanMasterEnabled', 'leadEuclid1Enabled', 'leadEuclid2Enabled',
       'leadEuclid3Enabled', 'leadEuclid4Enabled',
-      // Drum synth booleans (not drumEnabled - handled below)
+      // Drum synth booleans
       'drumRandomEnabled',
       'drumSubMorphAuto', 'drumKickMorphAuto', 'drumClickMorphAuto',
       'drumBeepHiMorphAuto', 'drumBeepLoMorphAuto', 'drumNoiseMorphAuto',
@@ -3097,54 +3103,30 @@ const App: React.FC = () => {
       (result as Record<string, unknown>)[key] = tNorm < 0.5 ? stateA[key] : stateB[key];
     }
     
-    // Special handling for engine enable booleans:
-    // When one preset has the engine ON and the other OFF, keep the engine ON during
-    // the morph so the level can fade smoothly. Only turn OFF at the disabled endpoint.
-    const engineEnableKeys: (keyof SliderState)[] = [
-      'granularEnabled', 'leadEnabled', 'lead2Enabled',
-      'drumEnabled', 'oceanSampleEnabled', 'oceanWaveSynthEnabled',
+    // Special handling for engine toggles and cofDriftEnabled:
+    // - Off → On: Turn ON immediately when leaving the "off" endpoint (engine fades in via level morph from 0)
+    // - On → Off: Keep ON until arriving at the "off" endpoint (engine fades out via level morph to 0)
+    const atEndpointA = t === 0;
+    const atEndpointB = t === 100;
+    
+    const engineToggleKeys: (keyof SliderState)[] = [
+      'cofDriftEnabled', 'granularEnabled', 'leadEnabled', 'drumEnabled',
+      'oceanSampleEnabled', 'oceanWaveSynthEnabled'
     ];
-    for (const key of engineEnableKeys) {
-      const onA = stateA[key];
-      const onB = stateB[key];
+    for (const key of engineToggleKeys) {
+      const onA = stateA[key] as boolean;
+      const onB = stateB[key] as boolean;
       if (onA && onB) {
-        // Both on: stay on
         (result as Record<string, unknown>)[key] = true;
       } else if (!onA && !onB) {
-        // Both off: stay off
         (result as Record<string, unknown>)[key] = false;
       } else if (!onA && onB) {
-        // A off, B on: enable as soon as we leave A (t > 0)
+        // A off, B on: turn ON as soon as we leave A (t > 0)
         (result as Record<string, unknown>)[key] = !atEndpointA;
       } else {
-        // A on, B off: stay on until we arrive at B (t < 100)
+        // A on, B off: stay ON until we arrive at B (t === 100)
         (result as Record<string, unknown>)[key] = !atEndpointB;
       }
-    }
-    
-    // Special handling for cofDriftEnabled:
-    // - Off → On: Turn ON immediately when leaving the "off" preset (so CoF walk happens during morph)
-    // - On → Off: Keep ON during entire morph (do CoF walk), only turn OFF when arriving at target
-    const cofOnA = stateA.cofDriftEnabled;
-    const cofOnB = stateB.cofDriftEnabled;
-    
-    if (cofOnA && cofOnB) {
-      // Both on: stay on
-      result.cofDriftEnabled = true;
-    } else if (!cofOnA && !cofOnB) {
-      // Both off: stay off
-      result.cofDriftEnabled = false;
-    } else if (!cofOnA && cofOnB) {
-      // A is off, B is on: turn ON as soon as we leave A (t > 0)
-      result.cofDriftEnabled = !atEndpointA;
-    } else {
-      // A is on, B is off: stay ON until we arrive at B (t < 100)
-      result.cofDriftEnabled = !atEndpointB;
-    }
-    
-    // Auto-disable granular if level is 0
-    if (result.granularLevel === 0) {
-      result.granularEnabled = false;
     }
     
     return { state: result, dualRanges: resultDualRanges, dualModes: resultDualModes, morphCoFInfo };
@@ -3874,6 +3856,8 @@ const App: React.FC = () => {
 
   // Load preset from list - modified to support morph slots in advanced mode
   const handleLoadPresetFromList = useCallback((preset: SavedPreset) => {
+    // Activate snowflake on preset load
+    if (!snowflakeActivated) setSnowflakeActivated(true);
     // Mark that user has loaded a preset (disables auto-load on first play)
     hasLoadedPresetRef.current = true;
     
@@ -3991,7 +3975,7 @@ const App: React.FC = () => {
     // If in mid-morph, the useEffect will handle applying the interpolated state
     
     setShowPresetList(false);
-  }, [uiMode, morphLoadTarget, handleLoadPresetToSlot, state, dualSliderModes, dualSliderRanges, morphPresetB, morphPosition]);
+  }, [uiMode, morphLoadTarget, handleLoadPresetToSlot, state, dualSliderModes, dualSliderRanges, morphPresetB, morphPosition, snowflakeActivated]);
 
   // Delete preset - just removes from UI list (can't delete files from browser)
   const handleDeletePreset = (index: number) => {
@@ -4414,10 +4398,10 @@ const App: React.FC = () => {
           visibility: showSplash ? 'hidden' : 'visible',
         }}>
           <SnowflakeUI
-            state={state}
-            onChange={handleSliderChange}
-            onShowAdvanced={() => setUiMode('advanced')}
-            onShowJourney={() => setUiMode('journey')}
+            state={snowflakeActivated ? state : welcomeDisplayState}
+            onChange={snowflakeActivated ? handleSliderChange : handleWelcomeSliderChange}
+            onShowAdvanced={() => { if (!snowflakeActivated) setSnowflakeActivated(true); setUiMode('advanced'); }}
+            onShowJourney={() => { if (!snowflakeActivated) setSnowflakeActivated(true); setUiMode('journey'); }}
             onTogglePlay={(engineState.isRunning || isJourneyPlaying) ? handleStop : handleStart}
             onLoadPreset={handleLoadPresetFromList}
             presets={savedPresets}

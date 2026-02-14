@@ -896,7 +896,7 @@ export const DEFAULT_STATE: SliderState = {
 
   // Lead Synth (Rhodes/Bell)
   leadEnabled: false,
-  leadLevel: 0.4,
+  leadLevel: 0,
   lead1UseCustomAdsr: false,
   lead1Attack: 0.01,
   lead1Decay: 0.8,
@@ -994,7 +994,7 @@ export const DEFAULT_STATE: SliderState = {
 
   // ─── Ikeda-Style Drum Synth ───
   drumEnabled: false,
-  drumLevel: 0.7,
+  drumLevel: 0,
   drumReverbSend: 0.06,
   
   // Voice 1: Sub (deep sine pulse)
@@ -1219,9 +1219,9 @@ export const DEFAULT_STATE: SliderState = {
 
   // Ocean Waves
   oceanSampleEnabled: false,
-  oceanSampleLevel: 0.5,
+  oceanSampleLevel: 0,
   oceanWaveSynthEnabled: false,
-  oceanWaveSynthLevel: 0.4,
+  oceanWaveSynthLevel: 0,
   oceanFilterType: 'lowpass' as const,
   oceanFilterCutoff: 8000,
   oceanFilterResonance: 0.1,

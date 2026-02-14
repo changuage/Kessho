@@ -519,15 +519,15 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
     if (dragging === null) return;
     
     const slider = MACRO_SLIDERS[dragging];
-    // Use fixed interaction radius (not scaled by master/tension)
-    const interactionBaseRadius = 35;
-    const interactionMaxLength = 160;
+    // Use scaled interaction radius (must match getProngPosition for consistent drag)
+    const interactionBaseRadius = 35 * scaleFactor;
+    const interactionMaxLength = 160 * scaleFactor;
     const normalizedDistance = Math.max(0, Math.min(1, (distance - interactionBaseRadius) / interactionMaxLength));
     // Apply logarithmic curve: slider position -> actual value
     const value = sliderPositionToValue(normalizedDistance, slider.min, slider.max);
     
     onChange(slider.key, value);
-  }, [dragging, draggingWidth, specialDrag, onChange, centerX, centerY, baseHexRadius, outerRingRadius]);
+  }, [dragging, draggingWidth, specialDrag, onChange, centerX, centerY, baseHexRadius, outerRingRadius, scaleFactor]);
 
   const handlePointerUp = useCallback((e: React.PointerEvent) => {
     setDragging(null);
