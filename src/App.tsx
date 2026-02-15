@@ -1674,7 +1674,7 @@ const App: React.FC = () => {
         
         // Update morph preset dualRanges at endpoints (Rule 2)
         if (isMorphActive) {
-          if (morphPosition === 0 && morphPresetA) {
+          if (isAtEndpoint0(morphPosition, true) && morphPresetA) {
             setMorphPresetA(prev => {
               if (!prev) return null;
               const newDualRanges = { ...prev.dualRanges };
@@ -1684,7 +1684,7 @@ const App: React.FC = () => {
                 dualRanges: Object.keys(newDualRanges).length > 0 ? newDualRanges : undefined
               };
             });
-          } else if (morphPosition === 100 && morphPresetB) {
+          } else if (isAtEndpoint1(morphPosition, true) && morphPresetB) {
             setMorphPresetB(prev => {
               if (!prev) return null;
               const newDualRanges = { ...prev.dualRanges };
@@ -1701,12 +1701,9 @@ const App: React.FC = () => {
         if (drumVoice && drumMorphKey) {
           const drumMorphPosition = state[drumMorphKey] as number;
           const currentVal = state[key] as number;
-          // Use tolerance for endpoint detection
-          const isAtEndpoint0 = drumMorphPosition < 0.001;
-          const isAtEndpoint1 = drumMorphPosition > 0.999;
-          if (isAtEndpoint0) {
+          if (isAtEndpoint0(drumMorphPosition)) {
             setDrumMorphDualRangeOverride(drumVoice, keyStr, false, currentVal, undefined, 0);
-          } else if (isAtEndpoint1) {
+          } else if (isAtEndpoint1(drumMorphPosition)) {
             setDrumMorphDualRangeOverride(drumVoice, keyStr, false, currentVal, undefined, 1);
           }
         }
@@ -1732,12 +1729,12 @@ const App: React.FC = () => {
           
           // Update morph preset dualRanges at endpoints (Rule 2)
           if (isMorphActive) {
-            if (morphPosition === 0 && morphPresetA) {
+            if (isAtEndpoint0(morphPosition, true) && morphPresetA) {
               setMorphPresetA(prev => prev ? {
                 ...prev,
                 dualRanges: { ...prev.dualRanges, [keyStr]: { min, max } }
               } : null);
-            } else if (morphPosition === 100 && morphPresetB) {
+            } else if (isAtEndpoint1(morphPosition, true) && morphPresetB) {
               setMorphPresetB(prev => prev ? {
                 ...prev,
                 dualRanges: { ...prev.dualRanges, [keyStr]: { min, max } }
@@ -1749,12 +1746,9 @@ const App: React.FC = () => {
           if (drumVoice && drumMorphKey) {
             const drumMorphPosition = state[drumMorphKey] as number;
             const currentVal = state[key] as number;
-            // Use tolerance for endpoint detection
-            const isAtEndpoint0 = drumMorphPosition < 0.001;
-            const isAtEndpoint1 = drumMorphPosition > 0.999;
-            if (isAtEndpoint0) {
+            if (isAtEndpoint0(drumMorphPosition)) {
               setDrumMorphDualRangeOverride(drumVoice, keyStr, true, currentVal, { min, max }, 0);
-            } else if (isAtEndpoint1) {
+            } else if (isAtEndpoint1(drumMorphPosition)) {
               setDrumMorphDualRangeOverride(drumVoice, keyStr, true, currentVal, { min, max }, 1);
             }
           }
@@ -1776,12 +1770,12 @@ const App: React.FC = () => {
     // Update morph preset dualRanges at endpoints (Rule 2)
     const isMorphActive = morphPresetA !== null || morphPresetB !== null;
     if (isMorphActive) {
-      if (morphPosition === 0 && morphPresetA) {
+      if (isAtEndpoint0(morphPosition, true) && morphPresetA) {
         setMorphPresetA(prev => prev ? {
           ...prev,
           dualRanges: { ...prev.dualRanges, [keyStr]: { min, max } }
         } : null);
-      } else if (morphPosition === 100 && morphPresetB) {
+      } else if (isAtEndpoint1(morphPosition, true) && morphPresetB) {
         setMorphPresetB(prev => prev ? {
           ...prev,
           dualRanges: { ...prev.dualRanges, [keyStr]: { min, max } }
@@ -1810,12 +1804,9 @@ const App: React.FC = () => {
     if (drumVoice && drumMorphKey) {
       const drumMorphPosition = state[drumMorphKey] as number;
       const currentVal = state[key] as number;
-      // Use tolerance for endpoint detection
-      const isAtEndpoint0 = drumMorphPosition < 0.001;
-      const isAtEndpoint1 = drumMorphPosition > 0.999;
-      if (isAtEndpoint0) {
+      if (isAtEndpoint0(drumMorphPosition)) {
         setDrumMorphDualRangeOverride(drumVoice, keyStr, true, currentVal, { min, max }, 0);
-      } else if (isAtEndpoint1) {
+      } else if (isAtEndpoint1(drumMorphPosition)) {
         setDrumMorphDualRangeOverride(drumVoice, keyStr, true, currentVal, { min, max }, 1);
       }
     }
@@ -2063,13 +2054,13 @@ const App: React.FC = () => {
     const isMorphActive = morphPresetA !== null || morphPresetB !== null;
     
     if (isMorphActive) {
-      if (morphPosition === 0 && morphPresetA) {
+      if (isAtEndpoint0(morphPosition, true) && morphPresetA) {
         // At endpoint A: update preset A permanently (both numeric and string values)
         setMorphPresetA(prev => prev ? {
           ...prev,
           state: { ...prev.state, [key]: value }
         } : null);
-      } else if (morphPosition === 100 && morphPresetB) {
+      } else if (isAtEndpoint1(morphPosition, true) && morphPresetB) {
         // At endpoint B: update preset B permanently (both numeric and string values)
         setMorphPresetB(prev => prev ? {
           ...prev,
@@ -2161,11 +2152,7 @@ const App: React.FC = () => {
         // Clear mid-morph overrides when reaching an endpoint (keep endpoint edits)
         if (keyStr.includes('Morph') && !keyStr.includes('Auto') && !keyStr.includes('Speed') && !keyStr.includes('Mode')) {
           const morphValue = value as number;
-          // Use tolerance for endpoint detection since sliders might not hit exactly 0 or 1
-          const isAtEndpoint0 = morphValue < 0.001;
-          const isAtEndpoint1 = morphValue > 0.999;
-          
-          if (isAtEndpoint0 || isAtEndpoint1) {
+          if (isAtEndpoint0(morphValue) || isAtEndpoint1(morphValue)) {
             clearMidMorphOverrides(voice);
           }
         }
@@ -2211,8 +2198,8 @@ const App: React.FC = () => {
       // Determine if we should reset dual modes
       // Only reset if we're at the endpoint matching the changed preset
       const isPresetA = keyStr.includes('PresetA');
-      const atEndpoint0 = currentMorph < 0.01;
-      const atEndpoint1 = currentMorph > 0.99;
+      const atEndpoint0 = isAtEndpoint0(currentMorph);
+      const atEndpoint1 = isAtEndpoint1(currentMorph);
       
       // Reset dual modes only if:
       // - Preset A changed and we're at endpoint 0 (or mid-morph)
@@ -3106,8 +3093,8 @@ const App: React.FC = () => {
     // Special handling for engine toggles and cofDriftEnabled:
     // - Off → On: Turn ON immediately when leaving the "off" endpoint (engine fades in via level morph from 0)
     // - On → Off: Keep ON until arriving at the "off" endpoint (engine fades out via level morph to 0)
-    const atEndpointA = t === 0;
-    const atEndpointB = t === 100;
+    const atEndpointA = isAtEndpoint0(t, true);
+    const atEndpointB = isAtEndpoint1(t, true);
     
     const engineToggleKeys: (keyof SliderState)[] = [
       'cofDriftEnabled', 'granularEnabled', 'leadEnabled', 'drumEnabled',
@@ -3489,11 +3476,11 @@ const App: React.FC = () => {
     const leavingB = wasAtB && newPosition < 100;
     
     // Update endpoint tracking when reaching endpoints
-    if (newPosition === 0) {
+    if (isAtEndpoint0(newPosition, true)) {
       lastMorphEndpointRef.current = 0;
       morphDirectionRef.current = null;
       morphCapturedStartRootRef.current = null;
-    } else if (newPosition === 100) {
+    } else if (isAtEndpoint1(newPosition, true)) {
       lastMorphEndpointRef.current = 100;
       morphDirectionRef.current = null;
       morphCapturedStartRootRef.current = null;
@@ -3568,7 +3555,7 @@ const App: React.FC = () => {
     audioEngine.updateParams(finalState);
     
     // Update CoF morph visualization (clear at endpoints - we've arrived)
-    const atEndpoint = newPosition === 0 || newPosition === 100;
+    const atEndpoint = isAtEndpoint0(newPosition, true) || isAtEndpoint1(newPosition, true);
     setMorphCoFViz(atEndpoint ? null : (morphResult.morphCoFInfo || null));
     
     // Reset CoF drift and clear manual overrides when reaching an endpoint
@@ -3802,7 +3789,7 @@ const App: React.FC = () => {
           audioEngine.updateParams(stateWithPrefs);
           
           // Update CoF morph visualization (clear at endpoints - we've arrived)
-          const atEndpoint = newPos === 0 || newPos === 100;
+          const atEndpoint = isAtEndpoint0(newPos, true) || isAtEndpoint1(newPos, true);
           setMorphCoFViz(atEndpoint ? null : (morphResult.morphCoFInfo || null));
           
           // Reset CoF drift when reaching an endpoint
@@ -4246,7 +4233,7 @@ const App: React.FC = () => {
       audioEngine.updateParams(stateWithPrefs);
       
       // Update CoF morph visualization (clear at endpoints)
-      const atEndpoint = newPosition === 0 || newPosition === 100;
+      const atEndpoint = isAtEndpoint0(newPosition, true) || isAtEndpoint1(newPosition, true);
       setMorphCoFViz(atEndpoint ? null : (morphResult.morphCoFInfo || null));
       
       if (atEndpoint) {
@@ -5065,8 +5052,8 @@ const App: React.FC = () => {
               fontSize: '0.65rem', 
               color: '#888' 
             }}>
-              {morphPosition === 0 ? 'Full A' : 
-               morphPosition === 100 ? 'Full B' : 
+              {isAtEndpoint0(morphPosition, true) ? 'Full A' : 
+               isAtEndpoint1(morphPosition, true) ? 'Full B' : 
                `${100 - morphPosition}% A + ${morphPosition}% B`}
             </div>
           </div>

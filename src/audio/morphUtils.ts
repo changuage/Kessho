@@ -40,23 +40,21 @@ export interface InterpolatedDualRange {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Check if morph position is at endpoint 0 (with tolerance)
+ * Check if morph position is at endpoint 0 (exact match)
  * @param position - Morph position (0-1 for drum, 0-100 for main)
  * @param scale100 - Whether position is on 0-100 scale (main morph) or 0-1 scale (drum morph)
  */
 export function isAtEndpoint0(position: number, scale100: boolean = false): boolean {
-  const threshold = scale100 ? 1 : 0.01;
-  return position <= threshold;
+  return position === 0;
 }
 
 /**
- * Check if morph position is at endpoint 1 (with tolerance)
+ * Check if morph position is at endpoint 1 (exact match)
  * @param position - Morph position (0-1 for drum, 0-100 for main)
  * @param scale100 - Whether position is on 0-100 scale (main morph) or 0-1 scale (drum morph)
  */
 export function isAtEndpoint1(position: number, scale100: boolean = false): boolean {
-  const threshold = scale100 ? 99 : 0.99;
-  return position >= threshold;
+  return position === (scale100 ? 100 : 1);
 }
 
 /**
