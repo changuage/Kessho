@@ -44,7 +44,7 @@ export interface InterpolatedDualRange {
  * @param position - Morph position (0-1 for drum, 0-100 for main)
  * @param scale100 - Whether position is on 0-100 scale (main morph) or 0-1 scale (drum morph)
  */
-export function isAtEndpoint0(position: number, scale100: boolean = false): boolean {
+export function isAtEndpoint0(position: number, _scale100: boolean = false): boolean {
   return position === 0;
 }
 

@@ -104,7 +104,7 @@ export class DrumSynth {
   };
 
   // Cache distortion curves to avoid per-trigger Float32Array allocation
-  private waveshaperCurveCache = new Map<string, Float32Array>();
+  private waveshaperCurveCache = new Map<string, Float32Array<ArrayBuffer>>();
 
   // Cache generated Euclidean patterns (keyed by steps|hits|rotation)
   private euclidPatternCache = new Map<string, boolean[]>();
@@ -226,7 +226,7 @@ export class DrumSynth {
     this.delayWetGain.connect(masterOutput);
   }
 
-  private getWaveshaperCurve(driveAmount: number): Float32Array {
+  private getWaveshaperCurve(driveAmount: number): Float32Array<ArrayBuffer> {
     // Guard against near-zero drive producing NaN via division by tanh(0)→0
     if (driveAmount < 0.001) {
       const cacheKey = '0.000';
@@ -234,7 +234,7 @@ export class DrumSynth {
       if (cached) return cached;
       // Identity curve (linear pass-through)
       const samples = 256;
-      const curve = new Float32Array(samples);
+      const curve = new Float32Array(samples) as Float32Array<ArrayBuffer>;
       for (let i = 0; i < samples; i++) {
         curve[i] = (i * 2) / samples - 1;
       }
@@ -249,7 +249,7 @@ export class DrumSynth {
     }
 
     const samples = 256;
-    const curve = new Float32Array(samples);
+    const curve = new Float32Array(samples) as Float32Array<ArrayBuffer>;
     const denominator = Math.tanh(driveAmount);
     for (let i = 0; i < samples; i++) {
       const x = (i * 2) / samples - 1;
