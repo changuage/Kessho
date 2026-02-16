@@ -665,6 +665,8 @@ export class DrumSynth {
     // Track all transient nodes for cleanup on dispose
     this.trackTransientNodes(osc, gain, waveshaper, osc2, gain2, subOsc, subGain);
   }
+
+  /**
    * New params: body, punch, tail, tone
    */
   private triggerKick(velocity: number, time: number): void {
@@ -826,6 +828,8 @@ export class DrumSynth {
     // Track all transient nodes for cleanup on dispose
     this.trackTransientNodes(osc, gain, waveshaper, clickOsc, clickGain, bodyOsc, bodyFilter, bodyGain, tailSource, tailFilter, tailGain);
   }
+
+  /**
    * New params: pitch, pitchEnv, mode, grainCount, grainSpread, stereoWidth
    */
   private triggerClick(velocity: number, time: number): void {
@@ -1039,6 +1043,8 @@ export class DrumSynth {
       this.trackTransientNodes(source, filter, gain, panner);
     }
   }
+
+  /**
    * New params: inharmonic, partials, shimmer, shimmerRate, brightness
    */
   private triggerBeepHi(velocity: number, time: number): void {
