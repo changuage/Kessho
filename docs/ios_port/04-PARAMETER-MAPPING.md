@@ -162,8 +162,7 @@ Bit 5 (32): Voice 6
 |-----------|------|-------|---------|--------------|-------------|
 | `granularEnabled` | boolean | - | true | Granular output mute | Advanced → Granular |
 | `grainProbability` | number | 0-1 | 0.8 | Grain trigger chance | Advanced → Granular |
-| `grainSizeMin` | number | 5-60 | 20 | Min grain ms | Advanced → Granular |
-| `grainSizeMax` | number | 20-200 | 80 | Max grain ms | Advanced → Granular |
+| `grainSize` | number | 5-200 | 50 | Grain size ms (3-mode: S&H per grain) | Advanced → Granular |
 | `density` | number | 5-80 | 25 | Grains per second | Advanced → Granular |
 | `spray` | number | 0-600 | 200 | Buffer read offset ms | Advanced → Granular |
 | `jitter` | number | 0-30 | 10 | Random position offset ms | Advanced → Granular |
@@ -176,22 +175,29 @@ Bit 5 (32): Voice 6
 
 ## Section 9: Lead Synth
 
+> **⚠️ REFACTORED (2026-02):** Lead delay, vibrato, glide, and morph parameters no longer use separate `*Min/*Max` fields.
+> They are now single values with an optional 3-mode slider system (`single | walk | sampleHold`).
+> See [Section 13: 3-Mode Slider System](#section-13-3-mode-slider-system) for details.
+
 | Parameter | Type | Range | Default | Audio Target | UI Location |
 |-----------|------|-------|---------|--------------|-------------|
 | `leadEnabled` | boolean | - | false | Lead output enable | Snowflake arm 4 level |
 | `leadLevel` | number | 0-1 | 0.4 | `leadGain.gain` | Snowflake arm 4 |
-| `leadAttack` | number | 0.001-2 | 0.01 | Note attack time | Advanced → Lead |
-| `leadDecay` | number | 0.01-4 | 0.8 | Note decay time | Advanced → Lead |
-| `leadSustain` | number | 0-1 | 0.3 | Note sustain level | Advanced → Lead |
-| `leadRelease` | number | 0.01-8 | 2.0 | Note release time | Advanced → Lead |
-| `leadDelayTime` | number | 0-1000 | 375 | Delay ms | Advanced → Lead |
-| `leadDelayFeedback` | number | 0-0.8 | 0.4 | Delay feedback | Advanced → Lead |
-| `leadDelayMix` | number | 0-1 | 0.35 | Delay wet/dry | Advanced → Lead |
-| `leadDensity` | number | 0.1-12 | 0.5 | Notes per phrase (random mode) | Advanced → Lead |
-| `leadOctave` | number | -1 to 2 | 1 | Base octave offset | Advanced → Lead |
-| `leadOctaveRange` | number | 1-4 | 2 | Octaves to span | Advanced → Lead |
-| `leadTimbreMin` | number | 0-1 | 0.2 | Min timbre (Rhodes) | Advanced → Lead |
-| `leadTimbreMax` | number | 0-1 | 0.6 | Max timbre (Gamelan) | Advanced → Lead |
+| `lead1Attack` | number | 0.001-2 | 0.01 | Note attack time | Advanced → Lead |
+| `lead1Decay` | number | 0.01-4 | 0.8 | Note decay time | Advanced → Lead |
+| `lead1Sustain` | number | 0-1 | 0.3 | Note sustain level | Advanced → Lead |
+| `lead1Release` | number | 0.01-8 | 2.0 | Note release time | Advanced → Lead |
+| `leadDelayTime` | number | 0-1000 | 375 | Delay ms (3-mode capable) | Advanced → Lead |
+| `leadDelayFeedback` | number | 0-0.8 | 0.4 | Delay feedback (3-mode capable) | Advanced → Lead |
+| `leadDelayMix` | number | 0-1 | 0.35 | Delay wet/dry (3-mode capable) | Advanced → Lead |
+| `lead1Density` | number | 0.1-12 | 0.5 | Notes per phrase (random mode) | Advanced → Lead |
+| `lead1Octave` | number | -1 to 2 | 1 | Base octave offset | Advanced → Lead |
+| `lead1OctaveRange` | number | 1-4 | 2 | Octaves to span | Advanced → Lead |
+| `lead1Morph` | number | 0-1 | 0.3 | FM morph position (3-mode capable) | Advanced → Lead |
+| `lead2Morph` | number | 0-1 | 0.3 | Lead 2 FM morph (3-mode capable) | Advanced → Lead |
+| `leadVibratoDepth` | number | 0-1 | 0.3 | Vibrato depth (3-mode capable) | Advanced → Lead |
+| `leadVibratoRate` | number | 0.1-12 | 4 | Vibrato rate Hz (3-mode capable) | Advanced → Lead |
+| `leadGlide` | number | 0-1 | 0.1 | Portamento time (3-mode capable) | Advanced → Lead |
 
 ## Section 10: Euclidean Sequencer (Lead)
 
@@ -215,6 +221,10 @@ Bit 5 (32): Voice 6
 
 ## Section 11: Ocean Waves
 
+> **⚠️ REFACTORED (2026-02):** Ocean duration, interval, foam, and depth no longer use `*Min/*Max` fields.
+> They are now single values with an optional 3-mode slider system (`single | walk | sampleHold`).
+> See [Section 13: 3-Mode Slider System](#section-13-3-mode-slider-system) for details.
+
 | Parameter | Type | Range | Default | Audio Target | UI Location |
 |-----------|------|-------|---------|--------------|-------------|
 | `oceanSampleEnabled` | boolean | - | false | Sample playback enable | Advanced → Ocean |
@@ -224,21 +234,74 @@ Bit 5 (32): Voice 6
 | `oceanFilterType` | enum | 'lowpass'\|etc | 'lowpass' | `oceanFilter.type` | Advanced → Ocean |
 | `oceanFilterCutoff` | number | 40-12000 | 8000 | `oceanFilter.frequency` | Advanced → Ocean |
 | `oceanFilterResonance` | number | 0-1 | 0.1 | `oceanFilter.Q` | Advanced → Ocean |
-| `oceanDurationMin` | number | 2-15 | 4 | Wave min seconds | Advanced → Ocean |
-| `oceanDurationMax` | number | 2-15 | 10 | Wave max seconds | Advanced → Ocean |
-| `oceanIntervalMin` | number | 3-20 | 5 | Gap min seconds | Advanced → Ocean |
-| `oceanIntervalMax` | number | 3-20 | 12 | Gap max seconds | Advanced → Ocean |
-| `oceanFoamMin` | number | 0-1 | 0.2 | Foam intensity min | Advanced → Ocean |
-| `oceanFoamMax` | number | 0-1 | 0.5 | Foam intensity max | Advanced → Ocean |
-| `oceanDepthMin` | number | 0-1 | 0.3 | Deep rumble min | Advanced → Ocean |
-| `oceanDepthMax` | number | 0-1 | 0.7 | Deep rumble max | Advanced → Ocean |
+| `oceanDuration` | number | 2-15 | 6 | Wave seconds (3-mode capable) | Advanced → Ocean |
+| `oceanInterval` | number | 3-20 | 8 | Gap seconds (3-mode capable) | Advanced → Ocean |
+| `oceanFoam` | number | 0-1 | 0.35 | Foam intensity (3-mode capable) | Advanced → Ocean |
+| `oceanDepth` | number | 0-1 | 0.5 | Deep rumble (3-mode capable) | Advanced → Ocean |
 
 ## Section 12: Random Walk
 
 | Parameter | Type | Range | Default | Purpose |
 |-----------|------|-------|---------|---------|
 | `randomWalkSpeed` | number | 0.1-5 | 1.0 | Speed of parameter automation |
+## Section 13: 3-Mode Slider System
 
+> **Added 2026-02.** This replaces the old system of separate `*Min/*Max` state fields, four independent dual-mode state maps, and two different random-value strategies.
+
+### Overview
+
+Every numeric slider can now operate in one of three modes:
+
+| Mode | Stored As | Behavior | Visual Color |
+|------|-----------|----------|-------------|
+| `single` | `state[key]` only | Fixed value (default) | Standard slider |
+| `walk` | `dualRanges[key].min/max` | Continuous random walk between min/max | Blue (#a5c4d4) |
+| `sampleHold` | `dualRanges[key].min/max` | New random value per trigger event | Gold (#D4A520) |
+
+### State Storage
+
+```typescript
+// Mode for each slider (absent = 'single')
+sliderModes: Record<string, SliderMode>  // e.g. { 'oceanDuration': 'walk', 'leadDelayTime': 'sampleHold' }
+
+// Range bounds for walk/sampleHold modes
+dualSliderRanges: Partial<Record<keyof SliderState, { min: number; max: number }>>
+```
+
+### Migrated Parameters
+
+These parameters were converted from separate `*Min/*Max` field pairs to single values:
+
+| Old Fields | New Single Field | Default Mode |
+|------------|-----------------|-------------|
+| `oceanDurationMin/Max` | `oceanDuration` | walk |
+| `oceanIntervalMin/Max` | `oceanInterval` | walk |
+| `oceanFoamMin/Max` | `oceanFoam` | walk |
+| `oceanDepthMin/Max` | `oceanDepth` | walk |
+| `leadDelayTimeMin/Max` | `leadDelayTime` | sampleHold |
+| `leadDelayFeedbackMin/Max` | `leadDelayFeedback` | sampleHold |
+| `leadDelayMixMin/Max` | `leadDelayMix` | sampleHold |
+| `leadVibratoDepthMin/Max` | `leadVibratoDepth` | sampleHold |
+| `leadVibratoRateMin/Max` | `leadVibratoRate` | sampleHold |
+| `leadGlideMin/Max` | `leadGlide` | sampleHold |
+| `lead1MorphMin/Max` | `lead1Morph` | sampleHold |
+| `lead2MorphMin/Max` | `lead2Morph` | sampleHold |
+| `leadTimbreMin/Max` | `leadTimbre` | sampleHold |
+| `grainSizeMin/Max` | `grainSize` | sampleHold |
+
+### NOT Migrated (Intentionally Separate Min/Max)
+
+| Fields | Reason |
+|--------|--------|
+| `filterCutoffMin/Max` | Filter sweep range — always used as a pair |
+
+### iOS Porting Notes
+
+1. **SwiftUI `SliderMode` enum**: Port as `enum SliderMode: String, Codable { case single, walk, sampleHold }`
+2. **DualSlider SwiftUI view**: Implement with two draggable thumbs + colored range track + walk indicator
+3. **Mode cycling gesture**: Double-tap (desktop) or long-press (mobile) cycles `single → walk → sampleHold → single`
+4. **Engine reads**: Use `dualRanges[key]` for per-trigger sampling and random walk; fall back to `state[key]` if absent
+5. **Preset migration**: Use `migratePreset()` (state.ts) on every preset load — handles old `*Min/*Max` → new format automatically
 ## iOS SwiftUI Binding Structure
 
 ```swift

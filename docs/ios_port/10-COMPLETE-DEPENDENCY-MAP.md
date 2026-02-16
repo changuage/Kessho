@@ -195,13 +195,11 @@ This document provides an exhaustive mapping of how every slider connects to aud
          └─── true ──────────────────────────────────────▶ granularDirect.gain = granularLevel
                                                          ▶ granularReverbSend.gain = granularReverbSend
 
-    grainSizeMin (0.01-0.5 sec)
+    grainSize (5-200 ms) — 3-mode slider (single/walk/sampleHold)
          │
-         └────────────────────────────────────────────────▶ granulatorNode.port.postMessage({grainSizeMin})
-
-    grainSizeMax (0.01-0.5 sec)
-         │
-         └────────────────────────────────────────────────▶ granulatorNode.port.postMessage({grainSizeMax})
+         └────────────────────────────────────────────────▶ granulatorNode.port.postMessage({grainSizeMin, grainSizeMax})
+              (walk/S&H: engine reads dualRanges['grainSize'].min/max;
+               single: uses state.grainSize for both min and max)
 
     density (1-50 grains/sec)
          │
@@ -423,21 +421,25 @@ This document provides an exhaustive mapping of how every slider connects to aud
          └─── true ──────────────────────────────────────▶ oceanSampleGain.gain = oceanSampleLevel
                                                          ▶ Start oceanSampleSource playback
 
-    oceanDurationMin/Max (0.5-10 sec)
+    oceanDuration (0.5-10 sec) — 3-mode slider (single/walk/sampleHold)
          │
-         └────────────────────────────────────────────────▶ oceanNode.parameters.waveDurationMin/Max
+         └────────────────────────────────────────────────▶ oceanNode.parameters.waveDuration
+              (walk/S&H: engine reads dualRanges['oceanDuration'].min/max)
 
-    oceanIntervalMin/Max (0.1-5 sec)
+    oceanInterval (0.1-5 sec) — 3-mode slider
          │
-         └────────────────────────────────────────────────▶ oceanNode.parameters.waveIntervalMin/Max
+         └────────────────────────────────────────────────▶ oceanNode.parameters.waveInterval
+              (walk/S&H: engine reads dualRanges['oceanInterval'].min/max)
 
-    oceanFoamMin/Max (0-1)
+    oceanFoam (0-1) — 3-mode slider
          │
-         └────────────────────────────────────────────────▶ oceanNode.parameters.foamMin/Max
+         └────────────────────────────────────────────────▶ oceanNode.parameters.foam
+              (walk/S&H: engine reads dualRanges['oceanFoam'].min/max)
 
-    oceanDepthMin/Max (0-1)
+    oceanDepth (0-1) — 3-mode slider
          │
-         └────────────────────────────────────────────────▶ oceanNode.parameters.depthMin/Max
+         └────────────────────────────────────────────────▶ oceanNode.parameters.depth
+              (walk/S&H: engine reads dualRanges['oceanDepth'].min/max)
 
     oceanFilterType (enum)
          │
@@ -811,7 +813,8 @@ This document provides an exhaustive mapping of how every slider connects to aud
 granulatorNode.port.postMessage({
     type: 'params',
     params: {
-        grainSizeMin, grainSizeMax, density, spray, jitter,
+        grainSizeMin, grainSizeMax,  // derived from dualRanges['grainSize'] or state.grainSize
+        density, spray, jitter,
         probability, pitchMode, pitchSpread, stereoSpread,
         feedback, level
     }

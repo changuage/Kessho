@@ -12,11 +12,14 @@ interface SavedPreset {
     timestamp: number;  // Unix timestamp (ms) when saved
     state: SliderState; // All 120+ parameters
     dualRanges?: Record<string, { min: number; max: number }>;  // Optional dual slider ranges
+    sliderModes?: Record<string, SliderMode>;  // Mode per parameter ('walk' | 'sampleHold'; absent = 'single')
 }
 
+type SliderMode = 'single' | 'walk' | 'sampleHold';
+
 interface DualRange {
-    min: number;  // Lower bound of random walk range
-    max: number;  // Upper bound of random walk range
+    min: number;  // Lower bound of walk/sampleHold range
+    max: number;  // Upper bound of walk/sampleHold range
 }
 ```
 
@@ -74,7 +77,7 @@ interface DualRange {
 
 ### Dual Slider Ranges
 
-Presets can optionally include `dualRanges` for parameters that use range-based random walk:
+Presets can optionally include `dualRanges` and `sliderModes` for parameters that use range-based automation:
 
 ```json
 {
@@ -82,13 +85,22 @@ Presets can optionally include `dualRanges` for parameters that use range-based 
     "state": { ... },
     "dualRanges": {
         "synthReverbSend": { "min": 0.02, "max": 0.39 },
-        "oceanSampleLevel": { "min": 0, "max": 0.65 },
-        "granularReverbSend": { "min": 0.53, "max": 1 }
+        "oceanDuration": { "min": 4, "max": 10 },
+        "leadDelayTime": { "min": 200, "max": 500 }
+    },
+    "sliderModes": {
+        "synthReverbSend": "walk",
+        "oceanDuration": "walk",
+        "leadDelayTime": "sampleHold"
     }
 }
 ```
 
-When `dualRanges` is present for a parameter, the app enables dual-handle slider mode with random walk between min/max.
+When `dualRanges` is present for a parameter, the corresponding `sliderModes` entry determines the automation behavior:
+- `"walk"` — continuous random walk between min/max (blue UI: #a5c4d4)
+- `"sampleHold"` — new random value per trigger event (gold UI: #D4A520)
+
+> **Migration note (2026-02):** Old presets with `*Min/*Max` field pairs (e.g., `oceanDurationMin`, `oceanDurationMax`) are automatically migrated by `migratePreset()` to the new `dualRanges` + `sliderModes` format on load. See `PRESET_MIGRATION_MAP` in `state.ts`.
 
 ### Preset Morphing with Dual Sliders
 
@@ -98,6 +110,10 @@ When morphing between presets with different slider modes, the system interpolat
 |----------|------------------------|
 | Single A → Single B | Linear interpolation of state value |
 | Single A → Dual B | Create dual at A's value, morph handles to B's min/max |
+| Single A → Dual B | Create dual at A's value, morph handles to B's min/max |
+| Dual A → Single B | Morph both A's min/max toward B's single value |
+| Dual A → Dual B | Min→min, max→max independent interpolation |
+| Walk A → S&H B | Mode interpolates based on morph position (mode from dominant side) |
 | Dual A → Single B | Morph both A's min/max toward B's single value |
 | Dual A → Dual B | Min→min, max→max independent interpolation |
 

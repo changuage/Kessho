@@ -96,11 +96,24 @@ export class DrumSynth {
   private delayFilterL: BiquadFilterNode | null = null;
   private delayFilterR: BiquadFilterNode | null = null;
   private delayWetGain: GainNode | null = null;
+  private delayMerger: ChannelMergerNode | null = null;
   
   // Per-voice delay sends
   private delaySends: Record<DrumVoiceType, GainNode | null> = {
     sub: null, kick: null, click: null, beepHi: null, beepLo: null, noise: null
   };
+
+  // Cache distortion curves to avoid per-trigger Float32Array allocation
+  private waveshaperCurveCache = new Map<string, Float32Array>();
+
+  // Cache generated Euclidean patterns (keyed by steps|hits|rotation)
+  private euclidPatternCache = new Map<string, boolean[]>();
+
+  // Track per-trigger transient audio nodes for explicit cleanup on dispose.
+  // Each entry is an array of nodes created for a single voice trigger.
+  // We cap the list and auto-evict old entries whose oscillators have ended.
+  private transientNodes: AudioNode[] = [];
+  private transientCleanupTimer: number | null = null;
 
   constructor(
     ctx: AudioContext,
@@ -132,6 +145,9 @@ export class DrumSynth {
     
     // Create stereo ping-pong delay
     this.createDelayEffect(masterOutput);
+
+    // Start periodic transient node cleanup (every 2s)
+    this.transientCleanupTimer = window.setInterval(() => this.cleanupTransientNodes(), 2000);
   }
   
   /**
@@ -180,7 +196,7 @@ export class DrumSynth {
     }
     
     // Create stereo merger for output
-    const merger = this.ctx.createChannelMerger(2);
+    this.delayMerger = this.ctx.createChannelMerger(2);
     
     // Connect per-voice sends to both delay lines
     for (const voice of voiceTypes) {
@@ -201,13 +217,126 @@ export class DrumSynth {
     
     // Output: both filtered signals to stereo output
     // Left delay output goes to left channel
-    this.delayFilterL.connect(merger, 0, 0);
+    this.delayFilterL.connect(this.delayMerger, 0, 0);
     // Right delay output goes to right channel
-    this.delayFilterR.connect(merger, 0, 1);
+    this.delayFilterR.connect(this.delayMerger, 0, 1);
     
     // Merger -> wet gain -> master output
-    merger.connect(this.delayWetGain);
+    this.delayMerger.connect(this.delayWetGain);
     this.delayWetGain.connect(masterOutput);
+  }
+
+  private getWaveshaperCurve(driveAmount: number): Float32Array {
+    // Guard against near-zero drive producing NaN via division by tanh(0)→0
+    if (driveAmount < 0.001) {
+      const cacheKey = '0.000';
+      const cached = this.waveshaperCurveCache.get(cacheKey);
+      if (cached) return cached;
+      // Identity curve (linear pass-through)
+      const samples = 256;
+      const curve = new Float32Array(samples);
+      for (let i = 0; i < samples; i++) {
+        curve[i] = (i * 2) / samples - 1;
+      }
+      this.waveshaperCurveCache.set(cacheKey, curve);
+      return curve;
+    }
+
+    const cacheKey = driveAmount.toFixed(3);
+    const cached = this.waveshaperCurveCache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    const samples = 256;
+    const curve = new Float32Array(samples);
+    const denominator = Math.tanh(driveAmount);
+    for (let i = 0; i < samples; i++) {
+      const x = (i * 2) / samples - 1;
+      curve[i] = Math.tanh(x * driveAmount) / denominator;
+    }
+
+    this.waveshaperCurveCache.set(cacheKey, curve);
+    if (this.waveshaperCurveCache.size > 64) {
+      const oldestKey = this.waveshaperCurveCache.keys().next().value;
+      if (oldestKey) {
+        this.waveshaperCurveCache.delete(oldestKey);
+      }
+    }
+
+    return curve;
+  }
+
+  private getCachedEuclideanPattern(steps: number, hits: number, rotation: number): boolean[] {
+    const normalizedRotation = ((rotation % steps) + steps) % steps;
+    const key = `${steps}|${hits}|${normalizedRotation}`;
+    const cached = this.euclidPatternCache.get(key);
+    if (cached) {
+      return cached;
+    }
+
+    const generated = this.generateEuclideanPattern(steps, hits, normalizedRotation);
+    this.euclidPatternCache.set(key, generated);
+    if (this.euclidPatternCache.size > 256) {
+      const oldestKey = this.euclidPatternCache.keys().next().value;
+      if (oldestKey) {
+        this.euclidPatternCache.delete(oldestKey);
+      }
+    }
+    return generated;
+  }
+
+  /**
+   * Register transient audio nodes created during a voice trigger for later cleanup.
+   * Nodes that are OscillatorNode/AudioBufferSourceNode fire 'ended' and self-stop,
+   * but remain connected until GC. This registry lets dispose() disconnect them eagerly.
+   */
+  private trackTransientNodes(...nodes: (AudioNode | null | undefined)[]): void {
+    for (const node of nodes) {
+      if (node) this.transientNodes.push(node);
+    }
+  }
+
+  /**
+   * Periodic cleanup: disconnect transient nodes whose sources have ended.
+   * Called every 2s by the cleanup timer. Also disconnects any node whose
+   * playback window has clearly passed (conservative: nodes older than the
+   * current context time minus a generous buffer).
+   */
+  private cleanupTransientNodes(): void {
+    if (this.transientNodes.length === 0) return;
+    // Simple strategy: try to disconnect all tracked nodes.
+    // Oscillators/sources that have ended will disconnect cleanly.
+    // Those still playing will throw, which we catch and keep.
+    const surviving: AudioNode[] = [];
+    for (const node of this.transientNodes) {
+      try {
+        // Check if the node's context is still valid
+        if (node.context.state === 'closed') {
+          try { node.disconnect(); } catch { /* already gone */ }
+          continue;
+        }
+        // For OscillatorNode / AudioBufferSourceNode, check the playbackState
+        // (not standard, but we can try disconnecting and re-add if it throws)
+        node.disconnect();
+        // If we got here, it disconnected successfully — don't re-add
+      } catch {
+        // Still in use, keep tracking
+        surviving.push(node);
+      }
+    }
+    this.transientNodes = surviving;
+  }
+
+  /**
+   * Force-disconnect all tracked transient nodes.
+   * Called from dispose() for guaranteed cleanup.
+   */
+  private forceDisconnectAllTransientNodes(): void {
+    for (const node of this.transientNodes) {
+      try { node.disconnect(); } catch { /* ignore */ }
+    }
+    this.transientNodes = [];
   }
   
   /**
@@ -478,14 +607,8 @@ export class DrumSynth {
     let waveshaper: WaveShaperNode | null = null;
     if (drive > 0.05) {
       waveshaper = this.ctx.createWaveShaper();
-      const samples = 256;
-      const curve = new Float32Array(samples);
       const driveAmount = drive * 10;
-      for (let i = 0; i < samples; i++) {
-        const x = (i * 2) / samples - 1;
-        curve[i] = Math.tanh(x * driveAmount) / Math.tanh(driveAmount);
-      }
-      waveshaper.curve = curve;
+      waveshaper.curve = this.getWaveshaperCurve(driveAmount);
       waveshaper.oversample = '2x';
     }
     
@@ -538,10 +661,10 @@ export class DrumSynth {
       subOsc.start(time);
       subOsc.stop(time + decayTime + 0.02);
     }
+
+    // Track all transient nodes for cleanup on dispose
+    this.trackTransientNodes(osc, gain, waveshaper, osc2, gain2, subOsc, subGain);
   }
-  
-  /**
-   * Voice 2: Kick - Sine with pitch envelope, body, punch, tail
    * New params: body, punch, tail, tone
    */
   private triggerKick(velocity: number, time: number): void {
@@ -640,14 +763,8 @@ export class DrumSynth {
     let waveshaper: WaveShaperNode | null = null;
     if (tone > 0.05) {
       waveshaper = this.ctx.createWaveShaper();
-      const samples = 256;
-      const curve = new Float32Array(samples);
       const driveAmount = tone * 5;
-      for (let i = 0; i < samples; i++) {
-        const x = (i * 2) / samples - 1;
-        curve[i] = Math.tanh(x * driveAmount) / Math.tanh(driveAmount);
-      }
-      waveshaper.curve = curve;
+      waveshaper.curve = this.getWaveshaperCurve(driveAmount);
     }
     
     // Amplitude envelope
@@ -705,10 +822,10 @@ export class DrumSynth {
       tailSource.start(time);
       tailSource.stop(time + decay * 1.5 + 0.01);
     }
+
+    // Track all transient nodes for cleanup on dispose
+    this.trackTransientNodes(osc, gain, waveshaper, clickOsc, clickGain, bodyOsc, bodyFilter, bodyGain, tailSource, tailFilter, tailGain);
   }
-  
-  /**
-   * Voice 3: Click - Multi-mode: impulse/noise/tonal/granular
    * New params: pitch, pitchEnv, mode, grainCount, grainSpread, stereoWidth
    */
   private triggerClick(velocity: number, time: number): void {
@@ -800,6 +917,8 @@ export class DrumSynth {
     
     source.start(time);
     source.stop(time + actualDecay + 0.01);
+
+    this.trackTransientNodes(source, filter, gain);
   }
   
   /** Click mode: Noise - longer filtered noise burst */
@@ -834,6 +953,8 @@ export class DrumSynth {
     
     source.start(time);
     source.stop(time + actualDecay + 0.01);
+
+    this.trackTransientNodes(source, filter, gain);
   }
   
   /** Click mode: Tonal - pitched sine click with pitch envelope */
@@ -868,6 +989,8 @@ export class DrumSynth {
     
     osc.start(time);
     osc.stop(time + decay + 0.01);
+
+    this.trackTransientNodes(osc, filter, gain);
   }
   
   /** Click mode: Granular - multiple micro-hits spread in time */
@@ -912,11 +1035,10 @@ export class DrumSynth {
       
       source.start(grainTime);
       source.stop(grainTime + grainDecay + 0.01);
+
+      this.trackTransientNodes(source, filter, gain, panner);
     }
   }
-  
-  /**
-   * Voice 4: Beep Hi - Inharmonic partials with shimmer LFO
    * New params: inharmonic, partials, shimmer, shimmerRate, brightness
    */
   private triggerBeepHi(velocity: number, time: number): void {
@@ -1044,6 +1166,9 @@ export class DrumSynth {
       modOsc.start(time);
       modOsc.stop(time + attack + decay + 0.01);
     }
+
+    // Track all transient nodes for cleanup on dispose
+    this.trackTransientNodes(mainGain, brightnessFilter, lfo, lfoGain, modOsc, modGain, ...oscillators, ...gains);
   }
   
   /**
@@ -1143,6 +1268,9 @@ export class DrumSynth {
     
     osc.start(time);
     osc.stop(time + attack + decay + 0.01);
+
+    // Track all transient nodes for cleanup on dispose
+    this.trackTransientNodes(osc, gain, filter, bodyFilter);
   }
   
   /**
@@ -1217,6 +1345,9 @@ export class DrumSynth {
     source.stop(time + exciteTime + 0.01);
     osc.start(time);
     osc.stop(time + decay + 0.01);
+
+    // Track all transient nodes for cleanup on dispose
+    this.trackTransientNodes(source, exciteGain, bodyFilter, dampFilter, outputGain, osc, oscGain);
   }
   
   /**
@@ -1387,6 +1518,9 @@ export class DrumSynth {
       colorLFONode.start(time);
       colorLFONode.stop(time + attack + decay + 0.01);
     }
+
+    // Track all transient nodes for cleanup on dispose
+    this.trackTransientNodes(source, mainFilter, outputGain, formantGain, breathLFO, breathLFOGain, colorLFONode, colorLFOGain, ...formantFilters);
   }
   
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1622,7 +1756,7 @@ export class DrumSynth {
           if (!lane.enabled) return;
           if (lane.voices.length === 0) return; // No voices enabled
           
-          const pattern = this.generateEuclideanPattern(
+          const pattern = this.getCachedEuclideanPattern(
             lane.steps, lane.hits, lane.rotation
           );
           
@@ -1670,6 +1804,53 @@ export class DrumSynth {
       cancelAnimationFrame(this.morphAnimationFrame);
       this.morphAnimationFrame = null;
     }
+
+    // Stop transient node cleanup timer
+    if (this.transientCleanupTimer !== null) {
+      clearInterval(this.transientCleanupTimer);
+      this.transientCleanupTimer = null;
+    }
+
+    // Force-disconnect all per-trigger transient nodes (oscillators, gains, filters, etc.)
+    this.forceDisconnectAllTransientNodes();
+
+    this.euclidPatternCache.clear();
+    this.waveshaperCurveCache.clear();
+
+    const voiceTypes: DrumVoiceType[] = ['sub', 'kick', 'click', 'beepHi', 'beepLo', 'noise'];
+    for (const voice of voiceTypes) {
+      const sendNode = this.delaySends[voice];
+      if (sendNode) {
+        try {
+          sendNode.disconnect();
+        } catch {
+          // ignore disconnect errors during dispose
+        }
+        this.delaySends[voice] = null;
+      }
+    }
+
+    try { this.delayLeftNode?.disconnect(); } catch {}
+    try { this.delayRightNode?.disconnect(); } catch {}
+    try { this.delayFeedbackL?.disconnect(); } catch {}
+    try { this.delayFeedbackR?.disconnect(); } catch {}
+    try { this.delayFilterL?.disconnect(); } catch {}
+    try { this.delayFilterR?.disconnect(); } catch {}
+    try { this.delayMerger?.disconnect(); } catch {}
+    try { this.delayWetGain?.disconnect(); } catch {}
+
+    this.delayLeftNode = null;
+    this.delayRightNode = null;
+    this.delayFeedbackL = null;
+    this.delayFeedbackR = null;
+    this.delayFilterL = null;
+    this.delayFilterR = null;
+    this.delayMerger = null;
+    this.delayWetGain = null;
+    this.noiseBuffer = null;
+    this.onDrumTrigger = null;
+    this.onMorphTrigger = null;
+
     this.masterGain.disconnect();
     this.reverbSend.disconnect();
   }

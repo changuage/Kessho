@@ -151,8 +151,15 @@ export class AudioEngine {
   private currentSeed = 0;
   private currentBucket = '';
   private sliderState: SliderState | null = null;
-  private sliderStateJson = '';
+  private _sliderStateJsonCache = '';
+  private _sliderStateJsonDirty = true;
   private lastHardness = -1;  // Track to avoid unnecessary saturation curve updates
+
+  // Temp drum synth management: debounce rapid previews and track cleanup timers
+  private tempDrumSynthTimer: number | null = null;
+  private tempDrumSynth: DrumSynth | null = null;
+  private tempDrumGain: GainNode | null = null;
+  private tempDrumReverb: GainNode | null = null;
   private rng: (() => number) | null = null;
   private isRunning = false;
   private seedLocked = false; // When true, don't recompute seed on param changes (for morphing)
@@ -186,8 +193,30 @@ export class AudioEngine {
     sub: null, kick: null, click: null, beepHi: null, beepLo: null, noise: null
   };
 
+  // Unified dual-range storage: key → { min, max }
+  // Populated by App when a slider is in walk or sampleHold mode.
+  // When absent for a key, engine uses the single-value from sliderState.
+  private dualRanges: Partial<Record<string, { min: number; max: number }>> = {};
+
   constructor() {
     // Empty constructor
+  }
+
+  /**
+   * Lazy accessor for sliderState JSON. Recomputes only when dirty.
+   * Used for deterministic harmony seeding at phrase boundaries.
+   */
+  private get sliderStateJson(): string {
+    if (this._sliderStateJsonDirty && this.sliderState) {
+      this._sliderStateJsonCache = JSON.stringify(this.sliderState);
+      this._sliderStateJsonDirty = false;
+    }
+    return this._sliderStateJsonCache;
+  }
+
+  /** App calls this whenever dualSliderRanges change */
+  setDualRanges(ranges: Partial<Record<string, { min: number; max: number }>>) {
+    this.dualRanges = ranges;
   }
 
   setStateChangeCallback(callback: (state: EngineState) => void) {
@@ -309,14 +338,46 @@ export class AudioEngine {
       return;
     }
     
+    // Dispose any previous temp synth immediately (debounce rapid preview taps)
+    this.disposeTempDrumSynth();
+
     // Create a temporary drum synth for testing
     const tempGain = this.ctx.createGain();
-    tempGain.gain.value = 1.0; // Ensure full volume
+    tempGain.gain.value = 1.0;
     tempGain.connect(this.ctx.destination);
     const tempReverb = this.ctx.createGain(); // Dummy reverb node (not connected)
-    
-    const tempDrumSynth = new DrumSynth(this.ctx, tempGain, tempReverb, stateToUse, () => Math.random());
-    tempDrumSynth.triggerVoice(voice, velocity);
+
+    const rngSource = this.rng ?? Math.random;
+    const tempSynth = new DrumSynth(this.ctx, tempGain, tempReverb, stateToUse, () => rngSource());
+    tempSynth.triggerVoice(voice, velocity);
+
+    // Store references so stop() and next preview can clean up
+    this.tempDrumSynth = tempSynth;
+    this.tempDrumGain = tempGain;
+    this.tempDrumReverb = tempReverb;
+    this.tempDrumSynthTimer = window.setTimeout(() => {
+      this.disposeTempDrumSynth();
+    }, 2000); // 2s is plenty for any one-shot percussion decay
+  }
+
+  /** Tear down the temporary one-shot drum synth and clear its timer */
+  private disposeTempDrumSynth(): void {
+    if (this.tempDrumSynthTimer !== null) {
+      clearTimeout(this.tempDrumSynthTimer);
+      this.tempDrumSynthTimer = null;
+    }
+    if (this.tempDrumSynth) {
+      try { this.tempDrumSynth.dispose(); } catch { /* ignore */ }
+      this.tempDrumSynth = null;
+    }
+    if (this.tempDrumGain) {
+      try { this.tempDrumGain.disconnect(); } catch { /* ignore */ }
+      this.tempDrumGain = null;
+    }
+    if (this.tempDrumReverb) {
+      try { this.tempDrumReverb.disconnect(); } catch { /* ignore */ }
+      this.tempDrumReverb = null;
+    }
   }
 
   // Play a silent buffer to unlock iOS audio context
@@ -335,7 +396,9 @@ export class AudioEngine {
     if (this.isRunning) return;
 
     this.sliderState = sliderState;
-    this.sliderStateJson = JSON.stringify(sliderState);
+    // Eagerly compute the initial JSON snapshot (used for harmony seeding)
+    this._sliderStateJsonCache = JSON.stringify(sliderState);
+    this._sliderStateJsonDirty = false;
 
     // Create AudioContext with iOS-friendly settings
     const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
@@ -497,6 +560,9 @@ export class AudioEngine {
       this.drumSynth = null;
     }
 
+    // Clean up any pending temp drum synth from preview tapping
+    this.disposeTempDrumSynth();
+
     // Close context
     this.ctx?.close();
     this.ctx = null;
@@ -509,7 +575,7 @@ export class AudioEngine {
     // Always update stored state and CoF config, even when not running
     const oldSeedWindow = this.sliderState?.seedWindow;
     this.sliderState = sliderState;
-    this.sliderStateJson = JSON.stringify(sliderState);
+    this._sliderStateJsonDirty = true;
 
     // Update Circle of Fifths config from slider state
     this.cofConfig.enabled = sliderState.cofDriftEnabled ?? false;
@@ -643,18 +709,18 @@ export class AudioEngine {
     // Stereo ping-pong delay
     this.leadDelayL = ctx.createDelay(2);
     this.leadDelayR = ctx.createDelay(2);
-    const delayTime = (this.sliderState?.leadDelayTimeMin ?? 375) / 1000;
+    const delayTime = (this.sliderState?.leadDelayTime ?? 375) / 1000;
     this.leadDelayL.delayTime.value = delayTime;
     this.leadDelayR.delayTime.value = delayTime * 0.75; // Offset for stereo effect
 
     this.leadDelayFeedbackL = ctx.createGain();
     this.leadDelayFeedbackR = ctx.createGain();
-    const feedback = this.sliderState?.leadDelayFeedbackMin ?? 0.4;
+    const feedback = this.sliderState?.leadDelayFeedback ?? 0.4;
     this.leadDelayFeedbackL.gain.value = feedback;
     this.leadDelayFeedbackR.gain.value = feedback;
 
     this.leadDelayMix = ctx.createGain();
-    this.leadDelayMix.gain.value = this.sliderState?.leadDelayMixMin ?? 0.35;
+    this.leadDelayMix.gain.value = this.sliderState?.leadDelayMix ?? 0.35;
 
     this.leadDry = ctx.createGain();
     this.leadDry.gain.value = 1.0;
@@ -1234,6 +1300,8 @@ export class AudioEngine {
   private onPhraseBoundary(): void {
     if (!this.harmonyState || !this.sliderState) return;
 
+    // sliderStateJson getter handles lazy refresh automatically
+
     const phraseIndex = getCurrentPhraseIndex();
     const homeRoot = this.sliderState.rootNote ?? 4;
     let forceNewChord = false;
@@ -1583,12 +1651,16 @@ export class AudioEngine {
 
     // Granular parameters
     if (this.granulatorNode) {
+      // grainSize: use dualRanges if available (walk/sampleHold), else single value for both
+      const grainSizeRange = this.dualRanges['grainSize'];
+      const grainSizeMin = grainSizeRange ? grainSizeRange.min : state.grainSize;
+      const grainSizeMax = grainSizeRange ? grainSizeRange.max : state.grainSize;
       this.granulatorNode.port.postMessage({
         type: 'params',
         params: {
           maxGrains: state.maxGrains,
-          grainSizeMin: state.grainSizeMin,
-          grainSizeMax: state.grainSizeMax,
+          grainSizeMin,
+          grainSizeMax,
           density: state.density,
           spray: state.spray,
           jitter: state.jitter,
@@ -1743,14 +1815,18 @@ export class AudioEngine {
       };
       
       setParam('intensity', state.oceanWaveSynthLevel);
-      setParam('waveDurationMin', state.oceanDurationMin);
-      setParam('waveDurationMax', state.oceanDurationMax);
-      setParam('waveIntervalMin', state.oceanIntervalMin);
-      setParam('waveIntervalMax', state.oceanIntervalMax);
-      setParam('foamMin', state.oceanFoamMin);
-      setParam('foamMax', state.oceanFoamMax);
-      setParam('depthMin', state.oceanDepthMin);
-      setParam('depthMax', state.oceanDepthMax);
+      const durR = this.dualRanges['oceanDuration'];
+      setParam('waveDurationMin', durR ? durR.min : state.oceanDuration);
+      setParam('waveDurationMax', durR ? durR.max : state.oceanDuration);
+      const intR = this.dualRanges['oceanInterval'];
+      setParam('waveIntervalMin', intR ? intR.min : state.oceanInterval);
+      setParam('waveIntervalMax', intR ? intR.max : state.oceanInterval);
+      const foamR = this.dualRanges['oceanFoam'];
+      setParam('foamMin', foamR ? foamR.min : state.oceanFoam);
+      setParam('foamMax', foamR ? foamR.max : state.oceanFoam);
+      const depR = this.dualRanges['oceanDepth'];
+      setParam('depthMin', depR ? depR.min : state.oceanDepth);
+      setParam('depthMax', depR ? depR.max : state.oceanDepth);
     }
   }
 
@@ -1828,7 +1904,8 @@ export class AudioEngine {
   getLeadMorphedParams(lead: 1 | 2): Lead4opFMMorphedParams | null {
     if (!this.sliderState) return null;
     if (lead === 1) {
-      const morphMid = (this.sliderState.lead1MorphMin + this.sliderState.lead1MorphMax) / 2;
+      const m1Range = this.dualRanges['lead1Morph'];
+      const morphMid = m1Range ? (m1Range.min + m1Range.max) / 2 : (this.sliderState.lead1Morph ?? 0);
       const morphed = morphPresets(
         this.lead1PresetA,
         this.lead1PresetB,
@@ -1846,7 +1923,8 @@ export class AudioEngine {
       }
       return morphed;
     } else {
-      const morphMid = (this.sliderState.lead2MorphMin + this.sliderState.lead2MorphMax) / 2;
+      const m2Range = this.dualRanges['lead2Morph'];
+      const morphMid = m2Range ? (m2Range.min + m2Range.max) / 2 : (this.sliderState.lead2Morph ?? 0);
       const morphed = morphPresets(
         this.lead2PresetC,
         this.lead2PresetD,
@@ -1882,8 +1960,10 @@ export class AudioEngine {
     // Compute morphed FM params.
     // Random Walk (when enabled) uses smooth momentum-based motion within min/max.
     // Otherwise fall back to per-trigger random within min/max.
-    const rawMorphMin = useLead2 ? this.sliderState.lead2MorphMin : this.sliderState.lead1MorphMin;
-    const rawMorphMax = useLead2 ? this.sliderState.lead2MorphMax : this.sliderState.lead1MorphMax;
+    const morphKey = useLead2 ? 'lead2Morph' : 'lead1Morph';
+    const morphRange = this.dualRanges[morphKey];
+    const rawMorphMin = morphRange ? morphRange.min : (this.sliderState[morphKey as keyof SliderState] as number ?? 0);
+    const rawMorphMax = morphRange ? morphRange.max : (this.sliderState[morphKey as keyof SliderState] as number ?? 0);
     const morphMin = Math.min(rawMorphMin, rawMorphMax);
     const morphMax = Math.max(rawMorphMin, rawMorphMax);
     const randomWalkEnabled = useLead2 ? this.sliderState.lead2MorphAuto : this.sliderState.lead1MorphAuto;
@@ -1924,16 +2004,19 @@ export class AudioEngine {
     const now = ctx.currentTime;
 
     // ─── Shared expression: vibrato & glide (NOT from presets) ───
-    const vibratoDepthMin = this.sliderState.leadVibratoDepthMin;
-    const vibratoDepthMax = this.sliderState.leadVibratoDepthMax;
+    const vdRange = this.dualRanges['leadVibratoDepth'];
+    const vibratoDepthMin = vdRange ? vdRange.min : (this.sliderState.leadVibratoDepth ?? 0);
+    const vibratoDepthMax = vdRange ? vdRange.max : (this.sliderState.leadVibratoDepth ?? 0);
     const vibratoDepthNorm = vibratoDepthMin + Math.random() * (vibratoDepthMax - vibratoDepthMin);
 
-    const vibratoRateMin = this.sliderState.leadVibratoRateMin;
-    const vibratoRateMax = this.sliderState.leadVibratoRateMax;
+    const vrRange = this.dualRanges['leadVibratoRate'];
+    const vibratoRateMin = vrRange ? vrRange.min : (this.sliderState.leadVibratoRate ?? 0);
+    const vibratoRateMax = vrRange ? vrRange.max : (this.sliderState.leadVibratoRate ?? 0);
     const vibratoRateNorm = vibratoRateMin + Math.random() * (vibratoRateMax - vibratoRateMin);
 
-    const glideMin = this.sliderState.leadGlideMin;
-    const glideMax = this.sliderState.leadGlideMax;
+    const glRange = this.dualRanges['leadGlide'];
+    const glideMin = glRange ? glRange.min : (this.sliderState.leadGlide ?? 0);
+    const glideMax = glRange ? glRange.max : (this.sliderState.leadGlide ?? 0);
     const glide = glideMin + Math.random() * (glideMax - glideMin);
 
     // Notify UI of the triggered expression values
@@ -1952,16 +2035,19 @@ export class AudioEngine {
     }
 
     // ─── Shared delay (NOT from presets) ───
-    const delayTimeMin = this.sliderState.leadDelayTimeMin;
-    const delayTimeMax = this.sliderState.leadDelayTimeMax;
+    const dtRange = this.dualRanges['leadDelayTime'];
+    const delayTimeMin = dtRange ? dtRange.min : (this.sliderState.leadDelayTime ?? 375);
+    const delayTimeMax = dtRange ? dtRange.max : (this.sliderState.leadDelayTime ?? 375);
     const delayTime = delayTimeMin + Math.random() * (delayTimeMax - delayTimeMin);
 
-    const delayFeedbackMin = this.sliderState.leadDelayFeedbackMin;
-    const delayFeedbackMax = this.sliderState.leadDelayFeedbackMax;
+    const dfRange = this.dualRanges['leadDelayFeedback'];
+    const delayFeedbackMin = dfRange ? dfRange.min : (this.sliderState.leadDelayFeedback ?? 0.4);
+    const delayFeedbackMax = dfRange ? dfRange.max : (this.sliderState.leadDelayFeedback ?? 0.4);
     const delayFeedback = delayFeedbackMin + Math.random() * (delayFeedbackMax - delayFeedbackMin);
 
-    const delayMixMin = this.sliderState.leadDelayMixMin;
-    const delayMixMax = this.sliderState.leadDelayMixMax;
+    const dmRange = this.dualRanges['leadDelayMix'];
+    const delayMixMin = dmRange ? dmRange.min : (this.sliderState.leadDelayMix ?? 0.35);
+    const delayMixMax = dmRange ? dmRange.max : (this.sliderState.leadDelayMix ?? 0.35);
     const delayMix = delayMixMin + Math.random() * (delayMixMax - delayMixMin);
 
     const smoothTime = 0.05;

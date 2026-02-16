@@ -56,8 +56,7 @@
     "granularEnabled": true,
     "maxGrains": 64,
     "grainProbability": 0.8,
-    "grainSizeMin": 20,
-    "grainSizeMax": 200,
+    "grainSize": 110,
     "density": 25,
     "spray": 200,
     "jitter": 10,
@@ -75,19 +74,11 @@
     "lead1Sustain": 0.3,
     "lead1Hold": 0.5,
     "lead1Release": 2,
-    "leadDelayTimeMin": 600,
-    "leadDelayTimeMax": 1000,
-    "leadDelayFeedbackMin": 0.1,
-    "leadDelayFeedbackMax": 0.63,
-    "leadDelayMixMin": 0.25,
-    "leadDelayMixMax": 0.91,
     "lead1Density": 0.5,
     "lead1Octave": 0,
     "lead1OctaveRange": 2,
     "lead1PresetA": "soft_rhodes",
     "lead1PresetB": "gamelan",
-    "lead1MorphMin": 0,
-    "lead1MorphMax": 0.19,
     "lead1MorphAuto": false,
     "lead1MorphSpeed": 8,
     "lead1AlgorithmMode": "snap",
@@ -95,18 +86,10 @@
     "lead2Enabled": false,
     "lead2PresetC": "soft_rhodes",
     "lead2PresetD": "gamelan",
-    "lead2MorphMin": 0,
-    "lead2MorphMax": 0,
     "lead2MorphAuto": false,
     "lead2MorphSpeed": 8,
     "lead2AlgorithmMode": "snap",
     "lead2Level": 0.6,
-    "leadVibratoDepthMin": 0,
-    "leadVibratoDepthMax": 0,
-    "leadVibratoRateMin": 0,
-    "leadVibratoRateMax": 0,
-    "leadGlideMin": 0,
-    "leadGlideMax": 0,
     "leadEuclideanMasterEnabled": false,
     "leadEuclideanTempo": 1,
     "leadEuclid1Enabled": true,
@@ -346,14 +329,6 @@
     "oceanFilterType": "lowpass",
     "oceanFilterCutoff": 8000,
     "oceanFilterResonance": 0.1,
-    "oceanDurationMin": 4,
-    "oceanDurationMax": 8,
-    "oceanIntervalMin": 5,
-    "oceanIntervalMax": 10,
-    "oceanFoamMin": 0.2,
-    "oceanFoamMax": 0.4,
-    "oceanDepthMin": 0.3,
-    "oceanDepthMax": 0.6,
     "randomWalkSpeed": 0.2,
     "oceanMix": 0,
     "oceanWave2OffsetMin": 2,
@@ -361,9 +336,25 @@
     "oceanPebblesMin": 0,
     "oceanPebblesMax": 0.3,
     "oceanPebbleSizeMin": 0.2,
-    "oceanPebbleSizeMax": 0.6
+    "oceanPebbleSizeMax": 0.6,
+    "oceanDuration": 6.0,
+    "oceanInterval": 7.5,
+    "oceanFoam": 0.30000000000000004,
+    "oceanDepth": 0.44999999999999996,
+    "leadVibratoDepth": 0,
+    "leadVibratoRate": 0,
+    "leadGlide": 0,
+    "leadDelayTime": 800.0,
+    "leadDelayFeedback": 0.365,
+    "leadDelayMix": 0.5800000000000001,
+    "lead1Morph": 0.095,
+    "lead2Morph": 0
   },
   "dualRanges": {
+    "grainSize": {
+      "min": 20,
+      "max": 200
+    },
     "synthLevel": {
       "min": 0,
       "max": 0.24000000000000002
@@ -403,6 +394,49 @@
     "presence": {
       "min": 0.19999999999999998,
       "max": 0.53
+    },
+    "oceanDuration": {
+      "min": 4,
+      "max": 8
+    },
+    "oceanInterval": {
+      "min": 5,
+      "max": 10
+    },
+    "oceanFoam": {
+      "min": 0.2,
+      "max": 0.4
+    },
+    "oceanDepth": {
+      "min": 0.3,
+      "max": 0.6
+    },
+    "leadDelayTime": {
+      "min": 600,
+      "max": 1000
+    },
+    "leadDelayFeedback": {
+      "min": 0.1,
+      "max": 0.63
+    },
+    "leadDelayMix": {
+      "min": 0.25,
+      "max": 0.91
+    },
+    "lead1Morph": {
+      "min": 0,
+      "max": 0.19
     }
+  },
+  "sliderModes": {
+    "grainSize": "sampleHold",
+    "oceanDuration": "walk",
+    "oceanInterval": "walk",
+    "oceanFoam": "walk",
+    "oceanDepth": "walk",
+    "leadDelayTime": "sampleHold",
+    "leadDelayFeedback": "sampleHold",
+    "leadDelayMix": "sampleHold",
+    "lead1Morph": "sampleHold"
   }
 }

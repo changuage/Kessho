@@ -562,3 +562,86 @@ When renaming state properties in a system with cloud saves and local presets:
 2. **Migration checks both old AND new** — `typeof raw.oldName === 'number' && typeof raw.newName !== 'number'` prevents overwriting when both exist
 3. **`{ ...DEFAULT_STATE, ...normalized }` provides safety net** — any missing key falls back to defaults
 4. **Leave `leadTimbreMin/Max` in state.ts type/defaults** — the normalizer still references them for old preset migration, even though no UI or engine reads them
+
+---
+
+## Unified 3-Mode Slider System (Replacing Dual-Range Sliders)
+
+### Problem
+The app had 6 independent dual-range slider systems using different state shapes and different random-value strategies:
+
+1. **App-level random walk** — drove `synthReverbSend`, `granularReverbSend`, etc. via a shared `dualSliderRanges` + `randomWalkRef`
+2. **Engine-level lead morph** — had its own `lead1MorphMin/Max` fields, sampled per note in `playLeadNote()`
+3. **Per-trigger expression** — `leadVibratoDepthMin/Max`, `leadVibratoRateMin/Max`, `leadGlideMin/Max` — sampled at each note trigger
+4. **Per-trigger delay** — `leadDelayTimeMin/Max`, etc. — sampled at each note trigger
+5. **Per-trigger ocean** — `oceanDurationMin/Max`, etc. — sampled at each wave trigger
+6. **Drum morph** — per-voice morph params with dual ranges — already used `dualSliderRanges`
+
+Each had its own state variables (`expressionDualModes`, `delayDualModes`, `oceanDualModes`, `leadMorphDualModes`), separate toggle handlers, and separate UI JSX blocks (~600 lines of inline dual-slider code).
+
+**Symptoms:**
+- 4 separate `Record<string, boolean>` + 4 toggle handlers
+- ~1,400 lines of duplicated slider rendering code
+- Two different randomization strategies (walk vs sample-and-hold) with no user control
+- Inconsistent mode indicators (some blue, all labeled "⟷ dual")
+- 15 separate `*Min/*Max` state fields that couldn't exist without dual mode enabled
+
+### Solution
+Unified everything into a single 3-mode slider system:
+
+```typescript
+type SliderMode = 'single' | 'walk' | 'sampleHold';
+
+// One record for all slider modes (absent key = 'single')
+sliderModes: Record<string, SliderMode>
+
+// One handler cycles: single → walk → sampleHold → single
+handleCycleSliderMode(key: keyof SliderState)
+```
+
+### Architectural Changes
+
+**state.ts:**
+- Added `SliderMode` type, `SavedPreset.sliderModes` field
+- Replaced 15 `*Min/*Max` field pairs with 13 single fields (e.g., `oceanDurationMin/Max` → `oceanDuration`)
+- Added `PRESET_MIGRATION_MAP` and `migratePreset()` for old→new format conversion
+- Kept `filterCutoffMin/Max` as-is (this is an intentional paired range, not a dual-mode slider)
+- Migrated `grainSizeMin/Max` → `grainSize` (sampleHold mode; engine passes dual range to granulator worklet as grainSizeMin/grainSizeMax internally)
+
+**engine.ts:**
+- Added `dualRanges` storage + `setDualRanges()` method
+- All per-trigger sampling reads from `this.dualRanges['oceanDuration']` etc. instead of `this.sliderState.oceanDurationMin`
+- 4 callbacks (expression, morph, delay, ocean) all use consistent lookup
+
+**App.tsx (~1,400 lines removed):**
+- Replaced 4 mode-state Records with one `sliderModes` Record
+- Replaced 4 toggle handlers with one `handleCycleSliderMode`
+- `sliderProps(paramKey)` helper returns `{ mode, dualRange, walkPosition, onCycleMode, onDualRangeChange }`
+- `DualSlider` component renders 3 modes with color coding (walk=#a5c4d4, S&H=#D4A520)
+- 10 inline dual-slider JSX blocks replaced with `<Slider {...sliderProps('key')} />`
+- `lerpPresets` uses `Record<string, SliderMode>` for morph interpolation
+
+**Preset JSON format (5 files migrated):**
+```json
+{
+  "state": { "oceanDuration": 6, "leadDelayTime": 375 },
+  "dualRanges": { "oceanDuration": { "min": 4, "max": 10 } },
+  "sliderModes": { "oceanDuration": "walk", "leadDelayTime": "sampleHold" }
+}
+```
+
+### Migration Path
+Every preset load path routes through `migratePreset()`:
+1. Detects old `*Min/*Max` pairs via `PRESET_MIGRATION_MAP`
+2. Converts to single value (midpoint if dual, min if single)
+3. Creates `dualRanges` entry if min ≠ max (beyond threshold)
+4. Sets `sliderModes` entry based on `defaultMode` from map
+5. Old presets without `sliderModes` field: infer from `dualRanges` keys (drum=sampleHold, other=walk)
+
+### Key Insight
+When consolidating multiple independent systems into one:
+1. **Identify the dimension of variation** — here it was "what happens at mode switch time" (walk vs S&H), which became the `SliderMode` enum
+2. **Use a single Record for mode state, not per-section booleans** — `Record<string, SliderMode>` scales to any number of sliders without new state variables
+3. **Always provide a `sliderProps()` factory** — one function that returns everything a slider needs, avoiding prop-threading bugs
+4. **Migration must be idempotent** — `migratePreset()` is safe to call on already-migrated presets (no-op if old fields absent)
+5. **Keep intentional paired ranges separate** — not every min/max pair is a dual-mode slider (filterCutoff is a true range; grainSize was migrated since the worklet already did per-grain random sampling internally)

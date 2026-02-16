@@ -9,10 +9,13 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import JSZip from 'jszip';
 import {
   SliderState,
+  SliderMode,
   DEFAULT_STATE,
   quantize,
   decodeStateFromUrl,
   getParamInfo,
+  migratePreset,
+  DRUM_MORPH_KEYS,
 } from './ui/state';
 import { audioEngine, EngineState } from './audio/engine';
 import { SCALE_FAMILIES } from './audio/scales';
@@ -148,12 +151,13 @@ const stopIOSMediaSession = () => {
   }
 };
 
-// Preset type
+// Preset type - local override with sliderModes support
 interface SavedPreset {
   name: string;
   timestamp: string;
   state: SliderState;
   dualRanges?: Record<string, { min: number; max: number }>;  // Optional for backward compatibility
+  sliderModes?: Record<string, SliderMode>;  // Mode per parameter key
 }
 
 // iOS-only reverb types that won't work on web
@@ -221,11 +225,11 @@ const normalizePresetForWeb = (state: SliderState): SliderState => {
   }
 
   // Legacy lead timbre migration:
-  // Map old timbre range (0..1 Rhodes→Gamelan) to Lead 1 morph range.
+  // Map old timbre range (0..1 Rhodes→Gamelan) to Lead 1 morph value.
   // Keep Lead 1 preset pair fixed to Soft Rhodes↔Gamelan for old presets.
-  const hasLead1MorphRange =
-    typeof raw.lead1MorphMin === 'number' &&
-    typeof raw.lead1MorphMax === 'number';
+  const hasLead1Morph =
+    typeof raw.lead1Morph === 'number' ||
+    typeof raw.lead1MorphMin === 'number';
   const hasLegacyTimbreRange =
     typeof raw.leadTimbreMin === 'number' &&
     typeof raw.leadTimbreMax === 'number';
@@ -233,16 +237,13 @@ const normalizePresetForWeb = (state: SliderState): SliderState => {
   if (hasLegacyTimbreRange) {
     const legacyMin = Math.min(1, Math.max(0, Number(raw.leadTimbreMin ?? 0)));
     const legacyMax = Math.min(1, Math.max(0, Number(raw.leadTimbreMax ?? 0)));
-    const currentMorphMin = typeof raw.lead1MorphMin === 'number' ? raw.lead1MorphMin : undefined;
-    const currentMorphMax = typeof raw.lead1MorphMax === 'number' ? raw.lead1MorphMax : undefined;
-    const hasLegacyDominance = !hasLead1MorphRange || (
-      currentMorphMin === 0 &&
-      currentMorphMax === 0 &&
+    const currentMorph = typeof raw.lead1Morph === 'number' ? raw.lead1Morph : (typeof raw.lead1MorphMin === 'number' ? raw.lead1MorphMin : undefined);
+    const hasLegacyDominance = !hasLead1Morph || (
+      currentMorph === 0 &&
       (legacyMin !== 0 || legacyMax !== 0)
     );
     if (hasLegacyDominance) {
-    normalized.lead1MorphMin = Math.min(legacyMin, legacyMax);
-    normalized.lead1MorphMax = Math.max(legacyMin, legacyMax);
+      normalized.lead1Morph = (legacyMin + legacyMax) / 2;
     }
   }
 
@@ -342,12 +343,13 @@ const loadPresetsFromFolder = async (): Promise<SavedPreset[]> => {
           const response = await fetch(`/presets/${file}`);
           if (response.ok) {
             const data = await response.json();
-            presets.push({
+            presets.push(migratePreset({
               name: data.name || file.replace('.json', ''),
               timestamp: data.timestamp || new Date().toISOString(),
               state: data.state || data,
               dualRanges: data.dualRanges,
-            });
+              sliderModes: data.sliderModes,
+            }));
           }
         } catch (e) {
           // Skip missing files
@@ -362,12 +364,13 @@ const loadPresetsFromFolder = async (): Promise<SavedPreset[]> => {
         const response = await fetch(`/presets/${file}`);
         if (response.ok) {
           const data = await response.json();
-          presets.push({
+          presets.push(migratePreset({
             name: data.name || file.replace('.json', ''),
             timestamp: data.timestamp || new Date().toISOString(),
             state: data.state || data,
             dualRanges: data.dualRanges,
-          });
+            sliderModes: data.sliderModes,
+          }));
         }
       } catch (e) {
         console.warn(`Failed to load preset ${file}:`, e);
@@ -742,10 +745,10 @@ interface SliderProps {
   logarithmic?: boolean;  // Use logarithmic scaling (for frequency params)
   onChange: (key: keyof SliderState, value: number) => void;
   // Dual slider props (optional)
-  isDualMode?: boolean;
+  mode?: SliderMode;
   dualRange?: DualSliderRange;
   walkPosition?: number;
-  onToggleDual?: (key: keyof SliderState) => void;
+  onCycleMode?: (key: keyof SliderState) => void;
   onDualRangeChange?: (key: keyof SliderState, min: number, max: number) => void;
 }
 
@@ -756,14 +759,14 @@ const Slider: React.FC<SliderProps> = ({
   unit, 
   logarithmic, 
   onChange,
-  isDualMode = false,
+  mode = 'single',
   dualRange,
   walkPosition,
-  onToggleDual,
+  onCycleMode,
   onDualRangeChange,
 }) => {
   // If dual mode props are provided, use DualSlider
-  if (onToggleDual && onDualRangeChange) {
+  if (onCycleMode && onDualRangeChange) {
     return (
       <DualSlider
         label={label}
@@ -771,11 +774,11 @@ const Slider: React.FC<SliderProps> = ({
         paramKey={paramKey}
         unit={unit}
         logarithmic={logarithmic}
-        isDualMode={isDualMode}
+        mode={mode}
         dualRange={dualRange}
         walkPosition={walkPosition}
         onChange={onChange}
-        onToggleDual={onToggleDual}
+        onCycleMode={onCycleMode}
         onDualRangeChange={onDualRangeChange}
       />
     );
@@ -804,6 +807,11 @@ const Slider: React.FC<SliderProps> = ({
 
   const displayValue = info.step < 1 ? value.toFixed(2) : Math.round(value);
 
+  // Compute fill percentage for visual track gradient
+  const fillPercent = sliderMax > sliderMin
+    ? ((sliderValue - sliderMin) / (sliderMax - sliderMin)) * 100
+    : 0;
+
   return (
     <div style={styles.sliderGroup}>
       <div style={styles.sliderLabel}>
@@ -820,7 +828,10 @@ const Slider: React.FC<SliderProps> = ({
         step={sliderStep}
         value={sliderValue}
         onChange={handleChange}
-        style={styles.slider}
+        style={{
+          ...styles.slider,
+          background: `linear-gradient(to right, rgba(160,200,220,0.5) 0%, rgba(160,200,220,0.5) ${fillPercent}%, rgba(255,255,255,0.2) ${fillPercent}%, rgba(255,255,255,0.2) 100%)`,
+        }}
       />
     </div>
   );
@@ -855,18 +866,18 @@ function Select<T extends string>({ label, value, options, onChange }: SelectPro
   );
 }
 
-// DualSlider component - supports single or dual (range) mode with random walk
+// DualSlider component - supports single, walk, or sampleHold mode
 interface DualSliderProps {
   label: string;
   value: number;
   paramKey: keyof SliderState;
   unit?: string;
   logarithmic?: boolean;
-  isDualMode: boolean;
+  mode: SliderMode;
   dualRange?: DualSliderRange;
   walkPosition?: number;  // Current random walk position (0-1)
   onChange: (key: keyof SliderState, value: number) => void;
-  onToggleDual: (key: keyof SliderState) => void;
+  onCycleMode: (key: keyof SliderState) => void;
   onDualRangeChange: (key: keyof SliderState, min: number, max: number) => void;
 }
 
@@ -876,11 +887,11 @@ const DualSlider: React.FC<DualSliderProps> = ({
   paramKey,
   unit,
   logarithmic,
-  isDualMode,
+  mode,
   dualRange,
   walkPosition,
   onChange,
-  onToggleDual,
+  onCycleMode,
   onDualRangeChange,
 }) => {
   const info = getParamInfo(paramKey);
@@ -889,7 +900,7 @@ const DualSlider: React.FC<DualSliderProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState<'min' | 'max' | null>(null);
   
-  // Long press detection for mobile (toggle dual mode)
+  // Long press detection for mobile (cycle slider mode)
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressTriggeredRef = useRef(false);
   const LONG_PRESS_DURATION = 400; // ms
@@ -900,7 +911,7 @@ const DualSlider: React.FC<DualSliderProps> = ({
       longPressTriggeredRef.current = true;
       // Haptic feedback if available
       if (navigator.vibrate) navigator.vibrate(50);
-      onToggleDual(paramKey);
+      onCycleMode(paramKey);
     }, LONG_PRESS_DURATION);
   };
   
@@ -938,9 +949,9 @@ const DualSlider: React.FC<DualSliderProps> = ({
     return info.step < 1 ? val.toFixed(2) : Math.round(val);
   };
 
-  // Handle double click to toggle mode
+  // Handle double click to cycle mode
   const handleDoubleClick = () => {
-    onToggleDual(paramKey);
+    onCycleMode(paramKey);
   };
 
   // Handle mouse/touch drag
@@ -948,6 +959,12 @@ const DualSlider: React.FC<DualSliderProps> = ({
     e.preventDefault();
     setDragging(thumb);
   };
+
+  const isDualMode = mode !== 'single';
+
+  // Mode-dependent colors
+  const modeColor = mode === 'walk' ? '#a5c4d4' : '#D4A520';
+  const modeLabel = mode === 'walk' ? '⟷ walk' : '⟷ S&H';
 
   useEffect(() => {
     if (!dragging || !isDualMode || !dualRange) return;
@@ -1002,6 +1019,11 @@ const DualSlider: React.FC<DualSliderProps> = ({
     const sliderMax = logarithmic ? 1 : info.max;
     const sliderStep = logarithmic ? 0.001 : info.step;
 
+    // Compute fill percentage for visual track gradient
+    const fillPercent = sliderMax > sliderMin
+      ? ((sliderValue - sliderMin) / (sliderMax - sliderMin)) * 100
+      : 0;
+
     return (
       <div style={styles.sliderGroup}>
         <div style={styles.sliderLabel}>
@@ -1022,14 +1044,17 @@ const DualSlider: React.FC<DualSliderProps> = ({
           onTouchStart={handleLongPressStart}
           onTouchEnd={handleLongPressEnd}
           onTouchMove={handleLongPressMove}
-          style={styles.slider}
-          title="Double-click or long-press for range mode"
+          style={{
+            ...styles.slider,
+            background: `linear-gradient(to right, rgba(160,200,220,0.5) 0%, rgba(160,200,220,0.5) ${fillPercent}%, rgba(255,255,255,0.2) ${fillPercent}%, rgba(255,255,255,0.2) 100%)`,
+          }}
+          title="Double-click or long-press to cycle mode"
         />
       </div>
     );
   }
 
-  // Dual slider mode
+  // Dual slider mode (walk or sampleHold)
   const minPercent = valueToPercent(dualRange?.min ?? info.min);
   const maxPercent = valueToPercent(dualRange?.max ?? info.max);
   
@@ -1048,7 +1073,7 @@ const DualSlider: React.FC<DualSliderProps> = ({
       <div style={styles.sliderLabel}>
         <span>
           {label}
-          <span style={styles.dualModeIndicator}>⟷ range</span>
+          <span style={{...styles.dualModeIndicator, color: modeColor}}>{modeLabel}</span>
         </span>
         <span>
           {formatValue(dualRange?.min ?? info.min)} - {formatValue(dualRange?.max ?? info.max)}
@@ -1065,7 +1090,7 @@ const DualSlider: React.FC<DualSliderProps> = ({
         onTouchStart={handleLongPressStart}
         onTouchEnd={handleLongPressEnd}
         onTouchMove={handleLongPressMove}
-        title="Double-click or long-press for single value mode"
+        title="Double-click or long-press to cycle mode"
       >
         {/* Range track */}
         <div
@@ -1073,6 +1098,7 @@ const DualSlider: React.FC<DualSliderProps> = ({
             ...styles.dualSliderTrack,
             left: `${minPercent}%`,
             width: `${maxPercent - minPercent}%`,
+            background: mode === 'walk' ? 'rgba(165,196,212,0.3)' : 'rgba(212,165,32,0.3)',
           }}
         />
         {/* Min thumb */}
@@ -1080,7 +1106,7 @@ const DualSlider: React.FC<DualSliderProps> = ({
           style={{
             ...styles.dualSliderThumb,
             left: `${minPercent}%`,
-            background: dragging === 'min' ? '#fff' : '#a5c4d4',
+            background: dragging === 'min' ? '#fff' : modeColor,
           }}
           onMouseDown={handleDragStart('min')}
           onTouchStart={handleDragStart('min')}
@@ -1090,12 +1116,12 @@ const DualSlider: React.FC<DualSliderProps> = ({
           style={{
             ...styles.dualSliderThumb,
             left: `${maxPercent}%`,
-            background: dragging === 'max' ? '#fff' : '#a5c4d4',
+            background: dragging === 'max' ? '#fff' : modeColor,
           }}
           onMouseDown={handleDragStart('max')}
           onTouchStart={handleDragStart('max')}
         />
-        {/* Random walk indicator */}
+        {/* Walk/trigger indicator */}
         <div
           style={{
             ...styles.dualSliderWalkIndicator,
@@ -1393,35 +1419,42 @@ const App: React.FC = () => {
   type AdvancedTab = 'global' | 'synth' | 'lead' | 'drums' | 'fx';
   const [activeTab, setActiveTab] = useState<AdvancedTab>('global');
 
-  // Dual slider state - tracks which sliders are in dual mode and their ranges
-  const [dualSliderModes, setDualSliderModes] = useState<Set<keyof SliderState>>(new Set());
+  // Unified slider mode state: key → SliderMode ('single' | 'walk' | 'sampleHold')
+  // Absent key means 'single'. dualSliderRanges stores ranges for walk/sampleHold modes.
+  const [sliderModes, setSliderModes] = useState<Record<string, SliderMode>>({});
   const [dualSliderRanges, setDualSliderRanges] = useState<DualSliderState>({});
   const [randomWalkPositions, setRandomWalkPositions] = useState<Record<string, number>>({});
   const randomWalkRef = useRef<RandomWalkStates>({});
 
-  const applyDualRangesFromPreset = useCallback((dualRanges?: Record<string, { min: number; max: number }>) => {
+  const applyDualRangesFromPreset = useCallback((
+    dualRanges?: Record<string, { min: number; max: number }>,
+    presetSliderModes?: Record<string, SliderMode>,
+  ) => {
     if (dualRanges && Object.keys(dualRanges).length > 0) {
-      const newDualModes = new Set<keyof SliderState>();
+      const newSliderModes: Record<string, SliderMode> = {};
       const newDualRanges: DualSliderState = {};
       const newWalkPositions: Record<string, number> = {};
 
       Object.entries(dualRanges).forEach(([key, range]) => {
         const paramKey = key as keyof SliderState;
-        newDualModes.add(paramKey);
+        // Use saved mode if available, else default: walk for generic, sampleHold for expression/delay/morph
+        newSliderModes[key] = presetSliderModes?.[key] ?? 'walk';
         newDualRanges[paramKey] = range;
-        const walkPos = Math.random();
-        newWalkPositions[key] = walkPos;
-        randomWalkRef.current[paramKey] = {
-          position: walkPos,
-          velocity: (Math.random() - 0.5) * 0.02,
-        };
+        if (newSliderModes[key] === 'walk') {
+          const walkPos = Math.random();
+          newWalkPositions[key] = walkPos;
+          randomWalkRef.current[paramKey] = {
+            position: walkPos,
+            velocity: (Math.random() - 0.5) * 0.02,
+          };
+        }
       });
 
-      setDualSliderModes(newDualModes);
+      setSliderModes(newSliderModes);
       setDualSliderRanges(newDualRanges);
       setRandomWalkPositions(newWalkPositions);
     } else {
-      setDualSliderModes(new Set());
+      setSliderModes({});
       setDualSliderRanges({});
       setRandomWalkPositions({});
       randomWalkRef.current = {};
@@ -1448,17 +1481,7 @@ const App: React.FC = () => {
   }, []);
 
   // Track which expression params are in dual (range) mode vs single mode
-  const [expressionDualModes, setExpressionDualModes] = useState<{
-    vibratoDepth: boolean;
-    vibratoRate: boolean;
-    glide: boolean;
-  }>({ vibratoDepth: false, vibratoRate: false, glide: false });
-
-  // Track which lead morph sliders are in dual (range) mode
-  const [leadMorphDualModes, setLeadMorphDualModes] = useState<{
-    lead1: boolean;
-    lead2: boolean;
-  }>({ lead1: false, lead2: false });
+  // (Now unified in sliderModes - these are kept as convenience getters)
 
   // Lead morph trigger positions (0-1 within min/max range, updated per note)
   const [leadMorphPositions, setLeadMorphPositions] = useState<{
@@ -1466,109 +1489,12 @@ const App: React.FC = () => {
     lead2: number;
   }>({ lead1: 0.5, lead2: 0.5 });
 
-  // Toggle lead morph dual mode
-  const toggleLeadMorphDualMode = useCallback((lead: 'lead1' | 'lead2') => {
-    setLeadMorphDualModes(prev => {
-      const hasRange = lead === 'lead1'
-        ? (state.lead1MorphMax - state.lead1MorphMin) > 0.0001
-        : (state.lead2MorphMax - state.lead2MorphMin) > 0.0001;
-      const isDual = prev[lead] || hasRange;
-      if (isDual) {
-        // Switching from dual to single — set min=max at midpoint
-        if (lead === 'lead1') {
-          const mid = (state.lead1MorphMin + state.lead1MorphMax) / 2;
-          setState(s => ({ ...s, lead1MorphMin: mid, lead1MorphMax: mid }));
-        } else {
-          const mid = (state.lead2MorphMin + state.lead2MorphMax) / 2;
-          setState(s => ({ ...s, lead2MorphMin: mid, lead2MorphMax: mid }));
-        }
-      }
-      return { ...prev, [lead]: !isDual };
-    });
-  }, [state.lead1MorphMin, state.lead1MorphMax, state.lead2MorphMin, state.lead2MorphMax]);
-
-  // Mobile long-press support for lead morph slider mode toggle
-  const leadMorphLongPressTimerRef = useRef<number | null>(null);
-  const startLeadMorphLongPress = useCallback((lead: 'lead1' | 'lead2') => {
-    if (leadMorphLongPressTimerRef.current !== null) {
-      window.clearTimeout(leadMorphLongPressTimerRef.current);
-    }
-    leadMorphLongPressTimerRef.current = window.setTimeout(() => {
-      toggleLeadMorphDualMode(lead);
-      leadMorphLongPressTimerRef.current = null;
-    }, 450);
-  }, [toggleLeadMorphDualMode]);
-  const cancelLeadMorphLongPress = useCallback(() => {
-    if (leadMorphLongPressTimerRef.current !== null) {
-      window.clearTimeout(leadMorphLongPressTimerRef.current);
-      leadMorphLongPressTimerRef.current = null;
-    }
-  }, []);
-
-  // Toggle expression dual mode
-  const toggleExpressionDualMode = useCallback((param: 'vibratoDepth' | 'vibratoRate' | 'glide') => {
-    setExpressionDualModes(prev => {
-      const isDual = prev[param];
-      if (isDual) {
-        // Switching from dual to single - set min=max at the midpoint
-        if (param === 'vibratoDepth') {
-          const mid = (state.leadVibratoDepthMin + state.leadVibratoDepthMax) / 2;
-          setState(s => ({ ...s, leadVibratoDepthMin: mid, leadVibratoDepthMax: mid }));
-        } else if (param === 'vibratoRate') {
-          const mid = (state.leadVibratoRateMin + state.leadVibratoRateMax) / 2;
-          setState(s => ({ ...s, leadVibratoRateMin: mid, leadVibratoRateMax: mid }));
-        } else {
-          const mid = (state.leadGlideMin + state.leadGlideMax) / 2;
-          setState(s => ({ ...s, leadGlideMin: mid, leadGlideMax: mid }));
-        }
-      }
-      return { ...prev, [param]: !isDual };
-    });
-  }, [state.leadVibratoDepthMin, state.leadVibratoDepthMax, state.leadVibratoRateMin, state.leadVibratoRateMax, state.leadGlideMin, state.leadGlideMax]);
-
-  // Track which delay params are in dual (range) mode vs single mode
-  const [delayDualModes, setDelayDualModes] = useState<{
-    time: boolean;
-    feedback: boolean;
-    mix: boolean;
-  }>({ time: false, feedback: false, mix: false });
-
   // Track last triggered delay values for the indicator
   const [leadDelayPositions, setLeadDelayPositions] = useState<{
     time: number;
     feedback: number;
     mix: number;
   }>({ time: 0.5, feedback: 0.5, mix: 0.5 });
-
-  // Toggle delay dual mode
-  const toggleDelayDualMode = useCallback((param: 'time' | 'feedback' | 'mix') => {
-    setDelayDualModes(prev => {
-      const isDual = prev[param];
-      if (isDual) {
-        // Switching from dual to single - set min=max at the midpoint
-        if (param === 'time') {
-          const mid = (state.leadDelayTimeMin + state.leadDelayTimeMax) / 2;
-          setState(s => ({ ...s, leadDelayTimeMin: mid, leadDelayTimeMax: mid }));
-        } else if (param === 'feedback') {
-          const mid = (state.leadDelayFeedbackMin + state.leadDelayFeedbackMax) / 2;
-          setState(s => ({ ...s, leadDelayFeedbackMin: mid, leadDelayFeedbackMax: mid }));
-        } else {
-          const mid = (state.leadDelayMixMin + state.leadDelayMixMax) / 2;
-          setState(s => ({ ...s, leadDelayMixMin: mid, leadDelayMixMax: mid }));
-        }
-      }
-      return { ...prev, [param]: !isDual };
-    });
-  }, [state.leadDelayTimeMin, state.leadDelayTimeMax, state.leadDelayFeedbackMin, state.leadDelayFeedbackMax, state.leadDelayMixMin, state.leadDelayMixMax]);
-
-  // Track which ocean params are in dual (range) mode vs single mode
-  // Default to dual mode (blue range sliders)
-  const [oceanDualModes, setOceanDualModes] = useState<{
-    duration: boolean;
-    interval: boolean;
-    foam: boolean;
-    depth: boolean;
-  }>({ duration: true, interval: true, foam: true, depth: true });
 
   // Track random walk positions for ocean params (updated by ocean worklet)
   const [oceanPositions, setOceanPositions] = useState<{
@@ -1588,31 +1514,22 @@ const App: React.FC = () => {
     noise: number;
   }>({ sub: 0.5, kick: 0.5, click: 0.5, beepHi: 0.5, beepLo: 0.5, noise: 0.5 });
 
-  // Toggle ocean dual mode
-  const toggleOceanDualMode = useCallback((param: 'duration' | 'interval' | 'foam' | 'depth') => {
-    setOceanDualModes(prev => {
-      const isDual = prev[param];
-      if (isDual) {
-        // Switching from dual to single - set min=max at the midpoint
-        if (param === 'duration') {
-          const mid = (state.oceanDurationMin + state.oceanDurationMax) / 2;
-          setState(s => ({ ...s, oceanDurationMin: mid, oceanDurationMax: mid }));
-        } else if (param === 'interval') {
-          const mid = (state.oceanIntervalMin + state.oceanIntervalMax) / 2;
-          setState(s => ({ ...s, oceanIntervalMin: mid, oceanIntervalMax: mid }));
-        } else if (param === 'foam') {
-          const mid = (state.oceanFoamMin + state.oceanFoamMax) / 2;
-          setState(s => ({ ...s, oceanFoamMin: mid, oceanFoamMax: mid }));
-        } else {
-          const mid = (state.oceanDepthMin + state.oceanDepthMax) / 2;
-          setState(s => ({ ...s, oceanDepthMin: mid, oceanDepthMax: mid }));
-        }
-      }
-      return { ...prev, [param]: !isDual };
-    });
-  }, [state.oceanDurationMin, state.oceanDurationMax, state.oceanIntervalMin, state.oceanIntervalMax, state.oceanFoamMin, state.oceanFoamMax, state.oceanDepthMin, state.oceanDepthMax]);
+  // Trigger position map: maps slider keys to their per-trigger position values
+  const triggerPositionMap = useMemo<Record<string, number>>(() => ({
+    leadVibratoDepth: leadExpressionPositions.vibratoDepth,
+    leadVibratoRate: leadExpressionPositions.vibratoRate,
+    leadGlide: leadExpressionPositions.glide,
+    leadDelayTime: leadDelayPositions.time,
+    leadDelayFeedback: leadDelayPositions.feedback,
+    leadDelayMix: leadDelayPositions.mix,
+    oceanDuration: oceanPositions.duration,
+    oceanInterval: oceanPositions.interval,
+    oceanFoam: oceanPositions.foam,
+    oceanDepth: oceanPositions.depth,
+    lead1Morph: leadMorphPositions.lead1,
+    lead2Morph: leadMorphPositions.lead2,
+  }), [leadExpressionPositions, leadDelayPositions, oceanPositions, leadMorphPositions]);
 
-  // Toggle dual slider mode for a parameter
   // Drum morph keys - these use per-trigger randomization, not random walk
   const drumMorphKeys = useMemo(() => new Set<keyof SliderState>([
     'drumSubMorph', 'drumKickMorph', 'drumClickMorph',
@@ -1629,7 +1546,7 @@ const App: React.FC = () => {
     drumNoiseMorph: 'noise'
   }), []);
 
-  const handleToggleDualMode = useCallback((key: keyof SliderState) => {
+  const handleCycleSliderMode = useCallback((key: keyof SliderState) => {
     // Block changes when journey mode is playing
     if (isJourneyPlaying) return;
     
@@ -1652,64 +1569,81 @@ const App: React.FC = () => {
     } else if (keyStr.startsWith('drumNoise') && !keyStr.includes('Morph') && !keyStr.includes('Preset')) {
       drumVoice = 'noise'; drumMorphKey = 'drumNoiseMorph';
     }
-    
-    setDualSliderModes(prev => {
-      const next = new Set(prev);
-      if (next.has(key)) {
-        // Switching from dual to single - use the current walk position value
-        next.delete(key);
-        const range = dualSliderRanges[key];
-        const walkPos = randomWalkPositions[key] ?? 0.5;
-        if (range) {
-          const meanValue = range.min + walkPos * (range.max - range.min);
-          setState(s => ({ ...s, [key]: quantize(key, meanValue) }));
+
+    // Cycle: single → walk → sampleHold → single
+    const current = sliderModes[keyStr] ?? 'single';
+    const nextMode: SliderMode = current === 'single' ? 'walk'
+      : current === 'walk' ? 'sampleHold'
+      : 'single';
+
+    if (nextMode === 'single') {
+      // Collapsing to single — use the current walk/trigger position value
+      const range = dualSliderRanges[key as keyof SliderState];
+      const walkPos = randomWalkPositions[keyStr] ?? triggerPositionMap[keyStr] ?? 0.5;
+      if (range) {
+        const meanValue = range.min + walkPos * (range.max - range.min);
+        setState(s => ({ ...s, [key]: quantize(key, meanValue) }));
+      }
+      // Clean up
+      setDualSliderRanges(r => {
+        const newRanges = { ...r };
+        delete newRanges[key];
+        return newRanges;
+      });
+      delete randomWalkRef.current[key];
+      setSliderModes(prev => {
+        const next = { ...prev };
+        delete next[keyStr];
+        return next;
+      });
+
+      // Update morph preset dualRanges at endpoints (Rule 2)
+      if (isMorphActive) {
+        if (isAtEndpoint0(morphPosition, true) && morphPresetA) {
+          setMorphPresetA(prev => {
+            if (!prev) return null;
+            const newDualRanges = { ...prev.dualRanges };
+            const newSliderModes = { ...prev.sliderModes };
+            delete newDualRanges[keyStr];
+            delete newSliderModes[keyStr];
+            return {
+              ...prev,
+              dualRanges: Object.keys(newDualRanges).length > 0 ? newDualRanges : undefined,
+              sliderModes: Object.keys(newSliderModes).length > 0 ? newSliderModes : undefined,
+            };
+          });
+        } else if (isAtEndpoint1(morphPosition, true) && morphPresetB) {
+          setMorphPresetB(prev => {
+            if (!prev) return null;
+            const newDualRanges = { ...prev.dualRanges };
+            const newSliderModes = { ...prev.sliderModes };
+            delete newDualRanges[keyStr];
+            delete newSliderModes[keyStr];
+            return {
+              ...prev,
+              dualRanges: Object.keys(newDualRanges).length > 0 ? newDualRanges : undefined,
+              sliderModes: Object.keys(newSliderModes).length > 0 ? newSliderModes : undefined,
+            };
+          });
         }
-        // Clean up
-        setDualSliderRanges(r => {
-          const newRanges = { ...r };
-          delete newRanges[key];
-          return newRanges;
-        });
-        delete randomWalkRef.current[key];
-        
-        // Update morph preset dualRanges at endpoints (Rule 2)
-        if (isMorphActive) {
-          if (isAtEndpoint0(morphPosition, true) && morphPresetA) {
-            setMorphPresetA(prev => {
-              if (!prev) return null;
-              const newDualRanges = { ...prev.dualRanges };
-              delete newDualRanges[keyStr];
-              return {
-                ...prev,
-                dualRanges: Object.keys(newDualRanges).length > 0 ? newDualRanges : undefined
-              };
-            });
-          } else if (isAtEndpoint1(morphPosition, true) && morphPresetB) {
-            setMorphPresetB(prev => {
-              if (!prev) return null;
-              const newDualRanges = { ...prev.dualRanges };
-              delete newDualRanges[keyStr];
-              return {
-                ...prev,
-                dualRanges: Object.keys(newDualRanges).length > 0 ? newDualRanges : undefined
-              };
-            });
-          }
+      }
+
+      // Update drum morph dual range override at endpoints
+      if (drumVoice && drumMorphKey) {
+        const drumMorphPosition = state[drumMorphKey] as number;
+        const currentVal = state[key] as number;
+        if (isAtEndpoint0(drumMorphPosition)) {
+          setDrumMorphDualRangeOverride(drumVoice, keyStr, false, currentVal, undefined, 0);
+        } else if (isAtEndpoint1(drumMorphPosition)) {
+          setDrumMorphDualRangeOverride(drumVoice, keyStr, false, currentVal, undefined, 1);
         }
-        
-        // Update drum morph dual range override at endpoints
-        if (drumVoice && drumMorphKey) {
-          const drumMorphPosition = state[drumMorphKey] as number;
-          const currentVal = state[key] as number;
-          if (isAtEndpoint0(drumMorphPosition)) {
-            setDrumMorphDualRangeOverride(drumVoice, keyStr, false, currentVal, undefined, 0);
-          } else if (isAtEndpoint1(drumMorphPosition)) {
-            setDrumMorphDualRangeOverride(drumVoice, keyStr, false, currentVal, undefined, 1);
-          }
-        }
-      } else {
-        // Switching from single to dual - initialize range centered on current value
-        next.add(key);
+      }
+    } else {
+      // Entering walk or sampleHold
+      setSliderModes(prev => ({ ...prev, [keyStr]: nextMode }));
+
+      // If entering walk/sampleHold from single, create a range
+      if (current === 'single') {
         const info = getParamInfo(key);
         if (info) {
           const currentVal = state[key] as number;
@@ -1717,35 +1651,36 @@ const App: React.FC = () => {
           const min = Math.max(info.min, currentVal - rangeSize / 2);
           const max = Math.min(info.max, currentVal + rangeSize / 2);
           setDualSliderRanges(r => ({ ...r, [key]: { min, max } }));
-          // Only initialize random walk for non-drum-morph keys
-          // Drum morph keys use per-trigger randomization instead
-          if (!drumMorphKeys.has(key)) {
+
+          // Initialize random walk for walk mode (not for drum morph or sampleHold)
+          if (nextMode === 'walk' && !drumMorphKeys.has(key)) {
             randomWalkRef.current[key] = {
               position: Math.random(),
               velocity: (Math.random() - 0.5) * 0.02,
             };
-            setRandomWalkPositions(p => ({ ...p, [key]: randomWalkRef.current[key]!.position }));
+            setRandomWalkPositions(p => ({ ...p, [keyStr]: randomWalkRef.current[key]!.position }));
           }
-          
+
           // Update morph preset dualRanges at endpoints (Rule 2)
           if (isMorphActive) {
             if (isAtEndpoint0(morphPosition, true) && morphPresetA) {
               setMorphPresetA(prev => prev ? {
                 ...prev,
-                dualRanges: { ...prev.dualRanges, [keyStr]: { min, max } }
+                dualRanges: { ...prev.dualRanges, [keyStr]: { min, max } },
+                sliderModes: { ...prev.sliderModes, [keyStr]: nextMode }
               } : null);
             } else if (isAtEndpoint1(morphPosition, true) && morphPresetB) {
               setMorphPresetB(prev => prev ? {
                 ...prev,
-                dualRanges: { ...prev.dualRanges, [keyStr]: { min, max } }
+                dualRanges: { ...prev.dualRanges, [keyStr]: { min, max } },
+                sliderModes: { ...prev.sliderModes, [keyStr]: nextMode }
               } : null);
             }
           }
-          
+
           // Update drum morph dual range override at endpoints
           if (drumVoice && drumMorphKey) {
             const drumMorphPosition = state[drumMorphKey] as number;
-            const currentVal = state[key] as number;
             if (isAtEndpoint0(drumMorphPosition)) {
               setDrumMorphDualRangeOverride(drumVoice, keyStr, true, currentVal, { min, max }, 0);
             } else if (isAtEndpoint1(drumMorphPosition)) {
@@ -1753,10 +1688,27 @@ const App: React.FC = () => {
             }
           }
         }
+      } else if (current === 'walk' && nextMode === 'sampleHold') {
+        // Switching from walk to sampleHold — stop walk, keep range
+        delete randomWalkRef.current[key];
+
+        // Update morph preset sliderModes at endpoints (range is unchanged)
+        if (isMorphActive) {
+          if (isAtEndpoint0(morphPosition, true) && morphPresetA) {
+            setMorphPresetA(prev => prev ? {
+              ...prev,
+              sliderModes: { ...prev.sliderModes, [keyStr]: nextMode }
+            } : null);
+          } else if (isAtEndpoint1(morphPosition, true) && morphPresetB) {
+            setMorphPresetB(prev => prev ? {
+              ...prev,
+              sliderModes: { ...prev.sliderModes, [keyStr]: nextMode }
+            } : null);
+          }
+        }
       }
-      return next;
-    });
-  }, [isJourneyPlaying, dualSliderRanges, randomWalkPositions, state, drumMorphKeys, morphPosition, morphPresetA, morphPresetB]);
+    }
+  }, [isJourneyPlaying, dualSliderRanges, randomWalkPositions, triggerPositionMap, sliderModes, state, drumMorphKeys, morphPosition, morphPresetA, morphPresetB]);
 
   // Update dual slider range
   const handleDualRangeChange = useCallback((key: keyof SliderState, min: number, max: number) => {
@@ -1818,8 +1770,9 @@ const App: React.FC = () => {
     drumMorphKeys.forEach(key => {
       const voice = drumMorphKeyToVoice[key];
       if (!voice) return; // Guard against undefined
-      if (dualSliderModes.has(key)) {
-        const range = dualSliderRanges[key];
+      const keyStr = key as string;
+      if (sliderModes[keyStr] && sliderModes[keyStr] !== 'single') {
+        const range = dualSliderRanges[key as keyof SliderState];
         if (range) {
           audioEngine.setDrumMorphRange(voice, range);
         }
@@ -1827,12 +1780,28 @@ const App: React.FC = () => {
         audioEngine.setDrumMorphRange(voice, null);
       }
     });
-  }, [dualSliderModes, dualSliderRanges, drumMorphKeys, drumMorphKeyToVoice]);
+  }, [sliderModes, dualSliderRanges, drumMorphKeys, drumMorphKeyToVoice]);
 
-  // Random walk animation (excludes drum morph keys - they use per-trigger randomization)
+  // Push non-drum dualSliderRanges to engine for expression/delay/ocean/morph per-trigger sampling
   useEffect(() => {
-    // Filter out drum morph keys - they use per-trigger random, not random walk
-    const walkKeys = Array.from(dualSliderModes).filter(key => !drumMorphKeys.has(key));
+    if (audioEngine.setDualRanges) {
+      // Build map of all non-drum ranges that are in walk or sampleHold mode
+      const engineRanges: Partial<Record<string, { min: number; max: number }>> = {};
+      Object.entries(dualSliderRanges).forEach(([key, range]) => {
+        if (range && !DRUM_MORPH_KEYS.has(key as keyof SliderState)) {
+          engineRanges[key] = range;
+        }
+      });
+      audioEngine.setDualRanges(engineRanges);
+    }
+  }, [dualSliderRanges, sliderModes]);
+
+  // Random walk animation (only for sliders in 'walk' mode, excludes drum morph)
+  useEffect(() => {
+    // Get all keys in walk mode, excluding drum morph
+    const walkKeys = Object.entries(sliderModes)
+      .filter(([key, mode]) => mode === 'walk' && !drumMorphKeys.has(key as keyof SliderState))
+      .map(([key]) => key as keyof SliderState);
     if (walkKeys.length === 0) return;
 
     const animate = () => {
@@ -1842,7 +1811,7 @@ const App: React.FC = () => {
 
       walkKeys.forEach(key => {
         const walk = randomWalkRef.current[key];
-        const range = dualSliderRanges[key];
+        const range = dualSliderRanges[key as keyof SliderState];
         if (!walk || !range) return;
 
         // Random walk with brownian motion
@@ -1875,7 +1844,7 @@ const App: React.FC = () => {
         setState(prev => {
           const newState = { ...prev };
           walkKeys.forEach(key => {
-            const range = dualSliderRanges[key];
+            const range = dualSliderRanges[key as keyof SliderState];
             const walkPos = updates[key] ?? randomWalkPositions[key] ?? 0.5;
             if (range) {
               (newState as any)[key] = quantize(key, range.min + walkPos * (range.max - range.min));
@@ -1889,7 +1858,7 @@ const App: React.FC = () => {
     // Run at 10 Hz for smooth but efficient animation
     const intervalId = window.setInterval(animate, 100);
     return () => clearInterval(intervalId);
-  }, [dualSliderModes, dualSliderRanges, state.randomWalkSpeed, drumMorphKeys]);
+  }, [sliderModes, dualSliderRanges, state.randomWalkSpeed, drumMorphKeys]);
 
   // Load presets from folder on mount
   useEffect(() => {
@@ -1916,10 +1885,16 @@ const App: React.FC = () => {
             ? wrappedData.state
             : (preset.data as SliderState);
 
-          const normalizedState = normalizePresetForWeb(presetState);
+          const cloudMigrated = migratePreset({
+            name: preset.name,
+            timestamp: new Date().toISOString(),
+            state: presetState,
+            dualRanges: wrappedData?.dualRanges,
+          });
+          const normalizedState = normalizePresetForWeb(cloudMigrated.state);
           const newState = { ...DEFAULT_STATE, ...normalizedState };
           setState(newState);
-          applyDualRangesFromPreset(wrappedData?.dualRanges);
+          applyDualRangesFromPreset(cloudMigrated.dualRanges);
           audioEngine.updateParams(newState);
           audioEngine.resetCofDrift();
           console.log(`Loaded cloud preset: ${preset.name} by ${preset.author}`);
@@ -2208,12 +2183,11 @@ const App: React.FC = () => {
       
       if (shouldResetDualModes) {
         // Reset all dual modes for params starting with this prefix (excluding Morph/Preset keys)
-        setDualSliderModes(prev => {
-          const next = new Set(prev);
-          for (const mode of prev) {
-            const modeStr = mode as string;
-            if (modeStr.startsWith(prefix) && !modeStr.includes('Morph') && !modeStr.includes('Preset')) {
-              next.delete(mode);
+        setSliderModes(prev => {
+          const next = { ...prev };
+          for (const modeKey of Object.keys(prev)) {
+            if (modeKey.startsWith(prefix) && !modeKey.includes('Morph') && !modeKey.includes('Preset')) {
+              delete next[modeKey];
             }
           }
           return next;
@@ -2263,13 +2237,13 @@ const App: React.FC = () => {
         
         if (interpState.isDualMode && interpState.range) {
           // Interpolated to dual mode - enable and set range
-          setDualSliderModes(prev => new Set([...prev, paramKey]));
+          setSliderModes(prev => ({...prev, [paramKey as string]: prev[paramKey as string] ?? 'sampleHold'}));
           setDualSliderRanges(prev => ({ ...prev, [paramKey]: interpState.range! }));
         } else {
           // Interpolated to single mode - disable dual
-          setDualSliderModes(prev => {
-            const next = new Set(prev);
-            next.delete(paramKey);
+          setSliderModes(prev => {
+            const next = { ...prev };
+            delete next[paramKey as string];
             return next;
           });
           setDualSliderRanges(prev => {
@@ -2284,14 +2258,24 @@ const App: React.FC = () => {
 
   // Helper to create slider props with dual mode support
   const sliderProps = useCallback((paramKey: keyof SliderState): {
-    isDualMode: boolean;
+    mode: SliderMode;
     dualRange?: DualSliderRange;
     walkPosition?: number;
-    onToggleDual: (key: keyof SliderState) => void;
+    onCycleMode: (key: keyof SliderState) => void;
     onDualRangeChange: (key: keyof SliderState, min: number, max: number) => void;
   } => {
-    // For drum morph keys, use per-trigger positions instead of random walk
-    let walkPos = randomWalkPositions[paramKey];
+    const keyStr = paramKey as string;
+    const mode: SliderMode = sliderModes[keyStr] ?? 'single';
+
+    // Determine walk/trigger position based on mode
+    let walkPos: number | undefined;
+    if (mode === 'walk') {
+      walkPos = randomWalkPositions[keyStr];
+    } else if (mode === 'sampleHold') {
+      walkPos = triggerPositionMap[keyStr];
+    }
+
+    // For drum morph keys, use per-trigger positions regardless
     if (drumMorphKeys.has(paramKey)) {
       const voice = drumMorphKeyToVoice[paramKey];
       if (voice) {
@@ -2299,13 +2283,13 @@ const App: React.FC = () => {
       }
     }
     return {
-      isDualMode: dualSliderModes.has(paramKey),
+      mode,
       dualRange: dualSliderRanges[paramKey],
       walkPosition: walkPos,
-      onToggleDual: handleToggleDualMode,
+      onCycleMode: handleCycleSliderMode,
       onDualRangeChange: handleDualRangeChange,
     };
-  }, [dualSliderModes, dualSliderRanges, randomWalkPositions, drumMorphPositions, drumMorphKeys, drumMorphKeyToVoice, handleToggleDualMode, handleDualRangeChange]);
+  }, [sliderModes, dualSliderRanges, randomWalkPositions, triggerPositionMap, drumMorphPositions, drumMorphKeys, drumMorphKeyToVoice, handleCycleSliderMode, handleDualRangeChange]);
 
   // Handle select change
   const handleSelectChange = useCallback(<K extends keyof SliderState>(key: K, value: SliderState[K]) => {
@@ -2329,40 +2313,19 @@ const App: React.FC = () => {
         if (defaultPreset) {
           console.log('[App] Auto-loading default preset: String Waves');
           hasLoadedPresetRef.current = true;
+          const migrated = migratePreset(defaultPreset);
           // Apply preset state
-          const normalizedState = { ...DEFAULT_STATE, ...normalizePresetForWeb(defaultPreset.state) };
+          const normalizedState = { ...DEFAULT_STATE, ...normalizePresetForWeb(migrated.state) };
           // Preserve user preference keys
           for (const key of USER_PREFERENCE_KEYS) {
             (normalizedState as Record<string, unknown>)[key] = state[key];
           }
           setState(normalizedState);
-          setMorphPresetA(defaultPreset);
+          setMorphPresetA(migrated);
           stateToStart = normalizedState;
 
           // Restore dual slider state from preset
-          applyDualRangesFromPreset(defaultPreset.dualRanges);
-
-          // Update ocean dual modes
-          setOceanDualModes({
-            duration: Math.abs(normalizedState.oceanDurationMax - normalizedState.oceanDurationMin) > 0.01,
-            interval: Math.abs(normalizedState.oceanIntervalMax - normalizedState.oceanIntervalMin) > 0.01,
-            foam: Math.abs(normalizedState.oceanFoamMax - normalizedState.oceanFoamMin) > 0.001,
-            depth: Math.abs(normalizedState.oceanDepthMax - normalizedState.oceanDepthMin) > 0.001,
-          });
-
-          // Update expression dual modes
-          setExpressionDualModes({
-            vibratoDepth: Math.abs(normalizedState.leadVibratoDepthMax - normalizedState.leadVibratoDepthMin) > 0.001,
-            vibratoRate: Math.abs(normalizedState.leadVibratoRateMax - normalizedState.leadVibratoRateMin) > 0.001,
-            glide: Math.abs(normalizedState.leadGlideMax - normalizedState.leadGlideMin) > 0.001,
-          });
-
-          // Update delay dual modes
-          setDelayDualModes({
-            time: Math.abs(normalizedState.leadDelayTimeMax - normalizedState.leadDelayTimeMin) > 0.1,
-            feedback: Math.abs(normalizedState.leadDelayFeedbackMax - normalizedState.leadDelayFeedbackMin) > 0.001,
-            mix: Math.abs(normalizedState.leadDelayMixMax - normalizedState.leadDelayMixMin) > 0.001,
-          });
+          applyDualRangesFromPreset(migrated.dualRanges, migrated.sliderModes);
         }
       }
       
@@ -2835,18 +2798,25 @@ const App: React.FC = () => {
     
     // Convert dual slider ranges to a serializable format
     const dualRangesObj: Record<string, { min: number; max: number }> = {};
-    dualSliderModes.forEach(key => {
-      const range = dualSliderRanges[key];
+    Object.keys(sliderModes).forEach(key => {
+      const range = dualSliderRanges[key as keyof SliderState];
       if (range) {
         dualRangesObj[key] = { min: range.min, max: range.max };
       }
     });
     
+    // Build slider modes for serialization (only non-single modes)
+    const modesObj: Record<string, SliderMode> = {};
+    for (const [k, m] of Object.entries(sliderModes)) {
+      if (m !== 'single') modesObj[k] = m;
+    }
+
     const preset: SavedPreset = {
       name,
       timestamp: new Date().toISOString(),
       state,
       dualRanges: Object.keys(dualRangesObj).length > 0 ? dualRangesObj : undefined,
+      sliderModes: Object.keys(modesObj).length > 0 ? modesObj : undefined,
     };
     
     const success = await savePresetToFile(preset);
@@ -2860,7 +2830,7 @@ const App: React.FC = () => {
   interface LerpResult {
     state: SliderState;
     dualRanges: DualSliderState;
-    dualModes: Set<keyof SliderState>;
+    dualModes: Record<string, SliderMode>;
     // CoF morph visualization info
     morphCoFInfo?: {
       isMorphing: boolean;
@@ -2932,8 +2902,10 @@ const App: React.FC = () => {
     // Compute interpolated dual ranges
     const dualRangesA = presetA.dualRanges || {};
     const dualRangesB = presetB.dualRanges || {};
+    const rawModesA = presetA.sliderModes || {};
+    const rawModesB = presetB.sliderModes || {};
     const resultDualRanges: DualSliderState = {};
-    const resultDualModes = new Set<keyof SliderState>();
+    const resultDualModes: Record<string, SliderMode> = {};
     
     // Get all keys that have dual ranges in either preset
     const allDualKeys = new Set([
@@ -2947,6 +2919,13 @@ const App: React.FC = () => {
       const rangeB = dualRangesB[keyStr];
       const valA = typeof stateA[key] === 'number' ? stateA[key] as number : 0;
       const valB = typeof stateB[key] === 'number' ? stateB[key] as number : 0;
+      
+      // Resolve effective mode per preset: explicit mode, or infer 'walk' when
+      // a dualRange exists without an explicit sliderMode (same default used by
+      // applyDualRangesFromPreset). Without this, a missing mode causes the ||
+      // fallback chain to pick the OTHER preset's mode, defeating the midpoint snap.
+      const modeA: SliderMode | undefined = rawModesA[keyStr] || (rangeA ? 'walk' : undefined);
+      const modeB: SliderMode | undefined = rawModesB[keyStr] || (rangeB ? 'walk' : undefined);
       
       let morphedMin: number;
       let morphedMax: number;
@@ -2974,34 +2953,40 @@ const App: React.FC = () => {
       const isEffectivelyDual = Math.abs(morphedMax - morphedMin) > 0.001;
       
       if (isEffectivelyDual) {
-        resultDualModes.add(key);
+        // Midpoint snap for discrete mode handoff (same pattern used for other discrete morph keys)
+        resultDualModes[key as string] = tNorm < 0.5
+          ? (modeA || modeB || 'walk')
+          : (modeB || modeA || 'walk');
         resultDualRanges[key] = { min: morphedMin, max: morphedMax };
+      } else {
+        // Collapsed to single value — explicitly mark as 'single' so the merge
+        // in handleMorphPositionChange resets any previous 'walk'/'sampleHold' mode
+        resultDualModes[key as string] = 'single';
       }
-      // If not effectively dual, just use the interpolated state value (already computed)
     }
     
     // Define parent-child relationships for conditional morphing
     // If parent boolean is OFF in the target preset, don't morph child sliders
     const parentChildMap: Record<string, (keyof SliderState)[]> = {
       granularEnabled: [
-        'granularReverbSend', 'grainProbability', 'grainSizeMin', 'grainSizeMax',
+        'granularReverbSend', 'grainProbability', 'grainSize',
         'density', 'spray', 'jitter', 'pitchSpread', 'stereoSpread', 'feedback', 'wetHPF', 'wetLPF'
       ],
       leadEnabled: [
         'lead1Attack', 'lead1Decay', 'lead1Sustain', 'lead1Release',
-        'leadDelayTimeMin', 'leadDelayTimeMax', 'leadDelayFeedbackMin', 'leadDelayFeedbackMax',
-        'leadDelayMixMin', 'leadDelayMixMax', 'lead1Density',
+        'leadDelayTime', 'leadDelayFeedback',
+        'leadDelayMix', 'lead1Density',
         'lead1Octave', 'lead1OctaveRange',
-        'leadVibratoDepthMin', 'leadVibratoDepthMax', 'leadVibratoRateMin', 'leadVibratoRateMax',
-        'leadGlideMin', 'leadGlideMax', 'leadReverbSend', 'leadDelayReverbSend'
+        'leadVibratoDepth', 'leadVibratoRate',
+        'leadGlide', 'leadReverbSend', 'leadDelayReverbSend'
       ],
       leadEuclideanMasterEnabled: [
         'leadEuclideanTempo'
       ],
       oceanSampleEnabled: [
         'oceanFilterCutoff', 'oceanFilterResonance',
-        'oceanDurationMin', 'oceanDurationMax', 'oceanIntervalMin', 'oceanIntervalMax',
-        'oceanFoamMin', 'oceanFoamMax', 'oceanDepthMin', 'oceanDepthMax'
+        'oceanDuration', 'oceanInterval',
+        'oceanFoam', 'oceanDepth'
       ]
     };
     
@@ -3026,17 +3011,17 @@ const App: React.FC = () => {
       'synthSustain', 'synthRelease', 'synthVoiceMask', 'synthOctave', 'hardness', 'oscBrightness',
       'filterCutoffMin', 'filterCutoffMax', 'filterModSpeed', 'filterResonance', 'filterQ',
       'warmth', 'presence', 'airNoise', 'reverbDecay', 'reverbSize', 'reverbDiffusion',
-      'reverbModulation', 'predelay', 'damping', 'width', 'grainProbability', 'grainSizeMin',
-      'grainSizeMax', 'density', 'spray', 'jitter', 'pitchSpread', 'stereoSpread', 'feedback',
+      'reverbModulation', 'predelay', 'damping', 'width', 'grainProbability', 'grainSize',
+      'density', 'spray', 'jitter', 'pitchSpread', 'stereoSpread', 'feedback',
       'wetHPF', 'wetLPF', 'leadLevel', 'lead1Attack', 'lead1Decay', 'lead1Sustain', 'lead1Release',
-      'leadDelayTimeMin', 'leadDelayTimeMax', 'leadDelayFeedbackMin', 'leadDelayFeedbackMax',
-      'leadDelayMixMin', 'leadDelayMixMax', 'lead1Density', 'lead1Octave',
+      'leadDelayTime', 'leadDelayFeedback',
+      'leadDelayMix', 'lead1Density', 'lead1Octave',
       'lead1OctaveRange',
-      'leadVibratoDepthMin', 'leadVibratoDepthMax', 'leadVibratoRateMin', 'leadVibratoRateMax',
-      'leadGlideMin', 'leadGlideMax', 'leadEuclideanTempo',
+      'leadVibratoDepth', 'leadVibratoRate',
+      'leadGlide', 'leadEuclideanTempo',
       'oceanSampleLevel', 'oceanWaveSynthLevel', 'oceanFilterCutoff', 'oceanFilterResonance',
-      'oceanDurationMin', 'oceanDurationMax', 'oceanIntervalMin', 'oceanIntervalMax',
-      'oceanFoamMin', 'oceanFoamMax', 'oceanDepthMin', 'oceanDepthMax',
+      'oceanDuration', 'oceanInterval',
+      'oceanFoam', 'oceanDepth',
       'cofDriftRate', 'cofDriftRange',
       // Drum morph positions - should interpolate when master morph changes
       'drumSubMorph', 'drumKickMorph', 'drumClickMorph',
@@ -3123,6 +3108,7 @@ const App: React.FC = () => {
   // This captures the state BEFORE any morph preset is loaded
   const morphCapturedStateRef = useRef<SliderState | null>(null);
   const morphCapturedDualRangesRef = useRef<Record<string, { min: number; max: number }> | null>(null);
+  const morphCapturedSliderModesRef = useRef<Record<string, SliderMode> | null>(null);
   // Capture the effective starting root (accounting for CoF drift) when morph begins
   const morphCapturedStartRootRef = useRef<number | null>(null);
   // Track morph direction: 'toB' when going 0→100, 'toA' when going 100→0
@@ -3149,20 +3135,22 @@ const App: React.FC = () => {
       }, 100);
     }
     
-    // Normalize iOS-only settings
+    // Normalize iOS-only settings and migrate old *Min/*Max fields
+    const migrated = migratePreset(preset);
     const normalizedPreset: SavedPreset = {
-      ...preset,
-      state: normalizePresetForWeb(preset.state)
+      ...migrated,
+      state: normalizePresetForWeb(migrated.state)
     };
     
     // Convert current dualSliderRanges to serializable format
     const currentDualRanges: Record<string, { min: number; max: number }> = {};
-    dualSliderModes.forEach(key => {
-      const range = dualSliderRanges[key];
+    Object.keys(sliderModes).forEach(key => {
+      const range = dualSliderRanges[key as keyof SliderState];
       if (range) {
         currentDualRanges[key as string] = { min: range.min, max: range.max };
       }
     });
+    const currentSliderModes: Record<string, SliderMode> = { ...sliderModes };
     
     if (slot === 'a') {
       setMorphPresetA(normalizedPreset);
@@ -3171,6 +3159,7 @@ const App: React.FC = () => {
       if (!morphPresetB) {
         morphCapturedStateRef.current = { ...state };
         morphCapturedDualRangesRef.current = currentDualRanges;
+        morphCapturedSliderModesRef.current = currentSliderModes;
       }
       
       // Check if we should apply preset A values directly:
@@ -3195,55 +3184,8 @@ const App: React.FC = () => {
         audioEngine.resetCofDrift();
         // Don't reset morph position - keep it where user had it
         
-        // Update ocean dual modes based on whether min !== max in the loaded state
-        setOceanDualModes({
-          duration: Math.abs(newState.oceanDurationMax - newState.oceanDurationMin) > 0.01,
-          interval: Math.abs(newState.oceanIntervalMax - newState.oceanIntervalMin) > 0.01,
-          foam: Math.abs(newState.oceanFoamMax - newState.oceanFoamMin) > 0.001,
-          depth: Math.abs(newState.oceanDepthMax - newState.oceanDepthMin) > 0.001,
-        });
-        
-        // Update expression dual modes based on whether min !== max in the loaded state
-        setExpressionDualModes({
-          vibratoDepth: Math.abs(newState.leadVibratoDepthMax - newState.leadVibratoDepthMin) > 0.001,
-          vibratoRate: Math.abs(newState.leadVibratoRateMax - newState.leadVibratoRateMin) > 0.001,
-          glide: Math.abs(newState.leadGlideMax - newState.leadGlideMin) > 0.001,
-        });
-        
-        // Update delay dual modes based on whether min !== max in the loaded state
-        setDelayDualModes({
-          time: Math.abs(newState.leadDelayTimeMax - newState.leadDelayTimeMin) > 0.1,
-          feedback: Math.abs(newState.leadDelayFeedbackMax - newState.leadDelayFeedbackMin) > 0.001,
-          mix: Math.abs(newState.leadDelayMixMax - newState.leadDelayMixMin) > 0.001,
-        });
-        
-        // Restore dual slider state if present
-        if (normalizedPreset.dualRanges && Object.keys(normalizedPreset.dualRanges).length > 0) {
-          const newDualModes = new Set<keyof SliderState>();
-          const newDualRanges: DualSliderState = {};
-          const newWalkPositions: Record<string, number> = {};
-          
-          Object.entries(normalizedPreset.dualRanges).forEach(([key, range]) => {
-            const paramKey = key as keyof SliderState;
-            newDualModes.add(paramKey);
-            newDualRanges[paramKey] = range;
-            const walkPos = Math.random();
-            newWalkPositions[key] = walkPos;
-            randomWalkRef.current[paramKey] = {
-              position: walkPos,
-              velocity: (Math.random() - 0.5) * 0.02,
-            };
-          });
-          
-          setDualSliderModes(newDualModes);
-          setDualSliderRanges(newDualRanges);
-          setRandomWalkPositions(newWalkPositions);
-        } else {
-          setDualSliderModes(new Set());
-          setDualSliderRanges({});
-          setRandomWalkPositions({});
-          randomWalkRef.current = {};
-        }
+        // Apply dual ranges and slider modes from migrated preset
+        applyDualRangesFromPreset(normalizedPreset.dualRanges, normalizedPreset.sliderModes);
       }
       // If in mid-morph, the useEffect will handle applying the interpolated state
     } else {
@@ -3253,6 +3195,7 @@ const App: React.FC = () => {
       if (!morphPresetA) {
         morphCapturedStateRef.current = { ...state };
         morphCapturedDualRangesRef.current = currentDualRanges;
+        morphCapturedSliderModesRef.current = currentSliderModes;
       }
 
       // Check if we should apply preset B values directly:
@@ -3276,59 +3219,12 @@ const App: React.FC = () => {
         audioEngine.updateParams(newState);
         audioEngine.resetCofDrift();
 
-        // Update ocean dual modes based on whether min !== max in the loaded state
-        setOceanDualModes({
-          duration: Math.abs(newState.oceanDurationMax - newState.oceanDurationMin) > 0.01,
-          interval: Math.abs(newState.oceanIntervalMax - newState.oceanIntervalMin) > 0.01,
-          foam: Math.abs(newState.oceanFoamMax - newState.oceanFoamMin) > 0.001,
-          depth: Math.abs(newState.oceanDepthMax - newState.oceanDepthMin) > 0.001,
-        });
-
-        // Update expression dual modes based on whether min !== max in the loaded state
-        setExpressionDualModes({
-          vibratoDepth: Math.abs(newState.leadVibratoDepthMax - newState.leadVibratoDepthMin) > 0.001,
-          vibratoRate: Math.abs(newState.leadVibratoRateMax - newState.leadVibratoRateMin) > 0.001,
-          glide: Math.abs(newState.leadGlideMax - newState.leadGlideMin) > 0.001,
-        });
-
-        // Update delay dual modes based on whether min !== max in the loaded state
-        setDelayDualModes({
-          time: Math.abs(newState.leadDelayTimeMax - newState.leadDelayTimeMin) > 0.1,
-          feedback: Math.abs(newState.leadDelayFeedbackMax - newState.leadDelayFeedbackMin) > 0.001,
-          mix: Math.abs(newState.leadDelayMixMax - newState.leadDelayMixMin) > 0.001,
-        });
-
-        // Restore dual slider state if present
-        if (normalizedPreset.dualRanges && Object.keys(normalizedPreset.dualRanges).length > 0) {
-          const newDualModes = new Set<keyof SliderState>();
-          const newDualRanges: DualSliderState = {};
-          const newWalkPositions: Record<string, number> = {};
-
-          Object.entries(normalizedPreset.dualRanges).forEach(([key, range]) => {
-            const paramKey = key as keyof SliderState;
-            newDualModes.add(paramKey);
-            newDualRanges[paramKey] = range;
-            const walkPos = Math.random();
-            newWalkPositions[key] = walkPos;
-            randomWalkRef.current[paramKey] = {
-              position: walkPos,
-              velocity: (Math.random() - 0.5) * 0.02,
-            };
-          });
-
-          setDualSliderModes(newDualModes);
-          setDualSliderRanges(newDualRanges);
-          setRandomWalkPositions(newWalkPositions);
-        } else {
-          setDualSliderModes(new Set());
-          setDualSliderRanges({});
-          setRandomWalkPositions({});
-          randomWalkRef.current = {};
-        }
+        // Apply dual ranges and slider modes from migrated preset
+        applyDualRangesFromPreset(normalizedPreset.dualRanges, normalizedPreset.sliderModes);
       }
     }
     setMorphLoadTarget(null);
-  }, [state, morphPresetA, morphPresetB, dualSliderModes, dualSliderRanges, morphPosition]);
+  }, [state, morphPresetA, morphPresetB, sliderModes, dualSliderRanges, morphPosition]);
 
   // Reapply morph interpolation when a preset changes while in mid-morph
   // This ensures that if you're at position 50 and load a new preset A or B,
@@ -3354,8 +3250,9 @@ const App: React.FC = () => {
     // Reapply the morph at current position
     const fallbackState = morphCapturedStateRef.current || DEFAULT_STATE;
     const fallbackDualRanges = morphCapturedDualRangesRef.current || undefined;
-    const effectiveA: SavedPreset = morphPresetA || { name: 'Current', timestamp: '', state: fallbackState, dualRanges: fallbackDualRanges };
-    const effectiveB: SavedPreset = morphPresetB || { name: 'Current', timestamp: '', state: fallbackState, dualRanges: fallbackDualRanges };
+    const fallbackSliderModes = morphCapturedSliderModesRef.current || undefined;
+    const effectiveA: SavedPreset = morphPresetA || { name: 'Current', timestamp: '', state: fallbackState, dualRanges: fallbackDualRanges, sliderModes: fallbackSliderModes };
+    const effectiveB: SavedPreset = morphPresetB || { name: 'Current', timestamp: '', state: fallbackState, dualRanges: fallbackDualRanges, sliderModes: fallbackSliderModes };
     
     // Determine direction based on which preset changed
     const direction = morphDirectionRef.current || 'toB';
@@ -3371,9 +3268,37 @@ const App: React.FC = () => {
     setState(prev => ({ ...prev, ...stateWithPrefs }));
     audioEngine.updateParams(stateWithPrefs);
     
-    // Apply interpolated dual ranges
-    setDualSliderModes(morphResult.dualModes);
-    setDualSliderRanges(morphResult.dualRanges);
+    // Apply interpolated dual ranges — merge (don't wipe modes unrelated to morph)
+    setSliderModes(prev => {
+      const next: Record<string, SliderMode> = {};
+      // Keep modes for keys NOT managed by the morph interpolation
+      for (const [key, mode] of Object.entries(prev)) {
+        if (!(key in morphResult.dualModes)) {
+          next[key] = mode;
+        }
+      }
+      // Add morph-interpolated modes (skip 'single' — no need to store them)
+      for (const [key, mode] of Object.entries(morphResult.dualModes)) {
+        if (mode !== 'single') {
+          next[key] = mode;
+        }
+      }
+      return next;
+    });
+    setDualSliderRanges(prev => {
+      const next: typeof prev = {};
+      // Keep ranges for keys NOT managed by the morph
+      for (const [key, range] of Object.entries(prev)) {
+        if (!(key in morphResult.dualModes)) {
+          next[key as keyof SliderState] = range;
+        }
+      }
+      // Add morph ranges (only effectively dual ones)
+      for (const [key, range] of Object.entries(morphResult.dualRanges)) {
+        next[key as keyof SliderState] = range;
+      }
+      return next;
+    });
     
   }, [morphPresetA, morphPresetB, morphPosition, lerpPresets, engineState.cofCurrentStep]);
 
@@ -3437,12 +3362,12 @@ const App: React.FC = () => {
         const paramKey = param as keyof SliderState;
         
         if (interpState.isDualMode && interpState.range) {
-          setDualSliderModes(prev => new Set([...prev, paramKey]));
+          setSliderModes(prev => ({...prev, [paramKey as string]: prev[paramKey as string] ?? 'sampleHold'}));
           setDualSliderRanges(prev => ({ ...prev, [paramKey]: interpState.range! }));
         } else {
-          setDualSliderModes(prev => {
-            const next = new Set(prev);
-            next.delete(paramKey);
+          setSliderModes(prev => {
+            const next = { ...prev };
+            delete next[paramKey as string];
             return next;
           });
           setDualSliderRanges(prev => {
@@ -3464,8 +3389,9 @@ const App: React.FC = () => {
     
     const fallbackState = morphCapturedStateRef.current || DEFAULT_STATE;
     const fallbackDualRanges = morphCapturedDualRangesRef.current || undefined;
-    const effectiveA: SavedPreset = morphPresetA || { name: 'Current', timestamp: '', state: fallbackState, dualRanges: fallbackDualRanges };
-    const effectiveB: SavedPreset = morphPresetB || { name: 'Current', timestamp: '', state: fallbackState, dualRanges: fallbackDualRanges };
+    const fallbackSliderModes = morphCapturedSliderModesRef.current || undefined;
+    const effectiveA: SavedPreset = morphPresetA || { name: 'Current', timestamp: '', state: fallbackState, dualRanges: fallbackDualRanges, sliderModes: fallbackSliderModes };
+    const effectiveB: SavedPreset = morphPresetB || { name: 'Current', timestamp: '', state: fallbackState, dualRanges: fallbackDualRanges, sliderModes: fallbackSliderModes };
     
     if (morphPresetA && morphPresetB && morphPresetA.name === morphPresetB.name) return;
     
@@ -3551,6 +3477,11 @@ const App: React.FC = () => {
       }
     }
     
+    // Debug: log morph interpolation — every 10 positions to avoid console spam
+    if (newPosition % 10 === 0) {
+      console.log(`[Morph] pos=${newPosition} masterVol=${(finalState as any).masterVolume?.toFixed(2)} tension=${(finalState as any).tension?.toFixed(2)} synthLevel=${(finalState as any).synthLevel?.toFixed(2)} chordRate=${(finalState as any).chordRate?.toFixed(2)}`);
+    }
+    
     setState(finalState);
     audioEngine.updateParams(finalState);
     
@@ -3564,29 +3495,60 @@ const App: React.FC = () => {
       morphManualOverridesRef.current = {};  // Clear temporary overrides
     }
     
-    // Apply interpolated dual ranges
-    setDualSliderModes(morphResult.dualModes);
-    setDualSliderRanges(morphResult.dualRanges);
+    // Apply interpolated dual ranges — merge (don't wipe modes unrelated to morph)
+    setSliderModes(prev => {
+      const next: Record<string, SliderMode> = {};
+      for (const [key, mode] of Object.entries(prev)) {
+        if (!(key in morphResult.dualModes)) {
+          next[key] = mode;
+        }
+      }
+      for (const [key, mode] of Object.entries(morphResult.dualModes)) {
+        if (mode !== 'single') {
+          next[key] = mode;
+        }
+      }
+      return next;
+    });
+    setDualSliderRanges(prev => {
+      const next: typeof prev = {};
+      for (const [key, range] of Object.entries(prev)) {
+        if (!(key in morphResult.dualModes)) {
+          next[key as keyof SliderState] = range;
+        }
+      }
+      for (const [key, range] of Object.entries(morphResult.dualRanges)) {
+        next[key as keyof SliderState] = range;
+      }
+      return next;
+    });
     
     // Initialize random walk for any new dual sliders and update positions state
     const newWalkPositions: Record<string, number> = {};
-    morphResult.dualModes.forEach(key => {
-      if (!randomWalkRef.current[key]) {
+    Object.entries(morphResult.dualModes).forEach(([key, mode]) => {
+      if (mode === 'single') return; // Skip keys that collapsed to single
+      const paramKey = key as keyof SliderState;
+      if (!randomWalkRef.current[paramKey]) {
         const walkPos = Math.random();
-        randomWalkRef.current[key] = {
+        randomWalkRef.current[paramKey] = {
           position: walkPos,
           velocity: (Math.random() - 0.5) * 0.02,
         };
       }
       // Always sync ref to state for all active dual sliders
-      newWalkPositions[key as string] = randomWalkRef.current[key]?.position ?? 0.5;
+      newWalkPositions[key] = randomWalkRef.current[paramKey]?.position ?? 0.5;
     });
     setRandomWalkPositions(newWalkPositions);
     
-    // Clean up refs for sliders that are no longer dual
+    // Clean up refs for sliders that are no longer dual (or collapsed to single by morph)
     Object.keys(randomWalkRef.current).forEach(key => {
-      if (!morphResult.dualModes.has(key as keyof SliderState)) {
-        delete randomWalkRef.current[key as keyof SliderState];
+      const morphMode = morphResult.dualModes[key];
+      // Remove if: not morph-managed at all, OR morph says it's now single
+      if (morphMode === undefined || morphMode === 'single') {
+        // But only remove if it was morph-managed — keep user-set walk refs
+        if (morphMode === 'single') {
+          delete randomWalkRef.current[key as keyof SliderState];
+        }
       }
     });
   }, [morphPresetA, morphPresetB, lerpPresets, engineState.cofCurrentStep]);
@@ -3628,8 +3590,9 @@ const App: React.FC = () => {
     
     const fallbackState = morphCapturedStateRef.current || DEFAULT_STATE;
     const fallbackDualRanges = morphCapturedDualRangesRef.current || undefined;
-    const effectiveA: SavedPreset = morphPresetA || { name: 'Current', timestamp: '', state: fallbackState, dualRanges: fallbackDualRanges };
-    const effectiveB: SavedPreset = morphPresetB || { name: 'Current', timestamp: '', state: fallbackState, dualRanges: fallbackDualRanges };
+    const fallbackSliderModes = morphCapturedSliderModesRef.current || undefined;
+    const effectiveA: SavedPreset = morphPresetA || { name: 'Current', timestamp: '', state: fallbackState, dualRanges: fallbackDualRanges, sliderModes: fallbackSliderModes };
+    const effectiveB: SavedPreset = morphPresetB || { name: 'Current', timestamp: '', state: fallbackState, dualRanges: fallbackDualRanges, sliderModes: fallbackSliderModes };
     const samePreset = morphPresetA && morphPresetB && morphPresetA.name === morphPresetB.name;
     
     // Calculate the target position to transition to after the hold period
@@ -3797,28 +3760,54 @@ const App: React.FC = () => {
             audioEngine.resetCofDrift();
           }
           
-          // Apply interpolated dual ranges
-          setDualSliderModes(morphResult.dualModes);
-          setDualSliderRanges(morphResult.dualRanges);
+          // Apply interpolated dual ranges — merge (don't wipe modes unrelated to morph)
+          setSliderModes(prev => {
+            const next: Record<string, SliderMode> = {};
+            for (const [key, mode] of Object.entries(prev)) {
+              if (!(key in morphResult.dualModes)) {
+                next[key] = mode;
+              }
+            }
+            for (const [key, mode] of Object.entries(morphResult.dualModes)) {
+              if (mode !== 'single') {
+                next[key] = mode;
+              }
+            }
+            return next;
+          });
+          setDualSliderRanges(prev => {
+            const next: typeof prev = {};
+            for (const [key, range] of Object.entries(prev)) {
+              if (!(key in morphResult.dualModes)) {
+                next[key as keyof SliderState] = range;
+              }
+            }
+            for (const [key, range] of Object.entries(morphResult.dualRanges)) {
+              next[key as keyof SliderState] = range;
+            }
+            return next;
+          });
           
           // Initialize random walk for any new dual sliders and update positions state
           const newWalkPositions: Record<string, number> = {};
-          morphResult.dualModes.forEach(key => {
-            if (!randomWalkRef.current[key]) {
+          Object.entries(morphResult.dualModes).forEach(([key, mode]) => {
+            if (mode === 'single') return;
+            const paramKey = key as keyof SliderState;
+            if (!randomWalkRef.current[paramKey]) {
               const walkPos = Math.random();
-              randomWalkRef.current[key] = {
+              randomWalkRef.current[paramKey] = {
                 position: walkPos,
                 velocity: (Math.random() - 0.5) * 0.02,
               };
             }
             // Always sync ref to state for all active dual sliders
-            newWalkPositions[key as string] = randomWalkRef.current[key]?.position ?? 0.5;
+            newWalkPositions[key] = randomWalkRef.current[paramKey]?.position ?? 0.5;
           });
           setRandomWalkPositions(newWalkPositions);
           
-          // Clean up refs for sliders that are no longer dual
+          // Clean up refs for sliders that morphed to single
           Object.keys(randomWalkRef.current).forEach(key => {
-            if (!morphResult.dualModes.has(key as keyof SliderState)) {
+            if (morphResult.dualModes[key] === 'single') {
               delete randomWalkRef.current[key as keyof SliderState];
             }
           });
@@ -3859,13 +3848,14 @@ const App: React.FC = () => {
     morphCapturedStateRef.current = { ...state };
     // Also capture current dual ranges
     const currentDualRanges: Record<string, { min: number; max: number }> = {};
-    dualSliderModes.forEach(key => {
-      const range = dualSliderRanges[key];
+    Object.keys(sliderModes).forEach(key => {
+      const range = dualSliderRanges[key as keyof SliderState];
       if (range) {
         currentDualRanges[key as string] = { min: range.min, max: range.max };
       }
     });
     morphCapturedDualRangesRef.current = currentDualRanges;
+    morphCapturedSliderModesRef.current = { ...sliderModes };
     
     setMorphPresetA(preset);
     // Don't reset morph position - keep it where user had it
@@ -3890,7 +3880,8 @@ const App: React.FC = () => {
     if (shouldApplyPresetA) {
       // Apply the preset directly, with auto-disable for zero-level features
       // Also normalize iOS-only settings to web-compatible values
-      const normalizedState = normalizePresetForWeb(preset.state);
+      const migrated = migratePreset(preset);
+      const normalizedState = normalizePresetForWeb(migrated.state);
       const newState = { ...DEFAULT_STATE, ...normalizedState };
       
       // Preserve user preference keys (like reverbQuality) that shouldn't change with presets
@@ -3907,62 +3898,13 @@ const App: React.FC = () => {
       audioEngine.updateParams(newState);
       audioEngine.resetCofDrift(); // Reset CoF drift when loading preset
       
-      // Update ocean dual modes based on whether min !== max in the loaded state
-      setOceanDualModes({
-        duration: Math.abs(newState.oceanDurationMax - newState.oceanDurationMin) > 0.01,
-        interval: Math.abs(newState.oceanIntervalMax - newState.oceanIntervalMin) > 0.01,
-        foam: Math.abs(newState.oceanFoamMax - newState.oceanFoamMin) > 0.001,
-        depth: Math.abs(newState.oceanDepthMax - newState.oceanDepthMin) > 0.001,
-      });
-      
-      // Update expression dual modes based on whether min !== max in the loaded state
-      setExpressionDualModes({
-        vibratoDepth: Math.abs(newState.leadVibratoDepthMax - newState.leadVibratoDepthMin) > 0.001,
-        vibratoRate: Math.abs(newState.leadVibratoRateMax - newState.leadVibratoRateMin) > 0.001,
-        glide: Math.abs(newState.leadGlideMax - newState.leadGlideMin) > 0.001,
-      });
-      
-      // Update delay dual modes based on whether min !== max in the loaded state
-      setDelayDualModes({
-        time: Math.abs(newState.leadDelayTimeMax - newState.leadDelayTimeMin) > 0.1,
-        feedback: Math.abs(newState.leadDelayFeedbackMax - newState.leadDelayFeedbackMin) > 0.001,
-        mix: Math.abs(newState.leadDelayMixMax - newState.leadDelayMixMin) > 0.001,
-      });
-      
-      // Restore dual slider state if present
-      if (preset.dualRanges && Object.keys(preset.dualRanges).length > 0) {
-        const newDualModes = new Set<keyof SliderState>();
-        const newDualRanges: DualSliderState = {};
-        const newWalkPositions: Record<string, number> = {};
-        
-        Object.entries(preset.dualRanges).forEach(([key, range]) => {
-          const paramKey = key as keyof SliderState;
-          newDualModes.add(paramKey);
-          newDualRanges[paramKey] = range;
-          // Initialize random walk with random starting position
-          const walkPos = Math.random();
-          newWalkPositions[key] = walkPos;
-          randomWalkRef.current[paramKey] = {
-            position: walkPos,
-            velocity: (Math.random() - 0.5) * 0.02,
-          };
-        });
-        
-        setDualSliderModes(newDualModes);
-        setDualSliderRanges(newDualRanges);
-        setRandomWalkPositions(newWalkPositions);
-      } else {
-        // No dual ranges in preset - reset to single mode
-        setDualSliderModes(new Set());
-        setDualSliderRanges({});
-        setRandomWalkPositions({});
-        randomWalkRef.current = {};
-      }
+      // Apply dual ranges and slider modes from migrated preset
+      applyDualRangesFromPreset(migrated.dualRanges, migrated.sliderModes);
     }
     // If in mid-morph, the useEffect will handle applying the interpolated state
     
     setShowPresetList(false);
-  }, [uiMode, morphLoadTarget, handleLoadPresetToSlot, state, dualSliderModes, dualSliderRanges, morphPresetB, morphPosition, snowflakeActivated]);
+  }, [uiMode, morphLoadTarget, handleLoadPresetToSlot, state, sliderModes, dualSliderRanges, morphPresetB, morphPosition, snowflakeActivated]);
 
   // Delete preset - just removes from UI list (can't delete files from browser)
   const handleDeletePreset = (index: number) => {
@@ -3980,8 +3922,9 @@ const App: React.FC = () => {
       try {
         const parsed = JSON.parse(e.target?.result as string);
         if (parsed.state) {
-          // Merge with defaults to handle missing keys
-          const normalizedState = normalizePresetForWeb(parsed.state as SliderState);
+          // Migrate old *Min/*Max fields and merge with defaults
+          const migrated = migratePreset(parsed);
+          const normalizedState = normalizePresetForWeb(migrated.state);
           const newState = { ...DEFAULT_STATE, ...normalizedState };
           
           // Preserve user preference keys (like reverbQuality) that shouldn't change with presets
@@ -3999,7 +3942,8 @@ const App: React.FC = () => {
             name: parsed.name || file.name.replace('.json', ''),
             timestamp: parsed.timestamp || new Date().toISOString(),
             state: newState,
-            dualRanges: parsed.dualRanges,
+            dualRanges: migrated.dualRanges,
+            sliderModes: migrated.sliderModes,
           };
           
           // Add to preset list for display
@@ -4015,56 +3959,8 @@ const App: React.FC = () => {
             audioEngine.updateParams(newState);
             audioEngine.resetCofDrift(); // Reset CoF drift when loading preset
             
-            // Update ocean dual modes
-            setOceanDualModes({
-              duration: Math.abs(newState.oceanDurationMax - newState.oceanDurationMin) > 0.01,
-              interval: Math.abs(newState.oceanIntervalMax - newState.oceanIntervalMin) > 0.01,
-              foam: Math.abs(newState.oceanFoamMax - newState.oceanFoamMin) > 0.001,
-              depth: Math.abs(newState.oceanDepthMax - newState.oceanDepthMin) > 0.001,
-            });
-            
-            // Update expression dual modes
-            setExpressionDualModes({
-              vibratoDepth: Math.abs(newState.leadVibratoDepthMax - newState.leadVibratoDepthMin) > 0.001,
-              vibratoRate: Math.abs(newState.leadVibratoRateMax - newState.leadVibratoRateMin) > 0.001,
-              glide: Math.abs(newState.leadGlideMax - newState.leadGlideMin) > 0.001,
-            });
-            
-            // Update delay dual modes
-            setDelayDualModes({
-              time: Math.abs(newState.leadDelayTimeMax - newState.leadDelayTimeMin) > 0.1,
-              feedback: Math.abs(newState.leadDelayFeedbackMax - newState.leadDelayFeedbackMin) > 0.001,
-              mix: Math.abs(newState.leadDelayMixMax - newState.leadDelayMixMin) > 0.001,
-            });
-            
-            // Restore dual slider state if present
-            if (parsed.dualRanges && Object.keys(parsed.dualRanges).length > 0) {
-              const newDualModes = new Set<keyof SliderState>();
-              const newDualRanges: DualSliderState = {};
-              const newWalkPositions: Record<string, number> = {};
-              
-              Object.entries(parsed.dualRanges).forEach(([key, range]) => {
-                const paramKey = key as keyof SliderState;
-                newDualModes.add(paramKey);
-                newDualRanges[paramKey] = range as { min: number; max: number };
-                const walkPos = Math.random();
-                newWalkPositions[key] = walkPos;
-                randomWalkRef.current[paramKey] = {
-                  position: walkPos,
-                  velocity: (Math.random() - 0.5) * 0.02,
-                };
-              });
-              
-              setDualSliderModes(newDualModes);
-              setDualSliderRanges(newDualRanges);
-              setRandomWalkPositions(newWalkPositions);
-            } else {
-              // No dual ranges - reset to single mode
-              setDualSliderModes(new Set());
-              setDualSliderRanges({});
-              setRandomWalkPositions({});
-              randomWalkRef.current = {};
-            }
+            // Apply dual ranges and slider modes from migrated preset
+            applyDualRangesFromPreset(migrated.dualRanges, migrated.sliderModes);
           }
         }
       } catch (err) {
@@ -4084,13 +3980,14 @@ const App: React.FC = () => {
     // Capture current state before loading
     morphCapturedStateRef.current = { ...state };
     const currentDualRanges: Record<string, { min: number; max: number }> = {};
-    dualSliderModes.forEach(key => {
-      const range = dualSliderRanges[key];
+    Object.keys(sliderModes).forEach(key => {
+      const range = dualSliderRanges[key as keyof SliderState];
       if (range) {
         currentDualRanges[key as string] = { min: range.min, max: range.max };
       }
     });
     morphCapturedDualRangesRef.current = currentDualRanges;
+    morphCapturedSliderModesRef.current = { ...sliderModes };
     
     handleLoadPresetToSlot(pendingUploadPreset, slot);
     
@@ -4240,9 +4137,33 @@ const App: React.FC = () => {
         audioEngine.resetCofDrift();
       }
       
-      // Apply interpolated dual ranges
-      setDualSliderModes(morphResult.dualModes);
-      setDualSliderRanges(morphResult.dualRanges);
+      // Apply interpolated dual ranges — merge (don't wipe modes unrelated to morph)
+      setSliderModes(prev => {
+        const next: Record<string, SliderMode> = {};
+        for (const [key, mode] of Object.entries(prev)) {
+          if (!(key in morphResult.dualModes)) {
+            next[key] = mode;
+          }
+        }
+        for (const [key, mode] of Object.entries(morphResult.dualModes)) {
+          if (mode !== 'single') {
+            next[key] = mode;
+          }
+        }
+        return next;
+      });
+      setDualSliderRanges(prev => {
+        const next: typeof prev = {};
+        for (const [key, range] of Object.entries(prev)) {
+          if (!(key in morphResult.dualModes)) {
+            next[key as keyof SliderState] = range;
+          }
+        }
+        for (const [key, range] of Object.entries(morphResult.dualRanges)) {
+          next[key as keyof SliderState] = range;
+        }
+        return next;
+      });
       
       if (progress < 1) {
         journeyMorphAnimationRef.current = requestAnimationFrame(animateMorph);
@@ -4896,21 +4817,23 @@ const App: React.FC = () => {
                 } else {
                   const preset = savedPresets.find(p => p.name === presetName);
                   if (preset) {
+                    const migratedA = migratePreset(preset);
                     const normalizedPreset: SavedPreset = {
-                      ...preset,
-                      state: normalizePresetForWeb(preset.state),
+                      ...migratedA,
+                      state: normalizePresetForWeb(migratedA.state),
                     };
                     // Capture current state and dual ranges before loading
                     if (!morphPresetB) {
                       morphCapturedStateRef.current = { ...state };
                       const currentDualRanges: Record<string, { min: number; max: number }> = {};
-                      dualSliderModes.forEach(key => {
-                        const range = dualSliderRanges[key];
+                      Object.keys(sliderModes).forEach(key => {
+                        const range = dualSliderRanges[key as keyof SliderState];
                         if (range) {
                           currentDualRanges[key as string] = { min: range.min, max: range.max };
                         }
                       });
                       morphCapturedDualRangesRef.current = currentDualRanges;
+                      morphCapturedSliderModesRef.current = { ...sliderModes };
                     }
                     setMorphPresetA(normalizedPreset);
                     
@@ -4932,55 +4855,8 @@ const App: React.FC = () => {
                       audioEngine.resetCofDrift(); // Reset CoF drift when loading preset
                       // Don't reset morph position - keep it where user had it
                       
-                      // Update ocean dual modes
-                      setOceanDualModes({
-                        duration: Math.abs(newState.oceanDurationMax - newState.oceanDurationMin) > 0.01,
-                        interval: Math.abs(newState.oceanIntervalMax - newState.oceanIntervalMin) > 0.01,
-                        foam: Math.abs(newState.oceanFoamMax - newState.oceanFoamMin) > 0.001,
-                        depth: Math.abs(newState.oceanDepthMax - newState.oceanDepthMin) > 0.001,
-                      });
-                      
-                      // Update expression dual modes
-                      setExpressionDualModes({
-                        vibratoDepth: Math.abs(newState.leadVibratoDepthMax - newState.leadVibratoDepthMin) > 0.001,
-                        vibratoRate: Math.abs(newState.leadVibratoRateMax - newState.leadVibratoRateMin) > 0.001,
-                        glide: Math.abs(newState.leadGlideMax - newState.leadGlideMin) > 0.001,
-                      });
-                      
-                      // Update delay dual modes
-                      setDelayDualModes({
-                        time: Math.abs(newState.leadDelayTimeMax - newState.leadDelayTimeMin) > 0.1,
-                        feedback: Math.abs(newState.leadDelayFeedbackMax - newState.leadDelayFeedbackMin) > 0.001,
-                        mix: Math.abs(newState.leadDelayMixMax - newState.leadDelayMixMin) > 0.001,
-                      });
-                      
-                      // Restore dual slider state if present
-                      if (normalizedPreset.dualRanges && Object.keys(normalizedPreset.dualRanges).length > 0) {
-                        const newDualModes = new Set<keyof SliderState>();
-                        const newDualRanges: DualSliderState = {};
-                        const newWalkPositions: Record<string, number> = {};
-                        
-                        Object.entries(normalizedPreset.dualRanges).forEach(([key, range]) => {
-                          const paramKey = key as keyof SliderState;
-                          newDualModes.add(paramKey);
-                          newDualRanges[paramKey] = range;
-                          const walkPos = Math.random();
-                          newWalkPositions[key] = walkPos;
-                          randomWalkRef.current[paramKey] = {
-                            position: walkPos,
-                            velocity: (Math.random() - 0.5) * 0.02,
-                          };
-                        });
-                        
-                        setDualSliderModes(newDualModes);
-                        setDualSliderRanges(newDualRanges);
-                        setRandomWalkPositions(newWalkPositions);
-                      } else {
-                        setDualSliderModes(new Set());
-                        setDualSliderRanges({});
-                        setRandomWalkPositions({});
-                        randomWalkRef.current = {};
-                      }
+                      // Apply dual ranges and slider modes from migrated preset
+                      applyDualRangesFromPreset(normalizedPreset.dualRanges, normalizedPreset.sliderModes);
                     }
                     // If in mid-morph, the useEffect will handle applying the interpolated state
                   }
@@ -4989,8 +4865,8 @@ const App: React.FC = () => {
               style={{
                 width: '100%',
                 padding: '8px 12px',
-                background: morphPresetA 
-                  ? 'linear-gradient(135deg, #064e3b, #022c22)' 
+                backgroundColor: morphPresetA 
+                  ? '#022c22' 
                   : 'rgba(30, 30, 40, 0.8)',
                 border: `1px solid ${morphPresetA ? '#10b981' : '#444'}`,
                 borderRadius: '6px',
@@ -4998,7 +4874,9 @@ const App: React.FC = () => {
                 color: morphPresetA ? '#6ee7b7' : '#888',
                 cursor: 'pointer',
                 appearance: 'none',
-                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236ee7b7'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
+                backgroundImage: morphPresetA
+                  ? `linear-gradient(135deg, #064e3b, #022c22), url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236ee7b7'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`
+                  : `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236ee7b7'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
                 backgroundRepeat: 'no-repeat',
                 backgroundPosition: 'right 8px center',
                 backgroundSize: '16px',
@@ -5088,21 +4966,23 @@ const App: React.FC = () => {
                 } else {
                   const preset = savedPresets.find(p => p.name === presetName);
                   if (preset) {
+                    const migratedB = migratePreset(preset);
                     const normalizedPreset: SavedPreset = {
-                      ...preset,
-                      state: normalizePresetForWeb(preset.state),
+                      ...migratedB,
+                      state: normalizePresetForWeb(migratedB.state),
                     };
                     // Capture current state and dual ranges before loading
                     if (!morphPresetA) {
                       morphCapturedStateRef.current = { ...state };
                       const currentDualRanges: Record<string, { min: number; max: number }> = {};
-                      dualSliderModes.forEach(key => {
-                        const range = dualSliderRanges[key];
+                      Object.keys(sliderModes).forEach(key => {
+                        const range = dualSliderRanges[key as keyof SliderState];
                         if (range) {
                           currentDualRanges[key as string] = { min: range.min, max: range.max };
                         }
                       });
                       morphCapturedDualRangesRef.current = currentDualRanges;
+                      morphCapturedSliderModesRef.current = { ...sliderModes };
                     }
                     setMorphPresetB(normalizedPreset);
 
@@ -5123,55 +5003,8 @@ const App: React.FC = () => {
                       audioEngine.updateParams(newState);
                       audioEngine.resetCofDrift();
 
-                      // Update ocean dual modes
-                      setOceanDualModes({
-                        duration: Math.abs(newState.oceanDurationMax - newState.oceanDurationMin) > 0.01,
-                        interval: Math.abs(newState.oceanIntervalMax - newState.oceanIntervalMin) > 0.01,
-                        foam: Math.abs(newState.oceanFoamMax - newState.oceanFoamMin) > 0.001,
-                        depth: Math.abs(newState.oceanDepthMax - newState.oceanDepthMin) > 0.001,
-                      });
-
-                      // Update expression dual modes
-                      setExpressionDualModes({
-                        vibratoDepth: Math.abs(newState.leadVibratoDepthMax - newState.leadVibratoDepthMin) > 0.001,
-                        vibratoRate: Math.abs(newState.leadVibratoRateMax - newState.leadVibratoRateMin) > 0.001,
-                        glide: Math.abs(newState.leadGlideMax - newState.leadGlideMin) > 0.001,
-                      });
-
-                      // Update delay dual modes
-                      setDelayDualModes({
-                        time: Math.abs(newState.leadDelayTimeMax - newState.leadDelayTimeMin) > 0.1,
-                        feedback: Math.abs(newState.leadDelayFeedbackMax - newState.leadDelayFeedbackMin) > 0.001,
-                        mix: Math.abs(newState.leadDelayMixMax - newState.leadDelayMixMin) > 0.001,
-                      });
-
-                      // Restore dual slider state if present
-                      if (normalizedPreset.dualRanges && Object.keys(normalizedPreset.dualRanges).length > 0) {
-                        const newDualModes = new Set<keyof SliderState>();
-                        const newDualRanges: DualSliderState = {};
-                        const newWalkPositions: Record<string, number> = {};
-
-                        Object.entries(normalizedPreset.dualRanges).forEach(([key, range]) => {
-                          const paramKey = key as keyof SliderState;
-                          newDualModes.add(paramKey);
-                          newDualRanges[paramKey] = range;
-                          const walkPos = Math.random();
-                          newWalkPositions[key] = walkPos;
-                          randomWalkRef.current[paramKey] = {
-                            position: walkPos,
-                            velocity: (Math.random() - 0.5) * 0.02,
-                          };
-                        });
-
-                        setDualSliderModes(newDualModes);
-                        setDualSliderRanges(newDualRanges);
-                        setRandomWalkPositions(newWalkPositions);
-                      } else {
-                        setDualSliderModes(new Set());
-                        setDualSliderRanges({});
-                        setRandomWalkPositions({});
-                        randomWalkRef.current = {};
-                      }
+                      // Apply dual ranges and slider modes from migrated preset
+                      applyDualRangesFromPreset(normalizedPreset.dualRanges, normalizedPreset.sliderModes);
                     }
                   }
                 }
@@ -5179,8 +5012,8 @@ const App: React.FC = () => {
               style={{
                 width: '100%',
                 padding: '8px 12px',
-                background: morphPresetB 
-                  ? 'linear-gradient(135deg, #4c1d95, #2e1065)' 
+                backgroundColor: morphPresetB 
+                  ? '#2e1065' 
                   : 'rgba(30, 30, 40, 0.8)',
                 border: `1px solid ${morphPresetB ? '#8b5cf6' : '#444'}`,
                 borderRadius: '6px',
@@ -5188,7 +5021,9 @@ const App: React.FC = () => {
                 color: morphPresetB ? '#c4b5fd' : '#888',
                 cursor: 'pointer',
                 appearance: 'none',
-                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23a78bfa'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
+                backgroundImage: morphPresetB
+                  ? `linear-gradient(135deg, #4c1d95, #2e1065), url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23a78bfa'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`
+                  : `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23a78bfa'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
                 backgroundRepeat: 'no-repeat',
                 backgroundPosition: 'right 8px center',
                 backgroundSize: '16px',
@@ -5313,29 +5148,13 @@ const App: React.FC = () => {
         <CloudPresets
           currentState={state}
           onLoadPreset={(presetState, _name) => {
-            const newState = { ...DEFAULT_STATE, ...normalizePresetForWeb(presetState) };
+            const cloudMigrated = migratePreset({ state: presetState, name: _name });
+            const newState = { ...DEFAULT_STATE, ...normalizePresetForWeb(cloudMigrated.state) };
             setState(newState);
             audioEngine.updateParams(newState);
             audioEngine.resetCofDrift();
-            // Update ocean dual modes
-            setOceanDualModes({
-              duration: Math.abs(newState.oceanDurationMax - newState.oceanDurationMin) > 0.01,
-              interval: Math.abs(newState.oceanIntervalMax - newState.oceanIntervalMin) > 0.01,
-              foam: Math.abs(newState.oceanFoamMax - newState.oceanFoamMin) > 0.001,
-              depth: Math.abs(newState.oceanDepthMax - newState.oceanDepthMin) > 0.001,
-            });
-            // Update expression dual modes
-            setExpressionDualModes({
-              vibratoDepth: Math.abs(newState.leadVibratoDepthMax - newState.leadVibratoDepthMin) > 0.001,
-              vibratoRate: Math.abs(newState.leadVibratoRateMax - newState.leadVibratoRateMin) > 0.001,
-              glide: Math.abs(newState.leadGlideMax - newState.leadGlideMin) > 0.001,
-            });
-            // Update delay dual modes
-            setDelayDualModes({
-              time: Math.abs(newState.leadDelayTimeMax - newState.leadDelayTimeMin) > 0.1,
-              feedback: Math.abs(newState.leadDelayFeedbackMax - newState.leadDelayFeedbackMin) > 0.001,
-              mix: Math.abs(newState.leadDelayMixMax - newState.leadDelayMixMin) > 0.001,
-            });
+            // Apply dual ranges and slider modes from migrated cloud preset
+            applyDualRangesFromPreset(cloudMigrated.dualRanges, cloudMigrated.sliderModes);
           }}
         />
 
@@ -6366,34 +6185,14 @@ const App: React.FC = () => {
             {...sliderProps('grainProbability')}
           />
           
-          {/* Grain Size Range */}
-          <div style={{ marginTop: '8px', marginBottom: '8px' }}>
-            <div style={{ fontSize: '0.85rem', color: '#888', marginBottom: '4px' }}>
-              Grain Size Range: {state.grainSizeMin}ms - {state.grainSizeMax}ms
-            </div>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <div style={{ flex: 1 }}>
-                <Slider
-                  label="Min Size"
-                  value={state.grainSizeMin}
-                  paramKey="grainSizeMin"
-                  unit="ms"
-                  onChange={handleSliderChange}
-                  {...sliderProps('grainSizeMin')}
-                />
-              </div>
-              <div style={{ flex: 1 }}>
-                <Slider
-                  label="Max Size"
-                  value={state.grainSizeMax}
-                  paramKey="grainSizeMax"
-                  unit="ms"
-                  onChange={handleSliderChange}
-                  {...sliderProps('grainSizeMax')}
-                />
-              </div>
-            </div>
-          </div>
+          <Slider
+            label="Grain Size"
+            value={state.grainSize}
+            paramKey="grainSize"
+            unit="ms"
+            onChange={handleSliderChange}
+            {...sliderProps('grainSize')}
+          />
 
           <Slider
             label="Density"
@@ -6582,122 +6381,13 @@ const App: React.FC = () => {
               </div>
             </div>
 
-            {/* Morph slider — dual range mode */}
-            {(leadMorphDualModes.lead1 || (state.lead1MorphMax - state.lead1MorphMin) > 0.0001) ? (
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                  <span style={{ fontSize: '0.7rem', color: '#f59e0b' }}>A</span>
-                  <span style={{ fontSize: '0.7rem', color: '#aaa' }}>
-                    Morph {(state.lead1MorphMin * 100).toFixed(0)}% - {(state.lead1MorphMax * 100).toFixed(0)}%
-                    <span style={{ color: '#f59e0b', marginLeft: '6px' }}>
-                      ({((state.lead1MorphMin + leadMorphPositions.lead1 * (state.lead1MorphMax - state.lead1MorphMin)) * 100).toFixed(0)}%)
-                    </span>
-                  </span>
-                  <span style={{ fontSize: '0.7rem', color: '#8b5cf6' }}>B</span>
-                </div>
-                <div
-                  style={styles.dualSliderContainer}
-                  onDoubleClick={() => toggleLeadMorphDualMode('lead1')}
-                  onTouchStart={() => startLeadMorphLongPress('lead1')}
-                  onTouchEnd={cancelLeadMorphLongPress}
-                  onTouchCancel={cancelLeadMorphLongPress}
-                  title="Double-click for single value mode"
-                >
-                  <div style={{
-                    ...styles.dualSliderTrack,
-                    left: `${state.lead1MorphMin * 100}%`,
-                    width: `${(state.lead1MorphMax - state.lead1MorphMin) * 100}%`,
-                    background: 'linear-gradient(90deg, rgba(245,158,11,0.6), rgba(139,92,246,0.6))',
-                  }} />
-                  <div
-                    style={{ ...styles.dualSliderThumb, left: `${state.lead1MorphMin * 100}%`, background: '#f59e0b' }}
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      const container = e.currentTarget.parentElement;
-                      if (!container) return;
-                      const move = (me: MouseEvent) => {
-                        const rect = container.getBoundingClientRect();
-                        const pct = Math.max(0, Math.min(1, (me.clientX - rect.left) / rect.width));
-                        handleSliderChange('lead1MorphMin', Math.min(pct, state.lead1MorphMax));
-                      };
-                      const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
-                      window.addEventListener('mousemove', move);
-                      window.addEventListener('mouseup', up);
-                    }}
-                    onTouchStart={(e) => {
-                      const container = e.currentTarget.parentElement;
-                      if (!container) return;
-                      const move = (te: TouchEvent) => {
-                        const rect = container.getBoundingClientRect();
-                        const pct = Math.max(0, Math.min(1, (te.touches[0].clientX - rect.left) / rect.width));
-                        handleSliderChange('lead1MorphMin', Math.min(pct, state.lead1MorphMax));
-                      };
-                      const up = () => { window.removeEventListener('touchmove', move); window.removeEventListener('touchend', up); };
-                      window.addEventListener('touchmove', move);
-                      window.addEventListener('touchend', up);
-                    }}
-                  />
-                  <div
-                    style={{ ...styles.dualSliderThumb, left: `${state.lead1MorphMax * 100}%`, background: '#8b5cf6' }}
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      const container = e.currentTarget.parentElement;
-                      if (!container) return;
-                      const move = (me: MouseEvent) => {
-                        const rect = container.getBoundingClientRect();
-                        const pct = Math.max(0, Math.min(1, (me.clientX - rect.left) / rect.width));
-                        handleSliderChange('lead1MorphMax', Math.max(pct, state.lead1MorphMin));
-                      };
-                      const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
-                      window.addEventListener('mousemove', move);
-                      window.addEventListener('mouseup', up);
-                    }}
-                    onTouchStart={(e) => {
-                      const container = e.currentTarget.parentElement;
-                      if (!container) return;
-                      const move = (te: TouchEvent) => {
-                        const rect = container.getBoundingClientRect();
-                        const pct = Math.max(0, Math.min(1, (te.touches[0].clientX - rect.left) / rect.width));
-                        handleSliderChange('lead1MorphMax', Math.max(pct, state.lead1MorphMin));
-                      };
-                      const up = () => { window.removeEventListener('touchmove', move); window.removeEventListener('touchend', up); };
-                      window.addEventListener('touchmove', move);
-                      window.addEventListener('touchend', up);
-                    }}
-                  />
-                  <div style={{
-                    ...styles.dualSliderWalkIndicator,
-                    left: `${(state.lead1MorphMin + leadMorphPositions.lead1 * (state.lead1MorphMax - state.lead1MorphMin)) * 100}%`,
-                    background: '#f59e0b',
-                    boxShadow: '0 0 8px rgba(245,158,11,0.8)',
-                  }} />
-                </div>
-              </div>
-            ) : (
-              // Single mode — regular slider
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                  <span style={{ fontSize: '0.7rem', color: '#f59e0b' }}>A</span>
-                  <span style={{ fontSize: '0.7rem', color: '#aaa' }}>Morph {(state.lead1MorphMin * 100).toFixed(0)}%</span>
-                  <span style={{ fontSize: '0.7rem', color: '#8b5cf6' }}>B</span>
-                </div>
-                <input
-                  type="range" min={0} max={1} step={0.01}
-                  value={state.lead1MorphMin}
-                  onChange={(e) => {
-                    const v = parseFloat(e.target.value);
-                    handleSliderChange('lead1MorphMin', v);
-                    handleSliderChange('lead1MorphMax', v);
-                  }}
-                  onDoubleClick={() => toggleLeadMorphDualMode('lead1')}
-                  onTouchStart={() => startLeadMorphLongPress('lead1')}
-                  onTouchEnd={cancelLeadMorphLongPress}
-                  onTouchCancel={cancelLeadMorphLongPress}
-                  style={{ width: '100%', cursor: 'pointer', accentColor: '#f59e0b' }}
-                  title="Double-click or long-press for range mode"
-                />
-              </div>
-            )}
+            <Slider
+              label="Morph A→B"
+              value={state.lead1Morph}
+              paramKey="lead1Morph"
+              onChange={handleSliderChange}
+              {...sliderProps('lead1Morph')}
+            />
 
             {/* Random walk controls */}
             <div style={{ display: 'flex', gap: '8px', marginTop: '8px', alignItems: 'center' }}>
@@ -6942,121 +6632,13 @@ const App: React.FC = () => {
               </div>
             </div>
 
-            {/* Morph slider — dual range mode */}
-            {(leadMorphDualModes.lead2 || (state.lead2MorphMax - state.lead2MorphMin) > 0.0001) ? (
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                  <span style={{ fontSize: '0.7rem', color: '#06b6d4' }}>C</span>
-                  <span style={{ fontSize: '0.7rem', color: '#aaa' }}>
-                    Morph {(state.lead2MorphMin * 100).toFixed(0)}% - {(state.lead2MorphMax * 100).toFixed(0)}%
-                    <span style={{ color: '#06b6d4', marginLeft: '6px' }}>
-                      ({((state.lead2MorphMin + leadMorphPositions.lead2 * (state.lead2MorphMax - state.lead2MorphMin)) * 100).toFixed(0)}%)
-                    </span>
-                  </span>
-                  <span style={{ fontSize: '0.7rem', color: '#a78bfa' }}>D</span>
-                </div>
-                <div
-                  style={styles.dualSliderContainer}
-                  onDoubleClick={() => toggleLeadMorphDualMode('lead2')}
-                  onTouchStart={() => startLeadMorphLongPress('lead2')}
-                  onTouchEnd={cancelLeadMorphLongPress}
-                  onTouchCancel={cancelLeadMorphLongPress}
-                  title="Double-click for single value mode"
-                >
-                  <div style={{
-                    ...styles.dualSliderTrack,
-                    left: `${state.lead2MorphMin * 100}%`,
-                    width: `${(state.lead2MorphMax - state.lead2MorphMin) * 100}%`,
-                    background: 'linear-gradient(90deg, rgba(6,182,212,0.6), rgba(167,139,250,0.6))',
-                  }} />
-                  <div
-                    style={{ ...styles.dualSliderThumb, left: `${state.lead2MorphMin * 100}%`, background: '#06b6d4' }}
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      const container = e.currentTarget.parentElement;
-                      if (!container) return;
-                      const move = (me: MouseEvent) => {
-                        const rect = container.getBoundingClientRect();
-                        const pct = Math.max(0, Math.min(1, (me.clientX - rect.left) / rect.width));
-                        handleSliderChange('lead2MorphMin', Math.min(pct, state.lead2MorphMax));
-                      };
-                      const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
-                      window.addEventListener('mousemove', move);
-                      window.addEventListener('mouseup', up);
-                    }}
-                    onTouchStart={(e) => {
-                      const container = e.currentTarget.parentElement;
-                      if (!container) return;
-                      const move = (te: TouchEvent) => {
-                        const rect = container.getBoundingClientRect();
-                        const pct = Math.max(0, Math.min(1, (te.touches[0].clientX - rect.left) / rect.width));
-                        handleSliderChange('lead2MorphMin', Math.min(pct, state.lead2MorphMax));
-                      };
-                      const up = () => { window.removeEventListener('touchmove', move); window.removeEventListener('touchend', up); };
-                      window.addEventListener('touchmove', move);
-                      window.addEventListener('touchend', up);
-                    }}
-                  />
-                  <div
-                    style={{ ...styles.dualSliderThumb, left: `${state.lead2MorphMax * 100}%`, background: '#a78bfa' }}
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      const container = e.currentTarget.parentElement;
-                      if (!container) return;
-                      const move = (me: MouseEvent) => {
-                        const rect = container.getBoundingClientRect();
-                        const pct = Math.max(0, Math.min(1, (me.clientX - rect.left) / rect.width));
-                        handleSliderChange('lead2MorphMax', Math.max(pct, state.lead2MorphMin));
-                      };
-                      const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
-                      window.addEventListener('mousemove', move);
-                      window.addEventListener('mouseup', up);
-                    }}
-                    onTouchStart={(e) => {
-                      const container = e.currentTarget.parentElement;
-                      if (!container) return;
-                      const move = (te: TouchEvent) => {
-                        const rect = container.getBoundingClientRect();
-                        const pct = Math.max(0, Math.min(1, (te.touches[0].clientX - rect.left) / rect.width));
-                        handleSliderChange('lead2MorphMax', Math.max(pct, state.lead2MorphMin));
-                      };
-                      const up = () => { window.removeEventListener('touchmove', move); window.removeEventListener('touchend', up); };
-                      window.addEventListener('touchmove', move);
-                      window.addEventListener('touchend', up);
-                    }}
-                  />
-                  <div style={{
-                    ...styles.dualSliderWalkIndicator,
-                    left: `${(state.lead2MorphMin + leadMorphPositions.lead2 * (state.lead2MorphMax - state.lead2MorphMin)) * 100}%`,
-                    background: '#06b6d4',
-                    boxShadow: '0 0 8px rgba(6,182,212,0.8)',
-                  }} />
-                </div>
-              </div>
-            ) : (
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                  <span style={{ fontSize: '0.7rem', color: '#06b6d4' }}>C</span>
-                  <span style={{ fontSize: '0.7rem', color: '#aaa' }}>Morph {(state.lead2MorphMin * 100).toFixed(0)}%</span>
-                  <span style={{ fontSize: '0.7rem', color: '#a78bfa' }}>D</span>
-                </div>
-                <input
-                  type="range" min={0} max={1} step={0.01}
-                  value={state.lead2MorphMin}
-                  onChange={(e) => {
-                    const v = parseFloat(e.target.value);
-                    handleSliderChange('lead2MorphMin', v);
-                    handleSliderChange('lead2MorphMax', v);
-                  }}
-                  onDoubleClick={() => toggleLeadMorphDualMode('lead2')}
-                  onTouchStart={() => startLeadMorphLongPress('lead2')}
-                  onTouchEnd={cancelLeadMorphLongPress}
-                  onTouchCancel={cancelLeadMorphLongPress}
-                  style={{ width: '100%', cursor: 'pointer', accentColor: '#06b6d4' }}
-                  title="Double-click or long-press for range mode"
-                />
-              </div>
-            )}
+            <Slider
+              label="Morph A→B"
+              value={state.lead2Morph}
+              paramKey="lead2Morph"
+              onChange={handleSliderChange}
+              {...sliderProps('lead2Morph')}
+            />
 
             {/* Random walk controls */}
             <div style={{ display: 'flex', gap: '8px', marginTop: '8px', alignItems: 'center' }}>
@@ -7257,586 +6839,61 @@ const App: React.FC = () => {
           <div style={{ marginTop: '12px', borderTop: '1px solid #333', paddingTop: '12px' }}>
             <div style={{ fontSize: '0.85rem', color: '#888', marginBottom: '12px' }}>Expression (per note)</div>
             
-            {/* Vibrato Depth */}
-            {expressionDualModes.vibratoDepth ? (
-              // Dual mode - range slider
-              <div style={styles.sliderGroup}>
-                <div style={styles.sliderLabel}>
-                  <span>
-                    Vibrato Depth
-                    <span style={styles.dualModeIndicator}>⟷ range</span>
-                  </span>
-                  <span>
-                    {(state.leadVibratoDepthMin * 0.5).toFixed(2)} - {(state.leadVibratoDepthMax * 0.5).toFixed(2)} st
-                    <span style={{ color: '#f59e0b', marginLeft: '8px' }}>
-                      ({((state.leadVibratoDepthMin + leadExpressionPositions.vibratoDepth * (state.leadVibratoDepthMax - state.leadVibratoDepthMin)) * 0.5).toFixed(2)})
-                    </span>
-                  </span>
-                </div>
-                <div 
-                  style={styles.dualSliderContainer}
-                  onDoubleClick={() => toggleExpressionDualMode('vibratoDepth')}
-                  {...createLongPressHandlers(() => toggleExpressionDualMode('vibratoDepth'))}
-                  title="Double-click for single value mode"
-                >
-                  <div style={{
-                    ...styles.dualSliderTrack,
-                    left: `${state.leadVibratoDepthMin * 100}%`,
-                    width: `${(state.leadVibratoDepthMax - state.leadVibratoDepthMin) * 100}%`,
-                    background: 'linear-gradient(90deg, rgba(245, 158, 11, 0.6), rgba(217, 119, 6, 0.6))',
-                  }} />
-                  <div
-                    style={{ ...styles.dualSliderThumb, left: `${state.leadVibratoDepthMin * 100}%`, background: '#f59e0b' }}
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      const container = e.currentTarget.parentElement;
-                      if (!container) return;
-                      const move = (me: MouseEvent) => {
-                        const rect = container.getBoundingClientRect();
-                        const pct = Math.max(0, Math.min(100, ((me.clientX - rect.left) / rect.width) * 100));
-                        handleSliderChange('leadVibratoDepthMin', Math.min(pct / 100, state.leadVibratoDepthMax));
-                      };
-                      const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
-                      window.addEventListener('mousemove', move);
-                      window.addEventListener('mouseup', up);
-                    }}
-                  />
-                  <div
-                    style={{ ...styles.dualSliderThumb, left: `${state.leadVibratoDepthMax * 100}%`, background: '#f59e0b' }}
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      const container = e.currentTarget.parentElement;
-                      if (!container) return;
-                      const move = (me: MouseEvent) => {
-                        const rect = container.getBoundingClientRect();
-                        const pct = Math.max(0, Math.min(100, ((me.clientX - rect.left) / rect.width) * 100));
-                        handleSliderChange('leadVibratoDepthMax', Math.max(pct / 100, state.leadVibratoDepthMin));
-                      };
-                      const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
-                      window.addEventListener('mousemove', move);
-                      window.addEventListener('mouseup', up);
-                    }}
-                  />
-                  <div style={{
-                    ...styles.dualSliderWalkIndicator,
-                    left: `${(state.leadVibratoDepthMin + leadExpressionPositions.vibratoDepth * (state.leadVibratoDepthMax - state.leadVibratoDepthMin)) * 100}%`,
-                    background: '#f59e0b',
-                    boxShadow: '0 0 8px rgba(245, 158, 11, 0.8)',
-                  }} />
-                </div>
-              </div>
-            ) : (
-              // Single mode - regular slider
-              <div style={styles.sliderGroup}>
-                <div style={styles.sliderLabel}>
-                  <span>Vibrato Depth</span>
-                  <span>{(state.leadVibratoDepthMin * 0.5).toFixed(2)} st</span>
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  value={state.leadVibratoDepthMin}
-                  onChange={(e) => {
-                    const v = parseFloat(e.target.value);
-                    handleSliderChange('leadVibratoDepthMin', v);
-                    handleSliderChange('leadVibratoDepthMax', v);
-                  }}
-                  onDoubleClick={() => toggleExpressionDualMode('vibratoDepth')}
-                  {...createLongPressHandlers(() => toggleExpressionDualMode('vibratoDepth'))}
-                  style={styles.slider}
-                  title="Double-click for range mode"
-                />
-              </div>
-            )}
+            <Slider
+              label="Vibrato Depth"
+              value={state.leadVibratoDepth}
+              paramKey="leadVibratoDepth"
+              unit=" st"
+              onChange={handleSliderChange}
+              {...sliderProps('leadVibratoDepth')}
+            />
 
-            {/* Vibrato Rate */}
-            {expressionDualModes.vibratoRate ? (
-              <div style={styles.sliderGroup}>
-                <div style={styles.sliderLabel}>
-                  <span>
-                    Vibrato Rate
-                    <span style={styles.dualModeIndicator}>⟷ range</span>
-                  </span>
-                  <span>
-                    {(2 + state.leadVibratoRateMin * 6).toFixed(1)} - {(2 + state.leadVibratoRateMax * 6).toFixed(1)} Hz
-                    <span style={{ color: '#f59e0b', marginLeft: '8px' }}>
-                      ({(2 + (state.leadVibratoRateMin + leadExpressionPositions.vibratoRate * (state.leadVibratoRateMax - state.leadVibratoRateMin)) * 6).toFixed(1)})
-                    </span>
-                  </span>
-                </div>
-                <div 
-                  style={styles.dualSliderContainer}
-                  onDoubleClick={() => toggleExpressionDualMode('vibratoRate')}
-                  {...createLongPressHandlers(() => toggleExpressionDualMode('vibratoRate'))}
-                  title="Double-click for single value mode"
-                >
-                  <div style={{
-                    ...styles.dualSliderTrack,
-                    left: `${state.leadVibratoRateMin * 100}%`,
-                    width: `${(state.leadVibratoRateMax - state.leadVibratoRateMin) * 100}%`,
-                    background: 'linear-gradient(90deg, rgba(245, 158, 11, 0.6), rgba(217, 119, 6, 0.6))',
-                  }} />
-                  <div
-                    style={{ ...styles.dualSliderThumb, left: `${state.leadVibratoRateMin * 100}%`, background: '#f59e0b' }}
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      const container = e.currentTarget.parentElement;
-                      if (!container) return;
-                      const move = (me: MouseEvent) => {
-                        const rect = container.getBoundingClientRect();
-                        const pct = Math.max(0, Math.min(100, ((me.clientX - rect.left) / rect.width) * 100));
-                        handleSliderChange('leadVibratoRateMin', Math.min(pct / 100, state.leadVibratoRateMax));
-                      };
-                      const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
-                      window.addEventListener('mousemove', move);
-                      window.addEventListener('mouseup', up);
-                    }}
-                  />
-                  <div
-                    style={{ ...styles.dualSliderThumb, left: `${state.leadVibratoRateMax * 100}%`, background: '#f59e0b' }}
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      const container = e.currentTarget.parentElement;
-                      if (!container) return;
-                      const move = (me: MouseEvent) => {
-                        const rect = container.getBoundingClientRect();
-                        const pct = Math.max(0, Math.min(100, ((me.clientX - rect.left) / rect.width) * 100));
-                        handleSliderChange('leadVibratoRateMax', Math.max(pct / 100, state.leadVibratoRateMin));
-                      };
-                      const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
-                      window.addEventListener('mousemove', move);
-                      window.addEventListener('mouseup', up);
-                    }}
-                  />
-                  <div style={{
-                    ...styles.dualSliderWalkIndicator,
-                    left: `${(state.leadVibratoRateMin + leadExpressionPositions.vibratoRate * (state.leadVibratoRateMax - state.leadVibratoRateMin)) * 100}%`,
-                    background: '#f59e0b',
-                    boxShadow: '0 0 8px rgba(245, 158, 11, 0.8)',
-                  }} />
-                </div>
-              </div>
-            ) : (
-              <div style={styles.sliderGroup}>
-                <div style={styles.sliderLabel}>
-                  <span>Vibrato Rate</span>
-                  <span>{(2 + state.leadVibratoRateMin * 6).toFixed(1)} Hz</span>
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  value={state.leadVibratoRateMin}
-                  onChange={(e) => {
-                    const v = parseFloat(e.target.value);
-                    handleSliderChange('leadVibratoRateMin', v);
-                    handleSliderChange('leadVibratoRateMax', v);
-                  }}
-                  onDoubleClick={() => toggleExpressionDualMode('vibratoRate')}
-                  {...createLongPressHandlers(() => toggleExpressionDualMode('vibratoRate'))}
-                  style={styles.slider}
-                  title="Double-click for range mode"
-                />
-              </div>
-            )}
+            <Slider
+              label="Vibrato Rate"
+              value={state.leadVibratoRate}
+              paramKey="leadVibratoRate"
+              unit=" Hz"
+              onChange={handleSliderChange}
+              {...sliderProps('leadVibratoRate')}
+            />
 
-            {/* Glide */}
-            {expressionDualModes.glide ? (
-              <div style={styles.sliderGroup}>
-                <div style={styles.sliderLabel}>
-                  <span>
-                    Glide (Portamento)
-                    <span style={styles.dualModeIndicator}>⟷ range</span>
-                  </span>
-                  <span>
-                    {(state.leadGlideMin * 100).toFixed(0)} - {(state.leadGlideMax * 100).toFixed(0)}%
-                    <span style={{ color: '#f59e0b', marginLeft: '8px' }}>
-                      ({((state.leadGlideMin + leadExpressionPositions.glide * (state.leadGlideMax - state.leadGlideMin)) * 100).toFixed(0)})
-                    </span>
-                  </span>
-                </div>
-                <div 
-                  style={styles.dualSliderContainer}
-                  onDoubleClick={() => toggleExpressionDualMode('glide')}
-                  title="Double-click for single value mode"
-                >
-                  <div style={{
-                    ...styles.dualSliderTrack,
-                    left: `${state.leadGlideMin * 100}%`,
-                    width: `${(state.leadGlideMax - state.leadGlideMin) * 100}%`,
-                    background: 'linear-gradient(90deg, rgba(245, 158, 11, 0.6), rgba(217, 119, 6, 0.6))',
-                  }} />
-                  <div
-                    style={{ ...styles.dualSliderThumb, left: `${state.leadGlideMin * 100}%`, background: '#f59e0b' }}
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      const container = e.currentTarget.parentElement;
-                      if (!container) return;
-                      const move = (me: MouseEvent) => {
-                        const rect = container.getBoundingClientRect();
-                        const pct = Math.max(0, Math.min(100, ((me.clientX - rect.left) / rect.width) * 100));
-                        handleSliderChange('leadGlideMin', Math.min(pct / 100, state.leadGlideMax));
-                      };
-                      const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
-                      window.addEventListener('mousemove', move);
-                      window.addEventListener('mouseup', up);
-                    }}
-                  />
-                  <div
-                    style={{ ...styles.dualSliderThumb, left: `${state.leadGlideMax * 100}%`, background: '#f59e0b' }}
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      const container = e.currentTarget.parentElement;
-                      if (!container) return;
-                      const move = (me: MouseEvent) => {
-                        const rect = container.getBoundingClientRect();
-                        const pct = Math.max(0, Math.min(100, ((me.clientX - rect.left) / rect.width) * 100));
-                        handleSliderChange('leadGlideMax', Math.max(pct / 100, state.leadGlideMin));
-                      };
-                      const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
-                      window.addEventListener('mousemove', move);
-                      window.addEventListener('mouseup', up);
-                    }}
-                  />
-                  <div style={{
-                    ...styles.dualSliderWalkIndicator,
-                    left: `${(state.leadGlideMin + leadExpressionPositions.glide * (state.leadGlideMax - state.leadGlideMin)) * 100}%`,
-                    background: '#f59e0b',
-                    boxShadow: '0 0 8px rgba(245, 158, 11, 0.8)',
-                  }} />
-                </div>
-              </div>
-            ) : (
-              <div style={styles.sliderGroup}>
-                <div style={styles.sliderLabel}>
-                  <span>Glide (Portamento)</span>
-                  <span>{(state.leadGlideMin * 100).toFixed(0)}%</span>
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  value={state.leadGlideMin}
-                  onChange={(e) => {
-                    const v = parseFloat(e.target.value);
-                    handleSliderChange('leadGlideMin', v);
-                    handleSliderChange('leadGlideMax', v);
-                  }}
-                  onDoubleClick={() => toggleExpressionDualMode('glide')}
-                  style={styles.slider}
-                  title="Double-click for range mode"
-                />
-              </div>
-            )}
-
-            <div style={{ 
-              fontSize: '0.7rem', 
-              color: '#666', 
-              textAlign: 'center',
-              marginTop: '8px'
-            }}>
-              {(expressionDualModes.vibratoDepth || expressionDualModes.vibratoRate || expressionDualModes.glide) 
-                ? 'Each note picks random value • Double-click to toggle range mode' 
-                : 'Double-click slider for range mode'}
-            </div>
+            <Slider
+              label="Glide"
+              value={state.leadGlide}
+              paramKey="leadGlide"
+              onChange={handleSliderChange}
+              {...sliderProps('leadGlide')}
+            />
           </div>
 
           {/* Delay Section - per-note random ranges with trigger indicator */}
           <div style={{ marginTop: '12px', borderTop: '1px solid #333', paddingTop: '12px' }}>
             <div style={{ fontSize: '0.85rem', color: '#888', marginBottom: '12px' }}>Delay Effect (per note)</div>
             
-            {/* Delay Time */}
-            {delayDualModes.time ? (
-              // Dual mode - range slider
-              <div style={styles.sliderGroup}>
-                <div style={styles.sliderLabel}>
-                  <span>
-                    Delay Time
-                    <span style={styles.dualModeIndicator}>⟷ range</span>
-                  </span>
-                  <span>
-                    {state.leadDelayTimeMin.toFixed(0)} - {state.leadDelayTimeMax.toFixed(0)} ms
-                    <span style={{ color: '#8b5cf6', marginLeft: '8px' }}>
-                      ({(state.leadDelayTimeMin + leadDelayPositions.time * (state.leadDelayTimeMax - state.leadDelayTimeMin)).toFixed(0)})
-                    </span>
-                  </span>
-                </div>
-                <div 
-                  style={styles.dualSliderContainer}
-                  onDoubleClick={() => toggleDelayDualMode('time')}
-                  {...createLongPressHandlers(() => toggleDelayDualMode('time'))}
-                  title="Double-click for single value mode"
-                >
-                  <div style={{
-                    ...styles.dualSliderTrack,
-                    left: `${(state.leadDelayTimeMin / 1000) * 100}%`,
-                    width: `${((state.leadDelayTimeMax - state.leadDelayTimeMin) / 1000) * 100}%`,
-                    background: 'linear-gradient(90deg, rgba(139, 92, 246, 0.6), rgba(124, 58, 237, 0.6))',
-                  }} />
-                  <div
-                    style={{ ...styles.dualSliderThumb, left: `${(state.leadDelayTimeMin / 1000) * 100}%`, background: '#8b5cf6' }}
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      const container = e.currentTarget.parentElement;
-                      if (!container) return;
-                      const move = (me: MouseEvent) => {
-                        const rect = container.getBoundingClientRect();
-                        const pct = Math.max(0, Math.min(100, ((me.clientX - rect.left) / rect.width) * 100));
-                        handleSliderChange('leadDelayTimeMin', Math.min(pct * 10, state.leadDelayTimeMax));
-                      };
-                      const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
-                      window.addEventListener('mousemove', move);
-                      window.addEventListener('mouseup', up);
-                    }}
-                  />
-                  <div
-                    style={{ ...styles.dualSliderThumb, left: `${(state.leadDelayTimeMax / 1000) * 100}%`, background: '#8b5cf6' }}
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      const container = e.currentTarget.parentElement;
-                      if (!container) return;
-                      const move = (me: MouseEvent) => {
-                        const rect = container.getBoundingClientRect();
-                        const pct = Math.max(0, Math.min(100, ((me.clientX - rect.left) / rect.width) * 100));
-                        handleSliderChange('leadDelayTimeMax', Math.max(pct * 10, state.leadDelayTimeMin));
-                      };
-                      const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
-                      window.addEventListener('mousemove', move);
-                      window.addEventListener('mouseup', up);
-                    }}
-                  />
-                  <div style={{
-                    ...styles.dualSliderWalkIndicator,
-                    left: `${((state.leadDelayTimeMin + leadDelayPositions.time * (state.leadDelayTimeMax - state.leadDelayTimeMin)) / 1000) * 100}%`,
-                    background: '#8b5cf6',
-                    boxShadow: '0 0 8px rgba(139, 92, 246, 0.8)',
-                  }} />
-                </div>
-              </div>
-            ) : (
-              // Single mode - regular slider
-              <div style={styles.sliderGroup}>
-                <div style={styles.sliderLabel}>
-                  <span>Delay Time</span>
-                  <span>{state.leadDelayTimeMin.toFixed(0)} ms</span>
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={1000}
-                  step={10}
-                  value={state.leadDelayTimeMin}
-                  onChange={(e) => {
-                    const v = parseFloat(e.target.value);
-                    handleSliderChange('leadDelayTimeMin', v);
-                    handleSliderChange('leadDelayTimeMax', v);
-                  }}
-                  onDoubleClick={() => toggleDelayDualMode('time')}
-                  {...createLongPressHandlers(() => toggleDelayDualMode('time'))}
-                  style={styles.slider}
-                  title="Double-click for range mode"
-                />
-              </div>
-            )}
+            <Slider
+              label="Delay Time"
+              value={state.leadDelayTime}
+              paramKey="leadDelayTime"
+              unit=" ms"
+              onChange={handleSliderChange}
+              {...sliderProps('leadDelayTime')}
+            />
 
-            {/* Delay Feedback */}
-            {delayDualModes.feedback ? (
-              <div style={styles.sliderGroup}>
-                <div style={styles.sliderLabel}>
-                  <span>
-                    Delay Feedback
-                    <span style={styles.dualModeIndicator}>⟷ range</span>
-                  </span>
-                  <span>
-                    {(state.leadDelayFeedbackMin * 100).toFixed(0)} - {(state.leadDelayFeedbackMax * 100).toFixed(0)}%
-                    <span style={{ color: '#a855f7', marginLeft: '8px' }}>
-                      ({((state.leadDelayFeedbackMin + leadDelayPositions.feedback * (state.leadDelayFeedbackMax - state.leadDelayFeedbackMin)) * 100).toFixed(0)})
-                    </span>
-                  </span>
-                </div>
-                <div 
-                  style={styles.dualSliderContainer}
-                  onDoubleClick={() => toggleDelayDualMode('feedback')}
-                  {...createLongPressHandlers(() => toggleDelayDualMode('feedback'))}
-                  title="Double-click for single value mode"
-                >
-                  <div style={{
-                    ...styles.dualSliderTrack,
-                    left: `${(state.leadDelayFeedbackMin / 0.8) * 100}%`,
-                    width: `${((state.leadDelayFeedbackMax - state.leadDelayFeedbackMin) / 0.8) * 100}%`,
-                    background: 'linear-gradient(90deg, rgba(168, 85, 247, 0.6), rgba(147, 51, 234, 0.6))',
-                  }} />
-                  <div
-                    style={{ ...styles.dualSliderThumb, left: `${(state.leadDelayFeedbackMin / 0.8) * 100}%`, background: '#a855f7' }}
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      const container = e.currentTarget.parentElement;
-                      if (!container) return;
-                      const move = (me: MouseEvent) => {
-                        const rect = container.getBoundingClientRect();
-                        const pct = Math.max(0, Math.min(100, ((me.clientX - rect.left) / rect.width) * 100));
-                        handleSliderChange('leadDelayFeedbackMin', Math.min((pct / 100) * 0.8, state.leadDelayFeedbackMax));
-                      };
-                      const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
-                      window.addEventListener('mousemove', move);
-                      window.addEventListener('mouseup', up);
-                    }}
-                  />
-                  <div
-                    style={{ ...styles.dualSliderThumb, left: `${(state.leadDelayFeedbackMax / 0.8) * 100}%`, background: '#a855f7' }}
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      const container = e.currentTarget.parentElement;
-                      if (!container) return;
-                      const move = (me: MouseEvent) => {
-                        const rect = container.getBoundingClientRect();
-                        const pct = Math.max(0, Math.min(100, ((me.clientX - rect.left) / rect.width) * 100));
-                        handleSliderChange('leadDelayFeedbackMax', Math.max((pct / 100) * 0.8, state.leadDelayFeedbackMin));
-                      };
-                      const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
-                      window.addEventListener('mousemove', move);
-                      window.addEventListener('mouseup', up);
-                    }}
-                  />
-                  <div style={{
-                    ...styles.dualSliderWalkIndicator,
-                    left: `${((state.leadDelayFeedbackMin + leadDelayPositions.feedback * (state.leadDelayFeedbackMax - state.leadDelayFeedbackMin)) / 0.8) * 100}%`,
-                    background: '#a855f7',
-                    boxShadow: '0 0 8px rgba(168, 85, 247, 0.8)',
-                  }} />
-                </div>
-              </div>
-            ) : (
-              <div style={styles.sliderGroup}>
-                <div style={styles.sliderLabel}>
-                  <span>Delay Feedback</span>
-                  <span>{(state.leadDelayFeedbackMin * 100).toFixed(0)}%</span>
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={0.8}
-                  step={0.01}
-                  value={state.leadDelayFeedbackMin}
-                  onChange={(e) => {
-                    const v = parseFloat(e.target.value);
-                    handleSliderChange('leadDelayFeedbackMin', v);
-                    handleSliderChange('leadDelayFeedbackMax', v);
-                  }}
-                  onDoubleClick={() => toggleDelayDualMode('feedback')}
-                  {...createLongPressHandlers(() => toggleDelayDualMode('feedback'))}
-                  style={styles.slider}
-                  title="Double-click for range mode"
-                />
-              </div>
-            )}
+            <Slider
+              label="Delay Feedback"
+              value={state.leadDelayFeedback}
+              paramKey="leadDelayFeedback"
+              onChange={handleSliderChange}
+              {...sliderProps('leadDelayFeedback')}
+            />
 
-            {/* Delay Mix */}
-            {delayDualModes.mix ? (
-              <div style={styles.sliderGroup}>
-                <div style={styles.sliderLabel}>
-                  <span>
-                    Delay Mix
-                    <span style={styles.dualModeIndicator}>⟷ range</span>
-                  </span>
-                  <span>
-                    {(state.leadDelayMixMin * 100).toFixed(0)} - {(state.leadDelayMixMax * 100).toFixed(0)}%
-                    <span style={{ color: '#c084fc', marginLeft: '8px' }}>
-                      ({((state.leadDelayMixMin + leadDelayPositions.mix * (state.leadDelayMixMax - state.leadDelayMixMin)) * 100).toFixed(0)})
-                    </span>
-                  </span>
-                </div>
-                <div 
-                  style={styles.dualSliderContainer}
-                  onDoubleClick={() => toggleDelayDualMode('mix')}
-                  {...createLongPressHandlers(() => toggleDelayDualMode('mix'))}
-                  title="Double-click for single value mode"
-                >
-                  <div style={{
-                    ...styles.dualSliderTrack,
-                    left: `${state.leadDelayMixMin * 100}%`,
-                    width: `${(state.leadDelayMixMax - state.leadDelayMixMin) * 100}%`,
-                    background: 'linear-gradient(90deg, rgba(192, 132, 252, 0.6), rgba(168, 85, 247, 0.6))',
-                  }} />
-                  <div
-                    style={{ ...styles.dualSliderThumb, left: `${state.leadDelayMixMin * 100}%`, background: '#c084fc' }}
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      const container = e.currentTarget.parentElement;
-                      if (!container) return;
-                      const move = (me: MouseEvent) => {
-                        const rect = container.getBoundingClientRect();
-                        const pct = Math.max(0, Math.min(100, ((me.clientX - rect.left) / rect.width) * 100));
-                        handleSliderChange('leadDelayMixMin', Math.min(pct / 100, state.leadDelayMixMax));
-                      };
-                      const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
-                      window.addEventListener('mousemove', move);
-                      window.addEventListener('mouseup', up);
-                    }}
-                  />
-                  <div
-                    style={{ ...styles.dualSliderThumb, left: `${state.leadDelayMixMax * 100}%`, background: '#c084fc' }}
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      const container = e.currentTarget.parentElement;
-                      if (!container) return;
-                      const move = (me: MouseEvent) => {
-                        const rect = container.getBoundingClientRect();
-                        const pct = Math.max(0, Math.min(100, ((me.clientX - rect.left) / rect.width) * 100));
-                        handleSliderChange('leadDelayMixMax', Math.max(pct / 100, state.leadDelayMixMin));
-                      };
-                      const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
-                      window.addEventListener('mousemove', move);
-                      window.addEventListener('mouseup', up);
-                    }}
-                  />
-                  <div style={{
-                    ...styles.dualSliderWalkIndicator,
-                    left: `${(state.leadDelayMixMin + leadDelayPositions.mix * (state.leadDelayMixMax - state.leadDelayMixMin)) * 100}%`,
-                    background: '#c084fc',
-                    boxShadow: '0 0 8px rgba(192, 132, 252, 0.8)',
-                  }} />
-                </div>
-              </div>
-            ) : (
-              <div style={styles.sliderGroup}>
-                <div style={styles.sliderLabel}>
-                  <span>Delay Mix</span>
-                  <span>{(state.leadDelayMixMin * 100).toFixed(0)}%</span>
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  value={state.leadDelayMixMin}
-                  onChange={(e) => {
-                    const v = parseFloat(e.target.value);
-                    handleSliderChange('leadDelayMixMin', v);
-                    handleSliderChange('leadDelayMixMax', v);
-                  }}
-                  onDoubleClick={() => toggleDelayDualMode('mix')}
-                  {...createLongPressHandlers(() => toggleDelayDualMode('mix'))}
-                  style={styles.slider}
-                  title="Double-click for range mode"
-                />
-              </div>
-            )}
-
-            <div style={{ 
-              fontSize: '0.7rem', 
-              color: '#666', 
-              textAlign: 'center',
-              marginTop: '8px'
-            }}>
-              {(delayDualModes.time || delayDualModes.feedback || delayDualModes.mix) 
-                ? 'Each note picks random value • Double-click to toggle range mode' 
-                : 'Double-click slider for range mode'}
-            </div>
+            <Slider
+              label="Delay Mix"
+              value={state.leadDelayMix}
+              paramKey="leadDelayMix"
+              onChange={handleSliderChange}
+              {...sliderProps('leadDelayMix')}
+            />
           </div>
         </CollapsiblePanel>
 
@@ -8478,374 +7535,26 @@ const App: React.FC = () => {
                 <span style={{ fontSize: '0.85rem', color: '#aaa' }}>Wave Timing</span>
               </div>
               
-              {/* Duration - dual slider */}
-              {oceanDualModes.duration ? (
-                <div style={styles.sliderGroup}>
-                  <div style={styles.sliderLabel}>
-                    <span>
-                      Duration
-                      <span style={styles.dualModeIndicator}>⟷ range</span>
-                    </span>
-                    <span>
-                      {state.oceanDurationMin.toFixed(1)} - {state.oceanDurationMax.toFixed(1)} s
-                      <span style={{ color: '#3b82f6', marginLeft: '8px' }}>
-                        ({(state.oceanDurationMin + oceanPositions.duration * (state.oceanDurationMax - state.oceanDurationMin)).toFixed(1)})
-                      </span>
-                    </span>
-                  </div>
-                  <div 
-                    style={styles.dualSliderContainer}
-                    onDoubleClick={() => toggleOceanDualMode('duration')}
-                    title="Double-click for single value mode"
-                  >
-                    <div style={{
-                      ...styles.dualSliderTrack,
-                      left: `${((state.oceanDurationMin - 2) / 13) * 100}%`,
-                      width: `${((state.oceanDurationMax - state.oceanDurationMin) / 13) * 100}%`,
-                      background: 'linear-gradient(90deg, rgba(59, 130, 246, 0.6), rgba(37, 99, 235, 0.6))',
-                    }} />
-                    <div
-                      style={{ ...styles.dualSliderThumb, left: `${((state.oceanDurationMin - 2) / 13) * 100}%`, background: '#3b82f6' }}
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        const container = e.currentTarget.parentElement;
-                        if (!container) return;
-                        const move = (me: MouseEvent) => {
-                          const rect = container.getBoundingClientRect();
-                          const pct = Math.max(0, Math.min(1, (me.clientX - rect.left) / rect.width));
-                          const val = 2 + pct * 13;
-                          handleSliderChange('oceanDurationMin', Math.min(val, state.oceanDurationMax));
-                        };
-                        const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
-                        window.addEventListener('mousemove', move);
-                        window.addEventListener('mouseup', up);
-                      }}
-                    />
-                    <div
-                      style={{ ...styles.dualSliderThumb, left: `${((state.oceanDurationMax - 2) / 13) * 100}%`, background: '#3b82f6' }}
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        const container = e.currentTarget.parentElement;
-                        if (!container) return;
-                        const move = (me: MouseEvent) => {
-                          const rect = container.getBoundingClientRect();
-                          const pct = Math.max(0, Math.min(1, (me.clientX - rect.left) / rect.width));
-                          const val = 2 + pct * 13;
-                          handleSliderChange('oceanDurationMax', Math.max(val, state.oceanDurationMin));
-                        };
-                        const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
-                        window.addEventListener('mousemove', move);
-                        window.addEventListener('mouseup', up);
-                      }}
-                    />
-                    <div style={{
-                      ...styles.dualSliderWalkIndicator,
-                      left: `${((state.oceanDurationMin + oceanPositions.duration * (state.oceanDurationMax - state.oceanDurationMin) - 2) / 13) * 100}%`,
-                      background: '#3b82f6',
-                      boxShadow: '0 0 8px rgba(59, 130, 246, 0.8)',
-                    }} />
-                  </div>
-                </div>
-              ) : (
-                <div style={styles.sliderGroup}>
-                  <div style={styles.sliderLabel}>
-                    <span>Duration</span>
-                    <span>{state.oceanDurationMin.toFixed(1)} s</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={2}
-                    max={15}
-                    step={0.5}
-                    value={state.oceanDurationMin}
-                    onChange={(e) => {
-                      const v = parseFloat(e.target.value);
-                      handleSliderChange('oceanDurationMin', v);
-                      handleSliderChange('oceanDurationMax', v);
-                    }}
-                    onDoubleClick={() => toggleOceanDualMode('duration')}
-                    style={styles.slider}
-                    title="Double-click for range mode"
-                  />
-                </div>
-              )}
+              <Slider label="Duration" value={state.oceanDuration} paramKey="oceanDuration" unit=" s"
+                onChange={handleSliderChange} {...sliderProps('oceanDuration')}
+              />
 
-              {/* Interval - dual slider */}
-              {oceanDualModes.interval ? (
-                <div style={styles.sliderGroup}>
-                  <div style={styles.sliderLabel}>
-                    <span>
-                      Interval
-                      <span style={styles.dualModeIndicator}>⟷ range</span>
-                    </span>
-                    <span>
-                      {state.oceanIntervalMin.toFixed(1)} - {state.oceanIntervalMax.toFixed(1)} s
-                      <span style={{ color: '#3b82f6', marginLeft: '8px' }}>
-                        ({(state.oceanIntervalMin + oceanPositions.interval * (state.oceanIntervalMax - state.oceanIntervalMin)).toFixed(1)})
-                      </span>
-                    </span>
-                  </div>
-                  <div 
-                    style={styles.dualSliderContainer}
-                    onDoubleClick={() => toggleOceanDualMode('interval')}
-                    title="Double-click for single value mode"
-                  >
-                    <div style={{
-                      ...styles.dualSliderTrack,
-                      left: `${((state.oceanIntervalMin - 3) / 17) * 100}%`,
-                      width: `${((state.oceanIntervalMax - state.oceanIntervalMin) / 17) * 100}%`,
-                      background: 'linear-gradient(90deg, rgba(59, 130, 246, 0.6), rgba(37, 99, 235, 0.6))',
-                    }} />
-                    <div
-                      style={{ ...styles.dualSliderThumb, left: `${((state.oceanIntervalMin - 3) / 17) * 100}%`, background: '#3b82f6' }}
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        const container = e.currentTarget.parentElement;
-                        if (!container) return;
-                        const move = (me: MouseEvent) => {
-                          const rect = container.getBoundingClientRect();
-                          const pct = Math.max(0, Math.min(1, (me.clientX - rect.left) / rect.width));
-                          const val = 3 + pct * 17;
-                          handleSliderChange('oceanIntervalMin', Math.min(val, state.oceanIntervalMax));
-                        };
-                        const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
-                        window.addEventListener('mousemove', move);
-                        window.addEventListener('mouseup', up);
-                      }}
-                    />
-                    <div
-                      style={{ ...styles.dualSliderThumb, left: `${((state.oceanIntervalMax - 3) / 17) * 100}%`, background: '#3b82f6' }}
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        const container = e.currentTarget.parentElement;
-                        if (!container) return;
-                        const move = (me: MouseEvent) => {
-                          const rect = container.getBoundingClientRect();
-                          const pct = Math.max(0, Math.min(1, (me.clientX - rect.left) / rect.width));
-                          const val = 3 + pct * 17;
-                          handleSliderChange('oceanIntervalMax', Math.max(val, state.oceanIntervalMin));
-                        };
-                        const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
-                        window.addEventListener('mousemove', move);
-                        window.addEventListener('mouseup', up);
-                      }}
-                    />
-                    <div style={{
-                      ...styles.dualSliderWalkIndicator,
-                      left: `${((state.oceanIntervalMin + oceanPositions.interval * (state.oceanIntervalMax - state.oceanIntervalMin) - 3) / 17) * 100}%`,
-                      background: '#3b82f6',
-                      boxShadow: '0 0 8px rgba(59, 130, 246, 0.8)',
-                    }} />
-                  </div>
-                </div>
-              ) : (
-                <div style={styles.sliderGroup}>
-                  <div style={styles.sliderLabel}>
-                    <span>Interval</span>
-                    <span>{state.oceanIntervalMin.toFixed(1)} s</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={3}
-                    max={20}
-                    step={0.5}
-                    value={state.oceanIntervalMin}
-                    onChange={(e) => {
-                      const v = parseFloat(e.target.value);
-                      handleSliderChange('oceanIntervalMin', v);
-                      handleSliderChange('oceanIntervalMax', v);
-                    }}
-                    onDoubleClick={() => toggleOceanDualMode('interval')}
-                    style={styles.slider}
-                    title="Double-click for range mode"
-                  />
-                </div>
-              )}
+              <Slider label="Interval" value={state.oceanInterval} paramKey="oceanInterval" unit=" s"
+                onChange={handleSliderChange} {...sliderProps('oceanInterval')}
+              />
 
               {/* Wave Character */}
               <div style={{ marginTop: '12px', borderTop: '1px solid #333', paddingTop: '12px' }}>
                 <span style={{ fontSize: '0.85rem', color: '#aaa' }}>Wave Character</span>
               </div>
 
-              {/* Foam - dual slider */}
-              {oceanDualModes.foam ? (
-                <div style={styles.sliderGroup}>
-                  <div style={styles.sliderLabel}>
-                    <span>
-                      Foam
-                      <span style={styles.dualModeIndicator}>⟷ range</span>
-                    </span>
-                    <span>
-                      {(state.oceanFoamMin * 100).toFixed(0)} - {(state.oceanFoamMax * 100).toFixed(0)}%
-                      <span style={{ color: '#3b82f6', marginLeft: '8px' }}>
-                        ({((state.oceanFoamMin + oceanPositions.foam * (state.oceanFoamMax - state.oceanFoamMin)) * 100).toFixed(0)}%)
-                      </span>
-                    </span>
-                  </div>
-                  <div 
-                    style={styles.dualSliderContainer}
-                    onDoubleClick={() => toggleOceanDualMode('foam')}
-                    title="Double-click for single value mode"
-                  >
-                    <div style={{
-                      ...styles.dualSliderTrack,
-                      left: `${state.oceanFoamMin * 100}%`,
-                      width: `${(state.oceanFoamMax - state.oceanFoamMin) * 100}%`,
-                      background: 'linear-gradient(90deg, rgba(59, 130, 246, 0.6), rgba(37, 99, 235, 0.6))',
-                    }} />
-                    <div
-                      style={{ ...styles.dualSliderThumb, left: `${state.oceanFoamMin * 100}%`, background: '#3b82f6' }}
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        const container = e.currentTarget.parentElement;
-                        if (!container) return;
-                        const move = (me: MouseEvent) => {
-                          const rect = container.getBoundingClientRect();
-                          const pct = Math.max(0, Math.min(1, (me.clientX - rect.left) / rect.width));
-                          handleSliderChange('oceanFoamMin', Math.min(pct, state.oceanFoamMax));
-                        };
-                        const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
-                        window.addEventListener('mousemove', move);
-                        window.addEventListener('mouseup', up);
-                      }}
-                    />
-                    <div
-                      style={{ ...styles.dualSliderThumb, left: `${state.oceanFoamMax * 100}%`, background: '#3b82f6' }}
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        const container = e.currentTarget.parentElement;
-                        if (!container) return;
-                        const move = (me: MouseEvent) => {
-                          const rect = container.getBoundingClientRect();
-                          const pct = Math.max(0, Math.min(1, (me.clientX - rect.left) / rect.width));
-                          handleSliderChange('oceanFoamMax', Math.max(pct, state.oceanFoamMin));
-                        };
-                        const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
-                        window.addEventListener('mousemove', move);
-                        window.addEventListener('mouseup', up);
-                      }}
-                    />
-                    <div style={{
-                      ...styles.dualSliderWalkIndicator,
-                      left: `${(state.oceanFoamMin + oceanPositions.foam * (state.oceanFoamMax - state.oceanFoamMin)) * 100}%`,
-                      background: '#3b82f6',
-                      boxShadow: '0 0 8px rgba(59, 130, 246, 0.8)',
-                    }} />
-                  </div>
-                </div>
-              ) : (
-                <div style={styles.sliderGroup}>
-                  <div style={styles.sliderLabel}>
-                    <span>Foam</span>
-                    <span>{(state.oceanFoamMin * 100).toFixed(0)}%</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    value={state.oceanFoamMin}
-                    onChange={(e) => {
-                      const v = parseFloat(e.target.value);
-                      handleSliderChange('oceanFoamMin', v);
-                      handleSliderChange('oceanFoamMax', v);
-                    }}
-                    onDoubleClick={() => toggleOceanDualMode('foam')}
-                    style={styles.slider}
-                    title="Double-click for range mode"
-                  />
-                </div>
-              )}
+              <Slider label="Foam" value={state.oceanFoam} paramKey="oceanFoam"
+                onChange={handleSliderChange} {...sliderProps('oceanFoam')}
+              />
 
-              {/* Depth - dual slider */}
-              {oceanDualModes.depth ? (
-                <div style={styles.sliderGroup}>
-                  <div style={styles.sliderLabel}>
-                    <span>
-                      Depth
-                      <span style={styles.dualModeIndicator}>⟷ range</span>
-                    </span>
-                    <span>
-                      {(state.oceanDepthMin * 100).toFixed(0)} - {(state.oceanDepthMax * 100).toFixed(0)}%
-                      <span style={{ color: '#3b82f6', marginLeft: '8px' }}>
-                        ({((state.oceanDepthMin + oceanPositions.depth * (state.oceanDepthMax - state.oceanDepthMin)) * 100).toFixed(0)}%)
-                      </span>
-                    </span>
-                  </div>
-                  <div 
-                    style={styles.dualSliderContainer}
-                    onDoubleClick={() => toggleOceanDualMode('depth')}
-                    title="Double-click for single value mode"
-                  >
-                    <div style={{
-                      ...styles.dualSliderTrack,
-                      left: `${state.oceanDepthMin * 100}%`,
-                      width: `${(state.oceanDepthMax - state.oceanDepthMin) * 100}%`,
-                      background: 'linear-gradient(90deg, rgba(59, 130, 246, 0.6), rgba(37, 99, 235, 0.6))',
-                    }} />
-                    <div
-                      style={{ ...styles.dualSliderThumb, left: `${state.oceanDepthMin * 100}%`, background: '#3b82f6' }}
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        const container = e.currentTarget.parentElement;
-                        if (!container) return;
-                        const move = (me: MouseEvent) => {
-                          const rect = container.getBoundingClientRect();
-                          const pct = Math.max(0, Math.min(1, (me.clientX - rect.left) / rect.width));
-                          handleSliderChange('oceanDepthMin', Math.min(pct, state.oceanDepthMax));
-                        };
-                        const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
-                        window.addEventListener('mousemove', move);
-                        window.addEventListener('mouseup', up);
-                      }}
-                    />
-                    <div
-                      style={{ ...styles.dualSliderThumb, left: `${state.oceanDepthMax * 100}%`, background: '#3b82f6' }}
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        const container = e.currentTarget.parentElement;
-                        if (!container) return;
-                        const move = (me: MouseEvent) => {
-                          const rect = container.getBoundingClientRect();
-                          const pct = Math.max(0, Math.min(1, (me.clientX - rect.left) / rect.width));
-                          handleSliderChange('oceanDepthMax', Math.max(pct, state.oceanDepthMin));
-                        };
-                        const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
-                        window.addEventListener('mousemove', move);
-                        window.addEventListener('mouseup', up);
-                      }}
-                    />
-                    <div style={{
-                      ...styles.dualSliderWalkIndicator,
-                      left: `${(state.oceanDepthMin + oceanPositions.depth * (state.oceanDepthMax - state.oceanDepthMin)) * 100}%`,
-                      background: '#3b82f6',
-                      boxShadow: '0 0 8px rgba(59, 130, 246, 0.8)',
-                    }} />
-                  </div>
-                </div>
-              ) : (
-                <div style={styles.sliderGroup}>
-                  <div style={styles.sliderLabel}>
-                    <span>Depth</span>
-                    <span>{(state.oceanDepthMin * 100).toFixed(0)}%</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    value={state.oceanDepthMin}
-                    onChange={(e) => {
-                      const v = parseFloat(e.target.value);
-                      handleSliderChange('oceanDepthMin', v);
-                      handleSliderChange('oceanDepthMax', v);
-                    }}
-                    onDoubleClick={() => toggleOceanDualMode('depth')}
-                    style={styles.slider}
-                    title="Double-click for range mode"
-                  />
-                </div>
-              )}
+              <Slider label="Depth" value={state.oceanDepth} paramKey="oceanDepth"
+                onChange={handleSliderChange} {...sliderProps('oceanDepth')}
+              />
             </>
           )}
 

@@ -11,12 +11,22 @@
 import { SCALE_FAMILIES } from '../audio/scales';
 
 /**
+ * Slider mode for unified 3-mode slider system
+ * - 'single': normal single-value slider
+ * - 'walk': random walk (Brownian motion) between min/max
+ * - 'sampleHold': per-trigger random sample between min/max
+ */
+export type SliderMode = 'single' | 'walk' | 'sampleHold';
+
+/**
  * Saved preset structure
  */
 export interface SavedPreset {
   name: string;
   timestamp: string;
   state: SliderState;
+  dualRanges?: Record<string, { min: number; max: number }>;  // Range values for walk/sampleHold sliders
+  sliderModes?: Record<string, SliderMode>;  // Mode per parameter key
 }
 
 export interface SliderState {
@@ -88,8 +98,7 @@ export interface SliderState {
   granularEnabled: boolean;    // on/off toggle for granular processing
   maxGrains: number;           // 0..128 step 1 - maximum concurrent grains
   grainProbability: number;   // 0..1 step 0.01 - chance each grain triggers
-  grainSizeMin: number;       // 5..60 ms step 1 - minimum grain size
-  grainSizeMax: number;       // 20..200 ms step 1 - maximum grain size
+  grainSize: number;          // 5..800 ms step 1 - grain size (dual-mode: S&H per grain)
   density: number;            // 5..80 grains/sec step 1
   spray: number;              // 0..600 ms step 5
   jitter: number;             // 0..30 ms step 1
@@ -109,23 +118,18 @@ export interface SliderState {
   lead1Sustain: number;        // 0..1 level
   lead1Hold: number;           // 0..4 seconds - how long to hold at sustain level
   lead1Release: number;        // 0.01..8 seconds
-  leadDelayTimeMin: number;      // 0..1000 ms step 10
-  leadDelayTimeMax: number;      // 0..1000 ms step 10
-  leadDelayFeedbackMin: number;  // 0..0.8 step 0.01
-  leadDelayFeedbackMax: number;  // 0..0.8 step 0.01
-  leadDelayMixMin: number;       // 0..1 step 0.01
-  leadDelayMixMax: number;       // 0..1 step 0.01
+  leadDelayTime: number;         // 0..1000 ms step 10 (range in dualSliderRanges)
+  leadDelayFeedback: number;     // 0..0.8 step 0.01 (range in dualSliderRanges)
+  leadDelayMix: number;          // 0..1 step 0.01 (range in dualSliderRanges)
   lead1Density: number;       // 0.1..2 notes per phrase (sparseness)
   lead1Octave: number;        // -1, 0, 1, 2 octave offset
   lead1OctaveRange: number;   // 1..4 - how many octaves to span for random notes
-  leadTimbreMin: number;      // 0..1 - min timbre (LEGACY, ignored by 4op FM engine)
-  leadTimbreMax: number;      // 0..1 - max timbre (LEGACY, ignored by 4op FM engine)
+  leadTimbre: number;         // 0..1 - timbre (LEGACY, ignored by 4op FM engine)
 
   // Lead 1 — 4op FM preset morph (A ↔ B)
   lead1PresetA: string;       // Lead4opFM preset id (default: soft_rhodes)
   lead1PresetB: string;       // Lead4opFM preset id (default: gamelan)
-  lead1MorphMin: number;      // 0..1 morph range min (single mode: min=max)
-  lead1MorphMax: number;      // 0..1 morph range max
+  lead1Morph: number;         // 0..1 morph position (range in dualSliderRanges)
   lead1MorphAuto: boolean;    // Auto-morph enabled
   lead1MorphSpeed: number;    // Phrases per morph cycle (1..32)
   lead1MorphMode: 'linear' | 'pingpong' | 'random';
@@ -136,20 +140,16 @@ export interface SliderState {
   lead2Enabled: boolean;      // on/off (default off)
   lead2PresetC: string;       // Lead4opFM preset id (default: soft_rhodes)
   lead2PresetD: string;       // Lead4opFM preset id (default: gamelan)
-  lead2MorphMin: number;      // 0..1 morph range min (single mode: min=max)
-  lead2MorphMax: number;      // 0..1 morph range max
+  lead2Morph: number;         // 0..1 morph position (range in dualSliderRanges)
   lead2MorphAuto: boolean;    // Auto-morph enabled
   lead2MorphSpeed: number;    // Phrases per morph cycle (1..32)
   lead2MorphMode: 'linear' | 'pingpong' | 'random';
   lead2AlgorithmMode: 'snap' | 'presetA'; // snap=switch at 50%, presetA=always use C's
   lead2Level: number;         // 0..1 level for lead 2
 
-  leadVibratoDepthMin: number;  // 0..1 - min vibrato depth (0=none, 1=0.5 semitones)
-  leadVibratoDepthMax: number;  // 0..1 - max vibrato depth
-  leadVibratoRateMin: number;   // 0..1 - min vibrato rate (maps to 2-8 Hz)
-  leadVibratoRateMax: number;   // 0..1 - max vibrato rate
-  leadGlideMin: number;         // 0..1 - min portamento/glide speed
-  leadGlideMax: number;         // 0..1 - max portamento/glide speed
+  leadVibratoDepth: number;     // 0..1 - vibrato depth (range in dualSliderRanges)
+  leadVibratoRate: number;      // 0..1 - vibrato rate (range in dualSliderRanges)
+  leadGlide: number;            // 0..1 - portamento/glide speed (range in dualSliderRanges)
   // Euclidean sequencer for lead - 4 independent lanes for polyrhythmic patterns
   leadEuclideanMasterEnabled: boolean;  // master on/off (off = random mode)
   leadEuclideanTempo: number;           // 0.25..12 - tempo multiplier for all lanes
@@ -442,14 +442,10 @@ export interface SliderState {
   oceanFilterType: 'lowpass' | 'bandpass' | 'highpass' | 'notch'; // filter type
   oceanFilterCutoff: number;     // 40..12000 Hz
   oceanFilterResonance: number;  // 0..1 step 0.01
-  oceanDurationMin: number;   // 2..15 seconds - wave duration min
-  oceanDurationMax: number;   // 2..15 seconds - wave duration max
-  oceanIntervalMin: number;   // 3..20 seconds - time between waves min
-  oceanIntervalMax: number;   // 3..20 seconds - time between waves max
-  oceanFoamMin: number;       // 0..1 - foam intensity min
-  oceanFoamMax: number;       // 0..1 - foam intensity max
-  oceanDepthMin: number;      // 0..1 - low rumble min
-  oceanDepthMax: number;      // 0..1 - low rumble max
+  oceanDuration: number;      // 2..15 seconds - wave duration (range in dualSliderRanges)
+  oceanInterval: number;      // 3..20 seconds - time between waves (range in dualSliderRanges)
+  oceanFoam: number;          // 0..1 - foam intensity (range in dualSliderRanges)
+  oceanDepth: number;         // 0..1 - low rumble (range in dualSliderRanges)
   
   // Random Walk (for dual sliders)
   randomWalkSpeed: number;    // 0.1..5 - speed of random walk between dual slider values
@@ -502,8 +498,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'granularEnabled',
   'maxGrains',
   'grainProbability',
-  'grainSizeMin',
-  'grainSizeMax',
+  'grainSize',
   'density',
   'spray',
   'jitter',
@@ -520,22 +515,17 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'lead1Decay',
   'lead1Sustain',
   'lead1Release',
-  'leadDelayTimeMin',
-  'leadDelayTimeMax',
-  'leadDelayFeedbackMin',
-  'leadDelayFeedbackMax',
-  'leadDelayMixMin',
-  'leadDelayMixMax',
+  'leadDelayTime',
+  'leadDelayFeedback',
+  'leadDelayMix',
   'lead1Density',
   'lead1Octave',
   'lead1OctaveRange',
-  'leadTimbreMin',
-  'leadTimbreMax',
+  'leadTimbre',
   // Lead 1 morph
   'lead1PresetA',
   'lead1PresetB',
-  'lead1MorphMin',
-  'lead1MorphMax',
+  'lead1Morph',
   'lead1MorphAuto',
   'lead1MorphSpeed',
   'lead1MorphMode',
@@ -545,19 +535,15 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'lead2Enabled',
   'lead2PresetC',
   'lead2PresetD',
-  'lead2MorphMin',
-  'lead2MorphMax',
+  'lead2Morph',
   'lead2MorphAuto',
   'lead2MorphSpeed',
   'lead2MorphMode',
   'lead2AlgorithmMode',
   'lead2Level',
-  'leadVibratoDepthMin',
-  'leadVibratoDepthMax',
-  'leadVibratoRateMin',
-  'leadVibratoRateMax',
-  'leadGlideMin',
-  'leadGlideMax',
+  'leadVibratoDepth',
+  'leadVibratoRate',
+  'leadGlide',
   'leadEuclideanMasterEnabled',
   'leadEuclideanTempo',
   'leadEuclid1Enabled',
@@ -800,14 +786,10 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'oceanFilterType',
   'oceanFilterCutoff',
   'oceanFilterResonance',
-  'oceanDurationMin',
-  'oceanDurationMax',
-  'oceanIntervalMin',
-  'oceanIntervalMax',
-  'oceanFoamMin',
-  'oceanFoamMax',
-  'oceanDepthMin',
-  'oceanDepthMax',
+  'oceanDuration',
+  'oceanInterval',
+  'oceanFoam',
+  'oceanDepth',
   'randomWalkSpeed',
 ];
 
@@ -882,8 +864,7 @@ export const DEFAULT_STATE: SliderState = {
   granularEnabled: true,
   maxGrains: 64,
   grainProbability: 0.8,
-  grainSizeMin: 20,
-  grainSizeMax: 80,
+  grainSize: 50,
   density: 25,
   spray: 200,
   jitter: 10,
@@ -903,22 +884,17 @@ export const DEFAULT_STATE: SliderState = {
   lead1Sustain: 0.3,
   lead1Hold: 0.5,
   lead1Release: 2.0,
-  leadDelayTimeMin: 375,
-  leadDelayTimeMax: 375,
-  leadDelayFeedbackMin: 0.4,
-  leadDelayFeedbackMax: 0.4,
-  leadDelayMixMin: 0.35,
-  leadDelayMixMax: 0.35,
+  leadDelayTime: 375,
+  leadDelayFeedback: 0.4,
+  leadDelayMix: 0.35,
   lead1Density: 0.5,
   lead1Octave: 1,
   lead1OctaveRange: 2,
-  leadTimbreMin: 0.2,
-  leadTimbreMax: 0.6,
+  leadTimbre: 0.4,
   // Lead 1 — 4op FM preset morph
   lead1PresetA: 'soft_rhodes',
   lead1PresetB: 'gamelan',
-  lead1MorphMin: 0,
-  lead1MorphMax: 0,
+  lead1Morph: 0,
   lead1MorphAuto: false,
   lead1MorphSpeed: 8,
   lead1MorphMode: 'pingpong' as const,
@@ -928,19 +904,15 @@ export const DEFAULT_STATE: SliderState = {
   lead2Enabled: false,
   lead2PresetC: 'soft_rhodes',
   lead2PresetD: 'gamelan',
-  lead2MorphMin: 0,
-  lead2MorphMax: 0,
+  lead2Morph: 0,
   lead2MorphAuto: false,
   lead2MorphSpeed: 8,
   lead2MorphMode: 'pingpong' as const,
   lead2AlgorithmMode: 'snap' as const,
   lead2Level: 0.6,
-  leadVibratoDepthMin: 0,
-  leadVibratoDepthMax: 0,
-  leadVibratoRateMin: 0,
-  leadVibratoRateMax: 0,
-  leadGlideMin: 0,
-  leadGlideMax: 0,
+  leadVibratoDepth: 0,
+  leadVibratoRate: 0,
+  leadGlide: 0,
   // Euclidean sequencer for lead - 4 lanes for polyrhythms
   leadEuclideanMasterEnabled: false,
   leadEuclideanTempo: 1,
@@ -1225,14 +1197,10 @@ export const DEFAULT_STATE: SliderState = {
   oceanFilterType: 'lowpass' as const,
   oceanFilterCutoff: 8000,
   oceanFilterResonance: 0.1,
-  oceanDurationMin: 4,
-  oceanDurationMax: 10,
-  oceanIntervalMin: 5,
-  oceanIntervalMax: 12,
-  oceanFoamMin: 0.2,
-  oceanFoamMax: 0.5,
-  oceanDepthMin: 0.3,
-  oceanDepthMax: 0.7,
+  oceanDuration: 7,
+  oceanInterval: 8.5,
+  oceanFoam: 0.35,
+  oceanDepth: 0.5,
   
   // Random Walk
   randomWalkSpeed: 1.0,
@@ -1297,8 +1265,7 @@ const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> = {
   width: { min: 0, max: 1, step: 0.01 },
   grainProbability: { min: 0, max: 1, step: 0.01 },
   maxGrains: { min: 0, max: 128, step: 1 },
-  grainSizeMin: { min: 5, max: 60, step: 1 },
-  grainSizeMax: { min: 20, max: 200, step: 1 },
+  grainSize: { min: 5, max: 800, step: 1 },
   density: { min: 5, max: 80, step: 1 },
   spray: { min: 0, max: 600, step: 5 },
   jitter: { min: 0, max: 30, step: 1 },
@@ -1408,32 +1375,23 @@ const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> = {
   lead1Sustain: { min: 0, max: 1, step: 0.01 },
   lead1Hold: { min: 0, max: 4, step: 0.01 },
   lead1Release: { min: 0.01, max: 8, step: 0.01 },
-  leadDelayTimeMin: { min: 0, max: 1000, step: 10 },
-  leadDelayTimeMax: { min: 0, max: 1000, step: 10 },
-  leadDelayFeedbackMin: { min: 0, max: 0.8, step: 0.01 },
-  leadDelayFeedbackMax: { min: 0, max: 0.8, step: 0.01 },
-  leadDelayMixMin: { min: 0, max: 1, step: 0.01 },
-  leadDelayMixMax: { min: 0, max: 1, step: 0.01 },
+  leadDelayTime: { min: 0, max: 1000, step: 10 },
+  leadDelayFeedback: { min: 0, max: 0.8, step: 0.01 },
+  leadDelayMix: { min: 0, max: 1, step: 0.01 },
   lead1Density: { min: 0.1, max: 12, step: 0.1 },
   lead1Octave: { min: -1, max: 2, step: 1 },
   lead1OctaveRange: { min: 1, max: 4, step: 1 },
-  leadTimbreMin: { min: 0, max: 1, step: 0.01 },
-  leadTimbreMax: { min: 0, max: 1, step: 0.01 },
+  leadTimbre: { min: 0, max: 1, step: 0.01 },
   // Lead 1/2 morph
-  lead1MorphMin: { min: 0, max: 1, step: 0.01 },
-  lead1MorphMax: { min: 0, max: 1, step: 0.01 },
+  lead1Morph: { min: 0, max: 1, step: 0.01 },
   lead1MorphSpeed: { min: 1, max: 32, step: 1 },
   lead1Level: { min: 0, max: 1, step: 0.01 },
-  lead2MorphMin: { min: 0, max: 1, step: 0.01 },
-  lead2MorphMax: { min: 0, max: 1, step: 0.01 },
+  lead2Morph: { min: 0, max: 1, step: 0.01 },
   lead2MorphSpeed: { min: 1, max: 32, step: 1 },
   lead2Level: { min: 0, max: 1, step: 0.01 },
-  leadVibratoDepthMin: { min: 0, max: 1, step: 0.01 },
-  leadVibratoDepthMax: { min: 0, max: 1, step: 0.01 },
-  leadVibratoRateMin: { min: 0, max: 1, step: 0.01 },
-  leadVibratoRateMax: { min: 0, max: 1, step: 0.01 },
-  leadGlideMin: { min: 0, max: 1, step: 0.01 },
-  leadGlideMax: { min: 0, max: 1, step: 0.01 },
+  leadVibratoDepth: { min: 0, max: 1, step: 0.01 },
+  leadVibratoRate: { min: 0, max: 1, step: 0.01 },
+  leadGlide: { min: 0, max: 1, step: 0.01 },
   // Euclidean sequencer - shared for all lanes
   leadEuclideanTempo: { min: 0.25, max: 12, step: 0.25 },
   leadEuclid1Steps: { min: 4, max: 32, step: 1 },
@@ -1501,14 +1459,10 @@ const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> = {
   oceanWaveSynthLevel: { min: 0, max: 1, step: 0.01 },
   oceanFilterCutoff: { min: 40, max: 12000, step: 10 },
   oceanFilterResonance: { min: 0, max: 1, step: 0.01 },
-  oceanDurationMin: { min: 2, max: 15, step: 0.5 },
-  oceanDurationMax: { min: 2, max: 15, step: 0.5 },
-  oceanIntervalMin: { min: 3, max: 20, step: 0.5 },
-  oceanIntervalMax: { min: 3, max: 20, step: 0.5 },
-  oceanFoamMin: { min: 0, max: 1, step: 0.01 },
-  oceanFoamMax: { min: 0, max: 1, step: 0.01 },
-  oceanDepthMin: { min: 0, max: 1, step: 0.01 },
-  oceanDepthMax: { min: 0, max: 1, step: 0.01 },
+  oceanDuration: { min: 2, max: 15, step: 0.5 },
+  oceanInterval: { min: 3, max: 20, step: 0.5 },
+  oceanFoam: { min: 0, max: 1, step: 0.01 },
+  oceanDepth: { min: 0, max: 1, step: 0.01 },
   // Random Walk
   randomWalkSpeed: { min: 0.1, max: 5, step: 0.1 },
   // Circle of Fifths Drift
@@ -1737,4 +1691,84 @@ export async function copyToClipboard(text: string): Promise<boolean> {
  */
 export function getParamInfo(key: keyof SliderState): QuantizationDef | null {
   return QUANTIZATION[key] || null;
+}
+
+/**
+ * Drum morph keys that default to sampleHold mode
+ */
+export const DRUM_MORPH_KEYS = new Set<keyof SliderState>([
+  'drumSubMorph', 'drumKickMorph', 'drumClickMorph',
+  'drumBeepHiMorph', 'drumBeepLoMorph', 'drumNoiseMorph'
+] as (keyof SliderState)[]);
+
+/**
+ * Migration map for converting old *Min/*Max preset fields to unified single-value + dualRanges format.
+ */
+const PRESET_MIGRATION_MAP: Array<{
+  minKey: string; maxKey: string;
+  newKey: keyof SliderState; defaultMode: SliderMode;
+  threshold: number;
+}> = [
+  { minKey: 'leadVibratoDepthMin', maxKey: 'leadVibratoDepthMax', newKey: 'leadVibratoDepth', defaultMode: 'sampleHold', threshold: 0.001 },
+  { minKey: 'leadVibratoRateMin', maxKey: 'leadVibratoRateMax', newKey: 'leadVibratoRate', defaultMode: 'sampleHold', threshold: 0.001 },
+  { minKey: 'leadGlideMin', maxKey: 'leadGlideMax', newKey: 'leadGlide', defaultMode: 'sampleHold', threshold: 0.001 },
+  { minKey: 'leadDelayTimeMin', maxKey: 'leadDelayTimeMax', newKey: 'leadDelayTime', defaultMode: 'sampleHold', threshold: 0.1 },
+  { minKey: 'leadDelayFeedbackMin', maxKey: 'leadDelayFeedbackMax', newKey: 'leadDelayFeedback', defaultMode: 'sampleHold', threshold: 0.001 },
+  { minKey: 'leadDelayMixMin', maxKey: 'leadDelayMixMax', newKey: 'leadDelayMix', defaultMode: 'sampleHold', threshold: 0.001 },
+  { minKey: 'oceanDurationMin', maxKey: 'oceanDurationMax', newKey: 'oceanDuration', defaultMode: 'walk', threshold: 0.01 },
+  { minKey: 'oceanIntervalMin', maxKey: 'oceanIntervalMax', newKey: 'oceanInterval', defaultMode: 'walk', threshold: 0.01 },
+  { minKey: 'oceanFoamMin', maxKey: 'oceanFoamMax', newKey: 'oceanFoam', defaultMode: 'walk', threshold: 0.001 },
+  { minKey: 'oceanDepthMin', maxKey: 'oceanDepthMax', newKey: 'oceanDepth', defaultMode: 'walk', threshold: 0.001 },
+  { minKey: 'lead1MorphMin', maxKey: 'lead1MorphMax', newKey: 'lead1Morph', defaultMode: 'sampleHold', threshold: 0.0001 },
+  { minKey: 'lead2MorphMin', maxKey: 'lead2MorphMax', newKey: 'lead2Morph', defaultMode: 'sampleHold', threshold: 0.0001 },
+  { minKey: 'leadTimbreMin', maxKey: 'leadTimbreMax', newKey: 'leadTimbre', defaultMode: 'sampleHold', threshold: 0.001 },
+  { minKey: 'grainSizeMin', maxKey: 'grainSizeMax', newKey: 'grainSize', defaultMode: 'sampleHold', threshold: 0.5 },
+];
+
+/**
+ * Migrate a preset from old *Min/*Max format to unified format.
+ * Safe to call on already-migrated presets (no-op if old fields absent).
+ */
+export function migratePreset(preset: any): SavedPreset {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const state: Record<string, any> = { ...preset.state };
+  const dualRanges: Record<string, { min: number; max: number }> = { ...(preset.dualRanges || {}) };
+  const sliderModes: Record<string, SliderMode> = { ...(preset.sliderModes || {}) };
+
+  // Migrate *Min/*Max pairs → single value + dualRanges + sliderModes
+  for (const { minKey, maxKey, newKey, defaultMode, threshold } of PRESET_MIGRATION_MAP) {
+    if (minKey in state) {
+      const min = state[minKey] as number;
+      const max = (state[maxKey] ?? min) as number;
+      const isDual = Math.abs(max - min) > threshold;
+
+      // Set single value to midpoint (or min if single)
+      state[newKey] = isDual ? (min + max) / 2 : min;
+
+      if (isDual) {
+        dualRanges[newKey] = { min, max };
+        sliderModes[newKey] = defaultMode;
+      }
+
+      delete state[minKey];
+      delete state[maxKey];
+    }
+  }
+
+  // Infer modes for existing dualRanges keys from old format (no sliderModes field)
+  if (!preset.sliderModes) {
+    for (const key of Object.keys(dualRanges)) {
+      if (!(key in sliderModes)) {
+        sliderModes[key] = (DRUM_MORPH_KEYS as Set<string>).has(key) ? 'sampleHold' : 'walk';
+      }
+    }
+  }
+
+  return {
+    name: preset.name || 'Untitled',
+    timestamp: preset.timestamp || new Date().toISOString(),
+    state: state as SliderState,
+    dualRanges: Object.keys(dualRanges).length > 0 ? dualRanges : undefined,
+    sliderModes: Object.keys(sliderModes).length > 0 ? sliderModes : undefined,
+  };
 }
