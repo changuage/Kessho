@@ -154,8 +154,11 @@ export function intervalToMidi(interval: number, octave: number = 2): number {
 /**
  * MIDI note to frequency
  */
+/** A4 tuning reference — 432 Hz (matching prototype) */
+export const TUNING_A4 = 432;
+
 export function midiToFreq(midi: number): number {
-  return 440 * Math.pow(2, (midi - 69) / 12);
+  return TUNING_A4 * Math.pow(2, (midi - 69) / 12);
 }
 
 /**

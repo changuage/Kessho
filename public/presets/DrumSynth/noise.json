@@ -1,0 +1,890 @@
+[
+  {
+    "name": "Hi-Hat",
+    "voice": "noise",
+    "tags": [
+      "classic",
+      "percussion",
+      "default"
+    ],
+    "params": {
+      "drumNoiseFilterFreq": 8000,
+      "drumNoiseFilterQ": 1,
+      "drumNoiseFilterType": "highpass",
+      "drumNoiseDecay": 30,
+      "drumNoiseLevel": 0.4,
+      "drumNoiseAttack": 0,
+      "drumNoiseFormant": 0,
+      "drumNoiseBreath": 0,
+      "drumNoiseFilterEnv": 0,
+      "drumNoiseFilterEnvDecay": 100,
+      "drumNoiseDensity": 1,
+      "drumNoiseColorLFO": 0,
+      "drumNoiseParticleSize": 5,
+      "drumNoiseParticleRandom": 0,
+      "drumNoiseParticleRandomRate": 0.5,
+      "drumNoiseRatchetCount": 0,
+      "drumNoiseRatchetTime": 30
+    }
+  },
+  {
+    "name": "Breath",
+    "voice": "noise",
+    "tags": [
+      "asmr",
+      "soft",
+      "air"
+    ],
+    "params": {
+      "drumNoiseFilterFreq": 2000,
+      "drumNoiseFilterQ": 2,
+      "drumNoiseFilterType": "bandpass",
+      "drumNoiseDecay": 300,
+      "drumNoiseLevel": 0.35,
+      "drumNoiseAttack": 50,
+      "drumNoiseFormant": 0.2,
+      "drumNoiseBreath": 0.7,
+      "drumNoiseFilterEnv": 0.3,
+      "drumNoiseFilterEnvDecay": 200,
+      "drumNoiseDensity": 0.8,
+      "drumNoiseColorLFO": 0.5,
+      "drumNoiseParticleSize": 5,
+      "drumNoiseParticleRandom": 0,
+      "drumNoiseParticleRandomRate": 0.5,
+      "drumNoiseRatchetCount": 0,
+      "drumNoiseRatchetTime": 30
+    }
+  },
+  {
+    "name": "Whisper",
+    "voice": "noise",
+    "tags": [
+      "asmr",
+      "voice",
+      "texture"
+    ],
+    "params": {
+      "drumNoiseFilterFreq": 1500,
+      "drumNoiseFilterQ": 4,
+      "drumNoiseFilterType": "bandpass",
+      "drumNoiseDecay": 200,
+      "drumNoiseLevel": 0.3,
+      "drumNoiseAttack": 20,
+      "drumNoiseFormant": 0.6,
+      "drumNoiseBreath": 0.5,
+      "drumNoiseFilterEnv": 0.2,
+      "drumNoiseFilterEnvDecay": 150,
+      "drumNoiseDensity": 0.7,
+      "drumNoiseColorLFO": 1,
+      "drumNoiseParticleSize": 5,
+      "drumNoiseParticleRandom": 0,
+      "drumNoiseParticleRandomRate": 0.5,
+      "drumNoiseRatchetCount": 0,
+      "drumNoiseRatchetTime": 30
+    }
+  },
+  {
+    "name": "Dust",
+    "voice": "noise",
+    "tags": [
+      "vinyl",
+      "sparse",
+      "texture"
+    ],
+    "params": {
+      "drumNoiseFilterFreq": 5000,
+      "drumNoiseFilterQ": 0.8,
+      "drumNoiseFilterType": "highpass",
+      "drumNoiseDecay": 10,
+      "drumNoiseLevel": 0.25,
+      "drumNoiseAttack": 0,
+      "drumNoiseFormant": 0,
+      "drumNoiseBreath": 0,
+      "drumNoiseFilterEnv": 0,
+      "drumNoiseFilterEnvDecay": 50,
+      "drumNoiseDensity": 0.2,
+      "drumNoiseColorLFO": 0,
+      "drumNoiseParticleSize": 5,
+      "drumNoiseParticleRandom": 0,
+      "drumNoiseParticleRandomRate": 0.5,
+      "drumNoiseRatchetCount": 0,
+      "drumNoiseRatchetTime": 30
+    }
+  },
+  {
+    "name": "Texture",
+    "voice": "noise",
+    "tags": [
+      "ambient",
+      "drone",
+      "background"
+    ],
+    "params": {
+      "drumNoiseFilterFreq": 3000,
+      "drumNoiseFilterQ": 2,
+      "drumNoiseFilterType": "bandpass",
+      "drumNoiseDecay": 800,
+      "drumNoiseLevel": 0.3,
+      "drumNoiseAttack": 100,
+      "drumNoiseFormant": 0,
+      "drumNoiseBreath": 0.3,
+      "drumNoiseFilterEnv": 0,
+      "drumNoiseFilterEnvDecay": 400,
+      "drumNoiseDensity": 0.6,
+      "drumNoiseColorLFO": 0.3,
+      "drumNoiseParticleSize": 5,
+      "drumNoiseParticleRandom": 0,
+      "drumNoiseParticleRandomRate": 0.5,
+      "drumNoiseRatchetCount": 0,
+      "drumNoiseRatchetTime": 30
+    }
+  },
+  {
+    "name": "Scrape",
+    "voice": "noise",
+    "tags": [
+      "friction",
+      "texture",
+      "industrial"
+    ],
+    "params": {
+      "drumNoiseFilterFreq": 4000,
+      "drumNoiseFilterQ": 3,
+      "drumNoiseFilterType": "bandpass",
+      "drumNoiseDecay": 150,
+      "drumNoiseLevel": 0.4,
+      "drumNoiseAttack": 5,
+      "drumNoiseFormant": 0,
+      "drumNoiseBreath": 0,
+      "drumNoiseFilterEnv": -0.6,
+      "drumNoiseFilterEnvDecay": 100,
+      "drumNoiseDensity": 0.9,
+      "drumNoiseColorLFO": 2,
+      "drumNoiseParticleSize": 5,
+      "drumNoiseParticleRandom": 0,
+      "drumNoiseParticleRandomRate": 0.5,
+      "drumNoiseRatchetCount": 0,
+      "drumNoiseRatchetTime": 30
+    }
+  },
+  {
+    "name": "Hiss",
+    "voice": "noise",
+    "tags": [
+      "white",
+      "bright",
+      "electronic"
+    ],
+    "params": {
+      "drumNoiseFilterFreq": 10000,
+      "drumNoiseFilterQ": 0.5,
+      "drumNoiseFilterType": "highpass",
+      "drumNoiseDecay": 100,
+      "drumNoiseLevel": 0.35,
+      "drumNoiseAttack": 0,
+      "drumNoiseFormant": 0,
+      "drumNoiseBreath": 0,
+      "drumNoiseFilterEnv": 0,
+      "drumNoiseFilterEnvDecay": 100,
+      "drumNoiseDensity": 1,
+      "drumNoiseColorLFO": 0,
+      "drumNoiseParticleSize": 5,
+      "drumNoiseParticleRandom": 0,
+      "drumNoiseParticleRandomRate": 0.5,
+      "drumNoiseRatchetCount": 0,
+      "drumNoiseRatchetTime": 30
+    }
+  },
+  {
+    "name": "Shaker",
+    "voice": "noise",
+    "tags": [
+      "percussion",
+      "latin",
+      "rhythm"
+    ],
+    "params": {
+      "drumNoiseFilterFreq": 6000,
+      "drumNoiseFilterQ": 1.5,
+      "drumNoiseFilterType": "bandpass",
+      "drumNoiseDecay": 80,
+      "drumNoiseLevel": 0.4,
+      "drumNoiseAttack": 2,
+      "drumNoiseFormant": 0,
+      "drumNoiseBreath": 0,
+      "drumNoiseFilterEnv": 0.2,
+      "drumNoiseFilterEnvDecay": 50,
+      "drumNoiseDensity": 0.85,
+      "drumNoiseColorLFO": 0,
+      "drumNoiseParticleSize": 5,
+      "drumNoiseParticleRandom": 0,
+      "drumNoiseParticleRandomRate": 0.5,
+      "drumNoiseRatchetCount": 0,
+      "drumNoiseRatchetTime": 30
+    }
+  },
+  {
+    "name": "Ocean Spray",
+    "voice": "noise",
+    "tags": [
+      "water",
+      "ambient",
+      "nature"
+    ],
+    "params": {
+      "drumNoiseFilterFreq": 2500,
+      "drumNoiseFilterQ": 1,
+      "drumNoiseFilterType": "lowpass",
+      "drumNoiseDecay": 1500,
+      "drumNoiseLevel": 0.3,
+      "drumNoiseAttack": 200,
+      "drumNoiseFormant": 0,
+      "drumNoiseBreath": 0.4,
+      "drumNoiseFilterEnv": 0.4,
+      "drumNoiseFilterEnvDecay": 600,
+      "drumNoiseDensity": 0.7,
+      "drumNoiseColorLFO": 0.2,
+      "drumNoiseParticleSize": 5,
+      "drumNoiseParticleRandom": 0,
+      "drumNoiseParticleRandomRate": 0.5,
+      "drumNoiseRatchetCount": 0,
+      "drumNoiseRatchetTime": 30
+    }
+  },
+  {
+    "name": "Steam",
+    "voice": "noise",
+    "tags": [
+      "pressure",
+      "industrial",
+      "texture"
+    ],
+    "params": {
+      "drumNoiseFilterFreq": 3500,
+      "drumNoiseFilterQ": 2,
+      "drumNoiseFilterType": "bandpass",
+      "drumNoiseDecay": 400,
+      "drumNoiseLevel": 0.4,
+      "drumNoiseAttack": 10,
+      "drumNoiseFormant": 0,
+      "drumNoiseBreath": 0.2,
+      "drumNoiseFilterEnv": 0.7,
+      "drumNoiseFilterEnvDecay": 200,
+      "drumNoiseDensity": 0.9,
+      "drumNoiseColorLFO": 1.5,
+      "drumNoiseParticleSize": 5,
+      "drumNoiseParticleRandom": 0,
+      "drumNoiseParticleRandomRate": 0.5,
+      "drumNoiseRatchetCount": 0,
+      "drumNoiseRatchetTime": 30
+    }
+  },
+  {
+    "name": "Rustle",
+    "voice": "noise",
+    "tags": [
+      "leaves",
+      "nature",
+      "asmr"
+    ],
+    "params": {
+      "drumNoiseFilterFreq": 4000,
+      "drumNoiseFilterQ": 1.5,
+      "drumNoiseFilterType": "bandpass",
+      "drumNoiseDecay": 200,
+      "drumNoiseLevel": 0.3,
+      "drumNoiseAttack": 30,
+      "drumNoiseFormant": 0,
+      "drumNoiseBreath": 0.1,
+      "drumNoiseFilterEnv": 0.1,
+      "drumNoiseFilterEnvDecay": 150,
+      "drumNoiseDensity": 0.4,
+      "drumNoiseColorLFO": 0.8,
+      "drumNoiseParticleSize": 5,
+      "drumNoiseParticleRandom": 0,
+      "drumNoiseParticleRandomRate": 0.5,
+      "drumNoiseRatchetCount": 0,
+      "drumNoiseRatchetTime": 30
+    }
+  },
+  {
+    "name": "Static",
+    "voice": "noise",
+    "tags": [
+      "electronic",
+      "radio",
+      "texture"
+    ],
+    "params": {
+      "drumNoiseFilterFreq": 5000,
+      "drumNoiseFilterQ": 2,
+      "drumNoiseFilterType": "bandpass",
+      "drumNoiseDecay": 150,
+      "drumNoiseLevel": 0.35,
+      "drumNoiseAttack": 0,
+      "drumNoiseFormant": 0,
+      "drumNoiseBreath": 0,
+      "drumNoiseFilterEnv": 0,
+      "drumNoiseFilterEnvDecay": 100,
+      "drumNoiseDensity": 1,
+      "drumNoiseColorLFO": 4,
+      "drumNoiseParticleSize": 5,
+      "drumNoiseParticleRandom": 0,
+      "drumNoiseParticleRandomRate": 0.5,
+      "drumNoiseRatchetCount": 0,
+      "drumNoiseRatchetTime": 30
+    }
+  },
+  {
+    "name": "Wind Gust",
+    "voice": "noise",
+    "tags": [
+      "organic",
+      "wind",
+      "nature",
+      "ambient"
+    ],
+    "params": {
+      "drumNoiseFilterFreq": 2000,
+      "drumNoiseFilterQ": 1,
+      "drumNoiseFilterType": "lowpass",
+      "drumNoiseDecay": 1000,
+      "drumNoiseLevel": 0.3,
+      "drumNoiseAttack": 150,
+      "drumNoiseFormant": 0,
+      "drumNoiseBreath": 0.6,
+      "drumNoiseFilterEnv": 0.3,
+      "drumNoiseFilterEnvDecay": 500,
+      "drumNoiseDensity": 0.8,
+      "drumNoiseColorLFO": 0.4,
+      "drumNoiseParticleSize": 5,
+      "drumNoiseParticleRandom": 0,
+      "drumNoiseParticleRandomRate": 0.5,
+      "drumNoiseRatchetCount": 0,
+      "drumNoiseRatchetTime": 30
+    }
+  },
+  {
+    "name": "Rain Patter",
+    "voice": "noise",
+    "tags": [
+      "organic",
+      "water",
+      "rain",
+      "nature"
+    ],
+    "params": {
+      "drumNoiseFilterFreq": 4000,
+      "drumNoiseFilterQ": 1.5,
+      "drumNoiseFilterType": "bandpass",
+      "drumNoiseDecay": 60,
+      "drumNoiseLevel": 0.35,
+      "drumNoiseAttack": 2,
+      "drumNoiseFormant": 0,
+      "drumNoiseBreath": 0.1,
+      "drumNoiseFilterEnv": 0.15,
+      "drumNoiseFilterEnvDecay": 40,
+      "drumNoiseDensity": 0.3,
+      "drumNoiseColorLFO": 0,
+      "drumNoiseParticleSize": 5,
+      "drumNoiseParticleRandom": 0,
+      "drumNoiseParticleRandomRate": 0.5,
+      "drumNoiseRatchetCount": 0,
+      "drumNoiseRatchetTime": 30
+    }
+  },
+  {
+    "name": "Bonfire Crackle",
+    "voice": "noise",
+    "tags": [
+      "organic",
+      "fire",
+      "campfire",
+      "nature"
+    ],
+    "params": {
+      "drumNoiseFilterFreq": 5500,
+      "drumNoiseFilterQ": 2,
+      "drumNoiseFilterType": "highpass",
+      "drumNoiseDecay": 40,
+      "drumNoiseLevel": 0.4,
+      "drumNoiseAttack": 0,
+      "drumNoiseFormant": 0,
+      "drumNoiseBreath": 0,
+      "drumNoiseFilterEnv": 0.5,
+      "drumNoiseFilterEnvDecay": 30,
+      "drumNoiseDensity": 0.2,
+      "drumNoiseColorLFO": 3,
+      "drumNoiseParticleSize": 5,
+      "drumNoiseParticleRandom": 0,
+      "drumNoiseParticleRandomRate": 0.5,
+      "drumNoiseRatchetCount": 0,
+      "drumNoiseRatchetTime": 30
+    }
+  },
+  {
+    "name": "Leaf Crunch",
+    "voice": "noise",
+    "tags": [
+      "organic",
+      "forest",
+      "foliage",
+      "texture"
+    ],
+    "params": {
+      "drumNoiseFilterFreq": 3500,
+      "drumNoiseFilterQ": 2.5,
+      "drumNoiseFilterType": "bandpass",
+      "drumNoiseDecay": 50,
+      "drumNoiseLevel": 0.4,
+      "drumNoiseAttack": 0,
+      "drumNoiseFormant": 0,
+      "drumNoiseBreath": 0,
+      "drumNoiseFilterEnv": 0.3,
+      "drumNoiseFilterEnvDecay": 30,
+      "drumNoiseDensity": 0.4,
+      "drumNoiseColorLFO": 0.5,
+      "drumNoiseParticleSize": 5,
+      "drumNoiseParticleRandom": 0,
+      "drumNoiseParticleRandomRate": 0.5,
+      "drumNoiseRatchetCount": 0,
+      "drumNoiseRatchetTime": 30
+    }
+  },
+  {
+    "name": "Sand Shuffle",
+    "voice": "noise",
+    "tags": [
+      "organic",
+      "beach",
+      "gravel",
+      "texture"
+    ],
+    "params": {
+      "drumNoiseFilterFreq": 3000,
+      "drumNoiseFilterQ": 1.5,
+      "drumNoiseFilterType": "bandpass",
+      "drumNoiseDecay": 200,
+      "drumNoiseLevel": 0.35,
+      "drumNoiseAttack": 10,
+      "drumNoiseFormant": 0,
+      "drumNoiseBreath": 0.15,
+      "drumNoiseFilterEnv": 0.1,
+      "drumNoiseFilterEnvDecay": 80,
+      "drumNoiseDensity": 0.5,
+      "drumNoiseColorLFO": 0.2,
+      "drumNoiseParticleSize": 5,
+      "drumNoiseParticleRandom": 0,
+      "drumNoiseParticleRandomRate": 0.5,
+      "drumNoiseRatchetCount": 0,
+      "drumNoiseRatchetTime": 30
+    }
+  },
+  {
+    "name": "White Mist",
+    "voice": "noise",
+    "tags": [
+      "ambient",
+      "fog",
+      "soft",
+      "atmospheric"
+    ],
+    "params": {
+      "drumNoiseFilterFreq": 1500,
+      "drumNoiseFilterQ": 0.8,
+      "drumNoiseFilterType": "lowpass",
+      "drumNoiseDecay": 2000,
+      "drumNoiseLevel": 0.25,
+      "drumNoiseAttack": 300,
+      "drumNoiseFormant": 0,
+      "drumNoiseBreath": 0.4,
+      "drumNoiseFilterEnv": 0.2,
+      "drumNoiseFilterEnvDecay": 800,
+      "drumNoiseDensity": 0.9,
+      "drumNoiseColorLFO": 0.2,
+      "drumNoiseParticleSize": 5,
+      "drumNoiseParticleRandom": 0,
+      "drumNoiseParticleRandomRate": 0.5,
+      "drumNoiseRatchetCount": 0,
+      "drumNoiseRatchetTime": 30
+    }
+  },
+  {
+    "name": "Distant Surf",
+    "voice": "noise",
+    "tags": [
+      "ambient",
+      "ocean",
+      "waves",
+      "nature"
+    ],
+    "params": {
+      "drumNoiseFilterFreq": 2000,
+      "drumNoiseFilterQ": 1,
+      "drumNoiseFilterType": "lowpass",
+      "drumNoiseDecay": 2500,
+      "drumNoiseLevel": 0.25,
+      "drumNoiseAttack": 400,
+      "drumNoiseFormant": 0,
+      "drumNoiseBreath": 0.5,
+      "drumNoiseFilterEnv": 0.35,
+      "drumNoiseFilterEnvDecay": 1000,
+      "drumNoiseDensity": 0.75,
+      "drumNoiseColorLFO": 0.3,
+      "drumNoiseParticleSize": 5,
+      "drumNoiseParticleRandom": 0,
+      "drumNoiseParticleRandomRate": 0.5,
+      "drumNoiseRatchetCount": 0,
+      "drumNoiseRatchetTime": 30
+    }
+  },
+  {
+    "name": "Tape Hiss",
+    "voice": "noise",
+    "tags": [
+      "ambient",
+      "analog",
+      "warm",
+      "texture"
+    ],
+    "params": {
+      "drumNoiseFilterFreq": 6000,
+      "drumNoiseFilterQ": 0.5,
+      "drumNoiseFilterType": "highpass",
+      "drumNoiseDecay": 500,
+      "drumNoiseLevel": 0.15,
+      "drumNoiseAttack": 50,
+      "drumNoiseFormant": 0,
+      "drumNoiseBreath": 0,
+      "drumNoiseFilterEnv": 0,
+      "drumNoiseFilterEnvDecay": 100,
+      "drumNoiseDensity": 1,
+      "drumNoiseColorLFO": 0,
+      "drumNoiseParticleSize": 5,
+      "drumNoiseParticleRandom": 0,
+      "drumNoiseParticleRandomRate": 0.5,
+      "drumNoiseRatchetCount": 0,
+      "drumNoiseRatchetTime": 30
+    }
+  },
+  {
+    "name": "Forest Ambience",
+    "voice": "noise",
+    "tags": [
+      "ambient",
+      "nature",
+      "background",
+      "texture"
+    ],
+    "params": {
+      "drumNoiseFilterFreq": 3000,
+      "drumNoiseFilterQ": 1.5,
+      "drumNoiseFilterType": "bandpass",
+      "drumNoiseDecay": 1500,
+      "drumNoiseLevel": 0.25,
+      "drumNoiseAttack": 200,
+      "drumNoiseFormant": 0,
+      "drumNoiseBreath": 0.3,
+      "drumNoiseFilterEnv": 0.15,
+      "drumNoiseFilterEnvDecay": 600,
+      "drumNoiseDensity": 0.5,
+      "drumNoiseColorLFO": 0.6,
+      "drumNoiseParticleSize": 5,
+      "drumNoiseParticleRandom": 0,
+      "drumNoiseParticleRandomRate": 0.5,
+      "drumNoiseRatchetCount": 0,
+      "drumNoiseRatchetTime": 30
+    }
+  },
+  {
+    "name": "Dust Particles",
+    "voice": "noise",
+    "tags": [
+      "particle",
+      "dust",
+      "sparse",
+      "minimal"
+    ],
+    "params": {
+      "drumNoiseFilterFreq": 10000,
+      "drumNoiseFilterQ": 1,
+      "drumNoiseFilterType": "highpass",
+      "drumNoiseDecay": 200,
+      "drumNoiseLevel": 0.4,
+      "drumNoiseAttack": 0,
+      "drumNoiseFormant": 0,
+      "drumNoiseBreath": 0,
+      "drumNoiseFilterEnv": 0,
+      "drumNoiseFilterEnvDecay": 100,
+      "drumNoiseDensity": 0.15,
+      "drumNoiseColorLFO": 0,
+      "drumNoiseParticleSize": 2,
+      "drumNoiseParticleRandom": 0,
+      "drumNoiseParticleRandomRate": 0.5,
+      "drumNoiseRatchetCount": 0,
+      "drumNoiseRatchetTime": 30
+    }
+  },
+  {
+    "name": "Grain Cloud",
+    "voice": "noise",
+    "tags": [
+      "particle",
+      "granular",
+      "cloud",
+      "texture"
+    ],
+    "params": {
+      "drumNoiseFilterFreq": 6000,
+      "drumNoiseFilterQ": 2,
+      "drumNoiseFilterType": "bandpass",
+      "drumNoiseDecay": 500,
+      "drumNoiseLevel": 0.35,
+      "drumNoiseAttack": 20,
+      "drumNoiseFormant": 0,
+      "drumNoiseBreath": 0.2,
+      "drumNoiseFilterEnv": 0.3,
+      "drumNoiseFilterEnvDecay": 200,
+      "drumNoiseDensity": 0.3,
+      "drumNoiseColorLFO": 1.5,
+      "drumNoiseParticleSize": 8,
+      "drumNoiseParticleRandom": 0,
+      "drumNoiseParticleRandomRate": 0.5,
+      "drumNoiseRatchetCount": 0,
+      "drumNoiseRatchetTime": 30
+    }
+  },
+  {
+    "name": "Stochastic Rain",
+    "voice": "noise",
+    "tags": [
+      "particle",
+      "rain",
+      "random",
+      "ambient"
+    ],
+    "params": {
+      "drumNoiseFilterFreq": 8000,
+      "drumNoiseFilterQ": 1.5,
+      "drumNoiseFilterType": "highpass",
+      "drumNoiseDecay": 300,
+      "drumNoiseLevel": 0.3,
+      "drumNoiseAttack": 0,
+      "drumNoiseFormant": 0.2,
+      "drumNoiseBreath": 0,
+      "drumNoiseFilterEnv": 0.2,
+      "drumNoiseFilterEnvDecay": 150,
+      "drumNoiseDensity": 0.2,
+      "drumNoiseColorLFO": 0,
+      "drumNoiseParticleSize": 3,
+      "drumNoiseParticleRandom": 0,
+      "drumNoiseParticleRandomRate": 0.5,
+      "drumNoiseRatchetCount": 0,
+      "drumNoiseRatchetTime": 30
+    }
+  },
+  {
+    "name": "Micro Scatter",
+    "voice": "noise",
+    "tags": [
+      "particle",
+      "scatter",
+      "fast",
+      "percussive"
+    ],
+    "params": {
+      "drumNoiseFilterFreq": 12000,
+      "drumNoiseFilterQ": 0.5,
+      "drumNoiseFilterType": "highpass",
+      "drumNoiseDecay": 80,
+      "drumNoiseLevel": 0.45,
+      "drumNoiseAttack": 0,
+      "drumNoiseFormant": 0,
+      "drumNoiseBreath": 0,
+      "drumNoiseFilterEnv": 0.5,
+      "drumNoiseFilterEnvDecay": 50,
+      "drumNoiseDensity": 0.1,
+      "drumNoiseColorLFO": 0,
+      "drumNoiseParticleSize": 1,
+      "drumNoiseParticleRandom": 0,
+      "drumNoiseParticleRandomRate": 0.5,
+      "drumNoiseRatchetCount": 0,
+      "drumNoiseRatchetTime": 30
+    }
+  },
+  {
+    "name": "808 Clap",
+    "voice": "noise",
+    "tags": [
+      "opal",
+      "ratchet",
+      "clap",
+      "classic"
+    ],
+    "params": {
+      "drumNoiseFilterFreq": 3000,
+      "drumNoiseFilterQ": 1.5,
+      "drumNoiseFilterType": "bandpass",
+      "drumNoiseDecay": 200,
+      "drumNoiseLevel": 0.55,
+      "drumNoiseAttack": 1,
+      "drumNoiseFormant": 0.1,
+      "drumNoiseBreath": 0,
+      "drumNoiseFilterEnv": 0.3,
+      "drumNoiseFilterEnvDecay": 80,
+      "drumNoiseDensity": 1,
+      "drumNoiseColorLFO": 0,
+      "drumNoiseParticleSize": 5,
+      "drumNoiseParticleRandom": 0,
+      "drumNoiseParticleRandomRate": 0.5,
+      "drumNoiseRatchetCount": 3,
+      "drumNoiseRatchetTime": 20
+    }
+  },
+  {
+    "name": "Ratchet Burst",
+    "voice": "noise",
+    "tags": [
+      "opal",
+      "ratchet",
+      "burst",
+      "percussive"
+    ],
+    "params": {
+      "drumNoiseFilterFreq": 8000,
+      "drumNoiseFilterQ": 0.8,
+      "drumNoiseFilterType": "highpass",
+      "drumNoiseDecay": 100,
+      "drumNoiseLevel": 0.5,
+      "drumNoiseAttack": 0,
+      "drumNoiseFormant": 0,
+      "drumNoiseBreath": 0,
+      "drumNoiseFilterEnv": 0.4,
+      "drumNoiseFilterEnvDecay": 40,
+      "drumNoiseDensity": 1,
+      "drumNoiseColorLFO": 0,
+      "drumNoiseParticleSize": 5,
+      "drumNoiseParticleRandom": 0,
+      "drumNoiseParticleRandomRate": 0.5,
+      "drumNoiseRatchetCount": 5,
+      "drumNoiseRatchetTime": 15
+    }
+  },
+  {
+    "name": "Flam Snare",
+    "voice": "noise",
+    "tags": [
+      "opal",
+      "ratchet",
+      "snare",
+      "flam"
+    ],
+    "params": {
+      "drumNoiseFilterFreq": 5000,
+      "drumNoiseFilterQ": 1.2,
+      "drumNoiseFilterType": "bandpass",
+      "drumNoiseDecay": 150,
+      "drumNoiseLevel": 0.5,
+      "drumNoiseAttack": 1,
+      "drumNoiseFormant": 0,
+      "drumNoiseBreath": 0,
+      "drumNoiseFilterEnv": 0.2,
+      "drumNoiseFilterEnvDecay": 60,
+      "drumNoiseDensity": 1,
+      "drumNoiseColorLFO": 0,
+      "drumNoiseParticleSize": 5,
+      "drumNoiseParticleRandom": 0,
+      "drumNoiseParticleRandomRate": 0.5,
+      "drumNoiseRatchetCount": 1,
+      "drumNoiseRatchetTime": 25
+    }
+  },
+  {
+    "name": "Jittery Dust",
+    "voice": "noise",
+    "tags": [
+      "opal",
+      "particle",
+      "random",
+      "dust"
+    ],
+    "params": {
+      "drumNoiseFilterFreq": 10000,
+      "drumNoiseFilterQ": 1,
+      "drumNoiseFilterType": "highpass",
+      "drumNoiseDecay": 250,
+      "drumNoiseLevel": 0.4,
+      "drumNoiseAttack": 5,
+      "drumNoiseFormant": 0,
+      "drumNoiseBreath": 0,
+      "drumNoiseFilterEnv": 0.15,
+      "drumNoiseFilterEnvDecay": 120,
+      "drumNoiseDensity": 0.2,
+      "drumNoiseColorLFO": 0,
+      "drumNoiseParticleSize": 4,
+      "drumNoiseParticleRandom": 0.7,
+      "drumNoiseParticleRandomRate": 0.6,
+      "drumNoiseRatchetCount": 0,
+      "drumNoiseRatchetTime": 30
+    }
+  },
+  {
+    "name": "Chaotic Scatter",
+    "voice": "noise",
+    "tags": [
+      "opal",
+      "particle",
+      "random",
+      "chaos"
+    ],
+    "params": {
+      "drumNoiseFilterFreq": 7000,
+      "drumNoiseFilterQ": 2,
+      "drumNoiseFilterType": "bandpass",
+      "drumNoiseDecay": 400,
+      "drumNoiseLevel": 0.35,
+      "drumNoiseAttack": 10,
+      "drumNoiseFormant": 0.15,
+      "drumNoiseBreath": 0.1,
+      "drumNoiseFilterEnv": 0.25,
+      "drumNoiseFilterEnvDecay": 200,
+      "drumNoiseDensity": 0.15,
+      "drumNoiseColorLFO": 0.8,
+      "drumNoiseParticleSize": 6,
+      "drumNoiseParticleRandom": 1,
+      "drumNoiseParticleRandomRate": 0.9,
+      "drumNoiseRatchetCount": 0,
+      "drumNoiseRatchetTime": 30
+    }
+  },
+  {
+    "name": "Ratchet Rain",
+    "voice": "noise",
+    "tags": [
+      "opal",
+      "ratchet",
+      "particle",
+      "random",
+      "rain"
+    ],
+    "params": {
+      "drumNoiseFilterFreq": 9000,
+      "drumNoiseFilterQ": 1.5,
+      "drumNoiseFilterType": "highpass",
+      "drumNoiseDecay": 300,
+      "drumNoiseLevel": 0.4,
+      "drumNoiseAttack": 2,
+      "drumNoiseFormant": 0.1,
+      "drumNoiseBreath": 0,
+      "drumNoiseFilterEnv": 0.2,
+      "drumNoiseFilterEnvDecay": 100,
+      "drumNoiseDensity": 0.25,
+      "drumNoiseColorLFO": 0,
+      "drumNoiseParticleSize": 3,
+      "drumNoiseParticleRandom": 0.5,
+      "drumNoiseParticleRandomRate": 0.4,
+      "drumNoiseRatchetCount": 2,
+      "drumNoiseRatchetTime": 18
+    }
+  }
+]

@@ -26,6 +26,7 @@ import {
 import { getScaleNotesInRange, midiToFreq } from './scales';
 import { createRng, generateRandomSequence, getUtcBucket, computeSeed, rngFloat } from './rng';
 import { DrumSynth, DrumVoiceType } from './drumSynth';
+import type { DrumStepOverrides } from './drumSeqTypes';
 import type { SliderState } from '../ui/state';
 import {
   type Lead4opFMPreset,
@@ -77,6 +78,25 @@ export interface EngineState {
   currentFilterFreq: number;
   cofCurrentStep: number;
 }
+
+import type { DrumEvolveMethod, DrumEuclidEvolveConfig } from './drumSynth';
+
+const defaultDrumEuclidEvolveConfig = (): DrumEuclidEvolveConfig => ({
+  enabled: false,
+  everyBars: 4,
+  intensity: 0.5,
+  methods: {
+    rotateDrift: true,
+    velocityBreath: true,
+    swingDrift: true,
+    probDrift: true,
+    morphDrift: true,
+    ghostNotes: true,
+    ratchetSpray: true,
+    hitDrift: true,
+    pitchWalk: true,
+  },
+});
 
 export class AudioEngine {
   private ctx: AudioContext | null = null;
@@ -177,6 +197,8 @@ export class AudioEngine {
   private onOceanWaveTrigger: ((wave: { duration: number; interval: number; foam: number; depth: number }) => void) | null = null;
   private onDrumTrigger: ((voice: DrumVoiceType, velocity: number) => void) | null = null;
   private onDrumMorphTrigger: ((voice: DrumVoiceType, morphPosition: number) => void) | null = null;
+  private onDrumEuclidEvolveTrigger: ((laneIndex: number) => void) | null = null;
+  private onDrumStepPositionChange: ((steps: number[], hitCounts: number[]) => void) | null = null;
   private leadMorphTimer: number | null = null;
 
   // Lead morph random walk state (per-lead, momentum-based)
@@ -190,8 +212,17 @@ export class AudioEngine {
   
   // Pending morph ranges to apply when drumSynth is created
   private pendingMorphRanges: Record<DrumVoiceType, { min: number; max: number } | null> = {
-    sub: null, kick: null, click: null, beepHi: null, beepLo: null, noise: null
+    sub: null, kick: null, click: null, beepHi: null, beepLo: null, noise: null, membrane: null
   };
+  private pendingDrumEuclidEvolveConfigs: DrumEuclidEvolveConfig[] = [
+    defaultDrumEuclidEvolveConfig(),
+    defaultDrumEuclidEvolveConfig(),
+    defaultDrumEuclidEvolveConfig(),
+    defaultDrumEuclidEvolveConfig(),
+  ];
+
+  // Pending step overrides from UI (full step data per lane)
+  private pendingStepOverrides: DrumStepOverrides | null = null;
 
   // Unified dual-range storage: key → { min, max }
   // Populated by App when a slider is in walk or sampleHold mode.
@@ -255,11 +286,128 @@ export class AudioEngine {
     }
   }
 
+  setDrumEuclidEvolveTriggerCallback(callback: (laneIndex: number) => void) {
+    this.onDrumEuclidEvolveTrigger = callback;
+    if (this.drumSynth) {
+      this.drumSynth.setEuclidEvolveTriggerCallback(callback);
+    }
+  }
+
+  setDrumStepPositionCallback(callback: (steps: number[], hitCounts: number[]) => void) {
+    this.onDrumStepPositionChange = callback;
+    if (this.drumSynth) {
+      this.drumSynth.setStepPositionCallback(callback);
+    }
+  }
+
   setDrumMorphRange(voice: DrumVoiceType, range: { min: number; max: number } | null) {
     // Store for later if drumSynth doesn't exist yet
     this.pendingMorphRanges[voice] = range;
     if (this.drumSynth) {
       this.drumSynth.setMorphRange(voice, range);
+    }
+  }
+
+  setDrumEuclidEvolveConfigs(configs: Partial<DrumEuclidEvolveConfig>[]) {
+    this.pendingDrumEuclidEvolveConfigs = this.pendingDrumEuclidEvolveConfigs.map((current, laneIndex) => ({
+      enabled: configs[laneIndex]?.enabled ?? current.enabled,
+      everyBars: configs[laneIndex]?.everyBars ?? current.everyBars,
+      intensity: configs[laneIndex]?.intensity ?? current.intensity,
+      methods: {
+        ...current.methods,
+        ...(configs[laneIndex]?.methods || {}),
+      },
+    }));
+
+    if (this.drumSynth) {
+      this.drumSynth.setEuclidEvolveConfigs(this.pendingDrumEuclidEvolveConfigs);
+    }
+  }
+
+  resetDrumEuclidLaneHome(laneIndex: number) {
+    if (this.drumSynth) {
+      this.drumSynth.resetEuclidLaneToHome(laneIndex);
+    }
+  }
+
+  getDrumVoiceAnalyser(voice: DrumVoiceType): AnalyserNode | undefined {
+    return this.drumSynth?.getVoiceAnalyser(voice);
+  }
+
+  /** Sync full step overrides from the UI sequencer to the audio engine's scheduler */
+  setDrumStepOverrides(overrides: DrumStepOverrides) {
+    this.pendingStepOverrides = overrides;
+    if (this.drumSynth) {
+      this.drumSynth.setStepOverrides(overrides);
+    }
+  }
+
+  /**
+   * Lazily create AudioContext + DrumSynth so the drum sequencer works
+   * independently of the master play button. Synchronous creation;
+   * context resume is fire-and-forget.
+   */
+  ensureDrumSynth(sliderState: SliderState): void {
+    // Create AudioContext if needed
+    if (!this.ctx) {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      this.ctx = new AudioContextClass();
+    }
+    if (this.ctx.state === 'suspended') {
+      void this.ctx.resume();
+    }
+
+    if (!this.drumSynth) {
+      // Need a master gain for drums
+      if (!this.masterGain) {
+        this.masterGain = this.ctx.createGain();
+        this.masterGain.gain.value = sliderState.masterVolume ?? 0.7;
+        // Create limiter
+        this.limiter = this.ctx.createDynamicsCompressor();
+        this.limiter.threshold.value = -3;
+        this.limiter.knee.value = 0;
+        this.limiter.ratio.value = 20;
+        this.limiter.attack.value = 0.001;
+        this.limiter.release.value = 0.1;
+        this.masterGain.connect(this.limiter);
+        this.limiter.connect(this.ctx.destination);
+      }
+      if (!this.reverbNode) {
+        // Dummy reverb gain (real reverb is created in full start)
+        this.reverbNode = this.ctx.createGain() as any;
+      }
+
+      if (!this.rng) {
+        const bucket = getUtcBucket();
+        const seed = computeSeed(bucket, JSON.stringify(sliderState));
+        this.rng = createRng(seed);
+      }
+
+      this.drumSynth = new DrumSynth(
+        this.ctx,
+        this.masterGain,
+        this.reverbNode as any,
+        sliderState,
+        this.rng
+      );
+      this.wireDrumSynthCallbacks();
+    }
+  }
+
+  /** Wire all pending callbacks and overrides onto a freshly-created DrumSynth. */
+  private wireDrumSynthCallbacks(): void {
+    if (!this.drumSynth) return;
+    if (this.onDrumTrigger) this.drumSynth.setDrumTriggerCallback(this.onDrumTrigger);
+    if (this.onDrumMorphTrigger) this.drumSynth.setMorphTriggerCallback(this.onDrumMorphTrigger);
+    if (this.onDrumEuclidEvolveTrigger) this.drumSynth.setEuclidEvolveTriggerCallback(this.onDrumEuclidEvolveTrigger);
+    if (this.onDrumStepPositionChange) this.drumSynth.setStepPositionCallback(this.onDrumStepPositionChange);
+    for (const voice of Object.keys(this.pendingMorphRanges) as DrumVoiceType[]) {
+      const range = this.pendingMorphRanges[voice];
+      if (range) this.drumSynth.setMorphRange(voice, range);
+    }
+    this.drumSynth.setEuclidEvolveConfigs(this.pendingDrumEuclidEvolveConfigs);
+    if (this.pendingStepOverrides) {
+      this.drumSynth.setStepOverrides(this.pendingStepOverrides);
     }
   }
 
@@ -400,18 +548,29 @@ export class AudioEngine {
     this._sliderStateJsonCache = JSON.stringify(sliderState);
     this._sliderStateJsonDirty = false;
 
-    // Create AudioContext with iOS-friendly settings
+    // If a drum-only context exists from independent drum mode, tear it down.
+    // We need a fresh context for the full audio graph (worklets can't be re-added).
+    if (this.ctx) {
+      if (this.drumSynth) {
+        this.drumSynth.dispose();
+        this.drumSynth = null;
+      }
+      this.ctx.close();
+      this.ctx = null;
+      this.masterGain = null;
+      this.limiter = null;
+      this.reverbNode = null;
+    }
+
     const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
     if (!AudioContextClass) {
       console.error('Web Audio API not supported');
       throw new Error('Web Audio API not supported in this browser');
     }
-    
     this.ctx = new AudioContextClass();
     console.log('AudioContext created, state:', this.ctx.state);
     
     // iOS Safari requires resume to be called in response to user interaction
-    // The context may be in 'suspended' state initially
     if (this.ctx.state === 'suspended') {
       console.log('AudioContext suspended, attempting resume...');
       await this.ctx.resume();
@@ -453,7 +612,7 @@ export class AudioEngine {
     // Initialize harmony (sets rng)
     this.initializeHarmony();
 
-    // Create drum synth (needs rng from initializeHarmony)
+    // Create drum synth (always fresh — any prior drum-only instance was torn down above)
     if (this.ctx && this.rng && this.masterGain && this.reverbNode) {
       this.drumSynth = new DrumSynth(
         this.ctx,
@@ -462,21 +621,7 @@ export class AudioEngine {
         this.sliderState!,
         this.rng
       );
-      // Pass through drum trigger callback if set
-      if (this.onDrumTrigger) {
-        this.drumSynth.setDrumTriggerCallback(this.onDrumTrigger);
-      }
-      // Pass through morph trigger callback if set
-      if (this.onDrumMorphTrigger) {
-        this.drumSynth.setMorphTriggerCallback(this.onDrumMorphTrigger);
-      }
-      // Apply any pending morph ranges
-      for (const voice of Object.keys(this.pendingMorphRanges) as DrumVoiceType[]) {
-        const range = this.pendingMorphRanges[voice];
-        if (range) {
-          this.drumSynth.setMorphRange(voice, range);
-        }
-      }
+      this.wireDrumSynthCallbacks();
     }
 
     // Start voices
@@ -554,7 +699,56 @@ export class AudioEngine {
     }
     this.oceanSampleSource = null;
 
-    // Stop drum synth
+    // Disconnect and silence ocean worklet so waves stop
+    if (this.oceanNode) {
+      try { this.oceanNode.disconnect(); } catch { /* */ }
+      this.oceanNode = null;
+    }
+    if (this.oceanGain) {
+      try { this.oceanGain.disconnect(); } catch { /* */ }
+      this.oceanGain = null;
+    }
+    if (this.oceanSampleGain) {
+      try { this.oceanSampleGain.disconnect(); } catch { /* */ }
+      this.oceanSampleGain = null;
+    }
+    if (this.oceanFilter) {
+      try { this.oceanFilter.disconnect(); } catch { /* */ }
+      this.oceanFilter = null;
+    }
+
+    // Disconnect granular and reverb worklets
+    if (this.granulatorNode) {
+      try { this.granulatorNode.disconnect(); } catch { /* */ }
+      this.granulatorNode = null;
+    }
+    if (this.reverbNode) {
+      try { this.reverbNode.disconnect(); } catch { /* */ }
+      this.reverbNode = null;
+    }
+    if (this.reverbOutputGain) {
+      try { this.reverbOutputGain.disconnect(); } catch { /* */ }
+      this.reverbOutputGain = null;
+    }
+
+    // Disconnect synth bus chains
+    if (this.synthBus) { try { this.synthBus.disconnect(); } catch { /* */ } this.synthBus = null; }
+    if (this.dryBus) { try { this.dryBus.disconnect(); } catch { /* */ } this.dryBus = null; }
+    if (this.synthReverbSend) { try { this.synthReverbSend.disconnect(); } catch { /* */ } this.synthReverbSend = null; }
+    if (this.synthDirect) { try { this.synthDirect.disconnect(); } catch { /* */ } this.synthDirect = null; }
+
+    // Disconnect lead synth chain
+    if (this.leadGain) { try { this.leadGain.disconnect(); } catch { /* */ } this.leadGain = null; }
+    if (this.leadFilter) { try { this.leadFilter.disconnect(); } catch { /* */ } this.leadFilter = null; }
+    if (this.leadDelayL) { try { this.leadDelayL.disconnect(); } catch { /* */ } this.leadDelayL = null; }
+    if (this.leadDelayR) { try { this.leadDelayR.disconnect(); } catch { /* */ } this.leadDelayR = null; }
+    if (this.leadDelayMix) { try { this.leadDelayMix.disconnect(); } catch { /* */ } this.leadDelayMix = null; }
+    if (this.leadDry) { try { this.leadDry.disconnect(); } catch { /* */ } this.leadDry = null; }
+    if (this.leadMerger) { try { this.leadMerger.disconnect(); } catch { /* */ } this.leadMerger = null; }
+    if (this.leadReverbSend) { try { this.leadReverbSend.disconnect(); } catch { /* */ } this.leadReverbSend = null; }
+    if (this.leadDelayReverbSend) { try { this.leadDelayReverbSend.disconnect(); } catch { /* */ } this.leadDelayReverbSend = null; }
+
+    // Stop drum synth and close everything
     if (this.drumSynth) {
       this.drumSynth.dispose();
       this.drumSynth = null;
@@ -563,12 +757,20 @@ export class AudioEngine {
     // Clean up any pending temp drum synth from preview tapping
     this.disposeTempDrumSynth();
 
-    // Close context
+    // Close AudioContext — full teardown
     this.ctx?.close();
     this.ctx = null;
+    this.masterGain = null;
+    this.limiter = null;
+    this.reverbNode = null;
 
     this.isRunning = false;
     this.notifyStateChange();
+  }
+
+  /** Fully tear down drum synth and audio context (for page unload, etc.) */
+  dispose(): void {
+    this.stop();
   }
 
   updateParams(sliderState: SliderState): void {
@@ -588,7 +790,30 @@ export class AudioEngine {
       this.cofConfig.phraseCounter = 0;
     }
 
-    // Only apply audio parameters if engine is running
+    // Drum synth operates independently of master play (synchronous)
+    if (sliderState.drumEnabled || sliderState.drumEuclidMasterEnabled) {
+      this.ensureDrumSynth(sliderState);
+    }
+    if (this.drumSynth) {
+      this.drumSynth.updateParams(sliderState);
+    }
+
+    // If drum is completely off and engine isn't running, tear down drum-only context
+    if (!this.isRunning && !sliderState.drumEnabled && !sliderState.drumEuclidMasterEnabled) {
+      if (this.drumSynth) {
+        this.drumSynth.dispose();
+        this.drumSynth = null;
+      }
+      if (this.ctx) {
+        this.ctx.close();
+        this.ctx = null;
+        this.masterGain = null;
+        this.limiter = null;
+        this.reverbNode = null;
+      }
+    }
+
+    // Only apply non-drum audio parameters if engine is running
     if (!this.ctx || !this.isRunning) return;
 
     // If synth chord sequencer was just disabled, silence all synth voices
@@ -618,10 +843,7 @@ export class AudioEngine {
     // Apply continuous parameters immediately with smoothing
     this.applyParams(sliderState);
 
-    // Update drum synth params
-    if (this.drumSynth) {
-      this.drumSynth.updateParams(sliderState);
-    }
+    // (drum synth params already updated above, before isRunning guard)
 
     // Only recompute seed if seedWindow setting changed (not on every param change)
     if (oldSeedWindow !== sliderState.seedWindow) {

@@ -82,6 +82,7 @@ const drumMorphOverrides: DrumMorphOverrides = {
   beepHi: {},
   beepLo: {},
   noise: {},
+  membrane: {},
 };
 
 // Module-level dual range override storage
@@ -92,6 +93,7 @@ const drumMorphDualRangeOverrides: DrumMorphDualRangeOverrides = {
   beepHi: {},
   beepLo: {},
   noise: {},
+  membrane: {},
 };
 
 /**
@@ -495,6 +497,14 @@ const VOICE_MORPH_KEYS: Record<DrumVoiceType, {
     speed: 'drumNoiseMorphSpeed',
     mode: 'drumNoiseMorphMode',
   },
+  membrane: {
+    presetA: 'drumMembranePresetA',
+    presetB: 'drumMembranePresetB',
+    morph: 'drumMembraneMorph',
+    auto: 'drumMembraneMorphAuto',
+    speed: 'drumMembraneMorphSpeed',
+    mode: 'drumMembraneMorphMode',
+  },
 };
 
 /**
@@ -576,7 +586,7 @@ export function applyMorphToState(
  * Get all morphed drum parameters for all voices
  */
 export function getAllMorphedDrumParams(state: SliderState): Partial<SliderState> {
-  const voices: DrumVoiceType[] = ['sub', 'kick', 'click', 'beepHi', 'beepLo', 'noise'];
+  const voices: DrumVoiceType[] = ['sub', 'kick', 'click', 'beepHi', 'beepLo', 'noise', 'membrane'];
   let result: Partial<SliderState> = {};
   
   for (const voice of voices) {
@@ -605,7 +615,7 @@ export class DrumMorphManager {
   private lastUpdateTime: number = 0;
   
   constructor() {
-    const voices: DrumVoiceType[] = ['sub', 'kick', 'click', 'beepHi', 'beepLo', 'noise'];
+    const voices: DrumVoiceType[] = ['sub', 'kick', 'click', 'beepHi', 'beepLo', 'noise', 'membrane'];
     for (const voice of voices) {
       this.voiceStates.set(voice, {
         phase: 0,
@@ -630,7 +640,7 @@ export class DrumMorphManager {
     
     const newMorphValues = new Map<DrumVoiceType, number>();
     
-    const voices: DrumVoiceType[] = ['sub', 'kick', 'click', 'beepHi', 'beepLo', 'noise'];
+    const voices: DrumVoiceType[] = ['sub', 'kick', 'click', 'beepHi', 'beepLo', 'noise', 'membrane'];
     
     for (const voice of voices) {
       const keys = VOICE_MORPH_KEYS[voice];
@@ -683,7 +693,7 @@ export class DrumMorphManager {
    * Reset all voices
    */
   reset(): void {
-    const voices: DrumVoiceType[] = ['sub', 'kick', 'click', 'beepHi', 'beepLo', 'noise'];
+    const voices: DrumVoiceType[] = ['sub', 'kick', 'click', 'beepHi', 'beepLo', 'noise', 'membrane'];
     for (const voice of voices) {
       this.resetVoice(voice);
     }

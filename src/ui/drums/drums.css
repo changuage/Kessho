@@ -1,0 +1,1729 @@
+/* ══════════════════════════════════════════════════════════════════
+   Drum Synth Styles — extracted from prototype option2.html
+   Scoped under .drum-root instead of body.
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ══ Design Tokens (matched to main Kessho webapp) ══ */
+.drum-root {
+  --bg-base: #1a1a2e;
+  --bg-input: rgba(0, 0, 0, 0.3);
+  --bg-surface: rgba(15, 25, 40, 0.95);
+  --bg-elevated: rgba(255,255,255,0.05);
+  --bg-control: rgba(255,255,255,0.08);
+  --bg-control-hover: rgba(255,255,255,0.15);
+  --border-subtle: rgba(255, 255, 255, 0.1);
+  --border-medium: rgba(255, 255, 255, 0.2);
+  --border-accent: rgba(100, 150, 200, 0.3);
+  --text-primary: #e0e0e0;
+  --text-secondary: #9ca3af;
+  --text-muted: #666;
+  --text-dim: #555;
+  --accent-primary: #a5c4d4;
+  --accent-cyan: #00d4ff;
+  --accent-green: #2ecc71;
+  --accent-red: #e74c3c;
+  --accent-stop: #ED5A24;
+  --accent-orange: #ffa502;
+  --accent-pink: #ff6b81;
+  --accent-teal: #2dd4bf;
+  --accent-lavender: #c084fc;
+  --accent-evolve: #a855f7;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --font-xs: 0.55rem;
+  --font-sm: 0.65rem;
+  --font-md: 0.75rem;
+  --font-lg: 0.85rem;
+}
+
+.drum-root * { box-sizing: border-box; }
+.drum-root { overflow-x: hidden; max-width: 100%; }
+
+/* Force dark dropdown menus (browser native option elements) */
+.drum-root select { color-scheme: dark; }
+.drum-root select option {
+  background: #1a1a2e;
+  color: #e0e0e0;
+}
+.drum-root select option:checked {
+  background: rgba(100, 150, 200, 0.3);
+  color: #fff;
+}
+
+.drum-root .container { max-width: 1200px; margin: 0 auto; display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
+.drum-root .sound-panel { flex: 0 0 460px; min-width: 0; max-width: 100%; }
+.drum-root .sequencer-panel { flex: 1; min-width: 380px; max-width: 100%; }
+@media (max-width: 900px) { .drum-root .sound-panel, .drum-root .sequencer-panel { flex: 1 1 100%; min-width: 0; max-width: 100%; } }
+
+/* ── Master Strip ── */
+.drum-root .master-strip {
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  background: var(--bg-elevated); border-radius: var(--radius-lg);
+  padding: 8px 12px; margin-bottom: 8px;
+  border: 1px solid var(--border-accent);
+}
+.drum-root .master-item { display: flex; align-items: center; gap: 4px; flex: 1; min-width: 120px; }
+.drum-root .master-item label { font-size: 0.65rem; color: #888; white-space: nowrap; }
+.drum-root .master-item input[type=range] { flex: 1; height: 4px; accent-color: var(--accent-primary); }
+.drum-root .master-item .val { font-size: 0.65rem; color: var(--accent-primary); min-width: 28px; text-align: right; }
+.drum-root .master-anim-btn {
+  padding: 4px 8px; border-radius: var(--radius-md); border: none; cursor: pointer;
+  font-size: 0.6rem; font-weight: 600; transition: all 0.15s;
+  background: rgba(255,255,255,0.08); color: #666;
+}
+.drum-root .master-anim-btn.on { background: rgba(16,185,129,0.3); color: #10b981; }
+.drum-root .drum-enable-btn {
+  padding: 4px 10px; border-radius: var(--radius-md); border: 1px solid rgba(255,255,255,0.1);
+  cursor: pointer; font-size: 0.6rem; font-weight: 700; letter-spacing: 0.04em;
+  transition: all 0.15s; background: rgba(255,255,255,0.06); color: #555;
+}
+.drum-root .drum-enable-btn.on {
+  background: rgba(16,185,129,0.25); color: #10b981;
+  border-color: rgba(16,185,129,0.4); box-shadow: 0 0 6px rgba(16,185,129,0.15);
+}
+
+/* ── Voice Cards ── */
+.drum-root .voice-cards { display: flex; flex-direction: column; gap: 10px; }
+.drum-root .voice-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-accent);
+  border-left: 3px solid var(--vc, #888);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  transition: border-color 0.15s;
+}
+.drum-root .voice-card.editing { border-color: var(--vc); box-shadow: 0 0 12px rgba(165, 196, 212, 0.15); }
+
+/* Card body: horizontal — left sidebar + right sliders */
+.drum-root .voice-card-body {
+  display: flex; align-items: stretch;
+}
+.drum-root .voice-card.collapsed .voice-card-body { display: none; }
+
+/* Left sidebar: 2 rows — icon+name on top, buttons below */
+.drum-root .vc-sidebar {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 2px; padding: 3px 5px; min-width: 48px;
+  background: rgba(255,255,255,0.02); user-select: none;
+}
+.drum-root .vc-sidebar:hover { background: var(--bg-elevated); }
+.drum-root .vc-sidebar .vc-label-row {
+  display: flex; align-items: center; gap: 3px;
+}
+.drum-root .vc-sidebar .vc-icon { font-size: 0.75rem; }
+.drum-root .vc-sidebar .vc-icon.vc-icon-click { font-size: 0.9rem; }
+.drum-root .vc-sidebar .vc-name { font-size: 0.55rem; font-weight: 700; color: var(--vc); white-space: nowrap; }
+.drum-root .vc-sidebar .vc-btn-row {
+  display: flex; gap: 3px; align-items: center;
+}
+.drum-root .vc-sidebar .vc-btn-row button {
+  font-family: 'Segoe UI Symbol', 'Segoe UI', sans-serif;
+}
+.drum-root .vc-sidebar .vc-trigger-sm,
+.drum-root .vc-sidebar .vc-edit-btn {
+  width: 24px; height: 18px; min-height: 0; max-height: 18px;
+  box-sizing: border-box; overflow: hidden;
+  border: none; border-radius: var(--radius-sm); cursor: pointer;
+  font-size: 0.5rem; font-weight: 600; line-height: 18px; text-align: center;
+  transition: all 0.1s; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  flex: 0 0 24px;
+}
+.drum-root .vc-sidebar .vc-trigger-sm {
+  background: var(--bg-control); color: var(--vc);
+}
+.drum-root .vc-sidebar .vc-trigger-sm:hover { background: var(--bg-control-hover); }
+.drum-root .vc-sidebar .vc-trigger-sm:active { transform: scale(0.93); }
+.drum-root .vc-sidebar .vc-trigger-sm.triggered { background: color-mix(in srgb, var(--vc) 40%, transparent); }
+.drum-root .vc-sidebar .vc-edit-btn {
+  background: var(--bg-control); color: var(--text-dim);
+  transition: all 0.15s;
+}
+.drum-root .vc-sidebar .vc-edit-btn:hover { background: var(--bg-control-hover); color: #aaa; }
+.drum-root .voice-card.editing .vc-edit-btn { background: var(--vc); color: #000; }
+
+/* Right side: sliders */
+.drum-root .vc-sliders {
+  flex: 1; min-width: 0; padding: 10px;
+  display: flex; flex-direction: column; justify-content: center; gap: 16px;
+}
+
+/* Morph row in card */
+.drum-root .vc-morph-row {
+  display: flex; gap: 4px; align-items: center;
+}
+.drum-root .vc-morph-row select {
+  flex: 1; font-size: 0.75rem; background: var(--bg-input); color: #ccc;
+  border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 1px 3px; min-width: 0;
+  transition: border-color 0.15s;
+}
+.drum-root .vc-morph-row select:hover { border-color: rgba(255,255,255,0.35); }
+.drum-root .vc-morph-row select:focus { border-color: var(--vc, var(--accent-primary)); outline: none; }
+.drum-root .vc-morph-row input[type=range] { flex: 1.2; height: 3px; accent-color: var(--vc); }
+.drum-root .vc-morph-row .morph-label { font-size: 0.6rem; color: #666; flex-shrink: 0; }
+
+/* Morph dual-slider (walk / S&H mode) */
+.drum-root .morph-dual-wrap {
+  flex: 1.2; display: flex; flex-direction: column; gap: 2px; min-width: 0;
+}
+.drum-root .morph-dual-mode {
+  font-size: 0.45rem; text-align: center; font-weight: 600;
+  letter-spacing: 0.5px; line-height: 1;
+}
+.drum-root .morph-dual-track {
+  position: relative; height: 14px; background: rgba(255,255,255,0.08);
+  border-radius: 7px; cursor: pointer; touch-action: none;
+}
+.drum-root .morph-dual-fill {
+  position: absolute; top: 2px; bottom: 2px; border-radius: 5px;
+  pointer-events: none;
+}
+.drum-root .morph-dual-walk {
+  position: absolute; top: 1px; bottom: 1px; width: 3px;
+  border-radius: 1px; transform: translateX(-50%);
+  pointer-events: none; opacity: 0.9;
+  box-shadow: 0 0 4px currentColor;
+}
+.drum-root .morph-dual-thumb {
+  position: absolute; top: 50%; width: 10px; height: 10px;
+  border-radius: 50%; background: var(--bg-surface);
+  border: 2px solid #a5c4d4; transform: translate(-50%, -50%);
+  cursor: grab; touch-action: none; z-index: 2;
+  transition: box-shadow 0.15s;
+}
+.drum-root .morph-dual-thumb:hover {
+  box-shadow: 0 0 6px rgba(165,196,212,0.5);
+}
+
+/* Macro sliders (Variation + Distance) */
+.drum-root .vc-macros {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; align-items: center;
+}
+.drum-root .vc-macro-item {
+  display: grid; grid-template-columns: 26px minmax(0, 1fr) 28px;
+  align-items: center; gap: 3px; min-width: 0;
+}
+.drum-root .vc-macro-item label { font-size: 0.8rem; color: #666; min-width: 26px; width: 26px; flex-shrink: 0; }
+.drum-root .vc-macro-item input[type=range] { width: 100%; min-width: 0; height: 2px; accent-color: var(--vc); }
+.drum-root .vc-macro-item .val { font-size: 0.7rem; color: var(--vc, var(--accent-primary)); min-width: 28px; width: 28px; flex-shrink: 0; text-align: right; }
+
+/* Macro dual slider (walk / S&H mode) */
+.drum-root .vc-macro-dual {
+  grid-template-columns: 26px minmax(0, 1fr) 40px;
+}
+.drum-root .vc-macro-dual label {
+  display: flex; flex-direction: column; gap: 1px;
+}
+.drum-root .macro-dual-mode {
+  font-size: 0.4rem; font-weight: 600; letter-spacing: 0.3px; line-height: 1;
+}
+.drum-root .macro-dual-track {
+  position: relative; height: 12px; background: rgba(255,255,255,0.08);
+  border-radius: 6px; cursor: pointer; touch-action: none;
+}
+.drum-root .macro-dual-fill {
+  position: absolute; top: 2px; bottom: 2px; border-radius: 4px;
+  pointer-events: none;
+}
+.drum-root .macro-dual-walk {
+  position: absolute; top: 1px; bottom: 1px; width: 2px;
+  border-radius: 1px; transform: translateX(-50%);
+  pointer-events: none; opacity: 0.9;
+  box-shadow: 0 0 3px currentColor;
+}
+.drum-root .macro-dual-thumb {
+  position: absolute; top: 50%; width: 8px; height: 8px;
+  border-radius: 50%; background: var(--bg-surface);
+  border: 2px solid #a5c4d4; transform: translate(-50%, -50%);
+  cursor: grab; touch-action: none; z-index: 2;
+  transition: box-shadow 0.15s;
+}
+.drum-root .macro-dual-thumb:hover {
+  box-shadow: 0 0 5px rgba(165,196,212,0.5);
+}
+
+/* Advanced view — hidden by default */
+.drum-root .voice-card-advanced {
+  display: none; padding: 5px 8px;
+  border-top: 1px solid var(--border-subtle);
+}
+.drum-root .voice-card.editing .voice-card-advanced { display: block; }
+.drum-root .voice-card-advanced .param-section { margin-bottom: 3px; }
+.drum-root .voice-card-advanced .param-row { gap: 2px; margin: 1px 0; }
+
+/* ── Param Sections ── */
+.drum-root .param-section {
+  margin-bottom: 6px;
+}
+.drum-root .section-header {
+  font-size: 0.65rem; color: #888; text-transform: uppercase; letter-spacing: 0.5px;
+  margin-bottom: 3px; padding-bottom: 2px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  cursor: pointer; user-select: none;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.drum-root .section-header:hover { background: rgba(255,255,255,0.04); }
+.drum-root .section-header::after { content: '▾'; font-size: 0.5rem; }
+.drum-root .section-header.collapsed::after { content: '▸'; }
+.drum-root .section-body { transition: all 0.2s; }
+.drum-root .section-body.collapsed { display: none; }
+
+/* ── Param Row ── */
+.drum-root .param-row {
+  display: flex; align-items: center; gap: 4px; margin: 2px 0;
+}
+.drum-root .param-row label { font-size: 0.65rem; color: #999; min-width: 80px; flex-shrink: 0; }
+.drum-root .param-row input[type=range] { flex: 1; height: 3px; accent-color: var(--accent-primary); }
+.drum-root .param-row .val { font-size: 0.65rem; color: var(--accent-primary); min-width: 36px; text-align: right; font-variant-numeric: tabular-nums; }
+.drum-root .param-row select { flex: 1; font-size: 0.65rem; background: var(--bg-input); color: #ccc; border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 2px 4px; transition: border-color 0.15s; }
+.drum-root .param-row select:hover { border-color: rgba(255,255,255,0.35); }
+.drum-root .param-row select:focus { border-color: var(--accent-primary); outline: none; }
+
+/* ── Trigger Button ── */
+.drum-root .trigger-row {
+  display: flex; gap: 6px; margin-bottom: 8px;
+}
+.drum-root .trigger-btn {
+  flex: 1; padding: 8px; border: none; border-radius: var(--radius-md);
+  font-size: 0.75rem; font-weight: 600; cursor: pointer;
+  background: rgba(165, 196, 212, 0.2); color: var(--accent-primary);
+  transition: all 0.1s;
+}
+.drum-root .trigger-btn:hover { background: rgba(165, 196, 212, 0.35); }
+.drum-root .trigger-btn:active { transform: scale(0.97); background: rgba(165, 196, 212, 0.5); }
+
+/* ── Delay Section ── */
+.drum-root .delay-section {
+  margin-top: 10px; padding: 8px;
+  background: rgba(255,255,255,0.03); border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+}
+.drum-root .delay-section .section-header { color: #f59e0b; }
+.drum-root .delay-section .section-header-content { display: flex; align-items: center; gap: 6px; }
+.drum-root .delay-toggle-btn {
+  padding: 1px 6px; font-size: 0.6rem; font-weight: 700;
+  background: transparent; border: 1px solid #f59e0b; border-radius: var(--radius-sm);
+  color: #f59e0b; cursor: pointer; line-height: 1.4;
+}
+.drum-root .delay-toggle-btn.on { background: rgba(245,158,11,0.3); color: #fff; }
+.drum-root .delay-bpm-info { font-size: 0.55rem; color: #888; }
+.drum-root .delay-note-row { display: flex; gap: 8px; margin-bottom: 8px; }
+.drum-root .delay-note-col { flex: 1; }
+.drum-root .delay-note-col label { font-size: 0.65rem; color: #999; margin-bottom: 4px; display: block; }
+.drum-root .delay-note-col select {
+  width: 100%; padding: 4px; background: rgba(0,0,0,0.3); color: #ccc;
+  border: 1px solid rgba(255,255,255,0.2); border-radius: var(--radius-md); font-size: 0.75rem;
+}
+
+/* ── Envelope Visualizer ── */
+.drum-root .env-visualizer-wrap {
+  position: relative;
+  margin-bottom: 8px;
+}
+.drum-root .env-visualizer {
+  width: 100%;
+  height: 158px;
+  background: rgba(0,0,0,0.35);
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(255,255,255,0.08);
+  display: block;
+}
+.drum-root .viz-mode-label {
+  position: absolute; top: 2px; left: 6px;
+  font-size: 0.5rem; color: rgba(255,255,255,0.3);
+  pointer-events: none; letter-spacing: 0.5px; text-transform: uppercase;
+}
+
+/* ── Preset Count Badge ── */
+.drum-root .preset-count { font-size: 0.55rem; color: #666; margin-left: 4px; }
+
+/* ── Status Bar ── */
+.drum-root .status-bar {
+  text-align: center; font-size: 0.6rem; color: #555; margin-top: 8px; padding: 4px;
+}
+.drum-root .status-bar .count { color: var(--accent-primary); }
+
+/* ══ SEQUENCER PANEL STYLES ══ */
+.drum-root .seq-title { color: var(--accent-cyan); font-size: 1rem; margin-bottom: 8px; text-align: center; }
+.drum-root .seq-transport {
+  display: flex; gap: 8px; align-items: center;
+  background: var(--bg-elevated); border-radius: var(--radius-lg);
+  padding: 8px 12px; margin-bottom: 8px;
+}
+.drum-root .seq-play-btn {
+  width: 44px; height: 44px; border-radius: 50%; border: none;
+  font-size: 1.5rem; cursor: pointer; flex-shrink: 0;
+  background: transparent; color: #FFFFFF; font-weight: bold;
+  transition: all 0.2s;
+  text-shadow: 0 2px 8px rgba(0,0,0,0.5);
+}
+.drum-root .seq-play-btn.playing { color: #ED5A24; }
+.drum-root .seq-play-btn:hover { transform: scale(1.05); }
+.drum-root .seq-transport label { font-size: 0.65rem; color: #888; display: flex; flex-direction: column; gap: 2px; }
+.drum-root .seq-transport input, .drum-root .seq-transport select {
+  background: var(--bg-input); color: #fff; border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm); padding: 4px 6px; font-size: 0.75rem; width: 64px;
+  transition: border-color 0.15s;
+}
+.drum-root .seq-transport input:focus, .drum-root .seq-transport select:focus { border-color: var(--accent-cyan); outline: none; }
+
+/* ── Tab Bar ── */
+.drum-root .seq-tab-bar { display: flex; gap: 2px; margin-bottom: 0; }
+.drum-root .seq-tab {
+  flex: 1; padding: 6px 4px; text-align: center; border: 1px solid rgba(255,255,255,0.06);
+  border-bottom: none;
+  border-radius: var(--radius-md) var(--radius-md) 0 0; cursor: pointer;
+  font-size: 0.65rem; font-weight: 600;
+  background: rgba(255,255,255,0.02); color: rgba(255,255,255,0.3);
+  transition: all 0.15s; user-select: none;
+  display: flex; align-items: center; justify-content: center; gap: 4px;
+}
+.drum-root .seq-tab.active {
+  color: var(--sc);
+  background: color-mix(in srgb, var(--sc) 12%, transparent);
+  border-color: color-mix(in srgb, var(--sc) 30%, transparent);
+}
+.drum-root .seq-tab:hover:not(.active) { background: rgba(255,255,255,0.05); }
+.drum-root .seq-tab .seq-tab-ms {
+  display: flex; gap: 2px; font-size: 0.5rem;
+}
+.drum-root .seq-tab-ms button {
+  border: none; border-radius: var(--radius-sm); padding: 1px 4px; cursor: pointer;
+  font-size: 0.5rem; font-weight: 700; background: rgba(0,0,0,0.3); color: #888;
+  transition: all 0.1s;
+}
+.drum-root .seq-tab-ms button.on { color: #fff; }
+.drum-root .seq-tab-ms .mute-btn.on { background: var(--accent-red); }
+.drum-root .seq-tab-ms .solo-btn.on { background: #eab308; color: #000; }
+
+/* ── Active sequencer body ── */
+.drum-root .seq-body {
+  background: rgba(15, 25, 40, 0.6); border: 1px solid var(--border-subtle);
+  border-top: none; border-radius: 0 0 var(--radius-lg) var(--radius-lg); padding: 8px; margin-bottom: 6px;
+}
+
+.drum-root .seq-sources {
+  display: flex; gap: 4px; align-items: center; flex-wrap: wrap;
+  padding: 5px 8px; margin-bottom: 0;
+  background: rgba(255,255,255,0.03); border-radius: var(--radius-md);
+}
+.drum-root .seq-sources-label { font-size: 0.6rem; color: #666; text-transform: uppercase; letter-spacing: 0.5px; margin-right: 4px; }
+.drum-root .seq-source-toggle {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; padding: 0; border: 1px solid rgba(255,255,255,0.12);
+  border-radius: var(--radius-sm); cursor: pointer;
+  font-size: 0.7rem; font-weight: 700; color: #666; background: rgba(0,0,0,0.3);
+  transition: all 0.15s; user-select: none;
+}
+.drum-root .seq-source-toggle input { display: none; }
+.drum-root .seq-source-toggle.active {
+  background: color-mix(in srgb, var(--vc) 22%, transparent);
+  border-color: color-mix(in srgb, var(--vc) 60%, transparent);
+  color: var(--vc); font-weight: 700;
+}
+
+/* ── Per-seq controls row (inline with sources) ── */
+.drum-root .seq-per-controls {
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  padding: 0; margin: 0; margin-left: auto;
+  background: none; border-radius: 0;
+}
+.drum-root .seq-per-controls label {
+  font-size: 0.7rem; color: #aaa; display: flex; align-items: center; gap: 4px;
+}
+.drum-root .seq-per-controls input, .drum-root .seq-per-controls select {
+  background: var(--bg-input); color: #fff; border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm); padding: 3px 5px; font-size: 0.7rem; width: 56px;
+  transition: border-color 0.15s;
+}
+.drum-root .seq-per-controls input:focus, .drum-root .seq-per-controls select:focus { border-color: var(--accent-cyan); outline: none; }
+.drum-root .seq-per-controls .seq-swing-range { width: 60px; height: 3px; accent-color: var(--sc, var(--accent-cyan)); }
+.drum-root .seq-per-controls .seq-swing-val { font-size: 0.6rem; color: var(--sc, var(--accent-cyan)); min-width: 22px; }
+.drum-root .seq-per-controls .seq-clock-select { width: 52px; font-size: 0.7rem; }
+.drum-root .seq-link-btn, .drum-root .seq-evolve-btn {
+  padding: 3px 10px; font-size: 0.65rem; font-weight: 700; border: none;
+  border-radius: var(--radius-sm); cursor: pointer; background: var(--bg-control);
+  color: #666; transition: all 0.15s; letter-spacing: 0.3px;
+}
+.drum-root .seq-link-btn.on { background: var(--sc, var(--accent-cyan)); color: #000; }
+.drum-root .seq-evolve-btn.on { background: #a855f7; color: #000; }
+.drum-root .seq-evolve-panel {
+  display: none; padding: 6px 8px; margin-bottom: 6px;
+  background: rgba(168,85,247,0.06); border: 1px solid rgba(168,85,247,0.15);
+  border-radius: var(--radius-sm); font-size: 0.6rem;
+}
+.drum-root .seq-evolve-panel.open { display: block; }
+.drum-root .seq-evolve-panel label { color: #aaa; display: flex; align-items: center; gap: 3px; font-size: 0.65rem; }
+.drum-root .seq-evolve-panel input[type=range] { width: 50px; height: 3px; accent-color: #a855f7; }
+.drum-root .seq-evolve-panel input[type=number] { background: var(--bg-input); color: #fff; border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 2px 4px; font-size: 0.6rem; width: 36px; transition: border-color 0.15s; }
+.drum-root .seq-evolve-panel input[type=number]:focus { border-color: var(--accent-evolve); outline: none; }
+.drum-root .seq-evolve-panel select {
+  background: var(--bg-input); color: #e5e7eb; border: 1px solid var(--border-medium);
+  border-radius: var(--radius-md); padding: 3px 5px; font-size: 0.65rem;
+}
+.drum-root .seq-evolve-panel .seq-evolve-reset {
+  padding: 3px 8px; border-radius: var(--radius-md); border: 1px solid #555;
+  background: rgba(0,0,0,0.25); color: #ccc; cursor: pointer; font-size: 0.62rem;
+}
+.drum-root .seq-evolve-panel .seq-evolve-reset:hover { background: rgba(0,0,0,0.4); }
+.drum-root .seq-lane-editor-wrap { margin-top: 8px; }
+
+/* ── Rotation control ── */
+.drum-root .seq-rotation-control {
+  display: flex; align-items: center; gap: 2px;
+}
+.drum-root .seq-rotation-control button {
+  padding: 2px 6px; border: 1px solid var(--border-medium); border-radius: var(--radius-sm);
+  background: var(--bg-control); color: #ccc; cursor: pointer; font-size: 0.65rem;
+  transition: background 0.15s;
+}
+.drum-root .seq-rotation-control button:hover { background: rgba(255,255,255,0.1); }
+.drum-root .seq-rotation-val {
+  font-size: 0.65rem; color: #aaa; min-width: 16px; text-align: center;
+}
+/* ── Preset select ── */
+.drum-root .seq-preset-select {
+  background: var(--bg-input); color: #e5e7eb; border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm); padding: 2px 4px; font-size: 0.65rem; max-width: 90px;
+  transition: border-color 0.15s;
+}
+.drum-root .seq-preset-select:focus { border-color: var(--accent-cyan); outline: none; }
+/* ── Trigger always-visible ── */
+.drum-root .seq-trigger-always {
+  margin: 6px 0;
+}
+.drum-root .seq-evolve-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 3px; }
+.drum-root .seq-evolve-checks { display: flex; gap: 6px; flex-wrap: wrap; }
+.drum-root .seq-evolve-checks label { font-size: 0.55rem; color: #888; cursor: pointer; }
+.drum-root .seq-evolve-checks input[type=checkbox] { accent-color: #a855f7; margin-right: 2px; }
+.drum-root .seq-evolve-flash { animation: evolveFlash 0.4s ease-out; }
+@keyframes evolveFlash { 0% { box-shadow: inset 0 0 8px rgba(168,85,247,0.6); } 100% { box-shadow: none; } }
+.drum-root .seq-lane-enable-btn {
+  padding: 2px 8px; font-size: 0.55rem; font-weight: 400; border: none;
+  border-radius: var(--radius-sm); cursor: pointer; background: var(--bg-control);
+  color: #666; transition: all 0.15s; letter-spacing: 0.3px;
+}
+.drum-root .seq-lane-enable-btn.on { color: #000; background: var(--lane-color, rgba(255,255,255,0.3)); }
+.drum-root .seq-lane-enable-btn.trigger-toggle {
+  font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
+}
+.drum-root .seq-lane-enable-btn.trigger-toggle.on {
+  background: var(--sc, var(--accent-cyan));
+  color: #000;
+  box-shadow: 0 0 8px color-mix(in srgb, var(--sc, var(--accent-cyan)) 60%, transparent),
+              0 0 2px rgba(255,255,255,0.3);
+  text-shadow: 0 0 4px rgba(0,0,0,0.3);
+}
+.drum-root .seq-lane-trigger .seq-lane-enable-btn.on { background: var(--accent-cyan); }
+.drum-root .seq-lane-pitch .seq-lane-enable-btn.on { background: var(--accent-pink); }
+.drum-root .seq-lane-expr .seq-lane-enable-btn.on { background: var(--accent-orange); }
+.drum-root .seq-lane-morph .seq-lane-enable-btn.on { background: var(--accent-lavender); }
+.drum-root .seq-lane-dist .seq-lane-enable-btn.on { background: var(--accent-teal); }
+
+.drum-root .seq-lane {
+  margin-bottom: 6px; border-radius: var(--radius-md); overflow: hidden;
+  border: 1px solid var(--border-subtle);
+}
+.drum-root .seq-lane-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 6px 10px; cursor: pointer; user-select: none;
+  background: rgba(255,255,255,0.04);
+}
+.drum-root .seq-lane-title { font-size: 0.7rem; font-weight: 600; letter-spacing: 0.5px; }
+.drum-root .seq-lane-trigger .seq-lane-title { color: var(--sc, var(--accent-cyan)); }
+.drum-root .seq-lane-pitch .seq-lane-title { color: var(--accent-pink); }
+.drum-root .seq-lane-expr .seq-lane-title { color: var(--accent-orange); }
+.drum-root .seq-lane-morph .seq-lane-title { color: var(--accent-lavender); }
+.drum-root .seq-lane-dist .seq-lane-title { color: var(--accent-teal); }
+
+/* ── Sparkline Accordion ── */
+.drum-root .seq-spark-container {
+  display: flex; flex-direction: column; gap: 2px;
+  margin-top: 4px;
+}
+.drum-root .seq-spark-strip {
+  display: flex; align-items: center; gap: 6px;
+  padding: 3px 8px; cursor: pointer; user-select: none;
+  background: rgba(255,255,255,0.03); border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  transition: background 0.15s, border-color 0.15s;
+  min-height: 26px;
+}
+.drum-root .seq-spark-strip:hover { background: rgba(255,255,255,0.07); }
+.drum-root .seq-spark-strip.disabled { opacity: 0.45; }
+.drum-root .seq-spark-strip.expanded {
+  background: rgba(255,255,255,0.06);
+  border-color: rgba(255,255,255,0.14);
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+/* Badge replaces dot+label */
+.drum-root .seq-spark-badge-dot {
+  font-size: 0.5rem; color: #555; margin-right: 1px; transition: color 0.15s;
+}
+.drum-root .seq-spark-badge-dot.on { color: var(--sc, var(--accent-cyan)); }
+.drum-root .seq-spark-badge {
+  display: inline-flex; align-items: center; gap: 2px;
+  padding: 2px 5px; border-radius: var(--radius-sm);
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  cursor: pointer; transition: all 0.15s;
+  min-width: 34px; justify-content: center;
+  flex-shrink: 0;
+}
+.drum-root .seq-spark-badge:hover { background: rgba(255,255,255,0.08); }
+.drum-root .seq-spark-badge.on {
+  background: color-mix(in srgb, var(--lane-color) 20%, transparent);
+  border-color: color-mix(in srgb, var(--lane-color) 60%, transparent);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--lane-color) 25%, transparent);
+}
+.drum-root .seq-spark-badge-label {
+  font-size: 0.5rem; font-weight: 800; letter-spacing: 0.3px;
+  color: var(--lane-color); opacity: 0.5;
+}
+.drum-root .seq-spark-badge.on .seq-spark-badge-label { opacity: 1; }
+.drum-root .seq-spark-badge-steps {
+  font-size: 0.5rem; font-weight: 600;
+  color: rgba(255,255,255,0.4);
+  font-variant-numeric: tabular-nums;
+}
+.drum-root .seq-spark-badge.on .seq-spark-badge-steps { color: rgba(255,255,255,0.85); }
+/* SVG sparkline area */
+.drum-root .seq-spark-svg-wrap {
+  flex: 1; min-width: 0; height: 20px;
+  overflow: hidden; border-radius: var(--radius-sm);
+}
+.drum-root .seq-spark-svg-wrap svg {
+  width: 100%; height: 100%; display: block;
+}
+.drum-root .seq-spark-expand {
+  font-size: 0.6rem; color: #555; min-width: 10px; text-align: center;
+  flex-shrink: 0;
+}
+/* Sparkline playhead */
+.drum-root .spark-playhead {
+  transition: x 0.06s ease-out;
+  pointer-events: none;
+}
+.drum-root .seq-spark-body {
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-top: none;
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  padding: 6px 8px 8px;
+  margin-bottom: 2px;
+}
+/* Spark body header row */
+.drum-root .seq-spark-header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 0 6px; flex-wrap: wrap;
+}
+.drum-root .seq-spark-title {
+  font-size: 0.7rem; font-weight: 700; letter-spacing: 0.5px;
+  flex-shrink: 0; white-space: nowrap;
+}
+.drum-root .seq-spark-header .seq-lane-enable-btn {
+  font-size: 0.55rem; padding: 0 8px; min-width: 24px; min-height: 24px; height: 24px; max-height: 24px; line-height: 24px;
+  display: inline-flex; align-items: center; box-sizing: border-box;
+  transition: all 0.15s;
+}
+.drum-root .seq-spark-header .seq-drag-num-label {
+  font-size: 0.6rem;
+}
+.drum-root .seq-spark-header .seq-drag-num {
+  min-width: 24px; min-height: 24px; height: 24px; max-height: 24px; padding: 0 6px; font-size: 0.75rem;
+  display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box;
+  border-radius: var(--radius-sm);
+  transition: border-color 0.15s, background 0.15s;
+}
+.drum-root .seq-spark-ctrl-btn {
+  border: none; border-radius: var(--radius-sm); padding: 0; width: 24px; height: 24px; cursor: pointer;
+  font-size: 0.75rem; font-weight: 600;
+  background: var(--bg-control); color: #888;
+  transition: all 0.15s; display: inline-flex; align-items: center; justify-content: center;
+  white-space: nowrap; box-sizing: border-box;
+}
+.drum-root .seq-spark-ctrl-btn:hover { background: var(--bg-control-hover); color: #ccc; }
+.drum-root .seq-select,
+.drum-root .seq-spark-select {
+  background: var(--bg-input);
+  color: #fff;
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm);
+  padding: 2px 6px;
+  font-size: 0.65rem;
+  min-height: 24px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.drum-root .seq-select:hover,
+.drum-root .seq-spark-select:hover { border-color: rgba(255,255,255,0.35); }
+.drum-root .seq-select:focus,
+.drum-root .seq-spark-select:focus { border-color: var(--lane-color, var(--accent-cyan)); outline: none; }
+
+/* ── Bipolar distance bars ── */
+.drum-root .seq-dist-bar-wrap {
+  width: 100%; height: 48px; background: #0f0f23; border-radius: var(--radius-sm);
+  border: 1px solid var(--border-medium); position: relative; cursor: pointer;
+  touch-action: none;
+}
+.drum-root .seq-dist-bar-wrap.inactive { opacity: 0.25; pointer-events: none; }
+.drum-root .seq-dist-bar-wrap .dist-center {
+  position: absolute; left: 0; right: 0; top: 50%;
+  height: 1px; background: #555; pointer-events: none;
+}
+.drum-root .seq-dist-bar-wrap .dist-bar {
+  position: absolute; left: 15%; right: 15%;
+  background: var(--accent-teal); border-radius: 2px;
+  pointer-events: none; transition: top 0.05s, height 0.05s;
+}
+.drum-root .seq-dist-bar-wrap .dist-val {
+  position: absolute; left: 0; right: 0;
+  text-align: center; font-size: 0.5rem; color: #ccc;
+  pointer-events: none; z-index: 1;
+}
+.drum-root .seq-dist-bar-wrap .dist-label-max {
+  position: absolute; right: 2px; top: 1px;
+  font-size: 0.5rem; color: var(--accent-teal); pointer-events: none; opacity: 0.5;
+}
+.drum-root .seq-dist-bar-wrap .dist-label-min {
+  position: absolute; right: 2px; bottom: 1px;
+  font-size: 0.5rem; color: var(--accent-teal); pointer-events: none; opacity: 0.5;
+}
+/* ── Bipolar morph bars ── */
+.drum-root .seq-morph-bar-wrap {
+  width: 100%; height: 48px; background: #0f0f23; border-radius: var(--radius-sm);
+  border: 1px solid var(--border-medium); position: relative; cursor: pointer;
+  touch-action: none;
+}
+.drum-root .seq-morph-bar-wrap.inactive { opacity: 0.25; pointer-events: none; }
+.drum-root .seq-morph-bar-wrap .morph-center {
+  position: absolute; left: 0; right: 0; top: 50%;
+  height: 1px; background: #555; pointer-events: none;
+}
+.drum-root .seq-morph-bar-wrap .morph-bar {
+  position: absolute; left: 15%; right: 15%;
+  background: var(--accent-lavender); border-radius: 2px;
+  pointer-events: none; transition: top 0.05s, height 0.05s;
+}
+.drum-root .seq-morph-bar-wrap .morph-val {
+  position: absolute; left: 0; right: 0;
+  text-align: center; font-size: 0.5rem; color: #ccc;
+  pointer-events: none; z-index: 1;
+}
+.drum-root .seq-morph-bar-wrap .morph-label-a {
+  position: absolute; right: 2px; top: 1px;
+  font-size: 0.5rem; color: var(--accent-lavender); pointer-events: none; opacity: 0.5;
+}
+.drum-root .seq-morph-bar-wrap .morph-label-b {
+  position: absolute; right: 2px; bottom: 1px;
+  font-size: 0.5rem; color: var(--accent-lavender); pointer-events: none; opacity: 0.5;
+}
+.drum-root .seq-lane-controls { display: flex; gap: 8px; align-items: center; }
+.drum-root .seq-lane-controls label {
+  font-size: 0.6rem; color: #888; display: flex; align-items: center; gap: 3px;
+}
+.drum-root .seq-lane-controls input[type=number] {
+  width: 36px; background: var(--bg-input); color: #fff; border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm); padding: 2px 4px; font-size: 0.65rem; text-align: center;
+  transition: border-color 0.15s;
+}
+.drum-root .seq-lane-controls input[type=number]:focus { border-color: var(--accent-cyan); outline: none; }
+.drum-root .seq-lane-controls button {
+  width: 20px; height: 20px; border: none; border-radius: var(--radius-sm);
+  background: var(--bg-control); color: #fff; font-size: 0.7rem;
+  cursor: pointer; padding: 0; line-height: 20px;
+}
+.drum-root .seq-lane-controls button:hover { background: var(--bg-control-hover); }
+.drum-root .seq-lane-controls select {
+  background: var(--bg-input);
+  color: #fff;
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm);
+  padding: 2px 6px;
+  font-size: 0.65rem;
+  min-height: 24px;
+  transition: border-color 0.15s, background 0.15s;
+}
+.drum-root .seq-lane-controls select:hover { border-color: rgba(255,255,255,0.35); }
+.drum-root .seq-lane-controls select:focus { border-color: var(--accent-cyan); outline: none; }
+/* ── Pitch lane controls ── */
+.drum-root .seq-pitch-controls {
+  display: flex; gap: 6px; align-items: center; margin-left: 8px;
+  padding-left: 8px; border-left: 1px solid rgba(255,255,255,0.08);
+}
+.drum-root .seq-pitch-controls select {
+  background: var(--bg-input); color: #fff; border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm); padding: 2px 4px; font-size: 0.6rem; max-width: 100px;
+}
+.drum-root .seq-pitch-controls select:focus { border-color: var(--accent-pink); outline: none; }
+.drum-root .seq-lane-expand { font-size: 0.6rem; color: #666; margin-left: 4px; }
+.drum-root .seq-lane-body { padding: 8px 10px; background: rgba(0,0,0,0.15); }
+.drum-root .seq-lane.disabled .seq-lane-body { opacity: 0.3; pointer-events: none; }
+.drum-root .seq-link-badge { font-size: 0.55rem; opacity: 0.6; }
+.drum-root .seq-step-grid {
+  display: grid; grid-template-columns: repeat(16, 1fr); gap: 3px; margin: 6px 0;
+}
+/* Column count is handled by JS (adaptive 8/16 based on step count) — no CSS overrides */
+.drum-root .seq-step { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.drum-root .seq-step-num {
+  font-size: 0.55rem;
+  color: #555;
+  height: 12px;
+  min-height: 12px;
+  line-height: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.drum-root .seq-step-cell {
+  width: 100%; aspect-ratio: 1; border-radius: var(--radius-sm); cursor: pointer;
+  border: 2px solid var(--border-medium); background: #0f0f23;
+  transition: all 0.1s; position: relative; overflow: hidden;
+}
+.drum-root .seq-step-cell.active { background: transparent; border-color: var(--sc, var(--accent-cyan)); }
+.drum-root .seq-step-cell.playing { box-shadow: 0 0 12px var(--sc, var(--accent-cyan)); transform: scale(1.08); }
+.drum-root .seq-step-cell.inactive { opacity: 0.25; pointer-events: none; }
+
+/* ── Step cell integrated probability fill ── */
+.drum-root .seq-step-cell .prob-fill {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  background: var(--sc, var(--accent-cyan)); opacity: 0.3;
+  pointer-events: none; transition: height 0.05s;
+}
+.drum-root .seq-step-cell.active .prob-fill { opacity: 0.85; }
+.drum-root .seq-step-cell .prob-label {
+  position: absolute; top: 1px; left: 0; right: 0;
+  text-align: center; font-size: 0.55rem; color: rgba(255,255,255,0.6);
+  pointer-events: none; z-index: 1;
+}
+
+/* ── Drag value popup ── */
+.drum-root .seq-drag-popup {
+  position: fixed; pointer-events: none; z-index: 9999;
+  background: rgba(0,0,0,0.85); color: #fff; font-size: 0.75rem;
+  font-weight: 700; padding: 4px 8px; border-radius: var(--radius-sm);
+  border: 1px solid var(--sc, var(--accent-cyan));
+  transform: translate(-50%, calc(-100% - 48px)); white-space: nowrap;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+}
+
+.drum-root .seq-step-ratchet {
+  width: 100%; height: 14px; cursor: pointer; display: flex;
+  align-items: center; justify-content: center; gap: 1px;
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+  border: none; background: none; padding: 0;
+}
+.drum-root .seq-step-ratchet .ratch-line {
+  width: 60%; height: 2px; background: rgba(255,255,255,0.15); border-radius: 1px;
+  flex-shrink: 0; transition: background 0.15s, box-shadow 0.15s;
+}
+.drum-root .seq-step-ratchet.multi .ratch-line {
+  background: rgba(192,132,252,0.55); height: 2px;
+  box-shadow: 0 0 4px rgba(168,85,247,0.25);
+}
+.drum-root .seq-step-ratchet.r2 { gap: 2px; }
+.drum-root .seq-step-ratchet.r2 .ratch-line { width: 40%; }
+.drum-root .seq-step-ratchet.r3 .ratch-line { width: 28%; }
+.drum-root .seq-step-ratchet.r4 .ratch-line { width: 20%; }
+
+/* ── Trig condition (Elektron-style n:N) ── */
+.drum-root .seq-trig-cond {
+  width: 100%; height: 14px; cursor: pointer; display: flex;
+  align-items: center; justify-content: center;
+  font-size: 0.5rem; color: #666; background: none; border: none; padding: 0;
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+  font-family: inherit; letter-spacing: -0.02em;
+}
+.drum-root .seq-trig-cond.active { color: #e8b03e; font-weight: 600; }
+
+.drum-root .seq-presets { display: flex; gap: 3px; flex-wrap: wrap; margin-bottom: 6px; }
+.drum-root .seq-preset-btn {
+  padding: 2px 6px; font-size: 0.55rem; border: none; border-radius: var(--radius-sm);
+  background: var(--bg-control); color: #888; cursor: pointer;
+  transition: all 0.1s;
+}
+.drum-root .seq-preset-btn:hover { background: var(--bg-control-hover); color: #fff; }
+.drum-root .seq-preset-btn.active { background: var(--sc, var(--accent-cyan)); color: #000; }
+.drum-root .seq-offset-presets { display: flex; gap: 3px; flex-wrap: wrap; margin-bottom: 6px; }
+.drum-root .seq-offset-btn {
+  padding: 2px 6px; font-size: 0.55rem; border: none; border-radius: var(--radius-sm);
+  background: var(--bg-control); color: #888; cursor: pointer;
+}
+.drum-root .seq-offset-btn:hover { background: var(--bg-control-hover); color: #fff; }
+.drum-root .seq-pitch-input {
+  width: 100%; background: #0f0f23; border: 1px solid var(--border-medium); border-radius: var(--radius-sm);
+  color: var(--accent-pink); font-size: 0.65rem; text-align: center; padding: 2px;
+  transition: border-color 0.15s;
+}
+.drum-root .seq-pitch-input:focus { border-color: var(--accent-pink); outline: none; }
+.drum-root .seq-pitch-input:disabled { opacity: 0.25; }
+/* ── Bipolar pitch bars ── */
+.drum-root .seq-pitch-bar-wrap {
+  width: 100%; height: 48px; background: #0f0f23; border-radius: var(--radius-sm);
+  border: 1px solid var(--border-medium); position: relative; cursor: pointer;
+  touch-action: none;
+}
+.drum-root .seq-pitch-bar-wrap.inactive { opacity: 0.25; pointer-events: none; }
+.drum-root .seq-pitch-bar-wrap .pitch-center {
+  position: absolute; left: 0; right: 0; top: 50%;
+  height: 1px; background: #444; pointer-events: none;
+}
+.drum-root .seq-pitch-bar-wrap .pitch-bar {
+  position: absolute; left: 15%; right: 15%;
+  background: var(--accent-pink); border-radius: 2px;
+  pointer-events: none; transition: top 0.05s, height 0.05s;
+}
+.drum-root .seq-pitch-bar-wrap .pitch-val {
+  position: absolute; left: 0; right: 0;
+  text-align: center; font-size: 0.5rem; color: #ccc;
+  pointer-events: none; z-index: 1;
+}
+/* ── Tonal note name display ── */
+.drum-root .seq-pitch-note-name {
+  font-size: 0.55rem; color: var(--accent-pink); text-align: center;
+  pointer-events: none; margin-top: 1px; min-height: 10px;
+}
+.drum-root .seq-vel-bar-wrap {
+  width: 100%; height: 40px; background: #0f0f23; border-radius: var(--radius-sm);
+  border: 1px solid var(--border-medium); position: relative; cursor: pointer;
+  display: flex; align-items: flex-end; touch-action: none;
+}
+.drum-root .seq-vel-bar-wrap.inactive { opacity: 0.25; pointer-events: none; }
+.drum-root .seq-vel-bar {
+  width: 100%; background: var(--accent-orange); border-radius: 0 0 2px 2px;
+  transition: height 0.05s;
+}
+.drum-root .seq-vel-label {
+  position: absolute; top: 1px; left: 0; right: 0;
+  text-align: center; font-size: 0.5rem; color: #888;
+}
+/* ── Bar wrap playhead glow  ── */
+.drum-root .seq-pitch-bar-wrap.playing,
+.drum-root .seq-vel-bar-wrap.playing,
+.drum-root .seq-morph-bar-wrap.playing,
+.drum-root .seq-dist-bar-wrap.playing {
+  box-shadow: 0 0 10px var(--sc, var(--accent-cyan));
+  border-color: var(--sc, var(--accent-cyan));
+}
+
+/* ── Mini Overview Strip ── */
+.drum-root .seq-mini-overview {
+  display: flex; gap: 4px; padding: 6px 8px;
+  background: rgba(0,0,0,0.2); border-radius: var(--radius-md); margin-top: 4px;
+  flex-wrap: wrap;
+}
+@media (max-width: 600px) {
+  .drum-root .seq-mini-overview { display: grid; grid-template-columns: 1fr 1fr; }
+}
+.drum-root .seq-mini-row {
+  flex: 1; cursor: pointer; padding: 4px 6px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  transition: all 0.15s; position: relative;
+}
+.drum-root .seq-mini-row.active { border-color: var(--sc); }
+.drum-root .seq-mini-row.muted { opacity: 0.3; }
+.drum-root .seq-mini-label {
+  font-size: 0.5rem; font-weight: 700; color: var(--sc);
+  margin-bottom: 2px; display: flex; justify-content: space-between; align-items: center;
+}
+.drum-root .seq-mini-label .mini-ms { font-size: 0.55rem; color: #888; }
+.drum-root .seq-mini-label .mini-ms .on { font-weight: 900; }
+.drum-root .seq-mini-dots {
+  display: flex; gap: 1px; font-size: 0.5rem; line-height: 1;
+}
+.drum-root .seq-mini-dots .dot-hit { color: var(--sc); }
+.drum-root .seq-mini-dots .dot-rest { color: #333; }
+.drum-root .seq-mini-dots .dot-cur { background: var(--sc); color: #000; border-radius: var(--radius-sm); padding: 0 1px; }
+
+/* ── View Toggle ── */
+.drum-root .seq-view-toggle {
+  display: flex; gap: 0; border-radius: var(--radius-md); overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.12); width: fit-content; margin-left: auto;
+}
+.drum-root .seq-view-btn {
+  padding: 4px 14px; font-size: 0.6rem; font-weight: 700;
+  border: none; cursor: pointer; background: rgba(255,255,255,0.03); color: rgba(255,255,255,0.3);
+  transition: all 0.15s; letter-spacing: 0.5px; text-transform: uppercase;
+}
+.drum-root .seq-view-btn.active {
+  background: color-mix(in srgb, var(--accent-cyan) 18%, transparent);
+  color: var(--accent-cyan);
+}
+.drum-root .seq-view-btn:hover:not(.active) { background: rgba(255,255,255,0.06); }
+
+/* ── Simple Mode (standalone random trigger) ── */
+.drum-root .seq-simple {
+  display: flex; flex-direction: column; gap: 8px; padding: 8px 0;
+}
+.drum-root .seq-simple-top {
+  display: flex; align-items: center; gap: 12px; padding: 8px 12px;
+  background: rgba(255,255,255,0.03); border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+}
+.drum-root .seq-simple-power {
+  padding: 6px 14px; font-size: 0.7rem; font-weight: 700;
+  border: 1px solid rgba(255,255,255,0.15); border-radius: var(--radius-sm);
+  cursor: pointer; background: rgba(255,255,255,0.04); color: #888;
+  transition: all 0.2s; text-transform: uppercase; letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+.drum-root .seq-simple-power.on {
+  background: var(--accent-cyan); color: #000;
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 10px rgba(0,212,255,0.3);
+}
+.drum-root .seq-simple-speed-wrap {
+  display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0;
+}
+.drum-root .seq-simple-speed-label {
+  font-size: 0.6rem; color: #666; text-transform: uppercase; letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+.drum-root .seq-simple-speed-slider {
+  flex: 1; height: 3px; accent-color: var(--accent-cyan); min-width: 60px;
+}
+.drum-root .seq-simple-speed-val {
+  font-size: 0.6rem; color: var(--accent-cyan); min-width: 36px;
+  text-align: right; font-variant-numeric: tabular-nums;
+}
+
+/* Voice rows */
+.drum-root .seq-simple-voices {
+  display: flex; flex-direction: column; gap: 3px;
+}
+.drum-root .seq-simple-voice {
+  display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+  border-radius: var(--radius-md); background: rgba(255,255,255,0.02);
+  border: 1px solid var(--border-subtle); transition: all 0.15s;
+}
+.drum-root .seq-simple-voice.enabled {
+  background: rgba(255,255,255,0.04);
+  border-color: color-mix(in srgb, var(--vc) 25%, transparent);
+}
+.drum-root .seq-simple-voice.flash {
+  background: color-mix(in srgb, var(--vc) 15%, transparent) !important;
+  border-color: var(--vc) !important;
+  box-shadow: 0 0 8px color-mix(in srgb, var(--vc) 30%, transparent);
+}
+.drum-root .seq-simple-voice-btn {
+  display: flex; align-items: center; gap: 5px; padding: 3px 8px;
+  border: 1px solid rgba(255,255,255,0.1); border-radius: var(--radius-sm);
+  cursor: pointer; background: rgba(255,255,255,0.03); color: #555;
+  transition: all 0.15s; font-size: 0.65rem; min-width: 72px;
+  white-space: nowrap;
+}
+.drum-root .seq-simple-voice-btn.on {
+  background: color-mix(in srgb, var(--vc) 12%, transparent);
+}
+.drum-root .seq-simple-voice-icon { font-size: 0.8rem; }
+.drum-root .seq-simple-voice-name { font-size: 0.6rem; font-weight: 600; letter-spacing: 0.3px; }
+
+/* Per-voice probability */
+.drum-root .seq-simple-voice-prob {
+  display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0;
+}
+.drum-root .seq-simple-voice-slider {
+  flex: 1; height: 3px; min-width: 40px;
+}
+.drum-root .seq-simple-voice-slider:disabled { opacity: 0.3; }
+.drum-root .seq-simple-voice-val {
+  font-size: 0.55rem; min-width: 28px; text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Test trigger button */
+.drum-root .seq-simple-voice-test {
+  padding: 2px 6px; font-size: 0.75rem; border: none;
+  border-radius: var(--radius-sm); cursor: pointer;
+  background: rgba(255,255,255,0.05); transition: all 0.15s;
+}
+.drum-root .seq-simple-voice-test:hover {
+  background: rgba(255,255,255,0.12);
+}
+
+/* Hint text */
+.drum-root .seq-simple-hint {
+  font-size: 0.5rem; color: #444; text-align: center; padding: 4px;
+  letter-spacing: 0.3px;
+}
+
+/* ── Overview Mode ── */
+.drum-root .seq-overview {
+  display: flex; flex-direction: column; gap: 6px;
+}
+.drum-root .seq-ov-row {
+  border-radius: var(--radius-md); overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  transition: border-color 0.15s;
+}
+.drum-root .seq-ov-row.ov-muted, .drum-root .seq-ov-row.muted { opacity: 0.35; }
+.drum-root .seq-ov-header {
+  display: flex; align-items: center; gap: 6px; padding: 5px 8px;
+  background: rgba(255,255,255,0.04); cursor: pointer; user-select: none;
+  flex-wrap: wrap;
+}
+.drum-root .seq-ov-name {
+  font-size: 0.65rem; font-weight: 700; color: var(--sc);
+  min-width: 32px;
+}
+.drum-root .seq-ov-controls {
+  display: flex; gap: 6px; align-items: center; margin-left: auto; flex-wrap: wrap;
+}
+.drum-root .seq-ov-controls label {
+  font-size: 0.55rem; color: #888; display: flex; align-items: center; gap: 2px;
+}
+.drum-root .seq-ov-controls input[type=number] {
+  width: 32px; background: var(--bg-input); color: #fff; border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm); padding: 1px 3px; font-size: 0.6rem; text-align: center;
+}
+.drum-root .seq-ov-controls select {
+  background: var(--bg-input); color: #fff; border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm); padding: 1px 3px; font-size: 0.6rem; width: 48px;
+}
+.drum-root .seq-ov-controls button {
+  border: none; border-radius: var(--radius-sm); padding: 1px 5px; cursor: pointer;
+  font-size: 0.5rem; font-weight: 700; background: rgba(0,0,0,0.3); color: #888;
+  transition: all 0.1s;
+}
+.drum-root .seq-ov-controls button.on { color: #fff; }
+.drum-root .seq-ov-controls .ov-mute-btn.on { background: var(--accent-red); }
+.drum-root .seq-ov-controls .ov-solo-btn.on { background: #eab308; color: #000; }
+.drum-root .seq-ov-sources {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.drum-root .seq-ov-src-toggle {
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: var(--radius-sm);
+  padding: 0;
+  width: 20px;
+  height: 20px;
+  line-height: 20px;
+  cursor: pointer;
+  font-size: 0.65rem;
+  font-weight: 700;
+  background: rgba(0,0,0,0.3);
+  color: #666;
+  transition: all 0.1s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.drum-root .seq-ov-src-toggle.on {
+  background: color-mix(in srgb, var(--vc) 22%, transparent);
+  border-color: color-mix(in srgb, var(--vc) 60%, transparent);
+  color: var(--vc);
+}
+.drum-root .seq-ov-src-toggle[data-voice="click"] { font-size: 0.95rem; }
+.drum-root .seq-ov-grid-wrap {
+  padding: 4px 8px 6px; background: rgba(0,0,0,0.15);
+}
+.drum-root .seq-ov-grid-wrap .seq-step-grid {
+  margin: 2px 0;
+}
+/* Overview cells: compact sizing (smaller than detail view) */
+.drum-root .seq-ov-grid-wrap .seq-step-cell {
+  min-width: 0; min-height: 18px;
+}
+.drum-root .seq-ov-grid-wrap .seq-step-num {
+  height: 10px; font-size: 0.5rem; line-height: 10px;
+}
+.drum-root .seq-ov-grid-wrap .seq-trig-cond {
+  height: 12px; font-size: 0.5rem;
+}
+.drum-root .seq-ov-grid-wrap .prob-label {
+  font-size: 0.4rem;
+}
+
+/* ══ TOUCH-FRIENDLY OVERRIDES ══ */
+
+/* ── Global: eliminate 300ms tap delay, suppress tap highlight ── */
+.drum-root button, .drum-root select, .drum-root input, .drum-root label[style*="cursor"],
+.drum-root .seq-tab, .drum-root .voice-tab,
+.drum-root .seq-source-toggle, .drum-root .seq-mini-row, .drum-root .section-header,
+.drum-root .seq-step-cell, .drum-root .seq-step-ratchet, .drum-root .seq-trig-cond,
+.drum-root .seq-preset-btn, .drum-root .seq-offset-btn, .drum-root .seq-view-btn,
+.drum-root .seq-link-btn, .drum-root .seq-evolve-btn, .drum-root .seq-lane-enable-btn,
+.drum-root .trigger-btn, .drum-root .seq-ov-header, .drum-root .seq-lane-header {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ── Active-state feedback for touch ── */
+.drum-root .seq-tab:active:not(.active) { background: rgba(255,255,255,0.12); }
+.drum-root .seq-preset-btn:active { background: rgba(255,255,255,0.2); color: #fff; }
+.drum-root .seq-offset-btn:active { background: rgba(255,255,255,0.2); color: #fff; }
+.drum-root .seq-view-btn:active:not(.active) { background: rgba(255,255,255,0.12); }
+.drum-root .seq-lane-controls button:active { background: rgba(255,255,255,0.3); }
+.drum-root .seq-mini-row:active { background: rgba(255,255,255,0.08); }
+.drum-root .section-header:active { background: rgba(255,255,255,0.06); }
+.drum-root .seq-link-btn:active, .drum-root .seq-evolve-btn:active { background: rgba(255,255,255,0.2); }
+.drum-root .seq-lane-enable-btn:active { background: rgba(255,255,255,0.2); }
+.drum-root .seq-source-toggle:active { background: rgba(255,255,255,0.12); }
+.drum-root .trigger-btn:active { transform: scale(0.97); background: rgba(165, 196, 212, 0.5); }
+
+/* ── Master strip ── */
+.drum-root .master-item label { font-size: 0.75rem; }
+.drum-root .master-item input[type=range] { height: 24px; }
+.drum-root .master-item .val { font-size: 0.75rem; }
+
+/* ── Section headers: 44px ── */
+.drum-root .section-header {
+  min-height: 44px; padding: 10px 8px; font-size: 0.75rem;
+  display: flex; align-items: center;
+}
+.drum-root .section-header::after { font-size: 0.65rem; }
+
+/* ── Param rows ── */
+.drum-root .param-row { gap: 6px; margin: 4px 0; min-height: 36px; align-items: center; }
+.drum-root .param-row label { font-size: 0.75rem; }
+.drum-root .param-row input[type=range] { height: 24px; }
+.drum-root .param-row .val { font-size: 0.75rem; }
+.drum-root .param-row select { font-size: 0.75rem; padding: 6px 8px; min-height: 36px; }
+
+/* ── Morph row ── */
+.drum-root .vc-morph-row { padding: 8px 10px; gap: 8px; }
+.drum-root .vc-morph-row select { font-size: 0.75rem; padding: 6px; min-height: 36px; }
+.drum-root .vc-morph-row input[type=range] { height: 24px; }
+.drum-root .vc-morph-row .morph-label { font-size: 0.7rem; }
+
+/* ── Trigger button ── */
+.drum-root .trigger-btn { padding: 12px; font-size: 0.85rem; min-height: 44px; }
+
+/* ── Voice card macro row ── */
+.drum-root .vc-macros { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.drum-root .vc-macro-item {
+  grid-template-columns: 22px minmax(0, 1fr) 24px;
+  gap: 4px;
+}
+.drum-root .vc-macro-item label { min-width: 22px; width: 22px; font-size: 0.62rem; }
+.drum-root .vc-macro-item .val { min-width: 24px; width: 24px; font-size: 0.62rem; }
+.drum-root .vc-macro-item input[type=range] { width: 100%; min-width: 0; }
+
+/* ── Play / Stop ── */
+.drum-root .seq-play-btn { width: 48px; height: 48px; font-size: 1.5rem; }
+
+/* ── Transport controls ── */
+.drum-root .seq-transport { padding: 10px 14px; gap: 10px; }
+.drum-root .seq-transport label { font-size: 0.75rem; }
+.drum-root .seq-transport input, .drum-root .seq-transport select {
+  font-size: 0.85rem; padding: 6px 8px; min-height: 36px;
+}
+
+/* ── Seq tab bar ── */
+.drum-root .seq-tab-bar { gap: 4px; }
+.drum-root .seq-tab {
+  padding: 10px 6px; min-height: 44px; font-size: 0.75rem;
+}
+
+/* ── Mute / Solo buttons ── */
+.drum-root .seq-tab .seq-tab-ms { gap: 4px; }
+.drum-root .seq-tab-ms button {
+  padding: 4px 8px; font-size: 0.65rem; border-radius: var(--radius-sm);
+  min-height: 28px; min-width: 28px;
+}
+
+/* ── Source toggle chips ── */
+.drum-root .seq-sources { gap: 6px; padding: 8px 10px; }
+.drum-root .seq-source-toggle {
+  padding: 8px 12px; font-size: 0.75rem; min-height: 40px;
+  border-radius: var(--radius-md); gap: 5px;
+}
+
+/* ── Per-seq controls ── */
+.drum-root .seq-per-controls { padding: 8px 10px; gap: 10px; }
+.drum-root .seq-per-controls label { font-size: 0.7rem; gap: 4px; }
+.drum-root .seq-per-controls input, .drum-root .seq-per-controls select {
+  font-size: 0.75rem; padding: 6px 8px; width: 60px; min-height: 36px;
+}
+.drum-root .seq-select, .drum-root .seq-spark-select {
+  font-size: 0.75rem; padding: 4px 6px; min-height: 36px;
+}
+
+/* ── Link / Evolve buttons ── */
+.drum-root .seq-link-btn, .drum-root .seq-evolve-btn {
+  padding: 8px 14px; font-size: 0.7rem; min-height: 40px;
+  border-radius: var(--radius-md); display: inline-flex; align-items: center;
+}
+
+/* ── Lane enable buttons ── */
+.drum-root .seq-lane-enable-btn {
+  padding: 6px 12px; font-size: 0.7rem; min-height: 36px; border-radius: var(--radius-sm);
+}
+
+/* ── Evolve panel ── */
+.drum-root .seq-evolve-panel { padding: 10px 12px; }
+.drum-root .seq-evolve-panel label { font-size: 0.7rem; gap: 6px; }
+.drum-root .seq-evolve-panel input[type=range] { width: 70px; height: 24px; }
+.drum-root .seq-evolve-panel input[type=number] {
+  font-size: 0.75rem; padding: 6px 8px; width: 48px; min-height: 36px;
+}
+.drum-root .seq-evolve-row { gap: 12px; margin-bottom: 6px; }
+.drum-root .seq-evolve-checks { gap: 10px 14px; }
+.drum-root .seq-evolve-checks label {
+  font-size: 0.7rem; padding: 6px 2px; min-height: 36px;
+  display: inline-flex; align-items: center; gap: 4px;
+}
+.drum-root .seq-evolve-checks input[type=checkbox] {
+  width: 20px; height: 20px; margin-right: 4px;
+}
+
+/* ── Lane header ── */
+.drum-root .seq-lane-header { padding: 10px 12px; min-height: 44px; }
+.drum-root .seq-lane-title { font-size: 0.8rem; }
+
+/* ── Lane controls ── */
+.drum-root .seq-lane-controls { gap: 10px; flex-wrap: wrap; }
+.drum-root .seq-lane-controls label { font-size: 0.7rem; gap: 4px; }
+.drum-root .seq-lane-controls input[type=number] {
+  width: 44px; font-size: 0.8rem; padding: 4px 6px; min-height: 36px;
+}
+.drum-root .seq-lane-controls button {
+  width: 36px; height: 36px; font-size: 0.9rem;
+  line-height: 36px; border-radius: var(--radius-md);
+}
+.drum-root .seq-lane-controls select { min-height: 36px; font-size: 0.75rem; padding: 4px 6px; }
+
+/* ── Step grid ── */
+.drum-root .seq-step-grid { gap: 4px; }
+.drum-root .seq-step-num { font-size: 0.65rem; height: 14px; line-height: 14px; }
+.drum-root .seq-step-cell {
+  min-width: 28px; min-height: 28px; border-radius: var(--radius-md);
+}
+.drum-root .seq-step-cell .prob-label { font-size: 0.5rem; }
+
+/* ── Ratchet row ── */
+.drum-root .seq-step-ratchet { height: 28px; }
+.drum-root .seq-trig-cond { height: 20px; font-size: 0.6rem; }
+
+/* ── Presets ── */
+.drum-root .seq-presets { gap: 6px; }
+.drum-root .seq-preset-btn {
+  padding: 8px 12px; font-size: 0.7rem; min-height: 36px; border-radius: var(--radius-md);
+}
+.drum-root .seq-offset-presets { gap: 6px; }
+.drum-root .seq-offset-btn {
+  padding: 8px 12px; font-size: 0.7rem; min-height: 36px; border-radius: var(--radius-md);
+}
+
+/* ── Mini overview strip ── */
+.drum-root .seq-mini-overview { gap: 6px; padding: 8px 10px; }
+.drum-root .seq-mini-row {
+  padding: 10px 8px; min-height: 44px; border-radius: var(--radius-md);
+}
+.drum-root .seq-mini-label { font-size: 0.6rem; }
+.drum-root .seq-mini-label .mini-ms { font-size: 0.55rem; }
+.drum-root .seq-mini-dots { gap: 2px; font-size: 0.6rem; }
+
+/* ── View toggle ── */
+.drum-root .seq-view-toggle { border-radius: var(--radius-lg); }
+.drum-root .seq-view-btn {
+  padding: 10px 18px; font-size: 0.7rem; min-height: 40px;
+}
+
+/* ── Overview mode ── */
+.drum-root .seq-ov-header { padding: 10px 12px; min-height: 44px; }
+.drum-root .seq-ov-name { font-size: 0.8rem; }
+.drum-root .seq-ov-controls { gap: 8px; flex-wrap: wrap; }
+.drum-root .seq-ov-sources { gap: 4px; }
+.drum-root .seq-ov-src-toggle { width: 24px; height: 24px; line-height: 24px; font-size: 0.75rem; }
+.drum-root .seq-ov-controls label { font-size: 0.7rem; gap: 4px; }
+.drum-root .seq-ov-controls input[type=number] {
+  width: 40px; font-size: 0.75rem; padding: 4px 6px; min-height: 32px;
+}
+.drum-root .seq-ov-controls select {
+  font-size: 0.75rem; padding: 4px 6px; min-height: 32px; width: 56px;
+}
+.drum-root .seq-ov-controls button {
+  padding: 6px 10px; font-size: 0.65rem; min-height: 32px; border-radius: var(--radius-sm);
+}
+.drum-root .seq-ov-grid-wrap { padding: 6px 10px 8px; }
+.drum-root .seq-ov-grid-wrap .seq-step-cell { min-width: 24px; min-height: 24px; }
+
+/* ── Drag-number widget ── */
+.drum-root .seq-drag-num {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 44px; min-height: 40px; padding: 6px 10px;
+  background: var(--bg-input); color: #fff; border: 1px solid var(--border-medium);
+  border-radius: var(--radius-lg); font-size: 0.9rem; font-weight: 700;
+  cursor: ns-resize; user-select: none; touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+  font-variant-numeric: tabular-nums;
+  transition: border-color 0.15s, background 0.15s;
+}
+.drum-root .seq-drag-num:active, .drum-root .seq-drag-num.dragging {
+  border-color: var(--sc, var(--accent-cyan)); background: rgba(0,212,255,0.1);
+}
+.drum-root .seq-drag-num-label {
+  font-size: 0.7rem; color: #888; margin-right: 4px; pointer-events: none;
+}
+
+/* ── Range sliders: fatter thumb on touch devices ── */
+@media (pointer: coarse) {
+  .drum-root input[type=range] { height: 28px; }
+  .drum-root input[type=range]::-webkit-slider-thumb {
+    width: 24px; height: 24px; border-radius: 50%;
+  }
+  .drum-root input[type=range]::-moz-range-thumb {
+    width: 24px; height: 24px; border-radius: 50%;
+  }
+}
+
+/* ── Responsive: narrow screens ── */
+@media (max-width: 400px) {
+  .drum-root .seq-mini-overview { grid-template-columns: 1fr; }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   COMPREHENSIVE MOBILE LAYOUT  (≤ 600px)
+   Compact but touch-friendly — min 44px interactive targets
+   ══════════════════════════════════════════════════════════════ */
+@media (max-width: 600px) {
+  /* ── Container & panels ── */
+  .drum-root .container {
+    flex-direction: column; gap: 0;
+    align-items: stretch;
+    overflow: hidden;
+    width: 100%;
+  }
+  .drum-root .sound-panel {
+    max-width: 100%; width: 100%; border-right: none;
+    border-bottom: 1px solid var(--border-subtle);
+    overflow: hidden;
+    min-width: 0;
+  }
+  .drum-root .sequencer-panel { min-width: 0; width: 100%; max-width: 100%; overflow: hidden; }
+
+  /* ── Master strip ── */
+  .drum-root .master-strip {
+    flex-wrap: wrap; gap: 6px; padding: 8px 10px;
+    overflow: hidden; max-width: 100%;
+  }
+  .drum-root .master-item { flex: 1 1 40%; min-width: 100px; max-width: 100%; overflow: hidden; }
+  .drum-root .master-item label { font-size: 0.7rem; }
+  .drum-root .master-item input[type=range] { min-width: 0; }
+  .drum-root .master-item .val { font-size: 0.7rem; min-width: 30px; }
+  .drum-root .drum-enable-btn { min-width: 44px; min-height: 36px; font-size: 0.7rem; }
+  .drum-root .master-anim-btn { min-height: 36px; font-size: 0.65rem; padding: 4px 8px; }
+
+  /* ── Voice cards ── */
+  .drum-root .voice-cards { overflow: hidden; max-width: 100%; }
+  .drum-root .voice-card { border-radius: var(--radius-md); overflow: hidden; max-width: 100%; }
+  .drum-root .voice-card-body { gap: 4px; overflow: hidden; max-width: 100%; }
+  .drum-root .vc-sidebar { min-width: 36px; padding: 6px 3px; gap: 4px; flex-shrink: 0; }
+  .drum-root .vc-sidebar .vc-icon { font-size: 1rem; }
+  .drum-root .vc-sidebar .vc-label { font-size: 0.5rem; }
+  .drum-root .vc-sliders { padding: 6px 8px; gap: 4px; min-width: 0; overflow: hidden; }
+  .drum-root .vc-macros { gap: 4px; grid-template-columns: 1fr; }
+  .drum-root .vc-macro-item {
+    grid-template-columns: 20px minmax(0, 1fr) 22px; gap: 3px;
+  }
+  .drum-root .vc-macro-item label { min-width: 20px; width: 20px; font-size: 0.58rem; }
+  .drum-root .vc-macro-item .val { min-width: 22px; width: 22px; font-size: 0.58rem; }
+
+  /* ── Morph row ── */
+  .drum-root .vc-morph-row {
+    padding: 6px 8px; gap: 6px; flex-wrap: wrap;
+  }
+  .drum-root .vc-morph-row select { font-size: 0.7rem; padding: 4px 6px; min-height: 32px; max-width: 40%; }
+  .drum-root .vc-morph-row input[type=range] { flex: 1 1 100%; min-width: 0; }
+  .drum-root .vc-morph-row .morph-label { font-size: 0.62rem; }
+
+  /* ── Section headers ── */
+  .drum-root .section-header {
+    min-height: 40px; padding: 8px 8px; font-size: 0.7rem;
+  }
+
+  /* ── Param rows ── */
+  .drum-root .param-row { gap: 4px; min-height: 32px; margin: 2px 0; overflow: hidden; }
+  .drum-root .param-row label { font-size: 0.65rem; min-width: 60px; }
+  .drum-root .param-row input[type=range] { min-width: 0; }
+  .drum-root .param-row .val { font-size: 0.65rem; }
+  .drum-root .param-row select { font-size: 0.65rem; padding: 4px 6px; min-height: 32px; min-width: 0; }
+
+  /* ── Delay section ── */
+  .drum-root .delay-section { overflow: hidden; max-width: 100%; }
+  .drum-root .delay-note-row { flex-wrap: wrap; }
+
+  /* ── Trigger button ── */
+  .drum-root .trigger-btn { padding: 8px; font-size: 0.75rem; min-height: 40px; }
+
+  /* ── Transport controls ── */
+  .drum-root .seq-transport {
+    padding: 8px 10px; gap: 8px; flex-wrap: wrap;
+    overflow: hidden; max-width: 100%;
+  }
+  .drum-root .seq-play-btn { width: 44px; height: 44px; font-size: 1.3rem; }
+  .drum-root .seq-transport label { font-size: 0.65rem; min-width: 0; }
+  .drum-root .seq-transport input,
+  .drum-root .seq-transport select {
+    font-size: 0.75rem; padding: 4px 6px; min-height: 32px; min-width: 0;
+  }
+
+  /* ── Tab bar ── */
+  .drum-root .seq-tab-bar { gap: 2px; }
+  .drum-root .seq-tab {
+    padding: 6px 4px; min-height: 40px; font-size: 0.6rem;
+  }
+  .drum-root .seq-tab-ms button {
+    padding: 2px 5px; font-size: 0.55rem;
+    min-height: 24px; min-width: 24px;
+  }
+
+  /* ── Source toggles ── */
+  .drum-root .seq-sources { gap: 4px; padding: 6px 8px; flex-wrap: wrap; }
+  .drum-root .seq-source-toggle {
+    padding: 6px 8px; font-size: 0.65rem; min-height: 36px;
+    border-radius: var(--radius-sm); gap: 3px;
+  }
+
+  /* ── Per-seq controls ── */
+  .drum-root .seq-per-controls {
+    padding: 6px 8px; gap: 6px; flex-wrap: wrap;
+  }
+  .drum-root .seq-per-controls label { font-size: 0.62rem; gap: 3px; }
+  .drum-root .seq-per-controls input,
+  .drum-root .seq-per-controls select {
+    font-size: 0.65rem; padding: 4px 6px; width: 50px; min-height: 32px;
+  }
+
+  /* ── Link / Evolve buttons ── */
+  .drum-root .seq-link-btn,
+  .drum-root .seq-evolve-btn {
+    padding: 6px 10px; font-size: 0.6rem; min-height: 36px;
+  }
+
+  /* ── Evolve panel ── */
+  .drum-root .seq-evolve-panel { padding: 8px 10px; }
+  .drum-root .seq-evolve-panel label { font-size: 0.62rem; gap: 4px; }
+  .drum-root .seq-evolve-panel input[type=range] { width: 56px; }
+  .drum-root .seq-evolve-panel input[type=number] {
+    font-size: 0.65rem; padding: 4px 6px; width: 40px; min-height: 32px;
+  }
+  .drum-root .seq-evolve-row { gap: 8px; flex-wrap: wrap; }
+  .drum-root .seq-evolve-checks { gap: 6px 10px; flex-wrap: wrap; }
+  .drum-root .seq-evolve-checks label {
+    font-size: 0.6rem; padding: 4px 2px; min-height: 32px;
+  }
+  .drum-root .seq-evolve-checks input[type=checkbox] {
+    width: 18px; height: 18px; margin-right: 3px;
+  }
+
+  /* ── Sparkline accordion (sub-lanes) ── */
+  .drum-root .seq-spark-strip { padding: 4px 6px; min-height: 32px; gap: 4px; }
+  .drum-root .seq-spark-body { padding: 4px 6px 6px; }
+  .drum-root .seq-spark-header { gap: 6px; flex-wrap: wrap; }
+  .drum-root .seq-spark-header .seq-lane-enable-btn {
+    font-size: 0.5rem; padding: 0 6px; min-width: 20px; min-height: 20px;
+    height: 20px; max-height: 20px; line-height: 20px;
+  }
+  .drum-root .seq-spark-header .seq-drag-num {
+    min-width: 20px; min-height: 20px; height: 20px; max-height: 20px;
+    padding: 0 4px; font-size: 0.65rem;
+  }
+  .drum-root .seq-spark-ctrl-btn { width: 22px; height: 22px; font-size: 0.65rem; }
+  .drum-root .seq-select,
+  .drum-root .seq-spark-select {
+    font-size: 0.65rem; padding: 3px 5px; min-height: 32px;
+  }
+
+  /* ── Lane header & controls (compact to match overview sizing) ── */
+  .drum-root .seq-lane-header { padding: 6px 8px; min-height: 36px; }
+  .drum-root .seq-lane-title { font-size: 0.65rem; }
+  .drum-root .seq-lane-controls { gap: 4px; flex-wrap: wrap; }
+  .drum-root .seq-lane-controls label { font-size: 0.55rem; }
+  .drum-root .seq-lane-controls input[type=number] {
+    width: 32px; font-size: 0.65rem; padding: 2px 4px; min-height: 28px;
+  }
+  .drum-root .seq-lane-controls button {
+    width: auto; height: auto; min-height: 28px;
+    padding: 4px 6px; font-size: 0.55rem; line-height: 1;
+  }
+  .drum-root .seq-lane-controls select {
+    min-height: 24px; font-size: 0.5rem; padding: 1px 2px;
+    max-width: 56px; min-width: 0;
+  }
+  .drum-root .seq-lane-controls .seq-drag-num {
+    min-width: 24px; min-height: 24px; padding: 2px 3px;
+    font-size: 0.65rem;
+  }
+  .drum-root .seq-lane-controls .seq-drag-num-label { font-size: 0.45rem; }
+  .drum-root .seq-lane-controls .seq-rotation-control button {
+    width: 20px; height: 20px; font-size: 0.55rem; padding: 0;
+  }
+  .drum-root .seq-lane-controls .seq-rotation-val { font-size: 0.55rem; }
+
+  /* ── Lane enable buttons ── */
+  .drum-root .seq-lane-enable-btn {
+    padding: 2px 6px; font-size: 0.55rem; min-height: 28px;
+  }
+
+  /* ── Step grid: force 8 columns on mobile (2 rows of 8 for 16-step patterns) ── */
+  .drum-root .seq-step-grid {
+    grid-template-columns: repeat(8, 1fr) !important;
+    gap: 3px;
+  }
+  .drum-root .seq-step-num { font-size: 0.55rem; height: 12px; line-height: 12px; }
+  .drum-root .seq-step-cell {
+    min-width: 0; min-height: 24px; border-width: 1.5px;
+  }
+  .drum-root .seq-step-cell .prob-label { font-size: 0.45rem; }
+  .drum-root .seq-step-ratchet { height: 18px; }
+  .drum-root .seq-trig-cond { height: 14px; font-size: 0.5rem; }
+
+  /* ── Pitch / velocity / morph / distance bars: shorter ── */
+  .drum-root .seq-pitch-bar-wrap { height: 36px; }
+  .drum-root .seq-vel-bar-wrap { height: 30px; }
+  .drum-root .seq-morph-bar-wrap { height: 36px; }
+  .drum-root .seq-dist-bar-wrap { height: 36px; }
+
+  /* ── Presets / offsets ── */
+  .drum-root .seq-presets { gap: 4px; }
+  .drum-root .seq-preset-btn {
+    padding: 6px 8px; font-size: 0.6rem; min-height: 32px;
+  }
+  .drum-root .seq-offset-presets { gap: 4px; }
+  .drum-root .seq-offset-btn {
+    padding: 6px 8px; font-size: 0.6rem; min-height: 32px;
+  }
+
+  /* ── Mini overview strip ── */
+  .drum-root .seq-mini-overview {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 4px; padding: 6px 8px;
+  }
+  .drum-root .seq-mini-row { padding: 8px 6px; min-height: 36px; }
+
+  /* ── View toggle ── */
+  .drum-root .seq-view-btn {
+    padding: 8px 12px; font-size: 0.6rem; min-height: 36px;
+  }
+
+  /* ── Overview mode ── */
+  .drum-root .seq-overview {
+    overflow: hidden; max-width: 100%; width: 100%;
+    box-sizing: border-box;
+  }
+  .drum-root .seq-ov-row {
+    overflow: hidden; max-width: 100%; width: 100%;
+    box-sizing: border-box;
+  }
+  .drum-root .seq-ov-header {
+    padding: 6px 8px; min-height: 40px; gap: 4px;
+    flex-wrap: wrap; overflow: hidden; max-width: 100%;
+    box-sizing: border-box;
+  }
+  .drum-root .seq-ov-name { font-size: 0.7rem; min-width: 28px; }
+  .drum-root .seq-ov-controls {
+    gap: 4px; flex-wrap: wrap; margin-left: 0; width: 100%;
+    justify-content: flex-start;
+    overflow: hidden; min-width: 0;
+    box-sizing: border-box;
+  }
+  .drum-root .seq-ov-controls label { font-size: 0.6rem; min-width: 0; }
+  .drum-root .seq-ov-controls select {
+    font-size: 0.65rem; padding: 2px 4px; min-height: 28px; width: auto;
+    max-width: 80px; min-width: 0;
+  }
+  .drum-root .seq-ov-controls input[type=number] {
+    width: 32px; font-size: 0.65rem; padding: 2px 4px; min-height: 28px;
+  }
+  .drum-root .seq-ov-controls button {
+    padding: 4px 6px; font-size: 0.55rem; min-height: 28px;
+  }
+  .drum-root .seq-ov-sources { gap: 2px; flex-wrap: wrap; }
+  .drum-root .seq-ov-src-toggle {
+    width: 22px; height: 22px; line-height: 22px; font-size: 0.6rem;
+  }
+  .drum-root .seq-ov-grid-wrap {
+    padding: 4px 6px 6px; overflow: hidden; max-width: 100%;
+    box-sizing: border-box; width: 100%;
+  }
+  /* Overview cells: match detail sizing on mobile */
+  .drum-root .seq-ov-grid-wrap .seq-step-cell {
+    min-width: 0; min-height: 20px; border-width: 1.5px;
+  }
+  .drum-root .seq-ov-select {
+    font-size: 0.55rem; padding: 2px 3px; min-height: 28px; min-width: 0;
+  }
+  .drum-root .seq-ov-clk { width: 34px; }
+  .drum-root .seq-ov-rot button { width: 20px; height: 20px; font-size: 0.55rem; }
+
+  /* ── Drag-number widget ── */
+  .drum-root .seq-drag-num {
+    min-width: 28px; min-height: 28px; padding: 2px 4px;
+    font-size: 0.7rem;
+  }
+  .drum-root .seq-drag-num-label { font-size: 0.5rem; }
+  /* Overview-specific: even more compact drag numbers */
+  .drum-root .seq-ov-controls .seq-drag-num {
+    min-width: 24px; min-height: 24px; padding: 2px 3px;
+    font-size: 0.65rem;
+  }
+  .drum-root .seq-ov-controls .seq-drag-num-label { font-size: 0.45rem; }
+
+  /* ── Envelope visualizer ── */
+  .drum-root .env-viz canvas { height: 50px; }
+
+  /* ── Pitch controls select ── */
+  .drum-root .seq-pitch-controls select {
+    font-size: 0.6rem; padding: 2px 4px; max-width: 80px; min-height: 28px;
+  }
+
+  /* ── All selects: ensure touch-friendly sizing ── */
+  .drum-root select {
+    font-size: 0.65rem;
+    min-height: 28px;
+    padding: 3px 6px;
+  }
+}
+
+/* ══ EXTRA-NARROW (≤ 380px) ══ */
+@media (max-width: 380px) {
+  .drum-root .master-item { flex: 1 1 100%; }
+  .drum-root .seq-tab { padding: 5px 3px; font-size: 0.55rem; }
+  .drum-root .seq-source-toggle {
+    padding: 4px 6px; font-size: 0.55rem; min-height: 32px;
+  }
+  .drum-root .seq-ov-sources { flex-wrap: wrap; }
+  .drum-root .seq-ov-src-toggle { width: 18px; height: 18px; font-size: 0.5rem; }
+  .drum-root .seq-ov-controls select { max-width: 56px; font-size: 0.5rem; }
+  .drum-root .seq-ov-controls { gap: 2px; }
+  .drum-root .seq-ov-controls .seq-drag-num {
+    min-width: 20px; min-height: 20px; font-size: 0.55rem; padding: 1px 2px;
+  }
+  .drum-root .seq-ov-controls button {
+    padding: 2px 4px; font-size: 0.5rem; min-height: 22px;
+  }
+  .drum-root .vc-macros { grid-template-columns: 1fr; }
+}
+
+/* ── Step hint text ── */
+.drum-root .seq-step-hint {
+  font-size: 0.5rem; color: #555; text-align: center;
+  padding: 2px 0 0; letter-spacing: 0.3px;
+}
+
+/* ── Overview select controls ── */
+.drum-root .seq-ov-select {
+  background: var(--bg-input); color: #e5e7eb; border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm); padding: 1px 4px; font-size: 0.55rem;
+  cursor: pointer; transition: border-color 0.15s;
+}
+.drum-root .seq-ov-select:hover { border-color: rgba(255,255,255,0.35); }
+.drum-root .seq-ov-select:focus { border-color: var(--accent-cyan); outline: none; }
+.drum-root .seq-ov-clk { width: 38px; }
+.drum-root .seq-ov-rot { gap: 2px; }
+.drum-root .seq-ov-rot button {
+  width: 16px; height: 16px; padding: 0; line-height: 16px;
+  border: none; border-radius: var(--radius-sm);
+  background: var(--bg-control); color: #888; cursor: pointer;
+  font-size: 0.6rem; text-align: center;
+}
+.drum-root .seq-ov-rot button:hover { background: var(--bg-control-hover); color: #fff; }
+.drum-root .seq-ov-rot .seq-rotation-val {
+  font-size: 0.55rem; color: #888; min-width: 12px; text-align: center;
+}

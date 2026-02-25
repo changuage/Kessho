@@ -21,7 +21,7 @@ import { audioEngine, EngineState } from './audio/engine';
 import { SCALE_FAMILIES } from './audio/scales';
 import { formatChordDegrees, getTimeUntilNextPhrase, calculateDriftedRoot, PHRASE_LENGTH } from './audio/harmony';
 import { getPresetNames, DrumVoiceType as DrumPresetVoice } from './audio/drumPresets';
-import { applyMorphToState, setDrumMorphOverride, clearDrumMorphEndpointOverrides, clearMidMorphOverrides, setDrumMorphDualRangeOverride, getDrumMorphDualRangeOverrides, interpolateDrumMorphDualRanges } from './audio/drumMorph';
+import { applyMorphToState, setDrumMorphOverride, clearDrumMorphEndpointOverrides, clearMidMorphOverrides, setDrumMorphDualRangeOverride, getDrumMorphDualRangeOverrides, interpolateDrumMorphDualRanges, drumMorphManager } from './audio/drumMorph';
 import { isInMidMorph, isAtEndpoint0, isAtEndpoint1 } from './audio/morphUtils';
 import { getLead4opFMPresetList } from './audio/lead4opfm';
 import SnowflakeUI from './ui/SnowflakeUI';
@@ -30,6 +30,8 @@ import CloudPresets from './ui/CloudPresets';
 import { fetchPresetById, isCloudEnabled } from './cloud/supabase';
 import JourneyModeView from './ui/JourneyModeView';
 import { useJourney } from './ui/journeyState';
+import { resolveDrumEuclidPatternParams, seqEuclidean } from './audio/drumSequencer';
+import DrumPage from './ui/drums/DrumPage';
 
 // Note names for display
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -50,11 +52,12 @@ const TEXT_SYMBOLS = {
   emptyCircle: '○\uFE0E',
   // Drum voice icons
   drumSub: '◉\uFE0E',
-  drumKick: '●\uFE0E',
-  drumClick: '▪\uFE0E',
-  drumBeepHi: '△\uFE0E',
-  drumBeepLo: '▽\uFE0E',
+  drumKick: '⬤\uFE0E',
+  drumClick: '▫\uFE0E',
+  drumBeepHi: '⊡\uFE0E',
+  drumBeepLo: '⋰\uFE0E',
   drumNoise: '≋\uFE0E',
+  drumMembrane: '※\uFE0E',
 } as const;
 
 // Inline long-press helper for elements that can't use hooks (IIFEs, etc.)
@@ -525,12 +528,14 @@ const styles = {
     border: '1px solid rgba(100, 150, 200, 0.3)',
     maxHeight: '300px',
     overflowY: 'auto' as const,
+    overflowX: 'hidden' as const,
+    maxWidth: '100%',
   } as React.CSSProperties,
   presetItem: {
     display: 'flex',
     alignItems: 'center',
-    gap: '10px',
-    padding: '10px',
+    gap: '8px',
+    padding: '8px',
     background: 'rgba(255, 255, 255, 0.05)',
     borderRadius: '8px',
     border: '1px solid rgba(255, 255, 255, 0.1)',
@@ -561,7 +566,7 @@ const styles = {
   } as React.CSSProperties,
   grid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))',
     gap: '15px',
     marginBottom: '30px',
   } as React.CSSProperties,
@@ -570,6 +575,8 @@ const styles = {
     borderRadius: '12px',
     padding: '15px',
     border: '1px solid rgba(255, 255, 255, 0.1)',
+    overflow: 'hidden',
+    maxWidth: '100%',
   } as React.CSSProperties,
   panelTitle: {
     fontSize: '1.1rem',
@@ -585,6 +592,8 @@ const styles = {
     justifyContent: 'space-between',
     marginBottom: '5px',
     fontSize: '0.85rem',
+    minWidth: 0,
+    gap: '4px',
   } as React.CSSProperties,
   slider: {
     width: '100%',
@@ -602,6 +611,7 @@ const styles = {
     background: 'rgba(0, 0, 0, 0.3)',
     color: 'white',
     fontSize: '0.9rem',
+    colorScheme: 'dark',
   } as React.CSSProperties,
   tabBar: {
     display: 'flex',
@@ -644,18 +654,25 @@ const styles = {
     border: '1px solid rgba(100, 150, 200, 0.3)',
     fontFamily: 'monospace',
     fontSize: '0.85rem',
+    overflow: 'hidden',
+    maxWidth: '100%',
   } as React.CSSProperties,
   debugRow: {
     display: 'flex',
     justifyContent: 'space-between',
     marginBottom: '8px',
+    gap: '8px',
+    flexWrap: 'wrap' as const,
   } as React.CSSProperties,
   debugLabel: {
     color: '#9ca3af',
+    flexShrink: 0,
   } as React.CSSProperties,
   debugValue: {
     color: '#a5c4d4',
     fontWeight: 'bold',
+    wordBreak: 'break-all' as const,
+    minWidth: 0,
   } as React.CSSProperties,
   copied: {
     color: '#2ecc71',
@@ -813,10 +830,10 @@ const Slider: React.FC<SliderProps> = ({
     : 0;
 
   return (
-    <div style={styles.sliderGroup}>
-      <div style={styles.sliderLabel}>
-        <span>{label}</span>
-        <span>
+    <div className="app-slider-group" style={styles.sliderGroup}>
+      <div className="app-slider-label" style={styles.sliderLabel}>
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flexShrink: 1 }}>{label}</span>
+        <span style={{ flexShrink: 0, whiteSpace: 'nowrap' }}>
           {displayValue}
           {unit || ''}
         </span>
@@ -828,6 +845,7 @@ const Slider: React.FC<SliderProps> = ({
         step={sliderStep}
         value={sliderValue}
         onChange={handleChange}
+        className="app-slider"
         style={{
           ...styles.slider,
           background: `linear-gradient(to right, rgba(160,200,220,0.5) 0%, rgba(160,200,220,0.5) ${fillPercent}%, rgba(255,255,255,0.2) ${fillPercent}%, rgba(255,255,255,0.2) 100%)`,
@@ -847,14 +865,15 @@ interface SelectProps<T extends string> {
 
 function Select<T extends string>({ label, value, options, onChange }: SelectProps<T>) {
   return (
-    <div style={styles.sliderGroup}>
-      <div style={styles.sliderLabel}>
-        <span>{label}</span>
+    <div className="app-slider-group" style={styles.sliderGroup}>
+      <div className="app-slider-label" style={styles.sliderLabel}>
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{label}</span>
       </div>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value as T)}
-        style={styles.select}
+        className="app-select"
+        style={{ ...styles.select, maxWidth: '100%' }}
       >
         {options.map((opt) => (
           <option key={opt.value} value={opt.value}>
@@ -1025,10 +1044,10 @@ const DualSlider: React.FC<DualSliderProps> = ({
       : 0;
 
     return (
-      <div style={styles.sliderGroup}>
-        <div style={styles.sliderLabel}>
-          <span>{label}</span>
-          <span>
+      <div className="app-slider-group" style={styles.sliderGroup}>
+        <div className="app-slider-label" style={styles.sliderLabel}>
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flexShrink: 1 }}>{label}</span>
+          <span style={{ flexShrink: 0, whiteSpace: 'nowrap' }}>
             {formatValue(value)}
             {unit || ''}
           </span>
@@ -1044,6 +1063,7 @@ const DualSlider: React.FC<DualSliderProps> = ({
           onTouchStart={handleLongPressStart}
           onTouchEnd={handleLongPressEnd}
           onTouchMove={handleLongPressMove}
+          className="app-slider"
           style={{
             ...styles.slider,
             background: `linear-gradient(to right, rgba(160,200,220,0.5) 0%, rgba(160,200,220,0.5) ${fillPercent}%, rgba(255,255,255,0.2) ${fillPercent}%, rgba(255,255,255,0.2) 100%)`,
@@ -1069,16 +1089,16 @@ const DualSlider: React.FC<DualSliderProps> = ({
     : value;
 
   return (
-    <div style={styles.sliderGroup}>
-      <div style={styles.sliderLabel}>
-        <span>
+    <div className="app-slider-group" style={styles.sliderGroup}>
+      <div className="app-slider-label" style={styles.sliderLabel}>
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flexShrink: 1 }}>
           {label}
           <span style={{...styles.dualModeIndicator, color: modeColor}}>{modeLabel}</span>
         </span>
-        <span>
-          {formatValue(dualRange?.min ?? info.min)} - {formatValue(dualRange?.max ?? info.max)}
+        <span style={{ flexShrink: 0, whiteSpace: 'nowrap', fontSize: '0.7rem' }}>
+          {formatValue(dualRange?.min ?? info.min)}-{formatValue(dualRange?.max ?? info.max)}
           {unit || ''}
-          <span style={{ color: '#fff', marginLeft: '8px' }}>
+          <span style={{ color: '#fff', marginLeft: '4px' }}>
             ({formatValue(currentValue)})
           </span>
         </span>
@@ -1160,8 +1180,9 @@ const CollapsiblePanel: React.FC<CollapsiblePanelProps> = ({
   const showContent = !isMobile || isExpanded;
 
   return (
-    <div style={styles.panel}>
+    <div className="app-panel" style={styles.panel}>
       <h3
+        className="app-panel-title"
         style={{
           ...styles.panelTitle,
           ...(titleColor ? { color: titleColor } : {}),
@@ -1401,6 +1422,28 @@ const App: React.FC = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // ── Mobile-responsive style overrides ──
+  const m = useMemo(() => {
+    if (!isMobile) return null;
+    return {
+      container: { padding: '4px', maxWidth: '100%', overflowX: 'hidden' as const } as React.CSSProperties,
+      controls: { gap: '4px', marginBottom: '10px', paddingTop: '6px' } as React.CSSProperties,
+      grid: { gridTemplateColumns: '1fr', gap: '8px', marginBottom: '12px' } as React.CSSProperties,
+      panel: { padding: '10px', borderRadius: '8px', maxWidth: '100%', overflow: 'hidden' as const } as React.CSSProperties,
+      panelTitle: { fontSize: '0.9rem', marginBottom: '8px' } as React.CSSProperties,
+      sliderGroup: { marginBottom: '8px', maxWidth: '100%', overflow: 'hidden' as const } as React.CSSProperties,
+      sliderLabel: { fontSize: '0.75rem', marginBottom: '3px', gap: '4px' } as React.CSSProperties,
+      select: { fontSize: '0.78rem', padding: '6px 8px', minHeight: '36px', maxWidth: '100%' } as React.CSSProperties,
+      tabBar: { padding: '4px 6px', gap: '2px', borderRadius: '8px', marginBottom: '8px', flexWrap: 'wrap' as const } as React.CSSProperties,
+      tab: { padding: '6px 4px', minWidth: '40px', fontSize: '0.58rem', gap: '2px' } as React.CSSProperties,
+      tabIcon: { fontSize: '0.9rem' } as React.CSSProperties,
+      iconButton: { width: '36px', height: '36px', fontSize: '1.2rem', padding: '4px' } as React.CSSProperties,
+      slider: { height: '20px' } as React.CSSProperties,
+      debugPanel: { padding: '10px', fontSize: '0.75rem', wordBreak: 'break-all' as const, overflow: 'hidden' as const } as React.CSSProperties,
+      presetList: { padding: '10px', maxHeight: '200px' } as React.CSSProperties,
+    };
+  }, [isMobile]);
+
   // Collapsible panel state for mobile (track which panels are expanded)
   const [expandedPanels, setExpandedPanels] = useState<Set<string>>(new Set());
   const togglePanel = useCallback((panelId: string) => {
@@ -1512,7 +1555,19 @@ const App: React.FC = () => {
     beepHi: number;
     beepLo: number;
     noise: number;
-  }>({ sub: 0.5, kick: 0.5, click: 0.5, beepHi: 0.5, beepLo: 0.5, noise: 0.5 });
+    membrane: number;
+  }>({ sub: 0.5, kick: 0.5, click: 0.5, beepHi: 0.5, beepLo: 0.5, noise: 0.5, membrane: 0.5 });
+
+  const [drumSeqPlayheads, setDrumSeqPlayheads] = useState<number[]>([0, 0, 0, 0]);
+  const [drumSeqHitCounts, setDrumSeqHitCounts] = useState<number[]>([0, 0, 0, 0]);
+  const [drumEditingVoice, setDrumEditingVoice] = useState<string | null>(null);
+  const [drumTriggeredVoices, setDrumTriggeredVoices] = useState<Record<string, boolean>>({});
+  const drumTriggerTimersRef = useRef<Record<string, number | null>>({});
+  const drumViewModeRef = useRef<'simple' | 'detail' | 'overview'>('detail');
+
+  // Evolve flash state — driven by audio engine callback, passed to DrumPage
+  const [drumEuclidEvolveFlashing, setDrumEuclidEvolveFlashing] = useState<boolean[]>([false, false, false, false]);
+  const drumEuclidEvolveFlashTimersRef = useRef<Array<number | null>>([null, null, null, null]);
 
   // Trigger position map: maps slider keys to their per-trigger position values
   const triggerPositionMap = useMemo<Record<string, number>>(() => ({
@@ -1533,7 +1588,7 @@ const App: React.FC = () => {
   // Drum morph keys - these use per-trigger randomization, not random walk
   const drumMorphKeys = useMemo(() => new Set<keyof SliderState>([
     'drumSubMorph', 'drumKickMorph', 'drumClickMorph',
-    'drumBeepHiMorph', 'drumBeepLoMorph', 'drumNoiseMorph'
+    'drumBeepHiMorph', 'drumBeepLoMorph', 'drumNoiseMorph', 'drumMembraneMorph'
   ]), []);
 
   // Map drum morph keys to voice names for engine API
@@ -1543,7 +1598,8 @@ const App: React.FC = () => {
     drumClickMorph: 'click',
     drumBeepHiMorph: 'beepHi',
     drumBeepLoMorph: 'beepLo',
-    drumNoiseMorph: 'noise'
+    drumNoiseMorph: 'noise',
+    drumMembraneMorph: 'membrane'
   }), []);
 
   const handleCycleSliderMode = useCallback((key: keyof SliderState) => {
@@ -1568,6 +1624,8 @@ const App: React.FC = () => {
       drumVoice = 'beepLo'; drumMorphKey = 'drumBeepLoMorph';
     } else if (keyStr.startsWith('drumNoise') && !keyStr.includes('Morph') && !keyStr.includes('Preset')) {
       drumVoice = 'noise'; drumMorphKey = 'drumNoiseMorph';
+    } else if (keyStr.startsWith('drumMembrane') && !keyStr.includes('Morph') && !keyStr.includes('Preset')) {
+      drumVoice = 'membrane'; drumMorphKey = 'drumMembraneMorph';
     }
 
     // Cycle: single → walk → sampleHold → single
@@ -1652,8 +1710,8 @@ const App: React.FC = () => {
           const max = Math.min(info.max, currentVal + rangeSize / 2);
           setDualSliderRanges(r => ({ ...r, [key]: { min, max } }));
 
-          // Initialize random walk for walk mode (not for drum morph or sampleHold)
-          if (nextMode === 'walk' && !drumMorphKeys.has(key)) {
+          // Initialize random walk for walk mode (not for sampleHold)
+          if (nextMode === 'walk') {
             randomWalkRef.current[key] = {
               position: Math.random(),
               velocity: (Math.random() - 0.5) * 0.02,
@@ -1750,6 +1808,8 @@ const App: React.FC = () => {
       drumVoice = 'beepLo'; drumMorphKey = 'drumBeepLoMorph';
     } else if (keyStr.startsWith('drumNoise') && !keyStr.includes('Morph') && !keyStr.includes('Preset')) {
       drumVoice = 'noise'; drumMorphKey = 'drumNoiseMorph';
+    } else if (keyStr.startsWith('drumMembrane') && !keyStr.includes('Morph') && !keyStr.includes('Preset')) {
+      drumVoice = 'membrane'; drumMorphKey = 'drumMembraneMorph';
     }
     
     // Update drum morph dual range override at endpoints
@@ -1765,30 +1825,33 @@ const App: React.FC = () => {
   }, [isJourneyPlaying, morphPosition, morphPresetA, morphPresetB, state]);
 
   // Update engine morph ranges when dual mode changes for drum morph sliders
+  // Only set morphRange for sampleHold (per-trigger random within range).
+  // For walk mode, leave range null so engine uses the state value (updated by walk timer).
   useEffect(() => {
     if (!audioEngine.setDrumMorphRange) return;
     drumMorphKeys.forEach(key => {
       const voice = drumMorphKeyToVoice[key];
       if (!voice) return; // Guard against undefined
       const keyStr = key as string;
-      if (sliderModes[keyStr] && sliderModes[keyStr] !== 'single') {
+      if (sliderModes[keyStr] === 'sampleHold') {
         const range = dualSliderRanges[key as keyof SliderState];
         if (range) {
           audioEngine.setDrumMorphRange(voice, range);
         }
       } else {
+        // single or walk → engine uses slider state value directly
         audioEngine.setDrumMorphRange(voice, null);
       }
     });
   }, [sliderModes, dualSliderRanges, drumMorphKeys, drumMorphKeyToVoice]);
 
-  // Push non-drum dualSliderRanges to engine for expression/delay/ocean/morph per-trigger sampling
+  // Push non-drum dualSliderRanges to engine for per-trigger sampling (sampleHold only).
+  // Walk mode updates state values directly via the walk timer, so the engine reads those.
   useEffect(() => {
     if (audioEngine.setDualRanges) {
-      // Build map of all non-drum ranges that are in walk or sampleHold mode
       const engineRanges: Partial<Record<string, { min: number; max: number }>> = {};
       Object.entries(dualSliderRanges).forEach(([key, range]) => {
-        if (range && !DRUM_MORPH_KEYS.has(key as keyof SliderState)) {
+        if (range && !DRUM_MORPH_KEYS.has(key as keyof SliderState) && sliderModes[key] === 'sampleHold') {
           engineRanges[key] = range;
         }
       });
@@ -1796,11 +1859,10 @@ const App: React.FC = () => {
     }
   }, [dualSliderRanges, sliderModes]);
 
-  // Random walk animation (only for sliders in 'walk' mode, excludes drum morph)
+  // Random walk animation (for all sliders in 'walk' mode)
   useEffect(() => {
-    // Get all keys in walk mode, excluding drum morph
     const walkKeys = Object.entries(sliderModes)
-      .filter(([key, mode]) => mode === 'walk' && !drumMorphKeys.has(key as keyof SliderState))
+      .filter(([key, mode]) => mode === 'walk')
       .map(([key]) => key as keyof SliderState);
     if (walkKeys.length === 0) return;
 
@@ -1840,7 +1902,7 @@ const App: React.FC = () => {
       if (hasUpdates) {
         setRandomWalkPositions(prev => ({ ...prev, ...updates }));
         
-        // Update actual parameter values for the audio engine (only for walk keys, not drum morph)
+        // Update actual parameter values for the audio engine
         setState(prev => {
           const newState = { ...prev };
           walkKeys.forEach(key => {
@@ -1949,6 +2011,7 @@ const App: React.FC = () => {
           beepHi: 'drumBeepHiMorph',
           beepLo: 'drumBeepLoMorph',
           noise: 'drumNoiseMorph',
+          membrane: 'drumMembraneMorph',
         };
         const morphKey = voiceToMorphKey[voice];
         
@@ -1957,7 +2020,7 @@ const App: React.FC = () => {
         if (morphKey) {
           setState(prev => {
             // Check if updates are enabled
-            if (!prev.drumRandomMorphUpdate) return prev;
+            if (!prev.drumMorphSliderAnimate) return prev;
 
             // Convert normalized position (0-1) back to actual morph value using the range
             const range = dualSliderRanges[morphKey];
@@ -1969,13 +2032,105 @@ const App: React.FC = () => {
             const stateWithMorph = { ...prev, [morphKey]: actualMorphValue };
             
             // Apply morphed preset values to the sliders
-            const morphedParams = applyMorphToState(stateWithMorph, voice as any);
+            const morphedParams = applyMorphToState(stateWithMorph, voice as DrumPresetVoice);
             return { ...stateWithMorph, ...morphedParams };
           });
         }
       });
     }
   }, [dualSliderRanges]);
+
+  // Drum Euclid evolve trigger callback (lane mutation pulse)
+  useEffect(() => {
+    audioEngine.setDrumEuclidEvolveTriggerCallback((laneIndex: number) => {
+      if (laneIndex < 0 || laneIndex > 3) return;
+      setDrumEuclidEvolveFlashing(prev => prev.map((v, idx) => (idx === laneIndex ? true : v)));
+
+      const existingTimer = drumEuclidEvolveFlashTimersRef.current[laneIndex];
+      if (existingTimer) {
+        window.clearTimeout(existingTimer);
+      }
+
+      drumEuclidEvolveFlashTimersRef.current[laneIndex] = window.setTimeout(() => {
+        setDrumEuclidEvolveFlashing(prev => prev.map((v, idx) => (idx === laneIndex ? false : v)));
+        drumEuclidEvolveFlashTimersRef.current[laneIndex] = null;
+      }, 180);
+    });
+
+    return () => {
+      drumEuclidEvolveFlashTimersRef.current.forEach((timer, laneIndex) => {
+        if (timer) {
+          window.clearTimeout(timer);
+          drumEuclidEvolveFlashTimersRef.current[laneIndex] = null;
+        }
+      });
+    };
+  }, []);
+
+  // Drum Euclid step position callback (live playhead tracking)
+  useEffect(() => {
+    audioEngine.setDrumStepPositionCallback((steps: number[], hitCounts: number[]) => {
+      setDrumSeqPlayheads(steps);
+      setDrumSeqHitCounts(hitCounts);
+    });
+  }, []);
+
+  // Drum trigger callback (per-voice flash for envelope visualizer)
+  useEffect(() => {
+    audioEngine.setDrumTriggerCallback((voice: string, _velocity: number) => {
+      setDrumTriggeredVoices(prev => ({ ...prev, [voice]: true }));
+      const existing = drumTriggerTimersRef.current[voice];
+      if (existing) window.clearTimeout(existing);
+      drumTriggerTimersRef.current[voice] = window.setTimeout(() => {
+        setDrumTriggeredVoices(prev => ({ ...prev, [voice]: false }));
+        drumTriggerTimersRef.current[voice] = null;
+      }, 120);
+    });
+  }, []);
+
+  // Auto-morph animation loop — drives morph positions for voices with auto-morph enabled
+  const autoMorphRafRef = useRef<number | null>(null);
+  const autoMorphStateRef = useRef(state);
+  autoMorphStateRef.current = state;
+  useEffect(() => {
+    const MORPH_STATE_KEYS: Record<string, keyof SliderState> = {
+      sub: 'drumSubMorph',
+      kick: 'drumKickMorph',
+      click: 'drumClickMorph',
+      beepHi: 'drumBeepHiMorph',
+      beepLo: 'drumBeepLoMorph',
+      noise: 'drumNoiseMorph',
+      membrane: 'drumMembraneMorph',
+    };
+
+    let active = true;
+    const tick = () => {
+      if (!active) return;
+      const newValues = drumMorphManager.update(autoMorphStateRef.current, performance.now());
+      if (newValues.size > 0) {
+        setState(prev => {
+          const updates: Partial<SliderState> = {};
+          for (const [voice, value] of newValues) {
+            const key = MORPH_STATE_KEYS[voice];
+            if (key && Math.abs((prev[key] as number) - value) > 0.001) {
+              (updates as Record<string, unknown>)[key] = value;
+            }
+          }
+          if (Object.keys(updates).length === 0) return prev;
+          return { ...prev, ...updates };
+        });
+      }
+      autoMorphRafRef.current = requestAnimationFrame(tick);
+    };
+    autoMorphRafRef.current = requestAnimationFrame(tick);
+    return () => {
+      active = false;
+      if (autoMorphRafRef.current !== null) {
+        cancelAnimationFrame(autoMorphRafRef.current);
+        autoMorphRafRef.current = null;
+      }
+    };
+  }, []);
 
   // Countdown timer
   useEffect(() => {
@@ -2005,11 +2160,9 @@ const App: React.FC = () => {
     }
   }, [engineState.isRunning]);
 
-  // Update engine when state changes
+  // Update engine when state changes (always — drum sequencer works independently)
   useEffect(() => {
-    if (engineState.isRunning) {
-      audioEngine.updateParams(state);
-    }
+    audioEngine.updateParams(state);
   }, [state, engineState.isRunning]);
 
   // Handle slider change
@@ -2079,6 +2232,9 @@ const App: React.FC = () => {
     } else if (keyStr.startsWith('drumNoise') && !keyStr.includes('Morph') && !keyStr.includes('Preset')) {
       drumVoice = 'noise';
       drumMorphKey = 'drumNoiseMorph';
+    } else if (keyStr.startsWith('drumMembrane') && !keyStr.includes('Morph') && !keyStr.includes('Preset')) {
+      drumVoice = 'membrane';
+      drumMorphKey = 'drumMembraneMorph';
     }
     
     // If this is a drum synth param, check for drum morph endpoint and save override
@@ -2112,6 +2268,7 @@ const App: React.FC = () => {
         drumBeepHiMorph: 'beepHi', drumBeepHiPresetA: 'beepHi', drumBeepHiPresetB: 'beepHi',
         drumBeepLoMorph: 'beepLo', drumBeepLoPresetA: 'beepLo', drumBeepLoPresetB: 'beepLo',
         drumNoiseMorph: 'noise', drumNoisePresetA: 'noise', drumNoisePresetB: 'noise',
+        drumMembraneMorph: 'membrane', drumMembranePresetA: 'membrane', drumMembranePresetB: 'membrane',
       };
       
       const voice = morphKeys[key];
@@ -2143,7 +2300,7 @@ const App: React.FC = () => {
     // Map of voice to its drum synth param prefixes
     const voiceParamPrefixes: Record<DrumPresetVoice, string> = {
       sub: 'drumSub', kick: 'drumKick', click: 'drumClick',
-      beepHi: 'drumBeepHi', beepLo: 'drumBeepLo', noise: 'drumNoise',
+      beepHi: 'drumBeepHi', beepLo: 'drumBeepLo', noise: 'drumNoise', membrane: 'drumMembrane',
     };
     
     // Map preset keys to their voice
@@ -2154,12 +2311,13 @@ const App: React.FC = () => {
       drumBeepHiPresetA: 'beepHi', drumBeepHiPresetB: 'beepHi',
       drumBeepLoPresetA: 'beepLo', drumBeepLoPresetB: 'beepLo',
       drumNoisePresetA: 'noise', drumNoisePresetB: 'noise',
+      drumMembranePresetA: 'membrane', drumMembranePresetB: 'membrane',
     };
     
     // Map voice to its morph key to get current position
     const voiceMorphKeys: Record<DrumPresetVoice, keyof SliderState> = {
       sub: 'drumSubMorph', kick: 'drumKickMorph', click: 'drumClickMorph',
-      beepHi: 'drumBeepHiMorph', beepLo: 'drumBeepLoMorph', noise: 'drumNoiseMorph',
+      beepHi: 'drumBeepHiMorph', beepLo: 'drumBeepLoMorph', noise: 'drumNoiseMorph', membrane: 'drumMembraneMorph',
     };
     
     // When a preset changes, only reset dual slider modes/ranges if we're at that endpoint
@@ -2210,7 +2368,7 @@ const App: React.FC = () => {
     // Mimics lerpPresets behavior: ranges interpolate smoothly, mode only snaps when range collapses
     const drumMorphVoiceKeys: Record<string, DrumPresetVoice> = {
       drumSubMorph: 'sub', drumKickMorph: 'kick', drumClickMorph: 'click',
-      drumBeepHiMorph: 'beepHi', drumBeepLoMorph: 'beepLo', drumNoiseMorph: 'noise',
+      drumBeepHiMorph: 'beepHi', drumBeepLoMorph: 'beepLo', drumNoiseMorph: 'noise', drumMembraneMorph: 'membrane',
     };
     
     const morphVoice = drumMorphVoiceKeys[key];
@@ -2275,8 +2433,8 @@ const App: React.FC = () => {
       walkPos = triggerPositionMap[keyStr];
     }
 
-    // For drum morph keys, use per-trigger positions regardless
-    if (drumMorphKeys.has(paramKey)) {
+    // For drum morph keys in sampleHold, use per-trigger positions
+    if (drumMorphKeys.has(paramKey) && mode === 'sampleHold') {
       const voice = drumMorphKeyToVoice[paramKey];
       if (voice) {
         walkPos = drumMorphPositions[voice];
@@ -2354,6 +2512,9 @@ const App: React.FC = () => {
     // Recording must be stopped manually
     stopIOSMediaSession();
     audioEngine.stop();
+
+    // Master stop also turns off the drum sequencer
+    setState(prev => ({ ...prev, drumEuclidMasterEnabled: false }));
     
     // Stop journey playback if running
     if (isJourneyPlaying) {
@@ -3025,7 +3186,7 @@ const App: React.FC = () => {
       'cofDriftRate', 'cofDriftRange',
       // Drum morph positions - should interpolate when master morph changes
       'drumSubMorph', 'drumKickMorph', 'drumClickMorph',
-      'drumBeepHiMorph', 'drumBeepLoMorph', 'drumNoiseMorph',
+      'drumBeepHiMorph', 'drumBeepLoMorph', 'drumNoiseMorph', 'drumMembraneMorph',
       // Drum voice params - should interpolate when master morph changes
       'drumLevel', 'drumSubFreq', 'drumSubDecay', 'drumSubLevel', 'drumSubTone',
       'drumKickFreq', 'drumKickPitchEnv', 'drumKickPitchDecay', 'drumKickDecay', 'drumKickLevel', 'drumKickClick',
@@ -3056,6 +3217,7 @@ const App: React.FC = () => {
       'drumSubPresetA', 'drumSubPresetB', 'drumKickPresetA', 'drumKickPresetB',
       'drumClickPresetA', 'drumClickPresetB', 'drumBeepHiPresetA', 'drumBeepHiPresetB',
       'drumBeepLoPresetA', 'drumBeepLoPresetB', 'drumNoisePresetA', 'drumNoisePresetB',
+      'drumMembranePresetA', 'drumMembranePresetB',
       'drumNoiseFilterType',
     ];
     for (const key of discreteKeys) {
@@ -3067,9 +3229,8 @@ const App: React.FC = () => {
       'lead1UseCustomAdsr', 'leadEuclideanMasterEnabled', 'leadEuclid1Enabled', 'leadEuclid2Enabled',
       'leadEuclid3Enabled', 'leadEuclid4Enabled',
       // Drum synth booleans
-      'drumRandomEnabled',
       'drumSubMorphAuto', 'drumKickMorphAuto', 'drumClickMorphAuto',
-      'drumBeepHiMorphAuto', 'drumBeepLoMorphAuto', 'drumNoiseMorphAuto',
+      'drumBeepHiMorphAuto', 'drumBeepLoMorphAuto', 'drumNoiseMorphAuto', 'drumMembraneMorphAuto',
     ];
     for (const key of boolKeys) {
       (result as Record<string, unknown>)[key] = tNorm < 0.5 ? stateA[key] : stateB[key];
@@ -3308,7 +3469,7 @@ const App: React.FC = () => {
   
   useEffect(() => {
     // Check each drum voice for preset changes
-    const drumVoices: DrumPresetVoice[] = ['sub', 'kick', 'click', 'beepHi', 'beepLo', 'noise'];
+    const drumVoices: DrumPresetVoice[] = ['sub', 'kick', 'click', 'beepHi', 'beepLo', 'noise', 'membrane'];
     const presetKeys: Record<DrumPresetVoice, { a: keyof SliderState; b: keyof SliderState; morph: keyof SliderState }> = {
       sub: { a: 'drumSubPresetA', b: 'drumSubPresetB', morph: 'drumSubMorph' },
       kick: { a: 'drumKickPresetA', b: 'drumKickPresetB', morph: 'drumKickMorph' },
@@ -3316,6 +3477,7 @@ const App: React.FC = () => {
       beepHi: { a: 'drumBeepHiPresetA', b: 'drumBeepHiPresetB', morph: 'drumBeepHiMorph' },
       beepLo: { a: 'drumBeepLoPresetA', b: 'drumBeepLoPresetB', morph: 'drumBeepLoMorph' },
       noise: { a: 'drumNoisePresetA', b: 'drumNoisePresetB', morph: 'drumNoiseMorph' },
+      membrane: { a: 'drumMembranePresetA', b: 'drumMembranePresetB', morph: 'drumMembraneMorph' },
     };
     
     for (const voice of drumVoices) {
@@ -4328,12 +4490,12 @@ const App: React.FC = () => {
 
   // Render advanced UI
   return (
-    <div style={styles.container}>
+    <div className="app-container" style={{ ...styles.container, ...m?.container }}>
       {/* Controls - centered */}
-      <div style={{ ...styles.controls, paddingTop: '12px' }}>
+      <div className="app-controls" style={{ ...styles.controls, paddingTop: '12px', ...m?.controls }}>
         {!(engineState.isRunning || isJourneyPlaying) ? (
           <button
-            style={{ ...styles.iconButton, ...styles.startButton }}
+            style={{ ...styles.iconButton, ...styles.startButton, ...m?.iconButton }}
             onClick={handleStart}
             title="Start"
           >
@@ -4341,7 +4503,7 @@ const App: React.FC = () => {
           </button>
         ) : (
           <button
-            style={{ ...styles.iconButton, ...styles.stopButton }}
+            style={{ ...styles.iconButton, ...styles.stopButton, ...m?.iconButton }}
             onClick={handleStop}
             title="Stop"
           >
@@ -4353,6 +4515,7 @@ const App: React.FC = () => {
           style={{ 
             ...styles.iconButton, 
             ...(isRecording ? styles.recordingButton : isRecordingArmed ? styles.recordArmedButton : styles.recordButton),
+            ...m?.iconButton,
             position: 'relative',
             opacity: 1,
           }}
@@ -4386,28 +4549,28 @@ const App: React.FC = () => {
         </button>
         {/* Save/Import preset buttons */}
         <button
-          style={{ ...styles.iconButton, ...styles.presetButton }}
+          style={{ ...styles.iconButton, ...styles.presetButton, ...m?.iconButton }}
           onClick={handleSavePreset}
           title="Save Preset"
         >
           {TEXT_SYMBOLS.download}
         </button>
         <button
-          style={{ ...styles.iconButton, ...styles.presetButton }}
+          style={{ ...styles.iconButton, ...styles.presetButton, ...m?.iconButton }}
           onClick={() => fileInputRef.current?.click()}
           title="Import Preset"
         >
           {TEXT_SYMBOLS.upload}
         </button>
         <button
-          style={{ ...styles.iconButton, ...styles.simpleButton }}
+          style={{ ...styles.iconButton, ...styles.simpleButton, ...m?.iconButton }}
           onClick={() => setUiMode('journey')}
           title="Journey Mode"
         >
           ⟡
         </button>
         <button
-          style={{ ...styles.iconButton, ...styles.simpleButton }}
+          style={{ ...styles.iconButton, ...styles.simpleButton, ...m?.iconButton }}
           onClick={() => setUiMode('snowflake')}
           title="Simple Mode"
         >
@@ -4424,7 +4587,7 @@ const App: React.FC = () => {
 
       {/* Preset List */}
       {showPresetList && (
-        <div style={styles.presetListContainer}>
+        <div className="app-preset-list" style={{ ...styles.presetListContainer, ...m?.presetList }}>
           <h4 style={{ margin: '0 0 10px', color: '#a855f7' }}>Presets (from /presets folder)</h4>
           {presetsLoading ? (
             <p style={{ color: '#6b7280', fontStyle: 'italic' }}>Loading presets...</p>
@@ -4461,61 +4624,66 @@ const App: React.FC = () => {
       )}
 
       {/* Tab Bar */}
-      <div style={styles.tabBar}>
+      <div className="app-tab-bar" style={{ ...styles.tabBar, ...m?.tabBar }}>
         <button
           style={{
             ...styles.tab,
             ...(activeTab === 'global' ? styles.tabActive : {}),
+            ...m?.tab,
           }}
           onClick={() => setActiveTab('global')}
         >
-          <span style={styles.tabIcon}>{TEXT_SYMBOLS.target}</span>
+          <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>{TEXT_SYMBOLS.target}</span>
           <span>Global</span>
         </button>
         <button
           style={{
             ...styles.tab,
             ...(activeTab === 'synth' ? styles.tabActive : {}),
+            ...m?.tab,
           }}
           onClick={() => setActiveTab('synth')}
         >
-          <span style={styles.tabIcon}>∿</span>
+          <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>∿</span>
           <span>Synth</span>
         </button>
         <button
           style={{
             ...styles.tab,
             ...(activeTab === 'lead' ? styles.tabActive : {}),
+            ...m?.tab,
           }}
           onClick={() => setActiveTab('lead')}
         >
-          <span style={styles.tabIcon}>♪</span>
+          <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>♪</span>
           <span>Lead</span>
         </button>
         <button
           style={{
             ...styles.tab,
             ...(activeTab === 'drums' ? styles.tabActive : {}),
+            ...m?.tab,
           }}
           onClick={() => setActiveTab('drums')}
         >
-          <span style={styles.tabIcon}>⋮⋮</span>
+          <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>⋮⋮</span>
           <span>Drums</span>
         </button>
         <button
           style={{
             ...styles.tab,
             ...(activeTab === 'fx' ? styles.tabActive : {}),
+            ...m?.tab,
           }}
           onClick={() => setActiveTab('fx')}
         >
-          <span style={styles.tabIcon}>◈</span>
+          <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>◈</span>
           <span>FX</span>
         </button>
       </div>
 
       {/* Parameter Grid */}
-      <div style={styles.grid}>
+      <div className="app-grid" style={{ ...styles.grid, ...m?.grid }}>
         {/* === GLOBAL TAB === */}
         {activeTab === 'global' && (
           <>
@@ -5495,7 +5663,6 @@ const App: React.FC = () => {
             display: 'flex',
             alignItems: 'flex-end',
             gap: '8px',
-            height: '120px',
             padding: '10px',
             background: 'rgba(0,0,0,0.3)',
             borderRadius: '8px',
@@ -5505,6 +5672,7 @@ const App: React.FC = () => {
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 }}>
               <input
                 type="range"
+                className="adsr-vertical"
                 min="0.01"
                 max="8"
                 step="0.01"
@@ -5525,6 +5693,7 @@ const App: React.FC = () => {
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 }}>
               <input
                 type="range"
+                className="adsr-vertical"
                 min="0.01"
                 max="8"
                 step="0.01"
@@ -5545,6 +5714,7 @@ const App: React.FC = () => {
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 }}>
               <input
                 type="range"
+                className="adsr-vertical"
                 min="0"
                 max="1"
                 step="0.01"
@@ -5565,6 +5735,7 @@ const App: React.FC = () => {
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 }}>
               <input
                 type="range"
+                className="adsr-vertical"
                 min="0.01"
                 max="16"
                 step="0.01"
@@ -5582,7 +5753,7 @@ const App: React.FC = () => {
               <span style={{ fontSize: '0.6rem', color: '#666' }}>{state.synthRelease.toFixed(1)}s</span>
             </div>
             {/* Visual ADSR curve preview */}
-            <div style={{ flex: 2, height: '100%', marginLeft: '8px' }}>
+            <div style={{ flex: 2, height: '80px', marginLeft: '8px' }}>
               <svg width="100%" height="100%" viewBox="0 0 100 80" preserveAspectRatio="none">
                 {/* Normalize times for display */}
                 {(() => {
@@ -6019,8 +6190,8 @@ const App: React.FC = () => {
           onToggle={togglePanel}
         >
           {/* Reverb Enable toggle */}
-          <div style={styles.sliderGroup}>
-            <div style={styles.sliderLabel}>
+          <div className="app-slider-group" style={styles.sliderGroup}>
+            <div className="app-slider-label" style={styles.sliderLabel}>
               <span>Reverb</span>
               <span style={{ 
                 color: state.reverbEnabled ? '#10b981' : '#6b7280',
@@ -6140,8 +6311,8 @@ const App: React.FC = () => {
           onToggle={togglePanel}
         >
           {/* Enable toggle */}
-          <div style={styles.sliderGroup}>
-            <div style={styles.sliderLabel}>
+          <div className="app-slider-group" style={styles.sliderGroup}>
+            <div className="app-slider-label" style={styles.sliderLabel}>
               <span>Granular Enabled</span>
               <span style={{ 
                 color: state.granularEnabled ? '#10b981' : '#6b7280',
@@ -6279,8 +6450,8 @@ const App: React.FC = () => {
           onToggle={togglePanel}
         >
           {/* Enable toggle */}
-          <div style={styles.sliderGroup}>
-            <div style={styles.sliderLabel}>
+          <div className="app-slider-group" style={styles.sliderGroup}>
+            <div className="app-slider-label" style={styles.sliderLabel}>
               <span>Lead Enabled</span>
               <span style={{ 
                 color: state.leadEnabled ? '#10b981' : '#6b7280',
@@ -6907,8 +7078,8 @@ const App: React.FC = () => {
         >
             
           {/* Master Enable toggle */}
-          <div style={styles.sliderGroup}>
-            <div style={styles.sliderLabel}>
+          <div className="app-slider-group" style={styles.sliderGroup}>
+            <div className="app-slider-label" style={styles.sliderLabel}>
               <span>Euclidean Mode</span>
               <span style={{ 
                 color: state.leadEuclideanMasterEnabled ? '#8b5cf6' : '#6b7280',
@@ -7015,42 +7186,11 @@ const App: React.FC = () => {
               ladrang: { steps: 32, hits: 8, rotation: 0 },
               gangsaran: { steps: 8, hits: 4, rotation: 0 },
               kotekan: { steps: 8, hits: 3, rotation: 1 },
-              kotekan2: { steps: 8, hits: 3, rotation: 4 },
-              srepegan: { steps: 16, hits: 6, rotation: 2 },
-              sampak: { steps: 8, hits: 5, rotation: 0 },
-              ayak: { steps: 16, hits: 3, rotation: 4 },
-              bonang: { steps: 12, hits: 5, rotation: 2 },
-              // World Rhythms
-              tresillo: { steps: 8, hits: 3, rotation: 0 },
-              cinquillo: { steps: 8, hits: 5, rotation: 0 },
-              rumba: { steps: 16, hits: 5, rotation: 0 },
-              bossa: { steps: 16, hits: 5, rotation: 3 },
-              son: { steps: 16, hits: 7, rotation: 0 },
-              shiko: { steps: 16, hits: 5, rotation: 0 },
-              soukous: { steps: 12, hits: 7, rotation: 0 },
-              gahu: { steps: 16, hits: 7, rotation: 0 },
-              bembe: { steps: 12, hits: 7, rotation: 0 },
-              aksak9: { steps: 9, hits: 5, rotation: 0 },
-              aksak7: { steps: 7, hits: 3, rotation: 0 },
-              clave23: { steps: 8, hits: 2, rotation: 0 },
-              clave32: { steps: 8, hits: 3, rotation: 0 },
-                    // Steve Reich / Experimental
-                    clapping: { steps: 12, hits: 8, rotation: 0 },
-                    clappingB: { steps: 12, hits: 8, rotation: 5 },
-                    additive7: { steps: 7, hits: 4, rotation: 0 },
-                    additive11: { steps: 11, hits: 5, rotation: 0 },
-                    additive13: { steps: 13, hits: 5, rotation: 0 },
-                    reich18: { steps: 12, hits: 7, rotation: 3 },
-                    drumming: { steps: 8, hits: 6, rotation: 1 },
-                  };
-                  
-                  const patternSteps = preset === 'custom' ? steps : (presetData[preset]?.steps || 16);
-                  const patternHits = preset === 'custom' ? hits : (presetData[preset]?.hits || 4);
-                  // User rotation is always applied (additive to preset's base rotation for presets)
-                  const baseRotation = preset === 'custom' ? 0 : (presetData[preset]?.rotation || 0);
-                  const patternRotation = (baseRotation + rotation) % patternSteps;
-
-                  // Bjorklund's algorithm
+            };
+            const resolvedPattern = resolveDrumEuclidPatternParams(preset, steps, hits, rotation);
+            const patternSteps = resolvedPattern.steps;
+            const patternHits = resolvedPattern.hits;
+            const patternRotation = resolvedPattern.rotation;
                   const generatePattern = (s: number, h: number, r: number): boolean[] => {
                     const pattern: boolean[] = [];
                     if (h === 0) {
@@ -7459,8 +7599,8 @@ const App: React.FC = () => {
           onToggle={togglePanel}
         >
           {/* Real Sample Toggle */}
-          <div style={styles.sliderGroup}>
-            <div style={styles.sliderLabel}>
+          <div className="app-slider-group" style={styles.sliderGroup}>
+            <div className="app-slider-label" style={styles.sliderLabel}>
               <span>Beach Recording (Ghetary)</span>
               <span style={{ 
                 color: state.oceanSampleEnabled ? '#10b981' : '#6b7280',
@@ -7490,8 +7630,8 @@ const App: React.FC = () => {
           </div>
 
           {/* Wave Synth Toggle */}
-          <div style={{ marginTop: '16px', ...styles.sliderGroup }}>
-            <div style={styles.sliderLabel}>
+          <div className="app-slider-group" style={{ marginTop: '16px', ...styles.sliderGroup }}>
+            <div className="app-slider-label" style={styles.sliderLabel}>
               <span>Wave Synthesis</span>
               <span style={{ 
                 color: state.oceanWaveSynthEnabled ? '#10b981' : '#6b7280',
@@ -7593,1891 +7733,39 @@ const App: React.FC = () => {
         </>)}
 
         {/* === DRUMS TAB === */}
-        {activeTab === 'drums' && (<>
-        {/* Drum Synth Master */}
-        <CollapsiblePanel
-          id="drums"
-          title="Drum Synth"
-          isMobile={isMobile}
-          isExpanded={expandedPanels.has('drums')}
-          onToggle={togglePanel}
-        >
-          {/* Master Enable + Slider Morph Toggle */}
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
-            <div style={{ flex: 1 }}>
-              <div style={styles.sliderLabel}>
-                <span>Drum Synth</span>
-                <span style={{ 
-                  color: state.drumEnabled ? '#10b981' : '#6b7280',
-                  fontWeight: 'bold'
-                }}>
-                  {state.drumEnabled ? 'ON' : 'OFF'}
-                </span>
-              </div>
-              <button
-                onClick={() => handleSelectChange('drumEnabled', !state.drumEnabled)}
-                style={{
-                  width: '100%',
-                  padding: '10px',
-                  borderRadius: '6px',
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontWeight: 'bold',
-                  background: state.drumEnabled 
-                    ? 'linear-gradient(135deg, #ef4444, #dc2626)' 
-                    : 'rgba(255, 255, 255, 0.1)',
-                  color: state.drumEnabled ? 'white' : '#9ca3af',
-                  transition: 'all 0.2s',
-                }}
-              >
-                {state.drumEnabled ? '● Active' : '○ Off'}
-              </button>
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={styles.sliderLabel}>
-                <span>Slider Updates</span>
-                <span style={{ 
-                  color: state.drumRandomMorphUpdate ? '#10b981' : '#6b7280',
-                  fontWeight: 'bold'
-                }}>
-                  {state.drumRandomMorphUpdate ? 'ON' : 'OFF'}
-                </span>
-              </div>
-              <button
-                onClick={() => handleSelectChange('drumRandomMorphUpdate', !state.drumRandomMorphUpdate)}
-                style={{
-                  width: '100%',
-                  padding: '10px',
-                  borderRadius: '6px',
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontWeight: 'bold',
-                  background: state.drumRandomMorphUpdate 
-                    ? 'linear-gradient(135deg, #10b981, #059669)' 
-                    : 'rgba(255, 255, 255, 0.1)',
-                  color: state.drumRandomMorphUpdate ? 'white' : '#9ca3af',
-                  transition: 'all 0.2s',
-                }}
-              >
-                {state.drumRandomMorphUpdate ? '● Animate' : '○ Static'}
-              </button>
-            </div>
-          </div>
-
-          <Slider
-            label="Level"
-            value={state.drumLevel}
-            paramKey="drumLevel"
-            onChange={handleSliderChange}
-            {...sliderProps('drumLevel')}
-          />
-          <Slider
-            label="Reverb Send"
-            value={state.drumReverbSend}
-            paramKey="drumReverbSend"
-            onChange={handleSliderChange}
-            {...sliderProps('drumReverbSend')}
-          />
-          
-          {/* Delay Effect */}
-          <div style={{ marginTop: '12px', padding: '8px', background: 'rgba(100, 200, 255, 0.1)', borderRadius: '6px', border: '1px solid rgba(100, 200, 255, 0.3)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-              <span style={{ color: '#64c8ff', fontSize: '0.85rem', fontWeight: 'bold' }}>Stereo Delay</span>
-              <button
-                onClick={() => handleSelectChange('drumDelayEnabled', !state.drumDelayEnabled)}
-                style={{
-                  padding: '2px 8px',
-                  fontSize: '0.75rem',
-                  background: state.drumDelayEnabled ? 'rgba(100, 200, 255, 0.3)' : 'transparent',
-                  border: '1px solid #64c8ff',
-                  borderRadius: '4px',
-                  color: state.drumDelayEnabled ? '#fff' : '#64c8ff',
-                  cursor: 'pointer'
-                }}
-              >
-                {state.drumDelayEnabled ? 'ON' : 'OFF'}
-              </button>
-              <span style={{ color: '#888', fontSize: '0.7rem' }}>@ {state.drumEuclidBaseBPM} BPM</span>
-            </div>
-            {state.drumDelayEnabled && (
-              <>
-                <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ fontSize: '0.75rem', color: '#aaa', marginBottom: '4px', display: 'block' }}>Left</label>
-                    <select
-                      value={state.drumDelayNoteL}
-                      onChange={(e) => handleSliderChange('drumDelayNoteL', e.target.value)}
-                      style={{ width: '100%', padding: '6px', background: '#1a1a2e', color: '#fff', border: '1px solid #64c8ff', borderRadius: '4px', fontSize: '0.85rem' }}
-                    >
-                      <option value="1/1">1/1</option>
-                      <option value="1/2">1/2</option>
-                      <option value="1/2d">1/2 dotted</option>
-                      <option value="1/4">1/4</option>
-                      <option value="1/4d">1/4 dotted</option>
-                      <option value="1/4t">1/4 triplet</option>
-                      <option value="1/8">1/8</option>
-                      <option value="1/8d">1/8 dotted</option>
-                      <option value="1/8t">1/8 triplet</option>
-                      <option value="1/16">1/16</option>
-                      <option value="1/16d">1/16 dotted</option>
-                      <option value="1/16t">1/16 triplet</option>
-                      <option value="1/32">1/32</option>
-                    </select>
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ fontSize: '0.75rem', color: '#aaa', marginBottom: '4px', display: 'block' }}>Right</label>
-                    <select
-                      value={state.drumDelayNoteR}
-                      onChange={(e) => handleSliderChange('drumDelayNoteR', e.target.value)}
-                      style={{ width: '100%', padding: '6px', background: '#1a1a2e', color: '#fff', border: '1px solid #64c8ff', borderRadius: '4px', fontSize: '0.85rem' }}
-                    >
-                      <option value="1/1">1/1</option>
-                      <option value="1/2">1/2</option>
-                      <option value="1/2d">1/2 dotted</option>
-                      <option value="1/4">1/4</option>
-                      <option value="1/4d">1/4 dotted</option>
-                      <option value="1/4t">1/4 triplet</option>
-                      <option value="1/8">1/8</option>
-                      <option value="1/8d">1/8 dotted</option>
-                      <option value="1/8t">1/8 triplet</option>
-                      <option value="1/16">1/16</option>
-                      <option value="1/16d">1/16 dotted</option>
-                      <option value="1/16t">1/16 triplet</option>
-                      <option value="1/32">1/32</option>
-                    </select>
-                  </div>
-                </div>
-                <Slider
-                  label="Feedback"
-                  value={state.drumDelayFeedback}
-                  paramKey="drumDelayFeedback"
-                  onChange={handleSliderChange}
-                  {...sliderProps('drumDelayFeedback')}
-                />
-                <Slider
-                  label="Mix"
-                  value={state.drumDelayMix}
-                  paramKey="drumDelayMix"
-                  onChange={handleSliderChange}
-                  {...sliderProps('drumDelayMix')}
-                />
-                <Slider
-                  label="Filter"
-                  value={state.drumDelayFilter}
-                  paramKey="drumDelayFilter"
-                  onChange={handleSliderChange}
-                  {...sliderProps('drumDelayFilter')}
-                />
-              </>
-            )}
-          </div>
-        </CollapsiblePanel>
-
-        {/* Voice 1: Sub */}
-        <CollapsiblePanel
-          id="drumSub"
-          title="Sub (Deep Pulse)"
-          isMobile={isMobile}
-          isExpanded={expandedPanels.has('drumSub')}
-          onToggle={togglePanel}
-          titleStyle={{ color: '#ef4444' }}
-          headerAction={
-            <button
-              onClick={(e) => { e.stopPropagation(); audioEngine.triggerDrumVoice('sub', 0.8, state); }}
-              style={{ padding: '2px 8px', fontSize: '1rem', background: 'rgba(239, 68, 68, 0.2)', border: '1px solid #ef4444', borderRadius: '4px', color: '#ef4444', cursor: 'pointer', lineHeight: 1 }}
-              title="Test Sub"
-            >{TEXT_SYMBOLS.drumSub}</button>
-          }
-        >
-          {/* Morph Controls */}
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
-            <select
-              value={state.drumSubPresetA}
-              onChange={(e) => handleSliderChange('drumSubPresetA', e.target.value)}
-              style={{ flex: 1, minWidth: '80px', padding: '4px', background: '#1a1a2e', color: '#fff', border: '1px solid #ef4444', borderRadius: '4px', fontSize: '0.75rem' }}
-              title="Preset A"
-            >
-              {getPresetNames('sub').map(name => <option key={name} value={name}>{name}</option>)}
-            </select>
-            <select
-              value={state.drumSubPresetB}
-              onChange={(e) => handleSliderChange('drumSubPresetB', e.target.value)}
-              style={{ flex: 1, minWidth: '80px', padding: '4px', background: '#1a1a2e', color: '#fff', border: '1px solid #ef4444', borderRadius: '4px', fontSize: '0.75rem' }}
-              title="Preset B"
-            >
-              {getPresetNames('sub').map(name => <option key={name} value={name}>{name}</option>)}
-            </select>
-          </div>
-          <Slider
-            label="A ↔ B Morph"
-            value={state.drumSubMorph}
-            paramKey="drumSubMorph"
-            onChange={handleSliderChange}
-            {...sliderProps('drumSubMorph')}
-          />
-          {/* Core Parameters */}
-          <Slider
-            label="Frequency"
-            value={state.drumSubFreq}
-            paramKey="drumSubFreq"
-            unit=" Hz"
-            onChange={handleSliderChange}
-            {...sliderProps('drumSubFreq')}
-          />
-          <Slider
-            label="Decay"
-            value={state.drumSubDecay}
-            paramKey="drumSubDecay"
-            unit=" ms"
-            logarithmic
-            onChange={handleSliderChange}
-            {...sliderProps('drumSubDecay')}
-          />
-          <Slider
-            label="Level"
-            value={state.drumSubLevel}
-            paramKey="drumSubLevel"
-            onChange={handleSliderChange}
-            {...sliderProps('drumSubLevel')}
-          />
-          <Slider
-            label="Harmonics"
-            value={state.drumSubTone}
-            paramKey="drumSubTone"
-            onChange={handleSliderChange}
-            {...sliderProps('drumSubTone')}
-          />
-          {/* New Synthesis Parameters */}
-          <Slider
-            label="Shape (Sin→Saw)"
-            value={state.drumSubShape}
-            paramKey="drumSubShape"
-            onChange={handleSliderChange}
-            {...sliderProps('drumSubShape')}
-          />
-          <Slider
-            label="Pitch Envelope"
-            value={state.drumSubPitchEnv}
-            paramKey="drumSubPitchEnv"
-            unit=" st"
-            onChange={handleSliderChange}
-            {...sliderProps('drumSubPitchEnv')}
-          />
-          <Slider
-            label="Pitch Decay"
-            value={state.drumSubPitchDecay}
-            paramKey="drumSubPitchDecay"
-            unit=" ms"
-            onChange={handleSliderChange}
-            {...sliderProps('drumSubPitchDecay')}
-          />
-          <Slider
-            label="Drive"
-            value={state.drumSubDrive}
-            paramKey="drumSubDrive"
-            onChange={handleSliderChange}
-            {...sliderProps('drumSubDrive')}
-          />
-          <Slider
-            label="Sub Octave"
-            value={state.drumSubSub}
-            paramKey="drumSubSub"
-            onChange={handleSliderChange}
-            {...sliderProps('drumSubSub')}
-          />
-          {state.drumDelayEnabled && (
-            <Slider
-              label="Delay Send"
-              value={state.drumSubDelaySend}
-              paramKey="drumSubDelaySend"
-              onChange={handleSliderChange}
-              {...sliderProps('drumSubDelaySend')}
-            />
-          )}
-        </CollapsiblePanel>
-
-        {/* Voice 2: Kick */}
-        <CollapsiblePanel
-          id="drumKick"
-          title="Kick (Punch)"
-          isMobile={isMobile}
-          isExpanded={expandedPanels.has('drumKick')}
-          onToggle={togglePanel}
-          titleStyle={{ color: '#f97316' }}
-          headerAction={
-            <button
-              onClick={(e) => { e.stopPropagation(); audioEngine.triggerDrumVoice('kick', 0.8, state); }}
-              style={{ padding: '2px 8px', fontSize: '1rem', background: 'rgba(249, 115, 22, 0.2)', border: '1px solid #f97316', borderRadius: '4px', color: '#f97316', cursor: 'pointer', lineHeight: 1 }}
-              title="Test Kick"
-            >{TEXT_SYMBOLS.drumKick}</button>
-          }
-        >
-          {/* Morph Controls */}
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
-            <select
-              value={state.drumKickPresetA}
-              onChange={(e) => handleSliderChange('drumKickPresetA', e.target.value)}
-              style={{ flex: 1, minWidth: '80px', padding: '4px', background: '#1a1a2e', color: '#fff', border: '1px solid #f97316', borderRadius: '4px', fontSize: '0.75rem' }}
-              title="Preset A"
-            >
-              {getPresetNames('kick').map(name => <option key={name} value={name}>{name}</option>)}
-            </select>
-            <select
-              value={state.drumKickPresetB}
-              onChange={(e) => handleSliderChange('drumKickPresetB', e.target.value)}
-              style={{ flex: 1, minWidth: '80px', padding: '4px', background: '#1a1a2e', color: '#fff', border: '1px solid #f97316', borderRadius: '4px', fontSize: '0.75rem' }}
-              title="Preset B"
-            >
-              {getPresetNames('kick').map(name => <option key={name} value={name}>{name}</option>)}
-            </select>
-          </div>
-          <Slider
-            label="A ↔ B Morph"
-            value={state.drumKickMorph}
-            paramKey="drumKickMorph"
-            onChange={handleSliderChange}
-            {...sliderProps('drumKickMorph')}
-          />
-          {/* Core Parameters */}
-          <Slider
-            label="Frequency"
-            value={state.drumKickFreq}
-            paramKey="drumKickFreq"
-            unit=" Hz"
-            onChange={handleSliderChange}
-            {...sliderProps('drumKickFreq')}
-          />
-          <Slider
-            label="Pitch Sweep"
-            value={state.drumKickPitchEnv}
-            paramKey="drumKickPitchEnv"
-            unit=" st"
-            onChange={handleSliderChange}
-            {...sliderProps('drumKickPitchEnv')}
-          />
-          <Slider
-            label="Pitch Decay"
-            value={state.drumKickPitchDecay}
-            paramKey="drumKickPitchDecay"
-            unit=" ms"
-            logarithmic
-            onChange={handleSliderChange}
-            {...sliderProps('drumKickPitchDecay')}
-          />
-          <Slider
-            label="Amp Decay"
-            value={state.drumKickDecay}
-            paramKey="drumKickDecay"
-            unit=" ms"
-            logarithmic
-            onChange={handleSliderChange}
-            {...sliderProps('drumKickDecay')}
-          />
-          <Slider
-            label="Level"
-            value={state.drumKickLevel}
-            paramKey="drumKickLevel"
-            onChange={handleSliderChange}
-            {...sliderProps('drumKickLevel')}
-          />
-          <Slider
-            label="Click Transient"
-            value={state.drumKickClick}
-            paramKey="drumKickClick"
-            onChange={handleSliderChange}
-            {...sliderProps('drumKickClick')}
-          />
-          {/* New Synthesis Parameters */}
-          <Slider
-            label="Body"
-            value={state.drumKickBody}
-            paramKey="drumKickBody"
-            onChange={handleSliderChange}
-            {...sliderProps('drumKickBody')}
-          />
-          <Slider
-            label="Punch"
-            value={state.drumKickPunch}
-            paramKey="drumKickPunch"
-            onChange={handleSliderChange}
-            {...sliderProps('drumKickPunch')}
-          />
-          <Slider
-            label="Tail"
-            value={state.drumKickTail}
-            paramKey="drumKickTail"
-            onChange={handleSliderChange}
-            {...sliderProps('drumKickTail')}
-          />
-          <Slider
-            label="Tone/Drive"
-            value={state.drumKickTone}
-            paramKey="drumKickTone"
-            onChange={handleSliderChange}
-            {...sliderProps('drumKickTone')}
-          />
-          {state.drumDelayEnabled && (
-            <Slider
-              label="Delay Send"
-              value={state.drumKickDelaySend}
-              paramKey="drumKickDelaySend"
-              onChange={handleSliderChange}
-              {...sliderProps('drumKickDelaySend')}
-            />
-          )}
-        </CollapsiblePanel>
-
-        {/* Voice 3: Click */}
-        <CollapsiblePanel
-          id="drumClick"
-          title="Click (Data)"
-          isMobile={isMobile}
-          isExpanded={expandedPanels.has('drumClick')}
-          onToggle={togglePanel}
-          titleStyle={{ color: '#eab308' }}
-          headerAction={
-            <button
-              onClick={(e) => { e.stopPropagation(); audioEngine.triggerDrumVoice('click', 0.8, state); }}
-              style={{ padding: '2px 8px', fontSize: '1rem', background: 'rgba(234, 179, 8, 0.2)', border: '1px solid #eab308', borderRadius: '4px', color: '#eab308', cursor: 'pointer', lineHeight: 1 }}
-              title="Test Click"
-            >{TEXT_SYMBOLS.drumClick}</button>
-          }
-        >
-          {/* Morph Controls */}
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
-            <select
-              value={state.drumClickPresetA}
-              onChange={(e) => handleSliderChange('drumClickPresetA', e.target.value)}
-              style={{ flex: 1, minWidth: '80px', padding: '4px', background: '#1a1a2e', color: '#fff', border: '1px solid #eab308', borderRadius: '4px', fontSize: '0.75rem' }}
-              title="Preset A"
-            >
-              {getPresetNames('click').map(name => <option key={name} value={name}>{name}</option>)}
-            </select>
-            <select
-              value={state.drumClickPresetB}
-              onChange={(e) => handleSliderChange('drumClickPresetB', e.target.value)}
-              style={{ flex: 1, minWidth: '80px', padding: '4px', background: '#1a1a2e', color: '#fff', border: '1px solid #eab308', borderRadius: '4px', fontSize: '0.75rem' }}
-              title="Preset B"
-            >
-              {getPresetNames('click').map(name => <option key={name} value={name}>{name}</option>)}
-            </select>
-          </div>
-          <Slider
-            label="A ↔ B Morph"
-            value={state.drumClickMorph}
-            paramKey="drumClickMorph"
-            onChange={handleSliderChange}
-            {...sliderProps('drumClickMorph')}
-          />
-          {/* Synthesis Mode */}
-          <div style={{ marginBottom: '8px' }}>
-            <label style={{ fontSize: '0.75rem', color: '#888', marginBottom: '4px', display: 'block' }}>Mode</label>
-            <select
-              value={state.drumClickMode}
-              onChange={(e) => handleSliderChange('drumClickMode', e.target.value)}
-              style={{ width: '100%', padding: '6px', background: '#1a1a2e', color: '#fff', border: '1px solid #eab308', borderRadius: '4px', fontSize: '0.85rem' }}
-            >
-              <option value="impulse">Impulse (Sharp)</option>
-              <option value="noise">Noise (Burst)</option>
-              <option value="tonal">Tonal (Pitched)</option>
-              <option value="granular">Granular (Texture)</option>
-            </select>
-          </div>
-          {/* Core Parameters */}
-          <Slider
-            label="Decay"
-            value={state.drumClickDecay}
-            paramKey="drumClickDecay"
-            unit=" ms"
-            logarithmic
-            onChange={handleSliderChange}
-            {...sliderProps('drumClickDecay')}
-          />
-          <Slider
-            label="HP Filter"
-            value={state.drumClickFilter}
-            paramKey="drumClickFilter"
-            unit=" Hz"
-            logarithmic
-            onChange={handleSliderChange}
-            {...sliderProps('drumClickFilter')}
-          />
-          <Slider
-            label="Tone (Impulse/Noise)"
-            value={state.drumClickTone}
-            paramKey="drumClickTone"
-            onChange={handleSliderChange}
-            {...sliderProps('drumClickTone')}
-          />
-          <Slider
-            label="Resonance"
-            value={state.drumClickResonance}
-            paramKey="drumClickResonance"
-            onChange={handleSliderChange}
-            {...sliderProps('drumClickResonance')}
-          />
-          <Slider
-            label="Level"
-            value={state.drumClickLevel}
-            paramKey="drumClickLevel"
-            onChange={handleSliderChange}
-            {...sliderProps('drumClickLevel')}
-          />
-          {/* New Synthesis Parameters */}
-          <Slider
-            label="Pitch"
-            value={state.drumClickPitch}
-            paramKey="drumClickPitch"
-            unit=" Hz"
-            logarithmic
-            onChange={handleSliderChange}
-            {...sliderProps('drumClickPitch')}
-          />
-          <Slider
-            label="Pitch Envelope"
-            value={state.drumClickPitchEnv}
-            paramKey="drumClickPitchEnv"
-            unit=" st"
-            onChange={handleSliderChange}
-            {...sliderProps('drumClickPitchEnv')}
-          />
-          <Slider
-            label="Grain Count"
-            value={state.drumClickGrainCount}
-            paramKey="drumClickGrainCount"
-            onChange={handleSliderChange}
-            {...sliderProps('drumClickGrainCount')}
-          />
-          <Slider
-            label="Grain Spread"
-            value={state.drumClickGrainSpread}
-            paramKey="drumClickGrainSpread"
-            unit=" ms"
-            onChange={handleSliderChange}
-            {...sliderProps('drumClickGrainSpread')}
-          />
-          <Slider
-            label="Stereo Width"
-            value={state.drumClickStereoWidth}
-            paramKey="drumClickStereoWidth"
-            onChange={handleSliderChange}
-            {...sliderProps('drumClickStereoWidth')}
-          />
-          {state.drumDelayEnabled && (
-            <Slider
-              label="Delay Send"
-              value={state.drumClickDelaySend}
-              paramKey="drumClickDelaySend"
-              onChange={handleSliderChange}
-              {...sliderProps('drumClickDelaySend')}
-            />
-          )}
-        </CollapsiblePanel>
-
-        {/* Voice 4: Beep Hi */}
-        <CollapsiblePanel
-          id="drumBeepHi"
-          title="Beep Hi (Ping)"
-          isMobile={isMobile}
-          isExpanded={expandedPanels.has('drumBeepHi')}
-          onToggle={togglePanel}
-          titleStyle={{ color: '#22c55e' }}
-          headerAction={
-            <button
-              onClick={(e) => { e.stopPropagation(); audioEngine.triggerDrumVoice('beepHi', 0.8, state); }}
-              style={{ padding: '2px 8px', fontSize: '1rem', background: 'rgba(34, 197, 94, 0.2)', border: '1px solid #22c55e', borderRadius: '4px', color: '#22c55e', cursor: 'pointer', lineHeight: 1 }}
-              title="Test Beep Hi"
-            >{TEXT_SYMBOLS.drumBeepHi}</button>
-          }
-        >
-          {/* Morph Controls */}
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
-            <select
-              value={state.drumBeepHiPresetA}
-              onChange={(e) => handleSliderChange('drumBeepHiPresetA', e.target.value)}
-              style={{ flex: 1, minWidth: '80px', padding: '4px', background: '#1a1a2e', color: '#fff', border: '1px solid #22c55e', borderRadius: '4px', fontSize: '0.75rem' }}
-              title="Preset A"
-            >
-              {getPresetNames('beepHi').map(name => <option key={name} value={name}>{name}</option>)}
-            </select>
-            <select
-              value={state.drumBeepHiPresetB}
-              onChange={(e) => handleSliderChange('drumBeepHiPresetB', e.target.value)}
-              style={{ flex: 1, minWidth: '80px', padding: '4px', background: '#1a1a2e', color: '#fff', border: '1px solid #22c55e', borderRadius: '4px', fontSize: '0.75rem' }}
-              title="Preset B"
-            >
-              {getPresetNames('beepHi').map(name => <option key={name} value={name}>{name}</option>)}
-            </select>
-          </div>
-          <Slider
-            label="A ↔ B Morph"
-            value={state.drumBeepHiMorph}
-            paramKey="drumBeepHiMorph"
-            onChange={handleSliderChange}
-            {...sliderProps('drumBeepHiMorph')}
-          />
-          {/* Core Parameters */}
-          <Slider
-            label="Frequency"
-            value={state.drumBeepHiFreq}
-            paramKey="drumBeepHiFreq"
-            unit=" Hz"
-            logarithmic
-            onChange={handleSliderChange}
-            {...sliderProps('drumBeepHiFreq')}
-          />
-          <Slider
-            label="Attack"
-            value={state.drumBeepHiAttack}
-            paramKey="drumBeepHiAttack"
-            unit=" ms"
-            logarithmic
-            onChange={handleSliderChange}
-            {...sliderProps('drumBeepHiAttack')}
-          />
-          <Slider
-            label="Decay"
-            value={state.drumBeepHiDecay}
-            paramKey="drumBeepHiDecay"
-            unit=" ms"
-            logarithmic
-            onChange={handleSliderChange}
-            {...sliderProps('drumBeepHiDecay')}
-          />
-          <Slider
-            label="FM Tone"
-            value={state.drumBeepHiTone}
-            paramKey="drumBeepHiTone"
-            onChange={handleSliderChange}
-            {...sliderProps('drumBeepHiTone')}
-          />
-          <Slider
-            label="Level"
-            value={state.drumBeepHiLevel}
-            paramKey="drumBeepHiLevel"
-            onChange={handleSliderChange}
-            {...sliderProps('drumBeepHiLevel')}
-          />
-          {/* New Synthesis Parameters */}
-          <Slider
-            label="Inharmonic"
-            value={state.drumBeepHiInharmonic}
-            paramKey="drumBeepHiInharmonic"
-            onChange={handleSliderChange}
-            {...sliderProps('drumBeepHiInharmonic')}
-          />
-          <Slider
-            label="Partials"
-            value={state.drumBeepHiPartials}
-            paramKey="drumBeepHiPartials"
-            onChange={handleSliderChange}
-            {...sliderProps('drumBeepHiPartials')}
-          />
-          <Slider
-            label="Shimmer"
-            value={state.drumBeepHiShimmer}
-            paramKey="drumBeepHiShimmer"
-            onChange={handleSliderChange}
-            {...sliderProps('drumBeepHiShimmer')}
-          />
-          <Slider
-            label="Shimmer Rate"
-            value={state.drumBeepHiShimmerRate}
-            paramKey="drumBeepHiShimmerRate"
-            unit=" Hz"
-            onChange={handleSliderChange}
-            {...sliderProps('drumBeepHiShimmerRate')}
-          />
-          <Slider
-            label="Brightness"
-            value={state.drumBeepHiBrightness}
-            paramKey="drumBeepHiBrightness"
-            onChange={handleSliderChange}
-            {...sliderProps('drumBeepHiBrightness')}
-          />
-          {state.drumDelayEnabled && (
-            <Slider
-              label="Delay Send"
-              value={state.drumBeepHiDelaySend}
-              paramKey="drumBeepHiDelaySend"
-              onChange={handleSliderChange}
-              {...sliderProps('drumBeepHiDelaySend')}
-            />
-          )}
-        </CollapsiblePanel>
-
-        {/* Voice 5: Beep Lo */}
-        <CollapsiblePanel
-          id="drumBeepLo"
-          title="Beep Lo (Blip)"
-          isMobile={isMobile}
-          isExpanded={expandedPanels.has('drumBeepLo')}
-          onToggle={togglePanel}
-          titleStyle={{ color: '#06b6d4' }}
-          headerAction={
-            <button
-              onClick={(e) => { e.stopPropagation(); audioEngine.triggerDrumVoice('beepLo', 0.8, state); }}
-              style={{ padding: '2px 8px', fontSize: '1rem', background: 'rgba(6, 182, 212, 0.2)', border: '1px solid #06b6d4', borderRadius: '4px', color: '#06b6d4', cursor: 'pointer', lineHeight: 1 }}
-              title="Test Beep Lo"
-            >{TEXT_SYMBOLS.drumBeepLo}</button>
-          }
-        >
-          {/* Morph Controls */}
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
-            <select
-              value={state.drumBeepLoPresetA}
-              onChange={(e) => handleSliderChange('drumBeepLoPresetA', e.target.value)}
-              style={{ flex: 1, minWidth: '80px', padding: '4px', background: '#1a1a2e', color: '#fff', border: '1px solid #06b6d4', borderRadius: '4px', fontSize: '0.75rem' }}
-              title="Preset A"
-            >
-              {getPresetNames('beepLo').map(name => <option key={name} value={name}>{name}</option>)}
-            </select>
-            <select
-              value={state.drumBeepLoPresetB}
-              onChange={(e) => handleSliderChange('drumBeepLoPresetB', e.target.value)}
-              style={{ flex: 1, minWidth: '80px', padding: '4px', background: '#1a1a2e', color: '#fff', border: '1px solid #06b6d4', borderRadius: '4px', fontSize: '0.75rem' }}
-              title="Preset B"
-            >
-              {getPresetNames('beepLo').map(name => <option key={name} value={name}>{name}</option>)}
-            </select>
-          </div>
-          <Slider
-            label="A ↔ B Morph"
-            value={state.drumBeepLoMorph}
-            paramKey="drumBeepLoMorph"
-            onChange={handleSliderChange}
-            {...sliderProps('drumBeepLoMorph')}
-          />
-          {/* Core Parameters */}
-          <Slider
-            label="Frequency"
-            value={state.drumBeepLoFreq}
-            paramKey="drumBeepLoFreq"
-            unit=" Hz"
-            onChange={handleSliderChange}
-            {...sliderProps('drumBeepLoFreq')}
-          />
-          <Slider
-            label="Attack"
-            value={state.drumBeepLoAttack}
-            paramKey="drumBeepLoAttack"
-            unit=" ms"
-            logarithmic
-            onChange={handleSliderChange}
-            {...sliderProps('drumBeepLoAttack')}
-          />
-          <Slider
-            label="Decay"
-            value={state.drumBeepLoDecay}
-            paramKey="drumBeepLoDecay"
-            unit=" ms"
-            logarithmic
-            onChange={handleSliderChange}
-            {...sliderProps('drumBeepLoDecay')}
-          />
-          <Slider
-            label="Tone (Sine/Square)"
-            value={state.drumBeepLoTone}
-            paramKey="drumBeepLoTone"
-            onChange={handleSliderChange}
-            {...sliderProps('drumBeepLoTone')}
-          />
-          <Slider
-            label="Level"
-            value={state.drumBeepLoLevel}
-            paramKey="drumBeepLoLevel"
-            onChange={handleSliderChange}
-            {...sliderProps('drumBeepLoLevel')}
-          />
-          {/* New Synthesis Parameters */}
-          <Slider
-            label="Pitch Envelope"
-            value={state.drumBeepLoPitchEnv}
-            paramKey="drumBeepLoPitchEnv"
-            unit=" st"
-            onChange={handleSliderChange}
-            {...sliderProps('drumBeepLoPitchEnv')}
-          />
-          <Slider
-            label="Pitch Decay"
-            value={state.drumBeepLoPitchDecay}
-            paramKey="drumBeepLoPitchDecay"
-            unit=" ms"
-            onChange={handleSliderChange}
-            {...sliderProps('drumBeepLoPitchDecay')}
-          />
-          <Slider
-            label="Body"
-            value={state.drumBeepLoBody}
-            paramKey="drumBeepLoBody"
-            onChange={handleSliderChange}
-            {...sliderProps('drumBeepLoBody')}
-          />
-          <Slider
-            label="Pluck"
-            value={state.drumBeepLoPluck}
-            paramKey="drumBeepLoPluck"
-            onChange={handleSliderChange}
-            {...sliderProps('drumBeepLoPluck')}
-          />
-          <Slider
-            label="Pluck Damping"
-            value={state.drumBeepLoPluckDamp}
-            paramKey="drumBeepLoPluckDamp"
-            onChange={handleSliderChange}
-            {...sliderProps('drumBeepLoPluckDamp')}
-          />
-          {state.drumDelayEnabled && (
-            <Slider
-              label="Delay Send"
-              value={state.drumBeepLoDelaySend}
-              paramKey="drumBeepLoDelaySend"
-              onChange={handleSliderChange}
-              {...sliderProps('drumBeepLoDelaySend')}
-            />
-          )}
-        </CollapsiblePanel>
-
-        {/* Voice 6: Noise */}
-        <CollapsiblePanel
-          id="drumNoise"
-          title="Noise (Hi-Hat)"
-          isMobile={isMobile}
-          isExpanded={expandedPanels.has('drumNoise')}
-          onToggle={togglePanel}
-          titleStyle={{ color: '#8b5cf6' }}
-          headerAction={
-            <button
-              onClick={(e) => { e.stopPropagation(); audioEngine.triggerDrumVoice('noise', 0.8, state); }}
-              style={{ padding: '2px 8px', fontSize: '1rem', background: 'rgba(139, 92, 246, 0.2)', border: '1px solid #8b5cf6', borderRadius: '4px', color: '#8b5cf6', cursor: 'pointer', lineHeight: 1 }}
-              title="Test Noise"
-            >{TEXT_SYMBOLS.drumNoise}</button>
-          }
-        >
-          {/* Morph Controls */}
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
-            <select
-              value={state.drumNoisePresetA}
-              onChange={(e) => handleSliderChange('drumNoisePresetA', e.target.value)}
-              style={{ flex: 1, minWidth: '80px', padding: '4px', background: '#1a1a2e', color: '#fff', border: '1px solid #8b5cf6', borderRadius: '4px', fontSize: '0.75rem' }}
-              title="Preset A"
-            >
-              {getPresetNames('noise').map(name => <option key={name} value={name}>{name}</option>)}
-            </select>
-            <select
-              value={state.drumNoisePresetB}
-              onChange={(e) => handleSliderChange('drumNoisePresetB', e.target.value)}
-              style={{ flex: 1, minWidth: '80px', padding: '4px', background: '#1a1a2e', color: '#fff', border: '1px solid #8b5cf6', borderRadius: '4px', fontSize: '0.75rem' }}
-              title="Preset B"
-            >
-              {getPresetNames('noise').map(name => <option key={name} value={name}>{name}</option>)}
-            </select>
-          </div>
-          <Slider
-            label="A ↔ B Morph"
-            value={state.drumNoiseMorph}
-            paramKey="drumNoiseMorph"
-            onChange={handleSliderChange}
-            {...sliderProps('drumNoiseMorph')}
-          />
-          {/* Core Parameters */}
-          <Select
-            label="Filter Type"
-            value={state.drumNoiseFilterType}
-            options={[
-              { value: 'lowpass', label: 'Lowpass' },
-              { value: 'bandpass', label: 'Bandpass' },
-              { value: 'highpass', label: 'Highpass' },
-            ]}
-            onChange={(v) => handleSelectChange('drumNoiseFilterType', v)}
-          />
-          <Slider
-            label="Filter Freq"
-            value={state.drumNoiseFilterFreq}
-            paramKey="drumNoiseFilterFreq"
-            unit=" Hz"
-            logarithmic
-            onChange={handleSliderChange}
-            {...sliderProps('drumNoiseFilterFreq')}
-          />
-          <Slider
-            label="Filter Q"
-            value={state.drumNoiseFilterQ}
-            paramKey="drumNoiseFilterQ"
-            onChange={handleSliderChange}
-            {...sliderProps('drumNoiseFilterQ')}
-          />
-          <Slider
-            label="Attack"
-            value={state.drumNoiseAttack}
-            paramKey="drumNoiseAttack"
-            unit=" ms"
-            logarithmic
-            onChange={handleSliderChange}
-            {...sliderProps('drumNoiseAttack')}
-          />
-          <Slider
-            label="Decay"
-            value={state.drumNoiseDecay}
-            paramKey="drumNoiseDecay"
-            unit=" ms"
-            logarithmic
-            onChange={handleSliderChange}
-            {...sliderProps('drumNoiseDecay')}
-          />
-          <Slider
-            label="Level"
-            value={state.drumNoiseLevel}
-            paramKey="drumNoiseLevel"
-            onChange={handleSliderChange}
-            {...sliderProps('drumNoiseLevel')}
-          />
-          {/* New Synthesis Parameters */}
-          <Slider
-            label="Formant"
-            value={state.drumNoiseFormant}
-            paramKey="drumNoiseFormant"
-            onChange={handleSliderChange}
-            {...sliderProps('drumNoiseFormant')}
-          />
-          <Slider
-            label="Breath"
-            value={state.drumNoiseBreath}
-            paramKey="drumNoiseBreath"
-            onChange={handleSliderChange}
-            {...sliderProps('drumNoiseBreath')}
-          />
-          <Slider
-            label="Filter Envelope"
-            value={state.drumNoiseFilterEnv}
-            paramKey="drumNoiseFilterEnv"
-            onChange={handleSliderChange}
-            {...sliderProps('drumNoiseFilterEnv')}
-          />
-          <Slider
-            label="Filter Env Decay"
-            value={state.drumNoiseFilterEnvDecay}
-            paramKey="drumNoiseFilterEnvDecay"
-            unit=" ms"
-            onChange={handleSliderChange}
-            {...sliderProps('drumNoiseFilterEnvDecay')}
-          />
-          <Slider
-            label="Density"
-            value={state.drumNoiseDensity}
-            paramKey="drumNoiseDensity"
-            onChange={handleSliderChange}
-            {...sliderProps('drumNoiseDensity')}
-          />
-          <Slider
-            label="Color LFO"
-            value={state.drumNoiseColorLFO}
-            paramKey="drumNoiseColorLFO"
-            unit=" Hz"
-            onChange={handleSliderChange}
-            {...sliderProps('drumNoiseColorLFO')}
-          />
-          {state.drumDelayEnabled && (
-            <Slider
-              label="Delay Send"
-              value={state.drumNoiseDelaySend}
-              paramKey="drumNoiseDelaySend"
-              onChange={handleSliderChange}
-              {...sliderProps('drumNoiseDelaySend')}
-            />
-          )}
-        </CollapsiblePanel>
-
-        {/* Sequencer */}
-        <CollapsiblePanel
-          id="drumRandom"
-          title="Sequencer"
-          isMobile={isMobile}
-          isExpanded={expandedPanels.has('drumRandom')}
-          onToggle={togglePanel}
-          titleStyle={{ color: '#f472b6' }}
-        >
-          <div style={styles.sliderGroup}>
-            <div style={styles.sliderLabel}>
-              <span>Random Mode</span>
-              <span style={{ 
-                color: state.drumRandomEnabled ? '#10b981' : '#6b7280',
-                fontWeight: 'bold'
-              }}>
-                {state.drumRandomEnabled ? 'ON' : 'OFF'}
-              </span>
-            </div>
-            <button
-              onClick={() => handleSelectChange('drumRandomEnabled', !state.drumRandomEnabled)}
-              style={{
-                width: '100%',
-                padding: '8px',
-                borderRadius: '6px',
-                border: 'none',
-                cursor: 'pointer',
-                fontWeight: 'bold',
-                background: state.drumRandomEnabled 
-                  ? 'linear-gradient(135deg, #f472b6, #ec4899)' 
-                  : 'rgba(255, 255, 255, 0.1)',
-                color: state.drumRandomEnabled ? 'white' : '#9ca3af',
-                transition: 'all 0.2s',
-              }}
-            >
-              {state.drumRandomEnabled ? '● Random Active' : '○ Random Off'}
-            </button>
-          </div>
-          {state.drumRandomEnabled && (
-            <>
-              <Slider
-                label="Density"
-                value={state.drumRandomDensity}
-                paramKey="drumRandomDensity"
-                onChange={handleSliderChange}
-                {...sliderProps('drumRandomDensity')}
-              />
-              <Slider
-                label="Min Interval"
-                value={state.drumRandomMinInterval}
-                paramKey="drumRandomMinInterval"
-                unit=" ms"
-                onChange={handleSliderChange}
-                {...sliderProps('drumRandomMinInterval')}
-              />
-              <Slider
-                label="Max Interval"
-                value={state.drumRandomMaxInterval}
-                paramKey="drumRandomMaxInterval"
-                unit=" ms"
-                onChange={handleSliderChange}
-                {...sliderProps('drumRandomMaxInterval')}
-              />
-              <div style={{ fontSize: '0.75rem', color: '#888', marginTop: '8px' }}>Per-Voice Probability:</div>
-              <Slider
-                label="Sub"
-                value={state.drumRandomSubProb}
-                paramKey="drumRandomSubProb"
-                onChange={handleSliderChange}
-                {...sliderProps('drumRandomSubProb')}
-              />
-              <Slider
-                label="Kick"
-                value={state.drumRandomKickProb}
-                paramKey="drumRandomKickProb"
-                onChange={handleSliderChange}
-                {...sliderProps('drumRandomKickProb')}
-              />
-              <Slider
-                label="Click"
-                value={state.drumRandomClickProb}
-                paramKey="drumRandomClickProb"
-                onChange={handleSliderChange}
-                {...sliderProps('drumRandomClickProb')}
-              />
-              <Slider
-                label="Beep Hi"
-                value={state.drumRandomBeepHiProb}
-                paramKey="drumRandomBeepHiProb"
-                onChange={handleSliderChange}
-                {...sliderProps('drumRandomBeepHiProb')}
-              />
-              <Slider
-                label="Beep Lo"
-                value={state.drumRandomBeepLoProb}
-                paramKey="drumRandomBeepLoProb"
-                onChange={handleSliderChange}
-                {...sliderProps('drumRandomBeepLoProb')}
-              />
-              <Slider
-                label="Noise"
-                value={state.drumRandomNoiseProb}
-                paramKey="drumRandomNoiseProb"
-                onChange={handleSliderChange}
-                {...sliderProps('drumRandomNoiseProb')}
-              />
-            </>
-          )}
-
-          {/* Euclidean Sequencer Settings */}
-          <div style={{ marginTop: '16px', borderTop: '1px solid #444', paddingTop: '12px' }}>
-            <div style={{ fontSize: '0.85rem', color: '#a855f7', marginBottom: '8px' }}>⬡ Euclidean Sequencer</div>
-          </div>
-          <div style={styles.sliderGroup}>
-            <div style={styles.sliderLabel}>
-              <span>Euclidean Mode</span>
-              <span style={{ 
-                color: state.drumEuclidMasterEnabled ? '#10b981' : '#6b7280',
-                fontWeight: 'bold'
-              }}>
-                {state.drumEuclidMasterEnabled ? 'ON' : 'OFF'}
-              </span>
-            </div>
-            <button
-              onClick={() => handleSelectChange('drumEuclidMasterEnabled', !state.drumEuclidMasterEnabled)}
-              style={{
-                width: '100%',
-                padding: '8px',
-                borderRadius: '6px',
-                border: 'none',
-                cursor: 'pointer',
-                fontWeight: 'bold',
-                background: state.drumEuclidMasterEnabled 
-                  ? 'linear-gradient(135deg, #a855f7, #9333ea)' 
-                  : 'rgba(255, 255, 255, 0.1)',
-                color: state.drumEuclidMasterEnabled ? 'white' : '#9ca3af',
-                transition: 'all 0.2s',
-              }}
-            >
-              {state.drumEuclidMasterEnabled ? '● Euclidean Active' : '○ Euclidean Off'}
-            </button>
-          </div>
-          <Slider
-            label="Base BPM"
-            value={state.drumEuclidBaseBPM}
-            paramKey="drumEuclidBaseBPM"
-            unit="bpm"
-            onChange={handleSliderChange}
-            {...sliderProps('drumEuclidBaseBPM')}
-          />
-          <Slider
-            label="Tempo"
-            value={state.drumEuclidTempo}
-            paramKey="drumEuclidTempo"
-            unit="x"
-            onChange={handleSliderChange}
-            {...sliderProps('drumEuclidTempo')}
-          />
-          <Slider
-            label="Swing"
-            value={state.drumEuclidSwing}
-            paramKey="drumEuclidSwing"
-            unit="%"
-            onChange={handleSliderChange}
-            {...sliderProps('drumEuclidSwing')}
-          />
-          <Select
-            label="Division"
-            value={state.drumEuclidDivision.toString()}
-            options={[
-              { value: '4', label: '1/4 (Quarter)' },
-              { value: '8', label: '1/8 (Eighth)' },
-              { value: '16', label: '1/16 (Sixteenth)' },
-              { value: '32', label: '1/32 (Thirty-second)' },
-            ]}
-            onChange={(v) => handleSelectChange('drumEuclidDivision', parseInt(v))}
-          />
-        </CollapsiblePanel>
-
-        {/* Euclidean Lane 1 */}
-        {(() => {
-          const laneNum = 1;
-          const laneColor = '#ef4444';
-          const voiceIcons: Record<string, string> = {
-            sub: '◉', kick: '●', click: '▪', beepHi: '△', beepLo: '▽', noise: '≋'
-          };
-          const voiceNames: Record<string, string> = {
-            sub: 'Sub (Deep Pulse)', kick: 'Kick (Punch)', click: 'Click (Data)', 
-            beepHi: 'Beep Hi (Ping)', beepLo: 'Beep Lo (Blip)', noise: 'Noise (Hi-Hat)'
-          };
-          const voiceOrder = ['sub', 'kick', 'click', 'beepHi', 'beepLo', 'noise'] as const;
-          
-          const enabledKey = `drumEuclid${laneNum}Enabled` as keyof typeof state;
-          const presetKey = `drumEuclid${laneNum}Preset` as keyof typeof state;
-          const stepsKey = `drumEuclid${laneNum}Steps` as keyof typeof state;
-          const hitsKey = `drumEuclid${laneNum}Hits` as keyof typeof state;
-          const rotationKey = `drumEuclid${laneNum}Rotation` as keyof typeof state;
-          const targetSubKey = `drumEuclid${laneNum}TargetSub` as keyof typeof state;
-          const targetKickKey = `drumEuclid${laneNum}TargetKick` as keyof typeof state;
-          const targetClickKey = `drumEuclid${laneNum}TargetClick` as keyof typeof state;
-          const targetBeepHiKey = `drumEuclid${laneNum}TargetBeepHi` as keyof typeof state;
-          const targetBeepLoKey = `drumEuclid${laneNum}TargetBeepLo` as keyof typeof state;
-          const targetNoiseKey = `drumEuclid${laneNum}TargetNoise` as keyof typeof state;
-          const probabilityKey = `drumEuclid${laneNum}Probability` as keyof typeof state;
-          const velocityMinKey = `drumEuclid${laneNum}VelocityMin` as keyof typeof state;
-          const velocityMaxKey = `drumEuclid${laneNum}VelocityMax` as keyof typeof state;
-          
-          const isEnabled = state[enabledKey] as boolean;
-          const preset = state[presetKey] as string;
-          const steps = state[stepsKey] as number;
-          const hits = state[hitsKey] as number;
-          const rotation = state[rotationKey] as number;
-          
-          const legacyTargetKey = `drumEuclid${laneNum}Target` as keyof typeof state;
-          const legacyTarget = (state as any)[legacyTargetKey] as string | undefined;
-          const voiceToggles: Record<string, boolean> = {
-            sub: (state[targetSubKey] as boolean | undefined) ?? (legacyTarget === 'sub'),
-            kick: (state[targetKickKey] as boolean | undefined) ?? (legacyTarget === 'kick'),
-            click: (state[targetClickKey] as boolean | undefined) ?? (legacyTarget === 'click'),
-            beepHi: (state[targetBeepHiKey] as boolean | undefined) ?? (legacyTarget === 'beepHi'),
-            beepLo: (state[targetBeepLoKey] as boolean | undefined) ?? (legacyTarget === 'beepLo'),
-            noise: (state[targetNoiseKey] as boolean | undefined) ?? (legacyTarget === 'noise'),
-          };
-          const voiceKeyMap: Record<string, keyof typeof state> = {
-            sub: targetSubKey, kick: targetKickKey, click: targetClickKey,
-            beepHi: targetBeepHiKey, beepLo: targetBeepLoKey, noise: targetNoiseKey,
-          };
-          const probability = state[probabilityKey] as number;
-          const velocityMin = state[velocityMinKey] as number;
-          const velocityMax = state[velocityMaxKey] as number;
-          const isVelocityDual = velocityMin !== velocityMax;
-          
-          const presetData: Record<string, { steps: number; hits: number; rotation: number }> = {
-            sparse: { steps: 16, hits: 1, rotation: 0 },
-            dense: { steps: 8, hits: 7, rotation: 0 },
-            longSparse: { steps: 32, hits: 3, rotation: 0 },
-            poly3v4: { steps: 12, hits: 3, rotation: 0 },
-            poly4v3: { steps: 12, hits: 4, rotation: 0 },
-            poly5v4: { steps: 20, hits: 5, rotation: 0 },
-            lancaran: { steps: 16, hits: 4, rotation: 0 },
-            ketawang: { steps: 16, hits: 2, rotation: 0 },
-            ladrang: { steps: 32, hits: 8, rotation: 0 },
-            gangsaran: { steps: 8, hits: 4, rotation: 0 },
-            kotekan: { steps: 8, hits: 3, rotation: 1 },
-            kotekan2: { steps: 8, hits: 3, rotation: 4 },
-            srepegan: { steps: 16, hits: 6, rotation: 2 },
-            sampak: { steps: 8, hits: 5, rotation: 0 },
-            ayak: { steps: 16, hits: 3, rotation: 4 },
-            bonang: { steps: 12, hits: 5, rotation: 2 },
-            tresillo: { steps: 8, hits: 3, rotation: 0 },
-            cinquillo: { steps: 8, hits: 5, rotation: 0 },
-            rumba: { steps: 16, hits: 5, rotation: 0 },
-            bossa: { steps: 16, hits: 5, rotation: 3 },
-            son: { steps: 16, hits: 7, rotation: 0 },
-            shiko: { steps: 16, hits: 5, rotation: 0 },
-            soukous: { steps: 12, hits: 7, rotation: 0 },
-            gahu: { steps: 16, hits: 7, rotation: 0 },
-            bembe: { steps: 12, hits: 7, rotation: 0 },
-            clapping: { steps: 12, hits: 8, rotation: 0 },
-            clappingB: { steps: 12, hits: 8, rotation: 5 },
-            additive7: { steps: 7, hits: 4, rotation: 0 },
-            additive11: { steps: 11, hits: 5, rotation: 0 },
-            additive13: { steps: 13, hits: 5, rotation: 0 },
-            reich18: { steps: 12, hits: 7, rotation: 3 },
-            drumming: { steps: 8, hits: 6, rotation: 1 },
-          };
-          
-          const patternSteps = preset === 'custom' ? steps : (presetData[preset]?.steps || 16);
-          const patternHits = preset === 'custom' ? hits : (presetData[preset]?.hits || 4);
-          const baseRotation = preset === 'custom' ? 0 : (presetData[preset]?.rotation || 0);
-          const patternRotation = (baseRotation + rotation) % patternSteps;
-          
-          const generatePattern = (s: number, h: number, r: number): boolean[] => {
-            const pattern: boolean[] = [];
-            if (h === 0) {
-              for (let i = 0; i < s; i++) pattern.push(false);
-            } else if (h >= s) {
-              for (let i = 0; i < s; i++) pattern.push(true);
-            } else {
-              let groups: number[][] = [];
-              for (let i = 0; i < h; i++) groups.push([1]);
-              for (let i = 0; i < s - h; i++) groups.push([0]);
-              
-              while (groups.length > 1) {
-                const ones = groups.filter(g => g[0] === 1);
-                const zeros = groups.filter(g => g[0] === 0);
-                if (zeros.length === 0) break;
-                
-                const combined: number[][] = [];
-                const minLen = Math.min(ones.length, zeros.length);
-                for (let i = 0; i < minLen; i++) {
-                  combined.push([...ones[i], ...zeros[i]]);
-                }
-                const remainder = ones.length > zeros.length ? ones.slice(minLen) : zeros.slice(minLen);
-                if (remainder.length === 0 || remainder.length === groups.length - minLen) {
-                  groups = [...combined, ...remainder];
-                  break;
-                }
-                groups = [...combined, ...remainder];
-              }
-              
-              for (const g of groups) {
-                for (const v of g) pattern.push(v === 1);
-              }
-            }
-            return [...pattern.slice(r % pattern.length), ...pattern.slice(0, r % pattern.length)];
-          };
-          
-          const pattern = generatePattern(patternSteps, patternHits, patternRotation);
-          
-          return (
-            <CollapsiblePanel
-              id="drumEuclid1"
-              title={`⬡ Euclidean Lane 1 ${isEnabled ? `• ${voiceOrder.filter(v => voiceToggles[v]).map(v => voiceIcons[v]).join('')} ${patternHits}/${patternSteps}` : '(off)'}`}
-              isMobile={isMobile}
-              isExpanded={expandedPanels.has('drumEuclid1')}
-              onToggle={togglePanel}
-              titleStyle={{ color: laneColor }}
-            >
-              {/* Enable toggle */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-                <button
-                  onClick={() => handleSelectChange(enabledKey, !isEnabled)}
-                  style={{
-                    padding: '8px 16px',
-                    borderRadius: '6px',
-                    border: 'none',
-                    cursor: 'pointer',
-                    fontWeight: 'bold',
-                    background: isEnabled ? laneColor : 'rgba(255, 255, 255, 0.1)',
-                    color: isEnabled ? 'white' : '#9ca3af',
-                    transition: 'all 0.2s',
-                  }}
-                >
-                  {isEnabled ? '● Lane Active' : '○ Lane Off'}
-                </button>
-              </div>
-
-              {/* Pattern visualization */}
-              <div style={{ 
-                display: 'flex', 
-                flexWrap: 'wrap', 
-                gap: '2px',
-                marginBottom: '8px',
-                justifyContent: 'center',
-                opacity: isEnabled ? 1 : 0.4,
-              }}>
-                {pattern.map((hit, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      width: patternSteps > 16 ? '8px' : '12px',
-                      height: patternSteps > 16 ? '8px' : '12px',
-                      borderRadius: '50%',
-                      background: hit ? laneColor : 'rgba(255,255,255,0.15)',
-                      boxShadow: hit ? `0 0 6px ${laneColor}` : 'none',
-                    }}
-                  />
-                ))}
-              </div>
-              
-              {/* Pattern Preset Selector */}
-              <select
-                value={preset}
-                onChange={(e) => handleSelectChange(presetKey, e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '6px',
-                  borderRadius: '4px',
-                  border: `1px solid ${laneColor}40`,
-                  background: 'rgba(0,0,0,0.4)',
-                  color: '#eee',
-                  cursor: 'pointer',
-                  fontSize: '0.75rem',
-                  marginBottom: '6px',
-                }}
-              >
-                <optgroup label="Polyrhythmic / Complex">
-                  <option value="sparse">Sparse (16/1)</option>
-                  <option value="dense">Dense (8/7)</option>
-                  <option value="longSparse">Long Sparse (32/3)</option>
-                  <option value="poly3v4">3 vs 4 (12/3)</option>
-                  <option value="poly4v3">4 vs 3 (12/4)</option>
-                  <option value="poly5v4">5 vs 4 (20/5)</option>
-                </optgroup>
-                <optgroup label="Indonesian Gamelan">
-                  <option value="lancaran">Lancaran (16/4)</option>
-                  <option value="ketawang">Ketawang (16/2)</option>
-                  <option value="ladrang">Ladrang (32/8)</option>
-                  <option value="gangsaran">Gangsaran (8/4)</option>
-                  <option value="kotekan">Kotekan A (8/3)</option>
-                  <option value="kotekan2">Kotekan B (8/3 r:4)</option>
-                  <option value="srepegan">Srepegan (16/6)</option>
-                  <option value="sampak">Sampak (8/5)</option>
-                  <option value="ayak">Ayak (16/3)</option>
-                  <option value="bonang">Bonang (12/5)</option>
-                </optgroup>
-                <optgroup label="World Rhythms">
-                  <option value="tresillo">Tresillo (8/3)</option>
-                  <option value="cinquillo">Cinquillo (8/5)</option>
-                  <option value="rumba">Rumba (16/5)</option>
-                  <option value="bossa">Bossa Nova (16/5)</option>
-                  <option value="son">Son Clave (16/7)</option>
-                  <option value="shiko">Shiko (16/5)</option>
-                  <option value="soukous">Soukous (12/7)</option>
-                  <option value="gahu">Gahu (16/7)</option>
-                  <option value="bembe">Bembé (12/7)</option>
-                </optgroup>
-                <optgroup label="Steve Reich / Experimental">
-                  <option value="clapping">Clapping Music (12/8)</option>
-                  <option value="clappingB">Clapping B (12/8 r:5)</option>
-                  <option value="additive7">Additive 7 (7/4)</option>
-                  <option value="additive11">Additive 11 (11/5)</option>
-                  <option value="additive13">Additive 13 (13/5)</option>
-                  <option value="reich18">Reich 18 (12/7)</option>
-                  <option value="drumming">Drumming (8/6)</option>
-                </optgroup>
-                <option value="custom">Custom</option>
-              </select>
-              
-              {/* Voice toggle buttons row */}
-              <div style={{ 
-                display: 'flex', 
-                gap: '4px', 
-                marginBottom: '8px',
-                justifyContent: 'space-between'
-              }}>
-                {voiceOrder.map(voice => {
-                  const isOn = voiceToggles[voice];
-                  const toggleKey = voiceKeyMap[voice];
-                  return (
-                    <button
-                      key={voice}
-                      onClick={() => handleSelectChange(toggleKey, !isOn)}
-                      title={voiceNames[voice]}
-                      style={{
-                        flex: 1,
-                        padding: '6px 2px',
-                        borderRadius: '4px',
-                        border: isOn ? `2px solid ${laneColor}` : '1px solid #444',
-                        background: isOn ? `${laneColor}40` : 'rgba(0,0,0,0.3)',
-                        color: isOn ? laneColor : '#666',
-                        cursor: 'pointer',
-                        fontSize: '1rem',
-                        fontWeight: 'bold',
-                        transition: 'all 0.15s ease',
-                      }}
-                    >
-                      {voiceIcons[voice]}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Custom mode: Steps & Hits sliders */}
-              {preset === 'custom' && (
-                <div style={{ display: 'flex', gap: '8px', marginBottom: '4px' }}>
-                  <div style={{ flex: 1 }}>
-                    <Slider 
-                      label="Steps" 
-                      value={steps} 
-                      paramKey={stepsKey} 
-                      onChange={handleSliderChange} 
-                      {...sliderProps(stepsKey)} 
-                    />
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <Slider 
-                      label="Hits" 
-                      value={hits} 
-                      paramKey={hitsKey} 
-                      onChange={handleSliderChange} 
-                      {...sliderProps(hitsKey)} 
-                    />
-                  </div>
-                </div>
-              )}
-              
-              {/* Probability and Rotation row */}
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: '0.65rem', color: '#888', marginBottom: '2px' }}>Probability {Math.round(probability * 100)}%</div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.05"
-                    value={probability}
-                    onChange={(e) => handleSliderChange(probabilityKey as keyof SliderState, parseFloat(e.target.value))}
-                    style={{ width: '100%', cursor: 'pointer' }}
-                  />
-                </div>
-                
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: '70px' }}>
-                  <div style={{ fontSize: '0.65rem', color: '#888', marginBottom: '2px' }}>Rotate: {rotation}</div>
-                  <div style={{ display: 'flex', gap: '4px' }}>
-                    <button
-                      onClick={() => {
-                        const newRot = (rotation + 1) % patternSteps;
-                        handleSliderChange(rotationKey as keyof SliderState, newRot);
-                      }}
-                      style={{
-                        padding: '4px 8px',
-                        background: `${laneColor}30`,
-                        border: `1px solid ${laneColor}60`,
-                        borderRadius: '4px',
-                        color: laneColor,
-                        cursor: 'pointer',
-                        fontSize: '0.8rem',
-                        fontWeight: 'bold',
-                      }}
-                    >
-                      ←
-                    </button>
-                    <button
-                      onClick={() => {
-                        const newRot = (rotation - 1 + patternSteps) % patternSteps;
-                        handleSliderChange(rotationKey as keyof SliderState, newRot);
-                      }}
-                      style={{
-                        padding: '4px 8px',
-                        background: `${laneColor}30`,
-                        border: `1px solid ${laneColor}60`,
-                        borderRadius: '4px',
-                        color: laneColor,
-                        cursor: 'pointer',
-                        fontSize: '0.8rem',
-                        fontWeight: 'bold',
-                      }}
-                    >
-                      →
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Level row */}
-              <div style={{ marginTop: '8px' }}>
-                <div style={{ fontSize: '0.65rem', color: '#888', marginBottom: '2px' }}>
-                  Level {isVelocityDual 
-                    ? <span style={{ color: laneColor }}>{Math.round(velocityMin * 100)}–{Math.round(velocityMax * 100)}%</span>
-                    : `${Math.round(velocityMin * 100)}%`
-                  }
-                  {isVelocityDual && <span style={{ color: laneColor, marginLeft: '4px', fontSize: '0.6rem' }}>⟷ range</span>}
-                </div>
-                {isVelocityDual ? (
-                  <div 
-                    style={styles.dualSliderContainer}
-                    onDoubleClick={() => {
-                      const mid = (velocityMin + velocityMax) / 2;
-                      handleSliderChange(velocityMinKey as keyof SliderState, mid);
-                      handleSliderChange(velocityMaxKey as keyof SliderState, mid);
-                    }}
-                    {...createLongPressHandlers(() => {
-                      const mid = (velocityMin + velocityMax) / 2;
-                      handleSliderChange(velocityMinKey as keyof SliderState, mid);
-                      handleSliderChange(velocityMaxKey as keyof SliderState, mid);
-                    })}
-                    title="Double-click or long-press for single value mode"
-                  >
-                    <div style={{
-                      ...styles.dualSliderTrack,
-                      left: `${velocityMin * 100}%`,
-                      width: `${(velocityMax - velocityMin) * 100}%`,
-                      background: `linear-gradient(90deg, ${laneColor}99, ${laneColor}cc)`,
-                    }} />
-                    <div
-                      style={{ ...styles.dualSliderThumb, left: `${velocityMin * 100}%`, background: laneColor }}
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        const container = e.currentTarget.parentElement;
-                        if (!container) return;
-                        const move = (me: MouseEvent) => {
-                          const rect = container.getBoundingClientRect();
-                          const pct = Math.max(0, Math.min(100, ((me.clientX - rect.left) / rect.width) * 100));
-                          handleSliderChange(velocityMinKey as keyof SliderState, Math.min(pct / 100, velocityMax));
-                        };
-                        const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
-                        window.addEventListener('mousemove', move);
-                        window.addEventListener('mouseup', up);
-                      }}
-                    />
-                    <div
-                      style={{ ...styles.dualSliderThumb, left: `${velocityMax * 100}%`, background: laneColor }}
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        const container = e.currentTarget.parentElement;
-                        if (!container) return;
-                        const move = (me: MouseEvent) => {
-                          const rect = container.getBoundingClientRect();
-                          const pct = Math.max(0, Math.min(100, ((me.clientX - rect.left) / rect.width) * 100));
-                          handleSliderChange(velocityMaxKey as keyof SliderState, Math.max(pct / 100, velocityMin));
-                        };
-                        const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
-                        window.addEventListener('mousemove', move);
-                        window.addEventListener('mouseup', up);
-                      }}
-                    />
-                  </div>
-                ) : (
-                  <input
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.05"
-                    value={velocityMin}
-                    onChange={(e) => {
-                      const val = parseFloat(e.target.value);
-                      handleSliderChange(velocityMinKey as keyof SliderState, val);
-                      handleSliderChange(velocityMaxKey as keyof SliderState, val);
-                    }}
-                    onDoubleClick={() => {
-                      const current = velocityMin;
-                      const spread = 0.1;
-                      const newMin = Math.max(0, current - spread);
-                      const newMax = Math.min(1, current + spread);
-                      handleSliderChange(velocityMinKey as keyof SliderState, newMin);
-                      handleSliderChange(velocityMaxKey as keyof SliderState, newMax);
-                    }}
-                    {...createLongPressHandlers(() => {
-                      const current = velocityMin;
-                      const spread = 0.1;
-                      const newMin = Math.max(0, current - spread);
-                      const newMax = Math.min(1, current + spread);
-                      handleSliderChange(velocityMinKey as keyof SliderState, newMin);
-                      handleSliderChange(velocityMaxKey as keyof SliderState, newMax);
-                    })}
-                    style={{ width: '100%', cursor: 'pointer' }}
-                    title="Double-click or long-press for range mode"
-                  />
-                )}
-              </div>
-            </CollapsiblePanel>
-          );
-        })()}
-
-        {/* Euclidean Lane 2 */}
-        {(() => {
-          const laneNum = 2;
-          const laneColor = '#f97316';
-          const voiceIcons: Record<string, string> = {
-            sub: '◉', kick: '●', click: '▪', beepHi: '△', beepLo: '▽', noise: '≋'
-          };
-          const voiceNames: Record<string, string> = {
-            sub: 'Sub (Deep Pulse)', kick: 'Kick (Punch)', click: 'Click (Data)', 
-            beepHi: 'Beep Hi (Ping)', beepLo: 'Beep Lo (Blip)', noise: 'Noise (Hi-Hat)'
-          };
-          const voiceOrder = ['sub', 'kick', 'click', 'beepHi', 'beepLo', 'noise'] as const;
-          
-          const enabledKey = `drumEuclid${laneNum}Enabled` as keyof typeof state;
-          const presetKey = `drumEuclid${laneNum}Preset` as keyof typeof state;
-          const stepsKey = `drumEuclid${laneNum}Steps` as keyof typeof state;
-          const hitsKey = `drumEuclid${laneNum}Hits` as keyof typeof state;
-          const rotationKey = `drumEuclid${laneNum}Rotation` as keyof typeof state;
-          const targetSubKey = `drumEuclid${laneNum}TargetSub` as keyof typeof state;
-          const targetKickKey = `drumEuclid${laneNum}TargetKick` as keyof typeof state;
-          const targetClickKey = `drumEuclid${laneNum}TargetClick` as keyof typeof state;
-          const targetBeepHiKey = `drumEuclid${laneNum}TargetBeepHi` as keyof typeof state;
-          const targetBeepLoKey = `drumEuclid${laneNum}TargetBeepLo` as keyof typeof state;
-          const targetNoiseKey = `drumEuclid${laneNum}TargetNoise` as keyof typeof state;
-          const probabilityKey = `drumEuclid${laneNum}Probability` as keyof typeof state;
-          const velocityMinKey = `drumEuclid${laneNum}VelocityMin` as keyof typeof state;
-          const velocityMaxKey = `drumEuclid${laneNum}VelocityMax` as keyof typeof state;
-          
-          const isEnabled = state[enabledKey] as boolean;
-          const preset = state[presetKey] as string;
-          const steps = state[stepsKey] as number;
-          const hits = state[hitsKey] as number;
-          const rotation = state[rotationKey] as number;
-          
-          const legacyTargetKey = `drumEuclid${laneNum}Target` as keyof typeof state;
-          const legacyTarget = (state as any)[legacyTargetKey] as string | undefined;
-          const voiceToggles: Record<string, boolean> = {
-            sub: (state[targetSubKey] as boolean | undefined) ?? (legacyTarget === 'sub'),
-            kick: (state[targetKickKey] as boolean | undefined) ?? (legacyTarget === 'kick'),
-            click: (state[targetClickKey] as boolean | undefined) ?? (legacyTarget === 'click'),
-            beepHi: (state[targetBeepHiKey] as boolean | undefined) ?? (legacyTarget === 'beepHi'),
-            beepLo: (state[targetBeepLoKey] as boolean | undefined) ?? (legacyTarget === 'beepLo'),
-            noise: (state[targetNoiseKey] as boolean | undefined) ?? (legacyTarget === 'noise'),
-          };
-          const voiceKeyMap: Record<string, keyof typeof state> = {
-            sub: targetSubKey, kick: targetKickKey, click: targetClickKey,
-            beepHi: targetBeepHiKey, beepLo: targetBeepLoKey, noise: targetNoiseKey,
-          };
-          const probability = state[probabilityKey] as number;
-          const velocityMin = state[velocityMinKey] as number;
-          const velocityMax = state[velocityMaxKey] as number;
-          const isVelocityDual = velocityMin !== velocityMax;
-          
-          const presetData: Record<string, { steps: number; hits: number; rotation: number }> = {
-            sparse: { steps: 16, hits: 1, rotation: 0 }, dense: { steps: 8, hits: 7, rotation: 0 },
-            longSparse: { steps: 32, hits: 3, rotation: 0 }, poly3v4: { steps: 12, hits: 3, rotation: 0 },
-            poly4v3: { steps: 12, hits: 4, rotation: 0 }, poly5v4: { steps: 20, hits: 5, rotation: 0 },
-            lancaran: { steps: 16, hits: 4, rotation: 0 }, ketawang: { steps: 16, hits: 2, rotation: 0 },
-            ladrang: { steps: 32, hits: 8, rotation: 0 }, gangsaran: { steps: 8, hits: 4, rotation: 0 },
-            kotekan: { steps: 8, hits: 3, rotation: 1 }, kotekan2: { steps: 8, hits: 3, rotation: 4 },
-            srepegan: { steps: 16, hits: 6, rotation: 2 }, sampak: { steps: 8, hits: 5, rotation: 0 },
-            ayak: { steps: 16, hits: 3, rotation: 4 }, bonang: { steps: 12, hits: 5, rotation: 2 },
-            tresillo: { steps: 8, hits: 3, rotation: 0 }, cinquillo: { steps: 8, hits: 5, rotation: 0 },
-            rumba: { steps: 16, hits: 5, rotation: 0 }, bossa: { steps: 16, hits: 5, rotation: 3 },
-            son: { steps: 16, hits: 7, rotation: 0 }, shiko: { steps: 16, hits: 5, rotation: 0 },
-            soukous: { steps: 12, hits: 7, rotation: 0 }, gahu: { steps: 16, hits: 7, rotation: 0 },
-            bembe: { steps: 12, hits: 7, rotation: 0 }, clapping: { steps: 12, hits: 8, rotation: 0 },
-            clappingB: { steps: 12, hits: 8, rotation: 5 }, additive7: { steps: 7, hits: 4, rotation: 0 },
-            additive11: { steps: 11, hits: 5, rotation: 0 }, additive13: { steps: 13, hits: 5, rotation: 0 },
-            reich18: { steps: 12, hits: 7, rotation: 3 }, drumming: { steps: 8, hits: 6, rotation: 1 },
-          };
-          
-          const patternSteps = preset === 'custom' ? steps : (presetData[preset]?.steps || 16);
-          const patternHits = preset === 'custom' ? hits : (presetData[preset]?.hits || 4);
-          const baseRotation = preset === 'custom' ? 0 : (presetData[preset]?.rotation || 0);
-          const patternRotation = (baseRotation + rotation) % patternSteps;
-          
-          const generatePattern = (s: number, h: number, r: number): boolean[] => {
-            const pattern: boolean[] = [];
-            if (h === 0) { for (let i = 0; i < s; i++) pattern.push(false); }
-            else if (h >= s) { for (let i = 0; i < s; i++) pattern.push(true); }
-            else {
-              let groups: number[][] = [];
-              for (let i = 0; i < h; i++) groups.push([1]);
-              for (let i = 0; i < s - h; i++) groups.push([0]);
-              while (groups.length > 1) {
-                const ones = groups.filter(g => g[0] === 1);
-                const zeros = groups.filter(g => g[0] === 0);
-                if (zeros.length === 0) break;
-                const combined: number[][] = [];
-                const minLen = Math.min(ones.length, zeros.length);
-                for (let i = 0; i < minLen; i++) combined.push([...ones[i], ...zeros[i]]);
-                const remainder = ones.length > zeros.length ? ones.slice(minLen) : zeros.slice(minLen);
-                if (remainder.length === 0 || remainder.length === groups.length - minLen) { groups = [...combined, ...remainder]; break; }
-                groups = [...combined, ...remainder];
-              }
-              for (const g of groups) for (const v of g) pattern.push(v === 1);
-            }
-            return [...pattern.slice(r % pattern.length), ...pattern.slice(0, r % pattern.length)];
-          };
-          const pattern = generatePattern(patternSteps, patternHits, patternRotation);
-          
-          return (
-            <CollapsiblePanel
-              id="drumEuclid2"
-              title={`⬡ Euclidean Lane 2 ${isEnabled ? `• ${voiceOrder.filter(v => voiceToggles[v]).map(v => voiceIcons[v]).join('')} ${patternHits}/${patternSteps}` : '(off)'}`}
-              isMobile={isMobile}
-              isExpanded={expandedPanels.has('drumEuclid2')}
-              onToggle={togglePanel}
-              titleStyle={{ color: laneColor }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-                <button onClick={() => handleSelectChange(enabledKey, !isEnabled)} style={{ padding: '8px 16px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontWeight: 'bold', background: isEnabled ? laneColor : 'rgba(255, 255, 255, 0.1)', color: isEnabled ? 'white' : '#9ca3af', transition: 'all 0.2s' }}>
-                  {isEnabled ? '● Lane Active' : '○ Lane Off'}
-                </button>
-              </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px', marginBottom: '8px', justifyContent: 'center', opacity: isEnabled ? 1 : 0.4 }}>
-                {pattern.map((hit, i) => (<div key={i} style={{ width: patternSteps > 16 ? '8px' : '12px', height: patternSteps > 16 ? '8px' : '12px', borderRadius: '50%', background: hit ? laneColor : 'rgba(255,255,255,0.15)', boxShadow: hit ? `0 0 6px ${laneColor}` : 'none' }} />))}
-              </div>
-              <select value={preset} onChange={(e) => handleSelectChange(presetKey, e.target.value)} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: `1px solid ${laneColor}40`, background: 'rgba(0,0,0,0.4)', color: '#eee', cursor: 'pointer', fontSize: '0.75rem', marginBottom: '6px' }}>
-                <optgroup label="Polyrhythmic"><option value="sparse">Sparse (16/1)</option><option value="dense">Dense (8/7)</option><option value="longSparse">Long Sparse (32/3)</option><option value="poly3v4">3 vs 4 (12/3)</option><option value="poly4v3">4 vs 3 (12/4)</option><option value="poly5v4">5 vs 4 (20/5)</option></optgroup>
-                <optgroup label="Gamelan"><option value="lancaran">Lancaran (16/4)</option><option value="ketawang">Ketawang (16/2)</option><option value="ladrang">Ladrang (32/8)</option><option value="gangsaran">Gangsaran (8/4)</option><option value="kotekan">Kotekan A (8/3)</option><option value="kotekan2">Kotekan B (8/3)</option><option value="srepegan">Srepegan (16/6)</option><option value="sampak">Sampak (8/5)</option><option value="ayak">Ayak (16/3)</option><option value="bonang">Bonang (12/5)</option></optgroup>
-                <optgroup label="World"><option value="tresillo">Tresillo (8/3)</option><option value="cinquillo">Cinquillo (8/5)</option><option value="rumba">Rumba (16/5)</option><option value="bossa">Bossa Nova (16/5)</option><option value="son">Son Clave (16/7)</option><option value="shiko">Shiko (16/5)</option><option value="soukous">Soukous (12/7)</option><option value="gahu">Gahu (16/7)</option><option value="bembe">Bembé (12/7)</option></optgroup>
-                <optgroup label="Experimental"><option value="clapping">Clapping Music (12/8)</option><option value="clappingB">Clapping B (12/8)</option><option value="additive7">Additive 7 (7/4)</option><option value="additive11">Additive 11 (11/5)</option><option value="additive13">Additive 13 (13/5)</option><option value="reich18">Reich 18 (12/7)</option><option value="drumming">Drumming (8/6)</option></optgroup>
-                <option value="custom">Custom</option>
-              </select>
-              <div style={{ display: 'flex', gap: '4px', marginBottom: '8px', justifyContent: 'space-between' }}>
-                {voiceOrder.map(voice => { const isOn = voiceToggles[voice]; return (<button key={voice} onClick={() => handleSelectChange(voiceKeyMap[voice], !isOn)} title={voiceNames[voice]} style={{ flex: 1, padding: '6px 2px', borderRadius: '4px', border: isOn ? `2px solid ${laneColor}` : '1px solid #444', background: isOn ? `${laneColor}40` : 'rgba(0,0,0,0.3)', color: isOn ? laneColor : '#666', cursor: 'pointer', fontSize: '1rem', fontWeight: 'bold' }}>{voiceIcons[voice]}</button>); })}
-              </div>
-              {preset === 'custom' && (<div style={{ display: 'flex', gap: '8px', marginBottom: '4px' }}><div style={{ flex: 1 }}><Slider label="Steps" value={steps} paramKey={stepsKey} onChange={handleSliderChange} {...sliderProps(stepsKey)} /></div><div style={{ flex: 1 }}><Slider label="Hits" value={hits} paramKey={hitsKey} onChange={handleSliderChange} {...sliderProps(hitsKey)} /></div></div>)}
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <div style={{ flex: 1 }}><div style={{ fontSize: '0.65rem', color: '#888', marginBottom: '2px' }}>Probability {Math.round(probability * 100)}%</div><input type="range" min="0" max="1" step="0.05" value={probability} onChange={(e) => handleSliderChange(probabilityKey as keyof SliderState, parseFloat(e.target.value))} style={{ width: '100%', cursor: 'pointer' }} /></div>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: '70px' }}><div style={{ fontSize: '0.65rem', color: '#888', marginBottom: '2px' }}>Rotate: {rotation}</div><div style={{ display: 'flex', gap: '4px' }}><button onClick={() => handleSliderChange(rotationKey as keyof SliderState, (rotation + 1) % patternSteps)} style={{ padding: '4px 8px', background: `${laneColor}30`, border: `1px solid ${laneColor}60`, borderRadius: '4px', color: laneColor, cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}>←</button><button onClick={() => handleSliderChange(rotationKey as keyof SliderState, (rotation - 1 + patternSteps) % patternSteps)} style={{ padding: '4px 8px', background: `${laneColor}30`, border: `1px solid ${laneColor}60`, borderRadius: '4px', color: laneColor, cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}>→</button></div></div>
-              </div>
-              <div style={{ marginTop: '8px' }}>
-                <div style={{ fontSize: '0.65rem', color: '#888', marginBottom: '2px' }}>Level {isVelocityDual ? <span style={{ color: laneColor }}>{Math.round(velocityMin * 100)}–{Math.round(velocityMax * 100)}%</span> : `${Math.round(velocityMin * 100)}%`}{isVelocityDual && <span style={{ color: laneColor, marginLeft: '4px', fontSize: '0.6rem' }}>{TEXT_SYMBOLS.range} range</span>}</div>
-                <input type="range" min="0" max="1" step="0.05" value={velocityMin} onChange={(e) => { const val = parseFloat(e.target.value); handleSliderChange(velocityMinKey as keyof SliderState, val); handleSliderChange(velocityMaxKey as keyof SliderState, val); }} onDoubleClick={() => { handleSliderChange(velocityMinKey as keyof SliderState, Math.max(0, velocityMin - 0.1)); handleSliderChange(velocityMaxKey as keyof SliderState, Math.min(1, velocityMin + 0.1)); }} {...createLongPressHandlers(() => { handleSliderChange(velocityMinKey as keyof SliderState, Math.max(0, velocityMin - 0.1)); handleSliderChange(velocityMaxKey as keyof SliderState, Math.min(1, velocityMin + 0.1)); })} style={{ width: '100%', cursor: 'pointer' }} title="Double-click or long-press for range mode" />
-              </div>
-            </CollapsiblePanel>
-          );
-        })()}
-
-        {/* Euclidean Lane 3 */}
-        {(() => {
-          const laneNum = 3;
-          const laneColor = '#22c55e';
-          const voiceIcons: Record<string, string> = { sub: '◉', kick: '●', click: '▪', beepHi: '△', beepLo: '▽', noise: '≋' };
-          const voiceNames: Record<string, string> = { sub: 'Sub (Deep Pulse)', kick: 'Kick (Punch)', click: 'Click (Data)', beepHi: 'Beep Hi (Ping)', beepLo: 'Beep Lo (Blip)', noise: 'Noise (Hi-Hat)' };
-          const voiceOrder = ['sub', 'kick', 'click', 'beepHi', 'beepLo', 'noise'] as const;
-          const enabledKey = `drumEuclid${laneNum}Enabled` as keyof typeof state;
-          const presetKey = `drumEuclid${laneNum}Preset` as keyof typeof state;
-          const stepsKey = `drumEuclid${laneNum}Steps` as keyof typeof state;
-          const hitsKey = `drumEuclid${laneNum}Hits` as keyof typeof state;
-          const rotationKey = `drumEuclid${laneNum}Rotation` as keyof typeof state;
-          const targetSubKey = `drumEuclid${laneNum}TargetSub` as keyof typeof state;
-          const targetKickKey = `drumEuclid${laneNum}TargetKick` as keyof typeof state;
-          const targetClickKey = `drumEuclid${laneNum}TargetClick` as keyof typeof state;
-          const targetBeepHiKey = `drumEuclid${laneNum}TargetBeepHi` as keyof typeof state;
-          const targetBeepLoKey = `drumEuclid${laneNum}TargetBeepLo` as keyof typeof state;
-          const targetNoiseKey = `drumEuclid${laneNum}TargetNoise` as keyof typeof state;
-          const probabilityKey = `drumEuclid${laneNum}Probability` as keyof typeof state;
-          const velocityMinKey = `drumEuclid${laneNum}VelocityMin` as keyof typeof state;
-          const velocityMaxKey = `drumEuclid${laneNum}VelocityMax` as keyof typeof state;
-          const isEnabled = state[enabledKey] as boolean;
-          const preset = state[presetKey] as string;
-          const steps = state[stepsKey] as number;
-          const hits = state[hitsKey] as number;
-          const rotation = state[rotationKey] as number;
-          const legacyTargetKey = `drumEuclid${laneNum}Target` as keyof typeof state;
-          const legacyTarget = (state as any)[legacyTargetKey] as string | undefined;
-          const voiceToggles: Record<string, boolean> = { sub: (state[targetSubKey] as boolean | undefined) ?? (legacyTarget === 'sub'), kick: (state[targetKickKey] as boolean | undefined) ?? (legacyTarget === 'kick'), click: (state[targetClickKey] as boolean | undefined) ?? (legacyTarget === 'click'), beepHi: (state[targetBeepHiKey] as boolean | undefined) ?? (legacyTarget === 'beepHi'), beepLo: (state[targetBeepLoKey] as boolean | undefined) ?? (legacyTarget === 'beepLo'), noise: (state[targetNoiseKey] as boolean | undefined) ?? (legacyTarget === 'noise') };
-          const voiceKeyMap: Record<string, keyof typeof state> = { sub: targetSubKey, kick: targetKickKey, click: targetClickKey, beepHi: targetBeepHiKey, beepLo: targetBeepLoKey, noise: targetNoiseKey };
-          const probability = state[probabilityKey] as number;
-          const velocityMin = state[velocityMinKey] as number;
-          const velocityMax = state[velocityMaxKey] as number;
-          const isVelocityDual = velocityMin !== velocityMax;
-          const presetData: Record<string, { steps: number; hits: number; rotation: number }> = { sparse: { steps: 16, hits: 1, rotation: 0 }, dense: { steps: 8, hits: 7, rotation: 0 }, longSparse: { steps: 32, hits: 3, rotation: 0 }, poly3v4: { steps: 12, hits: 3, rotation: 0 }, poly4v3: { steps: 12, hits: 4, rotation: 0 }, poly5v4: { steps: 20, hits: 5, rotation: 0 }, lancaran: { steps: 16, hits: 4, rotation: 0 }, ketawang: { steps: 16, hits: 2, rotation: 0 }, ladrang: { steps: 32, hits: 8, rotation: 0 }, gangsaran: { steps: 8, hits: 4, rotation: 0 }, kotekan: { steps: 8, hits: 3, rotation: 1 }, kotekan2: { steps: 8, hits: 3, rotation: 4 }, srepegan: { steps: 16, hits: 6, rotation: 2 }, sampak: { steps: 8, hits: 5, rotation: 0 }, ayak: { steps: 16, hits: 3, rotation: 4 }, bonang: { steps: 12, hits: 5, rotation: 2 }, tresillo: { steps: 8, hits: 3, rotation: 0 }, cinquillo: { steps: 8, hits: 5, rotation: 0 }, rumba: { steps: 16, hits: 5, rotation: 0 }, bossa: { steps: 16, hits: 5, rotation: 3 }, son: { steps: 16, hits: 7, rotation: 0 }, shiko: { steps: 16, hits: 5, rotation: 0 }, soukous: { steps: 12, hits: 7, rotation: 0 }, gahu: { steps: 16, hits: 7, rotation: 0 }, bembe: { steps: 12, hits: 7, rotation: 0 }, clapping: { steps: 12, hits: 8, rotation: 0 }, clappingB: { steps: 12, hits: 8, rotation: 5 }, additive7: { steps: 7, hits: 4, rotation: 0 }, additive11: { steps: 11, hits: 5, rotation: 0 }, additive13: { steps: 13, hits: 5, rotation: 0 }, reich18: { steps: 12, hits: 7, rotation: 3 }, drumming: { steps: 8, hits: 6, rotation: 1 } };
-          const patternSteps = preset === 'custom' ? steps : (presetData[preset]?.steps || 16);
-          const patternHits = preset === 'custom' ? hits : (presetData[preset]?.hits || 4);
-          const baseRotation = preset === 'custom' ? 0 : (presetData[preset]?.rotation || 0);
-          const patternRotation = (baseRotation + rotation) % patternSteps;
-          const generatePattern = (s: number, h: number, r: number): boolean[] => { const pattern: boolean[] = []; if (h === 0) { for (let i = 0; i < s; i++) pattern.push(false); } else if (h >= s) { for (let i = 0; i < s; i++) pattern.push(true); } else { let groups: number[][] = []; for (let i = 0; i < h; i++) groups.push([1]); for (let i = 0; i < s - h; i++) groups.push([0]); while (groups.length > 1) { const ones = groups.filter(g => g[0] === 1); const zeros = groups.filter(g => g[0] === 0); if (zeros.length === 0) break; const combined: number[][] = []; const minLen = Math.min(ones.length, zeros.length); for (let i = 0; i < minLen; i++) combined.push([...ones[i], ...zeros[i]]); const remainder = ones.length > zeros.length ? ones.slice(minLen) : zeros.slice(minLen); if (remainder.length === 0 || remainder.length === groups.length - minLen) { groups = [...combined, ...remainder]; break; } groups = [...combined, ...remainder]; } for (const g of groups) for (const v of g) pattern.push(v === 1); } return [...pattern.slice(r % pattern.length), ...pattern.slice(0, r % pattern.length)]; };
-          const pattern = generatePattern(patternSteps, patternHits, patternRotation);
-          return (
-            <CollapsiblePanel id="drumEuclid3" title={`⬡ Euclidean Lane 3 ${isEnabled ? `• ${voiceOrder.filter(v => voiceToggles[v]).map(v => voiceIcons[v]).join('')} ${patternHits}/${patternSteps}` : '(off)'}`} isMobile={isMobile} isExpanded={expandedPanels.has('drumEuclid3')} onToggle={togglePanel} titleStyle={{ color: laneColor }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}><button onClick={() => handleSelectChange(enabledKey, !isEnabled)} style={{ padding: '8px 16px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontWeight: 'bold', background: isEnabled ? laneColor : 'rgba(255, 255, 255, 0.1)', color: isEnabled ? 'white' : '#9ca3af', transition: 'all 0.2s' }}>{isEnabled ? '● Lane Active' : '○ Lane Off'}</button></div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px', marginBottom: '8px', justifyContent: 'center', opacity: isEnabled ? 1 : 0.4 }}>{pattern.map((hit, i) => (<div key={i} style={{ width: patternSteps > 16 ? '8px' : '12px', height: patternSteps > 16 ? '8px' : '12px', borderRadius: '50%', background: hit ? laneColor : 'rgba(255,255,255,0.15)', boxShadow: hit ? `0 0 6px ${laneColor}` : 'none' }} />))}</div>
-              <select value={preset} onChange={(e) => handleSelectChange(presetKey, e.target.value)} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: `1px solid ${laneColor}40`, background: 'rgba(0,0,0,0.4)', color: '#eee', cursor: 'pointer', fontSize: '0.75rem', marginBottom: '6px' }}><optgroup label="Polyrhythmic"><option value="sparse">Sparse (16/1)</option><option value="dense">Dense (8/7)</option><option value="longSparse">Long Sparse (32/3)</option><option value="poly3v4">3 vs 4 (12/3)</option><option value="poly4v3">4 vs 3 (12/4)</option><option value="poly5v4">5 vs 4 (20/5)</option></optgroup><optgroup label="Gamelan"><option value="lancaran">Lancaran (16/4)</option><option value="ketawang">Ketawang (16/2)</option><option value="ladrang">Ladrang (32/8)</option><option value="gangsaran">Gangsaran (8/4)</option><option value="kotekan">Kotekan A (8/3)</option><option value="kotekan2">Kotekan B (8/3)</option><option value="srepegan">Srepegan (16/6)</option><option value="sampak">Sampak (8/5)</option><option value="ayak">Ayak (16/3)</option><option value="bonang">Bonang (12/5)</option></optgroup><optgroup label="World"><option value="tresillo">Tresillo (8/3)</option><option value="cinquillo">Cinquillo (8/5)</option><option value="rumba">Rumba (16/5)</option><option value="bossa">Bossa Nova (16/5)</option><option value="son">Son Clave (16/7)</option><option value="shiko">Shiko (16/5)</option><option value="soukous">Soukous (12/7)</option><option value="gahu">Gahu (16/7)</option><option value="bembe">Bembé (12/7)</option></optgroup><optgroup label="Experimental"><option value="clapping">Clapping Music (12/8)</option><option value="clappingB">Clapping B (12/8)</option><option value="additive7">Additive 7 (7/4)</option><option value="additive11">Additive 11 (11/5)</option><option value="additive13">Additive 13 (13/5)</option><option value="reich18">Reich 18 (12/7)</option><option value="drumming">Drumming (8/6)</option></optgroup><option value="custom">Custom</option></select>
-              <div style={{ display: 'flex', gap: '4px', marginBottom: '8px', justifyContent: 'space-between' }}>{voiceOrder.map(voice => { const isOn = voiceToggles[voice]; return (<button key={voice} onClick={() => handleSelectChange(voiceKeyMap[voice], !isOn)} title={voiceNames[voice]} style={{ flex: 1, padding: '6px 2px', borderRadius: '4px', border: isOn ? `2px solid ${laneColor}` : '1px solid #444', background: isOn ? `${laneColor}40` : 'rgba(0,0,0,0.3)', color: isOn ? laneColor : '#666', cursor: 'pointer', fontSize: '1rem', fontWeight: 'bold' }}>{voiceIcons[voice]}</button>); })}</div>
-              {preset === 'custom' && (<div style={{ display: 'flex', gap: '8px', marginBottom: '4px' }}><div style={{ flex: 1 }}><Slider label="Steps" value={steps} paramKey={stepsKey} onChange={handleSliderChange} {...sliderProps(stepsKey)} /></div><div style={{ flex: 1 }}><Slider label="Hits" value={hits} paramKey={hitsKey} onChange={handleSliderChange} {...sliderProps(hitsKey)} /></div></div>)}
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}><div style={{ flex: 1 }}><div style={{ fontSize: '0.65rem', color: '#888', marginBottom: '2px' }}>Probability {Math.round(probability * 100)}%</div><input type="range" min="0" max="1" step="0.05" value={probability} onChange={(e) => handleSliderChange(probabilityKey as keyof SliderState, parseFloat(e.target.value))} style={{ width: '100%', cursor: 'pointer' }} /></div><div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: '70px' }}><div style={{ fontSize: '0.65rem', color: '#888', marginBottom: '2px' }}>Rotate: {rotation}</div><div style={{ display: 'flex', gap: '4px' }}><button onClick={() => handleSliderChange(rotationKey as keyof SliderState, (rotation + 1) % patternSteps)} style={{ padding: '4px 8px', background: `${laneColor}30`, border: `1px solid ${laneColor}60`, borderRadius: '4px', color: laneColor, cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}>←</button><button onClick={() => handleSliderChange(rotationKey as keyof SliderState, (rotation - 1 + patternSteps) % patternSteps)} style={{ padding: '4px 8px', background: `${laneColor}30`, border: `1px solid ${laneColor}60`, borderRadius: '4px', color: laneColor, cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}>→</button></div></div></div>
-              <div style={{ marginTop: '8px' }}><div style={{ fontSize: '0.65rem', color: '#888', marginBottom: '2px' }}>Level {isVelocityDual ? <span style={{ color: laneColor }}>{Math.round(velocityMin * 100)}–{Math.round(velocityMax * 100)}%</span> : `${Math.round(velocityMin * 100)}%`}{isVelocityDual && <span style={{ color: laneColor, marginLeft: '4px', fontSize: '0.6rem' }}>{TEXT_SYMBOLS.range} range</span>}</div><input type="range" min="0" max="1" step="0.05" value={velocityMin} onChange={(e) => { const val = parseFloat(e.target.value); handleSliderChange(velocityMinKey as keyof SliderState, val); handleSliderChange(velocityMaxKey as keyof SliderState, val); }} onDoubleClick={() => { handleSliderChange(velocityMinKey as keyof SliderState, Math.max(0, velocityMin - 0.1)); handleSliderChange(velocityMaxKey as keyof SliderState, Math.min(1, velocityMin + 0.1)); }} {...createLongPressHandlers(() => { handleSliderChange(velocityMinKey as keyof SliderState, Math.max(0, velocityMin - 0.1)); handleSliderChange(velocityMaxKey as keyof SliderState, Math.min(1, velocityMin + 0.1)); })} style={{ width: '100%', cursor: 'pointer' }} title="Double-click or long-press for range mode" /></div>
-            </CollapsiblePanel>
-          );
-        })()}
-
-        {/* Euclidean Lane 4 */}
-        {(() => {
-          const laneNum = 4;
-          const laneColor = '#8b5cf6';
-          const voiceIcons: Record<string, string> = { sub: '◉', kick: '●', click: '▪', beepHi: '△', beepLo: '▽', noise: '≋' };
-          const voiceNames: Record<string, string> = { sub: 'Sub (Deep Pulse)', kick: 'Kick (Punch)', click: 'Click (Data)', beepHi: 'Beep Hi (Ping)', beepLo: 'Beep Lo (Blip)', noise: 'Noise (Hi-Hat)' };
-          const voiceOrder = ['sub', 'kick', 'click', 'beepHi', 'beepLo', 'noise'] as const;
-          const enabledKey = `drumEuclid${laneNum}Enabled` as keyof typeof state;
-          const presetKey = `drumEuclid${laneNum}Preset` as keyof typeof state;
-          const stepsKey = `drumEuclid${laneNum}Steps` as keyof typeof state;
-          const hitsKey = `drumEuclid${laneNum}Hits` as keyof typeof state;
-          const rotationKey = `drumEuclid${laneNum}Rotation` as keyof typeof state;
-          const targetSubKey = `drumEuclid${laneNum}TargetSub` as keyof typeof state;
-          const targetKickKey = `drumEuclid${laneNum}TargetKick` as keyof typeof state;
-          const targetClickKey = `drumEuclid${laneNum}TargetClick` as keyof typeof state;
-          const targetBeepHiKey = `drumEuclid${laneNum}TargetBeepHi` as keyof typeof state;
-          const targetBeepLoKey = `drumEuclid${laneNum}TargetBeepLo` as keyof typeof state;
-          const targetNoiseKey = `drumEuclid${laneNum}TargetNoise` as keyof typeof state;
-          const probabilityKey = `drumEuclid${laneNum}Probability` as keyof typeof state;
-          const velocityMinKey = `drumEuclid${laneNum}VelocityMin` as keyof typeof state;
-          const velocityMaxKey = `drumEuclid${laneNum}VelocityMax` as keyof typeof state;
-          const isEnabled = state[enabledKey] as boolean;
-          const preset = state[presetKey] as string;
-          const steps = state[stepsKey] as number;
-          const hits = state[hitsKey] as number;
-          const rotation = state[rotationKey] as number;
-          const legacyTargetKey = `drumEuclid${laneNum}Target` as keyof typeof state;
-          const legacyTarget = (state as any)[legacyTargetKey] as string | undefined;
-          const voiceToggles: Record<string, boolean> = { sub: (state[targetSubKey] as boolean | undefined) ?? (legacyTarget === 'sub'), kick: (state[targetKickKey] as boolean | undefined) ?? (legacyTarget === 'kick'), click: (state[targetClickKey] as boolean | undefined) ?? (legacyTarget === 'click'), beepHi: (state[targetBeepHiKey] as boolean | undefined) ?? (legacyTarget === 'beepHi'), beepLo: (state[targetBeepLoKey] as boolean | undefined) ?? (legacyTarget === 'beepLo'), noise: (state[targetNoiseKey] as boolean | undefined) ?? (legacyTarget === 'noise') };
-          const voiceKeyMap: Record<string, keyof typeof state> = { sub: targetSubKey, kick: targetKickKey, click: targetClickKey, beepHi: targetBeepHiKey, beepLo: targetBeepLoKey, noise: targetNoiseKey };
-          const probability = state[probabilityKey] as number;
-          const velocityMin = state[velocityMinKey] as number;
-          const velocityMax = state[velocityMaxKey] as number;
-          const isVelocityDual = velocityMin !== velocityMax;
-          const presetData: Record<string, { steps: number; hits: number; rotation: number }> = { sparse: { steps: 16, hits: 1, rotation: 0 }, dense: { steps: 8, hits: 7, rotation: 0 }, longSparse: { steps: 32, hits: 3, rotation: 0 }, poly3v4: { steps: 12, hits: 3, rotation: 0 }, poly4v3: { steps: 12, hits: 4, rotation: 0 }, poly5v4: { steps: 20, hits: 5, rotation: 0 }, lancaran: { steps: 16, hits: 4, rotation: 0 }, ketawang: { steps: 16, hits: 2, rotation: 0 }, ladrang: { steps: 32, hits: 8, rotation: 0 }, gangsaran: { steps: 8, hits: 4, rotation: 0 }, kotekan: { steps: 8, hits: 3, rotation: 1 }, kotekan2: { steps: 8, hits: 3, rotation: 4 }, srepegan: { steps: 16, hits: 6, rotation: 2 }, sampak: { steps: 8, hits: 5, rotation: 0 }, ayak: { steps: 16, hits: 3, rotation: 4 }, bonang: { steps: 12, hits: 5, rotation: 2 }, tresillo: { steps: 8, hits: 3, rotation: 0 }, cinquillo: { steps: 8, hits: 5, rotation: 0 }, rumba: { steps: 16, hits: 5, rotation: 0 }, bossa: { steps: 16, hits: 5, rotation: 3 }, son: { steps: 16, hits: 7, rotation: 0 }, shiko: { steps: 16, hits: 5, rotation: 0 }, soukous: { steps: 12, hits: 7, rotation: 0 }, gahu: { steps: 16, hits: 7, rotation: 0 }, bembe: { steps: 12, hits: 7, rotation: 0 }, clapping: { steps: 12, hits: 8, rotation: 0 }, clappingB: { steps: 12, hits: 8, rotation: 5 }, additive7: { steps: 7, hits: 4, rotation: 0 }, additive11: { steps: 11, hits: 5, rotation: 0 }, additive13: { steps: 13, hits: 5, rotation: 0 }, reich18: { steps: 12, hits: 7, rotation: 3 }, drumming: { steps: 8, hits: 6, rotation: 1 } };
-          const patternSteps = preset === 'custom' ? steps : (presetData[preset]?.steps || 16);
-          const patternHits = preset === 'custom' ? hits : (presetData[preset]?.hits || 4);
-          const baseRotation = preset === 'custom' ? 0 : (presetData[preset]?.rotation || 0);
-          const patternRotation = (baseRotation + rotation) % patternSteps;
-          const generatePattern = (s: number, h: number, r: number): boolean[] => { const pattern: boolean[] = []; if (h === 0) { for (let i = 0; i < s; i++) pattern.push(false); } else if (h >= s) { for (let i = 0; i < s; i++) pattern.push(true); } else { let groups: number[][] = []; for (let i = 0; i < h; i++) groups.push([1]); for (let i = 0; i < s - h; i++) groups.push([0]); while (groups.length > 1) { const ones = groups.filter(g => g[0] === 1); const zeros = groups.filter(g => g[0] === 0); if (zeros.length === 0) break; const combined: number[][] = []; const minLen = Math.min(ones.length, zeros.length); for (let i = 0; i < minLen; i++) combined.push([...ones[i], ...zeros[i]]); const remainder = ones.length > zeros.length ? ones.slice(minLen) : zeros.slice(minLen); if (remainder.length === 0 || remainder.length === groups.length - minLen) { groups = [...combined, ...remainder]; break; } groups = [...combined, ...remainder]; } for (const g of groups) for (const v of g) pattern.push(v === 1); } return [...pattern.slice(r % pattern.length), ...pattern.slice(0, r % pattern.length)]; };
-          const pattern = generatePattern(patternSteps, patternHits, patternRotation);
-          return (
-            <CollapsiblePanel id="drumEuclid4" title={`⬡ Euclidean Lane 4 ${isEnabled ? `• ${voiceOrder.filter(v => voiceToggles[v]).map(v => voiceIcons[v]).join('')} ${patternHits}/${patternSteps}` : '(off)'}`} isMobile={isMobile} isExpanded={expandedPanels.has('drumEuclid4')} onToggle={togglePanel} titleStyle={{ color: laneColor }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}><button onClick={() => handleSelectChange(enabledKey, !isEnabled)} style={{ padding: '8px 16px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontWeight: 'bold', background: isEnabled ? laneColor : 'rgba(255, 255, 255, 0.1)', color: isEnabled ? 'white' : '#9ca3af', transition: 'all 0.2s' }}>{isEnabled ? '● Lane Active' : '○ Lane Off'}</button></div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px', marginBottom: '8px', justifyContent: 'center', opacity: isEnabled ? 1 : 0.4 }}>{pattern.map((hit, i) => (<div key={i} style={{ width: patternSteps > 16 ? '8px' : '12px', height: patternSteps > 16 ? '8px' : '12px', borderRadius: '50%', background: hit ? laneColor : 'rgba(255,255,255,0.15)', boxShadow: hit ? `0 0 6px ${laneColor}` : 'none' }} />))}</div>
-              <select value={preset} onChange={(e) => handleSelectChange(presetKey, e.target.value)} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: `1px solid ${laneColor}40`, background: 'rgba(0,0,0,0.4)', color: '#eee', cursor: 'pointer', fontSize: '0.75rem', marginBottom: '6px' }}><optgroup label="Polyrhythmic"><option value="sparse">Sparse (16/1)</option><option value="dense">Dense (8/7)</option><option value="longSparse">Long Sparse (32/3)</option><option value="poly3v4">3 vs 4 (12/3)</option><option value="poly4v3">4 vs 3 (12/4)</option><option value="poly5v4">5 vs 4 (20/5)</option></optgroup><optgroup label="Gamelan"><option value="lancaran">Lancaran (16/4)</option><option value="ketawang">Ketawang (16/2)</option><option value="ladrang">Ladrang (32/8)</option><option value="gangsaran">Gangsaran (8/4)</option><option value="kotekan">Kotekan A (8/3)</option><option value="kotekan2">Kotekan B (8/3)</option><option value="srepegan">Srepegan (16/6)</option><option value="sampak">Sampak (8/5)</option><option value="ayak">Ayak (16/3)</option><option value="bonang">Bonang (12/5)</option></optgroup><optgroup label="World"><option value="tresillo">Tresillo (8/3)</option><option value="cinquillo">Cinquillo (8/5)</option><option value="rumba">Rumba (16/5)</option><option value="bossa">Bossa Nova (16/5)</option><option value="son">Son Clave (16/7)</option><option value="shiko">Shiko (16/5)</option><option value="soukous">Soukous (12/7)</option><option value="gahu">Gahu (16/7)</option><option value="bembe">Bembé (12/7)</option></optgroup><optgroup label="Experimental"><option value="clapping">Clapping Music (12/8)</option><option value="clappingB">Clapping B (12/8)</option><option value="additive7">Additive 7 (7/4)</option><option value="additive11">Additive 11 (11/5)</option><option value="additive13">Additive 13 (13/5)</option><option value="reich18">Reich 18 (12/7)</option><option value="drumming">Drumming (8/6)</option></optgroup><option value="custom">Custom</option></select>
-              <div style={{ display: 'flex', gap: '4px', marginBottom: '8px', justifyContent: 'space-between' }}>{voiceOrder.map(voice => { const isOn = voiceToggles[voice]; return (<button key={voice} onClick={() => handleSelectChange(voiceKeyMap[voice], !isOn)} title={voiceNames[voice]} style={{ flex: 1, padding: '6px 2px', borderRadius: '4px', border: isOn ? `2px solid ${laneColor}` : '1px solid #444', background: isOn ? `${laneColor}40` : 'rgba(0,0,0,0.3)', color: isOn ? laneColor : '#666', cursor: 'pointer', fontSize: '1rem', fontWeight: 'bold' }}>{voiceIcons[voice]}</button>); })}</div>
-              {preset === 'custom' && (<div style={{ display: 'flex', gap: '8px', marginBottom: '4px' }}><div style={{ flex: 1 }}><Slider label="Steps" value={steps} paramKey={stepsKey} onChange={handleSliderChange} {...sliderProps(stepsKey)} /></div><div style={{ flex: 1 }}><Slider label="Hits" value={hits} paramKey={hitsKey} onChange={handleSliderChange} {...sliderProps(hitsKey)} /></div></div>)}
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}><div style={{ flex: 1 }}><div style={{ fontSize: '0.65rem', color: '#888', marginBottom: '2px' }}>Probability {Math.round(probability * 100)}%</div><input type="range" min="0" max="1" step="0.05" value={probability} onChange={(e) => handleSliderChange(probabilityKey as keyof SliderState, parseFloat(e.target.value))} style={{ width: '100%', cursor: 'pointer' }} /></div><div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: '70px' }}><div style={{ fontSize: '0.65rem', color: '#888', marginBottom: '2px' }}>Rotate: {rotation}</div><div style={{ display: 'flex', gap: '4px' }}><button onClick={() => handleSliderChange(rotationKey as keyof SliderState, (rotation + 1) % patternSteps)} style={{ padding: '4px 8px', background: `${laneColor}30`, border: `1px solid ${laneColor}60`, borderRadius: '4px', color: laneColor, cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}>←</button><button onClick={() => handleSliderChange(rotationKey as keyof SliderState, (rotation - 1 + patternSteps) % patternSteps)} style={{ padding: '4px 8px', background: `${laneColor}30`, border: `1px solid ${laneColor}60`, borderRadius: '4px', color: laneColor, cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}>→</button></div></div></div>
-              <div style={{ marginTop: '8px' }}><div style={{ fontSize: '0.65rem', color: '#888', marginBottom: '2px' }}>Level {isVelocityDual ? <span style={{ color: laneColor }}>{Math.round(velocityMin * 100)}–{Math.round(velocityMax * 100)}%</span> : `${Math.round(velocityMin * 100)}%`}{isVelocityDual && <span style={{ color: laneColor, marginLeft: '4px', fontSize: '0.6rem' }}>{TEXT_SYMBOLS.range} range</span>}</div><input type="range" min="0" max="1" step="0.05" value={velocityMin} onChange={(e) => { const val = parseFloat(e.target.value); handleSliderChange(velocityMinKey as keyof SliderState, val); handleSliderChange(velocityMaxKey as keyof SliderState, val); }} onDoubleClick={() => { handleSliderChange(velocityMinKey as keyof SliderState, Math.max(0, velocityMin - 0.1)); handleSliderChange(velocityMaxKey as keyof SliderState, Math.min(1, velocityMin + 0.1)); }} {...createLongPressHandlers(() => { handleSliderChange(velocityMinKey as keyof SliderState, Math.max(0, velocityMin - 0.1)); handleSliderChange(velocityMaxKey as keyof SliderState, Math.min(1, velocityMin + 0.1)); })} style={{ width: '100%', cursor: 'pointer' }} title="Double-click or long-press for range mode" /></div>
-            </CollapsiblePanel>
-          );
-        })()}
-        </>)}
+        {activeTab === 'drums' && (
+          <DrumPage
+            state={state}
+            isMobile={isMobile}
+            expandedPanels={expandedPanels}
+            onParamChange={handleSliderChange}
+            onSelectChange={handleSelectChange}
+            togglePanel={togglePanel}
+            sliderProps={sliderProps}
+            getPresetNames={getPresetNames}
+            triggerVoice={(voice) => { void audioEngine.triggerDrumVoice(voice, 0.8, state); }}
+            getAnalyserNode={(v) => audioEngine.getDrumVoiceAnalyser(v)}
+            resetEvolveHome={(laneIdx) => audioEngine.resetDrumEuclidLaneHome(laneIdx)}
+            SliderComponent={Slider as unknown as React.ComponentType<Record<string, unknown>>}
+            CollapsiblePanelComponent={CollapsiblePanel as unknown as React.ComponentType<Record<string, unknown>>}
+            SelectComponent={Select as unknown as React.ComponentType<Record<string, unknown>>}
+            editingVoice={drumEditingVoice}
+            onToggleEditing={(v) => setDrumEditingVoice(prev => prev === v ? null : v)}
+            triggeredVoices={drumTriggeredVoices}
+            playheads={drumSeqPlayheads}
+            hitCounts={drumSeqHitCounts}
+            evolveFlashing={drumEuclidEvolveFlashing}
+            onEvolveConfigsChange={(configs) => audioEngine.setDrumEuclidEvolveConfigs(configs)}
+            onStepOverridesChange={(overrides) => audioEngine.setDrumStepOverrides(overrides)}
+            initialViewMode={drumViewModeRef.current}
+            onViewModeChange={(mode) => { drumViewModeRef.current = mode; }}
+          />
+        )}
       </div>
 
+
       {/* Debug Panel */}
-      <div style={styles.debugPanel}>
+      <div className="app-debug-panel" style={{ ...styles.debugPanel, ...m?.debugPanel }}>
         <h3 style={{ ...styles.panelTitle, color: '#a855f7' }}>Debug Info</h3>
         <div style={styles.debugRow}>
           <span style={styles.debugLabel}>UTC Bucket:</span>

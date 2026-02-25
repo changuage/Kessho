@@ -19,13 +19,164 @@
         background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
         min-height: 100vh;
         color: #e0e0e0;
+        overflow-x: hidden;
       }
       #root {
         padding: 20px;
+        overflow-x: hidden;
+        max-width: 100vw;
+      }
+      /* Dark dropdown menus globally */
+      select { color-scheme: dark; }
+      select option {
+        background: #1a1a2e;
+        color: #e0e0e0;
+      }
+      select option:checked {
+        background: rgba(100, 150, 200, 0.3);
+        color: #fff;
       }
       @keyframes pulse {
         0%, 100% { opacity: 1; }
         50% { opacity: 0.5; }
+      }
+
+      /* ══ GLOBAL MOBILE OVERRIDES (≤600px) ══ */
+      @media (max-width: 600px) {
+        #root { padding: 6px !important; }
+
+        /* ── Container ── */
+        .app-container {
+          padding: 4px !important;
+          max-width: 100% !important;
+          overflow-x: hidden !important;
+        }
+
+        /* ── All selects: compact, touch-friendly ── */
+        .app-select,
+        #root select {
+          font-size: 0.78rem !important;
+          padding: 6px 8px !important;
+          min-height: 36px !important;
+          border-radius: 6px !important;
+          max-width: 100% !important;
+        }
+
+        /* ── Panel grid: single column ── */
+        .app-grid {
+          grid-template-columns: 1fr !important;
+          gap: 8px !important;
+          margin-bottom: 12px !important;
+        }
+
+        /* ── Panels ── */
+        .app-panel {
+          padding: 10px !important;
+          border-radius: 8px !important;
+          max-width: 100% !important;
+          overflow: hidden !important;
+        }
+
+        /* ── Panel titles ── */
+        .app-panel-title {
+          font-size: 0.9rem !important;
+          margin-bottom: 8px !important;
+        }
+
+        /* ── Slider groups ── */
+        .app-slider-group {
+          margin-bottom: 8px !important;
+          max-width: 100% !important;
+          overflow: hidden !important;
+        }
+
+        /* ── Slider labels: keep value visible ── */
+        .app-slider-label {
+          font-size: 0.75rem !important;
+          margin-bottom: 3px !important;
+          gap: 4px !important;
+          min-width: 0 !important;
+        }
+        .app-slider-label > span:first-child {
+          overflow: hidden !important;
+          text-overflow: ellipsis !important;
+          white-space: nowrap !important;
+          min-width: 0 !important;
+          flex-shrink: 1 !important;
+        }
+        .app-slider-label > span:last-child {
+          flex-shrink: 0 !important;
+          white-space: nowrap !important;
+          text-align: right !important;
+        }
+
+        /* ── Sliders (horizontal only — skip vertical ADSR sliders) ── */
+        .app-slider,
+        #root input[type=range]:not(.adsr-vertical) {
+          height: 20px !important;
+          max-width: 100% !important;
+        }
+
+        /* ── Tab bar ── */
+        .app-tab-bar {
+          padding: 4px 6px !important;
+          gap: 2px !important;
+          border-radius: 8px !important;
+          margin-bottom: 8px !important;
+          flex-wrap: wrap !important;
+        }
+
+        /* ── Debug panel ── */
+        .app-debug-panel {
+          padding: 10px !important;
+          font-size: 0.72rem !important;
+          overflow: hidden !important;
+          word-break: break-all !important;
+        }
+
+        /* ── Preset list ── */
+        .app-preset-list {
+          padding: 10px !important;
+          max-height: 200px !important;
+        }
+
+        /* ── Top controls row ── */
+        .app-controls {
+          gap: 4px !important;
+          margin-bottom: 10px !important;
+          padding-top: 6px !important;
+        }
+
+        /* ── Morph preset slots ── */
+        .app-morph-row {
+          flex-direction: column !important;
+          gap: 8px !important;
+        }
+      }
+
+      /* ══ EXTRA-NARROW (≤380px) ══ */
+      @media (max-width: 380px) {
+        #root { padding: 4px !important; }
+        .app-container { padding: 2px !important; }
+        .app-select,
+        #root select {
+          font-size: 0.7rem !important;
+          padding: 5px 6px !important;
+        }
+        .app-slider-label {
+          font-size: 0.68rem !important;
+        }
+        .app-grid {
+          gap: 4px !important;
+        }
+        .app-panel {
+          padding: 6px !important;
+        }
+        .app-tab-bar button {
+          padding: 4px 3px !important;
+          min-width: 36px !important;
+          font-size: 0.55rem !important;
+        }
       }
     </style>
   </head>

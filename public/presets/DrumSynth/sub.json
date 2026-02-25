@@ -1,0 +1,328 @@
+[
+  {
+    "name": "Classic Sub",
+    "voice": "sub",
+    "tags": [
+      "ikeda",
+      "minimal",
+      "default"
+    ],
+    "params": {
+      "drumSubFreq": 50,
+      "drumSubDecay": 150,
+      "drumSubLevel": 0.8,
+      "drumSubTone": 0.1,
+      "drumSubShape": 0,
+      "drumSubPitchEnv": 0,
+      "drumSubPitchDecay": 50,
+      "drumSubDrive": 0,
+      "drumSubSub": 0
+    }
+  },
+  {
+    "name": "Deep Thump",
+    "voice": "sub",
+    "tags": [
+      "ambient",
+      "deep",
+      "room"
+    ],
+    "params": {
+      "drumSubFreq": 35,
+      "drumSubDecay": 800,
+      "drumSubLevel": 0.9,
+      "drumSubTone": 0.3,
+      "drumSubShape": 0.2,
+      "drumSubPitchEnv": 12,
+      "drumSubPitchDecay": 80,
+      "drumSubDrive": 0.4,
+      "drumSubSub": 0.3
+    }
+  },
+  {
+    "name": "Bubble Up",
+    "voice": "sub",
+    "tags": [
+      "asmr",
+      "water",
+      "texture"
+    ],
+    "params": {
+      "drumSubFreq": 60,
+      "drumSubDecay": 300,
+      "drumSubLevel": 0.7,
+      "drumSubTone": 0.05,
+      "drumSubShape": 0,
+      "drumSubPitchEnv": -24,
+      "drumSubPitchDecay": 150,
+      "drumSubDrive": 0,
+      "drumSubSub": 0
+    }
+  },
+  {
+    "name": "Warm Pulse",
+    "voice": "sub",
+    "tags": [
+      "analog",
+      "warm",
+      "ambient"
+    ],
+    "params": {
+      "drumSubFreq": 45,
+      "drumSubDecay": 400,
+      "drumSubLevel": 0.75,
+      "drumSubTone": 0.4,
+      "drumSubShape": 0.5,
+      "drumSubPitchEnv": 6,
+      "drumSubPitchDecay": 100,
+      "drumSubDrive": 0.3,
+      "drumSubSub": 0.5
+    }
+  },
+  {
+    "name": "Data Pulse",
+    "voice": "sub",
+    "tags": [
+      "ikeda",
+      "digital",
+      "minimal"
+    ],
+    "params": {
+      "drumSubFreq": 55,
+      "drumSubDecay": 80,
+      "drumSubLevel": 0.85,
+      "drumSubTone": 0,
+      "drumSubShape": 0,
+      "drumSubPitchEnv": 0,
+      "drumSubPitchDecay": 20,
+      "drumSubDrive": 0,
+      "drumSubSub": 0
+    }
+  },
+  {
+    "name": "Subterranean",
+    "voice": "sub",
+    "tags": [
+      "deep",
+      "ambient",
+      "drone"
+    ],
+    "params": {
+      "drumSubFreq": 30,
+      "drumSubDecay": 2000,
+      "drumSubLevel": 0.9,
+      "drumSubTone": 0.2,
+      "drumSubShape": 0.1,
+      "drumSubPitchEnv": 4,
+      "drumSubPitchDecay": 200,
+      "drumSubDrive": 0.2,
+      "drumSubSub": 0.6
+    }
+  },
+  {
+    "name": "Soft Touch",
+    "voice": "sub",
+    "tags": [
+      "asmr",
+      "gentle",
+      "texture"
+    ],
+    "params": {
+      "drumSubFreq": 65,
+      "drumSubDecay": 60,
+      "drumSubLevel": 0.4,
+      "drumSubTone": 0.05,
+      "drumSubShape": 0,
+      "drumSubPitchEnv": 2,
+      "drumSubPitchDecay": 30,
+      "drumSubDrive": 0,
+      "drumSubSub": 0
+    }
+  },
+  {
+    "name": "Pressure Wave",
+    "voice": "sub",
+    "tags": [
+      "physical",
+      "impact",
+      "ambient"
+    ],
+    "params": {
+      "drumSubFreq": 40,
+      "drumSubDecay": 500,
+      "drumSubLevel": 0.95,
+      "drumSubTone": 0.15,
+      "drumSubShape": 0.3,
+      "drumSubPitchEnv": 36,
+      "drumSubPitchDecay": 60,
+      "drumSubDrive": 0.5,
+      "drumSubSub": 0.4
+    }
+  },
+  {
+    "name": "Sine Ping",
+    "voice": "sub",
+    "tags": [
+      "clean",
+      "minimal",
+      "pure"
+    ],
+    "params": {
+      "drumSubFreq": 80,
+      "drumSubDecay": 200,
+      "drumSubLevel": 0.6,
+      "drumSubTone": 0,
+      "drumSubShape": 0,
+      "drumSubPitchEnv": 0,
+      "drumSubPitchDecay": 50,
+      "drumSubDrive": 0,
+      "drumSubSub": 0
+    }
+  },
+  {
+    "name": "Rumble",
+    "voice": "sub",
+    "tags": [
+      "texture",
+      "distorted",
+      "ambient"
+    ],
+    "params": {
+      "drumSubFreq": 38,
+      "drumSubDecay": 600,
+      "drumSubLevel": 0.85,
+      "drumSubTone": 0.6,
+      "drumSubShape": 0.9,
+      "drumSubPitchEnv": 8,
+      "drumSubPitchDecay": 120,
+      "drumSubDrive": 0.7,
+      "drumSubSub": 0.3
+    }
+  },
+  {
+    "name": "Heartbeat Pulse",
+    "voice": "sub",
+    "tags": [
+      "organic",
+      "body",
+      "pulse",
+      "natural"
+    ],
+    "params": {
+      "drumSubFreq": 42,
+      "drumSubDecay": 450,
+      "drumSubLevel": 0.7,
+      "drumSubTone": 0.05,
+      "drumSubShape": 0,
+      "drumSubPitchEnv": 6,
+      "drumSubPitchDecay": 80,
+      "drumSubDrive": 0,
+      "drumSubSub": 0.3
+    }
+  },
+  {
+    "name": "Wooden Resonance",
+    "voice": "sub",
+    "tags": [
+      "organic",
+      "wood",
+      "hollow",
+      "natural"
+    ],
+    "params": {
+      "drumSubFreq": 70,
+      "drumSubDecay": 250,
+      "drumSubLevel": 0.65,
+      "drumSubTone": 0.15,
+      "drumSubShape": 0.2,
+      "drumSubPitchEnv": 10,
+      "drumSubPitchDecay": 40,
+      "drumSubDrive": 0.1,
+      "drumSubSub": 0
+    }
+  },
+  {
+    "name": "Earth Rumble",
+    "voice": "sub",
+    "tags": [
+      "organic",
+      "thunder",
+      "nature",
+      "deep"
+    ],
+    "params": {
+      "drumSubFreq": 35,
+      "drumSubDecay": 1500,
+      "drumSubLevel": 0.75,
+      "drumSubTone": 0.1,
+      "drumSubShape": 0.1,
+      "drumSubPitchEnv": 12,
+      "drumSubPitchDecay": 200,
+      "drumSubDrive": 0.15,
+      "drumSubSub": 0.5
+    }
+  },
+  {
+    "name": "Deep Space",
+    "voice": "sub",
+    "tags": [
+      "ambient",
+      "space",
+      "drone",
+      "atmospheric"
+    ],
+    "params": {
+      "drumSubFreq": 32,
+      "drumSubDecay": 2000,
+      "drumSubLevel": 0.6,
+      "drumSubTone": 0.1,
+      "drumSubShape": 0,
+      "drumSubPitchEnv": 8,
+      "drumSubPitchDecay": 300,
+      "drumSubDrive": 0,
+      "drumSubSub": 0.4
+    }
+  },
+  {
+    "name": "Velvet Thump",
+    "voice": "sub",
+    "tags": [
+      "ambient",
+      "soft",
+      "pillowy",
+      "gentle"
+    ],
+    "params": {
+      "drumSubFreq": 50,
+      "drumSubDecay": 400,
+      "drumSubLevel": 0.5,
+      "drumSubTone": 0,
+      "drumSubShape": 0,
+      "drumSubPitchEnv": 4,
+      "drumSubPitchDecay": 60,
+      "drumSubDrive": 0,
+      "drumSubSub": 0
+    }
+  },
+  {
+    "name": "Tidal Pull",
+    "voice": "sub",
+    "tags": [
+      "ambient",
+      "ocean",
+      "slow",
+      "deep"
+    ],
+    "params": {
+      "drumSubFreq": 38,
+      "drumSubDecay": 1200,
+      "drumSubLevel": 0.55,
+      "drumSubTone": 0.05,
+      "drumSubShape": 0.05,
+      "drumSubPitchEnv": 10,
+      "drumSubPitchDecay": 250,
+      "drumSubDrive": 0.1,
+      "drumSubSub": 0.35
+    }
+  }
+]

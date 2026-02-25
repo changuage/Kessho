@@ -1,0 +1,832 @@
+[
+  {
+    "name": "Data Ping",
+    "voice": "beepHi",
+    "tags": [
+      "ikeda",
+      "digital",
+      "pure"
+    ],
+    "params": {
+      "drumBeepHiFreq": 4000,
+      "drumBeepHiAttack": 1,
+      "drumBeepHiDecay": 80,
+      "drumBeepHiLevel": 0.5,
+      "drumBeepHiTone": 0.2,
+      "drumBeepHiInharmonic": 0,
+      "drumBeepHiPartials": 1,
+      "drumBeepHiShimmer": 0,
+      "drumBeepHiShimmerRate": 4,
+      "drumBeepHiBrightness": 0.5,
+      "drumBeepHiFeedback": 0,
+      "drumBeepHiModEnvDecay": 0,
+      "drumBeepHiNoiseInMod": 0,
+      "drumBeepHiModRatio": 2,
+      "drumBeepHiModRatioFine": 0.01,
+      "drumBeepHiModPhase": 0,
+      "drumBeepHiModEnvEnd": 0.2,
+      "drumBeepHiNoiseDecay": 0
+    }
+  },
+  {
+    "name": "Glass",
+    "voice": "beepHi",
+    "tags": [
+      "bell",
+      "resonant",
+      "ambient"
+    ],
+    "params": {
+      "drumBeepHiFreq": 3200,
+      "drumBeepHiAttack": 2,
+      "drumBeepHiDecay": 800,
+      "drumBeepHiLevel": 0.45,
+      "drumBeepHiTone": 0.4,
+      "drumBeepHiInharmonic": 0.3,
+      "drumBeepHiPartials": 4,
+      "drumBeepHiShimmer": 0.1,
+      "drumBeepHiShimmerRate": 3,
+      "drumBeepHiBrightness": 0.7,
+      "drumBeepHiFeedback": 0,
+      "drumBeepHiModEnvDecay": 0,
+      "drumBeepHiNoiseInMod": 0,
+      "drumBeepHiModRatio": 2,
+      "drumBeepHiModRatioFine": 0.01,
+      "drumBeepHiModPhase": 0,
+      "drumBeepHiModEnvEnd": 0.2,
+      "drumBeepHiNoiseDecay": 0
+    }
+  },
+  {
+    "name": "Bell",
+    "voice": "beepHi",
+    "tags": [
+      "bell",
+      "metallic",
+      "ambient"
+    ],
+    "params": {
+      "drumBeepHiFreq": 2800,
+      "drumBeepHiAttack": 1,
+      "drumBeepHiDecay": 1200,
+      "drumBeepHiLevel": 0.5,
+      "drumBeepHiTone": 0.5,
+      "drumBeepHiInharmonic": 0.5,
+      "drumBeepHiPartials": 5,
+      "drumBeepHiShimmer": 0.2,
+      "drumBeepHiShimmerRate": 2,
+      "drumBeepHiBrightness": 0.6,
+      "drumBeepHiFeedback": 0,
+      "drumBeepHiModEnvDecay": 0,
+      "drumBeepHiNoiseInMod": 0,
+      "drumBeepHiModRatio": 2,
+      "drumBeepHiModRatioFine": 0.01,
+      "drumBeepHiModPhase": 0,
+      "drumBeepHiModEnvEnd": 0.2,
+      "drumBeepHiNoiseDecay": 0
+    }
+  },
+  {
+    "name": "Crystal",
+    "voice": "beepHi",
+    "tags": [
+      "bright",
+      "pure",
+      "asmr"
+    ],
+    "params": {
+      "drumBeepHiFreq": 6000,
+      "drumBeepHiAttack": 0,
+      "drumBeepHiDecay": 400,
+      "drumBeepHiLevel": 0.4,
+      "drumBeepHiTone": 0.1,
+      "drumBeepHiInharmonic": 0.1,
+      "drumBeepHiPartials": 3,
+      "drumBeepHiShimmer": 0.05,
+      "drumBeepHiShimmerRate": 5,
+      "drumBeepHiBrightness": 0.9,
+      "drumBeepHiFeedback": 0,
+      "drumBeepHiModEnvDecay": 0,
+      "drumBeepHiNoiseInMod": 0,
+      "drumBeepHiModRatio": 2,
+      "drumBeepHiModRatioFine": 0.01,
+      "drumBeepHiModPhase": 0,
+      "drumBeepHiModEnvEnd": 0.2,
+      "drumBeepHiNoiseDecay": 0
+    }
+  },
+  {
+    "name": "Shimmer",
+    "voice": "beepHi",
+    "tags": [
+      "evolving",
+      "ambient",
+      "texture"
+    ],
+    "params": {
+      "drumBeepHiFreq": 3500,
+      "drumBeepHiAttack": 5,
+      "drumBeepHiDecay": 600,
+      "drumBeepHiLevel": 0.45,
+      "drumBeepHiTone": 0.3,
+      "drumBeepHiInharmonic": 0.2,
+      "drumBeepHiPartials": 3,
+      "drumBeepHiShimmer": 0.7,
+      "drumBeepHiShimmerRate": 6,
+      "drumBeepHiBrightness": 0.6,
+      "drumBeepHiFeedback": 0,
+      "drumBeepHiModEnvDecay": 0,
+      "drumBeepHiNoiseInMod": 0,
+      "drumBeepHiModRatio": 2,
+      "drumBeepHiModRatioFine": 0.01,
+      "drumBeepHiModPhase": 0,
+      "drumBeepHiModEnvEnd": 0.2,
+      "drumBeepHiNoiseDecay": 0
+    }
+  },
+  {
+    "name": "Chime",
+    "voice": "beepHi",
+    "tags": [
+      "wind",
+      "bell",
+      "ambient"
+    ],
+    "params": {
+      "drumBeepHiFreq": 4500,
+      "drumBeepHiAttack": 1,
+      "drumBeepHiDecay": 1500,
+      "drumBeepHiLevel": 0.4,
+      "drumBeepHiTone": 0.35,
+      "drumBeepHiInharmonic": 0.4,
+      "drumBeepHiPartials": 6,
+      "drumBeepHiShimmer": 0.3,
+      "drumBeepHiShimmerRate": 4,
+      "drumBeepHiBrightness": 0.65,
+      "drumBeepHiFeedback": 0,
+      "drumBeepHiModEnvDecay": 0,
+      "drumBeepHiNoiseInMod": 0,
+      "drumBeepHiModRatio": 2,
+      "drumBeepHiModRatioFine": 0.01,
+      "drumBeepHiModPhase": 0,
+      "drumBeepHiModEnvEnd": 0.2,
+      "drumBeepHiNoiseDecay": 0
+    }
+  },
+  {
+    "name": "Metallic",
+    "voice": "beepHi",
+    "tags": [
+      "industrial",
+      "harsh",
+      "electronic"
+    ],
+    "params": {
+      "drumBeepHiFreq": 5000,
+      "drumBeepHiAttack": 0,
+      "drumBeepHiDecay": 200,
+      "drumBeepHiLevel": 0.55,
+      "drumBeepHiTone": 0.8,
+      "drumBeepHiInharmonic": 0.6,
+      "drumBeepHiPartials": 4,
+      "drumBeepHiShimmer": 0,
+      "drumBeepHiShimmerRate": 4,
+      "drumBeepHiBrightness": 0.8,
+      "drumBeepHiFeedback": 0,
+      "drumBeepHiModEnvDecay": 0,
+      "drumBeepHiNoiseInMod": 0,
+      "drumBeepHiModRatio": 2,
+      "drumBeepHiModRatioFine": 0.01,
+      "drumBeepHiModPhase": 0,
+      "drumBeepHiModEnvEnd": 0.2,
+      "drumBeepHiNoiseDecay": 0
+    }
+  },
+  {
+    "name": "Whistle",
+    "voice": "beepHi",
+    "tags": [
+      "pure",
+      "high",
+      "asmr"
+    ],
+    "params": {
+      "drumBeepHiFreq": 8000,
+      "drumBeepHiAttack": 20,
+      "drumBeepHiDecay": 300,
+      "drumBeepHiLevel": 0.35,
+      "drumBeepHiTone": 0,
+      "drumBeepHiInharmonic": 0,
+      "drumBeepHiPartials": 1,
+      "drumBeepHiShimmer": 0.1,
+      "drumBeepHiShimmerRate": 5,
+      "drumBeepHiBrightness": 0.4,
+      "drumBeepHiFeedback": 0,
+      "drumBeepHiModEnvDecay": 0,
+      "drumBeepHiNoiseInMod": 0,
+      "drumBeepHiModRatio": 2,
+      "drumBeepHiModRatioFine": 0.01,
+      "drumBeepHiModPhase": 0,
+      "drumBeepHiModEnvEnd": 0.2,
+      "drumBeepHiNoiseDecay": 0
+    }
+  },
+  {
+    "name": "Sparkle",
+    "voice": "beepHi",
+    "tags": [
+      "magical",
+      "bright",
+      "texture"
+    ],
+    "params": {
+      "drumBeepHiFreq": 5500,
+      "drumBeepHiAttack": 0,
+      "drumBeepHiDecay": 500,
+      "drumBeepHiLevel": 0.4,
+      "drumBeepHiTone": 0.25,
+      "drumBeepHiInharmonic": 0.25,
+      "drumBeepHiPartials": 4,
+      "drumBeepHiShimmer": 0.5,
+      "drumBeepHiShimmerRate": 8,
+      "drumBeepHiBrightness": 0.85,
+      "drumBeepHiFeedback": 0,
+      "drumBeepHiModEnvDecay": 0,
+      "drumBeepHiNoiseInMod": 0,
+      "drumBeepHiModRatio": 2,
+      "drumBeepHiModRatioFine": 0.01,
+      "drumBeepHiModPhase": 0,
+      "drumBeepHiModEnvEnd": 0.2,
+      "drumBeepHiNoiseDecay": 0
+    }
+  },
+  {
+    "name": "Tink",
+    "voice": "beepHi",
+    "tags": [
+      "tiny",
+      "metal",
+      "minimal"
+    ],
+    "params": {
+      "drumBeepHiFreq": 7000,
+      "drumBeepHiAttack": 0,
+      "drumBeepHiDecay": 50,
+      "drumBeepHiLevel": 0.45,
+      "drumBeepHiTone": 0.15,
+      "drumBeepHiInharmonic": 0.15,
+      "drumBeepHiPartials": 2,
+      "drumBeepHiShimmer": 0,
+      "drumBeepHiShimmerRate": 4,
+      "drumBeepHiBrightness": 0.75,
+      "drumBeepHiFeedback": 0,
+      "drumBeepHiModEnvDecay": 0,
+      "drumBeepHiNoiseInMod": 0,
+      "drumBeepHiModRatio": 2,
+      "drumBeepHiModRatioFine": 0.01,
+      "drumBeepHiModPhase": 0,
+      "drumBeepHiModEnvEnd": 0.2,
+      "drumBeepHiNoiseDecay": 0
+    }
+  },
+  {
+    "name": "Wind Chime",
+    "voice": "beepHi",
+    "tags": [
+      "organic",
+      "metal",
+      "wind",
+      "ambient"
+    ],
+    "params": {
+      "drumBeepHiFreq": 3000,
+      "drumBeepHiAttack": 2,
+      "drumBeepHiDecay": 1500,
+      "drumBeepHiLevel": 0.4,
+      "drumBeepHiTone": 0.4,
+      "drumBeepHiInharmonic": 0.45,
+      "drumBeepHiPartials": 6,
+      "drumBeepHiShimmer": 0.35,
+      "drumBeepHiShimmerRate": 3,
+      "drumBeepHiBrightness": 0.6,
+      "drumBeepHiFeedback": 0,
+      "drumBeepHiModEnvDecay": 0,
+      "drumBeepHiNoiseInMod": 0,
+      "drumBeepHiModRatio": 2,
+      "drumBeepHiModRatioFine": 0.01,
+      "drumBeepHiModPhase": 0,
+      "drumBeepHiModEnvEnd": 0.2,
+      "drumBeepHiNoiseDecay": 0
+    }
+  },
+  {
+    "name": "Bird Call",
+    "voice": "beepHi",
+    "tags": [
+      "organic",
+      "nature",
+      "animal",
+      "forest"
+    ],
+    "params": {
+      "drumBeepHiFreq": 6000,
+      "drumBeepHiAttack": 5,
+      "drumBeepHiDecay": 150,
+      "drumBeepHiLevel": 0.4,
+      "drumBeepHiTone": 0.1,
+      "drumBeepHiInharmonic": 0.1,
+      "drumBeepHiPartials": 2,
+      "drumBeepHiShimmer": 0.6,
+      "drumBeepHiShimmerRate": 10,
+      "drumBeepHiBrightness": 0.7,
+      "drumBeepHiFeedback": 0,
+      "drumBeepHiModEnvDecay": 0,
+      "drumBeepHiNoiseInMod": 0,
+      "drumBeepHiModRatio": 2,
+      "drumBeepHiModRatioFine": 0.01,
+      "drumBeepHiModPhase": 0,
+      "drumBeepHiModEnvEnd": 0.2,
+      "drumBeepHiNoiseDecay": 0
+    }
+  },
+  {
+    "name": "Bamboo Knock",
+    "voice": "beepHi",
+    "tags": [
+      "organic",
+      "wood",
+      "percussion",
+      "natural"
+    ],
+    "params": {
+      "drumBeepHiFreq": 2400,
+      "drumBeepHiAttack": 0,
+      "drumBeepHiDecay": 150,
+      "drumBeepHiLevel": 0.5,
+      "drumBeepHiTone": 0.25,
+      "drumBeepHiInharmonic": 0.3,
+      "drumBeepHiPartials": 3,
+      "drumBeepHiShimmer": 0,
+      "drumBeepHiShimmerRate": 4,
+      "drumBeepHiBrightness": 0.55,
+      "drumBeepHiFeedback": 0,
+      "drumBeepHiModEnvDecay": 0,
+      "drumBeepHiNoiseInMod": 0,
+      "drumBeepHiModRatio": 2,
+      "drumBeepHiModRatioFine": 0.01,
+      "drumBeepHiModPhase": 0,
+      "drumBeepHiModEnvEnd": 0.2,
+      "drumBeepHiNoiseDecay": 0
+    }
+  },
+  {
+    "name": "Insect Wing",
+    "voice": "beepHi",
+    "tags": [
+      "organic",
+      "nature",
+      "flutter",
+      "texture"
+    ],
+    "params": {
+      "drumBeepHiFreq": 5000,
+      "drumBeepHiAttack": 2,
+      "drumBeepHiDecay": 80,
+      "drumBeepHiLevel": 0.35,
+      "drumBeepHiTone": 0.15,
+      "drumBeepHiInharmonic": 0.2,
+      "drumBeepHiPartials": 2,
+      "drumBeepHiShimmer": 0.8,
+      "drumBeepHiShimmerRate": 15,
+      "drumBeepHiBrightness": 0.6,
+      "drumBeepHiFeedback": 0,
+      "drumBeepHiModEnvDecay": 0,
+      "drumBeepHiNoiseInMod": 0,
+      "drumBeepHiModRatio": 2,
+      "drumBeepHiModRatioFine": 0.01,
+      "drumBeepHiModPhase": 0,
+      "drumBeepHiModEnvEnd": 0.2,
+      "drumBeepHiNoiseDecay": 0
+    }
+  },
+  {
+    "name": "Singing Bowl",
+    "voice": "beepHi",
+    "tags": [
+      "ambient",
+      "meditation",
+      "sustain",
+      "resonant"
+    ],
+    "params": {
+      "drumBeepHiFreq": 2400,
+      "drumBeepHiAttack": 5,
+      "drumBeepHiDecay": 2500,
+      "drumBeepHiLevel": 0.4,
+      "drumBeepHiTone": 0.3,
+      "drumBeepHiInharmonic": 0.4,
+      "drumBeepHiPartials": 5,
+      "drumBeepHiShimmer": 0.25,
+      "drumBeepHiShimmerRate": 2,
+      "drumBeepHiBrightness": 0.5,
+      "drumBeepHiFeedback": 0,
+      "drumBeepHiModEnvDecay": 0,
+      "drumBeepHiNoiseInMod": 0,
+      "drumBeepHiModRatio": 2,
+      "drumBeepHiModRatioFine": 0.01,
+      "drumBeepHiModPhase": 0,
+      "drumBeepHiModEnvEnd": 0.2,
+      "drumBeepHiNoiseDecay": 0
+    }
+  },
+  {
+    "name": "Frozen Bells",
+    "voice": "beepHi",
+    "tags": [
+      "ambient",
+      "cold",
+      "distant",
+      "atmospheric"
+    ],
+    "params": {
+      "drumBeepHiFreq": 4000,
+      "drumBeepHiAttack": 3,
+      "drumBeepHiDecay": 1800,
+      "drumBeepHiLevel": 0.35,
+      "drumBeepHiTone": 0.2,
+      "drumBeepHiInharmonic": 0.35,
+      "drumBeepHiPartials": 4,
+      "drumBeepHiShimmer": 0.15,
+      "drumBeepHiShimmerRate": 3,
+      "drumBeepHiBrightness": 0.65,
+      "drumBeepHiFeedback": 0,
+      "drumBeepHiModEnvDecay": 0,
+      "drumBeepHiNoiseInMod": 0,
+      "drumBeepHiModRatio": 2,
+      "drumBeepHiModRatioFine": 0.01,
+      "drumBeepHiModPhase": 0,
+      "drumBeepHiModEnvEnd": 0.2,
+      "drumBeepHiNoiseDecay": 0
+    }
+  },
+  {
+    "name": "Glass Harmonica",
+    "voice": "beepHi",
+    "tags": [
+      "ambient",
+      "ethereal",
+      "sustain",
+      "delicate"
+    ],
+    "params": {
+      "drumBeepHiFreq": 2800,
+      "drumBeepHiAttack": 10,
+      "drumBeepHiDecay": 2000,
+      "drumBeepHiLevel": 0.35,
+      "drumBeepHiTone": 0.15,
+      "drumBeepHiInharmonic": 0.25,
+      "drumBeepHiPartials": 3,
+      "drumBeepHiShimmer": 0.4,
+      "drumBeepHiShimmerRate": 4,
+      "drumBeepHiBrightness": 0.55,
+      "drumBeepHiFeedback": 0,
+      "drumBeepHiModEnvDecay": 0,
+      "drumBeepHiNoiseInMod": 0,
+      "drumBeepHiModRatio": 2,
+      "drumBeepHiModRatioFine": 0.01,
+      "drumBeepHiModPhase": 0,
+      "drumBeepHiModEnvEnd": 0.2,
+      "drumBeepHiNoiseDecay": 0
+    }
+  },
+  {
+    "name": "Star Glint",
+    "voice": "beepHi",
+    "tags": [
+      "ambient",
+      "sparkle",
+      "bright",
+      "minimal"
+    ],
+    "params": {
+      "drumBeepHiFreq": 7000,
+      "drumBeepHiAttack": 0,
+      "drumBeepHiDecay": 100,
+      "drumBeepHiLevel": 0.3,
+      "drumBeepHiTone": 0.1,
+      "drumBeepHiInharmonic": 0.1,
+      "drumBeepHiPartials": 2,
+      "drumBeepHiShimmer": 0.2,
+      "drumBeepHiShimmerRate": 6,
+      "drumBeepHiBrightness": 0.9,
+      "drumBeepHiFeedback": 0,
+      "drumBeepHiModEnvDecay": 0,
+      "drumBeepHiNoiseInMod": 0,
+      "drumBeepHiModRatio": 2,
+      "drumBeepHiModRatioFine": 0.01,
+      "drumBeepHiModPhase": 0,
+      "drumBeepHiModEnvEnd": 0.2,
+      "drumBeepHiNoiseDecay": 0
+    }
+  },
+  {
+    "name": "FM Bell",
+    "voice": "beepHi",
+    "tags": [
+      "fm",
+      "bell",
+      "metallic",
+      "feedback"
+    ],
+    "params": {
+      "drumBeepHiFreq": 3000,
+      "drumBeepHiAttack": 0,
+      "drumBeepHiDecay": 200,
+      "drumBeepHiLevel": 0.4,
+      "drumBeepHiTone": 0.7,
+      "drumBeepHiInharmonic": 0.4,
+      "drumBeepHiPartials": 4,
+      "drumBeepHiShimmer": 0,
+      "drumBeepHiShimmerRate": 4,
+      "drumBeepHiBrightness": 0.7,
+      "drumBeepHiFeedback": 0.4,
+      "drumBeepHiModEnvDecay": 0.3,
+      "drumBeepHiNoiseInMod": 0,
+      "drumBeepHiModRatio": 2,
+      "drumBeepHiModRatioFine": 0.01,
+      "drumBeepHiModPhase": 0,
+      "drumBeepHiModEnvEnd": 0.2,
+      "drumBeepHiNoiseDecay": 0
+    }
+  },
+  {
+    "name": "Gritty Metal",
+    "voice": "beepHi",
+    "tags": [
+      "fm",
+      "harsh",
+      "metallic",
+      "noise"
+    ],
+    "params": {
+      "drumBeepHiFreq": 2500,
+      "drumBeepHiAttack": 0,
+      "drumBeepHiDecay": 120,
+      "drumBeepHiLevel": 0.45,
+      "drumBeepHiTone": 0.9,
+      "drumBeepHiInharmonic": 0.6,
+      "drumBeepHiPartials": 3,
+      "drumBeepHiShimmer": 0.1,
+      "drumBeepHiShimmerRate": 6,
+      "drumBeepHiBrightness": 0.8,
+      "drumBeepHiFeedback": 0.7,
+      "drumBeepHiModEnvDecay": 0.5,
+      "drumBeepHiNoiseInMod": 0.4,
+      "drumBeepHiModRatio": 2,
+      "drumBeepHiModRatioFine": 0.01,
+      "drumBeepHiModPhase": 0,
+      "drumBeepHiModEnvEnd": 0.2,
+      "drumBeepHiNoiseDecay": 0
+    }
+  },
+  {
+    "name": "Attack Transient",
+    "voice": "beepHi",
+    "tags": [
+      "fm",
+      "percussive",
+      "transient",
+      "modenv"
+    ],
+    "params": {
+      "drumBeepHiFreq": 4500,
+      "drumBeepHiAttack": 0,
+      "drumBeepHiDecay": 60,
+      "drumBeepHiLevel": 0.5,
+      "drumBeepHiTone": 0.6,
+      "drumBeepHiInharmonic": 0.2,
+      "drumBeepHiPartials": 2,
+      "drumBeepHiShimmer": 0,
+      "drumBeepHiShimmerRate": 4,
+      "drumBeepHiBrightness": 0.6,
+      "drumBeepHiFeedback": 0.2,
+      "drumBeepHiModEnvDecay": 0.9,
+      "drumBeepHiNoiseInMod": 0,
+      "drumBeepHiModRatio": 2,
+      "drumBeepHiModRatioFine": 0.01,
+      "drumBeepHiModPhase": 0,
+      "drumBeepHiModEnvEnd": 0.2,
+      "drumBeepHiNoiseDecay": 0
+    }
+  },
+  {
+    "name": "Noisy Shimmer",
+    "voice": "beepHi",
+    "tags": [
+      "fm",
+      "noise",
+      "shimmer",
+      "ambient"
+    ],
+    "params": {
+      "drumBeepHiFreq": 5000,
+      "drumBeepHiAttack": 5,
+      "drumBeepHiDecay": 300,
+      "drumBeepHiLevel": 0.35,
+      "drumBeepHiTone": 0.4,
+      "drumBeepHiInharmonic": 0.3,
+      "drumBeepHiPartials": 5,
+      "drumBeepHiShimmer": 0.5,
+      "drumBeepHiShimmerRate": 3,
+      "drumBeepHiBrightness": 0.5,
+      "drumBeepHiFeedback": 0.15,
+      "drumBeepHiModEnvDecay": 0.2,
+      "drumBeepHiNoiseInMod": 0.6,
+      "drumBeepHiModRatio": 2,
+      "drumBeepHiModRatioFine": 0.01,
+      "drumBeepHiModPhase": 0,
+      "drumBeepHiModEnvEnd": 0.2,
+      "drumBeepHiNoiseDecay": 0
+    }
+  },
+  {
+    "name": "Chaos Ring",
+    "voice": "beepHi",
+    "tags": [
+      "fm",
+      "feedback",
+      "chaos",
+      "experimental"
+    ],
+    "params": {
+      "drumBeepHiFreq": 2000,
+      "drumBeepHiAttack": 0,
+      "drumBeepHiDecay": 150,
+      "drumBeepHiLevel": 0.4,
+      "drumBeepHiTone": 1,
+      "drumBeepHiInharmonic": 0.8,
+      "drumBeepHiPartials": 3,
+      "drumBeepHiShimmer": 0.3,
+      "drumBeepHiShimmerRate": 8,
+      "drumBeepHiBrightness": 1,
+      "drumBeepHiFeedback": 0.9,
+      "drumBeepHiModEnvDecay": 0.7,
+      "drumBeepHiNoiseInMod": 0.8,
+      "drumBeepHiModRatio": 2,
+      "drumBeepHiModRatioFine": 0.01,
+      "drumBeepHiModPhase": 0,
+      "drumBeepHiModEnvEnd": 0.2,
+      "drumBeepHiNoiseDecay": 0
+    }
+  },
+  {
+    "name": "Tubular Bell",
+    "voice": "beepHi",
+    "tags": [
+      "opal",
+      "bell",
+      "ratio",
+      "harmonic"
+    ],
+    "params": {
+      "drumBeepHiFreq": 1200,
+      "drumBeepHiAttack": 1,
+      "drumBeepHiDecay": 400,
+      "drumBeepHiLevel": 0.5,
+      "drumBeepHiTone": 0.4,
+      "drumBeepHiInharmonic": 0.1,
+      "drumBeepHiPartials": 3,
+      "drumBeepHiShimmer": 0.1,
+      "drumBeepHiShimmerRate": 3,
+      "drumBeepHiBrightness": 0.7,
+      "drumBeepHiFeedback": 0.15,
+      "drumBeepHiModEnvDecay": 0.3,
+      "drumBeepHiNoiseInMod": 0,
+      "drumBeepHiModRatio": 3,
+      "drumBeepHiModRatioFine": 0,
+      "drumBeepHiModPhase": 0,
+      "drumBeepHiModEnvEnd": 0.15,
+      "drumBeepHiNoiseDecay": 0
+    }
+  },
+  {
+    "name": "Phase Shift Ping",
+    "voice": "beepHi",
+    "tags": [
+      "opal",
+      "phase",
+      "digital",
+      "stereo"
+    ],
+    "params": {
+      "drumBeepHiFreq": 3000,
+      "drumBeepHiAttack": 0,
+      "drumBeepHiDecay": 120,
+      "drumBeepHiLevel": 0.45,
+      "drumBeepHiTone": 0.3,
+      "drumBeepHiInharmonic": 0,
+      "drumBeepHiPartials": 1,
+      "drumBeepHiShimmer": 0,
+      "drumBeepHiShimmerRate": 4,
+      "drumBeepHiBrightness": 0.6,
+      "drumBeepHiFeedback": 0.1,
+      "drumBeepHiModEnvDecay": 0.2,
+      "drumBeepHiNoiseInMod": 0,
+      "drumBeepHiModRatio": 2,
+      "drumBeepHiModRatioFine": 0.01,
+      "drumBeepHiModPhase": 0.5,
+      "drumBeepHiModEnvEnd": 0.1,
+      "drumBeepHiNoiseDecay": 0
+    }
+  },
+  {
+    "name": "ADE Organ Hit",
+    "voice": "beepHi",
+    "tags": [
+      "opal",
+      "organ",
+      "sustain",
+      "ade"
+    ],
+    "params": {
+      "drumBeepHiFreq": 800,
+      "drumBeepHiAttack": 2,
+      "drumBeepHiDecay": 300,
+      "drumBeepHiLevel": 0.55,
+      "drumBeepHiTone": 0.5,
+      "drumBeepHiInharmonic": 0.05,
+      "drumBeepHiPartials": 4,
+      "drumBeepHiShimmer": 0.2,
+      "drumBeepHiShimmerRate": 5,
+      "drumBeepHiBrightness": 0.5,
+      "drumBeepHiFeedback": 0.2,
+      "drumBeepHiModEnvDecay": 0.4,
+      "drumBeepHiNoiseInMod": 0,
+      "drumBeepHiModRatio": 1,
+      "drumBeepHiModRatioFine": 0,
+      "drumBeepHiModPhase": 0,
+      "drumBeepHiModEnvEnd": 0.6,
+      "drumBeepHiNoiseDecay": 0
+    }
+  },
+  {
+    "name": "Noisy FM Pluck",
+    "voice": "beepHi",
+    "tags": [
+      "opal",
+      "noise",
+      "decay",
+      "texture"
+    ],
+    "params": {
+      "drumBeepHiFreq": 2000,
+      "drumBeepHiAttack": 0,
+      "drumBeepHiDecay": 150,
+      "drumBeepHiLevel": 0.5,
+      "drumBeepHiTone": 0.35,
+      "drumBeepHiInharmonic": 0.2,
+      "drumBeepHiPartials": 2,
+      "drumBeepHiShimmer": 0,
+      "drumBeepHiShimmerRate": 4,
+      "drumBeepHiBrightness": 0.8,
+      "drumBeepHiFeedback": 0.3,
+      "drumBeepHiModEnvDecay": 0.5,
+      "drumBeepHiNoiseInMod": 0.4,
+      "drumBeepHiModRatio": 5,
+      "drumBeepHiModRatioFine": 0.12,
+      "drumBeepHiModPhase": 0.25,
+      "drumBeepHiModEnvEnd": 0.05,
+      "drumBeepHiNoiseDecay": 0.6
+    }
+  },
+  {
+    "name": "Detuned Fifth",
+    "voice": "beepHi",
+    "tags": [
+      "opal",
+      "ratio",
+      "interval",
+      "rich"
+    ],
+    "params": {
+      "drumBeepHiFreq": 1500,
+      "drumBeepHiAttack": 1,
+      "drumBeepHiDecay": 250,
+      "drumBeepHiLevel": 0.5,
+      "drumBeepHiTone": 0.4,
+      "drumBeepHiInharmonic": 0.15,
+      "drumBeepHiPartials": 2,
+      "drumBeepHiShimmer": 0.15,
+      "drumBeepHiShimmerRate": 2,
+      "drumBeepHiBrightness": 0.55,
+      "drumBeepHiFeedback": 0.1,
+      "drumBeepHiModEnvDecay": 0.35,
+      "drumBeepHiNoiseInMod": 0,
+      "drumBeepHiModRatio": 1.5,
+      "drumBeepHiModRatioFine": -0.02,
+      "drumBeepHiModPhase": 0,
+      "drumBeepHiModEnvEnd": 0.25,
+      "drumBeepHiNoiseDecay": 0
+    }
+  }
+]

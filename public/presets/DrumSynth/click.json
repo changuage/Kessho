@@ -1,0 +1,539 @@
+[
+  {
+    "name": "Data Point",
+    "voice": "click",
+    "tags": [
+      "ikeda",
+      "digital",
+      "sharp"
+    ],
+    "params": {
+      "drumClickDecay": 5,
+      "drumClickFilter": 4000,
+      "drumClickTone": 0.3,
+      "drumClickLevel": 0.6,
+      "drumClickResonance": 0.4,
+      "drumClickPitch": 2000,
+      "drumClickPitchEnv": 0,
+      "drumClickMode": "impulse",
+      "drumClickGrainCount": 1,
+      "drumClickGrainSpread": 0,
+      "drumClickStereoWidth": 0,
+      "drumClickExciterColor": 0
+    }
+  },
+  {
+    "name": "Tick",
+    "voice": "click",
+    "tags": [
+      "clock",
+      "minimal",
+      "sharp"
+    ],
+    "params": {
+      "drumClickDecay": 2,
+      "drumClickFilter": 6000,
+      "drumClickTone": 0.1,
+      "drumClickLevel": 0.5,
+      "drumClickResonance": 0.2,
+      "drumClickPitch": 3000,
+      "drumClickPitchEnv": 0,
+      "drumClickMode": "impulse",
+      "drumClickGrainCount": 1,
+      "drumClickGrainSpread": 0,
+      "drumClickStereoWidth": 0,
+      "drumClickExciterColor": 0
+    }
+  },
+  {
+    "name": "Blip",
+    "voice": "click",
+    "tags": [
+      "soft",
+      "digital",
+      "tonal"
+    ],
+    "params": {
+      "drumClickDecay": 15,
+      "drumClickFilter": 2000,
+      "drumClickTone": 0.5,
+      "drumClickLevel": 0.55,
+      "drumClickResonance": 0.5,
+      "drumClickPitch": 1500,
+      "drumClickPitchEnv": -6,
+      "drumClickMode": "tonal",
+      "drumClickGrainCount": 1,
+      "drumClickGrainSpread": 0,
+      "drumClickStereoWidth": 0,
+      "drumClickExciterColor": 0
+    }
+  },
+  {
+    "name": "Crinkle",
+    "voice": "click",
+    "tags": [
+      "asmr",
+      "texture",
+      "paper"
+    ],
+    "params": {
+      "drumClickDecay": 40,
+      "drumClickFilter": 3000,
+      "drumClickTone": 0.8,
+      "drumClickLevel": 0.45,
+      "drumClickResonance": 0.3,
+      "drumClickPitch": 2500,
+      "drumClickPitchEnv": 0,
+      "drumClickMode": "granular",
+      "drumClickGrainCount": 5,
+      "drumClickGrainSpread": 20,
+      "drumClickStereoWidth": 0.6,
+      "drumClickExciterColor": 0
+    }
+  },
+  {
+    "name": "Dust",
+    "voice": "click",
+    "tags": [
+      "vinyl",
+      "texture",
+      "sparse"
+    ],
+    "params": {
+      "drumClickDecay": 3,
+      "drumClickFilter": 5000,
+      "drumClickTone": 0.4,
+      "drumClickLevel": 0.3,
+      "drumClickResonance": 0.1,
+      "drumClickPitch": 4000,
+      "drumClickPitchEnv": 0,
+      "drumClickMode": "granular",
+      "drumClickGrainCount": 2,
+      "drumClickGrainSpread": 8,
+      "drumClickStereoWidth": 0.8,
+      "drumClickExciterColor": 0
+    }
+  },
+  {
+    "name": "Glitch",
+    "voice": "click",
+    "tags": [
+      "digital",
+      "error",
+      "electronic"
+    ],
+    "params": {
+      "drumClickDecay": 8,
+      "drumClickFilter": 3500,
+      "drumClickTone": 0.6,
+      "drumClickLevel": 0.65,
+      "drumClickResonance": 0.7,
+      "drumClickPitch": 2800,
+      "drumClickPitchEnv": 24,
+      "drumClickMode": "tonal",
+      "drumClickGrainCount": 1,
+      "drumClickGrainSpread": 0,
+      "drumClickStereoWidth": 0.3,
+      "drumClickExciterColor": 0
+    }
+  },
+  {
+    "name": "Tap",
+    "voice": "click",
+    "tags": [
+      "asmr",
+      "finger",
+      "gentle"
+    ],
+    "params": {
+      "drumClickDecay": 12,
+      "drumClickFilter": 1500,
+      "drumClickTone": 0.4,
+      "drumClickLevel": 0.4,
+      "drumClickResonance": 0.3,
+      "drumClickPitch": 800,
+      "drumClickPitchEnv": -4,
+      "drumClickMode": "impulse",
+      "drumClickGrainCount": 1,
+      "drumClickGrainSpread": 0,
+      "drumClickStereoWidth": 0,
+      "drumClickExciterColor": 0
+    }
+  },
+  {
+    "name": "Spark",
+    "voice": "click",
+    "tags": [
+      "electric",
+      "bright",
+      "sharp"
+    ],
+    "params": {
+      "drumClickDecay": 6,
+      "drumClickFilter": 8000,
+      "drumClickTone": 0.2,
+      "drumClickLevel": 0.55,
+      "drumClickResonance": 0.8,
+      "drumClickPitch": 5000,
+      "drumClickPitchEnv": 12,
+      "drumClickMode": "impulse",
+      "drumClickGrainCount": 1,
+      "drumClickGrainSpread": 0,
+      "drumClickStereoWidth": 0.2,
+      "drumClickExciterColor": 0
+    }
+  },
+  {
+    "name": "Pop",
+    "voice": "click",
+    "tags": [
+      "bubble",
+      "soft",
+      "asmr"
+    ],
+    "params": {
+      "drumClickDecay": 20,
+      "drumClickFilter": 2000,
+      "drumClickTone": 0.7,
+      "drumClickLevel": 0.5,
+      "drumClickResonance": 0.6,
+      "drumClickPitch": 1200,
+      "drumClickPitchEnv": -12,
+      "drumClickMode": "noise",
+      "drumClickGrainCount": 1,
+      "drumClickGrainSpread": 0,
+      "drumClickStereoWidth": 0,
+      "drumClickExciterColor": 0
+    }
+  },
+  {
+    "name": "Static",
+    "voice": "click",
+    "tags": [
+      "radio",
+      "texture",
+      "noise"
+    ],
+    "params": {
+      "drumClickDecay": 50,
+      "drumClickFilter": 4500,
+      "drumClickTone": 0.9,
+      "drumClickLevel": 0.35,
+      "drumClickResonance": 0.2,
+      "drumClickPitch": 3000,
+      "drumClickPitchEnv": 0,
+      "drumClickMode": "noise",
+      "drumClickGrainCount": 1,
+      "drumClickGrainSpread": 0,
+      "drumClickStereoWidth": 0.4,
+      "drumClickExciterColor": 0
+    }
+  },
+  {
+    "name": "Scratch",
+    "voice": "click",
+    "tags": [
+      "vinyl",
+      "texture",
+      "dj"
+    ],
+    "params": {
+      "drumClickDecay": 25,
+      "drumClickFilter": 3000,
+      "drumClickTone": 0.6,
+      "drumClickLevel": 0.5,
+      "drumClickResonance": 0.4,
+      "drumClickPitch": 2000,
+      "drumClickPitchEnv": -18,
+      "drumClickMode": "granular",
+      "drumClickGrainCount": 4,
+      "drumClickGrainSpread": 15,
+      "drumClickStereoWidth": 0.5,
+      "drumClickExciterColor": 0
+    }
+  },
+  {
+    "name": "Micro Hit",
+    "voice": "click",
+    "tags": [
+      "tiny",
+      "minimal",
+      "impact"
+    ],
+    "params": {
+      "drumClickDecay": 1,
+      "drumClickFilter": 5000,
+      "drumClickTone": 0.2,
+      "drumClickLevel": 0.45,
+      "drumClickResonance": 0.3,
+      "drumClickPitch": 2500,
+      "drumClickPitchEnv": 6,
+      "drumClickMode": "tonal",
+      "drumClickGrainCount": 1,
+      "drumClickGrainSpread": 0,
+      "drumClickStereoWidth": 0,
+      "drumClickExciterColor": 0
+    }
+  },
+  {
+    "name": "Raindrop",
+    "voice": "click",
+    "tags": [
+      "organic",
+      "water",
+      "nature",
+      "asmr"
+    ],
+    "params": {
+      "drumClickDecay": 25,
+      "drumClickFilter": 1500,
+      "drumClickTone": 0.6,
+      "drumClickLevel": 0.45,
+      "drumClickResonance": 0.5,
+      "drumClickPitch": 600,
+      "drumClickPitchEnv": -12,
+      "drumClickMode": "tonal",
+      "drumClickGrainCount": 1,
+      "drumClickGrainSpread": 0,
+      "drumClickStereoWidth": 0,
+      "drumClickExciterColor": 0
+    }
+  },
+  {
+    "name": "Twig Snap",
+    "voice": "click",
+    "tags": [
+      "organic",
+      "wood",
+      "forest",
+      "natural"
+    ],
+    "params": {
+      "drumClickDecay": 15,
+      "drumClickFilter": 4500,
+      "drumClickTone": 0.7,
+      "drumClickLevel": 0.5,
+      "drumClickResonance": 0.2,
+      "drumClickPitch": 3000,
+      "drumClickPitchEnv": 8,
+      "drumClickMode": "granular",
+      "drumClickGrainCount": 4,
+      "drumClickGrainSpread": 12,
+      "drumClickStereoWidth": 0.5,
+      "drumClickExciterColor": 0
+    }
+  },
+  {
+    "name": "Stone Tap",
+    "voice": "click",
+    "tags": [
+      "organic",
+      "rock",
+      "percussion",
+      "natural"
+    ],
+    "params": {
+      "drumClickDecay": 8,
+      "drumClickFilter": 3500,
+      "drumClickTone": 0.4,
+      "drumClickLevel": 0.5,
+      "drumClickResonance": 0.3,
+      "drumClickPitch": 3500,
+      "drumClickPitchEnv": 4,
+      "drumClickMode": "impulse",
+      "drumClickGrainCount": 1,
+      "drumClickGrainSpread": 0,
+      "drumClickStereoWidth": 0.2,
+      "drumClickExciterColor": 0
+    }
+  },
+  {
+    "name": "Seed Pod",
+    "voice": "click",
+    "tags": [
+      "organic",
+      "rattle",
+      "nature",
+      "texture"
+    ],
+    "params": {
+      "drumClickDecay": 20,
+      "drumClickFilter": 3000,
+      "drumClickTone": 0.5,
+      "drumClickLevel": 0.4,
+      "drumClickResonance": 0.25,
+      "drumClickPitch": 2500,
+      "drumClickPitchEnv": 0,
+      "drumClickMode": "granular",
+      "drumClickGrainCount": 6,
+      "drumClickGrainSpread": 8,
+      "drumClickStereoWidth": 0.4,
+      "drumClickExciterColor": 0
+    }
+  },
+  {
+    "name": "Dewdrop",
+    "voice": "click",
+    "tags": [
+      "ambient",
+      "water",
+      "delicate",
+      "minimal"
+    ],
+    "params": {
+      "drumClickDecay": 35,
+      "drumClickFilter": 1200,
+      "drumClickTone": 0.5,
+      "drumClickLevel": 0.3,
+      "drumClickResonance": 0.6,
+      "drumClickPitch": 800,
+      "drumClickPitchEnv": -8,
+      "drumClickMode": "tonal",
+      "drumClickGrainCount": 1,
+      "drumClickGrainSpread": 0,
+      "drumClickStereoWidth": 0.2,
+      "drumClickExciterColor": 0
+    }
+  },
+  {
+    "name": "Grain Scatter",
+    "voice": "click",
+    "tags": [
+      "ambient",
+      "texture",
+      "granular",
+      "atmospheric"
+    ],
+    "params": {
+      "drumClickDecay": 60,
+      "drumClickFilter": 2500,
+      "drumClickTone": 0.4,
+      "drumClickLevel": 0.35,
+      "drumClickResonance": 0.3,
+      "drumClickPitch": 2000,
+      "drumClickPitchEnv": 0,
+      "drumClickMode": "granular",
+      "drumClickGrainCount": 6,
+      "drumClickGrainSpread": 30,
+      "drumClickStereoWidth": 0.9,
+      "drumClickExciterColor": 0
+    }
+  },
+  {
+    "name": "Ice Crystal",
+    "voice": "click",
+    "tags": [
+      "ambient",
+      "frozen",
+      "bright",
+      "delicate"
+    ],
+    "params": {
+      "drumClickDecay": 18,
+      "drumClickFilter": 6000,
+      "drumClickTone": 0.3,
+      "drumClickLevel": 0.4,
+      "drumClickResonance": 0.7,
+      "drumClickPitch": 4000,
+      "drumClickPitchEnv": 6,
+      "drumClickMode": "tonal",
+      "drumClickGrainCount": 1,
+      "drumClickGrainSpread": 0,
+      "drumClickStereoWidth": 0.3,
+      "drumClickExciterColor": 0
+    }
+  },
+  {
+    "name": "Distant Ping",
+    "voice": "click",
+    "tags": [
+      "ambient",
+      "faraway",
+      "subtle",
+      "minimal"
+    ],
+    "params": {
+      "drumClickDecay": 40,
+      "drumClickFilter": 2000,
+      "drumClickTone": 0.3,
+      "drumClickLevel": 0.25,
+      "drumClickResonance": 0.4,
+      "drumClickPitch": 1500,
+      "drumClickPitchEnv": -4,
+      "drumClickMode": "impulse",
+      "drumClickGrainCount": 1,
+      "drumClickGrainSpread": 0,
+      "drumClickStereoWidth": 0.8,
+      "drumClickExciterColor": 0
+    }
+  },
+  {
+    "name": "Smooth Transient",
+    "voice": "click",
+    "tags": [
+      "exciter",
+      "smooth",
+      "hybrid"
+    ],
+    "params": {
+      "drumClickDecay": 8,
+      "drumClickFilter": 5000,
+      "drumClickTone": 0.4,
+      "drumClickLevel": 0.55,
+      "drumClickResonance": 0.5,
+      "drumClickPitch": 2500,
+      "drumClickPitchEnv": 0,
+      "drumClickMode": "impulse",
+      "drumClickGrainCount": 1,
+      "drumClickGrainSpread": 0,
+      "drumClickStereoWidth": 0,
+      "drumClickExciterColor": 0.3
+    }
+  },
+  {
+    "name": "Tonal Wash",
+    "voice": "click",
+    "tags": [
+      "exciter",
+      "tonal",
+      "warm"
+    ],
+    "params": {
+      "drumClickDecay": 15,
+      "drumClickFilter": 3000,
+      "drumClickTone": 0.6,
+      "drumClickLevel": 0.5,
+      "drumClickResonance": 0.6,
+      "drumClickPitch": 1800,
+      "drumClickPitchEnv": -6,
+      "drumClickMode": "impulse",
+      "drumClickGrainCount": 1,
+      "drumClickGrainSpread": 0,
+      "drumClickStereoWidth": 0,
+      "drumClickExciterColor": 0.5
+    }
+  },
+  {
+    "name": "Noise Blend",
+    "voice": "click",
+    "tags": [
+      "exciter",
+      "noise",
+      "texture"
+    ],
+    "params": {
+      "drumClickDecay": 12,
+      "drumClickFilter": 6000,
+      "drumClickTone": 0.5,
+      "drumClickLevel": 0.45,
+      "drumClickResonance": 0.3,
+      "drumClickPitch": 3000,
+      "drumClickPitchEnv": 2,
+      "drumClickMode": "impulse",
+      "drumClickGrainCount": 1,
+      "drumClickGrainSpread": 0,
+      "drumClickStereoWidth": 0,
+      "drumClickExciterColor": 0.8
+    }
+  }
+]

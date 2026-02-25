@@ -1,0 +1,694 @@
+[
+  {
+    "name": "Blip",
+    "voice": "beepLo",
+    "tags": [
+      "digital",
+      "minimal",
+      "default"
+    ],
+    "params": {
+      "drumBeepLoFreq": 400,
+      "drumBeepLoAttack": 2,
+      "drumBeepLoDecay": 100,
+      "drumBeepLoLevel": 0.5,
+      "drumBeepLoTone": 0.1,
+      "drumBeepLoPitchEnv": 0,
+      "drumBeepLoPitchDecay": 50,
+      "drumBeepLoBody": 0.3,
+      "drumBeepLoPluck": 0,
+      "drumBeepLoPluckDamp": 0.5,
+      "drumBeepLoModal": 0,
+      "drumBeepLoModalQ": 10,
+      "drumBeepLoModalInharmonic": 0,
+      "drumBeepLoModalSpread": 0,
+      "drumBeepLoModalCut": 0
+    }
+  },
+  {
+    "name": "Droplet",
+    "voice": "beepLo",
+    "tags": [
+      "water",
+      "asmr",
+      "natural"
+    ],
+    "params": {
+      "drumBeepLoFreq": 600,
+      "drumBeepLoAttack": 0,
+      "drumBeepLoDecay": 200,
+      "drumBeepLoLevel": 0.5,
+      "drumBeepLoTone": 0,
+      "drumBeepLoPitchEnv": -18,
+      "drumBeepLoPitchDecay": 80,
+      "drumBeepLoBody": 0.4,
+      "drumBeepLoPluck": 0,
+      "drumBeepLoPluckDamp": 0.5,
+      "drumBeepLoModal": 0,
+      "drumBeepLoModalQ": 10,
+      "drumBeepLoModalInharmonic": 0,
+      "drumBeepLoModalSpread": 0,
+      "drumBeepLoModalCut": 0
+    }
+  },
+  {
+    "name": "Bubble",
+    "voice": "beepLo",
+    "tags": [
+      "underwater",
+      "asmr",
+      "soft"
+    ],
+    "params": {
+      "drumBeepLoFreq": 350,
+      "drumBeepLoAttack": 5,
+      "drumBeepLoDecay": 300,
+      "drumBeepLoLevel": 0.45,
+      "drumBeepLoTone": 0.05,
+      "drumBeepLoPitchEnv": -24,
+      "drumBeepLoPitchDecay": 150,
+      "drumBeepLoBody": 0.6,
+      "drumBeepLoPluck": 0,
+      "drumBeepLoPluckDamp": 0.5,
+      "drumBeepLoModal": 0,
+      "drumBeepLoModalQ": 10,
+      "drumBeepLoModalInharmonic": 0,
+      "drumBeepLoModalSpread": 0,
+      "drumBeepLoModalCut": 0
+    }
+  },
+  {
+    "name": "Pluck",
+    "voice": "beepLo",
+    "tags": [
+      "string",
+      "acoustic",
+      "ambient"
+    ],
+    "params": {
+      "drumBeepLoFreq": 500,
+      "drumBeepLoAttack": 0,
+      "drumBeepLoDecay": 400,
+      "drumBeepLoLevel": 0.55,
+      "drumBeepLoTone": 0.2,
+      "drumBeepLoPitchEnv": 2,
+      "drumBeepLoPitchDecay": 30,
+      "drumBeepLoBody": 0.5,
+      "drumBeepLoPluck": 0.8,
+      "drumBeepLoPluckDamp": 0.4,
+      "drumBeepLoModal": 0,
+      "drumBeepLoModalQ": 10,
+      "drumBeepLoModalInharmonic": 0,
+      "drumBeepLoModalSpread": 0,
+      "drumBeepLoModalCut": 0
+    }
+  },
+  {
+    "name": "Muted Tap",
+    "voice": "beepLo",
+    "tags": [
+      "soft",
+      "asmr",
+      "gentle"
+    ],
+    "params": {
+      "drumBeepLoFreq": 300,
+      "drumBeepLoAttack": 1,
+      "drumBeepLoDecay": 80,
+      "drumBeepLoLevel": 0.4,
+      "drumBeepLoTone": 0,
+      "drumBeepLoPitchEnv": 4,
+      "drumBeepLoPitchDecay": 20,
+      "drumBeepLoBody": 0.3,
+      "drumBeepLoPluck": 0.5,
+      "drumBeepLoPluckDamp": 0.9,
+      "drumBeepLoModal": 0,
+      "drumBeepLoModalQ": 10,
+      "drumBeepLoModalInharmonic": 0,
+      "drumBeepLoModalSpread": 0,
+      "drumBeepLoModalCut": 0
+    }
+  },
+  {
+    "name": "Bloop",
+    "voice": "beepLo",
+    "tags": [
+      "cartoon",
+      "fun",
+      "digital"
+    ],
+    "params": {
+      "drumBeepLoFreq": 450,
+      "drumBeepLoAttack": 0,
+      "drumBeepLoDecay": 150,
+      "drumBeepLoLevel": 0.5,
+      "drumBeepLoTone": 0.15,
+      "drumBeepLoPitchEnv": 36,
+      "drumBeepLoPitchDecay": 40,
+      "drumBeepLoBody": 0.4,
+      "drumBeepLoPluck": 0,
+      "drumBeepLoPluckDamp": 0.5,
+      "drumBeepLoModal": 0,
+      "drumBeepLoModalQ": 10,
+      "drumBeepLoModalInharmonic": 0,
+      "drumBeepLoModalSpread": 0,
+      "drumBeepLoModalCut": 0
+    }
+  },
+  {
+    "name": "Ping",
+    "voice": "beepLo",
+    "tags": [
+      "sonar",
+      "pure",
+      "minimal"
+    ],
+    "params": {
+      "drumBeepLoFreq": 800,
+      "drumBeepLoAttack": 0,
+      "drumBeepLoDecay": 500,
+      "drumBeepLoLevel": 0.45,
+      "drumBeepLoTone": 0,
+      "drumBeepLoPitchEnv": 0,
+      "drumBeepLoPitchDecay": 50,
+      "drumBeepLoBody": 0.2,
+      "drumBeepLoPluck": 0,
+      "drumBeepLoPluckDamp": 0.5,
+      "drumBeepLoModal": 0,
+      "drumBeepLoModalQ": 10,
+      "drumBeepLoModalInharmonic": 0,
+      "drumBeepLoModalSpread": 0,
+      "drumBeepLoModalCut": 0
+    }
+  },
+  {
+    "name": "Woody",
+    "voice": "beepLo",
+    "tags": [
+      "wood",
+      "percussion",
+      "acoustic"
+    ],
+    "params": {
+      "drumBeepLoFreq": 550,
+      "drumBeepLoAttack": 0,
+      "drumBeepLoDecay": 120,
+      "drumBeepLoLevel": 0.55,
+      "drumBeepLoTone": 0.3,
+      "drumBeepLoPitchEnv": 8,
+      "drumBeepLoPitchDecay": 15,
+      "drumBeepLoBody": 0.6,
+      "drumBeepLoPluck": 0.7,
+      "drumBeepLoPluckDamp": 0.3,
+      "drumBeepLoModal": 0,
+      "drumBeepLoModalQ": 10,
+      "drumBeepLoModalInharmonic": 0,
+      "drumBeepLoModalSpread": 0,
+      "drumBeepLoModalCut": 0
+    }
+  },
+  {
+    "name": "Soft Ping",
+    "voice": "beepLo",
+    "tags": [
+      "gentle",
+      "asmr",
+      "ambient"
+    ],
+    "params": {
+      "drumBeepLoFreq": 600,
+      "drumBeepLoAttack": 10,
+      "drumBeepLoDecay": 400,
+      "drumBeepLoLevel": 0.35,
+      "drumBeepLoTone": 0,
+      "drumBeepLoPitchEnv": 0,
+      "drumBeepLoPitchDecay": 50,
+      "drumBeepLoBody": 0.4,
+      "drumBeepLoPluck": 0,
+      "drumBeepLoPluckDamp": 0.5,
+      "drumBeepLoModal": 0,
+      "drumBeepLoModalQ": 10,
+      "drumBeepLoModalInharmonic": 0,
+      "drumBeepLoModalSpread": 0,
+      "drumBeepLoModalCut": 0
+    }
+  },
+  {
+    "name": "Chirp",
+    "voice": "beepLo",
+    "tags": [
+      "bird",
+      "nature",
+      "texture"
+    ],
+    "params": {
+      "drumBeepLoFreq": 700,
+      "drumBeepLoAttack": 0,
+      "drumBeepLoDecay": 60,
+      "drumBeepLoLevel": 0.45,
+      "drumBeepLoTone": 0.1,
+      "drumBeepLoPitchEnv": -30,
+      "drumBeepLoPitchDecay": 25,
+      "drumBeepLoBody": 0.3,
+      "drumBeepLoPluck": 0.2,
+      "drumBeepLoPluckDamp": 0.4,
+      "drumBeepLoModal": 0,
+      "drumBeepLoModalQ": 10,
+      "drumBeepLoModalInharmonic": 0,
+      "drumBeepLoModalSpread": 0,
+      "drumBeepLoModalCut": 0
+    }
+  },
+  {
+    "name": "Kalimba",
+    "voice": "beepLo",
+    "tags": [
+      "organic",
+      "african",
+      "thumb piano",
+      "natural"
+    ],
+    "params": {
+      "drumBeepLoFreq": 500,
+      "drumBeepLoAttack": 0,
+      "drumBeepLoDecay": 350,
+      "drumBeepLoLevel": 0.55,
+      "drumBeepLoTone": 0.15,
+      "drumBeepLoPitchEnv": 3,
+      "drumBeepLoPitchDecay": 20,
+      "drumBeepLoBody": 0.4,
+      "drumBeepLoPluck": 0.6,
+      "drumBeepLoPluckDamp": 0.4,
+      "drumBeepLoModal": 0,
+      "drumBeepLoModalQ": 10,
+      "drumBeepLoModalInharmonic": 0,
+      "drumBeepLoModalSpread": 0,
+      "drumBeepLoModalCut": 0
+    }
+  },
+  {
+    "name": "Tongue Drum",
+    "voice": "beepLo",
+    "tags": [
+      "organic",
+      "steel",
+      "meditation",
+      "natural"
+    ],
+    "params": {
+      "drumBeepLoFreq": 450,
+      "drumBeepLoAttack": 3,
+      "drumBeepLoDecay": 600,
+      "drumBeepLoLevel": 0.5,
+      "drumBeepLoTone": 0.05,
+      "drumBeepLoPitchEnv": 0,
+      "drumBeepLoPitchDecay": 50,
+      "drumBeepLoBody": 0.55,
+      "drumBeepLoPluck": 0.4,
+      "drumBeepLoPluckDamp": 0.5,
+      "drumBeepLoModal": 0,
+      "drumBeepLoModalQ": 10,
+      "drumBeepLoModalInharmonic": 0,
+      "drumBeepLoModalSpread": 0,
+      "drumBeepLoModalCut": 0
+    }
+  },
+  {
+    "name": "Hollow Gourd",
+    "voice": "beepLo",
+    "tags": [
+      "organic",
+      "percussion",
+      "natural",
+      "world"
+    ],
+    "params": {
+      "drumBeepLoFreq": 350,
+      "drumBeepLoAttack": 0,
+      "drumBeepLoDecay": 80,
+      "drumBeepLoLevel": 0.5,
+      "drumBeepLoTone": 0.2,
+      "drumBeepLoPitchEnv": 6,
+      "drumBeepLoPitchDecay": 15,
+      "drumBeepLoBody": 0.7,
+      "drumBeepLoPluck": 0.5,
+      "drumBeepLoPluckDamp": 0.6,
+      "drumBeepLoModal": 0,
+      "drumBeepLoModalQ": 10,
+      "drumBeepLoModalInharmonic": 0,
+      "drumBeepLoModalSpread": 0,
+      "drumBeepLoModalCut": 0
+    }
+  },
+  {
+    "name": "Frog Croak",
+    "voice": "beepLo",
+    "tags": [
+      "organic",
+      "animal",
+      "nature",
+      "texture"
+    ],
+    "params": {
+      "drumBeepLoFreq": 300,
+      "drumBeepLoAttack": 2,
+      "drumBeepLoDecay": 100,
+      "drumBeepLoLevel": 0.45,
+      "drumBeepLoTone": 0.15,
+      "drumBeepLoPitchEnv": -20,
+      "drumBeepLoPitchDecay": 40,
+      "drumBeepLoBody": 0.5,
+      "drumBeepLoPluck": 0.3,
+      "drumBeepLoPluckDamp": 0.5,
+      "drumBeepLoModal": 0,
+      "drumBeepLoModalQ": 10,
+      "drumBeepLoModalInharmonic": 0,
+      "drumBeepLoModalSpread": 0,
+      "drumBeepLoModalCut": 0
+    }
+  },
+  {
+    "name": "Underwater Ping",
+    "voice": "beepLo",
+    "tags": [
+      "ambient",
+      "sonar",
+      "muted",
+      "deep"
+    ],
+    "params": {
+      "drumBeepLoFreq": 500,
+      "drumBeepLoAttack": 5,
+      "drumBeepLoDecay": 700,
+      "drumBeepLoLevel": 0.4,
+      "drumBeepLoTone": 0,
+      "drumBeepLoPitchEnv": -6,
+      "drumBeepLoPitchDecay": 100,
+      "drumBeepLoBody": 0.6,
+      "drumBeepLoPluck": 0,
+      "drumBeepLoPluckDamp": 0.5,
+      "drumBeepLoModal": 0,
+      "drumBeepLoModalQ": 10,
+      "drumBeepLoModalInharmonic": 0,
+      "drumBeepLoModalSpread": 0,
+      "drumBeepLoModalCut": 0
+    }
+  },
+  {
+    "name": "Cave Drip",
+    "voice": "beepLo",
+    "tags": [
+      "ambient",
+      "water",
+      "echo",
+      "natural"
+    ],
+    "params": {
+      "drumBeepLoFreq": 700,
+      "drumBeepLoAttack": 0,
+      "drumBeepLoDecay": 450,
+      "drumBeepLoLevel": 0.4,
+      "drumBeepLoTone": 0.05,
+      "drumBeepLoPitchEnv": -15,
+      "drumBeepLoPitchDecay": 60,
+      "drumBeepLoBody": 0.5,
+      "drumBeepLoPluck": 0,
+      "drumBeepLoPluckDamp": 0.5,
+      "drumBeepLoModal": 0,
+      "drumBeepLoModalQ": 10,
+      "drumBeepLoModalInharmonic": 0,
+      "drumBeepLoModalSpread": 0,
+      "drumBeepLoModalCut": 0
+    }
+  },
+  {
+    "name": "Soft Mallet",
+    "voice": "beepLo",
+    "tags": [
+      "ambient",
+      "vibraphone",
+      "gentle",
+      "warm"
+    ],
+    "params": {
+      "drumBeepLoFreq": 600,
+      "drumBeepLoAttack": 8,
+      "drumBeepLoDecay": 800,
+      "drumBeepLoLevel": 0.4,
+      "drumBeepLoTone": 0,
+      "drumBeepLoPitchEnv": 0,
+      "drumBeepLoPitchDecay": 50,
+      "drumBeepLoBody": 0.5,
+      "drumBeepLoPluck": 0.2,
+      "drumBeepLoPluckDamp": 0.7,
+      "drumBeepLoModal": 0,
+      "drumBeepLoModalQ": 10,
+      "drumBeepLoModalInharmonic": 0,
+      "drumBeepLoModalSpread": 0,
+      "drumBeepLoModalCut": 0
+    }
+  },
+  {
+    "name": "Hollow Echo",
+    "voice": "beepLo",
+    "tags": [
+      "ambient",
+      "resonant",
+      "spacious",
+      "deep"
+    ],
+    "params": {
+      "drumBeepLoFreq": 350,
+      "drumBeepLoAttack": 3,
+      "drumBeepLoDecay": 500,
+      "drumBeepLoLevel": 0.4,
+      "drumBeepLoTone": 0.1,
+      "drumBeepLoPitchEnv": -8,
+      "drumBeepLoPitchDecay": 80,
+      "drumBeepLoBody": 0.7,
+      "drumBeepLoPluck": 0,
+      "drumBeepLoPluckDamp": 0.5,
+      "drumBeepLoModal": 0,
+      "drumBeepLoModalQ": 10,
+      "drumBeepLoModalInharmonic": 0,
+      "drumBeepLoModalSpread": 0,
+      "drumBeepLoModalCut": 0
+    }
+  },
+  {
+    "name": "Modal Bell",
+    "voice": "beepLo",
+    "tags": [
+      "modal",
+      "bell",
+      "resonant",
+      "metallic"
+    ],
+    "params": {
+      "drumBeepLoFreq": 300,
+      "drumBeepLoAttack": 0,
+      "drumBeepLoDecay": 400,
+      "drumBeepLoLevel": 0.5,
+      "drumBeepLoTone": 0.2,
+      "drumBeepLoPitchEnv": 0,
+      "drumBeepLoPitchDecay": 50,
+      "drumBeepLoBody": 0.5,
+      "drumBeepLoPluck": 0,
+      "drumBeepLoPluckDamp": 0.5,
+      "drumBeepLoModal": 0.8,
+      "drumBeepLoModalQ": 25,
+      "drumBeepLoModalInharmonic": 0.5,
+      "drumBeepLoModalSpread": 0,
+      "drumBeepLoModalCut": 0
+    }
+  },
+  {
+    "name": "Struck Bar",
+    "voice": "beepLo",
+    "tags": [
+      "modal",
+      "percussive",
+      "bar",
+      "marimba"
+    ],
+    "params": {
+      "drumBeepLoFreq": 440,
+      "drumBeepLoAttack": 0,
+      "drumBeepLoDecay": 200,
+      "drumBeepLoLevel": 0.55,
+      "drumBeepLoTone": 0.3,
+      "drumBeepLoPitchEnv": 0,
+      "drumBeepLoPitchDecay": 30,
+      "drumBeepLoBody": 0.6,
+      "drumBeepLoPluck": 0,
+      "drumBeepLoPluckDamp": 0.5,
+      "drumBeepLoModal": 0.7,
+      "drumBeepLoModalQ": 15,
+      "drumBeepLoModalInharmonic": 0.1,
+      "drumBeepLoModalSpread": 0,
+      "drumBeepLoModalCut": 0
+    }
+  },
+  {
+    "name": "Gamelan Tone",
+    "voice": "beepLo",
+    "tags": [
+      "modal",
+      "gamelan",
+      "metallic",
+      "inharmonic"
+    ],
+    "params": {
+      "drumBeepLoFreq": 350,
+      "drumBeepLoAttack": 0,
+      "drumBeepLoDecay": 600,
+      "drumBeepLoLevel": 0.45,
+      "drumBeepLoTone": 0.1,
+      "drumBeepLoPitchEnv": 0,
+      "drumBeepLoPitchDecay": 50,
+      "drumBeepLoBody": 0.4,
+      "drumBeepLoPluck": 0,
+      "drumBeepLoPluckDamp": 0.5,
+      "drumBeepLoModal": 1,
+      "drumBeepLoModalQ": 40,
+      "drumBeepLoModalInharmonic": 0.9,
+      "drumBeepLoModalSpread": 0,
+      "drumBeepLoModalCut": 0
+    }
+  },
+  {
+    "name": "Singing Metal",
+    "voice": "beepLo",
+    "tags": [
+      "modal",
+      "singing",
+      "sustain",
+      "ambient"
+    ],
+    "params": {
+      "drumBeepLoFreq": 250,
+      "drumBeepLoAttack": 2,
+      "drumBeepLoDecay": 800,
+      "drumBeepLoLevel": 0.4,
+      "drumBeepLoTone": 0.15,
+      "drumBeepLoPitchEnv": 0,
+      "drumBeepLoPitchDecay": 50,
+      "drumBeepLoBody": 0.7,
+      "drumBeepLoPluck": 0,
+      "drumBeepLoPluckDamp": 0.5,
+      "drumBeepLoModal": 0.9,
+      "drumBeepLoModalQ": 35,
+      "drumBeepLoModalInharmonic": 0.3,
+      "drumBeepLoModalSpread": 0,
+      "drumBeepLoModalCut": 0
+    }
+  },
+  {
+    "name": "Spread Marimba",
+    "voice": "beepLo",
+    "tags": [
+      "opal",
+      "spread",
+      "marimba",
+      "warm"
+    ],
+    "params": {
+      "drumBeepLoFreq": 300,
+      "drumBeepLoAttack": 1,
+      "drumBeepLoDecay": 400,
+      "drumBeepLoLevel": 0.5,
+      "drumBeepLoTone": 0.2,
+      "drumBeepLoPitchEnv": 0,
+      "drumBeepLoPitchDecay": 50,
+      "drumBeepLoBody": 0.5,
+      "drumBeepLoPluck": 0,
+      "drumBeepLoPluckDamp": 0.5,
+      "drumBeepLoModal": 0.8,
+      "drumBeepLoModalQ": 25,
+      "drumBeepLoModalInharmonic": 0.2,
+      "drumBeepLoModalSpread": 0.6,
+      "drumBeepLoModalCut": 0
+    }
+  },
+  {
+    "name": "Compressed Gong",
+    "voice": "beepLo",
+    "tags": [
+      "opal",
+      "spread",
+      "gong",
+      "dense"
+    ],
+    "params": {
+      "drumBeepLoFreq": 150,
+      "drumBeepLoAttack": 3,
+      "drumBeepLoDecay": 1200,
+      "drumBeepLoLevel": 0.45,
+      "drumBeepLoTone": 0.1,
+      "drumBeepLoPitchEnv": 0,
+      "drumBeepLoPitchDecay": 50,
+      "drumBeepLoBody": 0.8,
+      "drumBeepLoPluck": 0,
+      "drumBeepLoPluckDamp": 0.5,
+      "drumBeepLoModal": 1,
+      "drumBeepLoModalQ": 40,
+      "drumBeepLoModalInharmonic": 0.5,
+      "drumBeepLoModalSpread": -0.7,
+      "drumBeepLoModalCut": 0
+    }
+  },
+  {
+    "name": "Bright Tilt Bell",
+    "voice": "beepLo",
+    "tags": [
+      "opal",
+      "cut",
+      "bright",
+      "bell"
+    ],
+    "params": {
+      "drumBeepLoFreq": 400,
+      "drumBeepLoAttack": 0,
+      "drumBeepLoDecay": 500,
+      "drumBeepLoLevel": 0.5,
+      "drumBeepLoTone": 0.4,
+      "drumBeepLoPitchEnv": 0,
+      "drumBeepLoPitchDecay": 50,
+      "drumBeepLoBody": 0.3,
+      "drumBeepLoPluck": 0,
+      "drumBeepLoPluckDamp": 0.5,
+      "drumBeepLoModal": 0.9,
+      "drumBeepLoModalQ": 30,
+      "drumBeepLoModalInharmonic": 0.15,
+      "drumBeepLoModalSpread": 0,
+      "drumBeepLoModalCut": -0.6
+    }
+  },
+  {
+    "name": "Dark Cut Thud",
+    "voice": "beepLo",
+    "tags": [
+      "opal",
+      "cut",
+      "dark",
+      "thud"
+    ],
+    "params": {
+      "drumBeepLoFreq": 120,
+      "drumBeepLoAttack": 1,
+      "drumBeepLoDecay": 300,
+      "drumBeepLoLevel": 0.55,
+      "drumBeepLoTone": 0.05,
+      "drumBeepLoPitchEnv": 0,
+      "drumBeepLoPitchDecay": 50,
+      "drumBeepLoBody": 0.9,
+      "drumBeepLoPluck": 0,
+      "drumBeepLoPluckDamp": 0.5,
+      "drumBeepLoModal": 0.7,
+      "drumBeepLoModalQ": 20,
+      "drumBeepLoModalInharmonic": 0.4,
+      "drumBeepLoModalSpread": 0.3,
+      "drumBeepLoModalCut": 0.7
+    }
+  }
+]

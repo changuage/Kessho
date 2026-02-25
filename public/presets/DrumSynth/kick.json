@@ -1,0 +1,366 @@
+[
+  {
+    "name": "Ikeda Kick",
+    "voice": "kick",
+    "tags": [
+      "ikeda",
+      "digital",
+      "sharp"
+    ],
+    "params": {
+      "drumKickFreq": 55,
+      "drumKickPitchEnv": 24,
+      "drumKickPitchDecay": 30,
+      "drumKickDecay": 200,
+      "drumKickLevel": 0.7,
+      "drumKickClick": 0.3,
+      "drumKickBody": 0.3,
+      "drumKickPunch": 0.8,
+      "drumKickTail": 0,
+      "drumKickTone": 0
+    }
+  },
+  {
+    "name": "Ambient Boom",
+    "voice": "kick",
+    "tags": [
+      "ambient",
+      "spacious",
+      "deep"
+    ],
+    "params": {
+      "drumKickFreq": 45,
+      "drumKickPitchEnv": 18,
+      "drumKickPitchDecay": 80,
+      "drumKickDecay": 1500,
+      "drumKickLevel": 0.75,
+      "drumKickClick": 0.1,
+      "drumKickBody": 1,
+      "drumKickPunch": 0.2,
+      "drumKickTail": 0.7,
+      "drumKickTone": 0.2
+    }
+  },
+  {
+    "name": "Soft Tap",
+    "voice": "kick",
+    "tags": [
+      "asmr",
+      "gentle",
+      "finger"
+    ],
+    "params": {
+      "drumKickFreq": 80,
+      "drumKickPitchEnv": 6,
+      "drumKickPitchDecay": 20,
+      "drumKickDecay": 80,
+      "drumKickLevel": 0.35,
+      "drumKickClick": 0,
+      "drumKickBody": 0.6,
+      "drumKickPunch": 0.1,
+      "drumKickTail": 0,
+      "drumKickTone": 0
+    }
+  },
+  {
+    "name": "Tight Punch",
+    "voice": "kick",
+    "tags": [
+      "punchy",
+      "tight",
+      "electronic"
+    ],
+    "params": {
+      "drumKickFreq": 60,
+      "drumKickPitchEnv": 36,
+      "drumKickPitchDecay": 15,
+      "drumKickDecay": 120,
+      "drumKickLevel": 0.85,
+      "drumKickClick": 0.5,
+      "drumKickBody": 0.2,
+      "drumKickPunch": 1,
+      "drumKickTail": 0,
+      "drumKickTone": 0.1
+    }
+  },
+  {
+    "name": "808 Deep",
+    "voice": "kick",
+    "tags": [
+      "808",
+      "deep",
+      "classic"
+    ],
+    "params": {
+      "drumKickFreq": 40,
+      "drumKickPitchEnv": 12,
+      "drumKickPitchDecay": 50,
+      "drumKickDecay": 800,
+      "drumKickLevel": 0.9,
+      "drumKickClick": 0.2,
+      "drumKickBody": 0.8,
+      "drumKickPunch": 0.5,
+      "drumKickTail": 0.3,
+      "drumKickTone": 0.1
+    }
+  },
+  {
+    "name": "Paper Thud",
+    "voice": "kick",
+    "tags": [
+      "asmr",
+      "muted",
+      "soft"
+    ],
+    "params": {
+      "drumKickFreq": 70,
+      "drumKickPitchEnv": 8,
+      "drumKickPitchDecay": 25,
+      "drumKickDecay": 60,
+      "drumKickLevel": 0.5,
+      "drumKickClick": 0,
+      "drumKickBody": 0.4,
+      "drumKickPunch": 0.2,
+      "drumKickTail": 0,
+      "drumKickTone": 0
+    }
+  },
+  {
+    "name": "Room Kick",
+    "voice": "kick",
+    "tags": [
+      "natural",
+      "room",
+      "ambient"
+    ],
+    "params": {
+      "drumKickFreq": 55,
+      "drumKickPitchEnv": 20,
+      "drumKickPitchDecay": 40,
+      "drumKickDecay": 400,
+      "drumKickLevel": 0.7,
+      "drumKickClick": 0.25,
+      "drumKickBody": 0.7,
+      "drumKickPunch": 0.5,
+      "drumKickTail": 0.5,
+      "drumKickTone": 0.15
+    }
+  },
+  {
+    "name": "Click Kick",
+    "voice": "kick",
+    "tags": [
+      "clicky",
+      "attack",
+      "electronic"
+    ],
+    "params": {
+      "drumKickFreq": 65,
+      "drumKickPitchEnv": 30,
+      "drumKickPitchDecay": 10,
+      "drumKickDecay": 150,
+      "drumKickLevel": 0.7,
+      "drumKickClick": 0.9,
+      "drumKickBody": 0.3,
+      "drumKickPunch": 0.9,
+      "drumKickTail": 0,
+      "drumKickTone": 0.2
+    }
+  },
+  {
+    "name": "Pillow",
+    "voice": "kick",
+    "tags": [
+      "asmr",
+      "soft",
+      "gentle"
+    ],
+    "params": {
+      "drumKickFreq": 50,
+      "drumKickPitchEnv": 4,
+      "drumKickPitchDecay": 60,
+      "drumKickDecay": 300,
+      "drumKickLevel": 0.4,
+      "drumKickClick": 0,
+      "drumKickBody": 0.9,
+      "drumKickPunch": 0,
+      "drumKickTail": 0.2,
+      "drumKickTone": 0
+    }
+  },
+  {
+    "name": "Heartbeat",
+    "voice": "kick",
+    "tags": [
+      "organic",
+      "pulse",
+      "ambient"
+    ],
+    "params": {
+      "drumKickFreq": 48,
+      "drumKickPitchEnv": 10,
+      "drumKickPitchDecay": 100,
+      "drumKickDecay": 500,
+      "drumKickLevel": 0.65,
+      "drumKickClick": 0.1,
+      "drumKickBody": 0.85,
+      "drumKickPunch": 0.3,
+      "drumKickTail": 0.4,
+      "drumKickTone": 0.05
+    }
+  },
+  {
+    "name": "Djembe",
+    "voice": "kick",
+    "tags": [
+      "organic",
+      "hand drum",
+      "african",
+      "natural"
+    ],
+    "params": {
+      "drumKickFreq": 70,
+      "drumKickPitchEnv": 14,
+      "drumKickPitchDecay": 35,
+      "drumKickDecay": 250,
+      "drumKickLevel": 0.7,
+      "drumKickClick": 0.15,
+      "drumKickBody": 0.9,
+      "drumKickPunch": 0.4,
+      "drumKickTail": 0.35,
+      "drumKickTone": 0.1
+    }
+  },
+  {
+    "name": "Frame Drum",
+    "voice": "kick",
+    "tags": [
+      "organic",
+      "hand drum",
+      "ethnic",
+      "natural"
+    ],
+    "params": {
+      "drumKickFreq": 45,
+      "drumKickPitchEnv": 8,
+      "drumKickPitchDecay": 60,
+      "drumKickDecay": 350,
+      "drumKickLevel": 0.6,
+      "drumKickClick": 0.05,
+      "drumKickBody": 0.95,
+      "drumKickPunch": 0.15,
+      "drumKickTail": 0.5,
+      "drumKickTone": 0.05
+    }
+  },
+  {
+    "name": "Cajon",
+    "voice": "kick",
+    "tags": [
+      "organic",
+      "wood",
+      "percussion",
+      "natural"
+    ],
+    "params": {
+      "drumKickFreq": 65,
+      "drumKickPitchEnv": 12,
+      "drumKickPitchDecay": 25,
+      "drumKickDecay": 180,
+      "drumKickLevel": 0.7,
+      "drumKickClick": 0.4,
+      "drumKickBody": 0.7,
+      "drumKickPunch": 0.5,
+      "drumKickTail": 0.2,
+      "drumKickTone": 0.15
+    }
+  },
+  {
+    "name": "Stomped Earth",
+    "voice": "kick",
+    "tags": [
+      "organic",
+      "foot",
+      "ground",
+      "natural"
+    ],
+    "params": {
+      "drumKickFreq": 50,
+      "drumKickPitchEnv": 6,
+      "drumKickPitchDecay": 50,
+      "drumKickDecay": 300,
+      "drumKickLevel": 0.6,
+      "drumKickClick": 0.05,
+      "drumKickBody": 0.85,
+      "drumKickPunch": 0.2,
+      "drumKickTail": 0.6,
+      "drumKickTone": 0.05
+    }
+  },
+  {
+    "name": "Distant Thunder",
+    "voice": "kick",
+    "tags": [
+      "ambient",
+      "storm",
+      "atmospheric",
+      "deep"
+    ],
+    "params": {
+      "drumKickFreq": 40,
+      "drumKickPitchEnv": 10,
+      "drumKickPitchDecay": 120,
+      "drumKickDecay": 1200,
+      "drumKickLevel": 0.55,
+      "drumKickClick": 0,
+      "drumKickBody": 0.7,
+      "drumKickPunch": 0.1,
+      "drumKickTail": 0.8,
+      "drumKickTone": 0.1
+    }
+  },
+  {
+    "name": "Ghost Pulse",
+    "voice": "kick",
+    "tags": [
+      "ambient",
+      "subtle",
+      "background",
+      "minimal"
+    ],
+    "params": {
+      "drumKickFreq": 45,
+      "drumKickPitchEnv": 6,
+      "drumKickPitchDecay": 80,
+      "drumKickDecay": 600,
+      "drumKickLevel": 0.4,
+      "drumKickClick": 0,
+      "drumKickBody": 0.8,
+      "drumKickPunch": 0.05,
+      "drumKickTail": 0.5,
+      "drumKickTone": 0
+    }
+  },
+  {
+    "name": "Slow Bloom",
+    "voice": "kick",
+    "tags": [
+      "ambient",
+      "swell",
+      "gradual",
+      "atmospheric"
+    ],
+    "params": {
+      "drumKickFreq": 42,
+      "drumKickPitchEnv": 4,
+      "drumKickPitchDecay": 150,
+      "drumKickDecay": 900,
+      "drumKickLevel": 0.5,
+      "drumKickClick": 0,
+      "drumKickBody": 0.9,
+      "drumKickPunch": 0,
+      "drumKickTail": 0.7,
+      "drumKickTone": 0.05
+    }
+  }
+]
