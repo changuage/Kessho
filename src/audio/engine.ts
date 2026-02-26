@@ -79,7 +79,7 @@ export interface EngineState {
   cofCurrentStep: number;
 }
 
-import type { DrumEvolveMethod, DrumEuclidEvolveConfig } from './drumSynth';
+import type { DrumEuclidEvolveConfig } from './drumSynth';
 
 const defaultDrumEuclidEvolveConfig = (): DrumEuclidEvolveConfig => ({
   enabled: false,
@@ -378,9 +378,9 @@ export class AudioEngine {
       }
 
       if (!this.rng) {
-        const bucket = getUtcBucket();
+        const bucket = getUtcBucket(sliderState.seedWindow as 'hour' | 'day' || 'hour');
         const seed = computeSeed(bucket, JSON.stringify(sliderState));
-        this.rng = createRng(seed);
+        this.rng = createRng(String(seed));
       }
 
       this.drumSynth = new DrumSynth(

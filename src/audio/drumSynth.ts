@@ -22,7 +22,7 @@
  */
 
 import type { SliderState } from '../ui/state';
-import { getMorphedParams, DrumMorphManager } from './drumMorph';
+import { getMorphedParams } from './drumMorph';
 import type { DrumStepOverrides, SequencerState } from './drumSeqTypes';
 import { createSequencer, resolveDrumEuclidPatternParams, seqEuclidean, seqLaneIndex, seqPickVoice } from './drumSequencer';
 import { captureHomeSnapshot, evolveSequencer, resetSequencerToHome } from './drumSeqEvolve';
@@ -86,7 +86,7 @@ const NOTE_DIVISIONS: Record<string, number> = {
 /**
  * Convert note division string to time in seconds based on BPM
  */
-export function noteToSeconds(note: string, bpm: number): number {
+function noteToSeconds(note: string, bpm: number): number {
   const beats = NOTE_DIVISIONS[note] ?? 0.5; // Default to 1/8
   return (60 / bpm) * beats;
 }
@@ -103,9 +103,7 @@ export class DrumSynth {
   // Euclidean scheduling
   private euclidScheduleTimer: number | null = null;
   private euclidCurrentStep: number[] = [0, 0, 0, 0]; // Step position per lane
-  private lastScheduleTime = 0;
   private euclidGlobalStepCount = 0;
-  private euclidBarCount = 0;
   private euclidSequencers: SequencerState[] = [];
   // Per-lane, per-step visit counters for Elektron-style trig conditions [n:N]
   private trigConditionCounters: number[][] = [[], [], [], []];
@@ -118,10 +116,6 @@ export class DrumSynth {
   
   // RNG for deterministic randomness
   private rng: () => number;
-  
-  // Morph system
-  private morphManager: DrumMorphManager;
-  private morphAnimationFrame: number | null = null;
   
   // Morph ranges for per-trigger randomization (like delay/expression)
   private morphRanges: Record<DrumVoiceType, { min: number; max: number } | null> = {
@@ -225,9 +219,6 @@ export class DrumSynth {
     // Connect to outputs
     this.masterGain.connect(masterOutput);
     this.reverbSend.connect(reverbNode);
-    
-    // Initialize morph manager
-    this.morphManager = new DrumMorphManager();
     
     // Pre-generate noise buffer
     this.createNoiseBuffer();
@@ -2712,9 +2703,7 @@ export class DrumSynth {
     // Reset step counters
     this.euclidCurrentStep = [0, 0, 0, 0];
     this.euclidGlobalStepCount = 0;
-    this.euclidBarCount = 0;
     this.trigConditionCounters = [[], [], [], []];
-    this.lastScheduleTime = this.ctx.currentTime;
 
     const startTime = this.ctx.currentTime;
     this.euclidSequencers = [0, 1, 2, 3].map((id) => {
@@ -2754,10 +2743,6 @@ export class DrumSynth {
         }
       };
 
-      // Global division (fallback for bar counting)
-      const globalDivision = this.params.drumEuclidDivision;
-      const globalStepDuration = (beatDuration * 4) / globalDivision;
-      
       // Helper to build array of enabled voices for a lane
       // Supports both new boolean toggles and legacy single-target property
       const getEnabledVoices = (laneNum: 1 | 2 | 3 | 4): DrumVoiceType[] => {
@@ -2985,8 +2970,6 @@ export class DrumSynth {
 
       // Global bar counter (use shortest lane step duration as reference)
       this.euclidGlobalStepCount += 1;
-      // Keep lastScheduleTime advancing for compatibility
-      this.lastScheduleTime = now;
 
       // Notify UI of step positions + hit counts (for sub-lane playheads)
       const hitCounts = this.euclidSequencers.map(s => s.hitCount);
@@ -3018,11 +3001,6 @@ export class DrumSynth {
   
   dispose(): void {
     this.stop();
-    this.morphManager.reset();
-    if (this.morphAnimationFrame) {
-      cancelAnimationFrame(this.morphAnimationFrame);
-      this.morphAnimationFrame = null;
-    }
 
     // Stop transient node cleanup timer
     if (this.transientCleanupTimer !== null) {

@@ -9,8 +9,6 @@ interface VoiceCardAdvancedProps {
   config: DrumVoiceConfig;
   state: SliderState;
   onParamChange: (key: keyof SliderState, value: SliderState[keyof SliderState]) => void;
-  sliderProps: (paramKey: keyof SliderState) => Record<string, unknown>;
-  SliderComponent: React.ComponentType<Record<string, unknown>>;
   isTriggered?: boolean;
   analyserNode?: AnalyserNode;
 }
@@ -20,8 +18,6 @@ const VoiceCardAdvanced: React.FC<VoiceCardAdvancedProps> = ({
   config,
   state,
   onParamChange,
-  sliderProps: _sliderProps,
-  SliderComponent: _SliderComponent,
   isTriggered = false,
   analyserNode,
 }) => {

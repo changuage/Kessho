@@ -140,8 +140,6 @@ const VoiceCard: React.FC<VoiceCardProps> = ({
             config={config}
             state={state}
             onParamChange={onParamChange}
-            sliderProps={sliderProps}
-            SliderComponent={SliderComponent}
             isTriggered={isTriggered}
             analyserNode={analyserNode}
           />

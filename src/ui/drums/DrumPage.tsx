@@ -26,6 +26,11 @@ const LANE_CONFIGS = [
   { color: '#ffa502', name: 'Seq 4' },
 ];
 
+// ── Keyboard shortcuts: A S D F G H J → voice triggers ──
+const KEY_TO_VOICE: Record<string, DrumVoiceType> = {
+  a: 'sub', s: 'kick', d: 'click', f: 'beepHi', g: 'beepLo', h: 'noise', j: 'membrane',
+};
+
 export interface DrumPageProps {
   state: SliderState;
   isMobile: boolean;
@@ -40,7 +45,6 @@ export interface DrumPageProps {
   resetEvolveHome: (laneIdx: number) => void;
   SliderComponent: React.ComponentType<Record<string, unknown>>;
   CollapsiblePanelComponent: React.ComponentType<Record<string, unknown>>;
-  SelectComponent: React.ComponentType<Record<string, unknown>>;
   editingVoice: string | null;
   onToggleEditing: (voice: string) => void;
   triggeredVoices: Record<string, boolean>;
@@ -128,10 +132,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
 
   const activeSeq = seq.activeSeq;
 
-  // ── Keyboard shortcuts: A S D F G H J → voice triggers ──
-  const KEY_TO_VOICE: Record<string, DrumVoiceType> = {
-    a: 'sub', s: 'kick', d: 'click', f: 'beepHi', g: 'beepLo', h: 'noise', j: 'membrane',
-  };
+  // ── Keyboard shortcuts ──
   const triggerVoiceRef = useRef(triggerVoice);
   triggerVoiceRef.current = triggerVoice;
 

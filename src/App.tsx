@@ -30,7 +30,7 @@ import CloudPresets from './ui/CloudPresets';
 import { fetchPresetById, isCloudEnabled } from './cloud/supabase';
 import JourneyModeView from './ui/JourneyModeView';
 import { useJourney } from './ui/journeyState';
-import { resolveDrumEuclidPatternParams, seqEuclidean } from './audio/drumSequencer';
+import { resolveDrumEuclidPatternParams } from './audio/drumSequencer';
 import DrumPage from './ui/drums/DrumPage';
 
 // Note names for display
@@ -59,22 +59,6 @@ const TEXT_SYMBOLS = {
   drumNoise: '≋\uFE0E',
   drumMembrane: '※\uFE0E',
 } as const;
-
-// Inline long-press helper for elements that can't use hooks (IIFEs, etc.)
-// Returns event handlers to spread onto an element
-const createLongPressHandlers = (callback: () => void, duration = 400) => {
-  let timer: ReturnType<typeof setTimeout> | null = null;
-  return {
-    onTouchStart: () => {
-      timer = setTimeout(() => {
-        if (navigator.vibrate) navigator.vibrate(50);
-        callback();
-      }, duration);
-    },
-    onTouchEnd: () => { if (timer) { clearTimeout(timer); timer = null; } },
-    onTouchMove: () => { if (timer) { clearTimeout(timer); timer = null; } },
-  };
-};
 
 // File input ref for loading presets
 const fileInputRef = { current: null as HTMLInputElement | null };
@@ -1862,7 +1846,7 @@ const App: React.FC = () => {
   // Random walk animation (for all sliders in 'walk' mode)
   useEffect(() => {
     const walkKeys = Object.entries(sliderModes)
-      .filter(([key, mode]) => mode === 'walk')
+      .filter(([_key, mode]) => mode === 'walk')
       .map(([key]) => key as keyof SliderState);
     if (walkKeys.length === 0) return;
 
@@ -7166,27 +7150,6 @@ const App: React.FC = () => {
             const rootOctaveMarkers = [rootMidi + 12, rootMidi + 24, rootMidi + 36, rootMidi + 48];
 
             // Generate pattern for visualization
-            const presetData: Record<string, { steps: number; hits: number; rotation: number }> = {
-              // Polyrhythmic / Complex
-              sparse: { steps: 16, hits: 1, rotation: 0 },
-              dense: { steps: 8, hits: 7, rotation: 0 },
-              longSparse: { steps: 32, hits: 3, rotation: 0 },
-              poly3v4: { steps: 12, hits: 3, rotation: 0 },
-              poly4v3: { steps: 12, hits: 4, rotation: 0 },
-              poly5v3: { steps: 15, hits: 5, rotation: 0 },
-              poly5v4: { steps: 20, hits: 5, rotation: 0 },
-              poly7v4: { steps: 28, hits: 7, rotation: 0 },
-              poly5v7: { steps: 35, hits: 5, rotation: 0 },
-              prime17: { steps: 17, hits: 7, rotation: 0 },
-              prime19: { steps: 19, hits: 7, rotation: 0 },
-              prime23: { steps: 23, hits: 9, rotation: 0 },
-              // Indonesian Gamelan
-              lancaran: { steps: 16, hits: 4, rotation: 0 },
-              ketawang: { steps: 16, hits: 2, rotation: 0 },
-              ladrang: { steps: 32, hits: 8, rotation: 0 },
-              gangsaran: { steps: 8, hits: 4, rotation: 0 },
-              kotekan: { steps: 8, hits: 3, rotation: 1 },
-            };
             const resolvedPattern = resolveDrumEuclidPatternParams(preset, steps, hits, rotation);
             const patternSteps = resolvedPattern.steps;
             const patternHits = resolvedPattern.hits;
@@ -7748,7 +7711,6 @@ const App: React.FC = () => {
             resetEvolveHome={(laneIdx) => audioEngine.resetDrumEuclidLaneHome(laneIdx)}
             SliderComponent={Slider as unknown as React.ComponentType<Record<string, unknown>>}
             CollapsiblePanelComponent={CollapsiblePanel as unknown as React.ComponentType<Record<string, unknown>>}
-            SelectComponent={Select as unknown as React.ComponentType<Record<string, unknown>>}
             editingVoice={drumEditingVoice}
             onToggleEditing={(v) => setDrumEditingVoice(prev => prev === v ? null : v)}
             triggeredVoices={drumTriggeredVoices}

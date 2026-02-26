@@ -21,7 +21,6 @@ interface SeqOverviewProps {
   onToggleTriggerStep?: (seqIdx: number, step: number) => void;
   onSetProbability?: (seqIdx: number, step: number, value: number) => void;
   onResetProbability?: (seqIdx: number, step: number) => void;
-  onCycleRatchet?: (seqIdx: number, step: number) => void;
   onCycleTrigCondition?: (seqIdx: number, step: number) => void;
 }
 

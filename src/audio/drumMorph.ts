@@ -265,7 +265,7 @@ export { lerp, expLerp, smoothstep, shouldUseExpLerp } from './morphUtils';
 /**
  * Interpolate between two parameter values
  */
-export function interpolateParam(
+function interpolateParam(
   key: string,
   valueA: number | string,
   valueB: number | string,
