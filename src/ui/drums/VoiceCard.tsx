@@ -53,7 +53,6 @@ const VoiceCard: React.FC<VoiceCardProps> = ({
   sliderProps,
   getPresetNames,
   triggerVoice,
-  SliderComponent,
   editingVoice,
   onToggleEditing,
   isTriggered = false,

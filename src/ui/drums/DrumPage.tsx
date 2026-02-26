@@ -660,7 +660,6 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                 onToggleTriggerStep={(seqIdx, step) => seq.toggleTriggerStep(seqIdx, step)}
                 onSetProbability={(seqIdx, step, value) => seq.setStepProbability(seqIdx, step, value)}
                 onResetProbability={(seqIdx, step) => seq.resetStepProbability(seqIdx, step)}
-                onCycleRatchet={(seqIdx, step) => seq.cycleStepRatchet(seqIdx, step)}
                 onCycleTrigCondition={(seqIdx, step) => seq.cycleTrigCondition(seqIdx, step)}
               />
               <SeqMiniOverview
