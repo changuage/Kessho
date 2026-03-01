@@ -9,6 +9,7 @@ import './drums.css';
 import type { SliderState } from '../state';
 import type { DrumVoiceType } from '../../audio/drumSynth';
 import type { DrumStepOverrides } from '../../audio/drumSeqTypes';
+import type { ClockDivision } from '../../audio/drumSeqTypes';
 import { DRUM_VOICES as VOICE_CONFIG, DRUM_VOICE_ORDER } from '../../audio/drumVoiceConfig';
 import { useEuclideanSequencer, type EvolveConfig, type StepOverrides, type SubLaneKind, type SubLaneState } from '../sequencer/useEuclideanSequencer';
 import DrumPanel from './DrumPanel';
@@ -68,6 +69,10 @@ export interface DrumPageProps {
   initialViewMode?: 'simple' | 'detail' | 'overview';
   /** Called when view mode changes so parent can persist it */
   onViewModeChange?: (mode: 'simple' | 'detail' | 'overview') => void;
+  /** Called when per-lane clock divisions change */
+  onClockDivsChange?: (divs: ClockDivision[]) => void;
+  /** Called when per-lane swing amounts change */
+  onSwingsChange?: (swings: number[]) => void;
 }
 
 const DrumPage: React.FC<DrumPageProps> = (props) => {
@@ -98,6 +103,8 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     onSubLaneStatesChange,
     initialViewMode,
     onViewModeChange,
+    onClockDivsChange,
+    onSwingsChange,
   } = props;
 
   const Slider = SliderComponent as React.ComponentType<any>;
@@ -149,6 +156,24 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
       onSubLaneStatesChange?.(seq.subLaneStates);
     }
   }, [seq.subLaneStates, onSubLaneStatesChange]);
+
+  // Sync per-lane clock divisions to audio engine
+  const clockDivsRef = useRef(seq.clockDivs);
+  useEffect(() => {
+    if (clockDivsRef.current !== seq.clockDivs) {
+      clockDivsRef.current = seq.clockDivs;
+      onClockDivsChange?.(seq.clockDivs);
+    }
+  }, [seq.clockDivs, onClockDivsChange]);
+
+  // Sync per-lane swing amounts to audio engine
+  const swingsRef = useRef(seq.swings);
+  useEffect(() => {
+    if (swingsRef.current !== seq.swings) {
+      swingsRef.current = seq.swings;
+      onSwingsChange?.(seq.swings);
+    }
+  }, [seq.swings, onSwingsChange]);
 
   const activeSeq = seq.activeSeq;
 

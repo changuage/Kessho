@@ -18,6 +18,7 @@ import SeqLane from '../drums/SeqLane';
 import SeqSparkline from '../drums/SeqSparkline';
 import SeqMiniOverview from '../drums/SeqMiniOverview';
 import { SCALES } from '../../audio/drumSeqTypes';
+import type { ClockDivision } from '../../audio/drumSeqTypes';
 import './synth.css';
 
 /** Convert a scale-degree index to semitone offset (matching SeqLane.tsx logic) */
@@ -102,6 +103,10 @@ export interface SynthPageProps {
   onViewModeChange?: (mode: 'simple' | 'detail' | 'overview') => void;
   /** Reset evolve home */
   resetEvolveHome?: (laneIdx: number) => void;
+  /** Called when per-lane clock divisions change */
+  onClockDivsChange?: (divs: ClockDivision[]) => void;
+  /** Called when per-lane swing amounts change */
+  onSwingsChange?: (swings: number[]) => void;
 }
 
 // ═══════════════ Component ═══════════════
@@ -133,6 +138,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     initialViewMode,
     onViewModeChange,
     resetEvolveHome,
+    onClockDivsChange,
+    onSwingsChange,
   } = props;
 
   const [editingSection, setEditingSection] = useState<string | null>(null);
@@ -220,6 +227,24 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       onSubLaneStatesChange?.(seq.subLaneStates);
     }
   }, [seq.subLaneStates, onSubLaneStatesChange]);
+
+  // Sync per-lane clock divisions to audio engine
+  const clockDivsRef = useRef(seq.clockDivs);
+  useEffect(() => {
+    if (clockDivsRef.current !== seq.clockDivs) {
+      clockDivsRef.current = seq.clockDivs;
+      onClockDivsChange?.(seq.clockDivs);
+    }
+  }, [seq.clockDivs, onClockDivsChange]);
+
+  // Sync per-lane swing amounts to audio engine
+  const swingsRef = useRef(seq.swings);
+  useEffect(() => {
+    if (swingsRef.current !== seq.swings) {
+      swingsRef.current = seq.swings;
+      onSwingsChange?.(seq.swings);
+    }
+  }, [seq.swings, onSwingsChange]);
 
   const activeSeq = seq.activeSeq;
 

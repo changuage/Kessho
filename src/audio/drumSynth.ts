@@ -23,7 +23,7 @@
 
 import type { SliderState } from '../ui/state';
 import { getMorphedParams } from './drumMorph';
-import type { DrumStepOverrides, SequencerState } from './drumSeqTypes';
+import type { DrumStepOverrides, SequencerState, ClockDivision } from './drumSeqTypes';
 import { createSequencer, resolveDrumEuclidPatternParams, seqEuclidean, seqLaneIndex, seqPickVoice } from './drumSequencer';
 import { captureHomeSnapshot, evolveSequencer, resetSequencerToHome } from './drumSeqEvolve';
 
@@ -588,6 +588,24 @@ export class DrumSynth {
     const sequencer = this.euclidSequencers[laneIndex];
     if (!sequencer) return;
     this.euclidSequencers[laneIndex] = resetSequencerToHome(sequencer);
+  }
+
+  /** Update per-lane clock divisions from the UI. */
+  setEuclidClockDivs(divs: ClockDivision[]): void {
+    divs.forEach((div, i) => {
+      if (i < this.euclidSequencers.length && this.euclidSequencers[i]) {
+        this.euclidSequencers[i].clockDiv = div;
+      }
+    });
+  }
+
+  /** Update per-lane swing amounts from the UI. */
+  setEuclidSwings(swings: number[]): void {
+    swings.forEach((swing, i) => {
+      if (i < this.euclidSequencers.length && this.euclidSequencers[i]) {
+        this.euclidSequencers[i].swing = swing;
+      }
+    });
   }
 
   /** Receive full step overrides from the UI (trigger toggles, probability, ratchet, expression, morph, distance). */

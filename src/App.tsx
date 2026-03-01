@@ -5917,6 +5917,8 @@ const App: React.FC = () => {
                 trigCondition: overrides.trigCondition,
               });
             }}
+            onClockDivsChange={(divs) => audioEngine.setSynthEuclidClockDivs(divs)}
+            onSwingsChange={(swings) => audioEngine.setSynthEuclidSwings(swings)}
           />
         )}
 
@@ -6353,6 +6355,8 @@ const App: React.FC = () => {
             onSubLaneStatesChange={(states) => { drumSubLaneStatesRef.current = states; }}
             initialViewMode={drumViewModeRef.current}
             onViewModeChange={(mode) => { drumViewModeRef.current = mode; }}
+            onClockDivsChange={(divs) => audioEngine.setDrumEuclidClockDivs(divs)}
+            onSwingsChange={(swings) => audioEngine.setDrumEuclidSwings(swings)}
           />
         )}
       </div>

@@ -26,7 +26,7 @@ import {
 import { getScaleNotesInRange, midiToFreq } from './scales';
 import { createRng, generateRandomSequence, getUtcBucket, computeSeed, rngFloat } from './rng';
 import { DrumSynth, DrumVoiceType } from './drumSynth';
-import type { DrumStepOverrides, LaneDirection, TrigCondition } from './drumSeqTypes';
+import type { DrumStepOverrides, LaneDirection, TrigCondition, ClockDivision } from './drumSeqTypes';
 import { seqLaneIndex, seqEuclidean } from './drumSequencer';
 import type { SliderState } from '../ui/state';
 import { getPadPreset, morphPadPresets, PAD_PRESET_PARAM_KEYS } from './padPresets';
@@ -166,6 +166,8 @@ export class AudioEngine {
   private synthEuclidScheduleTimer: number | null = null;
   private synthEuclidNextStepTime: number[] = [0, 0, 0, 0]; // AudioContext time per lane
   private synthEuclidStepIndex: number[] = [0, 0, 0, 0]; // Current step index per lane
+  private synthEuclidClockDivs: ClockDivision[] = ['1/8', '1/16', '1/8T', '1/4']; // Per-lane clock division
+  private synthEuclidSwings: number[] = [0, 0, 0, 0]; // Per-lane swing amount (0-1)
 
   // Lead 4op FM preset slots
   private lead1PresetA: Lead4opFMPreset = DEFAULT_SOFT_RHODES;
@@ -425,6 +427,30 @@ export class AudioEngine {
     };
     // Continuous scheduler reads overrides each tick — no restart needed
     // Continuous scheduler reads overrides each tick — no restart needed
+  }
+
+  /** Set per-lane clock divisions for the synth Euclidean sequencer. */
+  setSynthEuclidClockDivs(divs: ClockDivision[]) {
+    this.synthEuclidClockDivs = [...divs];
+  }
+
+  /** Set per-lane swing amounts for the synth Euclidean sequencer. */
+  setSynthEuclidSwings(swings: number[]) {
+    this.synthEuclidSwings = [...swings];
+  }
+
+  /** Set per-lane clock divisions for the drum Euclidean sequencer. */
+  setDrumEuclidClockDivs(divs: ClockDivision[]) {
+    if (this.drumSynth) {
+      this.drumSynth.setEuclidClockDivs(divs);
+    }
+  }
+
+  /** Set per-lane swing amounts for the drum Euclidean sequencer. */
+  setDrumEuclidSwings(swings: number[]) {
+    if (this.drumSynth) {
+      this.drumSynth.setEuclidSwings(swings);
+    }
   }
 
   setDrumMorphRange(voice: DrumVoiceType, range: { min: number; max: number } | null) {
@@ -3169,7 +3195,18 @@ export class AudioEngine {
 
         const baseBPM = this.sliderState.drumEuclidBaseBPM ?? 120;
         const tempo = this.sliderState.synthEuclideanTempo ?? 1;
-        const stepDurationSec = 60 / (baseBPM * tempo); // 1 beat per step, scaled by tempo multiplier
+        const beatDuration = 60 / (baseBPM * tempo); // Base beat duration, scaled by tempo multiplier
+
+        // Helper: convert per-lane clock division to seconds (same as drum scheduler)
+        const clockDivToSec = (clockDiv: ClockDivision): number => {
+          switch (clockDiv) {
+            case '1/4': return beatDuration;
+            case '1/8': return beatDuration / 2;
+            case '1/16': return beatDuration / 4;
+            case '1/8T': return beatDuration / 3;
+            default: return beatDuration / 2;
+          }
+        };
 
         const scale = this.harmonyState?.scaleFamily;
         const rootNote = this.effectiveRoot;
@@ -3328,7 +3365,9 @@ export class AudioEngine {
 
                   const capturedMorphOverride = this.synthMorphOverride;
                   const ratchetFactor = 1 / ratchet;
-                  const ratchetWindow = stepDurationSec / ratchet;
+                  const ratchetClockDiv = this.synthEuclidClockDivs[laneIndex] ?? '1/8';
+                  const ratchetStepDuration = clockDivToSec(ratchetClockDiv);
+                  const ratchetWindow = ratchetStepDuration / ratchet;
 
                   for (let r = 0; r < ratchet; r++) {
                     const rDelayMs = delayMs + r * ratchetWindow * 1000;
@@ -3436,9 +3475,13 @@ export class AudioEngine {
             // Fire step position callback (synchronous, like drum sequencer)
             this.onSynthStepPositionChange?.([...this.synthEuclidCurrentStep], [...this.synthEuclidHitCounts]);
 
-            // Advance step
+            // Advance step with per-lane clock division and swing
+            const laneClockDiv = this.synthEuclidClockDivs[laneIndex] ?? '1/8';
+            const laneStepDuration = clockDivToSec(laneClockDiv);
+            const laneSwing = this.synthEuclidSwings[laneIndex] ?? 0;
+            const swingOffset = (this.synthEuclidStepIndex[laneIndex] % 2 === 1) ? laneStepDuration * laneSwing * 0.5 : 0;
             this.synthEuclidStepIndex[laneIndex]++;
-            this.synthEuclidNextStepTime[laneIndex] += stepDurationSec;
+            this.synthEuclidNextStepTime[laneIndex] += laneStepDuration + swingOffset;
           }
         }
 
