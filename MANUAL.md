@@ -39,7 +39,7 @@ Kessho (結晶, Japanese for "crystal") is a **generative ambient music applicat
 
 ### Key Features:
 - **Deterministic Generation**: Music is generated from a seed, so the same settings at the same time produce the same output
-- **Multiple Sound Layers**: Pad synth, granular processing, lead melodies, and ocean waves
+- **Multiple Sound Layers**: Pad synth, granular processing, dual 4op FM lead synths, drum synth, and ocean waves
 - **Phrase-Based Evolution**: Harmony changes at 16-second phrase boundaries
 - **Circle of Fifths Drift**: Automatic key modulation for harmonic journeys
 - **Deep Customization**: Over 80 parameters to shape your soundscape
@@ -81,9 +81,9 @@ Understanding how sound flows through Kessho helps you shape your mix effectivel
                                                │         │  │    │         │
 ┌──────────────┐                               │         │  │    │         │
 │  LEAD SYNTH  │──→ [Filter] ──┬──→ [Lead Dry]─│         │──┼──→ │         │
-│  (Rhodes/    │               │               │         │  │    │         │
-│   Bell)      │               ├──→ [Lead Rev] │         │  │    │         │
-│              │               │               │         │  │    │         │
+│  (Lead 1 +   │               │               │         │  │    │         │
+│   Lead 2,    │               ├──→ [Lead Rev] │         │  │    │         │
+│   4op FM)    │               │               │         │  │    │         │
 │              │               └──→ [Ping-Pong Delay] ───┼──→ │         │
 └──────────────┘                        │                │    │         │
                                         └──→ [Delay Rev]─┘    │         │
@@ -269,11 +269,13 @@ Processes the pad synth through granular synthesis for texture.
 
 ### Lead Synth
 
-A melodic voice with Rhodes/Bell character and delay.
+The Lead Synth provides two independent melodic voices (**Lead 1** and **Lead 2**), each powered by a 4-operator FM synthesis engine with 18 preset timbres (Handpan, Electric Piano, Vibraphone, Marimba, Kalimba, Gamelan, Glockenspiel, Bell, Celesta, Singing Bowl, Tongue Drum, Hand Drum, Mbira, Rhodes, Soft Rhodes, Xylophone, Spectral Shimmer, Calliope).
+
+#### Common Controls (per Lead)
 
 | Control | Options/Range | Description |
 |---------|---------------|-------------|
-| **Enable** | ON/OFF | Toggle lead synth |
+| **Enable** | ON/OFF | Toggle this lead voice |
 | **Level** | 0-100% | Lead volume |
 | **Attack** | 0.001-2 sec | Note attack time |
 | **Decay** | 0.01-4 sec | Note decay time |
@@ -282,14 +284,35 @@ A melodic voice with Rhodes/Bell character and delay.
 | **Density** | 0.1-12 | Notes per phrase (sparseness) |
 | **Octave** | -1 to +2 | Base octave offset |
 | **Octave Range** | 1-4 | Octaves spanned by random notes |
-| **Timbre Min/Max** | 0-100% | Rhodes (0%) to Bell (100%) character range |
 
-#### Delay:
+#### 4op FM Preset Morph
+
+Each lead has its own **Preset Morph** system that blends between two FM presets:
+
+| Control | Description |
+|---------|-------------|
+| **Preset A / Preset B** (Lead 1) | Select two FM presets to morph between |
+| **Preset C / Preset D** (Lead 2) | Select two FM presets to morph between |
+| **Morph** | 0-100% crossfade between selected presets |
+
+All FM synthesis parameters (operator ratios, levels, envelopes, feedback, algorithm) are smoothly interpolated between the two selected presets.
+
+#### Delay (per Lead):
 | Control | Range | Description |
 |---------|-------|-------------|
 | **Delay Time** | 0-1000 ms | Ping-pong delay time |
 | **Delay Feedback** | 0-80% | Echo repetition amount |
 | **Delay Mix** | 0-100% | Wet/dry blend |
+
+#### Expression (Lead 2):
+
+Lead 2 includes additional expression controls:
+
+| Control | Range | Description |
+|---------|-------|-------------|
+| **Vibrato Depth** | 0-100% | LFO pitch modulation depth |
+| **Vibrato Rate** | 0-100% | LFO speed |
+| **Glide** | 0-100% | Portamento between notes |
 
 #### Euclidean Sequencer:
 Enable **Euclidean Mode** for polyrhythmic patterns with up to 4 lanes.
@@ -300,6 +323,8 @@ Enable **Euclidean Mode** for polyrhythmic patterns with up to 4 lanes.
 | **Steps** | Pattern length (4-32) |
 | **Hits** | Number of notes in pattern |
 | **Rotation** | Pattern phase offset |
+| **Clock** | Per-lane clock division: 1/4, 1/8, 1/16, or 1/8T (triplet) |
+| **Swing** | Per-lane swing amount (shifts alternate steps for groove) |
 | **Note Range** | MIDI note range for this lane |
 | **Level** | Velocity for this lane |
 
@@ -328,6 +353,8 @@ When Mode is set to **Euclidean**, four lanes generate polyrhythmic patterns:
 | **Rotation** | 0 to Steps-1 | Rotate the pattern |
 | **Voice** | Sub/Kick/Click/BeepHi/BeepLo/Noise | Which drum voice this lane triggers |
 | **Level** | 0-100% | Hit velocity for this lane |
+| **Clock** | 1/4, 1/8, 1/16, 1/8T | Per-lane clock division (controls lane speed independently) |
+| **Swing** | 0-100% | Per-lane swing (shifts alternate steps for groove feel) |
 | **Base BPM** | 40-200 | Tempo for all lanes |
 
 #### Random Mode

@@ -645,3 +645,122 @@ When consolidating multiple independent systems into one:
 3. **Always provide a `sliderProps()` factory** — one function that returns everything a slider needs, avoiding prop-threading bugs
 4. **Migration must be idempotent** — `migratePreset()` is safe to call on already-migrated presets (no-op if old fields absent)
 5. **Keep intentional paired ranges separate** — not every min/max pair is a dual-mode slider (filterCutoff is a true range; grainSize was migrated since the worklet already did per-grain random sampling internally)
+
+---
+
+## Euclidean Sequencer Clock Division Data Flow Gap
+
+### Problem
+Per-lane clock division (1/4, 1/8, 1/16, 1/8T) and swing dropdowns in the Euclidean sequencer UI had no effect on actual sequencer speed — all lanes played at the same rate regardless of the selected clock division.
+
+**Symptom:**
+- Changing the Clock dropdown from 1/8 to 1/16 → no audible speed change
+- Same issue on both synth and drum Euclidean sequencers
+- Swing slider also had no effect
+
+### Root Cause
+The `useEuclideanSequencer` hook maintained `clockDivs` and `swings` React state properly, and included them in the `sequencerModels` for UI rendering. But **no data path existed** from the hook to the audio engine schedulers.
+
+**Synth Euclidean (`engine.ts`):**
+- `scheduleSynthEuclid()` used a single fixed `stepDurationSec = 60 / (baseBPM * tempo)` for ALL lanes
+- No per-lane clock division concept existed at all
+- No swing logic existed
+
+**Drum Euclidean (`drumSynth.ts`):**
+- The scheduler DID read per-lane `clockDivToSec(sequencer.clockDiv)` and `sequencer.swing`
+- But `euclidSequencers` were created via `createSequencer()` with hardcoded defaults
+- No setter method existed to update `clockDiv` or `swing` after initialization
+
+**The gap:**
+```
+useEuclideanSequencer (UI state) → ??? → audio engine schedulers
+                                   ↑
+                          No data path existed here
+```
+
+### Solution
+
+**1. Synth Euclidean — add per-lane clock division support:**
+```typescript
+// Before: single duration for all lanes
+const stepDurationSec = 60 / (baseBPM * tempo);
+
+// After: per-lane clock division (matching drum scheduler pattern)
+const beatDuration = 60 / (baseBPM * tempo);
+const clockDivToSec = (clockDiv: ClockDivision): number => {
+  switch (clockDiv) {
+    case '1/4': return beatDuration;
+    case '1/8': return beatDuration / 2;
+    case '1/16': return beatDuration / 4;
+    case '1/8T': return beatDuration / 3;
+  }
+};
+
+// Per-lane step advance with swing
+const laneStepDuration = clockDivToSec(this.synthEuclidClockDivs[laneIndex]);
+const swingOffset = (stepIndex % 2 === 1) ? laneStepDuration * laneSwing * 0.5 : 0;
+this.synthEuclidNextStepTime[laneIndex] += laneStepDuration + swingOffset;
+```
+
+**2. Drum Euclidean — add setter methods:**
+```typescript
+setEuclidClockDivs(divs: ClockDivision[]): void {
+  divs.forEach((div, i) => {
+    if (this.euclidSequencers[i]) this.euclidSequencers[i].clockDiv = div;
+  });
+}
+setEuclidSwings(swings: number[]): void {
+  swings.forEach((swing, i) => {
+    if (this.euclidSequencers[i]) this.euclidSequencers[i].swing = swing;
+  });
+}
+```
+
+**3. Wire the UI → Engine data path:**
+```
+useEuclideanSequencer (clockDivs/swings state)
+  → useEffect in SynthPage/DrumPage detects changes
+    → onClockDivsChange/onSwingsChange callbacks (new props)
+      → App.tsx wires to audioEngine.setSynthEuclidClockDivs() / setDrumEuclidClockDivs()
+        → engine stores values / drumSynth updates euclidSequencers
+          → scheduler reads per-lane values on each tick
+```
+
+### Key Insight
+When adding new per-lane sequencer controls:
+1. **Check the full data path**: UI state → callback → engine → scheduler. A control that only updates React state is invisible to the audio engine.
+2. **Follow existing patterns**: The step overrides (probability, ratchet, etc.) used `onStepOverridesChange` → `setSynthStepOverrides()`. Clock/swing should follow the same callback pattern.
+3. **Match defaults across layers**: `useEuclideanSequencer` defaults (`['1/8','1/16','1/8T','1/4']`) must match `createSequencer()`'s `defaultClockDiv()` and the engine's initial `synthEuclidClockDivs`. Mismatched defaults cause silent bugs where the initial state appears unsynced.
+4. **Verify both synth AND drum paths**: The drum scheduler already had internal `clockDiv` support that was never wired; the synth scheduler lacked it entirely. Same symptom, different fixes.
+
+---
+
+## Synth Morph Override Leak on Sequencer Stop
+
+### Problem
+The morph (preset blend) sub-sequencer lane in the Euclidean sequencer could lock the morph slider at a fixed position after turning the sub-sequencer off.
+
+**Symptom:**
+- Enable morph sub-lane in Euclidean sequencer → works correctly, morph position changes per step
+- Disable morph sub-lane → morph slider stuck at last sequenced value (e.g., 50%), manual slider movement ignored
+
+### Root Cause
+`synthMorphOverride` (a `number | null` field on `AudioEngine`) is set by the morph sub-sequencer lane to temporarily override the morph slider value. When `stopSynthEuclidScheduler()` was called (or the morph sub-lane was disabled), this field was never cleared — the last override value persisted indefinitely.
+
+```typescript
+// synthMorphOverride was set during scheduling:
+this.synthMorphOverride = effectiveMorph;
+
+// But stopSynthEuclidScheduler() only reset step counters:
+private stopSynthEuclidScheduler(): void {
+  clearTimeout(this.synthEuclidScheduleTimer);
+  this.synthEuclidCurrentStep = [0, 0, 0, 0];
+  // synthMorphOverride was NOT cleared!
+}
+```
+
+### Solution
+Add `this.synthMorphOverride = null;` to `stopSynthEuclidScheduler()` so the slider regains control when the sequencer stops.
+
+### Key Insight
+Any "override" field that temporarily takes control away from a UI slider MUST be cleared in ALL exit paths (stop, disable, tab switch, etc.). If the override persists, the slider appears broken.
