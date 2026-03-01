@@ -585,7 +585,7 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
 
   // ── Apply drag value ──
   const applyDrag = useCallback((cx: number, cy: number) => {
-    const { filterH, envY, envH, w } = layoutRef.current;
+    const { envY, envH, w } = layoutRef.current;
     if (w === 0) return;
     const target = dragRef.current.target;
 
@@ -601,14 +601,14 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
       }
     } else if (target === 'adsrAttack') {
       // Attack: horizontal drag = attack time
-      const { synthDecay: d, synthSustain: s, synthRelease: r } = props;
+      const { synthDecay: d, synthSustain: _s, synthRelease: r } = props;
       const noteLen = Math.max(0.5, props.synthAttack + d + 1 + r);
       const totalTime = noteLen + 0.1;
       const newA = Math.max(0.01, Math.min(8, (cx / w) * totalTime));
       props.onAdsrChange?.('synthAttack', parseFloat(newA.toFixed(2)));
     } else if (target === 'adsrDecay') {
       // Decay: horizontal drag from attack end
-      const { synthAttack: a, synthSustain: s, synthRelease: r } = props;
+      const { synthAttack: a, synthSustain: _s, synthRelease: r } = props;
       const noteLen = Math.max(0.5, a + props.synthDecay + 1 + r);
       const totalTime = noteLen + 0.1;
       const tAtX = (cx / w) * totalTime;
@@ -621,13 +621,11 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
       props.onAdsrChange?.('synthSustain', parseFloat(newS.toFixed(2)));
     } else if (target === 'adsrRelease') {
       // Release: horizontal drag from sustain end
-      const { synthAttack: a, synthDecay: d, synthSustain: s } = props;
+      const { synthAttack: a, synthDecay: d } = props;
       const noteLen = Math.max(0.5, a + d + 1 + props.synthRelease);
       const totalTime = noteLen + 0.1;
       const tAtX = (cx / w) * totalTime;
-      const sustainEnd = a + d + 1;
-      const newR = Math.max(0.01, Math.min(16, noteLen - tAtX + props.synthRelease));
-      // Actually: release extends from sx to end. Moving sx left = longer release
+      // Release extends from sustain end to end. Moving left = longer release
       const newR2 = Math.max(0.01, Math.min(16, totalTime - tAtX));
       props.onAdsrChange?.('synthRelease', parseFloat(newR2.toFixed(2)));
     }

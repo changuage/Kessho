@@ -21,8 +21,8 @@ interface LeadAdsrVizProps {
 type DragTarget = 'attack' | 'decay' | 'sustain' | 'hold' | 'release' | null;
 const DRAG_HIT_PX = 12;
 
-// Compute ADSR envelope value at time t
-function adsrValue(t: number, a: number, d: number, s: number, hold: number, r: number): number {
+// Compute ADSR envelope value at time t (used by future animation)
+function _adsrValue(t: number, a: number, d: number, s: number, hold: number, r: number): number {
   if (t < 0) return 0;
   if (t < a) return t / Math.max(0.001, a);
   const tAfterA = t - a;
@@ -229,7 +229,7 @@ const LeadAdsrViz: React.FC<LeadAdsrVizProps> = (props) => {
     const envY = pad;
     const envH = h - pad * 2;
     const usableW = w - pad * 2;
-    const { attack: a, decay: d, sustain: s, hold, release: r } = props;
+    const { attack: a, decay: d, sustain: _s, hold, release: r } = props;
     const totalTime = Math.max(0.01, a + d + hold + r) + 0.05;
 
     const xToTime = (x: number) => Math.max(0, ((x - pad) / usableW) * totalTime);
@@ -243,7 +243,6 @@ const LeadAdsrViz: React.FC<LeadAdsrVizProps> = (props) => {
       const newD = Math.max(0.01, Math.min(4, tAtX - a));
       props.onChange(`${pfx}Decay`, parseFloat(newD.toFixed(2)));
     } else if (target === 'sustain') {
-      const botY = envY + envH - 4;
       const relY = (cy - envY - 4) / (envH - 8);
       const newS = Math.max(0, Math.min(1, 1 - relY));
       props.onChange(`${pfx}Sustain`, parseFloat(newS.toFixed(2)));

@@ -750,7 +750,8 @@ export function playLead4opFMNote(
       const fSustain = Math.max(20, Math.min(20000, fBase + morphed.filterEnvDepth * morphed.filterEnvSustain));
       const fEnvAtt = Math.max(0.001, morphed.filterEnvAttack);
       const fEnvDec = Math.max(0.001, morphed.filterEnvDecay);
-      const fEnvRel = Math.max(0.001, morphed.filterEnvRelease);
+      // fEnvRel reserved for future release-phase filter envelope
+      // const fEnvRel = Math.max(0.001, morphed.filterEnvRelease);
 
       // Attack: base → peak
       filterX.frequency.setValueAtTime(fBase, now);

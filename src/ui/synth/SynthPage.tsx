@@ -52,23 +52,8 @@ const SYNTH_SOURCES = [
   { value: 'synth6', label: 'Pad 6', color: '#8E5842' },
 ];
 
-// ── Inline styles matching App.tsx ──
-const inlineStyles = {
-  sliderGroup: {
-    marginBottom: '16px',
-    width: '100%',
-    maxWidth: '100%',
-    overflow: 'hidden',
-  } as React.CSSProperties,
-  sliderLabel: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    marginBottom: '6px',
-    fontSize: '0.85rem',
-    color: '#bbb',
-    gap: '8px',
-  } as React.CSSProperties,
-};
+// Inline styles available for future use — currently CSS classes handle layout
+// const inlineStyles = { ... };
 
 // ═══════════════ Props ═══════════════
 
@@ -124,11 +109,9 @@ export interface SynthPageProps {
 const SynthPage: React.FC<SynthPageProps> = (props) => {
   const {
     state,
-    isMobile,
-    expandedPanels,
+    // isMobile, expandedPanels, togglePanel — available via props if needed
     onParamChange,
     onSelectChange,
-    togglePanel,
     sliderProps,
     SliderComponent,
     SelectComponent,
@@ -161,7 +144,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
 
   const Slider = SliderComponent as React.ComponentType<any>;
   const Select = SelectComponent as React.ComponentType<any>;
-  const CollapsiblePanel = CollapsiblePanelComponent as React.ComponentType<any>;
+  // CollapsiblePanel available from CollapsiblePanelComponent prop if needed
 
   // ── Euclidean Sequencer Hook (reuses same hook as DrumPage) ──
   const seq = useEuclideanSequencer({
@@ -979,7 +962,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     synthAttack: 'pad2Attack', synthDecay: 'pad2Decay',
                     synthSustain: 'pad2Sustain', synthRelease: 'pad2Release',
                   };
-                  onParamChange(pad2Map[param] || param, v);
+                  onParamChange((pad2Map[param] || param) as keyof SliderState, v);
                 }}
               />
 
