@@ -135,8 +135,8 @@ Comparing [src/ui/state.ts](src/ui/state.ts) with [KesshoiOS/Kessho/State/Slider
 ### 1.10 Euclidean Sequencer (4 Lanes)
 | Property | Web Type | Web Default | iOS Type | iOS Default | Status |
 |----------|----------|-------------|----------|-------------|--------|
-| `leadEuclideanMasterEnabled` | `boolean` | false | `Bool` | false | [ ] Match |
-| `leadEuclideanTempo` | `number` | 1 (0.25..12) | `Double` | 1.0 | [ ] Match |
+| `synthEuclideanMasterEnabled` | `boolean` | false | `Bool` | false | [ ] Match |
+| `synthEuclideanTempo` | `number` | 1 (0.25..12) | `Double` | 1.0 | [ ] Match |
 | Lane 1-4: `Enabled` | `boolean` | varies | `Bool` | varies | [ ] Match |
 | Lane 1-4: `Preset` | `string` | varies | `String` | varies | [ ] Match |
 | Lane 1-4: `Steps` | `number` | varies (4..32) | `Int` | varies | [ ] Match |

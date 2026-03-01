@@ -155,21 +155,21 @@ Reference files:
 
 | Property | Type | Min | Max | Default | iOS ✓ |
 |----------|------|-----|-----|---------|-------|
-| `leadEuclideanMasterEnabled` | Bool | - | - | false | ☐ |
-| `leadEuclideanTempo` | Float | 0.25 | 12 | 1 | ☐ |
+| `synthEuclideanMasterEnabled` | Bool | - | - | false | ☐ |
+| `synthEuclideanTempo` | Float | 0.25 | 12 | 1 | ☐ |
 
 **Per Lane (lanes 1-4):**
 
 | Property | Type | Min | Max | Default (L1) | iOS ✓ |
 |----------|------|-----|-----|--------------|-------|
-| `leadEuclid[N]Enabled` | Bool | - | - | L1: true, L2-4: false | ☐ |
-| `leadEuclid[N]Preset` | String | - | - | L1: 'lancaran', L2: 'kotekan', etc | ☐ |
-| `leadEuclid[N]Steps` | Int | 4 | 32 | L1: 16 | ☐ |
-| `leadEuclid[N]Hits` | Int | 1 | 16 | L1: 4 | ☐ |
-| `leadEuclid[N]Rotation` | Int | 0 | 31 | L1: 0 | ☐ |
-| `leadEuclid[N]NoteMin` | Int | 36 | 96 | L1: 64 | ☐ |
-| `leadEuclid[N]NoteMax` | Int | 36 | 96 | L1: 76 | ☐ |
-| `leadEuclid[N]Level` | Float | 0 | 1 | L1: 0.8 | ☐ |
+| `synthEuclid[N]Enabled` | Bool | - | - | L1: true, L2-4: false | ☐ |
+| `synthEuclid[N]Preset` | String | - | - | L1: 'lancaran', L2: 'kotekan', etc | ☐ |
+| `synthEuclid[N]Steps` | Int | 4 | 32 | L1: 16 | ☐ |
+| `synthEuclid[N]Hits` | Int | 1 | 16 | L1: 4 | ☐ |
+| `synthEuclid[N]Rotation` | Int | 0 | 31 | L1: 0 | ☐ |
+| `synthEuclid[N]NoteMin` | Int | 36 | 96 | L1: 64 | ☐ |
+| `synthEuclid[N]NoteMax` | Int | 36 | 96 | L1: 76 | ☐ |
+| `synthEuclid[N]Level` | Float | 0 | 1 | L1: 0.8 | ☐ |
 
 ### 1.12 Ocean Waves
 

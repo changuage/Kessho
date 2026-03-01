@@ -157,11 +157,12 @@ export class DrumSynth {
 
   // Step toggle overrides from UI (per-lane Set of toggled step indices)
   private stepOverrides: DrumStepOverrides = {
-    triggerToggles: [new Set(), new Set(), new Set(), new Set()],
+    triggerToggles: [new Map(), new Map(), new Map(), new Map()],
     probability: [null, null, null, null],
     ratchet: [null, null, null, null],
     trigCondition: [null, null, null, null],
     expression: [null, null, null, null],
+    pitch: [null, null, null, null],
     morph: [null, null, null, null],
     distance: [null, null, null, null],
     expressionDirection: [null, null, null, null],
@@ -174,8 +175,12 @@ export class DrumSynth {
   // Checked by voice trigger methods before falling back to global params.
   private triggerMorphOverride: number | null = null;
   private triggerDistanceOverride: number | null = null;
+  /** Pitch offset in semitones from A=432Hz tuning. Applied as freq multiplier. */
+  private triggerPitchOverride: number | null = null;
   // Max decay time (seconds) for ratchet hits — voices clamp their decay to fit the ratchet window
   private triggerRatchetDecayCap: number = Infinity;
+  // Max attack time (seconds) for ratchet hits — keeps transients tight
+  private triggerRatchetAttackCap: number = Infinity;
 
   // Track per-trigger transient audio nodes for explicit cleanup on dispose.
   // Each group has an expiry time (ctx.currentTime when all envelopes have ended).
@@ -440,6 +445,18 @@ export class DrumSynth {
   }
   
   /**
+   * Compute pitch tuning ratio from the per-trigger pitch override.
+   * Pitch sub-lane values are semitone offsets; this converts to a frequency multiplier.
+   * Base tuning is A=432Hz (ratio vs A=440Hz is 432/440 ≈ 0.9818).
+   * Combined: freq * baseTuning * 2^(semitoneOffset/12)
+   */
+  private getPitchTuningRatio(): number {
+    const A432_RATIO = 432 / 440;
+    const semitones = this.triggerPitchOverride ?? 0;
+    return A432_RATIO * Math.pow(2, semitones / 12);
+  }
+
+  /**
    * Calculate delay filter frequency from 0-1 parameter
    * 0 = dark (500Hz), 0.5 = medium (4kHz), 1 = bright (16kHz)
    */
@@ -576,11 +593,12 @@ export class DrumSynth {
   /** Receive full step overrides from the UI (trigger toggles, probability, ratchet, expression, morph, distance). */
   setStepOverrides(overrides: DrumStepOverrides): void {
     this.stepOverrides = {
-      triggerToggles: overrides.triggerToggles.map(s => new Set(s)),
+      triggerToggles: overrides.triggerToggles.map(m => new Map(m)),
       probability: overrides.probability,
       ratchet: overrides.ratchet,
       trigCondition: overrides.trigCondition ?? [null, null, null, null],
       expression: overrides.expression,
+      pitch: overrides.pitch ?? [null, null, null, null],
       morph: overrides.morph,
       distance: overrides.distance,
       expressionDirection: overrides.expressionDirection ?? [null, null, null, null],
@@ -875,7 +893,7 @@ export class DrumSynth {
     }
     
     // Pitch envelope (variation: slight pitch jitter)
-    const effFreq = freq * v.vPitch;
+    const effFreq = freq * v.vPitch * this.getPitchTuningRatio();
     const startFreq = effFreq * Math.pow(2, pitchEnv / 12);
     osc.frequency.setValueAtTime(startFreq, time);
     osc.frequency.exponentialRampToValueAtTime(effFreq, time + pitchDecayTime / 1000);
@@ -918,7 +936,7 @@ export class DrumSynth {
     // Variation and distance affect level, decay time, and attack softness
     const outputLevel = velocity * level * v.vLevel * d.dLevel;
     const decayTime = Math.min((decay / 1000) * v.vDecay * d.dDecay, this.triggerRatchetDecayCap);
-    const effAttack = Math.max(0.0001, attack * v.vAttack * d.dAttack);
+    const effAttack = Math.min(Math.max(0.0001, attack * v.vAttack * d.dAttack), this.triggerRatchetAttackCap);
     
     if (effAttack > 0.0005) {
       gain.gain.setValueAtTime(0, time);
@@ -1038,9 +1056,9 @@ export class DrumSynth {
     const body = bodyRaw * d.dBody;
     // Center: more sub sustain tail; Edge: tighter
     const tail = Math.max(0, this.clEd(tailRaw, d.t, DrumSynth.CL_ED.kick.tail));
-    const effAttack = Math.max(0.0001, attack * v.vAttack * d.dAttack);
+    const effAttack = Math.min(Math.max(0.0001, attack * v.vAttack * d.dAttack), this.triggerRatchetAttackCap);
     const effDecay = Math.min(decay * v.vDecay * d.dDecay, this.triggerRatchetDecayCap);
-    const effFreq = freq * v.vPitch;
+    const effFreq = freq * v.vPitch * this.getPitchTuningRatio();
     
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
@@ -1232,9 +1250,9 @@ export class DrumSynth {
     const effDecay = Math.min(decay * v.vDecay * d.dDecay, this.triggerRatchetDecayCap);
     const effFilterFreq = filterFreq * v.vBright * d.dBright;
     const effResonance = this.clEd(resonance * v.vBright, d.t, DrumSynth.CL_ED.click.resonance);
-    const effAttack = Math.max(0.0001, attack * v.vAttack * d.dAttack);
+    const effAttack = Math.min(Math.max(0.0001, attack * v.vAttack * d.dAttack), this.triggerRatchetAttackCap);
     const effTone = tone * d.dBright;
-    const effPitch = pitch * v.vPitch;
+    const effPitch = pitch * v.vPitch * this.getPitchTuningRatio();
     
     // Continuous exciter color mode: crossfade between impulse (0) and noise (1)
     // This overrides the discrete mode switch when exciterColor is active
@@ -1604,9 +1622,9 @@ export class DrumSynth {
     // CL_ED brightness: center=warmer, edge=brighter
     const dBrightHi = this.clEd(1, d.t, DrumSynth.CL_ED.beepHi.bright);
     const dLevelHi = d.dLevel * d.dBody;
-    const effFreq = freq * v.vPitch;
+    const effFreq = freq * v.vPitch * this.getPitchTuningRatio();
     const effDecay = Math.min(decay * v.vDecay * d.dDecay, this.triggerRatchetDecayCap);
-    const effAttack = Math.max(0.0001, attack * v.vAttack * d.dAttack);
+    const effAttack = Math.min(Math.max(0.0001, attack * v.vAttack * d.dAttack), this.triggerRatchetAttackCap);
     const effBrightness = brightness * dBrightHi;
     // CL_ED shimmer + feedback
     const effShimmer = this.clEd(shimmer, d.t, DrumSynth.CL_ED.beepHi.shimmer);
@@ -1843,9 +1861,9 @@ export class DrumSynth {
     // Per-hit micro-variation + distance macro (strike-position)
     const v = this.computeVariation(variation);
     const d = this.computeDistance(distance);
-    const effFreq = freq * v.vPitch;
+    const effFreq = freq * v.vPitch * this.getPitchTuningRatio();
     const effDecay = Math.min(decay * v.vDecay * d.dDecay, this.triggerRatchetDecayCap);
-    const effAttack = Math.max(0.0001, attack * v.vAttack * d.dAttack);
+    const effAttack = Math.min(Math.max(0.0001, attack * v.vAttack * d.dAttack), this.triggerRatchetAttackCap);
     // CL_ED: modalQ and modalGain
     const effModalQ = this.clEd(modalQ, d.t, DrumSynth.CL_ED.beepLo.modalQ);
     const effModalGainTrim = this.clEd(modalGainTrim, d.t, DrumSynth.CL_ED.beepLo.modalGain);
@@ -2172,7 +2190,7 @@ export class DrumSynth {
     const filterType = (morphed.drumNoiseFilterType as BiquadFilterType) ?? p.drumNoiseFilterType;
     const decay = Math.min(((morphed.drumNoiseDecay as number) ?? p.drumNoiseDecay) / 1000 * v.vDecay * d.dDecay, this.triggerRatchetDecayCap);
     const level = (morphed.drumNoiseLevel as number) ?? p.drumNoiseLevel;
-    const attack = ((morphed.drumNoiseAttack as number) ?? p.drumNoiseAttack) / 1000 * v.vAttack * d.dAttack;
+    const attack = Math.min(((morphed.drumNoiseAttack as number) ?? p.drumNoiseAttack) / 1000 * v.vAttack * d.dAttack, this.triggerRatchetAttackCap);
     const formantRaw = (morphed.drumNoiseFormant as number) ?? p.drumNoiseFormant ?? 0;
     const formant = this.clEd(formantRaw, d.t, DrumSynth.CL_ED.noise.formant);
     const breath = (morphed.drumNoiseBreath as number) ?? p.drumNoiseBreath ?? 0;
@@ -2477,7 +2495,7 @@ export class DrumSynth {
     const excPos = (morphed.drumMembraneExcPos as number) ?? p.drumMembraneExcPos;
     const excBright = ((morphed.drumMembraneExcBright as number) ?? p.drumMembraneExcBright) * v.vBright * d.dBright;
     const excDur = Math.max(0.0005, (((morphed.drumMembraneExcDur as number) ?? p.drumMembraneExcDur) / 1000));
-    const sizeHz = Math.max(30, ((morphed.drumMembraneSize as number) ?? p.drumMembraneSize) * v.vPitch);
+    const sizeHz = Math.max(30, ((morphed.drumMembraneSize as number) ?? p.drumMembraneSize) * v.vPitch * this.getPitchTuningRatio());
     const tensionRaw = Math.min(1, Math.max(0, (morphed.drumMembraneTension as number) ?? p.drumMembraneTension));
     const tension = Math.min(1, this.clEd(tensionRaw, d.t, DrumSynth.CL_ED.membrane.tension));
     const damping = Math.min(1, Math.max(0, (morphed.drumMembraneDamping as number) ?? p.drumMembraneDamping));
@@ -2494,7 +2512,7 @@ export class DrumSynth {
     const overtones = Math.max(1, Math.min(8, Math.round((morphed.drumMembraneOvertones as number) ?? p.drumMembraneOvertones)));
     const pitchEnvSt = (morphed.drumMembranePitchEnv as number) ?? p.drumMembranePitchEnv;
     const pitchDecay = Math.max(0.005, (((morphed.drumMembranePitchDecay as number) ?? p.drumMembranePitchDecay) / 1000));
-    const attack = (((morphed.drumMembraneAttack as number) ?? p.drumMembraneAttack) / 1000) * v.vAttack * d.dAttack;
+    const attack = Math.min((((morphed.drumMembraneAttack as number) ?? p.drumMembraneAttack) / 1000) * v.vAttack * d.dAttack, this.triggerRatchetAttackCap);
     const decay = Math.min(12, (((morphed.drumMembraneDecay as number) ?? p.drumMembraneDecay) / 1000) * v.vDecay * d.dDecay, this.triggerRatchetDecayCap);
     const level = Math.min(1, ((morphed.drumMembraneLevel as number) ?? p.drumMembraneLevel) * velocity * v.vLevel * d.dLevel);
 
@@ -2838,9 +2856,15 @@ export class DrumSynth {
         const ov = this.stepOverrides;
         if (ov.probability[laneIndex]) {
           sequencer.trigger.probability = ov.probability[laneIndex]!;
+        } else {
+          // Reset to defaults when override is cleared
+          sequencer.trigger.probability = new Array(lane.steps).fill(1);
         }
         if (ov.ratchet[laneIndex]) {
           sequencer.trigger.ratchet = ov.ratchet[laneIndex]!;
+        } else {
+          // Reset to defaults when override is cleared (prevents stale ratchet values)
+          sequencer.trigger.ratchet = new Array(lane.steps).fill(1);
         }
         if (ov.expression[laneIndex]) {
           const exprArr = ov.expression[laneIndex]!;
@@ -2867,6 +2891,11 @@ export class DrumSynth {
         if (ov.distanceDirection[laneIndex]) {
           sequencer.distance.direction = ov.distanceDirection[laneIndex]!;
         }
+        if (ov.pitch[laneIndex]) {
+          sequencer.pitch.offsets = ov.pitch[laneIndex]!;
+          sequencer.pitch.steps = ov.pitch[laneIndex]!.length;
+          sequencer.pitch.enabled = true;
+        }
         if (ov.pitchDirection[laneIndex]) {
           sequencer.pitch.direction = ov.pitchDirection[laneIndex]!;
         }
@@ -2881,7 +2910,7 @@ export class DrumSynth {
         const basePattern = this.getCachedEuclideanPattern(lane.steps, lane.hits, lane.rotation);
         const toggles = this.stepOverrides.triggerToggles[laneIndex];
         const pattern = (toggles && toggles.size > 0)
-          ? basePattern.map((v, i) => toggles.has(i) ? !v : v)
+          ? basePattern.map((v, i) => toggles.has(i) ? toggles.get(i)! : v)
           : basePattern;
         sequencer.trigger.pattern = pattern;
 
@@ -2945,18 +2974,37 @@ export class DrumSynth {
                 this.triggerDistanceOverride = null;
               }
 
-              const ratchet = Math.max(1, Math.round(sequencer.trigger.ratchet[laneStep] ?? 1));
-              const ratchetStepOffset = Math.min(laneStepDuration * 0.45, laneStepDuration / ratchet);
-              // Cap voice decay to fit within the ratchet window (90% for clean separation)
-              this.triggerRatchetDecayCap = ratchet > 1 ? ratchetStepOffset * 0.9 : Infinity;
-              for (let r = 0; r < ratchet; r++) {
-                const rv = velocity * (r === 0 ? 1.0 : Math.pow(0.7, r));
-                this.triggerVoice(selectedVoice, rv, scheduleTime + (r * ratchetStepOffset));
+              // Compute per-trigger pitch override from sub-lane data (semitone offset for A=432 tuning)
+              if (ov.pitch[laneIndex] && sequencer.pitch.offsets.length > 0) {
+                const pitchIndex = seqLaneIndex(sequencer.pitch, sequencer.hitCount);
+                this.triggerPitchOverride = sequencer.pitch.offsets[pitchIndex % sequencer.pitch.offsets.length] ?? null;
+              } else {
+                this.triggerPitchOverride = null;
               }
-              this.triggerRatchetDecayCap = Infinity;
+
+              // Ratchet: polyrhythmic — indexed by hit count like expression sub-lane
+              const drRatchetArr = sequencer.trigger.ratchet;
+              const drRatchetSteps = drRatchetArr?.length ?? 0;
+              let ratchetVal = 1;
+              if (drRatchetSteps > 0) {
+                const ratchetIdx = seqLaneIndex(sequencer.expression, sequencer.hitCount);
+                ratchetVal = Math.max(1, Math.round(drRatchetArr[ratchetIdx % drRatchetSteps] ?? 1));
+              }
+              const ratchet = ratchetVal;
+              // Ratchet: N rapid retriggers within the step, each with tighter envelope
+              const ratchetWindow = laneStepDuration / ratchet;
+              for (let r = 0; r < ratchet; r++) {
+                const rTime = scheduleTime + r * ratchetWindow;
+                this.triggerRatchetDecayCap = ratchet > 1 ? ratchetWindow * 0.8 : Infinity;
+                this.triggerRatchetAttackCap = ratchet > 1 ? ratchetWindow * 0.15 : Infinity;
+                this.triggerVoice(selectedVoice, velocity, rTime);
+                this.triggerRatchetDecayCap = Infinity;
+                this.triggerRatchetAttackCap = Infinity;
+              }
 
               this.triggerMorphOverride = null;
               this.triggerDistanceOverride = null;
+              this.triggerPitchOverride = null;
               sequencer.hitCount += 1;
             }
           }

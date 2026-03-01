@@ -730,47 +730,47 @@ class AudioEngine {
     private func updateEuclideanSequencer() {
         guard let seq = euclideanSequencer else { return }
         
-        seq.masterEnabled = currentParams.leadEuclideanMasterEnabled
-        seq.tempo = currentParams.leadEuclideanTempo
+        seq.masterEnabled = currentParams.synthEuclideanMasterEnabled
+        seq.tempo = currentParams.synthEuclideanTempo
         
         // Lane 1
-        seq.lanes[0].enabled = currentParams.leadEuclid1Enabled
-        seq.lanes[0].steps = currentParams.leadEuclid1Steps
-        seq.lanes[0].hits = currentParams.leadEuclid1Hits
-        seq.lanes[0].rotation = currentParams.leadEuclid1Rotation
-        seq.lanes[0].noteMin = currentParams.leadEuclid1NoteMin
-        seq.lanes[0].noteMax = currentParams.leadEuclid1NoteMax
-        seq.lanes[0].level = Float(currentParams.leadEuclid1Level)
+        seq.lanes[0].enabled = currentParams.synthEuclid1Enabled
+        seq.lanes[0].steps = currentParams.synthEuclid1Steps
+        seq.lanes[0].hits = currentParams.synthEuclid1Hits
+        seq.lanes[0].rotation = currentParams.synthEuclid1Rotation
+        seq.lanes[0].noteMin = currentParams.synthEuclid1NoteMin
+        seq.lanes[0].noteMax = currentParams.synthEuclid1NoteMax
+        seq.lanes[0].level = Float(currentParams.synthEuclid1Level)
         seq.lanes[0].regeneratePattern()
         
         // Lane 2
-        seq.lanes[1].enabled = currentParams.leadEuclid2Enabled
-        seq.lanes[1].steps = currentParams.leadEuclid2Steps
-        seq.lanes[1].hits = currentParams.leadEuclid2Hits
-        seq.lanes[1].rotation = currentParams.leadEuclid2Rotation
-        seq.lanes[1].noteMin = currentParams.leadEuclid2NoteMin
-        seq.lanes[1].noteMax = currentParams.leadEuclid2NoteMax
-        seq.lanes[1].level = Float(currentParams.leadEuclid2Level)
+        seq.lanes[1].enabled = currentParams.synthEuclid2Enabled
+        seq.lanes[1].steps = currentParams.synthEuclid2Steps
+        seq.lanes[1].hits = currentParams.synthEuclid2Hits
+        seq.lanes[1].rotation = currentParams.synthEuclid2Rotation
+        seq.lanes[1].noteMin = currentParams.synthEuclid2NoteMin
+        seq.lanes[1].noteMax = currentParams.synthEuclid2NoteMax
+        seq.lanes[1].level = Float(currentParams.synthEuclid2Level)
         seq.lanes[1].regeneratePattern()
         
         // Lane 3
-        seq.lanes[2].enabled = currentParams.leadEuclid3Enabled
-        seq.lanes[2].steps = currentParams.leadEuclid3Steps
-        seq.lanes[2].hits = currentParams.leadEuclid3Hits
-        seq.lanes[2].rotation = currentParams.leadEuclid3Rotation
-        seq.lanes[2].noteMin = currentParams.leadEuclid3NoteMin
-        seq.lanes[2].noteMax = currentParams.leadEuclid3NoteMax
-        seq.lanes[2].level = Float(currentParams.leadEuclid3Level)
+        seq.lanes[2].enabled = currentParams.synthEuclid3Enabled
+        seq.lanes[2].steps = currentParams.synthEuclid3Steps
+        seq.lanes[2].hits = currentParams.synthEuclid3Hits
+        seq.lanes[2].rotation = currentParams.synthEuclid3Rotation
+        seq.lanes[2].noteMin = currentParams.synthEuclid3NoteMin
+        seq.lanes[2].noteMax = currentParams.synthEuclid3NoteMax
+        seq.lanes[2].level = Float(currentParams.synthEuclid3Level)
         seq.lanes[2].regeneratePattern()
         
         // Lane 4
-        seq.lanes[3].enabled = currentParams.leadEuclid4Enabled
-        seq.lanes[3].steps = currentParams.leadEuclid4Steps
-        seq.lanes[3].hits = currentParams.leadEuclid4Hits
-        seq.lanes[3].rotation = currentParams.leadEuclid4Rotation
-        seq.lanes[3].noteMin = currentParams.leadEuclid4NoteMin
-        seq.lanes[3].noteMax = currentParams.leadEuclid4NoteMax
-        seq.lanes[3].level = Float(currentParams.leadEuclid4Level)
+        seq.lanes[3].enabled = currentParams.synthEuclid4Enabled
+        seq.lanes[3].steps = currentParams.synthEuclid4Steps
+        seq.lanes[3].hits = currentParams.synthEuclid4Hits
+        seq.lanes[3].rotation = currentParams.synthEuclid4Rotation
+        seq.lanes[3].noteMin = currentParams.synthEuclid4NoteMin
+        seq.lanes[3].noteMax = currentParams.synthEuclid4NoteMax
+        seq.lanes[3].level = Float(currentParams.synthEuclid4Level)
         seq.lanes[3].regeneratePattern()
     }
     
@@ -838,16 +838,16 @@ class AudioEngine {
         }
         
         // Check if Euclidean has any synth-source lanes enabled (independent of leadEnabled)
-        let euclideanSynthLanesEnabled = currentParams.leadEuclideanMasterEnabled && (
-            (currentParams.leadEuclid1Enabled && currentParams.leadEuclid1Source != "lead") ||
-            (currentParams.leadEuclid2Enabled && currentParams.leadEuclid2Source != "lead") ||
-            (currentParams.leadEuclid3Enabled && currentParams.leadEuclid3Source != "lead") ||
-            (currentParams.leadEuclid4Enabled && currentParams.leadEuclid4Source != "lead")
+        let euclideanSynthLanesEnabled = currentParams.synthEuclideanMasterEnabled && (
+            (currentParams.synthEuclid1Enabled && currentParams.synthEuclid1Source != "lead") ||
+            (currentParams.synthEuclid2Enabled && currentParams.synthEuclid2Source != "lead") ||
+            (currentParams.synthEuclid3Enabled && currentParams.synthEuclid3Source != "lead") ||
+            (currentParams.synthEuclid4Enabled && currentParams.synthEuclid4Source != "lead")
         )
         
         // Pre-schedule notes for this phrase (matching web's precise scheduling)
         if currentParams.leadEnabled || euclideanSynthLanesEnabled {
-            if currentParams.leadEuclideanMasterEnabled {
+            if currentParams.synthEuclideanMasterEnabled {
                 scheduleEuclideanPhrase()
             } else if currentParams.leadEnabled {
                 scheduleRandomLeadPhrase()
@@ -896,7 +896,7 @@ class AudioEngine {
         scheduledLeadNotes.removeAll()
         
         guard currentParams.leadEnabled,
-              !currentParams.leadEuclideanMasterEnabled,
+              !currentParams.synthEuclideanMasterEnabled,
               let harmony = harmonyState else { return }
         
         let phraseDuration = PHRASE_LENGTH  // 16 seconds in ms
@@ -968,21 +968,21 @@ class AudioEngine {
         }
         scheduledEuclideanNotes.removeAll()
         
-        guard currentParams.leadEuclideanMasterEnabled,
+        guard currentParams.synthEuclideanMasterEnabled,
               let harmony = harmonyState else { return }
         
         // Check if any synth-source lanes are enabled (independent of leadEnabled)
         let euclideanSynthLanesEnabled = 
-            (currentParams.leadEuclid1Enabled && currentParams.leadEuclid1Source != "lead") ||
-            (currentParams.leadEuclid2Enabled && currentParams.leadEuclid2Source != "lead") ||
-            (currentParams.leadEuclid3Enabled && currentParams.leadEuclid3Source != "lead") ||
-            (currentParams.leadEuclid4Enabled && currentParams.leadEuclid4Source != "lead")
+            (currentParams.synthEuclid1Enabled && currentParams.synthEuclid1Source != "lead") ||
+            (currentParams.synthEuclid2Enabled && currentParams.synthEuclid2Source != "lead") ||
+            (currentParams.synthEuclid3Enabled && currentParams.synthEuclid3Source != "lead") ||
+            (currentParams.synthEuclid4Enabled && currentParams.synthEuclid4Source != "lead")
         
         // Only proceed if lead is enabled OR synth lanes are active
         guard currentParams.leadEnabled || euclideanSynthLanesEnabled else { return }
         
         let phraseDuration = PHRASE_LENGTH  // 16 seconds
-        let tempo = currentParams.leadEuclideanTempo
+        let tempo = currentParams.synthEuclideanTempo
         let scale = harmony.scaleFamily
         let effectiveRoot = cofState.effectiveRoot
         
@@ -999,26 +999,26 @@ class AudioEngine {
         
         // Process each lane (matching web exactly)
         let lanes = [
-            (enabled: currentParams.leadEuclid1Enabled, preset: currentParams.leadEuclid1Preset,
-             steps: currentParams.leadEuclid1Steps, hits: currentParams.leadEuclid1Hits,
-             rotation: currentParams.leadEuclid1Rotation, noteMin: currentParams.leadEuclid1NoteMin,
-             noteMax: currentParams.leadEuclid1NoteMax, level: Float(currentParams.leadEuclid1Level),
-             probability: currentParams.leadEuclid1Probability, source: currentParams.leadEuclid1Source),
-            (enabled: currentParams.leadEuclid2Enabled, preset: currentParams.leadEuclid2Preset,
-             steps: currentParams.leadEuclid2Steps, hits: currentParams.leadEuclid2Hits,
-             rotation: currentParams.leadEuclid2Rotation, noteMin: currentParams.leadEuclid2NoteMin,
-             noteMax: currentParams.leadEuclid2NoteMax, level: Float(currentParams.leadEuclid2Level),
-             probability: currentParams.leadEuclid2Probability, source: currentParams.leadEuclid2Source),
-            (enabled: currentParams.leadEuclid3Enabled, preset: currentParams.leadEuclid3Preset,
-             steps: currentParams.leadEuclid3Steps, hits: currentParams.leadEuclid3Hits,
-             rotation: currentParams.leadEuclid3Rotation, noteMin: currentParams.leadEuclid3NoteMin,
-             noteMax: currentParams.leadEuclid3NoteMax, level: Float(currentParams.leadEuclid3Level),
-             probability: currentParams.leadEuclid3Probability, source: currentParams.leadEuclid3Source),
-            (enabled: currentParams.leadEuclid4Enabled, preset: currentParams.leadEuclid4Preset,
-             steps: currentParams.leadEuclid4Steps, hits: currentParams.leadEuclid4Hits,
-             rotation: currentParams.leadEuclid4Rotation, noteMin: currentParams.leadEuclid4NoteMin,
-             noteMax: currentParams.leadEuclid4NoteMax, level: Float(currentParams.leadEuclid4Level),
-             probability: currentParams.leadEuclid4Probability, source: currentParams.leadEuclid4Source)
+            (enabled: currentParams.synthEuclid1Enabled, preset: currentParams.synthEuclid1Preset,
+             steps: currentParams.synthEuclid1Steps, hits: currentParams.synthEuclid1Hits,
+             rotation: currentParams.synthEuclid1Rotation, noteMin: currentParams.synthEuclid1NoteMin,
+             noteMax: currentParams.synthEuclid1NoteMax, level: Float(currentParams.synthEuclid1Level),
+             probability: currentParams.synthEuclid1Probability, source: currentParams.synthEuclid1Source),
+            (enabled: currentParams.synthEuclid2Enabled, preset: currentParams.synthEuclid2Preset,
+             steps: currentParams.synthEuclid2Steps, hits: currentParams.synthEuclid2Hits,
+             rotation: currentParams.synthEuclid2Rotation, noteMin: currentParams.synthEuclid2NoteMin,
+             noteMax: currentParams.synthEuclid2NoteMax, level: Float(currentParams.synthEuclid2Level),
+             probability: currentParams.synthEuclid2Probability, source: currentParams.synthEuclid2Source),
+            (enabled: currentParams.synthEuclid3Enabled, preset: currentParams.synthEuclid3Preset,
+             steps: currentParams.synthEuclid3Steps, hits: currentParams.synthEuclid3Hits,
+             rotation: currentParams.synthEuclid3Rotation, noteMin: currentParams.synthEuclid3NoteMin,
+             noteMax: currentParams.synthEuclid3NoteMax, level: Float(currentParams.synthEuclid3Level),
+             probability: currentParams.synthEuclid3Probability, source: currentParams.synthEuclid3Source),
+            (enabled: currentParams.synthEuclid4Enabled, preset: currentParams.synthEuclid4Preset,
+             steps: currentParams.synthEuclid4Steps, hits: currentParams.synthEuclid4Hits,
+             rotation: currentParams.synthEuclid4Rotation, noteMin: currentParams.synthEuclid4NoteMin,
+             noteMax: currentParams.synthEuclid4NoteMax, level: Float(currentParams.synthEuclid4Level),
+             probability: currentParams.synthEuclid4Probability, source: currentParams.synthEuclid4Source)
         ]
         
         for lane in lanes {

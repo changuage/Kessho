@@ -21,7 +21,27 @@ import { audioEngine, EngineState } from './audio/engine';
 import { SCALE_FAMILIES } from './audio/scales';
 import { formatChordDegrees, getTimeUntilNextPhrase, calculateDriftedRoot, PHRASE_LENGTH } from './audio/harmony';
 import { getPresetNames, DrumVoiceType as DrumPresetVoice } from './audio/drumPresets';
+import { getPadPreset, morphPadPresets, PAD_PRESET_PARAM_KEYS } from './audio/padPresets';
 import { applyMorphToState, setDrumMorphOverride, clearDrumMorphEndpointOverrides, clearMidMorphOverrides, setDrumMorphDualRangeOverride, getDrumMorphDualRangeOverrides, interpolateDrumMorphDualRanges, drumMorphManager } from './audio/drumMorph';
+
+// Maps pad-preset param keys (pad1 naming) → pad2 state keys
+const PAD1_TO_PAD2_KEY: Record<string, string> = {
+  padOscAWave: 'pad2OscAWave', padOscAOctave: 'pad2OscAOctave', padOscADetune: 'pad2OscADetune', padOscALevel: 'pad2OscALevel',
+  padOscBWave: 'pad2OscBWave', padOscBOctave: 'pad2OscBOctave', padOscBDetune: 'pad2OscBDetune', padOscBLevel: 'pad2OscBLevel',
+  padSubEnabled: 'pad2SubEnabled', padSubOctave: 'pad2SubOctave', padSubWave: 'pad2SubWave', padSubLevel: 'pad2SubLevel',
+  padNoiseType: 'pad2NoiseType', padNoiseLevel: 'pad2NoiseLevel',
+  hardness: 'pad2Hardness', warmth: 'pad2Warmth', presence: 'pad2Presence',
+  filterType: 'pad2FilterType', filterCutoffMin: 'pad2FilterCutoffMin', filterCutoffMax: 'pad2FilterCutoffMax',
+  filterResonance: 'pad2FilterResonance', filterQ: 'pad2FilterQ',
+  padFilterBEnabled: 'pad2FilterBEnabled', padFilterBType: 'pad2FilterBType', padFilterBCutoff: 'pad2FilterBCutoff',
+  padFilterBResonance: 'pad2FilterBResonance', padFilterBQ: 'pad2FilterBQ', padFilterRouting: 'pad2FilterRouting',
+  synthAttack: 'pad2Attack', synthDecay: 'pad2Decay', synthSustain: 'pad2Sustain', synthRelease: 'pad2Release',
+  padLfo1Rate: 'pad2Lfo1Rate', padLfo1Depth: 'pad2Lfo1Depth', padLfo1Wave: 'pad2Lfo1Wave', padLfo1Dest: 'pad2Lfo1Dest',
+  padLfo2Rate: 'pad2Lfo2Rate', padLfo2Depth: 'pad2Lfo2Depth', padLfo2Wave: 'pad2Lfo2Wave', padLfo2Dest: 'pad2Lfo2Dest',
+  padModEnvEnabled: 'pad2ModEnvEnabled', padModEnvAttack: 'pad2ModEnvAttack', padModEnvDecay: 'pad2ModEnvDecay',
+  padModEnvSustain: 'pad2ModEnvSustain', padModEnvRelease: 'pad2ModEnvRelease',
+  padModEnvDepth: 'pad2ModEnvDepth', padModEnvDest: 'pad2ModEnvDest',
+};
 import { isInMidMorph, isAtEndpoint0, isAtEndpoint1 } from './audio/morphUtils';
 import { getLead4opFMPresetList } from './audio/lead4opfm';
 import SnowflakeUI from './ui/SnowflakeUI';
@@ -30,8 +50,9 @@ import CloudPresets from './ui/CloudPresets';
 import { fetchPresetById, isCloudEnabled } from './cloud/supabase';
 import JourneyModeView from './ui/JourneyModeView';
 import { useJourney } from './ui/journeyState';
-import { resolveDrumEuclidPatternParams } from './audio/drumSequencer';
 import DrumPage from './ui/drums/DrumPage';
+import SynthPage from './ui/synth/SynthPage';
+import type { StepOverrides, SubLaneKind, SubLaneState } from './ui/sequencer/useEuclideanSequencer';
 
 // Note names for display
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -311,6 +332,34 @@ const normalizePresetForWeb = (state: SliderState): SliderState => {
   if (merged.drumEnabled === false)           merged.drumLevel = 0;
   if (merged.oceanSampleEnabled === false)    merged.oceanSampleLevel = 0;
   if (merged.oceanWaveSynthEnabled === false) merged.oceanWaveSynthLevel = 0;
+
+  // ── Apply pad preset morph params ──
+  // When loading a preset that specifies padPresetA/B, morph their params onto state
+  const presetA = getPadPreset(merged.padPresetA);
+  const presetB = getPadPreset(merged.padPresetB);
+  if (presetA && presetB) {
+    const morphed = morphPadPresets(presetA, presetB, merged.padMorph);
+    for (const k of PAD_PRESET_PARAM_KEYS) {
+      if (k in morphed) {
+        (merged as unknown as Record<string, unknown>)[k] = morphed[k];
+      }
+    }
+  }
+
+  // ── Apply pad2 preset morph params ──
+  const pad2A = getPadPreset(merged.pad2PresetA);
+  const pad2B = getPadPreset(merged.pad2PresetB);
+  if (pad2A && pad2B) {
+    const morphed = morphPadPresets(pad2A, pad2B, merged.pad2Morph);
+    for (const k of PAD_PRESET_PARAM_KEYS) {
+      if (k in morphed) {
+        const pad2Key = PAD1_TO_PAD2_KEY[k];
+        if (pad2Key) {
+          (merged as unknown as Record<string, unknown>)[pad2Key] = morphed[k];
+        }
+      }
+    }
+  }
 
   return merged;
 };
@@ -1324,6 +1373,8 @@ const App: React.FC = () => {
     currentSeed: 0,
     currentBucket: '',
     currentFilterFreq: 1000,
+    currentLfoValue: 0,
+    currentLfo2Value: 0,
     cofCurrentStep: 0,
   });
 
@@ -1443,7 +1494,7 @@ const App: React.FC = () => {
   }, []);
 
   // Active tab for Advanced UI panels
-  type AdvancedTab = 'global' | 'synth' | 'lead' | 'drums' | 'fx';
+  type AdvancedTab = 'global' | 'synth' | 'drums' | 'fx';
   const [activeTab, setActiveTab] = useState<AdvancedTab>('global');
 
   // Unified slider mode state: key → SliderMode ('single' | 'walk' | 'sampleHold')
@@ -1516,6 +1567,12 @@ const App: React.FC = () => {
     lead2: number;
   }>({ lead1: 0.5, lead2: 0.5 });
 
+  // Pad morph trigger positions (updated per synth voice trigger in S&H/walk mode)
+  const [padMorphPositions, setPadMorphPositions] = useState<{
+    pad1: number;
+    pad2: number;
+  }>({ pad1: 0.5, pad2: 0.5 });
+
   // Track last triggered delay values for the indicator
   const [leadDelayPositions, setLeadDelayPositions] = useState<{
     time: number;
@@ -1548,10 +1605,23 @@ const App: React.FC = () => {
   const [drumTriggeredVoices, setDrumTriggeredVoices] = useState<Record<string, boolean>>({});
   const drumTriggerTimersRef = useRef<Record<string, number | null>>({});
   const drumViewModeRef = useRef<'simple' | 'detail' | 'overview'>('detail');
+  const drumStepOverridesRef = useRef<StepOverrides | undefined>(undefined);
+  const drumSubLaneStatesRef = useRef<Record<SubLaneKind, SubLaneState>[] | undefined>(undefined);
 
   // Evolve flash state — driven by audio engine callback, passed to DrumPage
   const [drumEuclidEvolveFlashing, setDrumEuclidEvolveFlashing] = useState<boolean[]>([false, false, false, false]);
   const drumEuclidEvolveFlashTimersRef = useRef<Array<number | null>>([null, null, null, null]);
+
+  // ── Lead/Synth Euclidean sequencer state ──
+  const [leadSeqPlayheads, setLeadSeqPlayheads] = useState<number[]>([0, 0, 0, 0]);
+  const [leadSeqHitCounts, setLeadSeqHitCounts] = useState<number[]>([0, 0, 0, 0]);
+  const synthViewModeRef = useRef<'simple' | 'detail' | 'overview'>('simple');
+  const synthStepOverridesRef = useRef<StepOverrides | undefined>(undefined);
+  const synthSubLaneStatesRef = useRef<Record<SubLaneKind, SubLaneState>[] | undefined>(undefined);
+  // @ts-expect-error Reserved for future evolve flash animation UI
+  const [synthEuclidEvolveFlashing, setSynthEuclidEvolveFlashing] = useState<boolean[]>([false, false, false, false]);
+  // @ts-expect-error Reserved for future evolve flash animation UI
+  const synthEuclidEvolveFlashTimersRef = useRef<Array<number | null>>([null, null, null, null]);
 
   // Trigger position map: maps slider keys to their per-trigger position values
   const triggerPositionMap = useMemo<Record<string, number>>(() => ({
@@ -1567,7 +1637,9 @@ const App: React.FC = () => {
     oceanDepth: oceanPositions.depth,
     lead1Morph: leadMorphPositions.lead1,
     lead2Morph: leadMorphPositions.lead2,
-  }), [leadExpressionPositions, leadDelayPositions, oceanPositions, leadMorphPositions]);
+    padMorph: padMorphPositions.pad1,
+    pad2Morph: padMorphPositions.pad2,
+  }), [leadExpressionPositions, leadDelayPositions, oceanPositions, leadMorphPositions, padMorphPositions]);
 
   // Drum morph keys - these use per-trigger randomization, not random walk
   const drumMorphKeys = useMemo(() => new Set<keyof SliderState>([
@@ -1896,6 +1968,50 @@ const App: React.FC = () => {
               (newState as any)[key] = quantize(key, range.min + walkPos * (range.max - range.min));
             }
           });
+
+          // Apply pad morph preset interpolation when padMorph is walking
+          if ('padMorph' in updates) {
+            const presetA = getPadPreset(newState.padPresetA as string);
+            const presetB = getPadPreset(newState.padPresetB as string);
+            if (presetA && presetB) {
+              const morphed = morphPadPresets(presetA, presetB, newState.padMorph as number);
+              for (const k of PAD_PRESET_PARAM_KEYS) {
+                if (k in morphed) {
+                  (newState as Record<string, unknown>)[k] = morphed[k];
+                }
+              }
+            }
+          }
+
+          // Apply pad2 morph preset interpolation when pad2Morph is walking
+          if ('pad2Morph' in updates) {
+            const presetA = getPadPreset(newState.pad2PresetA as string);
+            const presetB = getPadPreset(newState.pad2PresetB as string);
+            if (presetA && presetB) {
+              const morphed = morphPadPresets(presetA, presetB, newState.pad2Morph as number);
+              for (const k of PAD_PRESET_PARAM_KEYS) {
+                if (k in morphed) {
+                  const pad2Key = PAD1_TO_PAD2_KEY[k];
+                  if (pad2Key) {
+                    (newState as Record<string, unknown>)[pad2Key] = morphed[k];
+                  }
+                }
+              }
+            }
+          }
+
+          // Apply drum morph preset interpolation when any drumXxxMorph is walking
+          const drumWalkMorphMap: Record<string, DrumPresetVoice> = {
+            drumSubMorph: 'sub', drumKickMorph: 'kick', drumClickMorph: 'click',
+            drumBeepHiMorph: 'beepHi', drumBeepLoMorph: 'beepLo', drumNoiseMorph: 'noise', drumMembraneMorph: 'membrane',
+          };
+          for (const [morphKey, voice] of Object.entries(drumWalkMorphMap)) {
+            if (morphKey in updates) {
+              const morphedParams = applyMorphToState(newState as SliderState, voice);
+              Object.assign(newState, morphedParams);
+            }
+          }
+
           return newState;
         });
       }
@@ -1952,31 +2068,88 @@ const App: React.FC = () => {
   // Engine state callback
   useEffect(() => {
     audioEngine.setStateChangeCallback(setEngineState);
+    return () => { audioEngine.setStateChangeCallback(null as unknown as (state: EngineState) => void); };
   }, []);
 
   // Lead expression trigger callback
   useEffect(() => {
     audioEngine.setLeadExpressionCallback(setLeadExpressionPositions);
+    return () => { audioEngine.setLeadExpressionCallback(null as unknown as typeof setLeadExpressionPositions); };
   }, []);
 
-  // Lead morph trigger callback (updates walk indicator)
+  // Lead morph trigger callback (updates walk indicator + actual morph slider value)
   useEffect(() => {
     audioEngine.setLeadMorphCallback((morph) => {
       setLeadMorphPositions(prev => ({
         lead1: morph.lead1 >= 0 ? morph.lead1 : prev.lead1,
         lead2: morph.lead2 >= 0 ? morph.lead2 : prev.lead2,
       }));
+      // Also update the actual lead morph slider state so UI reflects the position
+      setState(prev => {
+        const updates: Partial<SliderState> = {};
+        if (morph.lead1 >= 0) updates.lead1Morph = morph.lead1 as SliderState['lead1Morph'];
+        if (morph.lead2 >= 0) updates.lead2Morph = morph.lead2 as SliderState['lead2Morph'];
+        if (Object.keys(updates).length === 0) return prev;
+        return { ...prev, ...updates };
+      });
+    });
+  }, []);
+
+  // Pad morph sub-sequencer callback (moves padMorph slider + applies morphed preset)
+  useEffect(() => {
+    audioEngine.setPadMorphTriggerCallback((morphPosition: number) => {
+      setPadMorphPositions(prev => ({ ...prev, pad1: morphPosition }));
+      setState(prev => {
+        const presetA = getPadPreset(prev.padPresetA as string);
+        const presetB = getPadPreset(prev.padPresetB as string);
+        let newState = { ...prev, padMorph: morphPosition };
+        if (presetA && presetB) {
+          const morphed = morphPadPresets(presetA, presetB, morphPosition);
+          for (const k of PAD_PRESET_PARAM_KEYS) {
+            if (k in morphed) {
+              (newState as Record<string, unknown>)[k] = morphed[k];
+            }
+          }
+        }
+        return newState;
+      });
+    });
+  }, []);
+
+  // Pad 2 morph sub-sequencer callback (moves pad2Morph slider + applies morphed preset to pad2 keys)
+  useEffect(() => {
+    audioEngine.setPad2MorphTriggerCallback((morphPosition: number) => {
+      setPadMorphPositions(prev => ({ ...prev, pad2: morphPosition }));
+      setState(prev => {
+        const presetA = getPadPreset(prev.pad2PresetA as string);
+        const presetB = getPadPreset(prev.pad2PresetB as string);
+        let newState = { ...prev, pad2Morph: morphPosition };
+        if (presetA && presetB) {
+          const morphed = morphPadPresets(presetA, presetB, morphPosition);
+          for (const k of PAD_PRESET_PARAM_KEYS) {
+            if (k in morphed) {
+              const pad2Key = PAD1_TO_PAD2_KEY[k];
+              if (pad2Key) {
+                (newState as Record<string, unknown>)[pad2Key] = morphed[k];
+              }
+            }
+          }
+        }
+        return newState;
+      });
     });
   }, []);
 
   // Lead delay trigger callback
   useEffect(() => {
     audioEngine.setLeadDelayCallback(setLeadDelayPositions);
+    return () => { audioEngine.setLeadDelayCallback(null as unknown as typeof setLeadDelayPositions); };
   }, []);
 
   // Ocean wave trigger callback
   useEffect(() => {
     audioEngine.setOceanWaveCallback(setOceanPositions);
+    return () => { audioEngine.setOceanWaveCallback(null as unknown as typeof setOceanPositions); };
   }, []);
 
   // Drum morph trigger callback (per-trigger random morph position)
@@ -2059,6 +2232,14 @@ const App: React.FC = () => {
     });
   }, []);
 
+  // Lead Euclid step position callback (live playhead tracking)
+  useEffect(() => {
+    audioEngine.setSynthStepPositionCallback((steps: number[], hitCounts: number[]) => {
+      setLeadSeqPlayheads(steps);
+      setLeadSeqHitCounts(hitCounts);
+    });
+  }, []);
+
   // Drum trigger callback (per-voice flash for envelope visualizer)
   useEffect(() => {
     audioEngine.setDrumTriggerCallback((voice: string, _velocity: number) => {
@@ -2073,10 +2254,20 @@ const App: React.FC = () => {
   }, []);
 
   // Auto-morph animation loop — drives morph positions for voices with auto-morph enabled
+  // Only runs when at least one drum auto-morph is active (saves CPU/battery when idle)
   const autoMorphRafRef = useRef<number | null>(null);
   const autoMorphStateRef = useRef(state);
   autoMorphStateRef.current = state;
+
+  const anyDrumAutoMorphActive = (
+    state.drumSubMorphAuto || state.drumKickMorphAuto || state.drumClickMorphAuto ||
+    state.drumBeepHiMorphAuto || state.drumBeepLoMorphAuto ||
+    state.drumNoiseMorphAuto || state.drumMembraneMorphAuto
+  );
+
   useEffect(() => {
+    if (!anyDrumAutoMorphActive) return; // No auto-morph active — skip RAF loop entirely
+
     const MORPH_STATE_KEYS: Record<string, keyof SliderState> = {
       sub: 'drumSubMorph',
       kick: 'drumKickMorph',
@@ -2101,7 +2292,13 @@ const App: React.FC = () => {
             }
           }
           if (Object.keys(updates).length === 0) return prev;
-          return { ...prev, ...updates };
+          // Apply drum morph preset interpolation for each updated voice
+          let newState = { ...prev, ...updates };
+          for (const [voice] of newValues) {
+            const morphedParams = applyMorphToState(newState as SliderState, voice as DrumPresetVoice);
+            newState = { ...newState, ...morphedParams };
+          }
+          return newState;
         });
       }
       autoMorphRafRef.current = requestAnimationFrame(tick);
@@ -2114,7 +2311,7 @@ const App: React.FC = () => {
         autoMorphRafRef.current = null;
       }
     };
-  }, []);
+  }, [anyDrumAutoMorphActive]);
 
   // Countdown timer
   useEffect(() => {
@@ -2132,12 +2329,14 @@ const App: React.FC = () => {
     }
   }, [engineState.isRunning]);
 
-  // Filter frequency polling for live visualization
+  // Filter frequency + LFO value polling for live visualization
   const [liveFilterFreq, setLiveFilterFreq] = useState(1000);
+  const [liveLfoValue, setLiveLfoValue] = useState(0);
   useEffect(() => {
     if (engineState.isRunning) {
       const updateFilter = () => {
         setLiveFilterFreq(audioEngine.getCurrentFilterFreq());
+        setLiveLfoValue(audioEngine.getCurrentLfoValue());
       };
       const filterId = window.setInterval(updateFilter, 50); // 20fps for smooth animation
       return () => clearInterval(filterId);
@@ -2276,6 +2475,45 @@ const App: React.FC = () => {
         // Apply morphed preset values to the state
         const morphedParams = applyMorphToState(newState, voice);
         newState = { ...newState, ...morphedParams };
+      }
+      
+      // ═══════════════════════════════════════════════════════════════════════
+      // PAD SYNTH PRESET MORPH SYSTEM
+      // When padMorph slider changes, morph between padPresetA & padPresetB
+      // and apply the resulting params to state
+      // ═══════════════════════════════════════════════════════════════════════
+      if (key === 'padMorph') {
+        const presetA = getPadPreset(newState.padPresetA as string);
+        const presetB = getPadPreset(newState.padPresetB as string);
+        if (presetA && presetB) {
+          const morphed = morphPadPresets(presetA, presetB, newState.padMorph as number);
+          for (const k of PAD_PRESET_PARAM_KEYS) {
+            if (k in morphed) {
+              (newState as Record<string, unknown>)[k] = morphed[k];
+            }
+          }
+        }
+      }
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // PAD 2 PRESET MORPH SYSTEM
+      // When pad2Morph slider changes, morph between pad2PresetA & pad2PresetB
+      // and apply the resulting params to pad2 state keys
+      // ═══════════════════════════════════════════════════════════════════════
+      if (key === 'pad2Morph') {
+        const presetA = getPadPreset(newState.pad2PresetA as string);
+        const presetB = getPadPreset(newState.pad2PresetB as string);
+        if (presetA && presetB) {
+          const morphed = morphPadPresets(presetA, presetB, newState.pad2Morph as number);
+          for (const k of PAD_PRESET_PARAM_KEYS) {
+            if (k in morphed) {
+              const pad2Key = PAD1_TO_PAD2_KEY[k];
+              if (pad2Key) {
+                (newState as Record<string, unknown>)[pad2Key] = morphed[k];
+              }
+            }
+          }
+        }
       }
       
       return newState;
@@ -2437,7 +2675,42 @@ const App: React.FC = () => {
   const handleSelectChange = useCallback(<K extends keyof SliderState>(key: K, value: SliderState[K]) => {
     // Mark that user has interacted with the UI
     hasUserInteractedRef.current = true;
-    setState((prev) => ({ ...prev, [key]: value }));
+    setState((prev) => {
+      const newState = { ...prev, [key]: value };
+      
+      // ═══ PAD PRESET MORPH: when preset A or B changes, re-morph and apply ═══
+      if (key === 'padPresetA' || key === 'padPresetB') {
+        const presetA = getPadPreset(newState.padPresetA as string);
+        const presetB = getPadPreset(newState.padPresetB as string);
+        if (presetA && presetB) {
+          const morphed = morphPadPresets(presetA, presetB, newState.padMorph as number);
+          for (const k of PAD_PRESET_PARAM_KEYS) {
+            if (k in morphed) {
+              (newState as Record<string, unknown>)[k] = morphed[k];
+            }
+          }
+        }
+      }
+
+      // ═══ PAD 2 PRESET MORPH: when pad2 preset A or B changes, re-morph and apply ═══
+      if (key === 'pad2PresetA' || key === 'pad2PresetB') {
+        const presetA = getPadPreset(newState.pad2PresetA as string);
+        const presetB = getPadPreset(newState.pad2PresetB as string);
+        if (presetA && presetB) {
+          const morphed = morphPadPresets(presetA, presetB, newState.pad2Morph as number);
+          for (const k of PAD_PRESET_PARAM_KEYS) {
+            if (k in morphed) {
+              const pad2Key = PAD1_TO_PAD2_KEY[k];
+              if (pad2Key) {
+                (newState as Record<string, unknown>)[pad2Key] = morphed[k];
+              }
+            }
+          }
+        }
+      }
+      
+      return newState;
+    });
   }, []);
 
   // Start/Stop
@@ -2497,8 +2770,8 @@ const App: React.FC = () => {
     stopIOSMediaSession();
     audioEngine.stop();
 
-    // Master stop also turns off the drum sequencer
-    setState(prev => ({ ...prev, drumEuclidMasterEnabled: false }));
+    // Master stop also turns off the drum sequencer and lead Euclidean sequencer
+    setState(prev => ({ ...prev, drumEuclidMasterEnabled: false, synthEuclideanMasterEnabled: false }));
     
     // Stop journey playback if running
     if (isJourneyPlaying) {
@@ -3119,14 +3392,15 @@ const App: React.FC = () => {
       ],
       leadEnabled: [
         'lead1Attack', 'lead1Decay', 'lead1Sustain', 'lead1Release',
+        'lead2Attack', 'lead2Decay', 'lead2Sustain', 'lead2Release',
         'leadDelayTime', 'leadDelayFeedback',
         'leadDelayMix', 'lead1Density',
         'lead1Octave', 'lead1OctaveRange',
         'leadVibratoDepth', 'leadVibratoRate',
         'leadGlide', 'leadReverbSend', 'leadDelayReverbSend'
       ],
-      leadEuclideanMasterEnabled: [
-        'leadEuclideanTempo'
+      synthEuclideanMasterEnabled: [
+        'synthEuclideanTempo'
       ],
       oceanSampleEnabled: [
         'oceanFilterCutoff', 'oceanFilterResonance',
@@ -3153,17 +3427,18 @@ const App: React.FC = () => {
       'masterVolume', 'synthLevel', 'granularLevel', 'synthReverbSend', 'granularReverbSend',
       'leadReverbSend', 'leadDelayReverbSend', 'reverbLevel', 'randomness', 'tension',
       'chordRate', 'voicingSpread', 'waveSpread', 'detune', 'synthAttack', 'synthDecay',
-      'synthSustain', 'synthRelease', 'synthVoiceMask', 'synthOctave', 'hardness', 'oscBrightness',
-      'filterCutoffMin', 'filterCutoffMax', 'filterModSpeed', 'filterResonance', 'filterQ',
-      'warmth', 'presence', 'airNoise', 'reverbDecay', 'reverbSize', 'reverbDiffusion',
+      'synthSustain', 'synthRelease', 'synthVoiceMask', 'synthOctave', 'hardness',
+      'filterCutoffMin', 'filterCutoffMax', 'filterResonance', 'filterQ',
+      'warmth', 'presence', 'reverbDecay', 'reverbSize', 'reverbDiffusion',
       'reverbModulation', 'predelay', 'damping', 'width', 'grainProbability', 'grainSize',
       'density', 'spray', 'jitter', 'pitchSpread', 'stereoSpread', 'feedback',
       'wetHPF', 'wetLPF', 'leadLevel', 'lead1Attack', 'lead1Decay', 'lead1Sustain', 'lead1Release',
+      'lead2Attack', 'lead2Decay', 'lead2Sustain', 'lead2Release',
       'leadDelayTime', 'leadDelayFeedback',
       'leadDelayMix', 'lead1Density', 'lead1Octave',
       'lead1OctaveRange',
       'leadVibratoDepth', 'leadVibratoRate',
-      'leadGlide', 'leadEuclideanTempo',
+      'leadGlide', 'synthEuclideanTempo',
       'oceanSampleLevel', 'oceanWaveSynthLevel', 'oceanFilterCutoff', 'oceanFilterResonance',
       'oceanDuration', 'oceanInterval',
       'oceanFoam', 'oceanDepth',
@@ -3178,6 +3453,17 @@ const App: React.FC = () => {
       'drumBeepHiFreq', 'drumBeepHiAttack', 'drumBeepHiDecay', 'drumBeepHiTone', 'drumBeepHiLevel',
       'drumBeepLoFreq', 'drumBeepLoAttack', 'drumBeepLoDecay', 'drumBeepLoTone', 'drumBeepLoLevel',
       'drumNoiseFilterFreq', 'drumNoiseFilterQ', 'drumNoiseAttack', 'drumNoiseDecay', 'drumNoiseLevel',
+      // Pad Synth 2
+      'pad2Attack', 'pad2Decay', 'pad2Sustain', 'pad2Release', 'pad2Octave',
+      'pad2Hardness', 'pad2Warmth', 'pad2Presence', 'pad2OscMix',
+      'pad2FilterCutoffMin', 'pad2FilterCutoffMax', 'pad2FilterResonance', 'pad2FilterQ',
+      'pad2OscAOctave', 'pad2OscADetune', 'pad2OscALevel',
+      'pad2OscBOctave', 'pad2OscBDetune', 'pad2OscBLevel',
+      'pad2SubOctave', 'pad2SubLevel', 'pad2NoiseLevel',
+      'pad2FilterBCutoff', 'pad2FilterBResonance', 'pad2FilterBQ',
+      'pad2Lfo1Rate', 'pad2Lfo1Depth', 'pad2Lfo2Rate', 'pad2Lfo2Depth',
+      'pad2ModEnvAttack', 'pad2ModEnvDecay', 'pad2ModEnvSustain', 'pad2ModEnvRelease', 'pad2ModEnvDepth',
+      'pad2Morph', 'pad2MorphSpeed', 'pad2VoiceAssign',
     ];
     
     for (const key of numericKeys) {
@@ -3203,6 +3489,11 @@ const App: React.FC = () => {
       'drumBeepLoPresetA', 'drumBeepLoPresetB', 'drumNoisePresetA', 'drumNoisePresetB',
       'drumMembranePresetA', 'drumMembranePresetB',
       'drumNoiseFilterType',
+      // Pad Synth 2 discrete
+      'pad2FilterType', 'pad2OscAWave', 'pad2OscBWave', 'pad2SubWave', 'pad2NoiseType',
+      'pad2FilterBType', 'pad2FilterRouting',
+      'pad2Lfo1Wave', 'pad2Lfo1Dest', 'pad2Lfo2Wave', 'pad2Lfo2Dest',
+      'pad2ModEnvDest', 'pad2PresetA', 'pad2PresetB',
     ];
     for (const key of discreteKeys) {
       (result as Record<string, unknown>)[key] = tNorm < 0.5 ? stateA[key] : stateB[key];
@@ -3210,11 +3501,13 @@ const App: React.FC = () => {
     
     // Snap boolean values at 50% (except engine toggles and cofDriftEnabled which have special handling)
     const boolKeys: (keyof SliderState)[] = [
-      'lead1UseCustomAdsr', 'leadEuclideanMasterEnabled', 'leadEuclid1Enabled', 'leadEuclid2Enabled',
-      'leadEuclid3Enabled', 'leadEuclid4Enabled',
+      'lead1UseCustomAdsr', 'lead2UseCustomAdsr', 'synthEuclideanMasterEnabled', 'synthEuclid1Enabled', 'synthEuclid2Enabled',
+      'synthEuclid3Enabled', 'synthEuclid4Enabled',
       // Drum synth booleans
       'drumSubMorphAuto', 'drumKickMorphAuto', 'drumClickMorphAuto',
       'drumBeepHiMorphAuto', 'drumBeepLoMorphAuto', 'drumNoiseMorphAuto', 'drumMembraneMorphAuto',
+      // Pad Synth 2 booleans
+      'pad2Enabled', 'pad2SubEnabled', 'pad2FilterBEnabled', 'pad2ModEnvEnabled', 'pad2MorphAuto',
     ];
     for (const key of boolKeys) {
       (result as Record<string, unknown>)[key] = tNorm < 0.5 ? stateA[key] : stateB[key];
@@ -3449,7 +3742,10 @@ const App: React.FC = () => {
 
   // Reapply drum morph interpolation when a drum preset changes while in mid-morph
   // This mirrors the main morph system's behavior
+  // Only re-runs when actual drum preset names change (not on every state change)
   const prevDrumPresetsRef = useRef<Record<string, string>>({});
+  
+  const drumPresetFingerprint = `${state.drumSubPresetA}|${state.drumSubPresetB}|${state.drumKickPresetA}|${state.drumKickPresetB}|${state.drumClickPresetA}|${state.drumClickPresetB}|${state.drumBeepHiPresetA}|${state.drumBeepHiPresetB}|${state.drumBeepLoPresetA}|${state.drumBeepLoPresetB}|${state.drumNoisePresetA}|${state.drumNoisePresetB}|${state.drumMembranePresetA}|${state.drumMembranePresetB}`;
   
   useEffect(() => {
     // Check each drum voice for preset changes
@@ -3466,9 +3762,10 @@ const App: React.FC = () => {
     
     for (const voice of drumVoices) {
       const keys = presetKeys[voice];
-      const presetA = state[keys.a] as string;
-      const presetB = state[keys.b] as string;
-      const morphValue = state[keys.morph] as number;
+      const currentState = autoMorphStateRef.current; // Read current state from ref
+      const presetA = currentState[keys.a] as string;
+      const presetB = currentState[keys.b] as string;
+      const morphValue = currentState[keys.morph] as number;
       
       const prevA = prevDrumPresetsRef.current[keys.a];
       const prevB = prevDrumPresetsRef.current[keys.b];
@@ -3489,14 +3786,14 @@ const App: React.FC = () => {
       
       // Reapply the morphed values using applyMorphToState
       // This recalculates interpolation with the new preset
-      const morphedParams = applyMorphToState(state, voice);
+      const morphedParams = applyMorphToState(currentState, voice);
       setState(prev => ({ ...prev, ...morphedParams }));
       
       // Also reapply dual range interpolation if there are overrides
       const currentValues: Record<string, number> = {};
       const overrides = getDrumMorphDualRangeOverrides(voice);
       for (const param of Object.keys(overrides)) {
-        const stateVal = state[param as keyof SliderState];
+        const stateVal = currentState[param as keyof SliderState];
         if (typeof stateVal === 'number') {
           currentValues[param] = stateVal;
         }
@@ -3524,7 +3821,7 @@ const App: React.FC = () => {
         }
       }
     }
-  }, [state]);
+  }, [drumPresetFingerprint]); // Only re-run when drum preset names actually change
 
   // Handle morph slider change
   const handleMorphPositionChange = useCallback((newPosition: number) => {
@@ -4266,9 +4563,11 @@ const App: React.FC = () => {
       );
       
       // Preserve user preference keys (like reverbQuality) that shouldn't change with morphing
+      // Use ref to read current state — avoids stale closure from useCallback
       const stateWithPrefs = { ...morphResult.state };
+      const currentState = autoMorphStateRef.current;
       for (const key of USER_PREFERENCE_KEYS) {
-        (stateWithPrefs as Record<string, unknown>)[key] = state[key];
+        (stateWithPrefs as Record<string, unknown>)[key] = currentState[key];
       }
       
       // Apply the morphed state
@@ -4630,17 +4929,6 @@ const App: React.FC = () => {
         >
           <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>∿</span>
           <span>Synth</span>
-        </button>
-        <button
-          style={{
-            ...styles.tab,
-            ...(activeTab === 'lead' ? styles.tabActive : {}),
-            ...m?.tab,
-          }}
-          onClick={() => setActiveTab('lead')}
-        >
-          <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>♪</span>
-          <span>Lead</span>
         </button>
         <button
           style={{
@@ -5571,597 +5859,52 @@ const App: React.FC = () => {
         </>)}
 
         {/* === SYNTH + LEAD TAB === */}
-        {activeTab === 'synth' && (<>
-        {/* Harmony */}
-        <CollapsiblePanel
-          id="harmony"
-          title="Pad Synth"
-          isMobile={isMobile}
-          isExpanded={expandedPanels.has('harmony')}
-          onToggle={togglePanel}
-        >
-          <Slider
-            label="Chord Rate"
-            value={state.chordRate}
-            paramKey="chordRate"
-            unit="s"
-            onChange={handleSliderChange}
-            {...sliderProps('chordRate')}
+        {activeTab === 'synth' && (
+          <SynthPage
+            state={state}
+            isMobile={isMobile}
+            expandedPanels={expandedPanels}
+            onParamChange={handleSliderChange}
+            onSelectChange={handleSelectChange}
+            togglePanel={togglePanel}
+            sliderProps={sliderProps}
+            SliderComponent={Slider as unknown as React.ComponentType<Record<string, unknown>>}
+            SelectComponent={Select as unknown as React.ComponentType<Record<string, unknown>>}
+            CollapsiblePanelComponent={CollapsiblePanel as unknown as React.ComponentType<Record<string, unknown>>}
+            lead4opPresets={lead4opPresets}
+            liveFilterFreq={liveFilterFreq}
+            liveLfoValue={liveLfoValue}
+            isRunning={engineState.isRunning}
+            getLeadMorphedParams={(lead: 1 | 2) => audioEngine.getLeadMorphedParams(lead)}
+            playheads={leadSeqPlayheads}
+            hitCounts={leadSeqHitCounts}
+            evolveFlashing={synthEuclidEvolveFlashing}
+            initialViewMode={synthViewModeRef.current}
+            onViewModeChange={(mode) => { synthViewModeRef.current = mode; }}
+            initialStepOverrides={synthStepOverridesRef.current}
+            initialSubLaneStates={synthSubLaneStatesRef.current}
+            onSubLaneStatesChange={(states) => { synthSubLaneStatesRef.current = states; }}
+            onRawStepOverridesChange={(raw) => {
+              synthStepOverridesRef.current = raw;
+            }}
+            onStepOverridesChange={(overrides) => {
+              audioEngine.setSynthStepOverrides({
+                pitch: overrides.pitch,
+                pitchDirection: overrides.pitchDirection,
+                triggerToggles: overrides.triggerToggles,
+                expression: overrides.expression,
+                expressionDirection: overrides.expressionDirection,
+                morph: overrides.morph,
+                morphDirection: overrides.morphDirection,
+                distance: overrides.distance,
+                distanceDirection: overrides.distanceDirection,
+                probability: overrides.probability,
+                ratchet: overrides.ratchet,
+                trigCondition: overrides.trigCondition,
+              });
+            }}
           />
-          <Slider
-            label="Voicing Spread"
-            value={state.voicingSpread}
-            paramKey="voicingSpread"
-            onChange={handleSliderChange}
-            {...sliderProps('voicingSpread')}
-          />
-          <Slider
-            label="Wave Spread"
-            value={state.waveSpread}
-            paramKey="waveSpread"
-            unit="s"
-            onChange={handleSliderChange}
-            {...sliderProps('waveSpread')}
-          />
-          <Slider
-            label="Detune"
-            value={state.detune}
-            paramKey="detune"
-            unit="¢"
-            onChange={handleSliderChange}
-            {...sliderProps('detune')}
-          />
-
-          {/* Synth Chord Sequencer Toggle */}
-          <div style={{ marginTop: '12px', marginBottom: '12px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: '0.85rem', color: '#aaa' }}>Synth Chord Sequencer</span>
-              <button
-                onClick={() => handleSelectChange('synthChordSequencerEnabled', !state.synthChordSequencerEnabled)}
-                style={{
-                  padding: '6px 12px',
-                  borderRadius: '6px',
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontWeight: 'bold',
-                  background: state.synthChordSequencerEnabled !== false
-                    ? 'linear-gradient(135deg, #22c55e, #16a34a)' 
-                    : 'rgba(255, 255, 255, 0.1)',
-                  color: state.synthChordSequencerEnabled !== false ? 'white' : '#9ca3af',
-                  fontSize: '0.75rem',
-                }}
-              >
-                {state.synthChordSequencerEnabled !== false ? '● ON' : '○ OFF'}
-              </button>
-            </div>
-            <div style={{ fontSize: '0.65rem', color: '#666', marginTop: '4px' }}>
-              When off, synth pads won't play chord changes (use with Euclidean synth sources)
-            </div>
-          </div>
-
-          {/* Visual ADSR Curve for Synth */}
-          <div style={{ marginTop: '12px', marginBottom: '8px' }}>
-            <span style={{ fontSize: '0.85rem', color: '#aaa' }}>Synth Envelope (ADSR)</span>
-          </div>
-          <div style={{
-            display: 'flex',
-            alignItems: 'flex-end',
-            gap: '8px',
-            padding: '10px',
-            background: 'rgba(0,0,0,0.3)',
-            borderRadius: '8px',
-            marginBottom: '12px'
-          }}>
-            {/* Attack slider */}
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 }}>
-              <input
-                type="range"
-                className="adsr-vertical"
-                min="0.01"
-                max="8"
-                step="0.01"
-                value={state.synthAttack}
-                onChange={(e) => handleSliderChange('synthAttack', parseFloat(e.target.value))}
-                style={{
-                  writingMode: 'vertical-lr',
-                  direction: 'rtl',
-                  height: '80px',
-                  width: '20px',
-                  cursor: 'pointer',
-                } as React.CSSProperties}
-              />
-              <span style={{ fontSize: '0.7rem', marginTop: '4px', color: '#4a9eff' }}>A</span>
-              <span style={{ fontSize: '0.6rem', color: '#666' }}>{state.synthAttack.toFixed(1)}s</span>
-            </div>
-            {/* Decay slider */}
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 }}>
-              <input
-                type="range"
-                className="adsr-vertical"
-                min="0.01"
-                max="8"
-                step="0.01"
-                value={state.synthDecay}
-                onChange={(e) => handleSliderChange('synthDecay', parseFloat(e.target.value))}
-                style={{
-                  writingMode: 'vertical-lr',
-                  direction: 'rtl',
-                  height: '80px',
-                  width: '20px',
-                  cursor: 'pointer',
-                } as React.CSSProperties}
-              />
-              <span style={{ fontSize: '0.7rem', marginTop: '4px', color: '#9e4aff' }}>D</span>
-              <span style={{ fontSize: '0.6rem', color: '#666' }}>{state.synthDecay.toFixed(1)}s</span>
-            </div>
-            {/* Sustain slider */}
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 }}>
-              <input
-                type="range"
-                className="adsr-vertical"
-                min="0"
-                max="1"
-                step="0.01"
-                value={state.synthSustain}
-                onChange={(e) => handleSliderChange('synthSustain', parseFloat(e.target.value))}
-                style={{
-                  writingMode: 'vertical-lr',
-                  direction: 'rtl',
-                  height: '80px',
-                  width: '20px',
-                  cursor: 'pointer',
-                } as React.CSSProperties}
-              />
-              <span style={{ fontSize: '0.7rem', marginTop: '4px', color: '#4aff9e' }}>S</span>
-              <span style={{ fontSize: '0.6rem', color: '#666' }}>{(state.synthSustain * 100).toFixed(0)}%</span>
-            </div>
-            {/* Release slider */}
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 }}>
-              <input
-                type="range"
-                className="adsr-vertical"
-                min="0.01"
-                max="16"
-                step="0.01"
-                value={state.synthRelease}
-                onChange={(e) => handleSliderChange('synthRelease', parseFloat(e.target.value))}
-                style={{
-                  writingMode: 'vertical-lr',
-                  direction: 'rtl',
-                  height: '80px',
-                  width: '20px',
-                  cursor: 'pointer',
-                } as React.CSSProperties}
-              />
-              <span style={{ fontSize: '0.7rem', marginTop: '4px', color: '#ff9e4a' }}>R</span>
-              <span style={{ fontSize: '0.6rem', color: '#666' }}>{state.synthRelease.toFixed(1)}s</span>
-            </div>
-            {/* Visual ADSR curve preview */}
-            <div style={{ flex: 2, height: '80px', marginLeft: '8px' }}>
-              <svg width="100%" height="100%" viewBox="0 0 100 80" preserveAspectRatio="none">
-                {/* Normalize times for display */}
-                {(() => {
-                  const totalTime = state.synthAttack + state.synthDecay + 2 + state.synthRelease;
-                  const aEnd = (state.synthAttack / totalTime) * 100;
-                  const dEnd = ((state.synthAttack + state.synthDecay) / totalTime) * 100;
-                  const sEnd = ((state.synthAttack + state.synthDecay + 2) / totalTime) * 100;
-                  const sustainY = (1 - state.synthSustain) * 80;
-                  return (
-                    <>
-                      <path
-                        d={`M 0 80 L ${aEnd} 0 L ${dEnd} ${sustainY} L ${sEnd} ${sustainY} L 100 80`}
-                        fill="none"
-                        stroke="rgba(150, 200, 255, 0.8)"
-                        strokeWidth="2"
-                      />
-                      <path
-                        d={`M 0 80 L ${aEnd} 0 L ${dEnd} ${sustainY} L ${sEnd} ${sustainY} L 100 80 Z`}
-                        fill="rgba(100, 150, 255, 0.15)"
-                      />
-                    </>
-                  );
-                })()}
-              </svg>
-            </div>
-          </div>
-          
-          {/* Voice Mask - toggles for which chord voices play */}
-          <div style={{ marginBottom: '12px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
-              <span style={{ fontSize: '0.7rem', opacity: 0.8 }}>Voice Mask</span>
-              <span style={{ fontSize: '0.6rem', color: '#888' }}>
-                {[1, 2, 3, 4, 5, 6].filter(v => (state.synthVoiceMask || 63) & (1 << (v - 1))).join(' ')}
-              </span>
-            </div>
-            <div style={{ display: 'flex', gap: '4px', justifyContent: 'space-between' }}>
-              {[1, 2, 3, 4, 5, 6].map(voice => {
-                const bit = 1 << (voice - 1);
-                const isEnabled = ((state.synthVoiceMask || 63) & bit) !== 0;
-                return (
-                  <button
-                    key={voice}
-                    onClick={() => {
-                      const currentMask = state.synthVoiceMask || 63;
-                      let newMask = currentMask ^ bit; // Toggle the bit
-                      // Ensure at least one voice is enabled
-                      if (newMask === 0) newMask = bit;
-                      handleSliderChange('synthVoiceMask', newMask);
-                    }}
-                    style={{
-                      flex: 1,
-                      padding: '6px 0',
-                      fontSize: '0.75rem',
-                      fontWeight: isEnabled ? 'bold' : 'normal',
-                      color: isEnabled ? '#fff' : '#666',
-                      background: isEnabled 
-                        ? `linear-gradient(135deg, hsl(${210 + voice * 25}, 60%, 35%), hsl(${210 + voice * 25}, 60%, 25%))`
-                        : 'rgba(30, 30, 40, 0.6)',
-                      border: `1px solid ${isEnabled ? `hsl(${210 + voice * 25}, 60%, 50%)` : '#444'}`,
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                      transition: 'all 0.15s ease',
-                    }}
-                    title={`Voice ${voice} (${voice === 1 ? 'Bass' : voice === 6 ? 'High' : 'Mid'})`}
-                  >
-                    {voice}
-                  </button>
-                );
-              })}
-            </div>
-            <div style={{ 
-              display: 'flex', 
-              justifyContent: 'space-between', 
-              marginTop: '2px', 
-              fontSize: '0.55rem', 
-              color: '#555' 
-            }}>
-              <span>Bass</span>
-              <span>High</span>
-            </div>
-          </div>
-          
-          {/* Synth Octave slider */}
-          <div style={{ marginBottom: '12px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
-              <span style={{ fontSize: '0.7rem', opacity: 0.8 }}>Octave</span>
-              <span style={{ fontSize: '0.65rem', color: '#888' }}>
-                {state.synthOctave === 0 ? '0' : (state.synthOctave > 0 ? `+${state.synthOctave}` : state.synthOctave)}
-              </span>
-            </div>
-            <div style={{ display: 'flex', gap: '4px', justifyContent: 'space-between' }}>
-              {[-2, -1, 0, 1, 2].map(oct => {
-                const isSelected = state.synthOctave === oct;
-                return (
-                  <button
-                    key={oct}
-                    onClick={() => handleSliderChange('synthOctave', oct)}
-                    style={{
-                      flex: 1,
-                      padding: '6px 0',
-                      fontSize: '0.75rem',
-                      fontWeight: isSelected ? 'bold' : 'normal',
-                      color: isSelected ? '#fff' : '#666',
-                      background: isSelected 
-                        ? 'linear-gradient(135deg, hsl(260, 50%, 40%), hsl(260, 50%, 30%))'
-                        : 'rgba(30, 30, 40, 0.6)',
-                      border: `1px solid ${isSelected ? 'hsl(260, 50%, 55%)' : '#444'}`,
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                      transition: 'all 0.15s ease',
-                    }}
-                  >
-                    {oct === 0 ? '0' : (oct > 0 ? `+${oct}` : oct)}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </CollapsiblePanel>
-
-        {/* Timbre */}
-        <CollapsiblePanel
-          id="timbre"
-          title="Pad Timbre"
-          isMobile={isMobile}
-          isExpanded={expandedPanels.has('timbre')}
-          onToggle={togglePanel}
-        >
-          <Slider
-            label="Hardness"
-            value={state.hardness}
-            paramKey="hardness"
-            onChange={handleSliderChange}
-            {...sliderProps('hardness')}
-          />
-          <Select
-            label="Osc Brightness"
-            value={String(state.oscBrightness)}
-            options={[
-              { value: '0', label: '0 - Sine (Soft)' },
-              { value: '1', label: '1 - Triangle' },
-              { value: '2', label: '2 - Saw + Tri (Balanced)' },
-              { value: '3', label: '3 - Sawtooth (Bright)' },
-            ]}
-            onChange={(v) => handleSelectChange('oscBrightness', Number(v))}
-          />
-          <Select
-            label="Filter Type"
-            value={state.filterType}
-            options={[
-              { value: 'lowpass', label: 'Lowpass (Warm)' },
-              { value: 'bandpass', label: 'Bandpass (Focused)' },
-              { value: 'highpass', label: 'Highpass (Airy)' },
-              { value: 'notch', label: 'Notch (Scoop)' },
-            ]}
-            onChange={(v) => handleSelectChange('filterType', v)}
-          />
-          <Slider
-            label="Filter Min"
-            value={state.filterCutoffMin}
-            paramKey="filterCutoffMin"
-            unit="Hz"
-            logarithmic
-            onChange={handleSliderChange}
-            {...sliderProps('filterCutoffMin')}
-          />
-          <Slider
-            label="Filter Max"
-            value={state.filterCutoffMax}
-            paramKey="filterCutoffMax"
-            unit="Hz"
-            logarithmic
-            onChange={handleSliderChange}
-            {...sliderProps('filterCutoffMax')}
-          />
-          <Slider
-            label="Filter Mod Speed"
-            value={state.filterModSpeed}
-            paramKey="filterModSpeed"
-            unit=" phrases"
-            onChange={handleSliderChange}
-            {...sliderProps('filterModSpeed')}
-          />
-          <Slider
-            label="Filter Resonance"
-            value={state.filterResonance}
-            paramKey="filterResonance"
-            onChange={handleSliderChange}
-            {...sliderProps('filterResonance')}
-          />
-          <Slider
-            label="Filter Q (Bandwidth)"
-            value={state.filterQ}
-            paramKey="filterQ"
-            onChange={handleSliderChange}
-            {...sliderProps('filterQ')}
-          />
-
-          {/* Filter Visualization */}
-          <div style={{ marginTop: '12px', marginBottom: '12px' }}>
-            <div style={{ fontSize: '0.85rem', color: '#aaa', marginBottom: '8px' }}>Filter Response (Mod Range)</div>
-            <div style={{
-              height: '100px',
-              background: 'rgba(0,0,0,0.3)',
-              borderRadius: '8px',
-              padding: '8px',
-              position: 'relative',
-              overflow: 'hidden'
-            }}>
-              <svg width="100%" height="100%" viewBox="0 0 200 80" preserveAspectRatio="none">
-                {(() => {
-                  // Calculate min/max cutoff positions (log scale: 40Hz-8000Hz mapped to 0-200)
-                  const minFreq = 40;
-                  const maxFreq = 8000;
-                  const freqToX = (freq: number) => (Math.log(Math.max(minFreq, freq) / minFreq) / Math.log(maxFreq / minFreq)) * 200;
-                  
-                  const minCutoffX = freqToX(state.filterCutoffMin);
-                  const maxCutoffX = freqToX(state.filterCutoffMax);
-                  const liveX = freqToX(liveFilterFreq);
-                  
-                  // Resonance affects the peak height (0-1 mapped to 0-15px boost, capped)
-                  const resPeak = Math.min(state.filterResonance * 15, 20);
-                  
-                  // Q affects the slope/bandwidth - cap the effect to prevent extreme values
-                  const qFactor = Math.min(state.filterQ, 12);
-                  const slopeSharpness = Math.min(5 + qFactor * 1.5, 25); // Cap sharpness
-                  
-                  // Generate filter curve paths based on filter type
-                  const baseY = 30; // Top of the response (0dB)
-                  const floorY = 70; // Bottom (attenuated)
-                  
-                  // Helper to generate a single filter curve
-                  const generateCurve = (cutoffX: number): string => {
-                    let pathD = '';
-                    if (state.filterType === 'lowpass') {
-                      const dropWidth = Math.max(15, 35 - qFactor * 1.5);
-                      pathD = `M 0 ${baseY} 
-                               L ${Math.max(0, cutoffX - 15)} ${baseY} 
-                               Q ${cutoffX - 5} ${baseY} ${cutoffX} ${baseY - resPeak}
-                               Q ${cutoffX + slopeSharpness * 0.5} ${baseY + 5} ${Math.min(200, cutoffX + dropWidth)} ${floorY - 5}
-                               L 200 ${floorY}`;
-                    } else if (state.filterType === 'highpass') {
-                      const riseWidth = Math.max(15, 35 - qFactor * 1.5);
-                      pathD = `M 0 ${floorY} 
-                               L ${Math.max(0, cutoffX - riseWidth)} ${floorY - 5}
-                               Q ${cutoffX - slopeSharpness * 0.5} ${baseY + 5} ${cutoffX} ${baseY - resPeak}
-                               Q ${cutoffX + 5} ${baseY} ${Math.min(200, cutoffX + 15)} ${baseY}
-                               L 200 ${baseY}`;
-                    } else if (state.filterType === 'bandpass') {
-                      const width = Math.max(20, 50 - qFactor * 3);
-                      pathD = `M 0 ${floorY} 
-                               L ${Math.max(0, cutoffX - width)} ${floorY - 5}
-                               Q ${cutoffX - width * 0.4} ${baseY + 8} ${cutoffX} ${baseY - resPeak}
-                               Q ${cutoffX + width * 0.4} ${baseY + 8} ${Math.min(200, cutoffX + width)} ${floorY - 5}
-                               L 200 ${floorY}`;
-                    } else if (state.filterType === 'notch') {
-                      const width = Math.max(15, 40 - qFactor * 2);
-                      pathD = `M 0 ${baseY}
-                               L ${Math.max(0, cutoffX - width)} ${baseY}
-                               Q ${cutoffX - width * 0.3} ${baseY} ${cutoffX} ${floorY}
-                               Q ${cutoffX + width * 0.3} ${baseY} ${Math.min(200, cutoffX + width)} ${baseY}
-                               L 200 ${baseY}`;
-                    }
-                    return pathD;
-                  };
-                  
-                  const minPath = generateCurve(minCutoffX);
-                  const maxPath = generateCurve(maxCutoffX);
-                  
-                  return (
-                    <>
-                      {/* Grid lines */}
-                      <line x1="0" y1="40" x2="200" y2="40" stroke="rgba(255,255,255,0.1)" strokeWidth="0.5" />
-                      
-                      {/* Modulation range indicator */}
-                      <rect 
-                        x={minCutoffX} 
-                        y="0" 
-                        width={Math.max(2, maxCutoffX - minCutoffX)} 
-                        height="80" 
-                        fill="rgba(100,180,255,0.15)"
-                      />
-                      
-                      {/* Min cutoff line */}
-                      <line x1={minCutoffX} y1="0" x2={minCutoffX} y2="80" stroke="rgba(100,180,255,0.5)" strokeWidth="1" strokeDasharray="3,3" />
-                      
-                      {/* Max cutoff line */}
-                      <line x1={maxCutoffX} y1="0" x2={maxCutoffX} y2="80" stroke="rgba(255,180,100,0.5)" strokeWidth="1" strokeDasharray="3,3" />
-                      
-                      {/* Live filter position - bright green dotted line */}
-                      {engineState.isRunning && (
-                        <line 
-                          x1={liveX} 
-                          y1="0" 
-                          x2={liveX} 
-                          y2="80" 
-                          stroke="rgb(0,255,150)" 
-                          strokeWidth="1" 
-                          strokeDasharray="4,4"
-                        />
-                      )}
-                      
-                      {/* Filter curve at min cutoff (faded) */}
-                      <path
-                        d={minPath}
-                        fill="none"
-                        stroke="rgba(100, 180, 255, 0.5)"
-                        strokeWidth="1.5"
-                      />
-                      
-                      {/* Filter curve at max cutoff */}
-                      <path
-                        d={maxPath}
-                        fill="none"
-                        stroke="rgba(255, 180, 100, 0.9)"
-                        strokeWidth="2"
-                      />
-                      {/* Fill under max curve */}
-                      <path
-                        d={maxPath + ` L 200 80 L 0 80 Z`}
-                        fill="rgba(255, 180, 100, 0.1)"
-                      />
-                      
-                      {/* Labels */}
-                      <text 
-                        x={Math.min(170, Math.max(10, minCutoffX))} 
-                        y="78" 
-                        fill="rgba(100,180,255,0.8)" 
-                        fontSize="7" 
-                        textAnchor="middle"
-                      >
-                        {state.filterCutoffMin}
-                      </text>
-                      <text 
-                        x={Math.min(190, Math.max(30, maxCutoffX))} 
-                        y="78" 
-                        fill="rgba(255,180,100,0.8)" 
-                        fontSize="7" 
-                        textAnchor="middle"
-                      >
-                        {state.filterCutoffMax}
-                      </text>
-                      
-                      {/* Q indicator */}
-                      <text 
-                        x="190" 
-                        y="12" 
-                        fill="rgba(150,200,255,0.6)" 
-                        fontSize="7" 
-                        textAnchor="end"
-                      >
-                        Q:{state.filterQ.toFixed(1)}
-                      </text>
-                      
-                      {/* Mod speed indicator */}
-                      <text 
-                        x="5" 
-                        y="12" 
-                        fill="rgba(180,255,180,0.7)" 
-                        fontSize="7" 
-                        textAnchor="start"
-                      >
-                        ~{state.filterModSpeed.toFixed(1)} phrases
-                      </text>
-                    </>
-                  );
-                })()}
-              </svg>
-              {/* Live frequency display - outside SVG for performance */}
-              {engineState.isRunning && (
-                <div style={{
-                  position: 'absolute',
-                  top: '10px',
-                  left: '50%',
-                  transform: 'translateX(-50%)',
-                  color: 'rgb(0,255,150)',
-                  fontSize: '14px',
-                  fontWeight: 'bold',
-                  textShadow: '0 0 10px rgba(0,255,150,0.5)'
-                }}>
-                  {Math.round(liveFilterFreq)} Hz
-                </div>
-              )}
-              {/* Frequency axis labels */}
-              <div style={{
-                position: 'absolute',
-                bottom: '2px',
-                left: '8px',
-                right: '8px',
-                display: 'flex',
-                justifyContent: 'space-between',
-                fontSize: '0.6rem',
-                color: 'rgba(255,255,255,0.3)'
-              }}>
-                <span>40Hz</span>
-                <span>500Hz</span>
-                <span>8kHz</span>
-              </div>
-            </div>
-          </div>
-
-          <Slider
-            label="Warmth"
-            value={state.warmth}
-            paramKey="warmth"
-            onChange={handleSliderChange}
-            {...sliderProps('warmth')}
-          />
-          <Slider
-            label="Presence"
-            value={state.presence}
-            paramKey="presence"
-            onChange={handleSliderChange}
-            {...sliderProps('presence')}
-          />
-          <Slider
-            label="Air / Noise"
-            value={state.airNoise}
-            paramKey="airNoise"
-            onChange={handleSliderChange}
-            {...sliderProps('airNoise')}
-          />
-        </CollapsiblePanel>
-        </>)}
+        )}
 
         {/* === FX TAB === */}
         {activeTab === 'fx' && (<>
@@ -6423,1134 +6166,6 @@ const App: React.FC = () => {
         </CollapsiblePanel>
         </>)}
 
-        {/* === LEAD TAB === */}
-        {activeTab === 'lead' && (<>
-        {/* Lead Synth (4op FM Preset Morph) */}
-        <CollapsiblePanel
-          id="lead"
-          title="Lead Synth"
-          isMobile={isMobile}
-          isExpanded={expandedPanels.has('lead')}
-          onToggle={togglePanel}
-        >
-          {/* Enable toggle */}
-          <div className="app-slider-group" style={styles.sliderGroup}>
-            <div className="app-slider-label" style={styles.sliderLabel}>
-              <span>Lead Enabled</span>
-              <span style={{ 
-                color: state.leadEnabled ? '#10b981' : '#6b7280',
-                fontWeight: 'bold'
-              }}>
-                {state.leadEnabled ? 'ON' : 'OFF'}
-              </span>
-            </div>
-            <button
-              onClick={() => handleSelectChange('leadEnabled', !state.leadEnabled)}
-              style={{
-                width: '100%',
-                padding: '10px',
-                borderRadius: '6px',
-                border: 'none',
-                cursor: 'pointer',
-                fontWeight: 'bold',
-                background: state.leadEnabled 
-                  ? 'linear-gradient(135deg, #10b981, #059669)' 
-                  : 'rgba(255, 255, 255, 0.1)',
-                color: state.leadEnabled ? 'white' : '#9ca3af',
-                transition: 'all 0.2s',
-              }}
-            >
-              {state.leadEnabled ? '● Playing' : '○ Stopped'}
-            </button>
-          </div>
-
-          <Slider
-            label="Note Density"
-            value={state.lead1Density}
-            paramKey="lead1Density"
-            unit="/phrase"
-            onChange={handleSliderChange}
-            {...sliderProps('lead1Density')}
-          />
-
-          <Slider
-            label="Octave Offset"
-            value={state.lead1Octave}
-            paramKey="lead1Octave"
-            onChange={handleSliderChange}
-            {...sliderProps('lead1Octave')}
-          />
-
-          <Slider
-            label="Octave Range"
-            value={state.lead1OctaveRange}
-            paramKey="lead1OctaveRange"
-            unit=" oct"
-            onChange={handleSliderChange}
-            {...sliderProps('lead1OctaveRange')}
-          />
-
-          {/* ═══ Lead 1: Preset A ↔ B Morph ═══ */}
-          <div style={{ marginTop: '12px', marginBottom: '8px' }}>
-            <span style={{ fontSize: '0.85rem', color: '#f59e0b', fontWeight: 'bold' }}>Lead 1 — Preset Morph</span>
-          </div>
-          <div style={{
-            padding: '12px',
-            background: 'rgba(0,0,0,0.3)',
-            borderRadius: '8px',
-            marginBottom: '12px'
-          }}>
-            {/* Preset A / B selectors */}
-            <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: '0.7rem', color: '#f59e0b', marginBottom: '4px' }}>Preset A</div>
-                <select
-                  value={state.lead1PresetA}
-                  onChange={(e) => handleSelectChange('lead1PresetA', e.target.value)}
-                  style={{
-                    width: '100%', padding: '6px', borderRadius: '4px',
-                    background: 'rgba(255,255,255,0.08)', color: '#ddd',
-                    border: '1px solid rgba(245,158,11,0.3)', fontSize: '0.8rem',
-                  }}
-                >
-                  {lead4opPresets.map(p => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: '0.7rem', color: '#8b5cf6', marginBottom: '4px' }}>Preset B</div>
-                <select
-                  value={state.lead1PresetB}
-                  onChange={(e) => handleSelectChange('lead1PresetB', e.target.value)}
-                  style={{
-                    width: '100%', padding: '6px', borderRadius: '4px',
-                    background: 'rgba(255,255,255,0.08)', color: '#ddd',
-                    border: '1px solid rgba(139,92,246,0.3)', fontSize: '0.8rem',
-                  }}
-                >
-                  {lead4opPresets.map(p => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <Slider
-              label="Morph A→B"
-              value={state.lead1Morph}
-              paramKey="lead1Morph"
-              onChange={handleSliderChange}
-              {...sliderProps('lead1Morph')}
-            />
-
-            {/* Random walk controls */}
-            <div style={{ display: 'flex', gap: '8px', marginTop: '8px', alignItems: 'center' }}>
-              <button
-                onClick={() => handleSelectChange('lead1MorphAuto', !state.lead1MorphAuto)}
-                style={{
-                  padding: '4px 10px', borderRadius: '4px', border: 'none', cursor: 'pointer',
-                  fontSize: '0.75rem', fontWeight: 'bold',
-                  background: state.lead1MorphAuto ? 'linear-gradient(135deg, #f59e0b, #8b5cf6)' : 'rgba(255,255,255,0.1)',
-                  color: state.lead1MorphAuto ? '#fff' : '#888',
-                }}
-              >
-                {state.lead1MorphAuto ? '● Random Walk' : '○ Random Walk'}
-              </button>
-              <div style={{ flex: 1 }}>
-                <Slider
-                  label="Speed"
-                  value={state.lead1MorphSpeed}
-                  paramKey="lead1MorphSpeed"
-                  unit=" phr"
-                  onChange={handleSliderChange}
-                  {...sliderProps('lead1MorphSpeed')}
-                />
-              </div>
-            </div>
-
-            {/* Algorithm mode */}
-            <div style={{ display: 'flex', gap: '8px', marginTop: '8px', alignItems: 'center' }}>
-              <span style={{ fontSize: '0.7rem', color: '#888' }}>Algorithm:</span>
-              <button
-                onClick={() => handleSelectChange('lead1AlgorithmMode', state.lead1AlgorithmMode === 'snap' ? 'presetA' : 'snap')}
-                style={{
-                  padding: '3px 8px', borderRadius: '4px', border: 'none', cursor: 'pointer',
-                  fontSize: '0.7rem',
-                  background: state.lead1AlgorithmMode === 'snap' ? 'rgba(245,158,11,0.2)' : 'rgba(139,92,246,0.2)',
-                  color: state.lead1AlgorithmMode === 'snap' ? '#f59e0b' : '#8b5cf6',
-                }}
-              >
-                {state.lead1AlgorithmMode === 'snap' ? 'Snap @ 50%' : 'Always A'}
-              </button>
-            </div>
-
-            {/* Level */}
-            <Slider
-              label="Lead 1 Level"
-              value={state.lead1Level}
-              paramKey="lead1Level"
-              onChange={handleSliderChange}
-              {...sliderProps('lead1Level')}
-            />
-
-            {/* ADSR (Preset or Custom) */}
-            {(() => {
-              const mp = audioEngine.getLeadMorphedParams(1);
-              const env = mp
-                ? {
-                    attack: mp.attack,
-                    decay: mp.decay,
-                    sustain: mp.sustain,
-                    release: mp.release,
-                  }
-                : null;
-              const useCustomAdsr = state.lead1UseCustomAdsr;
-              const hasPresetEnv = (
-                !!env &&
-                typeof env.attack === 'number' &&
-                typeof env.decay === 'number' &&
-                typeof env.sustain === 'number' &&
-                typeof env.release === 'number' &&
-                Number.isFinite(env.attack) &&
-                Number.isFinite(env.decay) &&
-                Number.isFinite(env.sustain) &&
-                Number.isFinite(env.release)
-              );
-              const customEnv = {
-                attack: state.lead1Attack,
-                decay: state.lead1Decay,
-                sustain: state.lead1Sustain,
-                release: state.lead1Release,
-              };
-              const safeEnv = useCustomAdsr
-                ? customEnv
-                : hasPresetEnv
-                ? env
-                : customEnv;
-
-              if (
-                typeof safeEnv.attack !== 'number' ||
-                typeof safeEnv.decay !== 'number' ||
-                typeof safeEnv.sustain !== 'number' ||
-                typeof safeEnv.release !== 'number' ||
-                !Number.isFinite(safeEnv.attack) ||
-                !Number.isFinite(safeEnv.decay) ||
-                !Number.isFinite(safeEnv.sustain) ||
-                !Number.isFinite(safeEnv.release)
-              ) {
-                return null;
-              }
-
-              const totalTime = safeEnv.attack + safeEnv.decay + state.lead1Hold + safeEnv.release;
-              const safeTotal = totalTime > 0 ? totalTime : 0.001;
-              const aEnd = (safeEnv.attack / safeTotal) * 100;
-              const dEnd = ((safeEnv.attack + safeEnv.decay) / safeTotal) * 100;
-              const sEnd = ((safeEnv.attack + safeEnv.decay + state.lead1Hold) / safeTotal) * 100;
-              const sustainY = (1 - Math.min(1, Math.max(0, safeEnv.sustain))) * 50;
-              const sourceLabel = useCustomAdsr ? 'custom' : (hasPresetEnv ? 'from preset' : 'fallback');
-
-              return (
-                <div style={{ marginTop: '8px' }}>
-                  <div style={{ display: 'flex', gap: '6px', marginBottom: '6px' }}>
-                    <button
-                      onClick={() => handleSelectChange('lead1UseCustomAdsr', false)}
-                      style={{
-                        padding: '3px 8px', borderRadius: '4px', border: 'none', cursor: 'pointer',
-                        fontSize: '0.7rem',
-                        background: !useCustomAdsr ? 'rgba(245,158,11,0.2)' : 'rgba(255,255,255,0.08)',
-                        color: !useCustomAdsr ? '#f59e0b' : '#999',
-                      }}
-                    >
-                      Preset ADSR
-                    </button>
-                    <button
-                      onClick={() => handleSelectChange('lead1UseCustomAdsr', true)}
-                      style={{
-                        padding: '3px 8px', borderRadius: '4px', border: 'none', cursor: 'pointer',
-                        fontSize: '0.7rem',
-                        background: useCustomAdsr ? 'rgba(245,158,11,0.2)' : 'rgba(255,255,255,0.08)',
-                        color: useCustomAdsr ? '#f59e0b' : '#999',
-                      }}
-                    >
-                      Custom ADSR
-                    </button>
-                  </div>
-                  <div style={{ fontSize: '0.7rem', color: '#666', marginBottom: '4px' }}>
-                    Envelope ({sourceLabel}) — A:{safeEnv.attack.toFixed(3)}s D:{safeEnv.decay.toFixed(2)}s S:{(safeEnv.sustain * 100).toFixed(0)}% R:{safeEnv.release.toFixed(2)}s
-                  </div>
-                  <svg width="100%" height="40" viewBox="0 0 100 50" preserveAspectRatio="none" style={{ opacity: 0.7 }}>
-                    <path
-                      d={`M 0 50 L ${aEnd} 0 L ${dEnd} ${sustainY} L ${sEnd} ${sustainY} L 100 50`}
-                      fill="none" stroke="rgba(245,158,11,0.8)" strokeWidth="1.5"
-                    />
-                    <path
-                      d={`M 0 50 L ${aEnd} 0 L ${dEnd} ${sustainY} L ${sEnd} ${sustainY} L 100 50 Z`}
-                      fill="rgba(245,158,11,0.1)"
-                    />
-                  </svg>
-                  {useCustomAdsr && (
-                    <div style={{ marginTop: '8px' }}>
-                      <Slider
-                        label="Attack"
-                        value={state.lead1Attack}
-                        paramKey="lead1Attack"
-                        unit="s"
-                        onChange={handleSliderChange}
-                        {...sliderProps('lead1Attack')}
-                      />
-                      <Slider
-                        label="Decay"
-                        value={state.lead1Decay}
-                        paramKey="lead1Decay"
-                        unit="s"
-                        onChange={handleSliderChange}
-                        {...sliderProps('lead1Decay')}
-                      />
-                      <Slider
-                        label="Sustain"
-                        value={state.lead1Sustain}
-                        paramKey="lead1Sustain"
-                        onChange={handleSliderChange}
-                        {...sliderProps('lead1Sustain')}
-                      />
-                      <Slider
-                        label="Release"
-                        value={state.lead1Release}
-                        paramKey="lead1Release"
-                        unit="s"
-                        onChange={handleSliderChange}
-                        {...sliderProps('lead1Release')}
-                      />
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
-          </div>
-
-          {/* ═══ Lead 2: Preset C ↔ D Morph ═══ */}
-          <div style={{ marginTop: '16px', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '0.85rem', color: '#06b6d4', fontWeight: 'bold' }}>Lead 2 — Preset Morph</span>
-            <button
-              onClick={() => handleSelectChange('lead2Enabled', !state.lead2Enabled)}
-              style={{
-                padding: '2px 8px', borderRadius: '4px', border: 'none', cursor: 'pointer',
-                fontSize: '0.7rem', fontWeight: 'bold',
-                background: state.lead2Enabled ? 'linear-gradient(135deg, #06b6d4, #0284c7)' : 'rgba(255,255,255,0.1)',
-                color: state.lead2Enabled ? '#fff' : '#888',
-              }}
-            >
-              {state.lead2Enabled ? '● ON' : '○ OFF'}
-            </button>
-          </div>
-          {state.lead2Enabled && (
-          <div style={{
-            padding: '12px',
-            background: 'rgba(0,0,0,0.3)',
-            borderRadius: '8px',
-            marginBottom: '12px'
-          }}>
-            {/* Preset C / D selectors */}
-            <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: '0.7rem', color: '#06b6d4', marginBottom: '4px' }}>Preset C</div>
-                <select
-                  value={state.lead2PresetC}
-                  onChange={(e) => handleSelectChange('lead2PresetC', e.target.value)}
-                  style={{
-                    width: '100%', padding: '6px', borderRadius: '4px',
-                    background: 'rgba(255,255,255,0.08)', color: '#ddd',
-                    border: '1px solid rgba(6,182,212,0.3)', fontSize: '0.8rem',
-                  }}
-                >
-                  {lead4opPresets.map(p => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: '0.7rem', color: '#a78bfa', marginBottom: '4px' }}>Preset D</div>
-                <select
-                  value={state.lead2PresetD}
-                  onChange={(e) => handleSelectChange('lead2PresetD', e.target.value)}
-                  style={{
-                    width: '100%', padding: '6px', borderRadius: '4px',
-                    background: 'rgba(255,255,255,0.08)', color: '#ddd',
-                    border: '1px solid rgba(167,139,250,0.3)', fontSize: '0.8rem',
-                  }}
-                >
-                  {lead4opPresets.map(p => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <Slider
-              label="Morph A→B"
-              value={state.lead2Morph}
-              paramKey="lead2Morph"
-              onChange={handleSliderChange}
-              {...sliderProps('lead2Morph')}
-            />
-
-            {/* Random walk controls */}
-            <div style={{ display: 'flex', gap: '8px', marginTop: '8px', alignItems: 'center' }}>
-              <button
-                onClick={() => handleSelectChange('lead2MorphAuto', !state.lead2MorphAuto)}
-                style={{
-                  padding: '4px 10px', borderRadius: '4px', border: 'none', cursor: 'pointer',
-                  fontSize: '0.75rem', fontWeight: 'bold',
-                  background: state.lead2MorphAuto ? 'linear-gradient(135deg, #06b6d4, #a78bfa)' : 'rgba(255,255,255,0.1)',
-                  color: state.lead2MorphAuto ? '#fff' : '#888',
-                }}
-              >
-                {state.lead2MorphAuto ? '● Random Walk' : '○ Random Walk'}
-              </button>
-              <div style={{ flex: 1 }}>
-                <Slider
-                  label="Speed"
-                  value={state.lead2MorphSpeed}
-                  paramKey="lead2MorphSpeed"
-                  unit=" phr"
-                  onChange={handleSliderChange}
-                  {...sliderProps('lead2MorphSpeed')}
-                />
-              </div>
-            </div>
-
-            {/* Algorithm mode */}
-            <div style={{ display: 'flex', gap: '8px', marginTop: '8px', alignItems: 'center' }}>
-              <span style={{ fontSize: '0.7rem', color: '#888' }}>Algorithm:</span>
-              <button
-                onClick={() => handleSelectChange('lead2AlgorithmMode', state.lead2AlgorithmMode === 'snap' ? 'presetA' : 'snap')}
-                style={{
-                  padding: '3px 8px', borderRadius: '4px', border: 'none', cursor: 'pointer',
-                  fontSize: '0.7rem',
-                  background: state.lead2AlgorithmMode === 'snap' ? 'rgba(6,182,212,0.2)' : 'rgba(167,139,250,0.2)',
-                  color: state.lead2AlgorithmMode === 'snap' ? '#06b6d4' : '#a78bfa',
-                }}
-              >
-                {state.lead2AlgorithmMode === 'snap' ? 'Snap @ 50%' : 'Always C'}
-              </button>
-            </div>
-
-            {/* Level */}
-            <Slider
-              label="Lead 2 Level"
-              value={state.lead2Level}
-              paramKey="lead2Level"
-              onChange={handleSliderChange}
-              {...sliderProps('lead2Level')}
-            />
-
-            {/* ADSR (Preset or Custom) */}
-            {(() => {
-              const mp = audioEngine.getLeadMorphedParams(2);
-              const env = mp
-                ? {
-                    attack: mp.attack,
-                    decay: mp.decay,
-                    sustain: mp.sustain,
-                    release: mp.release,
-                  }
-                : null;
-              const useCustomAdsr = state.lead1UseCustomAdsr;
-              const hasPresetEnv = (
-                !!env &&
-                typeof env.attack === 'number' &&
-                typeof env.decay === 'number' &&
-                typeof env.sustain === 'number' &&
-                typeof env.release === 'number' &&
-                Number.isFinite(env.attack) &&
-                Number.isFinite(env.decay) &&
-                Number.isFinite(env.sustain) &&
-                Number.isFinite(env.release)
-              );
-              const customEnv = {
-                attack: state.lead1Attack,
-                decay: state.lead1Decay,
-                sustain: state.lead1Sustain,
-                release: state.lead1Release,
-              };
-              const safeEnv = useCustomAdsr
-                ? customEnv
-                : hasPresetEnv
-                ? env
-                : customEnv;
-
-              if (
-                typeof safeEnv.attack !== 'number' ||
-                typeof safeEnv.decay !== 'number' ||
-                typeof safeEnv.sustain !== 'number' ||
-                typeof safeEnv.release !== 'number' ||
-                !Number.isFinite(safeEnv.attack) ||
-                !Number.isFinite(safeEnv.decay) ||
-                !Number.isFinite(safeEnv.sustain) ||
-                !Number.isFinite(safeEnv.release)
-              ) {
-                return null;
-              }
-
-              const totalTime = safeEnv.attack + safeEnv.decay + state.lead1Hold + safeEnv.release;
-              const safeTotal = totalTime > 0 ? totalTime : 0.001;
-              const aEnd = (safeEnv.attack / safeTotal) * 100;
-              const dEnd = ((safeEnv.attack + safeEnv.decay) / safeTotal) * 100;
-              const sEnd = ((safeEnv.attack + safeEnv.decay + state.lead1Hold) / safeTotal) * 100;
-              const sustainY = (1 - Math.min(1, Math.max(0, safeEnv.sustain))) * 50;
-              const sourceLabel = useCustomAdsr ? 'custom' : (hasPresetEnv ? 'from preset' : 'fallback');
-              return (
-                <div style={{ marginTop: '8px' }}>
-                  <div style={{ display: 'flex', gap: '6px', marginBottom: '6px' }}>
-                    <button
-                      onClick={() => handleSelectChange('lead1UseCustomAdsr', false)}
-                      style={{
-                        padding: '3px 8px', borderRadius: '4px', border: 'none', cursor: 'pointer',
-                        fontSize: '0.7rem',
-                        background: !useCustomAdsr ? 'rgba(6,182,212,0.2)' : 'rgba(255,255,255,0.08)',
-                        color: !useCustomAdsr ? '#06b6d4' : '#999',
-                      }}
-                    >
-                      Preset ADSR
-                    </button>
-                    <button
-                      onClick={() => handleSelectChange('lead1UseCustomAdsr', true)}
-                      style={{
-                        padding: '3px 8px', borderRadius: '4px', border: 'none', cursor: 'pointer',
-                        fontSize: '0.7rem',
-                        background: useCustomAdsr ? 'rgba(6,182,212,0.2)' : 'rgba(255,255,255,0.08)',
-                        color: useCustomAdsr ? '#06b6d4' : '#999',
-                      }}
-                    >
-                      Custom ADSR
-                    </button>
-                  </div>
-                  <div style={{ fontSize: '0.7rem', color: '#666', marginBottom: '4px' }}>
-                    Envelope ({sourceLabel}) — A:{safeEnv.attack.toFixed(3)}s D:{safeEnv.decay.toFixed(2)}s S:{(safeEnv.sustain*100).toFixed(0)}% R:{safeEnv.release.toFixed(2)}s
-                  </div>
-                  <svg width="100%" height="40" viewBox="0 0 100 50" preserveAspectRatio="none" style={{ opacity: 0.7 }}>
-                    <path
-                      d={`M 0 50 L ${aEnd} 0 L ${dEnd} ${sustainY} L ${sEnd} ${sustainY} L 100 50`}
-                      fill="none" stroke="rgba(6,182,212,0.8)" strokeWidth="1.5"
-                    />
-                    <path
-                      d={`M 0 50 L ${aEnd} 0 L ${dEnd} ${sustainY} L ${sEnd} ${sustainY} L 100 50 Z`}
-                      fill="rgba(6,182,212,0.1)"
-                    />
-                  </svg>
-                  {useCustomAdsr && (
-                    <div style={{ marginTop: '8px' }}>
-                      <Slider
-                        label="Attack"
-                        value={state.lead1Attack}
-                        paramKey="lead1Attack"
-                        unit="s"
-                        onChange={handleSliderChange}
-                        {...sliderProps('lead1Attack')}
-                      />
-                      <Slider
-                        label="Decay"
-                        value={state.lead1Decay}
-                        paramKey="lead1Decay"
-                        unit="s"
-                        onChange={handleSliderChange}
-                        {...sliderProps('lead1Decay')}
-                      />
-                      <Slider
-                        label="Sustain"
-                        value={state.lead1Sustain}
-                        paramKey="lead1Sustain"
-                        onChange={handleSliderChange}
-                        {...sliderProps('lead1Sustain')}
-                      />
-                      <Slider
-                        label="Release"
-                        value={state.lead1Release}
-                        paramKey="lead1Release"
-                        unit="s"
-                        onChange={handleSliderChange}
-                        {...sliderProps('lead1Release')}
-                      />
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
-          </div>
-          )}
-
-          {/* Shared Hold (not in presets) */}
-          <Slider
-            label="Hold Time"
-            value={state.lead1Hold}
-            paramKey="lead1Hold"
-            unit="s"
-            onChange={handleSliderChange}
-            {...sliderProps('lead1Hold')}
-          />
-
-          {/* Expression Section - per-note random ranges with trigger indicator */}
-          <div style={{ marginTop: '12px', borderTop: '1px solid #333', paddingTop: '12px' }}>
-            <div style={{ fontSize: '0.85rem', color: '#888', marginBottom: '12px' }}>Expression (per note)</div>
-            
-            <Slider
-              label="Vibrato Depth"
-              value={state.leadVibratoDepth}
-              paramKey="leadVibratoDepth"
-              unit=" st"
-              onChange={handleSliderChange}
-              {...sliderProps('leadVibratoDepth')}
-            />
-
-            <Slider
-              label="Vibrato Rate"
-              value={state.leadVibratoRate}
-              paramKey="leadVibratoRate"
-              unit=" Hz"
-              onChange={handleSliderChange}
-              {...sliderProps('leadVibratoRate')}
-            />
-
-            <Slider
-              label="Glide"
-              value={state.leadGlide}
-              paramKey="leadGlide"
-              onChange={handleSliderChange}
-              {...sliderProps('leadGlide')}
-            />
-          </div>
-
-          {/* Delay Section - per-note random ranges with trigger indicator */}
-          <div style={{ marginTop: '12px', borderTop: '1px solid #333', paddingTop: '12px' }}>
-            <div style={{ fontSize: '0.85rem', color: '#888', marginBottom: '12px' }}>Delay Effect (per note)</div>
-            
-            <Slider
-              label="Delay Time"
-              value={state.leadDelayTime}
-              paramKey="leadDelayTime"
-              unit=" ms"
-              onChange={handleSliderChange}
-              {...sliderProps('leadDelayTime')}
-            />
-
-            <Slider
-              label="Delay Feedback"
-              value={state.leadDelayFeedback}
-              paramKey="leadDelayFeedback"
-              onChange={handleSliderChange}
-              {...sliderProps('leadDelayFeedback')}
-            />
-
-            <Slider
-              label="Delay Mix"
-              value={state.leadDelayMix}
-              paramKey="leadDelayMix"
-              onChange={handleSliderChange}
-              {...sliderProps('leadDelayMix')}
-            />
-          </div>
-        </CollapsiblePanel>
-
-        {/* Euclidean Polyrhythm Sequencer */}
-        <CollapsiblePanel
-          id="euclidean"
-          title="Euclidean Sequencer"
-          isMobile={isMobile}
-          isExpanded={expandedPanels.has('euclidean')}
-          onToggle={togglePanel}
-        >
-            
-          {/* Master Enable toggle */}
-          <div className="app-slider-group" style={styles.sliderGroup}>
-            <div className="app-slider-label" style={styles.sliderLabel}>
-              <span>Euclidean Mode</span>
-              <span style={{ 
-                color: state.leadEuclideanMasterEnabled ? '#8b5cf6' : '#6b7280',
-                fontWeight: 'bold'
-              }}>
-                {state.leadEuclideanMasterEnabled ? 'ON' : 'OFF'}
-              </span>
-            </div>
-            <button
-              onClick={() => handleSelectChange('leadEuclideanMasterEnabled', !state.leadEuclideanMasterEnabled)}
-              style={{
-                width: '100%',
-                padding: '10px',
-                borderRadius: '6px',
-                border: 'none',
-                cursor: 'pointer',
-                fontWeight: 'bold',
-                background: state.leadEuclideanMasterEnabled 
-                  ? 'linear-gradient(135deg, #8b5cf6, #7c3aed)' 
-                  : 'rgba(255, 255, 255, 0.1)',
-                color: state.leadEuclideanMasterEnabled ? 'white' : '#9ca3af',
-                transition: 'all 0.2s',
-              }}
-            >
-              {state.leadEuclideanMasterEnabled ? '● Active - Using Patterns' : '○ Inactive - Lead Uses Random'}
-            </button>
-          </div>
-          <div style={{ fontSize: '0.65rem', color: '#666', marginTop: '4px', marginBottom: '12px' }}>
-            When ON, enabled lanes trigger notes. When OFF, Lead synth uses random timing.
-          </div>
-
-          {/* Tempo control */}
-          <Slider
-            label="Pattern Tempo"
-            value={state.leadEuclideanTempo}
-            paramKey="leadEuclideanTempo"
-            unit="x"
-            onChange={handleSliderChange}
-          />
-          <div style={{ fontSize: '0.65rem', color: '#666', marginTop: '-8px', marginBottom: '12px' }}>
-            Speed multiplier for all lanes
-          </div>
-
-          {/* 4 Lane Controls */}
-          {[1, 2, 3, 4].map((laneNum) => {
-            const laneColors = ['#f59e0b', '#10b981', '#3b82f6', '#ec4899'];
-            const laneColor = laneColors[laneNum - 1];
-            const enabledKey = `leadEuclid${laneNum}Enabled` as keyof typeof state;
-            const presetKey = `leadEuclid${laneNum}Preset` as keyof typeof state;
-            const stepsKey = `leadEuclid${laneNum}Steps` as keyof typeof state;
-            const hitsKey = `leadEuclid${laneNum}Hits` as keyof typeof state;
-            const rotationKey = `leadEuclid${laneNum}Rotation` as keyof typeof state;
-            const noteMinKey = `leadEuclid${laneNum}NoteMin` as keyof typeof state;
-            const noteMaxKey = `leadEuclid${laneNum}NoteMax` as keyof typeof state;
-            const levelKey = `leadEuclid${laneNum}Level` as keyof typeof state;
-            const probabilityKey = `leadEuclid${laneNum}Probability` as keyof typeof state;
-            const sourceKey = `leadEuclid${laneNum}Source` as keyof typeof state;
-            
-            const isEnabled = state[enabledKey] as boolean;
-            const preset = state[presetKey] as string;
-            const steps = state[stepsKey] as number;
-            const hits = state[hitsKey] as number;
-            const rotation = state[rotationKey] as number;
-            const noteMin = state[noteMinKey] as number;
-            const noteMax = state[noteMaxKey] as number;
-            const level = state[levelKey] as number;
-            const probability = (state[probabilityKey] as number) ?? 1.0;
-            const source = (state[sourceKey] as string) ?? 'lead';
-
-            // Get root note from state (0=C, 1=C#, ..., 4=E, ..., 11=B)
-            // Root at octave 2: C2=36, so rootMidi = 36 + rootNote
-            const rootMidi = 36 + state.rootNote;
-            
-            // Helper to convert MIDI note to name relative to root
-            const midiToNoteName = (midi: number): string => {
-              const noteInOctave = midi % 12;
-              const noteName = NOTE_NAMES[noteInOctave];
-              // Calculate octave relative to root (root2 = 0, root3 = 1, etc.)
-              const octaveFromRoot = Math.floor((midi - rootMidi) / 12);
-              return `${noteName}${octaveFromRoot}`;
-            };
-            
-            // Get octave markers based on root note (root3, root4, root5, root6)
-            const rootOctaveMarkers = [rootMidi + 12, rootMidi + 24, rootMidi + 36, rootMidi + 48];
-
-            // Generate pattern for visualization
-            const resolvedPattern = resolveDrumEuclidPatternParams(preset, steps, hits, rotation);
-            const patternSteps = resolvedPattern.steps;
-            const patternHits = resolvedPattern.hits;
-            const patternRotation = resolvedPattern.rotation;
-                  const generatePattern = (s: number, h: number, r: number): boolean[] => {
-                    const pattern: boolean[] = [];
-                    if (h === 0) {
-                      for (let i = 0; i < s; i++) pattern.push(false);
-                    } else if (h >= s) {
-                      for (let i = 0; i < s; i++) pattern.push(true);
-                    } else {
-                      let groups: number[][] = [];
-                      for (let i = 0; i < h; i++) groups.push([1]);
-                      for (let i = 0; i < s - h; i++) groups.push([0]);
-                      
-                      while (groups.length > 1) {
-                        const ones = groups.filter(g => g[0] === 1);
-                        const zeros = groups.filter(g => g[0] === 0);
-                        if (zeros.length === 0) break;
-                        
-                        const combined: number[][] = [];
-                        const minLen = Math.min(ones.length, zeros.length);
-                        for (let i = 0; i < minLen; i++) {
-                          combined.push([...ones[i], ...zeros[i]]);
-                        }
-                        const remainder = ones.length > zeros.length ? ones.slice(minLen) : zeros.slice(minLen);
-                        if (remainder.length === 0 || remainder.length === groups.length - minLen) {
-                          groups = [...combined, ...remainder];
-                          break;
-                        }
-                        groups = [...combined, ...remainder];
-                      }
-                      
-                      for (const g of groups) {
-                        for (const v of g) pattern.push(v === 1);
-                      }
-                    }
-                    return [...pattern.slice(r % pattern.length), ...pattern.slice(0, r % pattern.length)];
-                  };
-
-                  const pattern = generatePattern(patternSteps, patternHits, patternRotation);
-
-                  return (
-                    <div 
-                      key={laneNum}
-                      style={{
-                        marginBottom: '12px',
-                        padding: '10px',
-                        background: isEnabled ? `rgba(${laneNum === 1 ? '245, 158, 11' : laneNum === 2 ? '16, 185, 129' : laneNum === 3 ? '59, 130, 246' : '236, 72, 153'}, 0.1)` : 'rgba(255,255,255,0.02)',
-                        borderRadius: '8px',
-                        border: `1px solid ${isEnabled ? laneColor : '#333'}`,
-                        opacity: isEnabled ? 1 : 0.6,
-                      }}
-                    >
-                      {/* Lane header with toggle */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                        <button
-                          onClick={() => handleSelectChange(enabledKey, !isEnabled)}
-                          style={{
-                            width: '24px',
-                            height: '24px',
-                            borderRadius: '50%',
-                            border: 'none',
-                            cursor: 'pointer',
-                            background: isEnabled ? laneColor : 'rgba(255,255,255,0.15)',
-                            color: isEnabled ? 'white' : '#666',
-                            fontSize: '12px',
-                            fontWeight: 'bold',
-                          }}
-                        >
-                          {laneNum}
-                        </button>
-                        <span style={{ 
-                          fontSize: '0.8rem', 
-                          color: isEnabled ? laneColor : '#666',
-                          fontWeight: isEnabled ? 'bold' : 'normal',
-                          flex: 1,
-                        }}>
-                          Lane {laneNum} {isEnabled ? '' : '(off)'}
-                        </span>
-                        <span style={{ fontSize: '0.65rem', color: '#888' }}>
-                          {midiToNoteName(noteMin)}–{midiToNoteName(noteMax)}
-                        </span>
-                      </div>
-
-                      {isEnabled && (
-                        <>
-                          {/* Pattern visualization */}
-                          <div style={{ 
-                            display: 'flex', 
-                            flexWrap: 'wrap', 
-                            gap: '2px',
-                            marginBottom: '8px',
-                            justifyContent: 'center',
-                          }}>
-                            {pattern.map((hit, i) => (
-                              <div
-                                key={i}
-                                style={{
-                                  width: patternSteps > 16 ? '8px' : '12px',
-                                  height: patternSteps > 16 ? '8px' : '12px',
-                                  borderRadius: '50%',
-                                  background: hit ? laneColor : 'rgba(255,255,255,0.15)',
-                                  boxShadow: hit ? `0 0 6px ${laneColor}` : 'none',
-                                }}
-                              />
-                            ))}
-                          </div>
-
-                          {/* Preset selector */}
-                          <select
-                            value={preset}
-                            onChange={(e) => handleSelectChange(presetKey, e.target.value)}
-                            style={{
-                              width: '100%',
-                              padding: '6px',
-                              borderRadius: '4px',
-                              border: `1px solid ${laneColor}40`,
-                              background: 'rgba(0,0,0,0.4)',
-                              color: '#eee',
-                              cursor: 'pointer',
-                              fontSize: '0.75rem',
-                              marginBottom: '6px',
-                            }}
-                          >
-                            <optgroup label="Polyrhythmic / Complex">
-                              <option value="sparse">Sparse (16/1)</option>
-                              <option value="dense">Dense (8/7)</option>
-                              <option value="longSparse">Long Sparse (32/3)</option>
-                              <option value="poly3v4">3 vs 4 (12/3)</option>
-                              <option value="poly4v3">4 vs 3 (12/4)</option>
-                              <option value="poly5v3">5 vs 3 (15/5)</option>
-                              <option value="poly5v4">5 vs 4 (20/5)</option>
-                              <option value="poly7v4">7 vs 4 (28/7)</option>
-                              <option value="poly5v7">5 vs 7 (35/5)</option>
-                              <option value="prime17">Prime 17 (17/7)</option>
-                              <option value="prime19">Prime 19 (19/7)</option>
-                              <option value="prime23">Prime 23 (23/9)</option>
-                            </optgroup>
-                            <optgroup label="Indonesian Gamelan">
-                              <option value="lancaran">Lancaran (16/4)</option>
-                              <option value="ketawang">Ketawang (16/2)</option>
-                              <option value="ladrang">Ladrang (32/8)</option>
-                              <option value="gangsaran">Gangsaran (8/4)</option>
-                              <option value="kotekan">Kotekan A (8/3)</option>
-                              <option value="kotekan2">Kotekan B (8/3 r:4)</option>
-                              <option value="srepegan">Srepegan (16/6)</option>
-                              <option value="sampak">Sampak (8/5)</option>
-                              <option value="ayak">Ayak (16/3)</option>
-                              <option value="bonang">Bonang (12/5)</option>
-                            </optgroup>
-                            <optgroup label="World Rhythms">
-                              <option value="tresillo">Tresillo (8/3)</option>
-                              <option value="cinquillo">Cinquillo (8/5)</option>
-                              <option value="rumba">Rumba (16/5)</option>
-                              <option value="bossa">Bossa Nova (16/5)</option>
-                              <option value="son">Son Clave (16/7)</option>
-                              <option value="shiko">Shiko (16/5)</option>
-                              <option value="soukous">Soukous (12/7)</option>
-                              <option value="gahu">Gahu (16/7)</option>
-                              <option value="bembe">Bembé (12/7)</option>
-                              <option value="aksak9">Aksak 9 (9/5)</option>
-                              <option value="aksak7">Aksak 7 (7/3)</option>
-                              <option value="clave23">Clave 2+3 (8/2)</option>
-                              <option value="clave32">Clave 3+2 (8/3)</option>
-                            </optgroup>
-                            <optgroup label="Steve Reich / Experimental">
-                              <option value="clapping">Clapping Music (12/8)</option>
-                              <option value="clappingB">Clapping B (12/8 r:5)</option>
-                              <option value="additive7">Additive 7 (7/4)</option>
-                              <option value="additive11">Additive 11 (11/5)</option>
-                              <option value="additive13">Additive 13 (13/5)</option>
-                              <option value="reich18">Reich 18 (12/7)</option>
-                              <option value="drumming">Drumming (8/6)</option>
-                            </optgroup>
-                            <option value="custom">Custom</option>
-                          </select>
-
-                          {/* Note Range - dual slider display */}
-                          <div style={{ marginBottom: '6px' }}>
-                            <div style={{ fontSize: '0.65rem', color: '#888', marginBottom: '4px' }}>
-                              Note Range: {noteMin === noteMax ? midiToNoteName(noteMin) : `${midiToNoteName(noteMin)} – ${midiToNoteName(noteMax)}`}
-                            </div>
-                            {/* Visual range bar */}
-                            <div style={{
-                              position: 'relative',
-                              height: '20px',
-                              background: 'rgba(255,255,255,0.1)',
-                              borderRadius: '4px',
-                              marginBottom: '4px',
-                            }}>
-                              {/* Active range */}
-                              <div style={{
-                                position: 'absolute',
-                                left: `${((noteMin - 36) / 60) * 100}%`,
-                                width: noteMin === noteMax ? '3px' : `${((noteMax - noteMin) / 60) * 100}%`,
-                                minWidth: '3px',
-                                height: '100%',
-                                background: `linear-gradient(90deg, ${laneColor}80, ${laneColor})`,
-                                borderRadius: '4px',
-                              }} />
-                              {/* Octave markers on E (root note) */}
-                              {rootOctaveMarkers.map((midi) => (
-                                <div
-                                  key={midi}
-                                  style={{
-                                    position: 'absolute',
-                                    left: `${((midi - 36) / 60) * 100}%`,
-                                    top: 0,
-                                    bottom: 0,
-                                    width: '1px',
-                                    background: 'rgba(255,255,255,0.4)',
-                                  }}
-                                />
-                              ))}
-                            </div>
-                            <div style={{ display: 'flex', gap: '8px' }}>
-                              <div style={{ flex: 1 }}>
-                                <div style={{ fontSize: '0.6rem', color: '#666' }}>Low: {midiToNoteName(noteMin)}</div>
-                                <input
-                                  type="range"
-                                  min="36"
-                                  max="96"
-                                  step="1"
-                                  value={noteMin}
-                                  onChange={(e) => {
-                                    const newMin = parseInt(e.target.value);
-                                    handleSliderChange(noteMinKey as keyof SliderState, Math.min(newMin, noteMax));
-                                  }}
-                                  style={{ width: '100%', cursor: 'pointer' }}
-                                />
-                              </div>
-                              <div style={{ flex: 1 }}>
-                                <div style={{ fontSize: '0.6rem', color: '#666' }}>High: {midiToNoteName(noteMax)}</div>
-                                <input
-                                  type="range"
-                                  min="36"
-                                  max="96"
-                                  step="1"
-                                  value={noteMax}
-                                  onChange={(e) => {
-                                    const newMax = parseInt(e.target.value);
-                                    handleSliderChange(noteMaxKey as keyof SliderState, Math.max(newMax, noteMin));
-                                  }}
-                                  style={{ width: '100%', cursor: 'pointer' }}
-                                />
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Level and Rotation row */}
-                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                            {/* Level slider */}
-                            <div style={{ flex: 1 }}>
-                              <div style={{ fontSize: '0.65rem', color: '#888', marginBottom: '2px' }}>Level {Math.round(level * 100)}%</div>
-                              <input
-                                type="range"
-                                min="0"
-                                max="1"
-                                step="0.05"
-                                value={level}
-                                onChange={(e) => handleSliderChange(levelKey as keyof SliderState, parseFloat(e.target.value))}
-                                style={{ width: '100%', cursor: 'pointer' }}
-                              />
-                            </div>
-                            
-                            {/* Rotation buttons */}
-                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: '70px' }}>
-                              <div style={{ fontSize: '0.65rem', color: '#888', marginBottom: '2px' }}>Rotate: {rotation}</div>
-                              <div style={{ display: 'flex', gap: '4px' }}>
-                                <button
-                                  onClick={() => {
-                                    const maxSteps = preset === 'custom' ? steps : patternSteps;
-                                    const newRot = (rotation + 1) % maxSteps;
-                                    handleSliderChange(rotationKey as keyof SliderState, newRot);
-                                  }}
-                                  style={{
-                                    padding: '4px 8px',
-                                    background: `${laneColor}30`,
-                                    border: `1px solid ${laneColor}60`,
-                                    borderRadius: '4px',
-                                    color: laneColor,
-                                    cursor: 'pointer',
-                                    fontSize: '0.8rem',
-                                    fontWeight: 'bold',
-                                  }}
-                                  title="Rotate pattern left"
-                                >
-                                  ←
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    const maxSteps = preset === 'custom' ? steps : patternSteps;
-                                    const newRot = (rotation - 1 + maxSteps) % maxSteps;
-                                    handleSliderChange(rotationKey as keyof SliderState, newRot);
-                                  }}
-                                  style={{
-                                    padding: '4px 8px',
-                                    background: `${laneColor}30`,
-                                    border: `1px solid ${laneColor}60`,
-                                    borderRadius: '4px',
-                                    color: laneColor,
-                                    cursor: 'pointer',
-                                    fontSize: '0.8rem',
-                                    fontWeight: 'bold',
-                                  }}
-                                  title="Rotate pattern right"
-                                >
-                                  →
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Probability and Source row */}
-                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '8px' }}>
-                            {/* Probability slider */}
-                            <div style={{ flex: 1 }}>
-                              <div style={{ fontSize: '0.65rem', color: '#888', marginBottom: '2px' }}>Probability {Math.round(probability * 100)}%</div>
-                              <input
-                                type="range"
-                                min="0"
-                                max="1"
-                                step="0.05"
-                                value={probability}
-                                onChange={(e) => handleSliderChange(probabilityKey as keyof SliderState, parseFloat(e.target.value))}
-                                style={{ width: '100%', cursor: 'pointer' }}
-                              />
-                            </div>
-                            
-                            {/* Sound Source dropdown */}
-                            <div style={{ minWidth: '80px' }}>
-                              <div style={{ fontSize: '0.65rem', color: '#888', marginBottom: '2px' }}>Source</div>
-                              <select
-                                value={source}
-                                onChange={(e) => handleSelectChange(sourceKey, e.target.value)}
-                                style={{
-                                  width: '100%',
-                                  padding: '4px',
-                                  borderRadius: '4px',
-                                  border: `1px solid ${laneColor}40`,
-                                  background: 'rgba(0,0,0,0.4)',
-                                  color: source === 'lead' || source === 'lead1' ? '#D4A520' : source === 'lead2' ? '#06b6d4' : '#C4724E',
-                                  cursor: 'pointer',
-                                  fontSize: '0.7rem',
-                                }}
-                              >
-                                <option value="lead">Lead 1</option>
-                                <option value="lead1">Lead 1</option>
-                                <option value="lead2">Lead 2</option>
-                                <option value="synth1">Synth 1</option>
-                                <option value="synth2">Synth 2</option>
-                                <option value="synth3">Synth 3</option>
-                                <option value="synth4">Synth 4</option>
-                                <option value="synth5">Synth 5</option>
-                                <option value="synth6">Synth 6</option>
-                              </select>
-                            </div>
-                          </div>
-
-                          {/* Custom controls - only show when custom is selected */}
-                          {preset === 'custom' && (
-                            <div style={{ marginTop: '8px', display: 'flex', gap: '6px' }}>
-                              <div style={{ flex: 1 }}>
-                                <div style={{ fontSize: '0.6rem', color: '#888' }}>Steps: {steps}</div>
-                                <input
-                                  type="range"
-                                  min="4"
-                                  max="32"
-                                  step="1"
-                                  value={steps}
-                                  onChange={(e) => handleSliderChange(stepsKey as keyof SliderState, parseInt(e.target.value))}
-                                  style={{ width: '100%', cursor: 'pointer' }}
-                                />
-                              </div>
-                              <div style={{ flex: 1 }}>
-                                <div style={{ fontSize: '0.6rem', color: '#888' }}>Hits: {hits}</div>
-                                <input
-                                  type="range"
-                                  min="1"
-                                  max={steps}
-                                  step="1"
-                                  value={Math.min(hits, steps)}
-                                  onChange={(e) => handleSliderChange(hitsKey as keyof SliderState, parseInt(e.target.value))}
-                                  style={{ width: '100%', cursor: 'pointer' }}
-                                />
-                              </div>
-                            </div>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  );
-                })}
-
-          <div style={{ fontSize: '0.65rem', color: '#666', textAlign: 'center', marginTop: '4px' }}>
-            Enable multiple lanes for interlocking gamelan-style polyrhythms
-          </div>
-        </CollapsiblePanel>
-        </>)}
-
         {/* === FX TAB (continued) === */}
         {activeTab === 'fx' && (<>
         {/* Ocean Waves */}
@@ -7718,7 +6333,10 @@ const App: React.FC = () => {
             hitCounts={drumSeqHitCounts}
             evolveFlashing={drumEuclidEvolveFlashing}
             onEvolveConfigsChange={(configs) => audioEngine.setDrumEuclidEvolveConfigs(configs)}
-            onStepOverridesChange={(overrides) => audioEngine.setDrumStepOverrides(overrides)}
+            onStepOverridesChange={(overrides) => { drumStepOverridesRef.current = overrides; audioEngine.setDrumStepOverrides(overrides); }}
+            initialStepOverrides={drumStepOverridesRef.current}
+            initialSubLaneStates={drumSubLaneStatesRef.current}
+            onSubLaneStatesChange={(states) => { drumSubLaneStatesRef.current = states; }}
             initialViewMode={drumViewModeRef.current}
             onViewModeChange={(mode) => { drumViewModeRef.current = mode; }}
           />

@@ -44,7 +44,7 @@
       "id": "handpan",
       "name": "Handpan",
       "file": "handpan.json",
-      "algorithm": "parallel"
+      "algorithm": "stack"
     },
     {
       "id": "kalimba",
@@ -63,12 +63,6 @@
       "name": "Mbira",
       "file": "mbira.json",
       "algorithm": "cross"
-    },
-    {
-      "id": "rhodes",
-      "name": "Rhodes",
-      "file": "rhodes.json",
-      "algorithm": "parallel"
     },
     {
       "id": "singing_bowl",
@@ -99,6 +93,12 @@
       "name": "Xylophone",
       "file": "xylophone.json",
       "algorithm": "stack"
+    },
+    {
+      "id": "spectral_shimmer",
+      "name": "Spectral Shimmer",
+      "file": "spectral_shimmer.json",
+      "algorithm": "split"
     }
   ]
 }

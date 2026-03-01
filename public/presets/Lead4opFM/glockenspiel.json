@@ -11,44 +11,45 @@
     "yLevel": 1.1,
     "yPan": 0.38
   },
+  "_notes": "Stack: serial FM. Glockenspiel = very bright, short, metallic. Inharmonic ratios give bell-like color. High FM with fast decay = brilliant flash of harmonics.",
   "params": {
-    "beatDetune": 1,
+    "beatDetune": 0.5,
     "carrier2Mix": 0.2,
     "mod1": {
       "ratio": 2.76,
-      "index": 2.5,
-      "decay": 0.15,
-      "sustain": 0.03
+      "index": 5.5,
+      "decay": 0.3,
+      "sustain": 0.0
     },
     "mod2": {
       "ratio": 5.4,
-      "index": 1.2,
-      "decay": 0.1
+      "index": 2.5,
+      "decay": 0.15
     },
     "mod3": {
       "ratio": 8.93,
-      "index": 0.6,
-      "decay": 0.06
+      "index": 0,
+      "decay": 0.5
     },
     "mod4": {
       "ratio": 0.5,
-      "index": 0.1,
-      "decay": 0.2
+      "index": 0,
+      "decay": 0.5
     },
     "envelope": {
       "attack": 0.0005,
-      "decay": 0.12,
-      "sustain": 0.15,
-      "release": 3
+      "decay": 0.5,
+      "sustain": 0.0,
+      "release": 2.0
     },
     "filter": {
       "freq": 10000,
-      "q": 0.8
+      "q": 0.5
     },
     "transient": {
-      "click": 0.8,
-      "noise": 0.05,
-      "duration": 10,
+      "click": 0.3,
+      "noise": 0.03,
+      "duration": 8,
       "decay": 200,
       "filter": 8000,
       "type": "filtered"

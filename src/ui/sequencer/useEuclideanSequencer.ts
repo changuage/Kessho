@@ -3,7 +3,7 @@
  *
  * Used by drums (4 lanes), and designed to be reused by lead/synth (1-4 lanes).
  * Parameterized by `prefix` so drums uses 'drum' → drumEuclid1Steps, etc.
- * and lead could use 'lead' → leadEuclid1Steps, etc.
+ * and lead could use 'lead' → synthEuclid1Steps, etc.
  */
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import type { SliderState } from '../state';
@@ -34,7 +34,7 @@ export interface SubLaneState {
 }
 
 export interface StepOverrides {
-  triggerToggles: Set<number>[];
+  triggerToggles: Map<number, boolean>[];
   probability: (number[] | null)[];
   ratchet: (number[] | null)[];
   trigCondition: (TrigCondition[] | null)[];
@@ -67,7 +67,7 @@ export interface UseEuclideanSequencerOptions {
   onParamChange: (key: keyof SliderState, value: number) => void;
   /** Callback to change any param (select, boolean, etc.) */
   onSelectChange: (key: keyof SliderState, value: SliderState[keyof SliderState]) => void;
-  /** Prefix for param keys: 'drum' → drumEuclid1Steps, 'lead' → leadEuclid1Steps */
+  /** Prefix for param keys: 'drum' → drumEuclid1Steps, 'lead' → synthEuclid1Steps */
   prefix: string;
   /** Number of sequencer lanes (4 for drums, 1–4 for lead/synth) */
   laneCount: number;
@@ -81,6 +81,10 @@ export interface UseEuclideanSequencerOptions {
   evolveFlashing?: boolean[];
   /** Initial view mode to restore (persisted across tab switches) */
   initialViewMode?: 'simple' | 'detail' | 'overview';
+  /** Initial step overrides to restore (persisted across tab switches) */
+  initialStepOverrides?: StepOverrides;
+  /** Initial sub-lane states to restore (persisted across tab switches) */
+  initialSubLaneStates?: Record<SubLaneKind, SubLaneState>[];
 }
 
 export interface UseEuclideanSequencerResult {
@@ -189,10 +193,16 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
     hitCounts: hitCountsOpt,
     evolveFlashing: externalEvolveFlashing,
     initialViewMode,
+    initialStepOverrides,
+    initialSubLaneStates,
   } = opts;
 
   const hitCounts = hitCountsOpt ?? Array.from({ length: laneCount }, () => 0);
   const evolveFlashing = externalEvolveFlashing ?? Array.from({ length: laneCount }, () => false);
+
+  // Keep a ref to state so useCallback closures can read current values
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   // ── View State ──
   const [viewMode, setViewMode] = useState<'simple' | 'detail' | 'overview'>(initialViewMode ?? 'detail');
@@ -200,8 +210,8 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
   const [openLane, setOpenLane] = useState<LaneKind>('trigger');
 
   // ── Step Overrides ──
-  const [stepOverrides, setStepOverrides] = useState<StepOverrides>(() => ({
-    triggerToggles: Array.from({ length: laneCount }, () => new Set<number>()),
+  const [stepOverrides, setStepOverrides] = useState<StepOverrides>(() => initialStepOverrides ?? ({
+    triggerToggles: Array.from({ length: laneCount }, () => new Map<number, boolean>()),
     probability: Array.from({ length: laneCount }, () => null as number[] | null),
     ratchet: Array.from({ length: laneCount }, () => null as number[] | null),
     trigCondition: Array.from({ length: laneCount }, () => null as TrigCondition[] | null),
@@ -230,7 +240,7 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
   const DIRECTION_ORDER: LaneDirection[] = ['forward', 'reverse', 'pingpong'];
 
   const [subLaneStates, setSubLaneStates] = useState<Record<SubLaneKind, SubLaneState>[]>(() =>
-    Array.from({ length: laneCount }, () => ({
+    initialSubLaneStates ?? Array.from({ length: laneCount }, () => ({
       pitch: { enabled: false, steps: 5, direction: 'forward' as LaneDirection },
       expression: { enabled: false, steps: 5, direction: 'forward' as LaneDirection },
       morph: { enabled: false, steps: 4, direction: 'forward' as LaneDirection },
@@ -281,15 +291,60 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
   }, []);
 
   const toggleSubLaneEnabled = useCallback((seqIdx: number, lane: SubLaneKind) => {
-    setSubLaneStates(prev => prev.map((s, i) =>
-      i === seqIdx ? { ...s, [lane]: { ...s[lane], enabled: !s[lane].enabled } } : s
-    ));
+    console.log(`[SubLane] toggleSubLaneEnabled seq=${seqIdx} lane=${lane}`);
+    setSubLaneStates(prev => {
+      const wasEnabled = prev[seqIdx]?.[lane]?.enabled ?? false;
+      const nowEnabled = !wasEnabled;
+      console.log(`[SubLane] ${lane} was=${wasEnabled} now=${nowEnabled}`);
+      const updated = prev.map((s, i) =>
+        i === seqIdx ? { ...s, [lane]: { ...s[lane], enabled: nowEnabled } } : s
+      );
+      // Sync default values into stepOverrides so the audio engine gets them immediately
+      const subSteps = prev[seqIdx]?.[lane]?.steps ?? 5;
+      if (nowEnabled) {
+        // Populate defaults if no data exists yet
+        setStepOverrides(old => {
+          if (old[lane][seqIdx] != null) return old; // already has data
+          const next = { ...old, [lane]: [...old[lane]] };
+          const defaults = lane === 'pitch' ? new Array(subSteps).fill(0)
+            : lane === 'expression' ? new Array(subSteps).fill(1.0)
+            : lane === 'morph' ? new Array(subSteps).fill(0)
+            : new Array(subSteps).fill(0.5); // distance
+          (next[lane] as (number[] | null)[])[seqIdx] = defaults;
+          return next;
+        });
+      } else {
+        // Clear override data when disabling
+        setStepOverrides(old => {
+          if (old[lane][seqIdx] == null) return old; // already null
+          const next = { ...old, [lane]: [...old[lane]] };
+          (next[lane] as (number[] | null)[])[seqIdx] = null;
+          return next;
+        });
+      }
+      return updated;
+    });
   }, []);
 
   const setSubLaneSteps = useCallback((seqIdx: number, lane: SubLaneKind, steps: number) => {
+    const newSteps = Math.max(1, Math.min(16, steps));
     setSubLaneStates(prev => prev.map((s, i) =>
-      i === seqIdx ? { ...s, [lane]: { ...s[lane], steps: Math.max(1, Math.min(16, steps)) } } : s
+      i === seqIdx ? { ...s, [lane]: { ...s[lane], steps: newSteps } } : s
     ));
+    // Resize the stepOverrides array to match the new step count
+    setStepOverrides(old => {
+      const existing = old[lane][seqIdx];
+      if (!existing) return old; // no data to resize
+      const next = { ...old, [lane]: [...old[lane]] };
+      const defaultVal = lane === 'pitch' ? 0 : lane === 'expression' ? 1.0 : lane === 'morph' ? 0 : 0.5;
+      const resized = new Array(newSteps).fill(defaultVal);
+      // Copy existing values
+      for (let i = 0; i < Math.min(existing.length, newSteps); i++) {
+        resized[i] = existing[i];
+      }
+      (next[lane] as (number[] | null)[])[seqIdx] = resized;
+      return next;
+    });
   }, []);
 
   const cycleSubLaneDirection = useCallback((seqIdx: number, lane: SubLaneKind) => {
@@ -329,8 +384,8 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
       const rotation = state[makeKey(prefix, laneNum, 'Rotation')] as number;
       const resolved = resolveDrumEuclidPatternParams(preset, steps, hits, rotation);
       const basePattern = seqEuclidean(resolved.steps, resolved.hits, resolved.rotation);
-      const toggleSet = stepOverrides.triggerToggles[seqIdx];
-      const pattern = basePattern.map((v, i) => (toggleSet?.has(i) ? !v : v));
+      const toggleMap = stepOverrides.triggerToggles[seqIdx];
+      const pattern = basePattern.map((v, i) => (toggleMap?.has(i) ? toggleMap.get(i)! : v));
       const activeHits = pattern.filter(x => x).length;
       if (activeHits < 1) return;
 
@@ -357,9 +412,17 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
   );
 
   const setParam = useCallback(
-    (laneIdx: number, suffix: string, value: number) =>
-      onParamChange(makeKey(prefix, laneIdx + 1, suffix), value),
-    [onParamChange, prefix]
+    (laneIdx: number, suffix: string, value: number) => {
+      onParamChange(makeKey(prefix, laneIdx + 1, suffix), value);
+      // Auto-switch to 'custom' when Steps/Hits/Rotation are manually changed
+      if (suffix === 'Steps' || suffix === 'Hits' || suffix === 'Rotation') {
+        const currentPreset = state[makeKey(prefix, laneIdx + 1, 'Preset')];
+        if (currentPreset !== 'custom') {
+          onSelectChange(makeKey(prefix, laneIdx + 1, 'Preset'), 'custom' as any);
+        }
+      }
+    },
+    [onParamChange, onSelectChange, state, prefix]
   );
 
   const setParamSelect = useCallback(
@@ -385,7 +448,10 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
     [onSelectChange, prefix]
   );
 
-  // ── Reset overrides when steps/hits change ──
+  // ── Reset trigger-lane overrides when steps/hits change ──
+  // Only reset trigger-specific data (toggles, probability, trigCondition).
+  // Sub-lane data (expression, pitch, morph, distance, ratchet) has its own
+  // independent step count and should NOT be erased when the trigger pattern changes.
   const prevParamsRef = useRef<string[]>([]);
   useEffect(() => {
     const current = Array.from({ length: laneCount }, (_, i) => {
@@ -403,16 +469,13 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
           current.forEach((v, i) => {
             if (v !== prev[i]) {
               dirty = true;
+              // Reset trigger-lane overrides only
               next.triggerToggles = [...next.triggerToggles];
-              next.triggerToggles[i] = new Set();
+              next.triggerToggles[i] = new Map();
               next.probability = [...next.probability];
               (next.probability as (number[] | null)[])[i] = null;
-              next.ratchet = [...next.ratchet];
-              (next.ratchet as (number[] | null)[])[i] = null;
-              for (const key of ['expression', 'pitch', 'morph', 'distance'] as const) {
-                next[key] = [...next[key]];
-                (next[key] as (number[] | null)[])[i] = null;
-              }
+              next.trigCondition = [...next.trigCondition];
+              (next.trigCondition as (unknown[] | null)[])[i] = null;
             }
           });
           return dirty ? next : old;
@@ -448,8 +511,8 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
       const basePattern = seqEuclidean(resolved.steps, resolved.hits, resolved.rotation);
 
       // Merge trigger overrides
-      const toggleSet = stepOverrides.triggerToggles[idx];
-      const pattern = basePattern.map((v, i) => (toggleSet?.has(i) ? !v : v));
+      const toggleMap = stepOverrides.triggerToggles[idx];
+      const pattern = basePattern.map((v, i) => (toggleMap?.has(i) ? toggleMap.get(i)! : v));
 
       // Read source voice booleans
       const sources: Record<string, boolean> = {};
@@ -481,7 +544,7 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
           pattern,
           overrides: new Set<number>(),
           probability: stepOverrides.probability[idx] ?? new Array(resolved.steps).fill(probability),
-          ratchet: stepOverrides.ratchet[idx] ?? new Array(resolved.steps).fill(1),
+          ratchet: stepOverrides.ratchet[idx] ?? new Array(subLaneStates[idx]?.expression.steps ?? 5).fill(1),
           trigCondition: stepOverrides.trigCondition[idx] ?? new Array(resolved.steps).fill([1, 1] as TrigCondition),
         },
         pitch: {
@@ -538,14 +601,31 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
     (laneIdx: number, step: number) => {
       setStepOverrides((prev) => {
         const next = { ...prev, triggerToggles: [...prev.triggerToggles] };
-        const s = new Set(next.triggerToggles[laneIdx]);
-        if (s.has(step)) s.delete(step);
-        else s.add(step);
-        next.triggerToggles[laneIdx] = s;
+        const m = new Map(next.triggerToggles[laneIdx]);
+        // Compute base Euclidean pattern
+        const laneNum = laneIdx + 1;
+        const preset = stateRef.current[makeKey(prefix, laneNum, 'Preset')] as string;
+        const stepsVal = stateRef.current[makeKey(prefix, laneNum, 'Steps')] as number;
+        const hitsVal = stateRef.current[makeKey(prefix, laneNum, 'Hits')] as number;
+        const rotVal = stateRef.current[makeKey(prefix, laneNum, 'Rotation')] as number;
+        const resolved = resolveDrumEuclidPatternParams(preset, stepsVal, hitsVal, rotVal);
+        const basePattern = seqEuclidean(resolved.steps, resolved.hits, resolved.rotation);
+        const baseVal = basePattern[step] ?? false;
+        // Current visible state: override if present, else base
+        const currentVal = m.has(step) ? m.get(step)! : baseVal;
+        // Toggle to opposite of what's currently shown
+        const newVal = !currentVal;
+        // If new value matches base, remove override (revert to Euclidean)
+        if (newVal === baseVal) {
+          m.delete(step);
+        } else {
+          m.set(step, newVal);
+        }
+        next.triggerToggles[laneIdx] = m;
         return next;
       });
     },
-    []
+    [prefix]
   );
 
   const changeStepValue = useCallback(
@@ -600,16 +680,20 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
     (laneIdx: number, step: number) => {
       setStepOverrides((prev) => {
         const next = { ...prev, ratchet: [...prev.ratchet] };
-        const steps = (state[makeKey(prefix, laneIdx + 1, 'Steps')] as number) ?? 16;
+        // Use expression sub-lane step count so ratchet can be polyrhythmic
+        const exprSteps = subLaneStates[laneIdx]?.expression?.steps ?? 5;
         const arr = next.ratchet[laneIdx]
           ? [...(next.ratchet[laneIdx] as number[])]
-          : new Array(steps).fill(1);
+          : new Array(exprSteps).fill(1);
+        // Resize if expression step count changed
+        while (arr.length < exprSteps) arr.push(1);
+        if (arr.length > exprSteps) arr.length = exprSteps;
         arr[step] = arr[step] >= 4 ? 1 : arr[step] + 1;
         next.ratchet[laneIdx] = arr;
         return next;
       });
     },
-    [state, prefix]
+    [subLaneStates]
   );
 
   /* Elektron-style trig conditions: cycle through n:N pairs */

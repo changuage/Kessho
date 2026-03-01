@@ -110,8 +110,8 @@ Only reset dual modes when the changed preset affects the current position.
 
 ### State
 ```typescript
-leadEuclid[1-4]Probability: number;  // 0-1
-leadEuclid[1-4]Source: 'lead' | 'synth1' | ... | 'synth6';
+synthEuclid[1-4]Probability: number;  // 0-1
+synthEuclid[1-4]Source: 'lead' | 'synth1' | ... | 'synth6';
 synthChordSequencerEnabled: boolean;  // default true
 ```
 
@@ -424,7 +424,7 @@ Renamed shared lead parameters to `lead1*` namespace to support future independe
 - `leadEnabled` — master toggle for entire lead bus
 - `leadLevel` — master output gain (distinct from `lead1Level`/`lead2Level` per-voice velocity)
 - `leadReverbSend`, `leadDelayReverbSend` — shared FX sends
-- `leadDelay*`, `leadVibrato*`, `leadGlide*`, `leadEuclid*` — shared across both leads
+- `leadDelay*`, `leadVibrato*`, `leadGlide*`, `synthEuclid*` — shared across both leads
 
 ### Files Changed
 - **state.ts**: Type, keys, defaults, PARAM_INFO

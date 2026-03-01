@@ -203,21 +203,21 @@ Bit 5 (32): Voice 6
 
 | Parameter | Type | Range | Default | Audio Target |
 |-----------|------|-------|---------|--------------|
-| `leadEuclideanMasterEnabled` | boolean | - | false | Euclidean vs random mode |
-| `leadEuclideanTempo` | number | 0.25-12 | 1 | Pattern cycles per phrase |
+| `synthEuclideanMasterEnabled` | boolean | - | false | Euclidean vs random mode |
+| `synthEuclideanTempo` | number | 0.25-12 | 1 | Pattern cycles per phrase |
 
 **Per-Lane Parameters** (×4 lanes):
 
 | Parameter | Type | Range | Default | Purpose |
 |-----------|------|-------|---------|---------|
-| `leadEuclid{N}Enabled` | boolean | - | varies | Lane enable |
-| `leadEuclid{N}Preset` | string | preset name | varies | Pattern preset |
-| `leadEuclid{N}Steps` | number | 4-32 | varies | Pattern length |
-| `leadEuclid{N}Hits` | number | 1-16 | varies | Notes in pattern |
-| `leadEuclid{N}Rotation` | number | 0-31 | varies | Pattern rotation |
-| `leadEuclid{N}NoteMin` | number | 36-96 | varies | MIDI note low |
-| `leadEuclid{N}NoteMax` | number | 36-96 | varies | MIDI note high |
-| `leadEuclid{N}Level` | number | 0-1 | varies | Lane velocity |
+| `synthEuclid{N}Enabled` | boolean | - | varies | Lane enable |
+| `synthEuclid{N}Preset` | string | preset name | varies | Pattern preset |
+| `synthEuclid{N}Steps` | number | 4-32 | varies | Pattern length |
+| `synthEuclid{N}Hits` | number | 1-16 | varies | Notes in pattern |
+| `synthEuclid{N}Rotation` | number | 0-31 | varies | Pattern rotation |
+| `synthEuclid{N}NoteMin` | number | 36-96 | varies | MIDI note low |
+| `synthEuclid{N}NoteMax` | number | 36-96 | varies | MIDI note high |
+| `synthEuclid{N}Level` | number | 0-1 | varies | Lane velocity |
 
 ## Section 11: Ocean Waves
 

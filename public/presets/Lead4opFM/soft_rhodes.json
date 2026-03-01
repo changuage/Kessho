@@ -17,14 +17,14 @@
     "carrier2Mix": 0,
     "mod1": {
       "ratio": 1,
-      "index": 0.25,
-      "decay": 0.8,
-      "sustain": 0.23
+      "index": 1.2,
+      "decay": 0.6,
+      "sustain": 0.2
     },
     "mod2": {
       "ratio": 2,
-      "index": 0.08,
-      "decay": 0.72
+      "index": 0.4,
+      "decay": 0.5
     },
     "mod3": {
       "ratio": 3,

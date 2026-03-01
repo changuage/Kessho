@@ -927,12 +927,12 @@ struct SliderControlsView: View {
                 
                 // MARK: - Euclidean Sequencer Section
                 CollapsibleSection(title: "Euclidean Sequencer", icon: "circle.hexagongrid.fill", expanded: $expandedSections) {
-                    Toggle("Master Enable", isOn: $appState.state.leadEuclideanMasterEnabled)
+                    Toggle("Master Enable", isOn: $appState.state.synthEuclideanMasterEnabled)
                         .foregroundColor(.white)
                     
                     ParameterSlider(
                         label: "Tempo",
-                        value: $appState.state.leadEuclideanTempo,
+                        value: $appState.state.synthEuclideanTempo,
                         range: 0.25...12,
                         unit: "x",
                         icon: "metronome"
@@ -941,61 +941,61 @@ struct SliderControlsView: View {
                     // Lane 1
                     EuclideanLaneView(
                         laneNumber: 1,
-                        enabled: $appState.state.leadEuclid1Enabled,
-                        preset: $appState.state.leadEuclid1Preset,
-                        steps: $appState.state.leadEuclid1Steps,
-                        hits: $appState.state.leadEuclid1Hits,
-                        rotation: $appState.state.leadEuclid1Rotation,
-                        noteMin: $appState.state.leadEuclid1NoteMin,
-                        noteMax: $appState.state.leadEuclid1NoteMax,
-                        level: $appState.state.leadEuclid1Level,
-                        probability: $appState.state.leadEuclid1Probability,
-                        source: $appState.state.leadEuclid1Source
+                        enabled: $appState.state.synthEuclid1Enabled,
+                        preset: $appState.state.synthEuclid1Preset,
+                        steps: $appState.state.synthEuclid1Steps,
+                        hits: $appState.state.synthEuclid1Hits,
+                        rotation: $appState.state.synthEuclid1Rotation,
+                        noteMin: $appState.state.synthEuclid1NoteMin,
+                        noteMax: $appState.state.synthEuclid1NoteMax,
+                        level: $appState.state.synthEuclid1Level,
+                        probability: $appState.state.synthEuclid1Probability,
+                        source: $appState.state.synthEuclid1Source
                     )
                     
                     // Lane 2
                     EuclideanLaneView(
                         laneNumber: 2,
-                        enabled: $appState.state.leadEuclid2Enabled,
-                        preset: $appState.state.leadEuclid2Preset,
-                        steps: $appState.state.leadEuclid2Steps,
-                        hits: $appState.state.leadEuclid2Hits,
-                        rotation: $appState.state.leadEuclid2Rotation,
-                        noteMin: $appState.state.leadEuclid2NoteMin,
-                        noteMax: $appState.state.leadEuclid2NoteMax,
-                        level: $appState.state.leadEuclid2Level,
-                        probability: $appState.state.leadEuclid2Probability,
-                        source: $appState.state.leadEuclid2Source
+                        enabled: $appState.state.synthEuclid2Enabled,
+                        preset: $appState.state.synthEuclid2Preset,
+                        steps: $appState.state.synthEuclid2Steps,
+                        hits: $appState.state.synthEuclid2Hits,
+                        rotation: $appState.state.synthEuclid2Rotation,
+                        noteMin: $appState.state.synthEuclid2NoteMin,
+                        noteMax: $appState.state.synthEuclid2NoteMax,
+                        level: $appState.state.synthEuclid2Level,
+                        probability: $appState.state.synthEuclid2Probability,
+                        source: $appState.state.synthEuclid2Source
                     )
                     
                     // Lane 3
                     EuclideanLaneView(
                         laneNumber: 3,
-                        enabled: $appState.state.leadEuclid3Enabled,
-                        preset: $appState.state.leadEuclid3Preset,
-                        steps: $appState.state.leadEuclid3Steps,
-                        hits: $appState.state.leadEuclid3Hits,
-                        rotation: $appState.state.leadEuclid3Rotation,
-                        noteMin: $appState.state.leadEuclid3NoteMin,
-                        noteMax: $appState.state.leadEuclid3NoteMax,
-                        level: $appState.state.leadEuclid3Level,
-                        probability: $appState.state.leadEuclid3Probability,
-                        source: $appState.state.leadEuclid3Source
+                        enabled: $appState.state.synthEuclid3Enabled,
+                        preset: $appState.state.synthEuclid3Preset,
+                        steps: $appState.state.synthEuclid3Steps,
+                        hits: $appState.state.synthEuclid3Hits,
+                        rotation: $appState.state.synthEuclid3Rotation,
+                        noteMin: $appState.state.synthEuclid3NoteMin,
+                        noteMax: $appState.state.synthEuclid3NoteMax,
+                        level: $appState.state.synthEuclid3Level,
+                        probability: $appState.state.synthEuclid3Probability,
+                        source: $appState.state.synthEuclid3Source
                     )
                     
                     // Lane 4
                     EuclideanLaneView(
                         laneNumber: 4,
-                        enabled: $appState.state.leadEuclid4Enabled,
-                        preset: $appState.state.leadEuclid4Preset,
-                        steps: $appState.state.leadEuclid4Steps,
-                        hits: $appState.state.leadEuclid4Hits,
-                        rotation: $appState.state.leadEuclid4Rotation,
-                        noteMin: $appState.state.leadEuclid4NoteMin,
-                        noteMax: $appState.state.leadEuclid4NoteMax,
-                        level: $appState.state.leadEuclid4Level,
-                        probability: $appState.state.leadEuclid4Probability,
-                        source: $appState.state.leadEuclid4Source
+                        enabled: $appState.state.synthEuclid4Enabled,
+                        preset: $appState.state.synthEuclid4Preset,
+                        steps: $appState.state.synthEuclid4Steps,
+                        hits: $appState.state.synthEuclid4Hits,
+                        rotation: $appState.state.synthEuclid4Rotation,
+                        noteMin: $appState.state.synthEuclid4NoteMin,
+                        noteMax: $appState.state.synthEuclid4NoteMax,
+                        level: $appState.state.synthEuclid4Level,
+                        probability: $appState.state.synthEuclid4Probability,
+                        source: $appState.state.synthEuclid4Source
                     )
                 }
                 } // End Synth Tab (part 2)

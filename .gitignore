@@ -28,3 +28,16 @@ npm-debug.log*
 # Large local sample assets (keep out of Git status scans)
 SampleTransients/
 public/samples/
+# Digitone sysex tools (local development only)
+Digitone/
+libdigitone/
+
+# Backup files
+src/audio/*_backup_*.ts
+public/*_backup_*.html
+
+# Python virtual environment
+.venv/
+
+# Digitone export candidates
+public/digitone_candidates.json

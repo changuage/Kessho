@@ -111,54 +111,54 @@ struct SliderState: Codable, Equatable {
     var leadGlideMax: Double = 0
     
     // Euclidean Rhythms
-    var leadEuclideanMasterEnabled: Bool = false
-    var leadEuclideanTempo: Double = 1.0
+    var synthEuclideanMasterEnabled: Bool = false
+    var synthEuclideanTempo: Double = 1.0
     
-    var leadEuclid1Enabled: Bool = true
-    var leadEuclid1Preset: String = "lancaran"
-    var leadEuclid1Steps: Int = 16
-    var leadEuclid1Hits: Int = 4
-    var leadEuclid1Rotation: Int = 0
-    var leadEuclid1NoteMin: Int = 64
-    var leadEuclid1NoteMax: Int = 76
-    var leadEuclid1Level: Double = 0.8
+    var synthEuclid1Enabled: Bool = true
+    var synthEuclid1Preset: String = "lancaran"
+    var synthEuclid1Steps: Int = 16
+    var synthEuclid1Hits: Int = 4
+    var synthEuclid1Rotation: Int = 0
+    var synthEuclid1NoteMin: Int = 64
+    var synthEuclid1NoteMax: Int = 76
+    var synthEuclid1Level: Double = 0.8
     
-    var leadEuclid2Enabled: Bool = false
-    var leadEuclid2Preset: String = "kotekan"
-    var leadEuclid2Steps: Int = 8
-    var leadEuclid2Hits: Int = 3
-    var leadEuclid2Rotation: Int = 1
-    var leadEuclid2NoteMin: Int = 76
-    var leadEuclid2NoteMax: Int = 88
-    var leadEuclid2Level: Double = 0.6
+    var synthEuclid2Enabled: Bool = false
+    var synthEuclid2Preset: String = "kotekan"
+    var synthEuclid2Steps: Int = 8
+    var synthEuclid2Hits: Int = 3
+    var synthEuclid2Rotation: Int = 1
+    var synthEuclid2NoteMin: Int = 76
+    var synthEuclid2NoteMax: Int = 88
+    var synthEuclid2Level: Double = 0.6
     
-    var leadEuclid3Enabled: Bool = false
-    var leadEuclid3Preset: String = "ketawang"
-    var leadEuclid3Steps: Int = 16
-    var leadEuclid3Hits: Int = 2
-    var leadEuclid3Rotation: Int = 0
-    var leadEuclid3NoteMin: Int = 52
-    var leadEuclid3NoteMax: Int = 64
-    var leadEuclid3Level: Double = 0.9
+    var synthEuclid3Enabled: Bool = false
+    var synthEuclid3Preset: String = "ketawang"
+    var synthEuclid3Steps: Int = 16
+    var synthEuclid3Hits: Int = 2
+    var synthEuclid3Rotation: Int = 0
+    var synthEuclid3NoteMin: Int = 52
+    var synthEuclid3NoteMax: Int = 64
+    var synthEuclid3Level: Double = 0.9
     
-    var leadEuclid4Enabled: Bool = false
-    var leadEuclid4Preset: String = "srepegan"
-    var leadEuclid4Steps: Int = 16
-    var leadEuclid4Hits: Int = 6
-    var leadEuclid4Rotation: Int = 2
-    var leadEuclid4NoteMin: Int = 88
-    var leadEuclid4NoteMax: Int = 96
-    var leadEuclid4Level: Double = 0.5
+    var synthEuclid4Enabled: Bool = false
+    var synthEuclid4Preset: String = "srepegan"
+    var synthEuclid4Steps: Int = 16
+    var synthEuclid4Hits: Int = 6
+    var synthEuclid4Rotation: Int = 2
+    var synthEuclid4NoteMin: Int = 88
+    var synthEuclid4NoteMax: Int = 96
+    var synthEuclid4Level: Double = 0.5
     
     // Euclidean Probability & Source (per lane)
-    var leadEuclid1Probability: Double = 1.0
-    var leadEuclid1Source: String = "lead"  // "lead", "synth1"..."synth6"
-    var leadEuclid2Probability: Double = 1.0
-    var leadEuclid2Source: String = "lead"
-    var leadEuclid3Probability: Double = 1.0
-    var leadEuclid3Source: String = "lead"
-    var leadEuclid4Probability: Double = 1.0
-    var leadEuclid4Source: String = "lead"
+    var synthEuclid1Probability: Double = 1.0
+    var synthEuclid1Source: String = "lead"  // "lead", "synth1"..."synth6"
+    var synthEuclid2Probability: Double = 1.0
+    var synthEuclid2Source: String = "lead"
+    var synthEuclid3Probability: Double = 1.0
+    var synthEuclid3Source: String = "lead"
+    var synthEuclid4Probability: Double = 1.0
+    var synthEuclid4Source: String = "lead"
     
     // Synth Chord Sequencer Toggle
     var synthChordSequencerEnabled: Bool = true

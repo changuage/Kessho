@@ -63,6 +63,11 @@ interface SeqLaneProps {
   onChangePitchRoot?: (root: number) => void;
   /** Pitch-specific: change scale */
   onChangePitchScale?: (scale: ScaleName) => void;
+  /** Note-range pitch mode: min/max MIDI notes and callbacks */
+  pitchNoteMin?: number;
+  pitchNoteMax?: number;
+  onChangePitchNoteMin?: (v: number) => void;
+  onChangePitchNoteMax?: (v: number) => void;
 }
 
 const SeqLane: React.FC<SeqLaneProps> = ({
@@ -86,6 +91,10 @@ const SeqLane: React.FC<SeqLaneProps> = ({
   onChangePitchMode,
   onChangePitchRoot,
   onChangePitchScale,
+  pitchNoteMin,
+  pitchNoteMax,
+  onChangePitchNoteMin,
+  onChangePitchNoteMax,
 }) => {
   // Sub-lanes use their own step count; trigger uses trigger.steps
   const laneSteps = lane === 'trigger'
@@ -164,29 +173,63 @@ const SeqLane: React.FC<SeqLaneProps> = ({
                 >
                   <option value="semitones">Semitones</option>
                   <option value="notes">Notes</option>
+                  <option value="noteRange">Note Range</option>
                 </select>
-                <DragNumber
-                  value={sequencer.pitch.root}
-                  min={0}
-                  max={127}
-                  label="Root"
-                  onChange={(v) => onChangePitchRoot?.(v)}
-                />
-                <select
-                  className="seq-pitch-scale"
-                  value={sequencer.pitch.scale}
-                  onChange={(e) => onChangePitchScale?.(e.target.value as ScaleName)}
-                >
-                  {Object.keys(SCALES).map((s) => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                </select>
+                {sequencer.pitch.mode !== 'noteRange' && (
+                  <>
+                    <DragNumber
+                      value={sequencer.pitch.root}
+                      min={0}
+                      max={127}
+                      label="Root"
+                      onChange={(v) => onChangePitchRoot?.(v)}
+                    />
+                    <select
+                      className="seq-pitch-scale"
+                      value={sequencer.pitch.scale}
+                      onChange={(e) => onChangePitchScale?.(e.target.value as ScaleName)}
+                    >
+                      {Object.keys(SCALES).map((s) => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  </>
+                )}
               </div>
             )}
           </div>
       </div>
       )}
-      {/* Step grid */}
+      {/* Step grid — or noteRange controls when pitch mode is noteRange */}
+      {lane === 'pitch' && sequencer.pitch.mode === 'noteRange' ? (
+        <div className="seq-lane-body seq-noterange-body">
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center', padding: '8px 4px' }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: '0.65rem', color: '#888', marginBottom: '2px' }}>
+                Low: {midiToName(pitchNoteMin ?? 48)}
+              </div>
+              <input type="range" min={36} max={96} step={1}
+                value={pitchNoteMin ?? 48}
+                onChange={(e) => onChangePitchNoteMin?.(Math.min(parseInt(e.target.value), pitchNoteMax ?? 72))}
+                style={{ width: '100%', cursor: 'pointer' }}
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: '0.65rem', color: '#888', marginBottom: '2px' }}>
+                High: {midiToName(pitchNoteMax ?? 72)}
+              </div>
+              <input type="range" min={36} max={96} step={1}
+                value={pitchNoteMax ?? 72}
+                onChange={(e) => onChangePitchNoteMax?.(Math.max(parseInt(e.target.value), pitchNoteMin ?? 48))}
+                style={{ width: '100%', cursor: 'pointer' }}
+              />
+            </div>
+          </div>
+          <div style={{ fontSize: '0.6rem', color: '#666', textAlign: 'center' }}>
+            Each trigger picks a random note between {midiToName(pitchNoteMin ?? 48)} and {midiToName(pitchNoteMax ?? 72)}
+          </div>
+        </div>
+      ) : (
       <div className="seq-lane-body">
         {(() => {
           // Adaptive: 8 columns when steps < 9, 16 when steps >= 9
@@ -206,7 +249,8 @@ const SeqLane: React.FC<SeqLaneProps> = ({
               isPlayhead = inRange && playhead % laneSteps === step;
             } else {
               // Compute sub-lane index from hitCount, respecting direction
-              const basis = hitCount;
+              // hitCount is post-increment (incremented after trigger), so subtract 1 to show the step that was just triggered
+              const basis = Math.max(0, hitCount - 1);
               let idx = ((basis % laneSteps) + laneSteps) % laneSteps;
               if (direction === 'reverse') {
                 idx = laneSteps - 1 - idx;
@@ -394,7 +438,7 @@ const SeqLane: React.FC<SeqLaneProps> = ({
                     />
                     <div className="seq-vel-label">{pct}%</div>
                   </div>
-                  {/* Ratchet indicator (moved from trigger lane) */}
+                  {/* Ratchet indicator — in expression lane for polyrhythmic ratchet patterns */}
                   {(() => {
                     const ratchet = sequencer.trigger.ratchet[step % sequencer.trigger.ratchet.length] ?? 1;
                     return (
@@ -533,6 +577,7 @@ const SeqLane: React.FC<SeqLaneProps> = ({
           <div className="seq-step-hint">tap=toggle │ drag↕=probability │ dbl-tap=reset │ tap cond below</div>
         )}
       </div>
+      )}
       {/* Drag popup overlay */}
       {dragPopup && (
         <div

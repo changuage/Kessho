@@ -27,7 +27,8 @@ const SeqSparkline: React.FC<SeqSparklineProps> = ({ values, color, label, steps
   // Sub-lane sparkline playhead: derived from hitCount (Elektron-style)
   const subPlayhead = (() => {
     if (playhead < 0) return -1;
-    const basis = hitCount;
+    // hitCount is post-increment (incremented after trigger), so subtract 1 to show the step that was just triggered
+    const basis = Math.max(0, hitCount - 1);
     let idx = ((basis % steps) + steps) % steps;
     if (direction === 'reverse') {
       idx = steps - 1 - idx;

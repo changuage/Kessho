@@ -68,18 +68,148 @@ export interface SliderState {
   synthVoiceMask: number;     // 1..63 binary mask for which voices play (1=voice1, 2=voice2, 4=voice3, etc)
   synthOctave: number;        // -2..+2 octave shift
 
-  // Timbre
-  hardness: number;           // 0..1 step 0.01
-  oscBrightness: number;      // 0..3 step 1 (0=sine, 1=triangle, 2=saw+tri, 3=sawtooth)
+  // Timbre / Drive
+  hardness: number;           // 0..1 step 0.01 — saturation drive + resonance boost
   filterType: 'lowpass' | 'bandpass' | 'highpass' | 'notch';
   filterCutoffMin: number;    // 40..8000 Hz - lower bound of filter sweep
   filterCutoffMax: number;    // 40..8000 Hz - upper bound of filter sweep
-  filterModSpeed: number;     // 0..8 phrases - how many phrases per full cycle (0 = no modulation)
   filterResonance: number;    // 0..1 step 0.01 (resonance peak)
   filterQ: number;            // 0.1..12 step 0.1 (filter bandwidth/angle)
   warmth: number;             // 0..1 step 0.01 (low shelf boost)
   presence: number;           // 0..1 step 0.01 (high-mid presence)
-  airNoise: number;           // 0..1 step 0.01
+
+  // ─── Pad Synth Extended (Phase 1 + 2) ───
+  // Preset system
+  padPresetA: string;           // Preset id for morph position 0
+  padPresetB: string;           // Preset id for morph position 1
+  padMorph: number;             // 0..1 morph position between A and B
+
+  // Oscillator A (primary)
+  padOscAWave: 'sine' | 'triangle' | 'sawtooth' | 'square';
+  padOscAOctave: number;        // -2..+2
+  padOscADetune: number;        // -100..+100 cents
+  padOscALevel: number;         // 0..1
+
+  // Oscillator B (secondary)
+  padOscBWave: 'sine' | 'triangle' | 'sawtooth' | 'square';
+  padOscBOctave: number;        // -2..+2
+  padOscBDetune: number;        // -100..+100 cents
+  padOscBLevel: number;         // 0..1
+
+  // Sub Oscillator
+  padSubEnabled: boolean;
+  padSubOctave: number;         // -1 or -2
+  padSubWave: 'sine' | 'triangle';
+  padSubLevel: number;          // 0..1
+
+  // Noise Layer
+  padNoiseType: 'white' | 'pink';
+  padNoiseLevel: number;        // 0..1
+
+  // Filter B (second filter in series)
+  padFilterBEnabled: boolean;
+  padFilterBType: 'lowpass' | 'bandpass' | 'highpass' | 'notch';
+  padFilterBCutoff: number;     // 40..8000 Hz
+  padFilterBResonance: number;  // 0..1
+  padFilterBQ: number;          // 0.1..12
+  padFilterRouting: 'series' | 'aOnly' | 'bOnly';
+
+  // LFO 1
+  padLfo1Rate: number;          // 0.05..20 Hz
+  padLfo1Depth: number;         // 0..1
+  padLfo1Wave: 'sine' | 'triangle' | 'sawtooth' | 'square' | 'sampleHold' | 'randomSmooth' | 'randomWalk';
+  padLfo1Dest: 'none' | 'filterCutoff' | 'filterBCutoff' | 'amplitude' | 'pitch' | 'oscBLevel';
+
+  // LFO 2
+  padLfo2Rate: number;          // 0.05..20 Hz
+  padLfo2Depth: number;         // 0..1
+  padLfo2Wave: 'sine' | 'triangle' | 'sawtooth' | 'square' | 'sampleHold' | 'randomSmooth' | 'randomWalk';
+  padLfo2Dest: 'none' | 'filterCutoff' | 'filterBCutoff' | 'amplitude' | 'pitch' | 'oscBLevel';
+
+  // Mod Envelope
+  padModEnvEnabled: boolean;
+  padModEnvAttack: number;      // 0.01..8s
+  padModEnvDecay: number;       // 0.01..8s
+  padModEnvSustain: number;     // 0..1
+  padModEnvRelease: number;     // 0.01..16s
+  padModEnvDepth: number;       // -1..+1
+  padModEnvDest: 'filterCutoff' | 'pitch' | 'oscBLevel';
+
+  // Pad morph auto
+  padMorphAuto: boolean;
+  padMorphSpeed: number;        // 1..32 phrases per morph cycle
+
+  // Osc Mix — crossfade between Osc A and Osc B levels
+  padOscMix: number;            // 0..1 (0=A only, 0.5=both full, 1=B only)
+
+  // ─── Pad Synth 2 ───
+  pad2Enabled: boolean;
+  pad2VoiceAssign: number;      // bitmask 0..63: which voices belong to Pad 2 (default 0 = none)
+  // ADSR
+  pad2Attack: number;
+  pad2Decay: number;
+  pad2Sustain: number;
+  pad2Release: number;
+  pad2Octave: number;
+  // Drive / Character
+  pad2Hardness: number;
+  pad2Warmth: number;
+  pad2Presence: number;
+  pad2OscMix: number;
+  // Filter A
+  pad2FilterType: 'lowpass' | 'bandpass' | 'highpass' | 'notch';
+  pad2FilterCutoffMin: number;
+  pad2FilterCutoffMax: number;
+  pad2FilterResonance: number;
+  pad2FilterQ: number;
+  // Oscillators
+  pad2OscAWave: 'sine' | 'triangle' | 'sawtooth' | 'square';
+  pad2OscAOctave: number;
+  pad2OscADetune: number;
+  pad2OscALevel: number;
+  pad2OscBWave: 'sine' | 'triangle' | 'sawtooth' | 'square';
+  pad2OscBOctave: number;
+  pad2OscBDetune: number;
+  pad2OscBLevel: number;
+  // Sub
+  pad2SubEnabled: boolean;
+  pad2SubOctave: number;
+  pad2SubWave: 'sine' | 'triangle';
+  pad2SubLevel: number;
+  // Noise
+  pad2NoiseType: 'white' | 'pink';
+  pad2NoiseLevel: number;
+  // Filter B
+  pad2FilterBEnabled: boolean;
+  pad2FilterBType: 'lowpass' | 'bandpass' | 'highpass' | 'notch';
+  pad2FilterBCutoff: number;
+  pad2FilterBResonance: number;
+  pad2FilterBQ: number;
+  pad2FilterRouting: 'series' | 'aOnly' | 'bOnly';
+  // LFO 1
+  pad2Lfo1Rate: number;
+  pad2Lfo1Depth: number;
+  pad2Lfo1Wave: 'sine' | 'triangle' | 'sawtooth' | 'square' | 'sampleHold' | 'randomSmooth' | 'randomWalk';
+  pad2Lfo1Dest: 'none' | 'filterCutoff' | 'filterBCutoff' | 'amplitude' | 'pitch' | 'oscBLevel';
+  // LFO 2
+  pad2Lfo2Rate: number;
+  pad2Lfo2Depth: number;
+  pad2Lfo2Wave: 'sine' | 'triangle' | 'sawtooth' | 'square' | 'sampleHold' | 'randomSmooth' | 'randomWalk';
+  pad2Lfo2Dest: 'none' | 'filterCutoff' | 'filterBCutoff' | 'amplitude' | 'pitch' | 'oscBLevel';
+  // Mod Envelope
+  pad2ModEnvEnabled: boolean;
+  pad2ModEnvAttack: number;
+  pad2ModEnvDecay: number;
+  pad2ModEnvSustain: number;
+  pad2ModEnvRelease: number;
+  pad2ModEnvDepth: number;
+  pad2ModEnvDest: 'filterCutoff' | 'pitch' | 'oscBLevel';
+  // Presets / Morph
+  pad2PresetA: string;
+  pad2PresetB: string;
+  pad2Morph: number;
+  pad2MorphAuto: boolean;
+  pad2MorphSpeed: number;
 
   // Space
   reverbEnabled: boolean;     // on/off toggle for reverb (saves CPU when off)
@@ -109,8 +239,12 @@ export interface SliderState {
   wetHPF: number;             // 200..3000 Hz step 50
   wetLPF: number;             // 3000..12000 Hz step 200
 
+  // Pad Synth
+  padEnabled: boolean;        // on/off toggle for pad synth voices
+
   // Lead Synth (Rhodes/Bell)
-  leadEnabled: boolean;       // on/off toggle
+  leadEnabled: boolean;       // on/off toggle (master: mutes gain + gates playLeadNote)
+  leadRandomEnabled: boolean; // on/off toggle for random timing mode
   leadLevel: number;          // 0..1 step 0.01
   lead1UseCustomAdsr: boolean; // when true, use lead ADSR sliders instead of preset ADSR
   lead1Attack: number;         // 0.001..2 seconds
@@ -146,57 +280,63 @@ export interface SliderState {
   lead2MorphMode: 'linear' | 'pingpong' | 'random';
   lead2AlgorithmMode: 'snap' | 'presetA'; // snap=switch at 50%, presetA=always use C's
   lead2Level: number;         // 0..1 level for lead 2
+  lead2UseCustomAdsr: boolean; // when true, use lead2 ADSR sliders instead of preset ADSR
+  lead2Attack: number;         // 0.001..2 seconds
+  lead2Decay: number;          // 0.01..4 seconds
+  lead2Sustain: number;        // 0..1 level
+  lead2Hold: number;           // 0..4 seconds - how long to hold at sustain level
+  lead2Release: number;        // 0.01..8 seconds
 
   leadVibratoDepth: number;     // 0..1 - vibrato depth (range in dualSliderRanges)
   leadVibratoRate: number;      // 0..1 - vibrato rate (range in dualSliderRanges)
   leadGlide: number;            // 0..1 - portamento/glide speed (range in dualSliderRanges)
   // Euclidean sequencer for lead - 4 independent lanes for polyrhythmic patterns
-  leadEuclideanMasterEnabled: boolean;  // master on/off (off = random mode)
-  leadEuclideanTempo: number;           // 0.25..12 - tempo multiplier for all lanes
+  synthEuclideanMasterEnabled: boolean;  // master on/off (off = random mode)
+  synthEuclideanTempo: number;           // 0.25..12 - tempo multiplier for all lanes
   // Lane 1
-  leadEuclid1Enabled: boolean;
-  leadEuclid1Preset: string;
-  leadEuclid1Steps: number;
-  leadEuclid1Hits: number;
-  leadEuclid1Rotation: number;
-  leadEuclid1NoteMin: number;    // 36..96 MIDI note - low end of note range
-  leadEuclid1NoteMax: number;    // 36..96 MIDI note - high end of note range
-  leadEuclid1Level: number;      // 0..1 velocity/level for this lane
-  leadEuclid1Probability: number; // 0..1 probability of triggering each hit
-  leadEuclid1Source: 'lead' | 'lead1' | 'lead2' | 'synth1' | 'synth2' | 'synth3' | 'synth4' | 'synth5' | 'synth6';
+  synthEuclid1Enabled: boolean;
+  synthEuclid1Preset: string;
+  synthEuclid1Steps: number;
+  synthEuclid1Hits: number;
+  synthEuclid1Rotation: number;
+  synthEuclid1NoteMin: number;    // 36..96 MIDI note - low end of note range
+  synthEuclid1NoteMax: number;    // 36..96 MIDI note - high end of note range
+  synthEuclid1Level: number;      // 0..1 velocity/level for this lane
+  synthEuclid1Probability: number; // 0..1 probability of triggering each hit
+  synthEuclid1Source: 'lead' | 'lead1' | 'lead2' | 'synth1' | 'synth2' | 'synth3' | 'synth4' | 'synth5' | 'synth6';
   // Lane 2
-  leadEuclid2Enabled: boolean;
-  leadEuclid2Preset: string;
-  leadEuclid2Steps: number;
-  leadEuclid2Hits: number;
-  leadEuclid2Rotation: number;
-  leadEuclid2NoteMin: number;
-  leadEuclid2NoteMax: number;
-  leadEuclid2Level: number;
-  leadEuclid2Probability: number;
-  leadEuclid2Source: 'lead' | 'lead1' | 'lead2' | 'synth1' | 'synth2' | 'synth3' | 'synth4' | 'synth5' | 'synth6';
+  synthEuclid2Enabled: boolean;
+  synthEuclid2Preset: string;
+  synthEuclid2Steps: number;
+  synthEuclid2Hits: number;
+  synthEuclid2Rotation: number;
+  synthEuclid2NoteMin: number;
+  synthEuclid2NoteMax: number;
+  synthEuclid2Level: number;
+  synthEuclid2Probability: number;
+  synthEuclid2Source: 'lead' | 'lead1' | 'lead2' | 'synth1' | 'synth2' | 'synth3' | 'synth4' | 'synth5' | 'synth6';
   // Lane 3
-  leadEuclid3Enabled: boolean;
-  leadEuclid3Preset: string;
-  leadEuclid3Steps: number;
-  leadEuclid3Hits: number;
-  leadEuclid3Rotation: number;
-  leadEuclid3NoteMin: number;
-  leadEuclid3NoteMax: number;
-  leadEuclid3Level: number;
-  leadEuclid3Probability: number;
-  leadEuclid3Source: 'lead' | 'lead1' | 'lead2' | 'synth1' | 'synth2' | 'synth3' | 'synth4' | 'synth5' | 'synth6';
+  synthEuclid3Enabled: boolean;
+  synthEuclid3Preset: string;
+  synthEuclid3Steps: number;
+  synthEuclid3Hits: number;
+  synthEuclid3Rotation: number;
+  synthEuclid3NoteMin: number;
+  synthEuclid3NoteMax: number;
+  synthEuclid3Level: number;
+  synthEuclid3Probability: number;
+  synthEuclid3Source: 'lead' | 'lead1' | 'lead2' | 'synth1' | 'synth2' | 'synth3' | 'synth4' | 'synth5' | 'synth6';
   // Lane 4
-  leadEuclid4Enabled: boolean;
-  leadEuclid4Preset: string;
-  leadEuclid4Steps: number;
-  leadEuclid4Hits: number;
-  leadEuclid4Rotation: number;
-  leadEuclid4NoteMin: number;
-  leadEuclid4NoteMax: number;
-  leadEuclid4Level: number;
-  leadEuclid4Probability: number;
-  leadEuclid4Source: 'lead' | 'lead1' | 'lead2' | 'synth1' | 'synth2' | 'synth3' | 'synth4' | 'synth5' | 'synth6';
+  synthEuclid4Enabled: boolean;
+  synthEuclid4Preset: string;
+  synthEuclid4Steps: number;
+  synthEuclid4Hits: number;
+  synthEuclid4Rotation: number;
+  synthEuclid4NoteMin: number;
+  synthEuclid4NoteMax: number;
+  synthEuclid4Level: number;
+  synthEuclid4Probability: number;
+  synthEuclid4Source: 'lead' | 'lead1' | 'lead2' | 'synth1' | 'synth2' | 'synth3' | 'synth4' | 'synth5' | 'synth6';
   
   // Synth chord sequencer toggle (when false, synth only plays from Euclidean triggers)
   synthChordSequencerEnabled: boolean;
@@ -537,16 +677,112 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'synthSustain',
   'synthRelease',
   'hardness',
-  'oscBrightness',
   'filterType',
   'filterCutoffMin',
   'filterCutoffMax',
-  'filterModSpeed',
   'filterResonance',
   'filterQ',
   'warmth',
   'presence',
-  'airNoise',
+  // Pad Synth Extended
+  'padPresetA',
+  'padPresetB',
+  'padMorph',
+  'padOscAWave',
+  'padOscAOctave',
+  'padOscADetune',
+  'padOscALevel',
+  'padOscBWave',
+  'padOscBOctave',
+  'padOscBDetune',
+  'padOscBLevel',
+  'padSubEnabled',
+  'padSubOctave',
+  'padSubWave',
+  'padSubLevel',
+  'padNoiseType',
+  'padNoiseLevel',
+  'padFilterBEnabled',
+  'padFilterBType',
+  'padFilterBCutoff',
+  'padFilterBResonance',
+  'padFilterBQ',
+  'padFilterRouting',
+  'padLfo1Rate',
+  'padLfo1Depth',
+  'padLfo1Wave',
+  'padLfo1Dest',
+  'padLfo2Rate',
+  'padLfo2Depth',
+  'padLfo2Wave',
+  'padLfo2Dest',
+  'padModEnvEnabled',
+  'padModEnvAttack',
+  'padModEnvDecay',
+  'padModEnvSustain',
+  'padModEnvRelease',
+  'padModEnvDepth',
+  'padModEnvDest',
+  'padMorphAuto',
+  'padMorphSpeed',
+  'padOscMix',
+  // Pad Synth 2
+  'pad2Enabled',
+  'pad2VoiceAssign',
+  'pad2Attack',
+  'pad2Decay',
+  'pad2Sustain',
+  'pad2Release',
+  'pad2Octave',
+  'pad2Hardness',
+  'pad2Warmth',
+  'pad2Presence',
+  'pad2OscMix',
+  'pad2FilterType',
+  'pad2FilterCutoffMin',
+  'pad2FilterCutoffMax',
+  'pad2FilterResonance',
+  'pad2FilterQ',
+  'pad2OscAWave',
+  'pad2OscAOctave',
+  'pad2OscADetune',
+  'pad2OscALevel',
+  'pad2OscBWave',
+  'pad2OscBOctave',
+  'pad2OscBDetune',
+  'pad2OscBLevel',
+  'pad2SubEnabled',
+  'pad2SubOctave',
+  'pad2SubWave',
+  'pad2SubLevel',
+  'pad2NoiseType',
+  'pad2NoiseLevel',
+  'pad2FilterBEnabled',
+  'pad2FilterBType',
+  'pad2FilterBCutoff',
+  'pad2FilterBResonance',
+  'pad2FilterBQ',
+  'pad2FilterRouting',
+  'pad2Lfo1Rate',
+  'pad2Lfo1Depth',
+  'pad2Lfo1Wave',
+  'pad2Lfo1Dest',
+  'pad2Lfo2Rate',
+  'pad2Lfo2Depth',
+  'pad2Lfo2Wave',
+  'pad2Lfo2Dest',
+  'pad2ModEnvEnabled',
+  'pad2ModEnvAttack',
+  'pad2ModEnvDecay',
+  'pad2ModEnvSustain',
+  'pad2ModEnvRelease',
+  'pad2ModEnvDepth',
+  'pad2ModEnvDest',
+  'pad2PresetA',
+  'pad2PresetB',
+  'pad2Morph',
+  'pad2MorphAuto',
+  'pad2MorphSpeed',
   'reverbEngine',
   'reverbType',
   'reverbQuality',
@@ -570,7 +806,9 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'feedback',
   'wetHPF',
   'wetLPF',
+  'padEnabled',
   'leadEnabled',
+  'leadRandomEnabled',
   'leadLevel',
   'lead1UseCustomAdsr',
   'lead1Attack',
@@ -603,51 +841,56 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'lead2MorphMode',
   'lead2AlgorithmMode',
   'lead2Level',
+  'lead2UseCustomAdsr',
+  'lead2Attack',
+  'lead2Decay',
+  'lead2Sustain',
+  'lead2Release',
   'leadVibratoDepth',
   'leadVibratoRate',
   'leadGlide',
-  'leadEuclideanMasterEnabled',
-  'leadEuclideanTempo',
-  'leadEuclid1Enabled',
-  'leadEuclid1Preset',
-  'leadEuclid1Steps',
-  'leadEuclid1Hits',
-  'leadEuclid1Rotation',
-  'leadEuclid1NoteMin',
-  'leadEuclid1NoteMax',
-  'leadEuclid1Level',
-  'leadEuclid1Probability',
-  'leadEuclid1Source',
-  'leadEuclid2Enabled',
-  'leadEuclid2Preset',
-  'leadEuclid2Steps',
-  'leadEuclid2Hits',
-  'leadEuclid2Rotation',
-  'leadEuclid2NoteMin',
-  'leadEuclid2NoteMax',
-  'leadEuclid2Level',
-  'leadEuclid2Probability',
-  'leadEuclid2Source',
-  'leadEuclid3Enabled',
-  'leadEuclid3Preset',
-  'leadEuclid3Steps',
-  'leadEuclid3Hits',
-  'leadEuclid3Rotation',
-  'leadEuclid3NoteMin',
-  'leadEuclid3NoteMax',
-  'leadEuclid3Level',
-  'leadEuclid3Probability',
-  'leadEuclid3Source',
-  'leadEuclid4Enabled',
-  'leadEuclid4Preset',
-  'leadEuclid4Steps',
-  'leadEuclid4Hits',
-  'leadEuclid4Rotation',
-  'leadEuclid4NoteMin',
-  'leadEuclid4NoteMax',
-  'leadEuclid4Level',
-  'leadEuclid4Probability',
-  'leadEuclid4Source',
+  'synthEuclideanMasterEnabled',
+  'synthEuclideanTempo',
+  'synthEuclid1Enabled',
+  'synthEuclid1Preset',
+  'synthEuclid1Steps',
+  'synthEuclid1Hits',
+  'synthEuclid1Rotation',
+  'synthEuclid1NoteMin',
+  'synthEuclid1NoteMax',
+  'synthEuclid1Level',
+  'synthEuclid1Probability',
+  'synthEuclid1Source',
+  'synthEuclid2Enabled',
+  'synthEuclid2Preset',
+  'synthEuclid2Steps',
+  'synthEuclid2Hits',
+  'synthEuclid2Rotation',
+  'synthEuclid2NoteMin',
+  'synthEuclid2NoteMax',
+  'synthEuclid2Level',
+  'synthEuclid2Probability',
+  'synthEuclid2Source',
+  'synthEuclid3Enabled',
+  'synthEuclid3Preset',
+  'synthEuclid3Steps',
+  'synthEuclid3Hits',
+  'synthEuclid3Rotation',
+  'synthEuclid3NoteMin',
+  'synthEuclid3NoteMax',
+  'synthEuclid3Level',
+  'synthEuclid3Probability',
+  'synthEuclid3Source',
+  'synthEuclid4Enabled',
+  'synthEuclid4Preset',
+  'synthEuclid4Steps',
+  'synthEuclid4Hits',
+  'synthEuclid4Rotation',
+  'synthEuclid4NoteMin',
+  'synthEuclid4NoteMax',
+  'synthEuclid4Level',
+  'synthEuclid4Probability',
+  'synthEuclid4Source',
   'synthChordSequencerEnabled',
   // Drum Synth
   'drumEnabled',
@@ -955,18 +1198,116 @@ export const DEFAULT_STATE: SliderState = {
   synthVoiceMask: 63,  // All 6 voices (binary 111111)
   synthOctave: 0,      // No octave shift
 
-  // Timbre
+  // Timbre / Drive
   hardness: 0.3,
-  oscBrightness: 2,  // Default to saw+triangle mix
   filterType: 'lowpass' as const,
   filterCutoffMin: 400,
   filterCutoffMax: 3000,
-  filterModSpeed: 2,  // 2 phrases per cycle
   filterResonance: 0.2,
   filterQ: 1.0,
   warmth: 0.4,
   presence: 0.3,
-  airNoise: 0.15,
+
+  // Pad Synth Extended
+  padPresetA: 'init',
+  padPresetB: 'init',
+  padMorph: 0,
+  padOscAWave: 'sawtooth' as const,
+  padOscAOctave: 0,
+  padOscADetune: 0,
+  padOscALevel: 0.6,
+  padOscBWave: 'triangle' as const,
+  padOscBOctave: 0,
+  padOscBDetune: 8,
+  padOscBLevel: 0.4,
+  padSubEnabled: false,
+  padSubOctave: -1,
+  padSubWave: 'sine' as const,
+  padSubLevel: 0.3,
+  padNoiseType: 'white' as const,
+  padNoiseLevel: 0.15,
+  padFilterBEnabled: false,
+  padFilterBType: 'highpass' as const,
+  padFilterBCutoff: 200,
+  padFilterBResonance: 0.2,
+  padFilterBQ: 1,
+  padFilterRouting: 'series' as const,
+  padLfo1Rate: 0.5,
+  padLfo1Depth: 0,
+  padLfo1Wave: 'sine' as const,
+  padLfo1Dest: 'none' as const,
+  padLfo2Rate: 0.5,
+  padLfo2Depth: 0,
+  padLfo2Wave: 'sine' as const,
+  padLfo2Dest: 'none' as const,
+  padModEnvEnabled: false,
+  padModEnvAttack: 0.5,
+  padModEnvDecay: 2,
+  padModEnvSustain: 0,
+  padModEnvRelease: 4,
+  padModEnvDepth: 0.5,
+  padModEnvDest: 'filterCutoff' as const,
+  padMorphAuto: false,
+  padMorphSpeed: 8,
+  padOscMix: 0.5,  // Center = both at full level
+
+  // Pad Synth 2
+  pad2Enabled: false,
+  pad2VoiceAssign: 0,  // No voices assigned to Pad 2
+  pad2Attack: 6.0,
+  pad2Decay: 1.0,
+  pad2Sustain: 0.8,
+  pad2Release: 12.0,
+  pad2Octave: 0,
+  pad2Hardness: 0.3,
+  pad2Warmth: 0.4,
+  pad2Presence: 0.3,
+  pad2OscMix: 0.5,
+  pad2FilterType: 'lowpass' as const,
+  pad2FilterCutoffMin: 400,
+  pad2FilterCutoffMax: 3000,
+  pad2FilterResonance: 0.2,
+  pad2FilterQ: 1.0,
+  pad2OscAWave: 'sawtooth' as const,
+  pad2OscAOctave: 0,
+  pad2OscADetune: 0,
+  pad2OscALevel: 0.6,
+  pad2OscBWave: 'triangle' as const,
+  pad2OscBOctave: 0,
+  pad2OscBDetune: 8,
+  pad2OscBLevel: 0.4,
+  pad2SubEnabled: false,
+  pad2SubOctave: -1,
+  pad2SubWave: 'sine' as const,
+  pad2SubLevel: 0.3,
+  pad2NoiseType: 'white' as const,
+  pad2NoiseLevel: 0.15,
+  pad2FilterBEnabled: false,
+  pad2FilterBType: 'highpass' as const,
+  pad2FilterBCutoff: 200,
+  pad2FilterBResonance: 0.2,
+  pad2FilterBQ: 1,
+  pad2FilterRouting: 'series' as const,
+  pad2Lfo1Rate: 0.5,
+  pad2Lfo1Depth: 0,
+  pad2Lfo1Wave: 'sine' as const,
+  pad2Lfo1Dest: 'none' as const,
+  pad2Lfo2Rate: 0.5,
+  pad2Lfo2Depth: 0,
+  pad2Lfo2Wave: 'sine' as const,
+  pad2Lfo2Dest: 'none' as const,
+  pad2ModEnvEnabled: false,
+  pad2ModEnvAttack: 0.5,
+  pad2ModEnvDecay: 2,
+  pad2ModEnvSustain: 0,
+  pad2ModEnvRelease: 4,
+  pad2ModEnvDepth: 0.5,
+  pad2ModEnvDest: 'filterCutoff' as const,
+  pad2PresetA: 'init',
+  pad2PresetB: 'init',
+  pad2Morph: 0,
+  pad2MorphAuto: false,
+  pad2MorphSpeed: 8,
 
   // Space
   reverbEnabled: true,
@@ -996,8 +1337,12 @@ export const DEFAULT_STATE: SliderState = {
   wetHPF: 500,
   wetLPF: 8000,
 
+  // Pad Synth
+  padEnabled: true,
+
   // Lead Synth (Rhodes/Bell)
   leadEnabled: false,
+  leadRandomEnabled: false,
   leadLevel: 0,
   lead1UseCustomAdsr: false,
   lead1Attack: 0.01,
@@ -1031,56 +1376,62 @@ export const DEFAULT_STATE: SliderState = {
   lead2MorphMode: 'pingpong' as const,
   lead2AlgorithmMode: 'snap' as const,
   lead2Level: 0.6,
+  lead2UseCustomAdsr: false,
+  lead2Attack: 0.01,
+  lead2Decay: 0.8,
+  lead2Sustain: 0.3,
+  lead2Hold: 0.5,
+  lead2Release: 2.0,
   leadVibratoDepth: 0,
   leadVibratoRate: 0,
   leadGlide: 0,
   // Euclidean sequencer for lead - 4 lanes for polyrhythms
-  leadEuclideanMasterEnabled: false,
-  leadEuclideanTempo: 1,
+  synthEuclideanMasterEnabled: false,
+  synthEuclideanTempo: 1,
   // Lane 1 - main pulse (lancaran) - mid register
-  leadEuclid1Enabled: true,
-  leadEuclid1Preset: 'lancaran',
-  leadEuclid1Steps: 16,
-  leadEuclid1Hits: 4,
-  leadEuclid1Rotation: 0,
-  leadEuclid1NoteMin: 64,  // E4 (root octave 2)
-  leadEuclid1NoteMax: 76,  // E5 (root octave 3)
-  leadEuclid1Level: 0.8,
-  leadEuclid1Probability: 1.0,
-  leadEuclid1Source: 'lead' as const,
+  synthEuclid1Enabled: true,
+  synthEuclid1Preset: 'lancaran',
+  synthEuclid1Steps: 16,
+  synthEuclid1Hits: 4,
+  synthEuclid1Rotation: 0,
+  synthEuclid1NoteMin: 64,  // E4 (root octave 2)
+  synthEuclid1NoteMax: 76,  // E5 (root octave 3)
+  synthEuclid1Level: 0.8,
+  synthEuclid1Probability: 1.0,
+  synthEuclid1Source: 'lead' as const,
   // Lane 2 - interlocking (kotekan) - higher register
-  leadEuclid2Enabled: false,
-  leadEuclid2Preset: 'kotekan',
-  leadEuclid2Steps: 8,
-  leadEuclid2Hits: 3,
-  leadEuclid2Rotation: 1,
-  leadEuclid2NoteMin: 76,  // E5 (root octave 3)
-  leadEuclid2NoteMax: 88,  // E6 (root octave 4)
-  leadEuclid2Level: 0.6,
-  leadEuclid2Probability: 1.0,
-  leadEuclid2Source: 'lead' as const,
+  synthEuclid2Enabled: false,
+  synthEuclid2Preset: 'kotekan',
+  synthEuclid2Steps: 8,
+  synthEuclid2Hits: 3,
+  synthEuclid2Rotation: 1,
+  synthEuclid2NoteMin: 76,  // E5 (root octave 3)
+  synthEuclid2NoteMax: 88,  // E6 (root octave 4)
+  synthEuclid2Level: 0.6,
+  synthEuclid2Probability: 1.0,
+  synthEuclid2Source: 'lead' as const,
   // Lane 3 - sparse accent - bass register
-  leadEuclid3Enabled: false,
-  leadEuclid3Preset: 'ketawang',
-  leadEuclid3Steps: 16,
-  leadEuclid3Hits: 2,
-  leadEuclid3Rotation: 0,
-  leadEuclid3NoteMin: 52,  // E3 (root octave 1)
-  leadEuclid3NoteMax: 64,  // E4 (root octave 2)
-  leadEuclid3Level: 0.9,
-  leadEuclid3Probability: 1.0,
-  leadEuclid3Source: 'lead' as const,
+  synthEuclid3Enabled: false,
+  synthEuclid3Preset: 'ketawang',
+  synthEuclid3Steps: 16,
+  synthEuclid3Hits: 2,
+  synthEuclid3Rotation: 0,
+  synthEuclid3NoteMin: 52,  // E3 (root octave 1)
+  synthEuclid3NoteMax: 64,  // E4 (root octave 2)
+  synthEuclid3Level: 0.9,
+  synthEuclid3Probability: 1.0,
+  synthEuclid3Source: 'lead' as const,
   // Lane 4 - fill/texture - sparkle register
-  leadEuclid4Enabled: false,
-  leadEuclid4Preset: 'srepegan',
-  leadEuclid4Steps: 16,
-  leadEuclid4Hits: 6,
-  leadEuclid4Rotation: 2,
-  leadEuclid4NoteMin: 88,  // E6 (root octave 4)
-  leadEuclid4NoteMax: 96,  // C7
-  leadEuclid4Level: 0.5,
-  leadEuclid4Probability: 1.0,
-  leadEuclid4Source: 'lead' as const,
+  synthEuclid4Enabled: false,
+  synthEuclid4Preset: 'srepegan',
+  synthEuclid4Steps: 16,
+  synthEuclid4Hits: 6,
+  synthEuclid4Rotation: 2,
+  synthEuclid4NoteMin: 88,  // E6 (root octave 4)
+  synthEuclid4NoteMax: 96,  // C7
+  synthEuclid4Level: 0.5,
+  synthEuclid4Probability: 1.0,
+  synthEuclid4Source: 'lead' as const,
   
   // Synth chord sequencer toggle
   synthChordSequencerEnabled: true,
@@ -1426,16 +1777,76 @@ const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> = {
   synthRelease: { min: 0.01, max: 30, step: 0.01 },
   synthVoiceMask: { min: 1, max: 63, step: 1 },
   synthOctave: { min: -2, max: 2, step: 1 },
-  hardness: { min: 0, max: 1, step: 0.01 },
-  oscBrightness: { min: 0, max: 3, step: 1 },
+  hardness: { min: 0, max: 2, step: 0.01 },
   filterCutoffMin: { min: 40, max: 8000, step: 10 },
   filterCutoffMax: { min: 40, max: 8000, step: 10 },
-  filterModSpeed: { min: 0, max: 16, step: 0.5 },
   filterResonance: { min: 0, max: 1, step: 0.01 },
   filterQ: { min: 0.1, max: 12, step: 0.1 },
   warmth: { min: 0, max: 1, step: 0.01 },
   presence: { min: 0, max: 1, step: 0.01 },
-  airNoise: { min: 0, max: 1, step: 0.01 },
+  // Pad Synth Extended
+  padMorph: { min: 0, max: 1, step: 0.01 },
+  padOscAOctave: { min: -2, max: 2, step: 1 },
+  padOscADetune: { min: -100, max: 100, step: 1 },
+  padOscALevel: { min: 0, max: 1, step: 0.01 },
+  padOscBOctave: { min: -2, max: 2, step: 1 },
+  padOscBDetune: { min: -100, max: 100, step: 1 },
+  padOscBLevel: { min: 0, max: 1, step: 0.01 },
+  padSubOctave: { min: -2, max: -1, step: 1 },
+  padSubLevel: { min: 0, max: 1, step: 0.01 },
+  padNoiseLevel: { min: 0, max: 1, step: 0.01 },
+  padFilterBCutoff: { min: 40, max: 8000, step: 10 },
+  padFilterBResonance: { min: 0, max: 1, step: 0.01 },
+  padFilterBQ: { min: 0.1, max: 12, step: 0.1 },
+  padLfo1Rate: { min: 0.01, max: 20, step: 0.01 },
+  padLfo1Depth: { min: 0, max: 1, step: 0.01 },
+  padLfo2Rate: { min: 0.01, max: 20, step: 0.01 },
+  padLfo2Depth: { min: 0, max: 1, step: 0.01 },
+  padModEnvAttack: { min: 0.01, max: 8, step: 0.01 },
+  padModEnvDecay: { min: 0.01, max: 8, step: 0.01 },
+  padModEnvSustain: { min: 0, max: 1, step: 0.01 },
+  padModEnvRelease: { min: 0.01, max: 16, step: 0.01 },
+  padModEnvDepth: { min: -1, max: 1, step: 0.01 },
+  padMorphSpeed: { min: 1, max: 32, step: 1 },
+  padOscMix: { min: 0, max: 1, step: 0.01 },
+  // Pad Synth 2
+  pad2VoiceAssign: { min: 0, max: 63, step: 1 },
+  pad2Attack: { min: 0.01, max: 16, step: 0.01 },
+  pad2Decay: { min: 0.01, max: 8, step: 0.01 },
+  pad2Sustain: { min: 0, max: 1, step: 0.01 },
+  pad2Release: { min: 0.01, max: 30, step: 0.01 },
+  pad2Octave: { min: -2, max: 2, step: 1 },
+  pad2Hardness: { min: 0, max: 2, step: 0.01 },
+  pad2Warmth: { min: 0, max: 1, step: 0.01 },
+  pad2Presence: { min: 0, max: 1, step: 0.01 },
+  pad2OscMix: { min: 0, max: 1, step: 0.01 },
+  pad2FilterCutoffMin: { min: 40, max: 8000, step: 10 },
+  pad2FilterCutoffMax: { min: 40, max: 8000, step: 10 },
+  pad2FilterResonance: { min: 0, max: 1, step: 0.01 },
+  pad2FilterQ: { min: 0.1, max: 12, step: 0.1 },
+  pad2OscAOctave: { min: -2, max: 2, step: 1 },
+  pad2OscADetune: { min: -100, max: 100, step: 1 },
+  pad2OscALevel: { min: 0, max: 1, step: 0.01 },
+  pad2OscBOctave: { min: -2, max: 2, step: 1 },
+  pad2OscBDetune: { min: -100, max: 100, step: 1 },
+  pad2OscBLevel: { min: 0, max: 1, step: 0.01 },
+  pad2SubOctave: { min: -2, max: -1, step: 1 },
+  pad2SubLevel: { min: 0, max: 1, step: 0.01 },
+  pad2NoiseLevel: { min: 0, max: 1, step: 0.01 },
+  pad2FilterBCutoff: { min: 40, max: 8000, step: 10 },
+  pad2FilterBResonance: { min: 0, max: 1, step: 0.01 },
+  pad2FilterBQ: { min: 0.1, max: 12, step: 0.1 },
+  pad2Lfo1Rate: { min: 0.01, max: 20, step: 0.01 },
+  pad2Lfo1Depth: { min: 0, max: 1, step: 0.01 },
+  pad2Lfo2Rate: { min: 0.01, max: 20, step: 0.01 },
+  pad2Lfo2Depth: { min: 0, max: 1, step: 0.01 },
+  pad2ModEnvAttack: { min: 0.01, max: 8, step: 0.01 },
+  pad2ModEnvDecay: { min: 0.01, max: 8, step: 0.01 },
+  pad2ModEnvSustain: { min: 0, max: 1, step: 0.01 },
+  pad2ModEnvRelease: { min: 0.01, max: 16, step: 0.01 },
+  pad2ModEnvDepth: { min: -1, max: 1, step: 0.01 },
+  pad2Morph: { min: 0, max: 1, step: 0.01 },
+  pad2MorphSpeed: { min: 1, max: 32, step: 1 },
   reverbLevel: { min: 0, max: 2, step: 0.01 },
   reverbDecay: { min: 0, max: 1, step: 0.01 },
   reverbSize: { min: 0.5, max: 3, step: 0.1 },
@@ -1629,39 +2040,44 @@ const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> = {
   lead2Morph: { min: 0, max: 1, step: 0.01 },
   lead2MorphSpeed: { min: 1, max: 32, step: 1 },
   lead2Level: { min: 0, max: 1, step: 0.01 },
+  lead2Attack: { min: 0.001, max: 2, step: 0.001 },
+  lead2Decay: { min: 0.01, max: 4, step: 0.01 },
+  lead2Sustain: { min: 0, max: 1, step: 0.01 },
+  lead2Hold: { min: 0, max: 4, step: 0.01 },
+  lead2Release: { min: 0.01, max: 8, step: 0.01 },
   leadVibratoDepth: { min: 0, max: 1, step: 0.01 },
   leadVibratoRate: { min: 0, max: 1, step: 0.01 },
   leadGlide: { min: 0, max: 1, step: 0.01 },
   // Euclidean sequencer - shared for all lanes
-  leadEuclideanTempo: { min: 0.25, max: 12, step: 0.25 },
-  leadEuclid1Steps: { min: 4, max: 32, step: 1 },
-  leadEuclid1Hits: { min: 1, max: 16, step: 1 },
-  leadEuclid1Rotation: { min: 0, max: 31, step: 1 },
-  leadEuclid1NoteMin: { min: 36, max: 96, step: 1 },
-  leadEuclid1NoteMax: { min: 36, max: 96, step: 1 },
-  leadEuclid1Level: { min: 0, max: 1, step: 0.01 },
-  leadEuclid1Probability: { min: 0, max: 1, step: 0.01 },
-  leadEuclid2Steps: { min: 4, max: 32, step: 1 },
-  leadEuclid2Hits: { min: 1, max: 16, step: 1 },
-  leadEuclid2Rotation: { min: 0, max: 31, step: 1 },
-  leadEuclid2NoteMin: { min: 36, max: 96, step: 1 },
-  leadEuclid2NoteMax: { min: 36, max: 96, step: 1 },
-  leadEuclid2Level: { min: 0, max: 1, step: 0.01 },
-  leadEuclid2Probability: { min: 0, max: 1, step: 0.01 },
-  leadEuclid3Steps: { min: 4, max: 32, step: 1 },
-  leadEuclid3Hits: { min: 1, max: 16, step: 1 },
-  leadEuclid3Rotation: { min: 0, max: 31, step: 1 },
-  leadEuclid3NoteMin: { min: 36, max: 96, step: 1 },
-  leadEuclid3NoteMax: { min: 36, max: 96, step: 1 },
-  leadEuclid3Level: { min: 0, max: 1, step: 0.01 },
-  leadEuclid3Probability: { min: 0, max: 1, step: 0.01 },
-  leadEuclid4Steps: { min: 4, max: 32, step: 1 },
-  leadEuclid4Hits: { min: 1, max: 16, step: 1 },
-  leadEuclid4Rotation: { min: 0, max: 31, step: 1 },
-  leadEuclid4NoteMin: { min: 36, max: 96, step: 1 },
-  leadEuclid4NoteMax: { min: 36, max: 96, step: 1 },
-  leadEuclid4Level: { min: 0, max: 1, step: 0.01 },
-  leadEuclid4Probability: { min: 0, max: 1, step: 0.01 },
+  synthEuclideanTempo: { min: 0.25, max: 12, step: 0.25 },
+  synthEuclid1Steps: { min: 4, max: 32, step: 1 },
+  synthEuclid1Hits: { min: 1, max: 16, step: 1 },
+  synthEuclid1Rotation: { min: 0, max: 31, step: 1 },
+  synthEuclid1NoteMin: { min: 36, max: 96, step: 1 },
+  synthEuclid1NoteMax: { min: 36, max: 96, step: 1 },
+  synthEuclid1Level: { min: 0, max: 1, step: 0.01 },
+  synthEuclid1Probability: { min: 0, max: 1, step: 0.01 },
+  synthEuclid2Steps: { min: 4, max: 32, step: 1 },
+  synthEuclid2Hits: { min: 1, max: 16, step: 1 },
+  synthEuclid2Rotation: { min: 0, max: 31, step: 1 },
+  synthEuclid2NoteMin: { min: 36, max: 96, step: 1 },
+  synthEuclid2NoteMax: { min: 36, max: 96, step: 1 },
+  synthEuclid2Level: { min: 0, max: 1, step: 0.01 },
+  synthEuclid2Probability: { min: 0, max: 1, step: 0.01 },
+  synthEuclid3Steps: { min: 4, max: 32, step: 1 },
+  synthEuclid3Hits: { min: 1, max: 16, step: 1 },
+  synthEuclid3Rotation: { min: 0, max: 31, step: 1 },
+  synthEuclid3NoteMin: { min: 36, max: 96, step: 1 },
+  synthEuclid3NoteMax: { min: 36, max: 96, step: 1 },
+  synthEuclid3Level: { min: 0, max: 1, step: 0.01 },
+  synthEuclid3Probability: { min: 0, max: 1, step: 0.01 },
+  synthEuclid4Steps: { min: 4, max: 32, step: 1 },
+  synthEuclid4Hits: { min: 1, max: 16, step: 1 },
+  synthEuclid4Rotation: { min: 0, max: 31, step: 1 },
+  synthEuclid4NoteMin: { min: 36, max: 96, step: 1 },
+  synthEuclid4NoteMax: { min: 36, max: 96, step: 1 },
+  synthEuclid4Level: { min: 0, max: 1, step: 0.01 },
+  synthEuclid4Probability: { min: 0, max: 1, step: 0.01 },
   // Drum Euclidean sequencer
   drumEuclidBaseBPM: { min: 40, max: 240, step: 1 },
   drumEuclidTempo: { min: 0.25, max: 4, step: 0.25 },
@@ -1837,8 +2253,12 @@ export function decodeStateFromUrl(search: string): SliderState | null {
           ['random', 'harmonic'].includes(value)
         ) {
           state.grainPitchMode = value as SliderState['grainPitchMode'];
+        } else if (key === 'padEnabled') {
+          state.padEnabled = value === 'true';
         } else if (key === 'leadEnabled') {
           state.leadEnabled = value === 'true';
+        } else if (key === 'leadRandomEnabled') {
+          state.leadRandomEnabled = value === 'true';
         // Lead 1/2 morph params
         } else if (key === 'lead1PresetA') {
           state.lead1PresetA = value;
@@ -1862,24 +2282,26 @@ export function decodeStateFromUrl(search: string): SliderState | null {
           state.lead2MorphMode = value as 'linear' | 'pingpong' | 'random';
         } else if (key === 'lead2AlgorithmMode' && ['snap', 'presetA'].includes(value)) {
           state.lead2AlgorithmMode = value as 'snap' | 'presetA';
-        } else if (key === 'leadEuclideanMasterEnabled') {
-          state.leadEuclideanMasterEnabled = value === 'true';
-        } else if (key === 'leadEuclid1Enabled') {
-          state.leadEuclid1Enabled = value === 'true';
-        } else if (key === 'leadEuclid2Enabled') {
-          state.leadEuclid2Enabled = value === 'true';
-        } else if (key === 'leadEuclid3Enabled') {
-          state.leadEuclid3Enabled = value === 'true';
-        } else if (key === 'leadEuclid4Enabled') {
-          state.leadEuclid4Enabled = value === 'true';
-        } else if (key === 'leadEuclid1Preset') {
-          state.leadEuclid1Preset = value;
-        } else if (key === 'leadEuclid2Preset') {
-          state.leadEuclid2Preset = value;
-        } else if (key === 'leadEuclid3Preset') {
-          state.leadEuclid3Preset = value;
-        } else if (key === 'leadEuclid4Preset') {
-          state.leadEuclid4Preset = value;
+        } else if (key === 'lead2UseCustomAdsr') {
+          state.lead2UseCustomAdsr = value === 'true';
+        } else if (key === 'synthEuclideanMasterEnabled') {
+          state.synthEuclideanMasterEnabled = value === 'true';
+        } else if (key === 'synthEuclid1Enabled') {
+          state.synthEuclid1Enabled = value === 'true';
+        } else if (key === 'synthEuclid2Enabled') {
+          state.synthEuclid2Enabled = value === 'true';
+        } else if (key === 'synthEuclid3Enabled') {
+          state.synthEuclid3Enabled = value === 'true';
+        } else if (key === 'synthEuclid4Enabled') {
+          state.synthEuclid4Enabled = value === 'true';
+        } else if (key === 'synthEuclid1Preset') {
+          state.synthEuclid1Preset = value;
+        } else if (key === 'synthEuclid2Preset') {
+          state.synthEuclid2Preset = value;
+        } else if (key === 'synthEuclid3Preset') {
+          state.synthEuclid3Preset = value;
+        } else if (key === 'synthEuclid4Preset') {
+          state.synthEuclid4Preset = value;
         } else if (key === 'oceanSampleEnabled') {
           state.oceanSampleEnabled = value === 'true';
         } else if (key === 'oceanWaveSynthEnabled') {

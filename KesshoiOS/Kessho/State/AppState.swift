@@ -855,41 +855,41 @@ class AppState: ObservableObject {
         result.leadGlideMax = lerp(a.leadGlideMax, b.leadGlideMax, t)
         
         // === Euclidean Sequencer ===
-        result.leadEuclideanTempo = lerp(a.leadEuclideanTempo, b.leadEuclideanTempo, t)
+        result.synthEuclideanTempo = lerp(a.synthEuclideanTempo, b.synthEuclideanTempo, t)
         // Lane 1
-        result.leadEuclid1Steps = lerpInt(a.leadEuclid1Steps, b.leadEuclid1Steps, t)
-        result.leadEuclid1Hits = lerpInt(a.leadEuclid1Hits, b.leadEuclid1Hits, t)
-        result.leadEuclid1Rotation = lerpInt(a.leadEuclid1Rotation, b.leadEuclid1Rotation, t)
-        result.leadEuclid1NoteMin = lerpInt(a.leadEuclid1NoteMin, b.leadEuclid1NoteMin, t)
-        result.leadEuclid1NoteMax = lerpInt(a.leadEuclid1NoteMax, b.leadEuclid1NoteMax, t)
-        result.leadEuclid1Level = lerp(a.leadEuclid1Level, b.leadEuclid1Level, t)
+        result.synthEuclid1Steps = lerpInt(a.synthEuclid1Steps, b.synthEuclid1Steps, t)
+        result.synthEuclid1Hits = lerpInt(a.synthEuclid1Hits, b.synthEuclid1Hits, t)
+        result.synthEuclid1Rotation = lerpInt(a.synthEuclid1Rotation, b.synthEuclid1Rotation, t)
+        result.synthEuclid1NoteMin = lerpInt(a.synthEuclid1NoteMin, b.synthEuclid1NoteMin, t)
+        result.synthEuclid1NoteMax = lerpInt(a.synthEuclid1NoteMax, b.synthEuclid1NoteMax, t)
+        result.synthEuclid1Level = lerp(a.synthEuclid1Level, b.synthEuclid1Level, t)
         // Lane 2
-        result.leadEuclid2Steps = lerpInt(a.leadEuclid2Steps, b.leadEuclid2Steps, t)
-        result.leadEuclid2Hits = lerpInt(a.leadEuclid2Hits, b.leadEuclid2Hits, t)
-        result.leadEuclid2Rotation = lerpInt(a.leadEuclid2Rotation, b.leadEuclid2Rotation, t)
-        result.leadEuclid2NoteMin = lerpInt(a.leadEuclid2NoteMin, b.leadEuclid2NoteMin, t)
-        result.leadEuclid2NoteMax = lerpInt(a.leadEuclid2NoteMax, b.leadEuclid2NoteMax, t)
-        result.leadEuclid2Level = lerp(a.leadEuclid2Level, b.leadEuclid2Level, t)
+        result.synthEuclid2Steps = lerpInt(a.synthEuclid2Steps, b.synthEuclid2Steps, t)
+        result.synthEuclid2Hits = lerpInt(a.synthEuclid2Hits, b.synthEuclid2Hits, t)
+        result.synthEuclid2Rotation = lerpInt(a.synthEuclid2Rotation, b.synthEuclid2Rotation, t)
+        result.synthEuclid2NoteMin = lerpInt(a.synthEuclid2NoteMin, b.synthEuclid2NoteMin, t)
+        result.synthEuclid2NoteMax = lerpInt(a.synthEuclid2NoteMax, b.synthEuclid2NoteMax, t)
+        result.synthEuclid2Level = lerp(a.synthEuclid2Level, b.synthEuclid2Level, t)
         // Lane 3
-        result.leadEuclid3Steps = lerpInt(a.leadEuclid3Steps, b.leadEuclid3Steps, t)
-        result.leadEuclid3Hits = lerpInt(a.leadEuclid3Hits, b.leadEuclid3Hits, t)
-        result.leadEuclid3Rotation = lerpInt(a.leadEuclid3Rotation, b.leadEuclid3Rotation, t)
-        result.leadEuclid3NoteMin = lerpInt(a.leadEuclid3NoteMin, b.leadEuclid3NoteMin, t)
-        result.leadEuclid3NoteMax = lerpInt(a.leadEuclid3NoteMax, b.leadEuclid3NoteMax, t)
-        result.leadEuclid3Level = lerp(a.leadEuclid3Level, b.leadEuclid3Level, t)
+        result.synthEuclid3Steps = lerpInt(a.synthEuclid3Steps, b.synthEuclid3Steps, t)
+        result.synthEuclid3Hits = lerpInt(a.synthEuclid3Hits, b.synthEuclid3Hits, t)
+        result.synthEuclid3Rotation = lerpInt(a.synthEuclid3Rotation, b.synthEuclid3Rotation, t)
+        result.synthEuclid3NoteMin = lerpInt(a.synthEuclid3NoteMin, b.synthEuclid3NoteMin, t)
+        result.synthEuclid3NoteMax = lerpInt(a.synthEuclid3NoteMax, b.synthEuclid3NoteMax, t)
+        result.synthEuclid3Level = lerp(a.synthEuclid3Level, b.synthEuclid3Level, t)
         // Lane 4
-        result.leadEuclid4Steps = lerpInt(a.leadEuclid4Steps, b.leadEuclid4Steps, t)
-        result.leadEuclid4Hits = lerpInt(a.leadEuclid4Hits, b.leadEuclid4Hits, t)
-        result.leadEuclid4Rotation = lerpInt(a.leadEuclid4Rotation, b.leadEuclid4Rotation, t)
-        result.leadEuclid4NoteMin = lerpInt(a.leadEuclid4NoteMin, b.leadEuclid4NoteMin, t)
-        result.leadEuclid4NoteMax = lerpInt(a.leadEuclid4NoteMax, b.leadEuclid4NoteMax, t)
-        result.leadEuclid4Level = lerp(a.leadEuclid4Level, b.leadEuclid4Level, t)
+        result.synthEuclid4Steps = lerpInt(a.synthEuclid4Steps, b.synthEuclid4Steps, t)
+        result.synthEuclid4Hits = lerpInt(a.synthEuclid4Hits, b.synthEuclid4Hits, t)
+        result.synthEuclid4Rotation = lerpInt(a.synthEuclid4Rotation, b.synthEuclid4Rotation, t)
+        result.synthEuclid4NoteMin = lerpInt(a.synthEuclid4NoteMin, b.synthEuclid4NoteMin, t)
+        result.synthEuclid4NoteMax = lerpInt(a.synthEuclid4NoteMax, b.synthEuclid4NoteMax, t)
+        result.synthEuclid4Level = lerp(a.synthEuclid4Level, b.synthEuclid4Level, t)
         
         // Euclidean probability (lerp)
-        result.leadEuclid1Probability = lerp(a.leadEuclid1Probability, b.leadEuclid1Probability, t)
-        result.leadEuclid2Probability = lerp(a.leadEuclid2Probability, b.leadEuclid2Probability, t)
-        result.leadEuclid3Probability = lerp(a.leadEuclid3Probability, b.leadEuclid3Probability, t)
-        result.leadEuclid4Probability = lerp(a.leadEuclid4Probability, b.leadEuclid4Probability, t)
+        result.synthEuclid1Probability = lerp(a.synthEuclid1Probability, b.synthEuclid1Probability, t)
+        result.synthEuclid2Probability = lerp(a.synthEuclid2Probability, b.synthEuclid2Probability, t)
+        result.synthEuclid3Probability = lerp(a.synthEuclid3Probability, b.synthEuclid3Probability, t)
+        result.synthEuclid4Probability = lerp(a.synthEuclid4Probability, b.synthEuclid4Probability, t)
         
         // === Ocean ===
         result.oceanSampleLevel = lerp(a.oceanSampleLevel, b.oceanSampleLevel, t)
@@ -1039,20 +1039,20 @@ class AppState: ObservableObject {
             result.grainPitchMode = b.grainPitchMode
             // Lead
             result.leadEnabled = b.leadEnabled
-            result.leadEuclideanMasterEnabled = b.leadEuclideanMasterEnabled
-            result.leadEuclid1Enabled = b.leadEuclid1Enabled
-            result.leadEuclid1Preset = b.leadEuclid1Preset
-            result.leadEuclid2Enabled = b.leadEuclid2Enabled
-            result.leadEuclid2Preset = b.leadEuclid2Preset
-            result.leadEuclid3Enabled = b.leadEuclid3Enabled
-            result.leadEuclid3Preset = b.leadEuclid3Preset
-            result.leadEuclid4Enabled = b.leadEuclid4Enabled
-            result.leadEuclid4Preset = b.leadEuclid4Preset
+            result.synthEuclideanMasterEnabled = b.synthEuclideanMasterEnabled
+            result.synthEuclid1Enabled = b.synthEuclid1Enabled
+            result.synthEuclid1Preset = b.synthEuclid1Preset
+            result.synthEuclid2Enabled = b.synthEuclid2Enabled
+            result.synthEuclid2Preset = b.synthEuclid2Preset
+            result.synthEuclid3Enabled = b.synthEuclid3Enabled
+            result.synthEuclid3Preset = b.synthEuclid3Preset
+            result.synthEuclid4Enabled = b.synthEuclid4Enabled
+            result.synthEuclid4Preset = b.synthEuclid4Preset
             // Euclidean sources (discrete)
-            result.leadEuclid1Source = b.leadEuclid1Source
-            result.leadEuclid2Source = b.leadEuclid2Source
-            result.leadEuclid3Source = b.leadEuclid3Source
-            result.leadEuclid4Source = b.leadEuclid4Source
+            result.synthEuclid1Source = b.synthEuclid1Source
+            result.synthEuclid2Source = b.synthEuclid2Source
+            result.synthEuclid3Source = b.synthEuclid3Source
+            result.synthEuclid4Source = b.synthEuclid4Source
             // Synth chord sequencer
             result.synthChordSequencerEnabled = b.synthChordSequencerEnabled
             // Ocean

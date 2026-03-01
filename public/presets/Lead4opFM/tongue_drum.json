@@ -4,7 +4,8 @@
   "engine": "Lead4opFM",
   "method": "new",
   "operators": 4,
-  "algorithm": "parallel",
+  "algorithm": "stack",
+  "_notes": "Stack: serial FM chain for the warm resonant ring of a steel tongue drum. Ratio 1 mod1 with long decay = sustained harmonic ringing. Mellow filter.",
   "xy": {
     "xLevel": 1,
     "xPan": -0.22,
@@ -12,46 +13,47 @@
     "yPan": 0.22
   },
   "params": {
-    "beatDetune": 1,
-    "carrier2Mix": 0.25,
+    "beatDetune": 0.8,
+    "carrier2Mix": 0.2,
     "mod1": {
-      "ratio": 2,
-      "index": 0.4,
-      "decay": 0.7,
-      "sustain": 0.25
+      "ratio": 1,
+      "index": 2.5,
+      "decay": 2.0,
+      "sustain": 0.15
     },
     "mod2": {
-      "ratio": 3,
-      "index": 0.15,
-      "decay": 0.6
+      "ratio": 2,
+      "index": 1.0,
+      "decay": 1.0,
+      "sustain": 0.05
     },
     "mod3": {
-      "ratio": 4,
-      "index": 0.05,
-      "decay": 0.4
+      "ratio": 3,
+      "index": 0,
+      "decay": 0.5
     },
     "mod4": {
       "ratio": 0.5,
-      "index": 0.08,
-      "decay": 0.8
+      "index": 0,
+      "decay": 0.5
     },
     "envelope": {
-      "attack": 0.02,
-      "decay": 0.6,
-      "sustain": 0.65,
-      "release": 5
+      "attack": 0.003,
+      "decay": 1.5,
+      "sustain": 0.15,
+      "release": 2.5
     },
     "filter": {
-      "freq": 2500,
-      "q": 0.6
+      "freq": 4000,
+      "q": 0.5
     },
     "transient": {
-      "click": 0.15,
-      "noise": 0.08,
-      "duration": 25,
-      "decay": 60,
-      "filter": 1800,
-      "type": "pink"
+      "click": 0.08,
+      "noise": 0.02,
+      "duration": 15,
+      "decay": 80,
+      "filter": 2500,
+      "type": "filtered"
     },
     "gain": 0.6
   }

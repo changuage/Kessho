@@ -4,7 +4,8 @@
   "engine": "Lead4opFM",
   "method": "new",
   "operators": 4,
-  "algorithm": "split",
+  "algorithm": "stack",
+  "_notes": "Stack: serial FM. Kalimba has inharmonic tine partials. Short FM burst (high index, fast decay) for the pluck, then harmonics ring out.",
   "xy": {
     "xLevel": 1,
     "xPan": -0.3,
@@ -12,46 +13,46 @@
     "yPan": 0.3
   },
   "params": {
-    "beatDetune": 8,
-    "carrier2Mix": 0.4,
+    "beatDetune": 1.5,
+    "carrier2Mix": 0.25,
     "mod1": {
       "ratio": 2.92,
-      "index": 1.5,
-      "decay": 0.25,
-      "sustain": 0.05
+      "index": 4.5,
+      "decay": 0.5,
+      "sustain": 0.0
     },
     "mod2": {
       "ratio": 5.4,
-      "index": 0.6,
-      "decay": 0.15
+      "index": 2.0,
+      "decay": 0.2
     },
     "mod3": {
       "ratio": 8.9,
-      "index": 0.35,
-      "decay": 0.08
+      "index": 0,
+      "decay": 0.5
     },
     "mod4": {
       "ratio": 0.5,
-      "index": 0.2,
-      "decay": 0.4
+      "index": 0,
+      "decay": 0.5
     },
     "envelope": {
       "attack": 0.001,
-      "decay": 0.15,
-      "sustain": 0.25,
-      "release": 2.2
+      "decay": 0.6,
+      "sustain": 0.0,
+      "release": 1.5
     },
     "filter": {
       "freq": 6000,
-      "q": 1.2
+      "q": 0.8
     },
     "transient": {
-      "click": 0.4,
-      "noise": 0.35,
-      "duration": 30,
-      "decay": 100,
+      "click": 0.15,
+      "noise": 0.08,
+      "duration": 15,
+      "decay": 120,
       "filter": 3500,
-      "type": "brown"
+      "type": "filtered"
     },
     "gain": 0.75
   }

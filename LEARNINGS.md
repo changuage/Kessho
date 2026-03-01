@@ -275,9 +275,9 @@ The `scheduleLeadMelody()` function handles ALL Euclidean note scheduling, not j
 
 ```typescript
 // In applyParams() - start scheduling if either condition is true
-const euclideanSynthLanesEnabled = state.leadEuclideanMasterEnabled && (
-  (state.leadEuclid1Enabled && state.leadEuclid1Source !== 'lead') ||
-  (state.leadEuclid2Enabled && state.leadEuclid2Source !== 'lead') ||
+const euclideanSynthLanesEnabled = state.synthEuclideanMasterEnabled && (
+  (state.synthEuclid1Enabled && state.synthEuclid1Source !== 'lead') ||
+  (state.synthEuclid2Enabled && state.synthEuclid2Source !== 'lead') ||
   // ... etc
 );
 const shouldSchedule = state.leadEnabled || euclideanSynthLanesEnabled;
@@ -315,8 +315,8 @@ The duration is calculated based on ADSR: `attack + decay + max(0.3, attack + de
 
 #### 4. State Properties per Lane
 Each Euclidean lane has:
-- `leadEuclid[1-4]Probability` (0.0-1.0) - Chance each hit actually triggers
-- `leadEuclid[1-4]Source` ('lead' | 'synth1' | ... | 'synth6') - Target sound source
+- `synthEuclid[1-4]Probability` (0.0-1.0) - Chance each hit actually triggers
+- `synthEuclid[1-4]Source` ('lead' | 'synth1' | ... | 'synth6') - Target sound source
 
 ### Common Pitfalls
 
@@ -325,7 +325,7 @@ Each Euclidean lane has:
 2. **State change detection**: Must detect changes to source settings, not just enabled toggles:
    ```typescript
    const euclideanChanged = /* ... */ ||
-     state.leadEuclid1Source !== this.sliderState.leadEuclid1Source ||
+     state.synthEuclid1Source !== this.sliderState.synthEuclid1Source ||
      // ... etc
    ```
 
@@ -516,7 +516,7 @@ As the app evolved from a single lead synth to a dual-lead architecture (Lead 1 
 | `leadDelay*` | Delay is shared across both leads |
 | `leadVibrato*` | Expression params are shared |
 | `leadGlide*` | Glide is shared |
-| `leadEuclid*` | Euclidean sequencer is shared |
+| `synthEuclid*` | Euclidean sequencer is shared |
 
 ### Legacy Migration in normalizePresetForWeb()
 

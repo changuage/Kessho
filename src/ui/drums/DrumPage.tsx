@@ -10,7 +10,7 @@ import type { SliderState } from '../state';
 import type { DrumVoiceType } from '../../audio/drumSynth';
 import type { DrumStepOverrides } from '../../audio/drumSeqTypes';
 import { DRUM_VOICES as VOICE_CONFIG, DRUM_VOICE_ORDER } from '../../audio/drumVoiceConfig';
-import { useEuclideanSequencer, type EvolveConfig } from '../sequencer/useEuclideanSequencer';
+import { useEuclideanSequencer, type EvolveConfig, type StepOverrides, type SubLaneKind, type SubLaneState } from '../sequencer/useEuclideanSequencer';
 import DrumPanel from './DrumPanel';
 import DragNumber from './DragNumber';
 import SeqOverview from './SeqOverview';
@@ -58,6 +58,12 @@ export interface DrumPageProps {
   onEvolveConfigsChange?: (configs: EvolveConfig[]) => void;
   /** Called when step overrides change, so parent can sync to audio engine */
   onStepOverridesChange?: (overrides: DrumStepOverrides) => void;
+  /** Initial step overrides to restore across tab switches */
+  initialStepOverrides?: StepOverrides;
+  /** Initial sub-lane states to restore across tab switches */
+  initialSubLaneStates?: Record<SubLaneKind, SubLaneState>[];
+  /** Called when sub-lane states change, so parent can persist across tab switches */
+  onSubLaneStatesChange?: (states: Record<SubLaneKind, SubLaneState>[]) => void;
   /** Initial view mode to restore across tab switches */
   initialViewMode?: 'simple' | 'detail' | 'overview';
   /** Called when view mode changes so parent can persist it */
@@ -87,6 +93,9 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     evolveFlashing,
     onEvolveConfigsChange,
     onStepOverridesChange,
+    initialStepOverrides,
+    initialSubLaneStates,
+    onSubLaneStatesChange,
     initialViewMode,
     onViewModeChange,
   } = props;
@@ -105,6 +114,8 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     hitCounts,
     evolveFlashing,
     initialViewMode,
+    initialStepOverrides,
+    initialSubLaneStates,
   });
 
   // Notify parent when viewMode changes so it persists across tab switches
@@ -129,6 +140,15 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
       onStepOverridesChange?.(seq.stepOverrides);
     }
   }, [seq.stepOverrides, onStepOverridesChange]);
+
+  // Persist sub-lane states (enabled/steps/direction) across tab switches
+  const subLaneStatesRef = useRef(seq.subLaneStates);
+  useEffect(() => {
+    if (subLaneStatesRef.current !== seq.subLaneStates) {
+      subLaneStatesRef.current = seq.subLaneStates;
+      onSubLaneStatesChange?.(seq.subLaneStates);
+    }
+  }, [seq.subLaneStates, onSubLaneStatesChange]);
 
   const activeSeq = seq.activeSeq;
 

@@ -2,7 +2,7 @@ import type { DrumVoiceType } from './drumSynth';
 
 export type ClockDivision = '1/4' | '1/8' | '1/16' | '1/8T';
 export type LaneDirection = 'forward' | 'reverse' | 'pingpong';
-export type PitchMode = 'semitones' | 'notes';
+export type PitchMode = 'semitones' | 'notes' | 'noteRange';
 
 export type ScaleName =
   | 'Chromatic'
@@ -33,11 +33,12 @@ export type TrigCondition = [number, number];
  * Each array is per-lane (4 lanes). Null means "use defaults" for that lane.
  */
 export interface DrumStepOverrides {
-  triggerToggles: Set<number>[];
+  triggerToggles: Map<number, boolean>[];
   probability: (number[] | null)[];
   ratchet: (number[] | null)[];
   trigCondition: (TrigCondition[] | null)[];
   expression: (number[] | null)[];
+  pitch: (number[] | null)[];
   morph: (number[] | null)[];
   distance: (number[] | null)[];
   /** Per-lane sub-lane directions (expression, morph, distance, pitch) */

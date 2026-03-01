@@ -19,7 +19,7 @@ The lead synth creates Rhodes piano to Gamelan metallophone sounds using **FM sy
 │  │                              NOTE SCHEDULING                                                ││
 │  │                                                                                             ││
 │  │   ┌────────────────────┐         ┌────────────────────┐         ┌────────────────────┐     ││
-│  │   │ leadEuclidean      │         │                    │         │                    │     ││
+│  │   │ synthEuclidean      │         │                    │         │                    │     ││
 │  │   │ MasterEnabled?     │───Yes──►│ Euclidean Sequencer│───────►│ scheduleLeadMelody │     ││
 │  │   │                    │         │ (4 lanes)          │         │ (per phrase)       │     ││
 │  │   └────────────────────┘         └────────────────────┘         └─────────┬──────────┘     ││

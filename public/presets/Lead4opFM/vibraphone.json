@@ -4,7 +4,8 @@
   "engine": "Lead4opFM",
   "method": "new",
   "operators": 4,
-  "algorithm": "split",
+  "algorithm": "stack",
+  "_notes": "Stack: serial FM chain. Vibraphone has harmonic partials (ratio 4). LFO on pitch = motor vibrato. Long FM for the sustain ring.",
   "xy": {
     "xLevel": 1,
     "xPan": -0.32,
@@ -12,45 +13,50 @@
     "yPan": 0.32
   },
   "params": {
-    "beatDetune": 4,
-    "carrier2Mix": 0.5,
+    "beatDetune": 2,
+    "carrier2Mix": 0.35,
     "mod1": {
       "ratio": 4,
-      "index": 0.7,
-      "decay": 0.55,
-      "sustain": 0.15
+      "index": 3.5,
+      "decay": 1.5,
+      "sustain": 0.1
     },
     "mod2": {
       "ratio": 10,
-      "index": 0.25,
-      "decay": 0.4
+      "index": 1.5,
+      "decay": 0.3
     },
     "mod3": {
       "ratio": 20,
-      "index": 0.1,
-      "decay": 0.25
+      "index": 0,
+      "decay": 0.5
     },
     "mod4": {
       "ratio": 0.5,
-      "index": 0.12,
-      "decay": 0.7
+      "index": 0,
+      "decay": 0.5
+    },
+    "lfo": {
+      "rate": 4.5,
+      "depth": 0.15,
+      "target": "pitch"
     },
     "envelope": {
-      "attack": 0.008,
-      "decay": 0.5,
-      "sustain": 0.45,
-      "release": 5.5
+      "attack": 0.002,
+      "decay": 1.0,
+      "sustain": 0.2,
+      "release": 3.0
     },
     "filter": {
-      "freq": 5000,
-      "q": 0.7
+      "freq": 6000,
+      "q": 0.5
     },
     "transient": {
-      "click": 0.35,
-      "noise": 0.1,
-      "duration": 25,
-      "decay": 70,
-      "filter": 3500,
+      "click": 0.15,
+      "noise": 0.04,
+      "duration": 12,
+      "decay": 100,
+      "filter": 4000,
       "type": "filtered"
     },
     "gain": 0.65

@@ -11,46 +11,48 @@
     "yLevel": 0.85,
     "yPan": 0.2
   },
+  "_notes": "Stack: fast FM pitch sweep gives the 'boing' of a drum head. Low ratios = warm. Short FM decay but high index = percussive harmonic burst, not noise.",
   "params": {
-    "beatDetune": 15,
-    "carrier2Mix": 0.6,
+    "beatDetune": 3,
+    "carrier2Mix": 0.4,
     "mod1": {
       "ratio": 1.59,
-      "index": 2,
-      "decay": 0.12,
-      "sustain": 0.02
+      "index": 4.0,
+      "decay": 0.15,
+      "sustain": 0.0
     },
     "mod2": {
       "ratio": 2.14,
-      "index": 1.2,
-      "decay": 0.08
+      "index": 2.0,
+      "decay": 0.08,
+      "sustain": 0.0
     },
     "mod3": {
       "ratio": 2.65,
-      "index": 0.8,
+      "index": 0,
       "decay": 0.05
     },
     "mod4": {
       "ratio": 0.8,
-      "index": 0.5,
+      "index": 0,
       "decay": 0.15
     },
     "envelope": {
-      "attack": 0.002,
-      "decay": 0.08,
-      "sustain": 0.1,
-      "release": 0.8
+      "attack": 0.001,
+      "decay": 0.15,
+      "sustain": 0.05,
+      "release": 0.6
     },
     "filter": {
-      "freq": 1800,
-      "q": 1.5
+      "freq": 3000,
+      "q": 1.0
     },
     "transient": {
-      "click": 0.7,
-      "noise": 0.6,
-      "duration": 40,
-      "decay": 60,
-      "filter": 1500,
+      "click": 0.25,
+      "noise": 0.15,
+      "duration": 25,
+      "decay": 80,
+      "filter": 2000,
       "type": "brown"
     },
     "gain": 0.85

@@ -367,12 +367,12 @@ This document provides an exhaustive mapping of how every slider connects to aud
 │                                    (Multi-lane rhythm configuration)                                            │
 └─────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 
-    leadEuclideanMasterEnabled (boolean)
+    synthEuclideanMasterEnabled (boolean)
          │
          ├─── false ─────────────────────────────────────▶ Use free-tempo scheduling
          └─── true ──────────────────────────────────────▶ Use Euclidean pattern scheduling
 
-    leadEuclideanPreset (string)
+    synthEuclideanPreset (string)
          │
          ├─── 'gamelan' ─────────────────────────────────▶ 4 lanes: [7,16], [5,16], [3,8], [2,8]
          ├─── 'steveReich' ──────────────────────────────▶ 3 lanes: [3,8], [4,12], [5,16]
@@ -381,23 +381,23 @@ This document provides an exhaustive mapping of how every slider connects to aud
          ├─── 'polymetric' ──────────────────────────────▶ 4 lanes: [5,8], [7,12], [11,16], [3,4]
          └─── 'sparse' ──────────────────────────────────▶ 3 lanes: [2,8], [3,12], [1,4]
 
-    leadEuclid1Enabled/2/3/4 (boolean)
+    synthEuclid1Enabled/2/3/4 (boolean)
          │
          └────────────────────────────────────────────────▶ Enable/disable individual lanes
 
-    leadEuclid1Steps/2/3/4 (4-32)
+    synthEuclid1Steps/2/3/4 (4-32)
          │
          └────────────────────────────────────────────────▶ Total steps in pattern
 
-    leadEuclid1Pulses/2/3/4 (1-steps)
+    synthEuclid1Pulses/2/3/4 (1-steps)
          │
          └────────────────────────────────────────────────▶ Number of hits (Bjorklund algorithm)
 
-    leadEuclid1Octave/2/3/4 (-2 to +2)
+    synthEuclid1Octave/2/3/4 (-2 to +2)
          │
          └────────────────────────────────────────────────▶ Octave offset for lane
 
-    leadEuclid1Probability/2/3/4 (0-1)
+    synthEuclid1Probability/2/3/4 (0-1)
          │
          └────────────────────────────────────────────────▶ Chance of note playing
 ```

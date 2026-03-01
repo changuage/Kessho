@@ -611,10 +611,251 @@
     .mt-sm { margin-top: 8px; }
     .mb-sm { margin-bottom: 8px; }
 
+    /* Audition Panel */
+    .audition-section {
+      border-color: rgba(139, 92, 246, 0.25);
+    }
+
+    .audition-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+
+    .audition-header h2 {
+      color: var(--purple);
+      margin-bottom: 0;
+    }
+
+    .audition-stats {
+      font-size: 0.72rem;
+      color: var(--text-dim);
+      display: flex;
+      gap: 14px;
+    }
+
+    .audition-stats .stat-kept { color: var(--accent); font-weight: 600; }
+    .audition-stats .stat-dropped { color: var(--danger); font-weight: 600; }
+    .audition-stats .stat-undecided { color: var(--text-muted); }
+
+    .audition-toolbar {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+      align-items: center;
+    }
+
+    .audition-toolbar input[type="text"] {
+      padding: 5px 10px;
+      border-radius: 5px;
+      background: rgba(20,20,35,0.7);
+      color: var(--text);
+      border: 1px solid var(--panel-border);
+      font-size: 0.75rem;
+      font-family: inherit;
+      outline: none;
+      width: 180px;
+    }
+
+    .audition-toolbar input[type="text"]:focus { border-color: var(--purple); }
+
+    .aud-btn {
+      padding: 5px 14px;
+      border: 1px solid var(--panel-border);
+      border-radius: 5px;
+      background: transparent;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 0.72rem;
+      font-family: inherit;
+      transition: all 0.2s;
+    }
+
+    .aud-btn:hover { border-color: var(--purple); color: var(--text); }
+
+    .aud-btn.primary {
+      border-color: var(--purple);
+      background: rgba(139,92,246,0.15);
+      color: var(--text);
+    }
+
+    .aud-btn.export-btn {
+      border-color: var(--accent);
+      background: var(--accent-dim);
+      color: var(--text);
+    }
+
+    .aud-btn.export-btn:hover {
+      background: rgba(123,154,109,0.3);
+    }
+
+    .audition-list {
+      max-height: 400px;
+      overflow-y: auto;
+      border: 1px solid var(--panel-border);
+      border-radius: 6px;
+    }
+
+    .audition-list::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .audition-list::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .audition-list::-webkit-scrollbar-thumb {
+      background: rgba(232,220,196,0.15);
+      border-radius: 3px;
+    }
+
+    .aud-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      border-bottom: 1px solid rgba(232,220,196,0.06);
+      font-size: 0.72rem;
+      transition: background 0.15s;
+      cursor: default;
+    }
+
+    .aud-row:hover {
+      background: rgba(139,92,246,0.06);
+    }
+
+    .aud-row.kept {
+      background: rgba(123,154,109,0.08);
+    }
+
+    .aud-row.dropped {
+      background: rgba(196,78,78,0.06);
+      opacity: 0.5;
+    }
+
+    .aud-row .aud-idx {
+      color: var(--text-dim);
+      min-width: 28px;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .aud-row .aud-play {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      border: 1px solid var(--panel-border);
+      background: transparent;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 0.7rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s;
+      padding: 0;
+      flex-shrink: 0;
+    }
+
+    .aud-row .aud-play:hover {
+      border-color: var(--purple);
+      color: var(--text);
+      background: rgba(139,92,246,0.15);
+    }
+
+    .aud-row .aud-name {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    .aud-row .aud-name:hover {
+      color: var(--purple);
+    }
+
+    .aud-row .aud-score {
+      min-width: 36px;
+      text-align: center;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .aud-score.high { color: var(--accent); }
+    .aud-score.mid { color: var(--gold); }
+    .aud-score.low { color: var(--danger); }
+
+    .aud-row .aud-algo {
+      color: var(--text-dim);
+      min-width: 45px;
+      font-size: 0.65rem;
+    }
+
+    .aud-row .aud-tags {
+      color: var(--text-dim);
+      font-size: 0.62rem;
+      min-width: 60px;
+      max-width: 100px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .aud-row .aud-actions {
+      display: flex;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+
+    .aud-keep-btn, .aud-drop-btn {
+      width: 26px;
+      height: 22px;
+      border-radius: 4px;
+      border: 1px solid var(--panel-border);
+      background: transparent;
+      cursor: pointer;
+      font-size: 0.72rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s;
+      padding: 0;
+    }
+
+    .aud-keep-btn { color: var(--accent); }
+    .aud-keep-btn:hover, .aud-keep-btn.active {
+      background: rgba(123,154,109,0.25);
+      border-color: var(--accent);
+    }
+
+    .aud-drop-btn { color: var(--danger); }
+    .aud-drop-btn:hover, .aud-drop-btn.active {
+      background: rgba(196,78,78,0.25);
+      border-color: var(--danger);
+    }
+
+    .aud-row .aud-source {
+      color: var(--text-dim);
+      font-size: 0.6rem;
+      min-width: 40px;
+      max-width: 60px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
     @media (max-width: 600px) {
       .controls-grid { grid-template-columns: 1fr; }
       .seq-step { width: 28px; height: 40px; }
       body { padding: 10px; }
+      .aud-row .aud-tags, .aud-row .aud-source, .aud-row .aud-algo { display: none; }
     }
   </style>
 </head>
@@ -777,15 +1018,31 @@
             </div>
             <div class="control-group">
               <label>Index <span id="mod1-index-val">1.00</span></label>
-              <input type="range" id="mod1-index" min="0" max="4" step="0.01" value="1">
+              <input type="range" id="mod1-index" min="0" max="8" step="0.01" value="1">
             </div>
             <div class="control-group">
               <label>Decay <span id="mod1-decay-val">0.40s</span></label>
-              <input type="range" id="mod1-decay" min="0.01" max="2" step="0.01" value="0.4">
+              <input type="range" id="mod1-decay" min="0.01" max="4" step="0.01" value="0.4">
             </div>
             <div class="control-group">
               <label>Sustain <span id="mod1-sustain-val">0.10</span></label>
-              <input type="range" id="mod1-sustain" min="0.01" max="0.5" step="0.01" value="0.1">
+              <input type="range" id="mod1-sustain" min="0" max="1" step="0.01" value="0.1">
+            </div>
+            <div class="control-group">
+              <label>Level <span id="mod1-level-val">1.00</span></label>
+              <input type="range" id="mod1-level" min="0" max="1" step="0.01" value="1">
+            </div>
+            <div class="control-group">
+              <label>Feedback <span id="mod1-feedback-val">0.00</span></label>
+              <input type="range" id="mod1-feedback" min="0" max="1" step="0.01" value="0">
+            </div>
+            <div class="control-group">
+              <label>Detune <span id="mod1-detune-val">0¢</span></label>
+              <input type="range" id="mod1-detune" min="-50" max="50" step="1" value="0">
+            </div>
+            <div class="control-group">
+              <label>Env Rate <span id="mod1-envrate-val">1.00×</span></label>
+              <input type="range" id="mod1-envrate" min="0.1" max="8" step="0.01" value="1">
             </div>
           </div>
         </div>
@@ -800,11 +1057,31 @@
             </div>
             <div class="control-group">
               <label>Index <span id="mod2-index-val">0.30</span></label>
-              <input type="range" id="mod2-index" min="0" max="2" step="0.01" value="0.3">
+              <input type="range" id="mod2-index" min="0" max="6" step="0.01" value="0.3">
             </div>
             <div class="control-group">
               <label>Decay <span id="mod2-decay-val">0.30s</span></label>
-              <input type="range" id="mod2-decay" min="0.01" max="2" step="0.01" value="0.3">
+              <input type="range" id="mod2-decay" min="0.01" max="4" step="0.01" value="0.3">
+            </div>
+            <div class="control-group">
+              <label>Sustain <span id="mod2-sustain-val">0.05</span></label>
+              <input type="range" id="mod2-sustain" min="0" max="1" step="0.01" value="0.05">
+            </div>
+            <div class="control-group">
+              <label>Level <span id="mod2-level-val">1.00</span></label>
+              <input type="range" id="mod2-level" min="0" max="1" step="0.01" value="1">
+            </div>
+            <div class="control-group">
+              <label>Feedback <span id="mod2-feedback-val">0.00</span></label>
+              <input type="range" id="mod2-feedback" min="0" max="1" step="0.01" value="0">
+            </div>
+            <div class="control-group">
+              <label>Detune <span id="mod2-detune-val">0¢</span></label>
+              <input type="range" id="mod2-detune" min="-50" max="50" step="1" value="0">
+            </div>
+            <div class="control-group">
+              <label>Env Rate <span id="mod2-envrate-val">1.00×</span></label>
+              <input type="range" id="mod2-envrate" min="0.1" max="8" step="0.01" value="1">
             </div>
           </div>
         </div>
@@ -819,11 +1096,31 @@
             </div>
             <div class="control-group">
               <label>Index <span id="mod3-index-val">0.20</span></label>
-              <input type="range" id="mod3-index" min="0" max="1.5" step="0.01" value="0.2">
+              <input type="range" id="mod3-index" min="0" max="6" step="0.01" value="0.2">
             </div>
             <div class="control-group">
               <label>Decay <span id="mod3-decay-val">0.15s</span></label>
-              <input type="range" id="mod3-decay" min="0.01" max="1" step="0.01" value="0.15">
+              <input type="range" id="mod3-decay" min="0.01" max="4" step="0.01" value="0.15">
+            </div>
+            <div class="control-group">
+              <label>Sustain <span id="mod3-sustain-val">0.02</span></label>
+              <input type="range" id="mod3-sustain" min="0" max="1" step="0.01" value="0.02">
+            </div>
+            <div class="control-group">
+              <label>Level <span id="mod3-level-val">1.00</span></label>
+              <input type="range" id="mod3-level" min="0" max="1" step="0.01" value="1">
+            </div>
+            <div class="control-group">
+              <label>Feedback <span id="mod3-feedback-val">0.00</span></label>
+              <input type="range" id="mod3-feedback" min="0" max="1" step="0.01" value="0">
+            </div>
+            <div class="control-group">
+              <label>Detune <span id="mod3-detune-val">0¢</span></label>
+              <input type="range" id="mod3-detune" min="-50" max="50" step="1" value="0">
+            </div>
+            <div class="control-group">
+              <label>Env Rate <span id="mod3-envrate-val">1.00×</span></label>
+              <input type="range" id="mod3-envrate" min="0.1" max="8" step="0.01" value="1">
             </div>
           </div>
         </div>
@@ -834,15 +1131,79 @@
           <div class="controls">
             <div class="control-group">
               <label>Ratio <span id="mod4-ratio-val">0.50</span></label>
-              <input type="range" id="mod4-ratio" min="0.25" max="1" step="0.01" value="0.5">
+              <input type="range" id="mod4-ratio" min="0.25" max="3" step="0.01" value="0.5">
             </div>
             <div class="control-group">
               <label>Index <span id="mod4-index-val">0.15</span></label>
-              <input type="range" id="mod4-index" min="0" max="1" step="0.01" value="0.15">
+              <input type="range" id="mod4-index" min="0" max="6" step="0.01" value="0.15">
             </div>
             <div class="control-group">
               <label>Decay <span id="mod4-decay-val">0.50s</span></label>
-              <input type="range" id="mod4-decay" min="0.05" max="2" step="0.01" value="0.5">
+              <input type="range" id="mod4-decay" min="0.01" max="4" step="0.01" value="0.5">
+            </div>
+            <div class="control-group">
+              <label>Sustain <span id="mod4-sustain-val">0.10</span></label>
+              <input type="range" id="mod4-sustain" min="0" max="1" step="0.01" value="0.1">
+            </div>
+            <div class="control-group">
+              <label>Level <span id="mod4-level-val">1.00</span></label>
+              <input type="range" id="mod4-level" min="0" max="1" step="0.01" value="1">
+            </div>
+            <div class="control-group">
+              <label>Feedback <span id="mod4-feedback-val">0.00</span></label>
+              <input type="range" id="mod4-feedback" min="0" max="1" step="0.01" value="0">
+            </div>
+            <div class="control-group">
+              <label>Detune <span id="mod4-detune-val">0¢</span></label>
+              <input type="range" id="mod4-detune" min="-50" max="50" step="1" value="0">
+            </div>
+            <div class="control-group">
+              <label>Env Rate <span id="mod4-envrate-val">1.00×</span></label>
+              <input type="range" id="mod4-envrate" min="0.1" max="8" step="0.01" value="1">
+            </div>
+          </div>
+        </div>
+
+        <!-- LFO → FM -->
+        <div class="control-panel">
+          <h3>LFO → FM Depth</h3>
+          <div class="controls">
+            <div class="control-group">
+              <label>Rate <span id="lfo-rate-val">0.00Hz</span></label>
+              <input type="range" id="lfo-rate" min="0" max="20" step="0.05" value="0">
+            </div>
+            <div class="control-group">
+              <label>Depth <span id="lfo-depth-val">0.00</span></label>
+              <input type="range" id="lfo-depth" min="0" max="1" step="0.01" value="0">
+            </div>
+            <div class="control-group">
+              <label style="margin-bottom:4px">Target</label>
+              <select id="lfo-target" style="width:100%;padding:4px;background:var(--panel);color:var(--text);border:1px solid var(--panel-border);border-radius:4px;">
+                <option value="all">All Operators</option>
+                <option value="mod1">Mod 1 Only</option>
+                <option value="mod2">Mod 2 Only</option>
+                <option value="mod3">Mod 3 Only</option>
+                <option value="mod4">Mod 4 Only</option>
+                <option value="filter">Filter Cutoff</option>
+                <option value="pitch">Pitch (Vibrato)</option>
+                <option value="detune">Detune (Movement)</option>
+                <option value="none">None (Disabled)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Unison -->
+        <div class="control-panel">
+          <h3>Unison</h3>
+          <div class="controls">
+            <div class="control-group">
+              <label>Voices <span id="unison-voices-val">1</span></label>
+              <input type="range" id="unison-voices" min="1" max="4" step="1" value="1">
+            </div>
+            <div class="control-group">
+              <label>Detune <span id="unison-detune-val">0¢</span></label>
+              <input type="range" id="unison-detune" min="0" max="50" step="1" value="0">
             </div>
           </div>
         </div>
@@ -875,12 +1236,46 @@
           <h3>Filter &amp; Output</h3>
           <div class="controls">
             <div class="control-group">
+              <label>Type</label>
+              <select id="filter-type" style="width:100%; padding:4px; background:#1a1a2e; color:#e8e0f0; border:1px solid #3a3a5c; border-radius:4px;">
+                <option value="lowpass" selected>Lowpass</option>
+                <option value="highpass">Highpass</option>
+                <option value="bandpass">Bandpass</option>
+                <option value="notch">Notch</option>
+                <option value="peaking">Peaking</option>
+              </select>
+            </div>
+            <div class="control-group">
               <label>Cutoff <span id="filter-freq-val">4000Hz</span></label>
               <input type="range" id="filter-freq" min="200" max="12000" step="100" value="4000">
             </div>
             <div class="control-group">
               <label>Q <span id="filter-q-val">1.0</span></label>
               <input type="range" id="filter-q" min="0.5" max="8" step="0.1" value="1">
+            </div>
+            <div class="control-group">
+              <label>Env Attack <span id="fenv-attack-val">0.01s</span></label>
+              <input type="range" id="fenv-attack" min="0.001" max="4" step="0.001" value="0.01">
+            </div>
+            <div class="control-group">
+              <label>Env Decay <span id="fenv-decay-val">0.30s</span></label>
+              <input type="range" id="fenv-decay" min="0.01" max="8" step="0.01" value="0.3">
+            </div>
+            <div class="control-group">
+              <label>Env Sustain <span id="fenv-sustain-val">1.00</span></label>
+              <input type="range" id="fenv-sustain" min="0" max="1" step="0.01" value="1">
+            </div>
+            <div class="control-group">
+              <label>Env Release <span id="fenv-release-val">0.30s</span></label>
+              <input type="range" id="fenv-release" min="0.01" max="8" step="0.01" value="0.3">
+            </div>
+            <div class="control-group">
+              <label>Env Depth <span id="fenv-depth-val">0Hz</span></label>
+              <input type="range" id="fenv-depth" min="-8000" max="8000" step="100" value="0">
+            </div>
+            <div class="control-group">
+              <label>Drive <span id="drive-val">0.00</span></label>
+              <input type="range" id="drive" min="0" max="1" step="0.01" value="0">
             </div>
             <div class="control-group">
               <label>Gain <span id="output-gain-val">0.70</span></label>
@@ -913,6 +1308,37 @@
         <input class="name-input" id="preset-name" type="text" placeholder="Preset name...">
         <button class="save-btn" onclick="downloadPreset()">Download JSON</button>
         <button class="save-btn secondary" onclick="copyJSON()">Copy JSON</button>
+      </div>
+    </div>
+
+    <!-- Digitone Audition Mode -->
+    <div class="section audition-section">
+      <div class="audition-header">
+        <h2>Digitone Audition</h2>
+        <div class="audition-stats" id="aud-stats">
+          <span>No candidates loaded</span>
+        </div>
+      </div>
+      <div class="audition-toolbar">
+        <button class="aud-btn primary" onclick="loadCandidates()">Load Candidates</button>
+        <input type="text" id="aud-search" placeholder="Search name or tag..." oninput="filterAuditionList()">
+        <select id="aud-sort" onchange="filterAuditionList()" style="font-size:0.72rem;">
+          <option value="index">Order: Original</option>
+          <option value="score-desc">Order: Score ↓</option>
+          <option value="score-asc">Order: Score ↑</option>
+          <option value="name">Order: Name A-Z</option>
+        </select>
+        <select id="aud-filter-status" onchange="filterAuditionList()" style="font-size:0.72rem;">
+          <option value="all">Show: All</option>
+          <option value="undecided">Show: Undecided</option>
+          <option value="kept">Show: Kept</option>
+          <option value="dropped">Show: Dropped</option>
+        </select>
+        <button class="aud-btn" onclick="clearAuditionDecisions()">Clear All</button>
+        <button class="aud-btn export-btn" onclick="exportKeptPresets()">Export Kept</button>
+      </div>
+      <div class="audition-list" id="aud-list">
+        <div style="padding:30px; text-align:center; color:var(--text-dim); font-size:0.8rem;">Click "Load Candidates" to fetch digitone_candidates.json</div>
       </div>
     </div>
   </div>
@@ -1022,18 +1448,52 @@
       setSlider('mod1-index', p.params.mod1.index);
       setSlider('mod1-decay', p.params.mod1.decay);
       setSlider('mod1-sustain', p.params.mod1.sustain);
+      setSlider('mod1-level', p.params.mod1.level ?? 1);
+      setSlider('mod1-feedback', p.params.mod1.feedback ?? 0);
+      setSlider('mod1-detune', p.params.mod1.detune ?? 0);
+      setSlider('mod1-envrate', p.params.mod1.envRate ?? 1);
 
       setSlider('mod2-ratio', p.params.mod2.ratio);
       setSlider('mod2-index', p.params.mod2.index);
       setSlider('mod2-decay', p.params.mod2.decay);
+      setSlider('mod2-sustain', p.params.mod2.sustain ?? 0.05);
+      setSlider('mod2-level', p.params.mod2.level ?? 1);
+      setSlider('mod2-feedback', p.params.mod2.feedback ?? 0);
+      setSlider('mod2-detune', p.params.mod2.detune ?? 0);
+      setSlider('mod2-envrate', p.params.mod2.envRate ?? 1);
 
       setSlider('mod3-ratio', p.params.mod3.ratio);
       setSlider('mod3-index', p.params.mod3.index);
       setSlider('mod3-decay', p.params.mod3.decay);
+      setSlider('mod3-sustain', p.params.mod3.sustain ?? 0.02);
+      setSlider('mod3-level', p.params.mod3.level ?? 1);
+      setSlider('mod3-feedback', p.params.mod3.feedback ?? 0);
+      setSlider('mod3-detune', p.params.mod3.detune ?? 0);
+      setSlider('mod3-envrate', p.params.mod3.envRate ?? 1);
 
       setSlider('mod4-ratio', p.params.mod4.ratio);
       setSlider('mod4-index', p.params.mod4.index);
       setSlider('mod4-decay', p.params.mod4.decay);
+      setSlider('mod4-sustain', p.params.mod4.sustain ?? 0.1);
+      setSlider('mod4-level', p.params.mod4.level ?? 1);
+      setSlider('mod4-feedback', p.params.mod4.feedback ?? 0);
+      setSlider('mod4-detune', p.params.mod4.detune ?? 0);
+      setSlider('mod4-envrate', p.params.mod4.envRate ?? 1);
+
+      // LFO
+      if (p.params.lfo) {
+        setSlider('lfo-rate', p.params.lfo.rate ?? 0);
+        setSlider('lfo-depth', p.params.lfo.depth ?? 0);
+        document.getElementById('lfo-target').value = p.params.lfo.target ?? 'all';
+      } else {
+        setSlider('lfo-rate', 0);
+        setSlider('lfo-depth', 0);
+        document.getElementById('lfo-target').value = 'all';
+      }
+
+      // Unison
+      setSlider('unison-voices', p.params.unison?.voices ?? 1);
+      setSlider('unison-detune', p.params.unison?.detune ?? 0);
 
       setSlider('attack', p.params.envelope.attack);
       setSlider('decay', p.params.envelope.decay);
@@ -1042,6 +1502,13 @@
 
       setSlider('filter-freq', p.params.filter.freq);
       setSlider('filter-q', p.params.filter.q);
+      document.getElementById('filter-type').value = p.params.filter.type || 'lowpass';
+      setSlider('fenv-attack', p.params.filter.envAttack ?? 0.01);
+      setSlider('fenv-decay', p.params.filter.envDecay ?? 0.3);
+      setSlider('fenv-sustain', p.params.filter.envSustain ?? 1);
+      setSlider('fenv-release', p.params.filter.envRelease ?? 0.3);
+      setSlider('fenv-depth', p.params.filter.envDepth ?? 0);
+      setSlider('drive', p.params.drive ?? 0);
       setSlider('output-gain', p.params.gain);
 
       // X/Y from preset
@@ -1083,14 +1550,23 @@
       const display = document.getElementById(id + '-val');
       if (!display) return;
       switch(id) {
-        case 'beat-detune': display.textContent = value.toFixed(1) + '¢'; break;
+        case 'beat-detune':
+        case 'mod1-detune': case 'mod2-detune': case 'mod3-detune': case 'mod4-detune':
+        case 'unison-detune':
+          display.textContent = Math.round(value) + '¢'; break;
         case 'mod1-decay': case 'mod2-decay': case 'mod3-decay': case 'mod4-decay':
         case 'attack': case 'decay': case 'release':
           display.textContent = value.toFixed(2) + 's'; break;
-        case 'filter-freq': case 'noise-filter':
+        case 'mod1-envrate': case 'mod2-envrate': case 'mod3-envrate': case 'mod4-envrate':
+          display.textContent = parseFloat(value).toFixed(2) + '×'; break;
+        case 'lfo-rate': display.textContent = parseFloat(value).toFixed(2) + 'Hz'; break;
+        case 'filter-freq': case 'noise-filter': case 'fenv-depth':
           display.textContent = Math.round(value) + 'Hz'; break;
+        case 'fenv-attack': case 'fenv-decay': case 'fenv-release':
+          display.textContent = parseFloat(value).toFixed(2) + 's'; break;
         case 'noise-dur': display.textContent = Math.round(value) + 'ms'; break;
         case 'noise-decay': display.textContent = Math.round(value); break;
+        case 'unison-voices': display.textContent = Math.round(value); break;
         case 'x-pan': case 'y-pan': display.textContent = value.toFixed(2); break;
         default: display.textContent = parseFloat(value).toFixed(2);
       }
@@ -1110,11 +1586,19 @@
     const SLIDER_IDS = [
       'beat-detune', 'carrier2-mix',
       'mod1-ratio', 'mod1-index', 'mod1-decay', 'mod1-sustain',
-      'mod2-ratio', 'mod2-index', 'mod2-decay',
-      'mod3-ratio', 'mod3-index', 'mod3-decay',
-      'mod4-ratio', 'mod4-index', 'mod4-decay',
+      'mod1-level', 'mod1-feedback', 'mod1-detune', 'mod1-envrate',
+      'mod2-ratio', 'mod2-index', 'mod2-decay', 'mod2-sustain',
+      'mod2-level', 'mod2-feedback', 'mod2-detune', 'mod2-envrate',
+      'mod3-ratio', 'mod3-index', 'mod3-decay', 'mod3-sustain',
+      'mod3-level', 'mod3-feedback', 'mod3-detune', 'mod3-envrate',
+      'mod4-ratio', 'mod4-index', 'mod4-decay', 'mod4-sustain',
+      'mod4-level', 'mod4-feedback', 'mod4-detune', 'mod4-envrate',
+      'lfo-rate', 'lfo-depth',
+      'unison-voices', 'unison-detune',
       'attack', 'decay', 'sustain', 'release',
-      'filter-freq', 'filter-q', 'output-gain',
+      'filter-freq', 'filter-q',
+      'fenv-attack', 'fenv-decay', 'fenv-sustain', 'fenv-release', 'fenv-depth',
+      'drive', 'output-gain',
       'x-level', 'y-level', 'x-pan', 'y-pan',
       'click-amt', 'noise-amt', 'noise-dur', 'noise-decay', 'noise-filter'
     ];
@@ -1126,13 +1610,15 @@
       });
       snap['noise-type'] = noiseType;
       snap['algorithm'] = fmAlgorithm;
+      snap['lfo-target'] = document.getElementById('lfo-target').value;
+      snap['filter-type'] = document.getElementById('filter-type').value;
       return snap;
     }
 
     function restoreSliders(snap) {
       if (!snap) return;
       SLIDER_IDS.forEach(id => {
-        setSlider(id, snap[id]);
+        if (snap[id] !== undefined) setSlider(id, snap[id]);
       });
       if (snap['noise-type']) {
         noiseType = snap['noise-type'];
@@ -1143,6 +1629,12 @@
       if (snap['algorithm']) {
         fmAlgorithm = snap['algorithm'];
         document.getElementById('algorithm-select').value = fmAlgorithm;
+      }
+      if (snap['lfo-target']) {
+        document.getElementById('lfo-target').value = snap['lfo-target'];
+      }
+      if (snap['filter-type']) {
+        document.getElementById('filter-type').value = snap['filter-type'];
       }
     }
 
@@ -1483,11 +1975,44 @@
         ratio: getSliderValue('mod1-ratio'),
         index: getSliderValue('mod1-index'),
         decay: getSliderValue('mod1-decay'),
-        sustain: getSliderValue('mod1-sustain')
+        sustain: getSliderValue('mod1-sustain'),
+        level: getSliderValue('mod1-level'),
+        feedback: getSliderValue('mod1-feedback'),
+        detune: getSliderValue('mod1-detune'),
+        envRate: getSliderValue('mod1-envrate'),
+        modAttack: currentPresetData?.params?.mod1?.modAttack || 0,
+        modDelay: currentPresetData?.params?.mod1?.modDelay || 0
       };
-      const mod2 = { ratio: getSliderValue('mod2-ratio'), index: getSliderValue('mod2-index'), decay: getSliderValue('mod2-decay') };
-      const mod3 = { ratio: getSliderValue('mod3-ratio'), index: getSliderValue('mod3-index'), decay: getSliderValue('mod3-decay') };
-      const mod4 = { ratio: getSliderValue('mod4-ratio'), index: getSliderValue('mod4-index'), decay: getSliderValue('mod4-decay') };
+      const mod2 = {
+        ratio: getSliderValue('mod2-ratio'), index: getSliderValue('mod2-index'), decay: getSliderValue('mod2-decay'),
+        sustain: getSliderValue('mod2-sustain'),
+        level: getSliderValue('mod2-level'), feedback: getSliderValue('mod2-feedback'),
+        detune: getSliderValue('mod2-detune'), envRate: getSliderValue('mod2-envrate'),
+        modAttack: currentPresetData?.params?.mod2?.modAttack || 0,
+        modDelay: currentPresetData?.params?.mod2?.modDelay || 0
+      };
+      const mod3 = {
+        ratio: getSliderValue('mod3-ratio'), index: getSliderValue('mod3-index'), decay: getSliderValue('mod3-decay'),
+        sustain: getSliderValue('mod3-sustain'),
+        level: getSliderValue('mod3-level'), feedback: getSliderValue('mod3-feedback'),
+        detune: getSliderValue('mod3-detune'), envRate: getSliderValue('mod3-envrate'),
+        modAttack: currentPresetData?.params?.mod3?.modAttack || 0,
+        modDelay: currentPresetData?.params?.mod3?.modDelay || 0
+      };
+      const mod4 = {
+        ratio: getSliderValue('mod4-ratio'), index: getSliderValue('mod4-index'), decay: getSliderValue('mod4-decay'),
+        sustain: getSliderValue('mod4-sustain'),
+        level: getSliderValue('mod4-level'), feedback: getSliderValue('mod4-feedback'),
+        detune: getSliderValue('mod4-detune'), envRate: getSliderValue('mod4-envrate'),
+        modAttack: currentPresetData?.params?.mod4?.modAttack || 0,
+        modDelay: currentPresetData?.params?.mod4?.modDelay || 0
+      };
+
+      const lfoRate = getSliderValue('lfo-rate');
+      const lfoDepth = getSliderValue('lfo-depth');
+      const lfoTarget = document.getElementById('lfo-target').value;
+      const unisonVoices = Math.round(getSliderValue('unison-voices'));
+      const unisonDetune = getSliderValue('unison-detune');
 
       const attack = getSliderValue('attack');
       const decay = getSliderValue('decay');
@@ -1496,6 +2021,13 @@
 
       const filterFreq = getSliderValue('filter-freq');
       const filterQ = getSliderValue('filter-q');
+      const filterType = document.getElementById('filter-type').value;
+      const fenvAttack = getSliderValue('fenv-attack');
+      const fenvDecay = getSliderValue('fenv-decay');
+      const fenvSustain = getSliderValue('fenv-sustain');
+      const fenvRelease = getSliderValue('fenv-release');
+      const fenvDepth = getSliderValue('fenv-depth');
+      const driveAmt = getSliderValue('drive');
       const outputGain = getSliderValue('output-gain');
       const xLevel = getSliderValue('x-level');
       const yLevel = getSliderValue('y-level');
@@ -1520,18 +2052,43 @@
       const carrier2Gain = ctx.createGain();
       carrier2Gain.gain.value = carrier2Mix;
 
-      // === Modulators ===
-      const modulator1 = ctx.createOscillator(); modulator1.type = 'sine'; modulator1.frequency.value = frequency * mod1.ratio;
+      // === Modulators (with per-op detune) ===
+      const detuneFreq = (freq, cents) => freq * Math.pow(2, cents / 1200);
+      const modulator1 = ctx.createOscillator(); modulator1.type = 'sine'; modulator1.frequency.value = detuneFreq(frequency * mod1.ratio, mod1.detune);
       const modGain1 = ctx.createGain(); const modIndex1 = frequency * mod1.index * velocity; modGain1.gain.value = modIndex1;
 
-      const modulator2 = ctx.createOscillator(); modulator2.type = 'sine'; modulator2.frequency.value = frequency * mod2.ratio;
+      const modulator2 = ctx.createOscillator(); modulator2.type = 'sine'; modulator2.frequency.value = detuneFreq(frequency * mod2.ratio, mod2.detune);
       const modGain2 = ctx.createGain(); modGain2.gain.value = frequency * mod2.index;
 
-      const modulator3 = ctx.createOscillator(); modulator3.type = 'sine'; modulator3.frequency.value = frequency * mod3.ratio;
+      const modulator3 = ctx.createOscillator(); modulator3.type = 'sine'; modulator3.frequency.value = detuneFreq(frequency * mod3.ratio, mod3.detune);
       const modGain3 = ctx.createGain(); modGain3.gain.value = frequency * mod3.index;
 
-      const modulator4 = ctx.createOscillator(); modulator4.type = 'sine'; modulator4.frequency.value = frequency * mod4.ratio;
+      const modulator4 = ctx.createOscillator(); modulator4.type = 'sine'; modulator4.frequency.value = detuneFreq(frequency * mod4.ratio, mod4.detune);
       const modGain4 = ctx.createGain(); modGain4.gain.value = frequency * mod4.index;
+
+      // === Per-operator Level Gains ===
+      const opLevel1 = ctx.createGain(); opLevel1.gain.value = mod1.level;
+      const opLevel2 = ctx.createGain(); opLevel2.gain.value = mod2.level;
+      const opLevel3 = ctx.createGain(); opLevel3.gain.value = mod3.level;
+      const opLevel4 = ctx.createGain(); opLevel4.gain.value = mod4.level;
+
+      // === Per-operator Feedback (self-modulation via delay loop) ===
+      const fbNodes = [];
+      const createFeedback = (modulator, modGainNode, fbAmount) => {
+        if (fbAmount < 0.001) return;
+        const delay = ctx.createDelay(0.01);
+        delay.delayTime.value = 128 / ctx.sampleRate;
+        const fbGain = ctx.createGain();
+        fbGain.gain.value = fbAmount * frequency * 0.5;
+        modGainNode.connect(delay);
+        delay.connect(fbGain);
+        fbGain.connect(modulator.frequency);
+        fbNodes.push(delay, fbGain);
+      };
+      createFeedback(modulator1, modGain1, mod1.feedback);
+      createFeedback(modulator2, modGain2, mod2.feedback);
+      createFeedback(modulator3, modGain3, mod3.feedback);
+      createFeedback(modulator4, modGain4, mod4.feedback);
 
       // === Envelopes ===
       const envelope1 = ctx.createGain(); envelope1.gain.value = 0;
@@ -1595,11 +2152,11 @@
         transientGain.connect(output);
       }
 
-      // === FM Chain ===
-      modulator1.connect(modGain1);
-      modulator2.connect(modGain2);
-      modulator3.connect(modGain3);
-      modulator4.connect(modGain4);
+      // === FM Chain (through per-op level gains) ===
+      modulator1.connect(modGain1); modGain1.connect(opLevel1);
+      modulator2.connect(modGain2); modGain2.connect(opLevel2);
+      modulator3.connect(modGain3); modGain3.connect(opLevel3);
+      modulator4.connect(modGain4); modGain4.connect(opLevel4);
 
       const connectToCarriers = (gainNode, left = true, right = true) => {
         if (left) gainNode.connect(carrier1.frequency);
@@ -1609,45 +2166,117 @@
       const selectedAlgorithm = fmAlgorithm;
 
       if (selectedAlgorithm === 'stack') {
-        modGain4.connect(modulator3.frequency);
-        modGain3.connect(modulator2.frequency);
-        modGain2.connect(modulator1.frequency);
-        connectToCarriers(modGain1, true, true);
+        opLevel4.connect(modulator3.frequency);
+        opLevel3.connect(modulator2.frequency);
+        opLevel2.connect(modulator1.frequency);
+        connectToCarriers(opLevel1, true, true);
       } else if (selectedAlgorithm === 'split') {
-        modGain1.connect(carrier1.frequency);
-        modGain2.connect(carrier2.frequency);
-        modGain3.connect(carrier1.frequency);
-        modGain4.connect(carrier2.frequency);
+        opLevel1.connect(carrier1.frequency);
+        opLevel2.connect(carrier2.frequency);
+        opLevel3.connect(carrier1.frequency);
+        opLevel4.connect(carrier2.frequency);
       } else if (selectedAlgorithm === 'cross') {
-        connectToCarriers(modGain1, true, false);
-        connectToCarriers(modGain2, true, false);
-        connectToCarriers(modGain3, false, true);
-        connectToCarriers(modGain4, false, true);
+        connectToCarriers(opLevel1, true, false);
+        connectToCarriers(opLevel2, true, false);
+        connectToCarriers(opLevel3, false, true);
+        connectToCarriers(opLevel4, false, true);
       } else if (selectedAlgorithm === 'dx17') {
-        // DX7 ALG17: OP4→OP3→carrier1, OP2→OP3 + feedback
         carrier2Gain.gain.value = 0;
-        connectToCarriers(modGain3, true, false);
-        modGain4.connect(modulator3.frequency);
-        modGain2.connect(modulator3.frequency);
-        connectToCarriers(modGain1, true, false);
+        connectToCarriers(opLevel3, true, false);
+        opLevel4.connect(modulator3.frequency);
+        opLevel2.connect(modulator3.frequency);
+        connectToCarriers(opLevel1, true, false);
       } else {
         // parallel: all → both carriers
-        connectToCarriers(modGain1, true, true);
-        connectToCarriers(modGain2, true, true);
-        connectToCarriers(modGain3, true, true);
-        connectToCarriers(modGain4, true, true);
+        connectToCarriers(opLevel1, true, true);
+        connectToCarriers(opLevel2, true, true);
+        connectToCarriers(opLevel3, true, true);
+        connectToCarriers(opLevel4, true, true);
+      }
+
+      // === LFO → Modulation (target-dependent routing) ===
+      let lfoOsc = null, lfoGainNode = null;
+      if (lfoDepth > 0.001 && lfoRate > 0 && lfoTarget !== 'none') {
+        lfoOsc = ctx.createOscillator();
+        lfoOsc.type = 'sine';
+        lfoOsc.frequency.value = lfoRate;
+
+        if (lfoTarget === 'all' || lfoTarget === 'mod1' || lfoTarget === 'mod2' ||
+            lfoTarget === 'mod3' || lfoTarget === 'mod4') {
+          // FM depth modulation
+          lfoGainNode = ctx.createGain();
+          lfoGainNode.gain.value = lfoDepth * frequency * 0.5;
+          lfoOsc.connect(lfoGainNode);
+          const fmTargets = { all: [modGain1, modGain2, modGain3, modGain4], mod1: [modGain1], mod2: [modGain2], mod3: [modGain3], mod4: [modGain4] };
+          (fmTargets[lfoTarget] || fmTargets.all).forEach(g => lfoGainNode.connect(g.gain));
+        } else if (lfoTarget === 'pitch') {
+          // Vibrato
+          lfoGainNode = ctx.createGain();
+          lfoGainNode.gain.value = frequency * lfoDepth * 0.02;
+          lfoOsc.connect(lfoGainNode);
+          lfoGainNode.connect(carrier1.frequency);
+          lfoGainNode.connect(carrier2.frequency);
+        } else if (lfoTarget === 'detune') {
+          // Carrier2 detuning movement
+          lfoGainNode = ctx.createGain();
+          lfoGainNode.gain.value = frequency * lfoDepth * 0.01;
+          lfoOsc.connect(lfoGainNode);
+          lfoGainNode.connect(carrier2.frequency);
+        }
+        // 'filter' target connected after filter nodes below
+        lfoOsc.start(now);
       }
 
       carrier1.connect(envelope1);
       carrier2.connect(carrier2Gain);
       carrier2Gain.connect(envelope2);
 
+      // === Drive (waveshaper) ===
+      let driveX = null, driveY = null;
+      if (driveAmt > 0.001) {
+        const makeDrive = () => {
+          const ws = ctx.createWaveShaperNode ? ctx.createWaveShaperNode() : ctx.createWaveShaper();
+          const n = 1024;
+          const curve = new Float32Array(n);
+          const driveGain = 1 + driveAmt * 19;
+          for (let i = 0; i < n; i++) {
+            const x = (i * 2) / n - 1;
+            curve[i] = Math.tanh(x * driveGain);
+          }
+          ws.curve = curve;
+          ws.oversample = '2x';
+          return ws;
+        };
+        driveX = makeDrive();
+        driveY = makeDrive();
+      }
+
       // X/Y routing
       const filterX = ctx.createBiquadFilter();
-      filterX.type = 'lowpass'; filterX.frequency.value = filterFreq; filterX.Q.value = filterQ;
+      filterX.type = filterType; filterX.frequency.value = filterFreq; filterX.Q.value = filterQ;
 
       const filterY = ctx.createBiquadFilter();
-      filterY.type = 'lowpass'; filterY.frequency.value = filterFreq; filterY.Q.value = filterQ;
+      filterY.type = filterType; filterY.frequency.value = filterFreq; filterY.Q.value = filterQ;
+
+      // Filter envelope
+      if (Math.abs(fenvDepth) > 1) {
+        const peakFreq = Math.max(20, Math.min(20000, filterFreq + fenvDepth));
+        const sustainFreq = filterFreq + fenvDepth * fenvSustain;
+        [filterX, filterY].forEach(f => {
+          f.frequency.setValueAtTime(filterFreq, now);
+          f.frequency.linearRampToValueAtTime(peakFreq, now + fenvAttack);
+          f.frequency.linearRampToValueAtTime(Math.max(20, Math.min(20000, sustainFreq)), now + fenvAttack + fenvDecay);
+        });
+      }
+
+      // LFO → Filter cutoff (connected here after filter nodes exist)
+      if (lfoOsc && lfoTarget === 'filter') {
+        lfoGainNode = ctx.createGain();
+        lfoGainNode.gain.value = filterFreq * lfoDepth * 0.5;
+        lfoOsc.connect(lfoGainNode);
+        lfoGainNode.connect(filterX.frequency);
+        lfoGainNode.connect(filterY.frequency);
+      }
 
       const xGainNode = ctx.createGain(); xGainNode.gain.value = xLevel;
       const yGainNode = ctx.createGain(); yGainNode.gain.value = yLevel;
@@ -1655,12 +2284,18 @@
       const xPanNode = ctx.createStereoPanner(); xPanNode.pan.value = xPan;
       const yPanNode = ctx.createStereoPanner(); yPanNode.pan.value = yPan;
 
-      envelope1.connect(filterX);
+      // Signal chain: envelope → [drive] → filter → gain → pan → output
+      if (driveX) {
+        envelope1.connect(driveX); driveX.connect(filterX);
+        envelope2.connect(driveY); driveY.connect(filterY);
+      } else {
+        envelope1.connect(filterX);
+        envelope2.connect(filterY);
+      }
       filterX.connect(xGainNode);
       xGainNode.connect(xPanNode);
       xPanNode.connect(output);
 
-      envelope2.connect(filterY);
       filterY.connect(yGainNode);
       yGainNode.connect(yPanNode);
       yPanNode.connect(output);
@@ -1692,23 +2327,33 @@
       envelope2.gain.linearRampToValueAtTime(0.8, now + attack * 1.2);
       envelope2.gain.linearRampToValueAtTime(sustain * 0.8, now + attack + decay);
 
-      // === Mod envelopes ===
-      modGain1.gain.setValueAtTime(modIndex1, now);
-      modGain1.gain.exponentialRampToValueAtTime(
-        Math.max(0.001, modIndex1 * mod1.sustain), now + attack + mod1.decay
-      );
+      // === Mod envelopes: Digitone-style ADE (Delay → Attack → Decay → End) ===
+      const applyModEnv = (modGain, peakVal, mod) => {
+        const modAttack = mod.modAttack || 0;
+        const modDelay = mod.modDelay || 0;
+        const modEnd = Math.max(0.001, peakVal * (mod.sustain || 0.1));
+        if (modDelay > 0 || modAttack > 0) {
+          modGain.gain.setValueAtTime(0.001, now);
+          if (modDelay > 0) modGain.gain.setValueAtTime(0.001, now + modDelay);
+          modGain.gain.exponentialRampToValueAtTime(Math.max(0.001, peakVal), now + modDelay + Math.max(0.001, modAttack));
+          modGain.gain.exponentialRampToValueAtTime(modEnd, now + modDelay + modAttack + mod.decay);
+        } else {
+          modGain.gain.setValueAtTime(Math.max(0.001, peakVal), now);
+          modGain.gain.exponentialRampToValueAtTime(modEnd, now + mod.decay);
+        }
+      };
+      applyModEnv(modGain1, modIndex1, mod1);
+      applyModEnv(modGain2, frequency * mod2.index, mod2);
+      applyModEnv(modGain3, frequency * mod3.index, mod3);
+      applyModEnv(modGain4, frequency * mod4.index, mod4);
 
-      const mod2Start = frequency * mod2.index;
-      modGain2.gain.setValueAtTime(mod2Start, now);
-      modGain2.gain.exponentialRampToValueAtTime(Math.max(0.001, mod2Start * 0.05), now + attack + mod2.decay);
-
-      const mod3Start = frequency * mod3.index;
-      modGain3.gain.setValueAtTime(mod3Start, now);
-      modGain3.gain.exponentialRampToValueAtTime(Math.max(0.001, mod3Start * 0.02), now + attack + mod3.decay);
-
-      const mod4Start = frequency * mod4.index;
-      modGain4.gain.setValueAtTime(mod4Start, now);
-      modGain4.gain.exponentialRampToValueAtTime(Math.max(0.001, mod4Start * 0.1), now + attack + mod4.decay);
+      // === Per-operator level envelopes ===
+      // Level ramps: fade in with envRate-scaled attack, then decay toward ~50% of level
+      [{ g: opLevel1, m: mod1 }, { g: opLevel2, m: mod2 }, { g: opLevel3, m: mod3 }, { g: opLevel4, m: mod4 }].forEach(({ g, m }) => {
+        g.gain.setValueAtTime(0.001, now);
+        g.gain.linearRampToValueAtTime(m.level, now + attack * m.envRate);
+        g.gain.linearRampToValueAtTime(Math.max(0.001, m.level * 0.5), now + attack * m.envRate + decay * m.envRate);
+      });
 
       // === Release ===
       const noteEnd = now + attack + decay + 0.5;
@@ -1720,6 +2365,15 @@
       envelope2.gain.setValueAtTime(sustain * 0.8, noteEnd);
       envelope2.gain.exponentialRampToValueAtTime(0.001, stopTime);
 
+      // Filter envelope release
+      if (Math.abs(fenvDepth) > 1) {
+        const sustainFreq = filterFreq + fenvDepth * fenvSustain;
+        [filterX, filterY].forEach(f => {
+          f.frequency.setValueAtTime(Math.max(20, Math.min(20000, sustainFreq)), noteEnd);
+          f.frequency.linearRampToValueAtTime(filterFreq, noteEnd + fenvRelease);
+        });
+      }
+
       // Stop oscillators
       carrier1.stop(stopTime + 0.1);
       carrier2.stop(stopTime + 0.1);
@@ -1727,6 +2381,7 @@
       modulator2.stop(stopTime + 0.1);
       modulator3.stop(stopTime + 0.1);
       modulator4.stop(stopTime + 0.1);
+      if (lfoOsc) lfoOsc.stop(stopTime + 0.1);
 
       // Cleanup
       setTimeout(() => {
@@ -1734,6 +2389,7 @@
           carrier1.disconnect(); carrier2.disconnect(); carrier2Gain.disconnect();
           modulator1.disconnect(); modulator2.disconnect(); modulator3.disconnect(); modulator4.disconnect();
           modGain1.disconnect(); modGain2.disconnect(); modGain3.disconnect(); modGain4.disconnect();
+          opLevel1.disconnect(); opLevel2.disconnect(); opLevel3.disconnect(); opLevel4.disconnect();
           envelope1.disconnect(); envelope2.disconnect();
           filterX.disconnect(); filterY.disconnect();
           xGainNode.disconnect(); yGainNode.disconnect();
@@ -1742,6 +2398,11 @@
           if (transientGain) transientGain.disconnect();
           if (transientFilter) transientFilter.disconnect();
           if (noiseBufferSource) noiseBufferSource.disconnect();
+          if (lfoOsc) lfoOsc.disconnect();
+          if (lfoGainNode) lfoGainNode.disconnect();
+          if (driveX) driveX.disconnect();
+          if (driveY) driveY.disconnect();
+          fbNodes.forEach(n => n.disconnect());
         } catch {}
       }, (stopTime - now + 0.2) * 1000);
     }
@@ -1812,22 +2473,58 @@
             ratio: getSliderValue('mod1-ratio'),
             index: getSliderValue('mod1-index'),
             decay: getSliderValue('mod1-decay'),
-            sustain: getSliderValue('mod1-sustain')
+            sustain: getSliderValue('mod1-sustain'),
+            level: getSliderValue('mod1-level'),
+            feedback: getSliderValue('mod1-feedback'),
+            detune: getSliderValue('mod1-detune'),
+            envRate: getSliderValue('mod1-envrate'),
+            modAttack: currentPresetData?.params?.mod1?.modAttack || 0,
+            modDelay: currentPresetData?.params?.mod1?.modDelay || 0
           },
           mod2: {
             ratio: getSliderValue('mod2-ratio'),
             index: getSliderValue('mod2-index'),
-            decay: getSliderValue('mod2-decay')
+            decay: getSliderValue('mod2-decay'),
+            sustain: getSliderValue('mod2-sustain'),
+            level: getSliderValue('mod2-level'),
+            feedback: getSliderValue('mod2-feedback'),
+            detune: getSliderValue('mod2-detune'),
+            envRate: getSliderValue('mod2-envrate'),
+            modAttack: currentPresetData?.params?.mod2?.modAttack || 0,
+            modDelay: currentPresetData?.params?.mod2?.modDelay || 0
           },
           mod3: {
             ratio: getSliderValue('mod3-ratio'),
             index: getSliderValue('mod3-index'),
-            decay: getSliderValue('mod3-decay')
+            decay: getSliderValue('mod3-decay'),
+            sustain: getSliderValue('mod3-sustain'),
+            level: getSliderValue('mod3-level'),
+            feedback: getSliderValue('mod3-feedback'),
+            detune: getSliderValue('mod3-detune'),
+            envRate: getSliderValue('mod3-envrate'),
+            modAttack: currentPresetData?.params?.mod3?.modAttack || 0,
+            modDelay: currentPresetData?.params?.mod3?.modDelay || 0
           },
           mod4: {
             ratio: getSliderValue('mod4-ratio'),
             index: getSliderValue('mod4-index'),
-            decay: getSliderValue('mod4-decay')
+            decay: getSliderValue('mod4-decay'),
+            sustain: getSliderValue('mod4-sustain'),
+            level: getSliderValue('mod4-level'),
+            feedback: getSliderValue('mod4-feedback'),
+            detune: getSliderValue('mod4-detune'),
+            envRate: getSliderValue('mod4-envrate'),
+            modAttack: currentPresetData?.params?.mod4?.modAttack || 0,
+            modDelay: currentPresetData?.params?.mod4?.modDelay || 0
+          },
+          lfo: {
+            rate: getSliderValue('lfo-rate'),
+            depth: getSliderValue('lfo-depth'),
+            target: document.getElementById('lfo-target').value
+          },
+          unison: {
+            voices: Math.round(getSliderValue('unison-voices')),
+            detune: getSliderValue('unison-detune')
           },
           envelope: {
             attack: getSliderValue('attack'),
@@ -1837,8 +2534,15 @@
           },
           filter: {
             freq: getSliderValue('filter-freq'),
-            q: getSliderValue('filter-q')
+            q: getSliderValue('filter-q'),
+            type: document.getElementById('filter-type').value,
+            envAttack: getSliderValue('fenv-attack'),
+            envDecay: getSliderValue('fenv-decay'),
+            envSustain: getSliderValue('fenv-sustain'),
+            envRelease: getSliderValue('fenv-release'),
+            envDepth: getSliderValue('fenv-depth')
           },
+          drive: getSliderValue('drive'),
           transient: {
             click: getSliderValue('click-amt'),
             noise: getSliderValue('noise-amt'),
@@ -1871,6 +2575,235 @@
       }).catch(() => {
         setStatusText('Copy failed');
       });
+    }
+
+    // ===== DIGITONE AUDITION MODE =====
+    let audCandidates = [];  // raw from JSON
+    let audDecisions = {};   // { index: 'keep' | 'drop' }  persisted in localStorage
+
+    const AUD_STORAGE_KEY = 'lead4opfm_audition_decisions';
+
+    function loadAudDecisionsFromStorage() {
+      try {
+        const raw = localStorage.getItem(AUD_STORAGE_KEY);
+        if (raw) audDecisions = JSON.parse(raw);
+      } catch {}
+    }
+
+    function saveAudDecisionsToStorage() {
+      try {
+        localStorage.setItem(AUD_STORAGE_KEY, JSON.stringify(audDecisions));
+      } catch {}
+    }
+
+    async function loadCandidates() {
+      try {
+        setStatusText('Loading digitone_candidates.json...');
+        const resp = await fetch('digitone_candidates.json');
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        audCandidates = await resp.json();
+        loadAudDecisionsFromStorage();
+        renderAuditionList();
+        updateAudStats();
+        setStatusText(`Loaded ${audCandidates.length} Digitone candidates`);
+      } catch (e) {
+        console.error('Failed to load candidates:', e);
+        setStatusText('Failed to load digitone_candidates.json — run the notebook export cell first');
+      }
+    }
+
+    function getFilteredCandidates() {
+      const search = (document.getElementById('aud-search').value || '').toLowerCase();
+      const sort = document.getElementById('aud-sort').value;
+      const statusFilter = document.getElementById('aud-filter-status').value;
+
+      let list = audCandidates.slice();
+
+      // Status filter
+      if (statusFilter === 'kept') {
+        list = list.filter(c => audDecisions[c.index] === 'keep');
+      } else if (statusFilter === 'dropped') {
+        list = list.filter(c => audDecisions[c.index] === 'drop');
+      } else if (statusFilter === 'undecided') {
+        list = list.filter(c => !audDecisions[c.index]);
+      }
+
+      // Search filter
+      if (search) {
+        list = list.filter(c => {
+          const name = (c.digitoneName || c.preset.name || '').toLowerCase();
+          const tags = (c.digitoneTags || []).join(' ').toLowerCase();
+          const src = (c.sourceFile || '').toLowerCase();
+          return name.includes(search) || tags.includes(search) || src.includes(search);
+        });
+      }
+
+      // Sort
+      if (sort === 'score-desc') {
+        list.sort((a, b) => b.fidelityScore - a.fidelityScore);
+      } else if (sort === 'score-asc') {
+        list.sort((a, b) => a.fidelityScore - b.fidelityScore);
+      } else if (sort === 'name') {
+        list.sort((a, b) => (a.digitoneName || '').localeCompare(b.digitoneName || ''));
+      }
+      // 'index' = original order, already sorted
+
+      return list;
+    }
+
+    function filterAuditionList() {
+      renderAuditionList();
+    }
+
+    function renderAuditionList() {
+      const container = document.getElementById('aud-list');
+      const list = getFilteredCandidates();
+
+      if (list.length === 0) {
+        container.innerHTML = '<div style="padding:20px; text-align:center; color:var(--text-dim); font-size:0.75rem;">No matches</div>';
+        return;
+      }
+
+      const html = list.map(c => {
+        const decision = audDecisions[c.index];
+        const rowClass = decision === 'keep' ? 'kept' : decision === 'drop' ? 'dropped' : '';
+        const score = c.fidelityScore;
+        const scoreClass = score >= 80 ? 'high' : score >= 60 ? 'mid' : 'low';
+        const tags = (c.digitoneTags || []).slice(0, 3).join(', ');
+        const algo = c.preset.algorithm || '?';
+        const src = (c.sourceFile || '').replace('.syx', '').substring(0, 12);
+
+        return `<div class="aud-row ${rowClass}" data-idx="${c.index}">
+          <span class="aud-idx">${c.index}</span>
+          <button class="aud-play" onclick="audPlayPreset(${c.index})" title="Play test note">&#9654;</button>
+          <span class="aud-name" onclick="audLoadPreset(${c.index})" title="Load into editor">${c.digitoneName || c.preset.name}</span>
+          <span class="aud-score ${scoreClass}">${score}%</span>
+          <span class="aud-algo">${algo}</span>
+          <span class="aud-tags" title="${tags}">${tags}</span>
+          <span class="aud-source" title="${c.sourceFile}">${src}</span>
+          <span class="aud-actions">
+            <button class="aud-keep-btn ${decision === 'keep' ? 'active' : ''}" onclick="audSetDecision(${c.index},'keep')" title="Keep">&#10003;</button>
+            <button class="aud-drop-btn ${decision === 'drop' ? 'active' : ''}" onclick="audSetDecision(${c.index},'drop')" title="Drop">&#10007;</button>
+          </span>
+        </div>`;
+      }).join('');
+
+      container.innerHTML = html;
+    }
+
+    function updateAudStats() {
+      const total = audCandidates.length;
+      if (total === 0) return;
+      const kept = Object.values(audDecisions).filter(v => v === 'keep').length;
+      const dropped = Object.values(audDecisions).filter(v => v === 'drop').length;
+      const undecided = total - kept - dropped;
+
+      document.getElementById('aud-stats').innerHTML =
+        `<span class="stat-kept">Kept: ${kept}</span>` +
+        `<span class="stat-dropped">Dropped: ${dropped}</span>` +
+        `<span class="stat-undecided">Undecided: ${undecided}</span>` +
+        `<span>Total: ${total}</span>`;
+    }
+
+    function audSetDecision(index, decision) {
+      // Toggle: if already set to this decision, clear it
+      if (audDecisions[index] === decision) {
+        delete audDecisions[index];
+      } else {
+        audDecisions[index] = decision;
+      }
+      saveAudDecisionsToStorage();
+      updateAudStats();
+
+      // Update just this row without re-rendering everything
+      const row = document.querySelector(`.aud-row[data-idx="${index}"]`);
+      if (row) {
+        const d = audDecisions[index];
+        row.className = `aud-row ${d === 'keep' ? 'kept' : d === 'drop' ? 'dropped' : ''}`;
+        row.querySelector('.aud-keep-btn').classList.toggle('active', d === 'keep');
+        row.querySelector('.aud-drop-btn').classList.toggle('active', d === 'drop');
+      }
+    }
+
+    function audLoadPreset(index) {
+      const candidate = audCandidates.find(c => c.index === index);
+      if (!candidate) return;
+
+      const preset = candidate.preset;
+      currentPresetData = preset;
+      currentPresetId = preset.id;
+      applyPresetToSliders(preset);
+      originalPresetSnapshot = captureSliders();
+      slotA = captureSliders();
+      slotB = captureSliders();
+      abSlot = 'a';
+      updateABButtons();
+
+      document.getElementById('preset-name').value = preset.name || preset.id;
+      document.getElementById('algorithm-select').value = preset.algorithm || 'parallel';
+      fmAlgorithm = preset.algorithm || 'parallel';
+
+      // Deselect normal preset buttons
+      document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+
+      const notes = candidate.fidelityNotes?.length ? ` (gaps: ${candidate.fidelityNotes.join(', ')})` : '';
+      setStatusText(`Loaded: ${preset.name} — Score: ${candidate.fidelityScore}%${notes}`);
+    }
+
+    function audPlayPreset(index) {
+      // Temporarily load and play a test note, then optionally keep loaded
+      audLoadPreset(index);
+      // Play middle C at current octave
+      const frequency = 440 * Math.pow(2, (currentOctave - 4) + (60 - 69) / 12);
+      playFMNote(frequency, 0.75);
+    }
+
+    function clearAuditionDecisions() {
+      if (!confirm('Clear all keep/drop decisions?')) return;
+      audDecisions = {};
+      saveAudDecisionsToStorage();
+      renderAuditionList();
+      updateAudStats();
+    }
+
+    function exportKeptPresets() {
+      const kept = audCandidates.filter(c => audDecisions[c.index] === 'keep');
+      if (kept.length === 0) {
+        setStatusText('No presets marked as kept — mark some first');
+        return;
+      }
+
+      // Build a zip-like bundle: array of presets
+      const presets = kept.map(c => {
+        const p = {...c.preset};
+        // Strip internal fields
+        delete p._digitone_source;
+        return p;
+      });
+
+      // Also build a manifest snippet
+      const manifestEntries = presets.map(p => ({
+        id: p.id,
+        name: p.name,
+        file: `${p.id}.json`
+      }));
+
+      // Download as a single JSON with all kept presets + manifest
+      const bundle = {
+        _info: `${kept.length} Digitone presets kept out of ${audCandidates.length} candidates`,
+        _exportDate: new Date().toISOString(),
+        manifestEntries: manifestEntries,
+        presets: presets
+      };
+
+      const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'digitone_kept_presets.json';
+      a.click();
+      URL.revokeObjectURL(url);
+      setStatusText(`Exported ${kept.length} kept presets as digitone_kept_presets.json`);
     }
 
     // Start
