@@ -184,7 +184,7 @@ const SNOWFLAKE_WELCOME_STATE: SliderState = {
   tension: 0.15,
   // Arm lengths (level keys) — 75% on log curve ≈ 0.487 of linear range
   reverbLevel: 0.97,       // max 2
-  synthLevel: 0.49,        // max 1
+  synthLevel: 0.49,        // max 1\n  pad2Level: 0.49,         // max 1
   granularLevel: 1.95,     // max 4 (snowflake scale)
   leadLevel: 0.49,         // max 1
   drumLevel: 0.49,         // max 1
@@ -3424,7 +3424,7 @@ const App: React.FC = () => {
     
     // Interpolate all numeric values (except those that should snap)
     const numericKeys: (keyof SliderState)[] = [
-      'masterVolume', 'synthLevel', 'granularLevel', 'synthReverbSend', 'granularReverbSend',
+      'masterVolume', 'synthLevel', 'pad2Level', 'granularLevel', 'synthReverbSend', 'granularReverbSend',
       'leadReverbSend', 'leadDelayReverbSend', 'reverbLevel', 'randomness', 'tension',
       'chordRate', 'voicingSpread', 'waveSpread', 'detune', 'synthAttack', 'synthDecay',
       'synthSustain', 'synthRelease', 'synthVoiceMask', 'synthOctave', 'hardness',
@@ -3432,7 +3432,7 @@ const App: React.FC = () => {
       'warmth', 'presence', 'reverbDecay', 'reverbSize', 'reverbDiffusion',
       'reverbModulation', 'predelay', 'damping', 'width', 'grainProbability', 'grainSize',
       'density', 'spray', 'jitter', 'pitchSpread', 'stereoSpread', 'feedback',
-      'wetHPF', 'wetLPF', 'leadLevel', 'lead1Attack', 'lead1Decay', 'lead1Sustain', 'lead1Release',
+      'wetHPF', 'wetLPF', 'leadLevel', 'lead1Level', 'lead2Level', 'lead1Attack', 'lead1Decay', 'lead1Sustain', 'lead1Release',
       'lead2Attack', 'lead2Decay', 'lead2Sustain', 'lead2Release',
       'leadDelayTime', 'leadDelayFeedback',
       'leadDelayMix', 'lead1Density', 'lead1Octave',
@@ -4975,11 +4975,18 @@ const App: React.FC = () => {
             {...sliderProps('masterVolume')}
           />
           <Slider
-            label="Synth Level"
+            label="Pad 1 Level"
             value={state.synthLevel}
             paramKey="synthLevel"
             onChange={handleSliderChange}
             {...sliderProps('synthLevel')}
+          />
+          <Slider
+            label="Pad 2 Level"
+            value={state.pad2Level}
+            paramKey="pad2Level"
+            onChange={handleSliderChange}
+            {...sliderProps('pad2Level')}
           />
           <Slider
             label="Granular Level"
@@ -4994,6 +5001,13 @@ const App: React.FC = () => {
             paramKey="leadLevel"
             onChange={handleSliderChange}
             {...sliderProps('leadLevel')}
+          />
+          <Slider
+            label="Lead 2 Level"
+            value={state.lead2Level}
+            paramKey="lead2Level"
+            onChange={handleSliderChange}
+            {...sliderProps('lead2Level')}
           />
           <Slider
             label="Drum Level"

@@ -32,7 +32,8 @@ export interface SavedPreset {
 export interface SliderState {
   // Master Mixer
   masterVolume: number;       // 0..1 step 0.01
-  synthLevel: number;         // 0..1 step 0.01 - dry synth level
+  synthLevel: number;         // 0..1 step 0.01 - pad 1 dry level
+  pad2Level: number;           // 0..1 step 0.01 - pad 2 dry level
   granularLevel: number;      // 0..1 step 0.01 - granular output level
   synthReverbSend: number;    // 0..1 step 0.01 - how much synth goes to reverb
   granularReverbSend: number; // 0..1 step 0.01 - how much granular goes to reverb
@@ -657,6 +658,7 @@ export interface SliderState {
 const STATE_KEYS: (keyof SliderState)[] = [
   'masterVolume',
   'synthLevel',
+  'pad2Level',
   'granularLevel',
   'synthReverbSend',
   'granularReverbSend',
@@ -1164,6 +1166,7 @@ export const DEFAULT_STATE: SliderState = {
   // Master Mixer
   masterVolume: 0.7,
   synthLevel: 0.6,
+  pad2Level: 0.6,
   granularLevel: 0.4,
   synthReverbSend: 0.7,
   granularReverbSend: 0.8,
@@ -1760,6 +1763,7 @@ interface QuantizationDef {
 const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> = {
   masterVolume: { min: 0, max: 1, step: 0.01 },
   synthLevel: { min: 0, max: 1, step: 0.01 },
+  pad2Level: { min: 0, max: 1, step: 0.01 },
   granularLevel: { min: 0, max: 2, step: 0.01 },
   synthReverbSend: { min: 0, max: 1, step: 0.01 },
   granularReverbSend: { min: 0, max: 1, step: 0.01 },

@@ -88,6 +88,7 @@ interface Voice {
   gain: GainNode;
   saturation: WaveShaperNode;
   envelope: GainNode;
+  mixerGain: GainNode;              // Per-voice level control (pad 1 vs pad 2)
   modEnvGain: GainNode;              // Mod envelope gain for amplitude/filter/pitch modulation
   active: boolean;
   targetFreq: number;
@@ -1112,7 +1113,7 @@ export class AudioEngine {
     this.synthReverbSend.gain.value = this.sliderState?.synthReverbSend ?? 0.7;
 
     this.synthDirect = ctx.createGain();
-    this.synthDirect.gain.value = this.sliderState?.synthLevel ?? 0.6;
+    this.synthDirect.gain.value = 1.0;  // Level is per-voice via mixerGain
 
     // Granular worklet
     this.granulatorNode = new AudioWorkletNode(ctx, 'granulator', {
@@ -1225,7 +1226,7 @@ export class AudioEngine {
     //                    -> DryBus --------------------------------------------------------> Reverb
 
     for (const voice of this.voices) {
-      voice.envelope.connect(this.synthBus);
+      voice.mixerGain.connect(this.synthBus);
     }
 
     this.synthBus.connect(this.granulatorInputGain);
@@ -1449,7 +1450,11 @@ export class AudioEngine {
       const envelope = ctx.createGain();
       envelope.gain.value = 0;
 
-      // Connect voice chain: oscs -> oscGains -> filterA -> filterB -> warmth -> presence -> saturation -> gain -> modEnvGain -> envelope
+      // Mixer gain (per-voice level: pad 1 vs pad 2)
+      const mixerGain = ctx.createGain();
+      mixerGain.gain.value = s?.synthLevel ?? 0.6;
+
+      // Connect voice chain: oscs -> oscGains -> filterA -> filterB -> warmth -> presence -> saturation -> gain -> modEnvGain -> envelope -> mixerGain
       osc1.connect(osc1Gain);
       osc2.connect(osc2Gain);
       osc3.connect(osc3Gain);
@@ -1470,6 +1475,7 @@ export class AudioEngine {
       saturation.connect(gain);
       gain.connect(modEnvGain);
       modEnvGain.connect(envelope);
+      envelope.connect(mixerGain);
 
       this.voices.push({
         osc1,
@@ -1490,6 +1496,7 @@ export class AudioEngine {
         saturation,
         modEnvGain,
         envelope,
+        mixerGain,
         active: false,
         targetFreq: 0,
       });
@@ -2384,6 +2391,10 @@ export class AudioEngine {
 
       // Noise
       voice.noiseGain.gain.setTargetAtTime(p.noiseLevel * 0.1, now, smoothTime);
+
+      // Per-voice mixer level (pad 1 = synthLevel, pad 2 = pad2Level)
+      const voiceLevel = (pad2On && (pad2Assign & (1 << i))) ? (state.pad2Level ?? 0.6) : state.synthLevel;
+      voice.mixerGain.gain.setTargetAtTime(voiceLevel, now, smoothTime);
     }
 
     // ── Saturation curves (per-pad, only on change) ──
@@ -2440,11 +2451,12 @@ export class AudioEngine {
     this.granularReverbSend?.gain.setTargetAtTime(granularReverbSend, now, smoothTime);
 
     // Synth levels (independent: direct level and reverb send)
-    // synthLevel controls direct output to master
+    // Per-voice mixerGain controls pad 1 vs pad 2 level
+    // synthDirect acts as pad-active mute gate
     // synthReverbSend controls how much goes to reverb (additive, not crossfade)
     // When reverbEnabled is false, mute reverb send to save CPU
     const padActive = state.padEnabled !== false;
-    this.synthDirect?.gain.setTargetAtTime(padActive ? state.synthLevel : 0, now, smoothTime);
+    this.synthDirect?.gain.setTargetAtTime(padActive ? 1.0 : 0, now, smoothTime);
     this.synthReverbSend?.gain.setTargetAtTime(padActive && state.reverbEnabled ? state.synthReverbSend : 0, now, smoothTime);
 
     // Lead reverb send (mute if reverb disabled)
@@ -3094,7 +3106,7 @@ export class AudioEngine {
       this.synthReverbSend = ctx.createGain();
       this.synthReverbSend.gain.value = this.sliderState?.synthReverbSend ?? 0.7;
       this.synthDirect = ctx.createGain();
-      this.synthDirect.gain.value = this.sliderState?.synthLevel ?? 0.6;
+      this.synthDirect.gain.value = 1.0;  // Level is per-voice via mixerGain
       // Connect: synthBus → dryBus → synthDirect → masterGain (skip granular for independent mode)
       this.synthBus.connect(this.dryBus);
       this.dryBus.connect(this.synthReverbSend);
@@ -3112,7 +3124,7 @@ export class AudioEngine {
         // Connect voices to synthBus
         if (this.synthBus) {
           for (const voice of this.voices) {
-            voice.envelope.connect(this.synthBus);
+            voice.mixerGain.connect(this.synthBus);
           }
         }
       });
