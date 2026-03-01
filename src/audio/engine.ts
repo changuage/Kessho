@@ -3168,7 +3168,8 @@ export class AudioEngine {
         const scheduleUntil = now + lookAhead;
 
         const baseBPM = this.sliderState.drumEuclidBaseBPM ?? 120;
-        const stepDurationSec = 60 / baseBPM; // 1 beat per step
+        const tempo = this.sliderState.synthEuclideanTempo ?? 1;
+        const stepDurationSec = 60 / (baseBPM * tempo); // 1 beat per step, scaled by tempo multiplier
 
         const scale = this.harmonyState?.scaleFamily;
         const rootNote = this.effectiveRoot;
@@ -3460,6 +3461,7 @@ export class AudioEngine {
       clearTimeout(this.synthEuclidScheduleTimer);
       this.synthEuclidScheduleTimer = null;
     }
+    this.synthMorphOverride = null; // Clear morph sub-lane override so slider control resumes
     this.synthEuclidCurrentStep = [0, 0, 0, 0];
     this.synthEuclidHitCounts = [0, 0, 0, 0];
     this.synthEuclidStepIndex = [0, 0, 0, 0];

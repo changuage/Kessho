@@ -1608,6 +1608,22 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 </div>
 
                 <Slider label="Lead 2 Level" value={state.lead2Level} paramKey="lead2Level" onChange={onParamChange} {...sliderProps('lead2Level')} />
+
+                {/* Expression */}
+                <div className="sc-advanced-section">
+                  <div className="sc-section-label">Expression (per note)</div>
+                  <Slider label="Vibrato Depth" value={state.leadVibratoDepth} paramKey="leadVibratoDepth" unit=" st" onChange={onParamChange} {...sliderProps('leadVibratoDepth')} />
+                  <Slider label="Vibrato Rate" value={state.leadVibratoRate} paramKey="leadVibratoRate" unit=" Hz" onChange={onParamChange} {...sliderProps('leadVibratoRate')} />
+                  <Slider label="Glide" value={state.leadGlide} paramKey="leadGlide" onChange={onParamChange} {...sliderProps('leadGlide')} />
+                </div>
+
+                {/* Delay */}
+                <div className="sc-advanced-section">
+                  <div className="sc-section-label">Delay Effect (per note)</div>
+                  <Slider label="Delay Time" value={state.leadDelayTime} paramKey="leadDelayTime" unit=" ms" onChange={onParamChange} {...sliderProps('leadDelayTime')} />
+                  <Slider label="Delay Feedback" value={state.leadDelayFeedback} paramKey="leadDelayFeedback" onChange={onParamChange} {...sliderProps('leadDelayFeedback')} />
+                  <Slider label="Delay Mix" value={state.leadDelayMix} paramKey="leadDelayMix" onChange={onParamChange} {...sliderProps('leadDelayMix')} />
+                </div>
               </div>
             )}
           </div>

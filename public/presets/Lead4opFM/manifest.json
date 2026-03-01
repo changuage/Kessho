@@ -41,10 +41,16 @@
       "algorithm": "stack"
     },
     {
+      "id": "electric_piano",
+      "name": "Electric Piano",
+      "file": "electric_piano.json",
+      "algorithm": "stack"
+    },
+    {
       "id": "handpan",
       "name": "Handpan",
       "file": "handpan.json",
-      "algorithm": "stack"
+      "algorithm": "parallel"
     },
     {
       "id": "kalimba",
