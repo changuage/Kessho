@@ -115,7 +115,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     sliderProps,
     SliderComponent,
     SelectComponent,
-    CollapsiblePanelComponent,
+    // CollapsiblePanelComponent — available via props if needed
     lead4opPresets,
     liveFilterFreq,
     liveLfoValue,

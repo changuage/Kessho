@@ -21,19 +21,6 @@ interface LeadAdsrVizProps {
 type DragTarget = 'attack' | 'decay' | 'sustain' | 'hold' | 'release' | null;
 const DRAG_HIT_PX = 12;
 
-// Compute ADSR envelope value at time t (used by future animation)
-function _adsrValue(t: number, a: number, d: number, s: number, hold: number, r: number): number {
-  if (t < 0) return 0;
-  if (t < a) return t / Math.max(0.001, a);
-  const tAfterA = t - a;
-  if (tAfterA < d) return 1 - (1 - s) * (tAfterA / Math.max(0.001, d));
-  const sustainEnd = a + d + hold;
-  if (t < sustainEnd) return s;
-  const tInRelease = t - sustainEnd;
-  if (tInRelease < r) return s * (1 - tInRelease / Math.max(0.001, r));
-  return 0;
-}
-
 const LeadAdsrViz: React.FC<LeadAdsrVizProps> = (props) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animRef = useRef<number>(0);
