@@ -1,0 +1,1510 @@
+{
+  "name": "loop forest",
+  "size": 817,
+  "modules": [
+    {
+      "number": 0,
+      "mod_idx": 1,
+      "type": "Audio Input",
+      "category": "Interface",
+      "name": "",
+      "version": 0,
+      "page": 0,
+      "position": 0,
+      "color": "Green",
+      "params_count": 0,
+      "params_raw": [],
+      "params_norm": [],
+      "options": {
+        "channels": "stereo"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 1,
+      "mod_idx": 2,
+      "type": "Audio Output",
+      "category": "Interface",
+      "name": "",
+      "version": 0,
+      "page": 0,
+      "position": 2,
+      "color": "Red",
+      "params_count": 1,
+      "params_raw": [
+        54615
+      ],
+      "params_norm": [
+        0.8334
+      ],
+      "options": {
+        "gain_control": "on",
+        "channels": "stereo"
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 2,
+      "mod_idx": 74,
+      "type": "Hall Reverb",
+      "category": "Effect",
+      "name": "",
+      "version": 0,
+      "page": 0,
+      "position": 8,
+      "color": "Aqua",
+      "params_count": 4,
+      "params_raw": [
+        32767,
+        32768,
+        32767,
+        32767
+      ],
+      "params_norm": [
+        0.5,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 3,
+      "mod_idx": 43,
+      "type": "Delay w/Mod",
+      "category": "Effect",
+      "name": "",
+      "version": 0,
+      "page": 0,
+      "position": 16,
+      "color": "Green",
+      "params_count": 5,
+      "params_raw": [
+        21586,
+        24736,
+        64798,
+        9104,
+        31626
+      ],
+      "params_norm": [
+        0.3294,
+        0.3774,
+        0.9888,
+        0.1389,
+        0.4826
+      ],
+      "options": {
+        "channels": "2in->2out",
+        "control": "rate",
+        "type": "old_tape",
+        "tap_ratio": "1:1"
+      },
+      "options_raw": [
+        2,
+        0,
+        2,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 4,
+      "mod_idx": 30,
+      "type": "Looper",
+      "category": "Audio",
+      "name": "",
+      "version": 0,
+      "page": 1,
+      "position": 0,
+      "color": "Yellow",
+      "params_count": 7,
+      "params_raw": [
+        0,
+        0,
+        32766,
+        0,
+        65534,
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0,
+        0.5,
+        0.0,
+        1.0,
+        0.0,
+        0.0
+      ],
+      "options": {
+        "max_rec_time": "16s",
+        "length_edit": "on",
+        "playback": "loop",
+        "length": "fixed",
+        "hear_while_rec": "no",
+        "play_reverse": "yes",
+        "overdub": "no",
+        "stop_play_button": "yes"
+      },
+      "options_raw": [
+        4,
+        1,
+        1,
+        0,
+        0,
+        1,
+        0,
+        1
+      ]
+    },
+    {
+      "number": 5,
+      "mod_idx": 5,
+      "type": "LFO",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 1,
+      "position": 9,
+      "color": "Yellow",
+      "params_count": 1,
+      "params_raw": [
+        3508
+      ],
+      "params_norm": [
+        0.0535
+      ],
+      "options": {
+        "waveform": "sine",
+        "swing_control": "off",
+        "output": "0 to 1",
+        "input": "cv",
+        "phase_input": "off",
+        "phase_reset": "off"
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 6,
+      "mod_idx": 5,
+      "type": "LFO",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 1,
+      "position": 11,
+      "color": "Magenta",
+      "params_count": 1,
+      "params_raw": [
+        1440
+      ],
+      "params_norm": [
+        0.022
+      ],
+      "options": {
+        "waveform": "square",
+        "swing_control": "off",
+        "output": "0 to 1",
+        "input": "cv",
+        "phase_input": "off",
+        "phase_reset": "off"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 7,
+      "mod_idx": 5,
+      "type": "LFO",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 1,
+      "position": 13,
+      "color": "Aqua",
+      "params_count": 1,
+      "params_raw": [
+        2148
+      ],
+      "params_norm": [
+        0.0328
+      ],
+      "options": {
+        "waveform": "square",
+        "swing_control": "off",
+        "output": "0 to 1",
+        "input": "cv",
+        "phase_input": "off",
+        "phase_reset": "off"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 8,
+      "mod_idx": 57,
+      "type": "Audio Panner",
+      "category": "Audio",
+      "name": "",
+      "version": 0,
+      "page": 1,
+      "position": 16,
+      "color": "Yellow",
+      "params_count": 1,
+      "params_raw": [
+        0
+      ],
+      "params_norm": [
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 9,
+      "mod_idx": 5,
+      "type": "LFO",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 1,
+      "position": 24,
+      "color": "Magenta",
+      "params_count": 1,
+      "params_raw": [
+        3788
+      ],
+      "params_norm": [
+        0.0578
+      ],
+      "options": {
+        "waveform": "sine",
+        "swing_control": "off",
+        "output": "0 to 1",
+        "input": "cv",
+        "phase_input": "off",
+        "phase_reset": "off"
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 10,
+      "mod_idx": 30,
+      "type": "Looper",
+      "category": "Audio",
+      "name": "",
+      "version": 0,
+      "page": 2,
+      "position": 0,
+      "color": "Yellow",
+      "params_count": 7,
+      "params_raw": [
+        0,
+        0,
+        36606,
+        0,
+        65534,
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0,
+        0.5586,
+        0.0,
+        1.0,
+        0.0,
+        0.0
+      ],
+      "options": {
+        "max_rec_time": "16s",
+        "length_edit": "on",
+        "playback": "loop",
+        "length": "fixed",
+        "hear_while_rec": "no",
+        "play_reverse": "yes",
+        "overdub": "no",
+        "stop_play_button": "yes"
+      },
+      "options_raw": [
+        4,
+        1,
+        1,
+        0,
+        0,
+        1,
+        0,
+        1
+      ]
+    },
+    {
+      "number": 11,
+      "mod_idx": 5,
+      "type": "LFO",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 2,
+      "position": 9,
+      "color": "Yellow",
+      "params_count": 1,
+      "params_raw": [
+        3508
+      ],
+      "params_norm": [
+        0.0535
+      ],
+      "options": {
+        "waveform": "sine",
+        "swing_control": "off",
+        "output": "0 to 1",
+        "input": "cv",
+        "phase_input": "off",
+        "phase_reset": "off"
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 12,
+      "mod_idx": 5,
+      "type": "LFO",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 2,
+      "position": 11,
+      "color": "Magenta",
+      "params_count": 1,
+      "params_raw": [
+        2680
+      ],
+      "params_norm": [
+        0.0409
+      ],
+      "options": {
+        "waveform": "square",
+        "swing_control": "off",
+        "output": "0 to 1",
+        "input": "cv",
+        "phase_input": "off",
+        "phase_reset": "off"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 13,
+      "mod_idx": 5,
+      "type": "LFO",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 2,
+      "position": 13,
+      "color": "Aqua",
+      "params_count": 1,
+      "params_raw": [
+        4188
+      ],
+      "params_norm": [
+        0.0639
+      ],
+      "options": {
+        "waveform": "square",
+        "swing_control": "off",
+        "output": "0 to 1",
+        "input": "cv",
+        "phase_input": "off",
+        "phase_reset": "off"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 14,
+      "mod_idx": 57,
+      "type": "Audio Panner",
+      "category": "Audio",
+      "name": "",
+      "version": 0,
+      "page": 2,
+      "position": 16,
+      "color": "Aqua",
+      "params_count": 1,
+      "params_raw": [
+        0
+      ],
+      "params_norm": [
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 15,
+      "mod_idx": 5,
+      "type": "LFO",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 2,
+      "position": 24,
+      "color": "White",
+      "params_count": 1,
+      "params_raw": [
+        7668
+      ],
+      "params_norm": [
+        0.117
+      ],
+      "options": {
+        "waveform": "sine",
+        "swing_control": "off",
+        "output": "0 to 1",
+        "input": "cv",
+        "phase_input": "off",
+        "phase_reset": "off"
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 16,
+      "mod_idx": 30,
+      "type": "Looper",
+      "category": "Audio",
+      "name": "",
+      "version": 0,
+      "page": 3,
+      "position": 0,
+      "color": "Yellow",
+      "params_count": 7,
+      "params_raw": [
+        0,
+        0,
+        45886,
+        0,
+        65534,
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0,
+        0.7002,
+        0.0,
+        1.0,
+        0.0,
+        0.0
+      ],
+      "options": {
+        "max_rec_time": "16s",
+        "length_edit": "on",
+        "playback": "loop",
+        "length": "fixed",
+        "hear_while_rec": "no",
+        "play_reverse": "yes",
+        "overdub": "no",
+        "stop_play_button": "yes"
+      },
+      "options_raw": [
+        4,
+        1,
+        1,
+        0,
+        0,
+        1,
+        0,
+        1
+      ]
+    },
+    {
+      "number": 17,
+      "mod_idx": 5,
+      "type": "LFO",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 3,
+      "position": 9,
+      "color": "Yellow",
+      "params_count": 1,
+      "params_raw": [
+        1068
+      ],
+      "params_norm": [
+        0.0163
+      ],
+      "options": {
+        "waveform": "sine",
+        "swing_control": "off",
+        "output": "0 to 1",
+        "input": "cv",
+        "phase_input": "off",
+        "phase_reset": "off"
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 18,
+      "mod_idx": 5,
+      "type": "LFO",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 3,
+      "position": 11,
+      "color": "Magenta",
+      "params_count": 1,
+      "params_raw": [
+        2680
+      ],
+      "params_norm": [
+        0.0409
+      ],
+      "options": {
+        "waveform": "square",
+        "swing_control": "off",
+        "output": "0 to 1",
+        "input": "cv",
+        "phase_input": "off",
+        "phase_reset": "off"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 19,
+      "mod_idx": 5,
+      "type": "LFO",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 3,
+      "position": 13,
+      "color": "Aqua",
+      "params_count": 1,
+      "params_raw": [
+        4188
+      ],
+      "params_norm": [
+        0.0639
+      ],
+      "options": {
+        "waveform": "square",
+        "swing_control": "off",
+        "output": "0 to 1",
+        "input": "cv",
+        "phase_input": "off",
+        "phase_reset": "off"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 20,
+      "mod_idx": 57,
+      "type": "Audio Panner",
+      "category": "Audio",
+      "name": "",
+      "version": 0,
+      "page": 3,
+      "position": 16,
+      "color": "Magenta",
+      "params_count": 1,
+      "params_raw": [
+        20440
+      ],
+      "params_norm": [
+        0.3119
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 21,
+      "mod_idx": 5,
+      "type": "LFO",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 3,
+      "position": 24,
+      "color": "Blue",
+      "params_count": 1,
+      "params_raw": [
+        6468
+      ],
+      "params_norm": [
+        0.0987
+      ],
+      "options": {
+        "waveform": "sine",
+        "swing_control": "off",
+        "output": "0 to 1",
+        "input": "cv",
+        "phase_input": "off",
+        "phase_reset": "off"
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 22,
+      "mod_idx": 30,
+      "type": "Looper",
+      "category": "Audio",
+      "name": "",
+      "version": 0,
+      "page": 4,
+      "position": 0,
+      "color": "Yellow",
+      "params_count": 7,
+      "params_raw": [
+        0,
+        0,
+        39326,
+        0,
+        65534,
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0,
+        0.6001,
+        0.0,
+        1.0,
+        0.0,
+        0.0
+      ],
+      "options": {
+        "max_rec_time": "16s",
+        "length_edit": "on",
+        "playback": "loop",
+        "length": "fixed",
+        "hear_while_rec": "no",
+        "play_reverse": "yes",
+        "overdub": "no",
+        "stop_play_button": "yes"
+      },
+      "options_raw": [
+        4,
+        1,
+        1,
+        0,
+        0,
+        1,
+        0,
+        1
+      ]
+    },
+    {
+      "number": 23,
+      "mod_idx": 5,
+      "type": "LFO",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 4,
+      "position": 9,
+      "color": "Yellow",
+      "params_count": 1,
+      "params_raw": [
+        1868
+      ],
+      "params_norm": [
+        0.0285
+      ],
+      "options": {
+        "waveform": "sine",
+        "swing_control": "off",
+        "output": "0 to 1",
+        "input": "cv",
+        "phase_input": "off",
+        "phase_reset": "off"
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 24,
+      "mod_idx": 5,
+      "type": "LFO",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 4,
+      "position": 11,
+      "color": "Magenta",
+      "params_count": 1,
+      "params_raw": [
+        8360
+      ],
+      "params_norm": [
+        0.1276
+      ],
+      "options": {
+        "waveform": "square",
+        "swing_control": "off",
+        "output": "0 to 1",
+        "input": "cv",
+        "phase_input": "off",
+        "phase_reset": "off"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 25,
+      "mod_idx": 5,
+      "type": "LFO",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 4,
+      "position": 13,
+      "color": "Aqua",
+      "params_count": 1,
+      "params_raw": [
+        4348
+      ],
+      "params_norm": [
+        0.0663
+      ],
+      "options": {
+        "waveform": "square",
+        "swing_control": "off",
+        "output": "0 to 1",
+        "input": "cv",
+        "phase_input": "off",
+        "phase_reset": "off"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 26,
+      "mod_idx": 57,
+      "type": "Audio Panner",
+      "category": "Audio",
+      "name": "",
+      "version": 0,
+      "page": 4,
+      "position": 16,
+      "color": "White",
+      "params_count": 1,
+      "params_raw": [
+        0
+      ],
+      "params_norm": [
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 27,
+      "mod_idx": 5,
+      "type": "LFO",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 4,
+      "position": 24,
+      "color": "Green",
+      "params_count": 1,
+      "params_raw": [
+        6948
+      ],
+      "params_norm": [
+        0.106
+      ],
+      "options": {
+        "waveform": "sine",
+        "swing_control": "off",
+        "output": "0 to 1",
+        "input": "cv",
+        "phase_input": "off",
+        "phase_reset": "off"
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 28,
+      "mod_idx": 7,
+      "type": "VCA",
+      "category": "Audio",
+      "name": "",
+      "version": 0,
+      "page": 5,
+      "position": 0,
+      "color": "Red",
+      "params_count": 1,
+      "params_raw": [
+        34720
+      ],
+      "params_norm": [
+        0.5298
+      ],
+      "options": {
+        "channels": "stereo"
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 29,
+      "mod_idx": 7,
+      "type": "VCA",
+      "category": "Audio",
+      "name": "",
+      "version": 0,
+      "page": 5,
+      "position": 8,
+      "color": "Yellow",
+      "params_count": 1,
+      "params_raw": [
+        35400
+      ],
+      "params_norm": [
+        0.5402
+      ],
+      "options": {
+        "channels": "stereo"
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 30,
+      "mod_idx": 7,
+      "type": "VCA",
+      "category": "Audio",
+      "name": "",
+      "version": 0,
+      "page": 5,
+      "position": 16,
+      "color": "Aqua",
+      "params_count": 1,
+      "params_raw": [
+        17960
+      ],
+      "params_norm": [
+        0.2741
+      ],
+      "options": {
+        "channels": "stereo"
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 31,
+      "mod_idx": 7,
+      "type": "VCA",
+      "category": "Audio",
+      "name": "",
+      "version": 0,
+      "page": 5,
+      "position": 24,
+      "color": "Magenta",
+      "params_count": 1,
+      "params_raw": [
+        19280
+      ],
+      "params_norm": [
+        0.2942
+      ],
+      "options": {
+        "channels": "stereo"
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "source": "0.output_L",
+      "destination": "2.audio_in_L",
+      "strength": 100,
+      "source_mod": 0,
+      "dest_mod": 2
+    },
+    {
+      "source": "0.output_L",
+      "destination": "2.audio_in_R",
+      "strength": 100,
+      "source_mod": 0,
+      "dest_mod": 2
+    },
+    {
+      "source": "0.output_L",
+      "destination": "4.audio_in",
+      "strength": 100,
+      "source_mod": 0,
+      "dest_mod": 4
+    },
+    {
+      "source": "0.output_L",
+      "destination": "16.audio_in",
+      "strength": 100,
+      "source_mod": 0,
+      "dest_mod": 16
+    },
+    {
+      "source": "0.output_R",
+      "destination": "10.audio_in",
+      "strength": 100,
+      "source_mod": 0,
+      "dest_mod": 10
+    },
+    {
+      "source": "0.output_R",
+      "destination": "22.audio_in",
+      "strength": 100,
+      "source_mod": 0,
+      "dest_mod": 22
+    },
+    {
+      "source": "2.audio_out_L",
+      "destination": "1.input_L",
+      "strength": 100,
+      "source_mod": 2,
+      "dest_mod": 1
+    },
+    {
+      "source": "2.audio_out_R",
+      "destination": "1.input_R",
+      "strength": 100,
+      "source_mod": 2,
+      "dest_mod": 1
+    },
+    {
+      "source": "3.audio_out_L",
+      "destination": "2.audio_in_L",
+      "strength": 100,
+      "source_mod": 3,
+      "dest_mod": 2
+    },
+    {
+      "source": "3.audio_out_R",
+      "destination": "2.audio_in_R",
+      "strength": 100,
+      "source_mod": 3,
+      "dest_mod": 2
+    },
+    {
+      "source": "4.audio_out",
+      "destination": "8.block_0",
+      "strength": 100,
+      "source_mod": 4,
+      "dest_mod": 8
+    },
+    {
+      "source": "5.output",
+      "destination": "4.start_position",
+      "strength": 96,
+      "source_mod": 5,
+      "dest_mod": 4
+    },
+    {
+      "source": "5.output",
+      "destination": "5.cv_control",
+      "strength": 100,
+      "source_mod": 5,
+      "dest_mod": 5
+    },
+    {
+      "source": "6.output",
+      "destination": "4.record",
+      "strength": 100,
+      "source_mod": 6,
+      "dest_mod": 4
+    },
+    {
+      "source": "7.output",
+      "destination": "4.reverse_playback",
+      "strength": 100,
+      "source_mod": 7,
+      "dest_mod": 4
+    },
+    {
+      "source": "8.block_3",
+      "destination": "28.audio_in_1",
+      "strength": 100,
+      "source_mod": 8,
+      "dest_mod": 28
+    },
+    {
+      "source": "8.block_4",
+      "destination": "28.audio_in_2",
+      "strength": 100,
+      "source_mod": 8,
+      "dest_mod": 28
+    },
+    {
+      "source": "9.output",
+      "destination": "8.block_2",
+      "strength": 100,
+      "source_mod": 9,
+      "dest_mod": 8
+    },
+    {
+      "source": "10.audio_out",
+      "destination": "14.block_0",
+      "strength": 100,
+      "source_mod": 10,
+      "dest_mod": 14
+    },
+    {
+      "source": "11.output",
+      "destination": "10.start_position",
+      "strength": 96,
+      "source_mod": 11,
+      "dest_mod": 10
+    },
+    {
+      "source": "12.output",
+      "destination": "10.record",
+      "strength": 100,
+      "source_mod": 12,
+      "dest_mod": 10
+    },
+    {
+      "source": "13.output",
+      "destination": "10.reverse_playback",
+      "strength": 100,
+      "source_mod": 13,
+      "dest_mod": 10
+    },
+    {
+      "source": "14.block_3",
+      "destination": "29.audio_in_1",
+      "strength": 100,
+      "source_mod": 14,
+      "dest_mod": 29
+    },
+    {
+      "source": "14.block_4",
+      "destination": "29.audio_in_2",
+      "strength": 100,
+      "source_mod": 14,
+      "dest_mod": 29
+    },
+    {
+      "source": "15.output",
+      "destination": "14.block_2",
+      "strength": 100,
+      "source_mod": 15,
+      "dest_mod": 14
+    },
+    {
+      "source": "16.audio_out",
+      "destination": "20.block_0",
+      "strength": 100,
+      "source_mod": 16,
+      "dest_mod": 20
+    },
+    {
+      "source": "17.output",
+      "destination": "16.start_position",
+      "strength": 96,
+      "source_mod": 17,
+      "dest_mod": 16
+    },
+    {
+      "source": "18.output",
+      "destination": "16.record",
+      "strength": 100,
+      "source_mod": 18,
+      "dest_mod": 16
+    },
+    {
+      "source": "19.output",
+      "destination": "16.reverse_playback",
+      "strength": 100,
+      "source_mod": 19,
+      "dest_mod": 16
+    },
+    {
+      "source": "20.block_3",
+      "destination": "30.audio_in_1",
+      "strength": 100,
+      "source_mod": 20,
+      "dest_mod": 30
+    },
+    {
+      "source": "20.block_4",
+      "destination": "30.audio_in_2",
+      "strength": 100,
+      "source_mod": 20,
+      "dest_mod": 30
+    },
+    {
+      "source": "21.output",
+      "destination": "20.block_2",
+      "strength": 95,
+      "source_mod": 21,
+      "dest_mod": 20
+    },
+    {
+      "source": "22.audio_out",
+      "destination": "26.block_0",
+      "strength": 100,
+      "source_mod": 22,
+      "dest_mod": 26
+    },
+    {
+      "source": "23.output",
+      "destination": "22.start_position",
+      "strength": 96,
+      "source_mod": 23,
+      "dest_mod": 22
+    },
+    {
+      "source": "24.output",
+      "destination": "22.record",
+      "strength": 100,
+      "source_mod": 24,
+      "dest_mod": 22
+    },
+    {
+      "source": "25.output",
+      "destination": "22.reverse_playback",
+      "strength": 100,
+      "source_mod": 25,
+      "dest_mod": 22
+    },
+    {
+      "source": "26.block_3",
+      "destination": "31.audio_in_1",
+      "strength": 100,
+      "source_mod": 26,
+      "dest_mod": 31
+    },
+    {
+      "source": "26.block_4",
+      "destination": "31.audio_in_2",
+      "strength": 100,
+      "source_mod": 26,
+      "dest_mod": 31
+    },
+    {
+      "source": "27.output",
+      "destination": "26.block_2",
+      "strength": 100,
+      "source_mod": 27,
+      "dest_mod": 26
+    },
+    {
+      "source": "28.audio_out_1",
+      "destination": "1.input_R",
+      "strength": 100,
+      "source_mod": 28,
+      "dest_mod": 1
+    },
+    {
+      "source": "28.audio_out_1",
+      "destination": "3.audio_in_L",
+      "strength": 100,
+      "source_mod": 28,
+      "dest_mod": 3
+    },
+    {
+      "source": "28.audio_out_2",
+      "destination": "3.audio_in_R",
+      "strength": 100,
+      "source_mod": 28,
+      "dest_mod": 3
+    },
+    {
+      "source": "29.audio_out_1",
+      "destination": "3.audio_in_L",
+      "strength": 100,
+      "source_mod": 29,
+      "dest_mod": 3
+    },
+    {
+      "source": "29.audio_out_2",
+      "destination": "3.audio_in_R",
+      "strength": 100,
+      "source_mod": 29,
+      "dest_mod": 3
+    },
+    {
+      "source": "30.audio_out_1",
+      "destination": "3.audio_in_L",
+      "strength": 100,
+      "source_mod": 30,
+      "dest_mod": 3
+    },
+    {
+      "source": "30.audio_out_2",
+      "destination": "3.audio_in_R",
+      "strength": 100,
+      "source_mod": 30,
+      "dest_mod": 3
+    },
+    {
+      "source": "31.audio_out_1",
+      "destination": "3.audio_in_L",
+      "strength": 100,
+      "source_mod": 31,
+      "dest_mod": 3
+    },
+    {
+      "source": "31.audio_out_2",
+      "destination": "3.audio_in_R",
+      "strength": 100,
+      "source_mod": 31,
+      "dest_mod": 3
+    }
+  ],
+  "pages": [
+    "output",
+    "looper 1",
+    "looper 2",
+    "looper 3",
+    "looper 4",
+    "vca mix"
+  ],
+  "meta": {
+    "n_modules": 32,
+    "n_connections": 48,
+    "n_pages": 6,
+    "cpu": 40.5
+  }
+}

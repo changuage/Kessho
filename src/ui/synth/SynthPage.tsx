@@ -11,7 +11,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { SliderState } from '../state';
-import { useEuclideanSequencer, type EvolveConfig, type StepOverrides, type SubLaneKind, type SubLaneState } from '../sequencer/useEuclideanSequencer';
+import { useEuclideanSequencer, type EvolveConfig, type StepOverrides, type SubLaneKind, type SubLaneState, type PitchSettings } from '../sequencer/useEuclideanSequencer';
 // DrumStepOverrides no longer needed — SynthPage uses StepOverrides from the shared hook
 import DragNumber from '../drums/DragNumber';
 import SeqLane from '../drums/SeqLane';
@@ -107,6 +107,10 @@ export interface SynthPageProps {
   onClockDivsChange?: (divs: ClockDivision[]) => void;
   /** Called when per-lane swing amounts change */
   onSwingsChange?: (swings: number[]) => void;
+  /** Initial pitch settings to restore across tab switches */
+  initialPitchSettings?: PitchSettings[];
+  /** Called when pitch settings change, so parent can persist across tab switches */
+  onPitchSettingsChange?: (settings: PitchSettings[]) => void;
 }
 
 // ═══════════════ Component ═══════════════
@@ -140,6 +144,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     resetEvolveHome,
     onClockDivsChange,
     onSwingsChange,
+    initialPitchSettings,
+    onPitchSettingsChange,
   } = props;
 
   const [editingSection, setEditingSection] = useState<string | null>(null);
@@ -167,6 +173,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     initialViewMode,
     initialStepOverrides,
     initialSubLaneStates,
+    initialPitchSettings,
   });
 
   // Notify parent when viewMode changes
@@ -227,6 +234,15 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       onSubLaneStatesChange?.(seq.subLaneStates);
     }
   }, [seq.subLaneStates, onSubLaneStatesChange]);
+
+  // Persist pitch settings (mode/root/scale) across tab switches
+  const pitchSettingsRef2 = useRef(seq.pitchSettings);
+  useEffect(() => {
+    if (pitchSettingsRef2.current !== seq.pitchSettings) {
+      pitchSettingsRef2.current = seq.pitchSettings;
+      onPitchSettingsChange?.(seq.pitchSettings);
+    }
+  }, [seq.pitchSettings, onPitchSettingsChange]);
 
   // Sync per-lane clock divisions to audio engine
   const clockDivsRef = useRef(seq.clockDivs);

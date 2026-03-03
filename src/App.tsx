@@ -43,8 +43,11 @@ const PAD1_TO_PAD2_KEY: Record<string, string> = {
   padModEnvDepth: 'pad2ModEnvDepth', padModEnvDest: 'pad2ModEnvDest',
 };
 import { isInMidMorph, isAtEndpoint0, isAtEndpoint1 } from './audio/morphUtils';
+import { applyPreset, USER_PREFERENCE_KEYS } from './ui/presetUtils';
 import { getLead4opFMPresetList } from './audio/lead4opfm';
+import { getLooperPresetData, getLooperPresetSliderModes, getLooperPresetSeqConfig } from './ui/looper/looperPresets';
 import SnowflakeUI from './ui/SnowflakeUI';
+import { CpuOverlay } from './ui/CpuOverlay';
 import { CircleOfFifths, getMorphedRootNote } from './ui/CircleOfFifths';
 import CloudPresets from './ui/CloudPresets';
 import { fetchPresetById, isCloudEnabled } from './cloud/supabase';
@@ -52,7 +55,9 @@ import JourneyModeView from './ui/JourneyModeView';
 import { useJourney } from './ui/journeyState';
 import DrumPage from './ui/drums/DrumPage';
 import SynthPage from './ui/synth/SynthPage';
-import type { StepOverrides, SubLaneKind, SubLaneState } from './ui/sequencer/useEuclideanSequencer';
+import LooperPage from './ui/looper/LooperPage';
+import type { StepOverrides, SubLaneKind, SubLaneState, PitchSettings } from './ui/sequencer/useEuclideanSequencer';
+import type { ClockDivision } from './audio/drumSeqTypes';
 
 // Note names for display
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -204,11 +209,7 @@ const SNOWFLAKE_WELCOME_STATE: SliderState = {
   oceanWaveSynthEnabled: true,
 };
 
-// User preference keys - these are audio processing settings, not musical elements
-// They should NOT change when loading presets or morphing between them
-const USER_PREFERENCE_KEYS: (keyof SliderState)[] = [
-  'reverbQuality',  // Ultra/Balanced/Lite - affects CPU usage, not sound character
-];
+// User preference keys imported from presetUtils.ts
 
 // Check preset for iOS-only settings and return warnings
 const checkPresetCompatibility = (preset: SavedPreset): string[] => {
@@ -798,6 +799,7 @@ interface SliderProps {
   mode?: SliderMode;
   dualRange?: DualSliderRange;
   walkPosition?: number;
+  isFlashing?: boolean;
   onCycleMode?: (key: keyof SliderState) => void;
   onDualRangeChange?: (key: keyof SliderState, min: number, max: number) => void;
 }
@@ -812,6 +814,7 @@ const Slider: React.FC<SliderProps> = ({
   mode = 'single',
   dualRange,
   walkPosition,
+  isFlashing,
   onCycleMode,
   onDualRangeChange,
 }) => {
@@ -827,6 +830,7 @@ const Slider: React.FC<SliderProps> = ({
         mode={mode}
         dualRange={dualRange}
         walkPosition={walkPosition}
+        isFlashing={isFlashing}
         onChange={onChange}
         onCycleMode={onCycleMode}
         onDualRangeChange={onDualRangeChange}
@@ -928,6 +932,7 @@ interface DualSliderProps {
   mode: SliderMode;
   dualRange?: DualSliderRange;
   walkPosition?: number;  // Current random walk position (0-1)
+  isFlashing?: boolean;   // S&H pulse flash active
   onChange: (key: keyof SliderState, value: number) => void;
   onCycleMode: (key: keyof SliderState) => void;
   onDualRangeChange: (key: keyof SliderState, min: number, max: number) => void;
@@ -942,6 +947,7 @@ const DualSlider: React.FC<DualSliderProps> = ({
   mode,
   dualRange,
   walkPosition,
+  isFlashing,
   onChange,
   onCycleMode,
   onDualRangeChange,
@@ -998,6 +1004,7 @@ const DualSlider: React.FC<DualSliderProps> = ({
 
   // Format display value
   const formatValue = (val: number) => {
+    if (val == null) return 0;
     return info.step < 1 ? val.toFixed(2) : Math.round(val);
   };
 
@@ -1179,6 +1186,13 @@ const DualSlider: React.FC<DualSliderProps> = ({
           style={{
             ...styles.dualSliderWalkIndicator,
             left: `${walkPercent}%`,
+            transition: isFlashing ? 'all 0.05s ease-out' : 'all 0.18s ease-in',
+            ...(isFlashing ? {
+              width: '14px',
+              height: '14px',
+              background: '#D4A520',
+              boxShadow: '0 0 14px rgba(212,165,32,0.9)',
+            } : {}),
           }}
         />
       </div>
@@ -1494,7 +1508,7 @@ const App: React.FC = () => {
   }, []);
 
   // Active tab for Advanced UI panels
-  type AdvancedTab = 'global' | 'synth' | 'drums' | 'fx';
+  type AdvancedTab = 'global' | 'synth' | 'drums' | 'fx' | 'looper';
   const [activeTab, setActiveTab] = useState<AdvancedTab>('global');
 
   // Unified slider mode state: key → SliderMode ('single' | 'walk' | 'sampleHold')
@@ -1599,6 +1613,13 @@ const App: React.FC = () => {
     membrane: number;
   }>({ sub: 0.5, kick: 0.5, click: 0.5, beepHi: 0.5, beepLo: 0.5, noise: 0.5, membrane: 0.5 });
 
+  // Track last triggered drum S&H positions for any param (keyed by full param name)
+  const [drumParamSHPositions, setDrumParamSHPositions] = useState<Record<string, number>>({});
+
+  // Granular/looper S&H flash state: set of param keys currently pulsing
+  const [shFlashKeys, setShFlashKeys] = useState<Set<string>>(new Set());
+  const shFlashTimerRef = useRef<number | null>(null);
+
   const [drumSeqPlayheads, setDrumSeqPlayheads] = useState<number[]>([0, 0, 0, 0]);
   const [drumSeqHitCounts, setDrumSeqHitCounts] = useState<number[]>([0, 0, 0, 0]);
   const [drumEditingVoice, setDrumEditingVoice] = useState<string | null>(null);
@@ -1618,10 +1639,32 @@ const App: React.FC = () => {
   const synthViewModeRef = useRef<'simple' | 'detail' | 'overview'>('simple');
   const synthStepOverridesRef = useRef<StepOverrides | undefined>(undefined);
   const synthSubLaneStatesRef = useRef<Record<SubLaneKind, SubLaneState>[] | undefined>(undefined);
+  const synthPitchSettingsRef = useRef<PitchSettings[] | undefined>(undefined);
   // @ts-expect-error Reserved for future evolve flash animation UI
   const [synthEuclidEvolveFlashing, setSynthEuclidEvolveFlashing] = useState<boolean[]>([false, false, false, false]);
   // @ts-expect-error Reserved for future evolve flash animation UI
   const synthEuclidEvolveFlashTimersRef = useRef<Array<number | null>>([null, null, null, null]);
+
+  // ── Looper Euclidean sequencer state ──
+  const [looperSeqPlayheads, setLooperSeqPlayheads] = useState<number[]>([0, 0, 0, 0]);
+  const [looperSeqHitCounts, setLooperSeqHitCounts] = useState<number[]>([0, 0, 0, 0]);
+  const looperViewModeRef = useRef<'simple' | 'detail' | 'overview'>('detail');
+  const looperStepOverridesRef = useRef<StepOverrides | undefined>(undefined);
+  const looperSubLaneStatesRef = useRef<Record<SubLaneKind, SubLaneState>[] | undefined>(undefined);
+  const looperClockDivsRef = useRef<ClockDivision[] | undefined>(undefined);
+  const [looperPresetVersion, setLooperPresetVersion] = useState(0);
+
+  // ── Looper buffer position state (from worklet) ──
+  const [looperWriteHead, setLooperWriteHead] = useState(0);
+  const [looperVoicePositions, setLooperVoicePositions] = useState<number[]>([0, 0, 0, 0]);
+
+  // ── Looper per-trigger override feedback (for UI flash/highlight) ──
+  const [looperTriggerOverrides, setLooperTriggerOverrides] = useState<{
+    sliceOverride?: number;
+    pitchOverride?: number;
+    reverseOverride?: boolean;
+  }[]>([{}, {}, {}, {}]);
+  const looperTriggerTimersRef = useRef<(number | null)[]>([null, null, null, null]);
 
   // Trigger position map: maps slider keys to their per-trigger position values
   const triggerPositionMap = useMemo<Record<string, number>>(() => ({
@@ -1657,6 +1700,27 @@ const App: React.FC = () => {
     drumNoiseMorph: 'noise',
     drumMembraneMorph: 'membrane'
   }), []);
+
+  // Drum S&H param keys — any drum param (except morph) that should use per-trigger sampling in S&H mode.
+  // Keyed by full param name. Maps to voice for the engine callback.
+  const drumSHParamKeyToVoice = useMemo<Record<string, DrumPresetVoice>>(() => ({
+    drumSubDistance: 'sub',
+    drumKickDistance: 'kick',
+    drumClickDistance: 'click',
+    drumBeepHiDistance: 'beepHi',
+    drumBeepLoDistance: 'beepLo',
+    drumNoiseDistance: 'noise',
+    drumMembraneDistance: 'membrane',
+    drumSubVariation: 'sub',
+    drumKickVariation: 'kick',
+    drumClickVariation: 'click',
+    drumBeepHiVariation: 'beepHi',
+    drumBeepLoVariation: 'beepLo',
+    drumNoiseVariation: 'noise',
+    drumMembraneVariation: 'membrane',
+    // Add future S&H drum params here — no other code changes needed
+  }), []);
+  const drumSHParamKeys = useMemo(() => new Set(Object.keys(drumSHParamKeyToVoice)), [drumSHParamKeyToVoice]);
 
   const handleCycleSliderMode = useCallback((key: keyof SliderState) => {
     // Block changes when journey mode is playing
@@ -1901,19 +1965,35 @@ const App: React.FC = () => {
     });
   }, [sliderModes, dualSliderRanges, drumMorphKeys, drumMorphKeyToVoice]);
 
+  // Update engine S&H ranges for drum non-morph params (distance, etc.)
+  // Uses the generic setDrumParamSHRange API — one call per param key.
+  useEffect(() => {
+    if (!audioEngine.setDrumParamSHRange) return;
+    drumSHParamKeys.forEach(key => {
+      if (sliderModes[key] === 'sampleHold') {
+        const range = dualSliderRanges[key as keyof SliderState];
+        if (range) {
+          audioEngine.setDrumParamSHRange(key, range);
+        }
+      } else {
+        audioEngine.setDrumParamSHRange(key, null);
+      }
+    });
+  }, [sliderModes, dualSliderRanges, drumSHParamKeys]);
+
   // Push non-drum dualSliderRanges to engine for per-trigger sampling (sampleHold only).
   // Walk mode updates state values directly via the walk timer, so the engine reads those.
   useEffect(() => {
     if (audioEngine.setDualRanges) {
       const engineRanges: Partial<Record<string, { min: number; max: number }>> = {};
       Object.entries(dualSliderRanges).forEach(([key, range]) => {
-        if (range && !DRUM_MORPH_KEYS.has(key as keyof SliderState) && sliderModes[key] === 'sampleHold') {
+        if (range && !DRUM_MORPH_KEYS.has(key as keyof SliderState) && !drumSHParamKeys.has(key) && sliderModes[key] === 'sampleHold') {
           engineRanges[key] = range;
         }
       });
       audioEngine.setDualRanges(engineRanges);
     }
-  }, [dualSliderRanges, sliderModes]);
+  }, [dualSliderRanges, sliderModes, drumSHParamKeys]);
 
   // Random walk animation (for all sliders in 'walk' mode)
   useEffect(() => {
@@ -2047,18 +2127,14 @@ const App: React.FC = () => {
             ? wrappedData.state
             : (preset.data as SliderState);
 
-          const cloudMigrated = migratePreset({
+          const result = applyPreset({
             name: preset.name,
             timestamp: new Date().toISOString(),
             state: presetState,
             dualRanges: wrappedData?.dualRanges,
-          });
-          const normalizedState = normalizePresetForWeb(cloudMigrated.state);
-          const newState = { ...DEFAULT_STATE, ...normalizedState };
-          setState(newState);
-          applyDualRangesFromPreset(cloudMigrated.dualRanges);
-          audioEngine.updateParams(newState);
-          audioEngine.resetCofDrift();
+          }, { currentState: state, normalize: normalizePresetForWeb });
+          setState(result.state);
+          applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
           console.log(`Loaded cloud preset: ${preset.name} by ${preset.author}`);
         }
       });
@@ -2077,9 +2153,13 @@ const App: React.FC = () => {
     return () => { audioEngine.setLeadExpressionCallback(null as unknown as typeof setLeadExpressionPositions); };
   }, []);
 
-  // Lead morph trigger callback (updates walk indicator + actual morph slider value)
+  // Lead morph trigger callback (updates walk indicator + actual morph slider value) — throttled to ~15Hz
   useEffect(() => {
+    let lastLeadMorph = 0;
     audioEngine.setLeadMorphCallback((morph) => {
+      const now = performance.now();
+      if (now - lastLeadMorph < 66) return;
+      lastLeadMorph = now;
       setLeadMorphPositions(prev => ({
         lead1: morph.lead1 >= 0 ? morph.lead1 : prev.lead1,
         lead2: morph.lead2 >= 0 ? morph.lead2 : prev.lead2,
@@ -2095,9 +2175,13 @@ const App: React.FC = () => {
     });
   }, []);
 
-  // Pad morph sub-sequencer callback (moves padMorph slider + applies morphed preset)
+  // Pad morph sub-sequencer callback (moves padMorph slider + applies morphed preset) — throttled to ~15Hz
   useEffect(() => {
+    let lastPad1Morph = 0;
     audioEngine.setPadMorphTriggerCallback((morphPosition: number) => {
+      const now = performance.now();
+      if (now - lastPad1Morph < 66) return;
+      lastPad1Morph = now;
       setPadMorphPositions(prev => ({ ...prev, pad1: morphPosition }));
       setState(prev => {
         const presetA = getPadPreset(prev.padPresetA as string);
@@ -2116,9 +2200,13 @@ const App: React.FC = () => {
     });
   }, []);
 
-  // Pad 2 morph sub-sequencer callback (moves pad2Morph slider + applies morphed preset to pad2 keys)
+  // Pad 2 morph sub-sequencer callback (moves pad2Morph slider + applies morphed preset to pad2 keys) — throttled to ~15Hz
   useEffect(() => {
+    let lastPad2Morph = 0;
     audioEngine.setPad2MorphTriggerCallback((morphPosition: number) => {
+      const now = performance.now();
+      if (now - lastPad2Morph < 66) return;
+      lastPad2Morph = now;
       setPadMorphPositions(prev => ({ ...prev, pad2: morphPosition }));
       setState(prev => {
         const presetA = getPadPreset(prev.pad2PresetA as string);
@@ -2154,11 +2242,18 @@ const App: React.FC = () => {
 
   // Drum morph trigger callback (per-trigger random morph position)
   // Updates both the indicator position AND the individual parameter sliders
+  // Throttled: morph indicator at ~15Hz, full setState at ~10Hz to avoid re-render storms
   useEffect(() => {
     if (audioEngine.setDrumMorphTriggerCallback) {
+      const lastMorphIndicator: Record<string, number> = {};
+      let lastMorphState = 0;
       audioEngine.setDrumMorphTriggerCallback((voice, morphPosition) => {
-        // Update the indicator position
-        setDrumMorphPositions(prev => ({ ...prev, [voice]: morphPosition }));
+        const now = performance.now();
+        // Throttle indicator update to ~15Hz per voice
+        if (now - (lastMorphIndicator[voice] || 0) >= 66) {
+          lastMorphIndicator[voice] = now;
+          setDrumMorphPositions(prev => ({ ...prev, [voice]: morphPosition }));
+        }
         
         // Map voice to morph key and update slider state with morphed values
         const voiceToMorphKey: Record<string, keyof SliderState> = {
@@ -2172,9 +2267,9 @@ const App: React.FC = () => {
         };
         const morphKey = voiceToMorphKey[voice];
         
-        // Only update individual sliders if the option is enabled
-        // Use a functional update to access the latest stateRef if needed, but here we use the functional update of setState
-        if (morphKey) {
+        // Throttle full state updates to ~10Hz (audio engine already got correct morph values)
+        if (morphKey && now - lastMorphState >= 100) {
+          lastMorphState = now;
           setState(prev => {
             // Check if updates are enabled
             if (!prev.drumMorphSliderAnimate) return prev;
@@ -2196,6 +2291,34 @@ const App: React.FC = () => {
       });
     }
   }, [dualSliderRanges]);
+
+  // Drum distance trigger callback (per-trigger random distance position for S&H) — throttled per-key
+  useEffect(() => {
+    if (audioEngine.setDrumParamSHTriggerCallback) {
+      const lastSH: Record<string, number> = {};
+      audioEngine.setDrumParamSHTriggerCallback((_voice, key, position) => {
+        const now = performance.now();
+        if (now - (lastSH[key] || 0) < 80) return; // max ~12Hz per key
+        lastSH[key] = now;
+        setDrumParamSHPositions(prev => ({ ...prev, [key]: position }));
+      });
+    }
+  }, []);
+
+  // Granular/looper S&H trigger callback (engine-side 10Hz re-sampling)
+  useEffect(() => {
+    audioEngine.setGranLooperSHTriggerCallback((keys: string[]) => {
+      setShFlashKeys(new Set(keys));
+      if (shFlashTimerRef.current) window.clearTimeout(shFlashTimerRef.current);
+      shFlashTimerRef.current = window.setTimeout(() => {
+        setShFlashKeys(new Set());
+      }, 70);
+    });
+    return () => {
+      audioEngine.setGranLooperSHTriggerCallback(() => {});
+      if (shFlashTimerRef.current) window.clearTimeout(shFlashTimerRef.current);
+    };
+  }, []);
 
   // Drum Euclid evolve trigger callback (lane mutation pulse)
   useEffect(() => {
@@ -2224,25 +2347,94 @@ const App: React.FC = () => {
     };
   }, []);
 
-  // Drum Euclid step position callback (live playhead tracking)
+  // Drum Euclid step position callback (live playhead tracking) — throttled to ~8Hz
   useEffect(() => {
+    let lastDrumStep = 0;
     audioEngine.setDrumStepPositionCallback((steps: number[], hitCounts: number[]) => {
+      const now = performance.now();
+      if (now - lastDrumStep < 120) return;
+      lastDrumStep = now;
       setDrumSeqPlayheads(steps);
       setDrumSeqHitCounts(hitCounts);
     });
   }, []);
 
-  // Lead Euclid step position callback (live playhead tracking)
+  // Lead Euclid step position callback (live playhead tracking) — throttled to ~8Hz
   useEffect(() => {
+    let lastLeadStep = 0;
     audioEngine.setSynthStepPositionCallback((steps: number[], hitCounts: number[]) => {
+      const now = performance.now();
+      if (now - lastLeadStep < 120) return;
+      lastLeadStep = now;
       setLeadSeqPlayheads(steps);
       setLeadSeqHitCounts(hitCounts);
     });
   }, []);
 
-  // Drum trigger callback (per-voice flash for envelope visualizer)
+  // Looper Euclid step position callback (live playhead tracking) — throttled to ~8Hz
   useEffect(() => {
+    let lastLooperStep = 0;
+    audioEngine.setLooperStepPositionCallback((steps: number[], hitCounts: number[]) => {
+      const now = performance.now();
+      if (now - lastLooperStep < 120) return;
+      lastLooperStep = now;
+      setLooperSeqPlayheads(steps);
+      setLooperSeqHitCounts(hitCounts);
+    });
+  }, []);
+
+  // Looper buffer position polling — throttled to ~7Hz to reduce re-renders
+  useEffect(() => {
+    if (!engineState.isRunning) return;
+    const id = setInterval(() => {
+      setLooperWriteHead(audioEngine.getLooperWriteHeadPosition());
+      setLooperVoicePositions(audioEngine.getLooperVoicePositions());
+    }, 150); // ~7fps
+    return () => clearInterval(id);
+  }, [engineState.isRunning]);
+
+  // Looper per-trigger override callback (reverse toggle, pitch flash, slice highlight) — throttled to ~10Hz
+  useEffect(() => {
+    const lastOverride: Record<number, number> = {};
+    audioEngine.setLooperTriggerOverrideCallback((voice: number, overrides: { sliceOverride?: number; pitchOverride?: number; reverseOverride?: boolean }) => {
+      if (voice < 0 || voice > 3) return;
+      const now = performance.now();
+      if (now - (lastOverride[voice] || 0) < 100) return;
+      lastOverride[voice] = now;
+      setLooperTriggerOverrides(prev => {
+        const next = [...prev];
+        next[voice] = overrides;
+        return next;
+      });
+      // Clear after 150ms
+      const existing = looperTriggerTimersRef.current[voice];
+      if (existing) window.clearTimeout(existing);
+      looperTriggerTimersRef.current[voice] = window.setTimeout(() => {
+        setLooperTriggerOverrides(prev => {
+          const next = [...prev];
+          next[voice] = {};
+          return next;
+        });
+        looperTriggerTimersRef.current[voice] = null;
+      }, 150);
+    });
+    return () => {
+      looperTriggerTimersRef.current.forEach((timer, i) => {
+        if (timer) {
+          window.clearTimeout(timer);
+          looperTriggerTimersRef.current[i] = null;
+        }
+      });
+    };
+  }, []);
+
+  // Drum trigger callback (per-voice flash for envelope visualizer) — throttled to ~12Hz per voice
+  useEffect(() => {
+    const lastTrigTime: Record<string, number> = {};
     audioEngine.setDrumTriggerCallback((voice: string, _velocity: number) => {
+      const now = performance.now();
+      if (now - (lastTrigTime[voice] || 0) < 80) return;
+      lastTrigTime[voice] = now;
       setDrumTriggeredVoices(prev => ({ ...prev, [voice]: true }));
       const existing = drumTriggerTimersRef.current[voice];
       if (existing) window.clearTimeout(existing);
@@ -2320,7 +2512,7 @@ const App: React.FC = () => {
         setCountdown(getTimeUntilNextPhrase());
       };
       update();
-      countdownRef.current = window.setInterval(update, 100);
+      countdownRef.current = window.setInterval(update, 1000); // 1Hz — displays whole seconds
       return () => {
         if (countdownRef.current) {
           clearInterval(countdownRef.current);
@@ -2338,7 +2530,7 @@ const App: React.FC = () => {
         setLiveFilterFreq(audioEngine.getCurrentFilterFreq());
         setLiveLfoValue(audioEngine.getCurrentLfoValue());
       };
-      const filterId = window.setInterval(updateFilter, 50); // 20fps for smooth animation
+      const filterId = window.setInterval(updateFilter, 150); // ~7fps — throttled to reduce re-renders
       return () => clearInterval(filterId);
     }
   }, [engineState.isRunning]);
@@ -2641,6 +2833,7 @@ const App: React.FC = () => {
     mode: SliderMode;
     dualRange?: DualSliderRange;
     walkPosition?: number;
+    isFlashing?: boolean;
     onCycleMode: (key: keyof SliderState) => void;
     onDualRangeChange: (key: keyof SliderState, min: number, max: number) => void;
   } => {
@@ -2662,14 +2855,24 @@ const App: React.FC = () => {
         walkPos = drumMorphPositions[voice];
       }
     }
+
+    // For any drum S&H param key (distance, etc.), use the generic per-trigger positions
+    if (drumSHParamKeys.has(keyStr) && mode === 'sampleHold') {
+      walkPos = drumParamSHPositions[keyStr];
+    }
+
+    // S&H flash for granular/looper params (engine-side 10Hz re-sampling)
+    const isFlashing = mode === 'sampleHold' && shFlashKeys.has(keyStr);
+
     return {
       mode,
       dualRange: dualSliderRanges[paramKey],
       walkPosition: walkPos,
+      isFlashing,
       onCycleMode: handleCycleSliderMode,
       onDualRangeChange: handleDualRangeChange,
     };
-  }, [sliderModes, dualSliderRanges, randomWalkPositions, triggerPositionMap, drumMorphPositions, drumMorphKeys, drumMorphKeyToVoice, handleCycleSliderMode, handleDualRangeChange]);
+  }, [sliderModes, dualSliderRanges, randomWalkPositions, triggerPositionMap, drumMorphPositions, drumMorphKeys, drumMorphKeyToVoice, drumSHParamKeys, drumParamSHPositions, shFlashKeys, handleCycleSliderMode, handleDualRangeChange]);
 
   // Handle select change
   const handleSelectChange = useCallback(<K extends keyof SliderState>(key: K, value: SliderState[K]) => {
@@ -2708,9 +2911,118 @@ const App: React.FC = () => {
           }
         }
       }
+
+      // ═══ LOOPER PRESET: apply partial state overrides ═══
+      if (key === 'looperPreset') {
+        const presetData = getLooperPresetData(value as string);
+        if (presetData) {
+          for (const k of Object.keys(presetData)) {
+            (newState as Record<string, unknown>)[k] = (presetData as Record<string, unknown>)[k];
+          }
+        }
+      }
       
       return newState;
     });
+
+    // Apply looper preset slider modes (outside setState since sliderModes is separate state)
+    if (key === 'looperPreset') {
+      const modes = getLooperPresetSliderModes(value as string);
+      if (modes) {
+        // 1. Update slider modes
+        setSliderModes(prev => {
+          const next = { ...prev };
+          for (const k of Object.keys(next)) {
+            if (k.startsWith('looperV')) delete next[k];
+          }
+          for (const [k, v] of Object.entries(modes)) {
+            next[k] = v as SliderMode;
+          }
+          return next;
+        });
+
+        // 2. Initialise dualSliderRanges + randomWalkRef for walk/sampleHold keys
+        //    so that the walk animation and sampleHold triggers actually fire.
+        const presetData = getLooperPresetData(value as string);
+        const newDualRanges: DualSliderState = {};
+        const newWalkPositions: Record<string, number> = {};
+        for (const [k, mode] of Object.entries(modes)) {
+          const paramKey = k as keyof SliderState;
+          const info = getParamInfo(paramKey);
+          if (!info) continue;
+          // Centre the walk range around the preset value (20% of full range)
+          const currentVal = presetData?.[k as keyof typeof presetData] as number
+            ?? (state[paramKey] as number)
+            ?? (info.min + info.max) * 0.5;
+          const rangeSize = (info.max - info.min) * 0.2;
+          const rMin = Math.max(info.min, currentVal - rangeSize / 2);
+          const rMax = Math.min(info.max, currentVal + rangeSize / 2);
+          newDualRanges[paramKey] = { min: rMin, max: rMax };
+
+          if (mode === 'walk') {
+            const walkPos = Math.random();
+            newWalkPositions[k] = walkPos;
+            randomWalkRef.current[paramKey] = {
+              position: walkPos,
+              velocity: (Math.random() - 0.5) * 0.02,
+            };
+          }
+        }
+        // Merge with existing non-looper ranges
+        setDualSliderRanges(prev => {
+          const next: Record<string, DualSliderRange | undefined> = { ...prev };
+          for (const k of Object.keys(next)) {
+            if (k.startsWith('looperV')) delete next[k];
+          }
+          Object.assign(next, newDualRanges);
+          return next as DualSliderState;
+        });
+        setRandomWalkPositions(prev => {
+          const next = { ...prev };
+          for (const k of Object.keys(next)) {
+            if (k.startsWith('looperV')) delete next[k];
+          }
+          return { ...next, ...newWalkPositions };
+        });
+        // Clean up stale walk refs for looper keys
+        for (const k of Object.keys(randomWalkRef.current)) {
+          if (k.startsWith('looperV') && !(k in modes)) {
+            delete randomWalkRef.current[k as keyof SliderState];
+          }
+        }
+      }
+
+      // Apply sequencer configuration (sub-lanes, clock divs, step overrides)
+      const seqConfig = getLooperPresetSeqConfig(value as string);
+      if (seqConfig) {
+        looperStepOverridesRef.current = seqConfig.stepOverrides;
+        looperSubLaneStatesRef.current = seqConfig.subLaneStates;
+        looperClockDivsRef.current = seqConfig.clockDivs;
+        // Forward step overrides to audio engine immediately
+        audioEngine.setLooperStepOverrides({
+          triggerToggles: seqConfig.stepOverrides.triggerToggles,
+          expression: seqConfig.stepOverrides.expression,
+          expressionDirection: seqConfig.stepOverrides.expressionDirection,
+          probability: seqConfig.stepOverrides.probability,
+          ratchet: seqConfig.stepOverrides.ratchet,
+          trigCondition: seqConfig.stepOverrides.trigCondition,
+          slice: seqConfig.stepOverrides.slice,
+          sliceDirection: seqConfig.stepOverrides.sliceDirection,
+          pitch: seqConfig.stepOverrides.pitch,
+          pitchDirection: seqConfig.stepOverrides.pitchDirection,
+          reverse: seqConfig.stepOverrides.reverse,
+          reverseDirection: seqConfig.stepOverrides.reverseDirection,
+        });
+        audioEngine.setLooperEuclidClockDivs(seqConfig.clockDivs);
+      } else {
+        // Non-rhythmic preset: clear sub-lane overrides
+        looperStepOverridesRef.current = undefined;
+        looperSubLaneStatesRef.current = undefined;
+        looperClockDivsRef.current = undefined;
+      }
+      // Bump version to trigger hook re-initialization from initial* props
+      setLooperPresetVersion(v => v + 1);
+    }
   }, []);
 
   // Start/Stop
@@ -2728,19 +3040,11 @@ const App: React.FC = () => {
         if (defaultPreset) {
           console.log('[App] Auto-loading default preset: String Waves');
           hasLoadedPresetRef.current = true;
-          const migrated = migratePreset(defaultPreset);
-          // Apply preset state
-          const normalizedState = { ...DEFAULT_STATE, ...normalizePresetForWeb(migrated.state) };
-          // Preserve user preference keys
-          for (const key of USER_PREFERENCE_KEYS) {
-            (normalizedState as Record<string, unknown>)[key] = state[key];
-          }
-          setState(normalizedState);
-          setMorphPresetA(migrated);
-          stateToStart = normalizedState;
-
-          // Restore dual slider state from preset
-          applyDualRangesFromPreset(migrated.dualRanges, migrated.sliderModes);
+          const result = applyPreset(defaultPreset, { currentState: state, updateEngine: false, resetCofDrift: false, normalize: normalizePresetForWeb });
+          setState(result.state);
+          setMorphPresetA(result.preset);
+          stateToStart = result.state;
+          applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
         }
       }
       
@@ -3609,21 +3913,9 @@ const App: React.FC = () => {
       
       if (shouldApplyPresetA) {
         // Apply the preset immediately when loading to slot A (and at or near position 0)
-        // Preserve user preference keys (like reverbQuality) that shouldn't change with presets
-        const newState = { ...DEFAULT_STATE, ...normalizedPreset.state };
-        for (const key of USER_PREFERENCE_KEYS) {
-          (newState as Record<string, unknown>)[key] = state[key];
-        }
-        if (newState.granularLevel === 0) {
-          newState.granularEnabled = false;
-        }
-        setState(newState);
-        audioEngine.updateParams(newState);
-        audioEngine.resetCofDrift();
-        // Don't reset morph position - keep it where user had it
-        
-        // Apply dual ranges and slider modes from migrated preset
-        applyDualRangesFromPreset(normalizedPreset.dualRanges, normalizedPreset.sliderModes);
+        const result = applyPreset(normalizedPreset, { migrate: false, currentState: state, normalize: s => s });
+        setState(result.state);
+        applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
       }
       // If in mid-morph, the useEffect will handle applying the interpolated state
     } else {
@@ -3645,20 +3937,9 @@ const App: React.FC = () => {
 
       if (shouldApplyPresetB) {
         // Apply the preset immediately when loading to slot B (and at or near position 100)
-        // Preserve user preference keys (like reverbQuality) that shouldn't change with presets
-        const newState = { ...DEFAULT_STATE, ...normalizedPreset.state };
-        for (const key of USER_PREFERENCE_KEYS) {
-          (newState as Record<string, unknown>)[key] = state[key];
-        }
-        if (newState.granularLevel === 0) {
-          newState.granularEnabled = false;
-        }
-        setState(newState);
-        audioEngine.updateParams(newState);
-        audioEngine.resetCofDrift();
-
-        // Apply dual ranges and slider modes from migrated preset
-        applyDualRangesFromPreset(normalizedPreset.dualRanges, normalizedPreset.sliderModes);
+        const result = applyPreset(normalizedPreset, { migrate: false, currentState: state, normalize: s => s });
+        setState(result.state);
+        applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
       }
     }
     setMorphLoadTarget(null);
@@ -3918,11 +4199,6 @@ const App: React.FC = () => {
           (finalState as Record<string, unknown>)[key] = override.value;
         }
       }
-    }
-    
-    // Debug: log morph interpolation — every 10 positions to avoid console spam
-    if (newPosition % 10 === 0) {
-      console.log(`[Morph] pos=${newPosition} masterVol=${(finalState as any).masterVolume?.toFixed(2)} tension=${(finalState as any).tension?.toFixed(2)} synthLevel=${(finalState as any).synthLevel?.toFixed(2)} chordRate=${(finalState as any).chordRate?.toFixed(2)}`);
     }
     
     setState(finalState);
@@ -4321,28 +4597,9 @@ const App: React.FC = () => {
     const shouldApplyPresetA = atEndpoint0 || !morphPresetB;
     
     if (shouldApplyPresetA) {
-      // Apply the preset directly, with auto-disable for zero-level features
-      // Also normalize iOS-only settings to web-compatible values
-      const migrated = migratePreset(preset);
-      const normalizedState = normalizePresetForWeb(migrated.state);
-      const newState = { ...DEFAULT_STATE, ...normalizedState };
-      
-      // Preserve user preference keys (like reverbQuality) that shouldn't change with presets
-      for (const key of USER_PREFERENCE_KEYS) {
-        (newState as Record<string, unknown>)[key] = state[key];
-      }
-      
-      // Auto-disable granular if level is 0
-      if (newState.granularLevel === 0) {
-        newState.granularEnabled = false;
-      }
-      
-      setState(newState);
-      audioEngine.updateParams(newState);
-      audioEngine.resetCofDrift(); // Reset CoF drift when loading preset
-      
-      // Apply dual ranges and slider modes from migrated preset
-      applyDualRangesFromPreset(migrated.dualRanges, migrated.sliderModes);
+      const result = applyPreset(preset, { currentState: state, normalize: normalizePresetForWeb });
+      setState(result.state);
+      applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
     }
     // If in mid-morph, the useEffect will handle applying the interpolated state
     
@@ -4365,28 +4622,16 @@ const App: React.FC = () => {
       try {
         const parsed = JSON.parse(e.target?.result as string);
         if (parsed.state) {
-          // Migrate old *Min/*Max fields and merge with defaults
-          const migrated = migratePreset(parsed);
-          const normalizedState = normalizePresetForWeb(migrated.state);
-          const newState = { ...DEFAULT_STATE, ...normalizedState };
-          
-          // Preserve user preference keys (like reverbQuality) that shouldn't change with presets
-          for (const key of USER_PREFERENCE_KEYS) {
-            (newState as Record<string, unknown>)[key] = state[key];
-          }
-          
-          // Auto-disable granular if level is 0
-          if (newState.granularLevel === 0) {
-            newState.granularEnabled = false;
-          }
+          // Migrate, normalize, merge with defaults, and preserve user preferences
+          const result = applyPreset(parsed, { currentState: state, updateEngine: false, resetCofDrift: false, normalize: normalizePresetForWeb });
           
           // Create the preset object
           const importedPreset: SavedPreset = {
             name: parsed.name || file.name.replace('.json', ''),
             timestamp: parsed.timestamp || new Date().toISOString(),
-            state: newState,
-            dualRanges: migrated.dualRanges,
-            sliderModes: migrated.sliderModes,
+            state: result.state,
+            dualRanges: result.preset.dualRanges,
+            sliderModes: result.preset.sliderModes,
           };
           
           // Add to preset list for display
@@ -4398,12 +4643,12 @@ const App: React.FC = () => {
             setUploadSlotDialogOpen(true);
           } else {
             // In snowflake mode, just apply directly
-            setState(newState);
-            audioEngine.updateParams(newState);
-            audioEngine.resetCofDrift(); // Reset CoF drift when loading preset
+            setState(result.state);
+            audioEngine.updateParams(result.state);
+            audioEngine.resetCofDrift();
             
             // Apply dual ranges and slider modes from migrated preset
-            applyDualRangesFromPreset(migrated.dualRanges, migrated.sliderModes);
+            applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
           }
         }
       } catch (err) {
@@ -4531,9 +4776,10 @@ const App: React.FC = () => {
       return;
     }
     
-    console.log('[Journey] Animation presets - A:', animPresetA.name, 'B:', animPresetB.name);
+    // console.log('[Journey] Animation presets - A:', animPresetA.name, 'B:', animPresetB.name);
     
     const startTime = performance.now();
+    let lastUIUpdate = 0;
     
     const animateMorph = (now: number) => {
       const elapsed = now - startTime;
@@ -4548,9 +4794,6 @@ const App: React.FC = () => {
       const rawPosition = startPosition + (endPosition - startPosition) * eased;
       // Round to 1 decimal place to avoid long decimal percentages
       const newPosition = Math.round(rawPosition * 10) / 10;
-      
-      // Update position state
-      setMorphPosition(newPosition);
       
       // Apply lerp directly using captured presets (not stale closures)
       const morphResult = lerpPresets(
@@ -4570,51 +4813,62 @@ const App: React.FC = () => {
         (stateWithPrefs as Record<string, unknown>)[key] = currentState[key];
       }
       
-      // Apply the morphed state
-      setState(stateWithPrefs);
+      // ALWAYS update audio engine at full frame rate for smooth audio
       audioEngine.updateParams(stateWithPrefs);
       
-      // Update CoF morph visualization (clear at endpoints)
-      const atEndpoint = isAtEndpoint0(newPosition, true) || isAtEndpoint1(newPosition, true);
-      setMorphCoFViz(atEndpoint ? null : (morphResult.morphCoFInfo || null));
-      
-      if (atEndpoint) {
-        audioEngine.resetCofDrift();
-      }
-      
-      // Apply interpolated dual ranges — merge (don't wipe modes unrelated to morph)
-      setSliderModes(prev => {
-        const next: Record<string, SliderMode> = {};
-        for (const [key, mode] of Object.entries(prev)) {
-          if (!(key in morphResult.dualModes)) {
-            next[key] = mode;
-          }
+      // Throttle React setState calls to ~15fps to avoid re-render storms
+      const shouldUpdateUI = now - lastUIUpdate >= 66 || progress >= 1;
+      if (shouldUpdateUI) {
+        lastUIUpdate = now;
+        
+        // Update position state
+        setMorphPosition(newPosition);
+        
+        // Apply the morphed state to React
+        setState(stateWithPrefs);
+        
+        // Update CoF morph visualization (clear at endpoints)
+        const atEndpoint = isAtEndpoint0(newPosition, true) || isAtEndpoint1(newPosition, true);
+        setMorphCoFViz(atEndpoint ? null : (morphResult.morphCoFInfo || null));
+        
+        if (atEndpoint) {
+          audioEngine.resetCofDrift();
         }
-        for (const [key, mode] of Object.entries(morphResult.dualModes)) {
-          if (mode !== 'single') {
-            next[key] = mode;
+        
+        // Apply interpolated dual ranges — merge (don't wipe modes unrelated to morph)
+        setSliderModes(prev => {
+          const next: Record<string, SliderMode> = {};
+          for (const [key, mode] of Object.entries(prev)) {
+            if (!(key in morphResult.dualModes)) {
+              next[key] = mode;
+            }
           }
-        }
-        return next;
-      });
-      setDualSliderRanges(prev => {
-        const next: typeof prev = {};
-        for (const [key, range] of Object.entries(prev)) {
-          if (!(key in morphResult.dualModes)) {
+          for (const [key, mode] of Object.entries(morphResult.dualModes)) {
+            if (mode !== 'single') {
+              next[key] = mode;
+            }
+          }
+          return next;
+        });
+        setDualSliderRanges(prev => {
+          const next: typeof prev = {};
+          for (const [key, range] of Object.entries(prev)) {
+            if (!(key in morphResult.dualModes)) {
+              next[key as keyof SliderState] = range;
+            }
+          }
+          for (const [key, range] of Object.entries(morphResult.dualRanges)) {
             next[key as keyof SliderState] = range;
           }
-        }
-        for (const [key, range] of Object.entries(morphResult.dualRanges)) {
-          next[key as keyof SliderState] = range;
-        }
-        return next;
-      });
+          return next;
+        });
+      }
       
       if (progress < 1) {
         journeyMorphAnimationRef.current = requestAnimationFrame(animateMorph);
       } else {
         // Morph complete - alternate direction for next morph
-        console.log('[Journey] Morph complete at position:', endPosition);
+        // console.log('[Journey] Morph complete at position:', endPosition);
         journeyMorphDirectionRef.current = direction === 'toB' ? 'toA' : 'toB';
         journeyMorphAnimationRef.current = null;
       }
@@ -4774,6 +5028,7 @@ const App: React.FC = () => {
   // Render advanced UI
   return (
     <div className="app-container" style={{ ...styles.container, ...m?.container }}>
+      <CpuOverlay />
       {/* Controls - centered */}
       <div className="app-controls" style={{ ...styles.controls, paddingTop: '12px', ...m?.controls }}>
         {!(engineState.isRunning || isJourneyPlaying) ? (
@@ -4951,6 +5206,17 @@ const App: React.FC = () => {
         >
           <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>◈</span>
           <span>FX</span>
+        </button>
+        <button
+          style={{
+            ...styles.tab,
+            ...(activeTab === 'looper' ? styles.tabActive : {}),
+            ...m?.tab,
+          }}
+          onClick={() => setActiveTab('looper')}
+        >
+          <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>⊞</span>
+          <span>Looper</span>
         </button>
       </div>
 
@@ -5299,18 +5565,9 @@ const App: React.FC = () => {
                     const shouldApplyPresetA = atEndpoint0 || !morphPresetB;
                     
                     if (shouldApplyPresetA) {
-                      // Apply the preset settings (with auto-disable for zero-level features)
-                      const newState = { ...DEFAULT_STATE, ...normalizedPreset.state };
-                      if (newState.granularLevel === 0) {
-                        newState.granularEnabled = false;
-                      }
-                      setState(newState);
-                      audioEngine.updateParams(newState);
-                      audioEngine.resetCofDrift(); // Reset CoF drift when loading preset
-                      // Don't reset morph position - keep it where user had it
-                      
-                      // Apply dual ranges and slider modes from migrated preset
-                      applyDualRangesFromPreset(normalizedPreset.dualRanges, normalizedPreset.sliderModes);
+                      const result = applyPreset(normalizedPreset, { migrate: false, currentState: state, normalize: s => s });
+                      setState(result.state);
+                      applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
                     }
                     // If in mid-morph, the useEffect will handle applying the interpolated state
                   }
@@ -5448,17 +5705,9 @@ const App: React.FC = () => {
                     const shouldApplyPresetB = atEndpoint1 || !morphPresetA;
 
                     if (shouldApplyPresetB) {
-                      // Apply the preset settings (with auto-disable for zero-level features)
-                      const newState = { ...DEFAULT_STATE, ...normalizedPreset.state };
-                      if (newState.granularLevel === 0) {
-                        newState.granularEnabled = false;
-                      }
-                      setState(newState);
-                      audioEngine.updateParams(newState);
-                      audioEngine.resetCofDrift();
-
-                      // Apply dual ranges and slider modes from migrated preset
-                      applyDualRangesFromPreset(normalizedPreset.dualRanges, normalizedPreset.sliderModes);
+                      const result = applyPreset(normalizedPreset, { migrate: false, currentState: state, normalize: s => s });
+                      setState(result.state);
+                      applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
                     }
                   }
                 }
@@ -5602,13 +5851,9 @@ const App: React.FC = () => {
         <CloudPresets
           currentState={state}
           onLoadPreset={(presetState, _name) => {
-            const cloudMigrated = migratePreset({ state: presetState, name: _name });
-            const newState = { ...DEFAULT_STATE, ...normalizePresetForWeb(cloudMigrated.state) };
-            setState(newState);
-            audioEngine.updateParams(newState);
-            audioEngine.resetCofDrift();
-            // Apply dual ranges and slider modes from migrated cloud preset
-            applyDualRangesFromPreset(cloudMigrated.dualRanges, cloudMigrated.sliderModes);
+            const result = applyPreset({ state: presetState, name: _name }, { currentState: state, normalize: normalizePresetForWeb });
+            setState(result.state);
+            applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
           }}
         />
 
@@ -5898,6 +6143,8 @@ const App: React.FC = () => {
             initialStepOverrides={synthStepOverridesRef.current}
             initialSubLaneStates={synthSubLaneStatesRef.current}
             onSubLaneStatesChange={(states) => { synthSubLaneStatesRef.current = states; }}
+            initialPitchSettings={synthPitchSettingsRef.current}
+            onPitchSettingsChange={(settings) => { synthPitchSettingsRef.current = settings; }}
             onRawStepOverridesChange={(raw) => {
               synthStepOverridesRef.current = raw;
             }}
@@ -6357,6 +6604,51 @@ const App: React.FC = () => {
             onViewModeChange={(mode) => { drumViewModeRef.current = mode; }}
             onClockDivsChange={(divs) => audioEngine.setDrumEuclidClockDivs(divs)}
             onSwingsChange={(swings) => audioEngine.setDrumEuclidSwings(swings)}
+          />
+        )}
+
+        {/* === LOOPER TAB === */}
+        {activeTab === 'looper' && (
+          <LooperPage
+            state={state}
+            isMobile={isMobile}
+            expandedPanels={expandedPanels}
+            togglePanel={togglePanel}
+            onParamChange={handleSliderChange}
+            onSelectChange={handleSelectChange}
+            sliderProps={sliderProps}
+            SliderComponent={Slider as unknown as React.ComponentType<Record<string, unknown>>}
+            writeHeadPosition={looperWriteHead}
+            voicePositions={looperVoicePositions}
+            triggerOverrides={looperTriggerOverrides}
+            playheads={looperSeqPlayheads}
+            hitCounts={looperSeqHitCounts}
+            initialViewMode={looperViewModeRef.current}
+            onViewModeChange={(mode) => { looperViewModeRef.current = mode; }}
+            initialStepOverrides={looperStepOverridesRef.current}
+            initialSubLaneStates={looperSubLaneStatesRef.current}
+            initialClockDivs={looperClockDivsRef.current}
+            presetVersion={looperPresetVersion}
+            onSubLaneStatesChange={(states) => { looperSubLaneStatesRef.current = states; }}
+            onStepOverridesChange={(overrides) => {
+              looperStepOverridesRef.current = overrides;
+              audioEngine.setLooperStepOverrides({
+                triggerToggles: overrides.triggerToggles,
+                expression: overrides.expression,
+                expressionDirection: overrides.expressionDirection,
+                probability: overrides.probability,
+                ratchet: overrides.ratchet,
+                trigCondition: overrides.trigCondition,
+                slice: overrides.slice,
+                sliceDirection: overrides.sliceDirection,
+                pitch: overrides.pitch,
+                pitchDirection: overrides.pitchDirection,
+                reverse: overrides.reverse,
+                reverseDirection: overrides.reverseDirection,
+              });
+            }}
+            onClockDivsChange={(divs) => audioEngine.setLooperEuclidClockDivs(divs)}
+            onSwingsChange={(swings) => audioEngine.setLooperEuclidSwings(swings)}
           />
         )}
       </div>

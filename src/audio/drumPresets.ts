@@ -3111,7 +3111,7 @@ export const MEMBRANE_PRESETS: DrumVoicePreset[] = [
       drumMembraneDecay: 200,
       drumMembraneLevel: 0.65,
       drumMembraneVariation: 0,
-      drumMembraneDistance: 0,
+      drumMembraneDistance: 0.5,
     },
   },
   {
@@ -3141,7 +3141,7 @@ export const MEMBRANE_PRESETS: DrumVoicePreset[] = [
       drumMembraneDecay: 120,
       drumMembraneLevel: 0.75,
       drumMembraneVariation: 0,
-      drumMembraneDistance: 0,
+      drumMembraneDistance: 0.5,
     },
   },
   {
@@ -3171,7 +3171,7 @@ export const MEMBRANE_PRESETS: DrumVoicePreset[] = [
       drumMembraneDecay: 400,
       drumMembraneLevel: 0.6,
       drumMembraneVariation: 0.1,
-      drumMembraneDistance: 0,
+      drumMembraneDistance: 0.5,
     },
   },
   {
@@ -3201,7 +3201,7 @@ export const MEMBRANE_PRESETS: DrumVoicePreset[] = [
       drumMembraneDecay: 500,
       drumMembraneLevel: 0.7,
       drumMembraneVariation: 0,
-      drumMembraneDistance: 0,
+      drumMembraneDistance: 0.5,
     },
   },
   {
@@ -3231,7 +3231,7 @@ export const MEMBRANE_PRESETS: DrumVoicePreset[] = [
       drumMembraneDecay: 250,
       drumMembraneLevel: 0.6,
       drumMembraneVariation: 0,
-      drumMembraneDistance: 0,
+      drumMembraneDistance: 0.5,
     },
   },
   {
@@ -3261,7 +3261,7 @@ export const MEMBRANE_PRESETS: DrumVoicePreset[] = [
       drumMembraneDecay: 800,
       drumMembraneLevel: 0.55,
       drumMembraneVariation: 0.05,
-      drumMembraneDistance: 0,
+      drumMembraneDistance: 0.5,
     },
   },
   {
@@ -3291,7 +3291,7 @@ export const MEMBRANE_PRESETS: DrumVoicePreset[] = [
       drumMembraneDecay: 350,
       drumMembraneLevel: 0.6,
       drumMembraneVariation: 0,
-      drumMembraneDistance: 0,
+      drumMembraneDistance: 0.5,
     },
   },
   {
@@ -3321,7 +3321,7 @@ export const MEMBRANE_PRESETS: DrumVoicePreset[] = [
       drumMembraneDecay: 300,
       drumMembraneLevel: 0.65,
       drumMembraneVariation: 0,
-      drumMembraneDistance: 0,
+      drumMembraneDistance: 0.5,
     },
   },
   {
@@ -3351,7 +3351,7 @@ export const MEMBRANE_PRESETS: DrumVoicePreset[] = [
       drumMembraneDecay: 1200,
       drumMembraneLevel: 0.5,
       drumMembraneVariation: 0,
-      drumMembraneDistance: 0,
+      drumMembraneDistance: 0.5,
     },
   },
   {
@@ -3381,7 +3381,7 @@ export const MEMBRANE_PRESETS: DrumVoicePreset[] = [
       drumMembraneDecay: 80,
       drumMembraneLevel: 0.6,
       drumMembraneVariation: 0,
-      drumMembraneDistance: 0,
+      drumMembraneDistance: 0.5,
     },
   },
   {
@@ -3411,7 +3411,7 @@ export const MEMBRANE_PRESETS: DrumVoicePreset[] = [
       drumMembraneDecay: 3000,
       drumMembraneLevel: 0.45,
       drumMembraneVariation: 0,
-      drumMembraneDistance: 0,
+      drumMembraneDistance: 0.5,
     },
   },
   {
@@ -3441,7 +3441,7 @@ export const MEMBRANE_PRESETS: DrumVoicePreset[] = [
       drumMembraneDecay: 300,
       drumMembraneLevel: 0.4,
       drumMembraneVariation: 0.15,
-      drumMembraneDistance: 0,
+      drumMembraneDistance: 0.5,
     },
   },
   {
@@ -3531,7 +3531,7 @@ export const MEMBRANE_PRESETS: DrumVoicePreset[] = [
       drumMembraneDecay: 200,
       drumMembraneLevel: 0.55,
       drumMembraneVariation: 0,
-      drumMembraneDistance: 0,
+      drumMembraneDistance: 0.5,
     },
   },
   {
@@ -3591,7 +3591,7 @@ export const MEMBRANE_PRESETS: DrumVoicePreset[] = [
       drumMembraneDecay: 150,
       drumMembraneLevel: 0.85,
       drumMembraneVariation: 0,
-      drumMembraneDistance: 0,
+      drumMembraneDistance: 0.5,
     },
   },
   {
@@ -3621,7 +3621,7 @@ export const MEMBRANE_PRESETS: DrumVoicePreset[] = [
       drumMembraneDecay: 100,
       drumMembraneLevel: 0.5,
       drumMembraneVariation: 0.2,
-      drumMembraneDistance: 0,
+      drumMembraneDistance: 0.5,
     },
   },
   {
@@ -3651,7 +3651,7 @@ export const MEMBRANE_PRESETS: DrumVoicePreset[] = [
       drumMembraneDecay: 5000,
       drumMembraneLevel: 0.4,
       drumMembraneVariation: 0,
-      drumMembraneDistance: 0,
+      drumMembraneDistance: 0.5,
     },
   },
   {

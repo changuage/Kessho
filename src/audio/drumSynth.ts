@@ -94,6 +94,7 @@ function noteToSeconds(note: string, bpm: number): number {
 export class DrumSynth {
   private ctx: AudioContext;
   private masterGain: GainNode;
+  private preFaderBus: GainNode;   // sum of all voices BEFORE drumLevel gain (for looper pre-fader tap)
   private reverbSend: GainNode;
   private params: SliderState;
   
@@ -121,12 +122,18 @@ export class DrumSynth {
   private morphRanges: Record<DrumVoiceType, { min: number; max: number } | null> = {
     sub: null, kick: null, click: null, beepHi: null, beepLo: null, noise: null, membrane: null
   };
+
+  // Generic S&H ranges for per-trigger randomization of any param (keyed by full param name)
+  private paramSHRanges = new Map<string, { min: number; max: number }>();
   
   // Callback for UI visualization
   private onDrumTrigger: ((voice: DrumVoiceType, velocity: number) => void) | null = null;
   
   // Callback for morph trigger visualization (per-trigger random position)
   private onMorphTrigger: ((voice: DrumVoiceType, morphPosition: number) => void) | null = null;
+
+  // Generic callback for S&H trigger visualization (any param)
+  private onParamSHTrigger: ((voice: DrumVoiceType, key: string, position: number) => void) | null = null;
 
   // Callback for Euclidean lane evolve visualization
   private onEuclidEvolveTrigger: ((laneIndex: number) => void) | null = null;
@@ -165,10 +172,14 @@ export class DrumSynth {
     pitch: [null, null, null, null],
     morph: [null, null, null, null],
     distance: [null, null, null, null],
+    slice: [null, null, null, null],
+    reverse: [null, null, null, null],
     expressionDirection: [null, null, null, null],
     morphDirection: [null, null, null, null],
     distanceDirection: [null, null, null, null],
     pitchDirection: [null, null, null, null],
+    sliceDirection: [null, null, null, null],
+    reverseDirection: [null, null, null, null],
   };
 
   // Per-trigger override values set by the scheduler from sub-lane data.
@@ -215,12 +226,17 @@ export class DrumSynth {
     this.rng = rng;
     
     // Create master output chain
+    this.preFaderBus = ctx.createGain();
+    this.preFaderBus.gain.value = 1.0;
+
     this.masterGain = ctx.createGain();
     this.masterGain.gain.value = params.drumLevel;
     
     this.reverbSend = ctx.createGain();
     this.reverbSend.gain.value = params.drumReverbSend;
     
+    // Pre-fader bus → master gain (drumLevel applied here)
+    this.preFaderBus.connect(this.masterGain);
     // Connect to outputs
     this.masterGain.connect(masterOutput);
     this.reverbSend.connect(reverbNode);
@@ -237,7 +253,7 @@ export class DrumSynth {
       // Bus gain: voice triggers â†’ bus â†’ masterGain (unity gain pass-through)
       const bus = ctx.createGain();
       bus.gain.value = 1;
-      bus.connect(this.masterGain);
+      bus.connect(this.preFaderBus);
       this.voiceBusGains[v] = bus;
 
       // Analyser taps the per-voice bus (not master) for isolated FFT
@@ -247,8 +263,8 @@ export class DrumSynth {
       bus.connect(analyser);
       this.voiceAnalysers[v] = analyser;
     }
-    // Default triggerTarget to masterGain (overridden per-trigger in triggerVoice)
-    this.triggerTarget = this.masterGain;
+    // Default triggerTarget to preFaderBus (overridden per-trigger in triggerVoice)
+    this.triggerTarget = this.preFaderBus;
 
     // Start periodic transient node cleanup (every 2s)
     this.transientCleanupTimer = window.setInterval(() => this.cleanupTransientNodes(), 2000);
@@ -481,6 +497,10 @@ export class DrumSynth {
     this.onMorphTrigger = callback;
   }
 
+  setParamSHTriggerCallback(callback: (voice: DrumVoiceType, key: string, position: number) => void): void {
+    this.onParamSHTrigger = callback;
+  }
+
   setEuclidEvolveTriggerCallback(callback: (laneIndex: number) => void): void {
     this.onEuclidEvolveTrigger = callback;
   }
@@ -501,6 +521,14 @@ export class DrumSynth {
     this.morphRanges[voice] = range;
   }
 
+  setParamSHRange(key: string, range: { min: number; max: number } | null): void {
+    if (range) {
+      this.paramSHRanges.set(key, range);
+    } else {
+      this.paramSHRanges.delete(key);
+    }
+  }
+
   private createNoiseBuffer(): void {
     // Create 1 second of white noise
     const length = this.ctx.sampleRate;
@@ -517,6 +545,12 @@ export class DrumSynth {
    */
   getMasterGain(): GainNode {
     return this.masterGain;
+  }
+
+  /** Pre-fader bus: sum of all drum voices BEFORE drumLevel gain.
+   *  Used by looper for pre-fader send (independent of drum volume slider). */
+  getPreFaderBus(): GainNode {
+    return this.preFaderBus;
   }
   
   updateParams(params: SliderState): void {
@@ -619,10 +653,14 @@ export class DrumSynth {
       pitch: overrides.pitch ?? [null, null, null, null],
       morph: overrides.morph,
       distance: overrides.distance,
+      slice: overrides.slice ?? [null, null, null, null],
+      reverse: overrides.reverse ?? [null, null, null, null],
       expressionDirection: overrides.expressionDirection ?? [null, null, null, null],
       morphDirection: overrides.morphDirection ?? [null, null, null, null],
       distanceDirection: overrides.distanceDirection ?? [null, null, null, null],
       pitchDirection: overrides.pitchDirection ?? [null, null, null, null],
+      sliceDirection: overrides.sliceDirection ?? [null, null, null, null],
+      reverseDirection: overrides.reverseDirection ?? [null, null, null, null],
     };
   }
   
@@ -771,6 +809,34 @@ export class DrumSynth {
     return mode === 'mul' ? val * (1 + cl * c) * (1 + ed * e) : val + cl * c + ed * e;
   }
 
+  /**
+   * Sample a random value from a S&H range for any param key.
+   * Returns the sampled value, or undefined if no range is set.
+   */
+  private sampleSHParam(key: string, voice: DrumVoiceType): number | undefined {
+    const range = this.paramSHRanges.get(key);
+    if (!range) return undefined;
+    const value = range.min + Math.random() * (range.max - range.min);
+    if (this.onParamSHTrigger) {
+      const normalizedPos = range.max > range.min
+        ? (value - range.min) / (range.max - range.min)
+        : 0.5;
+      this.onParamSHTrigger(voice, key, normalizedPos);
+    }
+    return value;
+  }
+
+  /**
+   * Resolve per-trigger distance value:
+   * 1. triggerDistanceOverride (from sub-lane sequencer)
+   * 2. S&H range random sample (generic paramSHRanges)
+   * 3. fallback value from params/morphed
+   */
+  private resolveDistance(voice: DrumVoiceType, distKey: string, fallback: number): number {
+    if (this.triggerDistanceOverride !== null) return this.triggerDistanceOverride;
+    return this.sampleSHParam(distKey, voice) ?? fallback;
+  }
+
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // VOICE TRIGGER METHODS
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -809,7 +875,7 @@ export class DrumSynth {
     // Create wrapper gain for pool tracking (trigger outputs connect to this)
     const poolGain = this.ctx.createGain();
     poolGain.gain.value = 1;
-    poolGain.connect(this.voiceBusGains[voice] ?? this.masterGain);
+    poolGain.connect(this.voiceBusGains[voice] ?? this.preFaderBus);
     this.triggerTarget = poolGain;
 
     const entry = { outGain: poolGain, endTime: now + 12 }; // default 12s, updated below
@@ -851,6 +917,61 @@ export class DrumSynth {
     }
   }
   
+  // ─── Phase 1b helpers: centralized morph, envelope, and routing ───
+
+  /**
+   * Resolve per-trigger morph: compute random morphValue within the voice's
+   * morphRange, call getMorphedParams(), and fire onMorphTrigger.
+   * Returns a partial param record (empty object when no morph is active).
+   * Fixes the noise/membrane ordering bug by ensuring morph is resolved
+   * BEFORE variation/distance are read.
+   */
+  private resolveMorph(voice: DrumVoiceType): Record<string, unknown> {
+    const range = this.morphRanges[voice];
+    let morphValue: number | undefined;
+    if (this.triggerMorphOverride !== null) {
+      morphValue = this.triggerMorphOverride;
+    } else if (range) {
+      morphValue = range.min + Math.random() * (range.max - range.min);
+      if (this.onMorphTrigger) {
+        const normalizedPos = range.max > range.min
+          ? (morphValue - range.min) / (range.max - range.min)
+          : 0.5;
+        this.onMorphTrigger(voice, normalizedPos);
+      }
+    }
+    return (morphValue !== undefined) ? getMorphedParams(this.params, voice, morphValue) : {};
+  }
+
+  /**
+   * Standard Attack–Decay amplitude envelope (attack check at 0.5 ms).
+   * Covers ~14 identical instances across trigger methods.
+   */
+  private applyADEnvelope(
+    gain: GainNode, time: number, attack: number, peak: number, decay: number,
+  ): void {
+    if (attack > 0.0005) {
+      gain.gain.setValueAtTime(0, time);
+      gain.gain.linearRampToValueAtTime(peak, time + attack);
+      gain.gain.exponentialRampToValueAtTime(0.001, time + attack + decay);
+    } else {
+      gain.gain.setValueAtTime(peak, time);
+      gain.gain.exponentialRampToValueAtTime(0.001, time + decay);
+    }
+  }
+
+  /**
+   * Route an audio node to triggerTarget, optionally to reverbSend, and to
+   * the voice-specific delay send (if wired).
+   */
+  private routeOutput(
+    node: AudioNode, voice: DrumVoiceType, reverb = true,
+  ): void {
+    node.connect(this.triggerTarget);
+    if (reverb) node.connect(this.reverbSend);
+    if (this.delaySends[voice]) node.connect(this.delaySends[voice]!);
+  }
+
   /**
    * Voice 1: Sub - Deep sine/triangle pulse with drive and sub-octave
    * New params: shape, pitchEnv, pitchDecay, drive, sub
@@ -858,25 +979,8 @@ export class DrumSynth {
   private triggerSub(velocity: number, time: number): void {
     const p = this.params;
     
-    // Get random morph value within range if range is set (per-trigger randomization)
-    const range = this.morphRanges.sub;
-    let morphValue: number | undefined;
-    if (this.triggerMorphOverride !== null) {
-      morphValue = this.triggerMorphOverride;
-    } else if (range) {
-      morphValue = range.min + Math.random() * (range.max - range.min);
-      // Notify UI of triggered morph position (normalized 0-1 within range)
-      if (this.onMorphTrigger) {
-        const normalizedPos = range.max > range.min
-          ? (morphValue - range.min) / (range.max - range.min)
-          : 0.5;
-        this.onMorphTrigger('sub', normalizedPos);
-      }
-    }
-    
-    // Only use morphed params when per-trigger randomization is active
-    // Otherwise use slider values directly (which already have morph applied in UI)
-    const morphed = (morphValue !== undefined) ? getMorphedParams(p, 'sub', morphValue) : {};
+    // Per-trigger morph randomization
+    const morphed = this.resolveMorph('sub');
     
     // Use morphed values if available, otherwise fall back to direct params
     const freq = (morphed.drumSubFreq as number) ?? p.drumSubFreq;
@@ -889,8 +993,8 @@ export class DrumSynth {
     const driveRaw = (morphed.drumSubDrive as number) ?? p.drumSubDrive ?? 0;
     const subOctave = (morphed.drumSubSub as number) ?? p.drumSubSub ?? 0;
     const attack = ((morphed.drumSubAttack as number) ?? p.drumSubAttack ?? 0) / 1000;
-    const variation = (morphed.drumSubVariation as number) ?? p.drumSubVariation ?? 0;
-    const distance = this.triggerDistanceOverride ?? ((morphed.drumSubDistance as number) ?? p.drumSubDistance ?? 0.5);
+    const variation = this.sampleSHParam('drumSubVariation', 'sub') ?? (morphed.drumSubVariation as number) ?? p.drumSubVariation ?? 0;
+    const distance = this.resolveDistance('sub', 'drumSubDistance', (morphed.drumSubDistance as number) ?? p.drumSubDistance ?? 0.5);
     
     // Per-hit micro-variation (correlated jitter) + distance macro (strike-position)
     const v = this.computeVariation(variation);
@@ -955,15 +1059,7 @@ export class DrumSynth {
     const outputLevel = velocity * level * v.vLevel * d.dLevel;
     const decayTime = Math.min((decay / 1000) * v.vDecay * d.dDecay, this.triggerRatchetDecayCap);
     const effAttack = Math.min(Math.max(0.0001, attack * v.vAttack * d.dAttack), this.triggerRatchetAttackCap);
-    
-    if (effAttack > 0.0005) {
-      gain.gain.setValueAtTime(0, time);
-      gain.gain.linearRampToValueAtTime(outputLevel, time + effAttack);
-      gain.gain.exponentialRampToValueAtTime(0.001, time + effAttack + decayTime);
-    } else {
-      gain.gain.setValueAtTime(outputLevel, time);
-      gain.gain.exponentialRampToValueAtTime(0.001, time + decayTime);
-    }
+    this.applyADEnvelope(gain, time, effAttack, outputLevel, decayTime);
     
     const envDuration = effAttack + decayTime;
     
@@ -974,50 +1070,23 @@ export class DrumSynth {
     } else {
       osc.connect(gain);
     }
-    gain.connect(this.triggerTarget);
-    gain.connect(this.reverbSend);
-    // Connect to delay send
-    if (this.delaySends.sub) {
-      gain.connect(this.delaySends.sub);
-    }
+    this.routeOutput(gain, 'sub');
     
     osc.start(time);
     osc.stop(time + envDuration + 0.01);
     
     if (osc2 && gain2) {
-      if (effAttack > 0.0005) {
-        gain2.gain.setValueAtTime(0, time);
-        gain2.gain.linearRampToValueAtTime(effTone * 0.3 * velocity * level * v.vLevel * d.dLevel, time + effAttack);
-        gain2.gain.exponentialRampToValueAtTime(0.001, time + effAttack + decayTime * 0.7);
-      } else {
-        gain2.gain.setValueAtTime(gain2.gain.value, time);
-        gain2.gain.exponentialRampToValueAtTime(0.001, time + decayTime * 0.7);
-      }
+      this.applyADEnvelope(gain2, time, effAttack, effTone * 0.3 * velocity * level * v.vLevel * d.dLevel, decayTime * 0.7);
       osc2.connect(gain2);
-      gain2.connect(this.triggerTarget);
-      // Also send harmonics to delay
-      if (this.delaySends.sub) {
-        gain2.connect(this.delaySends.sub);
-      }
+      this.routeOutput(gain2, 'sub', false);
       osc2.start(time);
       osc2.stop(time + envDuration + 0.01);
     }
     
     if (subOsc && subGain) {
-      if (effAttack > 0.0005) {
-        subGain.gain.setValueAtTime(0, time);
-        subGain.gain.linearRampToValueAtTime(subOctave * 0.5 * velocity * level * v.vLevel * d.dLevel, time + effAttack);
-        subGain.gain.exponentialRampToValueAtTime(0.001, time + effAttack + decayTime * 1.2);
-      } else {
-        subGain.gain.setValueAtTime(subGain.gain.value, time);
-        subGain.gain.exponentialRampToValueAtTime(0.001, time + decayTime * 1.2);
-      }
+      this.applyADEnvelope(subGain, time, effAttack, subOctave * 0.5 * velocity * level * v.vLevel * d.dLevel, decayTime * 1.2);
       subOsc.connect(subGain);
-      subGain.connect(this.triggerTarget);
-      // Also send sub-octave to delay
-      if (this.delaySends.sub) {
-        subGain.connect(this.delaySends.sub);
-      }
+      this.routeOutput(subGain, 'sub', false);
       subOsc.start(time);
       subOsc.stop(time + envDuration + 0.02);
     }
@@ -1032,23 +1101,8 @@ export class DrumSynth {
   private triggerKick(velocity: number, time: number): void {
     const p = this.params;
     
-    // Get random morph value within range if range is set (per-trigger randomization)
-    const range = this.morphRanges.kick;
-    let morphValue: number | undefined;
-    if (this.triggerMorphOverride !== null) {
-      morphValue = this.triggerMorphOverride;
-    } else if (range) {
-      morphValue = range.min + Math.random() * (range.max - range.min);
-      if (this.onMorphTrigger) {
-        const normalizedPos = range.max > range.min
-          ? (morphValue - range.min) / (range.max - range.min)
-          : 0.5;
-        this.onMorphTrigger('kick', normalizedPos);
-      }
-    }
-    
-    // Only use morphed params when per-trigger randomization is active
-    const morphed = (morphValue !== undefined) ? getMorphedParams(p, 'kick', morphValue) : {};
+    // Per-trigger morph randomization
+    const morphed = this.resolveMorph('kick');
     
     // Use morphed values if available
     const freq = (morphed.drumKickFreq as number) ?? p.drumKickFreq;
@@ -1062,8 +1116,8 @@ export class DrumSynth {
     const tailRaw = (morphed.drumKickTail as number) ?? p.drumKickTail ?? 0;
     const tone = (morphed.drumKickTone as number) ?? p.drumKickTone ?? 0;
     const attack = ((morphed.drumKickAttack as number) ?? p.drumKickAttack ?? 0) / 1000;
-    const variation = (morphed.drumKickVariation as number) ?? p.drumKickVariation ?? 0;
-    const distance = this.triggerDistanceOverride ?? ((morphed.drumKickDistance as number) ?? p.drumKickDistance ?? 0.5);
+    const variation = this.sampleSHParam('drumKickVariation', 'kick') ?? (morphed.drumKickVariation as number) ?? p.drumKickVariation ?? 0;
+    const distance = this.resolveDistance('kick', 'drumKickDistance', (morphed.drumKickDistance as number) ?? p.drumKickDistance ?? 0.5);
     
     // Per-hit micro-variation + distance macro (strike-position)
     const v = this.computeVariation(variation);
@@ -1151,15 +1205,7 @@ export class DrumSynth {
     
     // Amplitude envelope
     const outputLevel = velocity * level * v.vLevel * d.dLevel;
-    
-    if (effAttack > 0.0005) {
-      gain.gain.setValueAtTime(0, time);
-      gain.gain.linearRampToValueAtTime(outputLevel, time + effAttack);
-      gain.gain.exponentialRampToValueAtTime(0.001, time + effAttack + effDecay);
-    } else {
-      gain.gain.setValueAtTime(outputLevel, time);
-      gain.gain.exponentialRampToValueAtTime(0.001, time + effDecay);
-    }
+    this.applyADEnvelope(gain, time, effAttack, outputLevel, effDecay);
     
     const kickEnvDuration = effAttack + effDecay;
     
@@ -1170,22 +1216,14 @@ export class DrumSynth {
     } else {
       osc.connect(gain);
     }
-    gain.connect(this.triggerTarget);
-    gain.connect(this.reverbSend);
-    // Connect to delay send
-    if (this.delaySends.kick) {
-      gain.connect(this.delaySends.kick);
-    }
+    this.routeOutput(gain, 'kick');
     
     osc.start(time);
     osc.stop(time + kickEnvDuration + 0.01);
     
     if (clickOsc && clickGain) {
       clickOsc.connect(clickGain);
-      clickGain.connect(this.triggerTarget);
-      if (this.delaySends.kick) {
-        clickGain.connect(this.delaySends.kick);
-      }
+      this.routeOutput(clickGain, 'kick', false);
       clickOsc.start(time);
       clickOsc.stop(time + 0.01);
     }
@@ -1193,10 +1231,7 @@ export class DrumSynth {
     if (bodyOsc && bodyFilter && bodyGain) {
       bodyOsc.connect(bodyFilter);
       bodyFilter.connect(bodyGain);
-      bodyGain.connect(this.triggerTarget);
-      if (this.delaySends.kick) {
-        bodyGain.connect(this.delaySends.kick);
-      }
+      this.routeOutput(bodyGain, 'kick', false);
       bodyOsc.start(time);
       bodyOsc.stop(time + kickEnvDuration + 0.01);
     }
@@ -1204,11 +1239,7 @@ export class DrumSynth {
     if (tailSource && tailFilter && tailGain) {
       tailSource.connect(tailFilter);
       tailFilter.connect(tailGain);
-      tailGain.connect(this.triggerTarget);
-      tailGain.connect(this.reverbSend);
-      if (this.delaySends.kick) {
-        tailGain.connect(this.delaySends.kick);
-      }
+      this.routeOutput(tailGain, 'kick');
       tailSource.start(time);
       tailSource.stop(time + kickEnvDuration * 1.5 + 0.01);
     }
@@ -1225,23 +1256,8 @@ export class DrumSynth {
     
     if (!this.noiseBuffer) return;
     
-    // Get random morph value within range if range is set (per-trigger randomization)
-    const range = this.morphRanges.click;
-    let morphValue: number | undefined;
-    if (this.triggerMorphOverride !== null) {
-      morphValue = this.triggerMorphOverride;
-    } else if (range) {
-      morphValue = range.min + Math.random() * (range.max - range.min);
-      if (this.onMorphTrigger) {
-        const normalizedPos = range.max > range.min
-          ? (morphValue - range.min) / (range.max - range.min)
-          : 0.5;
-        this.onMorphTrigger('click', normalizedPos);
-      }
-    }
-    
-    // Only use morphed params when per-trigger randomization is active
-    const morphed = (morphValue !== undefined) ? getMorphedParams(p, 'click', morphValue) : {};
+    // Per-trigger morph randomization
+    const morphed = this.resolveMorph('click');
     
     // Use morphed values if available
     const decay = ((morphed.drumClickDecay as number) ?? p.drumClickDecay) / 1000;
@@ -1257,8 +1273,8 @@ export class DrumSynth {
     const stereoWidth = (morphed.drumClickStereoWidth as number) ?? p.drumClickStereoWidth ?? 0;
     const exciterColor = (morphed.drumClickExciterColor as number) ?? p.drumClickExciterColor ?? 0;
     const attack = ((morphed.drumClickAttack as number) ?? p.drumClickAttack ?? 0) / 1000;
-    const variation = (morphed.drumClickVariation as number) ?? p.drumClickVariation ?? 0;
-    const distance = this.triggerDistanceOverride ?? ((morphed.drumClickDistance as number) ?? p.drumClickDistance ?? 0.5);
+    const variation = this.sampleSHParam('drumClickVariation', 'click') ?? (morphed.drumClickVariation as number) ?? p.drumClickVariation ?? 0;
+    const distance = this.resolveDistance('click', 'drumClickDistance', (morphed.drumClickDistance as number) ?? p.drumClickDistance ?? 0.5);
     
     // Per-hit micro-variation + distance macro (strike-position)
     const v = this.computeVariation(variation);
@@ -1319,22 +1335,11 @@ export class DrumSynth {
     // Shorter decay for impulse feel
     const actualDecay = decay * (0.1 + tone * 0.2);
     
-    if (attack > 0.0005) {
-      gain.gain.setValueAtTime(0, time);
-      gain.gain.linearRampToValueAtTime(level, time + attack);
-      gain.gain.exponentialRampToValueAtTime(0.001, time + attack + actualDecay);
-    } else {
-      gain.gain.setValueAtTime(level, time);
-      gain.gain.exponentialRampToValueAtTime(0.001, time + actualDecay);
-    }
+    this.applyADEnvelope(gain, time, attack, level, actualDecay);
     
     source.connect(filter);
     filter.connect(gain);
-    gain.connect(this.triggerTarget);
-    gain.connect(this.reverbSend);
-    if (this.delaySends.click) {
-      gain.connect(this.delaySends.click);
-    }
+    this.routeOutput(gain, 'click');
     
     source.start(time);
     source.stop(time + attack + actualDecay + 0.01);
@@ -1361,22 +1366,11 @@ export class DrumSynth {
     
     const actualDecay = decay * (0.5 + tone * 0.5);
     
-    if (attack > 0.0005) {
-      gain.gain.setValueAtTime(0, time);
-      gain.gain.linearRampToValueAtTime(level, time + attack);
-      gain.gain.exponentialRampToValueAtTime(0.001, time + attack + actualDecay);
-    } else {
-      gain.gain.setValueAtTime(level, time);
-      gain.gain.exponentialRampToValueAtTime(0.001, time + actualDecay);
-    }
+    this.applyADEnvelope(gain, time, attack, level, actualDecay);
     
     source.connect(filter);
     filter.connect(gain);
-    gain.connect(this.triggerTarget);
-    gain.connect(this.reverbSend);
-    if (this.delaySends.click) {
-      gain.connect(this.delaySends.click);
-    }
+    this.routeOutput(gain, 'click');
     
     source.start(time);
     source.stop(time + attack + actualDecay + 0.01);
@@ -1403,22 +1397,11 @@ export class DrumSynth {
     filter.type = 'lowpass';
     filter.frequency.value = filterFreq;
     
-    if (attack > 0.0005) {
-      gain.gain.setValueAtTime(0, time);
-      gain.gain.linearRampToValueAtTime(level, time + attack);
-      gain.gain.exponentialRampToValueAtTime(0.001, time + attack + decay);
-    } else {
-      gain.gain.setValueAtTime(level, time);
-      gain.gain.exponentialRampToValueAtTime(0.001, time + decay);
-    }
+    this.applyADEnvelope(gain, time, attack, level, decay);
     
     osc.connect(filter);
     filter.connect(gain);
-    gain.connect(this.triggerTarget);
-    gain.connect(this.reverbSend);
-    if (this.delaySends.click) {
-      gain.connect(this.delaySends.click);
-    }
+    this.routeOutput(gain, 'click');
     
     osc.start(time);
     osc.stop(time + attack + decay + 0.01);
@@ -1454,23 +1437,12 @@ export class DrumSynth {
       // Stereo spread
       panner.pan.value = (this.rng() * 2 - 1) * stereoWidth;
       
-      if (attack > 0.0005) {
-        gain.gain.setValueAtTime(0, grainTime);
-        gain.gain.linearRampToValueAtTime(grainLevel, grainTime + attack);
-        gain.gain.exponentialRampToValueAtTime(0.001, grainTime + attack + grainDecay);
-      } else {
-        gain.gain.setValueAtTime(grainLevel, grainTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, grainTime + grainDecay);
-      }
+      this.applyADEnvelope(gain, grainTime, attack, grainLevel, grainDecay);
       
       source.connect(filter);
       filter.connect(gain);
       gain.connect(panner);
-      panner.connect(this.triggerTarget);
-      panner.connect(this.reverbSend);
-      if (this.delaySends.click) {
-        panner.connect(this.delaySends.click);
-      }
+      this.routeOutput(panner, 'click');
       
       source.start(grainTime);
       source.stop(grainTime + attack + grainDecay + 0.01);
@@ -1510,19 +1482,10 @@ export class DrumSynth {
       hp.frequency.value = filterFreq;
       hp.Q.value = 0.5 + resonance * 15;
       const impDecay = decay * (0.1 + tone * 0.2);
-      if (attack > 0.0005) {
-        g.gain.setValueAtTime(0, time);
-        g.gain.linearRampToValueAtTime(level * impulseLevel, time + attack);
-        g.gain.exponentialRampToValueAtTime(0.001, time + attack + impDecay);
-      } else {
-        g.gain.setValueAtTime(level * impulseLevel, time);
-        g.gain.exponentialRampToValueAtTime(0.001, time + impDecay);
-      }
+      this.applyADEnvelope(g, time, attack, level * impulseLevel, impDecay);
       src.connect(hp);
       hp.connect(g);
-      g.connect(this.triggerTarget);
-      g.connect(this.reverbSend);
-      if (this.delaySends.click) g.connect(this.delaySends.click);
+      this.routeOutput(g, 'click');
       src.start(time);
       src.stop(time + attack + impDecay + 0.01);
       this.trackTransientNodes(attack + impDecay + 0.5, src, hp, g);
@@ -1539,19 +1502,10 @@ export class DrumSynth {
       osc.frequency.exponentialRampToValueAtTime(pitch, time + decay * 0.3);
       lp.type = 'lowpass';
       lp.frequency.value = filterFreq;
-      if (attack > 0.0005) {
-        g.gain.setValueAtTime(0, time);
-        g.gain.linearRampToValueAtTime(level * tonalLevel, time + attack);
-        g.gain.exponentialRampToValueAtTime(0.001, time + attack + decay);
-      } else {
-        g.gain.setValueAtTime(level * tonalLevel, time);
-        g.gain.exponentialRampToValueAtTime(0.001, time + decay);
-      }
+      this.applyADEnvelope(g, time, attack, level * tonalLevel, decay);
       osc.connect(lp);
       lp.connect(g);
-      g.connect(this.triggerTarget);
-      g.connect(this.reverbSend);
-      if (this.delaySends.click) g.connect(this.delaySends.click);
+      this.routeOutput(g, 'click');
       osc.start(time);
       osc.stop(time + attack + decay + 0.01);
       this.trackTransientNodes(attack + decay + 0.5, osc, lp, g);
@@ -1567,19 +1521,10 @@ export class DrumSynth {
       bp.frequency.value = filterFreq;
       bp.Q.value = 1 + resonance * 10;
       const nDecay = decay * (0.5 + tone * 0.5);
-      if (attack > 0.0005) {
-        g.gain.setValueAtTime(0, time);
-        g.gain.linearRampToValueAtTime(level * noiseLevel, time + attack);
-        g.gain.exponentialRampToValueAtTime(0.001, time + attack + nDecay);
-      } else {
-        g.gain.setValueAtTime(level * noiseLevel, time);
-        g.gain.exponentialRampToValueAtTime(0.001, time + nDecay);
-      }
+      this.applyADEnvelope(g, time, attack, level * noiseLevel, nDecay);
       src.connect(bp);
       bp.connect(g);
-      g.connect(this.triggerTarget);
-      g.connect(this.reverbSend);
-      if (this.delaySends.click) g.connect(this.delaySends.click);
+      this.routeOutput(g, 'click');
       src.start(time);
       src.stop(time + attack + nDecay + 0.01);
       this.trackTransientNodes(attack + nDecay + 0.5, src, bp, g);
@@ -1592,23 +1537,8 @@ export class DrumSynth {
   private triggerBeepHi(velocity: number, time: number): void {
     const p = this.params;
     
-    // Get random morph value within range if range is set (per-trigger randomization)
-    const range = this.morphRanges.beepHi;
-    let morphValue: number | undefined;
-    if (this.triggerMorphOverride !== null) {
-      morphValue = this.triggerMorphOverride;
-    } else if (range) {
-      morphValue = range.min + Math.random() * (range.max - range.min);
-      if (this.onMorphTrigger) {
-        const normalizedPos = range.max > range.min
-          ? (morphValue - range.min) / (range.max - range.min)
-          : 0.5;
-        this.onMorphTrigger('beepHi', normalizedPos);
-      }
-    }
-    
-    // Only use morphed params when per-trigger randomization is active
-    const morphed = (morphValue !== undefined) ? getMorphedParams(p, 'beepHi', morphValue) : {};
+    // Per-trigger morph randomization
+    const morphed = this.resolveMorph('beepHi');
     
     // Use morphed values if available
     const freq = (morphed.drumBeepHiFreq as number) ?? p.drumBeepHiFreq;
@@ -1629,8 +1559,8 @@ export class DrumSynth {
     const modPhase = (morphed.drumBeepHiModPhase as number) ?? p.drumBeepHiModPhase ?? 0;
     const modEnvEnd = (morphed.drumBeepHiModEnvEnd as number) ?? p.drumBeepHiModEnvEnd ?? 0.2;
     const noiseDecay = (morphed.drumBeepHiNoiseDecay as number) ?? p.drumBeepHiNoiseDecay ?? 0;
-    const variation = (morphed.drumBeepHiVariation as number) ?? p.drumBeepHiVariation ?? 0;
-    const distance = this.triggerDistanceOverride ?? ((morphed.drumBeepHiDistance as number) ?? p.drumBeepHiDistance ?? 0.5);
+    const variation = this.sampleSHParam('drumBeepHiVariation', 'beepHi') ?? (morphed.drumBeepHiVariation as number) ?? p.drumBeepHiVariation ?? 0;
+    const distance = this.resolveDistance('beepHi', 'drumBeepHiDistance', (morphed.drumBeepHiDistance as number) ?? p.drumBeepHiDistance ?? 0.5);
     
     // Per-hit micro-variation + distance macro
     // BeepHi is high-frequency/metallic â€” distance affects it more aggressively
@@ -1657,11 +1587,7 @@ export class DrumSynth {
     
     // Main output gain
     const mainGain = this.ctx.createGain();
-    mainGain.connect(this.triggerTarget);
-    mainGain.connect(this.reverbSend);
-    if (this.delaySends.beepHi) {
-      mainGain.connect(this.delaySends.beepHi);
-    }
+    this.routeOutput(mainGain, 'beepHi');
     
     // Brightness filter (distance applies)
     const brightnessFilter = this.ctx.createBiquadFilter();
@@ -1837,23 +1763,8 @@ export class DrumSynth {
   private triggerBeepLo(velocity: number, time: number): void {
     const p = this.params;
     
-    // Get random morph value within range if range is set (per-trigger randomization)
-    const range = this.morphRanges.beepLo;
-    let morphValue: number | undefined;
-    if (this.triggerMorphOverride !== null) {
-      morphValue = this.triggerMorphOverride;
-    } else if (range) {
-      morphValue = range.min + Math.random() * (range.max - range.min);
-      if (this.onMorphTrigger) {
-        const normalizedPos = range.max > range.min
-          ? (morphValue - range.min) / (range.max - range.min)
-          : 0.5;
-        this.onMorphTrigger('beepLo', normalizedPos);
-      }
-    }
-    
-    // Only use morphed params when per-trigger randomization is active
-    const morphed = (morphValue !== undefined) ? getMorphedParams(p, 'beepLo', morphValue) : {};
+    // Per-trigger morph randomization
+    const morphed = this.resolveMorph('beepLo');
     
     // Use morphed values if available
     const freq = (morphed.drumBeepLoFreq as number) ?? p.drumBeepLoFreq;
@@ -1873,8 +1784,8 @@ export class DrumSynth {
     const modalCut = (morphed.drumBeepLoModalCut as number) ?? p.drumBeepLoModalCut ?? 0;
     const oscGainTrim = (morphed.drumBeepLoOscGain as number) ?? p.drumBeepLoOscGain ?? 1;
     const modalGainTrim = (morphed.drumBeepLoModalGain as number) ?? p.drumBeepLoModalGain ?? 1;
-    const variation = (morphed.drumBeepLoVariation as number) ?? p.drumBeepLoVariation ?? 0;
-    const distance = this.triggerDistanceOverride ?? ((morphed.drumBeepLoDistance as number) ?? p.drumBeepLoDistance ?? 0.5);
+    const variation = this.sampleSHParam('drumBeepLoVariation', 'beepLo') ?? (morphed.drumBeepLoVariation as number) ?? p.drumBeepLoVariation ?? 0;
+    const distance = this.resolveDistance('beepLo', 'drumBeepLoDistance', (morphed.drumBeepLoDistance as number) ?? p.drumBeepLoDistance ?? 0.5);
     
     // Per-hit micro-variation + distance macro (strike-position)
     const v = this.computeVariation(variation);
@@ -1956,11 +1867,7 @@ export class DrumSynth {
       lastNode = bodyFilter;
     }
     lastNode.connect(gain);
-    gain.connect(this.triggerTarget);
-    gain.connect(this.reverbSend);
-    if (this.delaySends.beepLo) {
-      gain.connect(this.delaySends.beepLo);
-    }
+    this.routeOutput(gain, 'beepLo');
     
     osc.start(time);
     osc.stop(time + effAttack + effDecay + 0.01);
@@ -2024,18 +1931,10 @@ export class DrumSynth {
     exciteGain.connect(bodyFilter);
     bodyFilter.connect(dampFilter);
     dampFilter.connect(outputGain);
-    outputGain.connect(this.triggerTarget);
-    outputGain.connect(this.reverbSend);
-    if (this.delaySends.beepLo) {
-      outputGain.connect(this.delaySends.beepLo);
-    }
+    this.routeOutput(outputGain, 'beepLo');
     
     osc.connect(oscGain);
-    oscGain.connect(this.triggerTarget);
-    oscGain.connect(this.reverbSend);
-    if (this.delaySends.beepLo) {
-      oscGain.connect(this.delaySends.beepLo);
-    }
+    this.routeOutput(oscGain, 'beepLo');
     
     source.start(time);
     source.stop(time + exciteTime + 0.01);
@@ -2070,11 +1969,7 @@ export class DrumSynth {
     outputGain.gain.setValueAtTime(modalLevel, time);
     outputGain.gain.exponentialRampToValueAtTime(0.001, time + decay);
     
-    outputGain.connect(this.triggerTarget);
-    outputGain.connect(this.reverbSend);
-    if (this.delaySends.beepLo) {
-      outputGain.connect(this.delaySends.beepLo);
-    }
+    this.routeOutput(outputGain, 'beepLo');
     
     // Short noise burst excitation â€” amplitude boosted to compensate for
     // bandpass resonators only passing narrow frequency bands of broadband noise.
@@ -2176,27 +2071,12 @@ export class DrumSynth {
     
     if (!this.noiseBuffer) return;
     
-    // Per-hit variation & distance (strike-position)
-    const v = this.computeVariation(p.drumNoiseVariation ?? 0);
-    const d = this.computeDistance(this.triggerDistanceOverride ?? (p.drumNoiseDistance ?? 0.5));
-    
-    // Get random morph value within range if range is set (per-trigger randomization)
-    const range = this.morphRanges.noise;
-    let morphValue: number | undefined;
-    if (this.triggerMorphOverride !== null) {
-      morphValue = this.triggerMorphOverride;
-    } else if (range) {
-      morphValue = range.min + Math.random() * (range.max - range.min);
-      if (this.onMorphTrigger) {
-        const normalizedPos = range.max > range.min
-          ? (morphValue - range.min) / (range.max - range.min)
-          : 0.5;
-        this.onMorphTrigger('noise', normalizedPos);
-      }
-    }
-    
-    // Only use morphed params when per-trigger randomization is active
-    const morphed = (morphValue !== undefined) ? getMorphedParams(p, 'noise', morphValue) : {};
+    // Per-trigger morph randomization (MUST be before v/d computation)
+    const morphed = this.resolveMorph('noise');
+
+    // Per-hit variation & distance (now correctly uses morphed values)
+    const v = this.computeVariation(this.sampleSHParam('drumNoiseVariation', 'noise') ?? (morphed.drumNoiseVariation as number) ?? p.drumNoiseVariation ?? 0);
+    const d = this.computeDistance(this.resolveDistance('noise', 'drumNoiseDistance', (morphed.drumNoiseDistance as number) ?? p.drumNoiseDistance ?? 0.5));
     
     // Use morphed values if available, then apply variation/distance
     // CL_ED brightness modifier for noise filter
@@ -2313,9 +2193,7 @@ export class DrumSynth {
         
         rSrc.connect(rFilter);
         rFilter.connect(rGain);
-        rGain.connect(this.triggerTarget);
-        rGain.connect(this.reverbSend);
-        if (this.delaySends.noise) rGain.connect(this.delaySends.noise);
+        this.routeOutput(rGain, 'noise');
         
         rSrc.start(rTime);
         rSrc.stop(rTime + rDur + 0.002);
@@ -2356,11 +2234,7 @@ export class DrumSynth {
       formantGain.connect(outputGain);
     }
     
-    outputGain.connect(this.triggerTarget);
-    outputGain.connect(this.reverbSend);
-    if (this.delaySends.noise) {
-      outputGain.connect(this.delaySends.noise);
-    }
+    this.routeOutput(outputGain, 'noise');
     
     // Handle density â€” pulsar particle mode for sparse textures
     let sparseOsc: OscillatorNode | null = null;
@@ -2433,11 +2307,7 @@ export class DrumSynth {
           
           grain.connect(mainFilter);
           mainFilter.connect(gGain);
-          gGain.connect(this.triggerTarget);
-          gGain.connect(this.reverbSend);
-          if (this.delaySends.noise) {
-            gGain.connect(this.delaySends.noise);
-          }
+          this.routeOutput(gGain, 'noise');
           
           grain.start(grainTime);
           grain.stop(grainTime + grainDuration + 0.001);
@@ -2490,24 +2360,12 @@ export class DrumSynth {
     const p = this.params;
     if (!this.noiseBuffer) return;
 
-    const v = this.computeVariation(p.drumMembraneVariation ?? 0);
-    const d = this.computeDistance(this.triggerDistanceOverride ?? (p.drumMembraneDistance ?? 0.5));
+    // Per-trigger morph randomization (MUST be before v/d computation)
+    const morphed = this.resolveMorph('membrane');
 
-    const range = this.morphRanges.membrane;
-    let morphValue: number | undefined;
-    if (this.triggerMorphOverride !== null) {
-      morphValue = this.triggerMorphOverride;
-    } else if (range) {
-      morphValue = range.min + Math.random() * (range.max - range.min);
-      if (this.onMorphTrigger) {
-        const normalizedPos = range.max > range.min
-          ? (morphValue - range.min) / (range.max - range.min)
-          : 0.5;
-        this.onMorphTrigger('membrane', normalizedPos);
-      }
-    }
-
-    const morphed = (morphValue !== undefined) ? getMorphedParams(p, 'membrane', morphValue) : {};
+    // Per-hit variation & distance (now correctly uses morphed values)
+    const v = this.computeVariation(this.sampleSHParam('drumMembraneVariation', 'membrane') ?? (morphed.drumMembraneVariation as number) ?? p.drumMembraneVariation ?? 0);
+    const d = this.computeDistance(this.resolveDistance('membrane', 'drumMembraneDistance', (morphed.drumMembraneDistance as number) ?? p.drumMembraneDistance ?? 0.5));
 
     const excType = (morphed.drumMembraneExciter as SliderState['drumMembraneExciter']) ?? p.drumMembraneExciter;
     const excPos = (morphed.drumMembraneExcPos as number) ?? p.drumMembraneExcPos;
@@ -2547,9 +2405,7 @@ export class DrumSynth {
     // Master output (no global amp envelope or saturation — per-mode envelopes handle amplitude)
     const masterOut = this.ctx.createGain();
     masterOut.gain.value = 1.0;
-    masterOut.connect(this.triggerTarget);
-    masterOut.connect(this.reverbSend);
-    if (this.delaySends.membrane) masterOut.connect(this.delaySends.membrane);
+    this.routeOutput(masterOut, 'membrane');
 
     // ── Exciter signal ──
     const excGain = this.ctx.createGain();
@@ -2635,14 +2491,7 @@ export class DrumSynth {
       bp.Q.value = Math.max(1, modeQ);
 
       const mGain = this.ctx.createGain();
-      if (attack > 0.0005) {
-        mGain.gain.setValueAtTime(0, time);
-        mGain.gain.linearRampToValueAtTime(Math.max(0.0001, modeLevel), time + attack);
-        mGain.gain.exponentialRampToValueAtTime(0.001, time + attack + decay / (1 + m * 0.15));
-      } else {
-        mGain.gain.setValueAtTime(Math.max(0.0001, modeLevel), time);
-        mGain.gain.exponentialRampToValueAtTime(0.001, time + decay / (1 + m * 0.15));
-      }
+      this.applyADEnvelope(mGain, time, attack, Math.max(0.0001, modeLevel), decay / (1 + m * 0.15));
 
       excGain.connect(bp);
       bp.connect(mGain);
@@ -2658,14 +2507,7 @@ export class DrumSynth {
       bodyOsc.frequency.setValueAtTime(sizeHz * Math.pow(2, pitchEnvSt / 12), time);
       bodyOsc.frequency.exponentialRampToValueAtTime(Math.max(20, sizeHz), time + pitchDecay);
       const bodyGain = this.ctx.createGain();
-      if (attack > 0.0005) {
-        bodyGain.gain.setValueAtTime(0, time);
-        bodyGain.gain.linearRampToValueAtTime(Math.max(0.0001, level * body * 0.4), time + attack);
-        bodyGain.gain.exponentialRampToValueAtTime(0.001, time + attack + decay);
-      } else {
-        bodyGain.gain.setValueAtTime(Math.max(0.0001, level * body * 0.4), time);
-        bodyGain.gain.exponentialRampToValueAtTime(0.001, time + decay);
-      }
+      this.applyADEnvelope(bodyGain, time, attack, Math.max(0.0001, level * body * 0.4), decay);
       bodyOsc.connect(bodyGain);
       bodyGain.connect(masterOut);
       bodyOsc.start(time);
@@ -3122,6 +2964,7 @@ export class DrumSynth {
     this.onDrumTrigger = null;
     this.onMorphTrigger = null;
 
+    this.preFaderBus.disconnect();
     this.masterGain.disconnect();
     this.reverbSend.disconnect();
   }

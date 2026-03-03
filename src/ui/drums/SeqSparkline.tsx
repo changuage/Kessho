@@ -16,9 +16,11 @@ interface SeqSparklineProps {
   onClick?: () => void;
   onToggleEnabled?: () => void;
   expanded?: boolean;
+  /** Display mode: 'reverse' renders direction-aware up/down bars instead of magnitudes */
+  mode?: 'default' | 'reverse';
 }
 
-const SeqSparkline: React.FC<SeqSparklineProps> = ({ values, color, label, steps, playhead = -1, hitCount = 0, direction = 'forward', bipolar = false, invertFill = false, enabled = true, onClick, onToggleEnabled, expanded = false }) => {
+const SeqSparkline: React.FC<SeqSparklineProps> = ({ values, color, label, steps, playhead = -1, hitCount = 0, direction = 'forward', bipolar = false, invertFill = false, enabled = true, onClick, onToggleEnabled, expanded = false, mode = 'default' }) => {
   const width = 200;
   const height = 20;
   const count = 16; // always 16 slots
@@ -72,6 +74,22 @@ const SeqSparkline: React.FC<SeqSparklineProps> = ({ values, color, label, steps
             const v = Math.max(0, Math.min(1, rawV));
             const x = i * barW + 1;
             const w = Math.max(1, barW - 2);
+
+            if (mode === 'reverse') {
+              /* ── Reverse lane: directional bars ──
+                 value ≥ 0.5 → reversed  = bar hanging from TOP
+                 value < 0.5 → forward   = bar growing from BOTTOM */
+              if (!inRange) return <rect key={i} x={x} y={height * 0.35} width={w} height={height * 0.3} rx={0.6} fill={color} opacity={0.04} />;
+              const isReversed = rawV >= 0.5;
+              const barH = height * 0.4;
+              if (isReversed) {
+                // Hang from top — visually "pointing left / reversed"
+                return <rect key={i} x={x} y={1} width={w} height={barH} rx={0.8} fill={color} opacity={0.7} />;
+              } else {
+                // Grow from bottom — visually "pointing right / forward"
+                return <rect key={i} x={x} y={height - barH - 1} width={w} height={barH} rx={0.8} fill={color} opacity={0.35} />;
+              }
+            }
 
             if (bipolar) {
               const deviation = v - 0.5;

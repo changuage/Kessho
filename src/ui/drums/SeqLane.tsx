@@ -3,7 +3,7 @@ import type { SequencerState, LaneDirection, ScaleName, PitchMode, TrigCondition
 import { SCALES } from '../../audio/drumSeqTypes';
 import DragNumber from './DragNumber';
 
-type LaneKind = 'trigger' | 'pitch' | 'expression' | 'morph' | 'distance';
+type LaneKind = 'trigger' | 'pitch' | 'expression' | 'morph' | 'distance' | 'slice' | 'reverse';
 
 const DIRECTION_LABELS: Record<LaneDirection, string> = {
   forward: '→ Forward',
@@ -96,7 +96,6 @@ const SeqLane: React.FC<SeqLaneProps> = ({
   onChangePitchNoteMin,
   onChangePitchNoteMax,
 }) => {
-  // Sub-lanes use their own step count; trigger uses trigger.steps
   const laneSteps = lane === 'trigger'
     ? sequencer.trigger.steps
     : lane === 'pitch'
@@ -105,13 +104,19 @@ const SeqLane: React.FC<SeqLaneProps> = ({
         ? sequencer.expression.steps
         : lane === 'morph'
           ? sequencer.morph.steps
-          : sequencer.distance.steps;
+          : lane === 'slice'
+            ? sequencer.slice.steps
+            : lane === 'reverse'
+              ? sequencer.reverse.steps
+              : sequencer.distance.steps;
 
   const getValue = (step: number): number => {
     if (lane === 'pitch') return sequencer.pitch.offsets[step % sequencer.pitch.offsets.length] ?? 0;
     if (lane === 'expression') return sequencer.expression.velocities[step % sequencer.expression.velocities.length] ?? 0;
     if (lane === 'morph') return sequencer.morph.values[step % sequencer.morph.values.length] ?? 0.5;
     if (lane === 'distance') return sequencer.distance.values[step % sequencer.distance.values.length] ?? 0.5;
+    if (lane === 'slice') return sequencer.slice.values[step % sequencer.slice.values.length] ?? 0;
+    if (lane === 'reverse') return sequencer.reverse.values[step % sequencer.reverse.values.length] ?? 0;
     return sequencer.trigger.pattern[step] ? 1 : 0;
   };
 
@@ -124,6 +129,8 @@ const SeqLane: React.FC<SeqLaneProps> = ({
     expression: 'seq-lane-expr',
     morph: 'seq-lane-morph',
     distance: 'seq-lane-dist',
+    slice: 'seq-lane-slice',
+    reverse: 'seq-lane-reverse',
   };
 
   const laneTitle: Record<LaneKind, string> = {
@@ -132,6 +139,8 @@ const SeqLane: React.FC<SeqLaneProps> = ({
     expression: '● EXPRESSION',
     morph: '● MORPH',
     distance: '● DISTANCE',
+    slice: '● SLICE',
+    reverse: '● REVERSE',
   };
 
   return (
@@ -513,6 +522,73 @@ const SeqLane: React.FC<SeqLaneProps> = ({
                     <div className="morph-label-a">B</div>
                     <div className="morph-label-b">A</div>
                   </div>
+                </div>
+              );
+            }
+
+            if (lane === 'slice') {
+              /* ── Slice bar: 0-15 slice index, bottom-up ── */
+              const sliceVal = Math.round(value);
+              const pct = (sliceVal / 15) * 100;
+
+              return (
+                <div key={step} className="seq-step">
+                  <span className="seq-step-num" style={{ color: '#06b6d4' }}>{isBeatHead ? step + 1 : ''}</span>
+                  <div
+                    className={`seq-vel-bar-wrap${isPlayhead ? ' playing' : ''}${!inRange ? ' inactive' : ''}`}
+                    style={{ touchAction: 'none' } as React.CSSProperties}
+                    onPointerDown={(e) => {
+                      e.preventDefault();
+                      const wrap = e.currentTarget;
+                      wrap.setPointerCapture(e.pointerId);
+                      const startY = e.clientY;
+                      const startNorm = Math.max(0, Math.min(1, sliceVal / 15));
+                      const onMove = (ev: PointerEvent) => {
+                        const rect = wrap.getBoundingClientRect();
+                        const dragRange = rect.height * SEQ_SUBSEQ_DRAG_DISTANCE_FACTOR;
+                        const raw = Math.max(0, Math.min(1, startNorm + (startY - ev.clientY) / dragRange));
+                        const newSlice = Math.round(raw * 15);
+                        onChangeValue?.(step, newSlice);
+                        setDragPopup({ x: ev.clientX, y: ev.clientY, text: `S${newSlice}` });
+                      };
+                      const onUp = () => {
+                        wrap.removeEventListener('pointermove', onMove);
+                        wrap.removeEventListener('pointerup', onUp);
+                        setDragPopup(null);
+                      };
+                      wrap.addEventListener('pointermove', onMove);
+                      wrap.addEventListener('pointerup', onUp);
+                    }}
+                    onDoubleClick={() => onChangeValue?.(step, 0)}
+                  >
+                    <div
+                      className="seq-vel-bar"
+                      style={{
+                        height: `${pct}%`,
+                        background: `rgba(6,182,212,${(0.25 + (sliceVal / 15) * 0.75).toFixed(3)})`,
+                      }}
+                    />
+                    <div className="seq-vel-label">S{sliceVal}</div>
+                  </div>
+                </div>
+              );
+            }
+
+            if (lane === 'reverse') {
+              /* ── Reverse toggle: 0 = forward, 1 = reverse ── */
+              const isReversed = value >= 0.5;
+
+              return (
+                <div key={step} className="seq-step">
+                  <span className="seq-step-num" style={{ color: '#f472b6' }}>{isBeatHead ? step + 1 : ''}</span>
+                  <button
+                    type="button"
+                    className={`seq-step-cell${isReversed ? ' active' : ''}${isPlayhead ? ' playing' : ''}${!inRange ? ' inactive' : ''}`}
+                    style={{ '--sc': '#f472b6', touchAction: 'none', fontSize: '0.65rem' } as React.CSSProperties}
+                    onClick={() => inRange ? onChangeValue?.(step, isReversed ? 0 : 1) : undefined}
+                  >
+                    {isReversed ? '\u25c0' : '\u25b6'}
+                  </button>
                 </div>
               );
             }

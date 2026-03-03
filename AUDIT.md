@@ -1,730 +1,387 @@
-# Kessho iOS/Web Parity Audit Checklist
+# Kessho Codebase Tech Debt Audit
 
-This document provides a comprehensive checklist for auditing iOS/Web feature parity.
-Use this document systematically when making changes to either platform.
-
----
-
-## Table of Contents
-1. [Slider State Properties](#1-slider-state-properties)
-2. [Audio Sources](#2-audio-sources)
-3. [Audio Processors](#3-audio-processors)
-4. [RNG Usage Points](#4-rng-usage-points)
-5. [UI Controls](#5-ui-controls)
-6. [Inter-System Dependencies](#6-inter-system-dependencies)
-7. [Preset & State Management](#7-preset--state-management)
-8. [Timing & Scheduling](#8-timing--scheduling)
+**Date:** 2025-03-03  
+**Codebase size:** ~50,070 lines (TS/TSX/CSS) across ~55 files  
+**Scope:** Repeating patterns, duplication, structural risks, efficiency opportunities
 
 ---
 
-## 1. Slider State Properties
+## Executive Summary
 
-Reference files:
-- Web: `src/ui/state.ts` (SliderState interface, QUANTIZATION object)
-- iOS: `KesshoiOS/Kessho/State/SliderState.swift`
+The codebase has grown to 50k lines with **no state management**, **no component decomposition**, and **a flat 667-field state type**. Three god-objects — `App.tsx` (6,651 lines), `engine.ts` (4,129 lines), `drumSynth.ts` (3,054 lines) — contain 13,834 lines, or **28% of the entire codebase**. Repeating per-voice/per-lane patterns account for an estimated **2,500–3,000 lines of pure duplication** that could be eliminated through data-driven abstractions.
 
-### 1.1 Master Mixer
+The top 5 systemic risks, in order of severity:
 
-| Property | Type | Min | Max | Step | Default | iOS ✓ |
-|----------|------|-----|-----|------|---------|-------|
-| `masterVolume` | Float | 0 | 1 | 0.01 | 0.7 | ☐ |
-| `synthLevel` | Float | 0 | 1 | 0.01 | 0.6 | ☐ |
-| `granularLevel` | Float | 0 | 2 | 0.01 | 0.4 | ☐ |
-| `synthReverbSend` | Float | 0 | 1 | 0.01 | 0.7 | ☐ |
-| `granularReverbSend` | Float | 0 | 1 | 0.01 | 0.8 | ☐ |
-| `leadReverbSend` | Float | 0 | 1 | 0.01 | 0.5 | ☐ |
-| `leadDelayReverbSend` | Float | 0 | 1 | 0.01 | 0.4 | ☐ |
-| `reverbLevel` | Float | 0 | 2 | 0.01 | 1.0 | ☐ |
-
-### 1.2 Global Settings
-
-| Property | Type | Values/Range | Default | iOS ✓ |
-|----------|------|--------------|---------|-------|
-| `seedWindow` | String | 'hour', 'day' | 'hour' | ☐ |
-| `randomness` | Float | 0-1 | 0.5 | ☐ |
-| `rootNote` | Int | 0-11 (C=0...B=11) | 4 (E) | ☐ |
-
-### 1.3 Circle of Fifths Drift
-
-| Property | Type | Values/Range | Default | iOS ✓ |
-|----------|------|--------------|---------|-------|
-| `cofDriftEnabled` | Bool | true/false | false | ☐ |
-| `cofDriftRate` | Int | 1-8 phrases | 2 | ☐ |
-| `cofDriftDirection` | String | 'cw', 'ccw', 'random' | 'cw' | ☐ |
-| `cofDriftRange` | Int | 1-6 steps | 3 | ☐ |
-
-### 1.4 Harmony
-
-| Property | Type | Values/Range | Default | iOS ✓ |
-|----------|------|--------------|---------|-------|
-| `scaleMode` | String | 'auto', 'manual' | 'auto' | ☐ |
-| `manualScale` | String | Scale family name | 'Major (Ionian)' | ☐ |
-| `tension` | Float | 0-1 | 0.3 | ☐ |
-| `chordRate` | Int | 8-64 bars | 32 | ☐ |
-| `voicingSpread` | Float | 0-1 | 0.5 | ☐ |
-
-### 1.5 Synth Pad
-
-| Property | Type | Min | Max | Step | Default | iOS ✓ |
-|----------|------|-----|-----|------|---------|-------|
-| `waveSpread` | Float | 0 | 30 | 0.5 | 4 | ☐ |
-| `detune` | Float | 0 | 25 | 1 | 8 | ☐ |
-| `synthAttack` | Float | 0.01 | 16 | 0.01 | 6.0 | ☐ |
-| `synthDecay` | Float | 0.01 | 8 | 0.01 | 1.0 | ☐ |
-| `synthSustain` | Float | 0 | 1 | 0.01 | 0.8 | ☐ |
-| `synthRelease` | Float | 0.01 | 30 | 0.01 | 12.0 | ☐ |
-| `synthVoiceMask` | Int | 1 | 63 | 1 | 63 | ☐ |
-| `synthOctave` | Int | -2 | 2 | 1 | 0 | ☐ |
-
-### 1.6 Timbre
-
-| Property | Type | Min | Max | Step | Default | iOS ✓ |
-|----------|------|-----|-----|------|---------|-------|
-| `hardness` | Float | 0 | 1 | 0.01 | 0.3 | ☐ |
-| `oscBrightness` | Int | 0 | 3 | 1 | 2 | ☐ |
-| `filterType` | String | lowpass/band/high/notch | 'lowpass' | ☐ |
-| `filterCutoffMin` | Float | 40 | 8000 | 10 | 400 | ☐ |
-| `filterCutoffMax` | Float | 40 | 8000 | 10 | 3000 | ☐ |
-| `filterModSpeed` | Float | 0 | 16 | 0.5 | 2 | ☐ |
-| `filterResonance` | Float | 0 | 1 | 0.01 | 0.2 | ☐ |
-| `filterQ` | Float | 0.1 | 12 | 0.1 | 1.0 | ☐ |
-| `warmth` | Float | 0 | 1 | 0.01 | 0.4 | ☐ |
-| `presence` | Float | 0 | 1 | 0.01 | 0.3 | ☐ |
-| `airNoise` | Float | 0 | 1 | 0.01 | 0.15 | ☐ |
-
-### 1.7 Reverb
-
-| Property | Type | Values/Range | Default | iOS ✓ |
-|----------|------|--------------|---------|-------|
-| `reverbEngine` | String | 'algorithmic', 'convolution' | 'algorithmic' | ☐ |
-| `reverbType` | String | 'plate', 'hall', 'cathedral', 'darkHall' | 'cathedral' | ☐ |
-| `reverbDecay` | Float | 0-1 | 0.9 | ☐ |
-| `reverbSize` | Float | 0.5-3 | 2.0 | ☐ |
-| `reverbDiffusion` | Float | 0-1 | 1.0 | ☐ |
-| `reverbModulation` | Float | 0-1 | 0.4 | ☐ |
-| `predelay` | Float | 0-100 | 60 | ☐ |
-| `damping` | Float | 0-1 | 0.2 | ☐ |
-| `width` | Float | 0-1 | 0.85 | ☐ |
-
-### 1.8 Granular
-
-| Property | Type | Min | Max | Step | Default | iOS ✓ |
-|----------|------|-----|-----|------|---------|-------|
-| `granularEnabled` | Bool | - | - | - | true | ☐ |
-| `grainProbability` | Float | 0 | 1 | 0.01 | 0.8 | ☐ |
-| `maxGrains` | Int | 0 | 128 | 1 | 64 | ☐ |
-| `grainSizeMin` | Int | 5 | 60 | 1 | 20 | ☐ |
-| `grainSizeMax` | Int | 20 | 200 | 1 | 80 | ☐ |
-| `density` | Int | 5 | 80 | 1 | 25 | ☐ |
-| `spray` | Int | 0 | 600 | 5 | 200 | ☐ |
-| `jitter` | Int | 0 | 30 | 1 | 10 | ☐ |
-| `pitchSpread` | Int | 0 | 12 | 1 | 3 | ☐ |
-| `stereoSpread` | Float | 0 | 1 | 0.01 | 0.6 | ☐ |
-| `feedback` | Float | 0 | 0.35 | 0.01 | 0.1 | ☐ |
-| `wetHPF` | Float | 200 | 3000 | 50 | 500 | ☐ |
-| `wetLPF` | Float | 3000 | 12000 | 200 | 8000 | ☐ |
-| `grainPitchMode` | String | 'random', 'harmonic' | 'harmonic' | ☐ |
-
-### 1.9 Lead Synth
-
-| Property | Type | Min | Max | Step | Default | iOS ✓ |
-|----------|------|-----|-----|------|---------|-------|
-| `leadEnabled` | Bool | - | - | - | false | ☐ |
-| `leadLevel` | Float | 0 | 1 | 0.01 | 0.4 | ☐ |
-| `leadAttack` | Float | 0.001 | 2 | 0.001 | 0.01 | ☐ |
-| `leadDecay` | Float | 0.01 | 4 | 0.01 | 0.8 | ☐ |
-| `leadSustain` | Float | 0 | 1 | 0.01 | 0.3 | ☐ |
-| `leadRelease` | Float | 0.01 | 8 | 0.01 | 2.0 | ☐ |
-| `leadDensity` | Float | 0.1 | 12 | 0.1 | 0.5 | ☐ |
-| `leadOctave` | Int | -1 | 2 | 1 | 1 | ☐ |
-| `leadOctaveRange` | Int | 1 | 4 | 1 | 2 | ☐ |
-
-### 1.10 Lead Expression (Min/Max Ranges)
-
-| Property | Min | Max | Step | Default Min | Default Max | iOS ✓ |
-|----------|-----|-----|------|-------------|-------------|-------|
-| `leadDelayTime` | 0 | 1000 | 10 | 375 | 375 | ☐ |
-| `leadDelayFeedback` | 0 | 0.8 | 0.01 | 0.4 | 0.4 | ☐ |
-| `leadDelayMix` | 0 | 1 | 0.01 | 0.35 | 0.35 | ☐ |
-| `leadTimbre` | 0 | 1 | 0.01 | 0.2 | 0.6 | ☐ |
-| `leadVibratoDepth` | 0 | 1 | 0.01 | 0 | 0 | ☐ |
-| `leadVibratoRate` | 0 | 1 | 0.01 | 0 | 0 | ☐ |
-| `leadGlide` | 0 | 1 | 0.01 | 0 | 0 | ☐ |
-
-### 1.11 Euclidean Sequencer
-
-| Property | Type | Min | Max | Default | iOS ✓ |
-|----------|------|-----|-----|---------|-------|
-| `synthEuclideanMasterEnabled` | Bool | - | - | false | ☐ |
-| `synthEuclideanTempo` | Float | 0.25 | 12 | 1 | ☐ |
-
-**Per Lane (lanes 1-4):**
-
-| Property | Type | Min | Max | Default (L1) | iOS ✓ |
-|----------|------|-----|-----|--------------|-------|
-| `synthEuclid[N]Enabled` | Bool | - | - | L1: true, L2-4: false | ☐ |
-| `synthEuclid[N]Preset` | String | - | - | L1: 'lancaran', L2: 'kotekan', etc | ☐ |
-| `synthEuclid[N]Steps` | Int | 4 | 32 | L1: 16 | ☐ |
-| `synthEuclid[N]Hits` | Int | 1 | 16 | L1: 4 | ☐ |
-| `synthEuclid[N]Rotation` | Int | 0 | 31 | L1: 0 | ☐ |
-| `synthEuclid[N]NoteMin` | Int | 36 | 96 | L1: 64 | ☐ |
-| `synthEuclid[N]NoteMax` | Int | 36 | 96 | L1: 76 | ☐ |
-| `synthEuclid[N]Level` | Float | 0 | 1 | L1: 0.8 | ☐ |
-
-### 1.12 Ocean Waves
-
-| Property | Type | Min | Max | Step | Default | iOS ✓ |
-|----------|------|-----|-----|------|---------|-------|
-| `oceanSampleEnabled` | Bool | - | - | - | false | ☐ |
-| `oceanSampleLevel` | Float | 0 | 1 | 0.01 | 0.5 | ☐ |
-| `oceanWaveSynthEnabled` | Bool | - | - | - | false | ☐ |
-| `oceanWaveSynthLevel` | Float | 0 | 1 | 0.01 | 0.4 | ☐ |
-| `oceanFilterType` | String | - | - | - | 'lowpass' | ☐ |
-| `oceanFilterCutoff` | Float | 40 | 12000 | 10 | 8000 | ☐ |
-| `oceanFilterResonance` | Float | 0 | 1 | 0.01 | 0.1 | ☐ |
-| `oceanDurationMin` | Float | 2 | 15 | 0.5 | 4 | ☐ |
-| `oceanDurationMax` | Float | 2 | 15 | 0.5 | 10 | ☐ |
-| `oceanIntervalMin` | Float | 3 | 20 | 0.5 | 5 | ☐ |
-| `oceanIntervalMax` | Float | 3 | 20 | 0.5 | 12 | ☐ |
-| `oceanFoamMin` | Float | 0 | 1 | 0.01 | 0.2 | ☐ |
-| `oceanFoamMax` | Float | 0 | 1 | 0.01 | 0.5 | ☐ |
-| `oceanDepthMin` | Float | 0 | 1 | 0.01 | 0.3 | ☐ |
-| `oceanDepthMax` | Float | 0 | 1 | 0.01 | 0.7 | ☐ |
-
-### 1.13 Random Walk
-
-| Property | Type | Min | Max | Step | Default | iOS ✓ |
-|----------|------|-----|-----|------|---------|-------|
-| `randomWalkSpeed` | Float | 0.1 | 5 | 0.1 | 1.0 | ☐ |
+| # | Risk | Lines Affected | Impact |
+|---|------|---------------|--------|
+| 1 | **Flat SliderState with 667 fields** | All files | Every new param requires edits in 5+ places; `as number` casts everywhere |
+| 2 | **App.tsx god component** | 6,651 | All state, all callbacks, all routing in one file; 187 hooks, 64 useState |
+| 3 | **Per-voice copy-paste** (7 drum, 4 looper, 4 euclid lanes) | ~3,000 | Identical blocks repeated with only prefix changes |
+| 4 | **No centralized preset loading** | ~10 call sites | Same 20-line migrate+normalize+merge sequence in 10+ places |
+| 5 | **Dual Euclidean schedulers** | ~550 lines | 80% structural clone in engine.ts |
 
 ---
 
-## 2. Audio Sources
+## 1. The Flat SliderState Problem (Critical)
 
-### 2.1 Synth Pad Voices
+**File:** `src/ui/state.ts` — 2,923 lines  
+**SliderState:** ~667 individually-named fields
 
-| Feature | Web Implementation | iOS Implementation | Parity ✓ |
-|---------|-------------------|-------------------|----------|
-| Voice count | 6 polyphonic | - | ☐ |
-| Oscillator types | sine, triangle, 2x saw | - | ☐ |
-| Noise generator | White noise (optional) | - | ☐ |
-| Filter per voice | BiquadFilter | - | ☐ |
-| Warmth filter | Low shelf | - | ☐ |
-| Presence filter | Peaking EQ | - | ☐ |
-| Saturation | WaveShaper | - | ☐ |
-| Voice masking | Binary mask (1-63) | - | ☐ |
-| Octave offset | -2 to +2 | - | ☐ |
+The entire app's parameter space is a single flat `Record`-like type where every drum voice, looper voice, and sequencer lane is expanded into uniquely-named fields:
 
-### 2.2 Lead Synth
+```
+drumSubFreq, drumSubDecay, drumSubAttack, drumSubLevel, drumSubVariation, drumSubDistance...
+drumKickFreq, drumKickDecay, drumKickAttack, drumKickLevel, drumKickVariation, drumKickDistance...
+drumClickFreq, drumClickDecay... (×7 voices = ~160 fields)
 
-| Feature | Web Implementation | iOS Implementation | Parity ✓ |
-|---------|-------------------|-------------------|----------|
-| Timbre control | Bell/Rhodes blend | - | ☐ |
-| Vibrato | Depth + Rate | - | ☐ |
-| Glide | Portamento | - | ☐ |
-| Ping-pong delay | L/R stereo | - | ☐ |
-| Euclidean sequencer | 4 lanes | - | ☐ |
-| Note scheduling | Deterministic RNG | - | ☐ |
+looperV1Blur, looperV1Spray, looperV1GrainSize, looperV1Pitch...
+looperV2Blur, looperV2Spray... (×4 voices = ~88 fields)
 
-### 2.3 Granular Processor
+drumEuclid1Steps, drumEuclid1Fills, drumEuclid1Rotate...
+drumEuclid2Steps, drumEuclid2Fills... (×4 lanes × 3 sequencers = ~120 fields)
+```
 
-| Feature | Web Implementation | iOS Implementation | Parity ✓ |
-|---------|-------------------|-------------------|----------|
-| Max grains | 0-128 | - | ☐ |
-| Grain size range | 5-200ms | - | ☐ |
-| Spray/Jitter | Random position scatter | - | ☐ |
-| Pitch modes | Random / Harmonic | - | ☐ |
-| Feedback | 0-0.35 | - | ☐ |
-| Deterministic RNG | Pre-seeded sequence | - | ☐ |
+### Why this is the root cause of most debt
 
-### 2.4 Ocean Synth
+- **334 `as number`/`as string` casts** across the codebase — because `SliderState[key]` returns a `string | number | boolean` union
+- **Every dynamic key access requires a cast**: `state[paramKey] as number`
+- **Adding a new param** requires: (1) add to type, (2) add to DEFAULT_STATE, (3) add to UI, (4) add to engine.applyParams, (5) add to preset migration if renaming — **5+ touch-points per field**
+- **Morph interpolation** must iterate all 667 keys to lerp between presets
+- **Preset serialization** dumps all 667 fields into JSON even if only 20 differ from defaults
 
-| Feature | Web Implementation | iOS Implementation | Parity ✓ |
-|---------|-------------------|-------------------|----------|
-| Wave duration | Min/Max range | Min/Max methods | ☐ |
-| Wave interval | Min/Max range | Min/Max methods | ☐ |
-| Foam intensity | Min/Max range | Min/Max methods | ☐ |
-| Depth parameter | Min/Max range | Min/Max methods | ☐ |
-| Filter | Shared lowpass | - | ☐ |
+### Suggested structure
 
-### 2.5 Ocean Sample Player
+```typescript
+// Instead of 160 flat drumXxx fields:
+interface DrumVoiceState {
+  freq: number; decay: number; attack: number; level: number;
+  variation: number; distance: number; /* ...12-20 params */ 
+}
+interface DrumState {
+  voices: Record<DrumVoice, DrumVoiceState>;  // 7 voices
+  delay: DrumDelayState;
+  euclid: EuclidLaneState[];  // 4 lanes
+}
+```
 
-| Feature | Web Implementation | iOS Implementation | Parity ✓ |
-|---------|-------------------|-------------------|----------|
-| Sample loading | Async buffer | - | ☐ |
-| Looping | Seamless loop | - | ☐ |
-| Level control | Gain node | - | ☐ |
+This would eliminate ~300 duplicate field definitions, all `as number` casts for drum params, and the 7-way if/else chains that map key prefixes to voice names.
 
 ---
 
-## 3. Audio Processors
+## 2. App.tsx God Component (Critical)
 
-### 3.1 Reverb (Algorithmic / FDN)
+**6,651 lines | 187 hooks | 64 useState | 59 useRef | ~42 useEffect**
 
-| Feature | Web Implementation | iOS Implementation | Parity ✓ |
-|---------|-------------------|-------------------|----------|
-| Engine type toggle | algorithmic/convolution | - | ☐ |
-| Presets | plate, hall, cathedral, darkHall | + iOS-only types | ☐ |
-| Decay | 0-1 | - | ☐ |
-| Size | 0.5-3 | - | ☐ |
-| Diffusion | 0-1 | - | ☐ |
-| Modulation | 0-1 | - | ☐ |
-| Predelay | 0-100ms | - | ☐ |
-| Damping | 0-1 | - | ☐ |
-| Width | 0-1 (stereo) | - | ☐ |
+Everything lives in one React component: audio engine management, preset loading, morph system, recording (WAV encoding, stem export, zip archive), journey mode orchestration, slider mode cycling, random walk animation, UI rendering.
 
-### 3.2 Filter (Per Voice)
+### Hook census
 
-| Feature | Web Implementation | iOS Implementation | Parity ✓ |
-|---------|-------------------|-------------------|----------|
-| Type | lowpass/bandpass/highpass/notch | - | ☐ |
-| Cutoff range | Min/Max with modulation | - | ☐ |
-| Mod speed | 0-16 Hz | - | ☐ |
-| Resonance | 0-1 | - | ☐ |
-| Q | 0.1-12 | - | ☐ |
-| Random walk modulation | System random (intentional) | System random | ☐ |
+| Hook | Count |
+|------|------:|
+| useState | 64 |
+| useRef | 59 |
+| useEffect | ~42 |
+| useCallback | ~16 (several are 170–290 lines) |
+| useMemo | 6 |
 
-### 3.3 Ping-Pong Delay (Lead)
+### Largest callbacks (each should be its own hook or module)
 
-| Feature | Web Implementation | iOS Implementation | Parity ✓ |
-|---------|-------------------|-------------------|----------|
-| Time range | Min/Max per note | - | ☐ |
-| Feedback range | Min/Max per note | - | ☐ |
-| Mix range | Min/Max per note | - | ☐ |
-| Stereo separation | L/R channels | - | ☐ |
+| Callback | Lines | What it does |
+|----------|------:|--------------|
+| `lerpPresets` | ~280 | Interpolates all 667 SliderState fields between A/B presets |
+| `handleSliderChange` | ~290 | Slider value dispatch + drum morph override + pad morph + dual range interpolation |
+| `handleMorphPositionChange` | ~170 | Manual morph application + override blending + CoF drift |
+| `handleCycleSliderMode` | ~170 | Slider mode cycling with drum morph awareness |
+| Auto-cycle morph useEffect | ~260 | 6-phase state machine (hold/entry/playA/morphAB/playB/morphBA) |
 
-### 3.4 Granular Worklet
+### Duplication within App.tsx
 
-| Feature | Web Implementation | iOS Implementation | Parity ✓ |
-|---------|-------------------|-------------------|----------|
-| Worklet-based | AudioWorkletProcessor | AVAudioSourceNode | ☐ |
-| HPF on wet | 200-3000 Hz | - | ☐ |
-| LPF on wet | 3000-12000 Hz | - | ☐ |
-| Deterministic grains | Pre-seeded RNG | Pre-seeded sequence | ☐ |
+| Pattern | Copies | Lines each | Total waste |
+|---------|-------:|----------:|-----------:|
+| Preset load boilerplate (migrate → normalize → merge → preserve USER_PREFERENCE_KEYS → update engine) | 6+ | ~20 | ~120 |
+| Morph dual-range merge block (filter morph keys → merge modes → init random walk) | 3 | ~40 | ~80 |
+| Morph state capture (capture refs for A/B/ranges/modes) | 4 | ~12 | ~36 |
+| Drum voice if/else chain (7 `startsWith` checks to map key → voice) | 4+ | ~14 | ~42 |
+| effectiveA/effectiveB construction (fallback to current state) | 5 | ~5 | ~20 |
+| Inline JSX event handlers (50-line onChange in Slot A/B dropdowns) | 2 | ~50 | ~50 |
+| **Total** | | | **~348 lines** |
 
----
+### Extraction roadmap
 
-## 4. RNG Usage Points
+| Priority | Extract To | Lines Saved |
+|----------|-----------|------------:|
+| P0 | `useMorphSystem()` hook | ~800 |
+| P0 | `useRecording()` hook | ~400 |
+| P0 | `presetUtils.ts` (applyPreset, captureMorphState, applyMorphResult) | ~300 |
+| P1 | `useAudioEngineCallbacks()` hook | ~250 |
+| P1 | `useSliderModes()` hook | ~200 |
+| P1 | `drumVoiceMap.ts` (lookup table replacing if/else chains) | ~60 |
+| P2 | `usePlaybackTimer()` hook | ~80 |
+| P2 | `styles.ts` (extract inline styles) | ~400 |
+| P2 | `useJourneyMode()` hook | ~150 |
 
-### 4.1 Seeded RNG (Deterministic)
-
-These MUST use seeded random for reproducibility:
-
-| Usage | Seed Source | Web Function | iOS Function | Parity ✓ |
-|-------|-------------|--------------|--------------|----------|
-| Phrase selection | UTC bucket + state hash | `createRng()` | `Mulberry32` | ☐ |
-| Chord generation | Phrase seed | `rngFloat()` | `rngFloat()` | ☐ |
-| Lead note scheduling | Lead-specific seed | `createRng('lead')` | `Mulberry32` | ☐ |
-| Granular processor | Per-phrase sequence | `generateRandomSequence()` | `setRandomSequence()` | ☐ |
-| Euclidean lane notes | Lane seed | `createRng('euclidN')` | - | ☐ |
-
-### 4.2 System RNG (Continuous Evolution)
-
-These intentionally use system random for organic variation:
-
-| Usage | Purpose | Web | iOS | Parity ✓ |
-|-------|---------|-----|-----|----------|
-| Filter modulation | Random walk for cutoff | `Math.random()` | `Float.random()` | ☐ |
-| Ocean wave timing | Natural variation | `Math.random()` | `Float.random()` | ☐ |
-| Lead expression per-note | Vibrato/glide variation | Seeded range | Seeded range | ☐ |
-
-### 4.3 Seed Computation
-
-| Feature | Web Implementation | iOS Implementation | Parity ✓ |
-|---------|-------------------|-------------------|----------|
-| UTC bucket | `getUtcBucket(window)` | `getUtcBucket(window)` | ☐ |
-| State hash | `xmur3(stateJson)` | `xmur3(stateJson)` | ☐ |
-| Combined seed | `xmur3(bucket + stateHash)` | Same formula | ☐ |
-| Per-purpose suffix | `createRng('lead')`, etc. | Same pattern | ☐ |
+P0 alone: 6,651 → ~5,150 lines. All priorities: → ~3,100 lines.
 
 ---
 
-## 5. UI Controls
+## 3. Per-Voice Copy-Paste in drumSynth.ts (High)
 
-### 5.1 Main Controls
+**3,054 lines | 7 trigger methods | 6-phase template repeated 7×**
 
-| Control | Web Component | iOS Component | Parity ✓ |
-|---------|--------------|---------------|----------|
-| Master Volume | Slider | Slider | ☐ |
-| Play/Stop | Button | Button | ☐ |
-| Seed Lock | Toggle | Toggle | ☐ |
-| Dice (Randomize) | Button | Button | ☐ |
+Every trigger method (`triggerSub`, `triggerKick`, `triggerClick`, `triggerBeepHi`, `triggerBeepLo`, `triggerNoise`, `triggerMembrane`) follows an identical 6-phase template:
 
-### 5.2 Circle of Fifths
+| Phase | What it does | Lines per voice | Identical? |
+|-------|-------------|----------------:|:----------:|
+| 1. Morph resolution | Check override → S&H → getMorphedParams → notify | ~15 | ✅ Verbatim |
+| 2. Param extraction | `(morphed.drumXxxParam as number) ?? p.drumXxxParam ?? default` | 8–20 | 🟡 Same pattern, different keys |
+| 3. Variation + Distance | computeVariation → sampleSHParam → resolveDistance | ~5–8 | ✅ Verbatim |
+| 4. Node creation | createOscillator/Gain/Filter | 3–15 | ❌ Voice-specific |
+| 5. Envelope | attack > 0.0005 ? linearRamp → expRamp : setValueAtTime → expRamp | varies | ✅ Same pattern ×25 |
+| 6. Routing + cleanup | connect triggerTarget + reverbSend + delaySends → trackTransientNodes | ~8 | ✅ Verbatim |
 
-| Control | Web Component | iOS Component | Parity ✓ |
-|---------|--------------|---------------|----------|
-| Interactive wheel | `CircleOfFifths.tsx` | `CircleOfFifthsView` | ☐ |
-| Root note selection | Click segment | Tap segment | ☐ |
-| Drift enabled toggle | Checkbox | Toggle | ☐ |
-| Drift rate slider | Slider | Slider | ☐ |
-| Drift direction | Radio buttons | Picker | ☐ |
-| Drift range slider | Slider | Slider | ☐ |
-| Current step indicator | Visual highlight | Visual highlight | ☐ |
+### Specific duplication
 
-### 5.3 Harmony Controls
+| Pattern | Instances | Lines saved with helper |
+|---------|----------:|----------------------:|
+| Morph resolution boilerplate (phases 1-2) | 7 | ~105 |
+| Envelope pattern (attack/decay idiom) | ~25 | ~150 |
+| Output routing (connect target + reverb + delay) | 15+ | ~60 |
+| **Total** | | **~315** |
 
-| Control | Web Component | iOS Component | Parity ✓ |
-|---------|--------------|---------------|----------|
-| Root Note picker | CircleOfFifths | Picker (C-B) | ☐ |
-| Scale Mode | Radio (Auto/Manual) | Picker | ☐ |
-| Scale Family | Dropdown | Picker | ☐ |
-| Tension slider | Slider | Slider | ☐ |
-| Chord Rate slider | Slider | Slider | ☐ |
-| Voicing Spread slider | Slider | Slider | ☐ |
+### Helpers that should exist
 
-### 5.4 Preset System
+```
+resolveMorph(voice: DrumVoice): { morphed, morphValue }    // eliminates 105 lines
+applyADEnvelope(param, time, attack, peak, decay): void    // eliminates 150 lines  
+routeOutput(node, voice): void                              // eliminates 60 lines
+```
 
-| Control | Web Component | iOS Component | Parity ✓ |
-|---------|--------------|---------------|----------|
-| Preset list | Dropdown/List | List view | ☐ |
-| Load preset | Button | Tap row | ☐ |
-| Save preset | Button | Button | ☐ |
-| Delete preset | Button | Swipe delete | ☐ |
-| Share (URL) | Button | Share sheet | ☐ |
-| Preset groups | Factory/User | Factory/User | ☐ |
+### Ordering inconsistency (latent bug)
 
-### 5.5 Morph System
+`noise` and `membrane` resolve variation/distance **before** morph params, while the other 5 voices do it **after**. This means morph values don't correctly feed into variation/distance for those two voices.
 
-| Control | Web Component | iOS Component | Parity ✓ |
-|---------|--------------|---------------|----------|
-| Morph slider | 0-100% | 0-100% | ☐ |
-| Manual/Auto toggle | Toggle | Segmented control | ☐ |
-| Play phrases (A/B) | Slider (4-64) | Slider (4-64) | ☐ |
-| Transition phrases | Slider (2-32) | Slider (2-32) | ☐ |
-| Phase indicator | Text/Visual | Phase + countdown | ☐ |
-| Auto-cycle state | Phase enum | `AutoMorphPhase` | ☐ |
+### Hot-path allocation concern
+
+Each trigger creates 3–15 fresh `AudioNode` objects. At 120 BPM with 4 Euclidean lanes at 16th notes = ~32 triggers/sec = **160–320 AudioNode allocations/sec**, all becoming garbage. `Float32Array` for excite/grain buffers is also allocated per trigger in modal and particle modes.
 
 ---
 
-## 6. Inter-System Dependencies
+## 4. engine.ts God Class (High)
 
-### 6.1 Circle of Fifths ↔ Root Note
+**4,129 lines | ~85 private fields | 33 forwarding methods | 640-line applyParams()**
 
-| Dependency | Description | Web | iOS | Parity ✓ |
-|------------|-------------|-----|-----|----------|
-| CoF → rootNote | Clicking CoF updates rootNote | ✓ | - | ☐ |
-| rootNote → CoF | rootNote slider updates CoF highlight | ✓ | - | ☐ |
-| CoF drift → effectiveRoot | Drift modifies effective root | ✓ | - | ☐ |
-| rootNote picker | Alternative to CoF for root selection | - | Picker | ☐ |
+### Signal graph (no abstraction)
 
-### 6.2 Scale System
+80+ `createGain()`, 30+ `createBiquadFilter()`, 100+ `.connect()` calls — all raw imperative code with no graph builder. The full graph includes:
 
-| Dependency | Description | Web | iOS | Parity ✓ |
-|------------|-------------|-----|-----|----------|
-| scaleMode='auto' | Tension controls scale selection | ✓ | - | ☐ |
-| scaleMode='manual' | manualScale directly used | ✓ | - | ☐ |
-| Scale → Harmony | Scale notes determine chord pool | ✓ | - | ☐ |
-| Scale → Lead | Lead notes constrained to scale | ✓ | - | ☐ |
-| Scale → Granular | Harmonic mode uses scale | ✓ | - | ☐ |
+- 6 pad voices (4 oscs + noise → 2 filters → EQ → saturation → ADSR → mixer)
+- Lead path (FM synth → filter → ping-pong delay → reverb send)
+- Drum path (7-voice DrumSynth → pool gains → voice bus → pre-fader → master)
+- Looper path (6 source sends → worklet → 8-tap delay → reverb send)
+- Granular worklet path
+- Ocean worklet + sample path
+- Global reverb worklet → master limiter → destination
 
-### 6.3 Morph System Dependencies
+### Top duplication patterns
 
-| Dependency | Description | Web | iOS | Parity ✓ |
-|------------|-------------|-----|-----|----------|
-| Morph → Seed lock | Morphing locks seed | ✓ | - | ☐ |
-| Morph → State interpolation | All params interpolated | ✓ | - | ☐ |
-| Morph → CoF reset | Morph complete resets CoF step | ✓ | - | ☐ |
-| Auto-cycle → Phase tracking | playingA/morphToB/playingB/morphToA | ✓ | ✓ | ☐ |
-| Phrase boundary → Phase transition | Transitions happen at phrase end | ✓ | - | ☐ |
+| Pattern | Copies | Lines |
+|---------|-------:|------:|
+| **Euclidean schedulers** (synth vs looper) — 80% identical structure | 2 | ~550 total, ~400 shared |
+| **Lead/pad chain creation** (createAudioGraph vs ensureSynthChain) | 2 | ~145 each |
+| **Master/limiter chain** (ensureDrumSynth vs createAudioGraph vs ensureSynthChain) | 3 | ~40 each |
+| **Callback triple-wiring** (setter + wireDrumSynthCallbacks + forwarding) | 15 callbacks × 3 | ~90 |
+| **V1/V2/V3/V4 unrolling** in applyParams (13 arrays of 4 individually-named fields) | 13 | ~50 |
+| **Null-teardown** (null 12 lead chain fields) | 3 | ~36 |
 
-### 6.4 Phrase System Dependencies
+### applyParams() — the 640-line monolith
 
-| Dependency | Description | Web | iOS | Parity ✓ |
-|------------|-------------|-----|-----|----------|
-| PHRASE_LENGTH | 16 seconds | ✓ | ✓ | ☐ |
-| Phrase → Chord | Chords update at phrase boundaries | ✓ | - | ☐ |
-| Phrase → CoF drift | Drift ticks at phrase boundaries | ✓ | - | ☐ |
-| Phrase → Lead scheduling | Lead reseeds per phrase | ✓ | - | ☐ |
-| Phrase → Granular reseed | Granular RNG reseeds per phrase | ✓ | - | ☐ |
-| Phrase → Morph phase | Auto-morph counts phrases | ✓ | - | ☐ |
+Lines 2700–3340 mix: pad LFO math, looper macro computation, delay tap updates, ocean params, reverb params, lead preset loading, saturation curve generation. Should be 8+ focused methods:
 
----
+```
+applyPadParams(), applyLeadParams(), applyLooperParams(), 
+applyDrumParams(), applyReverbParams(), applyOceanParams(),
+applyDelayParams(), applySaturation()
+```
 
-## 7. Preset & State Management
+### Resource management concerns
 
-### 7.1 State Serialization
-
-| Feature | Web Implementation | iOS Implementation | Parity ✓ |
-|---------|-------------------|-------------------|----------|
-| JSON serialization | `serializeState()` | `Codable` | ☐ |
-| URL encoding | `encodeStateToUrl()` | URL encoding | ☐ |
-| URL decoding | `decodeStateFromUrl()` | URL parsing | ☐ |
-| iOS-only reverb mapping | Maps to web types | Accepts iOS types | ☐ |
-
-### 7.2 Preset File Format
-
-| Feature | Web Implementation | iOS Implementation | Parity ✓ |
-|---------|-------------------|-------------------|----------|
-| Format | JSON | JSON | ☐ |
-| Version field | Optional | Optional | ☐ |
-| Name field | Required | Required | ☐ |
-| State object | Full SliderState | Full SliderState | ☐ |
-| Factory presets | `public/presets/` | Bundled | ☐ |
-| User presets | LocalStorage | App Documents | ☐ |
-
-### 7.3 State Quantization
-
-| Feature | Web Implementation | iOS Implementation | Parity ✓ |
-|---------|-------------------|-------------------|----------|
-| Quantization table | `QUANTIZATION` object | Swift equivalent | ☐ |
-| `quantize()` function | Step-based rounding | Same logic | ☐ |
-| `quantizeState()` | Full state quantization | Same logic | ☐ |
+| Issue | Severity |
+|-------|----------|
+| 8 looper delay vibrato oscillators never stopped on `stop()` | Medium |
+| 8-tap delay nodes (delays + gains + panners) not disconnected on `stop()` | Medium |
+| `sliderState` mutated in-place during pad morph override (race condition) | High |
+| Ocean sample fetch has no AbortController | Low |
+| Voice steal `setTimeout` IDs never tracked/cancelled on dispose | Medium |
 
 ---
 
-## 8. Timing & Scheduling
+## 5. Preset System Fragmentation (Medium-High)
 
-### 8.1 Phrase Timing
+### No centralized loader
 
-| Constant | Value | Purpose | iOS ✓ |
-|----------|-------|---------|-------|
-| PHRASE_LENGTH | 16 seconds | Duration of one phrase | ☐ |
-| Bars per phrase | 4 | Musical structure | ☐ |
-| Beats per bar | 4 | Musical structure | ☐ |
-| Seconds per beat | 1 | Tempo (60 BPM) | ☐ |
+The sequence `migratePreset()` → `normalizePresetForWeb()` → `{ ...DEFAULT_STATE, ...state }` → preserve `USER_PREFERENCE_KEYS` → `audioEngine.updateParams()` → `audioEngine.resetCofDrift()` → `applyDualRangesFromPreset()` appears in **10+ locations** across App.tsx:
 
-### 8.2 Lead Euclidean Timing
+- `handleLoadPresetFromList` (morph load path)
+- `handleLoadPreset` (file import)
+- Slot A dropdown onChange (inline JSX)
+- Slot B dropdown onChange (inline JSX)
+- `CloudPresets` onLoadPreset
+- `handleJourneyLoadPreset`
+- URL preset load on mount
+- Three more conditional paths
 
-| Constant | Calculation | Purpose | iOS ✓ |
-|----------|-------------|---------|-------|
-| Step duration | PHRASE_LENGTH / tempo / steps | Per-step timing | ☐ |
-| Lane independence | 4 concurrent lanes | Polyrhythm | ☐ |
+Each copy is 15–25 lines. A single `applyPreset(raw, options?)` function would fix this.
 
-### 8.3 Scheduled Events
+### drumPresets.ts — 3,701 lines of inline data
 
-| Event | Trigger | Web Implementation | iOS Implementation | Parity ✓ |
-|-------|---------|-------------------|-------------------|----------|
-| Phrase update | Every 16s | `setTimeout` | Timer | ☐ |
-| Chord change | chordRate bars | Within phrase handler | - | ☐ |
-| Lead note | Euclidean pattern | `setTimeout` | Timer | ☐ |
-| Filter mod | 60Hz | `setInterval` | Timer | ☐ |
-| CoF drift | driftRate phrases | Phrase counter | - | ☐ |
-| Morph auto-cycle | Phrase boundaries | Phrase handler | Timer | ☐ |
+Preset data hardcoded as TypeScript objects. The Lead4opFM presets are already externalized to JSON files in `public/presets/Lead4opFM/`. drumPresets should follow the same pattern.
 
----
+### Backup files shipping in production
 
-## Audit Procedure
+- `lead4opfm_backup_pre_digitone.ts` — 823 lines
+- `lead4opfm_backup_pre_harmonics.ts` — 823 lines
 
-### Before Making Changes
-
-1. **Identify affected systems**: Which sliders, audio sources, or inter-dependencies are affected?
-2. **Check both platforms**: Read relevant code in both web and iOS
-3. **Note current behavior**: Document what currently exists
-
-### During Implementation
-
-4. **Match ranges exactly**: Use QUANTIZATION values from web as source of truth
-5. **Match RNG usage**: Ensure seeded vs system random is consistent
-6. **Match timing**: Use same constants (PHRASE_LENGTH, etc.)
-7. **Test UI controls**: Ensure all exposed parameters have matching UI
-
-### After Implementation
-
-8. **Cross-reference this checklist**: Mark off verified items
-9. **Test with same seed**: Verify deterministic behavior matches
-10. **Test morph/preset**: Load same preset on both platforms
+1,646 lines of dead code that should be in version control history, not in the source tree.
 
 ---
 
-## 9. Known Issues & Discrepancies
+## 6. Callback Registration Pattern (Medium)
 
-### 9.1 Critical Parity Issues (Must Fix)
+**engine.ts has 15 `setXxxCallback()` methods**, each following:
 
-| Issue | File | Line | Description | Status |
-|-------|------|------|-------------|--------|
-| ~~Harmonic pitchSpread ignored~~ | ~~GranularProcessor.swift~~ | ~~~285~~ | ~~iOS ignores `pitchSpread` in harmonic mode~~ Fixed: Now limits intervals by `(pitchSpread/12) * intervals.length` | ☑ FIXED |
-| ~~Ocean RNG not seeded~~ | ~~OceanSynth.swift~~ | ~~95~~ | ~~iOS uses `Float.random()`~~ Fixed: Added `setSeed()` with `mulberry32` RNG, called from AudioEngine with `currentSeed` | ☑ FIXED |
-| ~~`.eco` quality undefined~~ | ~~ReverbProcessor.swift~~ | ~~295,357,462,501,537~~ | ~~Code uses `.eco` but enum only has `.lite` - compile error~~ | ✅ FIXED |
-| ~~`rngState` never declared~~ | ~~OceanSynth.swift~~ | ~~281~~ | ~~`setSeed()` references `self.rngState` but property doesn't exist~~ | ✅ FIXED |
-| ~~Feedback lacks soft-clip~~ | ~~GranularProcessor.swift~~ | ~~~235~~ | ~~iOS uses raw `feedback * mono`~~ Fixed: Now uses `tanh(feedbackMono * feedback)` saturation | ☑ FIXED |
-| ~~Jitter applied differently~~ | ~~GranularProcessor.swift~~ | ~~~180~~ | ~~iOS applies jitter as amplitude~~ Fixed: Now applies jitter as position offset | ☑ FIXED |
+```typescript
+setFooCallback(cb: (args) => void) {
+  this.onFoo = cb;
+  if (this.drumSynth) this.drumSynth.onFoo = cb;
+}
+```
 
-### 9.2 Medium Parity Issues (Should Fix)
+Then `wireDrumSynthCallbacks()` re-applies all 15 whenever DrumSynth is recreated. Every new callback requires edits in 3 places:
 
-| Issue | File | Line | Description | Status |
-|-------|------|------|-------------|--------|
-| LeadSynth sustain zero-duration | LeadSynth.swift | 234-235 | ~~Sustain stage immediately transitions to release.~~ Fixed: added `hold` property with countdown timer. Both platforms now use configurable `leadHold` parameter (default 0.5s) | ☑ FIXED |
-| ~~Reverb decay ignores preset~~ | ~~ReverbProcessor.swift~~ | ~~339~~ | ~~iOS: `0.85 + decay * 0.14`~~ Fixed: Added `baseDecay`/`userDecay` separation with web formula `baseDecay + (1-baseDecay) * userDecay * 0.9` | ☑ FIXED |
-| Lite mode uses AVAudioUnitReverb | ReverbProcessor.swift | - | **INTENTIONAL**: Lite mode uses Apple's built-in reverb for battery efficiency. Web uses custom FDN; iOS Ultra/Balanced modes use matching FDN. | ☐ WON'T FIX |
+1. Add field `private onFoo`
+2. Add `setFooCallback()` method  
+3. Add line in `wireDrumSynthCallbacks()`
 
-### 9.3 Dead/Unused Code (Should Remove)
-
-| Code | File | Line | Type | Priority |
-|------|------|------|------|----------|
-| ~~`pitchVariation` property~~ | ~~GranularProcessor.swift~~ | ~~51~~ | ~~Unused property~~ | ✅ REMOVED |
-| ~~`positionSpread` property~~ | ~~GranularProcessor.swift~~ | ~~52~~ | ~~Unused property~~ | ✅ REMOVED |
-| ~~`onEuclideanTick()`~~ | ~~AudioEngine.swift~~ | ~~872~~ | ~~Empty legacy method~~ | ✅ REMOVED |
-| ~~`tick()` methods~~ | ~~EuclideanRhythm.swift~~ | ~~187,226~~ | ~~Replaced by pre-scheduling~~ | ✅ REMOVED |
-| ~~`updateFromState()`~~ | ~~EuclideanRhythm.swift~~ | ~~136~~ | ~~Never called~~ | ✅ REMOVED |
-| ~~`updateCircleOfFifthsDrift()`~~ | ~~Harmony.swift~~ | ~~58~~ | ~~Duplicate of class method~~ | ✅ REMOVED |
-| ~~`getCurrentPhraseBoundary()`~~ | ~~Harmony.swift~~ | ~~109~~ | ~~Never called~~ | ✅ REMOVED |
-| ~~`shortestPath()`~~ | ~~CircleOfFifths.swift~~ | ~~109~~ | ~~Never called~~ | ✅ REMOVED |
-| ~~`cofPositionToAngle()`~~ | ~~CircleOfFifths.swift~~ | ~~139~~ | ~~Never called~~ | ✅ REMOVED |
-| ~~`semitoneToNoteName()`~~ | ~~CircleOfFifths.swift~~ | ~~144~~ | ~~Never called~~ | ✅ REMOVED |
-| ~~Backwards compat methods~~ | ~~OceanSynth.swift~~ | ~~290-299~~ | ~~6 unused methods~~ | ✅ REMOVED |
-| ~~`envelope2` property~~ | ~~LeadSynth.swift~~ | ~~23~~ | ~~Never read~~ | ✅ REMOVED |
-| ~~`octaveShift`/`octaveRange`~~ | ~~LeadSynth.swift~~ | - | ~~Set but never read~~ | ✅ REMOVED |
-| ~~Duplicate `ReverbPreset` enum~~ | ~~ReverbProcessor.swift~~ | ~~163-175~~ | ~~Redundant with `ReverbType`~~ Renamed to `FDNPresetConfig` for clarity | ✅ RENAMED |
-
-### 9.4 Performance Issues (Audio Thread Safety)
-
-| Issue | File | Severity | Description | Fix |
-|-------|------|----------|-------------|-----|
-| ~~Array mutation in audio~~ | ~~GranularProcessor.swift~~ | ~~🔴 HIGH~~ | ~~`grains.append()` / `remove(at:)` allocates memory~~ | ✅ FIXED: Pool-based allocation |
-| ~~Array allocation in callback~~ | ~~AudioEngine.swift~~ | ~~🔴 HIGH~~ | ~~Creates `[Float]` array every ~100ms in tap~~ | ✅ FIXED: Pre-allocated buffer |
-| ~~Float.random() on audio thread~~ | ~~SynthVoice.swift~~ | ~~🔴 HIGH~~ | ~~System random may lock~~ | ✅ FIXED: Inline LCG PRNG |
-| ~~Struct copying in loop~~ | ~~GranularProcessor.swift~~ | ~~🟡 MED~~ | ~~Copies Grain struct per sample per grain~~ | ✅ FIXED: `withUnsafeMutableBufferPointer` |
-| ~~Redundant filter calc~~ | ~~SynthVoice.swift~~ | ~~🟡 MED~~ | ~~Computes coefficients every sample~~ | ✅ FIXED: Cached when params change |
-| ~~Timer on main thread~~ | ~~AudioEngine.swift~~ | ~~🟡 MED~~ | ~~Note scheduling jitter from UI blocking~~ | ✅ FIXED: Dedicated `DispatchSourceTimer` queue |
-| ~~Multiple sin() calls~~ | ~~LeadSynth.swift~~ | ~~🟡 MED~~ | ~~6 sin() calls per sample~~ | ✅ FIXED: Sine lookup table |
-| ~~Division per sample~~ | ~~All synths~~ | ~~🟢 LOW~~ | ~~`freq / sampleRate` computed per sample~~ | ✅ FIXED: Pre-computed `invSampleRate` |
+**Fix:** A single `callbacks: EngineCallbacks` object with one setter + one wiring method.
 
 ---
 
-## 10. Comprehensive Parity Audit (February 2026)
+## 7. Prop Drilling (Medium)
 
-### 10.1 SynthVoice Parity
+No state management library. Pure prop drilling from `App.tsx`:
 
-| Feature | Web | iOS | Status |
-|---------|-----|-----|--------|
-| 4 oscillators (sine/tri/saw/saw) | ✓ | ✓ | ✅ Match |
-| Oscillator mix by brightness | ✓ | ✓ | ✅ Match |
-| Detune calculation (cents→ratio) | ✓ | ✓ | ✅ Match |
-| Filter (BiquadFilter vs SVF) | BiquadFilter | Custom SVF | ⚠️ Different impl |
-| Warmth (low shelf) | Low shelf 250Hz | 1-pole approx | ⚠️ Minor |
-| Presence (peaking EQ) | Peaking 3kHz | Bandpass approx | ⚠️ Minor |
-| Saturation (tanh) | ✓ | ✓ | ✅ Match |
-| Oversample on saturation | 2x | None | ⚠️ Minor aliasing |
-| ~~Envelope attack~~ | ~~Exponential~~ | ~~Linear~~ | ✅ FIXED: Exponential |
-| Air noise | Pre-computed buffer | Inline LCG | ⚠️ Minor |
+| Route | Props Passed |
+|-------|------------:|
+| App → SynthPage | 31 |
+| App → DrumPage | 26 |
+| App → LooperPage | 24 |
+| App → SnowflakeUI | 16 |
+| DrumPage → DrumPanel → VoiceCard → VoiceCardAdvanced | 4 levels deep |
 
-### 10.2 GranularProcessor Parity
+8 props appear identically in every page component: `state`, `onParamChange`, `onSelectChange`, `sliderProps`, `SliderComponent`, `togglePanel`, `expandedPanels`, `isMobile`.
 
-| Feature | Web | iOS | Status |
-|---------|-----|-----|--------|
-| Grain pool allocation | ✓ | ✓ | ✅ Match |
-| Density/probability | ✓ | ✓ | ✅ Match |
-| Pitch modes (random/harmonic) | ✓ | ✓ | ✅ Match |
-| pitchSpread limits intervals | ✓ | ✓ | ✅ Match |
-| Hann window lookup | ✓ | ✓ | ✅ Match |
-| Pan lookup table | ✓ | ✓ | ✅ Match |
-| tanh feedback saturation | ✓ | ✓ | ✅ Match |
-| Pre-seeded RNG | ✓ | ✓ | ✅ Match |
-| ~~**Spray**~~ | ~~Position offset~~ | ~~**Timing offset**~~ | ✅ FIXED: Position offset |
-| ~~**Jitter**~~ | ~~One-time at spawn~~ | ~~**Per-sample recalc**~~ | ✅ FIXED: One-time at spawn |
-| ~~**Feedback architecture**~~ | ~~Into input buffer~~ | ~~**Separate buffer**~~ | ✅ FIXED: Into same buffer |
-| Wet HPF/LPF | None | Has filters | ⚠️ Minor (extra) |
-
-### 10.3 LeadSynth Parity
-
-| Feature | Web | iOS | Status |
-|---------|-----|-----|--------|
-| FM architecture (2 carriers, 4 mods) | ✓ | ✓ | ✅ Match |
-| FM ratios by timbre | ✓ | ✓ | ✅ Match |
-| FM modulation indices | ✓ | ✓ | ✅ Match |
-| Carrier 2 gamelan shimmer | ✓ | ✓ | ✅ Match |
-| Ping-pong delay | ✓ | ✓ | ✅ Match |
-| Output level (0.6) | ✓ | ✓ | ✅ Match |
-| Vibrato scaling | 0-0.5 semitones, 2-8Hz | 0.05-0.15 st, 4-6Hz | ⚠️ Minor |
-| Glide curve | Scheduled ramp | Per-sample smooth | ⚠️ Minor |
-| ~~ADSR attack shortening by timbre~~ | ~~Yes~~ | ~~**Missing**~~ | ✅ FIXED |
-| Per-note randomization | Auto in playNote | Requires explicit call | ⚠️ Minor |
-
-### 10.4 ReverbProcessor Parity
-
-| Feature | Web | iOS | Status |
-|---------|-----|-----|--------|
-| 8-ch FDN with Hadamard | ✓ | ✓ | ✅ Match |
-| FDN delay times | ✓ | ✓ | ✅ Match |
-| Diffuser chains (pre/mid/post) | ✓ | ✓ | ✅ Match |
-| Diffuser times | ✓ | ✓ | ✅ Match |
-| Modulation phases/rates | ✓ | ✓ | ✅ Match |
-| Damping (OnePole) | ✓ | ✓ | ✅ Match |
-| DC blocker | ✓ | ✓ | ✅ Match |
-| Soft clip | ✓ | ✓ | ✅ Match |
-| Presets (plate/hall/cathedral/darkHall) | ✓ | ✓ | ✅ Match |
-| Decay formula | `base + (1-base)*user*0.9` | ✓ | ✅ Match |
-| Max decay clamp | 0.995 | 0.998 | ⚠️ Minor |
-| Predelay max | 300ms | 500ms | ⚠️ Minor |
-| Stereo tap weights | Uniform | Graduated | ⚠️ Minor |
-| Diffuser stage control | Always all | By quality mode | ⚠️ Minor |
-| **Lite mode** | 4-ch FDN | **AVAudioUnitReverb** | ⚠️ Intentional |
-
-### 10.5 OceanSynth Parity
-
-| Feature | Web | iOS | Status |
-|---------|-----|-----|--------|
-| 2 wave generators | ✓ | ✓ | ✅ Match |
-| Wave envelope shape | ✓ | ✓ | ✅ Match |
-| Foam envelope | ✓ | ✓ | ✅ Match |
-| Duration/interval ranges | ✓ | ✓ | ✅ Match |
-| Pan offset | ✓ | ✓ | ✅ Match |
-| Noise filtering (LPF coeffs) | ✓ | ✓ | ✅ Match |
-| Rumble layer | ✓ | ✓ | ✅ Match |
-| Master HPF/LPF | ✓ | ✓ | ✅ Match |
-| tanh soft clip | ✓ | ✓ | ✅ Match |
-| RNG default seed | Always 12345 | Falls back to system | ⚠️ Minor |
-
-### 10.6 Harmony/Scales Parity
-
-| Feature | Web | iOS | Status |
-|---------|-----|-----|--------|
-| 11 scales with intervals | ✓ | ✓ | ✅ Match |
-| Tension values | ✓ | ✓ | ✅ Match |
-| Tension bands | ✓ | ✓ | ✅ Match |
-| Weighting formula | `1/(d+0.05)^1.5` | ✓ | ✅ Match |
-| Chord generation | ✓ | ✓ | ✅ Match |
-| Voicing spread | ✓ | ✓ | ✅ Match |
-| Root note handling | ✓ | ✓ | ✅ Match |
-| Circle of Fifths semitones | ✓ | ✓ | ✅ Match |
-| CoF drift logic | ✓ | ✓ | ✅ Match |
-| mulberry32 PRNG | ✓ | ✓ | ✅ Match |
-| ~~**CoF labels**~~ | ~~Sharps (G#, D#, A#)~~ | ~~**Flats (Ab, Eb, Bb)**~~ | ✅ FIXED: Uses sharps |
-| xmur3 hash | charCodeAt (UTF-16) | UTF-8 | ⚠️ Minor (ASCII same) |
+**Fix:** React Context for engine state + callbacks, or Zustand/Jotai store.
 
 ---
 
-### Summary of Critical Issues
+## 8. Console Logging (Low-Medium)
 
-All major issues have been fixed:
+**109 `console.log`/`warn`/`error` statements** across src/:
 
-| Issue | File | Status |
-|-------|------|--------|
-| ~~Spray as timing not position~~ | GranularProcessor.swift | ✅ FIXED |
-| ~~Jitter per-sample not spawn~~ | GranularProcessor.swift | ✅ FIXED |
-| ~~Feedback separate buffer~~ | GranularProcessor.swift | ✅ FIXED |
-| ~~CoF labels flats vs sharps~~ | CircleOfFifths.swift | ✅ FIXED |
-| ~~SynthVoice envelope linear~~ | SynthVoice.swift | ✅ FIXED |
-| ~~LeadSynth attack shortening~~ | LeadSynth.swift | ✅ FIXED |
+| File | Count | Notable |
+|------|------:|---------|
+| App.tsx | ~35 | Morph debug logs in hot path |
+| engine.ts | ~30 | Worklet loading, scheduling |
+| DiamondJourneyUI.tsx | ~20 | Drag coordinates, connection events |
+| SnowflakeUI.tsx | 1 | `console.log('windowSize:', windowSize)` |
 
-### Summary Counts
-
-| Status | Count |
-|--------|-------|
-| ✅ Match | ~55 |
-| ✅ Fixed | 6 |
-| ⚠️ Minor Diff | ~17 |
-| ❌ Major Diff | 0 |
+Many are outright debug logs that should not ship.
 
 ---
 
-## Version History
+## 9. Styling Inconsistency (Low-Medium)
 
-| Date | Changes | Author |
-|------|---------|--------|
-| 2025-02-03 | Fixed all major parity issues: GranularProcessor spray/jitter/feedback architecture, CoF labels sharps, SynthVoice exponential envelope, LeadSynth timbre-based attack | Audit |
-| 2025-02-03 | Comprehensive parity audit: Found 4 major issues (granular spray/jitter/feedback, CoF labels) | Audit |
-| 2025-02-03 | Added Known Issues section with parity, dead code, and performance findings | Audit |
-| 2025-02-02 | Fixed 8 parity issues, changed default scale to Major (Ionian) | - |
-| 2024-XX-XX | Initial comprehensive checklist | - |
+- **609** `className=` usages
+- **413** `style=` (inline) usages  
+- **4,192 lines** of CSS across 3 files (drums.css, synth.css, looper.css)
+- **~400 lines** of inline style objects in App.tsx
+- `onMouseEnter`/`onMouseLeave` for hover effects instead of CSS `:hover`
+- No CSS modules, no CSS-in-JS, no design tokens
 
 ---
 
-## Notes
+## 10. DiamondJourneyUI.tsx (Observation)
 
-- Web is the source of truth for all parameter ranges and defaults
-- iOS may have additional reverb presets that map to web equivalents
-- Filter modulation uses system random on both platforms (intentional)
-- **Ocean synth**: Web uses SEEDED RNG; iOS incorrectly uses system random (see issue 9.1)
-- All other random sources must be seeded for reproducibility
+**4,335 lines** — the second-largest file after App.tsx. Contains the journey mode diamond graph visualization with drag/connect/animate logic. Likely has its own internal duplication patterns but was not deeply audited since it's a specialized visualization component. Worth a focused audit if journey mode continues to grow.
+
+---
+
+## File Size Leaderboard
+
+| Rank | File | Lines | Role |
+|-----:|------|------:|------|
+| 1 | src/App.tsx | 6,651 | God component |
+| 2 | src/ui/DiamondJourneyUI.tsx | 4,335 | Journey diamond viz |
+| 3 | src/audio/engine.ts | 4,129 | Audio engine god class |
+| 4 | src/audio/drumPresets.ts | 3,701 | Drum preset data |
+| 5 | src/audio/drumSynth.ts | 3,054 | Drum synthesis |
+| 6 | src/ui/state.ts | 2,923 | SliderState + migration |
+| 7 | src/ui/synth/SynthPage.tsx | 2,188 | Synth page UI |
+| 8 | src/ui/SnowflakeUI.tsx | 1,464 | Snowflake viz |
+| 9 | src/ui/looper/LooperPage.tsx | 1,274 | Looper page UI |
+| 10 | src/audio/worklets/looper-fx.worklet.ts | 1,222 | Looper DSP worklet |
+| | **Top 10 total** | **30,941** | **62% of codebase** |
+
+---
+
+## Consolidated Refactoring Roadmap
+
+### Phase 1 — Extract & Deduplicate (no behavior change)
+
+| Task | Files Touched | Lines Eliminated | Risk |
+|------|--------------|----------------:|------|
+| 1a. Create `applyPreset()` utility | App.tsx, new presetUtils.ts | ~120 | Low |
+| 1b. Create `resolveMorph()` / `applyADEnvelope()` / `routeOutput()` helpers in drumSynth | drumSynth.ts | ~315 | Low |
+| 1c. Extract `useMorphSystem()` hook | App.tsx, new hook file | ~800 | Medium |
+| 1d. Extract `useRecording()` hook | App.tsx, new hook file | ~400 | Low |
+| 1e. Unify Euclidean schedulers | engine.ts, new EuclideanScheduler.ts | ~400 | Medium |
+| 1f. Delete backup files | lead4opfm_backup_*.ts | ~1,646 | None |
+
+**Phase 1 total: ~3,680 lines eliminated, no behavior change**
+
+### Phase 2 — Structural improvements
+
+| Task | Files Touched | Impact |
+|------|--------------|--------|
+| 2a. Nested SliderState (DrumVoiceState, LooperVoiceState, EuclidLaneState) | state.ts, all consumers | Eliminates `as number` casts, enables loops over voices |
+| 2b. React Context or lightweight store for engine state + callbacks | App.tsx, all page components | Eliminates prop drilling |
+| 2c. Extract `applyParams()` into per-subsystem methods | engine.ts | Readability + testability |
+| 2d. Externalize drumPresets.ts to JSON | drumPresets.ts, loader | Separates data from code |
+| 2e. Consolidate callback registration (single callbacks object) | engine.ts, drumSynth.ts | Eliminates triple-wiring |
+
+### Phase 3 — Performance & correctness
+
+| Task | Impact |
+|------|--------|
+| 3a. Fix noise/membrane morph ordering inconsistency | Bug fix |
+| 3b. Pre-allocate excite/grain buffers for modal/particle | Reduces GC pressure |
+| 3c. Stop looper delay oscillators on engine stop | Resource leak |
+| 3d. Remove 109 console.log statements | Bundle size, no prod logging |
+| 3e. Replace ScriptProcessorNode with AudioWorkletNode for recording | Deprecated API |
+| 3f. Cancel voice-steal timeouts on dispose | Memory safety |
+
+---
+
+## Key Metrics Summary
+
+| Metric | Current | Healthy Target |
+|--------|--------:|---------------:|
+| Largest file (App.tsx) | 6,651 lines | < 1,000 |
+| SliderState fields | ~667 | ~80 (nested) |
+| useState in one component | 64 | < 10 |
+| useRef in one component | 59 | < 10 |
+| Type casts (`as number/string/any`) | 334 | < 20 |
+| Console statements | 109 | 0 in production |
+| Preset load code paths | 10+ | 1 |
+| Dead code (backup files) | 1,646 lines | 0 |
+| Duplicated lines (estimated) | ~2,500-3,000 | < 200 |

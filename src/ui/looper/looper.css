@@ -1,0 +1,1263 @@
+/* ═════════════════════════════════════════════════════════
+   Looper FX — Unified Granular Engine Page
+   ═════════════════════════════════════════════════════════ */
+
+/* Root scoping class */
+.looper-root {
+  --bg-base: #1a1a2e;
+  --bg-input: rgba(0, 0, 0, 0.3);
+  --bg-surface: rgba(15, 25, 40, 0.95);
+  --bg-elevated: rgba(255,255,255,0.05);
+  --bg-control: rgba(255,255,255,0.08);
+  --bg-control-hover: rgba(255,255,255,0.15);
+  --border-subtle: rgba(255, 255, 255, 0.1);
+  --border-medium: rgba(255, 255, 255, 0.2);
+  --border-accent: rgba(100, 150, 200, 0.3);
+  --text-primary: #e0e0e0;
+  --text-secondary: #9ca3af;
+  --text-muted: #666;
+  --text-dim: #555;
+  --accent-primary: #a5c4d4;
+  --accent-cyan: #00d4ff;
+  --accent-green: #2ecc71;
+  --accent-red: #e74c3c;
+  --accent-orange: #ffa502;
+  --accent-purple: #8b5cf6;
+  --accent-amber: #f59e0b;
+  --accent-teal: #06b6d4;
+  --accent-pink: #ff6b81;
+  --accent-lavender: #c084fc;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --font-xs: 0.55rem;
+  --font-sm: 0.65rem;
+  --font-md: 0.75rem;
+  --font-lg: 0.85rem;
+
+  /* Looper-specific accent */
+  --looper-accent: #06b6d4;
+  --looper-accent-dim: rgba(6, 182, 212, 0.3);
+  --looper-v1: #4a9eff;
+  --looper-v2: #a855f7;
+  --looper-v3: #2ecc71;
+  --looper-v4: #f59e0b;
+}
+
+.looper-root * { box-sizing: border-box; }
+.looper-root { overflow-x: hidden; max-width: 100%; }
+.looper-root select { color-scheme: dark; }
+.looper-root select option { background: #1a1a2e; color: #e0e0e0; }
+
+/* Layout — Two-panel (matching DrumPage/SynthPage pattern) */
+.looper-root .looper-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  padding: 8px;
+}
+
+.looper-root .looper-sound-panel {
+  flex: 0 0 460px;
+  min-width: 0;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.looper-root .looper-sequencer-panel {
+  flex: 1;
+  min-width: 380px;
+  max-width: 100%;
+}
+
+@media (max-width: 900px) {
+  .looper-root .looper-sound-panel,
+  .looper-root .looper-sequencer-panel {
+    flex: 1 1 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+}
+
+/* ─── Global Controls Bar ─── */
+.looper-root .looper-global-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(15, 25, 40, 0.95);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.looper-root .looper-global-bar .looper-title {
+  font-size: var(--font-lg);
+  font-weight: 700;
+  color: var(--looper-accent);
+  margin-right: 8px;
+  white-space: nowrap;
+}
+
+.looper-root .looper-enable-btn {
+  padding: 3px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-medium);
+  background: rgba(30, 30, 40, 0.6);
+  color: var(--text-muted);
+  font-size: var(--font-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.looper-root .looper-enable-btn.on {
+  background: linear-gradient(135deg, rgba(6,182,212,0.3), rgba(6,182,212,0.15));
+  border-color: var(--looper-accent);
+  color: var(--looper-accent);
+}
+
+.looper-root .looper-freeze-btn {
+  padding: 3px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-medium);
+  background: rgba(30, 30, 40, 0.6);
+  color: var(--text-muted);
+  font-size: var(--font-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.looper-root .looper-freeze-btn.frozen {
+  background: linear-gradient(135deg, rgba(59,130,246,0.4), rgba(59,130,246,0.15));
+  border-color: #3b82f6;
+  color: #60a5fa;
+  animation: looper-freeze-pulse 2s infinite ease-in-out;
+}
+
+@keyframes looper-freeze-pulse {
+  0%, 100% { box-shadow: 0 0 4px rgba(59,130,246,0.2); }
+  50% { box-shadow: 0 0 12px rgba(59,130,246,0.5); }
+}
+
+.looper-root .looper-global-sliders {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+  padding: 4px 12px;
+  background: rgba(15, 25, 40, 0.7);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.looper-root .looper-global-sliders > * {
+  flex: 1;
+  min-width: 0;
+}
+
+.looper-root .looper-preset-select {
+  padding: 3px 6px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-medium);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: var(--font-sm);
+  cursor: pointer;
+  max-width: 120px;
+}
+
+/* ─── Source Sends ─── */
+.looper-root .looper-source-sends {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-md);
+  padding: var(--gap-sm) var(--gap-lg);
+  background: var(--surface-bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--gap-sm);
+}
+
+.looper-root .looper-sends-label {
+  color: var(--text-dim);
+  font-size: var(--font-sm);
+  white-space: nowrap;
+  min-width: 90px;
+}
+
+.looper-root .looper-sends-sliders {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--gap-sm) var(--gap-md);
+  flex: 1;
+}
+
+/* ─── Buffer Visualization ─── */
+.looper-root .looper-buffer-viz {
+  position: relative;
+  height: 60px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.looper-root .looper-buffer-slices {
+  display: flex;
+  height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+}
+
+.looper-root .looper-slice {
+  flex: 1;
+  border-right: 1px solid rgba(255,255,255,0.06);
+  position: relative;
+  transition: background 0.15s ease;
+}
+.looper-root .looper-slice:last-child { border-right: none; }
+.looper-root .looper-slice.active {
+  background: rgba(6, 182, 212, 0.15);
+}
+/* Triggered by subsequencer — brighter pulse */
+.looper-root .looper-slice.triggered {
+  background: rgba(6, 182, 212, 0.45);
+  box-shadow: inset 0 0 8px rgba(6, 182, 212, 0.4);
+  animation: slicePulse 0.15s ease-out;
+}
+@keyframes slicePulse {
+  0% { background: rgba(6, 182, 212, 0.7); }
+  100% { background: rgba(6, 182, 212, 0.45); }
+}
+.looper-root .looper-slice-label {
+  position: absolute;
+  bottom: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.45rem;
+  color: rgba(255,255,255,0.2);
+  pointer-events: none;
+}
+/* Voice color dots shown on slices assigned to a voice */
+.looper-root .looper-slice-voice-dots {
+  position: absolute;
+  top: 3px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 2px;
+}
+.looper-root .looper-slice-voice-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  opacity: 0.85;
+}
+
+/* Voice indicators on buffer */
+.looper-root .looper-buffer-voice-marker {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  opacity: 0.8;
+  pointer-events: none;
+  transition: left 0.08s linear;
+}
+.looper-root .looper-voice-marker-label {
+  position: absolute;
+  top: -1px;
+  left: 3px;
+  font-size: 0.4rem;
+  color: rgba(255,255,255,0.7);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.looper-root .looper-write-head {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(255,255,255,0.5);
+  pointer-events: none;
+  z-index: 2;
+  transition: left 0.08s linear;
+}
+.looper-root .looper-write-head.frozen {
+  background: #3b82f6;
+  width: 2px;
+  box-shadow: 0 0 4px rgba(59,130,246,0.5);
+}
+/* Time scale ticks at bottom */
+.looper-root .looper-buffer-time-ticks {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 12px;
+  pointer-events: none;
+}
+.looper-root .looper-time-tick {
+  position: absolute;
+  bottom: 1px;
+  transform: translateX(-50%);
+  font-size: 0.4rem;
+  color: rgba(255,255,255,0.18);
+}
+
+/* ─── Voice Cards (4 rows) ─── */
+.looper-root .looper-voices {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.looper-root .looper-voice-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  transition: border-color 0.15s ease;
+}
+.looper-root .looper-voice-card.editing {
+  border-color: var(--border-accent);
+}
+.looper-root .looper-voice-card.disabled {
+  opacity: 0.5;
+}
+
+/* Voice Header */
+.looper-root .looper-voice-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+  user-select: none;
+}
+
+.looper-root .looper-voice-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.looper-root .looper-voice-name {
+  font-size: var(--font-md);
+  font-weight: 600;
+  color: var(--text-primary);
+  flex-shrink: 0;
+}
+
+.looper-root .looper-voice-mode-badge {
+  font-size: var(--font-xs);
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--bg-control);
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.looper-root .looper-voice-summary {
+  flex: 1;
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.looper-root .looper-voice-enable-btn {
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-medium);
+  background: rgba(30, 30, 40, 0.6);
+  color: var(--text-muted);
+  font-size: var(--font-xs);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+.looper-root .looper-voice-enable-btn.on {
+  background: linear-gradient(135deg, rgba(46,204,113,0.3), rgba(46,204,113,0.1));
+  border-color: var(--accent-green);
+  color: var(--accent-green);
+}
+
+.looper-root .looper-voice-expand-btn {
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--font-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+.looper-root .looper-voice-expand-btn.active {
+  color: var(--text-primary);
+  background: var(--bg-control);
+}
+
+/* Voice Body (expanded) */
+.looper-root .looper-voice-body {
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Mode selector row */
+.looper-root .looper-mode-row {
+  display: flex;
+  gap: 4px;
+}
+.looper-root .looper-mode-btn {
+  flex: 1;
+  padding: 4px 0;
+  font-size: var(--font-xs);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: 1px solid var(--border-subtle);
+  background: rgba(30, 30, 40, 0.6);
+  color: var(--text-muted);
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.looper-root .looper-mode-btn.active {
+  font-weight: bold;
+  color: #fff;
+  background: linear-gradient(135deg, rgba(6,182,212,0.3), rgba(6,182,212,0.1));
+  border-color: var(--looper-accent);
+}
+
+/* Slider grids inside voice body */
+.looper-root .looper-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 8px;
+}
+
+.looper-root .looper-grid-3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 4px 8px;
+}
+
+.looper-root .looper-grid-4 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+  gap: 4px 8px;
+}
+
+.looper-root .looper-section-label {
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  margin-top: 4px;
+  padding-bottom: 2px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+
+/* Reverse toggle */
+.looper-root .looper-reverse-btn {
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-medium);
+  background: rgba(30, 30, 40, 0.6);
+  color: var(--text-muted);
+  font-size: var(--font-xs);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.looper-root .looper-reverse-btn.active {
+  background: linear-gradient(135deg, rgba(168,85,247,0.3), rgba(168,85,247,0.1));
+  border-color: var(--accent-purple);
+  color: var(--accent-lavender);
+}
+/* Reverse button pulsing when triggered by subsequencer */
+.looper-root .looper-reverse-btn.seq-triggered {
+  animation: reverseFlash 0.15s ease-out;
+  box-shadow: 0 0 6px rgba(244, 114, 182, 0.5);
+}
+@keyframes reverseFlash {
+  0% { box-shadow: 0 0 12px rgba(244, 114, 182, 0.8); }
+  100% { box-shadow: 0 0 6px rgba(244, 114, 182, 0.5); }
+}
+
+/* Pitch flash badge from subsequencer trigger */
+.looper-root .looper-pitch-wrap {
+  position: relative;
+}
+.looper-root .looper-pitch-flash {
+  position: absolute;
+  top: -2px;
+  right: 2px;
+  font-size: 0.55rem;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  background: rgba(0, 0, 0, 0.7);
+  padding: 1px 4px;
+  border-radius: 3px;
+  pointer-events: none;
+  animation: pitchFlashIn 0.15s ease-out;
+  z-index: 2;
+}
+@keyframes pitchFlashIn {
+  0% { opacity: 0; transform: scale(1.3); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+/* Legacy section */
+.looper-root .looper-legacy-section {
+  padding: 6px 8px;
+  background: rgba(255, 165, 2, 0.05);
+  border: 1px solid rgba(255, 165, 2, 0.15);
+  border-radius: var(--radius-sm);
+}
+
+.looper-root .looper-legacy-label {
+  font-size: var(--font-xs);
+  color: var(--accent-orange);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  margin-bottom: 4px;
+}
+
+/* ─── Responsive ─── */
+@media (max-width: 600px) {
+  .looper-root .looper-global-bar {
+    flex-wrap: wrap;
+  }
+  .looper-root .looper-global-sliders {
+    flex-wrap: wrap;
+  }
+  .looper-root .looper-grid-4 {
+    grid-template-columns: 1fr 1fr;
+  }
+  .looper-root .looper-grid-3 {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* ─── Section Headers (expand/collapse — matching DrumPage) ─── */
+.looper-root .section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: var(--font-md);
+  font-weight: 600;
+  color: var(--text-primary);
+  user-select: none;
+  border-radius: var(--radius-sm);
+  transition: background 0.15s ease;
+}
+.looper-root .section-header:hover { background: rgba(255,255,255,0.04); }
+.looper-root .section-header::after { content: '▾'; font-size: 0.5rem; }
+.looper-root .section-header.collapsed::after { content: '▸'; }
+.looper-root .section-header-content { display: flex; align-items: center; gap: 6px; }
+.looper-root .section-body { transition: all 0.2s; }
+.looper-root .section-body.collapsed { display: none; }
+
+/* ─── Macro Section ─── */
+.looper-root .looper-macro-section {
+  background: var(--bg-surface);
+  border: 1px solid rgba(168, 85, 247, 0.15);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.looper-root .looper-macro-section .section-header { color: var(--accent-purple); }
+.looper-root .looper-macro-section .section-body { padding: 6px 10px 10px; }
+
+/* ─── Delay Section (matching DrumPage delay pattern) ─── */
+.looper-root .looper-delay-section {
+  background: var(--bg-surface);
+  border: 1px solid rgba(245, 158, 11, 0.15);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.looper-root .looper-delay-section .section-header { color: var(--accent-amber); }
+.looper-root .looper-delay-section .section-body { padding: 6px 10px 10px; }
+.looper-root .delay-toggle-btn {
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-medium);
+  background: rgba(30, 30, 40, 0.6);
+  color: var(--text-muted);
+  font-size: var(--font-xs);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.looper-root .delay-toggle-btn.on {
+  background: rgba(245,158,11,0.3);
+  color: #fff;
+}
+.looper-root .delay-bpm-info {
+  font-size: var(--font-xs);
+  color: #888;
+}
+.looper-root .delay-note-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.looper-root .delay-note-col {
+  flex: 1;
+}
+.looper-root .delay-note-col label {
+  display: block;
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+  margin-bottom: 2px;
+}
+.looper-root .delay-note-col select {
+  width: 100%;
+  padding: 3px 6px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-medium);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: var(--font-sm);
+  cursor: pointer;
+}
+
+/* ─── Sequencer Panel Placeholder ─── */
+.looper-root .looper-seq-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  background: var(--bg-surface);
+  border: 1px dashed var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 24px;
+}
+.looper-root .looper-seq-placeholder-text {
+  font-size: var(--font-lg);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.looper-root .looper-seq-placeholder-sub {
+  font-size: var(--font-sm);
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   SEQUENCER PANEL STYLES — mirrored from DrumPage, scoped .looper-root
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── Transport bar ── */
+.looper-root .seq-transport {
+  display: flex; gap: 8px; align-items: center;
+  background: var(--bg-elevated); border-radius: var(--radius-lg);
+  padding: 8px 12px; margin-bottom: 8px;
+}
+.looper-root .seq-play-btn {
+  width: 44px; height: 44px; border-radius: 50%; border: none;
+  font-size: 1.5rem; cursor: pointer; flex-shrink: 0;
+  background: transparent; color: #FFFFFF; font-weight: bold;
+  transition: all 0.2s;
+  text-shadow: 0 2px 8px rgba(0,0,0,0.5);
+}
+.looper-root .seq-play-btn.playing { color: #ED5A24; }
+.looper-root .seq-play-btn:hover { transform: scale(1.05); }
+.looper-root .seq-transport label { font-size: 0.65rem; color: #888; display: flex; flex-direction: column; gap: 2px; }
+.looper-root .seq-transport input, .looper-root .seq-transport select {
+  background: var(--bg-input); color: #fff; border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm); padding: 4px 6px; font-size: 0.75rem; width: 64px;
+  transition: border-color 0.15s;
+}
+.looper-root .seq-transport input:focus, .looper-root .seq-transport select:focus { border-color: var(--accent-cyan); outline: none; }
+
+/* ── View Toggle ── */
+.looper-root .seq-view-toggle {
+  display: flex; gap: 0; border-radius: var(--radius-md); overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.12); width: fit-content; margin-left: auto;
+}
+.looper-root .seq-view-btn {
+  padding: 4px 14px; font-size: 0.6rem; font-weight: 700;
+  border: none; cursor: pointer; background: rgba(255,255,255,0.03); color: rgba(255,255,255,0.3);
+  transition: all 0.15s; letter-spacing: 0.5px; text-transform: uppercase;
+}
+.looper-root .seq-view-btn.active {
+  background: color-mix(in srgb, var(--accent-cyan) 18%, transparent);
+  color: var(--accent-cyan);
+}
+.looper-root .seq-view-btn:hover:not(.active) { background: rgba(255,255,255,0.06); }
+
+/* ── Tab Bar ── */
+.looper-root .seq-tab-bar { display: flex; gap: 2px; margin-bottom: 0; }
+.looper-root .seq-tab {
+  flex: 1; padding: 6px 4px; text-align: center; border: 1px solid rgba(255,255,255,0.06);
+  border-bottom: none;
+  border-radius: var(--radius-md) var(--radius-md) 0 0; cursor: pointer;
+  font-size: 0.65rem; font-weight: 600;
+  background: rgba(255,255,255,0.02); color: rgba(255,255,255,0.3);
+  transition: all 0.15s; user-select: none;
+  display: flex; align-items: center; justify-content: center; gap: 4px;
+}
+.looper-root .seq-tab.active {
+  color: var(--sc);
+  background: color-mix(in srgb, var(--sc) 12%, transparent);
+  border-color: color-mix(in srgb, var(--sc) 30%, transparent);
+}
+.looper-root .seq-tab:hover:not(.active) { background: rgba(255,255,255,0.05); }
+.looper-root .seq-tab .seq-tab-ms {
+  display: flex; gap: 2px; font-size: 0.5rem;
+}
+.looper-root .seq-tab-ms button {
+  border: none; border-radius: var(--radius-sm); padding: 1px 4px; cursor: pointer;
+  font-size: 0.5rem; font-weight: 700; background: rgba(0,0,0,0.3); color: #888;
+  transition: all 0.1s;
+}
+.looper-root .seq-tab-ms button.on { color: #fff; }
+.looper-root .seq-tab-ms .mute-btn.on { background: var(--accent-red); }
+.looper-root .seq-tab-ms .solo-btn.on { background: #eab308; color: #000; }
+
+/* ── Seq Body ── */
+.looper-root .seq-body {
+  background: rgba(15, 25, 40, 0.6); border: 1px solid var(--border-subtle);
+  border-top: none; border-radius: 0 0 var(--radius-lg) var(--radius-lg); padding: 8px; margin-bottom: 6px;
+}
+
+/* ── Sources ── */
+.looper-root .seq-sources {
+  display: flex; gap: 4px; align-items: center; flex-wrap: wrap;
+  padding: 5px 8px; margin-bottom: 0;
+  background: rgba(255,255,255,0.03); border-radius: var(--radius-md);
+}
+.looper-root .seq-sources-label { font-size: 0.6rem; color: #666; text-transform: uppercase; letter-spacing: 0.5px; margin-right: 4px; }
+
+/* ── Per-seq controls ── */
+.looper-root .seq-per-controls {
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  padding: 0; margin: 0; margin-left: auto;
+  background: none; border-radius: 0;
+}
+.looper-root .seq-per-controls label {
+  font-size: 0.7rem; color: #aaa; display: flex; align-items: center; gap: 4px;
+}
+.looper-root .seq-per-controls input, .looper-root .seq-per-controls select {
+  background: var(--bg-input); color: #fff; border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm); padding: 3px 5px; font-size: 0.7rem; width: 56px;
+  transition: border-color 0.15s;
+}
+.looper-root .seq-per-controls input:focus, .looper-root .seq-per-controls select:focus { border-color: var(--accent-cyan); outline: none; }
+.looper-root .seq-per-controls .seq-swing-range { width: 60px; height: 3px; accent-color: var(--sc, var(--accent-cyan)); }
+.looper-root .seq-per-controls .seq-swing-val { font-size: 0.6rem; color: var(--sc, var(--accent-cyan)); min-width: 22px; }
+.looper-root .seq-per-controls .seq-clock-select { width: 52px; font-size: 0.7rem; }
+
+/* ── Link / Evolve buttons ── */
+.looper-root .seq-link-btn, .looper-root .seq-evolve-btn {
+  padding: 3px 10px; font-size: 0.65rem; font-weight: 700; border: none;
+  border-radius: var(--radius-sm); cursor: pointer; background: var(--bg-control);
+  color: #666; transition: all 0.15s; letter-spacing: 0.3px;
+}
+.looper-root .seq-link-btn.on { background: var(--sc, var(--accent-cyan)); color: #000; }
+.looper-root .seq-evolve-btn.on { background: #a855f7; color: #000; }
+
+/* ── Evolve panel ── */
+.looper-root .seq-evolve-panel {
+  display: none; padding: 6px 8px; margin-bottom: 6px;
+  background: rgba(168,85,247,0.06); border: 1px solid rgba(168,85,247,0.15);
+  border-radius: var(--radius-sm); font-size: 0.6rem;
+}
+.looper-root .seq-evolve-panel.open { display: block; }
+.looper-root .seq-evolve-panel label { color: #aaa; display: flex; align-items: center; gap: 3px; font-size: 0.65rem; }
+.looper-root .seq-evolve-panel input[type=range] { width: 50px; height: 3px; accent-color: #a855f7; }
+.looper-root .seq-evolve-panel input[type=number] { background: var(--bg-input); color: #fff; border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 2px 4px; font-size: 0.6rem; width: 36px; transition: border-color 0.15s; }
+.looper-root .seq-evolve-panel input[type=number]:focus { border-color: var(--accent-evolve); outline: none; }
+.looper-root .seq-evolve-panel select {
+  background: var(--bg-input); color: #e5e7eb; border: 1px solid var(--border-medium);
+  border-radius: var(--radius-md); padding: 3px 5px; font-size: 0.65rem;
+}
+.looper-root .seq-evolve-panel .seq-evolve-reset {
+  padding: 3px 8px; border-radius: var(--radius-md); border: 1px solid #555;
+  background: rgba(0,0,0,0.25); color: #ccc; cursor: pointer; font-size: 0.62rem;
+}
+.looper-root .seq-evolve-panel .seq-evolve-reset:hover { background: rgba(0,0,0,0.4); }
+.looper-root .seq-evolve-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 3px; }
+.looper-root .seq-evolve-checks { display: flex; gap: 6px; flex-wrap: wrap; }
+.looper-root .seq-evolve-checks label { font-size: 0.55rem; color: #888; cursor: pointer; }
+.looper-root .seq-evolve-checks input[type=checkbox] { accent-color: #a855f7; margin-right: 2px; }
+.looper-root .seq-evolve-flash { animation: evolveFlash 0.4s ease-out; }
+
+/* ── Lane editor & trigger ── */
+.looper-root .seq-lane-editor-wrap { margin-top: 8px; }
+.looper-root .seq-trigger-always { margin: 6px 0; }
+
+/* ── Lane enable buttons ── */
+.looper-root .seq-lane-enable-btn {
+  padding: 2px 8px; font-size: 0.55rem; font-weight: 400; border: none;
+  border-radius: var(--radius-sm); cursor: pointer; background: var(--bg-control);
+  color: #666; transition: all 0.15s; letter-spacing: 0.3px;
+}
+.looper-root .seq-lane-enable-btn.on { color: #000; background: var(--lane-color, rgba(255,255,255,0.3)); }
+.looper-root .seq-lane-enable-btn.trigger-toggle {
+  font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
+}
+.looper-root .seq-lane-enable-btn.trigger-toggle.on {
+  background: var(--sc, var(--accent-cyan));
+  color: #000;
+  box-shadow: 0 0 8px color-mix(in srgb, var(--sc, var(--accent-cyan)) 60%, transparent),
+              0 0 2px rgba(255,255,255,0.3);
+  text-shadow: 0 0 4px rgba(0,0,0,0.3);
+}
+.looper-root .seq-lane-trigger .seq-lane-enable-btn.on { background: var(--accent-cyan); }
+.looper-root .seq-lane-pitch .seq-lane-enable-btn.on { background: var(--accent-pink); }
+.looper-root .seq-lane-expr .seq-lane-enable-btn.on { background: var(--accent-orange); }
+.looper-root .seq-lane-morph .seq-lane-enable-btn.on { background: var(--accent-lavender); }
+
+/* ── Lane ── */
+.looper-root .seq-lane {
+  margin-bottom: 6px; border-radius: var(--radius-md); overflow: hidden;
+  border: 1px solid var(--border-subtle);
+}
+.looper-root .seq-lane-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 6px 10px; cursor: pointer; user-select: none;
+  background: rgba(255,255,255,0.04);
+}
+.looper-root .seq-lane-title { font-size: 0.7rem; font-weight: 600; letter-spacing: 0.5px; }
+.looper-root .seq-lane-trigger .seq-lane-title { color: var(--sc, var(--accent-cyan)); }
+.looper-root .seq-lane-pitch .seq-lane-title { color: var(--accent-pink); }
+.looper-root .seq-lane-expr .seq-lane-title { color: var(--accent-orange); }
+.looper-root .seq-lane-morph .seq-lane-title { color: var(--accent-lavender); }
+.looper-root .seq-lane-body { padding: 8px 10px; background: rgba(0,0,0,0.15); }
+.looper-root .seq-lane.disabled .seq-lane-body { opacity: 0.3; pointer-events: none; }
+.looper-root .seq-lane-controls { display: flex; gap: 8px; align-items: center; }
+.looper-root .seq-lane-controls label {
+  font-size: 0.6rem; color: #888; display: flex; align-items: center; gap: 3px;
+}
+.looper-root .seq-lane-controls input[type=number] {
+  width: 36px; background: var(--bg-input); color: #fff; border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm); padding: 2px 4px; font-size: 0.65rem; text-align: center;
+  transition: border-color 0.15s;
+}
+.looper-root .seq-lane-controls input[type=number]:focus { border-color: var(--accent-cyan); outline: none; }
+.looper-root .seq-lane-controls button {
+  width: 20px; height: 20px; border: none; border-radius: var(--radius-sm);
+  background: var(--bg-control); color: #fff; font-size: 0.7rem;
+  cursor: pointer; padding: 0; line-height: 20px;
+}
+.looper-root .seq-lane-controls button:hover { background: var(--bg-control-hover); }
+.looper-root .seq-lane-controls select {
+  background: var(--bg-input); color: #fff; border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm); padding: 2px 6px; font-size: 0.65rem; min-height: 24px;
+  transition: border-color 0.15s, background 0.15s;
+}
+.looper-root .seq-lane-controls select:hover { border-color: rgba(255,255,255,0.35); }
+.looper-root .seq-lane-controls select:focus { border-color: var(--accent-cyan); outline: none; }
+.looper-root .seq-lane-expand { font-size: 0.6rem; color: #666; margin-left: 4px; }
+.looper-root .seq-link-badge { font-size: 0.55rem; opacity: 0.6; }
+
+/* ── Sparkline Accordion ── */
+.looper-root .seq-spark-container {
+  display: flex; flex-direction: column; gap: 2px; margin-top: 4px;
+}
+.looper-root .seq-spark-strip {
+  display: flex; align-items: center; gap: 6px;
+  padding: 3px 8px; cursor: pointer; user-select: none;
+  background: rgba(255,255,255,0.03); border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  transition: background 0.15s, border-color 0.15s; min-height: 26px;
+}
+.looper-root .seq-spark-strip:hover { background: rgba(255,255,255,0.07); }
+.looper-root .seq-spark-strip.disabled { opacity: 0.45; }
+.looper-root .seq-spark-strip.expanded {
+  background: rgba(255,255,255,0.06);
+  border-color: rgba(255,255,255,0.14);
+  border-bottom-left-radius: 0; border-bottom-right-radius: 0;
+}
+.looper-root .seq-spark-badge-dot {
+  font-size: 0.5rem; color: #555; margin-right: 1px; transition: color 0.15s;
+}
+.looper-root .seq-spark-badge-dot.on { color: var(--sc, var(--accent-cyan)); }
+.looper-root .seq-spark-badge {
+  display: inline-flex; align-items: center; gap: 2px;
+  padding: 2px 5px; border-radius: var(--radius-sm);
+  background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+  cursor: pointer; transition: all 0.15s; min-width: 34px;
+  justify-content: center; flex-shrink: 0;
+}
+.looper-root .seq-spark-badge:hover { background: rgba(255,255,255,0.08); }
+.looper-root .seq-spark-badge.on {
+  background: color-mix(in srgb, var(--lane-color) 20%, transparent);
+  border-color: color-mix(in srgb, var(--lane-color) 60%, transparent);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--lane-color) 25%, transparent);
+}
+.looper-root .seq-spark-badge-label {
+  font-size: 0.5rem; font-weight: 800; letter-spacing: 0.3px;
+  color: var(--lane-color); opacity: 0.5;
+}
+.looper-root .seq-spark-badge.on .seq-spark-badge-label { opacity: 1; }
+.looper-root .seq-spark-badge-steps {
+  font-size: 0.5rem; font-weight: 600;
+  color: rgba(255,255,255,0.4); font-variant-numeric: tabular-nums;
+}
+.looper-root .seq-spark-badge.on .seq-spark-badge-steps { color: rgba(255,255,255,0.85); }
+.looper-root .seq-spark-svg-wrap {
+  flex: 1; min-width: 0; height: 20px;
+  overflow: hidden; border-radius: var(--radius-sm);
+}
+.looper-root .seq-spark-svg-wrap svg { width: 100%; height: 100%; display: block; }
+.looper-root .seq-spark-expand {
+  font-size: 0.6rem; color: #555; min-width: 10px; text-align: center; flex-shrink: 0;
+}
+.looper-root .spark-playhead { transition: x 0.06s ease-out; pointer-events: none; }
+.looper-root .seq-spark-body {
+  background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.08);
+  border-top: none; border-radius: 0 0 var(--radius-md) var(--radius-md);
+  padding: 6px 8px 8px; margin-bottom: 2px;
+}
+.looper-root .seq-spark-header {
+  display: flex; align-items: center; gap: 8px; padding: 4px 0 6px; flex-wrap: wrap;
+}
+.looper-root .seq-spark-title {
+  font-size: 0.7rem; font-weight: 700; letter-spacing: 0.5px;
+  flex-shrink: 0; white-space: nowrap;
+}
+.looper-root .seq-spark-header .seq-lane-enable-btn {
+  font-size: 0.55rem; padding: 0 8px; min-width: 24px; min-height: 24px; height: 24px; max-height: 24px; line-height: 24px;
+  display: inline-flex; align-items: center; box-sizing: border-box; transition: all 0.15s;
+}
+.looper-root .seq-spark-header .seq-drag-num-label { font-size: 0.6rem; }
+.looper-root .seq-spark-header .seq-drag-num {
+  min-width: 24px; min-height: 24px; height: 24px; max-height: 24px; padding: 0 6px; font-size: 0.75rem;
+  display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box;
+  border-radius: var(--radius-sm); transition: border-color 0.15s, background 0.15s;
+}
+.looper-root .seq-spark-ctrl-btn {
+  border: none; border-radius: var(--radius-sm); padding: 0; width: 24px; height: 24px; cursor: pointer;
+  font-size: 0.75rem; font-weight: 600;
+  background: var(--bg-control); color: #888;
+  transition: all 0.15s; display: inline-flex; align-items: center; justify-content: center;
+  white-space: nowrap; box-sizing: border-box;
+}
+.looper-root .seq-spark-ctrl-btn:hover { background: var(--bg-control-hover); color: #ccc; }
+.looper-root .seq-select, .looper-root .seq-spark-select {
+  background: var(--bg-input); color: #fff; border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm); padding: 2px 6px; font-size: 0.65rem;
+  min-height: 24px; cursor: pointer; transition: border-color 0.15s, background 0.15s;
+}
+.looper-root .seq-select:hover, .looper-root .seq-spark-select:hover { border-color: rgba(255,255,255,0.35); }
+.looper-root .seq-select:focus, .looper-root .seq-spark-select:focus { border-color: var(--lane-color, var(--accent-cyan)); outline: none; }
+
+/* ── Step Grid ── */
+.looper-root .seq-step-grid {
+  display: grid; grid-template-columns: repeat(16, 1fr); gap: 3px; margin: 6px 0;
+}
+.looper-root .seq-step { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.looper-root .seq-step-num {
+  font-size: 0.55rem; color: #555; height: 12px; min-height: 12px; line-height: 12px;
+  display: flex; align-items: center; justify-content: center;
+}
+.looper-root .seq-step-cell {
+  width: 100%; aspect-ratio: 1; border-radius: var(--radius-sm); cursor: pointer;
+  border: 2px solid var(--border-medium); background: #0f0f23;
+  transition: all 0.1s; position: relative; overflow: hidden;
+}
+.looper-root .seq-step-cell.active { background: transparent; border-color: var(--sc, var(--accent-cyan)); }
+.looper-root .seq-step-cell.playing { box-shadow: 0 0 12px var(--sc, var(--accent-cyan)); transform: scale(1.08); }
+.looper-root .seq-step-cell.inactive { opacity: 0.25; pointer-events: none; }
+.looper-root .seq-step-cell .prob-fill {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  background: var(--sc, var(--accent-cyan)); opacity: 0.3;
+  pointer-events: none; transition: height 0.05s;
+}
+.looper-root .seq-step-cell.active .prob-fill { opacity: 0.85; }
+.looper-root .seq-step-cell .prob-label {
+  position: absolute; top: 1px; left: 0; right: 0;
+  text-align: center; font-size: 0.55rem; color: rgba(255,255,255,0.6);
+  pointer-events: none; z-index: 1;
+}
+
+/* ── Step ratchet & trig condition ── */
+.looper-root .seq-step-ratchet {
+  width: 100%; height: 14px; cursor: pointer; display: flex;
+  align-items: center; justify-content: center; gap: 1px;
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+  border: none; background: none; padding: 0;
+}
+.looper-root .seq-step-ratchet .ratch-line {
+  width: 60%; height: 2px; background: rgba(255,255,255,0.15); border-radius: 1px;
+  flex-shrink: 0; transition: background 0.15s, box-shadow 0.15s;
+}
+.looper-root .seq-step-ratchet.multi .ratch-line {
+  background: rgba(192,132,252,0.55); height: 2px;
+  box-shadow: 0 0 4px rgba(168,85,247,0.25);
+}
+.looper-root .seq-step-ratchet.r2 { gap: 2px; }
+.looper-root .seq-step-ratchet.r2 .ratch-line { width: 40%; }
+.looper-root .seq-step-ratchet.r3 .ratch-line { width: 28%; }
+.looper-root .seq-step-ratchet.r4 .ratch-line { width: 20%; }
+.looper-root .seq-trig-cond {
+  width: 100%; height: 14px; cursor: pointer; display: flex;
+  align-items: center; justify-content: center;
+  font-size: 0.5rem; color: #666; background: none; border: none; padding: 0;
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+  font-family: inherit; letter-spacing: -0.02em;
+}
+.looper-root .seq-trig-cond.active { color: #e8b03e; font-weight: 600; }
+
+/* ── Presets & rotation ── */
+.looper-root .seq-presets { display: flex; gap: 3px; flex-wrap: wrap; margin-bottom: 6px; }
+.looper-root .seq-preset-btn {
+  padding: 2px 6px; font-size: 0.55rem; border: none; border-radius: var(--radius-sm);
+  background: var(--bg-control); color: #888; cursor: pointer; transition: all 0.1s;
+}
+.looper-root .seq-preset-btn:hover { background: var(--bg-control-hover); color: #fff; }
+.looper-root .seq-preset-btn.active { background: var(--sc, var(--accent-cyan)); color: #000; }
+.looper-root .seq-preset-select {
+  background: var(--bg-input); color: #e5e7eb; border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm); padding: 2px 4px; font-size: 0.65rem; max-width: 90px;
+  transition: border-color 0.15s;
+}
+.looper-root .seq-preset-select:focus { border-color: var(--accent-cyan); outline: none; }
+.looper-root .seq-rotation-control { display: flex; align-items: center; gap: 2px; }
+.looper-root .seq-rotation-control button {
+  padding: 2px 6px; border: 1px solid var(--border-medium); border-radius: var(--radius-sm);
+  background: var(--bg-control); color: #ccc; cursor: pointer; font-size: 0.65rem;
+  transition: background 0.15s;
+}
+.looper-root .seq-rotation-control button:hover { background: rgba(255,255,255,0.1); }
+.looper-root .seq-rotation-val { font-size: 0.65rem; color: #aaa; min-width: 16px; text-align: center; }
+
+/* ── Pitch bars ── */
+.looper-root .seq-pitch-bar-wrap {
+  width: 100%; height: 48px; background: #0f0f23; border-radius: var(--radius-sm);
+  border: 1px solid var(--border-medium); position: relative; cursor: pointer; touch-action: none;
+}
+.looper-root .seq-pitch-bar-wrap.inactive { opacity: 0.25; pointer-events: none; }
+.looper-root .seq-pitch-bar-wrap .pitch-center {
+  position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: #444; pointer-events: none;
+}
+.looper-root .seq-pitch-bar-wrap .pitch-bar {
+  position: absolute; left: 15%; right: 15%; background: var(--accent-pink); border-radius: 2px;
+  pointer-events: none; transition: top 0.05s, height 0.05s;
+}
+.looper-root .seq-pitch-bar-wrap .pitch-val {
+  position: absolute; left: 0; right: 0; text-align: center; font-size: 0.5rem; color: #ccc;
+  pointer-events: none; z-index: 1;
+}
+.looper-root .seq-pitch-note-name {
+  font-size: 0.55rem; color: var(--accent-pink); text-align: center;
+  pointer-events: none; margin-top: 1px; min-height: 10px;
+}
+
+/* ── Velocity bars ── */
+.looper-root .seq-vel-bar-wrap {
+  width: 100%; height: 40px; background: #0f0f23; border-radius: var(--radius-sm);
+  border: 1px solid var(--border-medium); position: relative; cursor: pointer;
+  display: flex; align-items: flex-end; touch-action: none;
+}
+.looper-root .seq-vel-bar-wrap.inactive { opacity: 0.25; pointer-events: none; }
+.looper-root .seq-vel-bar {
+  width: 100%; background: var(--accent-orange); border-radius: 0 0 2px 2px; transition: height 0.05s;
+}
+.looper-root .seq-vel-label {
+  position: absolute; top: 1px; left: 0; right: 0; text-align: center; font-size: 0.5rem; color: #888;
+}
+
+/* ── Morph bars ── */
+.looper-root .seq-morph-bar-wrap {
+  width: 100%; height: 48px; background: #0f0f23; border-radius: var(--radius-sm);
+  border: 1px solid var(--border-medium); position: relative; cursor: pointer; touch-action: none;
+}
+.looper-root .seq-morph-bar-wrap.inactive { opacity: 0.25; pointer-events: none; }
+.looper-root .seq-morph-bar-wrap .morph-center {
+  position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: #555; pointer-events: none;
+}
+.looper-root .seq-morph-bar-wrap .morph-bar {
+  position: absolute; left: 15%; right: 15%; background: var(--accent-lavender); border-radius: 2px;
+  pointer-events: none; transition: top 0.05s, height 0.05s;
+}
+.looper-root .seq-morph-bar-wrap .morph-val {
+  position: absolute; left: 0; right: 0; text-align: center; font-size: 0.5rem; color: #ccc;
+  pointer-events: none; z-index: 1;
+}
+.looper-root .seq-morph-bar-wrap .morph-label-a {
+  position: absolute; right: 2px; top: 1px;
+  font-size: 0.5rem; color: var(--accent-lavender); pointer-events: none; opacity: 0.5;
+}
+.looper-root .seq-morph-bar-wrap .morph-label-b {
+  position: absolute; right: 2px; bottom: 1px;
+  font-size: 0.5rem; color: var(--accent-lavender); pointer-events: none; opacity: 0.5;
+}
+
+/* ── Bar playhead glow ── */
+.looper-root .seq-pitch-bar-wrap.playing,
+.looper-root .seq-vel-bar-wrap.playing,
+.looper-root .seq-morph-bar-wrap.playing {
+  box-shadow: 0 0 10px var(--sc, var(--accent-cyan));
+  border-color: var(--sc, var(--accent-cyan));
+}
+
+/* ── Drag popup ── */
+.looper-root .seq-drag-popup {
+  position: fixed; pointer-events: none; z-index: 9999;
+  background: rgba(0,0,0,0.85); color: #fff; font-size: 0.75rem;
+  font-weight: 700; padding: 4px 8px; border-radius: var(--radius-sm);
+  border: 1px solid var(--sc, var(--accent-cyan));
+  transform: translate(-50%, calc(-100% - 48px)); white-space: nowrap;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+}
+
+/* ── Mini Overview ── */
+.looper-root .seq-mini-overview {
+  display: flex; gap: 4px; padding: 6px 8px;
+  background: rgba(0,0,0,0.2); border-radius: var(--radius-md); margin-top: 4px; flex-wrap: wrap;
+}
+.looper-root .seq-mini-row {
+  flex: 1; cursor: pointer; padding: 4px 6px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle); transition: all 0.15s; position: relative;
+}
+.looper-root .seq-mini-row.active { border-color: var(--sc); }
+.looper-root .seq-mini-row.muted { opacity: 0.3; }
+.looper-root .seq-mini-label {
+  font-size: 0.5rem; font-weight: 700; color: var(--sc);
+  margin-bottom: 2px; display: flex; justify-content: space-between; align-items: center;
+}
+.looper-root .seq-mini-label .mini-ms { font-size: 0.55rem; color: #888; }
+.looper-root .seq-mini-label .mini-ms .on { font-weight: 900; }
+.looper-root .seq-mini-dots {
+  display: flex; gap: 1px; font-size: 0.5rem; line-height: 1;
+}
+.looper-root .seq-mini-dots .dot-hit { color: var(--sc); }
+.looper-root .seq-mini-dots .dot-rest { color: #333; }
+.looper-root .seq-mini-dots .dot-cur { background: var(--sc); color: #000; border-radius: var(--radius-sm); padding: 0 1px; }
+
+/* ── Drag-number widget ── */
+.looper-root .seq-drag-num {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 44px; min-height: 40px; padding: 6px 10px;
+  background: var(--bg-input); color: #fff; border: 1px solid var(--border-medium);
+  border-radius: var(--radius-lg); font-size: 0.9rem; font-weight: 700;
+  cursor: ns-resize; user-select: none; touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+  font-variant-numeric: tabular-nums; transition: border-color 0.15s, background 0.15s;
+}
+.looper-root .seq-drag-num:active, .looper-root .seq-drag-num.dragging {
+  border-color: var(--sc, var(--accent-cyan)); background: rgba(0,212,255,0.1);
+}
+.looper-root .seq-drag-num-label {
+  font-size: 0.7rem; color: #888; margin-right: 4px; pointer-events: none;
+}
+
+/* ── Pitch controls ── */
+.looper-root .seq-pitch-controls {
+  display: flex; gap: 6px; align-items: center; margin-left: 8px;
+  padding-left: 8px; border-left: 1px solid rgba(255,255,255,0.08);
+}
+.looper-root .seq-pitch-controls select {
+  background: var(--bg-input); color: #fff; border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm); padding: 2px 4px; font-size: 0.6rem; max-width: 100px;
+}
+.looper-root .seq-pitch-controls select:focus { border-color: var(--accent-pink); outline: none; }
+
+/* ── Overview mode ── */
+.looper-root .seq-overview { display: flex; flex-direction: column; gap: 6px; }
+.looper-root .seq-ov-row {
+  border-radius: var(--radius-md); overflow: hidden;
+  border: 1px solid var(--border-subtle); transition: border-color 0.15s;
+}
+.looper-root .seq-ov-row.ov-muted, .looper-root .seq-ov-row.muted { opacity: 0.35; }
+.looper-root .seq-ov-header {
+  display: flex; align-items: center; gap: 6px; padding: 5px 8px;
+  background: rgba(255,255,255,0.04); cursor: pointer; user-select: none; flex-wrap: wrap;
+}
+.looper-root .seq-ov-name {
+  font-size: 0.65rem; font-weight: 700; color: var(--sc); min-width: 32px;
+}
+.looper-root .seq-ov-controls {
+  display: flex; gap: 6px; align-items: center; margin-left: auto; flex-wrap: wrap;
+}
+.looper-root .seq-ov-controls label {
+  font-size: 0.55rem; color: #888; display: flex; align-items: center; gap: 2px;
+}
+.looper-root .seq-ov-controls input[type=number] {
+  width: 32px; background: var(--bg-input); color: #fff; border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm); padding: 1px 3px; font-size: 0.6rem; text-align: center;
+}
+.looper-root .seq-ov-controls select {
+  background: var(--bg-input); color: #fff; border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm); padding: 1px 3px; font-size: 0.6rem; width: 48px;
+}
+.looper-root .seq-ov-controls button {
+  border: none; border-radius: var(--radius-sm); padding: 1px 5px; cursor: pointer;
+  font-size: 0.5rem; font-weight: 700; background: rgba(0,0,0,0.3); color: #888; transition: all 0.1s;
+}
+.looper-root .seq-ov-controls button.on { color: #fff; }
+.looper-root .seq-ov-controls .ov-mute-btn.on { background: var(--accent-red); }
+.looper-root .seq-ov-controls .ov-solo-btn.on { background: #eab308; color: #000; }
+.looper-root .seq-ov-sources { display: flex; gap: 4px; align-items: center; }
+.looper-root .seq-ov-grid-wrap { padding: 4px 8px 6px; background: rgba(0,0,0,0.15); }
+.looper-root .seq-ov-grid-wrap .seq-step-grid { margin: 2px 0; }
+.looper-root .seq-ov-grid-wrap .seq-step-cell { min-width: 0; min-height: 18px; }
+.looper-root .seq-ov-grid-wrap .seq-step-num { height: 10px; font-size: 0.5rem; line-height: 10px; }
+.looper-root .seq-ov-grid-wrap .seq-trig-cond { height: 12px; font-size: 0.5rem; }
+.looper-root .seq-ov-grid-wrap .prob-label { font-size: 0.4rem; }
+
+/* ── OV select & rotation ── */
+.looper-root .seq-ov-select {
+  background: var(--bg-input); color: #e5e7eb; border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm); padding: 1px 4px; font-size: 0.55rem;
+  cursor: pointer; transition: border-color 0.15s;
+}
+.looper-root .seq-ov-select:hover { border-color: rgba(255,255,255,0.35); }
+.looper-root .seq-ov-select:focus { border-color: var(--accent-cyan); outline: none; }
+.looper-root .seq-ov-clk { width: 38px; }
+.looper-root .seq-ov-rot { gap: 2px; }
+.looper-root .seq-ov-rot button {
+  width: 16px; height: 16px; padding: 0; line-height: 16px;
+  border: none; border-radius: var(--radius-sm);
+  background: var(--bg-control); color: #888; cursor: pointer;
+  font-size: 0.6rem; text-align: center;
+}
+.looper-root .seq-ov-rot button:hover { background: var(--bg-control-hover); color: #fff; }
+.looper-root .seq-ov-rot .seq-rotation-val {
+  font-size: 0.55rem; color: #888; min-width: 12px; text-align: center;
+}
+
+/* ── Step hint ── */
+.looper-root .seq-step-hint {
+  font-size: 0.5rem; color: #555; text-align: center; padding: 2px 0 0; letter-spacing: 0.3px;
+}
+
+/* ── Touch overrides ── */
+.looper-root button, .looper-root select, .looper-root input,
+.looper-root .seq-tab, .looper-root .seq-step-cell, .looper-root .seq-step-ratchet,
+.looper-root .seq-trig-cond, .looper-root .seq-preset-btn, .looper-root .seq-view-btn,
+.looper-root .seq-link-btn, .looper-root .seq-evolve-btn, .looper-root .seq-lane-enable-btn,
+.looper-root .seq-ov-header, .looper-root .seq-lane-header, .looper-root .seq-mini-row {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ── Looper-specific: voice label ── */
+.looper-root .looper-lane-voice-label {
+  font-size: 0.7rem; font-weight: 700; letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+.looper-root .looper-ov-voice {
+  font-size: 0.6rem; font-weight: 700; margin-left: 4px;
+}

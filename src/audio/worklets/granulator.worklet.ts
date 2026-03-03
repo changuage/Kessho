@@ -8,6 +8,9 @@
 
 /// <reference path="../../vite-env.d.ts" />
 
+// Safe performance.now() — not all AudioWorklet scopes expose `performance`
+const _perfNow: () => number = typeof performance !== 'undefined' ? () => performance.now() : () => Date.now();
+
 // This file runs in AudioWorklet context
 interface GranulatorParams {
   maxGrains: number;      // 0..128 - maximum concurrent grains
@@ -188,11 +191,12 @@ class GranulatorProcessor extends AudioWorkletProcessor {
     }
   }
 
-  // Fast pan lookup (avoids trig per sample)
-  private getPan(pan: number): { l: number; r: number } {
-    const index = Math.floor(((pan + 1) * 0.5) * (this.PAN_TABLE_SIZE - 1));
-    const clampedIndex = Math.max(0, Math.min(this.PAN_TABLE_SIZE - 1, index));
-    return { l: this.panTableL[clampedIndex], r: this.panTableR[clampedIndex] };
+  // Fast pan lookup — GC-free, writes to pre-allocated array
+  private readonly panOut = [0, 0];
+  private getPanFast(pan: number): void {
+    const idx = Math.min(this.PAN_TABLE_SIZE - 1, Math.max(0, ((pan + 1) * 0.5 * (this.PAN_TABLE_SIZE - 1)) | 0));
+    this.panOut[0] = this.panTableL[idx];
+    this.panOut[1] = this.panTableR[idx];
   }
 
   private handleMessage(data: { type: string; [key: string]: unknown }) {
@@ -264,8 +268,11 @@ class GranulatorProcessor extends AudioWorkletProcessor {
       return;
     }
 
-    // Find inactive grain
-    const grain = this.grains.find((g) => !g.active);
+    // Find inactive grain (indexed loop avoids closure allocation)
+    let grain: Grain | undefined;
+    for (let i = 0; i < this.grains.length; i++) {
+      if (!this.grains[i].active) { grain = this.grains[i]; break; }
+    }
     if (!grain) return;
 
     // Random grain size between min and max
@@ -289,10 +296,9 @@ class GranulatorProcessor extends AudioWorkletProcessor {
     if (this.params.pitchMode === 'harmonic') {
       // Pick a random harmonic interval, weighted by pitch spread
       // pitchSpread controls how many intervals we can use (0 = unison only, 12 = all)
-      const maxIntervalIndex = Math.floor((this.params.pitchSpread / 12) * HARMONIC_INTERVALS.length);
-      const availableIntervals = HARMONIC_INTERVALS.slice(0, Math.max(1, maxIntervalIndex));
-      const intervalIndex = Math.floor(this.nextRandom() * availableIntervals.length);
-      pitchOffset = availableIntervals[intervalIndex];
+      const maxIntervalIndex = Math.max(1, Math.floor((this.params.pitchSpread / 12) * HARMONIC_INTERVALS.length));
+      const intervalIndex = Math.floor(this.nextRandom() * maxIntervalIndex);
+      pitchOffset = HARMONIC_INTERVALS[intervalIndex];
     } else {
       // Random pitch spread in semitones
       pitchOffset = (this.nextRandom() - 0.5) * 2 * this.params.pitchSpread;
@@ -342,7 +348,7 @@ class GranulatorProcessor extends AudioWorkletProcessor {
     const outputR = output[1];
     const blockSize = outputL.length;
 
-    const perfStart = this.perfEnabled ? performance.now() : 0;
+    const perfStart = this.perfEnabled ? _perfNow() : 0;
 
     // Process each sample
     for (let i = 0; i < blockSize; i++) {
@@ -355,7 +361,8 @@ class GranulatorProcessor extends AudioWorkletProcessor {
       if (inputLevel < 0.001) {
         this.silentSamples++;
         // After 0.5 seconds of silence, start blending in pink noise
-        if (this.silentSamples > sampleRate * 0.5) {
+        // Skip if wetMix is near zero (no audible effect)
+        if (this.silentSamples > sampleRate * 0.5 && this.params.wetMix > 0.001) {
           const noiseL = this.generatePinkNoise();
           const noiseR = this.generatePinkNoise();
           // Gradual blend over 2 seconds
@@ -395,11 +402,11 @@ class GranulatorProcessor extends AudioWorkletProcessor {
         // Apply Hann window envelope
         const envelope = this.hannWindow(grain.startSample, grain.length);
 
-        // Apply panning using lookup table (avoids trig per grain per sample)
-        const pan = this.getPan(grain.pan);
+        // Apply panning using lookup table (GC-free)
+        this.getPanFast(grain.pan);
 
-        wetL += sampleL * envelope * pan.l;
-        wetR += sampleR * envelope * pan.r;
+        wetL += sampleL * envelope * this.panOut[0];
+        wetR += sampleR * envelope * this.panOut[1];
 
         // Advance grain
         grain.startSample++;
@@ -427,7 +434,7 @@ class GranulatorProcessor extends AudioWorkletProcessor {
 
     // Performance reporting
     if (this.perfEnabled) {
-      const elapsed = performance.now() - perfStart;
+      const elapsed = _perfNow() - perfStart;
       this.perfTotalTime += elapsed;
       this.perfCount++;
       this.perfSamplesSinceReport += blockSize;

@@ -12,6 +12,9 @@
 
 /// <reference path="../../vite-env.d.ts" />
 
+// Safe performance.now() — not all AudioWorklet scopes expose `performance`
+const _perfNow: () => number = typeof performance !== 'undefined' ? () => performance.now() : () => Date.now();
+
 interface ReverbParams {
   type: 'plate' | 'hall' | 'cathedral' | 'darkHall';
   quality: 'ultra' | 'balanced' | 'lite';  // ultra=8-ch FDN, balanced=8-ch optimized, lite=4-ch FDN
@@ -22,6 +25,19 @@ interface ReverbParams {
   size: number;      // 0.5-3.0 (user control)
   modulation: number; // 0-1 (chorus-like modulation)
   diffusion: number; // 0-1 (smear amount)
+  infinite: boolean; // When true, feedback=1.0 for infinite reverb / freeze
+}
+
+// One-pole highpass filter for removing subsonic buildup in FDN feedback
+class OnePoleHP {
+  private z1 = 0;
+
+  process(input: number, coeff: number): number {
+    // y[n] = x[n] - z1 + coeff * z1  → HPF via DC-blocking topology
+    const y = input - this.z1 + coeff * this.z1;
+    this.z1 = y;
+    return y;
+  }
 }
 
 // Interpolated delay line for smooth modulation
@@ -44,15 +60,15 @@ class SmoothDelay {
   readInterpolated(delaySamples: number): number {
     const readPos = this.writeIndex - delaySamples;
     const readPosWrapped = ((readPos % this.size) + this.size);
-    const i0 = Math.floor(readPosWrapped) % this.size;
+    const i0 = (readPosWrapped | 0) % this.size;
     const i1 = (i0 + 1) % this.size;
-    const frac = readPosWrapped - Math.floor(readPosWrapped);
+    const frac = readPosWrapped - (readPosWrapped | 0);
     
     return this.buffer[i0] + (this.buffer[i1] - this.buffer[i0]) * frac;
   }
 
   read(delaySamples: number): number {
-    const readPos = this.writeIndex - Math.floor(delaySamples);
+    const readPos = this.writeIndex - (delaySamples | 0);
     return this.buffer[((readPos % this.size) + this.size) % this.size];
   }
 }
@@ -164,6 +180,7 @@ class ReverbProcessor extends AudioWorkletProcessor {
     damping: 0.5,
     width: 0.8,
     diffusion: 0.8,
+    infinite: false,
   };
 
   // FDN components
@@ -193,6 +210,13 @@ class ReverbProcessor extends AudioWorkletProcessor {
   // DC blockers
   private dcBlockerL = new DCBlocker();
   private dcBlockerR = new DCBlocker();
+
+  // HPF in FDN feedback — prevents low-end mud on long decays
+  private fdnHPFs: OnePoleHP[] = [];
+  private hpCoeff = 0.995; // ~35Hz at 48kHz
+
+  // Infinite/freeze mode
+  private infinite = false;
 
   // Smooth parameter interpolation
   private smoothDamping = 0.5;
@@ -225,7 +249,11 @@ class ReverbProcessor extends AudioWorkletProcessor {
       this.fdnDelays.push(new SmoothDelay(maxSamples));
       this.fdnDelayTimes.push(baseTime * sr / 1000);
       this.fdnDampers.push(new OnePole());
+      this.fdnHPFs.push(new OnePoleHP());
     }
+
+    // HPF coefficient for ~35Hz cutoff: coeff = 1 - (2π * fc / sr)
+    this.hpCoeff = 1 - (2 * Math.PI * 35 / sr);
 
     // Initialize diffusers with scaled times - 3 stages now
     this.preDiffuserL = new DiffuserChain(
@@ -264,6 +292,7 @@ class ReverbProcessor extends AudioWorkletProcessor {
         this.perfSamplesSinceReport = 0;
       } else if (data.type === 'params') {
         Object.assign(this.params, data.params);
+        this.infinite = !!this.params.infinite;
         this.updatePreset();
         this.updatePredelay();
       }
@@ -283,7 +312,8 @@ class ReverbProcessor extends AudioWorkletProcessor {
     // Calculate feedback gain for desired RT60 - allow higher for ambient wash
     const baseDecay = preset.decay;
     const effectiveDecay = baseDecay + (1 - baseDecay) * userDecay * 0.9;
-    this.feedbackGain = Math.min(0.995, effectiveDecay);  // Allow up to 0.995 for long tails
+    // In infinite mode, feedback = 1.0 for never-decaying reverb tail
+    this.feedbackGain = this.infinite ? 1.0 : Math.min(0.995, effectiveDecay);
 
     // Update FDN delay times based on size
     const sr = sampleRate;
@@ -350,7 +380,7 @@ class ReverbProcessor extends AudioWorkletProcessor {
     const preset = PRESETS[this.params.type] || PRESETS.hall;
     const modDepth = preset.modDepth * modulation;
 
-    const perfStart = this.perfEnabled ? performance.now() : 0;
+    const perfStart = this.perfEnabled ? _perfNow() : 0;
 
     // Pre-compute modulation values ONCE per block (ultra-slow LFO, negligible change per 128 samples)
     // Ultra-slow LFO rates (0.02-0.06 Hz = 16-50 second cycles)
@@ -381,12 +411,12 @@ class ReverbProcessor extends AudioWorkletProcessor {
     if (this.modPhase3 > 1) this.modPhase3 -= 1;
     if (this.modPhase4 > 1) this.modPhase4 -= 1;
 
+    // Smooth damping once per block instead of per sample (128× reduction)
+    this.smoothDamping += (targetDamping - this.smoothDamping) * (1 - Math.pow(1 - 0.0001, blockSize));
+
     for (let i = 0; i < blockSize; i++) {
       const inL = inputL[i] || 0;
       const inR = inputR[i] || 0;
-
-      // Smooth parameter changes
-      this.smoothDamping += (targetDamping - this.smoothDamping) * 0.0001;
 
       // Predelay
       this.predelayL.write(inL);
@@ -407,9 +437,10 @@ class ReverbProcessor extends AudioWorkletProcessor {
         this.fdnReads[j] = this.fdnDelays[j].readInterpolated(delayTime);
       }
 
-      // Apply damping (using pre-allocated array)
+      // Apply damping + HPF (using pre-allocated array)
       for (let j = 0; j < 8; j++) {
-        this.fdnDamped[j] = this.fdnDampers[j].process(this.fdnReads[j], this.smoothDamping);
+        const damped = this.fdnDampers[j].process(this.fdnReads[j], this.smoothDamping);
+        this.fdnDamped[j] = this.fdnHPFs[j].process(damped, this.hpCoeff);
       }
 
       // Mix through Hadamard matrix (writes to this.fdnMixed)
@@ -420,7 +451,8 @@ class ReverbProcessor extends AudioWorkletProcessor {
       const midR = this.midDiffuserR.process((this.fdnMixed[1] + this.fdnMixed[3] + this.fdnMixed[5] + this.fdnMixed[7]) * 0.25);
 
       // Inject input to first channels, apply feedback, write back
-      const inputGain = 0.2;
+      // In infinite mode, mute input so the tail truly freezes
+      const inputGain = this.infinite ? 0 : 0.2;
       for (let j = 0; j < 8; j++) {
         let inject = 0;
         if (j < 4) inject = diffInL * inputGain;
@@ -460,7 +492,7 @@ class ReverbProcessor extends AudioWorkletProcessor {
 
     // Performance reporting
     if (this.perfEnabled) {
-      const elapsed = performance.now() - perfStart;
+      const elapsed = _perfNow() - perfStart;
       this.perfTotalTime += elapsed;
       this.perfCount++;
       this.perfSamplesSinceReport += blockSize;

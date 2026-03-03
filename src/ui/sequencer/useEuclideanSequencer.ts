@@ -23,7 +23,10 @@ import {
 
 // ── Types ──
 
-export type LaneKind = 'trigger' | 'pitch' | 'expression' | 'morph' | 'distance';
+/** Pitch sub-lane display settings (mode, root note, scale) */
+export type PitchSettings = { mode: PitchMode; root: number; scale: ScaleName };
+
+export type LaneKind = 'trigger' | 'pitch' | 'expression' | 'morph' | 'distance' | 'slice' | 'reverse';
 export type SubLaneKind = Exclude<LaneKind, 'trigger'>;
 
 /** Per-sub-lane UI state (per sequencer × per sub-lane) */
@@ -42,10 +45,14 @@ export interface StepOverrides {
   pitch: (number[] | null)[];
   morph: (number[] | null)[];
   distance: (number[] | null)[];
+  slice: (number[] | null)[];
+  reverse: (number[] | null)[];
   expressionDirection: (LaneDirection | null)[];
   morphDirection: (LaneDirection | null)[];
   distanceDirection: (LaneDirection | null)[];
   pitchDirection: (LaneDirection | null)[];
+  sliceDirection: (LaneDirection | null)[];
+  reverseDirection: (LaneDirection | null)[];
 }
 
 export interface EvolveConfig {
@@ -85,6 +92,12 @@ export interface UseEuclideanSequencerOptions {
   initialStepOverrides?: StepOverrides;
   /** Initial sub-lane states to restore (persisted across tab switches) */
   initialSubLaneStates?: Record<SubLaneKind, SubLaneState>[];
+  /** Initial clock divisions to restore (preset loading) */
+  initialClockDivs?: ClockDivision[];
+  /** Initial pitch settings to restore (persisted across tab switches) */
+  initialPitchSettings?: PitchSettings[];
+  /** Monotonically increasing key — when it changes, internal state resets from initial* props */
+  resetKey?: number;
 }
 
 export interface UseEuclideanSequencerResult {
@@ -152,7 +165,7 @@ export interface UseEuclideanSequencerResult {
   setSwing: (seqIdx: number, value: number) => void;
 
   // ── Per-Seq Pitch Settings ──
-  pitchSettings: { mode: PitchMode; root: number; scale: ScaleName }[];
+  pitchSettings: PitchSettings[];
   setPitchMode: (seqIdx: number, mode: PitchMode) => void;
   setPitchRoot: (seqIdx: number, root: number) => void;
   setPitchScale: (seqIdx: number, scale: ScaleName) => void;
@@ -195,7 +208,10 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
     initialViewMode,
     initialStepOverrides,
     initialSubLaneStates,
+    initialClockDivs,
+    initialPitchSettings,
   } = opts;
+  const resetKey = opts.resetKey;
 
   const hitCounts = hitCountsOpt ?? Array.from({ length: laneCount }, () => 0);
   const evolveFlashing = externalEvolveFlashing ?? Array.from({ length: laneCount }, () => false);
@@ -219,10 +235,14 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
     pitch: Array.from({ length: laneCount }, () => null as number[] | null),
     morph: Array.from({ length: laneCount }, () => null as number[] | null),
     distance: Array.from({ length: laneCount }, () => null as number[] | null),
+    slice: Array.from({ length: laneCount }, () => null as number[] | null),
+    reverse: Array.from({ length: laneCount }, () => null as number[] | null),
     expressionDirection: Array.from({ length: laneCount }, () => null as LaneDirection | null),
     morphDirection: Array.from({ length: laneCount }, () => null as LaneDirection | null),
     distanceDirection: Array.from({ length: laneCount }, () => null as LaneDirection | null),
     pitchDirection: Array.from({ length: laneCount }, () => null as LaneDirection | null),
+    sliceDirection: Array.from({ length: laneCount }, () => null as LaneDirection | null),
+    reverseDirection: Array.from({ length: laneCount }, () => null as LaneDirection | null),
   }));
 
   // ── Evolve ──
@@ -236,7 +256,7 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
   );
 
   // ── Sub-Lane State (per-sequencer, per-sub-lane) ──
-  const SUB_LANE_KINDS: SubLaneKind[] = ['pitch', 'expression', 'morph', 'distance'];
+  const SUB_LANE_KINDS: SubLaneKind[] = ['pitch', 'expression', 'morph', 'distance', 'slice', 'reverse'];
   const DIRECTION_ORDER: LaneDirection[] = ['forward', 'reverse', 'pingpong'];
 
   const [subLaneStates, setSubLaneStates] = useState<Record<SubLaneKind, SubLaneState>[]>(() =>
@@ -245,6 +265,8 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
       expression: { enabled: false, steps: 5, direction: 'forward' as LaneDirection },
       morph: { enabled: false, steps: 4, direction: 'forward' as LaneDirection },
       distance: { enabled: false, steps: 4, direction: 'forward' as LaneDirection },
+      slice: { enabled: false, steps: 4, direction: 'forward' as LaneDirection },
+      reverse: { enabled: false, steps: 4, direction: 'forward' as LaneDirection },
     }))
   );
 
@@ -254,7 +276,7 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
 
   // ── Per-Seq Clock/Swing ──
   const [clockDivs, setClockDivs] = useState<ClockDivision[]>(() =>
-    Array.from({ length: laneCount }, (_, i) =>
+    initialClockDivs ?? Array.from({ length: laneCount }, (_, i) =>
       i === 0 ? '1/8' as ClockDivision : i === 1 ? '1/16' as ClockDivision : i === 2 ? '1/8T' as ClockDivision : '1/4' as ClockDivision
     )
   );
@@ -265,9 +287,22 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
   // ── Solo tracking (set of soloed lane indices; empty = no solo) ──
   const [soloSet, setSoloSet] = useState<Set<number>>(new Set());
 
+  // ── Preset reset: when resetKey changes, re-initialize internal state from initial* props ──
+  const prevResetKey = useRef(resetKey);
+  useEffect(() => {
+    if (resetKey !== undefined && resetKey !== prevResetKey.current) {
+      prevResetKey.current = resetKey;
+      if (initialStepOverrides) setStepOverrides(initialStepOverrides);
+      if (initialSubLaneStates) setSubLaneStates(initialSubLaneStates);
+      if (initialClockDivs) setClockDivs(initialClockDivs);
+      if (initialPitchSettings) setPitchSettings(initialPitchSettings);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resetKey]);
+
   // ── Per-Seq Pitch Settings ──
-  const [pitchSettings, setPitchSettings] = useState<{ mode: PitchMode; root: number; scale: ScaleName }[]>(() =>
-    Array.from({ length: laneCount }, () => ({ mode: 'semitones' as PitchMode, root: 60, scale: 'Major' as ScaleName }))
+  const [pitchSettings, setPitchSettings] = useState<PitchSettings[]>(() =>
+    initialPitchSettings ?? Array.from({ length: laneCount }, () => ({ mode: 'semitones' as PitchMode, root: 60, scale: 'Major' as ScaleName }))
   );
 
   const setPitchMode = useCallback((seqIdx: number, mode: PitchMode) => {
@@ -309,6 +344,8 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
           const defaults = lane === 'pitch' ? new Array(subSteps).fill(0)
             : lane === 'expression' ? new Array(subSteps).fill(1.0)
             : lane === 'morph' ? new Array(subSteps).fill(0)
+            : lane === 'slice' ? new Array(subSteps).fill(0)
+            : lane === 'reverse' ? new Array(subSteps).fill(0)
             : new Array(subSteps).fill(0.5); // distance
           (next[lane] as (number[] | null)[])[seqIdx] = defaults;
           return next;
@@ -336,7 +373,7 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
       const existing = old[lane][seqIdx];
       if (!existing) return old; // no data to resize
       const next = { ...old, [lane]: [...old[lane]] };
-      const defaultVal = lane === 'pitch' ? 0 : lane === 'expression' ? 1.0 : lane === 'morph' ? 0 : 0.5;
+      const defaultVal = lane === 'pitch' ? 0 : lane === 'expression' ? 1.0 : lane === 'morph' ? 0 : lane === 'slice' ? 0 : lane === 'reverse' ? 0 : 0.5;
       const resized = new Array(newSteps).fill(defaultVal);
       // Copy existing values
       for (let i = 0; i < Math.min(existing.length, newSteps); i++) {
@@ -578,6 +615,20 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
           _ppForward: true,
           values: stepOverrides.distance[idx] ?? new Array(subLaneStates[idx]?.distance.steps ?? 4).fill(0.5),
         },
+        slice: {
+          enabled: subLaneStates[idx]?.slice.enabled ?? false,
+          steps: subLaneStates[idx]?.slice.steps ?? 4,
+          direction: subLaneStates[idx]?.slice.direction ?? 'forward',
+          _ppForward: true,
+          values: stepOverrides.slice[idx] ?? new Array(subLaneStates[idx]?.slice.steps ?? 4).fill(0),
+        },
+        reverse: {
+          enabled: subLaneStates[idx]?.reverse.enabled ?? false,
+          steps: subLaneStates[idx]?.reverse.steps ?? 4,
+          direction: subLaneStates[idx]?.reverse.direction ?? 'forward',
+          _ppForward: true,
+          values: stepOverrides.reverse[idx] ?? new Array(subLaneStates[idx]?.reverse.steps ?? 4).fill(0),
+        },
         stepIndex: 0,
         hitCount: 0,
         nextTime: 0,
@@ -637,7 +688,7 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
         const subSteps = subLaneStates[laneIdx]?.[subLane]?.steps ?? 5;
         const arr = next[lane][laneIdx]
           ? [...(next[lane][laneIdx] as number[])]
-          : new Array(subSteps).fill(lane === 'pitch' ? 0 : lane === 'expression' ? 1.0 : lane === 'morph' ? 0 : 0.5);
+          : new Array(subSteps).fill(lane === 'pitch' ? 0 : lane === 'expression' ? 1.0 : lane === 'morph' ? 0 : lane === 'slice' ? 0 : lane === 'reverse' ? 0 : 0.5);
         arr[step] = value;
         (next[lane] as (number[] | null)[])[laneIdx] = arr;
         return next;

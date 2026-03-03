@@ -47,6 +47,12 @@ export function captureHomeSnapshot(s: SequencerState): SequencerSnapshot {
     distance: {
       values: [...s.distance.values],
     },
+    slice: {
+      values: [...s.slice.values],
+    },
+    reverse: {
+      values: [...s.reverse.values],
+    },
     swing: s.swing,
   };
 }
@@ -225,5 +231,7 @@ export function resetSequencerToHome(s: SequencerState): SequencerState {
     expression: { ...s.expression, velocities: [...home.expression.velocities] },
     morph: { ...s.morph, values: [...home.morph.values] },
     distance: { ...s.distance, values: [...home.distance.values] },
+    slice: { ...s.slice, values: [...home.slice.values] },
+    reverse: { ...s.reverse, values: [...home.reverse.values] },
   };
 }
