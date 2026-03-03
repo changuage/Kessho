@@ -378,3 +378,4 @@ class OceanProcessor extends AudioWorkletProcessor {
 }
 
 registerProcessor('ocean-processor', OceanProcessor);
+export {};

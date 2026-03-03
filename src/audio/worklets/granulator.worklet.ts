@@ -459,3 +459,4 @@ class GranulatorProcessor extends AudioWorkletProcessor {
 }
 
 registerProcessor('granulator', GranulatorProcessor);
+export {};

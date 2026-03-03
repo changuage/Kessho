@@ -517,3 +517,4 @@ class ReverbProcessor extends AudioWorkletProcessor {
 }
 
 registerProcessor('reverb', ReverbProcessor);
+export {};

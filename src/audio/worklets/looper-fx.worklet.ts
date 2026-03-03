@@ -1414,3 +1414,4 @@ class LooperFXProcessor extends AudioWorkletProcessor {
 }
 
 registerProcessor('looper-fx', LooperFXProcessor);
+export {};
