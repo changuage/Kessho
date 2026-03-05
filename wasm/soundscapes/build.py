@@ -141,13 +141,13 @@ size = os.path.getsize(OUT)
 print(f"Built: {OUT} ({size // 1024} KB)")
 
 # Copy to public worklets directory
-public_dir = os.path.join(SCRIPT_DIR, "..", "..", "public", "ARCHIVE", "worklets")
+public_dir = os.path.join(SCRIPT_DIR, "..", "..", "public", "worklets")
 if os.path.isdir(public_dir):
     dest = os.path.join(public_dir, "kessho_soundscapes.wasm")
     shutil.copy2(OUT, dest)
     print(f"Copied to {dest}")
 else:
     print(f"Public worklets dir not found: {public_dir}")
-    print(f"Copy manually: copy {OUT} <public>/ARCHIVE/worklets/")
+    print(f"Copy manually: copy {OUT} <public>/worklets/")
 
 print("Done!")

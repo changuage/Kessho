@@ -89,11 +89,11 @@ SIZE=$(wc -c < "$OUT")
 echo "✅ Built: $OUT ($(( SIZE / 1024 )) KB)"
 
 # Copy to public worklets directory for runtime access
-PUBLIC_DIR="$SCRIPT_DIR/../../public/ARCHIVE/worklets"
+PUBLIC_DIR="$SCRIPT_DIR/../../public/worklets"
 if [ -d "$PUBLIC_DIR" ]; then
     cp "$OUT" "$PUBLIC_DIR/kessho_soundscapes.wasm"
     echo "📦 Copied to $PUBLIC_DIR/kessho_soundscapes.wasm"
 else
     echo "⚠️  Public worklets dir not found: $PUBLIC_DIR"
-    echo "   Copy manually: cp $OUT <public>/ARCHIVE/worklets/"
+    echo "   Copy manually: cp $OUT <public>/worklets/"
 fi

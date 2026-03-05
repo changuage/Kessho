@@ -64,13 +64,14 @@ const PAD1_TO_PAD2_ENGINE: Record<string, string> = {
 // Use absolute URLs for Safari compatibility
 const getWorkletUrl = (filename: string): string => {
   const base = window.location.origin + window.location.pathname.replace(/\/[^/]*$/, '');
-  return `${base}/ARCHIVE/worklets/${filename}`;
+  return `${base}/worklets/${filename}`;
 };
 // Legacy JS granular worklet removed — all granular processing via Looper FX WASM
 // const granulatorWorkletUrl = getWorkletUrl('granulator.worklet.js');
 const reverbWorkletUrl = getWorkletUrl('reverb.worklet.js');
 const oceanWorkletUrl = getWorkletUrl('ocean.worklet.js');
-const looperFxWorkletUrl = getWorkletUrl('looper-fx.worklet.js');
+// Looper FX uses WASM-only path (no JS fallback)
+const looperFxWasmWorkletUrl = getWorkletUrl('looper-fx-wasm.worklet.js');
 const soundscapesWorkletUrl = getWorkletUrl('soundscapes-wasm.worklet.js');
 
 // ═══════════════ Looper Multi-Tap Delay Constants ═══════════════
@@ -249,11 +250,8 @@ export class AudioEngine {
   // Ikeda-style drum synth
   private drumSynth: DrumSynth | null = null;
 
-  // Looper FX (unified granular engine)
-  private useWasmLooper = false;
+  // Looper FX (unified granular engine — WASM only)
   private wasmLooperBinary: ArrayBuffer | null = null;
-  private wasmLooperBinaryCopy: ArrayBuffer | null = null;  // kept for A/B toggle
-  private bothLooperWorkletsLoaded = false;
   private looperFxNode: AudioWorkletNode | null = null;
   private looperFxInputGain: GainNode | null = null;
   private looperFxReverbSend: GainNode | null = null;
@@ -672,7 +670,7 @@ export class AudioEngine {
 
   getLooperWriteHeadPosition(): number { return this.looperWriteHeadPosition; }
   getLooperVoicePositions(): number[] { return [...this.looperVoicePositions]; }
-  getLooperEngineType(): string { return this.useWasmLooper ? 'WASM' : 'JS'; }
+  getLooperEngineType(): string { return 'WASM'; }
 
   setDrumTriggerCallback(callback: (voice: DrumVoiceType, velocity: number) => void) {
     this.onDrumTrigger = callback;
@@ -1199,36 +1197,17 @@ export class AudioEngine {
       console.warn('Soundscapes (water/insects) worklet not available:', e);
     }
 
+    // Load WASM looper (no JS fallback — WASM is the production engine)
     try {
-      // Always load JS fallback worklet first
-      await this.ctx.audioWorklet.addModule(looperFxWorkletUrl);
-      console.log('Looper FX JS worklet loaded');
-
-      // Try WASM looper — if available, register WASM worklet too for A/B toggle
       const wasmUrl = getWorkletUrl('kessho_looper.wasm');
-      try {
-        const wasmResp = await fetch(wasmUrl);
-        if (wasmResp.ok) {
-          this.wasmLooperBinary = await wasmResp.arrayBuffer();
-          // Keep a copy for A/B toggling (the original gets transferred)
-          this.wasmLooperBinaryCopy = this.wasmLooperBinary.slice(0);
-          // Register the WASM worklet wrapper
-          const wasmWorkletUrl = getWorkletUrl('looper-fx-wasm.worklet.js');
-          await this.ctx.audioWorklet.addModule(wasmWorkletUrl);
-          this.useWasmLooper = true;
-          this.bothLooperWorkletsLoaded = true;
-          console.log('Looper FX WASM worklet loaded (%d KB)', Math.round(this.wasmLooperBinary.byteLength / 1024));
-        } else {
-          throw new Error(`WASM fetch failed: ${wasmResp.status}`);
-        }
-      } catch (wasmErr) {
-        console.log('WASM looper not available, using JS worklet:', wasmErr);
-        this.useWasmLooper = false;
-      }
+      const wasmResp = await fetch(wasmUrl);
+      if (!wasmResp.ok) throw new Error(`WASM fetch failed: ${wasmResp.status}`);
+      this.wasmLooperBinary = await wasmResp.arrayBuffer();
+      await this.ctx.audioWorklet.addModule(looperFxWasmWorkletUrl);
+      console.log('Looper FX WASM worklet loaded (%d KB)', Math.round(this.wasmLooperBinary.byteLength / 1024));
     } catch (e) {
-      console.error('Failed to load looper FX worklet:', e);
-      // Non-fatal: looper is optional, engine can still run
-      console.warn('Looper FX will be unavailable');
+      console.error('Failed to load WASM looper:', e);
+      console.warn('Looper FX will be unavailable — WASM binary could not be loaded');
     }
 
     // Create audio graph
@@ -1796,8 +1775,7 @@ export class AudioEngine {
 
     // Looper FX (unified granular engine)
     try {
-      const processorName = this.useWasmLooper ? 'looper-fx-wasm' : 'looper-fx';
-      this.looperFxNode = new AudioWorkletNode(ctx, processorName, {
+      this.looperFxNode = new AudioWorkletNode(ctx, 'looper-fx-wasm', {
         numberOfInputs: 1,
         numberOfOutputs: 1,
         outputChannelCount: [2],
@@ -1817,20 +1795,14 @@ export class AudioEngine {
       };
 
       // Send WASM binary to worklet (if using WASM path)
-      if (this.useWasmLooper) {
-        // Use the original binary if available, otherwise clone from backup copy
-        const toTransfer = this.wasmLooperBinary
-          ? this.wasmLooperBinary
-          : this.wasmLooperBinaryCopy
-            ? this.wasmLooperBinaryCopy.slice(0)
-            : null;
+      // Send WASM binary to worklet
+      if (this.wasmLooperBinary) {
+        const toTransfer = this.wasmLooperBinary;
         this.wasmLooperBinary = null;
-        if (toTransfer) {
-          this.looperFxNode.port.postMessage(
-            { type: 'wasmBinary', binary: toTransfer },
-            [toTransfer] // transfer ownership
-          );
-        }
+        this.looperFxNode.port.postMessage(
+          { type: 'wasmBinary', binary: toTransfer },
+          [toTransfer] // transfer ownership
+        );
       }
 
       this.looperFxInputGain = ctx.createGain();
@@ -2537,96 +2509,6 @@ export class AudioEngine {
       type: 'randomSequence',
       sequence,
     });
-  }
-
-  /**
-   * A/B toggle: hot-swap between WASM and JS looper engines.
-   * Both worklets are pre-registered on startup. This method tears down the
-   * current looper node, creates a new one with the alternate processor,
-   * re-wires the audio graph, and re-sends params + random sequence.
-   *
-   * Call from console: (window as any).__engine.toggleLooperEngine()
-   */
-  async toggleLooperEngine(): Promise<string> {
-    if (!this.bothLooperWorkletsLoaded || !this.ctx || !this.looperFxNode) {
-      const msg = 'Cannot toggle: both worklets must be loaded and engine must be running';
-      console.warn(msg);
-      return msg;
-    }
-
-    const switchingTo = this.useWasmLooper ? 'JS' : 'WASM';
-    console.log(`[A/B Toggle] Switching looper engine: ${this.useWasmLooper ? 'WASM' : 'JS'} → ${switchingTo}`);
-
-    // 1. Tear down old node: destroy WASM heap, close port, disconnect
-    const oldNode = this.looperFxNode;
-    try { oldNode.port.postMessage({ type: 'destroy' }); } catch { /* */ }
-    try { oldNode.port.onmessage = null; } catch { /* */ }
-    try { oldNode.port.close(); } catch { /* */ }
-    try { oldNode.disconnect(); } catch (_e) { /* already disconnected */ }
-
-    // 2. Flip the flag
-    this.useWasmLooper = !this.useWasmLooper;
-
-    // 3. Create new node
-    const processorName = this.useWasmLooper ? 'looper-fx-wasm' : 'looper-fx';
-    this.looperFxNode = new AudioWorkletNode(this.ctx, processorName, {
-      numberOfInputs: 1,
-      numberOfOutputs: 1,
-      outputChannelCount: [2],
-      channelCount: 2,
-      channelCountMode: 'explicit',
-    });
-
-    // 4. Re-attach message handler
-    this.looperFxNode.port.onmessage = (e) => {
-      if (e.data.type === 'position') {
-        this.looperWriteHeadPosition = e.data.writeHead;
-        this.looperVoicePositions = e.data.voices;
-      } else if (e.data.type === 'perf') {
-        this.handlePerfMessage(e.data);
-      } else if (e.data.type === 'wasmReady') {
-        console.log(`[A/B Toggle] WASM engine initialized`);
-      }
-    };
-
-    // 5. If switching to WASM, send binary
-    if (this.useWasmLooper && this.wasmLooperBinaryCopy) {
-      const copy = this.wasmLooperBinaryCopy.slice(0); // fresh copy for transfer
-      this.looperFxNode.port.postMessage(
-        { type: 'wasmBinary', binary: copy },
-        [copy]
-      );
-    }
-
-    // 6. Re-wire audio graph: inputGain → node → reverbSend, direct, delaySend
-    if (this.looperFxInputGain) {
-      this.looperFxInputGain.disconnect();
-      this.looperFxInputGain.connect(this.looperFxNode);
-    }
-    if (this.looperFxReverbSend) {
-      this.looperFxNode.connect(this.looperFxReverbSend);
-    }
-    if (this.looperFxDirect) {
-      this.looperFxNode.connect(this.looperFxDirect);
-    }
-    if (this.looperDelaySendGain) {
-      this.looperFxNode.connect(this.looperDelaySendGain);
-    }
-
-    // 7. Re-send state: enable perf always on toggle for A/B comparison
-    this.looperFxNode.port.postMessage({ type: 'enablePerf', enabled: true });
-
-    // 8. Re-send random sequence
-    this.sendLooperRandomSequence();
-
-    // 9. Force a full params refresh to the new worklet
-    if (this.sliderState) {
-      this.applyParams(this.sliderState);
-    }
-
-    const msg = `Looper engine switched to ${switchingTo} — perf monitoring enabled. Watch console for CPU%.`;
-    console.log(`[A/B Toggle] ${msg}`);
-    return msg;
   }
 
   private schedulePhraseUpdates(): void {
@@ -5205,5 +5087,5 @@ export class AudioEngine {
 // Singleton instance
 export const audioEngine = new AudioEngine();
 
-// Expose for console A/B testing: window.__engine.toggleLooperEngine()
+// Expose engine for console debugging
 (window as unknown as Record<string, unknown>).__engine = audioEngine;
