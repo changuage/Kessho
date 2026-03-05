@@ -414,7 +414,6 @@ export class AudioEngine {
   private onLeadExpressionTrigger: ((expression: { vibratoDepth: number; vibratoRate: number; glide: number }) => void) | null = null;
   private onLeadMorphTrigger: ((morph: { lead1: number; lead2: number }) => void) | null = null;
   private onLeadDelayTrigger: ((delay: { time: number; feedback: number; mix: number }) => void) | null = null;
-  private onOceanWaveTrigger: ((wave: { duration: number; interval: number; foam: number; depth: number }) => void) | null = null;
   private onDrumTrigger: ((voice: DrumVoiceType, velocity: number) => void) | null = null;
   private onDrumMorphTrigger: ((voice: DrumVoiceType, morphPosition: number) => void) | null = null;
   private onDrumParamSHTrigger: ((voice: DrumVoiceType, key: string, position: number) => void) | null = null;
@@ -661,10 +660,6 @@ export class AudioEngine {
 
   setLeadDelayCallback(callback: (delay: { time: number; feedback: number; mix: number }) => void) {
     this.onLeadDelayTrigger = callback;
-  }
-
-  setOceanWaveCallback(callback: (wave: { duration: number; interval: number; foam: number; depth: number }) => void) {
-    this.onOceanWaveTrigger = callback;
   }
 
   setLooperTriggerOverrideCallback(callback: (voice: number, overrides: { sliceOverride?: number; pitchOverride?: number; reverseOverride?: boolean }) => void) {

@@ -1287,8 +1287,8 @@ const App: React.FC = () => {
     mix: number;
   }>({ time: 0.5, feedback: 0.5, mix: 0.5 });
 
-  // Track random walk positions for ocean params (updated by ocean worklet)
-  const [oceanPositions, setOceanPositions] = useState<{
+  // Track random walk positions for ocean params (static defaults — WASM ocean no longer fires JS callbacks)
+  const [oceanPositions] = useState<{
     duration: number;
     interval: number;
     foam: number;
@@ -1942,12 +1942,6 @@ const App: React.FC = () => {
   useEffect(() => {
     audioEngine.setLeadDelayCallback(setLeadDelayPositions);
     return () => { audioEngine.setLeadDelayCallback(null as unknown as typeof setLeadDelayPositions); };
-  }, []);
-
-  // Ocean wave trigger callback
-  useEffect(() => {
-    audioEngine.setOceanWaveCallback(setOceanPositions);
-    return () => { audioEngine.setOceanWaveCallback(null as unknown as typeof setOceanPositions); };
   }, []);
 
   // Drum morph trigger callback (per-trigger random morph position)
