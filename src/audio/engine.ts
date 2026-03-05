@@ -36,6 +36,7 @@ import {
   loadLead4opFMPreset,
   morphPresets,
   playLead4opFMNote,
+  getActiveLeadNoteCount,
   DEFAULT_SOFT_RHODES,
   DEFAULT_GAMELAN,
 } from './lead4opfm';
@@ -65,10 +66,12 @@ const getWorkletUrl = (filename: string): string => {
   const base = window.location.origin + window.location.pathname.replace(/\/[^/]*$/, '');
   return `${base}/ARCHIVE/worklets/${filename}`;
 };
-const granulatorWorkletUrl = getWorkletUrl('granulator.worklet.js');
+// Legacy JS granular worklet removed — all granular processing via Looper FX WASM
+// const granulatorWorkletUrl = getWorkletUrl('granulator.worklet.js');
 const reverbWorkletUrl = getWorkletUrl('reverb.worklet.js');
 const oceanWorkletUrl = getWorkletUrl('ocean.worklet.js');
 const looperFxWorkletUrl = getWorkletUrl('looper-fx.worklet.js');
+const soundscapesWorkletUrl = getWorkletUrl('soundscapes-wasm.worklet.js');
 
 // ═══════════════ Looper Multi-Tap Delay Constants ═══════════════
 
@@ -198,14 +201,10 @@ export class AudioEngine {
   private limiter: DynamicsCompressorNode | null = null;
   private mediaStreamDest: MediaStreamAudioDestinationNode | null = null;
   private voices: Voice[] = [];
+  // Legacy JS granular fields removed — granulatorNode kept only for stop() cleanup safety
   private granulatorNode: AudioWorkletNode | null = null;
   private reverbNode: AudioWorkletNode | null = null;
   private reverbOutputGain: GainNode | null = null;
-  private granulatorInputGain: GainNode | null = null;
-  private granularWetHPF: BiquadFilterNode | null = null;
-  private granularWetLPF: BiquadFilterNode | null = null;
-  private granularReverbSend: GainNode | null = null;
-  private granularDirect: GainNode | null = null;
 
   private synthBus: GainNode | null = null;
   private dryBus: GainNode | null = null;
@@ -251,6 +250,10 @@ export class AudioEngine {
   private drumSynth: DrumSynth | null = null;
 
   // Looper FX (unified granular engine)
+  private useWasmLooper = false;
+  private wasmLooperBinary: ArrayBuffer | null = null;
+  private wasmLooperBinaryCopy: ArrayBuffer | null = null;  // kept for A/B toggle
+  private bothLooperWorkletsLoaded = false;
   private looperFxNode: AudioWorkletNode | null = null;
   private looperFxInputGain: GainNode | null = null;
   private looperFxReverbSend: GainNode | null = null;
@@ -336,6 +339,22 @@ export class AudioEngine {
   private oceanSampleGain: GainNode | null = null;
   private oceanSampleLoaded = false;
 
+  // Soundscapes WASM worklet (water + insects engines)
+  private soundscapesNode: AudioWorkletNode | null = null;
+  private waterGain: GainNode | null = null;
+  private waterReverbSend: GainNode | null = null;
+  private oceanReverbSendNode: GainNode | null = null;    // Waves reverb send (post-filter)
+  private insectsReverbSendNode: GainNode | null = null;  // Insects reverb send
+  private soundscapesInsectsGain: GainNode | null = null;
+  private wasmSoundscapesBinary: ArrayBuffer | null = null;
+  private soundscapesWasmReady = false;
+  private _scWaterStarted = false;
+  private _scInsects1Started = false;
+  private _scInsects2Started = false;
+  private _scInsects1Engine = -1;
+  private _scInsects2Engine = -1;
+  private _scWaterPreset = -1;
+
   private harmonyState: HarmonyState | null = null;
   private cofConfig: CircleOfFifthsConfig = {
     enabled: false,
@@ -406,7 +425,9 @@ export class AudioEngine {
   // CPU performance monitoring (per-worklet % reported ~1Hz)
   private perfMonitorEnabled = false;
   private perfData: Record<string, number> = {};
+  private perfNodeCounts: Record<string, number> = {};  // node/voice counts for synths
   private onPerfUpdate: ((data: Record<string, number>) => void) | null = null;
+  private synthPerfTimer: number | null = null;
 
   // Lead morph random walk state (per-lead, momentum-based)
   private leadMorphWalkStates: {
@@ -515,7 +536,20 @@ export class AudioEngine {
   /** Enable/disable CPU performance monitoring overlay. Sends enablePerf to all worklets. */
   setPerfMonitorEnabled(enabled: boolean) {
     this.perfMonitorEnabled = enabled;
-    if (!enabled) this.perfData = {};
+    if (!enabled) {
+      this.perfData = {};
+      if (this.synthPerfTimer !== null) {
+        clearInterval(this.synthPerfTimer);
+        this.synthPerfTimer = null;
+      }
+    } else {
+      // Start periodic estimation of native-node synth CPU (~1Hz, matching worklet report rate)
+      if (this.synthPerfTimer === null) {
+        this.synthPerfTimer = window.setInterval(() => this.estimateSynthCpu(), 1000);
+        // Run once immediately so overlay populates without waiting 1s
+        this.estimateSynthCpu();
+      }
+    }
     this.sendEnablePerfToWorklets(enabled);
   }
 
@@ -523,10 +557,11 @@ export class AudioEngine {
   private sendEnablePerfToWorklets(enabled: boolean) {
     const msg = { type: 'enablePerf', enabled };
     // Guard: only send to AudioWorkletNodes (which have .port), not to GainNode stand-ins
-    if (this.granulatorNode && 'port' in this.granulatorNode) this.granulatorNode.port.postMessage(msg);
+    // Legacy granulatorNode removed — perf messages no longer sent to it
     if (this.reverbNode && 'port' in this.reverbNode) (this.reverbNode as AudioWorkletNode).port.postMessage(msg);
     if (this.oceanNode && 'port' in this.oceanNode) this.oceanNode.port.postMessage(msg);
     if (this.looperFxNode && 'port' in this.looperFxNode) this.looperFxNode.port.postMessage(msg);
+    if (this.soundscapesNode && 'port' in this.soundscapesNode) this.soundscapesNode.port.postMessage(msg);
   }
 
   setPerfUpdateCallback(callback: ((data: Record<string, number>) => void) | null) {
@@ -534,11 +569,81 @@ export class AudioEngine {
   }
 
   /** Handle incoming perf message from any worklet */
-  private handlePerfMessage(data: { name: string; cpuPercent: number }) {
-    this.perfData[data.name] = Math.round(data.cpuPercent * 10) / 10;
+  private handlePerfMessage(data: Record<string, unknown>) {
+    // Standard format: { name: string, cpuPercent: number }
+    if (typeof data.name === 'string' && typeof data.cpuPercent === 'number') {
+      this.perfData[data.name] = Math.round(data.cpuPercent * 10) / 10;
+    }
+    // Soundscapes format: { avgMs, budgetMs, waterMs, insects1Ms, insects2Ms, oceanMs }
+    if (typeof data.budgetMs === 'number' && typeof data.waterMs === 'number') {
+      const budget = data.budgetMs as number;
+      if (budget > 0) {
+        this.perfData['water'] = Math.round(((data.waterMs as number) / budget) * 1000) / 10;
+        const insectsMs = ((data.insects1Ms as number) || 0) + ((data.insects2Ms as number) || 0);
+        this.perfData['insects'] = Math.round((insectsMs / budget) * 1000) / 10;
+      }
+    }
     if (this.onPerfUpdate) {
       this.onPerfUpdate({ ...this.perfData });
     }
+  }
+
+  /**
+   * Estimate CPU % for native Web Audio node synths (Lead FM, Pad, Drum).
+   * These don't run in AudioWorkletProcessors, so we estimate from active
+   * voice/node counts × empirical per-node costs.
+   *
+   * Rough per-node costs per 128-sample render quantum @ 48 kHz (≈2.67 ms budget):
+   *   OscillatorNode  ≈ 0.012 ms   GainNode  ≈ 0.002 ms
+   *   BiquadFilter    ≈ 0.008 ms   WaveShaper ≈ 0.005 ms
+   *   StereoPanner    ≈ 0.004 ms   BufferSource ≈ 0.010 ms
+   */
+  private estimateSynthCpu() {
+    const sampleRate = this.ctx?.sampleRate ?? 48000;
+    const budgetMs = (128 / sampleRate) * 1000; // render quantum budget
+
+    // ─── Lead FM Synth ───
+    // ~23 nodes per note (6 Osc + 13 Gain + 2 Biquad + 2 Panner) ≈ 0.12 ms/note
+    const leadNotes = getActiveLeadNoteCount();
+    const leadMsPerNote = 6 * 0.012 + 13 * 0.002 + 2 * 0.008 + 2 * 0.004; // ≈ 0.122 ms
+    const leadCpu = (leadNotes * leadMsPerNote / budgetMs) * 100;
+
+    // ─── Pad Synth ───
+    // 6 persistent voices × 19 nodes each, but only active ones do real work.
+    // Persistent nodes still consume some audio thread time even when silent.
+    const activePadVoices = this.voices.filter(v => v.active).length;
+    const totalPadVoices = this.voices.length; // always 6
+    // Active voice: full cost. Idle voice: ~20% cost (gain at 0, osc still running).
+    const padMsPerVoice = 4 * 0.012 + 1 * 0.010 + 9 * 0.002 + 4 * 0.008 + 1 * 0.005; // ≈ 0.103 ms
+    const padCpu = ((activePadVoices * padMsPerVoice + (totalPadVoices - activePadVoices) * padMsPerVoice * 0.2) / budgetMs) * 100;
+
+    // ─── Drum Synth ───
+    // Varies widely per voice type. Average ~8 nodes per active voice ≈ 0.06 ms/voice
+    // Plus persistent infrastructure (master bus, delay, analysers) ≈ ~23 nodes
+    const drumActiveVoices = this.drumSynth?.getActiveVoiceCount() ?? 0;
+    const drumNodeGroups = this.drumSynth?.getActiveNodeGroupCount() ?? 0;
+    const drumInfraMs = 23 * 0.003; // persistent nodes (lighter - gain/analyser)
+    const drumVoiceMs = drumNodeGroups * 0.06; // transient node groups
+    const drumCpu = ((drumInfraMs + drumVoiceMs) / budgetMs) * 100;
+
+    // Push synthetic perf entries
+    this.perfData['lead-fm'] = Math.round(leadCpu * 10) / 10;
+    this.perfData['pad'] = Math.round(padCpu * 10) / 10;
+    this.perfData['drum-synth'] = Math.round(drumCpu * 10) / 10;
+
+    // Track node/voice counts for display
+    this.perfNodeCounts['lead-fm'] = leadNotes;
+    this.perfNodeCounts['pad'] = activePadVoices;
+    this.perfNodeCounts['drum-synth'] = drumActiveVoices;
+
+    if (this.onPerfUpdate) {
+      this.onPerfUpdate({ ...this.perfData });
+    }
+  }
+
+  /** Get current active node/voice counts for the CPU overlay. */
+  getPerfNodeCounts(): Record<string, number> {
+    return { ...this.perfNodeCounts };
   }
 
   setStateChangeCallback(callback: (state: EngineState) => void) {
@@ -567,6 +672,7 @@ export class AudioEngine {
 
   getLooperWriteHeadPosition(): number { return this.looperWriteHeadPosition; }
   getLooperVoicePositions(): number[] { return [...this.looperVoicePositions]; }
+  getLooperEngineType(): string { return this.useWasmLooper ? 'WASM' : 'JS'; }
 
   setDrumTriggerCallback(callback: (voice: DrumVoiceType, velocity: number) => void) {
     this.onDrumTrigger = callback;
@@ -1056,15 +1162,8 @@ export class AudioEngine {
     this.unlockAudioContext();
 
     // Register worklets with error handling
-    console.log('Loading worklets from:', granulatorWorkletUrl);
-    try {
-      await this.ctx.audioWorklet.addModule(granulatorWorkletUrl);
-      console.log('Granulator worklet loaded');
-    } catch (e) {
-      console.error('Failed to load granulator worklet:', e);
-      this.isStarting = false;
-      throw e;
-    }
+    // Legacy JS granular worklet REMOVED — all granular processing now handled by Looper FX WASM engine
+    console.log('Loading worklets...');
     
     try {
       await this.ctx.audioWorklet.addModule(reverbWorkletUrl);
@@ -1084,9 +1183,48 @@ export class AudioEngine {
       throw e;
     }
 
+    // Soundscapes WASM worklet (water + insects engines)
     try {
+      await this.ctx.audioWorklet.addModule(soundscapesWorkletUrl);
+      console.log('Soundscapes WASM worklet loaded');
+      const scWasmUrl = getWorkletUrl('kessho_soundscapes.wasm');
+      const scWasmResp = await fetch(scWasmUrl);
+      if (scWasmResp.ok) {
+        this.wasmSoundscapesBinary = await scWasmResp.arrayBuffer();
+        console.log('Soundscapes WASM binary loaded (%d KB)', Math.round(this.wasmSoundscapesBinary.byteLength / 1024));
+      } else {
+        console.warn('Soundscapes WASM binary not available');
+      }
+    } catch (e) {
+      console.warn('Soundscapes (water/insects) worklet not available:', e);
+    }
+
+    try {
+      // Always load JS fallback worklet first
       await this.ctx.audioWorklet.addModule(looperFxWorkletUrl);
-      console.log('Looper FX worklet loaded');
+      console.log('Looper FX JS worklet loaded');
+
+      // Try WASM looper — if available, register WASM worklet too for A/B toggle
+      const wasmUrl = getWorkletUrl('kessho_looper.wasm');
+      try {
+        const wasmResp = await fetch(wasmUrl);
+        if (wasmResp.ok) {
+          this.wasmLooperBinary = await wasmResp.arrayBuffer();
+          // Keep a copy for A/B toggling (the original gets transferred)
+          this.wasmLooperBinaryCopy = this.wasmLooperBinary.slice(0);
+          // Register the WASM worklet wrapper
+          const wasmWorkletUrl = getWorkletUrl('looper-fx-wasm.worklet.js');
+          await this.ctx.audioWorklet.addModule(wasmWorkletUrl);
+          this.useWasmLooper = true;
+          this.bothLooperWorkletsLoaded = true;
+          console.log('Looper FX WASM worklet loaded (%d KB)', Math.round(this.wasmLooperBinary.byteLength / 1024));
+        } else {
+          throw new Error(`WASM fetch failed: ${wasmResp.status}`);
+        }
+      } catch (wasmErr) {
+        console.log('WASM looper not available, using JS worklet:', wasmErr);
+        this.useWasmLooper = false;
+      }
     } catch (e) {
       console.error('Failed to load looper FX worklet:', e);
       // Non-fatal: looper is optional, engine can still run
@@ -1228,6 +1366,40 @@ export class AudioEngine {
       this.oceanFilter = null;
     }
 
+    // Disconnect soundscapes WASM worklet + gain nodes
+    if (this.soundscapesNode) {
+      try { this.soundscapesNode.port.close(); } catch { /* */ }
+      try { this.soundscapesNode.disconnect(); } catch { /* */ }
+      this.soundscapesNode = null;
+    }
+    this.soundscapesWasmReady = false;
+    this._scWaterStarted = false;
+    this._scInsects1Started = false;
+    this._scInsects2Started = false;
+    this._scInsects1Engine = -1;
+    this._scInsects2Engine = -1;
+    this._scWaterPreset = -1;
+    if (this.waterGain) {
+      try { this.waterGain.disconnect(); } catch { /* */ }
+      this.waterGain = null;
+    }
+    if (this.waterReverbSend) {
+      try { this.waterReverbSend.disconnect(); } catch { /* */ }
+      this.waterReverbSend = null;
+    }
+    if (this.soundscapesInsectsGain) {
+      try { this.soundscapesInsectsGain.disconnect(); } catch { /* */ }
+      this.soundscapesInsectsGain = null;
+    }
+    if (this.oceanReverbSendNode) {
+      try { this.oceanReverbSendNode.disconnect(); } catch { /* */ }
+      this.oceanReverbSendNode = null;
+    }
+    if (this.insectsReverbSendNode) {
+      try { this.insectsReverbSendNode.disconnect(); } catch { /* */ }
+      this.insectsReverbSendNode = null;
+    }
+
     // Disconnect granular and reverb worklets
     if (this.granulatorNode) {
       try { this.granulatorNode.disconnect(); } catch { /* */ }
@@ -1260,6 +1432,19 @@ export class AudioEngine {
     if (this.leadMerger) { try { this.leadMerger.disconnect(); } catch { /* */ } this.leadMerger = null; }
     if (this.leadReverbSend) { try { this.leadReverbSend.disconnect(); } catch { /* */ } this.leadReverbSend = null; }
     if (this.leadDelayReverbSend) { try { this.leadDelayReverbSend.disconnect(); } catch { /* */ } this.leadDelayReverbSend = null; }
+
+    // Tear down looper FX node + routing gains (prevent orphan worklet processing)
+    if (this.looperFxNode) {
+      // Tell WASM worklet to free heap before disconnecting
+      try { this.looperFxNode.port.postMessage({ type: 'destroy' }); } catch { /* */ }
+      try { this.looperFxNode.port.onmessage = null; } catch { /* */ }
+      try { this.looperFxNode.port.close(); } catch { /* */ }
+      try { this.looperFxNode.disconnect(); } catch { /* */ }
+      this.looperFxNode = null;
+    }
+    if (this.looperFxInputGain) { try { this.looperFxInputGain.disconnect(); } catch { /* */ } this.looperFxInputGain = null; }
+    if (this.looperFxReverbSend) { try { this.looperFxReverbSend.disconnect(); } catch { /* */ } this.looperFxReverbSend = null; }
+    if (this.looperFxDirect) { try { this.looperFxDirect.disconnect(); } catch { /* */ } this.looperFxDirect = null; }
 
     // Stop looper delay vibrato oscillators (prevent orphaned oscillator leak)
     for (const osc of this.looperDelayVibratoOscs) {
@@ -1479,34 +1664,9 @@ export class AudioEngine {
     this.synthDirect = ctx.createGain();
     this.synthDirect.gain.value = 1.0;  // Level is per-voice via mixerGain
 
-    // Granular worklet
-    this.granulatorNode = new AudioWorkletNode(ctx, 'granulator', {
-      numberOfInputs: 1,
-      numberOfOutputs: 1,
-      outputChannelCount: [2],
-    });
-    this.granulatorNode.port.onmessage = (e) => {
-      if (e.data.type === 'perf') this.handlePerfMessage(e.data);
-    };
-
-    // Granular input gain (for feedback control)
-    this.granulatorInputGain = ctx.createGain();
-
-    // Granular wet filters
-    this.granularWetHPF = ctx.createBiquadFilter();
-    this.granularWetHPF.type = 'highpass';
-    this.granularWetHPF.frequency.value = this.sliderState?.wetHPF ?? 500;
-
-    this.granularWetLPF = ctx.createBiquadFilter();
-    this.granularWetLPF.type = 'lowpass';
-    this.granularWetLPF.frequency.value = this.sliderState?.wetLPF ?? 8000;
-
-    // Granular reverb send and direct gain (independent, not crossfade)
-    this.granularReverbSend = ctx.createGain();
-    this.granularReverbSend.gain.value = this.sliderState?.granularReverbSend ?? 0.8;
-
-    this.granularDirect = ctx.createGain();
-    this.granularDirect.gain.value = this.sliderState?.granularLevel ?? 0.4;
+    // Legacy JS granular worklet REMOVED — granulatorNode no longer created
+    // All granular processing is handled by the Looper FX WASM engine.
+    // The synthBus → dryBus → synthDirect → masterGain path remains for dry pad signal.
 
     // Reverb worklet
     this.reverbNode = new AudioWorkletNode(ctx, 'reverb', {
@@ -1589,9 +1749,55 @@ export class AudioEngine {
     this.oceanSampleGain = ctx.createGain();
     this.oceanSampleGain.gain.value = 0;
 
+    // Soundscapes WASM worklet — water + insects engines
+    // 3 outputs: [0]=water stereo, [1]=insects stereo, [2]=ocean (unused — main engine's ocean-processor handles ocean)
+    if (this.wasmSoundscapesBinary) {
+      this.soundscapesNode = new AudioWorkletNode(ctx, 'soundscapes-wasm-processor', {
+        numberOfInputs: 0,
+        numberOfOutputs: 3,
+        outputChannelCount: [2, 2, 2],
+      });
+      const binary = this.wasmSoundscapesBinary;
+      this.wasmSoundscapesBinary = null;
+      this.soundscapesNode.port.postMessage({ type: 'wasmBinary', binary }, [binary]);
+      // Wait for WASM ready handshake
+      await new Promise<void>((resolve) => {
+        this.soundscapesNode!.port.onmessage = (e) => {
+          if (e.data.type === 'wasmReady') {
+            this.soundscapesWasmReady = true;
+            console.log('Soundscapes WASM engine initialized');
+            resolve();
+          } else if (e.data.type === 'perf') {
+            this.handlePerfMessage(e.data);
+          }
+        };
+      });
+      // After WASM ready, set up permanent message handler
+      this.soundscapesNode.port.onmessage = (e) => {
+        if (e.data.type === 'perf') {
+          this.handlePerfMessage(e.data);
+        }
+      };
+    }
+
+    // Soundscapes gain nodes
+    this.waterGain = ctx.createGain();
+    this.waterGain.gain.value = 0;
+    this.waterReverbSend = ctx.createGain();
+    this.waterReverbSend.gain.value = 0;
+    this.soundscapesInsectsGain = ctx.createGain();
+    this.soundscapesInsectsGain.gain.value = 0;
+
+    this.oceanReverbSendNode = ctx.createGain();
+    this.oceanReverbSendNode.gain.value = this.sliderState?.oceanReverbSend ?? 0.2;
+
+    this.insectsReverbSendNode = ctx.createGain();
+    this.insectsReverbSendNode.gain.value = this.sliderState?.insectsReverbSend ?? 0.15;
+
     // Looper FX (unified granular engine)
     try {
-      this.looperFxNode = new AudioWorkletNode(ctx, 'looper-fx', {
+      const processorName = this.useWasmLooper ? 'looper-fx-wasm' : 'looper-fx';
+      this.looperFxNode = new AudioWorkletNode(ctx, processorName, {
         numberOfInputs: 1,
         numberOfOutputs: 1,
         outputChannelCount: [2],
@@ -1605,14 +1811,33 @@ export class AudioEngine {
           this.looperVoicePositions = e.data.voices;
         } else if (e.data.type === 'perf') {
           this.handlePerfMessage(e.data);
+        } else if (e.data.type === 'wasmReady') {
+          console.log('Looper FX WASM engine initialized');
         }
       };
+
+      // Send WASM binary to worklet (if using WASM path)
+      if (this.useWasmLooper) {
+        // Use the original binary if available, otherwise clone from backup copy
+        const toTransfer = this.wasmLooperBinary
+          ? this.wasmLooperBinary
+          : this.wasmLooperBinaryCopy
+            ? this.wasmLooperBinaryCopy.slice(0)
+            : null;
+        this.wasmLooperBinary = null;
+        if (toTransfer) {
+          this.looperFxNode.port.postMessage(
+            { type: 'wasmBinary', binary: toTransfer },
+            [toTransfer] // transfer ownership
+          );
+        }
+      }
 
       this.looperFxInputGain = ctx.createGain();
       this.looperFxInputGain.gain.value = 1.0;
 
       this.looperFxReverbSend = ctx.createGain();
-      this.looperFxReverbSend.gain.value = this.sliderState?.looperReverbSend ?? 0.3;
+      this.looperFxReverbSend.gain.value = this.sliderState?.granularReverbSend ?? 0.3;
 
       this.looperFxDirect = ctx.createGain();
       this.looperFxDirect.gain.value = this.sliderState?.looperEnabled ? 1.0 : 0;
@@ -1685,21 +1910,12 @@ export class AudioEngine {
     this.lead1Bus.connect(this.leadGain);
     this.lead2Bus.connect(this.leadGain);
 
-    this.synthBus.connect(this.granulatorInputGain);
     this.synthBus.connect(this.dryBus);
 
-    this.granulatorInputGain.connect(this.granulatorNode);
-    this.granulatorNode.connect(this.granularWetHPF);
-    this.granularWetHPF.connect(this.granularWetLPF);
-    
-    // Split granular output: reverb send and direct to master
-    this.granularWetLPF.connect(this.granularReverbSend);
-    this.granularWetLPF.connect(this.granularDirect);
-    
-    this.granularReverbSend.connect(this.reverbNode);
-    this.granularDirect.connect(this.masterGain);
+    // Legacy JS granular path REMOVED — synthBus no longer feeds granulatorInputGain
+    // Dry signal path preserved: synthBus → dryBus → synthDirect → masterGain
 
-    // Looper FX signal path (parallel to granulator):
+    // Looper FX signal path (now the sole granular engine):
     // Pad1PreFaderBus -> LooperPad1Send  ─┐  (pre-fader: independent of pad level)
     // Pad2PreFaderBus -> LooperPad2Send  ─┤
     // Lead1Bus        -> LooperLead1Send ─┤
@@ -1877,11 +2093,36 @@ export class AudioEngine {
     this.oceanSampleGain.connect(this.oceanFilter);
     this.oceanFilter.connect(this.masterGain);
 
+    // Waves reverb send (taps oceanFilter output → reverb)
+    if (this.oceanReverbSendNode) {
+      this.oceanFilter.connect(this.oceanReverbSendNode);
+      this.oceanReverbSendNode.connect(this.reverbNode);
+    }
+
     // Waves looper send (taps oceanFilter output)
     if (this.looperWavesSend && this.looperFxInputGain) {
       this.oceanFilter.connect(this.looperWavesSend);
       this.looperWavesSend.connect(this.looperFxInputGain);
     }
+
+    // Soundscapes routing
+    // Water:   soundscapesNode[0] → waterGain → masterGain
+    //          soundscapesNode[0] → waterReverbSend → reverbNode
+    // Insects: soundscapesNode[1] → soundscapesInsectsGain → masterGain
+    //          soundscapesNode[1] → insectsReverbSendNode → reverbNode
+    // Ocean:   soundscapesNode[2] — NOT connected (main engine's ocean-processor handles ocean)
+    if (this.soundscapesNode) {
+      this.soundscapesNode.connect(this.waterGain, 0);
+      this.soundscapesNode.connect(this.waterReverbSend, 0);
+      this.soundscapesNode.connect(this.soundscapesInsectsGain, 1);
+      if (this.insectsReverbSendNode) {
+        this.soundscapesNode.connect(this.insectsReverbSendNode, 1);
+        this.insectsReverbSendNode.connect(this.reverbNode);
+      }
+    }
+    this.waterGain.connect(this.masterGain);
+    this.waterReverbSend.connect(this.reverbNode);
+    this.soundscapesInsectsGain.connect(this.masterGain);
 
     this.masterGain.connect(this.limiter);
     
@@ -2276,22 +2517,16 @@ export class AudioEngine {
     this.currentSeed = computeSeed(this.currentBucket, 'E_ROOT');
     this.rng = createRng(`${this.currentBucket}|E_ROOT`);
 
-    // Send new random sequence to granulator and looper
-    this.sendGranulatorRandomSequence();
+    // Send new random sequence to looper (legacy granulator removed)
     this.sendLooperRandomSequence();
 
     this.notifyStateChange();
   }
 
   private sendGranulatorRandomSequence(): void {
-    if (!this.granulatorNode || !this.rng) return;
-
-    // Generate 10000 random values for grain scheduling
-    const sequence = generateRandomSequence(this.rng, 10000);
-    this.granulatorNode.port.postMessage({
-      type: 'randomSequence',
-      sequence,
-    });
+    // Legacy JS granular engine removed — this is now a no-op
+    // Random sequences for grain scheduling are sent via sendLooperRandomSequence()
+    return;
   }
 
   private sendLooperRandomSequence(): void {
@@ -2302,6 +2537,96 @@ export class AudioEngine {
       type: 'randomSequence',
       sequence,
     });
+  }
+
+  /**
+   * A/B toggle: hot-swap between WASM and JS looper engines.
+   * Both worklets are pre-registered on startup. This method tears down the
+   * current looper node, creates a new one with the alternate processor,
+   * re-wires the audio graph, and re-sends params + random sequence.
+   *
+   * Call from console: (window as any).__engine.toggleLooperEngine()
+   */
+  async toggleLooperEngine(): Promise<string> {
+    if (!this.bothLooperWorkletsLoaded || !this.ctx || !this.looperFxNode) {
+      const msg = 'Cannot toggle: both worklets must be loaded and engine must be running';
+      console.warn(msg);
+      return msg;
+    }
+
+    const switchingTo = this.useWasmLooper ? 'JS' : 'WASM';
+    console.log(`[A/B Toggle] Switching looper engine: ${this.useWasmLooper ? 'WASM' : 'JS'} → ${switchingTo}`);
+
+    // 1. Tear down old node: destroy WASM heap, close port, disconnect
+    const oldNode = this.looperFxNode;
+    try { oldNode.port.postMessage({ type: 'destroy' }); } catch { /* */ }
+    try { oldNode.port.onmessage = null; } catch { /* */ }
+    try { oldNode.port.close(); } catch { /* */ }
+    try { oldNode.disconnect(); } catch (_e) { /* already disconnected */ }
+
+    // 2. Flip the flag
+    this.useWasmLooper = !this.useWasmLooper;
+
+    // 3. Create new node
+    const processorName = this.useWasmLooper ? 'looper-fx-wasm' : 'looper-fx';
+    this.looperFxNode = new AudioWorkletNode(this.ctx, processorName, {
+      numberOfInputs: 1,
+      numberOfOutputs: 1,
+      outputChannelCount: [2],
+      channelCount: 2,
+      channelCountMode: 'explicit',
+    });
+
+    // 4. Re-attach message handler
+    this.looperFxNode.port.onmessage = (e) => {
+      if (e.data.type === 'position') {
+        this.looperWriteHeadPosition = e.data.writeHead;
+        this.looperVoicePositions = e.data.voices;
+      } else if (e.data.type === 'perf') {
+        this.handlePerfMessage(e.data);
+      } else if (e.data.type === 'wasmReady') {
+        console.log(`[A/B Toggle] WASM engine initialized`);
+      }
+    };
+
+    // 5. If switching to WASM, send binary
+    if (this.useWasmLooper && this.wasmLooperBinaryCopy) {
+      const copy = this.wasmLooperBinaryCopy.slice(0); // fresh copy for transfer
+      this.looperFxNode.port.postMessage(
+        { type: 'wasmBinary', binary: copy },
+        [copy]
+      );
+    }
+
+    // 6. Re-wire audio graph: inputGain → node → reverbSend, direct, delaySend
+    if (this.looperFxInputGain) {
+      this.looperFxInputGain.disconnect();
+      this.looperFxInputGain.connect(this.looperFxNode);
+    }
+    if (this.looperFxReverbSend) {
+      this.looperFxNode.connect(this.looperFxReverbSend);
+    }
+    if (this.looperFxDirect) {
+      this.looperFxNode.connect(this.looperFxDirect);
+    }
+    if (this.looperDelaySendGain) {
+      this.looperFxNode.connect(this.looperDelaySendGain);
+    }
+
+    // 7. Re-send state: enable perf always on toggle for A/B comparison
+    this.looperFxNode.port.postMessage({ type: 'enablePerf', enabled: true });
+
+    // 8. Re-send random sequence
+    this.sendLooperRandomSequence();
+
+    // 9. Force a full params refresh to the new worklet
+    if (this.sliderState) {
+      this.applyParams(this.sliderState);
+    }
+
+    const msg = `Looper engine switched to ${switchingTo} — perf monitoring enabled. Watch console for CPU%.`;
+    console.log(`[A/B Toggle] ${msg}`);
+    return msg;
   }
 
   private schedulePhraseUpdates(): void {
@@ -3064,49 +3389,17 @@ export class AudioEngine {
       }
     }
 
-    // Granular parameters — mute granulator when looper is enabled (mutual exclusion saves ~12% CPU)
-    const granulatorBypassed = state.looperEnabled;
-    if (this.granulatorNode && !granulatorBypassed) {
-      // grainSize: use dualRanges if available (walk/sampleHold), else single value for both
-      const grainSizeRange = this.dualRanges['grainSize'];
-      const grainSizeMin = grainSizeRange ? grainSizeRange.min : state.grainSize;
-      const grainSizeMax = grainSizeRange ? grainSizeRange.max : state.grainSize;
-      this.granulatorNode.port.postMessage({
-        type: 'params',
-        params: {
-          maxGrains: state.maxGrains,
-          grainSizeMin,
-          grainSizeMax,
-          density: shv('density', state.density),
-          spray: shv('spray', state.spray),
-          jitter: shv('jitter', state.jitter),
-          probability: shv('grainProbability', state.grainProbability),
-          pitchMode: state.grainPitchMode,
-          pitchSpread: shv('pitchSpread', state.pitchSpread),
-          stereoSpread: shv('stereoSpread', state.stereoSpread),
-          feedback: Math.min(shv('feedback', state.feedback), 0.35),
-          level: state.granularLevel,
-        },
-      });
-    }
+    // Legacy JS granular engine REMOVED — all granular processing via Looper FX WASM engine
+    // granularLevel and granularReverbSend now control the Looper FX output levels
 
-    // Granular filters
-    this.granularWetHPF?.frequency.setTargetAtTime(state.wetHPF, now, smoothTime);
-    this.granularWetLPF?.frequency.setTargetAtTime(state.wetLPF, now, smoothTime);
-
-    // Granular levels (independent: direct level and reverb send)
-    // When granularEnabled is false or looper bypasses granulator, mute the output
-    // When reverbEnabled is false, mute reverb send to save CPU
-    const granularLevel = (state.granularEnabled && !granulatorBypassed) ? state.granularLevel : 0;
-    const granularReverbSend = (state.granularEnabled && !granulatorBypassed && state.reverbEnabled) ? state.granularReverbSend : 0;
-    this.granularDirect?.gain.setTargetAtTime(granularLevel, now, smoothTime);
-    this.granularReverbSend?.gain.setTargetAtTime(granularReverbSend, now, smoothTime);
-
-    // Looper FX parameters
+    // Looper FX (Granular) parameters
     if (this.looperFxNode) {
       const looperEnabled = state.looperEnabled;
-      this.looperFxDirect?.gain.setTargetAtTime(looperEnabled ? 1.0 : 0, now, smoothTime);
-      const looperRevSend = (looperEnabled && state.reverbEnabled) ? state.looperReverbSend : 0;
+      // Use granularLevel as the Looper FX output level (replaces hardcoded 1.0)
+      const granularOutputLevel = looperEnabled ? state.granularLevel : 0;
+      this.looperFxDirect?.gain.setTargetAtTime(granularOutputLevel, now, smoothTime);
+      // Use granularReverbSend as the Looper FX reverb send level
+      const looperRevSend = (looperEnabled && state.reverbEnabled) ? state.granularReverbSend : 0;
       this.looperFxReverbSend?.gain.setTargetAtTime(looperRevSend, now, smoothTime);
 
       // Per-source send levels (gate by looperEnabled so sends are silent when looper is off)
@@ -3245,7 +3538,7 @@ export class AudioEngine {
           enabled: looperEnabled,
           freeze: state.looperFreeze,
           freezeWithFeedback: false,
-          dryWet: state.looperDryWet,
+          dryWet: 1,  // always 1 — output level controlled by granularLevel on looperFxDirect
           feedback: state.looperFeedback,
           feedbackLPF: state.looperFeedbackLPF,
           bufferSeconds: state.looperBufferSeconds,
@@ -3278,6 +3571,12 @@ export class AudioEngine {
             state.looperEuclidMasterEnabled && state.looperEuclid3Enabled,
             state.looperEuclidMasterEnabled && state.looperEuclid4Enabled,
           ],
+          euclidMuted: [
+            state.looperEuclidMasterEnabled && !state.looperEuclid1Enabled,
+            state.looperEuclidMasterEnabled && !state.looperEuclid2Enabled,
+            state.looperEuclidMasterEnabled && !state.looperEuclid3Enabled,
+            state.looperEuclidMasterEnabled && !state.looperEuclid4Enabled,
+          ],
           legacyJitter: state.looperLegacyJitter,
           legacyProbability: state.looperLegacyProbability,
           legacyPitchMode: state.looperLegacyPitchMode,
@@ -3299,17 +3598,23 @@ export class AudioEngine {
         this.looperDelaySendGain?.gain.setTargetAtTime(delayEnabled ? 1.0 : 0, now, smoothTime);
 
         // Update per-tap gains (Activity macro) and delay times (BPM)
+        // Track total tap gain to normalize feedback and prevent loop gain > 1
+        let sumTapGains = 0;
         for (let i = 0; i < 8; i++) {
           const gain = delayEnabled ? computeTapGain(i, activity) : 0;
+          sumTapGains += gain;
           this.looperDelayTapGains[i]?.gain.setTargetAtTime(gain, now, smoothTime);
 
           const time = Math.max(0.001, Math.min(5.0, baseTimeSec * TAP_SUBDIVISIONS[i]));
           this.looperDelayTapNodes[i]?.delayTime.setTargetAtTime(time, now, 0.05);
         }
 
-        // Feedback (Repeats)
+        // Feedback (Repeats) — normalize by sum of tap gains so total loop gain ≤ repeats
+        // Without this, high activity (many taps) causes loop gain > 1 → runaway feedback
+        const rawRepeats = state.looperDelayRepeats ?? 0.3;
+        const normalizedFeedback = sumTapGains > 1 ? rawRepeats / sumTapGains : rawRepeats;
         this.looperDelayFeedbackGain?.gain.setTargetAtTime(
-          state.looperDelayRepeats ?? 0.3, now, smoothTime
+          normalizedFeedback, now, smoothTime
         );
 
         // Tone filter (0-1 → 200-8000Hz log scale)
@@ -3354,7 +3659,7 @@ export class AudioEngine {
         type: 'params',
         params: {
           type: state.reverbType,
-          quality: this.isMobile ? 'balanced' : state.reverbQuality,  // force balanced on mobile to save CPU
+          quality: this.isMobile ? 'lite' : state.reverbQuality,  // force lite on mobile to save CPU
           decay: state.reverbDecay,
           size: state.reverbSize,
           diffusion: state.reverbDiffusion,
@@ -3362,6 +3667,13 @@ export class AudioEngine {
           predelay: state.predelay,
           damping: state.damping,
           width: state.width,
+          shimmer: state.reverbShimmer ?? 0,
+          shimmerPitch: state.reverbShimmerPitch ?? 12,
+          slowModRate: state.reverbSlowModRate ?? 0.05,
+          slowModDepth: state.reverbSlowModDepth ?? 0,
+          freeze: state.reverbFreeze ?? false,
+          reverse: state.reverbReverse ?? 0,
+          reverseLength: state.reverbReverseLength ?? 2,
         },
       });
     }
@@ -3454,6 +3766,139 @@ export class AudioEngine {
       const depR = this.dualRanges['oceanDepth'];
       setParam('depthMin', depR ? depR.min : state.oceanDepth);
       setParam('depthMax', depR ? depR.max : state.oceanDepth);
+    }
+
+    // ── Soundscapes WASM — water + insects ──
+    if (this.soundscapesNode && this.soundscapesWasmReady) {
+      // Water start/stop
+      if (state.waterEnabled && !this._scWaterStarted) {
+        this.soundscapesNode.port.postMessage({ type: 'waterStart' });
+        this._scWaterStarted = true;
+      } else if (!state.waterEnabled && this._scWaterStarted) {
+        this.soundscapesNode.port.postMessage({ type: 'waterStop' });
+        this._scWaterStarted = false;
+      }
+
+      // Water preset (snap to nearest endpoint of morph)
+      const waterPresetIdx = Math.round(state.waterMorph < 0.5 ? state.waterMorphA : state.waterMorphB);
+      if (waterPresetIdx !== this._scWaterPreset) {
+        this.soundscapesNode.port.postMessage({ type: 'waterPreset', preset: waterPresetIdx });
+        this._scWaterPreset = waterPresetIdx;
+      }
+
+      // Water synthesis params
+      this.soundscapesNode.port.postMessage({
+        type: 'waterParams',
+        params: {
+          intensity: state.waterIntensity,
+          rate: state.waterRate,
+          distance: state.waterDistance,
+          baseFreq: state.waterBaseFreq,
+          dropSize: state.waterDropSize,
+          hardness: state.waterHardness,
+          glassThickness: state.waterGlassThickness,
+        },
+      });
+
+      // Water layer mix
+      this.soundscapesNode.port.postMessage({
+        type: 'waterLayerMix',
+        hardDrops: state.waterLayerHardDrops,
+        waterDrops: state.waterLayerWaterDrops,
+        turbulence: state.waterLayerTurbulence,
+        bubbling: state.waterLayerBubbling,
+        roar: state.waterLayerRoar,
+        rivulets: state.waterLayerRivulets,
+      });
+
+      // Insects 1 start/stop
+      if (state.insectsEnabled && !this._scInsects1Started) {
+        this.soundscapesNode.port.postMessage({ type: 'insectsStart' });
+        this._scInsects1Started = true;
+      } else if (!state.insectsEnabled && this._scInsects1Started) {
+        this.soundscapesNode.port.postMessage({ type: 'insectsStop' });
+        this._scInsects1Started = false;
+      }
+
+      // Insects 1 engine type
+      if (state.insectsEngine !== this._scInsects1Engine) {
+        this.soundscapesNode.port.postMessage({ type: 'insectsEngine', engine: state.insectsEngine });
+        this._scInsects1Engine = state.insectsEngine;
+      }
+
+      // Insects 1 params + gain
+      this.soundscapesNode.port.postMessage({
+        type: 'insectsParams',
+        params: {
+          density: state.insectsDensity,
+          temperature: state.insectsTemperature,
+          distance: state.insectsDistance,
+          proximity: state.insectsProximity,
+          antiphony: state.insectsAntiphony,
+          clickRate: state.insectsClickRate,
+          motion: state.insectsMotion,
+        },
+      });
+      this.soundscapesNode.port.postMessage({
+        type: 'insectsGain',
+        gain: state.insectsEnabled ? state.insectsLevel : 0,
+      });
+
+      // Insects 2 start/stop
+      if (state.insects2Enabled && !this._scInsects2Started) {
+        this.soundscapesNode.port.postMessage({ type: 'insects2Start' });
+        this._scInsects2Started = true;
+      } else if (!state.insects2Enabled && this._scInsects2Started) {
+        this.soundscapesNode.port.postMessage({ type: 'insects2Stop' });
+        this._scInsects2Started = false;
+      }
+
+      // Insects 2 engine type
+      if (state.insects2Engine !== this._scInsects2Engine) {
+        this.soundscapesNode.port.postMessage({ type: 'insects2Engine', engine: state.insects2Engine });
+        this._scInsects2Engine = state.insects2Engine;
+      }
+
+      // Insects 2 params + gain
+      this.soundscapesNode.port.postMessage({
+        type: 'insects2Params',
+        params: {
+          density: state.insects2Density,
+          temperature: state.insects2Temperature,
+          distance: state.insects2Distance,
+          proximity: state.insects2Proximity,
+          antiphony: state.insects2Antiphony,
+          clickRate: state.insects2ClickRate,
+          motion: state.insects2Motion,
+        },
+      });
+      this.soundscapesNode.port.postMessage({
+        type: 'insects2Gain',
+        gain: state.insects2Enabled ? state.insects2Level : 0,
+      });
+
+      // Water gain nodes
+      this.waterGain?.gain.setTargetAtTime(
+        state.waterEnabled ? state.waterLevel : 0, now, smoothTime
+      );
+      this.waterReverbSend?.gain.setTargetAtTime(
+        state.waterEnabled ? state.waterSpace : 0, now, smoothTime
+      );
+
+      // Insects master gate
+      this.soundscapesInsectsGain?.gain.setTargetAtTime(
+        (state.insectsEnabled || state.insects2Enabled) ? 1.0 : 0, now, smoothTime
+      );
+
+      // Waves (ocean) reverb send
+      this.oceanReverbSendNode?.gain.setTargetAtTime(
+        (state.oceanWaveSynthEnabled || state.oceanSampleEnabled) ? state.oceanReverbSend : 0, now, smoothTime
+      );
+
+      // Insects reverb send
+      this.insectsReverbSendNode?.gain.setTargetAtTime(
+        (state.insectsEnabled || state.insects2Enabled) ? state.insectsReverbSend : 0, now, smoothTime
+      );
     }
   }
 
@@ -4727,11 +5172,11 @@ export class AudioEngine {
   }
 
   /**
-   * Get granular bus output (granular direct to master)
-   * This is the granularDirect node carrying processed granular audio
+   * Get granular bus output (now routed through Looper FX engine)
+   * Returns the looperFxDirect node carrying processed granular audio
    */
   getGranularStemNode(): GainNode | null {
-    return this.granularDirect;
+    return this.looperFxDirect;
   }
 
   /**
@@ -4759,3 +5204,6 @@ export class AudioEngine {
 
 // Singleton instance
 export const audioEngine = new AudioEngine();
+
+// Expose for console A/B testing: window.__engine.toggleLooperEngine()
+(window as unknown as Record<string, unknown>).__engine = audioEngine;

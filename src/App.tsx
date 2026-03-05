@@ -17,11 +17,13 @@ import {
   migratePreset,
   DRUM_MORPH_KEYS,
 } from './ui/state';
+import { DualSlider, DualSliderRange } from './ui/DualSlider';
 import { audioEngine, EngineState } from './audio/engine';
 import { SCALE_FAMILIES } from './audio/scales';
 import { formatChordDegrees, getTimeUntilNextPhrase, calculateDriftedRoot, PHRASE_LENGTH } from './audio/harmony';
 import { getPresetNames, DrumVoiceType as DrumPresetVoice } from './audio/drumPresets';
 import { getPadPreset, morphPadPresets, PAD_PRESET_PARAM_KEYS } from './audio/padPresets';
+import { morphWaterPresets, WATER_MORPH_PARAM_KEYS, INSECT_ENGINE_DEFAULTS } from './audio/waterPresets';
 import { applyMorphToState, setDrumMorphOverride, clearDrumMorphEndpointOverrides, clearMidMorphOverrides, setDrumMorphDualRangeOverride, getDrumMorphDualRangeOverrides, interpolateDrumMorphDualRanges, drumMorphManager } from './audio/drumMorph';
 
 // Maps pad-preset param keys (pad1 naming) → pad2 state keys
@@ -56,6 +58,8 @@ import { useJourney } from './ui/journeyState';
 import DrumPage from './ui/drums/DrumPage';
 import SynthPage from './ui/synth/SynthPage';
 import LooperPage from './ui/looper/LooperPage';
+import EarthPage from './ui/earth/EarthPage';
+import ReverbPage from './ui/reverb/ReverbPage';
 import type { StepOverrides, SubLaneKind, SubLaneState, PitchSettings } from './ui/sequencer/useEuclideanSequencer';
 import type { ClockDivision } from './audio/drumSeqTypes';
 
@@ -203,6 +207,7 @@ const SNOWFLAKE_WELCOME_STATE: SliderState = {
   oceanFilterCutoff: 6800,  // normalized ≈ 0.56 of 40–12000
   // Enable all engines so the "disabled → 0" normalization doesn't zero them
   granularEnabled: true,
+  looperEnabled: true,   // granularEnabled now controls looper engine
   leadEnabled: true,
   drumEnabled: true,
   oceanSampleEnabled: true,
@@ -210,6 +215,8 @@ const SNOWFLAKE_WELCOME_STATE: SliderState = {
 };
 
 // User preference keys imported from presetUtils.ts
+
+// Reverb character presets are defined in ReverbPage.tsx
 
 // Check preset for iOS-only settings and return warnings
 const checkPresetCompatibility = (preset: SavedPreset): string[] => {
@@ -328,7 +335,10 @@ const normalizePresetForWeb = (state: SliderState): SliderState => {
 
   // ── Zero level for disabled engines ──
   // When an engine is off, force its mix level to 0 so no audio leaks through.
-  if (merged.granularEnabled === false)       merged.granularLevel = 0;
+  if (merged.granularEnabled === false) {
+    merged.granularLevel = 0;
+    merged.looperEnabled = false;  // granularEnabled controls looper
+  }
   if (merged.leadEnabled === false)           merged.leadLevel = 0;
   if (merged.drumEnabled === false)           merged.drumLevel = 0;
   if (merged.oceanSampleEnabled === false)    merged.oceanSampleLevel = 0;
@@ -714,55 +724,9 @@ const styles = {
     marginTop: '10px',
     textAlign: 'center' as const,
   } as React.CSSProperties,
-  dualSliderContainer: {
-    position: 'relative' as const,
-    width: '100%',
-    height: '20px',
-    borderRadius: '3px',
-    background: 'rgba(255, 255, 255, 0.2)',
-    cursor: 'pointer',
-  } as React.CSSProperties,
-  dualSliderTrack: {
-    position: 'absolute' as const,
-    height: '100%',
-    background: 'rgba(165, 196, 212, 0.4)',
-    borderRadius: '3px',
-  } as React.CSSProperties,
-  dualSliderThumb: {
-    position: 'absolute' as const,
-    top: '50%',
-    width: '16px',
-    height: '16px',
-    background: '#a5c4d4',
-    borderRadius: '50%',
-    transform: 'translate(-50%, -50%)',
-    cursor: 'grab',
-    border: '2px solid rgba(255,255,255,0.8)',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
-  } as React.CSSProperties,
-  dualSliderWalkIndicator: {
-    position: 'absolute' as const,
-    top: '50%',
-    width: '8px',
-    height: '8px',
-    background: '#fff',
-    borderRadius: '50%',
-    transform: 'translate(-50%, -50%)',
-    boxShadow: '0 0 8px rgba(255,255,255,0.8)',
-    pointerEvents: 'none' as const,
-  } as React.CSSProperties,
-  dualModeIndicator: {
-    fontSize: '0.65rem',
-    color: 'rgba(165, 196, 212, 0.7)',
-    marginLeft: '8px',
-  } as React.CSSProperties,
 };
 
 // Dual slider state type - stores min/max for each parameter when in dual mode
-interface DualSliderRange {
-  min: number;
-  max: number;
-}
 type DualSliderState = Partial<Record<keyof SliderState, DualSliderRange>>;
 
 // Random walk state for each slider
@@ -818,13 +782,17 @@ const Slider: React.FC<SliderProps> = ({
   onCycleMode,
   onDualRangeChange,
 }) => {
-  // If dual mode props are provided, use DualSlider
+  // If dual mode props are provided, use shared DualSlider
   if (onCycleMode && onDualRangeChange) {
+    const info = getParamInfo(paramKey);
+    if (!info) return null;
     return (
-      <DualSlider
+      <DualSlider<keyof SliderState>
         label={label}
         value={value}
         paramKey={paramKey}
+        paramInfo={info}
+        quantizeFn={quantize}
         unit={unit}
         logarithmic={logarithmic}
         mode={mode}
@@ -834,6 +802,9 @@ const Slider: React.FC<SliderProps> = ({
         onChange={onChange}
         onCycleMode={onCycleMode}
         onDualRangeChange={onDualRangeChange}
+        groupStyle={styles.sliderGroup}
+        labelStyle={styles.sliderLabel}
+        sliderStyle={styles.slider}
       />
     );
   }
@@ -921,284 +892,6 @@ function Select<T extends string>({ label, value, options, onChange }: SelectPro
     </div>
   );
 }
-
-// DualSlider component - supports single, walk, or sampleHold mode
-interface DualSliderProps {
-  label: string;
-  value: number;
-  paramKey: keyof SliderState;
-  unit?: string;
-  logarithmic?: boolean;
-  mode: SliderMode;
-  dualRange?: DualSliderRange;
-  walkPosition?: number;  // Current random walk position (0-1)
-  isFlashing?: boolean;   // S&H pulse flash active
-  onChange: (key: keyof SliderState, value: number) => void;
-  onCycleMode: (key: keyof SliderState) => void;
-  onDualRangeChange: (key: keyof SliderState, min: number, max: number) => void;
-}
-
-const DualSlider: React.FC<DualSliderProps> = ({
-  label,
-  value,
-  paramKey,
-  unit,
-  logarithmic,
-  mode,
-  dualRange,
-  walkPosition,
-  isFlashing,
-  onChange,
-  onCycleMode,
-  onDualRangeChange,
-}) => {
-  const info = getParamInfo(paramKey);
-  if (!info) return null;
-
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [dragging, setDragging] = useState<'min' | 'max' | null>(null);
-  
-  // Long press detection for mobile (cycle slider mode)
-  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const longPressTriggeredRef = useRef(false);
-  const LONG_PRESS_DURATION = 400; // ms
-  
-  const handleLongPressStart = (_e: React.TouchEvent) => {
-    longPressTriggeredRef.current = false;
-    longPressTimerRef.current = setTimeout(() => {
-      longPressTriggeredRef.current = true;
-      // Haptic feedback if available
-      if (navigator.vibrate) navigator.vibrate(50);
-      onCycleMode(paramKey);
-    }, LONG_PRESS_DURATION);
-  };
-  
-  const handleLongPressEnd = () => {
-    if (longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
-    }
-  };
-  
-  const handleLongPressMove = () => {
-    // Cancel long press if finger moves (user is dragging, not pressing)
-    handleLongPressEnd();
-  };
-
-  // Calculate position percentage from value
-  const valueToPercent = (val: number) => {
-    if (logarithmic) {
-      return logToLinear(Math.max(info.min, Math.min(info.max, val)), info.min, info.max) * 100;
-    }
-    return ((val - info.min) / (info.max - info.min)) * 100;
-  };
-
-  // Calculate value from position percentage
-  const percentToValue = (percent: number) => {
-    const clampedPercent = Math.max(0, Math.min(100, percent));
-    if (logarithmic) {
-      return linearToLog(clampedPercent / 100, info.min, info.max);
-    }
-    return info.min + (clampedPercent / 100) * (info.max - info.min);
-  };
-
-  // Format display value
-  const formatValue = (val: number) => {
-    if (val == null) return 0;
-    return info.step < 1 ? val.toFixed(2) : Math.round(val);
-  };
-
-  // Handle double click to cycle mode
-  const handleDoubleClick = () => {
-    onCycleMode(paramKey);
-  };
-
-  // Handle mouse/touch drag
-  const handleDragStart = (thumb: 'min' | 'max') => (e: React.MouseEvent | React.TouchEvent) => {
-    e.preventDefault();
-    setDragging(thumb);
-  };
-
-  const isDualMode = mode !== 'single';
-
-  // Mode-dependent colors
-  const modeColor = mode === 'walk' ? '#a5c4d4' : '#D4A520';
-  const modeLabel = mode === 'walk' ? '⟷ walk' : '⟷ S&H';
-
-  useEffect(() => {
-    if (!dragging || !isDualMode || !dualRange) return;
-
-    const handleMove = (e: MouseEvent | TouchEvent) => {
-      if (!containerRef.current) return;
-      const rect = containerRef.current.getBoundingClientRect();
-      const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
-      const percent = ((clientX - rect.left) / rect.width) * 100;
-      const newValue = quantize(paramKey, percentToValue(percent));
-
-      if (dragging === 'min') {
-        const newMin = Math.min(newValue, dualRange.max);
-        onDualRangeChange(paramKey, newMin, dualRange.max);
-      } else {
-        const newMax = Math.max(newValue, dualRange.min);
-        onDualRangeChange(paramKey, dualRange.min, newMax);
-      }
-    };
-
-    const handleEnd = () => {
-      setDragging(null);
-    };
-
-    window.addEventListener('mousemove', handleMove);
-    window.addEventListener('mouseup', handleEnd);
-    window.addEventListener('touchmove', handleMove);
-    window.addEventListener('touchend', handleEnd);
-
-    return () => {
-      window.removeEventListener('mousemove', handleMove);
-      window.removeEventListener('mouseup', handleEnd);
-      window.removeEventListener('touchmove', handleMove);
-      window.removeEventListener('touchend', handleEnd);
-    };
-  }, [dragging, isDualMode, dualRange, paramKey, onDualRangeChange]);
-
-  // Single slider mode
-  if (!isDualMode) {
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-      let newValue = parseFloat(e.target.value);
-      if (logarithmic) {
-        newValue = linearToLog(newValue, info.min, info.max);
-      }
-      onChange(paramKey, quantize(paramKey, newValue));
-    };
-
-    const sliderValue = logarithmic 
-      ? logToLinear(Math.max(info.min, Math.min(info.max, value)), info.min, info.max)
-      : value;
-    const sliderMin = logarithmic ? 0 : info.min;
-    const sliderMax = logarithmic ? 1 : info.max;
-    const sliderStep = logarithmic ? 0.001 : info.step;
-
-    // Compute fill percentage for visual track gradient
-    const fillPercent = sliderMax > sliderMin
-      ? ((sliderValue - sliderMin) / (sliderMax - sliderMin)) * 100
-      : 0;
-
-    return (
-      <div className="app-slider-group" style={styles.sliderGroup}>
-        <div className="app-slider-label" style={styles.sliderLabel}>
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flexShrink: 1 }}>{label}</span>
-          <span style={{ flexShrink: 0, whiteSpace: 'nowrap' }}>
-            {formatValue(value)}
-            {unit || ''}
-          </span>
-        </div>
-        <input
-          type="range"
-          min={sliderMin}
-          max={sliderMax}
-          step={sliderStep}
-          value={sliderValue}
-          onChange={handleChange}
-          onDoubleClick={handleDoubleClick}
-          onTouchStart={handleLongPressStart}
-          onTouchEnd={handleLongPressEnd}
-          onTouchMove={handleLongPressMove}
-          className="app-slider"
-          style={{
-            ...styles.slider,
-            background: `linear-gradient(to right, rgba(160,200,220,0.5) 0%, rgba(160,200,220,0.5) ${fillPercent}%, rgba(255,255,255,0.2) ${fillPercent}%, rgba(255,255,255,0.2) 100%)`,
-          }}
-          title="Double-click or long-press to cycle mode"
-        />
-      </div>
-    );
-  }
-
-  // Dual slider mode (walk or sampleHold)
-  const minPercent = valueToPercent(dualRange?.min ?? info.min);
-  const maxPercent = valueToPercent(dualRange?.max ?? info.max);
-  
-  // Calculate walk indicator position
-  const walkPercent = walkPosition !== undefined
-    ? minPercent + (walkPosition * (maxPercent - minPercent))
-    : (minPercent + maxPercent) / 2;
-
-  // Current interpolated value
-  const currentValue = dualRange
-    ? dualRange.min + (walkPosition ?? 0.5) * (dualRange.max - dualRange.min)
-    : value;
-
-  return (
-    <div className="app-slider-group" style={styles.sliderGroup}>
-      <div className="app-slider-label" style={styles.sliderLabel}>
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flexShrink: 1 }}>
-          {label}
-          <span style={{...styles.dualModeIndicator, color: modeColor}}>{modeLabel}</span>
-        </span>
-        <span style={{ flexShrink: 0, whiteSpace: 'nowrap', fontSize: '0.7rem' }}>
-          {formatValue(dualRange?.min ?? info.min)}-{formatValue(dualRange?.max ?? info.max)}
-          {unit || ''}
-          <span style={{ color: '#fff', marginLeft: '4px' }}>
-            ({formatValue(currentValue)})
-          </span>
-        </span>
-      </div>
-      <div
-        ref={containerRef}
-        style={styles.dualSliderContainer}
-        onDoubleClick={handleDoubleClick}
-        onTouchStart={handleLongPressStart}
-        onTouchEnd={handleLongPressEnd}
-        onTouchMove={handleLongPressMove}
-        title="Double-click or long-press to cycle mode"
-      >
-        {/* Range track */}
-        <div
-          style={{
-            ...styles.dualSliderTrack,
-            left: `${minPercent}%`,
-            width: `${maxPercent - minPercent}%`,
-            background: mode === 'walk' ? 'rgba(165,196,212,0.3)' : 'rgba(212,165,32,0.3)',
-          }}
-        />
-        {/* Min thumb */}
-        <div
-          style={{
-            ...styles.dualSliderThumb,
-            left: `${minPercent}%`,
-            background: dragging === 'min' ? '#fff' : modeColor,
-          }}
-          onMouseDown={handleDragStart('min')}
-          onTouchStart={handleDragStart('min')}
-        />
-        {/* Max thumb */}
-        <div
-          style={{
-            ...styles.dualSliderThumb,
-            left: `${maxPercent}%`,
-            background: dragging === 'max' ? '#fff' : modeColor,
-          }}
-          onMouseDown={handleDragStart('max')}
-          onTouchStart={handleDragStart('max')}
-        />
-        {/* Walk/trigger indicator */}
-        <div
-          style={{
-            ...styles.dualSliderWalkIndicator,
-            left: `${walkPercent}%`,
-            transition: isFlashing ? 'all 0.05s ease-out' : 'all 0.18s ease-in',
-            ...(isFlashing ? {
-              width: '14px',
-              height: '14px',
-              background: '#D4A520',
-              boxShadow: '0 0 14px rgba(212,165,32,0.9)',
-            } : {}),
-          }}
-        />
-      </div>
-    </div>
-  );
-};
 
 // Collapsible Panel component for mobile
 interface CollapsiblePanelProps {
@@ -1508,7 +1201,7 @@ const App: React.FC = () => {
   }, []);
 
   // Active tab for Advanced UI panels
-  type AdvancedTab = 'global' | 'synth' | 'drums' | 'fx' | 'looper';
+  type AdvancedTab = 'global' | 'synth' | 'drums' | 'reverb' | 'looper' | 'earth';
   const [activeTab, setActiveTab] = useState<AdvancedTab>('global');
 
   // Unified slider mode state: key → SliderMode ('single' | 'walk' | 'sampleHold')
@@ -2080,6 +1773,23 @@ const App: React.FC = () => {
             }
           }
 
+          // Apply water morph preset interpolation when waterMorph is walking
+          if ('waterMorph' in updates) {
+            const morphed = morphWaterPresets(
+              newState.waterMorphA as number,
+              newState.waterMorphB as number,
+              newState.waterMorph as number,
+            );
+            for (const k of WATER_MORPH_PARAM_KEYS) {
+              if (k in morphed) {
+                (newState as Record<string, unknown>)[k] = morphed[k];
+              }
+            }
+            newState.waterPreset = (newState.waterMorph as number) < 0.5
+              ? (newState.waterMorphA as number)
+              : (newState.waterMorphB as number);
+          }
+
           // Apply drum morph preset interpolation when any drumXxxMorph is walking
           const drumWalkMorphMap: Record<string, DrumPresetVoice> = {
             drumSubMorph: 'sub', drumKickMorph: 'kick', drumClickMorph: 'click',
@@ -2383,13 +2093,13 @@ const App: React.FC = () => {
     });
   }, []);
 
-  // Looper buffer position polling — throttled to ~7Hz to reduce re-renders
+  // Looper buffer position polling — ~12Hz for smooth head animation
   useEffect(() => {
     if (!engineState.isRunning) return;
     const id = setInterval(() => {
       setLooperWriteHead(audioEngine.getLooperWriteHeadPosition());
       setLooperVoicePositions(audioEngine.getLooperVoicePositions());
-    }, 150); // ~7fps
+    }, 80); // ~12fps — matches CSS transition for continuous motion
     return () => clearInterval(id);
   }, [engineState.isRunning]);
 
@@ -2630,9 +2340,10 @@ const App: React.FC = () => {
         setDrumMorphOverride(drumVoice, keyStr, value as number, drumMorphPosition);
       }
       
-      // Auto-disable granular when level is 0
+      // Auto-disable granular (looper) when level is 0
       if (key === 'granularLevel' && value === 0) {
         newState.granularEnabled = false;
+        newState.looperEnabled = false;
       }
       
       // When drum morph slider or preset selectors change, apply morphed values to sliders
@@ -2706,6 +2417,27 @@ const App: React.FC = () => {
             }
           }
         }
+      }
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // WATER PRESET MORPH SYSTEM
+      // When waterMorph slider changes, morph between waterMorphA & waterMorphB
+      // ═══════════════════════════════════════════════════════════════════════
+      if (key === 'waterMorph' || key === 'waterMorphA' || key === 'waterMorphB') {
+        const morphed = morphWaterPresets(
+          newState.waterMorphA as number,
+          newState.waterMorphB as number,
+          newState.waterMorph as number,
+        );
+        for (const k of WATER_MORPH_PARAM_KEYS) {
+          if (k in morphed) {
+            (newState as Record<string, unknown>)[k] = morphed[k];
+          }
+        }
+        // Snap waterPreset to nearest morph endpoint
+        newState.waterPreset = (newState.waterMorph as number) < 0.5
+          ? (newState.waterMorphA as number)
+          : (newState.waterMorphB as number);
       }
       
       return newState;
@@ -2912,6 +2644,11 @@ const App: React.FC = () => {
         }
       }
 
+      // ═══ GRANULAR ↔ LOOPER SYNC: granularEnabled controls looperEnabled ═══
+      if (key === 'granularEnabled') {
+        newState.looperEnabled = value as boolean;
+      }
+
       // ═══ LOOPER PRESET: apply partial state overrides ═══
       if (key === 'looperPreset') {
         const presetData = getLooperPresetData(value as string);
@@ -2921,7 +2658,50 @@ const App: React.FC = () => {
           }
         }
       }
-      
+
+      // ═══ WATER MORPH: re-interpolate when morph endpoint A/B changes ═══
+      if (key === 'waterMorphA' || key === 'waterMorphB') {
+        const morphed = morphWaterPresets(
+          newState.waterMorphA as number,
+          newState.waterMorphB as number,
+          newState.waterMorph as number,
+        );
+        for (const k of WATER_MORPH_PARAM_KEYS) {
+          if (k in morphed) {
+            (newState as Record<string, unknown>)[k] = morphed[k];
+          }
+        }
+        newState.waterPreset = (newState.waterMorph as number) < 0.5
+          ? (newState.waterMorphA as number)
+          : (newState.waterMorphB as number);
+      }
+
+      // ═══ INSECT ENGINE DEFAULTS: apply per-engine param defaults on change ═══
+      if (key === 'insectsEngine') {
+        const defs = INSECT_ENGINE_DEFAULTS[value as number];
+        if (defs) {
+          (newState as Record<string, unknown>).insectsDensity = defs.density;
+          (newState as Record<string, unknown>).insectsTemperature = defs.temperature;
+          (newState as Record<string, unknown>).insectsDistance = defs.distance;
+          (newState as Record<string, unknown>).insectsProximity = defs.proximity;
+          (newState as Record<string, unknown>).insectsAntiphony = defs.antiphony;
+          (newState as Record<string, unknown>).insectsClickRate = defs.clickRate;
+          (newState as Record<string, unknown>).insectsMotion = defs.motion;
+        }
+      }
+      if (key === 'insects2Engine') {
+        const defs = INSECT_ENGINE_DEFAULTS[value as number];
+        if (defs) {
+          (newState as Record<string, unknown>).insects2Density = defs.density;
+          (newState as Record<string, unknown>).insects2Temperature = defs.temperature;
+          (newState as Record<string, unknown>).insects2Distance = defs.distance;
+          (newState as Record<string, unknown>).insects2Proximity = defs.proximity;
+          (newState as Record<string, unknown>).insects2Antiphony = defs.antiphony;
+          (newState as Record<string, unknown>).insects2ClickRate = defs.clickRate;
+          (newState as Record<string, unknown>).insects2Motion = defs.motion;
+        }
+      }
+
       return newState;
     });
 
@@ -3691,8 +3471,7 @@ const App: React.FC = () => {
     // If parent boolean is OFF in the target preset, don't morph child sliders
     const parentChildMap: Record<string, (keyof SliderState)[]> = {
       granularEnabled: [
-        'granularReverbSend', 'grainProbability', 'grainSize',
-        'density', 'spray', 'jitter', 'pitchSpread', 'stereoSpread', 'feedback', 'wetHPF', 'wetLPF'
+        'granularReverbSend', 'granularLevel',
       ],
       leadEnabled: [
         'lead1Attack', 'lead1Decay', 'lead1Sustain', 'lead1Release',
@@ -3734,7 +3513,10 @@ const App: React.FC = () => {
       'synthSustain', 'synthRelease', 'synthVoiceMask', 'synthOctave', 'hardness',
       'filterCutoffMin', 'filterCutoffMax', 'filterResonance', 'filterQ',
       'warmth', 'presence', 'reverbDecay', 'reverbSize', 'reverbDiffusion',
-      'reverbModulation', 'predelay', 'damping', 'width', 'grainProbability', 'grainSize',
+      'reverbModulation', 'predelay', 'damping', 'width',
+      'reverbShimmer', 'reverbShimmerPitch', 'reverbSlowModRate', 'reverbSlowModDepth',
+      'reverbReverse', 'reverbReverseLength',
+      'grainProbability', 'grainSize',
       'density', 'spray', 'jitter', 'pitchSpread', 'stereoSpread', 'feedback',
       'wetHPF', 'wetLPF', 'leadLevel', 'lead1Level', 'lead2Level', 'lead1Attack', 'lead1Decay', 'lead1Sustain', 'lead1Release',
       'lead2Attack', 'lead2Decay', 'lead2Sustain', 'lead2Release',
@@ -5199,13 +4981,13 @@ const App: React.FC = () => {
         <button
           style={{
             ...styles.tab,
-            ...(activeTab === 'fx' ? styles.tabActive : {}),
+            ...(activeTab === 'reverb' ? styles.tabActive : {}),
             ...m?.tab,
           }}
-          onClick={() => setActiveTab('fx')}
+          onClick={() => setActiveTab('reverb')}
         >
           <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>◈</span>
-          <span>FX</span>
+          <span>Reverb</span>
         </button>
         <button
           style={{
@@ -5216,7 +4998,18 @@ const App: React.FC = () => {
           onClick={() => setActiveTab('looper')}
         >
           <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>⊞</span>
-          <span>Looper</span>
+          <span>Granular</span>
+        </button>
+        <button
+          style={{
+            ...styles.tab,
+            ...(activeTab === 'earth' ? styles.tabActive : {}),
+            ...m?.tab,
+          }}
+          onClick={() => setActiveTab('earth')}
+        >
+          <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>{"\u2248"}</span>
+          <span>Earth</span>
         </button>
       </div>
 
@@ -6169,409 +5962,18 @@ const App: React.FC = () => {
           />
         )}
 
-        {/* === FX TAB === */}
-        {activeTab === 'fx' && (<>
-        {/* Space */}
-        <CollapsiblePanel
-          id="space"
-          title="Space (Reverb)"
-          isMobile={isMobile}
-          isExpanded={expandedPanels.has('space')}
-          onToggle={togglePanel}
-        >
-          {/* Reverb Enable toggle */}
-          <div className="app-slider-group" style={styles.sliderGroup}>
-            <div className="app-slider-label" style={styles.sliderLabel}>
-              <span>Reverb</span>
-              <span style={{ 
-                color: state.reverbEnabled ? '#10b981' : '#6b7280',
-                fontWeight: 'bold'
-              }}>
-                {state.reverbEnabled ? 'ON' : 'OFF'}
-              </span>
-            </div>
-            <button
-              onClick={() => handleSelectChange('reverbEnabled', !state.reverbEnabled)}
-              style={{
-                width: '100%',
-                padding: '10px',
-                borderRadius: '6px',
-                border: 'none',
-                cursor: 'pointer',
-                fontWeight: 'bold',
-                background: state.reverbEnabled 
-                  ? 'linear-gradient(135deg, #10b981, #059669)' 
-                  : 'rgba(255, 255, 255, 0.1)',
-                color: state.reverbEnabled ? 'white' : '#9ca3af',
-                transition: 'all 0.2s',
-              }}
-            >
-              {state.reverbEnabled ? '● Active' : '○ Bypassed (saves CPU)'}
-            </button>
-          </div>
-
-          <Select
-            label="Reverb Engine"
-            value={state.reverbEngine}
-            options={[
-              { value: 'algorithmic', label: 'Algorithmic' },
-              { value: 'convolution', label: 'Convolution (HQ)' },
-            ]}
-            onChange={(v) => handleSelectChange('reverbEngine', v)}
+        {/* === REVERB TAB === */}
+        {activeTab === 'reverb' && (
+          <ReverbPage
+            state={state}
+            isMobile={isMobile}
+            onParamChange={handleSliderChange}
+            onSelectChange={handleSelectChange}
+            sliderProps={sliderProps}
+            SliderComponent={Slider as unknown as React.ComponentType<Record<string, unknown>>}
+            SelectComponent={Select as unknown as React.ComponentType<Record<string, unknown>>}
           />
-          <Select
-            label="Reverb Type"
-            value={state.reverbType}
-            options={[
-              { value: 'plate', label: 'Plate' },
-              { value: 'hall', label: 'Hall' },
-              { value: 'cathedral', label: 'Cathedral' },
-              { value: 'darkHall', label: 'Dark Hall' },
-            ]}
-            onChange={(v) => handleSelectChange('reverbType', v)}
-          />
-          <Select
-            label="Reverb Quality"
-            value={state.reverbQuality}
-            options={[
-              { value: 'ultra', label: 'Ultra (32 diffusers)' },
-              { value: 'balanced', label: 'Balanced (16 diffusers)' },
-              { value: 'lite', label: 'Lite (4-ch FDN)' },
-            ]}
-            onChange={(v) => handleSelectChange('reverbQuality', v)}
-          />
-          <Slider
-            label="Decay"
-            value={state.reverbDecay}
-            paramKey="reverbDecay"
-            onChange={handleSliderChange}
-            {...sliderProps('reverbDecay')}
-          />
-          <Slider
-            label="Size"
-            value={state.reverbSize}
-            paramKey="reverbSize"
-            onChange={handleSliderChange}
-            {...sliderProps('reverbSize')}
-          />
-          <Slider
-            label="Diffusion"
-            value={state.reverbDiffusion}
-            paramKey="reverbDiffusion"
-            onChange={handleSliderChange}
-            {...sliderProps('reverbDiffusion')}
-          />
-          <Slider
-            label="Modulation"
-            value={state.reverbModulation}
-            paramKey="reverbModulation"
-            onChange={handleSliderChange}
-            {...sliderProps('reverbModulation')}
-          />
-          <Slider
-            label="Pre-delay"
-            value={state.predelay}
-            paramKey="predelay"
-            unit="ms"
-            onChange={handleSliderChange}
-            {...sliderProps('predelay')}
-          />
-          <Slider
-            label="Damping"
-            value={state.damping}
-            paramKey="damping"
-            onChange={handleSliderChange}
-            {...sliderProps('damping')}
-          />
-          <Slider
-            label="Width"
-            value={state.width}
-            paramKey="width"
-            onChange={handleSliderChange}
-            {...sliderProps('width')}
-          />
-        </CollapsiblePanel>
-
-        {/* Granular */}
-        <CollapsiblePanel
-          id="granular"
-          title="Granular"
-          isMobile={isMobile}
-          isExpanded={expandedPanels.has('granular')}
-          onToggle={togglePanel}
-        >
-          {/* Enable toggle */}
-          <div className="app-slider-group" style={styles.sliderGroup}>
-            <div className="app-slider-label" style={styles.sliderLabel}>
-              <span>Granular Enabled</span>
-              <span style={{ 
-                color: state.granularEnabled ? '#10b981' : '#6b7280',
-                fontWeight: 'bold'
-              }}>
-                {state.granularEnabled ? 'ON' : 'OFF'}
-              </span>
-            </div>
-            <button
-              onClick={() => handleSelectChange('granularEnabled', !state.granularEnabled)}
-              style={{
-                width: '100%',
-                padding: '10px',
-                borderRadius: '6px',
-                border: 'none',
-                cursor: 'pointer',
-                fontWeight: 'bold',
-                background: state.granularEnabled 
-                  ? 'linear-gradient(135deg, #10b981, #059669)' 
-                  : 'rgba(255, 255, 255, 0.1)',
-                color: state.granularEnabled ? 'white' : '#9ca3af',
-                transition: 'all 0.2s',
-              }}
-            >
-              {state.granularEnabled ? '● Active' : '○ Bypassed'}
-            </button>
-          </div>
-
-          <Slider
-            label="Max Grains"
-            value={state.maxGrains}
-            paramKey="maxGrains"
-            onChange={handleSliderChange}
-            {...sliderProps('maxGrains')}
-          />
-          <Slider
-            label="Grain Probability"
-            value={state.grainProbability}
-            paramKey="grainProbability"
-            onChange={handleSliderChange}
-            {...sliderProps('grainProbability')}
-          />
-          
-          <Slider
-            label="Grain Size"
-            value={state.grainSize}
-            paramKey="grainSize"
-            unit="ms"
-            onChange={handleSliderChange}
-            {...sliderProps('grainSize')}
-          />
-
-          <Slider
-            label="Density"
-            value={state.density}
-            paramKey="density"
-            unit="/s"
-            onChange={handleSliderChange}
-            {...sliderProps('density')}
-          />
-          <Slider
-            label="Spray"
-            value={state.spray}
-            paramKey="spray"
-            unit="ms"
-            onChange={handleSliderChange}
-            {...sliderProps('spray')}
-          />
-          <Slider
-            label="Jitter"
-            value={state.jitter}
-            paramKey="jitter"
-            unit="ms"
-            onChange={handleSliderChange}
-            {...sliderProps('jitter')}
-          />
-          <Select
-            label="Pitch Mode"
-            value={state.grainPitchMode}
-            options={[
-              { value: 'harmonic', label: 'Harmonic (5ths, Octaves)' },
-              { value: 'random', label: 'Random Spread' },
-            ]}
-            onChange={(v) => handleSelectChange('grainPitchMode', v)}
-          />
-          <Slider
-            label="Pitch Spread"
-            value={state.pitchSpread}
-            paramKey="pitchSpread"
-            unit="st"
-            onChange={handleSliderChange}
-            {...sliderProps('pitchSpread')}
-          />
-          <Slider
-            label="Stereo Spread"
-            value={state.stereoSpread}
-            paramKey="stereoSpread"
-            onChange={handleSliderChange}
-            {...sliderProps('stereoSpread')}
-          />
-          <Slider
-            label="Feedback"
-            value={state.feedback}
-            paramKey="feedback"
-            onChange={handleSliderChange}
-            {...sliderProps('feedback')}
-          />
-          <Slider
-            label="Wet HPF"
-            value={state.wetHPF}
-            paramKey="wetHPF"
-            unit="Hz"
-            onChange={handleSliderChange}
-            {...sliderProps('wetHPF')}
-          />
-          <Slider
-            label="Wet LPF"
-            value={state.wetLPF}
-            paramKey="wetLPF"
-            unit="Hz"
-            onChange={handleSliderChange}
-            {...sliderProps('wetLPF')}
-          />
-        </CollapsiblePanel>
-        </>)}
-
-        {/* === FX TAB (continued) === */}
-        {activeTab === 'fx' && (<>
-        {/* Ocean Waves */}
-        <CollapsiblePanel
-          id="ocean"
-          title="Ocean Sounds"
-          isMobile={isMobile}
-          isExpanded={expandedPanels.has('ocean')}
-          onToggle={togglePanel}
-        >
-          {/* Real Sample Toggle */}
-          <div className="app-slider-group" style={styles.sliderGroup}>
-            <div className="app-slider-label" style={styles.sliderLabel}>
-              <span>Beach Recording (Ghetary)</span>
-              <span style={{ 
-                color: state.oceanSampleEnabled ? '#10b981' : '#6b7280',
-                fontWeight: 'bold'
-              }}>
-                {state.oceanSampleEnabled ? 'ON' : 'OFF'}
-              </span>
-            </div>
-            <button
-              onClick={() => handleSelectChange('oceanSampleEnabled', !state.oceanSampleEnabled)}
-              style={{
-                width: '100%',
-                padding: '10px',
-                borderRadius: '6px',
-                border: 'none',
-                cursor: 'pointer',
-                fontWeight: 'bold',
-                background: state.oceanSampleEnabled 
-                  ? 'linear-gradient(135deg, #06b6d4, #0891b2)' 
-                  : 'rgba(255, 255, 255, 0.1)',
-                color: state.oceanSampleEnabled ? 'white' : '#9ca3af',
-                transition: 'all 0.2s',
-              }}
-            >
-              {state.oceanSampleEnabled ? '● Playing Sample' : '○ Sample Off'}
-            </button>
-          </div>
-
-          {/* Wave Synth Toggle */}
-          <div className="app-slider-group" style={{ marginTop: '16px', ...styles.sliderGroup }}>
-            <div className="app-slider-label" style={styles.sliderLabel}>
-              <span>Wave Synthesis</span>
-              <span style={{ 
-                color: state.oceanWaveSynthEnabled ? '#10b981' : '#6b7280',
-                fontWeight: 'bold'
-              }}>
-                {state.oceanWaveSynthEnabled ? 'ON' : 'OFF'}
-              </span>
-            </div>
-            <button
-              onClick={() => handleSelectChange('oceanWaveSynthEnabled', !state.oceanWaveSynthEnabled)}
-              style={{
-                width: '100%',
-                padding: '10px',
-                borderRadius: '6px',
-                border: 'none',
-                cursor: 'pointer',
-                fontWeight: 'bold',
-                background: state.oceanWaveSynthEnabled 
-                  ? 'linear-gradient(135deg, #3b82f6, #2563eb)' 
-                  : 'rgba(255, 255, 255, 0.1)',
-                color: state.oceanWaveSynthEnabled ? 'white' : '#9ca3af',
-                transition: 'all 0.2s',
-              }}
-            >
-              {state.oceanWaveSynthEnabled ? '● Synth Playing' : '○ Synth Off'}
-            </button>
-          </div>
-
-          <Slider
-            label="Wave Synth Level"
-            value={state.oceanWaveSynthLevel}
-            paramKey="oceanWaveSynthLevel"
-            onChange={handleSliderChange}
-            {...sliderProps('oceanWaveSynthLevel')}
-          />
-
-          {/* Wave Timing (only for synthesis) */}
-          {state.oceanWaveSynthEnabled && (
-            <>
-              <div style={{ marginTop: '12px', marginBottom: '8px' }}>
-                <span style={{ fontSize: '0.85rem', color: '#aaa' }}>Wave Timing</span>
-              </div>
-              
-              <Slider label="Duration" value={state.oceanDuration} paramKey="oceanDuration" unit=" s"
-                onChange={handleSliderChange} {...sliderProps('oceanDuration')}
-              />
-
-              <Slider label="Interval" value={state.oceanInterval} paramKey="oceanInterval" unit=" s"
-                onChange={handleSliderChange} {...sliderProps('oceanInterval')}
-              />
-
-              {/* Wave Character */}
-              <div style={{ marginTop: '12px', borderTop: '1px solid #333', paddingTop: '12px' }}>
-                <span style={{ fontSize: '0.85rem', color: '#aaa' }}>Wave Character</span>
-              </div>
-
-              <Slider label="Foam" value={state.oceanFoam} paramKey="oceanFoam"
-                onChange={handleSliderChange} {...sliderProps('oceanFoam')}
-              />
-
-              <Slider label="Depth" value={state.oceanDepth} paramKey="oceanDepth"
-                onChange={handleSliderChange} {...sliderProps('oceanDepth')}
-              />
-            </>
-          )}
-
-          {/* Ocean Filter (applies to both sample and synth) */}
-          <div style={{ marginTop: '16px', borderTop: '1px solid #333', paddingTop: '12px' }}>
-            <span style={{ fontSize: '0.85rem', color: '#aaa' }}>Ocean Filter</span>
-          </div>
-          <Select
-            label="Filter Type"
-            value={state.oceanFilterType}
-            options={[
-              { value: 'lowpass', label: 'Lowpass (Warm)' },
-              { value: 'bandpass', label: 'Bandpass (Focused)' },
-              { value: 'highpass', label: 'Highpass (Airy)' },
-              { value: 'notch', label: 'Notch (Scoop)' },
-            ]}
-            onChange={(v) => handleSelectChange('oceanFilterType', v)}
-          />
-          <Slider
-            label="Filter Cutoff"
-            value={state.oceanFilterCutoff}
-            paramKey="oceanFilterCutoff"
-            unit=" Hz"
-            logarithmic
-            onChange={handleSliderChange}
-            {...sliderProps('oceanFilterCutoff')}
-          />
-          <Slider
-            label="Filter Resonance"
-            value={state.oceanFilterResonance}
-            paramKey="oceanFilterResonance"
-            onChange={handleSliderChange}
-            {...sliderProps('oceanFilterResonance')}
-          />
-        </CollapsiblePanel>
-        </>)}
+        )}
 
         {/* === DRUMS TAB === */}
         {activeTab === 'drums' && (
@@ -6607,7 +6009,7 @@ const App: React.FC = () => {
           />
         )}
 
-        {/* === LOOPER TAB === */}
+        {/* === GRANULAR TAB (was Looper) === */}
         {activeTab === 'looper' && (
           <LooperPage
             state={state}
@@ -6649,6 +6051,17 @@ const App: React.FC = () => {
             }}
             onClockDivsChange={(divs) => audioEngine.setLooperEuclidClockDivs(divs)}
             onSwingsChange={(swings) => audioEngine.setLooperEuclidSwings(swings)}
+          />
+        )}
+
+        {/* === EARTH TAB === */}
+        {activeTab === 'earth' && (
+          <EarthPage
+            state={state}
+            onParamChange={handleSliderChange}
+            onSelectChange={handleSelectChange}
+            sliderProps={sliderProps}
+            isRunning={engineState.isRunning}
           />
         )}
       </div>

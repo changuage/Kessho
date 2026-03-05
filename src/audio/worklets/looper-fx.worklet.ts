@@ -61,6 +61,7 @@ interface LooperParams {
 
   // Euclidean gating (per-voice)
   euclidGated: boolean[];       // true = voice output gated by trigger envelope
+  euclidMuted: boolean[];       // true = voice silenced by Euclid mute/solo (but still counted for gain comp)
 
   // Legacy-only (voice[0] when in legacy mode)
   legacyJitter: number;         // ms
@@ -340,6 +341,8 @@ class LooperFXProcessor extends AudioWorkletProcessor {
   private scanFading: boolean[] = [false, false, false, false];
   private scanFadeDir: number[] = [0, 0, 0, 0];    // +1 = fading toward B, -1 = toward A
   private scanHeadInit: boolean[] = [false, false, false, false];
+  // Last LFO target position for smooth UI visualization (instead of snapping between heads)
+  private scanLFOTarget: number[] = [0, 0, 0, 0];
   // Crossfade increment per sample: ~120ms at 48kHz for silky blending
   private readonly SCAN_XFADE_INC = 1 / 5760;
   // Drift threshold: trigger crossfade when active head is >150ms from LFO target
@@ -509,6 +512,7 @@ class LooperFXProcessor extends AudioWorkletProcessor {
       voiceRecordLFORate: arr4(0),
       scaleIntervals: [],
       euclidGated: arr4(false),
+      euclidMuted: arr4(false),
       legacyJitter: 10,
       legacyProbability: 0.8,
       legacyPitchMode: 'harmonic',
@@ -1064,6 +1068,7 @@ class LooperFXProcessor extends AudioWorkletProcessor {
         outL[i] += sL * gain * envGain * panL;
         outR[i] += sR * gain * envGain * panR;
         this.cleanReadPos[voiceIdx] = activePos;
+        this.scanLFOTarget[voiceIdx] = targetPos;
       }
       return; // LFO scan mode handled above
     }
@@ -1285,10 +1290,16 @@ class LooperFXProcessor extends AudioWorkletProcessor {
     voiceOutL.fill(0);
     voiceOutR.fill(0);
 
+    // Count ALL enabled voices for compensation (including Euclid-muted ones)
+    // so mute/solo doesn't cause volume jumps
     let activeVoiceCount = 0;
     for (let v = 0; v < NUM_VOICES; v++) {
+      if (this.params.voiceEnabled[v]) activeVoiceCount++;
+    }
+
+    for (let v = 0; v < NUM_VOICES; v++) {
       if (!this.params.voiceEnabled[v]) continue;
-      activeVoiceCount++;
+      if (this.params.euclidMuted[v]) continue; // silenced by Euclid mute/solo
 
       const mode = this.params.voiceMode[v];
       if (mode === 'clean') {
@@ -1300,9 +1311,9 @@ class LooperFXProcessor extends AudioWorkletProcessor {
     }
 
     // ── Step 2b: Voice-count gain compensation ──
-    // When multiple voices are active, scale by 1/√(n) to keep total energy constant
-    if (activeVoiceCount > 1) {
-      const voiceComp = 1 / Math.sqrt(activeVoiceCount);
+    // Always scale by 1/√(NUM_VOICES) so solo/mute don't change gain of remaining voices
+    {
+      const voiceComp = 1 / Math.sqrt(NUM_VOICES);
       for (let i = 0; i < blockSize; i++) {
         voiceOutL[i] *= voiceComp;
         voiceOutR[i] *= voiceComp;
@@ -1370,7 +1381,8 @@ class LooperFXProcessor extends AudioWorkletProcessor {
         if (mode === 'clean') {
           const speed = this.params.voiceSpeed[v];
           if (speed === 0) {
-            this.posReportVoices[v] = (this.cleanReadPos[v] % this.bufferSize) / this.bufferSize;
+            // Use LFO target position for smooth visualization (avoids dual-head crossfade snap)
+            this.posReportVoices[v] = ((this.scanLFOTarget[v] % this.bufferSize) + this.bufferSize) % this.bufferSize / this.bufferSize;
           } else {
             const slice = this.euclidSliceOverride[v] >= 0 ? this.euclidSliceOverride[v] : (this.params.voiceSlice[v] || 0);
             const sliceStart = this.getSliceStart(slice);

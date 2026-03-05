@@ -5,6 +5,9 @@
  * Two independent wave generators that can overlap.
  */
 
+// Safe performance.now() — not all AudioWorklet scopes expose `performance`
+const _perfNow = typeof performance !== 'undefined' ? () => performance.now() : () => Date.now();
+
 // Seeded RNG for deterministic randomness
 function mulberry32(seed) {
   return function() {
@@ -36,11 +39,24 @@ class OceanProcessor extends AudioWorkletProcessor {
     this.rumbleLpfL = 0;
     this.rumbleLpfR = 0;
 
+    // Performance monitoring
+    this.perfEnabled = false;
+    this.perfTotalTime = 0;
+    this.perfCount = 0;
+    this.perfSamplesSinceReport = 0;
+    this.perfReportInterval = 48000; // ~1 second
+
     // Initialize generators
     this.gen1 = this.createGenerator(0);
     this.gen2 = this.createGenerator(0.5);
     
     this.port.onmessage = (e) => {
+      if (e.data.type === 'enablePerf') {
+        this.perfEnabled = e.data.enabled;
+        this.perfTotalTime = 0;
+        this.perfCount = 0;
+        this.perfSamplesSinceReport = 0;
+      }
       if (e.data.type === 'setSeed') {
         this.rng = mulberry32(e.data.seed);
         this.gen1 = this.createGenerator(0);
@@ -48,6 +64,7 @@ class OceanProcessor extends AudioWorkletProcessor {
       }
       if (e.data.type === 'setSampleRate') {
         this._sampleRate = e.data.sampleRate;
+        this.perfReportInterval = e.data.sampleRate; // ~1 second
       }
     };
   }
@@ -148,6 +165,8 @@ class OceanProcessor extends AudioWorkletProcessor {
   }
 
   process(_inputs, outputs, parameters) {
+    const t0 = this.perfEnabled ? _perfNow() : 0;
+
     const output = outputs[0];
     if (!output || output.length < 2) return true;
     
@@ -289,6 +308,22 @@ class OceanProcessor extends AudioWorkletProcessor {
       
       outL[i] = Math.tanh(finalL);
       outR[i] = Math.tanh(finalR);
+    }
+
+    // Performance reporting
+    if (this.perfEnabled) {
+      const elapsed = _perfNow() - t0;
+      this.perfTotalTime += elapsed;
+      this.perfCount++;
+      this.perfSamplesSinceReport += blockSize;
+      if (this.perfSamplesSinceReport >= this.perfReportInterval) {
+        const wallMs = (this.perfSamplesSinceReport / this._sampleRate) * 1000;
+        const cpuPercent = wallMs > 0 ? (this.perfTotalTime / wallMs) * 100 : 0;
+        this.port.postMessage({ type: 'perf', name: 'ocean', cpuPercent });
+        this.perfTotalTime = 0;
+        this.perfCount = 0;
+        this.perfSamplesSinceReport = 0;
+      }
     }
 
     return true;

@@ -463,6 +463,8 @@
   </style>
 </head>
 <body>
+  <!-- WASM Toggle -->
+  <button class="debug-toggle" id="wasm-toggle" style="right:120px;color:#4a9;" title="Use C++ WASM engine for water &amp; insects (lower CPU)">⚡ WASM</button>
   <!-- Debug Toggle -->
   <button class="debug-toggle" id="debug-toggle">🔧 Debug</button>
   
@@ -862,6 +864,8 @@
     let isPlaying = false;
     let currentSeed = 12345;
     let waterBoostEnabled = true;
+    let useWasm = false;       // WASM mode toggle (set before initAudio)
+    let wasmNode = null;       // single AudioWorkletNode for WASM mode
     const WATER_PRESET_BASE_FREQ = {
       tapDrips: 2500,
       stream: 2300,
@@ -940,33 +944,140 @@
       }
     };
     
+    // ── Insect preset name → WASM int mapping ──
+    const INSECT_ENGINE_MAP = {
+      cricket: 0, treeCricket: 1, katydid: 2,
+      cicada: 3, grasshopper: 4, moleCricket: 5,
+    };
+    // ── Water preset name → WASM int mapping ──
+    const WATER_PRESET_MAP = {
+      tapDrips: 0, stream: 1, waterfall: 2, rainWindow: 3,
+    };
+
+    /**
+     * Creates a proxy object that remaps the water/insects
+     * message protocol to the WASM worklet's combined protocol.
+     */
+    function makeWasmProxy(wasmNodeRef, enginePrefix) {
+      const typeMap = {};
+      if (enginePrefix === 'water') {
+        typeMap['start']          = 'waterStart';
+        typeMap['stop']           = 'waterStop';
+        typeMap['setPreset']      = 'waterPreset';
+        typeMap['setParams']      = 'waterParams';
+        typeMap['setLayerMix']    = 'waterLayerMix';
+        typeMap['setLayerDensity'] = 'waterLayerDensity';
+        typeMap['setSeed']        = 'waterSeed';
+        typeMap['getStats']       = null;
+      } else {
+        typeMap['start']      = 'insectsStart';
+        typeMap['stop']       = 'insectsStop';
+        typeMap['setEngine']  = 'insectsEngine';
+        typeMap['setParams']  = 'insectsParams';
+        typeMap['setSeed']    = 'insectsSeed';
+        typeMap['getStats']   = null;
+      }
+      const proxy = {
+        port: {
+          postMessage(data) {
+            if (!data || !data.type) return;
+            const mapped = typeMap[data.type];
+            if (mapped === null) return;
+            if (!mapped) { wasmNodeRef.port.postMessage(data); return; }
+            const msg = Object.assign({}, data, { type: mapped });
+            if (data.type === 'setPreset') msg.preset = WATER_PRESET_MAP[data.preset] ?? 0;
+            if (data.type === 'setEngine') msg.engine = INSECT_ENGINE_MAP[data.engine] ?? 0;
+            if (data.type === 'setParams' && enginePrefix === 'water') {
+              msg.params = { intensity: data.intensity, rate: data.rate,
+                distance: data.distance, baseFreq: data.baseFreq,
+                dropSize: data.dropSize, hardness: data.hardness,
+                glassThickness: data.glassThickness };
+            }
+            if (data.type === 'setParams' && enginePrefix === 'insects') {
+              msg.params = { density: data.density, temperature: data.temperature,
+                distance: data.distance, proximity: data.proximity,
+                antiphony: data.antiphony, clickRate: data.clickRate,
+                motion: data.motion };
+            }
+            if (data.type === 'setSeed') msg.seed = data.seed;
+            wasmNodeRef.port.postMessage(msg);
+          },
+          onmessage: null,
+        },
+        connect(...args) { return wasmNodeRef.connect(...args); },
+        disconnect(...args) { return wasmNodeRef.disconnect(...args); },
+      };
+      return proxy;
+    }
+
     async function initAudio() {
       try {
         audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        console.log('AudioContext created, state:', audioContext.state, 'sampleRate:', audioContext.sampleRate);
-        
-        // Load worklets
-        console.log('Loading water worklet...');
-        await audioContext.audioWorklet.addModule('ARCHIVE/worklets/water.worklet.js');
-        console.log('Loading ocean worklet...');
-        await audioContext.audioWorklet.addModule('ARCHIVE/worklets/ocean.worklet.js');
-        console.log('Loading insects worklet...');
-        await audioContext.audioWorklet.addModule('ARCHIVE/worklets/insects.worklet.js');
-        console.log('Loading reverb worklet...');
-        await audioContext.audioWorklet.addModule('ARCHIVE/worklets/reverb.worklet.js');
-        console.log('All worklets loaded!');
-        
-        // Create nodes with explicit stereo output
-        waterNode = new AudioWorkletNode(audioContext, 'water-processor', {
-          outputChannelCount: [2]
-        });
+        console.log('AudioContext created, state:', audioContext.state, 'sampleRate:', audioContext.sampleRate,
+                    'mode:', useWasm ? 'WASM' : 'JS');
+
+        if (useWasm) {
+          // ── WASM path: combined water + insects engine ──
+          console.log('Loading WASM soundscapes worklet...');
+          await audioContext.audioWorklet.addModule('ARCHIVE/worklets/soundscapes-wasm.worklet.js');
+          await audioContext.audioWorklet.addModule('ARCHIVE/worklets/ocean.worklet.js');
+          await audioContext.audioWorklet.addModule('ARCHIVE/worklets/reverb.worklet.js');
+
+          wasmNode = new AudioWorkletNode(audioContext, 'soundscapes-wasm-processor', {
+            numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2],
+          });
+
+          // Load & send WASM binary
+          const wasmResp = await fetch('ARCHIVE/worklets/kessho_soundscapes.wasm');
+          const wasmBinary = await wasmResp.arrayBuffer();
+          wasmNode.port.postMessage({ type: 'wasmBinary', binary: wasmBinary }, [wasmBinary]);
+
+          // Wait for WASM ready
+          await new Promise((resolve) => {
+            wasmNode.port.onmessage = (e) => {
+              if (e.data && e.data.type === 'wasmReady') {
+                console.log('✅ WASM soundscapes engine ready');
+                resolve();
+              }
+            };
+          });
+
+          // Create proxy objects so rest of code works unchanged
+          waterNode = makeWasmProxy(wasmNode, 'water');
+          insectsNode = makeWasmProxy(wasmNode, 'insects');
+
+          // Forward WASM stats to proxy onmessage handlers
+          wasmNode.port.onmessage = (e) => {
+            if (!e.data) return;
+            if (e.data.type === 'waterStats' && waterNode.port.onmessage)
+              waterNode.port.onmessage({ data: { type: 'stats', activeVoices: e.data.activeVoices, eventsPerSecLow: e.data.eventsPerSec }});
+            if (e.data.type === 'insectsStats' && insectsNode.port.onmessage)
+              insectsNode.port.onmessage({ data: { type: 'stats', activeVoices: e.data.activeVoices, engineType: e.data.engineType }});
+            if (e.data.type === 'perf')
+              console.log(`[WASM perf] avg: ${e.data.avgMs.toFixed(2)}ms  load: ${(e.data.load * 100).toFixed(1)}%`);
+          };
+          wasmNode.port.postMessage({ type: 'enablePerf', enabled: true });
+
+        } else {
+          // ── JS path: original separate worklets ──
+          console.log('Loading water worklet...');
+          await audioContext.audioWorklet.addModule('ARCHIVE/worklets/water.worklet.js');
+          await audioContext.audioWorklet.addModule('ARCHIVE/worklets/ocean.worklet.js');
+          await audioContext.audioWorklet.addModule('ARCHIVE/worklets/insects.worklet.js');
+          await audioContext.audioWorklet.addModule('ARCHIVE/worklets/reverb.worklet.js');
+          console.log('All JS worklets loaded!');
+
+          waterNode = new AudioWorkletNode(audioContext, 'water-processor', {
+            outputChannelCount: [2]
+          });
+          insectsNode = new AudioWorkletNode(audioContext, 'insects-processor', {
+            outputChannelCount: [2]
+          });
+        }
+
+        // Common nodes (ocean, reverb, gains)
         oceanNode = new AudioWorkletNode(audioContext, 'ocean-processor', {
-          numberOfInputs: 0,
-          numberOfOutputs: 1,
-          outputChannelCount: [2]
-        });
-        insectsNode = new AudioWorkletNode(audioContext, 'insects-processor', {
-          outputChannelCount: [2]
+          numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2]
         });
         reverbNode = new AudioWorkletNode(audioContext, 'reverb');
         
@@ -1011,21 +1122,33 @@
         splitter = audioContext.createChannelSplitter(2);
         
         // Connect graph
-        // Water -> waterGain -> nightFilter -> masterGain
-        // Water -> waterSendGain -> reverb
-        waterNode.connect(waterGain);
-        waterNode.connect(waterSendGain);
-        waterSendGain.connect(reverbNode);
+        if (useWasm) {
+          // WASM mode: single node outputs both water+insects mixed
+          // Connect to waterGain only (insectsGain not used in WASM mode)
+          wasmNode.connect(waterGain);
+          wasmNode.connect(waterSendGain);
+          waterSendGain.connect(reverbNode);
+          // Set insectsGain to 0 since audio is already mixed in WASM
+          insectsGain.gain.value = 0;
+          insectsSendGain.gain.value = 0;
+        } else {
+          // JS mode: separate nodes
+          // Water -> waterGain -> nightFilter -> masterGain
+          // Water -> waterSendGain -> reverb
+          waterNode.connect(waterGain);
+          waterNode.connect(waterSendGain);
+          waterSendGain.connect(reverbNode);
+          
+          // Insects -> insectsGain -> nightFilter -> masterGain
+          // Insects -> insectsSendGain -> reverb
+          insectsNode.connect(insectsGain);
+          insectsNode.connect(insectsSendGain);
+          insectsSendGain.connect(reverbNode);
+        }
 
         oceanNode.connect(oceanGain);
         oceanNode.connect(oceanSendGain);
         oceanSendGain.connect(reverbNode);
-        
-        // Insects -> insectsGain -> nightFilter -> masterGain
-        // Insects -> insectsSendGain -> reverb
-        insectsNode.connect(insectsGain);
-        insectsNode.connect(insectsSendGain);
-        insectsSendGain.connect(reverbNode);
         
         // Reverb -> nightFilter
         reverbNode.connect(nightFilter);
@@ -1683,6 +1806,19 @@
       // Debug panel toggle
       document.getElementById('debug-toggle').onclick = () => {
         document.getElementById('debug-panel').classList.toggle('visible');
+      };
+
+      // WASM toggle (must be clicked BEFORE starting audio)
+      const wasmBtn = document.getElementById('wasm-toggle');
+      wasmBtn.onclick = () => {
+        if (audioContext) {
+          alert('Stop audio and reload to switch engines.');
+          return;
+        }
+        useWasm = !useWasm;
+        wasmBtn.style.color = useWasm ? '#0f0' : '#4a9';
+        wasmBtn.style.borderColor = useWasm ? '#0f0' : '#444';
+        wasmBtn.textContent = useWasm ? '⚡ WASM: ON' : '⚡ WASM';
       };
       
       // Seed controls

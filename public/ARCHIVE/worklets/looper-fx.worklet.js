@@ -260,6 +260,7 @@ class LooperFXProcessor extends AudioWorkletProcessor {
         this.scanFading = [false, false, false, false];
         this.scanFadeDir = [0, 0, 0, 0];
         this.scanHeadInit = [false, false, false, false];
+        this.scanLFOTarget = [0, 0, 0, 0]; // LFO target pos for smooth UI visualization
         this.SCAN_XFADE_SAMPLES = 5760; // ~120ms at 48kHz
         this.SCAN_XFADE_INC = 1 / 5760;
         this.SCAN_DRIFT_THRESH = 7200; // ~150ms at 48kHz
@@ -872,6 +873,7 @@ class LooperFXProcessor extends AudioWorkletProcessor {
                 outL[i] += sL * gain * envGain * panL;
                 outR[i] += sR * gain * envGain * panR;
                 this.cleanReadPos[voiceIdx] = activePos;
+                this.scanLFOTarget[voiceIdx] = targetPos;
             }
             return;
         }
@@ -1129,7 +1131,8 @@ class LooperFXProcessor extends AudioWorkletProcessor {
                     // In speed=0 (LFO scan) mode, cleanReadPos is already the absolute position
                     const speed = this.params.voiceSpeed[v];
                     if (speed === 0) {
-                        voiceNorm.push((this.cleanReadPos[v] % this.bufferSize) / this.bufferSize);
+                        // Use LFO target position for smooth visualization (avoids dual-head crossfade snap)
+                        voiceNorm.push(((this.scanLFOTarget[v] % this.bufferSize) + this.bufferSize) % this.bufferSize / this.bufferSize);
                     }
                     else {
                         const slice = this.euclidSliceOverride[v] >= 0 ? this.euclidSliceOverride[v] : (this.params.voiceSlice[v] || 0);

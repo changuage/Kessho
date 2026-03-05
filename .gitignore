@@ -41,3 +41,5 @@ public/*_backup_*.html
 
 # Digitone export candidates
 public/digitone_candidates.json
+
+emsdk/

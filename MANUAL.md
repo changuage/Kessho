@@ -1029,12 +1029,25 @@ Sets the maximum distance from home before bouncing back:
 
 ### Dual Slider (Range Mode)
 
-Double-clicking any slider converts it to a **dual slider** with two handles (min/max). When in range mode:
+Double-clicking any slider converts it to a **dual slider** with two handles (min/max). The slider cycles through three modes:
 
+1. **Single** → normal single-value slider
+2. **Walk** → value randomly drifts (Brownian motion) between the min/max handles at the configured Walk Speed
+3. **S&H (Sample & Hold)** → behaviour depends on the engine:
+
+#### Walk Mode
 - The actual value **randomly walks** between the min and max handles
 - **Random Walk Speed** (in Global settings) controls how fast values drift (0.1x = slow, 5x = fast)
 - Each phrase boundary updates the random walk targets
-- Double-click again to return to single-value mode
+- Works identically across all Earth engines (Water, Ocean, Insects)
+
+#### Sample & Hold Mode
+| Engine | Behaviour |
+|--------|-----------|
+| **Ocean** (Duration, Interval, Foam, Depth) | True per-event S&H — each wave trigger samples a random value from the [min, max] range inside the WASM engine |
+| **Water / Insects / Volumes / Layers** | **DualRangeContinuousHold** — the parameter is locked to the midpoint of [min, max]. Dragging the handles recalculates and updates the midpoint in real time. No per-event randomisation occurs because these engines accept single values only |
+
+Double-click again to return to single-value mode.
 
 This creates organic, evolving textures as parameters gently shift within your defined range.
 

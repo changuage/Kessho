@@ -12,6 +12,14 @@
  * - Algorithm is discrete: either snap at 50% morph or always use first preset's
  */
 
+// ─── Active note tracking for CPU overlay ───
+let activeLeadNoteCount = 0;
+
+/** Get the number of currently-sounding lead notes (for CPU monitoring). */
+export function getActiveLeadNoteCount(): number {
+  return activeLeadNoteCount;
+}
+
 // ─── Preset Data Types ───
 
 export interface Lead4opFMPresetXY {
@@ -532,6 +540,9 @@ export function playLead4opFMNote(
     { ratio: morphed.mod4Ratio, index: morphed.mod4Index, decay: morphed.mod4Decay, sustain: morphed.mod4Sustain, level: morphed.mod4Level, feedback: morphed.mod4Feedback, detune: morphed.mod4Detune, envRate: morphed.mod4EnvRate, modAttack: morphed.mod4ModAttack, modDelay: morphed.mod4ModDelay },
   ];
 
+  // Track active notes for CPU overlay
+  activeLeadNoteCount++;
+
   // Collect all nodes for cleanup
   const allNodes: AudioNode[] = [output];
   const allOscillators: OscillatorNode[] = [];
@@ -923,6 +934,7 @@ export function playLead4opFMNote(
     } catch {
       // Ignore cleanup errors
     }
+    activeLeadNoteCount = Math.max(0, activeLeadNoteCount - 1);
   }, (stopTime - now + 0.3) * 1000);
 
   return stopTime;

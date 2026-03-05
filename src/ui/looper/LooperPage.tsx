@@ -375,11 +375,11 @@ const LooperPage: React.FC<LooperPageProps> = ({
           {/* ── Global Sliders Row ── */}
           <div className="looper-global-sliders">
             <Slider
-                label="Dry/Wet"
-                value={state.looperDryWet}
-                paramKey={'looperDryWet' as keyof SliderState}
+                label="Granular Level"
+                value={state.granularLevel}
+                paramKey="granularLevel"
                 onChange={onParamChange}
-                {...sliderProps('looperDryWet' as keyof SliderState)}
+                {...sliderProps('granularLevel')}
               />
               <Slider
                 label="Feedback"
@@ -398,10 +398,10 @@ const LooperPage: React.FC<LooperPageProps> = ({
               />
               <Slider
                 label="Reverb Send"
-                value={state.looperReverbSend}
-                paramKey={'looperReverbSend' as keyof SliderState}
+                value={state.granularReverbSend}
+                paramKey="granularReverbSend"
                 onChange={onParamChange}
-                {...sliderProps('looperReverbSend' as keyof SliderState)}
+                {...sliderProps('granularReverbSend')}
               />
           </div>
 

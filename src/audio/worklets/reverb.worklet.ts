@@ -17,7 +17,7 @@ const _perfNow: () => number = typeof performance !== 'undefined' ? () => perfor
 
 interface ReverbParams {
   type: 'plate' | 'hall' | 'cathedral' | 'darkHall';
-  quality: 'ultra' | 'balanced' | 'lite';  // ultra=8-ch FDN, balanced=8-ch optimized, lite=4-ch FDN
+  quality: 'ultra' | 'balanced' | 'lite';  // ultra=8-ch + mid diffusion, balanced=8-ch, lite=4-ch
   predelay: number;  // ms
   damping: number;   // 0-1
   width: number;     // 0-1
@@ -26,6 +26,14 @@ interface ReverbParams {
   modulation: number; // 0-1 (chorus-like modulation)
   diffusion: number; // 0-1 (smear amount)
   infinite: boolean; // When true, feedback=1.0 for infinite reverb / freeze
+  // Advanced: shimmer, slow modulation, reverse
+  shimmer: number;        // 0-1 pitch-shifted feedback amount
+  shimmerPitch: number;   // semitones (-24 to +24)
+  slowModRate: number;    // Hz (0.01-0.2)
+  slowModDepth: number;   // 0-1 character drift intensity
+  freeze: boolean;        // infinite sustain mode
+  reverse: number;        // 0-1 reverse tail blend
+  reverseLength: number;  // seconds (0.5-16.0)
 }
 
 // One-pole highpass filter for removing subsonic buildup in FDN feedback
@@ -172,7 +180,7 @@ const DIFFUSER_TIMES_BASE = [
 class ReverbProcessor extends AudioWorkletProcessor {
   private params: ReverbParams = {
     type: 'hall',
-    quality: 'balanced',  // ultra, balanced, lite
+    quality: 'balanced',
     decay: 0.8,
     size: 1.5,
     modulation: 0.3,
@@ -181,6 +189,13 @@ class ReverbProcessor extends AudioWorkletProcessor {
     width: 0.8,
     diffusion: 0.8,
     infinite: false,
+    shimmer: 0,
+    shimmerPitch: 12,
+    slowModRate: 0.05,
+    slowModDepth: 0,
+    freeze: false,
+    reverse: 0,
+    reverseLength: 2,
   };
 
   // FDN components
@@ -236,6 +251,28 @@ class ReverbProcessor extends AudioWorkletProcessor {
   private perfSamplesSinceReport = 0;
   private perfReportInterval = 48000; // ~1 second
 
+  // Shimmer — micro-grain pitch shifter in feedback loop
+  private shimmerBufL: Float32Array;
+  private shimmerBufR: Float32Array;
+  private shimmerBufSize = 4096;
+  private shimmerWriteIdx = 0;
+  private shimmerPhase0 = 0;
+  private shimmerPhase1 = 0.5; // half-offset for overlap-add
+  private shimmerPitchRatio = 2; // default +12 semitones = octave up
+
+  // Slow modulation — character drift (Nightsky/Blackhole-style breathing)
+  private slowModPhase1 = 0;
+  private slowModPhase2 = 1.2; // secondary offset for uncorrelated modulation
+
+  // Reverse tail — reads reverb output backwards with windowed crossfade
+  private reverseBufL: Float32Array;
+  private reverseBufR: Float32Array;
+  private reverseBufSize: number;
+  private reverseWriteIdx = 0;
+  private reverseReadPhase = 0;
+  private reverseEnvPhase = 0;
+  private reverseCycleLen: number;
+
   constructor() {
     super();
 
@@ -280,6 +317,16 @@ class ReverbProcessor extends AudioWorkletProcessor {
     this.predelayL = new SmoothDelay(maxPredelay);
     this.predelayR = new SmoothDelay(maxPredelay);
 
+    // Shimmer buffer (fixed size, enough for grain overlap)
+    this.shimmerBufL = new Float32Array(this.shimmerBufSize);
+    this.shimmerBufR = new Float32Array(this.shimmerBufSize);
+
+    // Reverse buffer (max 16 seconds at sample rate)
+    this.reverseBufSize = Math.ceil(16 * sr);
+    this.reverseBufL = new Float32Array(this.reverseBufSize);
+    this.reverseBufR = new Float32Array(this.reverseBufSize);
+    this.reverseCycleLen = Math.ceil(2 * sr); // default 2s
+
     this.updatePreset();
     this.updatePredelay();
 
@@ -292,7 +339,12 @@ class ReverbProcessor extends AudioWorkletProcessor {
         this.perfSamplesSinceReport = 0;
       } else if (data.type === 'params') {
         Object.assign(this.params, data.params);
-        this.infinite = !!this.params.infinite;
+        this.infinite = !!this.params.infinite || !!this.params.freeze;
+        // Update shimmer pitch ratio
+        this.shimmerPitchRatio = Math.pow(2, (this.params.shimmerPitch ?? 12) / 12);
+        // Update reverse cycle length
+        const revLen = this.params.reverseLength ?? 2;
+        this.reverseCycleLen = Math.min(this.reverseBufSize, Math.round(revLen * sr));
         this.updatePreset();
         this.updatePredelay();
       }
@@ -312,8 +364,8 @@ class ReverbProcessor extends AudioWorkletProcessor {
     // Calculate feedback gain for desired RT60 - allow higher for ambient wash
     const baseDecay = preset.decay;
     const effectiveDecay = baseDecay + (1 - baseDecay) * userDecay * 0.9;
-    // In infinite mode, feedback = 1.0 for never-decaying reverb tail
-    this.feedbackGain = this.infinite ? 1.0 : Math.min(0.995, effectiveDecay);
+    // In freeze mode, feedback = 1.0 for never-decaying reverb tail
+    this.feedbackGain = (this.infinite || this.params.freeze) ? 1.0 : Math.min(0.995, effectiveDecay);
 
     // Update FDN delay times based on size
     const sr = sampleRate;
@@ -352,6 +404,15 @@ class ReverbProcessor extends AudioWorkletProcessor {
     this.fdnMixed[5] = s * (state[0] - state[1] + state[2] - state[3] - state[4] + state[5] - state[6] + state[7]);
     this.fdnMixed[6] = s * (state[0] + state[1] - state[2] - state[3] - state[4] - state[5] + state[6] + state[7]);
     this.fdnMixed[7] = s * (state[0] - state[1] - state[2] + state[3] - state[4] + state[5] + state[6] - state[7]);
+  }
+
+  // 4×4 Hadamard mixing for Lite quality mode (4-channel FDN)
+  private mixFDN4(state: Float64Array): void {
+    const s = 0.5; // 1/sqrt(4)
+    this.fdnMixed[0] = s * (state[0] + state[1] + state[2] + state[3]);
+    this.fdnMixed[1] = s * (state[0] - state[1] + state[2] - state[3]);
+    this.fdnMixed[2] = s * (state[0] + state[1] - state[2] - state[3]);
+    this.fdnMixed[3] = s * (state[0] - state[1] - state[2] + state[3]);
   }
 
   process(
@@ -414,6 +475,44 @@ class ReverbProcessor extends AudioWorkletProcessor {
     // Smooth damping once per block instead of per sample (128× reduction)
     this.smoothDamping += (targetDamping - this.smoothDamping) * (1 - Math.pow(1 - 0.0001, blockSize));
 
+    // Freeze mode: override feedback/damping per block
+    const isFrozen = this.params.freeze || this.infinite;
+    let blockFeedback = isFrozen ? 1.0 : this.feedbackGain;
+    let blockDamping = isFrozen ? 0 : this.smoothDamping;
+
+    // Slow modulation — character drift (once per block, ultra-cheap)
+    const slowModDepth = this.params.slowModDepth ?? 0;
+    if (slowModDepth > 0 && !isFrozen) {
+      const slowRate = this.params.slowModRate ?? 0.05;
+      const TAU = 2 * Math.PI;
+      this.slowModPhase1 += TAU * slowRate * blockPhaseIncrement;
+      this.slowModPhase2 += TAU * slowRate * 1.37 * blockPhaseIncrement;
+      if (this.slowModPhase1 > TAU) this.slowModPhase1 -= TAU;
+      if (this.slowModPhase2 > TAU) this.slowModPhase2 -= TAU;
+
+      const mod1Slow = Math.sin(this.slowModPhase1);
+      const mod2Slow = Math.sin(this.slowModPhase2);
+
+      // Modulate feedback gain ±6% (subtle decay length breathing)
+      blockFeedback = Math.min(0.998, blockFeedback * (1 + mod1Slow * slowModDepth * 0.06));
+      // Modulate damping ±0.15 (tone character slowly shifts bright/dark)
+      blockDamping = Math.max(0, Math.min(1, blockDamping + mod2Slow * slowModDepth * 0.15));
+    }
+
+    // Shimmer setup (per-block constants)
+    const shimmerAmount = this.params.shimmer ?? 0;
+    const shimmerGrainSize = 1024; // ~21ms at 48kHz
+    const shimmerPhaseInc = 1 / shimmerGrainSize;
+
+    // Reverse setup (per-block constants)
+    const reverseAmount = this.params.reverse ?? 0;
+    const rCycleLen = this.reverseCycleLen;
+
+    // Quality branching: lite=4-ch FDN, balanced=8-ch, ultra=8-ch + mid-diffusion
+    const isLite = this.params.quality === 'lite';
+    const useMidDiffusion = this.params.quality === 'ultra';
+    const fdnCount = isLite ? 4 : 8;
+
     for (let i = 0; i < blockSize; i++) {
       const inL = inputL[i] || 0;
       const inR = inputR[i] || 0;
@@ -428,52 +527,137 @@ class ReverbProcessor extends AudioWorkletProcessor {
       const diffInL = this.preDiffuserL.process(delayedL);
       const diffInR = this.preDiffuserR.process(delayedR);
 
-      // Read from FDN delay lines with modulation (using pre-allocated array)
-      for (let j = 0; j < 8; j++) {
-        // Different modulation per delay line for richness
+      // Read from FDN delay lines with modulation
+      for (let j = 0; j < fdnCount; j++) {
         const modAmount = j < 2 ? mod1 : j < 4 ? mod2 : j < 6 ? mod3 : mod4;
         const modOffset = modAmount * this.fdnDelayTimes[j] * 0.015;
         const delayTime = Math.max(1, this.fdnDelayTimes[j] + modOffset);
         this.fdnReads[j] = this.fdnDelays[j].readInterpolated(delayTime);
       }
 
-      // Apply damping + HPF (using pre-allocated array)
-      for (let j = 0; j < 8; j++) {
-        const damped = this.fdnDampers[j].process(this.fdnReads[j], this.smoothDamping);
-        this.fdnDamped[j] = this.fdnHPFs[j].process(damped, this.hpCoeff);
+      // Apply damping + HPF (using block-level damping, affected by freeze/slow mod)
+      // When frozen, bypass HPF (coeff=1.0 → identity) to prevent energy loss in the feedback loop
+      const hpC = isFrozen ? 1.0 : this.hpCoeff;
+      for (let j = 0; j < fdnCount; j++) {
+        const damped = this.fdnDampers[j].process(this.fdnReads[j], blockDamping);
+        this.fdnDamped[j] = this.fdnHPFs[j].process(damped, hpC);
       }
 
-      // Mix through Hadamard matrix (writes to this.fdnMixed)
-      this.mixFDN(this.fdnDamped);
+      // Mix through Hadamard matrix (4×4 for lite, 8×8 for balanced/ultra)
+      if (isLite) {
+        this.mixFDN4(this.fdnDamped);
+      } else {
+        this.mixFDN(this.fdnDamped);
+      }
 
-      // Mid-diffusion on mixed signal
-      const midL = this.midDiffuserL.process((this.fdnMixed[0] + this.fdnMixed[2] + this.fdnMixed[4] + this.fdnMixed[6]) * 0.25);
-      const midR = this.midDiffuserR.process((this.fdnMixed[1] + this.fdnMixed[3] + this.fdnMixed[5] + this.fdnMixed[7]) * 0.25);
+      // Mid-diffusion on mixed signal (Ultra only — extra density)
+      let midL = 0, midR = 0;
+      if (useMidDiffusion) {
+        midL = this.midDiffuserL.process((this.fdnMixed[0] + this.fdnMixed[2] + this.fdnMixed[4] + this.fdnMixed[6]) * 0.25);
+        midR = this.midDiffuserR.process((this.fdnMixed[1] + this.fdnMixed[3] + this.fdnMixed[5] + this.fdnMixed[7]) * 0.25);
+      }
 
-      // Inject input to first channels, apply feedback, write back
-      // In infinite mode, mute input so the tail truly freezes
-      const inputGain = this.infinite ? 0 : 0.2;
-      for (let j = 0; j < 8; j++) {
-        let inject = 0;
-        if (j < 4) inject = diffInL * inputGain;
-        else inject = diffInR * inputGain;
-        
-        // Soft clip to prevent runaway
-        const value = softClip(this.fdnMixed[j] * this.feedbackGain + inject);
+      // Shimmer: read pitch-shifted samples from shimmer buffer and feed into FDN
+      let shimInL = 0, shimInR = 0;
+      if (shimmerAmount > 0) {
+        const sBuf = this.shimmerBufSize;
+        const ratio = this.shimmerPitchRatio;
+
+        // Two overlapping grains with Hann envelope for smooth pitch shift
+        // Grain 0
+        const readOff0 = (this.shimmerPhase0 * shimmerGrainSize * ratio) % sBuf;
+        const ri0 = ((this.shimmerWriteIdx - shimmerGrainSize + sBuf) % sBuf + readOff0) % sBuf;
+        const ri0i = ri0 | 0;
+        const ri0f = ri0 - ri0i;
+        const ri0n = (ri0i + 1) % sBuf;
+        const env0 = Math.sin(this.shimmerPhase0 * Math.PI);
+        shimInL = (this.shimmerBufL[ri0i] + ri0f * (this.shimmerBufL[ri0n] - this.shimmerBufL[ri0i])) * env0;
+        shimInR = (this.shimmerBufR[ri0i] + ri0f * (this.shimmerBufR[ri0n] - this.shimmerBufR[ri0i])) * env0;
+
+        // Grain 1 (half-cycle offset)
+        const readOff1 = (this.shimmerPhase1 * shimmerGrainSize * ratio) % sBuf;
+        const ri1 = ((this.shimmerWriteIdx - shimmerGrainSize + sBuf) % sBuf + readOff1) % sBuf;
+        const ri1i = ri1 | 0;
+        const ri1f = ri1 - ri1i;
+        const ri1n = (ri1i + 1) % sBuf;
+        const env1 = Math.sin(this.shimmerPhase1 * Math.PI);
+        shimInL += (this.shimmerBufL[ri1i] + ri1f * (this.shimmerBufL[ri1n] - this.shimmerBufL[ri1i])) * env1;
+        shimInR += (this.shimmerBufR[ri1i] + ri1f * (this.shimmerBufR[ri1n] - this.shimmerBufR[ri1i])) * env1;
+
+        shimInL *= shimmerAmount * 0.35;
+        shimInR *= shimmerAmount * 0.35;
+
+        // Advance grain phases
+        this.shimmerPhase0 += shimmerPhaseInc;
+        this.shimmerPhase1 += shimmerPhaseInc;
+        if (this.shimmerPhase0 >= 1) this.shimmerPhase0 -= 1;
+        if (this.shimmerPhase1 >= 1) this.shimmerPhase1 -= 1;
+      }
+
+      // Inject input + shimmer feedback + apply FDN feedback + write back
+      const inputGain = isFrozen ? 0 : (isLite ? 0.25 : 0.2);
+      const halfCount = fdnCount >> 1;
+      for (let j = 0; j < fdnCount; j++) {
+        const dryInject = j < halfCount ? diffInL * inputGain : diffInR * inputGain;
+        const shimInject = j < halfCount ? shimInL : shimInR;
+        const value = softClip(this.fdnMixed[j] * blockFeedback + dryInject + shimInject);
         this.fdnDelays[j].write(value);
       }
 
-      // Collect outputs with cross-mixing for more density
-      let rawL = (this.fdnReads[0] + this.fdnReads[2] + this.fdnReads[4] + this.fdnReads[6] + this.fdnReads[1] * 0.3 + this.fdnReads[3] * 0.3) * 0.5;
-      let rawR = (this.fdnReads[1] + this.fdnReads[3] + this.fdnReads[5] + this.fdnReads[7] + this.fdnReads[0] * 0.3 + this.fdnReads[2] * 0.3) * 0.5;
+      // Collect outputs with cross-mixing for density
+      let rawL: number, rawR: number;
+      if (isLite) {
+        // 4-channel output tapping
+        rawL = (this.fdnReads[0] + this.fdnReads[2] + this.fdnReads[1] * 0.3) * 0.7;
+        rawR = (this.fdnReads[1] + this.fdnReads[3] + this.fdnReads[0] * 0.3) * 0.7;
+      } else {
+        // 8-channel output tapping
+        rawL = (this.fdnReads[0] + this.fdnReads[2] + this.fdnReads[4] + this.fdnReads[6] + this.fdnReads[1] * 0.3 + this.fdnReads[3] * 0.3) * 0.5;
+        rawR = (this.fdnReads[1] + this.fdnReads[3] + this.fdnReads[5] + this.fdnReads[7] + this.fdnReads[0] * 0.3 + this.fdnReads[2] * 0.3) * 0.5;
+      }
 
-      // Add mid-diffused signal
-      rawL = rawL * 0.7 + midL * 0.3;
-      rawR = rawR * 0.7 + midR * 0.3;
+      // Add mid-diffused signal (Ultra only)
+      if (useMidDiffusion) {
+        rawL = rawL * 0.7 + midL * 0.3;
+        rawR = rawR * 0.7 + midR * 0.3;
+      }
 
       // Post-diffusion (final smearing)
       rawL = this.postDiffuserL.process(rawL);
       rawR = this.postDiffuserR.process(rawR);
+
+      // Write to shimmer buffer (post-diffusion output feeds back via pitch shift)
+      if (shimmerAmount > 0) {
+        this.shimmerBufL[this.shimmerWriteIdx] = rawL;
+        this.shimmerBufR[this.shimmerWriteIdx] = rawR;
+        this.shimmerWriteIdx = (this.shimmerWriteIdx + 1) % this.shimmerBufSize;
+      }
+
+      // Reverse tail — reads reverb output backwards with windowed crossfade
+      if (reverseAmount > 0) {
+        // Write forward reverb to reverse buffer
+        this.reverseBufL[this.reverseWriteIdx] = rawL;
+        this.reverseBufR[this.reverseWriteIdx] = rawR;
+
+        // Read backwards through the buffer
+        const readIdx = (this.reverseWriteIdx - Math.floor(this.reverseReadPhase) + rCycleLen) % rCycleLen;
+
+        // Smooth sine-window envelope (rise at start, fall at end of cycle)
+        const envPos = this.reverseEnvPhase / rCycleLen;
+        const env = Math.sin(envPos * Math.PI);
+
+        rawL += this.reverseBufL[readIdx] * env * reverseAmount;
+        rawR += this.reverseBufR[readIdx] * env * reverseAmount;
+
+        // Advance reverse read position
+        this.reverseReadPhase += 1;
+        this.reverseEnvPhase += 1;
+        if (this.reverseEnvPhase >= rCycleLen) {
+          this.reverseEnvPhase = 0;
+          this.reverseReadPhase = 0;
+        }
+        this.reverseWriteIdx = (this.reverseWriteIdx + 1) % rCycleLen;
+      }
 
       // DC blocking
       rawL = this.dcBlockerL.process(rawL);
@@ -482,12 +666,8 @@ class ReverbProcessor extends AudioWorkletProcessor {
       // Stereo width
       const mid = (rawL + rawR) * 0.5;
       const side = (rawL - rawR) * 0.5;
-      const wetL = mid + side * width;
-      const wetR = mid - side * width;
-
-      // Output 100% wet (level controlled externally by reverbOutputGain)
-      outputL[i] = wetL;
-      outputR[i] = wetR;
+      outputL[i] = mid + side * width;
+      outputR[i] = mid - side * width;
     }
 
     // Performance reporting

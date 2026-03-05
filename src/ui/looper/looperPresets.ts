@@ -700,44 +700,66 @@ const LOOPER_PRESET_MAP: Record<string, LooperPresetData> = {
     looperDelayVibrato: 0.1, looperDelayMix: 0.3, looperDelayReverbSend: 0.3,
   },
 
-  // ─── Microcosm: Full multi-tap delay + granular cascade ───
+  // ─── Microcosm: Full 4-voice multi-tap delay + granular cascade ───
   microcosm: {
     looperEnabled: true,
     looperDryWet: 0.5,
-    looperFeedback: 0.15,
+    looperFeedback: 0.12,
     looperFeedbackLPF: 5000,
     looperFreeze: false,
     looperBufferSeconds: 16,
     looperMacroTexture: 0.4, looperMacroComplexity: 0.5,
     looperMacroDarkness: 0.2, looperMacroChaos: 0.2,
+    // V1: Root — rhythmic granular at original pitch, anchors the sound
     looperV1Enabled: true, looperV1Mode: 'granular',
     looperV1Slice: 0, looperV1Speed: 1, looperV1Reverse: false,
     looperV1Pitch: 0, looperV1Attack: 0.01, looperV1Decay: 0.5,
-    looperV1Blur: 0.3, looperV1GrainOct: 0.4, looperV1Spray: 0.2,
-    looperV1Density: 16, looperV1GrainSize: 80, looperV1Pan: -0.2, looperV1Gain: 0.5,
-    looperV1PosLFORate: 0.05, looperV1PosLFODepth: 0.25,
-    looperV1PanLFORate: 0.033, looperV1StereoSpread: 0.5,
+    looperV1Blur: 0.25, looperV1GrainOct: 0.3, looperV1Spray: 0.15,
+    looperV1Density: 14, looperV1GrainSize: 80, looperV1Pan: -0.3, looperV1Gain: 0.5,
+    looperV1PosLFORate: 0.05, looperV1PosLFODepth: 0.2,
+    looperV1PanLFORate: 0.033, looperV1StereoSpread: 0.4,
     looperV1ReverseLFORate: 0.017, looperV1WriteFollow: 0.4, looperV1RecordLFORate: 0.033,
+    // V2: Shimmer — octave-up sparkle layer
     looperV2Enabled: true, looperV2Mode: 'granular',
     looperV2Slice: 4, looperV2Speed: 1, looperV2Reverse: false,
     looperV2Pitch: 12, looperV2Attack: 0.015, looperV2Decay: 0.4,
-    looperV2Blur: 0.35, looperV2GrainOct: 0.5, looperV2Spray: 0.25,
-    looperV2Density: 12, looperV2GrainSize: 70, looperV2Pan: 0.2, looperV2Gain: 0.35,
+    looperV2Blur: 0.35, looperV2GrainOct: 0.4, looperV2Spray: 0.2,
+    looperV2Density: 10, looperV2GrainSize: 65, looperV2Pan: 0.3, looperV2Gain: 0.3,
     looperV2PosLFORate: 0.033, looperV2PosLFODepth: 0.2,
     looperV2PanLFORate: 0.027, looperV2StereoSpread: 0.5,
     looperV2ReverseLFORate: 0, looperV2WriteFollow: 0.4, looperV2RecordLFORate: 0.033,
-    looperV3Enabled: false, looperV4Enabled: false,
-    // Euclidean: ON — balanced rhythmic (Microcosm reference)
+    // V3: Sub-harmony — fifth below, reversed grains for ethereal wash
+    looperV3Enabled: true, looperV3Mode: 'granular',
+    looperV3Slice: 8, looperV3Speed: 1, looperV3Reverse: true,
+    looperV3Pitch: -5, looperV3Attack: 0.02, looperV3Decay: 0.6,
+    looperV3Blur: 0.4, looperV3GrainOct: 0.15, looperV3Spray: 0.25,
+    looperV3Density: 8, looperV3GrainSize: 100, looperV3Pan: 0, looperV3Gain: 0.25,
+    looperV3PosLFORate: 0.025, looperV3PosLFODepth: 0.3,
+    looperV3PanLFORate: 0.02, looperV3StereoSpread: 0.6,
+    looperV3ReverseLFORate: 0.012, looperV3WriteFollow: 0.3, looperV3RecordLFORate: 0.025,
+    // V4: Texture — sparse high-pitch micro-grains for air/shimmer detail
+    looperV4Enabled: true, looperV4Mode: 'granular',
+    looperV4Slice: 12, looperV4Speed: 1, looperV4Reverse: false,
+    looperV4Pitch: 7, looperV4Attack: 0.005, looperV4Decay: 0.2,
+    looperV4Blur: 0.2, looperV4GrainOct: 0.6, looperV4Spray: 0.3,
+    looperV4Density: 6, looperV4GrainSize: 45, looperV4Pan: -0.1, looperV4Gain: 0.2,
+    looperV4PosLFORate: 0.04, looperV4PosLFODepth: 0.15,
+    looperV4PanLFORate: 0.035, looperV4StereoSpread: 0.7,
+    looperV4ReverseLFORate: 0, looperV4WriteFollow: 0.5, looperV4RecordLFORate: 0.04,
+    // Euclidean: 4 lanes — interlocking polyrhythms, each voice gated independently
     looperEuclidMasterEnabled: true,
     looperEuclid1Enabled: true, looperEuclid1Steps: 16, looperEuclid1Hits: 5, looperEuclid1Rotation: 0,
     looperEuclid1Probability: 1.0, looperEuclid1VelocityMin: 0.6, looperEuclid1VelocityMax: 1.0, looperEuclid1Level: 0.8,
     looperEuclid2Enabled: true, looperEuclid2Steps: 16, looperEuclid2Hits: 3, looperEuclid2Rotation: 1,
     looperEuclid2Probability: 0.9, looperEuclid2VelocityMin: 0.5, looperEuclid2VelocityMax: 0.85, looperEuclid2Level: 0.6,
-    looperEuclid3Enabled: false, looperEuclid4Enabled: false,
-    // Delay: high activity for Microcosm character
-    looperDelayEnabled: true, looperDelayActivity: 0.65,
-    looperDelayRepeats: 0.45, looperDelayFilter: 0.5,
-    looperDelayVibrato: 0.15, looperDelayMix: 0.4, looperDelayReverbSend: 0.35,
+    looperEuclid3Enabled: true, looperEuclid3Steps: 12, looperEuclid3Hits: 4, looperEuclid3Rotation: 2,
+    looperEuclid3Probability: 0.85, looperEuclid3VelocityMin: 0.5, looperEuclid3VelocityMax: 0.9, looperEuclid3Level: 0.65,
+    looperEuclid4Enabled: true, looperEuclid4Steps: 8, looperEuclid4Hits: 3, looperEuclid4Rotation: 0,
+    looperEuclid4Probability: 0.8, looperEuclid4VelocityMin: 0.4, looperEuclid4VelocityMax: 0.8, looperEuclid4Level: 0.5,
+    // Delay: moderate activity (feedback now normalized, safe at higher values)
+    looperDelayEnabled: true, looperDelayActivity: 0.55,
+    looperDelayRepeats: 0.4, looperDelayFilter: 0.45,
+    looperDelayVibrato: 0.12, looperDelayMix: 0.35, looperDelayReverbSend: 0.35,
   },
 };
 
@@ -871,25 +893,37 @@ const LOOPER_SEQ_CONFIG_MAP: Record<string, LooperPresetSeqConfig> = {
     return { stepOverrides: so, subLaneStates: sl, clockDivs: ['1/8', '1/16', '1/8T', '1/4'] as ClockDivision[] };
   })(),
 
-  // ── Microcosm: Balanced rhythmic with complementary slice cycling ──
+  // ── Microcosm: 4-voice polyrhythmic cascade with complementary sub-lanes ──
   microcosm: (() => {
     const so = emptyStepOverrides();
     const sl = [defaultSubLane(), defaultSubLane(), defaultSubLane(), defaultSubLane()];
-    // Lane 1: slice cycle + pitch shimmer intervals
+    // Lane 1 (Root): slice cycle + melodic pitch intervals
     so.slice[0] = [0, 4, 8, 12];
     sl[0].slice = { enabled: true, steps: 4, direction: 'forward' };
     so.pitch[0] = [0, 7, 12, 5, 0];
     so.pitchDirection[0] = 'forward';
     sl[0].pitch = { enabled: true, steps: 5, direction: 'forward' };
-    // Lane 2: offset slices + octave up + occasional reverse
+    // Lane 2 (Shimmer): offset slices + high pitch intervals + occasional reverse
     so.slice[1] = [2, 6, 10];
     sl[1].slice = { enabled: true, steps: 3, direction: 'forward' };
-    so.pitch[1] = [12, 0, 7];
+    so.pitch[1] = [0, 7, 12];
     so.pitchDirection[1] = 'forward';
     sl[1].pitch = { enabled: true, steps: 3, direction: 'forward' };
     so.reverse[1] = [0, 0, 1];
     so.reverseDirection[1] = 'forward';
     sl[1].reverse = { enabled: true, steps: 3, direction: 'forward' };
-    return { stepOverrides: so, subLaneStates: sl, clockDivs: ['1/8', '1/8T', '1/8T', '1/4'] as ClockDivision[] };
+    // Lane 3 (Sub-harmony): slow slice walk + reverse cycling
+    so.slice[2] = [0, 8, 4, 12];
+    sl[2].slice = { enabled: true, steps: 4, direction: 'forward' };
+    so.reverse[2] = [1, 0, 0, 1];
+    so.reverseDirection[2] = 'forward';
+    sl[2].reverse = { enabled: true, steps: 4, direction: 'forward' };
+    // Lane 4 (Texture): scattered slices + wide pitch variation
+    so.slice[3] = [3, 9, 6];
+    sl[3].slice = { enabled: true, steps: 3, direction: 'pingpong' };
+    so.pitch[3] = [0, 5, 12, -5];
+    so.pitchDirection[3] = 'forward';
+    sl[3].pitch = { enabled: true, steps: 4, direction: 'forward' };
+    return { stepOverrides: so, subLaneStates: sl, clockDivs: ['1/8', '1/8T', '1/4', '1/16'] as ClockDivision[] };
   })(),
 };

@@ -216,7 +216,7 @@ export interface SliderState {
   reverbEnabled: boolean;     // on/off toggle for reverb (saves CPU when off)
   reverbEngine: 'algorithmic' | 'convolution';
   reverbType: 'plate' | 'hall' | 'cathedral' | 'darkHall';
-  reverbQuality: 'ultra' | 'balanced' | 'lite';  // ultra=8-channel FDN, balanced=8-ch optimized, lite=4-channel FDN
+  reverbQuality: 'ultra' | 'balanced' | 'lite';  // ultra=8-ch + mid diffusion, balanced=8-ch, lite=4-ch FDN
   reverbDecay: number;        // 0..1 step 0.01 (longer tail)
   reverbSize: number;         // 0.5..3.0 step 0.1 (room size)
   reverbDiffusion: number;    // 0..1 step 0.01 (smear amount)
@@ -224,6 +224,13 @@ export interface SliderState {
   predelay: number;           // 0..100ms step 1
   damping: number;            // 0..1 step 0.01
   width: number;              // 0..1 step 0.01
+  reverbShimmer: number;      // 0..1 step 0.01 - pitch-shifted feedback amount
+  reverbShimmerPitch: number; // -24..24 semitones step 1 - shimmer pitch shift
+  reverbSlowModRate: number;  // 0.01..0.2 Hz step 0.001 - slow character drift speed
+  reverbSlowModDepth: number; // 0..1 step 0.01 - how much character drifts
+  reverbFreeze: boolean;      // infinite sustain mode (freeze reverb tail)
+  reverbReverse: number;      // 0..1 step 0.01 - reverse tail blend
+  reverbReverseLength: number; // 0.5..16.0 seconds step 0.1 - reverse buffer length
 
   // Granular
   granularEnabled: boolean;    // on/off toggle for granular processing
@@ -642,6 +649,7 @@ export interface SliderState {
   oceanSampleLevel: number;      // 0..1 step 0.01 - sample volume
   oceanWaveSynthEnabled: boolean; // on/off toggle for wave synthesis
   oceanWaveSynthLevel: number;   // 0..1 step 0.01 - wave synth volume
+  oceanReverbSend: number;       // 0..1 reverb send for ocean (wave synth + sample, post-filter)
   oceanFilterType: 'lowpass' | 'bandpass' | 'highpass' | 'notch'; // filter type
   oceanFilterCutoff: number;     // 40..12000 Hz
   oceanFilterResonance: number;  // 0..1 step 0.01
@@ -649,7 +657,53 @@ export interface SliderState {
   oceanInterval: number;      // 3..20 seconds - time between waves (range in dualSliderRanges)
   oceanFoam: number;          // 0..1 - foam intensity (range in dualSliderRanges)
   oceanDepth: number;         // 0..1 - low rumble (range in dualSliderRanges)
-  
+
+  // ─── Soundscapes (Water + Insects) ───
+  waterEnabled: boolean;        // master on/off for water engine
+  waterPreset: number;          // 0..3 (Tap Drips, Stream, Waterfall, Rain Window)
+  waterMorphA: number;          // 0..3 morph source preset
+  waterMorphB: number;          // 0..3 morph target preset
+  waterMorph: number;           // 0..1 morph position
+  waterIntensity: number;       // 0..1
+  waterRate: number;            // 0..1
+  waterDistance: number;        // 0..1
+  waterBaseFreq: number;        // 100..8000 Hz
+  waterDropSize: number;        // 0..1
+  waterHardness: number;        // 0..1
+  waterGlassThickness: number;  // 0..1
+  waterSpace: number;           // 0..1 reverb send
+  waterLevel: number;           // 0..1 output volume
+  // Water layer levels (0 = disabled, >0 = enabled at that level)
+  waterLayerHardDrops: number;  // 0..1
+  waterLayerWaterDrops: number; // 0..1
+  waterLayerTurbulence: number; // 0..1
+  waterLayerBubbling: number;   // 0..1
+  waterLayerRoar: number;       // 0..1
+  waterLayerRivulets: number;   // 0..1
+  // Insects Layer 1
+  insectsEnabled: boolean;
+  insectsEngine: number;        // 0..6 (Cricket..Fly/Bee)
+  insectsDensity: number;       // 0..1
+  insectsTemperature: number;   // 0..1
+  insectsDistance: number;      // 0..1
+  insectsProximity: number;     // 0..1
+  insectsAntiphony: number;     // 0..1
+  insectsClickRate: number;     // 0..1
+  insectsMotion: number;        // 0..1
+  insectsLevel: number;         // 0..1
+  insectsReverbSend: number;    // 0..1 reverb send for insects
+  // Insects Layer 2
+  insects2Enabled: boolean;
+  insects2Engine: number;       // 0..6
+  insects2Density: number;      // 0..1
+  insects2Temperature: number;  // 0..1
+  insects2Distance: number;     // 0..1
+  insects2Proximity: number;    // 0..1
+  insects2Antiphony: number;    // 0..1
+  insects2ClickRate: number;    // 0..1
+  insects2Motion: number;       // 0..1
+  insects2Level: number;        // 0..1
+
   // ─── Looper FX (Unified Granular Engine) ───
   looperEnabled: boolean;           // Master on/off
   looperDryWet: number;             // 0..1 output wet level
@@ -982,6 +1036,12 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'predelay',
   'damping',
   'width',
+  'reverbShimmer',
+  'reverbShimmerPitch',
+  'reverbSlowModRate',
+  'reverbSlowModDepth',
+  'reverbReverse',
+  'reverbReverseLength',
   'granularEnabled',
   'maxGrains',
   'grainProbability',
@@ -1333,7 +1393,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'drumEuclid4Level',
   // Ocean
   'oceanSampleEnabled',
-  'oceanSampleLevel',
+  'oceanSampleLevel', 'oceanReverbSend',
   'oceanWaveSynthEnabled',
   'oceanWaveSynthLevel',
   'oceanFilterType',
@@ -1343,6 +1403,20 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'oceanInterval',
   'oceanFoam',
   'oceanDepth',
+  // Soundscapes (Water + Insects)
+  'waterEnabled',
+  'waterPreset', 'waterMorphA', 'waterMorphB', 'waterMorph',
+  'waterIntensity', 'waterRate', 'waterDistance', 'waterBaseFreq',
+  'waterDropSize', 'waterHardness', 'waterGlassThickness',
+  'waterSpace', 'waterLevel',
+  'waterLayerHardDrops', 'waterLayerWaterDrops', 'waterLayerTurbulence',
+  'waterLayerBubbling', 'waterLayerRoar', 'waterLayerRivulets',
+  'insectsEnabled', 'insectsEngine',
+  'insectsDensity', 'insectsTemperature', 'insectsDistance', 'insectsProximity',
+  'insectsAntiphony', 'insectsClickRate', 'insectsMotion', 'insectsLevel', 'insectsReverbSend',
+  'insects2Enabled', 'insects2Engine',
+  'insects2Density', 'insects2Temperature', 'insects2Distance', 'insects2Proximity',
+  'insects2Antiphony', 'insects2ClickRate', 'insects2Motion', 'insects2Level',
   'randomWalkSpeed',
   // Looper FX
   'looperEnabled',
@@ -1558,6 +1632,13 @@ export const DEFAULT_STATE: SliderState = {
   predelay: 60,
   damping: 0.2,
   width: 0.85,
+  reverbShimmer: 0,
+  reverbShimmerPitch: 12,
+  reverbSlowModRate: 0.05,
+  reverbSlowModDepth: 0,
+  reverbFreeze: false,
+  reverbReverse: 0,
+  reverbReverseLength: 2,
 
   // Granular
   granularEnabled: true,
@@ -1963,6 +2044,7 @@ export const DEFAULT_STATE: SliderState = {
   oceanSampleLevel: 0,
   oceanWaveSynthEnabled: false,
   oceanWaveSynthLevel: 0,
+  oceanReverbSend: 0.2,
   oceanFilterType: 'lowpass' as const,
   oceanFilterCutoff: 8000,
   oceanFilterResonance: 0.1,
@@ -1970,7 +2052,50 @@ export const DEFAULT_STATE: SliderState = {
   oceanInterval: 8.5,
   oceanFoam: 0.35,
   oceanDepth: 0.5,
-  
+
+  // ─── Soundscapes (Water + Insects) ───
+  waterEnabled: false,
+  waterPreset: 1,
+  waterMorphA: 0,
+  waterMorphB: 2,
+  waterMorph: 0,
+  waterIntensity: 0.7,
+  waterRate: 0.5,
+  waterDistance: 0.3,
+  waterBaseFreq: 2300,
+  waterDropSize: 0.5,
+  waterHardness: 0.5,
+  waterGlassThickness: 0.5,
+  waterSpace: 0.3,
+  waterLevel: 0.8,
+  waterLayerHardDrops: 0.08,
+  waterLayerWaterDrops: 0.82,
+  waterLayerTurbulence: 0.56,
+  waterLayerBubbling: 0.92,
+  waterLayerRoar: 0.0,
+  waterLayerRivulets: 0.0,
+  insectsEnabled: false,
+  insectsEngine: 0,
+  insectsDensity: 0.5,
+  insectsTemperature: 0.5,
+  insectsDistance: 0.3,
+  insectsProximity: 0.5,
+  insectsAntiphony: 0.3,
+  insectsClickRate: 0.3,
+  insectsMotion: 0.5,
+  insectsLevel: 0.7,
+  insectsReverbSend: 0.15,
+  insects2Enabled: false,
+  insects2Engine: 1,
+  insects2Density: 0.5,
+  insects2Temperature: 0.5,
+  insects2Distance: 0.3,
+  insects2Proximity: 0.5,
+  insects2Antiphony: 0.3,
+  insects2ClickRate: 0.3,
+  insects2Motion: 0.5,
+  insects2Level: 0.5,
+
   // ─── Looper FX ───
   looperEnabled: false,
   looperDryWet: 0.3,
@@ -2177,7 +2302,7 @@ interface QuantizationDef {
   step: number;
 }
 
-const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> = {
+export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> = {
   masterVolume: { min: 0, max: 1, step: 0.01 },
   synthLevel: { min: 0, max: 1, step: 0.01 },
   pad2Level: { min: 0, max: 1, step: 0.01 },
@@ -2276,6 +2401,12 @@ const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> = {
   predelay: { min: 0, max: 100, step: 1 },
   damping: { min: 0, max: 1, step: 0.01 },
   width: { min: 0, max: 1, step: 0.01 },
+  reverbShimmer: { min: 0, max: 1, step: 0.01 },
+  reverbShimmerPitch: { min: -24, max: 24, step: 1 },
+  reverbSlowModRate: { min: 0.01, max: 0.2, step: 0.001 },
+  reverbSlowModDepth: { min: 0, max: 1, step: 0.01 },
+  reverbReverse: { min: 0, max: 1, step: 0.01 },
+  reverbReverseLength: { min: 0.5, max: 16, step: 0.1 },
   grainProbability: { min: 0, max: 1, step: 0.01 },
   maxGrains: { min: 0, max: 128, step: 1 },
   grainSize: { min: 5, max: 800, step: 1 },
@@ -2534,12 +2665,47 @@ const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> = {
   // Ocean
   oceanSampleLevel: { min: 0, max: 1, step: 0.01 },
   oceanWaveSynthLevel: { min: 0, max: 1, step: 0.01 },
+  oceanReverbSend: { min: 0, max: 1, step: 0.01 },
   oceanFilterCutoff: { min: 40, max: 12000, step: 10 },
   oceanFilterResonance: { min: 0, max: 1, step: 0.01 },
   oceanDuration: { min: 2, max: 15, step: 0.5 },
   oceanInterval: { min: 3, max: 20, step: 0.5 },
   oceanFoam: { min: 0, max: 1, step: 0.01 },
   oceanDepth: { min: 0, max: 1, step: 0.01 },
+  // Soundscapes (Water + Insects)
+  waterMorph: { min: 0, max: 1, step: 0.01 },
+  waterIntensity: { min: 0, max: 1, step: 0.01 },
+  waterRate: { min: 0, max: 1, step: 0.01 },
+  waterDistance: { min: 0, max: 1, step: 0.01 },
+  waterBaseFreq: { min: 100, max: 8000, step: 10 },
+  waterDropSize: { min: 0, max: 1, step: 0.01 },
+  waterHardness: { min: 0, max: 1, step: 0.01 },
+  waterGlassThickness: { min: 0, max: 1, step: 0.01 },
+  waterSpace: { min: 0, max: 1, step: 0.01 },
+  waterLevel: { min: 0, max: 1, step: 0.01 },
+  waterLayerHardDrops: { min: 0, max: 1, step: 0.01 },
+  waterLayerWaterDrops: { min: 0, max: 1, step: 0.01 },
+  waterLayerTurbulence: { min: 0, max: 1, step: 0.01 },
+  waterLayerBubbling: { min: 0, max: 1, step: 0.01 },
+  waterLayerRoar: { min: 0, max: 1, step: 0.01 },
+  waterLayerRivulets: { min: 0, max: 1, step: 0.01 },
+  insectsDensity: { min: 0, max: 1, step: 0.01 },
+  insectsTemperature: { min: 0, max: 1, step: 0.01 },
+  insectsDistance: { min: 0, max: 1, step: 0.01 },
+  insectsProximity: { min: 0, max: 1, step: 0.01 },
+  insectsAntiphony: { min: 0, max: 1, step: 0.01 },
+  insectsClickRate: { min: 0, max: 1, step: 0.01 },
+  insectsMotion: { min: 0, max: 1, step: 0.01 },
+  insectsLevel: { min: 0, max: 1, step: 0.01 },
+  insectsReverbSend: { min: 0, max: 1, step: 0.01 },
+  insects2Density: { min: 0, max: 1, step: 0.01 },
+  insects2Temperature: { min: 0, max: 1, step: 0.01 },
+  insects2Distance: { min: 0, max: 1, step: 0.01 },
+  insects2Proximity: { min: 0, max: 1, step: 0.01 },
+  insects2Antiphony: { min: 0, max: 1, step: 0.01 },
+  insects2ClickRate: { min: 0, max: 1, step: 0.01 },
+  insects2Motion: { min: 0, max: 1, step: 0.01 },
+  insects2Level: { min: 0, max: 1, step: 0.01 },
   // Random Walk
   randomWalkSpeed: { min: 0.1, max: 5, step: 0.1 },
   // Circle of Fifths Drift

@@ -764,3 +764,23 @@ Add `this.synthMorphOverride = null;` to `stopSynthEuclidScheduler()` so the sli
 
 ### Key Insight
 Any "override" field that temporarily takes control away from a UI slider MUST be cleared in ALL exit paths (stop, disable, tab switch, etc.). If the override persists, the slider appears broken.
+
+---
+
+## Earth Page: DualRangeContinuousHold Change
+
+### Problem
+Sample & Hold (S&H) mode on dual sliders only works natively for **Ocean** parameters. Ocean's C++ WASM code accepts min/max ranges and calls `rng_float(min, max)` per wave trigger, giving true per-event randomisation. Water and Insects engines have no min/max protocol — they accept single values only.
+
+### Solution — DualRangeContinuousHold
+Two different S&H strategies coexist:
+
+| Engine | S&H Approach | Detail |
+|--------|-------------|--------|
+| **Ocean** | Engine-side S&H | WASM receives `foamMin`/`foamMax` etc., C++ samples a random value per wave event |
+| **Water / Insects / Volumes / Layers** | DualRangeContinuousHold | Value is set to `(lo + hi) / 2` — the engine receives a single fixed value at the midpoint of the range |
+
+When the user drags the range thumbs in DualRangeContinuousHold mode, the midpoint is recalculated and pushed to the engine immediately.
+
+### Key Insight
+When an underlying DSP engine doesn't support min/max range parameters, the host uses DualRangeContinuousHold — the midpoint of the range is sent as a single value. This gives the user a convenient way to "park" a parameter at a specific point via the dual-range UI, even though no true per-event randomisation occurs. The distinction is gated by `OCEAN_SH_KEYS` — a `Set` of the four ocean param keys that have native WASM S&H support. All other params use DualRangeContinuousHold.

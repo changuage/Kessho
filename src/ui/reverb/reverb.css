@@ -1,0 +1,184 @@
+/* ══════════════════════════════════════════════════════════════════
+   Reverb Page Styles
+   Scoped under .reverb-root
+   Matches Kessho Synth/Drum/Looper/Earth aesthetics
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ══ Design Tokens ══ */
+.reverb-root {
+  --bg-base: #1a1a2e;
+  --bg-input: rgba(0, 0, 0, 0.3);
+  --bg-surface: rgba(15, 25, 40, 0.95);
+  --bg-elevated: rgba(255,255,255,0.05);
+  --bg-control: rgba(255,255,255,0.08);
+  --bg-control-hover: rgba(255,255,255,0.15);
+  --border-subtle: rgba(255, 255, 255, 0.1);
+  --border-medium: rgba(255, 255, 255, 0.2);
+  --border-accent: rgba(100, 150, 200, 0.3);
+  --text-primary: #e0e0e0;
+  --text-secondary: #9ca3af;
+  --text-muted: #666;
+  --text-dim: #555;
+  --accent-primary: #a5c4d4;
+  --accent-reverb: #8b5cf6;
+  --accent-mod: #f59e0b;
+  --accent-green: #10b981;
+  --accent-blue: #3b82f6;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --font-xs: 0.55rem;
+  --font-sm: 0.65rem;
+  --font-md: 0.75rem;
+  --font-lg: 0.85rem;
+}
+
+.reverb-root * { box-sizing: border-box; }
+.reverb-root { overflow-x: hidden; max-width: 100%; }
+.reverb-root select { color-scheme: dark; }
+.reverb-root select option {
+  background: #1a1a2e;
+  color: #e0e0e0;
+}
+
+/* ── Two-column layout ── */
+.reverb-root .reverb-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.reverb-root .reverb-left {
+  flex: 0 0 460px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.reverb-root .reverb-right {
+  flex: 1;
+  min-width: 320px;
+  max-width: 100%;
+}
+
+@media (max-width: 900px) {
+  .reverb-root .reverb-left,
+  .reverb-root .reverb-right {
+    flex: 1 1 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+}
+
+/* ── Card ── */
+.reverb-root .reverb-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-accent);
+  border-left: 3px solid var(--sc, #888);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  transition: border-color 0.15s, box-shadow 0.2s;
+  margin-bottom: 10px;
+  padding: 0;
+}
+.reverb-root .reverb-card.expanded {
+  border-color: var(--sc, var(--border-accent));
+  box-shadow: 0 0 12px rgba(165,196,212,0.08);
+}
+
+/* ── Card Header ── */
+.reverb-root .reverb-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  user-select: none;
+  cursor: pointer;
+  background: rgba(255,255,255,0.02);
+}
+.reverb-root .reverb-card-header:hover {
+  background: rgba(255,255,255,0.04);
+}
+.reverb-root .rc-name {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--sc, #ccc);
+  white-space: nowrap;
+  flex: 1;
+}
+.reverb-root .rc-chevron {
+  font-size: 0.55rem;
+  color: var(--text-muted);
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+
+/* When expanded, show separator between header and body */
+.reverb-root .reverb-card.expanded .reverb-card-header {
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+
+/* ── Card Body ── */
+.reverb-root .reverb-card-body {
+  padding: 10px 12px;
+}
+
+/* ── Subsection label ── */
+.reverb-root .reverb-subsection {
+  margin-top: 12px;
+  margin-bottom: 4px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* ── Preset buttons ── */
+.reverb-root .reverb-preset-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.reverb-root .reverb-preset-btn {
+  padding: 5px 10px;
+  border-radius: 4px;
+  border: none;
+  cursor: pointer;
+  font-size: 11px;
+  background: var(--bg-control);
+  color: #d1d5db;
+  transition: all 0.15s;
+}
+.reverb-root .reverb-preset-btn:hover {
+  background: rgba(99, 102, 241, 0.3);
+}
+
+/* ── Toggle button ── */
+.reverb-root .reverb-toggle {
+  width: 100%;
+  padding: 10px;
+  border-radius: var(--radius-sm);
+  border: none;
+  cursor: pointer;
+  font-weight: bold;
+  transition: all 0.2s;
+}
+.reverb-root .reverb-toggle.active {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: white;
+}
+.reverb-root .reverb-toggle.inactive {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-secondary);
+}
+.reverb-root .reverb-toggle.freeze-on {
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  color: white;
+}
+.reverb-root .reverb-toggle.freeze-off {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-secondary);
+}

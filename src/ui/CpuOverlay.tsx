@@ -7,13 +7,30 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { audioEngine } from '../audio/engine';
 
 const WORKLET_LABELS: Record<string, string> = {
-  'looper-fx': 'Looper',
-  'granulator': 'Gran',
+  'looper-fx': 'Granular JS',
+  'looper-fx-wasm': 'Granular WASM',
   'reverb': 'Reverb',
-  'ocean': 'Ocean',
+  'ocean': 'Wave Synth',
+  'water': 'Water',
+  'insects': 'Insects',
+  'lead-fm': 'Lead FM',
+  'pad': 'Pad',
+  'drum-synth': 'Drums',
 };
 
-const WORKLET_ORDER = ['looper-fx', 'granulator', 'reverb', 'ocean'];
+/** Node-count unit labels for estimated synths */
+const NODE_COUNT_UNITS: Record<string, string> = {
+  'lead-fm': 'notes',
+  'pad': 'voices',
+  'drum-synth': 'voices',
+};
+
+/** Preferred display order — measured worklets first, then estimated synths */
+const MEASURED_ORDER = ['looper-fx', 'looper-fx-wasm', 'reverb', 'ocean', 'water', 'insects'];
+const ESTIMATED_ORDER = ['lead-fm', 'pad', 'drum-synth'];
+
+/** Keys whose CPU% is estimated from node counts (shown with ~ prefix). */
+const ESTIMATED_KEYS = new Set(ESTIMATED_ORDER);
 
 function cpuColor(pct: number): string {
   if (pct < 10) return '#6f6'; // green
@@ -25,6 +42,7 @@ function cpuColor(pct: number): string {
 export const CpuOverlay: React.FC = () => {
   const [visible, setVisible] = useState(false);
   const [perfData, setPerfData] = useState<Record<string, number>>({});
+  const [nodeCounts, setNodeCounts] = useState<Record<string, number>>({});
   const tapRef = useRef<number[]>([]);
 
   // Toggle visibility — also enables/disables perf monitoring
@@ -53,7 +71,10 @@ export const CpuOverlay: React.FC = () => {
   // Subscribe to perf updates
   useEffect(() => {
     if (!visible) return;
-    audioEngine.setPerfUpdateCallback(setPerfData);
+    audioEngine.setPerfUpdateCallback((data) => {
+      setPerfData(data);
+      setNodeCounts(audioEngine.getPerfNodeCounts());
+    });
     return () => {
       audioEngine.setPerfUpdateCallback(null);
     };
@@ -74,6 +95,34 @@ export const CpuOverlay: React.FC = () => {
   const total = Object.values(perfData).reduce((a, b) => a + b, 0);
   const totalRounded = Math.round(total * 10) / 10;
   const hasData = Object.keys(perfData).length > 0;
+
+  // Split into measured (worklets) and estimated (native-node synths)
+  const measuredTotal = MEASURED_ORDER.reduce((s, k) => s + (perfData[k] ?? 0), 0);
+  const estimatedTotal = ESTIMATED_ORDER.reduce((s, k) => s + (perfData[k] ?? 0), 0);
+  // Any unknown keys not in either list
+  const extraKeys = Object.keys(perfData).filter(k => !ESTIMATED_KEYS.has(k) && !MEASURED_ORDER.includes(k));
+
+  const renderRow = (key: string) => {
+    const pct = perfData[key];
+    if (pct === undefined) return null;
+    const isEstimated = ESTIMATED_KEYS.has(key);
+    const count = nodeCounts[key];
+    const unit = NODE_COUNT_UNITS[key];
+    return (
+      <div key={key} style={styles.row}>
+        <span style={styles.label}>{WORKLET_LABELS[key] || key}</span>
+        {isEstimated && count !== undefined && (
+          <span style={styles.count}>{count}{unit ? ` ${unit}` : ''}</span>
+        )}
+        <span style={{ ...styles.value, color: cpuColor(pct) }}>
+          {isEstimated ? '~' : ''}{pct}%
+        </span>
+        <div style={styles.barBg}>
+          <div style={{ ...styles.barFill, width: `${Math.min(100, pct)}%`, background: cpuColor(pct) }} />
+        </div>
+      </div>
+    );
+  };
 
   return (
     <>
@@ -98,19 +147,28 @@ export const CpuOverlay: React.FC = () => {
               {totalRounded}%
             </span>
           </div>
-          {hasData ? WORKLET_ORDER.map(key => {
-            const pct = perfData[key];
-            if (pct === undefined) return null;
-            return (
-              <div key={key} style={styles.row}>
-                <span style={styles.label}>{WORKLET_LABELS[key] || key}</span>
-                <span style={{ ...styles.value, color: cpuColor(pct) }}>{pct}%</span>
-                <div style={styles.barBg}>
-                  <div style={{ ...styles.barFill, width: `${Math.min(100, pct)}%`, background: cpuColor(pct) }} />
-                </div>
+          {hasData ? (
+            <>
+              {/* ─── Measured worklet CPU ─── */}
+              <div style={styles.sectionHeader}>
+                Worklets
+                <span style={{ color: '#777', marginLeft: 4 }}>
+                  {Math.round(measuredTotal * 10) / 10}%
+                </span>
               </div>
-            );
-          }) : (
+              {MEASURED_ORDER.map(renderRow)}
+              {extraKeys.map(renderRow)}
+
+              {/* ─── Estimated synth CPU ─── */}
+              <div style={{ ...styles.sectionHeader, marginTop: 4 }}>
+                Synths
+                <span style={{ color: '#777', marginLeft: 4 }}>
+                  ~{Math.round(estimatedTotal * 10) / 10}%
+                </span>
+              </div>
+              {ESTIMATED_ORDER.map(renderRow)}
+            </>
+          ) : (
             <div style={{ color: '#666', fontSize: 10, marginTop: 2 }}>waiting for data…</div>
           )}
         </div>
@@ -150,14 +208,30 @@ const styles: Record<string, React.CSSProperties> = {
     height: 16,
   },
   label: {
-    width: 48,
+    width: 72,
     color: '#999',
     flexShrink: 0,
+  },
+  count: {
+    color: '#666',
+    fontSize: 9,
+    flexShrink: 0,
+    minWidth: 32,
   },
   value: {
     width: 38,
     textAlign: 'right' as const,
     flexShrink: 0,
+  },
+  sectionHeader: {
+    fontSize: 9,
+    color: '#555',
+    textTransform: 'uppercase' as const,
+    letterSpacing: 1,
+    marginTop: 2,
+    marginBottom: 1,
+    borderTop: '1px solid #333',
+    paddingTop: 2,
   },
   barBg: {
     flex: 1,

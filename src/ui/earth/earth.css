@@ -1,0 +1,499 @@
+/* ══════════════════════════════════════════════════════════════════
+   Earth Engine Page Styles
+   Scoped under .earth-root
+   Matches Kessho Synth/Drum page aesthetics
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ══ Design Tokens (matched to Kessho Synth/Drum/Looper) ══ */
+.earth-root {
+  --bg-base: #1a1a2e;
+  --bg-input: rgba(0, 0, 0, 0.3);
+  --bg-surface: rgba(15, 25, 40, 0.95);
+  --bg-elevated: rgba(255,255,255,0.05);
+  --bg-control: rgba(255,255,255,0.08);
+  --bg-control-hover: rgba(255,255,255,0.15);
+  --border-subtle: rgba(255, 255, 255, 0.1);
+  --border-medium: rgba(255, 255, 255, 0.2);
+  --border-accent: rgba(100, 150, 200, 0.3);
+  --text-primary: #e0e0e0;
+  --text-secondary: #9ca3af;
+  --text-muted: #666;
+  --text-dim: #555;
+  --accent-primary: #a5c4d4;
+  --accent-water: #4a9eff;
+  --accent-ocean: #00d4ff;
+  --accent-insects: #2ecc71;
+  --accent-green: #10b981;
+  --accent-red: #e74c3c;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --font-xs: 0.55rem;
+  --font-sm: 0.65rem;
+  --font-md: 0.75rem;
+  --font-lg: 0.85rem;
+}
+
+.earth-root * { box-sizing: border-box; }
+.earth-root { overflow-x: hidden; max-width: 100%; }
+.earth-root select { color-scheme: dark; }
+.earth-root select option {
+  background: #1a1a2e;
+  color: #e0e0e0;
+}
+
+/* ── Two-column layout ── */
+.earth-root .container {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.earth-root .sound-panel {
+  flex: 0 0 460px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.earth-root .mixer-panel {
+  flex: 1;
+  min-width: 320px;
+  max-width: 100%;
+}
+
+@media (max-width: 900px) {
+  .earth-root .sound-panel,
+  .earth-root .mixer-panel {
+    flex: 1 1 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+}
+
+/* ── Card ── */
+.earth-root .earth-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-accent);
+  border-left: 3px solid var(--sc, #888);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  transition: border-color 0.15s, box-shadow 0.2s;
+  margin-bottom: 10px;
+  padding: 0;
+}
+.earth-root .earth-card.expanded {
+  border-color: var(--sc, var(--border-accent));
+  box-shadow: 0 0 12px rgba(165,196,212,0.08);
+}
+
+/* ── Card Header ── */
+.earth-root .earth-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  user-select: none;
+  cursor: pointer;
+  background: rgba(255,255,255,0.02);
+}
+.earth-root .earth-card-header:hover {
+  background: rgba(255,255,255,0.04);
+}
+.earth-root .ec-name {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--sc, #ccc);
+  white-space: nowrap;
+  flex: 1;
+}
+.earth-root .ec-chevron {
+  font-size: 0.55rem;
+  color: var(--text-muted);
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+
+/* When expanded, show separator between header and body */
+.earth-root .earth-card.expanded .earth-card-header {
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+
+/* ── Card Body ── */
+.earth-root .earth-card-body {
+  padding: 10px 12px;
+}
+
+/* ── Param Row ── */
+.earth-root .param-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex: 1;
+  min-width: 0;
+}
+.earth-root .param-label {
+  font-size: var(--font-sm);
+  color: var(--text-secondary);
+  min-width: 70px;
+  flex-shrink: 0;
+}
+.earth-root .param-slider {
+  flex: 1;
+  min-width: 0;
+}
+.earth-root .param-value {
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+  min-width: 36px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Earth Dual Slider ── */
+.earth-root .earth-dual-row {
+  flex-wrap: wrap;
+}
+.earth-root .earth-dual-mode-label {
+  font-size: 0.55rem;
+  margin-left: 4px;
+  opacity: 0.85;
+}
+.earth-root .earth-dual-slider-wrap {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.earth-root .earth-dual-container {
+  position: relative;
+  width: 100%;
+  height: 14px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+}
+.earth-root .earth-dual-track {
+  position: absolute;
+  height: 100%;
+  border-radius: 7px;
+}
+.earth-root .earth-dual-thumb {
+  position: absolute;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--bg-surface);
+  transform: translate(-50%, -50%);
+  cursor: grab;
+  border: 2px solid #a5c4d4;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  z-index: 2;
+  transition: box-shadow 0.15s;
+}
+.earth-root .earth-dual-thumb:hover {
+  box-shadow: 0 0 6px rgba(165,196,212,0.5);
+}
+.earth-root .earth-dual-thumb:active {
+  cursor: grabbing;
+}
+.earth-root .earth-dual-indicator {
+  position: absolute;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  background: #fff;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 6px rgba(255,255,255,0.7);
+  pointer-events: none;
+  transition: left 0.18s ease-in;
+  z-index: 1;
+}
+.earth-root .earth-dual-range-text {
+  font-size: 0.55rem;
+  color: var(--text-muted);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Select ── */
+.earth-root .earth-select {
+  width: 100%;
+  font-size: 0.7rem;
+  background: var(--bg-input);
+  color: #ccc;
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm);
+  padding: 3px 6px;
+  transition: border-color 0.15s;
+  cursor: pointer;
+  margin-bottom: 6px;
+}
+.earth-root .earth-select:hover {
+  border-color: rgba(255,255,255,0.3);
+}
+.earth-root .earth-select:focus {
+  border-color: var(--sc, var(--accent-water));
+  outline: none;
+}
+
+/* ── Range Input Styling ── */
+.earth-root input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  background: rgba(255,255,255,0.12);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+  margin: 0;
+  overflow: visible;
+}
+.earth-root input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+}
+.earth-root input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--sc, #a5c4d4);
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 0 4px rgba(0,0,0,0.4);
+  margin-top: -4px;
+}
+.earth-root input[type="range"]::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--sc, #a5c4d4);
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 0 4px rgba(0,0,0,0.4);
+}
+.earth-root input[type="range"]::-moz-range-track {
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255,255,255,0.12);
+}
+
+/* ── Mixer Section ── */
+.earth-root .mixer-section {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-accent);
+  border-left: 3px solid var(--accent-primary);
+  border-radius: var(--radius-md);
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+.earth-root .mixer-section-header {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--accent-primary);
+  text-transform: none;
+  letter-spacing: 0;
+  padding: 6px 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+.earth-root .mixer-section-body {
+  padding: 10px 12px;
+}
+
+/* ── Layer Row (toggle + label + slider + value) ── */
+.earth-root .layer-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  padding: 2px 0;
+}
+.earth-root .layer-row.disabled {
+  opacity: 0.4;
+}
+.earth-root .layer-toggle {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.15);
+  cursor: pointer;
+  font-size: 9px;
+  line-height: 16px;
+  text-align: center;
+  background: rgba(255,255,255,0.06);
+  color: var(--text-muted);
+  transition: all 0.15s;
+  flex-shrink: 0;
+  padding: 0;
+}
+.earth-root .layer-toggle.on {
+  background: rgba(16,185,129,0.2);
+  border-color: rgba(16,185,129,0.4);
+  color: #10b981;
+}
+.earth-root .layer-label {
+  font-size: var(--font-sm);
+  color: var(--text-primary);
+  min-width: 70px;
+  flex-shrink: 0;
+}
+.earth-root .layer-slider {
+  flex: 1;
+  min-width: 0;
+}
+.earth-root .layer-value {
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+  min-width: 36px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Transport ── */
+.earth-root .transport-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 8px 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-accent);
+  border-radius: var(--radius-md);
+}
+.earth-root .transport-btn {
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(255,255,255,0.15);
+  cursor: pointer;
+  font-weight: 700;
+  font-size: var(--font-sm);
+  transition: all 0.15s;
+  background: var(--bg-control);
+  color: var(--text-secondary);
+}
+.earth-root .transport-btn.play {
+  background: rgba(16,185,129,0.2);
+  border-color: rgba(16,185,129,0.4);
+  color: #10b981;
+}
+.earth-root .transport-btn.play:hover {
+  background: rgba(16,185,129,0.35);
+}
+.earth-root .transport-btn.stop {
+  background: rgba(231,76,60,0.2);
+  border-color: rgba(231,76,60,0.4);
+  color: #e74c3c;
+}
+.earth-root .transport-btn.stop:hover {
+  background: rgba(231,76,60,0.35);
+}
+.earth-root .transport-label {
+  font-size: var(--font-sm);
+  color: var(--text-secondary);
+  flex: 0 0 auto;
+}
+.earth-root .transport-slider {
+  flex: 1;
+  min-width: 0;
+}
+.earth-root .transport-value {
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+  min-width: 36px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Stats ── */
+.earth-root .stats-bar {
+  display: flex;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-accent);
+  border-radius: var(--radius-md);
+  margin-bottom: 8px;
+}
+.earth-root .stat-item {
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+}
+.earth-root .stat-value {
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Section Divider ── */
+.earth-root .section-divider {
+  margin-top: 6px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  padding-top: 6px;
+}
+
+/* ── Inline morph row (A select | slider | B select) ── */
+.earth-root .ec-morph-row {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.earth-root .ec-morph-row .ec-morph-tag {
+  font-size: 0.5rem;
+  font-weight: 800;
+  flex-shrink: 0;
+  min-width: 8px;
+  text-align: center;
+}
+.earth-root .ec-morph-row .earth-select {
+  flex: 1;
+  min-width: 0;
+  margin-bottom: 0;
+}
+.earth-root .ec-morph-slider {
+  flex: 1.2;
+  min-width: 0;
+}
+
+/* Morph dual-slider (walk / S&H mode) */
+.earth-root .ec-morph-dual-wrap {
+  flex: 1.2; display: flex; flex-direction: column; gap: 2px; min-width: 0;
+}
+.earth-root .ec-morph-dual-mode {
+  font-size: 0.45rem; text-align: center; font-weight: 600;
+  letter-spacing: 0.5px; line-height: 1;
+}
+.earth-root .ec-morph-dual-track {
+  position: relative; height: 14px; background: rgba(255,255,255,0.08);
+  border-radius: 7px; cursor: pointer; touch-action: none;
+}
+.earth-root .ec-morph-dual-fill {
+  position: absolute; top: 2px; bottom: 2px; border-radius: 5px;
+  pointer-events: none;
+}
+.earth-root .ec-morph-dual-walk {
+  position: absolute; top: 1px; bottom: 1px; width: 3px;
+  border-radius: 1px; transform: translateX(-50%);
+  pointer-events: none; opacity: 0.9;
+  box-shadow: 0 0 4px currentColor;
+}
+.earth-root .ec-morph-dual-thumb {
+  position: absolute; top: 50%; width: 10px; height: 10px;
+  border-radius: 50%; background: var(--bg-surface);
+  border: 2px solid #a5c4d4; transform: translate(-50%, -50%);
+  cursor: grab; touch-action: none; z-index: 2;
+  transition: box-shadow 0.15s;
+}
+.earth-root .ec-morph-dual-thumb:hover {
+  box-shadow: 0 0 6px rgba(165,196,212,0.5);
+}
+
+

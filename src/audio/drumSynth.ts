@@ -489,6 +489,20 @@ export class DrumSynth {
     return this.delaySends[voice];
   }
 
+  /** Get total number of currently-active drum voices (across all voice types) for CPU monitoring. */
+  getActiveVoiceCount(): number {
+    let count = 0;
+    for (const key of Object.keys(this.voicePools) as DrumVoiceType[]) {
+      count += this.voicePools[key].length;
+    }
+    return count;
+  }
+
+  /** Get total number of tracked transient node groups (pending cleanup) for CPU monitoring. */
+  getActiveNodeGroupCount(): number {
+    return this.transientNodeGroups.length;
+  }
+
   setDrumTriggerCallback(callback: (voice: DrumVoiceType, velocity: number) => void): void {
     this.onDrumTrigger = callback;
   }

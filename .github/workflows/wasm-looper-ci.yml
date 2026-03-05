@@ -1,0 +1,36 @@
+name: WASM Looper CI
+
+on:
+  pull_request:
+    paths:
+      - 'wasm/looper-fx/**'
+      - 'public/ARCHIVE/worklets/kessho_looper.wasm'
+      - '.github/workflows/wasm-looper-ci.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'wasm/looper-fx/**'
+      - 'public/ARCHIVE/worklets/kessho_looper.wasm'
+      - '.github/workflows/wasm-looper-ci.yml'
+
+jobs:
+  rebuild-wasm:
+    runs-on: ubuntu-latest
+    container:
+      image: emscripten/emsdk:5.0.2
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build looper WASM
+        run: bash wasm/looper-fx/build.sh
+
+      - name: Verify committed WASM is up to date
+        run: |
+          git diff --exit-code -- wasm/looper-fx/kessho_looper.wasm public/ARCHIVE/worklets/kessho_looper.wasm || {
+            echo "Generated WASM differs from committed binaries.";
+            echo "Run wasm/looper-fx/build.sh and commit updated .wasm files.";
+            exit 1;
+          }

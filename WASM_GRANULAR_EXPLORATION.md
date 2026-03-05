@@ -950,6 +950,22 @@ Dual sliders, S&H, walk mode, and all preset/morph features work unchanged — t
 | 6.5 | Update this doc with final measured numbers | Fill in actual CPU % column |
 | 6.6 | **Final checkpoint:** Ship to production | Merge to main, monitor for issues |
 
+#### Phase 6 status update (2026-03-03)
+
+- Validation runbook: `docs/LOOPER_WASM_VALIDATION_RUNBOOK.md`
+
+- ✅ **6.1 complete:** SIMD-enabled binaries are committed at:
+    - `wasm/looper-fx/kessho_looper.wasm` (33,991 bytes)
+    - `public/ARCHIVE/worklets/kessho_looper.wasm` (33,991 bytes)
+- ✅ **6.2 complete:** CI workflow added at `.github/workflows/wasm-looper-ci.yml`
+    - Uses `emscripten/emsdk:4.0.7` container
+    - Rebuilds via `bash wasm/looper-fx/build.sh`
+    - Fails PR if generated `.wasm` differs from committed binaries
+- 🟡 **6.3 pending:** browser matrix validation still required on Safari + Firefox + Chrome
+- 🟡 **6.4 pending:** mobile validation still required on iOS Safari + Android Chrome
+- 🟡 **6.5 partial:** implementation milestones and binary sizes are now recorded; final cross-browser/mobile CPU measurements still pending
+- ⏳ **6.6 pending:** ship checkpoint after 6.3/6.4/6.5 measurement pass
+
 ### Phase summary
 
 | Phase | Days | Cumulative Result |
