@@ -1,0 +1,891 @@
+// src/presets/ParamRegistry.ts
+// Phase 0 — Canonical mapping of every SliderState key to its preset level + scope.
+// Source of truth: Appendix C of Preset_Hierarchy_Plan.md (714 params).
+
+export type ParamLevel = 1 | 2 | 3 | 4;
+
+export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }> = {
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // L4: Global / State (23 params)
+  // ═══════════════════════════════════════════════════════════════════════
+  masterVolume:          { level: 4, scope: 'global' },
+  synthLevel:            { level: 4, scope: 'global' },
+  pad2Level:             { level: 4, scope: 'global' },
+  granularLevel:         { level: 4, scope: 'global' },
+  synthReverbSend:       { level: 4, scope: 'global' },
+  granularReverbSend:    { level: 4, scope: 'global' },
+  leadReverbSend:        { level: 4, scope: 'global' },
+  leadDelayReverbSend:   { level: 4, scope: 'global' },
+  reverbLevel:           { level: 4, scope: 'global' },
+  seedWindow:            { level: 4, scope: 'global' },
+  randomness:            { level: 4, scope: 'global' },
+  rootNote:              { level: 4, scope: 'global' },
+  cofDriftEnabled:       { level: 4, scope: 'global' },
+  cofDriftRate:          { level: 4, scope: 'global' },
+  cofDriftDirection:     { level: 4, scope: 'global' },
+  cofDriftRange:         { level: 4, scope: 'global' },
+  cofCurrentStep:        { level: 4, scope: 'global' },
+  scaleMode:             { level: 4, scope: 'global' },
+  manualScale:           { level: 4, scope: 'global' },
+  tension:               { level: 4, scope: 'global' },
+  chordRate:             { level: 4, scope: 'global' },
+  voicingSpread:         { level: 4, scope: 'global' },
+  randomWalkSpeed:       { level: 4, scope: 'global' },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // L3: Synth Source (9 params)
+  // ═══════════════════════════════════════════════════════════════════════
+  leadEnabled:           { level: 3, scope: 'synth' },
+  leadRandomEnabled:     { level: 3, scope: 'synth' },
+  leadLevel:             { level: 3, scope: 'synth' },
+  leadDelayTime:         { level: 3, scope: 'synth' },
+  leadDelayFeedback:     { level: 3, scope: 'synth' },
+  leadDelayMix:          { level: 3, scope: 'synth' },
+  leadVibratoDepth:      { level: 3, scope: 'synth' },
+  leadVibratoRate:       { level: 3, scope: 'synth' },
+  leadGlide:             { level: 3, scope: 'synth' },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // L3: Drums Source (17 params)
+  // ═══════════════════════════════════════════════════════════════════════
+  drumEnabled:           { level: 3, scope: 'drums' },
+  drumLevel:             { level: 3, scope: 'drums' },
+  drumReverbSend:        { level: 3, scope: 'drums' },
+  drumMorphSliderAnimate:{ level: 3, scope: 'drums' },
+  drumDelayEnabled:      { level: 3, scope: 'drums' },
+  drumDelayNoteL:        { level: 3, scope: 'drums' },
+  drumDelayNoteR:        { level: 3, scope: 'drums' },
+  drumDelayFeedback:     { level: 3, scope: 'drums' },
+  drumDelayMix:          { level: 3, scope: 'drums' },
+  drumDelayFilter:       { level: 3, scope: 'drums' },
+  drumSubDelaySend:      { level: 3, scope: 'drums' },
+  drumKickDelaySend:     { level: 3, scope: 'drums' },
+  drumClickDelaySend:    { level: 3, scope: 'drums' },
+  drumBeepHiDelaySend:   { level: 3, scope: 'drums' },
+  drumBeepLoDelaySend:   { level: 3, scope: 'drums' },
+  drumNoiseDelaySend:    { level: 3, scope: 'drums' },
+  drumMembraneDelaySend: { level: 3, scope: 'drums' },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // L3: Reverb Source (18 params)
+  // ═══════════════════════════════════════════════════════════════════════
+  reverbEnabled:         { level: 3, scope: 'reverb' },
+  reverbEngine:          { level: 3, scope: 'reverb' },
+  reverbType:            { level: 3, scope: 'reverb' },
+  reverbQuality:         { level: 3, scope: 'reverb' },
+  reverbDecay:           { level: 3, scope: 'reverb' },
+  reverbSize:            { level: 3, scope: 'reverb' },
+  reverbDiffusion:       { level: 3, scope: 'reverb' },
+  reverbModulation:      { level: 3, scope: 'reverb' },
+  predelay:              { level: 3, scope: 'reverb' },
+  damping:               { level: 3, scope: 'reverb' },
+  width:                 { level: 3, scope: 'reverb' },
+  reverbShimmer:         { level: 3, scope: 'reverb' },
+  reverbShimmerPitch:    { level: 3, scope: 'reverb' },
+  reverbSlowModRate:     { level: 3, scope: 'reverb' },
+  reverbSlowModDepth:    { level: 3, scope: 'reverb' },
+  reverbFreeze:          { level: 3, scope: 'reverb' },
+  reverbReverse:         { level: 3, scope: 'reverb' },
+  reverbReverseLength:   { level: 3, scope: 'reverb' },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // L3: Granular Source (22 params)
+  // ═══════════════════════════════════════════════════════════════════════
+  granularEnabled:       { level: 3, scope: 'granular' },
+  looperEnabled:         { level: 3, scope: 'granular' },
+  looperDryWet:          { level: 3, scope: 'granular' },
+  looperFreeze:          { level: 3, scope: 'granular' },
+  looperFeedback:        { level: 3, scope: 'granular' },
+  looperFeedbackLPF:     { level: 3, scope: 'granular' },
+  looperBufferSeconds:   { level: 3, scope: 'granular' },
+  looperReverbSend:      { level: 3, scope: 'granular' },
+  looperPad1Send:        { level: 3, scope: 'granular' },
+  looperPad2Send:        { level: 3, scope: 'granular' },
+  looperLead1Send:       { level: 3, scope: 'granular' },
+  looperLead2Send:       { level: 3, scope: 'granular' },
+  looperDrumSend:        { level: 3, scope: 'granular' },
+  looperWavesSend:       { level: 3, scope: 'granular' },
+  looperDelayEnabled:    { level: 3, scope: 'granular' },
+  looperDelayActivity:   { level: 3, scope: 'granular' },
+  looperDelayRepeats:    { level: 3, scope: 'granular' },
+  looperDelayTime:       { level: 3, scope: 'granular' },
+  looperDelayFilter:     { level: 3, scope: 'granular' },
+  looperDelayVibrato:    { level: 3, scope: 'granular' },
+  looperDelayMix:        { level: 3, scope: 'granular' },
+  looperDelayReverbSend: { level: 3, scope: 'granular' },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // L2: Pad 1 Kit Preset (10 params)
+  // ═══════════════════════════════════════════════════════════════════════
+  padEnabled:            { level: 2, scope: 'pad1Kit' },
+  padPresetA:            { level: 2, scope: 'pad1Kit' },
+  padPresetB:            { level: 2, scope: 'pad1Kit' },
+  padMorph:              { level: 2, scope: 'pad1Kit' },
+  padMorphAuto:          { level: 2, scope: 'pad1Kit' },
+  padMorphSpeed:         { level: 2, scope: 'pad1Kit' },
+  synthVoiceMask:        { level: 2, scope: 'pad1Kit' },
+  waveSpread:            { level: 2, scope: 'pad1Kit' },
+  detune:                { level: 2, scope: 'pad1Kit' },
+  synthOctave:           { level: 2, scope: 'pad1Kit' },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // L2: Pad 2 Kit Preset (8 params)
+  // ═══════════════════════════════════════════════════════════════════════
+  pad2Enabled:           { level: 2, scope: 'pad2Kit' },
+  pad2PresetA:           { level: 2, scope: 'pad2Kit' },
+  pad2PresetB:           { level: 2, scope: 'pad2Kit' },
+  pad2Morph:             { level: 2, scope: 'pad2Kit' },
+  pad2MorphAuto:         { level: 2, scope: 'pad2Kit' },
+  pad2MorphSpeed:        { level: 2, scope: 'pad2Kit' },
+  pad2VoiceAssign:       { level: 2, scope: 'pad2Kit' },
+  pad2Octave:            { level: 2, scope: 'pad2Kit' },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // L2: Lead 1 Kit Preset (8 params)
+  // ═══════════════════════════════════════════════════════════════════════
+  lead1PresetA:          { level: 2, scope: 'lead1Kit' },
+  lead1PresetB:          { level: 2, scope: 'lead1Kit' },
+  lead1Morph:            { level: 2, scope: 'lead1Kit' },
+  lead1MorphAuto:        { level: 2, scope: 'lead1Kit' },
+  lead1MorphSpeed:       { level: 2, scope: 'lead1Kit' },
+  lead1MorphMode:        { level: 2, scope: 'lead1Kit' },
+  lead1AlgorithmMode:    { level: 2, scope: 'lead1Kit' },
+  lead1Level:            { level: 2, scope: 'lead1Kit' },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // L2: Lead 2 Kit Preset (9 params)
+  // ═══════════════════════════════════════════════════════════════════════
+  lead2Enabled:          { level: 2, scope: 'lead2Kit' },
+  lead2PresetC:          { level: 2, scope: 'lead2Kit' },
+  lead2PresetD:          { level: 2, scope: 'lead2Kit' },
+  lead2Morph:            { level: 2, scope: 'lead2Kit' },
+  lead2MorphAuto:        { level: 2, scope: 'lead2Kit' },
+  lead2MorphSpeed:       { level: 2, scope: 'lead2Kit' },
+  lead2MorphMode:        { level: 2, scope: 'lead2Kit' },
+  lead2AlgorithmMode:    { level: 2, scope: 'lead2Kit' },
+  lead2Level:            { level: 2, scope: 'lead2Kit' },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // L2: Drum Kit (56 params = 14 distance/variation + 42 morph config)
+  // ═══════════════════════════════════════════════════════════════════════
+  // Distance (7)
+  drumSubDistance:       { level: 2, scope: 'drumKit' },
+  drumKickDistance:      { level: 2, scope: 'drumKit' },
+  drumClickDistance:     { level: 2, scope: 'drumKit' },
+  drumBeepHiDistance:    { level: 2, scope: 'drumKit' },
+  drumBeepLoDistance:    { level: 2, scope: 'drumKit' },
+  drumNoiseDistance:     { level: 2, scope: 'drumKit' },
+  drumMembraneDistance:  { level: 2, scope: 'drumKit' },
+  // Variation (7)
+  drumSubVariation:      { level: 2, scope: 'drumKit' },
+  drumKickVariation:     { level: 2, scope: 'drumKit' },
+  drumClickVariation:    { level: 2, scope: 'drumKit' },
+  drumBeepHiVariation:   { level: 2, scope: 'drumKit' },
+  drumBeepLoVariation:   { level: 2, scope: 'drumKit' },
+  drumNoiseVariation:    { level: 2, scope: 'drumKit' },
+  drumMembraneVariation: { level: 2, scope: 'drumKit' },
+  // Sub morph (6)
+  drumSubPresetA:        { level: 2, scope: 'drumKit' },
+  drumSubPresetB:        { level: 2, scope: 'drumKit' },
+  drumSubMorph:          { level: 2, scope: 'drumKit' },
+  drumSubMorphAuto:      { level: 2, scope: 'drumKit' },
+  drumSubMorphSpeed:     { level: 2, scope: 'drumKit' },
+  drumSubMorphMode:      { level: 2, scope: 'drumKit' },
+  // Kick morph (6)
+  drumKickPresetA:       { level: 2, scope: 'drumKit' },
+  drumKickPresetB:       { level: 2, scope: 'drumKit' },
+  drumKickMorph:         { level: 2, scope: 'drumKit' },
+  drumKickMorphAuto:     { level: 2, scope: 'drumKit' },
+  drumKickMorphSpeed:    { level: 2, scope: 'drumKit' },
+  drumKickMorphMode:     { level: 2, scope: 'drumKit' },
+  // Click morph (6)
+  drumClickPresetA:      { level: 2, scope: 'drumKit' },
+  drumClickPresetB:      { level: 2, scope: 'drumKit' },
+  drumClickMorph:        { level: 2, scope: 'drumKit' },
+  drumClickMorphAuto:    { level: 2, scope: 'drumKit' },
+  drumClickMorphSpeed:   { level: 2, scope: 'drumKit' },
+  drumClickMorphMode:    { level: 2, scope: 'drumKit' },
+  // BeepHi morph (6)
+  drumBeepHiPresetA:     { level: 2, scope: 'drumKit' },
+  drumBeepHiPresetB:     { level: 2, scope: 'drumKit' },
+  drumBeepHiMorph:       { level: 2, scope: 'drumKit' },
+  drumBeepHiMorphAuto:   { level: 2, scope: 'drumKit' },
+  drumBeepHiMorphSpeed:  { level: 2, scope: 'drumKit' },
+  drumBeepHiMorphMode:   { level: 2, scope: 'drumKit' },
+  // BeepLo morph (6)
+  drumBeepLoPresetA:     { level: 2, scope: 'drumKit' },
+  drumBeepLoPresetB:     { level: 2, scope: 'drumKit' },
+  drumBeepLoMorph:       { level: 2, scope: 'drumKit' },
+  drumBeepLoMorphAuto:   { level: 2, scope: 'drumKit' },
+  drumBeepLoMorphSpeed:  { level: 2, scope: 'drumKit' },
+  drumBeepLoMorphMode:   { level: 2, scope: 'drumKit' },
+  // Noise morph (6)
+  drumNoisePresetA:      { level: 2, scope: 'drumKit' },
+  drumNoisePresetB:      { level: 2, scope: 'drumKit' },
+  drumNoiseMorph:        { level: 2, scope: 'drumKit' },
+  drumNoiseMorphAuto:    { level: 2, scope: 'drumKit' },
+  drumNoiseMorphSpeed:   { level: 2, scope: 'drumKit' },
+  drumNoiseMorphMode:    { level: 2, scope: 'drumKit' },
+  // Membrane morph (6)
+  drumMembranePresetA:   { level: 2, scope: 'drumKit' },
+  drumMembranePresetB:   { level: 2, scope: 'drumKit' },
+  drumMembraneMorph:     { level: 2, scope: 'drumKit' },
+  drumMembraneMorphAuto: { level: 2, scope: 'drumKit' },
+  drumMembraneMorphSpeed:{ level: 2, scope: 'drumKit' },
+  drumMembraneMorphMode: { level: 2, scope: 'drumKit' },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // L2: Looper Kit Preset (12 params)
+  // ═══════════════════════════════════════════════════════════════════════
+  looperV1Enabled:       { level: 2, scope: 'looperKit' },
+  looperV1Gain:          { level: 2, scope: 'looperKit' },
+  looperV2Enabled:       { level: 2, scope: 'looperKit' },
+  looperV2Gain:          { level: 2, scope: 'looperKit' },
+  looperV3Enabled:       { level: 2, scope: 'looperKit' },
+  looperV3Gain:          { level: 2, scope: 'looperKit' },
+  looperV4Enabled:       { level: 2, scope: 'looperKit' },
+  looperV4Gain:          { level: 2, scope: 'looperKit' },
+  looperMacroTexture:    { level: 2, scope: 'looperKit' },
+  looperMacroComplexity: { level: 2, scope: 'looperKit' },
+  looperMacroDarkness:   { level: 2, scope: 'looperKit' },
+  looperMacroChaos:      { level: 2, scope: 'looperKit' },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // L2: Earth Kit Preset (19 params)
+  // ═══════════════════════════════════════════════════════════════════════
+  waterEnabled:          { level: 2, scope: 'earthKit' },
+  waterLevel:            { level: 2, scope: 'earthKit' },
+  insectsEnabled:        { level: 2, scope: 'earthKit' },
+  insectsLevel:          { level: 2, scope: 'earthKit' },
+  insectsReverbSend:     { level: 2, scope: 'earthKit' },
+  insects2Enabled:       { level: 2, scope: 'earthKit' },
+  insects2Level:         { level: 2, scope: 'earthKit' },
+  oceanSampleEnabled:    { level: 2, scope: 'earthKit' },
+  oceanSampleLevel:      { level: 2, scope: 'earthKit' },
+  oceanWaveSynthEnabled: { level: 2, scope: 'earthKit' },
+  oceanWaveSynthLevel:   { level: 2, scope: 'earthKit' },
+  oceanReverbSend:       { level: 2, scope: 'earthKit' },
+  oceanFilterType:       { level: 2, scope: 'earthKit' },
+  oceanFilterCutoff:     { level: 2, scope: 'earthKit' },
+  oceanFilterResonance:  { level: 2, scope: 'earthKit' },
+  oceanDuration:         { level: 2, scope: 'earthKit' },
+  oceanInterval:         { level: 2, scope: 'earthKit' },
+  oceanFoam:             { level: 2, scope: 'earthKit' },
+  oceanDepth:            { level: 2, scope: 'earthKit' },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // L1: Pad 1 Engine (48 params)
+  // ═══════════════════════════════════════════════════════════════════════
+  padOscAWave:           { level: 1, scope: 'pad1' },
+  padOscAOctave:         { level: 1, scope: 'pad1' },
+  padOscADetune:         { level: 1, scope: 'pad1' },
+  padOscALevel:          { level: 1, scope: 'pad1' },
+  padOscBWave:           { level: 1, scope: 'pad1' },
+  padOscBOctave:         { level: 1, scope: 'pad1' },
+  padOscBDetune:         { level: 1, scope: 'pad1' },
+  padOscBLevel:          { level: 1, scope: 'pad1' },
+  padSubEnabled:         { level: 1, scope: 'pad1' },
+  padSubOctave:          { level: 1, scope: 'pad1' },
+  padSubWave:            { level: 1, scope: 'pad1' },
+  padSubLevel:           { level: 1, scope: 'pad1' },
+  padNoiseType:          { level: 1, scope: 'pad1' },
+  padNoiseLevel:         { level: 1, scope: 'pad1' },
+  filterType:            { level: 1, scope: 'pad1' },
+  filterCutoffMin:       { level: 1, scope: 'pad1' },
+  filterCutoffMax:       { level: 1, scope: 'pad1' },
+  filterResonance:       { level: 1, scope: 'pad1' },
+  filterQ:               { level: 1, scope: 'pad1' },
+  padFilterBEnabled:     { level: 1, scope: 'pad1' },
+  padFilterBType:        { level: 1, scope: 'pad1' },
+  padFilterBCutoff:      { level: 1, scope: 'pad1' },
+  padFilterBResonance:   { level: 1, scope: 'pad1' },
+  padFilterBQ:           { level: 1, scope: 'pad1' },
+  padFilterRouting:      { level: 1, scope: 'pad1' },
+  hardness:              { level: 1, scope: 'pad1' },
+  warmth:                { level: 1, scope: 'pad1' },
+  presence:              { level: 1, scope: 'pad1' },
+  synthAttack:           { level: 1, scope: 'pad1' },
+  synthDecay:            { level: 1, scope: 'pad1' },
+  synthSustain:          { level: 1, scope: 'pad1' },
+  synthRelease:          { level: 1, scope: 'pad1' },
+  padLfo1Rate:           { level: 1, scope: 'pad1' },
+  padLfo1Depth:          { level: 1, scope: 'pad1' },
+  padLfo1Wave:           { level: 1, scope: 'pad1' },
+  padLfo1Dest:           { level: 1, scope: 'pad1' },
+  padLfo2Rate:           { level: 1, scope: 'pad1' },
+  padLfo2Depth:          { level: 1, scope: 'pad1' },
+  padLfo2Wave:           { level: 1, scope: 'pad1' },
+  padLfo2Dest:           { level: 1, scope: 'pad1' },
+  padModEnvEnabled:      { level: 1, scope: 'pad1' },
+  padModEnvAttack:       { level: 1, scope: 'pad1' },
+  padModEnvDecay:        { level: 1, scope: 'pad1' },
+  padModEnvSustain:      { level: 1, scope: 'pad1' },
+  padModEnvRelease:      { level: 1, scope: 'pad1' },
+  padModEnvDepth:        { level: 1, scope: 'pad1' },
+  padModEnvDest:         { level: 1, scope: 'pad1' },
+  padOscMix:             { level: 1, scope: 'pad1' },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // L1: Pad 2 Engine (48 params)
+  // ═══════════════════════════════════════════════════════════════════════
+  pad2Attack:            { level: 1, scope: 'pad2' },
+  pad2Decay:             { level: 1, scope: 'pad2' },
+  pad2Sustain:           { level: 1, scope: 'pad2' },
+  pad2Release:           { level: 1, scope: 'pad2' },
+  pad2Hardness:          { level: 1, scope: 'pad2' },
+  pad2Warmth:            { level: 1, scope: 'pad2' },
+  pad2Presence:          { level: 1, scope: 'pad2' },
+  pad2OscMix:            { level: 1, scope: 'pad2' },
+  pad2FilterType:        { level: 1, scope: 'pad2' },
+  pad2FilterCutoffMin:   { level: 1, scope: 'pad2' },
+  pad2FilterCutoffMax:   { level: 1, scope: 'pad2' },
+  pad2FilterResonance:   { level: 1, scope: 'pad2' },
+  pad2FilterQ:           { level: 1, scope: 'pad2' },
+  pad2OscAWave:          { level: 1, scope: 'pad2' },
+  pad2OscAOctave:        { level: 1, scope: 'pad2' },
+  pad2OscADetune:        { level: 1, scope: 'pad2' },
+  pad2OscALevel:         { level: 1, scope: 'pad2' },
+  pad2OscBWave:          { level: 1, scope: 'pad2' },
+  pad2OscBOctave:        { level: 1, scope: 'pad2' },
+  pad2OscBDetune:        { level: 1, scope: 'pad2' },
+  pad2OscBLevel:         { level: 1, scope: 'pad2' },
+  pad2SubEnabled:        { level: 1, scope: 'pad2' },
+  pad2SubOctave:         { level: 1, scope: 'pad2' },
+  pad2SubWave:           { level: 1, scope: 'pad2' },
+  pad2SubLevel:          { level: 1, scope: 'pad2' },
+  pad2NoiseType:         { level: 1, scope: 'pad2' },
+  pad2NoiseLevel:        { level: 1, scope: 'pad2' },
+  pad2FilterBEnabled:    { level: 1, scope: 'pad2' },
+  pad2FilterBType:       { level: 1, scope: 'pad2' },
+  pad2FilterBCutoff:     { level: 1, scope: 'pad2' },
+  pad2FilterBResonance:  { level: 1, scope: 'pad2' },
+  pad2FilterBQ:          { level: 1, scope: 'pad2' },
+  pad2FilterRouting:     { level: 1, scope: 'pad2' },
+  pad2Lfo1Rate:          { level: 1, scope: 'pad2' },
+  pad2Lfo1Depth:         { level: 1, scope: 'pad2' },
+  pad2Lfo1Wave:          { level: 1, scope: 'pad2' },
+  pad2Lfo1Dest:          { level: 1, scope: 'pad2' },
+  pad2Lfo2Rate:          { level: 1, scope: 'pad2' },
+  pad2Lfo2Depth:         { level: 1, scope: 'pad2' },
+  pad2Lfo2Wave:          { level: 1, scope: 'pad2' },
+  pad2Lfo2Dest:          { level: 1, scope: 'pad2' },
+  pad2ModEnvEnabled:     { level: 1, scope: 'pad2' },
+  pad2ModEnvAttack:      { level: 1, scope: 'pad2' },
+  pad2ModEnvDecay:       { level: 1, scope: 'pad2' },
+  pad2ModEnvSustain:     { level: 1, scope: 'pad2' },
+  pad2ModEnvRelease:     { level: 1, scope: 'pad2' },
+  pad2ModEnvDepth:       { level: 1, scope: 'pad2' },
+  pad2ModEnvDest:        { level: 1, scope: 'pad2' },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // L1: Lead 1 Engine (9 params)
+  // ═══════════════════════════════════════════════════════════════════════
+  lead1UseCustomAdsr:    { level: 1, scope: 'lead1' },
+  lead1Attack:           { level: 1, scope: 'lead1' },
+  lead1Decay:            { level: 1, scope: 'lead1' },
+  lead1Sustain:          { level: 1, scope: 'lead1' },
+  lead1Hold:             { level: 1, scope: 'lead1' },
+  lead1Release:          { level: 1, scope: 'lead1' },
+  lead1Density:          { level: 1, scope: 'lead1' },
+  lead1Octave:           { level: 1, scope: 'lead1' },
+  lead1OctaveRange:      { level: 1, scope: 'lead1' },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // L1: Lead 2 Engine (6 params)
+  // ═══════════════════════════════════════════════════════════════════════
+  lead2UseCustomAdsr:    { level: 1, scope: 'lead2' },
+  lead2Attack:           { level: 1, scope: 'lead2' },
+  lead2Decay:            { level: 1, scope: 'lead2' },
+  lead2Sustain:          { level: 1, scope: 'lead2' },
+  lead2Hold:             { level: 1, scope: 'lead2' },
+  lead2Release:          { level: 1, scope: 'lead2' },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // L1: Synth Euclidean Engine (43 params)
+  // ═══════════════════════════════════════════════════════════════════════
+  synthEuclideanMasterEnabled: { level: 1, scope: 'synthEuclidean' },
+  synthEuclideanTempo:         { level: 1, scope: 'synthEuclidean' },
+  synthChordSequencerEnabled:  { level: 1, scope: 'synthEuclidean' },
+  // Lane 1 (10)
+  synthEuclid1Enabled:     { level: 1, scope: 'synthEuclidean' },
+  synthEuclid1Preset:      { level: 1, scope: 'synthEuclidean' },
+  synthEuclid1Steps:       { level: 1, scope: 'synthEuclidean' },
+  synthEuclid1Hits:        { level: 1, scope: 'synthEuclidean' },
+  synthEuclid1Rotation:    { level: 1, scope: 'synthEuclidean' },
+  synthEuclid1NoteMin:     { level: 1, scope: 'synthEuclidean' },
+  synthEuclid1NoteMax:     { level: 1, scope: 'synthEuclidean' },
+  synthEuclid1Level:       { level: 1, scope: 'synthEuclidean' },
+  synthEuclid1Probability: { level: 1, scope: 'synthEuclidean' },
+  synthEuclid1Source:      { level: 1, scope: 'synthEuclidean' },
+  // Lane 2 (10)
+  synthEuclid2Enabled:     { level: 1, scope: 'synthEuclidean' },
+  synthEuclid2Preset:      { level: 1, scope: 'synthEuclidean' },
+  synthEuclid2Steps:       { level: 1, scope: 'synthEuclidean' },
+  synthEuclid2Hits:        { level: 1, scope: 'synthEuclidean' },
+  synthEuclid2Rotation:    { level: 1, scope: 'synthEuclidean' },
+  synthEuclid2NoteMin:     { level: 1, scope: 'synthEuclidean' },
+  synthEuclid2NoteMax:     { level: 1, scope: 'synthEuclidean' },
+  synthEuclid2Level:       { level: 1, scope: 'synthEuclidean' },
+  synthEuclid2Probability: { level: 1, scope: 'synthEuclidean' },
+  synthEuclid2Source:      { level: 1, scope: 'synthEuclidean' },
+  // Lane 3 (10)
+  synthEuclid3Enabled:     { level: 1, scope: 'synthEuclidean' },
+  synthEuclid3Preset:      { level: 1, scope: 'synthEuclidean' },
+  synthEuclid3Steps:       { level: 1, scope: 'synthEuclidean' },
+  synthEuclid3Hits:        { level: 1, scope: 'synthEuclidean' },
+  synthEuclid3Rotation:    { level: 1, scope: 'synthEuclidean' },
+  synthEuclid3NoteMin:     { level: 1, scope: 'synthEuclidean' },
+  synthEuclid3NoteMax:     { level: 1, scope: 'synthEuclidean' },
+  synthEuclid3Level:       { level: 1, scope: 'synthEuclidean' },
+  synthEuclid3Probability: { level: 1, scope: 'synthEuclidean' },
+  synthEuclid3Source:      { level: 1, scope: 'synthEuclidean' },
+  // Lane 4 (10)
+  synthEuclid4Enabled:     { level: 1, scope: 'synthEuclidean' },
+  synthEuclid4Preset:      { level: 1, scope: 'synthEuclidean' },
+  synthEuclid4Steps:       { level: 1, scope: 'synthEuclidean' },
+  synthEuclid4Hits:        { level: 1, scope: 'synthEuclidean' },
+  synthEuclid4Rotation:    { level: 1, scope: 'synthEuclidean' },
+  synthEuclid4NoteMin:     { level: 1, scope: 'synthEuclidean' },
+  synthEuclid4NoteMax:     { level: 1, scope: 'synthEuclidean' },
+  synthEuclid4Level:       { level: 1, scope: 'synthEuclidean' },
+  synthEuclid4Probability: { level: 1, scope: 'synthEuclidean' },
+  synthEuclid4Source:      { level: 1, scope: 'synthEuclidean' },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // L1: Drum Sub Engine (10 params)
+  // ═══════════════════════════════════════════════════════════════════════
+  drumSubFreq:           { level: 1, scope: 'drumSub' },
+  drumSubDecay:          { level: 1, scope: 'drumSub' },
+  drumSubLevel:          { level: 1, scope: 'drumSub' },
+  drumSubTone:           { level: 1, scope: 'drumSub' },
+  drumSubShape:          { level: 1, scope: 'drumSub' },
+  drumSubPitchEnv:       { level: 1, scope: 'drumSub' },
+  drumSubPitchDecay:     { level: 1, scope: 'drumSub' },
+  drumSubDrive:          { level: 1, scope: 'drumSub' },
+  drumSubSub:            { level: 1, scope: 'drumSub' },
+  drumSubAttack:         { level: 1, scope: 'drumSub' },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // L1: Drum Kick Engine (11 params)
+  // ═══════════════════════════════════════════════════════════════════════
+  drumKickFreq:          { level: 1, scope: 'drumKick' },
+  drumKickPitchEnv:      { level: 1, scope: 'drumKick' },
+  drumKickPitchDecay:    { level: 1, scope: 'drumKick' },
+  drumKickDecay:         { level: 1, scope: 'drumKick' },
+  drumKickLevel:         { level: 1, scope: 'drumKick' },
+  drumKickClick:         { level: 1, scope: 'drumKick' },
+  drumKickBody:          { level: 1, scope: 'drumKick' },
+  drumKickPunch:         { level: 1, scope: 'drumKick' },
+  drumKickTail:          { level: 1, scope: 'drumKick' },
+  drumKickTone:          { level: 1, scope: 'drumKick' },
+  drumKickAttack:        { level: 1, scope: 'drumKick' },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // L1: Drum Click Engine (13 params)
+  // ═══════════════════════════════════════════════════════════════════════
+  drumClickDecay:        { level: 1, scope: 'drumClick' },
+  drumClickFilter:       { level: 1, scope: 'drumClick' },
+  drumClickTone:         { level: 1, scope: 'drumClick' },
+  drumClickLevel:        { level: 1, scope: 'drumClick' },
+  drumClickResonance:    { level: 1, scope: 'drumClick' },
+  drumClickPitch:        { level: 1, scope: 'drumClick' },
+  drumClickPitchEnv:     { level: 1, scope: 'drumClick' },
+  drumClickMode:         { level: 1, scope: 'drumClick' },
+  drumClickGrainCount:   { level: 1, scope: 'drumClick' },
+  drumClickGrainSpread:  { level: 1, scope: 'drumClick' },
+  drumClickStereoWidth:  { level: 1, scope: 'drumClick' },
+  drumClickExciterColor: { level: 1, scope: 'drumClick' },
+  drumClickAttack:       { level: 1, scope: 'drumClick' },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // L1: Drum BeepHi Engine (18 params)
+  // ═══════════════════════════════════════════════════════════════════════
+  drumBeepHiFreq:        { level: 1, scope: 'drumBeepHi' },
+  drumBeepHiAttack:      { level: 1, scope: 'drumBeepHi' },
+  drumBeepHiDecay:       { level: 1, scope: 'drumBeepHi' },
+  drumBeepHiLevel:       { level: 1, scope: 'drumBeepHi' },
+  drumBeepHiTone:        { level: 1, scope: 'drumBeepHi' },
+  drumBeepHiInharmonic:  { level: 1, scope: 'drumBeepHi' },
+  drumBeepHiPartials:    { level: 1, scope: 'drumBeepHi' },
+  drumBeepHiShimmer:     { level: 1, scope: 'drumBeepHi' },
+  drumBeepHiShimmerRate: { level: 1, scope: 'drumBeepHi' },
+  drumBeepHiBrightness:  { level: 1, scope: 'drumBeepHi' },
+  drumBeepHiFeedback:    { level: 1, scope: 'drumBeepHi' },
+  drumBeepHiModEnvDecay: { level: 1, scope: 'drumBeepHi' },
+  drumBeepHiNoiseInMod:  { level: 1, scope: 'drumBeepHi' },
+  drumBeepHiModRatio:    { level: 1, scope: 'drumBeepHi' },
+  drumBeepHiModRatioFine:{ level: 1, scope: 'drumBeepHi' },
+  drumBeepHiModPhase:    { level: 1, scope: 'drumBeepHi' },
+  drumBeepHiModEnvEnd:   { level: 1, scope: 'drumBeepHi' },
+  drumBeepHiNoiseDecay:  { level: 1, scope: 'drumBeepHi' },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // L1: Drum BeepLo Engine (17 params)
+  // ═══════════════════════════════════════════════════════════════════════
+  drumBeepLoFreq:        { level: 1, scope: 'drumBeepLo' },
+  drumBeepLoAttack:      { level: 1, scope: 'drumBeepLo' },
+  drumBeepLoDecay:       { level: 1, scope: 'drumBeepLo' },
+  drumBeepLoLevel:       { level: 1, scope: 'drumBeepLo' },
+  drumBeepLoTone:        { level: 1, scope: 'drumBeepLo' },
+  drumBeepLoPitchEnv:    { level: 1, scope: 'drumBeepLo' },
+  drumBeepLoPitchDecay:  { level: 1, scope: 'drumBeepLo' },
+  drumBeepLoBody:        { level: 1, scope: 'drumBeepLo' },
+  drumBeepLoPluck:       { level: 1, scope: 'drumBeepLo' },
+  drumBeepLoPluckDamp:   { level: 1, scope: 'drumBeepLo' },
+  drumBeepLoModal:       { level: 1, scope: 'drumBeepLo' },
+  drumBeepLoModalQ:      { level: 1, scope: 'drumBeepLo' },
+  drumBeepLoModalInharmonic: { level: 1, scope: 'drumBeepLo' },
+  drumBeepLoModalSpread: { level: 1, scope: 'drumBeepLo' },
+  drumBeepLoModalCut:    { level: 1, scope: 'drumBeepLo' },
+  drumBeepLoOscGain:     { level: 1, scope: 'drumBeepLo' },
+  drumBeepLoModalGain:   { level: 1, scope: 'drumBeepLo' },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // L1: Drum Noise Engine (17 params)
+  // ═══════════════════════════════════════════════════════════════════════
+  drumNoiseFilterFreq:   { level: 1, scope: 'drumNoise' },
+  drumNoiseFilterQ:      { level: 1, scope: 'drumNoise' },
+  drumNoiseFilterType:   { level: 1, scope: 'drumNoise' },
+  drumNoiseDecay:        { level: 1, scope: 'drumNoise' },
+  drumNoiseLevel:        { level: 1, scope: 'drumNoise' },
+  drumNoiseAttack:       { level: 1, scope: 'drumNoise' },
+  drumNoiseFormant:      { level: 1, scope: 'drumNoise' },
+  drumNoiseBreath:       { level: 1, scope: 'drumNoise' },
+  drumNoiseFilterEnv:    { level: 1, scope: 'drumNoise' },
+  drumNoiseFilterEnvDecay:{ level: 1, scope: 'drumNoise' },
+  drumNoiseDensity:      { level: 1, scope: 'drumNoise' },
+  drumNoiseColorLFO:     { level: 1, scope: 'drumNoise' },
+  drumNoiseParticleSize: { level: 1, scope: 'drumNoise' },
+  drumNoiseParticleRandom:{ level: 1, scope: 'drumNoise' },
+  drumNoiseParticleRandomRate: { level: 1, scope: 'drumNoise' },
+  drumNoiseRatchetCount: { level: 1, scope: 'drumNoise' },
+  drumNoiseRatchetTime:  { level: 1, scope: 'drumNoise' },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // L1: Drum Membrane Engine (21 params)
+  // ═══════════════════════════════════════════════════════════════════════
+  drumMembraneExciter:     { level: 1, scope: 'drumMembrane' },
+  drumMembraneExcPos:      { level: 1, scope: 'drumMembrane' },
+  drumMembraneExcBright:   { level: 1, scope: 'drumMembrane' },
+  drumMembraneExcDur:      { level: 1, scope: 'drumMembrane' },
+  drumMembraneSize:        { level: 1, scope: 'drumMembrane' },
+  drumMembraneTension:     { level: 1, scope: 'drumMembrane' },
+  drumMembraneDamping:     { level: 1, scope: 'drumMembrane' },
+  drumMembraneMaterial:    { level: 1, scope: 'drumMembrane' },
+  drumMembraneNonlin:      { level: 1, scope: 'drumMembrane' },
+  drumMembraneWireMix:     { level: 1, scope: 'drumMembrane' },
+  drumMembraneWireDensity: { level: 1, scope: 'drumMembrane' },
+  drumMembraneWireTone:    { level: 1, scope: 'drumMembrane' },
+  drumMembraneWireDecay:   { level: 1, scope: 'drumMembrane' },
+  drumMembraneBody:        { level: 1, scope: 'drumMembrane' },
+  drumMembraneRing:        { level: 1, scope: 'drumMembrane' },
+  drumMembraneOvertones:   { level: 1, scope: 'drumMembrane' },
+  drumMembranePitchEnv:    { level: 1, scope: 'drumMembrane' },
+  drumMembranePitchDecay:  { level: 1, scope: 'drumMembrane' },
+  drumMembraneAttack:      { level: 1, scope: 'drumMembrane' },
+  drumMembraneDecay:       { level: 1, scope: 'drumMembrane' },
+  drumMembraneLevel:       { level: 1, scope: 'drumMembrane' },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // L1: Drum Euclidean Engine (69 params)
+  // ═══════════════════════════════════════════════════════════════════════
+  drumEuclidMasterEnabled: { level: 1, scope: 'drumEuclidean' },
+  drumEuclidBaseBPM:       { level: 1, scope: 'drumEuclidean' },
+  drumEuclidTempo:         { level: 1, scope: 'drumEuclidean' },
+  drumEuclidSwing:         { level: 1, scope: 'drumEuclidean' },
+  drumEuclidDivision:      { level: 1, scope: 'drumEuclidean' },
+  // Lane 1 (16)
+  drumEuclid1Enabled:      { level: 1, scope: 'drumEuclidean' },
+  drumEuclid1Preset:       { level: 1, scope: 'drumEuclidean' },
+  drumEuclid1Steps:        { level: 1, scope: 'drumEuclidean' },
+  drumEuclid1Hits:         { level: 1, scope: 'drumEuclidean' },
+  drumEuclid1Rotation:     { level: 1, scope: 'drumEuclidean' },
+  drumEuclid1TargetSub:    { level: 1, scope: 'drumEuclidean' },
+  drumEuclid1TargetKick:   { level: 1, scope: 'drumEuclidean' },
+  drumEuclid1TargetClick:  { level: 1, scope: 'drumEuclidean' },
+  drumEuclid1TargetBeepHi: { level: 1, scope: 'drumEuclidean' },
+  drumEuclid1TargetBeepLo: { level: 1, scope: 'drumEuclidean' },
+  drumEuclid1TargetNoise:  { level: 1, scope: 'drumEuclidean' },
+  drumEuclid1TargetMembrane: { level: 1, scope: 'drumEuclidean' },
+  drumEuclid1Probability:  { level: 1, scope: 'drumEuclidean' },
+  drumEuclid1VelocityMin:  { level: 1, scope: 'drumEuclidean' },
+  drumEuclid1VelocityMax:  { level: 1, scope: 'drumEuclidean' },
+  drumEuclid1Level:        { level: 1, scope: 'drumEuclidean' },
+  // Lane 2 (16)
+  drumEuclid2Enabled:      { level: 1, scope: 'drumEuclidean' },
+  drumEuclid2Preset:       { level: 1, scope: 'drumEuclidean' },
+  drumEuclid2Steps:        { level: 1, scope: 'drumEuclidean' },
+  drumEuclid2Hits:         { level: 1, scope: 'drumEuclidean' },
+  drumEuclid2Rotation:     { level: 1, scope: 'drumEuclidean' },
+  drumEuclid2TargetSub:    { level: 1, scope: 'drumEuclidean' },
+  drumEuclid2TargetKick:   { level: 1, scope: 'drumEuclidean' },
+  drumEuclid2TargetClick:  { level: 1, scope: 'drumEuclidean' },
+  drumEuclid2TargetBeepHi: { level: 1, scope: 'drumEuclidean' },
+  drumEuclid2TargetBeepLo: { level: 1, scope: 'drumEuclidean' },
+  drumEuclid2TargetNoise:  { level: 1, scope: 'drumEuclidean' },
+  drumEuclid2TargetMembrane: { level: 1, scope: 'drumEuclidean' },
+  drumEuclid2Probability:  { level: 1, scope: 'drumEuclidean' },
+  drumEuclid2VelocityMin:  { level: 1, scope: 'drumEuclidean' },
+  drumEuclid2VelocityMax:  { level: 1, scope: 'drumEuclidean' },
+  drumEuclid2Level:        { level: 1, scope: 'drumEuclidean' },
+  // Lane 3 (16)
+  drumEuclid3Enabled:      { level: 1, scope: 'drumEuclidean' },
+  drumEuclid3Preset:       { level: 1, scope: 'drumEuclidean' },
+  drumEuclid3Steps:        { level: 1, scope: 'drumEuclidean' },
+  drumEuclid3Hits:         { level: 1, scope: 'drumEuclidean' },
+  drumEuclid3Rotation:     { level: 1, scope: 'drumEuclidean' },
+  drumEuclid3TargetSub:    { level: 1, scope: 'drumEuclidean' },
+  drumEuclid3TargetKick:   { level: 1, scope: 'drumEuclidean' },
+  drumEuclid3TargetClick:  { level: 1, scope: 'drumEuclidean' },
+  drumEuclid3TargetBeepHi: { level: 1, scope: 'drumEuclidean' },
+  drumEuclid3TargetBeepLo: { level: 1, scope: 'drumEuclidean' },
+  drumEuclid3TargetNoise:  { level: 1, scope: 'drumEuclidean' },
+  drumEuclid3TargetMembrane: { level: 1, scope: 'drumEuclidean' },
+  drumEuclid3Probability:  { level: 1, scope: 'drumEuclidean' },
+  drumEuclid3VelocityMin:  { level: 1, scope: 'drumEuclidean' },
+  drumEuclid3VelocityMax:  { level: 1, scope: 'drumEuclidean' },
+  drumEuclid3Level:        { level: 1, scope: 'drumEuclidean' },
+  // Lane 4 (16)
+  drumEuclid4Enabled:      { level: 1, scope: 'drumEuclidean' },
+  drumEuclid4Preset:       { level: 1, scope: 'drumEuclidean' },
+  drumEuclid4Steps:        { level: 1, scope: 'drumEuclidean' },
+  drumEuclid4Hits:         { level: 1, scope: 'drumEuclidean' },
+  drumEuclid4Rotation:     { level: 1, scope: 'drumEuclidean' },
+  drumEuclid4TargetSub:    { level: 1, scope: 'drumEuclidean' },
+  drumEuclid4TargetKick:   { level: 1, scope: 'drumEuclidean' },
+  drumEuclid4TargetClick:  { level: 1, scope: 'drumEuclidean' },
+  drumEuclid4TargetBeepHi: { level: 1, scope: 'drumEuclidean' },
+  drumEuclid4TargetBeepLo: { level: 1, scope: 'drumEuclidean' },
+  drumEuclid4TargetNoise:  { level: 1, scope: 'drumEuclidean' },
+  drumEuclid4TargetMembrane: { level: 1, scope: 'drumEuclidean' },
+  drumEuclid4Probability:  { level: 1, scope: 'drumEuclidean' },
+  drumEuclid4VelocityMin:  { level: 1, scope: 'drumEuclidean' },
+  drumEuclid4VelocityMax:  { level: 1, scope: 'drumEuclidean' },
+  drumEuclid4Level:        { level: 1, scope: 'drumEuclidean' },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // L1: Water Engine (18 params)
+  // ═══════════════════════════════════════════════════════════════════════
+  waterPreset:           { level: 1, scope: 'water' },
+  waterMorphA:           { level: 1, scope: 'water' },
+  waterMorphB:           { level: 1, scope: 'water' },
+  waterMorph:            { level: 1, scope: 'water' },
+  waterIntensity:        { level: 1, scope: 'water' },
+  waterRate:             { level: 1, scope: 'water' },
+  waterDistance:         { level: 1, scope: 'water' },
+  waterBaseFreq:         { level: 1, scope: 'water' },
+  waterDropSize:         { level: 1, scope: 'water' },
+  waterHardness:         { level: 1, scope: 'water' },
+  waterGlassThickness:   { level: 1, scope: 'water' },
+  waterSpace:            { level: 1, scope: 'water' },
+  waterLayerHardDrops:   { level: 1, scope: 'water' },
+  waterLayerWaterDrops:  { level: 1, scope: 'water' },
+  waterLayerTurbulence:  { level: 1, scope: 'water' },
+  waterLayerBubbling:    { level: 1, scope: 'water' },
+  waterLayerRoar:        { level: 1, scope: 'water' },
+  waterLayerRivulets:    { level: 1, scope: 'water' },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // L1: Insects 1 Engine (8 params)
+  // ═══════════════════════════════════════════════════════════════════════
+  insectsEngine:         { level: 1, scope: 'insects1' },
+  insectsDensity:        { level: 1, scope: 'insects1' },
+  insectsTemperature:    { level: 1, scope: 'insects1' },
+  insectsDistance:       { level: 1, scope: 'insects1' },
+  insectsProximity:      { level: 1, scope: 'insects1' },
+  insectsAntiphony:      { level: 1, scope: 'insects1' },
+  insectsClickRate:      { level: 1, scope: 'insects1' },
+  insectsMotion:         { level: 1, scope: 'insects1' },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // L1: Insects 2 Engine (8 params)
+  // ═══════════════════════════════════════════════════════════════════════
+  insects2Engine:        { level: 1, scope: 'insects2' },
+  insects2Density:       { level: 1, scope: 'insects2' },
+  insects2Temperature:   { level: 1, scope: 'insects2' },
+  insects2Distance:      { level: 1, scope: 'insects2' },
+  insects2Proximity:     { level: 1, scope: 'insects2' },
+  insects2Antiphony:     { level: 1, scope: 'insects2' },
+  insects2ClickRate:     { level: 1, scope: 'insects2' },
+  insects2Motion:        { level: 1, scope: 'insects2' },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // L1: Legacy Granular Engine (12 params)
+  // ═══════════════════════════════════════════════════════════════════════
+  maxGrains:             { level: 1, scope: 'legacyGranular' },
+  grainProbability:      { level: 1, scope: 'legacyGranular' },
+  grainSize:             { level: 1, scope: 'legacyGranular' },
+  density:               { level: 1, scope: 'legacyGranular' },
+  spray:                 { level: 1, scope: 'legacyGranular' },
+  jitter:                { level: 1, scope: 'legacyGranular' },
+  grainPitchMode:        { level: 1, scope: 'legacyGranular' },
+  pitchSpread:           { level: 1, scope: 'legacyGranular' },
+  stereoSpread:          { level: 1, scope: 'legacyGranular' },
+  feedback:              { level: 1, scope: 'legacyGranular' },
+  wetHPF:                { level: 1, scope: 'legacyGranular' },
+  wetLPF:                { level: 1, scope: 'legacyGranular' },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // L1: Looper Voice 1 Engine (20 params)
+  // ═══════════════════════════════════════════════════════════════════════
+  looperV1Mode:          { level: 1, scope: 'looperVoice1' },
+  looperV1Slice:         { level: 1, scope: 'looperVoice1' },
+  looperV1Speed:         { level: 1, scope: 'looperVoice1' },
+  looperV1Reverse:       { level: 1, scope: 'looperVoice1' },
+  looperV1Pitch:         { level: 1, scope: 'looperVoice1' },
+  looperV1Attack:        { level: 1, scope: 'looperVoice1' },
+  looperV1Decay:         { level: 1, scope: 'looperVoice1' },
+  looperV1Blur:          { level: 1, scope: 'looperVoice1' },
+  looperV1GrainOct:      { level: 1, scope: 'looperVoice1' },
+  looperV1Spray:         { level: 1, scope: 'looperVoice1' },
+  looperV1Density:       { level: 1, scope: 'looperVoice1' },
+  looperV1GrainSize:     { level: 1, scope: 'looperVoice1' },
+  looperV1Pan:           { level: 1, scope: 'looperVoice1' },
+  looperV1PosLFORate:    { level: 1, scope: 'looperVoice1' },
+  looperV1PosLFODepth:   { level: 1, scope: 'looperVoice1' },
+  looperV1PanLFORate:    { level: 1, scope: 'looperVoice1' },
+  looperV1StereoSpread:  { level: 1, scope: 'looperVoice1' },
+  looperV1ReverseLFORate:{ level: 1, scope: 'looperVoice1' },
+  looperV1WriteFollow:   { level: 1, scope: 'looperVoice1' },
+  looperV1RecordLFORate: { level: 1, scope: 'looperVoice1' },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // L1: Looper Voice 2 Engine (20 params)
+  // ═══════════════════════════════════════════════════════════════════════
+  looperV2Mode:          { level: 1, scope: 'looperVoice2' },
+  looperV2Slice:         { level: 1, scope: 'looperVoice2' },
+  looperV2Speed:         { level: 1, scope: 'looperVoice2' },
+  looperV2Reverse:       { level: 1, scope: 'looperVoice2' },
+  looperV2Pitch:         { level: 1, scope: 'looperVoice2' },
+  looperV2Attack:        { level: 1, scope: 'looperVoice2' },
+  looperV2Decay:         { level: 1, scope: 'looperVoice2' },
+  looperV2Blur:          { level: 1, scope: 'looperVoice2' },
+  looperV2GrainOct:      { level: 1, scope: 'looperVoice2' },
+  looperV2Spray:         { level: 1, scope: 'looperVoice2' },
+  looperV2Density:       { level: 1, scope: 'looperVoice2' },
+  looperV2GrainSize:     { level: 1, scope: 'looperVoice2' },
+  looperV2Pan:           { level: 1, scope: 'looperVoice2' },
+  looperV2PosLFORate:    { level: 1, scope: 'looperVoice2' },
+  looperV2PosLFODepth:   { level: 1, scope: 'looperVoice2' },
+  looperV2PanLFORate:    { level: 1, scope: 'looperVoice2' },
+  looperV2StereoSpread:  { level: 1, scope: 'looperVoice2' },
+  looperV2ReverseLFORate:{ level: 1, scope: 'looperVoice2' },
+  looperV2WriteFollow:   { level: 1, scope: 'looperVoice2' },
+  looperV2RecordLFORate: { level: 1, scope: 'looperVoice2' },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // L1: Looper Voice 3 Engine (20 params)
+  // ═══════════════════════════════════════════════════════════════════════
+  looperV3Mode:          { level: 1, scope: 'looperVoice3' },
+  looperV3Slice:         { level: 1, scope: 'looperVoice3' },
+  looperV3Speed:         { level: 1, scope: 'looperVoice3' },
+  looperV3Reverse:       { level: 1, scope: 'looperVoice3' },
+  looperV3Pitch:         { level: 1, scope: 'looperVoice3' },
+  looperV3Attack:        { level: 1, scope: 'looperVoice3' },
+  looperV3Decay:         { level: 1, scope: 'looperVoice3' },
+  looperV3Blur:          { level: 1, scope: 'looperVoice3' },
+  looperV3GrainOct:      { level: 1, scope: 'looperVoice3' },
+  looperV3Spray:         { level: 1, scope: 'looperVoice3' },
+  looperV3Density:       { level: 1, scope: 'looperVoice3' },
+  looperV3GrainSize:     { level: 1, scope: 'looperVoice3' },
+  looperV3Pan:           { level: 1, scope: 'looperVoice3' },
+  looperV3PosLFORate:    { level: 1, scope: 'looperVoice3' },
+  looperV3PosLFODepth:   { level: 1, scope: 'looperVoice3' },
+  looperV3PanLFORate:    { level: 1, scope: 'looperVoice3' },
+  looperV3StereoSpread:  { level: 1, scope: 'looperVoice3' },
+  looperV3ReverseLFORate:{ level: 1, scope: 'looperVoice3' },
+  looperV3WriteFollow:   { level: 1, scope: 'looperVoice3' },
+  looperV3RecordLFORate: { level: 1, scope: 'looperVoice3' },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // L1: Looper Voice 4 Engine (20 params)
+  // ═══════════════════════════════════════════════════════════════════════
+  looperV4Mode:          { level: 1, scope: 'looperVoice4' },
+  looperV4Slice:         { level: 1, scope: 'looperVoice4' },
+  looperV4Speed:         { level: 1, scope: 'looperVoice4' },
+  looperV4Reverse:       { level: 1, scope: 'looperVoice4' },
+  looperV4Pitch:         { level: 1, scope: 'looperVoice4' },
+  looperV4Attack:        { level: 1, scope: 'looperVoice4' },
+  looperV4Decay:         { level: 1, scope: 'looperVoice4' },
+  looperV4Blur:          { level: 1, scope: 'looperVoice4' },
+  looperV4GrainOct:      { level: 1, scope: 'looperVoice4' },
+  looperV4Spray:         { level: 1, scope: 'looperVoice4' },
+  looperV4Density:       { level: 1, scope: 'looperVoice4' },
+  looperV4GrainSize:     { level: 1, scope: 'looperVoice4' },
+  looperV4Pan:           { level: 1, scope: 'looperVoice4' },
+  looperV4PosLFORate:    { level: 1, scope: 'looperVoice4' },
+  looperV4PosLFODepth:   { level: 1, scope: 'looperVoice4' },
+  looperV4PanLFORate:    { level: 1, scope: 'looperVoice4' },
+  looperV4StereoSpread:  { level: 1, scope: 'looperVoice4' },
+  looperV4ReverseLFORate:{ level: 1, scope: 'looperVoice4' },
+  looperV4WriteFollow:   { level: 1, scope: 'looperVoice4' },
+  looperV4RecordLFORate: { level: 1, scope: 'looperVoice4' },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // L1: Looper Legacy Engine (6 params)
+  // ═══════════════════════════════════════════════════════════════════════
+  looperLegacyJitter:        { level: 1, scope: 'looperLegacy' },
+  looperLegacyProbability:   { level: 1, scope: 'looperLegacy' },
+  looperLegacyPitchMode:     { level: 1, scope: 'looperLegacy' },
+  looperLegacyPitchSpread:   { level: 1, scope: 'looperLegacy' },
+  looperLegacyMaxGrains:     { level: 1, scope: 'looperLegacy' },
+  looperLegacyFeedback:      { level: 1, scope: 'looperLegacy' },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // L1: Looper Euclidean Engine (41 params)
+  // ═══════════════════════════════════════════════════════════════════════
+  looperEuclidMasterEnabled: { level: 1, scope: 'looperEuclidean' },
+  looperEuclidBaseBPM:       { level: 1, scope: 'looperEuclidean' },
+  looperEuclidTempo:         { level: 1, scope: 'looperEuclidean' },
+  looperEuclidSwing:         { level: 1, scope: 'looperEuclidean' },
+  looperEuclidDivision:      { level: 1, scope: 'looperEuclidean' },
+  // Lane 1 (9)
+  looperEuclid1Enabled:      { level: 1, scope: 'looperEuclidean' },
+  looperEuclid1Preset:       { level: 1, scope: 'looperEuclidean' },
+  looperEuclid1Steps:        { level: 1, scope: 'looperEuclidean' },
+  looperEuclid1Hits:         { level: 1, scope: 'looperEuclidean' },
+  looperEuclid1Rotation:     { level: 1, scope: 'looperEuclidean' },
+  looperEuclid1Probability:  { level: 1, scope: 'looperEuclidean' },
+  looperEuclid1VelocityMin:  { level: 1, scope: 'looperEuclidean' },
+  looperEuclid1VelocityMax:  { level: 1, scope: 'looperEuclidean' },
+  looperEuclid1Level:        { level: 1, scope: 'looperEuclidean' },
+  // Lane 2 (9)
+  looperEuclid2Enabled:      { level: 1, scope: 'looperEuclidean' },
+  looperEuclid2Preset:       { level: 1, scope: 'looperEuclidean' },
+  looperEuclid2Steps:        { level: 1, scope: 'looperEuclidean' },
+  looperEuclid2Hits:         { level: 1, scope: 'looperEuclidean' },
+  looperEuclid2Rotation:     { level: 1, scope: 'looperEuclidean' },
+  looperEuclid2Probability:  { level: 1, scope: 'looperEuclidean' },
+  looperEuclid2VelocityMin:  { level: 1, scope: 'looperEuclidean' },
+  looperEuclid2VelocityMax:  { level: 1, scope: 'looperEuclidean' },
+  looperEuclid2Level:        { level: 1, scope: 'looperEuclidean' },
+  // Lane 3 (9)
+  looperEuclid3Enabled:      { level: 1, scope: 'looperEuclidean' },
+  looperEuclid3Preset:       { level: 1, scope: 'looperEuclidean' },
+  looperEuclid3Steps:        { level: 1, scope: 'looperEuclidean' },
+  looperEuclid3Hits:         { level: 1, scope: 'looperEuclidean' },
+  looperEuclid3Rotation:     { level: 1, scope: 'looperEuclidean' },
+  looperEuclid3Probability:  { level: 1, scope: 'looperEuclidean' },
+  looperEuclid3VelocityMin:  { level: 1, scope: 'looperEuclidean' },
+  looperEuclid3VelocityMax:  { level: 1, scope: 'looperEuclidean' },
+  looperEuclid3Level:        { level: 1, scope: 'looperEuclidean' },
+  // Lane 4 (9)
+  looperEuclid4Enabled:      { level: 1, scope: 'looperEuclidean' },
+  looperEuclid4Preset:       { level: 1, scope: 'looperEuclidean' },
+  looperEuclid4Steps:        { level: 1, scope: 'looperEuclidean' },
+  looperEuclid4Hits:         { level: 1, scope: 'looperEuclidean' },
+  looperEuclid4Rotation:     { level: 1, scope: 'looperEuclidean' },
+  looperEuclid4Probability:  { level: 1, scope: 'looperEuclidean' },
+  looperEuclid4VelocityMin:  { level: 1, scope: 'looperEuclidean' },
+  looperEuclid4VelocityMax:  { level: 1, scope: 'looperEuclidean' },
+  looperEuclid4Level:        { level: 1, scope: 'looperEuclidean' },
+};
+
+// Runtime assertion — catches drift between registry and hierarchy plan
+if (typeof globalThis !== 'undefined') {
+  const count = Object.keys(PARAM_REGISTRY).length;
+  if (count !== 714) {
+    console.error(`PARAM_REGISTRY has ${count} entries, expected 714`);
+  }
+}
