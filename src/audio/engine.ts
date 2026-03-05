@@ -68,8 +68,9 @@ const getWorkletUrl = (filename: string): string => {
 };
 // Legacy JS granular worklet removed — all granular processing via Looper FX WASM
 // const granulatorWorkletUrl = getWorkletUrl('granulator.worklet.js');
-const reverbWorkletUrl = getWorkletUrl('reverb.worklet.js');
-const oceanWorkletUrl = getWorkletUrl('ocean.worklet.js');
+// Reverb uses WASM path — kessho_reverb.wasm loaded at init
+const reverbWasmWorkletUrl = getWorkletUrl('reverb-wasm.worklet.js');
+// Ocean is handled by soundscapes WASM (output [2]) — no separate worklet needed
 // Looper FX uses WASM-only path (no JS fallback)
 const looperFxWasmWorkletUrl = getWorkletUrl('looper-fx-wasm.worklet.js');
 const soundscapesWorkletUrl = getWorkletUrl('soundscapes-wasm.worklet.js');
@@ -250,6 +251,9 @@ export class AudioEngine {
   // Ikeda-style drum synth
   private drumSynth: DrumSynth | null = null;
 
+  // Reverb (WASM)
+  private wasmReverbBinary: ArrayBuffer | null = null;
+
   // Looper FX (unified granular engine — WASM only)
   private wasmLooperBinary: ArrayBuffer | null = null;
   private looperFxNode: AudioWorkletNode | null = null;
@@ -326,8 +330,7 @@ export class AudioEngine {
   };
   private looperTrigConditionCounters: number[][] = [[], [], [], []];
 
-  // Ocean waves worklet
-  private oceanNode: AudioWorkletNode | null = null;
+  // Ocean waves — handled by soundscapes WASM (output [2]), no separate worklet
   private oceanGain: GainNode | null = null;
   private oceanFilter: BiquadFilterNode | null = null;  // Shared filter for all ocean sources
 
@@ -349,6 +352,7 @@ export class AudioEngine {
   private _scWaterStarted = false;
   private _scInsects1Started = false;
   private _scInsects2Started = false;
+  private _scOceanStarted = false;
   private _scInsects1Engine = -1;
   private _scInsects2Engine = -1;
   private _scWaterPreset = -1;
@@ -555,9 +559,8 @@ export class AudioEngine {
   private sendEnablePerfToWorklets(enabled: boolean) {
     const msg = { type: 'enablePerf', enabled };
     // Guard: only send to AudioWorkletNodes (which have .port), not to GainNode stand-ins
-    // Legacy granulatorNode removed — perf messages no longer sent to it
+    // Legacy granulatorNode + JS ocean worklet removed — perf messages no longer sent to them
     if (this.reverbNode && 'port' in this.reverbNode) (this.reverbNode as AudioWorkletNode).port.postMessage(msg);
-    if (this.oceanNode && 'port' in this.oceanNode) this.oceanNode.port.postMessage(msg);
     if (this.looperFxNode && 'port' in this.looperFxNode) this.looperFxNode.port.postMessage(msg);
     if (this.soundscapesNode && 'port' in this.soundscapesNode) this.soundscapesNode.port.postMessage(msg);
   }
@@ -1163,25 +1166,21 @@ export class AudioEngine {
     // Legacy JS granular worklet REMOVED — all granular processing now handled by Looper FX WASM engine
     console.log('Loading worklets...');
     
+    // Load Reverb WASM worklet + binary
     try {
-      await this.ctx.audioWorklet.addModule(reverbWorkletUrl);
-      console.log('Reverb worklet loaded');
+      const reverbWasmUrl = getWorkletUrl('kessho_reverb.wasm');
+      const reverbWasmResp = await fetch(reverbWasmUrl);
+      if (!reverbWasmResp.ok) throw new Error(`Reverb WASM fetch failed: ${reverbWasmResp.status}`);
+      this.wasmReverbBinary = await reverbWasmResp.arrayBuffer();
+      await this.ctx.audioWorklet.addModule(reverbWasmWorkletUrl);
+      console.log('Reverb WASM worklet loaded (%d KB)', Math.round(this.wasmReverbBinary.byteLength / 1024));
     } catch (e) {
-      console.error('Failed to load reverb worklet:', e);
-      this.isStarting = false;
-      throw e;
-    }
-    
-    try {
-      await this.ctx.audioWorklet.addModule(oceanWorkletUrl);
-      console.log('Ocean worklet loaded');
-    } catch (e) {
-      console.error('Failed to load ocean worklet:', e);
+      console.error('Failed to load reverb WASM:', e);
       this.isStarting = false;
       throw e;
     }
 
-    // Soundscapes WASM worklet (water + insects engines)
+    // Soundscapes WASM worklet (water + insects + ocean engines)
     try {
       await this.ctx.audioWorklet.addModule(soundscapesWorkletUrl);
       console.log('Soundscapes WASM worklet loaded');
@@ -1194,7 +1193,7 @@ export class AudioEngine {
         console.warn('Soundscapes WASM binary not available');
       }
     } catch (e) {
-      console.warn('Soundscapes (water/insects) worklet not available:', e);
+      console.warn('Soundscapes (water/insects/ocean) worklet not available:', e);
     }
 
     // Load WASM looper (no JS fallback — WASM is the production engine)
@@ -1327,10 +1326,10 @@ export class AudioEngine {
     }
     this.oceanSampleSource = null;
 
-    // Disconnect and silence ocean worklet so waves stop
-    if (this.oceanNode) {
-      try { this.oceanNode.disconnect(); } catch { /* */ }
-      this.oceanNode = null;
+    // Stop ocean via soundscapes WASM (no separate ocean worklet to disconnect)
+    if (this.soundscapesNode && this._scOceanStarted) {
+      try { this.soundscapesNode.port.postMessage({ type: 'oceanStop' }); } catch { /* */ }
+      this._scOceanStarted = false;
     }
     if (this.oceanGain) {
       try { this.oceanGain.disconnect(); } catch { /* */ }
@@ -1355,6 +1354,7 @@ export class AudioEngine {
     this._scWaterStarted = false;
     this._scInsects1Started = false;
     this._scInsects2Started = false;
+    this._scOceanStarted = false;
     this._scInsects1Engine = -1;
     this._scInsects2Engine = -1;
     this._scWaterPreset = -1;
@@ -1647,15 +1647,22 @@ export class AudioEngine {
     // All granular processing is handled by the Looper FX WASM engine.
     // The synthBus → dryBus → synthDirect → masterGain path remains for dry pad signal.
 
-    // Reverb worklet
-    this.reverbNode = new AudioWorkletNode(ctx, 'reverb', {
+    // Reverb WASM worklet
+    this.reverbNode = new AudioWorkletNode(ctx, 'reverb-wasm', {
       numberOfInputs: 1,
       numberOfOutputs: 1,
       outputChannelCount: [2],
     });
     this.reverbNode.port.onmessage = (e) => {
       if (e.data.type === 'perf') this.handlePerfMessage(e.data);
+      else if (e.data.type === 'wasmReady') console.log('Reverb WASM engine initialized');
     };
+    // Send WASM binary to reverb worklet
+    if (this.wasmReverbBinary) {
+      const reverbBin = this.wasmReverbBinary;
+      this.wasmReverbBinary = null;
+      this.reverbNode.port.postMessage({ type: 'wasmBinary', binary: reverbBin }, [reverbBin]);
+    }
 
     // Reverb output level
     this.reverbOutputGain = ctx.createGain();
@@ -1697,29 +1704,9 @@ export class AudioEngine {
     this.leadDelayReverbSend = ctx.createGain();
     this.leadDelayReverbSend.gain.value = this.sliderState?.leadDelayReverbSend ?? 0.4;
 
-    // Ocean waves worklet (stereo output, no input)
-    this.oceanNode = new AudioWorkletNode(ctx, 'ocean-processor', {
-      numberOfInputs: 0,
-      numberOfOutputs: 1,
-      outputChannelCount: [2],
-    });
-    // Send sample rate to ocean processor
-    this.oceanNode.port.postMessage({ type: 'setSampleRate', sampleRate: ctx.sampleRate });
-    // Send seed for deterministic randomness
-    this.oceanNode.port.postMessage({ type: 'setSeed', seed: this.currentSeed });
-    // Listen for wave trigger messages from worklet for UI updates
-    this.oceanNode.port.onmessage = (e) => {
-      if (e.data.type === 'waveStarted' && this.onOceanWaveTrigger) {
-        this.onOceanWaveTrigger({
-          duration: e.data.duration,
-          interval: e.data.interval,
-          foam: e.data.foam,
-          depth: e.data.depth,
-        });
-      } else if (e.data.type === 'perf') {
-        this.handlePerfMessage(e.data);
-      }
-    };
+    // Ocean is handled by soundscapes WASM engine (output [2])
+    // No separate ocean worklet needed — oceanNode is not created
+    // The onOceanWaveTrigger callback is no longer fired (was JS-only visual feedback)
 
     this.oceanGain = ctx.createGain();
     this.oceanGain.gain.value = this.sliderState?.oceanWaveSynthEnabled ? (this.sliderState?.oceanWaveSynthLevel ?? 0.4) : 0;
@@ -1728,8 +1715,8 @@ export class AudioEngine {
     this.oceanSampleGain = ctx.createGain();
     this.oceanSampleGain.gain.value = 0;
 
-    // Soundscapes WASM worklet — water + insects engines
-    // 3 outputs: [0]=water stereo, [1]=insects stereo, [2]=ocean (unused — main engine's ocean-processor handles ocean)
+    // Soundscapes WASM worklet — water + insects + ocean engines
+    // 3 outputs: [0]=water stereo, [1]=insects stereo, [2]=ocean stereo
     if (this.wasmSoundscapesBinary) {
       this.soundscapesNode = new AudioWorkletNode(ctx, 'soundscapes-wasm-processor', {
         numberOfInputs: 0,
@@ -1751,12 +1738,14 @@ export class AudioEngine {
           }
         };
       });
-      // After WASM ready, set up permanent message handler
+      // After WASM ready, set up permanent message handler and send ocean seed
       this.soundscapesNode.port.onmessage = (e) => {
         if (e.data.type === 'perf') {
           this.handlePerfMessage(e.data);
         }
       };
+      // Send ocean seed for deterministic randomness
+      this.soundscapesNode.port.postMessage({ type: 'oceanSeed', seed: this.currentSeed });
     }
 
     // Soundscapes gain nodes
@@ -2054,13 +2043,14 @@ export class AudioEngine {
     this.leadReverbSend.connect(this.reverbNode);
 
     // Ocean waves -> OceanGain -> OceanFilter -> Master
+    // Ocean WASM (soundscapes output [2]) feeds into the same gain chain
     // Ocean sample -> OceanSampleGain -> OceanFilter -> Master
     this.oceanFilter = ctx.createBiquadFilter();
     this.oceanFilter.type = this.sliderState?.oceanFilterType ?? 'lowpass';
     this.oceanFilter.frequency.value = this.sliderState?.oceanFilterCutoff ?? 8000;
     this.oceanFilter.Q.value = 0.5 + (this.sliderState?.oceanFilterResonance ?? 0.1) * 10;
 
-    this.oceanNode.connect(this.oceanGain);
+    // Ocean WASM output [2] → oceanGain (replaces old JS oceanNode)
     this.oceanGain.connect(this.oceanFilter);
     this.oceanSampleGain.connect(this.oceanFilter);
     this.oceanFilter.connect(this.masterGain);
@@ -2082,11 +2072,13 @@ export class AudioEngine {
     //          soundscapesNode[0] → waterReverbSend → reverbNode
     // Insects: soundscapesNode[1] → soundscapesInsectsGain → masterGain
     //          soundscapesNode[1] → insectsReverbSendNode → reverbNode
-    // Ocean:   soundscapesNode[2] — NOT connected (main engine's ocean-processor handles ocean)
+    // Ocean:   soundscapesNode[2] → oceanGain → oceanFilter → masterGain
     if (this.soundscapesNode) {
       this.soundscapesNode.connect(this.waterGain, 0);
       this.soundscapesNode.connect(this.waterReverbSend, 0);
       this.soundscapesNode.connect(this.soundscapesInsectsGain, 1);
+      // Connect ocean WASM output [2] → oceanGain
+      this.soundscapesNode.connect(this.oceanGain, 2);
       if (this.insectsReverbSendNode) {
         this.soundscapesNode.connect(this.insectsReverbSendNode, 1);
         this.insectsReverbSendNode.connect(this.reverbNode);
@@ -3627,31 +3619,41 @@ export class AudioEngine {
       this.startOceanSamplePlayback();
     }
     
-    // Ocean worklet parameters (wave synthesis)
-    if (this.oceanNode) {
-      const oceanParams = this.oceanNode.parameters;
-      const setParam = (name: string, value: number) => {
-        const param = oceanParams.get(name);
-        if (param) param.setTargetAtTime(value, now, smoothTime);
-      };
-      
-      setParam('intensity', state.oceanWaveSynthLevel);
-      const durR = this.dualRanges['oceanDuration'];
-      setParam('waveDurationMin', durR ? durR.min : state.oceanDuration);
-      setParam('waveDurationMax', durR ? durR.max : state.oceanDuration);
-      const intR = this.dualRanges['oceanInterval'];
-      setParam('waveIntervalMin', intR ? intR.min : state.oceanInterval);
-      setParam('waveIntervalMax', intR ? intR.max : state.oceanInterval);
-      const foamR = this.dualRanges['oceanFoam'];
-      setParam('foamMin', foamR ? foamR.min : state.oceanFoam);
-      setParam('foamMax', foamR ? foamR.max : state.oceanFoam);
-      const depR = this.dualRanges['oceanDepth'];
-      setParam('depthMin', depR ? depR.min : state.oceanDepth);
-      setParam('depthMax', depR ? depR.max : state.oceanDepth);
-    }
-
-    // ── Soundscapes WASM — water + insects ──
+    // ── Soundscapes WASM — water + insects + ocean ──
     if (this.soundscapesNode && this.soundscapesWasmReady) {
+      // Ocean start/stop (via soundscapes WASM output [2])
+      if (state.oceanWaveSynthEnabled && !this._scOceanStarted) {
+        this.soundscapesNode.port.postMessage({ type: 'oceanStart' });
+        this._scOceanStarted = true;
+      } else if (!state.oceanWaveSynthEnabled && this._scOceanStarted) {
+        this.soundscapesNode.port.postMessage({ type: 'oceanStop' });
+        this._scOceanStarted = false;
+      }
+
+      // Ocean params (via soundscapes WASM postMessage)
+      if (state.oceanWaveSynthEnabled) {
+        const durR = this.dualRanges['oceanDuration'];
+        const intR = this.dualRanges['oceanInterval'];
+        const foamR = this.dualRanges['oceanFoam'];
+        const depR = this.dualRanges['oceanDepth'];
+        this.soundscapesNode.port.postMessage({
+          type: 'oceanParams',
+          params: {
+            intensity: state.oceanWaveSynthLevel,
+            waveDurationMin: durR ? durR.min : state.oceanDuration,
+            waveDurationMax: durR ? durR.max : state.oceanDuration,
+            waveIntervalMin: intR ? intR.min : state.oceanInterval,
+            waveIntervalMax: intR ? intR.max : state.oceanInterval,
+            wave2OffsetMin: 2,
+            wave2OffsetMax: 6,
+            foamMin: foamR ? foamR.min : state.oceanFoam,
+            foamMax: foamR ? foamR.max : state.oceanFoam,
+            depthMin: depR ? depR.min : state.oceanDepth,
+            depthMax: depR ? depR.max : state.oceanDepth,
+          },
+        });
+      }
+
       // Water start/stop
       if (state.waterEnabled && !this._scWaterStarted) {
         this.soundscapesNode.port.postMessage({ type: 'waterStart' });
