@@ -1,5 +1,5 @@
 """
-Kessho Soundscapes - WASM build via Emscripten (Python)
+Kessho Reverb - WASM build via Emscripten (Python)
 
 Equivalent to build.sh but runs on Windows via Python + emcc.py
 Usage:
@@ -13,8 +13,8 @@ import os
 import shutil
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-SRC = os.path.join(SCRIPT_DIR, "kessho_soundscapes.cpp")
-OUT = os.path.join(SCRIPT_DIR, "kessho_soundscapes.wasm")
+SRC = os.path.join(SCRIPT_DIR, "kessho_reverb.cpp")
+OUT = os.path.join(SCRIPT_DIR, "kessho_reverb.wasm")
 
 # Find emcc — look for local emsdk first, then PATH
 # Normalize path fully to avoid Emscripten cache invalidation from path differences
@@ -47,50 +47,20 @@ if os.path.isdir(node_bin):
             break
 env["PATH"] = llvm_bin + os.pathsep + env.get("PATH", "")
 
+# Exported functions (must match kessho_reverb.h extern "C" API)
 EXPORTS = [
-    "_water_init",
-    "_water_destroy",
-    "_water_get_output_ptr",
-    "_water_process_block",
-    "_water_set_preset",
-    "_water_set_params",
-    "_water_set_layer_mix",
-    "_water_set_layer_density",
-    "_water_start",
-    "_water_stop",
-    "_water_set_seed",
-    "_water_get_active_voices",
-    "_water_get_events_per_sec",
-    "_insects_init",
-    "_insects_destroy",
-    "_insects_get_output_ptr",
-    "_insects_process_block",
-    "_insects_set_engine",
-    "_insects_set_params",
-    "_insects_start",
-    "_insects_stop",
-    "_insects_set_seed",
-    "_insects_get_active_voices",
-    "_insects_get_engine_type",
-    "_insects2_init",
-    "_insects2_destroy",
-    "_insects2_get_output_ptr",
-    "_insects2_process_block",
-    "_insects2_set_engine",
-    "_insects2_set_params",
-    "_insects2_start",
-    "_insects2_stop",
-    "_insects2_set_seed",
-    "_insects2_get_active_voices",
-    "_insects2_get_engine_type",
-    "_ocean_init",
-    "_ocean_destroy",
-    "_ocean_get_output_ptr",
-    "_ocean_process_block",
-    "_ocean_set_params",
-    "_ocean_start",
-    "_ocean_stop",
-    "_ocean_set_seed",
+    "_reverb_init",
+    "_reverb_destroy",
+    "_reverb_get_input_ptr",
+    "_reverb_get_output_ptr",
+    "_reverb_process_block",
+    "_reverb_set_type",
+    "_reverb_set_quality",
+    "_reverb_set_params",
+    "_reverb_set_freeze",
+    "_reverb_set_shimmer",
+    "_reverb_set_slow_mod",
+    "_reverb_set_reverse",
     "_malloc",
     "_free",
 ]
@@ -146,7 +116,7 @@ print(f"Built: {OUT} ({size // 1024} KB)")
 # Copy to public worklets directory
 public_dir = os.path.join(SCRIPT_DIR, "..", "..", "public", "worklets")
 if os.path.isdir(public_dir):
-    dest = os.path.join(public_dir, "kessho_soundscapes.wasm")
+    dest = os.path.join(public_dir, "kessho_reverb.wasm")
     shutil.copy2(OUT, dest)
     print(f"Copied to {dest}")
 else:
