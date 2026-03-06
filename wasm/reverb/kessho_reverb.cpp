@@ -59,11 +59,14 @@ static const PresetConfig PRESETS[4] = {
 
 // Stereo decorrelation tap coefficients per channel (alternating L/R emphasis)
 // Positive = contributes to L, negative = contributes to R, magnitude = weight
-// These create genuinely different reverb tails for each ear
-// Tap magnitudes kept moderate (0.5-1.0) to prevent output level buildup
-static const float STEREO_TAPS_16[16] = {
-     1.0f, -0.8f,  0.9f, -0.7f,  0.8f, -0.9f,  0.7f, -1.0f,
-    -0.6f,  0.8f, -0.7f,  0.6f, -0.5f,  0.5f, -0.6f,  0.5f
+// Tap magnitudes kept small so that (sum_L * outputScale) ≈ 0.6 for unity FDN
+static const float STEREO_TAPS_L[16] = {
+    1.0f, 0.0f, 0.9f, 0.0f, 0.8f, 0.0f, 0.7f, 0.0f,
+    0.0f, 0.6f, 0.0f, 0.5f, 0.0f, 0.4f, 0.0f, 0.3f
+};
+static const float STEREO_TAPS_R[16] = {
+    0.0f, 0.8f, 0.0f, 0.7f, 0.0f, 0.9f, 0.0f, 1.0f,
+    0.5f, 0.0f, 0.6f, 0.0f, 0.4f, 0.0f, 0.3f, 0.0f
 };
 
 // ═══════════════ DSP Primitives ═══════════════
@@ -344,12 +347,12 @@ static void updatePreset() {
     float sr = g_reverb.sampleRate;
     float scale = g_reverb.scale;
 
-    // Feedback gain
+    // Feedback gain — cap at 0.985 to prevent energy accumulation in dense FDNs
     float baseDecay = preset.decay;
-    float effectiveDecay = baseDecay + (1.0f - baseDecay) * userDecay * 0.9f;
+    float effectiveDecay = baseDecay + (1.0f - baseDecay) * userDecay * 0.8f;
     g_reverb.feedbackGain = g_reverb.freeze
         ? 1.0f
-        : fminf(0.998f, effectiveDecay);
+        : fminf(0.985f, effectiveDecay);
 
     // FDN delay times
     int maxChannels = (g_reverb.quality == 0) ? 16 : (g_reverb.quality == 1) ? 8 : 4;
@@ -581,8 +584,8 @@ void reverb_set_params(float decay, float size, float damping, float diffusion,
     g_reverb.decay = decay;
     g_reverb.size = size;
     g_reverb.damping = damping;
-    // Legacy: single-band damping maps to dampHigh (backward compat)
-    g_reverb.dampHigh = damping;
+    // Note: dampHigh is set by reverb_set_multiband_damp, not here
+    // (legacy damping is only used for presets that don't call multiband_damp)
     g_reverb.diffusion = diffusion;
     g_reverb.modulation = modulation;
     g_reverb.predelayMs = predelay;
@@ -681,8 +684,8 @@ void reverb_process_block(int block_size) {
         float m1 = sinf(g_reverb.slowModPhase1);
         float m2 = sinf(g_reverb.slowModPhase2);
 
-        blockFeedback = fminf(0.998f, blockFeedback * (1.0f + m1 * slowDepth * 0.06f));
-        blockDampHigh = fmaxf(0.0f, fminf(1.0f, blockDampHigh + m2 * slowDepth * 0.15f));
+        blockFeedback *= (1.0f + m1 * slowDepth * 0.02f);  // subtle modulation only
+        blockDampHigh = fmaxf(0.0f, fminf(1.0f, blockDampHigh + m2 * slowDepth * 0.08f));
     }
 
     // Shimmer
@@ -713,16 +716,19 @@ void reverb_process_block(int block_size) {
 
     float hpC = isFrozen ? 1.0f : g_reverb.hpCoeff;
     // Input gain scaled inversely with channel count to keep total injection energy constant
-    // 4ch: 0.25 × 2 lines/ear = 0.50 total per ear
-    // 8ch: 0.18 × 4 lines/ear = 0.72 total per ear
-    // 16ch: 0.08 × 8 lines/ear = 0.64 total per ear
-    float inputGain = isFrozen ? 0.0f : (fdnCount >= 16 ? 0.08f : fdnCount >= 8 ? 0.18f : 0.25f);
+    // 4ch: 0.20 × 2 lines/ear = 0.40 total per ear
+    // 8ch: 0.10 × 4 lines/ear = 0.40 total per ear
+    // 16ch: 0.06 × 8 lines/ear = 0.48 total per ear
+    float inputGain = isFrozen ? 0.0f : (fdnCount >= 16 ? 0.06f : fdnCount >= 8 ? 0.10f : 0.20f);
 
-    // Scale feedback down slightly for 16-ch: more channels = more energy storage
-    // Without this, the denser FDN accumulates energy faster than it decays
-    if (fdnCount == 16 && !isFrozen) {
-        blockFeedback *= 0.97f;
+    // Scale feedback for channel count: more channels = more total energy in FDN
+    // Applied AFTER slow mod so slow mod can’t push past the scaled value
+    if (!isFrozen) {
+        if (fdnCount == 16) blockFeedback *= 0.93f;
+        else if (fdnCount == 8) blockFeedback *= 0.96f;
     }
+    // Hard cap after all modulation — never exceed 0.98 to prevent runaway
+    if (!isFrozen) blockFeedback = fminf(0.98f, blockFeedback);
 
     // Chorus / drift / modulation params
     float chorusDepth = g_reverb.chorusDepth;
@@ -785,8 +791,8 @@ void reverb_process_block(int block_size) {
                     modOffset = (sineVal * 0.6f + g_reverb.driftState[j] * 0.4f) * chorusDepth;
                 }
 
-                // Add legacy global modulation on top (capped to avoid excessive wobble on long lines)
-                float legacyMod = modDepth * fminf(g_reverb.fdnDelayTimes[j], 5000.0f) * 0.008f
+                // Add legacy global modulation on top (very conservative to avoid excessive wobble)
+                float legacyMod = modDepth * fminf(g_reverb.fdnDelayTimes[j], 3000.0f) * 0.004f
                                 * sinf(g_reverb.chorusPhases[j] * 0.37f * 2.0f * (float)M_PI);
                 modOffset += legacyMod;
             }
@@ -892,37 +898,41 @@ void reverb_process_block(int block_size) {
                 + shimInject
                 + shimFbInject
             );
+
+            // NaN/Inf guard: prevent corrupted values from entering delay lines
+            // NaN != NaN, so this catches NaN; the magnitude check catches Inf/overflow
+            if (!(value == value) || value > 100.0f || value < -100.0f) value = 0.0f;
+
             g_reverb.fdnDelays[j].write(value);
         }
 
         // ── Output tapping with stereo decorrelation ──
+        // Target: raw output ≈ 0.5-0.7 when FDN channels are near unity
         float rawL = 0.0f, rawR = 0.0f;
         if (fdnCount == 16) {
-            // True decorrelation: different taps for L vs R
+            // True decorrelation: separate tap arrays for L and R
             for (int j = 0; j < 16; j++) {
-                float tap = STEREO_TAPS_16[j];
-                float scaled = g_reverb.fdnReads[j] * fabsf(tap);
-                if (tap > 0.0f) rawL += scaled;
-                else            rawR += scaled;
+                rawL += g_reverb.fdnReads[j] * STEREO_TAPS_L[j];
+                rawR += g_reverb.fdnReads[j] * STEREO_TAPS_R[j];
             }
-            // 1/sqrt(8) ≈ 0.354 is theoretically correct for 8 channels per side,
-            // but we use a conservative 0.16 to match v1's perceived output level
-            // and prevent clipping when the FDN is dense
-            rawL *= 0.16f;
-            rawR *= 0.16f;
+            // Sum of taps per side ≈ 5.2, scale to ~0.6 target: 0.6/5.2 ≈ 0.115
+            rawL *= 0.115f;
+            rawR *= 0.115f;
         } else if (fdnCount == 8) {
-            // Decorrelated 8-ch tapping (matches v1 gain structure)
+            // Each side reads 4 primary channels + 2 light cross-feeds
+            // Sum ≈ 4*1 + 2*0.15 = 4.3, * 0.15 ≈ 0.65 peak
             rawL = (g_reverb.fdnReads[0] + g_reverb.fdnReads[2]
                   + g_reverb.fdnReads[4] + g_reverb.fdnReads[6]
-                  + g_reverb.fdnReads[1] * 0.3f + g_reverb.fdnReads[3] * 0.3f) * 0.5f;
+                  + g_reverb.fdnReads[1] * 0.15f + g_reverb.fdnReads[3] * 0.15f) * 0.15f;
             rawR = (g_reverb.fdnReads[1] + g_reverb.fdnReads[3]
                   + g_reverb.fdnReads[5] + g_reverb.fdnReads[7]
-                  + g_reverb.fdnReads[0] * 0.3f + g_reverb.fdnReads[2] * 0.3f) * 0.5f;
+                  + g_reverb.fdnReads[0] * 0.15f + g_reverb.fdnReads[2] * 0.15f) * 0.15f;
         } else {
+            // 4-ch: sum ≈ 2*1 + 1*0.2 = 2.2, * 0.3 ≈ 0.66 peak
             rawL = (g_reverb.fdnReads[0] + g_reverb.fdnReads[2]
-                  + g_reverb.fdnReads[1] * 0.3f) * 0.7f;
+                  + g_reverb.fdnReads[1] * 0.2f) * 0.3f;
             rawR = (g_reverb.fdnReads[1] + g_reverb.fdnReads[3]
-                  + g_reverb.fdnReads[0] * 0.3f) * 0.7f;
+                  + g_reverb.fdnReads[0] * 0.2f) * 0.3f;
         }
 
         // Mid-diffusion blend
