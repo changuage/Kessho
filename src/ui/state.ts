@@ -245,6 +245,10 @@ export interface SliderState {
   // Reverb v3 params
   reverbWarp: number;            // 0..1 step 0.01 - pitch warp/bend in feedback path
   reverbCrossFeed: number;       // 0..1 step 0.01 - stereo cross-injection
+  // v4 parameters
+  reverbEarlyReflections: number; // 0..1 step 0.01 - early reflections level
+  reverbAirAbsorption: number;   // 0..1 step 0.01 - spectral tilt in feedback
+  reverbSaturationMode: 'clean' | 'tape' | 'tube'; // saturation character
 
   // Granular
   granularEnabled: boolean;    // on/off toggle for granular processing
@@ -1638,7 +1642,7 @@ export const DEFAULT_STATE: SliderState = {
   reverbEnabled: true,
   reverbEngine: 'algorithmic',
   reverbType: 'cathedral',
-  reverbQuality: 'balanced',  // ultra, balanced, lite
+  reverbQuality: 'ultra',  // ultra, balanced, lite
   reverbDecay: 0.9,
   reverbSize: 2.0,
   reverbDiffusion: 1.0,
@@ -1667,6 +1671,10 @@ export const DEFAULT_STATE: SliderState = {
   // Reverb v3 params
   reverbWarp: 0,
   reverbCrossFeed: 0,
+  // v4 defaults
+  reverbEarlyReflections: 0.3,
+  reverbAirAbsorption: 0.2,
+  reverbSaturationMode: 'clean' as const,
 
   // Granular
   granularEnabled: true,
@@ -2446,6 +2454,8 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   // v3 reverb params
   reverbWarp: { min: 0, max: 1, step: 0.01 },
   reverbCrossFeed: { min: 0, max: 1, step: 0.01 },
+  reverbEarlyReflections: { min: 0, max: 1, step: 0.01 },
+  reverbAirAbsorption: { min: 0, max: 1, step: 0.01 },
   grainProbability: { min: 0, max: 1, step: 0.01 },
   maxGrains: { min: 0, max: 128, step: 1 },
   grainSize: { min: 5, max: 800, step: 1 },

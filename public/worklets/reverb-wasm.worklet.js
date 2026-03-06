@@ -205,6 +205,17 @@ class ReverbWasmProcessor extends AudioWorkletProcessor {
     if (p.crossFeed !== undefined) {
       w.reverb_set_cross_feed(p.crossFeed);
     }
+
+    // v4 params: Early reflections, Air absorption, Saturation mode
+    if (p.earlyReflections !== undefined) {
+      w.reverb_set_early_reflections(p.earlyReflections);
+    }
+    if (p.airAbsorption !== undefined) {
+      w.reverb_set_air_absorption(p.airAbsorption);
+    }
+    if (p.saturationMode !== undefined) {
+      w.reverb_set_saturation_mode(p.saturationMode);
+    }
   }
 
   /** Get Float32Array view of WASM heap (refreshed on each access since memory can grow) */

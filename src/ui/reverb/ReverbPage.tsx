@@ -37,6 +37,7 @@ export const REVERB_CHARACTER_PRESETS: Record<string, {
       reverbDampLow: 0.1, reverbDampHigh: 0.3, reverbCrossoverFreq: 800,
       reverbInputTone: 0, reverbShimmerFeedback: 0,
       reverbWarp: 0, reverbCrossFeed: 0,
+      reverbEarlyReflections: 0.3, reverbAirAbsorption: 0.2, reverbSaturationMode: 'clean' as const,
     },
   },
   shimmerPad: {
@@ -54,6 +55,7 @@ export const REVERB_CHARACTER_PRESETS: Record<string, {
       reverbDampLow: 0.05, reverbDampHigh: 0.2, reverbCrossoverFreq: 1200,
       reverbInputTone: 0.2, reverbShimmerFeedback: 0.35,
       reverbWarp: 0, reverbCrossFeed: 0.15,
+      reverbEarlyReflections: 0.2, reverbAirAbsorption: 0.15, reverbSaturationMode: 'clean' as const,
     },
   },
   blackhole: {
@@ -71,6 +73,7 @@ export const REVERB_CHARACTER_PRESETS: Record<string, {
       reverbDampLow: 0.05, reverbDampHigh: 0.15, reverbCrossoverFreq: 600,
       reverbInputTone: -0.4, reverbShimmerFeedback: 0.5,
       reverbWarp: 0.4, reverbCrossFeed: 0.3,
+      reverbEarlyReflections: 0.1, reverbAirAbsorption: 0.4, reverbSaturationMode: 'tape' as const,
     },
   },
   nightsky: {
@@ -88,6 +91,7 @@ export const REVERB_CHARACTER_PRESETS: Record<string, {
       reverbDampLow: 0.15, reverbDampHigh: 0.45, reverbCrossoverFreq: 700,
       reverbInputTone: -0.3, reverbShimmerFeedback: 0.2,
       reverbWarp: 0.1, reverbCrossFeed: 0.2,
+      reverbEarlyReflections: 0.25, reverbAirAbsorption: 0.35, reverbSaturationMode: 'tape' as const,
     },
   },
   frozenCathedral: {
@@ -105,6 +109,7 @@ export const REVERB_CHARACTER_PRESETS: Record<string, {
       reverbDampLow: 0.0, reverbDampHigh: 0.05, reverbCrossoverFreq: 1000,
       reverbInputTone: 0.1, reverbShimmerFeedback: 0,
       reverbWarp: 0, reverbCrossFeed: 0,
+      reverbEarlyReflections: 0.4, reverbAirAbsorption: 0.1, reverbSaturationMode: 'clean' as const,
     },
   },
   reverseWash: {
@@ -122,6 +127,7 @@ export const REVERB_CHARACTER_PRESETS: Record<string, {
       reverbDampLow: 0.1, reverbDampHigh: 0.35, reverbCrossoverFreq: 900,
       reverbInputTone: -0.2, reverbShimmerFeedback: 0.15,
       reverbWarp: 0.15, reverbCrossFeed: 0.1,
+      reverbEarlyReflections: 0.15, reverbAirAbsorption: 0.2, reverbSaturationMode: 'clean' as const,
     },
   },
   cosmicDrift: {
@@ -139,6 +145,7 @@ export const REVERB_CHARACTER_PRESETS: Record<string, {
       reverbDampLow: 0.08, reverbDampHigh: 0.2, reverbCrossoverFreq: 500,
       reverbInputTone: -0.5, reverbShimmerFeedback: 0.6,
       reverbWarp: 0.25, reverbCrossFeed: 0.35,
+      reverbEarlyReflections: 0.1, reverbAirAbsorption: 0.35, reverbSaturationMode: 'tube' as const,
     },
   },
   tightPlate: {
@@ -156,6 +163,7 @@ export const REVERB_CHARACTER_PRESETS: Record<string, {
       reverbDampLow: 0.2, reverbDampHigh: 0.5, reverbCrossoverFreq: 2000,
       reverbInputTone: 0.3, reverbShimmerFeedback: 0,
       reverbWarp: 0, reverbCrossFeed: 0,
+      reverbEarlyReflections: 0.5, reverbAirAbsorption: 0.1, reverbSaturationMode: 'clean' as const,
     },
   },
   supermassive: {
@@ -173,6 +181,7 @@ export const REVERB_CHARACTER_PRESETS: Record<string, {
       reverbDampLow: 0.05, reverbDampHigh: 0.12, reverbCrossoverFreq: 500,
       reverbInputTone: -0.3, reverbShimmerFeedback: 0.4,
       reverbWarp: 0.6, reverbCrossFeed: 0.4,
+      reverbEarlyReflections: 0.05, reverbAirAbsorption: 0.3, reverbSaturationMode: 'tape' as const,
     },
   },
   gravityWell: {
@@ -190,6 +199,7 @@ export const REVERB_CHARACTER_PRESETS: Record<string, {
       reverbDampLow: 0.04, reverbDampHigh: 0.1, reverbCrossoverFreq: 400,
       reverbInputTone: -0.6, reverbShimmerFeedback: 0.3,
       reverbWarp: 0.85, reverbCrossFeed: 0.5,
+      reverbEarlyReflections: 0, reverbAirAbsorption: 0.5, reverbSaturationMode: 'tube' as const,
     },
   },
   dattorroPlate: {
@@ -207,6 +217,7 @@ export const REVERB_CHARACTER_PRESETS: Record<string, {
       reverbDampLow: 0.1, reverbDampHigh: 0.35, reverbCrossoverFreq: 1200,
       reverbInputTone: 0.1, reverbShimmerFeedback: 0,
       reverbWarp: 0, reverbCrossFeed: 0,
+      reverbEarlyReflections: 0.4, reverbAirAbsorption: 0.15, reverbSaturationMode: 'clean' as const,
     },
   },
   dattorroShimmer: {
@@ -224,6 +235,7 @@ export const REVERB_CHARACTER_PRESETS: Record<string, {
       reverbDampLow: 0.05, reverbDampHigh: 0.2, reverbCrossoverFreq: 900,
       reverbInputTone: 0, reverbShimmerFeedback: 0,
       reverbWarp: 0.3, reverbCrossFeed: 0.15,
+      reverbEarlyReflections: 0.2, reverbAirAbsorption: 0.2, reverbSaturationMode: 'clean' as const,
     },
   },
   eventHorizon: {
@@ -241,6 +253,7 @@ export const REVERB_CHARACTER_PRESETS: Record<string, {
       reverbDampLow: 0.02, reverbDampHigh: 0.08, reverbCrossoverFreq: 350,
       reverbInputTone: -0.7, reverbShimmerFeedback: 0.7,
       reverbWarp: 0.5, reverbCrossFeed: 0.6,
+      reverbEarlyReflections: 0, reverbAirAbsorption: 0.6, reverbSaturationMode: 'tube' as const,
     },
   },
 };
@@ -468,10 +481,26 @@ export default function ReverbPage({
                 <Slider label="Mod Rate" value={state.reverbSlowModRate} paramKey="reverbSlowModRate" unit="Hz" onChange={onParamChange} {...sp('reverbSlowModRate')} />
                 <Slider label="Mod Depth" value={state.reverbSlowModDepth} paramKey="reverbSlowModDepth" onChange={onParamChange} {...sp('reverbSlowModDepth')} />
 
-                {/* Reverse */}
+                {/* Special */}
                 <div className="reverb-subsection">Special</div>
                 <Slider label="Warp" value={state.reverbWarp} paramKey="reverbWarp" onChange={onParamChange} {...sp('reverbWarp')} />
                 <Slider label="Cross-Feed" value={state.reverbCrossFeed} paramKey="reverbCrossFeed" onChange={onParamChange} {...sp('reverbCrossFeed')} />
+
+                {/* v4: Spatial & Character */}
+                <div className="reverb-subsection">Spatial &amp; Character</div>
+                <Slider label="Early Reflections" value={state.reverbEarlyReflections} paramKey="reverbEarlyReflections" onChange={onParamChange} {...sp('reverbEarlyReflections')} />
+                <Slider label="Air Absorption" value={state.reverbAirAbsorption} paramKey="reverbAirAbsorption" onChange={onParamChange} {...sp('reverbAirAbsorption')} />
+                <Select
+                  label="Saturation"
+                  value={state.reverbSaturationMode}
+                  options={[
+                    { value: 'clean', label: 'Clean (transparent)' },
+                    { value: 'tape', label: 'Tape (warm harmonics)' },
+                    { value: 'tube', label: 'Tube (soft saturation)' },
+                  ]}
+                  onChange={(v) => onSelectChange('reverbSaturationMode', v as SliderState['reverbSaturationMode'])}
+                />
+
                 <Slider label="Reverse Mix" value={state.reverbReverse} paramKey="reverbReverse" onChange={onParamChange} {...sp('reverbReverse')} />
                 {state.reverbReverse > 0 && (
                   <Slider label="Reverse Length" value={state.reverbReverseLength} paramKey="reverbReverseLength" unit="s" onChange={onParamChange} {...sp('reverbReverseLength')} />

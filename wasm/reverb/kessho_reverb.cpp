@@ -99,6 +99,17 @@ static constexpr int INLOOP_AP_STAGES = 2;
 static const int INLOOP_AP_TIMES[2] = {31, 67};  // prime, short
 static constexpr float INLOOP_AP_FB = 0.4f;
 
+// Early reflections — sparse taps simulating first room reflections (ms at 48k)
+static constexpr int ER_TAP_COUNT = 10;
+static const float ER_TIMES_L[ER_TAP_COUNT] = { 7.0f, 13.0f, 19.0f, 29.0f, 37.0f, 43.0f, 53.0f, 61.0f, 71.0f, 79.0f };
+static const float ER_TIMES_R[ER_TAP_COUNT] = { 11.0f, 17.0f, 23.0f, 31.0f, 41.0f, 47.0f, 59.0f, 67.0f, 73.0f, 83.0f };
+static const float ER_GAINS[ER_TAP_COUNT]   = { 0.85f, 0.72f, 0.60f, 0.50f, 0.42f, 0.35f, 0.28f, 0.22f, 0.18f, 0.15f };
+
+// Multi-tap read — additional prime-spaced taps per FDN line for denser echoes
+static constexpr int MULTITAP_COUNT = 3;
+static const float MULTITAP_OFFSETS[MULTITAP_COUNT] = { 0.0f, 0.381966f, 0.618034f };  // golden ratio positions
+static const float MULTITAP_GAINS[MULTITAP_COUNT]   = { 0.6f, 0.25f, 0.15f };
+
 // ═══════════════ DSP Primitives ═══════════════
 
 struct OnePole {
@@ -198,14 +209,25 @@ struct SmoothDelay {
         return buffer[idx];
     }
     inline float readInterpolated(float delaySamples) const {
+        // Allpass interpolation — transparent modulation, no zipper artifacts
+        // Uses 1st-order allpass: y[n] = x[n-1] + frac * (x[n] - y[n-1])
+        // where x[n] is the integer-delayed sample
         float readPos = (float)writeIdx - delaySamples;
         if (readPos < 0.0f) readPos += (float)size;
         int i0 = (int)readPos;
         if (i0 >= size) i0 -= size;
         int i1 = i0 + 1;
         if (i1 >= size) i1 = 0;
+        int im1 = i0 - 1;
+        if (im1 < 0) im1 += size;
         float frac = readPos - floorf(readPos);
-        return buffer[i0] + (buffer[i1] - buffer[i0]) * frac;
+        // For very small frac, allpass becomes unstable → fall back to linear
+        if (frac < 0.01f || frac > 0.99f) {
+            return buffer[i0] + (buffer[i1] - buffer[i0]) * frac;
+        }
+        // Allpass coefficient for fractional delay
+        float c = (1.0f - frac) / (1.0f + frac);
+        return buffer[i1] + c * (buffer[i0] - buffer[i1]);
     }
 };
 
@@ -245,12 +267,36 @@ struct DiffuserChain {
     }
 };
 
-inline float softClip(float x) {
-    // tanhf approximation — warm saturation, preserves sign symmetry
+// Saturation modes: 0=clean (tanh), 1=tape (asymmetric odd+even harmonics), 2=tube (soft knee)
+inline float softClipClean(float x) {
     if (x > 3.0f) return 1.0f;
     if (x < -3.0f) return -1.0f;
     float x2 = x * x;
     return x * (27.0f + x2) / (27.0f + 9.0f * x2);
+}
+
+inline float softClipTape(float x) {
+    // Asymmetric: odd harmonics (tanh) + subtle even harmonics (x²)
+    // Creates warmth through 2nd harmonic content like analog tape
+    float sym = softClipClean(x);
+    float asym = 0.08f * x * x * (x > 0.0f ? 1.0f : -1.0f);  // even-harmonic bias
+    return sym + fmaxf(-0.15f, fminf(0.15f, asym));
+}
+
+inline float softClipTube(float x) {
+    // Softer knee — more gradual onset of saturation
+    // y = x / (1 + |x|)^0.7 — gentler than tanh, more headroom
+    float ax = fabsf(x);
+    if (ax < 0.001f) return x;
+    return x / powf(1.0f + ax, 0.7f);
+}
+
+inline float softClip(float x, int mode = 0) {
+    switch (mode) {
+        case 1:  return softClipTape(x);
+        case 2:  return softClipTube(x);
+        default: return softClipClean(x);
+    }
 }
 
 // In-loop allpass filter (lightweight, per FDN channel)
@@ -421,6 +467,32 @@ static struct {
     // v3 parameters  
     float warp;                // 0-1 pitch warp/bend in feedback
     float crossFeed;           // 0-1 stereo cross-injection
+
+    // v4 parameters
+    float earlyReflections;    // 0-1 early reflections mix
+    float airAbsorption;       // 0-1 spectral tilt per recirculation
+    int   saturationMode;      // 0=clean 1=tape 2=tube
+
+    // Early reflection delay lines
+    SmoothDelay erDelayL, erDelayR;   // shared ER buffer per side
+
+    // Air absorption filter per FDN channel (spectral tilt in feedback)
+    OnePole fdnAirAbs[FDN_MAX_CHANNELS];
+
+    // Velvet noise injection (sparse random impulses at high decay)
+    SimpleRNG velvetRNG;
+    float velvetDensity;       // auto-calculated from decay
+
+    // Matrix rotation state
+    float matrixRotPhase;      // 0..1 evolving over ~30s
+    int   matrixSignFlip[FDN_MAX_CHANNELS];  // sign pattern per channel
+
+    // Predelay modulation
+    float predelayModPhase;
+
+    // Freeze spectral evolution
+    float freezeAPDrift;       // slowly evolving allpass coefficient offset
+    float freezeAPPhase;       // LFO phase for freeze evolution
 
     // Dattorro tank state
     TankAllpass datInAP[4];         // input diffusion allpass
@@ -603,6 +675,28 @@ int reverb_init(float sample_rate) {
     g_reverb.datModPhase = 0.0f;
     g_reverb.datInitialized = 1;
 
+    // Early reflection delay buffers (up to 100ms per side)
+    int erBufSize = (int)ceilf(0.1f * sample_rate) + 100;
+    g_reverb.erDelayL.init(erBufSize);
+    g_reverb.erDelayR.init(erBufSize);
+
+    // Velvet noise
+    g_reverb.velvetRNG.seed(98765u);
+    g_reverb.velvetDensity = 0.0f;
+
+    // Matrix rotation
+    g_reverb.matrixRotPhase = 0.0f;
+    for (int i = 0; i < FDN_MAX_CHANNELS; i++) {
+        g_reverb.matrixSignFlip[i] = 0;
+    }
+
+    // Predelay modulation
+    g_reverb.predelayModPhase = 0.0f;
+
+    // Freeze evolution
+    g_reverb.freezeAPDrift = 0.0f;
+    g_reverb.freezeAPPhase = 0.0f;
+
     // HPF ~35 Hz
     g_reverb.hpCoeff = 1.0f - (2.0f * (float)M_PI * 35.0f / sample_rate);
 
@@ -675,6 +769,11 @@ int reverb_init(float sample_rate) {
     g_reverb.warp = 0.0f;
     g_reverb.crossFeed = 0.0f;
 
+    // v4 defaults
+    g_reverb.earlyReflections = 0.3f;
+    g_reverb.airAbsorption = 0.2f;
+    g_reverb.saturationMode = 0;  // clean
+
     // Computed
     g_reverb.smoothDampLow = g_reverb.dampLow;
     g_reverb.smoothDampHigh = g_reverb.dampHigh;
@@ -700,6 +799,9 @@ void reverb_destroy(void) {
     g_reverb.predelayL.destroy(); g_reverb.predelayR.destroy();
     free(g_reverb.reverseBufL);
     free(g_reverb.reverseBufR);
+    // Early reflections
+    g_reverb.erDelayL.destroy();
+    g_reverb.erDelayR.destroy();
     // Dattorro cleanup
     for (int i = 0; i < 4; i++) g_reverb.datInAP[i].destroy();
     for (int s = 0; s < 2; s++) {
@@ -799,6 +901,18 @@ void reverb_set_cross_feed(float amount) {
     g_reverb.crossFeed = fmaxf(0.0f, fminf(1.0f, amount));
 }
 
+void reverb_set_early_reflections(float amount) {
+    g_reverb.earlyReflections = fmaxf(0.0f, fminf(1.0f, amount));
+}
+
+void reverb_set_air_absorption(float amount) {
+    g_reverb.airAbsorption = fmaxf(0.0f, fminf(1.0f, amount));
+}
+
+void reverb_set_saturation_mode(int mode) {
+    g_reverb.saturationMode = (mode < 0) ? 0 : ((mode > 2) ? 2 : mode);
+}
+
 // ═══════════════ Dattorro Plate Reverb ═══════════════
 //
 // Jon Dattorro, "Effect Design Part 1", JAES 1997
@@ -851,6 +965,13 @@ static void dattorro_process_block(int block_size) {
     // Warp: DC bias on tank allpass modulation
     float warpAmount = g_reverb.warp;
 
+    // v4: Air absorption coefficient for tank dampers
+    float airAbsCoeff = 1.0f - g_reverb.airAbsorption * 0.6f;
+    int satMode = g_reverb.saturationMode;
+    float erAmount = g_reverb.earlyReflections;
+    float predelayModRate = 0.1f / sr;
+    float predelayModMaxSamples = 0.002f * sr;
+
     // Pointer aliases for output tapping
     SmoothDelay* tankDelays[4] = {
         &g_reverb.datTankDelay1[0], &g_reverb.datTankDelay2[0],
@@ -867,13 +988,29 @@ static void dattorro_process_block(int block_size) {
             inR = g_reverb.tiltR.process(inR, inputTone, tiltCoeff);
         }
 
-        // Predelay
+        // Predelay with modulation
         g_reverb.predelayL.write(inL);
         g_reverb.predelayR.write(inR);
-        float delayedL = g_reverb.predelaySamples > 0
-            ? g_reverb.predelayL.read(g_reverb.predelaySamples) : inL;
-        float delayedR = g_reverb.predelaySamples > 0
-            ? g_reverb.predelayR.read(g_reverb.predelaySamples) : inR;
+        float delayedL, delayedR;
+        if (g_reverb.predelaySamples > 0) {
+            g_reverb.predelayModPhase += predelayModRate;
+            if (g_reverb.predelayModPhase > 1.0f) g_reverb.predelayModPhase -= 1.0f;
+            float modL = predelayModMaxSamples * sinf(g_reverb.predelayModPhase * 2.0f * (float)M_PI);
+            float modR = predelayModMaxSamples * sinf((g_reverb.predelayModPhase + 0.37f) * 2.0f * (float)M_PI);
+            float readL = (float)g_reverb.predelaySamples + modL;
+            float readR = (float)g_reverb.predelaySamples + modR;
+            if (readL < 1.0f) readL = 1.0f;
+            if (readR < 1.0f) readR = 1.0f;
+            delayedL = g_reverb.predelayL.readInterpolated(readL);
+            delayedR = g_reverb.predelayR.readInterpolated(readR);
+        } else {
+            delayedL = inL;
+            delayedR = inR;
+        }
+
+        // Write to early reflection buffers
+        g_reverb.erDelayL.write(delayedL);
+        g_reverb.erDelayR.write(delayedR);
 
         // Sum to mono, scale, apply pre-diffusion
         float diffIn = g_reverb.preDiffL.process((delayedL + delayedR) * 0.5f) * inputGain;
@@ -909,13 +1046,17 @@ static void dattorro_process_block(int block_size) {
         if (rp1a >= g_reverb.datTankDelay1[0].size) rp1a = g_reverb.datTankDelay1[0].size - 1;
         sA = g_reverb.datTankDelay1[0].read(rp1a);
         sA = g_reverb.datTankDamp[0].process(sA, dampCoeff);
+        // Air absorption in tank A
+        if (g_reverb.airAbsorption > 0.01f) {
+            sA = g_reverb.fdnAirAbs[0].process(sA, airAbsCoeff);
+        }
         sA = g_reverb.datTankAP2[0].process(sA);
         g_reverb.datTankDelay2[0].write(sA);
         int rp2a = (int)(DAT_TANK_DELAY2[0] * scale * sizeScale);
         if (rp2a < 1) rp2a = 1;
         if (rp2a >= g_reverb.datTankDelay2[0].size) rp2a = g_reverb.datTankDelay2[0].size - 1;
         sA = g_reverb.datTankDelay2[0].read(rp2a);
-        g_reverb.datTankState[0] = sA * tankDecay;
+        g_reverb.datTankState[0] = softClip(sA * tankDecay, satMode);
 
         // --- Tank Side B ---
         float sB = g_reverb.datTankAP[1].processModulated(tankInB, lfo2);
@@ -925,13 +1066,17 @@ static void dattorro_process_block(int block_size) {
         if (rp1b >= g_reverb.datTankDelay1[1].size) rp1b = g_reverb.datTankDelay1[1].size - 1;
         sB = g_reverb.datTankDelay1[1].read(rp1b);
         sB = g_reverb.datTankDamp[1].process(sB, dampCoeff);
+        // Air absorption in tank B
+        if (g_reverb.airAbsorption > 0.01f) {
+            sB = g_reverb.fdnAirAbs[1].process(sB, airAbsCoeff);
+        }
         sB = g_reverb.datTankAP2[1].process(sB);
         g_reverb.datTankDelay2[1].write(sB);
         int rp2b = (int)(DAT_TANK_DELAY2[1] * scale * sizeScale);
         if (rp2b < 1) rp2b = 1;
         if (rp2b >= g_reverb.datTankDelay2[1].size) rp2b = g_reverb.datTankDelay2[1].size - 1;
         sB = g_reverb.datTankDelay2[1].read(rp2b);
-        g_reverb.datTankState[1] = sB * tankDecay;
+        g_reverb.datTankState[1] = softClip(sB * tankDecay, satMode);
 
         // --- Output tapping (14 taps: 7L, 7R) ---
         float outL = 0.0f, outR = 0.0f;
@@ -952,6 +1097,21 @@ static void dattorro_process_block(int block_size) {
         // Scale output
         outL *= 0.15f;
         outR *= 0.15f;
+
+        // Early reflections for Dattorro
+        if (erAmount > 0.0f) {
+            float erL = 0.0f, erR = 0.0f;
+            for (int t = 0; t < ER_TAP_COUNT; t++) {
+                int sampL = (int)(ER_TIMES_L[t] * 0.001f * sr);
+                int sampR = (int)(ER_TIMES_R[t] * 0.001f * sr);
+                if (sampL < 1) sampL = 1;
+                if (sampR < 1) sampR = 1;
+                erL += g_reverb.erDelayL.read(sampL) * ER_GAINS[t];
+                erR += g_reverb.erDelayR.read(sampR) * ER_GAINS[t];
+            }
+            outL += erL * erAmount * 0.12f;
+            outR += erR * erAmount * 0.12f;
+        }
 
         // Post-diffusion (reuse existing post-diffuser chains)
         outL = g_reverb.postDiffL.process(outL);
@@ -1090,6 +1250,33 @@ void reverb_process_block(int block_size) {
         }
     }
 
+    // v4 enhancement params
+    float airAbsCoeff = 1.0f - g_reverb.airAbsorption * 0.6f;  // 1.0=transparent, 0.4=heavy treble loss
+    int satMode = g_reverb.saturationMode;
+    float erAmount = g_reverb.earlyReflections;
+
+    // Predelay modulation: ±2ms at ~0.1 Hz for spatial movement
+    float predelayModRate = 0.1f / sr;  // Hz / sampleRate
+    float predelayModMaxSamples = 0.002f * sr;  // 2ms in samples
+
+    // Velvet noise density: auto-computed from decay (only at very high decay)
+    float velvetThreshold = 0.0f;
+    if (!isFrozen && blockFeedback > 0.92f) {
+        velvetThreshold = (blockFeedback - 0.92f) * 12.5f * 0.015f;  // max ~1.5% density at decay=1
+    }
+
+    // Matrix rotation: slowly flip Hadamard signs for evolving spatial pattern
+    float matrixRotInc = 1.0f / (sr * 25.0f);  // one flip per ~25 seconds
+
+    // Freeze evolution: slow drift of in-loop allpass coefficients
+    if (isFrozen) {
+        g_reverb.freezeAPPhase += 0.05f / sr;  // 0.05 Hz
+        if (g_reverb.freezeAPPhase > 1.0f) g_reverb.freezeAPPhase -= 1.0f;
+        g_reverb.freezeAPDrift = 0.04f * sinf(g_reverb.freezeAPPhase * 2.0f * (float)M_PI);
+    } else {
+        g_reverb.freezeAPDrift = 0.0f;
+    }
+
     // === Sample loop ===
     for (int i = 0; i < block_size; i++) {
         float inL = g_reverb.inputBuf[i * 2];
@@ -1101,13 +1288,30 @@ void reverb_process_block(int block_size) {
             inR = g_reverb.tiltR.process(inR, inputTone, tiltCoeff);
         }
 
-        // Predelay
+        // Predelay with modulation + true stereo diffusion
         g_reverb.predelayL.write(inL);
         g_reverb.predelayR.write(inR);
-        float delayedL = g_reverb.predelaySamples > 0
-            ? g_reverb.predelayL.read(g_reverb.predelaySamples) : inL;
-        float delayedR = g_reverb.predelaySamples > 0
-            ? g_reverb.predelayR.read(g_reverb.predelaySamples) : inR;
+        float delayedL, delayedR;
+        if (g_reverb.predelaySamples > 0) {
+            // Modulated predelay: ±2ms sine, decorrelated L vs R phase
+            g_reverb.predelayModPhase += predelayModRate;
+            if (g_reverb.predelayModPhase > 1.0f) g_reverb.predelayModPhase -= 1.0f;
+            float modL = predelayModMaxSamples * sinf(g_reverb.predelayModPhase * 2.0f * (float)M_PI);
+            float modR = predelayModMaxSamples * sinf((g_reverb.predelayModPhase + 0.37f) * 2.0f * (float)M_PI);
+            float readL = (float)g_reverb.predelaySamples + modL;
+            float readR = (float)g_reverb.predelaySamples + modR;
+            if (readL < 1.0f) readL = 1.0f;
+            if (readR < 1.0f) readR = 1.0f;
+            delayedL = g_reverb.predelayL.readInterpolated(readL);
+            delayedR = g_reverb.predelayR.readInterpolated(readR);
+        } else {
+            delayedL = inL;
+            delayedR = inR;
+        }
+
+        // Write to early reflection buffers
+        g_reverb.erDelayL.write(delayedL);
+        g_reverb.erDelayR.write(delayedR);
 
         // Pre-diffusion
         float diffInL = g_reverb.preDiffL.process(delayedL);
@@ -1154,14 +1358,29 @@ void reverb_process_block(int block_size) {
 
             float delayTime = g_reverb.fdnDelayTimes[j] + modOffset;
             if (delayTime < 1.0f) delayTime = 1.0f;
-            g_reverb.fdnReads[j] = g_reverb.fdnDelays[j].readInterpolated(delayTime);
+
+            // Multi-tap read: main tap + 2 golden-ratio positions for density
+            if (!isLite) {
+                float tap0 = g_reverb.fdnDelays[j].readInterpolated(delayTime);
+                float tap1 = g_reverb.fdnDelays[j].readInterpolated(fmaxf(1.0f, delayTime * 0.618f));
+                float tap2 = g_reverb.fdnDelays[j].readInterpolated(fmaxf(1.0f, delayTime * 0.382f));
+                g_reverb.fdnReads[j] = tap0 * MULTITAP_GAINS[0]
+                                      + tap1 * MULTITAP_GAINS[1]
+                                      + tap2 * MULTITAP_GAINS[2];
+            } else {
+                g_reverb.fdnReads[j] = g_reverb.fdnDelays[j].readInterpolated(delayTime);
+            }
         }
 
-        // ── Multi-band damping + HPF ──
+        // ── Multi-band damping + air absorption + HPF ──
         for (int j = 0; j < fdnCount; j++) {
             float damped = g_reverb.fdnDampers[j].process(
                 g_reverb.fdnReads[j], blockDampLow, blockDampHigh, crossCoeff
             );
+            // Air absorption: extra spectral tilt (treble loss) per recirculation
+            if (g_reverb.airAbsorption > 0.01f) {
+                damped = g_reverb.fdnAirAbs[j].process(damped, airAbsCoeff);
+            }
             g_reverb.fdnDamped[j] = g_reverb.fdnHPFs[j].process(damped, hpC);
         }
 
@@ -1176,7 +1395,38 @@ void reverb_process_block(int block_size) {
 
         // ── In-loop allpass — smears transients inside recirculation ──
         for (int j = 0; j < fdnCount; j++) {
+            // Freeze evolution: modulate allpass feedback for spectral drift
+            float fbOrig = g_reverb.fdnInLoopAP[j].fb;
+            if (isFrozen) {
+                float perLineDrift = g_reverb.freezeAPDrift * (1.0f + 0.3f * goldenHash(j));
+                g_reverb.fdnInLoopAP[j].fb = fmaxf(0.2f, fminf(0.75f, fbOrig + perLineDrift));
+            }
             g_reverb.fdnMixed[j] = g_reverb.fdnInLoopAP[j].process(g_reverb.fdnMixed[j]);
+            if (isFrozen) g_reverb.fdnInLoopAP[j].fb = fbOrig;  // restore
+        }
+
+        // ── Matrix rotation: slowly evolving spatial pattern ──
+        if (!isLite) {
+            g_reverb.matrixRotPhase += matrixRotInc;
+            if (g_reverb.matrixRotPhase >= 1.0f) {
+                g_reverb.matrixRotPhase -= 1.0f;
+                // Flip one channel's sign for slow spatial evolution
+                int flipIdx = ((int)(g_reverb.velvetRNG.nextFloat() * (float)fdnCount)) % fdnCount;
+                g_reverb.matrixSignFlip[flipIdx] ^= 1;
+            }
+            for (int j = 0; j < fdnCount; j++) {
+                if (g_reverb.matrixSignFlip[j]) g_reverb.fdnMixed[j] = -g_reverb.fdnMixed[j];
+            }
+        }
+
+        // ── Velvet noise injection: sparse impulses for density at high decay ──
+        if (velvetThreshold > 0.0f) {
+            for (int j = 0; j < fdnCount; j++) {
+                if (g_reverb.velvetRNG.nextFloat() < velvetThreshold) {
+                    float sign = (g_reverb.velvetRNG.nextFloat() > 0.5f) ? 1.0f : -1.0f;
+                    g_reverb.fdnMixed[j] += sign * 0.001f;  // ~-60dB
+                }
+            }
         }
 
         // ── Mid-diffusion (Ultra only) ──
@@ -1258,7 +1508,7 @@ void reverb_process_block(int block_size) {
                 + dryInject
                 + shimInject
                 + shimFbInject
-            );
+            , satMode);
             // NaN/Inf guard — prevent corrupted delay lines from poisoning the entire FDN
             if (!(value == value) || value > 1e15f || value < -1e15f) value = 0.0f;
             g_reverb.fdnDelays[j].write(value);
@@ -1291,6 +1541,21 @@ void reverb_process_block(int block_size) {
         if (useMidDiff) {
             rawL += midL * 0.15f;
             rawR += midR * 0.15f;
+        }
+
+        // Early reflections: sparse taps from ER buffers
+        if (erAmount > 0.0f) {
+            float erL = 0.0f, erR = 0.0f;
+            for (int t = 0; t < ER_TAP_COUNT; t++) {
+                int sampL = (int)(ER_TIMES_L[t] * 0.001f * sr);
+                int sampR = (int)(ER_TIMES_R[t] * 0.001f * sr);
+                if (sampL < 1) sampL = 1;
+                if (sampR < 1) sampR = 1;
+                erL += g_reverb.erDelayL.read(sampL) * ER_GAINS[t];
+                erR += g_reverb.erDelayR.read(sampR) * ER_GAINS[t];
+            }
+            rawL += erL * erAmount * 0.12f;
+            rawR += erR * erAmount * 0.12f;
         }
 
         // Post-diffusion

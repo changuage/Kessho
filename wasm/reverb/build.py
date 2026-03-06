@@ -70,6 +70,10 @@ EXPORTS = [
     # v3 additions
     "_reverb_set_warp",
     "_reverb_set_cross_feed",
+    # v4 additions
+    "_reverb_set_early_reflections",
+    "_reverb_set_air_absorption",
+    "_reverb_set_saturation_mode",
     "_malloc",
     "_free",
 ]

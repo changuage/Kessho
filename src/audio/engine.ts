@@ -3528,7 +3528,7 @@ export class AudioEngine {
         type: 'params',
         params: {
           type: state.reverbType,
-          quality: this.isMobile ? 'lite' : state.reverbQuality,  // force lite on mobile to save CPU
+          quality: this.isMobile ? 'balanced' : state.reverbQuality,  // force balanced on mobile to save CPU
           decay: state.reverbDecay,
           size: state.reverbSize,
           diffusion: state.reverbDiffusion,
@@ -3555,6 +3555,10 @@ export class AudioEngine {
           // v3 params
           warp: state.reverbWarp ?? 0,
           crossFeed: state.reverbCrossFeed ?? 0,
+          // v4 params
+          earlyReflections: state.reverbEarlyReflections ?? 0.3,
+          airAbsorption: state.reverbAirAbsorption ?? 0.2,
+          saturationMode: state.reverbSaturationMode === 'tape' ? 1 : state.reverbSaturationMode === 'tube' ? 2 : 0,
         },
       });
     }

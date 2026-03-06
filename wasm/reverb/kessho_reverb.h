@@ -96,6 +96,17 @@ void  reverb_set_warp(float amount);
 /** Cross-feed: stereo cross-injection.  0-1 */
 void  reverb_set_cross_feed(float amount);
 
+/* ────── v4 Parameters ────── */
+
+/** Early reflections amount.  0-1 */
+void  reverb_set_early_reflections(float amount);
+
+/** Air absorption (spectral tilt in feedback).  0-1 */
+void  reverb_set_air_absorption(float amount);
+
+/** Saturation character mode.  0=clean 1=tape 2=tube */
+void  reverb_set_saturation_mode(int mode);
+
 #ifdef __cplusplus
 }
 #endif
