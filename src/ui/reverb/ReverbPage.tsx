@@ -32,11 +32,15 @@ export const REVERB_CHARACTER_PRESETS: Record<string, {
       reverbShimmer: 0, reverbShimmerPitch: 12,
       reverbSlowModRate: 0.05, reverbSlowModDepth: 0,
       reverbFreeze: false, reverbReverse: 0, reverbReverseLength: 2,
+      reverbChorusRate: 0.5, reverbChorusDepth: 12,
+      reverbModCharacter: 'hybrid' as SliderState['reverbModCharacter'],
+      reverbDampLow: 0.1, reverbDampHigh: 0.3, reverbCrossoverFreq: 800,
+      reverbInputTone: 0, reverbShimmerFeedback: 0,
     },
   },
   shimmerPad: {
     label: 'Shimmer Pad',
-    description: 'Octave-up shimmer with long decay',
+    description: 'Octave-up shimmer with long decay and compound feedback',
     params: {
       reverbType: 'cathedral' as SliderState['reverbType'],
       reverbDecay: 0.95, reverbSize: 2.5, reverbDiffusion: 0.95, reverbModulation: 0.5,
@@ -44,11 +48,15 @@ export const REVERB_CHARACTER_PRESETS: Record<string, {
       reverbShimmer: 0.45, reverbShimmerPitch: 12,
       reverbSlowModRate: 0.03, reverbSlowModDepth: 0.2,
       reverbFreeze: false, reverbReverse: 0, reverbReverseLength: 2,
+      reverbChorusRate: 0.7, reverbChorusDepth: 18,
+      reverbModCharacter: 'sine' as SliderState['reverbModCharacter'],
+      reverbDampLow: 0.05, reverbDampHigh: 0.2, reverbCrossoverFreq: 1200,
+      reverbInputTone: 0.2, reverbShimmerFeedback: 0.35,
     },
   },
   blackhole: {
     label: 'Blackhole',
-    description: 'Massive infinite-like space with blur + reverse swell',
+    description: 'Massive infinite-like space with drift modulation + dark tone',
     params: {
       reverbType: 'cathedral' as SliderState['reverbType'],
       reverbDecay: 0.98, reverbSize: 3.0, reverbDiffusion: 1.0, reverbModulation: 0.65,
@@ -56,11 +64,15 @@ export const REVERB_CHARACTER_PRESETS: Record<string, {
       reverbShimmer: 0.3, reverbShimmerPitch: 5,
       reverbSlowModRate: 0.02, reverbSlowModDepth: 0.7,
       reverbFreeze: false, reverbReverse: 0.4, reverbReverseLength: 3.5,
+      reverbChorusRate: 0.3, reverbChorusDepth: 30,
+      reverbModCharacter: 'drift' as SliderState['reverbModCharacter'],
+      reverbDampLow: 0.05, reverbDampHigh: 0.15, reverbCrossoverFreq: 600,
+      reverbInputTone: -0.4, reverbShimmerFeedback: 0.5,
     },
   },
   nightsky: {
     label: 'Nightsky',
-    description: 'Warm drifting reverb with slow modulation and subtle shimmer',
+    description: 'Warm drifting reverb with organic modulation and subtle shimmer',
     params: {
       reverbType: 'darkHall' as SliderState['reverbType'],
       reverbDecay: 0.92, reverbSize: 2.0, reverbDiffusion: 0.85, reverbModulation: 0.55,
@@ -68,11 +80,15 @@ export const REVERB_CHARACTER_PRESETS: Record<string, {
       reverbShimmer: 0.2, reverbShimmerPitch: 7,
       reverbSlowModRate: 0.04, reverbSlowModDepth: 0.6,
       reverbFreeze: false, reverbReverse: 0.15, reverbReverseLength: 2.5,
+      reverbChorusRate: 0.4, reverbChorusDepth: 20,
+      reverbModCharacter: 'hybrid' as SliderState['reverbModCharacter'],
+      reverbDampLow: 0.15, reverbDampHigh: 0.45, reverbCrossoverFreq: 700,
+      reverbInputTone: -0.3, reverbShimmerFeedback: 0.2,
     },
   },
   frozenCathedral: {
     label: 'Frozen Cathedral',
-    description: 'Infinite sustain with high diffusion and wide stereo',
+    description: 'Infinite sustain with wide stereo and gentle chorus',
     params: {
       reverbType: 'cathedral' as SliderState['reverbType'],
       reverbDecay: 1.0, reverbSize: 3.0, reverbDiffusion: 1.0, reverbModulation: 0.3,
@@ -80,11 +96,15 @@ export const REVERB_CHARACTER_PRESETS: Record<string, {
       reverbShimmer: 0, reverbShimmerPitch: 12,
       reverbSlowModRate: 0.05, reverbSlowModDepth: 0,
       reverbFreeze: true, reverbReverse: 0, reverbReverseLength: 2,
+      reverbChorusRate: 0.8, reverbChorusDepth: 15,
+      reverbModCharacter: 'sine' as SliderState['reverbModCharacter'],
+      reverbDampLow: 0.0, reverbDampHigh: 0.05, reverbCrossoverFreq: 1000,
+      reverbInputTone: 0.1, reverbShimmerFeedback: 0,
     },
   },
   reverseWash: {
     label: 'Reverse Wash',
-    description: 'Heavy reverse tail with subtle shimmer for swell effects',
+    description: 'Heavy reverse tail with drift modulation for swell effects',
     params: {
       reverbType: 'hall' as SliderState['reverbType'],
       reverbDecay: 0.88, reverbSize: 1.8, reverbDiffusion: 0.9, reverbModulation: 0.4,
@@ -92,11 +112,15 @@ export const REVERB_CHARACTER_PRESETS: Record<string, {
       reverbShimmer: 0.15, reverbShimmerPitch: -12,
       reverbSlowModRate: 0.06, reverbSlowModDepth: 0.3,
       reverbFreeze: false, reverbReverse: 0.7, reverbReverseLength: 2.0,
+      reverbChorusRate: 0.6, reverbChorusDepth: 25,
+      reverbModCharacter: 'drift' as SliderState['reverbModCharacter'],
+      reverbDampLow: 0.1, reverbDampHigh: 0.35, reverbCrossoverFreq: 900,
+      reverbInputTone: -0.2, reverbShimmerFeedback: 0.15,
     },
   },
   cosmicDrift: {
     label: 'Cosmic Drift',
-    description: 'Deep slow-breathing space with shimmer and character morph',
+    description: 'Deep slow-breathing space with compound shimmer and dark tone',
     params: {
       reverbType: 'hall' as SliderState['reverbType'],
       reverbDecay: 0.94, reverbSize: 2.8, reverbDiffusion: 0.92, reverbModulation: 0.7,
@@ -104,6 +128,10 @@ export const REVERB_CHARACTER_PRESETS: Record<string, {
       reverbShimmer: 0.35, reverbShimmerPitch: 19,
       reverbSlowModRate: 0.015, reverbSlowModDepth: 0.85,
       reverbFreeze: false, reverbReverse: 0.25, reverbReverseLength: 3.0,
+      reverbChorusRate: 0.25, reverbChorusDepth: 35,
+      reverbModCharacter: 'drift' as SliderState['reverbModCharacter'],
+      reverbDampLow: 0.08, reverbDampHigh: 0.2, reverbCrossoverFreq: 500,
+      reverbInputTone: -0.5, reverbShimmerFeedback: 0.6,
     },
   },
   tightPlate: {
@@ -116,6 +144,10 @@ export const REVERB_CHARACTER_PRESETS: Record<string, {
       reverbShimmer: 0, reverbShimmerPitch: 12,
       reverbSlowModRate: 0.05, reverbSlowModDepth: 0,
       reverbFreeze: false, reverbReverse: 0, reverbReverseLength: 2,
+      reverbChorusRate: 1.2, reverbChorusDepth: 5,
+      reverbModCharacter: 'sine' as SliderState['reverbModCharacter'],
+      reverbDampLow: 0.2, reverbDampHigh: 0.5, reverbCrossoverFreq: 2000,
+      reverbInputTone: 0.3, reverbShimmerFeedback: 0,
     },
   },
 };
@@ -250,8 +282,8 @@ export default function ReverbPage({
                   label="Quality"
                   value={state.reverbQuality}
                   options={[
-                    { value: 'ultra', label: 'Ultra (8-ch + mid diffusion)' },
-                    { value: 'balanced', label: 'Balanced (8-ch)' },
+                    { value: 'ultra', label: 'Ultra (16-ch FDN + mid diffusion)' },
+                    { value: 'balanced', label: 'Balanced (8-ch FDN)' },
                     { value: 'lite', label: 'Lite (4-ch, saves CPU)' },
                   ]}
                   onChange={(v) => onSelectChange('reverbQuality', v as SliderState['reverbQuality'])}
@@ -309,6 +341,32 @@ export default function ReverbPage({
                 <div className="reverb-subsection">Shimmer</div>
                 <Slider label="Shimmer" value={state.reverbShimmer} paramKey="reverbShimmer" onChange={onParamChange} {...sp('reverbShimmer')} />
                 <Slider label="Shimmer Pitch" value={state.reverbShimmerPitch} paramKey="reverbShimmerPitch" unit="st" onChange={onParamChange} {...sp('reverbShimmerPitch')} />
+                <Slider label="Shimmer Feedback" value={state.reverbShimmerFeedback} paramKey="reverbShimmerFeedback" onChange={onParamChange} {...sp('reverbShimmerFeedback')} />
+
+                {/* Chorus & Modulation Character */}
+                <div className="reverb-subsection">Chorus &amp; Mod Character</div>
+                <Select
+                  label="Mod Character"
+                  value={state.reverbModCharacter}
+                  options={[
+                    { value: 'sine', label: 'Sine (smooth)' },
+                    { value: 'drift', label: 'Drift (organic)' },
+                    { value: 'hybrid', label: 'Hybrid (sine + drift)' },
+                  ]}
+                  onChange={(v) => onSelectChange('reverbModCharacter', v as SliderState['reverbModCharacter'])}
+                />
+                <Slider label="Chorus Rate" value={state.reverbChorusRate} paramKey="reverbChorusRate" unit="Hz" onChange={onParamChange} {...sp('reverbChorusRate')} />
+                <Slider label="Chorus Depth" value={state.reverbChorusDepth} paramKey="reverbChorusDepth" unit="smp" onChange={onParamChange} {...sp('reverbChorusDepth')} />
+
+                {/* Multi-band Damping */}
+                <div className="reverb-subsection">Multi-band Damping</div>
+                <Slider label="Damp Low" value={state.reverbDampLow} paramKey="reverbDampLow" onChange={onParamChange} {...sp('reverbDampLow')} />
+                <Slider label="Damp High" value={state.reverbDampHigh} paramKey="reverbDampHigh" onChange={onParamChange} {...sp('reverbDampHigh')} />
+                <Slider label="Crossover" value={state.reverbCrossoverFreq} paramKey="reverbCrossoverFreq" unit="Hz" onChange={onParamChange} {...sp('reverbCrossoverFreq')} />
+
+                {/* Input Tone */}
+                <div className="reverb-subsection">Input Tone</div>
+                <Slider label="Tone" value={state.reverbInputTone} paramKey="reverbInputTone" onChange={onParamChange} {...sp('reverbInputTone')} />
 
                 {/* Slow Modulation */}
                 <div className="reverb-subsection">Slow Modulation</div>

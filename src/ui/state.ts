@@ -216,7 +216,7 @@ export interface SliderState {
   reverbEnabled: boolean;     // on/off toggle for reverb (saves CPU when off)
   reverbEngine: 'algorithmic' | 'convolution';
   reverbType: 'plate' | 'hall' | 'cathedral' | 'darkHall';
-  reverbQuality: 'ultra' | 'balanced' | 'lite';  // ultra=8-ch + mid diffusion, balanced=8-ch, lite=4-ch FDN
+  reverbQuality: 'ultra' | 'balanced' | 'lite';  // ultra=16-ch + mid diffusion, balanced=8-ch, lite=4-ch FDN
   reverbDecay: number;        // 0..1 step 0.01 (longer tail)
   reverbSize: number;         // 0.5..3.0 step 0.1 (room size)
   reverbDiffusion: number;    // 0..1 step 0.01 (smear amount)
@@ -231,6 +231,16 @@ export interface SliderState {
   reverbFreeze: boolean;      // infinite sustain mode (freeze reverb tail)
   reverbReverse: number;      // 0..1 step 0.01 - reverse tail blend
   reverbReverseLength: number; // 0.5..16.0 seconds step 0.1 - reverse buffer length
+
+  // Reverb v2 params
+  reverbChorusRate: number;    // 0.05..2.0 Hz step 0.01 - per-line chorus rate
+  reverbChorusDepth: number;   // 0..40 samples step 0.5 - per-line chorus depth
+  reverbModCharacter: 'sine' | 'drift' | 'hybrid'; // mod waveform character
+  reverbDampLow: number;      // 0..1 step 0.01 - low-band damping
+  reverbDampHigh: number;     // 0..1 step 0.01 - high-band damping
+  reverbCrossoverFreq: number; // 100..6000 Hz step 10 - damping crossover frequency
+  reverbInputTone: number;    // -1..+1 step 0.01 - input tilt EQ (-1=dark, +1=bright)
+  reverbShimmerFeedback: number; // 0..1 step 0.01 - compound pitch shifting feedback
 
   // Granular
   granularEnabled: boolean;    // on/off toggle for granular processing
@@ -1640,6 +1650,16 @@ export const DEFAULT_STATE: SliderState = {
   reverbReverse: 0,
   reverbReverseLength: 2,
 
+  // Reverb v2 params
+  reverbChorusRate: 0.5,
+  reverbChorusDepth: 12,
+  reverbModCharacter: 'hybrid' as const,
+  reverbDampLow: 0.1,
+  reverbDampHigh: 0.3,
+  reverbCrossoverFreq: 800,
+  reverbInputTone: 0,
+  reverbShimmerFeedback: 0,
+
   // Granular
   granularEnabled: true,
   maxGrains: 64,
@@ -2407,6 +2427,14 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   reverbSlowModDepth: { min: 0, max: 1, step: 0.01 },
   reverbReverse: { min: 0, max: 1, step: 0.01 },
   reverbReverseLength: { min: 0.5, max: 16, step: 0.1 },
+  // v2 reverb params
+  reverbChorusRate: { min: 0.05, max: 2.0, step: 0.01 },
+  reverbChorusDepth: { min: 0, max: 40, step: 0.5 },
+  reverbDampLow: { min: 0, max: 1, step: 0.01 },
+  reverbDampHigh: { min: 0, max: 1, step: 0.01 },
+  reverbCrossoverFreq: { min: 100, max: 6000, step: 10 },
+  reverbInputTone: { min: -1, max: 1, step: 0.01 },
+  reverbShimmerFeedback: { min: 0, max: 1, step: 0.01 },
   grainProbability: { min: 0, max: 1, step: 0.01 },
   maxGrains: { min: 0, max: 128, step: 1 },
   grainSize: { min: 5, max: 800, step: 1 },

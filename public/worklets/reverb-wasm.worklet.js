@@ -162,6 +162,41 @@ class ReverbWasmProcessor extends AudioWorkletProcessor {
     if (p.reverse !== undefined || p.reverseLength !== undefined) {
       w.reverb_set_reverse(p.reverse ?? 0, p.reverseLength ?? 2);
     }
+
+    // ── v2 params ──
+
+    // Per-line chorus modulation
+    if (p.chorusRate !== undefined || p.chorusDepth !== undefined) {
+      w.reverb_set_chorus(p.chorusRate ?? 0.5, p.chorusDepth ?? 12);
+    }
+
+    // Modulation character: 0=sine, 1=drift, 2=hybrid
+    if (p.modCharacter !== undefined) {
+      const MOD_CHAR_MAP = { sine: 0, drift: 1, hybrid: 2 };
+      const mc = typeof p.modCharacter === 'string'
+        ? (MOD_CHAR_MAP[p.modCharacter] ?? 2)
+        : p.modCharacter;
+      w.reverb_set_mod_character(mc);
+    }
+
+    // Multi-band damping
+    if (p.dampLow !== undefined || p.dampHigh !== undefined || p.crossoverFreq !== undefined) {
+      w.reverb_set_multiband_damp(
+        p.dampLow ?? 0.1,
+        p.dampHigh ?? 0.3,
+        p.crossoverFreq ?? 800
+      );
+    }
+
+    // Input tone shaping
+    if (p.inputTone !== undefined) {
+      w.reverb_set_input_tone(p.inputTone);
+    }
+
+    // Shimmer feedback (compound pitch shifting)
+    if (p.shimmerFeedback !== undefined) {
+      w.reverb_set_shimmer_feedback(p.shimmerFeedback);
+    }
   }
 
   /** Get Float32Array view of WASM heap (refreshed on each access since memory can grow) */

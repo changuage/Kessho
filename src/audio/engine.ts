@@ -3543,6 +3543,15 @@ export class AudioEngine {
           freeze: state.reverbFreeze ?? false,
           reverse: state.reverbReverse ?? 0,
           reverseLength: state.reverbReverseLength ?? 2,
+          // v2 params
+          chorusRate: state.reverbChorusRate ?? 0.5,
+          chorusDepth: state.reverbChorusDepth ?? 12,
+          modCharacter: state.reverbModCharacter ?? 'hybrid',
+          dampLow: state.reverbDampLow ?? 0.1,
+          dampHigh: state.reverbDampHigh ?? 0.3,
+          crossoverFreq: state.reverbCrossoverFreq ?? 800,
+          inputTone: state.reverbInputTone ?? 0,
+          shimmerFeedback: state.reverbShimmerFeedback ?? 0,
         },
       });
     }

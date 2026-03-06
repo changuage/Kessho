@@ -88,6 +88,15 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   reverbFreeze:          { level: 3, scope: 'reverb' },
   reverbReverse:         { level: 3, scope: 'reverb' },
   reverbReverseLength:   { level: 3, scope: 'reverb' },
+  // v2 reverb params
+  reverbChorusRate:      { level: 3, scope: 'reverb' },
+  reverbChorusDepth:     { level: 3, scope: 'reverb' },
+  reverbModCharacter:    { level: 3, scope: 'reverb' },
+  reverbDampLow:         { level: 3, scope: 'reverb' },
+  reverbDampHigh:        { level: 3, scope: 'reverb' },
+  reverbCrossoverFreq:   { level: 3, scope: 'reverb' },
+  reverbInputTone:       { level: 3, scope: 'reverb' },
+  reverbShimmerFeedback: { level: 3, scope: 'reverb' },
 
   // ═══════════════════════════════════════════════════════════════════════
   // L3: Granular Source (22 params)

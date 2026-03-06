@@ -61,6 +61,12 @@ EXPORTS = [
     "_reverb_set_shimmer",
     "_reverb_set_slow_mod",
     "_reverb_set_reverse",
+    # v2 additions
+    "_reverb_set_chorus",
+    "_reverb_set_mod_character",
+    "_reverb_set_multiband_damp",
+    "_reverb_set_input_tone",
+    "_reverb_set_shimmer_feedback",
     "_malloc",
     "_free",
 ]
