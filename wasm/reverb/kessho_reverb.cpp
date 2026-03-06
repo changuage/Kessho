@@ -57,14 +57,14 @@ static const PresetConfig PRESETS[4] = {
 };
 
 // Stereo decorrelation tap coefficients — separate L/R arrays
-// Normalized so sum ≈ 1.0 per channel, preventing gain buildup
+// Scaled so total sum per side ≈ 2.0, matching 8-ch output level
 static const float STEREO_TAPS_L[16] = {
-    0.18f, 0.04f, 0.16f, 0.05f, 0.14f, 0.03f, 0.12f, 0.02f,
-    0.03f, 0.17f, 0.04f, 0.15f, 0.03f, 0.12f, 0.02f, 0.10f
+    0.26f, 0.06f, 0.23f, 0.07f, 0.20f, 0.04f, 0.17f, 0.03f,
+    0.04f, 0.24f, 0.06f, 0.22f, 0.04f, 0.17f, 0.03f, 0.14f
 };
 static const float STEREO_TAPS_R[16] = {
-    0.02f, 0.14f, 0.03f, 0.15f, 0.04f, 0.16f, 0.05f, 0.18f,
-    0.10f, 0.02f, 0.13f, 0.03f, 0.15f, 0.05f, 0.17f, 0.04f
+    0.03f, 0.20f, 0.04f, 0.22f, 0.06f, 0.23f, 0.07f, 0.26f,
+    0.14f, 0.03f, 0.19f, 0.04f, 0.22f, 0.07f, 0.24f, 0.06f
 };
 
 // ═══════════════ DSP Primitives ═══════════════
@@ -712,7 +712,7 @@ void reverb_process_block(int block_size) {
     bool isLite = (g_reverb.quality == 2);
 
     float hpC = isFrozen ? 1.0f : g_reverb.hpCoeff;
-    float inputGain = isFrozen ? 0.0f : (fdnCount >= 16 ? 0.06f : fdnCount >= 8 ? 0.10f : 0.20f);
+    float inputGain = isFrozen ? 0.0f : (fdnCount >= 16 ? 0.10f : fdnCount >= 8 ? 0.10f : 0.20f);
 
     // Chorus / drift / modulation params
     float chorusDepth = g_reverb.chorusDepth;
