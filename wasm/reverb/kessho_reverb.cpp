@@ -57,14 +57,14 @@ static const PresetConfig PRESETS[4] = {
 };
 
 // Stereo decorrelation tap coefficients — separate L/R arrays
-// Scaled so total sum per side ≈ 2.0, matching 8-ch output level
+// Scaled so RMS ≈ 0.91, matching 8-ch output tap RMS
 static const float STEREO_TAPS_L[16] = {
-    0.26f, 0.06f, 0.23f, 0.07f, 0.20f, 0.04f, 0.17f, 0.03f,
-    0.04f, 0.24f, 0.06f, 0.22f, 0.04f, 0.17f, 0.03f, 0.14f
+    0.39f, 0.09f, 0.35f, 0.11f, 0.30f, 0.06f, 0.26f, 0.05f,
+    0.06f, 0.36f, 0.09f, 0.33f, 0.06f, 0.26f, 0.05f, 0.21f
 };
 static const float STEREO_TAPS_R[16] = {
-    0.03f, 0.20f, 0.04f, 0.22f, 0.06f, 0.23f, 0.07f, 0.26f,
-    0.14f, 0.03f, 0.19f, 0.04f, 0.22f, 0.07f, 0.24f, 0.06f
+    0.05f, 0.30f, 0.06f, 0.33f, 0.09f, 0.35f, 0.11f, 0.39f,
+    0.21f, 0.05f, 0.29f, 0.06f, 0.33f, 0.11f, 0.36f, 0.09f
 };
 
 // ═══════════════ DSP Primitives ═══════════════
@@ -910,10 +910,10 @@ void reverb_process_block(int block_size) {
                   + g_reverb.fdnReads[0] * 0.3f) * 0.7f;
         }
 
-        // Mid-diffusion blend
+        // Mid-diffusion blend (additive — preserves main signal level)
         if (useMidDiff) {
-            rawL = rawL * 0.7f + midL * 0.3f;
-            rawR = rawR * 0.7f + midR * 0.3f;
+            rawL += midL * 0.15f;
+            rawR += midR * 0.15f;
         }
 
         // Post-diffusion
