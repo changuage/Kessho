@@ -77,10 +77,14 @@ struct OnePole {
 };
 
 struct OnePoleHP {
-    float z1 = 0.0f;
+    float x1 = 0.0f;
+    float y1 = 0.0f;
     inline float process(float input, float coeff) {
-        float y = input - z1 + coeff * z1;
-        z1 = y;
+        // Proper 1st-order HP: y = a * (y_prev + x - x_prev)
+        // Blocks DC and sub-bass from accumulating in the FDN
+        float y = coeff * (y1 + input - x1);
+        x1 = input;
+        y1 = y;
         return y;
     }
 };
@@ -211,9 +215,12 @@ struct DiffuserChain {
 };
 
 inline float softClip(float x) {
-    if (x > 1.0f) return 1.0f - 1.0f / (x + 1.0f);
-    if (x < -1.0f) return -1.0f + 1.0f / (-x + 1.0f);
-    return x;
+    // tanhf approximation — smoothly limits to ±1 without hard edges
+    // Prevents energy buildup in dense FDN configurations
+    if (x > 3.0f) return 1.0f;
+    if (x < -3.0f) return -1.0f;
+    float x2 = x * x;
+    return x * (27.0f + x2) / (27.0f + 9.0f * x2);
 }
 
 // Simple LCG PRNG for drift noise
@@ -705,7 +712,11 @@ void reverb_process_block(int block_size) {
     bool isLite = (g_reverb.quality == 2);
 
     float hpC = isFrozen ? 1.0f : g_reverb.hpCoeff;
-    float inputGain = isFrozen ? 0.0f : (fdnCount >= 16 ? 0.10f : fdnCount >= 8 ? 0.2f : 0.25f);
+    // Input gain scaled inversely with channel count to keep total injection energy constant
+    // 4ch: 0.25 × 2 lines/ear = 0.50 total per ear
+    // 8ch: 0.18 × 4 lines/ear = 0.72 total per ear
+    // 16ch: 0.08 × 8 lines/ear = 0.64 total per ear
+    float inputGain = isFrozen ? 0.0f : (fdnCount >= 16 ? 0.08f : fdnCount >= 8 ? 0.18f : 0.25f);
 
     // Scale feedback down slightly for 16-ch: more channels = more energy storage
     // Without this, the denser FDN accumulates energy faster than it decays
@@ -850,8 +861,11 @@ void reverb_process_block(int block_size) {
             shimInR += (g_reverb.shimmerBufR[ri1i]
                       + ri1f * (g_reverb.shimmerBufR[ri1n] - g_reverb.shimmerBufR[ri1i])) * env1;
 
-            shimInL *= shimmerAmount * 0.35f;
-            shimInR *= shimmerAmount * 0.35f;
+            // Scale shimmer injection inversely with channel count to keep
+            // total shimmer energy constant regardless of FDN size
+            float shimChanScale = (fdnCount >= 16) ? 0.15f : (fdnCount >= 8) ? 0.30f : 0.35f;
+            shimInL *= shimmerAmount * shimChanScale;
+            shimInR *= shimmerAmount * shimChanScale;
 
             g_reverb.shimmerPhase0 += shimmerPhaseInc;
             g_reverb.shimmerPhase1 += shimmerPhaseInc;
@@ -866,9 +880,10 @@ void reverb_process_block(int block_size) {
             float shimInject = (j < halfCount) ? shimInL : shimInR;
 
             // Shimmer feedback: compound pitch shifting (shimmer feeds back into FDN)
+            // Reduced multiplier (0.2) to prevent runaway when many channels contribute
             float shimFbInject = 0.0f;
             if (shimmerFb > 0.0f && shimmerAmount > 0.0f) {
-                shimFbInject = shimInject * shimmerFb * 0.5f;
+                shimFbInject = shimInject * shimmerFb * 0.2f;
             }
 
             float value = softClip(
