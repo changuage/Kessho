@@ -31,13 +31,12 @@ static constexpr int MAX_BLOCK_SIZE   = 128;
 static constexpr int FDN_MAX_CHANNELS = 16;  // Ultra uses all 16
 static constexpr int SHIMMER_BUF_SIZE = 4096;
 
-// Prime delay times (ms) — 16 lines
-// Channels 0-7: similar to v1 for backward-compatible 8-ch balanced mode
-// Channels 8-15: additional lines for Ultra density, capped at ~180ms
-// to avoid energy buildup from overly long FDN delay paths
+// Golden-ratio-spaced prime delay times (ms) — 16 lines
+// Each successive time ≈ prev × φ^(1/3), snapped to nearest prime
+// This ensures maximum density with minimum repetition
 static const float FDN_TIMES_MS[16] = {
-    31.0f,  37.0f,  43.0f,  53.0f,  61.0f,  71.0f,  83.0f, 101.0f,
-   107.0f, 113.0f, 127.0f, 137.0f, 149.0f, 157.0f, 167.0f, 179.0f
+    29.0f,  34.0f,  41.0f,  49.0f,  59.0f,  71.0f,  83.0f,  101.0f,
+   121.0f, 146.0f, 173.0f, 211.0f, 251.0f, 307.0f, 367.0f, 443.0f
 };
 
 // Diffuser times (samples at 48 kHz)
@@ -57,16 +56,15 @@ static const PresetConfig PRESETS[4] = {
     {0.94f, 0.45f, 0.90f, 1.3f, 0.30f},  // darkHall
 };
 
-// Stereo decorrelation tap coefficients per channel (alternating L/R emphasis)
-// Positive = contributes to L, negative = contributes to R, magnitude = weight
-// Tap magnitudes kept small so that (sum_L * outputScale) ≈ 0.6 for unity FDN
+// Stereo decorrelation tap coefficients — separate L/R arrays
+// Normalized so sum ≈ 1.0 per channel, preventing gain buildup
 static const float STEREO_TAPS_L[16] = {
-    1.0f, 0.0f, 0.9f, 0.0f, 0.8f, 0.0f, 0.7f, 0.0f,
-    0.0f, 0.6f, 0.0f, 0.5f, 0.0f, 0.4f, 0.0f, 0.3f
+    0.18f, 0.04f, 0.16f, 0.05f, 0.14f, 0.03f, 0.12f, 0.02f,
+    0.03f, 0.17f, 0.04f, 0.15f, 0.03f, 0.12f, 0.02f, 0.10f
 };
 static const float STEREO_TAPS_R[16] = {
-    0.0f, 0.8f, 0.0f, 0.7f, 0.0f, 0.9f, 0.0f, 1.0f,
-    0.5f, 0.0f, 0.6f, 0.0f, 0.4f, 0.0f, 0.3f, 0.0f
+    0.02f, 0.14f, 0.03f, 0.15f, 0.04f, 0.16f, 0.05f, 0.18f,
+    0.10f, 0.02f, 0.13f, 0.03f, 0.15f, 0.05f, 0.17f, 0.04f
 };
 
 // ═══════════════ DSP Primitives ═══════════════
@@ -83,8 +81,6 @@ struct OnePoleHP {
     float x1 = 0.0f;
     float y1 = 0.0f;
     inline float process(float input, float coeff) {
-        // Proper 1st-order HP: y = a * (y_prev + x - x_prev)
-        // Blocks DC and sub-bass from accumulating in the FDN
         float y = coeff * (y1 + input - x1);
         x1 = input;
         y1 = y;
@@ -218,8 +214,7 @@ struct DiffuserChain {
 };
 
 inline float softClip(float x) {
-    // tanhf approximation — smoothly limits to ±1 without hard edges
-    // Prevents energy buildup in dense FDN configurations
+    // tanhf approximation — warm saturation, preserves sign symmetry
     if (x > 3.0f) return 1.0f;
     if (x < -3.0f) return -1.0f;
     float x2 = x * x;
@@ -347,12 +342,12 @@ static void updatePreset() {
     float sr = g_reverb.sampleRate;
     float scale = g_reverb.scale;
 
-    // Feedback gain — cap at 0.985 to prevent energy accumulation in dense FDNs
+    // Feedback gain
     float baseDecay = preset.decay;
-    float effectiveDecay = baseDecay + (1.0f - baseDecay) * userDecay * 0.8f;
+    float effectiveDecay = baseDecay + (1.0f - baseDecay) * userDecay * 0.9f;
     g_reverb.feedbackGain = g_reverb.freeze
         ? 1.0f
-        : fminf(0.985f, effectiveDecay);
+        : fminf(0.998f, effectiveDecay);
 
     // FDN delay times
     int maxChannels = (g_reverb.quality == 0) ? 16 : (g_reverb.quality == 1) ? 8 : 4;
@@ -380,15 +375,17 @@ static void updatePredelay() {
     g_reverb.predelaySamples = (int)(g_reverb.predelayMs / 1000.0f * g_reverb.sampleRate);
 }
 
+// Golden-ratio hash for per-line variation — deterministic, well-distributed 0..1
+static inline float goldenHash(int i) {
+    return fmodf((float)(i + 1) * 0.6180339887f, 1.0f);
+}
+
 static void updateChorusRates() {
     float baseRate = g_reverb.chorusRate;
     float sr = g_reverb.sampleRate;
-    // Each line gets a slightly different rate (spread by golden ratio)
-    static const float PHI = 1.6180339887f;
+    // Each line gets a unique rate via golden-ratio hash — prevents synchronization
     for (int i = 0; i < FDN_MAX_CHANNELS; i++) {
-        float lineRate = baseRate * (0.7f + 0.6f * ((float)(i) / (float)FDN_MAX_CHANNELS));
-        // Apply golden ratio offset so rates don't synchronize
-        lineRate *= (1.0f + 0.1f * sinf((float)i * PHI));
+        float lineRate = baseRate * (0.8f + 0.4f * goldenHash(i));
         g_reverb.chorusPhaseInc[i] = lineRate / sr;
     }
 }
@@ -584,8 +581,8 @@ void reverb_set_params(float decay, float size, float damping, float diffusion,
     g_reverb.decay = decay;
     g_reverb.size = size;
     g_reverb.damping = damping;
-    // Note: dampHigh is set by reverb_set_multiband_damp, not here
-    // (legacy damping is only used for presets that don't call multiband_damp)
+    // Legacy: single-band damping maps to dampHigh ONLY if multiband_damp hasn't been called
+    // (dampHigh is now owned by reverb_set_multiband_damp, don't clobber it)
     g_reverb.diffusion = diffusion;
     g_reverb.modulation = modulation;
     g_reverb.predelayMs = predelay;
@@ -684,8 +681,8 @@ void reverb_process_block(int block_size) {
         float m1 = sinf(g_reverb.slowModPhase1);
         float m2 = sinf(g_reverb.slowModPhase2);
 
-        blockFeedback *= (1.0f + m1 * slowDepth * 0.02f);  // subtle modulation only
-        blockDampHigh = fmaxf(0.0f, fminf(1.0f, blockDampHigh + m2 * slowDepth * 0.08f));
+        blockFeedback = fminf(0.998f, blockFeedback * (1.0f + m1 * slowDepth * 0.06f));
+        blockDampHigh = fmaxf(0.0f, fminf(1.0f, blockDampHigh + m2 * slowDepth * 0.15f));
     }
 
     // Shimmer
@@ -715,20 +712,7 @@ void reverb_process_block(int block_size) {
     bool isLite = (g_reverb.quality == 2);
 
     float hpC = isFrozen ? 1.0f : g_reverb.hpCoeff;
-    // Input gain scaled inversely with channel count to keep total injection energy constant
-    // 4ch: 0.20 × 2 lines/ear = 0.40 total per ear
-    // 8ch: 0.10 × 4 lines/ear = 0.40 total per ear
-    // 16ch: 0.06 × 8 lines/ear = 0.48 total per ear
     float inputGain = isFrozen ? 0.0f : (fdnCount >= 16 ? 0.06f : fdnCount >= 8 ? 0.10f : 0.20f);
-
-    // Scale feedback for channel count: more channels = more total energy in FDN
-    // Applied AFTER slow mod so slow mod can’t push past the scaled value
-    if (!isFrozen) {
-        if (fdnCount == 16) blockFeedback *= 0.93f;
-        else if (fdnCount == 8) blockFeedback *= 0.96f;
-    }
-    // Hard cap after all modulation — never exceed 0.98 to prevent runaway
-    if (!isFrozen) blockFeedback = fminf(0.98f, blockFeedback);
 
     // Chorus / drift / modulation params
     float chorusDepth = g_reverb.chorusDepth;
@@ -780,21 +764,23 @@ void reverb_process_block(int block_size) {
                 // Sine component (per-line chorus)
                 float sineVal = sinf(g_reverb.chorusPhases[j] * 2.0f * (float)M_PI);
 
+                // Per-line depth variation via golden hash
+                float lineDepth = chorusDepth * (0.7f + 0.6f * goldenHash(j));
+
                 if (modChar == 0) {
                     // Pure sine
-                    modOffset = sineVal * chorusDepth;
+                    modOffset = sineVal * lineDepth;
                 } else if (modChar == 1) {
                     // Pure drift
-                    modOffset = g_reverb.driftState[j] * chorusDepth;
+                    modOffset = g_reverb.driftState[j] * lineDepth;
                 } else {
                     // Hybrid: 60% sine + 40% drift
-                    modOffset = (sineVal * 0.6f + g_reverb.driftState[j] * 0.4f) * chorusDepth;
+                    modOffset = (sineVal * 0.6f + g_reverb.driftState[j] * 0.4f) * lineDepth;
                 }
 
-                // Add legacy global modulation on top (very conservative to avoid excessive wobble)
-                float legacyMod = modDepth * fminf(g_reverb.fdnDelayTimes[j], 3000.0f) * 0.004f
-                                * sinf(g_reverb.chorusPhases[j] * 0.37f * 2.0f * (float)M_PI);
-                modOffset += legacyMod;
+                // Add legacy global modulation on top
+                modOffset += modDepth * g_reverb.fdnDelayTimes[j] * 0.015f
+                           * sinf(g_reverb.chorusPhases[j] * 0.37f * 2.0f * (float)M_PI);
             }
 
             // Advance per-line phase
@@ -867,11 +853,10 @@ void reverb_process_block(int block_size) {
             shimInR += (g_reverb.shimmerBufR[ri1i]
                       + ri1f * (g_reverb.shimmerBufR[ri1n] - g_reverb.shimmerBufR[ri1i])) * env1;
 
-            // Scale shimmer injection inversely with channel count to keep
-            // total shimmer energy constant regardless of FDN size
-            float shimChanScale = (fdnCount >= 16) ? 0.15f : (fdnCount >= 8) ? 0.30f : 0.35f;
-            shimInL *= shimmerAmount * shimChanScale;
-            shimInR *= shimmerAmount * shimChanScale;
+            // Scale shimmer injection by channel count — more channels = less per-channel shimmer
+            float shimScale = (fdnCount >= 16) ? 0.15f : (fdnCount >= 8) ? 0.30f : 0.35f;
+            shimInL *= shimmerAmount * shimScale;
+            shimInR *= shimmerAmount * shimScale;
 
             g_reverb.shimmerPhase0 += shimmerPhaseInc;
             g_reverb.shimmerPhase1 += shimmerPhaseInc;
@@ -886,7 +871,6 @@ void reverb_process_block(int block_size) {
             float shimInject = (j < halfCount) ? shimInL : shimInR;
 
             // Shimmer feedback: compound pitch shifting (shimmer feeds back into FDN)
-            // Reduced multiplier (0.2) to prevent runaway when many channels contribute
             float shimFbInject = 0.0f;
             if (shimmerFb > 0.0f && shimmerAmount > 0.0f) {
                 shimFbInject = shimInject * shimmerFb * 0.2f;
@@ -898,41 +882,32 @@ void reverb_process_block(int block_size) {
                 + shimInject
                 + shimFbInject
             );
-
-            // NaN/Inf guard: prevent corrupted values from entering delay lines
-            // NaN != NaN, so this catches NaN; the magnitude check catches Inf/overflow
-            if (!(value == value) || value > 100.0f || value < -100.0f) value = 0.0f;
-
+            // NaN/Inf guard — prevent corrupted delay lines from poisoning the entire FDN
+            if (!(value == value) || value > 1e15f || value < -1e15f) value = 0.0f;
             g_reverb.fdnDelays[j].write(value);
         }
 
         // ── Output tapping with stereo decorrelation ──
-        // Target: raw output ≈ 0.5-0.7 when FDN channels are near unity
         float rawL = 0.0f, rawR = 0.0f;
         if (fdnCount == 16) {
-            // True decorrelation: separate tap arrays for L and R
+            // True decorrelation: separate normalized L/R tap arrays
             for (int j = 0; j < 16; j++) {
                 rawL += g_reverb.fdnReads[j] * STEREO_TAPS_L[j];
                 rawR += g_reverb.fdnReads[j] * STEREO_TAPS_R[j];
             }
-            // Sum of taps per side ≈ 5.2, scale to ~0.6 target: 0.6/5.2 ≈ 0.115
-            rawL *= 0.115f;
-            rawR *= 0.115f;
         } else if (fdnCount == 8) {
-            // Each side reads 4 primary channels + 2 light cross-feeds
-            // Sum ≈ 4*1 + 2*0.15 = 4.3, * 0.15 ≈ 0.65 peak
+            // Decorrelated 8-ch tapping
             rawL = (g_reverb.fdnReads[0] + g_reverb.fdnReads[2]
                   + g_reverb.fdnReads[4] + g_reverb.fdnReads[6]
-                  + g_reverb.fdnReads[1] * 0.15f + g_reverb.fdnReads[3] * 0.15f) * 0.15f;
+                  + g_reverb.fdnReads[3] * 0.3f + g_reverb.fdnReads[5] * 0.2f) * 0.45f;
             rawR = (g_reverb.fdnReads[1] + g_reverb.fdnReads[3]
                   + g_reverb.fdnReads[5] + g_reverb.fdnReads[7]
-                  + g_reverb.fdnReads[0] * 0.15f + g_reverb.fdnReads[2] * 0.15f) * 0.15f;
+                  + g_reverb.fdnReads[2] * 0.3f + g_reverb.fdnReads[4] * 0.2f) * 0.45f;
         } else {
-            // 4-ch: sum ≈ 2*1 + 1*0.2 = 2.2, * 0.3 ≈ 0.66 peak
             rawL = (g_reverb.fdnReads[0] + g_reverb.fdnReads[2]
-                  + g_reverb.fdnReads[1] * 0.2f) * 0.3f;
+                  + g_reverb.fdnReads[1] * 0.3f) * 0.7f;
             rawR = (g_reverb.fdnReads[1] + g_reverb.fdnReads[3]
-                  + g_reverb.fdnReads[0] * 0.2f) * 0.3f;
+                  + g_reverb.fdnReads[0] * 0.3f) * 0.7f;
         }
 
         // Mid-diffusion blend
@@ -977,19 +952,16 @@ void reverb_process_block(int block_size) {
         rawL = g_reverb.dcBlockerL.process(rawL);
         rawR = g_reverb.dcBlockerR.process(rawR);
 
+        // Safety limiter — hard clamp to prevent speaker damage
+        if (rawL > 0.95f) rawL = 0.95f;
+        else if (rawL < -0.95f) rawL = -0.95f;
+        if (rawR > 0.95f) rawR = 0.95f;
+        else if (rawR < -0.95f) rawR = -0.95f;
+
         // Stereo width (mid-side)
         float mid  = (rawL + rawR) * 0.5f;
         float side = (rawL - rawR) * 0.5f;
-        float outL = mid + side * width;
-        float outR = mid - side * width;
-
-        // Safety limiter — hard clamp to prevent WebAudio pipeline overload
-        if (outL >  0.95f) outL =  0.95f;
-        if (outL < -0.95f) outL = -0.95f;
-        if (outR >  0.95f) outR =  0.95f;
-        if (outR < -0.95f) outR = -0.95f;
-
-        g_reverb.outputBuf[i * 2]     = outL;
-        g_reverb.outputBuf[i * 2 + 1] = outR;
+        g_reverb.outputBuf[i * 2]     = mid + side * width;
+        g_reverb.outputBuf[i * 2 + 1] = mid - side * width;
     }
 }

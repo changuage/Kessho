@@ -2,6 +2,7 @@
 // Phase 0 — Codec functions for slicing and merging SliderState by level+scope.
 
 import { PARAM_REGISTRY, type ParamLevel } from './ParamRegistry';
+export type { ParamLevel } from './ParamRegistry';
 import type { SliderState } from '../ui/state';
 
 /** Extract only the params owned by a level+scope from full state */
