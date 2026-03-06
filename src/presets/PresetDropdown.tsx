@@ -2,24 +2,12 @@
 // Phase 3 + 8 + 9 — Reusable preset dropdown with save/export/import/versioning/dirty flag.
 // Matches existing app styling (native <select>, dark theme, CSS custom properties).
 
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import type { PresetLevel, PresetEntry } from './types';
 import { usePresets } from './usePresets';
-import { usePresetVersioning } from './usePresetVersioning';
 import { exportPresetToFile, importPresetFromFile } from './fileIO';
 import { getPresetStore } from './PresetStore';
-import type { ParamLevel } from './ParamRegistry';
 import type { SliderState } from '../ui/state';
-
-function levelToParamLevel(level: PresetLevel): ParamLevel {
-  switch (level) {
-    case 'engine': return 1;
-    case 'kit': return 2;
-    case 'source': return 3;
-    case 'state': return 4;
-    case 'journey': return 4;
-  }
-}
 
 export interface PresetDropdownProps {
   /** Preset level */
