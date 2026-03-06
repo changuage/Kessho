@@ -67,6 +67,9 @@ EXPORTS = [
     "_reverb_set_multiband_damp",
     "_reverb_set_input_tone",
     "_reverb_set_shimmer_feedback",
+    # v3 additions
+    "_reverb_set_warp",
+    "_reverb_set_cross_feed",
     "_malloc",
     "_free",
 ]

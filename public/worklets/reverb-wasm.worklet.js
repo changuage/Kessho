@@ -19,7 +19,7 @@ const _perfNow = typeof performance !== 'undefined' ? () => performance.now() : 
 
 // ═══════════════ Type/Quality maps ═══════════════
 
-const TYPE_MAP = { plate: 0, hall: 1, cathedral: 2, darkHall: 3 };
+const TYPE_MAP = { plate: 0, hall: 1, cathedral: 2, darkHall: 3, dattorroPlate: 4, dattorroShimmer: 5 };
 const QUALITY_MAP = { ultra: 0, balanced: 1, lite: 2 };
 
 // ═══════════════ Processor ═══════════════
@@ -196,6 +196,14 @@ class ReverbWasmProcessor extends AudioWorkletProcessor {
     // Shimmer feedback (compound pitch shifting)
     if (p.shimmerFeedback !== undefined) {
       w.reverb_set_shimmer_feedback(p.shimmerFeedback);
+    }
+
+    // v3 params: Warp and Cross-feed
+    if (p.warp !== undefined) {
+      w.reverb_set_warp(p.warp);
+    }
+    if (p.crossFeed !== undefined) {
+      w.reverb_set_cross_feed(p.crossFeed);
     }
   }
 

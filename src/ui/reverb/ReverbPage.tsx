@@ -36,6 +36,7 @@ export const REVERB_CHARACTER_PRESETS: Record<string, {
       reverbModCharacter: 'hybrid' as SliderState['reverbModCharacter'],
       reverbDampLow: 0.1, reverbDampHigh: 0.3, reverbCrossoverFreq: 800,
       reverbInputTone: 0, reverbShimmerFeedback: 0,
+      reverbWarp: 0, reverbCrossFeed: 0,
     },
   },
   shimmerPad: {
@@ -52,14 +53,15 @@ export const REVERB_CHARACTER_PRESETS: Record<string, {
       reverbModCharacter: 'sine' as SliderState['reverbModCharacter'],
       reverbDampLow: 0.05, reverbDampHigh: 0.2, reverbCrossoverFreq: 1200,
       reverbInputTone: 0.2, reverbShimmerFeedback: 0.35,
+      reverbWarp: 0, reverbCrossFeed: 0.15,
     },
   },
   blackhole: {
     label: 'Blackhole',
-    description: 'Massive infinite-like space with drift modulation + dark tone',
+    description: 'Massive infinite-like space with warp drift + dark tone',
     params: {
       reverbType: 'cathedral' as SliderState['reverbType'],
-      reverbDecay: 0.98, reverbSize: 3.0, reverbDiffusion: 1.0, reverbModulation: 0.65,
+      reverbDecay: 0.98, reverbSize: 6.0, reverbDiffusion: 1.0, reverbModulation: 0.65,
       predelay: 80, damping: 0.08, width: 1.0,
       reverbShimmer: 0.3, reverbShimmerPitch: 5,
       reverbSlowModRate: 0.02, reverbSlowModDepth: 0.7,
@@ -68,6 +70,7 @@ export const REVERB_CHARACTER_PRESETS: Record<string, {
       reverbModCharacter: 'drift' as SliderState['reverbModCharacter'],
       reverbDampLow: 0.05, reverbDampHigh: 0.15, reverbCrossoverFreq: 600,
       reverbInputTone: -0.4, reverbShimmerFeedback: 0.5,
+      reverbWarp: 0.4, reverbCrossFeed: 0.3,
     },
   },
   nightsky: {
@@ -84,6 +87,7 @@ export const REVERB_CHARACTER_PRESETS: Record<string, {
       reverbModCharacter: 'hybrid' as SliderState['reverbModCharacter'],
       reverbDampLow: 0.15, reverbDampHigh: 0.45, reverbCrossoverFreq: 700,
       reverbInputTone: -0.3, reverbShimmerFeedback: 0.2,
+      reverbWarp: 0.1, reverbCrossFeed: 0.2,
     },
   },
   frozenCathedral: {
@@ -100,6 +104,7 @@ export const REVERB_CHARACTER_PRESETS: Record<string, {
       reverbModCharacter: 'sine' as SliderState['reverbModCharacter'],
       reverbDampLow: 0.0, reverbDampHigh: 0.05, reverbCrossoverFreq: 1000,
       reverbInputTone: 0.1, reverbShimmerFeedback: 0,
+      reverbWarp: 0, reverbCrossFeed: 0,
     },
   },
   reverseWash: {
@@ -116,6 +121,7 @@ export const REVERB_CHARACTER_PRESETS: Record<string, {
       reverbModCharacter: 'drift' as SliderState['reverbModCharacter'],
       reverbDampLow: 0.1, reverbDampHigh: 0.35, reverbCrossoverFreq: 900,
       reverbInputTone: -0.2, reverbShimmerFeedback: 0.15,
+      reverbWarp: 0.15, reverbCrossFeed: 0.1,
     },
   },
   cosmicDrift: {
@@ -132,6 +138,7 @@ export const REVERB_CHARACTER_PRESETS: Record<string, {
       reverbModCharacter: 'drift' as SliderState['reverbModCharacter'],
       reverbDampLow: 0.08, reverbDampHigh: 0.2, reverbCrossoverFreq: 500,
       reverbInputTone: -0.5, reverbShimmerFeedback: 0.6,
+      reverbWarp: 0.25, reverbCrossFeed: 0.35,
     },
   },
   tightPlate: {
@@ -148,6 +155,92 @@ export const REVERB_CHARACTER_PRESETS: Record<string, {
       reverbModCharacter: 'sine' as SliderState['reverbModCharacter'],
       reverbDampLow: 0.2, reverbDampHigh: 0.5, reverbCrossoverFreq: 2000,
       reverbInputTone: 0.3, reverbShimmerFeedback: 0,
+      reverbWarp: 0, reverbCrossFeed: 0,
+    },
+  },
+  supermassive: {
+    label: 'Supermassive',
+    description: 'Extreme warp + massive size — Valhalla Supermassive inspired',
+    params: {
+      reverbType: 'cathedral' as SliderState['reverbType'],
+      reverbDecay: 0.97, reverbSize: 8.0, reverbDiffusion: 1.0, reverbModulation: 0.6,
+      predelay: 60, damping: 0.1, width: 1.0,
+      reverbShimmer: 0.2, reverbShimmerPitch: 7,
+      reverbSlowModRate: 0.025, reverbSlowModDepth: 0.5,
+      reverbFreeze: false, reverbReverse: 0.2, reverbReverseLength: 4.0,
+      reverbChorusRate: 0.2, reverbChorusDepth: 35,
+      reverbModCharacter: 'hybrid' as SliderState['reverbModCharacter'],
+      reverbDampLow: 0.05, reverbDampHigh: 0.12, reverbCrossoverFreq: 500,
+      reverbInputTone: -0.3, reverbShimmerFeedback: 0.4,
+      reverbWarp: 0.6, reverbCrossFeed: 0.4,
+    },
+  },
+  gravityWell: {
+    label: 'Gravity Well',
+    description: 'Maximum warp — pitch cascades create swirling vortex',
+    params: {
+      reverbType: 'hall' as SliderState['reverbType'],
+      reverbDecay: 0.96, reverbSize: 5.0, reverbDiffusion: 0.95, reverbModulation: 0.8,
+      predelay: 40, damping: 0.06, width: 1.0,
+      reverbShimmer: 0.15, reverbShimmerPitch: -5,
+      reverbSlowModRate: 0.03, reverbSlowModDepth: 0.6,
+      reverbFreeze: false, reverbReverse: 0.1, reverbReverseLength: 2.5,
+      reverbChorusRate: 0.35, reverbChorusDepth: 40,
+      reverbModCharacter: 'drift' as SliderState['reverbModCharacter'],
+      reverbDampLow: 0.04, reverbDampHigh: 0.1, reverbCrossoverFreq: 400,
+      reverbInputTone: -0.6, reverbShimmerFeedback: 0.3,
+      reverbWarp: 0.85, reverbCrossFeed: 0.5,
+    },
+  },
+  dattorroPlate: {
+    label: 'Dattorro Plate',
+    description: 'Classic Dattorro plate reverb — smooth, defined, musical',
+    params: {
+      reverbType: 'dattorroPlate' as SliderState['reverbType'],
+      reverbDecay: 0.85, reverbSize: 1.0, reverbDiffusion: 0.8, reverbModulation: 0.3,
+      predelay: 15, damping: 0.3, width: 0.9,
+      reverbShimmer: 0, reverbShimmerPitch: 12,
+      reverbSlowModRate: 0.05, reverbSlowModDepth: 0,
+      reverbFreeze: false, reverbReverse: 0, reverbReverseLength: 2,
+      reverbChorusRate: 0.5, reverbChorusDepth: 12,
+      reverbModCharacter: 'sine' as SliderState['reverbModCharacter'],
+      reverbDampLow: 0.1, reverbDampHigh: 0.35, reverbCrossoverFreq: 1200,
+      reverbInputTone: 0.1, reverbShimmerFeedback: 0,
+      reverbWarp: 0, reverbCrossFeed: 0,
+    },
+  },
+  dattorroShimmer: {
+    label: 'Dattorro Shimmer',
+    description: 'Dattorro engine with high diffusion + detuning modulation',
+    params: {
+      reverbType: 'dattorroShimmer' as SliderState['reverbType'],
+      reverbDecay: 0.92, reverbSize: 1.5, reverbDiffusion: 0.95, reverbModulation: 0.6,
+      predelay: 30, damping: 0.15, width: 1.0,
+      reverbShimmer: 0, reverbShimmerPitch: 12,
+      reverbSlowModRate: 0.04, reverbSlowModDepth: 0.3,
+      reverbFreeze: false, reverbReverse: 0, reverbReverseLength: 2,
+      reverbChorusRate: 0.4, reverbChorusDepth: 20,
+      reverbModCharacter: 'hybrid' as SliderState['reverbModCharacter'],
+      reverbDampLow: 0.05, reverbDampHigh: 0.2, reverbCrossoverFreq: 900,
+      reverbInputTone: 0, reverbShimmerFeedback: 0,
+      reverbWarp: 0.3, reverbCrossFeed: 0.15,
+    },
+  },
+  eventHorizon: {
+    label: 'Event Horizon',
+    description: 'Edge of infinite — extreme cross-feed + allpass smearing',
+    params: {
+      reverbType: 'cathedral' as SliderState['reverbType'],
+      reverbDecay: 0.995, reverbSize: 10.0, reverbDiffusion: 1.0, reverbModulation: 0.5,
+      predelay: 120, damping: 0.03, width: 1.0,
+      reverbShimmer: 0.4, reverbShimmerPitch: 12,
+      reverbSlowModRate: 0.01, reverbSlowModDepth: 0.9,
+      reverbFreeze: false, reverbReverse: 0.5, reverbReverseLength: 5.0,
+      reverbChorusRate: 0.15, reverbChorusDepth: 38,
+      reverbModCharacter: 'drift' as SliderState['reverbModCharacter'],
+      reverbDampLow: 0.02, reverbDampHigh: 0.08, reverbCrossoverFreq: 350,
+      reverbInputTone: -0.7, reverbShimmerFeedback: 0.7,
+      reverbWarp: 0.5, reverbCrossFeed: 0.6,
     },
   },
 };
@@ -275,6 +368,8 @@ export default function ReverbPage({
                     { value: 'hall', label: 'Hall' },
                     { value: 'cathedral', label: 'Cathedral' },
                     { value: 'darkHall', label: 'Dark Hall' },
+                    { value: 'dattorroPlate', label: 'Dattorro Plate' },
+                    { value: 'dattorroShimmer', label: 'Dattorro Shimmer' },
                   ]}
                   onChange={(v) => onSelectChange('reverbType', v as SliderState['reverbType'])}
                 />
@@ -375,6 +470,8 @@ export default function ReverbPage({
 
                 {/* Reverse */}
                 <div className="reverb-subsection">Special</div>
+                <Slider label="Warp" value={state.reverbWarp} paramKey="reverbWarp" onChange={onParamChange} {...sp('reverbWarp')} />
+                <Slider label="Cross-Feed" value={state.reverbCrossFeed} paramKey="reverbCrossFeed" onChange={onParamChange} {...sp('reverbCrossFeed')} />
                 <Slider label="Reverse Mix" value={state.reverbReverse} paramKey="reverbReverse" onChange={onParamChange} {...sp('reverbReverse')} />
                 {state.reverbReverse > 0 && (
                   <Slider label="Reverse Length" value={state.reverbReverseLength} paramKey="reverbReverseLength" unit="s" onChange={onParamChange} {...sp('reverbReverseLength')} />

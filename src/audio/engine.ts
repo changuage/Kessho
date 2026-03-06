@@ -3552,6 +3552,9 @@ export class AudioEngine {
           crossoverFreq: state.reverbCrossoverFreq ?? 800,
           inputTone: state.reverbInputTone ?? 0,
           shimmerFeedback: state.reverbShimmerFeedback ?? 0,
+          // v3 params
+          warp: state.reverbWarp ?? 0,
+          crossFeed: state.reverbCrossFeed ?? 0,
         },
       });
     }

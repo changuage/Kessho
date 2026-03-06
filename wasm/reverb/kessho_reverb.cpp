@@ -67,6 +67,38 @@ static const float STEREO_TAPS_R[16] = {
     0.21f, 0.05f, 0.29f, 0.06f, 0.33f, 0.11f, 0.36f, 0.09f
 };
 
+// Dattorro plate reverb delay times (samples at 48 kHz)
+// Scaled from Jon Dattorro, "Effect Design Pt.1", JAES 1997 (29761 Hz → 48000 Hz)
+static constexpr float DAT_SCALE = 48000.0f / 29761.0f;  // ≈1.613
+
+// Input diffusion allpass delay lengths (samples at 48k)
+static const int DAT_IN_AP[4] = {229, 173, 611, 447};
+// Input diffusion coefficients
+static constexpr float DAT_IN_DIFF1 = 0.75f;
+static constexpr float DAT_IN_DIFF2 = 0.625f;
+
+// Tank delay lengths (samples at 48k)
+static const int DAT_TANK_AP[2]    = {1084, 1464};    // modulated allpass
+static const int DAT_TANK_DELAY1[2] = {7184, 6802};   // first delay per side
+static const int DAT_TANK_AP2[2]   = {2904, 4284};    // decay allpass
+static const int DAT_TANK_DELAY2[2] = {6000, 5102};   // second delay per side
+static constexpr float DAT_TANK_AP_COEFF  = 0.7f;
+static constexpr float DAT_TANK_AP2_COEFF = 0.5f;
+
+// Dattorro output tap positions (samples at 48k, from original paper, scaled)
+static const int DAT_OUT_TAPS_L[7] = {429, 4801, 3087, 3221, 1720, 574, 5652};
+static const int DAT_OUT_TAPS_R[7] = {569, 5852, 1981, 3404, 541, 301, 7808};
+// Which tank delay each tap reads from: 0-3 = delays 1a, 2a, 1b, 2b
+static const int DAT_OUT_TAP_SRC_L[7] = {0, 0, 1, 2, 2, 3, 3};
+static const int DAT_OUT_TAP_SRC_R[7] = {2, 2, 3, 0, 0, 1, 1};
+static const float DAT_OUT_TAP_SIGN_L[7] = {1,1,1,1,-1,1,-1};
+static const float DAT_OUT_TAP_SIGN_R[7] = {1,1,1,1,-1,1,-1};
+
+// In-loop allpass per FDN channel — smears transients inside recirculation
+static constexpr int INLOOP_AP_STAGES = 2;
+static const int INLOOP_AP_TIMES[2] = {31, 67};  // prime, short
+static constexpr float INLOOP_AP_FB = 0.4f;
+
 // ═══════════════ DSP Primitives ═══════════════
 
 struct OnePole {
@@ -221,6 +253,64 @@ inline float softClip(float x) {
     return x * (27.0f + x2) / (27.0f + 9.0f * x2);
 }
 
+// In-loop allpass filter (lightweight, per FDN channel)
+struct InLoopAllpass {
+    SmoothDelay delays[INLOOP_AP_STAGES];
+    int delaySamples[INLOOP_AP_STAGES];
+    float fb;
+
+    void init(float scale) {
+        fb = INLOOP_AP_FB;
+        for (int i = 0; i < INLOOP_AP_STAGES; i++) {
+            int sz = (int)(INLOOP_AP_TIMES[i] * scale) + 10;
+            delays[i].init(sz);
+            delaySamples[i] = (int)(INLOOP_AP_TIMES[i] * scale);
+        }
+    }
+    void destroy() {
+        for (int i = 0; i < INLOOP_AP_STAGES; i++) delays[i].destroy();
+    }
+    inline float process(float input) {
+        float x = input;
+        for (int i = 0; i < INLOOP_AP_STAGES; i++) {
+            float delayed = delays[i].read(delaySamples[i]);
+            float v = x - delayed * fb;
+            delays[i].write(v);
+            x = delayed + v * fb;
+        }
+        return x;
+    }
+};
+
+// Dattorro tank allpass with optional LFO modulation
+struct TankAllpass {
+    SmoothDelay delay;
+    int baseSamples;
+    float coeff;
+
+    void init(int samples, float scale, float c) {
+        baseSamples = (int)(samples * scale);
+        int sz = baseSamples + 200;  // extra for modulation excursion
+        delay.init(sz);
+        coeff = c;
+    }
+    void destroy() { delay.destroy(); }
+    inline float process(float input) {
+        float delayed = delay.read(baseSamples);
+        float v = input - delayed * coeff;
+        delay.write(v);
+        return delayed + v * coeff;
+    }
+    inline float processModulated(float input, float modOffset) {
+        float delayTime = (float)baseSamples + modOffset;
+        if (delayTime < 1.0f) delayTime = 1.0f;
+        float delayed = delay.readInterpolated(delayTime);
+        float v = input - delayed * coeff;
+        delay.write(v);
+        return delayed + v * coeff;
+    }
+};
+
 // Simple LCG PRNG for drift noise
 struct SimpleRNG {
     uint32_t state;
@@ -252,6 +342,9 @@ static struct {
     float fdnReads[FDN_MAX_CHANNELS];
     float fdnDamped[FDN_MAX_CHANNELS];
     float fdnMixed[FDN_MAX_CHANNELS];
+
+    // In-loop allpass per FDN channel (smears transients inside recirculation)
+    InLoopAllpass fdnInLoopAP[FDN_MAX_CHANNELS];
 
     // Per-line chorus modulation
     float chorusPhases[FDN_MAX_CHANNELS];   // current phase per line
@@ -296,7 +389,7 @@ static struct {
     int    reverseCycleLen;
 
     // ═══ Parameters ═══
-    int   presetType;          // 0-3
+    int   presetType;          // 0-5 (0-3=FDN, 4=dattorroPlate, 5=dattorroShimmer)
     int   quality;             // 0=ultra(16ch) 1=balanced(8ch) 2=lite(4ch)
     float decay;
     float size;
@@ -325,6 +418,21 @@ static struct {
     float tiltCoeff;           // computed from ~1000 Hz center
     float shimmerFeedback;     // 0-1 (compound pitch shifting)
 
+    // v3 parameters  
+    float warp;                // 0-1 pitch warp/bend in feedback
+    float crossFeed;           // 0-1 stereo cross-injection
+
+    // Dattorro tank state
+    TankAllpass datInAP[4];         // input diffusion allpass
+    TankAllpass datTankAP[2];       // modulated allpass per side
+    SmoothDelay datTankDelay1[2];   // first tank delay per side
+    OnePole     datTankDamp[2];     // LP damper per side
+    TankAllpass datTankAP2[2];      // decay allpass per side
+    SmoothDelay datTankDelay2[2];   // second tank delay per side
+    float       datTankState[2];    // cross-coupled feedback state
+    float       datModPhase;        // tank modulation LFO phase
+    int         datInitialized;
+
     // Internal computed
     float feedbackGain;
     float smoothDampLow;
@@ -336,20 +444,23 @@ static struct {
 // ═══════════════ Internal helpers ═══════════════
 
 static void updatePreset() {
+    // Dattorro types don't use FDN preset configs
+    if (g_reverb.presetType >= 4) return;
+
     const auto& preset = PRESETS[g_reverb.presetType];
     float userDecay = g_reverb.decay;
     float userSize  = g_reverb.size;
     float sr = g_reverb.sampleRate;
     float scale = g_reverb.scale;
 
-    // Feedback gain
+    // Feedback gain (with decay-dependent damping adjustment)
     float baseDecay = preset.decay;
     float effectiveDecay = baseDecay + (1.0f - baseDecay) * userDecay * 0.9f;
     g_reverb.feedbackGain = g_reverb.freeze
         ? 1.0f
         : fminf(0.998f, effectiveDecay);
 
-    // FDN delay times
+    // FDN delay times — size range extended to 10.0 for massive spaces
     int maxChannels = (g_reverb.quality == 0) ? 16 : (g_reverb.quality == 1) ? 8 : 4;
     for (int i = 0; i < maxChannels; i++) {
         g_reverb.fdnDelayTimes[i] = FDN_TIMES_MS[i] * scale * sr / 1000.0f * userSize;
@@ -463,12 +574,34 @@ int reverb_init(float sample_rate) {
     float scale = g_reverb.scale;
 
     // FDN delay lines — allocate all 16 (unused ones cost near-zero)
+    // Buffer sized for extended size up to 10.0 + modulation excursion
     for (int i = 0; i < FDN_MAX_CHANNELS; i++) {
         float baseTime = FDN_TIMES_MS[i] * scale;
-        int maxSamples = (int)ceilf(baseTime * sample_rate / 1000.0f * 4.0f);
+        int maxSamples = (int)ceilf(baseTime * sample_rate / 1000.0f * 12.0f) + 200;
         g_reverb.fdnDelays[i].init(maxSamples);
         g_reverb.fdnDelayTimes[i] = baseTime * sample_rate / 1000.0f;
     }
+
+    // In-loop allpass per FDN channel — smears transients inside recirculation
+    for (int i = 0; i < FDN_MAX_CHANNELS; i++) {
+        g_reverb.fdnInLoopAP[i].init(scale);
+    }
+
+    // Dattorro plate reverb tank initialization
+    for (int i = 0; i < 4; i++) {
+        float c = (i < 2) ? DAT_IN_DIFF1 : DAT_IN_DIFF2;
+        g_reverb.datInAP[i].init(DAT_IN_AP[i], scale, c);
+    }
+    int datBufSize = (int)(8000.0f * scale * 3.5f) + 200;
+    for (int s = 0; s < 2; s++) {
+        g_reverb.datTankAP[s].init(DAT_TANK_AP[s], scale, DAT_TANK_AP_COEFF);
+        g_reverb.datTankDelay1[s].init(datBufSize);
+        g_reverb.datTankAP2[s].init(DAT_TANK_AP2[s], scale, DAT_TANK_AP2_COEFF);
+        g_reverb.datTankDelay2[s].init(datBufSize);
+        g_reverb.datTankState[s] = 0.0f;
+    }
+    g_reverb.datModPhase = 0.0f;
+    g_reverb.datInitialized = 1;
 
     // HPF ~35 Hz
     g_reverb.hpCoeff = 1.0f - (2.0f * (float)M_PI * 35.0f / sample_rate);
@@ -538,6 +671,10 @@ int reverb_init(float sample_rate) {
     g_reverb.inputTone = 0.0f;     // flat
     g_reverb.shimmerFeedback = 0.0f;
 
+    // v3 defaults
+    g_reverb.warp = 0.0f;
+    g_reverb.crossFeed = 0.0f;
+
     // Computed
     g_reverb.smoothDampLow = g_reverb.dampLow;
     g_reverb.smoothDampHigh = g_reverb.dampHigh;
@@ -553,13 +690,24 @@ int reverb_init(float sample_rate) {
 }
 
 void reverb_destroy(void) {
-    for (int i = 0; i < FDN_MAX_CHANNELS; i++) g_reverb.fdnDelays[i].destroy();
+    for (int i = 0; i < FDN_MAX_CHANNELS; i++) {
+        g_reverb.fdnDelays[i].destroy();
+        g_reverb.fdnInLoopAP[i].destroy();
+    }
     g_reverb.preDiffL.destroy();  g_reverb.preDiffR.destroy();
     g_reverb.midDiffL.destroy();  g_reverb.midDiffR.destroy();
     g_reverb.postDiffL.destroy(); g_reverb.postDiffR.destroy();
     g_reverb.predelayL.destroy(); g_reverb.predelayR.destroy();
     free(g_reverb.reverseBufL);
     free(g_reverb.reverseBufR);
+    // Dattorro cleanup
+    for (int i = 0; i < 4; i++) g_reverb.datInAP[i].destroy();
+    for (int s = 0; s < 2; s++) {
+        g_reverb.datTankAP[s].destroy();
+        g_reverb.datTankDelay1[s].destroy();
+        g_reverb.datTankAP2[s].destroy();
+        g_reverb.datTankDelay2[s].destroy();
+    }
     g_reverb.initialized = 0;
 }
 
@@ -567,7 +715,7 @@ float* reverb_get_input_ptr(void)  { return g_reverb.inputBuf; }
 float* reverb_get_output_ptr(void) { return g_reverb.outputBuf; }
 
 void reverb_set_type(int type) {
-    g_reverb.presetType = (type >= 0 && type <= 3) ? type : 1;
+    g_reverb.presetType = (type >= 0 && type <= 5) ? type : 1;
     updatePreset();
 }
 
@@ -643,11 +791,211 @@ void reverb_set_shimmer_feedback(float feedback) {
     g_reverb.shimmerFeedback = fmaxf(0.0f, fminf(1.0f, feedback));
 }
 
+void reverb_set_warp(float amount) {
+    g_reverb.warp = fmaxf(0.0f, fminf(1.0f, amount));
+}
+
+void reverb_set_cross_feed(float amount) {
+    g_reverb.crossFeed = fmaxf(0.0f, fminf(1.0f, amount));
+}
+
+// ═══════════════ Dattorro Plate Reverb ═══════════════
+//
+// Jon Dattorro, "Effect Design Part 1", JAES 1997
+// Signal flow:
+//   Input → Predelay → Pre-diffusion → 4× Input Allpass → Tank
+//   Tank = 2 cross-coupled loops: ModAP → Delay → Damp → DecayAP → Delay → ×decay
+//   Output = 14 taps from tank delays
+//
+// Types: 4 = dattorroPlate (classic), 5 = dattorroShimmer (higher diffusion + mod)
+
+static void dattorro_process_block(int block_size) {
+    const float sr = g_reverb.sampleRate;
+    const float scale = g_reverb.scale;
+    const float userDecay = g_reverb.decay;
+    const float userSize = g_reverb.size;
+    const float damping = g_reverb.dampHigh;
+    const float modulation = g_reverb.modulation;
+    const float width = g_reverb.width;
+    const float inputTone = g_reverb.inputTone;
+    const float tiltCoeff = g_reverb.tiltCoeff;
+    const bool isFrozen = g_reverb.freeze != 0;
+    const bool isShimmerMode = (g_reverb.presetType == 5);
+
+    // Dattorro decay coefficient
+    float tankDecay = isFrozen ? 1.0f : fminf(0.9995f, 0.5f + userDecay * 0.4995f);
+
+    // Damping (1-pole LP coefficient)
+    float dampCoeff = isFrozen ? 1.0f : (1.0f - damping * 0.7f);
+
+    // Mod depth — shimmer mode gets more modulation for detuning shimmer effect
+    float modMult = isShimmerMode ? 2.5f : 1.0f;
+    float modDepthSamples = modulation * 16.0f * scale * modMult;
+    float modRate = 0.3f / sr;  // slow tank LFO
+
+    // Size scaling (capped at 3.0 for Dattorro — plate topology)
+    float sizeScale = fmaxf(0.5f, fminf(3.0f, userSize));
+
+    // Input diffusion — shimmer mode uses higher coefficients for more smearing
+    float inDiff1 = isShimmerMode ? 0.85f : DAT_IN_DIFF1;
+    float inDiff2 = isShimmerMode ? 0.75f : DAT_IN_DIFF2;
+    // Temporarily update input AP coefficients if in shimmer mode
+    if (isShimmerMode) {
+        for (int i = 0; i < 2; i++) g_reverb.datInAP[i].coeff = inDiff1;
+        for (int i = 2; i < 4; i++) g_reverb.datInAP[i].coeff = inDiff2;
+    }
+
+    // Input gain
+    float inputGain = isFrozen ? 0.0f : 0.2f;
+
+    // Warp: DC bias on tank allpass modulation
+    float warpAmount = g_reverb.warp;
+
+    // Pointer aliases for output tapping
+    SmoothDelay* tankDelays[4] = {
+        &g_reverb.datTankDelay1[0], &g_reverb.datTankDelay2[0],
+        &g_reverb.datTankDelay1[1], &g_reverb.datTankDelay2[1]
+    };
+
+    for (int i = 0; i < block_size; i++) {
+        float inL = g_reverb.inputBuf[i * 2];
+        float inR = g_reverb.inputBuf[i * 2 + 1];
+
+        // Input tone shaping
+        if (inputTone != 0.0f) {
+            inL = g_reverb.tiltL.process(inL, inputTone, tiltCoeff);
+            inR = g_reverb.tiltR.process(inR, inputTone, tiltCoeff);
+        }
+
+        // Predelay
+        g_reverb.predelayL.write(inL);
+        g_reverb.predelayR.write(inR);
+        float delayedL = g_reverb.predelaySamples > 0
+            ? g_reverb.predelayL.read(g_reverb.predelaySamples) : inL;
+        float delayedR = g_reverb.predelaySamples > 0
+            ? g_reverb.predelayR.read(g_reverb.predelaySamples) : inR;
+
+        // Sum to mono, scale, apply pre-diffusion
+        float diffIn = g_reverb.preDiffL.process((delayedL + delayedR) * 0.5f) * inputGain;
+
+        // Input diffusion: 4 serial allpass filters
+        float x = diffIn;
+        for (int j = 0; j < 4; j++) {
+            x = g_reverb.datInAP[j].process(x);
+        }
+
+        // Inject into both tank sides (cross-coupled from opposite side)
+        float tankInA = x + g_reverb.datTankState[1] * tankDecay;
+        float tankInB = x + g_reverb.datTankState[0] * tankDecay;
+
+        // Tank LFO modulation
+        g_reverb.datModPhase += modRate;
+        if (g_reverb.datModPhase > 1.0f) g_reverb.datModPhase -= 1.0f;
+        float lfo1 = sinf(g_reverb.datModPhase * 2.0f * (float)M_PI) * modDepthSamples;
+        float lfo2 = sinf((g_reverb.datModPhase * 1.37f + 0.5f) * 2.0f * (float)M_PI) * modDepthSamples;
+
+        // Warp: DC offset on LFO — creates compounding pitch bend per recirculation
+        if (warpAmount > 0.0f) {
+            float warpOffset = warpAmount * modDepthSamples * 2.0f;
+            lfo1 += warpOffset;
+            lfo2 -= warpOffset;  // opposite direction for stereo interest
+        }
+
+        // --- Tank Side A ---
+        float sA = g_reverb.datTankAP[0].processModulated(tankInA, lfo1);
+        g_reverb.datTankDelay1[0].write(sA);
+        int rp1a = (int)(DAT_TANK_DELAY1[0] * scale * sizeScale);
+        if (rp1a < 1) rp1a = 1;
+        if (rp1a >= g_reverb.datTankDelay1[0].size) rp1a = g_reverb.datTankDelay1[0].size - 1;
+        sA = g_reverb.datTankDelay1[0].read(rp1a);
+        sA = g_reverb.datTankDamp[0].process(sA, dampCoeff);
+        sA = g_reverb.datTankAP2[0].process(sA);
+        g_reverb.datTankDelay2[0].write(sA);
+        int rp2a = (int)(DAT_TANK_DELAY2[0] * scale * sizeScale);
+        if (rp2a < 1) rp2a = 1;
+        if (rp2a >= g_reverb.datTankDelay2[0].size) rp2a = g_reverb.datTankDelay2[0].size - 1;
+        sA = g_reverb.datTankDelay2[0].read(rp2a);
+        g_reverb.datTankState[0] = sA * tankDecay;
+
+        // --- Tank Side B ---
+        float sB = g_reverb.datTankAP[1].processModulated(tankInB, lfo2);
+        g_reverb.datTankDelay1[1].write(sB);
+        int rp1b = (int)(DAT_TANK_DELAY1[1] * scale * sizeScale);
+        if (rp1b < 1) rp1b = 1;
+        if (rp1b >= g_reverb.datTankDelay1[1].size) rp1b = g_reverb.datTankDelay1[1].size - 1;
+        sB = g_reverb.datTankDelay1[1].read(rp1b);
+        sB = g_reverb.datTankDamp[1].process(sB, dampCoeff);
+        sB = g_reverb.datTankAP2[1].process(sB);
+        g_reverb.datTankDelay2[1].write(sB);
+        int rp2b = (int)(DAT_TANK_DELAY2[1] * scale * sizeScale);
+        if (rp2b < 1) rp2b = 1;
+        if (rp2b >= g_reverb.datTankDelay2[1].size) rp2b = g_reverb.datTankDelay2[1].size - 1;
+        sB = g_reverb.datTankDelay2[1].read(rp2b);
+        g_reverb.datTankState[1] = sB * tankDecay;
+
+        // --- Output tapping (14 taps: 7L, 7R) ---
+        float outL = 0.0f, outR = 0.0f;
+        for (int t = 0; t < 7; t++) {
+            int srcL = DAT_OUT_TAP_SRC_L[t];
+            int tapL = (int)(DAT_OUT_TAPS_L[t] * scale * sizeScale);
+            if (tapL >= tankDelays[srcL]->size) tapL = tankDelays[srcL]->size - 1;
+            if (tapL < 1) tapL = 1;
+            outL += tankDelays[srcL]->read(tapL) * DAT_OUT_TAP_SIGN_L[t];
+
+            int srcR = DAT_OUT_TAP_SRC_R[t];
+            int tapR = (int)(DAT_OUT_TAPS_R[t] * scale * sizeScale);
+            if (tapR >= tankDelays[srcR]->size) tapR = tankDelays[srcR]->size - 1;
+            if (tapR < 1) tapR = 1;
+            outR += tankDelays[srcR]->read(tapR) * DAT_OUT_TAP_SIGN_R[t];
+        }
+
+        // Scale output
+        outL *= 0.15f;
+        outR *= 0.15f;
+
+        // Post-diffusion (reuse existing post-diffuser chains)
+        outL = g_reverb.postDiffL.process(outL);
+        outR = g_reverb.postDiffR.process(outR);
+
+        // NaN/Inf guard
+        if (!(outL == outL) || outL > 1e15f || outL < -1e15f) outL = 0.0f;
+        if (!(outR == outR) || outR > 1e15f || outR < -1e15f) outR = 0.0f;
+
+        // DC blocking
+        outL = g_reverb.dcBlockerL.process(outL);
+        outR = g_reverb.dcBlockerR.process(outR);
+
+        // Safety limiter
+        if (outL > 0.95f) outL = 0.95f;
+        else if (outL < -0.95f) outL = -0.95f;
+        if (outR > 0.95f) outR = 0.95f;
+        else if (outR < -0.95f) outR = -0.95f;
+
+        // Stereo width
+        float mid  = (outL + outR) * 0.5f;
+        float side = (outL - outR) * 0.5f;
+        g_reverb.outputBuf[i * 2]     = mid + side * width;
+        g_reverb.outputBuf[i * 2 + 1] = mid - side * width;
+    }
+
+    // Restore default input AP coefficients if shimmer mode changed them
+    if (isShimmerMode) {
+        for (int i = 0; i < 2; i++) g_reverb.datInAP[i].coeff = DAT_IN_DIFF1;
+        for (int i = 2; i < 4; i++) g_reverb.datInAP[i].coeff = DAT_IN_DIFF2;
+    }
+}
+
 // ═══════════════ Processing ═══════════════
 
 void reverb_process_block(int block_size) {
     if (!g_reverb.initialized || block_size <= 0) return;
     if (block_size > MAX_BLOCK_SIZE) block_size = MAX_BLOCK_SIZE;
+
+    // Route to Dattorro engine for types 4-5 (avoids PRESETS[4+] out-of-bounds)
+    if (g_reverb.presetType >= 4) {
+        dattorro_process_block(block_size);
+        return;
+    }
 
     const float sr = g_reverb.sampleRate;
     const float width = g_reverb.width;
@@ -667,6 +1015,16 @@ void reverb_process_block(int block_size) {
     float blockDampLow  = isFrozen ? 0.0f : g_reverb.smoothDampLow;
     float blockDampHigh = isFrozen ? 0.0f : g_reverb.smoothDampHigh;
     float crossCoeff    = g_reverb.crossoverCoeff;
+
+    // Decay-dependent damping: reduce high damping at very high decay to maintain presence
+    if (!isFrozen && blockFeedback > 0.9f) {
+        float decayScale = (blockFeedback - 0.9f) * 10.0f;  // 0..1 as decay goes 0.9..1.0
+        blockDampHigh *= (1.0f - decayScale * 0.4f);         // reduce by up to 40%
+    }
+
+    // v3 enhancement params
+    float warpAmount = g_reverb.warp;
+    float crossFeedAmt = g_reverb.crossFeed;
 
     // Slow modulation (character drift)
     float slowDepth = g_reverb.slowModDepth;
@@ -783,6 +1141,13 @@ void reverb_process_block(int block_size) {
                            * sinf(g_reverb.chorusPhases[j] * 0.37f * 2.0f * (float)M_PI);
             }
 
+            // Warp: DC offset on chorus modulation — compounds pitch bend per recirculation
+            if (warpAmount > 0.0f) {
+                float warpSign = (j % 2 == 0) ? 1.0f : -1.0f;
+                float warpBase = fmaxf(chorusDepth, 8.0f);  // ensure warp works even with low chorus
+                modOffset += warpAmount * warpBase * 2.0f * warpSign;
+            }
+
             // Advance per-line phase
             g_reverb.chorusPhases[j] += g_reverb.chorusPhaseInc[j];
             if (g_reverb.chorusPhases[j] >= 1.0f) g_reverb.chorusPhases[j] -= 1.0f;
@@ -807,6 +1172,11 @@ void reverb_process_block(int block_size) {
             mixFDN8(g_reverb.fdnDamped, g_reverb.fdnMixed);
         } else {
             mixFDN4(g_reverb.fdnDamped, g_reverb.fdnMixed);
+        }
+
+        // ── In-loop allpass — smears transients inside recirculation ──
+        for (int j = 0; j < fdnCount; j++) {
+            g_reverb.fdnMixed[j] = g_reverb.fdnInLoopAP[j].process(g_reverb.fdnMixed[j]);
         }
 
         // ── Mid-diffusion (Ultra only) ──
@@ -868,6 +1238,13 @@ void reverb_process_block(int block_size) {
         int halfCount = fdnCount >> 1;
         for (int j = 0; j < fdnCount; j++) {
             float dryInject = (j < halfCount) ? diffInL * inputGain : diffInR * inputGain;
+
+            // Cross-feed: inject opposite-side signal for stereo thickening
+            if (crossFeedAmt > 0.0f) {
+                float otherInject = (j < halfCount) ? diffInR : diffInL;
+                dryInject += otherInject * crossFeedAmt * inputGain * 0.3f;
+            }
+
             float shimInject = (j < halfCount) ? shimInL : shimInR;
 
             // Shimmer feedback: compound pitch shifting (shimmer feeds back into FDN)

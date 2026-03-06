@@ -41,7 +41,7 @@ void  reverb_process_block(int block_size);
 
 /* ────── Parameters ────── */
 
-/** Set reverb type preset.  0=plate 1=hall 2=cathedral 3=darkHall */
+/** Set reverb type preset.  0=plate 1=hall 2=cathedral 3=darkHall 4=dattorroPlate 5=dattorroShimmer */
 void  reverb_set_type(int type);
 
 /** Set quality mode.  0=ultra(16ch) 1=balanced(8ch) 2=lite(4ch) */
@@ -87,6 +87,14 @@ void  reverb_set_input_tone(float tone);
 
 /** Shimmer feedback into FDN (compound pitch shifting).  0-1 */
 void  reverb_set_shimmer_feedback(float feedback);
+
+/* ────── v3 Parameters ────── */
+
+/** Warp: pitch-bend in feedback path.  0-1 */
+void  reverb_set_warp(float amount);
+
+/** Cross-feed: stereo cross-injection.  0-1 */
+void  reverb_set_cross_feed(float amount);
 
 #ifdef __cplusplus
 }

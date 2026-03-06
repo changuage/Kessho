@@ -215,10 +215,10 @@ export interface SliderState {
   // Space
   reverbEnabled: boolean;     // on/off toggle for reverb (saves CPU when off)
   reverbEngine: 'algorithmic' | 'convolution';
-  reverbType: 'plate' | 'hall' | 'cathedral' | 'darkHall';
+  reverbType: 'plate' | 'hall' | 'cathedral' | 'darkHall' | 'dattorroPlate' | 'dattorroShimmer';
   reverbQuality: 'ultra' | 'balanced' | 'lite';  // ultra=16-ch + mid diffusion, balanced=8-ch, lite=4-ch FDN
   reverbDecay: number;        // 0..1 step 0.01 (longer tail)
-  reverbSize: number;         // 0.5..3.0 step 0.1 (room size)
+  reverbSize: number;         // 0.5..10.0 step 0.1 (room size — extended for massive spaces)
   reverbDiffusion: number;    // 0..1 step 0.01 (smear amount)
   reverbModulation: number;   // 0..1 step 0.01 (chorus-like shimmer)
   predelay: number;           // 0..100ms step 1
@@ -241,6 +241,10 @@ export interface SliderState {
   reverbCrossoverFreq: number; // 100..6000 Hz step 10 - damping crossover frequency
   reverbInputTone: number;    // -1..+1 step 0.01 - input tilt EQ (-1=dark, +1=bright)
   reverbShimmerFeedback: number; // 0..1 step 0.01 - compound pitch shifting feedback
+
+  // Reverb v3 params
+  reverbWarp: number;            // 0..1 step 0.01 - pitch warp/bend in feedback path
+  reverbCrossFeed: number;       // 0..1 step 0.01 - stereo cross-injection
 
   // Granular
   granularEnabled: boolean;    // on/off toggle for granular processing
@@ -1660,6 +1664,10 @@ export const DEFAULT_STATE: SliderState = {
   reverbInputTone: 0,
   reverbShimmerFeedback: 0,
 
+  // Reverb v3 params
+  reverbWarp: 0,
+  reverbCrossFeed: 0,
+
   // Granular
   granularEnabled: true,
   maxGrains: 64,
@@ -2415,7 +2423,7 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   pad2MorphSpeed: { min: 1, max: 32, step: 1 },
   reverbLevel: { min: 0, max: 2, step: 0.01 },
   reverbDecay: { min: 0, max: 1, step: 0.01 },
-  reverbSize: { min: 0.5, max: 3, step: 0.1 },
+  reverbSize: { min: 0.5, max: 10, step: 0.1 },
   reverbDiffusion: { min: 0, max: 1, step: 0.01 },
   reverbModulation: { min: 0, max: 1, step: 0.01 },
   predelay: { min: 0, max: 100, step: 1 },
@@ -2435,6 +2443,9 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   reverbCrossoverFreq: { min: 100, max: 6000, step: 10 },
   reverbInputTone: { min: -1, max: 1, step: 0.01 },
   reverbShimmerFeedback: { min: 0, max: 1, step: 0.01 },
+  // v3 reverb params
+  reverbWarp: { min: 0, max: 1, step: 0.01 },
+  reverbCrossFeed: { min: 0, max: 1, step: 0.01 },
   grainProbability: { min: 0, max: 1, step: 0.01 },
   maxGrains: { min: 0, max: 128, step: 1 },
   grainSize: { min: 5, max: 800, step: 1 },
