@@ -31,12 +31,13 @@ static constexpr int MAX_BLOCK_SIZE   = 128;
 static constexpr int FDN_MAX_CHANNELS = 16;  // Ultra uses all 16
 static constexpr int SHIMMER_BUF_SIZE = 4096;
 
-// Golden-ratio-spaced prime delay times (ms) — 16 lines
-// Each successive time ≈ prev × φ^(1/3), snapped to nearest prime
-// This ensures maximum density with minimum repetition
+// Prime delay times (ms) — 16 lines
+// Channels 0-7: similar to v1 for backward-compatible 8-ch balanced mode
+// Channels 8-15: additional lines for Ultra density, capped at ~180ms
+// to avoid energy buildup from overly long FDN delay paths
 static const float FDN_TIMES_MS[16] = {
-    29.0f,  34.0f,  41.0f,  49.0f,  59.0f,  71.0f,  83.0f,  101.0f,
-   121.0f, 146.0f, 173.0f, 211.0f, 251.0f, 307.0f, 367.0f, 443.0f
+    31.0f,  37.0f,  43.0f,  53.0f,  61.0f,  71.0f,  83.0f, 101.0f,
+   107.0f, 113.0f, 127.0f, 137.0f, 149.0f, 157.0f, 167.0f, 179.0f
 };
 
 // Diffuser times (samples at 48 kHz)
@@ -59,9 +60,10 @@ static const PresetConfig PRESETS[4] = {
 // Stereo decorrelation tap coefficients per channel (alternating L/R emphasis)
 // Positive = contributes to L, negative = contributes to R, magnitude = weight
 // These create genuinely different reverb tails for each ear
+// Tap magnitudes kept moderate (0.5-1.0) to prevent output level buildup
 static const float STEREO_TAPS_16[16] = {
-     1.0f, -0.7f,  0.9f, -0.8f,  0.8f, -0.9f,  0.7f, -1.0f,
-    -0.6f,  1.0f, -0.8f,  0.9f, -0.9f,  0.7f, -1.0f,  0.6f
+     1.0f, -0.8f,  0.9f, -0.7f,  0.8f, -0.9f,  0.7f, -1.0f,
+    -0.6f,  0.8f, -0.7f,  0.6f, -0.5f,  0.5f, -0.6f,  0.5f
 };
 
 // ═══════════════ DSP Primitives ═══════════════
@@ -703,7 +705,13 @@ void reverb_process_block(int block_size) {
     bool isLite = (g_reverb.quality == 2);
 
     float hpC = isFrozen ? 1.0f : g_reverb.hpCoeff;
-    float inputGain = isFrozen ? 0.0f : (fdnCount >= 16 ? 0.15f : fdnCount >= 8 ? 0.2f : 0.25f);
+    float inputGain = isFrozen ? 0.0f : (fdnCount >= 16 ? 0.10f : fdnCount >= 8 ? 0.2f : 0.25f);
+
+    // Scale feedback down slightly for 16-ch: more channels = more energy storage
+    // Without this, the denser FDN accumulates energy faster than it decays
+    if (fdnCount == 16 && !isFrozen) {
+        blockFeedback *= 0.97f;
+    }
 
     // Chorus / drift / modulation params
     float chorusDepth = g_reverb.chorusDepth;
@@ -766,9 +774,10 @@ void reverb_process_block(int block_size) {
                     modOffset = (sineVal * 0.6f + g_reverb.driftState[j] * 0.4f) * chorusDepth;
                 }
 
-                // Add legacy global modulation on top
-                modOffset += modDepth * g_reverb.fdnDelayTimes[j] * 0.015f
-                           * sinf(g_reverb.chorusPhases[j] * 0.37f * 2.0f * (float)M_PI);
+                // Add legacy global modulation on top (capped to avoid excessive wobble on long lines)
+                float legacyMod = modDepth * fminf(g_reverb.fdnDelayTimes[j], 5000.0f) * 0.008f
+                                * sinf(g_reverb.chorusPhases[j] * 0.37f * 2.0f * (float)M_PI);
+                modOffset += legacyMod;
             }
 
             // Advance per-line phase
@@ -881,16 +890,19 @@ void reverb_process_block(int block_size) {
                 if (tap > 0.0f) rawL += scaled;
                 else            rawR += scaled;
             }
-            rawL *= 0.25f;
-            rawR *= 0.25f;
+            // 1/sqrt(8) ≈ 0.354 is theoretically correct for 8 channels per side,
+            // but we use a conservative 0.16 to match v1's perceived output level
+            // and prevent clipping when the FDN is dense
+            rawL *= 0.16f;
+            rawR *= 0.16f;
         } else if (fdnCount == 8) {
-            // Decorrelated 8-ch tapping
+            // Decorrelated 8-ch tapping (matches v1 gain structure)
             rawL = (g_reverb.fdnReads[0] + g_reverb.fdnReads[2]
                   + g_reverb.fdnReads[4] + g_reverb.fdnReads[6]
-                  + g_reverb.fdnReads[3] * 0.3f + g_reverb.fdnReads[5] * 0.2f) * 0.45f;
+                  + g_reverb.fdnReads[1] * 0.3f + g_reverb.fdnReads[3] * 0.3f) * 0.5f;
             rawR = (g_reverb.fdnReads[1] + g_reverb.fdnReads[3]
                   + g_reverb.fdnReads[5] + g_reverb.fdnReads[7]
-                  + g_reverb.fdnReads[2] * 0.3f + g_reverb.fdnReads[4] * 0.2f) * 0.45f;
+                  + g_reverb.fdnReads[0] * 0.3f + g_reverb.fdnReads[2] * 0.3f) * 0.5f;
         } else {
             rawL = (g_reverb.fdnReads[0] + g_reverb.fdnReads[2]
                   + g_reverb.fdnReads[1] * 0.3f) * 0.7f;
@@ -943,7 +955,16 @@ void reverb_process_block(int block_size) {
         // Stereo width (mid-side)
         float mid  = (rawL + rawR) * 0.5f;
         float side = (rawL - rawR) * 0.5f;
-        g_reverb.outputBuf[i * 2]     = mid + side * width;
-        g_reverb.outputBuf[i * 2 + 1] = mid - side * width;
+        float outL = mid + side * width;
+        float outR = mid - side * width;
+
+        // Safety limiter — hard clamp to prevent WebAudio pipeline overload
+        if (outL >  0.95f) outL =  0.95f;
+        if (outL < -0.95f) outL = -0.95f;
+        if (outR >  0.95f) outR =  0.95f;
+        if (outR < -0.95f) outR = -0.95f;
+
+        g_reverb.outputBuf[i * 2]     = outL;
+        g_reverb.outputBuf[i * 2 + 1] = outR;
     }
 }
