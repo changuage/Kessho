@@ -86,6 +86,11 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   reverbSlowModRate:     { level: 3, scope: 'reverb' },
   reverbSlowModDepth:    { level: 3, scope: 'reverb' },
   reverbFreeze:          { level: 3, scope: 'reverb' },
+  // v5 freeze enhancement params
+  reverbFreezeInputBleed:    { level: 3, scope: 'reverb' },
+  reverbFreezeModAtten:      { level: 3, scope: 'reverb' },
+  reverbFreezeVelvetDensity: { level: 3, scope: 'reverb' },
+  reverbFreezeMode:          { level: 3, scope: 'reverb' },
   reverbReverse:         { level: 3, scope: 'reverb' },
   reverbReverseLength:   { level: 3, scope: 'reverb' },
   // v2 reverb params

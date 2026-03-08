@@ -104,6 +104,7 @@ export const REVERB_CHARACTER_PRESETS: Record<string, {
       reverbShimmer: 0, reverbShimmerPitch: 12,
       reverbSlowModRate: 0.05, reverbSlowModDepth: 0,
       reverbFreeze: true, reverbReverse: 0, reverbReverseLength: 2,
+      reverbFreezeInputBleed: 0.05, reverbFreezeModAtten: 0.8, reverbFreezeVelvetDensity: 0.003,
       reverbChorusRate: 0.8, reverbChorusDepth: 15,
       reverbModCharacter: 'sine' as SliderState['reverbModCharacter'],
       reverbDampLow: 0.0, reverbDampHigh: 0.05, reverbCrossoverFreq: 1000,
@@ -651,6 +652,15 @@ export default function ReverbPage({
                     {state.reverbFreeze ? '❄ Infinite Sustain' : '○ Normal Decay'}
                   </button>
                 </div>
+
+                {/* Freeze sub-params — only shown when freeze is on */}
+                {state.reverbFreeze && (
+                  <>
+                    <Slider label="Input Bleed" value={state.reverbFreezeInputBleed} paramKey="reverbFreezeInputBleed" onChange={onParamChange} {...sp('reverbFreezeInputBleed')} />
+                    <Slider label="Mod Attenuation" value={state.reverbFreezeModAtten} paramKey="reverbFreezeModAtten" onChange={onParamChange} {...sp('reverbFreezeModAtten')} />
+                    <Slider label="Velvet Density" value={state.reverbFreezeVelvetDensity} paramKey="reverbFreezeVelvetDensity" onChange={onParamChange} {...sp('reverbFreezeVelvetDensity')} />
+                  </>
+                )}
               </div>
             )}
           </div>

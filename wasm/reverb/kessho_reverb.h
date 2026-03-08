@@ -61,6 +61,16 @@ void  reverb_set_params(
 /** Freeze / infinite sustain.  1=on 0=off */
 void  reverb_set_freeze(int freeze);
 
+/** v5: Freeze enhancement parameters.
+ *  input_bleed: 0-1 how much new input leaks during freeze (0=silent, default)
+ *  mod_atten:   0-1 how much to attenuate modulation during freeze (0.7=default)
+ *  velvet_density: 0-0.05 re-seeding impulse density during freeze (0.003=default)
+ */
+void  reverb_set_freeze_params(float input_bleed, float mod_atten, float velvet_density);
+
+/** v5: Freeze mode.  0=tank (default) 1=state-capture 2=resonator (future) */
+void  reverb_set_freeze_mode(int mode);
+
 /** Shimmer amount + pitch shift */
 void  reverb_set_shimmer(float amount, float pitch_semitones);
 

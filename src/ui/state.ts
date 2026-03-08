@@ -229,6 +229,11 @@ export interface SliderState {
   reverbSlowModRate: number;  // 0.01..0.2 Hz step 0.001 - slow character drift speed
   reverbSlowModDepth: number; // 0..1 step 0.01 - how much character drifts
   reverbFreeze: boolean;      // infinite sustain mode (freeze reverb tail)
+  // v5 freeze enhancement params
+  reverbFreezeInputBleed: number;    // 0..1 how much new input leaks during freeze
+  reverbFreezeModAtten: number;      // 0..1 modulation attenuation during freeze
+  reverbFreezeVelvetDensity: number; // 0..0.05 re-seeding impulse density
+  reverbFreezeMode: number;          // 0=tank 1=state-capture 2=resonator
   reverbReverse: number;      // 0..1 step 0.01 - reverse tail blend
   reverbReverseLength: number; // 0.5..16.0 seconds step 0.1 - reverse buffer length
 
@@ -1655,6 +1660,11 @@ export const DEFAULT_STATE: SliderState = {
   reverbSlowModRate: 0.05,
   reverbSlowModDepth: 0,
   reverbFreeze: false,
+  // v5 freeze enhancement defaults
+  reverbFreezeInputBleed: 0,
+  reverbFreezeModAtten: 0.7,
+  reverbFreezeVelvetDensity: 0.003,
+  reverbFreezeMode: 0,
   reverbReverse: 0,
   reverbReverseLength: 2,
 
@@ -2456,6 +2466,10 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   reverbCrossFeed: { min: 0, max: 1, step: 0.01 },
   reverbEarlyReflections: { min: 0, max: 1, step: 0.01 },
   reverbAirAbsorption: { min: 0, max: 1, step: 0.01 },
+  // v5 freeze sub-params
+  reverbFreezeInputBleed: { min: 0, max: 1, step: 0.01 },
+  reverbFreezeModAtten: { min: 0, max: 1, step: 0.01 },
+  reverbFreezeVelvetDensity: { min: 0, max: 0.05, step: 0.001 },
   grainProbability: { min: 0, max: 1, step: 0.01 },
   maxGrains: { min: 0, max: 128, step: 1 },
   grainSize: { min: 5, max: 800, step: 1 },

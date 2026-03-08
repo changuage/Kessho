@@ -58,6 +58,8 @@ EXPORTS = [
     "_reverb_set_quality",
     "_reverb_set_params",
     "_reverb_set_freeze",
+    "_reverb_set_freeze_params",
+    "_reverb_set_freeze_mode",
     "_reverb_set_shimmer",
     "_reverb_set_slow_mod",
     "_reverb_set_reverse",

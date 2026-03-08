@@ -148,6 +148,18 @@ class ReverbWasmProcessor extends AudioWorkletProcessor {
     // Freeze
     w.reverb_set_freeze((p.freeze || p.infinite) ? 1 : 0);
 
+    // v5: Freeze enhancement params
+    if (p.freezeInputBleed !== undefined || p.freezeModAtten !== undefined || p.freezeVelvetDensity !== undefined) {
+      w.reverb_set_freeze_params(
+        p.freezeInputBleed ?? 0,
+        p.freezeModAtten ?? 0.7,
+        p.freezeVelvetDensity ?? 0.003
+      );
+    }
+    if (p.freezeMode !== undefined) {
+      w.reverb_set_freeze_mode(p.freezeMode ?? 0);
+    }
+
     // Shimmer
     if (p.shimmer !== undefined || p.shimmerPitch !== undefined) {
       w.reverb_set_shimmer(p.shimmer ?? 0, p.shimmerPitch ?? 12);
