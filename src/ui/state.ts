@@ -2470,6 +2470,7 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   reverbFreezeInputBleed: { min: 0, max: 1, step: 0.01 },
   reverbFreezeModAtten: { min: 0, max: 1, step: 0.01 },
   reverbFreezeVelvetDensity: { min: 0, max: 0.05, step: 0.001 },
+  reverbFreezeMode: { min: 0, max: 2, step: 1 },
   grainProbability: { min: 0, max: 1, step: 0.01 },
   maxGrains: { min: 0, max: 128, step: 1 },
   grainSize: { min: 5, max: 800, step: 1 },

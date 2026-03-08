@@ -970,18 +970,35 @@ static void dattorro_process_block(int block_size) {
     g_reverb.freezeRamp += (rampTarget - g_reverb.freezeRamp) * fminf(1.0f, rampSpeed);
     float fzRamp = g_reverb.freezeRamp;
 
+    // v5: freeze mode branching for Dattorro
+    int fzMode = g_reverb.freezeMode;  // 0=tank, 1=state-capture, 2=resonator
+
     // Dattorro decay coefficient — interpolated with ramp
     float normalTankDecay = fminf(0.9995f, 0.5f + userDecay * 0.4995f);
     float tankDecay = normalTankDecay + (1.0f - normalTankDecay) * fzRamp;
 
-    // Damping (1-pole LP coefficient) — ramp toward no damping during freeze
+    // Damping (1-pole LP coefficient)
     float normalDampCoeff = 1.0f - damping * 0.7f;
-    float dampCoeff = normalDampCoeff + (1.0f - normalDampCoeff) * fzRamp;
+    float dampCoeff;
+    if (fzMode == 2 && fzRamp > 0.01f) {
+        // Resonator: keep damping active — shapes resonant character
+        dampCoeff = normalDampCoeff;
+    } else {
+        // Tank & state-capture: ramp toward no damping during freeze
+        dampCoeff = normalDampCoeff + (1.0f - normalDampCoeff) * fzRamp;
+    }
 
     // Mod depth — shimmer mode gets more modulation for detuning shimmer effect
-    // v5: attenuate modulation during freeze
+    // v5: attenuate modulation during freeze (mode-dependent)
     float modMult = isShimmerMode ? 2.5f : 1.0f;
-    float modAttenFactor = 1.0f - fzRamp * g_reverb.freezeModAtten;
+    float modAttenFactor;
+    if (fzMode == 1) {
+        modAttenFactor = 1.0f - fzRamp;  // state-capture: kill modulation
+    } else if (fzMode == 2) {
+        modAttenFactor = 1.0f;            // resonator: keep full modulation
+    } else {
+        modAttenFactor = 1.0f - fzRamp * g_reverb.freezeModAtten;  // tank: user-controlled
+    }
     float modDepthSamples = modulation * 16.0f * scale * modMult * modAttenFactor;
     float modRate = 0.3f / sr;  // slow tank LFO
 
@@ -997,10 +1014,20 @@ static void dattorro_process_block(int block_size) {
         for (int i = 2; i < 4; i++) g_reverb.datInAP[i].coeff = inDiff2;
     }
 
-    // Input gain — v5: smooth ramp with optional bleed
+    // Input gain — v5: mode-dependent behavior
     float normalDatInputGain = 0.2f;
-    float datFreezeBleed = g_reverb.freezeInputBleed * normalDatInputGain;
-    float inputGain = normalDatInputGain * (1.0f - fzRamp) + datFreezeBleed * fzRamp;
+    float inputGain;
+    if (fzMode == 1 && fzRamp > 0.01f) {
+        // State-capture: fully mute input for pure snapshot
+        inputGain = normalDatInputGain * (1.0f - fzRamp);
+    } else if (fzMode == 2 && fzRamp > 0.01f) {
+        // Resonator: keep input at full level — tank acts as resonant filter
+        inputGain = normalDatInputGain;
+    } else {
+        // Tank: ramp down with optional bleed
+        float datFreezeBleed = g_reverb.freezeInputBleed * normalDatInputGain;
+        inputGain = normalDatInputGain * (1.0f - fzRamp) + datFreezeBleed * fzRamp;
+    }
 
     // Warp: DC bias on tank allpass modulation
     float warpAmount = g_reverb.warp;
@@ -1218,11 +1245,25 @@ void reverb_process_block(int block_size) {
     float fzRamp = g_reverb.freezeRamp;  // 0=normal, 1=fully frozen
 
     // Interpolate feedback, damping, and input gain using ramp
+    int fzMode = g_reverb.freezeMode;  // 0=tank, 1=state-capture, 2=resonator
     float normalFeedback = g_reverb.feedbackGain;
     float blockFeedback = normalFeedback + (1.0f - normalFeedback) * fzRamp;
-    float blockDampLow  = g_reverb.smoothDampLow * (1.0f - fzRamp);
-    float blockDampHigh = g_reverb.smoothDampHigh * (1.0f - fzRamp);
+    float blockDampLow, blockDampHigh;
     float crossCoeff    = g_reverb.crossoverCoeff;
+
+    if (fzMode == 1 && fzRamp > 0.01f) {
+        // State-capture: zero damping — pure lossless recirculation (static snapshot)
+        blockDampLow  = g_reverb.smoothDampLow  * (1.0f - fzRamp);
+        blockDampHigh = g_reverb.smoothDampHigh * (1.0f - fzRamp);
+    } else if (fzMode == 2 && fzRamp > 0.01f) {
+        // Resonator: keep damping active — it shapes the resonant character
+        blockDampLow  = g_reverb.smoothDampLow;
+        blockDampHigh = g_reverb.smoothDampHigh;
+    } else {
+        // Tank (mode 0): ramp damping toward zero
+        blockDampLow  = g_reverb.smoothDampLow  * (1.0f - fzRamp);
+        blockDampHigh = g_reverb.smoothDampHigh * (1.0f - fzRamp);
+    }
 
     // Decay-dependent damping: reduce high damping at very high decay to maintain presence
     if (fzRamp < 0.5f && blockFeedback > 0.9f) {
@@ -1237,7 +1278,16 @@ void reverb_process_block(int block_size) {
     // Slow modulation (character drift) — v5: attenuate during freeze
     float slowDepth = g_reverb.slowModDepth;
     // Attenuate modulation during freeze based on freezeModAtten
-    float modAttenFactor = 1.0f - fzRamp * g_reverb.freezeModAtten;
+    // State-capture (mode 1): kill all modulation for static snapshot
+    // Resonator (mode 2): keep modulation fully active
+    float modAttenFactor;
+    if (fzMode == 1) {
+        modAttenFactor = 1.0f - fzRamp;  // ramp to zero
+    } else if (fzMode == 2) {
+        modAttenFactor = 1.0f;            // keep full modulation
+    } else {
+        modAttenFactor = 1.0f - fzRamp * g_reverb.freezeModAtten;  // user-controlled
+    }
     if (slowDepth > 0.0f && modAttenFactor > 0.01f) {
         float slowRate = g_reverb.slowModRate;
         float TAU = (float)(2.0 * M_PI);
@@ -1279,11 +1329,22 @@ void reverb_process_block(int block_size) {
     }
     bool isLite = (g_reverb.quality == 2);
 
-    float hpC = fzRamp > 0.99f ? 1.0f : g_reverb.hpCoeff;
-    // v5: input gain ramps down with freeze, optional bleed keeps a tiny amount
+    // State-capture: bypass HPF during freeze for lossless recirculation
+    float hpC = (fzRamp > 0.99f && fzMode != 2) ? 1.0f : g_reverb.hpCoeff;
+    // v5: input gain behavior depends on freeze mode
     float normalInputGain = (fdnCount >= 16 ? 0.10f : fdnCount >= 8 ? 0.10f : 0.20f);
-    float freezeBleed = g_reverb.freezeInputBleed * normalInputGain;
-    float inputGain = normalInputGain * (1.0f - fzRamp) + freezeBleed * fzRamp;
+    float inputGain;
+    if (fzMode == 1 && fzRamp > 0.01f) {
+        // State-capture: fully mute input (no bleed) for pure snapshot
+        inputGain = normalInputGain * (1.0f - fzRamp);
+    } else if (fzMode == 2 && fzRamp > 0.01f) {
+        // Resonator: keep input at full level — FDN acts as resonant filter
+        inputGain = normalInputGain;
+    } else {
+        // Tank: ramp down with optional bleed
+        float freezeBleed = g_reverb.freezeInputBleed * normalInputGain;
+        inputGain = normalInputGain * (1.0f - fzRamp) + freezeBleed * fzRamp;
+    }
 
     // Chorus / drift / modulation params
     float chorusDepth = g_reverb.chorusDepth;
@@ -1314,10 +1375,12 @@ void reverb_process_block(int block_size) {
 
     // Velvet noise density: auto-computed from decay (only at very high decay)
     // v5: also inject during freeze for re-seeding (prevents dead texture)
+    // State-capture (mode 1): no velvet noise — static snapshot
+    // Resonator (mode 2): no velvet noise — input provides excitation
     float velvetThreshold = 0.0f;
-    if (fzRamp > 0.5f) {
+    if (fzMode == 0 && fzRamp > 0.5f) {
         velvetThreshold = g_reverb.freezeVelvetDensity * fzRamp;
-    } else if (blockFeedback > 0.92f) {
+    } else if (blockFeedback > 0.92f && fzMode != 1) {
         velvetThreshold = (blockFeedback - 0.92f) * 12.5f * 0.015f;  // max ~1.5% density at decay=1
     }
 
@@ -1325,7 +1388,9 @@ void reverb_process_block(int block_size) {
     float matrixRotInc = 1.0f / (sr * 25.0f);  // one flip per ~25 seconds
 
     // v5 enhanced freeze evolution: multi-rate LFO drift of in-loop allpass coefficients
-    if (fzRamp > 0.1f) {
+    // State-capture (mode 1): no evolution — allpass coefficients stay fixed
+    // Resonator (mode 2): keep evolution for organic resonance
+    if (fzRamp > 0.1f && fzMode != 1) {
         float TAU = 2.0f * (float)M_PI;
         // LFO 1: 0.03 Hz — slow primary drift
         g_reverb.freezeAPPhase += 0.03f / sr;
