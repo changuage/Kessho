@@ -104,7 +104,7 @@ const setupIOSMediaSession = async () => {
   if (!mediaSessionAudio) {
     mediaSessionAudio = new Audio();
     mediaSessionAudio.loop = false; // We'll use MediaStream, not a file
-    mediaSessionAudio.volume = 1.0; // Full volume since it carries actual audio
+    mediaSessionAudio.volume = 1.0; // Full volume since it carries actual audio on iOS
     
     // Important for iOS
     (mediaSessionAudio as any).webkitPreservesPitch = false;
@@ -134,23 +134,21 @@ const setupIOSMediaSession = async () => {
 };
 
 // Connect the audio element to Web Audio MediaStream (call after engine starts)
-// Only on iOS/mobile to avoid double audio on desktop
+// iOS-only: other mobile browsers are more stable via direct AudioContext output.
 const connectMediaSessionToWebAudio = () => {
   if (!mediaSessionAudio) return;
   
-  // Only connect on iOS/mobile - desktop browsers play fine without this
-  // and connecting causes double audio
+  // Only connect on iOS - non-iOS browsers don't need MediaStream bridging
+  // and can exhibit periodic output stutter through the extra stream path.
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
   
-  if (!isIOS && !isMobile) {
-    console.log('Skipping MediaStream audio element on desktop to avoid double audio');
+  if (!isIOS) {
+    console.log('Skipping MediaStream audio element on non-iOS devices');
     return;
   }
   
   const stream = audioEngine.getMediaStream();
   if (stream) {
-    // Connect the Web Audio output to the HTML audio element
     mediaSessionAudio.srcObject = stream;
     mediaSessionAudio.play().catch(e => console.log('Media stream play failed:', e));
     console.log('MediaStream connected to audio element for background playback');

@@ -880,7 +880,8 @@ export class AudioEngine {
     // Create AudioContext if needed
     if (!this.ctx) {
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-      this.ctx = new AudioContextClass();
+      const isIOSDevice = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      this.ctx = new AudioContextClass(isIOSDevice ? { latencyHint: 'playback' } : undefined);
     }
     if (this.ctx.state === 'suspended') {
       void this.ctx.resume();
@@ -1018,7 +1019,8 @@ export class AudioEngine {
     // Create AudioContext if needed
     if (!this.ctx) {
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-      this.ctx = new AudioContextClass();
+      const isIOSDevice = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      this.ctx = new AudioContextClass(isIOSDevice ? { latencyHint: 'playback' } : undefined);
     }
     
     // Resume context if suspended (iOS requirement)
@@ -1144,9 +1146,25 @@ export class AudioEngine {
       this.isStarting = false;
       throw new Error('Web Audio API not supported in this browser');
     }
-    this.ctx = new AudioContextClass();
-    console.log('AudioContext created, state:', this.ctx.state);
-    
+    // Use 'playback' latency hint on iOS to request larger audio buffers —
+    // reduces underruns especially with USB audio interfaces.
+    const isIOSDevice = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    this.ctx = new AudioContextClass(isIOSDevice ? { latencyHint: 'playback' } : undefined);
+    console.log('AudioContext created, state:', this.ctx.state, 'sampleRate:', this.ctx.sampleRate, 'baseLatency:', (this.ctx as any).baseLatency);
+
+    // Auto-recover from iOS audio session interruptions (common with USB audio).
+    // When iOS interrupts the audio session (e.g. USB device reconfiguration,
+    // phone call, Siri), the context transitions to 'interrupted' then back.
+    this.ctx.onstatechange = () => {
+      if (!this.ctx) return;
+      console.log('AudioContext state changed:', this.ctx.state);
+      if (this.ctx.state === 'suspended' && this.isRunning) {
+        this.ctx.resume().then(() => {
+          console.log('AudioContext auto-resumed after interruption');
+        }).catch(e => console.warn('Auto-resume failed:', e));
+      }
+    };
+
     // iOS Safari requires resume to be called in response to user interaction
     if (this.ctx.state === 'suspended') {
       console.log('AudioContext suspended, attempting resume...');
@@ -2085,23 +2103,24 @@ export class AudioEngine {
 
     this.masterGain.connect(this.limiter);
     
-    // Detect iOS/mobile - these need MediaStream for background audio
+    // Detect iOS specifically - only iOS needs MediaStream routing for
+    // lock-screen/background media session continuity.
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     this.isMobile = isMobile || isIOS;
     
-    if (isIOS || isMobile) {
-      // On mobile: ONLY connect to MediaStreamDestination
-      // The HTML audio element will play this stream
+    if (isIOS) {
+      // On iOS: route through MediaStreamDestination only.
+      // The HTML audio element will play this stream for lock-screen/background continuity.
       // Do NOT also connect to ctx.destination or you get double audio!
       this.mediaStreamDest = ctx.createMediaStreamDestination();
       this.limiter.connect(this.mediaStreamDest);
-      console.log('Mobile detected: Audio routed through MediaStream only (no double audio)');
+      console.log('iOS detected: Audio routed through MediaStream only (for media session continuity)');
     } else {
-      // On desktop: Connect directly to destination (no MediaStream needed)
+      // Non-iOS: connect directly to destination for lowest-latency/stable output.
       this.limiter.connect(ctx.destination);
       this.mediaStreamDest = null;
-      console.log('Desktop detected: Audio routed directly to destination');
+      console.log('Non-iOS detected: Audio routed directly to destination');
     }
 
     // Load ocean sample asynchronously
@@ -3541,6 +3560,11 @@ export class AudioEngine {
           slowModRate: state.reverbSlowModRate ?? 0.05,
           slowModDepth: state.reverbSlowModDepth ?? 0,
           freeze: state.reverbFreeze ?? false,
+          // v5 freeze enhancement params
+          freezeInputBleed: state.reverbFreezeInputBleed ?? 0,
+          freezeModAtten: state.reverbFreezeModAtten ?? 0.7,
+          freezeVelvetDensity: state.reverbFreezeVelvetDensity ?? 0.003,
+          freezeMode: state.reverbFreezeMode ?? 0,
           reverse: state.reverbReverse ?? 0,
           reverseLength: state.reverbReverseLength ?? 2,
           // v2 params
@@ -4233,7 +4257,8 @@ export class AudioEngine {
     // Create AudioContext if needed
     if (!this.ctx) {
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-      this.ctx = new AudioContextClass();
+      const isIOSDevice = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      this.ctx = new AudioContextClass(isIOSDevice ? { latencyHint: 'playback' } : undefined);
     }
     if (this.ctx.state === 'suspended') {
       void this.ctx.resume();
