@@ -501,7 +501,10 @@ static struct {
     float freezeVelvetDensity; // re-seeding density during freeze
     float freezeEvoPhase2;     // second evolution LFO phase (0.07 Hz)
     float freezeEvoPhase3;     // third evolution LFO phase (0.13 Hz)
-    int   freezeMode;          // 0=tank, 1=state-capture, 2=resonator (future)
+    int   freezeMode;          // 0=tank, 1=state-capture, 2=resonator, 3=slushy
+
+    // Slushy mode (mode 3) RNG state
+    uint32_t slushyRngState;
 
     // Dattorro tank state
     TankAllpass datInAP[4];         // input diffusion allpass
@@ -714,6 +717,7 @@ int reverb_init(float sample_rate) {
     g_reverb.freezeEvoPhase2 = 0.0f;
     g_reverb.freezeEvoPhase3 = 0.0f;
     g_reverb.freezeMode = 0;
+    g_reverb.slushyRngState = 12345u;
 
     // HPF ~35 Hz
     g_reverb.hpCoeff = 1.0f - (2.0f * (float)M_PI * 35.0f / sample_rate);
@@ -871,7 +875,7 @@ void reverb_set_freeze_params(float input_bleed, float mod_atten, float velvet_d
 }
 
 void reverb_set_freeze_mode(int mode) {
-    g_reverb.freezeMode = (mode >= 0 && mode <= 2) ? mode : 0;
+    g_reverb.freezeMode = (mode >= 0 && mode <= 3) ? mode : 0;
 }
 
 void reverb_set_shimmer(float amount, float pitch_semitones) {
@@ -983,6 +987,9 @@ static void dattorro_process_block(int block_size) {
     if (fzMode == 2 && fzRamp > 0.01f) {
         // Resonator: keep damping active — shapes resonant character
         dampCoeff = normalDampCoeff;
+    } else if (fzMode == 3 && fzRamp > 0.01f) {
+        // Slushy: partial damping reduction — keeps some color
+        dampCoeff = normalDampCoeff + (1.0f - normalDampCoeff) * fzRamp * 0.5f;
     } else {
         // Tank & state-capture: ramp toward no damping during freeze
         dampCoeff = normalDampCoeff + (1.0f - normalDampCoeff) * fzRamp;
@@ -994,8 +1001,8 @@ static void dattorro_process_block(int block_size) {
     float modAttenFactor;
     if (fzMode == 1) {
         modAttenFactor = 1.0f - fzRamp;  // state-capture: kill modulation
-    } else if (fzMode == 2) {
-        modAttenFactor = 1.0f;            // resonator: keep full modulation
+    } else if (fzMode == 2 || fzMode == 3) {
+        modAttenFactor = 1.0f;            // resonator & slushy: keep full modulation
     } else {
         modAttenFactor = 1.0f - fzRamp * g_reverb.freezeModAtten;  // tank: user-controlled
     }
@@ -1023,6 +1030,9 @@ static void dattorro_process_block(int block_size) {
     } else if (fzMode == 2 && fzRamp > 0.01f) {
         // Resonator: keep input at full level — tank acts as resonant filter
         inputGain = normalDatInputGain;
+    } else if (fzMode == 3 && fzRamp > 0.01f) {
+        // Slushy: stochastic input gating — bleed param controls density
+        inputGain = normalDatInputGain;  // base level; per-sample gating applied in loop
     } else {
         // Tank: ramp down with optional bleed
         float datFreezeBleed = g_reverb.freezeInputBleed * normalDatInputGain;
@@ -1081,6 +1091,19 @@ static void dattorro_process_block(int block_size) {
 
         // Sum to mono, scale, apply pre-diffusion
         float diffIn = g_reverb.preDiffL.process((delayedL + delayedR) * 0.5f) * inputGain;
+
+        // Mode 3 (Slushy): stochastic input gating — random per-sample chance
+        if (fzMode == 3 && fzRamp > 0.01f) {
+            // xorshift32 PRNG
+            uint32_t rng = g_reverb.slushyRngState;
+            rng ^= rng << 13; rng ^= rng >> 17; rng ^= rng << 5;
+            g_reverb.slushyRngState = rng;
+            float rndVal = (float)(rng & 0x7FFFFFu) / (float)0x800000u;
+            // freezeInputBleed controls gate density: 0 = no input, 1 = all input
+            float gateDensity = g_reverb.freezeInputBleed;
+            float gate = (rndVal < gateDensity) ? 1.0f : 0.0f;
+            diffIn *= (1.0f - fzRamp) + fzRamp * gate;
+        }
 
         // Input diffusion: 4 serial allpass filters
         float x = diffIn;
@@ -1259,6 +1282,10 @@ void reverb_process_block(int block_size) {
         // Resonator: keep damping active — it shapes the resonant character
         blockDampLow  = g_reverb.smoothDampLow;
         blockDampHigh = g_reverb.smoothDampHigh;
+    } else if (fzMode == 3 && fzRamp > 0.01f) {
+        // Slushy: partial damping reduction — keeps some spectral color
+        blockDampLow  = g_reverb.smoothDampLow  * (1.0f - fzRamp * 0.5f);
+        blockDampHigh = g_reverb.smoothDampHigh * (1.0f - fzRamp * 0.5f);
     } else {
         // Tank (mode 0): ramp damping toward zero
         blockDampLow  = g_reverb.smoothDampLow  * (1.0f - fzRamp);
@@ -1283,8 +1310,8 @@ void reverb_process_block(int block_size) {
     float modAttenFactor;
     if (fzMode == 1) {
         modAttenFactor = 1.0f - fzRamp;  // ramp to zero
-    } else if (fzMode == 2) {
-        modAttenFactor = 1.0f;            // keep full modulation
+    } else if (fzMode == 2 || fzMode == 3) {
+        modAttenFactor = 1.0f;            // resonator & slushy: keep full modulation
     } else {
         modAttenFactor = 1.0f - fzRamp * g_reverb.freezeModAtten;  // user-controlled
     }
@@ -1330,7 +1357,7 @@ void reverb_process_block(int block_size) {
     bool isLite = (g_reverb.quality == 2);
 
     // State-capture: bypass HPF during freeze for lossless recirculation
-    float hpC = (fzRamp > 0.99f && fzMode != 2) ? 1.0f : g_reverb.hpCoeff;
+    float hpC = (fzRamp > 0.99f && fzMode != 2 && fzMode != 3) ? 1.0f : g_reverb.hpCoeff;
     // v5: input gain behavior depends on freeze mode
     float normalInputGain = (fdnCount >= 16 ? 0.10f : fdnCount >= 8 ? 0.10f : 0.20f);
     float inputGain;
@@ -1339,6 +1366,9 @@ void reverb_process_block(int block_size) {
         inputGain = normalInputGain * (1.0f - fzRamp);
     } else if (fzMode == 2 && fzRamp > 0.01f) {
         // Resonator: keep input at full level — FDN acts as resonant filter
+        inputGain = normalInputGain;
+    } else if (fzMode == 3 && fzRamp > 0.01f) {
+        // Slushy: base input at full level; per-channel stochastic gating in inner loop
         inputGain = normalInputGain;
     } else {
         // Tank: ramp down with optional bleed
@@ -1621,6 +1651,17 @@ void reverb_process_block(int block_size) {
         int halfCount = fdnCount >> 1;
         for (int j = 0; j < fdnCount; j++) {
             float dryInject = (j < halfCount) ? diffInL * inputGain : diffInR * inputGain;
+
+            // Mode 3 (Slushy): per-channel stochastic input gating
+            if (fzMode == 3 && fzRamp > 0.01f) {
+                uint32_t rng = g_reverb.slushyRngState;
+                rng ^= rng << 13; rng ^= rng >> 17; rng ^= rng << 5;
+                g_reverb.slushyRngState = rng;
+                float rndVal = (float)(rng & 0x7FFFFFu) / (float)0x800000u;
+                float gateDensity = g_reverb.freezeInputBleed;
+                float gate = (rndVal < gateDensity) ? 1.0f : 0.0f;
+                dryInject *= (1.0f - fzRamp) + fzRamp * gate;
+            }
 
             // Cross-feed: inject opposite-side signal for stereo thickening
             if (crossFeedAmt > 0.0f) {

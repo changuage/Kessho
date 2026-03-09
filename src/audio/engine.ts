@@ -74,6 +74,7 @@ const reverbWasmWorkletUrl = getWorkletUrl('reverb-wasm.worklet.js');
 // Looper FX uses WASM-only path (no JS fallback)
 const looperFxWasmWorkletUrl = getWorkletUrl('looper-fx-wasm.worklet.js');
 const soundscapesWorkletUrl = getWorkletUrl('soundscapes-wasm.worklet.js');
+const spectralFreezeWorkletUrl = getWorkletUrl('spectral-freeze-wasm.worklet.js');
 
 // ═══════════════ Looper Multi-Tap Delay Constants ═══════════════
 
@@ -207,6 +208,11 @@ export class AudioEngine {
   private granulatorNode: AudioWorkletNode | null = null;
   private reverbNode: AudioWorkletNode | null = null;
   private reverbOutputGain: GainNode | null = null;
+
+  // Spectral Freeze (STFT WASM)
+  private spectralFreezeNode: AudioWorkletNode | null = null;
+  private wasmSpectralFreezeBinary: ArrayBuffer | null = null;
+  private reverbInputBus: GainNode | null = null;  // gain node between sources and reverb for pre-mode crossfade
 
   private synthBus: GainNode | null = null;
   private dryBus: GainNode | null = null;
@@ -1193,6 +1199,19 @@ export class AudioEngine {
       throw e;
     }
 
+    // Spectral Freeze WASM worklet
+    try {
+      const sfWasmUrl = getWorkletUrl('kessho_spectral_freeze.wasm');
+      const sfWasmResp = await fetch(sfWasmUrl);
+      if (sfWasmResp.ok) {
+        this.wasmSpectralFreezeBinary = await sfWasmResp.arrayBuffer();
+        await this.ctx.audioWorklet.addModule(spectralFreezeWorkletUrl);
+        console.log('Spectral Freeze WASM worklet loaded (%d KB)', Math.round(this.wasmSpectralFreezeBinary.byteLength / 1024));
+      }
+    } catch (e) {
+      console.warn('Spectral Freeze WASM load failed (non-fatal):', e);
+    }
+
     // Soundscapes WASM worklet (water + insects + ocean engines)
     try {
       await this.ctx.audioWorklet.addModule(soundscapesWorkletUrl);
@@ -1681,6 +1700,26 @@ export class AudioEngine {
     this.reverbOutputGain = ctx.createGain();
     this.reverbOutputGain.gain.value = this.sliderState?.reverbLevel ?? 1.0;
 
+    // Reverb input bus — gain node between sources and reverbNode for spectral freeze pre-mode crossfade
+    this.reverbInputBus = ctx.createGain();
+    this.reverbInputBus.gain.value = 1.0;
+
+    // Spectral Freeze WASM worklet
+    if (this.wasmSpectralFreezeBinary) {
+      this.spectralFreezeNode = new AudioWorkletNode(ctx, 'spectral-freeze-wasm', {
+        numberOfInputs: 1,
+        numberOfOutputs: 1,
+        outputChannelCount: [2],
+      });
+      this.spectralFreezeNode.port.onmessage = (e) => {
+        if (e.data.type === 'perf') this.handlePerfMessage(e.data);
+        else if (e.data.type === 'wasmReady') console.log('Spectral Freeze WASM engine initialized');
+      };
+      const sfBin = this.wasmSpectralFreezeBinary;
+      this.wasmSpectralFreezeBinary = null;
+      this.spectralFreezeNode.port.postMessage({ type: 'wasmBinary', binary: sfBin }, [sfBin]);
+    }
+
     // Lead synth (Rhodes/Bell) with stereo ping-pong delay
     this.leadGain = ctx.createGain();
     this.leadGain.gain.value = this.sliderState?.leadLevel ?? 0.4;
@@ -1920,7 +1959,7 @@ export class AudioEngine {
       this.looperFxInputGain.connect(this.looperFxNode);
       this.looperFxNode.connect(this.looperFxReverbSend);
       this.looperFxNode.connect(this.looperFxDirect);
-      this.looperFxReverbSend.connect(this.reverbNode);
+      this.looperFxReverbSend.connect(this.reverbInputBus);
       this.looperFxDirect.connect(this.masterGain);
 
       // ── Looper Multi-Tap Delay (Microcosm-style) ──
@@ -2012,18 +2051,23 @@ export class AudioEngine {
       this.looperDelayOutputGain.connect(this.looperDelayDirectGain);
       this.looperDelayOutputGain.connect(this.looperDelayReverbSendGain);
       this.looperDelayDirectGain.connect(this.masterGain);
-      this.looperDelayReverbSendGain.connect(this.reverbNode);
+      this.looperDelayReverbSendGain.connect(this.reverbInputBus);
     }
 
     // Split dry synth output: reverb send and direct to master
     this.dryBus.connect(this.synthReverbSend);
     this.dryBus.connect(this.synthDirect);
     
-    this.synthReverbSend.connect(this.reverbNode);
+    this.synthReverbSend.connect(this.reverbInputBus);
     this.synthDirect.connect(this.masterGain);
 
+    // Reverb routing — all sources go through reverbInputBus
+    this.reverbInputBus.connect(this.reverbNode);
     this.reverbNode.connect(this.reverbOutputGain);
     this.reverbOutputGain.connect(this.masterGain);
+
+    // Spectral Freeze routing (configured by applySpectralFreezeRouting)
+    this.applySpectralFreezeRouting();
 
     // Lead synth signal path:
     // LeadGain -> LeadFilter -> LeadDry -----------------> Master
@@ -2049,11 +2093,11 @@ export class AudioEngine {
 
     // Lead delay reverb send (delay output also feeds reverb)
     this.leadDelayMix.connect(this.leadDelayReverbSend);
-    this.leadDelayReverbSend.connect(this.reverbNode);
+    this.leadDelayReverbSend.connect(this.reverbInputBus);
 
     // Lead reverb send (dry lead to reverb)
     this.leadFilter.connect(this.leadReverbSend);
-    this.leadReverbSend.connect(this.reverbNode);
+    this.leadReverbSend.connect(this.reverbInputBus);
 
     // Ocean waves -> OceanGain -> OceanFilter -> Master
     // Ocean WASM (soundscapes output [2]) feeds into the same gain chain
@@ -2071,7 +2115,7 @@ export class AudioEngine {
     // Waves reverb send (taps oceanFilter output → reverb)
     if (this.oceanReverbSendNode) {
       this.oceanFilter.connect(this.oceanReverbSendNode);
-      this.oceanReverbSendNode.connect(this.reverbNode);
+      this.oceanReverbSendNode.connect(this.reverbInputBus);
     }
 
     // Waves looper send (taps oceanFilter output)
@@ -2094,11 +2138,11 @@ export class AudioEngine {
       this.soundscapesNode.connect(this.oceanGain, 2);
       if (this.insectsReverbSendNode) {
         this.soundscapesNode.connect(this.insectsReverbSendNode, 1);
-        this.insectsReverbSendNode.connect(this.reverbNode);
+        this.insectsReverbSendNode.connect(this.reverbInputBus);
       }
     }
     this.waterGain.connect(this.masterGain);
-    this.waterReverbSend.connect(this.reverbNode);
+    this.waterReverbSend.connect(this.reverbInputBus);
     this.soundscapesInsectsGain.connect(this.masterGain);
 
     this.masterGain.connect(this.limiter);
@@ -2944,6 +2988,60 @@ export class AudioEngine {
     voice.active = true;
   }
 
+  // Current spectral freeze routing mode (to detect changes)
+  private currentSpectralFreezeRouting: 'pre' | 'post' | null = null;
+
+  /**
+   * Wire spectral freeze node into the audio graph.
+   * Pre-reverb: reverbInputBus → spectralFreezeNode → reverbNode (with crossfade on reverbInputBus.gain)
+   * Post-reverb: reverbNode → spectralFreezeNode → reverbOutputGain
+   */
+  private applySpectralFreezeRouting(): void {
+    if (!this.spectralFreezeNode || !this.reverbNode || !this.reverbOutputGain || !this.reverbInputBus) return;
+    const state = this.sliderState;
+    const routing = state?.spectralFreezeRouting ?? 'pre';
+    const enabled = state?.spectralFreezeEnabled ?? false;
+
+    // Disconnect spectral freeze from any previous routing
+    try { this.spectralFreezeNode.disconnect(); } catch (_) { /* not connected */ }
+
+    if (!enabled) {
+      // Not enabled — ensure reverbInputBus gain is at 1 (passthrough)
+      this.reverbInputBus.gain.value = 1.0;
+      this.currentSpectralFreezeRouting = null;
+      // Ensure reverb → reverbOutputGain is direct
+      try { this.reverbNode.disconnect(this.reverbOutputGain); } catch (_) { /* */ }
+      this.reverbNode.connect(this.reverbOutputGain);
+      return;
+    }
+
+    if (routing === 'pre') {
+      // Pre-reverb: spectral freeze output feeds into reverb
+      // reverbInputBus also connects to reverbNode (crossfade controls how much live signal goes through)
+      // reverbInputBus → spectralFreezeNode → reverbNode
+      this.reverbInputBus.connect(this.spectralFreezeNode);
+      this.spectralFreezeNode.connect(this.reverbNode);
+
+      // Crossfade: reverbInputBus.gain controls how much live signal also enters reverb directly
+      const crossfade = state?.spectralFreezeReverbCrossfade ?? 0.5;
+      this.reverbInputBus.gain.value = crossfade;
+
+      // Ensure reverb → reverbOutputGain is direct
+      try { this.reverbNode.disconnect(this.reverbOutputGain); } catch (_) { /* */ }
+      this.reverbNode.connect(this.reverbOutputGain);
+    } else {
+      // Post-reverb: spectral freeze sits after reverb output
+      // reverbNode → spectralFreezeNode → reverbOutputGain
+      this.reverbInputBus.gain.value = 1.0;
+
+      try { this.reverbNode.disconnect(this.reverbOutputGain); } catch (_) { /* */ }
+      this.reverbNode.connect(this.spectralFreezeNode);
+      this.spectralFreezeNode.connect(this.reverbOutputGain);
+    }
+
+    this.currentSpectralFreezeRouting = routing;
+  }
+
   private applyParams(state: SliderState): void {
     if (!this.ctx) return;
 
@@ -3589,6 +3687,32 @@ export class AudioEngine {
 
     // Reverb output level (mute if disabled)
     this.reverbOutputGain?.gain.setTargetAtTime(state.reverbEnabled ? state.reverbLevel : 0, now, smoothTime);
+
+    // Spectral Freeze parameters
+    if (this.spectralFreezeNode && (this.spectralFreezeNode as any).port) {
+      (this.spectralFreezeNode as any).port.postMessage({
+        type: 'params',
+        params: {
+          freeze: state.spectralFreezeActive ?? false,
+          slushy: state.spectralFreezeSlushy ?? false,
+          speed: state.spectralFreezeSpeed ?? 0.3,
+          mix: state.spectralFreezeMix ?? 1.0,
+        },
+      });
+
+      // Re-apply routing if mode changed or enabled state changed
+      const routing = state.spectralFreezeRouting ?? 'pre';
+      const enabled = state.spectralFreezeEnabled ?? false;
+      if (routing !== this.currentSpectralFreezeRouting || enabled !== (this.currentSpectralFreezeRouting !== null)) {
+        this.applySpectralFreezeRouting();
+      }
+
+      // Update crossfade in pre-mode
+      if (enabled && routing === 'pre' && this.reverbInputBus) {
+        const crossfade = state.spectralFreezeReverbCrossfade ?? 0.5;
+        this.reverbInputBus.gain.setTargetAtTime(crossfade, now, smoothTime);
+      }
+    }
 
     // Lead synth parameters — keep gain active if Euclidean sequencer is driving lead
     const leadActive = state.leadEnabled || state.synthEuclideanMasterEnabled;

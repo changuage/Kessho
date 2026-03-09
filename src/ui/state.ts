@@ -255,6 +255,15 @@ export interface SliderState {
   reverbAirAbsorption: number;   // 0..1 step 0.01 - spectral tilt in feedback
   reverbSaturationMode: 'clean' | 'tape' | 'tube'; // saturation character
 
+  // Spectral Freeze (STFT-based, separate WASM module)
+  spectralFreezeEnabled: boolean;        // master enable
+  spectralFreezeActive: boolean;         // freeze engaged
+  spectralFreezeSlushy: boolean;         // false=solid, true=slushy
+  spectralFreezeSpeed: number;           // 0..1 slushy refresh rate
+  spectralFreezeMix: number;             // 0..1 wet/dry
+  spectralFreezeRouting: 'pre' | 'post'; // pre-reverb or post-reverb
+  spectralFreezeReverbCrossfade: number;  // 0..1 live signal into reverb (pre mode)
+
   // Granular
   granularEnabled: boolean;    // on/off toggle for granular processing
   maxGrains: number;           // 0..128 step 1 - maximum concurrent grains
@@ -1088,6 +1097,14 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'reverbAirAbsorption',
   'reverbSaturationMode',
   'reverbEnabled',
+  // Spectral Freeze
+  'spectralFreezeEnabled',
+  'spectralFreezeActive',
+  'spectralFreezeSlushy',
+  'spectralFreezeSpeed',
+  'spectralFreezeMix',
+  'spectralFreezeRouting',
+  'spectralFreezeReverbCrossfade',
   'granularEnabled',
   'maxGrains',
   'grainProbability',
@@ -1708,6 +1725,15 @@ export const DEFAULT_STATE: SliderState = {
   reverbEarlyReflections: 0.3,
   reverbAirAbsorption: 0.2,
   reverbSaturationMode: 'clean' as const,
+
+  // Spectral Freeze
+  spectralFreezeEnabled: false,
+  spectralFreezeActive: false,
+  spectralFreezeSlushy: false,
+  spectralFreezeSpeed: 0.3,
+  spectralFreezeMix: 1.0,
+  spectralFreezeRouting: 'pre' as const,
+  spectralFreezeReverbCrossfade: 0.5,
 
   // Granular
   granularEnabled: true,
@@ -2493,7 +2519,11 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   reverbFreezeInputBleed: { min: 0, max: 1, step: 0.01 },
   reverbFreezeModAtten: { min: 0, max: 1, step: 0.01 },
   reverbFreezeVelvetDensity: { min: 0, max: 0.05, step: 0.001 },
-  reverbFreezeMode: { min: 0, max: 2, step: 1 },
+  reverbFreezeMode: { min: 0, max: 3, step: 1 },
+  // Spectral Freeze
+  spectralFreezeSpeed: { min: 0, max: 1, step: 0.01 },
+  spectralFreezeMix: { min: 0, max: 1, step: 0.01 },
+  spectralFreezeReverbCrossfade: { min: 0, max: 1, step: 0.01 },
   grainProbability: { min: 0, max: 1, step: 0.01 },
   maxGrains: { min: 0, max: 128, step: 1 },
   grainSize: { min: 5, max: 800, step: 1 },

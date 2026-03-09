@@ -110,6 +110,15 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   reverbAirAbsorption:   { level: 3, scope: 'reverb' },
   reverbSaturationMode:  { level: 3, scope: 'reverb' },
 
+  // Spectral Freeze (STFT module)
+  spectralFreezeEnabled:           { level: 3, scope: 'reverb' },
+  spectralFreezeActive:            { level: 3, scope: 'reverb' },
+  spectralFreezeSlushy:            { level: 3, scope: 'reverb' },
+  spectralFreezeSpeed:             { level: 3, scope: 'reverb' },
+  spectralFreezeMix:               { level: 3, scope: 'reverb' },
+  spectralFreezeRouting:           { level: 3, scope: 'reverb' },
+  spectralFreezeReverbCrossfade:   { level: 3, scope: 'reverb' },
+
   // ═══════════════════════════════════════════════════════════════════════
   // L3: Granular Source (22 params)
   // ═══════════════════════════════════════════════════════════════════════
