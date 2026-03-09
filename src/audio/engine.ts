@@ -212,7 +212,8 @@ export class AudioEngine {
   // Spectral Freeze (STFT WASM)
   private spectralFreezeNode: AudioWorkletNode | null = null;
   private wasmSpectralFreezeBinary: ArrayBuffer | null = null;
-  private reverbInputBus: GainNode | null = null;  // gain node between sources and reverb for pre-mode crossfade
+  private reverbInputBus: GainNode | null = null;   // bus between all sources and reverb (gain always 1)
+  private reverbDirectSend: GainNode | null = null;  // crossfade-controlled direct path to reverb (pre-mode only)
 
   private synthBus: GainNode | null = null;
   private dryBus: GainNode | null = null;
@@ -1700,9 +1701,13 @@ export class AudioEngine {
     this.reverbOutputGain = ctx.createGain();
     this.reverbOutputGain.gain.value = this.sliderState?.reverbLevel ?? 1.0;
 
-    // Reverb input bus — gain node between sources and reverbNode for spectral freeze pre-mode crossfade
+    // Reverb input bus — collects all reverb sources (gain stays at 1.0)
     this.reverbInputBus = ctx.createGain();
     this.reverbInputBus.gain.value = 1.0;
+
+    // Direct send — crossfade-controlled path from sources to reverb (used in pre-mode)
+    this.reverbDirectSend = ctx.createGain();
+    this.reverbDirectSend.gain.value = 1.0;
 
     // Spectral Freeze WASM worklet
     if (this.wasmSpectralFreezeBinary) {
@@ -2061,12 +2066,11 @@ export class AudioEngine {
     this.synthReverbSend.connect(this.reverbInputBus);
     this.synthDirect.connect(this.masterGain);
 
-    // Reverb routing — all sources go through reverbInputBus
-    this.reverbInputBus.connect(this.reverbNode);
-    this.reverbNode.connect(this.reverbOutputGain);
+    // Reverb output to master (always connected)
     this.reverbOutputGain.connect(this.masterGain);
 
-    // Spectral Freeze routing (configured by applySpectralFreezeRouting)
+    // Spectral Freeze routing sets up reverbInputBus → reverbNode → reverbOutputGain
+    // (and optionally inserts spectralFreezeNode in pre or post position)
     this.applySpectralFreezeRouting();
 
     // Lead synth signal path:
@@ -2993,50 +2997,76 @@ export class AudioEngine {
 
   /**
    * Wire spectral freeze node into the audio graph.
-   * Pre-reverb: reverbInputBus → spectralFreezeNode → reverbNode (with crossfade on reverbInputBus.gain)
-   * Post-reverb: reverbNode → spectralFreezeNode → reverbOutputGain
+   *
+   * Pre-reverb routing:
+   *   reverbInputBus → spectralFreezeNode → reverbNode  (frozen/processed signal)
+   *   reverbInputBus → reverbDirectSend  → reverbNode  (live signal, crossfade-controlled)
+   *   reverbNode → reverbOutputGain
+   *
+   * Post-reverb routing:
+   *   reverbInputBus → reverbNode → spectralFreezeNode → reverbOutputGain
+   *
+   * Disabled:
+   *   reverbInputBus → reverbNode → reverbOutputGain  (direct, no spectral freeze)
    */
   private applySpectralFreezeRouting(): void {
-    if (!this.spectralFreezeNode || !this.reverbNode || !this.reverbOutputGain || !this.reverbInputBus) return;
+    if (!this.reverbNode || !this.reverbOutputGain || !this.reverbInputBus || !this.reverbDirectSend) return;
     const state = this.sliderState;
     const routing = state?.spectralFreezeRouting ?? 'pre';
     const enabled = state?.spectralFreezeEnabled ?? false;
 
-    // Disconnect spectral freeze from any previous routing
-    try { this.spectralFreezeNode.disconnect(); } catch (_) { /* not connected */ }
+    // ── Tear down all variable connections ──
+    // Disconnect spectral freeze node outputs
+    if (this.spectralFreezeNode) {
+      try { this.spectralFreezeNode.disconnect(); } catch (_) { /* */ }
+    }
+    // Disconnect reverbInputBus → spectralFreezeNode (pre-mode input)
+    if (this.spectralFreezeNode) {
+      try { this.reverbInputBus.disconnect(this.spectralFreezeNode); } catch (_) { /* */ }
+    }
+    // Disconnect reverbInputBus → reverbNode (direct path)
+    try { this.reverbInputBus.disconnect(this.reverbNode); } catch (_) { /* */ }
+    // Disconnect reverbInputBus → reverbDirectSend
+    try { this.reverbInputBus.disconnect(this.reverbDirectSend); } catch (_) { /* */ }
+    // Disconnect reverbDirectSend → reverbNode
+    try { this.reverbDirectSend.disconnect(this.reverbNode); } catch (_) { /* */ }
+    // Disconnect reverbNode outputs
+    try { this.reverbNode.disconnect(); } catch (_) { /* */ }
 
-    if (!enabled) {
-      // Not enabled — ensure reverbInputBus gain is at 1 (passthrough)
-      this.reverbInputBus.gain.value = 1.0;
-      this.currentSpectralFreezeRouting = null;
-      // Ensure reverb → reverbOutputGain is direct
-      try { this.reverbNode.disconnect(this.reverbOutputGain); } catch (_) { /* */ }
+    // reverbInputBus gain always stays at 1 — crossfade is on reverbDirectSend
+    this.reverbInputBus.gain.value = 1.0;
+
+    if (!enabled || !this.spectralFreezeNode) {
+      // ── Disabled: direct routing ──
+      // reverbInputBus → reverbNode → reverbOutputGain
+      this.reverbInputBus.connect(this.reverbNode);
       this.reverbNode.connect(this.reverbOutputGain);
+      this.reverbDirectSend.gain.value = 0;  // unused
+      this.currentSpectralFreezeRouting = null;
       return;
     }
 
     if (routing === 'pre') {
-      // Pre-reverb: spectral freeze output feeds into reverb
-      // reverbInputBus also connects to reverbNode (crossfade controls how much live signal goes through)
-      // reverbInputBus → spectralFreezeNode → reverbNode
+      // ── Pre-reverb ──
+      // Path 1 (frozen): reverbInputBus → spectralFreezeNode → reverbNode
       this.reverbInputBus.connect(this.spectralFreezeNode);
       this.spectralFreezeNode.connect(this.reverbNode);
 
-      // Crossfade: reverbInputBus.gain controls how much live signal also enters reverb directly
+      // Path 2 (live crossfade): reverbInputBus → reverbDirectSend → reverbNode
+      this.reverbInputBus.connect(this.reverbDirectSend);
+      this.reverbDirectSend.connect(this.reverbNode);
       const crossfade = state?.spectralFreezeReverbCrossfade ?? 0.5;
-      this.reverbInputBus.gain.value = crossfade;
+      this.reverbDirectSend.gain.value = crossfade;
 
-      // Ensure reverb → reverbOutputGain is direct
-      try { this.reverbNode.disconnect(this.reverbOutputGain); } catch (_) { /* */ }
+      // Reverb output
       this.reverbNode.connect(this.reverbOutputGain);
     } else {
-      // Post-reverb: spectral freeze sits after reverb output
-      // reverbNode → spectralFreezeNode → reverbOutputGain
-      this.reverbInputBus.gain.value = 1.0;
-
-      try { this.reverbNode.disconnect(this.reverbOutputGain); } catch (_) { /* */ }
+      // ── Post-reverb ──
+      // reverbInputBus → reverbNode → spectralFreezeNode → reverbOutputGain
+      this.reverbInputBus.connect(this.reverbNode);
       this.reverbNode.connect(this.spectralFreezeNode);
       this.spectralFreezeNode.connect(this.reverbOutputGain);
+      this.reverbDirectSend.gain.value = 0;  // unused
     }
 
     this.currentSpectralFreezeRouting = routing;
@@ -3707,10 +3737,10 @@ export class AudioEngine {
         this.applySpectralFreezeRouting();
       }
 
-      // Update crossfade in pre-mode
-      if (enabled && routing === 'pre' && this.reverbInputBus) {
+      // Update crossfade in pre-mode (controls reverbDirectSend, not reverbInputBus)
+      if (enabled && routing === 'pre' && this.reverbDirectSend) {
         const crossfade = state.spectralFreezeReverbCrossfade ?? 0.5;
-        this.reverbInputBus.gain.setTargetAtTime(crossfade, now, smoothTime);
+        this.reverbDirectSend.gain.setTargetAtTime(crossfade, now, smoothTime);
       }
     }
 
