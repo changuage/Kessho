@@ -706,6 +706,8 @@ export default function ReverbPage({
                       <Slider label="Speed" value={state.spectralFreezeSpeed} paramKey="spectralFreezeSpeed" onChange={onParamChange} {...sp('spectralFreezeSpeed')} />
                     )}
                     <Slider label="Mix" value={state.spectralFreezeMix} paramKey="spectralFreezeMix" onChange={onParamChange} {...sp('spectralFreezeMix')} />
+                    <Slider label="Decay" value={state.spectralFreezeDecay} paramKey="spectralFreezeDecay" onChange={onParamChange} {...sp('spectralFreezeDecay')} />
+                    <Slider label="Phase Jitter" value={state.spectralFreezePhaseJitter} paramKey="spectralFreezePhaseJitter" onChange={onParamChange} {...sp('spectralFreezePhaseJitter')} />
                     <Select
                       label="Routing"
                       value={state.spectralFreezeRouting ?? 'pre'}

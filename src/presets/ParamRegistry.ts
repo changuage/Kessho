@@ -116,6 +116,8 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   spectralFreezeSlushy:            { level: 3, scope: 'reverb' },
   spectralFreezeSpeed:             { level: 3, scope: 'reverb' },
   spectralFreezeMix:               { level: 3, scope: 'reverb' },
+  spectralFreezeDecay:             { level: 3, scope: 'reverb' },
+  spectralFreezePhaseJitter:       { level: 3, scope: 'reverb' },
   spectralFreezeRouting:           { level: 3, scope: 'reverb' },
   spectralFreezeReverbCrossfade:   { level: 3, scope: 'reverb' },
 

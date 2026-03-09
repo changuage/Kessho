@@ -261,6 +261,8 @@ export interface SliderState {
   spectralFreezeSlushy: boolean;         // false=solid, true=slushy
   spectralFreezeSpeed: number;           // 0..1 slushy refresh rate
   spectralFreezeMix: number;             // 0..1 wet/dry
+  spectralFreezeDecay: number;            // 0..1 spectral decay rate
+  spectralFreezePhaseJitter: number;      // 0..1 phase randomization
   spectralFreezeRouting: 'pre' | 'post'; // pre-reverb or post-reverb
   spectralFreezeReverbCrossfade: number;  // 0..1 live signal into reverb (pre mode)
 
@@ -1103,6 +1105,8 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'spectralFreezeSlushy',
   'spectralFreezeSpeed',
   'spectralFreezeMix',
+  'spectralFreezeDecay',
+  'spectralFreezePhaseJitter',
   'spectralFreezeRouting',
   'spectralFreezeReverbCrossfade',
   'granularEnabled',
@@ -1732,6 +1736,8 @@ export const DEFAULT_STATE: SliderState = {
   spectralFreezeSlushy: false,
   spectralFreezeSpeed: 0.3,
   spectralFreezeMix: 1.0,
+  spectralFreezeDecay: 0.0,
+  spectralFreezePhaseJitter: 0.0,
   spectralFreezeRouting: 'pre' as const,
   spectralFreezeReverbCrossfade: 0.5,
 
@@ -2523,6 +2529,8 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   // Spectral Freeze
   spectralFreezeSpeed: { min: 0, max: 1, step: 0.01 },
   spectralFreezeMix: { min: 0, max: 1, step: 0.01 },
+  spectralFreezeDecay: { min: 0, max: 1, step: 0.01 },
+  spectralFreezePhaseJitter: { min: 0, max: 1, step: 0.01 },
   spectralFreezeReverbCrossfade: { min: 0, max: 1, step: 0.01 },
   grainProbability: { min: 0, max: 1, step: 0.01 },
   maxGrains: { min: 0, max: 128, step: 1 },

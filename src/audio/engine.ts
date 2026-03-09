@@ -3727,6 +3727,8 @@ export class AudioEngine {
           slushy: state.spectralFreezeSlushy ?? false,
           speed: state.spectralFreezeSpeed ?? 0.3,
           mix: state.spectralFreezeMix ?? 1.0,
+          decay: state.spectralFreezeDecay ?? 0.0,
+          phaseJitter: state.spectralFreezePhaseJitter ?? 0.0,
         },
       });
 

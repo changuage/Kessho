@@ -51,6 +51,8 @@ EXPORTS = [
     "_spectral_freeze_set_slushy",
     "_spectral_freeze_set_speed",
     "_spectral_freeze_set_mix",
+    "_spectral_freeze_set_decay",
+    "_spectral_freeze_set_phase_jitter",
     "_malloc",
     "_free",
 ]

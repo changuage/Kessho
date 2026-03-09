@@ -127,6 +127,12 @@ class SpectralFreezeWasmProcessor extends AudioWorkletProcessor {
     if (p.mix !== undefined) {
       w.spectral_freeze_set_mix(p.mix);
     }
+    if (p.decay !== undefined) {
+      w.spectral_freeze_set_decay(p.decay);
+    }
+    if (p.phaseJitter !== undefined) {
+      w.spectral_freeze_set_phase_jitter(p.phaseJitter);
+    }
   }
 
   /** Get Float32Array view of WASM heap (refreshed on each access since memory can grow) */

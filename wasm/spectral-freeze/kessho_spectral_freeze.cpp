@@ -153,6 +153,8 @@ struct SpectralFreezeState {
     int   slushyMode;          // 0=solid, 1=slushy
     float slushySpeed;         // 0..1 → refresh rate (α in the masked blend)
     float mix;                 // 0..1 wet/dry
+    float decay;               // 0..1 spectral decay rate (0=infinite hold, 1=fast melt)
+    float phaseJitter;         // 0..1 phase randomization amount
 
     // Slushy mask state
     FastRNG rng;
@@ -309,11 +311,34 @@ static void processHop() {
         memcpy(s.heldIFR, ifR, sizeof(float) * HALF_FFT);
         memcpy(s.synthPhaseL, s.phaseL, sizeof(float) * HALF_FFT);
         memcpy(s.synthPhaseR, s.phaseR, sizeof(float) * HALF_FFT);
+
+        // Phase randomization on capture: add small random offsets to break metallic quality
+        if (s.phaseJitter > 0.0f) {
+            float jitterAmt = s.phaseJitter * 0.3f;  // scale to reasonable range
+            for (int k = 0; k < HALF_FFT; k++) {
+                s.synthPhaseL[k] += (s.rng.nextFloat() - 0.5f) * jitterAmt;
+                s.synthPhaseR[k] += (s.rng.nextFloat() - 0.5f) * jitterAmt;
+            }
+        }
         s.justFroze = 0;
     }
 
     // Determine output magnitudes and phase advance
     float outMagL[HALF_FFT], outMagR[HALF_FFT];
+
+    // Compute per-hop decay coefficient: decay=0 → coeff=1 (infinite hold), decay=1 → coeff≈0.993 (~6dB/sec at 48kHz)
+    // Hops/sec = sampleRate / HOP_SIZE. We want decay=1 to give ~6dB/sec attenuation.
+    // decayCoeff = 10^(-decay * 6 / (20 * hopsPerSec)) per hop
+    float decayCoeff = 1.0f;
+    if (s.decay > 0.001f) {
+        float hopsPerSec = s.sampleRate / (float)HOP_SIZE;
+        // decay 0..1 maps to 0..12 dB/sec attenuation rate
+        float dbPerSec = s.decay * 12.0f;
+        decayCoeff = powf(10.0f, -dbPerSec / (20.0f * hopsPerSec));
+    }
+
+    // Phase jitter: slow random drift per hop during freeze
+    float phaseDriftAmt = s.phaseJitter * 0.015f;
 
     if (fzRamp < 0.01f) {
         // Not frozen: pass through (analysis → resynthesis = transparent)
@@ -335,15 +360,24 @@ static void processHop() {
             // Blend held magnitudes with live input
             s.heldMagL[k] = (1.0f - m) * s.heldMagL[k] + m * s.magL[k];
             s.heldMagR[k] = (1.0f - m) * s.heldMagR[k] + m * s.magR[k];
+            // Apply spectral decay to non-refreshed bins (inversely proportional to mask)
+            float decayMask = 1.0f - m;  // bins NOT being refreshed decay
+            float binDecay = 1.0f - decayMask * (1.0f - decayCoeff);
+            s.heldMagL[k] *= binDecay;
+            s.heldMagR[k] *= binDecay;
             // Also blend IF for smoother transitions
             s.heldIFL[k] = (1.0f - m * 0.5f) * s.heldIFL[k] + m * 0.5f * ifL[k];
             s.heldIFR[k] = (1.0f - m * 0.5f) * s.heldIFR[k] + m * 0.5f * ifR[k];
         }
 
-        // Advance synthesis phase using blended IF
+        // Advance synthesis phase using blended IF + phase drift
         for (int k = 0; k < HALF_FFT; k++) {
             s.synthPhaseL[k] += s.heldIFL[k];
             s.synthPhaseR[k] += s.heldIFR[k];
+            if (phaseDriftAmt > 0.0f) {
+                s.synthPhaseL[k] += (s.rng.nextFloat() - 0.5f) * phaseDriftAmt;
+                s.synthPhaseR[k] += (s.rng.nextFloat() - 0.5f) * phaseDriftAmt;
+            }
         }
 
         // Crossfade output magnitude: live × (1−ramp) + held × ramp
@@ -353,10 +387,20 @@ static void processHop() {
         }
     } else {
         // ── Solid freeze: static held spectrum ──
-        // Advance synthesis phase using held instantaneous frequency
+        // Apply spectral decay: held magnitudes slowly melt away
+        for (int k = 0; k < HALF_FFT; k++) {
+            s.heldMagL[k] *= decayCoeff;
+            s.heldMagR[k] *= decayCoeff;
+        }
+
+        // Advance synthesis phase using held instantaneous frequency + phase drift
         for (int k = 0; k < HALF_FFT; k++) {
             s.synthPhaseL[k] += s.heldIFL[k];
             s.synthPhaseR[k] += s.heldIFR[k];
+            if (phaseDriftAmt > 0.0f) {
+                s.synthPhaseL[k] += (s.rng.nextFloat() - 0.5f) * phaseDriftAmt;
+                s.synthPhaseR[k] += (s.rng.nextFloat() - 0.5f) * phaseDriftAmt;
+            }
         }
 
         // Crossfade magnitude: live × (1−ramp) + held × ramp
@@ -428,6 +472,14 @@ void spectral_freeze_set_speed(float speed) {
 
 void spectral_freeze_set_mix(float mix) {
     g_sf.mix = fmaxf(0.0f, fminf(1.0f, mix));
+}
+
+void spectral_freeze_set_decay(float decay) {
+    g_sf.decay = fmaxf(0.0f, fminf(1.0f, decay));
+}
+
+void spectral_freeze_set_phase_jitter(float jitter) {
+    g_sf.phaseJitter = fmaxf(0.0f, fminf(1.0f, jitter));
 }
 
 void spectral_freeze_process_block(int block_size) {
