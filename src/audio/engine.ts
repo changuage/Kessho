@@ -361,6 +361,8 @@ export class AudioEngine {
   private pad2PreFaderBus: GainNode | null = null;    // sum of pad 2 voices (pre-fader, for granular)
   private lead1Bus: GainNode | null = null;           // lead 1 output pre-mix
   private lead2Bus: GainNode | null = null;           // lead 2 output pre-mix
+  private lead1LevelGain: GainNode | null = null;     // lead 1 dry-path level (post reverb/granular tap)
+  private lead2LevelGain: GainNode | null = null;     // lead 2 dry-path level (post reverb/granular tap)
   private leadVoiceLevel: GainNode | null = null;     // unity dry-path stage for lead output
   private lastPad2VoiceAssign = 0;                    // track for re-routing
   private granularWriteHeadPosition = 0;     // 0-1 for UI
@@ -2564,6 +2566,10 @@ export class AudioEngine {
     this.lead1Bus.gain.value = 1.0;
     this.lead2Bus = ctx.createGain();
     this.lead2Bus.gain.value = 1.0;
+    this.lead1LevelGain = ctx.createGain();
+    this.lead1LevelGain.gain.value = this.sliderState?.lead1Level ?? 0.8;
+    this.lead2LevelGain = ctx.createGain();
+    this.lead2LevelGain.gain.value = this.sliderState?.lead2Level ?? 0.6;
 
     // Connect graph:
     // Voices -> mixerGain -> Pad1Bus/Pad2Bus -> SynthBus (post-fader main mix)
@@ -2596,9 +2602,12 @@ export class AudioEngine {
       }
     }
 
-    // Both lead buses feed into leadFilter directly (bypass leadGain for pre-fader reverb)
-    this.lead1Bus.connect(this.leadFilter);
-    this.lead2Bus.connect(this.leadFilter);
+    // Lead buses feed through per-lead level gains into leadFilter
+    // Reverb + granular sends tap from lead1Bus/lead2Bus BEFORE level gain (pre-fader)
+    this.lead1Bus.connect(this.lead1LevelGain);
+    this.lead1LevelGain.connect(this.leadFilter);
+    this.lead2Bus.connect(this.lead2LevelGain);
+    this.lead2LevelGain.connect(this.leadFilter);
 
     // Per-lead reverb sends (tapped from lead buses, independent of shared leadReverbSend)
     this.lead1Bus.connect(this.lead1ReverbSend);
@@ -4718,6 +4727,10 @@ export class AudioEngine {
     this.leadReverbSend?.gain.setTargetAtTime(
       state.reverbEnabled ? Math.max(state.lead1ReverbSend, state.lead2ReverbSend) : 0, now, smoothTime);
 
+    // Per-lead dry-path level (post reverb/granular tap, so sends still receive signal when level is 0)
+    this.lead1LevelGain?.gain.setTargetAtTime(state.lead1Level ?? 0.8, now, smoothTime);
+    this.lead2LevelGain?.gain.setTargetAtTime(state.lead2Level ?? 0.6, now, smoothTime);
+
     // Forward lead FM delay params to WASM worklet (if active)
     this.sendLeadFmWasmDelay(state);
 
@@ -5289,11 +5302,10 @@ export class AudioEngine {
       }
     }
 
-    // Per-lead level is applied per note so lead1/lead2 do not fight over a shared gain node.
-    const voiceLevel = useLead2 ? (this.sliderState.lead2Level ?? 0.6) : (this.sliderState.lead1Level ?? 0.8);
-    const noteVelocity = velocity * voiceLevel;
+    // Per-lead level is now handled by lead1LevelGain/lead2LevelGain nodes (post reverb/granular tap)
+    // so notes play at full velocity and reverb/granular sends still receive signal when level is down.
     if (velocity < 0.001) return;
-    if (noteVelocity < 0.001) return;
+    const noteVelocity = velocity;
 
     const ctx = this.ctx;
     const now = ctx.currentTime;
@@ -5397,8 +5409,8 @@ export class AudioEngine {
     }
 
     // WASM path: send morphed params + delay + noteOn to the lead FM worklet
-    // leadLevel remains the shared lead bus master in leadDry.gain.
-    // Per-lead level is baked into each note trigger so lead1 and lead2 stay independent.
+    // Per-lead level is controlled by lead1LevelGain/lead2LevelGain on the dry path.
+    // WASM outputs into shared leadGain; reverb/granular sends tap from lead buses pre-level.
     if (this.leadFmWasmReady && this.leadFmWasmNode) {
       const port = this.leadFmWasmNode.port;
       port.postMessage({ type: 'params', params: effectiveMorphed });
@@ -5687,13 +5699,23 @@ export class AudioEngine {
       if (!this.lead1Bus) {
         this.lead1Bus = ctx.createGain();
         this.lead1Bus.gain.value = 1.0;
-        this.lead1Bus.connect(this.leadFilter);
       }
+      if (!this.lead1LevelGain) {
+        this.lead1LevelGain = ctx.createGain();
+        this.lead1LevelGain.gain.value = this.sliderState?.lead1Level ?? 0.8;
+      }
+      this.lead1Bus.connect(this.lead1LevelGain);
+      this.lead1LevelGain.connect(this.leadFilter);
       if (!this.lead2Bus) {
         this.lead2Bus = ctx.createGain();
         this.lead2Bus.gain.value = 1.0;
-        this.lead2Bus.connect(this.leadFilter);
       }
+      if (!this.lead2LevelGain) {
+        this.lead2LevelGain = ctx.createGain();
+        this.lead2LevelGain.gain.value = this.sliderState?.lead2Level ?? 0.6;
+      }
+      this.lead2Bus.connect(this.lead2LevelGain);
+      this.lead2LevelGain.connect(this.leadFilter);
       // Per-lead reverb sends (bus → send → reverb)
       this.lead1ReverbSend = ctx.createGain();
       this.lead1ReverbSend.gain.value = this.sliderState?.lead1ReverbSend ?? 0.5;
