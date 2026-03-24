@@ -6145,7 +6145,7 @@ export class AudioEngine {
                                 }
                               }
                               if (st !== (this.sliderState as unknown as Record<string, unknown>)) {
-                                padParamsOverride = st as SliderState;
+                                padParamsOverride = st as unknown as SliderState;
                               }
                             }
                           } else {
@@ -6166,7 +6166,7 @@ export class AudioEngine {
                                 }
                               }
                               if (st !== (this.sliderState as unknown as Record<string, unknown>)) {
-                                padParamsOverride = st as SliderState;
+                                padParamsOverride = st as unknown as SliderState;
                               }
                             }
                           }
