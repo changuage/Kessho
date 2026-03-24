@@ -29,6 +29,9 @@ class SpectralFreezeWasmProcessor extends AudioWorkletProcessor {
     // Perf measurement
     this.perfEnabled = false;
     this.perfTotalTime = 0;
+    this.perfPeakTime = 0;
+    this.perfOverBudgetCount = 0;
+    this.perfBlockCount = 0;
     this.perfCount = 0;
     this.perfSamplesSinceReport = 0;
     this.perfReportInterval = Math.floor(sampleRate * 0.5);
@@ -97,6 +100,9 @@ class SpectralFreezeWasmProcessor extends AudioWorkletProcessor {
       case 'enablePerf':
         this.perfEnabled = data.enabled;
         this.perfTotalTime = 0;
+        this.perfPeakTime = 0;
+        this.perfOverBudgetCount = 0;
+        this.perfBlockCount = 0;
         this.perfCount = 0;
         this.perfSamplesSinceReport = 0;
         break;
@@ -188,27 +194,38 @@ class SpectralFreezeWasmProcessor extends AudioWorkletProcessor {
     const outL = output[0];
     const outR = output[1] || outL;
     for (let i = 0; i < blockSize; i++) {
-      outL[i] = heap[outOffset + i * 2];
-      if (outR !== outL) outR[i] = heap[outOffset + i * 2 + 1];
+      let sL = heap[outOffset + i * 2];
+      let sR = heap[outOffset + i * 2 + 1];
+      outL[i] = (sL === sL && sL > -10 && sL < 10) ? sL : 0;
+      if (outR !== outL) outR[i] = (sR === sR && sR > -10 && sR < 10) ? sR : 0;
     }
 
     // ── Perf reporting ──
     if (this.perfEnabled) {
       const elapsed = _perfNow() - perfStart;
+      const budgetMs = (blockSize / sampleRate) * 1000;
       this.perfTotalTime += elapsed;
+      this.perfPeakTime = Math.max(this.perfPeakTime, elapsed);
+      if (elapsed > budgetMs) this.perfOverBudgetCount++;
+      this.perfBlockCount++;
       this.perfCount++;
       this.perfSamplesSinceReport += blockSize;
 
       if (this.perfSamplesSinceReport >= this.perfReportInterval && this.perfCount > 0) {
         const avgMs = this.perfTotalTime / this.perfCount;
-        const budgetMs = (blockSize / sampleRate) * 1000;
         this.port.postMessage({
           type: 'perf',
           name: 'spectral-freeze-wasm',
           cpuPercent: (avgMs / budgetMs) * 100,
+          peakPercent: (this.perfPeakTime / budgetMs) * 100,
+          missPercent: this.perfBlockCount > 0 ? (this.perfOverBudgetCount / this.perfBlockCount) * 100 : 0,
           avgTimeMs: avgMs,
+          peakTimeMs: this.perfPeakTime,
         });
         this.perfTotalTime = 0;
+        this.perfPeakTime = 0;
+        this.perfOverBudgetCount = 0;
+        this.perfBlockCount = 0;
         this.perfCount = 0;
         this.perfSamplesSinceReport = 0;
       }

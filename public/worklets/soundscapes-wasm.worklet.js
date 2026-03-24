@@ -55,6 +55,7 @@ class SoundscapesWasmProcessor extends AudioWorkletProcessor {
     super();
     this._wasm = null;
     this._memory = null;
+    this._heapF32 = null;
     this._waterOutPtr = 0;
     this._insectsOutPtr = 0;
     this._insects2OutPtr = 0;
@@ -72,9 +73,15 @@ class SoundscapesWasmProcessor extends AudioWorkletProcessor {
     // Perf measurement
     this._perfEnabled = false;
     this._perfTotalTime = 0;
+    this._perfPeakTime = 0;
+    this._perfOverBudgetCount = 0;
+    this._perfBlockCount = 0;
     this._perfCount = 0;
     this._perfSamplesSinceReport = 0;
     this._perfReportInterval = Math.floor(sampleRate * 0.5);
+    this._perfWaterPeak = 0;
+    this._perfInsectsPeak = 0;
+    this._perfOceanPeak = 0;
 
     // Stats reporting (~5 Hz)
     this._statsCounter = 0;
@@ -137,10 +144,15 @@ class SoundscapesWasmProcessor extends AudioWorkletProcessor {
   _updateHeap() {
     // Called when memory grows — invalidate cached views
     // Output pointers are stable (inside the WASM linear memory)
+    this._heapF32 = null;
   }
 
   _getF32() {
-    return new Float32Array(this._memory.buffer);
+    if (!this._memory) return null;
+    if (!this._heapF32 || this._heapF32.buffer !== this._memory.buffer) {
+      this._heapF32 = new Float32Array(this._memory.buffer);
+    }
+    return this._heapF32;
   }
 
   _handleMessage(data) {
@@ -326,8 +338,14 @@ class SoundscapesWasmProcessor extends AudioWorkletProcessor {
       case 'enablePerf':
         this._perfEnabled = !!data.enabled;
         this._perfTotalTime = 0;
+        this._perfPeakTime = 0;
+        this._perfOverBudgetCount = 0;
+        this._perfBlockCount = 0;
         this._perfCount = 0;
         this._perfSamplesSinceReport = 0;
+        this._perfWaterPeak = 0;
+        this._perfInsectsPeak = 0;
+        this._perfOceanPeak = 0;
         break;
     }
   }
@@ -414,7 +432,12 @@ class SoundscapesWasmProcessor extends AudioWorkletProcessor {
     // ── Perf reporting ──
     if (this._perfEnabled) {
       const elapsed = _perfNow() - t0;
+      const budgetMs = (blockSize / sampleRate) * 1000;
+      const insectsMs = insects1Ms + insects2Ms;
       this._perfTotalTime += elapsed;
+      this._perfPeakTime = Math.max(this._perfPeakTime, elapsed);
+      if (elapsed > budgetMs) this._perfOverBudgetCount++;
+      this._perfBlockCount++;
       this._perfCount++;
       this._perfSamplesSinceReport += blockSize;
 
@@ -423,56 +446,70 @@ class SoundscapesWasmProcessor extends AudioWorkletProcessor {
       this._perfInsects1Total = (this._perfInsects1Total || 0) + insects1Ms;
       this._perfInsects2Total = (this._perfInsects2Total || 0) + insects2Ms;
       this._perfOceanTotal = (this._perfOceanTotal || 0) + oceanMs;
+      this._perfWaterPeak = Math.max(this._perfWaterPeak || 0, waterMs);
+      this._perfInsectsPeak = Math.max(this._perfInsectsPeak || 0, insectsMs);
+      this._perfOceanPeak = Math.max(this._perfOceanPeak || 0, oceanMs);
 
       if (this._perfSamplesSinceReport >= this._perfReportInterval) {
         const avgMs = this._perfTotalTime / this._perfCount;
-        const budgetMs = (blockSize / sampleRate) * 1000;
         const cnt = this._perfCount;
         this.port.postMessage({
           type: 'perf',
           avgMs: avgMs,
           budgetMs: budgetMs,
           load: avgMs / budgetMs,
+          peakMs: this._perfPeakTime,
+          missPercent: this._perfBlockCount > 0 ? (this._perfOverBudgetCount / this._perfBlockCount) * 100 : 0,
           waterMs: this._perfWaterTotal / cnt,
-          insects1Ms: this._perfInsects1Total / cnt,
-          insects2Ms: this._perfInsects2Total / cnt,
+          waterPeakMs: this._perfWaterPeak,
+          insectsMs: (this._perfInsects1Total + this._perfInsects2Total) / cnt,
+          insectsPeakMs: this._perfInsectsPeak,
           oceanMs: this._perfOceanTotal / cnt,
+          oceanPeakMs: this._perfOceanPeak,
         });
         this._perfTotalTime = 0;
+        this._perfPeakTime = 0;
+        this._perfOverBudgetCount = 0;
+        this._perfBlockCount = 0;
         this._perfCount = 0;
         this._perfSamplesSinceReport = 0;
         this._perfWaterTotal = 0;
         this._perfInsects1Total = 0;
         this._perfInsects2Total = 0;
         this._perfOceanTotal = 0;
+        this._perfWaterPeak = 0;
+        this._perfInsectsPeak = 0;
+        this._perfOceanPeak = 0;
       }
     }
 
-    // ── Stats reporting ──
-    this._statsCounter += blockSize;
-    if (this._statsCounter >= this._statsInterval) {
-      this._statsCounter = 0;
+    // Keep stats generation disabled unless perf reporting is explicitly enabled.
+    if (this._perfEnabled) {
+      this._statsCounter += blockSize;
+      if (this._statsCounter >= this._statsInterval) {
+        this._statsCounter = 0;
 
-      if (this._waterActive) {
-        this.port.postMessage({
-          type: 'waterStats',
-          activeVoices: this._wasm.water_get_active_voices(),
-          eventsPerSec: this._wasm.water_get_events_per_sec(),
-        });
-      }
-      if (this._insectsActive) {
-        this.port.postMessage({
-          type: 'insectsStats',
-          activeVoices: this._wasm.insects_get_active_voices(),
-          engineType: this._wasm.insects_get_engine_type(),
-        });
-      }
-      if (this._insects2Active) {
-        this.port.postMessage({
-          type: 'insects2Stats',
-          activeVoices: this._wasm.insects2_get_active_voices(),
-          engineType: this._wasm.insects2_get_engine_type(),
-        });
+        if (this._waterActive) {
+          this.port.postMessage({
+            type: 'waterStats',
+            activeVoices: this._wasm.water_get_active_voices(),
+            eventsPerSec: this._wasm.water_get_events_per_sec(),
+          });
+        }
+        if (this._insectsActive) {
+          this.port.postMessage({
+            type: 'insectsStats',
+            activeVoices: this._wasm.insects_get_active_voices(),
+            engineType: this._wasm.insects_get_engine_type(),
+          });
+        }
+        if (this._insects2Active) {
+          this.port.postMessage({
+            type: 'insects2Stats',
+            activeVoices: this._wasm.insects2_get_active_voices(),
+            engineType: this._wasm.insects2_get_engine_type(),
+          });
+        }
       }
     }
 
@@ -480,4 +517,4 @@ class SoundscapesWasmProcessor extends AudioWorkletProcessor {
   }
 }
 
-registerProcessor('soundscapes-wasm-processor', SoundscapesWasmProcessor);
+registerProcessor('soundscapes-wasm', SoundscapesWasmProcessor);

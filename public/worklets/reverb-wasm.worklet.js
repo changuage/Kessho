@@ -32,10 +32,14 @@ class ReverbWasmProcessor extends AudioWorkletProcessor {
     this.inputPtr = 0;
     this.outputPtr = 0;
     this.ready = false;
+    this.missingExportWarnings = new Set();
 
     // Perf measurement
     this.perfEnabled = false;
     this.perfTotalTime = 0;
+    this.perfPeakTime = 0;
+    this.perfOverBudgetCount = 0;
+    this.perfBlockCount = 0;
     this.perfCount = 0;
     this.perfSamplesSinceReport = 0;
     this.perfReportInterval = Math.floor(sampleRate * 0.5);
@@ -104,6 +108,9 @@ class ReverbWasmProcessor extends AudioWorkletProcessor {
       case 'enablePerf':
         this.perfEnabled = data.enabled;
         this.perfTotalTime = 0;
+        this.perfPeakTime = 0;
+        this.perfOverBudgetCount = 0;
+        this.perfBlockCount = 0;
         this.perfCount = 0;
         this.perfSamplesSinceReport = 0;
         break;
@@ -116,6 +123,19 @@ class ReverbWasmProcessor extends AudioWorkletProcessor {
         this.wasm = null;
         break;
     }
+  }
+
+  callOptionalExport(name, ...args) {
+    const fn = this.wasm?.[name];
+    if (typeof fn === 'function') {
+      fn(...args);
+      return true;
+    }
+    if (!this.missingExportWarnings.has(name)) {
+      this.missingExportWarnings.add(name);
+      console.warn(`[Reverb-WASM] Optional export missing in loaded binary: ${name}`);
+    }
+    return false;
   }
 
   /** Translate reverb params object → C API calls */
@@ -144,21 +164,6 @@ class ReverbWasmProcessor extends AudioWorkletProcessor {
       p.predelay ?? 20,
       p.width ?? 0.8
     );
-
-    // Freeze
-    w.reverb_set_freeze((p.freeze || p.infinite) ? 1 : 0);
-
-    // v5: Freeze enhancement params
-    if (p.freezeInputBleed !== undefined || p.freezeModAtten !== undefined || p.freezeVelvetDensity !== undefined) {
-      w.reverb_set_freeze_params(
-        p.freezeInputBleed ?? 0,
-        p.freezeModAtten ?? 0.7,
-        p.freezeVelvetDensity ?? 0.003
-      );
-    }
-    if (p.freezeMode !== undefined) {
-      w.reverb_set_freeze_mode(p.freezeMode ?? 0);
-    }
 
     // Shimmer
     if (p.shimmer !== undefined || p.shimmerPitch !== undefined) {
@@ -228,6 +233,13 @@ class ReverbWasmProcessor extends AudioWorkletProcessor {
     if (p.saturationMode !== undefined) {
       w.reverb_set_saturation_mode(p.saturationMode);
     }
+    // v5 params: Transient smoothing
+    if (p.transientSmooth !== undefined) {
+      this.callOptionalExport('reverb_set_transient_smooth', p.transientSmooth);
+    }
+    if (p.erLpFreq !== undefined) {
+      this.callOptionalExport('reverb_set_er_lp_freq', p.erLpFreq);
+    }
   }
 
   /** Get Float32Array view of WASM heap (refreshed on each access since memory can grow) */
@@ -282,20 +294,29 @@ class ReverbWasmProcessor extends AudioWorkletProcessor {
     // ── Perf reporting ──
     if (this.perfEnabled) {
       const elapsed = _perfNow() - perfStart;
+      const budgetMs = (blockSize / sampleRate) * 1000;
       this.perfTotalTime += elapsed;
+      this.perfPeakTime = Math.max(this.perfPeakTime, elapsed);
+      if (elapsed > budgetMs) this.perfOverBudgetCount++;
+      this.perfBlockCount++;
       this.perfCount++;
       this.perfSamplesSinceReport += blockSize;
 
       if (this.perfSamplesSinceReport >= this.perfReportInterval && this.perfCount > 0) {
         const avgMs = this.perfTotalTime / this.perfCount;
-        const budgetMs = (blockSize / sampleRate) * 1000;
         this.port.postMessage({
           type: 'perf',
           name: 'reverb-wasm',
           cpuPercent: (avgMs / budgetMs) * 100,
+          peakPercent: (this.perfPeakTime / budgetMs) * 100,
+          missPercent: this.perfBlockCount > 0 ? (this.perfOverBudgetCount / this.perfBlockCount) * 100 : 0,
           avgTimeMs: avgMs,
+          peakTimeMs: this.perfPeakTime,
         });
         this.perfTotalTime = 0;
+        this.perfPeakTime = 0;
+        this.perfOverBudgetCount = 0;
+        this.perfBlockCount = 0;
         this.perfCount = 0;
         this.perfSamplesSinceReport = 0;
       }

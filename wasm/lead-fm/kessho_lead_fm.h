@@ -1,0 +1,170 @@
+/**
+ * Kessho Lead 4-op FM Synth — C API Header
+ *
+ * Full C++ port of lead4opfm.ts for compilation to:
+ *   - WebAssembly (via Emscripten) for web AudioWorklet
+ *   - Native ARM/x86 for iOS/macOS (via CMake)
+ *
+ * 4-operator FM with 5 algorithms, unison (1-4), ADSR + filter envelope,
+ * per-operator feedback/level/detune, LFO, XY stereo routing, drive,
+ * transient layer, and stereo ping-pong delay.
+ *
+ * Preset morphing stays in JS — the WASM engine receives pre-morphed params.
+ */
+
+#ifndef KESSHO_LEAD_FM_H
+#define KESSHO_LEAD_FM_H
+
+#include <stdint.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+// ═══════════════ Constants ═══════════════
+
+#define LEAD_FM_MAX_POLYPHONY     8   // max simultaneous notes
+#define LEAD_FM_MAX_UNISON        4   // max unison voices per note
+#define LEAD_FM_NUM_OPERATORS     4
+#define LEAD_FM_MAX_BLOCK_SIZE    128
+#define LEAD_FM_DELAY_MAX_SECONDS 4.0f
+
+// Algorithm indices
+#define LEAD_FM_ALG_PARALLEL  0
+#define LEAD_FM_ALG_STACK     1
+#define LEAD_FM_ALG_SPLIT     2
+#define LEAD_FM_ALG_CROSS     3
+#define LEAD_FM_ALG_DX17      4
+
+// LFO targets
+#define LEAD_FM_LFO_ALL     0
+#define LEAD_FM_LFO_MOD1    1
+#define LEAD_FM_LFO_MOD2    2
+#define LEAD_FM_LFO_MOD3    3
+#define LEAD_FM_LFO_MOD4    4
+#define LEAD_FM_LFO_FILTER  5
+#define LEAD_FM_LFO_PITCH   6
+#define LEAD_FM_LFO_DETUNE  7
+#define LEAD_FM_LFO_NONE    8
+
+// Filter types
+#define LEAD_FM_FILTER_LP    0
+#define LEAD_FM_FILTER_HP    1
+#define LEAD_FM_FILTER_BP    2
+#define LEAD_FM_FILTER_NOTCH 3
+#define LEAD_FM_FILTER_PEAK  4
+
+// Transient types
+#define LEAD_FM_TRANS_WHITE    0
+#define LEAD_FM_TRANS_PINK     1
+#define LEAD_FM_TRANS_BROWN    2
+#define LEAD_FM_TRANS_FILTERED 3
+
+// ═══════════════ Lifecycle ═══════════════
+
+int   lead_fm_init(float sample_rate);
+void  lead_fm_destroy(void);
+
+// ═══════════════ Buffer Access ═══════════════
+
+/** Stereo interleaved output (L0,R0,L1,R1,...). Size: MAX_BLOCK_SIZE * 2 */
+float* lead_fm_get_output_ptr(void);
+
+// ═══════════════ Processing ═══════════════
+
+void lead_fm_process_block(int block_size);
+
+// ═══════════════ Note Control ═══════════════
+
+/** Trigger a note. Params should already be set via setters. */
+void lead_fm_note_on(float frequency, float velocity, float hold_seconds);
+
+/** Release all active notes */
+void lead_fm_all_notes_off(void);
+
+// ═══════════════ Morphed Preset Parameters ═══════════════
+// These mirror Lead4opFMMorphedParams — set before note_on()
+
+// Algorithm
+void lead_fm_set_algorithm(int algo);
+
+// Carrier
+void lead_fm_set_beat_detune(float cents);
+void lead_fm_set_carrier2_mix(float mix);
+
+// Per-operator (op_idx: 0-3)
+void lead_fm_set_op_ratio(int op_idx, float ratio);
+void lead_fm_set_op_index(int op_idx, float index);
+void lead_fm_set_op_decay(int op_idx, float decay_sec);
+void lead_fm_set_op_sustain(int op_idx, float sustain);
+void lead_fm_set_op_level(int op_idx, float level);
+void lead_fm_set_op_feedback(int op_idx, float feedback);
+void lead_fm_set_op_detune(int op_idx, float cents);
+void lead_fm_set_op_env_rate(int op_idx, float rate);
+void lead_fm_set_op_mod_attack(int op_idx, float attack_sec);
+void lead_fm_set_op_mod_delay(int op_idx, float delay_sec);
+
+// Amplitude envelope (ADSR)
+void lead_fm_set_attack(float seconds);
+void lead_fm_set_decay(float seconds);
+void lead_fm_set_sustain(float level);
+void lead_fm_set_release(float seconds);
+
+// Filter
+void lead_fm_set_filter_freq(float hz);
+void lead_fm_set_filter_q(float q);
+void lead_fm_set_filter_type(int type);
+void lead_fm_set_filter_env_attack(float seconds);
+void lead_fm_set_filter_env_decay(float seconds);
+void lead_fm_set_filter_env_sustain(float level);
+void lead_fm_set_filter_env_release(float seconds);
+void lead_fm_set_filter_env_depth(float hz);
+
+// Drive
+void lead_fm_set_drive(float amount);
+
+// Transient
+void lead_fm_set_transient_click(float click);
+void lead_fm_set_transient_noise(float noise);
+void lead_fm_set_transient_duration_ms(float ms);
+void lead_fm_set_transient_decay(float decay);
+void lead_fm_set_transient_filter(float freq);
+void lead_fm_set_transient_type(int type);
+
+// Gain
+void lead_fm_set_gain(float gain);
+
+// XY stereo
+void lead_fm_set_x_level(float level);
+void lead_fm_set_x_pan(float pan);
+void lead_fm_set_y_level(float level);
+void lead_fm_set_y_pan(float pan);
+
+// LFO
+void lead_fm_set_lfo_rate(float hz);
+void lead_fm_set_lfo_depth(float depth);
+void lead_fm_set_lfo_target(int target);
+
+// Unison
+void lead_fm_set_unison_voices(int count);
+void lead_fm_set_unison_detune(float cents);
+
+// ═══════════════ Delay Effect ═══════════════
+
+void lead_fm_set_delay_enabled(int enabled);
+void lead_fm_set_delay_time_l(float samples);
+void lead_fm_set_delay_time_r(float samples);
+void lead_fm_set_delay_feedback(float feedback);
+void lead_fm_set_delay_filter(float cutoff_hz);
+void lead_fm_set_delay_mix(float mix);
+void lead_fm_set_delay_send(float level);
+
+// ═══════════════ Status ═══════════════
+
+int lead_fm_get_active_count(void);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif // KESSHO_LEAD_FM_H

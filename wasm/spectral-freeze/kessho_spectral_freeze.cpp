@@ -161,6 +161,8 @@ struct SpectralFreezeState {
     float maskBandCenter;      // current center of the refresh band (0..1 normalized freq)
     float maskBandWidth;       // width of the refresh band
     int   maskUpdateCounter;   // frames since last mask band shift
+    float maskBandCenterTarget; // target center for smooth band motion
+    float smoothedMask[HALF_FFT]; // per-bin temporal smoothing for speckle
 
     // Freeze transition ramp
     float freezeRamp;          // 0=unfrozen, 1=fully frozen (smooth)
@@ -252,15 +254,21 @@ static void synthesizeFrame(const float* mag, const float* synthPhase,
 // Uses band-limited regions + random speckle for the "oozing" spectral refresh character.
 static void generateSlushyMask(float* mask, int numBins, float speed, FastRNG& rng,
                                float& bandCenter, float& bandWidth, int& updateCounter) {
+    SpectralFreezeState& s = g_sf;
+
     // Shift the refresh band periodically — slower speed = less frequent band shifts
     // At speed=1, shift every frame. At speed=0.01, shift every ~100 frames.
     int shiftInterval = (int)fmaxf(1.0f, 20.0f / fmaxf(0.01f, speed));
     updateCounter++;
     if (updateCounter >= shiftInterval) {
         updateCounter = 0;
-        bandCenter = rng.nextFloat();  // random center in [0,1] normalized frequency
+        s.maskBandCenterTarget = rng.nextFloat();  // random center in [0,1] normalized frequency
         bandWidth = 0.05f + rng.nextFloat() * 0.25f;  // 5-30% of spectrum
     }
+
+    // Smooth band movement to avoid abrupt spectral jumps
+    float centerSmooth = 0.05f + speed * 0.15f;
+    bandCenter += (s.maskBandCenterTarget - bandCenter) * centerSmooth;
 
     // Base alpha from speed: speed 0 → very slow refresh, speed 1 → near-instant
     float alpha = speed * speed * 0.5f;  // quadratic curve, max 0.5 per frame
@@ -274,11 +282,13 @@ static void generateSlushyMask(float* mask, int numBins, float speed, FastRNG& r
         if (dist > 0.5f) dist = 1.0f - dist;
         float bandMask = expf(-dist * dist / (2.0f * bandWidth * bandWidth));
 
-        // Random speckle: sparse random refresh across all bins
-        float speckleMask = (rng.nextFloat() < alpha * 0.3f) ? 1.0f : 0.0f;
+        // Random speckle: sparse refresh, then temporally smoothed to reduce hiss/clicks
+        float speckleRaw = (rng.nextFloat() < alpha * 0.3f) ? alpha : 0.0f;
+        float maskSmooth = 0.15f + speed * 0.2f;
+        s.smoothedMask[k] += (speckleRaw - s.smoothedMask[k]) * maskSmooth;
 
         // Combined mask: band region refreshes smoothly, speckle adds sparse global refresh
-        mask[k] = fminf(1.0f, alpha * (bandMask * 0.7f + speckleMask * 0.3f));
+        mask[k] = fminf(1.0f, alpha * bandMask * 0.7f + s.smoothedMask[k] * 0.3f);
     }
 }
 
@@ -357,9 +367,14 @@ static void processHop() {
 
         for (int k = 0; k < HALF_FFT; k++) {
             float m = mask[k];
-            // Blend held magnitudes with live input
-            s.heldMagL[k] = (1.0f - m) * s.heldMagL[k] + m * s.magL[k];
-            s.heldMagR[k] = (1.0f - m) * s.heldMagR[k] + m * s.magR[k];
+            // Blend held magnitudes with live input, but gate downward blending
+            // by sustain (decayCoeff). When sustain=1 (decayCoeff=1), bins can only
+            // increase — silent input can't drain the frozen spectrum.
+            float mL = m, mR = m;
+            if (s.magL[k] < s.heldMagL[k]) mL *= (1.0f - decayCoeff);
+            if (s.magR[k] < s.heldMagR[k]) mR *= (1.0f - decayCoeff);
+            s.heldMagL[k] = (1.0f - mL) * s.heldMagL[k] + mL * s.magL[k];
+            s.heldMagR[k] = (1.0f - mR) * s.heldMagR[k] + mR * s.magR[k];
             // Apply spectral decay to non-refreshed bins (inversely proportional to mask)
             float decayMask = 1.0f - m;  // bins NOT being refreshed decay
             float binDecay = 1.0f - decayMask * (1.0f - decayCoeff);
@@ -378,6 +393,9 @@ static void processHop() {
                 s.synthPhaseL[k] += (s.rng.nextFloat() - 0.5f) * phaseDriftAmt;
                 s.synthPhaseR[k] += (s.rng.nextFloat() - 0.5f) * phaseDriftAmt;
             }
+            // Wrap phase to [-π, π] to prevent float32 precision loss over time
+            s.synthPhaseL[k] = fmodf(s.synthPhaseL[k] + PI, TWO_PI) - PI;
+            s.synthPhaseR[k] = fmodf(s.synthPhaseR[k] + PI, TWO_PI) - PI;
         }
 
         // Crossfade output magnitude: live × (1−ramp) + held × ramp
@@ -401,6 +419,9 @@ static void processHop() {
                 s.synthPhaseL[k] += (s.rng.nextFloat() - 0.5f) * phaseDriftAmt;
                 s.synthPhaseR[k] += (s.rng.nextFloat() - 0.5f) * phaseDriftAmt;
             }
+            // Wrap phase to [-π, π] to prevent float32 precision loss over time
+            s.synthPhaseL[k] = fmodf(s.synthPhaseL[k] + PI, TWO_PI) - PI;
+            s.synthPhaseR[k] = fmodf(s.synthPhaseR[k] + PI, TWO_PI) - PI;
         }
 
         // Crossfade magnitude: live × (1−ramp) + held × ramp
@@ -438,7 +459,9 @@ int spectral_freeze_init(float sample_rate) {
     g_sf.mix = 1.0f;
     g_sf.rng.seed(42);
     g_sf.maskBandCenter = 0.5f;
+    g_sf.maskBandCenterTarget = 0.5f;
     g_sf.maskBandWidth = 0.15f;
+    memset(g_sf.smoothedMask, 0, sizeof(g_sf.smoothedMask));
     initWindow();
     return 0;
 }
@@ -509,16 +532,11 @@ void spectral_freeze_process_block(int block_size) {
         if (s.hopCounter <= 0) {
             s.hopCounter = HOP_SIZE;
 
-            // Clear the new OLA output region before accumulating
-            int clearStart = s.outputRingWritePos;
-            for (int j = 0; j < FFT_SIZE; j++) {
-                int idx = (clearStart + j) % (FFT_SIZE * 2);
-                // Only clear the region that hasn't been read yet
-                // Actually, clear entire frame region for clean overlap-add
-            }
-            // Zero the upcoming frame region
-            for (int j = 0; j < FFT_SIZE; j++) {
-                int idx = (s.outputRingWritePos + j) % (FFT_SIZE * 2);
+            // Clear only the new hop-sized leading edge.
+            // Do not clear the full frame region or we erase overlapping contributions.
+            int leadingEdge = (s.outputRingWritePos + FFT_SIZE - HOP_SIZE) % (FFT_SIZE * 2);
+            for (int j = 0; j < HOP_SIZE; j++) {
+                int idx = (leadingEdge + j) % (FFT_SIZE * 2);
                 s.outputRingL[idx] = 0.0f;
                 s.outputRingR[idx] = 0.0f;
             }
@@ -545,8 +563,15 @@ void spectral_freeze_process_block(int block_size) {
 
         // Mix: dry/wet blend
         float m = s.mix;
-        s.outputBuf[i * 2]     = inL * (1.0f - m) + wetL * m;
-        s.outputBuf[i * 2 + 1] = inR * (1.0f - m) + wetR * m;
+        float outL = inL * (1.0f - m) + wetL * m;
+        float outR = inR * (1.0f - m) + wetR * m;
+
+        // NaN/Inf guard — prevent poisoning the WebAudio graph
+        if (!(outL == outL) || outL > 1e6f || outL < -1e6f) outL = 0.0f;
+        if (!(outR == outR) || outR > 1e6f || outR < -1e6f) outR = 0.0f;
+
+        s.outputBuf[i * 2]     = outL;
+        s.outputBuf[i * 2 + 1] = outR;
     }
 }
 

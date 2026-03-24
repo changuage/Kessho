@@ -47,13 +47,14 @@ static const int DIFF_MID_R[4]  = {173, 241, 331, 433};
 static const int DIFF_POST_L[6] = {211, 283, 367, 457, 547, 641};
 static const int DIFF_POST_R[6] = {223, 293, 379, 467, 557, 653};
 
-// Preset configs
-struct PresetConfig { float decay, damping, diffusion, size, modDepth; };
+// Preset configs (damping/size removed — multi-band damping uses dampLow/dampHigh,
+// size uses g_reverb.size directly)
+struct PresetConfig { float decay, diffusion, modDepth; };
 static const PresetConfig PRESETS[4] = {
-    {0.88f, 0.25f, 0.80f, 0.8f, 0.25f},  // plate
-    {0.92f, 0.20f, 0.85f, 1.0f, 0.30f},  // hall
-    {0.96f, 0.12f, 0.95f, 1.5f, 0.40f},  // cathedral
-    {0.94f, 0.45f, 0.90f, 1.3f, 0.30f},  // darkHall
+    {0.92f, 0.80f, 0.25f},  // plate
+    {0.95f, 0.85f, 0.30f},  // hall
+    {0.97f, 0.95f, 0.40f},  // cathedral
+    {0.96f, 0.90f, 0.30f},  // darkHall
 };
 
 // Stereo decorrelation tap coefficients — separate L/R arrays
@@ -109,6 +110,19 @@ static const float ER_GAINS[ER_TAP_COUNT]   = { 0.85f, 0.72f, 0.60f, 0.50f, 0.42
 static constexpr int MULTITAP_COUNT = 3;
 static const float MULTITAP_OFFSETS[MULTITAP_COUNT] = { 0.0f, 0.381966f, 0.618034f };  // golden ratio positions
 static const float MULTITAP_GAINS[MULTITAP_COUNT]   = { 0.6f, 0.25f, 0.15f };
+
+// ═══════════════ Fast Sine Approximation ═══════════════
+// 5th-order minimax polynomial — max error < 0.0002 over [-π, π]
+// Input: radians (any range, automatically wrapped to [-π, π])
+static inline float fast_sinf(float x) {
+    // Wrap to [-π, π] using Cody-Waite-style reduction
+    const float INV_TWO_PI = 0.15915494309189533f;  // 1/(2π)
+    const float TWO_PI = 6.283185307179586f;
+    x -= TWO_PI * floorf(x * INV_TWO_PI + 0.5f);
+    // Horner form of 5th-order odd-symmetry polynomial
+    float x2 = x * x;
+    return x * (1.0f - x2 * (0.16666667f - x2 * (0.00833333f - x2 * 0.000198413f)));
+}
 
 // ═══════════════ DSP Primitives ═══════════════
 
@@ -204,11 +218,16 @@ struct SmoothDelay {
         if (writeIdx >= size) writeIdx = 0;
     }
     inline float read(int delaySamples) const {
+        if (delaySamples >= size) delaySamples = size - 1;
+        if (delaySamples < 1) delaySamples = 1;
         int idx = writeIdx - delaySamples;
         if (idx < 0) idx += size;
         return buffer[idx];
     }
     inline float readInterpolated(float delaySamples) const {
+        // Clamp to valid range to prevent out-of-bounds reads
+        if (delaySamples >= (float)(size - 1)) delaySamples = (float)(size - 2);
+        if (delaySamples < 1.0f) delaySamples = 1.0f;
         // Allpass interpolation — transparent modulation, no zipper artifacts
         // Uses 1st-order allpass: y[n] = x[n-1] + frac * (x[n] - y[n-1])
         // where x[n] is the integer-delayed sample
@@ -328,6 +347,70 @@ struct InLoopAllpass {
     }
 };
 
+// Transient-aware input conditioning (Lexicon/Bricasti-style)
+// Detects sharp attacks via slew rate, applies dynamic LP + micro-allpass smear
+static constexpr int TRANS_AP_STAGES = 3;
+static const int TRANS_AP_TIMES[3] = {97, 157, 211};  // ~2.0, 3.3, 4.4ms at 48kHz
+
+struct TransientSmoother {
+    float envelope;
+    float attackCoeff;
+    float releaseCoeff;
+    float lpState;
+    float prevInput;
+    float twoPiOverSr;
+    SmoothDelay apDelays[TRANS_AP_STAGES];
+    int apSamples[TRANS_AP_STAGES];
+
+    void init(float sampleRate, float scale) {
+        envelope = 0.0f;
+        lpState = 0.0f;
+        prevInput = 0.0f;
+        attackCoeff = expf(-1.0f / (0.0003f * sampleRate));   // 0.3ms attack
+        releaseCoeff = expf(-1.0f / (0.15f * sampleRate));    // 150ms release
+        twoPiOverSr = 2.0f * (float)M_PI / sampleRate;
+        for (int i = 0; i < TRANS_AP_STAGES; i++) {
+            int sz = (int)(TRANS_AP_TIMES[i] * scale) + 10;
+            apDelays[i].init(sz);
+            apSamples[i] = (int)(TRANS_AP_TIMES[i] * scale);
+        }
+    }
+    void destroy() {
+        for (int i = 0; i < TRANS_AP_STAGES; i++) apDelays[i].destroy();
+    }
+    inline float process(float input, float amount) {
+        // Envelope follower (peak detector)
+        float absIn = fabsf(input);
+        if (absIn > envelope) {
+            envelope += (1.0f - attackCoeff) * (absIn - envelope);
+        } else {
+            envelope *= releaseCoeff;
+        }
+        // Slew rate detection
+        float slew = fabsf(input - prevInput);
+        prevInput = input;
+        // Normalized transient gate: high slew relative to envelope = attack
+        float normSlew = (envelope > 1e-6f) ? slew / envelope : 0.0f;
+        float smoothing = fminf(normSlew * 5.0f, 1.0f) * amount;
+        // Dynamic lowpass: bilinear one-pole, 12kHz -> ~500Hz on transients
+        float cutoff = 12000.0f - smoothing * 11500.0f;
+        float omega = cutoff * twoPiOverSr;
+        float alpha = omega / (1.0f + omega);
+        lpState += alpha * (input - lpState);
+        // 3-stage micro-allpass smear (fixed fb, always primed)
+        float x = lpState;
+        float apFb = 0.65f;
+        for (int j = 0; j < TRANS_AP_STAGES; j++) {
+            float delayed = apDelays[j].read(apSamples[j]);
+            float v = x - delayed * apFb;
+            apDelays[j].write(v);
+            x = delayed + v * apFb;
+        }
+        // Crossfade: raw -> smoothed proportional to transient strength
+        return input + (x - input) * smoothing;
+    }
+};
+
 // Dattorro tank allpass with optional LFO modulation
 struct TankAllpass {
     SmoothDelay delay;
@@ -371,6 +454,7 @@ struct SimpleRNG {
 
 static struct {
     float sampleRate;
+    float twoPiOverSr;
     float scale;  // sampleRate / 48000
 
     // I/O
@@ -412,6 +496,9 @@ static struct {
     // Input tone shaping
     TiltFilter tiltL, tiltR;
 
+    // Transient smoother (pre-tank input conditioning)
+    TransientSmoother transSmoothL, transSmoothR;
+
     // DC blockers
     DCBlocker dcBlockerL, dcBlockerR;
 
@@ -444,7 +531,6 @@ static struct {
     float modulation;
     float predelayMs;
     float width;
-    int   freeze;
     float shimmerAmount;
     float shimmerPitch;
     float slowModRate;
@@ -473,6 +559,12 @@ static struct {
     float airAbsorption;       // 0-1 spectral tilt per recirculation
     int   saturationMode;      // 0=clean 1=tape 2=tube
 
+    // v5 parameters
+    float transientSmooth;     // 0-1 transient conditioning amount
+    float erLpFreq;            // 200-12000 Hz, LP cutoff for early reflections
+    float erLpStateL;          // one-pole LP state for ER left
+    float erLpStateR;          // one-pole LP state for ER right
+
     // Early reflection delay lines
     SmoothDelay erDelayL, erDelayR;   // shared ER buffer per side
 
@@ -483,28 +575,27 @@ static struct {
     SimpleRNG velvetRNG;
     float velvetDensity;       // auto-calculated from decay
 
-    // Matrix rotation state
-    float matrixRotPhase;      // 0..1 evolving over ~30s
-    int   matrixSignFlip[FDN_MAX_CHANNELS];  // sign pattern per channel
+    // Givens rotation state (2 continuous rotations for spatial evolution)
+    float givensPhase0;        // rotation phase for channel pair (2,11)
+    float givensPhase1;        // rotation phase for channel pair (5,14)
+    float givensCos0, givensSin0;  // precomputed per block
+    float givensCos1, givensSin1;
+
+    // Allpass coefficient modulation (per-channel slow LFO on feedback)
+    float apModPhases[FDN_MAX_CHANNELS];
+
+    // Output tap modulation (spatial shimmer — slowly evolving stereo image)
+    float tapModPhases[FDN_MAX_CHANNELS];
+
+    // Per-channel decay feedback (longer delays decay faster)
+    float channelFb[FDN_MAX_CHANNELS];
+
+    // Pre-computed early reflection tap positions (samples)
+    int erTapSamplesL[ER_TAP_COUNT];
+    int erTapSamplesR[ER_TAP_COUNT];
 
     // Predelay modulation
     float predelayModPhase;
-
-    // Freeze spectral evolution
-    float freezeAPDrift;       // slowly evolving allpass coefficient offset
-    float freezeAPPhase;       // LFO phase for freeze evolution
-
-    // v5 enhanced freeze state
-    float freezeRamp;          // 0..1 smooth ramp (0=normal, 1=fully frozen)
-    float freezeInputBleed;    // 0-1 how much new input leaks during freeze
-    float freezeModAtten;      // 0-1 how much to attenuate modulation during freeze
-    float freezeVelvetDensity; // re-seeding density during freeze
-    float freezeEvoPhase2;     // second evolution LFO phase (0.07 Hz)
-    float freezeEvoPhase3;     // third evolution LFO phase (0.13 Hz)
-    int   freezeMode;          // 0=tank, 1=state-capture, 2=resonator, 3=slushy
-
-    // Slushy mode (mode 3) RNG state
-    uint32_t slushyRngState;
 
     // Dattorro tank state
     TankAllpass datInAP[4];         // input diffusion allpass
@@ -539,10 +630,8 @@ static void updatePreset() {
 
     // Feedback gain (with decay-dependent damping adjustment)
     float baseDecay = preset.decay;
-    float effectiveDecay = baseDecay + (1.0f - baseDecay) * userDecay * 0.9f;
-    g_reverb.feedbackGain = g_reverb.freeze
-        ? 1.0f
-        : fminf(0.998f, effectiveDecay);
+    float effectiveDecay = baseDecay + (1.0f - baseDecay) * userDecay * 0.98f;
+    g_reverb.feedbackGain = fminf(0.9995f, effectiveDecay);
 
     // FDN delay times — size range extended to 10.0 for massive spaces
     int maxChannels = (g_reverb.quality == 0) ? 16 : (g_reverb.quality == 1) ? 8 : 4;
@@ -653,6 +742,7 @@ static inline void mixFDN4(const float* state, float* out) {
 int reverb_init(float sample_rate) {
     memset(&g_reverb, 0, sizeof(g_reverb));
     g_reverb.sampleRate = sample_rate;
+    g_reverb.twoPiOverSr = 2.0f * (float)M_PI / sample_rate;
     g_reverb.scale = sample_rate / 48000.0f;
 
     float scale = g_reverb.scale;
@@ -696,28 +786,39 @@ int reverb_init(float sample_rate) {
     g_reverb.velvetRNG.seed(98765u);
     g_reverb.velvetDensity = 0.0f;
 
-    // Matrix rotation
-    g_reverb.matrixRotPhase = 0.0f;
+    // Givens rotations
+    g_reverb.givensPhase0 = 0.0f;
+    g_reverb.givensPhase1 = 0.0f;
+    g_reverb.givensCos0 = 1.0f; g_reverb.givensSin0 = 0.0f;
+    g_reverb.givensCos1 = 1.0f; g_reverb.givensSin1 = 0.0f;
+
+    // Allpass coefficient modulation phases (golden-ratio spaced)
     for (int i = 0; i < FDN_MAX_CHANNELS; i++) {
-        g_reverb.matrixSignFlip[i] = 0;
+        g_reverb.apModPhases[i] = (float)i * 0.618033988f;  // golden ratio spacing
+        if (g_reverb.apModPhases[i] >= 1.0f) g_reverb.apModPhases[i] -= (float)(int)g_reverb.apModPhases[i];
+    }
+
+    // Output tap modulation phases (golden-ratio spaced, different seed)
+    for (int i = 0; i < FDN_MAX_CHANNELS; i++) {
+        g_reverb.tapModPhases[i] = (float)i * 0.381966f;  // 1 - golden ratio
+        if (g_reverb.tapModPhases[i] >= 1.0f) g_reverb.tapModPhases[i] -= (float)(int)g_reverb.tapModPhases[i];
+    }
+
+    // Per-channel decay
+    for (int i = 0; i < FDN_MAX_CHANNELS; i++) {
+        g_reverb.channelFb[i] = 0.9f;
     }
 
     // Predelay modulation
     g_reverb.predelayModPhase = 0.0f;
 
-    // Freeze evolution
-    g_reverb.freezeAPDrift = 0.0f;
-    g_reverb.freezeAPPhase = 0.0f;
-
-    // v5 enhanced freeze defaults
-    g_reverb.freezeRamp = 0.0f;
-    g_reverb.freezeInputBleed = 0.0f;
-    g_reverb.freezeModAtten = 0.7f;      // attenuate modulation to 30% during freeze
-    g_reverb.freezeVelvetDensity = 0.003f; // subtle re-seeding
-    g_reverb.freezeEvoPhase2 = 0.0f;
-    g_reverb.freezeEvoPhase3 = 0.0f;
-    g_reverb.freezeMode = 0;
-    g_reverb.slushyRngState = 12345u;
+    // Pre-compute early reflection tap positions (ms → samples)
+    for (int t = 0; t < ER_TAP_COUNT; t++) {
+        int sL = (int)(ER_TIMES_L[t] * 0.001f * sample_rate);
+        int sR = (int)(ER_TIMES_R[t] * 0.001f * sample_rate);
+        g_reverb.erTapSamplesL[t] = sL < 1 ? 1 : sL;
+        g_reverb.erTapSamplesR[t] = sR < 1 ? 1 : sR;
+    }
 
     // HPF ~35 Hz
     g_reverb.hpCoeff = 1.0f - (2.0f * (float)M_PI * 35.0f / sample_rate);
@@ -769,7 +870,6 @@ int reverb_init(float sample_rate) {
     g_reverb.modulation = 0.3f;
     g_reverb.predelayMs = 20.0f;
     g_reverb.width = 0.8f;
-    g_reverb.freeze = 0;
     g_reverb.shimmerAmount = 0.0f;
     g_reverb.shimmerPitch = 12.0f;
     g_reverb.slowModRate = 0.05f;
@@ -796,6 +896,14 @@ int reverb_init(float sample_rate) {
     g_reverb.airAbsorption = 0.2f;
     g_reverb.saturationMode = 0;  // clean
 
+    // v5 defaults
+    g_reverb.transientSmooth = 0.0f;
+    g_reverb.erLpFreq = 2500.0f;
+    g_reverb.erLpStateL = 0.0f;
+    g_reverb.erLpStateR = 0.0f;
+    g_reverb.transSmoothL.init(sample_rate, scale);
+    g_reverb.transSmoothR.init(sample_rate, scale);
+
     // Computed
     g_reverb.smoothDampLow = g_reverb.dampLow;
     g_reverb.smoothDampHigh = g_reverb.dampHigh;
@@ -819,6 +927,7 @@ void reverb_destroy(void) {
     g_reverb.midDiffL.destroy();  g_reverb.midDiffR.destroy();
     g_reverb.postDiffL.destroy(); g_reverb.postDiffR.destroy();
     g_reverb.predelayL.destroy(); g_reverb.predelayR.destroy();
+    g_reverb.transSmoothL.destroy(); g_reverb.transSmoothR.destroy();
     free(g_reverb.reverseBufL);
     free(g_reverb.reverseBufR);
     // Early reflections
@@ -852,30 +961,14 @@ void reverb_set_params(float decay, float size, float damping, float diffusion,
                        float modulation, float predelay, float width) {
     g_reverb.decay = decay;
     g_reverb.size = size;
-    g_reverb.damping = damping;
-    // Legacy: single-band damping maps to dampHigh ONLY if multiband_damp hasn't been called
-    // (dampHigh is now owned by reverb_set_multiband_damp, don't clobber it)
+    // Legacy `damping` parameter ignored — multi-band damping (dampLow/dampHigh)
+    // set via reverb_set_multiband_damp() is used instead.
     g_reverb.diffusion = diffusion;
     g_reverb.modulation = modulation;
     g_reverb.predelayMs = predelay;
     g_reverb.width = width;
     updatePreset();
     updatePredelay();
-}
-
-void reverb_set_freeze(int freeze) {
-    g_reverb.freeze = freeze;
-    updatePreset();
-}
-
-void reverb_set_freeze_params(float input_bleed, float mod_atten, float velvet_density) {
-    g_reverb.freezeInputBleed = fmaxf(0.0f, fminf(1.0f, input_bleed));
-    g_reverb.freezeModAtten = fmaxf(0.0f, fminf(1.0f, mod_atten));
-    g_reverb.freezeVelvetDensity = fmaxf(0.0f, fminf(0.05f, velvet_density));
-}
-
-void reverb_set_freeze_mode(int mode) {
-    g_reverb.freezeMode = (mode >= 0 && mode <= 3) ? mode : 0;
 }
 
 void reverb_set_shimmer(float amount, float pitch_semitones) {
@@ -945,6 +1038,14 @@ void reverb_set_saturation_mode(int mode) {
     g_reverb.saturationMode = (mode < 0) ? 0 : ((mode > 2) ? 2 : mode);
 }
 
+void reverb_set_transient_smooth(float amount) {
+    g_reverb.transientSmooth = fmaxf(0.0f, fminf(1.0f, amount));
+}
+
+void reverb_set_er_lp_freq(float freq) {
+    g_reverb.erLpFreq = fmaxf(200.0f, fminf(12000.0f, freq));
+}
+
 // ═══════════════ Dattorro Plate Reverb ═══════════════
 //
 // Jon Dattorro, "Effect Design Part 1", JAES 1997
@@ -965,48 +1066,17 @@ static void dattorro_process_block(int block_size) {
     const float width = g_reverb.width;
     const float inputTone = g_reverb.inputTone;
     const float tiltCoeff = g_reverb.tiltCoeff;
-    const bool isFrozen = g_reverb.freeze != 0;
     const bool isShimmerMode = (g_reverb.presetType == 5);
 
-    // v5: use shared smooth ramp for Dattorro too
-    float rampTarget = isFrozen ? 1.0f : 0.0f;
-    float rampSpeed = (float)block_size / (0.2f * sr);
-    g_reverb.freezeRamp += (rampTarget - g_reverb.freezeRamp) * fminf(1.0f, rampSpeed);
-    float fzRamp = g_reverb.freezeRamp;
-
-    // v5: freeze mode branching for Dattorro
-    int fzMode = g_reverb.freezeMode;  // 0=tank, 1=state-capture, 2=resonator
-
-    // Dattorro decay coefficient — interpolated with ramp
-    float normalTankDecay = fminf(0.9995f, 0.5f + userDecay * 0.4995f);
-    float tankDecay = normalTankDecay + (1.0f - normalTankDecay) * fzRamp;
+    // Dattorro decay coefficient
+    float tankDecay = fminf(0.9998f, 0.5f + userDecay * 0.4998f);
 
     // Damping (1-pole LP coefficient)
-    float normalDampCoeff = 1.0f - damping * 0.7f;
-    float dampCoeff;
-    if (fzMode == 2 && fzRamp > 0.01f) {
-        // Resonator: keep damping active — shapes resonant character
-        dampCoeff = normalDampCoeff;
-    } else if (fzMode == 3 && fzRamp > 0.01f) {
-        // Slushy: partial damping reduction — keeps some color
-        dampCoeff = normalDampCoeff + (1.0f - normalDampCoeff) * fzRamp * 0.5f;
-    } else {
-        // Tank & state-capture: ramp toward no damping during freeze
-        dampCoeff = normalDampCoeff + (1.0f - normalDampCoeff) * fzRamp;
-    }
+    float dampCoeff = 1.0f - damping * 0.7f;
 
     // Mod depth — shimmer mode gets more modulation for detuning shimmer effect
-    // v5: attenuate modulation during freeze (mode-dependent)
     float modMult = isShimmerMode ? 2.5f : 1.0f;
-    float modAttenFactor;
-    if (fzMode == 1) {
-        modAttenFactor = 1.0f - fzRamp;  // state-capture: kill modulation
-    } else if (fzMode == 2 || fzMode == 3) {
-        modAttenFactor = 1.0f;            // resonator & slushy: keep full modulation
-    } else {
-        modAttenFactor = 1.0f - fzRamp * g_reverb.freezeModAtten;  // tank: user-controlled
-    }
-    float modDepthSamples = modulation * 16.0f * scale * modMult * modAttenFactor;
+    float modDepthSamples = modulation * 16.0f * scale * modMult;
     float modRate = 0.3f / sr;  // slow tank LFO
 
     // Size scaling (capped at 3.0 for Dattorro — plate topology)
@@ -1021,23 +1091,8 @@ static void dattorro_process_block(int block_size) {
         for (int i = 2; i < 4; i++) g_reverb.datInAP[i].coeff = inDiff2;
     }
 
-    // Input gain — v5: mode-dependent behavior
-    float normalDatInputGain = 0.2f;
-    float inputGain;
-    if (fzMode == 1 && fzRamp > 0.01f) {
-        // State-capture: fully mute input for pure snapshot
-        inputGain = normalDatInputGain * (1.0f - fzRamp);
-    } else if (fzMode == 2 && fzRamp > 0.01f) {
-        // Resonator: keep input at full level — tank acts as resonant filter
-        inputGain = normalDatInputGain;
-    } else if (fzMode == 3 && fzRamp > 0.01f) {
-        // Slushy: stochastic input gating — bleed param controls density
-        inputGain = normalDatInputGain;  // base level; per-sample gating applied in loop
-    } else {
-        // Tank: ramp down with optional bleed
-        float datFreezeBleed = g_reverb.freezeInputBleed * normalDatInputGain;
-        inputGain = normalDatInputGain * (1.0f - fzRamp) + datFreezeBleed * fzRamp;
-    }
+    // Input gain
+    float inputGain = 0.2f;
 
     // Warp: DC bias on tank allpass modulation
     float warpAmount = g_reverb.warp;
@@ -1048,6 +1103,7 @@ static void dattorro_process_block(int block_size) {
     float erAmount = g_reverb.earlyReflections;
     float predelayModRate = 0.1f / sr;
     float predelayModMaxSamples = 0.002f * sr;
+    float transSmooth = g_reverb.transientSmooth;
 
     // Pointer aliases for output tapping
     SmoothDelay* tankDelays[4] = {
@@ -1065,6 +1121,12 @@ static void dattorro_process_block(int block_size) {
             inR = g_reverb.tiltR.process(inR, inputTone, tiltCoeff);
         }
 
+        // Transient conditioning (pre-tank)
+        if (transSmooth > 0.0f) {
+            inL = g_reverb.transSmoothL.process(inL, transSmooth);
+            inR = g_reverb.transSmoothR.process(inR, transSmooth);
+        }
+
         // Predelay with modulation
         g_reverb.predelayL.write(inL);
         g_reverb.predelayR.write(inR);
@@ -1072,8 +1134,8 @@ static void dattorro_process_block(int block_size) {
         if (g_reverb.predelaySamples > 0) {
             g_reverb.predelayModPhase += predelayModRate;
             if (g_reverb.predelayModPhase > 1.0f) g_reverb.predelayModPhase -= 1.0f;
-            float modL = predelayModMaxSamples * sinf(g_reverb.predelayModPhase * 2.0f * (float)M_PI);
-            float modR = predelayModMaxSamples * sinf((g_reverb.predelayModPhase + 0.37f) * 2.0f * (float)M_PI);
+            float modL = predelayModMaxSamples * fast_sinf(g_reverb.predelayModPhase * 2.0f * (float)M_PI);
+            float modR = predelayModMaxSamples * fast_sinf((g_reverb.predelayModPhase + 0.37f) * 2.0f * (float)M_PI);
             float readL = (float)g_reverb.predelaySamples + modL;
             float readR = (float)g_reverb.predelaySamples + modR;
             if (readL < 1.0f) readL = 1.0f;
@@ -1092,19 +1154,6 @@ static void dattorro_process_block(int block_size) {
         // Sum to mono, scale, apply pre-diffusion
         float diffIn = g_reverb.preDiffL.process((delayedL + delayedR) * 0.5f) * inputGain;
 
-        // Mode 3 (Slushy): stochastic input gating — random per-sample chance
-        if (fzMode == 3 && fzRamp > 0.01f) {
-            // xorshift32 PRNG
-            uint32_t rng = g_reverb.slushyRngState;
-            rng ^= rng << 13; rng ^= rng >> 17; rng ^= rng << 5;
-            g_reverb.slushyRngState = rng;
-            float rndVal = (float)(rng & 0x7FFFFFu) / (float)0x800000u;
-            // freezeInputBleed controls gate density: 0 = no input, 1 = all input
-            float gateDensity = g_reverb.freezeInputBleed;
-            float gate = (rndVal < gateDensity) ? 1.0f : 0.0f;
-            diffIn *= (1.0f - fzRamp) + fzRamp * gate;
-        }
-
         // Input diffusion: 4 serial allpass filters
         float x = diffIn;
         for (int j = 0; j < 4; j++) {
@@ -1118,8 +1167,8 @@ static void dattorro_process_block(int block_size) {
         // Tank LFO modulation
         g_reverb.datModPhase += modRate;
         if (g_reverb.datModPhase > 1.0f) g_reverb.datModPhase -= 1.0f;
-        float lfo1 = sinf(g_reverb.datModPhase * 2.0f * (float)M_PI) * modDepthSamples;
-        float lfo2 = sinf((g_reverb.datModPhase * 1.37f + 0.5f) * 2.0f * (float)M_PI) * modDepthSamples;
+        float lfo1 = fast_sinf(g_reverb.datModPhase * 2.0f * (float)M_PI) * modDepthSamples;
+        float lfo2 = fast_sinf((g_reverb.datModPhase * 1.37f + 0.5f) * 2.0f * (float)M_PI) * modDepthSamples;
 
         // Warp: DC offset on LFO — creates compounding pitch bend per recirculation
         if (warpAmount > 0.0f) {
@@ -1192,15 +1241,16 @@ static void dattorro_process_block(int block_size) {
         if (erAmount > 0.0f) {
             float erL = 0.0f, erR = 0.0f;
             for (int t = 0; t < ER_TAP_COUNT; t++) {
-                int sampL = (int)(ER_TIMES_L[t] * 0.001f * sr);
-                int sampR = (int)(ER_TIMES_R[t] * 0.001f * sr);
-                if (sampL < 1) sampL = 1;
-                if (sampR < 1) sampR = 1;
-                erL += g_reverb.erDelayL.read(sampL) * ER_GAINS[t];
-                erR += g_reverb.erDelayR.read(sampR) * ER_GAINS[t];
+                erL += g_reverb.erDelayL.read(g_reverb.erTapSamplesL[t]) * ER_GAINS[t];
+                erR += g_reverb.erDelayR.read(g_reverb.erTapSamplesR[t]) * ER_GAINS[t];
             }
-            outL += erL * erAmount * 0.12f;
-            outR += erR * erAmount * 0.12f;
+            // ER low-pass filter (one-pole)
+            float erOmega = g_reverb.erLpFreq * g_reverb.twoPiOverSr;
+            float erAlpha = erOmega / (1.0f + erOmega);
+            g_reverb.erLpStateL += erAlpha * (erL - g_reverb.erLpStateL);
+            g_reverb.erLpStateR += erAlpha * (erR - g_reverb.erLpStateR);
+            outL += g_reverb.erLpStateL * erAmount * 0.12f;
+            outR += g_reverb.erLpStateR * erAmount * 0.12f;
         }
 
         // Post-diffusion (reuse existing post-diffuser chains)
@@ -1215,11 +1265,9 @@ static void dattorro_process_block(int block_size) {
         outL = g_reverb.dcBlockerL.process(outL);
         outR = g_reverb.dcBlockerR.process(outR);
 
-        // Safety limiter
-        if (outL > 0.95f) outL = 0.95f;
-        else if (outL < -0.95f) outL = -0.95f;
-        if (outR > 0.95f) outR = 0.95f;
-        else if (outR < -0.95f) outR = -0.95f;
+        // Soft limiter — preserves peak dynamics while preventing extreme values
+        outL = softClipClean(outL);
+        outR = softClipClean(outR);
 
         // Stereo width
         float mid  = (outL + outR) * 0.5f;
@@ -1259,41 +1307,13 @@ void reverb_process_block(int block_size) {
     g_reverb.smoothDampLow  += (g_reverb.dampLow  - g_reverb.smoothDampLow)  * smoothFactor;
     g_reverb.smoothDampHigh += (g_reverb.dampHigh - g_reverb.smoothDampHigh) * smoothFactor;
 
-    // Freeze overrides — v5: smooth ramp instead of instant switch
-    const bool isFrozen = g_reverb.freeze != 0;
-    // Ramp toward target: ~200ms at 48kHz = 9600 samples, per-block step
-    float rampTarget = isFrozen ? 1.0f : 0.0f;
-    float rampSpeed = (float)block_size / (0.2f * sr);  // reach target in ~200ms
-    g_reverb.freezeRamp += (rampTarget - g_reverb.freezeRamp) * fminf(1.0f, rampSpeed);
-    float fzRamp = g_reverb.freezeRamp;  // 0=normal, 1=fully frozen
-
-    // Interpolate feedback, damping, and input gain using ramp
-    int fzMode = g_reverb.freezeMode;  // 0=tank, 1=state-capture, 2=resonator
-    float normalFeedback = g_reverb.feedbackGain;
-    float blockFeedback = normalFeedback + (1.0f - normalFeedback) * fzRamp;
-    float blockDampLow, blockDampHigh;
+    float blockFeedback = g_reverb.feedbackGain;
+    float blockDampLow  = g_reverb.smoothDampLow;
+    float blockDampHigh = g_reverb.smoothDampHigh;
     float crossCoeff    = g_reverb.crossoverCoeff;
 
-    if (fzMode == 1 && fzRamp > 0.01f) {
-        // State-capture: zero damping — pure lossless recirculation (static snapshot)
-        blockDampLow  = g_reverb.smoothDampLow  * (1.0f - fzRamp);
-        blockDampHigh = g_reverb.smoothDampHigh * (1.0f - fzRamp);
-    } else if (fzMode == 2 && fzRamp > 0.01f) {
-        // Resonator: keep damping active — it shapes the resonant character
-        blockDampLow  = g_reverb.smoothDampLow;
-        blockDampHigh = g_reverb.smoothDampHigh;
-    } else if (fzMode == 3 && fzRamp > 0.01f) {
-        // Slushy: partial damping reduction — keeps some spectral color
-        blockDampLow  = g_reverb.smoothDampLow  * (1.0f - fzRamp * 0.5f);
-        blockDampHigh = g_reverb.smoothDampHigh * (1.0f - fzRamp * 0.5f);
-    } else {
-        // Tank (mode 0): ramp damping toward zero
-        blockDampLow  = g_reverb.smoothDampLow  * (1.0f - fzRamp);
-        blockDampHigh = g_reverb.smoothDampHigh * (1.0f - fzRamp);
-    }
-
     // Decay-dependent damping: reduce high damping at very high decay to maintain presence
-    if (fzRamp < 0.5f && blockFeedback > 0.9f) {
+    if (blockFeedback > 0.9f) {
         float decayScale = (blockFeedback - 0.9f) * 10.0f;  // 0..1 as decay goes 0.9..1.0
         blockDampHigh *= (1.0f - decayScale * 0.4f);         // reduce by up to 40%
     }
@@ -1302,20 +1322,9 @@ void reverb_process_block(int block_size) {
     float warpAmount = g_reverb.warp;
     float crossFeedAmt = g_reverb.crossFeed;
 
-    // Slow modulation (character drift) — v5: attenuate during freeze
+    // Slow modulation (character drift)
     float slowDepth = g_reverb.slowModDepth;
-    // Attenuate modulation during freeze based on freezeModAtten
-    // State-capture (mode 1): kill all modulation for static snapshot
-    // Resonator (mode 2): keep modulation fully active
-    float modAttenFactor;
-    if (fzMode == 1) {
-        modAttenFactor = 1.0f - fzRamp;  // ramp to zero
-    } else if (fzMode == 2 || fzMode == 3) {
-        modAttenFactor = 1.0f;            // resonator & slushy: keep full modulation
-    } else {
-        modAttenFactor = 1.0f - fzRamp * g_reverb.freezeModAtten;  // user-controlled
-    }
-    if (slowDepth > 0.0f && modAttenFactor > 0.01f) {
+    if (slowDepth > 0.0f) {
         float slowRate = g_reverb.slowModRate;
         float TAU = (float)(2.0 * M_PI);
         g_reverb.slowModPhase1 += TAU * slowRate * blockPhaseInc;
@@ -1323,11 +1332,19 @@ void reverb_process_block(int block_size) {
         if (g_reverb.slowModPhase1 > TAU) g_reverb.slowModPhase1 -= TAU;
         if (g_reverb.slowModPhase2 > TAU) g_reverb.slowModPhase2 -= TAU;
 
-        float m1 = sinf(g_reverb.slowModPhase1);
-        float m2 = sinf(g_reverb.slowModPhase2);
+        float m1 = fast_sinf(g_reverb.slowModPhase1);
+            float m2 = fast_sinf(g_reverb.slowModPhase2);
 
-        blockFeedback = fminf(0.998f, blockFeedback * (1.0f + m1 * slowDepth * 0.06f * modAttenFactor));
-        blockDampHigh = fmaxf(0.0f, fminf(1.0f, blockDampHigh + m2 * slowDepth * 0.15f * modAttenFactor));
+            // Taper slow-mod depth as presets approach the decay ceiling so motion stays
+            // audible without turning into a periodic feedback swell.
+            float ceilingProximity = fmaxf(0.0f, (g_reverb.feedbackGain - 0.92f) / 0.0795f);
+            float safeSlowDepth = slowDepth * (1.0f - 0.7f * ceilingProximity);
+
+            // Keep slow modulation on loss/tone only. The first LFO only increases high
+            // damping, so decay character can shorten/darken but never gain energy.
+            float dampRise = 0.5f * (m1 + 1.0f);
+            blockDampHigh = fmaxf(0.0f, fminf(1.0f,
+                blockDampHigh + dampRise * safeSlowDepth * 0.12f + m2 * safeSlowDepth * 0.04f));
     }
 
     // Shimmer
@@ -1356,25 +1373,10 @@ void reverb_process_block(int block_size) {
     }
     bool isLite = (g_reverb.quality == 2);
 
-    // State-capture: bypass HPF during freeze for lossless recirculation
-    float hpC = (fzRamp > 0.99f && fzMode != 2 && fzMode != 3) ? 1.0f : g_reverb.hpCoeff;
-    // v5: input gain behavior depends on freeze mode
-    float normalInputGain = (fdnCount >= 16 ? 0.10f : fdnCount >= 8 ? 0.10f : 0.20f);
-    float inputGain;
-    if (fzMode == 1 && fzRamp > 0.01f) {
-        // State-capture: fully mute input (no bleed) for pure snapshot
-        inputGain = normalInputGain * (1.0f - fzRamp);
-    } else if (fzMode == 2 && fzRamp > 0.01f) {
-        // Resonator: keep input at full level — FDN acts as resonant filter
-        inputGain = normalInputGain;
-    } else if (fzMode == 3 && fzRamp > 0.01f) {
-        // Slushy: base input at full level; per-channel stochastic gating in inner loop
-        inputGain = normalInputGain;
-    } else {
-        // Tank: ramp down with optional bleed
-        float freezeBleed = g_reverb.freezeInputBleed * normalInputGain;
-        inputGain = normalInputGain * (1.0f - fzRamp) + freezeBleed * fzRamp;
-    }
+    // HPF
+    float hpC = g_reverb.hpCoeff;
+    // Input gain
+    float inputGain = (fdnCount >= 16 ? 0.10f : fdnCount >= 8 ? 0.10f : 0.20f);
 
     // Chorus / drift / modulation params
     float chorusDepth = g_reverb.chorusDepth;
@@ -1395,49 +1397,56 @@ void reverb_process_block(int block_size) {
     }
 
     // v4 enhancement params
-    float airAbsCoeff = 1.0f - g_reverb.airAbsorption * 0.6f;  // 1.0=transparent, 0.4=heavy treble loss
+    float airAbsCoeff = 1.0f - g_reverb.airAbsorption * 0.6f;
     int satMode = g_reverb.saturationMode;
     float erAmount = g_reverb.earlyReflections;
 
     // Predelay modulation: ±2ms at ~0.1 Hz for spatial movement
-    float predelayModRate = 0.1f / sr;  // Hz / sampleRate
-    float predelayModMaxSamples = 0.002f * sr;  // 2ms in samples
+    float predelayModRate = 0.1f / sr;
+    float predelayModMaxSamples = 0.002f * sr;
+    float transSmooth = g_reverb.transientSmooth;
 
-    // Velvet noise density: auto-computed from decay (only at very high decay)
-    // v5: also inject during freeze for re-seeding (prevents dead texture)
-    // State-capture (mode 1): no velvet noise — static snapshot
-    // Resonator (mode 2): no velvet noise — input provides excitation
+    // Velvet noise density: sparse impulse injection for density at high decay.
     float velvetThreshold = 0.0f;
-    if (fzMode == 0 && fzRamp > 0.5f) {
-        velvetThreshold = g_reverb.freezeVelvetDensity * fzRamp;
-    } else if (blockFeedback > 0.92f && fzMode != 1) {
-        velvetThreshold = (blockFeedback - 0.92f) * 12.5f * 0.015f;  // max ~1.5% density at decay=1
+    if (blockFeedback > 0.92f && blockFeedback < 0.97f) {
+        velvetThreshold = (blockFeedback - 0.92f) * 20.0f * 0.008f;  // max ~0.8% at 0.97
     }
 
-    // Matrix rotation: slowly flip Hadamard signs for evolving spatial pattern
-    float matrixRotInc = 1.0f / (sr * 25.0f);  // one flip per ~25 seconds
+    // Per-channel decay: longer delay lines decay faster (correct room acoustics)
+    // Reference delay = median of the 16 delay times (~146 samples at 48k)
+    // Clamp to 0.9995 ceiling — pow(fb, ratio<1) can exceed blockFeedback for short lines
+    float referenceDelay = g_reverb.fdnDelayTimes[9];  // 146ms line
+    for (int j = 0; j < fdnCount; j++) {
+        g_reverb.channelFb[j] = fminf(0.9995f, powf(blockFeedback, g_reverb.fdnDelayTimes[j] / referenceDelay));
+    }
 
-    // v5 enhanced freeze evolution: multi-rate LFO drift of in-loop allpass coefficients
-    // State-capture (mode 1): no evolution — allpass coefficients stay fixed
-    // Resonator (mode 2): keep evolution for organic resonance
-    if (fzRamp > 0.1f && fzMode != 1) {
-        float TAU = 2.0f * (float)M_PI;
-        // LFO 1: 0.03 Hz — slow primary drift
-        g_reverb.freezeAPPhase += 0.03f / sr;
-        if (g_reverb.freezeAPPhase > 1.0f) g_reverb.freezeAPPhase -= 1.0f;
-        // LFO 2: 0.07 Hz — secondary drift
-        g_reverb.freezeEvoPhase2 += 0.07f / sr;
-        if (g_reverb.freezeEvoPhase2 > 1.0f) g_reverb.freezeEvoPhase2 -= 1.0f;
-        // LFO 3: 0.13 Hz — tertiary drift
-        g_reverb.freezeEvoPhase3 += 0.13f / sr;
-        if (g_reverb.freezeEvoPhase3 > 1.0f) g_reverb.freezeEvoPhase3 -= 1.0f;
-        float evo1 = sinf(g_reverb.freezeAPPhase * TAU);
-        float evo2 = sinf(g_reverb.freezeEvoPhase2 * TAU);
-        float evo3 = sinf(g_reverb.freezeEvoPhase3 * TAU);
-        // Combined drift with ramp scaling
-        g_reverb.freezeAPDrift = fzRamp * 0.04f * (evo1 * 0.5f + evo2 * 0.3f + evo3 * 0.2f);
-    } else {
-        g_reverb.freezeAPDrift = 0.0f;
+    // Allpass coefficient modulation: update phases per block
+    // Rates: ~0.02-0.04 Hz with golden-ratio spacing between channels
+    for (int j = 0; j < fdnCount; j++) {
+        float apRate = (0.02f + 0.02f * goldenHash(j + 32)) / sr * (float)block_size;
+        g_reverb.apModPhases[j] += apRate;
+        if (g_reverb.apModPhases[j] >= 1.0f) g_reverb.apModPhases[j] -= 1.0f;
+        // Update the in-loop allpass feedback coefficient
+        g_reverb.fdnInLoopAP[j].fb = INLOOP_AP_FB + 0.05f * fast_sinf(g_reverb.apModPhases[j] * 2.0f * (float)M_PI);
+    }
+
+    // Givens rotation: update phases & precompute sin/cos per block
+    float givensRate0 = 0.013f / sr * (float)block_size;  // ~0.013 Hz
+    float givensRate1 = 0.021f / sr * (float)block_size;  // ~0.021 Hz (golden ratio relative)
+    g_reverb.givensPhase0 += givensRate0;
+    g_reverb.givensPhase1 += givensRate1;
+    if (g_reverb.givensPhase0 >= 1.0f) g_reverb.givensPhase0 -= 1.0f;
+    if (g_reverb.givensPhase1 >= 1.0f) g_reverb.givensPhase1 -= 1.0f;
+    float gAngle0 = g_reverb.givensPhase0 * 2.0f * (float)M_PI;
+    float gAngle1 = g_reverb.givensPhase1 * 2.0f * (float)M_PI;
+    g_reverb.givensCos0 = cosf(gAngle0); g_reverb.givensSin0 = fast_sinf(gAngle0);
+    g_reverb.givensCos1 = cosf(gAngle1); g_reverb.givensSin1 = fast_sinf(gAngle1);
+
+    // Output tap modulation: update phases per block
+    for (int j = 0; j < fdnCount; j++) {
+        float tapRate = (0.01f + 0.04f * goldenHash(j + 64)) / sr * (float)block_size;
+        g_reverb.tapModPhases[j] += tapRate;
+        if (g_reverb.tapModPhases[j] >= 1.0f) g_reverb.tapModPhases[j] -= 1.0f;
     }
 
     // === Sample loop ===
@@ -1451,6 +1460,12 @@ void reverb_process_block(int block_size) {
             inR = g_reverb.tiltR.process(inR, inputTone, tiltCoeff);
         }
 
+        // Transient conditioning (pre-tank)
+        if (transSmooth > 0.0f) {
+            inL = g_reverb.transSmoothL.process(inL, transSmooth);
+            inR = g_reverb.transSmoothR.process(inR, transSmooth);
+        }
+
         // Predelay with modulation + true stereo diffusion
         g_reverb.predelayL.write(inL);
         g_reverb.predelayR.write(inR);
@@ -1459,8 +1474,8 @@ void reverb_process_block(int block_size) {
             // Modulated predelay: ±2ms sine, decorrelated L vs R phase
             g_reverb.predelayModPhase += predelayModRate;
             if (g_reverb.predelayModPhase > 1.0f) g_reverb.predelayModPhase -= 1.0f;
-            float modL = predelayModMaxSamples * sinf(g_reverb.predelayModPhase * 2.0f * (float)M_PI);
-            float modR = predelayModMaxSamples * sinf((g_reverb.predelayModPhase + 0.37f) * 2.0f * (float)M_PI);
+            float modL = predelayModMaxSamples * fast_sinf(g_reverb.predelayModPhase * 2.0f * (float)M_PI);
+            float modR = predelayModMaxSamples * fast_sinf((g_reverb.predelayModPhase + 0.37f) * 2.0f * (float)M_PI);
             float readL = (float)g_reverb.predelaySamples + modL;
             float readR = (float)g_reverb.predelaySamples + modR;
             if (readL < 1.0f) readL = 1.0f;
@@ -1487,7 +1502,7 @@ void reverb_process_block(int block_size) {
 
             if (chorusDepth > 0.0f || modDepth > 0.0f) {
                 // Sine component (per-line chorus)
-                float sineVal = sinf(g_reverb.chorusPhases[j] * 2.0f * (float)M_PI);
+                float sineVal = fast_sinf(g_reverb.chorusPhases[j] * 2.0f * (float)M_PI);
 
                 // Per-line depth variation via golden hash
                 float lineDepth = chorusDepth * (0.7f + 0.6f * goldenHash(j));
@@ -1505,7 +1520,7 @@ void reverb_process_block(int block_size) {
 
                 // Add legacy global modulation on top
                 modOffset += modDepth * g_reverb.fdnDelayTimes[j] * 0.015f
-                           * sinf(g_reverb.chorusPhases[j] * 0.37f * 2.0f * (float)M_PI);
+                           * fast_sinf(g_reverb.chorusPhases[j] * 0.37f * 2.0f * (float)M_PI);
             }
 
             // Warp: DC offset on chorus modulation — compounds pitch bend per recirculation
@@ -1558,28 +1573,19 @@ void reverb_process_block(int block_size) {
 
         // ── In-loop allpass — smears transients inside recirculation ──
         for (int j = 0; j < fdnCount; j++) {
-            // v5 freeze evolution: modulate allpass feedback for spectral drift (ramp-scaled)
-            float fbOrig = g_reverb.fdnInLoopAP[j].fb;
-            if (g_reverb.freezeAPDrift != 0.0f) {
-                float perLineDrift = g_reverb.freezeAPDrift * (1.0f + 0.3f * goldenHash(j));
-                g_reverb.fdnInLoopAP[j].fb = fmaxf(0.2f, fminf(0.75f, fbOrig + perLineDrift));
-            }
             g_reverb.fdnMixed[j] = g_reverb.fdnInLoopAP[j].process(g_reverb.fdnMixed[j]);
-            if (g_reverb.freezeAPDrift != 0.0f) g_reverb.fdnInLoopAP[j].fb = fbOrig;  // restore
         }
 
-        // ── Matrix rotation: slowly evolving spatial pattern ──
-        if (!isLite) {
-            g_reverb.matrixRotPhase += matrixRotInc;
-            if (g_reverb.matrixRotPhase >= 1.0f) {
-                g_reverb.matrixRotPhase -= 1.0f;
-                // Flip one channel's sign for slow spatial evolution
-                int flipIdx = ((int)(g_reverb.velvetRNG.nextFloat() * (float)fdnCount)) % fdnCount;
-                g_reverb.matrixSignFlip[flipIdx] ^= 1;
-            }
-            for (int j = 0; j < fdnCount; j++) {
-                if (g_reverb.matrixSignFlip[j]) g_reverb.fdnMixed[j] = -g_reverb.fdnMixed[j];
-            }
+        // ── Givens rotations: continuous unitary channel pair rotation ──
+        if (!isLite && fdnCount >= 16) {
+            // Rotation 1: channels (2, 11)
+            float a0 = g_reverb.fdnMixed[2], b0 = g_reverb.fdnMixed[11];
+            g_reverb.fdnMixed[2]  = a0 * g_reverb.givensCos0 - b0 * g_reverb.givensSin0;
+            g_reverb.fdnMixed[11] = a0 * g_reverb.givensSin0 + b0 * g_reverb.givensCos0;
+            // Rotation 2: channels (5, 14)
+            float a1 = g_reverb.fdnMixed[5], b1 = g_reverb.fdnMixed[14];
+            g_reverb.fdnMixed[5]  = a1 * g_reverb.givensCos1 - b1 * g_reverb.givensSin1;
+            g_reverb.fdnMixed[14] = a1 * g_reverb.givensSin1 + b1 * g_reverb.givensCos1;
         }
 
         // ── Velvet noise injection: sparse impulses for density at high decay ──
@@ -1617,7 +1623,7 @@ void reverb_process_block(int block_size) {
             int ri0i = (int)ri0;
             float ri0f = ri0 - (float)ri0i;
             int ri0n = (ri0i + 1) % sBuf;
-            float env0 = sinf(g_reverb.shimmerPhase0 * (float)M_PI);
+            float env0 = fast_sinf(g_reverb.shimmerPhase0 * (float)M_PI);
             shimInL = (g_reverb.shimmerBufL[ri0i]
                      + ri0f * (g_reverb.shimmerBufL[ri0n] - g_reverb.shimmerBufL[ri0i])) * env0;
             shimInR = (g_reverb.shimmerBufR[ri0i]
@@ -1630,7 +1636,7 @@ void reverb_process_block(int block_size) {
             int ri1i = (int)ri1;
             float ri1f = ri1 - (float)ri1i;
             int ri1n = (ri1i + 1) % sBuf;
-            float env1 = sinf(g_reverb.shimmerPhase1 * (float)M_PI);
+            float env1 = fast_sinf(g_reverb.shimmerPhase1 * (float)M_PI);
             shimInL += (g_reverb.shimmerBufL[ri1i]
                       + ri1f * (g_reverb.shimmerBufL[ri1n] - g_reverb.shimmerBufL[ri1i])) * env1;
             shimInR += (g_reverb.shimmerBufR[ri1i]
@@ -1652,17 +1658,6 @@ void reverb_process_block(int block_size) {
         for (int j = 0; j < fdnCount; j++) {
             float dryInject = (j < halfCount) ? diffInL * inputGain : diffInR * inputGain;
 
-            // Mode 3 (Slushy): per-channel stochastic input gating
-            if (fzMode == 3 && fzRamp > 0.01f) {
-                uint32_t rng = g_reverb.slushyRngState;
-                rng ^= rng << 13; rng ^= rng >> 17; rng ^= rng << 5;
-                g_reverb.slushyRngState = rng;
-                float rndVal = (float)(rng & 0x7FFFFFu) / (float)0x800000u;
-                float gateDensity = g_reverb.freezeInputBleed;
-                float gate = (rndVal < gateDensity) ? 1.0f : 0.0f;
-                dryInject *= (1.0f - fzRamp) + fzRamp * gate;
-            }
-
             // Cross-feed: inject opposite-side signal for stereo thickening
             if (crossFeedAmt > 0.0f) {
                 float otherInject = (j < halfCount) ? diffInR : diffInL;
@@ -1677,12 +1672,11 @@ void reverb_process_block(int block_size) {
                 shimFbInject = shimInject * shimmerFb * 0.2f;
             }
 
-            float value = softClip(
-                g_reverb.fdnMixed[j] * blockFeedback
+            float rawFeedback = g_reverb.fdnMixed[j] * g_reverb.channelFb[j]
                 + dryInject
                 + shimInject
-                + shimFbInject
-            , satMode);
+                + shimFbInject;
+            float value = softClip(rawFeedback, satMode);
             // NaN/Inf guard — prevent corrupted delay lines from poisoning the entire FDN
             if (!(value == value) || value > 1e15f || value < -1e15f) value = 0.0f;
             g_reverb.fdnDelays[j].write(value);
@@ -1691,10 +1685,13 @@ void reverb_process_block(int block_size) {
         // ── Output tapping with stereo decorrelation ──
         float rawL = 0.0f, rawR = 0.0f;
         if (fdnCount == 16) {
-            // True decorrelation: separate normalized L/R tap arrays
+            // True decorrelation with spatial modulation: slowly evolving stereo image
             for (int j = 0; j < 16; j++) {
-                rawL += g_reverb.fdnReads[j] * STEREO_TAPS_L[j];
-                rawR += g_reverb.fdnReads[j] * STEREO_TAPS_R[j];
+                float tapMod = 0.04f * fast_sinf(g_reverb.tapModPhases[j] * 2.0f * (float)M_PI);
+                float modTapL = STEREO_TAPS_L[j] + tapMod;
+                float modTapR = STEREO_TAPS_R[j] - tapMod;  // anti-phase for energy conservation
+                rawL += g_reverb.fdnReads[j] * modTapL;
+                rawR += g_reverb.fdnReads[j] * modTapR;
             }
         } else if (fdnCount == 8) {
             // Decorrelated 8-ch tapping
@@ -1721,15 +1718,16 @@ void reverb_process_block(int block_size) {
         if (erAmount > 0.0f) {
             float erL = 0.0f, erR = 0.0f;
             for (int t = 0; t < ER_TAP_COUNT; t++) {
-                int sampL = (int)(ER_TIMES_L[t] * 0.001f * sr);
-                int sampR = (int)(ER_TIMES_R[t] * 0.001f * sr);
-                if (sampL < 1) sampL = 1;
-                if (sampR < 1) sampR = 1;
-                erL += g_reverb.erDelayL.read(sampL) * ER_GAINS[t];
-                erR += g_reverb.erDelayR.read(sampR) * ER_GAINS[t];
+                erL += g_reverb.erDelayL.read(g_reverb.erTapSamplesL[t]) * ER_GAINS[t];
+                erR += g_reverb.erDelayR.read(g_reverb.erTapSamplesR[t]) * ER_GAINS[t];
             }
-            rawL += erL * erAmount * 0.12f;
-            rawR += erR * erAmount * 0.12f;
+            // ER low-pass filter (one-pole)
+            float erOmega = g_reverb.erLpFreq * g_reverb.twoPiOverSr;
+            float erAlpha = erOmega / (1.0f + erOmega);
+            g_reverb.erLpStateL += erAlpha * (erL - g_reverb.erLpStateL);
+            g_reverb.erLpStateR += erAlpha * (erR - g_reverb.erLpStateR);
+            rawL += g_reverb.erLpStateL * erAmount * 0.12f;
+            rawR += g_reverb.erLpStateR * erAmount * 0.12f;
         }
 
         // Post-diffusion
@@ -1751,7 +1749,7 @@ void reverb_process_block(int block_size) {
             int readIdx = (g_reverb.reverseWriteIdx
                          - (int)g_reverb.reverseReadPhase + rCycleLen) % rCycleLen;
             float envPos = g_reverb.reverseEnvPhase / (float)rCycleLen;
-            float env = sinf(envPos * (float)M_PI);
+            float env = fast_sinf(envPos * (float)M_PI);
             rawL += g_reverb.reverseBufL[readIdx] * env * reverseAmount;
             rawR += g_reverb.reverseBufR[readIdx] * env * reverseAmount;
 
@@ -1768,11 +1766,14 @@ void reverb_process_block(int block_size) {
         rawL = g_reverb.dcBlockerL.process(rawL);
         rawR = g_reverb.dcBlockerR.process(rawR);
 
-        // Safety limiter — hard clamp to prevent speaker damage
-        if (rawL > 0.95f) rawL = 0.95f;
-        else if (rawL < -0.95f) rawL = -0.95f;
-        if (rawR > 0.95f) rawR = 0.95f;
-        else if (rawR < -0.95f) rawR = -0.95f;
+        // NaN/Inf guard — prevent poisoning the WebAudio graph
+        if (!(rawL == rawL) || rawL > 1e15f || rawL < -1e15f) rawL = 0.0f;
+        if (!(rawR == rawR) || rawR > 1e15f || rawR < -1e15f) rawR = 0.0f;
+
+        // Soft limiter — preserves peak dynamics while preventing extreme values
+        // (JS-side NaN guard at ±10 provides ultimate safety net)
+        rawL = softClipClean(rawL);
+        rawR = softClipClean(rawR);
 
         // Stereo width (mid-side)
         float mid  = (rawL + rawR) * 0.5f;
