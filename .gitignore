@@ -43,3 +43,6 @@ public/*_backup_*.html
 public/digitone_candidates.json
 
 emsdk/
+.tmp_*.cjs
+tsc_*.txt
+tscout.txt

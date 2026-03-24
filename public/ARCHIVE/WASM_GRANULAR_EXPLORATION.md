@@ -1,22 +1,22 @@
-# C++ / WASM Looper-FX Granular Engine — Architecture Exploration
+﻿# C++ / WASM Granular-FX Granular Engine — Architecture Exploration
 
-> **Status: Implementation planned — full C++ port.**  
-> This document covers the architecture, measured baselines, multi-phase implementation plan, and validation checklist for porting the **looper-fx** granular DSP to C++ (Emscripten → WASM for web, native ARM for iOS).
+> **Status: Implementation complete — full C++ port deployed.**  
+> This document covers the architecture, measured baselines, multi-phase implementation plan, and validation checklist for the **Granular-FX** granular DSP C++ port (Emscripten → WASM for web, native ARM for iOS).
 >
-> **Scope: looper-fx worklet — full C++ engine.** The entire DSP engine (grain processing, feedback, clean voice, freeze, buffer management) moves to C++. JS retains only a thin AudioWorklet wrapper for `process()` entry point and `postMessage` translation. The legacy `granulator.worklet.ts` is excluded — it will be removed once looper-fx fully covers its use case.
+> **Scope: Granular-FX worklet — full C++ engine.** The entire DSP engine (grain processing, feedback, clean voice, freeze, buffer management) moves to C++. JS retains only a thin AudioWorklet wrapper for `process()` entry point and `postMessage` translation. The legacy `granulator.worklet.ts` is excluded — it will be removed once Granular-FX fully covers its use case.
 
 ---
 
 ## 1. Why WASM for Granular?
 
-The looper-fx worklet is the single heaviest JS worklet in Kessho:
+The Granular-FX worklet is the single heaviest JS worklet in Kessho:
 
 ### Measured baseline (dev overlay, Ctrl+Shift+P)
 
 | Worklet | Measured CPU % | Notes |
 |---------|---------------|-------|
-| **Looper-FX** | **48%** | 4 granular voices active |
-| **Looper-FX (backgrounded)** | **70%+** | Same config, tab not focused |
+| **Granular-FX** | **48%** | 4 granular voices active |
+| **Granular-FX (backgrounded)** | **70%+** | Same config, tab not focused |
 | Reverb | 8–9% | FDN reverb |
 | Granulator | — | Bypassed (mutual exclusion) |
 | Ocean | — | Not active during test |
@@ -59,26 +59,40 @@ Key reasons WASM wins for this specific worklet:
 | Buffer silence fill | 2 | Looper fills with zeros (no pink noise — that's legacy only) |
 | **Total** | **~135** | |
 
-### Stays in JS (control plane)
+### Also moved to C++ (exceeded original plan)
+
+> **Note:** The original plan kept these in JS. During implementation, they were moved to C++ for better cache locality and to eliminate FFI overhead. The final C++ implementation is ~1,580 lines (vs the original ~300 line estimate).
+
+| Component | Original Plan | Actual | Notes |
+|-----------|--------------|--------|-------|
+| `spawnGrain()` | Stay in JS | **Moved to C++** | ~80 lines; called from per-sample scheduling loop |
+| LFO `.tick()` methods | Stay in JS | **Moved to C++** | `TriLFO` struct with `lfo_tick()` — 4 LFOs per voice |
+| Clean voice path | Stay in JS | **Moved to C++** | ~120 lines including LFO scan dual-head crossfade |
+| `AllpassDiffuser` (blur) | Stay in JS | **Moved to C++** | 4-stage allpass chain, L/R decorrelated delays |
+| Legacy mode spawn logic | Stay in JS | **Moved to C++** | Harmonic intervals, pitch quantization, probability |
+| Silence detection | Not mentioned | **In C++** | Buffer fade after 2s of no input |
+| Euclidean trigger envelope | Stay in JS | **Moved to C++** | AD envelope with velocity, per-voice |
+
+### Stays in JS (thin wrapper, ~250 lines)
 
 | Component | Why |
 |-----------|-----|
-| `handleMessage()` / `applyParams()` | Runs once per param update (~60Hz), negligible cost |
-| `spawnGrain()` | Runs at grain density rate (~20–64Hz), not per-sample |
-| LFO `.tick()` methods | Per-sample but trivial (1 add + 1 compare), not worth FFI boundary |
-| Euclidean trigger handling | Event-driven, infrequent |
-| Position reporting `postMessage()` | ~20Hz, negligible |
-| Clean voice (non-granular) | Could eventually move, but lower priority — separate read path, no grains |
-| `AllpassDiffuser` (blur) | Per-sample but 4-stage allpass is already fast; WASM benefit < 2× |
-| Legacy mode spawn logic | Just a variant of `spawnGrain()` — stays JS alongside standard granular spawn |
+| `process()` entry point | AudioWorklet API requires JS |
+| `handleMessage()` / `applyParams()` | Browser message port API; translates params → C API calls |
+| WASM loading + `WebAssembly.instantiate()` | Browser API |
+| Buffer copy in/out (interleaved stereo) | `Float32Array` ↔ WASM heap |
+| Position reporting timer | `postMessage` at ~20Hz |
+| Perf monitoring | `_perfNow()` + reporting |
+| Scale interval marshalling | Copies `Int32Array` to WASM heap via `malloc`/`free` |
+| Random sequence marshalling | Copies `Float32Array` to WASM heap via `malloc`/`free` |
 
-### Hybrid boundary
+### JS ↔ WASM boundary
 
 The **JS `process()` method** stays as the entry point (AudioWorklet requires it). It:
-1. Copies input into WASM shared buffer
-2. Calls `wasm.processGranularBlock(voiceIdx, blockSize)`
-3. Reads output from WASM shared buffer
-4. Handles spawning, LFOs, position reporting (JS side)
+1. Copies interleaved stereo input into WASM heap
+2. Calls `wasm.granular_process_block(blockSize)` — C++ handles everything
+3. Reads interleaved stereo output from WASM heap
+4. Reports position via `postMessage` (~20Hz)
 
 ---
 
@@ -409,9 +423,9 @@ WASM Linear Memory (total ~7 MB):
 ### 5.3 AudioWorklet Integration Pattern
 
 ```typescript
-// looper-fx.worklet.ts — modified process() method
+// Granular-FX.worklet.ts — modified process() method
 
-class LooperFXProcessor extends AudioWorkletProcessor {
+class GranularFXProcessor extends AudioWorkletProcessor {
   private wasm: WebAssembly.Instance | null = null;
   private wasmMemory: WebAssembly.Memory;
   private inputLPtr: number;
@@ -506,32 +520,29 @@ class LooperFXProcessor extends AudioWorkletProcessor {
 EMCC = emcc
 CFLAGS = -O3 \
          -flto \
-         -ffast-math \
-         -fno-exceptions \
-         -fno-rtti \
+         -fno-math-errno \
+         -freciprocal-math \
+         -fno-trapping-math \
          -msimd128 \
-         -s WASM=1 \
          -s STANDALONE_WASM=1 \
-         -s INITIAL_MEMORY=8388608 \
-         -s MAXIMUM_MEMORY=8388608 \
-         -s ALLOW_MEMORY_GROWTH=0 \
-         -s EXPORTED_FUNCTIONS="['_granular_init','_granular_processBlock', ...]" \
-         -s EXPORTED_RUNTIME_METHODS="[]" \
-         -s ENVIRONMENT='worker' \
+         -s INITIAL_MEMORY=16777216 \
+         -s MAXIMUM_MEMORY=67108864 \
+         -s ALLOW_MEMORY_GROWTH=1 \
+         -s EXPORTED_FUNCTIONS="['_granular_init','_granular_process_block', ...]" \
          --no-entry
 
-# Output: ~15-25 KB .wasm file (no runtime, no filesystem, no exceptions)
-looper-granular.wasm: looper-granular.cpp
+# Output: ~34 KB .wasm file (no runtime, no filesystem, no exceptions)
+kessho_granular.wasm: kessho_granular.cpp
 	$(EMCC) $(CFLAGS) -o $@ $<
 ```
 
 Key flags explained:
-- `-O3 -flto` — full optimisation + link-time optimisation (critical for inlining `readBufferCubic`)
-- `-ffast-math` — allow reordering of float ops, enables autovectorisation
+- `-O3 -flto` — full optimisation + link-time optimisation (critical for inlining `read_buffer_cubic`)
+- `-fno-math-errno -freciprocal-math -fno-trapping-math` — fast-math subset without `-ffast-math` (safer)
 - `-msimd128` — emit WASM SIMD instructions (128-bit, 4×f32)
-- `STANDALONE_WASM=1` — no Emscripten JS runtime (minimal .wasm, no glue code)
-- `ALLOW_MEMORY_GROWTH=0` — fixed memory (no realloc pauses)
-- `ENVIRONMENT='worker'` — AudioWorklet is a Worker context
+- `STANDALONE_WASM=1` — no Emscripten JS runtime (minimal .wasm, WASI-compatible)
+- `ALLOW_MEMORY_GROWTH=1` — growable memory (16MB initial, 64MB max) to support buffer resize
+- `INITIAL_MEMORY=16777216` — 16MB initial heap (16s stereo buffer = ~6.1MB + state + stack)
 
 ### 6.2 SIMD Strategy
 
@@ -572,11 +583,18 @@ float total = wasm_f32x4_extract_lane(accum, 0) + wasm_f32x4_extract_lane(accum,
 ### 6.3 File Structure
 
 ```
-src/audio/wasm/
-├── looper-granular.cpp    # All DSP code (~300 lines)
-├── looper-granular.h     # Struct definitions + exported function declarations
-├── build.sh              # Emscripten build script
-└── looper-granular.wasm  # Build output (~15-25 KB), committed to repo
+wasm/Granular-FX/
+├── kessho_granular.cpp    # All DSP code (~1,580 lines)
+├── kessho_granular.h      # Struct definitions + exported function declarations
+├── build.sh               # Emscripten build script
+└── kessho_granular.wasm   # Build output (~34 KB), committed to repo
+
+public/worklets/
+├── granular-fx-wasm.worklet.js  # Thin JS AudioWorklet wrapper
+└── kessho_granular.wasm         # Runtime copy (build.sh copies here)
+
+src/audio/worklets/
+└── granular-fx-wasm.worklet.ts  # TypeScript source for the worklet wrapper
 ```
 
 The `.wasm` file is small enough to commit directly — no need for a build step in CI.
@@ -647,28 +665,41 @@ FFI overhead is ~0.5μs per block — negligible compared to the ~250μs saved.
 
 ```typescript
 // engine.ts — during AudioWorklet setup
-const wasmResponse = await fetch('/audio/looper-granular.wasm');
-const wasmBytes = await wasmResponse.arrayBuffer();
+const wasmUrl = getWorkletUrl('kessho_granular.wasm');
+const wasmResp = await fetch(wasmUrl);
+this.wasmGranularBinary = await wasmResp.arrayBuffer();
+await this.ctx.audioWorklet.addModule(granularFxWasmWorkletUrl);
 
-// Add worklet module (existing)
-await audioContext.audioWorklet.addModule('/audio/worklets/looper-fx.worklet.js');
-
-// Send WASM bytes to worklet via port
-looperNode.port.postMessage({ type: 'wasmModule', buffer: wasmBytes }, [wasmBytes]);
+// Later, when creating the node:
+this.granularFxNode = new AudioWorkletNode(ctx, 'granular-fx-wasm', { ... });
+this.granularFxNode.port.postMessage(
+  { type: 'wasmBinary', binary: this.wasmGranularBinary },
+  [this.wasmGranularBinary]
+);
 ```
 
 ### 9.2 Worklet Thread
 
 ```typescript
-// Inside LooperFXProcessor.handleMessage()
-case 'wasmModule': {
-    const bytes = data.buffer as ArrayBuffer;
-    // Async WASM compilation inside worklet
-    WebAssembly.instantiate(bytes, { env: { memory: this.wasmMemory } })
-        .then(result => {
-            this.wasm = result.instance;
-            this.initWasmPointers();
-        });
+// Inside GranularFXWasmProcessor.handleMessage()
+case 'wasmBinary': {
+    const wasmBinary = data.binary;
+    const module = await WebAssembly.compile(wasmBinary);
+    // STANDALONE_WASM=1 produces a WASI-compatible module
+    const wasiStubs = {
+      wasi_snapshot_preview1: {
+        fd_write: () => 0, fd_seek: () => 0, fd_close: () => 0,
+        proc_exit: () => {}, environ_get: () => 0,
+        environ_sizes_get: () => 0, clock_time_get: () => 0,
+      },
+      env: { emscripten_notify_memory_growth: () => {} },
+    };
+    const instance = await WebAssembly.instantiate(module, wasiStubs);
+    this.wasm = instance.exports;
+    this.wasm.granular_init(sampleRate, bufferSeconds);
+    this.inputPtr = this.wasm.granular_get_input_ptr();
+    this.outputPtr = this.wasm.granular_get_output_ptr();
+    this.port.postMessage({ type: 'wasmReady' });
     break;
 }
 ```
@@ -676,16 +707,16 @@ case 'wasmModule': {
 ### 9.3 Startup Timeline
 
 ```
-0ms    fetch('/granular.wasm')              — ~15KB, likely cached
+0ms    fetch('kessho_granular.wasm')         — ~34KB, likely cached
 20ms   ArrayBuffer received
-30ms   addModule('looper-fx.worklet.js')    — existing step
-80ms   worklet constructed, JS path active
-90ms   port.postMessage(wasmBytes)
-100ms  WebAssembly.instantiate() starts
-120ms  WASM ready — hot path switches to compiled code
+30ms   addModule('granular-fx-wasm.worklet.js') — existing step
+80ms   worklet constructed, passthrough active
+90ms   port.postMessage({ type: 'wasmBinary' })
+100ms  WebAssembly.compile() + instantiate() starts
+120ms  WASM ready — full DSP kicks in
 ```
 
-Audio plays via JS path from 80ms. WASM kicks in ~40ms later. User hears no transition.
+Audio passes through unchanged until WASM is ready. No audible transition.
 
 ---
 
@@ -697,7 +728,7 @@ Audio plays via JS path from 80ms. WASM kicks in ~40ms later. User hears no tran
 | Safari AudioWorklet + WASM quirks | Low — tested in Safari 16+ | Feature-detect, fallback |
 | Debugging WASM in AudioWorklet | High friction — no DevTools source maps in worklet | Build debug version with `-g`, log via postMessage |
 | Circular buffer ownership (JS vs WASM) | Correctness risk | Buffer lives entirely in WASM memory; JS copies in/out only |
-| WASM memory limit (8MB fixed) | Buffer resize beyond 16s fails | 16s × 48kHz × 2ch × 4B = 6.1MB, fits in 8MB with room |
+| WASM memory limit (16MB initial, 64MB max) | Buffer resize beyond ~50s fails | 16s × 48kHz × 2ch × 4B = 6.1MB, fits in 16MB; memory grows on demand up to 64MB |
 | Build toolchain dependency (Emscripten) | Dev setup friction | Commit `.wasm` binary; CI builds only when .cpp changes |
 | Thread safety (AudioWorklet is single-threaded) | None | AudioWorklet `process()` is synchronous; no data races |
 
@@ -707,7 +738,7 @@ Audio plays via JS path from 80ms. WASM kicks in ~40ms later. User hears no tran
 
 | Task | Effort | Dependencies |
 |------|--------|-------------|
-| Write `looper-granular.cpp` + `.h` | 2–3 days | None |
+| Write `kessho_granular.cpp` + `.h` | 2–3 days | None |
 | Emscripten build setup | 0.5 days | Emscripten installed |
 | WASM loading in engine.ts | 0.5 days | None |
 | Worklet integration (hybrid `process()`) | 1 day | WASM binary ready |
@@ -717,7 +748,7 @@ Audio plays via JS path from 80ms. WASM kicks in ~40ms later. User hears no tran
 
 ### Priority recommendation
 
-Since we're only targeting the looper-fx worklet (not also the legacy granulator), integration is simpler — one worklet, one WASM module, one hybrid `process()` method. Phases:
+Since we're only targeting the Granular-FX worklet (not also the legacy granulator), integration is simpler — one worklet, one WASM module, one hybrid `process()` method. Phases:
 
 1. **Phase A (3 days): Scalar WASM** — No SIMD. Port `readBufferCubic`, grain accumulation, feedback, anti-alias biquad. Expected speedup: **2.5–3×**.
 
@@ -733,14 +764,14 @@ Rust via `wasm-bindgen` is another option. Trade-offs:
 
 | | C++ (Emscripten) | Rust (wasm-pack) |
 |---|---|---|
-| WASM size | ~15–25 KB | ~20–30 KB (wasm-bindgen overhead) |
+| WASM size | ~34 KB (actual) | ~20–30 KB (wasm-bindgen overhead) |
 | Build speed | ~2s | ~5s |
 | Memory safety | Manual (but DSP is simple fixed-alloc) | Guaranteed |
 | SIMD support | `wasm_simd128.h` | `std::arch::wasm32` (nightly) |
 | Ecosystem familiarity | More common in audio DSP | Growing, but less DSP prior art |
 | Dev setup | Emscripten SDK | Rust toolchain + wasm-pack |
 
-**Recommendation:** C++ — simpler for pure DSP, smaller output, more audio DSP precedent (JUCE, Faust, SuperCollider all C++). The DSP code is ~300 lines with no complex ownership patterns — Rust's borrow checker adds friction without safety benefit here.
+**Recommendation:** C++ — simpler for pure DSP, more audio DSP precedent (JUCE, Faust, SuperCollider all C++). The DSP code is ~1,580 lines with no complex ownership patterns — Rust's borrow checker adds friction without safety benefit here.
 
 ---
 
@@ -758,7 +789,7 @@ Rust via `wasm-bindgen` is another option. Trade-offs:
 
 ## Summary
 
-The looper-fx granular worklet is the single heaviest DSP worklet at **48% CPU** (70%+ backgrounded). A full C++ port compiled to WASM is expected to bring this to **~12–16%** foreground, **~18–24%** backgrounded — a **3–4× improvement** that makes the app viable as background ambient music.
+The Granular-FX granular worklet is the single heaviest DSP worklet at **48% CPU** (70%+ backgrounded). A full C++ port compiled to WASM is expected to bring this to **~12–16%** foreground, **~18–24%** backgrounded — a **3–4× improvement** that makes the app viable as background ambient music.
 
 The full C++ approach (vs hybrid) costs ~5 extra days but delivers **~95% iOS code reuse** — the same `.cpp` compiles to WASM for web and native ARM for iOS. This eliminates the need to rewrite ~1,400 lines of DSP in Swift.
 
@@ -772,53 +803,68 @@ Dual sliders, S&H, walk mode, and all preset/morph features work unchanged — t
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│  JS AudioWorklet Wrapper (~100 lines)               │
+│  JS AudioWorklet Wrapper (~250 lines)               │
 │  ┌───────────────────────────────────────────────┐   │
 │  │ process(inputs, outputs)                      │   │
-│  │   1. Copy input → WASM heap                   │   │
-│  │   2. Call looper_process_block()               │   │
-│  │   3. Copy WASM heap → output                  │   │
+│  │   1. Copy interleaved input → WASM heap       │   │
+│  │   2. Call granular_process_block()             │   │
+│  │   3. Copy WASM heap → deinterleaved output    │   │
 │  │   4. Position reporting (postMessage)          │   │
 │  └───────────────────────────────────────────────┘   │
 │  ┌───────────────────────────────────────────────┐   │
 │  │ handleMessage(msg)                            │   │
 │  │   Translates postMessage → C API calls:       │   │
-│  │   'params' → looper_set_voice_params()        │   │
-│  │   'freeze' → looper_set_freeze()              │   │
-│  │   'trigger' → looper_trigger_voice()          │   │
-│  │   'spawn'  → looper_spawn_grain()             │   │
-│  │   'enable' → looper_set_enabled()             │   │
+│  │   'params' → granular_set_voice_params() etc  │   │
+│  │   'wasmBinary' → WebAssembly.instantiate()    │   │
+│  │   'euclidTrigger' → granular_euclid_trigger() │   │
+│  │   'randomSequence' → granular_set_random_seq  │   │
+│  │   'enablePerf' → toggle CPU measurement       │   │
+│  │   'destroy' → granular_destroy()              │   │
 │  └───────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────┘
                         │
                         ▼
 ┌─────────────────────────────────────────────────────┐
-│  C++ DSP Engine (kessho_looper.cpp, ~850 lines)     │
+│  C++ DSP Engine (kessho_granular.cpp, ~1,580 lines) │
 │                                                     │
-│  ┌─ LooperState ──────────────────────────────────┐ │
+│  ┌─ GranularState ────────────────────────────────┐ │
 │  │  CircularBuffer (16s stereo, 6.1MB)            │ │
-│  │  LooperVoice[4]                                │ │
-│  │    ├─ Grain[64] pool (POD struct, 32B each)    │ │
+│  │  VoiceParams[4] + Grain[64] pools              │ │
 │  │    ├─ BiquadFilter antiAlias (L/R)             │ │
-│  │    ├─ AllpassDiffuser blur (4-stage)           │ │
-│  │    └─ Clean voice path + crossfade state       │ │
+│  │    ├─ AllpassDiffuser blur (4-stage, L/R)      │ │
+│  │    ├─ TriLFO × 4 (pos, pan, reverse, record)  │ │
+│  │    ├─ ScanState (LFO scan dual-head crossfade) │ │
+│  │    └─ Clean voice path + Euclidean envelope    │ │
 │  │  FeedbackState (HPF + LPF + RMS + soft clip)   │ │
 │  │  LUT: Hann[1024], PanL/R[256], GainComp[65]   │ │
+│  │  LUT: Crossfade A/B[1025]                     │ │
 │  └────────────────────────────────────────────────┘ │
 │                                                     │
-│  Exported C API:                                    │
-│    looper_init(sampleRate, bufferSeconds)            │
-│    looper_process_block(blockSize)                   │
-│    looper_set_voice_params(voiceIdx, paramStruct)    │
-│    looper_trigger_voice(voiceIdx, euclidean?)        │
-│    looper_spawn_grain(voiceIdx, grainParams)         │
-│    looper_set_freeze(frozen)                         │
-│    looper_set_enabled(enabled)                       │
-│    looper_set_feedback(amount)                       │
-│    looper_get_write_head() → float                   │
-│    looper_get_voice_positions() → float[4]           │
-│    looper_get_input_ptr() → ptr (for zero-copy)      │
-│    looper_get_output_ptr() → ptr (for zero-copy)     │
+│  Exported C API (granular_* prefix):                │
+│    granular_init(sampleRate, bufferSeconds)          │
+│    granular_destroy()                               │
+│    granular_process_block(blockSize)                 │
+│    granular_set_voice_mode(voice, enabled, mode)     │
+│    granular_set_voice_position(voice, ...)           │
+│    granular_set_voice_grain(voice, ...)              │
+│    granular_set_voice_output(voice, ...)             │
+│    granular_set_voice_lfo(voice, ...)                │
+│    granular_set_voice_euclid_gated(voice, gated)     │
+│    granular_set_voice_euclid_muted(voice, muted)     │
+│    granular_set_freeze(frozen, withFeedback)         │
+│    granular_set_enabled(enabled)                     │
+│    granular_set_feedback(amount, lpfHz)              │
+│    granular_set_dry_wet(level)                       │
+│    granular_set_scale(intervals, count)              │
+│    granular_set_buffer_size(bufferSeconds)            │
+│    granular_set_legacy_params(...)                    │
+│    granular_set_random_sequence(data, count)          │
+│    granular_euclid_trigger(voice, ...)                │
+│    granular_get_write_head() → float                 │
+│    granular_get_voice_positions(out) → void           │
+│    granular_get_active_grain_count() → int            │
+│    granular_get_input_ptr() → ptr                    │
+│    granular_get_output_ptr() → ptr                   │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -827,32 +873,38 @@ Dual sliders, S&H, walk mode, and all preset/morph features work unchanged — t
 | Component | JS Lines | C++ equivalent | Notes |
 |-----------|----------|---------------|-------|
 | Grain struct + pool | 40 | `Grain[64]` POD | 32B per grain, cache-line aligned |
-| `readBufferCubic()` | 18 | Inline function | Cubic Hermite, 4 reads + 12 muls |
-| Grain accumulation loop | 30 | Inner loop, SIMD candidate | 64 grains × 128 samples |
-| `grainEnvelope()` / `hannWindow()` | 15 | LUT[1024] | Pre-computed Hann table |
-| `getPanLRFast()` | 5 | LUT[256] × 2 | Pre-computed stereo pan |
-| `fastTanh()` | 5 | Inline rational approx | Feedback soft clip |
-| Feedback path (HPF + LPF + RMS) | 30 | One-pole filters | 6 state vars per sample |
+| `readBufferCubic()` | 18 | `read_buffer_cubic()` inline | Cubic Hermite, 4 reads + 12 muls |
+| Grain accumulation loop | 30 | Inner loop, SIMD-accelerated output | 64 grains × 128 samples |
+| `grainEnvelope()` / `hannWindow()` | 15 | `grain_envelope()` + LUT[1024] | Pre-computed Hann table |
+| `getPanLRFast()` | 5 | `get_pan_lr()` + LUT[256] × 2 | Pre-computed stereo pan |
+| `fastTanh()` | 5 | `fast_tanh()` / `fast_tanh_v4()` SIMD | Feedback soft clip |
+| Feedback path (HPF + LPF + RMS) | 30 | `hpf_process()` / `lpf_process()` | 6 state vars per sample |
 | Anti-alias biquad | 15 | `BiquadFilter` struct | 5 muls + 4 states × 2ch |
-| `AllpassDiffuser` (blur) | 25 | 4-stage allpass chain | Per-voice micro-diffusion |
-| Clean voice path | 20 | Linear interp read + crossfade | Non-granular playback |
+| `AllpassDiffuser` (blur) | 25 | 4-stage allpass chain (L/R decorrelated) | Per-voice micro-diffusion |
+| Clean voice path | 20 | `process_clean_voice()` | Normal + LFO scan dual-head crossfade |
 | Buffer write loop | 10 | Circular buffer write | Fused with feedback |
 | Freeze logic | 8 | Write-head gating | Stop/resume writing |
-| Grain spawning | 35 | `looper_spawn_grain()` | Triggered from JS, executed in C++ |
+| Grain spawning | 35 | `spawn_grain()` | Per-sample scheduling in C++ |
 | Silence detection | 10 | Sample counter + fade | 2s silence → buffer fade |
 | Gain compensation | 5 | `1/sqrt(n)` LUT | Per active grain count |
-| **Total** | **~270** | **~850 C++ lines** | C++ is more verbose (explicit types, headers) |
+| LFOs (pos, pan, reverse, record) | 20 | `TriLFO` struct + `lfo_tick()` | 4 LFOs per voice, staggered phases |
+| Euclidean trigger envelope | 15 | `trig_env_level()` / `advance_trig_env()` | AD envelope with velocity |
+| Scale quantization | 10 | `quantize_pitch()` | Snaps grains to current scale |
+| **Total** | **~310** | **~1,580 C++ lines** | C++ is more verbose (explicit types, headers) |
 
-### What stays in JS (~100 lines, thin wrapper)
+### What stays in JS (~250 lines, thin wrapper)
 
 | Component | Why it stays in JS |
 |-----------|-------------------|
 | `process()` entry point | AudioWorklet API requires JS |
-| `postMessage` handling | Browser message port API |
-| WASM loading + init | `WebAssembly.instantiate()` |
-| Buffer copy in/out | `Float32Array` ↔ WASM heap |
-| Position reporting timer | `postMessage` at 30Hz |
+| `handleMessage()` / `applyParams()` | Browser message port API; translates all params → C API calls |
+| WASM loading + init | `WebAssembly.compile()` + `instantiate()` with WASI stubs |
+| Buffer copy in/out | Interleaved stereo `Float32Array` ↔ WASM heap |
+| Position reporting timer | `postMessage` at ~20Hz |
 | Perf monitoring | `_perfNow()` + reporting |
+| Scale interval marshalling | Copies `Int32Array` to WASM heap via `malloc`/`free` |
+| Random sequence marshalling | Copies `Float32Array` to WASM heap via `malloc`/`free` |
+| Destroy / lifecycle cleanup | Frees heap allocations, calls `granular_destroy()` |
 
 ---
 
@@ -860,23 +912,23 @@ Dual sliders, S&H, walk mode, and all preset/morph features work unchanged — t
 
 ### Phase 1: C++ Core + Build (Days 1–4)
 
-**Goal:** Compile and run the full looper-fx DSP in WASM with scalar (non-SIMD) code.
+**Goal:** Compile and run the full Granular-FX DSP in WASM with scalar (non-SIMD) code.
 
 | Step | Task | Acceptance Criteria |
 |------|------|--------------------|
-| 1.1 | Create `wasm/looper-fx/kessho_looper.h` | C API header with all exported functions |
-| 1.2 | Implement `kessho_looper.cpp` — init + LUT generation | `looper_init()` allocates buffer, computes Hann/pan/gain tables |
+| 1.1 | Create `wasm/Granular-FX/kessho_granular.h` | C API header with all exported functions |
+| 1.2 | Implement `kessho_granular.cpp` — init + LUT generation | `granular_init()` allocates buffer, computes Hann/pan/gain tables |
 | 1.3 | Implement circular buffer write + freeze logic | Input samples written to buffer; freeze stops write head |
 | 1.4 | Implement `readBufferCubic()` + `readBufferLinear()` | Cubic Hermite and linear interpolation with buffer wrapping |
 | 1.5 | Implement grain accumulation loop | Iterate active grains, read buffer, apply envelope + pan, accumulate to output |
-| 1.6 | Implement grain spawning (`looper_spawn_grain()`) | JS triggers spawn via C API; C++ initializes grain struct in pool |
+| 1.6 | Implement grain spawning (`spawn_grain()`) | C++ spawns grains internally via per-sample scheduling |
 | 1.7 | Implement feedback path (HPF + LPF + RMS + soft clip) | One-pole filters, `fastTanh`, RMS tracking |
 | 1.8 | Implement anti-alias biquad filter | Per-voice stereo biquad with coefficient update |
 | 1.9 | Implement clean voice path + crossfade | Non-granular linear-interp read, mode crossfade |
 | 1.10 | Implement AllpassDiffuser (blur) | 4-stage allpass chain per voice |
-| 1.11 | Implement `looper_process_block()` — full block processing | Orchestrates: buffer write → per-voice grain accumulation → feedback → output |
+| 1.11 | Implement `granular_process_block()` — full block processing | Orchestrates: buffer write → per-voice grain accumulation → feedback → output |
 | 1.12 | Create `build.sh` with Emscripten flags | `-O3 -flto -ffast-math --no-entry -sEXPORTED_FUNCTIONS=[...]` |
-| 1.13 | **Checkpoint:** Build WASM and verify binary size | Target: < 30KB `.wasm`, compiles without errors |
+| 1.13 | **Checkpoint:** Build WASM and verify binary size | Target: < 40KB `.wasm`, compiles without errors |
 
 ### Phase 2: JS Worklet Wrapper (Days 4–5)
 
@@ -884,13 +936,13 @@ Dual sliders, S&H, walk mode, and all preset/morph features work unchanged — t
 
 | Step | Task | Acceptance Criteria |
 |------|------|--------------------|
-| 2.1 | Create `looper-fx-wasm.worklet.ts` | Loads WASM via `fetch()` + `WebAssembly.instantiateStreaming()` |
-| 2.2 | Implement `process()` — buffer copy + WASM call | Copies input → WASM heap, calls `looper_process_block()`, copies output back |
-| 2.3 | Implement message handler — translate all `postMessage` types | `params`, `freeze`, `trigger`, `spawn`, `enable`, `feedback`, `enablePerf` |
-| 2.4 | Implement position reporting | Read `looper_get_write_head()` + `looper_get_voice_positions()` at 30Hz |
+| 2.1 | Create `granular-fx-wasm.worklet.ts` | Loads WASM via `WebAssembly.compile()` + `instantiate()` with WASI stubs |
+| 2.2 | Implement `process()` — buffer copy + WASM call | Copies interleaved input → WASM heap, calls `granular_process_block()`, deinterleaves output |
+| 2.3 | Implement message handler — translate all `postMessage` types | `wasmBinary`, `params`, `randomSequence`, `reseed`, `euclidTrigger`, `enablePerf`, `destroy` |
+| 2.4 | Implement position reporting | Read `granular_get_write_head()` + `granular_get_voice_positions()` at ~20Hz |
 | 2.5 | Add perf monitoring | `_perfNow()` around WASM call, report via `postMessage({type:'perf'})` |
 | 2.6 | Add JS fallback path | If WASM fails to load, `process()` passes audio through unchanged + logs error |
-| 2.7 | **Checkpoint:** Worklet loads WASM and calls C API without crashing | Console shows "WASM looper-fx ready", no `ReferenceError`/`TypeError` |
+| 2.7 | **Checkpoint:** Worklet loads WASM and calls C API without crashing | Console shows "WASM Granular-FX ready", no `ReferenceError`/`TypeError` |
 
 ### Phase 3: Engine Integration + Fallback (Days 5–6)
 
@@ -898,12 +950,12 @@ Dual sliders, S&H, walk mode, and all preset/morph features work unchanged — t
 
 | Step | Task | Acceptance Criteria |
 |------|------|--------------------|
-| 3.1 | Build WASM worklet JS file (via esbuild or manual) | `looper-fx-wasm.worklet.js` in `public/ARCHIVE/worklets/` |
-| 3.2 | Copy `.wasm` binary to `public/ARCHIVE/worklets/` | `kessho_looper.wasm` accessible at runtime |
+| 3.1 | Build WASM worklet JS file (via esbuild or manual) | `granular-fx-wasm.worklet.js` in `public/worklets/` |
+| 3.2 | Copy `.wasm` binary to `public/worklets/` | `kessho_granular.wasm` accessible at runtime |
 | 3.3 | Update `engine.ts` — try WASM worklet first, fallback to JS | `addModule(wasmWorkletUrl)` → catch → `addModule(jsWorkletUrl)` |
 | 3.4 | Verify all existing `postMessage` calls unchanged | `params`, `freeze`, `trigger`, `spawn`, `enable` — same format |
 | 3.5 | Add npm script `build:wasm` to `package.json` | `npm run build:wasm` runs `build.sh` |
-| 3.6 | **Checkpoint:** App loads, engine creates WASM looper node | Console: "Using WASM looper-fx", audio plays |
+| 3.6 | **Checkpoint:** App loads, engine creates WASM looper node | Console: "Using WASM Granular-FX", audio plays |
 
 ### Phase 4: Functional Verification (Days 6–7)
 
@@ -950,20 +1002,20 @@ Dual sliders, S&H, walk mode, and all preset/morph features work unchanged — t
 | 6.5 | Update this doc with final measured numbers | Fill in actual CPU % column |
 | 6.6 | **Final checkpoint:** Ship to production | Merge to main, monitor for issues |
 
-#### Phase 6 status update (2026-03-03)
+#### Phase 6 status update (2026-03-10)
 
-- Validation runbook: `docs/LOOPER_WASM_VALIDATION_RUNBOOK.md`
+- Validation runbook: `docs/GRANULAR_WASM_VALIDATION_RUNBOOK.md`
 
 - ✅ **6.1 complete:** SIMD-enabled binaries are committed at:
-    - `wasm/looper-fx/kessho_looper.wasm` (33,991 bytes)
-    - `public/ARCHIVE/worklets/kessho_looper.wasm` (33,991 bytes)
-- ✅ **6.2 complete:** CI workflow added at `.github/workflows/wasm-looper-ci.yml`
-    - Uses `emscripten/emsdk:4.0.7` container
-    - Rebuilds via `bash wasm/looper-fx/build.sh`
+    - `wasm/Granular-FX/kessho_granular.wasm` (33,991 bytes)
+    - `public/worklets/kessho_granular.wasm` (33,991 bytes)
+- ✅ **6.2 complete:** CI workflow added at `.github/workflows/wasm-granular-ci.yml`
+    - Uses `emscripten/emsdk:5.0.2` container
+    - Rebuilds via `bash wasm/granular-fx/build.sh`
     - Fails PR if generated `.wasm` differs from committed binaries
-- 🟡 **6.3 pending:** browser matrix validation still required on Safari + Firefox + Chrome
-- 🟡 **6.4 pending:** mobile validation still required on iOS Safari + Android Chrome
-- 🟡 **6.5 partial:** implementation milestones and binary sizes are now recorded; final cross-browser/mobile CPU measurements still pending
+- ðŸŸ¡ **6.3 pending:** browser matrix validation still required on Safari + Firefox + Chrome
+- ðŸŸ¡ **6.4 pending:** mobile validation still required on iOS Safari + Android Chrome
+- ðŸŸ¡ **6.5 partial:** implementation milestones and binary sizes are now recorded; final cross-browser/mobile CPU measurements still pending
 - ⏳ **6.6 pending:** ship checkpoint after 6.3/6.4/6.5 measurement pass
 
 ### Phase summary
@@ -987,30 +1039,42 @@ Use this checklist during and after implementation. Each item should be verified
 ### Build Verification
 
 - [ ] `build.sh` runs without errors on clean checkout
-- [ ] `.wasm` binary is < 30KB
-- [ ] `.wasm` binary is valid: `wasm-objdump -x kessho_looper.wasm` shows all exported functions
+- [ ] `.wasm` binary is < 40KB
+- [ ] `.wasm` binary is valid: `wasm-objdump -x kessho_granular.wasm` shows all exported functions
 - [ ] All expected C API functions are exported:
-  - [ ] `looper_init`
-  - [ ] `looper_process_block`
-  - [ ] `looper_set_voice_params`
-  - [ ] `looper_trigger_voice`
-  - [ ] `looper_spawn_grain`
-  - [ ] `looper_set_freeze`
-  - [ ] `looper_set_enabled`
-  - [ ] `looper_set_feedback`
-  - [ ] `looper_get_write_head`
-  - [ ] `looper_get_voice_positions`
-  - [ ] `looper_get_input_ptr`
-  - [ ] `looper_get_output_ptr`
+  - [ ] `granular_init`
+  - [ ] `granular_destroy`
+  - [ ] `granular_get_input_ptr`
+  - [ ] `granular_get_output_ptr`
+  - [ ] `granular_process_block`
+  - [ ] `granular_set_enabled`
+  - [ ] `granular_set_freeze`
+  - [ ] `granular_set_dry_wet`
+  - [ ] `granular_set_feedback`
+  - [ ] `granular_set_scale`
+  - [ ] `granular_set_buffer_size`
+  - [ ] `granular_set_voice_mode`
+  - [ ] `granular_set_voice_position`
+  - [ ] `granular_set_voice_grain`
+  - [ ] `granular_set_voice_output`
+  - [ ] `granular_set_voice_lfo`
+  - [ ] `granular_set_voice_euclid_gated`
+  - [ ] `granular_set_voice_euclid_muted`
+  - [ ] `granular_set_legacy_params`
+  - [ ] `granular_euclid_trigger`
+  - [ ] `granular_set_random_sequence`
+  - [ ] `granular_get_write_head`
+  - [ ] `granular_get_voice_positions`
+  - [ ] `granular_get_active_grain_count`
 
 ### Loading & Initialization
 
-- [ ] WASM worklet loads successfully (console: "WASM looper-fx ready")
+- [ ] WASM worklet loads successfully (console: "WASM Granular-FX ready")
 - [ ] Fallback to JS worklet works when WASM file is missing
 - [ ] Fallback to JS worklet works when WASM instantiation fails
 - [ ] Engine restart (stop → play) re-initializes WASM cleanly
 - [ ] No stale audio in buffer after restart
-- [ ] CPU overlay shows "looper-fx" with non-zero % when WASM is active
+- [ ] CPU overlay shows "Granular-FX" with non-zero % when WASM is active
 
 ### Audio Quality (A/B vs JS)
 
@@ -1047,11 +1111,14 @@ Each parameter should be tested at min, mid, and max values:
 
 - [ ] 4 independent granular voices with separate parameters
 - [ ] Clean voice mode with mode crossfade
+- [ ] LFO scan mode (speed=0): dual-head crossfade, smooth position tracking
 - [ ] Euclidean trigger patterns (steps, fills, rotation)
+- [ ] Euclidean mute/solo: muted voices are silenced but still counted for gain comp
 - [ ] Legacy mode: spawn pattern matches old granulator behavior
 - [ ] Grain probability (0–1): grains sometimes skip
 - [ ] Gain compensation (1/√n) scales with active grain count
-- [ ] Position reporting matches JS: writeHead + 4 voice positions at ~30Hz
+- [ ] Position reporting matches JS: writeHead + 4 voice positions at ~20Hz
+- [ ] Scale quantization: grains snap to current scale intervals
 
 ### Dual Slider / Preset Integration
 
@@ -1064,7 +1131,7 @@ Each parameter should be tested at min, mid, and max values:
 
 ### Performance
 
-- [ ] CPU overlay shows looper-fx CPU % (WASM path)
+- [ ] CPU overlay shows Granular-FX CPU % (WASM path)
 - [ ] Foreground CPU with 4 granular voices: < 20% (target: ~12–16%)
 - [ ] Backgrounded CPU with 4 granular voices: < 30% (target: ~18–24%)
 - [ ] No memory leaks (heap size stable over 10 minutes)
@@ -1093,9 +1160,18 @@ Each parameter should be tested at min, mid, and max values:
 
 ### Error Handling
 
-- [ ] WASM fetch 404 → falls back to JS worklet, logs warning
-- [ ] WASM compile error → falls back to JS worklet, logs error
+- [ ] WASM fetch 404 → falls back to passthrough, logs warning
+- [ ] WASM compile error → falls back to passthrough, logs error
 - [ ] Invalid params sent to WASM → no crash (clamped or ignored)
 - [ ] Buffer overflow protection → write head wraps correctly
 - [ ] Grain pool full → new grains rejected, no crash
-- [ ] NaN/Infinity in input → output stays finite (soft-clip catches it)
+- [ ] NaN/Infinity in input → output stays finite (sanitize + soft-clip catches it)
+
+### Lifecycle & Memory
+
+- [ ] `destroy` message frees `positionsPtr` and `scalePtr` heap allocations
+- [ ] `destroy` → `granular_destroy()` frees buffer + diffuser memory
+- [ ] Repeated destroy/reinit cycles: no memory leak (heap size stable)
+- [ ] Buffer resize during playback: no crash, active grains clamped to new range
+- [ ] WASM memory growth events: `Float32Array` views refreshed via `getHeapF32()`
+- [ ] `granular_set_buffer_size` called redundantly (same size): short-circuits, no realloc

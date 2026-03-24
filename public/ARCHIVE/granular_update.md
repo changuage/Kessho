@@ -1,4 +1,4 @@
-# Granular FX Update Plan: Unified Looper-Chopper-Granular Engine
+﻿# Granular FX Update Plan: Unified Looper-Chopper-Granular Engine
 
 ## Overview
 
@@ -632,7 +632,7 @@ The existing FDN reverb (488 lines, `reverb.worklet.ts`) is **already pad-smear 
 │                                                                          │
 │  PAD SYNTH (6 voices):                                                   │
 │    Voice[0..5] → mixerGain → synthBus ─┬→ [UNIFIED LOOPER-GRANULAR]      │
-│                                        │     → LooperFX Worklet          │
+│                                        │     → GranularFX Worklet          │
 │                                        │       (replaces granulator)     │
 │                                        │       → wetHPF → wetLPF         │
 │                                        │         ├→ looperDirect ────→ M │
@@ -914,11 +914,11 @@ const oceanWorkletUrl = getWorkletUrl('ocean.worklet.js');
 ```
 
 **To add the looper worklet:**
-1. Create `src/audio/worklets/looper-fx.worklet.ts` (TypeScript source)
-2. Compile to `public/ARCHIVE/worklets/looper-fx.worklet.js`
-3. Add `const looperWorkletUrl = getWorkletUrl('looper-fx.worklet.js');` in engine.ts
+1. Create `src/audio/worklets/granular-fx.worklet.ts` (TypeScript source)
+2. Compile to `public/ARCHIVE/worklets/granular-fx.worklet.js`
+3. Add `const looperWorkletUrl = getWorkletUrl('granular-fx.worklet.js');` in engine.ts
 4. Register with `await this.ctx.audioWorklet.addModule(looperWorkletUrl);`
-5. Instantiate with `new AudioWorkletNode(ctx, 'looper-fx-processor', { ... })`
+5. Instantiate with `new AudioWorkletNode(ctx, 'granular-fx-processor', { ... })`
 
 ---
 
@@ -990,7 +990,7 @@ These must be completed **before** starting the looper worklet, or integrated in
 - **Deliverable**: Reverb ready for long granular decays; multi-tap delay fully wired and testable standalone
 
 ### Phase 1: Always-Recording Buffer + Clean Playback + Delay (7 days)
-- New `LooperFXWorkletProcessor` with 16s **always-recording** circular buffer (Flux-style)
+- New `GranularFXWorkletProcessor` with 16s **always-recording** circular buffer (Flux-style)
 - Auto-slice into 16 equal divisions (Flux-style, no draggable markers)
 - 4 voices with slice select, speed, reverse, basic envelope
 - **Legacy mode** flag: when enabled, constrains buffer to 4s range, uses `HARMONIC_INTERVALS`, spray-only position, jitter/probability params
@@ -1000,7 +1000,7 @@ These must be completed **before** starting the looper worklet, or integrated in
 - Wire into audio graph with **three output paths**: direct, multi-tap delay send, reverb send
 - **Wire in parallel** with existing `granulator.worklet.ts` for A/B testing (both receive synthBus)
 - Connect looper output to multi-tap delay (built in Phase 0)
-- Compile worklet to `public/ARCHIVE/worklets/looper-fx.worklet.js`
+- Compile worklet to `public/ARCHIVE/worklets/granular-fx.worklet.js`
 - UI: Freeze toggle (pauses always-record), dry/wet mix, Activity knob, Repeats knob, speed, blur
 - Legacy Cloud preset: matches existing granulator params (density 20, spray 100, harmonic pitch, feedback 0.1)
 - **Deliverable**: Always-recording → auto-slice → 4-voice clean playback with position LFOs → blur → multi-tap delay cascade → reverb. Legacy Cloud preset reproducible for A/B comparison. This alone achieves Loop Forest textures.
@@ -1070,18 +1070,18 @@ Phase 0 + Phase 1 (~10.5 days) delivers a usable Microcosm/Mood/Loop Forest-like
 ## Files to Create/Modify
 
 ### New Files
-- `src/audio/worklets/looper-fx.worklet.ts` — Core worklet (always-recording buffer, 16 auto-slices, 4 voices, clean/granular modes, blur allpass, grain oct shimmer, position/record/reverse/pan LFOs, feedback)
-- `src/audio/looperFX.ts` — Main-thread controller (param management, Euclidean integration)
-- `src/ui/LooperFXPanel.tsx` — UI component
+- `src/audio/worklets/granular-fx.worklet.ts` — Core worklet (always-recording buffer, 16 auto-slices, 4 voices, clean/granular modes, blur allpass, grain oct shimmer, position/record/reverse/pan LFOs, feedback)
+- `src/audio/granularFX.ts` — Main-thread controller (param management, Euclidean integration)
+- `src/ui/GranularFXPanel.tsx` — UI component
 
 ### Modified Files
 - `src/audio/engine.ts` — Wire looper into audio graph with **three output paths** (direct, multi-tap delay send, reverb send), add Microcosm-style 8-tap delay (8 `DelayNode`s + per-tap `GainNode`s + tone filter feedback + vibrato LFOs + Activity macro logic), add to `createAudioGraph()` and `applyParams()`
 - `src/ui/state.ts` — Add looper state fields: **per-voice** (`looperVoiceMode`, `looperSliceSelect`, `looperSpeed`, `looperReverse`, `looperAttack`, `looperDecay`, `looperPitch`, `looperGrainOct`, `looperBlur`, `looperSpray`, `looperDensity`, `looperGrainSize`, `looperPan`, `looperPositionLFORate`, `looperPositionLFODepth`, `looperReverseLFORate`, `looperPanLFORate`, `looperRecordLFORate`), **global** (`looperEnabled`, `looperDryWet`, `looperFeedback`, `looperFreeze`, `looperFreezeWithFeedback`), **multi-tap delay** (`looperDelayActivity`, `looperDelayRepeats`, `looperDelayTime`, `looperDelayFilter`, `looperDelayVibrato`, `looperDelayMix`, `looperDelayReverbSend`)
-- `src/App.tsx` — Add LooperFXPanel to UI, wire slider handlers
+- `src/App.tsx` — Add GranularFXPanel to UI, wire slider handlers
 - `src/audio/worklets/reverb.worklet.ts` — Add HPF in FDN feedback (one-pole 30–40Hz per channel), add infinite/freeze mode (feedback = 1.0, optional input mute), extend size range (minor, ~15 lines total)
 
 ### Retired Files (Phase 4, after Legacy Cloud validation)
-- `src/audio/worklets/granulator.worklet.ts` — Archived (moved to `src/audio/worklets/ARCHIVE/`), replaced by unified `looper-fx.worklet.ts`
+- `src/audio/worklets/granulator.worklet.ts` — Archived (moved to `src/audio/worklets/ARCHIVE/`), replaced by unified `granular-fx.worklet.ts`
 - `public/ARCHIVE/worklets/granulator.worklet.js` — Archived, no longer loaded
 - Engine.ts routing removed: `granulatorNode`, `granulatorInputGain`, `granularWetHPF`, `granularWetLPF`, `granularReverbSend`, `granularDirect`
 - State.ts params remapped: `granularEnabled` → `looperEnabled` + Legacy Cloud preset, `density`/`spray`/`jitter` etc. → unified voice params
@@ -1089,5 +1089,5 @@ Phase 0 + Phase 1 (~10.5 days) delivers a usable Microcosm/Mood/Loop Forest-like
 ### Build Process (Not Vite — Manual Compile)
 - Worklets are served as pre-built JS from `public/ARCHIVE/worklets/`, NOT compiled by Vite
 - Create `.worklet.ts` source → compile to `.js` → place in `public/ARCHIVE/worklets/`
-- Add URL constant in `engine.ts`: `const looperWorkletUrl = getWorkletUrl('looper-fx.worklet.js');`
+- Add URL constant in `engine.ts`: `const looperWorkletUrl = getWorkletUrl('granular-fx.worklet.js');`
 - Register: `await this.ctx.audioWorklet.addModule(looperWorkletUrl);`

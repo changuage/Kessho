@@ -1,0 +1,57 @@
+﻿name: WASM CI
+
+on:
+  pull_request:
+    paths:
+      - 'wasm/**'
+      - '.github/workflows/wasm-ci.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'wasm/**'
+      - '.github/workflows/wasm-ci.yml'
+
+jobs:
+  build-wasm:
+    runs-on: ubuntu-latest
+    container:
+      image: emscripten/emsdk:5.0.2
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build drum WASM
+        run: bash wasm/drum/build.sh
+
+      - name: Build lead-fm WASM
+        run: bash wasm/lead-fm/build.sh
+
+      - name: Build pad WASM
+        run: bash wasm/pad/build.sh
+
+      - name: Build reverb WASM
+        run: bash wasm/reverb/build.sh
+
+      - name: Build granular-fx WASM
+        run: bash wasm/granular-fx/build.sh
+
+      - name: Build soundscapes WASM
+        run: bash wasm/soundscapes/build.sh
+
+      - name: Build spectral-freeze WASM
+        run: bash wasm/spectral-freeze/build.sh
+
+      - name: Report sizes
+        run: |
+          echo "=== WASM binary sizes ==="
+          for d in drum lead-fm pad reverb granular-fx soundscapes spectral-freeze; do
+            f="wasm/$d/kessho_*.wasm"
+            for wf in $f; do
+              if [ -f "$wf" ]; then
+                SIZE=$(wc -c < "$wf")
+                echo "  $(basename $wf): $(( SIZE / 1024 )) KB"
+              fi
+            done
+          done
