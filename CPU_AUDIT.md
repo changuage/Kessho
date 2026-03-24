@@ -1,9 +1,9 @@
-# Kessho — Deep CPU Usage Assessment
+﻿# Kessho — Deep CPU Usage Assessment
 
 **Date:** 2025-03-03  
 **Target:** 48 kHz stereo, 128-sample blocks (375 blocks/sec, 2.67 ms/block)  
 **Reference machine:** Desktop — single-core ~3 GHz, V8/SpiderMonkey JIT  
-**Files audited:** `engine.ts` (4,696 lines), `drumSynth.ts` (2,972 lines), `lead4opfm.ts` (930 lines), `looper-fx.worklet.ts` (1,405 lines), `granulator.worklet.ts` (459 lines), `reverb.worklet.ts` (517 lines), `ocean.worklet.ts` (378 lines)
+**Files audited:** `engine.ts` (4,696 lines), `drumSynth.ts` (2,972 lines), `lead4opfm.ts` (930 lines), `granular-fx-wasm.worklet.ts` (1,405 lines), `granulator.worklet.ts` (459 lines), `reverb.worklet.ts` (517 lines), `ocean.worklet.ts` (378 lines)
 
 ---
 
@@ -13,7 +13,7 @@
 |--------|----------|-----------|----------------|
 | **Main thread** | JS | `requestAnimationFrame` (~60 Hz) + `setTimeout` (50 ms scheduler ticks) | `applyParams()`, 3 Euclidean schedulers, chord sequencer, lead random melody, transient node cleanup (2 s interval) |
 | **Web Audio render thread** | Native C++ | Per-sample (48 kHz) | All `OscillatorNode`, `GainNode`, `BiquadFilterNode`, `DelayNode`, `WaveShaperNode`, `DynamicsCompressorNode`, `StereoPannerNode`, `ChannelMergerNode`, `AnalyserNode` processing; `AudioParam` automation |
-| **AudioWorklet thread** | JS (JIT) | Per-block (128 samples) | `GranulatorProcessor`, `BelgianReverbProcessor`, `LooperFxProcessor`, `OceanProcessor` |
+| **AudioWorklet thread** | JS (JIT) | Per-block (128 samples) | `GranulatorProcessor`, `BelgianReverbProcessor`, `GranularFxProcessor`, `OceanProcessor` |
 
 > Note: In most browsers the AudioWorklet thread IS the render thread. Worklet JS and native node processing share the same real-time deadline.
 
@@ -29,7 +29,7 @@
 | **Lead signal chain** | — | 7 | 1 | 2 | — | — | 1 | — | — | — | — | **11** |
 | **DrumSynth persistent** | — | 18 | 2 | 2 | — | — | 1 | — | 7 | — | — | **30** |
 | **Granular chain** | — | 4 | 2 | — | — | — | — | — | — | 1 | — | **7** |
-| **Looper FX chain** | — | 10 | — | — | — | — | — | — | — | 1 | — | **11** |
+| **Granular FX chain** | — | 10 | — | — | — | — | — | — | — | 1 | — | **11** |
 | **Looper multi-tap delay** | 8 | 21 | 1 | 8 | — | 8 | — | — | — | — | — | **46** |
 | **Ocean** | — | 2 | 1 | — | — | — | — | — | — | 1 | — | **4** |
 | **Bus / routing** | — | 10 | — | — | — | — | — | — | — | — | — | **10** |
@@ -102,7 +102,7 @@ All worklets share the render thread deadline. Costs are in **floating-point ope
 **Total allpass stages: 32** (6+6 pre, 4+4 mid, 6+6 post)  
 **Memory:** 8 FDN delay lines (37–109 ms × size × sampleRate) + 32 allpass internal buffers ≈ **~1 MB**
 
-#### 3.1.2 Looper FX (`LooperFxProcessor`) — **HOTSPOT #2** (when granular)
+#### 3.1.2 Granular FX (`GranularFxProcessor`) — **HOTSPOT #2** (when granular)
 
 | Processing Path | Operations | Ops/Sample/Voice |
 |----------------|-----------|-----------------|
@@ -143,7 +143,7 @@ Grain pools: 4 × 64 pre-allocated grain objects. Lookup tables: Hann (4 KB), pa
 **Per block (64 grains):** 1,645 × 128 = **210,560 ops**  
 **Memory:** 4 s stereo = 2 × 192,000 × 4 = **~1.5 MB**
 
-> **Warning:** If both Granulator and Looper FX are enabled simultaneously in granular mode, their combined per-block cost can reach ~640K ops — the single highest JS workload.
+> **Warning:** If both Granulator and Granular FX are enabled simultaneously in granular mode, their combined per-block cost can reach ~640K ops — the single highest JS workload.
 
 #### 3.1.4 Ocean (`OceanProcessor`)
 
@@ -205,8 +205,8 @@ Estimated ops/sample for each node type (browser-internal, approximate):
 | Voice loop (6 voices) | ~230 | Per voice: 8 waveform sets, ~12 `setTargetAtTime` calls |
 | Saturation curve (on hardness change) | ~3,000 | 256-sample `Math.tanh` curve; **rare** |
 | Granulator `postMessage` | ~20 | 13-param object serialization |
-| Looper FX parameter build | ~400 | 4-voice × 15 shv() reads, macro computation, 4-iteration loop with ~60 math ops |
-| Looper FX `postMessage` | ~40 | ~50-param object serialization |
+| Granular FX parameter build | ~400 | 4-voice × 15 shv() reads, macro computation, 4-iteration loop with ~60 math ops |
+| Granular FX `postMessage` | ~40 | ~50-param object serialization |
 | Looper multi-tap delay | ~100 | 8 × `setTargetAtTime` × 3 params |
 | Reverb `postMessage` | ~10 | 9-param object |
 | Lead/Ocean/Master params | ~60 | ~15 `setTargetAtTime` calls |
@@ -254,8 +254,8 @@ JS JIT penalty for tight numerical loops: **~3× native.** Effectively ~5.3M JS 
 |-----------|--------|---------|-----------------|----------------|-------------|----------|
 | **FDN Reverb (ultra)** | Worklet | JS | 68,864 | 206,592 | **3.9%** | Medium |
 | **FDN Reverb (balanced)** | Worklet | JS | 43,520 | 130,560 | 2.4% | Low |
-| **Looper FX (2 clean + 1 gran + 1 scan)** | Worklet | JS | 146,944 | 440,832 | **8.3%** | **High** |
-| **Looper FX (4 granular, 20 grains each)** | Worklet | JS | 433,664 | 1,300,992 | **24.5%** | **Critical** |
+| **Granular FX (2 clean + 1 gran + 1 scan)** | Worklet | JS | 146,944 | 440,832 | **8.3%** | **High** |
+| **Granular FX (4 granular, 20 grains each)** | Worklet | JS | 433,664 | 1,300,992 | **24.5%** | **Critical** |
 | **Granulator legacy (64 grains)** | Worklet | JS | 210,560 | 631,680 | **11.9%** | **High** |
 | **Granulator + Looper both granular** | Worklet | JS | 644,224 | 1,932,672 | **36.4%** | **Critical** |
 | **Ocean (both generators)** | Worklet | JS | 12,544 | 37,632 | 0.7% | Negligible |
@@ -289,7 +289,7 @@ Mobile SoCs (A15, Snapdragon 8 Gen 2) deliver roughly **30–50%** of desktop si
 |--------------|---------|--------------|
 | Typical | ~12% | ~24–36% |
 | Heavy | ~28% | ~56–84% |
-| Maximum | ~52% | 🔴 >100% (glitches) |
+| Maximum | ~52% | ðŸ”´ >100% (glitches) |
 
 ---
 
@@ -299,7 +299,7 @@ Mobile SoCs (A15, Snapdragon 8 Gen 2) deliver roughly **30–50%** of desktop si
 
 | Buffer | Size | Notes |
 |--------|------|-------|
-| Looper FX circular buffer | **6.1 MB** | 16 s × 48 kHz × 2 ch × 4 B. Pre-allocated in worklet constructor |
+| Granular FX circular buffer | **6.1 MB** | 16 s × 48 kHz × 2 ch × 4 B. Pre-allocated in worklet constructor |
 | Granulator circular buffer | **1.5 MB** | 4 s × 48 kHz × 2 ch × 4 B. Pre-allocated |
 | Reverb FDN delay lines (8×) | **~0.9 MB** | 37–109 ms × size(up to 3×) × 48 kHz × 8 B(Float64). Pre-allocated |
 | Reverb diffuser buffers (32 allpass) | **~0.05 MB** | Short delay lines, ~200 samples avg |
@@ -313,10 +313,10 @@ Mobile SoCs (A15, Snapdragon 8 Gen 2) deliver roughly **30–50%** of desktop si
 
 | Table | Size | Location |
 |-------|------|----------|
-| Hann window | 1,024 × 4 B = 4 KB | Granulator + Looper FX |
-| Pan tables (L/R) | 2 × 256 × 4 B = 2 KB | Granulator + Looper FX |
-| Crossfade tables (sin/cos) | 2 × 1,025 × 4 B = 8 KB | Looper FX |
-| GainComp table | 65 × 4 B = 260 B | Looper FX |
+| Hann window | 1,024 × 4 B = 4 KB | Granulator + Granular FX |
+| Pan tables (L/R) | 2 × 256 × 4 B = 2 KB | Granulator + Granular FX |
+| Crossfade tables (sin/cos) | 2 × 1,025 × 4 B = 8 KB | Granular FX |
+| GainComp table | 65 × 4 B = 260 B | Granular FX |
 | Hadamard temp arrays | 3 × 8 × 8 B = 192 B | Reverb (Float64Array) |
 
 ### 5.3 Runtime Allocation Patterns
@@ -348,14 +348,14 @@ Then passes them to `postMessage()` which performs structured clone serializatio
 
 ## 6. Identified CPU Hotspots (Ranked)
 
-### 🔴 CRITICAL
+### ðŸ”´ CRITICAL
 
-**1. Dual Granular Processing (Granulator + Looper FX in granular mode)**  
-When both the legacy Granulator and the Looper FX operate in granular mode simultaneously, their combined worklet cost reaches **~36% of desktop budget** (~1.9M effective ops/block). On mobile this exceeds the real-time deadline.
+**1. Dual Granular Processing (Granulator + Granular FX in granular mode)**  
+When both the legacy Granulator and the Granular FX operate in granular mode simultaneously, their combined worklet cost reaches **~36% of desktop budget** (~1.9M effective ops/block). On mobile this exceeds the real-time deadline.
 
-*Mitigation:* These are mutually exclusive by design intent (the Looper FX supersedes the legacy Granulator). **Enforce mutual exclusion** — when looper is enabled, bypass granulator completely. Currently both can be active.
+*Mitigation:* These are mutually exclusive by design intent (the Granular FX supersedes the legacy Granulator). **Enforce mutual exclusion** — when looper is enabled, bypass granulator completely. Currently both can be active.
 
-**2. Looper FX with 4 granular voices at high grain density**  
+**2. Granular FX with 4 granular voices at high grain density**  
 4 voices × 20 grains = 80 concurrent grain calculations per sample. At **24.5% desktop budget**, this is the single heaviest subsystem.
 
 *Mitigation:*
@@ -363,19 +363,19 @@ When both the legacy Granulator and the Looper FX operate in granular mode simul
 - Reduce cubic Hermite to linear interpolation for grains (saves ~40% per grain read)
 - Consider SIMD-style batch processing of grains with identical pitch
 
-### 🟡 HIGH
+### ðŸŸ¡ HIGH
 
 **3. Legacy Granulator at 64+ grains**  
 **11.9% budget** with 64 grains. The `Math.tanh` in the feedback path and per-grain computation dominate.
 
-*Mitigation:* Already uses `fastTanh` approximation in Looper FX — backport to granulator (it still uses `Math.tanh`). Consider deprecating entirely in favor of Looper FX.
+*Mitigation:* Already uses `fastTanh` approximation in Granular FX — backport to granulator (it still uses `Math.tanh`). Consider deprecating entirely in favor of Granular FX.
 
 **4. FDN Reverb in "ultra" quality mode**  
 32 allpass diffusion stages at **3.9% budget** (ultra). Not critical alone, but additive with granular workloads.
 
 *Mitigation:* The quality mode system is already implemented and working. Default to "balanced" on mobile.
 
-### 🟢 LOW
+### ðŸŸ¢ LOW
 
 **5. `applyParams()` object allocation at 60 Hz**  
 Not a CPU cost issue but a **GC pressure** issue. 3 `postMessage` calls/frame with freshly allocated objects.
@@ -407,7 +407,7 @@ Each AnalyserNode (fftSize=256) has per-sample cost and memory overhead. The tim
 | Dynamics compression (limiter) | Native (C++) | ~1% |
 | **FDN Reverb (allpass + Hadamard)** | **JS (Worklet)** | **~12%** |
 | **Granular synthesis** | **JS (Worklet)** | **~30%** |
-| **Looper FX (clean/scan/granular)** | **JS (Worklet)** | **~18%** |
+| **Granular FX (clean/scan/granular)** | **JS (Worklet)** | **~18%** |
 | **Ocean wave synthesis** | **JS (Worklet)** | **~2%** |
 | Parameter routing (applyParams) | JS (Main) | <1% |
 | Euclidean scheduling | JS (Main) | <1% |
@@ -439,7 +439,7 @@ RENDER THREAD (shared native + worklet)
 ├─ Pad PreFader ── Envelope ──► Pad1PreFaderBus ──► LooperPad1Send ──┐
 │                                                                     │
 ├─ Lead FM ── playLead4opFMNote() ──► Lead1Bus / Lead2Bus            │
-│             └──► LeadGain → LeadFilter ──┬──► LeadDry ──► Master   ├──► LooperFxInput
+│             └──► LeadGain → LeadFilter ──┬──► LeadDry ──► Master   ├──► GranularFxInput
 │                                          ├──► PingPong Delay ──► Master   │
 │                                          └──► LeadReverbSend ──► Reverb   │
 │                                                                     │
@@ -447,9 +447,9 @@ RENDER THREAD (shared native + worklet)
 │              └──► DelaySends → StereoDelay → DelayWet ──► Master   ├──► LooperDrumSend
 │              └──► ReverbSend ──► Reverb                             │
 │                                                                     │
-├─ [Looper FX Worklet] ◄── LooperFxInput ◄────────────────────────────┘
-│   └──► LooperFxDirect ──► Master
-│   └──► LooperFxReverbSend ──► Reverb
+├─ [Granular FX Worklet] ◄── GranularFxInput ◄────────────────────────────┘
+│   └──► GranularFxDirect ──► Master
+│   └──► GranularFxReverbSend ──► Reverb
 │   └──► LooperDelaySend ──► 8-Tap Delay (8×Delay+Gain+Panner+Vibrato)
 │                             └──► DelayDirect ──► Master
 │                             └──► DelayReverbSend ──► Reverb
@@ -470,13 +470,13 @@ RENDER THREAD (shared native + worklet)
 
 | Priority | Action | Estimated Savings | Effort |
 |----------|--------|------------------|--------|
-| 🔴 P0 | Enforce granulator/looper mutual exclusion | Up to 12% CPU | Low |
-| 🔴 P0 | Cap total grain count across all looper voices | Up to 15% CPU at peak | Low |
-| 🟡 P1 | Default reverb to "balanced" on mobile | ~1.5% CPU saved | Trivial |
-| 🟡 P1 | Pre-allocate `applyParams()` arrays as class fields | Reduces GC pressure | Low |
-| 🟡 P1 | Backport `fastTanh` to legacy granulator | ~1% CPU saved | Trivial |
-| 🟢 P2 | Lazy-create AnalyserNodes only when drum viz is visible | 7 fewer persistent nodes | Medium |
-| 🟢 P2 | Consider linear interp for looper grains (from cubic Hermite) | ~40% per-grain savings | Low |
-| 🟢 P2 | Lead FM voice pool (reuse Gain/Filter/Panner nodes) | Reduces node creation overhead | Medium |
-| 🟢 P3 | Use `Transferable` Float32Array for worklet `postMessage` | Eliminates structured clone overhead | Medium |
-| 🟢 P3 | Deprecate legacy Granulator in favor of Looper FX | Removes 459 lines + 1.5 MB buffer | Low effort, UX concern |
+| ðŸ”´ P0 | Enforce granulator/looper mutual exclusion | Up to 12% CPU | Low |
+| ðŸ”´ P0 | Cap total grain count across all looper voices | Up to 15% CPU at peak | Low |
+| ðŸŸ¡ P1 | Default reverb to "balanced" on mobile | ~1.5% CPU saved | Trivial |
+| ðŸŸ¡ P1 | Pre-allocate `applyParams()` arrays as class fields | Reduces GC pressure | Low |
+| ðŸŸ¡ P1 | Backport `fastTanh` to legacy granulator | ~1% CPU saved | Trivial |
+| ðŸŸ¢ P2 | Lazy-create AnalyserNodes only when drum viz is visible | 7 fewer persistent nodes | Medium |
+| ðŸŸ¢ P2 | Consider linear interp for looper grains (from cubic Hermite) | ~40% per-grain savings | Low |
+| ðŸŸ¢ P2 | Lead FM voice pool (reuse Gain/Filter/Panner nodes) | Reduces node creation overhead | Medium |
+| ðŸŸ¢ P3 | Use `Transferable` Float32Array for worklet `postMessage` | Eliminates structured clone overhead | Medium |
+| ðŸŸ¢ P3 | Deprecate legacy Granulator in favor of Granular FX | Removes 459 lines + 1.5 MB buffer | Low effort, UX concern |

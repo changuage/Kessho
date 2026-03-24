@@ -1,4 +1,4 @@
-# Kessho Codebase Tech Debt Audit
+﻿# Kessho Codebase Tech Debt Audit
 
 **Date:** 2025-03-03  
 **Codebase size:** ~50,070 lines (TS/TSX/CSS) across ~55 files  
@@ -133,7 +133,7 @@ Every trigger method (`triggerSub`, `triggerKick`, `triggerClick`, `triggerBeepH
 | Phase | What it does | Lines per voice | Identical? |
 |-------|-------------|----------------:|:----------:|
 | 1. Morph resolution | Check override → S&H → getMorphedParams → notify | ~15 | ✅ Verbatim |
-| 2. Param extraction | `(morphed.drumXxxParam as number) ?? p.drumXxxParam ?? default` | 8–20 | 🟡 Same pattern, different keys |
+| 2. Param extraction | `(morphed.drumXxxParam as number) ?? p.drumXxxParam ?? default` | 8–20 | ðŸŸ¡ Same pattern, different keys |
 | 3. Variation + Distance | computeVariation → sampleSHParam → resolveDistance | ~5–8 | ✅ Verbatim |
 | 4. Node creation | createOscillator/Gain/Filter | 3–15 | ❌ Voice-specific |
 | 5. Envelope | attack > 0.0005 ? linearRamp → expRamp : setValueAtTime → expRamp | varies | ✅ Same pattern ×25 |
@@ -329,7 +329,7 @@ Many are outright debug logs that should not ship.
 | 7 | src/ui/synth/SynthPage.tsx | 2,188 | Synth page UI |
 | 8 | src/ui/SnowflakeUI.tsx | 1,464 | Snowflake viz |
 | 9 | src/ui/looper/LooperPage.tsx | 1,274 | Looper page UI |
-| 10 | src/audio/worklets/looper-fx.worklet.ts | 1,222 | Looper DSP worklet |
+| 10 | src/audio/worklets/granular-fx-wasm.worklet.ts | 1,222 | Looper DSP worklet |
 | | **Top 10 total** | **30,941** | **62% of codebase** |
 
 ---

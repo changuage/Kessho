@@ -1,5 +1,42 @@
 # Development Learnings
 
+## Reverb Freeze Is Not Feasible with FDN/Dattorro Recirculation (Archived March 2026)
+
+### Problem
+Attempted to implement infinite sustain ("freeze") in the WASM reverb by setting feedback to 1.0 and disabling all loss sources. After 10+ rounds of fixes, the reverb tail still decayed to silence.
+
+### What Was Tried
+1. **Feedback clamp bypass** — Slow modulation was clamping feedback to 0.998 → gated when `fzRamp >= 0.5`
+2. **Soft clipper bypass** — `softClip()` in the feedback loop compressed signal each recirculation → bypassed during freeze, replaced with hard clamp at ±3
+3. **OnePole coefficient polarity** — `OnePole::process` uses `z1 = input*(1-coeff) + z1*coeff`. Coefficient=1.0 is **sample-and-hold** (max damping), NOT passthrough. The freeze code was ramping `dampCoeff` and `airAbsCoeff` toward 1.0 → fixed by ramping toward 0.0
+4. **Air absorption bypass** — Disabled air absorption filters during freeze
+5. **Damping bypass** — Disabled damping filters during freeze (per-mode behavior)
+6. **HPF bypass** — `hpCoeff` set to 1.0 during freeze
+7. **Velvet noise gating** — Disabled impulse injection during freeze
+8. **NaN guards** — Added guards in C++ and JS worklets
+9. **Input muting** — Mode-dependent input gain ramps
+10. **Multi-rate LFO evolution** — 3-LFO system for organic frozen texture
+11. **4 freeze modes** — Tank, State-capture, Resonator, Slushy with different behaviors
+
+### Root Cause (Unsolvable with This Architecture)
+FDN/Dattorro reverb recirculates audio through delay lines, allpass filters, damping filters, mixing matrices, and output taps **thousands of times per second**. Even with all identified loss sources fixed, cumulative floating-point rounding in filters, allpass quantization, Hadamard scaling, and interpolated delay reads cause inevitable signal decay.
+
+### Key Insight: OnePole Filter Coefficient Semantics
+```cpp
+// OnePole: z1 = input * (1.0 - coeff) + z1 * coeff
+// coeff = 0.0 → PASSTHROUGH (output = input)
+// coeff = 1.0 → SAMPLE-AND-HOLD (output = z1 forever, ignores input)
+```
+This is the opposite of what "coefficient toward 1.0 for transparency" suggests. Always verify filter behavior at boundary values.
+
+### Solution
+Use **spectral freeze** (STFT phase vocoder) instead — it captures FFT magnitudes and resynthesizes directly with no recirculation. Inherently lossless.
+
+### Archived Code
+Full reverb freeze implementation archived at `public/ARCHIVE/reverb_freeze.md`
+
+---
+
 ## DrumSynth RNG Initialization Order
 
 ### Problem

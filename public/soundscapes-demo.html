@@ -1023,7 +1023,7 @@
           await audioContext.audioWorklet.addModule('ARCHIVE/worklets/ocean.worklet.js');
           await audioContext.audioWorklet.addModule('ARCHIVE/worklets/reverb.worklet.js');
 
-          wasmNode = new AudioWorkletNode(audioContext, 'soundscapes-wasm-processor', {
+          wasmNode = new AudioWorkletNode(audioContext, 'soundscapes-wasm', {
             numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2],
           });
 
