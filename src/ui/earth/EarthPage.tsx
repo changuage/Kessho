@@ -436,6 +436,9 @@ export default function EarthPage({
           <div className="mixer-section">
             <div className="mixer-section-header">Earth Mixer</div>
             <div className="mixer-section-body">
+              {/* Earth Master Level */}
+              {ds('earthLevel', 'Earth Master', 'rgba(255,215,0,0.5)')}
+              <div className="section-divider" />
               {/* Water */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
                 <button
@@ -506,6 +509,13 @@ export default function EarthPage({
               {ds('oceanReverbSend', 'Waves Reverb', 'rgba(139,92,246,0.5)')}
               {ds('waterReverbSend', 'Water Reverb', 'rgba(139,92,246,0.5)')}
               {ds('insectsReverbSend', 'Insect Reverb', 'rgba(139,92,246,0.5)')}
+
+              <div className="section-divider" />
+
+              {/* Granular Sends */}
+              {ds('granularWavesSend', 'Waves → Granular', 'rgba(168,85,247,0.5)')}
+              {ds('granularWaterSend', 'Water → Granular', 'rgba(168,85,247,0.5)')}
+              {ds('granularInsectsSend', 'Insects → Granular', 'rgba(168,85,247,0.5)')}
             </div>
           </div>
         </div>

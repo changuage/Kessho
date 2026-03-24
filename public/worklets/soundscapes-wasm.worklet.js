@@ -174,13 +174,20 @@ class SoundscapesWasmProcessor extends AudioWorkletProcessor {
       case 'waterParams': {
         const p = data.params || data;
         w.water_set_params(
-          p.intensity ?? 0.5,
-          p.rate ?? 0.5,
-          p.distance ?? 0.3,
-          p.baseFreq ?? 2500.0,
-          p.dropSize ?? 0.5,
-          p.hardness ?? 0.5,
-          p.glassThickness ?? 0.5
+          p.intensityMin ?? p.intensity ?? 0.5,
+          p.intensityMax ?? p.intensity ?? 0.5,
+          p.rateMin ?? p.rate ?? 0.5,
+          p.rateMax ?? p.rate ?? 0.5,
+          p.distanceMin ?? p.distance ?? 0.3,
+          p.distanceMax ?? p.distance ?? 0.3,
+          p.baseFreqMin ?? p.baseFreq ?? 2500.0,
+          p.baseFreqMax ?? p.baseFreq ?? 2500.0,
+          p.dropSizeMin ?? p.dropSize ?? 0.5,
+          p.dropSizeMax ?? p.dropSize ?? 0.5,
+          p.hardnessMin ?? p.hardness ?? 0.5,
+          p.hardnessMax ?? p.hardness ?? 0.5,
+          p.glassThicknessMin ?? p.glassThickness ?? 0.5,
+          p.glassThicknessMax ?? p.glassThickness ?? 0.5
         );
         break;
       }
@@ -232,13 +239,20 @@ class SoundscapesWasmProcessor extends AudioWorkletProcessor {
       case 'insectsParams': {
         const p = data.params || data;
         w.insects_set_params(
-          p.density ?? 0.5,
-          p.temperature ?? 0.5,
-          p.distance ?? 0.3,
-          p.proximity ?? 0.5,
-          p.antiphony ?? 0.3,
-          p.clickRate ?? 0.3,
-          p.motion ?? 0.5
+          p.densityMin ?? p.density ?? 0.5,
+          p.densityMax ?? p.density ?? 0.5,
+          p.temperatureMin ?? p.temperature ?? 0.5,
+          p.temperatureMax ?? p.temperature ?? 0.5,
+          p.distanceMin ?? p.distance ?? 0.3,
+          p.distanceMax ?? p.distance ?? 0.3,
+          p.proximityMin ?? p.proximity ?? 0.5,
+          p.proximityMax ?? p.proximity ?? 0.5,
+          p.antiphonyMin ?? p.antiphony ?? 0.3,
+          p.antiphonyMax ?? p.antiphony ?? 0.3,
+          p.clickRateMin ?? p.clickRate ?? 0.3,
+          p.clickRateMax ?? p.clickRate ?? 0.3,
+          p.motionMin ?? p.motion ?? 0.5,
+          p.motionMax ?? p.motion ?? 0.5
         );
         break;
       }
@@ -265,13 +279,20 @@ class SoundscapesWasmProcessor extends AudioWorkletProcessor {
       case 'insects2Params': {
         const p = data.params || data;
         w.insects2_set_params(
-          p.density ?? 0.5,
-          p.temperature ?? 0.5,
-          p.distance ?? 0.3,
-          p.proximity ?? 0.5,
-          p.antiphony ?? 0.3,
-          p.clickRate ?? 0.3,
-          p.motion ?? 0.5
+          p.densityMin ?? p.density ?? 0.5,
+          p.densityMax ?? p.density ?? 0.5,
+          p.temperatureMin ?? p.temperature ?? 0.5,
+          p.temperatureMax ?? p.temperature ?? 0.5,
+          p.distanceMin ?? p.distance ?? 0.3,
+          p.distanceMax ?? p.distance ?? 0.3,
+          p.proximityMin ?? p.proximity ?? 0.5,
+          p.proximityMax ?? p.proximity ?? 0.5,
+          p.antiphonyMin ?? p.antiphony ?? 0.3,
+          p.antiphonyMax ?? p.antiphony ?? 0.3,
+          p.clickRateMin ?? p.clickRate ?? 0.3,
+          p.clickRateMax ?? p.clickRate ?? 0.3,
+          p.motionMin ?? p.motion ?? 0.5,
+          p.motionMax ?? p.motion ?? 0.5
         );
         break;
       }

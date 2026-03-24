@@ -355,6 +355,7 @@ export class AudioEngine {
   private granularLead2Send: GainNode | null = null;    // lead 2 bus → granular
   private granularDrumSend: GainNode | null = null;     // drum bus → granular
   private granularWavesSend: GainNode | null = null;    // waves → granular
+  // Note: granularWaterSend and granularInsectsSend are declared in the Earth section above
   private pad1Bus: GainNode | null = null;            // sum of pad 1 voices (post-fader)
   private pad2Bus: GainNode | null = null;            // sum of pad 2 voices (post-fader)
   private pad1PreFaderBus: GainNode | null = null;    // sum of pad 1 voices (pre-fader, for granular)
@@ -364,6 +365,7 @@ export class AudioEngine {
   private lead1LevelGain: GainNode | null = null;     // lead 1 dry-path level (post reverb/granular tap)
   private lead2LevelGain: GainNode | null = null;     // lead 2 dry-path level (post reverb/granular tap)
   private leadVoiceLevel: GainNode | null = null;     // unity dry-path stage for lead output
+  private leadWasmLevelGain: GainNode | null = null;  // WASM lead dry-path level (pre-fader sends bypass this)
   private lastPad2VoiceAssign = 0;                    // track for re-routing
   private granularWriteHeadPosition = 0;     // 0-1 for UI
   private granularVoicePositions = [0, 0, 0, 0]; // 0-1 per voice for UI
@@ -438,6 +440,7 @@ export class AudioEngine {
   // Ocean waves — handled by soundscapes WASM (output [2]), no separate worklet
   private oceanGain: GainNode | null = null;
   private oceanFilter: BiquadFilterNode | null = null;  // Shared filter for all ocean sources
+  private oceanLevelGain: GainNode | null = null;       // Ocean dry level → earthBus
 
   // Ocean sample player (real beach recording)
   private oceanSampleBuffer: AudioBuffer | null = null;
@@ -447,11 +450,19 @@ export class AudioEngine {
 
   // Soundscapes WASM worklet (water + insects engines)
   private soundscapesNode: AudioWorkletNode | null = null;
-  private waterGain: GainNode | null = null;
+  private waterPreFaderBus: GainNode | null = null;     // Pre-fader bus for reverb/granular taps
+  private waterLevelGain: GainNode | null = null;       // Water dry level → earthBus
   private waterReverbSend: GainNode | null = null;
   private oceanReverbSendNode: GainNode | null = null;    // Waves reverb send (post-filter)
   private insectsReverbSendNode: GainNode | null = null;  // Insects reverb send
-  private soundscapesInsectsGain: GainNode | null = null;
+  private insectsPreFaderBus: GainNode | null = null;     // Pre-fader bus for reverb/granular taps
+  private insectsLevelGain: GainNode | null = null;       // Insects on/off gate → earthBus (level controlled by WASM-side gain)
+  private granularWaterSend: GainNode | null = null;      // Water → granular
+  private granularInsectsSend: GainNode | null = null;    // Insects → granular
+
+  // Earth master bus (waves + water + insects → earthBus → earthLevelGain → masterGain)
+  private earthBus: GainNode | null = null;
+  private earthLevelGain: GainNode | null = null;
   private wasmSoundscapesBinary: ArrayBuffer | null = null;
   private soundscapesWasmReady = false;
   private _scWaterStarted = false;
@@ -1867,6 +1878,10 @@ export class AudioEngine {
       try { this.oceanFilter.disconnect(); } catch { /* */ }
       this.oceanFilter = null;
     }
+    if (this.oceanLevelGain) {
+      try { this.oceanLevelGain.disconnect(); } catch { /* */ }
+      this.oceanLevelGain = null;
+    }
 
     // Disconnect soundscapes WASM worklet + gain nodes
     if (this.soundscapesNode) {
@@ -1882,17 +1897,33 @@ export class AudioEngine {
     this._scInsects1Engine = -1;
     this._scInsects2Engine = -1;
     this._scWaterPreset = -1;
-    if (this.waterGain) {
-      try { this.waterGain.disconnect(); } catch { /* */ }
-      this.waterGain = null;
+    if (this.waterPreFaderBus) {
+      try { this.waterPreFaderBus.disconnect(); } catch { /* */ }
+      this.waterPreFaderBus = null;
+    }
+    if (this.waterLevelGain) {
+      try { this.waterLevelGain.disconnect(); } catch { /* */ }
+      this.waterLevelGain = null;
     }
     if (this.waterReverbSend) {
       try { this.waterReverbSend.disconnect(); } catch { /* */ }
       this.waterReverbSend = null;
     }
-    if (this.soundscapesInsectsGain) {
-      try { this.soundscapesInsectsGain.disconnect(); } catch { /* */ }
-      this.soundscapesInsectsGain = null;
+    if (this.insectsPreFaderBus) {
+      try { this.insectsPreFaderBus.disconnect(); } catch { /* */ }
+      this.insectsPreFaderBus = null;
+    }
+    if (this.insectsLevelGain) {
+      try { this.insectsLevelGain.disconnect(); } catch { /* */ }
+      this.insectsLevelGain = null;
+    }
+    if (this.granularWaterSend) {
+      try { this.granularWaterSend.disconnect(); } catch { /* */ }
+      this.granularWaterSend = null;
+    }
+    if (this.granularInsectsSend) {
+      try { this.granularInsectsSend.disconnect(); } catch { /* */ }
+      this.granularInsectsSend = null;
     }
     if (this.oceanReverbSendNode) {
       try { this.oceanReverbSendNode.disconnect(); } catch { /* */ }
@@ -1901,6 +1932,14 @@ export class AudioEngine {
     if (this.insectsReverbSendNode) {
       try { this.insectsReverbSendNode.disconnect(); } catch { /* */ }
       this.insectsReverbSendNode = null;
+    }
+    if (this.earthBus) {
+      try { this.earthBus.disconnect(); } catch { /* */ }
+      this.earthBus = null;
+    }
+    if (this.earthLevelGain) {
+      try { this.earthLevelGain.disconnect(); } catch { /* */ }
+      this.earthLevelGain = null;
     }
     this._messageSignatures.clear();
 
@@ -1968,6 +2007,7 @@ export class AudioEngine {
     if (this.leadDelayR) { try { this.leadDelayR.disconnect(); } catch { /* */ } this.leadDelayR = null; }
     if (this.leadDelayMix) { try { this.leadDelayMix.disconnect(); } catch { /* */ } this.leadDelayMix = null; }
     if (this.leadDry) { try { this.leadDry.disconnect(); } catch { /* */ } this.leadDry = null; }
+    if (this.leadWasmLevelGain) { try { this.leadWasmLevelGain.disconnect(); } catch { /* */ } this.leadWasmLevelGain = null; }
     if (this.leadMerger) { try { this.leadMerger.disconnect(); } catch { /* */ } this.leadMerger = null; }
     if (this.leadReverbSend) { try { this.leadReverbSend.disconnect(); } catch { /* */ } this.leadReverbSend = null; }
     if (this.lead1ReverbSend) { try { this.lead1ReverbSend.disconnect(); } catch { /* */ } this.lead1ReverbSend = null; }
@@ -2446,13 +2486,27 @@ export class AudioEngine {
       this.soundscapesNode.port.postMessage({ type: 'oceanSeed', seed: this.currentSeed });
     }
 
-    // Soundscapes gain nodes
-    this.waterGain = ctx.createGain();
-    this.waterGain.gain.value = 0;
+    // Earth master bus: all Earth engines feed earthBus → earthLevelGain → masterGain
+    this.earthBus = ctx.createGain();
+    this.earthBus.gain.value = 1.0;
+    this.earthLevelGain = ctx.createGain();
+    this.earthLevelGain.gain.value = this.sliderState?.earthLevel ?? 1.0;
+
+    // Soundscapes gain nodes — pre-fader buses for reverb/granular taps
+    this.waterPreFaderBus = ctx.createGain();
+    this.waterPreFaderBus.gain.value = 1.0;
+    this.waterLevelGain = ctx.createGain();
+    this.waterLevelGain.gain.value = 0;
     this.waterReverbSend = ctx.createGain();
     this.waterReverbSend.gain.value = 0;
-    this.soundscapesInsectsGain = ctx.createGain();
-    this.soundscapesInsectsGain.gain.value = 0;
+
+    this.insectsPreFaderBus = ctx.createGain();
+    this.insectsPreFaderBus.gain.value = 1.0;
+    this.insectsLevelGain = ctx.createGain();
+    this.insectsLevelGain.gain.value = 0;
+
+    this.oceanLevelGain = ctx.createGain();
+    this.oceanLevelGain.gain.value = 1.0;
 
     this.oceanReverbSendNode = ctx.createGain();
     this.oceanReverbSendNode.gain.value = this.sliderState?.oceanReverbSend ?? 0.2;
@@ -2543,6 +2597,12 @@ export class AudioEngine {
 
       this.granularWavesSend = ctx.createGain();
       this.granularWavesSend.gain.value = this.sliderState?.granularWavesSend ?? 0.0;
+
+      this.granularWaterSend = ctx.createGain();
+      this.granularWaterSend.gain.value = this.sliderState?.granularWaterSend ?? 0.0;
+
+      this.granularInsectsSend = ctx.createGain();
+      this.granularInsectsSend.gain.value = this.sliderState?.granularInsectsSend ?? 0.0;
 
       // Note: randomSequence is sent later via sendGranularRandomSequence()
       // (rng is not yet initialized at this point)
@@ -2797,10 +2857,18 @@ export class AudioEngine {
     this.leadReverbSend.connect(this.reverbInputBus);
 
     // Lead FM WASM node output (parallel to JS lead path — JS lead silenced when WASM active)
-    // WASM output includes internal delay, so bypass engine-side delay chain
+    // WASM output includes internal delay, so bypass engine-side delay chain.
+    // Dry path goes through leadWasmLevelGain (controlled by max(lead1Level, lead2Level)).
+    // Reverb and granular sends tap directly from WASM output (pre-fader).
     if (this.leadFmWasmNode) {
-      this.leadFmWasmNode.connect(this.leadVoiceLevel!, 0);  // output[0] → leadDry → master
-      this.leadFmWasmNode.connect(this.leadReverbSend, 0);   // output[0] → reverb send (pre-fader)
+      this.leadWasmLevelGain = ctx.createGain();
+      this.leadWasmLevelGain.gain.value = Math.max(
+        this.sliderState?.lead1Level ?? 0.8,
+        this.sliderState?.lead2Level ?? 0.6
+      );
+      this.leadFmWasmNode.connect(this.leadWasmLevelGain, 0);    // output[0] → level gain
+      this.leadWasmLevelGain.connect(this.leadVoiceLevel!);       // level gain → leadDry → master
+      this.leadFmWasmNode.connect(this.leadReverbSend, 0);        // output[0] → reverb send (pre-fader)
       // Granular send for WASM lead (pre-fader, independent of leadLevel)
       if (this.granularLead1Send) {
         this.leadFmWasmNode.connect(this.granularLead1Send, 0);
@@ -2817,51 +2885,68 @@ export class AudioEngine {
       }
     }
 
-    // Ocean waves -> OceanGain -> OceanFilter -> Master
-    // Ocean WASM (soundscapes output [2]) feeds into the same gain chain
-    // Ocean sample -> OceanSampleGain -> OceanFilter -> Master
+    // ── Earth routing: Ocean + Water + Insects → earthBus → earthLevelGain → masterGain ──
+    // All Earth engine sends (reverb, granular) are pre-fader — tapped before per-engine
+    // level gains so that turning a fader down doesn't kill send tails.
+
+    // Ocean: oceanGain → oceanFilter → [oceanReverbSend, granularWavesSend, oceanLevelGain → earthBus]
     this.oceanFilter = ctx.createBiquadFilter();
     this.oceanFilter.type = this.sliderState?.oceanFilterType ?? 'lowpass';
     this.oceanFilter.frequency.value = this.sliderState?.oceanFilterCutoff ?? 8000;
     this.oceanFilter.Q.value = 0.5 + (this.sliderState?.oceanFilterResonance ?? 0.1) * 10;
 
-    // Ocean WASM output [2] → oceanGain (replaces old JS oceanNode)
     this.oceanGain.connect(this.oceanFilter);
     this.oceanSampleGain.connect(this.oceanFilter);
-    this.oceanFilter.connect(this.masterGain);
-
-    // Waves reverb send (taps oceanFilter output → reverb)
+    // Reverb send (pre-fader — taps oceanFilter before oceanLevelGain)
     if (this.oceanReverbSendNode) {
       this.oceanFilter.connect(this.oceanReverbSendNode);
       this.oceanReverbSendNode.connect(this.reverbInputBus);
     }
-
-    // Waves granular send (taps oceanFilter output)
+    // Granular send (pre-fader)
     if (this.granularWavesSend && this.granularFxInputGain) {
       this.oceanFilter.connect(this.granularWavesSend);
       this.granularWavesSend.connect(this.granularFxInputGain);
     }
+    // Dry path → earthBus
+    this.oceanFilter.connect(this.oceanLevelGain!);
+    this.oceanLevelGain!.connect(this.earthBus!);
 
-    // Soundscapes routing
-    // Water:   soundscapesNode[0] → waterGain → masterGain
-    //          soundscapesNode[0] → waterReverbSend → reverbNode
-    // Insects: soundscapesNode[1] → soundscapesInsectsGain → masterGain
-    //          soundscapesNode[1] → insectsReverbSendNode → reverbNode
-    // Ocean:   soundscapesNode[2] → oceanGain → oceanFilter → masterGain
-    if (this.soundscapesNode) {
-      this.soundscapesNode.connect(this.waterGain, 0);
-      this.soundscapesNode.connect(this.waterReverbSend, 0);
-      this.soundscapesNode.connect(this.soundscapesInsectsGain, 1);
-      // Connect ocean WASM output [2] → oceanGain
-      this.soundscapesNode.connect(this.oceanGain, 2);
-      if (this.insectsReverbSendNode) {
-        this.soundscapesNode.connect(this.insectsReverbSendNode, 1);
-        this.insectsReverbSendNode.connect(this.reverbInputBus);
-      }
+    // Water: soundscapesNode[0] → waterPreFaderBus → [waterReverbSend, granularWaterSend, waterLevelGain → earthBus]
+    this.waterPreFaderBus!.connect(this.waterLevelGain!);
+    this.waterLevelGain!.connect(this.earthBus!);
+    // Reverb send (pre-fader)
+    this.waterPreFaderBus!.connect(this.waterReverbSend!);
+    this.waterReverbSend!.connect(this.reverbInputBus);
+    // Granular send (pre-fader)
+    if (this.granularWaterSend && this.granularFxInputGain) {
+      this.waterPreFaderBus!.connect(this.granularWaterSend);
+      this.granularWaterSend.connect(this.granularFxInputGain);
     }
-    this.waterGain.connect(this.masterGain);
-    this.waterReverbSend.connect(this.reverbInputBus);
-    this.soundscapesInsectsGain.connect(this.masterGain);
+
+    // Insects: soundscapesNode[1] → insectsPreFaderBus → [insectsReverbSend, granularInsectsSend, insectsLevelGain → earthBus]
+    this.insectsPreFaderBus!.connect(this.insectsLevelGain!);
+    this.insectsLevelGain!.connect(this.earthBus!);
+    // Reverb send (pre-fader)
+    if (this.insectsReverbSendNode) {
+      this.insectsPreFaderBus!.connect(this.insectsReverbSendNode);
+      this.insectsReverbSendNode.connect(this.reverbInputBus);
+    }
+    // Granular send (pre-fader)
+    if (this.granularInsectsSend && this.granularFxInputGain) {
+      this.insectsPreFaderBus!.connect(this.granularInsectsSend);
+      this.granularInsectsSend.connect(this.granularFxInputGain);
+    }
+
+    // earthBus → earthLevelGain → masterGain
+    this.earthBus!.connect(this.earthLevelGain!);
+    this.earthLevelGain!.connect(this.masterGain);
+
+    // Soundscapes WASM → pre-fader buses
+    if (this.soundscapesNode) {
+      this.soundscapesNode.connect(this.waterPreFaderBus!, 0);     // output[0] water
+      this.soundscapesNode.connect(this.insectsPreFaderBus!, 1);   // output[1] insects
+      this.soundscapesNode.connect(this.oceanGain, 2);             // output[2] ocean
+    }
 
     this.masterGain.connect(this.limiter);
     
@@ -4444,12 +4529,16 @@ export class AudioEngine {
       const lead2Send = granularEnabled ? (state.granularLead2Send ?? 0.0) : 0;
       const drumSend = granularEnabled ? (state.granularDrumSend ?? 0.0) : 0;
       const wavesSend = granularEnabled ? (state.granularWavesSend ?? 0.0) : 0;
+      const waterSend = granularEnabled ? (state.granularWaterSend ?? 0.0) : 0;
+      const insectsSend = granularEnabled ? (state.granularInsectsSend ?? 0.0) : 0;
       this.granularPad1Send?.gain.setTargetAtTime(pad1Send, now, smoothTime);
       this.granularPad2Send?.gain.setTargetAtTime(pad2Send, now, smoothTime);
       this.granularLead1Send?.gain.setTargetAtTime(lead1Send, now, smoothTime);
       this.granularLead2Send?.gain.setTargetAtTime(lead2Send, now, smoothTime);
       this.granularDrumSend?.gain.setTargetAtTime(drumSend, now, smoothTime);
       this.granularWavesSend?.gain.setTargetAtTime(wavesSend, now, smoothTime);
+      this.granularWaterSend?.gain.setTargetAtTime(waterSend, now, smoothTime);
+      this.granularInsectsSend?.gain.setTargetAtTime(insectsSend, now, smoothTime);
 
       // ── Macro-modulated voice params ──
       // Macros blend with manual values: higher macro influence at extremes, manual preserved at center
@@ -4729,6 +4818,10 @@ export class AudioEngine {
 
     // Per-lead dry-path level (post reverb/granular tap, so sends still receive signal when level is 0)
     this.lead1LevelGain?.gain.setTargetAtTime(state.lead1Level ?? 0.8, now, smoothTime);
+    // WASM lead dry-path level — uses max of both per-lead levels (WASM mixes both leads in one output)
+    this.leadWasmLevelGain?.gain.setTargetAtTime(
+      Math.max(state.lead1Level ?? 0.8, state.lead2Level ?? 0.6), now, smoothTime
+    );
     this.lead2LevelGain?.gain.setTargetAtTime(state.lead2Level ?? 0.6, now, smoothTime);
 
     // Forward lead FM delay params to WASM worklet (if active)
@@ -4872,7 +4965,7 @@ export class AudioEngine {
       }
     }
 
-    // Lead synth parameters — leadDry is always unity (per-lead level is baked into note velocity)
+    // Lead synth parameters — leadDry gates active/inactive; per-lead level on lead1/2LevelGain + leadWasmLevelGain
     // Keep gain active if Euclidean sequencer is driving lead
     const leadActive = state.leadEnabled || state.synthEuclideanMasterEnabled;
     this.leadDry?.gain.setTargetAtTime(leadActive ? 1.0 : 0, now, smoothTime);
@@ -4940,10 +5033,12 @@ export class AudioEngine {
     // ── Soundscapes WASM — water + insects + ocean ──
     if (this.soundscapesNode && this.soundscapesWasmReady) {
       // Ocean start/stop (via soundscapes WASM output [2])
-      if (state.oceanWaveSynthEnabled && !this._scOceanStarted) {
+      // Kill engine when level is 0 regardless of enabled toggle
+      const oceanShouldRun = state.oceanWaveSynthEnabled && state.oceanWaveSynthLevel > 0;
+      if (oceanShouldRun && !this._scOceanStarted) {
         this.soundscapesNode.port.postMessage({ type: 'oceanStart' });
         this._scOceanStarted = true;
-      } else if (!state.oceanWaveSynthEnabled && this._scOceanStarted) {
+      } else if (!oceanShouldRun && this._scOceanStarted) {
         this.soundscapesNode.port.postMessage({ type: 'oceanStop' });
         this._scOceanStarted = false;
       }
@@ -4973,11 +5068,12 @@ export class AudioEngine {
         }, oceanParams);
       }
 
-      // Water start/stop
-      if (state.waterEnabled && !this._scWaterStarted) {
+      // Water start/stop — kill engine when level is 0
+      const waterShouldRun = state.waterEnabled && state.waterLevel > 0;
+      if (waterShouldRun && !this._scWaterStarted) {
         this.soundscapesNode.port.postMessage({ type: 'waterStart' });
         this._scWaterStarted = true;
-      } else if (!state.waterEnabled && this._scWaterStarted) {
+      } else if (!waterShouldRun && this._scWaterStarted) {
         this.soundscapesNode.port.postMessage({ type: 'waterStop' });
         this._scWaterStarted = false;
       }
@@ -4991,14 +5087,29 @@ export class AudioEngine {
 
       // Water synthesis params (only send when water is enabled)
       if (state.waterEnabled) {
+        // Water synthesis params with dualRange min/max support
+        const wInt = this.dualRanges['waterIntensity'];
+        const wRate = this.dualRanges['waterRate'];
+        const wDist = this.dualRanges['waterDistance'];
+        const wBf = this.dualRanges['waterBaseFreq'];
+        const wDs = this.dualRanges['waterDropSize'];
+        const wHd = this.dualRanges['waterHardness'];
+        const wGt = this.dualRanges['waterGlassThickness'];
         const waterParams = {
-          intensity: state.waterIntensity,
-          rate: state.waterRate,
-          distance: state.waterDistance,
-          baseFreq: state.waterBaseFreq,
-          dropSize: state.waterDropSize,
-          hardness: state.waterHardness,
-          glassThickness: state.waterGlassThickness,
+          intensityMin: wInt ? wInt.min : state.waterIntensity,
+          intensityMax: wInt ? wInt.max : state.waterIntensity,
+          rateMin: wRate ? wRate.min : state.waterRate,
+          rateMax: wRate ? wRate.max : state.waterRate,
+          distanceMin: wDist ? wDist.min : state.waterDistance,
+          distanceMax: wDist ? wDist.max : state.waterDistance,
+          baseFreqMin: wBf ? wBf.min : state.waterBaseFreq,
+          baseFreqMax: wBf ? wBf.max : state.waterBaseFreq,
+          dropSizeMin: wDs ? wDs.min : state.waterDropSize,
+          dropSizeMax: wDs ? wDs.max : state.waterDropSize,
+          hardnessMin: wHd ? wHd.min : state.waterHardness,
+          hardnessMax: wHd ? wHd.max : state.waterHardness,
+          glassThicknessMin: wGt ? wGt.min : state.waterGlassThickness,
+          glassThicknessMax: wGt ? wGt.max : state.waterGlassThickness,
         };
         this.postCachedWorkletMessage('soundscapes:waterParams', this.soundscapesNode, {
           type: 'waterParams',
@@ -5020,11 +5131,12 @@ export class AudioEngine {
         }, waterLayerMix);
       }
 
-      // Insects 1 start/stop
-      if (state.insectsEnabled && !this._scInsects1Started) {
+      // Insects 1 start/stop — kill engine when level is 0
+      const insects1ShouldRun = state.insectsEnabled && state.insectsLevel > 0;
+      if (insects1ShouldRun && !this._scInsects1Started) {
         this.soundscapesNode.port.postMessage({ type: 'insectsStart' });
         this._scInsects1Started = true;
-      } else if (!state.insectsEnabled && this._scInsects1Started) {
+      } else if (!insects1ShouldRun && this._scInsects1Started) {
         this.soundscapesNode.port.postMessage({ type: 'insectsStop' });
         this._scInsects1Started = false;
       }
@@ -5037,14 +5149,29 @@ export class AudioEngine {
 
       // Insects 1 params + gain (only send when enabled)
       if (state.insectsEnabled) {
+        // Insects 1 params with dualRange min/max support
+        const iDen = this.dualRanges['insectsDensity'];
+        const iTemp = this.dualRanges['insectsTemperature'];
+        const iDist = this.dualRanges['insectsDistance'];
+        const iProx = this.dualRanges['insectsProximity'];
+        const iAnti = this.dualRanges['insectsAntiphony'];
+        const iCr = this.dualRanges['insectsClickRate'];
+        const iMot = this.dualRanges['insectsMotion'];
         const insectsParams = {
-          density: state.insectsDensity,
-          temperature: state.insectsTemperature,
-          distance: state.insectsDistance,
-          proximity: state.insectsProximity,
-          antiphony: state.insectsAntiphony,
-          clickRate: state.insectsClickRate,
-          motion: state.insectsMotion,
+          densityMin: iDen ? iDen.min : state.insectsDensity,
+          densityMax: iDen ? iDen.max : state.insectsDensity,
+          temperatureMin: iTemp ? iTemp.min : state.insectsTemperature,
+          temperatureMax: iTemp ? iTemp.max : state.insectsTemperature,
+          distanceMin: iDist ? iDist.min : state.insectsDistance,
+          distanceMax: iDist ? iDist.max : state.insectsDistance,
+          proximityMin: iProx ? iProx.min : state.insectsProximity,
+          proximityMax: iProx ? iProx.max : state.insectsProximity,
+          antiphonyMin: iAnti ? iAnti.min : state.insectsAntiphony,
+          antiphonyMax: iAnti ? iAnti.max : state.insectsAntiphony,
+          clickRateMin: iCr ? iCr.min : state.insectsClickRate,
+          clickRateMax: iCr ? iCr.max : state.insectsClickRate,
+          motionMin: iMot ? iMot.min : state.insectsMotion,
+          motionMax: iMot ? iMot.max : state.insectsMotion,
         };
         this.postCachedWorkletMessage('soundscapes:insects1Params', this.soundscapesNode, {
           type: 'insectsParams',
@@ -5056,11 +5183,12 @@ export class AudioEngine {
         }, state.insectsLevel);
       }
 
-      // Insects 2 start/stop
-      if (state.insects2Enabled && !this._scInsects2Started) {
+      // Insects 2 start/stop — kill engine when level is 0
+      const insects2ShouldRun = state.insects2Enabled && state.insects2Level > 0;
+      if (insects2ShouldRun && !this._scInsects2Started) {
         this.soundscapesNode.port.postMessage({ type: 'insects2Start' });
         this._scInsects2Started = true;
-      } else if (!state.insects2Enabled && this._scInsects2Started) {
+      } else if (!insects2ShouldRun && this._scInsects2Started) {
         this.soundscapesNode.port.postMessage({ type: 'insects2Stop' });
         this._scInsects2Started = false;
       }
@@ -5073,14 +5201,29 @@ export class AudioEngine {
 
       // Insects 2 params + gain (only send when enabled)
       if (state.insects2Enabled) {
+        // Insects 2 params with dualRange min/max support
+        const i2Den = this.dualRanges['insects2Density'];
+        const i2Temp = this.dualRanges['insects2Temperature'];
+        const i2Dist = this.dualRanges['insects2Distance'];
+        const i2Prox = this.dualRanges['insects2Proximity'];
+        const i2Anti = this.dualRanges['insects2Antiphony'];
+        const i2Cr = this.dualRanges['insects2ClickRate'];
+        const i2Mot = this.dualRanges['insects2Motion'];
         const insects2Params = {
-          density: state.insects2Density,
-          temperature: state.insects2Temperature,
-          distance: state.insects2Distance,
-          proximity: state.insects2Proximity,
-          antiphony: state.insects2Antiphony,
-          clickRate: state.insects2ClickRate,
-          motion: state.insects2Motion,
+          densityMin: i2Den ? i2Den.min : state.insects2Density,
+          densityMax: i2Den ? i2Den.max : state.insects2Density,
+          temperatureMin: i2Temp ? i2Temp.min : state.insects2Temperature,
+          temperatureMax: i2Temp ? i2Temp.max : state.insects2Temperature,
+          distanceMin: i2Dist ? i2Dist.min : state.insects2Distance,
+          distanceMax: i2Dist ? i2Dist.max : state.insects2Distance,
+          proximityMin: i2Prox ? i2Prox.min : state.insects2Proximity,
+          proximityMax: i2Prox ? i2Prox.max : state.insects2Proximity,
+          antiphonyMin: i2Anti ? i2Anti.min : state.insects2Antiphony,
+          antiphonyMax: i2Anti ? i2Anti.max : state.insects2Antiphony,
+          clickRateMin: i2Cr ? i2Cr.min : state.insects2ClickRate,
+          clickRateMax: i2Cr ? i2Cr.max : state.insects2ClickRate,
+          motionMin: i2Mot ? i2Mot.min : state.insects2Motion,
+          motionMax: i2Mot ? i2Mot.max : state.insects2Motion,
         };
         this.postCachedWorkletMessage('soundscapes:insects2Params', this.soundscapesNode, {
           type: 'insects2Params',
@@ -5092,25 +5235,35 @@ export class AudioEngine {
         }, state.insects2Level);
       }
 
-      // Water gain nodes
-      this.waterGain?.gain.setTargetAtTime(
+      // ── Earth master level ──
+      this.earthLevelGain?.gain.setTargetAtTime(state.earthLevel ?? 1.0, now, smoothTime);
+
+      // ── Per-engine dry levels (these control the dry path through earthBus only) ──
+      // Water dry level
+      this.waterLevelGain?.gain.setTargetAtTime(
         state.waterEnabled ? state.waterLevel : 0, now, smoothTime
       );
+      // Water reverb send (pre-fader — unaffected by waterLevelGain)
       this.waterReverbSend?.gain.setTargetAtTime(
         state.waterEnabled ? state.waterReverbSend : 0, now, smoothTime
       );
 
-      // Insects master gate
-      this.soundscapesInsectsGain?.gain.setTargetAtTime(
+      // Insects on/off gate (level controlled by WASM-side _insects1Gain/_insects2Gain)
+      this.insectsLevelGain?.gain.setTargetAtTime(
         (state.insectsEnabled || state.insects2Enabled) ? 1.0 : 0, now, smoothTime
       );
 
-      // Waves (ocean) reverb send
+      // Ocean dry level (oceanFilter already has its own gain path — oceanLevelGain controls dry)
+      this.oceanLevelGain?.gain.setTargetAtTime(
+        (state.oceanWaveSynthEnabled || state.oceanSampleEnabled) ? 1.0 : 0, now, smoothTime
+      );
+
+      // Waves (ocean) reverb send (pre-fader)
       this.oceanReverbSendNode?.gain.setTargetAtTime(
         (state.oceanWaveSynthEnabled || state.oceanSampleEnabled) ? state.oceanReverbSend : 0, now, smoothTime
       );
 
-      // Insects reverb send
+      // Insects reverb send (pre-fader)
       this.insectsReverbSendNode?.gain.setTargetAtTime(
         (state.insectsEnabled || state.insects2Enabled) ? state.insectsReverbSend : 0, now, smoothTime
       );
@@ -5236,6 +5389,13 @@ export class AudioEngine {
    * Supports lead1 (Preset A↔B) and lead2 (Preset C↔D).
    * Vibrato, glide, and delay are shared and independent of presets.
    */
+  /**
+   * Play a single lead FM note.
+   * `velocity` controls timbre (FM mod depth, transient energy) AND amplitude —
+   * it is NOT the same as bus gain. Per-lead mix level lives on lead1LevelGain /
+   * lead2LevelGain (post reverb/granular tap), so notes always feed sends at full
+   * velocity regardless of the fader position.
+   */
   private playLeadNote(frequency: number, velocity: number = 0.8, leadSource: 'lead' | 'lead1' | 'lead2' = 'lead1'): void {
     if (!this.ctx || !this.leadGain || !this.sliderState) return;
     // Allow playback if leadEnabled OR if Euclidean master is driving lead lanes
@@ -5305,7 +5465,6 @@ export class AudioEngine {
     // Per-lead level is now handled by lead1LevelGain/lead2LevelGain nodes (post reverb/granular tap)
     // so notes play at full velocity and reverb/granular sends still receive signal when level is down.
     if (velocity < 0.001) return;
-    const noteVelocity = velocity;
 
     const ctx = this.ctx;
     const now = ctx.currentTime;
@@ -5409,8 +5568,8 @@ export class AudioEngine {
     }
 
     // WASM path: send morphed params + delay + noteOn to the lead FM worklet
-    // Per-lead level is controlled by lead1LevelGain/lead2LevelGain on the dry path.
-    // WASM outputs into shared leadGain; reverb/granular sends tap from lead buses pre-level.
+    // Per-lead level is controlled by leadWasmLevelGain on the dry path (max of lead1/lead2 level).
+    // Reverb/granular sends tap directly from WASM output (pre-fader).
     if (this.leadFmWasmReady && this.leadFmWasmNode) {
       const port = this.leadFmWasmNode.port;
       port.postMessage({ type: 'params', params: effectiveMorphed });
@@ -5426,7 +5585,7 @@ export class AudioEngine {
           send: 0.5,
         },
       });
-      port.postMessage({ type: 'noteOn', frequency: noteFreq, velocity: noteVelocity, hold });
+      port.postMessage({ type: 'noteOn', frequency: noteFreq, velocity, hold });
       return;
     }
 
@@ -5434,7 +5593,7 @@ export class AudioEngine {
     const leadDest = useLead2
       ? (this.lead2Bus ?? this.leadGain)
       : (this.lead1Bus ?? this.leadGain);
-    playLead4opFMNote(ctx, leadDest, noteFreq, noteVelocity, effectiveMorphed, hold);
+    playLead4opFMNote(ctx, leadDest, noteFreq, velocity, effectiveMorphed, hold);
 
     // If glide, schedule frequency ramp on all carriers (handled inside playLead4opFMNote is per-note)
     // Vibrato: add LFO modulation if depth > threshold
@@ -5558,7 +5717,7 @@ export class AudioEngine {
         if (availableNotes.length === 0) continue;
         const midiNote = pickChordWeightedNote(rng, availableNotes, chordMidi, leadChordBias);
         const frequency = midiToFreq(midiNote);
-        const velocity = rngFloat(rng, 0.5, 0.9);
+        const velocity = rngFloat(rng, 0.5, 0.9); // Dynamics only; per-lead mix level is on lead1LevelGain bus node
         const timeoutId = window.setTimeout(() => {
           const idx = this.leadNoteTimeouts.indexOf(timeoutId);
           if (idx > -1) this.leadNoteTimeouts.splice(idx, 1);
@@ -5725,6 +5884,21 @@ export class AudioEngine {
       this.lead2ReverbSend.gain.value = this.sliderState?.lead2ReverbSend ?? 0.5;
       this.lead2Bus.connect(this.lead2ReverbSend);
       this.lead2ReverbSend.connect(this.reverbNode!);
+
+      // WASM lead connections (if WASM node exists, re-wire through level gain)
+      if (this.leadFmWasmNode) {
+        this.leadWasmLevelGain = ctx.createGain();
+        this.leadWasmLevelGain.gain.value = Math.max(
+          this.sliderState?.lead1Level ?? 0.8,
+          this.sliderState?.lead2Level ?? 0.6
+        );
+        this.leadFmWasmNode.connect(this.leadWasmLevelGain, 0);
+        this.leadWasmLevelGain.connect(this.leadVoiceLevel!);
+        this.leadFmWasmNode.connect(this.leadReverbSend, 0);
+        if (this.granularLead1Send) {
+          this.leadFmWasmNode.connect(this.granularLead1Send, 0);
+        }
+      }
     }
 
     // Create pad synth voice chain if not exists (for independent pad voice triggering)
@@ -6068,8 +6242,9 @@ export class AudioEngine {
                 if (midiNote !== undefined) {
                   const frequency = midiToFreq(midiNote);
 
-                  // Expression/velocity sub-lane: use expression value as velocity multiplier when enabled
-                  // (matches drum scheduler: constant 1.0 when expression is off)
+                  // Expression/velocity sub-lane: dynamics × lane level.
+                  // This is note velocity (timbre + amplitude), NOT bus gain.
+                  // Per-lead mix level lives on lead1LevelGain/lead2LevelGain nodes.
                   let velocity: number;
                   if (exprArr && exprSteps > 0) {
                     const exprIdx = seqLaneIndex(

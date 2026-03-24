@@ -1257,6 +1257,16 @@ struct WaterState {
     float  hardness;
     float  glass_thickness;
 
+    // Per-event randomization ranges (from UI dualRange sliders)
+    // When min == max, behavior is identical to single-value mode
+    float  intensity_range_min, intensity_range_max;
+    float  rate_range_min, rate_range_max;
+    float  distance_range_min, distance_range_max;
+    float  base_freq_range_min, base_freq_range_max;
+    float  drop_size_range_min, drop_size_range_max;
+    float  hardness_range_min, hardness_range_max;
+    float  glass_thickness_range_min, glass_thickness_range_max;
+
     // Preset-specific params (matches JS WATER_PRESETS)
     float  event_rate_min;
     float  event_rate_max;
@@ -1352,9 +1362,11 @@ static int water_find_free_soft(WaterState* s) {
 static void water_schedule_hard_event(WaterState* s) {
     float sr = s->sample_rate;
 
-    // Rate scaling (matches JS: 0.2 + smoothedIntensity * 0.8)
+    // Per-scheduling rate from user's dualRange min/max
+    float rate_param = rng_range(&s->rng, s->rate_range_min, s->rate_range_max);
+    float event_rate_at_rate = s->event_rate_min + rate_param * (s->event_rate_max - s->event_rate_min);
     float rate_scale = 0.2f + s->smoothed_intensity * 0.8f;
-    float current_rate = s->event_rate * rate_scale * s->density_hard_drops;
+    float current_rate = event_rate_at_rate * rate_scale * s->density_hard_drops;
 
     // Minimum 100ms spacing (matches JS)
     int min_spacing = (int)(0.1f * sr);
@@ -1398,9 +1410,11 @@ static void water_schedule_hard_event(WaterState* s) {
 static void water_schedule_soft_event(WaterState* s) {
     float sr = s->sample_rate;
 
-    // Rate scaling (matches JS: 0.15 + smoothedIntensity * 0.6, then *0.7)
+    // Per-scheduling rate from user's dualRange min/max
+    float rate_param = rng_range(&s->rng, s->rate_range_min, s->rate_range_max);
+    float event_rate_at_rate = s->event_rate_min + rate_param * (s->event_rate_max - s->event_rate_min);
     float rate_scale = 0.15f + s->smoothed_intensity * 0.6f;
-    float requested_rate = s->event_rate * rate_scale * 0.7f * s->density_water_drops;
+    float requested_rate = event_rate_at_rate * rate_scale * 0.7f * s->density_water_drops;
     float current_rate = requested_rate < 26.0f ? requested_rate : 26.0f;
     if (current_rate < 0.5f) current_rate = 0.5f;
 
@@ -1453,6 +1467,15 @@ int water_init(float sample_rate) {
     g_water->drop_size = 0.5f;
     g_water->hardness = 0.5f;
     g_water->glass_thickness = 0.5f;
+
+    // Per-event range defaults (min == max = no variation)
+    g_water->intensity_range_min = 0.5f;  g_water->intensity_range_max = 0.5f;
+    g_water->rate_range_min = 0.5f;       g_water->rate_range_max = 0.5f;
+    g_water->distance_range_min = 0.3f;   g_water->distance_range_max = 0.3f;
+    g_water->base_freq_range_min = 2500.0f; g_water->base_freq_range_max = 2500.0f;
+    g_water->drop_size_range_min = 0.5f;  g_water->drop_size_range_max = 0.5f;
+    g_water->hardness_range_min = 0.5f;   g_water->hardness_range_max = 0.5f;
+    g_water->glass_thickness_range_min = 0.5f; g_water->glass_thickness_range_max = 0.5f;
 
     // tapDrips preset defaults (matches JS WATER_PRESETS.tapDrips)
     g_water->event_rate_min = 0.5f;
@@ -1574,15 +1597,18 @@ void water_process_block(int block_size) {
             if (s->hard_samples_until_next <= 0) {
                 int idx = water_find_free_hard(s);
                 if (idx >= 0) {
-                    // Build trigger params with randomization (matches JS scheduleDropletEvent)
+                    // Per-event randomization from user's dualRange min/max
+                    float ds_param = rng_range(&s->rng, s->drop_size_range_min, s->drop_size_range_max);
                     float drop_size = s->drop_size_min +
-                        s->drop_size * (s->drop_size_max - s->drop_size_min);
+                        ds_param * (s->drop_size_max - s->drop_size_min);
                     float drop_size_var = drop_size + (rng_next(&s->rng) - 0.5f) * 0.25f;
                     if (drop_size_var < 0.0f) drop_size_var = 0.0f;
                     if (drop_size_var > 1.0f) drop_size_var = 1.0f;
-                    float hardness_var = s->hardness * (0.7f + rng_next(&s->rng) * 0.6f);
+                    float hd_param = rng_range(&s->rng, s->hardness_range_min, s->hardness_range_max);
+                    float hardness_var = hd_param * (0.7f + rng_next(&s->rng) * 0.6f);
                     float decay_var = s->decay_time * (0.5f + rng_next(&s->rng) * 1.0f);
-                    float freq_var = s->base_freq * (0.75f + rng_next(&s->rng) * 0.5f);
+                    float bf_param = rng_range(&s->rng, s->base_freq_range_min, s->base_freq_range_max);
+                    float freq_var = bf_param * (0.75f + rng_next(&s->rng) * 0.5f);
 
                     droplet_trigger(&s->hard_drops[idx], freq_var,
                                    hardness_var, drop_size_var, decay_var, &s->rng, sr);
@@ -1597,10 +1623,12 @@ void water_process_block(int block_size) {
             s->soft_samples_until_next--;
             if (s->soft_samples_until_next <= 0) {
                 int idx = water_find_free_soft(s);
-                // Water drop params (matches JS scheduleWaterDropEvent)
+                // Per-event randomization from user's dualRange min/max
+                float ds_param = rng_range(&s->rng, s->drop_size_range_min, s->drop_size_range_max);
                 float drop_size = s->drop_size_min +
-                    s->drop_size * (s->drop_size_max - s->drop_size_min);
-                float soft_freq = s->base_freq * 0.5f * (0.6f + rng_next(&s->rng) * 0.8f);
+                    ds_param * (s->drop_size_max - s->drop_size_min);
+                float bf_param = rng_range(&s->rng, s->base_freq_range_min, s->base_freq_range_max);
+                float soft_freq = bf_param * 0.5f * (0.6f + rng_next(&s->rng) * 0.8f);
                 float soft_drop_size = drop_size + (rng_next(&s->rng) - 0.5f) * 0.3f;
                 water_soft_trigger(&s->soft_drops[idx], soft_freq,
                                   soft_drop_size, &s->rng, sr);
@@ -1812,21 +1840,43 @@ void water_set_preset(int preset) {
     water_update_scheduling(s);
 }
 
-void water_set_params(float intensity, float rate, float distance,
-                      float base_freq, float drop_size, float hardness,
-                      float glass_thickness) {
+void water_set_params(float intensity_min, float intensity_max,
+                      float rate_min, float rate_max,
+                      float distance_min, float distance_max,
+                      float base_freq_min, float base_freq_max,
+                      float drop_size_min, float drop_size_max,
+                      float hardness_min, float hardness_max,
+                      float glass_thickness_min, float glass_thickness_max) {
     if (!g_water) return;
-    g_water->intensity = intensity;
-    g_water->rate = rate;
-    g_water->distance = distance;
-    g_water->base_freq = base_freq;
-    g_water->drop_size = drop_size;
-    g_water->hardness = hardness;
-    g_water->glass_thickness = glass_thickness;
+
+    // Store ranges for per-event randomization
+    g_water->intensity_range_min = intensity_min;
+    g_water->intensity_range_max = intensity_max;
+    g_water->rate_range_min = rate_min;
+    g_water->rate_range_max = rate_max;
+    g_water->distance_range_min = distance_min;
+    g_water->distance_range_max = distance_max;
+    g_water->base_freq_range_min = base_freq_min;
+    g_water->base_freq_range_max = base_freq_max;
+    g_water->drop_size_range_min = drop_size_min;
+    g_water->drop_size_range_max = drop_size_max;
+    g_water->hardness_range_min = hardness_min;
+    g_water->hardness_range_max = hardness_max;
+    g_water->glass_thickness_range_min = glass_thickness_min;
+    g_water->glass_thickness_range_max = glass_thickness_max;
+
+    // Compute effective single values (midpoint) for global/smoothed params
+    g_water->intensity = (intensity_min + intensity_max) * 0.5f;
+    g_water->rate = (rate_min + rate_max) * 0.5f;
+    g_water->distance = (distance_min + distance_max) * 0.5f;
+    g_water->base_freq = (base_freq_min + base_freq_max) * 0.5f;
+    g_water->drop_size = (drop_size_min + drop_size_max) * 0.5f;
+    g_water->hardness = (hardness_min + hardness_max) * 0.5f;
+    g_water->glass_thickness = (glass_thickness_min + glass_thickness_max) * 0.5f;
 
     // Update glass thickness when changed (matches JS)
     if (g_water->glass.inited) {
-        glass_set_thickness(&g_water->glass, glass_thickness, g_water->sample_rate);
+        glass_set_thickness(&g_water->glass, g_water->glass_thickness, g_water->sample_rate);
     }
 
     water_update_scheduling(g_water);
@@ -2816,6 +2866,16 @@ struct InsectsState {
     float click_rate;
     float motion;
 
+    // Per-voice randomization ranges (from UI dualRange sliders)
+    // When min == max, behavior is identical to single-value mode
+    float  density_range_min, density_range_max;
+    float  temperature_range_min, temperature_range_max;
+    float  distance_range_min, distance_range_max;
+    float  proximity_range_min, proximity_range_max;
+    float  antiphony_range_min, antiphony_range_max;
+    float  click_rate_range_min, click_rate_range_max;
+    float  motion_range_min, motion_range_max;
+
     // Smoothed params (matching JS)
     float smoothed_density;
     float smoothed_temp;
@@ -2854,10 +2914,11 @@ static void insects_update_voices(InsectsState* s) {
             s->active_count = count;
             for (int i = 0; i < INSECT_MAX_VOICES; i++) {
                 if (i < count) {
+                    float temp_v = rng_range(rng, s->temperature_range_min, s->temperature_range_max);
                     if (!s->crickets[i].active)
-                        cricket_init_voice(&s->crickets[i], i, rng, sr, s->smoothed_density, s->smoothed_temp);
+                        cricket_init_voice(&s->crickets[i], i, rng, sr, s->smoothed_density, temp_v);
                     else
-                        cricket_set_params(&s->crickets[i], rng, sr, s->smoothed_temp, -99.0f, -1.0f);
+                        cricket_set_params(&s->crickets[i], rng, sr, temp_v, -99.0f, -1.0f);
                 } else {
                     s->crickets[i].active = 0;
                 }
@@ -2869,10 +2930,11 @@ static void insects_update_voices(InsectsState* s) {
             s->active_count = count;
             for (int i = 0; i < 10; i++) {
                 if (i < count) {
+                    float temp_v = rng_range(rng, s->temperature_range_min, s->temperature_range_max);
                     if (!s->tree_crickets[i].active)
-                        tree_cricket_init_voice(&s->tree_crickets[i], i, rng, sr, s->smoothed_temp);
+                        tree_cricket_init_voice(&s->tree_crickets[i], i, rng, sr, temp_v);
                     else
-                        tree_cricket_set_params(&s->tree_crickets[i], rng, sr, s->smoothed_temp, -99.0f, -1.0f);
+                        tree_cricket_set_params(&s->tree_crickets[i], rng, sr, temp_v, -99.0f, -1.0f);
                 } else {
                     s->tree_crickets[i].active = 0;
                 }
@@ -2884,10 +2946,12 @@ static void insects_update_voices(InsectsState* s) {
             s->active_count = count;
             for (int i = 0; i < 10; i++) {
                 if (i < count) {
+                    float temp_v = rng_range(rng, s->temperature_range_min, s->temperature_range_max);
+                    float anti_v = rng_range(rng, s->antiphony_range_min, s->antiphony_range_max);
                     if (!s->katydids[i].active)
-                        katydid_init_voice(&s->katydids[i], i, rng, sr, s->antiphony);
+                        katydid_init_voice(&s->katydids[i], i, rng, sr, anti_v);
                     else
-                        katydid_set_params(&s->katydids[i], i, rng, sr, s->smoothed_temp, s->antiphony, -99.0f, -1.0f);
+                        katydid_set_params(&s->katydids[i], i, rng, sr, temp_v, anti_v, -99.0f, -1.0f);
                 } else {
                     s->katydids[i].active = 0;
                 }
@@ -2899,14 +2963,16 @@ static void insects_update_voices(InsectsState* s) {
             s->active_count = count;
             for (int i = 0; i < 8; i++) {
                 if (i < count) {
+                    float temp_v = rng_range(rng, s->temperature_range_min, s->temperature_range_max);
+                    float cr_v = rng_range(rng, s->click_rate_range_min, s->click_rate_range_max);
                     // JS: first 2 are "near", rest are distant
                     float dist_param = -1.0f;
                     if (i < 2) dist_param = 0.1f + rng_next(rng) * 0.2f;
                     else       dist_param = 0.4f + rng_next(rng) * 0.5f;
                     if (!s->cicadas[i].active)
-                        cicada_init_voice(&s->cicadas[i], i, rng, sr, s->smoothed_temp, s->click_rate);
+                        cicada_init_voice(&s->cicadas[i], i, rng, sr, temp_v, cr_v);
                     else
-                        cicada_set_params(&s->cicadas[i], rng, sr, s->smoothed_temp, s->click_rate, -99.0f, dist_param);
+                        cicada_set_params(&s->cicadas[i], rng, sr, temp_v, cr_v, -99.0f, dist_param);
                 } else {
                     s->cicadas[i].active = 0;
                 }
@@ -2918,11 +2984,13 @@ static void insects_update_voices(InsectsState* s) {
             s->active_count = count;
             for (int i = 0; i < 8; i++) {
                 if (i < count) {
+                    float temp_v = rng_range(rng, s->temperature_range_min, s->temperature_range_max);
+                    float cr_v = rng_range(rng, s->click_rate_range_min, s->click_rate_range_max);
                     if (!s->grasshoppers[i].active)
                         grasshopper_init_voice(&s->grasshoppers[i], i, rng, sr,
-                                              s->smoothed_temp, s->click_rate);
+                                              temp_v, cr_v);
                     else
-                        grasshopper_set_params(&s->grasshoppers[i], rng, sr, s->smoothed_temp, -99.0f, -1.0f);
+                        grasshopper_set_params(&s->grasshoppers[i], rng, sr, temp_v, -99.0f, -1.0f);
                 } else {
                     s->grasshoppers[i].active = 0;
                 }
@@ -2934,10 +3002,11 @@ static void insects_update_voices(InsectsState* s) {
             s->active_count = count;
             for (int i = 0; i < 8; i++) {
                 if (i < count) {
+                    float temp_v = rng_range(rng, s->temperature_range_min, s->temperature_range_max);
                     if (!s->mole_crickets[i].active)
-                        mole_cricket_init_voice(&s->mole_crickets[i], i, rng, sr, s->smoothed_temp);
+                        mole_cricket_init_voice(&s->mole_crickets[i], i, rng, sr, temp_v);
                     else
-                        mole_cricket_set_params(&s->mole_crickets[i], rng, sr, s->smoothed_temp, -99.0f, -1.0f);
+                        mole_cricket_set_params(&s->mole_crickets[i], rng, sr, temp_v, -99.0f, -1.0f);
                 } else {
                     s->mole_crickets[i].active = 0;
                 }
@@ -2951,7 +3020,8 @@ static void insects_update_voices(InsectsState* s) {
                 if (i < count) {
                     int is_close = (i < 3) ? 1 : 0;
                     int is_bee = (rng_next(rng) > 0.5f) ? 1 : 0;
-                    int motion_flag = (s->motion > 0.5f) ? 1 : 0;
+                    float motion_v = rng_range(rng, s->motion_range_min, s->motion_range_max);
+                    int motion_flag = (motion_v > 0.5f) ? 1 : 0;
                     if (!s->fly_bees[i].active)
                         fly_bee_init_voice(&s->fly_bees[i], i, rng, sr);
                     fly_bee_set_params(&s->fly_bees[i], rng, sr, is_bee, is_close, motion_flag);
@@ -2984,6 +3054,15 @@ int insects_init(float sample_rate) {
     g_insects->antiphony = 0.3f;
     g_insects->click_rate = 0.3f;
     g_insects->motion = 0.5f;
+
+    // Per-voice range defaults (min == max = no variation)
+    g_insects->density_range_min = 0.5f;     g_insects->density_range_max = 0.5f;
+    g_insects->temperature_range_min = 0.5f; g_insects->temperature_range_max = 0.5f;
+    g_insects->distance_range_min = 0.3f;    g_insects->distance_range_max = 0.3f;
+    g_insects->proximity_range_min = 0.5f;   g_insects->proximity_range_max = 0.5f;
+    g_insects->antiphony_range_min = 0.3f;   g_insects->antiphony_range_max = 0.3f;
+    g_insects->click_rate_range_min = 0.3f;  g_insects->click_rate_range_max = 0.3f;
+    g_insects->motion_range_min = 0.5f;      g_insects->motion_range_max = 0.5f;
 
     // Initialize smoothed params to match targets
     g_insects->smoothed_density = 0.5f;
@@ -3121,17 +3200,40 @@ void insects_set_engine(int engine) {
     insects_update_voices(g_insects);
 }
 
-void insects_set_params(float density, float temperature, float distance,
-                        float proximity, float antiphony, float click_rate,
-                        float motion) {
+void insects_set_params(float density_min, float density_max,
+                        float temperature_min, float temperature_max,
+                        float distance_min, float distance_max,
+                        float proximity_min, float proximity_max,
+                        float antiphony_min, float antiphony_max,
+                        float click_rate_min, float click_rate_max,
+                        float motion_min, float motion_max) {
     if (!g_insects) return;
-    g_insects->density = density;
-    g_insects->temperature = temperature;
-    g_insects->distance = distance;
-    g_insects->proximity = proximity;
-    g_insects->antiphony = antiphony;
-    g_insects->click_rate = click_rate;
-    g_insects->motion = motion;
+
+    // Store ranges for per-voice randomization
+    g_insects->density_range_min = density_min;
+    g_insects->density_range_max = density_max;
+    g_insects->temperature_range_min = temperature_min;
+    g_insects->temperature_range_max = temperature_max;
+    g_insects->distance_range_min = distance_min;
+    g_insects->distance_range_max = distance_max;
+    g_insects->proximity_range_min = proximity_min;
+    g_insects->proximity_range_max = proximity_max;
+    g_insects->antiphony_range_min = antiphony_min;
+    g_insects->antiphony_range_max = antiphony_max;
+    g_insects->click_rate_range_min = click_rate_min;
+    g_insects->click_rate_range_max = click_rate_max;
+    g_insects->motion_range_min = motion_min;
+    g_insects->motion_range_max = motion_max;
+
+    // Compute effective single values (midpoint) for global/smoothed params
+    g_insects->density = (density_min + density_max) * 0.5f;
+    g_insects->temperature = (temperature_min + temperature_max) * 0.5f;
+    g_insects->distance = (distance_min + distance_max) * 0.5f;
+    g_insects->proximity = (proximity_min + proximity_max) * 0.5f;
+    g_insects->antiphony = (antiphony_min + antiphony_max) * 0.5f;
+    g_insects->click_rate = (click_rate_min + click_rate_max) * 0.5f;
+    g_insects->motion = (motion_min + motion_max) * 0.5f;
+
     insects_update_voices(g_insects);
 }
 
@@ -3183,6 +3285,15 @@ int insects2_init(float sample_rate) {
     g_insects2->antiphony = 0.3f;
     g_insects2->click_rate = 0.3f;
     g_insects2->motion = 0.5f;
+
+    // Per-voice range defaults (min == max = no variation)
+    g_insects2->density_range_min = 0.5f;     g_insects2->density_range_max = 0.5f;
+    g_insects2->temperature_range_min = 0.5f; g_insects2->temperature_range_max = 0.5f;
+    g_insects2->distance_range_min = 0.3f;    g_insects2->distance_range_max = 0.3f;
+    g_insects2->proximity_range_min = 0.5f;   g_insects2->proximity_range_max = 0.5f;
+    g_insects2->antiphony_range_min = 0.3f;   g_insects2->antiphony_range_max = 0.3f;
+    g_insects2->click_rate_range_min = 0.3f;  g_insects2->click_rate_range_max = 0.3f;
+    g_insects2->motion_range_min = 0.5f;      g_insects2->motion_range_max = 0.5f;
 
     g_insects2->smoothed_density = 0.5f;
     g_insects2->smoothed_temp = 0.5f;
@@ -3308,17 +3419,40 @@ void insects2_set_engine(int engine) {
     insects_update_voices(g_insects2);
 }
 
-void insects2_set_params(float density, float temperature, float distance,
-                         float proximity, float antiphony, float click_rate,
-                         float motion) {
+void insects2_set_params(float density_min, float density_max,
+                         float temperature_min, float temperature_max,
+                         float distance_min, float distance_max,
+                         float proximity_min, float proximity_max,
+                         float antiphony_min, float antiphony_max,
+                         float click_rate_min, float click_rate_max,
+                         float motion_min, float motion_max) {
     if (!g_insects2) return;
-    g_insects2->density = density;
-    g_insects2->temperature = temperature;
-    g_insects2->distance = distance;
-    g_insects2->proximity = proximity;
-    g_insects2->antiphony = antiphony;
-    g_insects2->click_rate = click_rate;
-    g_insects2->motion = motion;
+
+    // Store ranges for per-voice randomization
+    g_insects2->density_range_min = density_min;
+    g_insects2->density_range_max = density_max;
+    g_insects2->temperature_range_min = temperature_min;
+    g_insects2->temperature_range_max = temperature_max;
+    g_insects2->distance_range_min = distance_min;
+    g_insects2->distance_range_max = distance_max;
+    g_insects2->proximity_range_min = proximity_min;
+    g_insects2->proximity_range_max = proximity_max;
+    g_insects2->antiphony_range_min = antiphony_min;
+    g_insects2->antiphony_range_max = antiphony_max;
+    g_insects2->click_rate_range_min = click_rate_min;
+    g_insects2->click_rate_range_max = click_rate_max;
+    g_insects2->motion_range_min = motion_min;
+    g_insects2->motion_range_max = motion_max;
+
+    // Compute effective single values (midpoint)
+    g_insects2->density = (density_min + density_max) * 0.5f;
+    g_insects2->temperature = (temperature_min + temperature_max) * 0.5f;
+    g_insects2->distance = (distance_min + distance_max) * 0.5f;
+    g_insects2->proximity = (proximity_min + proximity_max) * 0.5f;
+    g_insects2->antiphony = (antiphony_min + antiphony_max) * 0.5f;
+    g_insects2->click_rate = (click_rate_min + click_rate_max) * 0.5f;
+    g_insects2->motion = (motion_min + motion_max) * 0.5f;
+
     insects_update_voices(g_insects2);
 }
 

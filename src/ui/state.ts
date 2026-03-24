@@ -744,6 +744,7 @@ export interface SliderState {
   drumEuclid4Level: number;
 
   // Ocean Waves
+  earthLevel: number;            // 0..1 master Earth bus level (waves + water + insects)
   oceanSampleEnabled: boolean;   // on/off toggle for real sample
   oceanSampleLevel: number;      // 0..1 step 0.01 - sample volume
   oceanWaveSynthEnabled: boolean; // on/off toggle for wave synthesis
@@ -820,6 +821,8 @@ export interface SliderState {
   granularLead2Send: number;          // 0..1 lead 2 send to granular
   granularDrumSend: number;           // 0..1 drum engines send to granular
   granularWavesSend: number;          // 0..1 waves send to granular
+  granularWaterSend: number;          // 0..1 water send to granular
+  granularInsectsSend: number;        // 0..1 insects send to granular
 
   // Voice 1
   granularV1Enabled: boolean;
@@ -1535,6 +1538,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'drumEuclid4VelocityMax',
   'drumEuclid4Level',
   // Ocean
+  'earthLevel',
   'oceanSampleEnabled',
   'oceanSampleLevel', 'oceanReverbSend',
   'oceanWaveSynthEnabled',
@@ -1572,7 +1576,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'granularReverbSend',
   'granularReverbLPF',
   'granularOutputLPF',
-  'granularPad1Send', 'granularPad2Send', 'granularLead1Send', 'granularLead2Send', 'granularDrumSend', 'granularWavesSend',
+  'granularPad1Send', 'granularPad2Send', 'granularLead1Send', 'granularLead2Send', 'granularDrumSend', 'granularWavesSend', 'granularWaterSend', 'granularInsectsSend',
   'granularV1Enabled', 'granularV1Mode', 'granularV1Slice', 'granularV1Speed', 'granularV1Reverse',
   'granularV1Pitch', 'granularV1Attack', 'granularV1Decay', 'granularV1Blur', 'granularV1GrainOct',
   'granularV1Spray', 'granularV1Density', 'granularV1GrainSize', 'granularV1Pan', 'granularV1Gain',
@@ -2255,6 +2259,7 @@ export const DEFAULT_STATE: SliderState = {
   drumEuclid4Level: 0.8,
 
   // Ocean Waves
+  earthLevel: 1.0,
   oceanSampleEnabled: false,
   oceanSampleLevel: 0,
   oceanWaveSynthEnabled: false,
@@ -2328,6 +2333,8 @@ export const DEFAULT_STATE: SliderState = {
   granularLead2Send: 0.0,
   granularDrumSend: 0.0,
   granularWavesSend: 0.0,
+  granularWaterSend: 0.0,
+  granularInsectsSend: 0.0,
 
   // Voice 1 (default: granular, active)
   granularV1Enabled: true,
@@ -2914,7 +2921,8 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   drumEuclid4VelocityMin: { min: 0, max: 1, step: 0.01 },
   drumEuclid4VelocityMax: { min: 0, max: 1, step: 0.01 },
   drumEuclid4Level: { min: 0, max: 1, step: 0.01 },
-  // Ocean
+  // Ocean / Earth
+  earthLevel: { min: 0, max: 1, step: 0.01 },
   oceanSampleLevel: { min: 0, max: 1, step: 0.01 },
   oceanWaveSynthLevel: { min: 0, max: 1, step: 0.01 },
   oceanReverbSend: { min: 0, max: 1, step: 0.01 },
@@ -2988,6 +2996,8 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   granularLead2Send: { min: 0, max: 1, step: 0.01 },
   granularDrumSend: { min: 0, max: 1, step: 0.01 },
   granularWavesSend: { min: 0, max: 1, step: 0.01 },
+  granularWaterSend: { min: 0, max: 1, step: 0.01 },
+  granularInsectsSend: { min: 0, max: 1, step: 0.01 },
   // Per-voice shared quantization (all 4 voices)
   granularV1Slice: { min: 0, max: 15, step: 1 },
   granularV1Speed: { min: 0, max: 4, step: 0.05 },

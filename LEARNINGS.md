@@ -804,20 +804,31 @@ Any "override" field that temporarily takes control away from a UI slider MUST b
 
 ---
 
-## Earth Page: DualRangeContinuousHold Change
+## Earth Page: Unified Per-Event Min/Max for All Earth Engines
 
-### Problem
-Sample & Hold (S&H) mode on dual sliders only works natively for **Ocean** parameters. Ocean's C++ WASM code accepts min/max ranges and calls `rng_float(min, max)` per wave trigger, giving true per-event randomisation. Water and Insects engines have no min/max protocol — they accept single values only.
+### Problem (Historical)
+Sample & Hold (S&H) mode on dual sliders originally only worked natively for **Ocean** parameters. Ocean's C++ WASM code accepted min/max ranges and called `rng_range(min, max)` per wave trigger. Water and Insects engines accepted single values only, so the host had to collapse dual ranges to a midpoint ("DualRangeContinuousHold").
 
-### Solution — DualRangeContinuousHold
-Two different S&H strategies coexist:
+### Solution — All Engines Now Support Min/Max
+As of March 2026, all three Earth WASM engines accept min/max range pairs:
 
-| Engine | S&H Approach | Detail |
-|--------|-------------|--------|
-| **Ocean** | Engine-side S&H | WASM receives `foamMin`/`foamMax` etc., C++ samples a random value per wave event |
-| **Water / Insects / Volumes / Layers** | DualRangeContinuousHold | Value is set to `(lo + hi) / 2` — the engine receives a single fixed value at the midpoint of the range |
+| Engine | Params | Per-Event Randomisation |
+|--------|--------|------------------------|
+| **Ocean** | 5 min/max pairs (duration, interval, wave2Offset, foam, depth) | `rng_range(min, max)` per wave event |
+| **Water** | 7 min/max pairs (intensity, rate, distance, baseFreq, dropSize, hardness, glassThickness) | `rng_range(min, max)` per drop/scheduling event |
+| **Insects** | 7 min/max pairs (density, temperature, distance, proximity, antiphony, clickRate, motion) | `rng_range(min, max)` per voice update |
 
-When the user drags the range thumbs in DualRangeContinuousHold mode, the midpoint is recalculated and pushed to the engine immediately.
+When `min == max` (single slider mode), `rng_range` returns the single value — behavior is identical to the old scalar API.
+
+### Data Flow
+```
+UI sampleHold slider → dualSliderRanges (App.tsx)
+  → setDualRanges() → engine.dualRanges
+    → applyParams reads dualRanges['waterRate'] etc.
+      → postMessage { rateMin, rateMax } to worklet
+        → worklet calls water_set_params(rateMin, rateMax, ...)
+          → WASM stores ranges, uses rng_range(min, max) per event
+```
 
 ### Key Insight
-When an underlying DSP engine doesn't support min/max range parameters, the host uses DualRangeContinuousHold — the midpoint of the range is sent as a single value. This gives the user a convenient way to "park" a parameter at a specific point via the dual-range UI, even though no true per-event randomisation occurs. The distinction is gated by `OCEAN_SH_KEYS` — a `Set` of the four ocean param keys that have native WASM S&H support. All other params use DualRangeContinuousHold.
+All Earth engines now follow the same pattern as Ocean — the `OCEAN_SH_KEYS` gate concept is obsolete. The worklet handlers accept both old scalar fields (backward-compatible via `p.rateMin ?? p.rate ?? 0.5`) and new min/max fields.

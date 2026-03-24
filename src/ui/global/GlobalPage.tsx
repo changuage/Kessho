@@ -180,8 +180,10 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
                     <Slider label="Reverb" value={state.granularReverbSend} paramKey="granularReverbSend" onChange={onParamChange} {...sliderProps('granularReverbSend')} />
                   </div>
                   <div className="mixer-bus-group">
-                    <div className="mixer-bus-label">Waves</div>
-                    <Slider label="Level" value={state.oceanSampleLevel} paramKey="oceanSampleLevel" onChange={onParamChange} {...sliderProps('oceanSampleLevel')} />
+                    <div className="mixer-bus-label">Earth</div>
+                    <Slider label="Waves" value={state.oceanWaveSynthLevel} paramKey="oceanWaveSynthLevel" onChange={onParamChange} {...sliderProps('oceanWaveSynthLevel')} />
+                    <Slider label="Water" value={state.waterLevel} paramKey="waterLevel" onChange={onParamChange} {...sliderProps('waterLevel')} />
+                    <Slider label="Insects" value={state.insectsLevel} paramKey="insectsLevel" onChange={onParamChange} {...sliderProps('insectsLevel')} />
                   </div>
                   <div className="mixer-bus-group">
                     <div className="mixer-bus-label">Output</div>

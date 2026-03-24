@@ -27,9 +27,13 @@ float* water_get_output_ptr(void);        /* interleaved stereo: L0 R0 L1 R1 …
 void  water_process_block(int block_size);
 
 void  water_set_preset(int preset);       /* 0=tapDrips 1=stream 2=waterfall 3=rainWindow */
-void  water_set_params(float intensity, float rate, float distance,
-                       float base_freq, float drop_size, float hardness,
-                       float glass_thickness);
+void  water_set_params(float intensity_min, float intensity_max,
+                       float rate_min, float rate_max,
+                       float distance_min, float distance_max,
+                       float base_freq_min, float base_freq_max,
+                       float drop_size_min, float drop_size_max,
+                       float hardness_min, float hardness_max,
+                       float glass_thickness_min, float glass_thickness_max);
 void  water_set_layer_mix(float hard_drops, float water_drops, float turbulence,
                           float bubbling, float roar, float rivulets);
 void  water_set_layer_density(float hard_drops, float water_drops, float turbulence,
@@ -48,9 +52,13 @@ float* insects_get_output_ptr(void);
 void  insects_process_block(int block_size);
 
 void  insects_set_engine(int engine);     /* 0=cricket 1=treeCricket 2=katydid 3=cicada 4=grasshopper 5=moleCricket 6=flyBee */
-void  insects_set_params(float density, float temperature, float distance,
-                         float proximity, float antiphony, float click_rate,
-                         float motion);
+void  insects_set_params(float density_min, float density_max,
+                         float temperature_min, float temperature_max,
+                         float distance_min, float distance_max,
+                         float proximity_min, float proximity_max,
+                         float antiphony_min, float antiphony_max,
+                         float click_rate_min, float click_rate_max,
+                         float motion_min, float motion_max);
 void  insects_start(void);
 void  insects_stop(void);
 void  insects_set_seed(int seed);
@@ -65,9 +73,13 @@ float* insects2_get_output_ptr(void);
 void  insects2_process_block(int block_size);
 
 void  insects2_set_engine(int engine);
-void  insects2_set_params(float density, float temperature, float distance,
-                          float proximity, float antiphony, float click_rate,
-                          float motion);
+void  insects2_set_params(float density_min, float density_max,
+                          float temperature_min, float temperature_max,
+                          float distance_min, float distance_max,
+                          float proximity_min, float proximity_max,
+                          float antiphony_min, float antiphony_max,
+                          float click_rate_min, float click_rate_max,
+                          float motion_min, float motion_max);
 void  insects2_start(void);
 void  insects2_stop(void);
 void  insects2_set_seed(int seed);
