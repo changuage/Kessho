@@ -19,11 +19,19 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { DrumVoiceType } from '../../audio/drumSynth';
 import { DRUM_VOICES as VOICE_CONFIG, DRUM_VOICE_ORDER } from '../../audio/drumVoiceConfig';
 
+export interface SeqSimpleState {
+  active: boolean;
+  speed: number;
+  voices: Record<DrumVoiceType, VoiceState>;
+}
+
 interface SeqSimpleProps {
   triggerVoice: (voice: DrumVoiceType) => void;
   drumEnabled: boolean;
   masterEnabled?: boolean;
   onEnableDrums?: () => void;
+  initialState?: SeqSimpleState;
+  onStateChange?: (state: SeqSimpleState) => void;
 }
 
 interface VoiceState {
@@ -70,11 +78,17 @@ function exponentialRandom(mean: number): number {
   return Math.max(80, -mean * Math.log(u));
 }
 
-const SeqSimple: React.FC<SeqSimpleProps> = ({ triggerVoice, drumEnabled, masterEnabled, onEnableDrums }) => {
-  const [active, setActive] = useState(false);
-  const [speed, setSpeed] = useState(0.25); // default: slow
-  const [voices, setVoices] = useState<Record<DrumVoiceType, VoiceState>>(() => ({ ...DEFAULT_VOICE_STATES }));
+const SeqSimple: React.FC<SeqSimpleProps> = ({ triggerVoice, drumEnabled, masterEnabled, onEnableDrums, initialState, onStateChange }) => {
+  const [active, setActive] = useState(initialState?.active ?? false);
+  const [speed, setSpeed] = useState(initialState?.speed ?? 0.25);
+  const [voices, setVoices] = useState<Record<DrumVoiceType, VoiceState>>(() => initialState?.voices ? { ...initialState.voices } : { ...DEFAULT_VOICE_STATES });
   const [flashing, setFlashing] = useState<Record<string, boolean>>({});
+
+  const onStateChangeRef = useRef(onStateChange);
+  onStateChangeRef.current = onStateChange;
+  const emitStateChange = useCallback((nextActive: boolean, nextSpeed: number, nextVoices: Record<DrumVoiceType, VoiceState>) => {
+    onStateChangeRef.current?.({ active: nextActive, speed: nextSpeed, voices: nextVoices });
+  }, []);
 
   // Refs so per-voice timers always read latest state
   const voicesRef = useRef(voices);
@@ -107,19 +121,40 @@ const SeqSimple: React.FC<SeqSimpleProps> = ({ triggerVoice, drumEnabled, master
   // Per-voice timeout handles
   const timersRef = useRef<Record<string, ReturnType<typeof setTimeout> | null>>({});
 
-  const toggleVoice = useCallback((voice: DrumVoiceType) => {
-    setVoices(prev => ({
-      ...prev,
-      [voice]: { ...prev[voice], enabled: !prev[voice].enabled },
-    }));
-  }, []);
+  const toggleActive = useCallback(() => {
+    setActive(prev => {
+      const next = !prev;
+      emitStateChange(next, speedRef.current, voicesRef.current);
+      return next;
+    });
+  }, [emitStateChange]);
 
-  const setVoiceDensity = useCallback((voice: DrumVoiceType, density: number) => {
-    setVoices(prev => ({
-      ...prev,
-      [voice]: { ...prev[voice], density: Math.max(0, Math.min(1, density)) },
-    }));
-  }, []);
+  const handleSpeedChange = useCallback((nextSpeed: number) => {
+    setSpeed(nextSpeed);
+    emitStateChange(activeRef.current, nextSpeed, voicesRef.current);
+  }, [emitStateChange]);
+
+  const handleToggleVoice = useCallback((voice: DrumVoiceType) => {
+    setVoices(prev => {
+      const next = {
+        ...prev,
+        [voice]: { ...prev[voice], enabled: !prev[voice].enabled },
+      };
+      emitStateChange(activeRef.current, speedRef.current, next);
+      return next;
+    });
+  }, [emitStateChange]);
+
+  const handleVoiceDensityChange = useCallback((voice: DrumVoiceType, density: number) => {
+    setVoices(prev => {
+      const next = {
+        ...prev,
+        [voice]: { ...prev[voice], density: Math.max(0, Math.min(1, density)) },
+      };
+      emitStateChange(activeRef.current, speedRef.current, next);
+      return next;
+    });
+  }, [emitStateChange]);
 
   const flashVoice = useCallback((voice: string) => {
     setFlashing(prev => ({ ...prev, [voice]: true }));
@@ -206,7 +241,7 @@ const SeqSimple: React.FC<SeqSimpleProps> = ({ triggerVoice, drumEnabled, master
       <div className="seq-simple-top">
         <button
           className={`seq-simple-power${active ? ' on' : ''}`}
-          onClick={() => setActive(a => !a)}
+          onClick={toggleActive}
           title={active ? 'Turn off stochastic triggers' : 'Turn on stochastic triggers'}
         >
           {active ? '● On' : '○ Off'}
@@ -219,7 +254,7 @@ const SeqSimple: React.FC<SeqSimpleProps> = ({ triggerVoice, drumEnabled, master
             max={1}
             step={0.01}
             value={speed}
-            onChange={(e) => setSpeed(parseFloat(e.target.value))}
+            onChange={(e) => handleSpeedChange(parseFloat(e.target.value))}
             className="seq-simple-speed-slider"
           />
           <span className="seq-simple-speed-val">{avgDisplay}</span>
@@ -243,7 +278,7 @@ const SeqSimple: React.FC<SeqSimpleProps> = ({ triggerVoice, drumEnabled, master
               {/* Toggle + icon + name */}
               <button
                 className={`seq-simple-voice-btn${vs.enabled ? ' on' : ''}`}
-                onClick={() => toggleVoice(voice)}
+                onClick={() => handleToggleVoice(voice)}
                 style={vs.enabled ? { color: cfg.color, borderColor: cfg.color } : undefined}
               >
                 <span className="seq-simple-voice-icon">{cfg.icon}</span>
@@ -259,7 +294,7 @@ const SeqSimple: React.FC<SeqSimpleProps> = ({ triggerVoice, drumEnabled, master
                   step={0.01}
                   value={vs.density}
                   disabled={!vs.enabled}
-                  onChange={(e) => setVoiceDensity(voice, parseFloat(e.target.value))}
+                  onChange={(e) => handleVoiceDensityChange(voice, parseFloat(e.target.value))}
                   className="seq-simple-voice-slider"
                   style={{ accentColor: vs.enabled ? cfg.color : '#444' }}
                 />

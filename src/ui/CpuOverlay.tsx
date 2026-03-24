@@ -1,4 +1,4 @@
-/**
+﻿/**
  * CpuOverlay — tiny fixed dev overlay showing per-worklet CPU %.
  * Toggle via triple-tap on the top-left corner or programmatically.
  */
@@ -6,31 +6,35 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { audioEngine } from '../audio/engine';
 
+type PerfMetrics = {
+  avgPercent: number;
+  peakPercent: number;
+  missPercent: number | null;
+};
+
 const WORKLET_LABELS: Record<string, string> = {
-  'looper-fx': 'Granular JS',
-  'looper-fx-wasm': 'Granular WASM',
-  'reverb': 'Reverb',
-  'ocean': 'Wave Synth',
+  // WASM engines
+  'reverb-wasm': 'Reverb',
+  'lead-fm-wasm': 'Lead FM',
+  'pad-wasm': 'Pad',
+  'drum-wasm': 'Drums',
+  'granular-fx-wasm': 'Granular',
+  'spectral-freeze-wasm': 'Freeze',
+  // Soundscapes sub-engines
   'water': 'Water',
   'insects': 'Insects',
-  'lead-fm': 'Lead FM',
-  'pad': 'Pad',
-  'drum-synth': 'Drums',
+  'ocean': 'Ocean',
 };
 
-/** Node-count unit labels for estimated synths */
-const NODE_COUNT_UNITS: Record<string, string> = {
-  'lead-fm': 'notes',
-  'pad': 'voices',
-  'drum-synth': 'voices',
-};
-
-/** Preferred display order — measured worklets first, then estimated synths */
-const MEASURED_ORDER = ['looper-fx', 'looper-fx-wasm', 'reverb', 'ocean', 'water', 'insects'];
-const ESTIMATED_ORDER = ['lead-fm', 'pad', 'drum-synth'];
-
-/** Keys whose CPU% is estimated from node counts (shown with ~ prefix). */
-const ESTIMATED_KEYS = new Set(ESTIMATED_ORDER);
+/** Preferred display order */
+const DISPLAY_ORDER = [
+  // FX group
+  'reverb-wasm', 'spectral-freeze-wasm', 'granular-fx-wasm',
+  // Instrument group
+  'lead-fm-wasm', 'pad-wasm', 'drum-wasm',
+  // Soundscapes group
+  'insects', 'water', 'ocean',
+];
 
 function cpuColor(pct: number): string {
   if (pct < 10) return '#6f6'; // green
@@ -41,16 +45,19 @@ function cpuColor(pct: number): string {
 
 export const CpuOverlay: React.FC = () => {
   const [visible, setVisible] = useState(false);
-  const [perfData, setPerfData] = useState<Record<string, number>>({});
-  const [nodeCounts, setNodeCounts] = useState<Record<string, number>>({});
+  const [displayPerfData, setDisplayPerfData] = useState<Record<string, PerfMetrics>>({});
   const tapRef = useRef<number[]>([]);
+  const latestPerfRef = useRef<Record<string, PerfMetrics>>({});
 
   // Toggle visibility — also enables/disables perf monitoring
   const toggle = useCallback(() => {
     setVisible(prev => {
       const next = !prev;
       audioEngine.setPerfMonitorEnabled(next);
-      if (!next) setPerfData({});
+      if (!next) {
+        latestPerfRef.current = {};
+        setDisplayPerfData({});
+      }
       return next;
     });
   }, []);
@@ -68,14 +75,28 @@ export const CpuOverlay: React.FC = () => {
     }
   }, [toggle]);
 
-  // Subscribe to perf updates
+  // Collect latest perf data from worklets and publish to state once per second.
   useEffect(() => {
     if (!visible) return;
     audioEngine.setPerfUpdateCallback((data) => {
-      setPerfData(data);
-      setNodeCounts(audioEngine.getPerfNodeCounts());
+      latestPerfRef.current = data;
     });
+    const timer = window.setInterval(() => {
+      const snap = latestPerfRef.current;
+      if (Object.keys(snap).length === 0) return;
+      // Ensure every DISPLAY_ORDER key is present (default 0)
+      const out: Record<string, PerfMetrics> = {};
+      for (const key of DISPLAY_ORDER) {
+        out[key] = snap[key] ?? { avgPercent: 0, peakPercent: 0, missPercent: 0 };
+      }
+      // Include any extra keys not in DISPLAY_ORDER
+      for (const key of Object.keys(snap)) {
+        if (!(key in out)) out[key] = snap[key];
+      }
+      setDisplayPerfData(out);
+    }, 2000);
     return () => {
+      clearInterval(timer);
       audioEngine.setPerfUpdateCallback(null);
     };
   }, [visible]);
@@ -92,33 +113,30 @@ export const CpuOverlay: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKey);
   }, [toggle]);
 
-  const total = Object.values(perfData).reduce((a, b) => a + b, 0);
-  const totalRounded = Math.round(total * 10) / 10;
-  const hasData = Object.keys(perfData).length > 0;
+  const headerPeak = Object.values(displayPerfData).reduce((maxPeak, entry) => Math.max(maxPeak, entry.peakPercent), 0);
+  const hasData = Object.keys(displayPerfData).length > 0;
 
-  // Split into measured (worklets) and estimated (native-node synths)
-  const measuredTotal = MEASURED_ORDER.reduce((s, k) => s + (perfData[k] ?? 0), 0);
-  const estimatedTotal = ESTIMATED_ORDER.reduce((s, k) => s + (perfData[k] ?? 0), 0);
-  // Any unknown keys not in either list
-  const extraKeys = Object.keys(perfData).filter(k => !ESTIMATED_KEYS.has(k) && !MEASURED_ORDER.includes(k));
+  // Any unknown keys not in display order
+  const extraKeys = Object.keys(displayPerfData).filter(k => !DISPLAY_ORDER.includes(k));
+
+  const formatPercent = (value: number | null) => value === null ? 'n/a' : `${value.toFixed(1)}%`;
 
   const renderRow = (key: string) => {
-    const pct = perfData[key];
-    if (pct === undefined) return null;
-    const isEstimated = ESTIMATED_KEYS.has(key);
-    const count = nodeCounts[key];
-    const unit = NODE_COUNT_UNITS[key];
+    const metrics = displayPerfData[key] ?? { avgPercent: 0, peakPercent: 0, missPercent: 0 };
     return (
       <div key={key} style={styles.row}>
         <span style={styles.label}>{WORKLET_LABELS[key] || key}</span>
-        {isEstimated && count !== undefined && (
-          <span style={styles.count}>{count}{unit ? ` ${unit}` : ''}</span>
-        )}
-        <span style={{ ...styles.value, color: cpuColor(pct) }}>
-          {isEstimated ? '~' : ''}{pct}%
+        <span style={{ ...styles.value, color: cpuColor(metrics.avgPercent) }}>
+          {formatPercent(metrics.avgPercent)}
+        </span>
+        <span style={{ ...styles.value, color: cpuColor(metrics.peakPercent) }}>
+          {formatPercent(metrics.peakPercent)}
+        </span>
+        <span style={{ ...styles.missValue, color: metrics.missPercent === null ? '#777' : cpuColor(metrics.missPercent) }}>
+          {formatPercent(metrics.missPercent)}
         </span>
         <div style={styles.barBg}>
-          <div style={{ ...styles.barFill, width: `${Math.min(100, pct)}%`, background: cpuColor(pct) }} />
+          <div style={{ ...styles.barFill, width: `${Math.min(100, metrics.peakPercent)}%`, background: cpuColor(metrics.peakPercent) }} />
         </div>
       </div>
     );
@@ -142,31 +160,20 @@ export const CpuOverlay: React.FC = () => {
       {visible && (
         <div style={styles.container}>
           <div style={styles.header}>
-            CPU
-            <span style={{ color: cpuColor(totalRounded), marginLeft: 6 }}>
-              {totalRounded}%
-            </span>
+            <span>CPU</span>
+            <span style={{ ...styles.headerMetric, color: cpuColor(headerPeak) }}>peak {headerPeak.toFixed(1)}%</span>
+          </div>
+          <div style={styles.columns}>
+            <span style={styles.label}>Engine</span>
+            <span style={styles.columnLabel}>Avg</span>
+            <span style={styles.columnLabel}>Peak</span>
+            <span style={styles.missColumnLabel}>Miss</span>
+            <span style={styles.barColumnLabel}>Bar</span>
           </div>
           {hasData ? (
             <>
-              {/* ─── Measured worklet CPU ─── */}
-              <div style={styles.sectionHeader}>
-                Worklets
-                <span style={{ color: '#777', marginLeft: 4 }}>
-                  {Math.round(measuredTotal * 10) / 10}%
-                </span>
-              </div>
-              {MEASURED_ORDER.map(renderRow)}
+              {DISPLAY_ORDER.map(renderRow)}
               {extraKeys.map(renderRow)}
-
-              {/* ─── Estimated synth CPU ─── */}
-              <div style={{ ...styles.sectionHeader, marginTop: 4 }}>
-                Synths
-                <span style={{ color: '#777', marginLeft: 4 }}>
-                  ~{Math.round(estimatedTotal * 10) / 10}%
-                </span>
-              </div>
-              {ESTIMATED_ORDER.map(renderRow)}
             </>
           ) : (
             <div style={{ color: '#666', fontSize: 10, marginTop: 2 }}>waiting for data…</div>
@@ -198,8 +205,21 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 'bold',
     fontSize: 12,
     marginBottom: 4,
+    display: 'flex',
+    justifyContent: 'space-between',
     borderBottom: '1px solid #444',
     paddingBottom: 3,
+  },
+  headerMetric: {
+    fontWeight: 'normal',
+  },
+  columns: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    color: '#777',
+    fontSize: 10,
+    marginBottom: 2,
   },
   row: {
     display: 'flex',
@@ -208,30 +228,33 @@ const styles: Record<string, React.CSSProperties> = {
     height: 16,
   },
   label: {
-    width: 72,
+    width: 78,
     color: '#999',
     flexShrink: 0,
   },
-  count: {
-    color: '#666',
-    fontSize: 9,
-    flexShrink: 0,
-    minWidth: 32,
-  },
   value: {
-    width: 38,
+    width: 46,
     textAlign: 'right' as const,
     flexShrink: 0,
   },
-  sectionHeader: {
-    fontSize: 9,
-    color: '#555',
-    textTransform: 'uppercase' as const,
-    letterSpacing: 1,
-    marginTop: 2,
-    marginBottom: 1,
-    borderTop: '1px solid #333',
-    paddingTop: 2,
+  missValue: {
+    width: 44,
+    textAlign: 'right' as const,
+    flexShrink: 0,
+  },
+  columnLabel: {
+    width: 46,
+    textAlign: 'right' as const,
+    flexShrink: 0,
+  },
+  missColumnLabel: {
+    width: 44,
+    textAlign: 'right' as const,
+    flexShrink: 0,
+  },
+  barColumnLabel: {
+    flex: 1,
+    textAlign: 'left' as const,
   },
   barBg: {
     flex: 1,

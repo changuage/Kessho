@@ -415,6 +415,7 @@
 .synth-root .seq-evolve-panel.open { display: block; }
 .synth-root .seq-evolve-panel label { color: #aaa; display: flex; align-items: center; gap: 3px; font-size: 0.65rem; }
 .synth-root .seq-evolve-panel input[type=range] { width: 50px; height: 3px; accent-color: #a855f7; }
+.synth-root .seq-evolve-zone-wrap input[type=range] { flex: 1; min-width: 60px; width: auto; }
 .synth-root .seq-evolve-panel input[type=number] { background: var(--bg-input); color: #fff; border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 2px 4px; font-size: 0.6rem; width: 36px; transition: border-color 0.15s; }
 .synth-root .seq-evolve-panel input[type=number]:focus { border-color: var(--accent-evolve); outline: none; }
 .synth-root .seq-evolve-panel select {
@@ -426,6 +427,57 @@
   background: rgba(0,0,0,0.25); color: #ccc; cursor: pointer; font-size: 0.62rem;
 }
 .synth-root .seq-evolve-panel .seq-evolve-reset:hover { background: rgba(0,0,0,0.4); }
+.synth-root .seq-evolve-panel .seq-evolve-dice {
+  padding: 3px 6px; border-radius: var(--radius-md); border: 1px solid #a8860080;
+  background: rgba(168,134,0,0.15); color: #ffd700; cursor: pointer; font-size: 0.72rem; line-height: 1;
+}
+.synth-root .seq-evolve-panel .seq-evolve-dice:hover { background: rgba(168,134,0,0.35); }
+.synth-root .seq-evolve-panel .seq-dice-group { display: inline-flex; align-items: center; gap: 3px; }
+.synth-root .seq-evolve-panel .seq-dice-slider { width: 50px; height: 12px; accent-color: #ffd700; cursor: pointer; }
+
+/* ── Evolution zone slider ── */
+.synth-root .seq-evolve-zone-wrap {
+  position: relative; display: flex; flex-direction: column; flex: 1; min-width: 120px; gap: 1px;
+}
+.synth-root .seq-evolve-zone-wrap label { flex: 1; }
+.synth-root .seq-evolve-methods {
+  display: flex; flex-wrap: wrap; gap: 1px 5px; padding: 1px 0;
+}
+.synth-root .seq-evolve-method {
+  font-size: 0.45rem; color: #444; letter-spacing: 0.2px; white-space: nowrap;
+  transition: color 0.2s;
+}
+.synth-root .seq-evolve-method.on { color: #22d3ee; }
+.synth-root .seq-evolve-method.on-t { color: #f59e0b; }
+
+/* ── Advanced panel toggle ── */
+.synth-root .seq-evolve-advanced-toggle {
+  background: none; border: none; color: #888; cursor: pointer;
+  font-size: 0.6rem; padding: 2px 0; margin-top: 2px; letter-spacing: 0.2px;
+  transition: color 0.15s;
+}
+.synth-root .seq-evolve-advanced-toggle:hover { color: #bbb; }
+.synth-root .seq-evolve-advanced-body {
+  display: none; padding: 4px 0;
+}
+.synth-root .seq-evolve-advanced-body.open { display: block; }
+.synth-root .seq-evolve-advanced-row {
+  display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 4px; font-size: 0.6rem;
+}
+.synth-root .seq-evolve-advanced-row label { color: #888; display: flex; align-items: center; gap: 3px; font-size: 0.6rem; }
+.synth-root .seq-evolve-mode-btn {
+  padding: 2px 7px; font-size: 0.55rem; border: 1px solid #555; border-radius: var(--radius-sm);
+  background: var(--bg-control); color: #888; cursor: pointer; transition: all 0.15s;
+}
+.synth-root .seq-evolve-mode-btn.active { background: #a855f7; color: #000; border-color: #a855f7; }
+.synth-root .seq-evolve-mode-group { display: inline-flex; gap: 2px; }
+
+/* ── Sub-lane selector ── */
+.synth-root .seq-evolve-sublanes {
+  display: flex; gap: 6px; flex-wrap: wrap; margin-top: 2px;
+}
+.synth-root .seq-evolve-sublanes label { font-size: 0.55rem; color: #888; cursor: pointer; display: flex; align-items: center; gap: 2px; }
+.synth-root .seq-evolve-sublanes input[type=checkbox] { accent-color: #a855f7; margin-right: 1px; }
 .synth-root .seq-evolve-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 3px; }
 .synth-root .seq-evolve-checks { display: flex; gap: 6px; flex-wrap: wrap; }
 .synth-root .seq-evolve-checks label { font-size: 0.55rem; color: #888; cursor: pointer; }

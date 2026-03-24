@@ -3,7 +3,7 @@
  *
  * No audio code — all synthesis runs in the main engine (engine.ts).
  * State flows through SliderState; props follow the same pattern as
- * SynthPage / DrumPage / LooperPage.
+ * SynthPage / DrumPage / GranularPage.
  *
  * Layout: Left = Sound-engine controls, Right = Mixer
  */
@@ -51,7 +51,7 @@ const LAYER_STATE_KEY: Record<LayerKey, keyof SliderState> = {
 const EARTH_DUAL_KEYS: readonly (keyof SliderState)[] = [
   'waterMorph',
   'waterIntensity', 'waterRate', 'waterDistance', 'waterDropSize',
-  'waterHardness', 'waterGlassThickness', 'waterBaseFreq', 'waterSpace',
+  'waterHardness', 'waterGlassThickness', 'waterBaseFreq', 'waterReverbSend',
   'oceanWaveSynthLevel', 'oceanDuration', 'oceanInterval', 'oceanFoam', 'oceanDepth',
   'insectsDensity', 'insectsTemperature', 'insectsDistance', 'insectsProximity',
   'insectsAntiphony', 'insectsClickRate', 'insectsMotion',
@@ -191,7 +191,7 @@ export default function EarthPage({
                 {ds('waterBaseFreq', 'Base Freq', 'rgba(74,158,255,0.5)', {
                   format: v => `${Math.round(v)} Hz`,
                 })}
-                {ds('waterSpace', 'Reverb Send', 'rgba(139,92,246,0.5)')}
+                {ds('waterReverbSend', 'Reverb Send', 'rgba(139,92,246,0.5)')}
               </div>
             )}
           </div>
@@ -504,7 +504,7 @@ export default function EarthPage({
 
               {/* Reverb Sends */}
               {ds('oceanReverbSend', 'Waves Reverb', 'rgba(139,92,246,0.5)')}
-              {ds('waterSpace', 'Water Reverb', 'rgba(139,92,246,0.5)')}
+              {ds('waterReverbSend', 'Water Reverb', 'rgba(139,92,246,0.5)')}
               {ds('insectsReverbSend', 'Insect Reverb', 'rgba(139,92,246,0.5)')}
             </div>
           </div>

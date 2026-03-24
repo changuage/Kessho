@@ -4,7 +4,7 @@
    Matches Kessho Synth/Drum page aesthetics
    ══════════════════════════════════════════════════════════════════ */
 
-/* ══ Design Tokens (matched to Kessho Synth/Drum/Looper) ══ */
+/* ══ Design Tokens (matched to Kessho Synth/Drum/Granular) ══ */
 .earth-root {
   --bg-base: #1a1a2e;
   --bg-input: rgba(0, 0, 0, 0.3);

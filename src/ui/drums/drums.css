@@ -467,6 +467,51 @@
   background: rgba(0,0,0,0.25); color: #ccc; cursor: pointer; font-size: 0.62rem;
 }
 .drum-root .seq-evolve-panel .seq-evolve-reset:hover { background: rgba(0,0,0,0.4); }
+.drum-root .seq-evolve-panel .seq-evolve-dice {
+  padding: 3px 6px; border-radius: var(--radius-md); border: 1px solid #a8860080;
+  background: rgba(168,134,0,0.15); color: #ffd700; cursor: pointer; font-size: 0.72rem; line-height: 1;
+}
+.drum-root .seq-evolve-panel .seq-evolve-dice:hover { background: rgba(168,134,0,0.35); }
+.drum-root .seq-evolve-panel .seq-dice-group { display: inline-flex; align-items: center; gap: 3px; }
+.drum-root .seq-evolve-panel .seq-dice-slider { width: 50px; height: 12px; accent-color: #ffd700; cursor: pointer; }
+
+/* ── Evolution zone slider ── */
+.drum-root .seq-evolve-zone-wrap {
+  position: relative; display: flex; flex-direction: column; flex: 1; min-width: 120px; gap: 1px;
+}
+.drum-root .seq-evolve-zone-wrap input[type=range] { flex: 1; min-width: 60px; width: auto; }
+.drum-root .seq-evolve-zone-wrap label { flex: 1; }
+.drum-root .seq-evolve-methods {
+  display: flex; flex-wrap: wrap; gap: 1px 5px; padding: 1px 0;
+}
+.drum-root .seq-evolve-method {
+  font-size: 0.45rem; color: #444; letter-spacing: 0.2px; white-space: nowrap;
+  transition: color 0.2s;
+}
+.drum-root .seq-evolve-method.on { color: #22d3ee; }
+.drum-root .seq-evolve-method.on-t { color: #f59e0b; }
+
+/* ── Advanced panel toggle ── */
+.drum-root .seq-evolve-advanced-toggle {
+  background: none; border: none; color: #888; cursor: pointer;
+  font-size: 0.6rem; padding: 2px 0; margin-top: 2px; letter-spacing: 0.2px;
+  transition: color 0.15s;
+}
+.drum-root .seq-evolve-advanced-toggle:hover { color: #bbb; }
+.drum-root .seq-evolve-advanced-body {
+  display: none; padding: 4px 0;
+}
+.drum-root .seq-evolve-advanced-body.open { display: block; }
+.drum-root .seq-evolve-advanced-row {
+  display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 4px; font-size: 0.6rem;
+}
+.drum-root .seq-evolve-advanced-row label { color: #888; display: flex; align-items: center; gap: 3px; font-size: 0.6rem; }
+.drum-root .seq-evolve-mode-btn {
+  padding: 2px 7px; font-size: 0.55rem; border: 1px solid #555; border-radius: var(--radius-sm);
+  background: var(--bg-control); color: #888; cursor: pointer; transition: all 0.15s;
+}
+.drum-root .seq-evolve-mode-btn.active { background: #a855f7; color: #000; border-color: #a855f7; }
+.drum-root .seq-evolve-mode-group { display: inline-flex; gap: 2px; }
 .drum-root .seq-lane-editor-wrap { margin-top: 8px; }
 
 /* ── Rotation control ── */

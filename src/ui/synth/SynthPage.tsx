@@ -30,6 +30,7 @@ function scaleDegreeToSemitone(degree: number, scale: number[]): number {
 }
 import { getPadPresetNames, PAD_PRESETS } from '../../audio/padPresets';
 import FilterLfoViz from './FilterLfoViz';
+import WaveFoldViz from './WaveFoldViz';
 import LeadAdsrViz from './LeadAdsrViz';
 import { LFO_PRESETS, LFO_PRESET_CATEGORIES } from './lfoPresets';
 
@@ -87,6 +88,10 @@ export interface SynthPageProps {
   evolveFlashing?: boolean[];
   /** Evolve configs change callback */
   onEvolveConfigsChange?: (configs: EvolveConfig[]) => void;
+  /** Initial evolve configs to restore across tab switches / preset loads */
+  initialEvolveConfigs?: EvolveConfig[];
+  /** Preset version counter for triggering UI reset on preset load */
+  presetVersion?: number;
   /** Step overrides change callback (sends MIDI-converted pitch for engine) */
   onStepOverridesChange?: (overrides: StepOverrides) => void;
   /** Raw step overrides change callback (unconverted pitch offsets for persistence/round-trip) */
@@ -103,6 +108,10 @@ export interface SynthPageProps {
   onViewModeChange?: (mode: 'simple' | 'detail' | 'overview') => void;
   /** Reset evolve home */
   resetEvolveHome?: (laneIdx: number) => void;
+  /** Dice: regenerate lane with random values */
+  diceLane?: (laneIdx: number, intensity: number) => void;
+  /** Evolved step overrides pushed from audio engine (for visual sync) */
+  evolvedOverrides?: { laneIndex: number; version: number; data: Partial<StepOverrides> };
   /** Called when per-lane clock divisions change */
   onClockDivsChange?: (divs: ClockDivision[]) => void;
   /** Called when per-lane swing amounts change */
@@ -142,13 +151,20 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     initialViewMode,
     onViewModeChange,
     resetEvolveHome,
+    diceLane,
     onClockDivsChange,
     onSwingsChange,
     initialPitchSettings,
     onPitchSettingsChange,
   } = props;
 
+  const evolvedOverrides = props.evolvedOverrides;
+  const initialEvolveConfigs = props.initialEvolveConfigs;
+  const presetVersion = props.presetVersion;
+
   const [editingSection, setEditingSection] = useState<string | null>(null);
+  const [diceIntensity, setDiceIntensity] = useState(0.5);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [padTier, setPadTier] = useState<0 | 1 | 2>(0); // 0=closed, 1=primary, 2=advanced
   const [pad2Tier, setPad2Tier] = useState<0 | 1 | 2>(0); // Pad 2: 0=closed by default
   const [dragPopup, setDragPopup] = useState<{ x: number; y: number; text: string } | null>(null);
@@ -174,6 +190,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     initialStepOverrides,
     initialSubLaneStates,
     initialPitchSettings,
+    initialEvolveConfigs,
+    resetKey: presetVersion,
   });
 
   // Notify parent when viewMode changes
@@ -190,22 +208,54 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     }
   }, [seq.evolveConfigs, onEvolveConfigsChange]);
 
+  // Merge evolved overrides from audio engine into visualizer state
+  const evolvedVersionRef = useRef(-1);
+  useEffect(() => {
+    if (!evolvedOverrides || evolvedOverrides.version === evolvedVersionRef.current) return;
+    evolvedVersionRef.current = evolvedOverrides.version;
+    const { laneIndex, data } = evolvedOverrides;
+    seq.setStepOverrides(prev => {
+      const next = { ...prev };
+      if (data.triggerToggles?.[laneIndex] != null) {
+        const arr = [...prev.triggerToggles];
+        arr[laneIndex] = new Map(data.triggerToggles[laneIndex]);
+        next.triggerToggles = arr;
+      }
+      const keys = ['expression', 'morph', 'distance', 'probability', 'ratchet', 'pitch', 'slice', 'reverse'] as const;
+      for (const key of keys) {
+        if (data[key] && data[key]![laneIndex] != null) {
+          const arr = [...prev[key]];
+          arr[laneIndex] = data[key]![laneIndex];
+          next[key] = arr;
+        }
+      }
+      return next;
+    });
+  }, [evolvedOverrides, seq]);
+
   // Sync step overrides to audio engine
   // Track both stepOverrides AND pitchSettings so conversion re-runs on either change
   const stepOverridesRef = useRef(seq.stepOverrides);
   const pitchSettingsRef = useRef(seq.pitchSettings);
+  const pitchSubLaneStatesRef = useRef(seq.subLaneStates);
   useEffect(() => {
     const overridesChanged = stepOverridesRef.current !== seq.stepOverrides;
     const settingsChanged = pitchSettingsRef.current !== seq.pitchSettings;
-    if (overridesChanged || settingsChanged) {
+    const subLaneStatesChanged = pitchSubLaneStatesRef.current !== seq.subLaneStates;
+    if (overridesChanged || settingsChanged || subLaneStatesChanged) {
       stepOverridesRef.current = seq.stepOverrides;
       pitchSettingsRef.current = seq.pitchSettings;
+      pitchSubLaneStatesRef.current = seq.subLaneStates;
       // Convert pitch offsets to absolute MIDI notes before sending to engine
       // (engine doesn't know pitch mode/root/scale — we convert here)
       const convertedPitch = seq.stepOverrides.pitch.map((offsets, laneIdx) => {
         if (!offsets) return null;
+        // When pitch sub-lane is disabled, return null so engine uses noteMin/noteMax range
+        if (!seq.subLaneStates[laneIdx]?.pitch?.enabled) return null;
         const ps = seq.pitchSettings[laneIdx];
         if (!ps) return offsets;
+        // noteRange mode: engine handles note selection via noteMin/noteMax
+        if (ps.mode === 'noteRange') return null;
         if (ps.mode === 'notes') {
           // Scale degree → MIDI note number
           const scaleIntervals = SCALES[ps.scale] || [0, 2, 4, 5, 7, 9, 11];
@@ -224,7 +274,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
         pitch: convertedPitch,  // Send MIDI notes, not raw offsets
       });
     }
-  }, [seq.stepOverrides, seq.pitchSettings, onStepOverridesChange, onRawStepOverridesChange]);
+  }, [seq.stepOverrides, seq.pitchSettings, seq.subLaneStates, onStepOverridesChange, onRawStepOverridesChange]);
 
   // Persist sub-lane states (enabled/steps/direction) across tab switches
   const subLaneStatesRef = useRef(seq.subLaneStates);
@@ -462,6 +512,24 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 <Slider label="Drive" value={state.hardness} paramKey="hardness" onChange={onParamChange} {...sliderProps('hardness')} />
                 <Slider label="Osc Mix" value={state.padOscMix ?? 0.5} paramKey="padOscMix" onChange={onParamChange} {...sliderProps('padOscMix')} />
               </div>
+
+              {/* Wave Fold — viz + slider + mode on one line */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+                <WaveFoldViz foldAmount={state.padFoldAmount ?? 0} foldMode={state.padFoldMode ?? 0} oscAWave={state.padOscAWave ?? 'sine'} oscBWave={state.padOscBWave ?? 'sine'} oscALevel={state.padOscALevel ?? 1} oscBLevel={state.padOscBLevel ?? 1} oscMix={state.padOscMix ?? 0.5} />
+                <div style={{ flex: 1 }}>
+                  <Slider label="Fold" value={state.padFoldAmount ?? 0} paramKey="padFoldAmount" onChange={onParamChange} {...sliderProps('padFoldAmount')} />
+                </div>
+                <Select
+                  label=""
+                  value={state.padFoldMode ?? 0}
+                  options={[
+                    { value: 0, label: 'Buchla' },
+                    { value: 1, label: 'Sine' },
+                    { value: 2, label: 'Serge' },
+                  ]}
+                  onChange={(v: number) => onSelectChange('padFoldMode' as keyof SliderState, v)}
+                />
+              </div>
             </div>
 
             {/* ══ TIER 2 — Primary controls ══ */}
@@ -543,6 +611,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                         { value: 'amplitude', label: 'Amp' },
                         { value: 'pitch', label: 'Pitch' },
                         { value: 'oscBLevel', label: 'Osc B' },
+                        { value: 'foldAmount', label: 'Fold' },
                       ]}
                       onChange={(v: string) => onSelectChange('padLfo1Dest' as keyof SliderState, v)}
                     />
@@ -792,6 +861,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                           { value: 'filterCutoff', label: 'Filter Cutoff' },
                           { value: 'pitch', label: 'Pitch' },
                           { value: 'oscBLevel', label: 'Osc B Level' },
+                          { value: 'foldAmount', label: 'Fold' },
                         ]}
                         onChange={(v: string) => onSelectChange('padModEnvDest' as keyof SliderState, v)}
                       />
@@ -1013,6 +1083,24 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 <Slider label="Osc Mix" value={state.pad2OscMix ?? 0.5} paramKey="pad2OscMix" onChange={onParamChange} {...sliderProps('pad2OscMix')} />
               </div>
 
+              {/* Wave Fold — viz + slider + mode on one line */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+                <WaveFoldViz foldAmount={state.pad2FoldAmount ?? 0} foldMode={state.pad2FoldMode ?? 0} oscAWave={state.pad2OscAWave ?? 'sine'} oscBWave={state.pad2OscBWave ?? 'sine'} oscALevel={state.pad2OscALevel ?? 1} oscBLevel={state.pad2OscBLevel ?? 1} oscMix={state.pad2OscMix ?? 0.5} />
+                <div style={{ flex: 1 }}>
+                  <Slider label="Fold" value={state.pad2FoldAmount ?? 0} paramKey="pad2FoldAmount" onChange={onParamChange} {...sliderProps('pad2FoldAmount')} />
+                </div>
+                <Select
+                  label=""
+                  value={state.pad2FoldMode ?? 0}
+                  options={[
+                    { value: 0, label: 'Buchla' },
+                    { value: 1, label: 'Sine' },
+                    { value: 2, label: 'Serge' },
+                  ]}
+                  onChange={(v: number) => onSelectChange('pad2FoldMode' as keyof SliderState, v)}
+                />
+              </div>
+
               {/* Voice assignment — which of the 6 voices belong to Pad 2 */}
               <div className="sc-advanced-section" style={{ marginTop: '4px' }}>
                 <div className="sc-section-label" style={{ fontSize: '0.65rem' }}>Voice Assignment</div>
@@ -1124,6 +1212,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                         { value: 'amplitude', label: 'Amp' },
                         { value: 'pitch', label: 'Pitch' },
                         { value: 'oscBLevel', label: 'Osc B' },
+                        { value: 'foldAmount', label: 'Fold' },
                       ]}
                       onChange={(v: string) => onSelectChange('pad2Lfo1Dest' as keyof SliderState, v)}
                     />
@@ -1368,6 +1457,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                           { value: 'filterCutoff', label: 'Filter Cutoff' },
                           { value: 'pitch', label: 'Pitch' },
                           { value: 'oscBLevel', label: 'Osc B Level' },
+                          { value: 'foldAmount', label: 'Fold' },
                         ]}
                         onChange={(v: string) => onSelectChange('pad2ModEnvDest' as keyof SliderState, v)}
                       />
@@ -1690,11 +1780,11 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
               {state.synthEuclideanMasterEnabled ? '\u25A0' : '\u25B6'}
             </button>
             <DragNumber
-              value={state.drumEuclidBaseBPM as number}
+              value={state.synthEuclidBaseBPM as number}
               min={40}
               max={240}
               label="BPM"
-              onChange={(v) => onParamChange('drumEuclidBaseBPM' as keyof SliderState, v)}
+              onChange={(v) => onParamChange('synthEuclidBaseBPM' as keyof SliderState, v)}
             />
             <div className="seq-view-toggle">
               <button
@@ -1734,7 +1824,17 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 </div>
                 <Slider label="Chord Rate" value={state.chordRate} paramKey="chordRate" unit="s" onChange={onParamChange} {...sliderProps('chordRate')} />
                 <Slider label="Voicing Spread" value={state.voicingSpread} paramKey="voicingSpread" onChange={onParamChange} {...sliderProps('voicingSpread')} />
-                <Slider label="Wave Spread" value={state.waveSpread} paramKey="waveSpread" unit="s" onChange={onParamChange} {...sliderProps('waveSpread')} />
+                <Slider label="Wave Spread" value={state.waveSpread} paramKey="waveSpread" onChange={onParamChange} {...sliderProps('waveSpread')} />
+                <div style={{ position: 'relative', height: '14px', marginTop: '-4px', marginBottom: '4px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.5rem', color: '#666', padding: '0 2px' }}>
+                    <span>0</span>
+                    <span style={{ position: 'absolute', left: '6.25%', transform: 'translateX(-50%)' }}>1/16</span>
+                    <span style={{ position: 'absolute', left: '12.5%', transform: 'translateX(-50%)' }}>⅛</span>
+                    <span style={{ position: 'absolute', left: '25%', transform: 'translateX(-50%)' }}>¼</span>
+                    <span style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)' }}>½</span>
+                    <span style={{ position: 'absolute', right: 0 }}>1</span>
+                  </div>
+                </div>
                 <Slider label="Detune" value={state.detune} paramKey="detune" unit={'\u00A2'} onChange={onParamChange} {...sliderProps('detune')} />
 
                 {/* Voice Mask */}
@@ -1930,52 +2030,142 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                       }}
                     />
                     <span className="seq-drag-num-label">bars</span>
-                    <label>
-                      Intensity
-                      <input
-                        type="range" min={0} max={100} step={5}
-                        value={Math.round((seq.evolveConfigs[seq.activeTab]?.intensity ?? 0.25) * 100)}
-                        onChange={(e) => {
-                          const intensity = parseInt(e.target.value, 10) / 100;
-                          seq.setEvolveConfigs(prev => prev.map((cfg, idx) => {
-                            if (idx !== seq.activeTab) return cfg;
-                            const pct = intensity * 100;
-                            const methods = {
-                              rotateDrift: true,
-                              velocityBreath: true,
-                              swingDrift: true,
-                              probDrift: pct > 30,
-                              morphDrift: pct > 30,
-                              ghostNotes: pct > 60,
-                              ratchetSpray: pct > 60,
-                              hitDrift: pct > 80,
-                              pitchWalk: pct > 80,
-                            };
-                            return { ...cfg, intensity, methods };
-                          }));
-                        }}
-                      />
-                      <span>{Math.round((seq.evolveConfigs[seq.activeTab]?.intensity ?? 0.25) * 100)}%</span>
-                    </label>
-                    <button className="seq-evolve-reset" onClick={() => resetEvolveHome?.(seq.activeTab)}>Reset</button>
-                  </div>
-                  <div className="seq-evolve-checks">
-                    {Object.keys(seq.evolveConfigs[seq.activeTab]?.methods ?? {}).map((method) => (
-                      <label key={method}>
+                    <div className="seq-evolve-zone-wrap">
+                      <label>
+                        Evolution
                         <input
-                          type="checkbox"
-                          checked={!!seq.evolveConfigs[seq.activeTab]?.methods[method]}
-                          onChange={() => {
-                            seq.setEvolveConfigs(prev => prev.map((cfg, idx) => (
-                              idx === seq.activeTab
-                                ? { ...cfg, methods: { ...cfg.methods, [method]: !cfg.methods[method] } }
-                                : cfg
-                            )));
+                          type="range" min={0} max={100} step={5}
+                          value={Math.round((seq.evolveConfigs[seq.activeTab]?.evolution ?? 0.25) * 100)}
+                          onChange={(e) => {
+                            const evolution = parseInt(e.target.value, 10) / 100;
+                            seq.setEvolveConfigs(prev => prev.map((cfg, idx) => {
+                              if (idx !== seq.activeTab) return cfg;
+                              const pct = evolution * 100;
+                              const methods: Record<string, boolean> = {
+                                swingDrift: true,
+                                probDrift: pct > 30,
+                                ratchetSpray: pct > 60,
+                                pitchWalk: true,
+                                valueDrift: true,
+                                valueScramble: pct > 40,
+                                valueWiden: pct > 60,
+                                subLaneLengthDrift: pct > 50,
+                                subLaneDirectionFlip: pct > 80,
+                                triggerToggle: pct > 50,
+                              };
+                              return { ...cfg, evolution, methods };
+                            }));
                           }}
                         />
-                        {method}
+                        <span>{Math.round((seq.evolveConfigs[seq.activeTab]?.evolution ?? 0.25) * 100)}%</span>
                       </label>
-                    ))}
+                      {(() => {
+                        const pct = Math.round((seq.evolveConfigs[seq.activeTab]?.evolution ?? 0.25) * 100);
+                        return (
+                          <div className="seq-evolve-methods">
+                            <span className="seq-evolve-method on">Swing</span>
+                            <span className="seq-evolve-method on">Pitch</span>
+                            <span className="seq-evolve-method on">Drift</span>
+                            <span className={`seq-evolve-method${pct > 30 ? ' on-t' : ''}`}>Probability</span>
+                            <span className={`seq-evolve-method${pct > 40 ? ' on-t' : ''}`}>Scramble</span>
+                            <span className={`seq-evolve-method${pct > 50 ? ' on-t' : ''}`}>Triggers</span>
+                            <span className={`seq-evolve-method${pct > 50 ? ' on-t' : ''}`}>Length</span>
+                            <span className={`seq-evolve-method${pct > 60 ? ' on-t' : ''}`}>Ratchet</span>
+                            <span className={`seq-evolve-method${pct > 60 ? ' on-t' : ''}`}>Widen</span>
+                            <span className={`seq-evolve-method${pct > 80 ? ' on-t' : ''}`}>Direction</span>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                    <button className="seq-evolve-reset" onClick={() => resetEvolveHome?.(seq.activeTab)}>Reset</button>
+                    {diceLane && (
+                      <span className="seq-dice-group">
+                        <input type="range" className="seq-dice-slider" min={0} max={100} value={Math.round(diceIntensity * 100)} onChange={e => setDiceIntensity(Number(e.target.value) / 100)} title={`Dice intensity: ${Math.round(diceIntensity * 100)}%`} />
+                        <button className="seq-evolve-dice" onClick={() => diceLane(seq.activeTab, diceIntensity)} title="Randomize lane">&#x1F3B2;</button>
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    className="seq-evolve-advanced-toggle"
+                    onClick={() => setShowAdvanced(v => !v)}
+                  >
+                    {showAdvanced ? '▾' : '▸'} Advanced
+                  </button>
+                  <div className={`seq-evolve-advanced-body${showAdvanced ? ' open' : ''}`}>
+                    <div className="seq-evolve-advanced-row">
+                      <label>Write Offset</label>
+                      <span className="seq-evolve-mode-group">
+                        <button
+                          className={`seq-evolve-mode-btn${(seq.evolveConfigs[seq.activeTab]?.writeOffset ?? 'auto') === 'auto' ? ' active' : ''}`}
+                          onClick={() => seq.setEvolveConfigs(prev => prev.map((cfg, idx) => idx === seq.activeTab ? { ...cfg, writeOffset: 'auto' } : cfg))}
+                        >Auto</button>
+                        <button
+                          className={`seq-evolve-mode-btn${typeof (seq.evolveConfigs[seq.activeTab]?.writeOffset ?? 'auto') === 'number' ? ' active' : ''}`}
+                          onClick={() => seq.setEvolveConfigs(prev => prev.map((cfg, idx) => idx === seq.activeTab ? { ...cfg, writeOffset: 0 } : cfg))}
+                        >Manual</button>
+                      </span>
+                      {typeof (seq.evolveConfigs[seq.activeTab]?.writeOffset ?? 'auto') === 'number' && (
+                        <input
+                          type="range" min={0} max={Math.max(1, (activeSeq?.trigger?.steps ?? 16) - 1)} step={1}
+                          value={seq.evolveConfigs[seq.activeTab]?.writeOffset as number}
+                          onChange={(e) => seq.setEvolveConfigs(prev => prev.map((cfg, idx) => idx === seq.activeTab ? { ...cfg, writeOffset: parseInt(e.target.value, 10) } : cfg))}
+                        />
+                      )}
+                    </div>
+                    <div className="seq-evolve-advanced-row">
+                      <label>Mutation</label>
+                      <span className="seq-evolve-mode-group">
+                        <button
+                          className={`seq-evolve-mode-btn${(seq.evolveConfigs[seq.activeTab]?.mutationMode ?? 'biased') === 'biased' ? ' active' : ''}`}
+                          onClick={() => seq.setEvolveConfigs(prev => prev.map((cfg, idx) => idx === seq.activeTab ? { ...cfg, mutationMode: 'biased' } : cfg))}
+                        >Biased</button>
+                        <button
+                          className={`seq-evolve-mode-btn${(seq.evolveConfigs[seq.activeTab]?.mutationMode ?? 'biased') === 'strict' ? ' active' : ''}`}
+                          onClick={() => seq.setEvolveConfigs(prev => prev.map((cfg, idx) => idx === seq.activeTab ? { ...cfg, mutationMode: 'strict' } : cfg))}
+                        >Strict</button>
+                      </span>
+                    </div>
+                    <div className="seq-evolve-sublanes">
+                      {(['pitch', 'expression', 'morph', 'distance', 'probability', 'ratchet'] as const).map((sl) => {
+                        const enabled = seq.evolveConfigs[seq.activeTab]?.enabledSubLanes;
+                        const isOn = !enabled || enabled.includes(sl);
+                        return (
+                          <label key={sl}>
+                            <input
+                              type="checkbox"
+                              checked={isOn}
+                              onChange={() => {
+                                seq.setEvolveConfigs(prev => prev.map((cfg, idx) => {
+                                  if (idx !== seq.activeTab) return cfg;
+                                  const current = cfg.enabledSubLanes ?? ['pitch', 'expression', 'morph', 'distance', 'probability', 'ratchet'];
+                                  const next = isOn ? current.filter(s => s !== sl) : [...current, sl];
+                                  return { ...cfg, enabledSubLanes: next };
+                                }));
+                              }}
+                            />
+                            {sl}
+                          </label>
+                        );
+                      })}
+                    </div>
+                    <div className="seq-evolve-checks">
+                      {Object.keys(seq.evolveConfigs[seq.activeTab]?.methods ?? {}).map((method) => (
+                        <label key={method}>
+                          <input
+                            type="checkbox"
+                            checked={!!seq.evolveConfigs[seq.activeTab]?.methods[method]}
+                            onChange={() => {
+                              seq.setEvolveConfigs(prev => prev.map((cfg, idx) => (
+                                idx === seq.activeTab
+                                  ? { ...cfg, methods: { ...cfg.methods, [method]: !cfg.methods[method] } }
+                                  : cfg
+                              )));
+                            }}
+                          />
+                          {method}
+                        </label>
+                      ))}
+                    </div>
                   </div>
                 </div>
 

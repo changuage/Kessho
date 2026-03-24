@@ -63,6 +63,8 @@ interface SeqLaneProps {
   onChangePitchRoot?: (root: number) => void;
   /** Pitch-specific: change scale */
   onChangePitchScale?: (scale: ScaleName) => void;
+  /** Pitch-specific: toggle scale quantize */
+  onToggleScaleQuantize?: () => void;
   /** Note-range pitch mode: min/max MIDI notes and callbacks */
   pitchNoteMin?: number;
   pitchNoteMax?: number;
@@ -91,6 +93,7 @@ const SeqLane: React.FC<SeqLaneProps> = ({
   onChangePitchMode,
   onChangePitchRoot,
   onChangePitchScale,
+  onToggleScaleQuantize,
   pitchNoteMin,
   pitchNoteMax,
   onChangePitchNoteMin,
@@ -202,6 +205,14 @@ const SeqLane: React.FC<SeqLaneProps> = ({
                         <option key={s} value={s}>{s}</option>
                       ))}
                     </select>
+                    <label className="seq-scale-quantize" title="Snap pitch offsets to current harmony scale">
+                      <input
+                        type="checkbox"
+                        checked={sequencer.pitch.scaleQuantize ?? false}
+                        onChange={() => onToggleScaleQuantize?.()}
+                      />
+                      Q
+                    </label>
                   </>
                 )}
               </div>

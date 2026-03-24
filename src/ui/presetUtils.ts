@@ -71,9 +71,37 @@ export function applyPreset(
     }
   }
 
-  // 5. Auto-disable granular if level is 0
-  if (newState.granularLevel === 0) {
+  // 5. Auto-disable engines if both level and reverb send are 0
+  //    (Ocean has no dedicated reverb send, so auto-disable on level=0 alone)
+  if (newState.granularLevel === 0 && newState.granularReverbSend === 0) {
     newState.granularEnabled = false;
+  }
+  if (newState.leadLevel === 0 && newState.leadReverbSend === 0) {
+    newState.leadEnabled = false;
+  }
+  if (newState.drumLevel === 0 && newState.drumReverbSend === 0) {
+    newState.drumEnabled = false;
+  }
+  if (newState.oceanSampleLevel === 0) {
+    newState.oceanSampleEnabled = false;
+  }
+  if (newState.oceanWaveSynthLevel === 0) {
+    newState.oceanWaveSynthEnabled = false;
+  }
+  if (newState.synthLevel === 0 && newState.synthReverbSend === 0) {
+    newState.padEnabled = false;
+  }
+  if (newState.pad2Level === 0 && newState.synthReverbSend === 0) {
+    newState.pad2Enabled = false;
+  }
+  if (newState.waterLevel === 0 && newState.waterReverbSend === 0) {
+    newState.waterEnabled = false;
+  }
+  if (newState.insectsLevel === 0 && newState.insectsReverbSend === 0) {
+    newState.insectsEnabled = false;
+  }
+  if (newState.insects2Level === 0 && newState.insectsReverbSend === 0) {
+    newState.insects2Enabled = false;
   }
 
   // 6. Update audio engine

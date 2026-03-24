@@ -2,7 +2,7 @@
  * Shared DualSlider Component
  *
  * Generic 3-mode slider (single / walk / sampleHold) used by both
- * the main App (synth, drum, looper, ocean) and the Earth page
+ * the main App (synth, drum, granular, ocean) and the Earth page
  * (water, ocean-WASM, insects).
  *
  * Consumers provide:
@@ -308,7 +308,7 @@ export function DualSlider<K extends string = string>({
     : value;
 
   return (
-    <div className={groupClassName} style={groupStyle}>
+    <div className={`${groupClassName} dual-active`} style={groupStyle}>
       <div className={labelClassName} style={labelStyle}>
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flexShrink: 1 }}>
           {label}

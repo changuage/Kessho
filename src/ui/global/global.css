@@ -1,0 +1,839 @@
+/* ══════════════════════════════════════════════════════════════════
+   Global Page Styles
+   Scoped under .global-root
+   Matches Kessho Granular / Reverb / Drum aesthetics
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ══ Design Tokens ══ */
+.global-root {
+  --bg-base: #1a1a2e;
+  --bg-input: rgba(0, 0, 0, 0.3);
+  --bg-surface: rgba(15, 25, 40, 0.95);
+  --bg-elevated: rgba(255,255,255,0.05);
+  --bg-control: rgba(255,255,255,0.08);
+  --bg-control-hover: rgba(255,255,255,0.15);
+  --border-subtle: rgba(255, 255, 255, 0.1);
+  --border-medium: rgba(255, 255, 255, 0.2);
+  --border-accent: rgba(100, 150, 200, 0.3);
+  --text-primary: #e0e0e0;
+  --text-secondary: #9ca3af;
+  --text-muted: #666;
+  --text-dim: #555;
+  --accent-primary: #a5c4d4;
+  --accent-harmony: #818cf8;
+  --accent-green: #2ecc71;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --font-xs: 0.65rem;
+  --font-sm: 0.7rem;
+  --font-md: 0.75rem;
+  --font-lg: 0.85rem;
+}
+
+.global-root * { box-sizing: border-box; }
+.global-root { overflow-x: hidden; max-width: 100%; }
+
+/* ── Two-column layout ── */
+.global-root .global-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.global-root .global-mixer-panel {
+  flex: 0 0 460px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.global-root .global-engine-panel {
+  flex: 1;
+  min-width: 320px;
+  max-width: 100%;
+}
+
+@media (max-width: 900px) {
+  .global-root .global-mixer-panel,
+  .global-root .global-engine-panel {
+    flex: 1 1 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+}
+
+/* ── Card (shared base for panels) ── */
+.global-root .global-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 15px;
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+
+/* ── Harmony Card ── */
+.global-root .harmony-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+
+.global-root .harmony-card-title {
+  padding: 8px 10px;
+  font-size: var(--font-lg);
+  font-weight: 700;
+  color: var(--accent-harmony);
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  margin: 0;
+}
+
+/* ── Harmony Sub-section ── */
+.global-root .harmony-section {
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+.global-root .harmony-section:last-child {
+  border-bottom: none;
+}
+
+.global-root .harmony-section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+  user-select: none;
+  background: rgba(0, 0, 0, 0.2);
+  transition: background 0.15s;
+}
+.global-root .harmony-section-header:hover {
+  background: rgba(255,255,255,0.04);
+}
+
+.global-root .harmony-section-name {
+  font-size: var(--font-md);
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+}
+
+.global-root .harmony-section-chevron {
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+.global-root .harmony-section-chevron.expanded {
+  transform: rotate(90deg);
+}
+
+.global-root .harmony-section-body {
+  padding: 10px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* ── Side-by-side control grids ── */
+.global-root .harmony-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 8px;
+}
+
+/* ── Root+CoF & Chord Progression 2-column row ── */
+.global-root .harmony-row-2col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+.global-root .harmony-row-2col > .harmony-section {
+  border-bottom: none;
+}
+.global-root .harmony-row-2col > .harmony-section:first-child {
+  border-right: 1px solid rgba(255,255,255,0.05);
+}
+
+/* ── Per-Engine Tension 2×3 grid ── */
+.global-root .tension-engine-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 10px;
+}
+.global-root .tension-engine-cell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.global-root .tension-engine-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.global-root .tension-engine-name {
+  font-size: var(--font-xs);
+  color: #aaa;
+  min-width: 30px;
+}
+.global-root .tension-engine-cell .app-slider-group {
+  flex: 1;
+  min-width: 0;
+}
+.global-root .tension-effective-value {
+  font-size: 0.55rem;
+  color: #6af;
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.3px;
+}
+.global-root .tension-lock-btn {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  font-size: 0.6rem;
+  background: transparent;
+  border: 1px solid #444;
+  border-radius: 4px;
+  color: #666;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.global-root .tension-lock-btn.locked {
+  border-color: #f59e0b;
+  color: #f59e0b;
+}
+
+@media (max-width: 600px) {
+  .global-root .harmony-grid-2 {
+    grid-template-columns: 1fr;
+  }
+  .global-root .harmony-row-2col {
+    grid-template-columns: 1fr;
+  }
+  .global-root .harmony-row-2col > .harmony-section:first-child {
+    border-right: none;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+  }
+  .global-root .tension-engine-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Section label (within body) ── */
+.global-root .harmony-section-label {
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  margin-top: 4px;
+  padding-bottom: 2px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+
+/* ── Mixer Card ── */
+.global-root .mixer-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+
+.global-root .mixer-card-title {
+  padding: 8px 10px;
+  font-size: var(--font-lg);
+  font-weight: 700;
+  color: var(--accent-primary);
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  margin: 0;
+}
+
+/* ── Mixer Bus Grid ── */
+.global-root .mixer-bus-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  padding: 8px 10px;
+}
+
+.global-root .mixer-bus-group {
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 8px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.global-root .mixer-bus-label {
+  font-size: var(--font-xs);
+  font-weight: 700;
+  color: var(--accent-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  margin-bottom: 2px;
+}
+
+/* Inline slider rows inside bus groups AND harmony card */
+.global-root .mixer-bus-group .app-slider-group,
+.global-root .harmony-card .app-slider-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 0 !important;
+}
+.global-root .mixer-bus-group .app-slider-label,
+.global-root .harmony-card .app-slider-label {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-bottom: 0 !important;
+  font-size: var(--font-xs);
+  flex-shrink: 0;
+  min-width: 48px;
+  white-space: nowrap;
+}
+.global-root .mixer-bus-group .app-slider,
+.global-root .harmony-card .app-slider {
+  flex: 1;
+  min-width: 0;
+  height: 16px !important;
+}
+/* When dual mode is active, stack label above slider track */
+.global-root .mixer-bus-group .app-slider-group.dual-active,
+.global-root .harmony-card .app-slider-group.dual-active {
+  flex-direction: column;
+  align-items: stretch;
+}
+.global-root .mixer-bus-group .app-slider-group.dual-active > div:last-child,
+.global-root .harmony-card .app-slider-group.dual-active > div:last-child {
+  min-height: 20px;
+  height: 20px;
+}
+
+@media (max-width: 600px) {
+  .global-root .mixer-bus-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── CoF Drift block ── */
+.global-root .cof-drift-block {
+  padding: 10px 10px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ── Uniform select/dropdown sizing within cards ── */
+.global-root .mixer-card .app-select,
+.global-root .harmony-card .app-select {
+  font-size: var(--font-sm) !important;
+  padding: 5px 6px !important;
+  min-height: unset !important;
+}
+.global-root .mixer-card .app-slider-group,
+.global-root .harmony-card .app-slider-group {
+  margin-bottom: 2px !important;
+}
+
+/* ══ Utility Card (Recording & Timer) ══ */
+.global-root .utility-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+
+.global-root .utility-card-title {
+  padding: 8px 10px;
+  font-size: var(--font-lg);
+  font-weight: 700;
+  color: #f59e0b;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  margin: 0;
+}
+
+.global-root .utility-sub-label {
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+.global-root .utility-hint {
+  font-size: var(--font-xs);
+  color: var(--text-dim);
+}
+
+.global-root .utility-btn-row {
+  display: flex;
+  gap: 6px;
+}
+
+.global-root .utility-toggle-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 8px;
+  background: rgba(0,0,0,0.25);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: var(--font-xs);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.global-root .utility-toggle-btn:hover:not(:disabled) {
+  background: rgba(255,255,255,0.04);
+}
+.global-root .utility-toggle-btn.active {
+  background: rgba(245,158,11,0.12);
+  border-color: rgba(245,158,11,0.4);
+  color: #fbbf24;
+}
+.global-root .utility-toggle-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.global-root .utility-toggle-dot {
+  font-size: 0.55rem;
+}
+
+.global-root .utility-toggle-hint {
+  font-size: 0.55rem;
+  color: var(--text-dim);
+}
+
+.global-root .utility-stem-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 4px;
+}
+
+.global-root .utility-stem-btn {
+  padding: 4px 6px;
+  font-size: var(--font-xs);
+  background: rgba(0,0,0,0.25);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  text-align: center;
+}
+.global-root .utility-stem-btn:hover:not(:disabled) {
+  background: rgba(255,255,255,0.04);
+}
+.global-root .utility-stem-btn.active {
+  background: rgba(245,158,11,0.12);
+  border-color: rgba(245,158,11,0.4);
+  color: #fbbf24;
+}
+.global-root .utility-stem-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.global-root .utility-status {
+  margin-top: 6px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  text-align: center;
+}
+
+.global-root .recording-status {
+  background: rgba(239,68,68,0.1);
+  border: 1px solid rgba(239,68,68,0.3);
+}
+
+.global-root .utility-status-value {
+  font-size: var(--font-md);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.global-root .recording-status .utility-status-value {
+  color: #f87171;
+}
+
+@keyframes recording-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+.global-root .recording-pulse {
+  animation: recording-pulse 1.2s ease-in-out infinite;
+}
+
+.global-root .utility-status-hint {
+  font-size: var(--font-xs);
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+.global-root .utility-on-off-btn {
+  margin-left: auto;
+  padding: 2px 8px;
+  font-size: var(--font-xs);
+  font-weight: 700;
+  background: rgba(0,0,0,0.3);
+  border: 1px solid var(--border-subtle);
+  border-radius: 3px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.global-root .utility-on-off-btn.on {
+  background: rgba(34,197,94,0.15);
+  border-color: rgba(34,197,94,0.5);
+  color: #4ade80;
+}
+
+.global-root .utility-duration-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.global-root .utility-dur-btn {
+  padding: 4px 10px;
+  font-size: var(--font-xs);
+  background: rgba(0,0,0,0.25);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.global-root .utility-dur-btn:hover {
+  background: rgba(255,255,255,0.04);
+}
+.global-root .utility-dur-btn.active {
+  background: rgba(245,158,11,0.12);
+  border-color: rgba(245,158,11,0.4);
+  color: #fbbf24;
+}
+
+.global-root .utility-custom-time {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 4px;
+}
+
+.global-root .utility-custom-input {
+  width: 48px;
+  padding: 3px 4px;
+  font-size: var(--font-xs);
+  background: rgba(0,0,0,0.3);
+  border: 1px solid var(--border-subtle);
+  border-radius: 3px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+.global-root .utility-custom-input:focus {
+  outline: none;
+  border-color: rgba(245,158,11,0.5);
+}
+.global-root .utility-custom-input.active {
+  border-color: rgba(245,158,11,0.4);
+  color: #fbbf24;
+}
+
+.global-root .utility-custom-suffix {
+  font-size: var(--font-xs);
+  color: var(--text-dim);
+}
+
+.global-root .timer-status {
+  background: rgba(245,158,11,0.08);
+  border: 1px solid rgba(245,158,11,0.2);
+}
+.global-root .timer-status .utility-status-value {
+  color: #fbbf24;
+  font-size: 1rem;
+}
+
+/* ══ Presets Card ══ */
+.global-root .presets-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+
+.global-root .presets-card-title {
+  padding: 8px 10px;
+  font-size: var(--font-lg);
+  font-weight: 700;
+  color: #a78bfa;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  margin: 0;
+}
+
+/* Inline slider styling inside presets/utility cards */
+.global-root .presets-card .app-slider-group,
+.global-root .utility-card .app-slider-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 0 !important;
+}
+.global-root .presets-card .app-slider-label,
+.global-root .utility-card .app-slider-label {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-bottom: 0 !important;
+  font-size: var(--font-xs);
+  flex-shrink: 0;
+  min-width: 48px;
+  white-space: nowrap;
+}
+.global-root .presets-card .app-slider,
+.global-root .utility-card .app-slider {
+  flex: 1;
+  min-width: 0;
+  height: 16px !important;
+}
+.global-root .presets-card .app-select,
+.global-root .utility-card .app-select {
+  font-size: var(--font-sm) !important;
+  padding: 5px 6px !important;
+  min-height: unset !important;
+}
+.global-root .presets-card .app-slider-group,
+.global-root .utility-card .app-slider-group {
+  margin-bottom: 2px !important;
+}
+
+/* ── Morph section inline styles ── */
+.global-root .morph-slot {
+  margin-bottom: 8px;
+}
+
+.global-root .morph-slot-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.global-root .morph-slot-label {
+  font-size: var(--font-md);
+  font-weight: 700;
+}
+.global-root .morph-slot-label.slot-a { color: #6ee7b7; }
+.global-root .morph-slot-label.slot-b { color: #a78bfa; }
+
+.global-root .morph-clear-btn {
+  padding: 2px 6px;
+  font-size: 0.6rem;
+  background: transparent;
+  border: 1px solid #ef4444;
+  border-radius: 3px;
+  color: #fca5a5;
+  cursor: pointer;
+}
+.global-root .morph-clear-btn:hover {
+  background: rgba(239,68,68,0.15);
+}
+
+.global-root .morph-select {
+  width: 100%;
+  padding: 6px 28px 6px 8px;
+  background: rgba(30,30,40,0.8);
+  border: 1px solid #444;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-sm);
+  color: #888;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23888'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+  background-size: 14px;
+}
+.global-root .morph-select.filled-a {
+  background-color: #022c22;
+  border-color: #10b981;
+  color: #6ee7b7;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236ee7b7'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+}
+.global-root .morph-select.filled-b {
+  background-color: #2e1065;
+  border-color: #8b5cf6;
+  color: #c4b5fd;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23a78bfa'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+}
+.global-root .morph-select option {
+  background: #1a1a2e;
+  color: #888;
+}
+.global-root .morph-select.filled-a option {
+  color: #6ee7b7;
+}
+.global-root .morph-select.filled-b option {
+  color: #c4b5fd;
+}
+
+.global-root .morph-position {
+  margin-bottom: 8px;
+}
+
+.global-root .morph-position-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.global-root .morph-position-label {
+  font-size: var(--font-sm);
+  color: var(--text-secondary);
+}
+
+.global-root .morph-position-value {
+  font-size: var(--font-sm);
+  color: var(--text-dim);
+}
+
+.global-root .morph-position-track {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.global-root .morph-endpoint {
+  font-size: var(--font-xs);
+}
+.global-root .morph-endpoint.a { color: #6ee7b7; }
+.global-root .morph-endpoint.b { color: #a78bfa; }
+
+.global-root .morph-position-track input[type="range"] {
+  flex: 1;
+  height: 6px;
+  cursor: pointer;
+}
+.global-root .morph-position-track input[type="range"]:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.global-root .morph-position-hint {
+  text-align: center;
+  margin-top: 3px;
+  font-size: var(--font-xs);
+  color: var(--text-dim);
+}
+
+.global-root .morph-divider {
+  margin-bottom: 8px;
+  padding-top: 6px;
+  border-top: 1px solid #333;
+}
+
+.global-root .morph-mode-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.global-root .morph-mode-label {
+  font-size: var(--font-sm);
+  color: var(--text-secondary);
+}
+
+.global-root .morph-mode-btn {
+  padding: 3px 10px;
+  font-size: var(--font-sm);
+  background: transparent;
+  border: 1px solid #444;
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.global-root .morph-mode-btn.active {
+  background: linear-gradient(135deg, #374151, #1f2937);
+  border-color: #6b7280;
+  color: #fff;
+}
+
+.global-root .morph-auto-box {
+  padding: 8px;
+  background: rgba(30,30,40,0.4);
+  border-radius: var(--radius-sm);
+  border: 1px solid #333;
+}
+
+.global-root .morph-auto-slider {
+  margin-bottom: 8px;
+}
+
+.global-root .morph-auto-slider-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 3px;
+}
+
+.global-root .morph-auto-slider-label {
+  font-size: var(--font-sm);
+  color: var(--text-secondary);
+}
+
+.global-root .morph-auto-slider-val {
+  font-size: var(--font-sm);
+  color: var(--text-dim);
+}
+
+.global-root .morph-auto-slider input[type="range"] {
+  width: 100%;
+  height: 6px;
+  cursor: pointer;
+}
+
+.global-root .morph-cycle-text {
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.global-root .morph-countdown {
+  margin-top: 8px;
+  padding: 6px 10px;
+  background: linear-gradient(135deg, rgba(99,102,241,0.2), rgba(139,92,246,0.2));
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(139,92,246,0.4);
+  text-align: center;
+}
+
+.global-root .morph-countdown-phase {
+  font-size: var(--font-xs);
+  color: #a5b4fc;
+  margin-bottom: 2px;
+}
+
+.global-root .morph-countdown-value {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #c4b5fd;
+}

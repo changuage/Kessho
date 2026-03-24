@@ -4,7 +4,7 @@
  * Renders the prototype's two-panel layout:
  *   .container → .sound-panel + .sequencer-panel
  */
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import './drums.css';
 import type { SliderState } from '../state';
 import type { DrumVoiceType } from '../../audio/drumSynth';
@@ -16,6 +16,7 @@ import DrumPanel from './DrumPanel';
 import DragNumber from './DragNumber';
 import SeqOverview from './SeqOverview';
 import SeqSimple from './SeqSimple';
+import type { SeqSimpleState } from './SeqSimple';
 import SeqMiniOverview from './SeqMiniOverview';
 import SeqLane from './SeqLane';
 import SeqSparkline from './SeqSparkline';
@@ -44,6 +45,7 @@ export interface DrumPageProps {
   triggerVoice: (voice: DrumVoiceType) => void;
   getAnalyserNode: (voice: DrumVoiceType) => AnalyserNode | undefined;
   resetEvolveHome: (laneIdx: number) => void;
+  diceLane?: (laneIdx: number, intensity: number) => void;
   SliderComponent: React.ComponentType<Record<string, unknown>>;
   CollapsiblePanelComponent: React.ComponentType<Record<string, unknown>>;
   editingVoice: string | null;
@@ -57,6 +59,10 @@ export interface DrumPageProps {
   evolveFlashing?: boolean[];
   /** Called when evolve configs change, so parent can sync to audio engine */
   onEvolveConfigsChange?: (configs: EvolveConfig[]) => void;
+  /** Initial evolve configs to restore across tab switches / preset loads */
+  initialEvolveConfigs?: EvolveConfig[];
+  /** Preset version counter for triggering UI reset on preset load */
+  presetVersion?: number;
   /** Called when step overrides change, so parent can sync to audio engine */
   onStepOverridesChange?: (overrides: DrumStepOverrides) => void;
   /** Initial step overrides to restore across tab switches */
@@ -69,10 +75,16 @@ export interface DrumPageProps {
   initialViewMode?: 'simple' | 'detail' | 'overview';
   /** Called when view mode changes so parent can persist it */
   onViewModeChange?: (mode: 'simple' | 'detail' | 'overview') => void;
+  /** Evolved step overrides pushed from audio engine (for visual sync) */
+  evolvedOverrides?: { laneIndex: number; version: number; data: Partial<StepOverrides> };
   /** Called when per-lane clock divisions change */
   onClockDivsChange?: (divs: ClockDivision[]) => void;
   /** Called when per-lane swing amounts change */
   onSwingsChange?: (swings: number[]) => void;
+  /** Initial simple sequencer state to restore across tab switches */
+  initialSeqSimpleState?: SeqSimpleState;
+  /** Called when simple sequencer state changes */
+  onSeqSimpleStateChange?: (state: SeqSimpleState) => void;
 }
 
 const DrumPage: React.FC<DrumPageProps> = (props) => {
@@ -88,6 +100,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     triggerVoice,
     getAnalyserNode,
     resetEvolveHome,
+    diceLane,
     SliderComponent,
     CollapsiblePanelComponent,
     editingVoice,
@@ -106,8 +119,14 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     onClockDivsChange,
     onSwingsChange,
   } = props;
+  const evolvedOverrides = props.evolvedOverrides;
+  const initialEvolveConfigs = props.initialEvolveConfigs;
+  const presetVersion = props.presetVersion;
 
   const Slider = SliderComponent as React.ComponentType<any>;
+
+  const [diceIntensity, setDiceIntensity] = useState(0.5);
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   // ── Reusable sequencer hook ──
   const seq = useEuclideanSequencer({
@@ -123,6 +142,8 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     initialViewMode,
     initialStepOverrides,
     initialSubLaneStates,
+    initialEvolveConfigs,
+    resetKey: presetVersion,
   });
 
   // Notify parent when viewMode changes so it persists across tab switches
@@ -138,6 +159,31 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
       onEvolveConfigsChange?.(seq.evolveConfigs);
     }
   }, [seq.evolveConfigs, onEvolveConfigsChange]);
+
+  // Merge evolved overrides from audio engine into visualizer state
+  const evolvedVersionRef = useRef(-1);
+  useEffect(() => {
+    if (!evolvedOverrides || evolvedOverrides.version === evolvedVersionRef.current) return;
+    evolvedVersionRef.current = evolvedOverrides.version;
+    const { laneIndex, data } = evolvedOverrides;
+    seq.setStepOverrides(prev => {
+      const next = { ...prev };
+      if (data.triggerToggles?.[laneIndex] != null) {
+        const arr = [...prev.triggerToggles];
+        arr[laneIndex] = new Map(data.triggerToggles[laneIndex]);
+        next.triggerToggles = arr;
+      }
+      const keys = ['probability', 'ratchet', 'expression', 'pitch', 'morph', 'distance', 'slice', 'reverse'] as const;
+      for (const key of keys) {
+        if (data[key] && data[key]![laneIndex] != null) {
+          const arr = [...prev[key]];
+          arr[laneIndex] = data[key]![laneIndex];
+          next[key] = arr;
+        }
+      }
+      return next;
+    });
+  }, [evolvedOverrides, seq]);
 
   // Sync step overrides (all sub-lane data) to audio engine when they change
   const stepOverridesRef = useRef(seq.stepOverrides);
@@ -377,6 +423,8 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                   onSelectChange('drumEnabled', true);
                 }
               }}
+              initialState={props.initialSeqSimpleState}
+              onStateChange={props.onSeqSimpleStateChange}
             />
           )}
 
@@ -493,53 +541,127 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                       }}
                     />
                     <span className="seq-drag-num-label">bars</span>
-                    <label>
-                      Intensity
-                      <input
-                        type="range" min={0} max={100} step={5}
-                        value={Math.round((seq.evolveConfigs[seq.activeTab]?.intensity ?? 0.25) * 100)}
-                        onChange={(e) => {
-                          const intensity = parseInt(e.target.value, 10) / 100;
-                          seq.setEvolveConfigs(prev => prev.map((cfg, idx) => {
-                            if (idx !== seq.activeTab) return cfg;
-                            // Auto-sync methods based on intensity thresholds (matches prototype)
-                            const pct = intensity * 100;
-                            const methods = {
-                              rotateDrift: true,
-                              velocityBreath: true,
-                              swingDrift: true,
-                              probDrift: pct > 30,
-                              morphDrift: pct > 30,
-                              ghostNotes: pct > 60,
-                              ratchetSpray: pct > 60,
-                              hitDrift: pct > 80,
-                              pitchWalk: pct > 80,
-                            };
-                            return { ...cfg, intensity, methods };
-                          }));
-                        }}
-                      />
-                      <span>{Math.round((seq.evolveConfigs[seq.activeTab]?.intensity ?? 0.25) * 100)}%</span>
-                    </label>
-                    <button className="seq-evolve-reset" onClick={() => resetEvolveHome(seq.activeTab)}>Reset</button>
-                  </div>
-                  <div className="seq-evolve-checks">
-                    {Object.keys(seq.evolveConfigs[seq.activeTab]?.methods ?? {}).map((method) => (
-                      <label key={method}>
+                    <div className="seq-evolve-zone-wrap">
+                      <label>
+                        Evolution
                         <input
-                          type="checkbox"
-                          checked={!!seq.evolveConfigs[seq.activeTab]?.methods[method]}
-                          onChange={() => {
-                            seq.setEvolveConfigs(prev => prev.map((cfg, idx) => (
-                              idx === seq.activeTab
-                                ? { ...cfg, methods: { ...cfg.methods, [method]: !cfg.methods[method] } }
-                                : cfg
-                            )));
+                          type="range" min={0} max={100} step={5}
+                          value={Math.round((seq.evolveConfigs[seq.activeTab]?.evolution ?? 0.25) * 100)}
+                          onChange={(e) => {
+                            const evolution = parseInt(e.target.value, 10) / 100;
+                            seq.setEvolveConfigs(prev => prev.map((cfg, idx) => {
+                              if (idx !== seq.activeTab) return cfg;
+                              const pct = evolution * 100;
+                              const methods = {
+                                rotateDrift: true,
+                                swingDrift: true,
+                                probDrift: pct > 30,
+                                ghostNotes: pct > 60,
+                                ratchetSpray: pct > 60,
+                                hitDrift: pct > 80,
+                                pitchWalk: pct > 80,
+                                valueDrift: true,
+                                valueScramble: pct > 40,
+                                valueWiden: pct > 60,
+                                subLaneLengthDrift: pct > 50,
+                                subLaneDirectionFlip: pct > 80,
+                              };
+                              return { ...cfg, evolution, methods };
+                            }));
                           }}
                         />
-                        {method}
+                        <span>{Math.round((seq.evolveConfigs[seq.activeTab]?.evolution ?? 0.25) * 100)}%</span>
                       </label>
-                    ))}
+                      {(() => {
+                        const pct = Math.round((seq.evolveConfigs[seq.activeTab]?.evolution ?? 0.25) * 100);
+                        return (
+                          <div className="seq-evolve-methods">
+                            <span className="seq-evolve-method on">Rotate</span>
+                            <span className="seq-evolve-method on">Swing</span>
+                            <span className="seq-evolve-method on">Drift</span>
+                            <span className={`seq-evolve-method${pct > 30 ? ' on-t' : ''}`}>Probability</span>
+                            <span className={`seq-evolve-method${pct > 40 ? ' on-t' : ''}`}>Scramble</span>
+                            <span className={`seq-evolve-method${pct > 50 ? ' on-t' : ''}`}>Length</span>
+                            <span className={`seq-evolve-method${pct > 60 ? ' on-t' : ''}`}>Ghosts</span>
+                            <span className={`seq-evolve-method${pct > 60 ? ' on-t' : ''}`}>Ratchet</span>
+                            <span className={`seq-evolve-method${pct > 60 ? ' on-t' : ''}`}>Widen</span>
+                            <span className={`seq-evolve-method${pct > 80 ? ' on-t' : ''}`}>Hits</span>
+                            <span className={`seq-evolve-method${pct > 80 ? ' on-t' : ''}`}>Pitch</span>
+                            <span className={`seq-evolve-method${pct > 80 ? ' on-t' : ''}`}>Direction</span>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                    <button className="seq-evolve-reset" onClick={() => resetEvolveHome(seq.activeTab)}>Reset</button>
+                    {diceLane && (
+                      <span className="seq-dice-group">
+                        <input type="range" className="seq-dice-slider" min={0} max={100} step={5}
+                          value={Math.round(diceIntensity * 100)}
+                          onChange={(e) => setDiceIntensity(Number(e.target.value) / 100)}
+                          title={`Dice intensity: ${Math.round(diceIntensity * 100)}%`}
+                        />
+                        <button className="seq-evolve-dice" onClick={() => diceLane(seq.activeTab, diceIntensity)} title={`Randomize lane (${Math.round(diceIntensity * 100)}%)`}>&#x1F3B2;</button>
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    className="seq-evolve-advanced-toggle"
+                    onClick={() => setShowAdvanced(v => !v)}
+                  >
+                    {showAdvanced ? '▾' : '▸'} Advanced
+                  </button>
+                  <div className={`seq-evolve-advanced-body${showAdvanced ? ' open' : ''}`}>
+                    <div className="seq-evolve-advanced-row">
+                      <label>Write Offset</label>
+                      <span className="seq-evolve-mode-group">
+                        <button
+                          className={`seq-evolve-mode-btn${(seq.evolveConfigs[seq.activeTab]?.writeOffset ?? 'auto') === 'auto' ? ' active' : ''}`}
+                          onClick={() => seq.setEvolveConfigs(prev => prev.map((cfg, idx) => idx === seq.activeTab ? { ...cfg, writeOffset: 'auto' } : cfg))}
+                        >Auto</button>
+                        <button
+                          className={`seq-evolve-mode-btn${typeof (seq.evolveConfigs[seq.activeTab]?.writeOffset ?? 'auto') === 'number' ? ' active' : ''}`}
+                          onClick={() => seq.setEvolveConfigs(prev => prev.map((cfg, idx) => idx === seq.activeTab ? { ...cfg, writeOffset: 0 } : cfg))}
+                        >Manual</button>
+                      </span>
+                      {typeof (seq.evolveConfigs[seq.activeTab]?.writeOffset ?? 'auto') === 'number' && (
+                        <input
+                          type="range" min={0} max={Math.max(1, (activeSeq?.trigger?.steps ?? 16) - 1)} step={1}
+                          value={seq.evolveConfigs[seq.activeTab]?.writeOffset as number}
+                          onChange={(e) => seq.setEvolveConfigs(prev => prev.map((cfg, idx) => idx === seq.activeTab ? { ...cfg, writeOffset: parseInt(e.target.value, 10) } : cfg))}
+                        />
+                      )}
+                    </div>
+                    <div className="seq-evolve-advanced-row">
+                      <label>Mutation</label>
+                      <span className="seq-evolve-mode-group">
+                        <button
+                          className={`seq-evolve-mode-btn${(seq.evolveConfigs[seq.activeTab]?.mutationMode ?? 'biased') === 'biased' ? ' active' : ''}`}
+                          onClick={() => seq.setEvolveConfigs(prev => prev.map((cfg, idx) => idx === seq.activeTab ? { ...cfg, mutationMode: 'biased' } : cfg))}
+                        >Biased</button>
+                        <button
+                          className={`seq-evolve-mode-btn${(seq.evolveConfigs[seq.activeTab]?.mutationMode ?? 'biased') === 'strict' ? ' active' : ''}`}
+                          onClick={() => seq.setEvolveConfigs(prev => prev.map((cfg, idx) => idx === seq.activeTab ? { ...cfg, mutationMode: 'strict' } : cfg))}
+                        >Strict</button>
+                      </span>
+                    </div>
+                    <div className="seq-evolve-checks">
+                      {Object.keys(seq.evolveConfigs[seq.activeTab]?.methods ?? {}).map((method) => (
+                        <label key={method}>
+                          <input
+                            type="checkbox"
+                            checked={!!seq.evolveConfigs[seq.activeTab]?.methods[method]}
+                            onChange={() => {
+                              seq.setEvolveConfigs(prev => prev.map((cfg, idx) => (
+                                idx === seq.activeTab
+                                  ? { ...cfg, methods: { ...cfg.methods, [method]: !cfg.methods[method] } }
+                                  : cfg
+                              )));
+                            }}
+                          />
+                          {method}
+                        </label>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
@@ -663,6 +785,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                                 onChangePitchMode: (mode) => seq.setPitchMode(seq.activeTab, mode),
                                 onChangePitchRoot: (root) => seq.setPitchRoot(seq.activeTab, root),
                                 onChangePitchScale: (scale) => seq.setPitchScale(seq.activeTab, scale),
+                                onToggleScaleQuantize: () => seq.toggleScaleQuantize(seq.activeTab),
                               } : {})}
                             />
                           </div>

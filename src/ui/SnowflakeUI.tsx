@@ -66,7 +66,7 @@ const MACRO_SLIDERS: MacroSlider[] = [
   { key: 'reverbLevel', reverbSendKey: 'reverbDecay', label: 'Reverb', min: 0, max: 2, color: '#E8DCC4' },          // Warm cream - width = decay
   { key: 'synthLevel', reverbSendKey: 'synthReverbSend', label: 'Pad 1', min: 0, max: 1, color: '#C4724E' },        // Muted orange
   { key: 'granularLevel', reverbSendKey: 'granularReverbSend', label: 'Granular', min: 0, max: 4, color: '#7B9A6D' }, // Sage green
-  { key: 'leadLevel', reverbSendKey: 'leadReverbSend', label: 'Lead', min: 0, max: 1, color: '#D4A520' },            // Mustard gold
+  { key: 'lead1Level', reverbSendKey: 'lead1ReverbSend', label: 'Lead', min: 0, max: 1, color: '#D4A520' },            // Mustard gold
   { key: 'drumLevel', reverbSendKey: 'drumReverbSend', label: 'Drum', min: 0, max: 1, color: '#8B5CF6' },            // Purple
   { key: 'oceanSampleLevel', reverbSendKey: 'oceanFilterCutoff', label: 'Wave', min: 0, max: 1, color: '#5A7B8A' }, // Slate blue - width = filter cutoff
 ];

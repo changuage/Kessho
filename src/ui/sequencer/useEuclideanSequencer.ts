@@ -34,6 +34,8 @@ export interface SubLaneState {
   enabled: boolean;
   steps: number;
   direction: LaneDirection;
+  /** Pitch-only: snap pitch offsets to current harmony scale */
+  scaleQuantize?: boolean;
 }
 
 export interface StepOverrides {
@@ -58,8 +60,11 @@ export interface StepOverrides {
 export interface EvolveConfig {
   enabled: boolean;
   everyBars: number;
-  intensity: number;
+  evolution: number;
+  writeOffset: number | 'auto';
+  mutationMode: 'strict' | 'biased';
   methods: Record<string, boolean>;
+  enabledSubLanes?: string[];  // synth only — which sub-lanes participate
 }
 
 export interface EuclideanLaneConfig {
@@ -96,6 +101,8 @@ export interface UseEuclideanSequencerOptions {
   initialClockDivs?: ClockDivision[];
   /** Initial pitch settings to restore (persisted across tab switches) */
   initialPitchSettings?: PitchSettings[];
+  /** Initial evolve configs to restore (persisted across tab switches / preset load) */
+  initialEvolveConfigs?: EvolveConfig[];
   /** Monotonically increasing key — when it changes, internal state resets from initial* props */
   resetKey?: number;
 }
@@ -118,6 +125,7 @@ export interface UseEuclideanSequencerResult {
 
   // ── Step Overrides ──
   stepOverrides: StepOverrides;
+  setStepOverrides: React.Dispatch<React.SetStateAction<StepOverrides>>;
   toggleTriggerStep: (laneIdx: number, step: number) => void;
   changeStepValue: (laneIdx: number, lane: LaneKind, step: number, value: number) => void;
   setStepProbability: (laneIdx: number, step: number, value: number) => void;
@@ -169,22 +177,43 @@ export interface UseEuclideanSequencerResult {
   setPitchMode: (seqIdx: number, mode: PitchMode) => void;
   setPitchRoot: (seqIdx: number, root: number) => void;
   setPitchScale: (seqIdx: number, scale: ScaleName) => void;
+  toggleScaleQuantize: (seqIdx: number) => void;
 
   // ── Presets ──
   presetNames: string[];
 }
 
-const DEFAULT_EVOLVE_METHODS: Record<string, boolean> = {
+const DRUM_EVOLVE_METHODS: Record<string, boolean> = {
   rotateDrift: true,
-  velocityBreath: true,
   swingDrift: true,
   probDrift: false,
-  morphDrift: false,
   ghostNotes: false,
   ratchetSpray: false,
   hitDrift: false,
   pitchWalk: false,
+  valueDrift: true,
+  valueScramble: false,
+  valueWiden: false,
+  subLaneLengthDrift: false,
+  subLaneDirectionFlip: false,
 };
+
+const SYNTH_GRANULAR_EVOLVE_METHODS: Record<string, boolean> = {
+  swingDrift: true,
+  probDrift: false,
+  ratchetSpray: false,
+  pitchWalk: false,
+  valueDrift: true,
+  valueScramble: false,
+  valueWiden: false,
+  subLaneLengthDrift: false,
+  subLaneDirectionFlip: false,
+  triggerToggle: false,
+};
+
+function getDefaultEvolveMethods(prefix: string): Record<string, boolean> {
+  return prefix === 'drum' ? { ...DRUM_EVOLVE_METHODS } : { ...SYNTH_GRANULAR_EVOLVE_METHODS };
+}
 
 function makeKey(prefix: string, laneNum: number, suffix: string): keyof SliderState {
   return `${prefix}Euclid${laneNum}${suffix}` as keyof SliderState;
@@ -210,6 +239,7 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
     initialSubLaneStates,
     initialClockDivs,
     initialPitchSettings,
+    initialEvolveConfigs,
   } = opts;
   const resetKey = opts.resetKey;
 
@@ -247,11 +277,13 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
 
   // ── Evolve ──
   const [evolveConfigs, setEvolveConfigs] = useState<EvolveConfig[]>(() =>
-    Array.from({ length: laneCount }, () => ({
+    initialEvolveConfigs ?? Array.from({ length: laneCount }, () => ({
       enabled: false,
       everyBars: 4,
-      intensity: 0.25,
-      methods: { ...DEFAULT_EVOLVE_METHODS },
+      evolution: 0.25,
+      writeOffset: 0 as number | 'auto',
+      mutationMode: 'biased' as const,
+      methods: getDefaultEvolveMethods(prefix),
     }))
   );
 
@@ -261,7 +293,7 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
 
   const [subLaneStates, setSubLaneStates] = useState<Record<SubLaneKind, SubLaneState>[]>(() =>
     initialSubLaneStates ?? Array.from({ length: laneCount }, () => ({
-      pitch: { enabled: false, steps: 5, direction: 'forward' as LaneDirection },
+      pitch: { enabled: false, steps: 5, direction: 'forward' as LaneDirection, scaleQuantize: false },
       expression: { enabled: false, steps: 5, direction: 'forward' as LaneDirection },
       morph: { enabled: false, steps: 4, direction: 'forward' as LaneDirection },
       distance: { enabled: false, steps: 4, direction: 'forward' as LaneDirection },
@@ -296,6 +328,7 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
       if (initialSubLaneStates) setSubLaneStates(initialSubLaneStates);
       if (initialClockDivs) setClockDivs(initialClockDivs);
       if (initialPitchSettings) setPitchSettings(initialPitchSettings);
+      if (initialEvolveConfigs) setEvolveConfigs(initialEvolveConfigs);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resetKey]);
@@ -317,6 +350,14 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
     setPitchSettings(prev => prev.map((s, i) => i === seqIdx ? { ...s, scale } : s));
   }, []);
 
+  const toggleScaleQuantize = useCallback((seqIdx: number) => {
+    setSubLaneStates(prev => prev.map((s, i) =>
+      i === seqIdx
+        ? { ...s, pitch: { ...s.pitch, scaleQuantize: !(s.pitch.scaleQuantize ?? false) } }
+        : s
+    ));
+  }, []);
+
   const setClockDiv = useCallback((seqIdx: number, div: ClockDivision) => {
     setClockDivs(prev => prev.map((d, i) => i === seqIdx ? div : d));
   }, []);
@@ -326,11 +367,9 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
   }, []);
 
   const toggleSubLaneEnabled = useCallback((seqIdx: number, lane: SubLaneKind) => {
-    console.log(`[SubLane] toggleSubLaneEnabled seq=${seqIdx} lane=${lane}`);
     setSubLaneStates(prev => {
       const wasEnabled = prev[seqIdx]?.[lane]?.enabled ?? false;
       const nowEnabled = !wasEnabled;
-      console.log(`[SubLane] ${lane} was=${wasEnabled} now=${nowEnabled}`);
       const updated = prev.map((s, i) =>
         i === seqIdx ? { ...s, [lane]: { ...s[lane], enabled: nowEnabled } } : s
       );
@@ -593,6 +632,7 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
           mode: pitchSettings[idx]?.mode ?? 'semitones',
           root: pitchSettings[idx]?.root ?? 60,
           scale: pitchSettings[idx]?.scale ?? 'Major',
+          scaleQuantize: subLaneStates[idx]?.pitch.scaleQuantize ?? false,
         },
         expression: {
           enabled: subLaneStates[idx]?.expression.enabled ?? false,
@@ -638,9 +678,11 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
         evolve: {
           enabled: evolveConfigs[idx]?.enabled ?? false,
           everyBars: evolveConfigs[idx]?.everyBars ?? 4,
-          intensity: evolveConfigs[idx]?.intensity ?? 0.25,
+          evolution: evolveConfigs[idx]?.evolution ?? 0.25,
+          writeOffset: evolveConfigs[idx]?.writeOffset ?? 'auto',
+          mutationMode: evolveConfigs[idx]?.mutationMode ?? 'biased',
           lastEvolveBar: -1,
-          methods: evolveConfigs[idx]?.methods ?? { ...DEFAULT_EVOLVE_METHODS },
+          methods: evolveConfigs[idx]?.methods ?? getDefaultEvolveMethods(prefix),
           home: null,
         },
       } satisfies SequencerState;
@@ -827,6 +869,7 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
     playheads,
     hitCounts,
     stepOverrides,
+    setStepOverrides,
     toggleTriggerStep,
     changeStepValue,
     setStepProbability,
@@ -859,5 +902,6 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
     setPitchMode,
     setPitchRoot,
     setPitchScale,
+    toggleScaleQuantize,
   };
 }

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Main App Component
  * 
  * Complete UI with all sliders, selects, and debug panel.
@@ -19,8 +19,7 @@ import {
 } from './ui/state';
 import { DualSlider, DualSliderRange } from './ui/DualSlider';
 import { audioEngine, EngineState } from './audio/engine';
-import { SCALE_FAMILIES } from './audio/scales';
-import { formatChordDegrees, getTimeUntilNextPhrase, calculateDriftedRoot, PHRASE_LENGTH } from './audio/harmony';
+import { formatChordDegrees, getTimeUntilNextPhrase, calculateDriftedRoot } from './audio/harmony';
 import { getPresetNames, DrumVoiceType as DrumPresetVoice } from './audio/drumPresets';
 import { getPadPreset, morphPadPresets, PAD_PRESET_PARAM_KEYS } from './audio/padPresets';
 import { morphWaterPresets, WATER_MORPH_PARAM_KEYS, INSECT_ENGINE_DEFAULTS } from './audio/waterPresets';
@@ -47,7 +46,7 @@ const PAD1_TO_PAD2_KEY: Record<string, string> = {
 import { isInMidMorph, isAtEndpoint0, isAtEndpoint1 } from './audio/morphUtils';
 import { applyPreset, USER_PREFERENCE_KEYS } from './ui/presetUtils';
 import { getLead4opFMPresetList } from './audio/lead4opfm';
-import { getLooperPresetData, getLooperPresetSliderModes, getLooperPresetSeqConfig } from './ui/looper/looperPresets';
+import { getGranularPresetData, getGranularPresetSliderModes, getGranularPresetSeqConfig } from './ui/granular/granularPresets';
 import SnowflakeUI from './ui/SnowflakeUI';
 import { CpuOverlay } from './ui/CpuOverlay';
 import { CircleOfFifths, getMorphedRootNote } from './ui/CircleOfFifths';
@@ -56,11 +55,14 @@ import { fetchPresetById, isCloudEnabled } from './cloud/supabase';
 import JourneyModeView from './ui/JourneyModeView';
 import { useJourney } from './ui/journeyState';
 import DrumPage from './ui/drums/DrumPage';
+import type { SeqSimpleState } from './ui/drums/SeqSimple';
 import SynthPage from './ui/synth/SynthPage';
-import LooperPage from './ui/looper/LooperPage';
+import GranularPage from './ui/granular/GranularPage';
 import EarthPage from './ui/earth/EarthPage';
 import ReverbPage from './ui/reverb/ReverbPage';
-import type { StepOverrides, SubLaneKind, SubLaneState, PitchSettings } from './ui/sequencer/useEuclideanSequencer';
+import { CollapsiblePanel } from './ui/CollapsiblePanel';
+import GlobalPage from './ui/global/GlobalPage';
+import type { StepOverrides, SubLaneKind, SubLaneState, PitchSettings, EvolveConfig } from './ui/sequencer/useEuclideanSequencer';
 import type { ClockDivision } from './audio/drumSeqTypes';
 
 // Note names for display
@@ -173,6 +175,12 @@ interface SavedPreset {
   state: SliderState;
   dualRanges?: Record<string, { min: number; max: number }>;  // Optional for backward compatibility
   sliderModes?: Record<string, SliderMode>;  // Mode per parameter key
+  drumEvolveConfigs?: EvolveConfig[];
+  synthEvolveConfigs?: EvolveConfig[];
+  granularEvolveConfigs?: EvolveConfig[];
+  drumSubLaneStates?: Record<SubLaneKind, SubLaneState>[];
+  synthSubLaneStates?: Record<SubLaneKind, SubLaneState>[];
+  granularSubLaneStates?: Record<SubLaneKind, SubLaneState>[];
 }
 
 // iOS-only reverb types that won't work on web
@@ -193,19 +201,20 @@ const SNOWFLAKE_WELCOME_STATE: SliderState = {
   reverbLevel: 0.97,       // max 2
   synthLevel: 0.49,        // max 1\n  pad2Level: 0.49,         // max 1
   granularLevel: 1.95,     // max 4 (snowflake scale)
-  leadLevel: 0.49,         // max 1
+  leadLevel: 1.0,           // hidden — always unity (per-lead levels control)
+  lead1Level: 0.49,         // max 1
   drumLevel: 0.49,         // max 1
   oceanSampleLevel: 0.49,  // max 1
   // Arm widths (reverb send / secondary keys) — 75% visual width
   reverbDecay: 0.56,
   synthReverbSend: 0.56,
   granularReverbSend: 0.56,
-  leadReverbSend: 0.56,
+  lead1ReverbSend: 0.56,
+  lead2ReverbSend: 0.56,
   drumReverbSend: 0.06,    // uses 0.1 exponent; 0.06^0.1 ≈ 0.75
   oceanFilterCutoff: 6800,  // normalized ≈ 0.56 of 40–12000
   // Enable all engines so the "disabled → 0" normalization doesn't zero them
   granularEnabled: true,
-  looperEnabled: true,   // granularEnabled now controls looper engine
   leadEnabled: true,
   drumEnabled: true,
   oceanSampleEnabled: true,
@@ -303,6 +312,31 @@ const normalizePresetForWeb = (state: SliderState): SliderState => {
     normalized.lead1OctaveRange = raw.leadOctaveRange as number;
   }
 
+  // Legacy leadReverbSend → lead1ReverbSend rename migration:
+  if (typeof raw.leadReverbSend === 'number' && typeof raw.lead1ReverbSend !== 'number') {
+    normalized.lead1ReverbSend = raw.leadReverbSend as number;
+  }
+  // Legacy leadLevel → lead1Level rename migration (leadLevel is now always 1.0):
+  if (typeof raw.leadLevel === 'number' && typeof raw.lead1Level !== 'number') {
+    normalized.lead1Level = raw.leadLevel as number;
+  }
+
+  // Legacy waterSpace → waterReverbSend rename migration:
+  if (typeof raw.waterSpace === 'number' && typeof raw.waterReverbSend !== 'number') {
+    normalized.waterReverbSend = raw.waterSpace as number;
+  }
+
+  // Legacy looper* → granular* rename migration:
+  // Old presets/cloud saves used looper* keys — now granular*.
+  for (const key of Object.keys(raw)) {
+    if (key.startsWith('looper')) {
+      const newKey = 'granular' + key.slice(6);
+      if (newKey in DEFAULT_STATE && !(newKey in raw)) {
+        (normalized as unknown as Record<string, unknown>)[newKey] = raw[key];
+      }
+    }
+  }
+
   // Defensive sanitization: preserve only valid scalar types and fall back to defaults.
   // Prevents runtime crashes when legacy/cloud presets contain null/invalid values.
   const merged = { ...DEFAULT_STATE, ...normalized } as SliderState;
@@ -330,17 +364,6 @@ const normalizePresetForWeb = (state: SliderState): SliderState => {
       }
     }
   }
-
-  // ── Zero level for disabled engines ──
-  // When an engine is off, force its mix level to 0 so no audio leaks through.
-  if (merged.granularEnabled === false) {
-    merged.granularLevel = 0;
-    merged.looperEnabled = false;  // granularEnabled controls looper
-  }
-  if (merged.leadEnabled === false)           merged.leadLevel = 0;
-  if (merged.drumEnabled === false)           merged.drumLevel = 0;
-  if (merged.oceanSampleEnabled === false)    merged.oceanSampleLevel = 0;
-  if (merged.oceanWaveSynthEnabled === false) merged.oceanWaveSynthLevel = 0;
 
   // ── Apply pad preset morph params ──
   // When loading a preset that specifies padPresetA/B, morph their params onto state
@@ -394,6 +417,12 @@ const loadPresetsFromFolder = async (): Promise<SavedPreset[]> => {
               state: data.state || data,
               dualRanges: data.dualRanges,
               sliderModes: data.sliderModes,
+              drumEvolveConfigs: data.drumEvolveConfigs,
+              synthEvolveConfigs: data.synthEvolveConfigs,
+              granularEvolveConfigs: data.granularEvolveConfigs,
+              drumSubLaneStates: data.drumSubLaneStates,
+              synthSubLaneStates: data.synthSubLaneStates,
+              granularSubLaneStates: data.granularSubLaneStates,
             }));
           }
         } catch (e) {
@@ -415,6 +444,12 @@ const loadPresetsFromFolder = async (): Promise<SavedPreset[]> => {
             state: data.state || data,
             dualRanges: data.dualRanges,
             sliderModes: data.sliderModes,
+            drumEvolveConfigs: data.drumEvolveConfigs,
+            synthEvolveConfigs: data.synthEvolveConfigs,
+            granularEvolveConfigs: data.granularEvolveConfigs,
+            drumSubLaneStates: data.drumSubLaneStates,
+            synthSubLaneStates: data.synthSubLaneStates,
+            granularSubLaneStates: data.granularSubLaneStates,
           }));
         }
       } catch (e) {
@@ -891,66 +926,7 @@ function Select<T extends string>({ label, value, options, onChange }: SelectPro
   );
 }
 
-// Collapsible Panel component for mobile
-interface CollapsiblePanelProps {
-  id: string;
-  title: string;
-  titleColor?: string;
-  titleStyle?: React.CSSProperties;
-  headerAction?: React.ReactNode;
-  isMobile: boolean;
-  isExpanded: boolean;
-  onToggle: (id: string) => void;
-  children: React.ReactNode;
-}
-
-const CollapsiblePanel: React.FC<CollapsiblePanelProps> = ({
-  id,
-  title,
-  titleColor,
-  titleStyle,
-  headerAction,
-  isMobile,
-  isExpanded,
-  onToggle,
-  children,
-}) => {
-  const showContent = !isMobile || isExpanded;
-
-  return (
-    <div className="app-panel" style={styles.panel}>
-      <h3
-        className="app-panel-title"
-        style={{
-          ...styles.panelTitle,
-          ...(titleColor ? { color: titleColor } : {}),
-          ...titleStyle,
-          cursor: isMobile ? 'pointer' : undefined,
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          userSelect: isMobile ? 'none' as const : undefined,
-        }}
-        onClick={isMobile ? () => onToggle(id) : undefined}
-      >
-        <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          {title}
-          {headerAction}
-        </span>
-        {isMobile && (
-          <span style={{
-            fontSize: '0.9rem',
-            transition: 'transform 0.2s',
-            transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
-          }}>
-            ▼
-          </span>
-        )}
-      </h3>
-      {showContent && children}
-    </div>
-  );
-};
+// CollapsiblePanel imported from ./ui/CollapsiblePanel
 
 // Main App
 const App: React.FC = () => {
@@ -1147,9 +1123,9 @@ const App: React.FC = () => {
   const journeyLoadPresetRef = useRef<(presetName: string) => void>(() => {});
   const journeyMorphToRef = useRef<(presetName: string, duration: number) => void>(() => {});
   
-  // Journey uses phrase-based timing (1 phrase = 16 seconds by default)
+  // Journey uses phrase-based timing (1 phrase = phraseLength seconds)
   const journey = useJourney(
-    PHRASE_LENGTH,
+    state.phraseLength ?? 16,
     (presetName, duration) => journeyMorphToRef.current(presetName, duration),
     (presetName) => journeyLoadPresetRef.current(presetName)
   );
@@ -1199,7 +1175,7 @@ const App: React.FC = () => {
   }, []);
 
   // Active tab for Advanced UI panels
-  type AdvancedTab = 'global' | 'synth' | 'drums' | 'reverb' | 'looper' | 'earth';
+  type AdvancedTab = 'global' | 'synth' | 'drums' | 'reverb' | 'granular' | 'earth';
   const [activeTab, setActiveTab] = useState<AdvancedTab>('global');
 
   // Unified slider mode state: key → SliderMode ('single' | 'walk' | 'sampleHold')
@@ -1307,7 +1283,7 @@ const App: React.FC = () => {
   // Track last triggered drum S&H positions for any param (keyed by full param name)
   const [drumParamSHPositions, setDrumParamSHPositions] = useState<Record<string, number>>({});
 
-  // Granular/looper S&H flash state: set of param keys currently pulsing
+  // Granular/granular S&H flash state: set of param keys currently pulsing
   const [shFlashKeys, setShFlashKeys] = useState<Set<string>>(new Set());
   const shFlashTimerRef = useRef<number | null>(null);
 
@@ -1319,10 +1295,15 @@ const App: React.FC = () => {
   const drumViewModeRef = useRef<'simple' | 'detail' | 'overview'>('detail');
   const drumStepOverridesRef = useRef<StepOverrides | undefined>(undefined);
   const drumSubLaneStatesRef = useRef<Record<SubLaneKind, SubLaneState>[] | undefined>(undefined);
+  const drumEvolveConfigsRef = useRef<EvolveConfig[] | undefined>(undefined);
+  const drumSeqSimpleStateRef = useRef<SeqSimpleState | undefined>(undefined);
 
   // Evolve flash state — driven by audio engine callback, passed to DrumPage
   const [drumEuclidEvolveFlashing, setDrumEuclidEvolveFlashing] = useState<boolean[]>([false, false, false, false]);
   const drumEuclidEvolveFlashTimersRef = useRef<Array<number | null>>([null, null, null, null]);
+  // Evolved step overrides pushed from audio engine for visual sync
+  const [drumEvolvedOverrides, setDrumEvolvedOverrides] = useState<{ laneIndex: number; version: number; data: Partial<StepOverrides> } | undefined>(undefined);
+  const drumEvolvedVersionRef = useRef(0);
 
   // ── Lead/Synth Euclidean sequencer state ──
   const [leadSeqPlayheads, setLeadSeqPlayheads] = useState<number[]>([0, 0, 0, 0]);
@@ -1331,31 +1312,74 @@ const App: React.FC = () => {
   const synthStepOverridesRef = useRef<StepOverrides | undefined>(undefined);
   const synthSubLaneStatesRef = useRef<Record<SubLaneKind, SubLaneState>[] | undefined>(undefined);
   const synthPitchSettingsRef = useRef<PitchSettings[] | undefined>(undefined);
-  // @ts-expect-error Reserved for future evolve flash animation UI
+  const synthEvolveConfigsRef = useRef<EvolveConfig[] | undefined>(undefined);
   const [synthEuclidEvolveFlashing, setSynthEuclidEvolveFlashing] = useState<boolean[]>([false, false, false, false]);
-  // @ts-expect-error Reserved for future evolve flash animation UI
   const synthEuclidEvolveFlashTimersRef = useRef<Array<number | null>>([null, null, null, null]);
+  // Evolved step overrides pushed from audio engine for visual sync
+  const [synthEvolvedOverrides, setSynthEvolvedOverrides] = useState<{ laneIndex: number; version: number; data: Partial<StepOverrides> } | undefined>(undefined);
+  const synthEvolvedVersionRef = useRef(0);
 
-  // ── Looper Euclidean sequencer state ──
-  const [looperSeqPlayheads, setLooperSeqPlayheads] = useState<number[]>([0, 0, 0, 0]);
-  const [looperSeqHitCounts, setLooperSeqHitCounts] = useState<number[]>([0, 0, 0, 0]);
-  const looperViewModeRef = useRef<'simple' | 'detail' | 'overview'>('detail');
-  const looperStepOverridesRef = useRef<StepOverrides | undefined>(undefined);
-  const looperSubLaneStatesRef = useRef<Record<SubLaneKind, SubLaneState>[] | undefined>(undefined);
-  const looperClockDivsRef = useRef<ClockDivision[] | undefined>(undefined);
-  const [looperPresetVersion, setLooperPresetVersion] = useState(0);
+  // ── Granular Euclidean sequencer state ──
+  const [granularSeqPlayheads, setGranularSeqPlayheads] = useState<number[]>([0, 0, 0, 0]);
+  const [granularSeqHitCounts, setGranularSeqHitCounts] = useState<number[]>([0, 0, 0, 0]);
+  const granularViewModeRef = useRef<'simple' | 'detail' | 'overview'>('detail');
+  const granularStepOverridesRef = useRef<StepOverrides | undefined>(undefined);
+  const granularSubLaneStatesRef = useRef<Record<SubLaneKind, SubLaneState>[] | undefined>(undefined);
+  const granularClockDivsRef = useRef<ClockDivision[] | undefined>(undefined);
+  const granularEvolveConfigsRef = useRef<EvolveConfig[] | undefined>(undefined);
+  const [drumPresetVersion, setDrumPresetVersion] = useState(0);
+  const [synthPresetVersion, setSynthPresetVersion] = useState(0);
+  const [granularPresetVersion, setGranularPresetVersion] = useState(0);
 
-  // ── Looper buffer position state (from worklet) ──
-  const [looperWriteHead, setLooperWriteHead] = useState(0);
-  const [looperVoicePositions, setLooperVoicePositions] = useState<number[]>([0, 0, 0, 0]);
+  // Helper: restore evolve configs from a loaded preset into refs + engine
+  const restoreEvolveConfigs = useCallback((preset: SavedPreset) => {
+    const defaultEvolve = (): EvolveConfig => ({
+      enabled: false, everyBars: 4, evolution: 0.5, writeOffset: 0,
+      mutationMode: 'biased', methods: {},
+    });
+    const defaultConfigs = () => Array.from({ length: 4 }, defaultEvolve);
 
-  // ── Looper per-trigger override feedback (for UI flash/highlight) ──
-  const [looperTriggerOverrides, setLooperTriggerOverrides] = useState<{
+    const drumConfigs = preset.drumEvolveConfigs ?? defaultConfigs();
+    drumEvolveConfigsRef.current = drumConfigs;
+    audioEngine.setDrumEuclidEvolveConfigs(drumConfigs);
+
+    const synthConfigs = preset.synthEvolveConfigs ?? defaultConfigs();
+    synthEvolveConfigsRef.current = synthConfigs;
+    audioEngine.setSynthEuclidEvolveConfigs(synthConfigs);
+
+    const granularConfigs = preset.granularEvolveConfigs ?? defaultConfigs();
+    granularEvolveConfigsRef.current = granularConfigs;
+    audioEngine.setGranularEuclidEvolveConfigs(granularConfigs);
+
+    // Restore sub-lane states (backward-compatible: undefined if preset lacks them)
+    drumSubLaneStatesRef.current = preset.drumSubLaneStates;
+    synthSubLaneStatesRef.current = preset.synthSubLaneStates;
+    granularSubLaneStatesRef.current = preset.granularSubLaneStates;
+
+    // Bump all version counters so mounted pages re-initialize from refs
+    setDrumPresetVersion(v => v + 1);
+    setSynthPresetVersion(v => v + 1);
+    setGranularPresetVersion(v => v + 1);
+  }, []);
+
+  // ── Granular buffer position state (from worklet) ──
+  const [granularWriteHead, setGranularWriteHead] = useState(0);
+  const [granularVoicePositions, setGranularVoicePositions] = useState<number[]>([0, 0, 0, 0]);
+
+  // ── Granular per-trigger override feedback (for UI flash/highlight) ──
+  const [granularTriggerOverrides, setGranularTriggerOverrides] = useState<{
     sliceOverride?: number;
     pitchOverride?: number;
     reverseOverride?: boolean;
   }[]>([{}, {}, {}, {}]);
-  const looperTriggerTimersRef = useRef<(number | null)[]>([null, null, null, null]);
+  const granularTriggerTimersRef = useRef<(number | null)[]>([null, null, null, null]);
+
+  // Granular evolve flash state
+  const [granularEuclidEvolveFlashing, setGranularEuclidEvolveFlashing] = useState<boolean[]>([false, false, false, false]);
+  const granularEuclidEvolveFlashTimersRef = useRef<Array<number | null>>([null, null, null, null]);
+  // Granular evolved step overrides for visual sync
+  const [granularEvolvedOverrides, setGranularEvolvedOverrides] = useState<{ laneIndex: number; version: number; data: Partial<StepOverrides> } | undefined>(undefined);
+  const granularEvolvedVersionRef = useRef(0);
 
   // Trigger position map: maps slider keys to their per-trigger position values
   const triggerPositionMap = useMemo<Record<string, number>>(() => ({
@@ -1843,11 +1867,12 @@ const App: React.FC = () => {
           }, { currentState: state, normalize: normalizePresetForWeb });
           setState(result.state);
           applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
+          restoreEvolveConfigs(result.preset);
           console.log(`Loaded cloud preset: ${preset.name} by ${preset.author}`);
         }
       });
     }
-  }, [applyDualRangesFromPreset]);
+  }, [applyDualRangesFromPreset, restoreEvolveConfigs]);
 
   // Engine state callback
   useEffect(() => {
@@ -2007,9 +2032,9 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // Granular/looper S&H trigger callback (engine-side 10Hz re-sampling)
+  // Granular/granular S&H trigger callback (engine-side 10Hz re-sampling)
   useEffect(() => {
-    audioEngine.setGranLooperSHTriggerCallback((keys: string[]) => {
+    audioEngine.setGranularSHTriggerCallback((keys: string[]) => {
       setShFlashKeys(new Set(keys));
       if (shFlashTimerRef.current) window.clearTimeout(shFlashTimerRef.current);
       shFlashTimerRef.current = window.setTimeout(() => {
@@ -2017,7 +2042,7 @@ const App: React.FC = () => {
       }, 70);
     });
     return () => {
-      audioEngine.setGranLooperSHTriggerCallback(() => {});
+      audioEngine.setGranularSHTriggerCallback(() => {});
       if (shFlashTimerRef.current) window.clearTimeout(shFlashTimerRef.current);
     };
   }, []);
@@ -2049,6 +2074,154 @@ const App: React.FC = () => {
     };
   }, []);
 
+  // Synth Euclid evolve trigger callback (lane mutation pulse)
+  useEffect(() => {
+    audioEngine.setSynthEuclidEvolveTriggerCallback((laneIndex: number) => {
+      if (laneIndex < 0 || laneIndex > 3) return;
+      setSynthEuclidEvolveFlashing(prev => prev.map((v, idx) => (idx === laneIndex ? true : v)));
+
+      const existingTimer = synthEuclidEvolveFlashTimersRef.current[laneIndex];
+      if (existingTimer) {
+        window.clearTimeout(existingTimer);
+      }
+
+      synthEuclidEvolveFlashTimersRef.current[laneIndex] = window.setTimeout(() => {
+        setSynthEuclidEvolveFlashing(prev => prev.map((v, idx) => (idx === laneIndex ? false : v)));
+        synthEuclidEvolveFlashTimersRef.current[laneIndex] = null;
+      }, 180);
+    });
+
+    return () => {
+      synthEuclidEvolveFlashTimersRef.current.forEach((timer, laneIndex) => {
+        if (timer) {
+          window.clearTimeout(timer);
+          synthEuclidEvolveFlashTimersRef.current[laneIndex] = null;
+        }
+      });
+    };
+  }, []);
+
+  // Drum evolve overrides callback — push evolved values to UI for visual sync
+  useEffect(() => {
+    audioEngine.setDrumEvolveOverridesChangedCallback((laneIndex, overrides) => {
+      drumEvolvedVersionRef.current += 1;
+      setDrumEvolvedOverrides({ laneIndex, version: drumEvolvedVersionRef.current, data: overrides as Partial<StepOverrides> });
+    });
+  }, []);
+
+  // Synth evolve overrides callback — push evolved values to UI for visual sync
+  useEffect(() => {
+    audioEngine.setSynthEvolveOverridesChangedCallback((laneIndex, overrides) => {
+      synthEvolvedVersionRef.current += 1;
+      const data: Partial<StepOverrides> = {};
+        if (overrides.triggerToggles != null) {
+          const arr = [new Map<number, boolean>(), new Map<number, boolean>(), new Map<number, boolean>(), new Map<number, boolean>()];
+          arr[laneIndex] = new Map(overrides.triggerToggles);
+          data.triggerToggles = arr;
+        }
+      const keys = ['expression', 'morph', 'distance', 'probability', 'ratchet'] as const;
+      for (const key of keys) {
+        if (overrides[key] != null) {
+          const arr: (number[] | null)[] = [null, null, null, null];
+          arr[laneIndex] = overrides[key]!;
+          data[key] = arr;
+        }
+      }
+      // Pitch arrives as relative offsets (engine converts MIDI→offsets at evolve boundary)
+      if (overrides.pitch != null) {
+        const arr: (number[] | null)[] = [null, null, null, null];
+        arr[laneIndex] = overrides.pitch;
+        data.pitch = arr;
+      }
+      // Keep synthStepOverridesRef in sync so tab switches don't lose evolved state
+      if (synthStepOverridesRef.current) {
+        const prev = synthStepOverridesRef.current;
+        const next = { ...prev };
+        if (data.triggerToggles?.[laneIndex] != null) {
+          const arr = [...prev.triggerToggles];
+          arr[laneIndex] = new Map(data.triggerToggles[laneIndex]);
+          next.triggerToggles = arr;
+        }
+        const mergeKeys = ['expression', 'morph', 'distance', 'probability', 'ratchet', 'pitch'] as const;
+        for (const key of mergeKeys) {
+          if (data[key] && data[key]![laneIndex] != null) {
+            const arr = [...prev[key]];
+            arr[laneIndex] = data[key]![laneIndex];
+            (next as Record<string, unknown>)[key] = arr;
+          }
+        }
+        synthStepOverridesRef.current = next;
+      }
+      setSynthEvolvedOverrides({ laneIndex, version: synthEvolvedVersionRef.current, data });
+    });
+  }, []);
+
+  // Synth noteRange evolve callback — push evolved noteMin/noteMax to UI sliders
+  useEffect(() => {
+    audioEngine.setSynthNoteRangeEvolvedCallback((laneIndex, noteMin, noteMax) => {
+      const minKey = `synthEuclid${laneIndex + 1}NoteMin` as keyof SliderState;
+      const maxKey = `synthEuclid${laneIndex + 1}NoteMax` as keyof SliderState;
+      setState(prev => ({ ...prev, [minKey]: noteMin, [maxKey]: noteMax }));
+    });
+  }, []);
+
+  // Granular evolve trigger callback (lane mutation pulse)
+  useEffect(() => {
+    audioEngine.setGranularEuclidEvolveTriggerCallback((laneIndex: number) => {
+      if (laneIndex < 0 || laneIndex > 3) return;
+      setGranularEuclidEvolveFlashing(prev => prev.map((v, idx) => (idx === laneIndex ? true : v)));
+
+      const existingTimer = granularEuclidEvolveFlashTimersRef.current[laneIndex];
+      if (existingTimer) {
+        window.clearTimeout(existingTimer);
+      }
+
+      granularEuclidEvolveFlashTimersRef.current[laneIndex] = window.setTimeout(() => {
+        setGranularEuclidEvolveFlashing(prev => prev.map((v, idx) => (idx === laneIndex ? false : v)));
+        granularEuclidEvolveFlashTimersRef.current[laneIndex] = null;
+      }, 180);
+    });
+
+    return () => {
+      granularEuclidEvolveFlashTimersRef.current.forEach((timer, laneIndex) => {
+        if (timer) {
+          window.clearTimeout(timer);
+          granularEuclidEvolveFlashTimersRef.current[laneIndex] = null;
+        }
+      });
+    };
+  }, []);
+
+  // Granular evolve overrides callback — push evolved values to UI for visual sync
+  useEffect(() => {
+    audioEngine.setGranularEvolveOverridesChangedCallback((laneIndex, overrides) => {
+      granularEvolvedVersionRef.current += 1;
+      const data: Partial<StepOverrides> = {};
+      const keys = ['expression', 'pitch', 'slice', 'reverse'] as const;
+      for (const key of keys) {
+        if (overrides[key] != null) {
+          const arr: (number[] | null)[] = [null, null, null, null];
+          arr[laneIndex] = overrides[key]!;
+          data[key] = arr;
+        }
+      }
+      // Keep granularStepOverridesRef in sync so tab switches don't lose evolved state
+      if (granularStepOverridesRef.current) {
+        const prev = granularStepOverridesRef.current;
+        const next = { ...prev };
+        for (const key of keys) {
+          if (data[key] && data[key]![laneIndex] != null) {
+            const arr = [...prev[key]];
+            arr[laneIndex] = data[key]![laneIndex];
+            (next as Record<string, unknown>)[key] = arr;
+          }
+        }
+        granularStepOverridesRef.current = next;
+      }
+      setGranularEvolvedOverrides({ laneIndex, version: granularEvolvedVersionRef.current, data });
+    });
+  }, []);
+
   // Drum Euclid step position callback (live playhead tracking) — throttled to ~8Hz
   useEffect(() => {
     let lastDrumStep = 0;
@@ -2073,58 +2246,58 @@ const App: React.FC = () => {
     });
   }, []);
 
-  // Looper Euclid step position callback (live playhead tracking) — throttled to ~8Hz
+  // Granular Euclid step position callback (live playhead tracking) — throttled to ~8Hz
   useEffect(() => {
-    let lastLooperStep = 0;
-    audioEngine.setLooperStepPositionCallback((steps: number[], hitCounts: number[]) => {
+    let lastGranularStep = 0;
+    audioEngine.setGranularStepPositionCallback((steps: number[], hitCounts: number[]) => {
       const now = performance.now();
-      if (now - lastLooperStep < 120) return;
-      lastLooperStep = now;
-      setLooperSeqPlayheads(steps);
-      setLooperSeqHitCounts(hitCounts);
+      if (now - lastGranularStep < 120) return;
+      lastGranularStep = now;
+      setGranularSeqPlayheads(steps);
+      setGranularSeqHitCounts(hitCounts);
     });
   }, []);
 
-  // Looper buffer position polling — ~12Hz for smooth head animation
+  // Granular buffer position polling — ~12Hz for smooth head animation
   useEffect(() => {
     if (!engineState.isRunning) return;
     const id = setInterval(() => {
-      setLooperWriteHead(audioEngine.getLooperWriteHeadPosition());
-      setLooperVoicePositions(audioEngine.getLooperVoicePositions());
+      setGranularWriteHead(audioEngine.getGranularWriteHeadPosition());
+      setGranularVoicePositions(audioEngine.getGranularVoicePositions());
     }, 80); // ~12fps — matches CSS transition for continuous motion
     return () => clearInterval(id);
   }, [engineState.isRunning]);
 
-  // Looper per-trigger override callback (reverse toggle, pitch flash, slice highlight) — throttled to ~10Hz
+  // Granular per-trigger override callback (reverse toggle, pitch flash, slice highlight) — throttled to ~10Hz
   useEffect(() => {
     const lastOverride: Record<number, number> = {};
-    audioEngine.setLooperTriggerOverrideCallback((voice: number, overrides: { sliceOverride?: number; pitchOverride?: number; reverseOverride?: boolean }) => {
+    audioEngine.setGranularTriggerOverrideCallback((voice: number, overrides: { sliceOverride?: number; pitchOverride?: number; reverseOverride?: boolean }) => {
       if (voice < 0 || voice > 3) return;
       const now = performance.now();
       if (now - (lastOverride[voice] || 0) < 100) return;
       lastOverride[voice] = now;
-      setLooperTriggerOverrides(prev => {
+      setGranularTriggerOverrides(prev => {
         const next = [...prev];
         next[voice] = overrides;
         return next;
       });
       // Clear after 150ms
-      const existing = looperTriggerTimersRef.current[voice];
+      const existing = granularTriggerTimersRef.current[voice];
       if (existing) window.clearTimeout(existing);
-      looperTriggerTimersRef.current[voice] = window.setTimeout(() => {
-        setLooperTriggerOverrides(prev => {
+      granularTriggerTimersRef.current[voice] = window.setTimeout(() => {
+        setGranularTriggerOverrides(prev => {
           const next = [...prev];
           next[voice] = {};
           return next;
         });
-        looperTriggerTimersRef.current[voice] = null;
+        granularTriggerTimersRef.current[voice] = null;
       }, 150);
     });
     return () => {
-      looperTriggerTimersRef.current.forEach((timer, i) => {
+      granularTriggerTimersRef.current.forEach((timer, i) => {
         if (timer) {
           window.clearTimeout(timer);
-          looperTriggerTimersRef.current[i] = null;
+          granularTriggerTimersRef.current[i] = null;
         }
       });
     };
@@ -2211,7 +2384,7 @@ const App: React.FC = () => {
   useEffect(() => {
     if (engineState.isRunning) {
       const update = () => {
-        setCountdown(getTimeUntilNextPhrase());
+        setCountdown(getTimeUntilNextPhrase(state.phraseLength ?? 16));
       };
       update();
       countdownRef.current = window.setInterval(update, 1000); // 1Hz — displays whole seconds
@@ -2332,12 +2505,137 @@ const App: React.FC = () => {
         setDrumMorphOverride(drumVoice, keyStr, value as number, drumMorphPosition);
       }
       
-      // Auto-disable granular (looper) when level is 0
-      if (key === 'granularLevel' && value === 0) {
+      // Auto-disable engines when both level and reverb send are 0
+      // (Ocean has no dedicated reverb send, so auto-disable on level=0 alone)
+      if (key === 'granularLevel' && value === 0 && prev.granularReverbSend === 0) {
         newState.granularEnabled = false;
-        newState.looperEnabled = false;
       }
-      
+      if (key === 'granularReverbSend' && value === 0 && prev.granularLevel === 0) {
+        newState.granularEnabled = false;
+      }
+      if (key === 'lead1Level' && value === 0 && prev.lead1ReverbSend === 0) {
+        newState.leadEnabled = false;
+      }
+      if (key === 'lead1ReverbSend' && value === 0 && prev.lead1Level === 0) {
+        newState.leadEnabled = false;
+      }
+      if (key === 'lead2Level' && value === 0 && prev.lead2ReverbSend === 0) {
+        newState.lead2Enabled = false;
+      }
+      if (key === 'lead2ReverbSend' && value === 0 && prev.lead2Level === 0) {
+        newState.lead2Enabled = false;
+      }
+      if (key === 'drumLevel' && value === 0 && prev.drumReverbSend === 0) {
+        newState.drumEnabled = false;
+      }
+      if (key === 'drumReverbSend' && value === 0 && prev.drumLevel === 0) {
+        newState.drumEnabled = false;
+      }
+      if (key === 'oceanSampleLevel' && value === 0) {
+        newState.oceanSampleEnabled = false;
+      }
+      if (key === 'oceanWaveSynthLevel' && value === 0) {
+        newState.oceanWaveSynthEnabled = false;
+      }
+      // Pad 1 (synthLevel + synthReverbSend)
+      if (key === 'synthLevel' && value === 0 && prev.synthReverbSend === 0) {
+        newState.padEnabled = false;
+      }
+      if (key === 'synthReverbSend' && value === 0 && prev.synthLevel === 0) {
+        newState.padEnabled = false;
+      }
+      // Pad 2 (pad2Level + shared synthReverbSend)
+      if (key === 'pad2Level' && value === 0 && prev.synthReverbSend === 0) {
+        newState.pad2Enabled = false;
+      }
+      if (key === 'synthReverbSend' && value === 0 && prev.pad2Level === 0) {
+        newState.pad2Enabled = false;
+      }
+      // Water (waterLevel + waterReverbSend)
+      if (key === 'waterLevel' && value === 0 && prev.waterReverbSend === 0) {
+        newState.waterEnabled = false;
+      }
+      if (key === 'waterReverbSend' && value === 0 && prev.waterLevel === 0) {
+        newState.waterEnabled = false;
+      }
+      // Insects 1 (insectsLevel + insectsReverbSend)
+      if (key === 'insectsLevel' && value === 0 && prev.insectsReverbSend === 0) {
+        newState.insectsEnabled = false;
+      }
+      if (key === 'insectsReverbSend' && value === 0 && prev.insectsLevel === 0) {
+        newState.insectsEnabled = false;
+      }
+      // Insects 2 (insects2Level + shared insectsReverbSend)
+      if (key === 'insects2Level' && value === 0 && prev.insectsReverbSend === 0) {
+        newState.insects2Enabled = false;
+      }
+      if (key === 'insectsReverbSend' && value === 0 && prev.insects2Level === 0) {
+        newState.insects2Enabled = false;
+      }
+
+      // Auto-RE-ENABLE engines when level or send moves away from 0
+      // (mirrors auto-disable: sliding back up re-enables the engine)
+      if (key === 'granularLevel' && (value as number) > 0 && prev.granularEnabled === false) {
+        newState.granularEnabled = true;
+      }
+      if (key === 'granularReverbSend' && (value as number) > 0 && prev.granularEnabled === false) {
+        newState.granularEnabled = true;
+      }
+      if (key === 'lead1Level' && (value as number) > 0 && prev.leadEnabled === false) {
+        newState.leadEnabled = true;
+      }
+      if (key === 'lead1ReverbSend' && (value as number) > 0 && prev.leadEnabled === false) {
+        newState.leadEnabled = true;
+      }
+      if (key === 'lead2Level' && (value as number) > 0 && prev.lead2Enabled === false) {
+        newState.lead2Enabled = true;
+      }
+      if (key === 'lead2ReverbSend' && (value as number) > 0 && prev.lead2Enabled === false) {
+        newState.lead2Enabled = true;
+      }
+      if (key === 'drumLevel' && (value as number) > 0 && prev.drumEnabled === false) {
+        newState.drumEnabled = true;
+      }
+      if (key === 'drumReverbSend' && (value as number) > 0 && prev.drumEnabled === false) {
+        newState.drumEnabled = true;
+      }
+      if (key === 'oceanSampleLevel' && (value as number) > 0 && prev.oceanSampleEnabled === false) {
+        newState.oceanSampleEnabled = true;
+      }
+      if (key === 'oceanWaveSynthLevel' && (value as number) > 0 && prev.oceanWaveSynthEnabled === false) {
+        newState.oceanWaveSynthEnabled = true;
+      }
+      if (key === 'synthLevel' && (value as number) > 0 && prev.padEnabled === false) {
+        newState.padEnabled = true;
+      }
+      if (key === 'synthReverbSend' && (value as number) > 0 && prev.padEnabled === false) {
+        newState.padEnabled = true;
+      }
+      if (key === 'pad2Level' && (value as number) > 0 && prev.pad2Enabled === false) {
+        newState.pad2Enabled = true;
+      }
+      if (key === 'synthReverbSend' && (value as number) > 0 && prev.pad2Enabled === false) {
+        newState.pad2Enabled = true;
+      }
+      if (key === 'waterLevel' && (value as number) > 0 && prev.waterEnabled === false) {
+        newState.waterEnabled = true;
+      }
+      if (key === 'waterReverbSend' && (value as number) > 0 && prev.waterEnabled === false) {
+        newState.waterEnabled = true;
+      }
+      if (key === 'insectsLevel' && (value as number) > 0 && prev.insectsEnabled === false) {
+        newState.insectsEnabled = true;
+      }
+      if (key === 'insectsReverbSend' && (value as number) > 0 && prev.insectsEnabled === false) {
+        newState.insectsEnabled = true;
+      }
+      if (key === 'insects2Level' && (value as number) > 0 && prev.insects2Enabled === false) {
+        newState.insects2Enabled = true;
+      }
+      if (key === 'insectsReverbSend' && (value as number) > 0 && prev.insects2Enabled === false) {
+        newState.insects2Enabled = true;
+      }
+
       // When drum morph slider or preset selectors change, apply morphed values to sliders
       const morphKeys: Record<string, DrumPresetVoice> = {
         drumSubMorph: 'sub', drumSubPresetA: 'sub', drumSubPresetB: 'sub',
@@ -2585,7 +2883,7 @@ const App: React.FC = () => {
       walkPos = drumParamSHPositions[keyStr];
     }
 
-    // S&H flash for granular/looper params (engine-side 10Hz re-sampling)
+    // S&H flash for granular/granular params (engine-side 10Hz re-sampling)
     const isFlashing = mode === 'sampleHold' && shFlashKeys.has(keyStr);
 
     return {
@@ -2636,14 +2934,14 @@ const App: React.FC = () => {
         }
       }
 
-      // ═══ GRANULAR ↔ LOOPER SYNC: granularEnabled controls looperEnabled ═══
+      // ═══ GRANULAR ↔ GRANULAR SYNC: granularEnabled controls granularEnabled ═══
       if (key === 'granularEnabled') {
-        newState.looperEnabled = value as boolean;
+        newState.granularEnabled = value as boolean;
       }
 
-      // ═══ LOOPER PRESET: apply partial state overrides ═══
-      if (key === 'looperPreset') {
-        const presetData = getLooperPresetData(value as string);
+      // ═══ GRANULAR PRESET: apply partial state overrides ═══
+      if (key === 'granularPreset') {
+        const presetData = getGranularPresetData(value as string);
         if (presetData) {
           for (const k of Object.keys(presetData)) {
             (newState as Record<string, unknown>)[k] = (presetData as Record<string, unknown>)[k];
@@ -2697,15 +2995,15 @@ const App: React.FC = () => {
       return newState;
     });
 
-    // Apply looper preset slider modes (outside setState since sliderModes is separate state)
-    if (key === 'looperPreset') {
-      const modes = getLooperPresetSliderModes(value as string);
+    // Apply granular preset slider modes (outside setState since sliderModes is separate state)
+    if (key === 'granularPreset') {
+      const modes = getGranularPresetSliderModes(value as string);
       if (modes) {
         // 1. Update slider modes
         setSliderModes(prev => {
           const next = { ...prev };
           for (const k of Object.keys(next)) {
-            if (k.startsWith('looperV')) delete next[k];
+            if (k.startsWith('granularV')) delete next[k];
           }
           for (const [k, v] of Object.entries(modes)) {
             next[k] = v as SliderMode;
@@ -2715,7 +3013,7 @@ const App: React.FC = () => {
 
         // 2. Initialise dualSliderRanges + randomWalkRef for walk/sampleHold keys
         //    so that the walk animation and sampleHold triggers actually fire.
-        const presetData = getLooperPresetData(value as string);
+        const presetData = getGranularPresetData(value as string);
         const newDualRanges: DualSliderState = {};
         const newWalkPositions: Record<string, number> = {};
         for (const [k, mode] of Object.entries(modes)) {
@@ -2740,11 +3038,11 @@ const App: React.FC = () => {
             };
           }
         }
-        // Merge with existing non-looper ranges
+        // Merge with existing non-granular ranges
         setDualSliderRanges(prev => {
           const next: Record<string, DualSliderRange | undefined> = { ...prev };
           for (const k of Object.keys(next)) {
-            if (k.startsWith('looperV')) delete next[k];
+            if (k.startsWith('granularV')) delete next[k];
           }
           Object.assign(next, newDualRanges);
           return next as DualSliderState;
@@ -2752,26 +3050,26 @@ const App: React.FC = () => {
         setRandomWalkPositions(prev => {
           const next = { ...prev };
           for (const k of Object.keys(next)) {
-            if (k.startsWith('looperV')) delete next[k];
+            if (k.startsWith('granularV')) delete next[k];
           }
           return { ...next, ...newWalkPositions };
         });
-        // Clean up stale walk refs for looper keys
+        // Clean up stale walk refs for granular keys
         for (const k of Object.keys(randomWalkRef.current)) {
-          if (k.startsWith('looperV') && !(k in modes)) {
+          if (k.startsWith('granularV') && !(k in modes)) {
             delete randomWalkRef.current[k as keyof SliderState];
           }
         }
       }
 
       // Apply sequencer configuration (sub-lanes, clock divs, step overrides)
-      const seqConfig = getLooperPresetSeqConfig(value as string);
+      const seqConfig = getGranularPresetSeqConfig(value as string);
       if (seqConfig) {
-        looperStepOverridesRef.current = seqConfig.stepOverrides;
-        looperSubLaneStatesRef.current = seqConfig.subLaneStates;
-        looperClockDivsRef.current = seqConfig.clockDivs;
+        granularStepOverridesRef.current = seqConfig.stepOverrides;
+        granularSubLaneStatesRef.current = seqConfig.subLaneStates;
+        granularClockDivsRef.current = seqConfig.clockDivs;
         // Forward step overrides to audio engine immediately
-        audioEngine.setLooperStepOverrides({
+        audioEngine.setGranularStepOverrides({
           triggerToggles: seqConfig.stepOverrides.triggerToggles,
           expression: seqConfig.stepOverrides.expression,
           expressionDirection: seqConfig.stepOverrides.expressionDirection,
@@ -2785,15 +3083,15 @@ const App: React.FC = () => {
           reverse: seqConfig.stepOverrides.reverse,
           reverseDirection: seqConfig.stepOverrides.reverseDirection,
         });
-        audioEngine.setLooperEuclidClockDivs(seqConfig.clockDivs);
+        audioEngine.setGranularEuclidClockDivs(seqConfig.clockDivs);
       } else {
         // Non-rhythmic preset: clear sub-lane overrides
-        looperStepOverridesRef.current = undefined;
-        looperSubLaneStatesRef.current = undefined;
-        looperClockDivsRef.current = undefined;
+        granularStepOverridesRef.current = undefined;
+        granularSubLaneStatesRef.current = undefined;
+        granularClockDivsRef.current = undefined;
       }
       // Bump version to trigger hook re-initialization from initial* props
-      setLooperPresetVersion(v => v + 1);
+      setGranularPresetVersion(v => v + 1);
     }
   }, []);
 
@@ -2817,6 +3115,7 @@ const App: React.FC = () => {
           setMorphPresetA(result.preset);
           stateToStart = result.state;
           applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
+          restoreEvolveConfigs(result.preset);
         }
       }
       
@@ -3311,6 +3610,12 @@ const App: React.FC = () => {
       state,
       dualRanges: Object.keys(dualRangesObj).length > 0 ? dualRangesObj : undefined,
       sliderModes: Object.keys(modesObj).length > 0 ? modesObj : undefined,
+      drumEvolveConfigs: drumEvolveConfigsRef.current,
+      synthEvolveConfigs: synthEvolveConfigsRef.current,
+      granularEvolveConfigs: granularEvolveConfigsRef.current,
+      drumSubLaneStates: drumSubLaneStatesRef.current,
+      synthSubLaneStates: synthSubLaneStatesRef.current,
+      granularSubLaneStates: granularSubLaneStatesRef.current,
     };
     
     const success = await savePresetToFile(preset);
@@ -3463,7 +3768,7 @@ const App: React.FC = () => {
     // If parent boolean is OFF in the target preset, don't morph child sliders
     const parentChildMap: Record<string, (keyof SliderState)[]> = {
       granularEnabled: [
-        'granularReverbSend', 'granularLevel',
+        'granularReverbSend', 'granularLevel', 'granularReverbLPF', 'granularOutputLPF',
       ],
       leadEnabled: [
         'lead1Attack', 'lead1Decay', 'lead1Sustain', 'lead1Release',
@@ -3472,7 +3777,7 @@ const App: React.FC = () => {
         'leadDelayMix', 'lead1Density',
         'lead1Octave', 'lead1OctaveRange',
         'leadVibratoDepth', 'leadVibratoRate',
-        'leadGlide', 'leadReverbSend', 'leadDelayReverbSend'
+        'leadGlide', 'lead1ReverbSend', 'lead2ReverbSend', 'leadDelayReverbSend'
       ],
       synthEuclideanMasterEnabled: [
         'synthEuclideanTempo'
@@ -3500,7 +3805,8 @@ const App: React.FC = () => {
     // Interpolate all numeric values (except those that should snap)
     const numericKeys: (keyof SliderState)[] = [
       'masterVolume', 'synthLevel', 'pad2Level', 'granularLevel', 'synthReverbSend', 'granularReverbSend',
-      'leadReverbSend', 'leadDelayReverbSend', 'reverbLevel', 'randomness', 'tension',
+      'granularReverbLPF', 'granularOutputLPF',
+      'lead1ReverbSend', 'lead2ReverbSend', 'leadDelayReverbSend', 'reverbLevel', 'randomness', 'tension',
       'chordRate', 'voicingSpread', 'waveSpread', 'detune', 'synthAttack', 'synthDecay',
       'synthSustain', 'synthRelease', 'synthVoiceMask', 'synthOctave', 'hardness',
       'filterCutoffMin', 'filterCutoffMax', 'filterResonance', 'filterQ',
@@ -3647,7 +3953,7 @@ const App: React.FC = () => {
     if (warnings.length > 0) {
       console.warn('[Preset Compatibility]', warnings);
       setTimeout(() => {
-        alert(`⚠️ Preset Compatibility Notice:\n\n${warnings.join('\n')}`);
+          alert(`⚠️ Preset Compatibility Notice:\n\n${warnings.join('\n')}`);
       }, 100);
     }
     
@@ -3690,6 +3996,7 @@ const App: React.FC = () => {
         const result = applyPreset(normalizedPreset, { migrate: false, currentState: state, normalize: s => s });
         setState(result.state);
         applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
+        restoreEvolveConfigs(normalizedPreset);
       }
       // If in mid-morph, the useEffect will handle applying the interpolated state
     } else {
@@ -3714,6 +4021,7 @@ const App: React.FC = () => {
         const result = applyPreset(normalizedPreset, { migrate: false, currentState: state, normalize: s => s });
         setState(result.state);
         applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
+        restoreEvolveConfigs(normalizedPreset);
       }
     }
     setMorphLoadTarget(null);
@@ -4046,6 +4354,102 @@ const App: React.FC = () => {
     });
   }, [morphPresetA, morphPresetB, lerpPresets, engineState.cofCurrentStep]);
 
+  // ── Morph Slot Select Callbacks (used by GlobalPage) ──
+  const handleMorphSlotASelect = useCallback((presetName: string) => {
+    if (presetName === '') {
+      setMorphPresetA(null);
+    } else {
+      const preset = savedPresets.find(p => p.name === presetName);
+      if (preset) {
+        const migratedA = migratePreset(preset);
+        const normalizedPreset: SavedPreset = {
+          ...migratedA,
+          state: normalizePresetForWeb(migratedA.state),
+        };
+        if (!morphPresetB) {
+          morphCapturedStateRef.current = { ...state };
+          const currentDualRanges: Record<string, { min: number; max: number }> = {};
+          Object.keys(sliderModes).forEach(key => {
+            const range = dualSliderRanges[key as keyof SliderState];
+            if (range) {
+              currentDualRanges[key as string] = { min: range.min, max: range.max };
+            }
+          });
+          morphCapturedDualRangesRef.current = currentDualRanges;
+          morphCapturedSliderModesRef.current = { ...sliderModes };
+        }
+        setMorphPresetA(normalizedPreset);
+        const atEndpoint0 = isAtEndpoint0(morphPosition, true);
+        const shouldApplyPresetA = atEndpoint0 || !morphPresetB;
+        if (shouldApplyPresetA) {
+          const result = applyPreset(normalizedPreset, { migrate: false, currentState: state, normalize: s => s });
+          setState(result.state);
+          applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
+          restoreEvolveConfigs(normalizedPreset);
+        }
+      }
+    }
+  }, [savedPresets, morphPresetB, morphPosition, state, sliderModes, dualSliderRanges, applyDualRangesFromPreset, restoreEvolveConfigs]);
+
+  const handleMorphSlotAClear = useCallback(() => {
+    setMorphPresetA(null);
+    setMorphPosition(0);
+  }, []);
+
+  const handleMorphSlotBSelect = useCallback((presetName: string) => {
+    if (presetName === '') {
+      setMorphPresetB(null);
+    } else {
+      const preset = savedPresets.find(p => p.name === presetName);
+      if (preset) {
+        const migratedB = migratePreset(preset);
+        const normalizedPreset: SavedPreset = {
+          ...migratedB,
+          state: normalizePresetForWeb(migratedB.state),
+        };
+        if (!morphPresetA) {
+          morphCapturedStateRef.current = { ...state };
+          const currentDualRanges: Record<string, { min: number; max: number }> = {};
+          Object.keys(sliderModes).forEach(key => {
+            const range = dualSliderRanges[key as keyof SliderState];
+            if (range) {
+              currentDualRanges[key as string] = { min: range.min, max: range.max };
+            }
+          });
+          morphCapturedDualRangesRef.current = currentDualRanges;
+          morphCapturedSliderModesRef.current = { ...sliderModes };
+        }
+        setMorphPresetB(normalizedPreset);
+        const atEndpoint1 = isAtEndpoint1(morphPosition, true);
+        const shouldApplyPresetB = atEndpoint1 || !morphPresetA;
+        if (shouldApplyPresetB) {
+          const result = applyPreset(normalizedPreset, { migrate: false, currentState: state, normalize: s => s });
+          setState(result.state);
+          applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
+          restoreEvolveConfigs(normalizedPreset);
+        }
+      }
+    }
+  }, [savedPresets, morphPresetA, morphPosition, state, sliderModes, dualSliderRanges, applyDualRangesFromPreset, restoreEvolveConfigs]);
+
+  const handleMorphSlotBClear = useCallback(() => {
+    setMorphPresetB(null);
+    setMorphPosition(0);
+  }, []);
+
+  // ── Cloud Preset Load Callback (used by GlobalPage) ──
+  const handleLoadCloudPreset = useCallback((presetState: SliderState, _name: string) => {
+    const result = applyPreset({ state: presetState, name: _name } as SavedPreset, { currentState: state, normalize: normalizePresetForWeb });
+    setState(result.state);
+    applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
+    restoreEvolveConfigs(result.preset);
+  }, [state, applyDualRangesFromPreset, restoreEvolveConfigs]);
+
+  // ── Record Stems Toggle Callback (used by GlobalPage) ──
+  const handleRecordStemsToggle = useCallback((key: string) => {
+    setRecordStems(prev => ({ ...prev, [key]: !prev[key as keyof typeof prev] }));
+  }, []);
+
   // Auto-cycle morph effect - continuous smooth animation
   const morphStartTimeRef = useRef<number>(Date.now());
   const lastMorphPosRef = useRef<number>(0);
@@ -4067,11 +4471,12 @@ const App: React.FC = () => {
       return;
     }
     
-    // PHRASE_LENGTH is imported from harmony.ts (16 seconds per phrase)
+    // Use state.phraseLength for harmony phrase duration
     // Use refs for phrase settings to avoid restarting effect when they change
-    const getPlayDuration = () => morphPlayPhrasesRef.current * PHRASE_LENGTH * 1000;
-    const getTransitionDuration = () => morphTransitionPhrasesRef.current * PHRASE_LENGTH * 1000;
-    const HOLD_DURATION = PHRASE_LENGTH * 1000; // Hold current position for 1 phrase before transitioning
+    const pl = state.phraseLength ?? 16;
+    const getPlayDuration = () => morphPlayPhrasesRef.current * pl * 1000;
+    const getTransitionDuration = () => morphTransitionPhrasesRef.current * pl * 1000;
+    const HOLD_DURATION = pl * 1000; // Hold current position for 1 phrase before transitioning
     
     // Capture the current manual position when entering auto mode
     morphStartTimeRef.current = Date.now();
@@ -4308,7 +4713,7 @@ const App: React.FC = () => {
       }
       
       // Update countdown UI
-      const phrasesLeft = Math.ceil(timeLeftInPhase / (PHRASE_LENGTH * 1000));
+      const phrasesLeft = Math.ceil(timeLeftInPhase / ((state.phraseLength ?? 16) * 1000));
       setMorphCountdown({ phase: phaseName, phrasesLeft });
     };
     
@@ -4374,6 +4779,7 @@ const App: React.FC = () => {
       const result = applyPreset(preset, { currentState: state, normalize: normalizePresetForWeb });
       setState(result.state);
       applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
+      restoreEvolveConfigs(result.preset);
     }
     // If in mid-morph, the useEffect will handle applying the interpolated state
     
@@ -4406,6 +4812,12 @@ const App: React.FC = () => {
             state: result.state,
             dualRanges: result.preset.dualRanges,
             sliderModes: result.preset.sliderModes,
+            drumEvolveConfigs: result.preset.drumEvolveConfigs,
+            synthEvolveConfigs: result.preset.synthEvolveConfigs,
+            granularEvolveConfigs: result.preset.granularEvolveConfigs,
+            drumSubLaneStates: result.preset.drumSubLaneStates,
+            synthSubLaneStates: result.preset.synthSubLaneStates,
+            granularSubLaneStates: result.preset.granularSubLaneStates,
           };
           
           // Add to preset list for display
@@ -4423,6 +4835,7 @@ const App: React.FC = () => {
             
             // Apply dual ranges and slider modes from migrated preset
             applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
+            restoreEvolveConfigs(result.preset);
           }
         }
       } catch (err) {
@@ -4519,11 +4932,11 @@ const App: React.FC = () => {
     }
     
     // Calculate duration in milliseconds using phrase-based timing
-    // 1 phrase = PHRASE_LENGTH seconds (default 16s)
-    const msPerPhrase = PHRASE_LENGTH * 1000;
+    // 1 phrase = phraseLength seconds (default 16s)
+    const msPerPhrase = (state.phraseLength ?? 16) * 1000;
     const durationMs = durationPhrases * msPerPhrase;
     
-    console.log('[Journey] Morph duration:', durationMs, 'ms (', durationPhrases, 'phrases x', PHRASE_LENGTH, 's)');
+    console.log('[Journey] Morph duration:', durationMs, 'ms (', durationPhrases, 'phrases x', (state.phraseLength ?? 16), 's)');
     
     // Determine start and end positions based on direction
     // toB: Load target into B, morph 0→100
@@ -4886,7 +5299,7 @@ const App: React.FC = () => {
           onClick={() => setUiMode('snowflake')}
           title="Simple Mode"
         >
-          ❄︎
+          ❄
         </button>
         <input
           ref={(el) => (fileInputRef.current = el)}
@@ -4973,28 +5386,6 @@ const App: React.FC = () => {
         <button
           style={{
             ...styles.tab,
-            ...(activeTab === 'reverb' ? styles.tabActive : {}),
-            ...m?.tab,
-          }}
-          onClick={() => setActiveTab('reverb')}
-        >
-          <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>◈</span>
-          <span>Reverb</span>
-        </button>
-        <button
-          style={{
-            ...styles.tab,
-            ...(activeTab === 'looper' ? styles.tabActive : {}),
-            ...m?.tab,
-          }}
-          onClick={() => setActiveTab('looper')}
-        >
-          <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>⊞</span>
-          <span>Granular</span>
-        </button>
-        <button
-          style={{
-            ...styles.tab,
             ...(activeTab === 'earth' ? styles.tabActive : {}),
             ...m?.tab,
           }}
@@ -5003,904 +5394,81 @@ const App: React.FC = () => {
           <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>{"\u2248"}</span>
           <span>Earth</span>
         </button>
+        <button
+          style={{
+            ...styles.tab,
+            ...(activeTab === 'granular' ? styles.tabActive : {}),
+            ...m?.tab,
+          }}
+          onClick={() => setActiveTab('granular')}
+        >
+          <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>⊞</span>
+          <span>Granular</span>
+        </button>
+        <button
+          style={{
+            ...styles.tab,
+            ...(activeTab === 'reverb' ? styles.tabActive : {}),
+            ...m?.tab,
+          }}
+          onClick={() => setActiveTab('reverb')}
+        >
+          <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>◈</span>
+          <span>Reverb</span>
+        </button>
       </div>
 
       {/* Parameter Grid */}
       <div className="app-grid" style={{ ...styles.grid, ...m?.grid }}>
         {/* === GLOBAL TAB === */}
         {activeTab === 'global' && (
-          <>
-        {/* Master Mixer */}
-        <CollapsiblePanel
-          id="mixer"
-          title="Master Mixer"
-          isMobile={isMobile}
-          isExpanded={expandedPanels.has('mixer')}
-          onToggle={togglePanel}
-        >
-          <Slider
-            label="Master Volume"
-            value={state.masterVolume}
-            paramKey="masterVolume"
-            onChange={handleSliderChange}
-            {...sliderProps('masterVolume')}
+          <GlobalPage
+            state={state}
+            isMobile={isMobile}
+            expandedPanels={expandedPanels}
+            togglePanel={togglePanel}
+            onParamChange={handleSliderChange}
+            onSelectChange={handleSelectChange}
+            sliderProps={sliderProps}
+            SliderComponent={Slider as unknown as React.ComponentType<Record<string, unknown>>}
+            SelectComponent={Select as unknown as React.ComponentType<Record<string, unknown>>}
+            CircleOfFifthsComponent={CircleOfFifths as unknown as React.ComponentType<Record<string, unknown>>}
+            CloudPresetsComponent={CloudPresets as unknown as React.ComponentType<Record<string, unknown>>}
+            engineState={engineState}
+            onResetCofDrift={() => audioEngine.resetCofDrift()}
+            morphCoFViz={morphCoFViz}
+            morphPresetA={morphPresetA}
+            morphPresetB={morphPresetB}
+            morphPosition={morphPosition}
+            morphMode={morphMode}
+            morphPlayPhrases={morphPlayPhrases}
+            morphTransitionPhrases={morphTransitionPhrases}
+            morphCountdown={morphCountdown}
+            savedPresets={savedPresets}
+            onSelectMorphA={handleMorphSlotASelect}
+            onClearMorphA={handleMorphSlotAClear}
+            onSelectMorphB={handleMorphSlotBSelect}
+            onClearMorphB={handleMorphSlotBClear}
+            onMorphPositionChange={handleMorphPositionChange}
+            onMorphModeChange={setMorphMode}
+            onMorphPlayPhrasesChange={setMorphPlayPhrases}
+            onMorphTransitionPhrasesChange={setMorphTransitionPhrases}
+            onLoadCloudPreset={handleLoadCloudPreset}
+            isRecording={isRecording}
+            recordFormats={recordFormats}
+            recordStems={recordStems}
+            recordingDuration={recordingDuration}
+            formatRecordingTime={formatRecordingTime}
+            onRecordFormatsChange={setRecordFormats}
+            onRecordStemsChange={handleRecordStemsToggle}
+            playbackTimerEnabled={playbackTimerEnabled}
+            playbackTimerMinutes={playbackTimerMinutes}
+            playbackTimerRemaining={playbackTimerRemaining}
+            onTimerEnabledChange={setPlaybackTimerEnabled}
+            onTimerMinutesChange={setPlaybackTimerMinutes}
+            onTimerRemainingChange={setPlaybackTimerRemaining}
           />
-          <Slider
-            label="Pad 1 Level"
-            value={state.synthLevel}
-            paramKey="synthLevel"
-            onChange={handleSliderChange}
-            {...sliderProps('synthLevel')}
-          />
-          <Slider
-            label="Pad 2 Level"
-            value={state.pad2Level}
-            paramKey="pad2Level"
-            onChange={handleSliderChange}
-            {...sliderProps('pad2Level')}
-          />
-          <Slider
-            label="Granular Level"
-            value={state.granularLevel}
-            paramKey="granularLevel"
-            onChange={handleSliderChange}
-            {...sliderProps('granularLevel')}
-          />
-          <Slider
-            label="Lead Level"
-            value={state.leadLevel}
-            paramKey="leadLevel"
-            onChange={handleSliderChange}
-            {...sliderProps('leadLevel')}
-          />
-          <Slider
-            label="Lead 2 Level"
-            value={state.lead2Level}
-            paramKey="lead2Level"
-            onChange={handleSliderChange}
-            {...sliderProps('lead2Level')}
-          />
-          <Slider
-            label="Drum Level"
-            value={state.drumLevel}
-            paramKey="drumLevel"
-            onChange={handleSliderChange}
-            {...sliderProps('drumLevel')}
-          />
-          <Slider
-            label="Waves Level"
-            value={state.oceanSampleLevel}
-            paramKey="oceanSampleLevel"
-            onChange={handleSliderChange}
-            {...sliderProps('oceanSampleLevel')}
-          />
-          
-          <div style={{ marginTop: '12px', borderTop: '1px solid #333', paddingTop: '12px' }}>
-            <div style={{ fontSize: '0.85rem', color: '#888', marginBottom: '8px' }}>Reverb Sends</div>
-            <Slider
-              label="Synth → Reverb"
-              value={state.synthReverbSend}
-              paramKey="synthReverbSend"
-              onChange={handleSliderChange}
-              {...sliderProps('synthReverbSend')}
-            />
-            <Slider
-              label="Granular → Reverb"
-              value={state.granularReverbSend}
-              paramKey="granularReverbSend"
-              onChange={handleSliderChange}
-              {...sliderProps('granularReverbSend')}
-            />
-            <Slider
-              label="Drum → Reverb"
-              value={state.drumReverbSend}
-              paramKey="drumReverbSend"
-              onChange={handleSliderChange}
-              {...sliderProps('drumReverbSend')}
-            />
-            <Slider
-              label="Lead → Reverb"
-              value={state.leadReverbSend}
-              paramKey="leadReverbSend"
-              onChange={handleSliderChange}
-              {...sliderProps('leadReverbSend')}
-            />
-            <Slider
-              label="Reverb Level"
-              value={state.reverbLevel}
-              paramKey="reverbLevel"
-              onChange={handleSliderChange}
-              {...sliderProps('reverbLevel')}
-            />
-          </div>
-        </CollapsiblePanel>
-
-        {/* Global */}
-        <CollapsiblePanel
-          id="global"
-          title="Global"
-          isMobile={isMobile}
-          isExpanded={expandedPanels.has('global')}
-          onToggle={togglePanel}
-        >
-          <Select
-            label="Root Note"
-            value={String(state.rootNote)}
-            options={[
-              { value: '0', label: 'C' },
-              { value: '1', label: 'C#' },
-              { value: '2', label: 'D' },
-              { value: '3', label: 'D#' },
-              { value: '4', label: 'E' },
-              { value: '5', label: 'F' },
-              { value: '6', label: 'F#' },
-              { value: '7', label: 'G' },
-              { value: '8', label: 'G#' },
-              { value: '9', label: 'A' },
-              { value: '10', label: 'A#' },
-              { value: '11', label: 'B' },
-            ]}
-            onChange={(v) => handleSelectChange('rootNote', parseInt(v, 10))}
-          />
-          
-          {/* Circle of Fifths Drift */}
-          <div style={{ 
-            marginTop: '16px', 
-            marginBottom: '8px', 
-            padding: '12px',
-            background: '#1a1a1a',
-            borderRadius: '8px',
-            border: '1px solid #333',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-              <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: state.cofDriftEnabled ? '#4ade80' : '#666' }}>
-                Circle of Fifths Drift
-              </span>
-              <button
-                onClick={() => handleSelectChange('cofDriftEnabled', !state.cofDriftEnabled)}
-                style={{
-                  padding: '4px 12px',
-                  fontSize: '0.7rem',
-                  fontWeight: 'bold',
-                  background: state.cofDriftEnabled ? '#22c55e' : '#333',
-                  border: 'none',
-                  borderRadius: '4px',
-                  color: state.cofDriftEnabled ? '#000' : '#888',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease',
-                }}
-              >
-                {state.cofDriftEnabled ? 'ON' : 'OFF'}
-              </button>
-            </div>
-            
-            <CircleOfFifths
-              homeRoot={state.rootNote}
-              currentStep={morphCoFViz ? morphCoFViz.cofStep : engineState.cofCurrentStep}
-              driftRange={state.cofDriftRange}
-              driftDirection={state.cofDriftDirection}
-              enabled={state.cofDriftEnabled}
-              size={160}
-              isMorphing={!!morphCoFViz}
-              morphStartRoot={morphCoFViz?.startRoot}
-              morphTargetRoot={morphCoFViz?.targetRoot}
-              morphProgress={morphPosition}
-              onSelectRoot={(semitone) => {
-                setState(prev => ({ ...prev, rootNote: semitone }));
-                audioEngine.resetCofDrift();
-              }}
-            />
-            
-            {state.cofDriftEnabled && (
-              <>
-                <div style={{ marginTop: '12px' }}>
-                  <Slider
-                    label="Drift Rate (phrases)"
-                    value={state.cofDriftRate}
-                    paramKey="cofDriftRate"
-                    onChange={handleSliderChange}
-                  />
-                </div>
-                <div style={{ marginTop: '8px' }}>
-                  <Select
-                    label="Drift Direction"
-                    value={state.cofDriftDirection}
-                    options={[
-                      { value: 'cw', label: '↻ Clockwise (sharps)' },
-                      { value: 'ccw', label: '↺ Counter-clockwise (flats)' },
-                      { value: 'random', label: `${TEXT_SYMBOLS.random} Random` },
-                    ]}
-                    onChange={(v) => handleSelectChange('cofDriftDirection', v)}
-                  />
-                </div>
-                <div style={{ marginTop: '8px' }}>
-                  <Slider
-                    label="Drift Range (max steps)"
-                    value={state.cofDriftRange}
-                    paramKey="cofDriftRange"
-                    onChange={handleSliderChange}
-                  />
-                </div>
-                <div style={{ fontSize: '0.7rem', color: '#666', marginTop: '4px', textAlign: 'center' }}>
-                  Key drifts using pivot chord transitions for smooth modulation
-                </div>
-              </>
-            )}
-          </div>
-          <Slider
-            label="Randomness"
-            value={state.randomness}
-            paramKey="randomness"
-            onChange={handleSliderChange}
-            {...sliderProps('randomness')}
-          />
-          <Slider
-            label="Random Walk Speed"
-            value={state.randomWalkSpeed}
-            paramKey="randomWalkSpeed"
-            logarithmic
-            onChange={handleSliderChange}
-          />
-          <div style={{ fontSize: '0.75rem', color: '#666', marginTop: '-8px', marginBottom: '8px' }}>
-            Speed of value drift for range sliders (double-click any slider)
-          </div>
-          
-          {/* Scale & Tension (moved from Harmony) */}
-          <div style={{ marginTop: '12px', borderTop: '1px solid #333', paddingTop: '12px' }}>
-            <div style={{ fontSize: '0.85rem', color: '#888', marginBottom: '8px' }}>Scale & Tension</div>
-            <Select
-              label="Scale Mode"
-              value={state.scaleMode}
-              options={[
-                { value: 'auto', label: 'Auto (tension-based)' },
-                { value: 'manual', label: 'Manual' },
-              ]}
-              onChange={(v) => handleSelectChange('scaleMode', v)}
-            />
-            {state.scaleMode === 'manual' && (
-              <Select
-                label="Scale Family"
-                value={state.manualScale}
-                options={SCALE_FAMILIES.map((s) => ({ value: s.name, label: `${NOTE_NAMES[state.rootNote]} ${s.name}` }))}
-                onChange={(v) => handleSelectChange('manualScale', v)}
-              />
-            )}
-            <Slider
-              label="Tension"
-              value={state.tension}
-              paramKey="tension"
-              onChange={handleSliderChange}
-              {...sliderProps('tension')}
-            />
-            <Select
-              label="Seed Window"
-              value={state.seedWindow}
-              options={[
-                { value: 'hour', label: 'Hour (changes hourly)' },
-                { value: 'day', label: 'Day (changes daily)' },
-              ]}
-              onChange={(v) => handleSelectChange('seedWindow', v)}
-            />
-          </div>
-        </CollapsiblePanel>
-
-        {/* Preset Morph */}
-        <CollapsiblePanel
-          id="morph"
-          title="Preset Morph"
-          isMobile={isMobile}
-          isExpanded={expandedPanels.has('morph')}
-          onToggle={togglePanel}
-        >
-          {/* Slot A - Dropdown */}
-          <div style={{ marginBottom: '12px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#6ee7b7' }}>Slot A</span>
-              {morphPresetA && (
-                <button
-                  onClick={() => { setMorphPresetA(null); setMorphPosition(0); }}
-                  style={{
-                    padding: '2px 6px',
-                    fontSize: '0.6rem',
-                    background: 'transparent',
-                    border: '1px solid #ef4444',
-                    borderRadius: '3px',
-                    color: '#fca5a5',
-                    cursor: 'pointer',
-                  }}
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-            <select
-              value={morphPresetA?.name || ''}
-              onChange={(e) => {
-                const presetName = e.target.value;
-                if (presetName === '') {
-                  setMorphPresetA(null);
-                } else {
-                  const preset = savedPresets.find(p => p.name === presetName);
-                  if (preset) {
-                    const migratedA = migratePreset(preset);
-                    const normalizedPreset: SavedPreset = {
-                      ...migratedA,
-                      state: normalizePresetForWeb(migratedA.state),
-                    };
-                    // Capture current state and dual ranges before loading
-                    if (!morphPresetB) {
-                      morphCapturedStateRef.current = { ...state };
-                      const currentDualRanges: Record<string, { min: number; max: number }> = {};
-                      Object.keys(sliderModes).forEach(key => {
-                        const range = dualSliderRanges[key as keyof SliderState];
-                        if (range) {
-                          currentDualRanges[key as string] = { min: range.min, max: range.max };
-                        }
-                      });
-                      morphCapturedDualRangesRef.current = currentDualRanges;
-                      morphCapturedSliderModesRef.current = { ...sliderModes };
-                    }
-                    setMorphPresetA(normalizedPreset);
-                    
-                    // Check if we should apply preset A values directly:
-                    // - Only apply if we're at endpoint 0 (near position 0)
-                    // - OR if no preset B is loaded yet (not in morph mode)
-                    // At endpoint 1 (position ~100), we should keep the current B values
-                    const atEndpoint0 = isAtEndpoint0(morphPosition, true);
-                    const shouldApplyPresetA = atEndpoint0 || !morphPresetB;
-                    
-                    if (shouldApplyPresetA) {
-                      const result = applyPreset(normalizedPreset, { migrate: false, currentState: state, normalize: s => s });
-                      setState(result.state);
-                      applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
-                    }
-                    // If in mid-morph, the useEffect will handle applying the interpolated state
-                  }
-                }
-              }}
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                backgroundColor: morphPresetA 
-                  ? '#022c22' 
-                  : 'rgba(30, 30, 40, 0.8)',
-                border: `1px solid ${morphPresetA ? '#10b981' : '#444'}`,
-                borderRadius: '6px',
-                fontSize: '0.8rem',
-                color: morphPresetA ? '#6ee7b7' : '#888',
-                cursor: 'pointer',
-                appearance: 'none',
-                backgroundImage: morphPresetA
-                  ? `linear-gradient(135deg, #064e3b, #022c22), url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236ee7b7'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`
-                  : `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236ee7b7'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
-                backgroundRepeat: 'no-repeat',
-                backgroundPosition: 'right 8px center',
-                backgroundSize: '16px',
-                paddingRight: '32px',
-              }}
-            >
-              <option value="" style={{ background: '#1a1a2e', color: '#888' }}>
-                (empty - using current)
-              </option>
-              {savedPresets.map((preset, idx) => (
-                <option 
-                  key={`${preset.name}-${idx}`} 
-                  value={preset.name}
-                  style={{ background: '#1a1a2e', color: '#6ee7b7' }}
-                >
-                  {preset.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Morph Position Slider */}
-          <div style={{ marginBottom: '12px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
-              <span style={{ fontSize: '0.7rem', opacity: 0.8 }}>Morph Position</span>
-              <span style={{ fontSize: '0.7rem', color: '#888' }}>{morphPosition}%</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '0.65rem', color: '#6ee7b7' }}>A</span>
-              <input
-                type="range"
-                min="0"
-                max="100"
-                step="1"
-                value={morphPosition}
-                onChange={(e) => handleMorphPositionChange(parseInt(e.target.value))}
-                disabled={!morphPresetA && !morphPresetB}
-                style={{
-                  flex: 1,
-                  height: '6px',
-                  cursor: (!morphPresetA && !morphPresetB) ? 'not-allowed' : 'pointer',
-                  opacity: (!morphPresetA && !morphPresetB) ? 0.4 : 1,
-                }}
-              />
-              <span style={{ fontSize: '0.65rem', color: '#a78bfa' }}>B</span>
-            </div>
-            <div style={{ 
-              display: 'flex', 
-              justifyContent: 'center', 
-              marginTop: '4px', 
-              fontSize: '0.65rem', 
-              color: '#888' 
-            }}>
-              {isAtEndpoint0(morphPosition, true) ? 'Full A' : 
-               isAtEndpoint1(morphPosition, true) ? 'Full B' : 
-               `${100 - morphPosition}% A + ${morphPosition}% B`}
-            </div>
-          </div>
-
-          {/* Slot B - Dropdown */}
-          <div style={{ marginBottom: '12px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#a78bfa' }}>Slot B</span>
-              {morphPresetB && (
-                <button
-                  onClick={() => { setMorphPresetB(null); setMorphPosition(0); }}
-                  style={{
-                    padding: '2px 6px',
-                    fontSize: '0.6rem',
-                    background: 'transparent',
-                    border: '1px solid #ef4444',
-                    borderRadius: '3px',
-                    color: '#fca5a5',
-                    cursor: 'pointer',
-                  }}
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-            <select
-              value={morphPresetB?.name || ''}
-              onChange={(e) => {
-                const presetName = e.target.value;
-                if (presetName === '') {
-                  setMorphPresetB(null);
-                } else {
-                  const preset = savedPresets.find(p => p.name === presetName);
-                  if (preset) {
-                    const migratedB = migratePreset(preset);
-                    const normalizedPreset: SavedPreset = {
-                      ...migratedB,
-                      state: normalizePresetForWeb(migratedB.state),
-                    };
-                    // Capture current state and dual ranges before loading
-                    if (!morphPresetA) {
-                      morphCapturedStateRef.current = { ...state };
-                      const currentDualRanges: Record<string, { min: number; max: number }> = {};
-                      Object.keys(sliderModes).forEach(key => {
-                        const range = dualSliderRanges[key as keyof SliderState];
-                        if (range) {
-                          currentDualRanges[key as string] = { min: range.min, max: range.max };
-                        }
-                      });
-                      morphCapturedDualRangesRef.current = currentDualRanges;
-                      morphCapturedSliderModesRef.current = { ...sliderModes };
-                    }
-                    setMorphPresetB(normalizedPreset);
-
-                    // Check if we should apply preset B values directly:
-                    // - Only apply if we're at endpoint 1 (near position 100)
-                    // - OR if no preset A is loaded yet (not in morph mode)
-                    // At endpoint 0 (position ~0), we should keep the current A values
-                    const atEndpoint1 = isAtEndpoint1(morphPosition, true);
-                    const shouldApplyPresetB = atEndpoint1 || !morphPresetA;
-
-                    if (shouldApplyPresetB) {
-                      const result = applyPreset(normalizedPreset, { migrate: false, currentState: state, normalize: s => s });
-                      setState(result.state);
-                      applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
-                    }
-                  }
-                }
-              }}
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                backgroundColor: morphPresetB 
-                  ? '#2e1065' 
-                  : 'rgba(30, 30, 40, 0.8)',
-                border: `1px solid ${morphPresetB ? '#8b5cf6' : '#444'}`,
-                borderRadius: '6px',
-                fontSize: '0.8rem',
-                color: morphPresetB ? '#c4b5fd' : '#888',
-                cursor: 'pointer',
-                appearance: 'none',
-                backgroundImage: morphPresetB
-                  ? `linear-gradient(135deg, #4c1d95, #2e1065), url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23a78bfa'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`
-                  : `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23a78bfa'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
-                backgroundRepeat: 'no-repeat',
-                backgroundPosition: 'right 8px center',
-                backgroundSize: '16px',
-                paddingRight: '32px',
-              }}
-            >
-              <option value="" style={{ background: '#1a1a2e', color: '#888' }}>
-                (empty - using current)
-              </option>
-              {savedPresets.map((preset, idx) => (
-                <option 
-                  key={`${preset.name}-${idx}`} 
-                  value={preset.name}
-                  style={{ background: '#1a1a2e', color: '#c4b5fd' }}
-                >
-                  {preset.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Mode Toggle */}
-          <div style={{ marginBottom: '12px', paddingTop: '8px', borderTop: '1px solid #333' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
-              <span style={{ fontSize: '0.7rem', opacity: 0.8 }}>Mode:</span>
-              <button
-                onClick={() => setMorphMode('manual')}
-                style={{
-                  padding: '4px 12px',
-                  fontSize: '0.7rem',
-                  background: morphMode === 'manual' ? 'linear-gradient(135deg, #374151, #1f2937)' : 'transparent',
-                  border: `1px solid ${morphMode === 'manual' ? '#6b7280' : '#444'}`,
-                  borderRadius: '4px',
-                  color: morphMode === 'manual' ? '#fff' : '#666',
-                  cursor: 'pointer',
-                }}
-              >
-                Manual
-              </button>
-              <button
-                onClick={() => setMorphMode('auto')}
-                style={{
-                  padding: '4px 12px',
-                  fontSize: '0.7rem',
-                  background: morphMode === 'auto' ? 'linear-gradient(135deg, #374151, #1f2937)' : 'transparent',
-                  border: `1px solid ${morphMode === 'auto' ? '#6b7280' : '#444'}`,
-                  borderRadius: '4px',
-                  color: morphMode === 'auto' ? '#fff' : '#666',
-                  cursor: 'pointer',
-                }}
-              >
-                Auto-Cycle
-              </button>
-            </div>
-          </div>
-
-          {/* Auto-Cycle Settings */}
-          {morphMode === 'auto' && (
-            <div style={{ 
-              padding: '12px', 
-              background: 'rgba(30, 30, 40, 0.4)', 
-              borderRadius: '6px',
-              border: '1px solid #333'
-            }}>
-              <div style={{ marginBottom: '12px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                  <span style={{ fontSize: '0.7rem', opacity: 0.8 }}>Play Phrases</span>
-                  <span style={{ fontSize: '0.7rem', color: '#888' }}>{morphPlayPhrases}</span>
-                </div>
-                <input
-                  type="range"
-                  min="4"
-                  max="64"
-                  step="4"
-                  value={morphPlayPhrases}
-                  onChange={(e) => setMorphPlayPhrases(parseInt(e.target.value))}
-                  style={{ width: '100%', height: '6px', cursor: 'pointer' }}
-                />
-              </div>
-              <div style={{ marginBottom: '8px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                  <span style={{ fontSize: '0.7rem', opacity: 0.8 }}>Morph Phrases</span>
-                  <span style={{ fontSize: '0.7rem', color: '#888' }}>{morphTransitionPhrases}</span>
-                </div>
-                <input
-                  type="range"
-                  min="2"
-                  max="32"
-                  step="2"
-                  value={morphTransitionPhrases}
-                  onChange={(e) => setMorphTransitionPhrases(parseInt(e.target.value))}
-                  style={{ width: '100%', height: '6px', cursor: 'pointer' }}
-                />
-              </div>
-              <div style={{ fontSize: '0.65rem', color: '#666', textAlign: 'center' }}>
-                Cycle: {morphPlayPhrases}→morph({morphTransitionPhrases})→{morphPlayPhrases}→morph({morphTransitionPhrases})
-              </div>
-              
-              {/* Countdown Display */}
-              {morphCountdown && engineState.isRunning && (
-                <div style={{ 
-                  marginTop: '12px', 
-                  padding: '8px 12px', 
-                  background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.2))',
-                  borderRadius: '6px',
-                  border: '1px solid rgba(139, 92, 246, 0.4)',
-                  textAlign: 'center'
-                }}>
-                  <div style={{ fontSize: '0.65rem', color: '#a5b4fc', marginBottom: '2px' }}>
-                    {morphCountdown.phase}
-                  </div>
-                  <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#c4b5fd' }}>
-                    {morphCountdown.phrasesLeft} phrase{morphCountdown.phrasesLeft !== 1 ? 's' : ''}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </CollapsiblePanel>
-
-        {/* Cloud Presets */}
-        <CloudPresets
-          currentState={state}
-          onLoadPreset={(presetState, _name) => {
-            const result = applyPreset({ state: presetState, name: _name }, { currentState: state, normalize: normalizePresetForWeb });
-            setState(result.state);
-            applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
-          }}
-        />
-
-        {/* Recording */}
-        <CollapsiblePanel
-          id="recording"
-          title="Recording"
-          isMobile={isMobile}
-          isExpanded={expandedPanels.has('recording')}
-          onToggle={togglePanel}
-        >
-          {/* Format Selection - can select both */}
-          <div style={{ marginBottom: '16px' }}>
-            <div style={{ fontSize: '0.85rem', color: '#aaa', marginBottom: '4px' }}>Output Format</div>
-            <div style={{ fontSize: '0.65rem', color: '#666', marginBottom: '8px' }}>
-              Select one or both formats to record simultaneously
-            </div>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button
-                onClick={() => setRecordFormats(prev => ({ ...prev, webm: !prev.webm }))}
-                disabled={isRecording}
-                style={{
-                  flex: 1,
-                  padding: '10px',
-                  borderRadius: '6px',
-                  border: `1px solid ${recordFormats.webm ? '#22c55e' : '#444'}`,
-                  background: recordFormats.webm ? 'linear-gradient(135deg, #166534, #14532d)' : 'rgba(30, 30, 40, 0.8)',
-                  color: recordFormats.webm ? '#86efac' : '#888',
-                  cursor: isRecording ? 'not-allowed' : 'pointer',
-                  opacity: isRecording ? 0.5 : 1,
-                }}
-              >
-                <div style={{ fontWeight: 'bold', fontSize: '0.85rem' }}>{recordFormats.webm ? '●' : '○'} WebM</div>
-                <div style={{ fontSize: '0.65rem', opacity: 0.8 }}>Opus · ~2 MB/min</div>
-              </button>
-              <button
-                onClick={() => setRecordFormats(prev => ({ ...prev, wav: !prev.wav }))}
-                disabled={isRecording}
-                style={{
-                  flex: 1,
-                  padding: '10px',
-                  borderRadius: '6px',
-                  border: `1px solid ${recordFormats.wav ? '#22c55e' : '#444'}`,
-                  background: recordFormats.wav ? 'linear-gradient(135deg, #166534, #14532d)' : 'rgba(30, 30, 40, 0.8)',
-                  color: recordFormats.wav ? '#86efac' : '#888',
-                  cursor: isRecording ? 'not-allowed' : 'pointer',
-                  opacity: isRecording ? 0.5 : 1,
-                }}
-              >
-                <div style={{ fontWeight: 'bold', fontSize: '0.85rem' }}>{recordFormats.wav ? '●' : '○'} WAV</div>
-                <div style={{ fontSize: '0.65rem', opacity: 0.8 }}>24-bit 48kHz · ~17 MB/min</div>
-              </button>
-            </div>
-          </div>
-
-          {/* Stem Recording Options */}
-          <div style={{ marginBottom: '16px', paddingTop: '12px', borderTop: '1px solid #333' }}>
-            <div style={{ fontSize: '0.85rem', color: '#aaa', marginBottom: '8px' }}>
-              Stem Recording (Pre-Reverb)
-            </div>
-            <div style={{ fontSize: '0.65rem', color: '#666', marginBottom: '12px' }}>
-              Record individual engine outputs before reverb send
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
-              {[
-                { key: 'synth', label: 'Synth' },
-                { key: 'lead', label: 'Lead' },
-                { key: 'drums', label: 'Drums' },
-                { key: 'waves', label: 'Waves' },
-                { key: 'granular', label: 'Granular' },
-                { key: 'reverb', label: 'Reverb' },
-              ].map(({ key, label }) => (
-                <button
-                  key={key}
-                  onClick={() => setRecordStems(prev => ({ ...prev, [key]: !prev[key as keyof typeof prev] }))}
-                  disabled={isRecording}
-                  style={{
-                    padding: '8px',
-                    borderRadius: '6px',
-                    border: `1px solid ${recordStems[key as keyof typeof recordStems] ? '#3b82f6' : '#444'}`,
-                    background: recordStems[key as keyof typeof recordStems] 
-                      ? 'linear-gradient(135deg, #1e40af, #1e3a8a)' 
-                      : 'rgba(30, 30, 40, 0.8)',
-                    color: recordStems[key as keyof typeof recordStems] ? '#93c5fd' : '#888',
-                    cursor: isRecording ? 'not-allowed' : 'pointer',
-                    opacity: isRecording ? 0.5 : 1,
-                    fontSize: '0.75rem',
-                    fontWeight: recordStems[key as keyof typeof recordStems] ? 'bold' : 'normal',
-                  }}
-                >
-                  {recordStems[key as keyof typeof recordStems] ? '●' : '○'} {label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Recording Status */}
-          {isRecording && (
-            <div style={{ 
-              padding: '12px', 
-              background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.2), rgba(185, 28, 28, 0.2))',
-              borderRadius: '8px',
-              border: '1px solid rgba(239, 68, 68, 0.4)',
-              textAlign: 'center',
-            }}>
-              <div style={{ 
-                fontSize: '1.5rem', 
-                fontWeight: 'bold', 
-                color: '#fca5a5',
-                animation: 'pulse 1s ease-in-out infinite',
-              }}>
-                ● {formatRecordingTime(recordingDuration)}
-              </div>
-              <div style={{ fontSize: '0.7rem', color: '#f87171', marginTop: '4px' }}>
-                Recording in progress...
-              </div>
-            </div>
-          )}
-        </CollapsiblePanel>
-
-        {/* Playback Timer */}
-        <CollapsiblePanel
-          id="playback-timer"
-          title="Playback Timer"
-          isMobile={isMobile}
-          isExpanded={expandedPanels.has('playback-timer')}
-          onToggle={togglePanel}
-        >
-          {/* Timer Enable Toggle */}
-          <div style={{ marginBottom: '16px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div>
-                <div style={{ fontSize: '0.85rem', color: '#aaa' }}>Auto-Stop Timer</div>
-                <div style={{ fontSize: '0.65rem', color: '#666', marginTop: '2px' }}>
-                  Automatically stop playback after set duration
-                </div>
-              </div>
-              <button
-                onClick={() => setPlaybackTimerEnabled(!playbackTimerEnabled)}
-                style={{
-                  padding: '8px 16px',
-                  borderRadius: '6px',
-                  border: `1px solid ${playbackTimerEnabled ? '#f59e0b' : '#444'}`,
-                  background: playbackTimerEnabled 
-                    ? 'linear-gradient(135deg, #b45309, #92400e)' 
-                    : 'rgba(30, 30, 40, 0.8)',
-                  color: playbackTimerEnabled ? '#fcd34d' : '#888',
-                  cursor: 'pointer',
-                  fontWeight: 'bold',
-                  fontSize: '0.85rem',
-                }}
-              >
-                {playbackTimerEnabled ? 'ON' : 'OFF'}
-              </button>
-            </div>
-          </div>
-
-          {/* Duration Selection */}
-          <div style={{ marginBottom: '16px' }}>
-            <div style={{ fontSize: '0.85rem', color: '#aaa', marginBottom: '8px' }}>
-              Duration {engineState.isRunning && playbackTimerEnabled && <span style={{ color: '#f59e0b', fontSize: '0.7rem' }}>(click to reset)</span>}
-            </div>
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-              {[5, 15, 30, 60, 90, 120].map(mins => (
-                <button
-                  key={mins}
-                  onClick={() => {
-                    setPlaybackTimerMinutes(mins);
-                    // If timer is running, reset to the new duration
-                    if (engineState.isRunning && playbackTimerEnabled) {
-                      setPlaybackTimerRemaining(mins * 60);
-                    }
-                  }}
-                  style={{
-                    padding: '8px 12px',
-                    borderRadius: '6px',
-                    border: `1px solid ${playbackTimerMinutes === mins ? '#f59e0b' : '#444'}`,
-                    background: playbackTimerMinutes === mins 
-                      ? 'linear-gradient(135deg, #b45309, #92400e)' 
-                      : 'rgba(30, 30, 40, 0.8)',
-                    color: playbackTimerMinutes === mins ? '#fcd34d' : '#888',
-                    cursor: 'pointer',
-                    fontSize: '0.8rem',
-                    minWidth: '50px',
-                  }}
-                >
-                  {mins >= 60 ? `${mins / 60}h` : `${mins}m`}
-                </button>
-              ))}
-              {/* Custom time input */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <input
-                  type="number"
-                  min="1"
-                  max="480"
-                  value={![5, 15, 30, 60, 90, 120].includes(playbackTimerMinutes) ? playbackTimerMinutes : ''}
-                  placeholder="Custom"
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value, 10);
-                    if (!isNaN(val) && val >= 1 && val <= 480) {
-                      setPlaybackTimerMinutes(val);
-                      if (engineState.isRunning && playbackTimerEnabled) {
-                        setPlaybackTimerRemaining(val * 60);
-                      }
-                    }
-                  }}
-                  style={{
-                    width: '60px',
-                    padding: '8px',
-                    borderRadius: '6px',
-                    border: `1px solid ${![5, 15, 30, 60, 90, 120].includes(playbackTimerMinutes) ? '#f59e0b' : '#444'}`,
-                    background: ![5, 15, 30, 60, 90, 120].includes(playbackTimerMinutes)
-                      ? 'linear-gradient(135deg, #b45309, #92400e)'
-                      : 'rgba(30, 30, 40, 0.8)',
-                    color: ![5, 15, 30, 60, 90, 120].includes(playbackTimerMinutes) ? '#fcd34d' : '#888',
-                    fontSize: '0.8rem',
-                    textAlign: 'center',
-                  }}
-                />
-                <span style={{ fontSize: '0.75rem', color: '#666' }}>min</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Timer Status */}
-          {playbackTimerEnabled && playbackTimerRemaining !== null && (
-            <div style={{ 
-              padding: '12px', 
-              background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(180, 83, 9, 0.2))',
-              borderRadius: '8px',
-              border: '1px solid rgba(245, 158, 11, 0.4)',
-              textAlign: 'center',
-            }}>
-              <div style={{ 
-                fontSize: '1.5rem', 
-                fontWeight: 'bold', 
-                color: '#fcd34d',
-              }}>
-                ⏱ {Math.floor(playbackTimerRemaining / 60)}:{(playbackTimerRemaining % 60).toString().padStart(2, '0')}
-              </div>
-              <div style={{ fontSize: '0.7rem', color: '#f59e0b', marginTop: '4px' }}>
-                Remaining until auto-stop
-              </div>
-            </div>
-          )}
-
-          {/* Info when enabled but not running */}
-          {playbackTimerEnabled && playbackTimerRemaining === null && !engineState.isRunning && (
-            <div style={{ 
-              padding: '12px', 
-              background: 'rgba(245, 158, 11, 0.1)',
-              borderRadius: '8px',
-              border: '1px solid rgba(245, 158, 11, 0.2)',
-              textAlign: 'center',
-              fontSize: '0.75rem',
-              color: '#d97706',
-            }}>
-              Timer will start when playback begins ({playbackTimerMinutes} min)
-            </div>
-          )}
-        </CollapsiblePanel>
-        </>)}
+        )}
 
         {/* === SYNTH + LEAD TAB === */}
         {activeTab === 'synth' && (
@@ -5927,9 +5495,16 @@ const App: React.FC = () => {
             onViewModeChange={(mode) => { synthViewModeRef.current = mode; }}
             initialStepOverrides={synthStepOverridesRef.current}
             initialSubLaneStates={synthSubLaneStatesRef.current}
-            onSubLaneStatesChange={(states) => { synthSubLaneStatesRef.current = states; }}
+            onSubLaneStatesChange={(states) => {
+              synthSubLaneStatesRef.current = states;
+              audioEngine.setSynthSubLaneEnabled(states.map(s => {
+                const out: Record<string, boolean> = {};
+                for (const [k, v] of Object.entries(s)) out[k] = v.enabled;
+                return out;
+              }));
+            }}
             initialPitchSettings={synthPitchSettingsRef.current}
-            onPitchSettingsChange={(settings) => { synthPitchSettingsRef.current = settings; }}
+            onPitchSettingsChange={(settings) => { synthPitchSettingsRef.current = settings; audioEngine.setSynthPitchSettings(settings); }}
             onRawStepOverridesChange={(raw) => {
               synthStepOverridesRef.current = raw;
             }}
@@ -5951,6 +5526,12 @@ const App: React.FC = () => {
             }}
             onClockDivsChange={(divs) => audioEngine.setSynthEuclidClockDivs(divs)}
             onSwingsChange={(swings) => audioEngine.setSynthEuclidSwings(swings)}
+            onEvolveConfigsChange={(configs) => { synthEvolveConfigsRef.current = configs; audioEngine.setSynthEuclidEvolveConfigs(configs); }}
+            initialEvolveConfigs={synthEvolveConfigsRef.current}
+            presetVersion={synthPresetVersion}
+            resetEvolveHome={(laneIdx) => audioEngine.resetSynthEuclidLaneHome(laneIdx)}
+            diceLane={(laneIdx, intensity) => audioEngine.diceSynthEuclidLane(laneIdx, intensity)}
+            evolvedOverrides={synthEvolvedOverrides}
           />
         )}
 
@@ -5981,6 +5562,8 @@ const App: React.FC = () => {
             triggerVoice={(voice) => { void audioEngine.triggerDrumVoice(voice, 0.8, state); }}
             getAnalyserNode={(v) => audioEngine.getDrumVoiceAnalyser(v)}
             resetEvolveHome={(laneIdx) => audioEngine.resetDrumEuclidLaneHome(laneIdx)}
+            diceLane={(laneIdx, intensity) => audioEngine.diceDrumEuclidLane(laneIdx, intensity)}
+            evolvedOverrides={drumEvolvedOverrides}
             SliderComponent={Slider as unknown as React.ComponentType<Record<string, unknown>>}
             CollapsiblePanelComponent={CollapsiblePanel as unknown as React.ComponentType<Record<string, unknown>>}
             editingVoice={drumEditingVoice}
@@ -5989,21 +5572,32 @@ const App: React.FC = () => {
             playheads={drumSeqPlayheads}
             hitCounts={drumSeqHitCounts}
             evolveFlashing={drumEuclidEvolveFlashing}
-            onEvolveConfigsChange={(configs) => audioEngine.setDrumEuclidEvolveConfigs(configs)}
+            onEvolveConfigsChange={(configs) => { drumEvolveConfigsRef.current = configs; audioEngine.setDrumEuclidEvolveConfigs(configs); }}
+            initialEvolveConfigs={drumEvolveConfigsRef.current}
+            presetVersion={drumPresetVersion}
             onStepOverridesChange={(overrides) => { drumStepOverridesRef.current = overrides; audioEngine.setDrumStepOverrides(overrides); }}
             initialStepOverrides={drumStepOverridesRef.current}
             initialSubLaneStates={drumSubLaneStatesRef.current}
-            onSubLaneStatesChange={(states) => { drumSubLaneStatesRef.current = states; }}
+            onSubLaneStatesChange={(states) => {
+              drumSubLaneStatesRef.current = states;
+              audioEngine.setDrumSubLaneEnabled(states.map(s => {
+                const out: Record<string, boolean> = {};
+                for (const [k, v] of Object.entries(s)) out[k] = v.enabled;
+                return out;
+              }));
+            }}
             initialViewMode={drumViewModeRef.current}
             onViewModeChange={(mode) => { drumViewModeRef.current = mode; }}
             onClockDivsChange={(divs) => audioEngine.setDrumEuclidClockDivs(divs)}
             onSwingsChange={(swings) => audioEngine.setDrumEuclidSwings(swings)}
+            initialSeqSimpleState={drumSeqSimpleStateRef.current}
+            onSeqSimpleStateChange={(s) => { drumSeqSimpleStateRef.current = s; }}
           />
         )}
 
-        {/* === GRANULAR TAB (was Looper) === */}
-        {activeTab === 'looper' && (
-          <LooperPage
+        {/* === GRANULAR TAB (was Looper tab) === */}
+        {activeTab === 'granular' && (
+          <GranularPage
             state={state}
             isMobile={isMobile}
             expandedPanels={expandedPanels}
@@ -6012,21 +5606,28 @@ const App: React.FC = () => {
             onSelectChange={handleSelectChange}
             sliderProps={sliderProps}
             SliderComponent={Slider as unknown as React.ComponentType<Record<string, unknown>>}
-            writeHeadPosition={looperWriteHead}
-            voicePositions={looperVoicePositions}
-            triggerOverrides={looperTriggerOverrides}
-            playheads={looperSeqPlayheads}
-            hitCounts={looperSeqHitCounts}
-            initialViewMode={looperViewModeRef.current}
-            onViewModeChange={(mode) => { looperViewModeRef.current = mode; }}
-            initialStepOverrides={looperStepOverridesRef.current}
-            initialSubLaneStates={looperSubLaneStatesRef.current}
-            initialClockDivs={looperClockDivsRef.current}
-            presetVersion={looperPresetVersion}
-            onSubLaneStatesChange={(states) => { looperSubLaneStatesRef.current = states; }}
+            writeHeadPosition={granularWriteHead}
+            voicePositions={granularVoicePositions}
+            triggerOverrides={granularTriggerOverrides}
+            playheads={granularSeqPlayheads}
+            hitCounts={granularSeqHitCounts}
+            initialViewMode={granularViewModeRef.current}
+            onViewModeChange={(mode) => { granularViewModeRef.current = mode; }}
+            initialStepOverrides={granularStepOverridesRef.current}
+            initialSubLaneStates={granularSubLaneStatesRef.current}
+            initialClockDivs={granularClockDivsRef.current}
+            presetVersion={granularPresetVersion}
+            onSubLaneStatesChange={(states) => {
+              granularSubLaneStatesRef.current = states;
+              audioEngine.setGranularSubLaneEnabled(states.map(s => {
+                const out: Record<string, boolean> = {};
+                for (const [k, v] of Object.entries(s)) out[k] = v.enabled;
+                return out;
+              }));
+            }}
             onStepOverridesChange={(overrides) => {
-              looperStepOverridesRef.current = overrides;
-              audioEngine.setLooperStepOverrides({
+              granularStepOverridesRef.current = overrides;
+              audioEngine.setGranularStepOverrides({
                 triggerToggles: overrides.triggerToggles,
                 expression: overrides.expression,
                 expressionDirection: overrides.expressionDirection,
@@ -6041,8 +5642,14 @@ const App: React.FC = () => {
                 reverseDirection: overrides.reverseDirection,
               });
             }}
-            onClockDivsChange={(divs) => audioEngine.setLooperEuclidClockDivs(divs)}
-            onSwingsChange={(swings) => audioEngine.setLooperEuclidSwings(swings)}
+            onClockDivsChange={(divs) => audioEngine.setGranularEuclidClockDivs(divs)}
+            onSwingsChange={(swings) => audioEngine.setGranularEuclidSwings(swings)}
+            evolveFlashing={granularEuclidEvolveFlashing}
+            onEvolveConfigsChange={(configs) => { granularEvolveConfigsRef.current = configs; audioEngine.setGranularEuclidEvolveConfigs(configs); }}
+            initialEvolveConfigs={granularEvolveConfigsRef.current}
+            resetEvolveHome={(laneIdx) => audioEngine.resetGranularEuclidLaneHome(laneIdx)}
+            diceLane={(laneIdx, intensity) => audioEngine.diceGranularEuclidLane(laneIdx, intensity)}
+            evolvedOverrides={granularEvolvedOverrides}
           />
         )}
 
@@ -6110,6 +5717,55 @@ const App: React.FC = () => {
             {engineState.harmonyState?.phrasesUntilChange || '—'}
           </span>
         </div>
+
+        {/* Tension / Chord Complexity */}
+        {engineState.harmonyState && (
+          <>
+            <div style={{ borderTop: '1px solid #333', margin: '8px 0', paddingTop: '8px' }}>
+              <span style={{ color: '#a855f7', fontSize: '0.7rem', fontWeight: 'bold' }}>Tension &amp; Chord Complexity</span>
+            </div>
+            <div style={styles.debugRow}>
+              <span style={styles.debugLabel}>Scale Tension:</span>
+              <span style={styles.debugValue}>{engineState.harmonyState.scaleTension.toFixed(2)}</span>
+            </div>
+            <div style={styles.debugRow}>
+              <span style={styles.debugLabel}>Chord Tension:</span>
+              <span style={styles.debugValue}>{engineState.harmonyState.chordTension.toFixed(2)}</span>
+            </div>
+            <div style={styles.debugRow}>
+              <span style={styles.debugLabel}>Chord Type:</span>
+              <span style={styles.debugValue}>
+                {(() => {
+                  const ct = engineState.harmonyState!.chordTension;
+                  if (ct < 0.2) return 'Triads';
+                  if (ct < 0.4) return 'Triads + Sus';
+                  if (ct < 0.6) return '7th Chords';
+                  if (ct < 0.8) return '9ths / Extensions';
+                  return 'Clusters / Quartal';
+                })()}
+              </span>
+            </div>
+            <div style={styles.debugRow}>
+              <span style={styles.debugLabel}>Chord Size:</span>
+              <span style={styles.debugValue}>{engineState.harmonyState.currentChord.midiNotes.length} notes</span>
+            </div>
+            <div style={styles.debugRow}>
+              <span style={styles.debugLabel}>Current Degree:</span>
+              <span style={styles.debugValue}>
+                {['I', 'II', 'III', 'IV', 'V', 'VI', 'VII'][engineState.harmonyState.currentDegree] ?? '—'}
+              </span>
+            </div>
+            <div style={styles.debugRow}>
+              <span style={styles.debugLabel}>Tension Arc:</span>
+              <span style={styles.debugValue}>
+                {engineState.harmonyState.tensionArc.type}
+                {engineState.harmonyState.tensionArc.phrasesRemaining > 0
+                  ? ` (${engineState.harmonyState.tensionArc.phrasesRemaining} left)`
+                  : ''}
+              </span>
+            </div>
+          </>
+        )}
         
         {/* Journey Debug Info */}
         {isJourneyPlaying && journey.config && (
@@ -6144,7 +5800,7 @@ const App: React.FC = () => {
                 <div style={styles.debugRow}>
                   <span style={styles.debugLabel}>Morph Time Left:</span>
                   <span style={styles.debugValue}>
-                    {((journey.state.resolvedMorphDuration * (1 - journey.state.morphProgress)) * PHRASE_LENGTH).toFixed(1)}s
+                    {((journey.state.resolvedMorphDuration * (1 - journey.state.morphProgress)) * (state.phraseLength ?? 16)).toFixed(1)}s
                   </span>
                 </div>
               </>
@@ -6160,7 +5816,7 @@ const App: React.FC = () => {
                 <div style={styles.debugRow}>
                   <span style={styles.debugLabel}>Phrase Time Left:</span>
                   <span style={styles.debugValue}>
-                    {((journey.state.resolvedPhraseDuration * (1 - journey.state.phraseProgress)) * PHRASE_LENGTH).toFixed(1)}s
+                    {((journey.state.resolvedPhraseDuration * (1 - journey.state.phraseProgress)) * (state.phraseLength ?? 16)).toFixed(1)}s
                   </span>
                 </div>
                 <div style={styles.debugRow}>
