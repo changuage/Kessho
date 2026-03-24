@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Audio Engine
  * 
  * Main audio graph management with:
@@ -18,16 +18,67 @@ import {
   updateHarmonyState,
   getCurrentPhraseIndex,
   getTimeUntilNextPhrase,
-  PHRASE_LENGTH,
   CircleOfFifthsConfig,
-  updateCircleOfFifthsDrift,
-  calculateDriftedRoot,
+  HarmonyParams,
+  getEffectiveTension,
 } from './harmony';
 import { getScaleNotesInRange, midiToFreq } from './scales';
 import { createRng, generateRandomSequence, getUtcBucket, computeSeed, rngFloat } from './rng';
 import { DrumSynth, DrumVoiceType } from './drumSynth';
-import type { DrumStepOverrides, LaneDirection, TrigCondition, ClockDivision } from './drumSeqTypes';
+import type { DrumStepOverrides, LaneDirection, TrigCondition, ClockDivision, PitchMode, ScaleName } from './drumSeqTypes';
+import { SCALES } from './drumSeqTypes';
 import { seqLaneIndex, seqEuclidean } from './drumSequencer';
+import { generateDiceValues, generateDicePitchOffsets, blendDiceValues, clamp as clampVal } from './seqEvolveCore';
+import {
+  evolveSynthLane,
+  resetSynthLaneToHome,
+  captureSynthHomeSnapshot,
+  defaultSynthEvolveConfig,
+  defaultSynthEvolveState,
+} from './synthSeqEvolve';
+import type { SynthEvolveConfig, SynthEvolveState, SynthLaneOverrides } from './synthSeqEvolve';
+import {
+  evolveGranularLane,
+  resetGranularLaneToHome,
+  captureGranularHomeSnapshot,
+  defaultGranularEvolveConfig,
+  defaultGranularEvolveState,
+} from './granularSeqEvolve';
+import type { GranularEvolveConfig, GranularEvolveState, GranularLaneOverrides } from './granularSeqEvolve';
+
+type PerfMetrics = {
+  avgPercent: number;
+  peakPercent: number;
+  missPercent: number | null;
+};
+
+/**
+ * Pick a note from availableNotes, weighted toward chord tones.
+ * Chord tones get ~70% probability collectively; passing tones get ~30%.
+ * Falls back to uniform if chord is empty or no overlap.
+ */
+function pickChordWeightedNote(
+  rng: () => number,
+  availableNotes: number[],
+  chordMidiNotes: number[] | undefined,
+  chordBias = 0.7,
+): number {
+  if (!chordMidiNotes || chordMidiNotes.length === 0 || availableNotes.length <= 1) {
+    return availableNotes[Math.floor(rng() * availableNotes.length)];
+  }
+  // Build pitch-class set of chord tones (mod 12)
+  const chordPCs = new Set(chordMidiNotes.map(n => n % 12));
+  const chordTones: number[] = [];
+  const passingTones: number[] = [];
+  for (const n of availableNotes) {
+    if (chordPCs.has(n % 12)) chordTones.push(n);
+    else passingTones.push(n);
+  }
+  if (chordTones.length === 0) return availableNotes[Math.floor(rng() * availableNotes.length)];
+  if (passingTones.length === 0) return chordTones[Math.floor(rng() * chordTones.length)];
+  if (rng() < chordBias) return chordTones[Math.floor(rng() * chordTones.length)];
+  return passingTones[Math.floor(rng() * passingTones.length)];
+}
 import type { SliderState } from '../ui/state';
 import { getPadPreset, morphPadPresets, PAD_PRESET_PARAM_KEYS } from './padPresets';
 import {
@@ -36,7 +87,6 @@ import {
   loadLead4opFMPreset,
   morphPresets,
   playLead4opFMNote,
-  getActiveLeadNoteCount,
   DEFAULT_SOFT_RHODES,
   DEFAULT_GAMELAN,
 } from './lead4opfm';
@@ -66,17 +116,18 @@ const getWorkletUrl = (filename: string): string => {
   const base = window.location.origin + window.location.pathname.replace(/\/[^/]*$/, '');
   return `${base}/worklets/${filename}`;
 };
-// Legacy JS granular worklet removed — all granular processing via Looper FX WASM
-// const granulatorWorkletUrl = getWorkletUrl('granulator.worklet.js');
 // Reverb uses WASM path — kessho_reverb.wasm loaded at init
 const reverbWasmWorkletUrl = getWorkletUrl('reverb-wasm.worklet.js');
 // Ocean is handled by soundscapes WASM (output [2]) — no separate worklet needed
-// Looper FX uses WASM-only path (no JS fallback)
-const looperFxWasmWorkletUrl = getWorkletUrl('looper-fx-wasm.worklet.js');
+// Granular FX uses WASM-only path
+const granularFxWasmWorkletUrl = getWorkletUrl('granular-fx-wasm.worklet.js');
 const soundscapesWorkletUrl = getWorkletUrl('soundscapes-wasm.worklet.js');
 const spectralFreezeWorkletUrl = getWorkletUrl('spectral-freeze-wasm.worklet.js');
+const padSynthWasmWorkletUrl = getWorkletUrl('pad-synth-wasm.worklet.js');
+const leadFmWasmWorkletUrl = getWorkletUrl('lead-fm-wasm.worklet.js');
+const drumSynthWasmWorkletUrl = getWorkletUrl('drum-synth-wasm.worklet.js');
 
-// ═══════════════ Looper Multi-Tap Delay Constants ═══════════════
+// ═══════════════ Granular Multi-Tap Delay Constants ═══════════════
 
 const DELAY_NOTE_DIVISIONS: Record<string, number> = {
   '1/1': 4, '1/2': 2, '1/2d': 3, '1/4': 1, '1/4d': 1.5, '1/4t': 2/3,
@@ -169,8 +220,9 @@ export interface EngineState {
 }
 
 import type { DrumEuclidEvolveConfig } from './drumSynth';
+import { defaultEvolveConfig as defaultDrumEuclidEvolveConfig } from './drumSynth';
 
-/** Shared clock-division-to-seconds helper (used by synth + looper schedulers). */
+/** Shared clock-division-to-seconds helper (used by synth + granular schedulers). */
 function clockDivToSeconds(clockDiv: ClockDivision, beatDuration: number): number {
   switch (clockDiv) {
     case '1/4': return beatDuration;
@@ -181,31 +233,12 @@ function clockDivToSeconds(clockDiv: ClockDivision, beatDuration: number): numbe
   }
 }
 
-const defaultDrumEuclidEvolveConfig = (): DrumEuclidEvolveConfig => ({
-  enabled: false,
-  everyBars: 4,
-  intensity: 0.5,
-  methods: {
-    rotateDrift: true,
-    velocityBreath: true,
-    swingDrift: true,
-    probDrift: true,
-    morphDrift: true,
-    ghostNotes: true,
-    ratchetSpray: true,
-    hitDrift: true,
-    pitchWalk: true,
-  },
-});
-
 export class AudioEngine {
   private ctx: AudioContext | null = null;
   private masterGain: GainNode | null = null;
   private limiter: DynamicsCompressorNode | null = null;
   private mediaStreamDest: MediaStreamAudioDestinationNode | null = null;
   private voices: Voice[] = [];
-  // Legacy JS granular fields removed — granulatorNode kept only for stop() cleanup safety
-  private granulatorNode: AudioWorkletNode | null = null;
   private reverbNode: AudioWorkletNode | null = null;
   private reverbOutputGain: GainNode | null = null;
 
@@ -231,6 +264,8 @@ export class AudioEngine {
   private leadMerger: ChannelMergerNode | null = null;
   private leadFilter: BiquadFilterNode | null = null;
   private leadReverbSend: GainNode | null = null;
+  private lead1ReverbSend: GainNode | null = null;
+  private lead2ReverbSend: GainNode | null = null;
   private leadDelayReverbSend: GainNode | null = null;
   private leadMelodyTimer: number | null = null;  // Random lead mode (phrase-based)
   private leadNoteTimeouts: number[] = [];  // Track scheduled random note timeouts
@@ -244,6 +279,34 @@ export class AudioEngine {
   private synthEuclidStepIndex: number[] = [0, 0, 0, 0]; // Current step index per lane
   private synthEuclidClockDivs: ClockDivision[] = ['1/8', '1/16', '1/8T', '1/4']; // Per-lane clock division
   private synthEuclidSwings: number[] = [0, 0, 0, 0]; // Per-lane swing amount (0-1)
+  private synthEuclidStarting = false;
+
+  // Synth evolve state
+  private synthEvolveConfigs: SynthEvolveConfig[] = [
+    defaultSynthEvolveConfig(), defaultSynthEvolveConfig(),
+    defaultSynthEvolveConfig(), defaultSynthEvolveConfig(),
+  ];
+  private synthEvolveStates: SynthEvolveState[] = [
+    defaultSynthEvolveState(), defaultSynthEvolveState(),
+    defaultSynthEvolveState(), defaultSynthEvolveState(),
+  ];
+  private synthEuclidTotalStepCounts: number[] = [0, 0, 0, 0];
+  private onSynthEvolveTrigger: ((laneIndex: number) => void) | null = null;
+  private onSynthEvolveOverridesChanged: ((laneIndex: number, overrides: Partial<SynthLaneOverrides>) => void) | null = null;
+  /** Per-lane pitch settings for MIDI↔offset conversion at evolve boundary */
+  private synthPitchSettings: { mode: PitchMode; root: number; scale: ScaleName }[] = [
+    { mode: 'semitones', root: 60, scale: 'Major' },
+    { mode: 'semitones', root: 60, scale: 'Major' },
+    { mode: 'semitones', root: 60, scale: 'Major' },
+    { mode: 'semitones', root: 60, scale: 'Major' },
+  ];
+  /** Per-lane noteRange overrides from evolve (null = use sliderState) */
+  private synthNoteRangeOverrides: ({ min: number; max: number } | null)[] = [null, null, null, null];
+  /** Callback fired when evolve mutates noteRange bounds → UI updates sliders */
+  private onSynthNoteRangeEvolved: ((laneIndex: number, noteMin: number, noteMax: number) => void) | null = null;
+  /** Per-lane sub-lane enabled state (from UI). Keys are sub-lane names (e.g. 'expression', 'ratchet'). */
+  private synthSubLaneEnabled: Record<string, boolean>[] = [{}, {}, {}, {}];
+  private granularSubLaneEnabled: Record<string, boolean>[] = [{}, {}, {}, {}];
 
   // Lead 4op FM preset slots
   private lead1PresetA: Lead4opFMPreset = DEFAULT_SOFT_RHODES;
@@ -261,54 +324,74 @@ export class AudioEngine {
   // Reverb (WASM)
   private wasmReverbBinary: ArrayBuffer | null = null;
 
-  // Looper FX (unified granular engine — WASM only)
-  private wasmLooperBinary: ArrayBuffer | null = null;
-  private looperFxNode: AudioWorkletNode | null = null;
-  private looperFxInputGain: GainNode | null = null;
-  private looperFxReverbSend: GainNode | null = null;
-  private looperFxDirect: GainNode | null = null;
-  private looperPad1Send: GainNode | null = null;     // pad 1 bus → looper
-  private looperPad2Send: GainNode | null = null;     // pad 2 bus → looper
-  private looperLead1Send: GainNode | null = null;    // lead 1 bus → looper
-  private looperLead2Send: GainNode | null = null;    // lead 2 bus → looper
-  private looperDrumSend: GainNode | null = null;     // drum bus → looper
-  private looperWavesSend: GainNode | null = null;    // waves → looper
+  // Pad Synth (WASM — replaces Web Audio oscillator voices)
+  private wasmPadBinary: ArrayBuffer | null = null;
+  private padWasmNode: AudioWorkletNode | null = null;
+  private padWasmReady = false;
+  private padWasmModuleContext: AudioContext | null = null;
+
+  // Lead FM Synth (WASM — replaces per-note playLead4opFMNote)
+  private wasmLeadFmBinary: ArrayBuffer | null = null;
+  private leadFmWasmNode: AudioWorkletNode | null = null;
+  private leadFmWasmReady = false;
+
+  // Drum Synth (WASM — replaces per-trigger Web Audio nodes)
+  private wasmDrumBinary: ArrayBuffer | null = null;
+  private drumWasmNode: AudioWorkletNode | null = null;
+  private drumWasmReady = false;
+
+  // Granular FX (unified granular engine — WASM only)
+  private wasmGranularBinary: ArrayBuffer | null = null;
+  private granularFxNode: AudioWorkletNode | null = null;
+  private granularFxInputGain: GainNode | null = null;
+  private granularFxReverbSend: GainNode | null = null;
+  private granularFxReverbLPF: BiquadFilterNode | null = null;
+  private granularFxReverbCompressor: DynamicsCompressorNode | null = null;
+  private granularFxOutputLPF: BiquadFilterNode | null = null;
+  private granularFxDirect: GainNode | null = null;
+  private granularPad1Send: GainNode | null = null;     // pad 1 bus → granular
+  private granularPad2Send: GainNode | null = null;     // pad 2 bus → granular
+  private granularLead1Send: GainNode | null = null;    // lead 1 bus → granular
+  private granularLead2Send: GainNode | null = null;    // lead 2 bus → granular
+  private granularDrumSend: GainNode | null = null;     // drum bus → granular
+  private granularWavesSend: GainNode | null = null;    // waves → granular
   private pad1Bus: GainNode | null = null;            // sum of pad 1 voices (post-fader)
   private pad2Bus: GainNode | null = null;            // sum of pad 2 voices (post-fader)
-  private pad1PreFaderBus: GainNode | null = null;    // sum of pad 1 voices (pre-fader, for looper)
-  private pad2PreFaderBus: GainNode | null = null;    // sum of pad 2 voices (pre-fader, for looper)
+  private pad1PreFaderBus: GainNode | null = null;    // sum of pad 1 voices (pre-fader, for granular)
+  private pad2PreFaderBus: GainNode | null = null;    // sum of pad 2 voices (pre-fader, for granular)
   private lead1Bus: GainNode | null = null;           // lead 1 output pre-mix
   private lead2Bus: GainNode | null = null;           // lead 2 output pre-mix
+  private leadVoiceLevel: GainNode | null = null;     // unity dry-path stage for lead output
   private lastPad2VoiceAssign = 0;                    // track for re-routing
-  private looperWriteHeadPosition = 0;     // 0-1 for UI
-  private looperVoicePositions = [0, 0, 0, 0]; // 0-1 per voice for UI
+  private granularWriteHeadPosition = 0;     // 0-1 for UI
+  private granularVoicePositions = [0, 0, 0, 0]; // 0-1 per voice for UI
   // Per-trigger override callback for UI feedback (reverse toggle, pitch flash, slice highlight)
-  private onLooperTriggerOverride: ((voice: number, overrides: { sliceOverride?: number; pitchOverride?: number; reverseOverride?: boolean }) => void) | null = null;
+  private onGranularTriggerOverride: ((voice: number, overrides: { sliceOverride?: number; pitchOverride?: number; reverseOverride?: boolean }) => void) | null = null;
 
-  // Looper multi-tap delay (Microcosm-style)
-  private looperDelayInputNode: GainNode | null = null;
-  private looperDelayTapNodes: DelayNode[] = [];
-  private looperDelayTapGains: GainNode[] = [];
-  private looperDelayTapPanners: StereoPannerNode[] = [];
-  private looperDelayOutputGain: GainNode | null = null;
-  private looperDelayDirectGain: GainNode | null = null;
-  private looperDelayReverbSendGain: GainNode | null = null;
-  private looperDelayFeedbackGain: GainNode | null = null;
-  private looperDelayToneFilter: BiquadFilterNode | null = null;
-  private looperDelaySendGain: GainNode | null = null;
-  private looperDelayVibratoOscs: OscillatorNode[] = [];
-  private looperDelayVibratoDepths: GainNode[] = [];
+  // Granular multi-tap delay (Microcosm-style)
+  private granularDelayInputNode: GainNode | null = null;
+  private granularDelayTapNodes: DelayNode[] = [];
+  private granularDelayTapGains: GainNode[] = [];
+  private granularDelayTapPanners: StereoPannerNode[] = [];
+  private granularDelayOutputGain: GainNode | null = null;
+  private granularDelayDirectGain: GainNode | null = null;
+  private granularDelayReverbSendGain: GainNode | null = null;
+  private granularDelayFeedbackGain: GainNode | null = null;
+  private granularDelayToneFilter: BiquadFilterNode | null = null;
+  private granularDelaySendGain: GainNode | null = null;
+  private granularDelayVibratoOscs: OscillatorNode[] = [];
+  private granularDelayVibratoDepths: GainNode[] = [];
 
-  // Looper Euclidean scheduler
-  private looperEuclidScheduleTimer: number | null = null;
-  private looperEuclidCurrentStep: number[] = [0, 0, 0, 0];
-  private looperEuclidHitCounts: number[] = [0, 0, 0, 0];
-  private looperEuclidStepIndex: number[] = [0, 0, 0, 0];
-  private looperEuclidNextStepTime: number[] = [0, 0, 0, 0];
-  private looperEuclidClockDivs: ClockDivision[] = ['1/8', '1/8', '1/8', '1/8'];
-  private looperEuclidSwings: number[] = [0, 0, 0, 0];
-  private onLooperStepPositionChange: ((steps: number[], hitCounts: number[]) => void) | null = null;
-  private looperStepOverrides: {
+  // Granular Euclidean scheduler
+  private granularEuclidScheduleTimer: number | null = null;
+  private granularEuclidCurrentStep: number[] = [0, 0, 0, 0];
+  private granularEuclidHitCounts: number[] = [0, 0, 0, 0];
+  private granularEuclidStepIndex: number[] = [0, 0, 0, 0];
+  private granularEuclidNextStepTime: number[] = [0, 0, 0, 0];
+  private granularEuclidClockDivs: ClockDivision[] = ['1/8', '1/8', '1/8', '1/8'];
+  private granularEuclidSwings: number[] = [0, 0, 0, 0];
+  private onGranularStepPositionChange: ((steps: number[], hitCounts: number[]) => void) | null = null;
+  private granularStepOverrides: {
     triggerToggles: Map<number, boolean>[];
     expression: (number[] | null)[];
     expressionDirection: (LaneDirection | null)[];
@@ -335,7 +418,20 @@ export class AudioEngine {
     reverse: [null, null, null, null],
     reverseDirection: [null, null, null, null],
   };
-  private looperTrigConditionCounters: number[][] = [[], [], [], []];
+  private granularTrigConditionCounters: number[][] = [[], [], [], []];
+
+  // Granular evolve state
+  private granularEvolveConfigs: GranularEvolveConfig[] = [
+    defaultGranularEvolveConfig(), defaultGranularEvolveConfig(),
+    defaultGranularEvolveConfig(), defaultGranularEvolveConfig(),
+  ];
+  private granularEvolveStates: GranularEvolveState[] = [
+    defaultGranularEvolveState(), defaultGranularEvolveState(),
+    defaultGranularEvolveState(), defaultGranularEvolveState(),
+  ];
+  private granularEuclidTotalStepCounts: number[] = [0, 0, 0, 0];
+  private onGranularEvolveTrigger: ((laneIndex: number) => void) | null = null;
+  private onGranularEvolveOverridesChanged: ((laneIndex: number, overrides: Partial<GranularLaneOverrides>) => void) | null = null;
 
   // Ocean waves — handled by soundscapes WASM (output [2]), no separate worklet
   private oceanGain: GainNode | null = null;
@@ -374,19 +470,28 @@ export class AudioEngine {
     phraseCounter: 0,
   };
   private phraseTimer: number | null = null;
+  private chordSubTickCount = 0;    // Sub-phrase tick counter for chord rate < phraseLength
   private effectiveRoot = 4;  // Current root note including CoF drift
+
+  // Reverb harmony coupling — transient modulation amounts
+  private reverbWashBoost = 0;       // 0..1 decays after chord change
+  private reverbBloomBoost = 0;      // 0..1 decays on resolution
+  private prevReverbTension = 0;     // track tension for bloom trigger
   private currentSeed = 0;
   private currentBucket = '';
   private sliderState: SliderState | null = null;
   private _sliderStateJsonCache = '';
   private _sliderStateJsonDirty = true;
   private lastHardness = -1;  // Track to avoid unnecessary saturation curve updates
-  private _lastPadEnabled: boolean | undefined = undefined;  // Track padEnabled transitions
-  private voiceReleaseTimers: number[] = [];  // Track triggerSynthVoice release timeouts
-  private ratchetTimers: number[] = [];  // Track ratchet retrigger timeouts
+  private _lastPadEnabled: boolean | undefined = undefined;  // Track effective pad activity transitions
+  private voiceReleaseTimers = new Set<number>();  // Track triggerSynthVoice release timeouts
+  private ratchetTimers = new Set<number>();  // Track ratchet retrigger timeouts
+  private synthVoiceNoteGen = [0, 0, 0, 0, 0, 0];  // Per-voice WASM noteOff generation counter
+  private synthVoiceNoteOffTimers: Array<number | null> = [null, null, null, null, null, null];
 
   // Temp drum synth management: debounce rapid previews and track cleanup timers
   private tempDrumSynthTimer: number | null = null;
+  private synthPerfTimer: ReturnType<typeof setInterval> | null = null;
   private tempDrumSynth: DrumSynth | null = null;
   private tempDrumGain: GainNode | null = null;
   private tempDrumReverb: GainNode | null = null;
@@ -398,7 +503,7 @@ export class AudioEngine {
   private seedLocked = false; // When true, don't recompute seed on param changes (for morphing)
   private isMobile = false; // Detected in createAudioGraph, used for CPU-saving defaults
 
-  // Pre-allocated arrays for looper voice params (avoid GC pressure in applyParams @ 60Hz)
+  // Pre-allocated arrays for granular voice params (avoid GC pressure in applyParams @ 60Hz)
   private readonly _lpBlur = [0, 0, 0, 0];
   private readonly _lpSpray = [0, 0, 0, 0];
   private readonly _lpGrainSize = [0, 0, 0, 0];
@@ -412,6 +517,17 @@ export class AudioEngine {
   private readonly _lpDensity = [0, 0, 0, 0];
   private readonly _lpSpeed = [0, 0, 0, 0];
   private readonly _lpPitch = [0, 0, 0, 0];
+
+  // Dirty-gate caches: skip worklet postMessage when params unchanged
+  private _prevReverbParams: Record<string, unknown> | null = null;
+  private _prevSfFreeze = false;
+  private _prevSfSlushy = false;
+  private _prevSfSpeed = 0.3;
+  private _prevSfMix = 1.0;
+  private _prevSfDecay = 0;
+  private _prevSfPhaseJitter = 0;
+  private _sfParamsInitialized = false;
+  private _messageSignatures = new Map<string, string>();
 
   private currentFilterFreq = 1000;  // Current filter frequency for UI display
   private currentLfoValue = 0;       // Current LFO 1 output (-1..+1 after depth) for UI
@@ -432,10 +548,8 @@ export class AudioEngine {
 
   // CPU performance monitoring (per-worklet % reported ~1Hz)
   private perfMonitorEnabled = false;
-  private perfData: Record<string, number> = {};
-  private perfNodeCounts: Record<string, number> = {};  // node/voice counts for synths
-  private onPerfUpdate: ((data: Record<string, number>) => void) | null = null;
-  private synthPerfTimer: number | null = null;
+  private perfData: Record<string, PerfMetrics> = {};
+  private onPerfUpdate: ((data: Record<string, PerfMetrics>) => void) | null = null;
 
   // Lead morph random walk state (per-lead, momentum-based)
   private leadMorphWalkStates: {
@@ -513,7 +627,7 @@ export class AudioEngine {
   // S&H engine-side sampling: 10Hz re-sampling for non-drum dual-range params
   private shSampledValues: Record<string, number> = {};
   private shLastSampleTime = 0;
-  private onGranLooperSHTrigger: ((keys: string[]) => void) | null = null;
+  private onGranularSHTrigger: ((keys: string[]) => void) | null = null;
 
   constructor() {
     // Empty constructor
@@ -536,9 +650,22 @@ export class AudioEngine {
     this.dualRanges = ranges;
   }
 
+  private postCachedWorkletMessage(
+    cacheKey: string,
+    node: AudioWorkletNode | null,
+    message: Record<string, unknown>,
+    signatureSource: unknown = message,
+  ): void {
+    if (!node) return;
+    const signature = JSON.stringify(signatureSource);
+    if (this._messageSignatures.get(cacheKey) === signature) return;
+    this._messageSignatures.set(cacheKey, signature);
+    node.port.postMessage(message);
+  }
+
   /** Callback fired on each S&H re-sample (~10Hz) with the param keys that were sampled */
-  setGranLooperSHTriggerCallback(cb: (keys: string[]) => void) {
-    this.onGranLooperSHTrigger = cb;
+  setGranularSHTriggerCallback(cb: (keys: string[]) => void) {
+    this.onGranularSHTrigger = cb;
   }
 
   /** Enable/disable CPU performance monitoring overlay. Sends enablePerf to all worklets. */
@@ -546,17 +673,6 @@ export class AudioEngine {
     this.perfMonitorEnabled = enabled;
     if (!enabled) {
       this.perfData = {};
-      if (this.synthPerfTimer !== null) {
-        clearInterval(this.synthPerfTimer);
-        this.synthPerfTimer = null;
-      }
-    } else {
-      // Start periodic estimation of native-node synth CPU (~1Hz, matching worklet report rate)
-      if (this.synthPerfTimer === null) {
-        this.synthPerfTimer = window.setInterval(() => this.estimateSynthCpu(), 1000);
-        // Run once immediately so overlay populates without waiting 1s
-        this.estimateSynthCpu();
-      }
     }
     this.sendEnablePerfToWorklets(enabled);
   }
@@ -565,13 +681,16 @@ export class AudioEngine {
   private sendEnablePerfToWorklets(enabled: boolean) {
     const msg = { type: 'enablePerf', enabled };
     // Guard: only send to AudioWorkletNodes (which have .port), not to GainNode stand-ins
-    // Legacy granulatorNode + JS ocean worklet removed — perf messages no longer sent to them
     if (this.reverbNode && 'port' in this.reverbNode) (this.reverbNode as AudioWorkletNode).port.postMessage(msg);
-    if (this.looperFxNode && 'port' in this.looperFxNode) this.looperFxNode.port.postMessage(msg);
+    if (this.granularFxNode && 'port' in this.granularFxNode) this.granularFxNode.port.postMessage(msg);
     if (this.soundscapesNode && 'port' in this.soundscapesNode) this.soundscapesNode.port.postMessage(msg);
+    if (this.padWasmNode) this.padWasmNode.port.postMessage(msg);
+    if (this.leadFmWasmNode) this.leadFmWasmNode.port.postMessage(msg);
+    if (this.drumWasmNode) this.drumWasmNode.port.postMessage(msg);
+    if (this.spectralFreezeNode) this.spectralFreezeNode.port.postMessage(msg);
   }
 
-  setPerfUpdateCallback(callback: ((data: Record<string, number>) => void) | null) {
+  setPerfUpdateCallback(callback: ((data: Record<string, PerfMetrics>) => void) | null) {
     this.onPerfUpdate = callback;
   }
 
@@ -579,15 +698,35 @@ export class AudioEngine {
   private handlePerfMessage(data: Record<string, unknown>) {
     // Standard format: { name: string, cpuPercent: number }
     if (typeof data.name === 'string' && typeof data.cpuPercent === 'number') {
-      this.perfData[data.name] = Math.round(data.cpuPercent * 10) / 10;
+      this.perfData[data.name] = {
+        avgPercent: Math.round(data.cpuPercent * 10) / 10,
+        peakPercent: Math.round((((data.peakPercent as number) ?? data.cpuPercent) as number) * 10) / 10,
+        missPercent: typeof data.missPercent === 'number'
+          ? Math.round(data.missPercent * 10) / 10
+          : 0,
+      };
     }
     // Soundscapes format: { avgMs, budgetMs, waterMs, insects1Ms, insects2Ms, oceanMs }
     if (typeof data.budgetMs === 'number' && typeof data.waterMs === 'number') {
       const budget = data.budgetMs as number;
       if (budget > 0) {
-        this.perfData['water'] = Math.round(((data.waterMs as number) / budget) * 1000) / 10;
-        const insectsMs = ((data.insects1Ms as number) || 0) + ((data.insects2Ms as number) || 0);
-        this.perfData['insects'] = Math.round((insectsMs / budget) * 1000) / 10;
+        this.perfData['water'] = {
+          avgPercent: Math.round(((data.waterMs as number) / budget) * 1000) / 10,
+          peakPercent: Math.round(((((data.waterPeakMs as number) ?? data.waterMs) as number) / budget) * 1000) / 10,
+          missPercent: null,
+        };
+        this.perfData['insects'] = {
+          avgPercent: Math.round((((data.insectsMs as number) || 0) / budget) * 1000) / 10,
+          peakPercent: Math.round((((((data.insectsPeakMs as number) ?? data.insectsMs) as number) || 0) / budget) * 1000) / 10,
+          missPercent: null,
+        };
+        if (typeof data.oceanMs === 'number') {
+          this.perfData['ocean'] = {
+            avgPercent: Math.round(((data.oceanMs as number) / budget) * 1000) / 10,
+            peakPercent: Math.round(((((data.oceanPeakMs as number) ?? data.oceanMs) as number) / budget) * 1000) / 10,
+            missPercent: null,
+          };
+        }
       }
     }
     if (this.onPerfUpdate) {
@@ -595,63 +734,7 @@ export class AudioEngine {
     }
   }
 
-  /**
-   * Estimate CPU % for native Web Audio node synths (Lead FM, Pad, Drum).
-   * These don't run in AudioWorkletProcessors, so we estimate from active
-   * voice/node counts × empirical per-node costs.
-   *
-   * Rough per-node costs per 128-sample render quantum @ 48 kHz (≈2.67 ms budget):
-   *   OscillatorNode  ≈ 0.012 ms   GainNode  ≈ 0.002 ms
-   *   BiquadFilter    ≈ 0.008 ms   WaveShaper ≈ 0.005 ms
-   *   StereoPanner    ≈ 0.004 ms   BufferSource ≈ 0.010 ms
-   */
-  private estimateSynthCpu() {
-    const sampleRate = this.ctx?.sampleRate ?? 48000;
-    const budgetMs = (128 / sampleRate) * 1000; // render quantum budget
 
-    // ─── Lead FM Synth ───
-    // ~23 nodes per note (6 Osc + 13 Gain + 2 Biquad + 2 Panner) ≈ 0.12 ms/note
-    const leadNotes = getActiveLeadNoteCount();
-    const leadMsPerNote = 6 * 0.012 + 13 * 0.002 + 2 * 0.008 + 2 * 0.004; // ≈ 0.122 ms
-    const leadCpu = (leadNotes * leadMsPerNote / budgetMs) * 100;
-
-    // ─── Pad Synth ───
-    // 6 persistent voices × 19 nodes each, but only active ones do real work.
-    // Persistent nodes still consume some audio thread time even when silent.
-    const activePadVoices = this.voices.filter(v => v.active).length;
-    const totalPadVoices = this.voices.length; // always 6
-    // Active voice: full cost. Idle voice: ~20% cost (gain at 0, osc still running).
-    const padMsPerVoice = 4 * 0.012 + 1 * 0.010 + 9 * 0.002 + 4 * 0.008 + 1 * 0.005; // ≈ 0.103 ms
-    const padCpu = ((activePadVoices * padMsPerVoice + (totalPadVoices - activePadVoices) * padMsPerVoice * 0.2) / budgetMs) * 100;
-
-    // ─── Drum Synth ───
-    // Varies widely per voice type. Average ~8 nodes per active voice ≈ 0.06 ms/voice
-    // Plus persistent infrastructure (master bus, delay, analysers) ≈ ~23 nodes
-    const drumActiveVoices = this.drumSynth?.getActiveVoiceCount() ?? 0;
-    const drumNodeGroups = this.drumSynth?.getActiveNodeGroupCount() ?? 0;
-    const drumInfraMs = 23 * 0.003; // persistent nodes (lighter - gain/analyser)
-    const drumVoiceMs = drumNodeGroups * 0.06; // transient node groups
-    const drumCpu = ((drumInfraMs + drumVoiceMs) / budgetMs) * 100;
-
-    // Push synthetic perf entries
-    this.perfData['lead-fm'] = Math.round(leadCpu * 10) / 10;
-    this.perfData['pad'] = Math.round(padCpu * 10) / 10;
-    this.perfData['drum-synth'] = Math.round(drumCpu * 10) / 10;
-
-    // Track node/voice counts for display
-    this.perfNodeCounts['lead-fm'] = leadNotes;
-    this.perfNodeCounts['pad'] = activePadVoices;
-    this.perfNodeCounts['drum-synth'] = drumActiveVoices;
-
-    if (this.onPerfUpdate) {
-      this.onPerfUpdate({ ...this.perfData });
-    }
-  }
-
-  /** Get current active node/voice counts for the CPU overlay. */
-  getPerfNodeCounts(): Record<string, number> {
-    return { ...this.perfNodeCounts };
-  }
 
   setStateChangeCallback(callback: (state: EngineState) => void) {
     this.onStateChange = callback;
@@ -669,13 +752,12 @@ export class AudioEngine {
     this.onLeadDelayTrigger = callback;
   }
 
-  setLooperTriggerOverrideCallback(callback: (voice: number, overrides: { sliceOverride?: number; pitchOverride?: number; reverseOverride?: boolean }) => void) {
-    this.onLooperTriggerOverride = callback;
+  setGranularTriggerOverrideCallback(callback: (voice: number, overrides: { sliceOverride?: number; pitchOverride?: number; reverseOverride?: boolean }) => void) {
+    this.onGranularTriggerOverride = callback;
   }
 
-  getLooperWriteHeadPosition(): number { return this.looperWriteHeadPosition; }
-  getLooperVoicePositions(): number[] { return [...this.looperVoicePositions]; }
-  getLooperEngineType(): string { return 'WASM'; }
+  getGranularWriteHeadPosition(): number { return this.granularWriteHeadPosition; }
+  getGranularVoicePositions(): number[] { return [...this.granularVoicePositions]; }
 
   setDrumTriggerCallback(callback: (voice: DrumVoiceType, velocity: number) => void) {
     this.onDrumTrigger = callback;
@@ -760,6 +842,207 @@ export class AudioEngine {
     this.synthEuclidSwings = [...swings];
   }
 
+  /** Set evolve configs for the synth Euclidean sequencer (from UI). */
+  setSynthEuclidEvolveConfigs(configs: Partial<SynthEvolveConfig>[]) {
+    this.synthEvolveConfigs = this.synthEvolveConfigs.map((current, i) => ({
+      ...current,
+      ...(configs[i] ?? {}),
+    }));
+  }
+
+  /** Set per-lane sub-lane enabled state for synth Euclidean sequencer. */
+  setSynthSubLaneEnabled(states: Record<string, boolean>[]) {
+    this.synthSubLaneEnabled = states.map(s => ({ ...s }));
+  }
+
+  /** Set per-lane sub-lane enabled state for granular Euclidean sequencer. */
+  setGranularSubLaneEnabled(states: Record<string, boolean>[]) {
+    this.granularSubLaneEnabled = states.map(s => ({ ...s }));
+  }
+
+  /** Register callback for synth evolve trigger (UI flash). */
+  setSynthEuclidEvolveTriggerCallback(callback: (laneIndex: number) => void) {
+    this.onSynthEvolveTrigger = callback;
+  }
+
+  /** Register callback for synth evolve overrides push-back to UI. */
+  setSynthEvolveOverridesChangedCallback(callback: (laneIndex: number, overrides: Partial<SynthLaneOverrides>) => void) {
+    this.onSynthEvolveOverridesChanged = callback;
+  }
+
+  /** Update per-lane pitch settings for MIDI↔offset conversion at evolve boundary. */
+  setSynthPitchSettings(settings: { mode: PitchMode; root: number; scale: ScaleName }[]) {
+    this.synthPitchSettings = settings.map(s => ({ ...s }));
+  }
+
+  /** Register callback for noteRange evolve push-back to UI. */
+  setSynthNoteRangeEvolvedCallback(callback: (laneIndex: number, noteMin: number, noteMax: number) => void) {
+    this.onSynthNoteRangeEvolved = callback;
+  }
+
+  /** Register callback for drum evolve overrides push-back to UI. */
+  setDrumEvolveOverridesChangedCallback(callback: (laneIndex: number, overrides: Partial<DrumStepOverrides>) => void) {
+    if (this.drumSynth) {
+      this.drumSynth.setEvolveOverridesChangedCallback(callback);
+    }
+    // Store for late-init
+    this.pendingDrumEvolveOverridesCallback = callback;
+  }
+  private pendingDrumEvolveOverridesCallback: ((laneIndex: number, overrides: Partial<DrumStepOverrides>) => void) | null = null;
+
+  /** Reset a single synth lane's overrides to its home snapshot. */
+  resetSynthEuclidLaneHome(laneIndex: number) {
+    const state = this.synthEvolveStates[laneIndex];
+    if (!state?.home) return;
+    const laneOv = this.extractSynthLaneOverrides(laneIndex);
+    const restored = resetSynthLaneToHome(laneOv, state);
+    // Home snapshot is in offsets — convert pitch to MIDI for engine storage
+    const ps = this.synthPitchSettings[laneIndex];
+    const midiRestored: SynthLaneOverrides = { ...restored };
+    if (restored.pitch && ps && ps.mode !== 'noteRange') {
+      midiRestored.pitch = this.offsetsToMidi(restored.pitch, ps);
+    }
+    this.applySynthLaneOverrides(laneIndex, midiRestored);
+    // Push offsets to UI (no conversion needed)
+    this.onSynthEvolveOverridesChanged?.(laneIndex, restored);
+    if (state.homeSwing !== undefined) {
+      this.synthEuclidSwings[laneIndex] = state.homeSwing;
+    }
+    // Reset noteRange override and notify UI to restore home bounds
+    if (state.homeNoteRangeMin !== null && state.homeNoteRangeMax !== null) {
+      this.synthNoteRangeOverrides[laneIndex] = null;
+      this.onSynthNoteRangeEvolved?.(laneIndex, state.homeNoteRangeMin, state.homeNoteRangeMax);
+    } else {
+      this.synthNoteRangeOverrides[laneIndex] = null;
+    }
+  }
+
+  /** Dice: regenerate synth lane with fresh random overrides, capture as new home. */
+  diceSynthEuclidLane(laneIndex: number, intensity: number = 1) {
+    const totalSteps = this.synthEuclidTotalStepCounts[laneIndex] || 16;
+    const rng = Math.random;
+    const inten = clampVal(intensity, 0, 1);
+
+    const currentOv = this.extractSynthLaneOverrides(laneIndex);
+    // Convert current pitch from MIDI to offsets for blending with offset-based targets
+    const ps = this.synthPitchSettings[laneIndex];
+    const currentPitchOffsets = (currentOv.pitch && ps && ps.mode !== 'noteRange')
+      ? this.midiToOffsets(currentOv.pitch, ps) : currentOv.pitch;
+
+    // Generate targets (in offset space), blend with current offsets by intensity
+    const newPitchOffsets = blendDiceValues(currentPitchOffsets, generateDicePitchOffsets(totalSteps, 4, rng, inten), inten).map(Math.round);
+    const newOv: SynthLaneOverrides = {
+      pitch: newPitchOffsets,
+      pitchDirection: null,
+      triggerToggles: new Map<number, boolean>(),
+      expression: blendDiceValues(currentOv.expression, generateDiceValues(totalSteps, rng, inten), inten),
+      expressionDirection: null,
+      morph: blendDiceValues(currentOv.morph, generateDiceValues(totalSteps, rng, inten), inten),
+      morphDirection: null,
+      distance: blendDiceValues(currentOv.distance, generateDiceValues(totalSteps, rng, inten), inten),
+      distanceDirection: null,
+      probability: blendDiceValues(
+        currentOv.probability,
+        Array.from({ length: totalSteps }, () => clampVal(0.7 + (rng() - 0.5) * 0.4, 0.3, 1.0)),
+        inten,
+      ),
+      ratchet: blendDiceValues(
+        currentOv.ratchet,
+        Array.from({ length: totalSteps }, () => rng() < 0.2 ? Math.ceil(rng() * 3) + 1 : 1),
+        inten,
+      ).map(Math.round),
+    };
+
+    // Random trigger toggle sparse pattern (scaled by intensity)
+    for (let i = 0; i < totalSteps; i++) {
+      if (rng() < 0.3 * inten) newOv.triggerToggles.set(i, rng() < 0.5);
+    }
+
+    // Convert pitch back to MIDI for engine storage, and push offsets to UI
+    const midiOv: SynthLaneOverrides = { ...newOv };
+    if (newOv.pitch && ps && ps.mode !== 'noteRange') {
+      midiOv.pitch = this.offsetsToMidi(newOv.pitch, ps);
+    }
+    this.applySynthLaneOverrides(laneIndex, midiOv);
+    // Push offsets to UI (no conversion needed)
+    this.onSynthEvolveOverridesChanged?.(laneIndex, newOv);
+
+    // Capture offsets as new home
+    const state = this.synthEvolveStates[laneIndex];
+    if (state) {
+      state.home = captureSynthHomeSnapshot(newOv);
+      state.homeSwing = this.synthEuclidSwings[laneIndex];
+    }
+  }
+
+  /** Extract per-lane overrides from the flat synthStepOverrides structure. */
+  private extractSynthLaneOverrides(laneIndex: number): SynthLaneOverrides {
+    const ov = this.synthStepOverrides;
+    return {
+      pitch: ov.pitch[laneIndex] ? [...ov.pitch[laneIndex]!] : null,
+      pitchDirection: ov.pitchDirection[laneIndex],
+      triggerToggles: new Map(ov.triggerToggles[laneIndex]),
+      expression: ov.expression[laneIndex] ? [...ov.expression[laneIndex]!] : null,
+      expressionDirection: ov.expressionDirection[laneIndex],
+      morph: ov.morph[laneIndex] ? [...ov.morph[laneIndex]!] : null,
+      morphDirection: ov.morphDirection[laneIndex],
+      distance: ov.distance[laneIndex] ? [...ov.distance[laneIndex]!] : null,
+      distanceDirection: ov.distanceDirection[laneIndex],
+      probability: ov.probability[laneIndex] ? [...ov.probability[laneIndex]!] : null,
+      ratchet: ov.ratchet[laneIndex] ? [...ov.ratchet[laneIndex]!] : null,
+    };
+  }
+
+  /** Write mutated per-lane overrides back to the flat structure. */
+  private applySynthLaneOverrides(laneIndex: number, ov: SynthLaneOverrides) {
+    this.synthStepOverrides.pitch[laneIndex] = ov.pitch ? [...ov.pitch] : null;
+    this.synthStepOverrides.pitchDirection[laneIndex] = ov.pitchDirection;
+    this.synthStepOverrides.triggerToggles[laneIndex] = new Map(ov.triggerToggles);
+    this.synthStepOverrides.expression[laneIndex] = ov.expression ? [...ov.expression] : null;
+    this.synthStepOverrides.expressionDirection[laneIndex] = ov.expressionDirection;
+    this.synthStepOverrides.morph[laneIndex] = ov.morph ? [...ov.morph] : null;
+    this.synthStepOverrides.morphDirection[laneIndex] = ov.morphDirection;
+    this.synthStepOverrides.distance[laneIndex] = ov.distance ? [...ov.distance] : null;
+    this.synthStepOverrides.distanceDirection[laneIndex] = ov.distanceDirection;
+    this.synthStepOverrides.probability[laneIndex] = ov.probability ? [...ov.probability] : null;
+    this.synthStepOverrides.ratchet[laneIndex] = ov.ratchet ? [...ov.ratchet] : null;
+  }
+
+  /** Convert absolute MIDI pitch array → UI offsets (semitone offsets or scale degree indices). */
+  private midiToOffsets(midi: number[], ps: { mode: PitchMode; root: number; scale: ScaleName }): number[] {
+    if (ps.mode === 'notes') {
+      const si = SCALES[ps.scale] || [0, 2, 4, 5, 7, 9, 11];
+      return midi.map(m => {
+        const semi = m - ps.root;
+        const octave = Math.floor(semi / 12);
+        const rem = ((semi % 12) + 12) % 12;
+        let bestDeg = 0;
+        let bestDist = 99;
+        for (let d = 0; d < si.length; d++) {
+          const dist = Math.abs(si[d] - rem);
+          if (dist < bestDist) { bestDist = dist; bestDeg = d; }
+        }
+        return octave * si.length + bestDeg;
+      });
+    }
+    // semitones mode (and noteRange fallback): offset = midi - root
+    return midi.map(m => m - ps.root);
+  }
+
+  /** Convert UI offsets (semitone offsets or scale degree indices) → absolute MIDI. */
+  private offsetsToMidi(offsets: number[], ps: { mode: PitchMode; root: number; scale: ScaleName }): number[] {
+    if (ps.mode === 'notes') {
+      const si = SCALES[ps.scale] || [0, 2, 4, 5, 7, 9, 11];
+      return offsets.map(deg => {
+        const oct = Math.floor(deg / si.length);
+        const idx = ((deg % si.length) + si.length) % si.length;
+        return Math.max(0, Math.min(127, ps.root + oct * 12 + (si[idx] ?? 0)));
+      });
+    }
+    // semitones mode: midi = root + offset
+    return offsets.map(off => Math.max(0, Math.min(127, ps.root + off)));
+  }
+
   /** Set per-lane clock divisions for the drum Euclidean sequencer. */
   setDrumEuclidClockDivs(divs: ClockDivision[]) {
     if (this.drumSynth) {
@@ -804,7 +1087,9 @@ export class AudioEngine {
     this.pendingDrumEuclidEvolveConfigs = this.pendingDrumEuclidEvolveConfigs.map((current, laneIndex) => ({
       enabled: configs[laneIndex]?.enabled ?? current.enabled,
       everyBars: configs[laneIndex]?.everyBars ?? current.everyBars,
-      intensity: configs[laneIndex]?.intensity ?? current.intensity,
+      evolution: configs[laneIndex]?.evolution ?? current.evolution,
+      writeOffset: configs[laneIndex]?.writeOffset ?? current.writeOffset,
+      mutationMode: configs[laneIndex]?.mutationMode ?? current.mutationMode,
       methods: {
         ...current.methods,
         ...(configs[laneIndex]?.methods || {}),
@@ -822,6 +1107,13 @@ export class AudioEngine {
     }
   }
 
+  /** Dice: regenerate drum lane with fresh random pattern + values. */
+  diceDrumEuclidLane(laneIndex: number, intensity: number = 1) {
+    if (this.drumSynth) {
+      this.drumSynth.diceEuclidLane(laneIndex, intensity);
+    }
+  }
+
   getDrumVoiceAnalyser(voice: DrumVoiceType): AnalyserNode | undefined {
     return this.drumSynth?.getVoiceAnalyser(voice);
   }
@@ -834,13 +1126,20 @@ export class AudioEngine {
     }
   }
 
-  // ─── Looper Euclidean public API ───
-
-  setLooperStepPositionCallback(callback: (steps: number[], hitCounts: number[]) => void) {
-    this.onLooperStepPositionChange = callback;
+  /** Set per-lane sub-lane enabled state for drum Euclidean sequencer. */
+  setDrumSubLaneEnabled(states: Record<string, boolean>[]) {
+    if (this.drumSynth) {
+      this.drumSynth.setEuclidSubLaneEnabled(states);
+    }
   }
 
-  setLooperStepOverrides(overrides: {
+  // ─── Granular Euclidean public API ───
+
+  setGranularStepPositionCallback(callback: (steps: number[], hitCounts: number[]) => void) {
+    this.onGranularStepPositionChange = callback;
+  }
+
+  setGranularStepOverrides(overrides: {
     triggerToggles?: Map<number, boolean>[];
     expression?: (number[] | null)[];
     expressionDirection?: (LaneDirection | null)[];
@@ -854,28 +1153,139 @@ export class AudioEngine {
     reverse?: (number[] | null)[];
     reverseDirection?: (LaneDirection | null)[];
   }) {
-    this.looperStepOverrides = {
-      triggerToggles: overrides.triggerToggles ?? this.looperStepOverrides.triggerToggles,
-      expression: overrides.expression ?? this.looperStepOverrides.expression,
-      expressionDirection: overrides.expressionDirection ?? this.looperStepOverrides.expressionDirection,
-      probability: overrides.probability ?? this.looperStepOverrides.probability,
-      ratchet: overrides.ratchet ?? this.looperStepOverrides.ratchet,
-      trigCondition: overrides.trigCondition ?? this.looperStepOverrides.trigCondition,
-      slice: overrides.slice ?? this.looperStepOverrides.slice,
-      sliceDirection: overrides.sliceDirection ?? this.looperStepOverrides.sliceDirection,
-      pitch: overrides.pitch ?? this.looperStepOverrides.pitch,
-      pitchDirection: overrides.pitchDirection ?? this.looperStepOverrides.pitchDirection,
-      reverse: overrides.reverse ?? this.looperStepOverrides.reverse,
-      reverseDirection: overrides.reverseDirection ?? this.looperStepOverrides.reverseDirection,
+    this.granularStepOverrides = {
+      triggerToggles: overrides.triggerToggles ?? this.granularStepOverrides.triggerToggles,
+      expression: overrides.expression ?? this.granularStepOverrides.expression,
+      expressionDirection: overrides.expressionDirection ?? this.granularStepOverrides.expressionDirection,
+      probability: overrides.probability ?? this.granularStepOverrides.probability,
+      ratchet: overrides.ratchet ?? this.granularStepOverrides.ratchet,
+      trigCondition: overrides.trigCondition ?? this.granularStepOverrides.trigCondition,
+      slice: overrides.slice ?? this.granularStepOverrides.slice,
+      sliceDirection: overrides.sliceDirection ?? this.granularStepOverrides.sliceDirection,
+      pitch: overrides.pitch ?? this.granularStepOverrides.pitch,
+      pitchDirection: overrides.pitchDirection ?? this.granularStepOverrides.pitchDirection,
+      reverse: overrides.reverse ?? this.granularStepOverrides.reverse,
+      reverseDirection: overrides.reverseDirection ?? this.granularStepOverrides.reverseDirection,
     };
   }
 
-  setLooperEuclidClockDivs(divs: ClockDivision[]) {
-    this.looperEuclidClockDivs = [...divs];
+  setGranularEuclidClockDivs(divs: ClockDivision[]) {
+    this.granularEuclidClockDivs = [...divs];
   }
 
-  setLooperEuclidSwings(swings: number[]) {
-    this.looperEuclidSwings = [...swings];
+  setGranularEuclidSwings(swings: number[]) {
+    this.granularEuclidSwings = [...swings];
+  }
+
+  // ─── Granular Euclidean evolve API ───
+
+  setGranularEuclidEvolveConfigs(configs: Partial<GranularEvolveConfig>[]) {
+    this.granularEvolveConfigs = this.granularEvolveConfigs.map((current, i) => ({
+      ...current,
+      ...(configs[i] ?? {}),
+    }));
+  }
+
+  setGranularEuclidEvolveTriggerCallback(callback: (laneIndex: number) => void) {
+    this.onGranularEvolveTrigger = callback;
+  }
+
+  setGranularEvolveOverridesChangedCallback(callback: (laneIndex: number, overrides: Partial<GranularLaneOverrides>) => void) {
+    this.onGranularEvolveOverridesChanged = callback;
+  }
+
+  resetGranularEuclidLaneHome(laneIndex: number) {
+    const state = this.granularEvolveStates[laneIndex];
+    if (!state?.home) return;
+    const laneOv = this.extractGranularLaneOverrides(laneIndex);
+    const restored = resetGranularLaneToHome(laneOv, state);
+    this.applyGranularLaneOverrides(laneIndex, restored);
+    this.onGranularEvolveOverridesChanged?.(laneIndex, restored);
+    if (state.homeSwing !== undefined) {
+      this.granularEuclidSwings[laneIndex] = state.homeSwing;
+    }
+  }
+
+  diceGranularEuclidLane(laneIndex: number, intensity: number = 1) {
+    const totalSteps = this.granularEuclidTotalStepCounts[laneIndex] || 16;
+    const rng = Math.random;
+    const inten = clampVal(intensity, 0, 1);
+
+    const currentOv = this.extractGranularLaneOverrides(laneIndex);
+
+    const newOv: GranularLaneOverrides = {
+      pitch: blendDiceValues(currentOv.pitch, generateDicePitchOffsets(totalSteps, 4, rng, inten), inten).map(Math.round),
+      pitchDirection: null,
+      triggerToggles: new Map<number, boolean>(),
+      expression: blendDiceValues(currentOv.expression, generateDiceValues(totalSteps, rng, inten), inten),
+      expressionDirection: null,
+      slice: blendDiceValues(
+        currentOv.slice,
+        Array.from({ length: totalSteps }, () => Math.floor(rng() * 16)),
+        inten,
+      ).map(Math.round),
+      sliceDirection: null,
+      reverse: blendDiceValues(
+        currentOv.reverse,
+        Array.from({ length: totalSteps }, () => rng() < 0.3 ? 1 : 0),
+        inten,
+      ).map(v => v > 0.5 ? 1 : 0),
+      reverseDirection: null,
+      probability: blendDiceValues(
+        currentOv.probability,
+        Array.from({ length: totalSteps }, () => clampVal(0.7 + (rng() - 0.5) * 0.4, 0.3, 1.0)),
+        inten,
+      ),
+      ratchet: blendDiceValues(
+        currentOv.ratchet,
+        Array.from({ length: totalSteps }, () => rng() < 0.2 ? Math.ceil(rng() * 3) + 1 : 1),
+        inten,
+      ).map(Math.round),
+    };
+
+    for (let i = 0; i < totalSteps; i++) {
+      if (rng() < 0.3 * inten) newOv.triggerToggles.set(i, rng() < 0.5);
+    }
+
+    this.applyGranularLaneOverrides(laneIndex, newOv);
+    this.onGranularEvolveOverridesChanged?.(laneIndex, newOv);
+
+    const state = this.granularEvolveStates[laneIndex];
+    if (state) {
+      state.home = captureGranularHomeSnapshot(newOv);
+      state.homeSwing = this.granularEuclidSwings[laneIndex];
+    }
+  }
+
+  private extractGranularLaneOverrides(laneIndex: number): GranularLaneOverrides {
+    const ov = this.granularStepOverrides;
+    return {
+      pitch: ov.pitch[laneIndex] ? [...ov.pitch[laneIndex]!] : null,
+      pitchDirection: ov.pitchDirection[laneIndex],
+      triggerToggles: new Map(ov.triggerToggles[laneIndex]),
+      expression: ov.expression[laneIndex] ? [...ov.expression[laneIndex]!] : null,
+      expressionDirection: ov.expressionDirection[laneIndex],
+      slice: ov.slice[laneIndex] ? [...ov.slice[laneIndex]!] : null,
+      sliceDirection: ov.sliceDirection[laneIndex],
+      reverse: ov.reverse[laneIndex] ? [...ov.reverse[laneIndex]!] : null,
+      reverseDirection: ov.reverseDirection[laneIndex],
+      probability: ov.probability[laneIndex] ? [...ov.probability[laneIndex]!] : null,
+      ratchet: ov.ratchet[laneIndex] ? [...ov.ratchet[laneIndex]!] : null,
+    };
+  }
+
+  private applyGranularLaneOverrides(laneIndex: number, ov: GranularLaneOverrides) {
+    this.granularStepOverrides.pitch[laneIndex] = ov.pitch ? [...ov.pitch] : null;
+    this.granularStepOverrides.pitchDirection[laneIndex] = ov.pitchDirection;
+    this.granularStepOverrides.triggerToggles[laneIndex] = new Map(ov.triggerToggles);
+    this.granularStepOverrides.expression[laneIndex] = ov.expression ? [...ov.expression] : null;
+    this.granularStepOverrides.expressionDirection[laneIndex] = ov.expressionDirection;
+    this.granularStepOverrides.slice[laneIndex] = ov.slice ? [...ov.slice] : null;
+    this.granularStepOverrides.sliceDirection[laneIndex] = ov.sliceDirection;
+    this.granularStepOverrides.reverse[laneIndex] = ov.reverse ? [...ov.reverse] : null;
+    this.granularStepOverrides.reverseDirection[laneIndex] = ov.reverseDirection;
+    this.granularStepOverrides.probability[laneIndex] = ov.probability ? [...ov.probability] : null;
+    this.granularStepOverrides.ratchet[laneIndex] = ov.ratchet ? [...ov.ratchet] : null;
   }
 
   /**
@@ -890,6 +1300,7 @@ export class AudioEngine {
       const isIOSDevice = /iPad|iPhone|iPod/.test(navigator.userAgent);
       this.ctx = new AudioContextClass(isIOSDevice ? { latencyHint: 'playback' } : undefined);
     }
+    this.attachAudioContextMonitoring();
     if (this.ctx.state === 'suspended') {
       void this.ctx.resume();
     }
@@ -927,8 +1338,12 @@ export class AudioEngine {
         sliderState,
         this.rng
       );
+      // Forward WASM drum node to DrumSynth for trigger routing
+      if (this.drumWasmNode) {
+        this.drumSynth.setWasmNode(this.drumWasmNode, this.drumWasmReady);
+      }
       this.wireDrumSynthCallbacks();
-      this.wireDrumLooperSend();
+      this.wireDrumGranularSend();
     }
   }
 
@@ -939,6 +1354,7 @@ export class AudioEngine {
     if (this.onDrumMorphTrigger) this.drumSynth.setMorphTriggerCallback(this.onDrumMorphTrigger);
     if (this.onDrumParamSHTrigger) this.drumSynth.setParamSHTriggerCallback(this.onDrumParamSHTrigger);
     if (this.onDrumEuclidEvolveTrigger) this.drumSynth.setEuclidEvolveTriggerCallback(this.onDrumEuclidEvolveTrigger);
+    if (this.pendingDrumEvolveOverridesCallback) this.drumSynth.setEvolveOverridesChangedCallback(this.pendingDrumEvolveOverridesCallback);
     if (this.onDrumStepPositionChange) this.drumSynth.setStepPositionCallback(this.onDrumStepPositionChange);
     for (const voice of Object.keys(this.pendingMorphRanges) as DrumVoiceType[]) {
       const range = this.pendingMorphRanges[voice];
@@ -953,15 +1369,15 @@ export class AudioEngine {
     }
   }
 
-  /** Connect drum synth pre-fader output to the looper's drum send node. */
-  private wireDrumLooperSend(): void {
-    if (!this.drumSynth || !this.looperDrumSend || !this.looperFxInputGain) return;
+  /** Connect drum synth pre-fader output to the granular engine's drum send node. */
+  private wireDrumGranularSend(): void {
+    if (!this.drumSynth || !this.granularDrumSend || !this.granularFxInputGain) return;
     try {
       const drumPreFader = this.drumSynth.getPreFaderBus();
-      drumPreFader.connect(this.looperDrumSend);
-      this.looperDrumSend.connect(this.looperFxInputGain);
+      drumPreFader.connect(this.granularDrumSend);
+      this.granularDrumSend.connect(this.granularFxInputGain);
     } catch (e) {
-      console.warn('Failed to wire drum looper send:', e);
+      console.warn('Failed to wire drum granular send:', e);
     }
   }
 
@@ -975,7 +1391,7 @@ export class AudioEngine {
         currentFilterFreq: this.currentFilterFreq,
         currentLfoValue: this.currentLfoValue,
         currentLfo2Value: this.currentLfo2Value,
-        cofCurrentStep: this.cofConfig.currentStep,
+        cofCurrentStep: this.harmonyState?.cof.currentStep ?? this.cofConfig.currentStep,
       });
     }
   }
@@ -996,6 +1412,17 @@ export class AudioEngine {
   // Get the MediaStream for iOS background audio (connect to HTML audio element)
   getMediaStream(): MediaStream | null {
     return this.mediaStreamDest?.stream || null;
+  }
+
+  private euclideanUsesPadSource(state: SliderState | null | undefined = this.sliderState): boolean {
+    if (!state?.synthEuclideanMasterEnabled) return false;
+    const isPadSource = (source: string | undefined) => typeof source === 'string' && source.startsWith('synth');
+    return (
+      (state.synthEuclid1Enabled && isPadSource(state.synthEuclid1Source)) ||
+      (state.synthEuclid2Enabled && isPadSource(state.synthEuclid2Source)) ||
+      (state.synthEuclid3Enabled && isPadSource(state.synthEuclid3Source)) ||
+      (state.synthEuclid4Enabled && isPadSource(state.synthEuclid4Source))
+    );
   }
 
   // Public resume method for iOS media session
@@ -1105,6 +1532,25 @@ export class AudioEngine {
     source.start(0);
   }
 
+  private attachAudioContextMonitoring(): void {
+    if (!this.ctx) return;
+    this.ctx.onstatechange = () => {
+      if (!this.ctx) return;
+      const shouldResume = this.ctx.state === 'suspended' && (
+        this.isRunning ||
+        this.synthEuclidStarting ||
+        this.synthEuclidScheduleTimer !== null ||
+        this.granularEuclidScheduleTimer !== null ||
+        this.drumSynth !== null
+      );
+      if (shouldResume) {
+        this.ctx.resume().then(() => {
+          console.log('AudioContext auto-resumed after interruption');
+        }).catch(e => console.warn('Auto-resume failed:', e));
+      }
+    };
+  }
+
   async start(sliderState: SliderState): Promise<void> {
     if (this.isRunning || this.isStarting) return;
     this.isStarting = true;
@@ -1120,6 +1566,11 @@ export class AudioEngine {
       if (this.drumSynth) {
         this.drumSynth.dispose();
         this.drumSynth = null;
+      }
+      if (this.padWasmNode) {
+        try { this.padWasmNode.port.postMessage({ type: 'destroy' }); } catch { /* */ }
+        try { this.padWasmNode.port.close(); } catch { /* */ }
+        try { this.padWasmNode.disconnect(); } catch { /* */ }
       }
       this.ctx.close();
       this.ctx = null;
@@ -1144,6 +1595,8 @@ export class AudioEngine {
       this.dryBus = null;
       this.synthReverbSend = null;
       this.synthDirect = null;
+      this.padWasmNode = null;
+      this.padWasmReady = false;
       this.voices = [];
     }
 
@@ -1158,19 +1611,7 @@ export class AudioEngine {
     const isIOSDevice = /iPad|iPhone|iPod/.test(navigator.userAgent);
     this.ctx = new AudioContextClass(isIOSDevice ? { latencyHint: 'playback' } : undefined);
     console.log('AudioContext created, state:', this.ctx.state, 'sampleRate:', this.ctx.sampleRate, 'baseLatency:', (this.ctx as any).baseLatency);
-
-    // Auto-recover from iOS audio session interruptions (common with USB audio).
-    // When iOS interrupts the audio session (e.g. USB device reconfiguration,
-    // phone call, Siri), the context transitions to 'interrupted' then back.
-    this.ctx.onstatechange = () => {
-      if (!this.ctx) return;
-      console.log('AudioContext state changed:', this.ctx.state);
-      if (this.ctx.state === 'suspended' && this.isRunning) {
-        this.ctx.resume().then(() => {
-          console.log('AudioContext auto-resumed after interruption');
-        }).catch(e => console.warn('Auto-resume failed:', e));
-      }
-    };
+    this.attachAudioContextMonitoring();
 
     // iOS Safari requires resume to be called in response to user interaction
     if (this.ctx.state === 'suspended') {
@@ -1183,7 +1624,7 @@ export class AudioEngine {
     this.unlockAudioContext();
 
     // Register worklets with error handling
-    // Legacy JS granular worklet REMOVED — all granular processing now handled by Looper FX WASM engine
+    // Legacy JS granular worklet REMOVED — all granular processing now handled by Granular FX WASM engine
     console.log('Loading worklets...');
     
     // Load Reverb WASM worklet + binary
@@ -1195,9 +1636,7 @@ export class AudioEngine {
       await this.ctx.audioWorklet.addModule(reverbWasmWorkletUrl);
       console.log('Reverb WASM worklet loaded (%d KB)', Math.round(this.wasmReverbBinary.byteLength / 1024));
     } catch (e) {
-      console.error('Failed to load reverb WASM:', e);
-      this.isStarting = false;
-      throw e;
+      console.warn('Reverb WASM load failed (non-fatal, reverb will be unavailable):', e);
     }
 
     // Spectral Freeze WASM worklet
@@ -1229,17 +1668,56 @@ export class AudioEngine {
       console.warn('Soundscapes (water/insects/ocean) worklet not available:', e);
     }
 
-    // Load WASM looper (no JS fallback — WASM is the production engine)
+    // Load WASM granular
     try {
-      const wasmUrl = getWorkletUrl('kessho_looper.wasm');
+      const wasmUrl = getWorkletUrl('kessho_granular.wasm');
       const wasmResp = await fetch(wasmUrl);
       if (!wasmResp.ok) throw new Error(`WASM fetch failed: ${wasmResp.status}`);
-      this.wasmLooperBinary = await wasmResp.arrayBuffer();
-      await this.ctx.audioWorklet.addModule(looperFxWasmWorkletUrl);
-      console.log('Looper FX WASM worklet loaded (%d KB)', Math.round(this.wasmLooperBinary.byteLength / 1024));
+      this.wasmGranularBinary = await wasmResp.arrayBuffer();
+      await this.ctx.audioWorklet.addModule(granularFxWasmWorkletUrl);
+      console.log('Granular FX WASM worklet loaded (%d KB)', Math.round(this.wasmGranularBinary.byteLength / 1024));
     } catch (e) {
-      console.error('Failed to load WASM looper:', e);
-      console.warn('Looper FX will be unavailable — WASM binary could not be loaded');
+      console.error('Failed to load WASM granular:', e);
+      console.warn('Granular FX will be unavailable — WASM binary could not be loaded');
+    }
+
+    // Load Pad Synth WASM worklet + binary
+    try {
+      const padWasmUrl = getWorkletUrl('kessho_pad.wasm');
+      const padResp = await fetch(padWasmUrl);
+      if (padResp.ok) {
+        this.wasmPadBinary = await padResp.arrayBuffer();
+        await this.ctx.audioWorklet.addModule(padSynthWasmWorkletUrl);
+        console.log('Pad Synth WASM worklet loaded (%d KB)', Math.round(this.wasmPadBinary.byteLength / 1024));
+      }
+    } catch (e) {
+      console.warn('Pad Synth WASM load failed (non-fatal, JS voices will be used):', e);
+    }
+
+    // Load Lead FM WASM worklet + binary
+    try {
+      const leadFmWasmUrl = getWorkletUrl('kessho_lead_fm.wasm');
+      const leadFmResp = await fetch(leadFmWasmUrl);
+      if (leadFmResp.ok) {
+        this.wasmLeadFmBinary = await leadFmResp.arrayBuffer();
+        await this.ctx.audioWorklet.addModule(leadFmWasmWorkletUrl);
+        console.log('Lead FM WASM worklet loaded (%d KB)', Math.round(this.wasmLeadFmBinary.byteLength / 1024));
+      }
+    } catch (e) {
+      console.warn('Lead FM WASM load failed (non-fatal, JS synthesis will be used):', e);
+    }
+
+    // Load Drum Synth WASM worklet + binary
+    try {
+      const drumWasmUrl = getWorkletUrl('kessho_drum.wasm');
+      const drumResp = await fetch(drumWasmUrl);
+      if (drumResp.ok) {
+        this.wasmDrumBinary = await drumResp.arrayBuffer();
+        await this.ctx.audioWorklet.addModule(drumSynthWasmWorkletUrl);
+        console.log('Drum Synth WASM worklet loaded (%d KB)', Math.round(this.wasmDrumBinary.byteLength / 1024));
+      }
+    } catch (e) {
+      console.warn('Drum Synth WASM load failed (non-fatal, JS synthesis will be used):', e);
     }
 
     // Create audio graph
@@ -1258,7 +1736,7 @@ export class AudioEngine {
         this.rng
       );
       this.wireDrumSynthCallbacks();
-      this.wireDrumLooperSend();
+      this.wireDrumGranularSend();
     }
 
     // Start voices
@@ -1275,10 +1753,10 @@ export class AudioEngine {
     if (this.sliderState?.synthEuclideanMasterEnabled) {
       this.startSynthEuclidScheduler();
     }
-    // Start looper Euclidean scheduler if enabled
-    this.stopLooperEuclidScheduler();
-    if (this.sliderState?.looperEuclidMasterEnabled) {
-      this.startLooperEuclidScheduler();
+    // Start granular Euclidean scheduler if enabled
+    this.stopGranularEuclidScheduler();
+    if (this.sliderState?.granularEuclidMasterEnabled) {
+      this.startGranularEuclidScheduler();
     }
     // Start random lead scheduling if enabled
     if (this.sliderState?.leadRandomEnabled) {
@@ -1300,6 +1778,12 @@ export class AudioEngine {
   stop(): void {
     if (!this.isRunning) return;
 
+    // Stop CPU perf monitor interval (must be cleared here — survives start/stop otherwise)
+    if (this.synthPerfTimer !== null) {
+      clearInterval(this.synthPerfTimer);
+      this.synthPerfTimer = null;
+    }
+
     // Cancel any pending RAF-batched applyParams
     if (this._applyParamsRaf !== null) {
       cancelAnimationFrame(this._applyParamsRaf);
@@ -1315,8 +1799,8 @@ export class AudioEngine {
 
     // Stop lead Euclidean scheduler
     this.stopSynthEuclidScheduler();
-    // Stop looper Euclidean scheduler
-    this.stopLooperEuclidScheduler();
+    // Stop granular Euclidean scheduler
+    this.stopGranularEuclidScheduler();
     // Stop lead random melody timer
     if (this.leadMelodyTimer !== null) {
       clearTimeout(this.leadMelodyTimer);
@@ -1327,9 +1811,14 @@ export class AudioEngine {
 
     // Clear tracked voice release and ratchet timers
     for (const t of this.voiceReleaseTimers) clearTimeout(t);
-    this.voiceReleaseTimers = [];
+    this.voiceReleaseTimers.clear();
     for (const t of this.ratchetTimers) clearTimeout(t);
-    this.ratchetTimers = [];
+    this.ratchetTimers.clear();
+    for (let i = 0; i < this.synthVoiceNoteOffTimers.length; i++) {
+      const timerId = this.synthVoiceNoteOffTimers[i];
+      if (timerId !== null) clearTimeout(timerId);
+      this.synthVoiceNoteOffTimers[i] = null;
+    }
 
     // Stop lead morph random-walk timer
     if (this.leadMorphTimer !== null) {
@@ -1411,16 +1900,52 @@ export class AudioEngine {
       try { this.insectsReverbSendNode.disconnect(); } catch { /* */ }
       this.insectsReverbSendNode = null;
     }
+    this._messageSignatures.clear();
 
-    // Disconnect granular and reverb worklets
-    if (this.granulatorNode) {
-      try { this.granulatorNode.disconnect(); } catch { /* */ }
-      this.granulatorNode = null;
-    }
+    // Tear down reverb WASM worklet (free WASM heap + close port)
     if (this.reverbNode) {
+      try { (this.reverbNode as AudioWorkletNode).port.postMessage({ type: 'destroy' }); } catch { /* */ }
+      try { (this.reverbNode as AudioWorkletNode).port.close(); } catch { /* */ }
       try { this.reverbNode.disconnect(); } catch { /* */ }
       this.reverbNode = null;
     }
+
+    // Tear down spectral freeze WASM worklet
+    if (this.spectralFreezeNode) {
+      try { this.spectralFreezeNode.port.postMessage({ type: 'destroy' }); } catch { /* */ }
+      try { this.spectralFreezeNode.port.close(); } catch { /* */ }
+      try { this.spectralFreezeNode.disconnect(); } catch { /* */ }
+      this.spectralFreezeNode = null;
+    }
+
+    // Tear down pad synth WASM worklet
+    if (this.padWasmNode) {
+      try { this.padWasmNode.port.postMessage({ type: 'destroy' }); } catch { /* */ }
+      try { this.padWasmNode.port.close(); } catch { /* */ }
+      try { this.padWasmNode.disconnect(); } catch { /* */ }
+      this.padWasmNode = null;
+      this.padWasmReady = false;
+    }
+
+    // Tear down lead FM WASM worklet
+    if (this.leadFmWasmNode) {
+      try { this.leadFmWasmNode.port.postMessage({ type: 'allNotesOff' }); } catch { /* */ }
+      try { this.leadFmWasmNode.port.postMessage({ type: 'destroy' }); } catch { /* */ }
+      try { this.leadFmWasmNode.port.close(); } catch { /* */ }
+      try { this.leadFmWasmNode.disconnect(); } catch { /* */ }
+      this.leadFmWasmNode = null;
+      this.leadFmWasmReady = false;
+    }
+
+    // Tear down drum synth WASM worklet
+    if (this.drumWasmNode) {
+      try { this.drumWasmNode.port.postMessage({ type: 'destroy' }); } catch { /* */ }
+      try { this.drumWasmNode.port.close(); } catch { /* */ }
+      try { this.drumWasmNode.disconnect(); } catch { /* */ }
+      this.drumWasmNode = null;
+      this.drumWasmReady = false;
+    }
+
     if (this.reverbOutputGain) {
       try { this.reverbOutputGain.disconnect(); } catch { /* */ }
       this.reverbOutputGain = null;
@@ -1443,43 +1968,65 @@ export class AudioEngine {
     if (this.leadDry) { try { this.leadDry.disconnect(); } catch { /* */ } this.leadDry = null; }
     if (this.leadMerger) { try { this.leadMerger.disconnect(); } catch { /* */ } this.leadMerger = null; }
     if (this.leadReverbSend) { try { this.leadReverbSend.disconnect(); } catch { /* */ } this.leadReverbSend = null; }
+    if (this.lead1ReverbSend) { try { this.lead1ReverbSend.disconnect(); } catch { /* */ } this.lead1ReverbSend = null; }
+    if (this.lead2ReverbSend) { try { this.lead2ReverbSend.disconnect(); } catch { /* */ } this.lead2ReverbSend = null; }
     if (this.leadDelayReverbSend) { try { this.leadDelayReverbSend.disconnect(); } catch { /* */ } this.leadDelayReverbSend = null; }
 
-    // Tear down looper FX node + routing gains (prevent orphan worklet processing)
-    if (this.looperFxNode) {
+    // Tear down Granular FX node + routing gains (prevent orphan worklet processing)
+    if (this.granularFxNode) {
       // Tell WASM worklet to free heap before disconnecting
-      try { this.looperFxNode.port.postMessage({ type: 'destroy' }); } catch { /* */ }
-      try { this.looperFxNode.port.onmessage = null; } catch { /* */ }
-      try { this.looperFxNode.port.close(); } catch { /* */ }
-      try { this.looperFxNode.disconnect(); } catch { /* */ }
-      this.looperFxNode = null;
+      try { this.granularFxNode.port.postMessage({ type: 'destroy' }); } catch { /* */ }
+      try { this.granularFxNode.port.onmessage = null; } catch { /* */ }
+      try { this.granularFxNode.port.close(); } catch { /* */ }
+      try { this.granularFxNode.disconnect(); } catch { /* */ }
+      this.granularFxNode = null;
     }
-    if (this.looperFxInputGain) { try { this.looperFxInputGain.disconnect(); } catch { /* */ } this.looperFxInputGain = null; }
-    if (this.looperFxReverbSend) { try { this.looperFxReverbSend.disconnect(); } catch { /* */ } this.looperFxReverbSend = null; }
-    if (this.looperFxDirect) { try { this.looperFxDirect.disconnect(); } catch { /* */ } this.looperFxDirect = null; }
+    if (this.granularFxInputGain) { try { this.granularFxInputGain.disconnect(); } catch { /* */ } this.granularFxInputGain = null; }
+    if (this.granularFxReverbSend) { try { this.granularFxReverbSend.disconnect(); } catch { /* */ } this.granularFxReverbSend = null; }
+    if (this.granularFxReverbLPF) { try { this.granularFxReverbLPF.disconnect(); } catch { /* */ } this.granularFxReverbLPF = null; }
+    if (this.granularFxReverbCompressor) { try { this.granularFxReverbCompressor.disconnect(); } catch { /* */ } this.granularFxReverbCompressor = null; }
+    if (this.granularFxOutputLPF) { try { this.granularFxOutputLPF.disconnect(); } catch { /* */ } this.granularFxOutputLPF = null; }
+    if (this.granularFxDirect) { try { this.granularFxDirect.disconnect(); } catch { /* */ } this.granularFxDirect = null; }
 
-    // Stop looper delay vibrato oscillators (prevent orphaned oscillator leak)
-    for (const osc of this.looperDelayVibratoOscs) {
+    // Stop granular delay vibrato oscillators (prevent orphaned oscillator leak)
+    for (const osc of this.granularDelayVibratoOscs) {
       try { osc.stop(); osc.disconnect(); } catch { /* */ }
     }
-    this.looperDelayVibratoOscs = [];
-    for (const depth of this.looperDelayVibratoDepths) {
+    this.granularDelayVibratoOscs = [];
+    for (const depth of this.granularDelayVibratoDepths) {
       try { depth.disconnect(); } catch { /* */ }
     }
-    this.looperDelayVibratoDepths = [];
-    // Disconnect looper delay tap nodes
-    for (const tap of this.looperDelayTapNodes) {
+    this.granularDelayVibratoDepths = [];
+    // Disconnect granular delay tap nodes
+    for (const tap of this.granularDelayTapNodes) {
       try { tap.disconnect(); } catch { /* */ }
     }
-    this.looperDelayTapNodes = [];
-    for (const gain of this.looperDelayTapGains) {
+    this.granularDelayTapNodes = [];
+    for (const gain of this.granularDelayTapGains) {
       try { gain.disconnect(); } catch { /* */ }
     }
-    this.looperDelayTapGains = [];
-    for (const panner of this.looperDelayTapPanners) {
+    this.granularDelayTapGains = [];
+    for (const panner of this.granularDelayTapPanners) {
       try { panner.disconnect(); } catch { /* */ }
     }
-    this.looperDelayTapPanners = [];
+    this.granularDelayTapPanners = [];
+
+    // Disconnect granular delay infrastructure nodes (input/output/feedback/tone)
+    if (this.granularDelaySendGain) { try { this.granularDelaySendGain.disconnect(); } catch { /* */ } this.granularDelaySendGain = null; }
+    if (this.granularDelayInputNode) { try { this.granularDelayInputNode.disconnect(); } catch { /* */ } this.granularDelayInputNode = null; }
+    if (this.granularDelayOutputGain) { try { this.granularDelayOutputGain.disconnect(); } catch { /* */ } this.granularDelayOutputGain = null; }
+    if (this.granularDelayDirectGain) { try { this.granularDelayDirectGain.disconnect(); } catch { /* */ } this.granularDelayDirectGain = null; }
+    if (this.granularDelayReverbSendGain) { try { this.granularDelayReverbSendGain.disconnect(); } catch { /* */ } this.granularDelayReverbSendGain = null; }
+    if (this.granularDelayFeedbackGain) { try { this.granularDelayFeedbackGain.disconnect(); } catch { /* */ } this.granularDelayFeedbackGain = null; }
+    if (this.granularDelayToneFilter) { try { this.granularDelayToneFilter.disconnect(); } catch { /* */ } this.granularDelayToneFilter = null; }
+
+    // Disconnect per-source send gains
+    if (this.granularPad1Send) { try { this.granularPad1Send.disconnect(); } catch { /* */ } this.granularPad1Send = null; }
+    if (this.granularPad2Send) { try { this.granularPad2Send.disconnect(); } catch { /* */ } this.granularPad2Send = null; }
+    if (this.granularLead1Send) { try { this.granularLead1Send.disconnect(); } catch { /* */ } this.granularLead1Send = null; }
+    if (this.granularLead2Send) { try { this.granularLead2Send.disconnect(); } catch { /* */ } this.granularLead2Send = null; }
+    if (this.granularDrumSend) { try { this.granularDrumSend.disconnect(); } catch { /* */ } this.granularDrumSend = null; }
+    if (this.granularWavesSend) { try { this.granularWavesSend.disconnect(); } catch { /* */ } this.granularWavesSend = null; }
 
     // Stop drum synth and close everything
     if (this.drumSynth) {
@@ -1534,6 +2081,9 @@ export class AudioEngine {
     if (this.drumSynth) {
       this.drumSynth.updateParams(sliderState);
     }
+    // Forward drum params to WASM worklet (if active)
+    this.sendDrumWasmParams(sliderState);
+    this.sendDrumWasmDelay(sliderState);
 
     // If drum is completely off and synth sequencer is off and engine isn't running, tear down context
     if (!this.isRunning && !this.isStarting && !sliderState.drumEnabled && !sliderState.drumEuclidMasterEnabled && !sliderState.synthEuclideanMasterEnabled) {
@@ -1542,6 +2092,11 @@ export class AudioEngine {
         this.drumSynth = null;
       }
       if (this.ctx) {
+        if (this.padWasmNode) {
+          try { this.padWasmNode.port.postMessage({ type: 'destroy' }); } catch { /* */ }
+          try { this.padWasmNode.port.close(); } catch { /* */ }
+          try { this.padWasmNode.disconnect(); } catch { /* */ }
+        }
         this.ctx.close();
         this.ctx = null;
         this.masterGain = null;
@@ -1565,6 +2120,8 @@ export class AudioEngine {
         this.dryBus = null;
         this.synthReverbSend = null;
         this.synthDirect = null;
+        this.padWasmNode = null;
+        this.padWasmReady = false;
         this.voices = [];
       }
     }
@@ -1576,30 +2133,39 @@ export class AudioEngine {
       this.stopSynthEuclidScheduler();
     }
 
-    // Looper Euclidean scheduler operates independently of master play
-    if (sliderState.looperEuclidMasterEnabled && !this.looperEuclidScheduleTimer && this.isRunning) {
-      this.startLooperEuclidScheduler();
-    } else if (!sliderState.looperEuclidMasterEnabled && this.looperEuclidScheduleTimer) {
-      this.stopLooperEuclidScheduler();
+    // Granular Euclidean scheduler operates independently of master play
+    if (sliderState.granularEuclidMasterEnabled && !this.granularEuclidScheduleTimer && this.isRunning) {
+      this.startGranularEuclidScheduler();
+    } else if (!sliderState.granularEuclidMasterEnabled && this.granularEuclidScheduleTimer) {
+      this.stopGranularEuclidScheduler();
     }
 
     // Apply non-drum audio parameters if engine is running OR synth Euclidean is active
     // (Euclidean synth runs independently of master play, but needs continuous param updates)
     if (!this.ctx || (!this.isRunning && !sliderState.synthEuclideanMasterEnabled)) return;
 
-    // If pad synth was just turned off, release all active synth voices immediately
-    if (sliderState.padEnabled === false && this._lastPadEnabled !== false && this.voices.length > 0) {
+    const padActive = sliderState.padEnabled !== false || this.euclideanUsesPadSource(sliderState);
+
+    // If pad output just became fully inactive, release all active synth voices immediately.
+    // Euclidean synth lanes can keep pad voices active even when the pad engine toggle is off.
+    if (!padActive && this._lastPadEnabled !== false && this.voices.length > 0) {
       const now = this.ctx.currentTime;
-      const release = sliderState.synthRelease || 1.0;
-      for (const voice of this.voices) {
+      const release = Math.max(0.001, sliderState.synthRelease || 1.0);
+      for (let i = 0; i < this.voices.length; i++) {
+        const voice = this.voices[i];
         if (voice.active) {
           voice.envelope.gain.cancelScheduledValues(now);
           voice.envelope.gain.setTargetAtTime(0, now, release / 4);
           voice.active = false;
         }
+        // Always send WASM noteOff — Euclidean-owned voices may be active in WASM
+        // even when JS voice.active is false
+        if (this.padWasmReady && this.padWasmNode) {
+          this.padWasmNode.port.postMessage({ type: 'noteOff', voiceIndex: i });
+        }
       }
     }
-    this._lastPadEnabled = sliderState.padEnabled;
+    this._lastPadEnabled = padActive;
 
     // If synth chord sequencer was just disabled, silence all synth voices
     // BUT only if no Euclidean lanes are using synth sources
@@ -1614,12 +2180,16 @@ export class AudioEngine {
 
       if (!euclideanUsesSynth) {
         const now = this.ctx.currentTime;
-        const release = sliderState.synthRelease || 1.0;
-        for (const voice of this.voices) {
+        const release = Math.max(0.001, sliderState.synthRelease || 1.0);
+        for (let i = 0; i < this.voices.length; i++) {
+          const voice = this.voices[i];
           if (voice.active) {
             voice.envelope.gain.cancelScheduledValues(now);
             voice.envelope.gain.setTargetAtTime(0, now, release / 4);
             voice.active = false;
+            if (this.padWasmReady && this.padWasmNode) {
+              this.padWasmNode.port.postMessage({ type: 'noteOff', voiceIndex: i });
+            }
           }
         }
       }
@@ -1676,30 +2246,33 @@ export class AudioEngine {
     this.synthDirect = ctx.createGain();
     this.synthDirect.gain.value = 1.0;  // Level is per-voice via mixerGain
 
-    // Legacy JS granular worklet REMOVED — granulatorNode no longer created
-    // All granular processing is handled by the Looper FX WASM engine.
+    // All granular processing is handled by the Granular FX WASM engine.
     // The synthBus → dryBus → synthDirect → masterGain path remains for dry pad signal.
 
     // Reverb WASM worklet
-    this.reverbNode = new AudioWorkletNode(ctx, 'reverb-wasm', {
-      numberOfInputs: 1,
-      numberOfOutputs: 1,
-      outputChannelCount: [2],
-    });
-    this.reverbNode.port.onmessage = (e) => {
-      if (e.data.type === 'perf') this.handlePerfMessage(e.data);
-      else if (e.data.type === 'wasmReady') console.log('Reverb WASM engine initialized');
-    };
-    // Send WASM binary to reverb worklet
     if (this.wasmReverbBinary) {
+      this.reverbNode = new AudioWorkletNode(ctx, 'reverb-wasm', {
+        numberOfInputs: 1,
+        numberOfOutputs: 1,
+        outputChannelCount: [2],
+      });
+      this.reverbNode.port.onmessage = (e) => {
+        if (e.data.type === 'perf') this.handlePerfMessage(e.data);
+        else if (e.data.type === 'wasmReady') console.log('Reverb WASM engine initialized');
+      };
+      // Send WASM binary to reverb worklet
       const reverbBin = this.wasmReverbBinary;
       this.wasmReverbBinary = null;
       this.reverbNode.port.postMessage({ type: 'wasmBinary', binary: reverbBin }, [reverbBin]);
+    } else {
+      // Fallback: passthrough gain node when reverb WASM is unavailable
+      this.reverbNode = ctx.createGain() as any;
+      console.warn('Reverb WASM unavailable — using passthrough (no reverb)');
     }
 
     // Reverb output level
     this.reverbOutputGain = ctx.createGain();
-    this.reverbOutputGain.gain.value = this.sliderState?.reverbLevel ?? 1.0;
+    this.reverbOutputGain.gain.value = (this.sliderState?.reverbLevel ?? 0.5) * 2;
 
     // Reverb input bus — collects all reverb sources (gain stays at 1.0)
     this.reverbInputBus = ctx.createGain();
@@ -1725,9 +2298,66 @@ export class AudioEngine {
       this.spectralFreezeNode.port.postMessage({ type: 'wasmBinary', binary: sfBin }, [sfBin]);
     }
 
+    // Pad Synth WASM worklet — 3 outputs: [0]=main stereo, [1]=reverb send, [2]=pre-fader (granular)
+    if (this.wasmPadBinary) {
+      this.createPadWasmNode(ctx);
+    }
+
+    // Lead FM WASM worklet — 1 output: stereo (includes internal delay)
+    if (this.wasmLeadFmBinary) {
+      this.leadFmWasmNode = new AudioWorkletNode(ctx, 'lead-fm-wasm', {
+        numberOfInputs: 0,
+        numberOfOutputs: 1,
+        outputChannelCount: [2],
+      });
+      this.leadFmWasmNode.port.onmessage = (e) => {
+        if (e.data.type === 'wasmReady') {
+          this.leadFmWasmReady = true;
+          console.log('Lead FM WASM engine initialized');
+          // Send initial morphed preset params so WASM has sane defaults
+          const initMorphed = morphPresets(
+            this.lead1PresetA, this.lead1PresetB,
+            0.5, this.sliderState?.lead1AlgorithmMode ?? 'snap',
+          );
+          this.leadFmWasmNode!.port.postMessage({ type: 'params', params: initMorphed });
+          // Send initial delay params
+          if (this.sliderState) this.sendLeadFmWasmDelay(this.sliderState);
+        } else if (e.data.type === 'perf') {
+          this.handlePerfMessage(e.data);
+        }
+      };
+      const leadFmBin = this.wasmLeadFmBinary;
+      this.wasmLeadFmBinary = null;
+      this.leadFmWasmNode.port.postMessage({ type: 'wasmBinary', binary: leadFmBin }, [leadFmBin]);
+    }
+
+    // Drum Synth WASM worklet — 2 outputs: [0]=main stereo, [1]=reverb send
+    if (this.wasmDrumBinary) {
+      this.drumWasmNode = new AudioWorkletNode(ctx, 'drum-synth-wasm', {
+        numberOfInputs: 0,
+        numberOfOutputs: 2,
+        outputChannelCount: [2, 2],
+      });
+      this.drumWasmNode.port.onmessage = (e) => {
+        if (e.data.type === 'wasmReady') {
+          this.drumWasmReady = true;
+          console.log('Drum Synth WASM engine initialized');
+          // Send initial drum params
+          if (this.sliderState) this.sendDrumWasmParams(this.sliderState);
+          // Notify DrumSynth that WASM is ready for triggers
+          if (this.drumSynth) this.drumSynth.setWasmReady(true);
+        } else if (e.data.type === 'perf') {
+          this.handlePerfMessage(e.data);
+        }
+      };
+      const drumBin = this.wasmDrumBinary;
+      this.wasmDrumBinary = null;
+      this.drumWasmNode.port.postMessage({ type: 'wasmBinary', binary: drumBin }, [drumBin]);
+    }
+
     // Lead synth (Rhodes/Bell) with stereo ping-pong delay
     this.leadGain = ctx.createGain();
-    this.leadGain.gain.value = this.sliderState?.leadLevel ?? 0.4;
+    this.leadGain.gain.value = (this.sliderState?.leadEnabled || this.sliderState?.synthEuclideanMasterEnabled) ? 1.0 : 0;
 
     this.leadFilter = ctx.createBiquadFilter();
     this.leadFilter.type = 'lowpass';
@@ -1751,12 +2381,21 @@ export class AudioEngine {
     this.leadDelayMix.gain.value = this.sliderState?.leadDelayMix ?? 0.35;
 
     this.leadDry = ctx.createGain();
-    this.leadDry.gain.value = 1.0;
+    this.leadDry.gain.value = 1.0; // Always unity — per-lead level is baked into note velocity
 
     this.leadMerger = ctx.createChannelMerger(2);
 
     this.leadReverbSend = ctx.createGain();
-    this.leadReverbSend.gain.value = this.sliderState?.leadReverbSend ?? 0.5;
+    this.leadReverbSend.gain.value = Math.max(
+      this.sliderState?.lead1ReverbSend ?? 0.5,
+      this.sliderState?.lead2ReverbSend ?? 0.5
+    );
+
+    // Per-lead reverb sends (tapped from lead1Bus/lead2Bus before shared filter)
+    this.lead1ReverbSend = ctx.createGain();
+    this.lead1ReverbSend.gain.value = this.sliderState?.lead1ReverbSend ?? 0.5;
+    this.lead2ReverbSend = ctx.createGain();
+    this.lead2ReverbSend.gain.value = this.sliderState?.lead2ReverbSend ?? 0.5;
 
     this.leadDelayReverbSend = ctx.createGain();
     this.leadDelayReverbSend.gain.value = this.sliderState?.leadDelayReverbSend ?? 0.4;
@@ -1775,7 +2414,7 @@ export class AudioEngine {
     // Soundscapes WASM worklet — water + insects + ocean engines
     // 3 outputs: [0]=water stereo, [1]=insects stereo, [2]=ocean stereo
     if (this.wasmSoundscapesBinary) {
-      this.soundscapesNode = new AudioWorkletNode(ctx, 'soundscapes-wasm-processor', {
+      this.soundscapesNode = new AudioWorkletNode(ctx, 'soundscapes-wasm', {
         numberOfInputs: 0,
         numberOfOutputs: 3,
         outputChannelCount: [2, 2, 2],
@@ -1819,9 +2458,9 @@ export class AudioEngine {
     this.insectsReverbSendNode = ctx.createGain();
     this.insectsReverbSendNode.gain.value = this.sliderState?.insectsReverbSend ?? 0.15;
 
-    // Looper FX (unified granular engine)
+    // Granular FX (unified granular engine)
     try {
-      this.looperFxNode = new AudioWorkletNode(ctx, 'looper-fx-wasm', {
+      this.granularFxNode = new AudioWorkletNode(ctx, 'granular-fx-wasm', {
         numberOfInputs: 1,
         numberOfOutputs: 1,
         outputChannelCount: [2],
@@ -1829,66 +2468,90 @@ export class AudioEngine {
         channelCountMode: 'explicit',  // always deliver 2 channels even if sources are mono
       });
       // Listen for position updates and perf reports from worklet
-      this.looperFxNode.port.onmessage = (e) => {
+      this.granularFxNode.port.onmessage = (e) => {
         if (e.data.type === 'position') {
-          this.looperWriteHeadPosition = e.data.writeHead;
-          this.looperVoicePositions = e.data.voices;
+          this.granularWriteHeadPosition = e.data.writeHead;
+          this.granularVoicePositions = e.data.voices;
         } else if (e.data.type === 'perf') {
           this.handlePerfMessage(e.data);
         } else if (e.data.type === 'wasmReady') {
-          console.log('Looper FX WASM engine initialized');
+          console.log('Granular FX WASM engine initialized');
         }
       };
 
-      // Send WASM binary to worklet (if using WASM path)
       // Send WASM binary to worklet
-      if (this.wasmLooperBinary) {
-        const toTransfer = this.wasmLooperBinary;
-        this.wasmLooperBinary = null;
-        this.looperFxNode.port.postMessage(
+      if (this.wasmGranularBinary) {
+        const toTransfer = this.wasmGranularBinary;
+        this.wasmGranularBinary = null;
+        this.granularFxNode.port.postMessage(
           { type: 'wasmBinary', binary: toTransfer },
           [toTransfer] // transfer ownership
         );
       }
 
-      this.looperFxInputGain = ctx.createGain();
-      this.looperFxInputGain.gain.value = 1.0;
+      // Send enablePerf immediately if monitoring is active
+      if (this.perfMonitorEnabled) {
+        this.granularFxNode.port.postMessage({ type: 'enablePerf', enabled: true });
+      }
 
-      this.looperFxReverbSend = ctx.createGain();
-      this.looperFxReverbSend.gain.value = this.sliderState?.granularReverbSend ?? 0.3;
+      this.granularFxInputGain = ctx.createGain();
+      this.granularFxInputGain.gain.value = 1.0;
 
-      this.looperFxDirect = ctx.createGain();
-      this.looperFxDirect.gain.value = this.sliderState?.looperEnabled ? 1.0 : 0;
+      this.granularFxReverbSend = ctx.createGain();
+      this.granularFxReverbSend.gain.value = this.sliderState?.granularReverbSend ?? 0.3;
 
-      // Per-source send gain nodes (each source → looperFxInputGain)
-      this.looperPad1Send = ctx.createGain();
-      this.looperPad1Send.gain.value = this.sliderState?.looperPad1Send ?? 1.0;
+      // Pre-reverb LPF (darkens reverb trail without affecting dry output)
+      this.granularFxReverbLPF = ctx.createBiquadFilter();
+      this.granularFxReverbLPF.type = 'lowpass';
+      this.granularFxReverbLPF.frequency.value = this.sliderState?.granularReverbLPF ?? 4000;
+      this.granularFxReverbLPF.Q.value = 0.7;
 
-      this.looperPad2Send = ctx.createGain();
-      this.looperPad2Send.gain.value = this.sliderState?.looperPad2Send ?? 0.0;
+      // Pre-reverb compressor (tames transient peaks before they hit reverb)
+      this.granularFxReverbCompressor = ctx.createDynamicsCompressor();
+      this.granularFxReverbCompressor.threshold.value = -24;
+      this.granularFxReverbCompressor.ratio.value = 4;
+      this.granularFxReverbCompressor.attack.value = 0.003;
+      this.granularFxReverbCompressor.release.value = 0.25;
+      this.granularFxReverbCompressor.knee.value = 6;
 
-      this.looperLead1Send = ctx.createGain();
-      this.looperLead1Send.gain.value = this.sliderState?.looperLead1Send ?? 0.0;
+      // Output LPF (tames overall brightness on dry path)
+      this.granularFxOutputLPF = ctx.createBiquadFilter();
+      this.granularFxOutputLPF.type = 'lowpass';
+      this.granularFxOutputLPF.frequency.value = this.sliderState?.granularOutputLPF ?? 12000;
+      this.granularFxOutputLPF.Q.value = 0.7;
 
-      this.looperLead2Send = ctx.createGain();
-      this.looperLead2Send.gain.value = this.sliderState?.looperLead2Send ?? 0.0;
+      this.granularFxDirect = ctx.createGain();
+      this.granularFxDirect.gain.value = this.sliderState?.granularEnabled ? 1.0 : 0;
 
-      this.looperDrumSend = ctx.createGain();
-      this.looperDrumSend.gain.value = this.sliderState?.looperDrumSend ?? 0.0;
+      // Per-source send gain nodes (each source → granularFxInputGain)
+      this.granularPad1Send = ctx.createGain();
+      this.granularPad1Send.gain.value = this.sliderState?.granularPad1Send ?? 1.0;
 
-      this.looperWavesSend = ctx.createGain();
-      this.looperWavesSend.gain.value = this.sliderState?.looperWavesSend ?? 0.0;
+      this.granularPad2Send = ctx.createGain();
+      this.granularPad2Send.gain.value = this.sliderState?.granularPad2Send ?? 0.0;
 
-      // Note: randomSequence is sent later via sendLooperRandomSequence()
+      this.granularLead1Send = ctx.createGain();
+      this.granularLead1Send.gain.value = this.sliderState?.granularLead1Send ?? 0.0;
+
+      this.granularLead2Send = ctx.createGain();
+      this.granularLead2Send.gain.value = this.sliderState?.granularLead2Send ?? 0.0;
+
+      this.granularDrumSend = ctx.createGain();
+      this.granularDrumSend.gain.value = this.sliderState?.granularDrumSend ?? 0.0;
+
+      this.granularWavesSend = ctx.createGain();
+      this.granularWavesSend.gain.value = this.sliderState?.granularWavesSend ?? 0.0;
+
+      // Note: randomSequence is sent later via sendGranularRandomSequence()
       // (rng is not yet initialized at this point)
     } catch (e) {
-      console.warn('Looper FX worklet not available:', e);
+      console.warn('Granular FX worklet not available:', e);
     }
 
     // Create voices
     await this.createVoices();
 
-    // Create pad split buses (post-fader for main mix, pre-fader for looper)
+    // Create pad split buses (post-fader for main mix, pre-fader for granular)
     this.pad1Bus = ctx.createGain();
     this.pad1Bus.gain.value = 1.0;
     this.pad2Bus = ctx.createGain();
@@ -1904,7 +2567,7 @@ export class AudioEngine {
 
     // Connect graph:
     // Voices -> mixerGain -> Pad1Bus/Pad2Bus -> SynthBus (post-fader main mix)
-    // Voices -> envelope  -> Pad1PreFaderBus/Pad2PreFaderBus -> LooperPadSend (pre-fader looper)
+    // Voices -> envelope  -> Pad1PreFaderBus/Pad2PreFaderBus -> GranularPadSend (pre-fader granular)
     // Lead notes -> Lead1Bus/Lead2Bus -> LeadGain -> LeadFilter -> ... (existing chain)
 
     // Route voices to pad buses based on pad2VoiceAssign
@@ -1916,7 +2579,7 @@ export class AudioEngine {
       const isPad2 = (pad2Assign & (1 << i)) !== 0;
       // Post-fader: mixerGain → pad bus (for main mix)
       this.voices[i].mixerGain.connect(isPad2 ? this.pad2Bus : this.pad1Bus);
-      // Pre-fader: envelope → pre-fader bus (for looper, independent of pad level)
+      // Pre-fader: envelope → pre-fader bus (for granular, independent of pad level)
       this.voices[i].envelope.connect(isPad2 ? this.pad2PreFaderBus : this.pad1PreFaderBus);
     }
 
@@ -1924,106 +2587,126 @@ export class AudioEngine {
     this.pad1Bus.connect(this.synthBus);
     this.pad2Bus.connect(this.synthBus);
 
-    // Both lead buses feed into leadGain (preserves existing downstream)
-    this.lead1Bus.connect(this.leadGain);
-    this.lead2Bus.connect(this.leadGain);
+    // Pad WASM node outputs (parallel to JS oscillator path — JS voices silenced when WASM active)
+    if (this.padWasmNode) {
+      this.padWasmNode.connect(this.synthBus, 0);           // output[0] main → synthBus
+      this.padWasmNode.connect(this.reverbInputBus, 1);     // output[1] reverb send
+      if (this.granularFxInputGain) {
+        this.padWasmNode.connect(this.granularFxInputGain, 2); // output[2] pre-fader → granular
+      }
+    }
+
+    // Both lead buses feed into leadFilter directly (bypass leadGain for pre-fader reverb)
+    this.lead1Bus.connect(this.leadFilter);
+    this.lead2Bus.connect(this.leadFilter);
+
+    // Per-lead reverb sends (tapped from lead buses, independent of shared leadReverbSend)
+    this.lead1Bus.connect(this.lead1ReverbSend);
+    this.lead1ReverbSend.connect(this.reverbInputBus);
+    this.lead2Bus.connect(this.lead2ReverbSend);
+    this.lead2ReverbSend.connect(this.reverbInputBus);
 
     this.synthBus.connect(this.dryBus);
 
     // Legacy JS granular path REMOVED — synthBus no longer feeds granulatorInputGain
     // Dry signal path preserved: synthBus → dryBus → synthDirect → masterGain
 
-    // Looper FX signal path (now the sole granular engine):
-    // Pad1PreFaderBus -> LooperPad1Send  ─┐  (pre-fader: independent of pad level)
-    // Pad2PreFaderBus -> LooperPad2Send  ─┤
-    // Lead1Bus        -> LooperLead1Send ─┤
-    // Lead2Bus        -> LooperLead2Send ─┼─> LooperFxInput -> LooperFxNode -> LooperFxReverbSend -> Reverb
-    // DrumMaster      -> LooperDrumSend  ─┤                                -> LooperFxDirect -> Master
-    // OceanFilter     -> LooperWavesSend ─┘
-    if (this.looperFxNode && this.looperFxInputGain && this.looperFxReverbSend && this.looperFxDirect) {
-      // Per-source sends → looper input mixer (pad sends are pre-fader)
-      if (this.looperPad1Send && this.pad1PreFaderBus) {
-        this.pad1PreFaderBus.connect(this.looperPad1Send);
-        this.looperPad1Send.connect(this.looperFxInputGain);
+    // Granular FX signal path (now the sole granular engine):
+    // Pad1PreFaderBus -> GranularPad1Send  ─┐  (pre-fader: independent of pad level)
+    // Pad2PreFaderBus -> GranularPad2Send  ─┤
+    // Lead1Bus        -> GranularLead1Send ─┤
+    // Lead2Bus        -> GranularLead2Send ─┼─> GranularFxInput -> granularFxNode -> granularFxReverbSend -> Reverb
+    // DrumMaster      -> GranularDrumSend  ─┤                                -> granularFxDirect -> Master
+    // OceanFilter     -> GranularWavesSend ─┘
+    if (this.granularFxNode && this.granularFxInputGain && this.granularFxReverbSend && this.granularFxDirect) {
+      // Per-source sends → granular input mixer (pad sends are pre-fader)
+      if (this.granularPad1Send && this.pad1PreFaderBus) {
+        this.pad1PreFaderBus.connect(this.granularPad1Send);
+        this.granularPad1Send.connect(this.granularFxInputGain);
       }
-      if (this.looperPad2Send && this.pad2PreFaderBus) {
-        this.pad2PreFaderBus.connect(this.looperPad2Send);
-        this.looperPad2Send.connect(this.looperFxInputGain);
+      if (this.granularPad2Send && this.pad2PreFaderBus) {
+        this.pad2PreFaderBus.connect(this.granularPad2Send);
+        this.granularPad2Send.connect(this.granularFxInputGain);
       }
-      if (this.looperLead1Send && this.lead1Bus) {
-        this.lead1Bus.connect(this.looperLead1Send);
-        this.looperLead1Send.connect(this.looperFxInputGain);
+      if (this.granularLead1Send && this.lead1Bus) {
+        this.lead1Bus.connect(this.granularLead1Send);
+        this.granularLead1Send.connect(this.granularFxInputGain);
       }
-      if (this.looperLead2Send && this.lead2Bus) {
-        this.lead2Bus.connect(this.looperLead2Send);
-        this.looperLead2Send.connect(this.looperFxInputGain);
+      if (this.granularLead2Send && this.lead2Bus) {
+        this.lead2Bus.connect(this.granularLead2Send);
+        this.granularLead2Send.connect(this.granularFxInputGain);
       }
-      // DrumSynth send is connected in wireDrumLooperSend() after drumSynth creation
+      // DrumSynth send is connected in wireDrumGranularSend() after drumSynth creation
       // Waves send is connected below after oceanFilter creation
 
-      this.looperFxInputGain.connect(this.looperFxNode);
-      this.looperFxNode.connect(this.looperFxReverbSend);
-      this.looperFxNode.connect(this.looperFxDirect);
-      this.looperFxReverbSend.connect(this.reverbInputBus);
-      this.looperFxDirect.connect(this.masterGain);
+      this.granularFxInputGain.connect(this.granularFxNode);
+      // Reverb path: node → LPF → compressor → reverbSend gain → reverb
+      this.granularFxNode.connect(this.granularFxReverbLPF!);
+      this.granularFxReverbLPF!.connect(this.granularFxReverbCompressor!);
+      this.granularFxReverbCompressor!.connect(this.granularFxReverbSend);
+      this.granularFxReverbSend.connect(this.reverbInputBus);
+      // Dry path: node → output LPF → direct gain → master
+      this.granularFxNode.connect(this.granularFxOutputLPF!);
+      this.granularFxOutputLPF!.connect(this.granularFxDirect);
+      this.granularFxDirect.connect(this.masterGain);
 
-      // ── Looper Multi-Tap Delay (Microcosm-style) ──
-      // Signal: looperFxNode → delaySendGain → delayInputNode → 8 taps → merge
+      // ── Granular Multi-Tap Delay (Microcosm-style) ──
+      // Signal: granularFxNode → delaySendGain → delayInputNode → 8 taps → merge
       //                                                      ↰ feedback ← toneFilter ← feedbackGain ← outputGain
       //         merge → outputGain → directGain → masterGain
       //                            → delaySendReverb → reverbNode
-      this.looperDelaySendGain = ctx.createGain();
-      this.looperDelaySendGain.gain.value = 0; // off by default
+      this.granularDelaySendGain = ctx.createGain();
+      this.granularDelaySendGain.gain.value = 0; // off by default
 
-      this.looperDelayInputNode = ctx.createGain();
-      this.looperDelayInputNode.gain.value = 1.0;
+      this.granularDelayInputNode = ctx.createGain();
+      this.granularDelayInputNode.gain.value = 1.0;
 
-      this.looperDelayOutputGain = ctx.createGain();
-      this.looperDelayOutputGain.gain.value = 1.0;
+      this.granularDelayOutputGain = ctx.createGain();
+      this.granularDelayOutputGain.gain.value = 1.0;
 
-      this.looperDelayDirectGain = ctx.createGain();
-      this.looperDelayDirectGain.gain.value = 0.3;
+      this.granularDelayDirectGain = ctx.createGain();
+      this.granularDelayDirectGain.gain.value = 0.3;
 
-      this.looperDelayReverbSendGain = ctx.createGain();
-      this.looperDelayReverbSendGain.gain.value = 0.4;
+      this.granularDelayReverbSendGain = ctx.createGain();
+      this.granularDelayReverbSendGain.gain.value = 0.4;
 
-      this.looperDelayFeedbackGain = ctx.createGain();
-      this.looperDelayFeedbackGain.gain.value = 0.3;
+      this.granularDelayFeedbackGain = ctx.createGain();
+      this.granularDelayFeedbackGain.gain.value = 0.3;
 
-      this.looperDelayToneFilter = ctx.createBiquadFilter();
-      this.looperDelayToneFilter.type = 'lowpass';
-      this.looperDelayToneFilter.frequency.value = 2200;
-      this.looperDelayToneFilter.Q.value = 0.7;
+      this.granularDelayToneFilter = ctx.createBiquadFilter();
+      this.granularDelayToneFilter.type = 'lowpass';
+      this.granularDelayToneFilter.frequency.value = 2200;
+      this.granularDelayToneFilter.Q.value = 0.7;
 
-      // Connect looper output → delay send
-      this.looperFxNode.connect(this.looperDelaySendGain);
-      this.looperDelaySendGain.connect(this.looperDelayInputNode);
+      // Connect granular output → delay send
+      this.granularFxNode.connect(this.granularDelaySendGain);
+      this.granularDelaySendGain.connect(this.granularDelayInputNode);
 
       // Create 8 delay taps with individual gain + panner
-      const baseBPM = this.sliderState?.drumEuclidBaseBPM ?? 120;
-      const baseTime = delayNoteToSeconds(this.sliderState?.looperDelayTime ?? '1/4', baseBPM);
+      const baseBPM = this.sliderState?.granularEuclidBaseBPM ?? 120;
+      const baseTime = delayNoteToSeconds(this.sliderState?.granularDelayTime ?? '1/4', baseBPM);
       
-      this.looperDelayTapNodes = [];
-      this.looperDelayTapGains = [];
-      this.looperDelayTapPanners = [];
-      this.looperDelayVibratoOscs = [];
-      this.looperDelayVibratoDepths = [];
+      this.granularDelayTapNodes = [];
+      this.granularDelayTapGains = [];
+      this.granularDelayTapPanners = [];
+      this.granularDelayVibratoOscs = [];
+      this.granularDelayVibratoDepths = [];
 
       for (let i = 0; i < 8; i++) {
         // Delay tap
         const tapDelay = ctx.createDelay(5.0); // max 5 seconds
         tapDelay.delayTime.value = Math.min(5.0, baseTime * TAP_SUBDIVISIONS[i]);
-        this.looperDelayTapNodes.push(tapDelay);
+        this.granularDelayTapNodes.push(tapDelay);
 
         // Per-tap gain (Activity macro controls this)
         const tapGain = ctx.createGain();
         tapGain.gain.value = computeTapGain(i, 0.3);
-        this.looperDelayTapGains.push(tapGain);
+        this.granularDelayTapGains.push(tapGain);
 
         // Per-tap stereo panner (alternating L/R)
         const tapPanner = ctx.createStereoPanner();
         tapPanner.pan.value = TAP_PANS[i];
-        this.looperDelayTapPanners.push(tapPanner);
+        this.granularDelayTapPanners.push(tapPanner);
 
         // Vibrato: OscillatorNode → GainNode → delayTime AudioParam
         const vibOsc = ctx.createOscillator();
@@ -2031,36 +2714,37 @@ export class AudioEngine {
         vibOsc.frequency.value = TAP_VIBRATO_RATES[i];
 
         const vibDepth = ctx.createGain();
-        vibDepth.gain.value = 0; // controlled by looperDelayVibrato
+        vibDepth.gain.value = 0; // controlled by granularDelayVibrato
 
         vibOsc.connect(vibDepth);
         vibDepth.connect(tapDelay.delayTime);
         vibOsc.start();
-        this.looperDelayVibratoOscs.push(vibOsc);
-        this.looperDelayVibratoDepths.push(vibDepth);
+        this.granularDelayVibratoOscs.push(vibOsc);
+        this.granularDelayVibratoDepths.push(vibDepth);
 
         // Wire: delayInput → tapDelay → tapGain → tapPanner → outputGain
-        this.looperDelayInputNode.connect(tapDelay);
+        this.granularDelayInputNode.connect(tapDelay);
         tapDelay.connect(tapGain);
         tapGain.connect(tapPanner);
-        tapPanner.connect(this.looperDelayOutputGain);
+        tapPanner.connect(this.granularDelayOutputGain);
       }
 
       // Feedback: outputGain → feedbackGain → toneFilter → back to delayInput
-      this.looperDelayOutputGain.connect(this.looperDelayFeedbackGain);
-      this.looperDelayFeedbackGain.connect(this.looperDelayToneFilter);
-      this.looperDelayToneFilter.connect(this.looperDelayInputNode);
+      this.granularDelayOutputGain.connect(this.granularDelayFeedbackGain);
+      this.granularDelayFeedbackGain.connect(this.granularDelayToneFilter);
+      this.granularDelayToneFilter.connect(this.granularDelayInputNode);
 
       // Output: outputGain → directGain → master
       //                    → reverbSendGain → reverb
-      this.looperDelayOutputGain.connect(this.looperDelayDirectGain);
-      this.looperDelayOutputGain.connect(this.looperDelayReverbSendGain);
-      this.looperDelayDirectGain.connect(this.masterGain);
-      this.looperDelayReverbSendGain.connect(this.reverbInputBus);
+      this.granularDelayOutputGain.connect(this.granularDelayDirectGain);
+      this.granularDelayOutputGain.connect(this.granularDelayReverbSendGain);
+      this.granularDelayDirectGain.connect(this.masterGain);
+      this.granularDelayReverbSendGain.connect(this.reverbInputBus);
     }
 
-    // Split dry synth output: reverb send and direct to master
-    this.dryBus.connect(this.synthReverbSend);
+    // Pre-fader reverb send: tap from preFaderBus (independent of pad level)
+    if (this.pad1PreFaderBus) this.pad1PreFaderBus.connect(this.synthReverbSend);
+    if (this.pad2PreFaderBus) this.pad2PreFaderBus.connect(this.synthReverbSend);
     this.dryBus.connect(this.synthDirect);
     
     this.synthReverbSend.connect(this.reverbInputBus);
@@ -2073,13 +2757,14 @@ export class AudioEngine {
     // (and optionally inserts spectralFreezeNode in pre or post position)
     this.applySpectralFreezeRouting();
 
-    // Lead synth signal path:
-    // LeadGain -> LeadFilter -> LeadDry -----------------> Master
-    //                       -> LeadDelayL -> LeadDelayFeedbackL -> LeadDelayR -> LeadDelayFeedbackR -> LeadDelayL (ping-pong)
-    //                                     -> Merger(L)           -> Merger(R)
-    //                       -> LeadReverbSend -> Reverb
-    this.leadGain.connect(this.leadFilter);
-    this.leadFilter.connect(this.leadDry);
+    // Lead synth signal path (pre-fader reverb: leadLevel is a shared master bus):
+    // Lead1/2Bus -> LeadFilter -> LeadVoiceLevel (unity) -> LeadDry (gain=leadLevel) -> Master
+    //                          -> LeadDelayL -> ... -> LeadDelayMix -> LeadDry -> Master
+    //                          -> LeadReverbSend -> Reverb (pre-fader)
+    this.leadVoiceLevel = ctx.createGain();
+    this.leadVoiceLevel.gain.value = 1.0;
+    this.leadFilter.connect(this.leadVoiceLevel);
+    this.leadVoiceLevel.connect(this.leadDry);
     this.leadDry.connect(this.masterGain);
 
     // Ping-pong delay routing
@@ -2093,15 +2778,35 @@ export class AudioEngine {
     this.leadDelayL.connect(this.leadMerger, 0, 0); // Left channel
     this.leadDelayR.connect(this.leadMerger, 0, 1); // Right channel
     this.leadMerger.connect(this.leadDelayMix);
-    this.leadDelayMix.connect(this.masterGain);
+    this.leadDelayMix.connect(this.leadDry);
 
-    // Lead delay reverb send (delay output also feeds reverb)
+    // Lead delay reverb send (delay output also feeds reverb, pre-fader)
     this.leadDelayMix.connect(this.leadDelayReverbSend);
     this.leadDelayReverbSend.connect(this.reverbInputBus);
 
-    // Lead reverb send (dry lead to reverb)
-    this.leadFilter.connect(this.leadReverbSend);
+    // Shared leadReverbSend kept for WASM path only (WASM mixes both leads in one output)
     this.leadReverbSend.connect(this.reverbInputBus);
+
+    // Lead FM WASM node output (parallel to JS lead path — JS lead silenced when WASM active)
+    // WASM output includes internal delay, so bypass engine-side delay chain
+    if (this.leadFmWasmNode) {
+      this.leadFmWasmNode.connect(this.leadVoiceLevel!, 0);  // output[0] → leadDry → master
+      this.leadFmWasmNode.connect(this.leadReverbSend, 0);   // output[0] → reverb send (pre-fader)
+      // Granular send for WASM lead (pre-fader, independent of leadLevel)
+      if (this.granularLead1Send) {
+        this.leadFmWasmNode.connect(this.granularLead1Send, 0);
+      }
+    }
+
+    // Drum Synth WASM node outputs (parallel to JS DrumSynth — JS drums silenced when WASM active)
+    if (this.drumWasmNode) {
+      this.drumWasmNode.connect(this.masterGain, 0);       // output[0] main → master
+      this.drumWasmNode.connect(this.reverbInputBus, 1);   // output[1] reverb send
+      // Tap main output into granular FX (post-fader; JS drums use pre-fader but WASM has no 3rd output)
+      if (this.granularDrumSend && this.granularFxInputGain) {
+        this.drumWasmNode.connect(this.granularDrumSend, 0);
+      }
+    }
 
     // Ocean waves -> OceanGain -> OceanFilter -> Master
     // Ocean WASM (soundscapes output [2]) feeds into the same gain chain
@@ -2122,10 +2827,10 @@ export class AudioEngine {
       this.oceanReverbSendNode.connect(this.reverbInputBus);
     }
 
-    // Waves looper send (taps oceanFilter output)
-    if (this.looperWavesSend && this.looperFxInputGain) {
-      this.oceanFilter.connect(this.looperWavesSend);
-      this.looperWavesSend.connect(this.looperFxInputGain);
+    // Waves granular send (taps oceanFilter output)
+    if (this.granularWavesSend && this.granularFxInputGain) {
+      this.oceanFilter.connect(this.granularWavesSend);
+      this.granularWavesSend.connect(this.granularFxInputGain);
     }
 
     // Soundscapes routing
@@ -2506,7 +3211,7 @@ export class AudioEngine {
     this.currentSeed = computeSeed(this.currentBucket, 'E_ROOT');
     this.rng = createRng(`${this.currentBucket}|E_ROOT`);
 
-    // Create harmony state
+    // Create harmony state with full params (CoF + progression)
     this.harmonyState = createHarmonyState(
       `${this.currentBucket}|E_ROOT`,
       this.sliderState.tension,
@@ -2515,17 +3220,21 @@ export class AudioEngine {
       this.sliderState.detune,
       this.sliderState.scaleMode,
       this.sliderState.manualScale,
-      this.sliderState.rootNote ?? 4
+      this.sliderState.rootNote ?? 4,
+      this.sliderState.phraseLength ?? 16,
+      this.getHarmonyParams()
     );
 
-    // Apply initial chord (if synth chord sequencer is enabled)
+    // Sync effective root
+    this.effectiveRoot = this.harmonyState.effectiveRoot;
+
     if (this.sliderState.synthChordSequencerEnabled !== false) {
       this.applyChord(this.harmonyState.currentChord.frequencies);
     }
 
-    // Send random sequence to granulator and looper
+    // Send random sequence to granulator and granular
     this.sendGranulatorRandomSequence();
-    this.sendLooperRandomSequence();
+    this.sendGranularRandomSequence();
 
     this.notifyStateChange();
   }
@@ -2543,38 +3252,67 @@ export class AudioEngine {
     this.currentSeed = computeSeed(this.currentBucket, 'E_ROOT');
     this.rng = createRng(`${this.currentBucket}|E_ROOT`);
 
-    // Send new random sequence to looper (legacy granulator removed)
-    this.sendLooperRandomSequence();
+    // Send new random sequence to granular (legacy granulator removed)
+    this.sendGranularRandomSequence();
 
     this.notifyStateChange();
   }
 
   private sendGranulatorRandomSequence(): void {
     // Legacy JS granular engine removed — this is now a no-op
-    // Random sequences for grain scheduling are sent via sendLooperRandomSequence()
+    // Random sequences for grain scheduling are sent via sendGranularRandomSequence()
     return;
   }
 
-  private sendLooperRandomSequence(): void {
-    if (!this.looperFxNode || !this.rng) return;
+  private sendGranularRandomSequence(): void {
+    if (!this.granularFxNode || !this.rng) return;
 
     const sequence = generateRandomSequence(this.rng, 4096);
-    this.looperFxNode.port.postMessage({
+    this.granularFxNode.port.postMessage({
       type: 'randomSequence',
       sequence,
     });
   }
 
   private schedulePhraseUpdates(): void {
+    this.chordSubTickCount = 0;
+
     const scheduleNext = () => {
-      const timeUntilNext = getTimeUntilNextPhrase();
-      this.phraseTimer = window.setTimeout(() => {
-        this.onPhraseBoundary();
-        scheduleNext();
-      }, timeUntilNext * 1000);
+      const phraseLength = this.sliderState?.phraseLength ?? 16;
+      const chordRate = this.sliderState?.chordRate ?? 32;
+
+      if (chordRate < phraseLength) {
+        // Sub-phrase mode: multiple chord changes per phrase
+        const chordsPerPhrase = Math.max(2, Math.round(phraseLength / chordRate));
+        const subInterval = phraseLength / chordsPerPhrase;
+
+        this.phraseTimer = window.setTimeout(() => {
+          this.chordSubTickCount++;
+          const isPhraseBoundary = this.chordSubTickCount >= chordsPerPhrase;
+          if (isPhraseBoundary) {
+            this.chordSubTickCount = 0;
+          }
+          this.onHarmonyTick(isPhraseBoundary);
+          scheduleNext();
+        }, subInterval * 1000);
+      } else {
+        // Normal mode: timer fires at phrase boundaries
+        const timeUntilNext = getTimeUntilNextPhrase(phraseLength);
+        this.phraseTimer = window.setTimeout(() => {
+          this.onHarmonyTick(true);
+          scheduleNext();
+        }, timeUntilNext * 1000);
+      }
     };
 
-    scheduleNext();
+    // First tick: align to next phrase boundary
+    const phraseLength = this.sliderState?.phraseLength ?? 16;
+    const timeUntilNext = getTimeUntilNextPhrase(phraseLength);
+    this.phraseTimer = window.setTimeout(() => {
+      this.chordSubTickCount = 0;
+      this.onHarmonyTick(true); // First tick is always a phrase boundary
+      scheduleNext();
+    }, timeUntilNext * 1000);
   }
 
   private startLeadMorphRandomWalk(): void {
@@ -2634,57 +3372,36 @@ export class AudioEngine {
     }, updateIntervalMs);
   }
   
-  private onPhraseBoundary(): void {
+  /** Build HarmonyParams from current sliderState */
+  private getHarmonyParams(): Partial<HarmonyParams> {
+    const s = this.sliderState!;
+    return {
+      cofDriftEnabled: s.cofDriftEnabled ?? false,
+      cofDriftRate: s.cofDriftRate ?? 2,
+      cofDriftDirection: s.cofDriftDirection ?? 'cw',
+      cofDriftRange: s.cofDriftRange ?? 3,
+      chordProgressionEnabled: s.chordProgressionEnabled ?? false,
+      chordProgressionPattern: s.chordProgressionPattern ?? [0, 3, 4, 0],
+      chordProgressionSteps: s.chordProgressionSteps ?? 4,
+      chordProgressionHits: s.chordProgressionHits ?? 4,
+      chordProgressionPhraseMultiplier: s.chordProgressionPhraseMultiplier ?? 1,
+    };
+  }
+
+  /**
+   * Called on every harmony tick. When isPhraseBoundary is true, also runs
+   * phrase-level effects (granulator reseed, drum scale sync, reverb coupling).
+   * Sub-phrase ticks only generate chord changes.
+   */
+  private onHarmonyTick(isPhraseBoundary: boolean): void {
     if (!this.harmonyState || !this.sliderState) return;
 
-    // sliderStateJson getter handles lazy refresh automatically
-
-    const phraseIndex = getCurrentPhraseIndex();
+    const phraseIndex = getCurrentPhraseIndex(this.sliderState?.phraseLength ?? 16);
     const homeRoot = this.sliderState.rootNote ?? 4;
-    let forceNewChord = false;
 
-    // Update Circle of Fifths drift
-    if (this.cofConfig.enabled && this.rng) {
-      const driftResult = updateCircleOfFifthsDrift(
-        this.cofConfig,
-        this.rng
-      );
-      
-      // Force new chord if we drifted to a new key
-      if (driftResult.didDrift) {
-        forceNewChord = true;
-      }
-      
-      this.cofConfig.currentStep = driftResult.newStep;
-      this.cofConfig.phraseCounter = driftResult.newCounter;
-      
-      // Update slider state to reflect the current step (for UI sync)
-      if (this.sliderState.cofCurrentStep !== driftResult.newStep) {
-        this.sliderState = {
-          ...this.sliderState,
-          cofCurrentStep: driftResult.newStep
-        };
-      }
-    }
-
-    // Calculate effective root note (home + drift offset)
-    const effectiveRoot = this.cofConfig.enabled 
-      ? calculateDriftedRoot(homeRoot, this.cofConfig.currentStep)
-      : homeRoot;
-    
-    // Store for use by lead synth and other components
-    this.effectiveRoot = effectiveRoot;
-
-    // If we drifted, force the harmony state to generate a new chord immediately
-    if (forceNewChord) {
-      // Reset phrasesUntilChange to 1 to force new chord generation
-      this.harmonyState = {
-        ...this.harmonyState,
-        phrasesUntilChange: 1
-      };
-    }
-
-    // Update harmony state with effective root
+    // Update harmony state — CoF drift, chord progression, voice leading,
+    // and resolution arcs are now handled internally by the harmony module
+    const prevChord = this.harmonyState.currentChord;
     this.harmonyState = updateHarmonyState(
       this.harmonyState,
       `${this.currentBucket}|${this.sliderStateJson}|E_ROOT`,
@@ -2695,17 +3412,57 @@ export class AudioEngine {
       this.sliderState.detune,
       this.sliderState.scaleMode,
       this.sliderState.manualScale,
-      effectiveRoot
+      homeRoot,
+      this.sliderState.phraseLength ?? 16,
+      this.getHarmonyParams(),
+      isPhraseBoundary
     );
+
+    // Sync CoF state back to sliderState for UI
+    if (this.sliderState.cofCurrentStep !== this.harmonyState.cof.currentStep) {
+      this.sliderState = {
+        ...this.sliderState,
+        cofCurrentStep: this.harmonyState.cof.currentStep
+      };
+    }
+
+    // Update effective root from harmony module
+    this.effectiveRoot = this.harmonyState.effectiveRoot;
+
+    // Sync cofConfig for backward compatibility with any code that reads it
+    this.cofConfig.currentStep = this.harmonyState.cof.currentStep;
+    this.cofConfig.phraseCounter = this.harmonyState.cof.phraseCounter;
 
     // Apply new chord with crossfade (if synth chord sequencer is enabled)
     if (this.sliderState.synthChordSequencerEnabled !== false) {
-      this.applyChord(this.harmonyState.currentChord.frequencies, true);
+      // Only crossfade if chord actually changed
+      const chordChanged = prevChord.midiNotes.join(',') !== this.harmonyState.currentChord.midiNotes.join(',');
+      this.applyChord(this.harmonyState.currentChord.frequencies, chordChanged);
     }
 
-    // Reseed granulator and looper at phrase boundary
-    this.sendGranulatorRandomSequence();
-    this.sendLooperRandomSequence();
+    // Phrase-boundary-only effects: granulator reseed, scale sync, reverb coupling
+    if (isPhraseBoundary) {
+      this.sendGranulatorRandomSequence();
+      this.sendGranularRandomSequence();
+
+      if (this.drumSynth) {
+        const intervals = this.harmonyState.scaleFamily?.intervals ?? [];
+        this.drumSynth.setScaleIntervals([...intervals]);
+      }
+
+      // Reverb harmony coupling — trigger transient modulations
+      {
+        const chordChanged = prevChord.midiNotes.join(',') !== this.harmonyState.currentChord.midiNotes.join(',');
+        if (chordChanged && this.sliderState.reverbChordWash) {
+          this.reverbWashBoost = 1.0;
+        }
+        const curTension = this.harmonyState.chordTension ?? 0;
+        if (this.sliderState.reverbResolutionBloom && curTension < this.prevReverbTension - 0.15) {
+          this.reverbBloomBoost = 1.0;
+        }
+        this.prevReverbTension = curTension;
+      }
+    }
 
     this.notifyStateChange();
   }
@@ -2715,10 +3472,24 @@ export class AudioEngine {
 
     const state = this.sliderState;
 
+    // Build set of voice indices owned by active Euclidean synth lanes
+    // so we don't overwrite their notes/envelopes
+    const euclidOwnedVoices = new Set<number>();
+    if (state.synthEuclideanMasterEnabled) {
+      const sources = [state.synthEuclid1Source, state.synthEuclid2Source, state.synthEuclid3Source, state.synthEuclid4Source];
+      const enables = [state.synthEuclid1Enabled, state.synthEuclid2Enabled, state.synthEuclid3Enabled, state.synthEuclid4Enabled];
+      for (let li = 0; li < 4; li++) {
+        if (enables[li] && sources[li]?.startsWith('synth')) {
+          const vi = parseInt(sources[li].replace('synth', ''), 10) - 1;
+          if (vi >= 0 && vi < 6) euclidOwnedVoices.add(vi);
+        }
+      }
+    }
+
     const ctx = this.ctx;
     const now = ctx.currentTime;
     const detune = state.detune;
-    const waveSpread = state.waveSpread; // Max stagger time in seconds
+    const waveSpread = state.waveSpread * state.chordRate; // Fraction of chordRate → seconds
     const rng = this.rng; // Capture for use in loop
     const pad2Assign = (state.pad2Enabled && state.pad2VoiceAssign) ? state.pad2VoiceAssign : 0;
     const voiceMask = (state.synthVoiceMask || 63) & ~pad2Assign; // Pad 1 only — exclude Pad 2 voices
@@ -2735,11 +3506,11 @@ export class AudioEngine {
     const subEnabled = state.padSubEnabled ?? false;
     const useNewOsc = state.padOscAWave !== undefined;
 
-    // Get ADSR from synth settings
-    const attack = state.synthAttack;
-    const decay = state.synthDecay;
+    // Get ADSR from synth settings (clamp to ≥0.001 for setTargetAtTime safety)
+    const attack = Math.max(0.001, state.synthAttack);
+    const decay = Math.max(0.001, state.synthDecay);
     const sustain = state.synthSustain;
-    const release = state.synthRelease;
+    const release = Math.max(0.001, state.synthRelease);
 
     // Filter frequencies based on voice mask - only include notes for enabled voices
     const enabledFrequencies: number[] = [];
@@ -2763,6 +3534,18 @@ export class AudioEngine {
     voiceOffsets.sort((a, b) => a - b);
 
     for (let i = 0; i < this.voices.length; i++) {
+      // Skip voices owned by Euclidean synth lanes — scheduler drives them
+      // Also silence the JS oscillator so it doesn't conflict with WASM output
+      if (euclidOwnedVoices.has(i)) {
+        const voice = this.voices[i];
+        if (voice.active) {
+          voice.envelope.gain.cancelScheduledValues(now);
+          voice.envelope.gain.setTargetAtTime(0, now, 0.02);
+          voice.active = false;
+        }
+        continue;
+      }
+
       const voice = this.voices[i];
       const isVoiceEnabled = (voiceMask & (1 << i)) !== 0;
       
@@ -2773,6 +3556,9 @@ export class AudioEngine {
           voice.envelope.gain.cancelScheduledValues(startTime);
           voice.envelope.gain.setTargetAtTime(0, startTime, release / 4);
           voice.active = false;
+          if (this.padWasmReady && this.padWasmNode) {
+            this.padWasmNode.port.postMessage({ type: 'noteOff', voiceIndex: i });
+          }
         }
         continue;
       }
@@ -2841,6 +3627,173 @@ export class AudioEngine {
     }
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // WASM Synth Parameter Forwarding
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /** Create the pad WASM AudioWorkletNode, set up handlers, and send the binary. */
+  private createPadWasmNode(ctx: AudioContext): void {
+    if (!this.wasmPadBinary) return;
+    this.padWasmNode = new AudioWorkletNode(ctx, 'pad-synth-wasm', {
+      numberOfInputs: 0,
+      numberOfOutputs: 3,
+      outputChannelCount: [2, 2, 2],
+    });
+    this.padWasmReady = false;
+    this.padWasmNode.onprocessorerror = () => {
+      console.error('[PadSynth-WASM] processorerror fired');
+      this.padWasmReady = false;
+    };
+    this.padWasmNode.port.onmessage = (e) => {
+      if (e.data.type === 'wasmReady') {
+        this.padWasmReady = true;
+        if (this.sliderState) {
+          this.sendPadWasmParams(this.sliderState);
+          const pad2Assign = (this.sliderState.pad2Enabled && this.sliderState.pad2VoiceAssign)
+            ? this.sliderState.pad2VoiceAssign : 0;
+          for (let i = 0; i < this.voices.length; i++) {
+            const isPad2 = (pad2Assign & (1 << i)) !== 0;
+            this.padWasmNode?.port.postMessage({ type: 'voicePad', voiceIndex: i, pad: isPad2 ? 1 : 0 });
+          }
+        }
+      } else if (e.data.type === 'perf') {
+        this.handlePerfMessage(e.data);
+      } else if (e.data.type === 'error') {
+        console.error(`[PadSynth-WASM] ${e.data.stage}: ${e.data.message}`);
+      }
+    };
+    const padBin = this.wasmPadBinary;
+    this.wasmPadBinary = null;
+    this.padWasmNode.port.postMessage({ type: 'wasmBinary', binary: padBin }, [padBin]);
+  }
+
+  /** Forward pad synth params to WASM worklet. The worklet handles pad1/pad2 key extraction. */
+  private sendPadWasmParams(s: SliderState): void {
+    if (!this.padWasmNode || !this.padWasmReady) return;
+    this.postCachedWorkletMessage(
+      'pad:params',
+      this.padWasmNode,
+      { type: 'params', params: s },
+      {
+        synthLevel: s.synthLevel,
+        pad2Level: s.pad2Level,
+        synthReverbSend: s.synthReverbSend,
+        padMorph: s.padMorph,
+        pad2Morph: s.pad2Morph,
+        ...Object.fromEntries(PAD_PRESET_PARAM_KEYS.map((key) => [key, s[key as keyof SliderState]])),
+        ...Object.fromEntries(Object.values(PAD1_TO_PAD2_ENGINE).map((key) => [key, s[key as keyof SliderState]])),
+      }
+    );
+  }
+
+  /** Ensure pad WASM exists when synth Euclid runs without full engine start(). */
+  private async ensurePadWasmForIndependentSynth(): Promise<void> {
+    if (!this.ctx || this.padWasmNode || !this.synthBus) return;
+
+    try {
+      if (this.padWasmModuleContext !== this.ctx) {
+        await this.ctx.audioWorklet.addModule(padSynthWasmWorkletUrl);
+        this.padWasmModuleContext = this.ctx;
+      }
+
+      if (!this.wasmPadBinary) {
+        const padWasmUrl = getWorkletUrl('kessho_pad.wasm');
+        const padResp = await fetch(padWasmUrl);
+        if (!padResp.ok) throw new Error(`Pad WASM fetch failed: ${padResp.status}`);
+        this.wasmPadBinary = await padResp.arrayBuffer();
+      }
+
+      this.createPadWasmNode(this.ctx);
+
+      this.padWasmNode!.connect(this.synthBus, 0);
+      if (this.reverbInputBus) {
+        this.padWasmNode!.connect(this.reverbInputBus, 1);
+      } else if (this.reverbNode) {
+        this.padWasmNode!.connect(this.reverbNode as AudioNode, 1);
+      }
+      if (this.granularFxInputGain) {
+        this.padWasmNode!.connect(this.granularFxInputGain, 2);
+      }
+    } catch (e) {
+      console.warn('Independent pad WASM init failed; using JS fallback voices:', e);
+    }
+  }
+
+  /** Voice type name prefixes for drum slider state extraction. */
+  private static readonly DRUM_VOICE_PREFIXES: Record<string, string> = {
+    drumSub: 'sub', drumKick: 'kick', drumClick: 'click',
+    drumBeepHi: 'beepHi', drumBeepLo: 'beepLo',
+    drumNoise: 'noise', drumMembrane: 'membrane',
+  };
+
+  /** Forward drum params to WASM worklet. Extracts per-voice param sets from sliderState. */
+  private sendDrumWasmParams(s: SliderState): void {
+    if (!this.drumWasmNode || !this.drumWasmReady) return;
+    const port = this.drumWasmNode.port;
+    // Per-voice params: strip 'drumSub'/'drumKick'/etc. prefix, lowercase first char
+    for (const [prefix, voice] of Object.entries(AudioEngine.DRUM_VOICE_PREFIXES)) {
+      const voiceParams: Record<string, unknown> = {};
+      for (const key of Object.keys(s)) {
+        if (key.startsWith(prefix) && key.length > prefix.length) {
+          const rest = key.slice(prefix.length);
+          const paramName = rest.charAt(0).toLowerCase() + rest.slice(1);
+          voiceParams[paramName] = (s as unknown as Record<string, unknown>)[key];
+        }
+      }
+      if (Object.keys(voiceParams).length > 0) {
+        port.postMessage({ type: 'params', voice, params: voiceParams });
+      }
+    }
+    // Global drum params
+    port.postMessage({
+      type: 'params',
+      params: { masterLevel: s.drumLevel, reverbSend: s.drumReverbSend },
+    });
+  }
+
+  /** Forward lead FM delay params to WASM worklet. */
+  private sendLeadFmWasmDelay(s: SliderState): void {
+    if (!this.leadFmWasmNode || !this.leadFmWasmReady) return;
+    this.leadFmWasmNode.port.postMessage({
+      type: 'delay',
+      params: {
+        enabled: s.leadDelayEnabled ?? true,
+        timeL: s.leadDelayTime ?? 375,
+        timeR: (s.leadDelayTime ?? 375) * (s.leadDelaySpread ?? 1.5),
+        feedback: s.leadDelayFeedback ?? 0.4,
+        mix: s.leadDelayMix ?? 0.3,
+        filter: s.leadDelayFilter ?? 2000,
+        send: s.leadDelaySend ?? 0.5,
+      },
+    });
+  }
+
+  /** Forward drum delay params to WASM worklet. */
+  private sendDrumWasmDelay(s: SliderState): void {
+    if (!this.drumWasmNode || !this.drumWasmReady) return;
+    const bpm = s.drumEuclidBaseBPM ?? 120;
+    const noteToSec = (note: string, bpm: number) => {
+      const beat = 60 / bpm;
+      const map: Record<string, number> = {
+        '1/4': beat, '1/8': beat / 2, '1/8d': beat * 0.75,
+        '1/16': beat / 4, '1/4d': beat * 1.5, '1/2': beat * 2,
+        '3/16': beat * 0.375, '1/32': beat / 8,
+      };
+      return map[note] ?? beat / 2;
+    };
+    this.drumWasmNode.port.postMessage({
+      type: 'delay',
+      params: {
+        enabled: s.drumDelayEnabled ?? false,
+        timeL: noteToSec(s.drumDelayNoteL ?? '1/8d', bpm),
+        timeR: noteToSec(s.drumDelayNoteR ?? '1/4', bpm),
+        feedback: s.drumDelayFeedback ?? 0.4,
+        mix: s.drumDelayMix ?? 0.3,
+        filter: 500 * Math.pow(32, s.drumDelayFilter ?? 0.5),
+      },
+    });
+  }
+
   /**
    * Trigger a single synth voice with a specific frequency.
    * Used by Euclidean sequencer to play individual synth notes.
@@ -2849,10 +3802,57 @@ export class AudioEngine {
    * @param velocity Volume/intensity (0-1)
    * @param noteDuration Optional duration in seconds; if provided, schedules release after this time
    */
-  triggerSynthVoice(voiceIndex: number, frequency: number, velocity: number, noteDuration?: number): void {
-    if (!this.ctx || !this.sliderState || voiceIndex < 0 || voiceIndex >= this.voices.length) return;
-    // Check padEnabled — if pad synth is off, don't trigger pad voices
-    if (this.sliderState.padEnabled === false) return;
+  triggerSynthVoice(voiceIndex: number, frequency: number, velocity: number, noteDuration?: number, padParamsOverride?: SliderState): void {
+    if (!this.ctx || !this.sliderState || voiceIndex < 0 || voiceIndex >= 6) return;
+    // Euclidean synth lanes can target pad voices even when the pad engine toggle is off.
+    if (this.sliderState.padEnabled === false && !this.euclideanUsesPadSource()) return;
+
+    const isPad2Voice = this.sliderState.pad2Enabled && ((this.sliderState.pad2VoiceAssign ?? 0) & (1 << voiceIndex)) !== 0;
+    // Don't bake pad level into velocity — WASM C++ applies level to main output only
+    // (reverb and granular pre-fader outputs are independent of pad level).
+    // JS voices use mixerGain for level, which is set in applyParams.
+    const clampedVelocity = Math.max(0, Math.min(1, velocity));
+    if (clampedVelocity < 0.001) return;
+
+    // WASM path: send noteOn to pad worklet and skip JS oscillator manipulation
+    if (this.padWasmReady && this.padWasmNode) {
+      if (padParamsOverride) {
+        this.sendPadWasmParams(padParamsOverride);
+      }
+      // Silence the JS oscillator voice to prevent dual output through synthBus
+      if (voiceIndex < this.voices.length) {
+        const jsVoice = this.voices[voiceIndex];
+        if (jsVoice.active) {
+          const now = this.ctx.currentTime;
+          jsVoice.envelope.gain.cancelScheduledValues(now);
+          jsVoice.envelope.gain.setTargetAtTime(0, now, 0.02);
+          jsVoice.active = false;
+        }
+      }
+      // Increment generation counter — stale noteOff timers with old gen won't fire
+      const gen = ++this.synthVoiceNoteGen[voiceIndex];
+      this.padWasmNode.port.postMessage({
+        type: 'noteOn', voiceIndex, frequency, velocity: clampedVelocity,
+      });
+      // Schedule noteOff if duration is specified (only fires if gen still matches)
+      if (noteDuration !== undefined) {
+        const existingTimer = this.synthVoiceNoteOffTimers[voiceIndex];
+        if (existingTimer !== null) {
+          clearTimeout(existingTimer);
+        }
+        const noteOffTimerId = window.setTimeout(() => {
+          this.synthVoiceNoteOffTimers[voiceIndex] = null;
+          if (this.synthVoiceNoteGen[voiceIndex] === gen) {
+            this.padWasmNode?.port.postMessage({ type: 'noteOff', voiceIndex });
+          }
+        }, noteDuration * 1000);
+        this.synthVoiceNoteOffTimers[voiceIndex] = noteOffTimerId;
+      }
+      return;
+    }
+
+    // JS fallback path — needs voices to exist
+    if (voiceIndex >= this.voices.length) return;
 
     const ctx = this.ctx;
     const now = ctx.currentTime;
@@ -2861,16 +3861,16 @@ export class AudioEngine {
     if (!voice) return;
     
     const state = this.sliderState;
-    const isPad2Voice = state.pad2Enabled && ((state.pad2VoiceAssign ?? 0) & (1 << voiceIndex)) !== 0;
     const detune = state.detune;
 
     // Get ADSR from correct pad (scaled by ratchet factor for tighter envelope)
+    // Clamp to ≥0.001 to prevent setTargetAtTime RangeError (timeConstant must be >0)
     const rf = this.synthRatchetFactor;
-    const attack = (isPad2Voice ? state.pad2Attack : state.synthAttack) * rf;
-    const decay = (isPad2Voice ? state.pad2Decay : state.synthDecay) * rf;
-    const peakLevel = velocity;  // velocity scales the entire envelope amplitude
-    const sustain = (isPad2Voice ? state.pad2Sustain : state.synthSustain) * velocity;
-    const release = (isPad2Voice ? state.pad2Release : state.synthRelease) * rf;
+    const attack = Math.max(0.001, (isPad2Voice ? state.pad2Attack : state.synthAttack) * rf);
+    const decay = Math.max(0.001, (isPad2Voice ? state.pad2Decay : state.synthDecay) * rf);
+    const peakLevel = clampedVelocity;  // velocity scales the entire envelope amplitude
+    const sustain = (isPad2Voice ? state.pad2Sustain : state.synthSustain) * clampedVelocity;
+    const release = Math.max(0.001, (isPad2Voice ? state.pad2Release : state.synthRelease) * rf);
 
     // Apply global octave shift (from correct pad)
     const octaveShift = (isPad2Voice ? state.pad2Octave : state.synthOctave) || 0;
@@ -2919,10 +3919,9 @@ export class AudioEngine {
         voice.envelope.gain.setTargetAtTime(0, releaseTime, release / 3);
         const relTimerId = window.setTimeout(() => {
           voice.active = false;
-          const idx = this.voiceReleaseTimers.indexOf(relTimerId);
-          if (idx > -1) this.voiceReleaseTimers.splice(idx, 1);
+          this.voiceReleaseTimers.delete(relTimerId);
         }, (noteDuration + release) * 1000);
-        this.voiceReleaseTimers.push(relTimerId);
+        this.voiceReleaseTimers.add(relTimerId);
       }
     } else {
       // Fresh attack
@@ -2943,10 +3942,9 @@ export class AudioEngine {
         // Mark voice inactive after release completes
         const relTimerId = window.setTimeout(() => {
           voice.active = false;
-          const idx = this.voiceReleaseTimers.indexOf(relTimerId);
-          if (idx > -1) this.voiceReleaseTimers.splice(idx, 1);
+          this.voiceReleaseTimers.delete(relTimerId);
         }, (noteDuration + release) * 1000);
-        this.voiceReleaseTimers.push(relTimerId);
+        this.voiceReleaseTimers.add(relTimerId);
       }
     }
 
@@ -2954,10 +3952,10 @@ export class AudioEngine {
     const modEnvEnabled = isPad2Voice ? (state.pad2ModEnvEnabled ?? false) : (state.padModEnvEnabled ?? false);
     const modEnvDest = isPad2Voice ? (state.pad2ModEnvDest ?? 'filterCutoff') : (state.padModEnvDest ?? 'filterCutoff');
     if (modEnvEnabled && modEnvDest === 'oscBLevel') {
-      const modAttack = isPad2Voice ? (state.pad2ModEnvAttack ?? 0.1) : (state.padModEnvAttack ?? 0.1);
-      const modDecay = isPad2Voice ? (state.pad2ModEnvDecay ?? 0.3) : (state.padModEnvDecay ?? 0.3);
+      const modAttack = Math.max(0.001, isPad2Voice ? (state.pad2ModEnvAttack ?? 0.1) : (state.padModEnvAttack ?? 0.1));
+      const modDecay = Math.max(0.001, isPad2Voice ? (state.pad2ModEnvDecay ?? 0.3) : (state.padModEnvDecay ?? 0.3));
       const modSustain = isPad2Voice ? (state.pad2ModEnvSustain ?? 0) : (state.padModEnvSustain ?? 0);
-      const modRelease = isPad2Voice ? (state.pad2ModEnvRelease ?? 0.5) : (state.padModEnvRelease ?? 0.5);
+      const modRelease = Math.max(0.001, isPad2Voice ? (state.pad2ModEnvRelease ?? 0.5) : (state.padModEnvRelease ?? 0.5));
       const modDepth = isPad2Voice ? (state.pad2ModEnvDepth ?? 0) : (state.padModEnvDepth ?? 0);
       const rawBaseLevel = isPad2Voice ? (state.pad2OscBLevel ?? 0.4) : (state.padOscBLevel ?? 0.4);
       const mix = isPad2Voice ? (state.pad2OscMix ?? 0.5) : (state.padOscMix ?? 0.5);
@@ -3053,10 +4051,11 @@ export class AudioEngine {
       this.spectralFreezeNode.connect(this.reverbNode);
 
       // Path 2 (live crossfade): reverbInputBus → reverbDirectSend → reverbNode
+      // crossfade=1 means "fully frozen" = no live bleed, crossfade=0 = full live signal
       this.reverbInputBus.connect(this.reverbDirectSend);
       this.reverbDirectSend.connect(this.reverbNode);
       const crossfade = state?.spectralFreezeReverbCrossfade ?? 0.5;
-      this.reverbDirectSend.gain.value = crossfade;
+      this.reverbDirectSend.gain.value = 1.0 - crossfade;
 
       // Reverb output
       this.reverbNode.connect(this.reverbOutputGain);
@@ -3082,7 +4081,7 @@ export class AudioEngine {
     // Helper: guard against NaN/Infinity in audio param values (crash prevention)
     const fin = (v: number, fallback: number): number => Number.isFinite(v) ? v : fallback;
 
-    // ── S&H: 10Hz engine-side re-sampling for granular/looper dual-range params ──
+    // ── S&H: 10Hz engine-side re-sampling for granular/granular dual-range params ──
     const shNow = performance.now();
     if (shNow - this.shLastSampleTime >= 100) {
       this.shLastSampleTime = shNow;
@@ -3101,8 +4100,8 @@ export class AudioEngine {
           delete this.shSampledValues[key];
         }
       }
-      if (shTriggered.length > 0 && this.onGranLooperSHTrigger) {
-        this.onGranLooperSHTrigger(shTriggered);
+      if (shTriggered.length > 0 && this.onGranularSHTrigger) {
+        this.onGranularSHTrigger(shTriggered);
       }
     }
     // S&H value helper: sampled value if available, else fallback to state value
@@ -3284,10 +4283,14 @@ export class AudioEngine {
           // Re-route post-fader (mixerGain → pad bus)
           try { this.voices[i].mixerGain.disconnect(wasPad2 ? this.pad2Bus : this.pad1Bus); } catch (_e) { /* ignore */ }
           this.voices[i].mixerGain.connect(isPad2 ? this.pad2Bus : this.pad1Bus);
-          // Re-route pre-fader (envelope → pre-fader bus for looper)
+          // Re-route pre-fader (envelope → pre-fader bus for granular)
           if (this.pad1PreFaderBus && this.pad2PreFaderBus) {
             try { this.voices[i].envelope.disconnect(wasPad2 ? this.pad2PreFaderBus : this.pad1PreFaderBus); } catch (_e) { /* ignore */ }
             this.voices[i].envelope.connect(isPad2 ? this.pad2PreFaderBus : this.pad1PreFaderBus);
+          }
+          // Forward voice-pad assignment to WASM pad worklet
+          if (this.padWasmReady && this.padWasmNode) {
+            this.padWasmNode.port.postMessage({ type: 'voicePad', voiceIndex: i, pad: isPad2 ? 1 : 0 });
           }
         }
       }
@@ -3405,39 +4408,46 @@ export class AudioEngine {
       }
     }
 
-    // Legacy JS granular engine REMOVED — all granular processing via Looper FX WASM engine
-    // granularLevel and granularReverbSend now control the Looper FX output levels
+    // Forward pad params to WASM worklet (if active)
+    this.sendPadWasmParams(state);
 
-    // Looper FX (Granular) parameters
-    if (this.looperFxNode) {
-      const looperEnabled = state.looperEnabled;
-      // Use granularLevel as the Looper FX output level (replaces hardcoded 1.0)
-      const granularOutputLevel = looperEnabled ? state.granularLevel : 0;
-      this.looperFxDirect?.gain.setTargetAtTime(granularOutputLevel, now, smoothTime);
-      // Use granularReverbSend as the Looper FX reverb send level
-      const looperRevSend = (looperEnabled && state.reverbEnabled) ? state.granularReverbSend : 0;
-      this.looperFxReverbSend?.gain.setTargetAtTime(looperRevSend, now, smoothTime);
+    // Legacy JS granular engine REMOVED — all granular processing via Granular FX WASM engine
+    // granularLevel and granularReverbSend now control the Granular FX output levels
 
-      // Per-source send levels (gate by looperEnabled so sends are silent when looper is off)
-      const pad1Send = looperEnabled ? (state.looperPad1Send ?? 1.0) : 0;
-      const pad2Send = looperEnabled ? (state.looperPad2Send ?? 0.0) : 0;
-      const lead1Send = looperEnabled ? (state.looperLead1Send ?? 0.0) : 0;
-      const lead2Send = looperEnabled ? (state.looperLead2Send ?? 0.0) : 0;
-      const drumSend = looperEnabled ? (state.looperDrumSend ?? 0.0) : 0;
-      const wavesSend = looperEnabled ? (state.looperWavesSend ?? 0.0) : 0;
-      this.looperPad1Send?.gain.setTargetAtTime(pad1Send, now, smoothTime);
-      this.looperPad2Send?.gain.setTargetAtTime(pad2Send, now, smoothTime);
-      this.looperLead1Send?.gain.setTargetAtTime(lead1Send, now, smoothTime);
-      this.looperLead2Send?.gain.setTargetAtTime(lead2Send, now, smoothTime);
-      this.looperDrumSend?.gain.setTargetAtTime(drumSend, now, smoothTime);
-      this.looperWavesSend?.gain.setTargetAtTime(wavesSend, now, smoothTime);
+    // Granular FX (Granular) parameters
+    if (this.granularFxNode) {
+      const granularEnabled = state.granularEnabled;
+      // Use granularLevel as the Granular FX output level (replaces hardcoded 1.0)
+      const granularOutputLevel = granularEnabled ? state.granularLevel * 1.5 : 0;
+      this.granularFxDirect?.gain.setTargetAtTime(granularOutputLevel, now, smoothTime);
+      // Use granularReverbSend as the Granular FX reverb send level
+      const granularRevSend = (granularEnabled && state.reverbEnabled) ? state.granularReverbSend : 0;
+      this.granularFxReverbSend?.gain.setTargetAtTime(granularRevSend, now, smoothTime);
+      // Pre-reverb LPF cutoff (user value — Darkness macro modulates further below)
+      this.granularFxReverbLPF?.frequency.setTargetAtTime(state.granularReverbLPF ?? 4000, now, smoothTime);
+      // Output LPF cutoff (user value — Darkness macro modulates further below)
+      this.granularFxOutputLPF?.frequency.setTargetAtTime(state.granularOutputLPF ?? 12000, now, smoothTime);
+
+      // Per-source send levels (gate by granularEnabled so sends are silent when granular is off)
+      const pad1Send = granularEnabled ? (state.granularPad1Send ?? 1.0) : 0;
+      const pad2Send = granularEnabled ? (state.granularPad2Send ?? 0.0) : 0;
+      const lead1Send = granularEnabled ? (state.granularLead1Send ?? 0.0) : 0;
+      const lead2Send = granularEnabled ? (state.granularLead2Send ?? 0.0) : 0;
+      const drumSend = granularEnabled ? (state.granularDrumSend ?? 0.0) : 0;
+      const wavesSend = granularEnabled ? (state.granularWavesSend ?? 0.0) : 0;
+      this.granularPad1Send?.gain.setTargetAtTime(pad1Send, now, smoothTime);
+      this.granularPad2Send?.gain.setTargetAtTime(pad2Send, now, smoothTime);
+      this.granularLead1Send?.gain.setTargetAtTime(lead1Send, now, smoothTime);
+      this.granularLead2Send?.gain.setTargetAtTime(lead2Send, now, smoothTime);
+      this.granularDrumSend?.gain.setTargetAtTime(drumSend, now, smoothTime);
+      this.granularWavesSend?.gain.setTargetAtTime(wavesSend, now, smoothTime);
 
       // ── Macro-modulated voice params ──
       // Macros blend with manual values: higher macro influence at extremes, manual preserved at center
-      const mTexture = state.looperMacroTexture ?? 0.3;
-      const mComplexity = state.looperMacroComplexity ?? 0.2;
-      const mDarkness = state.looperMacroDarkness ?? 0.3;
-      const mChaos = state.looperMacroChaos ?? 0.1;
+      const mTexture = state.granularMacroTexture ?? 0.3;
+      const mComplexity = state.granularMacroComplexity ?? 0.2;
+      const mDarkness = state.granularMacroDarkness ?? 0.3;
+      const mChaos = state.granularMacroChaos ?? 0.1;
 
       // Voice spread offsets: voices diverge more at high chaos
       const spreadOffsets = [-1.5, -0.5, 0.5, 1.5];
@@ -3457,19 +4467,20 @@ export class AudioEngine {
       const voiceSpeed = this._lpSpeed;
       const voicePitch = this._lpPitch;
 
-      const rawBlur = [shv('looperV1Blur', state.looperV1Blur), shv('looperV2Blur', state.looperV2Blur), shv('looperV3Blur', state.looperV3Blur), shv('looperV4Blur', state.looperV4Blur)];
-      const rawSpray = [shv('looperV1Spray', state.looperV1Spray), shv('looperV2Spray', state.looperV2Spray), shv('looperV3Spray', state.looperV3Spray), shv('looperV4Spray', state.looperV4Spray)];
-      const rawGrainSize = [shv('looperV1GrainSize', state.looperV1GrainSize), shv('looperV2GrainSize', state.looperV2GrainSize), shv('looperV3GrainSize', state.looperV3GrainSize), shv('looperV4GrainSize', state.looperV4GrainSize)];
-      const rawGrainOct = [shv('looperV1GrainOct', state.looperV1GrainOct), shv('looperV2GrainOct', state.looperV2GrainOct), shv('looperV3GrainOct', state.looperV3GrainOct), shv('looperV4GrainOct', state.looperV4GrainOct)];
-      const rawDecay = [shv('looperV1Decay', state.looperV1Decay), shv('looperV2Decay', state.looperV2Decay), shv('looperV3Decay', state.looperV3Decay), shv('looperV4Decay', state.looperV4Decay)];
-      const rawAttack = [shv('looperV1Attack', state.looperV1Attack), shv('looperV2Attack', state.looperV2Attack), shv('looperV3Attack', state.looperV3Attack), shv('looperV4Attack', state.looperV4Attack)];
-      const rawPosLFORate = [shv('looperV1PosLFORate', state.looperV1PosLFORate), shv('looperV2PosLFORate', state.looperV2PosLFORate), shv('looperV3PosLFORate', state.looperV3PosLFORate), shv('looperV4PosLFORate', state.looperV4PosLFORate)];
-      const rawPosLFODepth = [shv('looperV1PosLFODepth', state.looperV1PosLFODepth), shv('looperV2PosLFODepth', state.looperV2PosLFODepth), shv('looperV3PosLFODepth', state.looperV3PosLFODepth), shv('looperV4PosLFODepth', state.looperV4PosLFODepth)];
-      const rawPanLFORate = [shv('looperV1PanLFORate', state.looperV1PanLFORate), shv('looperV2PanLFORate', state.looperV2PanLFORate), shv('looperV3PanLFORate', state.looperV3PanLFORate), shv('looperV4PanLFORate', state.looperV4PanLFORate)];
-      const rawReverseLFORate = [shv('looperV1ReverseLFORate', state.looperV1ReverseLFORate), shv('looperV2ReverseLFORate', state.looperV2ReverseLFORate), shv('looperV3ReverseLFORate', state.looperV3ReverseLFORate), shv('looperV4ReverseLFORate', state.looperV4ReverseLFORate)];
-      const rawDensity = [shv('looperV1Density', state.looperV1Density), shv('looperV2Density', state.looperV2Density), shv('looperV3Density', state.looperV3Density), shv('looperV4Density', state.looperV4Density)];
-      const rawSpeed = [shv('looperV1Speed', state.looperV1Speed), shv('looperV2Speed', state.looperV2Speed), shv('looperV3Speed', state.looperV3Speed), shv('looperV4Speed', state.looperV4Speed)];
-      const rawPitch = [shv('looperV1Pitch', state.looperV1Pitch), shv('looperV2Pitch', state.looperV2Pitch), shv('looperV3Pitch', state.looperV3Pitch), shv('looperV4Pitch', state.looperV4Pitch)];
+      const rawBlur = [shv('granularV1Blur', state.granularV1Blur), shv('granularV2Blur', state.granularV2Blur), shv('granularV3Blur', state.granularV3Blur), shv('granularV4Blur', state.granularV4Blur)];
+      const rawSpray = [shv('granularV1Spray', state.granularV1Spray), shv('granularV2Spray', state.granularV2Spray), shv('granularV3Spray', state.granularV3Spray), shv('granularV4Spray', state.granularV4Spray)];
+      const rawGrainSize = [shv('granularV1GrainSize', state.granularV1GrainSize), shv('granularV2GrainSize', state.granularV2GrainSize), shv('granularV3GrainSize', state.granularV3GrainSize), shv('granularV4GrainSize', state.granularV4GrainSize)];
+      const rawGrainOct = [shv('granularV1GrainOct', state.granularV1GrainOct), shv('granularV2GrainOct', state.granularV2GrainOct), shv('granularV3GrainOct', state.granularV3GrainOct), shv('granularV4GrainOct', state.granularV4GrainOct)];
+      const rawDecay = [shv('granularV1Decay', state.granularV1Decay), shv('granularV2Decay', state.granularV2Decay), shv('granularV3Decay', state.granularV3Decay), shv('granularV4Decay', state.granularV4Decay)];
+      const rawAttack = [shv('granularV1Attack', state.granularV1Attack), shv('granularV2Attack', state.granularV2Attack), shv('granularV3Attack', state.granularV3Attack), shv('granularV4Attack', state.granularV4Attack)];
+      const rawPosLFORate = [shv('granularV1PosLFORate', state.granularV1PosLFORate), shv('granularV2PosLFORate', state.granularV2PosLFORate), shv('granularV3PosLFORate', state.granularV3PosLFORate), shv('granularV4PosLFORate', state.granularV4PosLFORate)];
+      const rawPosLFODepth = [shv('granularV1PosLFODepth', state.granularV1PosLFODepth), shv('granularV2PosLFODepth', state.granularV2PosLFODepth), shv('granularV3PosLFODepth', state.granularV3PosLFODepth), shv('granularV4PosLFODepth', state.granularV4PosLFODepth)];
+      const rawPanLFORate = [shv('granularV1PanLFORate', state.granularV1PanLFORate), shv('granularV2PanLFORate', state.granularV2PanLFORate), shv('granularV3PanLFORate', state.granularV3PanLFORate), shv('granularV4PanLFORate', state.granularV4PanLFORate)];
+      const rawReverseLFORate = [shv('granularV1ReverseLFORate', state.granularV1ReverseLFORate), shv('granularV2ReverseLFORate', state.granularV2ReverseLFORate), shv('granularV3ReverseLFORate', state.granularV3ReverseLFORate), shv('granularV4ReverseLFORate', state.granularV4ReverseLFORate)];
+      const rawDensity = [shv('granularV1Density', state.granularV1Density), shv('granularV2Density', state.granularV2Density), shv('granularV3Density', state.granularV3Density), shv('granularV4Density', state.granularV4Density)];
+      const rawSpeed = [shv('granularV1Speed', state.granularV1Speed), shv('granularV2Speed', state.granularV2Speed), shv('granularV3Speed', state.granularV3Speed), shv('granularV4Speed', state.granularV4Speed)];
+      // Round raw pitch to nearest semitone (integer) so S&H randomisation stays musical
+      const rawPitch = [shv('granularV1Pitch', state.granularV1Pitch), shv('granularV2Pitch', state.granularV2Pitch), shv('granularV3Pitch', state.granularV3Pitch), shv('granularV4Pitch', state.granularV4Pitch)].map(p => Math.round(p));
 
       for (let v = 0; v < 4; v++) {
         const sp = spreadOffsets[v];
@@ -3487,7 +4498,7 @@ export class AudioEngine {
         voiceBlur[v] = Math.max(0, Math.min(1, rawBlur[v] + (texQ * 0.8 + sp * mTexture * 0.15 * 0.8) * texBlurScale));
         voiceSpray[v] = Math.max(0, Math.min(1, rawSpray[v] + mTexture * 0.7 + sp * mTexture * 0.1 * 0.7));
         voiceGrainSize[v] = Math.max(10, Math.min(500, rawGrainSize[v] + texQ * 140 + sp * mTexture * 0.05 * 500));
-        voiceGrainOct[v] = Math.max(0, Math.min(1, rawGrainOct[v] + texQ * 0.6 + sp * mTexture * 0.2 * 0.6));
+        voiceGrainOct[v] = Math.max(0, Math.min(1, rawGrainOct[v] + texQ * 0.3 + sp * mTexture * 0.1 * 0.3));
         voiceDecay[v] = Math.max(0.01, Math.min(4, rawDecay[v] + mTexture * 1.45 + sp * mTexture * 0.1 * 4));
 
         // Complexity macro: LFO rates, density (quadratic for LFO, linear for density)
@@ -3507,15 +4518,19 @@ export class AudioEngine {
 
         // Darkness macro: speed (inverse), pitch (inverse), delay filter handled externally
         // Speed=0 is special (LFO scan mode) — preserve speed AND pitch exactly.
-        // Darkness-induced pitch spread (up to -7.7st per voice) creates harsh detuning
-        // between the 4 crossfade-scanned voices; skip it entirely for scan mode.
+        // Darkness-induced pitch spread creates harsh detuning between the 4
+        // crossfade-scanned voices; skip it entirely for scan mode.
         if (isScanMode) {
           voiceSpeed[v] = 0;
           voicePitch[v] = rawPitch[v]; // preserve raw pitch (no darkness modulation)
         } else {
           const darkSpeed = rawSpeed[v] * (1 - mDarkness * 0.75); // 1× → 0.25× at darkness=1
           voiceSpeed[v] = Math.max(0.25, Math.min(4, darkSpeed + sp * mDarkness * 0.15 * 4));
-          voicePitch[v] = Math.max(-24, Math.min(24, rawPitch[v] - mDarkness * 12 + sp * mDarkness * 0.2 * 24));
+          // Pitch: snap to octave intervals (multiples of 12st) so voices stay at musical
+          // speed ratios (0.5×/1×/2×/4× — matching Microcosm Mosaic-style fixed ratios).
+          // Darkness shifts base pitch down with per-voice spread, then octave-quantizes.
+          const darkPitchRaw = rawPitch[v] - mDarkness * 12 + sp * mDarkness * 0.2 * 24;
+          voicePitch[v] = Math.max(-24, Math.min(24, Math.round(darkPitchRaw / 12) * 12));
         }
 
         // Chaos macro: reverse LFO, spray (additive), grainOct (additive)
@@ -3523,95 +4538,119 @@ export class AudioEngine {
         voiceReverseLFORate[v] = Math.max(0, Math.min(1, rawReverseLFORate[v] + chaosQ * 0.8 + sp * mChaos * 0.5 * 0.8));
         // Chaos also adds to spray and grainOct (already computed by texture, re-add)
         voiceSpray[v] = Math.max(0, Math.min(1, voiceSpray[v] + chaosQ * 0.3));
-        voiceGrainOct[v] = Math.max(0, Math.min(1, voiceGrainOct[v] + mChaos * 0.2));
+        voiceGrainOct[v] = Math.max(0, Math.min(1, voiceGrainOct[v] + mChaos * 0.1));
 
         // ── Tension modulation ──
         // Low tension (0): long attack, long decay, high density → smooth pad
         // High tension (1): short attack, short decay, low density → aggressive stutter
-        const t = state.tension ?? 0.3;
-        const tInv = 1 - t;
-        // Attack: 2s at t=0 → 3ms at t=1 (exponential curve via mix with raw)
-        const tensionAttack = rawAttack[v] * (tInv * 0.8 + 0.2) + tInv * 1.5;
-        voiceAttack[v] = Math.max(0.003, Math.min(2, tensionAttack));
-        // Decay: additive based on low tension (longer decay at low tension)
-        voiceDecay[v] = Math.max(0.01, Math.min(4, voiceDecay[v] + tInv * 2.5));
-        // Density: high tension → lower density (choppier), low tension → higher (denser pad)
-        voiceDensity[v] = Math.max(1, Math.min(64, voiceDensity[v] * (tInv * 0.7 + 0.3) + tInv * 8));
-        // Blur: low tension adds smear — reduced for scan mode to keep blur close to preset value
-        const tensionBlurScale = isScanMode ? 0.15 : 1.0;
-        voiceBlur[v] = Math.max(0, Math.min(1, voiceBlur[v] + tInv * 0.3 * tensionBlurScale));
-        // GrainOct: high tension adds shimmer chaos
-        voiceGrainOct[v] = Math.max(0, Math.min(1, voiceGrainOct[v] + t * 0.2));
-        // Pitch range: high tension widens pitch offset — skip for scan mode
-        if (!isScanMode) {
-          voicePitch[v] = Math.max(-24, Math.min(24, voicePitch[v] + (t - 0.5) * sp * 6));
+        const t = getEffectiveTension(
+          state.tension ?? 0.3,
+          state.granularTensionMode ?? 'bypass',
+          state.granularTensionValue ?? 0
+        );
+        if (t >= 0) {
+          const tInv = 1 - t;
+          // Attack: gentle scaling — preserves raw attack, adds modest softening at low tension
+          const tensionAttack = rawAttack[v] * (tInv * 0.4 + 0.6) + tInv * 0.3;
+          voiceAttack[v] = Math.max(0.003, Math.min(1, tensionAttack));
+          // Decay: small additive at low tension (max +0.8s, not 2.5s)
+          voiceDecay[v] = Math.max(0.01, Math.min(4, voiceDecay[v] + tInv * 0.8));
+          // Density: gentle modulation — low tension adds a few grains, high tension thins slightly
+          voiceDensity[v] = Math.max(1, Math.min(64, voiceDensity[v] * (tInv * 0.3 + 0.7) + tInv * 3));
+          // Blur: low tension adds smear — reduced for scan mode to keep blur close to preset value
+          const tensionBlurScale = isScanMode ? 0.15 : 1.0;
+          voiceBlur[v] = Math.max(0, Math.min(1, voiceBlur[v] + tInv * 0.15 * tensionBlurScale));
+          // GrainOct: high tension adds shimmer chaos (gentle to avoid saturating octave probability)
+          voiceGrainOct[v] = Math.max(0, Math.min(1, voiceGrainOct[v] + t * 0.1));
+          // Pitch range: high tension widens pitch offset — skip for scan mode
+          // Snap to octave intervals (×12st) so tension only shifts by musical speed ratios
+          if (!isScanMode) {
+            voicePitch[v] = Math.max(-24, Math.min(24, Math.round((voicePitch[v] + (t - 0.5) * sp * 6) / 12) * 12));
+          }
         }
       }
 
-      this.looperFxNode.port.postMessage({
-        type: 'params',
-        params: {
-          enabled: looperEnabled,
-          freeze: state.looperFreeze,
-          freezeWithFeedback: false,
-          dryWet: 1,  // always 1 — output level controlled by granularLevel on looperFxDirect
-          feedback: state.looperFeedback,
-          feedbackLPF: state.looperFeedbackLPF,
-          bufferSeconds: state.looperBufferSeconds,
-          voiceEnabled: [state.looperV1Enabled, state.looperV2Enabled, state.looperV3Enabled, state.looperV4Enabled],
-          voiceMode: [state.looperV1Mode, state.looperV2Mode, state.looperV3Mode, state.looperV4Mode],
-          voiceSlice: [state.looperV1Slice, state.looperV2Slice, state.looperV3Slice, state.looperV4Slice],
-          voiceSpeed,
-          voiceReverse: [state.looperV1Reverse, state.looperV2Reverse, state.looperV3Reverse, state.looperV4Reverse],
-          voicePitch,
-          voiceAttack,
-          voiceDecay,
-          voiceBlur,
-          voiceGrainOct,
-          voiceSpray,
-          voiceDensity,
-          voiceGrainSize,
-          voicePan: [shv('looperV1Pan', state.looperV1Pan), shv('looperV2Pan', state.looperV2Pan), shv('looperV3Pan', state.looperV3Pan), shv('looperV4Pan', state.looperV4Pan)],
-          voiceGain: [shv('looperV1Gain', state.looperV1Gain), shv('looperV2Gain', state.looperV2Gain), shv('looperV3Gain', state.looperV3Gain), shv('looperV4Gain', state.looperV4Gain)],
-          voicePosLFORate,
-          voicePosLFODepth,
-          voicePanLFORate,
-          voiceStereoSpread: [shv('looperV1StereoSpread', state.looperV1StereoSpread), shv('looperV2StereoSpread', state.looperV2StereoSpread), shv('looperV3StereoSpread', state.looperV3StereoSpread), shv('looperV4StereoSpread', state.looperV4StereoSpread)],
-          voiceReverseLFORate,
-          voiceWriteFollow: [shv('looperV1WriteFollow', state.looperV1WriteFollow), shv('looperV2WriteFollow', state.looperV2WriteFollow), shv('looperV3WriteFollow', state.looperV3WriteFollow), shv('looperV4WriteFollow', state.looperV4WriteFollow)],
-          voiceRecordLFORate: [shv('looperV1RecordLFORate', state.looperV1RecordLFORate), shv('looperV2RecordLFORate', state.looperV2RecordLFORate), shv('looperV3RecordLFORate', state.looperV3RecordLFORate), shv('looperV4RecordLFORate', state.looperV4RecordLFORate)],
-          scaleIntervals: this.harmonyState?.scaleFamily?.intervals ? [...this.harmonyState.scaleFamily.intervals] : [],
-          euclidGated: [
-            state.looperEuclidMasterEnabled && state.looperEuclid1Enabled,
-            state.looperEuclidMasterEnabled && state.looperEuclid2Enabled,
-            state.looperEuclidMasterEnabled && state.looperEuclid3Enabled,
-            state.looperEuclidMasterEnabled && state.looperEuclid4Enabled,
-          ],
-          euclidMuted: [
-            state.looperEuclidMasterEnabled && !state.looperEuclid1Enabled,
-            state.looperEuclidMasterEnabled && !state.looperEuclid2Enabled,
-            state.looperEuclidMasterEnabled && !state.looperEuclid3Enabled,
-            state.looperEuclidMasterEnabled && !state.looperEuclid4Enabled,
-          ],
-          legacyJitter: state.looperLegacyJitter,
-          legacyProbability: state.looperLegacyProbability,
-          legacyPitchMode: state.looperLegacyPitchMode,
-          legacyPitchSpread: state.looperLegacyPitchSpread,
-          legacyMaxGrains: state.looperLegacyMaxGrains,
-          legacyFeedback: state.looperLegacyFeedback,
-        },
-      });
+      // Darkness macro → output filter modulation
+      // Sweeps both LPFs downward as Darkness increases, clamped to user's manual cutoff
+      if (mDarkness > 0.01) {
+        const darkFilterScale = Math.pow(1 - mDarkness * 0.7, 2); // 1.0 → ~0.09 at darkness=1
+        const userReverbLPF = state.granularReverbLPF ?? 4000;
+        const userOutputLPF = state.granularOutputLPF ?? 12000;
+        const darkReverbCutoff = Math.max(200, Math.min(userReverbLPF, 12000 * darkFilterScale));
+        const darkOutputCutoff = Math.max(200, Math.min(userOutputLPF, 12000 * darkFilterScale));
+        this.granularFxReverbLPF?.frequency.setTargetAtTime(darkReverbCutoff, now, smoothTime);
+        this.granularFxOutputLPF?.frequency.setTargetAtTime(darkOutputCutoff, now, smoothTime);
+      }
 
-      // ── Looper Multi-Tap Delay ──
-      if (this.looperDelayTapNodes.length === 8) {
-        const delayEnabled = state.looperDelayEnabled && looperEnabled;
-        const activity = state.looperDelayActivity ?? 0.3;
-        const bpm = state.drumEuclidBaseBPM ?? 120;
-        const baseDiv = (state.looperDelayTime as string) ?? '1/4';
+      const granularParams = {
+        enabled: granularEnabled,
+        freeze: state.granularFreeze,
+        freezeWithFeedback: false,
+        dryWet: 1,
+        feedback: state.granularFeedback,
+        feedbackLPF: state.granularFeedbackLPF,
+        bufferSeconds: state.granularBufferSeconds,
+        voiceEnabled: [state.granularV1Enabled, state.granularV2Enabled, state.granularV3Enabled, state.granularV4Enabled],
+        voiceMode: [state.granularV1Mode, state.granularV2Mode, state.granularV3Mode, state.granularV4Mode],
+        voiceSlice: [state.granularV1Slice, state.granularV2Slice, state.granularV3Slice, state.granularV4Slice],
+        voiceSpeed,
+        voiceReverse: [state.granularV1Reverse, state.granularV2Reverse, state.granularV3Reverse, state.granularV4Reverse],
+        voicePitch,
+        voiceAttack,
+        voiceDecay,
+        voiceBlur,
+        voiceGrainOct,
+        voiceSpray,
+        voiceDensity,
+        voiceGrainSize,
+        voicePan: [shv('granularV1Pan', state.granularV1Pan), shv('granularV2Pan', state.granularV2Pan), shv('granularV3Pan', state.granularV3Pan), shv('granularV4Pan', state.granularV4Pan)],
+        voiceGain: [shv('granularV1Gain', state.granularV1Gain), shv('granularV2Gain', state.granularV2Gain), shv('granularV3Gain', state.granularV3Gain), shv('granularV4Gain', state.granularV4Gain)],
+        voicePosLFORate,
+        voicePosLFODepth,
+        voicePanLFORate,
+        voiceStereoSpread: [shv('granularV1StereoSpread', state.granularV1StereoSpread), shv('granularV2StereoSpread', state.granularV2StereoSpread), shv('granularV3StereoSpread', state.granularV3StereoSpread), shv('granularV4StereoSpread', state.granularV4StereoSpread)],
+        voiceReverseLFORate,
+        voiceWriteFollow: [shv('granularV1WriteFollow', state.granularV1WriteFollow), shv('granularV2WriteFollow', state.granularV2WriteFollow), shv('granularV3WriteFollow', state.granularV3WriteFollow), shv('granularV4WriteFollow', state.granularV4WriteFollow)],
+        voiceRecordLFORate: [shv('granularV1RecordLFORate', state.granularV1RecordLFORate), shv('granularV2RecordLFORate', state.granularV2RecordLFORate), shv('granularV3RecordLFORate', state.granularV3RecordLFORate), shv('granularV4RecordLFORate', state.granularV4RecordLFORate)],
+        scaleIntervals: this.harmonyState?.scaleFamily?.intervals ? [...this.harmonyState.scaleFamily.intervals] : [],
+        chordPitches: this.harmonyState?.currentChord?.midiNotes
+          ? this.harmonyState.currentChord.midiNotes.map(n => n % 12)
+          : [],
+        chordBias: state.granularChordBias ?? 0,
+        euclidGated: [
+          state.granularEuclidMasterEnabled && state.granularEuclid1Enabled,
+          state.granularEuclidMasterEnabled && state.granularEuclid2Enabled,
+          state.granularEuclidMasterEnabled && state.granularEuclid3Enabled,
+          state.granularEuclidMasterEnabled && state.granularEuclid4Enabled,
+        ],
+        euclidMuted: [
+          state.granularEuclidMasterEnabled && !state.granularEuclid1Enabled,
+          state.granularEuclidMasterEnabled && !state.granularEuclid2Enabled,
+          state.granularEuclidMasterEnabled && !state.granularEuclid3Enabled,
+          state.granularEuclidMasterEnabled && !state.granularEuclid4Enabled,
+        ],
+        legacyJitter: state.granularLegacyJitter,
+        legacyProbability: state.granularLegacyProbability,
+        legacyPitchMode: state.granularLegacyPitchMode,
+        legacyPitchSpread: state.granularLegacyPitchSpread,
+        legacyMaxGrains: state.granularLegacyMaxGrains,
+        legacyFeedback: state.granularLegacyFeedback,
+      };
+      this.postCachedWorkletMessage('granular:params', this.granularFxNode, {
+        type: 'params',
+        params: granularParams,
+      }, granularParams);
+
+      // ── Granular Multi-Tap Delay ──
+      if (this.granularDelayTapNodes.length === 8) {
+        const delayEnabled = state.granularDelayEnabled && granularEnabled;
+        const activity = state.granularDelayActivity ?? 0.3;
+        const bpm = state.granularEuclidBaseBPM ?? 120;
+        const baseDiv = (state.granularDelayTime as string) ?? '1/4';
         const baseTimeSec = delayNoteToSeconds(baseDiv, bpm);
 
         // Enable/disable delay send
-        this.looperDelaySendGain?.gain.setTargetAtTime(delayEnabled ? 1.0 : 0, now, smoothTime);
+        this.granularDelaySendGain?.gain.setTargetAtTime(delayEnabled ? 1.0 : 0, now, smoothTime);
 
         // Update per-tap gains (Activity macro) and delay times (BPM)
         // Track total tap gain to normalize feedback and prevent loop gain > 1
@@ -3619,39 +4658,39 @@ export class AudioEngine {
         for (let i = 0; i < 8; i++) {
           const gain = delayEnabled ? computeTapGain(i, activity) : 0;
           sumTapGains += gain;
-          this.looperDelayTapGains[i]?.gain.setTargetAtTime(gain, now, smoothTime);
+          this.granularDelayTapGains[i]?.gain.setTargetAtTime(gain, now, smoothTime);
 
           const time = Math.max(0.001, Math.min(5.0, baseTimeSec * TAP_SUBDIVISIONS[i]));
-          this.looperDelayTapNodes[i]?.delayTime.setTargetAtTime(time, now, 0.05);
+          this.granularDelayTapNodes[i]?.delayTime.setTargetAtTime(time, now, 0.05);
         }
 
         // Feedback (Repeats) — normalize by sum of tap gains so total loop gain ≤ repeats
         // Without this, high activity (many taps) causes loop gain > 1 → runaway feedback
-        const rawRepeats = state.looperDelayRepeats ?? 0.3;
+        const rawRepeats = state.granularDelayRepeats ?? 0.3;
         const normalizedFeedback = sumTapGains > 1 ? rawRepeats / sumTapGains : rawRepeats;
-        this.looperDelayFeedbackGain?.gain.setTargetAtTime(
+        this.granularDelayFeedbackGain?.gain.setTargetAtTime(
           normalizedFeedback, now, smoothTime
         );
 
         // Tone filter (0-1 → 200-8000Hz log scale)
-        const filterVal = state.looperDelayFilter ?? 0.5;
+        const filterVal = state.granularDelayFilter ?? 0.5;
         const filterHz = 200 * Math.pow(40, filterVal); // 200Hz to 8000Hz
-        this.looperDelayToneFilter?.frequency.setTargetAtTime(filterHz, now, 0.05);
+        this.granularDelayToneFilter?.frequency.setTargetAtTime(filterHz, now, 0.05);
 
         // Vibrato depth
-        const vibrato = state.looperDelayVibrato ?? 0;
+        const vibrato = state.granularDelayVibrato ?? 0;
         for (let i = 0; i < 8; i++) {
-          this.looperDelayVibratoDepths[i]?.gain.setTargetAtTime(
+          this.granularDelayVibratoDepths[i]?.gain.setTargetAtTime(
             vibrato * MAX_VIBRATO_DEPTH, now, 0.05
           );
         }
 
         // Output mix + reverb send
-        this.looperDelayDirectGain?.gain.setTargetAtTime(
-          delayEnabled ? (state.looperDelayMix ?? 0.3) : 0, now, smoothTime
+        this.granularDelayDirectGain?.gain.setTargetAtTime(
+          delayEnabled ? (state.granularDelayMix ?? 0.3) : 0, now, smoothTime
         );
-        this.looperDelayReverbSendGain?.gain.setTargetAtTime(
-          (delayEnabled && state.reverbEnabled) ? (state.looperDelayReverbSend ?? 0.4) : 0, now, smoothTime
+        this.granularDelayReverbSendGain?.gain.setTargetAtTime(
+          (delayEnabled && state.reverbEnabled) ? (state.granularDelayReverbSend ?? 0.4) : 0, now, smoothTime
         );
       }
     }
@@ -3661,41 +4700,91 @@ export class AudioEngine {
     // synthDirect acts as pad-active mute gate
     // synthReverbSend controls how much goes to reverb (additive, not crossfade)
     // When reverbEnabled is false, mute reverb send to save CPU
-    const padActive = state.padEnabled !== false;
-    this.synthDirect?.gain.setTargetAtTime(padActive ? 1.0 : 0, now, smoothTime);
+    const padActive = state.padEnabled !== false || this.euclideanUsesPadSource(state);
+    // When spectral freeze is active, attenuate the dry direct path so the
+    // frozen pad isn't masked by the live pad signal modulating through.
+    // Reverb Crossfade=1 → fully frozen → mute dry, Crossfade=0 → full dry.
+    const sfEnabled = state.spectralFreezeEnabled ?? false;
+    const sfActive = state.spectralFreezeActive ?? false;
+    const sfCrossfade = state.spectralFreezeReverbCrossfade ?? 1.0;
+    const dryGain = (sfEnabled && sfActive) ? (1.0 - sfCrossfade) : 1.0;
+    this.synthDirect?.gain.setTargetAtTime(padActive ? dryGain : 0, now, smoothTime);
     this.synthReverbSend?.gain.setTargetAtTime(padActive && state.reverbEnabled ? state.synthReverbSend : 0, now, smoothTime);
 
-    // Lead reverb send (mute if reverb disabled)
-    this.leadReverbSend?.gain.setTargetAtTime(state.reverbEnabled ? state.leadReverbSend : 0, now, smoothTime);
+    // Per-lead reverb sends (mute if reverb disabled)
+    this.lead1ReverbSend?.gain.setTargetAtTime(state.reverbEnabled ? state.lead1ReverbSend : 0, now, smoothTime);
+    this.lead2ReverbSend?.gain.setTargetAtTime(state.reverbEnabled ? state.lead2ReverbSend : 0, now, smoothTime);
+    // WASM leadReverbSend uses max of per-lead sends (WASM mixes both leads in one output stream)
+    this.leadReverbSend?.gain.setTargetAtTime(
+      state.reverbEnabled ? Math.max(state.lead1ReverbSend, state.lead2ReverbSend) : 0, now, smoothTime);
+
+    // Forward lead FM delay params to WASM worklet (if active)
+    this.sendLeadFmWasmDelay(state);
 
     // Reverb parameters (only update if enabled to save CPU)
     // Guard: reverbNode may be a dummy GainNode (no .port) when Euclidean runs standalone
     if (this.reverbNode && (this.reverbNode as any).port && state.reverbEnabled) {
-      (this.reverbNode as any).port.postMessage({
-        type: 'params',
-        params: {
+      // Per-engine tension → subtle additive offsets on decay/diffusion/shimmer
+      const reverbT = getEffectiveTension(
+        state.tension ?? 0.3,
+        state.reverbTensionMode ?? 'bypass',
+        state.reverbTensionValue ?? 0,
+      );
+      let effectiveDecay    = state.reverbDecay ?? 0.5;
+      let effectiveDiffusion = state.reverbDiffusion ?? 0.5;
+      let effectiveShimmer  = state.reverbShimmer ?? 0;
+      if (reverbT >= 0) {
+        const tInvRev = 1 - reverbT;
+        effectiveDecay    = Math.min(1, effectiveDecay + tInvRev * 0.15);
+        effectiveDiffusion = Math.min(1, effectiveDiffusion + tInvRev * 0.1);
+        effectiveShimmer  = Math.min(1, effectiveShimmer + reverbT * 0.08);
+      }
+
+      // ── Reverb Harmony Coupling ──
+      // Chord wash — boost shimmer on chord change, then decay
+      if (this.reverbWashBoost > 0.001) {
+        effectiveShimmer = Math.min(1, effectiveShimmer + this.reverbWashBoost * 0.15);
+        this.reverbWashBoost *= 0.92; // ~180ms decay at 60fps
+      }
+      // Resolution bloom — boost decay+shimmer on tension resolution
+      if (this.reverbBloomBoost > 0.001) {
+        effectiveDecay = Math.min(1, effectiveDecay + this.reverbBloomBoost * 0.12);
+        effectiveShimmer = Math.min(1, effectiveShimmer + this.reverbBloomBoost * 0.1);
+        this.reverbBloomBoost *= 0.95; // ~300ms decay
+      }
+
+      // Scale-aware shimmer pitch — quantize to nearest scale interval
+      let shimmerPitch = state.reverbShimmerPitch ?? 12;
+      if (state.reverbScaleShimmer && this.harmonyState?.scaleFamily?.intervals) {
+        const si = this.harmonyState.scaleFamily.intervals;
+        const octaves = Math.floor(shimmerPitch / 12);
+        const rem = ((shimmerPitch % 12) + 12) % 12;
+        let bestInterval = 0;
+        let bestDist = 99;
+        for (const interval of si) {
+          const d = Math.abs(interval - rem);
+          const dist = Math.min(d, 12 - d);
+          if (dist < bestDist) { bestDist = dist; bestInterval = interval; }
+        }
+        shimmerPitch = octaves * 12 + bestInterval;
+      }
+
+      const reverbParams: Record<string, unknown> = {
           type: state.reverbType,
-          quality: this.isMobile ? 'balanced' : state.reverbQuality,  // force balanced on mobile to save CPU
-          decay: state.reverbDecay,
+          quality: this.isMobile ? 'balanced' : state.reverbQuality,
+          decay: effectiveDecay,
           size: state.reverbSize,
-          diffusion: state.reverbDiffusion,
+          diffusion: effectiveDiffusion,
           modulation: state.reverbModulation,
           predelay: state.predelay,
           damping: state.damping,
           width: state.width,
-          shimmer: state.reverbShimmer ?? 0,
-          shimmerPitch: state.reverbShimmerPitch ?? 12,
+          shimmer: effectiveShimmer,
+          shimmerPitch: shimmerPitch,
           slowModRate: state.reverbSlowModRate ?? 0.05,
           slowModDepth: state.reverbSlowModDepth ?? 0,
-          freeze: state.reverbFreeze ?? false,
-          // v5 freeze enhancement params
-          freezeInputBleed: state.reverbFreezeInputBleed ?? 0,
-          freezeModAtten: state.reverbFreezeModAtten ?? 0.7,
-          freezeVelvetDensity: state.reverbFreezeVelvetDensity ?? 0.003,
-          freezeMode: state.reverbFreezeMode ?? 0,
           reverse: state.reverbReverse ?? 0,
           reverseLength: state.reverbReverseLength ?? 2,
-          // v2 params
           chorusRate: state.reverbChorusRate ?? 0.5,
           chorusDepth: state.reverbChorusDepth ?? 12,
           modCharacter: state.reverbModCharacter ?? 'hybrid',
@@ -3704,33 +4793,56 @@ export class AudioEngine {
           crossoverFreq: state.reverbCrossoverFreq ?? 800,
           inputTone: state.reverbInputTone ?? 0,
           shimmerFeedback: state.reverbShimmerFeedback ?? 0,
-          // v3 params
           warp: state.reverbWarp ?? 0,
           crossFeed: state.reverbCrossFeed ?? 0,
-          // v4 params
           earlyReflections: state.reverbEarlyReflections ?? 0.3,
           airAbsorption: state.reverbAirAbsorption ?? 0.2,
           saturationMode: state.reverbSaturationMode === 'tape' ? 1 : state.reverbSaturationMode === 'tube' ? 2 : 0,
-        },
-      });
+          transientSmooth: state.reverbTransientSmooth ?? 0,
+          erLpFreq: state.reverbErLpFreq ?? 2500,
+      };
+      // Dirty-gate: skip postMessage if all params are unchanged from last frame
+      let reverbDirty = !this._prevReverbParams;
+      if (!reverbDirty) {
+        for (const k in reverbParams) {
+          if (reverbParams[k] !== this._prevReverbParams![k]) { reverbDirty = true; break; }
+        }
+      }
+      if (reverbDirty) {
+        this._prevReverbParams = reverbParams;
+        (this.reverbNode as any).port.postMessage({ type: 'params', params: reverbParams });
+      }
     }
 
     // Reverb output level (mute if disabled)
-    this.reverbOutputGain?.gain.setTargetAtTime(state.reverbEnabled ? state.reverbLevel : 0, now, smoothTime);
+    this.reverbOutputGain?.gain.setTargetAtTime(state.reverbEnabled ? state.reverbLevel * 2 : 0, now, smoothTime);
 
     // Spectral Freeze parameters
     if (this.spectralFreezeNode && (this.spectralFreezeNode as any).port) {
-      (this.spectralFreezeNode as any).port.postMessage({
-        type: 'params',
-        params: {
-          freeze: state.spectralFreezeActive ?? false,
-          slushy: state.spectralFreezeSlushy ?? false,
-          speed: state.spectralFreezeSpeed ?? 0.3,
-          mix: state.spectralFreezeMix ?? 1.0,
-          decay: state.spectralFreezeDecay ?? 0.0,
-          phaseJitter: state.spectralFreezePhaseJitter ?? 0.0,
-        },
-      });
+      const sfFreeze = state.spectralFreezeActive ?? false;
+      const sfSlushy = state.spectralFreezeSlushy ?? false;
+      const sfSpeed = state.spectralFreezeSpeed ?? 0.3;
+      const sfMix = state.spectralFreezeMix ?? 1.0;
+      const sfDecay = 1.0 - (state.spectralFreezeDecay ?? 1.0);
+      const sfPhaseJitter = state.spectralFreezePhaseJitter ?? 0.0;
+
+      // Dirty-gate: skip postMessage if all 6 params unchanged
+      if (!this._sfParamsInitialized ||
+          sfFreeze !== this._prevSfFreeze || sfSlushy !== this._prevSfSlushy ||
+          sfSpeed !== this._prevSfSpeed || sfMix !== this._prevSfMix ||
+          sfDecay !== this._prevSfDecay || sfPhaseJitter !== this._prevSfPhaseJitter) {
+        this._sfParamsInitialized = true;
+        this._prevSfFreeze = sfFreeze;
+        this._prevSfSlushy = sfSlushy;
+        this._prevSfSpeed = sfSpeed;
+        this._prevSfMix = sfMix;
+        this._prevSfDecay = sfDecay;
+        this._prevSfPhaseJitter = sfPhaseJitter;
+        (this.spectralFreezeNode as any).port.postMessage({
+          type: 'params',
+          params: { freeze: sfFreeze, slushy: sfSlushy, speed: sfSpeed, mix: sfMix, decay: sfDecay, phaseJitter: sfPhaseJitter },
+        });
+      }
 
       // Re-apply routing if mode changed or enabled state changed
       const routing = state.spectralFreezeRouting ?? 'pre';
@@ -3740,15 +4852,17 @@ export class AudioEngine {
       }
 
       // Update crossfade in pre-mode (controls reverbDirectSend, not reverbInputBus)
+      // crossfade=1 → gain=0 (no live bleed), crossfade=0 → gain=1 (full live)
       if (enabled && routing === 'pre' && this.reverbDirectSend) {
         const crossfade = state.spectralFreezeReverbCrossfade ?? 0.5;
-        this.reverbDirectSend.gain.setTargetAtTime(crossfade, now, smoothTime);
+        this.reverbDirectSend.gain.setTargetAtTime(1.0 - crossfade, now, smoothTime);
       }
     }
 
-    // Lead synth parameters — keep gain active if Euclidean sequencer is driving lead
+    // Lead synth parameters — leadDry is always unity (per-lead level is baked into note velocity)
+    // Keep gain active if Euclidean sequencer is driving lead
     const leadActive = state.leadEnabled || state.synthEuclideanMasterEnabled;
-    this.leadGain?.gain.setTargetAtTime(leadActive ? state.leadLevel : 0, now, smoothTime);
+    this.leadDry?.gain.setTargetAtTime(leadActive ? 1.0 : 0, now, smoothTime);
     
     // Lead delay base time (per-note randomization in playLeadNote further adjusts this)
     const delayTime = fin((state.leadDelayTime ?? 375) / 1000, 0.375);
@@ -3827,22 +4941,23 @@ export class AudioEngine {
         const intR = this.dualRanges['oceanInterval'];
         const foamR = this.dualRanges['oceanFoam'];
         const depR = this.dualRanges['oceanDepth'];
-        this.soundscapesNode.port.postMessage({
+        const oceanParams = {
+          intensity: state.oceanWaveSynthLevel,
+          waveDurationMin: durR ? durR.min : state.oceanDuration,
+          waveDurationMax: durR ? durR.max : state.oceanDuration,
+          waveIntervalMin: intR ? intR.min : state.oceanInterval,
+          waveIntervalMax: intR ? intR.max : state.oceanInterval,
+          wave2OffsetMin: 2,
+          wave2OffsetMax: 6,
+          foamMin: foamR ? foamR.min : state.oceanFoam,
+          foamMax: foamR ? foamR.max : state.oceanFoam,
+          depthMin: depR ? depR.min : state.oceanDepth,
+          depthMax: depR ? depR.max : state.oceanDepth,
+        };
+        this.postCachedWorkletMessage('soundscapes:oceanParams', this.soundscapesNode, {
           type: 'oceanParams',
-          params: {
-            intensity: state.oceanWaveSynthLevel,
-            waveDurationMin: durR ? durR.min : state.oceanDuration,
-            waveDurationMax: durR ? durR.max : state.oceanDuration,
-            waveIntervalMin: intR ? intR.min : state.oceanInterval,
-            waveIntervalMax: intR ? intR.max : state.oceanInterval,
-            wave2OffsetMin: 2,
-            wave2OffsetMax: 6,
-            foamMin: foamR ? foamR.min : state.oceanFoam,
-            foamMax: foamR ? foamR.max : state.oceanFoam,
-            depthMin: depR ? depR.min : state.oceanDepth,
-            depthMax: depR ? depR.max : state.oceanDepth,
-          },
-        });
+          params: oceanParams,
+        }, oceanParams);
       }
 
       // Water start/stop
@@ -3861,10 +4976,9 @@ export class AudioEngine {
         this._scWaterPreset = waterPresetIdx;
       }
 
-      // Water synthesis params
-      this.soundscapesNode.port.postMessage({
-        type: 'waterParams',
-        params: {
+      // Water synthesis params (only send when water is enabled)
+      if (state.waterEnabled) {
+        const waterParams = {
           intensity: state.waterIntensity,
           rate: state.waterRate,
           distance: state.waterDistance,
@@ -3872,19 +4986,26 @@ export class AudioEngine {
           dropSize: state.waterDropSize,
           hardness: state.waterHardness,
           glassThickness: state.waterGlassThickness,
-        },
-      });
+        };
+        this.postCachedWorkletMessage('soundscapes:waterParams', this.soundscapesNode, {
+          type: 'waterParams',
+          params: waterParams,
+        }, waterParams);
 
-      // Water layer mix
-      this.soundscapesNode.port.postMessage({
-        type: 'waterLayerMix',
-        hardDrops: state.waterLayerHardDrops,
-        waterDrops: state.waterLayerWaterDrops,
-        turbulence: state.waterLayerTurbulence,
-        bubbling: state.waterLayerBubbling,
-        roar: state.waterLayerRoar,
-        rivulets: state.waterLayerRivulets,
-      });
+        // Water layer mix
+        const waterLayerMix = {
+          hardDrops: state.waterLayerHardDrops,
+          waterDrops: state.waterLayerWaterDrops,
+          turbulence: state.waterLayerTurbulence,
+          bubbling: state.waterLayerBubbling,
+          roar: state.waterLayerRoar,
+          rivulets: state.waterLayerRivulets,
+        };
+        this.postCachedWorkletMessage('soundscapes:waterLayerMix', this.soundscapesNode, {
+          type: 'waterLayerMix',
+          ...waterLayerMix,
+        }, waterLayerMix);
+      }
 
       // Insects 1 start/stop
       if (state.insectsEnabled && !this._scInsects1Started) {
@@ -3901,10 +5022,9 @@ export class AudioEngine {
         this._scInsects1Engine = state.insectsEngine;
       }
 
-      // Insects 1 params + gain
-      this.soundscapesNode.port.postMessage({
-        type: 'insectsParams',
-        params: {
+      // Insects 1 params + gain (only send when enabled)
+      if (state.insectsEnabled) {
+        const insectsParams = {
           density: state.insectsDensity,
           temperature: state.insectsTemperature,
           distance: state.insectsDistance,
@@ -3912,12 +5032,16 @@ export class AudioEngine {
           antiphony: state.insectsAntiphony,
           clickRate: state.insectsClickRate,
           motion: state.insectsMotion,
-        },
-      });
-      this.soundscapesNode.port.postMessage({
-        type: 'insectsGain',
-        gain: state.insectsEnabled ? state.insectsLevel : 0,
-      });
+        };
+        this.postCachedWorkletMessage('soundscapes:insects1Params', this.soundscapesNode, {
+          type: 'insectsParams',
+          params: insectsParams,
+        }, insectsParams);
+        this.postCachedWorkletMessage('soundscapes:insects1Gain', this.soundscapesNode, {
+          type: 'insectsGain',
+          gain: state.insectsLevel,
+        }, state.insectsLevel);
+      }
 
       // Insects 2 start/stop
       if (state.insects2Enabled && !this._scInsects2Started) {
@@ -3934,10 +5058,9 @@ export class AudioEngine {
         this._scInsects2Engine = state.insects2Engine;
       }
 
-      // Insects 2 params + gain
-      this.soundscapesNode.port.postMessage({
-        type: 'insects2Params',
-        params: {
+      // Insects 2 params + gain (only send when enabled)
+      if (state.insects2Enabled) {
+        const insects2Params = {
           density: state.insects2Density,
           temperature: state.insects2Temperature,
           distance: state.insects2Distance,
@@ -3945,19 +5068,23 @@ export class AudioEngine {
           antiphony: state.insects2Antiphony,
           clickRate: state.insects2ClickRate,
           motion: state.insects2Motion,
-        },
-      });
-      this.soundscapesNode.port.postMessage({
-        type: 'insects2Gain',
-        gain: state.insects2Enabled ? state.insects2Level : 0,
-      });
+        };
+        this.postCachedWorkletMessage('soundscapes:insects2Params', this.soundscapesNode, {
+          type: 'insects2Params',
+          params: insects2Params,
+        }, insects2Params);
+        this.postCachedWorkletMessage('soundscapes:insects2Gain', this.soundscapesNode, {
+          type: 'insects2Gain',
+          gain: state.insects2Level,
+        }, state.insects2Level);
+      }
 
       // Water gain nodes
       this.waterGain?.gain.setTargetAtTime(
         state.waterEnabled ? state.waterLevel : 0, now, smoothTime
       );
       this.waterReverbSend?.gain.setTargetAtTime(
-        state.waterEnabled ? state.waterSpace : 0, now, smoothTime
+        state.waterEnabled ? state.waterReverbSend : 0, now, smoothTime
       );
 
       // Insects master gate
@@ -4162,10 +5289,11 @@ export class AudioEngine {
       }
     }
 
-    // Per-lead level
-    const leadLevel = useLead2 ? this.sliderState.lead2Level : this.sliderState.lead1Level;
-    const effectiveVelocity = velocity * leadLevel;
-    if (effectiveVelocity < 0.001) return;
+    // Per-lead level is applied per note so lead1/lead2 do not fight over a shared gain node.
+    const voiceLevel = useLead2 ? (this.sliderState.lead2Level ?? 0.6) : (this.sliderState.lead1Level ?? 0.8);
+    const noteVelocity = velocity * voiceLevel;
+    if (velocity < 0.001) return;
+    if (noteVelocity < 0.001) return;
 
     const ctx = this.ctx;
     const now = ctx.currentTime;
@@ -4251,11 +5379,50 @@ export class AudioEngine {
     // Hold time — per-lead custom param (not in presets)
     const hold = useLead2 ? this.sliderState.lead2Hold : this.sliderState.lead1Hold;
 
-    // Play the 4op FM note — outputs into lead1Bus or lead2Bus for separate looper tapping
+    // ─── Per-engine tension → timbre randomization ───
+    // Higher tension adds random offsets to FM params (mod index, feedback, beat detune)
+    const leadTension = getEffectiveTension(
+      this.sliderState.tension ?? 0.3,
+      this.sliderState.leadTensionMode ?? 'follow',
+      this.sliderState.leadTensionValue ?? 0,
+    );
+    if (leadTension > 0.05) {
+      const spread = leadTension * 0.3; // max ±30% at tension=1
+      const rOff = () => (Math.random() * 2 - 1) * spread;
+      effectiveMorphed.mod1Index  = Math.max(0, effectiveMorphed.mod1Index  * (1 + rOff()));
+      effectiveMorphed.mod2Index  = Math.max(0, effectiveMorphed.mod2Index  * (1 + rOff()));
+      effectiveMorphed.mod1Feedback = Math.max(0, Math.min(1, (effectiveMorphed.mod1Feedback ?? 0) + rOff() * 0.15));
+      effectiveMorphed.beatDetune = (effectiveMorphed.beatDetune ?? 0) + rOff() * 4;
+      effectiveMorphed.carrier2Mix = Math.max(0, Math.min(1, (effectiveMorphed.carrier2Mix ?? 0.5) + rOff() * 0.2));
+    }
+
+    // WASM path: send morphed params + delay + noteOn to the lead FM worklet
+    // leadLevel remains the shared lead bus master in leadDry.gain.
+    // Per-lead level is baked into each note trigger so lead1 and lead2 stay independent.
+    if (this.leadFmWasmReady && this.leadFmWasmNode) {
+      const port = this.leadFmWasmNode.port;
+      port.postMessage({ type: 'params', params: effectiveMorphed });
+      port.postMessage({
+        type: 'delay',
+        params: {
+          enabled: true,
+          timeL: delayTime / 1000,
+          timeR: (delayTime / 1000) * 0.75,
+          feedback: delayFeedback,
+          mix: delayMix,
+          filter: 2000,
+          send: 0.5,
+        },
+      });
+      port.postMessage({ type: 'noteOn', frequency: noteFreq, velocity: noteVelocity, hold });
+      return;
+    }
+
+    // Play the 4op FM note — outputs into lead1Bus or lead2Bus for separate granular tapping
     const leadDest = useLead2
       ? (this.lead2Bus ?? this.leadGain)
       : (this.lead1Bus ?? this.leadGain);
-    playLead4opFMNote(ctx, leadDest, noteFreq, effectiveVelocity, effectiveMorphed, hold);
+    playLead4opFMNote(ctx, leadDest, noteFreq, noteVelocity, effectiveMorphed, hold);
 
     // If glide, schedule frequency ramp on all carriers (handled inside playLead4opFMNote is per-note)
     // Vibrato: add LFO modulation if depth > threshold
@@ -4360,17 +5527,24 @@ export class AudioEngine {
       const rootNote = this.effectiveRoot;
       const baseOctaveOffset = this.sliderState.lead1Octave;
       const octaveRange = this.sliderState.lead1OctaveRange ?? 2;
-      const phraseDuration = PHRASE_LENGTH * 1000;
+      const phraseDuration = (this.sliderState?.phraseLength ?? 16) * 1000;
       const density = this.sliderState.lead1Density;
       const notesThisPhrase = Math.max(1, Math.round(density * 3 + rng() * 2));
       const baseLow = 64 + (baseOctaveOffset * 12);
       const baseHigh = baseLow + (octaveRange * 12);
 
+      const chordMidi = this.harmonyState.currentChord?.midiNotes;
+      const leadT = getEffectiveTension(
+        this.sliderState.tension ?? 0.3,
+        this.sliderState.leadTensionMode ?? 'follow',
+        this.sliderState.leadTensionValue ?? 0,
+      );
+      const leadChordBias = leadT < 0 ? 0.9 : 0.9 - leadT * 0.4;
       for (let i = 0; i < notesThisPhrase; i++) {
         const timing = rng() * phraseDuration;
         let availableNotes = getScaleNotesInRange(scale, Math.max(24, baseLow), Math.min(108, baseHigh), rootNote);
         if (availableNotes.length === 0) continue;
-        const midiNote = availableNotes[Math.floor(rng() * availableNotes.length)];
+        const midiNote = pickChordWeightedNote(rng, availableNotes, chordMidi, leadChordBias);
         const frequency = midiToFreq(midiNote);
         const velocity = rngFloat(rng, 0.5, 0.9);
         const timeoutId = window.setTimeout(() => {
@@ -4383,7 +5557,7 @@ export class AudioEngine {
     }
 
     // Schedule next phrase
-    const timeUntilNextPhrase = getTimeUntilNextPhrase() * 1000;
+    const timeUntilNextPhrase = getTimeUntilNextPhrase(this.sliderState?.phraseLength ?? 16) * 1000;
     this.leadMelodyTimer = window.setTimeout(() => {
       this.scheduleLeadMelody();
     }, timeUntilNextPhrase);
@@ -4454,7 +5628,9 @@ export class AudioEngine {
         this.sliderState.detune,
         this.sliderState.scaleMode,
         this.sliderState.manualScale,
-        this.sliderState.rootNote ?? 4
+        this.sliderState.rootNote ?? 4,
+        this.sliderState.phraseLength ?? 16,
+        this.getHarmonyParams()
       );
     }
     // Create lead audio chain if not exists
@@ -4462,7 +5638,7 @@ export class AudioEngine {
       const ctx = this.ctx;
       this.leadGain = ctx.createGain();
       const leadActive = this.sliderState?.leadEnabled || this.sliderState?.synthEuclideanMasterEnabled;
-      this.leadGain.gain.value = leadActive ? (this.sliderState?.leadLevel ?? 0.4) : 0;
+      this.leadGain.gain.value = leadActive ? 1.0 : 0;
       this.leadFilter = ctx.createBiquadFilter();
       this.leadFilter.type = 'lowpass';
       this.leadFilter.frequency.value = 4000;
@@ -4480,15 +5656,17 @@ export class AudioEngine {
       this.leadDelayMix = ctx.createGain();
       this.leadDelayMix.gain.value = this.sliderState?.leadDelayMix ?? 0.35;
       this.leadDry = ctx.createGain();
-      this.leadDry.gain.value = 1.0;
+      this.leadDry.gain.value = leadActive ? 1.0 : 0;
       this.leadMerger = ctx.createChannelMerger(2);
       this.leadReverbSend = ctx.createGain();
-      this.leadReverbSend.gain.value = this.sliderState?.leadReverbSend ?? 0.5;
+      this.leadReverbSend.gain.value = Math.max(this.sliderState?.lead1ReverbSend ?? 0.5, this.sliderState?.lead2ReverbSend ?? 0.5);
       this.leadDelayReverbSend = ctx.createGain();
       this.leadDelayReverbSend.gain.value = this.sliderState?.leadDelayReverbSend ?? 0.4;
-      // Connect lead signal path
-      this.leadGain.connect(this.leadFilter);
-      this.leadFilter.connect(this.leadDry);
+      // Connect lead signal path (pre-fader reverb: leadLevel is the shared master)
+      this.leadVoiceLevel = ctx.createGain();
+      this.leadVoiceLevel.gain.value = 1.0;
+      this.leadFilter.connect(this.leadVoiceLevel);
+      this.leadVoiceLevel.connect(this.leadDry);
       this.leadDry.connect(this.masterGain);
       // Ping-pong delay
       this.leadFilter.connect(this.leadDelayL);
@@ -4499,23 +5677,32 @@ export class AudioEngine {
       this.leadDelayL.connect(this.leadMerger, 0, 0);
       this.leadDelayR.connect(this.leadMerger, 0, 1);
       this.leadMerger.connect(this.leadDelayMix);
-      this.leadDelayMix.connect(this.masterGain);
+      this.leadDelayMix.connect(this.leadDry);
       this.leadDelayMix.connect(this.leadDelayReverbSend);
       this.leadDelayReverbSend.connect(this.reverbNode!);
-      this.leadFilter.connect(this.leadReverbSend);
+      // Shared leadReverbSend kept for WASM path only
       this.leadReverbSend.connect(this.reverbNode!);
 
-      // Create lead split buses for separate looper tapping
+      // Create lead split buses for separate granular tapping + per-lead reverb sends
       if (!this.lead1Bus) {
         this.lead1Bus = ctx.createGain();
         this.lead1Bus.gain.value = 1.0;
-        this.lead1Bus.connect(this.leadGain);
+        this.lead1Bus.connect(this.leadFilter);
       }
       if (!this.lead2Bus) {
         this.lead2Bus = ctx.createGain();
         this.lead2Bus.gain.value = 1.0;
-        this.lead2Bus.connect(this.leadGain);
+        this.lead2Bus.connect(this.leadFilter);
       }
+      // Per-lead reverb sends (bus → send → reverb)
+      this.lead1ReverbSend = ctx.createGain();
+      this.lead1ReverbSend.gain.value = this.sliderState?.lead1ReverbSend ?? 0.5;
+      this.lead1Bus.connect(this.lead1ReverbSend);
+      this.lead1ReverbSend.connect(this.reverbNode!);
+      this.lead2ReverbSend = ctx.createGain();
+      this.lead2ReverbSend.gain.value = this.sliderState?.lead2ReverbSend ?? 0.5;
+      this.lead2Bus.connect(this.lead2ReverbSend);
+      this.lead2ReverbSend.connect(this.reverbNode!);
     }
 
     // Create pad synth voice chain if not exists (for independent pad voice triggering)
@@ -4528,7 +5715,7 @@ export class AudioEngine {
       this.synthReverbSend.gain.value = this.sliderState?.synthReverbSend ?? 0.7;
       this.synthDirect = ctx.createGain();
       this.synthDirect.gain.value = 1.0;  // Level is per-voice via mixerGain
-      // Create pad split buses for separate looper tapping
+      // Create pad split buses for separate granular tapping
       if (!this.pad1Bus) {
         this.pad1Bus = ctx.createGain();
         this.pad1Bus.gain.value = 1.0;
@@ -4549,15 +5736,18 @@ export class AudioEngine {
       }
       // Connect: synthBus → dryBus → synthDirect → masterGain (skip granular for independent mode)
       this.synthBus.connect(this.dryBus);
-      this.dryBus.connect(this.synthReverbSend);
+      // Pre-fader reverb send: tap from preFaderBus (independent of pad level)
+      if (this.pad1PreFaderBus) this.pad1PreFaderBus.connect(this.synthReverbSend);
+      if (this.pad2PreFaderBus) this.pad2PreFaderBus.connect(this.synthReverbSend);
       this.dryBus.connect(this.synthDirect);
       this.synthReverbSend.connect(this.reverbNode!);
       this.synthDirect.connect(this.masterGain);
     }
 
     // Create pad voices if not exists
+    // createVoices() is async in signature but has no real awaits — runs synchronously.
+    // Start voices and connect buses inline to prevent race with scheduler.
     if (this.voices.length === 0 && this.ctx && this.synthBus) {
-      // Use synchronous voice creation (createVoices is async but only for the await keyword)
       void this.createVoices().then(() => {
         // Start oscillators so they can produce sound
         this.startVoices();
@@ -4570,7 +5760,7 @@ export class AudioEngine {
           for (let i = 0; i < this.voices.length; i++) {
             const isPad2 = (pad2a & (1 << i)) !== 0;
             this.voices[i].mixerGain.connect(isPad2 ? this.pad2Bus : this.pad1Bus);
-            // Pre-fader connection for looper
+            // Pre-fader connection for granular
             if (this.pad1PreFaderBus && this.pad2PreFaderBus) {
               this.voices[i].envelope.connect(isPad2 ? this.pad2PreFaderBus : this.pad1PreFaderBus);
             }
@@ -4589,58 +5779,97 @@ export class AudioEngine {
    * Runs independently of master engine start/stop.
    */
   private startSynthEuclidScheduler(): void {
-    if (this.synthEuclidScheduleTimer) return; // Already running
+    if (this.synthEuclidScheduleTimer || this.synthEuclidStarting) return; // Already running or booting
 
-    this.ensureSynthChain();
-
-    // Restore delay feedback gains (may have been zeroed by stopSynthEuclidScheduler)
-    const feedback = this.sliderState?.leadDelayFeedback ?? 0.4;
-    const delayMixLevel = this.sliderState?.leadDelayMix ?? 0.35;
-    const restoreNow = this.ctx?.currentTime ?? 0;
-    this.leadDelayFeedbackL?.gain.setTargetAtTime(feedback, restoreNow, 0.02);
-    this.leadDelayFeedbackR?.gain.setTargetAtTime(feedback, restoreNow, 0.02);
-    this.leadDelayMix?.gain.setTargetAtTime(delayMixLevel, restoreNow, 0.02);
-
-    // Reset step positions
-    this.synthEuclidCurrentStep = [0, 0, 0, 0];
-    this.synthEuclidHitCounts = [0, 0, 0, 0];
-    this.synthEuclidStepIndex = [0, 0, 0, 0];
-
-    const now = this.ctx!.currentTime;
-    this.synthEuclidNextStepTime = [now, now, now, now];
-
-    const scheduleSynthEuclid = () => {
+    this.synthEuclidStarting = true;
+    void (async () => {
       try {
-        if (!this.ctx || !this.sliderState || !this.sliderState.synthEuclideanMasterEnabled) {
-          this.stopSynthEuclidScheduler();
+        this.ensureSynthChain();
+
+        if (this.ctx?.state === 'suspended') {
+          try {
+            await this.ctx.resume();
+          } catch (e) {
+            console.warn('Synth Euclid context resume failed:', e);
+          }
+        }
+        this.attachAudioContextMonitoring();
+        this.unlockAudioContext();
+
+        const usesSynthVoices = !!this.sliderState && [
+          this.sliderState.synthEuclid1Enabled && this.sliderState.synthEuclid1Source.startsWith('synth'),
+          this.sliderState.synthEuclid2Enabled && this.sliderState.synthEuclid2Source.startsWith('synth'),
+          this.sliderState.synthEuclid3Enabled && this.sliderState.synthEuclid3Source.startsWith('synth'),
+          this.sliderState.synthEuclid4Enabled && this.sliderState.synthEuclid4Source.startsWith('synth'),
+        ].some(Boolean);
+        if (usesSynthVoices) {
+          await this.ensurePadWasmForIndependentSynth();
+        }
+
+        if (!this.ctx || !this.sliderState || !this.sliderState.synthEuclideanMasterEnabled || this.synthEuclidScheduleTimer) {
           return;
         }
 
-        const now = this.ctx.currentTime;
-        const lookAhead = 0.1; // 100ms look-ahead
-        const scheduleUntil = now + lookAhead;
+        // Restore delay feedback gains (may have been zeroed by stopSynthEuclidScheduler)
+        const feedback = this.sliderState.leadDelayFeedback ?? 0.4;
+        const delayMixLevel = this.sliderState.leadDelayMix ?? 0.35;
+        const restoreNow = this.ctx.currentTime;
+        this.leadDelayFeedbackL?.gain.setTargetAtTime(feedback, restoreNow, 0.02);
+        this.leadDelayFeedbackR?.gain.setTargetAtTime(feedback, restoreNow, 0.02);
+        this.leadDelayMix?.gain.setTargetAtTime(delayMixLevel, restoreNow, 0.02);
 
-        const baseBPM = this.sliderState.drumEuclidBaseBPM ?? 120;
-        const tempo = this.sliderState.synthEuclideanTempo ?? 1;
-        const beatDuration = 60 / (baseBPM * tempo); // Base beat duration, scaled by tempo multiplier
+        // Reset step positions
+        this.synthEuclidCurrentStep = [0, 0, 0, 0];
+        this.synthEuclidHitCounts = [0, 0, 0, 0];
+        this.synthEuclidStepIndex = [0, 0, 0, 0];
 
-        const clockDivToSec = (clockDiv: ClockDivision) => clockDivToSeconds(clockDiv, beatDuration);
+        const startNow = this.ctx.currentTime;
+        this.synthEuclidNextStepTime = [startNow, startNow, startNow, startNow];
 
-        const scale = this.harmonyState?.scaleFamily;
-        const rootNote = this.effectiveRoot;
-        const rng = this.rng;
-        if (!rng) {
-          this.synthEuclidScheduleTimer = window.setTimeout(scheduleSynthEuclid, 50);
-          return;
-        }
+        const scheduleSynthEuclid = () => {
+          try {
+            if (!this.ctx || !this.sliderState || !this.sliderState.synthEuclideanMasterEnabled) {
+              this.stopSynthEuclidScheduler();
+              return;
+            }
 
-        // Read lane params fresh each tick (so changes take effect seamlessly)
-        const laneParams = [
-          { enabled: this.sliderState.synthEuclid1Enabled, preset: this.sliderState.synthEuclid1Preset, steps: this.sliderState.synthEuclid1Steps, hits: this.sliderState.synthEuclid1Hits, rotation: this.sliderState.synthEuclid1Rotation, noteMin: this.sliderState.synthEuclid1NoteMin, noteMax: this.sliderState.synthEuclid1NoteMax, level: this.sliderState.synthEuclid1Level, probability: this.sliderState.synthEuclid1Probability ?? 1.0, source: (this.sliderState.synthEuclid1Source ?? 'lead') as string },
-          { enabled: this.sliderState.synthEuclid2Enabled, preset: this.sliderState.synthEuclid2Preset, steps: this.sliderState.synthEuclid2Steps, hits: this.sliderState.synthEuclid2Hits, rotation: this.sliderState.synthEuclid2Rotation, noteMin: this.sliderState.synthEuclid2NoteMin, noteMax: this.sliderState.synthEuclid2NoteMax, level: this.sliderState.synthEuclid2Level, probability: this.sliderState.synthEuclid2Probability ?? 1.0, source: (this.sliderState.synthEuclid2Source ?? 'lead') as string },
-          { enabled: this.sliderState.synthEuclid3Enabled, preset: this.sliderState.synthEuclid3Preset, steps: this.sliderState.synthEuclid3Steps, hits: this.sliderState.synthEuclid3Hits, rotation: this.sliderState.synthEuclid3Rotation, noteMin: this.sliderState.synthEuclid3NoteMin, noteMax: this.sliderState.synthEuclid3NoteMax, level: this.sliderState.synthEuclid3Level, probability: this.sliderState.synthEuclid3Probability ?? 1.0, source: (this.sliderState.synthEuclid3Source ?? 'lead') as string },
-          { enabled: this.sliderState.synthEuclid4Enabled, preset: this.sliderState.synthEuclid4Preset, steps: this.sliderState.synthEuclid4Steps, hits: this.sliderState.synthEuclid4Hits, rotation: this.sliderState.synthEuclid4Rotation, noteMin: this.sliderState.synthEuclid4NoteMin, noteMax: this.sliderState.synthEuclid4NoteMax, level: this.sliderState.synthEuclid4Level, probability: this.sliderState.synthEuclid4Probability ?? 1.0, source: (this.sliderState.synthEuclid4Source ?? 'lead') as string },
-        ];
+            const now = this.ctx.currentTime;
+            const lookAhead = 0.1; // 100ms look-ahead
+            const scheduleUntil = now + lookAhead;
+
+            // Time-jump recovery: if any lane is >500ms behind (e.g. tab was backgrounded),
+            // snap all lanes forward to now instead of processing a burst of catch-up events
+            const timeJumpThreshold = 0.5;
+            for (let i = 0; i < 4; i++) {
+              if (this.synthEuclidNextStepTime[i] > 0 && now - this.synthEuclidNextStepTime[i] > timeJumpThreshold) {
+                for (let j = 0; j < 4; j++) {
+                  this.synthEuclidNextStepTime[j] = now;
+                }
+                break;
+              }
+            }
+
+            const baseBPM = this.sliderState.synthEuclidBaseBPM ?? 120;
+            const tempo = this.sliderState.synthEuclideanTempo ?? 1;
+            const beatDuration = 60 / (baseBPM * tempo); // Base beat duration, scaled by tempo multiplier
+
+            const clockDivToSec = (clockDiv: ClockDivision) => clockDivToSeconds(clockDiv, beatDuration);
+
+            const scale = this.harmonyState?.scaleFamily;
+            const rootNote = this.effectiveRoot;
+            const rng = this.rng;
+            if (!rng) {
+              this.synthEuclidScheduleTimer = window.setTimeout(scheduleSynthEuclid, 50);
+              return;
+            }
+
+            // Read lane params fresh each tick (so changes take effect seamlessly)
+            const laneParams = [
+              { enabled: this.sliderState.synthEuclid1Enabled, preset: this.sliderState.synthEuclid1Preset, steps: this.sliderState.synthEuclid1Steps, hits: this.sliderState.synthEuclid1Hits, rotation: this.sliderState.synthEuclid1Rotation, noteMin: this.sliderState.synthEuclid1NoteMin, noteMax: this.sliderState.synthEuclid1NoteMax, level: this.sliderState.synthEuclid1Level, probability: this.sliderState.synthEuclid1Probability ?? 1.0, source: (this.sliderState.synthEuclid1Source ?? 'lead') as string },
+              { enabled: this.sliderState.synthEuclid2Enabled, preset: this.sliderState.synthEuclid2Preset, steps: this.sliderState.synthEuclid2Steps, hits: this.sliderState.synthEuclid2Hits, rotation: this.sliderState.synthEuclid2Rotation, noteMin: this.sliderState.synthEuclid2NoteMin, noteMax: this.sliderState.synthEuclid2NoteMax, level: this.sliderState.synthEuclid2Level, probability: this.sliderState.synthEuclid2Probability ?? 1.0, source: (this.sliderState.synthEuclid2Source ?? 'lead') as string },
+              { enabled: this.sliderState.synthEuclid3Enabled, preset: this.sliderState.synthEuclid3Preset, steps: this.sliderState.synthEuclid3Steps, hits: this.sliderState.synthEuclid3Hits, rotation: this.sliderState.synthEuclid3Rotation, noteMin: this.sliderState.synthEuclid3NoteMin, noteMax: this.sliderState.synthEuclid3NoteMax, level: this.sliderState.synthEuclid3Level, probability: this.sliderState.synthEuclid3Probability ?? 1.0, source: (this.sliderState.synthEuclid3Source ?? 'lead') as string },
+              { enabled: this.sliderState.synthEuclid4Enabled, preset: this.sliderState.synthEuclid4Preset, steps: this.sliderState.synthEuclid4Steps, hits: this.sliderState.synthEuclid4Hits, rotation: this.sliderState.synthEuclid4Rotation, noteMin: this.sliderState.synthEuclid4NoteMin, noteMax: this.sliderState.synthEuclid4NoteMax, level: this.sliderState.synthEuclid4Level, probability: this.sliderState.synthEuclid4Probability ?? 1.0, source: (this.sliderState.synthEuclid4Source ?? 'lead') as string },
+            ];
 
         for (let laneIndex = 0; laneIndex < 4; laneIndex++) {
           const lane = laneParams[laneIndex];
@@ -4663,24 +5892,8 @@ export class AudioEngine {
             ? basePattern.map((hit, i) => toggleMap.has(i) ? toggleMap.get(i)! : hit)
             : basePattern;
 
-          // Sub-lane overrides
+          // Sub-lane overrides (direction state read once — stable across steps)
           const ov = this.synthStepOverrides;
-          const pitchOffsets = ov.pitch[laneIndex];
-          const pitchDir = ov.pitchDirection[laneIndex] ?? 'forward';
-          const pitchSteps = pitchOffsets?.length ?? 0;
-
-          const exprArr = ov.expression[laneIndex];
-          const exprDir = ov.expressionDirection[laneIndex] ?? 'forward';
-          const exprSteps = exprArr?.length ?? 0;
-
-          const morphArr = ov.morph[laneIndex];
-          const morphDir = ov.morphDirection[laneIndex] ?? 'forward';
-          const morphSteps = morphArr?.length ?? 0;
-
-          const probArr = ov.probability[laneIndex];
-          const ratchetArr = ov.ratchet[laneIndex];
-          const trigCondArr = ov.trigCondition[laneIndex];
-
 
           // Ensure trig condition counters are initialized for this lane
           if (this.synthTrigConditionCounters[laneIndex].length < steps) {
@@ -4696,7 +5909,88 @@ export class AudioEngine {
             // Update step position for UI (synchronous, like drum sequencer)
             this.synthEuclidCurrentStep[laneIndex] = stepInPattern;
 
+            // Track total steps for bar-boundary detection
+            this.synthEuclidTotalStepCounts[laneIndex]++;
+
+            // Evolve at bar boundaries (step 0 after at least one full cycle)
+            if (stepInPattern === 0 && this.synthEuclidTotalStepCounts[laneIndex] > 1) {
+              const bar = Math.floor(this.synthEuclidTotalStepCounts[laneIndex] / steps);
+              const evolveConfig = this.synthEvolveConfigs[laneIndex];
+              if (evolveConfig.enabled) {
+                // Use pad tension when lane source is a pad voice, synth tension otherwise
+                const isPadSource = lane.source.startsWith('synth');
+                const evolveTension = isPadSource
+                  ? getEffectiveTension(
+                      this.sliderState!.tension ?? 0.3,
+                      this.sliderState!.padTensionMode ?? 'follow',
+                      this.sliderState!.padTensionValue ?? 0,
+                    )
+                  : getEffectiveTension(
+                      this.sliderState!.tension ?? 0.3,
+                      this.sliderState!.synthEuclidTensionMode ?? 'follow',
+                      this.sliderState!.synthEuclidTensionValue ?? 0,
+                    );
+                const laneOv = this.extractSynthLaneOverrides(laneIndex);
+                // Convert pitch from absolute MIDI → relative offsets for evolve
+                const ps = this.synthPitchSettings[laneIndex];
+                if (laneOv.pitch && ps && ps.mode !== 'noteRange') {
+                  laneOv.pitch = this.midiToOffsets(laneOv.pitch, ps);
+                }
+                const si = ps?.mode === 'notes' ? (SCALES[ps.scale] || [0, 2, 4, 5, 7, 9, 11]) : undefined;
+                // Pass current noteRange bounds (from override or sliderState) for noteRange mode evolution
+                const nrOverride = this.synthNoteRangeOverrides[laneIndex];
+                const currentNoteMin = nrOverride ? nrOverride.min : lane.noteMin;
+                const currentNoteMax = nrOverride ? nrOverride.max : lane.noteMax;
+                // Filter evolve's enabledSubLanes by the UI sub-lane enabled state
+                const uiEnabled = this.synthSubLaneEnabled[laneIndex] ?? {};
+                const evolveEnabledSubs = (evolveConfig.enabledSubLanes ?? ['pitch', 'expression', 'morph', 'distance', 'probability', 'ratchet'])
+                  .filter(sl => uiEnabled[sl] !== false);
+                const result = evolveSynthLane(
+                  laneOv,
+                  { ...evolveConfig, enabledSubLanes: evolveEnabledSubs },
+                  this.synthEvolveStates[laneIndex],
+                  bar,
+                  rng,
+                  { effectiveTension: Math.max(0, evolveTension), swing: this.synthEuclidSwings[laneIndex], steps, scaleIntervals: si, pitchMode: ps?.mode, noteRangeMin: currentNoteMin, noteRangeMax: currentNoteMax },
+                );
+                if (result.changed) {
+                  // Convert pitch from relative offsets → absolute MIDI for engine storage/scheduling
+                  const offsetOverrides = result.overrides;
+                  const midiOverrides: SynthLaneOverrides = { ...offsetOverrides };
+                  if (offsetOverrides.pitch && ps && ps.mode !== 'noteRange') {
+                    midiOverrides.pitch = this.offsetsToMidi(offsetOverrides.pitch, ps);
+                  }
+                  this.applySynthLaneOverrides(laneIndex, midiOverrides);
+                  this.synthEuclidSwings[laneIndex] = result.swing;
+                  this.onSynthEvolveTrigger?.(laneIndex);
+                  // Push evolved overrides back to UI as offsets (no reverse conversion needed)
+                  this.onSynthEvolveOverridesChanged?.(laneIndex, offsetOverrides);
+                  // Handle noteRange evolution: store overrides and notify UI
+                  if (result.noteRangeMin !== undefined && result.noteRangeMax !== undefined) {
+                    this.synthNoteRangeOverrides[laneIndex] = { min: result.noteRangeMin, max: result.noteRangeMax };
+                    this.onSynthNoteRangeEvolved?.(laneIndex, result.noteRangeMin, result.noteRangeMax);
+                  }
+                }
+              }
+            }
+
             if (pattern[stepInPattern]) {
+              // Read sub-lane arrays fresh each step (so evolve changes take effect immediately)
+              // Gate on per-lane enabled state — disabled sub-lanes are treated as absent
+              const slEnabled = this.synthSubLaneEnabled[laneIndex] ?? {};
+              const pitchOffsets = (slEnabled.pitch !== false) ? ov.pitch[laneIndex] : null;
+              const pitchDir = ov.pitchDirection[laneIndex] ?? 'forward';
+              const pitchSteps = pitchOffsets?.length ?? 0;
+              const exprArr = (slEnabled.expression !== false) ? ov.expression[laneIndex] : null;
+              const exprDir = ov.expressionDirection[laneIndex] ?? 'forward';
+              const exprSteps = exprArr?.length ?? 0;
+              const morphArr = (slEnabled.morph !== false) ? ov.morph[laneIndex] : null;
+              const morphDir = ov.morphDirection[laneIndex] ?? 'forward';
+              const morphSteps = morphArr?.length ?? 0;
+              const probArr = (slEnabled.expression !== false) ? ov.probability[laneIndex] : null;
+              const ratchetArr = (slEnabled.expression !== false) ? ov.ratchet[laneIndex] : null;
+              const trigCondArr = ov.trigCondition[laneIndex];
+
               // Synchronously increment hit count for sub-lane accuracy
               this.synthEuclidHitCounts[laneIndex]++;
 
@@ -4721,9 +6015,13 @@ export class AudioEngine {
                   // Use the MIDI note directly — no noteMin/Max clamp (user chose these notes explicitly)
                   midiNote = Math.max(24, Math.min(108, pitchOffsets[pitchIdx] ?? 60));
                 } else if (scale) {
-                  let availableNotes = getScaleNotesInRange(scale, Math.max(24, lane.noteMin), Math.min(108, lane.noteMax), rootNote);
+                  // Use evolved noteRange overrides if available, else fall back to lane params
+                  const nrOv = this.synthNoteRangeOverrides[laneIndex];
+                  const effNoteMin = nrOv ? nrOv.min : lane.noteMin;
+                  const effNoteMax = nrOv ? nrOv.max : lane.noteMax;
+                  let availableNotes = getScaleNotesInRange(scale, Math.max(24, effNoteMin), Math.min(108, effNoteMax), rootNote);
                   if (availableNotes.length === 0) {
-                    const midPoint = (lane.noteMin + lane.noteMax) / 2;
+                    const midPoint = (effNoteMin + effNoteMax) / 2;
                     const allScaleNotes = getScaleNotesInRange(scale, 24, 108, rootNote);
                     if (allScaleNotes.length > 0) {
                       let nearest = allScaleNotes[0];
@@ -4736,7 +6034,12 @@ export class AudioEngine {
                     }
                   }
                   if (availableNotes.length > 0) {
-                    midiNote = availableNotes[Math.floor(rng() * availableNotes.length)];
+                    const synthLeadT = getEffectiveTension(
+                      this.sliderState!.tension ?? 0.3,
+                      this.sliderState!.synthEuclidTensionMode ?? 'follow',
+                      this.sliderState!.synthEuclidTensionValue ?? 0,
+                    );
+                    midiNote = pickChordWeightedNote(rng, availableNotes, this.harmonyState?.currentChord?.midiNotes, 0.9 - (synthLeadT < 0 ? 0 : synthLeadT) * 0.4);
                   }
                 }
 
@@ -4790,8 +6093,7 @@ export class AudioEngine {
                   for (let r = 0; r < ratchet; r++) {
                     const rDelayMs = delayMs + r * ratchetWindow * 1000;
                     const ratchetTimerId = window.setTimeout(() => {
-                      const rIdx = this.ratchetTimers.indexOf(ratchetTimerId);
-                      if (rIdx > -1) this.ratchetTimers.splice(rIdx, 1);
+                      this.ratchetTimers.delete(ratchetTimerId);
                       this.synthMorphOverride = capturedMorphOverride;
                       this.synthRatchetFactor = ratchetFactor;
                       if (noteSource === 'lead' || noteSource === 'lead1') {
@@ -4820,6 +6122,7 @@ export class AudioEngine {
 
                         // Apply pad morph override: temporarily set morphed preset params on sliderState
                         const savedPadParams: Record<string, unknown> = {};
+                        let padParamsOverride: SliderState | undefined;
                         if (effectiveMorph !== null && this.sliderState) {
                           if (isPad2) {
                             // Pad 2 voice — morph pad2 presets onto pad2 state keys
@@ -4827,15 +6130,22 @@ export class AudioEngine {
                             const presetB = getPadPreset(this.sliderState.pad2PresetB as string);
                             if (presetA && presetB) {
                               const morphed = morphPadPresets(presetA, presetB, effectiveMorph);
-                              const st = this.sliderState as unknown as Record<string, unknown>;
+                              const st = ((this.padWasmReady && this.padWasmNode)
+                                ? { ...this.sliderState }
+                                : this.sliderState) as unknown as Record<string, unknown>;
                               for (const k of PAD_PRESET_PARAM_KEYS) {
                                 if (k in morphed) {
                                   const p2k = PAD1_TO_PAD2_ENGINE[k];
                                   if (p2k) {
-                                    savedPadParams[p2k] = st[p2k];
+                                    if (st === (this.sliderState as unknown as Record<string, unknown>)) {
+                                      savedPadParams[p2k] = st[p2k];
+                                    }
                                     st[p2k] = morphed[k];
                                   }
                                 }
+                              }
+                              if (st !== (this.sliderState as unknown as Record<string, unknown>)) {
+                                padParamsOverride = st as SliderState;
                               }
                             }
                           } else {
@@ -4844,12 +6154,19 @@ export class AudioEngine {
                             const presetB = getPadPreset(this.sliderState.padPresetB as string);
                             if (presetA && presetB) {
                               const morphed = morphPadPresets(presetA, presetB, effectiveMorph);
-                              const st = this.sliderState as unknown as Record<string, unknown>;
+                              const st = ((this.padWasmReady && this.padWasmNode)
+                                ? { ...this.sliderState }
+                                : this.sliderState) as unknown as Record<string, unknown>;
                               for (const k of PAD_PRESET_PARAM_KEYS) {
                                 if (k in morphed) {
-                                  savedPadParams[k] = st[k];
+                                  if (st === (this.sliderState as unknown as Record<string, unknown>)) {
+                                    savedPadParams[k] = st[k];
+                                  }
                                   st[k] = morphed[k];
                                 }
+                              }
+                              if (st !== (this.sliderState as unknown as Record<string, unknown>)) {
+                                padParamsOverride = st as SliderState;
                               }
                             }
                           }
@@ -4864,7 +6181,19 @@ export class AudioEngine {
                         const synthAttack = rAttack * ratchetFactor;
                         const synthDecay = rDecay * ratchetFactor;
                         const noteDuration = synthAttack + synthDecay + Math.max(0.1, (synthAttack + synthDecay) * 0.5);
-                        this.triggerSynthVoice(voiceIndex, frequency, velocity, noteDuration);
+                        try {
+                          this.triggerSynthVoice(voiceIndex, frequency, velocity, noteDuration, padParamsOverride);
+                        } finally {
+                          // Restore original pad params even if triggerSynthVoice throws.
+                          // WASM pad triggers receive a copied override state instead, so there is
+                          // no in-place sliderState mutation to undo in that path.
+                          if (!padParamsOverride && Object.keys(savedPadParams).length > 0 && this.sliderState) {
+                            const st = this.sliderState as unknown as Record<string, unknown>;
+                            for (const [k, v] of Object.entries(savedPadParams)) {
+                              st[k] = v;
+                            }
+                          }
+                        }
                         // Notify UI of correct pad's morph position so the slider moves
                         if (effectiveMorph !== null) {
                           if (isPad2) {
@@ -4873,18 +6202,11 @@ export class AudioEngine {
                             this.onPadMorphTrigger?.(effectiveMorph);
                           }
                         }
-                        // Restore original pad params
-                        if (Object.keys(savedPadParams).length > 0 && this.sliderState) {
-                          const st = this.sliderState as unknown as Record<string, unknown>;
-                          for (const [k, v] of Object.entries(savedPadParams)) {
-                            st[k] = v;
-                          }
-                        }
                       }
                       this.synthMorphOverride = null;
                       this.synthRatchetFactor = 1;
                     }, rDelayMs);
-                    this.ratchetTimers.push(ratchetTimerId);
+                    this.ratchetTimers.add(ratchetTimerId);
                   }
                 }
               }
@@ -4903,15 +6225,19 @@ export class AudioEngine {
           }
         }
 
-        // Re-schedule in 50ms
-        this.synthEuclidScheduleTimer = window.setTimeout(scheduleSynthEuclid, 50);
-      } catch (e) {
-        console.error('[Lead Euclid] Scheduler error:', e);
-        this.synthEuclidScheduleTimer = window.setTimeout(scheduleSynthEuclid, 100);
-      }
-    };
+            // Re-schedule in 50ms
+            this.synthEuclidScheduleTimer = window.setTimeout(scheduleSynthEuclid, 50);
+          } catch (e) {
+            console.error('[Lead Euclid] Scheduler error:', e);
+            this.synthEuclidScheduleTimer = window.setTimeout(scheduleSynthEuclid, 100);
+          }
+        };
 
-    scheduleSynthEuclid();
+        scheduleSynthEuclid();
+      } finally {
+        this.synthEuclidStarting = false;
+      }
+    })();
   }
 
   /**
@@ -4923,6 +6249,7 @@ export class AudioEngine {
       this.synthEuclidScheduleTimer = null;
     }
     this.synthMorphOverride = null; // Clear morph sub-lane override so slider control resumes
+    this.synthNoteRangeOverrides = [null, null, null, null]; // Clear noteRange overrides so slider control resumes
     this.synthEuclidCurrentStep = [0, 0, 0, 0];
     this.synthEuclidHitCounts = [0, 0, 0, 0];
     this.synthEuclidStepIndex = [0, 0, 0, 0];
@@ -4932,21 +6259,39 @@ export class AudioEngine {
 
     // Clear tracked ratchet and voice release timers (prevent firing after stop)
     for (const t of this.ratchetTimers) clearTimeout(t);
-    this.ratchetTimers = [];
+    this.ratchetTimers.clear();
     for (const t of this.voiceReleaseTimers) clearTimeout(t);
-    this.voiceReleaseTimers = [];
+    this.voiceReleaseTimers.clear();
+    for (let i = 0; i < this.synthVoiceNoteOffTimers.length; i++) {
+      const timerId = this.synthVoiceNoteOffTimers[i];
+      if (timerId !== null) clearTimeout(timerId);
+      this.synthVoiceNoteOffTimers[i] = null;
+    }
+    // Bump all voice note generations so in-flight WASM noteOff timers are invalidated
+    for (let i = 0; i < 6; i++) this.synthVoiceNoteGen[i]++;
 
     // Release all active synth voices so they don't drone after sequencer stops
     if (this.ctx && this.voices.length > 0) {
       const now = this.ctx.currentTime;
-      const release = this.sliderState?.synthRelease ?? 1.0;
-      for (const voice of this.voices) {
+      const release = Math.max(0.001, this.sliderState?.synthRelease ?? 1.0);
+      for (let i = 0; i < this.voices.length; i++) {
+        const voice = this.voices[i];
         if (voice.active) {
           voice.envelope.gain.cancelScheduledValues(now);
           voice.envelope.gain.setTargetAtTime(0, now, release / 4);
           voice.active = false;
         }
+        // Always send WASM noteOff — Euclidean-owned voices may be active in WASM
+        // even when JS voice.active is false
+        if (this.padWasmReady && this.padWasmNode) {
+          this.padWasmNode.port.postMessage({ type: 'noteOff', voiceIndex: i });
+        }
       }
+    }
+
+    // Also tell WASM lead FM to release all notes
+    if (this.leadFmWasmReady && this.leadFmWasmNode) {
+      this.leadFmWasmNode.port.postMessage({ type: 'allNotesOff' });
     }
 
     // Silence the delay feedback loop immediately so it doesn't keep circulating
@@ -4958,24 +6303,24 @@ export class AudioEngine {
     this.leadDelayMix?.gain.setTargetAtTime(0, now, fadeTime);
   }
 
-  // ═══════════════ Looper Euclidean Scheduler ═══════════════
+  // ═══════════════ Granular Euclidean Scheduler ═══════════════
 
-  private startLooperEuclidScheduler(): void {
-    if (this.looperEuclidScheduleTimer) return; // Already running
+  private startGranularEuclidScheduler(): void {
+    if (this.granularEuclidScheduleTimer) return; // Already running
     if (!this.ctx || !this.sliderState) return;
 
     // Reset step positions
-    this.looperEuclidCurrentStep = [0, 0, 0, 0];
-    this.looperEuclidHitCounts = [0, 0, 0, 0];
-    this.looperEuclidStepIndex = [0, 0, 0, 0];
+    this.granularEuclidCurrentStep = [0, 0, 0, 0];
+    this.granularEuclidHitCounts = [0, 0, 0, 0];
+    this.granularEuclidStepIndex = [0, 0, 0, 0];
 
     const now = this.ctx.currentTime;
-    this.looperEuclidNextStepTime = [now, now, now, now];
+    this.granularEuclidNextStepTime = [now, now, now, now];
 
-    const scheduleLooperEuclid = () => {
+    const scheduleGranularEuclid = () => {
       try {
-        if (!this.ctx || !this.sliderState || !this.sliderState.looperEuclidMasterEnabled) {
-          this.stopLooperEuclidScheduler();
+        if (!this.ctx || !this.sliderState || !this.sliderState.granularEuclidMasterEnabled) {
+          this.stopGranularEuclidScheduler();
           return;
         }
 
@@ -4983,24 +6328,36 @@ export class AudioEngine {
         const lookAhead = 0.1; // 100ms
         const scheduleUntil = now + lookAhead;
 
-        const baseBPM = this.sliderState.looperEuclidBaseBPM ?? 120;
-        const tempo = this.sliderState.looperEuclidTempo ?? 1;
+        // Time-jump recovery: if any lane is >500ms behind (e.g. tab was backgrounded),
+        // snap all lanes forward to now instead of processing a burst of catch-up events
+        const timeJumpThreshold = 0.5;
+        for (let i = 0; i < 4; i++) {
+          if (this.granularEuclidNextStepTime[i] > 0 && now - this.granularEuclidNextStepTime[i] > timeJumpThreshold) {
+            for (let j = 0; j < 4; j++) {
+              this.granularEuclidNextStepTime[j] = now;
+            }
+            break;
+          }
+        }
+
+        const baseBPM = this.sliderState.granularEuclidBaseBPM ?? 120;
+        const tempo = this.sliderState.granularEuclidTempo ?? 1;
         const beatDuration = 60 / (baseBPM * tempo);
 
         const clockDivToSec = (clockDiv: ClockDivision) => clockDivToSeconds(clockDiv, beatDuration);
 
         const rng = this.rng;
         if (!rng) {
-          this.looperEuclidScheduleTimer = window.setTimeout(scheduleLooperEuclid, 50);
+          this.granularEuclidScheduleTimer = window.setTimeout(scheduleGranularEuclid, 50);
           return;
         }
 
         // Read lane params fresh each tick
         const laneParams = [
-          { enabled: this.sliderState.looperEuclid1Enabled, steps: this.sliderState.looperEuclid1Steps, hits: this.sliderState.looperEuclid1Hits, rotation: this.sliderState.looperEuclid1Rotation, level: this.sliderState.looperEuclid1Level, probability: this.sliderState.looperEuclid1Probability ?? 1.0, velMin: this.sliderState.looperEuclid1VelocityMin ?? 0.6, velMax: this.sliderState.looperEuclid1VelocityMax ?? 1.0, preset: this.sliderState.looperEuclid1Preset },
-          { enabled: this.sliderState.looperEuclid2Enabled, steps: this.sliderState.looperEuclid2Steps, hits: this.sliderState.looperEuclid2Hits, rotation: this.sliderState.looperEuclid2Rotation, level: this.sliderState.looperEuclid2Level, probability: this.sliderState.looperEuclid2Probability ?? 1.0, velMin: this.sliderState.looperEuclid2VelocityMin ?? 0.5, velMax: this.sliderState.looperEuclid2VelocityMax ?? 0.9, preset: this.sliderState.looperEuclid2Preset },
-          { enabled: this.sliderState.looperEuclid3Enabled, steps: this.sliderState.looperEuclid3Steps, hits: this.sliderState.looperEuclid3Hits, rotation: this.sliderState.looperEuclid3Rotation, level: this.sliderState.looperEuclid3Level, probability: this.sliderState.looperEuclid3Probability ?? 1.0, velMin: this.sliderState.looperEuclid3VelocityMin ?? 0.7, velMax: this.sliderState.looperEuclid3VelocityMax ?? 1.0, preset: this.sliderState.looperEuclid3Preset },
-          { enabled: this.sliderState.looperEuclid4Enabled, steps: this.sliderState.looperEuclid4Steps, hits: this.sliderState.looperEuclid4Hits, rotation: this.sliderState.looperEuclid4Rotation, level: this.sliderState.looperEuclid4Level, probability: this.sliderState.looperEuclid4Probability ?? 1.0, velMin: this.sliderState.looperEuclid4VelocityMin ?? 0.4, velMax: this.sliderState.looperEuclid4VelocityMax ?? 0.8, preset: this.sliderState.looperEuclid4Preset },
+          { enabled: this.sliderState.granularEuclid1Enabled, steps: this.sliderState.granularEuclid1Steps, hits: this.sliderState.granularEuclid1Hits, rotation: this.sliderState.granularEuclid1Rotation, level: this.sliderState.granularEuclid1Level, probability: this.sliderState.granularEuclid1Probability ?? 1.0, velMin: this.sliderState.granularEuclid1VelocityMin ?? 0.6, velMax: this.sliderState.granularEuclid1VelocityMax ?? 1.0, preset: this.sliderState.granularEuclid1Preset },
+          { enabled: this.sliderState.granularEuclid2Enabled, steps: this.sliderState.granularEuclid2Steps, hits: this.sliderState.granularEuclid2Hits, rotation: this.sliderState.granularEuclid2Rotation, level: this.sliderState.granularEuclid2Level, probability: this.sliderState.granularEuclid2Probability ?? 1.0, velMin: this.sliderState.granularEuclid2VelocityMin ?? 0.5, velMax: this.sliderState.granularEuclid2VelocityMax ?? 0.9, preset: this.sliderState.granularEuclid2Preset },
+          { enabled: this.sliderState.granularEuclid3Enabled, steps: this.sliderState.granularEuclid3Steps, hits: this.sliderState.granularEuclid3Hits, rotation: this.sliderState.granularEuclid3Rotation, level: this.sliderState.granularEuclid3Level, probability: this.sliderState.granularEuclid3Probability ?? 1.0, velMin: this.sliderState.granularEuclid3VelocityMin ?? 0.7, velMax: this.sliderState.granularEuclid3VelocityMax ?? 1.0, preset: this.sliderState.granularEuclid3Preset },
+          { enabled: this.sliderState.granularEuclid4Enabled, steps: this.sliderState.granularEuclid4Steps, hits: this.sliderState.granularEuclid4Hits, rotation: this.sliderState.granularEuclid4Rotation, level: this.sliderState.granularEuclid4Level, probability: this.sliderState.granularEuclid4Probability ?? 1.0, velMin: this.sliderState.granularEuclid4VelocityMin ?? 0.4, velMax: this.sliderState.granularEuclid4VelocityMax ?? 0.8, preset: this.sliderState.granularEuclid4Preset },
         ];
 
         for (let laneIndex = 0; laneIndex < 4; laneIndex++) {
@@ -5019,53 +6376,89 @@ export class AudioEngine {
 
           // Generate pattern
           const basePattern = seqEuclidean(steps, hits, rotation);
-          const toggleMap = this.looperStepOverrides.triggerToggles[laneIndex];
+          const toggleMap = this.granularStepOverrides.triggerToggles[laneIndex];
           const pattern = toggleMap && toggleMap.size > 0
             ? basePattern.map((hit, i) => toggleMap.has(i) ? toggleMap.get(i)! : hit)
             : basePattern;
 
-          // Sub-lane overrides
-          const ov = this.looperStepOverrides;
-          const exprArr = ov.expression[laneIndex];
+          // Sub-lane overrides (gated on per-lane enabled state)
+          const ov = this.granularStepOverrides;
+          const glEnabled = this.granularSubLaneEnabled[laneIndex] ?? {};
+          const exprArr = (glEnabled.expression !== false) ? ov.expression[laneIndex] : null;
           const exprDir = ov.expressionDirection[laneIndex] ?? 'forward';
           const exprSteps = exprArr?.length ?? 0;
-          const probArr = ov.probability[laneIndex];
-          const ratchetArr = ov.ratchet[laneIndex];
+          const probArr = (glEnabled.expression !== false) ? ov.probability[laneIndex] : null;
+          const ratchetArr = (glEnabled.expression !== false) ? ov.ratchet[laneIndex] : null;
           const trigCondArr = ov.trigCondition[laneIndex];
           // Slice sub-lane
-          const sliceArr = ov.slice[laneIndex];
+          const sliceArr = (glEnabled.slice !== false) ? ov.slice[laneIndex] : null;
           const sliceDir = ov.sliceDirection[laneIndex] ?? 'forward';
           const sliceSteps = sliceArr?.length ?? 0;
           // Pitch sub-lane
-          const pitchArr = ov.pitch[laneIndex];
+          const pitchArr = (glEnabled.pitch !== false) ? ov.pitch[laneIndex] : null;
           const pitchDir = ov.pitchDirection[laneIndex] ?? 'forward';
           const pitchSteps = pitchArr?.length ?? 0;
           // Reverse sub-lane
-          const reverseArr = ov.reverse[laneIndex];
+          const reverseArr = (glEnabled.reverse !== false) ? ov.reverse[laneIndex] : null;
           const reverseDir = ov.reverseDirection[laneIndex] ?? 'forward';
           const reverseSteps = reverseArr?.length ?? 0;
 
           // Ensure trig condition counters
-          if (this.looperTrigConditionCounters[laneIndex].length < steps) {
-            this.looperTrigConditionCounters[laneIndex] = new Array(steps).fill(0);
+          if (this.granularTrigConditionCounters[laneIndex].length < steps) {
+            this.granularTrigConditionCounters[laneIndex] = new Array(steps).fill(0);
           }
 
           // Advance while within look-ahead window
-          while (this.looperEuclidNextStepTime[laneIndex] < scheduleUntil) {
-            const stepInPattern = this.looperEuclidStepIndex[laneIndex] % steps;
-            const scheduleTime = this.looperEuclidNextStepTime[laneIndex];
+          while (this.granularEuclidNextStepTime[laneIndex] < scheduleUntil) {
+            const stepInPattern = this.granularEuclidStepIndex[laneIndex] % steps;
+            const scheduleTime = this.granularEuclidNextStepTime[laneIndex];
             const delayMs = Math.max(0, (scheduleTime - now) * 1000);
 
             // Update step position for UI
-            this.looperEuclidCurrentStep[laneIndex] = stepInPattern;
+            this.granularEuclidCurrentStep[laneIndex] = stepInPattern;
+
+            // Track total steps for bar-boundary detection
+            this.granularEuclidTotalStepCounts[laneIndex]++;
+
+            // Evolve at bar boundaries (step 0 after at least one full cycle)
+            if (stepInPattern === 0 && this.granularEuclidTotalStepCounts[laneIndex] > 1) {
+              const bar = Math.floor(this.granularEuclidTotalStepCounts[laneIndex] / steps);
+              const evolveConfig = this.granularEvolveConfigs[laneIndex];
+              if (evolveConfig.enabled) {
+                const granT = getEffectiveTension(
+                  this.sliderState!.tension ?? 0.3,
+                  this.sliderState!.granularTensionMode ?? 'bypass',
+                  this.sliderState!.granularTensionValue ?? 0,
+                );
+                const laneOv = this.extractGranularLaneOverrides(laneIndex);
+                // Filter evolve's enabledSubLanes by the UI sub-lane enabled state
+                const guiEnabled = this.granularSubLaneEnabled[laneIndex] ?? {};
+                const granEnabledSubs = (evolveConfig.enabledSubLanes ?? ['pitch', 'expression', 'slice', 'reverse', 'probability', 'ratchet'])
+                  .filter(sl => guiEnabled[sl] !== false);
+                const result = evolveGranularLane(
+                  laneOv,
+                  { ...evolveConfig, enabledSubLanes: granEnabledSubs },
+                  this.granularEvolveStates[laneIndex],
+                  bar,
+                  rng,
+                  { effectiveTension: Math.max(0, granT), swing: this.granularEuclidSwings[laneIndex] },
+                );
+                if (result.changed) {
+                  this.applyGranularLaneOverrides(laneIndex, result.overrides);
+                  this.granularEuclidSwings[laneIndex] = result.swing;
+                  this.onGranularEvolveTrigger?.(laneIndex);
+                  this.onGranularEvolveOverridesChanged?.(laneIndex, result.overrides);
+                }
+              }
+            }
 
             if (pattern[stepInPattern]) {
-              this.looperEuclidHitCounts[laneIndex]++;
+              this.granularEuclidHitCounts[laneIndex]++;
 
               // Trig condition gate
               const tc: [number, number] = (trigCondArr && trigCondArr[stepInPattern]) ? trigCondArr[stepInPattern] : [1, 1];
-              this.looperTrigConditionCounters[laneIndex][stepInPattern] += 1;
-              const visitCount = this.looperTrigConditionCounters[laneIndex][stepInPattern];
+              this.granularTrigConditionCounters[laneIndex][stepInPattern] += 1;
+              const visitCount = this.granularTrigConditionCounters[laneIndex][stepInPattern];
               const trigCondPassed = tc[1] <= 1 || (((visitCount - 1) % tc[1]) + 1 === tc[0]);
 
               // Per-step probability
@@ -5077,7 +6470,7 @@ export class AudioEngine {
                 if (exprArr && exprSteps > 0) {
                   const exprIdx = seqLaneIndex(
                     { enabled: true, steps: exprSteps, direction: exprDir, _ppForward: true },
-                    this.looperEuclidHitCounts[laneIndex] - 1
+                    this.granularEuclidHitCounts[laneIndex] - 1
                   );
                   velocity = Math.max(0, Math.min(1, exprArr[exprIdx] ?? 1.0)) * lane.level;
                 } else {
@@ -5091,12 +6484,12 @@ export class AudioEngine {
                 if (ratchetArr && ratchetSteps > 0) {
                   const ratchetIdx = seqLaneIndex(
                     { enabled: true, steps: ratchetSteps, direction: exprDir, _ppForward: true },
-                    this.looperEuclidHitCounts[laneIndex] - 1
+                    this.granularEuclidHitCounts[laneIndex] - 1
                   );
                   ratchetRaw = ratchetArr[ratchetIdx];
                 }
                 const ratchet = Math.max(1, Math.round(ratchetRaw ?? 1));
-                const ratchetClockDiv = this.looperEuclidClockDivs[laneIndex] ?? '1/8';
+                const ratchetClockDiv = this.granularEuclidClockDivs[laneIndex] ?? '1/8';
                 const ratchetStepDuration = clockDivToSec(ratchetClockDiv);
                 const ratchetWindow = ratchetStepDuration / ratchet;
 
@@ -5110,7 +6503,7 @@ export class AudioEngine {
                   if (sliceArr && sliceSteps > 0) {
                     const sliceIdx = seqLaneIndex(
                       { enabled: true, steps: sliceSteps, direction: sliceDir, _ppForward: true },
-                      this.looperEuclidHitCounts[laneIndex] - 1
+                      this.granularEuclidHitCounts[laneIndex] - 1
                     );
                     sliceOverride = Math.round(Math.max(0, Math.min(15, sliceArr[sliceIdx] ?? 0)));
                   }
@@ -5120,7 +6513,7 @@ export class AudioEngine {
                   if (pitchArr && pitchSteps > 0) {
                     const pitchIdx = seqLaneIndex(
                       { enabled: true, steps: pitchSteps, direction: pitchDir, _ppForward: true },
-                      this.looperEuclidHitCounts[laneIndex] - 1
+                      this.granularEuclidHitCounts[laneIndex] - 1
                     );
                     pitchOverride = pitchArr[pitchIdx] ?? 0;
                   }
@@ -5130,14 +6523,14 @@ export class AudioEngine {
                   if (reverseArr && reverseSteps > 0) {
                     const reverseIdx = seqLaneIndex(
                       { enabled: true, steps: reverseSteps, direction: reverseDir, _ppForward: true },
-                      this.looperEuclidHitCounts[laneIndex] - 1
+                      this.granularEuclidHitCounts[laneIndex] - 1
                     );
                     reverseOverride = (reverseArr[reverseIdx] ?? 0) >= 0.5;
                   }
 
                   window.setTimeout(() => {
-                    if (this.looperFxNode) {
-                      this.looperFxNode.port.postMessage({
+                    if (this.granularFxNode) {
+                      this.granularFxNode.port.postMessage({
                         type: 'euclidTrigger',
                         voice: voiceIdx,
                         velocity: capturedVelocity,
@@ -5147,46 +6540,47 @@ export class AudioEngine {
                       });
                     }
                     // Fire UI feedback callback for per-trigger overrides
-                    this.onLooperTriggerOverride?.(voiceIdx, { sliceOverride, pitchOverride, reverseOverride });
+                    this.onGranularTriggerOverride?.(voiceIdx, { sliceOverride, pitchOverride, reverseOverride });
                   }, rDelayMs);
                 }
               }
             }
 
             // Fire step position callback
-            this.onLooperStepPositionChange?.([...this.looperEuclidCurrentStep], [...this.looperEuclidHitCounts]);
+            this.onGranularStepPositionChange?.([...this.granularEuclidCurrentStep], [...this.granularEuclidHitCounts]);
 
             // Advance step with per-lane clock division and swing
-            const laneClockDiv = this.looperEuclidClockDivs[laneIndex] ?? '1/8';
+            const laneClockDiv = this.granularEuclidClockDivs[laneIndex] ?? '1/8';
             const laneStepDuration = clockDivToSec(laneClockDiv);
-            const laneSwing = this.looperEuclidSwings[laneIndex] ?? 0;
-            const swingOffset = (this.looperEuclidStepIndex[laneIndex] % 2 === 1) ? laneStepDuration * laneSwing * 0.5 : 0;
-            this.looperEuclidStepIndex[laneIndex]++;
-            this.looperEuclidNextStepTime[laneIndex] += laneStepDuration + swingOffset;
+            const laneSwing = this.granularEuclidSwings[laneIndex] ?? 0;
+            const swingOffset = (this.granularEuclidStepIndex[laneIndex] % 2 === 1) ? laneStepDuration * laneSwing * 0.5 : 0;
+            this.granularEuclidStepIndex[laneIndex]++;
+            this.granularEuclidNextStepTime[laneIndex] += laneStepDuration + swingOffset;
           }
         }
 
-        this.looperEuclidScheduleTimer = window.setTimeout(scheduleLooperEuclid, 50);
+        this.granularEuclidScheduleTimer = window.setTimeout(scheduleGranularEuclid, 50);
       } catch (e) {
-        console.error('[Looper Euclid] Scheduler error:', e);
-        this.looperEuclidScheduleTimer = window.setTimeout(scheduleLooperEuclid, 100);
+        console.error('[Granular Euclid] Scheduler error:', e);
+        this.granularEuclidScheduleTimer = window.setTimeout(scheduleGranularEuclid, 100);
       }
     };
 
-    scheduleLooperEuclid();
+    scheduleGranularEuclid();
   }
 
-  private stopLooperEuclidScheduler(): void {
-    if (this.looperEuclidScheduleTimer) {
-      clearTimeout(this.looperEuclidScheduleTimer);
-      this.looperEuclidScheduleTimer = null;
+  private stopGranularEuclidScheduler(): void {
+    if (this.granularEuclidScheduleTimer) {
+      clearTimeout(this.granularEuclidScheduleTimer);
+      this.granularEuclidScheduleTimer = null;
     }
-    this.looperEuclidCurrentStep = [0, 0, 0, 0];
-    this.looperEuclidHitCounts = [0, 0, 0, 0];
-    this.looperEuclidStepIndex = [0, 0, 0, 0];
-    this.looperEuclidNextStepTime = [0, 0, 0, 0];
-    this.looperTrigConditionCounters = [[], [], [], []];
-    this.onLooperStepPositionChange?.([0, 0, 0, 0], [0, 0, 0, 0]);
+    this.granularEuclidCurrentStep = [0, 0, 0, 0];
+    this.granularEuclidHitCounts = [0, 0, 0, 0];
+    this.granularEuclidStepIndex = [0, 0, 0, 0];
+    this.granularEuclidNextStepTime = [0, 0, 0, 0];
+    this.granularTrigConditionCounters = [[], [], [], []];
+    this.granularEuclidTotalStepCounts = [0, 0, 0, 0];
+    this.onGranularStepPositionChange?.([0, 0, 0, 0], [0, 0, 0, 0]);
   }
 
   getState(): EngineState {
@@ -5198,7 +6592,7 @@ export class AudioEngine {
       currentFilterFreq: this.currentFilterFreq,
       currentLfoValue: this.currentLfoValue,
       currentLfo2Value: this.currentLfo2Value,
-      cofCurrentStep: this.cofConfig.currentStep,
+      cofCurrentStep: this.harmonyState?.cof.currentStep ?? this.cofConfig.currentStep,
     };
   }
 
@@ -5248,11 +6642,11 @@ export class AudioEngine {
   }
 
   /**
-   * Get granular bus output (now routed through Looper FX engine)
-   * Returns the looperFxDirect node carrying processed granular audio
+   * Get granular bus output (now routed through Granular FX engine)
+   * Returns the granularFxDirect node carrying processed granular audio
    */
   getGranularStemNode(): GainNode | null {
-    return this.looperFxDirect;
+    return this.granularFxDirect;
   }
 
   /**

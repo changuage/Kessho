@@ -60,7 +60,7 @@ export function validateRegistry(stateKeys: string[]): {
   const registryKeys = new Set(Object.keys(PARAM_REGISTRY));
   const stateSet = new Set(stateKeys);
   // Known intentionally-dropped keys (not in registry, not a bug)
-  const dropped = new Set(['leadTimbre', 'looperPreset']);
+  const dropped = new Set(['leadTimbre', 'granularPreset']);
 
   return {
     missing: [...registryKeys].filter(k => !stateSet.has(k)),

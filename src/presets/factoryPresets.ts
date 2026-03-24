@@ -7,7 +7,7 @@
 //   Water:  WATER_PRESETS from waterPresets.ts      → 4 L1 engine presets (index-based)
 //   Reverb: REVERB_CHARACTER_PRESETS               → 8 L3 source presets
 //   Lead:   Lead4opFM manifest (lazy-fetched)      → loaded on demand, not stored here
-//   Looper: LOOPER_PRESET_MAP                      → 18 composite presets (stored as L1)
+//   Granular: GRANULAR_PRESET_MAP                      → 18 composite presets (stored as L1)
 //   LFO:    LFO_PRESETS                            → ~20 L1 engine presets
 
 import type { PresetEntry } from './types';
@@ -148,12 +148,12 @@ async function loadLfoFactory(): Promise<PresetEntry[]> {
   return entries;
 }
 
-// ─── Looper presets ─────────────────────────────────────────────────────────
+// ─── Granular presets ─────────────────────────────────────────────────────────
 
-async function loadLooperFactory(): Promise<PresetEntry[]> {
+async function loadGranularFactory(): Promise<PresetEntry[]> {
   const entries: PresetEntry[] = [];
   try {
-    const { getLooperPresetData } = await import('../ui/looper/looperPresets');
+    const { getGranularPresetData } = await import('../ui/granular/granularPresets');
     // Known preset IDs from the file
     const presetIds = [
       'legacy_cloud', 'loop_forest', 'mood_slip', 'mosaic_shimmer',
@@ -163,17 +163,17 @@ async function loadLooperFactory(): Promise<PresetEntry[]> {
       'ice_crystals', 'microcosm',
     ];
     for (const id of presetIds) {
-      const data = getLooperPresetData(id);
+      const data = getGranularPresetData(id);
       if (data) {
         const displayName = id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
         entries.push(makeFactory('engine', displayName, data, {
-          engine: 'looper',
-          tags: ['looper', 'granular'],
+          engine: 'granular',
+          tags: ['granular', 'granular'],
         }));
       }
     }
   } catch (e) {
-    console.warn('Failed to load looper factory presets:', e);
+    console.warn('Failed to load granular factory presets:', e);
   }
   return entries;
 }
@@ -220,17 +220,17 @@ export async function loadFactoryPresets(): Promise<number> {
   const all: PresetEntry[] = [];
 
   // Load all sources in parallel
-  const [pad, drum, reverb, water, lfo, looper, state] = await Promise.all([
+  const [pad, drum, reverb, water, lfo, granular, state] = await Promise.all([
     loadPadFactory(),
     loadDrumFactory(),
     loadReverbFactory(),
     loadWaterFactory(),
     loadLfoFactory(),
-    loadLooperFactory(),
+    loadGranularFactory(),
     loadStateFactory(),
   ]);
 
-  all.push(...pad, ...drum, ...reverb, ...water, ...lfo, ...looper, ...state);
+  all.push(...pad, ...drum, ...reverb, ...water, ...lfo, ...granular, ...state);
 
   // Save all to store
   for (const entry of all) {

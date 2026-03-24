@@ -1,17 +1,14 @@
-import type { SequencerSnapshot, SequencerState } from './drumSeqTypes';
+import type { LaneDirection, SequencerSnapshot, SequencerState } from './drumSeqTypes';
 import { seqEuclidean } from './drumSequencer';
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
-
-function chance(rng: () => number, amount: number): boolean {
-  return rng() < amount;
-}
-
-function drift(value: number, delta: number, rng: () => number): number {
-  return value + (rng() * 2 - 1) * delta;
-}
+import {
+  SUB_LANE_VALUE_CONFIGS,
+  mutateValueDrift,
+  mutateValueScramble,
+  mutateValueWiden,
+  gravityPullValues,
+} from './seqEvolveTypes';
+import type { MutationMode } from './seqEvolveTypes';
+import { clamp, chance, drift, tensionGate, randomOtherDirection, maskByWriteOffset, mutateRatchetHomeBiased } from './seqEvolveCore';
 
 
 function randomActiveStep(s: SequencerState): number | null {
@@ -21,6 +18,55 @@ function randomActiveStep(s: SequencerState): number | null {
   }
   if (active.length === 0) return null;
   return active[Math.floor(s.rng() * active.length)] ?? null;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Sub-lane accessor helpers (type-safe access to the differently-named values arrays)
+// ═══════════════════════════════════════════════════════════════════════
+export type SubLaneName = 'expression' | 'morph' | 'distance' | 'pitch' | 'slice' | 'reverse';
+
+function getSubLaneValues(s: SequencerState, lane: SubLaneName): number[] {
+  if (lane === 'expression') return s.expression.velocities;
+  if (lane === 'pitch') return s.pitch.offsets;
+  return s[lane].values;
+}
+
+function setSubLaneValues(s: SequencerState, lane: SubLaneName, values: number[]): void {
+  if (lane === 'expression') { s.expression.velocities = values; return; }
+  if (lane === 'pitch') { s.pitch.offsets = values; return; }
+  s[lane].values = values;
+}
+
+function getSnapshotValues(snap: SequencerSnapshot, lane: SubLaneName): number[] {
+  if (lane === 'expression') return snap.expression.velocities;
+  if (lane === 'pitch') return snap.pitch.offsets;
+  return snap[lane].values;
+}
+
+const ALL_SUB_LANES: SubLaneName[] = ['expression', 'morph', 'distance', 'pitch', 'slice', 'reverse'];
+
+/** Type-safe sub-lane steps update (avoids TS union narrowing issue with indexed access) */
+function setSubLaneSteps(s: SequencerState, lane: SubLaneName, steps: number): void {
+  switch (lane) {
+    case 'expression': s.expression = { ...s.expression, steps }; break;
+    case 'morph':      s.morph = { ...s.morph, steps }; break;
+    case 'distance':   s.distance = { ...s.distance, steps }; break;
+    case 'pitch':      s.pitch = { ...s.pitch, steps }; break;
+    case 'slice':      s.slice = { ...s.slice, steps }; break;
+    case 'reverse':    s.reverse = { ...s.reverse, steps }; break;
+  }
+}
+
+/** Type-safe sub-lane direction update */
+function setSubLaneDirection(s: SequencerState, lane: SubLaneName, direction: LaneDirection): void {
+  switch (lane) {
+    case 'expression': s.expression = { ...s.expression, direction }; break;
+    case 'morph':      s.morph = { ...s.morph, direction }; break;
+    case 'distance':   s.distance = { ...s.distance, direction }; break;
+    case 'pitch':      s.pitch = { ...s.pitch, direction }; break;
+    case 'slice':      s.slice = { ...s.slice, direction }; break;
+    case 'reverse':    s.reverse = { ...s.reverse, direction }; break;
+  }
 }
 
 export function captureHomeSnapshot(s: SequencerState): SequencerSnapshot {
@@ -37,27 +83,54 @@ export function captureHomeSnapshot(s: SequencerState): SequencerSnapshot {
       offsets: [...s.pitch.offsets],
       root: s.pitch.root,
       scale: s.pitch.scale,
+      steps: s.pitch.steps,
+      direction: s.pitch.direction,
     },
     expression: {
       velocities: [...s.expression.velocities],
+      steps: s.expression.steps,
+      direction: s.expression.direction,
     },
     morph: {
       values: [...s.morph.values],
+      steps: s.morph.steps,
+      direction: s.morph.direction,
     },
     distance: {
       values: [...s.distance.values],
+      steps: s.distance.steps,
+      direction: s.distance.direction,
     },
     slice: {
       values: [...s.slice.values],
+      steps: s.slice.steps,
+      direction: s.slice.direction,
     },
     reverse: {
       values: [...s.reverse.values],
+      steps: s.reverse.steps,
+      direction: s.reverse.direction,
     },
     swing: s.swing,
   };
 }
 
-export function evolveSequencer(s: SequencerState, currentBar: number): SequencerState {
+export interface EvolveContext {
+  /** Which sub-lanes participate (defaults to ALL_SUB_LANES for drums) */
+  enabledSubLanes?: SubLaneName[];
+  /** Per-engine effective tension (0-1), used for method probability bias */
+  effectiveTension?: number;
+  /** Current harmony scale intervals (e.g. [0,2,4,5,7,9,11] for Major).
+   *  When present AND pitch scaleQuantize is enabled, pitchWalk uses
+   *  scale-degree steps instead of chromatic ±1 semitones. */
+  scaleIntervals?: readonly number[];
+}
+
+export function evolveSequencer(
+  s: SequencerState,
+  currentBar: number,
+  ctx: EvolveContext = {},
+): SequencerState {
   if (!s.evolve.enabled) return s;
   if (currentBar - s.evolve.lastEvolveBar < s.evolve.everyBars) return s;
 
@@ -74,54 +147,59 @@ export function evolveSequencer(s: SequencerState, currentBar: number): Sequence
     expression: { ...s.expression, velocities: [...s.expression.velocities] },
     morph: { ...s.morph, values: [...s.morph.values] },
     distance: { ...s.distance, values: [...s.distance.values] },
+    slice: { ...s.slice, values: [...s.slice.values] },
+    reverse: { ...s.reverse, values: [...s.reverse.values] },
     evolve: { ...s.evolve, lastEvolveBar: currentBar },
   };
 
-  const intensity = clamp(next.evolve.intensity, 0, 1);
+  const intensity = clamp(next.evolve.evolution, 0, 1);
   const methods = next.evolve.methods;
   const home = next.evolve.home;
+  const mode: MutationMode = next.evolve.mutationMode ?? 'biased';
+
+  const activeLanes: SubLaneName[] = ctx.enabledSubLanes ?? ALL_SUB_LANES;
+  const tension = ctx.effectiveTension;
+
+  /** Local shorthand: delegates to shared tensionGate with captured rng/tension */
+  const tGate = (methodName: string, baseProbability: number): boolean =>
+    tensionGate(next.rng, methodName, baseProbability, tension);
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Trigger-lane mutations (bespoke — structurally different from sub-lanes)
+  // ═══════════════════════════════════════════════════════════════════════
 
   // 1. Rotate Drift — shift rotation ±1, chance scales with intensity
-  if (methods.rotateDrift && chance(next.rng, 0.4 + 0.4 * intensity)) {
+  if (methods.rotateDrift && tGate('rotateDrift', 0.4 + 0.4 * intensity)) {
     const dir = next.rng() < 0.5 ? 1 : -1;
     next.trigger.rotation = ((next.trigger.rotation + dir) % next.trigger.steps + next.trigger.steps) % next.trigger.steps;
   }
 
-  // 2. Velocity Breath — drift scaled by intensity, clamp [0.2, 1.0]
-  if (methods.velocityBreath && chance(next.rng, 1)) {
-    next.expression.velocities = next.expression.velocities.map(
-      (v) => clamp(drift(v, 0.08 * intensity, next.rng), 0.2, 1.0)
-    );
-  }
-
-  // 3. Swing Drift — drift scaled by intensity
-  if (methods.swingDrift && chance(next.rng, 1)) {
+  // 2. Swing Drift — drift scaled by intensity
+  if (methods.swingDrift && tGate('swingDrift', 1)) {
     next.swing = clamp(drift(next.swing, 0.03 * intensity, next.rng), 0, 0.75);
   }
 
-  // 4. Probability Drift — only active steps, clamp [0.3, 1.0]
-  if (methods.probDrift && chance(next.rng, 1)) {
+  // 3. Probability Drift — only active steps, clamp [0.2, 1.0]
+  if (methods.probDrift && tGate('probDrift', 1)) {
     next.trigger.probability = next.trigger.probability.map((p, i) => {
-      if (!next.trigger.pattern[i]) return p; // only active steps
-      return clamp(drift(p, 0.08 * intensity, next.rng), 0.3, 1.0);
+      if (!next.trigger.pattern[i]) return p;
+      return clamp(drift(p, 0.15 * intensity, next.rng), 0.2, 1.0);
     });
   }
 
-  // 5. Morph Drift — drift scaled by intensity
-  if (methods.morphDrift && chance(next.rng, 1)) {
-    next.morph.values = next.morph.values.map(
-      (m) => clamp(drift(m, 0.05 * intensity, next.rng), 0, 1)
-    );
-  }
-
-  // 6. Ghost Notes — skip mono voices (sub/kick), chance = 0.3 * intensity
-  if (methods.ghostNotes && chance(next.rng, 0.3 * intensity)) {
-    // Check if all active sources are mono (pool max ≤ 1)
-    const monoVoices = new Set(['sub', 'kick']);
-    const activeVoices = Object.entries(next.sources)
-      .filter(([, v]) => v)
-      .map(([k]) => k);
-    const isMonoOnly = activeVoices.length > 0 && activeVoices.every(v => monoVoices.has(v));
+  // 4. Ghost Notes — cross-lane coordination (trigger + expression + distance)
+  //    Only fires when 'expression' and 'distance' are in activeLanes (drum context).
+  //    Sources check is drum-specific, skipped when sources is absent.
+  if (methods.ghostNotes && tGate('ghostNotes', 0.55 * intensity)
+      && activeLanes.includes('expression') && activeLanes.includes('distance')) {
+    const hasSources = next.sources && typeof next.sources === 'object';
+    const isMonoOnly = hasSources
+      ? (() => {
+          const monoVoices = new Set(['sub', 'kick']);
+          const activeVoices = Object.entries(next.sources).filter(([, v]) => v).map(([k]) => k);
+          return activeVoices.length > 0 && activeVoices.every(v => monoVoices.has(v));
+        })()
+      : false;  // no sources → not mono-only → allow ghost notes
     if (!isMonoOnly) {
       const inactiveSteps: number[] = [];
       for (let i = 0; i < next.trigger.steps; i++) {
@@ -130,7 +208,7 @@ export function evolveSequencer(s: SequencerState, currentBar: number): Sequence
         }
       }
       if (inactiveSteps.length > 0) {
-        const count = Math.min(2, Math.ceil(inactiveSteps.length * 0.15));
+        const count = Math.min(3, Math.ceil(inactiveSteps.length * 0.25));
         for (let c = 0; c < count && inactiveSteps.length > 0; c++) {
           const pick = Math.floor(next.rng() * inactiveSteps.length);
           const idx = inactiveSteps.splice(pick, 1)[0]!;
@@ -144,17 +222,19 @@ export function evolveSequencer(s: SequencerState, currentBar: number): Sequence
     }
   }
 
-  // 7. Ratchet Spray — toggle 1↔2, chance = 0.2 * intensity
-  if (methods.ratchetSpray && chance(next.rng, 0.2 * intensity)) {
+  // 5. Ratchet Spray — home-biased mutation, chance = 0.4 * intensity
+  if (methods.ratchetSpray && tGate('ratchetSpray', 0.4 * intensity)) {
     const idx = randomActiveStep(next);
     if (idx !== null) {
-      next.trigger.ratchet[idx] = next.trigger.ratchet[idx] >= 2 ? 1 : 2;
+      const homeVal = home?.trigger.ratchet[idx] ?? 1;
+      next.trigger.ratchet[idx] = mutateRatchetHomeBiased(next.trigger.ratchet[idx], homeVal, intensity, next.rng);
     }
   }
 
-  // 8. Hit Drift — ±1 hits, chance = 0.15 * intensity
-  if (methods.hitDrift && chance(next.rng, 0.15 * intensity)) {
-    const dir = next.rng() < 0.5 ? -1 : 1;
+  // 6. Hit Drift — ±1 hits (or ±2 at very high intensity), chance = 0.45 * intensity
+  if (methods.hitDrift && tGate('hitDrift', 0.45 * intensity)) {
+    const step = intensity > 0.85 && next.rng() < 0.4 ? 2 : 1;
+    const dir = next.rng() < 0.5 ? -step : step;
     const newHits = clamp(next.trigger.hits + dir, 1, next.trigger.steps - 1);
     if (newHits !== next.trigger.hits) {
       next.trigger.hits = newHits;
@@ -162,24 +242,119 @@ export function evolveSequencer(s: SequencerState, currentBar: number): Sequence
     }
   }
 
-  // 9. Pitch Walk — ±1 scale degree, clamp ±3 from home, chance = 0.25 * intensity
-  if (methods.pitchWalk && chance(next.rng, 0.25 * intensity)) {
+  // 7. Pitch Walk — ±1 or ±2 steps, clamped ±5 from home (bespoke: home-relative constraint)
+  //    Bypasses tension gate so pitch always evolves at full probability.
+  //    When scaleQuantize is enabled and scaleIntervals are available,
+  //    walk by scale degrees (interval jumps) instead of chromatic ±1 semitones.
+  if (methods.pitchWalk && chance(next.rng, 0.55 * intensity)) {
+    // Walk multiple steps at high intensity
+    const walkStepCount = intensity > 0.8 ? (next.rng() < 0.5 ? 2 : 1) : 1;
+    for (let w = 0; w < walkStepCount; w++) {
     const idx = Math.floor(next.rng() * next.pitch.offsets.length);
-    const dir = next.rng() < 0.5 ? -1 : 1;
     const orig = home ? (home.pitch.offsets[idx] ?? 0) : 0;
-    const newVal = next.pitch.offsets[idx] + dir;
-    if (Math.abs(newVal - orig) <= 3) {
-      next.pitch.offsets[idx] = newVal;
+    const si = ctx.scaleIntervals;
+    const useScaleDegrees = next.pitch.scaleQuantize && si && si.length > 0;
+
+    if (useScaleDegrees) {
+      // Walk by one scale degree up or down
+      const cur = next.pitch.offsets[idx];
+      const octaves = Math.floor(cur / 12);
+      const rem = ((cur % 12) + 12) % 12;
+      // Find nearest scale degree index
+      let bestDeg = 0;
+      let bestDist = 99;
+      for (let d = 0; d < si.length; d++) {
+        const dist = Math.min(Math.abs(si[d] - rem), 12 - Math.abs(si[d] - rem));
+        if (dist < bestDist) { bestDist = dist; bestDeg = d; }
+      }
+      const dir = next.rng() < 0.5 ? -1 : 1;
+      let newDeg = bestDeg + dir;
+      let newOct = octaves;
+      if (newDeg < 0) { newDeg = si.length - 1; newOct--; }
+      else if (newDeg >= si.length) { newDeg = 0; newOct++; }
+      const newVal = newOct * 12 + si[newDeg];
+      if (Math.abs(newVal - orig) <= 14) {
+        next.pitch.offsets[idx] = newVal;
+      }
+    } else {
+      const dir = next.rng() < 0.5 ? -1 : 1;
+      const newVal = next.pitch.offsets[idx] + dir;
+      if (Math.abs(newVal - orig) <= 5) {
+        next.pitch.offsets[idx] = newVal;
+      }
+    }
     }
   }
 
-  // Regenerate pattern from (possibly changed) hits/rotation
+  // ═══════════════════════════════════════════════════════════════════════
+  // Generic sub-lane value mutations (unified across all sub-lanes)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  // Value Drift — nudge values within their natural range (Zone A)
+  if (methods.valueDrift && tGate('valueDrift', 1)) {
+    for (const lane of activeLanes) {
+      const config = SUB_LANE_VALUE_CONFIGS[lane];
+      const vals = getSubLaneValues(next, lane);
+      setSubLaneValues(next, lane, mutateValueDrift(vals, config, intensity, next.rng, mode));
+    }
+  }
+
+  // Value Scramble — reorder step values (Zone A/B, ~0.4+)
+  if (methods.valueScramble && intensity > 0.4 && tGate('valueScramble', 0.3 * intensity)) {
+    const swaps = Math.max(2, Math.floor(intensity * 6));
+    for (const lane of activeLanes) {
+      // Only scramble each lane with 50% chance to keep changes sparse
+      if (next.rng() < 0.5) continue;
+      const vals = getSubLaneValues(next, lane);
+      setSubLaneValues(next, lane, mutateValueScramble(vals, swaps, next.rng));
+    }
+  }
+
+  // Value Widen — expand range/contrast (Zone B, ~0.6+)
+  if (methods.valueWiden && intensity > 0.6 && tGate('valueWiden', 0.15 * intensity)) {
+    for (const lane of activeLanes) {
+      if (next.rng() < 0.5) continue;
+      const config = SUB_LANE_VALUE_CONFIGS[lane];
+      const vals = getSubLaneValues(next, lane);
+      setSubLaneValues(next, lane, mutateValueWiden(vals, config, intensity, next.rng));
+    }
+  }
+
+  // Sub-Lane Length Drift — ±1 steps on a random sub-lane for polyrhythm (Zone B, ~0.5+)
+  if (methods.subLaneLengthDrift && intensity > 0.5 && chance(next.rng, 0.25 * intensity)) {
+    const lane = activeLanes[Math.floor(next.rng() * activeLanes.length)];
+    const stepDir = next.rng() < 0.5 ? -1 : 1;
+    setSubLaneSteps(next, lane, clamp(next[lane].steps + stepDir, 1, 16));
+  }
+
+  // Sub-Lane Direction Flip — change direction on a random sub-lane (Zone B, ~0.8+)
+  if (methods.subLaneDirectionFlip && intensity > 0.8 && tGate('subLaneDirectionFlip', 0.08 * intensity)) {
+    const lane = activeLanes[Math.floor(next.rng() * activeLanes.length)];
+    setSubLaneDirection(next, lane, randomOtherDirection(next[lane].direction, next.rng));
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Regenerate Euclidean pattern from (possibly changed) hits/rotation
+  // ═══════════════════════════════════════════════════════════════════════
   next.trigger.pattern = seqEuclidean(next.trigger.steps, next.trigger.hits, next.trigger.rotation);
 
-  // Home gravity: 15% * (1.2 - intensity) chance to revert one param toward home
+  // Write-offset masking: restrict sub-lane mutations to a single step per cycle
+  const wo = next.evolve.writeOffset;
+  if (wo !== 0) {
+    for (const lane of activeLanes) {
+      const origVals = getSubLaneValues(s, lane);
+      const nextVals = getSubLaneValues(next, lane);
+      setSubLaneValues(next, lane, maskByWriteOffset(origVals, nextVals, wo, currentBar));
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Home gravity — pull mutated values back toward home snapshot
+  // ═══════════════════════════════════════════════════════════════════════
   if (home && chance(next.rng, 0.15 * (1.2 - intensity))) {
-    const gravityTargets = ['rotation', 'swing', 'probability', 'velocities'];
-    const target = gravityTargets[Math.floor(next.rng() * gravityTargets.length)];
+    // Trigger-lane gravity targets
+    const triggerTargets = ['rotation', 'swing', 'probability'];
+    const target = triggerTargets[Math.floor(next.rng() * triggerTargets.length)];
     switch (target) {
       case 'rotation':
         if (next.trigger.rotation !== home.trigger.rotation) {
@@ -199,12 +374,28 @@ export function evolveSequencer(s: SequencerState, currentBar: number): Sequence
           next.trigger.probability[i] += (hp - next.trigger.probability[i]) * 0.2;
         }
         break;
-      case 'velocities':
-        for (let i = 0; i < next.expression.velocities.length; i++) {
-          const hv = home.expression.velocities[i] ?? 0.5;
-          next.expression.velocities[i] += (hv - next.expression.velocities[i]) * 0.2;
-        }
-        break;
+    }
+  }
+
+  // Sub-lane value gravity — pull all sub-lane values toward home
+  if (home && chance(next.rng, 0.15 * (1.2 - intensity))) {
+    const lane = activeLanes[Math.floor(next.rng() * activeLanes.length)];
+    const config = SUB_LANE_VALUE_CONFIGS[lane];
+    const currentVals = getSubLaneValues(next, lane);
+    const homeVals = getSnapshotValues(home, lane);
+    setSubLaneValues(next, lane, gravityPullValues(currentVals, homeVals, config, 0.2));
+  }
+
+  // Sub-lane steps/direction gravity — pull toward home
+  if (home && chance(next.rng, 0.15 * (1.2 - intensity))) {
+    const lane = activeLanes[Math.floor(next.rng() * activeLanes.length)];
+    const homeLane = home[lane];
+    if (next[lane].steps !== homeLane.steps) {
+      const diff = next[lane].steps - homeLane.steps;
+      setSubLaneSteps(next, lane, next[lane].steps + (diff > 0 ? -1 : 1));
+    }
+    if (next[lane].direction !== homeLane.direction) {
+      setSubLaneDirection(next, lane, homeLane.direction);
     }
   }
 
@@ -227,11 +418,43 @@ export function resetSequencerToHome(s: SequencerState): SequencerState {
       pattern: [...home.trigger.pattern],
       overrides: new Set<number>(),
     },
-    pitch: { ...s.pitch, offsets: [...home.pitch.offsets], root: home.pitch.root, scale: home.pitch.scale },
-    expression: { ...s.expression, velocities: [...home.expression.velocities] },
-    morph: { ...s.morph, values: [...home.morph.values] },
-    distance: { ...s.distance, values: [...home.distance.values] },
-    slice: { ...s.slice, values: [...home.slice.values] },
-    reverse: { ...s.reverse, values: [...home.reverse.values] },
+    pitch: {
+      ...s.pitch,
+      offsets: [...home.pitch.offsets],
+      root: home.pitch.root,
+      scale: home.pitch.scale,
+      steps: home.pitch.steps,
+      direction: home.pitch.direction,
+    },
+    expression: {
+      ...s.expression,
+      velocities: [...home.expression.velocities],
+      steps: home.expression.steps,
+      direction: home.expression.direction,
+    },
+    morph: {
+      ...s.morph,
+      values: [...home.morph.values],
+      steps: home.morph.steps,
+      direction: home.morph.direction,
+    },
+    distance: {
+      ...s.distance,
+      values: [...home.distance.values],
+      steps: home.distance.steps,
+      direction: home.distance.direction,
+    },
+    slice: {
+      ...s.slice,
+      values: [...home.slice.values],
+      steps: home.slice.steps,
+      direction: home.slice.direction,
+    },
+    reverse: {
+      ...s.reverse,
+      values: [...home.reverse.values],
+      steps: home.reverse.steps,
+      direction: home.reverse.direction,
+    },
   };
 }

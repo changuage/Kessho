@@ -1,4 +1,4 @@
-/**
+﻿/**
  * UI State Management
  * 
  * Slider state model with:
@@ -19,6 +19,30 @@ import { SCALE_FAMILIES } from '../audio/scales';
 export type SliderMode = 'single' | 'walk' | 'sampleHold';
 
 /**
+ * Serialized evolve config for preset save/load.
+ * Mirrors EvolveConfig from useEuclideanSequencer but defined here to avoid circular deps.
+ */
+export interface SerializedEvolveConfig {
+  enabled: boolean;
+  everyBars: number;
+  evolution: number;
+  writeOffset: number | 'auto';
+  mutationMode: 'strict' | 'biased';
+  methods: Record<string, boolean>;
+  enabledSubLanes?: string[];
+}
+
+/**
+ * Serialized sub-lane state per sub-lane kind
+ */
+export interface SerializedSubLaneState {
+  enabled: boolean;
+  steps: number;
+  direction: 'forward' | 'reverse' | 'pingpong';
+  scaleQuantize?: boolean;
+}
+
+/**
  * Saved preset structure
  */
 export interface SavedPreset {
@@ -27,6 +51,12 @@ export interface SavedPreset {
   state: SliderState;
   dualRanges?: Record<string, { min: number; max: number }>;  // Range values for walk/sampleHold sliders
   sliderModes?: Record<string, SliderMode>;  // Mode per parameter key
+  drumEvolveConfigs?: SerializedEvolveConfig[];
+  synthEvolveConfigs?: SerializedEvolveConfig[];
+  granularEvolveConfigs?: SerializedEvolveConfig[];
+  drumSubLaneStates?: Record<string, SerializedSubLaneState>[];
+  synthSubLaneStates?: Record<string, SerializedSubLaneState>[];
+  granularSubLaneStates?: Record<string, SerializedSubLaneState>[];
 }
 
 export interface SliderState {
@@ -36,7 +66,6 @@ export interface SliderState {
   pad2Level: number;           // 0..1 step 0.01 - pad 2 dry level
   granularLevel: number;      // 0..1 step 0.01 - granular output level
   synthReverbSend: number;    // 0..1 step 0.01 - how much synth goes to reverb
-  granularReverbSend: number; // 0..1 step 0.01 - how much granular goes to reverb
   leadReverbSend: number;     // 0..1 step 0.01 - how much lead goes to reverb
   leadDelayReverbSend: number; // 0..1 step 0.01 - how much lead delay goes to reverb
   reverbLevel: number;        // 0..1 step 0.01 - reverb output level
@@ -53,13 +82,35 @@ export interface SliderState {
   cofDriftRange: number;      // 1..6 - max steps away from home key before returning
   cofCurrentStep: number;     // -6..6 - current position relative to home key on circle
 
+  // Chord Progression Sequencer
+  chordProgressionEnabled: boolean;      // false = random weighted selection
+  chordProgressionPattern: number[];     // chord degrees (0-6), e.g. [0,3,4,0] = I,IV,V,I
+  chordProgressionSteps: number;         // 2..8 pattern length
+  chordProgressionHits: number;          // Euclidean hits (which steps trigger chord change)
+  chordProgressionPhraseMultiplier: 1 | 2 | 4 | 8;  // phrases per step
+
+  // Per-engine tension overrides (6 engines × mode + value)
+  padTensionMode: 'follow' | 'locked' | 'bypass';
+  padTensionValue: number;         // follow: offset ±0.5 (default 0); locked: absolute 0..1; bypass: tension disabled
+  leadTensionMode: 'follow' | 'locked' | 'bypass';
+  leadTensionValue: number;
+  synthEuclidTensionMode: 'follow' | 'locked' | 'bypass';
+  synthEuclidTensionValue: number;
+  granularTensionMode: 'follow' | 'locked' | 'bypass';
+  granularTensionValue: number;
+  reverbTensionMode: 'follow' | 'locked' | 'bypass';
+  reverbTensionValue: number;
+  drumTensionMode: 'follow' | 'locked' | 'bypass';
+  drumTensionValue: number;
+
   // Harmony/Pitch
   scaleMode: 'auto' | 'manual';
   manualScale: string;        // Scale family name
   tension: number;            // 0..1 step 0.01
   chordRate: number;          // 8..64 seconds step 1
+  phraseLength: number;       // 4..128 seconds step 1 - harmony phrase length
   voicingSpread: number;      // 0..1 step 0.01
-  waveSpread: number;         // 0..4 seconds - stagger time between voice entries
+  waveSpread: number;         // 0..1 fraction of chordRate - stagger time between voice entries
   detune: number;             // 0..25 cents step 1
   // Synth voice ADSR
   synthAttack: number;        // 0.01..8 seconds
@@ -78,6 +129,8 @@ export interface SliderState {
   filterQ: number;            // 0.1..12 step 0.1 (filter bandwidth/angle)
   warmth: number;             // 0..1 step 0.01 (low shelf boost)
   presence: number;           // 0..1 step 0.01 (high-mid presence)
+  padFoldAmount: number;      // 0..1 wave fold amount
+  padFoldMode: number;        // 0=Buchla, 1=Sine, 2=Serge
 
   // ─── Pad Synth Extended (Phase 1 + 2) ───
   // Preset system
@@ -156,6 +209,8 @@ export interface SliderState {
   pad2Hardness: number;
   pad2Warmth: number;
   pad2Presence: number;
+  pad2FoldAmount: number;
+  pad2FoldMode: number;
   pad2OscMix: number;
   // Filter A
   pad2FilterType: 'lowpass' | 'bandpass' | 'highpass' | 'notch';
@@ -228,12 +283,6 @@ export interface SliderState {
   reverbShimmerPitch: number; // -24..24 semitones step 1 - shimmer pitch shift
   reverbSlowModRate: number;  // 0.01..0.2 Hz step 0.001 - slow character drift speed
   reverbSlowModDepth: number; // 0..1 step 0.01 - how much character drifts
-  reverbFreeze: boolean;      // infinite sustain mode (freeze reverb tail)
-  // v5 freeze enhancement params
-  reverbFreezeInputBleed: number;    // 0..1 how much new input leaks during freeze
-  reverbFreezeModAtten: number;      // 0..1 modulation attenuation during freeze
-  reverbFreezeVelvetDensity: number; // 0..0.05 re-seeding impulse density
-  reverbFreezeMode: number;          // 0=tank 1=state-capture 2=resonator
   reverbReverse: number;      // 0..1 step 0.01 - reverse tail blend
   reverbReverseLength: number; // 0.5..16.0 seconds step 0.1 - reverse buffer length
 
@@ -255,19 +304,27 @@ export interface SliderState {
   reverbAirAbsorption: number;   // 0..1 step 0.01 - spectral tilt in feedback
   reverbSaturationMode: 'clean' | 'tape' | 'tube'; // saturation character
 
+  // v5 parameters
+  reverbTransientSmooth: number;  // 0..1 step 0.01 - pre-tank transient conditioning
+  reverbErLpFreq: number;          // 200-12000 Hz - LP cutoff for early reflections
+
+  // ─── Reverb Harmony Coupling ───
+  reverbScaleShimmer: boolean;     // snap shimmer pitch to nearest scale interval
+  reverbChordWash: boolean;        // boost wet on chord changes
+  reverbResolutionBloom: boolean;  // bloom shimmer/decay on tension resolution
+
   // Spectral Freeze (STFT-based, separate WASM module)
   spectralFreezeEnabled: boolean;        // master enable
   spectralFreezeActive: boolean;         // freeze engaged
   spectralFreezeSlushy: boolean;         // false=solid, true=slushy
   spectralFreezeSpeed: number;           // 0..1 slushy refresh rate
   spectralFreezeMix: number;             // 0..1 wet/dry
-  spectralFreezeDecay: number;            // 0..1 spectral decay rate
+  spectralFreezeDecay: number;            // 0..1 sustain (0=fast melt, 1=infinite hold)
   spectralFreezePhaseJitter: number;      // 0..1 phase randomization
   spectralFreezeRouting: 'pre' | 'post'; // pre-reverb or post-reverb
-  spectralFreezeReverbCrossfade: number;  // 0..1 live signal into reverb (pre mode)
+  spectralFreezeReverbCrossfade: number;  // 0..1 freeze isolation (1=frozen only, 0=full live bleed)
 
-  // Granular
-  granularEnabled: boolean;    // on/off toggle for granular processing
+  // Granular (legacy — params kept for migration compatibility)
   maxGrains: number;           // 0..128 step 1 - maximum concurrent grains
   grainProbability: number;   // 0..1 step 0.01 - chance each grain triggers
   grainSize: number;          // 5..800 ms step 1 - grain size (dual-mode: S&H per grain)
@@ -297,6 +354,10 @@ export interface SliderState {
   leadDelayTime: number;         // 0..1000 ms step 10 (range in dualSliderRanges)
   leadDelayFeedback: number;     // 0..0.8 step 0.01 (range in dualSliderRanges)
   leadDelayMix: number;          // 0..1 step 0.01 (range in dualSliderRanges)
+  leadDelayEnabled: boolean;     // whether lead delay is active
+  leadDelaySpread: number;       // 1..2 L/R time spread multiplier
+  leadDelayFilter: number;       // 200..8000 Hz lowpass cutoff
+  leadDelaySend: number;         // 0..1 delay send level
   lead1Density: number;       // 0.1..2 notes per phrase (sparseness)
   lead1Octave: number;        // -1, 0, 1, 2 octave offset
   lead1OctaveRange: number;   // 1..4 - how many octaves to span for random notes
@@ -311,6 +372,7 @@ export interface SliderState {
   lead1MorphMode: 'linear' | 'pingpong' | 'random';
   lead1AlgorithmMode: 'snap' | 'presetA'; // snap=switch at 50%, presetA=always use A's
   lead1Level: number;         // 0..1 level for lead 1
+  lead1ReverbSend: number;    // 0..1 step 0.01 - how much lead 1 goes to reverb
 
   // Lead 2 — 4op FM preset morph (C ↔ D)
   lead2Enabled: boolean;      // on/off (default off)
@@ -322,6 +384,7 @@ export interface SliderState {
   lead2MorphMode: 'linear' | 'pingpong' | 'random';
   lead2AlgorithmMode: 'snap' | 'presetA'; // snap=switch at 50%, presetA=always use C's
   lead2Level: number;         // 0..1 level for lead 2
+  lead2ReverbSend: number;    // 0..1 step 0.01 - how much lead 2 goes to reverb
   lead2UseCustomAdsr: boolean; // when true, use lead2 ADSR sliders instead of preset ADSR
   lead2Attack: number;         // 0.001..2 seconds
   lead2Decay: number;          // 0.01..4 seconds
@@ -334,6 +397,7 @@ export interface SliderState {
   leadGlide: number;            // 0..1 - portamento/glide speed (range in dualSliderRanges)
   // Euclidean sequencer for lead - 4 independent lanes for polyrhythmic patterns
   synthEuclideanMasterEnabled: boolean;  // master on/off (off = random mode)
+  synthEuclidBaseBPM: number;            // Base BPM for synth Euclidean (40-240)
   synthEuclideanTempo: number;           // 0.25..12 - tempo multiplier for all lanes
   // Lane 1
   synthEuclid1Enabled: boolean;
@@ -504,7 +568,7 @@ export interface SliderState {
   drumMembraneExcBright: number;           // 0..1.5 exciter brightness
   drumMembraneExcDur: number;              // 0.5..50 ms
   drumMembraneSize: number;                // 40..600 Hz base size/fundamental
-  drumMembraneTension: number;             // 0..1
+  drumMembraneStiffness: number;             // 0..1
   drumMembraneDamping: number;             // 0..1
   drumMembraneMaterial: 'skin' | 'metal' | 'wood' | 'glass' | 'plastic';
   drumMembraneNonlin: number;              // 0..1 nonlinearity/distortion
@@ -522,6 +586,7 @@ export interface SliderState {
   drumMembraneLevel: number;               // 0..1
   drumMembraneVariation: number;           // 0..1
   drumMembraneDistance: number;            // 0..1
+  drumMembraneScaleBlend: number;          // 0..1 membrane partial alignment to scale
   
   // Per-trigger per-parameter update option
   drumMorphSliderAnimate: boolean;         // Update individual parameter sliders on morph trigger
@@ -705,7 +770,7 @@ export interface SliderState {
   waterDropSize: number;        // 0..1
   waterHardness: number;        // 0..1
   waterGlassThickness: number;  // 0..1
-  waterSpace: number;           // 0..1 reverb send
+  waterReverbSend: number;      // 0..1 reverb send
   waterLevel: number;           // 0..1 output volume
   // Water layer levels (0 = disabled, >0 = enabled at that level)
   waterLayerHardDrops: number;  // 0..1
@@ -738,192 +803,197 @@ export interface SliderState {
   insects2Motion: number;       // 0..1
   insects2Level: number;        // 0..1
 
-  // ─── Looper FX (Unified Granular Engine) ───
-  looperEnabled: boolean;           // Master on/off
-  looperDryWet: number;             // 0..1 output wet level
-  looperFreeze: boolean;            // Stop write head
-  looperFeedback: number;           // 0..0.85 global feedback
-  looperFeedbackLPF: number;        // 200..12000 Hz feedback darkening
-  looperBufferSeconds: number;      // 4 or 16
-  looperPreset: string;             // preset id
-  looperReverbSend: number;         // 0..1 send to reverb
-  looperPad1Send: number;           // 0..1 pad 1 send to looper
-  looperPad2Send: number;           // 0..1 pad 2 send to looper
-  looperLead1Send: number;          // 0..1 lead 1 send to looper
-  looperLead2Send: number;          // 0..1 lead 2 send to looper
-  looperDrumSend: number;           // 0..1 drum engines send to looper
-  looperWavesSend: number;          // 0..1 waves send to looper
+  // ─── Granular FX (Unified Granular Engine) ───
+  granularEnabled: boolean;           // Master on/off
+  granularDryWet: number;             // 0..1 output wet level
+  granularFreeze: boolean;            // Stop write head
+  granularFeedback: number;           // 0..0.85 global feedback
+  granularFeedbackLPF: number;        // 200..12000 Hz feedback darkening
+  granularBufferSeconds: number;      // 4 or 16
+  granularPreset: string;             // preset id
+  granularReverbSend: number;         // 0..1 send to reverb
+  granularReverbLPF: number;          // 200..12000 Hz pre-reverb lowpass (darkens reverb trail)
+  granularOutputLPF: number;          // 200..12000 Hz output lowpass (tames overall brightness)
+  granularPad1Send: number;           // 0..1 pad 1 send to granular
+  granularPad2Send: number;           // 0..1 pad 2 send to granular
+  granularLead1Send: number;          // 0..1 lead 1 send to granular
+  granularLead2Send: number;          // 0..1 lead 2 send to granular
+  granularDrumSend: number;           // 0..1 drum engines send to granular
+  granularWavesSend: number;          // 0..1 waves send to granular
 
   // Voice 1
-  looperV1Enabled: boolean;
-  looperV1Mode: 'clean' | 'granular' | 'legacy';
-  looperV1Slice: number;            // 0..15
-  looperV1Speed: number;            // 0..4 (0 = LFO scan mode)
-  looperV1Reverse: boolean;
-  looperV1Pitch: number;            // -24..+24 semitones
-  looperV1Attack: number;           // 0.001..0.5 seconds
-  looperV1Decay: number;            // 0.01..4 seconds
-  looperV1Blur: number;             // 0..1 allpass diffusion
-  looperV1GrainOct: number;         // 0..1 shimmer probability
-  looperV1Spray: number;            // 0..1 position randomization
-  looperV1Density: number;          // 1..64 grains/sec
-  looperV1GrainSize: number;        // 10..500 ms
-  looperV1Pan: number;              // -1..+1
-  looperV1Gain: number;             // 0..1
-  looperV1PosLFORate: number;       // 0..1
-  looperV1PosLFODepth: number;      // 0..1
-  looperV1PanLFORate: number;       // 0..1
-  looperV1StereoSpread: number;     // 0..1
-  looperV1ReverseLFORate: number;   // 0..1 periodic direction flip
-  looperV1WriteFollow: number;      // 0..1 blend slice vs write head
-  looperV1RecordLFORate: number;    // 0..1 oscillating write-follow modulation
+  granularV1Enabled: boolean;
+  granularV1Mode: 'clean' | 'granular' | 'legacy';
+  granularV1Slice: number;            // 0..15
+  granularV1Speed: number;            // 0..4 (0 = LFO scan mode)
+  granularV1Reverse: boolean;
+  granularV1Pitch: number;            // -24..+24 semitones
+  granularV1Attack: number;           // 0.001..0.5 seconds
+  granularV1Decay: number;            // 0.01..4 seconds
+  granularV1Blur: number;             // 0..1 allpass diffusion
+  granularV1GrainOct: number;         // 0..1 shimmer probability
+  granularV1Spray: number;            // 0..1 position randomization
+  granularV1Density: number;          // 1..64 grains/sec
+  granularV1GrainSize: number;        // 10..500 ms
+  granularV1Pan: number;              // -1..+1
+  granularV1Gain: number;             // 0..1
+  granularV1PosLFORate: number;       // 0..1
+  granularV1PosLFODepth: number;      // 0..1
+  granularV1PanLFORate: number;       // 0..1
+  granularV1StereoSpread: number;     // 0..1
+  granularV1ReverseLFORate: number;   // 0..1 periodic direction flip
+  granularV1WriteFollow: number;      // 0..1 blend slice vs write head
+  granularV1RecordLFORate: number;    // 0..1 oscillating write-follow modulation
 
   // Voice 2
-  looperV2Enabled: boolean;
-  looperV2Mode: 'clean' | 'granular' | 'legacy';
-  looperV2Slice: number;
-  looperV2Speed: number;
-  looperV2Reverse: boolean;
-  looperV2Pitch: number;
-  looperV2Attack: number;
-  looperV2Decay: number;
-  looperV2Blur: number;
-  looperV2GrainOct: number;
-  looperV2Spray: number;
-  looperV2Density: number;
-  looperV2GrainSize: number;
-  looperV2Pan: number;
-  looperV2Gain: number;
-  looperV2PosLFORate: number;
-  looperV2PosLFODepth: number;
-  looperV2PanLFORate: number;
-  looperV2StereoSpread: number;
-  looperV2ReverseLFORate: number;
-  looperV2WriteFollow: number;
-  looperV2RecordLFORate: number;
+  granularV2Enabled: boolean;
+  granularV2Mode: 'clean' | 'granular' | 'legacy';
+  granularV2Slice: number;
+  granularV2Speed: number;
+  granularV2Reverse: boolean;
+  granularV2Pitch: number;
+  granularV2Attack: number;
+  granularV2Decay: number;
+  granularV2Blur: number;
+  granularV2GrainOct: number;
+  granularV2Spray: number;
+  granularV2Density: number;
+  granularV2GrainSize: number;
+  granularV2Pan: number;
+  granularV2Gain: number;
+  granularV2PosLFORate: number;
+  granularV2PosLFODepth: number;
+  granularV2PanLFORate: number;
+  granularV2StereoSpread: number;
+  granularV2ReverseLFORate: number;
+  granularV2WriteFollow: number;
+  granularV2RecordLFORate: number;
 
   // Voice 3
-  looperV3Enabled: boolean;
-  looperV3Mode: 'clean' | 'granular' | 'legacy';
-  looperV3Slice: number;
-  looperV3Speed: number;
-  looperV3Reverse: boolean;
-  looperV3Pitch: number;
-  looperV3Attack: number;
-  looperV3Decay: number;
-  looperV3Blur: number;
-  looperV3GrainOct: number;
-  looperV3Spray: number;
-  looperV3Density: number;
-  looperV3GrainSize: number;
-  looperV3Pan: number;
-  looperV3Gain: number;
-  looperV3PosLFORate: number;
-  looperV3PosLFODepth: number;
-  looperV3PanLFORate: number;
-  looperV3StereoSpread: number;
-  looperV3ReverseLFORate: number;
-  looperV3WriteFollow: number;
-  looperV3RecordLFORate: number;
+  granularV3Enabled: boolean;
+  granularV3Mode: 'clean' | 'granular' | 'legacy';
+  granularV3Slice: number;
+  granularV3Speed: number;
+  granularV3Reverse: boolean;
+  granularV3Pitch: number;
+  granularV3Attack: number;
+  granularV3Decay: number;
+  granularV3Blur: number;
+  granularV3GrainOct: number;
+  granularV3Spray: number;
+  granularV3Density: number;
+  granularV3GrainSize: number;
+  granularV3Pan: number;
+  granularV3Gain: number;
+  granularV3PosLFORate: number;
+  granularV3PosLFODepth: number;
+  granularV3PanLFORate: number;
+  granularV3StereoSpread: number;
+  granularV3ReverseLFORate: number;
+  granularV3WriteFollow: number;
+  granularV3RecordLFORate: number;
 
   // Voice 4
-  looperV4Enabled: boolean;
-  looperV4Mode: 'clean' | 'granular' | 'legacy';
-  looperV4Slice: number;
-  looperV4Speed: number;
-  looperV4Reverse: boolean;
-  looperV4Pitch: number;
-  looperV4Attack: number;
-  looperV4Decay: number;
-  looperV4Blur: number;
-  looperV4GrainOct: number;
-  looperV4Spray: number;
-  looperV4Density: number;
-  looperV4GrainSize: number;
-  looperV4Pan: number;
-  looperV4Gain: number;
-  looperV4PosLFORate: number;
-  looperV4PosLFODepth: number;
-  looperV4PanLFORate: number;
-  looperV4StereoSpread: number;
-  looperV4ReverseLFORate: number;
-  looperV4WriteFollow: number;
-  looperV4RecordLFORate: number;
+  granularV4Enabled: boolean;
+  granularV4Mode: 'clean' | 'granular' | 'legacy';
+  granularV4Slice: number;
+  granularV4Speed: number;
+  granularV4Reverse: boolean;
+  granularV4Pitch: number;
+  granularV4Attack: number;
+  granularV4Decay: number;
+  granularV4Blur: number;
+  granularV4GrainOct: number;
+  granularV4Spray: number;
+  granularV4Density: number;
+  granularV4GrainSize: number;
+  granularV4Pan: number;
+  granularV4Gain: number;
+  granularV4PosLFORate: number;
+  granularV4PosLFODepth: number;
+  granularV4PanLFORate: number;
+  granularV4StereoSpread: number;
+  granularV4ReverseLFORate: number;
+  granularV4WriteFollow: number;
+  granularV4RecordLFORate: number;
 
   // Legacy granular params (for legacy mode compatibility)
-  looperLegacyJitter: number;       // 0..30 ms
-  looperLegacyProbability: number;   // 0..1
-  looperLegacyPitchMode: 'random' | 'harmonic';
-  looperLegacyPitchSpread: number;   // 0..12
-  looperLegacyMaxGrains: number;     // 0..128
-  looperLegacyFeedback: number;      // 0..0.35
+  granularLegacyJitter: number;       // 0..30 ms
+  granularLegacyProbability: number;   // 0..1
+  granularLegacyPitchMode: 'random' | 'harmonic';
+  granularLegacyPitchSpread: number;   // 0..12
+  granularLegacyMaxGrains: number;     // 0..128
+  granularLegacyFeedback: number;      // 0..0.35
 
-  // ─── Looper Multi-Tap Delay ───
-  looperDelayEnabled: boolean;        // Delay on/off
-  looperDelayActivity: number;        // 0..1 macro: tap count + syncopation
-  looperDelayRepeats: number;         // 0..0.85 feedback cycles
-  looperDelayTime: string;            // note division base (1/4, 1/8, etc.)
-  looperDelayFilter: number;          // 0..1 maps to 200-8000Hz tone LPF
-  looperDelayVibrato: number;         // 0..1 per-tap delay time modulation
-  looperDelayMix: number;             // 0..1 delay wet level to master
-  looperDelayReverbSend: number;      // 0..1 delay output to reverb
+  // ─── Granular Harmony ───
+  granularChordBias: number;            // 0..1 — blend grain pitch toward chord tones
 
-  // ─── Looper Macros ───
-  looperMacroTexture: number;         // 0..1 blur/spray/grainSize/grainOct/decay
-  looperMacroComplexity: number;      // 0..1 LFO rates/density/delayActivity
-  looperMacroDarkness: number;        // 0..1 speed/pitch/filter/repeats
-  looperMacroChaos: number;           // 0..1 reverseLFO/spray/grainOct/vibrato
+  // ─── Granular Multi-Tap Delay ───
+  granularDelayEnabled: boolean;        // Delay on/off
+  granularDelayActivity: number;        // 0..1 macro: tap count + syncopation
+  granularDelayRepeats: number;         // 0..0.85 feedback cycles
+  granularDelayTime: string;            // note division base (1/4, 1/8, etc.)
+  granularDelayFilter: number;          // 0..1 maps to 200-8000Hz tone LPF
+  granularDelayVibrato: number;         // 0..1 per-tap delay time modulation
+  granularDelayMix: number;             // 0..1 delay wet level to master
+  granularDelayReverbSend: number;      // 0..1 delay output to reverb
 
-  // ─── Looper Euclidean Sequencer (4 lanes → 4 voices) ───
-  looperEuclidMasterEnabled: boolean;      // Master on/off
-  looperEuclidBaseBPM: number;             // Base BPM (40-240)
-  looperEuclidTempo: number;               // 0.25..4 tempo multiplier
-  looperEuclidSwing: number;               // 0..100% swing
-  looperEuclidDivision: number;            // 4, 8, 16, 32
+  // ─── Granular Macros ───
+  granularMacroTexture: number;         // 0..1 blur/spray/grainSize/grainOct/decay
+  granularMacroComplexity: number;      // 0..1 LFO rates/density/delayActivity
+  granularMacroDarkness: number;        // 0..1 speed/pitch/filter/repeats
+  granularMacroChaos: number;           // 0..1 reverseLFO/spray/grainOct/vibrato
 
-  // Looper Euclidean Lane 1 → Voice 1
-  looperEuclid1Enabled: boolean;
-  looperEuclid1Preset: string;
-  looperEuclid1Steps: number;
-  looperEuclid1Hits: number;
-  looperEuclid1Rotation: number;
-  looperEuclid1Probability: number;
-  looperEuclid1VelocityMin: number;
-  looperEuclid1VelocityMax: number;
-  looperEuclid1Level: number;
+  // ─── Granular Euclidean Sequencer (4 lanes → 4 voices) ───
+  granularEuclidMasterEnabled: boolean;      // Master on/off
+  granularEuclidBaseBPM: number;             // Base BPM (40-240)
+  granularEuclidTempo: number;               // 0.25..4 tempo multiplier
+  granularEuclidSwing: number;               // 0..100% swing
+  granularEuclidDivision: number;            // 4, 8, 16, 32
 
-  // Looper Euclidean Lane 2 → Voice 2
-  looperEuclid2Enabled: boolean;
-  looperEuclid2Preset: string;
-  looperEuclid2Steps: number;
-  looperEuclid2Hits: number;
-  looperEuclid2Rotation: number;
-  looperEuclid2Probability: number;
-  looperEuclid2VelocityMin: number;
-  looperEuclid2VelocityMax: number;
-  looperEuclid2Level: number;
+  // Granular Euclidean Lane 1 → Voice 1
+  granularEuclid1Enabled: boolean;
+  granularEuclid1Preset: string;
+  granularEuclid1Steps: number;
+  granularEuclid1Hits: number;
+  granularEuclid1Rotation: number;
+  granularEuclid1Probability: number;
+  granularEuclid1VelocityMin: number;
+  granularEuclid1VelocityMax: number;
+  granularEuclid1Level: number;
 
-  // Looper Euclidean Lane 3 → Voice 3
-  looperEuclid3Enabled: boolean;
-  looperEuclid3Preset: string;
-  looperEuclid3Steps: number;
-  looperEuclid3Hits: number;
-  looperEuclid3Rotation: number;
-  looperEuclid3Probability: number;
-  looperEuclid3VelocityMin: number;
-  looperEuclid3VelocityMax: number;
-  looperEuclid3Level: number;
+  // Granular Euclidean Lane 2 → Voice 2
+  granularEuclid2Enabled: boolean;
+  granularEuclid2Preset: string;
+  granularEuclid2Steps: number;
+  granularEuclid2Hits: number;
+  granularEuclid2Rotation: number;
+  granularEuclid2Probability: number;
+  granularEuclid2VelocityMin: number;
+  granularEuclid2VelocityMax: number;
+  granularEuclid2Level: number;
 
-  // Looper Euclidean Lane 4 → Voice 4
-  looperEuclid4Enabled: boolean;
-  looperEuclid4Preset: string;
-  looperEuclid4Steps: number;
-  looperEuclid4Hits: number;
-  looperEuclid4Rotation: number;
-  looperEuclid4Probability: number;
-  looperEuclid4VelocityMin: number;
-  looperEuclid4VelocityMax: number;
-  looperEuclid4Level: number;
+  // Granular Euclidean Lane 3 → Voice 3
+  granularEuclid3Enabled: boolean;
+  granularEuclid3Preset: string;
+  granularEuclid3Steps: number;
+  granularEuclid3Hits: number;
+  granularEuclid3Rotation: number;
+  granularEuclid3Probability: number;
+  granularEuclid3VelocityMin: number;
+  granularEuclid3VelocityMax: number;
+  granularEuclid3Level: number;
+
+  // Granular Euclidean Lane 4 → Voice 4
+  granularEuclid4Enabled: boolean;
+  granularEuclid4Preset: string;
+  granularEuclid4Steps: number;
+  granularEuclid4Hits: number;
+  granularEuclid4Rotation: number;
+  granularEuclid4Probability: number;
+  granularEuclid4VelocityMin: number;
+  granularEuclid4VelocityMax: number;
+  granularEuclid4Level: number;
 
   // Random Walk (for dual sliders)
   randomWalkSpeed: number;    // 0.1..5 - speed of random walk between dual slider values
@@ -936,7 +1006,6 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'pad2Level',
   'granularLevel',
   'synthReverbSend',
-  'granularReverbSend',
   'leadReverbSend',
   'leadDelayReverbSend',
   'reverbLevel',
@@ -961,6 +1030,8 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'filterQ',
   'warmth',
   'presence',
+  'padFoldAmount',
+  'padFoldMode',
   // Pad Synth Extended
   'padPresetA',
   'padPresetB',
@@ -1014,6 +1085,8 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'pad2Hardness',
   'pad2Warmth',
   'pad2Presence',
+  'pad2FoldAmount',
+  'pad2FoldMode',
   'pad2OscMix',
   'pad2FilterType',
   'pad2FilterCutoffMin',
@@ -1076,12 +1149,6 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'reverbSlowModDepth',
   'reverbReverse',
   'reverbReverseLength',
-  // v5 freeze params
-  'reverbFreeze',
-  'reverbFreezeInputBleed',
-  'reverbFreezeModAtten',
-  'reverbFreezeVelvetDensity',
-  'reverbFreezeMode',
   // v2 params
   'reverbChorusRate',
   'reverbChorusDepth',
@@ -1098,6 +1165,9 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'reverbEarlyReflections',
   'reverbAirAbsorption',
   'reverbSaturationMode',
+  'reverbScaleShimmer',
+  'reverbChordWash',
+  'reverbResolutionBloom',
   'reverbEnabled',
   // Spectral Freeze
   'spectralFreezeEnabled',
@@ -1109,7 +1179,6 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'spectralFreezePhaseJitter',
   'spectralFreezeRouting',
   'spectralFreezeReverbCrossfade',
-  'granularEnabled',
   'maxGrains',
   'grainProbability',
   'grainSize',
@@ -1134,6 +1203,10 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'leadDelayTime',
   'leadDelayFeedback',
   'leadDelayMix',
+  'leadDelayEnabled',
+  'leadDelaySpread',
+  'leadDelayFilter',
+  'leadDelaySend',
   'lead1Density',
   'lead1Octave',
   'lead1OctaveRange',
@@ -1147,6 +1220,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'lead1MorphMode',
   'lead1AlgorithmMode',
   'lead1Level',
+  'lead1ReverbSend',
   // Lead 2 morph
   'lead2Enabled',
   'lead2PresetC',
@@ -1157,6 +1231,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'lead2MorphMode',
   'lead2AlgorithmMode',
   'lead2Level',
+  'lead2ReverbSend',
   'lead2UseCustomAdsr',
   'lead2Attack',
   'lead2Decay',
@@ -1166,6 +1241,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'leadVibratoRate',
   'leadGlide',
   'synthEuclideanMasterEnabled',
+  'synthEuclidBaseBPM',
   'synthEuclideanTempo',
   'synthEuclid1Enabled',
   'synthEuclid1Preset',
@@ -1314,7 +1390,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'drumMembraneExcBright',
   'drumMembraneExcDur',
   'drumMembraneSize',
-  'drumMembraneTension',
+  'drumMembraneStiffness',
   'drumMembraneDamping',
   'drumMembraneMaterial',
   'drumMembraneNonlin',
@@ -1475,7 +1551,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'waterPreset', 'waterMorphA', 'waterMorphB', 'waterMorph',
   'waterIntensity', 'waterRate', 'waterDistance', 'waterBaseFreq',
   'waterDropSize', 'waterHardness', 'waterGlassThickness',
-  'waterSpace', 'waterLevel',
+  'waterReverbSend', 'waterLevel',
   'waterLayerHardDrops', 'waterLayerWaterDrops', 'waterLayerTurbulence',
   'waterLayerBubbling', 'waterLayerRoar', 'waterLayerRivulets',
   'insectsEnabled', 'insectsEngine',
@@ -1485,53 +1561,56 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'insects2Density', 'insects2Temperature', 'insects2Distance', 'insects2Proximity',
   'insects2Antiphony', 'insects2ClickRate', 'insects2Motion', 'insects2Level',
   'randomWalkSpeed',
-  // Looper FX
-  'looperEnabled',
-  'looperDryWet',
-  'looperFreeze',
-  'looperFeedback',
-  'looperFeedbackLPF',
-  'looperBufferSeconds',
-  'looperPreset',
-  'looperReverbSend',
-  'looperPad1Send', 'looperPad2Send', 'looperLead1Send', 'looperLead2Send', 'looperDrumSend', 'looperWavesSend',
-  'looperV1Enabled', 'looperV1Mode', 'looperV1Slice', 'looperV1Speed', 'looperV1Reverse',
-  'looperV1Pitch', 'looperV1Attack', 'looperV1Decay', 'looperV1Blur', 'looperV1GrainOct',
-  'looperV1Spray', 'looperV1Density', 'looperV1GrainSize', 'looperV1Pan', 'looperV1Gain',
-  'looperV1PosLFORate', 'looperV1PosLFODepth', 'looperV1PanLFORate', 'looperV1StereoSpread',
-  'looperV1ReverseLFORate', 'looperV1WriteFollow', 'looperV1RecordLFORate',
-  'looperV2Enabled', 'looperV2Mode', 'looperV2Slice', 'looperV2Speed', 'looperV2Reverse',
-  'looperV2Pitch', 'looperV2Attack', 'looperV2Decay', 'looperV2Blur', 'looperV2GrainOct',
-  'looperV2Spray', 'looperV2Density', 'looperV2GrainSize', 'looperV2Pan', 'looperV2Gain',
-  'looperV2PosLFORate', 'looperV2PosLFODepth', 'looperV2PanLFORate', 'looperV2StereoSpread',
-  'looperV2ReverseLFORate', 'looperV2WriteFollow', 'looperV2RecordLFORate',
-  'looperV3Enabled', 'looperV3Mode', 'looperV3Slice', 'looperV3Speed', 'looperV3Reverse',
-  'looperV3Pitch', 'looperV3Attack', 'looperV3Decay', 'looperV3Blur', 'looperV3GrainOct',
-  'looperV3Spray', 'looperV3Density', 'looperV3GrainSize', 'looperV3Pan', 'looperV3Gain',
-  'looperV3PosLFORate', 'looperV3PosLFODepth', 'looperV3PanLFORate', 'looperV3StereoSpread',
-  'looperV3ReverseLFORate', 'looperV3WriteFollow', 'looperV3RecordLFORate',
-  'looperV4Enabled', 'looperV4Mode', 'looperV4Slice', 'looperV4Speed', 'looperV4Reverse',
-  'looperV4Pitch', 'looperV4Attack', 'looperV4Decay', 'looperV4Blur', 'looperV4GrainOct',
-  'looperV4Spray', 'looperV4Density', 'looperV4GrainSize', 'looperV4Pan', 'looperV4Gain',
-  'looperV4PosLFORate', 'looperV4PosLFODepth', 'looperV4PanLFORate', 'looperV4StereoSpread',
-  'looperV4ReverseLFORate', 'looperV4WriteFollow', 'looperV4RecordLFORate',
-  'looperLegacyJitter', 'looperLegacyProbability', 'looperLegacyPitchMode',
-  'looperLegacyPitchSpread', 'looperLegacyMaxGrains', 'looperLegacyFeedback',
+  // Granular FX
+  'granularEnabled',
+  'granularDryWet',
+  'granularFreeze',
+  'granularFeedback',
+  'granularFeedbackLPF',
+  'granularBufferSeconds',
+  'granularPreset',
+  'granularReverbSend',
+  'granularReverbLPF',
+  'granularOutputLPF',
+  'granularPad1Send', 'granularPad2Send', 'granularLead1Send', 'granularLead2Send', 'granularDrumSend', 'granularWavesSend',
+  'granularV1Enabled', 'granularV1Mode', 'granularV1Slice', 'granularV1Speed', 'granularV1Reverse',
+  'granularV1Pitch', 'granularV1Attack', 'granularV1Decay', 'granularV1Blur', 'granularV1GrainOct',
+  'granularV1Spray', 'granularV1Density', 'granularV1GrainSize', 'granularV1Pan', 'granularV1Gain',
+  'granularV1PosLFORate', 'granularV1PosLFODepth', 'granularV1PanLFORate', 'granularV1StereoSpread',
+  'granularV1ReverseLFORate', 'granularV1WriteFollow', 'granularV1RecordLFORate',
+  'granularV2Enabled', 'granularV2Mode', 'granularV2Slice', 'granularV2Speed', 'granularV2Reverse',
+  'granularV2Pitch', 'granularV2Attack', 'granularV2Decay', 'granularV2Blur', 'granularV2GrainOct',
+  'granularV2Spray', 'granularV2Density', 'granularV2GrainSize', 'granularV2Pan', 'granularV2Gain',
+  'granularV2PosLFORate', 'granularV2PosLFODepth', 'granularV2PanLFORate', 'granularV2StereoSpread',
+  'granularV2ReverseLFORate', 'granularV2WriteFollow', 'granularV2RecordLFORate',
+  'granularV3Enabled', 'granularV3Mode', 'granularV3Slice', 'granularV3Speed', 'granularV3Reverse',
+  'granularV3Pitch', 'granularV3Attack', 'granularV3Decay', 'granularV3Blur', 'granularV3GrainOct',
+  'granularV3Spray', 'granularV3Density', 'granularV3GrainSize', 'granularV3Pan', 'granularV3Gain',
+  'granularV3PosLFORate', 'granularV3PosLFODepth', 'granularV3PanLFORate', 'granularV3StereoSpread',
+  'granularV3ReverseLFORate', 'granularV3WriteFollow', 'granularV3RecordLFORate',
+  'granularV4Enabled', 'granularV4Mode', 'granularV4Slice', 'granularV4Speed', 'granularV4Reverse',
+  'granularV4Pitch', 'granularV4Attack', 'granularV4Decay', 'granularV4Blur', 'granularV4GrainOct',
+  'granularV4Spray', 'granularV4Density', 'granularV4GrainSize', 'granularV4Pan', 'granularV4Gain',
+  'granularV4PosLFORate', 'granularV4PosLFODepth', 'granularV4PanLFORate', 'granularV4StereoSpread',
+  'granularV4ReverseLFORate', 'granularV4WriteFollow', 'granularV4RecordLFORate',
+  'granularLegacyJitter', 'granularLegacyProbability', 'granularLegacyPitchMode',
+  'granularLegacyPitchSpread', 'granularLegacyMaxGrains', 'granularLegacyFeedback',
+  'granularChordBias',
   // Delay
-  'looperDelayEnabled', 'looperDelayActivity', 'looperDelayRepeats', 'looperDelayTime',
-  'looperDelayFilter', 'looperDelayVibrato', 'looperDelayMix', 'looperDelayReverbSend',
+  'granularDelayEnabled', 'granularDelayActivity', 'granularDelayRepeats', 'granularDelayTime',
+  'granularDelayFilter', 'granularDelayVibrato', 'granularDelayMix', 'granularDelayReverbSend',
   // Macros
-  'looperMacroTexture', 'looperMacroComplexity', 'looperMacroDarkness', 'looperMacroChaos',
-  // Looper Euclidean
-  'looperEuclidMasterEnabled', 'looperEuclidBaseBPM', 'looperEuclidTempo', 'looperEuclidSwing', 'looperEuclidDivision',
-  'looperEuclid1Enabled', 'looperEuclid1Preset', 'looperEuclid1Steps', 'looperEuclid1Hits', 'looperEuclid1Rotation',
-  'looperEuclid1Probability', 'looperEuclid1VelocityMin', 'looperEuclid1VelocityMax', 'looperEuclid1Level',
-  'looperEuclid2Enabled', 'looperEuclid2Preset', 'looperEuclid2Steps', 'looperEuclid2Hits', 'looperEuclid2Rotation',
-  'looperEuclid2Probability', 'looperEuclid2VelocityMin', 'looperEuclid2VelocityMax', 'looperEuclid2Level',
-  'looperEuclid3Enabled', 'looperEuclid3Preset', 'looperEuclid3Steps', 'looperEuclid3Hits', 'looperEuclid3Rotation',
-  'looperEuclid3Probability', 'looperEuclid3VelocityMin', 'looperEuclid3VelocityMax', 'looperEuclid3Level',
-  'looperEuclid4Enabled', 'looperEuclid4Preset', 'looperEuclid4Steps', 'looperEuclid4Hits', 'looperEuclid4Rotation',
-  'looperEuclid4Probability', 'looperEuclid4VelocityMin', 'looperEuclid4VelocityMax', 'looperEuclid4Level',
+  'granularMacroTexture', 'granularMacroComplexity', 'granularMacroDarkness', 'granularMacroChaos',
+  // Granular Euclidean
+  'granularEuclidMasterEnabled', 'granularEuclidBaseBPM', 'granularEuclidTempo', 'granularEuclidSwing', 'granularEuclidDivision',
+  'granularEuclid1Enabled', 'granularEuclid1Preset', 'granularEuclid1Steps', 'granularEuclid1Hits', 'granularEuclid1Rotation',
+  'granularEuclid1Probability', 'granularEuclid1VelocityMin', 'granularEuclid1VelocityMax', 'granularEuclid1Level',
+  'granularEuclid2Enabled', 'granularEuclid2Preset', 'granularEuclid2Steps', 'granularEuclid2Hits', 'granularEuclid2Rotation',
+  'granularEuclid2Probability', 'granularEuclid2VelocityMin', 'granularEuclid2VelocityMax', 'granularEuclid2Level',
+  'granularEuclid3Enabled', 'granularEuclid3Preset', 'granularEuclid3Steps', 'granularEuclid3Hits', 'granularEuclid3Rotation',
+  'granularEuclid3Probability', 'granularEuclid3VelocityMin', 'granularEuclid3VelocityMax', 'granularEuclid3Level',
+  'granularEuclid4Enabled', 'granularEuclid4Preset', 'granularEuclid4Steps', 'granularEuclid4Hits', 'granularEuclid4Rotation',
+  'granularEuclid4Probability', 'granularEuclid4VelocityMin', 'granularEuclid4VelocityMax', 'granularEuclid4Level',
 ];
 
 /**
@@ -1542,12 +1621,11 @@ export const DEFAULT_STATE: SliderState = {
   masterVolume: 0.7,
   synthLevel: 0.6,
   pad2Level: 0.6,
-  granularLevel: 0.4,
+  granularLevel: 0.27,
   synthReverbSend: 0.7,
-  granularReverbSend: 0.8,
   leadReverbSend: 0.5,
   leadDelayReverbSend: 0.4,
-  reverbLevel: 1.0,
+  reverbLevel: 0.5,
 
   // Global
   seedWindow: 'hour',
@@ -1561,13 +1639,35 @@ export const DEFAULT_STATE: SliderState = {
   cofDriftRange: 3,       // Max 3 steps away from home
   cofCurrentStep: 0,      // Start at home key
 
+  // Chord Progression Sequencer
+  chordProgressionEnabled: false,
+  chordProgressionPattern: [0, 3, 4, 0],  // I, IV, V, I
+  chordProgressionSteps: 4,
+  chordProgressionHits: 4,
+  chordProgressionPhraseMultiplier: 1 as const,
+
+  // Per-engine tension overrides
+  padTensionMode: 'follow' as const,
+  padTensionValue: 0,
+  leadTensionMode: 'follow' as const,
+  leadTensionValue: 0,
+  synthEuclidTensionMode: 'follow' as const,
+  synthEuclidTensionValue: 0,
+  granularTensionMode: 'bypass' as const,
+  granularTensionValue: 0,
+  reverbTensionMode: 'bypass' as const,
+  reverbTensionValue: 0,
+  drumTensionMode: 'bypass' as const,
+  drumTensionValue: 0,
+
   // Harmony/Pitch
   scaleMode: 'auto',
   manualScale: 'Major (Ionian)',
   tension: 0.3,
   chordRate: 32,
+  phraseLength: 16,
   voicingSpread: 0.5,
-  waveSpread: 4,
+  waveSpread: 0.125,
   detune: 8,
   synthAttack: 6.0,
   synthDecay: 1.0,
@@ -1585,6 +1685,8 @@ export const DEFAULT_STATE: SliderState = {
   filterQ: 1.0,
   warmth: 0.4,
   presence: 0.3,
+  padFoldAmount: 0,
+  padFoldMode: 0,
 
   // Pad Synth Extended
   padPresetA: 'init',
@@ -1640,6 +1742,8 @@ export const DEFAULT_STATE: SliderState = {
   pad2Hardness: 0.3,
   pad2Warmth: 0.4,
   pad2Presence: 0.3,
+  pad2FoldAmount: 0,
+  pad2FoldMode: 0,
   pad2OscMix: 0.5,
   pad2FilterType: 'lowpass' as const,
   pad2FilterCutoffMin: 400,
@@ -1691,7 +1795,7 @@ export const DEFAULT_STATE: SliderState = {
   reverbEnabled: true,
   reverbEngine: 'algorithmic',
   reverbType: 'cathedral',
-  reverbQuality: 'ultra',  // ultra, balanced, lite
+  reverbQuality: 'balanced',  // ultra, balanced, lite
   reverbDecay: 0.9,
   reverbSize: 2.0,
   reverbDiffusion: 1.0,
@@ -1703,12 +1807,6 @@ export const DEFAULT_STATE: SliderState = {
   reverbShimmerPitch: 12,
   reverbSlowModRate: 0.05,
   reverbSlowModDepth: 0,
-  reverbFreeze: false,
-  // v5 freeze enhancement defaults
-  reverbFreezeInputBleed: 0,
-  reverbFreezeModAtten: 0.7,
-  reverbFreezeVelvetDensity: 0.003,
-  reverbFreezeMode: 0,
   reverbReverse: 0,
   reverbReverseLength: 2,
 
@@ -1730,19 +1828,27 @@ export const DEFAULT_STATE: SliderState = {
   reverbAirAbsorption: 0.2,
   reverbSaturationMode: 'clean' as const,
 
+  // v5 defaults
+  reverbTransientSmooth: 0,
+  reverbErLpFreq: 2500,
+
+  // Reverb Harmony
+  reverbScaleShimmer: false,
+  reverbChordWash: false,
+  reverbResolutionBloom: false,
+
   // Spectral Freeze
   spectralFreezeEnabled: false,
   spectralFreezeActive: false,
   spectralFreezeSlushy: false,
   spectralFreezeSpeed: 0.3,
   spectralFreezeMix: 1.0,
-  spectralFreezeDecay: 0.0,
+  spectralFreezeDecay: 1.0,
   spectralFreezePhaseJitter: 0.0,
   spectralFreezeRouting: 'pre' as const,
-  spectralFreezeReverbCrossfade: 0.5,
+  spectralFreezeReverbCrossfade: 1.0,
 
-  // Granular
-  granularEnabled: true,
+  // Granular (legacy defaults)
   maxGrains: 64,
   grainProbability: 0.8,
   grainSize: 50,
@@ -1772,6 +1878,10 @@ export const DEFAULT_STATE: SliderState = {
   leadDelayTime: 375,
   leadDelayFeedback: 0.4,
   leadDelayMix: 0.35,
+  leadDelayEnabled: true,
+  leadDelaySpread: 1.5,
+  leadDelayFilter: 2000,
+  leadDelaySend: 0.5,
   lead1Density: 0.5,
   lead1Octave: 1,
   lead1OctaveRange: 2,
@@ -1785,6 +1895,7 @@ export const DEFAULT_STATE: SliderState = {
   lead1MorphMode: 'pingpong' as const,
   lead1AlgorithmMode: 'snap' as const,
   lead1Level: 0.8,
+  lead1ReverbSend: 0.5,
   // Lead 2 — 4op FM preset morph
   lead2Enabled: false,
   lead2PresetC: 'soft_rhodes',
@@ -1795,6 +1906,7 @@ export const DEFAULT_STATE: SliderState = {
   lead2MorphMode: 'pingpong' as const,
   lead2AlgorithmMode: 'snap' as const,
   lead2Level: 0.6,
+  lead2ReverbSend: 0.5,
   lead2UseCustomAdsr: false,
   lead2Attack: 0.01,
   lead2Decay: 0.8,
@@ -1806,6 +1918,7 @@ export const DEFAULT_STATE: SliderState = {
   leadGlide: 0,
   // Euclidean sequencer for lead - 4 lanes for polyrhythms
   synthEuclideanMasterEnabled: false,
+  synthEuclidBaseBPM: 120,
   synthEuclideanTempo: 1,
   // Lane 1 - main pulse (lancaran) - mid register
   synthEuclid1Enabled: true,
@@ -1975,7 +2088,7 @@ export const DEFAULT_STATE: SliderState = {
   drumMembraneExcBright: 0.5,
   drumMembraneExcDur: 3,
   drumMembraneSize: 180,
-  drumMembraneTension: 0.5,
+  drumMembraneStiffness: 0.5,
   drumMembraneDamping: 0.3,
   drumMembraneMaterial: 'skin' as const,
   drumMembraneNonlin: 0,
@@ -1993,6 +2106,7 @@ export const DEFAULT_STATE: SliderState = {
   drumMembraneLevel: 0.6,
   drumMembraneVariation: 0,
   drumMembraneDistance: 0.5,
+  drumMembraneScaleBlend: 0.3,
   drumMorphSliderAnimate: false, // Don't update sliders by default (saves performance)
 
   // ─── Drum Voice Morph System ───
@@ -2167,7 +2281,7 @@ export const DEFAULT_STATE: SliderState = {
   waterDropSize: 0.5,
   waterHardness: 0.5,
   waterGlassThickness: 0.5,
-  waterSpace: 0.3,
+  waterReverbSend: 0.3,
   waterLevel: 0.8,
   waterLayerHardDrops: 0.08,
   waterLayerWaterDrops: 0.82,
@@ -2197,188 +2311,193 @@ export const DEFAULT_STATE: SliderState = {
   insects2Motion: 0.5,
   insects2Level: 0.5,
 
-  // ─── Looper FX ───
-  looperEnabled: false,
-  looperDryWet: 0.3,
-  looperFreeze: false,
-  looperFeedback: 0.1,
-  looperFeedbackLPF: 8000,
-  looperBufferSeconds: 16,
-  looperPreset: 'init',
-  looperReverbSend: 0.3,
-  looperPad1Send: 1.0,
-  looperPad2Send: 0.0,
-  looperLead1Send: 0.0,
-  looperLead2Send: 0.0,
-  looperDrumSend: 0.0,
-  looperWavesSend: 0.0,
+  // ─── Granular FX ───
+  granularEnabled: false,
+  granularDryWet: 0.3,
+  granularFreeze: false,
+  granularFeedback: 0.1,
+  granularFeedbackLPF: 8000,
+  granularBufferSeconds: 16,
+  granularPreset: 'init',
+  granularReverbSend: 0.3,
+  granularReverbLPF: 4000,
+  granularOutputLPF: 12000,
+  granularPad1Send: 1.0,
+  granularPad2Send: 0.0,
+  granularLead1Send: 0.0,
+  granularLead2Send: 0.0,
+  granularDrumSend: 0.0,
+  granularWavesSend: 0.0,
 
   // Voice 1 (default: granular, active)
-  looperV1Enabled: true,
-  looperV1Mode: 'granular' as const,
-  looperV1Slice: 0,
-  looperV1Speed: 1,
-  looperV1Reverse: false,
-  looperV1Pitch: 0,
-  looperV1Attack: 0.003,
-  looperV1Decay: 0.5,
-  looperV1Blur: 0,
-  looperV1GrainOct: 0,
-  looperV1Spray: 0.3,
-  looperV1Density: 20,
-  looperV1GrainSize: 80,
-  looperV1Pan: 0,
-  looperV1Gain: 0.5,
-  looperV1PosLFORate: 0,
-  looperV1PosLFODepth: 0,
-  looperV1PanLFORate: 0,
-  looperV1StereoSpread: 0.5,
-  looperV1ReverseLFORate: 0,
-  looperV1WriteFollow: 0,
-  looperV1RecordLFORate: 0,
+  granularV1Enabled: true,
+  granularV1Mode: 'granular' as const,
+  granularV1Slice: 0,
+  granularV1Speed: 1,
+  granularV1Reverse: false,
+  granularV1Pitch: 0,
+  granularV1Attack: 0.003,
+  granularV1Decay: 0.5,
+  granularV1Blur: 0,
+  granularV1GrainOct: 0,
+  granularV1Spray: 0.3,
+  granularV1Density: 20,
+  granularV1GrainSize: 80,
+  granularV1Pan: 0,
+  granularV1Gain: 0.5,
+  granularV1PosLFORate: 0,
+  granularV1PosLFODepth: 0,
+  granularV1PanLFORate: 0,
+  granularV1StereoSpread: 0.5,
+  granularV1ReverseLFORate: 0,
+  granularV1WriteFollow: 0,
+  granularV1RecordLFORate: 0,
 
   // Voice 2 (default: off)
-  looperV2Enabled: false,
-  looperV2Mode: 'granular' as const,
-  looperV2Slice: 4,
-  looperV2Speed: 1,
-  looperV2Reverse: false,
-  looperV2Pitch: 0,
-  looperV2Attack: 0.003,
-  looperV2Decay: 0.5,
-  looperV2Blur: 0,
-  looperV2GrainOct: 0,
-  looperV2Spray: 0.3,
-  looperV2Density: 20,
-  looperV2GrainSize: 80,
-  looperV2Pan: 0,
-  looperV2Gain: 0.5,
-  looperV2PosLFORate: 0,
-  looperV2PosLFODepth: 0,
-  looperV2PanLFORate: 0,
-  looperV2StereoSpread: 0.5,
-  looperV2ReverseLFORate: 0,
-  looperV2WriteFollow: 0,
-  looperV2RecordLFORate: 0,
+  granularV2Enabled: false,
+  granularV2Mode: 'granular' as const,
+  granularV2Slice: 4,
+  granularV2Speed: 1,
+  granularV2Reverse: false,
+  granularV2Pitch: 0,
+  granularV2Attack: 0.003,
+  granularV2Decay: 0.5,
+  granularV2Blur: 0,
+  granularV2GrainOct: 0,
+  granularV2Spray: 0.3,
+  granularV2Density: 20,
+  granularV2GrainSize: 80,
+  granularV2Pan: 0,
+  granularV2Gain: 0.5,
+  granularV2PosLFORate: 0,
+  granularV2PosLFODepth: 0,
+  granularV2PanLFORate: 0,
+  granularV2StereoSpread: 0.5,
+  granularV2ReverseLFORate: 0,
+  granularV2WriteFollow: 0,
+  granularV2RecordLFORate: 0,
 
   // Voice 3 (default: off)
-  looperV3Enabled: false,
-  looperV3Mode: 'granular' as const,
-  looperV3Slice: 8,
-  looperV3Speed: 1,
-  looperV3Reverse: false,
-  looperV3Pitch: 0,
-  looperV3Attack: 0.003,
-  looperV3Decay: 0.5,
-  looperV3Blur: 0,
-  looperV3GrainOct: 0,
-  looperV3Spray: 0.3,
-  looperV3Density: 20,
-  looperV3GrainSize: 80,
-  looperV3Pan: 0,
-  looperV3Gain: 0.5,
-  looperV3PosLFORate: 0,
-  looperV3PosLFODepth: 0,
-  looperV3PanLFORate: 0,
-  looperV3StereoSpread: 0.5,
-  looperV3ReverseLFORate: 0,
-  looperV3WriteFollow: 0,
-  looperV3RecordLFORate: 0,
+  granularV3Enabled: false,
+  granularV3Mode: 'granular' as const,
+  granularV3Slice: 8,
+  granularV3Speed: 1,
+  granularV3Reverse: false,
+  granularV3Pitch: 0,
+  granularV3Attack: 0.003,
+  granularV3Decay: 0.5,
+  granularV3Blur: 0,
+  granularV3GrainOct: 0,
+  granularV3Spray: 0.3,
+  granularV3Density: 20,
+  granularV3GrainSize: 80,
+  granularV3Pan: 0,
+  granularV3Gain: 0.5,
+  granularV3PosLFORate: 0,
+  granularV3PosLFODepth: 0,
+  granularV3PanLFORate: 0,
+  granularV3StereoSpread: 0.5,
+  granularV3ReverseLFORate: 0,
+  granularV3WriteFollow: 0,
+  granularV3RecordLFORate: 0,
 
   // Voice 4 (default: off)
-  looperV4Enabled: false,
-  looperV4Mode: 'granular' as const,
-  looperV4Slice: 12,
-  looperV4Speed: 1,
-  looperV4Reverse: false,
-  looperV4Pitch: 0,
-  looperV4Attack: 0.003,
-  looperV4Decay: 0.5,
-  looperV4Blur: 0,
-  looperV4GrainOct: 0,
-  looperV4Spray: 0.3,
-  looperV4Density: 20,
-  looperV4GrainSize: 80,
-  looperV4Pan: 0,
-  looperV4Gain: 0.5,
-  looperV4PosLFORate: 0,
-  looperV4PosLFODepth: 0,
-  looperV4PanLFORate: 0,
-  looperV4StereoSpread: 0.5,
-  looperV4ReverseLFORate: 0,
-  looperV4WriteFollow: 0,
-  looperV4RecordLFORate: 0,
+  granularV4Enabled: false,
+  granularV4Mode: 'granular' as const,
+  granularV4Slice: 12,
+  granularV4Speed: 1,
+  granularV4Reverse: false,
+  granularV4Pitch: 0,
+  granularV4Attack: 0.003,
+  granularV4Decay: 0.5,
+  granularV4Blur: 0,
+  granularV4GrainOct: 0,
+  granularV4Spray: 0.3,
+  granularV4Density: 20,
+  granularV4GrainSize: 80,
+  granularV4Pan: 0,
+  granularV4Gain: 0.5,
+  granularV4PosLFORate: 0,
+  granularV4PosLFODepth: 0,
+  granularV4PanLFORate: 0,
+  granularV4StereoSpread: 0.5,
+  granularV4ReverseLFORate: 0,
+  granularV4WriteFollow: 0,
+  granularV4RecordLFORate: 0,
 
   // Legacy compatibility
-  looperLegacyJitter: 10,
-  looperLegacyProbability: 0.8,
-  looperLegacyPitchMode: 'harmonic' as const,
-  looperLegacyPitchSpread: 2,
-  looperLegacyMaxGrains: 64,
-  looperLegacyFeedback: 0.1,
+  granularLegacyJitter: 10,
+  granularLegacyProbability: 0.8,
+  granularLegacyPitchMode: 'harmonic' as const,
+  granularLegacyPitchSpread: 2,
+  granularLegacyMaxGrains: 64,
+  granularLegacyFeedback: 0.1,
 
-  // Looper Delay
-  looperDelayEnabled: false,
-  looperDelayActivity: 0.3,
-  looperDelayRepeats: 0.3,
-  looperDelayTime: '1/4' as string,
-  looperDelayFilter: 0.5,
-  looperDelayVibrato: 0,
-  looperDelayMix: 0.3,
-  looperDelayReverbSend: 0.4,
+  // Granular Harmony
+  granularChordBias: 0,
 
-  // Looper Macros
-  looperMacroTexture: 0.3,
-  looperMacroComplexity: 0.2,
-  looperMacroDarkness: 0.3,
-  looperMacroChaos: 0.1,
+  // Granular Delay
+  granularDelayEnabled: false,
+  granularDelayActivity: 0.3,
+  granularDelayRepeats: 0.3,
+  granularDelayTime: '1/4' as string,
+  granularDelayFilter: 0.5,
+  granularDelayVibrato: 0,
+  granularDelayMix: 0.3,
+  granularDelayReverbSend: 0.4,
 
-  // Looper Euclidean Sequencer
-  looperEuclidMasterEnabled: false,
-  looperEuclidBaseBPM: 120,
-  looperEuclidTempo: 1,
-  looperEuclidSwing: 0,
-  looperEuclidDivision: 16,
+  // Granular Macros
+  granularMacroTexture: 0.3,
+  granularMacroComplexity: 0.2,
+  granularMacroDarkness: 0.3,
+  granularMacroChaos: 0.1,
+
+  // Granular Euclidean Sequencer
+  granularEuclidMasterEnabled: false,
+  granularEuclidBaseBPM: 120,
+  granularEuclidTempo: 1,
+  granularEuclidSwing: 0,
+  granularEuclidDivision: 16,
   // Lane 1 → Voice 1 (main pulse)
-  looperEuclid1Enabled: false,
-  looperEuclid1Preset: 'lancaran',
-  looperEuclid1Steps: 16,
-  looperEuclid1Hits: 4,
-  looperEuclid1Rotation: 0,
-  looperEuclid1Probability: 1.0,
-  looperEuclid1VelocityMin: 0.6,
-  looperEuclid1VelocityMax: 1.0,
-  looperEuclid1Level: 0.8,
+  granularEuclid1Enabled: false,
+  granularEuclid1Preset: 'lancaran',
+  granularEuclid1Steps: 16,
+  granularEuclid1Hits: 4,
+  granularEuclid1Rotation: 0,
+  granularEuclid1Probability: 1.0,
+  granularEuclid1VelocityMin: 0.6,
+  granularEuclid1VelocityMax: 1.0,
+  granularEuclid1Level: 0.8,
   // Lane 2 → Voice 2 (interlocking)
-  looperEuclid2Enabled: false,
-  looperEuclid2Preset: 'kotekan',
-  looperEuclid2Steps: 8,
-  looperEuclid2Hits: 3,
-  looperEuclid2Rotation: 1,
-  looperEuclid2Probability: 1.0,
-  looperEuclid2VelocityMin: 0.5,
-  looperEuclid2VelocityMax: 0.9,
-  looperEuclid2Level: 0.6,
+  granularEuclid2Enabled: false,
+  granularEuclid2Preset: 'kotekan',
+  granularEuclid2Steps: 8,
+  granularEuclid2Hits: 3,
+  granularEuclid2Rotation: 1,
+  granularEuclid2Probability: 1.0,
+  granularEuclid2VelocityMin: 0.5,
+  granularEuclid2VelocityMax: 0.9,
+  granularEuclid2Level: 0.6,
   // Lane 3 → Voice 3 (sparse accent)
-  looperEuclid3Enabled: false,
-  looperEuclid3Preset: 'ketawang',
-  looperEuclid3Steps: 16,
-  looperEuclid3Hits: 2,
-  looperEuclid3Rotation: 0,
-  looperEuclid3Probability: 1.0,
-  looperEuclid3VelocityMin: 0.7,
-  looperEuclid3VelocityMax: 1.0,
-  looperEuclid3Level: 0.9,
+  granularEuclid3Enabled: false,
+  granularEuclid3Preset: 'ketawang',
+  granularEuclid3Steps: 16,
+  granularEuclid3Hits: 2,
+  granularEuclid3Rotation: 0,
+  granularEuclid3Probability: 1.0,
+  granularEuclid3VelocityMin: 0.7,
+  granularEuclid3VelocityMax: 1.0,
+  granularEuclid3Level: 0.9,
   // Lane 4 → Voice 4 (fill/texture)
-  looperEuclid4Enabled: false,
-  looperEuclid4Preset: 'srepegan',
-  looperEuclid4Steps: 16,
-  looperEuclid4Hits: 6,
-  looperEuclid4Rotation: 2,
-  looperEuclid4Probability: 1.0,
-  looperEuclid4VelocityMin: 0.4,
-  looperEuclid4VelocityMax: 0.8,
-  looperEuclid4Level: 0.5,
+  granularEuclid4Enabled: false,
+  granularEuclid4Preset: 'srepegan',
+  granularEuclid4Steps: 16,
+  granularEuclid4Hits: 6,
+  granularEuclid4Rotation: 2,
+  granularEuclid4Probability: 1.0,
+  granularEuclid4VelocityMin: 0.4,
+  granularEuclid4VelocityMax: 0.8,
+  granularEuclid4Level: 0.5,
 
   // Random Walk
   randomWalkSpeed: 1.0,
@@ -2389,9 +2508,9 @@ export const DEFAULT_STATE: SliderState = {
  */
 export const MOBILE_STATE: SliderState = {
   ...DEFAULT_STATE,
-  granularLevel: 0.1,
+  granularLevel: 0.07,
   density: 15,
-  reverbLevel: 0.3,
+  reverbLevel: 0.15,
 };
 
 /**
@@ -2407,16 +2526,16 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   masterVolume: { min: 0, max: 1, step: 0.01 },
   synthLevel: { min: 0, max: 1, step: 0.01 },
   pad2Level: { min: 0, max: 1, step: 0.01 },
-  granularLevel: { min: 0, max: 2, step: 0.01 },
+  granularLevel: { min: 0, max: 1, step: 0.01 },
   synthReverbSend: { min: 0, max: 1, step: 0.01 },
-  granularReverbSend: { min: 0, max: 1, step: 0.01 },
   leadReverbSend: { min: 0, max: 1, step: 0.01 },
   leadDelayReverbSend: { min: 0, max: 1, step: 0.01 },
   randomness: { min: 0, max: 1, step: 0.01 },
   tension: { min: 0, max: 1, step: 0.01 },
   chordRate: { min: 8, max: 64, step: 1 },
+  phraseLength: { min: 4, max: 128, step: 1 },
   voicingSpread: { min: 0, max: 1, step: 0.01 },
-  waveSpread: { min: 0, max: 30, step: 0.5 },
+  waveSpread: { min: 0, max: 1, step: 0.01 },
   detune: { min: 0, max: 25, step: 1 },
   synthAttack: { min: 0.01, max: 16, step: 0.01 },
   synthDecay: { min: 0.01, max: 8, step: 0.01 },
@@ -2431,6 +2550,8 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   filterQ: { min: 0.1, max: 12, step: 0.1 },
   warmth: { min: 0, max: 1, step: 0.01 },
   presence: { min: 0, max: 1, step: 0.01 },
+  padFoldAmount: { min: 0, max: 1, step: 0.01 },
+  padFoldMode: { min: 0, max: 2, step: 1 },
   // Pad Synth Extended
   padMorph: { min: 0, max: 1, step: 0.01 },
   padOscAOctave: { min: -2, max: 2, step: 1 },
@@ -2466,6 +2587,8 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   pad2Hardness: { min: 0, max: 2, step: 0.01 },
   pad2Warmth: { min: 0, max: 1, step: 0.01 },
   pad2Presence: { min: 0, max: 1, step: 0.01 },
+  pad2FoldAmount: { min: 0, max: 1, step: 0.01 },
+  pad2FoldMode: { min: 0, max: 2, step: 1 },
   pad2OscMix: { min: 0, max: 1, step: 0.01 },
   pad2FilterCutoffMin: { min: 40, max: 8000, step: 10 },
   pad2FilterCutoffMax: { min: 40, max: 8000, step: 10 },
@@ -2494,7 +2617,7 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   pad2ModEnvDepth: { min: -1, max: 1, step: 0.01 },
   pad2Morph: { min: 0, max: 1, step: 0.01 },
   pad2MorphSpeed: { min: 1, max: 32, step: 1 },
-  reverbLevel: { min: 0, max: 2, step: 0.01 },
+  reverbLevel: { min: 0, max: 1, step: 0.01 },
   reverbDecay: { min: 0, max: 1, step: 0.01 },
   reverbSize: { min: 0.5, max: 10, step: 0.1 },
   reverbDiffusion: { min: 0, max: 1, step: 0.01 },
@@ -2521,11 +2644,8 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   reverbCrossFeed: { min: 0, max: 1, step: 0.01 },
   reverbEarlyReflections: { min: 0, max: 1, step: 0.01 },
   reverbAirAbsorption: { min: 0, max: 1, step: 0.01 },
-  // v5 freeze sub-params
-  reverbFreezeInputBleed: { min: 0, max: 1, step: 0.01 },
-  reverbFreezeModAtten: { min: 0, max: 1, step: 0.01 },
-  reverbFreezeVelvetDensity: { min: 0, max: 0.05, step: 0.001 },
-  reverbFreezeMode: { min: 0, max: 3, step: 1 },
+  reverbTransientSmooth: { min: 0, max: 1, step: 0.01 },
+  reverbErLpFreq: { min: 200, max: 12000, step: 10 },
   // Spectral Freeze
   spectralFreezeSpeed: { min: 0, max: 1, step: 0.01 },
   spectralFreezeMix: { min: 0, max: 1, step: 0.01 },
@@ -2654,7 +2774,7 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   drumMembraneExcBright: { min: 0, max: 1.5, step: 0.01 },
   drumMembraneExcDur: { min: 0.5, max: 50, step: 0.5 },
   drumMembraneSize: { min: 40, max: 600, step: 1 },
-  drumMembraneTension: { min: 0, max: 1, step: 0.01 },
+  drumMembraneStiffness: { min: 0, max: 1, step: 0.01 },
   drumMembraneDamping: { min: 0, max: 1, step: 0.01 },
   drumMembraneNonlin: { min: 0, max: 1, step: 0.01 },
   drumMembraneWireMix: { min: 0, max: 1, step: 0.01 },
@@ -2671,6 +2791,7 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   drumMembraneLevel: { min: 0, max: 1, step: 0.01 },
   drumMembraneVariation: { min: 0, max: 1, step: 0.01 },
   drumMembraneDistance: { min: 0, max: 1, step: 0.01 },
+  drumMembraneScaleBlend: { min: 0, max: 1, step: 0.01 },
   // Drum Voice Morph
   drumSubMorph: { min: 0, max: 1, step: 0.01 },
   drumSubMorphSpeed: { min: 1, max: 32, step: 1 },
@@ -2706,6 +2827,9 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   leadDelayTime: { min: 0, max: 1000, step: 10 },
   leadDelayFeedback: { min: 0, max: 0.8, step: 0.01 },
   leadDelayMix: { min: 0, max: 1, step: 0.01 },
+  leadDelaySpread: { min: 1, max: 2, step: 0.01 },
+  leadDelayFilter: { min: 200, max: 8000, step: 10 },
+  leadDelaySend: { min: 0, max: 1, step: 0.01 },
   lead1Density: { min: 0.1, max: 12, step: 0.1 },
   lead1Octave: { min: -1, max: 2, step: 1 },
   lead1OctaveRange: { min: 1, max: 4, step: 1 },
@@ -2714,9 +2838,11 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   lead1Morph: { min: 0, max: 1, step: 0.01 },
   lead1MorphSpeed: { min: 1, max: 32, step: 1 },
   lead1Level: { min: 0, max: 1, step: 0.01 },
+  lead1ReverbSend: { min: 0, max: 1, step: 0.01 },
   lead2Morph: { min: 0, max: 1, step: 0.01 },
   lead2MorphSpeed: { min: 1, max: 32, step: 1 },
   lead2Level: { min: 0, max: 1, step: 0.01 },
+  lead2ReverbSend: { min: 0, max: 1, step: 0.01 },
   lead2Attack: { min: 0.001, max: 2, step: 0.001 },
   lead2Decay: { min: 0.01, max: 4, step: 0.01 },
   lead2Sustain: { min: 0, max: 1, step: 0.01 },
@@ -2726,6 +2852,7 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   leadVibratoRate: { min: 0, max: 1, step: 0.01 },
   leadGlide: { min: 0, max: 1, step: 0.01 },
   // Euclidean sequencer - shared for all lanes
+  synthEuclidBaseBPM: { min: 40, max: 240, step: 1 },
   synthEuclideanTempo: { min: 0.25, max: 12, step: 0.25 },
   synthEuclid1Steps: { min: 4, max: 32, step: 1 },
   synthEuclid1Hits: { min: 1, max: 16, step: 1 },
@@ -2806,7 +2933,7 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   waterDropSize: { min: 0, max: 1, step: 0.01 },
   waterHardness: { min: 0, max: 1, step: 0.01 },
   waterGlassThickness: { min: 0, max: 1, step: 0.01 },
-  waterSpace: { min: 0, max: 1, step: 0.01 },
+  waterReverbSend: { min: 0, max: 1, step: 0.01 },
   waterLevel: { min: 0, max: 1, step: 0.01 },
   waterLayerHardDrops: { min: 0, max: 1, step: 0.01 },
   waterLayerWaterDrops: { min: 0, max: 1, step: 0.01 },
@@ -2836,146 +2963,160 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   // Circle of Fifths Drift
   cofDriftRate: { min: 1, max: 8, step: 1 },
   cofDriftRange: { min: 1, max: 6, step: 1 },
+  chordProgressionSteps: { min: 2, max: 8, step: 1 },
+  chordProgressionHits: { min: 1, max: 8, step: 1 },
 
-  // ─── Looper FX ───
-  looperDryWet: { min: 0, max: 1, step: 0.01 },
-  looperFeedback: { min: 0, max: 0.85, step: 0.01 },
-  looperFeedbackLPF: { min: 200, max: 12000, step: 50 },
-  looperBufferSeconds: { min: 4, max: 16, step: 12 },
-  looperReverbSend: { min: 0, max: 1, step: 0.01 },
-  looperPad1Send: { min: 0, max: 1, step: 0.01 },
-  looperPad2Send: { min: 0, max: 1, step: 0.01 },
-  looperLead1Send: { min: 0, max: 1, step: 0.01 },
-  looperLead2Send: { min: 0, max: 1, step: 0.01 },
-  looperDrumSend: { min: 0, max: 1, step: 0.01 },
-  looperWavesSend: { min: 0, max: 1, step: 0.01 },
+  // Per-engine tension overrides (value range depends on mode: follow = ±0.5 offset, locked = 0..1 absolute)
+  padTensionValue: { min: -0.5, max: 0.5, step: 0.01 },
+  leadTensionValue: { min: -0.5, max: 0.5, step: 0.01 },
+  synthEuclidTensionValue: { min: -0.5, max: 0.5, step: 0.01 },
+  granularTensionValue: { min: -0.5, max: 0.5, step: 0.01 },
+  reverbTensionValue: { min: -0.5, max: 0.5, step: 0.01 },
+  drumTensionValue: { min: -0.5, max: 0.5, step: 0.01 },
+
+  // ─── Granular FX ───
+  granularDryWet: { min: 0, max: 1, step: 0.01 },
+  granularFeedback: { min: 0, max: 0.85, step: 0.01 },
+  granularFeedbackLPF: { min: 200, max: 12000, step: 50 },
+  granularBufferSeconds: { min: 4, max: 16, step: 12 },
+  granularReverbSend: { min: 0, max: 1, step: 0.01 },
+  granularReverbLPF: { min: 200, max: 12000, step: 50 },
+  granularOutputLPF: { min: 200, max: 12000, step: 50 },
+  granularPad1Send: { min: 0, max: 1, step: 0.01 },
+  granularPad2Send: { min: 0, max: 1, step: 0.01 },
+  granularLead1Send: { min: 0, max: 1, step: 0.01 },
+  granularLead2Send: { min: 0, max: 1, step: 0.01 },
+  granularDrumSend: { min: 0, max: 1, step: 0.01 },
+  granularWavesSend: { min: 0, max: 1, step: 0.01 },
   // Per-voice shared quantization (all 4 voices)
-  looperV1Slice: { min: 0, max: 15, step: 1 },
-  looperV1Speed: { min: 0, max: 4, step: 0.05 },
-  looperV1Pitch: { min: -24, max: 24, step: 1 },
-  looperV1Attack: { min: 0.001, max: 0.5, step: 0.001 },
-  looperV1Decay: { min: 0.01, max: 4, step: 0.01 },
-  looperV1Blur: { min: 0, max: 1, step: 0.01 },
-  looperV1GrainOct: { min: 0, max: 1, step: 0.01 },
-  looperV1Spray: { min: 0, max: 1, step: 0.01 },
-  looperV1Density: { min: 1, max: 64, step: 1 },
-  looperV1GrainSize: { min: 10, max: 500, step: 5 },
-  looperV1Pan: { min: -1, max: 1, step: 0.01 },
-  looperV1Gain: { min: 0, max: 1, step: 0.01 },
-  looperV1PosLFORate: { min: 0, max: 1, step: 0.01 },
-  looperV1PosLFODepth: { min: 0, max: 1, step: 0.01 },
-  looperV1PanLFORate: { min: 0, max: 1, step: 0.01 },
-  looperV1StereoSpread: { min: 0, max: 1, step: 0.01 },
-  looperV1ReverseLFORate: { min: 0, max: 1, step: 0.01 },
-  looperV1WriteFollow: { min: 0, max: 1, step: 0.01 },
-  looperV1RecordLFORate: { min: 0, max: 1, step: 0.01 },
-  looperV2Slice: { min: 0, max: 15, step: 1 },
-  looperV2Speed: { min: 0.25, max: 4, step: 0.05 },
-  looperV2Pitch: { min: -24, max: 24, step: 1 },
-  looperV2Attack: { min: 0.001, max: 0.5, step: 0.001 },
-  looperV2Decay: { min: 0.01, max: 4, step: 0.01 },
-  looperV2Blur: { min: 0, max: 1, step: 0.01 },
-  looperV2GrainOct: { min: 0, max: 1, step: 0.01 },
-  looperV2Spray: { min: 0, max: 1, step: 0.01 },
-  looperV2Density: { min: 1, max: 64, step: 1 },
-  looperV2GrainSize: { min: 10, max: 500, step: 5 },
-  looperV2Pan: { min: -1, max: 1, step: 0.01 },
-  looperV2Gain: { min: 0, max: 1, step: 0.01 },
-  looperV2PosLFORate: { min: 0, max: 1, step: 0.01 },
-  looperV2PosLFODepth: { min: 0, max: 1, step: 0.01 },
-  looperV2PanLFORate: { min: 0, max: 1, step: 0.01 },
-  looperV2StereoSpread: { min: 0, max: 1, step: 0.01 },
-  looperV2ReverseLFORate: { min: 0, max: 1, step: 0.01 },
-  looperV2WriteFollow: { min: 0, max: 1, step: 0.01 },
-  looperV2RecordLFORate: { min: 0, max: 1, step: 0.01 },
-  looperV3Slice: { min: 0, max: 15, step: 1 },
-  looperV3Speed: { min: 0.25, max: 4, step: 0.05 },
-  looperV3Pitch: { min: -24, max: 24, step: 1 },
-  looperV3Attack: { min: 0.001, max: 0.5, step: 0.001 },
-  looperV3Decay: { min: 0.01, max: 4, step: 0.01 },
-  looperV3Blur: { min: 0, max: 1, step: 0.01 },
-  looperV3GrainOct: { min: 0, max: 1, step: 0.01 },
-  looperV3Spray: { min: 0, max: 1, step: 0.01 },
-  looperV3Density: { min: 1, max: 64, step: 1 },
-  looperV3GrainSize: { min: 10, max: 500, step: 5 },
-  looperV3Pan: { min: -1, max: 1, step: 0.01 },
-  looperV3Gain: { min: 0, max: 1, step: 0.01 },
-  looperV3PosLFORate: { min: 0, max: 1, step: 0.01 },
-  looperV3PosLFODepth: { min: 0, max: 1, step: 0.01 },
-  looperV3PanLFORate: { min: 0, max: 1, step: 0.01 },
-  looperV3StereoSpread: { min: 0, max: 1, step: 0.01 },
-  looperV3ReverseLFORate: { min: 0, max: 1, step: 0.01 },
-  looperV3WriteFollow: { min: 0, max: 1, step: 0.01 },
-  looperV3RecordLFORate: { min: 0, max: 1, step: 0.01 },
-  looperV4Slice: { min: 0, max: 15, step: 1 },
-  looperV4Speed: { min: 0.25, max: 4, step: 0.05 },
-  looperV4Pitch: { min: -24, max: 24, step: 1 },
-  looperV4Attack: { min: 0.001, max: 0.5, step: 0.001 },
-  looperV4Decay: { min: 0.01, max: 4, step: 0.01 },
-  looperV4Blur: { min: 0, max: 1, step: 0.01 },
-  looperV4GrainOct: { min: 0, max: 1, step: 0.01 },
-  looperV4Spray: { min: 0, max: 1, step: 0.01 },
-  looperV4Density: { min: 1, max: 64, step: 1 },
-  looperV4GrainSize: { min: 10, max: 500, step: 5 },
-  looperV4Pan: { min: -1, max: 1, step: 0.01 },
-  looperV4Gain: { min: 0, max: 1, step: 0.01 },
-  looperV4PosLFORate: { min: 0, max: 1, step: 0.01 },
-  looperV4PosLFODepth: { min: 0, max: 1, step: 0.01 },
-  looperV4PanLFORate: { min: 0, max: 1, step: 0.01 },
-  looperV4StereoSpread: { min: 0, max: 1, step: 0.01 },
-  looperV4ReverseLFORate: { min: 0, max: 1, step: 0.01 },
-  looperV4WriteFollow: { min: 0, max: 1, step: 0.01 },
-  looperV4RecordLFORate: { min: 0, max: 1, step: 0.01 },
+  granularV1Slice: { min: 0, max: 15, step: 1 },
+  granularV1Speed: { min: 0, max: 4, step: 0.05 },
+  granularV1Pitch: { min: -24, max: 24, step: 1 },
+  granularV1Attack: { min: 0.001, max: 0.5, step: 0.001 },
+  granularV1Decay: { min: 0.01, max: 4, step: 0.01 },
+  granularV1Blur: { min: 0, max: 1, step: 0.01 },
+  granularV1GrainOct: { min: 0, max: 1, step: 0.01 },
+  granularV1Spray: { min: 0, max: 1, step: 0.01 },
+  granularV1Density: { min: 1, max: 64, step: 1 },
+  granularV1GrainSize: { min: 10, max: 500, step: 5 },
+  granularV1Pan: { min: -1, max: 1, step: 0.01 },
+  granularV1Gain: { min: 0, max: 1, step: 0.01 },
+  granularV1PosLFORate: { min: 0, max: 1, step: 0.01 },
+  granularV1PosLFODepth: { min: 0, max: 1, step: 0.01 },
+  granularV1PanLFORate: { min: 0, max: 1, step: 0.01 },
+  granularV1StereoSpread: { min: 0, max: 1, step: 0.01 },
+  granularV1ReverseLFORate: { min: 0, max: 1, step: 0.01 },
+  granularV1WriteFollow: { min: 0, max: 1, step: 0.01 },
+  granularV1RecordLFORate: { min: 0, max: 1, step: 0.01 },
+  granularV2Slice: { min: 0, max: 15, step: 1 },
+  granularV2Speed: { min: 0.25, max: 4, step: 0.05 },
+  granularV2Pitch: { min: -24, max: 24, step: 1 },
+  granularV2Attack: { min: 0.001, max: 0.5, step: 0.001 },
+  granularV2Decay: { min: 0.01, max: 4, step: 0.01 },
+  granularV2Blur: { min: 0, max: 1, step: 0.01 },
+  granularV2GrainOct: { min: 0, max: 1, step: 0.01 },
+  granularV2Spray: { min: 0, max: 1, step: 0.01 },
+  granularV2Density: { min: 1, max: 64, step: 1 },
+  granularV2GrainSize: { min: 10, max: 500, step: 5 },
+  granularV2Pan: { min: -1, max: 1, step: 0.01 },
+  granularV2Gain: { min: 0, max: 1, step: 0.01 },
+  granularV2PosLFORate: { min: 0, max: 1, step: 0.01 },
+  granularV2PosLFODepth: { min: 0, max: 1, step: 0.01 },
+  granularV2PanLFORate: { min: 0, max: 1, step: 0.01 },
+  granularV2StereoSpread: { min: 0, max: 1, step: 0.01 },
+  granularV2ReverseLFORate: { min: 0, max: 1, step: 0.01 },
+  granularV2WriteFollow: { min: 0, max: 1, step: 0.01 },
+  granularV2RecordLFORate: { min: 0, max: 1, step: 0.01 },
+  granularV3Slice: { min: 0, max: 15, step: 1 },
+  granularV3Speed: { min: 0.25, max: 4, step: 0.05 },
+  granularV3Pitch: { min: -24, max: 24, step: 1 },
+  granularV3Attack: { min: 0.001, max: 0.5, step: 0.001 },
+  granularV3Decay: { min: 0.01, max: 4, step: 0.01 },
+  granularV3Blur: { min: 0, max: 1, step: 0.01 },
+  granularV3GrainOct: { min: 0, max: 1, step: 0.01 },
+  granularV3Spray: { min: 0, max: 1, step: 0.01 },
+  granularV3Density: { min: 1, max: 64, step: 1 },
+  granularV3GrainSize: { min: 10, max: 500, step: 5 },
+  granularV3Pan: { min: -1, max: 1, step: 0.01 },
+  granularV3Gain: { min: 0, max: 1, step: 0.01 },
+  granularV3PosLFORate: { min: 0, max: 1, step: 0.01 },
+  granularV3PosLFODepth: { min: 0, max: 1, step: 0.01 },
+  granularV3PanLFORate: { min: 0, max: 1, step: 0.01 },
+  granularV3StereoSpread: { min: 0, max: 1, step: 0.01 },
+  granularV3ReverseLFORate: { min: 0, max: 1, step: 0.01 },
+  granularV3WriteFollow: { min: 0, max: 1, step: 0.01 },
+  granularV3RecordLFORate: { min: 0, max: 1, step: 0.01 },
+  granularV4Slice: { min: 0, max: 15, step: 1 },
+  granularV4Speed: { min: 0.25, max: 4, step: 0.05 },
+  granularV4Pitch: { min: -24, max: 24, step: 1 },
+  granularV4Attack: { min: 0.001, max: 0.5, step: 0.001 },
+  granularV4Decay: { min: 0.01, max: 4, step: 0.01 },
+  granularV4Blur: { min: 0, max: 1, step: 0.01 },
+  granularV4GrainOct: { min: 0, max: 1, step: 0.01 },
+  granularV4Spray: { min: 0, max: 1, step: 0.01 },
+  granularV4Density: { min: 1, max: 64, step: 1 },
+  granularV4GrainSize: { min: 10, max: 500, step: 5 },
+  granularV4Pan: { min: -1, max: 1, step: 0.01 },
+  granularV4Gain: { min: 0, max: 1, step: 0.01 },
+  granularV4PosLFORate: { min: 0, max: 1, step: 0.01 },
+  granularV4PosLFODepth: { min: 0, max: 1, step: 0.01 },
+  granularV4PanLFORate: { min: 0, max: 1, step: 0.01 },
+  granularV4StereoSpread: { min: 0, max: 1, step: 0.01 },
+  granularV4ReverseLFORate: { min: 0, max: 1, step: 0.01 },
+  granularV4WriteFollow: { min: 0, max: 1, step: 0.01 },
+  granularV4RecordLFORate: { min: 0, max: 1, step: 0.01 },
   // Legacy
-  looperLegacyJitter: { min: 0, max: 30, step: 1 },
-  looperLegacyProbability: { min: 0, max: 1, step: 0.01 },
-  looperLegacyPitchSpread: { min: 0, max: 12, step: 1 },
-  looperLegacyMaxGrains: { min: 0, max: 128, step: 1 },
-  looperLegacyFeedback: { min: 0, max: 0.35, step: 0.01 },
+  granularLegacyJitter: { min: 0, max: 30, step: 1 },
+  granularLegacyProbability: { min: 0, max: 1, step: 0.01 },
+  granularLegacyPitchSpread: { min: 0, max: 12, step: 1 },
+  granularLegacyMaxGrains: { min: 0, max: 128, step: 1 },
+  granularLegacyFeedback: { min: 0, max: 0.35, step: 0.01 },
+  // Harmony
+  granularChordBias: { min: 0, max: 1, step: 0.01 },
   // Delay
-  looperDelayActivity: { min: 0, max: 1, step: 0.01 },
-  looperDelayRepeats: { min: 0, max: 0.85, step: 0.01 },
-  looperDelayFilter: { min: 0, max: 1, step: 0.01 },
-  looperDelayVibrato: { min: 0, max: 1, step: 0.01 },
-  looperDelayMix: { min: 0, max: 1, step: 0.01 },
-  looperDelayReverbSend: { min: 0, max: 1, step: 0.01 },
+  granularDelayActivity: { min: 0, max: 1, step: 0.01 },
+  granularDelayRepeats: { min: 0, max: 0.85, step: 0.01 },
+  granularDelayFilter: { min: 0, max: 1, step: 0.01 },
+  granularDelayVibrato: { min: 0, max: 1, step: 0.01 },
+  granularDelayMix: { min: 0, max: 1, step: 0.01 },
+  granularDelayReverbSend: { min: 0, max: 1, step: 0.01 },
   // Macros
-  looperMacroTexture: { min: 0, max: 1, step: 0.01 },
-  looperMacroComplexity: { min: 0, max: 1, step: 0.01 },
-  looperMacroDarkness: { min: 0, max: 1, step: 0.01 },
-  looperMacroChaos: { min: 0, max: 1, step: 0.01 },
-  // Looper Euclidean
-  looperEuclidBaseBPM: { min: 40, max: 240, step: 1 },
-  looperEuclidTempo: { min: 0.25, max: 4, step: 0.25 },
-  looperEuclidSwing: { min: 0, max: 100, step: 1 },
-  looperEuclid1Steps: { min: 2, max: 32, step: 1 },
-  looperEuclid1Hits: { min: 0, max: 32, step: 1 },
-  looperEuclid1Rotation: { min: 0, max: 31, step: 1 },
-  looperEuclid1Probability: { min: 0, max: 1, step: 0.01 },
-  looperEuclid1VelocityMin: { min: 0, max: 1, step: 0.01 },
-  looperEuclid1VelocityMax: { min: 0, max: 1, step: 0.01 },
-  looperEuclid1Level: { min: 0, max: 1, step: 0.01 },
-  looperEuclid2Steps: { min: 2, max: 32, step: 1 },
-  looperEuclid2Hits: { min: 0, max: 32, step: 1 },
-  looperEuclid2Rotation: { min: 0, max: 31, step: 1 },
-  looperEuclid2Probability: { min: 0, max: 1, step: 0.01 },
-  looperEuclid2VelocityMin: { min: 0, max: 1, step: 0.01 },
-  looperEuclid2VelocityMax: { min: 0, max: 1, step: 0.01 },
-  looperEuclid2Level: { min: 0, max: 1, step: 0.01 },
-  looperEuclid3Steps: { min: 2, max: 32, step: 1 },
-  looperEuclid3Hits: { min: 0, max: 32, step: 1 },
-  looperEuclid3Rotation: { min: 0, max: 31, step: 1 },
-  looperEuclid3Probability: { min: 0, max: 1, step: 0.01 },
-  looperEuclid3VelocityMin: { min: 0, max: 1, step: 0.01 },
-  looperEuclid3VelocityMax: { min: 0, max: 1, step: 0.01 },
-  looperEuclid3Level: { min: 0, max: 1, step: 0.01 },
-  looperEuclid4Steps: { min: 2, max: 32, step: 1 },
-  looperEuclid4Hits: { min: 0, max: 32, step: 1 },
-  looperEuclid4Rotation: { min: 0, max: 31, step: 1 },
-  looperEuclid4Probability: { min: 0, max: 1, step: 0.01 },
-  looperEuclid4VelocityMin: { min: 0, max: 1, step: 0.01 },
-  looperEuclid4VelocityMax: { min: 0, max: 1, step: 0.01 },
-  looperEuclid4Level: { min: 0, max: 1, step: 0.01 },
+  granularMacroTexture: { min: 0, max: 1, step: 0.01 },
+  granularMacroComplexity: { min: 0, max: 1, step: 0.01 },
+  granularMacroDarkness: { min: 0, max: 1, step: 0.01 },
+  granularMacroChaos: { min: 0, max: 1, step: 0.01 },
+  // Granular Euclidean
+  granularEuclidBaseBPM: { min: 40, max: 240, step: 1 },
+  granularEuclidTempo: { min: 0.25, max: 4, step: 0.25 },
+  granularEuclidSwing: { min: 0, max: 100, step: 1 },
+  granularEuclid1Steps: { min: 2, max: 32, step: 1 },
+  granularEuclid1Hits: { min: 0, max: 32, step: 1 },
+  granularEuclid1Rotation: { min: 0, max: 31, step: 1 },
+  granularEuclid1Probability: { min: 0, max: 1, step: 0.01 },
+  granularEuclid1VelocityMin: { min: 0, max: 1, step: 0.01 },
+  granularEuclid1VelocityMax: { min: 0, max: 1, step: 0.01 },
+  granularEuclid1Level: { min: 0, max: 1, step: 0.01 },
+  granularEuclid2Steps: { min: 2, max: 32, step: 1 },
+  granularEuclid2Hits: { min: 0, max: 32, step: 1 },
+  granularEuclid2Rotation: { min: 0, max: 31, step: 1 },
+  granularEuclid2Probability: { min: 0, max: 1, step: 0.01 },
+  granularEuclid2VelocityMin: { min: 0, max: 1, step: 0.01 },
+  granularEuclid2VelocityMax: { min: 0, max: 1, step: 0.01 },
+  granularEuclid2Level: { min: 0, max: 1, step: 0.01 },
+  granularEuclid3Steps: { min: 2, max: 32, step: 1 },
+  granularEuclid3Hits: { min: 0, max: 32, step: 1 },
+  granularEuclid3Rotation: { min: 0, max: 31, step: 1 },
+  granularEuclid3Probability: { min: 0, max: 1, step: 0.01 },
+  granularEuclid3VelocityMin: { min: 0, max: 1, step: 0.01 },
+  granularEuclid3VelocityMax: { min: 0, max: 1, step: 0.01 },
+  granularEuclid3Level: { min: 0, max: 1, step: 0.01 },
+  granularEuclid4Steps: { min: 2, max: 32, step: 1 },
+  granularEuclid4Hits: { min: 0, max: 32, step: 1 },
+  granularEuclid4Rotation: { min: 0, max: 31, step: 1 },
+  granularEuclid4Probability: { min: 0, max: 1, step: 0.01 },
+  granularEuclid4VelocityMin: { min: 0, max: 1, step: 0.01 },
+  granularEuclid4VelocityMax: { min: 0, max: 1, step: 0.01 },
+  granularEuclid4Level: { min: 0, max: 1, step: 0.01 },
 };
 
 /**
@@ -3278,55 +3419,140 @@ export function migratePreset(preset: any): SavedPreset {
     }
   }
 
-  // ═══ Legacy Granular → Unified Looper migration ═══
-  // If preset has old granular params but no looper params, map them to the unified engine
-  if (('granularEnabled' in state || 'density' in state || 'spray' in state) && !('looperEnabled' in state)) {
-    // Map old granular params → Voice 1 of unified looper in legacy mode
-    if (state.granularEnabled !== undefined) {
-      state.looperEnabled = state.granularEnabled;
+  // ═══ Legacy looper* → granular* key rename ═══
+  for (const key of Object.keys(state)) {
+    if (key.startsWith('looper')) {
+      const newKey = 'granular' + key.slice(6);
+      if (!(newKey in state)) {
+        state[newKey] = state[key];
+      }
+      delete state[key];
     }
+  }
+  for (const key of Object.keys(dualRanges)) {
+    if (key.startsWith('looper')) {
+      const newKey = 'granular' + key.slice(6);
+      if (!(newKey in dualRanges)) {
+        dualRanges[newKey] = dualRanges[key];
+      }
+      delete dualRanges[key];
+    }
+  }
+  for (const key of Object.keys(sliderModes)) {
+    if (key.startsWith('looper')) {
+      const newKey = 'granular' + key.slice(6);
+      if (!(newKey in sliderModes)) {
+        sliderModes[newKey] = sliderModes[key];
+      }
+      delete sliderModes[key];
+    }
+  }
+
+  // ═══ Normalize granularLevel / reverbLevel from old 0–2 range to 0–1 ═══
+  // Engine now applies internal scalers (×1.5 granular, ×2 reverb), so divide saved values.
+  if (typeof state.granularLevel === 'number' && state.granularLevel > 1) {
+    state.granularLevel = Math.min(1, state.granularLevel / 1.5);
+  }
+  if (typeof state.reverbLevel === 'number' && state.reverbLevel > 1) {
+    state.reverbLevel = Math.min(1, state.reverbLevel / 2);
+  }
+  // Also migrate dualRanges for these params
+  if (dualRanges.granularLevel) {
+    const dr = dualRanges.granularLevel;
+    if (typeof dr.min === 'number' && dr.min > 1) dr.min = Math.min(1, dr.min / 1.5);
+    if (typeof dr.max === 'number' && dr.max > 1) dr.max = Math.min(1, dr.max / 1.5);
+  }
+  if (dualRanges.reverbLevel) {
+    const dr = dualRanges.reverbLevel;
+    if (typeof dr.min === 'number' && dr.min > 1) dr.min = Math.min(1, dr.min / 2);
+    if (typeof dr.max === 'number' && dr.max > 1) dr.max = Math.min(1, dr.max / 2);
+  }
+
+  // ═══ Legacy Granular → Unified Granular migration ═══
+  // If preset has old standalone granular params but no unified engine params, map them
+  if (('density' in state || 'spray' in state || 'grainSize' in state) && !('granularDryWet' in state)) {
+    // Map old granular params → Voice 1 of unified granular in legacy mode
     if (state.density !== undefined) {
-      state.looperV1Density = state.density;
+      state.granularV1Density = state.density;
     }
     if (state.spray !== undefined) {
       // Old spray was 0-600ms, new spray is 0-1 normalized
-      state.looperV1Spray = Math.min(1, (state.spray as number) / 600);
+      state.granularV1Spray = Math.min(1, (state.spray as number) / 600);
     }
     if (state.grainSize !== undefined) {
-      state.looperV1GrainSize = state.grainSize;
+      state.granularV1GrainSize = state.grainSize;
     }
     if (state.jitter !== undefined) {
-      state.looperLegacyJitter = state.jitter;
+      state.granularLegacyJitter = state.jitter;
     }
     if (state.grainProbability !== undefined) {
-      state.looperLegacyProbability = state.grainProbability;
+      state.granularLegacyProbability = state.grainProbability;
     }
     if (state.grainPitchMode !== undefined) {
-      state.looperLegacyPitchMode = state.grainPitchMode;
+      state.granularLegacyPitchMode = state.grainPitchMode;
     }
     if (state.pitchSpread !== undefined) {
-      state.looperLegacyPitchSpread = state.pitchSpread;
+      state.granularLegacyPitchSpread = state.pitchSpread;
     }
     if (state.maxGrains !== undefined) {
-      state.looperLegacyMaxGrains = state.maxGrains;
+      state.granularLegacyMaxGrains = state.maxGrains;
     }
     if (state.stereoSpread !== undefined) {
-      state.looperV1StereoSpread = state.stereoSpread;
+      state.granularV1StereoSpread = state.stereoSpread;
     }
     if (state.feedback !== undefined) {
-      state.looperLegacyFeedback = Math.min(0.35, state.feedback as number);
+      state.granularLegacyFeedback = Math.min(0.35, state.feedback as number);
     }
     if (state.granularLevel !== undefined) {
-      state.looperDryWet = state.granularLevel;
+      state.granularDryWet = state.granularLevel;
     }
-    if (state.granularReverbSend !== undefined) {
-      state.looperReverbSend = state.granularReverbSend;
-    }
+    // granularReverbSend carries over as-is (same key name in unified engine)
     // Set Voice 1 to legacy mode
-    state.looperV1Mode = 'legacy';
-    state.looperV1Enabled = true;
-    state.looperPreset = 'legacy_cloud';
+    state.granularV1Mode = 'legacy';
+    state.granularV1Enabled = true;
+    state.granularPreset = 'legacy_cloud';
   }
+
+  // ═══ Legacy drumMembraneTension → drumMembraneStiffness rename ═══
+  if ('drumMembraneTension' in state && !('drumMembraneStiffness' in state)) {
+    state.drumMembraneStiffness = state.drumMembraneTension;
+    delete state.drumMembraneTension;
+  }
+
+  // ═══ Legacy waveSpread: seconds → fraction of chordRate ═══
+  if (typeof state.waveSpread === 'number' && state.waveSpread > 1) {
+    const cr = typeof state.chordRate === 'number' ? state.chordRate : 32;
+    state.waveSpread = Math.min(1, state.waveSpread / cr);
+  }
+
+  // ═══ Legacy synthEuclidBaseBPM: fall back to drumEuclidBaseBPM ═══
+  if (state.synthEuclidBaseBPM === undefined && typeof state.drumEuclidBaseBPM === 'number') {
+    state.synthEuclidBaseBPM = state.drumEuclidBaseBPM;
+  }
+
+  // ═══ Remove dead BPM clock source fields ═══
+  delete state.chordProgressionClockSource;
+  delete state.chordProgressionBarsPerStep;
+
+  // ═══ Evolve configs: migrate intensity → evolution if present ═══
+  let drumEvolveConfigs = preset.drumEvolveConfigs as SerializedEvolveConfig[] | undefined;
+  let synthEvolveConfigs = preset.synthEvolveConfigs as SerializedEvolveConfig[] | undefined;
+  let granularEvolveConfigs = preset.granularEvolveConfigs as SerializedEvolveConfig[] | undefined;
+
+  // Migrate legacy 'intensity' field → 'evolution' in saved evolve configs
+  const migrateEvolveArray = (arr?: any[]): SerializedEvolveConfig[] | undefined => {
+    if (!arr) return undefined;
+    return arr.map((c: any) => {
+      if (c && 'intensity' in c && !('evolution' in c)) {
+        const { intensity, ...rest } = c;
+        return { ...rest, evolution: intensity };
+      }
+      return c;
+    });
+  };
+  drumEvolveConfigs = migrateEvolveArray(drumEvolveConfigs);
+  synthEvolveConfigs = migrateEvolveArray(synthEvolveConfigs);
+  granularEvolveConfigs = migrateEvolveArray(granularEvolveConfigs);
 
   return {
     name: preset.name || 'Untitled',
@@ -3334,5 +3560,11 @@ export function migratePreset(preset: any): SavedPreset {
     state: state as SliderState,
     dualRanges: Object.keys(dualRanges).length > 0 ? dualRanges : undefined,
     sliderModes: Object.keys(sliderModes).length > 0 ? sliderModes : undefined,
+    drumEvolveConfigs,
+    synthEvolveConfigs,
+    granularEvolveConfigs,
+    drumSubLaneStates: preset.drumSubLaneStates,
+    synthSubLaneStates: preset.synthSubLaneStates,
+    granularSubLaneStates: preset.granularSubLaneStates,
   };
 }

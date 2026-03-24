@@ -26,43 +26,56 @@ import { getMorphedParams } from './drumMorph';
 import type { DrumStepOverrides, SequencerState, ClockDivision } from './drumSeqTypes';
 import { createSequencer, resolveDrumEuclidPatternParams, seqEuclidean, seqLaneIndex, seqPickVoice } from './drumSequencer';
 import { captureHomeSnapshot, evolveSequencer, resetSequencerToHome } from './drumSeqEvolve';
+import { generateDicePattern, generateDiceValues, generateDicePitchOffsets, blendDiceValues } from './seqEvolveCore';
+import { getEffectiveTension } from './harmony';
 
 export type DrumVoiceType = 'sub' | 'kick' | 'click' | 'beepHi' | 'beepLo' | 'noise' | 'membrane';
 
 export type DrumEvolveMethod =
   | 'rotateDrift'
-  | 'velocityBreath'
   | 'swingDrift'
   | 'probDrift'
-  | 'morphDrift'
   | 'ghostNotes'
   | 'ratchetSpray'
   | 'hitDrift'
-  | 'pitchWalk';
+  | 'pitchWalk'
+  | 'valueDrift'
+  | 'valueScramble'
+  | 'valueWiden'
+  | 'subLaneLengthDrift'
+  | 'subLaneDirectionFlip';
 
 export type DrumEuclidEvolveConfig = {
   enabled: boolean;
   everyBars: number;
-  intensity: number;
+  evolution: number;
+  writeOffset: number | 'auto';
+  mutationMode: 'strict' | 'biased';
   methods: Record<DrumEvolveMethod, boolean>;
+  enabledSubLanes?: string[];
 };
 
 const defaultEvolveMethods = (): Record<DrumEvolveMethod, boolean> => ({
   rotateDrift: true,
-  velocityBreath: true,
   swingDrift: true,
-  probDrift: true,
-  morphDrift: true,
-  ghostNotes: true,
-  ratchetSpray: true,
-  hitDrift: true,
-  pitchWalk: true,
+  probDrift: false,
+  ghostNotes: false,
+  ratchetSpray: false,
+  hitDrift: false,
+  pitchWalk: false,
+  valueDrift: true,
+  valueScramble: false,
+  valueWiden: false,
+  subLaneLengthDrift: false,
+  subLaneDirectionFlip: false,
 });
 
-const defaultEvolveConfig = (): DrumEuclidEvolveConfig => ({
+export const defaultEvolveConfig = (): DrumEuclidEvolveConfig => ({
   enabled: false,
   everyBars: 4,
-  intensity: 0.5,
+  evolution: 0.5,
+  writeOffset: 0,
+  mutationMode: 'biased',
   methods: defaultEvolveMethods(),
 });
 
@@ -94,7 +107,7 @@ function noteToSeconds(note: string, bpm: number): number {
 export class DrumSynth {
   private ctx: AudioContext;
   private masterGain: GainNode;
-  private preFaderBus: GainNode;   // sum of all voices BEFORE drumLevel gain (for looper pre-fader tap)
+  private preFaderBus: GainNode;   // sum of all voices BEFORE drumLevel gain (for granular pre-fader tap)
   private reverbSend: GainNode;
   private params: SliderState;
   
@@ -137,6 +150,9 @@ export class DrumSynth {
 
   // Callback for Euclidean lane evolve visualization
   private onEuclidEvolveTrigger: ((laneIndex: number) => void) | null = null;
+
+  // Callback for evolved overrides push-back to UI visualizer
+  private onEvolveOverridesChanged: ((laneIndex: number, overrides: Partial<DrumStepOverrides>) => void) | null = null;
 
   // Callback for step position updates (UI playhead)
   private onStepPositionChange: ((steps: number[], hitCounts: number[]) => void) | null = null;
@@ -181,6 +197,8 @@ export class DrumSynth {
     sliceDirection: [null, null, null, null],
     reverseDirection: [null, null, null, null],
   };
+  /** Per-lane sub-lane enabled state from UI (keys are sub-lane names). */
+  private subLaneEnabled: Record<string, boolean>[] = [{}, {}, {}, {}];
 
   // Per-trigger override values set by the scheduler from sub-lane data.
   // Checked by voice trigger methods before falling back to global params.
@@ -193,11 +211,18 @@ export class DrumSynth {
   // Max attack time (seconds) for ratchet hits — keeps transients tight
   private triggerRatchetAttackCap: number = Infinity;
 
+  // Scale intervals from harmony engine for pitch quantization
+  private scaleIntervals: readonly number[] = [];
+
   // Track per-trigger transient audio nodes for explicit cleanup on dispose.
   // Each group has an expiry time (ctx.currentTime when all envelopes have ended).
   // cleanupTransientNodes() only disconnects groups whose expiresAt has passed.
   private transientNodeGroups: { nodes: AudioNode[]; expiresAt: number }[] = [];
   private transientCleanupTimer: number | null = null;
+
+  // WASM drum worklet node — when set, triggers are forwarded via postMessage
+  private wasmNode: AudioWorkletNode | null = null;
+  private wasmReady = false;
 
   // Per-voice bus gain nodes (intermediate routing for analyser isolation)
   private voiceBusGains: Record<DrumVoiceType, GainNode> = {} as Record<DrumVoiceType, GainNode>;
@@ -250,7 +275,7 @@ export class DrumSynth {
     // Create per-voice bus gain nodes + analyser nodes
     const voices: DrumVoiceType[] = ['sub', 'kick', 'click', 'beepHi', 'beepLo', 'noise', 'membrane'];
     for (const v of voices) {
-      // Bus gain: voice triggers â†’ bus â†’ masterGain (unity gain pass-through)
+      // Bus gain: voice triggers → bus → masterGain (unity gain pass-through)
       const bus = ctx.createGain();
       bus.gain.value = 1;
       bus.connect(this.preFaderBus);
@@ -347,7 +372,7 @@ export class DrumSynth {
   }
 
   private getWaveshaperCurve(driveAmount: number): Float32Array<ArrayBuffer> {
-    // Guard against near-zero drive producing NaN via division by tanh(0)â†’0
+    // Guard against near-zero drive producing NaN via division by tanh(0)→0
     if (driveAmount < 0.001) {
       const cacheKey = '0.000';
       const cached = this.waveshaperCurveCache.get(cacheKey);
@@ -472,6 +497,51 @@ export class DrumSynth {
     return A432_RATIO * Math.pow(2, semitones / 12);
   }
 
+  /** Receive scale intervals from harmony engine (called at phrase boundaries). */
+  setScaleIntervals(intervals: readonly number[]): void {
+    this.scaleIntervals = intervals;
+  }
+
+  /** Snap a semitone offset to the nearest scale degree, preserving octave. */
+  private quantizePitchToScale(semitones: number): number {
+    if (this.scaleIntervals.length === 0) return semitones;
+    const octaves = Math.floor(semitones / 12);
+    let remainder = ((semitones % 12) + 12) % 12;
+    let bestInterval = 0;
+    let bestDist = 99;
+    for (const interval of this.scaleIntervals) {
+      const d = Math.abs(interval - remainder);
+      const dist = Math.min(d, 12 - d);
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestInterval = interval;
+      }
+    }
+    return octaves * 12 + bestInterval;
+  }
+
+  /**
+   * Blend a membrane partial ratio toward the nearest scale-consonant ratio.
+   * Returns the original ratio when no scale is set.
+   * @param ratio - raw membrane mode ratio (e.g. 1.59)
+   * @param blend - 0..1 how far to pull toward the scale ratio (0 = no effect)
+   */
+  private scaleAlignRatio(ratio: number, blend: number): number {
+    if (this.scaleIntervals.length === 0 || blend <= 0) return ratio;
+    // Build scale-consonant ratios across multiple octaves
+    let bestScaleRatio = ratio;
+    let bestDist = Infinity;
+    for (let oct = 0; oct < 3; oct++) {
+      const octMul = Math.pow(2, oct);
+      for (const interval of this.scaleIntervals) {
+        const sr = octMul * Math.pow(2, interval / 12);
+        const dist = Math.abs(sr - ratio);
+        if (dist < bestDist) { bestDist = dist; bestScaleRatio = sr; }
+      }
+    }
+    return ratio + blend * (bestScaleRatio - ratio);
+  }
+
   /**
    * Calculate delay filter frequency from 0-1 parameter
    * 0 = dark (500Hz), 0.5 = medium (4kHz), 1 = bright (16kHz)
@@ -519,6 +589,10 @@ export class DrumSynth {
     this.onEuclidEvolveTrigger = callback;
   }
 
+  setEvolveOverridesChangedCallback(callback: (laneIndex: number, overrides: Partial<DrumStepOverrides>) => void): void {
+    this.onEvolveOverridesChanged = callback;
+  }
+
   setStepPositionCallback(callback: (steps: number[], hitCounts: number[]) => void): void {
     this.onStepPositionChange = callback;
   }
@@ -562,9 +636,20 @@ export class DrumSynth {
   }
 
   /** Pre-fader bus: sum of all drum voices BEFORE drumLevel gain.
-   *  Used by looper for pre-fader send (independent of drum volume slider). */
+   *  Used by granular engine for pre-fader send (independent of drum volume slider). */
   getPreFaderBus(): GainNode {
     return this.preFaderBus;
+  }
+
+  /** Set the WASM drum worklet node. When set and ready, triggers are forwarded via postMessage. */
+  setWasmNode(node: AudioWorkletNode | null, ready: boolean = false): void {
+    this.wasmNode = node;
+    this.wasmReady = ready;
+  }
+
+  /** Mark the WASM drum worklet as ready to receive triggers. */
+  setWasmReady(ready: boolean): void {
+    this.wasmReady = ready;
   }
   
   updateParams(params: SliderState): void {
@@ -607,7 +692,9 @@ export class DrumSynth {
       return {
         enabled: incoming.enabled ?? current.enabled,
         everyBars: Math.max(1, Math.round(incoming.everyBars ?? current.everyBars)),
-        intensity: clamp(incoming.intensity ?? current.intensity, 0, 1),
+        evolution: clamp(incoming.evolution ?? current.evolution, 0, 1),
+        writeOffset: incoming.writeOffset ?? current.writeOffset,
+        mutationMode: incoming.mutationMode ?? current.mutationMode,
         methods: {
           ...current.methods,
           ...(incoming.methods || {}),
@@ -623,7 +710,7 @@ export class DrumSynth {
           ...sequencer.evolve,
           enabled: config.enabled,
           everyBars: config.everyBars,
-          intensity: config.intensity,
+          evolution: config.evolution,
           methods: { ...config.methods },
           home: sequencer.evolve.home ?? captureHomeSnapshot(sequencer),
         },
@@ -636,6 +723,96 @@ export class DrumSynth {
     const sequencer = this.euclidSequencers[laneIndex];
     if (!sequencer) return;
     this.euclidSequencers[laneIndex] = resetSequencerToHome(sequencer);
+    this.pushEvolvedOverridesToUI(laneIndex, this.euclidSequencers[laneIndex]);
+  }
+
+  /** Dice: regenerate a drum lane with fresh random pattern + sub-lane values, capture as new home. */
+  diceEuclidLane(laneIndex: number, intensity: number = 1): void {
+    if (laneIndex < 0 || laneIndex >= this.euclidSequencers.length) return;
+    const seq = this.euclidSequencers[laneIndex];
+    if (!seq) return;
+    const rng = seq.rng;
+    const steps = seq.trigger.steps;
+    const inten = Math.max(0, Math.min(1, intensity));
+
+    // New Euclidean trigger pattern with intensity-scaled hits variation
+    const newPattern = generateDicePattern(steps, seq.trigger.hits, rng, inten);
+    const newHits = newPattern.filter(Boolean).length;
+
+    // Fresh sub-lane values, blended with current by intensity
+    const stepCount = seq.expression.steps;
+    const newVelocities = blendDiceValues(seq.expression.velocities, generateDiceValues(stepCount, rng, inten), inten);
+    const newPitchOffsets = blendDiceValues(seq.pitch.offsets, generateDicePitchOffsets(stepCount, 4, rng, inten), inten).map(Math.round);
+    const newMorphValues = blendDiceValues(seq.morph.values, generateDiceValues(stepCount, rng, inten), inten);
+    const newDistanceValues = blendDiceValues(seq.distance.values, generateDiceValues(stepCount, rng, inten), inten);
+    const newSliceValues = blendDiceValues(
+      seq.slice.values,
+      Array.from({ length: stepCount }, () => Math.floor(rng() * 16)),
+      inten,
+    ).map(Math.round);
+    const newReverseValues = blendDiceValues(
+      seq.reverse.values,
+      Array.from({ length: stepCount }, () => rng() < 0.3 ? 1 : 0),
+      inten,
+    ).map(v => v > 0.5 ? 1 : 0);
+
+    // Apply to sequencer
+    const updated: SequencerState = {
+      ...seq,
+      trigger: {
+        ...seq.trigger,
+        hits: newHits,
+        pattern: newPattern,
+        probability: new Array(stepCount).fill(1),
+        ratchet: new Array(stepCount).fill(1),
+      },
+      expression: { ...seq.expression, velocities: newVelocities },
+      pitch: { ...seq.pitch, offsets: newPitchOffsets },
+      morph: { ...seq.morph, values: newMorphValues },
+      distance: { ...seq.distance, values: newDistanceValues },
+      slice: { ...seq.slice, values: newSliceValues },
+      reverse: { ...seq.reverse, values: newReverseValues },
+      evolve: {
+        ...seq.evolve,
+        home: null, // will be re-captured below
+      },
+    };
+
+    // Capture new state as home
+    updated.evolve.home = captureHomeSnapshot(updated);
+    this.euclidSequencers[laneIndex] = updated;
+    this.pushEvolvedOverridesToUI(laneIndex, updated);
+  }
+
+  /** Extract evolved sub-lane values from a SequencerState and push to UI via callback. */
+  private pushEvolvedOverridesToUI(laneIndex: number, s: SequencerState): void {
+    if (!this.onEvolveOverridesChanged) return;
+    const triggerToggles = [new Map<number, boolean>(), new Map<number, boolean>(), new Map<number, boolean>(), new Map<number, boolean>()];
+    const fullPatternMap = new Map<number, boolean>();
+    for (let i = 0; i < s.trigger.pattern.length; i++) {
+      fullPatternMap.set(i, !!s.trigger.pattern[i]);
+    }
+    triggerToggles[laneIndex] = fullPatternMap;
+    const partial: Partial<DrumStepOverrides> = {
+      triggerToggles,
+      probability: [null, null, null, null] as (number[] | null)[],
+      ratchet: [null, null, null, null] as (number[] | null)[],
+      expression: [null, null, null, null] as (number[] | null)[],
+      pitch: [null, null, null, null] as (number[] | null)[],
+      morph: [null, null, null, null] as (number[] | null)[],
+      distance: [null, null, null, null] as (number[] | null)[],
+      slice: [null, null, null, null] as (number[] | null)[],
+      reverse: [null, null, null, null] as (number[] | null)[],
+    };
+    partial.probability![laneIndex] = [...s.trigger.probability];
+    partial.ratchet![laneIndex] = [...s.trigger.ratchet];
+    partial.expression![laneIndex] = [...s.expression.velocities];
+    partial.pitch![laneIndex] = [...s.pitch.offsets];
+    partial.morph![laneIndex] = [...s.morph.values];
+    partial.distance![laneIndex] = [...s.distance.values];
+    partial.slice![laneIndex] = [...s.slice.values];
+    partial.reverse![laneIndex] = [...s.reverse.values];
+    this.onEvolveOverridesChanged(laneIndex, partial);
   }
 
   /** Update per-lane clock divisions from the UI. */
@@ -676,6 +853,11 @@ export class DrumSynth {
       sliceDirection: overrides.sliceDirection ?? [null, null, null, null],
       reverseDirection: overrides.reverseDirection ?? [null, null, null, null],
     };
+  }
+
+  /** Set per-lane sub-lane enabled state from the UI. */
+  setEuclidSubLaneEnabled(states: Record<string, boolean>[]): void {
+    this.subLaneEnabled = states.map(s => ({ ...s }));
   }
   
   /**
@@ -742,9 +924,9 @@ export class DrumSynth {
     this.stopEuclidScheduler();
   }
   
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ═══════════════════════════════════════════════════════════════════════════
   // PER-HIT VARIATION & DISTANCE HELPERS
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ═══════════════════════════════════════════════════════════════════════════
 
   /**
    * Compute correlated per-hit micro-variation jitter multipliers.
@@ -772,7 +954,7 @@ export class DrumSynth {
   }
 
   /**
-   * Apply "distance" macro â€” a static dampening that darkens, softens, and smooths
+   * Apply "distance" macro — a static dampening that darkens, softens, and smooths
    * Strike-position macro: 0.0 = dead center, 0.5 = neutral, 1.0 = edge of head.
    * Bipolar model matching prototype option2:
    * Center: more body/fundamental, longer decay, darker, rounder attack
@@ -851,12 +1033,43 @@ export class DrumSynth {
     return this.sampleSHParam(distKey, voice) ?? fallback;
   }
 
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ═══════════════════════════════════════════════════════════════════════════
   // VOICE TRIGGER METHODS
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ═══════════════════════════════════════════════════════════════════════════
   
+  private static readonly VOICE_TYPE_INDEX: Record<DrumVoiceType, number> = {
+    sub: 0, kick: 1, click: 2, beepHi: 3, beepLo: 4, noise: 5, membrane: 6,
+  };
+
   triggerVoice(voice: DrumVoiceType, velocity: number = 0.8, time?: number): void {
     const t = time ?? this.ctx.currentTime;
+
+    // WASM path: forward trigger + overrides to drum worklet
+    if (this.wasmReady && this.wasmNode) {
+      const port = this.wasmNode.port;
+      // Send per-trigger overrides
+      if (this.triggerMorphOverride !== null || this.triggerDistanceOverride !== null ||
+          this.triggerPitchOverride !== null || this.triggerRatchetDecayCap < Infinity ||
+          this.triggerRatchetAttackCap < Infinity) {
+        port.postMessage({
+          type: 'overrides',
+          morph: this.triggerMorphOverride,
+          distance: this.triggerDistanceOverride,
+          pitch: this.triggerPitchOverride,
+          ratchetDecayCap: this.triggerRatchetDecayCap < Infinity ? this.triggerRatchetDecayCap : undefined,
+          ratchetAttackCap: this.triggerRatchetAttackCap < Infinity ? this.triggerRatchetAttackCap : undefined,
+        });
+      }
+      port.postMessage({
+        type: 'trigger',
+        voiceType: DrumSynth.VOICE_TYPE_INDEX[voice],
+        velocity,
+        sampleOffset: 0,
+      });
+      // UI notification still needed
+      if (this.onDrumTrigger) this.onDrumTrigger(voice, velocity);
+      return;
+    }
 
     // ── Voice pool management: evict expired, steal oldest if at capacity ──
     const pool = this.voicePools[voice];
@@ -1159,7 +1372,7 @@ export class DrumSynth {
     osc.frequency.setValueAtTime(startFreq, time);
     osc.frequency.exponentialRampToValueAtTime(effFreq, time + pitchDecay);
     
-    // Click transient (high-frequency burst for attack) â€” distance reduces click
+    // Click transient (high-frequency burst for attack) — distance reduces click
     const effClick = click * d.dTransient * v.vBright;
     let clickOsc: OscillatorNode | null = null;
     let clickGain: GainNode | null = null;
@@ -1466,7 +1679,7 @@ export class DrumSynth {
   }
 
   /**
-   * Click mode: Continuous exciter â€” crossfades between impulse noise (0)
+   * Click mode: Continuous exciter — crossfades between impulse noise (0)
    * through tonal click (0.5) to filtered noise burst (1.0).
    * Replaces discrete mode switching with a single continuous control.
    */
@@ -1478,13 +1691,13 @@ export class DrumSynth {
     if (!this.noiseBuffer) return;
     
     // Impulse layer (sharp transient noise, dominant when color ~0)
-    const impulseLevel = Math.max(0, 1 - color * 2); // 1â†’0 over color 0â†’0.5
+    const impulseLevel = Math.max(0, 1 - color * 2); // 1→0 over color 0→0.5
     
     // Tonal layer (pitched sine click, peaks at color ~0.5)
     const tonalLevel = 1 - Math.abs(color - 0.5) * 2; // peaks at 0.5
     
     // Noise layer (filtered noise burst, dominant when color ~1)
-    const noiseLevel = Math.max(0, (color - 0.5) * 2); // 0â†’1 over color 0.5â†’1
+    const noiseLevel = Math.max(0, (color - 0.5) * 2); // 0→1 over color 0.5→1
     
     // === Impulse component ===
     if (impulseLevel > 0.01) {
@@ -1577,7 +1790,7 @@ export class DrumSynth {
     const distance = this.resolveDistance('beepHi', 'drumBeepHiDistance', (morphed.drumBeepHiDistance as number) ?? p.drumBeepHiDistance ?? 0.5);
     
     // Per-hit micro-variation + distance macro
-    // BeepHi is high-frequency/metallic â€” distance affects it more aggressively
+    // BeepHi is high-frequency/metallic — distance affects it more aggressively
     // than lower voices (HF content rolls off faster with distance in real acoustics)
     const v = this.computeVariation(variation);
     const d = this.computeDistance(distance);
@@ -1697,7 +1910,7 @@ export class DrumSynth {
       const baseModDepth = effTone * effFreq * 0.3;
       
       // Mod index envelope: controls how mod depth decays over time
-      // ADE contour: Attackâ†’peak, then Decayâ†’End level (modEnvEnd controls sustain)
+      // ADE contour: Attack→peak, then Decay→End level (modEnvEnd controls sustain)
       if (modEnvDecay > 0.01) {
         // modEnvDecay 0..1 maps to fast (5ms) to slow (300ms) envelope
         const envDuration = 0.005 + modEnvDecay * 0.295;
@@ -1817,13 +2030,13 @@ export class DrumSynth {
     const oscAmp = Math.cos(modal * Math.PI / 2) * oscGainTrim;
     const modalAmp = Math.sin(modal * Math.PI / 2) * effModalGainTrim;
     
-    // â”€â”€ Modal resonator engine (when modal > 0) â”€â”€
+    // ── Modal resonator engine (when modal > 0) ──
     if (modalAmp > 0.01) {
       // Pass variation excite jitter for burst length variation, and distance brightness
       this.triggerBeepLoModal(time, outputLevel * modalAmp, effFreq, effAttack, effDecay, effModalQ, modalInharmonic, body, modalSpread, modalCut, v.vExcite, d.dBright);
     }
     
-    // â”€â”€ Oscillator / Pluck engine (when modal < 1) â”€â”€
+    // ── Oscillator / Pluck engine (when modal < 1) ──
     if (oscAmp < 0.01) return; // fully modal, skip osc path
     
     const oscLevel = outputLevel * oscAmp;
@@ -1961,7 +2174,7 @@ export class DrumSynth {
   
   /**
    * Modal resonator bank synthesis for BeepLo
-   * Excites a bank of tuned bandpass resonators with noise burst â€”
+   * Excites a bank of tuned bandpass resonators with noise burst —
    * like physical modelling of struck bars, bells, or plates.
    * @param inharmonic - 0: harmonic series, 1: metallic/bell-like ratios
    */
@@ -1976,7 +2189,7 @@ export class DrumSynth {
     
     const numModes = 6; // Number of resonant modes
     const outputGain = this.ctx.createGain();
-    // Modal synthesis is impulse-excited â€” the burst IS the attack.
+    // Modal synthesis is impulse-excited — the burst IS the attack.
     // No attack ramp: envelope starts at peak and decays immediately.
     // Level is pre-scaled by equal-power crossfade + gain trim in caller.
     const modalLevel = level;
@@ -1985,7 +2198,7 @@ export class DrumSynth {
     
     this.routeOutput(outputGain, 'beepLo');
     
-    // Short noise burst excitation â€” amplitude boosted to compensate for
+    // Short noise burst excitation — amplitude boosted to compensate for
     // bandpass resonators only passing narrow frequency bands of broadband noise.
     // Without this, the modal bank is ~30-40 dB quieter than a direct oscillator.
     // exciteJitter scales burst duration (variation randomness), brightnessMult dampens HF (distance)
@@ -2020,10 +2233,10 @@ export class DrumSynth {
       if (Math.abs(spread) > 0.01) {
         const normalized = baseRatio / harmonicRatios[numModes - 1]; // 0..1
         if (spread > 0) {
-          // Exponential expansion â€” push partials apart
+          // Exponential expansion — push partials apart
           ratio = harmonicRatios[numModes - 1] * Math.pow(normalized, 1 - spread * 0.7);
         } else {
-          // Logarithmic compression â€” pull partials together
+          // Logarithmic compression — pull partials together
           ratio = harmonicRatios[numModes - 1] * Math.pow(normalized, 1 + Math.abs(spread) * 2);
         }
         ratio = Math.max(ratio, 0.5); // Don't allow sub-fundamental
@@ -2052,10 +2265,10 @@ export class DrumSynth {
       if (Math.abs(cut) > 0.01) {
         const normalizedIdx = i / (numModes - 1); // 0..1
         if (cut > 0) {
-          // Cut lows â€” attenuate early partials
+          // Cut lows — attenuate early partials
           modeLevel *= Math.pow(normalizedIdx, cut * 1.5);
         } else {
-          // Cut highs â€” attenuate later partials  
+          // Cut highs — attenuate later partials  
           modeLevel *= Math.pow(1 - normalizedIdx, Math.abs(cut) * 1.5);
         }
       }
@@ -2250,7 +2463,7 @@ export class DrumSynth {
     
     this.routeOutput(outputGain, 'noise');
     
-    // Handle density â€” pulsar particle mode for sparse textures
+    // Handle density — pulsar particle mode for sparse textures
     let sparseOsc: OscillatorNode | null = null;
     let sparseOscGain: GainNode | null = null;
     let sparseGain: GainNode | null = null;
@@ -2386,7 +2599,7 @@ export class DrumSynth {
     const excBright = ((morphed.drumMembraneExcBright as number) ?? p.drumMembraneExcBright) * v.vBright * d.dBright;
     const excDur = Math.max(0.0005, (((morphed.drumMembraneExcDur as number) ?? p.drumMembraneExcDur) / 1000));
     const sizeHz = Math.max(30, ((morphed.drumMembraneSize as number) ?? p.drumMembraneSize) * v.vPitch * this.getPitchTuningRatio());
-    const tensionRaw = Math.min(1, Math.max(0, (morphed.drumMembraneTension as number) ?? p.drumMembraneTension));
+    const tensionRaw = Math.min(1, Math.max(0, (morphed.drumMembraneStiffness as number) ?? p.drumMembraneStiffness));
     const tension = Math.min(1, this.clEd(tensionRaw, d.t, DrumSynth.CL_ED.membrane.tension));
     const damping = Math.min(1, Math.max(0, (morphed.drumMembraneDamping as number) ?? p.drumMembraneDamping));
     const material = (morphed.drumMembraneMaterial as SliderState['drumMembraneMaterial']) ?? p.drumMembraneMaterial;
@@ -2491,7 +2704,9 @@ export class DrumSynth {
     const modeGains: GainNode[] = [];
 
     for (let m = 0; m < numModes; m++) {
-      const ratio = modeRatios[m] + inharm * (m * 0.08) * (Math.random() * 0.4 + 0.8);
+      const rawRatio = modeRatios[m] + inharm * (m * 0.08) * (Math.random() * 0.4 + 0.8);
+      const scaleBlend = (morphed.drumMembraneScaleBlend as number) ?? p.drumMembraneScaleBlend ?? 0.3;
+      const ratio = this.scaleAlignRatio(rawRatio, scaleBlend);
       // Position affects which modes are excited (center excites odd modes more)
       const posAmp = m === 0 ? 1.0 : (1.0 - Math.abs(excPos - 0.5) * (m % 2 === 0 ? 1.5 : 0.3));
       const modeFreq = sizeHz * ratio * (0.5 + tension * 1.0);
@@ -2585,9 +2800,9 @@ export class DrumSynth {
     this.trackTransientNodes(envDur + 0.5, masterOut, excGain, ...exciters, ...resonators, ...modeGains, ...wireNodes);
   }
   
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ═══════════════════════════════════════════════════════════════════════════
   // EUCLIDEAN SCHEDULER
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ═══════════════════════════════════════════════════════════════════════════
   
   private startEuclidScheduler(): void {
     if (this.euclidScheduleTimer) return;
@@ -2604,7 +2819,7 @@ export class DrumSynth {
       const evolveConfig = this.euclidEvolveConfigs[id] || defaultEvolveConfig();
       sequencer.evolve.enabled = evolveConfig.enabled;
       sequencer.evolve.everyBars = evolveConfig.everyBars;
-      sequencer.evolve.intensity = evolveConfig.intensity;
+      sequencer.evolve.evolution = evolveConfig.evolution;
       sequencer.evolve.methods = { ...evolveConfig.methods };
       sequencer.evolve.home = captureHomeSnapshot(sequencer);
       return sequencer;
@@ -2618,6 +2833,18 @@ export class DrumSynth {
       }
       
       const now = this.ctx.currentTime;
+
+      // Time-jump recovery: if any sequencer is >500ms behind (e.g. tab was backgrounded),
+      // snap all sequencers forward to now instead of processing a burst of catch-up events
+      const timeJumpThreshold = 0.5;
+      for (const seq of this.euclidSequencers) {
+        if (seq.nextTime > 0 && now - seq.nextTime > timeJumpThreshold) {
+          for (const s of this.euclidSequencers) {
+            s.nextTime = now;
+          }
+          break;
+        }
+      }
       
       // Calculate base beat duration from BPM
       const baseBPM = this.params.drumEuclidBaseBPM ?? 120;
@@ -2728,13 +2955,14 @@ export class DrumSynth {
 
         // Apply step override data from UI sub-lanes into sequencer model
         const ov = this.stepOverrides;
-        if (ov.probability[laneIndex]) {
+        const dlEnabled = this.subLaneEnabled[laneIndex] ?? {};
+        if (ov.probability[laneIndex] && dlEnabled.expression !== false) {
           sequencer.trigger.probability = ov.probability[laneIndex]!;
         } else {
-          // Reset to defaults when override is cleared
+          // Reset to defaults when override is cleared or expression sub-lane disabled
           sequencer.trigger.probability = new Array(lane.steps).fill(1);
         }
-        if (ov.ratchet[laneIndex]) {
+        if (ov.ratchet[laneIndex] && dlEnabled.expression !== false) {
           sequencer.trigger.ratchet = ov.ratchet[laneIndex]!;
         } else {
           // Reset to defaults when override is cleared (prevents stale ratchet values)
@@ -2744,7 +2972,7 @@ export class DrumSynth {
           const exprArr = ov.expression[laneIndex]!;
           sequencer.expression.velocities = exprArr;
           sequencer.expression.steps = exprArr.length;
-          sequencer.expression.enabled = true;
+          sequencer.expression.enabled = dlEnabled.expression !== false;
         }
         if (ov.expressionDirection[laneIndex]) {
           sequencer.expression.direction = ov.expressionDirection[laneIndex]!;
@@ -2752,7 +2980,7 @@ export class DrumSynth {
         if (ov.morph[laneIndex]) {
           sequencer.morph.values = ov.morph[laneIndex]!;
           sequencer.morph.steps = ov.morph[laneIndex]!.length;
-          sequencer.morph.enabled = true;
+          sequencer.morph.enabled = dlEnabled.morph !== false;
         }
         if (ov.morphDirection[laneIndex]) {
           sequencer.morph.direction = ov.morphDirection[laneIndex]!;
@@ -2760,7 +2988,7 @@ export class DrumSynth {
         if (ov.distance[laneIndex]) {
           sequencer.distance.values = ov.distance[laneIndex]!;
           sequencer.distance.steps = ov.distance[laneIndex]!.length;
-          sequencer.distance.enabled = true;
+          sequencer.distance.enabled = dlEnabled.distance !== false;
         }
         if (ov.distanceDirection[laneIndex]) {
           sequencer.distance.direction = ov.distanceDirection[laneIndex]!;
@@ -2768,7 +2996,7 @@ export class DrumSynth {
         if (ov.pitch[laneIndex]) {
           sequencer.pitch.offsets = ov.pitch[laneIndex]!;
           sequencer.pitch.steps = ov.pitch[laneIndex]!.length;
-          sequencer.pitch.enabled = true;
+          sequencer.pitch.enabled = dlEnabled.pitch !== false;
         }
         if (ov.pitchDirection[laneIndex]) {
           sequencer.pitch.direction = ov.pitchDirection[laneIndex]!;
@@ -2800,10 +3028,24 @@ export class DrumSynth {
           sequencer.totalStepCount++;
           if (sequencer.stepIndex === 0 && sequencer.totalStepCount > 1) {
             const bar = Math.floor(sequencer.totalStepCount / lane.steps);
-            const evolved = evolveSequencer(sequencer, bar);
+            const drumTension = getEffectiveTension(
+              this.params.tension ?? 0.3,
+              this.params.drumTensionMode ?? 'bypass',
+              this.params.drumTensionValue ?? 0,
+            );
+            const dlLaneEnabled = this.subLaneEnabled[laneIndex] ?? {};
+            const drumEnabledSubs = (['expression', 'morph', 'distance', 'pitch', 'slice', 'reverse'] as const)
+              .filter(sl => dlLaneEnabled[sl] !== false);
+            const evolved = evolveSequencer(sequencer, bar, {
+              effectiveTension: Math.max(0, drumTension),
+              scaleIntervals: this.scaleIntervals,
+              enabledSubLanes: drumEnabledSubs,
+            });
             if (evolved !== sequencer) {
               Object.assign(sequencer, evolved);
               this.onEuclidEvolveTrigger?.(laneIndex);
+              // Push evolved sub-lane values back to UI visualizer
+              this.pushEvolvedOverridesToUI(laneIndex, sequencer);
             }
           }
 
@@ -2851,7 +3093,12 @@ export class DrumSynth {
               // Compute per-trigger pitch override from sub-lane data (semitone offset for A=432 tuning)
               if (ov.pitch[laneIndex] && sequencer.pitch.offsets.length > 0) {
                 const pitchIndex = seqLaneIndex(sequencer.pitch, sequencer.hitCount);
-                this.triggerPitchOverride = sequencer.pitch.offsets[pitchIndex % sequencer.pitch.offsets.length] ?? null;
+                let rawPitch = sequencer.pitch.offsets[pitchIndex % sequencer.pitch.offsets.length] ?? null;
+                // When scale quantize is enabled, snap to harmony engine's current scale
+                if (rawPitch !== null && sequencer.pitch.scaleQuantize) {
+                  rawPitch = this.quantizePitchToScale(rawPitch);
+                }
+                this.triggerPitchOverride = rawPitch;
               } else {
                 this.triggerPitchOverride = null;
               }
@@ -2917,9 +3164,9 @@ export class DrumSynth {
     this.euclidSequencers = [];
   }
   
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ═══════════════════════════════════════════════════════════════════════════
   // CLEANUP
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ═══════════════════════════════════════════════════════════════════════════
   
   dispose(): void {
     this.stop();

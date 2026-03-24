@@ -5,15 +5,32 @@
  * E = MIDI 40 (E2) or 52 (E3) as root.
  */
 
+/** Chord quality for diatonic chord building */
+export type ChordQuality = 'major' | 'minor' | 'diminished' | 'augmented' | 'dominant';
+
+/** Diatonic chord degree definition */
+export interface DiatonicDegree {
+  /** Semitone interval from root (scale degree offset) */
+  root: number;
+  /** Chord quality on this degree */
+  quality: ChordQuality;
+  /** Intervals from chord root: [3rd, 5th] in semitones */
+  triad: readonly [number, number];
+  /** 7th interval from chord root (semitones), for extended chords */
+  seventh: number;
+}
+
 export interface ScaleFamily {
   name: string;
   intervals: readonly number[];
   tensionLevel: 'consonant' | 'color' | 'high';
   tensionValue: number; // 0-1 for sorting/selection
+  /** Diatonic chord degrees (I through vii). Only defined for 7-note scales. */
+  degrees?: readonly DiatonicDegree[];
 }
 
 export const SCALE_FAMILIES: readonly ScaleFamily[] = [
-  // Consonant - Major/Bright (tension 0 - 0.25)
+  // Consonant scales (tension 0.00–0.50)
   {
     name: 'Major Pentatonic',
     intervals: [0, 2, 4, 7, 9],
@@ -24,85 +41,157 @@ export const SCALE_FAMILIES: readonly ScaleFamily[] = [
     name: 'Major (Ionian)',
     intervals: [0, 2, 4, 5, 7, 9, 11],
     tensionLevel: 'consonant',
-    tensionValue: 0.05,
+    tensionValue: 0.08,
+    degrees: [
+      { root: 0, quality: 'major', triad: [4, 7], seventh: 11 },      // I
+      { root: 2, quality: 'minor', triad: [3, 7], seventh: 10 },      // ii
+      { root: 4, quality: 'minor', triad: [3, 7], seventh: 10 },      // iii
+      { root: 5, quality: 'major', triad: [4, 7], seventh: 11 },      // IV
+      { root: 7, quality: 'dominant', triad: [4, 7], seventh: 10 },   // V
+      { root: 9, quality: 'minor', triad: [3, 7], seventh: 10 },      // vi
+      { root: 11, quality: 'diminished', triad: [3, 6], seventh: 9 }, // vii°
+    ],
   },
   {
     name: 'Lydian',
     intervals: [0, 2, 4, 6, 7, 9, 11],
     tensionLevel: 'consonant',
-    tensionValue: 0.10,
+    tensionValue: 0.18,
+    degrees: [
+      { root: 0, quality: 'major', triad: [4, 7], seventh: 11 },      // I
+      { root: 2, quality: 'dominant', triad: [4, 7], seventh: 10 },   // II
+      { root: 4, quality: 'minor', triad: [3, 7], seventh: 10 },      // iii
+      { root: 6, quality: 'diminished', triad: [3, 6], seventh: 9 },  // #iv°
+      { root: 7, quality: 'major', triad: [4, 7], seventh: 11 },      // V
+      { root: 9, quality: 'minor', triad: [3, 7], seventh: 10 },      // vi
+      { root: 11, quality: 'minor', triad: [3, 7], seventh: 10 },     // vii
+    ],
   },
   {
     name: 'Mixolydian',
     intervals: [0, 2, 4, 5, 7, 9, 10],
     tensionLevel: 'consonant',
-    tensionValue: 0.18,
+    tensionValue: 0.28,
+    degrees: [
+      { root: 0, quality: 'dominant', triad: [4, 7], seventh: 10 },   // I7
+      { root: 2, quality: 'minor', triad: [3, 7], seventh: 10 },      // ii
+      { root: 4, quality: 'diminished', triad: [3, 6], seventh: 9 },  // iii°
+      { root: 5, quality: 'major', triad: [4, 7], seventh: 11 },      // IV
+      { root: 7, quality: 'minor', triad: [3, 7], seventh: 10 },      // v
+      { root: 9, quality: 'minor', triad: [3, 7], seventh: 10 },      // vi
+      { root: 10, quality: 'major', triad: [4, 7], seventh: 11 },     // bVII
+    ],
   },
   {
     name: 'Minor Pentatonic',
     intervals: [0, 3, 5, 7, 10],
     tensionLevel: 'consonant',
-    tensionValue: 0.22,
+    tensionValue: 0.38,
   },
   {
     name: 'Dorian',
     intervals: [0, 2, 3, 5, 7, 9, 10],
     tensionLevel: 'consonant',
-    tensionValue: 0.25,
+    tensionValue: 0.48,
+    degrees: [
+      { root: 0, quality: 'minor', triad: [3, 7], seventh: 10 },      // i
+      { root: 2, quality: 'minor', triad: [3, 7], seventh: 10 },      // ii
+      { root: 3, quality: 'major', triad: [4, 7], seventh: 11 },      // bIII
+      { root: 5, quality: 'dominant', triad: [4, 7], seventh: 10 },   // IV7
+      { root: 7, quality: 'minor', triad: [3, 7], seventh: 10 },      // v
+      { root: 9, quality: 'diminished', triad: [3, 6], seventh: 9 },  // vi°
+      { root: 10, quality: 'major', triad: [4, 7], seventh: 11 },     // bVII
+    ],
   },
 
-  // Color/Tension (tension 0.25 - 0.55)
+  // Color scales (tension 0.50–0.80)
   {
     name: 'Aeolian',
     intervals: [0, 2, 3, 5, 7, 8, 10],
     tensionLevel: 'color',
-    tensionValue: 0.35,
+    tensionValue: 0.55,
+    degrees: [
+      { root: 0, quality: 'minor', triad: [3, 7], seventh: 10 },      // i
+      { root: 2, quality: 'diminished', triad: [3, 6], seventh: 9 },  // ii°
+      { root: 3, quality: 'major', triad: [4, 7], seventh: 11 },      // bIII
+      { root: 5, quality: 'minor', triad: [3, 7], seventh: 10 },      // iv
+      { root: 7, quality: 'minor', triad: [3, 7], seventh: 10 },      // v
+      { root: 8, quality: 'major', triad: [4, 7], seventh: 11 },      // bVI
+      { root: 10, quality: 'dominant', triad: [4, 7], seventh: 10 },  // bVII
+    ],
   },
   {
     name: 'Harmonic Minor',
     intervals: [0, 2, 3, 5, 7, 8, 11],
     tensionLevel: 'color',
-    tensionValue: 0.5,
+    tensionValue: 0.65,
+    degrees: [
+      { root: 0, quality: 'minor', triad: [3, 7], seventh: 11 },      // i (mMaj7)
+      { root: 2, quality: 'diminished', triad: [3, 6], seventh: 10 }, // ii°
+      { root: 3, quality: 'augmented', triad: [4, 8], seventh: 11 },  // bIII+
+      { root: 5, quality: 'minor', triad: [3, 7], seventh: 10 },      // iv
+      { root: 7, quality: 'dominant', triad: [4, 7], seventh: 10 },   // V
+      { root: 8, quality: 'major', triad: [4, 7], seventh: 11 },      // bVI
+      { root: 11, quality: 'diminished', triad: [3, 6], seventh: 9 }, // vii°
+    ],
   },
   {
     name: 'Melodic Minor',
     intervals: [0, 2, 3, 5, 7, 9, 11],
     tensionLevel: 'color',
-    tensionValue: 0.55,
+    tensionValue: 0.75,
+    degrees: [
+      { root: 0, quality: 'minor', triad: [3, 7], seventh: 11 },      // i (mMaj7)
+      { root: 2, quality: 'minor', triad: [3, 7], seventh: 10 },      // ii
+      { root: 3, quality: 'augmented', triad: [4, 8], seventh: 11 },  // bIII+
+      { root: 5, quality: 'dominant', triad: [4, 7], seventh: 10 },   // IV7
+      { root: 7, quality: 'dominant', triad: [4, 7], seventh: 10 },   // V7
+      { root: 9, quality: 'diminished', triad: [3, 6], seventh: 10 }, // vi° (half-dim)
+      { root: 11, quality: 'diminished', triad: [3, 6], seventh: 10 },// vii° (half-dim)
+    ],
   },
 
-  // High tension (tension 0.55 - 1.0)
+  // High tension scales (tension 0.80–1.00)
   {
     name: 'Octatonic Half-Whole',
     intervals: [0, 1, 3, 4, 6, 7, 9, 10],
     tensionLevel: 'high',
-    tensionValue: 0.85,
+    tensionValue: 0.88,
   },
   {
     name: 'Phrygian Dominant',
     intervals: [0, 1, 4, 5, 7, 8, 10],
     tensionLevel: 'high',
-    tensionValue: 0.9,
+    tensionValue: 0.95,
+    degrees: [
+      { root: 0, quality: 'dominant', triad: [4, 7], seventh: 10 },   // I
+      { root: 1, quality: 'major', triad: [4, 7], seventh: 11 },      // bII
+      { root: 4, quality: 'minor', triad: [3, 7], seventh: 10 },      // iii
+      { root: 5, quality: 'minor', triad: [3, 7], seventh: 10 },      // iv
+      { root: 7, quality: 'diminished', triad: [3, 6], seventh: 9 },  // v°
+      { root: 8, quality: 'major', triad: [4, 7], seventh: 11 },      // bVI
+      { root: 10, quality: 'minor', triad: [3, 7], seventh: 10 },     // bvii
+    ],
   },
 ] as const;
 
 /**
  * Get scales within a tension band
+ * 0.00–0.50: Consonant only
+ * 0.50–0.80: Color + consonant
+ * 0.80–1.00: High tension + color
  */
 export function getScalesInTensionBand(tension: number): ScaleFamily[] {
-  if (tension <= 0.25) {
+  if (tension <= 0.50) {
     return SCALE_FAMILIES.filter((s) => s.tensionLevel === 'consonant');
-  } else if (tension <= 0.55) {
-    // Include some consonant for smooth transitions
+  } else if (tension <= 0.80) {
     return SCALE_FAMILIES.filter(
       (s) => s.tensionLevel === 'consonant' || s.tensionLevel === 'color'
     );
-  } else if (tension <= 0.8) {
+  } else {
     return SCALE_FAMILIES.filter(
       (s) => s.tensionLevel === 'color' || s.tensionLevel === 'high'
     );
-  } else {
-    return SCALE_FAMILIES.filter((s) => s.tensionLevel === 'high');
   }
 }
 

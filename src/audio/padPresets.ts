@@ -17,7 +17,7 @@ export const PAD_PRESET_PARAM_KEYS = [
   'padSubEnabled', 'padSubOctave', 'padSubWave', 'padSubLevel',
   'padNoiseType', 'padNoiseLevel',
   // Character
-  'hardness', 'warmth', 'presence', 'detune',
+  'hardness', 'warmth', 'presence', 'padFoldAmount', 'padFoldMode', 'detune',
   // Filter A
   'filterType', 'filterCutoffMin', 'filterCutoffMax', 'filterResonance', 'filterQ',
   // Filter B
@@ -415,6 +415,137 @@ const SYNC_LEAD: PadPreset = {
   },
 };
 
+// ─── Fold Showcase Presets ───
+
+/** Buchla Pluck — short percussive with triangle foldback, great for A/B morphing */
+const BUCHLA_PLUCK: PadPreset = {
+  name: 'Buchla Pluck',
+  tags: ['pluck', 'fold', 'buchla', 'percussive'],
+  params: {
+    padOscAWave: 'triangle', padOscAOctave: 0, padOscADetune: 0, padOscALevel: 0.6,
+    padOscBWave: 'sine', padOscBOctave: 1, padOscBDetune: 0, padOscBLevel: 0.3,
+    padSubEnabled: false, padSubOctave: -1, padSubWave: 'sine', padSubLevel: 0.2,
+    padNoiseType: 'white', padNoiseLevel: 0.02,
+    hardness: 0.1, warmth: 0.3, presence: 0.5, padFoldAmount: 0.45, padFoldMode: 0, detune: 0,
+    filterType: 'lowpass', filterCutoffMin: 800, filterCutoffMax: 5000,
+    filterResonance: 0.15, filterQ: 1.2,
+    padFilterBEnabled: false, padFilterBType: 'highpass', padFilterBCutoff: 100,
+    padFilterBResonance: 0.1, padFilterBQ: 0.7, padFilterRouting: 'series',
+    synthAttack: 0.005, synthDecay: 0.35, synthSustain: 0.05, synthRelease: 0.6,
+    padLfo1Rate: 0.5, padLfo1Depth: 0, padLfo1Wave: 'sine', padLfo1Dest: 'none',
+    padModEnvEnabled: true, padModEnvAttack: 0.005, padModEnvDecay: 0.2,
+    padModEnvSustain: 0, padModEnvRelease: 0.3, padModEnvDepth: 0.4, padModEnvDest: 'filterCutoff',
+  },
+};
+
+/** Sine Fold Key — warm, slightly folded sine for electric piano-like tones */
+const SINE_FOLD_KEY: PadPreset = {
+  name: 'Sine Fold Key',
+  tags: ['keys', 'fold', 'warm', 'electric piano'],
+  params: {
+    padOscAWave: 'sine', padOscAOctave: 0, padOscADetune: 0, padOscALevel: 0.7,
+    padOscBWave: 'sine', padOscBOctave: 1, padOscBDetune: 2, padOscBLevel: 0.2,
+    padSubEnabled: true, padSubOctave: -1, padSubWave: 'sine', padSubLevel: 0.3,
+    padNoiseType: 'white', padNoiseLevel: 0.01,
+    hardness: 0.05, warmth: 0.6, presence: 0.3, padFoldAmount: 0.28, padFoldMode: 1, detune: 2,
+    filterType: 'lowpass', filterCutoffMin: 600, filterCutoffMax: 4000,
+    filterResonance: 0.1, filterQ: 0.8,
+    padFilterBEnabled: false, padFilterBType: 'lowpass', padFilterBCutoff: 3000,
+    padFilterBResonance: 0.1, padFilterBQ: 0.7, padFilterRouting: 'series',
+    synthAttack: 0.01, synthDecay: 0.4, synthSustain: 0.3, synthRelease: 1.0,
+    padLfo1Rate: 0.5, padLfo1Depth: 0, padLfo1Wave: 'sine', padLfo1Dest: 'none',
+    padModEnvEnabled: true, padModEnvAttack: 0.01, padModEnvDecay: 0.3,
+    padModEnvSustain: 0, padModEnvRelease: 0.5, padModEnvDepth: 0.3, padModEnvDest: 'filterCutoff',
+  },
+};
+
+/** Serge Stab — aggressive short stab with 3-stage tanh cascade */
+const SERGE_STAB: PadPreset = {
+  name: 'Serge Stab',
+  tags: ['stab', 'fold', 'serge', 'aggressive'],
+  params: {
+    padOscAWave: 'sawtooth', padOscAOctave: 0, padOscADetune: 0, padOscALevel: 0.55,
+    padOscBWave: 'square', padOscBOctave: 0, padOscBDetune: 6, padOscBLevel: 0.35,
+    padSubEnabled: false, padSubOctave: -1, padSubWave: 'sine', padSubLevel: 0.1,
+    padNoiseType: 'white', padNoiseLevel: 0.04,
+    hardness: 0.3, warmth: 0.2, presence: 0.6, padFoldAmount: 0.6, padFoldMode: 2, detune: 6,
+    filterType: 'lowpass', filterCutoffMin: 1000, filterCutoffMax: 6000,
+    filterResonance: 0.3, filterQ: 1.5,
+    padFilterBEnabled: false, padFilterBType: 'highpass', padFilterBCutoff: 80,
+    padFilterBResonance: 0.1, padFilterBQ: 0.7, padFilterRouting: 'series',
+    synthAttack: 0.005, synthDecay: 0.15, synthSustain: 0.0, synthRelease: 0.3,
+    padLfo1Rate: 0.5, padLfo1Depth: 0, padLfo1Wave: 'sine', padLfo1Dest: 'none',
+    padModEnvEnabled: true, padModEnvAttack: 0.005, padModEnvDecay: 0.12,
+    padModEnvSustain: 0, padModEnvRelease: 0.2, padModEnvDepth: 0.6, padModEnvDest: 'filterCutoff',
+  },
+};
+
+/** Folded Drift — slow-evolving Buchla-folded pad, ideal for A/B morph with a clean preset */
+const FOLDED_DRIFT: PadPreset = {
+  name: 'Folded Drift',
+  tags: ['pad', 'fold', 'buchla', 'evolving', 'ambient'],
+  params: {
+    padOscAWave: 'sawtooth', padOscAOctave: 0, padOscADetune: 0, padOscALevel: 0.5,
+    padOscBWave: 'triangle', padOscBOctave: 0, padOscBDetune: 10, padOscBLevel: 0.4,
+    padSubEnabled: true, padSubOctave: -1, padSubWave: 'sine', padSubLevel: 0.3,
+    padNoiseType: 'pink', padNoiseLevel: 0.08,
+    hardness: 0.15, warmth: 0.55, presence: 0.35, padFoldAmount: 0.45, padFoldMode: 0, detune: 10,
+    filterType: 'lowpass', filterCutoffMin: 200, filterCutoffMax: 2500,
+    filterResonance: 0.2, filterQ: 1.0,
+    padFilterBEnabled: false, padFilterBType: 'lowpass', padFilterBCutoff: 3000,
+    padFilterBResonance: 0.1, padFilterBQ: 0.7, padFilterRouting: 'series',
+    synthAttack: 8, synthDecay: 2, synthSustain: 0.75, synthRelease: 14,
+    padLfo1Rate: 0.07, padLfo1Depth: 0.8, padLfo1Wave: 'randomWalk', padLfo1Dest: 'filterCutoff',
+    padLfo2Rate: 0.05, padLfo2Depth: 0.9, padLfo2Wave: 'randomWalk', padLfo2Dest: 'foldAmount',
+    padModEnvEnabled: false, padModEnvAttack: 1, padModEnvDecay: 3,
+    padModEnvSustain: 0.2, padModEnvRelease: 6, padModEnvDepth: 0.4, padModEnvDest: 'filterCutoff',
+  },
+};
+
+/** Harmonic Bloom — sine-folded pad that slowly opens, great in A slot with Buchla Pluck in B */
+const HARMONIC_BLOOM: PadPreset = {
+  name: 'Harmonic Bloom',
+  tags: ['pad', 'fold', 'sine', 'evolving', 'bright'],
+  params: {
+    padOscAWave: 'sine', padOscAOctave: 0, padOscADetune: 0, padOscALevel: 0.6,
+    padOscBWave: 'triangle', padOscBOctave: 1, padOscBDetune: 7, padOscBLevel: 0.3,
+    padSubEnabled: true, padSubOctave: -1, padSubWave: 'sine', padSubLevel: 0.25,
+    padNoiseType: 'white', padNoiseLevel: 0.05,
+    hardness: 0.05, warmth: 0.4, presence: 0.5, padFoldAmount: 0.38, padFoldMode: 1, detune: 7,
+    filterType: 'lowpass', filterCutoffMin: 300, filterCutoffMax: 5000,
+    filterResonance: 0.15, filterQ: 1.2,
+    padFilterBEnabled: true, padFilterBType: 'highpass', padFilterBCutoff: 100,
+    padFilterBResonance: 0.1, padFilterBQ: 0.7, padFilterRouting: 'series',
+    synthAttack: 6, synthDecay: 3, synthSustain: 0.7, synthRelease: 12,
+    padLfo1Rate: 0.12, padLfo1Depth: 0.6, padLfo1Wave: 'sine', padLfo1Dest: 'filterCutoff',
+    padLfo2Rate: 0.08, padLfo2Depth: 0.7, padLfo2Wave: 'randomWalk', padLfo2Dest: 'foldAmount',
+    padModEnvEnabled: false, padModEnvAttack: 2, padModEnvDecay: 5,
+    padModEnvSustain: 0.3, padModEnvRelease: 8, padModEnvDepth: 0.4, padModEnvDest: 'filterCutoff',
+  },
+};
+
+/** Serge Swarm — thick evolving Serge-folded pad with slow random filter movement */
+const SERGE_SWARM: PadPreset = {
+  name: 'Serge Swarm',
+  tags: ['pad', 'fold', 'serge', 'evolving', 'dark', 'thick'],
+  params: {
+    padOscAWave: 'sawtooth', padOscAOctave: 0, padOscADetune: 0, padOscALevel: 0.5,
+    padOscBWave: 'sawtooth', padOscBOctave: 0, padOscBDetune: 12, padOscBLevel: 0.45,
+    padSubEnabled: true, padSubOctave: -1, padSubWave: 'triangle', padSubLevel: 0.35,
+    padNoiseType: 'pink', padNoiseLevel: 0.1,
+    hardness: 0.2, warmth: 0.7, presence: 0.2, padFoldAmount: 0.55, padFoldMode: 2, detune: 12,
+    filterType: 'lowpass', filterCutoffMin: 150, filterCutoffMax: 1800,
+    filterResonance: 0.25, filterQ: 1.0,
+    padFilterBEnabled: false, padFilterBType: 'lowpass', padFilterBCutoff: 2000,
+    padFilterBResonance: 0.1, padFilterBQ: 0.7, padFilterRouting: 'series',
+    synthAttack: 10, synthDecay: 3, synthSustain: 0.8, synthRelease: 16,
+    padLfo1Rate: 0.05, padLfo1Depth: 1.0, padLfo1Wave: 'randomWalk', padLfo1Dest: 'foldAmount',
+    padLfo2Rate: 0.04, padLfo2Depth: 0.8, padLfo2Wave: 'randomWalk', padLfo2Dest: 'filterCutoff',
+    padModEnvEnabled: false, padModEnvAttack: 3, padModEnvDecay: 6,
+    padModEnvSustain: 0.4, padModEnvRelease: 10, padModEnvDepth: 0.3, padModEnvDest: 'filterCutoff',
+  },
+};
+
 // ─── Registry ───
 
 export const PAD_PRESETS: Record<string, PadPreset> = {
@@ -436,6 +567,12 @@ export const PAD_PRESETS: Record<string, PadPreset> = {
   glass_marimba: GLASS_MARIMBA,
   sub_pluck: SUB_PLUCK,
   sync_lead: SYNC_LEAD,
+  buchla_pluck: BUCHLA_PLUCK,
+  sine_fold_key: SINE_FOLD_KEY,
+  serge_stab: SERGE_STAB,
+  folded_drift: FOLDED_DRIFT,
+  harmonic_bloom: HARMONIC_BLOOM,
+  serge_swarm: SERGE_SWARM,
 };
 
 export function getPadPresetNames(): string[] {

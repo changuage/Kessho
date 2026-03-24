@@ -1,4 +1,4 @@
-import type { DrumVoiceType } from './drumSynth';
+import type { DrumEvolveMethod, DrumVoiceType } from './drumSynth';
 
 export type ClockDivision = '1/4' | '1/8' | '1/16' | '1/8T';
 export type LaneDirection = 'forward' | 'reverse' | 'pingpong';
@@ -76,6 +76,7 @@ export interface PitchLane extends SubLane {
   mode: PitchMode;
   root: number;
   scale: ScaleName;
+  scaleQuantize: boolean;
 }
 
 export interface ExpressionLane extends SubLane {
@@ -111,21 +112,33 @@ export interface SequencerSnapshot {
     offsets: number[];
     root: number;
     scale: ScaleName;
+    steps: number;
+    direction: LaneDirection;
   };
   expression: {
     velocities: number[];
+    steps: number;
+    direction: LaneDirection;
   };
   morph: {
     values: number[];
+    steps: number;
+    direction: LaneDirection;
   };
   distance: {
     values: number[];
+    steps: number;
+    direction: LaneDirection;
   };
   slice: {
     values: number[];
+    steps: number;
+    direction: LaneDirection;
   };
   reverse: {
     values: number[];
+    steps: number;
+    direction: LaneDirection;
   };
   swing: number;
 }
@@ -133,9 +146,11 @@ export interface SequencerSnapshot {
 export interface EvolveState {
   enabled: boolean;
   everyBars: number;
-  intensity: number;
+  evolution: number;
+  writeOffset: number | 'auto';
+  mutationMode: 'strict' | 'biased';
   lastEvolveBar: number;
-  methods: Record<string, boolean>;
+  methods: Record<DrumEvolveMethod, boolean>;
   home: SequencerSnapshot | null;
 }
 

@@ -234,10 +234,11 @@ export const DRUM_VOICES: Record<DrumVoiceType, DrumVoiceConfig> = {
       ],
       Membrane: [
         { key: 'drumMembraneSize', label: 'Size', type: 'range', min: 40, max: 600, step: 1, unit: 'Hz', def: 180 },
-        { key: 'drumMembraneTension', label: 'Tension', type: 'range', min: 0, max: 1, step: 0.01, unit: '%', def: 0.5 },
+        { key: 'drumMembraneStiffness', label: 'Stiffness', type: 'range', min: 0, max: 1, step: 0.01, unit: '%', def: 0.5 },
         { key: 'drumMembraneDamping', label: 'Damping', type: 'range', min: 0, max: 1, step: 0.01, unit: '%', def: 0.3 },
         { key: 'drumMembraneMaterial', label: 'Material', type: 'select', options: ['skin', 'metal', 'wood', 'glass', 'plastic'], def: 'skin' },
         { key: 'drumMembraneNonlin', label: 'Nonlinearity', type: 'range', min: 0, max: 1, step: 0.01, unit: '%', def: 0 },
+        { key: 'drumMembraneScaleBlend', label: 'Scale Blend', type: 'range', min: 0, max: 1, step: 0.01, unit: '%', def: 0.3 },
       ],
       'Wire Buzz': [
         { key: 'drumMembraneWireMix', label: 'Mix', type: 'range', min: 0, max: 1, step: 0.01, unit: '%', def: 0 },
