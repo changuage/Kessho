@@ -22,7 +22,7 @@ import { audioEngine, EngineState } from './audio/engine';
 import { formatChordDegrees, getTimeUntilNextPhrase, calculateDriftedRoot } from './audio/harmony';
 import { getPresetNames, DrumVoiceType as DrumPresetVoice } from './audio/drumPresets';
 import { getPadPreset, morphPadPresets, PAD_PRESET_PARAM_KEYS } from './audio/padPresets';
-import { morphWaterPresets, WATER_MORPH_PARAM_KEYS, INSECT_ENGINE_DEFAULTS } from './audio/waterPresets';
+import { morphWaterPresets, WATER_MORPH_PARAM_KEYS, INSECT_ENGINE_DEFAULTS, PRESET_DUAL_RANGES, PRESET_SLIDER_MODES } from './audio/waterPresets';
 import { applyMorphToState, setDrumMorphOverride, clearDrumMorphEndpointOverrides, clearMidMorphOverrides, setDrumMorphDualRangeOverride, getDrumMorphDualRangeOverrides, interpolateDrumMorphDualRanges, drumMorphManager } from './audio/drumMorph';
 
 // Maps pad-preset param keys (pad1 naming) → pad2 state keys
@@ -1261,14 +1261,6 @@ const App: React.FC = () => {
     mix: number;
   }>({ time: 0.5, feedback: 0.5, mix: 0.5 });
 
-  // Track random walk positions for ocean params (static defaults — WASM ocean no longer fires JS callbacks)
-  const [oceanPositions] = useState<{
-    duration: number;
-    interval: number;
-    foam: number;
-    depth: number;
-  }>({ duration: 0.5, interval: 0.5, foam: 0.5, depth: 0.5 });
-
   // Track last triggered drum morph positions (per-trigger random values)
   const [drumMorphPositions, setDrumMorphPositions] = useState<{
     sub: number;
@@ -1283,8 +1275,10 @@ const App: React.FC = () => {
   // Track last triggered drum S&H positions for any param (keyed by full param name)
   const [drumParamSHPositions, setDrumParamSHPositions] = useState<Record<string, number>>({});
 
-  // Granular/granular S&H flash state: set of param keys currently pulsing
+  // Granular/Earth S&H flash + position state: set of param keys currently pulsing,
+  // and their normalized 0-1 sampled positions within the dual range.
   const [shFlashKeys, setShFlashKeys] = useState<Set<string>>(new Set());
+  const [shPositions, setShPositions] = useState<Record<string, number>>({});
   const shFlashTimerRef = useRef<number | null>(null);
 
   const [drumSeqPlayheads, setDrumSeqPlayheads] = useState<number[]>([0, 0, 0, 0]);
@@ -1389,15 +1383,11 @@ const App: React.FC = () => {
     leadDelayTime: leadDelayPositions.time,
     leadDelayFeedback: leadDelayPositions.feedback,
     leadDelayMix: leadDelayPositions.mix,
-    oceanDuration: oceanPositions.duration,
-    oceanInterval: oceanPositions.interval,
-    oceanFoam: oceanPositions.foam,
-    oceanDepth: oceanPositions.depth,
     lead1Morph: leadMorphPositions.lead1,
     lead2Morph: leadMorphPositions.lead2,
     padMorph: padMorphPositions.pad1,
     pad2Morph: padMorphPositions.pad2,
-  }), [leadExpressionPositions, leadDelayPositions, oceanPositions, leadMorphPositions, padMorphPositions]);
+  }), [leadExpressionPositions, leadDelayPositions, leadMorphPositions, padMorphPositions]);
 
   // Drum morph keys - these use per-trigger randomization, not random walk
   const drumMorphKeys = useMemo(() => new Set<keyof SliderState>([
@@ -1463,10 +1453,15 @@ const App: React.FC = () => {
       drumVoice = 'membrane'; drumMorphKey = 'drumMembraneMorph';
     }
 
-    // Cycle: single → walk → sampleHold → single
+    // Keys that only support single ↔ walk (no per-event S&H in WASM — engine collapses to midpoint)
+    const WALK_ONLY_KEYS = new Set<string>([
+      'waterSurfBody', 'waterSurfSpray', 'waterChannelsMorph', 'waterChannelsSpeed',
+    ]);
+
+    // Cycle: single → walk → sampleHold → single (walk-only keys skip sampleHold)
     const current = sliderModes[keyStr] ?? 'single';
     const nextMode: SliderMode = current === 'single' ? 'walk'
-      : current === 'walk' ? 'sampleHold'
+      : current === 'walk' ? (WALK_ONLY_KEYS.has(keyStr) ? 'single' : 'sampleHold')
       : 'single';
 
     if (nextMode === 'single') {
@@ -2032,10 +2027,11 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // Granular/granular S&H trigger callback (engine-side 10Hz re-sampling)
+  // Granular/Earth S&H trigger callback (engine-side 10Hz re-sampling)
   useEffect(() => {
-    audioEngine.setGranularSHTriggerCallback((keys: string[]) => {
-      setShFlashKeys(new Set(keys));
+    audioEngine.setGranularSHTriggerCallback((positions: Record<string, number>) => {
+      setShFlashKeys(new Set(Object.keys(positions)));
+      setShPositions(positions);
       if (shFlashTimerRef.current) window.clearTimeout(shFlashTimerRef.current);
       shFlashTimerRef.current = window.setTimeout(() => {
         setShFlashKeys(new Set());
@@ -2732,6 +2728,38 @@ const App: React.FC = () => {
       
       return newState;
     });
+
+    // Apply water preset dual ranges when morph endpoints or position change
+    if (key === 'waterMorph' || key === 'waterMorphA' || key === 'waterMorphB') {
+      // Read target preset from latest state
+      setState(prev => {
+        const presetIdx = prev.waterPreset as number;
+        const ranges = PRESET_DUAL_RANGES[presetIdx] ?? {};
+        const modes = PRESET_SLIDER_MODES[presetIdx] ?? {};
+
+        // Water surf keys that presets can control
+        const waterSurfKeys = ['waterSurfDuration', 'waterSurfInterval', 'waterSurfFoam', 'waterSurfDepth'];
+
+        // Merge preset ranges into existing dual ranges (additive, not replacing)
+        setSliderModes(prev => {
+          const next = { ...prev };
+          for (const k of waterSurfKeys) {
+            if (modes[k]) next[k] = modes[k];
+            else delete next[k];
+          }
+          return next;
+        });
+        setDualSliderRanges(prev => {
+          const next = { ...prev };
+          for (const k of waterSurfKeys) {
+            if (ranges[k]) (next as Record<string, { min: number; max: number }>)[k] = ranges[k];
+            else delete (next as Record<string, unknown>)[k];
+          }
+          return next;
+        });
+        return prev; // no state change here
+      });
+    }
     
     // Map of voice to its drum synth param prefixes
     const voiceParamPrefixes: Record<DrumPresetVoice, string> = {
@@ -2867,7 +2895,12 @@ const App: React.FC = () => {
     if (mode === 'walk') {
       walkPos = randomWalkPositions[keyStr];
     } else if (mode === 'sampleHold') {
+      // Per-trigger callbacks (lead expression/delay/morph, pad morph) have exact positions
       walkPos = triggerPositionMap[keyStr];
+      // Fallback to 10Hz engine-side S&H positions (reverb sends, ocean, water, insects, etc.)
+      if (walkPos === undefined && shPositions[keyStr] !== undefined) {
+        walkPos = shPositions[keyStr];
+      }
     }
 
     // For drum morph keys in sampleHold, use per-trigger positions
@@ -2883,7 +2916,7 @@ const App: React.FC = () => {
       walkPos = drumParamSHPositions[keyStr];
     }
 
-    // S&H flash for granular/granular params (engine-side 10Hz re-sampling)
+    // S&H flash for engine-side 10Hz re-sampling (reverb sends, ocean, water, insects, granular)
     const isFlashing = mode === 'sampleHold' && shFlashKeys.has(keyStr);
 
     return {
@@ -2894,7 +2927,7 @@ const App: React.FC = () => {
       onCycleMode: handleCycleSliderMode,
       onDualRangeChange: handleDualRangeChange,
     };
-  }, [sliderModes, dualSliderRanges, randomWalkPositions, triggerPositionMap, drumMorphPositions, drumMorphKeys, drumMorphKeyToVoice, drumSHParamKeys, drumParamSHPositions, shFlashKeys, handleCycleSliderMode, handleDualRangeChange]);
+  }, [sliderModes, dualSliderRanges, randomWalkPositions, triggerPositionMap, shPositions, drumMorphPositions, drumMorphKeys, drumMorphKeyToVoice, drumSHParamKeys, drumParamSHPositions, shFlashKeys, handleCycleSliderMode, handleDualRangeChange]);
 
   // Handle select change
   const handleSelectChange = useCallback(<K extends keyof SliderState>(key: K, value: SliderState[K]) => {

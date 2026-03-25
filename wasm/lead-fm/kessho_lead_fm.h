@@ -70,6 +70,9 @@ void  lead_fm_destroy(void);
 /** Stereo interleaved output (L0,R0,L1,R1,...). Size: MAX_BLOCK_SIZE * 2 */
 float* lead_fm_get_output_ptr(void);
 
+/** Stereo interleaved lead 2 output. Size: MAX_BLOCK_SIZE * 2 */
+float* lead_fm_get_output2_ptr(void);
+
 // ═══════════════ Processing ═══════════════
 
 void lead_fm_process_block(int block_size);
@@ -78,6 +81,9 @@ void lead_fm_process_block(int block_size);
 
 /** Trigger a note. Params should already be set via setters. */
 void lead_fm_note_on(float frequency, float velocity, float hold_seconds);
+
+/** Trigger a note with lead index (0=lead1, 1=lead2) for separate output routing. */
+void lead_fm_note_on_ex(float frequency, float velocity, float hold_seconds, int lead_index);
 
 /** Release all active notes */
 void lead_fm_all_notes_off(void);

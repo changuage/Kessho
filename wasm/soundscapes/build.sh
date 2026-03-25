@@ -32,6 +32,8 @@ EXPORTS="[
   '_water_start',
   '_water_stop',
   '_water_set_seed',
+  '_water_set_surf_params',
+  '_water_set_channels_params',
   '_water_get_active_voices',
   '_water_get_events_per_sec',
   '_insects_init',

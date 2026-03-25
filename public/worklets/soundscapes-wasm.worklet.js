@@ -9,8 +9,8 @@
  *   'wasmBinary'       – ArrayBuffer of kessho_soundscapes.wasm
  *   'waterParams'      – water engine params (preset, intensity, rate, etc.)
  *   'waterPreset'      – { preset: number }
- *   'waterLayerMix'    – { hardDrops, waterDrops, turbulence, bubbling, roar, rivulets }
- *   'waterLayerDensity' – { hardDrops, waterDrops, turbulence, bubbling, roar, rivulets }
+ *   'waterLayerMix'    – { hardDrops, waterDrops, turbulence, bubbling, surf, channels }
+ *   'waterLayerDensity' – { hardDrops, waterDrops, turbulence, bubbling, surf, channels }
  *   'waterStart'       – start water playback
  *   'waterStop'        – stop water playback
  *   'waterSeed'        – { seed: number }
@@ -203,8 +203,8 @@ class SoundscapesWasmProcessor extends AudioWorkletProcessor {
           m.waterDrops ?? 0.5,
           m.turbulence ?? 0.3,
           m.bubbling ?? 0.0,
-          m.roar ?? 0.0,
-          m.rivulets ?? 0.0
+          m.surf ?? 0.0,
+          m.channels ?? 0.0
         );
         break;
       }
@@ -216,8 +216,29 @@ class SoundscapesWasmProcessor extends AudioWorkletProcessor {
           d.waterDrops ?? 1.0,
           d.turbulence ?? 1.0,
           d.bubbling ?? 1.0,
-          d.roar ?? 1.0,
-          d.rivulets ?? 1.0
+          d.surf ?? 1.0,
+          d.channels ?? 1.0
+        );
+        break;
+      }
+
+      case 'waterSurfParams': {
+        const p = data;
+        w.water_set_surf_params(
+          p.durationMin ?? 4.0, p.durationMax ?? 12.0,
+          p.intervalMin ?? 5.0, p.intervalMax ?? 14.0,
+          p.foamMin ?? 0.2, p.foamMax ?? 0.5,
+          p.depthMin ?? 0.3, p.depthMax ?? 0.7,
+          p.bodyFreq ?? 300.0, p.sprayFreq ?? 4000.0
+        );
+        break;
+      }
+
+      case 'waterChannelsParams': {
+        const p = data;
+        w.water_set_channels_params(
+          p.morph ?? 0.0,
+          p.speed ?? 0.5
         );
         break;
       }

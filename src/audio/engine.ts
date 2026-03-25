@@ -366,6 +366,7 @@ export class AudioEngine {
   private lead2LevelGain: GainNode | null = null;     // lead 2 dry-path level (post reverb/granular tap)
   private leadVoiceLevel: GainNode | null = null;     // unity dry-path stage for lead output
   private leadWasmLevelGain: GainNode | null = null;  // WASM lead dry-path level (pre-fader sends bypass this)
+  private leadWasmLead2LevelGain: GainNode | null = null;  // WASM lead 2 dry-path level
   private lastPad2VoiceAssign = 0;                    // track for re-routing
   private granularWriteHeadPosition = 0;     // 0-1 for UI
   private granularVoicePositions = [0, 0, 0, 0]; // 0-1 per voice for UI
@@ -640,7 +641,7 @@ export class AudioEngine {
   // S&H engine-side sampling: 10Hz re-sampling for non-drum dual-range params
   private shSampledValues: Record<string, number> = {};
   private shLastSampleTime = 0;
-  private onGranularSHTrigger: ((keys: string[]) => void) | null = null;
+  private onGranularSHTrigger: ((positions: Record<string, number>) => void) | null = null;
 
   constructor() {
     // Empty constructor
@@ -676,8 +677,8 @@ export class AudioEngine {
     node.port.postMessage(message);
   }
 
-  /** Callback fired on each S&H re-sample (~10Hz) with the param keys that were sampled */
-  setGranularSHTriggerCallback(cb: (keys: string[]) => void) {
+  /** Callback fired on each S&H re-sample (~10Hz) with normalized positions per key */
+  setGranularSHTriggerCallback(cb: (positions: Record<string, number>) => void) {
     this.onGranularSHTrigger = cb;
   }
 
@@ -2008,6 +2009,7 @@ export class AudioEngine {
     if (this.leadDelayMix) { try { this.leadDelayMix.disconnect(); } catch { /* */ } this.leadDelayMix = null; }
     if (this.leadDry) { try { this.leadDry.disconnect(); } catch { /* */ } this.leadDry = null; }
     if (this.leadWasmLevelGain) { try { this.leadWasmLevelGain.disconnect(); } catch { /* */ } this.leadWasmLevelGain = null; }
+    if (this.leadWasmLead2LevelGain) { try { this.leadWasmLead2LevelGain.disconnect(); } catch { /* */ } this.leadWasmLead2LevelGain = null; }
     if (this.leadMerger) { try { this.leadMerger.disconnect(); } catch { /* */ } this.leadMerger = null; }
     if (this.leadReverbSend) { try { this.leadReverbSend.disconnect(); } catch { /* */ } this.leadReverbSend = null; }
     if (this.lead1ReverbSend) { try { this.lead1ReverbSend.disconnect(); } catch { /* */ } this.lead1ReverbSend = null; }
@@ -2345,12 +2347,12 @@ export class AudioEngine {
       this.createPadWasmNode(ctx);
     }
 
-    // Lead FM WASM worklet — 1 output: stereo (includes internal delay)
+    // Lead FM WASM worklet — 2 outputs: [0]=lead1 stereo, [1]=lead2 stereo (includes shared internal delay)
     if (this.wasmLeadFmBinary) {
       this.leadFmWasmNode = new AudioWorkletNode(ctx, 'lead-fm-wasm', {
         numberOfInputs: 0,
-        numberOfOutputs: 1,
-        outputChannelCount: [2],
+        numberOfOutputs: 2,
+        outputChannelCount: [2, 2],
       });
       this.leadFmWasmNode.port.onmessage = (e) => {
         if (e.data.type === 'wasmReady') {
@@ -2853,25 +2855,34 @@ export class AudioEngine {
     this.leadDelayMix.connect(this.leadDelayReverbSend);
     this.leadDelayReverbSend.connect(this.reverbInputBus);
 
-    // Shared leadReverbSend kept for WASM path only (WASM mixes both leads in one output)
+    // Shared leadReverbSend kept for legacy/fallback
     this.leadReverbSend.connect(this.reverbInputBus);
 
-    // Lead FM WASM node output (parallel to JS lead path — JS lead silenced when WASM active)
-    // WASM output includes internal delay, so bypass engine-side delay chain.
-    // Dry path goes through leadWasmLevelGain (controlled by max(lead1Level, lead2Level)).
-    // Reverb and granular sends tap directly from WASM output (pre-fader).
+    // Lead FM WASM node outputs (parallel to JS lead path — JS lead silenced when WASM active)
+    // WASM has 2 outputs: [0]=lead1 stereo, [1]=lead2 stereo (includes shared internal delay).
+    // Each output routes through per-lead level gain → leadVoiceLevel → master (bypassing leadFilter
+    // since WASM applies its own internal filter). Pre-fader sends tap directly from outputs.
     if (this.leadFmWasmNode) {
+      // Lead 1 dry path: output[0] → per-lead level gain → leadVoiceLevel → leadDry → master
       this.leadWasmLevelGain = ctx.createGain();
-      this.leadWasmLevelGain.gain.value = Math.max(
-        this.sliderState?.lead1Level ?? 0.8,
-        this.sliderState?.lead2Level ?? 0.6
-      );
-      this.leadFmWasmNode.connect(this.leadWasmLevelGain, 0);    // output[0] → level gain
-      this.leadWasmLevelGain.connect(this.leadVoiceLevel!);       // level gain → leadDry → master
-      this.leadFmWasmNode.connect(this.leadReverbSend, 0);        // output[0] → reverb send (pre-fader)
-      // Granular send for WASM lead (pre-fader, independent of leadLevel)
+      this.leadWasmLevelGain.gain.value = this.sliderState?.lead1Level ?? 0.8;
+      this.leadFmWasmNode.connect(this.leadWasmLevelGain, 0);
+      this.leadWasmLevelGain.connect(this.leadVoiceLevel!);
+      // Lead 1 pre-fader sends
+      this.leadFmWasmNode.connect(this.lead1ReverbSend!, 0);
       if (this.granularLead1Send) {
         this.leadFmWasmNode.connect(this.granularLead1Send, 0);
+      }
+
+      // Lead 2 dry path: output[1] → per-lead level gain → leadVoiceLevel → leadDry → master
+      this.leadWasmLead2LevelGain = ctx.createGain();
+      this.leadWasmLead2LevelGain.gain.value = this.sliderState?.lead2Level ?? 0.6;
+      this.leadFmWasmNode.connect(this.leadWasmLead2LevelGain, 1);
+      this.leadWasmLead2LevelGain.connect(this.leadVoiceLevel!);
+      // Lead 2 pre-fader sends
+      this.leadFmWasmNode.connect(this.lead2ReverbSend!, 1);
+      if (this.granularLead2Send) {
+        this.leadFmWasmNode.connect(this.granularLead2Send, 1);
       }
     }
 
@@ -3838,10 +3849,10 @@ export class AudioEngine {
         port.postMessage({ type: 'params', voice, params: voiceParams });
       }
     }
-    // Global drum params
+    // Global drum params (S&H aware for drumReverbSend)
     port.postMessage({
       type: 'params',
-      params: { masterLevel: s.drumLevel, reverbSend: s.drumReverbSend },
+      params: { masterLevel: s.drumLevel, reverbSend: this.shSampledValues['drumReverbSend'] ?? s.drumReverbSend },
     });
   }
 
@@ -4179,13 +4190,16 @@ export class AudioEngine {
     const shNow = performance.now();
     if (shNow - this.shLastSampleTime >= 100) {
       this.shLastSampleTime = shNow;
-      const shTriggered: string[] = [];
+      const shPositions: Record<string, number> = {};
       for (const key of Object.keys(this.dualRanges)) {
         if (key === 'grainSize') continue; // grainSize uses worklet-side min/max
         const range = this.dualRanges[key];
         if (range) {
-          this.shSampledValues[key] = range.min + Math.random() * (range.max - range.min);
-          shTriggered.push(key);
+          const sampled = range.min + Math.random() * (range.max - range.min);
+          this.shSampledValues[key] = sampled;
+          // Normalized 0-1 position within the range
+          const span = range.max - range.min;
+          shPositions[key] = span > 0 ? (sampled - range.min) / span : 0.5;
         }
       }
       // Clean stale keys no longer in dualRanges
@@ -4194,8 +4208,8 @@ export class AudioEngine {
           delete this.shSampledValues[key];
         }
       }
-      if (shTriggered.length > 0 && this.onGranularSHTrigger) {
-        this.onGranularSHTrigger(shTriggered);
+      if (Object.keys(shPositions).length > 0 && this.onGranularSHTrigger) {
+        this.onGranularSHTrigger(shPositions);
       }
     }
     // S&H value helper: sampled value if available, else fallback to state value
@@ -4514,8 +4528,8 @@ export class AudioEngine {
       // Use granularLevel as the Granular FX output level (replaces hardcoded 1.0)
       const granularOutputLevel = granularEnabled ? state.granularLevel * 1.5 : 0;
       this.granularFxDirect?.gain.setTargetAtTime(granularOutputLevel, now, smoothTime);
-      // Use granularReverbSend as the Granular FX reverb send level
-      const granularRevSend = (granularEnabled && state.reverbEnabled) ? state.granularReverbSend : 0;
+      // Use granularReverbSend as the Granular FX reverb send level (S&H aware)
+      const granularRevSend = (granularEnabled && state.reverbEnabled) ? shv('granularReverbSend', state.granularReverbSend) : 0;
       this.granularFxReverbSend?.gain.setTargetAtTime(granularRevSend, now, smoothTime);
       // Pre-reverb LPF cutoff (user value — Darkness macro modulates further below)
       this.granularFxReverbLPF?.frequency.setTargetAtTime(state.granularReverbLPF ?? 4000, now, smoothTime);
@@ -4807,21 +4821,20 @@ export class AudioEngine {
     const sfCrossfade = state.spectralFreezeReverbCrossfade ?? 1.0;
     const dryGain = (sfEnabled && sfActive) ? (1.0 - sfCrossfade) : 1.0;
     this.synthDirect?.gain.setTargetAtTime(padActive ? dryGain : 0, now, smoothTime);
-    this.synthReverbSend?.gain.setTargetAtTime(padActive && state.reverbEnabled ? state.synthReverbSend : 0, now, smoothTime);
+    this.synthReverbSend?.gain.setTargetAtTime(padActive && state.reverbEnabled ? shv('synthReverbSend', state.synthReverbSend) : 0, now, smoothTime);
 
-    // Per-lead reverb sends (mute if reverb disabled)
-    this.lead1ReverbSend?.gain.setTargetAtTime(state.reverbEnabled ? state.lead1ReverbSend : 0, now, smoothTime);
-    this.lead2ReverbSend?.gain.setTargetAtTime(state.reverbEnabled ? state.lead2ReverbSend : 0, now, smoothTime);
-    // WASM leadReverbSend uses max of per-lead sends (WASM mixes both leads in one output stream)
+    // Per-lead reverb sends (mute if reverb disabled) — S&H aware
+    this.lead1ReverbSend?.gain.setTargetAtTime(state.reverbEnabled ? shv('lead1ReverbSend', state.lead1ReverbSend) : 0, now, smoothTime);
+    this.lead2ReverbSend?.gain.setTargetAtTime(state.reverbEnabled ? shv('lead2ReverbSend', state.lead2ReverbSend) : 0, now, smoothTime);
+    // WASM leadReverbSend kept for legacy/fallback (per-lead sends handle WASM routing now)
     this.leadReverbSend?.gain.setTargetAtTime(
-      state.reverbEnabled ? Math.max(state.lead1ReverbSend, state.lead2ReverbSend) : 0, now, smoothTime);
+      state.reverbEnabled ? Math.max(shv('lead1ReverbSend', state.lead1ReverbSend), shv('lead2ReverbSend', state.lead2ReverbSend)) : 0, now, smoothTime);
 
     // Per-lead dry-path level (post reverb/granular tap, so sends still receive signal when level is 0)
     this.lead1LevelGain?.gain.setTargetAtTime(state.lead1Level ?? 0.8, now, smoothTime);
-    // WASM lead dry-path level — uses max of both per-lead levels (WASM mixes both leads in one output)
-    this.leadWasmLevelGain?.gain.setTargetAtTime(
-      Math.max(state.lead1Level ?? 0.8, state.lead2Level ?? 0.6), now, smoothTime
-    );
+    // WASM lead per-lead dry-path levels (separate outputs, no longer needs max)
+    this.leadWasmLevelGain?.gain.setTargetAtTime(state.lead1Level ?? 0.8, now, smoothTime);
+    this.leadWasmLead2LevelGain?.gain.setTargetAtTime(state.lead2Level ?? 0.6, now, smoothTime);
     this.lead2LevelGain?.gain.setTargetAtTime(state.lead2Level ?? 0.6, now, smoothTime);
 
     // Forward lead FM delay params to WASM worklet (if active)
@@ -4965,7 +4978,7 @@ export class AudioEngine {
       }
     }
 
-    // Lead synth parameters — leadDry gates active/inactive; per-lead level on lead1/2LevelGain + leadWasmLevelGain
+    // Lead synth parameters — leadDry gates active/inactive; per-lead level on lead1/2LevelGain + WASM per-lead gains
     // Keep gain active if Euclidean sequencer is driving lead
     const leadActive = state.leadEnabled || state.synthEuclideanMasterEnabled;
     this.leadDry?.gain.setTargetAtTime(leadActive ? 1.0 : 0, now, smoothTime);
@@ -5122,13 +5135,49 @@ export class AudioEngine {
           waterDrops: state.waterLayerWaterDrops,
           turbulence: state.waterLayerTurbulence,
           bubbling: state.waterLayerBubbling,
-          roar: state.waterLayerRoar,
-          rivulets: state.waterLayerRivulets,
+          surf: state.waterLayerSurf,
+          channels: state.waterLayerChannels,
         };
         this.postCachedWorkletMessage('soundscapes:waterLayerMix', this.soundscapesNode, {
           type: 'waterLayerMix',
           ...waterLayerMix,
         }, waterLayerMix);
+
+        // Surf params (wave-envelope driven 3-band noise)
+        const sDur = this.dualRanges['waterSurfDuration'];
+        const sInt = this.dualRanges['waterSurfInterval'];
+        const sFoam = this.dualRanges['waterSurfFoam'];
+        const sDep = this.dualRanges['waterSurfDepth'];
+        const sBody = this.dualRanges['waterSurfBody'];
+        const sSpray = this.dualRanges['waterSurfSpray'];
+        const surfParams = {
+          durationMin: sDur ? sDur.min : state.waterSurfDuration * 0.7,
+          durationMax: sDur ? sDur.max : state.waterSurfDuration * 1.3,
+          intervalMin: sInt ? sInt.min : state.waterSurfInterval * 0.7,
+          intervalMax: sInt ? sInt.max : state.waterSurfInterval * 1.3,
+          foamMin: sFoam ? sFoam.min : Math.max(0, state.waterSurfFoam - 0.15),
+          foamMax: sFoam ? sFoam.max : Math.min(1, state.waterSurfFoam + 0.15),
+          depthMin: sDep ? sDep.min : Math.max(0, state.waterSurfDepth - 0.15),
+          depthMax: sDep ? sDep.max : Math.min(1, state.waterSurfDepth + 0.15),
+          bodyFreq: sBody ? (sBody.min + sBody.max) * 0.5 : state.waterSurfBody,
+          sprayFreq: sSpray ? (sSpray.min + sSpray.max) * 0.5 : state.waterSurfSpray,
+        };
+        this.postCachedWorkletMessage('soundscapes:waterSurfParams', this.soundscapesNode, {
+          type: 'waterSurfParams',
+          ...surfParams,
+        }, surfParams);
+
+        // Channels params (stream↔wind morph)
+        const cMorph = this.dualRanges['waterChannelsMorph'];
+        const cSpeed = this.dualRanges['waterChannelsSpeed'];
+        const channelsParams = {
+          morph: cMorph ? (cMorph.min + cMorph.max) * 0.5 : state.waterChannelsMorph,
+          speed: cSpeed ? (cSpeed.min + cSpeed.max) * 0.5 : state.waterChannelsSpeed,
+        };
+        this.postCachedWorkletMessage('soundscapes:waterChannelsParams', this.soundscapesNode, {
+          type: 'waterChannelsParams',
+          ...channelsParams,
+        }, channelsParams);
       }
 
       // Insects 1 start/stop — kill engine when level is 0
@@ -5243,9 +5292,9 @@ export class AudioEngine {
       this.waterLevelGain?.gain.setTargetAtTime(
         state.waterEnabled ? state.waterLevel : 0, now, smoothTime
       );
-      // Water reverb send (pre-fader — unaffected by waterLevelGain)
+      // Water reverb send (pre-fader — unaffected by waterLevelGain) — S&H aware
       this.waterReverbSend?.gain.setTargetAtTime(
-        state.waterEnabled ? state.waterReverbSend : 0, now, smoothTime
+        state.waterEnabled ? shv('waterReverbSend', state.waterReverbSend) : 0, now, smoothTime
       );
 
       // Insects on/off gate (level controlled by WASM-side _insects1Gain/_insects2Gain)
@@ -5258,14 +5307,14 @@ export class AudioEngine {
         (state.oceanWaveSynthEnabled || state.oceanSampleEnabled) ? 1.0 : 0, now, smoothTime
       );
 
-      // Waves (ocean) reverb send (pre-fader)
+      // Waves (ocean) reverb send (pre-fader) — S&H aware
       this.oceanReverbSendNode?.gain.setTargetAtTime(
-        (state.oceanWaveSynthEnabled || state.oceanSampleEnabled) ? state.oceanReverbSend : 0, now, smoothTime
+        (state.oceanWaveSynthEnabled || state.oceanSampleEnabled) ? shv('oceanReverbSend', state.oceanReverbSend) : 0, now, smoothTime
       );
 
-      // Insects reverb send (pre-fader)
+      // Insects reverb send (pre-fader) — S&H aware
       this.insectsReverbSendNode?.gain.setTargetAtTime(
-        (state.insectsEnabled || state.insects2Enabled) ? state.insectsReverbSend : 0, now, smoothTime
+        (state.insectsEnabled || state.insects2Enabled) ? shv('insectsReverbSend', state.insectsReverbSend) : 0, now, smoothTime
       );
     }
   }
@@ -5568,8 +5617,8 @@ export class AudioEngine {
     }
 
     // WASM path: send morphed params + delay + noteOn to the lead FM worklet
-    // Per-lead level is controlled by leadWasmLevelGain on the dry path (max of lead1/lead2 level).
-    // Reverb/granular sends tap directly from WASM output (pre-fader).
+    // WASM has separate outputs per lead — output[0]=lead1, output[1]=lead2.
+    // Each output routes through its own level gain and pre-fader sends in the Web Audio graph.
     if (this.leadFmWasmReady && this.leadFmWasmNode) {
       const port = this.leadFmWasmNode.port;
       port.postMessage({ type: 'params', params: effectiveMorphed });
@@ -5577,15 +5626,15 @@ export class AudioEngine {
         type: 'delay',
         params: {
           enabled: true,
-          timeL: delayTime / 1000,
-          timeR: (delayTime / 1000) * 0.75,
+          timeL: delayTime,
+          timeR: delayTime * 0.75,
           feedback: delayFeedback,
           mix: delayMix,
           filter: 2000,
           send: 0.5,
         },
       });
-      port.postMessage({ type: 'noteOn', frequency: noteFreq, velocity, hold });
+      port.postMessage({ type: 'noteOn', frequency: noteFreq, velocity, hold, leadIndex: useLead2 ? 1 : 0 });
       return;
     }
 
@@ -5885,18 +5934,28 @@ export class AudioEngine {
       this.lead2Bus.connect(this.lead2ReverbSend);
       this.lead2ReverbSend.connect(this.reverbNode!);
 
-      // WASM lead connections (if WASM node exists, re-wire through level gain)
+      // WASM lead connections (if WASM node exists, per-lead output routing)
       if (this.leadFmWasmNode) {
+        // Lead 1 dry: output[0] → level gain → leadVoiceLevel (bypasses leadFilter)
         this.leadWasmLevelGain = ctx.createGain();
-        this.leadWasmLevelGain.gain.value = Math.max(
-          this.sliderState?.lead1Level ?? 0.8,
-          this.sliderState?.lead2Level ?? 0.6
-        );
+        this.leadWasmLevelGain.gain.value = this.sliderState?.lead1Level ?? 0.8;
         this.leadFmWasmNode.connect(this.leadWasmLevelGain, 0);
         this.leadWasmLevelGain.connect(this.leadVoiceLevel!);
-        this.leadFmWasmNode.connect(this.leadReverbSend, 0);
+        // Lead 1 pre-fader sends
+        this.leadFmWasmNode.connect(this.lead1ReverbSend, 0);
         if (this.granularLead1Send) {
           this.leadFmWasmNode.connect(this.granularLead1Send, 0);
+        }
+
+        // Lead 2 dry: output[1] → level gain → leadVoiceLevel (bypasses leadFilter)
+        this.leadWasmLead2LevelGain = ctx.createGain();
+        this.leadWasmLead2LevelGain.gain.value = this.sliderState?.lead2Level ?? 0.6;
+        this.leadFmWasmNode.connect(this.leadWasmLead2LevelGain, 1);
+        this.leadWasmLead2LevelGain.connect(this.leadVoiceLevel!);
+        // Lead 2 pre-fader sends
+        this.leadFmWasmNode.connect(this.lead2ReverbSend, 1);
+        if (this.granularLead2Send) {
+          this.leadFmWasmNode.connect(this.granularLead2Send, 1);
         }
       }
     }

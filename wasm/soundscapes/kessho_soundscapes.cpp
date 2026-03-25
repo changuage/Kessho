@@ -82,6 +82,32 @@ static inline float fast_powf(float base, float exp_val) {
 }
 
 // ═══════════════════════════════════════════════════════════
+//  SHARED WAVE ENVELOPES (used by Surf layer + Ocean engine)
+// ═══════════════════════════════════════════════════════════
+
+// Wave envelope: gentle rise, peak, long decay
+// Phase 0→0.15: quadratic rise, 0.15→0.25: plateau, 0.25→1.0: (1-t)^1.5 decay
+static inline float wave_envelope(float phase) {
+    if (phase < 0.15f) {
+        float t = phase / 0.15f;
+        return t * t;
+    } else if (phase < 0.25f) {
+        return 1.0f;
+    } else {
+        float t = (phase - 0.25f) / 0.75f;
+        float omt = 1.0f - t;
+        return fast_pow_1_5(omt);
+    }
+}
+
+// Foam/spray envelope: peaks during wave crest (phase 0.1 to 0.5)
+static inline float foam_envelope(float phase) {
+    if (phase < 0.1f || phase > 0.5f) return 0.0f;
+    float t = (phase - 0.1f) / 0.4f;
+    return sinf(t * PI_F);
+}
+
+// ═══════════════════════════════════════════════════════════
 //  SEEDED PRNG (Mulberry32 — matches JS version)
 // ═══════════════════════════════════════════════════════════
 
@@ -1008,139 +1034,280 @@ static void bubbling_process(BubblingLayer* b, float* outL, float* outR,
     }
 }
 
-// ── Roar Layer: 3-band shaped waterfall noise (matches JS) ──
-struct RoarLayer {
-    Biquad rumble_l, rumble_r;
-    Biquad body_l, body_r;
-    Biquad spray_l, spray_r;
-    float lfo_phase;
-    float noise_l, noise_r;   // pink-ish noise state
-    float gain;
-    float rumble_amount;
-    float spray_amount;
-    float density;
-    int   inited;
+// ── Surf Layer: wave-envelope-driven 3-band noise (replaces Roar) ──
+// Two independent wave generators with polyrhythmic offset, using
+// roar's richer 3-band biquad structure instead of Ocean's simple OnePole.
+struct SurfGenerator {
+    Biquad rumble_l, rumble_r;     // LP — rumble frequency
+    Biquad body_l, body_r;        // BP — body frequency
+    Biquad spray_l, spray_r;      // BP — spray/foam frequency
+    float  noise_l, noise_r;      // pink noise state
+    float  wave_phase;            // 0→1 per wave event
+    float  wave_duration;         // in samples
+    float  wave_amplitude;        // random 0.6-1.0
+    float  wave_foam;             // per-wave foam amount (randomized)
+    float  wave_depth;            // per-wave depth amount (randomized)
+    float  pan_offset;            // stereo position
+    int    time_since_wave;       // timer (samples)
+    int    next_wave_interval;    // samples until next trigger
+    int    active;                // wave currently sounding
 };
 
-static void roar_init(RoarLayer* r, float sr) {
-    // Matches JS: LP 80Hz Q0.5, BP 300Hz Q0.8, BP 4000Hz Q1.5
-    biquad_set_lowpass(&r->rumble_l, 80.0f, 0.5f, sr);
-    biquad_set_lowpass(&r->rumble_r, 80.0f, 0.5f, sr);
-    biquad_set_bandpass(&r->body_l, 300.0f, 0.8f, sr);
-    biquad_set_bandpass(&r->body_r, 300.0f, 0.8f, sr);
-    biquad_set_bandpass(&r->spray_l, 4000.0f, 1.5f, sr);  // BP not HP!
-    biquad_set_bandpass(&r->spray_r, 4000.0f, 1.5f, sr);
-    r->lfo_phase = 0.0f;
-    r->noise_l = 0.0f;
-    r->noise_r = 0.0f;
-    r->gain = 0.5f;
-    r->rumble_amount = 0.7f;
-    r->spray_amount = 0.4f;
-    r->density = 1.0f;
-    r->inited = 1;
-}
-
-static void roar_process(RoarLayer* r, float* outL, float* outR,
-                         int block_size, float level, Rng* rng, float sr) {
-    if (level < 0.001f) return;
-    if (!r->inited) roar_init(r, sr);
-
-    float inv_sr = 1.0f / sr;
-    for (int i = 0; i < block_size; i++) {
-        // Pink-ish noise (matches JS: noise*0.7 + white*0.3)
-        float white_l = rng_next(rng) * 2.0f - 1.0f;
-        float white_r = rng_next(rng) * 2.0f - 1.0f;
-        r->noise_l = r->noise_l * 0.7f + white_l * 0.3f;
-        r->noise_r = r->noise_r * 0.7f + white_r * 0.3f;
-
-        // LFO (matches JS: 0.85 + 0.15 * sin(...), rate 0.08 Hz)
-        r->lfo_phase += 0.08f * inv_sr;
-        if (r->lfo_phase > 1.0f) r->lfo_phase -= 1.0f;
-        float lfo = 0.85f + 0.15f * fast_sin(r->lfo_phase * TAU_F);
-
-        // Process each band (matches JS gains)
-        float rl = biquad_process(&r->rumble_l, r->noise_l) * r->rumble_amount;
-        float rr = biquad_process(&r->rumble_r, r->noise_r) * r->rumble_amount;
-        float bl = biquad_process(&r->body_l, r->noise_l) * 0.6f;
-        float br = biquad_process(&r->body_r, r->noise_r) * 0.6f;
-        // Spray uses white noise (matches JS)
-        float sl = biquad_process(&r->spray_l, white_l) * r->spray_amount;
-        float sr_out = biquad_process(&r->spray_r, white_r) * r->spray_amount;
-
-        // Density scaling (matches JS: 0.25 + density * 0.75)
-        float density_scale = 0.25f + r->density * 0.75f;
-        outL[i] += (rl + bl + sl) * lfo * r->gain * density_scale;
-        outR[i] += (rr + br + sr_out) * lfo * r->gain * density_scale;
-    }
-}
-
-// ── Rivulet Layer: 4 bandpass-filtered trickling streams (matches JS) ──
-struct RivuletLayer {
-    Biquad filters[WATER_RIVULET_STREAMS];
-    float  lfo_phase[WATER_RIVULET_STREAMS];
-    float  lfo_rate[WATER_RIVULET_STREAMS];
-    float  stream_gain[WATER_RIVULET_STREAMS];
-    float  stream_pan[WATER_RIVULET_STREAMS];
-    float  noise_state[WATER_RIVULET_STREAMS];
-    float  gain;
-    float  density;
+struct SurfLayer {
+    SurfGenerator gen1, gen2;
+    float  rumble_lpf_l, rumble_lpf_r;   // deep sub-rumble (like Ocean)
+    float  master_lpf_l, master_lpf_r;   // smoothing LPF
+    float  master_hpf_l, master_hpf_r;   // DC block
+    // Tuneable parameters (set via water_set_surf_params)
+    float  rumble_freq;             // 40-120 Hz (default 80)
+    float  body_freq;               // 150-800 Hz (default 300)
+    float  spray_freq;              // 2000-8000 Hz (default 4000)
+    float  duration_min, duration_max;   // wave duration range (s)
+    float  interval_min, interval_max;   // wave interval range (s)
+    float  offset_min, offset_max;       // gen2 offset range (s)
+    float  foam_min, foam_max;           // spray intensity range
+    float  depth_min, depth_max;         // rumble depth range
+    float  gain, density;
+    int    filters_dirty;           // recalc biquad coefficients
     int    inited;
 };
 
-static void rivulet_init(RivuletLayer* r, float sr) {
-    // Matches JS: BP freqs + per-stream Q and gain
-    float freqs[WATER_RIVULET_STREAMS] = {2500.0f, 3500.0f, 4500.0f, 6000.0f};
-    float qs[WATER_RIVULET_STREAMS] = {3.0f, 2.5f, 2.0f, 1.5f};
-    float gains[WATER_RIVULET_STREAMS] = {0.3f, 0.25f, 0.2f, 0.15f};
-    for (int s = 0; s < WATER_RIVULET_STREAMS; s++) {
-        biquad_set_bandpass(&r->filters[s], freqs[s], qs[s], sr);
-        biquad_reset(&r->filters[s]);
-        r->stream_gain[s] = gains[s];
-        r->stream_pan[s] = ((float)s / 3.0f) - 0.5f;  // matches JS: (i/3)-0.5
-        r->noise_state[s] = 0.0f;
-    }
-    // LFO rates (matches JS: [0.15, 0.22, 0.31, 0.18])
-    r->lfo_phase[0] = 0.0f;  r->lfo_rate[0] = 0.15f;
-    r->lfo_phase[1] = 0.25f; r->lfo_rate[1] = 0.22f;
-    r->lfo_phase[2] = 0.5f;  r->lfo_rate[2] = 0.31f;
-    r->lfo_phase[3] = 0.75f; r->lfo_rate[3] = 0.18f;
-    r->gain = 0.3f;
-    r->density = 1.0f;
-    r->inited = 1;
+static void surf_init_filters(SurfLayer* s, float sr) {
+    biquad_set_lowpass(&s->gen1.rumble_l, s->rumble_freq, 0.5f, sr);
+    biquad_set_lowpass(&s->gen1.rumble_r, s->rumble_freq, 0.5f, sr);
+    biquad_set_bandpass(&s->gen1.body_l, s->body_freq, 0.8f, sr);
+    biquad_set_bandpass(&s->gen1.body_r, s->body_freq, 0.8f, sr);
+    biquad_set_bandpass(&s->gen1.spray_l, s->spray_freq, 1.5f, sr);
+    biquad_set_bandpass(&s->gen1.spray_r, s->spray_freq, 1.5f, sr);
+    biquad_set_lowpass(&s->gen2.rumble_l, s->rumble_freq, 0.5f, sr);
+    biquad_set_lowpass(&s->gen2.rumble_r, s->rumble_freq, 0.5f, sr);
+    biquad_set_bandpass(&s->gen2.body_l, s->body_freq, 0.8f, sr);
+    biquad_set_bandpass(&s->gen2.body_r, s->body_freq, 0.8f, sr);
+    biquad_set_bandpass(&s->gen2.spray_l, s->spray_freq, 1.5f, sr);
+    biquad_set_bandpass(&s->gen2.spray_r, s->spray_freq, 1.5f, sr);
+    s->filters_dirty = 0;
 }
 
-static void rivulet_process(RivuletLayer* r, float* outL, float* outR,
-                            int block_size, float level, Rng* rng, float sr) {
+static void surf_init(SurfLayer* s, float sr) {
+    memset(s, 0, sizeof(SurfLayer));
+    s->rumble_freq = 80.0f;
+    s->body_freq = 300.0f;
+    s->spray_freq = 4000.0f;
+    s->duration_min = 4.0f;  s->duration_max = 12.0f;
+    s->interval_min = 5.0f;  s->interval_max = 14.0f;
+    s->offset_min = 2.0f;    s->offset_max = 6.0f;
+    s->foam_min = 0.2f;      s->foam_max = 0.5f;
+    s->depth_min = 0.3f;     s->depth_max = 0.7f;
+    s->gain = 0.5f;
+    s->density = 1.0f;
+    // Stagger gen2 so first waves don't align
+    s->gen2.time_since_wave = -(int)(sr * 3.0f);
+    surf_init_filters(s, sr);
+    s->inited = 1;
+}
+
+static void surf_start_wave(SurfGenerator* gen, Rng* rng, float sr,
+                            float dur_min, float dur_max,
+                            float foam_min, float foam_max,
+                            float depth_min, float depth_max) {
+    gen->active = 1;
+    gen->wave_phase = 0.0f;
+    gen->wave_duration = sr * rng_range(rng, dur_min, dur_max);
+    gen->wave_amplitude = 0.6f + rng_next(rng) * 0.4f;
+    gen->pan_offset = (rng_next(rng) - 0.5f) * 0.8f;
+    gen->wave_foam = rng_range(rng, foam_min, foam_max);
+    gen->wave_depth = rng_range(rng, depth_min, depth_max);
+    gen->time_since_wave = 0;
+}
+
+static void surf_process(SurfLayer* s, float* outL, float* outR,
+                         int block_size, float level, Rng* rng, float sr) {
     if (level < 0.001f) return;
-    if (!r->inited) rivulet_init(r, sr);
+    if (!s->inited) surf_init(s, sr);
+    if (s->filters_dirty) surf_init_filters(s, sr);
 
     float inv_sr = 1.0f / sr;
+    float density_scale = 0.25f + s->density * 0.75f;
+
     for (int i = 0; i < block_size; i++) {
-        float sum_l = 0.0f, sum_r = 0.0f;
-        
-        for (int s = 0; s < WATER_RIVULET_STREAMS; s++) {
-            // LFO: 0.25 + 0.75 * pow(sin(phase*PI), 2) (matches JS: half-period sin²)
-            r->lfo_phase[s] += r->lfo_rate[s] * inv_sr;
-            if (r->lfo_phase[s] > 1.0f) r->lfo_phase[s] -= 1.0f;
-            float sin_val = fast_sin(r->lfo_phase[s] * PI_F);  // half-period
-            float env = 0.25f + 0.75f * sin_val * sin_val;
-
-            // Noise with smoothing (matches JS: noise*0.6 + raw*0.4)
-            float raw_noise = rng_next(rng) * 2.0f - 1.0f;
-            r->noise_state[s] = r->noise_state[s] * 0.6f + raw_noise * 0.4f;
-            
-            // Density scaling (matches JS: 0.25 + density * 0.75)
-            float density_scale = 0.25f + r->density * 0.75f;
-            float filtered = biquad_process(&r->filters[s], r->noise_state[s])
-                           * r->stream_gain[s] * env * density_scale;
-
-            // Pan (matches JS: 0.5 - pan*0.4, 0.5 + pan*0.4)
-            sum_l += filtered * (0.5f - r->stream_pan[s] * 0.4f);
-            sum_r += filtered * (0.5f + r->stream_pan[s] * 0.4f);
+        // ── Wave event scheduling ──
+        // Gen1
+        s->gen1.time_since_wave++;
+        if (!s->gen1.active && s->gen1.time_since_wave >= s->gen1.next_wave_interval) {
+            surf_start_wave(&s->gen1, rng, sr, s->duration_min, s->duration_max,
+                           s->foam_min, s->foam_max, s->depth_min, s->depth_max);
+            s->gen1.next_wave_interval = (int)(sr * rng_range(rng, s->interval_min, s->interval_max));
+        }
+        // Gen2 (with offset)
+        s->gen2.time_since_wave++;
+        if (!s->gen2.active && s->gen2.time_since_wave >= s->gen2.next_wave_interval) {
+            surf_start_wave(&s->gen2, rng, sr, s->duration_min, s->duration_max,
+                           s->foam_min, s->foam_max, s->depth_min, s->depth_max);
+            float offset = rng_range(rng, s->offset_min, s->offset_max);
+            s->gen2.next_wave_interval = (int)(sr * (rng_range(rng, s->interval_min, s->interval_max) + offset));
         }
 
-        outL[i] += sum_l * r->gain * level;
-        outR[i] += sum_r * r->gain * level;
+        float sampleL = 0.0f, sampleR = 0.0f;
+
+        // ── Process each generator ──
+        for (int g = 0; g < 2; g++) {
+            SurfGenerator* gen = (g == 0) ? &s->gen1 : &s->gen2;
+            if (!gen->active) continue;
+
+            gen->wave_phase += 1.0f / gen->wave_duration;
+            if (gen->wave_phase >= 1.0f) {
+                gen->active = 0;
+                continue;
+            }
+
+            float env = wave_envelope(gen->wave_phase) * gen->wave_amplitude;
+            float f_env = foam_envelope(gen->wave_phase);
+            float gen_scale = (g == 1) ? 0.7f : 1.0f; // gen2 slightly quieter
+
+            // Pink noise
+            float white_l = rng_next(rng) * 2.0f - 1.0f;
+            float white_r = rng_next(rng) * 2.0f - 1.0f;
+            gen->noise_l = gen->noise_l * 0.7f + white_l * 0.3f;
+            gen->noise_r = gen->noise_r * 0.7f + white_r * 0.3f;
+
+            // 3-band processing
+            float rl = biquad_process(&gen->rumble_l, gen->noise_l) * 0.7f * gen->wave_depth;
+            float rr = biquad_process(&gen->rumble_r, gen->noise_r) * 0.7f * gen->wave_depth;
+            float bl = biquad_process(&gen->body_l, gen->noise_l) * 0.6f;
+            float br = biquad_process(&gen->body_r, gen->noise_r) * 0.6f;
+            // Spray follows foam envelope
+            float sl = biquad_process(&gen->spray_l, white_l) * 0.4f * gen->wave_foam * f_env;
+            float sr_v = biquad_process(&gen->spray_r, white_r) * 0.4f * gen->wave_foam * f_env;
+
+            // Pan
+            float panL = 0.5f + gen->pan_offset * 0.5f;
+            float panR = 0.5f - gen->pan_offset * 0.5f;
+            if (g == 1) { float tmp = panL; panL = panR; panR = tmp; } // opposite pan
+
+            float outl = ((rl + bl) * env + sl) * gen_scale;
+            float outr = ((rr + br) * env + sr_v) * gen_scale;
+            sampleL += outl * panL;
+            sampleR += outr * panR;
+        }
+
+        // Deep rumble sub-layer (always-on subtle presence when any wave is active)
+        float rumble_noise = rng_next(rng) * 2.0f - 1.0f;
+        s->rumble_lpf_l += (rumble_noise - s->rumble_lpf_l) * 0.005f;
+        float rumble_noise_r = rng_next(rng) * 2.0f - 1.0f;
+        s->rumble_lpf_r += (rumble_noise_r - s->rumble_lpf_r) * 0.005f;
+        float any_active = (s->gen1.active || s->gen2.active) ? 1.0f : 0.0f;
+        sampleL += s->rumble_lpf_l * 0.3f * any_active;
+        sampleR += s->rumble_lpf_r * 0.3f * any_active;
+
+        // Master smoothing
+        s->master_lpf_l += (sampleL - s->master_lpf_l) * 0.35f;
+        s->master_lpf_r += (sampleR - s->master_lpf_r) * 0.35f;
+        s->master_hpf_l += (s->master_lpf_l - s->master_hpf_l) * 0.0005f;
+        s->master_hpf_r += (s->master_lpf_r - s->master_hpf_r) * 0.0005f;
+
+        float finalL = (s->master_lpf_l - s->master_hpf_l);
+        float finalR = (s->master_lpf_r - s->master_hpf_r);
+
+        outL[i] += finalL * s->gain * density_scale * level;
+        outR[i] += finalR * s->gain * density_scale * level;
+    }
+}
+
+// ── Channels Layer: 4 BPF streams with stream↔wind morph (replaces Rivulets) ──
+// morph=0: tight stream (narrow Q, high freq, fast LFO, narrow pan)
+// morph=1: wide wind   (wide Q, spread freq, slow LFO, wide pan)
+struct ChannelsLayer {
+    Biquad filters[WATER_RIVULET_STREAMS];
+    float  lfo_phase[WATER_RIVULET_STREAMS];
+    float  noise_state[WATER_RIVULET_STREAMS];
+    float  morph;         // 0=stream, 1=wind (set via water_set_channels_params)
+    float  speed;         // 0=slow LFO, 1=fast LFO
+    float  gain;
+    float  density;
+    int    filters_dirty;
+    int    inited;
+};
+
+// Stream endpoints (morph=0)
+static const float CH_STREAM_FREQS[4]   = {2500.0f, 3500.0f, 4500.0f, 6000.0f};
+static const float CH_STREAM_Q[4]       = {3.0f, 2.5f, 2.0f, 1.5f};
+static const float CH_STREAM_GAIN[4]    = {0.30f, 0.25f, 0.20f, 0.15f};
+static const float CH_STREAM_LFO[4]     = {0.15f, 0.22f, 0.31f, 0.18f};
+static const float CH_STREAM_PAN[4]     = {-0.50f, -0.167f, 0.167f, 0.50f};
+// Wind endpoints (morph=1)
+static const float CH_WIND_FREQS[4]     = {400.0f, 1200.0f, 3000.0f, 7000.0f};
+static const float CH_WIND_Q[4]         = {0.6f, 0.5f, 0.4f, 0.35f};
+static const float CH_WIND_GAIN[4]      = {0.25f, 0.30f, 0.25f, 0.15f};
+static const float CH_WIND_LFO[4]       = {0.04f, 0.06f, 0.08f, 0.05f};
+static const float CH_WIND_PAN[4]       = {-0.9f, -0.3f, 0.3f, 0.9f};
+
+static void channels_init_filters(ChannelsLayer* c, float sr) {
+    float m = c->morph;
+    for (int s = 0; s < WATER_RIVULET_STREAMS; s++) {
+        float freq = CH_STREAM_FREQS[s] + m * (CH_WIND_FREQS[s] - CH_STREAM_FREQS[s]);
+        float q    = CH_STREAM_Q[s]     + m * (CH_WIND_Q[s]     - CH_STREAM_Q[s]);
+        biquad_set_bandpass(&c->filters[s], freq, q, sr);
+    }
+    c->filters_dirty = 0;
+}
+
+static void channels_init(ChannelsLayer* c, float sr) {
+    memset(c, 0, sizeof(ChannelsLayer));
+    c->morph = 0.0f;
+    c->speed = 0.5f;
+    c->gain = 0.3f;
+    c->density = 1.0f;
+    // Stagger LFO phases
+    c->lfo_phase[0] = 0.0f;
+    c->lfo_phase[1] = 0.25f;
+    c->lfo_phase[2] = 0.5f;
+    c->lfo_phase[3] = 0.75f;
+    channels_init_filters(c, sr);
+    c->inited = 1;
+}
+
+static void channels_process(ChannelsLayer* c, float* outL, float* outR,
+                             int block_size, float level, Rng* rng, float sr) {
+    if (level < 0.001f) return;
+    if (!c->inited) channels_init(c, sr);
+    if (c->filters_dirty) channels_init_filters(c, sr);
+
+    float m = c->morph;
+    float inv_sr = 1.0f / sr;
+    float density_scale = 0.25f + c->density * 0.75f;
+
+    for (int i = 0; i < block_size; i++) {
+        float sum_l = 0.0f, sum_r = 0.0f;
+
+        for (int s = 0; s < WATER_RIVULET_STREAMS; s++) {
+            // Interpolated LFO rate: base rate * speed param
+            float base_lfo = CH_STREAM_LFO[s] + m * (CH_WIND_LFO[s] - CH_STREAM_LFO[s]);
+            float lfo_rate = base_lfo * (0.5f + c->speed);
+            c->lfo_phase[s] += lfo_rate * inv_sr;
+            if (c->lfo_phase[s] > 1.0f) c->lfo_phase[s] -= 1.0f;
+            float sin_val = fast_sin(c->lfo_phase[s] * PI_F);
+            // Wind has deeper LFO modulation
+            float lfo_depth = 0.75f + m * 0.15f;  // stream: 0.75, wind: 0.90
+            float env = (1.0f - lfo_depth) + lfo_depth * sin_val * sin_val;
+
+            // Noise smoothing: more for stream (tight), less for wind (airy)
+            float smooth = 0.6f - m * 0.3f;  // stream: 0.6, wind: 0.3
+            float raw_noise = rng_next(rng) * 2.0f - 1.0f;
+            c->noise_state[s] = c->noise_state[s] * smooth + raw_noise * (1.0f - smooth);
+
+            // Interpolated gain
+            float g = CH_STREAM_GAIN[s] + m * (CH_WIND_GAIN[s] - CH_STREAM_GAIN[s]);
+            float filtered = biquad_process(&c->filters[s], c->noise_state[s])
+                           * g * env * density_scale;
+
+            // Interpolated pan
+            float pan = CH_STREAM_PAN[s] + m * (CH_WIND_PAN[s] - CH_STREAM_PAN[s]);
+            sum_l += filtered * (0.5f - pan * 0.4f);
+            sum_r += filtered * (0.5f + pan * 0.4f);
+        }
+
+        outL[i] += sum_l * c->gain * level;
+        outR[i] += sum_r * c->gain * level;
     }
 }
 
@@ -1207,10 +1374,14 @@ static void glass_process(GlassResonator* g, float* outL, float* outR,
 // ═══════════════════════════════════════════════════════════
 
 enum WaterPreset {
-    WATER_TAP_DRIPS = 0,
-    WATER_STREAM    = 1,
-    WATER_WATERFALL = 2,
-    WATER_RAIN      = 3,
+    WATER_TAP_DRIPS    = 0,
+    WATER_STREAM       = 1,
+    WATER_WATERFALL    = 2,
+    WATER_RAIN         = 3,
+    WATER_OCEAN_SURF   = 4,
+    WATER_STORM_COAST  = 5,
+    WATER_MOUNTAIN_BROOK = 6,
+    WATER_WIND_MIST    = 7,
 };
 
 struct WaterState {
@@ -1224,8 +1395,8 @@ struct WaterState {
     // Continuous layers
     TurbulenceBed  turbulence;
     BubblingLayer  bubbling;
-    RoarLayer      roar;
-    RivuletLayer   rivulets;
+    SurfLayer      surf;
+    ChannelsLayer  channels;
     GlassResonator glass;
 
     // Output chain
@@ -1291,14 +1462,14 @@ struct WaterState {
     float  layer_water_drops;
     float  layer_turbulence;
     float  layer_bubbling;
-    float  layer_roar;
-    float  layer_rivulets;
+    float  layer_surf;
+    float  layer_channels;
     float  density_hard_drops;
     float  density_water_drops;
     float  density_turbulence;
     float  density_bubbling;
-    float  density_roar;
-    float  density_rivulets;
+    float  density_surf;
+    float  density_channels;
 
     // Fade
     float  fade_gain;
@@ -1322,11 +1493,15 @@ static WaterState* g_water = nullptr;
 // Preset base frequencies
 static float water_preset_base_freq(int preset) {
     switch (preset) {
-        case WATER_TAP_DRIPS:  return 2500.0f;
-        case WATER_STREAM:     return 2300.0f;
-        case WATER_WATERFALL:  return 4500.0f;
-        case WATER_RAIN:       return 2100.0f;
-        default:               return 2500.0f;
+        case WATER_TAP_DRIPS:      return 2500.0f;
+        case WATER_STREAM:         return 2300.0f;
+        case WATER_WATERFALL:      return 4500.0f;
+        case WATER_RAIN:           return 2100.0f;
+        case WATER_OCEAN_SURF:     return 2800.0f;
+        case WATER_STORM_COAST:    return 3500.0f;
+        case WATER_MOUNTAIN_BROOK: return 2000.0f;
+        case WATER_WIND_MIST:      return 1800.0f;
+        default:                   return 2500.0f;
     }
 }
 
@@ -1500,16 +1675,16 @@ int water_init(float sample_rate) {
     g_water->layer_water_drops = 0.5f;
     g_water->layer_turbulence = 0.3f;
     g_water->layer_bubbling = 0.0f;
-    g_water->layer_roar = 0.0f;
-    g_water->layer_rivulets = 0.0f;
+    g_water->layer_surf = 0.0f;
+    g_water->layer_channels = 0.0f;
 
     // Layer densities (matches JS defaults)
     g_water->density_hard_drops = 0.5f;
     g_water->density_water_drops = 0.5f;
     g_water->density_turbulence = 0.5f;
     g_water->density_bubbling = 0.5f;
-    g_water->density_roar = 0.5f;
-    g_water->density_rivulets = 0.5f;
+    g_water->density_surf = 0.5f;
+    g_water->density_channels = 0.5f;
 
     g_water->fade_gain = 0.0f;
     g_water->fade_target = 0.0f;
@@ -1574,8 +1749,8 @@ void water_process_block(int block_size) {
     float soft_buf_l[128] = {0}, soft_buf_r[128] = {0};
     float bubble_buf_l[128] = {0}, bubble_buf_r[128] = {0};
     float turb_buf_l[128] = {0}, turb_buf_r[128] = {0};
-    float roar_buf_l[128] = {0}, roar_buf_r[128] = {0};
-    float rivulet_buf_l[128] = {0}, rivulet_buf_r[128] = {0};
+    float surf_buf_l[128] = {0}, surf_buf_r[128] = {0};
+    float channels_buf_l[128] = {0}, channels_buf_r[128] = {0};
     float glass_buf_l[128] = {0}, glass_buf_r[128] = {0};
 
     // ── Event scheduling (sample-accurate, matches JS process() loop) ──
@@ -1675,14 +1850,14 @@ void water_process_block(int block_size) {
         }
     }
 
-    if (s->layer_roar > 0.0001f && s->density_roar > 0.0001f) {
-        roar_process(&s->roar, roar_buf_l, roar_buf_r, block_size,
-                    s->layer_roar * s->density_roar, &s->rng, sr);
+    if (s->layer_surf > 0.0001f && s->density_surf > 0.0001f) {
+        surf_process(&s->surf, surf_buf_l, surf_buf_r, block_size,
+                    s->layer_surf * s->density_surf, &s->rng, sr);
     }
 
-    if (s->layer_rivulets > 0.0001f && s->density_rivulets > 0.0001f) {
-        rivulet_process(&s->rivulets, rivulet_buf_l, rivulet_buf_r, block_size,
-                       s->layer_rivulets * s->density_rivulets, &s->rng, sr);
+    if (s->layer_channels > 0.0001f && s->density_channels > 0.0001f) {
+        channels_process(&s->channels, channels_buf_l, channels_buf_r, block_size,
+                       s->layer_channels * s->density_channels, &s->rng, sr);
     }
 
     // ── Glass pane: input-driven excitation from drop audio (matches JS) ──
@@ -1708,8 +1883,8 @@ void water_process_block(int block_size) {
             soft_buf_l[i] * s->layer_water_drops * 0.75f +
             turb_buf_l[i] * s->layer_turbulence * s->density_turbulence * 0.7f +
             bubble_buf_l[i] * 0.75f +
-            roar_buf_l[i] * 0.8f +
-            rivulet_buf_l[i] * 0.4f +
+            surf_buf_l[i] * 0.8f +
+            channels_buf_l[i] * 0.4f +
             glass_buf_l[i] * 0.2f
         ) * intensity_scale;
 
@@ -1718,8 +1893,8 @@ void water_process_block(int block_size) {
             soft_buf_r[i] * s->layer_water_drops * 0.75f +
             turb_buf_r[i] * s->layer_turbulence * s->density_turbulence * 0.7f +
             bubble_buf_r[i] * 0.75f +
-            roar_buf_r[i] * 0.8f +
-            rivulet_buf_r[i] * 0.4f +
+            surf_buf_r[i] * 0.8f +
+            channels_buf_r[i] * 0.4f +
             glass_buf_r[i] * 0.2f
         ) * intensity_scale;
 
@@ -1769,8 +1944,14 @@ void water_set_preset(int preset) {
             s->layer_water_drops  = 0.5f;
             s->layer_turbulence   = 0.3f;
             s->layer_bubbling     = 0.0f;
-            s->layer_roar         = 0.0f;
-            s->layer_rivulets     = 0.0f;
+            s->layer_surf         = 0.0f;
+            s->layer_channels     = 0.0f;
+            // Surf defaults (not active in this preset)
+            s->surf.duration_min = 5.6f; s->surf.duration_max = 10.4f;
+            s->surf.interval_min = 6.65f; s->surf.interval_max = 12.35f;
+            s->surf.foam_min = 0.2f; s->surf.foam_max = 0.5f;
+            s->surf.depth_min = 0.35f; s->surf.depth_max = 0.65f;
+            s->channels.morph = 0.0f; s->channels.speed = 0.5f;
             break;
         case WATER_STREAM:
             s->event_rate_min   = 3.5f;
@@ -1788,8 +1969,19 @@ void water_set_preset(int preset) {
             s->layer_water_drops  = 0.82f;
             s->layer_turbulence   = 0.56f;
             s->layer_bubbling     = 0.92f;
-            s->layer_roar         = 0.0f;
-            s->layer_rivulets     = 0.0f;
+            s->layer_surf         = 0.0f;
+            s->layer_channels     = 0.0f;
+            // Stream: light channels in stream mode
+            s->surf.duration_min = 5.6f; s->surf.duration_max = 10.4f;
+            s->surf.interval_min = 6.65f; s->surf.interval_max = 12.35f;
+            s->surf.foam_min = 0.05f; s->surf.foam_max = 0.35f;
+            s->surf.depth_min = 0.15f; s->surf.depth_max = 0.45f;
+            if (s->surf.body_freq != 250.0f || s->surf.spray_freq != 3500.0f) {
+                s->surf.body_freq = 250.0f; s->surf.spray_freq = 3500.0f;
+                s->surf.filters_dirty = 1;
+            }
+            s->channels.morph = 0.1f; s->channels.speed = 0.6f;
+            s->channels.filters_dirty = 1;
             break;
         case WATER_WATERFALL:
             s->event_rate_min   = 20.0f;
@@ -1807,8 +1999,18 @@ void water_set_preset(int preset) {
             s->layer_water_drops  = 0.3f;
             s->layer_turbulence   = 0.4f;
             s->layer_bubbling     = 0.4f;
-            s->layer_roar         = 1.0f;
-            s->layer_rivulets     = 0.0f;
+            s->layer_surf         = 1.0f;
+            s->layer_channels     = 0.0f;
+            // Waterfall surf: matches Ocean wave synthesis defaults
+            s->surf.duration_min = 4.9f; s->surf.duration_max = 9.1f;
+            s->surf.interval_min = 5.95f; s->surf.interval_max = 11.05f;
+            s->surf.foam_min = 0.2f; s->surf.foam_max = 0.5f;
+            s->surf.depth_min = 0.35f; s->surf.depth_max = 0.65f;
+            if (s->surf.body_freq != 300.0f || s->surf.spray_freq != 4000.0f) {
+                s->surf.body_freq = 300.0f; s->surf.spray_freq = 4000.0f;
+                s->surf.filters_dirty = 1;
+            }
+            s->channels.morph = 0.0f; s->channels.speed = 0.5f;
             break;
         case WATER_RAIN:
             s->event_rate_min   = 2.0f;
@@ -1826,8 +2028,138 @@ void water_set_preset(int preset) {
             s->layer_water_drops  = 0.42f;
             s->layer_turbulence   = 0.18f;
             s->layer_bubbling     = 0.0f;
-            s->layer_roar         = 0.0f;
-            s->layer_rivulets     = 0.92f;
+            s->layer_surf         = 0.0f;
+            s->layer_channels     = 0.92f;
+            // Rain: channels in wind mode (wind-driven rain)
+            s->surf.duration_min = 7.0f; s->surf.duration_max = 13.0f;
+            s->surf.interval_min = 9.8f; s->surf.interval_max = 18.2f;
+            s->surf.foam_min = 0.0f; s->surf.foam_max = 0.3f;
+            s->surf.depth_min = 0.15f; s->surf.depth_max = 0.45f;
+            if (s->surf.body_freq != 200.0f || s->surf.spray_freq != 5000.0f) {
+                s->surf.body_freq = 200.0f; s->surf.spray_freq = 5000.0f;
+                s->surf.filters_dirty = 1;
+            }
+            s->channels.morph = 0.65f; s->channels.speed = 0.35f;
+            s->channels.filters_dirty = 1;
+            break;
+        case WATER_OCEAN_SURF:
+            // Ocean Surf — mimics existing Ocean wave synthesis (pure surf, minimal drops)
+            s->event_rate_min   = 1.0f;
+            s->event_rate_max   = 3.0f;
+            s->drop_size_min    = 0.3f;
+            s->drop_size_max    = 0.6f;
+            s->hardness         = 0.3f;
+            s->decay_time       = 0.04f;
+            s->sink_material    = 0.0f;
+            s->burst_probability = 0.05f;
+            s->burst_count_min  = 2;
+            s->burst_count_max  = 3;
+            s->layer_hard_drops   = 0.0f;
+            s->layer_water_drops  = 0.0f;
+            s->layer_turbulence   = 0.1f;
+            s->layer_bubbling     = 0.0f;
+            s->layer_surf         = 0.9f;
+            s->layer_channels     = 0.0f;
+            // Match Ocean defaults: duration 7s, interval 8.5s, foam 0.35, depth 0.5
+            s->surf.duration_min = 4.9f; s->surf.duration_max = 9.1f;
+            s->surf.interval_min = 5.95f; s->surf.interval_max = 11.05f;
+            s->surf.foam_min = 0.2f; s->surf.foam_max = 0.5f;
+            s->surf.depth_min = 0.35f; s->surf.depth_max = 0.65f;
+            if (s->surf.body_freq != 300.0f || s->surf.spray_freq != 4000.0f) {
+                s->surf.body_freq = 300.0f; s->surf.spray_freq = 4000.0f;
+                s->surf.filters_dirty = 1;
+            }
+            s->channels.morph = 0.0f; s->channels.speed = 0.5f;
+            break;
+        case WATER_STORM_COAST:
+            // Storm Coast — intense crashing surf + wind channels
+            s->event_rate_min   = 15.0f;
+            s->event_rate_max   = 40.0f;
+            s->drop_size_min    = 0.1f;
+            s->drop_size_max    = 0.25f;
+            s->hardness         = 0.15f;
+            s->decay_time       = 0.02f;
+            s->sink_material    = 0.0f;
+            s->burst_probability = 0.12f;
+            s->burst_count_min  = 3;
+            s->burst_count_max  = 5;
+            s->layer_hard_drops   = 0.05f;
+            s->layer_water_drops  = 0.15f;
+            s->layer_turbulence   = 0.5f;
+            s->layer_bubbling     = 0.2f;
+            s->layer_surf         = 1.0f;
+            s->layer_channels     = 0.7f;
+            // Fast, intense waves with high foam and deep rumble
+            s->surf.duration_min = 3.5f; s->surf.duration_max = 6.5f;
+            s->surf.interval_min = 4.2f; s->surf.interval_max = 7.8f;
+            s->surf.foam_min = 0.55f; s->surf.foam_max = 0.85f;
+            s->surf.depth_min = 0.65f; s->surf.depth_max = 0.95f;
+            if (s->surf.body_freq != 200.0f || s->surf.spray_freq != 5500.0f) {
+                s->surf.body_freq = 200.0f; s->surf.spray_freq = 5500.0f;
+                s->surf.filters_dirty = 1;
+            }
+            s->channels.morph = 0.75f; s->channels.speed = 0.4f;
+            s->channels.filters_dirty = 1;
+            break;
+        case WATER_MOUNTAIN_BROOK:
+            // Mountain Brook — gentle stream channels + subtle background surf
+            s->event_rate_min   = 2.0f;
+            s->event_rate_max   = 6.0f;
+            s->drop_size_min    = 0.35f;
+            s->drop_size_max    = 0.65f;
+            s->hardness         = 0.3f;
+            s->decay_time       = 0.05f;
+            s->sink_material    = 0.0f;
+            s->burst_probability = 0.08f;
+            s->burst_count_min  = 2;
+            s->burst_count_max  = 3;
+            s->layer_hard_drops   = 0.15f;
+            s->layer_water_drops  = 0.6f;
+            s->layer_turbulence   = 0.3f;
+            s->layer_bubbling     = 0.7f;
+            s->layer_surf         = 0.25f;
+            s->layer_channels     = 0.85f;
+            // Slow wide waves with gentle stream channels
+            s->surf.duration_min = 9.8f; s->surf.duration_max = 18.2f;
+            s->surf.interval_min = 12.6f; s->surf.interval_max = 23.4f;
+            s->surf.foam_min = 0.0f; s->surf.foam_max = 0.2f;
+            s->surf.depth_min = 0.1f; s->surf.depth_max = 0.4f;
+            if (s->surf.body_freq != 400.0f || s->surf.spray_freq != 3000.0f) {
+                s->surf.body_freq = 400.0f; s->surf.spray_freq = 3000.0f;
+                s->surf.filters_dirty = 1;
+            }
+            s->channels.morph = 0.15f; s->channels.speed = 0.7f;
+            s->channels.filters_dirty = 1;
+            break;
+        case WATER_WIND_MIST:
+            // Wind & Mist — pure wind channels + sparse misty spray surf
+            s->event_rate_min   = 0.5f;
+            s->event_rate_max   = 2.0f;
+            s->drop_size_min    = 0.3f;
+            s->drop_size_max    = 0.5f;
+            s->hardness         = 0.2f;
+            s->decay_time       = 0.06f;
+            s->sink_material    = 0.0f;
+            s->burst_probability = 0.03f;
+            s->burst_count_min  = 1;
+            s->burst_count_max  = 2;
+            s->layer_hard_drops   = 0.0f;
+            s->layer_water_drops  = 0.0f;
+            s->layer_turbulence   = 0.15f;
+            s->layer_bubbling     = 0.0f;
+            s->layer_surf         = 0.15f;
+            s->layer_channels     = 1.0f;
+            // Sparse, slow waves with high spray, full wind morph
+            s->surf.duration_min = 11.2f; s->surf.duration_max = 20.8f;
+            s->surf.interval_min = 15.4f; s->surf.interval_max = 28.6f;
+            s->surf.foam_min = 0.35f; s->surf.foam_max = 0.65f;
+            s->surf.depth_min = 0.0f; s->surf.depth_max = 0.3f;
+            if (s->surf.body_freq != 350.0f || s->surf.spray_freq != 6000.0f) {
+                s->surf.body_freq = 350.0f; s->surf.spray_freq = 6000.0f;
+                s->surf.filters_dirty = 1;
+            }
+            s->channels.morph = 0.9f; s->channels.speed = 0.25f;
+            s->channels.filters_dirty = 1;
             break;
     }
 
@@ -1883,25 +2215,25 @@ void water_set_params(float intensity_min, float intensity_max,
 }
 
 void water_set_layer_mix(float hard_drops, float water_drops, float turbulence,
-                         float bubbling, float roar, float rivulets) {
+                         float bubbling, float surf, float channels) {
     if (!g_water) return;
     g_water->layer_hard_drops = hard_drops;
     g_water->layer_water_drops = water_drops;
     g_water->layer_turbulence = turbulence;
     g_water->layer_bubbling = bubbling;
-    g_water->layer_roar = roar;
-    g_water->layer_rivulets = rivulets;
+    g_water->layer_surf = surf;
+    g_water->layer_channels = channels;
 }
 
 void water_set_layer_density(float hard_drops, float water_drops, float turbulence,
-                             float bubbling, float roar, float rivulets) {
+                             float bubbling, float surf, float channels) {
     if (!g_water) return;
     g_water->density_hard_drops = hard_drops;
     g_water->density_water_drops = water_drops;
     g_water->density_turbulence = turbulence;
     g_water->density_bubbling = bubbling;
-    g_water->density_roar = roar;
-    g_water->density_rivulets = rivulets;
+    g_water->density_surf = surf;
+    g_water->density_channels = channels;
     water_update_scheduling(g_water);
 }
 
@@ -1920,6 +2252,34 @@ void water_stop(void) {
 void water_set_seed(int seed) {
     if (!g_water) return;
     g_water->rng.state = (uint32_t)seed;
+}
+
+void water_set_surf_params(float duration_min, float duration_max,
+                           float interval_min, float interval_max,
+                           float foam_min, float foam_max,
+                           float depth_min, float depth_max,
+                           float body_freq, float spray_freq) {
+    if (!g_water) return;
+    SurfLayer* s = &g_water->surf;
+    s->duration_min = duration_min;  s->duration_max = duration_max;
+    s->interval_min = interval_min;  s->interval_max = interval_max;
+    s->foam_min = foam_min;          s->foam_max = foam_max;
+    s->depth_min = depth_min;        s->depth_max = depth_max;
+    if (s->body_freq != body_freq || s->spray_freq != spray_freq) {
+        s->body_freq = body_freq;
+        s->spray_freq = spray_freq;
+        s->filters_dirty = 1;
+    }
+}
+
+void water_set_channels_params(float morph, float speed) {
+    if (!g_water) return;
+    ChannelsLayer* c = &g_water->channels;
+    if (c->morph != morph) {
+        c->morph = morph;
+        c->filters_dirty = 1;
+    }
+    c->speed = speed;
 }
 
 int water_get_active_voices(void) {

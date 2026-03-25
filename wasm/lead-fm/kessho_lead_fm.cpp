@@ -113,6 +113,7 @@ struct UnisonVoice {
 // State for a full polyphonic note
 struct LeadNote {
     int   active = 0;
+    int   lead_index = 0;       // 0 = lead1, 1 = lead2
     float age = 0;              // samples since trigger
 
     // Oscillator configuration
@@ -198,8 +199,9 @@ static LeadPresetParams g_params;
 static StereoPingPongDelay g_delay;
 static float g_delay_send = 0.3f;
 
-// Output buffer
-static float g_output[LEAD_FM_MAX_BLOCK_SIZE * 2];
+// Output buffers (one per lead for separate routing)
+static float g_output[LEAD_FM_MAX_BLOCK_SIZE * 2];       // lead 1
+static float g_output_lead2[LEAD_FM_MAX_BLOCK_SIZE * 2]; // lead 2
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Helpers
@@ -516,6 +518,7 @@ int lead_fm_init(float sample_rate) {
     g_delay.set_filter(4000.0f, sample_rate);
 
     memset(g_output, 0, sizeof(g_output));
+    memset(g_output_lead2, 0, sizeof(g_output_lead2));
     return 0;
 }
 
@@ -527,34 +530,59 @@ float* lead_fm_get_output_ptr(void) {
     return g_output;
 }
 
+float* lead_fm_get_output2_ptr(void) {
+    return g_output_lead2;
+}
+
 void lead_fm_process_block(int block_size) {
     if (block_size > LEAD_FM_MAX_BLOCK_SIZE) block_size = LEAD_FM_MAX_BLOCK_SIZE;
 
-    float dry_l[LEAD_FM_MAX_BLOCK_SIZE] = {};
-    float dry_r[LEAD_FM_MAX_BLOCK_SIZE] = {};
+    // Separate dry buffers per lead
+    float lead1_dry_l[LEAD_FM_MAX_BLOCK_SIZE] = {};
+    float lead1_dry_r[LEAD_FM_MAX_BLOCK_SIZE] = {};
+    float lead2_dry_l[LEAD_FM_MAX_BLOCK_SIZE] = {};
+    float lead2_dry_r[LEAD_FM_MAX_BLOCK_SIZE] = {};
 
     for (int i = 0; i < LEAD_FM_MAX_POLYPHONY; i++) {
         if (g_notes[i].active) {
-            render_note(g_notes[i], dry_l, dry_r, block_size);
+            if (g_notes[i].lead_index == 0) {
+                render_note(g_notes[i], lead1_dry_l, lead1_dry_r, block_size);
+            } else {
+                render_note(g_notes[i], lead2_dry_l, lead2_dry_r, block_size);
+            }
         }
     }
 
-    // Apply delay
+    // Shared delay: feed combined signal, add delay wet to both outputs
     for (int n = 0; n < block_size; n++) {
-        float del_in_l = dry_l[n] * g_delay_send;
-        float del_in_r = dry_r[n] * g_delay_send;
+        float combined_l = lead1_dry_l[n] + lead2_dry_l[n];
+        float combined_r = lead1_dry_r[n] + lead2_dry_r[n];
+        float del_in_l = combined_l * g_delay_send;
+        float del_in_r = combined_r * g_delay_send;
         float del_l, del_r;
         g_delay.process_sample(del_in_l, del_in_r, del_l, del_r);
+        float wet_l = del_l - del_in_l;
+        float wet_r = del_r - del_in_r;
 
-        g_output[n * 2]     = dry_l[n] + (del_l - del_in_l);
-        g_output[n * 2 + 1] = dry_r[n] + (del_r - del_in_r);
+        // Lead 1 output: dry + shared delay wet
+        g_output[n * 2]     = lead1_dry_l[n] + wet_l;
+        g_output[n * 2 + 1] = lead1_dry_r[n] + wet_r;
+
+        // Lead 2 output: dry + shared delay wet
+        g_output_lead2[n * 2]     = lead2_dry_l[n] + wet_l;
+        g_output_lead2[n * 2 + 1] = lead2_dry_r[n] + wet_r;
     }
 }
 
 void lead_fm_note_on(float frequency, float velocity, float hold_seconds) {
+    lead_fm_note_on_ex(frequency, velocity, hold_seconds, 0);
+}
+
+void lead_fm_note_on_ex(float frequency, float velocity, float hold_seconds, int lead_index) {
     int slot = find_note_slot();
     LeadNote& note = g_notes[slot];
     note.reset();
+    note.lead_index = lead_index;
 
     const LeadPresetParams& p = g_params;
 

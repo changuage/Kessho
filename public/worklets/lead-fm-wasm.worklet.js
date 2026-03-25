@@ -36,6 +36,7 @@ class LeadFMWasmProcessor extends AudioWorkletProcessor {
     this.wasm = null;
     this.heap = new Float32Array(0);
     this.outputPtr = 0;
+    this.output2Ptr = 0;
     this.ready = false;
 
     this.perfEnabled = false;
@@ -73,13 +74,19 @@ class LeadFMWasmProcessor extends AudioWorkletProcessor {
     }
 
     this.outputPtr = this.wasm.lead_fm_get_output_ptr();
+    this.output2Ptr = this.wasm.lead_fm_get_output2_ptr();
     this.ready = true;
     this.port.postMessage({ type: 'wasmReady' });
 
     for (const p of this.pendingParams) this.applyParams(p);
     this.pendingParams = [];
     for (const n of this.pendingNotes) {
-      this.wasm.lead_fm_note_on(n.frequency, n.velocity, n.hold || 1);
+      const li = n.leadIndex ?? 0;
+      if (this.wasm.lead_fm_note_on_ex) {
+        this.wasm.lead_fm_note_on_ex(n.frequency, n.velocity, n.hold || 1, li);
+      } else {
+        this.wasm.lead_fm_note_on(n.frequency, n.velocity, n.hold || 1);
+      }
     }
     this.pendingNotes = [];
   }
@@ -91,7 +98,12 @@ class LeadFMWasmProcessor extends AudioWorkletProcessor {
         break;
       case 'noteOn':
         if (this.ready) {
-          this.wasm.lead_fm_note_on(data.frequency, data.velocity, data.hold || 1);
+          const li = data.leadIndex ?? 0;
+          if (this.wasm.lead_fm_note_on_ex) {
+            this.wasm.lead_fm_note_on_ex(data.frequency, data.velocity, data.hold || 1, li);
+          } else {
+            this.wasm.lead_fm_note_on(data.frequency, data.velocity, data.hold || 1);
+          }
         } else {
           this.pendingNotes.push(data);
         }
@@ -223,17 +235,31 @@ class LeadFMWasmProcessor extends AudioWorkletProcessor {
 
     const perfStart = this.perfEnabled ? _perfNow() : 0;
     const output = outputs[0];
+    const output2 = outputs[1];
     const blockSize = output[0]?.length || 128;
 
     this.wasm.lead_fm_process_block(blockSize);
 
     const heap = this.getHeapF32();
+
+    // Lead 1 output
     const outOffset = this.outputPtr >> 2;
     const outL = output[0];
     const outR = output[1] || outL;
     for (let i = 0; i < blockSize; i++) {
       outL[i] = heap[outOffset + i * 2];
       if (outR !== outL) outR[i] = heap[outOffset + i * 2 + 1];
+    }
+
+    // Lead 2 output
+    if (output2 && output2[0]) {
+      const out2Offset = this.output2Ptr >> 2;
+      const out2L = output2[0];
+      const out2R = output2[1] || out2L;
+      for (let i = 0; i < blockSize; i++) {
+        out2L[i] = heap[out2Offset + i * 2];
+        if (out2R !== out2L) out2R[i] = heap[out2Offset + i * 2 + 1];
+      }
     }
 
     if (this.perfEnabled) {

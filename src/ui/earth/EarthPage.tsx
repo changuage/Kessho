@@ -43,8 +43,8 @@ const LAYER_STATE_KEY: Record<LayerKey, keyof SliderState> = {
   waterDrops: 'waterLayerWaterDrops',
   turbulence: 'waterLayerTurbulence',
   bubbling: 'waterLayerBubbling',
-  roar: 'waterLayerRoar',
-  rivulets: 'waterLayerRivulets',
+  surf: 'waterLayerSurf',
+  channels: 'waterLayerChannels',
 };
 
 /** All earth dual-slider keys — used to check if any is in walk mode */
@@ -59,7 +59,10 @@ const EARTH_DUAL_KEYS: readonly (keyof SliderState)[] = [
   'insects2Antiphony', 'insects2ClickRate', 'insects2Motion',
   'waterLevel', 'insectsLevel', 'insects2Level',
   'waterLayerHardDrops', 'waterLayerWaterDrops', 'waterLayerTurbulence',
-  'waterLayerBubbling', 'waterLayerRoar', 'waterLayerRivulets',
+  'waterLayerBubbling', 'waterLayerSurf', 'waterLayerChannels',
+  'waterSurfDuration', 'waterSurfInterval', 'waterSurfFoam', 'waterSurfDepth',
+  'waterSurfBody', 'waterSurfSpray',
+  'waterChannelsMorph', 'waterChannelsSpeed',
 ] as const;
 
 function quantize(key: string, v: number): number {
@@ -192,6 +195,32 @@ export default function EarthPage({
                   format: v => `${Math.round(v)} Hz`,
                 })}
                 {ds('waterReverbSend', 'Reverb Send', 'rgba(139,92,246,0.5)')}
+
+                {/* ── Surf layer params ── */}
+                <div className="section-divider" />
+                <div className="param-section-label" style={{ fontSize: 11, opacity: 0.6, margin: '6px 0 2px' }}>Surf (Wave Envelope)</div>
+                {ds('waterSurfDuration', 'Wave Duration', 'rgba(0,180,216,0.5)', {
+                  format: v => `${v.toFixed(1)}s`,
+                })}
+                {ds('waterSurfInterval', 'Wave Interval', 'rgba(0,180,216,0.5)', {
+                  format: v => `${v.toFixed(1)}s`,
+                })}
+                {ds('waterSurfFoam', 'Foam', 'rgba(0,180,216,0.5)')}
+                {ds('waterSurfDepth', 'Depth', 'rgba(0,180,216,0.5)')}
+                {ds('waterSurfBody', 'Body Freq', 'rgba(0,180,216,0.5)', {
+                  format: v => `${Math.round(v)} Hz`,
+                })}
+                {ds('waterSurfSpray', 'Spray Freq', 'rgba(0,180,216,0.5)', {
+                  format: v => `${Math.round(v)} Hz`,
+                })}
+
+                {/* ── Channels layer params ── */}
+                <div className="section-divider" />
+                <div className="param-section-label" style={{ fontSize: 11, opacity: 0.6, margin: '6px 0 2px' }}>Channels (Stream↔Wind)</div>
+                {ds('waterChannelsMorph', 'Morph', 'rgba(0,150,136,0.5)', {
+                  format: v => v < 0.3 ? 'Stream' : v > 0.7 ? 'Wind' : 'Blend',
+                })}
+                {ds('waterChannelsSpeed', 'Speed', 'rgba(0,150,136,0.5)')}
               </div>
             )}
           </div>

@@ -778,8 +778,18 @@ export interface SliderState {
   waterLayerWaterDrops: number; // 0..1
   waterLayerTurbulence: number; // 0..1
   waterLayerBubbling: number;   // 0..1
-  waterLayerRoar: number;       // 0..1
-  waterLayerRivulets: number;   // 0..1
+  waterLayerSurf: number;       // 0..1
+  waterLayerChannels: number;   // 0..1
+  // Surf layer params (wave-envelope driven 3-band noise)
+  waterSurfDuration: number;    // 2..20 seconds — wave event length
+  waterSurfInterval: number;    // 3..25 seconds — time between waves
+  waterSurfFoam: number;        // 0..1 — spray/foam intensity
+  waterSurfDepth: number;       // 0..1 — deep rumble amount
+  waterSurfBody: number;        // 150..800 Hz — body band center freq
+  waterSurfSpray: number;       // 2000..8000 Hz — spray band center freq
+  // Channels layer params (stream↔wind morph)
+  waterChannelsMorph: number;   // 0..1 — 0=stream, 1=wind
+  waterChannelsSpeed: number;   // 0..1 — LFO speed
   // Insects Layer 1
   insectsEnabled: boolean;
   insectsEngine: number;        // 0..6 (Cricket..Fly/Bee)
@@ -1557,7 +1567,10 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'waterDropSize', 'waterHardness', 'waterGlassThickness',
   'waterReverbSend', 'waterLevel',
   'waterLayerHardDrops', 'waterLayerWaterDrops', 'waterLayerTurbulence',
-  'waterLayerBubbling', 'waterLayerRoar', 'waterLayerRivulets',
+  'waterLayerBubbling', 'waterLayerSurf', 'waterLayerChannels',
+  'waterSurfDuration', 'waterSurfInterval', 'waterSurfFoam', 'waterSurfDepth',
+  'waterSurfBody', 'waterSurfSpray',
+  'waterChannelsMorph', 'waterChannelsSpeed',
   'insectsEnabled', 'insectsEngine',
   'insectsDensity', 'insectsTemperature', 'insectsDistance', 'insectsProximity',
   'insectsAntiphony', 'insectsClickRate', 'insectsMotion', 'insectsLevel', 'insectsReverbSend',
@@ -2292,8 +2305,16 @@ export const DEFAULT_STATE: SliderState = {
   waterLayerWaterDrops: 0.82,
   waterLayerTurbulence: 0.56,
   waterLayerBubbling: 0.92,
-  waterLayerRoar: 0.0,
-  waterLayerRivulets: 0.0,
+  waterLayerSurf: 0.0,
+  waterLayerChannels: 0.0,
+  waterSurfDuration: 8.0,
+  waterSurfInterval: 9.5,
+  waterSurfFoam: 0.35,
+  waterSurfDepth: 0.5,
+  waterSurfBody: 300,
+  waterSurfSpray: 4000,
+  waterChannelsMorph: 0.0,
+  waterChannelsSpeed: 0.5,
   insectsEnabled: false,
   insectsEngine: 0,
   insectsDensity: 0.5,
@@ -2947,8 +2968,16 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   waterLayerWaterDrops: { min: 0, max: 1, step: 0.01 },
   waterLayerTurbulence: { min: 0, max: 1, step: 0.01 },
   waterLayerBubbling: { min: 0, max: 1, step: 0.01 },
-  waterLayerRoar: { min: 0, max: 1, step: 0.01 },
-  waterLayerRivulets: { min: 0, max: 1, step: 0.01 },
+  waterLayerSurf: { min: 0, max: 1, step: 0.01 },
+  waterLayerChannels: { min: 0, max: 1, step: 0.01 },
+  waterSurfDuration: { min: 2, max: 20, step: 0.5 },
+  waterSurfInterval: { min: 3, max: 25, step: 0.5 },
+  waterSurfFoam: { min: 0, max: 1, step: 0.01 },
+  waterSurfDepth: { min: 0, max: 1, step: 0.01 },
+  waterSurfBody: { min: 150, max: 800, step: 5 },
+  waterSurfSpray: { min: 2000, max: 8000, step: 50 },
+  waterChannelsMorph: { min: 0, max: 1, step: 0.01 },
+  waterChannelsSpeed: { min: 0, max: 1, step: 0.01 },
   insectsDensity: { min: 0, max: 1, step: 0.01 },
   insectsTemperature: { min: 0, max: 1, step: 0.01 },
   insectsDistance: { min: 0, max: 1, step: 0.01 },

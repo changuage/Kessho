@@ -35,12 +35,18 @@ void  water_set_params(float intensity_min, float intensity_max,
                        float hardness_min, float hardness_max,
                        float glass_thickness_min, float glass_thickness_max);
 void  water_set_layer_mix(float hard_drops, float water_drops, float turbulence,
-                          float bubbling, float roar, float rivulets);
+                          float bubbling, float surf, float channels);
 void  water_set_layer_density(float hard_drops, float water_drops, float turbulence,
-                              float bubbling, float roar, float rivulets);
+                              float bubbling, float surf, float channels);
 void  water_start(void);
 void  water_stop(void);
 void  water_set_seed(int seed);
+void  water_set_surf_params(float duration_min, float duration_max,
+                           float interval_min, float interval_max,
+                           float foam_min, float foam_max,
+                           float depth_min, float depth_max,
+                           float body_freq, float spray_freq);
+void  water_set_channels_params(float morph, float speed);
 int   water_get_active_voices(void);
 int   water_get_events_per_sec(void);
 

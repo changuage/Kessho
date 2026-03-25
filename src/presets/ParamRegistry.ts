@@ -713,8 +713,16 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   waterLayerWaterDrops:  { level: 1, scope: 'water' },
   waterLayerTurbulence:  { level: 1, scope: 'water' },
   waterLayerBubbling:    { level: 1, scope: 'water' },
-  waterLayerRoar:        { level: 1, scope: 'water' },
-  waterLayerRivulets:    { level: 1, scope: 'water' },
+  waterLayerSurf:        { level: 1, scope: 'water' },
+  waterLayerChannels:    { level: 1, scope: 'water' },
+  waterSurfDuration:     { level: 1, scope: 'water' },
+  waterSurfInterval:     { level: 1, scope: 'water' },
+  waterSurfFoam:         { level: 1, scope: 'water' },
+  waterSurfDepth:        { level: 1, scope: 'water' },
+  waterSurfBody:         { level: 1, scope: 'water' },
+  waterSurfSpray:        { level: 1, scope: 'water' },
+  waterChannelsMorph:    { level: 1, scope: 'water' },
+  waterChannelsSpeed:    { level: 1, scope: 'water' },
 
   // ═══════════════════════════════════════════════════════════════════════
   // L1: Insects 1 Engine (8 params)
