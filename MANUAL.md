@@ -18,7 +18,7 @@
    - [Granular](#granular)
    - [Lead Synth](#lead-synth)
    - [Drum Synth](#drum-synth)
-   - [Ocean Waves](#ocean-waves)
+   - [Earth (Nature Sounds)](#earth-nature-sounds)
    - [Preset Morph](#preset-morph)
 5. [Journey Mode](#journey-mode)
    - [The Diamond Matrix](#the-diamond-matrix)
@@ -39,7 +39,7 @@ Kessho (結晶, Japanese for "crystal") is a **generative ambient music applicat
 
 ### Key Features:
 - **Deterministic Generation**: Music is generated from a seed, so the same settings at the same time produce the same output
-- **Multiple Sound Layers**: Pad synth, granular processing, dual 4op FM lead synths, drum synth, and ocean waves
+- **Multiple Sound Layers**: Pad synth, granular processing, dual 4op FM lead synths, drum synth, and nature soundscapes (water, ocean waves, insects)
 - **Phrase-Based Evolution**: Harmony changes at 16-second phrase boundaries
 - **Circle of Fifths Drift**: Automatic key modulation for harmonic journeys
 - **Deep Customization**: Over 80 parameters to shape your soundscape
@@ -80,10 +80,10 @@ Understanding how sound flows through Kessho helps you shape your mix effectivel
                   └──→ [Granular Direct] ──────│         │──┼──→ │         │
                                                │         │  │    │         │
 ┌──────────────┐                               │         │  │    │         │
-│  LEAD SYNTH  │──→ [Filter] ──┬──→ [Lead Dry]─│         │──┼──→ │         │
-│  (Lead 1 +   │               │               │         │  │    │         │
-│   Lead 2,    │               ├──→ [Lead Rev] │         │  │    │         │
-│   4op FM)    │               │               │         │  │    │         │
+│  LEAD SYNTH  │──→ [Filter] ──┬──→ [Lead1 Dry]│         │──┼──→ │         │
+│  (Lead 1 +   │               ├──→ [Lead2 Dry]│         │──┼──→ │         │
+│   Lead 2,    │               ├──→ [Lead1 Rev]│         │  │    │         │
+│   4op FM)    │               ├──→ [Lead2 Rev]│         │  │    │         │
 │              │               └──→ [Ping-Pong Delay] ───┼──→ │         │
 └──────────────┘                        │                │    │         │
                                         └──→ [Delay Rev]─┘    │         │
@@ -106,9 +106,9 @@ Understanding how sound flows through Kessho helps you shape your mix effectivel
 ### Signal Path Summary:
 1. **Pad Synth** → Splits to direct output and reverb send
 2. **Granular** → Processes pad audio, filtered (HPF/LPF), splits to direct and reverb
-3. **Lead Synth** → Through filter, splits to dry, reverb, and ping-pong delay
+3. **Lead Synth** → Lead 1 and Lead 2 each have independent dry level and reverb send (pre-fader), plus shared ping-pong delay
 4. **Drum Synth** → 6 voices with individual levels, per-voice delay sends to stereo ping-pong delay
-5. **Ocean Waves** → Through ocean filter, direct to master
+5. **Earth Sounds** → Water, ocean waves, and insect engines each route through level + reverb send to master
 6. **Reverb** → All reverb sends mix together and output to master
 7. **Master** → All signals sum, through limiter, to speakers
 
@@ -127,7 +127,8 @@ Controls the overall volume balance between sound sources.
 | **Granular Level** | 0-200% | Granular processor output level |
 | **Synth Reverb Send** | 0-100% | How much pad synth feeds into reverb |
 | **Granular Reverb Send** | 0-100% | How much granular output feeds into reverb |
-| **Lead Reverb Send** | 0-100% | How much lead synth feeds into reverb |
+| **Lead 1 Reverb Send** | 0-100% | How much Lead 1 feeds into reverb (pre-fader) |
+| **Lead 2 Reverb Send** | 0-100% | How much Lead 2 feeds into reverb (pre-fader) |
 | **Lead Delay Reverb Send** | 0-100% | How much lead delay output feeds into reverb |
 | **Reverb Level** | 0-200% | Reverb output level |
 | **Drum Level** | 0-100% | Master level for all drum synth voices |
@@ -297,7 +298,11 @@ Each lead has its own **Preset Morph** system that blends between two FM presets
 
 All FM synthesis parameters (operator ratios, levels, envelopes, feedback, algorithm) are smoothly interpolated between the two selected presets.
 
-#### Delay (per Lead):
+#### Pre-Fader Sends (Reverb-Only Technique)
+
+Each lead voice has an independent **level** control and a **reverb send** that is routed *before* the level control (pre-fader). This means you can set a lead's level to 0% while keeping its reverb send at 100% to hear **only the reverb** of that lead — no dry signal. This is useful for creating ghostly, distant textures where the instrument is felt but not directly heard.
+
+#### Delay (shared):
 | Control | Range | Description |
 |---------|-------|-------------|
 | **Delay Time** | 0-1000 ms | Ping-pong delay time |
@@ -468,9 +473,61 @@ Each of the 6 voices has its own **Delay Send** slider (0-100%). This allows pre
 
 ---
 
-### Ocean Waves
+### Earth (Nature Sounds)
 
-Ambient ocean/wave sounds.
+The Earth page provides three independent nature sound engines: **Water**, **Ocean Waves**, and **Insects**.
+
+#### Water Engine
+
+Physically-modeled water sounds built from 6 mixable layers. Choose from 8 presets or blend between two with the Water Morph slider.
+
+| Control | Options/Range | Description |
+|---------|---------------|-------------|
+| **Water Enable** | ON/OFF | Toggle water engine |
+| **Water Preset** | Tap Drips / Stream / Waterfall / Rain Window / Ocean Surf / Storm Coast / Mountain Brook / Wind & Mist | Base water character |
+| **Morph A/B** | Preset selection | Two presets to blend between |
+| **Water Morph** | 0-100% | Crossfade between Morph A and B |
+| **Intensity** | 0-100% | Overall activity level |
+| **Rate** | 0-100% | Event frequency |
+| **Distance** | 0-100% | Perceived distance (affects filtering) |
+| **Drop Size** | 0-100% | Size of individual drops |
+| **Hardness** | 0-100% | Impact hardness (soft splash vs sharp tap) |
+| **Glass Thickness** | 0-100% | Glass resonance (for Rain Window preset) |
+| **Level** | 0-100% | Output volume |
+| **Reverb Send** | 0-100% | How much feeds into reverb |
+
+**Layer Mix** (6 independent layers):
+
+| Layer | Description |
+|-------|-------------|
+| **Hard Drops** | Sharp impact drops |
+| **Water Drops** | Soft splash drops |
+| **Turbulence** | Continuous water turbulence bed |
+| **Bubbling** | Bubbling/fizzing sounds |
+| **Surf** | Wave-envelope-driven noise (crashing waves, rolling surf) |
+| **Channels** | Continuous stream or wind sounds (morphable from stream to wind character) |
+
+**Surf Parameters** (wave envelope control):
+
+| Control | Range | Description |
+|---------|-------|-------------|
+| **Wave Duration** | 2-20 sec | Length of each wave event |
+| **Wave Interval** | 3-25 sec | Time between waves |
+| **Foam** | 0-100% | Spray/foam intensity during wave crest |
+| **Depth** | 0-100% | Deep rumble amount |
+| **Body Freq** | 150-800 Hz | Body band center frequency |
+| **Spray Freq** | 2000-8000 Hz | Spray band center frequency |
+
+**Channels Parameters** (stream↔wind morph):
+
+| Control | Range | Description |
+|---------|-------|-------------|
+| **Morph** | 0-100% | 0% = stream character, 100% = wind character |
+| **Speed** | 0-100% | LFO modulation speed |
+
+#### Ocean Waves
+
+Ambient ocean wave sounds using sample playback and/or wave synthesis.
 
 | Control | Options/Range | Description |
 |---------|---------------|-------------|
@@ -481,10 +538,29 @@ Ambient ocean/wave sounds.
 | **Filter Type** | Lowpass / Bandpass / Highpass / Notch | Filter mode |
 | **Filter Cutoff** | 40-12000 Hz | Filter frequency |
 | **Filter Resonance** | 0-100% | Filter peak |
-| **Duration Min/Max** | 2-15 sec | Wave length range |
-| **Interval Min/Max** | 3-20 sec | Time between waves |
-| **Foam Min/Max** | 0-100% | White noise (foam) intensity |
-| **Depth Min/Max** | 0-100% | Low rumble intensity |
+| **Duration** | 2-15 sec | Wave length range |
+| **Interval** | 3-20 sec | Time between waves |
+| **Foam** | 0-100% | White noise (foam) intensity |
+| **Depth** | 0-100% | Low rumble intensity |
+| **Reverb Send** | 0-100% | How much feeds into reverb |
+
+#### Insects
+
+Two independent insect/ambient soundscape engines (Insects 1 and Insects 2) with 7 engine types each: Cricket, Cicada, Katydid, Night Chorus, Tree Frog, Dragonfly, and Fly/Bee.
+
+| Control | Range | Description |
+|---------|-------|-------------|
+| **Enable** | ON/OFF | Toggle insect engine |
+| **Engine** | 7 types | Insect/ambient species |
+| **Density** | 0-100% | Population density |
+| **Temperature** | 0-100% | Chirp rate (warmer = faster) |
+| **Distance** | 0-100% | Perceived distance |
+| **Proximity** | 0-100% | Single creature closeness |
+| **Antiphony** | 0-100% | Call-and-response behavior |
+| **Click Rate** | 0-100% | Percussive click rate |
+| **Motion** | 0-100% | Spatial movement |
+| **Level** | 0-100% | Output volume |
+| **Reverb Send** | 0-100% | How much feeds into reverb |
 
 ---
 
@@ -1010,12 +1086,13 @@ Sets the maximum distance from home before bouncing back:
 - Lower reverb decay
 - Faster filter modulation
 
-### Ocean Meditation
-- Enable both ocean sample and synth
+### Ocean / Nature Meditation
+- Enable ocean sample and/or Water engine with Ocean Surf preset
 - Low pad synth level
 - Very slow chord rate
 - Minimal or no lead
 - Gentle Circle of Fifths drift (range 2-3, rate 6-8)
+- Try adding subtle Insects (Cricket or Night Chorus) for depth
 
 ---
 
@@ -1044,8 +1121,11 @@ Double-clicking any slider converts it to a **dual slider** with two handles (mi
 #### Sample & Hold Mode
 | Engine | Behaviour |
 |--------|-----------|
-| **Ocean** (Duration, Interval, Foam, Depth) | True per-event S&H — each wave trigger samples a random value from the [min, max] range inside the WASM engine |
-| **Water / Insects / Volumes / Layers** | **DualRangeContinuousHold** — the parameter is locked to the midpoint of [min, max]. Dragging the handles recalculates and updates the midpoint in real time. No per-event randomisation occurs because these engines accept single values only |
+| **All Earth engines** (Water, Ocean, Insects) | True per-event S&H — each event (drop, wave, chirp) samples a random value from the [min, max] range inside the WASM engine |
+| **Lead expression, delay, morph** | Per-note S&H — each note trigger samples a random value for vibrato, delay time, FM morph position, etc. |
+| **Reverb sends, levels** | Engine-side 10Hz re-sampling — value updates ~10 times per second from the [min, max] range |
+
+**Note**: A few parameters only support Single and Walk modes (no S&H): Surf Body Freq, Surf Spray Freq, Channels Morph, and Channels Speed. These cycle directly between Single → Walk → Single.
 
 Double-click again to return to single-value mode.
 

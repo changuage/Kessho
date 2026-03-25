@@ -547,13 +547,14 @@ As the app evolved from a single lead synth to a dual-lead architecture (Lead 1 
 | Parameter | Reason |
 |-----------|--------|
 | `leadEnabled` | Master toggle for entire lead bus |
-| `leadLevel` | Master output gain for lead bus (`leadGain.gain`) — distinct from `lead1Level`/`lead2Level` which are per-voice velocity scales |
-| `leadReverbSend` | Shared reverb send level |
+| `leadLevel` | Master output gain for lead bus (`leadGain.gain`) — distinct from `lead1Level`/`lead2Level` which are per-voice level controls |
 | `leadDelayReverbSend` | Shared delay→reverb send |
-| `leadDelay*` | Delay is shared across both leads |
+| `leadDelay*` | Delay is shared across both leads (WASM applies delay internally to combined signal) |
 | `leadVibrato*` | Expression params are shared |
 | `leadGlide*` | Glide is shared |
 | `synthEuclid*` | Euclidean sequencer is shared |
+
+**Note (March 2026):** `leadReverbSend` was replaced by per-lead `lead1ReverbSend` and `lead2ReverbSend`. A shared `leadReverbSend` gain node is kept as a legacy fallback but the WASM two-output architecture routes each lead's output to its own reverb send.
 
 ### Legacy Migration in normalizePresetForWeb()
 
@@ -682,6 +683,7 @@ When consolidating multiple independent systems into one:
 3. **Always provide a `sliderProps()` factory** — one function that returns everything a slider needs, avoiding prop-threading bugs
 4. **Migration must be idempotent** — `migratePreset()` is safe to call on already-migrated presets (no-op if old fields absent)
 5. **Keep intentional paired ranges separate** — not every min/max pair is a dual-mode slider (filterCutoff is a true range; grainSize was migrated since the worklet already did per-grain random sampling internally)
+6. **WALK_ONLY_KEYS** — Some params only support `single → walk → single` (skipping S&H). This applies to `waterSurfBody`, `waterSurfSpray`, `waterChannelsMorph`, `waterChannelsSpeed` because the WASM engine accepts scalar values for these (no per-event randomisation). Implemented via a `Set<string>` check in `handleCycleSliderMode`.
 
 ---
 
@@ -815,8 +817,10 @@ As of March 2026, all three Earth WASM engines accept min/max range pairs:
 | Engine | Params | Per-Event Randomisation |
 |--------|--------|------------------------|
 | **Ocean** | 5 min/max pairs (duration, interval, wave2Offset, foam, depth) | `rng_range(min, max)` per wave event |
-| **Water** | 7 min/max pairs (intensity, rate, distance, baseFreq, dropSize, hardness, glassThickness) | `rng_range(min, max)` per drop/scheduling event |
+| **Water** | 7 min/max pairs (intensity, rate, distance, baseFreq, dropSize, hardness, glassThickness) + Surf params (duration, interval, foam, depth) | `rng_range(min, max)` per drop/scheduling event and per wave event |
 | **Insects** | 7 min/max pairs (density, temperature, distance, proximity, antiphony, clickRate, motion) | `rng_range(min, max)` per voice update |
+
+Water also has **Surf** (wave-envelope-driven 3-band noise, replaces old Roar layer) and **Channels** (stream↔wind continuous morph, replaces old Rivulets layer). Surf accepts per-event min/max for duration, interval, foam, and depth. Channels accepts morph (0=stream, 1=wind) and speed as scalar params (walk-only, no S&H — see WALK_ONLY_KEYS below).
 
 When `min == max` (single slider mode), `rng_range` returns the single value — behavior is identical to the old scalar API.
 
@@ -832,3 +836,124 @@ UI sampleHold slider → dualSliderRanges (App.tsx)
 
 ### Key Insight
 All Earth engines now follow the same pattern as Ocean — the `OCEAN_SH_KEYS` gate concept is obsolete. The worklet handlers accept both old scalar fields (backward-compatible via `p.rateMin ?? p.rate ?? 0.5`) and new min/max fields.
+
+---
+
+## WASM Two-Output Lead Architecture (Lead 1/2 Bleed-Through Fix)
+
+### Problem
+Lead 1 sound was audible through Lead 2's output path. If Lead 1 volume was set to 0 and Lead 2 volume was above 0, notes triggered for Lead 1 were still audible because the WASM worklet had a single mixed output controlled by `max(lead1Level, lead2Level)`.
+
+### Root Cause
+The WASM lead FM node had one output that mixed both leads' audio. The JS-side `leadWasmLevelGain` was set to `Math.max(lead1Level, lead2Level)`. This meant Lead 1 audio passed through even when `lead1Level = 0` because Lead 2's level kept the gain up.
+
+### Why Velocity Scaling Was Wrong
+Initial fix attempted to scale per-note velocity by `thisLeadLvl / maxLvl`. This killed everything — dry signal, reverb send, AND granular send — which breaks the pre-fader send workflow (Lead 1 level=0, reverb send=100% should produce reverb-only output).
+
+### Solution
+Give the WASM worklet **two separate outputs**:
+
+**C++ (`kessho_lead_fm.cpp`):**
+- `LeadNote` struct gets `int lead_index` field (0=lead1, 1=lead2)
+- New `g_output_lead2[MAX_BLOCK_SIZE * 2]` buffer
+- `lead_fm_process_block()` routes notes to separate dry buffers by `lead_index`, then applies shared delay to both
+- New `lead_fm_note_on_ex(freq, vel, hold, lead_index)` and `lead_fm_get_output2_ptr()`
+
+**Worklet JS:**
+- `numberOfOutputs: 2, outputChannelCount: [2, 2]`
+- `process()` writes `outputs[0]` from `g_output` and `outputs[1]` from `g_output_lead2`
+
+**Engine.ts:**
+- `output[0]` → `leadWasmLevelGain` (lead1Level) → `leadVoiceLevel` → master
+- `output[1]` → `leadWasmLead2LevelGain` (lead2Level) → `leadVoiceLevel` → master
+- Pre-fader sends: `output[0]` → `lead1ReverbSend` + `granularLead1Send`; `output[1]` → `lead2ReverbSend` + `granularLead2Send`
+
+### Key Insight
+When a WASM worklet mixes multiple voices into one output, you cannot implement per-voice level control on the JS side without losing pre-fader send routing. Use multiple `AudioWorkletNode` outputs instead.
+
+---
+
+## Lead Delay Time Double-Division Bug
+
+### Problem
+Lead delay sounded much shorter than expected.
+
+### Root Cause
+`playLeadNote()` sent `delayTime / 1000` to the WASM worklet, but the worklet's `applyDelay()` function also divided by 1000 internally. The delay time was being divided by 1,000,000 instead of 1,000.
+
+### Solution
+Send raw milliseconds: `timeL: delayTime` (not `timeL: delayTime / 1000`). The worklet handles the ms→seconds conversion.
+
+### Key Insight
+When passing values through JS → postMessage → worklet → WASM, verify unit conversions at each boundary. Don't assume the worklet expects the same units as the JS caller.
+
+---
+
+## S&H Reverb Send Fixes (shv() Pattern)
+
+### Problem
+Reverb send gain nodes were reading `state.synthReverbSend` etc. directly, ignoring S&H sampled values. When a reverb send slider was in S&H mode, the 10Hz re-sampling had no audible effect.
+
+### Solution
+Created an `shv()` helper (Sample & Hold Value) inside `applyParams()`:
+```typescript
+const shv = (key: string, fallback: number) => this.shSampledValues[key] ?? fallback;
+```
+
+Applied to all 8 reverb sends:
+- `synthReverbSend`, `granularReverbSend`
+- `lead1ReverbSend`, `lead2ReverbSend` (per-lead)
+- `waterReverbSend`, `oceanReverbSend`, `insectsReverbSend`
+- `drumReverbSend` (in `sendDrumWasmParams`, reads `this.shSampledValues['drumReverbSend'] ?? s.drumReverbSend`)
+
+### Key Insight
+Any gain node whose value comes from `state.*` and could be in S&H mode must use `shv()` instead. The 10Hz timer populates `shSampledValues` for all keys in `dualRanges`, but the consuming code must opt in.
+
+---
+
+## S&H Position Indicators (Callback Enhancement)
+
+### Problem
+S&H slider indicators showed a midpoint flash but not the actual sampled position within the dual range.
+
+### Root Cause
+The `onGranularSHTrigger` callback only sent key names (`string[]`), not positions. The UI had no way to know where within the range the value was sampled.
+
+### Solution
+Changed callback signature from `(keys: string[]) => void` to `(positions: Record<string, number>) => void`. Each key maps to a 0-1 normalized position: `(sampled - min) / (max - min)`. The UI stores these in `shPositions` state and passes them as `walkPosition` fallback to the slider component.
+
+### Key Insight
+Zero CPU cost — the 10Hz timer already computes `shSampledValues[key]` and has access to `dualRanges[key].min/max`. The normalization is a single division per key.
+
+---
+
+## WASM Build on Windows (Emscripten via Python)
+
+### Problem
+Building WASM C++ on Windows via Emscripten had multiple failure modes.
+
+### Issues & Fixes
+1. **`python` not found**: Windows app alias intercepts `python` → use `py` launcher instead
+2. **`-flto` causes MemoryError**: LTO triggers Python OOM during Emscripten system library compilation on machines with limited RAM → remove `-flto`, use `-O2` only
+3. **`EMCC_CORES` must be 1**: Multiple compiler cores cause parallel MemoryError → set `env["EMCC_CORES"] = "1"` in build script
+4. **Group policy blocks npm**: Use `& "C:\Program Files\nodejs\node.exe" "node_modules\vite\bin\vite.js"` instead
+
+### Build Script Pattern (`build.py`)
+```python
+env = os.environ.copy()
+env["EMSDK"] = EMSDK_ROOT
+env["EM_CONFIG"] = os.path.join(EMSDK_ROOT, ".emscripten")
+env["EMCC_SKIP_SANITY_CHECK"] = "1"
+env["EMCC_CORES"] = "1"  # CRITICAL
+
+# Use emcc.py directly via Python interpreter
+EMCC = [sys.executable, os.path.join(EMSDK_ROOT, "upstream", "emscripten", "emcc.py")]
+
+# Flags: NO -flto
+cmd = EMCC + [SRC, "-o", OUT, "-std=c++17", "-O2", "-fno-exceptions", "-fno-rtti",
+              "-sSTANDALONE_WASM=1", "-sALLOW_MEMORY_GROWTH=1", "--no-entry",
+              f"-sEXPORTED_FUNCTIONS={EXPORTS_STR}"]
+```
+
+### Key Insight
+The reverb WASM uses `-O3 -flto` successfully, but the lead-fm WASM cannot on this machine. The difference is likely code size / template instantiation volume. Always have a no-LTO fallback.

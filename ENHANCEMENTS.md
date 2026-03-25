@@ -256,9 +256,12 @@ Expand drum synth with dual-preset morph per voice: Preset A + Preset B + morph 
 | Panel | Icon | Contents |
 |-------|------|----------|
 | Global | ◎ | Master Mixer, Seed, Scale, Tension, Preset Morph, Cloud |
-| Synth + Lead | ∿ | Harmony, ADSR, Voices, Timbre, Lead Synth, Euclidean |
+| Synth | ∿ | Harmony, ADSR, Voices, Timbre |
+| Lead | ♪ | Lead 1 + Lead 2 Preset Morph, ADSR, Euclidean |
 | Drum Synth | ⋮⋮ | All 6 voices, Drum Euclidean, Master |
-| FX | ◈ | Reverb, Granular, Ocean |
+| Granular | ◈ | Granular processor |
+| Earth | 🌍 | Water, Ocean, Insects |
+| Reverb | 🌊 | Reverb engine, type, quality |
 
 **Note**: reverbQuality (Ultra/Balanced/Lite) is a user preference, NOT affected by presets or morphing.
 
@@ -366,36 +369,9 @@ Global (◎) | Synth (∿) | Lead (♪) | Drums (⋮⋮) | FX (◈)
 
 ## Delay Dual Range System
 
-**Status**: Web ✓ | iOS partial
+**Status**: Superseded by Unified 3-Mode Slider System
 
-### Overview
-Extended the dual-range slider system (already used for generic `dualRanges`) to dedicated delay parameters: time, feedback, and mix. Each can independently toggle between single-value and min/max range mode.
-
-### State Parameters
-```typescript
-leadDelayTimeMin / leadDelayTimeMax       // 0–1000ms, step 10
-leadDelayFeedbackMin / leadDelayFeedbackMax  // 0–0.8, step 0.01
-leadDelayMixMin / leadDelayMixMax          // 0–1, step 0.01
-```
-
-### Dual Mode Toggle
-- **Double-click** (desktop) or **long-press** (mobile) toggles dual↔single mode
-- When collapsing to single: takes midpoint of min/max
-- When expanding to dual: sets ±5% range around current value
-
-### Auto-Load Fix
-Delay dual modes now auto-detect on preset load:
-```typescript
-setDelayDualModes({
-  time: Math.abs(normalizedState.leadDelayTimeMax - normalizedState.leadDelayTimeMin) > 0.1,
-  feedback: Math.abs(normalizedState.leadDelayFeedbackMax - normalizedState.leadDelayFeedbackMin) > 0.001,
-  mix: Math.abs(normalizedState.leadDelayMixMax - normalizedState.leadDelayMixMin) > 0.001,
-});
-```
-
-### Key Learnings
-- Dual range detection uses threshold comparison (not equality) to handle floating point
-- Delay params need dedicated min/max state pairs rather than the generic `dualRanges` system because the engine reads them directly per audio tick
+Originally implemented dedicated min/max state pairs for delay parameters. Now handled by the unified `sliderModes` / `dualSliderRanges` system with the same `single → walk → sampleHold` cycle as all other sliders. See Unified 3-Mode Slider System in LEARNINGS.md.
 
 ---
 
@@ -422,9 +398,11 @@ Renamed shared lead parameters to `lead1*` namespace to support future independe
 
 ### Intentionally Shared (NOT renamed)
 - `leadEnabled` — master toggle for entire lead bus
-- `leadLevel` — master output gain (distinct from `lead1Level`/`lead2Level` per-voice velocity)
-- `leadReverbSend`, `leadDelayReverbSend` — shared FX sends
+- `leadLevel` — master output gain (distinct from `lead1Level`/`lead2Level` per-voice levels)
+- `leadDelayReverbSend` — shared FX send
 - `leadDelay*`, `leadVibrato*`, `leadGlide*`, `synthEuclid*` — shared across both leads
+
+**Note:** `leadReverbSend` was replaced by per-lead `lead1ReverbSend`/`lead2ReverbSend` as part of the Two-Output WASM Architecture enhancement.
 
 ### Files Changed
 - **state.ts**: Type, keys, defaults, PARAM_INFO
@@ -480,3 +458,83 @@ All 6 presets updated to use:
 - Icon sizes standardized (play 39px, stop 40px, nav 46px)
 - Default node color changed to purple
 - Demo mode removed (Journey integrated into main app)
+
+---
+
+## Lead Two-Output WASM Architecture
+
+**Status**: Web ✓ | iOS pending
+
+### Overview
+Solved Lead 1/2 bleed-through by giving the WASM lead FM worklet two separate stereo outputs. Lead 1 audio routes through output[0] and Lead 2 through output[1], each with independent dry-path level gain and pre-fader reverb/granular sends.
+
+### Changes
+- **C++ (`kessho_lead_fm.cpp`)**: `LeadNote.lead_index` field, `g_output_lead2` buffer, `lead_fm_note_on_ex()`, `lead_fm_get_output2_ptr()`. Shared delay feeds combined signal but wet is added to both outputs.
+- **Worklet JS**: `numberOfOutputs: 2`, writes two output buffers, forwards `leadIndex` in noteOn
+- **Engine.ts**: Per-lead `GainNode` for dry path, per-lead pre-fader reverb + granular sends, `leadIndex` in noteOn message
+
+### Key Behavior
+Setting Lead 1 level to 0% with reverb send at 100% produces **reverb-only** output — the pre-fader send architecture is preserved.
+
+---
+
+## Water Engine Restructure: Surf & Channels
+
+**Status**: Web ✓ | iOS pending
+
+### Overview
+Replaced the old Roar and Rivulets water layers with more expressive Surf and Channels layers, and added 4 new water presets.
+
+### Surf Layer (replaces Roar)
+Wave-envelope-driven 3-band noise with two polyrhythmic generators. Each wave event has:
+- Quadratic rise → plateau → power-decay envelope
+- Per-wave randomized foam/depth amounts
+- Stereo pan offset
+- Three bands: rumble (LP), body (BP), spray (BP) with biquad filters
+
+Surf parameters are tuneable per-preset: duration, interval, foam, depth ranges + body/spray center frequencies.
+
+### Channels Layer (replaces Rivulets)
+Continuous 4-stream sound with a **morph** dimension:
+- morph=0: tight stream (narrow Q, high freq, fast LFO, narrow pan)
+- morph=1: wide wind (wide Q, spread freq, slow LFO, wide pan)
+- **Speed** controls LFO modulation rate
+
+All filter coefficients, gains, LFO rates, and pan positions interpolate linearly between stream and wind endpoints.
+
+### New Presets
+| Preset | Character |
+|--------|-----------|
+| **Ocean Surf** | Pure surf, minimal drops — mimics Ocean wave synthesis |
+| **Storm Coast** | Intense crashing surf + wind channels |
+| **Mountain Brook** | Gentle stream channels + subtle background surf |
+| **Wind & Mist** | Pure wind channels + sparse misty spray surf |
+
+### Per-Preset Slider Modes
+Presets like Ocean Surf and Storm Coast automatically set surf params to S&H mode with preset-specific dual ranges (e.g., `waterSurfInterval: { min: 5.0, max: 14.0 }`).
+
+---
+
+## S&H Position Indicators
+
+**Status**: Web ✓
+
+### Overview
+S&H mode slider dots now show the actual sampled position within the dual range, rather than flashing at midpoint.
+
+### Change
+`onGranularSHTrigger` callback changed from `(keys: string[]) → void` to `(positions: Record<string, number>) → void`. Each key maps to a 0-1 normalized position. The `sliderProps` helper uses `shPositions[key]` as a fallback for `walkPosition` in S&H mode.
+
+Zero additional CPU cost — the 10Hz timer already computes sampled values and has access to the range bounds.
+
+---
+
+## S&H Reverb Send Fixes
+
+**Status**: Web ✓
+
+### Overview
+All 8 reverb send gain nodes now use the `shv()` (Sample & Hold Value) helper to read S&H sampled values when the send slider is in S&H mode. Previously they read `state.*` directly, ignoring the 10Hz re-sampling.
+
+### Affected Sends
+`synthReverbSend`, `granularReverbSend`, `lead1ReverbSend`, `lead2ReverbSend`, `waterReverbSend`, `oceanReverbSend`, `insectsReverbSend`, `drumReverbSend`
