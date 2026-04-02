@@ -257,6 +257,36 @@ export class DrumSynth {
     sub: [], kick: [], click: [], beepHi: [], beepLo: [], noise: [], membrane: [],
   };
 
+  private static readonly VOICE_PARAM_PREFIX: Record<DrumVoiceType, string> = {
+    sub: 'drumSub',
+    kick: 'drumKick',
+    click: 'drumClick',
+    beepHi: 'drumBeepHi',
+    beepLo: 'drumBeepLo',
+    noise: 'drumNoise',
+    membrane: 'drumMembrane',
+  };
+
+  private static readonly DISTANCE_PARAM_KEY: Record<DrumVoiceType, string> = {
+    sub: 'drumSubDistance',
+    kick: 'drumKickDistance',
+    click: 'drumClickDistance',
+    beepHi: 'drumBeepHiDistance',
+    beepLo: 'drumBeepLoDistance',
+    noise: 'drumNoiseDistance',
+    membrane: 'drumMembraneDistance',
+  };
+
+  private static readonly VARIATION_PARAM_KEY: Record<DrumVoiceType, string> = {
+    sub: 'drumSubVariation',
+    kick: 'drumKickVariation',
+    click: 'drumClickVariation',
+    beepHi: 'drumBeepHiVariation',
+    beepLo: 'drumBeepLoVariation',
+    noise: 'drumNoiseVariation',
+    membrane: 'drumMembraneVariation',
+  };
+
   constructor(
     ctx: AudioContext,
     masterOutput: AudioNode,
@@ -1087,15 +1117,61 @@ export class DrumSynth {
     return value;
   }
 
+  private sampleTriggerMorphValue(voice: DrumVoiceType): number | undefined {
+    const range = this.morphRanges[voice];
+    if (this.triggerMorphOverride !== null) {
+      return this.triggerMorphOverride;
+    }
+    if (!range) return undefined;
+    const morphValue = range.min + Math.random() * (range.max - range.min);
+    if (this.onMorphTrigger) {
+      const normalizedPos = range.max > range.min
+        ? (morphValue - range.min) / (range.max - range.min)
+        : 0.5;
+      this.onMorphTrigger(voice, normalizedPos);
+    }
+    return morphValue;
+  }
+
+  private sampleTriggerDistanceValue(voice: DrumVoiceType): number | undefined {
+    if (this.triggerDistanceOverride !== null) return this.triggerDistanceOverride;
+    return this.sampleSHParam(DrumSynth.DISTANCE_PARAM_KEY[voice], voice);
+  }
+
+  private sampleGenericTriggerParamOverrides(
+    voice: DrumVoiceType,
+    mode: 'full' | 'worklet',
+  ): Record<string, number> {
+    const prefix = DrumSynth.VOICE_PARAM_PREFIX[voice];
+    const distanceKey = DrumSynth.DISTANCE_PARAM_KEY[voice];
+    const variationKey = DrumSynth.VARIATION_PARAM_KEY[voice];
+    const overrides: Record<string, number> = {};
+
+    for (const key of this.paramSHRanges.keys()) {
+      if (!key.startsWith(prefix) || key === distanceKey || key === variationKey) continue;
+      const sampled = this.sampleSHParam(key, voice);
+      if (sampled === undefined) continue;
+      if (mode === 'worklet') {
+        const rest = key.slice(prefix.length);
+        if (!rest) continue;
+        const paramName = rest.charAt(0).toLowerCase() + rest.slice(1);
+        overrides[paramName] = sampled;
+      } else {
+        overrides[key] = sampled;
+      }
+    }
+
+    return overrides;
+  }
+
   /**
    * Resolve per-trigger distance value:
    * 1. triggerDistanceOverride (from sub-lane sequencer)
    * 2. S&H range random sample (generic paramSHRanges)
    * 3. fallback value from params/morphed
    */
-  private resolveDistance(voice: DrumVoiceType, distKey: string, fallback: number): number {
-    if (this.triggerDistanceOverride !== null) return this.triggerDistanceOverride;
-    return this.sampleSHParam(distKey, voice) ?? fallback;
+  private resolveDistance(voice: DrumVoiceType, _distKey: string, fallback: number): number {
+    return this.sampleTriggerDistanceValue(voice) ?? fallback;
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1112,14 +1188,20 @@ export class DrumSynth {
     // WASM path: forward trigger + overrides to drum worklet
     if (this.wasmReady && this.wasmNode) {
       const port = this.wasmNode.port;
+      const morphValue = this.sampleTriggerMorphValue(voice);
+      const distanceValue = this.sampleTriggerDistanceValue(voice);
+      const sampledVoiceParams = this.sampleGenericTriggerParamOverrides(voice, 'worklet');
+      if (Object.keys(sampledVoiceParams).length > 0) {
+        port.postMessage({ type: 'params', voice, params: sampledVoiceParams });
+      }
       // Send per-trigger overrides
-      if (this.triggerMorphOverride !== null || this.triggerDistanceOverride !== null ||
+      if (morphValue !== undefined || distanceValue !== undefined ||
           this.triggerPitchOverride !== null || this.triggerRatchetDecayCap < Infinity ||
           this.triggerRatchetAttackCap < Infinity) {
         port.postMessage({
           type: 'overrides',
-          morph: this.triggerMorphOverride,
-          distance: this.triggerDistanceOverride,
+          morph: morphValue,
+          distance: distanceValue,
           pitch: this.triggerPitchOverride,
           ratchetDecayCap: this.triggerRatchetDecayCap < Infinity ? this.triggerRatchetDecayCap : undefined,
           ratchetAttackCap: this.triggerRatchetAttackCap < Infinity ? this.triggerRatchetAttackCap : undefined,
@@ -1214,27 +1296,16 @@ export class DrumSynth {
   // ─── Phase 1b helpers: centralized morph, envelope, and routing ───
 
   /**
-   * Resolve per-trigger morph: compute random morphValue within the voice's
-   * morphRange, call getMorphedParams(), and fire onMorphTrigger.
-   * Returns a partial param record (empty object when no morph is active).
-   * Fixes the noise/membrane ordering bug by ensuring morph is resolved
-   * BEFORE variation/distance are read.
+   * Resolve per-trigger morph and merge any generic sampled drum-param overrides
+   * for this voice before the trigger method reads its params.
    */
   private resolveMorph(voice: DrumVoiceType): Record<string, unknown> {
-    const range = this.morphRanges[voice];
-    let morphValue: number | undefined;
-    if (this.triggerMorphOverride !== null) {
-      morphValue = this.triggerMorphOverride;
-    } else if (range) {
-      morphValue = range.min + Math.random() * (range.max - range.min);
-      if (this.onMorphTrigger) {
-        const normalizedPos = range.max > range.min
-          ? (morphValue - range.min) / (range.max - range.min)
-          : 0.5;
-        this.onMorphTrigger(voice, normalizedPos);
-      }
-    }
-    return (morphValue !== undefined) ? getMorphedParams(this.params, voice, morphValue) : {};
+    const morphValue = this.sampleTriggerMorphValue(voice);
+    const morphed = (morphValue !== undefined)
+      ? getMorphedParams(this.params, voice, morphValue)
+      : {};
+    const sampledParams = this.sampleGenericTriggerParamOverrides(voice, 'full');
+    return { ...morphed, ...sampledParams };
   }
 
   /**

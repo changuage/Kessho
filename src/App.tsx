@@ -13,6 +13,8 @@ import {
   quantize,
   decodeStateFromUrl,
   getParamInfo,
+  getSliderNumericValue,
+  getStateValueFromSliderNumber,
   migratePreset,
   DRUM_MORPH_KEYS,
 } from './ui/state';
@@ -822,6 +824,7 @@ interface SliderProps {
   value: number;
   paramKey: keyof SliderState;
   ghostValue?: number;
+  format?: (value: number) => string;
   unit?: string;
   logarithmic?: boolean;  // Use logarithmic scaling (for frequency params)
   helpPage?: SliderPageId;
@@ -844,6 +847,28 @@ const WALK_ONLY_DUAL_KEYS = new Set<string>([
   'insects2Antiphony', 'insects2ClickRate', 'insects2Motion',
 ]);
 
+const FX_BUS_LABELS = {
+  delayA: 'Delay A',
+  delayB: 'Delay B',
+  granular: 'Granular',
+  reverb: 'Reverb',
+} as const;
+
+const FX_OWNER_LABELS = {
+  pad1: 'Pad 1',
+  pad2: 'Pad 2',
+  lead1: 'Lead 1',
+  lead2: 'Lead 2',
+  drum: 'Drums',
+} as const;
+
+const FX_ORIGIN_LABELS = {
+  padChord: 'Chord',
+  padEuclid: 'Euclid',
+  leadNote: 'Lead Note',
+  drumHit: 'Drum Hit',
+} as const;
+
 function normalizeDualSliderMode(key: string, mode?: SliderMode): SliderMode | undefined {
   if (!mode) return mode;
   return WALK_ONLY_DUAL_KEYS.has(key) && mode === 'sampleHold' ? 'walk' : mode;
@@ -852,10 +877,11 @@ function normalizeDualSliderMode(key: string, mode?: SliderMode): SliderMode | u
 const Slider: React.FC<SliderProps> = ({ 
   label, 
   value, 
-  paramKey, 
+  paramKey,
   ghostValue,
-  unit, 
-  logarithmic, 
+  format,
+  unit,
+  logarithmic,
   helpPage,
   disabled = false,
   onChange,
@@ -882,6 +908,7 @@ const Slider: React.FC<SliderProps> = ({
         quantizeFn={quantize}
         unit={unit}
         logarithmic={logarithmic}
+        format={format}
         ghostValue={ghostValue}
         helpPage={helpPage}
         disabled={disabled}
@@ -922,7 +949,7 @@ const Slider: React.FC<SliderProps> = ({
   const sliderMax = logarithmic ? 1 : info.max;
   const sliderStep = logarithmic ? 0.001 : info.step;
 
-  const displayValue = info.step < 1 ? value.toFixed(2) : Math.round(value);
+  const displayValue = format ? format(value) : info.step < 1 ? value.toFixed(2) : Math.round(value);
 
   // Compute fill percentage for visual track gradient
   const fillPercent = sliderMax > sliderMin
@@ -1253,6 +1280,12 @@ const App: React.FC = () => {
     currentLfoValue: 0,
     currentLfo2Value: 0,
     cofCurrentStep: 0,
+    fxOwners: {
+      delayA: { owner: null, strength: 0, lastOrigin: null, active: false },
+      delayB: { owner: null, strength: 0, lastOrigin: null, active: false },
+      granular: { owner: null, strength: 0, lastOrigin: null, active: false },
+      reverb: { owner: null, strength: 0, lastOrigin: null, active: false },
+    },
   });
 
   const [countdown, setCountdown] = useState(0);
@@ -1603,26 +1636,14 @@ const App: React.FC = () => {
     drumMembraneMorph: 'membrane'
   }), []);
 
-  // Drum S&H param keys — any drum param (except morph) that should use per-trigger sampling in S&H mode.
-  // Keyed by full param name. Maps to voice for the engine callback.
-  const drumSHParamKeyToVoice = useMemo<Record<string, DrumPresetVoice>>(() => ({
-    drumSubDistance: 'sub',
-    drumKickDistance: 'kick',
-    drumClickDistance: 'click',
-    drumBeepHiDistance: 'beepHi',
-    drumBeepLoDistance: 'beepLo',
-    drumNoiseDistance: 'noise',
-    drumMembraneDistance: 'membrane',
-    drumSubVariation: 'sub',
-    drumKickVariation: 'kick',
-    drumClickVariation: 'click',
-    drumBeepHiVariation: 'beepHi',
-    drumBeepLoVariation: 'beepLo',
-    drumNoiseVariation: 'noise',
-    drumMembraneVariation: 'membrane',
-    // Add future S&H drum params here — no other code changes needed
-  }), []);
-  const drumSHParamKeys = useMemo(() => new Set(Object.keys(drumSHParamKeyToVoice)), [drumSHParamKeyToVoice]);
+  // Drum S&H param keys — all numeric per-voice drum params except morph/preset selectors.
+  const drumSHParamKeys = useMemo(() => new Set(
+    Object.keys(state).filter((key) => {
+      if (!/^drum(Sub|Kick|Click|BeepHi|BeepLo|Noise|Membrane)/.test(key)) return false;
+      if (key.includes('Morph') || key.includes('Preset')) return false;
+      return typeof state[key as keyof SliderState] === 'number';
+    })
+  ), [state]);
 
   const handleCycleSliderMode = useCallback((key: keyof SliderState) => {
     // Block changes when journey mode is playing
@@ -1662,7 +1683,9 @@ const App: React.FC = () => {
       const walkPos = randomWalkPositions[keyStr] ?? triggerPositionMap[keyStr] ?? 0.5;
       if (range) {
         const meanValue = range.min + walkPos * (range.max - range.min);
-        setState(s => ({ ...s, [key]: quantize(key, meanValue) }));
+        const quantizedValue = quantize(key, meanValue);
+        const nextValue = getStateValueFromSliderNumber(key, quantizedValue);
+        setState(s => ({ ...s, [key]: nextValue }));
       }
       // Clean up
       setDualSliderRanges(r => {
@@ -1726,7 +1749,7 @@ const App: React.FC = () => {
       if (current === 'single') {
         const info = getParamInfo(key);
         if (info) {
-          const currentVal = state[key] as number;
+          const currentVal = getSliderNumericValue(key, state[key]) ?? info.min;
           const rangeSize = (info.max - info.min) * 0.2; // 20% of total range
           const min = Math.max(info.min, currentVal - rangeSize / 2);
           const max = Math.min(info.max, currentVal + rangeSize / 2);
@@ -1950,7 +1973,8 @@ const App: React.FC = () => {
             const range = dualSliderRanges[key as keyof SliderState];
             const walkPos = updates[key] ?? randomWalkPositions[key] ?? 0.5;
             if (range) {
-              (newState as any)[key] = quantize(key, range.min + walkPos * (range.max - range.min));
+              const nextNumericValue = quantize(key, range.min + walkPos * (range.max - range.min));
+              (newState as Record<string, unknown>)[key] = getStateValueFromSliderNumber(key, nextNumericValue);
             }
           });
 
@@ -2694,7 +2718,11 @@ const App: React.FC = () => {
     
     // Rule 1: Mid-morph changes are temporary overrides (numeric only)
     // Rule 2: Endpoint changes (0% or 100%) update the respective preset permanently (all types)
-    const isNumericValue = typeof value === 'number';
+    const quantizedSliderValue = typeof value === 'number' ? quantize(key, value) : null;
+    const stateValue = quantizedSliderValue !== null
+      ? getStateValueFromSliderNumber(key, quantizedSliderValue)
+      : value;
+    const isStateNumericValue = typeof stateValue === 'number';
     const isMorphActive = morphPresetA !== null || morphPresetB !== null;
     
     if (isMorphActive) {
@@ -2702,18 +2730,18 @@ const App: React.FC = () => {
         // At endpoint A: update preset A permanently (both numeric and string values)
         setMorphPresetA(prev => prev ? {
           ...prev,
-          state: { ...prev.state, [key]: value }
+          state: { ...prev.state, [key]: stateValue }
         } : null);
       } else if (isAtEndpoint1(morphPosition, true) && morphPresetB) {
         // At endpoint B: update preset B permanently (both numeric and string values)
         setMorphPresetB(prev => prev ? {
           ...prev,
-          state: { ...prev.state, [key]: value }
+          state: { ...prev.state, [key]: stateValue }
         } : null);
-      } else if (morphPosition > 0 && morphPosition < 100 && isNumericValue) {
+      } else if (morphPosition > 0 && morphPosition < 100 && isStateNumericValue) {
         // Mid-morph: store as temporary override (numeric only)
         morphManualOverridesRef.current[key] = {
-          value: value as number,
+          value: stateValue as number,
           morphPosition
         };
       }
@@ -2754,25 +2782,25 @@ const App: React.FC = () => {
     }
     
     // If this is a drum synth param, check for drum morph endpoint and save override
-    if (drumVoice && drumMorphKey && isNumericValue) {
+    if (drumVoice && drumMorphKey && isStateNumericValue) {
       // Get current drum morph position for this voice from state
       // We need to read from the current state, so we'll do this inside setState
     }
     
     setState((prev) => {
-      let newState = { ...prev, [key]: value };
+      let newState = { ...prev, [key]: stateValue };
       
       // Handle drum synth param override at any morph position
       // Works like the main morph system: endpoint changes are permanent,
       // mid-morph changes blend toward destination
-      if (drumVoice && drumMorphKey && isNumericValue) {
+      if (drumVoice && drumMorphKey && isStateNumericValue) {
         const drumMorphPosition = prev[drumMorphKey] as number; // 0-1
         // Store override at current morph position (works for both endpoints and mid-morph)
-        setDrumMorphOverride(drumVoice, keyStr, value as number, drumMorphPosition);
+        setDrumMorphOverride(drumVoice, keyStr, stateValue as number, drumMorphPosition);
       }
       
       const routeKey = key as keyof SliderState;
-      const positiveNumber = typeof value === 'number' && value > 0;
+      const positiveNumber = typeof stateValue === 'number' && stateValue > 0;
 
       if (positiveNumber) {
         switch (routeKey) {
@@ -3416,9 +3444,8 @@ const App: React.FC = () => {
           const info = getParamInfo(paramKey);
           if (!info) continue;
           // Centre the walk range around the preset value (20% of full range)
-          const currentVal = presetData?.[k as keyof typeof presetData] as number
-            ?? (state[paramKey] as number)
-            ?? (info.min + info.max) * 0.5;
+          const presetValue = presetData?.[k as keyof typeof presetData] as SliderState[keyof SliderState] | undefined;
+          const currentVal = getSliderNumericValue(paramKey, presetValue ?? state[paramKey]) ?? (info.min + info.max) * 0.5;
           const rangeSize = (info.max - info.min) * 0.2;
           const rMin = Math.max(info.min, currentVal - rangeSize / 2);
           const rMax = Math.min(info.max, currentVal + rangeSize / 2);
@@ -4092,8 +4119,10 @@ const App: React.FC = () => {
       const key = keyStr as keyof SliderState;
       const rangeA = dualRangesA[keyStr];
       const rangeB = dualRangesB[keyStr];
-      const valA = typeof stateA[key] === 'number' ? stateA[key] as number : 0;
-      const valB = typeof stateB[key] === 'number' ? stateB[key] as number : 0;
+      const info = getParamInfo(key);
+      const fallbackValue = info ? (info.min + info.max) * 0.5 : 0;
+      const valA = getSliderNumericValue(key, stateA[key]) ?? fallbackValue;
+      const valB = getSliderNumericValue(key, stateB[key]) ?? fallbackValue;
       
       // Resolve effective mode per preset: explicit mode, or infer 'walk' when
       // a dualRange exists without an explicit sliderMode (same default used by
@@ -6145,6 +6174,24 @@ const App: React.FC = () => {
             {engineState.harmonyState?.phrasesUntilChange || '—'}
           </span>
         </div>
+        <div style={{ borderTop: '1px solid #333', margin: '8px 0', paddingTop: '8px' }}>
+          <span style={{ color: '#a855f7', fontSize: '0.7rem', fontWeight: 'bold' }}>FX Ownership</span>
+        </div>
+        {(['delayA', 'delayB', 'granular', 'reverb'] as const).map((bus) => {
+          const ownerState = engineState.fxOwners[bus];
+          const ownerLabel = ownerState.owner ? FX_OWNER_LABELS[ownerState.owner] : '—';
+          const originLabel = ownerState.lastOrigin ? FX_ORIGIN_LABELS[ownerState.lastOrigin] : null;
+          return (
+            <div key={bus} style={styles.debugRow}>
+              <span style={styles.debugLabel}>{FX_BUS_LABELS[bus]}:</span>
+              <span style={styles.debugValue}>
+                {ownerState.owner
+                  ? `${ownerLabel}${ownerState.active ? '' : ' (stale)'}${originLabel ? ` · ${originLabel}` : ''}`
+                  : '—'}
+              </span>
+            </div>
+          );
+        })}
 
         {/* Tension / Chord Complexity */}
         {engineState.harmonyState && (

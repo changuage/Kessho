@@ -48,6 +48,26 @@ type PerfMetrics = {
 
 type Quad<T> = [T, T, T, T];
 type Hex<T> = [T, T, T, T, T, T];
+type FxOwnershipBus = 'delayA' | 'delayB' | 'granular' | 'reverb';
+type FxOwnershipSource = 'pad1' | 'pad2' | 'lead1' | 'lead2' | 'drum';
+type FxOwnershipOrigin = 'padChord' | 'padEuclid' | 'leadNote' | 'drumHit';
+
+type FxOwnershipState = {
+  owner: FxOwnershipSource | null;
+  strength: number;
+  expiresAtMs: number;
+  lastOrigin: FxOwnershipOrigin | null;
+};
+
+export type FxOwnershipDebugState = Record<
+  FxOwnershipBus,
+  {
+    owner: FxOwnershipSource | null;
+    strength: number;
+    lastOrigin: FxOwnershipOrigin | null;
+    active: boolean;
+  }
+>;
 
 const SYNTH_LANE_INDICES = [0, 1, 2, 3] as const;
 
@@ -78,7 +98,7 @@ function pickChordWeightedNote(
   if (rng() < chordBias) return chordTones[Math.floor(rng() * chordTones.length)]!;
   return passingTones[Math.floor(rng() * passingTones.length)]!;
 }
-import type { SliderState } from '../ui/state';
+import { getIndexedDelayDivisionValue, type IndexedDelayDivisionKey, type SliderState } from '../ui/state';
 import { getPadPreset, morphPadPresets, PAD_PRESET_PARAM_KEYS } from './padPresets';
 import {
   type Lead4opFMPreset,
@@ -178,6 +198,21 @@ const PAD1_TO_PAD2_ENGINE: Record<string, string> = {
   padModEnvDepth: 'pad2ModEnvDepth', padModEnvDest: 'pad2ModEnvDest',
 };
 
+const PAD1_MORPH_HOLD_KEYS = new Set<string>(PAD_PRESET_PARAM_KEYS);
+const PAD2_MORPH_HOLD_KEYS = new Set<string>(Object.values(PAD1_TO_PAD2_ENGINE));
+const PAD1_TRIGGER_HOLD_KEYS = new Set<string>([
+  ...PAD1_MORPH_HOLD_KEYS,
+  'padMorph',
+  'synthLevel',
+  'synthOctave',
+]);
+const PAD2_TRIGGER_HOLD_KEYS = new Set<string>([
+  ...PAD2_MORPH_HOLD_KEYS,
+  'pad2Morph',
+  'pad2Level',
+  'pad2Octave',
+]);
+
 // Worklet URLs from public folder - these are plain JS files that work in production
 // Use absolute URLs for Safari compatibility
 const getWorkletUrl = (filename: string): string => {
@@ -209,6 +244,51 @@ const ENGINE_TRIMS = {
   reverb:   2.0,   // reverb return — wet signal needs headroom above unity
   earth:    1.0,   // earth bus (water + insects + waves) — unity
 };
+
+const FX_OWNERSHIP_WINDOW_MS = 140;
+const FX_OWNERSHIP_STEAL_MARGIN = 0.05;
+const FX_OWNERSHIP_STEAL_RATIO = 1.15;
+const FX_OWNERSHIP_RECENT_ONSET_RATIO = 0.65;
+
+const REVERB_OWNERSHIP_KEYS = new Set<string>([
+  'reverbLevel',
+  'reverbDecay',
+  'reverbSize',
+  'reverbDiffusion',
+  'reverbModulation',
+  'predelay',
+  'damping',
+  'width',
+  'reverbShimmer',
+  'reverbShimmerPitch',
+  'reverbSlowModRate',
+  'reverbSlowModDepth',
+  'reverbReverse',
+  'reverbReverseLength',
+  'reverbChorusRate',
+  'reverbChorusDepth',
+  'reverbDampLow',
+  'reverbDampHigh',
+  'reverbCrossoverFreq',
+  'reverbInputTone',
+  'reverbShimmerFeedback',
+  'reverbWarp',
+  'reverbCrossFeed',
+  'reverbEarlyReflections',
+  'reverbAirAbsorption',
+  'reverbTransientSmooth',
+  'reverbErLpFreq',
+]);
+
+const GRANULAR_OWNERSHIP_PREFIX_EXCLUSIONS = [
+  'granularPad',
+  'granularLead',
+  'granularDrum',
+  'granularWaves',
+  'granularWater',
+  'granularInsects',
+  'granularDelay',
+] as const;
 
 // Voice structure for poly synth
 interface Voice {
@@ -244,6 +324,7 @@ export interface EngineState {
   currentLfoValue: number;     // -1 to +1 (after depth scaling)
   currentLfo2Value: number;    // LFO 2 value for UI
   cofCurrentStep: number;
+  fxOwners: FxOwnershipDebugState;
 }
 
 import type { DrumEuclidEvolveConfig } from './drumSynth';
@@ -660,8 +741,19 @@ export class AudioEngine {
 
   // S&H engine-side sampling: 10Hz re-sampling for non-drum dual-range params
   private shSampledValues: Record<string, number> = {};
+  private padHeldOverrides: Partial<SliderState> = {};
   private shLastSampleTime = 0;
   private onGranularSHTrigger: ((positions: Record<string, number>) => void) | null = null;
+  private fxBusOwners: Record<FxOwnershipBus, FxOwnershipState> = {
+    delayA: { owner: null, strength: 0, expiresAtMs: 0, lastOrigin: null },
+    delayB: { owner: null, strength: 0, expiresAtMs: 0, lastOrigin: null },
+    granular: { owner: null, strength: 0, expiresAtMs: 0, lastOrigin: null },
+    reverb: { owner: null, strength: 0, expiresAtMs: 0, lastOrigin: null },
+  };
+  private readonly drumTriggerRouter = (voice: DrumVoiceType, velocity: number) => {
+    this.reportFxOnset('drum', 'drumHit');
+    this.onDrumTrigger?.(voice, velocity);
+  };
 
   constructor() {
     // Empty constructor
@@ -683,9 +775,452 @@ export class AudioEngine {
   setDualRanges(ranges: Partial<Record<string, { min: number; max: number }>>) {
     this.dualRanges = ranges;
     for (const key of Object.keys(this.shSampledValues)) {
-      if ((key.startsWith('lead') || key.startsWith('granularLead')) && !ranges[key]) {
+      if ((key.startsWith('lead') || key.startsWith('granularLead') || this.isFxOwnershipDrivenKey(key) || this.isPadTriggerDrivenKey(key)) && !ranges[key]) {
         delete this.shSampledValues[key];
       }
+    }
+    this.cleanupPadHeldOverrides(ranges);
+  }
+
+  private isPadTriggerDrivenKey(key: string): boolean {
+    return PAD1_TRIGGER_HOLD_KEYS.has(key) || PAD2_TRIGGER_HOLD_KEYS.has(key);
+  }
+
+  private cleanupPadHeldOverrides(ranges: Partial<Record<string, { min: number; max: number }>>): void {
+    for (const key of Object.keys(this.padHeldOverrides)) {
+      const keepPad1Morph = ranges.padMorph && PAD1_MORPH_HOLD_KEYS.has(key);
+      const keepPad2Morph = ranges.pad2Morph && PAD2_MORPH_HOLD_KEYS.has(key);
+      if (!ranges[key] && !keepPad1Morph && !keepPad2Morph) {
+        delete this.padHeldOverrides[key as keyof SliderState];
+      }
+    }
+  }
+
+  private getEffectivePadState(state: SliderState): SliderState {
+    return Object.keys(this.padHeldOverrides).length > 0
+      ? ({ ...state, ...this.padHeldOverrides } as SliderState)
+      : state;
+  }
+
+  private buildPadTriggerState(
+    pad: 'pad1' | 'pad2',
+    baseState: SliderState,
+    morphOverride: number | null = null,
+  ): SliderState | null {
+    const effectiveBase = this.getEffectivePadState(baseState);
+    const nextState = { ...effectiveBase } as SliderState;
+    const nextStateRecord = nextState as unknown as Record<string, SliderState[keyof SliderState]>;
+    const heldOverrideRecord = this.padHeldOverrides as Record<string, SliderState[keyof SliderState] | undefined>;
+    const positions: Record<string, number> = {};
+    const sampledKeys = new Set<string>();
+    let changed = false;
+
+    const morphKey = pad === 'pad2' ? 'pad2Morph' : 'padMorph';
+    let effectiveMorph = morphOverride;
+    if (effectiveMorph === null) {
+      const sampledMorph = this.sampleDualRangeKey(morphKey, positions);
+      if (sampledMorph !== null) {
+        effectiveMorph = sampledMorph;
+      }
+    }
+
+    if (effectiveMorph !== null) {
+      const presetA = getPadPreset((pad === 'pad2' ? effectiveBase.pad2PresetA : effectiveBase.padPresetA) as string);
+      const presetB = getPadPreset((pad === 'pad2' ? effectiveBase.pad2PresetB : effectiveBase.padPresetB) as string);
+      if (presetA && presetB) {
+        const morphed = morphPadPresets(presetA, presetB, effectiveMorph);
+        for (const key of PAD_PRESET_PARAM_KEYS) {
+          if (!(key in morphed)) continue;
+          const targetKey = (pad === 'pad2' ? PAD1_TO_PAD2_ENGINE[key] : key) as keyof SliderState;
+          const value = morphed[key] as SliderState[keyof SliderState];
+          nextStateRecord[targetKey as string] = value;
+          heldOverrideRecord[targetKey as string] = value;
+          sampledKeys.add(targetKey as string);
+          changed = true;
+        }
+        if (pad === 'pad2') {
+          this.onPad2MorphTrigger?.(effectiveMorph);
+        } else {
+          this.onPadMorphTrigger?.(effectiveMorph);
+        }
+      }
+    }
+
+    const directKeys = pad === 'pad2'
+      ? Array.from(PAD2_TRIGGER_HOLD_KEYS)
+      : Array.from(PAD1_TRIGGER_HOLD_KEYS);
+    for (const key of directKeys) {
+      if (key === morphKey || !this.dualRanges[key]) continue;
+      const sampled = this.sampleDualRangeKey(key, positions);
+      if (sampled === null) continue;
+      nextStateRecord[key] = sampled as SliderState[keyof SliderState];
+      heldOverrideRecord[key] = sampled as SliderState[keyof SliderState];
+      sampledKeys.add(key);
+      changed = true;
+    }
+
+    if (sampledKeys.size > 0) {
+      for (const key of Object.keys(this.padHeldOverrides)) {
+        if ((pad === 'pad2' ? PAD2_TRIGGER_HOLD_KEYS : PAD1_TRIGGER_HOLD_KEYS).has(key) && !sampledKeys.has(key)) {
+          const keepMorph = pad === 'pad2'
+            ? !!(this.dualRanges.pad2Morph && PAD2_MORPH_HOLD_KEYS.has(key))
+            : !!(this.dualRanges.padMorph && PAD1_MORPH_HOLD_KEYS.has(key));
+          if (!keepMorph && !this.dualRanges[key]) {
+            delete this.padHeldOverrides[key as keyof SliderState];
+          }
+        }
+      }
+    }
+
+    this.emitOwnedSamplePositions(positions);
+    if (changed) {
+      this.scheduleApplyParamsRefresh();
+      return nextState;
+    }
+    return Object.keys(this.padHeldOverrides).length > 0 ? nextState : null;
+  }
+
+  private getFxOwnershipBusForKey(key: string): FxOwnershipBus | null {
+    if (key === 'drumDelayNoteL' || key === 'drumDelayNoteR') {
+      return 'delayA';
+    }
+
+    if (key.startsWith('delayA')) {
+      if (
+        key === 'delayATime' ||
+        key === 'delayASpread' ||
+        key === 'delayAPingPong' ||
+        key === 'delayAFilterType' ||
+        key === 'delayAEnabled' ||
+        key === 'delayASend'
+      ) {
+        return null;
+      }
+      return 'delayA';
+    }
+
+    if (key.startsWith('granularDelay')) {
+      if (key === 'granularDelayEnabled') {
+        return null;
+      }
+      return 'delayB';
+    }
+
+    if (
+      key === 'delayBGranularSend' ||
+      key === 'delayBToASend' ||
+      key === 'delayBWarpIntensity' ||
+      key === 'delayBSpread'
+    ) {
+      return 'delayB';
+    }
+
+    if (REVERB_OWNERSHIP_KEYS.has(key)) {
+      return 'reverb';
+    }
+
+    if (key.startsWith('granular')) {
+      if (
+        GRANULAR_OWNERSHIP_PREFIX_EXCLUSIONS.some(prefix => key.startsWith(prefix)) ||
+        key === 'granularEnabled' ||
+        key === 'granularFreeze' ||
+        key === 'granularShape' ||
+        key.endsWith('Enabled') ||
+        key.endsWith('Mode') ||
+        key.endsWith('Slice') ||
+        key.endsWith('Reverse') ||
+        key.includes('TempoSync')
+      ) {
+        return null;
+      }
+      return 'granular';
+    }
+
+    return null;
+  }
+
+  private isFxOwnershipDrivenKey(key: string): boolean {
+    return this.getFxOwnershipBusForKey(key) !== null;
+  }
+
+  private shv(key: string, fallback: number): number {
+    return this.shSampledValues[key] ?? fallback;
+  }
+
+  private shDelayDivision<K extends IndexedDelayDivisionKey>(key: K, fallback: SliderState[K]): SliderState[K] {
+    const sampled = this.shSampledValues[key];
+    if (typeof sampled !== 'number') return fallback;
+    return getIndexedDelayDivisionValue(key, sampled);
+  }
+
+  private getFxOwnerDebugState(): FxOwnershipDebugState {
+    const nowMs = performance.now();
+    return {
+      delayA: {
+        owner: this.fxBusOwners.delayA.owner,
+        strength: this.fxBusOwners.delayA.strength,
+        lastOrigin: this.fxBusOwners.delayA.lastOrigin,
+        active: this.fxBusOwners.delayA.owner !== null && nowMs < this.fxBusOwners.delayA.expiresAtMs,
+      },
+      delayB: {
+        owner: this.fxBusOwners.delayB.owner,
+        strength: this.fxBusOwners.delayB.strength,
+        lastOrigin: this.fxBusOwners.delayB.lastOrigin,
+        active: this.fxBusOwners.delayB.owner !== null && nowMs < this.fxBusOwners.delayB.expiresAtMs,
+      },
+      granular: {
+        owner: this.fxBusOwners.granular.owner,
+        strength: this.fxBusOwners.granular.strength,
+        lastOrigin: this.fxBusOwners.granular.lastOrigin,
+        active: this.fxBusOwners.granular.owner !== null && nowMs < this.fxBusOwners.granular.expiresAtMs,
+      },
+      reverb: {
+        owner: this.fxBusOwners.reverb.owner,
+        strength: this.fxBusOwners.reverb.strength,
+        lastOrigin: this.fxBusOwners.reverb.lastOrigin,
+        active: this.fxBusOwners.reverb.owner !== null && nowMs < this.fxBusOwners.reverb.expiresAtMs,
+      },
+    };
+  }
+
+  private sampleDualRangeKey(key: string, positions: Record<string, number>): number | null {
+    const range = this.dualRanges[key];
+    if (!range) return null;
+    const sampled = range.min + Math.random() * (range.max - range.min);
+    this.shSampledValues[key] = sampled;
+    const span = range.max - range.min;
+    positions[key] = span > 0 ? (sampled - range.min) / span : 0.5;
+    return sampled;
+  }
+
+  private emitOwnedSamplePositions(positions: Record<string, number>): void {
+    if (Object.keys(positions).length === 0) return;
+    if (this.onGranularSHTrigger) {
+      this.onGranularSHTrigger(positions);
+    }
+    if (
+      this.onLeadDelayTrigger &&
+      (positions.delayAFeedback !== undefined || positions.delayAMix !== undefined)
+    ) {
+      this.onLeadDelayTrigger({
+        time: 0.5,
+        feedback: positions.delayAFeedback ?? 0.5,
+        mix: positions.delayAMix ?? 0.5,
+      });
+    }
+  }
+
+  private getFxSourceStrength(
+    bus: FxOwnershipBus,
+    source: FxOwnershipSource,
+    state: SliderState,
+  ): number {
+    const lead1WetActive = !!(state.leadEnabled || state.leadRandomEnabled || state.synthEuclideanMasterEnabled);
+    const lead2WetActive = !!state.lead2Enabled;
+    const pad1Active = state.padEnabled !== false || this.euclideanUsesPadSource(state);
+    const pad2Active = !!state.pad2Enabled;
+    const granularBusArmed = this.isGranularBusArmed(state, lead1WetActive, lead2WetActive);
+
+    switch (bus) {
+      case 'delayA':
+        switch (source) {
+          case 'pad1': return pad1Active ? (state.pad1DelayASend ?? 0) : 0;
+          case 'pad2': return pad2Active ? (state.pad2DelayASend ?? 0) : 0;
+          case 'lead1': return lead1WetActive ? this.shv('lead1DelayASend', state.lead1DelayASend ?? 0) : 0;
+          case 'lead2': return lead2WetActive ? this.shv('lead2DelayASend', state.lead2DelayASend ?? 0) : 0;
+          case 'drum': return state.drumEnabled ? this.getDrumDelaySendProfile(state) * (state.drumDelayASend ?? 1) : 0;
+        }
+        break;
+      case 'delayB':
+        switch (source) {
+          case 'pad1': return pad1Active ? (state.pad1DelayBSend ?? 0) : 0;
+          case 'pad2': return pad2Active ? (state.pad2DelayBSend ?? 0) : 0;
+          case 'lead1': return lead1WetActive ? this.shv('lead1DelayBSend', state.lead1DelayBSend ?? 0) : 0;
+          case 'lead2': return lead2WetActive ? this.shv('lead2DelayBSend', state.lead2DelayBSend ?? 0) : 0;
+          case 'drum': return state.drumEnabled ? (state.drumDelayBSend ?? 0) : 0;
+        }
+        break;
+      case 'granular':
+        if (!granularBusArmed) return 0;
+        switch (source) {
+          case 'pad1': return pad1Active ? (state.granularPad1Send ?? 0) : 0;
+          case 'pad2': return pad2Active ? (state.granularPad2Send ?? 0) : 0;
+          case 'lead1': return lead1WetActive ? this.shv('granularLead1Send', state.granularLead1Send ?? 0) : 0;
+          case 'lead2': return lead2WetActive ? this.shv('granularLead2Send', state.granularLead2Send ?? 0) : 0;
+          case 'drum': return state.drumEnabled ? (state.granularDrumSend ?? 0) : 0;
+        }
+        break;
+      case 'reverb':
+        if (!state.reverbEnabled) return 0;
+        switch (source) {
+          case 'pad1': return pad1Active ? this.shv('pad1ReverbSend', state.pad1ReverbSend ?? 0) : 0;
+          case 'pad2': return pad2Active ? this.shv('pad2ReverbSend', state.pad2ReverbSend ?? 0) : 0;
+          case 'lead1': return lead1WetActive ? this.shv('lead1ReverbSend', state.lead1ReverbSend ?? 0) : 0;
+          case 'lead2': return lead2WetActive ? this.shv('lead2ReverbSend', state.lead2ReverbSend ?? 0) : 0;
+          case 'drum': return state.drumEnabled ? (this.shSampledValues.drumReverbSend ?? state.drumReverbSend ?? 0) : 0;
+        }
+        break;
+    }
+
+    return 0;
+  }
+
+  private shouldTriggerOwnedFxBus(
+    bus: FxOwnershipBus,
+    source: FxOwnershipSource,
+    strength: number,
+    nowMs: number,
+  ): boolean {
+    const owner = this.fxBusOwners[bus];
+    if (strength <= 0.0001) return false;
+    if (owner.owner === source) return true;
+    if (owner.owner === null || nowMs >= owner.expiresAtMs) return true;
+    if (strength >= owner.strength + FX_OWNERSHIP_STEAL_MARGIN) return true;
+    if (owner.strength > 0 && strength / owner.strength >= FX_OWNERSHIP_STEAL_RATIO) return true;
+    if (owner.strength > 0 && strength / owner.strength >= FX_OWNERSHIP_RECENT_ONSET_RATIO) return true;
+    return false;
+  }
+
+  private scheduleApplyParamsRefresh(): void {
+    if (!this.sliderState) return;
+    this._applyParamsDirty = true;
+    if (this._applyParamsRaf === null) {
+      this._applyParamsRaf = requestAnimationFrame(() => {
+        this._applyParamsRaf = null;
+        if (this._applyParamsDirty && this.sliderState) {
+          this._applyParamsDirty = false;
+          this.applyParams(this.sliderState);
+        }
+      });
+    }
+  }
+
+  private resampleOwnedFxBus(bus: FxOwnershipBus): boolean {
+    const positions: Record<string, number> = {};
+    for (const key of Object.keys(this.dualRanges)) {
+      if (this.getFxOwnershipBusForKey(key) !== bus) continue;
+      this.sampleDualRangeKey(key, positions);
+    }
+    this.emitOwnedSamplePositions(positions);
+    return Object.keys(positions).length > 0;
+  }
+
+  private getSharedDelayBState(
+    state: SliderState,
+    pad1Active: boolean,
+    pad2Active: boolean,
+    lead1RoutingActive: boolean,
+    lead2RoutingActive: boolean,
+    granularEnabled: boolean,
+  ) {
+    const spaceMode = computeGranularMacroModel(state, (key, fallback) => this.shv(key as string, fallback)).spaceMode;
+    const delayBGranularReturn = this.shv('delayBGranularSend', state.delayBGranularSend ?? 0);
+    const granularDelaySourceLevel = (granularEnabled && delayBGranularReturn < 0.0001) ? (state.granularDelayBSend ?? 0) : 0;
+    const crossFeeds = this.getSafeDelayCrossFeedLevels(state);
+    const delayBExternalFeedActive =
+      (pad1Active && (state.pad1DelayBSend ?? 0) > 0.0001) ||
+      (pad2Active && (state.pad2DelayBSend ?? 0) > 0.0001) ||
+      (lead1RoutingActive && (state.lead1DelayBSend ?? 0) > 0.0001) ||
+      (lead2RoutingActive && (state.lead2DelayBSend ?? 0) > 0.0001) ||
+      (state.drumEnabled && (state.drumDelayBSend ?? 0) > 0.0001) ||
+      (state.oceanSampleEnabled && (state.oceanDelayBSend ?? 0) > 0.0001) ||
+      (state.waterEnabled && (state.waterDelayBSend ?? 0) > 0.0001) ||
+      ((state.insectsEnabled || state.insects2Enabled) && (state.insDelayBSend ?? 0) > 0.0001) ||
+      (crossFeeds.aToB > 0.0001);
+    const delayBEnabled = granularDelaySourceLevel > 0.0001 || delayBExternalFeedActive;
+
+    return {
+      delayBEnabled,
+      granularDelaySourceLevel,
+      params: {
+        enabled: delayBEnabled,
+        activity: this.shv('granularDelayActivity', state.granularDelayActivity ?? 0.3),
+        repeats: this.shv('granularDelayRepeats', state.granularDelayRepeats ?? 0.3),
+        noteDiv: this.shDelayDivision('granularDelayTime', (state.granularDelayTime as string) ?? '1/4'),
+        tone: this.shv('granularDelayFilter', state.granularDelayFilter ?? 0.5),
+        vibrato: this.shv('granularDelayVibrato', state.granularDelayVibrato ?? 0),
+        mix: 1.0,
+        reverbSend: (delayBEnabled && state.reverbEnabled) ? this.shv('granularDelayReverbSend', state.granularDelayReverbSend ?? 0.4) : 0,
+        granularSend: (delayBEnabled && granularDelaySourceLevel < 0.0001) ? this.shv('delayBGranularSend', state.delayBGranularSend ?? 0) : 0,
+        toDelayA: delayBEnabled ? crossFeeds.bToA : 0,
+        bpm: getSharedSequencerBpm(state),
+        spaceMode,
+        pattern: state.delayBPattern ?? 'cascade',
+        warp: state.delayBWarp ?? 'clean',
+        warpIntensity: this.shv('delayBWarpIntensity', state.delayBWarpIntensity ?? 0.5),
+        spread: this.shv('delayBSpread', state.delayBSpread ?? 0.5),
+      },
+    };
+  }
+
+  private refreshOwnedFxBus(bus: FxOwnershipBus): void {
+    if (!this.sliderState || !this.ctx) return;
+
+    const state = this.getEffectivePadState(this.sliderState);
+    const now = this.ctx.currentTime;
+    const smoothTime = 0.015;
+    const pad1Active = state.padEnabled !== false || this.euclideanUsesPadSource(state);
+    const pad2Active = state.pad2Enabled ?? false;
+    const lead1WetActive = !!(state.leadEnabled || state.leadRandomEnabled || state.synthEuclideanMasterEnabled);
+    const lead2WetActive = !!state.lead2Enabled;
+    const granularBusArmed = this.isGranularBusArmed(state, lead1WetActive, lead2WetActive);
+
+    if (bus === 'delayB' || bus === 'delayA') {
+      const delayBState = this.getSharedDelayBState(
+        state,
+        pad1Active,
+        pad2Active,
+        lead1WetActive,
+        lead2WetActive,
+        granularBusArmed,
+      );
+      if (bus === 'delayB') {
+        this.sharedGranularDelayBSend?.gain.setTargetAtTime(delayBState.granularDelaySourceLevel, now, smoothTime);
+        this.sharedDelayB?.update(delayBState.params, now, smoothTime);
+        return;
+      }
+
+      const delayAState = this.getSharedDelayAState(
+        state,
+        lead1WetActive,
+        lead2WetActive,
+        granularBusArmed,
+        delayBState.delayBEnabled,
+      );
+      this.sharedDelayA?.update(delayAState, now, smoothTime);
+    }
+  }
+
+  private reportFxOnset(source: FxOwnershipSource, origin: FxOwnershipOrigin): void {
+    if (!this.sliderState) return;
+
+    const nowMs = performance.now();
+    const buses: FxOwnershipBus[] = ['delayA', 'delayB', 'granular', 'reverb'];
+    let shouldNotify = false;
+    let shouldRefreshParams = false;
+    for (const bus of buses) {
+      const strength = this.getFxSourceStrength(bus, source, this.sliderState);
+      if (!this.shouldTriggerOwnedFxBus(bus, source, strength, nowMs)) continue;
+      const previous = this.fxBusOwners[bus];
+      this.fxBusOwners[bus] = {
+        owner: source,
+        strength,
+        expiresAtMs: nowMs + FX_OWNERSHIP_WINDOW_MS,
+        lastOrigin: origin,
+      };
+      if (previous.owner !== source || previous.lastOrigin !== origin) {
+        shouldNotify = true;
+      }
+      if (this.resampleOwnedFxBus(bus)) {
+        shouldRefreshParams = true;
+        this.refreshOwnedFxBus(bus);
+      }
+    }
+    if (shouldRefreshParams) {
+      this.scheduleApplyParamsRefresh();
+    }
+    if (shouldNotify) {
+      this.notifyStateChange();
     }
   }
 
@@ -902,8 +1437,8 @@ export class AudioEngine {
   }
 
   private getSafeDelayCrossFeedLevels(state: SliderState): { aToB: number; bToA: number } {
-    let aToB = Math.max(0, Math.min(1, state.delayAToBSend ?? 0));
-    let bToA = Math.max(0, Math.min(1, state.delayBToASend ?? 0));
+    let aToB = Math.max(0, Math.min(1, this.shv('delayAToBSend', state.delayAToBSend ?? 0)));
+    let bToA = Math.max(0, Math.min(1, this.shv('delayBToASend', state.delayBToASend ?? 0)));
     const product = aToB * bToA;
     if (product > 0.4) {
       const scale = Math.sqrt(0.4 / product);
@@ -915,9 +1450,11 @@ export class AudioEngine {
 
   private getSharedDelayATimes(state: SliderState): { leftMs: number; rightMs: number } {
     const bpm = getSharedSequencerBpm(state);
+    const delayNoteL = this.shDelayDivision('drumDelayNoteL', (state.drumDelayNoteL as string) ?? '1/8d');
+    const delayNoteR = this.shDelayDivision('drumDelayNoteR', (state.drumDelayNoteR as string) ?? '1/4');
     return {
-      leftMs: delayNoteToSeconds(state.drumDelayNoteL ?? '1/8d', bpm) * 1000,
-      rightMs: delayNoteToSeconds(state.drumDelayNoteR ?? '1/4', bpm) * 1000,
+      leftMs: delayNoteToSeconds(delayNoteL, bpm) * 1000,
+      rightMs: delayNoteToSeconds(delayNoteR, bpm) * 1000,
     };
   }
 
@@ -931,11 +1468,11 @@ export class AudioEngine {
       (state.oceanSampleEnabled && (state.granularWavesSend ?? 0) > 0.0001) ||
       (state.waterEnabled && (state.granularWaterSend ?? 0) > 0.0001) ||
       ((state.insectsEnabled || state.insects2Enabled) && (state.granularInsectsSend ?? 0) > 0.0001) ||
-      ((state.delayAGranularSend ?? 0) > 0.0001) ||
-      ((state.delayBGranularSend ?? 0) > 0.0001);
+      (this.shv('delayAGranularSend', state.delayAGranularSend ?? 0) > 0.0001) ||
+      (this.shv('delayBGranularSend', state.delayBGranularSend ?? 0) > 0.0001);
     const hasOutgoingPath =
-      (state.granularLevel ?? 0) > 0.0001 ||
-      (state.granularReverbSend ?? 0) > 0.0001 ||
+      this.shv('granularLevel', state.granularLevel ?? 0) > 0.0001 ||
+      this.shv('granularReverbSend', state.granularReverbSend ?? 0) > 0.0001 ||
       (state.granularDelayASend ?? 0) > 0.0001 ||
       (state.granularDelayBSend ?? 0) > 0.0001;
     return !!state.granularEnabled && (hasIncomingFeed || hasOutgoingPath);
@@ -957,9 +1494,9 @@ export class AudioEngine {
       (lead1WetActive && (state.lead1ReverbSend ?? 0) > 0.0001) ||
       (lead2WetActive && (state.lead2ReverbSend ?? 0) > 0.0001) ||
       (state.drumEnabled && (state.drumReverbSend ?? 0) > 0.0001) ||
-      (granularBusArmed && (state.granularReverbSend ?? 0) > 0.0001) ||
-      (delayAEnabled && (state.delayAReverbSend ?? 0) > 0.0001) ||
-      (delayBEnabled && (state.granularDelayReverbSend ?? 0) > 0.0001) ||
+      (granularBusArmed && this.shv('granularReverbSend', state.granularReverbSend ?? 0) > 0.0001) ||
+      (delayAEnabled && this.shv('delayAReverbSend', state.delayAReverbSend ?? 0) > 0.0001) ||
+      (delayBEnabled && this.shv('granularDelayReverbSend', state.granularDelayReverbSend ?? 0) > 0.0001) ||
       (state.oceanSampleEnabled && (state.oceanReverbSend ?? 0) > 0.0001) ||
       (state.waterEnabled && (state.waterReverbSend ?? 0) > 0.0001) ||
       ((state.insectsEnabled || state.insects2Enabled) && (state.insectsReverbSend ?? 0) > 0.0001)
@@ -976,6 +1513,16 @@ export class AudioEngine {
     const { leftMs, rightMs } = this.getSharedDelayATimes(state);
     const drumDelayProfile = this.getDrumDelaySendProfile(state);
     const crossFeeds = this.getSafeDelayCrossFeedLevels(state);
+    const delayFeedback = this.shv('delayAFeedback', state.delayAFeedback ?? 0.4);
+    const delayMix = this.shv('delayAMix', state.delayAMix ?? 0.35);
+    const delayFilter = this.shv('delayAFilter', state.delayAFilter ?? 2000);
+    const delayReverbSend = this.shv('delayAReverbSend', state.delayAReverbSend ?? 0.4);
+    const delayModDepth = this.shv('delayAModDepth', state.delayAModDepth ?? 0);
+    const delayModRate = this.shv('delayAModRate', state.delayAModRate ?? 0);
+    const delayDuck = this.shv('delayADuck', state.delayADuck ?? 0);
+    const delayWidth = this.shv('delayAWidth', state.delayAWidth ?? 0.5);
+    const delayCrossFeedFilter = this.shv('delayACrossFeedFilter', state.delayACrossFeedFilter ?? 1);
+    const delayGranularSend = this.shv('delayAGranularSend', state.delayAGranularSend ?? 0);
     const delayAExternalFeedActive =
       ((state.padEnabled ?? true) && (state.pad1DelayASend ?? 0) > 0.0001) ||
       ((state.pad2Enabled ?? false) && (state.pad2DelayASend ?? 0) > 0.0001) ||
@@ -992,19 +1539,19 @@ export class AudioEngine {
       enabled: delayAExternalFeedActive,
       timeLeftMs: leftMs,
       timeRightMs: rightMs,
-      feedback: state.delayAFeedback ?? 0.4,
-      mix: state.delayAMix ?? 0.35,
-      filterHz: state.delayAFilter ?? 2000,
+      feedback: delayFeedback,
+      mix: delayMix,
+      filterHz: delayFilter,
       filterType: state.delayAFilterType ?? 'lowpass',
-      reverbSend: (state.reverbEnabled && delayAExternalFeedActive) ? (state.delayAReverbSend ?? 0.4) : 0,
-      modRateHz: (state.delayAModDepth ?? 0) > 0 ? (0.05 + (state.delayAModRate ?? 0) * 4.95) : 0,
-      modDepthMs: (state.delayAModDepth ?? 0) * 50,
+      reverbSend: (state.reverbEnabled && delayAExternalFeedActive) ? delayReverbSend : 0,
+      modRateHz: delayModDepth > 0 ? (0.05 + delayModRate * 4.95) : 0,
+      modDepthMs: delayModDepth * 50,
       pingPong: state.delayAPingPong ?? false,
-      duck: state.delayADuck ?? 0,
-      width: state.delayAWidth ?? 0.5,
+      duck: delayDuck,
+      width: delayWidth,
       toDelayB: crossFeeds.aToB,
-      crossFeedFilterHz: 200 * Math.pow(40, Math.max(0, Math.min(1, state.delayACrossFeedFilter ?? 1))),
-      granularSend: state.delayAGranularSend ?? 0,
+      crossFeedFilterHz: 200 * Math.pow(40, Math.max(0, Math.min(1, delayCrossFeedFilter))),
+      granularSend: delayGranularSend,
     };
   }
 
@@ -1205,7 +1752,7 @@ export class AudioEngine {
     this.onDrumTrigger = callback;
     // Pass through to drum synth if it exists
     if (this.drumSynth) {
-      this.drumSynth.setDrumTriggerCallback(callback);
+      this.drumSynth.setDrumTriggerCallback(this.drumTriggerRouter);
     }
   }
 
@@ -1630,7 +2177,7 @@ export class AudioEngine {
   /** Wire all pending callbacks and overrides onto a freshly-created DrumSynth. */
   private wireDrumSynthCallbacks(): void {
     if (!this.drumSynth) return;
-    if (this.onDrumTrigger) this.drumSynth.setDrumTriggerCallback(this.onDrumTrigger);
+    this.drumSynth.setDrumTriggerCallback(this.drumTriggerRouter);
     if (this.onDrumMorphTrigger) this.drumSynth.setMorphTriggerCallback(this.onDrumMorphTrigger);
     if (this.onDrumParamSHTrigger) this.drumSynth.setParamSHTriggerCallback(this.onDrumParamSHTrigger);
     if (this.onDrumEuclidEvolveTrigger) this.drumSynth.setEuclidEvolveTriggerCallback(this.onDrumEuclidEvolveTrigger);
@@ -1672,6 +2219,7 @@ export class AudioEngine {
         currentLfoValue: this.currentLfoValue,
         currentLfo2Value: this.currentLfo2Value,
         cofCurrentStep: this.harmonyState?.cof.currentStep ?? this.cofConfig.currentStep,
+        fxOwners: this.getFxOwnerDebugState(),
       });
     }
   }
@@ -3784,7 +4332,7 @@ export class AudioEngine {
   private applyChord(frequencies: number[], crossfade = false): void {
     if (!this.ctx || !this.sliderState || !this.rng) return;
 
-    const state = this.sliderState;
+    const state = this.buildPadTriggerState('pad1', this.sliderState) ?? this.getEffectivePadState(this.sliderState);
 
     // Build set of voice indices owned by active Euclidean synth lanes
     // so we don't overwrite their notes/envelopes
@@ -3848,6 +4396,7 @@ export class AudioEngine {
     // Sort offsets so voices come in at staggered but consistent intervals
     voiceOffsets.sort((a, b) => a - b);
 
+    let padChordTriggered = false;
     this.voices.forEach((voice, i) => {
       // Skip voices owned by Euclidean synth lanes — scheduler drives them
       // Also silence the JS oscillator so it doesn't conflict with WASM output
@@ -3897,6 +4446,7 @@ export class AudioEngine {
         : freq;                                                        // Legacy: base freq
 
       if (crossfade && voice.active) {
+        padChordTriggered = true;
         // ADSR crossfade - old notes release while new attack
         const startTime = now + voiceDelay;
         
@@ -3919,6 +4469,7 @@ export class AudioEngine {
         voice.envelope.gain.setTargetAtTime(1.0, pitchChangeTime, attack / 3);
         voice.envelope.gain.setTargetAtTime(sustain, pitchChangeTime + attack, decay / 3);
       } else {
+        padChordTriggered = true;
         // Simple ADSR attack - fresh start
         const startTime = now + voiceDelay;
         
@@ -3938,6 +4489,10 @@ export class AudioEngine {
       voice.targetFreq = freq;
       voice.active = true;
     });
+
+    if (padChordTriggered) {
+      this.reportFxOnset('pad1', 'padChord');
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -4162,6 +4717,7 @@ export class AudioEngine {
     // JS voices use mixerGain for level, which is set in applyParams.
     const clampedVelocity = Math.max(0, Math.min(1, velocity));
     if (clampedVelocity < 0.001) return;
+    this.reportFxOnset(isPad2Voice ? 'pad2' : 'pad1', 'padEuclid');
 
     // WASM path: send noteOn to pad worklet and skip JS oscillator manipulation
     if (this.padWasmReady && this.padWasmNode) {
@@ -4438,6 +4994,8 @@ export class AudioEngine {
       const shPositions: Record<string, number> = {};
       for (const key of Object.keys(this.dualRanges)) {
         if (
+          this.isFxOwnershipDrivenKey(key) ||
+          this.isPadTriggerDrivenKey(key) ||
           key === 'grainSize' ||
           key === 'waterSurfDuration' ||
           key === 'waterSurfInterval' ||
@@ -4464,6 +5022,14 @@ export class AudioEngine {
           if (!this.dualRanges[key]) delete this.shSampledValues[key];
           continue; // active lead keys are managed per-trigger in playLeadNote
         }
+        if (this.isPadTriggerDrivenKey(key)) {
+          if (!this.dualRanges[key]) delete this.shSampledValues[key];
+          continue; // pad keys hold their last trigger value until the next pad onset
+        }
+        if (this.isFxOwnershipDrivenKey(key)) {
+          if (!this.dualRanges[key]) delete this.shSampledValues[key];
+          continue; // owned FX keys hold their last value until the next qualifying onset
+        }
         if (
           !this.dualRanges[key] ||
           key === 'grainSize' ||
@@ -4484,7 +5050,8 @@ export class AudioEngine {
       }
     }
     // S&H value helper: sampled value if available, else fallback to state value
-    const shv = (k: string, v: number) => this.shSampledValues[k] ?? v;
+    const shv = (k: string, v: number) => this.shv(k, v);
+    const padState = this.getEffectivePadState(state);
 
     // Master volume
     this.masterGain?.gain.setTargetAtTime(fin(state.masterVolume, 0.5), now, smoothTime);
@@ -4492,24 +5059,30 @@ export class AudioEngine {
 
     // Voice parameters
     // Filter cutoff modulates between filterCutoffMin and filterCutoffMax
-    const minCutoff = Math.min(state.filterCutoffMin ?? 200, state.filterCutoffMax ?? 8000);
-    const maxCutoff = Math.max(state.filterCutoffMin ?? 200, state.filterCutoffMax ?? 8000);
+    const minCutoff = Math.min(
+      shv('filterCutoffMin', padState.filterCutoffMin ?? 200),
+      shv('filterCutoffMax', padState.filterCutoffMax ?? 8000),
+    );
+    const maxCutoff = Math.max(
+      shv('filterCutoffMin', padState.filterCutoffMin ?? 200),
+      shv('filterCutoffMax', padState.filterCutoffMax ?? 8000),
+    );
     
     // ── LFO computation (Phase 2: all waveshapes, all destinations) ──
-    const lfoDepth = state.padLfo1Depth ?? 0;
-    const lfoDest = state.padLfo1Dest ?? 'none';
-    const lfoRate = state.padLfo1Rate ?? 0.5;
-    const lfoWave = state.padLfo1Wave ?? 'sine';
+    const lfoDepth = shv('padLfo1Depth', padState.padLfo1Depth ?? 0);
+    const lfoDest = padState.padLfo1Dest ?? 'none';
+    const lfoRate = shv('padLfo1Rate', padState.padLfo1Rate ?? 0.5);
+    const lfoWave = padState.padLfo1Wave ?? 'sine';
 
     // Filter cutoff sits at center of min/max range; LFO adds modulation on top
     const modAmount = 0.5;
     const cutoff = minCutoff + (maxCutoff - minCutoff) * modAmount;
     
     // Q (bandwidth/angle) is set directly from filterQ
-    const filterQ = state.filterQ;
+    const filterQ = shv('filterQ', padState.filterQ);
     
     // Resonance adds a peak boost at the cutoff frequency, modulated by hardness
-    const resonanceBoost = state.filterResonance * (0.7 + state.hardness * 0.6);
+    const resonanceBoost = shv('filterResonance', padState.filterResonance) * (0.7 + shv('hardness', padState.hardness) * 0.6);
     
     // Combined Q: base Q plus resonance boost
     // At very low cutoffs, increase Q for more aggressive filtering
@@ -4517,21 +5090,21 @@ export class AudioEngine {
     const effectiveQ = filterQ + resonanceBoost * 8 + lowCutoffBoost;
     
     // Warmth: low shelf boost (0 to +8dB)
-    const warmthGain = state.warmth * 8;
+    const warmthGain = shv('warmth', padState.warmth) * 8;
     
     // Presence: peaking EQ (-6dB to +6dB) - helps cut or boost mids
     // At 0.5 = neutral, below = cut harsh mids, above = boost presence
-    const presenceGain = (state.presence - 0.5) * 12;
+    const presenceGain = (shv('presence', padState.presence) - 0.5) * 12;
 
     // Pad oscillator params
-    const oscAWave = (state.padOscAWave ?? 'sawtooth') as OscillatorType;
-    const oscBWave = (state.padOscBWave ?? 'triangle') as OscillatorType;
-    const subEnabled = state.padSubEnabled ?? false;
-    const oscALevel = state.padOscALevel ?? 0.6;
-    const oscBLevel = state.padOscBLevel ?? 0.4;
+    const oscAWave = (padState.padOscAWave ?? 'sawtooth') as OscillatorType;
+    const oscBWave = (padState.padOscBWave ?? 'triangle') as OscillatorType;
+    const subEnabled = padState.padSubEnabled ?? false;
+    const oscALevel = shv('padOscALevel', padState.padOscALevel ?? 0.6);
+    const oscBLevel = shv('padOscBLevel', padState.padOscBLevel ?? 0.4);
 
     // Osc Mix crossfade: 0=A only, 0.5=both full, 1=B only
-    const oscMix = state.padOscMix ?? 0.5;
+    const oscMix = shv('padOscMix', padState.padOscMix ?? 0.5);
     const aMix = Math.min(1, 2 * (1 - oscMix));
     const bMix = Math.min(1, 2 * oscMix);
     const effectiveALevel = oscALevel * aMix;
@@ -4544,10 +5117,10 @@ export class AudioEngine {
     this.currentLfoValue = lfoValue;
 
     // ── LFO 2 value computation (via helper) ──
-    const lfo2Depth = state.padLfo2Depth ?? 0;
-    const lfo2Dest = state.padLfo2Dest ?? 'none';
-    const lfo2Rate = state.padLfo2Rate ?? 0.5;
-    const lfo2Wave = state.padLfo2Wave ?? 'sine';
+    const lfo2Depth = shv('padLfo2Depth', padState.padLfo2Depth ?? 0);
+    const lfo2Dest = padState.padLfo2Dest ?? 'none';
+    const lfo2Rate = shv('padLfo2Rate', padState.padLfo2Rate ?? 0.5);
+    const lfo2Wave = padState.padLfo2Wave ?? 'sine';
     const lfo2Value = this.computeLfoValue(now, lfo2Rate, lfo2Depth, lfo2Wave, lfo2Dest, this.lfo2State);
     this.currentLfo2Value = lfo2Value;
 
@@ -4555,25 +5128,27 @@ export class AudioEngine {
     const lfo1FiltMod = lfoDest === 'filterCutoff' ? lfoValue * (maxCutoff - minCutoff) * 0.5 : 0;
     const lfo2FiltMod = lfo2Dest === 'filterCutoff' ? lfo2Value * (maxCutoff - minCutoff) * 0.5 : 0;
     let modEnvFilterMod = 0, modEnvPitchCents = 0;
-    if ((state.padModEnvEnabled ?? false) && (state.padModEnvDepth ?? 0) !== 0) {
-      const mDest = state.padModEnvDest ?? 'filterCutoff';
+    if ((padState.padModEnvEnabled ?? false) && (shv('padModEnvDepth', padState.padModEnvDepth ?? 0)) !== 0) {
+      const mDest = padState.padModEnvDest ?? 'filterCutoff';
       if (mDest === 'filterCutoff' || mDest === 'pitch') {
-        const mA = state.padModEnvAttack ?? 0.1, mD = state.padModEnvDecay ?? 0.3, mS = state.padModEnvSustain ?? 0;
+        const mA = shv('padModEnvAttack', padState.padModEnvAttack ?? 0.1);
+        const mD = shv('padModEnvDecay', padState.padModEnvDecay ?? 0.3);
+        const mS = shv('padModEnvSustain', padState.padModEnvSustain ?? 0);
         const mCycle = mA + mD + 1, mPh = (now % mCycle) / mCycle;
         const mAP = mA / mCycle, mDP = (mA + mD) / mCycle;
         let mV = mPh < mAP ? mPh / mAP : mPh < mDP ? 1 - (1 - mS) * ((mPh - mAP) / (mDP - mAP)) : mS;
-        mV *= state.padModEnvDepth ?? 0;
+        mV *= shv('padModEnvDepth', padState.padModEnvDepth ?? 0);
         if (mDest === 'filterCutoff') modEnvFilterMod = mV * (maxCutoff - minCutoff);
         else modEnvPitchCents = mV * 400;
       }
     }
 
     const p1 = {
-      oscAWave, oscBWave, subEnabled, subWave: (state.padSubWave ?? 'sine') as OscillatorType,
+      oscAWave, oscBWave, subEnabled, subWave: (padState.padSubWave ?? 'sine') as OscillatorType,
       effectiveALevel: fin(effectiveALevel, 0), effectiveBLevel: fin(effectiveBLevel, 0),
-      subLevel: fin(state.padSubLevel ?? 0.3, 0.3), noiseLevel: fin(state.padNoiseLevel ?? 0.15, 0.15),
-      fbEnabled: state.padFilterBEnabled ?? false,
-      filterType: state.filterType as BiquadFilterType,
+      subLevel: fin(shv('padSubLevel', padState.padSubLevel ?? 0.3), 0.3), noiseLevel: fin(shv('padNoiseLevel', padState.padNoiseLevel ?? 0.15), 0.15),
+      fbEnabled: padState.padFilterBEnabled ?? false,
+      filterType: padState.filterType as BiquadFilterType,
       finalCutoff: fin(Math.max(20, Math.min(20000, cutoff + lfo1FiltMod + lfo2FiltMod + modEnvFilterMod)), 1000),
       effectiveQ: fin(effectiveQ, 1),
       warmthGain: fin(warmthGain, 0), presenceGain: fin(presenceGain, 0),
@@ -4582,13 +5157,14 @@ export class AudioEngine {
       lfoOscBMod: fin((lfoDest === 'oscBLevel' ? lfoValue * 0.5 : 0) + (lfo2Dest === 'oscBLevel' ? lfo2Value * 0.5 : 0), 0),
       lfoFilterBMod: fin((lfoDest === 'filterBCutoff' ? lfoValue * 2000 : 0) + (lfo2Dest === 'filterBCutoff' ? lfo2Value * 2000 : 0), 0),
       lfoDest, lfo2Dest,
-      modEnvEnabled: state.padModEnvEnabled ?? false, modEnvDest: state.padModEnvDest ?? 'filterCutoff',
-      oscADetune: state.padOscADetune ?? state.detune, oscBDetune: state.padOscBDetune ?? state.detune,
-      filterBType: (state.padFilterBType ?? 'highpass') as BiquadFilterType,
-      filterBFreq: fin(state.padFilterBCutoff ?? 200, 200),
-      filterBResBoost: fin((state.padFilterBResonance ?? 0.2) * 6, 0), filterBQ: fin(state.padFilterBQ ?? 1, 1),
-      filterRouting: state.padFilterRouting ?? 'series',
-      hardness: fin(state.hardness, 0.5),
+      modEnvEnabled: padState.padModEnvEnabled ?? false, modEnvDest: padState.padModEnvDest ?? 'filterCutoff',
+      oscADetune: shv('padOscADetune', padState.padOscADetune ?? shv('detune', padState.detune)),
+      oscBDetune: shv('padOscBDetune', padState.padOscBDetune ?? shv('detune', padState.detune)),
+      filterBType: (padState.padFilterBType ?? 'highpass') as BiquadFilterType,
+      filterBFreq: fin(shv('padFilterBCutoff', padState.padFilterBCutoff ?? 200), 200),
+      filterBResBoost: fin(shv('padFilterBResonance', padState.padFilterBResonance ?? 0.2) * 6, 0), filterBQ: fin(shv('padFilterBQ', padState.padFilterBQ ?? 1), 1),
+      filterRouting: padState.padFilterRouting ?? 'series',
+      hardness: fin(shv('hardness', padState.hardness), 0.5),
     };
 
     this.currentFilterFreq = p1.finalCutoff;
@@ -4598,58 +5174,61 @@ export class AudioEngine {
     const pad2On = state.pad2Enabled === true;
     let p2 = p1;
     if (pad2On && pad2Assign) {
-      const p2l1Dest = (state.pad2Lfo1Dest ?? 'none') as string;
-      const p2l2Dest = (state.pad2Lfo2Dest ?? 'none') as string;
-      const p2l1Val = this.computeLfoValue(now, state.pad2Lfo1Rate ?? 0.5, state.pad2Lfo1Depth ?? 0, state.pad2Lfo1Wave ?? 'sine', p2l1Dest, this.pad2Lfo1State);
-      const p2l2Val = this.computeLfoValue(now, state.pad2Lfo2Rate ?? 0.5, state.pad2Lfo2Depth ?? 0, state.pad2Lfo2Wave ?? 'sine', p2l2Dest, this.pad2Lfo2State);
+      const p2l1Dest = (padState.pad2Lfo1Dest ?? 'none') as string;
+      const p2l2Dest = (padState.pad2Lfo2Dest ?? 'none') as string;
+      const p2l1Val = this.computeLfoValue(now, shv('pad2Lfo1Rate', padState.pad2Lfo1Rate ?? 0.5), shv('pad2Lfo1Depth', padState.pad2Lfo1Depth ?? 0), padState.pad2Lfo1Wave ?? 'sine', p2l1Dest, this.pad2Lfo1State);
+      const p2l2Val = this.computeLfoValue(now, shv('pad2Lfo2Rate', padState.pad2Lfo2Rate ?? 0.5), shv('pad2Lfo2Depth', padState.pad2Lfo2Depth ?? 0), padState.pad2Lfo2Wave ?? 'sine', p2l2Dest, this.pad2Lfo2State);
 
-      const minC2 = Math.min(state.pad2FilterCutoffMin, state.pad2FilterCutoffMax);
-      const maxC2 = Math.max(state.pad2FilterCutoffMin, state.pad2FilterCutoffMax);
+      const minC2 = Math.min(shv('pad2FilterCutoffMin', padState.pad2FilterCutoffMin), shv('pad2FilterCutoffMax', padState.pad2FilterCutoffMax));
+      const maxC2 = Math.max(shv('pad2FilterCutoffMin', padState.pad2FilterCutoffMin), shv('pad2FilterCutoffMax', padState.pad2FilterCutoffMax));
       const cut2 = minC2 + (maxC2 - minC2) * 0.5;
-      const res2 = state.pad2FilterResonance * (0.7 + state.pad2Hardness * 0.6);
+      const res2 = shv('pad2FilterResonance', padState.pad2FilterResonance) * (0.7 + shv('pad2Hardness', padState.pad2Hardness) * 0.6);
       const lcb2 = cut2 < 200 ? (1 - cut2 / 200) * 4 : 0;
 
       let me2FMod = 0, me2PCents = 0;
-      if ((state.pad2ModEnvEnabled ?? false) && (state.pad2ModEnvDepth ?? 0) !== 0) {
-        const md = state.pad2ModEnvDest ?? 'filterCutoff';
+      if ((padState.pad2ModEnvEnabled ?? false) && (shv('pad2ModEnvDepth', padState.pad2ModEnvDepth ?? 0)) !== 0) {
+        const md = padState.pad2ModEnvDest ?? 'filterCutoff';
         if (md === 'filterCutoff' || md === 'pitch') {
-          const mA = state.pad2ModEnvAttack ?? 0.1, mD = state.pad2ModEnvDecay ?? 0.3, mS = state.pad2ModEnvSustain ?? 0;
+          const mA = shv('pad2ModEnvAttack', padState.pad2ModEnvAttack ?? 0.1);
+          const mD = shv('pad2ModEnvDecay', padState.pad2ModEnvDecay ?? 0.3);
+          const mS = shv('pad2ModEnvSustain', padState.pad2ModEnvSustain ?? 0);
           const mCy = mA + mD + 1, mPh = (now % mCy) / mCy, mAP = mA / mCy, mDP = (mA + mD) / mCy;
           let mV = mPh < mAP ? mPh / mAP : mPh < mDP ? 1 - (1 - mS) * ((mPh - mAP) / (mDP - mAP)) : mS;
-          mV *= state.pad2ModEnvDepth ?? 0;
+          mV *= shv('pad2ModEnvDepth', padState.pad2ModEnvDepth ?? 0);
           if (md === 'filterCutoff') me2FMod = mV * (maxC2 - minC2); else me2PCents = mV * 400;
         }
       }
 
-      const oscMix2 = state.pad2OscMix ?? 0.5;
+      const oscMix2 = shv('pad2OscMix', padState.pad2OscMix ?? 0.5);
       const aMx2 = Math.min(1, 2 * (1 - oscMix2)), bMx2 = Math.min(1, 2 * oscMix2);
 
       p2 = {
-        oscAWave: (state.pad2OscAWave ?? 'sawtooth') as OscillatorType,
-        oscBWave: (state.pad2OscBWave ?? 'triangle') as OscillatorType,
-        subEnabled: state.pad2SubEnabled ?? false,
-        subWave: (state.pad2SubWave ?? 'sine') as OscillatorType,
-        effectiveALevel: fin((state.pad2OscALevel ?? 0.6) * aMx2, 0),
-        effectiveBLevel: fin((state.pad2OscBLevel ?? 0.4) * bMx2, 0),
-        subLevel: fin(state.pad2SubLevel ?? 0.3, 0.3), noiseLevel: fin(state.pad2NoiseLevel ?? 0.15, 0.15),
-        fbEnabled: state.pad2FilterBEnabled ?? false,
-        filterType: (state.pad2FilterType ?? 'lowpass') as BiquadFilterType,
+        oscAWave: (padState.pad2OscAWave ?? 'sawtooth') as OscillatorType,
+        oscBWave: (padState.pad2OscBWave ?? 'triangle') as OscillatorType,
+        subEnabled: padState.pad2SubEnabled ?? false,
+        subWave: (padState.pad2SubWave ?? 'sine') as OscillatorType,
+        effectiveALevel: fin(shv('pad2OscALevel', padState.pad2OscALevel ?? 0.6) * aMx2, 0),
+        effectiveBLevel: fin(shv('pad2OscBLevel', padState.pad2OscBLevel ?? 0.4) * bMx2, 0),
+        subLevel: fin(shv('pad2SubLevel', padState.pad2SubLevel ?? 0.3), 0.3), noiseLevel: fin(shv('pad2NoiseLevel', padState.pad2NoiseLevel ?? 0.15), 0.15),
+        fbEnabled: padState.pad2FilterBEnabled ?? false,
+        filterType: (padState.pad2FilterType ?? 'lowpass') as BiquadFilterType,
         finalCutoff: fin(Math.max(20, Math.min(20000, cut2 + (p2l1Dest === 'filterCutoff' ? p2l1Val * (maxC2 - minC2) * 0.5 : 0) + (p2l2Dest === 'filterCutoff' ? p2l2Val * (maxC2 - minC2) * 0.5 : 0) + me2FMod)), 1000),
-        effectiveQ: fin(state.pad2FilterQ + res2 * 8 + lcb2, 1),
-        warmthGain: fin(state.pad2Warmth * 8, 0),
-        presenceGain: fin((state.pad2Presence - 0.5) * 12, 0),
+        effectiveQ: fin(shv('pad2FilterQ', padState.pad2FilterQ) + res2 * 8 + lcb2, 1),
+        warmthGain: fin(shv('pad2Warmth', padState.pad2Warmth) * 8, 0),
+        presenceGain: fin((shv('pad2Presence', padState.pad2Presence) - 0.5) * 12, 0),
         lfoAmpMod: fin(1 + (p2l1Dest === 'amplitude' ? p2l1Val * 0.5 : 0) + (p2l2Dest === 'amplitude' ? p2l2Val * 0.5 : 0), 1),
         lfoPitchCents: fin((p2l1Dest === 'pitch' ? p2l1Val * 200 : 0) + (p2l2Dest === 'pitch' ? p2l2Val * 200 : 0) + me2PCents, 0),
         lfoOscBMod: fin((p2l1Dest === 'oscBLevel' ? p2l1Val * 0.5 : 0) + (p2l2Dest === 'oscBLevel' ? p2l2Val * 0.5 : 0), 0),
         lfoFilterBMod: fin((p2l1Dest === 'filterBCutoff' ? p2l1Val * 2000 : 0) + (p2l2Dest === 'filterBCutoff' ? p2l2Val * 2000 : 0), 0),
         lfoDest: p2l1Dest as typeof p1.lfoDest, lfo2Dest: p2l2Dest as typeof p1.lfo2Dest,
-        modEnvEnabled: state.pad2ModEnvEnabled ?? false, modEnvDest: state.pad2ModEnvDest ?? 'filterCutoff',
-        oscADetune: state.pad2OscADetune ?? state.detune, oscBDetune: state.pad2OscBDetune ?? state.detune,
-        filterBType: (state.pad2FilterBType ?? 'highpass') as BiquadFilterType,
-        filterBFreq: fin(state.pad2FilterBCutoff ?? 200, 200),
-        filterBResBoost: fin((state.pad2FilterBResonance ?? 0.2) * 6, 0), filterBQ: fin(state.pad2FilterBQ ?? 1, 1),
-        filterRouting: state.pad2FilterRouting ?? 'series',
-        hardness: fin(state.pad2Hardness, 0.5),
+        modEnvEnabled: padState.pad2ModEnvEnabled ?? false, modEnvDest: padState.pad2ModEnvDest ?? 'filterCutoff',
+        oscADetune: shv('pad2OscADetune', padState.pad2OscADetune ?? shv('detune', padState.detune)),
+        oscBDetune: shv('pad2OscBDetune', padState.pad2OscBDetune ?? shv('detune', padState.detune)),
+        filterBType: (padState.pad2FilterBType ?? 'highpass') as BiquadFilterType,
+        filterBFreq: fin(shv('pad2FilterBCutoff', padState.pad2FilterBCutoff ?? 200), 200),
+        filterBResBoost: fin(shv('pad2FilterBResonance', padState.pad2FilterBResonance ?? 0.2) * 6, 0), filterBQ: fin(shv('pad2FilterBQ', padState.pad2FilterBQ ?? 1), 1),
+        filterRouting: padState.pad2FilterRouting ?? 'series',
+        hardness: fin(shv('pad2Hardness', padState.pad2Hardness), 0.5),
       };
     }
 
@@ -4771,28 +5350,32 @@ export class AudioEngine {
       voice.noiseGain.gain.setTargetAtTime(p.noiseLevel * 0.1, now, smoothTime);
 
       // Per-voice mixer level (pad 1 = synthLevel, pad 2 = pad2Level)
-      const voiceLevel = (pad2On && (pad2Assign & (1 << i))) ? (state.pad2Level ?? 0.6) : state.synthLevel;
+      const voiceLevel = (pad2On && (pad2Assign & (1 << i)))
+        ? shv('pad2Level', padState.pad2Level ?? 0.6)
+        : shv('synthLevel', padState.synthLevel ?? 0.6);
       voice.mixerGain.gain.setTargetAtTime((voiceLevel ?? 0.6) * ENGINE_TRIMS.pad, now, smoothTime);
     });
 
     // ── Saturation curves (per-pad, only on change) ──
-    if (state.hardness !== this.lastHardness) {
-      this.lastHardness = state.hardness;
-      const curve1 = this.createSaturationCurve(state.hardness);
+    const pad1Hardness = shv('hardness', padState.hardness);
+    if (pad1Hardness !== this.lastHardness) {
+      this.lastHardness = pad1Hardness;
+      const curve1 = this.createSaturationCurve(pad1Hardness);
       this.voices.forEach((voice, i) => {
         if (!(pad2On && (pad2Assign & (1 << i)))) voice.saturation.curve = curve1;
       });
     }
-    if (pad2On && state.pad2Hardness !== this.pad2LastHardness) {
-      this.pad2LastHardness = state.pad2Hardness;
-      const curve2 = this.createSaturationCurve(state.pad2Hardness);
+    const pad2Hardness = shv('pad2Hardness', padState.pad2Hardness);
+    if (pad2On && pad2Hardness !== this.pad2LastHardness) {
+      this.pad2LastHardness = pad2Hardness;
+      const curve2 = this.createSaturationCurve(pad2Hardness);
       this.voices.forEach((voice, i) => {
         if (pad2Assign & (1 << i)) voice.saturation.curve = curve2;
       });
     }
 
     // Forward pad params to WASM worklet (if active)
-    this.sendPadWasmParams(state);
+    this.sendPadWasmParams(padState);
 
     // Legacy JS granular engine REMOVED — all granular processing via Granular FX WASM engine
     // granularLevel and granularReverbSend now control the Granular FX output levels
@@ -4810,11 +5393,10 @@ export class AudioEngine {
     if (this.granularFxNode) {
       const granularEnabled = granularBusArmed;
       const macroModel = computeGranularMacroModel(state, (key, fallback) => shv(key as string, fallback));
-      const spaceMode = macroModel.spaceMode;
       const lead1RoutingActive = !!lead1WetActive;
       const lead2RoutingActive = !!lead2WetActive;
       // Use granularLevel as the Granular FX output level (replaces hardcoded 1.0)
-      const granularOutputLevel = granularEnabled ? state.granularLevel * ENGINE_TRIMS.granular * macroModel.directLevelScale : 0;
+      const granularOutputLevel = granularEnabled ? shv('granularLevel', state.granularLevel) * ENGINE_TRIMS.granular * macroModel.directLevelScale : 0;
       this.granularFxDirect?.gain.setTargetAtTime(granularOutputLevel, now, smoothTime);
       // Use granularReverbSend as the Granular FX reverb send level (S&H aware)
       const granularRevSend = (granularEnabled && state.reverbEnabled) ? shv('granularReverbSend', state.granularReverbSend) * ENGINE_TRIMS.granular : 0;
@@ -4847,9 +5429,9 @@ export class AudioEngine {
         freeze: state.granularFreeze,
         freezeWithFeedback: false,
         dryWet: granularInternalDryWet,
-        feedback: state.granularFeedback,
-        feedbackLPF: state.granularFeedbackLPF,
-        bufferSeconds: state.granularBufferSeconds,
+        feedback: shv('granularFeedback', state.granularFeedback),
+        feedbackLPF: shv('granularFeedbackLPF', state.granularFeedbackLPF),
+        bufferSeconds: shv('granularBufferSeconds', state.granularBufferSeconds),
         grainShape: state.granularShape ?? 'triangle',
       };
       const granularSpaceParams: GranularWorkletSpaceParams = {
@@ -4892,15 +5474,15 @@ export class AudioEngine {
         chordPitches: this.harmonyState?.currentChord?.midiNotes
           ? this.harmonyState.currentChord.midiNotes.map(n => n % 12)
           : [],
-        chordBias: state.granularChordBias ?? 0,
+        chordBias: shv('granularChordBias', state.granularChordBias ?? 0),
       };
       const granularLegacyParams: GranularWorkletLegacyParams = {
-        legacyJitter: state.granularLegacyJitter,
-        legacyProbability: state.granularLegacyProbability,
+        legacyJitter: shv('granularLegacyJitter', state.granularLegacyJitter),
+        legacyProbability: shv('granularLegacyProbability', state.granularLegacyProbability),
         legacyPitchMode: state.granularLegacyPitchMode,
-        legacyPitchSpread: state.granularLegacyPitchSpread,
-        legacyMaxGrains: state.granularLegacyMaxGrains,
-        legacyFeedback: state.granularLegacyFeedback,
+        legacyPitchSpread: shv('granularLegacyPitchSpread', state.granularLegacyPitchSpread),
+        legacyMaxGrains: shv('granularLegacyMaxGrains', state.granularLegacyMaxGrains),
+        legacyFeedback: shv('granularLegacyFeedback', state.granularLegacyFeedback),
       };
       this.queueGranularWorkletUpdate({
         global: granularGlobalParams,
@@ -4912,40 +5494,17 @@ export class AudioEngine {
 
       // ── Granular Multi-Tap Delay ──
       // Bidirectional mutual exclusion: only one direction can be active at a time
-      const delayBGranularReturn = state.delayBGranularSend ?? 0;
-      const granularDelaySourceLevel = (granularEnabled && delayBGranularReturn < 0.0001) ? (state.granularDelayBSend ?? 0) : 0;
-      const crossFeeds = this.getSafeDelayCrossFeedLevels(state);
-      const delayBExternalFeedActive =
-        (pad1Active && (state.pad1DelayBSend ?? 0) > 0.0001) ||
-        (pad2Active && (state.pad2DelayBSend ?? 0) > 0.0001) ||
-        (lead1RoutingActive && (state.lead1DelayBSend ?? 0) > 0.0001) ||
-        (lead2RoutingActive && (state.lead2DelayBSend ?? 0) > 0.0001) ||
-        (state.drumEnabled && (state.drumDelayBSend ?? 0) > 0.0001) ||
-        (state.oceanSampleEnabled && (state.oceanDelayBSend ?? 0) > 0.0001) ||
-        (state.waterEnabled && (state.waterDelayBSend ?? 0) > 0.0001) ||
-        ((state.insectsEnabled || state.insects2Enabled) && (state.insDelayBSend ?? 0) > 0.0001) ||
-        (crossFeeds.aToB > 0.0001);
-      delayBEnabled = granularDelaySourceLevel > 0.0001 || delayBExternalFeedActive;
-      this.sharedGranularDelayBSend?.gain.setTargetAtTime(granularDelaySourceLevel, now, smoothTime);
-      this.sharedDelayB?.update({
-        enabled: delayBEnabled,
-        activity: state.granularDelayActivity ?? 0.3,
-        repeats: state.granularDelayRepeats ?? 0.3,
-        noteDiv: (state.granularDelayTime as string) ?? '1/4',
-        tone: state.granularDelayFilter ?? 0.5,
-        vibrato: state.granularDelayVibrato ?? 0,
-        mix: 1.0,
-        reverbSend: (delayBEnabled && state.reverbEnabled) ? (state.granularDelayReverbSend ?? 0.4) : 0,
-        // Block Delay B → Granular feedback when Granular is already sending to Delay B
-        granularSend: (delayBEnabled && granularDelaySourceLevel < 0.0001) ? (state.delayBGranularSend ?? 0) : 0,
-        toDelayA: delayBEnabled ? crossFeeds.bToA : 0,
-        bpm: getSharedSequencerBpm(state),
-        spaceMode,
-        pattern: state.delayBPattern ?? 'cascade',
-        warp: state.delayBWarp ?? 'clean',
-        warpIntensity: state.delayBWarpIntensity ?? 0.5,
-        spread: state.delayBSpread ?? 0.5,
-      }, now, smoothTime);
+      const delayBState = this.getSharedDelayBState(
+        state,
+        pad1Active,
+        pad2Active,
+        lead1RoutingActive,
+        lead2RoutingActive,
+        granularEnabled,
+      );
+      delayBEnabled = delayBState.delayBEnabled;
+      this.sharedGranularDelayBSend?.gain.setTargetAtTime(delayBState.granularDelaySourceLevel, now, smoothTime);
+      this.sharedDelayB?.update(delayBState.params, now, smoothTime);
 
       // The old granular-local multitap nodes are left disconnected while the shared Delay B
       // takes over, so keep their gains pinned to zero in case a fallback path instantiated them.
@@ -5038,9 +5597,9 @@ export class AudioEngine {
         state.reverbTensionMode ?? 'bypass',
         state.reverbTensionValue ?? 0,
       );
-      let effectiveDecay    = state.reverbDecay ?? 0.5;
-      let effectiveDiffusion = state.reverbDiffusion ?? 0.5;
-      let effectiveShimmer  = state.reverbShimmer ?? 0;
+      let effectiveDecay = shv('reverbDecay', state.reverbDecay ?? 0.5);
+      let effectiveDiffusion = shv('reverbDiffusion', state.reverbDiffusion ?? 0.5);
+      let effectiveShimmer = shv('reverbShimmer', state.reverbShimmer ?? 0);
       if (reverbT >= 0) {
         const tInvRev = 1 - reverbT;
         effectiveDecay    = Math.min(1, effectiveDecay + tInvRev * 0.15);
@@ -5062,7 +5621,7 @@ export class AudioEngine {
       }
 
       // Scale-aware shimmer pitch — quantize to nearest scale interval
-      let shimmerPitch = state.reverbShimmerPitch ?? 12;
+      let shimmerPitch = shv('reverbShimmerPitch', state.reverbShimmerPitch ?? 12);
       if (state.reverbScaleShimmer && this.harmonyState?.scaleFamily?.intervals) {
         const si = this.harmonyState.scaleFamily.intervals;
         const octaves = Math.floor(shimmerPitch / 12);
@@ -5081,33 +5640,33 @@ export class AudioEngine {
           type: state.reverbType,
           quality: this.isMobile ? 'balanced' : state.reverbQuality,
           decay: effectiveDecay,
-          size: state.reverbSize,
+          size: shv('reverbSize', state.reverbSize),
           diffusion: effectiveDiffusion,
-          modulation: state.reverbModulation,
-          predelay: state.predelay,
-          damping: state.damping,
-          width: state.width,
+          modulation: shv('reverbModulation', state.reverbModulation),
+          predelay: shv('predelay', state.predelay),
+          damping: shv('damping', state.damping),
+          width: shv('width', state.width),
           shimmer: effectiveShimmer,
           shimmerPitch: shimmerPitch,
-          slowModRate: state.reverbSlowModRate ?? 0.05,
-          slowModDepth: state.reverbSlowModDepth ?? 0,
-          reverse: state.reverbReverse ?? 0,
-          reverseLength: state.reverbReverseLength ?? 2,
-          chorusRate: state.reverbChorusRate ?? 0.5,
-          chorusDepth: state.reverbChorusDepth ?? 12,
+          slowModRate: shv('reverbSlowModRate', state.reverbSlowModRate ?? 0.05),
+          slowModDepth: shv('reverbSlowModDepth', state.reverbSlowModDepth ?? 0),
+          reverse: shv('reverbReverse', state.reverbReverse ?? 0),
+          reverseLength: shv('reverbReverseLength', state.reverbReverseLength ?? 2),
+          chorusRate: shv('reverbChorusRate', state.reverbChorusRate ?? 0.5),
+          chorusDepth: shv('reverbChorusDepth', state.reverbChorusDepth ?? 12),
           modCharacter: state.reverbModCharacter ?? 'hybrid',
-          dampLow: state.reverbDampLow ?? 0.1,
-          dampHigh: state.reverbDampHigh ?? 0.3,
-          crossoverFreq: state.reverbCrossoverFreq ?? 800,
-          inputTone: state.reverbInputTone ?? 0,
-          shimmerFeedback: state.reverbShimmerFeedback ?? 0,
-          warp: state.reverbWarp ?? 0,
-          crossFeed: state.reverbCrossFeed ?? 0,
-          earlyReflections: state.reverbEarlyReflections ?? 0.3,
-          airAbsorption: state.reverbAirAbsorption ?? 0.2,
+          dampLow: shv('reverbDampLow', state.reverbDampLow ?? 0.1),
+          dampHigh: shv('reverbDampHigh', state.reverbDampHigh ?? 0.3),
+          crossoverFreq: shv('reverbCrossoverFreq', state.reverbCrossoverFreq ?? 800),
+          inputTone: shv('reverbInputTone', state.reverbInputTone ?? 0),
+          shimmerFeedback: shv('reverbShimmerFeedback', state.reverbShimmerFeedback ?? 0),
+          warp: shv('reverbWarp', state.reverbWarp ?? 0),
+          crossFeed: shv('reverbCrossFeed', state.reverbCrossFeed ?? 0),
+          earlyReflections: shv('reverbEarlyReflections', state.reverbEarlyReflections ?? 0.3),
+          airAbsorption: shv('reverbAirAbsorption', state.reverbAirAbsorption ?? 0.2),
           saturationMode: state.reverbSaturationMode === 'tape' ? 1 : state.reverbSaturationMode === 'tube' ? 2 : 0,
-          transientSmooth: state.reverbTransientSmooth ?? 0,
-          erLpFreq: state.reverbErLpFreq ?? 2500,
+          transientSmooth: shv('reverbTransientSmooth', state.reverbTransientSmooth ?? 0),
+          erLpFreq: shv('reverbErLpFreq', state.reverbErLpFreq ?? 2500),
       };
       // Dirty-gate: skip postMessage if all params are unchanged from last frame
       let reverbDirty = !this._prevReverbParams;
@@ -5123,7 +5682,7 @@ export class AudioEngine {
     }
 
     // Reverb output level (mute if disabled)
-    this.reverbOutputGain?.gain.setTargetAtTime(reverbBusActive ? state.reverbLevel * ENGINE_TRIMS.reverb : 0, now, smoothTime);
+    this.reverbOutputGain?.gain.setTargetAtTime(reverbBusActive ? shv('reverbLevel', state.reverbLevel) * ENGINE_TRIMS.reverb : 0, now, smoothTime);
 
     // Spectral Freeze parameters
     if (this.spectralFreezeNode && (this.spectralFreezeNode as any).port) {
@@ -5720,23 +6279,16 @@ export class AudioEngine {
     const leadSHPositions: Record<string, number> = {};
     for (const key of Object.keys(this.dualRanges)) {
       if (key.startsWith('lead') || key.startsWith('granularLead')) {
-        const range = this.dualRanges[key];
-        if (range) {
-          const sampled = range.min + Math.random() * (range.max - range.min);
-          this.shSampledValues[key] = sampled;
-          const span = range.max - range.min;
-          leadSHPositions[key] = span > 0 ? (sampled - range.min) / span : 0.5;
-        }
+        this.sampleDualRangeKey(key, leadSHPositions);
       }
     }
-    if (Object.keys(leadSHPositions).length > 0 && this.onGranularSHTrigger) {
-      this.onGranularSHTrigger(leadSHPositions);
-    }
+    this.emitOwnedSamplePositions(leadSHPositions);
 
     if (velocity < 0.001) return;
 
     const ctx = this.ctx;
     const now = ctx.currentTime;
+    this.reportFxOnset(useLead2 ? 'lead2' : 'lead1', 'leadNote');
 
     // ─── Shared expression: vibrato & glide (NOT from presets) ───
     const vdRange = this.dualRanges['leadVibratoDepth'];
@@ -5770,15 +6322,6 @@ export class AudioEngine {
     }
 
     // ─── Shared delay (NOT from presets) ───
-    const dfRange = this.dualRanges['delayAFeedback'];
-    const delayFeedbackMin = dfRange ? dfRange.min : (this.sliderState.delayAFeedback ?? 0.4);
-    const delayFeedbackMax = dfRange ? dfRange.max : (this.sliderState.delayAFeedback ?? 0.4);
-    const delayFeedback = delayFeedbackMin + Math.random() * (delayFeedbackMax - delayFeedbackMin);
-
-    const dmRange = this.dualRanges['delayAMix'];
-    const delayMixMin = dmRange ? dmRange.min : (this.sliderState.delayAMix ?? 0.35);
-    const delayMixMax = dmRange ? dmRange.max : (this.sliderState.delayAMix ?? 0.35);
-    const delayMix = delayMixMin + Math.random() * (delayMixMax - delayMixMin);
     const lead1DelayActive = !!(this.sliderState.leadEnabled || this.sliderState.leadRandomEnabled || this.sliderState.synthEuclideanMasterEnabled);
     const lead2DelayActive = !!this.sliderState.lead2Enabled;
     const delayAState = this.getSharedDelayAState(
@@ -5789,23 +6332,7 @@ export class AudioEngine {
     );
 
     const smoothTime = 0.05;
-    this.sharedDelayA?.update({
-      ...delayAState,
-      feedback: delayFeedback,
-      mix: delayMix,
-    }, now, smoothTime);
-
-    if (this.onLeadDelayTrigger) {
-      this.onLeadDelayTrigger({
-        time: 0.5,
-        feedback: delayFeedbackMax > delayFeedbackMin
-          ? (delayFeedback - delayFeedbackMin) / (delayFeedbackMax - delayFeedbackMin)
-          : 0.5,
-        mix: delayMixMax > delayMixMin
-          ? (delayMix - delayMixMin) / (delayMixMax - delayMixMin)
-          : 0.5,
-      });
-    }
+    this.sharedDelayA?.update(delayAState, now, smoothTime);
 
     // ─── Apply vibrato via carrier frequency modulation ───
     // The 4op FM note function handles the core synthesis, but we need to
@@ -6555,103 +7082,21 @@ export class AudioEngine {
                         // Determine if this voice belongs to Pad 2
                         const isPad2 = this.sliderState?.pad2Enabled &&
                           ((this.sliderState?.pad2VoiceAssign ?? 0) & (1 << voiceIndex)) !== 0;
-
-                        // Resolve effective morph position:
-                        // 1) Sub-sequencer morph override takes priority
-                        // 2) S&H dual range on padMorph/pad2Morph → per-trigger random
-                        // 3) Fall back to current slider value (no override)
-                        let effectiveMorph = capturedMorphOverride;
-                        if (effectiveMorph === null) {
-                          const morphKey = isPad2 ? 'pad2Morph' : 'padMorph';
-                          const morphRange = this.dualRanges[morphKey];
-                          if (morphRange) {
-                            // S&H or walk mode — generate random within range
-                            effectiveMorph = morphRange.min + Math.random() * (morphRange.max - morphRange.min);
-                          }
-                        }
-
-                        // Apply pad morph override: temporarily set morphed preset params on sliderState
-                        const savedPadParams: Record<string, unknown> = {};
-                        let padParamsOverride: SliderState | undefined;
-                        if (effectiveMorph !== null && this.sliderState) {
-                          if (isPad2) {
-                            // Pad 2 voice — morph pad2 presets onto pad2 state keys
-                            const presetA = getPadPreset(this.sliderState.pad2PresetA as string);
-                            const presetB = getPadPreset(this.sliderState.pad2PresetB as string);
-                            if (presetA && presetB) {
-                              const morphed = morphPadPresets(presetA, presetB, effectiveMorph);
-                              const st = ((this.padWasmReady && this.padWasmNode)
-                                ? { ...this.sliderState }
-                                : this.sliderState) as unknown as Record<string, unknown>;
-                              for (const k of PAD_PRESET_PARAM_KEYS) {
-                                if (k in morphed) {
-                                  const p2k = PAD1_TO_PAD2_ENGINE[k];
-                                  if (p2k) {
-                                    if (st === (this.sliderState as unknown as Record<string, unknown>)) {
-                                      savedPadParams[p2k] = st[p2k];
-                                    }
-                                    st[p2k] = morphed[k];
-                                  }
-                                }
-                              }
-                              if (st !== (this.sliderState as unknown as Record<string, unknown>)) {
-                                padParamsOverride = st as unknown as SliderState;
-                              }
-                            }
-                          } else {
-                            // Pad 1 voice — morph pad1 presets onto pad1 state keys
-                            const presetA = getPadPreset(this.sliderState.padPresetA as string);
-                            const presetB = getPadPreset(this.sliderState.padPresetB as string);
-                            if (presetA && presetB) {
-                              const morphed = morphPadPresets(presetA, presetB, effectiveMorph);
-                              const st = ((this.padWasmReady && this.padWasmNode)
-                                ? { ...this.sliderState }
-                                : this.sliderState) as unknown as Record<string, unknown>;
-                              for (const k of PAD_PRESET_PARAM_KEYS) {
-                                if (k in morphed) {
-                                  if (st === (this.sliderState as unknown as Record<string, unknown>)) {
-                                    savedPadParams[k] = st[k];
-                                  }
-                                  st[k] = morphed[k];
-                                }
-                              }
-                              if (st !== (this.sliderState as unknown as Record<string, unknown>)) {
-                                padParamsOverride = st as unknown as SliderState;
-                              }
-                            }
-                          }
-                        }
+                        const padParamsOverride = this.sliderState
+                          ? (this.buildPadTriggerState(isPad2 ? 'pad2' : 'pad1', this.sliderState, capturedMorphOverride) ?? undefined)
+                          : undefined;
+                        const padTriggerState = padParamsOverride ?? this.sliderState;
                         // Use correct pad's ADSR for ratchet note duration
                         const rAttack = isPad2
-                          ? (this.sliderState?.pad2Attack ?? 0.1)
-                          : (this.sliderState?.synthAttack ?? 0.1);
+                          ? (padTriggerState?.pad2Attack ?? 0.1)
+                          : (padTriggerState?.synthAttack ?? 0.1);
                         const rDecay = isPad2
-                          ? (this.sliderState?.pad2Decay ?? 0.3)
-                          : (this.sliderState?.synthDecay ?? 0.3);
+                          ? (padTriggerState?.pad2Decay ?? 0.3)
+                          : (padTriggerState?.synthDecay ?? 0.3);
                         const synthAttack = rAttack * ratchetFactor;
                         const synthDecay = rDecay * ratchetFactor;
                         const noteDuration = synthAttack + synthDecay + Math.max(0.1, (synthAttack + synthDecay) * 0.5);
-                        try {
-                          this.triggerSynthVoice(voiceIndex, frequency, velocity, noteDuration, padParamsOverride);
-                        } finally {
-                          // Restore original pad params even if triggerSynthVoice throws.
-                          // WASM pad triggers receive a copied override state instead, so there is
-                          // no in-place sliderState mutation to undo in that path.
-                          if (!padParamsOverride && Object.keys(savedPadParams).length > 0 && this.sliderState) {
-                            const st = this.sliderState as unknown as Record<string, unknown>;
-                            for (const [k, v] of Object.entries(savedPadParams)) {
-                              st[k] = v;
-                            }
-                          }
-                        }
-                        // Notify UI of correct pad's morph position so the slider moves
-                        if (effectiveMorph !== null) {
-                          if (isPad2) {
-                            this.onPad2MorphTrigger?.(effectiveMorph);
-                          } else {
-                            this.onPadMorphTrigger?.(effectiveMorph);
-                          }
-                        }
+                        this.triggerSynthVoice(voiceIndex, frequency, velocity, noteDuration, padParamsOverride);
                       }
                       this.synthMorphOverride = null;
                       this.synthRatchetFactor = 1;
@@ -6823,6 +7268,7 @@ export class AudioEngine {
       currentLfoValue: this.currentLfoValue,
       currentLfo2Value: this.currentLfo2Value,
       cofCurrentStep: this.harmonyState?.cof.currentStep ?? this.cofConfig.currentStep,
+      fxOwners: this.getFxOwnerDebugState(),
     };
   }
 
