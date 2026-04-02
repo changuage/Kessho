@@ -6,7 +6,6 @@
  */
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import JSZip from 'jszip';
 import {
   SliderState,
   SliderMode,
@@ -21,49 +20,45 @@ import { DualSlider, DualSliderRange } from './ui/DualSlider';
 import { audioEngine, EngineState } from './audio/engine';
 import { formatChordDegrees, getTimeUntilNextPhrase, calculateDriftedRoot } from './audio/harmony';
 import { getPresetNames, DrumVoiceType as DrumPresetVoice } from './audio/drumPresets';
-import { getPadPreset, morphPadPresets, PAD_PRESET_PARAM_KEYS } from './audio/padPresets';
-import { morphWaterPresets, WATER_MORPH_PARAM_KEYS, INSECT_ENGINE_DEFAULTS, PRESET_DUAL_RANGES, PRESET_SLIDER_MODES } from './audio/waterPresets';
-import { applyMorphToState, setDrumMorphOverride, clearDrumMorphEndpointOverrides, clearMidMorphOverrides, setDrumMorphDualRangeOverride, getDrumMorphDualRangeOverrides, interpolateDrumMorphDualRanges, drumMorphManager } from './audio/drumMorph';
+import { getPadPreset, morphPadPresets, PAD_PRESET_PARAM_KEYS, PAD1_TO_PAD2_KEY } from './audio/padPresets';
+import {
+  morphWaterPresets,
+  WATER_MORPH_PARAM_KEYS,
+  INSECT_ENGINE_DEFAULTS,
+  getWaterPresetDualRanges,
+  getWaterPresetSliderModes,
+} from './audio/waterPresets';
+import { applyMorphToState, setDrumMorphOverride, clearDrumMorphEndpointOverrides, clearMidMorphOverrides, setDrumMorphDualRangeOverride, getDrumMorphDualRangeOverrides, interpolateDrumMorphDualRanges, drumMorphManager, updateAutoMorph } from './audio/drumMorph';
 
-// Maps pad-preset param keys (pad1 naming) → pad2 state keys
-const PAD1_TO_PAD2_KEY: Record<string, string> = {
-  padOscAWave: 'pad2OscAWave', padOscAOctave: 'pad2OscAOctave', padOscADetune: 'pad2OscADetune', padOscALevel: 'pad2OscALevel',
-  padOscBWave: 'pad2OscBWave', padOscBOctave: 'pad2OscBOctave', padOscBDetune: 'pad2OscBDetune', padOscBLevel: 'pad2OscBLevel',
-  padSubEnabled: 'pad2SubEnabled', padSubOctave: 'pad2SubOctave', padSubWave: 'pad2SubWave', padSubLevel: 'pad2SubLevel',
-  padNoiseType: 'pad2NoiseType', padNoiseLevel: 'pad2NoiseLevel',
-  hardness: 'pad2Hardness', warmth: 'pad2Warmth', presence: 'pad2Presence',
-  filterType: 'pad2FilterType', filterCutoffMin: 'pad2FilterCutoffMin', filterCutoffMax: 'pad2FilterCutoffMax',
-  filterResonance: 'pad2FilterResonance', filterQ: 'pad2FilterQ',
-  padFilterBEnabled: 'pad2FilterBEnabled', padFilterBType: 'pad2FilterBType', padFilterBCutoff: 'pad2FilterBCutoff',
-  padFilterBResonance: 'pad2FilterBResonance', padFilterBQ: 'pad2FilterBQ', padFilterRouting: 'pad2FilterRouting',
-  synthAttack: 'pad2Attack', synthDecay: 'pad2Decay', synthSustain: 'pad2Sustain', synthRelease: 'pad2Release',
-  padLfo1Rate: 'pad2Lfo1Rate', padLfo1Depth: 'pad2Lfo1Depth', padLfo1Wave: 'pad2Lfo1Wave', padLfo1Dest: 'pad2Lfo1Dest',
-  padLfo2Rate: 'pad2Lfo2Rate', padLfo2Depth: 'pad2Lfo2Depth', padLfo2Wave: 'pad2Lfo2Wave', padLfo2Dest: 'pad2Lfo2Dest',
-  padModEnvEnabled: 'pad2ModEnvEnabled', padModEnvAttack: 'pad2ModEnvAttack', padModEnvDecay: 'pad2ModEnvDecay',
-  padModEnvSustain: 'pad2ModEnvSustain', padModEnvRelease: 'pad2ModEnvRelease',
-  padModEnvDepth: 'pad2ModEnvDepth', padModEnvDest: 'pad2ModEnvDest',
-};
 import { isInMidMorph, isAtEndpoint0, isAtEndpoint1 } from './audio/morphUtils';
 import { applyPreset, USER_PREFERENCE_KEYS } from './ui/presetUtils';
 import { getLead4opFMPresetList } from './audio/lead4opfm';
-import { getGranularPresetData, getGranularPresetSliderModes, getGranularPresetSeqConfig } from './ui/granular/granularPresets';
+import {
+  getGranularPresetData,
+  getGranularPresetSliderModes,
+  isGranularDelayBStateKey,
+} from './ui/granular/granularPresets';
 import SnowflakeUI from './ui/SnowflakeUI';
 import { CpuOverlay } from './ui/CpuOverlay';
+import { SliderHelpProvider, useSliderHelp } from './ui/SliderHelpOverlay';
 import { CircleOfFifths, getMorphedRootNote } from './ui/CircleOfFifths';
-import CloudPresets from './ui/CloudPresets';
-import { fetchPresetById, isCloudEnabled } from './cloud/supabase';
-import JourneyModeView from './ui/JourneyModeView';
 import { useJourney } from './ui/journeyState';
-import DrumPage from './ui/drums/DrumPage';
 import type { SeqSimpleState } from './ui/drums/SeqSimple';
-import SynthPage from './ui/synth/SynthPage';
-import GranularPage from './ui/granular/GranularPage';
-import EarthPage from './ui/earth/EarthPage';
-import ReverbPage from './ui/reverb/ReverbPage';
+import { loadFactoryPresets, PresetDropdown, setPresetStore, getVersionData, extractPresetVersionMetadata, LocalStoragePresetStore, SupabasePresetStore, HybridPresetStore } from './presets';
+import type { PresetEntry } from './presets';
 import { CollapsiblePanel } from './ui/CollapsiblePanel';
-import GlobalPage from './ui/global/GlobalPage';
 import type { StepOverrides, SubLaneKind, SubLaneState, PitchSettings, EvolveConfig } from './ui/sequencer/useEuclideanSequencer';
-import type { ClockDivision } from './audio/drumSeqTypes';
+import type { SliderPageId } from './ui/sliderHelpCatalog';
+
+const JourneyModeView = React.lazy(() => import('./ui/JourneyModeView'));
+const GlobalPage = React.lazy(() => import('./ui/global/GlobalPage'));
+const SynthPage = React.lazy(() => import('./ui/synth/SynthPage'));
+const ReverbPage = React.lazy(() => import('./ui/reverb/ReverbPage'));
+const DrumPage = React.lazy(() => import('./ui/drums/DrumPage'));
+const GranularPage = React.lazy(() => import('./ui/granular/GranularPage'));
+const DelayPage = React.lazy(() => import('./ui/delay/DelayPage'));
+const RoutingPage = React.lazy(() => import('./ui/routing/RoutingPage'));
+const EarthPage = React.lazy(() => import('./ui/earth/EarthPage'));
 
 // Note names for display
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -91,6 +86,15 @@ const TEXT_SYMBOLS = {
   drumNoise: '≋\uFE0E',
   drumMembrane: '※\uFE0E',
 } as const;
+
+const DEFAULT_AUTO_START_PRESET_NAME = 'String Waves';
+const CLOUD_ENABLED = !!import.meta.env.VITE_SUPABASE_URL && !!import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+const LAZY_PAGE_FALLBACK = (
+  <div style={{ padding: '24px', color: '#9ca3af', textAlign: 'center' }}>
+    Loading...
+  </div>
+);
 
 // File input ref for loading presets
 const fileInputRef = { current: null as HTMLInputElement | null };
@@ -177,10 +181,8 @@ interface SavedPreset {
   sliderModes?: Record<string, SliderMode>;  // Mode per parameter key
   drumEvolveConfigs?: EvolveConfig[];
   synthEvolveConfigs?: EvolveConfig[];
-  granularEvolveConfigs?: EvolveConfig[];
   drumSubLaneStates?: Record<SubLaneKind, SubLaneState>[];
   synthSubLaneStates?: Record<SubLaneKind, SubLaneState>[];
-  granularSubLaneStates?: Record<SubLaneKind, SubLaneState>[];
 }
 
 // iOS-only reverb types that won't work on web
@@ -207,7 +209,8 @@ const SNOWFLAKE_WELCOME_STATE: SliderState = {
   oceanSampleLevel: 0.49,  // max 1
   // Arm widths (reverb send / secondary keys) — 75% visual width
   reverbDecay: 0.56,
-  synthReverbSend: 0.56,
+  pad1ReverbSend: 0.56,
+  pad2ReverbSend: 0.56,
   granularReverbSend: 0.56,
   lead1ReverbSend: 0.56,
   lead2ReverbSend: 0.56,
@@ -218,7 +221,6 @@ const SNOWFLAKE_WELCOME_STATE: SliderState = {
   leadEnabled: true,
   drumEnabled: true,
   oceanSampleEnabled: true,
-  oceanWaveSynthEnabled: true,
 };
 
 // User preference keys imported from presetUtils.ts
@@ -419,10 +421,8 @@ const loadPresetsFromFolder = async (): Promise<SavedPreset[]> => {
               sliderModes: data.sliderModes,
               drumEvolveConfigs: data.drumEvolveConfigs,
               synthEvolveConfigs: data.synthEvolveConfigs,
-              granularEvolveConfigs: data.granularEvolveConfigs,
               drumSubLaneStates: data.drumSubLaneStates,
               synthSubLaneStates: data.synthSubLaneStates,
-              granularSubLaneStates: data.granularSubLaneStates,
             }));
           }
         } catch (e) {
@@ -446,10 +446,8 @@ const loadPresetsFromFolder = async (): Promise<SavedPreset[]> => {
             sliderModes: data.sliderModes,
             drumEvolveConfigs: data.drumEvolveConfigs,
             synthEvolveConfigs: data.synthEvolveConfigs,
-            granularEvolveConfigs: data.granularEvolveConfigs,
             drumSubLaneStates: data.drumSubLaneStates,
             synthSubLaneStates: data.synthSubLaneStates,
-            granularSubLaneStates: data.granularSubLaneStates,
           }));
         }
       } catch (e) {
@@ -461,6 +459,21 @@ const loadPresetsFromFolder = async (): Promise<SavedPreset[]> => {
   }
   return presets;
 };
+
+function statePresetEntryToSavedPreset(entry: PresetEntry): SavedPreset | null {
+  const version = entry.versions.find(v => v.v === entry.currentVersion) ?? entry.versions[entry.versions.length - 1];
+  if (!version) return null;
+
+  const versionData = getVersionData(entry, version.v);
+  if (!versionData) return null;
+
+  return migratePreset({
+    name: entry.name,
+    timestamp: new Date(version.timestamp).toISOString(),
+    state: versionData as SliderState,
+    ...(extractPresetVersionMetadata(version) ?? {}),
+  });
+}
 
 // Save preset to file using File System Access API
 const savePresetToFile = async (preset: SavedPreset): Promise<boolean> => {
@@ -769,6 +782,25 @@ interface RandomWalkState {
 }
 type RandomWalkStates = Partial<Record<keyof SliderState, RandomWalkState>>;
 
+type AdvancedTab = 'global' | 'synth' | 'drums' | 'reverb' | 'granular' | 'earth' | 'delay' | 'routing';
+
+const ADVANCED_TAB_SHORTCUTS: Record<string, AdvancedTab> = {
+  '1': 'global',
+  '2': 'synth',
+  '3': 'drums',
+  '4': 'earth',
+  '5': 'granular',
+  '6': 'delay',
+  '7': 'reverb',
+  '8': 'routing',
+};
+
+function isEditableShortcutTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable) return true;
+  return !!target.closest('input, textarea, select, [contenteditable="true"]');
+}
+
 // Logarithmic scaling helpers for frequency sliders
 function linearToLog(value: number, min: number, max: number): number {
   // Convert linear slider position (0-1) to logarithmic frequency
@@ -789,8 +821,11 @@ interface SliderProps {
   label: string;
   value: number;
   paramKey: keyof SliderState;
+  ghostValue?: number;
   unit?: string;
   logarithmic?: boolean;  // Use logarithmic scaling (for frequency params)
+  helpPage?: SliderPageId;
+  disabled?: boolean;
   onChange: (key: keyof SliderState, value: number) => void;
   // Dual slider props (optional)
   mode?: SliderMode;
@@ -801,12 +836,28 @@ interface SliderProps {
   onDualRangeChange?: (key: keyof SliderState, min: number, max: number) => void;
 }
 
+const WALK_ONLY_DUAL_KEYS = new Set<string>([
+  'waterChannelsMorph', 'waterChannelsSpeed',
+  'insectsDensity', 'insectsTemperature', 'insectsDistance', 'insectsProximity',
+  'insectsAntiphony', 'insectsClickRate', 'insectsMotion',
+  'insects2Density', 'insects2Temperature', 'insects2Distance', 'insects2Proximity',
+  'insects2Antiphony', 'insects2ClickRate', 'insects2Motion',
+]);
+
+function normalizeDualSliderMode(key: string, mode?: SliderMode): SliderMode | undefined {
+  if (!mode) return mode;
+  return WALK_ONLY_DUAL_KEYS.has(key) && mode === 'sampleHold' ? 'walk' : mode;
+}
+
 const Slider: React.FC<SliderProps> = ({ 
   label, 
   value, 
   paramKey, 
+  ghostValue,
   unit, 
   logarithmic, 
+  helpPage,
+  disabled = false,
   onChange,
   mode = 'single',
   dualRange,
@@ -815,6 +866,9 @@ const Slider: React.FC<SliderProps> = ({
   onCycleMode,
   onDualRangeChange,
 }) => {
+  const { announceSlider } = useSliderHelp();
+  const announceHelp = () => announceSlider(String(paramKey), { label, page: helpPage });
+
   // If dual mode props are provided, use shared DualSlider
   if (onCycleMode && onDualRangeChange) {
     const info = getParamInfo(paramKey);
@@ -828,6 +882,9 @@ const Slider: React.FC<SliderProps> = ({
         quantizeFn={quantize}
         unit={unit}
         logarithmic={logarithmic}
+        ghostValue={ghostValue}
+        helpPage={helpPage}
+        disabled={disabled}
         mode={mode}
         dualRange={dualRange}
         walkPosition={walkPosition}
@@ -847,6 +904,8 @@ const Slider: React.FC<SliderProps> = ({
   if (!info) return null;
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    announceHelp();
+    if (disabled) return;
     let newValue = parseFloat(e.target.value);
     if (logarithmic) {
       // Slider position is 0-1, convert to logarithmic frequency
@@ -869,9 +928,19 @@ const Slider: React.FC<SliderProps> = ({
   const fillPercent = sliderMax > sliderMin
     ? ((sliderValue - sliderMin) / (sliderMax - sliderMin)) * 100
     : 0;
+  const ghostPercent = ghostValue == null
+    ? null
+    : logarithmic
+      ? logToLinear(Math.max(info.min, Math.min(info.max, ghostValue)), info.min, info.max) * 100
+      : ((Math.max(info.min, Math.min(info.max, ghostValue)) - info.min) / (info.max - info.min)) * 100;
 
   return (
-    <div className="app-slider-group" style={styles.sliderGroup}>
+    <div
+      className="app-slider-group"
+      style={{ ...styles.sliderGroup, opacity: disabled ? 0.58 : 1 }}
+      onMouseEnter={announceHelp}
+      onPointerDown={announceHelp}
+    >
       <div className="app-slider-label" style={styles.sliderLabel}>
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flexShrink: 1 }}>{label}</span>
         <span style={{ flexShrink: 0, whiteSpace: 'nowrap' }}>
@@ -879,20 +948,72 @@ const Slider: React.FC<SliderProps> = ({
           {unit || ''}
         </span>
       </div>
-      <input
-        type="range"
-        min={sliderMin}
-        max={sliderMax}
-        step={sliderStep}
-        value={sliderValue}
-        onChange={handleChange}
-        className="app-slider"
-        style={{
-          ...styles.slider,
-          background: `linear-gradient(to right, rgba(160,200,220,0.5) 0%, rgba(160,200,220,0.5) ${fillPercent}%, rgba(255,255,255,0.2) ${fillPercent}%, rgba(255,255,255,0.2) 100%)`,
-        }}
-      />
+      <div style={{ position: 'relative' }}>
+        <input
+          type="range"
+          min={sliderMin}
+          max={sliderMax}
+          step={sliderStep}
+          value={sliderValue}
+          onChange={handleChange}
+          onFocus={announceHelp}
+          disabled={disabled}
+          className="app-slider"
+          style={{
+            ...styles.slider,
+            cursor: disabled ? 'not-allowed' : undefined,
+            background: `linear-gradient(to right, rgba(160,200,220,0.5) 0%, rgba(160,200,220,0.5) ${fillPercent}%, rgba(255,255,255,0.2) ${fillPercent}%, rgba(255,255,255,0.2) 100%)`,
+          }}
+        />
+        {ghostPercent !== null && Number.isFinite(ghostPercent) && (
+          <div
+            style={{
+              position: 'absolute',
+              left: `${ghostPercent}%`,
+              top: 'calc(50% + 1px)',
+              width: '2px',
+              height: '16px',
+              transform: 'translate(-50%, -50%)',
+              borderRadius: '999px',
+              background: 'rgba(255, 226, 150, 0.98)',
+              boxShadow: '0 0 8px rgba(255, 214, 120, 0.7)',
+              pointerEvents: 'none',
+            }}
+          />
+        )}
+      </div>
     </div>
+  );
+};
+
+const HelpButton: React.FC<React.ButtonHTMLAttributes<HTMLButtonElement> & { helpKey: string }> = ({
+  helpKey,
+  onMouseEnter,
+  onPointerDown,
+  onFocus,
+  ...props
+}) => {
+  const { announceHelp } = useSliderHelp();
+  const triggerHelp = useCallback(() => {
+    announceHelp(helpKey);
+  }, [announceHelp, helpKey]);
+
+  return (
+    <button
+      {...props}
+      onMouseEnter={(e) => {
+        triggerHelp();
+        onMouseEnter?.(e);
+      }}
+      onPointerDown={(e) => {
+        triggerHelp();
+        onPointerDown?.(e);
+      }}
+      onFocus={(e) => {
+        triggerHelp();
+        onFocus?.(e);
+      }}
+    />
   );
 };
 
@@ -902,17 +1023,26 @@ interface SelectProps<T extends string> {
   value: T;
   options: { value: T; label: string }[];
   onChange: (value: T) => void;
+  onMouseEnter?: React.MouseEventHandler<HTMLDivElement>;
+  onPointerDown?: React.PointerEventHandler<HTMLDivElement>;
+  onFocus?: React.FocusEventHandler<HTMLSelectElement>;
 }
 
-function Select<T extends string>({ label, value, options, onChange }: SelectProps<T>) {
+function Select<T extends string>({ label, value, options, onChange, onMouseEnter, onPointerDown, onFocus }: SelectProps<T>) {
   return (
-    <div className="app-slider-group" style={styles.sliderGroup}>
+    <div
+      className="app-slider-group"
+      style={styles.sliderGroup}
+      onMouseEnter={onMouseEnter}
+      onPointerDown={onPointerDown}
+    >
       <div className="app-slider-label" style={styles.sliderLabel}>
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{label}</span>
       </div>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value as T)}
+        onFocus={onFocus}
         className="app-select"
         style={{ ...styles.select, maxWidth: '100%' }}
       >
@@ -971,6 +1101,69 @@ const App: React.FC = () => {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  // Initialize cloud preset store if Supabase is configured
+  useEffect(() => {
+    if (!CLOUD_ENABLED) return;
+
+    let cancelled = false;
+
+    // Use anonymous auth so RLS policies work (user_id is always set).
+    // Supabase project must have "Allow anonymous sign-ins" enabled.
+    void (async () => {
+      const { getSupabase } = await import('./cloud/supabase');
+      if (cancelled) return;
+
+      const supabaseClient = getSupabase();
+      if (!supabaseClient) return;
+
+      const local = new LocalStoragePresetStore();
+      const cloud = new SupabasePresetStore(supabaseClient);
+
+      try {
+        const { data: { session } } = await supabaseClient.auth.getSession();
+        if (session?.user) {
+          cloud.setUserId(session.user.id, session.user.is_anonymous ?? false);
+        } else {
+          const { data, error } = await supabaseClient.auth.signInAnonymously();
+          if (error) {
+            console.warn('Anonymous auth failed:', error.message);
+          } else if (data.user) {
+            cloud.setUserId(data.user.id, true);
+          }
+        }
+      } catch (e) {
+        console.warn('Auth init failed:', e);
+      }
+
+      if (cancelled) return;
+
+      const hybrid = new HybridPresetStore(local, cloud);
+      setPresetStore(hybrid);
+
+      try {
+        const autoStartEntry = await hybrid.load('state', DEFAULT_AUTO_START_PRESET_NAME, 'global');
+        if (cancelled) return;
+
+        autoStartPresetRef.current = autoStartEntry ? statePresetEntryToSavedPreset(autoStartEntry) : null;
+        if (autoStartPresetRef.current) {
+          console.log(`[App] Prefetched cloud auto-start preset: ${autoStartEntry!.name}`);
+        }
+      } catch (e) {
+        console.warn('Failed to preload cloud auto-start preset:', e);
+      }
+      console.log('Cloud preset store initialized');
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Seed factory presets into PresetStore on first launch
+  useEffect(() => {
+    loadFactoryPresets().then(n => { if (n > 0) console.log(`Seeded ${n} factory presets`); });
+  }, []);
   
   // Recording state
   const [isRecording, setIsRecording] = useState(false);
@@ -989,6 +1182,7 @@ const App: React.FC = () => {
   const hasLoadedPresetRef = useRef(false);
   // Track if user has interacted with any UI element (sliders, buttons, etc.)
   const hasUserInteractedRef = useRef(false);
+  const autoStartPresetRef = useRef<SavedPreset | null>(null);
   // Stem recording options (which buses to record pre-reverb)
   const [recordStems, setRecordStems] = useState({
     synth: false,
@@ -1066,6 +1260,22 @@ const App: React.FC = () => {
   const [savedPresets, setSavedPresets] = useState<SavedPreset[]>([]);
   const [showPresetList, setShowPresetList] = useState(false);
   const [presetsLoading, setPresetsLoading] = useState(true);
+
+  // L4 State preset name tracking
+  const [statePresetName, setStatePresetName] = useState<string | undefined>();
+  const handleStatePresetLoad = useCallback((entry: PresetEntry, data: Record<string, unknown>) => {
+    setStatePresetName(entry.name);
+    // Apply all params to state
+    const merged: Record<string, unknown> = { ...state };
+    for (const [key, value] of Object.entries(data)) {
+      if (key in merged) merged[key] = value;
+    }
+    setState(merged as SliderState);
+  }, [state]);
+
+  // Morph slot name tracking (for PresetDropdown display)
+  const [morphSlotAName, setMorphSlotAName] = useState<string | undefined>();
+  const [morphSlotBName, setMorphSlotBName] = useState<string | undefined>();
   
   // Preset Morph state
   const [morphPresetA, setMorphPresetA] = useState<SavedPreset | null>(null);
@@ -1174,9 +1384,31 @@ const App: React.FC = () => {
     });
   }, []);
 
-  // Active tab for Advanced UI panels
-  type AdvancedTab = 'global' | 'synth' | 'drums' | 'reverb' | 'granular' | 'earth';
   const [activeTab, setActiveTab] = useState<AdvancedTab>('global');
+
+  const openAdvancedTab = useCallback((tab: AdvancedTab) => {
+    if (uiMode === 'snowflake' && !snowflakeActivated) {
+      setSnowflakeActivated(true);
+    }
+    setActiveTab(tab);
+    setUiMode('advanced');
+  }, [uiMode, snowflakeActivated]);
+
+  useEffect(() => {
+    const handleAdvancedTabShortcut = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
+      if (isEditableShortcutTarget(event.target)) return;
+
+      const nextTab = ADVANCED_TAB_SHORTCUTS[event.key];
+      if (!nextTab) return;
+
+      event.preventDefault();
+      openAdvancedTab(nextTab);
+    };
+
+    window.addEventListener('keydown', handleAdvancedTabShortcut);
+    return () => window.removeEventListener('keydown', handleAdvancedTabShortcut);
+  }, [openAdvancedTab]);
 
   // Unified slider mode state: key → SliderMode ('single' | 'walk' | 'sampleHold')
   // Absent key means 'single'. dualSliderRanges stores ranges for walk/sampleHold modes.
@@ -1197,7 +1429,7 @@ const App: React.FC = () => {
       Object.entries(dualRanges).forEach(([key, range]) => {
         const paramKey = key as keyof SliderState;
         // Use saved mode if available, else default: walk for generic, sampleHold for expression/delay/morph
-        newSliderModes[key] = presetSliderModes?.[key] ?? 'walk';
+        newSliderModes[key] = normalizeDualSliderMode(key, presetSliderModes?.[key] ?? 'walk') ?? 'walk';
         newDualRanges[paramKey] = range;
         if (newSliderModes[key] === 'walk') {
           const walkPos = Math.random();
@@ -1313,17 +1545,8 @@ const App: React.FC = () => {
   const [synthEvolvedOverrides, setSynthEvolvedOverrides] = useState<{ laneIndex: number; version: number; data: Partial<StepOverrides> } | undefined>(undefined);
   const synthEvolvedVersionRef = useRef(0);
 
-  // ── Granular Euclidean sequencer state ──
-  const [granularSeqPlayheads, setGranularSeqPlayheads] = useState<number[]>([0, 0, 0, 0]);
-  const [granularSeqHitCounts, setGranularSeqHitCounts] = useState<number[]>([0, 0, 0, 0]);
-  const granularViewModeRef = useRef<'simple' | 'detail' | 'overview'>('detail');
-  const granularStepOverridesRef = useRef<StepOverrides | undefined>(undefined);
-  const granularSubLaneStatesRef = useRef<Record<SubLaneKind, SubLaneState>[] | undefined>(undefined);
-  const granularClockDivsRef = useRef<ClockDivision[] | undefined>(undefined);
-  const granularEvolveConfigsRef = useRef<EvolveConfig[] | undefined>(undefined);
   const [drumPresetVersion, setDrumPresetVersion] = useState(0);
   const [synthPresetVersion, setSynthPresetVersion] = useState(0);
-  const [granularPresetVersion, setGranularPresetVersion] = useState(0);
 
   // Helper: restore evolve configs from a loaded preset into refs + engine
   const restoreEvolveConfigs = useCallback((preset: SavedPreset) => {
@@ -1341,48 +1564,29 @@ const App: React.FC = () => {
     synthEvolveConfigsRef.current = synthConfigs;
     audioEngine.setSynthEuclidEvolveConfigs(synthConfigs);
 
-    const granularConfigs = preset.granularEvolveConfigs ?? defaultConfigs();
-    granularEvolveConfigsRef.current = granularConfigs;
-    audioEngine.setGranularEuclidEvolveConfigs(granularConfigs);
-
     // Restore sub-lane states (backward-compatible: undefined if preset lacks them)
     drumSubLaneStatesRef.current = preset.drumSubLaneStates;
     synthSubLaneStatesRef.current = preset.synthSubLaneStates;
-    granularSubLaneStatesRef.current = preset.granularSubLaneStates;
 
     // Bump all version counters so mounted pages re-initialize from refs
     setDrumPresetVersion(v => v + 1);
     setSynthPresetVersion(v => v + 1);
-    setGranularPresetVersion(v => v + 1);
   }, []);
 
   // ── Granular buffer position state (from worklet) ──
   const [granularWriteHead, setGranularWriteHead] = useState(0);
   const [granularVoicePositions, setGranularVoicePositions] = useState<number[]>([0, 0, 0, 0]);
-
-  // ── Granular per-trigger override feedback (for UI flash/highlight) ──
-  const [granularTriggerOverrides, setGranularTriggerOverrides] = useState<{
-    sliceOverride?: number;
-    pitchOverride?: number;
-    reverseOverride?: boolean;
-  }[]>([{}, {}, {}, {}]);
-  const granularTriggerTimersRef = useRef<(number | null)[]>([null, null, null, null]);
-
-  // Granular evolve flash state
-  const [granularEuclidEvolveFlashing, setGranularEuclidEvolveFlashing] = useState<boolean[]>([false, false, false, false]);
-  const granularEuclidEvolveFlashTimersRef = useRef<Array<number | null>>([null, null, null, null]);
-  // Granular evolved step overrides for visual sync
-  const [granularEvolvedOverrides, setGranularEvolvedOverrides] = useState<{ laneIndex: number; version: number; data: Partial<StepOverrides> } | undefined>(undefined);
-  const granularEvolvedVersionRef = useRef(0);
+  const [granularActiveGrains, setGranularActiveGrains] = useState(0);
+  const [granularBufferWaveform, setGranularBufferWaveform] = useState<Float32Array | null>(null);
 
   // Trigger position map: maps slider keys to their per-trigger position values
   const triggerPositionMap = useMemo<Record<string, number>>(() => ({
     leadVibratoDepth: leadExpressionPositions.vibratoDepth,
     leadVibratoRate: leadExpressionPositions.vibratoRate,
     leadGlide: leadExpressionPositions.glide,
-    leadDelayTime: leadDelayPositions.time,
-    leadDelayFeedback: leadDelayPositions.feedback,
-    leadDelayMix: leadDelayPositions.mix,
+    delayATime: leadDelayPositions.time,
+    delayAFeedback: leadDelayPositions.feedback,
+    delayAMix: leadDelayPositions.mix,
     lead1Morph: leadMorphPositions.lead1,
     lead2Morph: leadMorphPositions.lead2,
     padMorph: padMorphPositions.pad1,
@@ -1453,15 +1657,10 @@ const App: React.FC = () => {
       drumVoice = 'membrane'; drumMorphKey = 'drumMembraneMorph';
     }
 
-    // Keys that only support single ↔ walk (no per-event S&H in WASM — engine collapses to midpoint)
-    const WALK_ONLY_KEYS = new Set<string>([
-      'waterSurfBody', 'waterSurfSpray', 'waterChannelsMorph', 'waterChannelsSpeed',
-    ]);
-
     // Cycle: single → walk → sampleHold → single (walk-only keys skip sampleHold)
     const current = sliderModes[keyStr] ?? 'single';
     const nextMode: SliderMode = current === 'single' ? 'walk'
-      : current === 'walk' ? (WALK_ONLY_KEYS.has(keyStr) ? 'single' : 'sampleHold')
+      : current === 'walk' ? (WALK_ONLY_DUAL_KEYS.has(keyStr) ? 'single' : 'sampleHold')
       : 'single';
 
     if (nextMode === 'single') {
@@ -1712,6 +1911,9 @@ const App: React.FC = () => {
       .map(([key]) => key as keyof SliderState);
     if (walkKeys.length === 0) return;
 
+    let intervalId: number | null = null;
+    const shouldAnimate = () => engineState.isRunning || document.visibilityState === 'visible';
+
     const animate = () => {
       const speed = state.randomWalkSpeed;
       const updates: Record<string, number> = {};
@@ -1824,14 +2026,41 @@ const App: React.FC = () => {
       }
     };
 
-    // Run at 10 Hz for smooth but efficient animation
-    const intervalId = window.setInterval(animate, 100);
-    return () => clearInterval(intervalId);
-  }, [sliderModes, dualSliderRanges, state.randomWalkSpeed, drumMorphKeys]);
+    const stopInterval = () => {
+      if (intervalId !== null) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+    };
+
+    const startInterval = () => {
+      if (intervalId !== null || !shouldAnimate()) return;
+      intervalId = window.setInterval(animate, 100); // 10 Hz for smooth but efficient animation
+    };
+
+    const handleVisibilityChange = () => {
+      if (shouldAnimate()) {
+        animate();
+        startInterval();
+      } else {
+        stopInterval();
+      }
+    };
+
+    startInterval();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      stopInterval();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [sliderModes, dualSliderRanges, state.randomWalkSpeed, drumMorphKeys, engineState.isRunning]);
 
   // Load presets from folder on mount
   useEffect(() => {
+    let cancelled = false;
+
     loadPresetsFromFolder().then((presets) => {
+      if (cancelled) return;
       setSavedPresets(presets);
       setPresetsLoading(false);
     });
@@ -1839,8 +2068,10 @@ const App: React.FC = () => {
     // Check for cloud preset in URL (?cloud=presetId)
     const urlParams = new URLSearchParams(window.location.search);
     const cloudPresetId = urlParams.get('cloud');
-    if (cloudPresetId && isCloudEnabled()) {
-      fetchPresetById(cloudPresetId).then((preset) => {
+    if (cloudPresetId && CLOUD_ENABLED) {
+      void import('./cloud/supabase').then(({ fetchPresetById }) => fetchPresetById(cloudPresetId)).then((preset) => {
+        if (cancelled || !preset) return;
+
         if (preset) {
           const rawData = preset.data as unknown;
           const wrappedData =
@@ -1867,6 +2098,10 @@ const App: React.FC = () => {
         }
       });
     }
+
+    return () => {
+      cancelled = true;
+    };
   }, [applyDualRangesFromPreset, restoreEvolveConfigs]);
 
   // Engine state callback
@@ -2027,11 +2262,13 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // Granular/Earth S&H trigger callback (engine-side 10Hz re-sampling)
+  // Granular/Earth S&H trigger callback (generic engine-side resampling + exact Surf wave triggers)
   useEffect(() => {
     audioEngine.setGranularSHTriggerCallback((positions: Record<string, number>) => {
       setShFlashKeys(new Set(Object.keys(positions)));
-      setShPositions(positions);
+      // Merge per-key trigger positions so exact Surf wave triggers do not get
+      // immediately blown away by the generic 10 Hz S&H callback for other keys.
+      setShPositions(prev => ({ ...prev, ...positions }));
       if (shFlashTimerRef.current) window.clearTimeout(shFlashTimerRef.current);
       shFlashTimerRef.current = window.setTimeout(() => {
         setShFlashKeys(new Set());
@@ -2161,63 +2398,6 @@ const App: React.FC = () => {
     });
   }, []);
 
-  // Granular evolve trigger callback (lane mutation pulse)
-  useEffect(() => {
-    audioEngine.setGranularEuclidEvolveTriggerCallback((laneIndex: number) => {
-      if (laneIndex < 0 || laneIndex > 3) return;
-      setGranularEuclidEvolveFlashing(prev => prev.map((v, idx) => (idx === laneIndex ? true : v)));
-
-      const existingTimer = granularEuclidEvolveFlashTimersRef.current[laneIndex];
-      if (existingTimer) {
-        window.clearTimeout(existingTimer);
-      }
-
-      granularEuclidEvolveFlashTimersRef.current[laneIndex] = window.setTimeout(() => {
-        setGranularEuclidEvolveFlashing(prev => prev.map((v, idx) => (idx === laneIndex ? false : v)));
-        granularEuclidEvolveFlashTimersRef.current[laneIndex] = null;
-      }, 180);
-    });
-
-    return () => {
-      granularEuclidEvolveFlashTimersRef.current.forEach((timer, laneIndex) => {
-        if (timer) {
-          window.clearTimeout(timer);
-          granularEuclidEvolveFlashTimersRef.current[laneIndex] = null;
-        }
-      });
-    };
-  }, []);
-
-  // Granular evolve overrides callback — push evolved values to UI for visual sync
-  useEffect(() => {
-    audioEngine.setGranularEvolveOverridesChangedCallback((laneIndex, overrides) => {
-      granularEvolvedVersionRef.current += 1;
-      const data: Partial<StepOverrides> = {};
-      const keys = ['expression', 'pitch', 'slice', 'reverse'] as const;
-      for (const key of keys) {
-        if (overrides[key] != null) {
-          const arr: (number[] | null)[] = [null, null, null, null];
-          arr[laneIndex] = overrides[key]!;
-          data[key] = arr;
-        }
-      }
-      // Keep granularStepOverridesRef in sync so tab switches don't lose evolved state
-      if (granularStepOverridesRef.current) {
-        const prev = granularStepOverridesRef.current;
-        const next = { ...prev };
-        for (const key of keys) {
-          if (data[key] && data[key]![laneIndex] != null) {
-            const arr = [...prev[key]];
-            arr[laneIndex] = data[key]![laneIndex];
-            (next as Record<string, unknown>)[key] = arr;
-          }
-        }
-        granularStepOverridesRef.current = next;
-      }
-      setGranularEvolvedOverrides({ laneIndex, version: granularEvolvedVersionRef.current, data });
-    });
-  }, []);
-
   // Drum Euclid step position callback (live playhead tracking) — throttled to ~8Hz
   useEffect(() => {
     let lastDrumStep = 0;
@@ -2242,62 +2422,34 @@ const App: React.FC = () => {
     });
   }, []);
 
-  // Granular Euclid step position callback (live playhead tracking) — throttled to ~8Hz
-  useEffect(() => {
-    let lastGranularStep = 0;
-    audioEngine.setGranularStepPositionCallback((steps: number[], hitCounts: number[]) => {
-      const now = performance.now();
-      if (now - lastGranularStep < 120) return;
-      lastGranularStep = now;
-      setGranularSeqPlayheads(steps);
-      setGranularSeqHitCounts(hitCounts);
-    });
-  }, []);
+  const granularTabActive = activeTab === 'granular';
 
-  // Granular buffer position polling — ~12Hz for smooth head animation
   useEffect(() => {
-    if (!engineState.isRunning) return;
-    const id = setInterval(() => {
+    audioEngine.setGranularUiActive(engineState.isRunning && granularTabActive);
+    if (granularTabActive) {
       setGranularWriteHead(audioEngine.getGranularWriteHeadPosition());
       setGranularVoicePositions(audioEngine.getGranularVoicePositions());
+      setGranularActiveGrains(audioEngine.getGranularActiveGrainCount());
+      setGranularBufferWaveform(audioEngine.getGranularBufferWaveform());
+    }
+  }, [engineState.isRunning, granularTabActive]);
+
+  // Granular buffer position polling — only while the granular tab is visible
+  useEffect(() => {
+    if (!engineState.isRunning || !granularTabActive) return;
+    const syncGranularUi = () => {
+      setGranularWriteHead(audioEngine.getGranularWriteHeadPosition());
+      setGranularVoicePositions(audioEngine.getGranularVoicePositions());
+      setGranularActiveGrains(audioEngine.getGranularActiveGrainCount());
+      const wf = audioEngine.getGranularBufferWaveform();
+      if (wf) setGranularBufferWaveform(wf);
+    };
+    syncGranularUi();
+    const id = setInterval(() => {
+      syncGranularUi();
     }, 80); // ~12fps — matches CSS transition for continuous motion
     return () => clearInterval(id);
-  }, [engineState.isRunning]);
-
-  // Granular per-trigger override callback (reverse toggle, pitch flash, slice highlight) — throttled to ~10Hz
-  useEffect(() => {
-    const lastOverride: Record<number, number> = {};
-    audioEngine.setGranularTriggerOverrideCallback((voice: number, overrides: { sliceOverride?: number; pitchOverride?: number; reverseOverride?: boolean }) => {
-      if (voice < 0 || voice > 3) return;
-      const now = performance.now();
-      if (now - (lastOverride[voice] || 0) < 100) return;
-      lastOverride[voice] = now;
-      setGranularTriggerOverrides(prev => {
-        const next = [...prev];
-        next[voice] = overrides;
-        return next;
-      });
-      // Clear after 150ms
-      const existing = granularTriggerTimersRef.current[voice];
-      if (existing) window.clearTimeout(existing);
-      granularTriggerTimersRef.current[voice] = window.setTimeout(() => {
-        setGranularTriggerOverrides(prev => {
-          const next = [...prev];
-          next[voice] = {};
-          return next;
-        });
-        granularTriggerTimersRef.current[voice] = null;
-      }, 150);
-    });
-    return () => {
-      granularTriggerTimersRef.current.forEach((timer, i) => {
-        if (timer) {
-          window.clearTimeout(timer);
-          granularTriggerTimersRef.current[i] = null;
-        }
-      });
-    };
-  }, []);
+  }, [engineState.isRunning, granularTabActive]);
 
   // Drum trigger callback (per-voice flash for envelope visualizer) — throttled to ~12Hz per voice
   useEffect(() => {
@@ -2316,20 +2468,44 @@ const App: React.FC = () => {
     });
   }, []);
 
-  // Auto-morph animation loop — drives morph positions for voices with auto-morph enabled
-  // Only runs when at least one drum auto-morph is active (saves CPU/battery when idle)
+  // Auto-morph animation loop — drives drum voice morphs plus pad preset morphs when enabled.
   const autoMorphRafRef = useRef<number | null>(null);
   const autoMorphStateRef = useRef(state);
   autoMorphStateRef.current = state;
+  const padAutoMorphRef = useRef({
+    pad1: { phase: state.padMorph ?? 0, direction: 1 as 1 | -1 },
+    pad2: { phase: state.pad2Morph ?? 0, direction: 1 as 1 | -1 },
+  });
+
+  useEffect(() => {
+    const syncPadState = (
+      pad: 'pad1' | 'pad2',
+      value: number | undefined,
+      autoEnabled: boolean,
+    ) => {
+      const nextPhase = Math.max(0, Math.min(1, value ?? 0));
+      const target = padAutoMorphRef.current[pad];
+      target.phase = nextPhase;
+      if (!autoEnabled || nextPhase <= 0.001 || nextPhase >= 0.999) {
+        target.direction = nextPhase >= 0.999 ? -1 : 1;
+      }
+    };
+
+    syncPadState('pad1', state.padMorph, state.padMorphAuto && (sliderModes.padMorph ?? 'single') === 'single');
+    syncPadState('pad2', state.pad2Morph, state.pad2MorphAuto && (sliderModes.pad2Morph ?? 'single') === 'single');
+  }, [state.padMorph, state.padMorphAuto, state.pad2Morph, state.pad2MorphAuto, sliderModes.padMorph, sliderModes.pad2Morph]);
 
   const anyDrumAutoMorphActive = (
     state.drumSubMorphAuto || state.drumKickMorphAuto || state.drumClickMorphAuto ||
     state.drumBeepHiMorphAuto || state.drumBeepLoMorphAuto ||
     state.drumNoiseMorphAuto || state.drumMembraneMorphAuto
   );
+  const pad1AutoMorphActive = state.padMorphAuto && (sliderModes.padMorph ?? 'single') === 'single';
+  const pad2AutoMorphActive = state.pad2MorphAuto && (sliderModes.pad2Morph ?? 'single') === 'single';
+  const anyPadAutoMorphActive = pad1AutoMorphActive || pad2AutoMorphActive;
 
   useEffect(() => {
-    if (!anyDrumAutoMorphActive) return; // No auto-morph active — skip RAF loop entirely
+    if (!anyDrumAutoMorphActive && !anyPadAutoMorphActive) return;
 
     const MORPH_STATE_KEYS: Record<string, keyof SliderState> = {
       sub: 'drumSubMorph',
@@ -2342,10 +2518,53 @@ const App: React.FC = () => {
     };
 
     let active = true;
+    let lastPadUpdateTime = performance.now();
+    const shouldAnimate = () => engineState.isRunning || document.visibilityState === 'visible';
+
+    const resolvePadAutoMorph = (
+      pad: 'pad1' | 'pad2',
+      currentState: SliderState,
+      deltaTime: number,
+    ): number | null => {
+      const padState = padAutoMorphRef.current[pad];
+      const phraseLengthSeconds = Math.max(0.001, currentState.phraseLength ?? 16);
+      const phrasesPerSweep = Math.max(1, pad === 'pad1'
+        ? (currentState.padMorphSpeed ?? 8)
+        : (currentState.pad2MorphSpeed ?? 8));
+      const cyclesPerMinute = 120 / (phrasesPerSweep * phraseLengthSeconds);
+      const result = updateAutoMorph(
+        padState.phase,
+        padState.direction,
+        'pingpong',
+        cyclesPerMinute,
+        deltaTime,
+      );
+      padState.phase = result.phase;
+      padState.direction = result.direction as 1 | -1;
+      return result.morph;
+    };
+
     const tick = () => {
       if (!active) return;
-      const newValues = drumMorphManager.update(autoMorphStateRef.current, performance.now());
-      if (newValues.size > 0) {
+      if (!shouldAnimate()) {
+        autoMorphRafRef.current = null;
+        return;
+      }
+      const now = performance.now();
+      const deltaTime = Math.max(0, (now - lastPadUpdateTime) / 1000);
+      lastPadUpdateTime = now;
+      const currentState = autoMorphStateRef.current;
+      const newValues = anyDrumAutoMorphActive
+        ? drumMorphManager.update(currentState, now)
+        : new Map<DrumPresetVoice, number>();
+      const nextPadMorph = pad1AutoMorphActive
+        ? resolvePadAutoMorph('pad1', currentState, deltaTime)
+        : null;
+      const nextPad2Morph = pad2AutoMorphActive
+        ? resolvePadAutoMorph('pad2', currentState, deltaTime)
+        : null;
+
+      if (newValues.size > 0 || nextPadMorph !== null || nextPad2Morph !== null) {
         setState(prev => {
           const updates: Partial<SliderState> = {};
           for (const [voice, value] of newValues) {
@@ -2354,27 +2573,85 @@ const App: React.FC = () => {
               (updates as Record<string, unknown>)[key] = value;
             }
           }
+          if (nextPadMorph !== null && Math.abs((prev.padMorph ?? 0) - nextPadMorph) > 0.001) {
+            updates.padMorph = nextPadMorph;
+          }
+          if (nextPad2Morph !== null && Math.abs((prev.pad2Morph ?? 0) - nextPad2Morph) > 0.001) {
+            updates.pad2Morph = nextPad2Morph;
+          }
           if (Object.keys(updates).length === 0) return prev;
-          // Apply drum morph preset interpolation for each updated voice
+
           let newState = { ...prev, ...updates };
+
+          if (updates.padMorph !== undefined) {
+            const presetA = getPadPreset(newState.padPresetA as string);
+            const presetB = getPadPreset(newState.padPresetB as string);
+            if (presetA && presetB) {
+              const morphed = morphPadPresets(presetA, presetB, newState.padMorph as number);
+              for (const k of PAD_PRESET_PARAM_KEYS) {
+                if (k in morphed) {
+                  (newState as Record<string, unknown>)[k] = morphed[k];
+                }
+              }
+            }
+          }
+
+          if (updates.pad2Morph !== undefined) {
+            const presetA = getPadPreset(newState.pad2PresetA as string);
+            const presetB = getPadPreset(newState.pad2PresetB as string);
+            if (presetA && presetB) {
+              const morphed = morphPadPresets(presetA, presetB, newState.pad2Morph as number);
+              for (const k of PAD_PRESET_PARAM_KEYS) {
+                if (k in morphed) {
+                  const pad2Key = PAD1_TO_PAD2_KEY[k];
+                  if (pad2Key) {
+                    (newState as Record<string, unknown>)[pad2Key] = morphed[k];
+                  }
+                }
+              }
+            }
+          }
+
           for (const [voice] of newValues) {
             const morphedParams = applyMorphToState(newState as SliderState, voice as DrumPresetVoice);
             newState = { ...newState, ...morphedParams };
           }
+
           return newState;
         });
       }
       autoMorphRafRef.current = requestAnimationFrame(tick);
     };
-    autoMorphRafRef.current = requestAnimationFrame(tick);
-    return () => {
-      active = false;
+
+    const stopLoop = () => {
       if (autoMorphRafRef.current !== null) {
         cancelAnimationFrame(autoMorphRafRef.current);
         autoMorphRafRef.current = null;
       }
     };
-  }, [anyDrumAutoMorphActive]);
+
+    const startLoop = () => {
+      if (autoMorphRafRef.current !== null || !shouldAnimate()) return;
+      lastPadUpdateTime = performance.now();
+      autoMorphRafRef.current = requestAnimationFrame(tick);
+    };
+
+    const handleVisibilityChange = () => {
+      if (shouldAnimate()) {
+        startLoop();
+      } else {
+        stopLoop();
+      }
+    };
+
+    startLoop();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      active = false;
+      stopLoop();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [anyDrumAutoMorphActive, anyPadAutoMorphActive, pad1AutoMorphActive, pad2AutoMorphActive, engineState.isRunning]);
 
   // Countdown timer
   useEffect(() => {
@@ -2501,135 +2778,215 @@ const App: React.FC = () => {
         setDrumMorphOverride(drumVoice, keyStr, value as number, drumMorphPosition);
       }
       
-      // Auto-disable engines when both level and reverb send are 0
-      // (Ocean has no dedicated reverb send, so auto-disable on level=0 alone)
-      if (key === 'granularLevel' && value === 0 && prev.granularReverbSend === 0) {
-        newState.granularEnabled = false;
-      }
-      if (key === 'granularReverbSend' && value === 0 && prev.granularLevel === 0) {
-        newState.granularEnabled = false;
-      }
-      if (key === 'lead1Level' && value === 0 && prev.lead1ReverbSend === 0) {
-        newState.leadEnabled = false;
-      }
-      if (key === 'lead1ReverbSend' && value === 0 && prev.lead1Level === 0) {
-        newState.leadEnabled = false;
-      }
-      if (key === 'lead2Level' && value === 0 && prev.lead2ReverbSend === 0) {
-        newState.lead2Enabled = false;
-      }
-      if (key === 'lead2ReverbSend' && value === 0 && prev.lead2Level === 0) {
-        newState.lead2Enabled = false;
-      }
-      if (key === 'drumLevel' && value === 0 && prev.drumReverbSend === 0) {
-        newState.drumEnabled = false;
-      }
-      if (key === 'drumReverbSend' && value === 0 && prev.drumLevel === 0) {
-        newState.drumEnabled = false;
-      }
-      if (key === 'oceanSampleLevel' && value === 0) {
-        newState.oceanSampleEnabled = false;
-      }
-      if (key === 'oceanWaveSynthLevel' && value === 0) {
-        newState.oceanWaveSynthEnabled = false;
-      }
-      // Pad 1 (synthLevel + synthReverbSend)
-      if (key === 'synthLevel' && value === 0 && prev.synthReverbSend === 0) {
-        newState.padEnabled = false;
-      }
-      if (key === 'synthReverbSend' && value === 0 && prev.synthLevel === 0) {
-        newState.padEnabled = false;
-      }
-      // Pad 2 (pad2Level + shared synthReverbSend)
-      if (key === 'pad2Level' && value === 0 && prev.synthReverbSend === 0) {
-        newState.pad2Enabled = false;
-      }
-      if (key === 'synthReverbSend' && value === 0 && prev.pad2Level === 0) {
-        newState.pad2Enabled = false;
-      }
-      // Water (waterLevel + waterReverbSend)
-      if (key === 'waterLevel' && value === 0 && prev.waterReverbSend === 0) {
-        newState.waterEnabled = false;
-      }
-      if (key === 'waterReverbSend' && value === 0 && prev.waterLevel === 0) {
-        newState.waterEnabled = false;
-      }
-      // Insects 1 (insectsLevel + insectsReverbSend)
-      if (key === 'insectsLevel' && value === 0 && prev.insectsReverbSend === 0) {
-        newState.insectsEnabled = false;
-      }
-      if (key === 'insectsReverbSend' && value === 0 && prev.insectsLevel === 0) {
-        newState.insectsEnabled = false;
-      }
-      // Insects 2 (insects2Level + shared insectsReverbSend)
-      if (key === 'insects2Level' && value === 0 && prev.insectsReverbSend === 0) {
-        newState.insects2Enabled = false;
-      }
-      if (key === 'insectsReverbSend' && value === 0 && prev.insects2Level === 0) {
-        newState.insects2Enabled = false;
+      const routeKey = key as keyof SliderState;
+      const positiveNumber = typeof value === 'number' && value > 0;
+
+      if (positiveNumber) {
+        switch (routeKey) {
+          case 'granularLevel':
+          case 'granularReverbSend':
+          case 'granularDelayASend':
+          case 'granularDelayBSend':
+            newState.granularEnabled = true;
+            // Mutual exclusion: zero the reverse direction
+            if (positiveNumber) newState.delayBGranularSend = 0;
+            break;
+          case 'delayAGranularSend':
+            newState.granularEnabled = true;
+            break;
+          case 'delayBGranularSend':
+            newState.granularEnabled = true;
+            // Mutual exclusion: zero the reverse direction
+            if (positiveNumber) newState.granularDelayBSend = 0;
+            break;
+          case 'lead1Level':
+          case 'lead1ReverbSend':
+          case 'lead1DelayASend':
+          case 'lead1DelayBSend':
+            newState.leadEnabled = true;
+            break;
+          case 'granularLead1Send':
+            newState.leadEnabled = true;
+            newState.granularEnabled = true;
+            break;
+          case 'lead2Level':
+          case 'lead2ReverbSend':
+          case 'lead2DelayASend':
+          case 'lead2DelayBSend':
+            newState.lead2Enabled = true;
+            break;
+          case 'granularLead2Send':
+            newState.lead2Enabled = true;
+            newState.granularEnabled = true;
+            break;
+          case 'drumLevel':
+          case 'drumReverbSend':
+          case 'drumDelayASend':
+          case 'drumDelayBSend':
+            newState.drumEnabled = true;
+            break;
+          case 'granularDrumSend':
+            newState.drumEnabled = true;
+            newState.granularEnabled = true;
+            break;
+          case 'oceanSampleLevel':
+          case 'oceanReverbSend':
+          case 'oceanDelayASend':
+          case 'oceanDelayBSend':
+            newState.oceanSampleEnabled = true;
+            break;
+          case 'granularWavesSend':
+            newState.oceanSampleEnabled = true;
+            newState.granularEnabled = true;
+            break;
+          case 'synthLevel':
+            newState.padEnabled = true;
+            break;
+          case 'pad1ReverbSend':
+            newState.padEnabled = true;
+            break;
+          case 'pad2ReverbSend':
+            newState.pad2Enabled = true;
+            break;
+          case 'pad1DelayASend':
+          case 'pad1DelayBSend':
+            newState.padEnabled = true;
+            break;
+          case 'pad2Level':
+          case 'pad2DelayASend':
+          case 'pad2DelayBSend':
+            newState.pad2Enabled = true;
+            break;
+          case 'granularPad1Send':
+            newState.padEnabled = true;
+            newState.granularEnabled = true;
+            break;
+          case 'granularPad2Send':
+            newState.pad2Enabled = true;
+            newState.granularEnabled = true;
+            break;
+          case 'waterLevel':
+          case 'waterReverbSend':
+          case 'waterDelayASend':
+          case 'waterDelayBSend':
+            newState.waterEnabled = true;
+            break;
+          case 'granularWaterSend':
+            newState.waterEnabled = true;
+            newState.granularEnabled = true;
+            break;
+          case 'insectsLevel':
+            newState.insectsEnabled = true;
+            break;
+          case 'insects2Level':
+            newState.insects2Enabled = true;
+            break;
+          case 'insectsReverbSend':
+          case 'insDelayASend':
+          case 'insDelayBSend':
+            newState.insectsEnabled = true;
+            break;
+          case 'granularInsectsSend':
+            newState.insectsEnabled = true;
+            newState.granularEnabled = true;
+            break;
+          default:
+            break;
+        }
       }
 
-      // Auto-RE-ENABLE engines when level or send moves away from 0
-      // (mirrors auto-disable: sliding back up re-enables the engine)
-      if (key === 'granularLevel' && (value as number) > 0 && prev.granularEnabled === false) {
-        newState.granularEnabled = true;
+      const pad1WetActive =
+        (newState.synthLevel ?? 0) > 0 ||
+        (newState.pad1ReverbSend ?? 0) > 0 ||
+        (newState.pad1DelayASend ?? 0) > 0 ||
+        (newState.pad1DelayBSend ?? 0) > 0 ||
+        (newState.granularPad1Send ?? 0) > 0;
+      const pad2WetActive =
+        (newState.pad2Level ?? 0) > 0 ||
+        (newState.pad2ReverbSend ?? 0) > 0 ||
+        (newState.pad2DelayASend ?? 0) > 0 ||
+        (newState.pad2DelayBSend ?? 0) > 0 ||
+        (newState.granularPad2Send ?? 0) > 0;
+      const granularEngineActive =
+        (newState.granularLevel ?? 0) > 0 ||
+        (newState.granularReverbSend ?? 0) > 0 ||
+        (newState.granularDelayASend ?? 0) > 0 ||
+        (newState.granularDelayBSend ?? 0) > 0 ||
+        (newState.delayAGranularSend ?? 0) > 0 ||
+        (newState.delayBGranularSend ?? 0) > 0 ||
+        (newState.granularPad1Send ?? 0) > 0 ||
+        (newState.granularPad2Send ?? 0) > 0 ||
+        (newState.granularLead1Send ?? 0) > 0 ||
+        (newState.granularLead2Send ?? 0) > 0 ||
+        (newState.granularDrumSend ?? 0) > 0 ||
+        (newState.granularWavesSend ?? 0) > 0 ||
+        (newState.granularWaterSend ?? 0) > 0 ||
+        (newState.granularInsectsSend ?? 0) > 0;
+      const lead1WetActive =
+        (newState.lead1Level ?? 0) > 0 ||
+        (newState.lead1ReverbSend ?? 0) > 0 ||
+        (newState.lead1DelayASend ?? 0) > 0 ||
+        (newState.lead1DelayBSend ?? 0) > 0 ||
+        (newState.granularLead1Send ?? 0) > 0;
+      const lead2WetActive =
+        (newState.lead2Level ?? 0) > 0 ||
+        (newState.lead2ReverbSend ?? 0) > 0 ||
+        (newState.lead2DelayASend ?? 0) > 0 ||
+        (newState.lead2DelayBSend ?? 0) > 0 ||
+        (newState.granularLead2Send ?? 0) > 0;
+      const drumWetActive =
+        (newState.drumLevel ?? 0) > 0 ||
+        (newState.drumReverbSend ?? 0) > 0 ||
+        (newState.drumDelayASend ?? 0) > 0 ||
+        (newState.drumDelayBSend ?? 0) > 0 ||
+        (newState.granularDrumSend ?? 0) > 0;
+      const oceanWetActive =
+        (newState.oceanSampleLevel ?? 0) > 0 ||
+        (newState.oceanReverbSend ?? 0) > 0 ||
+        (newState.oceanDelayASend ?? 0) > 0 ||
+        (newState.oceanDelayBSend ?? 0) > 0 ||
+        (newState.granularWavesSend ?? 0) > 0;
+      const waterWetActive =
+        (newState.waterLevel ?? 0) > 0 ||
+        (newState.waterReverbSend ?? 0) > 0 ||
+        (newState.waterDelayASend ?? 0) > 0 ||
+        (newState.waterDelayBSend ?? 0) > 0 ||
+        (newState.granularWaterSend ?? 0) > 0;
+      const insectsSharedWetActive =
+        (newState.insectsReverbSend ?? 0) > 0 ||
+        (newState.insDelayASend ?? 0) > 0 ||
+        (newState.insDelayBSend ?? 0) > 0 ||
+        (newState.granularInsectsSend ?? 0) > 0;
+
+      if (!granularEngineActive) {
+        newState.granularEnabled = false;
       }
-      if (key === 'granularReverbSend' && (value as number) > 0 && prev.granularEnabled === false) {
-        newState.granularEnabled = true;
+      if (!lead1WetActive) {
+        newState.leadEnabled = false;
       }
-      if (key === 'lead1Level' && (value as number) > 0 && prev.leadEnabled === false) {
-        newState.leadEnabled = true;
+      if (!lead2WetActive) {
+        newState.lead2Enabled = false;
       }
-      if (key === 'lead1ReverbSend' && (value as number) > 0 && prev.leadEnabled === false) {
-        newState.leadEnabled = true;
+      if (!drumWetActive) {
+        newState.drumEnabled = false;
       }
-      if (key === 'lead2Level' && (value as number) > 0 && prev.lead2Enabled === false) {
-        newState.lead2Enabled = true;
+      if (!oceanWetActive) {
+        newState.oceanSampleEnabled = false;
       }
-      if (key === 'lead2ReverbSend' && (value as number) > 0 && prev.lead2Enabled === false) {
-        newState.lead2Enabled = true;
+      if (!pad1WetActive) {
+        newState.padEnabled = false;
       }
-      if (key === 'drumLevel' && (value as number) > 0 && prev.drumEnabled === false) {
-        newState.drumEnabled = true;
+      if (!pad2WetActive) {
+        newState.pad2Enabled = false;
       }
-      if (key === 'drumReverbSend' && (value as number) > 0 && prev.drumEnabled === false) {
-        newState.drumEnabled = true;
+      if (!waterWetActive) {
+        newState.waterEnabled = false;
       }
-      if (key === 'oceanSampleLevel' && (value as number) > 0 && prev.oceanSampleEnabled === false) {
-        newState.oceanSampleEnabled = true;
+      if (((newState.insectsLevel ?? 0) <= 0) && !insectsSharedWetActive) {
+        newState.insectsEnabled = false;
       }
-      if (key === 'oceanWaveSynthLevel' && (value as number) > 0 && prev.oceanWaveSynthEnabled === false) {
-        newState.oceanWaveSynthEnabled = true;
-      }
-      if (key === 'synthLevel' && (value as number) > 0 && prev.padEnabled === false) {
-        newState.padEnabled = true;
-      }
-      if (key === 'synthReverbSend' && (value as number) > 0 && prev.padEnabled === false) {
-        newState.padEnabled = true;
-      }
-      if (key === 'pad2Level' && (value as number) > 0 && prev.pad2Enabled === false) {
-        newState.pad2Enabled = true;
-      }
-      if (key === 'synthReverbSend' && (value as number) > 0 && prev.pad2Enabled === false) {
-        newState.pad2Enabled = true;
-      }
-      if (key === 'waterLevel' && (value as number) > 0 && prev.waterEnabled === false) {
-        newState.waterEnabled = true;
-      }
-      if (key === 'waterReverbSend' && (value as number) > 0 && prev.waterEnabled === false) {
-        newState.waterEnabled = true;
-      }
-      if (key === 'insectsLevel' && (value as number) > 0 && prev.insectsEnabled === false) {
-        newState.insectsEnabled = true;
-      }
-      if (key === 'insectsReverbSend' && (value as number) > 0 && prev.insectsEnabled === false) {
-        newState.insectsEnabled = true;
-      }
-      if (key === 'insects2Level' && (value as number) > 0 && prev.insects2Enabled === false) {
-        newState.insects2Enabled = true;
-      }
-      if (key === 'insectsReverbSend' && (value as number) > 0 && prev.insects2Enabled === false) {
-        newState.insects2Enabled = true;
+      if (((newState.insects2Level ?? 0) <= 0) && !insectsSharedWetActive) {
+        newState.insects2Enabled = false;
       }
 
       // When drum morph slider or preset selectors change, apply morphed values to sliders
@@ -2734,11 +3091,11 @@ const App: React.FC = () => {
       // Read target preset from latest state
       setState(prev => {
         const presetIdx = prev.waterPreset as number;
-        const ranges = PRESET_DUAL_RANGES[presetIdx] ?? {};
-        const modes = PRESET_SLIDER_MODES[presetIdx] ?? {};
+        const ranges = getWaterPresetDualRanges(presetIdx);
+        const modes = getWaterPresetSliderModes(presetIdx);
 
         // Water surf keys that presets can control
-        const waterSurfKeys = ['waterSurfDuration', 'waterSurfInterval', 'waterSurfFoam', 'waterSurfDepth'];
+        const waterSurfKeys = ['waterSurfDuration', 'waterSurfInterval', 'waterSurfFoam', 'waterSurfProximity', 'waterSurfDepth'];
 
         // Merge preset ranges into existing dual ranges (additive, not replacing)
         setSliderModes(prev => {
@@ -2897,7 +3254,7 @@ const App: React.FC = () => {
     } else if (mode === 'sampleHold') {
       // Per-trigger callbacks (lead expression/delay/morph, pad morph) have exact positions
       walkPos = triggerPositionMap[keyStr];
-      // Fallback to 10Hz engine-side S&H positions (reverb sends, ocean, water, insects, etc.)
+      // Fallback to engine/worklet S&H positions (exact Surf wave triggers, plus generic Earth/reverb fallback)
       if (walkPos === undefined && shPositions[keyStr] !== undefined) {
         walkPos = shPositions[keyStr];
       }
@@ -2976,8 +3333,20 @@ const App: React.FC = () => {
       if (key === 'granularPreset') {
         const presetData = getGranularPresetData(value as string);
         if (presetData) {
+          const delayBGranularLinked = newState.delayBGranularLinked ?? true;
           for (const k of Object.keys(presetData)) {
-            (newState as Record<string, unknown>)[k] = (presetData as Record<string, unknown>)[k];
+            if (!delayBGranularLinked && isGranularDelayBStateKey(k)) {
+              continue;
+            }
+            if (k in newState) {
+              (newState as Record<string, unknown>)[k] = (presetData as Record<string, unknown>)[k];
+            }
+          }
+          if (delayBGranularLinked) {
+            // Auto-set the Granular → Delay B send when loading a preset that uses delay
+            if (!('granularDelayBSend' in presetData)) {
+              newState.granularDelayBSend = presetData.granularDelayEnabled === true ? 1 : 0;
+            }
           }
         }
       }
@@ -3095,36 +3464,6 @@ const App: React.FC = () => {
         }
       }
 
-      // Apply sequencer configuration (sub-lanes, clock divs, step overrides)
-      const seqConfig = getGranularPresetSeqConfig(value as string);
-      if (seqConfig) {
-        granularStepOverridesRef.current = seqConfig.stepOverrides;
-        granularSubLaneStatesRef.current = seqConfig.subLaneStates;
-        granularClockDivsRef.current = seqConfig.clockDivs;
-        // Forward step overrides to audio engine immediately
-        audioEngine.setGranularStepOverrides({
-          triggerToggles: seqConfig.stepOverrides.triggerToggles,
-          expression: seqConfig.stepOverrides.expression,
-          expressionDirection: seqConfig.stepOverrides.expressionDirection,
-          probability: seqConfig.stepOverrides.probability,
-          ratchet: seqConfig.stepOverrides.ratchet,
-          trigCondition: seqConfig.stepOverrides.trigCondition,
-          slice: seqConfig.stepOverrides.slice,
-          sliceDirection: seqConfig.stepOverrides.sliceDirection,
-          pitch: seqConfig.stepOverrides.pitch,
-          pitchDirection: seqConfig.stepOverrides.pitchDirection,
-          reverse: seqConfig.stepOverrides.reverse,
-          reverseDirection: seqConfig.stepOverrides.reverseDirection,
-        });
-        audioEngine.setGranularEuclidClockDivs(seqConfig.clockDivs);
-      } else {
-        // Non-rhythmic preset: clear sub-lane overrides
-        granularStepOverridesRef.current = undefined;
-        granularSubLaneStatesRef.current = undefined;
-        granularClockDivsRef.current = undefined;
-      }
-      // Bump version to trigger hook re-initialization from initial* props
-      setGranularPresetVersion(v => v + 1);
     }
   }, []);
 
@@ -3139,12 +3478,14 @@ const App: React.FC = () => {
       // Auto-load String Waves if user hasn't loaded any preset or interacted with UI
       let stateToStart = state;
       if (!hasLoadedPresetRef.current && !hasUserInteractedRef.current) {
-        const defaultPreset = savedPresets.find(p => p.name === 'String Waves');
+        const defaultPreset = autoStartPresetRef.current
+          ?? (!CLOUD_ENABLED ? savedPresets.find(p => p.name === DEFAULT_AUTO_START_PRESET_NAME) ?? null : null);
         if (defaultPreset) {
-          console.log('[App] Auto-loading default preset: String Waves');
+          console.log(`[App] Auto-loading default preset: ${defaultPreset.name}${autoStartPresetRef.current ? ' (cloud)' : ' (bundled)'}`);
           hasLoadedPresetRef.current = true;
           const result = applyPreset(defaultPreset, { currentState: state, updateEngine: false, resetCofDrift: false, normalize: normalizePresetForWeb });
           setState(result.state);
+          if (autoStartPresetRef.current) setStatePresetName(defaultPreset.name);
           setMorphPresetA(result.preset);
           stateToStart = result.state;
           applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
@@ -3576,6 +3917,7 @@ const App: React.FC = () => {
       
       // Multiple files: create a zip archive
       console.log(`Creating zip archive with ${filesToZip.length} files...`);
+      const { default: JSZip } = await import('jszip');
       const zip = new JSZip();
       
       // Add all files to zip
@@ -3645,10 +3987,8 @@ const App: React.FC = () => {
       sliderModes: Object.keys(modesObj).length > 0 ? modesObj : undefined,
       drumEvolveConfigs: drumEvolveConfigsRef.current,
       synthEvolveConfigs: synthEvolveConfigsRef.current,
-      granularEvolveConfigs: granularEvolveConfigsRef.current,
       drumSubLaneStates: drumSubLaneStatesRef.current,
       synthSubLaneStates: synthSubLaneStatesRef.current,
-      granularSubLaneStates: granularSubLaneStatesRef.current,
     };
     
     const success = await savePresetToFile(preset);
@@ -3756,8 +4096,8 @@ const App: React.FC = () => {
       // a dualRange exists without an explicit sliderMode (same default used by
       // applyDualRangesFromPreset). Without this, a missing mode causes the ||
       // fallback chain to pick the OTHER preset's mode, defeating the midpoint snap.
-      const modeA: SliderMode | undefined = rawModesA[keyStr] || (rangeA ? 'walk' : undefined);
-      const modeB: SliderMode | undefined = rawModesB[keyStr] || (rangeB ? 'walk' : undefined);
+      const modeA = normalizeDualSliderMode(keyStr, rawModesA[keyStr] || (rangeA ? 'walk' : undefined));
+      const modeB = normalizeDualSliderMode(keyStr, rawModesB[keyStr] || (rangeB ? 'walk' : undefined));
       
       let morphedMin: number;
       let morphedMax: number;
@@ -3802,23 +4142,26 @@ const App: React.FC = () => {
     const parentChildMap: Record<string, (keyof SliderState)[]> = {
       granularEnabled: [
         'granularReverbSend', 'granularLevel', 'granularReverbLPF', 'granularOutputLPF',
+        'granularDelayASend', 'granularDelayBSend',
+        'delayAGranularSend', 'delayBGranularSend',
+        'granularPad1Send', 'granularPad2Send', 'granularLead1Send', 'granularLead2Send',
+        'granularDrumSend', 'granularWavesSend', 'granularWaterSend', 'granularInsectsSend',
       ],
       leadEnabled: [
         'lead1Attack', 'lead1Decay', 'lead1Sustain', 'lead1Release',
         'lead2Attack', 'lead2Decay', 'lead2Sustain', 'lead2Release',
-        'leadDelayTime', 'leadDelayFeedback',
-        'leadDelayMix', 'lead1Density',
+        'delayATime', 'delayAFeedback',
+        'delayAMix', 'lead1Density',
         'lead1Octave', 'lead1OctaveRange',
         'leadVibratoDepth', 'leadVibratoRate',
-        'leadGlide', 'lead1ReverbSend', 'lead2ReverbSend', 'leadDelayReverbSend'
+        'leadGlide', 'lead1ReverbSend', 'lead2ReverbSend', 'delayAReverbSend',
+        'lead1DelayASend', 'lead1DelayBSend', 'lead2DelayASend', 'lead2DelayBSend',
       ],
       synthEuclideanMasterEnabled: [
         'synthEuclideanTempo'
       ],
       oceanSampleEnabled: [
-        'oceanFilterCutoff', 'oceanFilterResonance',
-        'oceanDuration', 'oceanInterval',
-        'oceanFoam', 'oceanDepth'
+        'oceanFilterCutoff', 'oceanFilterResonance', 'oceanDelayASend', 'oceanDelayBSend', 'granularWavesSend'
       ]
     };
     
@@ -3837,9 +4180,16 @@ const App: React.FC = () => {
     
     // Interpolate all numeric values (except those that should snap)
     const numericKeys: (keyof SliderState)[] = [
-      'masterVolume', 'synthLevel', 'pad2Level', 'granularLevel', 'synthReverbSend', 'granularReverbSend',
+      'masterVolume', 'synthLevel', 'pad2Level', 'granularLevel', 'pad1ReverbSend', 'pad2ReverbSend', 'granularReverbSend',
+      'pad1DelayASend', 'pad1DelayBSend', 'pad2DelayASend', 'pad2DelayBSend', 'lead1DelayASend', 'lead1DelayBSend', 'lead2DelayASend', 'lead2DelayBSend',
+      'drumDelayASend', 'drumDelayBSend', 'delayAToBSend', 'delayAGranularSend', 'delayBGranularSend',
+      'granularDelayASend', 'granularDelayBSend',
+      'granularPad1Send', 'granularPad2Send', 'granularLead1Send', 'granularLead2Send',
+      'granularDrumSend', 'granularWavesSend', 'granularWaterSend', 'granularInsectsSend',
+      'drumReverbSend', 'oceanReverbSend', 'waterReverbSend', 'insectsReverbSend',
+      'oceanDelayASend', 'oceanDelayBSend', 'waterDelayASend', 'waterDelayBSend', 'insDelayASend', 'insDelayBSend',
       'granularReverbLPF', 'granularOutputLPF',
-      'lead1ReverbSend', 'lead2ReverbSend', 'leadDelayReverbSend', 'reverbLevel', 'randomness', 'tension',
+      'lead1ReverbSend', 'lead2ReverbSend', 'delayAReverbSend', 'reverbLevel', 'randomness', 'tension',
       'chordRate', 'voicingSpread', 'waveSpread', 'detune', 'synthAttack', 'synthDecay',
       'synthSustain', 'synthRelease', 'synthVoiceMask', 'synthOctave', 'hardness',
       'filterCutoffMin', 'filterCutoffMax', 'filterResonance', 'filterQ',
@@ -3851,14 +4201,12 @@ const App: React.FC = () => {
       'density', 'spray', 'jitter', 'pitchSpread', 'stereoSpread', 'feedback',
       'wetHPF', 'wetLPF', 'leadLevel', 'lead1Level', 'lead2Level', 'lead1Attack', 'lead1Decay', 'lead1Sustain', 'lead1Release',
       'lead2Attack', 'lead2Decay', 'lead2Sustain', 'lead2Release',
-      'leadDelayTime', 'leadDelayFeedback',
-      'leadDelayMix', 'lead1Density', 'lead1Octave',
+      'delayATime', 'delayAFeedback',
+      'delayAMix', 'lead1Density', 'lead1Octave',
       'lead1OctaveRange',
       'leadVibratoDepth', 'leadVibratoRate',
       'leadGlide', 'synthEuclideanTempo',
-      'oceanSampleLevel', 'oceanWaveSynthLevel', 'oceanFilterCutoff', 'oceanFilterResonance',
-      'oceanDuration', 'oceanInterval',
-      'oceanFoam', 'oceanDepth',
+      'oceanSampleLevel', 'oceanFilterCutoff', 'oceanFilterResonance',
       'cofDriftRate', 'cofDriftRange',
       // Drum morph positions - should interpolate when master morph changes
       'drumSubMorph', 'drumKickMorph', 'drumClickMorph',
@@ -3938,7 +4286,7 @@ const App: React.FC = () => {
     
     const engineToggleKeys: (keyof SliderState)[] = [
       'cofDriftEnabled', 'granularEnabled', 'leadEnabled', 'drumEnabled',
-      'oceanSampleEnabled', 'oceanWaveSynthEnabled'
+      'oceanSampleEnabled'
     ];
     for (const key of engineToggleKeys) {
       const onA = stateA[key] as boolean;
@@ -4325,7 +4673,13 @@ const App: React.FC = () => {
     
     // Reset CoF drift and clear manual overrides when reaching an endpoint
     if (atEndpoint) {
-      audioEngine.resetCofDrift();
+      // Only reset CoF drift if the target preset doesn't use drift,
+      // to avoid a sudden root note jump that retriggers synths.
+      const targetPreset = isAtEndpoint0(newPosition, true) ? effectiveA : effectiveB;
+      const targetState = { ...DEFAULT_STATE, ...targetPreset.state };
+      if (!targetState.cofDriftEnabled) {
+        audioEngine.resetCofDrift();
+      }
       morphManualOverridesRef.current = {};  // Clear temporary overrides
     }
     
@@ -4426,6 +4780,7 @@ const App: React.FC = () => {
 
   const handleMorphSlotAClear = useCallback(() => {
     setMorphPresetA(null);
+    setMorphSlotAName(undefined);
     setMorphPosition(0);
   }, []);
 
@@ -4467,16 +4822,72 @@ const App: React.FC = () => {
 
   const handleMorphSlotBClear = useCallback(() => {
     setMorphPresetB(null);
+    setMorphSlotBName(undefined);
     setMorphPosition(0);
   }, []);
 
-  // ── Cloud Preset Load Callback (used by GlobalPage) ──
-  const handleLoadCloudPreset = useCallback((presetState: SliderState, _name: string) => {
-    const result = applyPreset({ state: presetState, name: _name } as SavedPreset, { currentState: state, normalize: normalizePresetForWeb });
-    setState(result.state);
-    applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
-    restoreEvolveConfigs(result.preset);
-  }, [state, applyDualRangesFromPreset, restoreEvolveConfigs]);
+  // ── PresetEntry-based Morph Slot Load Handlers ──
+  // Convert L4 PresetEntry data → SavedPreset and feed into morph system
+  const presetEntryToSavedPreset = useCallback((entry: PresetEntry, data: Record<string, unknown>): SavedPreset => {
+    const version = entry.versions.find(v => v.v === entry.currentVersion) ?? entry.versions[entry.versions.length - 1];
+    return {
+      name: entry.name,
+      timestamp: new Date().toISOString(),
+      state: normalizePresetForWeb(data as unknown as SliderState),
+      dualRanges: version?.dualRanges,
+      sliderModes: version?.sliderModes,
+      drumEvolveConfigs: version?.drumEvolveConfigs,
+      synthEvolveConfigs: version?.synthEvolveConfigs,
+      drumSubLaneStates: version?.drumSubLaneStates,
+      synthSubLaneStates: version?.synthSubLaneStates,
+    };
+  }, []);
+
+  const handleLoadMorphA = useCallback((entry: PresetEntry, data: Record<string, unknown>) => {
+    const preset = presetEntryToSavedPreset(entry, data);
+    setMorphSlotAName(entry.name);
+    if (!morphPresetB) {
+      morphCapturedStateRef.current = { ...state };
+      const currentDualRanges: Record<string, { min: number; max: number }> = {};
+      Object.keys(sliderModes).forEach(key => {
+        const range = dualSliderRanges[key as keyof SliderState];
+        if (range) currentDualRanges[key] = { min: range.min, max: range.max };
+      });
+      morphCapturedDualRangesRef.current = currentDualRanges;
+      morphCapturedSliderModesRef.current = { ...sliderModes };
+    }
+    setMorphPresetA(preset);
+    const atEndpoint0 = isAtEndpoint0(morphPosition, true);
+    if (atEndpoint0 || !morphPresetB) {
+      const result = applyPreset(preset, { migrate: false, currentState: state, normalize: s => s });
+      setState(result.state);
+      applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
+      restoreEvolveConfigs(preset);
+    }
+  }, [presetEntryToSavedPreset, morphPresetB, morphPosition, state, sliderModes, dualSliderRanges, applyDualRangesFromPreset, restoreEvolveConfigs]);
+
+  const handleLoadMorphB = useCallback((entry: PresetEntry, data: Record<string, unknown>) => {
+    const preset = presetEntryToSavedPreset(entry, data);
+    setMorphSlotBName(entry.name);
+    if (!morphPresetA) {
+      morphCapturedStateRef.current = { ...state };
+      const currentDualRanges: Record<string, { min: number; max: number }> = {};
+      Object.keys(sliderModes).forEach(key => {
+        const range = dualSliderRanges[key as keyof SliderState];
+        if (range) currentDualRanges[key] = { min: range.min, max: range.max };
+      });
+      morphCapturedDualRangesRef.current = currentDualRanges;
+      morphCapturedSliderModesRef.current = { ...sliderModes };
+    }
+    setMorphPresetB(preset);
+    const atEndpoint1 = isAtEndpoint1(morphPosition, true);
+    if (atEndpoint1 || !morphPresetA) {
+      const result = applyPreset(preset, { migrate: false, currentState: state, normalize: s => s });
+      setState(result.state);
+      applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
+      restoreEvolveConfigs(preset);
+    }
+  }, [presetEntryToSavedPreset, morphPresetA, morphPosition, state, sliderModes, dualSliderRanges, applyDualRangesFromPreset, restoreEvolveConfigs]);
 
   // ── Record Stems Toggle Callback (used by GlobalPage) ──
   const handleRecordStemsToggle = useCallback((key: string) => {
@@ -4847,10 +5258,8 @@ const App: React.FC = () => {
             sliderModes: result.preset.sliderModes,
             drumEvolveConfigs: result.preset.drumEvolveConfigs,
             synthEvolveConfigs: result.preset.synthEvolveConfigs,
-            granularEvolveConfigs: result.preset.granularEvolveConfigs,
             drumSubLaneStates: result.preset.drumSubLaneStates,
             synthSubLaneStates: result.preset.synthSubLaneStates,
-            granularSubLaneStates: result.preset.granularSubLaneStates,
           };
           
           // Add to preset list for display
@@ -4948,6 +5357,18 @@ const App: React.FC = () => {
   
   // Journey mode: morph to a target preset over specified duration
   const journeyMorphAnimationRef = useRef<number | null>(null);
+  const journeyMorphTimeoutRef = useRef<number | null>(null);
+  const journeyMorphScheduleRef = useRef<() => void>(() => {});
+  const cancelJourneyMorphLoop = useCallback(() => {
+    if (journeyMorphAnimationRef.current !== null) {
+      cancelAnimationFrame(journeyMorphAnimationRef.current);
+      journeyMorphAnimationRef.current = null;
+    }
+    if (journeyMorphTimeoutRef.current !== null) {
+      clearTimeout(journeyMorphTimeoutRef.current);
+      journeyMorphTimeoutRef.current = null;
+    }
+  }, []);
   
   const handleJourneyMorphTo = useCallback((targetPresetName: string, durationPhrases: number) => {
     const preset = savedPresets.find(p => p.name === targetPresetName);
@@ -4960,9 +5381,7 @@ const App: React.FC = () => {
     console.log('[Journey] Morphing to:', targetPresetName, 'over', durationPhrases, 'phrases', 'direction:', direction);
     
     // Cancel any existing morph animation
-    if (journeyMorphAnimationRef.current) {
-      cancelAnimationFrame(journeyMorphAnimationRef.current);
-    }
+    cancelJourneyMorphLoop();
     
     // Calculate duration in milliseconds using phrase-based timing
     // 1 phrase = phraseLength seconds (default 16s)
@@ -5085,32 +5504,48 @@ const App: React.FC = () => {
       }
       
       if (progress < 1) {
-        journeyMorphAnimationRef.current = requestAnimationFrame(animateMorph);
+        journeyMorphScheduleRef.current();
       } else {
         // Morph complete - alternate direction for next morph
         // console.log('[Journey] Morph complete at position:', endPosition);
         journeyMorphDirectionRef.current = direction === 'toB' ? 'toA' : 'toB';
-        journeyMorphAnimationRef.current = null;
+        cancelJourneyMorphLoop();
       }
     };
-    
-    journeyMorphAnimationRef.current = requestAnimationFrame(animateMorph);
-  }, [savedPresets, lerpPresets, engineState.cofCurrentStep, audioEngine]);
+
+    const scheduleNextTick = () => {
+      if (document.visibilityState === 'visible') {
+        journeyMorphAnimationRef.current = requestAnimationFrame((frameTime) => {
+          journeyMorphAnimationRef.current = null;
+          animateMorph(frameTime);
+        });
+        return;
+      }
+      if (!engineState.isRunning) {
+        cancelJourneyMorphLoop();
+        return;
+      }
+      journeyMorphTimeoutRef.current = window.setTimeout(() => {
+        journeyMorphTimeoutRef.current = null;
+        animateMorph(performance.now());
+      }, 50);
+    };
+
+    journeyMorphScheduleRef.current = scheduleNextTick;
+    scheduleNextTick();
+  }, [savedPresets, lerpPresets, engineState.cofCurrentStep, engineState.isRunning, audioEngine, cancelJourneyMorphLoop]);
   
   // Journey mode: handle journey end
   const handleJourneyEnd = useCallback(() => {
     // Cancel any ongoing morph animation
-    if (journeyMorphAnimationRef.current) {
-      cancelAnimationFrame(journeyMorphAnimationRef.current);
-      journeyMorphAnimationRef.current = null;
-    }
+    cancelJourneyMorphLoop();
     
     // Unlock sliders
     setIsJourneyPlaying(false);
     
     // Keep the last preset playing - don't stop audio
     // User can manually stop if desired
-  }, []);
+  }, [cancelJourneyMorphLoop]);
   
   // Update refs for journey hook callbacks
   useEffect(() => {
@@ -5120,25 +5555,32 @@ const App: React.FC = () => {
   
   // Cleanup journey animation on unmount
   useEffect(() => {
-    return () => {
-      if (journeyMorphAnimationRef.current) {
-        cancelAnimationFrame(journeyMorphAnimationRef.current);
-      }
+    const handleVisibilityChange = () => {
+      if (journeyMorphAnimationRef.current === null && journeyMorphTimeoutRef.current === null) return;
+      cancelJourneyMorphLoop();
+      journeyMorphScheduleRef.current();
     };
-  }, []);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      cancelJourneyMorphLoop();
+    };
+  }, [cancelJourneyMorphLoop]);
 
   // Render journey mode UI
   if (uiMode === 'journey') {
     return (
-      <JourneyModeView
-        presets={savedPresets}
-        journey={journey}
-        onJourneyEnd={handleJourneyEnd}
-        onStopAudio={handleStop}
-        onShowSnowflake={() => setUiMode('snowflake')}
-        onShowAdvanced={() => setUiMode('advanced')}
-        isPlaying={engineState.isRunning}
-      />
+      <React.Suspense fallback={LAZY_PAGE_FALLBACK}>
+        <JourneyModeView
+          presets={savedPresets}
+          journey={journey}
+          onJourneyEnd={handleJourneyEnd}
+          onStopAudio={handleStop}
+          onShowSnowflake={() => setUiMode('snowflake')}
+          onShowAdvanced={() => setUiMode('advanced')}
+          isPlaying={engineState.isRunning}
+        />
+      </React.Suspense>
     );
   }
 
@@ -5247,10 +5689,11 @@ const App: React.FC = () => {
 
   // Render advanced UI
   return (
-    <div className="app-container" style={{ ...styles.container, ...m?.container }}>
-      <CpuOverlay />
-      {/* Controls - centered */}
-      <div className="app-controls" style={{ ...styles.controls, paddingTop: '12px', ...m?.controls }}>
+    <SliderHelpProvider activePage={activeTab}>
+      <div className="app-container" style={{ ...styles.container, ...m?.container }}>
+        <CpuOverlay />
+        {/* Controls - centered */}
+        <div className="app-controls" style={{ ...styles.controls, paddingTop: '12px', ...m?.controls }}>
         {!(engineState.isRunning || isJourneyPlaying) ? (
           <button
             style={{ ...styles.iconButton, ...styles.startButton, ...m?.iconButton }}
@@ -5383,7 +5826,8 @@ const App: React.FC = () => {
 
       {/* Tab Bar */}
       <div className="app-tab-bar" style={{ ...styles.tabBar, ...m?.tabBar }}>
-        <button
+        <HelpButton
+          helpKey="tabGlobal"
           style={{
             ...styles.tab,
             ...(activeTab === 'global' ? styles.tabActive : {}),
@@ -5393,8 +5837,9 @@ const App: React.FC = () => {
         >
           <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>{TEXT_SYMBOLS.target}</span>
           <span>Global</span>
-        </button>
-        <button
+        </HelpButton>
+        <HelpButton
+          helpKey="tabSynth"
           style={{
             ...styles.tab,
             ...(activeTab === 'synth' ? styles.tabActive : {}),
@@ -5404,8 +5849,9 @@ const App: React.FC = () => {
         >
           <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>∿</span>
           <span>Synth</span>
-        </button>
-        <button
+        </HelpButton>
+        <HelpButton
+          helpKey="tabDrums"
           style={{
             ...styles.tab,
             ...(activeTab === 'drums' ? styles.tabActive : {}),
@@ -5415,8 +5861,9 @@ const App: React.FC = () => {
         >
           <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>⋮⋮</span>
           <span>Drums</span>
-        </button>
-        <button
+        </HelpButton>
+        <HelpButton
+          helpKey="tabEarth"
           style={{
             ...styles.tab,
             ...(activeTab === 'earth' ? styles.tabActive : {}),
@@ -5426,8 +5873,9 @@ const App: React.FC = () => {
         >
           <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>{"\u2248"}</span>
           <span>Earth</span>
-        </button>
-        <button
+        </HelpButton>
+        <HelpButton
+          helpKey="tabGranular"
           style={{
             ...styles.tab,
             ...(activeTab === 'granular' ? styles.tabActive : {}),
@@ -5437,8 +5885,21 @@ const App: React.FC = () => {
         >
           <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>⊞</span>
           <span>Granular</span>
-        </button>
-        <button
+        </HelpButton>
+        <HelpButton
+          helpKey="tabDelay"
+          style={{
+            ...styles.tab,
+            ...(activeTab === 'delay' ? styles.tabActive : {}),
+            ...m?.tab,
+          }}
+          onClick={() => setActiveTab('delay')}
+        >
+          <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>↭</span>
+          <span>Delay</span>
+        </HelpButton>
+        <HelpButton
+          helpKey="tabReverb"
           style={{
             ...styles.tab,
             ...(activeTab === 'reverb' ? styles.tabActive : {}),
@@ -5448,16 +5909,28 @@ const App: React.FC = () => {
         >
           <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>◈</span>
           <span>Reverb</span>
-        </button>
+        </HelpButton>
+        <HelpButton
+          helpKey="tabRouting"
+          style={{
+            ...styles.tab,
+            ...(activeTab === 'routing' ? styles.tabActive : {}),
+            ...m?.tab,
+          }}
+          onClick={() => setActiveTab('routing')}
+        >
+          <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>▦</span>
+          <span>Routing</span>
+        </HelpButton>
       </div>
 
       {/* Parameter Grid */}
       <div className="app-grid" style={{ ...styles.grid, ...m?.grid }}>
+        <React.Suspense fallback={LAZY_PAGE_FALLBACK}>
         {/* === GLOBAL TAB === */}
         {activeTab === 'global' && (
           <GlobalPage
             state={state}
-            isMobile={isMobile}
             expandedPanels={expandedPanels}
             togglePanel={togglePanel}
             onParamChange={handleSliderChange}
@@ -5466,7 +5939,6 @@ const App: React.FC = () => {
             SliderComponent={Slider as unknown as React.ComponentType<Record<string, unknown>>}
             SelectComponent={Select as unknown as React.ComponentType<Record<string, unknown>>}
             CircleOfFifthsComponent={CircleOfFifths as unknown as React.ComponentType<Record<string, unknown>>}
-            CloudPresetsComponent={CloudPresets as unknown as React.ComponentType<Record<string, unknown>>}
             engineState={engineState}
             onResetCofDrift={() => audioEngine.resetCofDrift()}
             morphCoFViz={morphCoFViz}
@@ -5477,16 +5949,17 @@ const App: React.FC = () => {
             morphPlayPhrases={morphPlayPhrases}
             morphTransitionPhrases={morphTransitionPhrases}
             morphCountdown={morphCountdown}
-            savedPresets={savedPresets}
-            onSelectMorphA={handleMorphSlotASelect}
+            onLoadMorphA={handleLoadMorphA}
+            morphSlotAName={morphSlotAName}
             onClearMorphA={handleMorphSlotAClear}
-            onSelectMorphB={handleMorphSlotBSelect}
+            onLoadMorphB={handleLoadMorphB}
+            morphSlotBName={morphSlotBName}
             onClearMorphB={handleMorphSlotBClear}
             onMorphPositionChange={handleMorphPositionChange}
             onMorphModeChange={setMorphMode}
             onMorphPlayPhrasesChange={setMorphPlayPhrases}
             onMorphTransitionPhrasesChange={setMorphTransitionPhrases}
-            onLoadCloudPreset={handleLoadCloudPreset}
+            statePresetName={statePresetName}
             isRecording={isRecording}
             recordFormats={recordFormats}
             recordStems={recordStems}
@@ -5500,6 +5973,8 @@ const App: React.FC = () => {
             onTimerEnabledChange={setPlaybackTimerEnabled}
             onTimerMinutesChange={setPlaybackTimerMinutes}
             onTimerRemainingChange={setPlaybackTimerRemaining}
+            sliderModes={sliderModes}
+            dualSliderRanges={dualSliderRanges as Record<string, { min: number; max: number }>}
           />
         )}
 
@@ -5511,6 +5986,7 @@ const App: React.FC = () => {
             expandedPanels={expandedPanels}
             onParamChange={handleSliderChange}
             onSelectChange={handleSelectChange}
+            onStateChange={setState}
             togglePanel={togglePanel}
             sliderProps={sliderProps}
             SliderComponent={Slider as unknown as React.ComponentType<Record<string, unknown>>}
@@ -5575,6 +6051,7 @@ const App: React.FC = () => {
             isMobile={isMobile}
             onParamChange={handleSliderChange}
             onSelectChange={handleSelectChange}
+            onStateChange={setState}
             sliderProps={sliderProps}
             SliderComponent={Slider as unknown as React.ComponentType<Record<string, unknown>>}
             SelectComponent={Select as unknown as React.ComponentType<Record<string, unknown>>}
@@ -5589,6 +6066,7 @@ const App: React.FC = () => {
             expandedPanels={expandedPanels}
             onParamChange={handleSliderChange}
             onSelectChange={handleSelectChange}
+            onStateChange={setState}
             togglePanel={togglePanel}
             sliderProps={sliderProps}
             getPresetNames={getPresetNames}
@@ -5633,56 +6111,41 @@ const App: React.FC = () => {
           <GranularPage
             state={state}
             isMobile={isMobile}
+            isRunning={engineState.isRunning}
             expandedPanels={expandedPanels}
             togglePanel={togglePanel}
             onParamChange={handleSliderChange}
             onSelectChange={handleSelectChange}
+            onStateChange={setState}
             sliderProps={sliderProps}
             SliderComponent={Slider as unknown as React.ComponentType<Record<string, unknown>>}
             writeHeadPosition={granularWriteHead}
             voicePositions={granularVoicePositions}
-            triggerOverrides={granularTriggerOverrides}
-            playheads={granularSeqPlayheads}
-            hitCounts={granularSeqHitCounts}
-            initialViewMode={granularViewModeRef.current}
-            onViewModeChange={(mode) => { granularViewModeRef.current = mode; }}
-            initialStepOverrides={granularStepOverridesRef.current}
-            initialSubLaneStates={granularSubLaneStatesRef.current}
-            initialClockDivs={granularClockDivsRef.current}
-            presetVersion={granularPresetVersion}
-            onSubLaneStatesChange={(states) => {
-              granularSubLaneStatesRef.current = states;
-              audioEngine.setGranularSubLaneEnabled(states.map(s => {
-                const out: Record<string, boolean> = {};
-                for (const [k, v] of Object.entries(s)) out[k] = v.enabled;
-                return out;
-              }));
-            }}
-            onStepOverridesChange={(overrides) => {
-              granularStepOverridesRef.current = overrides;
-              audioEngine.setGranularStepOverrides({
-                triggerToggles: overrides.triggerToggles,
-                expression: overrides.expression,
-                expressionDirection: overrides.expressionDirection,
-                probability: overrides.probability,
-                ratchet: overrides.ratchet,
-                trigCondition: overrides.trigCondition,
-                slice: overrides.slice,
-                sliceDirection: overrides.sliceDirection,
-                pitch: overrides.pitch,
-                pitchDirection: overrides.pitchDirection,
-                reverse: overrides.reverse,
-                reverseDirection: overrides.reverseDirection,
-              });
-            }}
-            onClockDivsChange={(divs) => audioEngine.setGranularEuclidClockDivs(divs)}
-            onSwingsChange={(swings) => audioEngine.setGranularEuclidSwings(swings)}
-            evolveFlashing={granularEuclidEvolveFlashing}
-            onEvolveConfigsChange={(configs) => { granularEvolveConfigsRef.current = configs; audioEngine.setGranularEuclidEvolveConfigs(configs); }}
-            initialEvolveConfigs={granularEvolveConfigsRef.current}
-            resetEvolveHome={(laneIdx) => audioEngine.resetGranularEuclidLaneHome(laneIdx)}
-            diceLane={(laneIdx, intensity) => audioEngine.diceGranularEuclidLane(laneIdx, intensity)}
-            evolvedOverrides={granularEvolvedOverrides}
+            activeGrainCount={granularActiveGrains}
+            bufferWaveform={granularBufferWaveform}
+          />
+        )}
+
+        {/* === DELAY TAB === */}
+        {activeTab === 'delay' && (
+          <DelayPage
+            state={state}
+            isMobile={isMobile}
+            onParamChange={handleSliderChange}
+            onSelectChange={handleSelectChange}
+            onStateChange={setState}
+            sliderProps={sliderProps}
+            SliderComponent={Slider as unknown as React.ComponentType<Record<string, unknown>>}
+          />
+        )}
+
+        {/* === ROUTING TAB === */}
+        {activeTab === 'routing' && (
+          <RoutingPage
+            state={state}
+            isMobile={isMobile}
+            onParamChange={handleSliderChange}
+            sliderProps={sliderProps}
           />
         )}
 
@@ -5692,10 +6155,12 @@ const App: React.FC = () => {
             state={state}
             onParamChange={handleSliderChange}
             onSelectChange={handleSelectChange}
+            onStateChange={setState}
             sliderProps={sliderProps}
             isRunning={engineState.isRunning}
           />
         )}
+        </React.Suspense>
       </div>
 
 
@@ -5985,7 +6450,8 @@ const App: React.FC = () => {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </SliderHelpProvider>
   );
 };
 

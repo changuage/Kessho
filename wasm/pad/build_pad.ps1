@@ -8,7 +8,7 @@ $INC = "c:\Users\chpa9007\Downloads\generativemusic\wasm\common"
 
 $EXPORTS = @(
   '_pad_init','_pad_destroy','_pad_get_output_ptr','_pad_get_reverb_send_ptr',
-  '_pad_get_prefader_ptr','_pad_process_block','_pad_note_on','_pad_note_off',
+  '_pad_get_prefader_pad1_ptr','_pad_get_prefader_pad2_ptr','_pad_process_block','_pad_note_on','_pad_note_off',
   '_pad_set_voice_pad','_pad_set_osc_a_wave','_pad_set_osc_a_octave',
   '_pad_set_osc_a_detune','_pad_set_osc_a_level','_pad_set_osc_b_wave',
   '_pad_set_osc_b_octave','_pad_set_osc_b_detune','_pad_set_osc_b_level',

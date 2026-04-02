@@ -39,7 +39,7 @@ Kessho (結晶, Japanese for "crystal") is a **generative ambient music applicat
 
 ### Key Features:
 - **Deterministic Generation**: Music is generated from a seed, so the same settings at the same time produce the same output
-- **Multiple Sound Layers**: Pad synth, granular processing, dual 4op FM lead synths, drum synth, and nature soundscapes (water, ocean waves, insects)
+- **Multiple Sound Layers**: Pad synth, granular processing, dual 4op FM lead synths, drum synth, and nature soundscapes (water, waves sample, insects)
 - **Phrase-Based Evolution**: Harmony changes at 16-second phrase boundaries
 - **Circle of Fifths Drift**: Automatic key modulation for harmonic journeys
 - **Deep Customization**: Over 80 parameters to shape your soundscape
@@ -97,9 +97,8 @@ Understanding how sound flows through Kessho helps you shape your mix effectivel
                                              │  R: 1/4     │   │         │
                                              └─────────────┘   │         │
 ┌──────────────┐                                               │         │
-│ OCEAN WAVES  │──→ [Ocean Filter] ────────────────────────────│         │
-│ (Sample +    │                                               │         │
-│  Synthesis)  │                                               └─────────┘
+│ WAVES SAMPLE │──→ [Waves Filter] ────────────────────────────│         │
+│  (Ghetary)   │                                               └─────────┘
 └──────────────┘
 ```
 
@@ -108,7 +107,7 @@ Understanding how sound flows through Kessho helps you shape your mix effectivel
 2. **Granular** → Processes pad audio, filtered (HPF/LPF), splits to direct and reverb
 3. **Lead Synth** → Lead 1 and Lead 2 each have independent dry level and reverb send (pre-fader), plus shared ping-pong delay
 4. **Drum Synth** → 6 voices with individual levels, per-voice delay sends to stereo ping-pong delay
-5. **Earth Sounds** → Water, ocean waves, and insect engines each route through level + reverb send to master
+5. **Earth Sounds** → Water, waves sample, and insect engines each route through level + reverb send to master
 6. **Reverb** → All reverb sends mix together and output to master
 7. **Master** → All signals sum, through limiter, to speakers
 
@@ -475,7 +474,7 @@ Each of the 6 voices has its own **Delay Send** slider (0-100%). This allows pre
 
 ### Earth (Nature Sounds)
 
-The Earth page provides three independent nature sound engines: **Water**, **Ocean Waves**, and **Insects**.
+The Earth page provides three independent nature sound engines: **Water**, **Waves**, and **Insects**.
 
 #### Water Engine
 
@@ -525,23 +524,17 @@ Physically-modeled water sounds built from 6 mixable layers. Choose from 8 prese
 | **Morph** | 0-100% | 0% = stream character, 100% = wind character |
 | **Speed** | 0-100% | LFO modulation speed |
 
-#### Ocean Waves
+#### Waves
 
-Ambient ocean wave sounds using sample playback and/or wave synthesis.
+Ambient ocean wave sounds using the Ghetary field recording, shaped by a shared filter. If you want synthesized surf or crashing-wave motion, use the Water engine's Surf layer.
 
 | Control | Options/Range | Description |
 |---------|---------------|-------------|
-| **Sample Enable** | ON/OFF | Toggle real ocean recording |
-| **Sample Level** | 0-100% | Ocean sample volume |
-| **Synth Enable** | ON/OFF | Toggle synthesized waves |
-| **Synth Level** | 0-100% | Synth waves volume |
+| **Enable** | ON/OFF | Toggle the Ghetary waves recording |
+| **Level** | 0-100% | Waves sample volume |
 | **Filter Type** | Lowpass / Bandpass / Highpass / Notch | Filter mode |
 | **Filter Cutoff** | 40-12000 Hz | Filter frequency |
 | **Filter Resonance** | 0-100% | Filter peak |
-| **Duration** | 2-15 sec | Wave length range |
-| **Interval** | 3-20 sec | Time between waves |
-| **Foam** | 0-100% | White noise (foam) intensity |
-| **Depth** | 0-100% | Low rumble intensity |
 | **Reverb Send** | 0-100% | How much feeds into reverb |
 
 #### Insects
@@ -1064,7 +1057,7 @@ Sets the maximum distance from home before bouncing back:
 - Slow chord rate (48-64 sec)
 - High reverb decay and size
 - Disable lead or set very low density
-- Enable ocean sample at low level
+- Enable Waves at low level
 
 ### Ethereal / Floating
 - Lydian scale in manual mode
@@ -1087,7 +1080,7 @@ Sets the maximum distance from home before bouncing back:
 - Faster filter modulation
 
 ### Ocean / Nature Meditation
-- Enable ocean sample and/or Water engine with Ocean Surf preset
+- Enable Waves and/or the Water engine with Ocean Surf preset
 - Low pad synth level
 - Very slow chord rate
 - Minimal or no lead

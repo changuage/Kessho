@@ -3700,10 +3700,38 @@ export const DRUM_VOICE_PRESETS: Record<DrumVoiceType, DrumVoicePreset[]> = {
   membrane: MEMBRANE_PRESETS,
 };
 
+const USER_DRUM_VOICE_PRESETS: Record<DrumVoiceType, Map<string, DrumVoicePreset>> = {
+  sub: new Map(),
+  kick: new Map(),
+  click: new Map(),
+  beepHi: new Map(),
+  beepLo: new Map(),
+  noise: new Map(),
+  membrane: new Map(),
+};
+
+export function getFactoryPresetNames(voice: DrumVoiceType): string[] {
+  return DRUM_VOICE_PRESETS[voice].map(p => p.name);
+}
+
+export function setUserPresets(voice: DrumVoiceType, presets: DrumVoicePreset[]): void {
+  const next = new Map<string, DrumVoicePreset>();
+  for (const preset of presets) {
+    next.set(preset.name, preset);
+  }
+  USER_DRUM_VOICE_PRESETS[voice] = next;
+}
+
+export function upsertUserPreset(voice: DrumVoiceType, preset: DrumVoicePreset): void {
+  USER_DRUM_VOICE_PRESETS[voice].set(preset.name, preset);
+}
+
 /**
  * Get a preset by name and voice type
  */
 export function getPreset(voice: DrumVoiceType, name: string): DrumVoicePreset | undefined {
+  const userPreset = USER_DRUM_VOICE_PRESETS[voice].get(name);
+  if (userPreset) return userPreset;
   return DRUM_VOICE_PRESETS[voice].find(p => p.name === name);
 }
 
@@ -3711,7 +3739,11 @@ export function getPreset(voice: DrumVoiceType, name: string): DrumVoicePreset |
  * Get all preset names for a voice type
  */
 export function getPresetNames(voice: DrumVoiceType): string[] {
-  return DRUM_VOICE_PRESETS[voice].map(p => p.name);
+  const names = new Set(getFactoryPresetNames(voice));
+  for (const name of USER_DRUM_VOICE_PRESETS[voice].keys()) {
+    names.add(name);
+  }
+  return [...names];
 }
 
 /**

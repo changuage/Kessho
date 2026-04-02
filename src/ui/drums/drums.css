@@ -153,10 +153,35 @@
 .drum-root .vc-morph-row {
   display: flex; gap: 4px; align-items: center;
 }
+.drum-root .morph-slot-wrap {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
 .drum-root .vc-morph-row select {
   flex: 1; font-size: 0.75rem; background: var(--bg-input); color: #ccc;
   border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 1px 3px; min-width: 0;
   transition: border-color 0.15s;
+}
+.drum-root .morph-slot-save {
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.05);
+  color: #aebacc;
+  font-size: 0.58rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.drum-root .morph-slot-save:hover {
+  border-color: color-mix(in srgb, var(--vc, var(--accent-primary)) 45%, rgba(255,255,255,0.12));
+  color: #edf7ff;
+  background: color-mix(in srgb, var(--vc, var(--accent-primary)) 18%, rgba(255,255,255,0.05));
 }
 .drum-root .vc-morph-row select:hover { border-color: rgba(255,255,255,0.35); }
 .drum-root .vc-morph-row select:focus { border-color: var(--vc, var(--accent-primary)); outline: none; }

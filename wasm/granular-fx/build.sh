@@ -18,6 +18,22 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SRC="$SCRIPT_DIR/kessho_granular.cpp"
 OUT="$SCRIPT_DIR/kessho_granular.wasm"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+LOCAL_EMSDK="$REPO_ROOT/emsdk"
+LOCAL_EMCC="$LOCAL_EMSDK/upstream/emscripten/emcc.py"
+LOCAL_PY312="$REPO_ROOT/.venv312/bin/python"
+
+if [[ -f "$LOCAL_EMCC" ]]; then
+    EMCC_CMD=()
+    if [[ -x "$LOCAL_PY312" ]]; then
+        EMCC_CMD=("$LOCAL_PY312" "$LOCAL_EMCC")
+    else
+        EMCC_CMD=("python3" "$LOCAL_EMCC")
+    fi
+    export PATH="$LOCAL_EMSDK/upstream/emscripten:$LOCAL_EMSDK/upstream/bin:$LOCAL_EMSDK/node/22.16.0_64bit/bin:$PATH"
+else
+    EMCC_CMD=("emcc")
+fi
 
 # Exported functions (must match kessho_granular.h extern "C" API)
 EXPORTS="[
@@ -32,6 +48,9 @@ EXPORTS="[
   '_granular_set_feedback',
   '_granular_set_scale',
   '_granular_set_buffer_size',
+  '_granular_set_grain_shape',
+  '_granular_set_bus_diffusion',
+  '_granular_set_timing_randomness',
   '_granular_set_voice_mode',
   '_granular_set_voice_position',
   '_granular_set_voice_grain',
@@ -45,13 +64,16 @@ EXPORTS="[
   '_granular_get_write_head',
   '_granular_get_voice_positions',
   '_granular_get_active_grain_count',
+  '_granular_get_buffer_ptr_l',
+  '_granular_get_buffer_size',
+  '_granular_set_chord_bias',
   '_malloc',
   '_free'
 ]"
 
 if [[ "${1:-}" == "debug" ]]; then
     echo "🔧 Building DEBUG..."
-    emcc "$SRC" \
+    "${EMCC_CMD[@]}" "$SRC" \
         -o "$OUT" \
         -std=c++17 \
         -O0 \
@@ -66,7 +88,7 @@ if [[ "${1:-}" == "debug" ]]; then
         -s "EXPORTED_FUNCTIONS=$EXPORTS"
 else
     echo "🚀 Building RELEASE..."
-    emcc "$SRC" \
+    "${EMCC_CMD[@]}" "$SRC" \
         -o "$OUT" \
         -std=c++17 \
         -O3 \

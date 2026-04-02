@@ -1,0 +1,1218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>4-Op FM Modal Synthesis - Instrument Presets</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #0f3460 100%);
+      color: #eee;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    
+    h1 {
+      text-align: center;
+      margin-bottom: 8px;
+      color: #f59e0b;
+      text-shadow: 0 0 20px rgba(245, 158, 11, 0.3);
+    }
+    
+    .subtitle {
+      text-align: center;
+      color: #888;
+      margin-bottom: 20px;
+      font-size: 0.9rem;
+    }
+    
+    .badge {
+      display: inline-block;
+      background: #f59e0b;
+      color: #1a1a2e;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 0.7rem;
+      font-weight: bold;
+      margin-left: 5px;
+    }
+    
+    .container { max-width: 1100px; margin: 0 auto; }
+    
+    .section {
+      background: rgba(22, 33, 62, 0.9);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+      border: 1px solid #2a3a5e;
+    }
+    
+    .section h2 {
+      margin-bottom: 15px;
+      color: #f59e0b;
+      font-size: 1rem;
+    }
+    
+    .status {
+      padding: 10px 15px;
+      border-radius: 8px;
+      margin-bottom: 15px;
+      font-size: 0.9rem;
+    }
+    
+    .status.ready { background: #1a5a3a; }
+    
+    /* Presets */
+    .presets {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 15px;
+    }
+    
+    .preset-btn {
+      padding: 8px 14px;
+      border: 1px solid #3a4a7e;
+      border-radius: 6px;
+      background: transparent;
+      color: #ddd;
+      cursor: pointer;
+      font-size: 0.8rem;
+      transition: all 0.2s;
+    }
+    
+    .preset-btn:hover { border-color: #f59e0b; background: rgba(245, 158, 11, 0.1); }
+    .preset-btn.active { border-color: #f59e0b; background: rgba(245, 158, 11, 0.25); color: #fff; }
+    
+    /* Controls layout */
+    .controls-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 15px;
+    }
+    
+    .control-panel {
+      background: rgba(0,0,0,0.2);
+      border-radius: 8px;
+      padding: 12px;
+    }
+    
+    .control-panel h3 {
+      color: #f59e0b;
+      font-size: 0.85rem;
+      margin-bottom: 10px;
+      padding-bottom: 5px;
+      border-bottom: 1px solid rgba(245,158,11,0.3);
+    }
+    
+    .controls {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    
+    .control-group label {
+      font-size: 0.75rem;
+      color: #aaa;
+      display: flex;
+      justify-content: space-between;
+    }
+    
+    .control-group label span {
+      color: #f59e0b;
+      font-weight: bold;
+    }
+    
+    input[type="range"] {
+      width: 100%;
+      height: 6px;
+      border-radius: 3px;
+      background: #2a3a5e;
+      outline: none;
+      -webkit-appearance: none;
+      appearance: none;
+    }
+    
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #f59e0b;
+      cursor: pointer;
+    }
+    
+    /* Keyboard */
+    .keyboard {
+      display: flex;
+      justify-content: center;
+      gap: 2px;
+      padding: 15px;
+      background: rgba(0,0,0,0.3);
+      border-radius: 8px;
+      margin-top: 15px;
+    }
+    
+    .key {
+      width: 40px;
+      height: 120px;
+      border-radius: 0 0 4px 4px;
+      cursor: pointer;
+      transition: all 0.1s;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      padding-bottom: 8px;
+      font-size: 0.7rem;
+    }
+    
+    .key.white {
+      background: linear-gradient(180deg, #f0f0f0 0%, #d0d0d0 100%);
+      color: #333;
+      border: 1px solid #999;
+    }
+    
+    .key.black {
+      background: linear-gradient(180deg, #333 0%, #111 100%);
+      color: #888;
+      height: 75px;
+      width: 28px;
+      margin: 0 -14px;
+      z-index: 1;
+      border: 1px solid #000;
+    }
+    
+    .key:hover { filter: brightness(1.1); }
+    .key:active, .key.active { 
+      filter: brightness(0.85); 
+      transform: translateY(2px);
+    }
+    
+    /* Spectrum */
+    .spectrum-container {
+      background: rgba(0,0,0,0.4);
+      border-radius: 8px;
+      padding: 10px;
+      margin-top: 15px;
+    }
+    
+    #spectrum {
+      width: 100%;
+      height: 100px;
+      background: #0a0a15;
+      border-radius: 4px;
+    }
+    
+    /* Octave controls */
+    .octave-controls {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 15px;
+      margin-top: 10px;
+    }
+    
+    .octave-btn {
+      padding: 8px 20px;
+      border: 1px solid #3a4a7e;
+      border-radius: 6px;
+      background: transparent;
+      color: #ddd;
+      cursor: pointer;
+      font-size: 1rem;
+    }
+    
+    .octave-btn:hover { border-color: #f59e0b; }
+    
+    .octave-display {
+      font-size: 1.1rem;
+      color: #f59e0b;
+      min-width: 80px;
+      text-align: center;
+    }
+    
+    /* Compare link */
+    .compare-link {
+      text-align: center;
+      margin-top: 15px;
+    }
+    
+    .compare-link a {
+      color: #00d4aa;
+      text-decoration: none;
+      font-size: 0.9rem;
+    }
+    
+    .compare-link a:hover {
+      text-decoration: underline;
+    }
+    
+    /* Architecture diagram */
+    .architecture {
+      background: rgba(0,0,0,0.3);
+      border-radius: 8px;
+      padding: 15px;
+      font-family: monospace;
+      font-size: 0.75rem;
+      color: #888;
+      line-height: 1.4;
+      overflow-x: auto;
+    }
+    
+    .architecture .highlight { color: #f59e0b; }
+    .architecture .dim { color: #555; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎹 4-Operator FM Synthesis <span class="badge">COMPARISON</span></h1>
+    <p class="subtitle">Same instruments as Faust Modal page, implemented with FM synthesis</p>
+    
+    <div class="compare-link">
+      <a href="ARCHIVE/plaits-modal-demo.html">← Faust Modal</a>
+      <a href="ARCHIVE/fm-modal-6op-demo.html">6-Op FM + Transients →</a>
+    </div>
+    
+    <!-- Architecture -->
+    <div class="section">
+      <h2>🔧 FM Architecture</h2>
+      <div class="architecture">
+<span class="highlight">Carrier 1</span> ←── Mod1 (ratio1, index1, decay1)
+    ↓      ←── Mod2 (ratio2, index2, decay2)
+    ↓      ←── Mod3 (ratio3, index3, decay3) <span class="dim">[high timbre only]</span>
+    ↓      ←── Mod4 (ratio4, index4, decay4) <span class="dim">[subharmonic warmth]</span>
+    ↓
+<span class="highlight">Carrier 2</span> ←── Same modulators, detuned for <span class="highlight">beating</span>
+    ↓
+  Mix → Envelope → Filter → Output
+
+<span class="dim">Key insight: Modulators have their own decay envelopes</span>
+<span class="dim">This creates "bright attack → mellow sustain" characteristic of real instruments</span>
+      </div>
+    </div>
+    
+    <!-- Presets -->
+    <div class="section">
+      <h2>🎵 Instrument Presets</h2>
+      <div class="presets" id="presets"></div>
+      <div class="status ready" id="status">Ready - Click keys or use computer keyboard (A-L, W-P)</div>
+    </div>
+    
+    <!-- Controls -->
+    <div class="section">
+      <h2>🎛️ Parameters</h2>
+      <div class="controls-grid">
+        
+        <!-- Carriers -->
+        <div class="control-panel">
+          <h3>🎵 Carriers</h3>
+          <div class="controls">
+            <div class="control-group">
+              <label>Beat Detune <span id="beat-detune-val">2.0¢</span></label>
+              <input type="range" id="beat-detune" min="0" max="30" step="0.5" value="2">
+            </div>
+            <div class="control-group">
+              <label>Carrier 2 Mix <span id="carrier2-mix-val">0.50</span></label>
+              <input type="range" id="carrier2-mix" min="0" max="1" step="0.01" value="0.5">
+            </div>
+          </div>
+        </div>
+        
+        <!-- Modulator 1 -->
+        <div class="control-panel">
+          <h3>🔴 Modulator 1 (Primary)</h3>
+          <div class="controls">
+            <div class="control-group">
+              <label>Ratio <span id="mod1-ratio-val">2.00</span></label>
+              <input type="range" id="mod1-ratio" min="0.5" max="8" step="0.01" value="2">
+            </div>
+            <div class="control-group">
+              <label>Index <span id="mod1-index-val">1.00</span></label>
+              <input type="range" id="mod1-index" min="0" max="4" step="0.01" value="1">
+            </div>
+            <div class="control-group">
+              <label>Decay <span id="mod1-decay-val">0.40s</span></label>
+              <input type="range" id="mod1-decay" min="0.01" max="2" step="0.01" value="0.4">
+            </div>
+            <div class="control-group">
+              <label>Sustain Level <span id="mod1-sustain-val">0.10</span></label>
+              <input type="range" id="mod1-sustain" min="0.01" max="0.5" step="0.01" value="0.1">
+            </div>
+          </div>
+        </div>
+        
+        <!-- Modulator 2 -->
+        <div class="control-panel">
+          <h3>🟠 Modulator 2 (Metallic)</h3>
+          <div class="controls">
+            <div class="control-group">
+              <label>Ratio <span id="mod2-ratio-val">4.00</span></label>
+              <input type="range" id="mod2-ratio" min="1" max="12" step="0.01" value="4">
+            </div>
+            <div class="control-group">
+              <label>Index <span id="mod2-index-val">0.30</span></label>
+              <input type="range" id="mod2-index" min="0" max="2" step="0.01" value="0.3">
+            </div>
+            <div class="control-group">
+              <label>Decay <span id="mod2-decay-val">0.30s</span></label>
+              <input type="range" id="mod2-decay" min="0.01" max="2" step="0.01" value="0.3">
+            </div>
+          </div>
+        </div>
+        
+        <!-- Modulator 3 -->
+        <div class="control-panel">
+          <h3>🟡 Modulator 3 (Brilliance)</h3>
+          <div class="controls">
+            <div class="control-group">
+              <label>Ratio <span id="mod3-ratio-val">5.50</span></label>
+              <input type="range" id="mod3-ratio" min="2" max="16" step="0.1" value="5.5">
+            </div>
+            <div class="control-group">
+              <label>Index <span id="mod3-index-val">0.20</span></label>
+              <input type="range" id="mod3-index" min="0" max="1.5" step="0.01" value="0.2">
+            </div>
+            <div class="control-group">
+              <label>Decay <span id="mod3-decay-val">0.15s</span></label>
+              <input type="range" id="mod3-decay" min="0.01" max="1" step="0.01" value="0.15">
+            </div>
+          </div>
+        </div>
+        
+        <!-- Modulator 4 -->
+        <div class="control-panel">
+          <h3>🟢 Modulator 4 (Sub/Warmth)</h3>
+          <div class="controls">
+            <div class="control-group">
+              <label>Ratio <span id="mod4-ratio-val">0.50</span></label>
+              <input type="range" id="mod4-ratio" min="0.25" max="1" step="0.01" value="0.5">
+            </div>
+            <div class="control-group">
+              <label>Index <span id="mod4-index-val">0.15</span></label>
+              <input type="range" id="mod4-index" min="0" max="1" step="0.01" value="0.15">
+            </div>
+            <div class="control-group">
+              <label>Decay <span id="mod4-decay-val">0.50s</span></label>
+              <input type="range" id="mod4-decay" min="0.05" max="2" step="0.01" value="0.5">
+            </div>
+          </div>
+        </div>
+        
+        <!-- Amplitude Envelope -->
+        <div class="control-panel">
+          <h3>📈 Amplitude Envelope</h3>
+          <div class="controls">
+            <div class="control-group">
+              <label>Attack <span id="attack-val">0.005s</span></label>
+              <input type="range" id="attack" min="0.001" max="0.5" step="0.001" value="0.005">
+            </div>
+            <div class="control-group">
+              <label>Decay <span id="decay-val">0.30s</span></label>
+              <input type="range" id="decay" min="0.05" max="2" step="0.01" value="0.3">
+            </div>
+            <div class="control-group">
+              <label>Sustain <span id="sustain-val">0.40</span></label>
+              <input type="range" id="sustain" min="0" max="1" step="0.01" value="0.4">
+            </div>
+            <div class="control-group">
+              <label>Release <span id="release-val">1.50s</span></label>
+              <input type="range" id="release" min="0.1" max="8" step="0.1" value="1.5">
+            </div>
+          </div>
+        </div>
+        
+        <!-- Filter -->
+        <div class="control-panel">
+          <h3>🎚️ Filter & Output</h3>
+          <div class="controls">
+            <div class="control-group">
+              <label>Filter Cutoff <span id="filter-freq-val">4000Hz</span></label>
+              <input type="range" id="filter-freq" min="200" max="12000" step="100" value="4000">
+            </div>
+            <div class="control-group">
+              <label>Filter Q <span id="filter-q-val">1.0</span></label>
+              <input type="range" id="filter-q" min="0.5" max="8" step="0.1" value="1">
+            </div>
+            <div class="control-group">
+              <label>Output Gain <span id="output-gain-val">0.70</span></label>
+              <input type="range" id="output-gain" min="0.1" max="2" step="0.01" value="0.7">
+            </div>
+          </div>
+        </div>
+        
+      </div>
+    </div>
+    
+    <!-- Keyboard -->
+    <div class="section">
+      <h2>🎹 Keyboard</h2>
+      <div class="octave-controls">
+        <button class="octave-btn" id="oct-down">−</button>
+        <span class="octave-display">Octave: <span id="octave-val">4</span></span>
+        <button class="octave-btn" id="oct-up">+</button>
+      </div>
+      <div class="keyboard" id="keyboard"></div>
+      <div class="spectrum-container">
+        <canvas id="spectrum"></canvas>
+      </div>
+    </div>
+    
+    <div class="compare-link">
+      <a href="ARCHIVE/plaits-modal-demo.html">← Faust Modal</a>
+      <a href="ARCHIVE/fm-modal-6op-demo.html">6-Op FM + Transients →</a>
+    </div>
+  </div>
+  
+  <script>
+    // ===== FM PRESETS FOR MODAL INSTRUMENTS =====
+    // Each preset configures the 4-op FM to emulate a specific instrument
+    const FM_PRESETS = {
+      // Soft electric piano - fundamental focused, gentle FM
+      rhodes: {
+        name: 'Rhodes',
+        beatDetune: 1.5,
+        carrier2Mix: 0.3,
+        mod1: { ratio: 1.0, index: 0.8, decay: 0.5, sustain: 0.12 },
+        mod2: { ratio: 2.0, index: 0.25, decay: 0.35 },
+        mod3: { ratio: 7.0, index: 0.08, decay: 0.08 },
+        mod4: { ratio: 0.5, index: 0.1, decay: 0.6 },
+        envelope: { attack: 0.003, decay: 0.4, sustain: 0.5, release: 2.0 },
+        filter: { freq: 3500, q: 0.8 },
+        gain: 0.7
+      },
+      
+      // African thumb piano - buzzy attack, bar harmonics
+      kalimba: {
+        name: 'Kalimba',
+        beatDetune: 8,
+        carrier2Mix: 0.4,
+        mod1: { ratio: 2.92, index: 1.5, decay: 0.25, sustain: 0.05 },
+        mod2: { ratio: 5.4, index: 0.6, decay: 0.15 },
+        mod3: { ratio: 8.9, index: 0.35, decay: 0.08 },
+        mod4: { ratio: 0.5, index: 0.2, decay: 0.4 },
+        envelope: { attack: 0.001, decay: 0.15, sustain: 0.25, release: 2.2 },
+        filter: { freq: 6000, q: 1.2 },
+        gain: 0.75
+      },
+      
+      // Hand drum - inharmonic membrane modes
+      hand_drum: {
+        name: 'Hand Drum',
+        beatDetune: 15,
+        carrier2Mix: 0.6,
+        mod1: { ratio: 1.59, index: 2.0, decay: 0.12, sustain: 0.02 },
+        mod2: { ratio: 2.14, index: 1.2, decay: 0.08 },
+        mod3: { ratio: 2.65, index: 0.8, decay: 0.05 },
+        mod4: { ratio: 0.8, index: 0.5, decay: 0.15 },
+        envelope: { attack: 0.002, decay: 0.08, sustain: 0.1, release: 0.8 },
+        filter: { freq: 1800, q: 1.5 },
+        gain: 0.85
+      },
+      
+      // Zimbabwean mbira - buzzy lamellaphone
+      mbira: {
+        name: 'Mbira',
+        beatDetune: 18,
+        carrier2Mix: 0.55,
+        mod1: { ratio: 2.94, index: 1.8, decay: 0.35, sustain: 0.15 },
+        mod2: { ratio: 5.38, index: 0.7, decay: 0.25 },
+        mod3: { ratio: 8.76, index: 0.4, decay: 0.12 },
+        mod4: { ratio: 0.5, index: 0.25, decay: 0.5 },
+        envelope: { attack: 0.001, decay: 0.2, sustain: 0.35, release: 3.0 },
+        filter: { freq: 5500, q: 1.8 },
+        gain: 0.72
+      },
+      
+      // Hang/Handpan - paired beating modes
+      handpan: {
+        name: 'Handpan',
+        beatDetune: 3,
+        carrier2Mix: 0.7,
+        mod1: { ratio: 2.0, index: 0.6, decay: 0.6, sustain: 0.2 },
+        mod2: { ratio: 3.0, index: 0.35, decay: 0.5 },
+        mod3: { ratio: 4.03, index: 0.2, decay: 0.35 },
+        mod4: { ratio: 0.5, index: 0.15, decay: 0.7 },
+        envelope: { attack: 0.01, decay: 0.5, sustain: 0.55, release: 4.5 },
+        filter: { freq: 3000, q: 0.7 },
+        gain: 0.65
+      },
+      
+      // Steel tongue drum - pure, mellow
+      tongue_drum: {
+        name: 'Tongue Drum',
+        beatDetune: 1,
+        carrier2Mix: 0.25,
+        mod1: { ratio: 2.0, index: 0.4, decay: 0.7, sustain: 0.25 },
+        mod2: { ratio: 3.0, index: 0.15, decay: 0.6 },
+        mod3: { ratio: 4.0, index: 0.05, decay: 0.4 },
+        mod4: { ratio: 0.5, index: 0.08, decay: 0.8 },
+        envelope: { attack: 0.02, decay: 0.6, sustain: 0.65, release: 5.0 },
+        filter: { freq: 2500, q: 0.6 },
+        gain: 0.6
+      },
+      
+      // Tibetan singing bowl - extremely long, shimmery
+      singing_bowl: {
+        name: 'Singing Bowl',
+        beatDetune: 2,
+        carrier2Mix: 0.8,
+        mod1: { ratio: 2.71, index: 0.3, decay: 1.5, sustain: 0.3 },
+        mod2: { ratio: 5.15, index: 0.15, decay: 1.2 },
+        mod3: { ratio: 8.43, index: 0.08, decay: 0.8 },
+        mod4: { ratio: 0.5, index: 0.05, decay: 1.8 },
+        envelope: { attack: 0.05, decay: 2.0, sustain: 0.7, release: 8.0 },
+        filter: { freq: 4500, q: 0.5 },
+        gain: 0.55
+      },
+      
+      // Javanese gamelan - bright attack, beating partials
+      gamelan: {
+        name: 'Gamelan',
+        beatDetune: 25,
+        carrier2Mix: 0.65,
+        mod1: { ratio: 2.4, index: 2.0, decay: 0.45, sustain: 0.08 },
+        mod2: { ratio: 4.0, index: 0.8, decay: 0.35 },
+        mod3: { ratio: 5.5, index: 0.5, decay: 0.2 },
+        mod4: { ratio: 0.65, index: 0.3, decay: 0.6 },
+        envelope: { attack: 0.002, decay: 0.35, sustain: 0.3, release: 6.0 },
+        filter: { freq: 7000, q: 1.0 },
+        gain: 0.7
+      },
+      
+      // Orchestra glockenspiel - bright, glassy
+      glockenspiel: {
+        name: 'Glockenspiel',
+        beatDetune: 1,
+        carrier2Mix: 0.2,
+        mod1: { ratio: 2.76, index: 2.5, decay: 0.15, sustain: 0.03 },
+        mod2: { ratio: 5.4, index: 1.2, decay: 0.1 },
+        mod3: { ratio: 8.93, index: 0.6, decay: 0.06 },
+        mod4: { ratio: 0.5, index: 0.1, decay: 0.2 },
+        envelope: { attack: 0.0005, decay: 0.12, sustain: 0.15, release: 3.0 },
+        filter: { freq: 10000, q: 0.8 },
+        gain: 0.65
+      },
+      
+      // Jazz vibraphone - warm with motor character
+      vibraphone: {
+        name: 'Vibraphone',
+        beatDetune: 4,
+        carrier2Mix: 0.5,
+        mod1: { ratio: 4.0, index: 0.7, decay: 0.55, sustain: 0.15 },
+        mod2: { ratio: 10.0, index: 0.25, decay: 0.4 },
+        mod3: { ratio: 20.0, index: 0.1, decay: 0.25 },
+        mod4: { ratio: 0.5, index: 0.12, decay: 0.7 },
+        envelope: { attack: 0.008, decay: 0.5, sustain: 0.45, release: 5.5 },
+        filter: { freq: 5000, q: 0.7 },
+        gain: 0.65
+      },
+      
+      // Orchestral marimba - woody, dark
+      marimba: {
+        name: 'Marimba',
+        beatDetune: 2,
+        carrier2Mix: 0.35,
+        mod1: { ratio: 4.0, index: 1.0, decay: 0.2, sustain: 0.05 },
+        mod2: { ratio: 10.0, index: 0.4, decay: 0.12 },
+        mod3: { ratio: 20.0, index: 0.15, decay: 0.08 },
+        mod4: { ratio: 0.5, index: 0.2, decay: 0.35 },
+        envelope: { attack: 0.003, decay: 0.2, sustain: 0.2, release: 1.8 },
+        filter: { freq: 2800, q: 1.0 },
+        gain: 0.75
+      },
+      
+      // Wooden xylophone - bright, percussive
+      xylophone: {
+        name: 'Xylophone',
+        beatDetune: 0.5,
+        carrier2Mix: 0.15,
+        mod1: { ratio: 3.0, index: 1.8, decay: 0.12, sustain: 0.02 },
+        mod2: { ratio: 6.0, index: 0.9, decay: 0.08 },
+        mod3: { ratio: 9.0, index: 0.5, decay: 0.05 },
+        mod4: { ratio: 0.5, index: 0.15, decay: 0.2 },
+        envelope: { attack: 0.001, decay: 0.1, sustain: 0.1, release: 1.2 },
+        filter: { freq: 8000, q: 1.2 },
+        gain: 0.7
+      },
+      
+      // Church bell - complex inharmonic spectrum
+      bell: {
+        name: 'Church Bell',
+        beatDetune: 8,
+        carrier2Mix: 0.7,
+        mod1: { ratio: 2.0, index: 2.2, decay: 0.8, sustain: 0.2 },
+        mod2: { ratio: 3.0, index: 1.0, decay: 0.6 },
+        mod3: { ratio: 4.2, index: 0.6, decay: 0.45 },
+        mod4: { ratio: 0.5, index: 0.3, decay: 1.0 },
+        envelope: { attack: 0.001, decay: 1.0, sustain: 0.4, release: 7.0 },
+        filter: { freq: 6000, q: 0.8 },
+        gain: 0.6
+      },
+      
+      // Bowed glass - ethereal, sustained
+      bowed_glass: {
+        name: 'Bowed Glass',
+        beatDetune: 1.5,
+        carrier2Mix: 0.6,
+        mod1: { ratio: 2.0, index: 0.25, decay: 2.0, sustain: 0.35 },
+        mod2: { ratio: 4.0, index: 0.1, decay: 1.5 },
+        mod3: { ratio: 6.0, index: 0.05, decay: 1.0 },
+        mod4: { ratio: 0.5, index: 0.03, decay: 2.5 },
+        envelope: { attack: 0.3, decay: 1.5, sustain: 0.75, release: 6.0 },
+        filter: { freq: 5500, q: 0.5 },
+        gain: 0.5
+      },
+      
+      // Tubular bells/chimes
+      tubular_bells: {
+        name: 'Tubular Bells',
+        beatDetune: 5,
+        carrier2Mix: 0.55,
+        mod1: { ratio: 2.0, index: 1.5, decay: 0.5, sustain: 0.12 },
+        mod2: { ratio: 2.76, index: 0.8, decay: 0.4 },
+        mod3: { ratio: 5.4, index: 0.4, decay: 0.3 },
+        mod4: { ratio: 0.5, index: 0.2, decay: 0.8 },
+        envelope: { attack: 0.002, decay: 0.6, sustain: 0.35, release: 6.0 },
+        filter: { freq: 5500, q: 0.9 },
+        gain: 0.65
+      },
+      
+      // Celesta - soft, music box character
+      celesta: {
+        name: 'Celesta',
+        beatDetune: 0.8,
+        carrier2Mix: 0.25,
+        mod1: { ratio: 2.0, index: 0.6, decay: 0.25, sustain: 0.08 },
+        mod2: { ratio: 4.0, index: 0.3, decay: 0.18 },
+        mod3: { ratio: 6.0, index: 0.15, decay: 0.12 },
+        mod4: { ratio: 0.5, index: 0.05, decay: 0.35 },
+        envelope: { attack: 0.002, decay: 0.2, sustain: 0.3, release: 2.5 },
+        filter: { freq: 6500, q: 0.7 },
+        gain: 0.6
+      },
+      
+      // Crotales - very high, sustained
+      crotales: {
+        name: 'Crotales',
+        beatDetune: 0.5,
+        carrier2Mix: 0.3,
+        mod1: { ratio: 2.0, index: 1.2, decay: 0.3, sustain: 0.1 },
+        mod2: { ratio: 3.0, index: 0.6, decay: 0.25 },
+        mod3: { ratio: 5.0, index: 0.3, decay: 0.18 },
+        mod4: { ratio: 0.5, index: 0.05, decay: 0.4 },
+        envelope: { attack: 0.001, decay: 0.3, sustain: 0.4, release: 5.0 },
+        filter: { freq: 9000, q: 0.6 },
+        gain: 0.55
+      },
+      
+      // Tank drum variant
+      tank_drum: {
+        name: 'Tank Drum',
+        beatDetune: 2.5,
+        carrier2Mix: 0.45,
+        mod1: { ratio: 2.0, index: 0.5, decay: 0.55, sustain: 0.18 },
+        mod2: { ratio: 3.0, index: 0.2, decay: 0.45 },
+        mod3: { ratio: 4.0, index: 0.1, decay: 0.35 },
+        mod4: { ratio: 0.5, index: 0.12, decay: 0.7 },
+        envelope: { attack: 0.015, decay: 0.5, sustain: 0.55, release: 4.0 },
+        filter: { freq: 2800, q: 0.65 },
+        gain: 0.62
+      }
+    };
+    
+    // ===== STATE =====
+    let audioCtx = null;
+    let analyser = null;
+    let masterGain = null;
+    let currentOctave = 4;
+    let currentPreset = FM_PRESETS.gamelan;
+    let activeKeys = new Set();
+    
+    // ===== INITIALIZATION =====
+    function init() {
+      buildPresetButtons();
+      buildKeyboard();
+      setupSliderListeners();
+      setupKeyboardListeners();
+      setupOctaveControls();
+      loadPreset('gamelan');
+      drawSpectrum();
+    }
+    
+    function buildPresetButtons() {
+      const container = document.getElementById('presets');
+      for (const [key, preset] of Object.entries(FM_PRESETS)) {
+        const btn = document.createElement('button');
+        btn.className = 'preset-btn';
+        btn.textContent = preset.name;
+        btn.onclick = () => loadPreset(key);
+        container.appendChild(btn);
+      }
+    }
+    
+    function loadPreset(key) {
+      const preset = FM_PRESETS[key];
+      if (!preset) return;
+      
+      currentPreset = preset;
+      
+      // Update UI
+      document.querySelectorAll('.preset-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.textContent === preset.name);
+      });
+      
+      // Set slider values
+      setSlider('beat-detune', preset.beatDetune);
+      setSlider('carrier2-mix', preset.carrier2Mix);
+      
+      setSlider('mod1-ratio', preset.mod1.ratio);
+      setSlider('mod1-index', preset.mod1.index);
+      setSlider('mod1-decay', preset.mod1.decay);
+      setSlider('mod1-sustain', preset.mod1.sustain);
+      
+      setSlider('mod2-ratio', preset.mod2.ratio);
+      setSlider('mod2-index', preset.mod2.index);
+      setSlider('mod2-decay', preset.mod2.decay);
+      
+      setSlider('mod3-ratio', preset.mod3.ratio);
+      setSlider('mod3-index', preset.mod3.index);
+      setSlider('mod3-decay', preset.mod3.decay);
+      
+      setSlider('mod4-ratio', preset.mod4.ratio);
+      setSlider('mod4-index', preset.mod4.index);
+      setSlider('mod4-decay', preset.mod4.decay);
+      
+      setSlider('attack', preset.envelope.attack);
+      setSlider('decay', preset.envelope.decay);
+      setSlider('sustain', preset.envelope.sustain);
+      setSlider('release', preset.envelope.release);
+      
+      setSlider('filter-freq', preset.filter.freq);
+      setSlider('filter-q', preset.filter.q);
+      setSlider('output-gain', preset.gain);
+    }
+    
+    function setSlider(id, value) {
+      const slider = document.getElementById(id);
+      if (slider) {
+        slider.value = value;
+        updateSliderDisplay(id, value);
+      }
+    }
+    
+    function getSliderValue(id) {
+      return parseFloat(document.getElementById(id).value);
+    }
+    
+    function updateSliderDisplay(id, value) {
+      const display = document.getElementById(id + '-val');
+      if (!display) return;
+      
+      switch(id) {
+        case 'beat-detune':
+          display.textContent = value.toFixed(1) + '¢';
+          break;
+        case 'mod1-decay':
+        case 'mod2-decay':
+        case 'mod3-decay':
+        case 'mod4-decay':
+        case 'attack':
+        case 'decay':
+        case 'release':
+          display.textContent = value.toFixed(2) + 's';
+          break;
+        case 'filter-freq':
+          display.textContent = Math.round(value) + 'Hz';
+          break;
+        default:
+          display.textContent = value.toFixed(2);
+      }
+    }
+    
+    function setupSliderListeners() {
+      document.querySelectorAll('input[type="range"]').forEach(slider => {
+        slider.addEventListener('input', (e) => {
+          updateSliderDisplay(e.target.id, parseFloat(e.target.value));
+        });
+      });
+    }
+    
+    // ===== KEYBOARD =====
+    function buildKeyboard() {
+      const keyboard = document.getElementById('keyboard');
+      const notes = [
+        { note: 'C', black: false },
+        { note: 'C#', black: true },
+        { note: 'D', black: false },
+        { note: 'D#', black: true },
+        { note: 'E', black: false },
+        { note: 'F', black: false },
+        { note: 'F#', black: true },
+        { note: 'G', black: false },
+        { note: 'G#', black: true },
+        { note: 'A', black: false },
+        { note: 'A#', black: true },
+        { note: 'B', black: false },
+        { note: 'C', black: false, high: true }
+      ];
+      
+      notes.forEach((n, i) => {
+        const key = document.createElement('div');
+        key.className = `key ${n.black ? 'black' : 'white'}`;
+        key.textContent = n.note;
+        key.dataset.semitone = i;
+        key.onmousedown = () => playNote(i);
+        key.onmouseup = () => key.classList.remove('active');
+        key.onmouseleave = () => key.classList.remove('active');
+        keyboard.appendChild(key);
+      });
+    }
+    
+    function setupOctaveControls() {
+      document.getElementById('oct-down').onclick = () => {
+        if (currentOctave > 1) {
+          currentOctave--;
+          document.getElementById('octave-val').textContent = currentOctave;
+        }
+      };
+      document.getElementById('oct-up').onclick = () => {
+        if (currentOctave < 7) {
+          currentOctave++;
+          document.getElementById('octave-val').textContent = currentOctave;
+        }
+      };
+    }
+    
+    const keyMap = {
+      'KeyA': 0, 'KeyW': 1, 'KeyS': 2, 'KeyE': 3, 'KeyD': 4,
+      'KeyF': 5, 'KeyT': 6, 'KeyG': 7, 'KeyY': 8, 'KeyH': 9,
+      'KeyU': 10, 'KeyJ': 11, 'KeyK': 12,
+      'KeyZ': 'octave-down', 'KeyX': 'octave-up'
+    };
+    
+    function setupKeyboardListeners() {
+      document.addEventListener('keydown', (e) => {
+        if (e.repeat) return;
+        const action = keyMap[e.code];
+        if (action === 'octave-down') {
+          document.getElementById('oct-down').click();
+        } else if (action === 'octave-up') {
+          document.getElementById('oct-up').click();
+        } else if (action !== undefined && !activeKeys.has(e.code)) {
+          activeKeys.add(e.code);
+          playNote(action);
+          const key = document.querySelector(`.key[data-semitone="${action}"]`);
+          if (key) key.classList.add('active');
+        }
+      });
+      
+      document.addEventListener('keyup', (e) => {
+        activeKeys.delete(e.code);
+        const action = keyMap[e.code];
+        if (typeof action === 'number') {
+          const key = document.querySelector(`.key[data-semitone="${action}"]`);
+          if (key) key.classList.remove('active');
+        }
+      });
+    }
+    
+    // ===== 4-OPERATOR FM SYNTHESIS =====
+    async function playNote(semitone) {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (audioCtx.state === 'suspended') {
+        await audioCtx.resume();
+      }
+      
+      // Setup analyser
+      if (!analyser) {
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 2048;
+        analyser.connect(audioCtx.destination);
+      }
+      
+      if (!masterGain) {
+        masterGain = audioCtx.createGain();
+        masterGain.gain.value = 0.7;
+        masterGain.connect(analyser);
+      }
+      
+      const midiNote = 12 * currentOctave + semitone;
+      const frequency = 440 * Math.pow(2, (midiNote - 69) / 12);
+      
+      playFMNote(frequency, 0.8);
+    }
+    
+    function playFMNote(frequency, velocity) {
+      const ctx = audioCtx;
+      const now = ctx.currentTime;
+      
+      // Get parameters from sliders
+      const beatDetune = getSliderValue('beat-detune');
+      const carrier2Mix = getSliderValue('carrier2-mix');
+      
+      const mod1 = {
+        ratio: getSliderValue('mod1-ratio'),
+        index: getSliderValue('mod1-index'),
+        decay: getSliderValue('mod1-decay'),
+        sustain: getSliderValue('mod1-sustain')
+      };
+      const mod2 = {
+        ratio: getSliderValue('mod2-ratio'),
+        index: getSliderValue('mod2-index'),
+        decay: getSliderValue('mod2-decay')
+      };
+      const mod3 = {
+        ratio: getSliderValue('mod3-ratio'),
+        index: getSliderValue('mod3-index'),
+        decay: getSliderValue('mod3-decay')
+      };
+      const mod4 = {
+        ratio: getSliderValue('mod4-ratio'),
+        index: getSliderValue('mod4-index'),
+        decay: getSliderValue('mod4-decay')
+      };
+      
+      const attack = getSliderValue('attack');
+      const decay = getSliderValue('decay');
+      const sustain = getSliderValue('sustain');
+      const release = getSliderValue('release');
+      
+      const filterFreq = getSliderValue('filter-freq');
+      const filterQ = getSliderValue('filter-q');
+      const outputGain = getSliderValue('output-gain');
+      
+      // === CARRIER 1 ===
+      const carrier1 = ctx.createOscillator();
+      carrier1.type = 'sine';
+      carrier1.frequency.value = frequency;
+      
+      // === CARRIER 2 (detuned for beating) ===
+      const carrier2 = ctx.createOscillator();
+      carrier2.type = 'sine';
+      carrier2.frequency.value = frequency * Math.pow(2, beatDetune / 1200);
+      
+      const carrier2Gain = ctx.createGain();
+      carrier2Gain.gain.value = carrier2Mix;
+      
+      // === MODULATOR 1 (Primary timbre) ===
+      const modulator1 = ctx.createOscillator();
+      modulator1.type = 'sine';
+      modulator1.frequency.value = frequency * mod1.ratio;
+      
+      const modGain1 = ctx.createGain();
+      const modIndex1 = frequency * mod1.index * velocity;
+      modGain1.gain.value = modIndex1;
+      
+      // === MODULATOR 2 (Metallic partials) ===
+      const modulator2 = ctx.createOscillator();
+      modulator2.type = 'sine';
+      modulator2.frequency.value = frequency * mod2.ratio;
+      
+      const modGain2 = ctx.createGain();
+      modGain2.gain.value = frequency * mod2.index;
+      
+      // === MODULATOR 3 (Brilliance) ===
+      const modulator3 = ctx.createOscillator();
+      modulator3.type = 'sine';
+      modulator3.frequency.value = frequency * mod3.ratio;
+      
+      const modGain3 = ctx.createGain();
+      modGain3.gain.value = frequency * mod3.index;
+      
+      // === MODULATOR 4 (Sub/Warmth) ===
+      const modulator4 = ctx.createOscillator();
+      modulator4.type = 'sine';
+      modulator4.frequency.value = frequency * mod4.ratio;
+      
+      const modGain4 = ctx.createGain();
+      modGain4.gain.value = frequency * mod4.index;
+      
+      // === AMPLITUDE ENVELOPE ===
+      const envelope1 = ctx.createGain();
+      envelope1.gain.value = 0;
+      
+      const envelope2 = ctx.createGain();
+      envelope2.gain.value = 0;
+      
+      // === FILTER ===
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = filterFreq;
+      filter.Q.value = filterQ;
+      
+      // === OUTPUT ===
+      const output = ctx.createGain();
+      output.gain.value = velocity * outputGain;
+      
+      // === CONNECT FM CHAIN ===
+      // Modulators -> Carrier frequencies
+      modulator1.connect(modGain1);
+      modGain1.connect(carrier1.frequency);
+      modGain1.connect(carrier2.frequency);
+      
+      modulator2.connect(modGain2);
+      modGain2.connect(carrier1.frequency);
+      modGain2.connect(carrier2.frequency);
+      
+      modulator3.connect(modGain3);
+      modGain3.connect(carrier1.frequency);
+      modGain3.connect(carrier2.frequency);
+      
+      modulator4.connect(modGain4);
+      modGain4.connect(carrier1.frequency);
+      modGain4.connect(carrier2.frequency);
+      
+      // Carriers -> Envelopes -> Filter -> Output
+      carrier1.connect(envelope1);
+      carrier2.connect(carrier2Gain);
+      carrier2Gain.connect(envelope2);
+      
+      envelope1.connect(filter);
+      envelope2.connect(filter);
+      filter.connect(output);
+      output.connect(masterGain);
+      
+      // === START ALL OSCILLATORS ===
+      const startTime = now;
+      carrier1.start(startTime);
+      carrier2.start(startTime);
+      modulator1.start(startTime);
+      modulator2.start(startTime);
+      modulator3.start(startTime);
+      modulator4.start(startTime);
+      
+      // === AMPLITUDE ENVELOPE ===
+      envelope1.gain.setValueAtTime(0, now);
+      envelope1.gain.linearRampToValueAtTime(1.0, now + attack);
+      envelope1.gain.linearRampToValueAtTime(sustain, now + attack + decay);
+      
+      envelope2.gain.setValueAtTime(0, now);
+      envelope2.gain.linearRampToValueAtTime(0.8, now + attack * 1.2);
+      envelope2.gain.linearRampToValueAtTime(sustain * 0.8, now + attack + decay);
+      
+      // === MODULATION ENVELOPES (key to FM metallic character!) ===
+      // Mod 1: primary timbre decay
+      modGain1.gain.setValueAtTime(modIndex1, now);
+      modGain1.gain.exponentialRampToValueAtTime(
+        Math.max(0.001, modIndex1 * mod1.sustain),
+        now + attack + mod1.decay
+      );
+      
+      // Mod 2: metallic partials decay faster
+      const mod2Start = frequency * mod2.index;
+      modGain2.gain.setValueAtTime(mod2Start, now);
+      modGain2.gain.exponentialRampToValueAtTime(
+        Math.max(0.001, mod2Start * 0.05),
+        now + attack + mod2.decay
+      );
+      
+      // Mod 3: brilliance decays fastest
+      const mod3Start = frequency * mod3.index;
+      modGain3.gain.setValueAtTime(mod3Start, now);
+      modGain3.gain.exponentialRampToValueAtTime(
+        Math.max(0.001, mod3Start * 0.02),
+        now + attack + mod3.decay
+      );
+      
+      // Mod 4: sub/warmth decays slowly
+      const mod4Start = frequency * mod4.index;
+      modGain4.gain.setValueAtTime(mod4Start, now);
+      modGain4.gain.exponentialRampToValueAtTime(
+        Math.max(0.001, mod4Start * 0.1),
+        now + attack + mod4.decay
+      );
+      
+      // === RELEASE ===
+      const noteEnd = now + attack + decay + 0.5; // Hold time
+      const stopTime = noteEnd + release;
+      
+      envelope1.gain.setValueAtTime(sustain, noteEnd);
+      envelope1.gain.exponentialRampToValueAtTime(0.001, stopTime);
+      
+      envelope2.gain.setValueAtTime(sustain * 0.8, noteEnd);
+      envelope2.gain.exponentialRampToValueAtTime(0.001, stopTime);
+      
+      // Stop oscillators
+      carrier1.stop(stopTime + 0.1);
+      carrier2.stop(stopTime + 0.1);
+      modulator1.stop(stopTime + 0.1);
+      modulator2.stop(stopTime + 0.1);
+      modulator3.stop(stopTime + 0.1);
+      modulator4.stop(stopTime + 0.1);
+      
+      // Cleanup
+      setTimeout(() => {
+        try {
+          carrier1.disconnect();
+          carrier2.disconnect();
+          carrier2Gain.disconnect();
+          modulator1.disconnect();
+          modulator2.disconnect();
+          modulator3.disconnect();
+          modulator4.disconnect();
+          modGain1.disconnect();
+          modGain2.disconnect();
+          modGain3.disconnect();
+          modGain4.disconnect();
+          envelope1.disconnect();
+          envelope2.disconnect();
+          filter.disconnect();
+          output.disconnect();
+        } catch {}
+      }, (stopTime - now + 0.2) * 1000);
+    }
+    
+    // ===== SPECTRUM ANALYZER =====
+    function drawSpectrum() {
+      const canvas = document.getElementById('spectrum');
+      const ctx = canvas.getContext('2d');
+      const width = canvas.width = canvas.offsetWidth;
+      const height = canvas.height = canvas.offsetHeight;
+      
+      function draw() {
+        requestAnimationFrame(draw);
+        
+        ctx.fillStyle = '#0a0a15';
+        ctx.fillRect(0, 0, width, height);
+        
+        if (!analyser) return;
+        
+        const bufferLength = analyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+        analyser.getByteFrequencyData(dataArray);
+        
+        const barWidth = width / bufferLength * 2.5;
+        let x = 0;
+        
+        for (let i = 0; i < bufferLength; i++) {
+          const barHeight = (dataArray[i] / 255) * height;
+          
+          const hue = 30 + (i / bufferLength) * 30; // Orange gradient
+          ctx.fillStyle = `hsl(${hue}, 80%, ${50 + dataArray[i] / 5}%)`;
+          ctx.fillRect(x, height - barHeight, barWidth, barHeight);
+          
+          x += barWidth + 1;
+          if (x > width) break;
+        }
+      }
+      
+      draw();
+    }
+    
+    // Start
+    init();
+  </script>
+</body>
+</html>

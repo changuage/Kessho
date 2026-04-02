@@ -174,7 +174,7 @@ const PARAM_CLAMPS = {
   padLfo1Rate: [0, 40], padLfo1Depth: [0, 1], padLfo1Wave: [0, 6], padLfo1Dest: [0, 6],
   padLfo2Rate: [0, 40], padLfo2Depth: [0, 1], padLfo2Wave: [0, 6], padLfo2Dest: [0, 6],
   padModEnvAttack: [0.001, 20], padModEnvDecay: [0.001, 20], padModEnvSustain: [0, 1], padModEnvRelease: [0.001, 30],
-  padModEnvDepth: [-1, 1], padModEnvDest: [0, 6], synthLevel: [0, 2],
+  padModEnvDepth: [-1, 1], padModEnvDest: [0, 6], synthLevel: [0, 1],
   pad2OscAWave: [0, 3], pad2OscAOctave: [-4, 4], pad2OscADetune: [-100, 100], pad2OscALevel: [0, 1],
   pad2OscBWave: [0, 3], pad2OscBOctave: [-4, 4], pad2OscBDetune: [-100, 100], pad2OscBLevel: [0, 1],
   pad2OscMix: [0, 1], pad2SubOctave: [-4, 1], pad2SubWave: [0, 3], pad2SubLevel: [0, 1],
@@ -186,7 +186,7 @@ const PARAM_CLAMPS = {
   pad2Lfo1Rate: [0, 40], pad2Lfo1Depth: [0, 1], pad2Lfo1Wave: [0, 6], pad2Lfo1Dest: [0, 6],
   pad2Lfo2Rate: [0, 40], pad2Lfo2Depth: [0, 1], pad2Lfo2Wave: [0, 6], pad2Lfo2Dest: [0, 6],
   pad2ModEnvAttack: [0.001, 20], pad2ModEnvDecay: [0.001, 20], pad2ModEnvSustain: [0, 1], pad2ModEnvRelease: [0.001, 30],
-  pad2ModEnvDepth: [-1, 1], pad2ModEnvDest: [0, 6], pad2Level: [0, 2], synthReverbSend: [0, 1],
+  pad2ModEnvDepth: [-1, 1], pad2ModEnvDest: [0, 6], pad2Level: [0, 1], synthReverbSend: [0, 1],
 };
 
 class PadSynthWasmProcessor extends AudioWorkletProcessor {
@@ -196,7 +196,8 @@ class PadSynthWasmProcessor extends AudioWorkletProcessor {
     this.heap = new Float32Array(0);
     this.outputPtr = 0;
     this.reverbPtr = 0;
-    this.prefaderPtr = 0;
+    this.prefaderPad1Ptr = 0;
+    this.prefaderPad2Ptr = 0;
     this.ready = false;
 
     this.perfEnabled = false;
@@ -260,7 +261,8 @@ class PadSynthWasmProcessor extends AudioWorkletProcessor {
 
       this.outputPtr = this.wasm.pad_get_output_ptr();
       this.reverbPtr = this.wasm.pad_get_reverb_send_ptr();
-      this.prefaderPtr = this.wasm.pad_get_prefader_ptr();
+      this.prefaderPad1Ptr = this.wasm.pad_get_prefader_pad1_ptr();
+      this.prefaderPad2Ptr = this.wasm.pad_get_prefader_pad2_ptr();
 
       this.ready = true;
       this.port.postMessage({ type: 'wasmReady' });
@@ -414,7 +416,8 @@ class PadSynthWasmProcessor extends AudioWorkletProcessor {
       const perfStart = this.perfEnabled ? _perfNow() : 0;
       const output = outputs[0];        // main stereo
       const reverbOut = outputs[1];     // reverb send stereo
-      const prefaderOut = outputs[2];   // pre-fader stereo (for granular)
+      const prefaderPad1Out = outputs[2];   // Pad 1 pre-fader stereo
+      const prefaderPad2Out = outputs[3];   // Pad 2 pre-fader stereo
       const blockSize = output[0]?.length || 128;
 
       this.wasm.pad_process_block(blockSize);
@@ -441,14 +444,25 @@ class PadSynthWasmProcessor extends AudioWorkletProcessor {
         }
       }
 
-      // Pre-fader (for granular FX)
-      if (prefaderOut && prefaderOut[0]) {
-        const pfOffset = this.prefaderPtr >> 2;
-        const pfL = prefaderOut[0];
-        const pfR = prefaderOut[1] || pfL;
+      // Pad 1 pre-fader (for per-pad FX routing)
+      if (prefaderPad1Out && prefaderPad1Out[0]) {
+        const pfOffset = this.prefaderPad1Ptr >> 2;
+        const pfL = prefaderPad1Out[0];
+        const pfR = prefaderPad1Out[1] || pfL;
         for (let i = 0; i < blockSize; i++) {
-          pfL[i] = this.sanitizeSample('process-prefader', heap[pfOffset + i * 2]);
-          if (pfR !== pfL) pfR[i] = this.sanitizeSample('process-prefader', heap[pfOffset + i * 2 + 1]);
+          pfL[i] = this.sanitizeSample('process-prefader-pad1', heap[pfOffset + i * 2]);
+          if (pfR !== pfL) pfR[i] = this.sanitizeSample('process-prefader-pad1', heap[pfOffset + i * 2 + 1]);
+        }
+      }
+
+      // Pad 2 pre-fader (for per-pad FX routing)
+      if (prefaderPad2Out && prefaderPad2Out[0]) {
+        const pfOffset = this.prefaderPad2Ptr >> 2;
+        const pfL = prefaderPad2Out[0];
+        const pfR = prefaderPad2Out[1] || pfL;
+        for (let i = 0; i < blockSize; i++) {
+          pfL[i] = this.sanitizeSample('process-prefader-pad2', heap[pfOffset + i * 2]);
+          if (pfR !== pfL) pfR[i] = this.sanitizeSample('process-prefader-pad2', heap[pfOffset + i * 2 + 1]);
         }
       }
 

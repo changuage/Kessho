@@ -10,6 +10,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { SliderState, SavedPreset } from './state';
 import { JourneyState, JourneyConfig, JourneyNode } from '../audio/journeyTypes';
 import { PHRASE_LENGTH } from '../audio/harmony';
+import { useSliderHelp } from './SliderHelpOverlay';
 
 // Unicode symbols with text variation selector (U+FE0E) to prevent emoji rendering on mobile
 const TEXT_SYMBOLS = {
@@ -64,7 +65,7 @@ interface MacroSlider {
 
 const MACRO_SLIDERS: MacroSlider[] = [
   { key: 'reverbLevel', reverbSendKey: 'reverbDecay', label: 'Reverb', min: 0, max: 2, color: '#E8DCC4' },          // Warm cream - width = decay
-  { key: 'synthLevel', reverbSendKey: 'synthReverbSend', label: 'Pad 1', min: 0, max: 1, color: '#C4724E' },        // Muted orange
+  { key: 'synthLevel', reverbSendKey: 'pad1ReverbSend', label: 'Pad 1', min: 0, max: 1, color: '#C4724E' },         // Muted orange
   { key: 'granularLevel', reverbSendKey: 'granularReverbSend', label: 'Granular', min: 0, max: 4, color: '#7B9A6D' }, // Sage green
   { key: 'lead1Level', reverbSendKey: 'lead1ReverbSend', label: 'Lead', min: 0, max: 1, color: '#D4A520' },            // Mustard gold
   { key: 'drumLevel', reverbSendKey: 'drumReverbSend', label: 'Drum', min: 0, max: 1, color: '#8B5CF6' },            // Purple
@@ -279,6 +280,12 @@ const STATUS_COLORS = {
 };
 
 const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanced, onShowJourney, onTogglePlay, onLoadPreset, presets, isPlaying, isRecording, recordingDuration, onStopRecording, journeyState, journeyConfig, isJourneyPlaying }) => {
+  const { announceHelp } = useSliderHelp();
+  const bindHelp = useCallback((helpKey: string) => ({
+    onMouseEnter: () => announceHelp(helpKey),
+    onPointerDown: () => announceHelp(helpKey),
+    onFocus: () => announceHelp(helpKey),
+  }), [announceHelp]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [dragging, setDragging] = useState<number | null>(null);  // Dragging prong handle (level)
   const [hovering, setHovering] = useState<number | null>(null);
@@ -925,6 +932,7 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
         <button 
           style={isPlaying ? styles.stopButton : styles.playButton} 
           onClick={onTogglePlay}
+          {...bindHelp('appPlayToggle')}
         >
           {isPlaying ? TEXT_SYMBOLS.stop : TEXT_SYMBOLS.play}
         </button>
@@ -1382,11 +1390,12 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
           <button 
             style={styles.advancedButton} 
             onClick={onShowJourney}
+            {...bindHelp('appJourneyView')}
           >
             {TEXT_SYMBOLS.diamond}
           </button>
         )}
-        <button style={styles.advancedButton} onClick={onShowAdvanced}>
+        <button style={styles.advancedButton} onClick={onShowAdvanced} {...bindHelp('appAdvancedView')}>
           {TEXT_SYMBOLS.sparkle}
         </button>
       </div>

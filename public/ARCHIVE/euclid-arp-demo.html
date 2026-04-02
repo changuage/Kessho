@@ -1,0 +1,1184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Euclidean + Arpeggiator Demo</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1a1a2e;
+      color: #eee;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    
+    h1 {
+      text-align: center;
+      margin-bottom: 20px;
+      color: #00d4ff;
+    }
+    
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    
+    .section {
+      background: #16213e;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    
+    .section h2 {
+      margin-bottom: 15px;
+      color: #00d4ff;
+      font-size: 1.1rem;
+    }
+    
+    .section.arp-section {
+      border: 2px solid #ff6b81;
+    }
+    
+    .section.arp-section h2 {
+      color: #ff6b81;
+    }
+    
+    .controls {
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    
+    .control-group label {
+      font-size: 0.8rem;
+      color: #888;
+    }
+    
+    select, input[type="number"] {
+      background: #0f0f23;
+      border: 1px solid #333;
+      color: #fff;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+    
+    button {
+      background: #00d4ff;
+      color: #000;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    button:hover {
+      background: #00a8cc;
+      transform: scale(1.02);
+    }
+    
+    button.stop {
+      background: #ff4757;
+    }
+    
+    button.stop:hover {
+      background: #ff2a3d;
+    }
+    
+    button.link-btn {
+      background: #7bed9f;
+    }
+    
+    button.link-btn.unlinked {
+      background: #ff6b81;
+    }
+    
+    .step-grid {
+      display: grid;
+      grid-template-columns: repeat(16, 1fr);
+      gap: 4px;
+      margin-top: 15px;
+    }
+    
+    .step {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+    
+    .step-number {
+      font-size: 0.7rem;
+      color: #666;
+    }
+    
+    .step-toggle {
+      width: 100%;
+      aspect-ratio: 1;
+      background: #0f0f23;
+      border: 2px solid #333;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.15s;
+      position: relative;
+    }
+    
+    .step-toggle.active {
+      background: #00d4ff;
+      border-color: #00d4ff;
+    }
+    
+    .step-toggle.playing {
+      box-shadow: 0 0 20px #00d4ff;
+      transform: scale(1.1);
+    }
+    
+    .step-toggle.manual-override {
+      border-color: #ffa502;
+    }
+    
+    .step-toggle.manual-override.active {
+      background: #ffa502;
+      border-color: #ffa502;
+    }
+    
+    .arp-step {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+    
+    .arp-step-box {
+      width: 100%;
+      aspect-ratio: 1;
+      background: #0f0f23;
+      border: 2px solid #444;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.8rem;
+      font-weight: bold;
+      transition: all 0.15s;
+    }
+    
+    .arp-step-box.playing {
+      box-shadow: 0 0 20px #ff6b81;
+      background: #ff6b81;
+      color: #000;
+      transform: scale(1.1);
+    }
+    
+    .step-offset {
+      width: 100%;
+      background: #0f0f23;
+      border: 1px solid #333;
+      color: #fff;
+      padding: 4px;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      text-align: center;
+    }
+    
+    .step-length {
+      width: 100%;
+      height: 6px;
+      background: #333;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    
+    .step-length-fill {
+      height: 100%;
+      background: #7bed9f;
+      transition: width 0.1s;
+    }
+    
+    .step-velocity {
+      width: 100%;
+      height: 4px;
+      background: #333;
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    
+    .step-velocity-fill {
+      height: 100%;
+      background: #ff6b81;
+      transition: width 0.1s;
+    }
+    
+    .pattern-display {
+      font-family: monospace;
+      background: #0f0f23;
+      padding: 15px;
+      border-radius: 8px;
+      margin-top: 15px;
+      font-size: 1.2rem;
+      letter-spacing: 4px;
+      text-align: center;
+    }
+    
+    .pattern-display .hit {
+      color: #00d4ff;
+    }
+    
+    .pattern-display .rest {
+      color: #333;
+    }
+    
+    .pattern-display .current {
+      background: #00d4ff;
+      color: #000;
+      padding: 2px 4px;
+      border-radius: 3px;
+    }
+    
+    .arp-display {
+      font-family: monospace;
+      background: #0f0f23;
+      padding: 15px;
+      border-radius: 8px;
+      margin-top: 15px;
+      font-size: 1rem;
+      text-align: center;
+    }
+    
+    .arp-display .note {
+      display: inline-block;
+      padding: 4px 8px;
+      margin: 2px;
+      background: #2d3a4f;
+      border-radius: 4px;
+    }
+    
+    .arp-display .note.current {
+      background: #ff6b81;
+      color: #000;
+    }
+    
+    .info-panel {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: 15px;
+      margin-top: 15px;
+    }
+    
+    .info-item {
+      background: #0f0f23;
+      padding: 12px;
+      border-radius: 8px;
+      text-align: center;
+    }
+    
+    .info-item .value {
+      font-size: 1.3rem;
+      color: #00d4ff;
+      font-weight: bold;
+    }
+    
+    .info-item.arp .value {
+      color: #ff6b81;
+    }
+    
+    .info-item .label {
+      font-size: 0.7rem;
+      color: #666;
+      margin-top: 4px;
+    }
+    
+    .rotation-controls {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    
+    .rotation-controls button {
+      padding: 8px 16px;
+      font-size: 1.2rem;
+    }
+    
+    .presets-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: 8px;
+      margin-top: 10px;
+    }
+    
+    .preset-btn {
+      padding: 8px 12px;
+      font-size: 0.8rem;
+      background: #2d3a4f;
+    }
+    
+    .preset-btn:hover {
+      background: #3d4a5f;
+    }
+    
+    .preset-btn.active {
+      background: #00d4ff;
+      color: #000;
+    }
+    
+    .lane-tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 15px;
+    }
+    
+    .lane-tab {
+      padding: 8px 16px;
+      background: #2d3a4f;
+      border-radius: 6px 6px 0 0;
+      cursor: pointer;
+      border: none;
+      color: #fff;
+    }
+    
+    .lane-tab.active {
+      background: #16213e;
+      color: #00d4ff;
+    }
+    
+    .tempo-display {
+      font-size: 2rem;
+      font-weight: bold;
+      color: #00d4ff;
+    }
+    
+    .key-select {
+      display: flex;
+      gap: 4px;
+      flex-wrap: wrap;
+    }
+    
+    .key-btn {
+      padding: 6px 12px;
+      font-size: 0.9rem;
+      background: #2d3a4f;
+      border-radius: 4px;
+    }
+    
+    .key-btn.active {
+      background: #00d4ff;
+      color: #000;
+    }
+    
+    .offset-presets {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+      flex-wrap: wrap;
+    }
+    
+    .offset-preset-btn {
+      padding: 6px 12px;
+      font-size: 0.75rem;
+      background: #2d3a4f;
+    }
+    
+    .polyrhythm-viz {
+      margin-top: 15px;
+      padding: 15px;
+      background: #0f0f23;
+      border-radius: 8px;
+    }
+    
+    .polyrhythm-viz h3 {
+      font-size: 0.9rem;
+      color: #888;
+      margin-bottom: 10px;
+    }
+    
+    .lcm-display {
+      font-size: 1.2rem;
+      color: #ffa502;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎹 Euclidean + Arpeggiator Polyrhythm Demo</h1>
+    
+    <!-- Transport -->
+    <div class="section">
+      <div class="controls">
+        <button id="startBtn" onclick="togglePlay()">▶ Start</button>
+        <div class="control-group">
+          <label>BPM</label>
+          <input type="number" id="bpm" value="120" min="40" max="300" onchange="updateTempo()">
+        </div>
+        <div class="control-group">
+          <label>Root Note</label>
+          <div class="key-select" id="keySelect"></div>
+        </div>
+        <div class="control-group">
+          <label>Octave</label>
+          <input type="number" id="octave" value="4" min="2" max="6" onchange="updateOctave()">
+        </div>
+        <button id="linkBtn" class="link-btn" onclick="toggleLink()">🔗 Linked</button>
+      </div>
+    </div>
+    
+    <!-- Euclidean Rhythm Pattern -->
+    <div class="section">
+      <h2>🥁 Euclidean Rhythm (Controls WHEN notes trigger)</h2>
+      <div class="controls">
+        <div class="control-group">
+          <label>Steps</label>
+          <input type="number" id="eucSteps" value="8" min="2" max="16" onchange="updateEuclidean()">
+        </div>
+        <div class="control-group">
+          <label>Hits</label>
+          <input type="number" id="eucHits" value="5" min="0" max="16" onchange="updateEuclidean()">
+        </div>
+        <div class="control-group">
+          <label>Rotation</label>
+          <div class="rotation-controls">
+            <button onclick="rotateEuc(-1)">←</button>
+            <span id="eucRotationValue">0</span>
+            <button onclick="rotateEuc(1)">→</button>
+          </div>
+        </div>
+        <button onclick="resetEucOverrides()" style="background: #ffa502">Reset Overrides</button>
+      </div>
+      
+      <div class="presets-grid" id="euclideanPresets"></div>
+      
+      <div class="step-grid" id="eucStepGrid"></div>
+      
+      <div class="pattern-display" id="eucPatternDisplay"></div>
+    </div>
+    
+    <!-- Arpeggiator Note Sequence -->
+    <div class="section arp-section">
+      <h2>🎹 Arpeggiator Sequence (Controls WHAT notes play) - Length: <span id="arpLengthDisplay">5</span></h2>
+      <div class="controls">
+        <div class="control-group">
+          <label>Arp Length</label>
+          <input type="number" id="arpLength" value="5" min="1" max="16" onchange="updateArpLength()">
+        </div>
+        <div class="control-group">
+          <label>Arp Mode</label>
+          <select id="arpMode" onchange="updateArpMode()">
+            <option value="forward">Forward →</option>
+            <option value="reverse">Reverse ←</option>
+            <option value="pingPong">Ping Pong ↔</option>
+            <option value="random">Random ?</option>
+          </select>
+        </div>
+      </div>
+      
+      <div class="offset-presets">
+        <button class="offset-preset-btn" onclick="applyOffsetPreset('triad')">Triad (0,4,7)</button>
+        <button class="offset-preset-btn" onclick="applyOffsetPreset('minor')">Minor (0,3,7)</button>
+        <button class="offset-preset-btn" onclick="applyOffsetPreset('seventh')">7th (0,4,7,11)</button>
+        <button class="offset-preset-btn" onclick="applyOffsetPreset('fifth')">Fifths (0,7)</button>
+        <button class="offset-preset-btn" onclick="applyOffsetPreset('octave')">Octaves (0,12)</button>
+        <button class="offset-preset-btn" onclick="applyOffsetPreset('penta5')">Penta-5 (0,2,4,7,9)</button>
+        <button class="offset-preset-btn" onclick="applyOffsetPreset('ascending')">Ascending</button>
+        <button class="offset-preset-btn" onclick="applyOffsetPreset('random')">Randomize</button>
+      </div>
+      
+      <div class="step-grid" id="arpStepGrid"></div>
+      
+      <div class="arp-display" id="arpDisplay"></div>
+    </div>
+    
+    <!-- Polyrhythm Info -->
+    <div class="section">
+      <h2>Polyrhythm Status</h2>
+      <div class="info-panel">
+        <div class="info-item">
+          <div class="value" id="eucStep">-</div>
+          <div class="label">Euc Step</div>
+        </div>
+        <div class="info-item arp">
+          <div class="value" id="arpStep">-</div>
+          <div class="label">Arp Step</div>
+        </div>
+        <div class="info-item">
+          <div class="value" id="currentNote">-</div>
+          <div class="label">Note</div>
+        </div>
+        <div class="info-item">
+          <div class="value" id="currentFreq">-</div>
+          <div class="label">Frequency</div>
+        </div>
+        <div class="info-item">
+          <div class="value" id="hitCount">-</div>
+          <div class="label">Hit #</div>
+        </div>
+        <div class="info-item">
+          <div class="value" id="lcmDisplay">-</div>
+          <div class="label">Full Cycle (LCM)</div>
+        </div>
+      </div>
+      
+      <div class="polyrhythm-viz">
+        <h3>Pattern Ratio: <span id="polyRatio">-</span></h3>
+        <p style="color: #888; font-size: 0.85rem; margin-top: 8px;">
+          When <strong style="color:#00d4ff">Euclidean</strong> (rhythm) and <strong style="color:#ff6b81">Arp</strong> (notes) have different lengths, 
+          the combined pattern repeats every <strong style="color:#ffa502">LCM</strong> hits, creating evolving polyrhythmic melodies.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ============ AUDIO ENGINE ============
+    let audioCtx = null;
+    let isPlaying = false;
+    let eucStepIndex = 0;     // Current step in Euclidean pattern
+    let arpNoteIndex = 0;     // Current step in Arp sequence (advances only on hits)
+    let hitCount = 0;         // Total hits played
+    let nextStepTime = 0;
+    let timerID = null;
+    
+    // Lead synth parameters
+    const leadParams = {
+      attack: 0.01,
+      decay: 0.15,
+      sustain: 0.3,
+      release: 0.3,
+      filterFreq: 2000,
+      filterQ: 2,
+      modIndex: 1.5,
+      modRatio: 2,
+    };
+    
+    // ============ STATE ============
+    let state = {
+      // Global
+      bpm: 120,
+      rootNote: 4, // E
+      octave: 4,
+      linked: false, // When true, arp length follows euclidean hits
+      
+      // Euclidean Rhythm
+      eucSteps: 8,
+      eucHits: 5,
+      eucRotation: 0,
+      eucPattern: [],
+      eucOverrides: new Set(),
+      
+      // Arpeggiator Note Sequence
+      arpLength: 5,
+      arpMode: 'forward', // forward, reverse, pingPong, random
+      arpDirection: 1,    // For pingPong mode
+      arpOffsets: [0, 4, 7, 12, 7], // Semitone offsets from root
+      arpVelocities: [1.0, 0.8, 0.9, 0.7, 0.8],
+      arpLengths: [0.5, 0.5, 0.5, 0.5, 0.5], // Gate lengths
+    };
+    
+    // Euclidean presets
+    const EUCLIDEAN_PRESETS = {
+      'Tresillo 3/8': { steps: 8, hits: 3, rotation: 0 },
+      'Cinquillo 5/8': { steps: 8, hits: 5, rotation: 0 },
+      'Bossa 5/16': { steps: 16, hits: 5, rotation: 0 },
+      'Rumba 5/12': { steps: 12, hits: 5, rotation: 0 },
+      'Soukous 7/12': { steps: 12, hits: 7, rotation: 0 },
+      'Aksak 4/9': { steps: 9, hits: 4, rotation: 0 },
+      'Sparse 3/16': { steps: 16, hits: 3, rotation: 0 },
+      'Dense 7/8': { steps: 8, hits: 7, rotation: 0 },
+    };
+    
+    const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+    
+    // ============ EUCLIDEAN ALGORITHM ============
+    function generateEuclidean(steps, hits, rotation = 0) {
+      if (hits >= steps) return new Array(steps).fill(true);
+      if (hits <= 0) return new Array(steps).fill(false);
+      
+      let pattern = [];
+      let remainder = [];
+      
+      for (let i = 0; i < hits; i++) pattern.push([1]);
+      for (let i = 0; i < steps - hits; i++) remainder.push([0]);
+      
+      while (remainder.length > 1) {
+        const newPattern = [];
+        const minLen = Math.min(pattern.length, remainder.length);
+        for (let i = 0; i < minLen; i++) {
+          newPattern.push([...pattern[i], ...remainder[i]]);
+        }
+        if (pattern.length > remainder.length) {
+          remainder = pattern.slice(minLen);
+        } else {
+          remainder = remainder.slice(minLen);
+        }
+        pattern = newPattern;
+      }
+      
+      const result = [];
+      for (const p of [...pattern, ...remainder]) {
+        for (const val of p) result.push(val === 1);
+      }
+      
+      const rotated = [];
+      for (let i = 0; i < result.length; i++) {
+        rotated.push(result[(i + rotation) % result.length]);
+      }
+      
+      return rotated;
+    }
+    
+    // ============ MATH HELPERS ============
+    function gcd(a, b) {
+      return b === 0 ? a : gcd(b, a % b);
+    }
+    
+    function lcm(a, b) {
+      return (a * b) / gcd(a, b);
+    }
+    
+    // ============ AUDIO SYNTHESIS ============
+    function initAudio() {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+    }
+    
+    function midiToFreq(midi) {
+      return 440 * Math.pow(2, (midi - 69) / 12);
+    }
+    
+    function playLeadNote(frequency, velocity = 1.0, duration = 0.2) {
+      if (!audioCtx) return;
+      
+      const now = audioCtx.currentTime;
+      
+      const modOsc = audioCtx.createOscillator();
+      const modGain = audioCtx.createGain();
+      const carrier = audioCtx.createOscillator();
+      const carrierGain = audioCtx.createGain();
+      const filter = audioCtx.createBiquadFilter();
+      const masterGain = audioCtx.createGain();
+      
+      modOsc.type = 'sine';
+      modOsc.frequency.value = frequency * leadParams.modRatio;
+      modGain.gain.value = frequency * leadParams.modIndex;
+      
+      carrier.type = 'sine';
+      carrier.frequency.value = frequency;
+      
+      filter.type = 'lowpass';
+      filter.frequency.value = leadParams.filterFreq;
+      filter.Q.value = leadParams.filterQ;
+      
+      const attackEnd = now + leadParams.attack;
+      const decayEnd = attackEnd + leadParams.decay;
+      const sustainLevel = leadParams.sustain * velocity * 0.3;
+      const releaseStart = now + duration;
+      const releaseEnd = releaseStart + leadParams.release;
+      
+      carrierGain.gain.setValueAtTime(0, now);
+      carrierGain.gain.linearRampToValueAtTime(velocity * 0.3, attackEnd);
+      carrierGain.gain.linearRampToValueAtTime(sustainLevel, decayEnd);
+      carrierGain.gain.setValueAtTime(sustainLevel, releaseStart);
+      carrierGain.gain.linearRampToValueAtTime(0, releaseEnd);
+      
+      masterGain.gain.value = 0.5;
+      
+      modOsc.connect(modGain);
+      modGain.connect(carrier.frequency);
+      carrier.connect(carrierGain);
+      carrierGain.connect(filter);
+      filter.connect(masterGain);
+      masterGain.connect(audioCtx.destination);
+      
+      modOsc.start(now);
+      carrier.start(now);
+      modOsc.stop(releaseEnd);
+      carrier.stop(releaseEnd);
+    }
+    
+    // ============ SEQUENCER ============
+    function scheduler() {
+      const secondsPerStep = 60.0 / state.bpm / 4;
+      
+      while (nextStepTime < audioCtx.currentTime + 0.1) {
+        scheduleStep(eucStepIndex, nextStepTime);
+        nextStepTime += secondsPerStep;
+        eucStepIndex = (eucStepIndex + 1) % state.eucSteps;
+      }
+      
+      timerID = setTimeout(scheduler, 25);
+    }
+    
+    function scheduleStep(stepIndex, time) {
+      const isHit = getEffectiveEucStep(stepIndex);
+      
+      // Update UI
+      setTimeout(() => {
+        updateDisplay(stepIndex, isHit);
+      }, (time - audioCtx.currentTime) * 1000);
+      
+      if (isHit) {
+        // Get the note from arp sequence
+        const arpIdx = getArpIndex();
+        const offset = state.arpOffsets[arpIdx] || 0;
+        const rootMidi = state.rootNote + (state.octave * 12) + 12;
+        const midiNote = rootMidi + offset;
+        const frequency = midiToFreq(midiNote);
+        const velocity = state.arpVelocities[arpIdx] || 1.0;
+        const gateLength = state.arpLengths[arpIdx] || 0.5;
+        const secondsPerStep = 60.0 / state.bpm / 4;
+        const duration = secondsPerStep * gateLength * 2;
+        
+        // Schedule note
+        const noteDelay = (time - audioCtx.currentTime) * 1000;
+        setTimeout(() => {
+          playLeadNote(frequency, velocity, duration);
+          updateNoteInfo(stepIndex, arpIdx, midiNote, frequency);
+        }, Math.max(0, noteDelay));
+        
+        // Advance arp index
+        advanceArp();
+        hitCount++;
+      }
+    }
+    
+    function getEffectiveEucStep(stepIndex) {
+      if (stepIndex >= state.eucSteps) return false;
+      return state.eucPattern[stepIndex];
+    }
+    
+    function getArpIndex() {
+      if (state.linked) {
+        // When linked, arp uses modulo of hit count
+        return hitCount % state.arpLength;
+      }
+      return arpNoteIndex;
+    }
+    
+    function advanceArp() {
+      if (state.linked) return; // Linked mode uses hitCount directly
+      
+      switch (state.arpMode) {
+        case 'forward':
+          arpNoteIndex = (arpNoteIndex + 1) % state.arpLength;
+          break;
+        case 'reverse':
+          arpNoteIndex = (arpNoteIndex - 1 + state.arpLength) % state.arpLength;
+          break;
+        case 'pingPong':
+          arpNoteIndex += state.arpDirection;
+          if (arpNoteIndex >= state.arpLength - 1) {
+            arpNoteIndex = state.arpLength - 1;
+            state.arpDirection = -1;
+          } else if (arpNoteIndex <= 0) {
+            arpNoteIndex = 0;
+            state.arpDirection = 1;
+          }
+          break;
+        case 'random':
+          arpNoteIndex = Math.floor(Math.random() * state.arpLength);
+          break;
+      }
+    }
+    
+    function updateDisplay(eucStep, isHit) {
+      // Clear previous highlights
+      document.querySelectorAll('.step-toggle.playing').forEach(el => el.classList.remove('playing'));
+      document.querySelectorAll('.arp-step-box.playing').forEach(el => el.classList.remove('playing'));
+      
+      // Highlight current Euclidean step
+      const eucEl = document.querySelector(`#eucStepGrid .step-toggle[data-step="${eucStep}"]`);
+      if (eucEl) eucEl.classList.add('playing');
+      
+      // Highlight current Arp step (only on hit)
+      if (isHit) {
+        const arpIdx = (hitCount) % state.arpLength; // After increment
+        const arpEl = document.querySelector(`#arpStepGrid .arp-step-box[data-step="${arpIdx}"]`);
+        if (arpEl) arpEl.classList.add('playing');
+      }
+      
+      document.getElementById('eucStep').textContent = (eucStep + 1) + '/' + state.eucSteps;
+      updateEucPatternDisplay();
+      updateArpDisplay();
+    }
+    
+    function updateNoteInfo(eucStep, arpStep, midiNote, frequency) {
+      const noteName = NOTE_NAMES[midiNote % 12] + Math.floor(midiNote / 12 - 1);
+      document.getElementById('arpStep').textContent = (arpStep + 1) + '/' + state.arpLength;
+      document.getElementById('currentNote').textContent = noteName;
+      document.getElementById('currentFreq').textContent = frequency.toFixed(1) + ' Hz';
+      document.getElementById('hitCount').textContent = hitCount;
+    }
+    
+    // ============ UI CONTROLS ============
+    function togglePlay() {
+      initAudio();
+      
+      if (isPlaying) {
+        isPlaying = false;
+        clearTimeout(timerID);
+        document.getElementById('startBtn').textContent = '▶ Start';
+        document.getElementById('startBtn').classList.remove('stop');
+      } else {
+        isPlaying = true;
+        eucStepIndex = 0;
+        arpNoteIndex = 0;
+        hitCount = 0;
+        state.arpDirection = 1;
+        nextStepTime = audioCtx.currentTime;
+        scheduler();
+        document.getElementById('startBtn').textContent = '■ Stop';
+        document.getElementById('startBtn').classList.add('stop');
+      }
+    }
+    
+    function toggleLink() {
+      state.linked = !state.linked;
+      const btn = document.getElementById('linkBtn');
+      if (state.linked) {
+        btn.textContent = '🔗 Linked';
+        btn.classList.remove('unlinked');
+        // When linking, set arp length to match euclidean hits
+        state.arpLength = state.eucHits;
+        document.getElementById('arpLength').value = state.arpLength;
+        document.getElementById('arpLengthDisplay').textContent = state.arpLength;
+      } else {
+        btn.textContent = '🔓 Unlinked';
+        btn.classList.add('unlinked');
+      }
+      renderArpGrid();
+      updatePolyInfo();
+    }
+    
+    function updateEuclidean() {
+      state.eucSteps = parseInt(document.getElementById('eucSteps').value);
+      state.eucHits = Math.min(parseInt(document.getElementById('eucHits').value), state.eucSteps);
+      document.getElementById('eucHits').value = state.eucHits;
+      document.getElementById('eucHits').max = state.eucSteps;
+      
+      const newPattern = generateEuclidean(state.eucSteps, state.eucHits, state.eucRotation);
+      
+      for (let i = 0; i < state.eucSteps; i++) {
+        if (!state.eucOverrides.has(i)) {
+          state.eucPattern[i] = newPattern[i];
+        }
+      }
+      
+      for (const idx of state.eucOverrides) {
+        if (idx >= state.eucSteps) state.eucOverrides.delete(idx);
+      }
+      
+      while (state.eucPattern.length < state.eucSteps) {
+        state.eucPattern.push(newPattern[state.eucPattern.length] || false);
+      }
+      state.eucPattern = state.eucPattern.slice(0, state.eucSteps);
+      
+      if (state.linked) {
+        state.arpLength = state.eucHits;
+        document.getElementById('arpLength').value = state.arpLength;
+        document.getElementById('arpLengthDisplay').textContent = state.arpLength;
+        renderArpGrid();
+      }
+      
+      renderEucGrid();
+      updateEucPatternDisplay();
+      updatePolyInfo();
+    }
+    
+    function rotateEuc(direction) {
+      state.eucRotation = (state.eucRotation + direction + state.eucSteps) % state.eucSteps;
+      document.getElementById('eucRotationValue').textContent = state.eucRotation;
+      
+      const newPattern = generateEuclidean(state.eucSteps, state.eucHits, state.eucRotation);
+      for (let i = 0; i < state.eucSteps; i++) {
+        if (!state.eucOverrides.has(i)) {
+          state.eucPattern[i] = newPattern[i];
+        }
+      }
+      
+      renderEucGrid();
+      updateEucPatternDisplay();
+    }
+    
+    function resetEucOverrides() {
+      state.eucOverrides.clear();
+      state.eucPattern = generateEuclidean(state.eucSteps, state.eucHits, state.eucRotation);
+      renderEucGrid();
+      updateEucPatternDisplay();
+    }
+    
+    function toggleEucStep(stepIndex, event) {
+      if (event && event.shiftKey) {
+        if (state.eucOverrides.has(stepIndex)) {
+          state.eucOverrides.delete(stepIndex);
+          const eucPattern = generateEuclidean(state.eucSteps, state.eucHits, state.eucRotation);
+          state.eucPattern[stepIndex] = eucPattern[stepIndex];
+        } else {
+          state.eucOverrides.add(stepIndex);
+        }
+      } else {
+        state.eucPattern[stepIndex] = !state.eucPattern[stepIndex];
+        state.eucOverrides.add(stepIndex);
+      }
+      
+      renderEucGrid();
+      updateEucPatternDisplay();
+      updatePolyInfo();
+    }
+    
+    function updateArpLength() {
+      if (state.linked) return;
+      state.arpLength = parseInt(document.getElementById('arpLength').value);
+      document.getElementById('arpLengthDisplay').textContent = state.arpLength;
+      
+      // Ensure arrays are long enough
+      while (state.arpOffsets.length < state.arpLength) {
+        state.arpOffsets.push(0);
+        state.arpVelocities.push(1.0);
+        state.arpLengths.push(0.5);
+      }
+      
+      renderArpGrid();
+      updatePolyInfo();
+    }
+    
+    function updateArpMode() {
+      state.arpMode = document.getElementById('arpMode').value;
+      state.arpDirection = 1;
+    }
+    
+    function updateArpOffset(index, value) {
+      state.arpOffsets[index] = parseInt(value) || 0;
+      updateArpDisplay();
+    }
+    
+    function updateTempo() {
+      state.bpm = parseInt(document.getElementById('bpm').value);
+    }
+    
+    function updateOctave() {
+      state.octave = parseInt(document.getElementById('octave').value);
+    }
+    
+    function setRootNote(note) {
+      state.rootNote = note;
+      document.querySelectorAll('.key-btn').forEach((btn, i) => {
+        btn.classList.toggle('active', i === note);
+      });
+    }
+    
+    function applyOffsetPreset(preset) {
+      const presets = {
+        triad: [0, 4, 7],
+        minor: [0, 3, 7],
+        seventh: [0, 4, 7, 11],
+        fifth: [0, 7],
+        octave: [0, 12],
+        penta5: [0, 2, 4, 7, 9],
+        ascending: [0, 2, 4, 5, 7, 9, 11, 12],
+        random: Array.from({length: state.arpLength}, () => Math.floor(Math.random() * 25) - 12),
+      };
+      
+      const offsets = presets[preset] || [0];
+      
+      if (!state.linked) {
+        state.arpLength = offsets.length;
+        document.getElementById('arpLength').value = state.arpLength;
+        document.getElementById('arpLengthDisplay').textContent = state.arpLength;
+      }
+      
+      state.arpOffsets = [...offsets];
+      while (state.arpOffsets.length < 16) state.arpOffsets.push(0);
+      
+      state.arpVelocities = new Array(16).fill(1.0);
+      state.arpLengths = new Array(16).fill(0.5);
+      
+      renderArpGrid();
+      updateArpDisplay();
+      updatePolyInfo();
+    }
+    
+    function loadEuclideanPreset(name) {
+      const preset = EUCLIDEAN_PRESETS[name];
+      if (!preset) return;
+      
+      state.eucSteps = preset.steps;
+      state.eucHits = preset.hits;
+      state.eucRotation = preset.rotation;
+      
+      document.getElementById('eucSteps').value = state.eucSteps;
+      document.getElementById('eucHits').value = state.eucHits;
+      document.getElementById('eucRotationValue').textContent = state.eucRotation;
+      
+      state.eucOverrides.clear();
+      state.eucPattern = generateEuclidean(state.eucSteps, state.eucHits, state.eucRotation);
+      
+      if (state.linked) {
+        state.arpLength = state.eucHits;
+        document.getElementById('arpLength').value = state.arpLength;
+        document.getElementById('arpLengthDisplay').textContent = state.arpLength;
+        renderArpGrid();
+      }
+      
+      renderEucGrid();
+      updateEucPatternDisplay();
+      updatePolyInfo();
+      
+      document.querySelectorAll('.preset-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.preset === name);
+      });
+    }
+    
+    // ============ DISPLAY UPDATES ============
+    function updateEucPatternDisplay() {
+      const display = document.getElementById('eucPatternDisplay');
+      let html = '';
+      for (let i = 0; i < state.eucSteps; i++) {
+        const isHit = state.eucPattern[i];
+        const isCurrent = i === eucStepIndex && isPlaying;
+        let classes = isHit ? 'hit' : 'rest';
+        if (isCurrent) classes += ' current';
+        const symbol = isHit ? '●' : '○';
+        html += `<span class="${classes}">${symbol}</span> `;
+      }
+      display.innerHTML = html;
+    }
+    
+    function updateArpDisplay() {
+      const display = document.getElementById('arpDisplay');
+      let html = '';
+      for (let i = 0; i < state.arpLength; i++) {
+        const offset = state.arpOffsets[i] || 0;
+        const rootMidi = state.rootNote + (state.octave * 12) + 12 + offset;
+        const noteName = NOTE_NAMES[rootMidi % 12];
+        const isCurrent = i === (hitCount % state.arpLength) && isPlaying;
+        const sign = offset >= 0 ? '+' : '';
+        html += `<span class="note ${isCurrent ? 'current' : ''}">${noteName} (${sign}${offset})</span>`;
+      }
+      display.innerHTML = html;
+    }
+    
+    function updatePolyInfo() {
+      const eucHits = state.eucPattern.filter(x => x).length;
+      const arpLen = state.arpLength;
+      const fullCycle = lcm(eucHits, arpLen);
+      
+      document.getElementById('polyRatio').textContent = `Euc ${eucHits} hits × Arp ${arpLen} notes`;
+      document.getElementById('lcmDisplay').textContent = fullCycle + ' hits';
+    }
+    
+    // ============ RENDER GRIDS ============
+    function renderEucGrid() {
+      const grid = document.getElementById('eucStepGrid');
+      grid.innerHTML = '';
+      
+      for (let i = 0; i < 16; i++) {
+        const step = document.createElement('div');
+        step.className = 'step';
+        
+        const isInRange = i < state.eucSteps;
+        const isActive = isInRange && state.eucPattern[i];
+        const isOverride = state.eucOverrides.has(i);
+        
+        step.innerHTML = `
+          <div class="step-number">${i + 1}</div>
+          <div class="step-toggle ${isActive ? 'active' : ''} ${isOverride ? 'manual-override' : ''}" 
+               data-step="${i}"
+               onclick="toggleEucStep(${i}, event)"
+               style="${!isInRange ? 'opacity: 0.3; pointer-events: none;' : ''}"></div>
+        `;
+        
+        grid.appendChild(step);
+      }
+    }
+    
+    function renderArpGrid() {
+      const grid = document.getElementById('arpStepGrid');
+      grid.innerHTML = '';
+      
+      for (let i = 0; i < 16; i++) {
+        const step = document.createElement('div');
+        step.className = 'arp-step';
+        
+        const isInRange = i < state.arpLength;
+        const offset = state.arpOffsets[i] || 0;
+        
+        step.innerHTML = `
+          <div class="step-number" style="color: #ff6b81">${i + 1}</div>
+          <div class="arp-step-box ${isInRange ? '' : ''}" 
+               data-step="${i}"
+               style="${!isInRange ? 'opacity: 0.2;' : ''}">${isInRange ? (offset >= 0 ? '+' : '') + offset : ''}</div>
+          <input type="number" class="step-offset" 
+                 value="${offset}" 
+                 min="-24" max="24"
+                 onchange="updateArpOffset(${i}, this.value)"
+                 style="border-color: #ff6b81;"
+                 ${!isInRange ? 'disabled' : ''}>
+        `;
+        
+        grid.appendChild(step);
+      }
+    }
+    
+    function renderEuclideanPresets() {
+      const container = document.getElementById('euclideanPresets');
+      container.innerHTML = '';
+      
+      for (const name of Object.keys(EUCLIDEAN_PRESETS)) {
+        const btn = document.createElement('button');
+        btn.className = 'preset-btn';
+        btn.dataset.preset = name;
+        btn.textContent = name;
+        btn.onclick = () => loadEuclideanPreset(name);
+        container.appendChild(btn);
+      }
+    }
+    
+    function renderKeySelect() {
+      const container = document.getElementById('keySelect');
+      container.innerHTML = '';
+      
+      NOTE_NAMES.forEach((name, i) => {
+        const btn = document.createElement('button');
+        btn.className = `key-btn ${i === state.rootNote ? 'active' : ''}`;
+        btn.textContent = name;
+        btn.onclick = () => setRootNote(i);
+        container.appendChild(btn);
+      });
+    }
+    
+    // ============ INIT ============
+    function init() {
+      state.eucPattern = generateEuclidean(state.eucSteps, state.eucHits, state.eucRotation);
+      
+      renderKeySelect();
+      renderEuclideanPresets();
+      renderEucGrid();
+      renderArpGrid();
+      updateEucPatternDisplay();
+      updateArpDisplay();
+      updatePolyInfo();
+    }
+    
+    init();
+  </script>
+</body>
+</html>

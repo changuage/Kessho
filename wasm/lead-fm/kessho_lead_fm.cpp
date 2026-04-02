@@ -196,7 +196,8 @@ static LeadNote g_notes[LEAD_FM_MAX_POLYPHONY];
 static LeadPresetParams g_params;
 
 // Delay
-static StereoPingPongDelay g_delay;
+static StereoPingPongDelay g_delay_lead1;
+static StereoPingPongDelay g_delay_lead2;
 static float g_delay_send = 0.3f;
 
 // Output buffers (one per lead for separate routing)
@@ -514,8 +515,10 @@ int lead_fm_init(float sample_rate) {
     }
 
     int max_delay = (int)(sample_rate * LEAD_FM_DELAY_MAX_SECONDS) + 1;
-    g_delay.init(max_delay);
-    g_delay.set_filter(4000.0f, sample_rate);
+    g_delay_lead1.init(max_delay);
+    g_delay_lead2.init(max_delay);
+    g_delay_lead1.set_filter(4000.0f, sample_rate);
+    g_delay_lead2.set_filter(4000.0f, sample_rate);
 
     memset(g_output, 0, sizeof(g_output));
     memset(g_output_lead2, 0, sizeof(g_output_lead2));
@@ -523,7 +526,8 @@ int lead_fm_init(float sample_rate) {
 }
 
 void lead_fm_destroy(void) {
-    g_delay.destroy();
+    g_delay_lead1.destroy();
+    g_delay_lead2.destroy();
 }
 
 float* lead_fm_get_output_ptr(void) {
@@ -553,24 +557,28 @@ void lead_fm_process_block(int block_size) {
         }
     }
 
-    // Shared delay: feed combined signal, add delay wet to both outputs
+    // Per-lead delay: keep wet tails isolated so lead 1 activity cannot bleed into lead 2.
     for (int n = 0; n < block_size; n++) {
-        float combined_l = lead1_dry_l[n] + lead2_dry_l[n];
-        float combined_r = lead1_dry_r[n] + lead2_dry_r[n];
-        float del_in_l = combined_l * g_delay_send;
-        float del_in_r = combined_r * g_delay_send;
-        float del_l, del_r;
-        g_delay.process_sample(del_in_l, del_in_r, del_l, del_r);
-        float wet_l = del_l - del_in_l;
-        float wet_r = del_r - del_in_r;
+        float del1_in_l = lead1_dry_l[n] * g_delay_send;
+        float del1_in_r = lead1_dry_r[n] * g_delay_send;
+        float del2_in_l = lead2_dry_l[n] * g_delay_send;
+        float del2_in_r = lead2_dry_r[n] * g_delay_send;
 
-        // Lead 1 output: dry + shared delay wet
-        g_output[n * 2]     = lead1_dry_l[n] + wet_l;
-        g_output[n * 2 + 1] = lead1_dry_r[n] + wet_r;
+        float del1_l, del1_r;
+        float del2_l, del2_r;
+        g_delay_lead1.process_sample(del1_in_l, del1_in_r, del1_l, del1_r);
+        g_delay_lead2.process_sample(del2_in_l, del2_in_r, del2_l, del2_r);
 
-        // Lead 2 output: dry + shared delay wet
-        g_output_lead2[n * 2]     = lead2_dry_l[n] + wet_l;
-        g_output_lead2[n * 2 + 1] = lead2_dry_r[n] + wet_r;
+        float wet1_l = del1_l - del1_in_l;
+        float wet1_r = del1_r - del1_in_r;
+        float wet2_l = del2_l - del2_in_l;
+        float wet2_r = del2_r - del2_in_r;
+
+        g_output[n * 2]     = lead1_dry_l[n] + wet1_l;
+        g_output[n * 2 + 1] = lead1_dry_r[n] + wet1_r;
+
+        g_output_lead2[n * 2]     = lead2_dry_l[n] + wet2_l;
+        g_output_lead2[n * 2 + 1] = lead2_dry_r[n] + wet2_r;
     }
 }
 
@@ -765,12 +773,15 @@ void lead_fm_set_unison_voices(int v) { g_params.unison_voices = v; }
 void lead_fm_set_unison_detune(float v) { g_params.unison_detune = v; }
 
 // Delay
-void lead_fm_set_delay_enabled(int v) { g_delay.enabled = v != 0; }
-void lead_fm_set_delay_time_l(float v) { g_delay.time_l = v; }
-void lead_fm_set_delay_time_r(float v) { g_delay.time_r = v; }
-void lead_fm_set_delay_feedback(float v) { g_delay.feedback = v; }
-void lead_fm_set_delay_filter(float v) { g_delay.set_filter(v, g_sample_rate); }
-void lead_fm_set_delay_mix(float v) { g_delay.mix = v; }
+void lead_fm_set_delay_enabled(int v) { g_delay_lead1.enabled = g_delay_lead2.enabled = (v != 0); }
+void lead_fm_set_delay_time_l(float v) { g_delay_lead1.time_l = g_delay_lead2.time_l = v; }
+void lead_fm_set_delay_time_r(float v) { g_delay_lead1.time_r = g_delay_lead2.time_r = v; }
+void lead_fm_set_delay_feedback(float v) { g_delay_lead1.feedback = g_delay_lead2.feedback = v; }
+void lead_fm_set_delay_filter(float v) {
+    g_delay_lead1.set_filter(v, g_sample_rate);
+    g_delay_lead2.set_filter(v, g_sample_rate);
+}
+void lead_fm_set_delay_mix(float v) { g_delay_lead1.mix = g_delay_lead2.mix = v; }
 void lead_fm_set_delay_send(float v) { g_delay_send = v; }
 
 int lead_fm_get_active_count(void) {

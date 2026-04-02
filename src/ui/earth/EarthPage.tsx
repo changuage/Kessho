@@ -8,13 +8,22 @@
  * Layout: Left = Sound-engine controls, Right = Mixer
  */
 
-import React, { useState, useCallback, useMemo } from 'react';
-import './earth.css';import { DualSlider, type DualSliderRange } from '../DualSlider';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import './earth.css';
+import { DualSlider, type DualSliderRange } from '../DualSlider';
+import { useSliderHelp } from '../SliderHelpOverlay';
 import type { SliderState, SliderMode } from '../state';
 import { QUANTIZATION } from '../state';
+import { usePresets } from '../../presets/usePresets';
+import { PresetDropdown } from '../../presets/PresetDropdown';
+import type { PresetEntry } from '../../presets/types';
 import {
   WATER_PRESETS, INSECT_ENGINES,
+  WATER_MORPH_PARAM_KEYS,
   LAYER_KEYS, LAYER_LABELS,
+  getWaterPresetOptions,
+  setUserWaterPresets,
+  upsertUserWaterPreset,
   type LayerKey,
 } from '../../audio/waterPresets';
 
@@ -24,6 +33,7 @@ export interface EarthPageProps {
   state: SliderState;
   onParamChange: (key: keyof SliderState, value: number) => void;
   onSelectChange: <K extends keyof SliderState>(key: K, value: SliderState[K]) => void;
+  onStateChange?: (newState: SliderState) => void;
   sliderProps: (paramKey: keyof SliderState) => {
     mode: SliderMode;
     dualRange?: DualSliderRange;
@@ -50,9 +60,9 @@ const LAYER_STATE_KEY: Record<LayerKey, keyof SliderState> = {
 /** All earth dual-slider keys — used to check if any is in walk mode */
 const EARTH_DUAL_KEYS: readonly (keyof SliderState)[] = [
   'waterMorph',
-  'waterIntensity', 'waterRate', 'waterDistance', 'waterDropSize',
+  'waterIntensity', 'waterDistance', 'waterDropSize',
   'waterHardness', 'waterGlassThickness', 'waterBaseFreq', 'waterReverbSend',
-  'oceanWaveSynthLevel', 'oceanDuration', 'oceanInterval', 'oceanFoam', 'oceanDepth',
+  'oceanSampleLevel',
   'insectsDensity', 'insectsTemperature', 'insectsDistance', 'insectsProximity',
   'insectsAntiphony', 'insectsClickRate', 'insectsMotion',
   'insects2Density', 'insects2Temperature', 'insects2Distance', 'insects2Proximity',
@@ -60,8 +70,13 @@ const EARTH_DUAL_KEYS: readonly (keyof SliderState)[] = [
   'waterLevel', 'insectsLevel', 'insects2Level',
   'waterLayerHardDrops', 'waterLayerWaterDrops', 'waterLayerTurbulence',
   'waterLayerBubbling', 'waterLayerSurf', 'waterLayerChannels',
-  'waterSurfDuration', 'waterSurfInterval', 'waterSurfFoam', 'waterSurfDepth',
+  'waterHardDropRate', 'waterHardDropLPF',
+  'waterWaterDropRate', 'waterWaterDropLPF',
+  'waterBubblingRate', 'waterBubblingLPF',
+  'waterSurfDuration', 'waterSurfInterval', 'waterSurfFoam', 'waterSurfFoamBright', 'waterSurfProximity', 'waterSurfDepth',
   'waterSurfBody', 'waterSurfSpray',
+  'waterDensityHardSend', 'waterDensityWaterSend', 'waterDensityBubbleSend',
+  'waterDensityFeedback', 'waterDensityTone', 'waterDensityRing', 'waterDensityWet',
   'waterChannelsMorph', 'waterChannelsSpeed',
 ] as const;
 
@@ -72,16 +87,74 @@ function quantize(key: string, v: number): number {
   return q.min + Math.round((clamped - q.min) / q.step) * q.step;
 }
 
+type EarthPresetOption = {
+  value: string;
+  label: string;
+  library: 'stock' | 'user' | 'cloud';
+  stockIndex?: number;
+  presetName?: string;
+};
+
+const WATER_PRESET_METADATA_KEYS: readonly (keyof SliderState)[] = [
+  'waterSurfDuration',
+  'waterSurfInterval',
+  'waterSurfFoam',
+  'waterSurfProximity',
+  'waterSurfDepth',
+] as const;
+
+const INSECTS1_PARAM_KEYS: readonly (keyof SliderState)[] = [
+  'insectsEngine',
+  'insectsDensity',
+  'insectsTemperature',
+  'insectsDistance',
+  'insectsProximity',
+  'insectsAntiphony',
+  'insectsClickRate',
+  'insectsMotion',
+] as const;
+
+const INSECTS2_PARAM_KEYS: readonly (keyof SliderState)[] = [
+  'insects2Engine',
+  'insects2Density',
+  'insects2Temperature',
+  'insects2Distance',
+  'insects2Proximity',
+  'insects2Antiphony',
+  'insects2ClickRate',
+  'insects2Motion',
+] as const;
+
 // ═══ Component ═══
 
 export default function EarthPage({
-  state, onParamChange, onSelectChange, sliderProps, isRunning: _isRunning,
+  state, onParamChange, onSelectChange, onStateChange, sliderProps, isRunning: _isRunning,
 }: EarthPageProps) {
 
   // ── Local UI state ──
   const [expandedCards, setExpandedCards] = useState<Set<string>>(
     () => new Set(['water']),
   );
+  const [selectedInsects1Preset, setSelectedInsects1Preset] = useState(() => `stock:${state.insectsEngine}`);
+  const [selectedInsects2Preset, setSelectedInsects2Preset] = useState(() => `stock:${state.insects2Engine}`);
+  const {
+    presets: waterEnginePresets,
+    save: saveWaterPreset,
+    load: loadWaterPreset,
+    refresh: refreshWaterPresets,
+  } = usePresets('engine', 'water');
+  const {
+    presets: insects1EnginePresets,
+    save: saveInsects1Preset,
+    load: loadInsects1Preset,
+    refresh: refreshInsects1Presets,
+  } = usePresets('engine', 'insects1');
+  const {
+    presets: insects2EnginePresets,
+    save: saveInsects2Preset,
+    load: loadInsects2Preset,
+    refresh: refreshInsects2Presets,
+  } = usePresets('engine', 'insects2');
 
   const toggleCard = useCallback((id: string) => {
     setExpandedCards(prev => {
@@ -97,12 +170,318 @@ export default function EarthPage({
     [sliderProps],
   );
 
+  useEffect(() => {
+    setSelectedInsects1Preset(prev => (prev.startsWith('stock:') ? `stock:${state.insectsEngine}` : prev));
+  }, [state.insectsEngine]);
+
+  useEffect(() => {
+    setSelectedInsects2Preset(prev => (prev.startsWith('stock:') ? `stock:${state.insects2Engine}` : prev));
+  }, [state.insects2Engine]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const syncWaterRuntimePresets = async () => {
+      const runtimePresets = await Promise.all(
+        waterEnginePresets
+          .filter((preset) => preset.library !== 'stock')
+          .map(async (preset) => {
+            const entry = await loadWaterPreset(preset.name);
+            if (!entry) return null;
+            const version = entry.versions.find(v => v.v === entry.currentVersion)
+              || entry.versions[entry.versions.length - 1];
+            if (!version) return null;
+            const data = Object.fromEntries(
+              WATER_MORPH_PARAM_KEYS
+                .map((key) => [key, version.data[key]])
+                .filter(([, value]) => typeof value === 'number'),
+            ) as Record<string, number>;
+
+            return {
+              sourceId: entry.id ?? entry.name,
+              name: entry.name,
+              library: (entry.library ?? 'user') as 'user' | 'cloud',
+              data,
+              dualRanges: version.dualRanges,
+              sliderModes: version.sliderModes as Record<string, SliderMode> | undefined,
+            };
+          }),
+      );
+
+      if (!cancelled) {
+        setUserWaterPresets(runtimePresets.filter((preset): preset is NonNullable<typeof preset> => Boolean(preset)));
+      }
+    };
+
+    syncWaterRuntimePresets().catch((error) => {
+      console.warn('Failed to sync water L1 presets:', error);
+      if (!cancelled) setUserWaterPresets([]);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [loadWaterPreset, waterEnginePresets]);
+
+  const waterPresetOptions = useMemo(
+    () => getWaterPresetOptions().map((option) => ({
+      value: String(option.id),
+      label: option.name,
+      library: option.library,
+    })),
+    [waterEnginePresets],
+  );
+
+  const insects1PresetOptions = useMemo<EarthPresetOption[]>(() => {
+    const stock = INSECT_ENGINES.map((name, index) => ({
+      value: `stock:${index}`,
+      label: name,
+      library: 'stock' as const,
+      stockIndex: index,
+    }));
+    const custom = insects1EnginePresets
+      .filter((preset) => preset.library !== 'stock')
+      .map((preset) => ({
+        value: `${preset.library}:${preset.name}`,
+        label: preset.name,
+        library: preset.library,
+        presetName: preset.name,
+      }));
+    return [...stock, ...custom];
+  }, [insects1EnginePresets]);
+
+  const insects2PresetOptions = useMemo<EarthPresetOption[]>(() => {
+    const stock = INSECT_ENGINES.map((name, index) => ({
+      value: `stock:${index}`,
+      label: name,
+      library: 'stock' as const,
+      stockIndex: index,
+    }));
+    const custom = insects2EnginePresets
+      .filter((preset) => preset.library !== 'stock')
+      .map((preset) => ({
+        value: `${preset.library}:${preset.name}`,
+        label: preset.name,
+        library: preset.library,
+        presetName: preset.name,
+      }));
+    return [...stock, ...custom];
+  }, [insects2EnginePresets]);
+
+  const renderPresetOptions = useCallback((options: Array<{ value: string; label: string; library: 'stock' | 'user' | 'cloud' }>) => {
+    const stock = options.filter(option => option.library === 'stock');
+    const user = options.filter(option => option.library === 'user');
+    const cloud = options.filter(option => option.library === 'cloud');
+
+    return (
+      <>
+        <optgroup label="Stock">
+          {stock.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </optgroup>
+        {user.length > 0 && (
+          <optgroup label="My Presets">
+            {user.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </optgroup>
+        )}
+        {cloud.length > 0 && (
+          <optgroup label="Cloud">
+            {cloud.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </optgroup>
+        )}
+      </>
+    );
+  }, []);
+
+  const applyNumericPresetData = useCallback((
+    keys: readonly (keyof SliderState)[],
+    data: Record<string, unknown>,
+  ) => {
+    for (const key of keys) {
+      const value = data[key];
+      if (typeof value === 'number') {
+        onParamChange(key, value);
+      }
+    }
+  }, [onParamChange]);
+
+  const collectWaterPresetMetadata = useCallback(() => {
+    const sliderModes: Record<string, SliderMode> = {};
+    const dualRanges: Record<string, { min: number; max: number }> = {};
+
+    for (const key of WATER_PRESET_METADATA_KEYS) {
+      const sp = sliderProps(key);
+      if (sp.mode !== 'single') sliderModes[key] = sp.mode;
+      if (sp.dualRange) dualRanges[key] = sp.dualRange;
+    }
+
+    return {
+      sliderModes: Object.keys(sliderModes).length > 0 ? sliderModes : undefined,
+      dualRanges: Object.keys(dualRanges).length > 0 ? dualRanges : undefined,
+    };
+  }, [sliderProps]);
+
+  const handleWaterSlotSave = useCallback(async (slotKey: 'waterMorphA' | 'waterMorphB') => {
+    const currentId = Number(state[slotKey] ?? 0);
+    const currentOption = getWaterPresetOptions().find((option) => option.id === currentId);
+    const defaultName = currentOption?.name || WATER_PRESETS[currentId] || 'Water Preset';
+
+    let targetName = defaultName;
+    if (!currentOption || currentOption.library !== 'user') {
+      if (typeof window === 'undefined' || typeof window.prompt !== 'function') return;
+      const requestedName = window.prompt(
+        `Save ${slotKey === 'waterMorphA' ? 'Water slot A' : 'Water slot B'} as a new L1 preset`,
+        defaultName,
+      );
+      if (!requestedName?.trim()) return;
+      targetName = requestedName.trim();
+      const existing = getWaterPresetOptions().find((option) => option.name === targetName && option.library !== 'user');
+      if (existing) targetName = `${targetName} (Custom)`;
+    }
+
+    const metadata = collectWaterPresetMetadata();
+    await saveWaterPreset(
+      targetName,
+      state,
+      currentOption?.library === 'user' ? 'Updated from water slot' : 'Saved from water slot',
+      undefined,
+      metadata,
+    );
+    await refreshWaterPresets();
+
+    const savedEntry = await loadWaterPreset(targetName);
+    if (!savedEntry) return;
+    const version = savedEntry.versions.find(v => v.v === savedEntry.currentVersion)
+      || savedEntry.versions[savedEntry.versions.length - 1];
+    if (!version) return;
+
+    const data = Object.fromEntries(
+      WATER_MORPH_PARAM_KEYS
+        .map((key) => [key, version.data[key]])
+        .filter(([, value]) => typeof value === 'number'),
+    ) as Record<string, number>;
+
+    const savedId = upsertUserWaterPreset({
+      sourceId: savedEntry.id ?? savedEntry.name,
+      name: savedEntry.name,
+      library: (savedEntry.library ?? 'user') as 'user' | 'cloud',
+      data,
+      dualRanges: version.dualRanges,
+      sliderModes: version.sliderModes as Record<string, SliderMode> | undefined,
+    });
+
+    if (Number(state[slotKey] ?? 0) !== savedId) {
+      onSelectChange(slotKey, savedId as SliderState[typeof slotKey]);
+    }
+  }, [collectWaterPresetMetadata, loadWaterPreset, onSelectChange, refreshWaterPresets, saveWaterPreset, state]);
+
+  const applyInsectsStockPreset = useCallback((scope: 'insects1' | 'insects2', stockIndex: number) => {
+    const defaults = INSECT_ENGINE_DEFAULTS[stockIndex];
+    if (!defaults) return;
+    if (scope === 'insects1') {
+      onParamChange('insectsEngine', stockIndex);
+      onParamChange('insectsDensity', defaults.density);
+      onParamChange('insectsTemperature', defaults.temperature);
+      onParamChange('insectsDistance', defaults.distance);
+      onParamChange('insectsProximity', defaults.proximity);
+      onParamChange('insectsAntiphony', defaults.antiphony);
+      onParamChange('insectsClickRate', defaults.clickRate);
+      onParamChange('insectsMotion', defaults.motion);
+      return;
+    }
+    onParamChange('insects2Engine', stockIndex);
+    onParamChange('insects2Density', defaults.density);
+    onParamChange('insects2Temperature', defaults.temperature);
+    onParamChange('insects2Distance', defaults.distance);
+    onParamChange('insects2Proximity', defaults.proximity);
+    onParamChange('insects2Antiphony', defaults.antiphony);
+    onParamChange('insects2ClickRate', defaults.clickRate);
+    onParamChange('insects2Motion', defaults.motion);
+  }, [onParamChange]);
+
+  const handleInsectsPresetLoad = useCallback(async (scope: 'insects1' | 'insects2', value: string) => {
+    const options = scope === 'insects1' ? insects1PresetOptions : insects2PresetOptions;
+    const option = options.find((entry) => entry.value === value);
+    if (!option) return;
+
+    if (scope === 'insects1') setSelectedInsects1Preset(value);
+    else setSelectedInsects2Preset(value);
+
+    if (option.library === 'stock' && option.stockIndex != null) {
+      applyInsectsStockPreset(scope, option.stockIndex);
+      return;
+    }
+
+    const loadPreset = scope === 'insects1' ? loadInsects1Preset : loadInsects2Preset;
+    const entry = option.presetName ? await loadPreset(option.presetName) : null;
+    if (!entry) return;
+    const version = entry.versions.find(v => v.v === entry.currentVersion)
+      || entry.versions[entry.versions.length - 1];
+    if (!version) return;
+    applyNumericPresetData(scope === 'insects1' ? INSECTS1_PARAM_KEYS : INSECTS2_PARAM_KEYS, version.data);
+  }, [
+    applyInsectsStockPreset,
+    applyNumericPresetData,
+    insects1PresetOptions,
+    insects2PresetOptions,
+    loadInsects1Preset,
+    loadInsects2Preset,
+  ]);
+
+  const handleInsectsPresetSave = useCallback(async (scope: 'insects1' | 'insects2') => {
+    const selectedValue = scope === 'insects1' ? selectedInsects1Preset : selectedInsects2Preset;
+    const options = scope === 'insects1' ? insects1PresetOptions : insects2PresetOptions;
+    const currentOption = options.find((option) => option.value === selectedValue);
+    const defaultName = currentOption?.label || `${scope === 'insects1' ? 'Insects 1' : 'Insects 2'} Preset`;
+    let targetName = defaultName;
+
+    if (!currentOption || currentOption.library !== 'user') {
+      if (typeof window === 'undefined' || typeof window.prompt !== 'function') return;
+      const requestedName = window.prompt(
+        `Save ${scope === 'insects1' ? 'Insects 1' : 'Insects 2'} as a new L1 preset`,
+        defaultName,
+      );
+      if (!requestedName?.trim()) return;
+      targetName = requestedName.trim();
+      const existing = options.find((option) => option.label === targetName && option.library !== 'user');
+      if (existing) targetName = `${targetName} (Custom)`;
+    }
+
+    const savePreset = scope === 'insects1' ? saveInsects1Preset : saveInsects2Preset;
+    const refreshPresetList = scope === 'insects1' ? refreshInsects1Presets : refreshInsects2Presets;
+    await savePreset(
+      targetName,
+      state,
+      currentOption?.library === 'user' ? 'Updated from insects preset strip' : 'Saved from insects preset strip',
+    );
+    await refreshPresetList();
+
+    const selectedKey = `user:${targetName}`;
+    if (scope === 'insects1') setSelectedInsects1Preset(selectedKey);
+    else setSelectedInsects2Preset(selectedKey);
+  }, [
+    insects1PresetOptions,
+    insects2PresetOptions,
+    refreshInsects1Presets,
+    refreshInsects2Presets,
+    saveInsects1Preset,
+    saveInsects2Preset,
+    selectedInsects1Preset,
+    selectedInsects2Preset,
+    state,
+  ]);
+
   // ── DualSlider helper ──
   function ds(
     key: keyof SliderState,
     label: string,
     fillColor: string,
-    opts?: { format?: (v: number) => string },
+    opts?: { format?: (v: number) => string; logarithmic?: boolean },
   ) {
     const sp = sliderProps(key);
     const q = (QUANTIZATION as Record<string, { min: number; max: number; step: number }>)[key as string];
@@ -126,6 +505,7 @@ export default function EarthPage({
         sliderClassName="param-slider"
         fillColor={fillColor}
         format={opts?.format}
+        logarithmic={opts?.logarithmic}
       />
     );
   }
@@ -136,6 +516,19 @@ export default function EarthPage({
   return (
     <div className="earth-root">
       <div className="container">
+
+        {/* ═══ Earth Source Preset (L2 / earthKit) ═══ */}
+        <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '6px 10px', marginBottom: 4, borderRadius: 8, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>Earth Kit</span>
+          <PresetDropdown
+            level="kit"
+            scope="earthKit"
+            state={state}
+            onLoad={(_entry: PresetEntry) => {}}
+            onStateChange={onStateChange}
+            compact
+          />
+        </div>
 
         {/* ════ LEFT: Sound Engine Controls ════ */}
         <div className="sound-panel">
@@ -153,40 +546,53 @@ export default function EarthPage({
             {expandedCards.has('water') && (
               <div className="earth-card-body">
                 {/* Morph row */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
-                  <select
-                    className="earth-select"
-                    style={{ flex: '0 0 auto', width: 100 }}
-                    value={state.waterMorphA}
-                    onChange={e =>
-                      onSelectChange('waterMorphA', Number(e.target.value) as SliderState['waterMorphA'])
-                    }
-                  >
-                    {WATER_PRESETS.map((name, i) => (
-                      <option key={i} value={i}>{name}</option>
-                    ))}
-                  </select>
+                <div className="earth-preset-row">
+                  <div className="earth-preset-slot">
+                    <select
+                      className="earth-select earth-preset-select"
+                      value={String(state.waterMorphA)}
+                      onChange={e =>
+                        onSelectChange('waterMorphA', Number(e.target.value) as SliderState['waterMorphA'])
+                      }
+                    >
+                      {renderPresetOptions(waterPresetOptions)}
+                    </select>
+                    <button
+                      type="button"
+                      className="earth-preset-save"
+                      onClick={() => { void handleWaterSlotSave('waterMorphA'); }}
+                      title="Save the current Water engine state into slot A's L1 preset"
+                    >
+                      Save
+                    </button>
+                  </div>
 
                   <div style={{ flex: 1 }}>
                     {ds('waterMorph', 'Morph', 'rgba(74,158,255,0.5)')}
                   </div>
 
-                  <select
-                    className="earth-select"
-                    style={{ flex: '0 0 auto', width: 100 }}
-                    value={state.waterMorphB}
-                    onChange={e =>
-                      onSelectChange('waterMorphB', Number(e.target.value) as SliderState['waterMorphB'])
-                    }
-                  >
-                    {WATER_PRESETS.map((name, i) => (
-                      <option key={i} value={i}>{name}</option>
-                    ))}
-                  </select>
+                  <div className="earth-preset-slot">
+                    <select
+                      className="earth-select earth-preset-select"
+                      value={String(state.waterMorphB)}
+                      onChange={e =>
+                        onSelectChange('waterMorphB', Number(e.target.value) as SliderState['waterMorphB'])
+                      }
+                    >
+                      {renderPresetOptions(waterPresetOptions)}
+                    </select>
+                    <button
+                      type="button"
+                      className="earth-preset-save"
+                      onClick={() => { void handleWaterSlotSave('waterMorphB'); }}
+                      title="Save the current Water engine state into slot B's L1 preset"
+                    >
+                      Save
+                    </button>
+                  </div>
                 </div>
 
                 {ds('waterIntensity', 'Intensity', 'rgba(74,158,255,0.5)')}
-                {ds('waterRate', 'Rate', 'rgba(74,158,255,0.5)')}
                 {ds('waterDistance', 'Distance', 'rgba(74,158,255,0.5)')}
                 {ds('waterDropSize', 'Drop Size', 'rgba(74,158,255,0.5)')}
                 {ds('waterHardness', 'Hardness', 'rgba(74,158,255,0.5)')}
@@ -195,6 +601,38 @@ export default function EarthPage({
                   format: v => `${Math.round(v)} Hz`,
                 })}
                 {ds('waterReverbSend', 'Reverb Send', 'rgba(139,92,246,0.5)')}
+
+                {/* ── Discrete event layer timbre ── */}
+                <div className="section-divider" />
+                <div className="param-section-label" style={{ fontSize: 11, opacity: 0.6, margin: '6px 0 2px' }}>Discrete Layers</div>
+                {ds('waterHardDropRate', 'Hard Drop Rate', 'rgba(74,158,255,0.5)')}
+                {ds('waterHardDropLPF', 'Hard Drop LPF', 'rgba(74,158,255,0.5)', {
+                  logarithmic: true,
+                  format: v => `${Math.round(v)} Hz`,
+                })}
+                {ds('waterWaterDropRate', 'Water Drop Rate', 'rgba(74,158,255,0.5)')}
+                {ds('waterWaterDropLPF', 'Water Drop LPF', 'rgba(74,158,255,0.5)', {
+                  logarithmic: true,
+                  format: v => `${Math.round(v)} Hz`,
+                })}
+                {ds('waterBubblingRate', 'Bubbling Rate', 'rgba(74,158,255,0.5)')}
+                {ds('waterBubblingLPF', 'Bubbling LPF', 'rgba(74,158,255,0.5)', {
+                  logarithmic: true,
+                  format: v => `${Math.round(v)} Hz`,
+                })}
+
+                {/* ── Shared density loop params ── */}
+                <div className="section-divider" />
+                <div className="param-section-label" style={{ fontSize: 11, opacity: 0.6, margin: '6px 0 2px' }}>Density Loop (Drops + Bubbling)</div>
+                {ds('waterDensityHardSend', 'Hard Send', 'rgba(96,165,250,0.5)')}
+                {ds('waterDensityWaterSend', 'Drop Send', 'rgba(96,165,250,0.5)')}
+                {ds('waterDensityBubbleSend', 'Bubble Send', 'rgba(96,165,250,0.5)')}
+                {ds('waterDensityFeedback', 'Feedback', 'rgba(96,165,250,0.5)')}
+                {ds('waterDensityTone', 'Tone', 'rgba(96,165,250,0.5)', {
+                  format: v => `${Math.round(v)} Hz`,
+                })}
+                {ds('waterDensityRing', 'Ring Amount', 'rgba(96,165,250,0.5)')}
+                {ds('waterDensityWet', 'Density Wet', 'rgba(96,165,250,0.5)')}
 
                 {/* ── Surf layer params ── */}
                 <div className="section-divider" />
@@ -206,6 +644,10 @@ export default function EarthPage({
                   format: v => `${v.toFixed(1)}s`,
                 })}
                 {ds('waterSurfFoam', 'Foam', 'rgba(0,180,216,0.5)')}
+                {ds('waterSurfFoamBright', 'Foam Bright', 'rgba(0,180,216,0.5)')}
+                {ds('waterSurfProximity', 'Proximity', 'rgba(0,180,216,0.5)', {
+                  format: v => v < 0.34 ? 'Far' : v > 0.66 ? 'Near' : 'Mid',
+                })}
                 {ds('waterSurfDepth', 'Depth', 'rgba(0,180,216,0.5)')}
                 {ds('waterSurfBody', 'Body Freq', 'rgba(0,180,216,0.5)', {
                   format: v => `${Math.round(v)} Hz`,
@@ -216,7 +658,7 @@ export default function EarthPage({
 
                 {/* ── Channels layer params ── */}
                 <div className="section-divider" />
-                <div className="param-section-label" style={{ fontSize: 11, opacity: 0.6, margin: '6px 0 2px' }}>Channels (Stream↔Wind)</div>
+                <div className="param-section-label" style={{ fontSize: 11, opacity: 0.6, margin: '6px 0 2px' }}>Channels (Wind↔Stream)</div>
                 {ds('waterChannelsMorph', 'Morph', 'rgba(0,150,136,0.5)', {
                   format: v => v < 0.3 ? 'Stream' : v > 0.7 ? 'Wind' : 'Blend',
                 })}
@@ -225,80 +667,40 @@ export default function EarthPage({
             )}
           </div>
 
-          {/* ─── Ocean Waves Card ─── */}
+          {/* ─── Waves Card ─── */}
           <div
             className={`earth-card${expandedCards.has('ocean') ? ' expanded' : ''}`}
             style={{ '--sc': '#00d4ff' } as React.CSSProperties}
           >
             <div className="earth-card-header" onClick={() => toggleCard('ocean')}>
-              <span className="ec-name">Ocean Waves</span>
+              <span className="ec-name">Waves</span>
               <span className="ec-chevron">{expandedCards.has('ocean') ? '▼' : '▶'}</span>
             </div>
 
             {expandedCards.has('ocean') && (
               <div className="earth-card-body">
-                {/* Wave Sample toggle + level (at top) */}
+                {/* Ghetary sample toggle + level */}
                 <div className="layer-row" style={{ marginBottom: 10 }}>
                   <button
                     className={`layer-toggle ${state.oceanSampleEnabled ? 'on' : ''}`}
                     onClick={() =>
                       onSelectChange('oceanSampleEnabled', !state.oceanSampleEnabled)
                     }
-                    title={state.oceanSampleEnabled ? 'Disable Wave Sample' : 'Enable Wave Sample'}
+                    title={state.oceanSampleEnabled ? 'Disable Ghetary Waves' : 'Enable Ghetary Waves'}
                   >
                     {state.oceanSampleEnabled ? '●' : '○'}
                   </button>
-                  <span className="layer-label" style={{ minWidth: 100 }}>Wave Sample</span>
+                  <span className="layer-label" style={{ minWidth: 100 }}>Ghetary Waves</span>
                   <span className="layer-value">
                     {state.oceanSampleEnabled ? 'ON' : 'OFF'}
                   </span>
                 </div>
-                {ds('oceanSampleLevel', 'Wave Sample Level', 'rgba(0,212,255,0.5)')}
+                {ds('oceanSampleLevel', 'Waves Level', 'rgba(0,212,255,0.5)')}
 
-                {/* Wave Synth toggle */}
-                <div className="layer-row" style={{ marginBottom: 10, marginTop: 12 }}>
-                  <button
-                    className={`layer-toggle ${state.oceanWaveSynthEnabled ? 'on' : ''}`}
-                    onClick={() =>
-                      onSelectChange('oceanWaveSynthEnabled', !state.oceanWaveSynthEnabled)
-                    }
-                    title={state.oceanWaveSynthEnabled ? 'Disable Wave Synth' : 'Enable Wave Synth'}
-                  >
-                    {state.oceanWaveSynthEnabled ? '●' : '○'}
-                  </button>
-                  <span className="layer-label" style={{ minWidth: 100 }}>Wave Synthesis</span>
-                  <span className="layer-value">
-                    {state.oceanWaveSynthEnabled ? 'ON' : 'OFF'}
-                  </span>
-                </div>
-
-                {/* Wave Synth parameters — only rendered when synthesis is enabled */}
-                {state.oceanWaveSynthEnabled && (<>
-                  {ds('oceanWaveSynthLevel', 'Wave Synth Level', 'rgba(0,212,255,0.5)')}
-
-                  <div style={{ marginTop: 12, marginBottom: 8 }}>
-                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Wave Timing</span>
-                  </div>
-                  {ds('oceanDuration', 'Duration', 'rgba(0,212,255,0.5)', {
-                    format: v => `${v.toFixed(1)} s`,
-                  })}
-                  {ds('oceanInterval', 'Interval', 'rgba(0,212,255,0.5)', {
-                    format: v => `${v.toFixed(1)} s`,
-                  })}
-
-                  <div style={{ marginTop: 12, marginBottom: 8 }}>
-                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                      Wave Character
-                    </span>
-                  </div>
-                  {ds('oceanFoam', 'Foam', 'rgba(0,212,255,0.5)')}
-                  {ds('oceanDepth', 'Depth', 'rgba(0,212,255,0.5)')}
-                </>)}
-
-                {/* Ocean Filter — shared by both sample and synth, always visible */}
+                {/* Waves filter */}
                 <div style={{ marginTop: 12, marginBottom: 8 }}>
                   <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                    Ocean Filter
+                    Waves Filter
                   </span>
                 </div>
                 <div className="param-row">
@@ -323,6 +725,7 @@ export default function EarthPage({
                 </div>
 
                 <ParamSlider
+                  paramKey="oceanFilterCutoff"
                   label="Filter Cutoff"
                   value={state.oceanFilterCutoff}
                   min={40} max={12000} step={10}
@@ -330,6 +733,7 @@ export default function EarthPage({
                   format={v => `${Math.round(v)} Hz`}
                 />
                 <ParamSlider
+                  paramKey="oceanFilterResonance"
                   label="Filter Resonance"
                   value={state.oceanFilterResonance}
                   onChange={v => onParamChange('oceanFilterResonance', v)}
@@ -350,20 +754,23 @@ export default function EarthPage({
 
             {expandedCards.has('insects1') && (
               <div className="earth-card-body">
-                <select
-                  className="earth-select"
-                  value={state.insectsEngine}
-                  onChange={e =>
-                    onSelectChange(
-                      'insectsEngine',
-                      Number(e.target.value) as SliderState['insectsEngine'],
-                    )
-                  }
-                >
-                  {INSECT_ENGINES.map((name, i) => (
-                    <option key={i} value={i}>{name}</option>
-                  ))}
-                </select>
+                <div className="earth-preset-bar">
+                  <select
+                    className="earth-select earth-preset-select"
+                    value={selectedInsects1Preset}
+                    onChange={(e) => { void handleInsectsPresetLoad('insects1', e.target.value); }}
+                  >
+                    {renderPresetOptions(insects1PresetOptions)}
+                  </select>
+                  <button
+                    type="button"
+                    className="earth-preset-save"
+                    onClick={() => { void handleInsectsPresetSave('insects1'); }}
+                    title="Save the current Insects 1 engine state as an L1 preset"
+                  >
+                    Save
+                  </button>
+                </div>
 
                 {ds('insectsDensity', 'Density', 'rgba(46,204,113,0.5)')}
                 {ds('insectsTemperature', 'Temperature', 'rgba(46,204,113,0.5)')}
@@ -388,20 +795,23 @@ export default function EarthPage({
 
             {expandedCards.has('insects2') && (
               <div className="earth-card-body">
-                <select
-                  className="earth-select"
-                  value={state.insects2Engine}
-                  onChange={e =>
-                    onSelectChange(
-                      'insects2Engine',
-                      Number(e.target.value) as SliderState['insects2Engine'],
-                    )
-                  }
-                >
-                  {INSECT_ENGINES.map((name, i) => (
-                    <option key={i} value={i}>{name}</option>
-                  ))}
-                </select>
+                <div className="earth-preset-bar">
+                  <select
+                    className="earth-select earth-preset-select"
+                    value={selectedInsects2Preset}
+                    onChange={(e) => { void handleInsectsPresetLoad('insects2', e.target.value); }}
+                  >
+                    {renderPresetOptions(insects2PresetOptions)}
+                  </select>
+                  <button
+                    type="button"
+                    className="earth-preset-save"
+                    onClick={() => { void handleInsectsPresetSave('insects2'); }}
+                    title="Save the current Insects 2 engine state as an L1 preset"
+                  >
+                    Save
+                  </button>
+                </div>
 
                 {ds('insects2Density', 'Density', 'rgba(39,174,96,0.5)')}
                 {ds('insects2Temperature', 'Temperature', 'rgba(39,174,96,0.5)')}
@@ -421,6 +831,7 @@ export default function EarthPage({
               style={{ '--sc': '#a5c4d4', padding: '8px 12px' } as React.CSSProperties}
             >
               <ParamSlider
+                paramKey="randomWalkSpeed"
                 label="Walk Speed"
                 value={state.randomWalkSpeed}
                 min={0.1} max={5} step={0.1}
@@ -480,20 +891,6 @@ export default function EarthPage({
                 {ds('waterLevel', 'Water', 'rgba(74,158,255,0.5)')}
               </div>
 
-              {/* Wave Synthesis */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
-                <button
-                  className={`layer-toggle ${state.oceanWaveSynthEnabled ? 'on' : ''}`}
-                  onClick={() =>
-                    onSelectChange('oceanWaveSynthEnabled', !state.oceanWaveSynthEnabled)
-                  }
-                  title={state.oceanWaveSynthEnabled ? 'Disable Wave Synthesis' : 'Enable Wave Synthesis'}
-                >
-                  {state.oceanWaveSynthEnabled ? '●' : '○'}
-                </button>
-                {ds('oceanWaveSynthLevel', 'Wave Synthesis', 'rgba(0,212,255,0.5)')}
-              </div>
-
               {/* Ghetary Waves */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
                 <button
@@ -505,7 +902,7 @@ export default function EarthPage({
                 >
                   {state.oceanSampleEnabled ? '●' : '○'}
                 </button>
-                {ds('oceanSampleLevel', 'Ghetary Waves', 'rgba(0,212,255,0.5)')}
+                {ds('oceanSampleLevel', 'Waves', 'rgba(0,212,255,0.5)')}
               </div>
 
               {/* Insect 1 */}
@@ -557,6 +954,7 @@ export default function EarthPage({
 // ═══ Sub-Components ═══
 
 interface ParamSliderProps {
+  paramKey: keyof SliderState;
   label: string;
   value: number;
   min?: number;
@@ -568,11 +966,14 @@ interface ParamSliderProps {
 }
 
 function ParamSlider({
+  paramKey,
   label, value, min = 0, max = 1, step = 0.01, onChange, format, labelColor,
 }: ParamSliderProps) {
+  const { announceSlider } = useSliderHelp();
+  const announceHelp = () => announceSlider(String(paramKey), { label });
   const pct = ((value - min) / (max - min)) * 100;
   return (
-    <div className="param-row">
+    <div className="param-row" onMouseEnter={announceHelp} onPointerDown={announceHelp}>
       <span
         className="param-label"
         style={labelColor ? { color: labelColor } : undefined}
@@ -584,7 +985,11 @@ function ParamSlider({
         type="range"
         min={min} max={max} step={step}
         value={value}
-        onChange={e => onChange(Number(e.target.value))}
+        onChange={e => {
+          announceHelp();
+          onChange(Number(e.target.value));
+        }}
+        onFocus={announceHelp}
         style={{
           background: `linear-gradient(to right, rgba(165,196,212,0.5) 0%, rgba(165,196,212,0.5) ${pct}%, rgba(255,255,255,0.15) ${pct}%, rgba(255,255,255,0.15) 100%)`,
         }}

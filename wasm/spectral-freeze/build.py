@@ -33,6 +33,13 @@ env["EM_CONFIG"] = os.path.normpath(os.path.join(EMSDK_ROOT, ".emscripten"))
 env["EMCC_SKIP_SANITY_CHECK"] = "1"
 llvm_bin = os.path.normpath(os.path.join(EMSDK_ROOT, "upstream", "bin"))
 node_bin = os.path.join(EMSDK_ROOT, "node")
+python_bin = os.path.join(EMSDK_ROOT, "python")
+if os.path.isdir(python_bin):
+    for d in os.listdir(python_bin):
+        python_full = os.path.join(python_bin, d, "bin")
+        if os.path.isdir(python_full):
+            env["PATH"] = python_full + os.pathsep + env.get("PATH", "")
+            break
 if os.path.isdir(node_bin):
     for d in os.listdir(node_bin):
         node_full = os.path.join(node_bin, d, "bin")

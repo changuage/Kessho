@@ -45,6 +45,12 @@ extern "C" {
 #define KESSHO_PITCH_RANDOM   0
 #define KESSHO_PITCH_HARMONIC 1
 
+// Grain envelope shapes
+#define KESSHO_GRAIN_SHAPE_TRIANGLE 0
+#define KESSHO_GRAIN_SHAPE_SAW_UP   1
+#define KESSHO_GRAIN_SHAPE_SAW_DOWN 2
+#define KESSHO_GRAIN_SHAPE_SQUARE   3
+
 // ═══════════════ Lifecycle ═══════════════
 
 /**
@@ -137,6 +143,27 @@ void granular_set_chord_bias(const int* pitches, int count, float bias);
  */
 void granular_set_buffer_size(float buffer_seconds);
 
+/**
+ * Set the global grain envelope contour used by granular voices.
+ * @param shape  KESSHO_GRAIN_SHAPE_*
+ */
+void granular_set_grain_shape(int shape);
+
+/**
+ * Set summed post-voice diffusion amount applied before output.
+ * This is a musical macro intended to soften transient edges before
+ * the signal reaches downstream delay/reverb.
+ * @param amount  0.0–1.0
+ */
+void granular_set_bus_diffusion(float amount);
+
+/**
+ * Set timing randomness around the average grain interval.
+ * 0 = near-periodic scheduler, 1 = wide timing spread around the target density.
+ * @param amount  0.0–1.0
+ */
+void granular_set_timing_randomness(float amount);
+
 // ═══════════════ Per-Voice Parameters ═══════════════
 
 /**
@@ -152,12 +179,13 @@ void granular_set_voice_mode(int voice, int enabled, int mode);
  * @param voice        Voice index (0–3)
  * @param slice        Slice index (0–15)
  * @param speed        Playback speed (0 = LFO scan mode, 1 = normal)
+ * @param scan_rate    Playback-rate multiplier used when speed=0 clean scan mode
  * @param reverse      1 = reverse playback
  * @param pitch        Pitch offset in semitones (-24 to +24)
  * @param write_follow Blend between slice position and write head (0–1)
  */
-void granular_set_voice_position(int voice, int slice, float speed, int reverse,
-                                float pitch, float write_follow);
+void granular_set_voice_position(int voice, int slice, float speed, float scan_rate,
+                                int reverse, float pitch, float write_follow);
 
 /**
  * Set voice grain parameters.
@@ -267,6 +295,17 @@ void granular_get_voice_positions(float* out);
  * Get total number of active grains across all voices.
  */
 int granular_get_active_grain_count(void);
+
+/**
+ * Get pointer to the left-channel circular buffer (read-only for visualization).
+ * Returns NULL if engine not initialized.
+ */
+float* granular_get_buffer_ptr_l(void);
+
+/**
+ * Get current circular buffer size in samples.
+ */
+int granular_get_buffer_size(void);
 
 #ifdef __cplusplus
 }

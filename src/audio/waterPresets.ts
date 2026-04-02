@@ -5,28 +5,30 @@
  * Used by both App.tsx (for state management) and EarthPage (for UI).
  */
 
+import type { PresetLibrary } from '../presets/types';
+
 export const WATER_PRESETS = ['Tap Drips', 'Stream', 'Waterfall', 'Rain Window', 'Ocean Surf', 'Storm Coast', 'Mountain Brook', 'Wind & Mist'] as const;
 
-export const LAYER_KEYS = ['hardDrops', 'waterDrops', 'turbulence', 'bubbling', 'surf', 'channels'] as const;
+export const LAYER_KEYS = ['hardDrops', 'waterDrops', 'bubbling', 'turbulence', 'channels', 'surf'] as const;
 export type LayerKey = typeof LAYER_KEYS[number];
 
 export const LAYER_LABELS: Record<LayerKey, string> = {
   hardDrops: 'Hard Drops',
   waterDrops: 'Water Drops',
-  turbulence: 'Turbulence',
   bubbling: 'Bubbling',
-  surf: 'Surf',
+  turbulence: 'Turbulence',
   channels: 'Channels',
+  surf: 'Surf',
 };
 
 /** Map LayerKey → SliderState key for that layer level */
 export const LAYER_TO_STATE_KEY: Record<LayerKey, string> = {
   hardDrops: 'waterLayerHardDrops',
   waterDrops: 'waterLayerWaterDrops',
-  turbulence: 'waterLayerTurbulence',
   bubbling: 'waterLayerBubbling',
-  surf: 'waterLayerSurf',
+  turbulence: 'waterLayerTurbulence',
   channels: 'waterLayerChannels',
+  surf: 'waterLayerSurf',
 };
 
 // Preset base frequencies (matches C++ WATER_PRESETS)
@@ -43,83 +45,145 @@ const PRESET_BASE_FREQ: Record<number, number> = {
 
 // Preset layer mixes (matches JS WATER_PRESETS exactly)
 const PRESET_LAYERS: Record<number, Record<LayerKey, number>> = {
-  0: { hardDrops: 0.7, waterDrops: 0.5, turbulence: 0.3, bubbling: 0.0, surf: 0.0, channels: 0.0 },
-  1: { hardDrops: 0.08, waterDrops: 0.82, turbulence: 0.56, bubbling: 0.92, surf: 0.0, channels: 0.0 },
-  2: { hardDrops: 0.1, waterDrops: 0.3, turbulence: 0.4, bubbling: 0.4, surf: 1.0, channels: 0.0 },
-  3: { hardDrops: 0.32, waterDrops: 0.42, turbulence: 0.18, bubbling: 0.0, surf: 0.0, channels: 0.92 },
-  4: { hardDrops: 0.0, waterDrops: 0.0, turbulence: 0.1, bubbling: 0.0, surf: 0.9, channels: 0.0 },
-  5: { hardDrops: 0.05, waterDrops: 0.15, turbulence: 0.5, bubbling: 0.2, surf: 1.0, channels: 0.7 },
-  6: { hardDrops: 0.15, waterDrops: 0.6, turbulence: 0.3, bubbling: 0.7, surf: 0.25, channels: 0.85 },
-  7: { hardDrops: 0.0, waterDrops: 0.0, turbulence: 0.15, bubbling: 0.0, surf: 0.15, channels: 1.0 },
+  0: { hardDrops: 0.7, waterDrops: 0.5, bubbling: 0.0, turbulence: 0.3, channels: 0.0, surf: 0.0 },
+  1: { hardDrops: 0.08, waterDrops: 0.82, bubbling: 0.92, turbulence: 0.56, channels: 0.0, surf: 0.0 },
+  2: { hardDrops: 0.1, waterDrops: 0.3, bubbling: 0.4, turbulence: 0.4, channels: 0.0, surf: 1.0 },
+  3: { hardDrops: 0.32, waterDrops: 0.42, bubbling: 0.0, turbulence: 0.18, channels: 0.92, surf: 0.0 },
+  4: { hardDrops: 0.0, waterDrops: 0.0, bubbling: 0.0, turbulence: 0.0, channels: 0.0, surf: 1.0 },
+  5: { hardDrops: 0.05, waterDrops: 0.15, bubbling: 0.2, turbulence: 0.5, channels: 0.7, surf: 1.0 },
+  6: { hardDrops: 0.15, waterDrops: 0.6, bubbling: 0.7, turbulence: 0.3, channels: 0.85, surf: 0.25 },
+  7: { hardDrops: 0.0, waterDrops: 0.0, bubbling: 0.0, turbulence: 0.15, channels: 1.0, surf: 0.15 },
 };
+
+const DENSITY_LOOP_DEFAULTS = {
+  waterDensityHardSend: 0.28,
+  waterDensityWaterSend: 0.46,
+  waterDensityBubbleSend: 0.62,
+  waterDensityFeedback: 0.74,
+  waterDensityTone: 900,
+  waterDensityRing: 1.0,
+  waterDensityWet: 0.48,
+} as const;
+
+// Legacy global waterRate used to multiply all three discrete event layers together.
+// We fold that preset-level energy into the per-layer rate defaults so there is only
+// one event-rate control path in the UI and engine now.
+const LEGACY_EVENT_RATE_SCALE: Record<number, number> = {
+  0: 0.76,
+  1: 1.0,
+  2: 1.3,
+  3: 0.88,
+  4: 0.8,
+  5: 1.3636,
+  6: 0.9,
+  7: 0.64,
+};
+
+function discreteLayerDefaults(preset: number) {
+  const rateScale = LEGACY_EVENT_RATE_SCALE[preset] ?? 1.0;
+  return {
+    waterHardDropRate: rateScale,
+    waterHardDropLPF: 12000,
+    waterWaterDropRate: rateScale,
+    waterWaterDropLPF: 16000,
+    waterBubblingRate: rateScale,
+    waterBubblingLPF: 1500,
+  } as const;
+}
 
 // Preset water slider defaults (matches original JS WATER_PRESETS param values)
 const PRESET_PARAMS: Record<number, {
-  waterIntensity: number; waterRate: number; waterDistance: number;
+  waterIntensity: number; waterDistance: number;
   waterDropSize: number; waterHardness: number; waterGlassThickness: number;
+  waterHardDropRate: number; waterHardDropLPF: number;
+  waterWaterDropRate: number; waterWaterDropLPF: number;
+  waterBubblingRate: number; waterBubblingLPF: number;
   waterSurfDuration: number; waterSurfInterval: number;
-  waterSurfFoam: number; waterSurfDepth: number;
+  waterSurfFoam: number; waterSurfFoamBright: number; waterSurfProximity: number; waterSurfDepth: number;
   waterSurfBody: number; waterSurfSpray: number;
+  waterDensityHardSend: number; waterDensityWaterSend: number; waterDensityBubbleSend: number;
+  waterDensityFeedback: number; waterDensityTone: number; waterDensityRing: number; waterDensityWet: number;
   waterChannelsMorph: number; waterChannelsSpeed: number;
 }> = {
   // Tap Drips — no surf or channels
   0: {
-    waterIntensity: 0.4, waterRate: 0.3,  waterDistance: 0.2, waterDropSize: 0.7,  waterHardness: 0.8,  waterGlassThickness: 0.0,
-    waterSurfDuration: 8.0, waterSurfInterval: 9.5, waterSurfFoam: 0.35, waterSurfDepth: 0.5,
+    waterIntensity: 0.4, waterDistance: 0.2, waterDropSize: 0.7,  waterHardness: 0.8,  waterGlassThickness: 0.0,
+    ...discreteLayerDefaults(0),
+    waterSurfDuration: 8.0, waterSurfInterval: 9.5, waterSurfFoam: 0.35, waterSurfFoamBright: 0.3, waterSurfProximity: 0.15, waterSurfDepth: 0.5,
     waterSurfBody: 300, waterSurfSpray: 4000, waterChannelsMorph: 0.0, waterChannelsSpeed: 0.5,
+    ...DENSITY_LOOP_DEFAULTS,
   },
   // Stream — light channels in stream mode (gentle trickling)
   1: {
-    waterIntensity: 0.7, waterRate: 0.5,  waterDistance: 0.3, waterDropSize: 0.45, waterHardness: 0.2,  waterGlassThickness: 0.0,
-    waterSurfDuration: 8.0, waterSurfInterval: 9.5, waterSurfFoam: 0.2, waterSurfDepth: 0.3,
+    waterIntensity: 0.7, waterDistance: 0.3, waterDropSize: 0.45, waterHardness: 0.2,  waterGlassThickness: 0.0,
+    ...discreteLayerDefaults(1),
+    waterSurfDuration: 8.0, waterSurfInterval: 9.5, waterSurfFoam: 0.2, waterSurfFoamBright: 0.25, waterSurfProximity: 0.22, waterSurfDepth: 0.3,
     waterSurfBody: 250, waterSurfSpray: 3500, waterChannelsMorph: 0.1, waterChannelsSpeed: 0.6,
+    ...DENSITY_LOOP_DEFAULTS,
   },
-  // Waterfall — full surf (matches Ocean wave synthesis defaults)
+  // Waterfall — full surf (matches the retired Wave Synth defaults)
   2: {
-    waterIntensity: 1.0, waterRate: 0.85, waterDistance: 0.5, waterDropSize: 0.2,  waterHardness: 0.2,  waterGlassThickness: 0.0,
-    waterSurfDuration: 7.0, waterSurfInterval: 8.5, waterSurfFoam: 0.35, waterSurfDepth: 0.5,
+    waterIntensity: 1.0, waterDistance: 0.5, waterDropSize: 0.2,  waterHardness: 0.2,  waterGlassThickness: 0.0,
+    ...discreteLayerDefaults(2),
+    waterSurfDuration: 7.0, waterSurfInterval: 8.5, waterSurfFoam: 0.35, waterSurfFoamBright: 0.4, waterSurfProximity: 0.75, waterSurfDepth: 0.5,
     waterSurfBody: 300, waterSurfSpray: 4000, waterChannelsMorph: 0.0, waterChannelsSpeed: 0.5,
+    ...DENSITY_LOOP_DEFAULTS,
   },
   // Rain Window — channels in wind mode (wind-driven rain)
   3: {
-    waterIntensity: 0.5, waterRate: 0.4,  waterDistance: 0.3, waterDropSize: 0.55, waterHardness: 0.58, waterGlassThickness: 0.7,
-    waterSurfDuration: 10.0, waterSurfInterval: 14.0, waterSurfFoam: 0.15, waterSurfDepth: 0.3,
+    waterIntensity: 0.5, waterDistance: 0.3, waterDropSize: 0.55, waterHardness: 0.58, waterGlassThickness: 0.7,
+    ...discreteLayerDefaults(3),
+    waterSurfDuration: 10.0, waterSurfInterval: 14.0, waterSurfFoam: 0.15, waterSurfFoamBright: 0.3, waterSurfProximity: 0.2, waterSurfDepth: 0.3,
     waterSurfBody: 200, waterSurfSpray: 5000, waterChannelsMorph: 0.65, waterChannelsSpeed: 0.35,
+    ...DENSITY_LOOP_DEFAULTS,
   },
-  // Ocean Surf — mimics Ocean wave synthesis defaults (pure surf, no drops)
+  // Ocean Surf — closest Water-layer approximation of the retired Wave Synth
   4: {
-    waterIntensity: 0.6, waterRate: 0.3,  waterDistance: 0.4, waterDropSize: 0.3,  waterHardness: 0.3,  waterGlassThickness: 0.0,
-    waterSurfDuration: 7.0, waterSurfInterval: 8.5, waterSurfFoam: 0.35, waterSurfDepth: 0.5,
+    waterIntensity: 0.6, waterDistance: 0.4, waterDropSize: 0.3,  waterHardness: 0.3,  waterGlassThickness: 0.0,
+    ...discreteLayerDefaults(4),
+    waterSurfDuration: 7.0, waterSurfInterval: 8.5, waterSurfFoam: 0.35, waterSurfFoamBright: 0.4, waterSurfProximity: 1.0, waterSurfDepth: 0.5,
     waterSurfBody: 300, waterSurfSpray: 4000, waterChannelsMorph: 0.0, waterChannelsSpeed: 0.5,
+    ...DENSITY_LOOP_DEFAULTS,
   },
   // Storm Coast — intense crashing surf + wind channels
   5: {
-    waterIntensity: 1.0, waterRate: 0.9,  waterDistance: 0.6, waterDropSize: 0.15, waterHardness: 0.15, waterGlassThickness: 0.0,
-    waterSurfDuration: 5.0, waterSurfInterval: 6.0, waterSurfFoam: 0.7, waterSurfDepth: 0.8,
+    waterIntensity: 1.0, waterDistance: 0.6, waterDropSize: 0.15, waterHardness: 0.15, waterGlassThickness: 0.0,
+    ...discreteLayerDefaults(5),
+    waterSurfDuration: 5.0, waterSurfInterval: 6.0, waterSurfFoam: 0.7, waterSurfFoamBright: 0.8, waterSurfProximity: 0.95, waterSurfDepth: 0.8,
     waterSurfBody: 200, waterSurfSpray: 5500, waterChannelsMorph: 0.75, waterChannelsSpeed: 0.4,
+    ...DENSITY_LOOP_DEFAULTS,
   },
   // Mountain Brook — gentle stream channels + subtle background surf
   6: {
-    waterIntensity: 0.5, waterRate: 0.4,  waterDistance: 0.25, waterDropSize: 0.5,  waterHardness: 0.3,  waterGlassThickness: 0.0,
-    waterSurfDuration: 14.0, waterSurfInterval: 18.0, waterSurfFoam: 0.1, waterSurfDepth: 0.25,
+    waterIntensity: 0.5, waterDistance: 0.25, waterDropSize: 0.5,  waterHardness: 0.3,  waterGlassThickness: 0.0,
+    ...discreteLayerDefaults(6),
+    waterSurfDuration: 14.0, waterSurfInterval: 18.0, waterSurfFoam: 0.1, waterSurfFoamBright: 0.25, waterSurfProximity: 0.35, waterSurfDepth: 0.25,
     waterSurfBody: 400, waterSurfSpray: 3000, waterChannelsMorph: 0.15, waterChannelsSpeed: 0.7,
+    ...DENSITY_LOOP_DEFAULTS,
   },
   // Wind & Mist — pure wind channels + sparse misty spray surf
   7: {
-    waterIntensity: 0.3, waterRate: 0.2,  waterDistance: 0.5, waterDropSize: 0.4,  waterHardness: 0.2,  waterGlassThickness: 0.0,
-    waterSurfDuration: 16.0, waterSurfInterval: 22.0, waterSurfFoam: 0.5, waterSurfDepth: 0.15,
+    waterIntensity: 0.3, waterDistance: 0.5, waterDropSize: 0.4,  waterHardness: 0.2,  waterGlassThickness: 0.0,
+    ...discreteLayerDefaults(7),
+    waterSurfDuration: 16.0, waterSurfInterval: 22.0, waterSurfFoam: 0.5, waterSurfFoamBright: 0.55, waterSurfProximity: 0.08, waterSurfDepth: 0.15,
     waterSurfBody: 350, waterSurfSpray: 6000, waterChannelsMorph: 0.9, waterChannelsSpeed: 0.25,
+    ...DENSITY_LOOP_DEFAULTS,
   },
 };
 
 /** SliderState keys that waterMorph affects */
 export const WATER_MORPH_PARAM_KEYS = [
-  'waterIntensity', 'waterRate', 'waterDistance', 'waterBaseFreq',
+  'waterIntensity', 'waterDistance', 'waterBaseFreq',
   'waterDropSize', 'waterHardness', 'waterGlassThickness',
   'waterLayerHardDrops', 'waterLayerWaterDrops', 'waterLayerTurbulence',
   'waterLayerBubbling', 'waterLayerSurf', 'waterLayerChannels',
-  'waterSurfDuration', 'waterSurfInterval', 'waterSurfFoam', 'waterSurfDepth',
+  'waterHardDropRate', 'waterHardDropLPF',
+  'waterWaterDropRate', 'waterWaterDropLPF',
+  'waterBubblingRate', 'waterBubblingLPF',
+  'waterSurfDuration', 'waterSurfInterval', 'waterSurfFoam', 'waterSurfFoamBright', 'waterSurfProximity', 'waterSurfDepth',
   'waterSurfBody', 'waterSurfSpray',
+  'waterDensityHardSend', 'waterDensityWaterSend', 'waterDensityBubbleSend',
+  'waterDensityFeedback', 'waterDensityTone', 'waterDensityRing', 'waterDensityWet',
   'waterChannelsMorph', 'waterChannelsSpeed',
 ] as const;
 
@@ -131,17 +195,14 @@ export const PRESET_DUAL_RANGES: Record<number, Record<string, { min: number; ma
   1: {}, // Stream — all single
   2: {}, // Waterfall — all single
   3: {}, // Rain Window — all single
-  // Ocean Surf — S&H variation on wave timing + foam + depth
-  4: {
-    waterSurfInterval: { min: 5.0, max: 14.0 },
-    waterSurfFoam:     { min: 0.15, max: 0.6 },
-    waterSurfDepth:    { min: 0.25, max: 0.75 },
-  },
+  // Ocean Surf — keep the wave motion stable for a closer Ocean match
+  4: {},
   // Storm Coast — S&H variation on nearly everything
   5: {
     waterSurfDuration: { min: 3.0, max: 7.0 },
     waterSurfInterval: { min: 3.5, max: 9.0 },
     waterSurfFoam:     { min: 0.4, max: 1.0 },
+    waterSurfProximity:{ min: 0.72, max: 1.0 },
     waterSurfDepth:    { min: 0.5, max: 1.0 },
   },
   6: {}, // Mountain Brook — all single
@@ -154,20 +215,165 @@ export const PRESET_SLIDER_MODES: Record<number, Record<string, SliderMode>> = {
   1: {},
   2: {},
   3: {},
-  4: {
-    waterSurfInterval: 'sampleHold',
-    waterSurfFoam: 'sampleHold',
-    waterSurfDepth: 'sampleHold',
-  },
+  4: {},
   5: {
     waterSurfDuration: 'sampleHold',
     waterSurfInterval: 'sampleHold',
     waterSurfFoam: 'sampleHold',
+    waterSurfProximity: 'sampleHold',
     waterSurfDepth: 'sampleHold',
   },
   6: {},
   7: {},
 };
+
+export interface WaterPresetOption {
+  id: number;
+  name: string;
+  library: PresetLibrary;
+}
+
+interface RuntimeWaterPresetEntry extends WaterPresetOption {
+  data: Record<string, number>;
+  dualRanges?: Record<string, { min: number; max: number }>;
+  sliderModes?: Record<string, SliderMode>;
+}
+
+const USER_WATER_PRESETS = new Map<number, RuntimeWaterPresetEntry>();
+
+function hashRuntimePresetId(sourceId: string): number {
+  let hash = 5381;
+  for (let index = 0; index < sourceId.length; index += 1) {
+    hash = ((hash << 5) + hash) ^ sourceId.charCodeAt(index);
+  }
+  return 1000 + Math.abs(hash >>> 0);
+}
+
+function buildStockWaterPresetState(presetId: number): Record<string, number> {
+  const fallbackParams = PRESET_PARAMS[0]!;
+  const fallbackLayers = PRESET_LAYERS[0]!;
+  const params = PRESET_PARAMS[presetId] ?? fallbackParams;
+  const layers = PRESET_LAYERS[presetId] ?? fallbackLayers;
+  const baseFreq = PRESET_BASE_FREQ[presetId] ?? PRESET_BASE_FREQ[0] ?? 2500;
+
+  return {
+    waterBaseFreq: baseFreq,
+    waterIntensity: params.waterIntensity,
+    waterDistance: params.waterDistance,
+    waterDropSize: params.waterDropSize,
+    waterHardness: params.waterHardness,
+    waterGlassThickness: params.waterGlassThickness,
+    waterLayerHardDrops: layers.hardDrops ?? fallbackLayers.hardDrops,
+    waterLayerWaterDrops: layers.waterDrops ?? fallbackLayers.waterDrops,
+    waterLayerTurbulence: layers.turbulence ?? fallbackLayers.turbulence,
+    waterLayerBubbling: layers.bubbling ?? fallbackLayers.bubbling,
+    waterLayerSurf: layers.surf ?? fallbackLayers.surf,
+    waterLayerChannels: layers.channels ?? fallbackLayers.channels,
+    waterHardDropRate: params.waterHardDropRate,
+    waterHardDropLPF: params.waterHardDropLPF,
+    waterWaterDropRate: params.waterWaterDropRate,
+    waterWaterDropLPF: params.waterWaterDropLPF,
+    waterBubblingRate: params.waterBubblingRate,
+    waterBubblingLPF: params.waterBubblingLPF,
+    waterSurfDuration: params.waterSurfDuration,
+    waterSurfInterval: params.waterSurfInterval,
+    waterSurfFoam: params.waterSurfFoam,
+    waterSurfFoamBright: params.waterSurfFoamBright,
+    waterSurfProximity: params.waterSurfProximity,
+    waterSurfDepth: params.waterSurfDepth,
+    waterSurfBody: params.waterSurfBody,
+    waterSurfSpray: params.waterSurfSpray,
+    waterDensityHardSend: params.waterDensityHardSend,
+    waterDensityWaterSend: params.waterDensityWaterSend,
+    waterDensityBubbleSend: params.waterDensityBubbleSend,
+    waterDensityFeedback: params.waterDensityFeedback,
+    waterDensityTone: params.waterDensityTone,
+    waterDensityRing: params.waterDensityRing,
+    waterDensityWet: params.waterDensityWet,
+    waterChannelsMorph: params.waterChannelsMorph,
+    waterChannelsSpeed: params.waterChannelsSpeed,
+  };
+}
+
+function getWaterPresetState(presetId: number): Record<string, number> {
+  return USER_WATER_PRESETS.get(presetId)?.data ?? buildStockWaterPresetState(presetId);
+}
+
+export function getWaterPresetOptions(): WaterPresetOption[] {
+  const options: WaterPresetOption[] = WATER_PRESETS.map((name, index) => ({
+    id: index,
+    name,
+    library: 'stock',
+  }));
+
+  for (const preset of USER_WATER_PRESETS.values()) {
+    options.push({
+      id: preset.id,
+      name: preset.name,
+      library: preset.library,
+    });
+  }
+
+  return options;
+}
+
+export function getWaterPresetDisplayName(presetId: number): string {
+  return USER_WATER_PRESETS.get(presetId)?.name ?? WATER_PRESETS[presetId] ?? `Preset ${presetId}`;
+}
+
+export function setUserWaterPresets(
+  presets: Array<{
+    sourceId: string;
+    name: string;
+    library: Exclude<PresetLibrary, 'stock'>;
+    data: Record<string, number>;
+    dualRanges?: Record<string, { min: number; max: number }>;
+    sliderModes?: Record<string, SliderMode>;
+  }>,
+): void {
+  USER_WATER_PRESETS.clear();
+  for (const preset of presets) {
+    const id = hashRuntimePresetId(preset.sourceId);
+    USER_WATER_PRESETS.set(id, {
+      id,
+      name: preset.name,
+      library: preset.library,
+      data: preset.data,
+      dualRanges: preset.dualRanges,
+      sliderModes: preset.sliderModes,
+    });
+  }
+}
+
+export function upsertUserWaterPreset(
+  preset: {
+    sourceId: string;
+    name: string;
+    library: Exclude<PresetLibrary, 'stock'>;
+    data: Record<string, number>;
+    dualRanges?: Record<string, { min: number; max: number }>;
+    sliderModes?: Record<string, SliderMode>;
+  },
+): number {
+  const id = hashRuntimePresetId(preset.sourceId);
+  USER_WATER_PRESETS.set(id, {
+    id,
+    name: preset.name,
+    library: preset.library,
+    data: preset.data,
+    dualRanges: preset.dualRanges,
+    sliderModes: preset.sliderModes,
+  });
+  return id;
+}
+
+export function getWaterPresetDualRanges(presetId: number): Record<string, { min: number; max: number }> {
+  return USER_WATER_PRESETS.get(presetId)?.dualRanges ?? PRESET_DUAL_RANGES[presetId] ?? {};
+}
+
+export function getWaterPresetSliderModes(presetId: number): Record<string, SliderMode> {
+  return USER_WATER_PRESETS.get(presetId)?.sliderModes ?? PRESET_SLIDER_MODES[presetId] ?? {};
+}
 
 /**
  * Interpolate between two water presets.
@@ -176,12 +382,9 @@ export const PRESET_SLIDER_MODES: Record<number, Record<string, SliderMode>> = {
 export function morphWaterPresets(
   idxA: number, idxB: number, t: number
 ): Record<string, number> {
-  const ppA = PRESET_PARAMS[idxA] ?? PRESET_PARAMS[0];
-  const ppB = PRESET_PARAMS[idxB] ?? PRESET_PARAMS[0];
-  const layA = PRESET_LAYERS[idxA] ?? PRESET_LAYERS[0];
-  const layB = PRESET_LAYERS[idxB] ?? PRESET_LAYERS[0];
-  const freqA = PRESET_BASE_FREQ[idxA] ?? 2500;
-  const freqB = PRESET_BASE_FREQ[idxB] ?? 2500;
+  const presetA = getWaterPresetState(idxA);
+  const presetB = getWaterPresetState(idxB);
+  const fallback = buildStockWaterPresetState(0);
 
   // Smoothstep for nicer feel
   const s = t * t * (3 - 2 * t);
@@ -190,26 +393,43 @@ export function morphWaterPresets(
   const eLrp = (a: number, b: number) => (a > 0 && b > 0) ? a * Math.pow(b / a, s) : lrp(a, b);
 
   const result: Record<string, number> = {
-    waterBaseFreq: eLrp(freqA, freqB),
-    waterIntensity: lrp(ppA.waterIntensity, ppB.waterIntensity),
-    waterRate: lrp(ppA.waterRate, ppB.waterRate),
-    waterDistance: lrp(ppA.waterDistance, ppB.waterDistance),
-    waterDropSize: lrp(ppA.waterDropSize, ppB.waterDropSize),
-    waterHardness: lrp(ppA.waterHardness, ppB.waterHardness),
-    waterGlassThickness: lrp(ppA.waterGlassThickness, ppB.waterGlassThickness),
-    waterSurfDuration: lrp(ppA.waterSurfDuration, ppB.waterSurfDuration),
-    waterSurfInterval: lrp(ppA.waterSurfInterval, ppB.waterSurfInterval),
-    waterSurfFoam: lrp(ppA.waterSurfFoam, ppB.waterSurfFoam),
-    waterSurfDepth: lrp(ppA.waterSurfDepth, ppB.waterSurfDepth),
-    waterSurfBody: eLrp(ppA.waterSurfBody, ppB.waterSurfBody),
-    waterSurfSpray: eLrp(ppA.waterSurfSpray, ppB.waterSurfSpray),
-    waterChannelsMorph: lrp(ppA.waterChannelsMorph, ppB.waterChannelsMorph),
-    waterChannelsSpeed: lrp(ppA.waterChannelsSpeed, ppB.waterChannelsSpeed),
+    waterBaseFreq: eLrp(presetA.waterBaseFreq ?? fallback.waterBaseFreq, presetB.waterBaseFreq ?? fallback.waterBaseFreq),
+    waterIntensity: lrp(presetA.waterIntensity ?? fallback.waterIntensity, presetB.waterIntensity ?? fallback.waterIntensity),
+    waterDistance: lrp(presetA.waterDistance ?? fallback.waterDistance, presetB.waterDistance ?? fallback.waterDistance),
+    waterDropSize: lrp(presetA.waterDropSize ?? fallback.waterDropSize, presetB.waterDropSize ?? fallback.waterDropSize),
+    waterHardness: lrp(presetA.waterHardness ?? fallback.waterHardness, presetB.waterHardness ?? fallback.waterHardness),
+    waterGlassThickness: lrp(presetA.waterGlassThickness ?? fallback.waterGlassThickness, presetB.waterGlassThickness ?? fallback.waterGlassThickness),
+    waterHardDropRate: lrp(presetA.waterHardDropRate ?? fallback.waterHardDropRate, presetB.waterHardDropRate ?? fallback.waterHardDropRate),
+    waterHardDropLPF: eLrp(presetA.waterHardDropLPF ?? fallback.waterHardDropLPF, presetB.waterHardDropLPF ?? fallback.waterHardDropLPF),
+    waterWaterDropRate: lrp(presetA.waterWaterDropRate ?? fallback.waterWaterDropRate, presetB.waterWaterDropRate ?? fallback.waterWaterDropRate),
+    waterWaterDropLPF: eLrp(presetA.waterWaterDropLPF ?? fallback.waterWaterDropLPF, presetB.waterWaterDropLPF ?? fallback.waterWaterDropLPF),
+    waterBubblingRate: lrp(presetA.waterBubblingRate ?? fallback.waterBubblingRate, presetB.waterBubblingRate ?? fallback.waterBubblingRate),
+    waterBubblingLPF: eLrp(presetA.waterBubblingLPF ?? fallback.waterBubblingLPF, presetB.waterBubblingLPF ?? fallback.waterBubblingLPF),
+    waterSurfDuration: lrp(presetA.waterSurfDuration ?? fallback.waterSurfDuration, presetB.waterSurfDuration ?? fallback.waterSurfDuration),
+    waterSurfInterval: lrp(presetA.waterSurfInterval ?? fallback.waterSurfInterval, presetB.waterSurfInterval ?? fallback.waterSurfInterval),
+    waterSurfFoam: lrp(presetA.waterSurfFoam ?? fallback.waterSurfFoam, presetB.waterSurfFoam ?? fallback.waterSurfFoam),
+    waterSurfFoamBright: lrp(presetA.waterSurfFoamBright ?? fallback.waterSurfFoamBright, presetB.waterSurfFoamBright ?? fallback.waterSurfFoamBright),
+    waterSurfProximity: lrp(presetA.waterSurfProximity ?? fallback.waterSurfProximity, presetB.waterSurfProximity ?? fallback.waterSurfProximity),
+    waterSurfDepth: lrp(presetA.waterSurfDepth ?? fallback.waterSurfDepth, presetB.waterSurfDepth ?? fallback.waterSurfDepth),
+    waterSurfBody: eLrp(presetA.waterSurfBody ?? fallback.waterSurfBody, presetB.waterSurfBody ?? fallback.waterSurfBody),
+    waterSurfSpray: eLrp(presetA.waterSurfSpray ?? fallback.waterSurfSpray, presetB.waterSurfSpray ?? fallback.waterSurfSpray),
+    waterDensityHardSend: lrp(presetA.waterDensityHardSend ?? fallback.waterDensityHardSend, presetB.waterDensityHardSend ?? fallback.waterDensityHardSend),
+    waterDensityWaterSend: lrp(presetA.waterDensityWaterSend ?? fallback.waterDensityWaterSend, presetB.waterDensityWaterSend ?? fallback.waterDensityWaterSend),
+    waterDensityBubbleSend: lrp(presetA.waterDensityBubbleSend ?? fallback.waterDensityBubbleSend, presetB.waterDensityBubbleSend ?? fallback.waterDensityBubbleSend),
+    waterDensityFeedback: lrp(presetA.waterDensityFeedback ?? fallback.waterDensityFeedback, presetB.waterDensityFeedback ?? fallback.waterDensityFeedback),
+    waterDensityTone: eLrp(presetA.waterDensityTone ?? fallback.waterDensityTone, presetB.waterDensityTone ?? fallback.waterDensityTone),
+    waterDensityRing: lrp(presetA.waterDensityRing ?? fallback.waterDensityRing, presetB.waterDensityRing ?? fallback.waterDensityRing),
+    waterDensityWet: lrp(presetA.waterDensityWet ?? fallback.waterDensityWet, presetB.waterDensityWet ?? fallback.waterDensityWet),
+    waterChannelsMorph: lrp(presetA.waterChannelsMorph ?? fallback.waterChannelsMorph, presetB.waterChannelsMorph ?? fallback.waterChannelsMorph),
+    waterChannelsSpeed: lrp(presetA.waterChannelsSpeed ?? fallback.waterChannelsSpeed, presetB.waterChannelsSpeed ?? fallback.waterChannelsSpeed),
   };
 
-  for (const k of LAYER_KEYS) {
-    const lvl = lrp(layA[k], layB[k]);
-    result[LAYER_TO_STATE_KEY[k]] = lvl;
+  for (const key of LAYER_KEYS) {
+    const stateKey = LAYER_TO_STATE_KEY[key];
+    result[stateKey] = lrp(
+      presetA[stateKey] ?? fallback[stateKey],
+      presetB[stateKey] ?? fallback[stateKey],
+    );
   }
 
   return result;

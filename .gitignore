@@ -1,16 +1,23 @@
 # Dependencies
 node_modules/
+.npm
 
 # Build output
 dist/
 
-# Editor
+# Editor / IDE
 .vscode/
+.idea/
 *.swp
 *.swo
+*~
+*.orig
 
 # OS
 .DS_Store
+.AppleDouble
+.LSOverride
+._*
 Thumbs.db
 
 # Logs
@@ -22,12 +29,22 @@ npm-debug.log*
 .env.local
 .env.*.local
 
-# TypeScript cache
+# TypeScript cache & debug output
 *.tsbuildinfo
+tsc_*.txt
+tscout.txt
 
-# Large local sample assets (keep out of Git status scans)
+# WASM build artifacts
+wasm_build_log.txt
+wasm_check.txt
+wasm/build_out.txt
+wasm/*/build_log.txt
+wasm/lead-fm/_ts1.txt
+
+# Large local sample assets (keep out of Git)
 SampleTransients/
 public/samples/
+
 # Digitone sysex tools (local development only)
 Digitone/
 libdigitone/
@@ -36,13 +53,19 @@ libdigitone/
 src/audio/*_backup_*.ts
 public/*_backup_*.html
 
-# Python virtual environment
+# Python
 .venv/
+.venv312/
+.python312/
+.local/python-build/
+__pycache__/
+*.pyc
 
 # Digitone export candidates
 public/digitone_candidates.json
 
+# Emscripten SDK (local toolchain)
 emsdk/
+
+# Temporary build helpers
 .tmp_*.cjs
-tsc_*.txt
-tscout.txt

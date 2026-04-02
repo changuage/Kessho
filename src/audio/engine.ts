@@ -37,14 +37,8 @@ import {
   defaultSynthEvolveState,
 } from './synthSeqEvolve';
 import type { SynthEvolveConfig, SynthEvolveState, SynthLaneOverrides } from './synthSeqEvolve';
-import {
-  evolveGranularLane,
-  resetGranularLaneToHome,
-  captureGranularHomeSnapshot,
-  defaultGranularEvolveConfig,
-  defaultGranularEvolveState,
-} from './granularSeqEvolve';
-import type { GranularEvolveConfig, GranularEvolveState, GranularLaneOverrides } from './granularSeqEvolve';
+import { computeGranularMacroModel } from './granularMacroModel';
+import { SharedDelayBusA, SharedDelayBusB, delayNoteToSeconds } from './delayBuses';
 
 type PerfMetrics = {
   avgPercent: number;
@@ -64,7 +58,7 @@ function pickChordWeightedNote(
   chordBias = 0.7,
 ): number {
   if (!chordMidiNotes || chordMidiNotes.length === 0 || availableNotes.length <= 1) {
-    return availableNotes[Math.floor(rng() * availableNotes.length)];
+    return availableNotes[Math.floor(rng() * availableNotes.length)]!;
   }
   // Build pitch-class set of chord tones (mod 12)
   const chordPCs = new Set(chordMidiNotes.map(n => n % 12));
@@ -74,10 +68,10 @@ function pickChordWeightedNote(
     if (chordPCs.has(n % 12)) chordTones.push(n);
     else passingTones.push(n);
   }
-  if (chordTones.length === 0) return availableNotes[Math.floor(rng() * availableNotes.length)];
-  if (passingTones.length === 0) return chordTones[Math.floor(rng() * chordTones.length)];
-  if (rng() < chordBias) return chordTones[Math.floor(rng() * chordTones.length)];
-  return passingTones[Math.floor(rng() * passingTones.length)];
+  if (chordTones.length === 0) return availableNotes[Math.floor(rng() * availableNotes.length)]!;
+  if (passingTones.length === 0) return chordTones[Math.floor(rng() * chordTones.length)]!;
+  if (rng() < chordBias) return chordTones[Math.floor(rng() * chordTones.length)]!;
+  return passingTones[Math.floor(rng() * passingTones.length)]!;
 }
 import type { SliderState } from '../ui/state';
 import { getPadPreset, morphPadPresets, PAD_PRESET_PARAM_KEYS } from './padPresets';
@@ -90,6 +84,75 @@ import {
   DEFAULT_SOFT_RHODES,
   DEFAULT_GAMELAN,
 } from './lead4opfm';
+
+type GranularVoiceMode = SliderState['granularV1Mode'];
+type GranularGrainShape = NonNullable<SliderState['granularShape']>;
+
+type GranularWorkletGlobalParams = {
+  enabled: boolean;
+  freeze: boolean;
+  freezeWithFeedback: boolean;
+  dryWet: number;
+  feedback: number;
+  feedbackLPF: number;
+  bufferSeconds: number;
+  grainShape: GranularGrainShape;
+};
+
+type GranularWorkletSpaceParams = {
+  busDiffusion: number;
+  timingRandomness: number;
+};
+
+type GranularWorkletVoiceParams = {
+  voiceEnabled: boolean[];
+  voiceMode: GranularVoiceMode[];
+  voiceSlice: number[];
+  voiceSpeed: number[];
+  voiceScanRate: number[];
+  voiceReverse: boolean[];
+  voicePitch: number[];
+  voiceAttack: number[];
+  voiceDecay: number[];
+  voiceBlur: number[];
+  voiceGrainOct: number[];
+  voiceSpray: number[];
+  voiceDensity: number[];
+  voiceGrainSize: number[];
+  voicePan: number[];
+  voiceGain: number[];
+  voicePosLFORate: number[];
+  voicePosLFODepth: number[];
+  voicePanLFORate: number[];
+  voiceStereoSpread: number[];
+  voiceReverseLFORate: number[];
+  voiceWriteFollow: number[];
+  voiceRecordLFORate: number[];
+  tempoGated: boolean[];
+};
+
+type GranularWorkletHarmonyParams = {
+  scaleIntervals: number[];
+  chordPitches: number[];
+  chordBias: number;
+};
+
+type GranularWorkletLegacyParams = {
+  legacyJitter: number;
+  legacyProbability: number;
+  legacyPitchMode: 'random' | 'harmonic';
+  legacyPitchSpread: number;
+  legacyMaxGrains: number;
+  legacyFeedback: number;
+};
+
+type GranularWorkletUpdate = {
+  global: GranularWorkletGlobalParams;
+  space: GranularWorkletSpaceParams;
+  voices: GranularWorkletVoiceParams;
+  harmony: GranularWorkletHarmonyParams;
+  legacy: GranularWorkletLegacyParams;
+};
 
 // Maps pad-preset param keys (pad1 naming) → pad2 state keys for morph override
 const PAD1_TO_PAD2_ENGINE: Record<string, string> = {
@@ -118,7 +181,7 @@ const getWorkletUrl = (filename: string): string => {
 };
 // Reverb uses WASM path — kessho_reverb.wasm loaded at init
 const reverbWasmWorkletUrl = getWorkletUrl('reverb-wasm.worklet.js');
-// Ocean is handled by soundscapes WASM (output [2]) — no separate worklet needed
+// Waves sample uses the shared Earth filter path — no separate waves synth worklet
 // Granular FX uses WASM-only path
 const granularFxWasmWorkletUrl = getWorkletUrl('granular-fx-wasm.worklet.js');
 const soundscapesWorkletUrl = getWorkletUrl('soundscapes-wasm.worklet.js');
@@ -126,62 +189,21 @@ const spectralFreezeWorkletUrl = getWorkletUrl('spectral-freeze-wasm.worklet.js'
 const padSynthWasmWorkletUrl = getWorkletUrl('pad-synth-wasm.worklet.js');
 const leadFmWasmWorkletUrl = getWorkletUrl('lead-fm-wasm.worklet.js');
 const drumSynthWasmWorkletUrl = getWorkletUrl('drum-synth-wasm.worklet.js');
+const GRANULAR_WORKLET_DISPATCH_INTERVAL_MS = 16;
 
-// ═══════════════ Granular Multi-Tap Delay Constants ═══════════════
-
-const DELAY_NOTE_DIVISIONS: Record<string, number> = {
-  '1/1': 4, '1/2': 2, '1/2d': 3, '1/4': 1, '1/4d': 1.5, '1/4t': 2/3,
-  '1/8': 0.5, '1/8d': 0.75, '1/8t': 1/3, '1/16': 0.25, '1/16d': 0.375,
-  '1/16t': 1/6, '1/32': 0.125,
+/**
+ * Single source of truth for per-engine output scaling.
+ * Values < 1 attenuate; values > 1 boost.  Applied at each engine's
+ * final output gain node — do NOT duplicate in QUANTIZATION or worklets.
+ */
+const ENGINE_TRIMS = {
+  pad:      0.5,   // pad synth 1 & 2 — dense oscillator stack needs attenuation
+  lead:     0.5,   // lead FM — attenuate before the master limiter so dry level behaves more linearly
+  drum:     1.0,   // drum synth — unity
+  granular: 2.0,   // granular FX — boost to compensate for FX processing loss
+  reverb:   2.0,   // reverb return — wet signal needs headroom above unity
+  earth:    1.0,   // earth bus (water + insects + waves) — unity
 };
-
-function delayNoteToSeconds(note: string, bpm: number): number {
-  const beats = DELAY_NOTE_DIVISIONS[note] ?? 0.5;
-  return (60 / bpm) * beats;
-}
-
-// 8 tap subdivisions relative to the base note division
-const TAP_SUBDIVISIONS = [
-  1.0,    // Tap 1: base (1/4 note at default)
-  0.5,    // Tap 2: half of base (1/8)
-  0.75,   // Tap 3: dotted half (1/8d feel)
-  0.25,   // Tap 4: quarter of base (1/16)
-  1/3,    // Tap 5: triplet (1/8t) — syncopation
-  1/6,    // Tap 6: triplet of half (1/16t)
-  0.375,  // Tap 7: 3/16 — shuffle feel
-  0.125,  // Tap 8: 1/32 — dense
-];
-
-// Per-tap stereo panning (alternating L/R)
-const TAP_PANS = [-0.7, 0.7, -0.5, 0.5, -0.8, 0.8, -0.3, 0.3];
-
-// Per-tap vibrato LFO rates (Hz, slightly different to avoid phase-locking)
-const TAP_VIBRATO_RATES = [0.7, 1.1, 0.9, 1.3, 0.8, 1.2, 1.0, 0.6];
-const MAX_VIBRATO_DEPTH = 0.008; // 8ms
-
-// Activity thresholds: [rampStart, threshold, maxGain]
-// rampStart = when tap starts fading in, threshold = when fully on
-const TAP_ACTIVITY_CONFIG = [
-  { rampStart: 0.00, threshold: 0.00, maxGain: 1.0  },  // Tap 1: always on
-  { rampStart: 0.10, threshold: 0.15, maxGain: 0.85 },
-  { rampStart: 0.20, threshold: 0.30, maxGain: 0.75 },
-  { rampStart: 0.30, threshold: 0.40, maxGain: 0.70 },
-  { rampStart: 0.45, threshold: 0.55, maxGain: 0.65 },  // syncopation
-  { rampStart: 0.55, threshold: 0.65, maxGain: 0.60 },
-  { rampStart: 0.70, threshold: 0.80, maxGain: 0.55 },  // shuffle
-  { rampStart: 0.85, threshold: 0.90, maxGain: 0.50 },  // dense wall
-];
-
-function computeTapGain(tapIndex: number, activity: number): number {
-  const cfg = TAP_ACTIVITY_CONFIG[tapIndex];
-  if (activity < cfg.rampStart) return 0;
-  if (activity >= cfg.threshold) {
-    const intensity = Math.min(1, (activity - cfg.threshold) / Math.max(0.01, 1 - cfg.threshold));
-    return cfg.maxGain * (0.4 + 0.6 * intensity);
-  }
-  const fade = (activity - cfg.rampStart) / Math.max(0.01, cfg.threshold - cfg.rampStart);
-  return cfg.maxGain * fade * 0.4;
-}
 
 // Voice structure for poly synth
 interface Voice {
@@ -228,15 +250,55 @@ function clockDivToSeconds(clockDiv: ClockDivision, beatDuration: number): numbe
     case '1/4': return beatDuration;
     case '1/8': return beatDuration / 2;
     case '1/16': return beatDuration / 4;
+    case '1/32': return beatDuration / 8;
+    case '1/64': return beatDuration / 16;
     case '1/8T': return beatDuration / 3;
     default: return beatDuration / 2;
   }
+}
+
+function getSharedSequencerBpm(state?: Partial<Pick<SliderState, 'sequencerMasterBPM' | 'synthEuclidBaseBPM' | 'drumEuclidBaseBPM'>> | null): number {
+  return state?.sequencerMasterBPM
+    ?? state?.synthEuclidBaseBPM
+    ?? state?.drumEuclidBaseBPM
+    ?? 120;
+}
+
+function alignSequencerTime(now: number, stepDuration: number): number {
+  if (!Number.isFinite(stepDuration) || stepDuration <= 0) return now;
+  return Math.ceil(now / stepDuration) * stepDuration;
+}
+
+function makeMasterSaturationCurve(mode: 'clean' | 'tape' | 'tube', samples = 8192): Float32Array<ArrayBuffer> {
+  const curve = new Float32Array(new ArrayBuffer(samples * Float32Array.BYTES_PER_ELEMENT));
+  const half = (samples - 1) / 2;
+  for (let i = 0; i < samples; i++) {
+    const x = (i - half) / half;
+    switch (mode) {
+      case 'tape':
+        curve[i] = Math.tanh(x * 1.5) * 0.9 + x * 0.1;
+        break;
+      case 'tube':
+        curve[i] = x / (1 + Math.abs(x));
+        break;
+      case 'clean':
+      default:
+        curve[i] = x;
+        break;
+    }
+  }
+  return curve;
 }
 
 export class AudioEngine {
   private ctx: AudioContext | null = null;
   private masterGain: GainNode | null = null;
   private limiter: DynamicsCompressorNode | null = null;
+  private satPreGain: GainNode | null = null;
+  private satWaveshaper: WaveShaperNode | null = null;
+  private satPostTone: BiquadFilterNode | null = null;
+  private satPostGain: GainNode | null = null;
+  private lastMasterSatMode: 'clean' | 'tape' | 'tube' | null = null;
   private mediaStreamDest: MediaStreamAudioDestinationNode | null = null;
   private voices: Voice[] = [];
   private reverbNode: AudioWorkletNode | null = null;
@@ -250,23 +312,27 @@ export class AudioEngine {
 
   private synthBus: GainNode | null = null;
   private dryBus: GainNode | null = null;
-  private synthReverbSend: GainNode | null = null;
+  private pad1ReverbSend: GainNode | null = null;
+  private pad2ReverbSend: GainNode | null = null;
   private synthDirect: GainNode | null = null;
+  private sharedDelayA: SharedDelayBusA | null = null;
+  private sharedDelayB: SharedDelayBusB | null = null;
+  private sharedDelayGranularLinksWired = false;
 
-  // Lead synth (4op FM) with delay
+  // Lead synth (4op FM)
   private leadGain: GainNode | null = null;
-  private leadDelayL: DelayNode | null = null;
-  private leadDelayR: DelayNode | null = null;
-  private leadDelayFeedbackL: GainNode | null = null;
-  private leadDelayFeedbackR: GainNode | null = null;
-  private leadDelayMix: GainNode | null = null;
   private leadDry: GainNode | null = null;
-  private leadMerger: ChannelMergerNode | null = null;
   private leadFilter: BiquadFilterNode | null = null;
-  private leadReverbSend: GainNode | null = null;
   private lead1ReverbSend: GainNode | null = null;
   private lead2ReverbSend: GainNode | null = null;
-  private leadDelayReverbSend: GainNode | null = null;
+  private pad1DelayASend: GainNode | null = null;
+  private pad1DelayBSend: GainNode | null = null;
+  private pad2DelayASend: GainNode | null = null;
+  private pad2DelayBSend: GainNode | null = null;
+  private lead1DelayASend: GainNode | null = null;
+  private lead1DelayBSend: GainNode | null = null;
+  private lead2DelayASend: GainNode | null = null;
+  private lead2DelayBSend: GainNode | null = null;
   private leadMelodyTimer: number | null = null;  // Random lead mode (phrase-based)
   private leadNoteTimeouts: number[] = [];  // Track scheduled random note timeouts
   private synthEuclidCurrentStep: number[] = [0, 0, 0, 0];  // Step position per lane
@@ -306,7 +372,6 @@ export class AudioEngine {
   private onSynthNoteRangeEvolved: ((laneIndex: number, noteMin: number, noteMax: number) => void) | null = null;
   /** Per-lane sub-lane enabled state (from UI). Keys are sub-lane names (e.g. 'expression', 'ratchet'). */
   private synthSubLaneEnabled: Record<string, boolean>[] = [{}, {}, {}, {}];
-  private granularSubLaneEnabled: Record<string, boolean>[] = [{}, {}, {}, {}];
 
   // Lead 4op FM preset slots
   private lead1PresetA: Lead4opFMPreset = DEFAULT_SOFT_RHODES;
@@ -320,6 +385,8 @@ export class AudioEngine {
 
   // Ikeda-style drum synth
   private drumSynth: DrumSynth | null = null;
+  private drumDelayASend: GainNode | null = null;
+  private drumDelayBSend: GainNode | null = null;
 
   // Reverb (WASM)
   private wasmReverbBinary: ArrayBuffer | null = null;
@@ -349,6 +416,7 @@ export class AudioEngine {
   private granularFxReverbCompressor: DynamicsCompressorNode | null = null;
   private granularFxOutputLPF: BiquadFilterNode | null = null;
   private granularFxDirect: GainNode | null = null;
+  private granularDelayASend: GainNode | null = null;
   private granularPad1Send: GainNode | null = null;     // pad 1 bus → granular
   private granularPad2Send: GainNode | null = null;     // pad 2 bus → granular
   private granularLead1Send: GainNode | null = null;    // lead 1 bus → granular
@@ -362,16 +430,20 @@ export class AudioEngine {
   private pad2PreFaderBus: GainNode | null = null;    // sum of pad 2 voices (pre-fader, for granular)
   private lead1Bus: GainNode | null = null;           // lead 1 output pre-mix
   private lead2Bus: GainNode | null = null;           // lead 2 output pre-mix
-  private lead1LevelGain: GainNode | null = null;     // lead 1 dry-path level (post reverb/granular tap)
-  private lead2LevelGain: GainNode | null = null;     // lead 2 dry-path level (post reverb/granular tap)
-  private leadVoiceLevel: GainNode | null = null;     // unity dry-path stage for lead output
-  private leadWasmLevelGain: GainNode | null = null;  // WASM lead dry-path level (pre-fader sends bypass this)
+  private lead1LevelGain: GainNode | null = null;     // lead 1 dry-path level (FX sends remain independent)
+  private lead2LevelGain: GainNode | null = null;     // lead 2 dry-path level (FX sends remain independent)
+  private leadVoiceLevel: GainNode | null = null;     // final dry-path trim stage for lead output
+  private leadWasmLevelGain: GainNode | null = null;  // WASM lead dry-path level (FX sends remain independent)
   private leadWasmLead2LevelGain: GainNode | null = null;  // WASM lead 2 dry-path level
   private lastPad2VoiceAssign = 0;                    // track for re-routing
   private granularWriteHeadPosition = 0;     // 0-1 for UI
   private granularVoicePositions = [0, 0, 0, 0]; // 0-1 per voice for UI
-  // Per-trigger override callback for UI feedback (reverse toggle, pitch flash, slice highlight)
-  private onGranularTriggerOverride: ((voice: number, overrides: { sliceOverride?: number; pitchOverride?: number; reverseOverride?: boolean }) => void) | null = null;
+  private granularActiveGrainCount = 0;
+  private granularBufferWaveform: Float32Array | null = null;  // downsampled buffer peaks for viz
+  private granularUiActive = false;
+  private pendingGranularWorkletUpdate: GranularWorkletUpdate | null = null;
+  private granularWorkletDispatchTimer: number | null = null;
+  private lastGranularWorkletDispatchMs = 0;
 
   // Granular multi-tap delay (Microcosm-style)
   private granularDelayInputNode: GainNode | null = null;
@@ -386,62 +458,14 @@ export class AudioEngine {
   private granularDelaySendGain: GainNode | null = null;
   private granularDelayVibratoOscs: OscillatorNode[] = [];
   private granularDelayVibratoDepths: GainNode[] = [];
+  private sharedGranularDelayBSend: GainNode | null = null;
 
-  // Granular Euclidean scheduler
-  private granularEuclidScheduleTimer: number | null = null;
-  private granularEuclidCurrentStep: number[] = [0, 0, 0, 0];
-  private granularEuclidHitCounts: number[] = [0, 0, 0, 0];
-  private granularEuclidStepIndex: number[] = [0, 0, 0, 0];
-  private granularEuclidNextStepTime: number[] = [0, 0, 0, 0];
-  private granularEuclidClockDivs: ClockDivision[] = ['1/8', '1/8', '1/8', '1/8'];
-  private granularEuclidSwings: number[] = [0, 0, 0, 0];
-  private onGranularStepPositionChange: ((steps: number[], hitCounts: number[]) => void) | null = null;
-  private granularStepOverrides: {
-    triggerToggles: Map<number, boolean>[];
-    expression: (number[] | null)[];
-    expressionDirection: (LaneDirection | null)[];
-    probability: (number[] | null)[];
-    ratchet: (number[] | null)[];
-    trigCondition: (TrigCondition[] | null)[];
-    slice: (number[] | null)[];
-    sliceDirection: (LaneDirection | null)[];
-    pitch: (number[] | null)[];
-    pitchDirection: (LaneDirection | null)[];
-    reverse: (number[] | null)[];
-    reverseDirection: (LaneDirection | null)[];
-  } = {
-    triggerToggles: [new Map(), new Map(), new Map(), new Map()],
-    expression: [null, null, null, null],
-    expressionDirection: [null, null, null, null],
-    probability: [null, null, null, null],
-    ratchet: [null, null, null, null],
-    trigCondition: [null, null, null, null],
-    slice: [null, null, null, null],
-    sliceDirection: [null, null, null, null],
-    pitch: [null, null, null, null],
-    pitchDirection: [null, null, null, null],
-    reverse: [null, null, null, null],
-    reverseDirection: [null, null, null, null],
-  };
-  private granularTrigConditionCounters: number[][] = [[], [], [], []];
+  private granularTempoSyncTimer: number | null = null;
+  private granularTempoSyncNextStepTime: number[] = [0, 0, 0, 0];
 
-  // Granular evolve state
-  private granularEvolveConfigs: GranularEvolveConfig[] = [
-    defaultGranularEvolveConfig(), defaultGranularEvolveConfig(),
-    defaultGranularEvolveConfig(), defaultGranularEvolveConfig(),
-  ];
-  private granularEvolveStates: GranularEvolveState[] = [
-    defaultGranularEvolveState(), defaultGranularEvolveState(),
-    defaultGranularEvolveState(), defaultGranularEvolveState(),
-  ];
-  private granularEuclidTotalStepCounts: number[] = [0, 0, 0, 0];
-  private onGranularEvolveTrigger: ((laneIndex: number) => void) | null = null;
-  private onGranularEvolveOverridesChanged: ((laneIndex: number, overrides: Partial<GranularLaneOverrides>) => void) | null = null;
-
-  // Ocean waves — handled by soundscapes WASM (output [2]), no separate worklet
-  private oceanGain: GainNode | null = null;
-  private oceanFilter: BiquadFilterNode | null = null;  // Shared filter for all ocean sources
-  private oceanLevelGain: GainNode | null = null;       // Ocean dry level → earthBus
+  // Waves sample path
+  private oceanFilter: BiquadFilterNode | null = null;  // Shared waves filter
+  private oceanLevelGain: GainNode | null = null;       // Waves dry level → earthBus
 
   // Ocean sample player (real beach recording)
   private oceanSampleBuffer: AudioBuffer | null = null;
@@ -454,10 +478,16 @@ export class AudioEngine {
   private waterPreFaderBus: GainNode | null = null;     // Pre-fader bus for reverb/granular taps
   private waterLevelGain: GainNode | null = null;       // Water dry level → earthBus
   private waterReverbSend: GainNode | null = null;
+  private waterDelayASend: GainNode | null = null;
+  private waterDelayBSend: GainNode | null = null;
   private oceanReverbSendNode: GainNode | null = null;    // Waves reverb send (post-filter)
+  private oceanDelayASend: GainNode | null = null;
+  private oceanDelayBSend: GainNode | null = null;
   private insectsReverbSendNode: GainNode | null = null;  // Insects reverb send
   private insectsPreFaderBus: GainNode | null = null;     // Pre-fader bus for reverb/granular taps
   private insectsLevelGain: GainNode | null = null;       // Insects on/off gate → earthBus (level controlled by WASM-side gain)
+  private insectsDelayASend: GainNode | null = null;
+  private insectsDelayBSend: GainNode | null = null;
   private granularWaterSend: GainNode | null = null;      // Water → granular
   private granularInsectsSend: GainNode | null = null;    // Insects → granular
 
@@ -469,7 +499,6 @@ export class AudioEngine {
   private _scWaterStarted = false;
   private _scInsects1Started = false;
   private _scInsects2Started = false;
-  private _scOceanStarted = false;
   private _scInsects1Engine = -1;
   private _scInsects2Engine = -1;
   private _scWaterPreset = -1;
@@ -517,21 +546,6 @@ export class AudioEngine {
   private seedLocked = false; // When true, don't recompute seed on param changes (for morphing)
   private isMobile = false; // Detected in createAudioGraph, used for CPU-saving defaults
 
-  // Pre-allocated arrays for granular voice params (avoid GC pressure in applyParams @ 60Hz)
-  private readonly _lpBlur = [0, 0, 0, 0];
-  private readonly _lpSpray = [0, 0, 0, 0];
-  private readonly _lpGrainSize = [0, 0, 0, 0];
-  private readonly _lpGrainOct = [0, 0, 0, 0];
-  private readonly _lpDecay = [0, 0, 0, 0];
-  private readonly _lpAttack = [0, 0, 0, 0];
-  private readonly _lpPosLFORate = [0, 0, 0, 0];
-  private readonly _lpPosLFODepth = [0, 0, 0, 0];
-  private readonly _lpPanLFORate = [0, 0, 0, 0];
-  private readonly _lpReverseLFORate = [0, 0, 0, 0];
-  private readonly _lpDensity = [0, 0, 0, 0];
-  private readonly _lpSpeed = [0, 0, 0, 0];
-  private readonly _lpPitch = [0, 0, 0, 0];
-
   // Dirty-gate caches: skip worklet postMessage when params unchanged
   private _prevReverbParams: Record<string, unknown> | null = null;
   private _prevSfFreeze = false;
@@ -564,7 +578,6 @@ export class AudioEngine {
   private perfMonitorEnabled = false;
   private perfData: Record<string, PerfMetrics> = {};
   private onPerfUpdate: ((data: Record<string, PerfMetrics>) => void) | null = null;
-
   // Lead morph random walk state (per-lead, momentum-based)
   private leadMorphWalkStates: {
     lead1: { position: number; velocity: number; initialized: boolean };
@@ -580,6 +593,8 @@ export class AudioEngine {
   };
   // Pending generic S&H param ranges to apply when drumSynth is created
   private pendingParamSHRanges = new Map<string, { min: number; max: number }>();
+
+
   private pendingDrumEuclidEvolveConfigs: DrumEuclidEvolveConfig[] = [
     defaultDrumEuclidEvolveConfig(),
     defaultDrumEuclidEvolveConfig(),
@@ -662,6 +677,11 @@ export class AudioEngine {
   /** App calls this whenever dualSliderRanges change */
   setDualRanges(ranges: Partial<Record<string, { min: number; max: number }>>) {
     this.dualRanges = ranges;
+    for (const key of Object.keys(this.shSampledValues)) {
+      if ((key.startsWith('lead') || key.startsWith('granularLead')) && !ranges[key]) {
+        delete this.shSampledValues[key];
+      }
+    }
   }
 
   private postCachedWorkletMessage(
@@ -675,6 +695,394 @@ export class AudioEngine {
     if (this._messageSignatures.get(cacheKey) === signature) return;
     this._messageSignatures.set(cacheKey, signature);
     node.port.postMessage(message);
+  }
+
+  private ensureSharedDelayBuses(ctx: AudioContext): void {
+    if (!this.masterGain || !this.reverbInputBus) return;
+
+    if (!this.sharedDelayA) {
+      this.sharedDelayA = new SharedDelayBusA(ctx, this.masterGain, this.reverbInputBus);
+    }
+    if (!this.sharedDelayB) {
+      this.sharedDelayB = new SharedDelayBusB(ctx, this.masterGain, this.reverbInputBus);
+      this.sharedDelayA.connectDelayBInput(this.sharedDelayB.input);
+      this.sharedDelayB.connectDelayAInput(this.sharedDelayA.input);
+    }
+    if (this.granularFxInputGain && !this.sharedDelayGranularLinksWired) {
+      this.sharedDelayA.connectGranularInput(this.granularFxInputGain);
+      this.sharedDelayB.connectGranularInput(this.granularFxInputGain);
+      this.sharedDelayGranularLinksWired = true;
+    }
+  }
+
+  private ensureTappedSend(
+    ctx: AudioContext,
+    current: GainNode | null,
+    connectSource: (gain: GainNode) => void,
+    target: AudioNode | null,
+  ): GainNode | null {
+    if (!target) return current;
+    if (!current) {
+      current = ctx.createGain();
+      current.gain.value = 0;
+      connectSource(current);
+      current.connect(target);
+    }
+    return current;
+  }
+
+  private ensurePadDelaySends(ctx: AudioContext): void {
+    if (this.sharedDelayA) {
+      this.pad1DelayASend = this.ensureTappedSend(ctx, this.pad1DelayASend, (gain) => {
+        this.pad1PreFaderBus?.connect(gain);
+        if (this.padWasmNode) this.padWasmNode.connect(gain, 2);
+      }, this.sharedDelayA.input);
+      this.pad2DelayASend = this.ensureTappedSend(ctx, this.pad2DelayASend, (gain) => {
+        this.pad2PreFaderBus?.connect(gain);
+        if (this.padWasmNode) this.padWasmNode.connect(gain, 3);
+      }, this.sharedDelayA.input);
+    }
+    if (this.sharedDelayB) {
+      this.pad1DelayBSend = this.ensureTappedSend(ctx, this.pad1DelayBSend, (gain) => {
+        this.pad1PreFaderBus?.connect(gain);
+        if (this.padWasmNode) this.padWasmNode.connect(gain, 2);
+      }, this.sharedDelayB.input);
+      this.pad2DelayBSend = this.ensureTappedSend(ctx, this.pad2DelayBSend, (gain) => {
+        this.pad2PreFaderBus?.connect(gain);
+        if (this.padWasmNode) this.padWasmNode.connect(gain, 3);
+      }, this.sharedDelayB.input);
+    }
+  }
+
+  private ensureLeadDelaySends(ctx: AudioContext): void {
+    if (this.sharedDelayA) {
+      this.lead1DelayASend = this.ensureTappedSend(ctx, this.lead1DelayASend, (gain) => {
+        this.lead1Bus?.connect(gain);
+      }, this.sharedDelayA.input);
+      this.lead2DelayASend = this.ensureTappedSend(ctx, this.lead2DelayASend, (gain) => {
+        this.lead2Bus?.connect(gain);
+      }, this.sharedDelayA.input);
+    }
+    if (this.sharedDelayB) {
+      this.lead1DelayBSend = this.ensureTappedSend(ctx, this.lead1DelayBSend, (gain) => {
+        this.lead1Bus?.connect(gain);
+      }, this.sharedDelayB.input);
+      this.lead2DelayBSend = this.ensureTappedSend(ctx, this.lead2DelayBSend, (gain) => {
+        this.lead2Bus?.connect(gain);
+      }, this.sharedDelayB.input);
+    }
+  }
+
+  private ensureGranularDelaySends(ctx: AudioContext): void {
+    const granularDelaySource = (this.granularFxOutputLPF ?? this.granularFxNode) as AudioNode | null;
+    if (this.sharedDelayA && granularDelaySource) {
+      this.granularDelayASend = this.ensureTappedSend(ctx, this.granularDelayASend, (gain) => {
+        granularDelaySource.connect(gain);
+      }, this.sharedDelayA.input);
+    }
+    if (this.sharedDelayB && granularDelaySource) {
+      this.sharedGranularDelayBSend = this.ensureTappedSend(ctx, this.sharedGranularDelayBSend, (gain) => {
+        granularDelaySource.connect(gain);
+      }, this.sharedDelayB.input);
+    }
+  }
+
+  private ensureEarthDelaySends(ctx: AudioContext): void {
+    if (this.sharedDelayA) {
+      this.oceanDelayASend = this.ensureTappedSend(ctx, this.oceanDelayASend, (gain) => {
+        this.oceanFilter?.connect(gain);
+      }, this.sharedDelayA.input);
+      this.waterDelayASend = this.ensureTappedSend(ctx, this.waterDelayASend, (gain) => {
+        this.waterPreFaderBus?.connect(gain);
+      }, this.sharedDelayA.input);
+      this.insectsDelayASend = this.ensureTappedSend(ctx, this.insectsDelayASend, (gain) => {
+        this.insectsPreFaderBus?.connect(gain);
+      }, this.sharedDelayA.input);
+    }
+    if (this.sharedDelayB) {
+      this.oceanDelayBSend = this.ensureTappedSend(ctx, this.oceanDelayBSend, (gain) => {
+        this.oceanFilter?.connect(gain);
+      }, this.sharedDelayB.input);
+      this.waterDelayBSend = this.ensureTappedSend(ctx, this.waterDelayBSend, (gain) => {
+        this.waterPreFaderBus?.connect(gain);
+      }, this.sharedDelayB.input);
+      this.insectsDelayBSend = this.ensureTappedSend(ctx, this.insectsDelayBSend, (gain) => {
+        this.insectsPreFaderBus?.connect(gain);
+      }, this.sharedDelayB.input);
+    }
+  }
+
+  private getDrumDelaySendProfile(state: SliderState): number {
+    const sends = [
+      state.drumSubDelaySend,
+      state.drumKickDelaySend,
+      state.drumClickDelaySend,
+      state.drumBeepHiDelaySend,
+      state.drumBeepLoDelaySend,
+      state.drumNoiseDelaySend,
+      state.drumMembraneDelaySend,
+    ].map(value => Math.max(0, Math.min(1, value ?? 0)));
+    const average = sends.reduce((sum, value) => sum + value, 0) / sends.length;
+    const peak = Math.max(...sends, 0);
+    return Math.max(0, Math.min(1, peak * 0.5 + average * 0.5));
+  }
+
+  private createMasterLimiter(ctx: AudioContext): DynamicsCompressorNode {
+    const limiter = ctx.createDynamicsCompressor();
+    limiter.threshold.value = -3;
+    limiter.knee.value = 0;
+    limiter.ratio.value = 20;
+    limiter.attack.value = 0.001;
+    limiter.release.value = 0.1;
+    return limiter;
+  }
+
+  private ensureMasterSaturationNodes(ctx: AudioContext): void {
+    if (!this.satPreGain) {
+      this.satPreGain = ctx.createGain();
+      this.satPreGain.gain.value = 1;
+    }
+    if (!this.satWaveshaper) {
+      this.satWaveshaper = ctx.createWaveShaper();
+      this.satWaveshaper.curve = makeMasterSaturationCurve('clean');
+      this.satWaveshaper.oversample = 'none';
+      this.lastMasterSatMode = 'clean';
+    }
+    if (!this.satPostTone) {
+      this.satPostTone = ctx.createBiquadFilter();
+      this.satPostTone.type = 'peaking';
+      this.satPostTone.frequency.value = 3000;
+      this.satPostTone.Q.value = 0.5;
+      this.satPostTone.gain.value = 0;
+    }
+    if (!this.satPostGain) {
+      this.satPostGain = ctx.createGain();
+      this.satPostGain.gain.value = 1;
+    }
+  }
+
+  private wireMasterOutputChain(ctx: AudioContext): void {
+    if (!this.masterGain || !this.limiter) return;
+    this.ensureMasterSaturationNodes(ctx);
+    try { this.masterGain.disconnect(); } catch { /* */ }
+    try { this.satPreGain?.disconnect(); } catch { /* */ }
+    try { this.satWaveshaper?.disconnect(); } catch { /* */ }
+    try { this.satPostTone?.disconnect(); } catch { /* */ }
+    try { this.satPostGain?.disconnect(); } catch { /* */ }
+    this.masterGain.connect(this.satPreGain!);
+    this.satPreGain!.connect(this.satWaveshaper!);
+    this.satWaveshaper!.connect(this.satPostTone!);
+    this.satPostTone!.connect(this.satPostGain!);
+    this.satPostGain!.connect(this.limiter);
+  }
+
+  private applyMasterSaturation(state: SliderState, now: number): void {
+    const drive = Math.max(0, Math.min(1, state.masterSatDrive ?? 0));
+    const tone = Math.max(0, Math.min(1, state.masterSatTone ?? 0.5));
+    const mode = (state.masterSatMode ?? 'clean') as 'clean' | 'tape' | 'tube';
+    const preGainValue = 1 + drive * 3;
+    const postCompensation = 1 / (1 + drive * 1.5);
+    const tiltDb = (tone - 0.5) * 12;
+
+    if (this.satWaveshaper && mode !== this.lastMasterSatMode) {
+      this.satWaveshaper.curve = makeMasterSaturationCurve(mode);
+      this.lastMasterSatMode = mode;
+    }
+    if (this.satWaveshaper) {
+      this.satWaveshaper.oversample = drive > 0.1 ? '2x' : 'none';
+    }
+    this.satPreGain?.gain.setTargetAtTime(preGainValue, now, 0.05);
+    this.satPostGain?.gain.setTargetAtTime(postCompensation, now, 0.05);
+    this.satPostTone?.gain.setTargetAtTime(tiltDb, now, 0.05);
+  }
+
+  private getSafeDelayCrossFeedLevels(state: SliderState): { aToB: number; bToA: number } {
+    let aToB = Math.max(0, Math.min(1, state.delayAToBSend ?? 0));
+    let bToA = Math.max(0, Math.min(1, state.delayBToASend ?? 0));
+    const product = aToB * bToA;
+    if (product > 0.4) {
+      const scale = Math.sqrt(0.4 / product);
+      aToB *= scale;
+      bToA *= scale;
+    }
+    return { aToB, bToA };
+  }
+
+  private getSharedDelayATimes(state: SliderState): { leftMs: number; rightMs: number } {
+    const bpm = getSharedSequencerBpm(state);
+    return {
+      leftMs: delayNoteToSeconds(state.drumDelayNoteL ?? '1/8d', bpm) * 1000,
+      rightMs: delayNoteToSeconds(state.drumDelayNoteR ?? '1/4', bpm) * 1000,
+    };
+  }
+
+  private isGranularBusArmed(state: SliderState, lead1WetActive: boolean, lead2WetActive: boolean): boolean {
+    const hasIncomingFeed =
+      ((state.padEnabled ?? true) && (state.granularPad1Send ?? 0) > 0.0001) ||
+      ((state.pad2Enabled ?? false) && (state.granularPad2Send ?? 0) > 0.0001) ||
+      (lead1WetActive && (state.granularLead1Send ?? 0) > 0.0001) ||
+      (lead2WetActive && (state.granularLead2Send ?? 0) > 0.0001) ||
+      (state.drumEnabled && (state.granularDrumSend ?? 0) > 0.0001) ||
+      (state.oceanSampleEnabled && (state.granularWavesSend ?? 0) > 0.0001) ||
+      (state.waterEnabled && (state.granularWaterSend ?? 0) > 0.0001) ||
+      ((state.insectsEnabled || state.insects2Enabled) && (state.granularInsectsSend ?? 0) > 0.0001) ||
+      ((state.delayAGranularSend ?? 0) > 0.0001) ||
+      ((state.delayBGranularSend ?? 0) > 0.0001);
+    const hasOutgoingPath =
+      (state.granularLevel ?? 0) > 0.0001 ||
+      (state.granularReverbSend ?? 0) > 0.0001 ||
+      (state.granularDelayASend ?? 0) > 0.0001 ||
+      (state.granularDelayBSend ?? 0) > 0.0001;
+    return !!state.granularEnabled && (hasIncomingFeed || hasOutgoingPath);
+  }
+
+  private hasAnyReverbFeed(
+    state: SliderState,
+    pad1Active: boolean,
+    pad2Active: boolean,
+    lead1WetActive: boolean,
+    lead2WetActive: boolean,
+    granularBusArmed: boolean,
+    delayAEnabled: boolean,
+    delayBEnabled: boolean,
+  ): boolean {
+    return (
+      (pad1Active && (state.pad1ReverbSend ?? 0) > 0.0001) ||
+      (pad2Active && (state.pad2ReverbSend ?? 0) > 0.0001) ||
+      (lead1WetActive && (state.lead1ReverbSend ?? 0) > 0.0001) ||
+      (lead2WetActive && (state.lead2ReverbSend ?? 0) > 0.0001) ||
+      (state.drumEnabled && (state.drumReverbSend ?? 0) > 0.0001) ||
+      (granularBusArmed && (state.granularReverbSend ?? 0) > 0.0001) ||
+      (delayAEnabled && (state.delayAReverbSend ?? 0) > 0.0001) ||
+      (delayBEnabled && (state.granularDelayReverbSend ?? 0) > 0.0001) ||
+      (state.oceanSampleEnabled && (state.oceanReverbSend ?? 0) > 0.0001) ||
+      (state.waterEnabled && (state.waterReverbSend ?? 0) > 0.0001) ||
+      ((state.insectsEnabled || state.insects2Enabled) && (state.insectsReverbSend ?? 0) > 0.0001)
+    );
+  }
+
+  private getSharedDelayAState(
+    state: SliderState,
+    lead1WetActive: boolean,
+    lead2WetActive: boolean,
+    granularBusArmed: boolean,
+    delayBEnabled = false,
+  ) {
+    const { leftMs, rightMs } = this.getSharedDelayATimes(state);
+    const drumDelayProfile = this.getDrumDelaySendProfile(state);
+    const crossFeeds = this.getSafeDelayCrossFeedLevels(state);
+    const delayAExternalFeedActive =
+      ((state.padEnabled ?? true) && (state.pad1DelayASend ?? 0) > 0.0001) ||
+      ((state.pad2Enabled ?? false) && (state.pad2DelayASend ?? 0) > 0.0001) ||
+      (lead1WetActive && (state.lead1DelayASend ?? 0) > 0.0001) ||
+      (lead2WetActive && (state.lead2DelayASend ?? 0) > 0.0001) ||
+      (state.drumEnabled && drumDelayProfile * (state.drumDelayASend ?? 0) > 0.0001) ||
+      (granularBusArmed && (state.granularDelayASend ?? 0) > 0.0001) ||
+      (delayBEnabled && crossFeeds.bToA > 0.0001) ||
+      (state.oceanSampleEnabled && (state.oceanDelayASend ?? 0) > 0.0001) ||
+      (state.waterEnabled && (state.waterDelayASend ?? 0) > 0.0001) ||
+      ((state.insectsEnabled || state.insects2Enabled) && (state.insDelayASend ?? 0) > 0.0001);
+
+    return {
+      enabled: delayAExternalFeedActive,
+      timeLeftMs: leftMs,
+      timeRightMs: rightMs,
+      feedback: state.delayAFeedback ?? 0.4,
+      mix: state.delayAMix ?? 0.35,
+      filterHz: state.delayAFilter ?? 2000,
+      filterType: state.delayAFilterType ?? 'lowpass',
+      reverbSend: (state.reverbEnabled && delayAExternalFeedActive) ? (state.delayAReverbSend ?? 0.4) : 0,
+      modRateHz: (state.delayAModDepth ?? 0) > 0 ? (0.05 + (state.delayAModRate ?? 0) * 4.95) : 0,
+      modDepthMs: (state.delayAModDepth ?? 0) * 50,
+      pingPong: state.delayAPingPong ?? false,
+      duck: state.delayADuck ?? 0,
+      width: state.delayAWidth ?? 0.5,
+      toDelayB: crossFeeds.aToB,
+      crossFeedFilterHz: 200 * Math.pow(40, Math.max(0, Math.min(1, state.delayACrossFeedFilter ?? 1))),
+      granularSend: state.delayAGranularSend ?? 0,
+    };
+  }
+
+  private wireDrumDelaySends(ctx: AudioContext): void {
+    this.drumSynth?.setSharedDelayInput(this.sharedDelayA?.input ?? null);
+    if (this.sharedDelayA && this.drumWasmNode && !this.drumDelayASend) {
+      this.drumDelayASend = ctx.createGain();
+      this.drumDelayASend.gain.value = 0;
+      this.drumWasmNode.connect(this.drumDelayASend, 0);
+      this.drumDelayASend.connect(this.sharedDelayA.input);
+    }
+
+    if (this.sharedDelayB && this.drumSynth && !this.drumDelayBSend) {
+      this.drumDelayBSend = ctx.createGain();
+      this.drumDelayBSend.gain.value = 0;
+      this.drumSynth.getPreFaderBus().connect(this.drumDelayBSend);
+      if (this.drumWasmNode) {
+        this.drumWasmNode.connect(this.drumDelayBSend, 0);
+      }
+      this.drumDelayBSend.connect(this.sharedDelayB.input);
+    }
+  }
+
+  private flushGranularWorkletUpdate(): void {
+    if (this.granularWorkletDispatchTimer !== null) {
+      clearTimeout(this.granularWorkletDispatchTimer);
+      this.granularWorkletDispatchTimer = null;
+    }
+    if (!this.granularFxNode || !this.pendingGranularWorkletUpdate) return;
+
+    const update = this.pendingGranularWorkletUpdate;
+    this.pendingGranularWorkletUpdate = null;
+    this.lastGranularWorkletDispatchMs = performance.now();
+
+    this.postCachedWorkletMessage(
+      'granular:globalParams',
+      this.granularFxNode,
+      { type: 'globalParams', params: update.global },
+      update.global,
+    );
+    this.postCachedWorkletMessage(
+      'granular:spaceParams',
+      this.granularFxNode,
+      { type: 'spaceParams', params: update.space },
+      update.space,
+    );
+    this.postCachedWorkletMessage(
+      'granular:voiceParams',
+      this.granularFxNode,
+      { type: 'voiceParams', params: update.voices },
+      update.voices,
+    );
+    this.postCachedWorkletMessage(
+      'granular:harmonyParams',
+      this.granularFxNode,
+      { type: 'harmonyParams', params: update.harmony },
+      update.harmony,
+    );
+    this.postCachedWorkletMessage(
+      'granular:legacyParams',
+      this.granularFxNode,
+      { type: 'legacyParams', params: update.legacy },
+      update.legacy,
+    );
+  }
+
+  private queueGranularWorkletUpdate(update: GranularWorkletUpdate): void {
+    this.pendingGranularWorkletUpdate = update;
+    if (!this.granularFxNode) return;
+
+    const nowMs = performance.now();
+    const elapsed = nowMs - this.lastGranularWorkletDispatchMs;
+    if (this.lastGranularWorkletDispatchMs === 0 || elapsed >= GRANULAR_WORKLET_DISPATCH_INTERVAL_MS) {
+      this.flushGranularWorkletUpdate();
+      return;
+    }
+
+    if (this.granularWorkletDispatchTimer !== null) return;
+    const waitMs = Math.max(1, GRANULAR_WORKLET_DISPATCH_INTERVAL_MS - elapsed);
+    this.granularWorkletDispatchTimer = window.setTimeout(() => {
+      this.granularWorkletDispatchTimer = null;
+      this.flushGranularWorkletUpdate();
+    }, waitMs);
   }
 
   /** Callback fired on each S&H re-sample (~10Hz) with normalized positions per key */
@@ -720,7 +1128,7 @@ export class AudioEngine {
           : 0,
       };
     }
-    // Soundscapes format: { avgMs, budgetMs, waterMs, insects1Ms, insects2Ms, oceanMs }
+    // Soundscapes format: { avgMs, budgetMs, waterMs, insectsMs }
     if (typeof data.budgetMs === 'number' && typeof data.waterMs === 'number') {
       const budget = data.budgetMs as number;
       if (budget > 0) {
@@ -734,18 +1142,28 @@ export class AudioEngine {
           peakPercent: Math.round((((((data.insectsPeakMs as number) ?? data.insectsMs) as number) || 0) / budget) * 1000) / 10,
           missPercent: null,
         };
-        if (typeof data.oceanMs === 'number') {
-          this.perfData['ocean'] = {
-            avgPercent: Math.round(((data.oceanMs as number) / budget) * 1000) / 10,
-            peakPercent: Math.round(((((data.oceanPeakMs as number) ?? data.oceanMs) as number) / budget) * 1000) / 10,
-            missPercent: null,
-          };
-        }
+        delete this.perfData['ocean'];
       }
     }
     if (this.onPerfUpdate) {
       this.onPerfUpdate({ ...this.perfData });
     }
+  }
+
+  private isGranularTempoSyncVoiceActive(state: SliderState, voiceIndex: number): boolean {
+    const voiceNum = voiceIndex + 1;
+    const enabled = state[`granularV${voiceNum}Enabled` as keyof SliderState] as boolean;
+    const mode = state[`granularV${voiceNum}Mode` as keyof SliderState] as SliderState['granularV1Mode'];
+    const tempoSync = state[`granularV${voiceNum}TempoSync` as keyof SliderState] as boolean;
+    return !!(state.granularEnabled && enabled && mode === 'granular' && tempoSync);
+  }
+
+  private hasGranularTempoSyncVoices(state: SliderState | null): boolean {
+    if (!state) return false;
+    for (let voiceIndex = 0; voiceIndex < 4; voiceIndex++) {
+      if (this.isGranularTempoSyncVoiceActive(state, voiceIndex)) return true;
+    }
+    return false;
   }
 
 
@@ -766,12 +1184,17 @@ export class AudioEngine {
     this.onLeadDelayTrigger = callback;
   }
 
-  setGranularTriggerOverrideCallback(callback: (voice: number, overrides: { sliceOverride?: number; pitchOverride?: number; reverseOverride?: boolean }) => void) {
-    this.onGranularTriggerOverride = callback;
-  }
-
   getGranularWriteHeadPosition(): number { return this.granularWriteHeadPosition; }
   getGranularVoicePositions(): number[] { return [...this.granularVoicePositions]; }
+  getGranularActiveGrainCount(): number { return this.granularActiveGrainCount; }
+  getGranularBufferWaveform(): Float32Array | null { return this.granularBufferWaveform; }
+
+  setGranularUiActive(active: boolean) {
+    this.granularUiActive = active;
+    if (this.granularFxNode) {
+      this.granularFxNode.port.postMessage({ type: 'uiActive', active });
+    }
+  }
 
   setDrumTriggerCallback(callback: (voice: DrumVoiceType, velocity: number) => void) {
     this.onDrumTrigger = callback;
@@ -867,11 +1290,6 @@ export class AudioEngine {
   /** Set per-lane sub-lane enabled state for synth Euclidean sequencer. */
   setSynthSubLaneEnabled(states: Record<string, boolean>[]) {
     this.synthSubLaneEnabled = states.map(s => ({ ...s }));
-  }
-
-  /** Set per-lane sub-lane enabled state for granular Euclidean sequencer. */
-  setGranularSubLaneEnabled(states: Record<string, boolean>[]) {
-    this.granularSubLaneEnabled = states.map(s => ({ ...s }));
   }
 
   /** Register callback for synth evolve trigger (UI flash). */
@@ -1097,6 +1515,8 @@ export class AudioEngine {
     }
   }
 
+
+
   setDrumEuclidEvolveConfigs(configs: Partial<DrumEuclidEvolveConfig>[]) {
     this.pendingDrumEuclidEvolveConfigs = this.pendingDrumEuclidEvolveConfigs.map((current, laneIndex) => ({
       enabled: configs[laneIndex]?.enabled ?? current.enabled,
@@ -1147,161 +1567,6 @@ export class AudioEngine {
     }
   }
 
-  // ─── Granular Euclidean public API ───
-
-  setGranularStepPositionCallback(callback: (steps: number[], hitCounts: number[]) => void) {
-    this.onGranularStepPositionChange = callback;
-  }
-
-  setGranularStepOverrides(overrides: {
-    triggerToggles?: Map<number, boolean>[];
-    expression?: (number[] | null)[];
-    expressionDirection?: (LaneDirection | null)[];
-    probability?: (number[] | null)[];
-    ratchet?: (number[] | null)[];
-    trigCondition?: (TrigCondition[] | null)[];
-    slice?: (number[] | null)[];
-    sliceDirection?: (LaneDirection | null)[];
-    pitch?: (number[] | null)[];
-    pitchDirection?: (LaneDirection | null)[];
-    reverse?: (number[] | null)[];
-    reverseDirection?: (LaneDirection | null)[];
-  }) {
-    this.granularStepOverrides = {
-      triggerToggles: overrides.triggerToggles ?? this.granularStepOverrides.triggerToggles,
-      expression: overrides.expression ?? this.granularStepOverrides.expression,
-      expressionDirection: overrides.expressionDirection ?? this.granularStepOverrides.expressionDirection,
-      probability: overrides.probability ?? this.granularStepOverrides.probability,
-      ratchet: overrides.ratchet ?? this.granularStepOverrides.ratchet,
-      trigCondition: overrides.trigCondition ?? this.granularStepOverrides.trigCondition,
-      slice: overrides.slice ?? this.granularStepOverrides.slice,
-      sliceDirection: overrides.sliceDirection ?? this.granularStepOverrides.sliceDirection,
-      pitch: overrides.pitch ?? this.granularStepOverrides.pitch,
-      pitchDirection: overrides.pitchDirection ?? this.granularStepOverrides.pitchDirection,
-      reverse: overrides.reverse ?? this.granularStepOverrides.reverse,
-      reverseDirection: overrides.reverseDirection ?? this.granularStepOverrides.reverseDirection,
-    };
-  }
-
-  setGranularEuclidClockDivs(divs: ClockDivision[]) {
-    this.granularEuclidClockDivs = [...divs];
-  }
-
-  setGranularEuclidSwings(swings: number[]) {
-    this.granularEuclidSwings = [...swings];
-  }
-
-  // ─── Granular Euclidean evolve API ───
-
-  setGranularEuclidEvolveConfigs(configs: Partial<GranularEvolveConfig>[]) {
-    this.granularEvolveConfigs = this.granularEvolveConfigs.map((current, i) => ({
-      ...current,
-      ...(configs[i] ?? {}),
-    }));
-  }
-
-  setGranularEuclidEvolveTriggerCallback(callback: (laneIndex: number) => void) {
-    this.onGranularEvolveTrigger = callback;
-  }
-
-  setGranularEvolveOverridesChangedCallback(callback: (laneIndex: number, overrides: Partial<GranularLaneOverrides>) => void) {
-    this.onGranularEvolveOverridesChanged = callback;
-  }
-
-  resetGranularEuclidLaneHome(laneIndex: number) {
-    const state = this.granularEvolveStates[laneIndex];
-    if (!state?.home) return;
-    const laneOv = this.extractGranularLaneOverrides(laneIndex);
-    const restored = resetGranularLaneToHome(laneOv, state);
-    this.applyGranularLaneOverrides(laneIndex, restored);
-    this.onGranularEvolveOverridesChanged?.(laneIndex, restored);
-    if (state.homeSwing !== undefined) {
-      this.granularEuclidSwings[laneIndex] = state.homeSwing;
-    }
-  }
-
-  diceGranularEuclidLane(laneIndex: number, intensity: number = 1) {
-    const totalSteps = this.granularEuclidTotalStepCounts[laneIndex] || 16;
-    const rng = Math.random;
-    const inten = clampVal(intensity, 0, 1);
-
-    const currentOv = this.extractGranularLaneOverrides(laneIndex);
-
-    const newOv: GranularLaneOverrides = {
-      pitch: blendDiceValues(currentOv.pitch, generateDicePitchOffsets(totalSteps, 4, rng, inten), inten).map(Math.round),
-      pitchDirection: null,
-      triggerToggles: new Map<number, boolean>(),
-      expression: blendDiceValues(currentOv.expression, generateDiceValues(totalSteps, rng, inten), inten),
-      expressionDirection: null,
-      slice: blendDiceValues(
-        currentOv.slice,
-        Array.from({ length: totalSteps }, () => Math.floor(rng() * 16)),
-        inten,
-      ).map(Math.round),
-      sliceDirection: null,
-      reverse: blendDiceValues(
-        currentOv.reverse,
-        Array.from({ length: totalSteps }, () => rng() < 0.3 ? 1 : 0),
-        inten,
-      ).map(v => v > 0.5 ? 1 : 0),
-      reverseDirection: null,
-      probability: blendDiceValues(
-        currentOv.probability,
-        Array.from({ length: totalSteps }, () => clampVal(0.7 + (rng() - 0.5) * 0.4, 0.3, 1.0)),
-        inten,
-      ),
-      ratchet: blendDiceValues(
-        currentOv.ratchet,
-        Array.from({ length: totalSteps }, () => rng() < 0.2 ? Math.ceil(rng() * 3) + 1 : 1),
-        inten,
-      ).map(Math.round),
-    };
-
-    for (let i = 0; i < totalSteps; i++) {
-      if (rng() < 0.3 * inten) newOv.triggerToggles.set(i, rng() < 0.5);
-    }
-
-    this.applyGranularLaneOverrides(laneIndex, newOv);
-    this.onGranularEvolveOverridesChanged?.(laneIndex, newOv);
-
-    const state = this.granularEvolveStates[laneIndex];
-    if (state) {
-      state.home = captureGranularHomeSnapshot(newOv);
-      state.homeSwing = this.granularEuclidSwings[laneIndex];
-    }
-  }
-
-  private extractGranularLaneOverrides(laneIndex: number): GranularLaneOverrides {
-    const ov = this.granularStepOverrides;
-    return {
-      pitch: ov.pitch[laneIndex] ? [...ov.pitch[laneIndex]!] : null,
-      pitchDirection: ov.pitchDirection[laneIndex],
-      triggerToggles: new Map(ov.triggerToggles[laneIndex]),
-      expression: ov.expression[laneIndex] ? [...ov.expression[laneIndex]!] : null,
-      expressionDirection: ov.expressionDirection[laneIndex],
-      slice: ov.slice[laneIndex] ? [...ov.slice[laneIndex]!] : null,
-      sliceDirection: ov.sliceDirection[laneIndex],
-      reverse: ov.reverse[laneIndex] ? [...ov.reverse[laneIndex]!] : null,
-      reverseDirection: ov.reverseDirection[laneIndex],
-      probability: ov.probability[laneIndex] ? [...ov.probability[laneIndex]!] : null,
-      ratchet: ov.ratchet[laneIndex] ? [...ov.ratchet[laneIndex]!] : null,
-    };
-  }
-
-  private applyGranularLaneOverrides(laneIndex: number, ov: GranularLaneOverrides) {
-    this.granularStepOverrides.pitch[laneIndex] = ov.pitch ? [...ov.pitch] : null;
-    this.granularStepOverrides.pitchDirection[laneIndex] = ov.pitchDirection;
-    this.granularStepOverrides.triggerToggles[laneIndex] = new Map(ov.triggerToggles);
-    this.granularStepOverrides.expression[laneIndex] = ov.expression ? [...ov.expression] : null;
-    this.granularStepOverrides.expressionDirection[laneIndex] = ov.expressionDirection;
-    this.granularStepOverrides.slice[laneIndex] = ov.slice ? [...ov.slice] : null;
-    this.granularStepOverrides.sliceDirection[laneIndex] = ov.sliceDirection;
-    this.granularStepOverrides.reverse[laneIndex] = ov.reverse ? [...ov.reverse] : null;
-    this.granularStepOverrides.reverseDirection[laneIndex] = ov.reverseDirection;
-    this.granularStepOverrides.probability[laneIndex] = ov.probability ? [...ov.probability] : null;
-    this.granularStepOverrides.ratchet[laneIndex] = ov.ratchet ? [...ov.ratchet] : null;
-  }
-
   /**
    * Lazily create AudioContext + DrumSynth so the drum sequencer works
    * independently of the master play button. Synchronous creation;
@@ -1324,14 +1589,8 @@ export class AudioEngine {
       if (!this.masterGain) {
         this.masterGain = this.ctx.createGain();
         this.masterGain.gain.value = sliderState.masterVolume ?? 0.7;
-        // Create limiter
-        this.limiter = this.ctx.createDynamicsCompressor();
-        this.limiter.threshold.value = -3;
-        this.limiter.knee.value = 0;
-        this.limiter.ratio.value = 20;
-        this.limiter.attack.value = 0.001;
-        this.limiter.release.value = 0.1;
-        this.masterGain.connect(this.limiter);
+        this.limiter = this.createMasterLimiter(this.ctx);
+        this.wireMasterOutputChain(this.ctx);
         this.limiter.connect(this.ctx.destination);
       }
       if (!this.reverbNode) {
@@ -1358,6 +1617,7 @@ export class AudioEngine {
       }
       this.wireDrumSynthCallbacks();
       this.wireDrumGranularSend();
+      this.wireDrumDelaySends(this.ctx);
     }
   }
 
@@ -1554,7 +1814,7 @@ export class AudioEngine {
         this.isRunning ||
         this.synthEuclidStarting ||
         this.synthEuclidScheduleTimer !== null ||
-        this.granularEuclidScheduleTimer !== null ||
+        this.granularTempoSyncTimer !== null ||
         this.drumSynth !== null
       );
       if (shouldResume) {
@@ -1592,25 +1852,41 @@ export class AudioEngine {
       this.limiter = null;
       this.reverbNode = null;
       this.reverbOutputGain = null;
+      this.sharedDelayA?.dispose();
+      this.sharedDelayA = null;
+      this.sharedDelayB?.dispose();
+      this.sharedDelayB = null;
+      this.sharedDelayGranularLinksWired = false;
       // Null lead chain (createAudioGraph will recreate them)
       this.leadGain = null;
       this.leadFilter = null;
-      this.leadDelayL = null;
-      this.leadDelayR = null;
-      this.leadDelayFeedbackL = null;
-      this.leadDelayFeedbackR = null;
-      this.leadDelayMix = null;
       this.leadDry = null;
-      this.leadMerger = null;
-      this.leadReverbSend = null;
-      this.leadDelayReverbSend = null;
+      this.pad1DelayASend = null;
+      this.pad1DelayBSend = null;
+      this.pad2DelayASend = null;
+      this.pad2DelayBSend = null;
+      this.lead1DelayASend = null;
+      this.lead1DelayBSend = null;
+      this.lead2DelayASend = null;
+      this.lead2DelayBSend = null;
+      this.drumDelayASend = null;
+      this.drumDelayBSend = null;
+      this.granularDelayASend = null;
+      this.sharedGranularDelayBSend = null;
       // Null pad synth chain
       this.synthBus = null;
       this.dryBus = null;
-      this.synthReverbSend = null;
+      this.pad1ReverbSend = null;
+      this.pad2ReverbSend = null;
       this.synthDirect = null;
       this.padWasmNode = null;
       this.padWasmReady = false;
+      this.oceanDelayASend = null;
+      this.oceanDelayBSend = null;
+      this.waterDelayASend = null;
+      this.waterDelayBSend = null;
+      this.insectsDelayASend = null;
+      this.insectsDelayBSend = null;
       this.voices = [];
     }
 
@@ -1666,7 +1942,7 @@ export class AudioEngine {
       console.warn('Spectral Freeze WASM load failed (non-fatal):', e);
     }
 
-    // Soundscapes WASM worklet (water + insects + ocean engines)
+    // Soundscapes WASM worklet (water + insects)
     try {
       await this.ctx.audioWorklet.addModule(soundscapesWorkletUrl);
       console.log('Soundscapes WASM worklet loaded');
@@ -1679,7 +1955,7 @@ export class AudioEngine {
         console.warn('Soundscapes WASM binary not available');
       }
     } catch (e) {
-      console.warn('Soundscapes (water/insects/ocean) worklet not available:', e);
+      console.warn('Soundscapes (water/insects) worklet not available:', e);
     }
 
     // Load WASM granular
@@ -1751,6 +2027,7 @@ export class AudioEngine {
       );
       this.wireDrumSynthCallbacks();
       this.wireDrumGranularSend();
+      this.wireDrumDelaySends(this.ctx);
     }
 
     // Start voices
@@ -1767,10 +2044,9 @@ export class AudioEngine {
     if (this.sliderState?.synthEuclideanMasterEnabled) {
       this.startSynthEuclidScheduler();
     }
-    // Start granular Euclidean scheduler if enabled
-    this.stopGranularEuclidScheduler();
-    if (this.sliderState?.granularEuclidMasterEnabled) {
-      this.startGranularEuclidScheduler();
+    this.stopGranularTempoSyncScheduler();
+    if (this.hasGranularTempoSyncVoices(this.sliderState)) {
+      this.startGranularTempoSyncScheduler();
     }
     // Start random lead scheduling if enabled
     if (this.sliderState?.leadRandomEnabled) {
@@ -1813,8 +2089,11 @@ export class AudioEngine {
 
     // Stop lead Euclidean scheduler
     this.stopSynthEuclidScheduler();
-    // Stop granular Euclidean scheduler
-    this.stopGranularEuclidScheduler();
+    // Stop granular tempo-sync scheduler
+    this.stopGranularTempoSyncScheduler();
+    this.granularWriteHeadPosition = 0;
+    this.granularVoicePositions = [0, 0, 0, 0];
+    this.granularActiveGrainCount = 0;
     // Stop lead random melody timer
     if (this.leadMelodyTimer !== null) {
       clearTimeout(this.leadMelodyTimer);
@@ -1862,15 +2141,6 @@ export class AudioEngine {
     }
     this.oceanSampleSource = null;
 
-    // Stop ocean via soundscapes WASM (no separate ocean worklet to disconnect)
-    if (this.soundscapesNode && this._scOceanStarted) {
-      try { this.soundscapesNode.port.postMessage({ type: 'oceanStop' }); } catch { /* */ }
-      this._scOceanStarted = false;
-    }
-    if (this.oceanGain) {
-      try { this.oceanGain.disconnect(); } catch { /* */ }
-      this.oceanGain = null;
-    }
     if (this.oceanSampleGain) {
       try { this.oceanSampleGain.disconnect(); } catch { /* */ }
       this.oceanSampleGain = null;
@@ -1894,7 +2164,6 @@ export class AudioEngine {
     this._scWaterStarted = false;
     this._scInsects1Started = false;
     this._scInsects2Started = false;
-    this._scOceanStarted = false;
     this._scInsects1Engine = -1;
     this._scInsects2Engine = -1;
     this._scWaterPreset = -1;
@@ -1992,29 +2261,42 @@ export class AudioEngine {
       try { this.reverbOutputGain.disconnect(); } catch { /* */ }
       this.reverbOutputGain = null;
     }
+    if (this.satPreGain) { try { this.satPreGain.disconnect(); } catch { /* */ } this.satPreGain = null; }
+    if (this.satWaveshaper) { try { this.satWaveshaper.disconnect(); } catch { /* */ } this.satWaveshaper = null; }
+    if (this.satPostTone) { try { this.satPostTone.disconnect(); } catch { /* */ } this.satPostTone = null; }
+    if (this.satPostGain) { try { this.satPostGain.disconnect(); } catch { /* */ } this.satPostGain = null; }
+    this.lastMasterSatMode = null;
+    this.sharedDelayA?.dispose();
+    this.sharedDelayA = null;
+    this.sharedDelayB?.dispose();
+    this.sharedDelayB = null;
+    this.sharedDelayGranularLinksWired = false;
 
     // Disconnect synth bus chains
     if (this.synthBus) { try { this.synthBus.disconnect(); } catch { /* */ } this.synthBus = null; }
     if (this.dryBus) { try { this.dryBus.disconnect(); } catch { /* */ } this.dryBus = null; }
-    if (this.synthReverbSend) { try { this.synthReverbSend.disconnect(); } catch { /* */ } this.synthReverbSend = null; }
+    if (this.pad1ReverbSend) { try { this.pad1ReverbSend.disconnect(); } catch { /* */ } this.pad1ReverbSend = null; }
+    if (this.pad2ReverbSend) { try { this.pad2ReverbSend.disconnect(); } catch { /* */ } this.pad2ReverbSend = null; }
     if (this.synthDirect) { try { this.synthDirect.disconnect(); } catch { /* */ } this.synthDirect = null; }
 
     // Disconnect lead synth chain
     if (this.leadGain) { try { this.leadGain.disconnect(); } catch { /* */ } this.leadGain = null; }
     if (this.leadFilter) { try { this.leadFilter.disconnect(); } catch { /* */ } this.leadFilter = null; }
-    if (this.leadDelayFeedbackL) { try { this.leadDelayFeedbackL.disconnect(); } catch { /* */ } this.leadDelayFeedbackL = null; }
-    if (this.leadDelayFeedbackR) { try { this.leadDelayFeedbackR.disconnect(); } catch { /* */ } this.leadDelayFeedbackR = null; }
-    if (this.leadDelayL) { try { this.leadDelayL.disconnect(); } catch { /* */ } this.leadDelayL = null; }
-    if (this.leadDelayR) { try { this.leadDelayR.disconnect(); } catch { /* */ } this.leadDelayR = null; }
-    if (this.leadDelayMix) { try { this.leadDelayMix.disconnect(); } catch { /* */ } this.leadDelayMix = null; }
     if (this.leadDry) { try { this.leadDry.disconnect(); } catch { /* */ } this.leadDry = null; }
     if (this.leadWasmLevelGain) { try { this.leadWasmLevelGain.disconnect(); } catch { /* */ } this.leadWasmLevelGain = null; }
     if (this.leadWasmLead2LevelGain) { try { this.leadWasmLead2LevelGain.disconnect(); } catch { /* */ } this.leadWasmLead2LevelGain = null; }
-    if (this.leadMerger) { try { this.leadMerger.disconnect(); } catch { /* */ } this.leadMerger = null; }
-    if (this.leadReverbSend) { try { this.leadReverbSend.disconnect(); } catch { /* */ } this.leadReverbSend = null; }
     if (this.lead1ReverbSend) { try { this.lead1ReverbSend.disconnect(); } catch { /* */ } this.lead1ReverbSend = null; }
     if (this.lead2ReverbSend) { try { this.lead2ReverbSend.disconnect(); } catch { /* */ } this.lead2ReverbSend = null; }
-    if (this.leadDelayReverbSend) { try { this.leadDelayReverbSend.disconnect(); } catch { /* */ } this.leadDelayReverbSend = null; }
+    if (this.pad1DelayASend) { try { this.pad1DelayASend.disconnect(); } catch { /* */ } this.pad1DelayASend = null; }
+    if (this.pad1DelayBSend) { try { this.pad1DelayBSend.disconnect(); } catch { /* */ } this.pad1DelayBSend = null; }
+    if (this.pad2DelayASend) { try { this.pad2DelayASend.disconnect(); } catch { /* */ } this.pad2DelayASend = null; }
+    if (this.pad2DelayBSend) { try { this.pad2DelayBSend.disconnect(); } catch { /* */ } this.pad2DelayBSend = null; }
+    if (this.lead1DelayASend) { try { this.lead1DelayASend.disconnect(); } catch { /* */ } this.lead1DelayASend = null; }
+    if (this.lead1DelayBSend) { try { this.lead1DelayBSend.disconnect(); } catch { /* */ } this.lead1DelayBSend = null; }
+    if (this.lead2DelayASend) { try { this.lead2DelayASend.disconnect(); } catch { /* */ } this.lead2DelayASend = null; }
+    if (this.lead2DelayBSend) { try { this.lead2DelayBSend.disconnect(); } catch { /* */ } this.lead2DelayBSend = null; }
+    if (this.drumDelayASend) { try { this.drumDelayASend.disconnect(); } catch { /* */ } this.drumDelayASend = null; }
+    if (this.drumDelayBSend) { try { this.drumDelayBSend.disconnect(); } catch { /* */ } this.drumDelayBSend = null; }
 
     // Tear down Granular FX node + routing gains (prevent orphan worklet processing)
     if (this.granularFxNode) {
@@ -2063,6 +2345,8 @@ export class AudioEngine {
     if (this.granularDelayReverbSendGain) { try { this.granularDelayReverbSendGain.disconnect(); } catch { /* */ } this.granularDelayReverbSendGain = null; }
     if (this.granularDelayFeedbackGain) { try { this.granularDelayFeedbackGain.disconnect(); } catch { /* */ } this.granularDelayFeedbackGain = null; }
     if (this.granularDelayToneFilter) { try { this.granularDelayToneFilter.disconnect(); } catch { /* */ } this.granularDelayToneFilter = null; }
+    if (this.granularDelayASend) { try { this.granularDelayASend.disconnect(); } catch { /* */ } this.granularDelayASend = null; }
+    if (this.sharedGranularDelayBSend) { try { this.sharedGranularDelayBSend.disconnect(); } catch { /* */ } this.sharedGranularDelayBSend = null; }
 
     // Disconnect per-source send gains
     if (this.granularPad1Send) { try { this.granularPad1Send.disconnect(); } catch { /* */ } this.granularPad1Send = null; }
@@ -2071,6 +2355,12 @@ export class AudioEngine {
     if (this.granularLead2Send) { try { this.granularLead2Send.disconnect(); } catch { /* */ } this.granularLead2Send = null; }
     if (this.granularDrumSend) { try { this.granularDrumSend.disconnect(); } catch { /* */ } this.granularDrumSend = null; }
     if (this.granularWavesSend) { try { this.granularWavesSend.disconnect(); } catch { /* */ } this.granularWavesSend = null; }
+    if (this.oceanDelayASend) { try { this.oceanDelayASend.disconnect(); } catch { /* */ } this.oceanDelayASend = null; }
+    if (this.oceanDelayBSend) { try { this.oceanDelayBSend.disconnect(); } catch { /* */ } this.oceanDelayBSend = null; }
+    if (this.waterDelayASend) { try { this.waterDelayASend.disconnect(); } catch { /* */ } this.waterDelayASend = null; }
+    if (this.waterDelayBSend) { try { this.waterDelayBSend.disconnect(); } catch { /* */ } this.waterDelayBSend = null; }
+    if (this.insectsDelayASend) { try { this.insectsDelayASend.disconnect(); } catch { /* */ } this.insectsDelayASend = null; }
+    if (this.insectsDelayBSend) { try { this.insectsDelayBSend.disconnect(); } catch { /* */ } this.insectsDelayBSend = null; }
 
     // Stop drum synth and close everything
     if (this.drumSynth) {
@@ -2094,6 +2384,11 @@ export class AudioEngine {
 
   /** Fully tear down drum synth and audio context (for page unload, etc.) */
   dispose(): void {
+    if (this.granularWorkletDispatchTimer !== null) {
+      clearTimeout(this.granularWorkletDispatchTimer);
+      this.granularWorkletDispatchTimer = null;
+    }
+    this.pendingGranularWorkletUpdate = null;
     this.stop();
   }
 
@@ -2145,25 +2440,46 @@ export class AudioEngine {
         this.ctx = null;
         this.masterGain = null;
         this.limiter = null;
+        this.satPreGain = null;
+        this.satWaveshaper = null;
+        this.satPostTone = null;
+        this.satPostGain = null;
+        this.lastMasterSatMode = null;
         this.reverbNode = null;
         this.reverbOutputGain = null;
+        this.sharedDelayA?.dispose();
+        this.sharedDelayA = null;
+        this.sharedDelayB?.dispose();
+        this.sharedDelayB = null;
+        this.sharedDelayGranularLinksWired = false;
         // Null lead chain so ensureSynthChain() recreates them with the new context
         this.leadGain = null;
         this.leadFilter = null;
-        this.leadDelayL = null;
-        this.leadDelayR = null;
-        this.leadDelayFeedbackL = null;
-        this.leadDelayFeedbackR = null;
-        this.leadDelayMix = null;
         this.leadDry = null;
-        this.leadMerger = null;
-        this.leadReverbSend = null;
-        this.leadDelayReverbSend = null;
+        this.pad1DelayASend = null;
+        this.pad1DelayBSend = null;
+        this.pad2DelayASend = null;
+        this.pad2DelayBSend = null;
+        this.lead1DelayASend = null;
+        this.lead1DelayBSend = null;
+        this.lead2DelayASend = null;
+        this.lead2DelayBSend = null;
+        this.drumDelayASend = null;
+        this.drumDelayBSend = null;
+        this.granularDelayASend = null;
+        this.sharedGranularDelayBSend = null;
         // Null pad synth chain
         this.synthBus = null;
         this.dryBus = null;
-        this.synthReverbSend = null;
+        this.pad1ReverbSend = null;
+        this.pad2ReverbSend = null;
         this.synthDirect = null;
+        this.oceanDelayASend = null;
+        this.oceanDelayBSend = null;
+        this.waterDelayASend = null;
+        this.waterDelayBSend = null;
+        this.insectsDelayASend = null;
+        this.insectsDelayBSend = null;
         this.padWasmNode = null;
         this.padWasmReady = false;
         this.voices = [];
@@ -2177,11 +2493,10 @@ export class AudioEngine {
       this.stopSynthEuclidScheduler();
     }
 
-    // Granular Euclidean scheduler operates independently of master play
-    if (sliderState.granularEuclidMasterEnabled && !this.granularEuclidScheduleTimer && this.isRunning) {
-      this.startGranularEuclidScheduler();
-    } else if (!sliderState.granularEuclidMasterEnabled && this.granularEuclidScheduleTimer) {
-      this.stopGranularEuclidScheduler();
+    if (this.isRunning && this.hasGranularTempoSyncVoices(sliderState) && !this.granularTempoSyncTimer) {
+      this.startGranularTempoSyncScheduler();
+    } else if ((!this.isRunning || !this.hasGranularTempoSyncVoices(sliderState)) && this.granularTempoSyncTimer) {
+      this.stopGranularTempoSyncScheduler();
     }
 
     // Apply non-drum audio parameters if engine is running OR synth Euclidean is active
@@ -2269,12 +2584,8 @@ export class AudioEngine {
     this.masterGain.gain.value = this.sliderState?.masterVolume ?? 0.7;
 
     // Limiter (dynamics compressor configured as limiter)
-    this.limiter = ctx.createDynamicsCompressor();
-    this.limiter.threshold.value = -3;
-    this.limiter.knee.value = 0;
-    this.limiter.ratio.value = 20;
-    this.limiter.attack.value = 0.001;
-    this.limiter.release.value = 0.1;
+    this.limiter = this.createMasterLimiter(ctx);
+    this.wireMasterOutputChain(ctx);
 
     // Synth bus (before granular)
     this.synthBus = ctx.createGain();
@@ -2283,9 +2594,11 @@ export class AudioEngine {
     this.dryBus = ctx.createGain();
     this.dryBus.gain.value = 1.0;
 
-    // Synth reverb send and direct gain (independent, not crossfade)
-    this.synthReverbSend = ctx.createGain();
-    this.synthReverbSend.gain.value = this.sliderState?.synthReverbSend ?? 0.7;
+    // Per-pad reverb sends and direct gain (independent, not crossfade)
+    this.pad1ReverbSend = ctx.createGain();
+    this.pad1ReverbSend.gain.value = this.sliderState?.pad1ReverbSend ?? 0.7;
+    this.pad2ReverbSend = ctx.createGain();
+    this.pad2ReverbSend.gain.value = this.sliderState?.pad2ReverbSend ?? 0.7;
 
     this.synthDirect = ctx.createGain();
     this.synthDirect.gain.value = 1.0;  // Level is per-voice via mixerGain
@@ -2316,7 +2629,7 @@ export class AudioEngine {
 
     // Reverb output level
     this.reverbOutputGain = ctx.createGain();
-    this.reverbOutputGain.gain.value = (this.sliderState?.reverbLevel ?? 0.5) * 2;
+    this.reverbOutputGain.gain.value = (this.sliderState?.reverbLevel ?? 0.5) * ENGINE_TRIMS.reverb;
 
     // Reverb input bus — collects all reverb sources (gain stays at 1.0)
     this.reverbInputBus = ctx.createGain();
@@ -2342,7 +2655,8 @@ export class AudioEngine {
       this.spectralFreezeNode.port.postMessage({ type: 'wasmBinary', binary: sfBin }, [sfBin]);
     }
 
-    // Pad Synth WASM worklet — 3 outputs: [0]=main stereo, [1]=reverb send, [2]=pre-fader (granular)
+    // Pad Synth WASM worklet — 4 outputs: [0]=main stereo, [1]=legacy combined reverb send,
+    // [2]=Pad 1 pre-fader, [3]=Pad 2 pre-fader
     if (this.wasmPadBinary) {
       this.createPadWasmNode(ctx);
     }
@@ -2399,41 +2713,17 @@ export class AudioEngine {
       this.drumWasmNode.port.postMessage({ type: 'wasmBinary', binary: drumBin }, [drumBin]);
     }
 
-    // Lead synth (Rhodes/Bell) with stereo ping-pong delay
+    // Lead synth (Rhodes/Bell)
     this.leadGain = ctx.createGain();
-    this.leadGain.gain.value = (this.sliderState?.leadEnabled || this.sliderState?.synthEuclideanMasterEnabled) ? 1.0 : 0;
+    this.leadGain.gain.value = (this.sliderState?.leadEnabled || this.sliderState?.leadRandomEnabled || this.sliderState?.synthEuclideanMasterEnabled) ? 1.0 : 0;
 
     this.leadFilter = ctx.createBiquadFilter();
     this.leadFilter.type = 'lowpass';
     this.leadFilter.frequency.value = 4000;
     this.leadFilter.Q.value = 0.7;
 
-    // Stereo ping-pong delay
-    this.leadDelayL = ctx.createDelay(2);
-    this.leadDelayR = ctx.createDelay(2);
-    const delayTime = (this.sliderState?.leadDelayTime ?? 375) / 1000;
-    this.leadDelayL.delayTime.value = delayTime;
-    this.leadDelayR.delayTime.value = delayTime * 0.75; // Offset for stereo effect
-
-    this.leadDelayFeedbackL = ctx.createGain();
-    this.leadDelayFeedbackR = ctx.createGain();
-    const feedback = this.sliderState?.leadDelayFeedback ?? 0.4;
-    this.leadDelayFeedbackL.gain.value = feedback;
-    this.leadDelayFeedbackR.gain.value = feedback;
-
-    this.leadDelayMix = ctx.createGain();
-    this.leadDelayMix.gain.value = this.sliderState?.leadDelayMix ?? 0.35;
-
     this.leadDry = ctx.createGain();
-    this.leadDry.gain.value = 1.0; // Always unity — per-lead level is baked into note velocity
-
-    this.leadMerger = ctx.createChannelMerger(2);
-
-    this.leadReverbSend = ctx.createGain();
-    this.leadReverbSend.gain.value = Math.max(
-      this.sliderState?.lead1ReverbSend ?? 0.5,
-      this.sliderState?.lead2ReverbSend ?? 0.5
-    );
+    this.leadDry.gain.value = 1.0; // Dry-path level lives on lead1/2LevelGain and WASM lead level gains
 
     // Per-lead reverb sends (tapped from lead1Bus/lead2Bus before shared filter)
     this.lead1ReverbSend = ctx.createGain();
@@ -2441,22 +2731,12 @@ export class AudioEngine {
     this.lead2ReverbSend = ctx.createGain();
     this.lead2ReverbSend.gain.value = this.sliderState?.lead2ReverbSend ?? 0.5;
 
-    this.leadDelayReverbSend = ctx.createGain();
-    this.leadDelayReverbSend.gain.value = this.sliderState?.leadDelayReverbSend ?? 0.4;
-
-    // Ocean is handled by soundscapes WASM engine (output [2])
-    // No separate ocean worklet needed — oceanNode is not created
-    // The onOceanWaveTrigger callback is no longer fired (was JS-only visual feedback)
-
-    this.oceanGain = ctx.createGain();
-    this.oceanGain.gain.value = this.sliderState?.oceanWaveSynthEnabled ? (this.sliderState?.oceanWaveSynthLevel ?? 0.4) : 0;
-
-    // Ocean sample player gain (starts at 0, crossfades in when enabled)
+    // Waves sample player gain (starts at 0, crossfades in when enabled)
     this.oceanSampleGain = ctx.createGain();
     this.oceanSampleGain.gain.value = 0;
 
-    // Soundscapes WASM worklet — water + insects + ocean engines
-    // 3 outputs: [0]=water stereo, [1]=insects stereo, [2]=ocean stereo
+    // Soundscapes WASM worklet — water + insects
+    // 3 outputs: [0]=water stereo, [1]=insects dry stereo, [2]=insects pre-fader stereo
     if (this.wasmSoundscapesBinary) {
       this.soundscapesNode = new AudioWorkletNode(ctx, 'soundscapes-wasm', {
         numberOfInputs: 0,
@@ -2478,14 +2758,14 @@ export class AudioEngine {
           }
         };
       });
-      // After WASM ready, set up permanent message handler and send ocean seed
+      // After WASM ready, set up permanent message handler
       this.soundscapesNode.port.onmessage = (e) => {
         if (e.data.type === 'perf') {
           this.handlePerfMessage(e.data);
+        } else if (e.data.type === 'surfTrigger' && this.onGranularSHTrigger) {
+          this.onGranularSHTrigger(e.data.positions ?? {});
         }
       };
-      // Send ocean seed for deterministic randomness
-      this.soundscapesNode.port.postMessage({ type: 'oceanSeed', seed: this.currentSeed });
     }
 
     // Earth master bus: all Earth engines feed earthBus → earthLevelGain → masterGain
@@ -2508,7 +2788,7 @@ export class AudioEngine {
     this.insectsLevelGain.gain.value = 0;
 
     this.oceanLevelGain = ctx.createGain();
-    this.oceanLevelGain.gain.value = 1.0;
+    this.oceanLevelGain.gain.value = this.sliderState?.oceanSampleLevel ?? 1.0;
 
     this.oceanReverbSendNode = ctx.createGain();
     this.oceanReverbSendNode.gain.value = this.sliderState?.oceanReverbSend ?? 0.2;
@@ -2530,6 +2810,10 @@ export class AudioEngine {
         if (e.data.type === 'position') {
           this.granularWriteHeadPosition = e.data.writeHead;
           this.granularVoicePositions = e.data.voices;
+          this.granularActiveGrainCount = e.data.activeGrains ?? 0;
+          if (e.data.waveform) {
+            this.granularBufferWaveform = e.data.waveform;
+          }
         } else if (e.data.type === 'perf') {
           this.handlePerfMessage(e.data);
         } else if (e.data.type === 'wasmReady') {
@@ -2546,6 +2830,7 @@ export class AudioEngine {
           [toTransfer] // transfer ownership
         );
       }
+      this.granularFxNode.port.postMessage({ type: 'uiActive', active: this.granularUiActive });
 
       // Send enablePerf immediately if monitoring is active
       if (this.perfMonitorEnabled) {
@@ -2556,7 +2841,7 @@ export class AudioEngine {
       this.granularFxInputGain.gain.value = 1.0;
 
       this.granularFxReverbSend = ctx.createGain();
-      this.granularFxReverbSend.gain.value = this.sliderState?.granularReverbSend ?? 0.3;
+      this.granularFxReverbSend.gain.value = (this.sliderState?.granularReverbSend ?? 0.3) * ENGINE_TRIMS.granular;
 
       // Pre-reverb LPF (darkens reverb trail without affecting dry output)
       this.granularFxReverbLPF = ctx.createBiquadFilter();
@@ -2579,7 +2864,9 @@ export class AudioEngine {
       this.granularFxOutputLPF.Q.value = 0.7;
 
       this.granularFxDirect = ctx.createGain();
-      this.granularFxDirect.gain.value = this.sliderState?.granularEnabled ? 1.0 : 0;
+      this.granularFxDirect.gain.value = this.sliderState?.granularEnabled
+        ? (this.sliderState?.granularLevel ?? 0.5) * ENGINE_TRIMS.granular
+        : 0;
 
       // Per-source send gain nodes (each source → granularFxInputGain)
       this.granularPad1Send = ctx.createGain();
@@ -2636,7 +2923,7 @@ export class AudioEngine {
     // Connect graph:
     // Voices -> mixerGain -> Pad1Bus/Pad2Bus -> SynthBus (post-fader main mix)
     // Voices -> envelope  -> Pad1PreFaderBus/Pad2PreFaderBus -> GranularPadSend (pre-fader granular)
-    // Lead notes -> Lead1Bus/Lead2Bus -> LeadGain -> LeadFilter -> ... (existing chain)
+    // Lead notes -> Lead1Bus/Lead2Bus -> per-lead dry faders -> LeadFilter -> LeadVoiceLevel -> LeadDry
 
     // Route voices to pad buses based on pad2VoiceAssign
     const pad2Assign = this.sliderState?.pad2Enabled
@@ -2658,24 +2945,26 @@ export class AudioEngine {
     // Pad WASM node outputs (parallel to JS oscillator path — JS voices silenced when WASM active)
     if (this.padWasmNode) {
       this.padWasmNode.connect(this.synthBus, 0);           // output[0] main → synthBus
-      this.padWasmNode.connect(this.reverbInputBus, 1);     // output[1] reverb send
-      if (this.granularFxInputGain) {
-        this.padWasmNode.connect(this.granularFxInputGain, 2); // output[2] pre-fader → granular
-      }
+      if (this.pad1ReverbSend) this.padWasmNode.connect(this.pad1ReverbSend, 2);
+      if (this.pad2ReverbSend) this.padWasmNode.connect(this.pad2ReverbSend, 3);
     }
 
-    // Lead buses feed through per-lead level gains into leadFilter
-    // Reverb + granular sends tap from lead1Bus/lead2Bus BEFORE level gain (pre-fader)
+    // Lead buses feed through per-lead level gains into leadFilter.
+    // Reverb + delay + granular sends tap from lead1Bus/lead2Bus before the dry-path
+    // level gains so FX can still be heard with dry level at 0.
     this.lead1Bus.connect(this.lead1LevelGain);
     this.lead1LevelGain.connect(this.leadFilter);
     this.lead2Bus.connect(this.lead2LevelGain);
     this.lead2LevelGain.connect(this.leadFilter);
 
-    // Per-lead reverb sends (tapped from lead buses, independent of shared leadReverbSend)
+    // Per-lead reverb sends (tapped from lead buses before the dry path)
     this.lead1Bus.connect(this.lead1ReverbSend);
     this.lead1ReverbSend.connect(this.reverbInputBus);
     this.lead2Bus.connect(this.lead2ReverbSend);
     this.lead2ReverbSend.connect(this.reverbInputBus);
+    this.ensureSharedDelayBuses(ctx);
+    this.ensurePadDelaySends(ctx);
+    this.ensureLeadDelaySends(ctx);
 
     this.synthBus.connect(this.dryBus);
 
@@ -2693,10 +2982,12 @@ export class AudioEngine {
       // Per-source sends → granular input mixer (pad sends are pre-fader)
       if (this.granularPad1Send && this.pad1PreFaderBus) {
         this.pad1PreFaderBus.connect(this.granularPad1Send);
+        if (this.padWasmNode) this.padWasmNode.connect(this.granularPad1Send, 2);
         this.granularPad1Send.connect(this.granularFxInputGain);
       }
       if (this.granularPad2Send && this.pad2PreFaderBus) {
         this.pad2PreFaderBus.connect(this.granularPad2Send);
+        if (this.padWasmNode) this.padWasmNode.connect(this.granularPad2Send, 3);
         this.granularPad2Send.connect(this.granularFxInputGain);
       }
       if (this.granularLead1Send && this.lead1Bus) {
@@ -2721,104 +3012,18 @@ export class AudioEngine {
       this.granularFxOutputLPF!.connect(this.granularFxDirect);
       this.granularFxDirect.connect(this.masterGain);
 
-      // ── Granular Multi-Tap Delay (Microcosm-style) ──
-      // Signal: granularFxNode → delaySendGain → delayInputNode → 8 taps → merge
-      //                                                      ↰ feedback ← toneFilter ← feedbackGain ← outputGain
-      //         merge → outputGain → directGain → masterGain
-      //                            → delaySendReverb → reverbNode
-      this.granularDelaySendGain = ctx.createGain();
-      this.granularDelaySendGain.gain.value = 0; // off by default
-
-      this.granularDelayInputNode = ctx.createGain();
-      this.granularDelayInputNode.gain.value = 1.0;
-
-      this.granularDelayOutputGain = ctx.createGain();
-      this.granularDelayOutputGain.gain.value = 1.0;
-
-      this.granularDelayDirectGain = ctx.createGain();
-      this.granularDelayDirectGain.gain.value = 0.3;
-
-      this.granularDelayReverbSendGain = ctx.createGain();
-      this.granularDelayReverbSendGain.gain.value = 0.4;
-
-      this.granularDelayFeedbackGain = ctx.createGain();
-      this.granularDelayFeedbackGain.gain.value = 0.3;
-
-      this.granularDelayToneFilter = ctx.createBiquadFilter();
-      this.granularDelayToneFilter.type = 'lowpass';
-      this.granularDelayToneFilter.frequency.value = 2200;
-      this.granularDelayToneFilter.Q.value = 0.7;
-
-      // Connect granular output → delay send
-      this.granularFxNode.connect(this.granularDelaySendGain);
-      this.granularDelaySendGain.connect(this.granularDelayInputNode);
-
-      // Create 8 delay taps with individual gain + panner
-      const baseBPM = this.sliderState?.granularEuclidBaseBPM ?? 120;
-      const baseTime = delayNoteToSeconds(this.sliderState?.granularDelayTime ?? '1/4', baseBPM);
-      
-      this.granularDelayTapNodes = [];
-      this.granularDelayTapGains = [];
-      this.granularDelayTapPanners = [];
-      this.granularDelayVibratoOscs = [];
-      this.granularDelayVibratoDepths = [];
-
-      for (let i = 0; i < 8; i++) {
-        // Delay tap
-        const tapDelay = ctx.createDelay(5.0); // max 5 seconds
-        tapDelay.delayTime.value = Math.min(5.0, baseTime * TAP_SUBDIVISIONS[i]);
-        this.granularDelayTapNodes.push(tapDelay);
-
-        // Per-tap gain (Activity macro controls this)
-        const tapGain = ctx.createGain();
-        tapGain.gain.value = computeTapGain(i, 0.3);
-        this.granularDelayTapGains.push(tapGain);
-
-        // Per-tap stereo panner (alternating L/R)
-        const tapPanner = ctx.createStereoPanner();
-        tapPanner.pan.value = TAP_PANS[i];
-        this.granularDelayTapPanners.push(tapPanner);
-
-        // Vibrato: OscillatorNode → GainNode → delayTime AudioParam
-        const vibOsc = ctx.createOscillator();
-        vibOsc.type = 'sine';
-        vibOsc.frequency.value = TAP_VIBRATO_RATES[i];
-
-        const vibDepth = ctx.createGain();
-        vibDepth.gain.value = 0; // controlled by granularDelayVibrato
-
-        vibOsc.connect(vibDepth);
-        vibDepth.connect(tapDelay.delayTime);
-        vibOsc.start();
-        this.granularDelayVibratoOscs.push(vibOsc);
-        this.granularDelayVibratoDepths.push(vibDepth);
-
-        // Wire: delayInput → tapDelay → tapGain → tapPanner → outputGain
-        this.granularDelayInputNode.connect(tapDelay);
-        tapDelay.connect(tapGain);
-        tapGain.connect(tapPanner);
-        tapPanner.connect(this.granularDelayOutputGain);
-      }
-
-      // Feedback: outputGain → feedbackGain → toneFilter → back to delayInput
-      this.granularDelayOutputGain.connect(this.granularDelayFeedbackGain);
-      this.granularDelayFeedbackGain.connect(this.granularDelayToneFilter);
-      this.granularDelayToneFilter.connect(this.granularDelayInputNode);
-
-      // Output: outputGain → directGain → master
-      //                    → reverbSendGain → reverb
-      this.granularDelayOutputGain.connect(this.granularDelayDirectGain);
-      this.granularDelayOutputGain.connect(this.granularDelayReverbSendGain);
-      this.granularDelayDirectGain.connect(this.masterGain);
-      this.granularDelayReverbSendGain.connect(this.reverbInputBus);
+      // Shared delay buses — first slice keeps the current lead/granular controls as the frontend.
+      this.ensureSharedDelayBuses(ctx);
+      this.ensureGranularDelaySends(ctx);
     }
 
-    // Pre-fader reverb send: tap from preFaderBus (independent of pad level)
-    if (this.pad1PreFaderBus) this.pad1PreFaderBus.connect(this.synthReverbSend);
-    if (this.pad2PreFaderBus) this.pad2PreFaderBus.connect(this.synthReverbSend);
+    // Pre-fader reverb sends: tap from per-pad buses (independent of pad level)
+    if (this.pad1PreFaderBus && this.pad1ReverbSend) this.pad1PreFaderBus.connect(this.pad1ReverbSend);
+    if (this.pad2PreFaderBus && this.pad2ReverbSend) this.pad2PreFaderBus.connect(this.pad2ReverbSend);
     this.dryBus.connect(this.synthDirect);
     
-    this.synthReverbSend.connect(this.reverbInputBus);
+    this.pad1ReverbSend?.connect(this.reverbInputBus);
+    this.pad2ReverbSend?.connect(this.reverbInputBus);
     this.synthDirect.connect(this.masterGain);
 
     // Reverb output to master (always connected)
@@ -2828,40 +3033,20 @@ export class AudioEngine {
     // (and optionally inserts spectralFreezeNode in pre or post position)
     this.applySpectralFreezeRouting();
 
-    // Lead synth signal path (pre-fader reverb: leadLevel is a shared master bus):
-    // Lead1/2Bus -> LeadFilter -> LeadVoiceLevel (unity) -> LeadDry (gain=leadLevel) -> Master
-    //                          -> LeadDelayL -> ... -> LeadDelayMix -> LeadDry -> Master
-    //                          -> LeadReverbSend -> Reverb (pre-fader)
+    // Lead synth dry path:
+    // Lead1/2Bus -> per-lead level gain -> LeadFilter -> LeadVoiceLevel (final trim) -> LeadDry -> Master
+    // Reverb + granular + shared Delay A/B sends tap upstream from lead1Bus/lead2Bus.
     this.leadVoiceLevel = ctx.createGain();
-    this.leadVoiceLevel.gain.value = 1.0;
+    this.leadVoiceLevel.gain.value = ENGINE_TRIMS.lead;
     this.leadFilter.connect(this.leadVoiceLevel);
     this.leadVoiceLevel.connect(this.leadDry);
     this.leadDry.connect(this.masterGain);
 
-    // Ping-pong delay routing
-    this.leadFilter.connect(this.leadDelayL);
-    this.leadDelayL.connect(this.leadDelayFeedbackL);
-    this.leadDelayFeedbackL.connect(this.leadDelayR);
-    this.leadDelayR.connect(this.leadDelayFeedbackR);
-    this.leadDelayFeedbackR.connect(this.leadDelayL); // Ping-pong feedback
-
-    // Merge delays to stereo
-    this.leadDelayL.connect(this.leadMerger, 0, 0); // Left channel
-    this.leadDelayR.connect(this.leadMerger, 0, 1); // Right channel
-    this.leadMerger.connect(this.leadDelayMix);
-    this.leadDelayMix.connect(this.leadDry);
-
-    // Lead delay reverb send (delay output also feeds reverb, pre-fader)
-    this.leadDelayMix.connect(this.leadDelayReverbSend);
-    this.leadDelayReverbSend.connect(this.reverbInputBus);
-
-    // Shared leadReverbSend kept for legacy/fallback
-    this.leadReverbSend.connect(this.reverbInputBus);
-
     // Lead FM WASM node outputs (parallel to JS lead path — JS lead silenced when WASM active)
-    // WASM has 2 outputs: [0]=lead1 stereo, [1]=lead2 stereo (includes shared internal delay).
+    // WASM has 2 outputs: [0]=lead1 stereo, [1]=lead2 stereo.
     // Each output routes through per-lead level gain → leadVoiceLevel → master (bypassing leadFilter
-    // since WASM applies its own internal filter). Pre-fader sends tap directly from outputs.
+    // since WASM applies its own internal filter). Send taps come directly from the WASM outputs,
+    // so the FX feed remains available even when the dry fader is at 0.
     if (this.leadFmWasmNode) {
       // Lead 1 dry path: output[0] → per-lead level gain → leadVoiceLevel → leadDry → master
       this.leadWasmLevelGain = ctx.createGain();
@@ -2869,10 +3054,16 @@ export class AudioEngine {
       this.leadFmWasmNode.connect(this.leadWasmLevelGain, 0);
       this.leadWasmLevelGain.connect(this.leadVoiceLevel!);
       // Lead 1 pre-fader sends
-      this.leadFmWasmNode.connect(this.lead1ReverbSend!, 0);
-      if (this.granularLead1Send) {
-        this.leadFmWasmNode.connect(this.granularLead1Send, 0);
-      }
+        this.leadFmWasmNode.connect(this.lead1ReverbSend!, 0);
+        if (this.granularLead1Send) {
+          this.leadFmWasmNode.connect(this.granularLead1Send, 0);
+        }
+        if (this.lead1DelayASend) {
+          this.leadFmWasmNode.connect(this.lead1DelayASend, 0);
+        }
+        if (this.lead1DelayBSend) {
+          this.leadFmWasmNode.connect(this.lead1DelayBSend, 0);
+        }
 
       // Lead 2 dry path: output[1] → per-lead level gain → leadVoiceLevel → leadDry → master
       this.leadWasmLead2LevelGain = ctx.createGain();
@@ -2880,11 +3071,17 @@ export class AudioEngine {
       this.leadFmWasmNode.connect(this.leadWasmLead2LevelGain, 1);
       this.leadWasmLead2LevelGain.connect(this.leadVoiceLevel!);
       // Lead 2 pre-fader sends
-      this.leadFmWasmNode.connect(this.lead2ReverbSend!, 1);
-      if (this.granularLead2Send) {
-        this.leadFmWasmNode.connect(this.granularLead2Send, 1);
+        this.leadFmWasmNode.connect(this.lead2ReverbSend!, 1);
+        if (this.granularLead2Send) {
+          this.leadFmWasmNode.connect(this.granularLead2Send, 1);
+        }
+        if (this.lead2DelayASend) {
+          this.leadFmWasmNode.connect(this.lead2DelayASend, 1);
+        }
+        if (this.lead2DelayBSend) {
+          this.leadFmWasmNode.connect(this.lead2DelayBSend, 1);
+        }
       }
-    }
 
     // Drum Synth WASM node outputs (parallel to JS DrumSynth — JS drums silenced when WASM active)
     if (this.drumWasmNode) {
@@ -2896,17 +3093,16 @@ export class AudioEngine {
       }
     }
 
-    // ── Earth routing: Ocean + Water + Insects → earthBus → earthLevelGain → masterGain ──
+    // ── Earth routing: Waves + Water + Insects → earthBus → earthLevelGain → masterGain ──
     // All Earth engine sends (reverb, granular) are pre-fader — tapped before per-engine
     // level gains so that turning a fader down doesn't kill send tails.
 
-    // Ocean: oceanGain → oceanFilter → [oceanReverbSend, granularWavesSend, oceanLevelGain → earthBus]
+    // Waves: oceanSampleGain → oceanFilter → [oceanReverbSend, granularWavesSend, oceanLevelGain → earthBus]
     this.oceanFilter = ctx.createBiquadFilter();
     this.oceanFilter.type = this.sliderState?.oceanFilterType ?? 'lowpass';
     this.oceanFilter.frequency.value = this.sliderState?.oceanFilterCutoff ?? 8000;
     this.oceanFilter.Q.value = 0.5 + (this.sliderState?.oceanFilterResonance ?? 0.1) * 10;
 
-    this.oceanGain.connect(this.oceanFilter);
     this.oceanSampleGain.connect(this.oceanFilter);
     // Reverb send (pre-fader — taps oceanFilter before oceanLevelGain)
     if (this.oceanReverbSendNode) {
@@ -2934,8 +3130,8 @@ export class AudioEngine {
       this.granularWaterSend.connect(this.granularFxInputGain);
     }
 
-    // Insects: soundscapesNode[1] → insectsPreFaderBus → [insectsReverbSend, granularInsectsSend, insectsLevelGain → earthBus]
-    this.insectsPreFaderBus!.connect(this.insectsLevelGain!);
+    // Insects: soundscapesNode[2] → insectsPreFaderBus → [insectsReverbSend, granularInsectsSend]
+    //          soundscapesNode[1] → insectsLevelGain → earthBus
     this.insectsLevelGain!.connect(this.earthBus!);
     // Reverb send (pre-fader)
     if (this.insectsReverbSendNode) {
@@ -2955,11 +3151,13 @@ export class AudioEngine {
     // Soundscapes WASM → pre-fader buses
     if (this.soundscapesNode) {
       this.soundscapesNode.connect(this.waterPreFaderBus!, 0);     // output[0] water
-      this.soundscapesNode.connect(this.insectsPreFaderBus!, 1);   // output[1] insects
-      this.soundscapesNode.connect(this.oceanGain, 2);             // output[2] ocean
+      this.soundscapesNode.connect(this.insectsLevelGain!, 1);     // output[1] insects dry
+      this.soundscapesNode.connect(this.insectsPreFaderBus!, 2);   // output[2] insects pre-fader
     }
+    this.ensureSharedDelayBuses(ctx);
+    this.ensureEarthDelaySends(ctx);
 
-    this.masterGain.connect(this.limiter);
+    this.wireMasterOutputChain(ctx);
     
     // Detect iOS specifically - only iOS needs MediaStream routing for
     // lock-screen/background media session continuity.
@@ -2967,6 +3165,8 @@ export class AudioEngine {
     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     this.isMobile = isMobile || isIOS;
     
+    try { this.limiter.disconnect(); } catch { /* */ }
+
     if (isIOS) {
       // On iOS: route through MediaStreamDestination only.
       // The HTML audio element will play this stream for lock-screen/background continuity.
@@ -3123,7 +3323,7 @@ export class AudioEngine {
 
       // Mixer gain (per-voice level: pad 1 vs pad 2)
       const mixerGain = ctx.createGain();
-      mixerGain.gain.value = s?.synthLevel ?? 0.6;
+      mixerGain.gain.value = (s?.synthLevel ?? 0.6) * ENGINE_TRIMS.pad;
 
       // Connect voice chain: oscs -> oscGains -> filterA -> filterB -> warmth -> presence -> saturation -> gain -> modEnvGain -> envelope -> mixerGain
       osc1.connect(osc1Gain);
@@ -3741,8 +3941,8 @@ export class AudioEngine {
     if (!this.wasmPadBinary) return;
     this.padWasmNode = new AudioWorkletNode(ctx, 'pad-synth-wasm', {
       numberOfInputs: 0,
-      numberOfOutputs: 3,
-      outputChannelCount: [2, 2, 2],
+      numberOfOutputs: 4,
+      outputChannelCount: [2, 2, 2, 2],
     });
     this.padWasmReady = false;
     this.padWasmNode.onprocessorerror = () => {
@@ -3778,11 +3978,17 @@ export class AudioEngine {
     this.postCachedWorkletMessage(
       'pad:params',
       this.padWasmNode,
-      { type: 'params', params: s },
       {
-        synthLevel: s.synthLevel,
-        pad2Level: s.pad2Level,
-        synthReverbSend: s.synthReverbSend,
+        type: 'params',
+        params: {
+          ...s,
+          synthLevel: (s.synthLevel ?? 0.6) * ENGINE_TRIMS.pad,
+          pad2Level: (s.pad2Level ?? 0.6) * ENGINE_TRIMS.pad,
+        },
+      },
+      {
+        synthLevel: (s.synthLevel ?? 0.6) * ENGINE_TRIMS.pad,
+        pad2Level: (s.pad2Level ?? 0.6) * ENGINE_TRIMS.pad,
         padMorph: s.padMorph,
         pad2Morph: s.pad2Morph,
         ...Object.fromEntries(PAD_PRESET_PARAM_KEYS.map((key) => [key, s[key as keyof SliderState]])),
@@ -3811,13 +4017,29 @@ export class AudioEngine {
       this.createPadWasmNode(this.ctx);
 
       this.padWasmNode!.connect(this.synthBus, 0);
-      if (this.reverbInputBus) {
-        this.padWasmNode!.connect(this.reverbInputBus, 1);
-      } else if (this.reverbNode) {
-        this.padWasmNode!.connect(this.reverbNode as AudioNode, 1);
+      if (this.pad1ReverbSend) {
+        this.padWasmNode!.connect(this.pad1ReverbSend, 2);
       }
-      if (this.granularFxInputGain) {
-        this.padWasmNode!.connect(this.granularFxInputGain, 2);
+      if (this.pad2ReverbSend) {
+        this.padWasmNode!.connect(this.pad2ReverbSend, 3);
+      }
+      if (this.granularPad1Send) {
+        this.padWasmNode!.connect(this.granularPad1Send, 2);
+      }
+      if (this.granularPad2Send) {
+        this.padWasmNode!.connect(this.granularPad2Send, 3);
+      }
+      if (this.pad1DelayASend) {
+        this.padWasmNode!.connect(this.pad1DelayASend, 2);
+      }
+      if (this.pad2DelayASend) {
+        this.padWasmNode!.connect(this.pad2DelayASend, 3);
+      }
+      if (this.pad1DelayBSend) {
+        this.padWasmNode!.connect(this.pad1DelayBSend, 2);
+      }
+      if (this.pad2DelayBSend) {
+        this.padWasmNode!.connect(this.pad2DelayBSend, 3);
       }
     } catch (e) {
       console.warn('Independent pad WASM init failed; using JS fallback voices:', e);
@@ -3862,13 +4084,13 @@ export class AudioEngine {
     this.leadFmWasmNode.port.postMessage({
       type: 'delay',
       params: {
-        enabled: s.leadDelayEnabled ?? true,
-        timeL: s.leadDelayTime ?? 375,
-        timeR: (s.leadDelayTime ?? 375) * (s.leadDelaySpread ?? 1.5),
-        feedback: s.leadDelayFeedback ?? 0.4,
-        mix: s.leadDelayMix ?? 0.3,
-        filter: s.leadDelayFilter ?? 2000,
-        send: s.leadDelaySend ?? 0.5,
+        enabled: false,
+        timeL: s.delayATime ?? 375,
+        timeR: (s.delayATime ?? 375) * (s.delayASpread ?? 1.5),
+        feedback: 0,
+        mix: 0,
+        filter: s.delayAFilter ?? 2000,
+        send: 0,
       },
     });
   }
@@ -3876,7 +4098,21 @@ export class AudioEngine {
   /** Forward drum delay params to WASM worklet. */
   private sendDrumWasmDelay(s: SliderState): void {
     if (!this.drumWasmNode || !this.drumWasmReady) return;
-    const bpm = s.drumEuclidBaseBPM ?? 120;
+    if (this.sharedDelayA) {
+      this.drumWasmNode.port.postMessage({
+        type: 'delay',
+        params: {
+          enabled: false,
+          timeL: 0,
+          timeR: 0,
+          feedback: 0,
+          mix: 0,
+          filter: 0,
+        },
+      });
+      return;
+    }
+    const bpm = getSharedSequencerBpm(s);
     const noteToSec = (note: string, bpm: number) => {
       const beat = 60 / bpm;
       const map: Record<string, number> = {
@@ -4186,13 +4422,24 @@ export class AudioEngine {
     // Helper: guard against NaN/Infinity in audio param values (crash prevention)
     const fin = (v: number, fallback: number): number => Number.isFinite(v) ? v : fallback;
 
-    // ── S&H: 10Hz engine-side re-sampling for granular/granular dual-range params ──
+    // ── S&H: 10Hz engine-side re-sampling for dual-range params ──
     const shNow = performance.now();
     if (shNow - this.shLastSampleTime >= 100) {
       this.shLastSampleTime = shNow;
       const shPositions: Record<string, number> = {};
       for (const key of Object.keys(this.dualRanges)) {
-        if (key === 'grainSize') continue; // grainSize uses worklet-side min/max
+        if (
+          key === 'grainSize' ||
+          key === 'waterSurfDuration' ||
+          key === 'waterSurfInterval' ||
+          key === 'waterSurfFoam' ||
+          key === 'waterSurfProximity' ||
+          key === 'waterSurfDepth' ||
+          key === 'waterSurfBody' ||
+          key === 'waterSurfSpray' ||
+          key === 'waterSurfFoamBright'
+        ) continue; // Surf + grainSize use worklet-side/per-wave sampling
+        if (key.startsWith('lead') || key.startsWith('granularLead')) continue; // Lead keys use per-trigger sampling in playLeadNote
         const range = this.dualRanges[key];
         if (range) {
           const sampled = range.min + Math.random() * (range.max - range.min);
@@ -4204,7 +4451,22 @@ export class AudioEngine {
       }
       // Clean stale keys no longer in dualRanges
       for (const key of Object.keys(this.shSampledValues)) {
-        if (!this.dualRanges[key] || key === 'grainSize') {
+        if (key.startsWith('lead') || key.startsWith('granularLead')) {
+          if (!this.dualRanges[key]) delete this.shSampledValues[key];
+          continue; // active lead keys are managed per-trigger in playLeadNote
+        }
+        if (
+          !this.dualRanges[key] ||
+          key === 'grainSize' ||
+          key === 'waterSurfDuration' ||
+          key === 'waterSurfInterval' ||
+          key === 'waterSurfFoam' ||
+          key === 'waterSurfProximity' ||
+          key === 'waterSurfDepth' ||
+          key === 'waterSurfBody' ||
+          key === 'waterSurfSpray' ||
+          key === 'waterSurfFoamBright'
+        ) {
           delete this.shSampledValues[key];
         }
       }
@@ -4217,6 +4479,7 @@ export class AudioEngine {
 
     // Master volume
     this.masterGain?.gain.setTargetAtTime(fin(state.masterVolume, 0.5), now, smoothTime);
+    this.applyMasterSaturation(state, now);
 
     // Voice parameters
     // Filter cutoff modulates between filterCutoffMin and filterCutoffMax
@@ -4497,7 +4760,7 @@ export class AudioEngine {
 
       // Per-voice mixer level (pad 1 = synthLevel, pad 2 = pad2Level)
       const voiceLevel = (pad2On && (pad2Assign & (1 << i))) ? (state.pad2Level ?? 0.6) : state.synthLevel;
-      voice.mixerGain.gain.setTargetAtTime(voiceLevel, now, smoothTime);
+      voice.mixerGain.gain.setTargetAtTime((voiceLevel ?? 0.6) * ENGINE_TRIMS.pad, now, smoothTime);
     }
 
     // ── Saturation curves (per-pad, only on change) ──
@@ -4522,29 +4785,41 @@ export class AudioEngine {
     // Legacy JS granular engine REMOVED — all granular processing via Granular FX WASM engine
     // granularLevel and granularReverbSend now control the Granular FX output levels
 
+    const pad1Active = state.padEnabled !== false || this.euclideanUsesPadSource(state);
+    const pad2Active = state.pad2Enabled ?? false;
+    const lead1WetActive = state.leadEnabled || state.leadRandomEnabled || state.synthEuclideanMasterEnabled;
+    const lead2WetActive = state.lead2Enabled;
+    const lead1Lvl = shv('lead1Level', state.lead1Level ?? 0.8);
+    const lead2Lvl = shv('lead2Level', state.lead2Level ?? 0.6);
+    const granularBusArmed = this.isGranularBusArmed(state, lead1WetActive, lead2WetActive);
+    let delayBEnabled = false;
+
     // Granular FX (Granular) parameters
     if (this.granularFxNode) {
-      const granularEnabled = state.granularEnabled;
+      const granularEnabled = granularBusArmed;
+      const macroModel = computeGranularMacroModel(state, (key, fallback) => shv(key as string, fallback));
+      const spaceMode = macroModel.spaceMode;
+      const lead1RoutingActive = !!lead1WetActive;
+      const lead2RoutingActive = !!lead2WetActive;
       // Use granularLevel as the Granular FX output level (replaces hardcoded 1.0)
-      const granularOutputLevel = granularEnabled ? state.granularLevel * 1.5 : 0;
+      const granularOutputLevel = granularEnabled ? state.granularLevel * ENGINE_TRIMS.granular * macroModel.directLevelScale : 0;
       this.granularFxDirect?.gain.setTargetAtTime(granularOutputLevel, now, smoothTime);
       // Use granularReverbSend as the Granular FX reverb send level (S&H aware)
-      const granularRevSend = (granularEnabled && state.reverbEnabled) ? shv('granularReverbSend', state.granularReverbSend) : 0;
+      const granularRevSend = (granularEnabled && state.reverbEnabled) ? shv('granularReverbSend', state.granularReverbSend) * ENGINE_TRIMS.granular : 0;
       this.granularFxReverbSend?.gain.setTargetAtTime(granularRevSend, now, smoothTime);
-      // Pre-reverb LPF cutoff (user value — Darkness macro modulates further below)
-      this.granularFxReverbLPF?.frequency.setTargetAtTime(state.granularReverbLPF ?? 4000, now, smoothTime);
-      // Output LPF cutoff (user value — Darkness macro modulates further below)
-      this.granularFxOutputLPF?.frequency.setTargetAtTime(state.granularOutputLPF ?? 12000, now, smoothTime);
+      this.granularFxReverbLPF?.frequency.setTargetAtTime(macroModel.finalReverbLPF, now, smoothTime);
+      this.granularFxOutputLPF?.frequency.setTargetAtTime(macroModel.finalOutputLPF, now, smoothTime);
 
-      // Per-source send levels (gate by granularEnabled so sends are silent when granular is off)
-      const pad1Send = granularEnabled ? (state.granularPad1Send ?? 1.0) : 0;
-      const pad2Send = granularEnabled ? (state.granularPad2Send ?? 0.0) : 0;
-      const lead1Send = granularEnabled ? (state.granularLead1Send ?? 0.0) : 0;
-      const lead2Send = granularEnabled ? (state.granularLead2Send ?? 0.0) : 0;
-      const drumSend = granularEnabled ? (state.granularDrumSend ?? 0.0) : 0;
-      const wavesSend = granularEnabled ? (state.granularWavesSend ?? 0.0) : 0;
-      const waterSend = granularEnabled ? (state.granularWaterSend ?? 0.0) : 0;
-      const insectsSend = granularEnabled ? (state.granularInsectsSend ?? 0.0) : 0;
+      // Granular now idles when the whole bus is unused, but the individual source sends
+      // themselves are driven by the routing matrix rather than extra per-source gates.
+      const pad1Send = (granularEnabled && pad1Active) ? (state.granularPad1Send ?? 1.0) : 0;
+      const pad2Send = (granularEnabled && pad2Active) ? (state.granularPad2Send ?? 0.0) : 0;
+      const lead1Send = (granularEnabled && lead1RoutingActive) ? shv('granularLead1Send', state.granularLead1Send ?? 0.0) : 0;
+      const lead2Send = (granularEnabled && lead2RoutingActive) ? shv('granularLead2Send', state.granularLead2Send ?? 0.0) : 0;
+      const drumSend = (granularEnabled && state.drumEnabled) ? (state.granularDrumSend ?? 0.0) : 0;
+      const wavesSend = (granularEnabled && state.oceanSampleEnabled) ? (state.granularWavesSend ?? 0.0) : 0;
+      const waterSend = (granularEnabled && state.waterEnabled) ? (state.granularWaterSend ?? 0.0) : 0;
+      const insectsSend = (granularEnabled && (state.insectsEnabled || state.insects2Enabled)) ? (state.granularInsectsSend ?? 0.0) : 0;
       this.granularPad1Send?.gain.setTargetAtTime(pad1Send, now, smoothTime);
       this.granularPad2Send?.gain.setTargetAtTime(pad2Send, now, smoothTime);
       this.granularLead1Send?.gain.setTargetAtTime(lead1Send, now, smoothTime);
@@ -4554,193 +4829,60 @@ export class AudioEngine {
       this.granularWaterSend?.gain.setTargetAtTime(waterSend, now, smoothTime);
       this.granularInsectsSend?.gain.setTargetAtTime(insectsSend, now, smoothTime);
 
-      // ── Macro-modulated voice params ──
-      // Macros blend with manual values: higher macro influence at extremes, manual preserved at center
-      const mTexture = state.granularMacroTexture ?? 0.3;
-      const mComplexity = state.granularMacroComplexity ?? 0.2;
-      const mDarkness = state.granularMacroDarkness ?? 0.3;
-      const mChaos = state.granularMacroChaos ?? 0.1;
-
-      // Voice spread offsets: voices diverge more at high chaos
-      const spreadOffsets = [-1.5, -0.5, 0.5, 1.5];
-
-      // Reuse pre-allocated arrays for macro-modulated voice params (avoids GC pressure @ 60Hz)
-      const voiceBlur = this._lpBlur;
-      const voiceSpray = this._lpSpray;
-      const voiceGrainSize = this._lpGrainSize;
-      const voiceGrainOct = this._lpGrainOct;
-      const voiceDecay = this._lpDecay;
-      const voiceAttack = this._lpAttack;
-      const voicePosLFORate = this._lpPosLFORate;
-      const voicePosLFODepth = this._lpPosLFODepth;
-      const voicePanLFORate = this._lpPanLFORate;
-      const voiceReverseLFORate = this._lpReverseLFORate;
-      const voiceDensity = this._lpDensity;
-      const voiceSpeed = this._lpSpeed;
-      const voicePitch = this._lpPitch;
-
-      const rawBlur = [shv('granularV1Blur', state.granularV1Blur), shv('granularV2Blur', state.granularV2Blur), shv('granularV3Blur', state.granularV3Blur), shv('granularV4Blur', state.granularV4Blur)];
-      const rawSpray = [shv('granularV1Spray', state.granularV1Spray), shv('granularV2Spray', state.granularV2Spray), shv('granularV3Spray', state.granularV3Spray), shv('granularV4Spray', state.granularV4Spray)];
-      const rawGrainSize = [shv('granularV1GrainSize', state.granularV1GrainSize), shv('granularV2GrainSize', state.granularV2GrainSize), shv('granularV3GrainSize', state.granularV3GrainSize), shv('granularV4GrainSize', state.granularV4GrainSize)];
-      const rawGrainOct = [shv('granularV1GrainOct', state.granularV1GrainOct), shv('granularV2GrainOct', state.granularV2GrainOct), shv('granularV3GrainOct', state.granularV3GrainOct), shv('granularV4GrainOct', state.granularV4GrainOct)];
-      const rawDecay = [shv('granularV1Decay', state.granularV1Decay), shv('granularV2Decay', state.granularV2Decay), shv('granularV3Decay', state.granularV3Decay), shv('granularV4Decay', state.granularV4Decay)];
-      const rawAttack = [shv('granularV1Attack', state.granularV1Attack), shv('granularV2Attack', state.granularV2Attack), shv('granularV3Attack', state.granularV3Attack), shv('granularV4Attack', state.granularV4Attack)];
-      const rawPosLFORate = [shv('granularV1PosLFORate', state.granularV1PosLFORate), shv('granularV2PosLFORate', state.granularV2PosLFORate), shv('granularV3PosLFORate', state.granularV3PosLFORate), shv('granularV4PosLFORate', state.granularV4PosLFORate)];
-      const rawPosLFODepth = [shv('granularV1PosLFODepth', state.granularV1PosLFODepth), shv('granularV2PosLFODepth', state.granularV2PosLFODepth), shv('granularV3PosLFODepth', state.granularV3PosLFODepth), shv('granularV4PosLFODepth', state.granularV4PosLFODepth)];
-      const rawPanLFORate = [shv('granularV1PanLFORate', state.granularV1PanLFORate), shv('granularV2PanLFORate', state.granularV2PanLFORate), shv('granularV3PanLFORate', state.granularV3PanLFORate), shv('granularV4PanLFORate', state.granularV4PanLFORate)];
-      const rawReverseLFORate = [shv('granularV1ReverseLFORate', state.granularV1ReverseLFORate), shv('granularV2ReverseLFORate', state.granularV2ReverseLFORate), shv('granularV3ReverseLFORate', state.granularV3ReverseLFORate), shv('granularV4ReverseLFORate', state.granularV4ReverseLFORate)];
-      const rawDensity = [shv('granularV1Density', state.granularV1Density), shv('granularV2Density', state.granularV2Density), shv('granularV3Density', state.granularV3Density), shv('granularV4Density', state.granularV4Density)];
-      const rawSpeed = [shv('granularV1Speed', state.granularV1Speed), shv('granularV2Speed', state.granularV2Speed), shv('granularV3Speed', state.granularV3Speed), shv('granularV4Speed', state.granularV4Speed)];
-      // Round raw pitch to nearest semitone (integer) so S&H randomisation stays musical
-      const rawPitch = [shv('granularV1Pitch', state.granularV1Pitch), shv('granularV2Pitch', state.granularV2Pitch), shv('granularV3Pitch', state.granularV3Pitch), shv('granularV4Pitch', state.granularV4Pitch)].map(p => Math.round(p));
-
-      for (let v = 0; v < 4; v++) {
-        const sp = spreadOffsets[v];
-
-        // ── Is this voice in LFO scan mode (speed=0)? ──
-        // Scan-mode voices need gentler macro influence to avoid contaminating
-        // the carefully-tuned LFO rates, pitch, and blur values.
-        const isScanMode = rawSpeed[v] === 0;
-
-        // Texture macro: blur, spray, grainSize, grainOct, decay (quadratic curves)
-        // For scan-mode voices, greatly reduce texture influence on blur to prevent
-        // metallic allpass resonance from overwhelming the ambient quality.
-        const texQ = mTexture * mTexture; // quadratic
-        const texBlurScale = isScanMode ? 0.15 : 1.0; // minimal blur inflation in scan mode
-        voiceBlur[v] = Math.max(0, Math.min(1, rawBlur[v] + (texQ * 0.8 + sp * mTexture * 0.15 * 0.8) * texBlurScale));
-        voiceSpray[v] = Math.max(0, Math.min(1, rawSpray[v] + mTexture * 0.7 + sp * mTexture * 0.1 * 0.7));
-        voiceGrainSize[v] = Math.max(10, Math.min(500, rawGrainSize[v] + texQ * 140 + sp * mTexture * 0.05 * 500));
-        voiceGrainOct[v] = Math.max(0, Math.min(1, rawGrainOct[v] + texQ * 0.3 + sp * mTexture * 0.1 * 0.3));
-        voiceDecay[v] = Math.max(0.01, Math.min(4, rawDecay[v] + mTexture * 1.45 + sp * mTexture * 0.1 * 4));
-
-        // Complexity macro: LFO rates, density (quadratic for LFO, linear for density)
-        // For scan-mode voices, skip LFO rate/depth inflation — the preset's LFO values
-        // are carefully chosen for the dual-head crossfade scan engine.
-        const compQ = mComplexity * mComplexity;
-        if (isScanMode) {
-          // Preserve raw LFO rate/depth exactly (crossfade engine is tuned to these)
-          voicePosLFORate[v] = rawPosLFORate[v];
-          voicePosLFODepth[v] = rawPosLFODepth[v];
-        } else {
-          voicePosLFORate[v] = Math.max(0, Math.min(1, rawPosLFORate[v] + compQ * 0.7 + sp * mComplexity * 0.3 * 0.7));
-          voicePosLFODepth[v] = Math.max(0, Math.min(1, rawPosLFODepth[v] + mComplexity * 0.8 + sp * mComplexity * 0.2 * 0.8));
-        }
-        voicePanLFORate[v] = Math.max(0, Math.min(1, rawPanLFORate[v] + mComplexity * 0.5 + sp * mComplexity * 0.25 * 0.5));
-        voiceDensity[v] = Math.max(1, Math.min(64, rawDensity[v] + mComplexity * 18 + sp * mComplexity * 0.15 * 64));
-
-        // Darkness macro: speed (inverse), pitch (inverse), delay filter handled externally
-        // Speed=0 is special (LFO scan mode) — preserve speed AND pitch exactly.
-        // Darkness-induced pitch spread creates harsh detuning between the 4
-        // crossfade-scanned voices; skip it entirely for scan mode.
-        if (isScanMode) {
-          voiceSpeed[v] = 0;
-          voicePitch[v] = rawPitch[v]; // preserve raw pitch (no darkness modulation)
-        } else {
-          const darkSpeed = rawSpeed[v] * (1 - mDarkness * 0.75); // 1× → 0.25× at darkness=1
-          voiceSpeed[v] = Math.max(0.25, Math.min(4, darkSpeed + sp * mDarkness * 0.15 * 4));
-          // Pitch: snap to octave intervals (multiples of 12st) so voices stay at musical
-          // speed ratios (0.5×/1×/2×/4× — matching Microcosm Mosaic-style fixed ratios).
-          // Darkness shifts base pitch down with per-voice spread, then octave-quantizes.
-          const darkPitchRaw = rawPitch[v] - mDarkness * 12 + sp * mDarkness * 0.2 * 24;
-          voicePitch[v] = Math.max(-24, Math.min(24, Math.round(darkPitchRaw / 12) * 12));
-        }
-
-        // Chaos macro: reverse LFO, spray (additive), grainOct (additive)
-        const chaosQ = mChaos * mChaos;
-        voiceReverseLFORate[v] = Math.max(0, Math.min(1, rawReverseLFORate[v] + chaosQ * 0.8 + sp * mChaos * 0.5 * 0.8));
-        // Chaos also adds to spray and grainOct (already computed by texture, re-add)
-        voiceSpray[v] = Math.max(0, Math.min(1, voiceSpray[v] + chaosQ * 0.3));
-        voiceGrainOct[v] = Math.max(0, Math.min(1, voiceGrainOct[v] + mChaos * 0.1));
-
-        // ── Tension modulation ──
-        // Low tension (0): long attack, long decay, high density → smooth pad
-        // High tension (1): short attack, short decay, low density → aggressive stutter
-        const t = getEffectiveTension(
-          state.tension ?? 0.3,
-          state.granularTensionMode ?? 'bypass',
-          state.granularTensionValue ?? 0
-        );
-        if (t >= 0) {
-          const tInv = 1 - t;
-          // Attack: gentle scaling — preserves raw attack, adds modest softening at low tension
-          const tensionAttack = rawAttack[v] * (tInv * 0.4 + 0.6) + tInv * 0.3;
-          voiceAttack[v] = Math.max(0.003, Math.min(1, tensionAttack));
-          // Decay: small additive at low tension (max +0.8s, not 2.5s)
-          voiceDecay[v] = Math.max(0.01, Math.min(4, voiceDecay[v] + tInv * 0.8));
-          // Density: gentle modulation — low tension adds a few grains, high tension thins slightly
-          voiceDensity[v] = Math.max(1, Math.min(64, voiceDensity[v] * (tInv * 0.3 + 0.7) + tInv * 3));
-          // Blur: low tension adds smear — reduced for scan mode to keep blur close to preset value
-          const tensionBlurScale = isScanMode ? 0.15 : 1.0;
-          voiceBlur[v] = Math.max(0, Math.min(1, voiceBlur[v] + tInv * 0.15 * tensionBlurScale));
-          // GrainOct: high tension adds shimmer chaos (gentle to avoid saturating octave probability)
-          voiceGrainOct[v] = Math.max(0, Math.min(1, voiceGrainOct[v] + t * 0.1));
-          // Pitch range: high tension widens pitch offset — skip for scan mode
-          // Snap to octave intervals (×12st) so tension only shifts by musical speed ratios
-          if (!isScanMode) {
-            voicePitch[v] = Math.max(-24, Math.min(24, Math.round((voicePitch[v] + (t - 0.5) * sp * 6) / 12) * 12));
-          }
-        }
-      }
-
-      // Darkness macro → output filter modulation
-      // Sweeps both LPFs downward as Darkness increases, clamped to user's manual cutoff
-      if (mDarkness > 0.01) {
-        const darkFilterScale = Math.pow(1 - mDarkness * 0.7, 2); // 1.0 → ~0.09 at darkness=1
-        const userReverbLPF = state.granularReverbLPF ?? 4000;
-        const userOutputLPF = state.granularOutputLPF ?? 12000;
-        const darkReverbCutoff = Math.max(200, Math.min(userReverbLPF, 12000 * darkFilterScale));
-        const darkOutputCutoff = Math.max(200, Math.min(userOutputLPF, 12000 * darkFilterScale));
-        this.granularFxReverbLPF?.frequency.setTargetAtTime(darkReverbCutoff, now, smoothTime);
-        this.granularFxOutputLPF?.frequency.setTargetAtTime(darkOutputCutoff, now, smoothTime);
-      }
-
-      const granularParams = {
+      const granularInternalDryWet = granularEnabled ? 1 : 0;
+      const granularGlobalParams: GranularWorkletGlobalParams = {
         enabled: granularEnabled,
         freeze: state.granularFreeze,
         freezeWithFeedback: false,
-        dryWet: 1,
+        dryWet: granularInternalDryWet,
         feedback: state.granularFeedback,
         feedbackLPF: state.granularFeedbackLPF,
         bufferSeconds: state.granularBufferSeconds,
+        grainShape: state.granularShape ?? 'triangle',
+      };
+      const granularSpaceParams: GranularWorkletSpaceParams = {
+        busDiffusion: macroModel.busDiffusion,
+        timingRandomness: macroModel.timingRandomness,
+      };
+      const granularVoiceParams: GranularWorkletVoiceParams = {
         voiceEnabled: [state.granularV1Enabled, state.granularV2Enabled, state.granularV3Enabled, state.granularV4Enabled],
         voiceMode: [state.granularV1Mode, state.granularV2Mode, state.granularV3Mode, state.granularV4Mode],
         voiceSlice: [state.granularV1Slice, state.granularV2Slice, state.granularV3Slice, state.granularV4Slice],
-        voiceSpeed,
+        voiceSpeed: macroModel.voiceSpeed,
+        voiceScanRate: macroModel.voiceScanRate,
         voiceReverse: [state.granularV1Reverse, state.granularV2Reverse, state.granularV3Reverse, state.granularV4Reverse],
-        voicePitch,
-        voiceAttack,
-        voiceDecay,
-        voiceBlur,
-        voiceGrainOct,
-        voiceSpray,
-        voiceDensity,
-        voiceGrainSize,
+        voicePitch: macroModel.voicePitch,
+        voiceAttack: macroModel.voiceAttack,
+        voiceDecay: macroModel.voiceDecay,
+        voiceBlur: macroModel.voiceBlur,
+        voiceGrainOct: macroModel.voiceGrainOct,
+        voiceSpray: macroModel.voiceSpray,
+        voiceDensity: macroModel.voiceDensity,
+        voiceGrainSize: macroModel.voiceGrainSize,
         voicePan: [shv('granularV1Pan', state.granularV1Pan), shv('granularV2Pan', state.granularV2Pan), shv('granularV3Pan', state.granularV3Pan), shv('granularV4Pan', state.granularV4Pan)],
         voiceGain: [shv('granularV1Gain', state.granularV1Gain), shv('granularV2Gain', state.granularV2Gain), shv('granularV3Gain', state.granularV3Gain), shv('granularV4Gain', state.granularV4Gain)],
-        voicePosLFORate,
-        voicePosLFODepth,
-        voicePanLFORate,
+        voicePosLFORate: macroModel.voicePosLFORate,
+        voicePosLFODepth: macroModel.voicePosLFODepth,
+        voicePanLFORate: macroModel.voicePanLFORate,
         voiceStereoSpread: [shv('granularV1StereoSpread', state.granularV1StereoSpread), shv('granularV2StereoSpread', state.granularV2StereoSpread), shv('granularV3StereoSpread', state.granularV3StereoSpread), shv('granularV4StereoSpread', state.granularV4StereoSpread)],
-        voiceReverseLFORate,
+        voiceReverseLFORate: macroModel.voiceReverseLFORate,
         voiceWriteFollow: [shv('granularV1WriteFollow', state.granularV1WriteFollow), shv('granularV2WriteFollow', state.granularV2WriteFollow), shv('granularV3WriteFollow', state.granularV3WriteFollow), shv('granularV4WriteFollow', state.granularV4WriteFollow)],
         voiceRecordLFORate: [shv('granularV1RecordLFORate', state.granularV1RecordLFORate), shv('granularV2RecordLFORate', state.granularV2RecordLFORate), shv('granularV3RecordLFORate', state.granularV3RecordLFORate), shv('granularV4RecordLFORate', state.granularV4RecordLFORate)],
+        tempoGated: [
+          this.isGranularTempoSyncVoiceActive(state, 0),
+          this.isGranularTempoSyncVoiceActive(state, 1),
+          this.isGranularTempoSyncVoiceActive(state, 2),
+          this.isGranularTempoSyncVoiceActive(state, 3),
+        ],
+      };
+      const granularHarmonyParams: GranularWorkletHarmonyParams = {
         scaleIntervals: this.harmonyState?.scaleFamily?.intervals ? [...this.harmonyState.scaleFamily.intervals] : [],
         chordPitches: this.harmonyState?.currentChord?.midiNotes
           ? this.harmonyState.currentChord.midiNotes.map(n => n % 12)
           : [],
         chordBias: state.granularChordBias ?? 0,
-        euclidGated: [
-          state.granularEuclidMasterEnabled && state.granularEuclid1Enabled,
-          state.granularEuclidMasterEnabled && state.granularEuclid2Enabled,
-          state.granularEuclidMasterEnabled && state.granularEuclid3Enabled,
-          state.granularEuclidMasterEnabled && state.granularEuclid4Enabled,
-        ],
-        euclidMuted: [
-          state.granularEuclidMasterEnabled && !state.granularEuclid1Enabled,
-          state.granularEuclidMasterEnabled && !state.granularEuclid2Enabled,
-          state.granularEuclidMasterEnabled && !state.granularEuclid3Enabled,
-          state.granularEuclidMasterEnabled && !state.granularEuclid4Enabled,
-        ],
+      };
+      const granularLegacyParams: GranularWorkletLegacyParams = {
         legacyJitter: state.granularLegacyJitter,
         legacyProbability: state.granularLegacyProbability,
         legacyPitchMode: state.granularLegacyPitchMode,
@@ -4748,71 +4890,65 @@ export class AudioEngine {
         legacyMaxGrains: state.granularLegacyMaxGrains,
         legacyFeedback: state.granularLegacyFeedback,
       };
-      this.postCachedWorkletMessage('granular:params', this.granularFxNode, {
-        type: 'params',
-        params: granularParams,
-      }, granularParams);
+      this.queueGranularWorkletUpdate({
+        global: granularGlobalParams,
+        space: granularSpaceParams,
+        voices: granularVoiceParams,
+        harmony: granularHarmonyParams,
+        legacy: granularLegacyParams,
+      });
 
       // ── Granular Multi-Tap Delay ──
-      if (this.granularDelayTapNodes.length === 8) {
-        const delayEnabled = state.granularDelayEnabled && granularEnabled;
-        const activity = state.granularDelayActivity ?? 0.3;
-        const bpm = state.granularEuclidBaseBPM ?? 120;
-        const baseDiv = (state.granularDelayTime as string) ?? '1/4';
-        const baseTimeSec = delayNoteToSeconds(baseDiv, bpm);
+      // Bidirectional mutual exclusion: only one direction can be active at a time
+      const delayBGranularReturn = state.delayBGranularSend ?? 0;
+      const granularDelaySourceLevel = (granularEnabled && delayBGranularReturn < 0.0001) ? (state.granularDelayBSend ?? 0) : 0;
+      const crossFeeds = this.getSafeDelayCrossFeedLevels(state);
+      const delayBExternalFeedActive =
+        (pad1Active && (state.pad1DelayBSend ?? 0) > 0.0001) ||
+        (pad2Active && (state.pad2DelayBSend ?? 0) > 0.0001) ||
+        (lead1RoutingActive && (state.lead1DelayBSend ?? 0) > 0.0001) ||
+        (lead2RoutingActive && (state.lead2DelayBSend ?? 0) > 0.0001) ||
+        (state.drumEnabled && (state.drumDelayBSend ?? 0) > 0.0001) ||
+        (state.oceanSampleEnabled && (state.oceanDelayBSend ?? 0) > 0.0001) ||
+        (state.waterEnabled && (state.waterDelayBSend ?? 0) > 0.0001) ||
+        ((state.insectsEnabled || state.insects2Enabled) && (state.insDelayBSend ?? 0) > 0.0001) ||
+        (crossFeeds.aToB > 0.0001);
+      delayBEnabled = granularDelaySourceLevel > 0.0001 || delayBExternalFeedActive;
+      this.sharedGranularDelayBSend?.gain.setTargetAtTime(granularDelaySourceLevel, now, smoothTime);
+      this.sharedDelayB?.update({
+        enabled: delayBEnabled,
+        activity: state.granularDelayActivity ?? 0.3,
+        repeats: state.granularDelayRepeats ?? 0.3,
+        noteDiv: (state.granularDelayTime as string) ?? '1/4',
+        tone: state.granularDelayFilter ?? 0.5,
+        vibrato: state.granularDelayVibrato ?? 0,
+        mix: 1.0,
+        reverbSend: (delayBEnabled && state.reverbEnabled) ? (state.granularDelayReverbSend ?? 0.4) : 0,
+        // Block Delay B → Granular feedback when Granular is already sending to Delay B
+        granularSend: (delayBEnabled && granularDelaySourceLevel < 0.0001) ? (state.delayBGranularSend ?? 0) : 0,
+        toDelayA: delayBEnabled ? crossFeeds.bToA : 0,
+        bpm: getSharedSequencerBpm(state),
+        spaceMode,
+        pattern: state.delayBPattern ?? 'cascade',
+        warp: state.delayBWarp ?? 'clean',
+        warpIntensity: state.delayBWarpIntensity ?? 0.5,
+        spread: state.delayBSpread ?? 0.5,
+      }, now, smoothTime);
 
-        // Enable/disable delay send
-        this.granularDelaySendGain?.gain.setTargetAtTime(delayEnabled ? 1.0 : 0, now, smoothTime);
-
-        // Update per-tap gains (Activity macro) and delay times (BPM)
-        // Track total tap gain to normalize feedback and prevent loop gain > 1
-        let sumTapGains = 0;
-        for (let i = 0; i < 8; i++) {
-          const gain = delayEnabled ? computeTapGain(i, activity) : 0;
-          sumTapGains += gain;
-          this.granularDelayTapGains[i]?.gain.setTargetAtTime(gain, now, smoothTime);
-
-          const time = Math.max(0.001, Math.min(5.0, baseTimeSec * TAP_SUBDIVISIONS[i]));
-          this.granularDelayTapNodes[i]?.delayTime.setTargetAtTime(time, now, 0.05);
-        }
-
-        // Feedback (Repeats) — normalize by sum of tap gains so total loop gain ≤ repeats
-        // Without this, high activity (many taps) causes loop gain > 1 → runaway feedback
-        const rawRepeats = state.granularDelayRepeats ?? 0.3;
-        const normalizedFeedback = sumTapGains > 1 ? rawRepeats / sumTapGains : rawRepeats;
-        this.granularDelayFeedbackGain?.gain.setTargetAtTime(
-          normalizedFeedback, now, smoothTime
-        );
-
-        // Tone filter (0-1 → 200-8000Hz log scale)
-        const filterVal = state.granularDelayFilter ?? 0.5;
-        const filterHz = 200 * Math.pow(40, filterVal); // 200Hz to 8000Hz
-        this.granularDelayToneFilter?.frequency.setTargetAtTime(filterHz, now, 0.05);
-
-        // Vibrato depth
-        const vibrato = state.granularDelayVibrato ?? 0;
-        for (let i = 0; i < 8; i++) {
-          this.granularDelayVibratoDepths[i]?.gain.setTargetAtTime(
-            vibrato * MAX_VIBRATO_DEPTH, now, 0.05
-          );
-        }
-
-        // Output mix + reverb send
-        this.granularDelayDirectGain?.gain.setTargetAtTime(
-          delayEnabled ? (state.granularDelayMix ?? 0.3) : 0, now, smoothTime
-        );
-        this.granularDelayReverbSendGain?.gain.setTargetAtTime(
-          (delayEnabled && state.reverbEnabled) ? (state.granularDelayReverbSend ?? 0.4) : 0, now, smoothTime
-        );
-      }
+      // The old granular-local multitap nodes are left disconnected while the shared Delay B
+      // takes over, so keep their gains pinned to zero in case a fallback path instantiated them.
+      this.granularDelaySendGain?.gain.setTargetAtTime(0, now, smoothTime);
+      this.granularDelayDirectGain?.gain.setTargetAtTime(0, now, smoothTime);
+      this.granularDelayReverbSendGain?.gain.setTargetAtTime(0, now, smoothTime);
+      this.granularDelayFeedbackGain?.gain.setTargetAtTime(0, now, smoothTime);
     }
 
-    // Synth levels (independent: direct level and reverb send)
+    // Synth levels (independent: direct level and per-pad reverb sends)
     // Per-voice mixerGain controls pad 1 vs pad 2 level
     // synthDirect acts as pad-active mute gate
-    // synthReverbSend controls how much goes to reverb (additive, not crossfade)
-    // When reverbEnabled is false, mute reverb send to save CPU
-    const padActive = state.padEnabled !== false || this.euclideanUsesPadSource(state);
+    // Pad reverb sends are additive, not crossfaded.
+    // When reverbEnabled is false, mute reverb sends to save CPU
+    const padActive = pad1Active || pad2Active;
     // When spectral freeze is active, attenuate the dry direct path so the
     // frozen pad isn't masked by the live pad signal modulating through.
     // Reverb Crossfade=1 → fully frozen → mute dry, Crossfade=0 → full dry.
@@ -4821,28 +4957,69 @@ export class AudioEngine {
     const sfCrossfade = state.spectralFreezeReverbCrossfade ?? 1.0;
     const dryGain = (sfEnabled && sfActive) ? (1.0 - sfCrossfade) : 1.0;
     this.synthDirect?.gain.setTargetAtTime(padActive ? dryGain : 0, now, smoothTime);
-    this.synthReverbSend?.gain.setTargetAtTime(padActive && state.reverbEnabled ? shv('synthReverbSend', state.synthReverbSend) : 0, now, smoothTime);
+    this.pad1ReverbSend?.gain.setTargetAtTime((pad1Active && state.reverbEnabled) ? shv('pad1ReverbSend', state.pad1ReverbSend) : 0, now, smoothTime);
+    this.pad2ReverbSend?.gain.setTargetAtTime((pad2Active && state.reverbEnabled) ? shv('pad2ReverbSend', state.pad2ReverbSend) : 0, now, smoothTime);
+    this.pad1DelayASend?.gain.setTargetAtTime(pad1Active ? (state.pad1DelayASend ?? 0) : 0, now, smoothTime);
+    this.pad1DelayBSend?.gain.setTargetAtTime(pad1Active ? (state.pad1DelayBSend ?? 0) : 0, now, smoothTime);
+    this.pad2DelayASend?.gain.setTargetAtTime(pad2Active ? (state.pad2DelayASend ?? 0) : 0, now, smoothTime);
+    this.pad2DelayBSend?.gain.setTargetAtTime(pad2Active ? (state.pad2DelayBSend ?? 0) : 0, now, smoothTime);
 
-    // Per-lead reverb sends (mute if reverb disabled) — S&H aware
-    this.lead1ReverbSend?.gain.setTargetAtTime(state.reverbEnabled ? shv('lead1ReverbSend', state.lead1ReverbSend) : 0, now, smoothTime);
-    this.lead2ReverbSend?.gain.setTargetAtTime(state.reverbEnabled ? shv('lead2ReverbSend', state.lead2ReverbSend) : 0, now, smoothTime);
-    // WASM leadReverbSend kept for legacy/fallback (per-lead sends handle WASM routing now)
-    this.leadReverbSend?.gain.setTargetAtTime(
-      state.reverbEnabled ? Math.max(shv('lead1ReverbSend', state.lead1ReverbSend), shv('lead2ReverbSend', state.lead2ReverbSend)) : 0, now, smoothTime);
+    const lead1Fader = lead1WetActive ? lead1Lvl : 0;
+    const lead2Fader = lead2WetActive ? lead2Lvl : 0;
+    this.lead1ReverbSend?.gain.setTargetAtTime((state.reverbEnabled && lead1WetActive) ? shv('lead1ReverbSend', state.lead1ReverbSend) : 0, now, smoothTime);
+    this.lead2ReverbSend?.gain.setTargetAtTime((state.reverbEnabled && lead2WetActive) ? shv('lead2ReverbSend', state.lead2ReverbSend) : 0, now, smoothTime);
 
-    // Per-lead dry-path level (post reverb/granular tap, so sends still receive signal when level is 0)
-    this.lead1LevelGain?.gain.setTargetAtTime(state.lead1Level ?? 0.8, now, smoothTime);
+    const sharedDelayAState = this.getSharedDelayAState(state, lead1WetActive, lead2WetActive, granularBusArmed, delayBEnabled);
+    this.sharedDelayA?.update(sharedDelayAState, now, smoothTime);
+    this.lead1DelayASend?.gain.setTargetAtTime(
+      lead1WetActive ? shv('lead1DelayASend', state.lead1DelayASend ?? 0) : 0,
+      now,
+      smoothTime,
+    );
+    this.lead2DelayASend?.gain.setTargetAtTime(
+      lead2WetActive ? shv('lead2DelayASend', state.lead2DelayASend ?? 0) : 0,
+      now,
+      smoothTime,
+    );
+    this.lead1DelayBSend?.gain.setTargetAtTime(lead1WetActive ? shv('lead1DelayBSend', state.lead1DelayBSend ?? 0) : 0, now, smoothTime);
+    this.lead2DelayBSend?.gain.setTargetAtTime(lead2WetActive ? shv('lead2DelayBSend', state.lead2DelayBSend ?? 0) : 0, now, smoothTime);
+    const drumDelaySend = state.drumEnabled
+      ? this.getDrumDelaySendProfile(state) * (state.drumDelayASend ?? 1)
+      : 0;
+    this.drumDelayASend?.gain.setTargetAtTime(drumDelaySend, now, smoothTime);
+    this.drumDelayBSend?.gain.setTargetAtTime(state.drumEnabled ? (state.drumDelayBSend ?? 0) : 0, now, smoothTime);
+    this.granularDelayASend?.gain.setTargetAtTime(granularBusArmed ? (state.granularDelayASend ?? 0) : 0, now, smoothTime);
+    this.oceanDelayASend?.gain.setTargetAtTime(state.oceanSampleEnabled ? (state.oceanDelayASend ?? 0) : 0, now, smoothTime);
+    this.oceanDelayBSend?.gain.setTargetAtTime(state.oceanSampleEnabled ? (state.oceanDelayBSend ?? 0) : 0, now, smoothTime);
+    this.waterDelayASend?.gain.setTargetAtTime(state.waterEnabled ? (state.waterDelayASend ?? 0) : 0, now, smoothTime);
+    this.waterDelayBSend?.gain.setTargetAtTime(state.waterEnabled ? (state.waterDelayBSend ?? 0) : 0, now, smoothTime);
+    const insectsDelaySendActive = state.insectsEnabled || state.insects2Enabled;
+    this.insectsDelayASend?.gain.setTargetAtTime(insectsDelaySendActive ? (state.insDelayASend ?? 0) : 0, now, smoothTime);
+    this.insectsDelayBSend?.gain.setTargetAtTime(insectsDelaySendActive ? (state.insDelayBSend ?? 0) : 0, now, smoothTime);
+
+    // Per-lead dry-path level only. FX sends stay independent so lead can be fully wet at dry level 0.
+    this.lead1LevelGain?.gain.setTargetAtTime(lead1Fader, now, smoothTime);
     // WASM lead per-lead dry-path levels (separate outputs, no longer needs max)
-    this.leadWasmLevelGain?.gain.setTargetAtTime(state.lead1Level ?? 0.8, now, smoothTime);
-    this.leadWasmLead2LevelGain?.gain.setTargetAtTime(state.lead2Level ?? 0.6, now, smoothTime);
-    this.lead2LevelGain?.gain.setTargetAtTime(state.lead2Level ?? 0.6, now, smoothTime);
+    this.leadWasmLevelGain?.gain.setTargetAtTime(lead1Fader, now, smoothTime);
+    this.leadWasmLead2LevelGain?.gain.setTargetAtTime(lead2Fader, now, smoothTime);
+    this.lead2LevelGain?.gain.setTargetAtTime(lead2Fader, now, smoothTime);
 
     // Forward lead FM delay params to WASM worklet (if active)
     this.sendLeadFmWasmDelay(state);
 
     // Reverb parameters (only update if enabled to save CPU)
     // Guard: reverbNode may be a dummy GainNode (no .port) when Euclidean runs standalone
-    if (this.reverbNode && (this.reverbNode as any).port && state.reverbEnabled) {
+    const reverbBusActive = state.reverbEnabled && this.hasAnyReverbFeed(
+      state,
+      pad1Active,
+      pad2Active,
+      lead1WetActive,
+      lead2WetActive,
+      granularBusArmed,
+      sharedDelayAState.enabled,
+      delayBEnabled,
+    );
+    if (this.reverbNode && (this.reverbNode as any).port && reverbBusActive) {
       // Per-engine tension → subtle additive offsets on decay/diffusion/shimmer
       const reverbT = getEffectiveTension(
         state.tension ?? 0.3,
@@ -4934,7 +5111,7 @@ export class AudioEngine {
     }
 
     // Reverb output level (mute if disabled)
-    this.reverbOutputGain?.gain.setTargetAtTime(state.reverbEnabled ? state.reverbLevel * 2 : 0, now, smoothTime);
+    this.reverbOutputGain?.gain.setTargetAtTime(reverbBusActive ? state.reverbLevel * ENGINE_TRIMS.reverb : 0, now, smoothTime);
 
     // Spectral Freeze parameters
     if (this.spectralFreezeNode && (this.spectralFreezeNode as any).port) {
@@ -4980,16 +5157,8 @@ export class AudioEngine {
 
     // Lead synth parameters — leadDry gates active/inactive; per-lead level on lead1/2LevelGain + WASM per-lead gains
     // Keep gain active if Euclidean sequencer is driving lead
-    const leadActive = state.leadEnabled || state.synthEuclideanMasterEnabled;
+    const leadActive = state.leadEnabled || state.leadRandomEnabled || state.synthEuclideanMasterEnabled;
     this.leadDry?.gain.setTargetAtTime(leadActive ? 1.0 : 0, now, smoothTime);
-    
-    // Lead delay base time (per-note randomization in playLeadNote further adjusts this)
-    const delayTime = fin((state.leadDelayTime ?? 375) / 1000, 0.375);
-    this.leadDelayL?.delayTime.setTargetAtTime(delayTime, now, smoothTime);
-    this.leadDelayR?.delayTime.setTargetAtTime(delayTime * 0.75, now, smoothTime);
-    
-    // Delay reverb send (mute if reverb disabled)
-    this.leadDelayReverbSend?.gain.setTargetAtTime(state.reverbEnabled ? state.leadDelayReverbSend : 0, now, smoothTime);
 
     // Lead random scheduling (phrase-based, independent of Euclidean)
     if (state.leadRandomEnabled && this.leadMelodyTimer === null && this.isRunning) {
@@ -5015,18 +5184,10 @@ export class AudioEngine {
       this.loadLeadPreset('D', state.lead2PresetD);
     }
 
-    // Ocean waves parameters
-    // Wave synth volume (crossfades based on enabled state)
-    this.oceanGain?.gain.setTargetAtTime(
-      state.oceanWaveSynthEnabled ? state.oceanWaveSynthLevel : 0, 
-      now, 
-      smoothTime
-    );
-    
-    // Ocean sample volume (crossfades based on enabled state)
+    // Waves sample volume (Ghetary recording)
     this.oceanSampleGain?.gain.setTargetAtTime(
-      state.oceanSampleEnabled ? state.oceanSampleLevel : 0, 
-      now, 
+      state.oceanSampleEnabled ? 1.0 : 0,
+      now,
       smoothTime
     );
 
@@ -5043,46 +5204,16 @@ export class AudioEngine {
       this.startOceanSamplePlayback();
     }
     
-    // ── Soundscapes WASM — water + insects + ocean ──
+    // ── Soundscapes WASM — water + insects ──
     if (this.soundscapesNode && this.soundscapesWasmReady) {
-      // Ocean start/stop (via soundscapes WASM output [2])
-      // Kill engine when level is 0 regardless of enabled toggle
-      const oceanShouldRun = state.oceanWaveSynthEnabled && state.oceanWaveSynthLevel > 0;
-      if (oceanShouldRun && !this._scOceanStarted) {
-        this.soundscapesNode.port.postMessage({ type: 'oceanStart' });
-        this._scOceanStarted = true;
-      } else if (!oceanShouldRun && this._scOceanStarted) {
-        this.soundscapesNode.port.postMessage({ type: 'oceanStop' });
-        this._scOceanStarted = false;
-      }
-
-      // Ocean params (via soundscapes WASM postMessage)
-      if (state.oceanWaveSynthEnabled) {
-        const durR = this.dualRanges['oceanDuration'];
-        const intR = this.dualRanges['oceanInterval'];
-        const foamR = this.dualRanges['oceanFoam'];
-        const depR = this.dualRanges['oceanDepth'];
-        const oceanParams = {
-          intensity: state.oceanWaveSynthLevel,
-          waveDurationMin: durR ? durR.min : state.oceanDuration,
-          waveDurationMax: durR ? durR.max : state.oceanDuration,
-          waveIntervalMin: intR ? intR.min : state.oceanInterval,
-          waveIntervalMax: intR ? intR.max : state.oceanInterval,
-          wave2OffsetMin: 2,
-          wave2OffsetMax: 6,
-          foamMin: foamR ? foamR.min : state.oceanFoam,
-          foamMax: foamR ? foamR.max : state.oceanFoam,
-          depthMin: depR ? depR.min : state.oceanDepth,
-          depthMax: depR ? depR.max : state.oceanDepth,
-        };
-        this.postCachedWorkletMessage('soundscapes:oceanParams', this.soundscapesNode, {
-          type: 'oceanParams',
-          params: oceanParams,
-        }, oceanParams);
-      }
-
-      // Water start/stop — kill engine when level is 0
-      const waterShouldRun = state.waterEnabled && state.waterLevel > 0;
+      // Water start/stop — keep running for wet-only reverb sends too
+      const waterShouldRun = state.waterEnabled && (
+        state.waterLevel > 0 ||
+        state.waterReverbSend > 0 ||
+        (state.waterDelayASend ?? 0) > 0 ||
+        (state.waterDelayBSend ?? 0) > 0 ||
+        (state.granularWaterSend ?? 0) > 0
+      );
       if (waterShouldRun && !this._scWaterStarted) {
         this.soundscapesNode.port.postMessage({ type: 'waterStart' });
         this._scWaterStarted = true;
@@ -5102,7 +5233,6 @@ export class AudioEngine {
       if (state.waterEnabled) {
         // Water synthesis params with dualRange min/max support
         const wInt = this.dualRanges['waterIntensity'];
-        const wRate = this.dualRanges['waterRate'];
         const wDist = this.dualRanges['waterDistance'];
         const wBf = this.dualRanges['waterBaseFreq'];
         const wDs = this.dualRanges['waterDropSize'];
@@ -5111,8 +5241,6 @@ export class AudioEngine {
         const waterParams = {
           intensityMin: wInt ? wInt.min : state.waterIntensity,
           intensityMax: wInt ? wInt.max : state.waterIntensity,
-          rateMin: wRate ? wRate.min : state.waterRate,
-          rateMax: wRate ? wRate.max : state.waterRate,
           distanceMin: wDist ? wDist.min : state.waterDistance,
           distanceMax: wDist ? wDist.max : state.waterDistance,
           baseFreqMin: wBf ? wBf.min : state.waterBaseFreq,
@@ -5129,6 +5257,19 @@ export class AudioEngine {
           params: waterParams,
         }, waterParams);
 
+        const waterLayerDetailParams = {
+          hardRate: shv('waterHardDropRate', state.waterHardDropRate),
+          hardTone: shv('waterHardDropLPF', state.waterHardDropLPF),
+          waterRate: shv('waterWaterDropRate', state.waterWaterDropRate),
+          waterTone: shv('waterWaterDropLPF', state.waterWaterDropLPF),
+          bubbleRate: shv('waterBubblingRate', state.waterBubblingRate),
+          bubbleTone: shv('waterBubblingLPF', state.waterBubblingLPF),
+        };
+        this.postCachedWorkletMessage('soundscapes:waterLayerDetailParams', this.soundscapesNode, {
+          type: 'waterLayerDetailParams',
+          ...waterLayerDetailParams,
+        }, waterLayerDetailParams);
+
         // Water layer mix
         const waterLayerMix = {
           hardDrops: state.waterLayerHardDrops,
@@ -5143,24 +5284,47 @@ export class AudioEngine {
           ...waterLayerMix,
         }, waterLayerMix);
 
+        // Density is not user-facing yet. Keep legacy drop/turbulence density, but
+        // run surf/channels at full density so wave-oriented presets have full body.
+        const waterLayerDensity = {
+          hardDrops: 0.5,
+          waterDrops: 0.5,
+          turbulence: 0.5,
+          bubbling: 0.5,
+          surf: 1.0,
+          channels: 1.0,
+        };
+        this.postCachedWorkletMessage('soundscapes:waterLayerDensity', this.soundscapesNode, {
+          type: 'waterLayerDensity',
+          ...waterLayerDensity,
+        }, waterLayerDensity);
+
         // Surf params (wave-envelope driven 3-band noise)
         const sDur = this.dualRanges['waterSurfDuration'];
         const sInt = this.dualRanges['waterSurfInterval'];
         const sFoam = this.dualRanges['waterSurfFoam'];
+        const sProx = this.dualRanges['waterSurfProximity'];
         const sDep = this.dualRanges['waterSurfDepth'];
         const sBody = this.dualRanges['waterSurfBody'];
         const sSpray = this.dualRanges['waterSurfSpray'];
+        const sFoamBright = this.dualRanges['waterSurfFoamBright'];
         const surfParams = {
-          durationMin: sDur ? sDur.min : state.waterSurfDuration * 0.7,
-          durationMax: sDur ? sDur.max : state.waterSurfDuration * 1.3,
-          intervalMin: sInt ? sInt.min : state.waterSurfInterval * 0.7,
-          intervalMax: sInt ? sInt.max : state.waterSurfInterval * 1.3,
-          foamMin: sFoam ? sFoam.min : Math.max(0, state.waterSurfFoam - 0.15),
-          foamMax: sFoam ? sFoam.max : Math.min(1, state.waterSurfFoam + 0.15),
-          depthMin: sDep ? sDep.min : Math.max(0, state.waterSurfDepth - 0.15),
-          depthMax: sDep ? sDep.max : Math.min(1, state.waterSurfDepth + 0.15),
-          bodyFreq: sBody ? (sBody.min + sBody.max) * 0.5 : state.waterSurfBody,
-          sprayFreq: sSpray ? (sSpray.min + sSpray.max) * 0.5 : state.waterSurfSpray,
+          durationMin: sDur ? sDur.min : state.waterSurfDuration,
+          durationMax: sDur ? sDur.max : state.waterSurfDuration,
+          intervalMin: sInt ? sInt.min : state.waterSurfInterval,
+          intervalMax: sInt ? sInt.max : state.waterSurfInterval,
+          foamMin: sFoam ? sFoam.min : state.waterSurfFoam,
+          foamMax: sFoam ? sFoam.max : state.waterSurfFoam,
+          proximityMin: sProx ? sProx.min : state.waterSurfProximity,
+          proximityMax: sProx ? sProx.max : state.waterSurfProximity,
+          depthMin: sDep ? sDep.min : state.waterSurfDepth,
+          depthMax: sDep ? sDep.max : state.waterSurfDepth,
+          bodyFreqMin: sBody ? sBody.min : state.waterSurfBody,
+          bodyFreqMax: sBody ? sBody.max : state.waterSurfBody,
+          sprayFreqMin: sSpray ? sSpray.min : state.waterSurfSpray,
+          sprayFreqMax: sSpray ? sSpray.max : state.waterSurfSpray,
+          foamBrightMin: sFoamBright ? sFoamBright.min : state.waterSurfFoamBright,
+          foamBrightMax: sFoamBright ? sFoamBright.max : state.waterSurfFoamBright,
         };
         this.postCachedWorkletMessage('soundscapes:waterSurfParams', this.soundscapesNode, {
           type: 'waterSurfParams',
@@ -5178,10 +5342,29 @@ export class AudioEngine {
           type: 'waterChannelsParams',
           ...channelsParams,
         }, channelsParams);
+
+        const densityLoopParams = {
+          hardSend: shv('waterDensityHardSend', state.waterDensityHardSend),
+          waterSend: shv('waterDensityWaterSend', state.waterDensityWaterSend),
+          bubbleSend: shv('waterDensityBubbleSend', state.waterDensityBubbleSend),
+          feedback: shv('waterDensityFeedback', state.waterDensityFeedback),
+          tone: shv('waterDensityTone', state.waterDensityTone),
+          ring: shv('waterDensityRing', state.waterDensityRing),
+          wet: shv('waterDensityWet', state.waterDensityWet),
+        };
+        this.postCachedWorkletMessage('soundscapes:waterDensityLoopParams', this.soundscapesNode, {
+          type: 'waterDensityLoopParams',
+          ...densityLoopParams,
+        }, densityLoopParams);
       }
 
-      // Insects 1 start/stop — kill engine when level is 0
-      const insects1ShouldRun = state.insectsEnabled && state.insectsLevel > 0;
+      // Insects 1 start/stop — keep running for wet-only reverb sends too
+      const insectsSharedWetActive =
+        state.insectsReverbSend > 0 ||
+        (state.granularInsectsSend ?? 0) > 0 ||
+        (state.insDelayASend ?? 0) > 0 ||
+        (state.insDelayBSend ?? 0) > 0;
+      const insects1ShouldRun = state.insectsEnabled && (state.insectsLevel > 0 || insectsSharedWetActive);
       if (insects1ShouldRun && !this._scInsects1Started) {
         this.soundscapesNode.port.postMessage({ type: 'insectsStart' });
         this._scInsects1Started = true;
@@ -5196,7 +5379,7 @@ export class AudioEngine {
         this._scInsects1Engine = state.insectsEngine;
       }
 
-      // Insects 1 params + gain (only send when enabled)
+      // Insects 1 params + dry gain (only send when enabled)
       if (state.insectsEnabled) {
         // Insects 1 params with dualRange min/max support
         const iDen = this.dualRanges['insectsDensity'];
@@ -5232,8 +5415,8 @@ export class AudioEngine {
         }, state.insectsLevel);
       }
 
-      // Insects 2 start/stop — kill engine when level is 0
-      const insects2ShouldRun = state.insects2Enabled && state.insects2Level > 0;
+      // Insects 2 start/stop — keep running for wet-only reverb sends too
+      const insects2ShouldRun = state.insects2Enabled && (state.insects2Level > 0 || insectsSharedWetActive);
       if (insects2ShouldRun && !this._scInsects2Started) {
         this.soundscapesNode.port.postMessage({ type: 'insects2Start' });
         this._scInsects2Started = true;
@@ -5248,7 +5431,7 @@ export class AudioEngine {
         this._scInsects2Engine = state.insects2Engine;
       }
 
-      // Insects 2 params + gain (only send when enabled)
+      // Insects 2 params + dry gain (only send when enabled)
       if (state.insects2Enabled) {
         // Insects 2 params with dualRange min/max support
         const i2Den = this.dualRanges['insects2Density'];
@@ -5302,14 +5485,14 @@ export class AudioEngine {
         (state.insectsEnabled || state.insects2Enabled) ? 1.0 : 0, now, smoothTime
       );
 
-      // Ocean dry level (oceanFilter already has its own gain path — oceanLevelGain controls dry)
+      // Waves sample dry level (oceanSampleGain is source on/off; oceanLevelGain is the dry fader)
       this.oceanLevelGain?.gain.setTargetAtTime(
-        (state.oceanWaveSynthEnabled || state.oceanSampleEnabled) ? 1.0 : 0, now, smoothTime
+        state.oceanSampleEnabled ? state.oceanSampleLevel : 0, now, smoothTime
       );
 
-      // Waves (ocean) reverb send (pre-fader) — S&H aware
+      // Waves reverb send (pre-fader) — S&H aware
       this.oceanReverbSendNode?.gain.setTargetAtTime(
-        (state.oceanWaveSynthEnabled || state.oceanSampleEnabled) ? shv('oceanReverbSend', state.oceanReverbSend) : 0, now, smoothTime
+        state.oceanSampleEnabled ? shv('oceanReverbSend', state.oceanReverbSend) : 0, now, smoothTime
       );
 
       // Insects reverb send (pre-fader) — S&H aware
@@ -5442,17 +5625,24 @@ export class AudioEngine {
    * Play a single lead FM note.
    * `velocity` controls timbre (FM mod depth, transient energy) AND amplitude —
    * it is NOT the same as bus gain. Per-lead mix level lives on lead1LevelGain /
-   * lead2LevelGain (post reverb/granular tap), so notes always feed sends at full
-   * velocity regardless of the fader position.
+   * lead2LevelGain (post reverb/granular tap), so note loudness can change independently
+   * of the dry mixer fader.
    */
-  private playLeadNote(frequency: number, velocity: number = 0.8, leadSource: 'lead' | 'lead1' | 'lead2' = 'lead1'): void {
+  private playLeadNote(
+    frequency: number,
+    velocity: number = 0.8,
+    leadSource: 'lead' | 'lead1' | 'lead2' = 'lead1',
+  ): void {
     if (!this.ctx || !this.leadGain || !this.sliderState) return;
-    // Allow playback if leadEnabled OR if Euclidean master is driving lead lanes
-    if (!this.sliderState.leadEnabled && !this.sliderState.synthEuclideanMasterEnabled) return;
-
     // Determine which lead to use and check if enabled
     const useLead2 = leadSource === 'lead2';
-    if (useLead2 && !this.sliderState.lead2Enabled) return;
+    const lead1Playable = !!(this.sliderState.leadEnabled || this.sliderState.leadRandomEnabled || this.sliderState.synthEuclideanMasterEnabled);
+    const lead2Playable = !!this.sliderState.lead2Enabled;
+    if (useLead2) {
+      if (!lead2Playable) return;
+    } else if (!lead1Playable) {
+      return;
+    }
 
     // Compute morphed FM params.
     // Random Walk (when enabled) uses smooth momentum-based motion within min/max.
@@ -5511,8 +5701,26 @@ export class AudioEngine {
       }
     }
 
-    // Per-lead level is now handled by lead1LevelGain/lead2LevelGain nodes (post reverb/granular tap)
-    // so notes play at full velocity and reverb/granular sends still receive signal when level is down.
+    // Per-note velocity drives both lead timbre and note loudness.
+
+    // ── Per-trigger lead S&H: resample lead dual-range keys on each note trigger ──
+    // Uses the existing dualRanges/shSampledValues system (excluded from 10Hz loop).
+    const leadSHPositions: Record<string, number> = {};
+    for (const key of Object.keys(this.dualRanges)) {
+      if (key.startsWith('lead') || key.startsWith('granularLead')) {
+        const range = this.dualRanges[key];
+        if (range) {
+          const sampled = range.min + Math.random() * (range.max - range.min);
+          this.shSampledValues[key] = sampled;
+          const span = range.max - range.min;
+          leadSHPositions[key] = span > 0 ? (sampled - range.min) / span : 0.5;
+        }
+      }
+    }
+    if (Object.keys(leadSHPositions).length > 0 && this.onGranularSHTrigger) {
+      this.onGranularSHTrigger(leadSHPositions);
+    }
+
     if (velocity < 0.001) return;
 
     const ctx = this.ctx;
@@ -5550,33 +5758,34 @@ export class AudioEngine {
     }
 
     // ─── Shared delay (NOT from presets) ───
-    const dtRange = this.dualRanges['leadDelayTime'];
-    const delayTimeMin = dtRange ? dtRange.min : (this.sliderState.leadDelayTime ?? 375);
-    const delayTimeMax = dtRange ? dtRange.max : (this.sliderState.leadDelayTime ?? 375);
-    const delayTime = delayTimeMin + Math.random() * (delayTimeMax - delayTimeMin);
-
-    const dfRange = this.dualRanges['leadDelayFeedback'];
-    const delayFeedbackMin = dfRange ? dfRange.min : (this.sliderState.leadDelayFeedback ?? 0.4);
-    const delayFeedbackMax = dfRange ? dfRange.max : (this.sliderState.leadDelayFeedback ?? 0.4);
+    const dfRange = this.dualRanges['delayAFeedback'];
+    const delayFeedbackMin = dfRange ? dfRange.min : (this.sliderState.delayAFeedback ?? 0.4);
+    const delayFeedbackMax = dfRange ? dfRange.max : (this.sliderState.delayAFeedback ?? 0.4);
     const delayFeedback = delayFeedbackMin + Math.random() * (delayFeedbackMax - delayFeedbackMin);
 
-    const dmRange = this.dualRanges['leadDelayMix'];
-    const delayMixMin = dmRange ? dmRange.min : (this.sliderState.leadDelayMix ?? 0.35);
-    const delayMixMax = dmRange ? dmRange.max : (this.sliderState.leadDelayMix ?? 0.35);
+    const dmRange = this.dualRanges['delayAMix'];
+    const delayMixMin = dmRange ? dmRange.min : (this.sliderState.delayAMix ?? 0.35);
+    const delayMixMax = dmRange ? dmRange.max : (this.sliderState.delayAMix ?? 0.35);
     const delayMix = delayMixMin + Math.random() * (delayMixMax - delayMixMin);
+    const lead1DelayActive = !!(this.sliderState.leadEnabled || this.sliderState.leadRandomEnabled || this.sliderState.synthEuclideanMasterEnabled);
+    const lead2DelayActive = !!this.sliderState.lead2Enabled;
+    const delayAState = this.getSharedDelayAState(
+      this.sliderState,
+      lead1DelayActive,
+      lead2DelayActive,
+      this.isGranularBusArmed(this.sliderState, lead1DelayActive, lead2DelayActive),
+    );
 
     const smoothTime = 0.05;
-    this.leadDelayL?.delayTime.setTargetAtTime(delayTime / 1000, now, smoothTime);
-    this.leadDelayR?.delayTime.setTargetAtTime((delayTime / 1000) * 0.75, now, smoothTime);
-    this.leadDelayFeedbackL?.gain.setTargetAtTime(delayFeedback, now, smoothTime);
-    this.leadDelayFeedbackR?.gain.setTargetAtTime(delayFeedback, now, smoothTime);
-    this.leadDelayMix?.gain.setTargetAtTime(delayMix, now, smoothTime);
+    this.sharedDelayA?.update({
+      ...delayAState,
+      feedback: delayFeedback,
+      mix: delayMix,
+    }, now, smoothTime);
 
     if (this.onLeadDelayTrigger) {
       this.onLeadDelayTrigger({
-        time: delayTimeMax > delayTimeMin
-          ? (delayTime - delayTimeMin) / (delayTimeMax - delayTimeMin)
-          : 0.5,
+        time: 0.5,
         feedback: delayFeedbackMax > delayFeedbackMin
           ? (delayFeedback - delayFeedbackMin) / (delayFeedbackMax - delayFeedbackMin)
           : 0.5,
@@ -5625,13 +5834,13 @@ export class AudioEngine {
       port.postMessage({
         type: 'delay',
         params: {
-          enabled: true,
-          timeL: delayTime,
-          timeR: delayTime * 0.75,
-          feedback: delayFeedback,
-          mix: delayMix,
-          filter: 2000,
-          send: 0.5,
+          enabled: false,
+          timeL: 0,
+          timeR: 0,
+          feedback: 0,
+          mix: 0,
+          filter: this.sliderState.delayAFilter ?? 2000,
+          send: 0,
         },
       });
       port.postMessage({ type: 'noteOn', frequency: noteFreq, velocity, hold, leadIndex: useLead2 ? 1 : 0 });
@@ -5732,16 +5941,17 @@ export class AudioEngine {
       return;
     }
 
-    // Skip random lead notes if Euclidean lanes already handle lead sounds
-    const isLeadSource = (s: string) => s === 'lead' || s === 'lead1' || s === 'lead2';
-    const euclideanLeadActive = this.sliderState.synthEuclideanMasterEnabled && (
-      (this.sliderState.synthEuclid1Enabled && isLeadSource(this.sliderState.synthEuclid1Source ?? 'lead')) ||
-      (this.sliderState.synthEuclid2Enabled && isLeadSource(this.sliderState.synthEuclid2Source ?? 'lead')) ||
-      (this.sliderState.synthEuclid3Enabled && isLeadSource(this.sliderState.synthEuclid3Source ?? 'lead')) ||
-      (this.sliderState.synthEuclid4Enabled && isLeadSource(this.sliderState.synthEuclid4Source ?? 'lead'))
+    // Skip random lead1 notes only if Euclidean lanes already handle lead1/generic lead.
+    // Lead 2 Euclidean lanes should not suppress the independent Lead 1 random melody.
+    const isLead1Source = (s: string) => s === 'lead' || s === 'lead1';
+    const euclideanLead1Active = this.sliderState.synthEuclideanMasterEnabled && (
+      (this.sliderState.synthEuclid1Enabled && isLead1Source(this.sliderState.synthEuclid1Source ?? 'lead')) ||
+      (this.sliderState.synthEuclid2Enabled && isLead1Source(this.sliderState.synthEuclid2Source ?? 'lead')) ||
+      (this.sliderState.synthEuclid3Enabled && isLead1Source(this.sliderState.synthEuclid3Source ?? 'lead')) ||
+      (this.sliderState.synthEuclid4Enabled && isLead1Source(this.sliderState.synthEuclid4Source ?? 'lead'))
     );
 
-    if (!euclideanLeadActive) {
+    if (!euclideanLead1Active) {
       const rng = this.rng;
       const scale = this.harmonyState.scaleFamily;
       const rootNote = this.effectiveRoot;
@@ -5766,7 +5976,7 @@ export class AudioEngine {
         if (availableNotes.length === 0) continue;
         const midiNote = pickChordWeightedNote(rng, availableNotes, chordMidi, leadChordBias);
         const frequency = midiToFreq(midiNote);
-        const velocity = rngFloat(rng, 0.5, 0.9); // Dynamics only; per-lead mix level is on lead1LevelGain bus node
+        const velocity = rngFloat(rng, 0.5, 0.9); // Per-note loudness + timbre; per-lead mix level still lives on lead1LevelGain
         const timeoutId = window.setTimeout(() => {
           const idx = this.leadNoteTimeouts.indexOf(timeoutId);
           if (idx > -1) this.leadNoteTimeouts.splice(idx, 1);
@@ -5817,13 +6027,8 @@ export class AudioEngine {
     if (!this.masterGain) {
       this.masterGain = this.ctx.createGain();
       this.masterGain.gain.value = this.sliderState?.masterVolume ?? 0.7;
-      this.limiter = this.ctx.createDynamicsCompressor();
-      this.limiter.threshold.value = -3;
-      this.limiter.knee.value = 0;
-      this.limiter.ratio.value = 20;
-      this.limiter.attack.value = 0.001;
-      this.limiter.release.value = 0.1;
-      this.masterGain.connect(this.limiter);
+      this.limiter = this.createMasterLimiter(this.ctx);
+      this.wireMasterOutputChain(this.ctx);
       this.limiter.connect(this.ctx.destination);
     }
     // Dummy reverb node if real reverb not created yet
@@ -5857,51 +6062,20 @@ export class AudioEngine {
     if (!this.leadGain) {
       const ctx = this.ctx;
       this.leadGain = ctx.createGain();
-      const leadActive = this.sliderState?.leadEnabled || this.sliderState?.synthEuclideanMasterEnabled;
+      const leadActive = this.sliderState?.leadEnabled || this.sliderState?.leadRandomEnabled || this.sliderState?.synthEuclideanMasterEnabled;
       this.leadGain.gain.value = leadActive ? 1.0 : 0;
       this.leadFilter = ctx.createBiquadFilter();
       this.leadFilter.type = 'lowpass';
       this.leadFilter.frequency.value = 4000;
       this.leadFilter.Q.value = 0.7;
-      this.leadDelayL = ctx.createDelay(2);
-      this.leadDelayR = ctx.createDelay(2);
-      const delayTime = (this.sliderState?.leadDelayTime ?? 375) / 1000;
-      this.leadDelayL.delayTime.value = delayTime;
-      this.leadDelayR.delayTime.value = delayTime * 0.75;
-      this.leadDelayFeedbackL = ctx.createGain();
-      this.leadDelayFeedbackR = ctx.createGain();
-      const feedback = this.sliderState?.leadDelayFeedback ?? 0.4;
-      this.leadDelayFeedbackL.gain.value = feedback;
-      this.leadDelayFeedbackR.gain.value = feedback;
-      this.leadDelayMix = ctx.createGain();
-      this.leadDelayMix.gain.value = this.sliderState?.leadDelayMix ?? 0.35;
       this.leadDry = ctx.createGain();
       this.leadDry.gain.value = leadActive ? 1.0 : 0;
-      this.leadMerger = ctx.createChannelMerger(2);
-      this.leadReverbSend = ctx.createGain();
-      this.leadReverbSend.gain.value = Math.max(this.sliderState?.lead1ReverbSend ?? 0.5, this.sliderState?.lead2ReverbSend ?? 0.5);
-      this.leadDelayReverbSend = ctx.createGain();
-      this.leadDelayReverbSend.gain.value = this.sliderState?.leadDelayReverbSend ?? 0.4;
-      // Connect lead signal path (pre-fader reverb: leadLevel is the shared master)
+      // Connect lead signal path (pre-fader reverb: leadLevel is the shared master, leadVoiceLevel provides final trim)
       this.leadVoiceLevel = ctx.createGain();
-      this.leadVoiceLevel.gain.value = 1.0;
+      this.leadVoiceLevel.gain.value = ENGINE_TRIMS.lead;
       this.leadFilter.connect(this.leadVoiceLevel);
       this.leadVoiceLevel.connect(this.leadDry);
       this.leadDry.connect(this.masterGain);
-      // Ping-pong delay
-      this.leadFilter.connect(this.leadDelayL);
-      this.leadDelayL.connect(this.leadDelayFeedbackL);
-      this.leadDelayFeedbackL.connect(this.leadDelayR);
-      this.leadDelayR.connect(this.leadDelayFeedbackR);
-      this.leadDelayFeedbackR.connect(this.leadDelayL);
-      this.leadDelayL.connect(this.leadMerger, 0, 0);
-      this.leadDelayR.connect(this.leadMerger, 0, 1);
-      this.leadMerger.connect(this.leadDelayMix);
-      this.leadDelayMix.connect(this.leadDry);
-      this.leadDelayMix.connect(this.leadDelayReverbSend);
-      this.leadDelayReverbSend.connect(this.reverbNode!);
-      // Shared leadReverbSend kept for WASM path only
-      this.leadReverbSend.connect(this.reverbNode!);
 
       // Create lead split buses for separate granular tapping + per-lead reverb sends
       if (!this.lead1Bus) {
@@ -5933,6 +6107,7 @@ export class AudioEngine {
       this.lead2ReverbSend.gain.value = this.sliderState?.lead2ReverbSend ?? 0.5;
       this.lead2Bus.connect(this.lead2ReverbSend);
       this.lead2ReverbSend.connect(this.reverbNode!);
+      this.ensureLeadDelaySends(ctx);
 
       // WASM lead connections (if WASM node exists, per-lead output routing)
       if (this.leadFmWasmNode) {
@@ -5946,6 +6121,12 @@ export class AudioEngine {
         if (this.granularLead1Send) {
           this.leadFmWasmNode.connect(this.granularLead1Send, 0);
         }
+        if (this.lead1DelayASend) {
+          this.leadFmWasmNode.connect(this.lead1DelayASend, 0);
+        }
+        if (this.lead1DelayBSend) {
+          this.leadFmWasmNode.connect(this.lead1DelayBSend, 0);
+        }
 
         // Lead 2 dry: output[1] → level gain → leadVoiceLevel (bypasses leadFilter)
         this.leadWasmLead2LevelGain = ctx.createGain();
@@ -5957,6 +6138,12 @@ export class AudioEngine {
         if (this.granularLead2Send) {
           this.leadFmWasmNode.connect(this.granularLead2Send, 1);
         }
+        if (this.lead2DelayASend) {
+          this.leadFmWasmNode.connect(this.lead2DelayASend, 1);
+        }
+        if (this.lead2DelayBSend) {
+          this.leadFmWasmNode.connect(this.lead2DelayBSend, 1);
+        }
       }
     }
 
@@ -5966,8 +6153,10 @@ export class AudioEngine {
       this.synthBus = ctx.createGain();
       this.dryBus = ctx.createGain();
       this.dryBus.gain.value = 1.0;
-      this.synthReverbSend = ctx.createGain();
-      this.synthReverbSend.gain.value = this.sliderState?.synthReverbSend ?? 0.7;
+      this.pad1ReverbSend = ctx.createGain();
+      this.pad1ReverbSend.gain.value = this.sliderState?.pad1ReverbSend ?? 0.7;
+      this.pad2ReverbSend = ctx.createGain();
+      this.pad2ReverbSend.gain.value = this.sliderState?.pad2ReverbSend ?? 0.7;
       this.synthDirect = ctx.createGain();
       this.synthDirect.gain.value = 1.0;  // Level is per-voice via mixerGain
       // Create pad split buses for separate granular tapping
@@ -5991,11 +6180,12 @@ export class AudioEngine {
       }
       // Connect: synthBus → dryBus → synthDirect → masterGain (skip granular for independent mode)
       this.synthBus.connect(this.dryBus);
-      // Pre-fader reverb send: tap from preFaderBus (independent of pad level)
-      if (this.pad1PreFaderBus) this.pad1PreFaderBus.connect(this.synthReverbSend);
-      if (this.pad2PreFaderBus) this.pad2PreFaderBus.connect(this.synthReverbSend);
+      // Pre-fader reverb sends: tap from per-pad buses (independent of pad level)
+      if (this.pad1PreFaderBus && this.pad1ReverbSend) this.pad1PreFaderBus.connect(this.pad1ReverbSend);
+      if (this.pad2PreFaderBus && this.pad2ReverbSend) this.pad2PreFaderBus.connect(this.pad2ReverbSend);
       this.dryBus.connect(this.synthDirect);
-      this.synthReverbSend.connect(this.reverbNode!);
+      this.pad1ReverbSend?.connect(this.reverbNode!);
+      this.pad2ReverbSend?.connect(this.reverbNode!);
       this.synthDirect.connect(this.masterGain);
     }
 
@@ -6065,21 +6255,12 @@ export class AudioEngine {
           return;
         }
 
-        // Restore delay feedback gains (may have been zeroed by stopSynthEuclidScheduler)
-        const feedback = this.sliderState.leadDelayFeedback ?? 0.4;
-        const delayMixLevel = this.sliderState.leadDelayMix ?? 0.35;
-        const restoreNow = this.ctx.currentTime;
-        this.leadDelayFeedbackL?.gain.setTargetAtTime(feedback, restoreNow, 0.02);
-        this.leadDelayFeedbackR?.gain.setTargetAtTime(feedback, restoreNow, 0.02);
-        this.leadDelayMix?.gain.setTargetAtTime(delayMixLevel, restoreNow, 0.02);
-
         // Reset step positions
         this.synthEuclidCurrentStep = [0, 0, 0, 0];
         this.synthEuclidHitCounts = [0, 0, 0, 0];
         this.synthEuclidStepIndex = [0, 0, 0, 0];
 
-        const startNow = this.ctx.currentTime;
-        this.synthEuclidNextStepTime = [startNow, startNow, startNow, startNow];
+        this.synthEuclidNextStepTime = [0, 0, 0, 0];
 
         const scheduleSynthEuclid = () => {
           try {
@@ -6092,19 +6273,9 @@ export class AudioEngine {
             const lookAhead = 0.1; // 100ms look-ahead
             const scheduleUntil = now + lookAhead;
 
-            // Time-jump recovery: if any lane is >500ms behind (e.g. tab was backgrounded),
-            // snap all lanes forward to now instead of processing a burst of catch-up events
             const timeJumpThreshold = 0.5;
-            for (let i = 0; i < 4; i++) {
-              if (this.synthEuclidNextStepTime[i] > 0 && now - this.synthEuclidNextStepTime[i] > timeJumpThreshold) {
-                for (let j = 0; j < 4; j++) {
-                  this.synthEuclidNextStepTime[j] = now;
-                }
-                break;
-              }
-            }
 
-            const baseBPM = this.sliderState.synthEuclidBaseBPM ?? 120;
+            const baseBPM = getSharedSequencerBpm(this.sliderState);
             const tempo = this.sliderState.synthEuclideanTempo ?? 1;
             const beatDuration = 60 / (baseBPM * tempo); // Base beat duration, scaled by tempo multiplier
 
@@ -6153,6 +6324,12 @@ export class AudioEngine {
           // Ensure trig condition counters are initialized for this lane
           if (this.synthTrigConditionCounters[laneIndex].length < steps) {
             this.synthTrigConditionCounters[laneIndex] = new Array(steps).fill(0);
+          }
+
+          const laneClockDiv = this.synthEuclidClockDivs[laneIndex] ?? '1/8';
+          const laneStepDuration = clockDivToSec(laneClockDiv);
+          if (this.synthEuclidNextStepTime[laneIndex] <= 0 || now - this.synthEuclidNextStepTime[laneIndex] > timeJumpThreshold) {
+            this.synthEuclidNextStepTime[laneIndex] = alignSequencerTime(now, laneStepDuration);
           }
 
           // Advance while within look-ahead window
@@ -6472,8 +6649,6 @@ export class AudioEngine {
             this.onSynthStepPositionChange?.([...this.synthEuclidCurrentStep], [...this.synthEuclidHitCounts]);
 
             // Advance step with per-lane clock division and swing
-            const laneClockDiv = this.synthEuclidClockDivs[laneIndex] ?? '1/8';
-            const laneStepDuration = clockDivToSec(laneClockDiv);
             const laneSwing = this.synthEuclidSwings[laneIndex] ?? 0;
             const swingOffset = (this.synthEuclidStepIndex[laneIndex] % 2 === 1) ? laneStepDuration * laneSwing * 0.5 : 0;
             this.synthEuclidStepIndex[laneIndex]++;
@@ -6550,293 +6725,76 @@ export class AudioEngine {
       this.leadFmWasmNode.port.postMessage({ type: 'allNotesOff' });
     }
 
-    // Silence the delay feedback loop immediately so it doesn't keep circulating
-    const now = this.ctx?.currentTime ?? 0;
-    const fadeTime = 0.05; // 50ms fade to avoid click
-    this.leadDelayFeedbackL?.gain.setTargetAtTime(0, now, fadeTime);
-    this.leadDelayFeedbackR?.gain.setTargetAtTime(0, now, fadeTime);
-    // Also fade the delay mix output to silence the tail
-    this.leadDelayMix?.gain.setTargetAtTime(0, now, fadeTime);
   }
 
-  // ═══════════════ Granular Euclidean Scheduler ═══════════════
-
-  private startGranularEuclidScheduler(): void {
-    if (this.granularEuclidScheduleTimer) return; // Already running
+  private startGranularTempoSyncScheduler(): void {
+    if (this.granularTempoSyncTimer) return;
     if (!this.ctx || !this.sliderState) return;
 
-    // Reset step positions
-    this.granularEuclidCurrentStep = [0, 0, 0, 0];
-    this.granularEuclidHitCounts = [0, 0, 0, 0];
-    this.granularEuclidStepIndex = [0, 0, 0, 0];
+    this.granularTempoSyncNextStepTime = [0, 0, 0, 0];
 
-    const now = this.ctx.currentTime;
-    this.granularEuclidNextStepTime = [now, now, now, now];
-
-    const scheduleGranularEuclid = () => {
+    const scheduleTempoSync = () => {
       try {
-        if (!this.ctx || !this.sliderState || !this.sliderState.granularEuclidMasterEnabled) {
-          this.stopGranularEuclidScheduler();
+        if (!this.ctx || !this.sliderState || !this.hasGranularTempoSyncVoices(this.sliderState)) {
+          this.stopGranularTempoSyncScheduler();
           return;
         }
 
-        const now = this.ctx.currentTime;
-        const lookAhead = 0.1; // 100ms
-        const scheduleUntil = now + lookAhead;
+        const nowTime = this.ctx.currentTime;
+        const lookAhead = 0.1;
+        const scheduleUntil = nowTime + lookAhead;
+        const baseBPM = getSharedSequencerBpm(this.sliderState);
+        const beatDuration = 60 / baseBPM;
 
-        // Time-jump recovery: if any lane is >500ms behind (e.g. tab was backgrounded),
-        // snap all lanes forward to now instead of processing a burst of catch-up events
-        const timeJumpThreshold = 0.5;
-        for (let i = 0; i < 4; i++) {
-          if (this.granularEuclidNextStepTime[i] > 0 && now - this.granularEuclidNextStepTime[i] > timeJumpThreshold) {
-            for (let j = 0; j < 4; j++) {
-              this.granularEuclidNextStepTime[j] = now;
-            }
-            break;
-          }
-        }
-
-        const baseBPM = this.sliderState.granularEuclidBaseBPM ?? 120;
-        const tempo = this.sliderState.granularEuclidTempo ?? 1;
-        const beatDuration = 60 / (baseBPM * tempo);
-
-        const clockDivToSec = (clockDiv: ClockDivision) => clockDivToSeconds(clockDiv, beatDuration);
-
-        const rng = this.rng;
-        if (!rng) {
-          this.granularEuclidScheduleTimer = window.setTimeout(scheduleGranularEuclid, 50);
-          return;
-        }
-
-        // Read lane params fresh each tick
-        const laneParams = [
-          { enabled: this.sliderState.granularEuclid1Enabled, steps: this.sliderState.granularEuclid1Steps, hits: this.sliderState.granularEuclid1Hits, rotation: this.sliderState.granularEuclid1Rotation, level: this.sliderState.granularEuclid1Level, probability: this.sliderState.granularEuclid1Probability ?? 1.0, velMin: this.sliderState.granularEuclid1VelocityMin ?? 0.6, velMax: this.sliderState.granularEuclid1VelocityMax ?? 1.0, preset: this.sliderState.granularEuclid1Preset },
-          { enabled: this.sliderState.granularEuclid2Enabled, steps: this.sliderState.granularEuclid2Steps, hits: this.sliderState.granularEuclid2Hits, rotation: this.sliderState.granularEuclid2Rotation, level: this.sliderState.granularEuclid2Level, probability: this.sliderState.granularEuclid2Probability ?? 1.0, velMin: this.sliderState.granularEuclid2VelocityMin ?? 0.5, velMax: this.sliderState.granularEuclid2VelocityMax ?? 0.9, preset: this.sliderState.granularEuclid2Preset },
-          { enabled: this.sliderState.granularEuclid3Enabled, steps: this.sliderState.granularEuclid3Steps, hits: this.sliderState.granularEuclid3Hits, rotation: this.sliderState.granularEuclid3Rotation, level: this.sliderState.granularEuclid3Level, probability: this.sliderState.granularEuclid3Probability ?? 1.0, velMin: this.sliderState.granularEuclid3VelocityMin ?? 0.7, velMax: this.sliderState.granularEuclid3VelocityMax ?? 1.0, preset: this.sliderState.granularEuclid3Preset },
-          { enabled: this.sliderState.granularEuclid4Enabled, steps: this.sliderState.granularEuclid4Steps, hits: this.sliderState.granularEuclid4Hits, rotation: this.sliderState.granularEuclid4Rotation, level: this.sliderState.granularEuclid4Level, probability: this.sliderState.granularEuclid4Probability ?? 1.0, velMin: this.sliderState.granularEuclid4VelocityMin ?? 0.4, velMax: this.sliderState.granularEuclid4VelocityMax ?? 0.8, preset: this.sliderState.granularEuclid4Preset },
-        ];
-
-        for (let laneIndex = 0; laneIndex < 4; laneIndex++) {
-          const lane = laneParams[laneIndex];
-          if (!lane.enabled) continue;
-
-          // Resolve pattern params
-          let steps: number, hits: number, rotation: number;
-          if (lane.preset === 'custom') {
-            steps = lane.steps; hits = lane.hits; rotation = lane.rotation;
-          } else {
-            const preset = this.EUCLIDEAN_PRESETS[lane.preset] || this.EUCLIDEAN_PRESETS.lancaran;
-            steps = preset.steps; hits = preset.hits;
-            rotation = (preset.rotation + lane.rotation) % steps;
+        for (let voiceIndex = 0; voiceIndex < 4; voiceIndex++) {
+          if (!this.isGranularTempoSyncVoiceActive(this.sliderState, voiceIndex)) {
+            this.granularTempoSyncNextStepTime[voiceIndex] = 0;
+            continue;
           }
 
-          // Generate pattern
-          const basePattern = seqEuclidean(steps, hits, rotation);
-          const toggleMap = this.granularStepOverrides.triggerToggles[laneIndex];
-          const pattern = toggleMap && toggleMap.size > 0
-            ? basePattern.map((hit, i) => toggleMap.has(i) ? toggleMap.get(i)! : hit)
-            : basePattern;
+          const voiceNum = voiceIndex + 1;
+          const clockDiv = (this.sliderState[`granularV${voiceNum}TempoDiv` as keyof SliderState] as ClockDivision | undefined) ?? '1/8';
+          const stepDuration = clockDivToSeconds(clockDiv, beatDuration);
 
-          // Sub-lane overrides (gated on per-lane enabled state)
-          const ov = this.granularStepOverrides;
-          const glEnabled = this.granularSubLaneEnabled[laneIndex] ?? {};
-          const exprArr = (glEnabled.expression !== false) ? ov.expression[laneIndex] : null;
-          const exprDir = ov.expressionDirection[laneIndex] ?? 'forward';
-          const exprSteps = exprArr?.length ?? 0;
-          const probArr = (glEnabled.expression !== false) ? ov.probability[laneIndex] : null;
-          const ratchetArr = (glEnabled.expression !== false) ? ov.ratchet[laneIndex] : null;
-          const trigCondArr = ov.trigCondition[laneIndex];
-          // Slice sub-lane
-          const sliceArr = (glEnabled.slice !== false) ? ov.slice[laneIndex] : null;
-          const sliceDir = ov.sliceDirection[laneIndex] ?? 'forward';
-          const sliceSteps = sliceArr?.length ?? 0;
-          // Pitch sub-lane
-          const pitchArr = (glEnabled.pitch !== false) ? ov.pitch[laneIndex] : null;
-          const pitchDir = ov.pitchDirection[laneIndex] ?? 'forward';
-          const pitchSteps = pitchArr?.length ?? 0;
-          // Reverse sub-lane
-          const reverseArr = (glEnabled.reverse !== false) ? ov.reverse[laneIndex] : null;
-          const reverseDir = ov.reverseDirection[laneIndex] ?? 'forward';
-          const reverseSteps = reverseArr?.length ?? 0;
-
-          // Ensure trig condition counters
-          if (this.granularTrigConditionCounters[laneIndex].length < steps) {
-            this.granularTrigConditionCounters[laneIndex] = new Array(steps).fill(0);
+          if (this.granularTempoSyncNextStepTime[voiceIndex] <= 0 || nowTime - this.granularTempoSyncNextStepTime[voiceIndex] > 0.5) {
+            this.granularTempoSyncNextStepTime[voiceIndex] = alignSequencerTime(nowTime, stepDuration);
           }
 
-          // Advance while within look-ahead window
-          while (this.granularEuclidNextStepTime[laneIndex] < scheduleUntil) {
-            const stepInPattern = this.granularEuclidStepIndex[laneIndex] % steps;
-            const scheduleTime = this.granularEuclidNextStepTime[laneIndex];
-            const delayMs = Math.max(0, (scheduleTime - now) * 1000);
+          while (this.granularTempoSyncNextStepTime[voiceIndex] < scheduleUntil) {
+            const scheduleTime = this.granularTempoSyncNextStepTime[voiceIndex];
+            const delayMs = Math.max(0, (scheduleTime - nowTime) * 1000);
+            const scheduledVoice = voiceIndex;
 
-            // Update step position for UI
-            this.granularEuclidCurrentStep[laneIndex] = stepInPattern;
-
-            // Track total steps for bar-boundary detection
-            this.granularEuclidTotalStepCounts[laneIndex]++;
-
-            // Evolve at bar boundaries (step 0 after at least one full cycle)
-            if (stepInPattern === 0 && this.granularEuclidTotalStepCounts[laneIndex] > 1) {
-              const bar = Math.floor(this.granularEuclidTotalStepCounts[laneIndex] / steps);
-              const evolveConfig = this.granularEvolveConfigs[laneIndex];
-              if (evolveConfig.enabled) {
-                const granT = getEffectiveTension(
-                  this.sliderState!.tension ?? 0.3,
-                  this.sliderState!.granularTensionMode ?? 'bypass',
-                  this.sliderState!.granularTensionValue ?? 0,
-                );
-                const laneOv = this.extractGranularLaneOverrides(laneIndex);
-                // Filter evolve's enabledSubLanes by the UI sub-lane enabled state
-                const guiEnabled = this.granularSubLaneEnabled[laneIndex] ?? {};
-                const granEnabledSubs = (evolveConfig.enabledSubLanes ?? ['pitch', 'expression', 'slice', 'reverse', 'probability', 'ratchet'])
-                  .filter(sl => guiEnabled[sl] !== false);
-                const result = evolveGranularLane(
-                  laneOv,
-                  { ...evolveConfig, enabledSubLanes: granEnabledSubs },
-                  this.granularEvolveStates[laneIndex],
-                  bar,
-                  rng,
-                  { effectiveTension: Math.max(0, granT), swing: this.granularEuclidSwings[laneIndex] },
-                );
-                if (result.changed) {
-                  this.applyGranularLaneOverrides(laneIndex, result.overrides);
-                  this.granularEuclidSwings[laneIndex] = result.swing;
-                  this.onGranularEvolveTrigger?.(laneIndex);
-                  this.onGranularEvolveOverridesChanged?.(laneIndex, result.overrides);
-                }
+            window.setTimeout(() => {
+              if (this.granularFxNode && this.sliderState && this.isGranularTempoSyncVoiceActive(this.sliderState, scheduledVoice)) {
+                this.granularFxNode.port.postMessage({
+                  type: 'granularTrigger',
+                  voice: scheduledVoice,
+                  velocity: 1,
+                });
               }
-            }
+            }, delayMs);
 
-            if (pattern[stepInPattern]) {
-              this.granularEuclidHitCounts[laneIndex]++;
-
-              // Trig condition gate
-              const tc: [number, number] = (trigCondArr && trigCondArr[stepInPattern]) ? trigCondArr[stepInPattern] : [1, 1];
-              this.granularTrigConditionCounters[laneIndex][stepInPattern] += 1;
-              const visitCount = this.granularTrigConditionCounters[laneIndex][stepInPattern];
-              const trigCondPassed = tc[1] <= 1 || (((visitCount - 1) % tc[1]) + 1 === tc[0]);
-
-              // Per-step probability
-              const stepProb = Math.max(0, Math.min(1, probArr ? (probArr[stepInPattern] ?? 1) : 1));
-
-              if (trigCondPassed && rng() <= lane.probability * stepProb) {
-                // Expression/velocity sub-lane
-                let velocity: number;
-                if (exprArr && exprSteps > 0) {
-                  const exprIdx = seqLaneIndex(
-                    { enabled: true, steps: exprSteps, direction: exprDir, _ppForward: true },
-                    this.granularEuclidHitCounts[laneIndex] - 1
-                  );
-                  velocity = Math.max(0, Math.min(1, exprArr[exprIdx] ?? 1.0)) * lane.level;
-                } else {
-                  // Random velocity within range
-                  velocity = (lane.velMin + rng() * (lane.velMax - lane.velMin)) * lane.level;
-                }
-
-                // Ratchet sub-lane
-                const ratchetSteps = ratchetArr?.length ?? 0;
-                let ratchetRaw: number | undefined;
-                if (ratchetArr && ratchetSteps > 0) {
-                  const ratchetIdx = seqLaneIndex(
-                    { enabled: true, steps: ratchetSteps, direction: exprDir, _ppForward: true },
-                    this.granularEuclidHitCounts[laneIndex] - 1
-                  );
-                  ratchetRaw = ratchetArr[ratchetIdx];
-                }
-                const ratchet = Math.max(1, Math.round(ratchetRaw ?? 1));
-                const ratchetClockDiv = this.granularEuclidClockDivs[laneIndex] ?? '1/8';
-                const ratchetStepDuration = clockDivToSec(ratchetClockDiv);
-                const ratchetWindow = ratchetStepDuration / ratchet;
-
-                for (let r = 0; r < ratchet; r++) {
-                  const rDelayMs = delayMs + r * ratchetWindow * 1000;
-                  const voiceIdx = laneIndex; // Lane N → Voice N
-                  const capturedVelocity = velocity / ratchet; // Split energy across ratchets
-
-                  // Slice sub-lane: per-step slice override
-                  let sliceOverride: number | undefined;
-                  if (sliceArr && sliceSteps > 0) {
-                    const sliceIdx = seqLaneIndex(
-                      { enabled: true, steps: sliceSteps, direction: sliceDir, _ppForward: true },
-                      this.granularEuclidHitCounts[laneIndex] - 1
-                    );
-                    sliceOverride = Math.round(Math.max(0, Math.min(15, sliceArr[sliceIdx] ?? 0)));
-                  }
-
-                  // Pitch sub-lane: per-step pitch offset in semitones
-                  let pitchOverride: number | undefined;
-                  if (pitchArr && pitchSteps > 0) {
-                    const pitchIdx = seqLaneIndex(
-                      { enabled: true, steps: pitchSteps, direction: pitchDir, _ppForward: true },
-                      this.granularEuclidHitCounts[laneIndex] - 1
-                    );
-                    pitchOverride = pitchArr[pitchIdx] ?? 0;
-                  }
-
-                  // Reverse sub-lane: per-step reverse toggle
-                  let reverseOverride: boolean | undefined;
-                  if (reverseArr && reverseSteps > 0) {
-                    const reverseIdx = seqLaneIndex(
-                      { enabled: true, steps: reverseSteps, direction: reverseDir, _ppForward: true },
-                      this.granularEuclidHitCounts[laneIndex] - 1
-                    );
-                    reverseOverride = (reverseArr[reverseIdx] ?? 0) >= 0.5;
-                  }
-
-                  window.setTimeout(() => {
-                    if (this.granularFxNode) {
-                      this.granularFxNode.port.postMessage({
-                        type: 'euclidTrigger',
-                        voice: voiceIdx,
-                        velocity: capturedVelocity,
-                        sliceOverride,
-                        pitchOverride,
-                        reverseOverride,
-                      });
-                    }
-                    // Fire UI feedback callback for per-trigger overrides
-                    this.onGranularTriggerOverride?.(voiceIdx, { sliceOverride, pitchOverride, reverseOverride });
-                  }, rDelayMs);
-                }
-              }
-            }
-
-            // Fire step position callback
-            this.onGranularStepPositionChange?.([...this.granularEuclidCurrentStep], [...this.granularEuclidHitCounts]);
-
-            // Advance step with per-lane clock division and swing
-            const laneClockDiv = this.granularEuclidClockDivs[laneIndex] ?? '1/8';
-            const laneStepDuration = clockDivToSec(laneClockDiv);
-            const laneSwing = this.granularEuclidSwings[laneIndex] ?? 0;
-            const swingOffset = (this.granularEuclidStepIndex[laneIndex] % 2 === 1) ? laneStepDuration * laneSwing * 0.5 : 0;
-            this.granularEuclidStepIndex[laneIndex]++;
-            this.granularEuclidNextStepTime[laneIndex] += laneStepDuration + swingOffset;
+            this.granularTempoSyncNextStepTime[voiceIndex] += stepDuration;
           }
         }
 
-        this.granularEuclidScheduleTimer = window.setTimeout(scheduleGranularEuclid, 50);
+        this.granularTempoSyncTimer = window.setTimeout(scheduleTempoSync, 50);
       } catch (e) {
-        console.error('[Granular Euclid] Scheduler error:', e);
-        this.granularEuclidScheduleTimer = window.setTimeout(scheduleGranularEuclid, 100);
+        console.error('[Granular Tempo Sync] Scheduler error:', e);
+        this.granularTempoSyncTimer = window.setTimeout(scheduleTempoSync, 100);
       }
     };
 
-    scheduleGranularEuclid();
+    scheduleTempoSync();
   }
 
-  private stopGranularEuclidScheduler(): void {
-    if (this.granularEuclidScheduleTimer) {
-      clearTimeout(this.granularEuclidScheduleTimer);
-      this.granularEuclidScheduleTimer = null;
+  private stopGranularTempoSyncScheduler(): void {
+    if (this.granularTempoSyncTimer) {
+      clearTimeout(this.granularTempoSyncTimer);
+      this.granularTempoSyncTimer = null;
     }
-    this.granularEuclidCurrentStep = [0, 0, 0, 0];
-    this.granularEuclidHitCounts = [0, 0, 0, 0];
-    this.granularEuclidStepIndex = [0, 0, 0, 0];
-    this.granularEuclidNextStepTime = [0, 0, 0, 0];
-    this.granularTrigConditionCounters = [[], [], [], []];
-    this.granularEuclidTotalStepCounts = [0, 0, 0, 0];
-    this.onGranularStepPositionChange?.([0, 0, 0, 0], [0, 0, 0, 0]);
+    this.granularTempoSyncNextStepTime = [0, 0, 0, 0];
   }
 
   getState(): EngineState {
@@ -6890,8 +6848,7 @@ export class AudioEngine {
   }
 
   /**
-   * Get waves/ocean bus output (ocean sample + ocean synth after filter)
-   * This is the oceanFilter node which receives both ocean sources
+   * Get waves bus output (sample after the shared waves filter)
    */
   getWavesStemNode(): BiquadFilterNode | null {
     return this.oceanFilter;

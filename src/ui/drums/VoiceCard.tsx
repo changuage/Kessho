@@ -4,6 +4,8 @@ import type { DrumVoiceType } from '../../audio/drumSynth';
 import type { DrumVoiceConfig } from '../../audio/drumVoiceConfig';
 import MorphSlider from './MorphSlider';
 import VoiceCardAdvanced from './VoiceCardAdvanced';
+import DrumPresetManager from './DrumPresetManager';
+import { useSliderHelp } from '../SliderHelpOverlay';
 
 interface VoiceCardProps {
   voice: DrumVoiceType;
@@ -62,6 +64,17 @@ const VoiceCard: React.FC<VoiceCardProps> = ({
   const macros = VARIATION_KEYS[voice];
   const varVal = state[macros.variation] as number;
   const distVal = state[macros.distance] as number;
+  const { announceHelp, announceSlider } = useSliderHelp();
+  const delaySendKey = DELAY_SEND_KEYS[voice];
+  const announceDelaySendHelp = useCallback(() => {
+    if (!delaySendKey) return;
+    announceSlider(String(delaySendKey), { label: 'Delay Send' });
+  }, [announceSlider, delaySendKey]);
+  const bindHelp = useCallback((helpKey: string) => ({
+    onMouseEnter: () => announceHelp(helpKey),
+    onPointerDown: () => announceHelp(helpKey),
+    onFocus: () => announceHelp(helpKey),
+  }), [announceHelp]);
 
   return (
     <div
@@ -82,6 +95,7 @@ const VoiceCard: React.FC<VoiceCardProps> = ({
               data-voice={voice}
               onClick={() => triggerVoice(voice)}
               title={`Test ${config.label}`}
+              {...bindHelp('drumVoiceTrigger')}
             >
               ▶︎
             </button>
@@ -90,6 +104,7 @@ const VoiceCard: React.FC<VoiceCardProps> = ({
                 className="vc-edit-btn"
                 onClick={() => onToggleEditing(voice)}
                 title={isEditing ? 'Close advanced' : 'Advanced parameters'}
+                {...bindHelp('drumVoiceAdvanced')}
               >
                 ✎
               </button>
@@ -134,6 +149,14 @@ const VoiceCard: React.FC<VoiceCardProps> = ({
       {/* ── Advanced panel: shown when editing (✎ toggled) ── */}
       {isEditing && (
         <div className="voice-card-advanced">
+          {/* Preset manager: first section above Tone */}
+          <DrumPresetManager
+            voice={voice}
+            state={state}
+            color={config.color}
+            onParamChange={onParamChange}
+          />
+
           <VoiceCardAdvanced
             voice={voice}
             config={config}
@@ -144,23 +167,27 @@ const VoiceCard: React.FC<VoiceCardProps> = ({
           />
 
           {/* Delay send at bottom of advanced */}
-          {state.drumDelayEnabled && DELAY_SEND_KEYS[voice] && (
+          {delaySendKey && (
             <div className="param-section">
               <div className="section-header">Send</div>
               <div className="section-body">
-                <div className="param-row">
+                <div className="param-row" onMouseEnter={announceDelaySendHelp} onPointerDown={announceDelaySendHelp}>
                   <label>Delay Send</label>
                   <input
                     type="range"
                     min={0}
                     max={1}
                     step={0.01}
-                    value={state[DELAY_SEND_KEYS[voice]!] as number}
-                    data-key={DELAY_SEND_KEYS[voice]!}
-                    onChange={(e) => onParamChange(DELAY_SEND_KEYS[voice]!, parseFloat(e.target.value) as SliderState[keyof SliderState])}
+                    value={state[delaySendKey] as number}
+                    data-key={delaySendKey}
+                    onChange={(e) => {
+                      announceDelaySendHelp();
+                      onParamChange(delaySendKey, parseFloat(e.target.value) as SliderState[keyof SliderState]);
+                    }}
+                    onFocus={announceDelaySendHelp}
                   />
                   <span className="val">
-                    {Math.round((state[DELAY_SEND_KEYS[voice]!] as number) * 100)}%
+                    {Math.round((state[delaySendKey] as number) * 100)}%
                   </span>
                 </div>
               </div>
@@ -199,6 +226,10 @@ const MacroSlider: React.FC<{
   const isDual = sp.mode !== 'single';
   const trackRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState<'min' | 'max' | null>(null);
+  const { announceSlider } = useSliderHelp();
+  const announceHelp = useCallback(() => {
+    announceSlider(String(paramKey), { label });
+  }, [announceSlider, label, paramKey]);
 
   // Long press for mobile mode cycling
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -227,7 +258,9 @@ const MacroSlider: React.FC<{
     const handleMove = (e: MouseEvent | TouchEvent) => {
       if (!trackRef.current) return;
       const rect = trackRef.current.getBoundingClientRect();
-      const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+      const clientX = 'touches' in e
+        ? (e.touches.length > 0 ? e.touches[0]!.clientX : rect.left)
+        : e.clientX;
       const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
       const newValue = Math.round(pct * 100) / 100;
 
@@ -256,7 +289,7 @@ const MacroSlider: React.FC<{
 
   if (!isDual) {
     return (
-      <div className="vc-macro-item">
+      <div className="vc-macro-item" onMouseEnter={announceHelp} onPointerDown={announceHelp}>
         <label>{label}</label>
         <input
           type="range"
@@ -264,7 +297,11 @@ const MacroSlider: React.FC<{
           max={1}
           step={0.01}
           value={value}
-          onChange={(e) => onChange(parseFloat(e.target.value))}
+          onChange={(e) => {
+            announceHelp();
+            onChange(parseFloat(e.target.value));
+          }}
+          onFocus={announceHelp}
           onDoubleClick={() => sp.onCycleMode(paramKey)}
           onTouchStart={handleLongPressStart}
           onTouchEnd={cancelLongPress}
@@ -293,6 +330,8 @@ const MacroSlider: React.FC<{
       <div
         className="macro-dual-track"
         ref={trackRef}
+        onMouseEnter={announceHelp}
+        onPointerDown={announceHelp}
         onDoubleClick={() => sp.onCycleMode(paramKey)}
         onTouchStart={handleLongPressStart}
         onTouchEnd={cancelLongPress}
@@ -313,14 +352,14 @@ const MacroSlider: React.FC<{
         <div
           className="macro-dual-thumb"
           style={{ left: `${minPct}%`, borderColor: modeColor }}
-          onMouseDown={(e) => { e.preventDefault(); setDragging('min'); }}
-          onTouchStart={(e) => { e.stopPropagation(); setDragging('min'); }}
+          onMouseDown={(e) => { e.preventDefault(); announceHelp(); setDragging('min'); }}
+          onTouchStart={(e) => { e.stopPropagation(); announceHelp(); setDragging('min'); }}
         />
         <div
           className="macro-dual-thumb"
           style={{ left: `${maxPct}%`, borderColor: modeColor }}
-          onMouseDown={(e) => { e.preventDefault(); setDragging('max'); }}
-          onTouchStart={(e) => { e.stopPropagation(); setDragging('max'); }}
+          onMouseDown={(e) => { e.preventDefault(); announceHelp(); setDragging('max'); }}
+          onTouchStart={(e) => { e.stopPropagation(); announceHelp(); setDragging('max'); }}
         />
       </div>
       <span className="val" style={{ fontSize: '0.5rem' }}>

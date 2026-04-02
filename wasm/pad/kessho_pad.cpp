@@ -241,7 +241,8 @@ static PadParams g_pads[PAD_NUM_PADS];
 // Output buffers
 static float g_output[PAD_MAX_BLOCK_SIZE * 2];
 static float g_reverb_output[PAD_MAX_BLOCK_SIZE * 2];
-static float g_prefader_output[PAD_MAX_BLOCK_SIZE * 2];
+static float g_prefader_pad1_output[PAD_MAX_BLOCK_SIZE * 2];
+static float g_prefader_pad2_output[PAD_MAX_BLOCK_SIZE * 2];
 
 static float g_reverb_send_level = 0.1f;
 
@@ -298,10 +299,14 @@ static void apply_lfo_modulation(float lfo_val, float depth, int dest,
 // ═══════════════════════════════════════════════════════════════════════════════
 
 static void render_voice(PadVoice& v, float* out_l, float* out_r,
-                         float* pf_l, float* pf_r, int block_size) {
+                         float* pf_pad1_l, float* pf_pad1_r,
+                         float* pf_pad2_l, float* pf_pad2_r,
+                         int block_size) {
     if (!v.active) return;
 
     const PadParams& p = g_pads[v.pad_idx];
+    float* target_pf_l = (v.pad_idx == 0) ? pf_pad1_l : pf_pad2_l;
+    float* target_pf_r = (v.pad_idx == 0) ? pf_pad1_r : pf_pad2_r;
 
     // Compute osc mix levels: cosine crossfade
     float osc_a_mix = cosf(p.osc_mix * KESSHO_HALF_PI);
@@ -454,8 +459,8 @@ static void render_voice(PadVoice& v, float* out_l, float* out_r,
         out_r[n] += output;
 
         // Pre-fader output (for granular)
-        pf_l[n] += filtered * final_amp * v.velocity;
-        pf_r[n] += filtered * final_amp * v.velocity;
+        target_pf_l[n] += filtered * final_amp * v.velocity;
+        target_pf_r[n] += filtered * final_amp * v.velocity;
     }
 }
 
@@ -480,7 +485,8 @@ int pad_init(float sample_rate) {
 
     memset(g_output, 0, sizeof(g_output));
     memset(g_reverb_output, 0, sizeof(g_reverb_output));
-    memset(g_prefader_output, 0, sizeof(g_prefader_output));
+    memset(g_prefader_pad1_output, 0, sizeof(g_prefader_pad1_output));
+    memset(g_prefader_pad2_output, 0, sizeof(g_prefader_pad2_output));
 
     return 0;
 }
@@ -491,23 +497,27 @@ void pad_destroy(void) {
 
 float* pad_get_output_ptr(void) { return g_output; }
 float* pad_get_reverb_send_ptr(void) { return g_reverb_output; }
-float* pad_get_prefader_ptr(void) { return g_prefader_output; }
+float* pad_get_prefader_pad1_ptr(void) { return g_prefader_pad1_output; }
+float* pad_get_prefader_pad2_ptr(void) { return g_prefader_pad2_output; }
 
 void pad_process_block(int block_size) {
     if (block_size > PAD_MAX_BLOCK_SIZE) block_size = PAD_MAX_BLOCK_SIZE;
 
     memset(g_output, 0, block_size * 2 * sizeof(float));
     memset(g_reverb_output, 0, block_size * 2 * sizeof(float));
-    memset(g_prefader_output, 0, block_size * 2 * sizeof(float));
+    memset(g_prefader_pad1_output, 0, block_size * 2 * sizeof(float));
+    memset(g_prefader_pad2_output, 0, block_size * 2 * sizeof(float));
 
     float dry_l[PAD_MAX_BLOCK_SIZE] = {};
     float dry_r[PAD_MAX_BLOCK_SIZE] = {};
-    float pf_l[PAD_MAX_BLOCK_SIZE] = {};
-    float pf_r[PAD_MAX_BLOCK_SIZE] = {};
+    float pf_pad1_l[PAD_MAX_BLOCK_SIZE] = {};
+    float pf_pad1_r[PAD_MAX_BLOCK_SIZE] = {};
+    float pf_pad2_l[PAD_MAX_BLOCK_SIZE] = {};
+    float pf_pad2_r[PAD_MAX_BLOCK_SIZE] = {};
 
     for (int i = 0; i < PAD_NUM_VOICES; i++) {
         if (g_voices[i].active) {
-            render_voice(g_voices[i], dry_l, dry_r, pf_l, pf_r, block_size);
+            render_voice(g_voices[i], dry_l, dry_r, pf_pad1_l, pf_pad1_r, pf_pad2_l, pf_pad2_r, block_size);
         }
     }
 
@@ -515,11 +525,13 @@ void pad_process_block(int block_size) {
         g_output[n * 2]     = dry_l[n];
         g_output[n * 2 + 1] = dry_r[n];
 
-        g_reverb_output[n * 2]     = pf_l[n] * g_reverb_send_level;
-        g_reverb_output[n * 2 + 1] = pf_r[n] * g_reverb_send_level;
+        g_reverb_output[n * 2]     = (pf_pad1_l[n] + pf_pad2_l[n]) * g_reverb_send_level;
+        g_reverb_output[n * 2 + 1] = (pf_pad1_r[n] + pf_pad2_r[n]) * g_reverb_send_level;
 
-        g_prefader_output[n * 2]     = pf_l[n];
-        g_prefader_output[n * 2 + 1] = pf_r[n];
+        g_prefader_pad1_output[n * 2]     = pf_pad1_l[n];
+        g_prefader_pad1_output[n * 2 + 1] = pf_pad1_r[n];
+        g_prefader_pad2_output[n * 2]     = pf_pad2_l[n];
+        g_prefader_pad2_output[n * 2 + 1] = pf_pad2_r[n];
     }
 }
 

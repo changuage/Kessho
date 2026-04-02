@@ -22,6 +22,23 @@ npm run preview
 
 The app will be available at `http://localhost:5173`
 
+## Mac Migration Notes
+
+If you copied this project from a Windows PC to a Mac by zipping the folder, do not trust the old `node_modules` folder.
+
+Use this sequence on the Mac:
+
+```bash
+bash scripts/check-macos.sh
+rm -rf node_modules
+npm install
+npm run build
+```
+
+Notes:
+- `scripts/check-macos.sh` fixes missing execute bits on local shell scripts and warns about common migration problems.
+- If `bash scripts/check-macos.sh` warns that the Xcode license is not accepted, run `sudo xcodebuild -license`. That is only needed for local WASM/native tooling, but this machine is currently blocked on it.
+
 ## 🎵 Features
 
 ### Dual UI Modes

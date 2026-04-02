@@ -1,7 +1,7 @@
 # Drum Synth Port - Full Audit
 
 > **Status**: CSS/layout port complete. Deep functional + wiring gaps remain.
-> **Source**: `public/drum-synth-ui-prototype_option2.html` (6187 lines)
+> **Source**: `public/ARCHIVE/drum-synth-ui-prototype_option2.html` (6187 lines)
 > **Target**: React components in `src/ui/drums/` + wiring in `src/App.tsx` + audio engine in `src/audio/drumSynth.ts`
 > **Build**: 717.67 KB JS, 40.02 KB CSS, 0 TS errors
 

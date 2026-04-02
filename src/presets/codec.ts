@@ -3,6 +3,7 @@
 
 import { PARAM_REGISTRY, type ParamLevel } from './ParamRegistry';
 export type { ParamLevel } from './ParamRegistry';
+import type { PresetEntry } from './types';
 import type { SliderState } from '../ui/state';
 
 /** Extract only the params owned by a level+scope from full state */
@@ -66,4 +67,148 @@ export function validateRegistry(stateKeys: string[]): {
     missing: [...registryKeys].filter(k => !stateSet.has(k)),
     unassigned: stateKeys.filter(k => !registryKeys.has(k) && !dropped.has(k)),
   };
+}
+
+// ─── Cascade hierarchy: child scopes for each source ────────────────────────
+
+/** Maps an L3 source scope to its child L1+L2 scopes */
+const SOURCE_CHILDREN: Record<string, { level: ParamLevel; scope: string }[]> = {
+  synth: [
+    { level: 1, scope: 'synthEuclidean' },
+    { level: 1, scope: 'leadDelay' },
+    { level: 2, scope: 'pad1Kit' },
+    { level: 2, scope: 'pad2Kit' },
+    { level: 2, scope: 'lead1Kit' },
+    { level: 2, scope: 'lead2Kit' },
+  ],
+  drums: [
+    { level: 1, scope: 'drumEuclidean' },
+    { level: 2, scope: 'drumKit' },
+  ],
+  delay: [
+    { level: 1, scope: 'echoLine' },
+    { level: 1, scope: 'clockedSpace' },
+    { level: 2, scope: 'delayKit' },
+  ],
+  reverb: [],
+  granular: [
+    { level: 1, scope: 'granularVoice1' },
+    { level: 1, scope: 'granularVoice2' },
+    { level: 1, scope: 'granularVoice3' },
+    { level: 1, scope: 'granularVoice4' },
+    { level: 1, scope: 'granularLegacy' },
+    { level: 2, scope: 'granularKit' },
+  ],
+  earthKit: [
+    { level: 1, scope: 'water' },
+    { level: 1, scope: 'insects1' },
+    { level: 1, scope: 'insects2' },
+  ],
+};
+
+/**
+ * Extract all params at a level+scope AND all child scopes below it.
+ * For L3 source presets this captures L1+L2 children; for L4 state it captures everything.
+ */
+export function extractCascade(
+  state: SliderState,
+  level: ParamLevel,
+  scope?: string,
+): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+
+  if (level === 4) {
+    // L4 state: capture everything (all levels, all scopes)
+    for (const [key] of Object.entries(PARAM_REGISTRY)) {
+      if (key in state) result[key] = (state as unknown as Record<string, unknown>)[key];
+    }
+    return result;
+  }
+
+  // Own-level params
+  Object.assign(result, extractParams(state, level, scope));
+
+  // Add child scopes
+  if (scope && SOURCE_CHILDREN[scope]) {
+    for (const child of SOURCE_CHILDREN[scope]) {
+      Object.assign(result, extractParams(state, child.level, child.scope));
+    }
+  }
+  return result;
+}
+
+// ─── Version Delta Compression ──────────────────────────────────────────────
+// v1 stores full snapshot. v2+ store only keys that differ from v1.
+// On load, reconstitute by merging v1 base + delta.
+
+const MAX_VERSIONS = 5;
+
+/**
+ * Given a full data snapshot and the base (v1) data, returns only the keys that differ.
+ */
+function computeDelta(base: Record<string, unknown>, full: Record<string, unknown>): Record<string, unknown> {
+  const delta: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(full)) {
+    if (!(key in base) || base[key] !== value) {
+      delta[key] = value;
+    }
+  }
+  return delta;
+}
+
+/**
+ * Reconstitute full data from base (v1) + delta.
+ */
+export function reconstitute(base: Record<string, unknown>, delta: Record<string, unknown>): Record<string, unknown> {
+  return { ...base, ...delta };
+}
+
+/**
+ * Compress an entry's versions array:
+ * - Cap at MAX_VERSIONS (keep v1 + latest N-1)
+ * - v1 stays full, v2+ become deltas against v1
+ */
+export function compressVersions(entry: PresetEntry): void {
+  if (entry.versions.length <= 1) return;
+
+  const v1 = entry.versions[0];
+  if (!v1 || !v1.data) return;
+
+  // Cap total versions: keep v1 + latest (MAX_VERSIONS - 1)
+  if (entry.versions.length > MAX_VERSIONS) {
+    const keepers = [v1, ...entry.versions.slice(-(MAX_VERSIONS - 1))];
+    entry.versions = keepers;
+    // Ensure currentVersion points to a kept version
+    if (!entry.versions.some(v => v.v === entry.currentVersion)) {
+      entry.currentVersion = entry.versions[entry.versions.length - 1].v;
+    }
+  }
+
+  // Delta-compress v2+ against v1
+  for (let i = 1; i < entry.versions.length; i++) {
+    const ver = entry.versions[i];
+    if (!ver.data || (ver as Record<string, unknown>)._isDelta) continue;
+    ver.data = computeDelta(v1.data, ver.data);
+    (ver as Record<string, unknown>)._isDelta = true;
+  }
+}
+
+/**
+ * Get the full reconstituted data for a specific version.
+ * If the version is a delta, merges it with v1 base.
+ */
+export function getVersionData(entry: PresetEntry, version?: number): Record<string, unknown> | null {
+  const target = version !== undefined
+    ? entry.versions.find(v => v.v === version)
+    : entry.versions.find(v => v.v === entry.currentVersion) ?? entry.versions[entry.versions.length - 1];
+
+  if (!target?.data) return null;
+
+  // If not a delta (v1 or uncompressed), return as-is
+  if (!(target as Record<string, unknown>)._isDelta) return target.data;
+
+  // Reconstitute from v1 base
+  const v1 = entry.versions[0];
+  if (!v1?.data) return target.data;
+  return reconstitute(v1.data, target.data);
 }

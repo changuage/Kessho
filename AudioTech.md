@@ -315,9 +315,9 @@ updateCircleOfFifthsDrift(config, rng) {
 
 | File | Purpose | Synthesis |
 |------|---------|-----------|
-| `plaits-modal-demo.html` | WASM Plaits testing | 16 engines, physical modeling |
-| `rings-modal-demo.html` | Simple modal synth | Decaying oscillators |
-| `euclid-arp-demo.html` | Euclidean patterns | Arpeggiator + sequencer |
+| `public/ARCHIVE/plaits-modal-demo.html` | WASM Plaits testing | 16 engines, physical modeling |
+| `public/ARCHIVE/rings-modal-demo.html` | Simple modal synth | Decaying oscillators |
+| `public/ARCHIVE/euclid-arp-demo.html` | Euclidean patterns | Arpeggiator + sequencer |
 
 ---
 
@@ -423,13 +423,8 @@ src/audio/
     ├── granulator.worklet.ts
     └── reverb.worklet.ts
 
-public/worklets/
-├── granulator.worklet.js   # Compiled worklet
-├── reverb.worklet.js       # Compiled worklet
-├── ocean.worklet.js        # Ocean synthesis
-└── woscillators.js         # Plaits WASM bundle
-
-public/
+public/ARCHIVE/
+├── woscillators.js         # Plaits WASM bundle
 ├── plaits-modal-demo.html  # Plaits testing
 ├── rings-modal-demo.html   # Modal synth demo
 └── euclid-arp-demo.html    # Euclidean demo

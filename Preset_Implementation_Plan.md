@@ -1,9 +1,19 @@
 # Preset Implementation Plan
 
 > **Reference:** [Preset_Hierarchy_Plan.md](Preset_Hierarchy_Plan.md) — the
-> canonical architecture doc defining L1–L5 levels, param ownership (714 params),
-> and data formats. This document is the **build plan** — what to implement, in
-> what order, with what code.
+> canonical architecture doc defining L1–L5 levels, ownership rules, and data
+> formats. This document is the **build plan** — what to implement, in what
+> order, with what code.
+
+> **March 25, 2026 sync note:** the live code has moved beyond the original
+> draft in a few important ways:
+> `src/presets/types.ts` already includes `id`, `scope`, and structured preset
+> metadata;
+> `src/presets/PresetStore.ts` is snapshot-first today;
+> granular factory presets are intentionally deferred;
+> scope-aware store keys are already live;
+> and this revision aligns the old phase notes to current `granular*`
+> terminology.
 
 ---
 
@@ -14,67 +24,74 @@
 3. [Phase 0: Foundation Types & Registry](#phase-0-foundation-types--registry)
 4. [Phase 1: PresetStore Abstraction](#phase-1-presetstore-abstraction)
 5. [Phase 2: File Export / Import (All Levels)](#phase-2-file-export--import-all-levels)
-6. [Phase 3: L1 Engine Presets — User Save/Load](#phase-3-l1-engine-presets--user-saveload)
-7. [Phase 4: L2 Kit Presets — User Save/Load](#phase-4-l2-kit-presets--user-saveload)
-8. [Phase 5: L3 Source Presets](#phase-5-l3-source-presets)
-9. [Phase 6: L4 State Presets — Restructure](#phase-6-l4-state-presets--restructure)
-10. [Phase 7: L5 Journey Presets](#phase-7-l5-journey-presets)
-11. [Phase 8: Versioning System](#phase-8-versioning-system)
-12. [Phase 9: Modified Indicator (Dirty Flag)](#phase-9-modified-indicator-dirty-flag)
-13. [Phase 10: Preset Browser](#phase-10-preset-browser)
-14. [Phase 11: Migration & Cleanup](#phase-11-migration--cleanup)
-15. [Phase 12: IndexedDB Migration](#phase-12-indexeddb-migration)
-16. [Phase 13: Cloud Sync Enhancement](#phase-13-cloud-sync-enhancement)
-17. [Dependency Graph](#dependency-graph)
-18. [Risk Register](#risk-register)
+6. [Phase 2.5: Shared Morph Endpoint Overrides](#phase-25-shared-morph-endpoint-overrides)
+7. [Phase 3: L1 Engine Presets — User Save/Load](#phase-3-l1-engine-presets--user-saveload)
+8. [Phase 4: L2 Kit Presets — User Save/Load](#phase-4-l2-kit-presets--user-saveload)
+9. [Phase 5: L3 Source Presets](#phase-5-l3-source-presets)
+10. [Phase 6: L4 State Presets — Restructure](#phase-6-l4-state-presets--restructure)
+11. [Phase 7: L5 Journey Presets](#phase-7-l5-journey-presets)
+12. [Phase 8: Versioning System](#phase-8-versioning-system)
+13. [Phase 9: Modified Indicator (Dirty Flag)](#phase-9-modified-indicator-dirty-flag)
+14. [Phase 10: Preset Browser](#phase-10-preset-browser)
+15. [Phase 11: Migration & Cleanup](#phase-11-migration--cleanup)
+16. [Phase 12: IndexedDB Migration](#phase-12-indexeddb-migration)
+17. [Phase 13: Cloud Sync Enhancement](#phase-13-cloud-sync-enhancement)
+18. [Dependency Graph](#dependency-graph)
+19. [Risk Register](#risk-register)
 
 ---
 
 ## Current State Audit
 
-### What Exists
+### What Exists Today
 
-| System | Where | How it Works | Persisted? |
-|--------|-------|-------------|------------|
-| **L4 State save/load** | `App.tsx` L3297, L4398 | `SavedPreset` = name + timestamp + full `SliderState` (~600+ keys). Save via `showSaveFilePicker()` / `<a download>`. Load via `<input type="file">` | File download only — list is volatile React state |
-| **L4 URL sharing** | `state.ts` L2898 | `encodeStateToUrl()` / `decodeStateFromUrl()` encode all `STATE_KEYS` as query params | URL (no dualRanges) |
-| **L4 Cloud presets** | `src/cloud/supabase.ts` | Supabase `presets` table (JSONB = `SliderState`). Browse/search/featured via `CloudPresets.tsx` | Supabase DB (no dualRanges/sliderModes) |
-| **Factory presets** | `/presets/manifest.json` → 5 `.json` files | Fetched at startup by `loadPresetsFromFolder()` | Static files |
-| **Pad engine presets** | `padPresets.ts` | 18 presets in `PAD_PRESETS` map; `morphPadPresets()` for A/B interpolation | Hardcoded TS |
-| **Drum voice presets** | `drumPresets.ts` + `/presets/DrumSynth/*.json` | 161 presets across 7 voice arrays; also exported to JSON via build script | Hardcoded TS + static JSON |
-| **Lead FM presets** | `lead4opfm.ts` + `/presets/Lead4opFM/*.json` | 17 presets; manifest-driven lazy fetch with `Map<string, Lead4opFMPreset>` cache | Static JSON + memory cache |
-| **Looper presets** | `looperPresets.ts` | 18 presets in `LOOPER_PRESET_MAP`; partial `SliderState` overlays + seq config | Hardcoded TS |
-| **Water presets** | `waterPresets.ts` | 4 presets (index-based); `morphWaterPresets(idxA, idxB, t)` | Hardcoded TS |
-| **LFO presets** | `lfoPresets.ts` | ~20 presets across categories | Hardcoded TS |
-| **Reverb characters** | `ReverbPage.tsx` | 8 `REVERB_CHARACTER_PRESETS` | Hardcoded TS |
-| **Journey config** | `journeyState.ts` | `useJourney()` hook; nodes ref presets by name | Volatile React state |
+| System | Status | Notes |
+|--------|--------|-------|
+| **Legacy L4 state save/load** | Exists | `SavedPreset` still stores a mostly monolithic `SliderState` shape via file export/import, URL encoding, and cloud paths. |
+| **Preset foundation types** | Exists | `src/presets/types.ts` already includes `PresetVersionMetadata`, optional immutable `id`, and normalized `scope`. |
+| **Param registry + codec** | Exists | `src/presets/ParamRegistry.ts` and `src/presets/codec.ts` exist and are now the live source of truth for level/scope ownership. |
+| **PresetStore abstraction** | Exists | `src/presets/PresetStore.ts` provides localStorage-backed save/load/list/delete plus scope-aware key compatibility. |
+| **Preset hooks + UI shell** | Partial | `usePresets.ts`, `usePresetVersioning.ts`, `PresetDropdown.tsx`, and `fileIO.ts` exist, but the whole app is not yet fully driven by them. |
+| **Factory seeding** | Partial | Pad, drum, water, reverb, and state factory presets seed into the store. Granular composite presets and LFO helper presets are intentionally deferred. |
+| **Water factory presets** | Updated | Water factory seeding now uses the live 8-preset set, not the earlier 4-preset assumption. |
+| **Granular built-ins** | Still outside store | Current granular built-ins behave like scene presets with extra metadata and are not yet safe to round-trip through the simple store shape. |
+| **Earth hierarchy** | Still exceptional | Earth has partial registry coverage, but its page/audio structure is different enough that it should be treated as a special case until audited separately. |
 
-### What's Missing
+### What Is Still Missing
 
 | Gap | Impact |
 |-----|--------|
-| No localStorage usage anywhere | Preset list lost on page refresh |
-| No user L1 engine save/load | Can't save a custom pad sound or drum voice |
-| No L2 kit save/load | Can't save a drum kit configuration |
-| No L3 source save/load | Can't save/share a "Synth page" or "Drums page" setup |
-| No journey persistence | Journey topology lost on refresh |
-| No versioning at any level | No undo history, no version stepping |
-| No param registry (PARAM_REGISTRY) | No way to slice `SliderState` by level |
-| No preset browser UI | No search, tags, categories, or grid view |
-| `SavedPreset` is monolithic | Stores entire `SliderState` — can't compose from sub-presets |
+| Full end-to-end metadata parity | `dualRanges`, `sliderModes`, evolve configs, sub-lane state, `clockDivs`, and `stepOverrides` must survive every save/load path before broad rollout. |
+| Shared live morph anchor semantics | Drum voices already remember endpoint edits at runtime, but pad/water/lead-style morphers still lean on base preset recompute. Without a shared endpoint override layer, "edit A, go to B, come back to A" will stay inconsistent across engines. |
+| Composite granular preset shape | Granular built-ins cannot be safely promoted into the store until L3 scene/source behavior is modeled explicitly. |
+| Final Earth normalization | Water/Ocean/Insects ownership is still under audit, so Earth should not be forced into the cleaner synth/drum model yet. |
+| Complete UI integration | The preset infrastructure exists, but not every page/slot is fully wired to it yet. |
+| Optional live ref-following semantics | The current store is snapshot-first. True child preset resolution should be treated as future, explicit work. |
+| IndexedDB / richer browser / cloud enhancements | LocalStorage is the working baseline; the larger UX/data layer is still future work. |
 
-### Key Files to Modify
+### Current Priority Order
 
-| File | Lines | Role | Changes Needed |
-|------|-------|------|----------------|
-| `src/ui/state.ts` | ~3214 | `SliderState`, `SavedPreset`, `STATE_KEYS`, serialize/encode | Add `PresetEntry` types, `PARAM_REGISTRY` |
-| `src/App.tsx` | ~6312 | Save/load handlers, preset list state | Wire up PresetStore, add per-level UI hooks |
-| `src/cloud/supabase.ts` | ~179 | Cloud preset CRUD | Add level-aware save/load |
-| `src/audio/drumPresets.ts` | ~3723 | Factory drum voice data | Add `getPresetsByVoice()` helper |
-| `src/audio/padPresets.ts` | ~485 | Factory pad data | No changes needed |
-| `src/audio/lead4opfm.ts` | ~942 | Factory lead data + cache | No changes needed |
-| `src/ui/presetUtils.ts` | ~98 | `applyPreset()` pipeline | Extend for per-level apply |
-| **NEW** `src/presets/` | — | All new preset infrastructure | Create folder + files |
+1. Keep `Preset_Hierarchy_Plan.md` and `src/presets/ParamRegistry.ts` aligned.
+2. Preserve non-`SliderState` metadata end to end.
+3. Land shared live morph anchor semantics before broad L1 engine preset rollout.
+4. Finish scope-safe and id-safe preset loading across the app.
+5. Defer granular composite factory seeding until the richer shape is settled.
+6. Audit Earth separately instead of over-normalizing it too early.
+
+### Key Files in Play
+
+| File | Role | Current Relevance |
+|------|------|-------------------|
+| `src/presets/types.ts` | Preset entry/version/ref types | Already carries `id`, `scope`, and structured metadata. |
+| `src/presets/ParamRegistry.ts` | Canonical level/scope ownership map | Live source of truth for placements. |
+| `src/presets/codec.ts` | Slice/apply helpers | Basis for save/load at each level. |
+| `src/presets/PresetStore.ts` | LocalStorage preset backend | Snapshot-first implementation with scope-aware compatibility. |
+| `src/presets/factoryPresets.ts` | Factory seeding | Granular/LFO intentionally deferred; water updated to 8 built-ins. |
+| `src/presets/usePresets.ts` | App-facing preset API | Needs continued integration cleanup. |
+| `src/ui/state.ts` | `SliderState`, metadata, URL/state serialization | Still the legacy monolith that new presets must interoperate with. |
+| `src/App.tsx` | Current save/load orchestration | Still owns a lot of legacy preset flow. |
+| `src/ui/granular/granularPresets.ts` | Built-in granular scenes | Main blocker for clean composite granular rollout. |
+| `src/ui/earth/EarthPage.tsx` / `src/audio/engine.ts` | Earth behavior + routing | Should be audited before the Earth hierarchy is finalized. |
 
 ---
 
@@ -96,29 +113,72 @@ swaps the backend to IndexedDB with zero consumer changes.
 
 **Why:** Simpler to debug, works immediately, sufficient capacity (~3000 presets).
 
-### AD-3: Reference-Based, Not Embedded
+### AD-3: Snapshot-First, Refs as Metadata
 
-**Decision:** Higher levels store `{ name, version }` refs to lower levels.
-Resolution happens at load time (lookup by name from store).
+**Decision:** `PresetVersion.data` is the primary saved payload. `refs` may be
+stored for relationship tracking, migration, or future composition, but the
+current implementation should assume pinned snapshot behavior by default.
 
-**Why:** Editing an L1 preset propagates to all L2/L3/L4 that reference it.
-No stale copies. File size stays minimal.
+**Why:** This matches the live `PresetStore`, avoids surprise child updates in a
+music app, and removes ambiguity while the hierarchy is still being stabilized.
 
-### AD-4: Versioning from Day One
+### AD-4: Immutable IDs + Normalized Scope
+
+**Decision:** Every `PresetEntry` and `PresetRef` should carry a stable `id`
+where possible, and entries should store normalized `scope` alongside display
+name and legacy engine/source fields.
+
+**Why:** Names are not stable identifiers, and slot-aware scope is required to
+avoid collisions between presets that happen to share the same label.
+
+### AD-5: Metadata Parity, Not Slider-Only
+
+**Decision:** Preset persistence must cover structured metadata in addition to
+flat slider params: `dualRanges`, `sliderModes`, evolve configs, sub-lane state,
+and sequencer-related metadata.
+
+**Why:** Otherwise the preset system introduces silent behavior loss even when
+the main slider values round-trip correctly.
+
+### AD-6: Versioning from Day One
 
 **Decision:** Every `PresetEntry` has a `versions[]` array from the start,
-even if the UI only shows "Save" (not "v2, v3…") initially.
+even if the UI only shows "Save" initially.
 
-**Why:** Retro-fitting versioning is painful. The data model should support
-it even before the UI exposes version stepping.
+**Why:** Retro-fitting versioning is painful. The data model should support it
+before the UI fully exposes version stepping.
 
-### AD-5: File Export/Import Early
+### AD-7: File Export/Import Early
 
-**Decision:** Phase 2 (before any PresetStore UI) adds download/upload at
-all levels. This is the "interim" solution that works today.
+**Decision:** File export/import remains an early milestone because it provides
+an immediate backup path while the broader local/cloud/browser UX is still in progress.
 
-**Why:** Gives users immediate value. Files serve as backups when localStorage
-is the only store. Forward-compatible with the full system.
+**Why:** It gives immediate user value and keeps the emerging preset system inspectable.
+
+### AD-8: Live Morph Anchors Are First-Class Working State
+
+**Decision:** Any engine or page that exposes two morph endpoints (preset A/B,
+state A/B, or similar) must treat those endpoints as editable runtime anchors,
+not read-only snapshots. If the user tweaks endpoint A, moves to B, and later
+returns to A, the edited A anchor must still be there until the user replaces,
+saves, or discards it.
+
+**Why:** This matches the instrument workflow. "Preset morph" is only the
+starting point; the real value is being able to sculpt A and B as working
+states, audition the space between them, and promote either side into a named
+preset when it becomes a keeper.
+
+### AD-9: Unify Dual-Slider and Morph Anchor Data, Not Trigger Execution
+
+**Decision:** Share one dual-slider state model and one endpoint-override
+schema across morph-capable engines: `single` / `walk` / `sampleHold`, range
+data, and endpoint-specific override memory. Keep runtime execution specialized
+per engine: drums retain per-hit/per-voice sampling and polyphony; slower
+engines may continue to use generic or worklet-specific sampling paths.
+
+**Why:** This gives consistent save/load semantics, endpoint editing behavior,
+and UI affordances across pages without forcing high-trigger-rate engines into
+the generic non-drum update path.
 
 ---
 
@@ -135,21 +195,37 @@ is the only store. Forward-compatible with the full system.
 
 export type PresetLevel = 'engine' | 'kit' | 'source' | 'state' | 'journey';
 
-export interface PresetVersion {
+export interface PresetVersionMetadata {
+  dualRanges?: Record<string, { min: number; max: number }>;
+  sliderModes?: Record<string, SliderMode>;
+  drumEvolveConfigs?: SerializedEvolveConfig[];
+  synthEvolveConfigs?: SerializedEvolveConfig[];
+  granularEvolveConfigs?: SerializedEvolveConfig[];
+  drumSubLaneStates?: Record<string, SerializedSubLaneState>[];
+  synthSubLaneStates?: Record<string, SerializedSubLaneState>[];
+  granularSubLaneStates?: Record<string, SerializedSubLaneState>[];
+}
+
+export interface PresetVersion extends PresetVersionMetadata {
   v: number;
   note: string;
   timestamp: number;
   data: Record<string, unknown>;
+  id?: string;
   refs?: Record<string, PresetRef>;
 }
 
 export interface PresetRef {
+  id?: string;
   name: string;
   version: number | 'latest';
+  scope?: string;
 }
 
 export interface PresetEntry {
+  id?: string;
   type: PresetLevel;
+  scope?: string;
   engine?: string;        // L1: 'pad1', 'drumKick', 'lead1', etc.
   source?: string;        // L2/L3: 'synth', 'drums', 'granular', 'earth'
   name: string;
@@ -165,7 +241,9 @@ export interface PresetEntry {
 export interface PresetFile {
   kesshoPreset: true;
   formatVersion: 1;
+  id?: string;
   type: PresetLevel;
+  scope?: string;
   engine?: string;
   source?: string;
   name: string;
@@ -176,7 +254,9 @@ export interface PresetFile {
 
 /** Minimal preset summary for browser lists */
 export interface PresetSummary {
+  id?: string;
   type: PresetLevel;
+  scope?: string;
   engine?: string;
   source?: string;
   name: string;
@@ -196,10 +276,10 @@ export interface PresetSummary {
 export type ParamLevel = 1 | 2 | 3 | 4;
 
 export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }> = {
-  // L4: Global (23 params)
+  // L4: Global + cross-page mix/routing
   masterVolume:        { level: 4, scope: 'global' },
   synthLevel:          { level: 4, scope: 'global' },
-  // ... all 23 L4 keys ...
+  // ... live registry also includes per-page levels, reverb sends, and granular sends ...
 
   // L3: Synth Source (9 params)
   leadEnabled:         { level: 3, scope: 'synth' },
@@ -225,24 +305,21 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   drumSubDistance:     { level: 2, scope: 'drumKit' },
   // ... all 56 drum kit L2 keys ...
 
-  // L2: Looper Kit (12), Earth Kit (19)
-  looperV1Enabled:     { level: 2, scope: 'looperKit' },
+  // L2: Granular Kit, Earth Kit
+  granularV1Enabled:   { level: 2, scope: 'granularKit' },
   waterEnabled:        { level: 2, scope: 'earthKit' },
-  // ... all looper + earth L2 keys ...
+  // ... all granular + earth L2 keys ...
 
-  // L1: All engine params (503 total)
-  // Pad 1 (48), Pad 2 (48), Lead 1 (9), Lead 2 (6),
-  // Synth Euclidean (43), Drum voices (107), Drum Euclidean (69),
-  // Water (18), Insects 1 (8), Insects 2 (8),
-  // Legacy Granular (12), Looper Voice ×4 (80),
-  // Looper Legacy (6), Looper Euclidean (41)
+  // L1: Engine scopes include pads, leads, leadDelay, synth/drum euclidean,
+  // water, insects, granularVoice1..4, granularLegacy, and granularEuclidean.
   padOscAWave:         { level: 1, scope: 'pad1' },
-  // ... all 503 L1 keys ...
+  // ... live registry is the source of truth ...
 };
 ```
 
-> **Source of truth:** Appendix C of `Preset_Hierarchy_Plan.md` lists every key.
-> The registry must contain all **714 params** (23 + 66 + 122 + 503).
+> **Source of truth:** the live `src/presets/ParamRegistry.ts` file is now more
+> authoritative than any static count in this document. If a later appendix
+> disagrees with the code, trust the code and regenerate the docs from it.
 
 ### 0.3 — Codec Functions
 
@@ -306,7 +383,7 @@ export function validateRegistry(stateKeys: string[]): {
 } {
   const registryKeys = new Set(Object.keys(PARAM_REGISTRY));
   const stateSet = new Set(stateKeys);
-  const dropped = new Set(['leadTimbre', 'looperPreset']);
+  const dropped = new Set(['leadTimbre', 'granularPreset']);
 
   return {
     missing: [...registryKeys].filter(k => !stateSet.has(k)),
@@ -320,7 +397,7 @@ export function validateRegistry(stateKeys: string[]): {
 | File | Contents |
 |------|----------|
 | `src/presets/types.ts` | `PresetLevel`, `PresetVersion`, `PresetRef`, `PresetEntry`, `PresetFile`, `PresetSummary` |
-| `src/presets/ParamRegistry.ts` | `PARAM_REGISTRY` (714 entries), `ParamLevel` type |
+| `src/presets/ParamRegistry.ts` | `PARAM_REGISTRY` (763 live entries), `ParamLevel` type |
 | `src/presets/codec.ts` | `extractParams`, `applyParams`, `getKeysForScope`, `getScopesForLevel`, `validateRegistry` |
 | `src/presets/index.ts` | Barrel export |
 
@@ -353,10 +430,10 @@ import type { PresetEntry, PresetLevel, PresetSummary } from './types';
 
 export interface IPresetStore {
   save(entry: PresetEntry): Promise<void>;
-  load(type: PresetLevel, name: string, engine?: string): Promise<PresetEntry | null>;
-  list(type: PresetLevel, engine?: string): Promise<PresetSummary[]>;
-  delete(type: PresetLevel, name: string, engine?: string): Promise<void>;
-  exists(type: PresetLevel, name: string, engine?: string): Promise<boolean>;
+  load(type: PresetLevel, name: string, scope?: string, version?: number): Promise<PresetEntry | null>;
+  list(type: PresetLevel, scope?: string): Promise<PresetSummary[]>;
+  delete(type: PresetLevel, name: string, scope?: string): Promise<void>;
+  exists(type: PresetLevel, name: string, scope?: string): Promise<boolean>;
   findReferences(type: PresetLevel, name: string): Promise<string[]>;
   getStorageUsed(): Promise<{ bytes: number; count: number }>;
   exportAll(): Promise<Blob>;
@@ -368,8 +445,8 @@ export interface IPresetStore {
 
 ```typescript
 // Key generation
-function makeKey(type: PresetLevel, name: string, engine?: string): string {
-  if (engine) return `preset:${type}:${engine}:${name}`;
+function makeKey(type: PresetLevel, name: string, scope?: string): string {
+  if (scope) return `preset:${type}:${scope}:${name}`;
   return `preset:${type}:${name}`;
 }
 
@@ -387,11 +464,11 @@ function makeKey(type: PresetLevel, name: string, engine?: string): string {
 //
 // Sources:
 //   Pad:   PAD_PRESETS from padPresets.ts        → 18 L1 engine presets
-//   Drums: *_PRESETS from drumPresets.ts          → 161 L1 engine presets
+//   Drums: *_PRESETS from drumPresets.ts          → 84 L1 engine presets
 //   Lead:  manifest from Lead4opFM/              → 17 L1 engine presets
-//   Water: WATER_PRESETS from waterPresets.ts     → 4 L1 engine presets
-//   LFO:   LFO_PRESETS from lfoPresets.ts        → ~20 L1 engine presets
-//   Looper: LOOPER_PRESET_MAP from looperPresets  → 18 composite presets (split into L1+L2)
+//   Water: WATER_PRESETS from waterPresets.ts     → 8 L1 engine presets
+//   LFO:   UI helper presets                     → deferred; no matching ParamRegistry scope
+//   Granular: composite granular scenes          → deferred until richer metadata-safe preset shape exists
 //   Reverb: REVERB_CHARACTER_PRESETS             → 8 L3 source presets
 //   State: /presets/*.json                        → 5 L4 state presets
 //
@@ -404,12 +481,12 @@ function makeKey(type: PresetLevel, name: string, engine?: string): string {
 ```typescript
 // src/presets/usePresets.ts
 
-export function usePresets(type: PresetLevel, engine?: string) {
+export function usePresets(type: PresetLevel, scope?: string) {
   const [presets, setPresets] = useState<PresetSummary[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Refresh list from store
-  const refresh = useCallback(async () => { ... }, [type, engine]);
+  const refresh = useCallback(async () => { ... }, [type, scope]);
 
   // Save current state as a new preset (or new version)
   const save = useCallback(async (name: string, note?: string) => { ... }, []);
@@ -585,10 +662,116 @@ export async function quickExport(
 
 ---
 
+## Phase 2.5: Shared Morph Endpoint Overrides
+
+**Effort:** 3h  
+**Dependencies:** Phase 0, Phase 1  
+**Modifies:** Morph-capable engine controllers, shared morph helpers, save paths
+
+### 2.5.1 — Goal
+
+Before broad L1 preset rollout, morph-capable engines need one shared rule:
+
+- Endpoint A and endpoint B are editable working anchors, not read-only factory snapshots.
+- If the user edits A, travels to B, and comes back, A must remain the edited version.
+- Transport start/stop must not wipe those endpoint edits.
+- Dual slider mode/range state must follow the same rule as scalar values.
+
+Outcome: **yes**, the new infrastructure is explicitly meant to allow "edit A,
+go to B, come back to A, and still find A there."
+
+### 2.5.2 — Shared Runtime Model
+
+```typescript
+interface MorphEndpointSnapshot {
+  data: Record<string, unknown>;
+  dualRanges?: Record<string, { min: number; max: number }>;
+  sliderModes?: Record<string, SliderMode>;
+}
+
+interface MorphEndpointContext {
+  presetA?: PresetRef;
+  presetB?: PresetRef;
+  endpointA?: MorphEndpointSnapshot;
+  endpointB?: MorphEndpointSnapshot;
+  dirtyA?: boolean;
+  dirtyB?: boolean;
+}
+```
+
+Rules:
+
+- `presetA` / `presetB` remain the immutable base references.
+- `endpointA` / `endpointB` are live working overrides layered on top of those bases.
+- Endpoint snapshots may be partial; any missing key falls back to the base preset.
+- Replacing preset A clears only A's working snapshot; replacing preset B clears only B's working snapshot.
+- Shared helpers should live in the common morph utility layer rather than being drum-only special cases.
+
+### 2.5.3 — Scope and Non-Goals
+
+Applies to:
+
+- Pad 1 and Pad 2
+- Lead 1 and Lead 2
+- Drum voices
+- Water and any future engine that exposes A/B-style morph anchors
+
+Does not require:
+
+- unifying drum polyphony or voice-pool logic
+- forcing drums onto the generic 10 Hz non-drum S&H path
+- flattening all engines into identical trigger semantics
+
+The unification target is the **data model and controller behavior**, not the
+audio-runtime execution strategy.
+
+### 2.5.4 — User Workflow: Sculpt A/B, Then Save
+
+This phase should make the following workflow first-class:
+
+1. Choose preset A and preset B for a morph-capable engine or page.
+2. Move fully to endpoint A.
+3. Edit values, dual slider modes, and dual slider ranges until A sounds right.
+4. Move to endpoint B and edit that side independently.
+5. Return to A or B at any time and find the edited anchor restored.
+6. If A or B becomes a keeper, use **Save As** while parked exactly on that endpoint.
+7. The save operation resolves the current endpoint (`base preset + endpoint overrides + dual slider metadata`) into a normal named preset.
+
+### 2.5.5 — Promotion Path Across Levels
+
+This is how the "every page and level can be tuned and ultimately saved" vision
+maps onto the hierarchy:
+
+- **L1 Engine preset:** save a sculpted sound or exact endpoint anchor as a reusable engine preset.
+- **L2 Kit preset:** save which engine presets are assigned plus morph config and kit-owned performance settings.
+- **L3 Source preset:** save the whole page/tab behavior, including the currently chosen child presets and page-owned metadata.
+- **L4 State preset:** save the full app-wide snapshot.
+- **L5 Journey preset:** save the topology and automated motion between states.
+
+Recommended authoring flow:
+
+1. Sculpt endpoint A/B on the engine you are working on.
+2. Promote any keeper anchor to an L1 preset with **Save As**.
+3. Re-point the slot to that newly saved preset if desired.
+4. Save the enclosing kit, source, state, or journey layer after the child preset references look right.
+
+### 2.5.6 — Deliverables
+
+- Shared endpoint-override helpers for scalar params and dual-slider metadata
+- One runtime model for editable A/B anchors across morph-capable engines
+- Save helpers that can resolve endpoint A or B into a standalone preset payload
+- Manual verification for:
+  - edit A → move to B → return to A
+  - edit B → stop playback → return to B
+  - dual slider mode/range recall at endpoints
+  - replacing preset A without destroying B's live edits
+
+---
+
 ## Phase 3: L1 Engine Presets — User Save/Load
 
 **Effort:** 4h  
-**Dependencies:** Phase 0, Phase 1  
+**Dependencies:** Phase 0, Phase 1, Phase 2.5  
 **Modifies:** Drum/Pad/Lead preset dropdowns in UI
 
 ### 3.1 — What Changes
@@ -599,6 +782,8 @@ Today, engine preset dropdowns only show factory presets. After this phase:
 - User presets can be **deleted** (factory presets cannot)
 - User presets can be **overwritten** (pushes new version)
 - Factory preset + "Save" → creates user copy with same name + " (Custom)"
+- If the user is parked on morph endpoint A or B, **Save As** saves the resolved
+  current anchor, not just the original base preset behind that slot
 
 ### 3.2 — Per-Engine Implementation
 
@@ -615,15 +800,16 @@ Today, engine preset dropdowns only show factory presets. After this phase:
 | Drum BeepLo | `drumBeepLo*` | 17 | ✅ per-voice dropdown | In voice panel header |
 | Drum Noise | `drumNoise*` | 17 | ✅ per-voice dropdown | In voice panel header |
 | Drum Membrane | `drumMembrane*` | 21 | ✅ per-voice dropdown | In voice panel header |
-| Synth Euclidean | `synthEuclidean*` | 43 | ❌ None | New dropdown in Synth seq section |
+| Lead Delay | `leadDelay*` | 7 | ❌ None | New dropdown in Synth delay section |
+| Synth Euclidean | `synthEuclidean*` | 44 | ❌ None | New dropdown in Synth seq section |
 | Drum Euclidean | `drumEuclidean*` | 69 | ❌ None | New dropdown in Drum seq section |
-| Looper Euclidean | `looperEuclidean*` | 41 | ❌ None | New dropdown in Looper seq section |
-| Water | `water*` | 18 | ✅ A/B morph (index-based) | Next to water morph |
+| Water | `water*` | 25 | ✅ A/B morph (index-based) | Next to water morph |
 | Insects 1 | `insects*` | 8 | ❌ None | New dropdown |
 | Insects 2 | `insects2*` | 8 | ❌ None | New dropdown |
-| Legacy Granular | `grain*` | 12 | ❌ None | New dropdown |
-| Looper Voice ×4 | `looperV{n}*` | 20 each | ❌ None | Per-voice dropdown |
-| Looper Legacy | `looperLegacy*` | 6 | ❌ None | New dropdown |
+| Legacy Granular | `grain*` / `legacyGranular*` | 12 | ❌ None | New dropdown only if that legacy path stays exposed |
+| Granular Voice ×4 | `granularV{n}*` | 20 each | ❌ None | Per-voice dropdown |
+| Granular Legacy | `granularLegacy*` | 6 | ❌ None | New dropdown |
+| Granular Euclidean | `granularEuclid*` | 41 | ❌ None | New dropdown in Granular seq section |
 
 ### 3.3 — Dropdown Component
 
@@ -632,7 +818,7 @@ Today, engine preset dropdowns only show factory presets. After this phase:
 
 interface PresetDropdownProps {
   level: PresetLevel;
-  engine: string;              // e.g. 'drumKick', 'pad1'
+  scope: string;               // e.g. 'drumKick', 'pad1', 'drumKit'
   currentName: string;
   onLoad: (name: string) => void;
   onSave: (name: string) => void;
@@ -649,21 +835,32 @@ interface PresetDropdownProps {
 
 ### 3.4 — Save Flow
 
-1. User tweaks engine params
-2. Clicks save → prompt for name (default = current preset name)
-3. If name matches existing user preset → push new version
-4. If name matches factory preset → create user copy
-5. If new name → create new `PresetEntry` with v1
-6. Store via `PresetStore.save()`
-7. Refresh dropdown list
+1. User tweaks engine params, optionally while parked exactly on morph endpoint A or B
+2. If an endpoint snapshot exists, resolve the save payload from the current anchor state
+3. Click save → prompt for name (default = current preset name)
+4. If name matches existing user preset → push new version
+5. If name matches factory preset → create user copy
+6. If new name → create new `PresetEntry` with v1
+7. Store via `PresetStore.save()`
+8. Refresh dropdown list
 
 ### 3.5 — Load Flow
 
 1. User picks preset from dropdown
-2. `PresetStore.load('engine', name, engine)` → get `PresetEntry`
+2. `PresetStore.load('engine', name, scope)` → get `PresetEntry`
 3. Get latest version data (or pinned version)
-4. `applyParams(currentState, data, 1, engine)` → new state
+4. `applyParams(currentState, data, 1, scope)` → new state
 5. Only engine params change; kit/source/global untouched
+
+### 3.6 — Saving Edited A/B Anchors
+
+For engines with morph slots, the intended flow is:
+
+1. Park the morph position exactly on A or B.
+2. Use **Save As** from that engine's preset control.
+3. Save the resolved endpoint state as a new L1 preset.
+4. Optionally assign that new preset back into slot A or slot B.
+5. Save the enclosing kit/source/state preset afterward if you want the larger page to remember that slot assignment.
 
 ---
 
@@ -677,12 +874,12 @@ interface PresetDropdownProps {
 | Kit | Scope | Owned Params | Child L1 Refs |
 |-----|-------|-------------|--------------|
 | Drum Kit | `drumKit` | 56 (14 dist/var + 42 morph) | 7 × voice engine refs |
-| Pad 1 Kit | `pad1Kit` | 10 | 1 × Pad 1 engine ref |
+| Pad 1 Kit | `pad1Kit` | 9 | 1 × Pad 1 engine ref |
 | Pad 2 Kit | `pad2Kit` | 8 | 1 × Pad 2 engine ref |
-| Lead 1 Kit | `lead1Kit` | 8 | 1 × Lead 1 engine ref |
-| Lead 2 Kit | `lead2Kit` | 9 | 1 × Lead 2 engine ref |
-| Looper Kit | `looperKit` | 12 | 4 × Looper voice refs + 2 legacy refs |
-| Earth Kit | `earthKit` | 19 | 3 × Earth engine refs (Water, Insects 1, Insects 2) |
+| Lead 1 Kit | `lead1Kit` | 7 | 1 × Lead 1 engine ref |
+| Lead 2 Kit | `lead2Kit` | 8 | 1 × Lead 2 engine ref |
+| Granular Kit | `granularKit` | 12 | 4 × Granular voice refs + optional granular legacy ref |
+| Earth Kit | `earthKit` | 12 | 3 × Earth engine refs (Water, Insects 1, Insects 2) |
 
 ### 4.2 — Kit Save/Load UI
 
@@ -724,10 +921,10 @@ When loading a kit:
 
 | Source | L3-Owned | L2 Refs | L1 Refs |
 |--------|----------|---------|---------|
-| Synth | 9 (lead delay/vibrato/glide) | Pad 1 Kit, Pad 2 Kit, Lead 1 Kit, Lead 2 Kit | Synth Euclidean |
-| Drums | 17 (mixer + delay + sends) | Drum Kit | Drum Euclidean |
-| Reverb | 18 (all reverb params) | — | — |
-| Granular | 22 (master + sends + delay) | Looper Kit | Looper Euclidean |
+| Synth | 5 (lead enable/random/vibrato/glide) | Pad 1 Kit, Pad 2 Kit, Lead 1 Kit, Lead 2 Kit | Lead Delay, Synth Euclidean |
+| Drums | 15 (page behavior + delay + per-voice delay sends) | Drum Kit | Drum Euclidean |
+| Reverb | 44 (all reverb + spectral-freeze params) | — | — |
+| Granular | 16 live registry params + metadata payload | Granular Kit | Granular Euclidean |
 | Earth | 0 (thin wrapper) | Earth Kit | — |
 
 ### 5.2 — Source Preset UI
@@ -743,18 +940,18 @@ One `PresetDropdown` per source page tab:
 ### 5.3 — Source Save Flow
 
 1. Extract L3 params: `extractParams(state, 3, 'drums')`
-2. Capture current L2 kit ref: `{ name: "Ambient Kit", version: 1 }`
-3. Capture current L1 sequencer ref: `{ name: "Four On Floor", version: 1 }`
-4. Bundle into `PresetEntry` with refs
+2. Capture current L2/L1 child refs as pinned metadata: `{ id, name, version, scope }`
+3. Preserve metadata payload (`sliderModes`, `dualRanges`, sub-lane/evolve config) when the source owns it
+4. Bundle into `PresetEntry` with `data` + optional `refs`
 5. Save to store
 
-### 5.4 — Source Load Flow (Reference Resolution)
+### 5.4 — Source Load Flow (Snapshot-First)
 
-1. Load source preset → get L3 params + refs
+1. Load source preset → get L3 `data` + optional `refs`
 2. Apply L3 params: `applyParams(state, data, 3, 'drums')`
-3. Resolve L2 kit ref → load kit → apply L2 + resolve L1s
-4. Resolve L1 sequencer ref → load sequencer → apply L1 params
-5. Result: entire source page replaced, other pages untouched
+3. If this save path includes embedded child snapshots, apply those pinned child snapshots next
+4. Use `refs` for provenance, audits, and explicit user-driven child reloads
+5. Do not assume implicit "follow latest child preset" behavior by default
 
 ---
 
@@ -766,7 +963,8 @@ One `PresetDropdown` per source page tab:
 ### 6.1 — What Changes
 
 The existing `SavedPreset` (monolithic `SliderState` blob) becomes a structured
-`PresetEntry` with L4-owned params (23 global) + refs to 5 L3 source presets.
+`PresetEntry` with L4-owned params (48 live global keys) plus optional source
+refs / embedded snapshots.
 
 ### 6.2 — Migration Path
 
@@ -892,18 +1090,21 @@ the **UI and logic** for version navigation.
 - **"Save"** while viewing v2 creates v4 (not v3-replacement) from current state
 - Version counter shows `v3` / `v3 of 5` depending on space
 
-### 8.4 — Version Pinning in References
+### 8.4 — Version Metadata in Refs
 
-Higher-level presets store version numbers in refs:
+Higher-level presets may carry version numbers in `refs` metadata:
 
 ```json
-{ "name": "808 Boom", "version": 2 }    // pinned to v2
-{ "name": "808 Boom", "version": "latest" }  // always resolves latest
+{ "id": "preset_123", "name": "808 Boom", "version": 2 }         // pinned provenance
+{ "id": "preset_123", "name": "808 Boom", "version": "latest" }  // future opt-in mode
 ```
 
-- Default: `"latest"` — editing an L1 preset propagates to all parents
-- User can pin: useful for state presets where exact reproduction matters
-- Journeys always pin versions (each node captures exact state)
+- Default runtime behavior is still **snapshot-first** — loading a parent preset
+  uses the data saved inside that version unless explicit follow-latest child
+  resolution is added later.
+- `refs` are still useful for provenance, migration, audits, and optional future
+  child-resolution features.
+- If follow-latest is ever added, it should be opt-in, not the default.
 
 ### 8.5 — Version Diff
 
@@ -1087,13 +1288,13 @@ On small screens, the browser becomes a full-screen modal with:
 
 | From | To |
 |------|-----|
-| `SavedPreset` (monolithic) → | Structured `PresetEntry` (L4 + 5 L3 children) |
+| `SavedPreset` (monolithic) → | Structured `PresetEntry` (L4 global data + optional source refs / snapshots) |
 | Hardcoded `PAD_PRESETS` → | Factory `PresetEntry` in store |
 | Hardcoded drum preset arrays → | Factory `PresetEntry` in store |
 | `Lead4opFM` JSON files → | Factory `PresetEntry` in store (fetched → cached) |
 | `WATER_PRESETS` → | Factory `PresetEntry` in store |
 | `REVERB_CHARACTER_PRESETS` → | Factory L3 Source presets in store |
-| `LOOPER_PRESET_MAP` → | Split into factory L1 + L2 presets |
+| Granular built-in scene presets → | Kept outside the store until composite metadata-safe preset loading exists |
 
 ### 11.2 — Migration Strategy
 
@@ -1242,12 +1443,15 @@ Phase 0: Types & Registry ──────┐
     │                            │
     ▼                            ▼
 Phase 1: PresetStore      Phase 2: File Export/Import
-    │                            │
-    ├──────────────┬─────────────┤
+    │
+    ├──────────────┬─────────────┐
     │              │             │
     ▼              ▼             ▼
-Phase 3: L1     Phase 9:     Phase 8:
-Engine Save     Dirty Flag   Versioning UI
+Phase 2.5:     Phase 9:     Phase 8:
+Morph Anchors  Dirty Flag   Versioning UI
+    │
+    ▼
+Phase 3: L1 Engine Save
     │
     ▼
 Phase 4: L2 Kit Save
@@ -1278,17 +1482,18 @@ Phase 13: Cloud Sync Enhancement
 | Can run in parallel | Condition |
 |--------------------|-----------|
 | Phase 2 + Phase 1 | Both depend only on Phase 0 |
+| Phase 2.5 + Phase 8 + Phase 9 | All depend on Phase 1 and do not block one another |
 | Phase 8 + Phase 9 | Both depend on Phase 1, independent of each other |
-| Phase 3 + Phase 8 + Phase 9 | All depend on Phase 1 |
 | Phase 7 + Phase 11 | Both depend on Phase 6 |
 
 ### Critical Path (Shortest Route to Full System)
 
 ```
-0 → 1 → 3 → 4 → 5 → 6 → 7 → 10 → 12
+0 → 1 → 2.5 → 3 → 4 → 5 → 6 → 7 → 10 → 12
          ↑
          2 (can happen any time after 0)
          8 (can happen any time after 1)
+         9 (can happen any time after 1)
 ```
 
 ---
@@ -1300,24 +1505,25 @@ Phase 13: Cloud Sync Enhancement
 | 0 | Types & Registry | 2h | 2h |
 | 1 | PresetStore (localStorage) | 2h | 4h |
 | 2 | File Export/Import | 2h | 6h |
-| 3 | L1 Engine user save/load | 4h | 10h |
-| 4 | L2 Kit user save/load | 3h | 13h |
-| 5 | L3 Source presets | 3h | 16h |
-| 6 | L4 State restructure | 2h | 18h |
-| 7 | L5 Journey presets | 2h | 20h |
-| 8 | Versioning UI | 3h | 23h |
-| 9 | Dirty flag | 1h | 24h |
-| 10 | **Preset Browser** | **5h** | **29h** |
-| 11 | Migration & cleanup | 2h | 31h |
-| 12 | IndexedDB migration | 3h | 34h |
-| 13 | Cloud sync enhancement | 4h | 38h |
-| | **Total** | **38h** | |
+| 2.5 | Shared morph endpoint overrides | 3h | 9h |
+| 3 | L1 Engine user save/load | 4h | 13h |
+| 4 | L2 Kit user save/load | 3h | 16h |
+| 5 | L3 Source presets | 3h | 19h |
+| 6 | L4 State restructure | 2h | 21h |
+| 7 | L5 Journey presets | 2h | 23h |
+| 8 | Versioning UI | 3h | 26h |
+| 9 | Dirty flag | 1h | 27h |
+| 10 | **Preset Browser** | **5h** | **32h** |
+| 11 | Migration & cleanup | 2h | 34h |
+| 12 | IndexedDB migration | 3h | 37h |
+| 13 | Cloud sync enhancement | 4h | 41h |
+| | **Total** | **41h** | |
 
 ### Recommended Build Order (Sprints)
 
 | Sprint | Phases | Hours | Milestone |
 |--------|--------|-------|-----------|
-| **Sprint 1** | 0 + 1 + 2 | 6h | Foundation + file export/import working |
+| **Sprint 1** | 0 + 1 + 2 + 2.5 | 9h | Foundation + file export/import + shared morph anchors working |
 | **Sprint 2** | 3 + 8 | 7h | L1 engine save/load + versioning |
 | **Sprint 3** | 4 + 5 + 9 | 7h | L2 + L3 save/load + dirty flag |
 | **Sprint 4** | 6 + 7 + 11 | 6h | L4/L5 restructure + migration |
@@ -1332,8 +1538,9 @@ Phase 13: Cloud Sync Enhancement
 |------|-----------|--------|------------|
 | localStorage fills up before IndexedDB migration | Low | High | Phase 12 is independent; can fast-track. FIFO version eviction helps. |
 | `PARAM_REGISTRY` drifts from `SliderState` | Medium | High | Validation test runs on dev startup (Phase 0.5). CI test if added. |
+| Shared morph anchor semantics drift between engines | Medium | High | Land Phase 2.5 before Phase 3. Reuse one endpoint-override model and one "edit A → B → A" verification checklist across engines. |
 | Factory preset migration slow on first load | Low | Medium | Lazy-load factory presets. Show loading spinner. Cache migration flag. |
-| Reference cycles (A refs B refs A) | Low | Medium | Orphan protection detects cycles. Max resolution depth = 5. |
+| Doc/code drift on ownership or scope rules | Medium | High | Treat `ParamRegistry.ts` + preset utils as source of truth. Keep docs summary-based, not hand-enumerated. |
 | Legacy `.json` import breaks with new format | Medium | Medium | Format detection by `kesshoPreset` marker. Old format always supported. |
 | Large version stacks bloat storage | Medium | Low | 20-version FIFO limit. IndexedDB has room. |
 | Cloud schema migration breaks existing presets | Medium | High | New table `preset_entries` — old `presets` table stays. Gradual migration. |

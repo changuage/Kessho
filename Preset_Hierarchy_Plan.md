@@ -1,15 +1,43 @@
-# Preset Hierarchy Plan — v3
+# Preset Hierarchy Plan — v3.6
 
-> **v3 revision** — March 2026. Restructured around Source Page presets matching
-> the 5-tab UI (Synth, Drums, Reverb, Granular, Earth). Added reverb engine
-> (shimmer, slow mod, freeze, reverse), looper Euclidean sequencer, Earth mixer
-> with per-source reverb sends, and accurate parameter inventories throughout.
+> **v3.6 sync revision** — March 30, 2026. Clocked Space (Delay B) is owned by the
+> **L2 Delay Kit** in the normal Delay preset chain. L2 Granular Kit stores
+> `granularDelayBSend`, `granularDelayReverbSend`, `delayBGranularLinked`, plus a
+> **ref** to a companion L1 Clocked Space preset. When `delayBGranularLinked = true`
+> and a Granular Kit is loaded, the Granular Kit's companion Clocked Space preset
+> **overrides** the one that the Delay Kit would normally load. When linked = false,
+> the Delay Kit's own Clocked Space preset is used. `granularDelayMix` removed
+> (mix hardcoded to 1.0). Bidirectional mutual exclusion between Granular → Delay B
+> and Delay B → Granular enforced in engine, UI, and routing matrix.
 
 ## Overview
 
 A layered preset system where each level composes the levels below it. The hierarchy
-mirrors the app's tab structure: each Source Page (Synth, Drums, Reverb, Granular, Earth)
-has its own preset level containing sound engine presets, slider values, and sequencer config.
+mirrors the app's tab structure: each Source Page (Synth, Drums, Delay, Reverb,
+Granular, Earth) has its own preset level containing sound engine presets, slider
+values, and sequencer config.
+
+## March 2026 Sync Update
+
+- `granular*` is the canonical naming now. Older `looper*` language in this doc is historical and should not be used for new implementation.
+- The live preset stack is **snapshot-first**. Higher-level presets may carry `refs` metadata, but load/apply should assume pinned snapshot behavior unless explicit "follow latest child preset" logic is added later.
+- Presets should carry immutable `id` values and normalized slot `scope` metadata. Display names are labels, not stable identifiers.
+- `dualRanges`, `sliderModes`, evolve configs, sub-lane state, `stepOverrides`, and `clockDivs` are part of the preset payload. They belong to the lowest level that owns the affected params. Sequencer behavior belongs with the matching Euclidean preset. For the current built-in granular scenes, this metadata should stay at **L3 granular source** level.
+- Granular is now modeled as:
+  L1 `granularVoice1..4`, `granularLegacy`, `granularEuclidean`
+  L2 `granularKit` (16 params: 13 voice/macro + 3 Clocked Space routing/linkage)
+  L3 `granular` source preset (10 params)
+  Granular factory presets live in `granularPresets.ts` as full-scene snapshots
+  (L1+L2+L3 combined). The redundant `granularSourcePresets.ts` thin presets
+  have been removed.
+- Delay is now modeled as:
+  L1 `echoLine` (6 params), L1 `clockedSpace` (10 params)
+  L2 `delayKit` (8 params — cross-feeds + master saturation + refs to both L1 engines)
+  L3 `delay` source preset (1 param)
+- Cross-page mix/routing lives at **L4 State**. That includes page/engine levels, reverb sends, and granular send amounts.
+- Ownership corrections already reflected in the live registry: `padFold*` / `pad2Fold*` are L1 pad params, `synthEuclidBaseBPM` is L1, and the lead delay family has its own L1 `leadDelay` scope.
+- `granularPreset` and `leadTimbre` remain intentional non-registry/UI-only shortcuts.
+- Earth remains an exception. It behaves more like a scene/mixer wrapper around Water, Ocean, and Insects than a clean parallel source tree, so its hierarchy should stay conservative until the Earth page/audio cleanup is done. Earth Kit has 7 live registry params (not 12 as originally planned — 5 ocean behavior params are not yet registered).
 
 ---
 
@@ -19,52 +47,63 @@ has its own preset level containing sound engine presets, slider values, and seq
 Journey (L5)
 ├── Topology, phrase lengths, morph durations, connections
 │
-├── Node 1 → State Preset ref (L4)
-│   ├── Global / Mixer params (23 owned: master vol, harmony, CoF, tension, etc.)
+├── Node 1 → State Preset (L4 snapshot)
+│   ├── Global / Mixer params (master, harmony, cross-page levels/sends, etc.)
 │   │
-│   ├── Synth Source ref (L3)
-│   │   ├── Shared lead delay/vibrato/glide + master (9 owned)
-│   │   ├── Pad 1 Kit Preset ref (L2)
-│   │   │   ├── presetA/B, morph, enabled, voiceMask, waveSpread, detune (10 owned)
-│   │   │   └── Pad 1 Engine ref (L1) — e.g. "Saturated Drift"
-│   │   ├── Pad 2 Kit Preset ref (L2)
-│   │   │   ├── presetA/B, morph, enabled, voiceAssign (8 owned)
-│   │   │   └── Pad 2 Engine ref (L1)
-│   │   ├── Lead 1 Kit Preset ref (L2)
-│   │   │   ├── presetA/B, morph, level, config (8 owned)
-│   │   │   └── Lead 1 Engine ref (L1) — e.g. "Glass Bell"
-│   │   ├── Lead 2 Kit Preset ref (L2)
-│   │   │   ├── presetC/D, morph, enabled, level, config (9 owned)
-│   │   │   └── Lead 2 Engine ref (L1)
-│   │   └── Synth Euclidean ref (L1) — e.g. "Arpeggio Weave"
+│   ├── Synth Source preset (L3)
+│   │   ├── Shared synth behavior (lead enable/random/vibrato/glide)
+│   │   ├── Pad 1 Kit Preset (L2)
+│   │   │   ├── presetA/B, morph, enabled, voiceMask, spread, octave
+│   │   │   └── Pad 1 Engine preset (L1) — e.g. "Saturated Drift"
+│   │   ├── Pad 2 Kit Preset (L2)
+│   │   │   ├── presetA/B, morph, enabled, voiceAssign, octave
+│   │   │   └── Pad 2 Engine preset (L1)
+│   │   ├── Lead 1 Kit Preset (L2)
+│   │   │   ├── presetA/B, morph, algorithm + morph config
+│   │   │   └── Lead 1 Engine preset (L1) — e.g. "Glass Bell"
+│   │   ├── Lead 2 Kit Preset (L2)
+│   │   │   ├── presetC/D, morph, enabled, algorithm + morph config
+│   │   │   └── Lead 2 Engine preset (L1)
+│   │   ├── Lead Delay preset (L1) — e.g. "Wide Sync Echo"
+│   │   └── Synth Euclidean preset (L1) — e.g. "Arpeggio Weave"
 │   │
-│   ├── Drums Source ref (L3)
-│   │   ├── Drum mixer + delay + sends (17 owned)
-│   │   ├── Drum Kit ref (L2) — e.g. "Ambient Kit"
+│   ├── Drums Source preset (L3)
+│   │   ├── Drum page behavior + delay sends (15 owned)
+│   │   ├── Drum Kit preset (L2) — e.g. "Ambient Kit"
 │   │   │   ├── 7× distance/variation + morph config (56 owned)
-│   │   │   └── 7× Voice Engine refs (L1) — e.g. "Ikeda Kick"
-│   │   └── Drum Euclidean ref (L1) — e.g. "Four On Floor"
+│   │   │   └── 7× Voice Engine presets (L1) — e.g. "Ikeda Kick"
+│   │   └── Drum Euclidean preset (L1) — e.g. "Four On Floor"
 │   │
-│   ├── Reverb Source (L3 — no L2, 18 owned params)
+│   ├── Delay Source preset (L3)
+│   │   ├── Delay routing mode (granularSpaceMode)
+│   │   ├── Delay Kit Preset (L2) — e.g. "Dual Feedback"
+│   │   │   ├── Cross-feeds, master saturation (8 owned)
+│   │   │   ├── Echo Line Engine preset (L1) — e.g. "Tape Slapback"
+│   │   │   └── Clocked Space Engine preset (L1) — e.g. "Dotted Eighth"
+│   │   └── (no Euclidean sub-preset — delay is continuous)
 │   │
-│   ├── Granular Source ref (L3)
-│   │   ├── Master mixer/sends + delay (22 owned)
-│   │   ├── Looper Kit Preset ref (L2) — e.g. "Ambient Wash"
-│   │   │   ├── 4× voice enabled/gain + macros (12 owned)
-│   │   │   ├── 4× Looper Voice Engine refs (L1)
-│   │   │   ├── Legacy Granular ref (L1)
-│   │   │   └── Looper Legacy ref (L1)
-│   │   └── Looper Euclidean ref (L1) — e.g. "Scattered Grains"
+│   ├── Reverb Source (L3 — no L2, 44 owned params)
 │   │
-│   └── Earth Source ref (L3)
-│       ├── Earth mixer (0 owned — just a ref to L2)
-│       └── Earth Kit Preset ref (L2) — e.g. "Rainforest Night"
-│           ├── enabled/level/sends for each engine + ocean config (19 owned)
-│           ├── Water Engine ref (L1) — e.g. "Tap Drips"
-│           ├── Insects 1 Engine ref (L1) — e.g. "Cricket Chorus"
-│           └── Insects 2 Engine ref (L1) — e.g. "Cicada Dusk"
+│   ├── Granular Source preset (L3)
+│   │   ├── Source behavior + scene metadata (10 params)
+│   │   ├── Granular Kit Preset (L2) — e.g. "Ambient Wash"
+│   │   │   ├── 4× voice enabled/gain + macros (13 params)
+│   │   │   ├── Send, reverb send, linkage (3 params)
+│   │   │   ├── Override ref to L1 Clocked Space — e.g. "Microcosm Delay"
+│   │   │   │   (overrides Delay Kit's Clocked Space when linked = true)
+│   │   │   ├── 4× Granular Voice Engine presets (L1)
+│   │   │   └── Granular Legacy preset (L1)
+│   │   └── Granular Euclidean preset (L1) — e.g. "Scattered Grains"
+│   │
+│   └── Earth Source placeholder (L3)
+│       ├── Thin scene/mixer wrapper (kept intentionally exceptional)
+│       └── Earth children remain under audit
+│           ├── Water Engine preset (L1)
+│           ├── Insects 1 Engine preset (L1)
+│           ├── Insects 2 Engine preset (L1)
+│           └── Ocean behavior currently remains tied to Earth config
 │
-├── Node 2 → State Preset ref (L4)
+├── Node 2 → State Preset (L4 snapshot)
 ├── Node 3 (optional)
 └── Node 4 (optional)
 ```
@@ -89,30 +128,34 @@ for individual voices like a kick drum or an FM lead.
 | 5 | Drums | BeepLo | `drumBeepLo*` | 17 pure synth | 26 |
 | 6 | Drums | Noise | `drumNoise*` | 17 pure synth | 31 |
 | 7 | Drums | Membrane | `drumMembrane*` | 21 pure synth | 20 |
-| 8 | Synth | Pad 1 | `pad*` (no number) | 48 pure synth | A/B morph from Lead4opFM pool |
-| 9 | Synth | Pad 2 | `pad2*` | 48 pure synth | A/B morph from Lead4opFM pool |
+| 8 | Synth | Pad 1 | `pad*` (no number) | 51 engine params | A/B morph from Lead4opFM pool |
+| 9 | Synth | Pad 2 | `pad2*` | 50 engine params | A/B morph from Lead4opFM pool |
 | 10 | Synth | Lead 1 | `lead1*` | 9 pure synth | 17 (Lead4opFM/) |
 | 11 | Synth | Lead 2 | `lead2*` | 6 pure synth | same pool as Lead 1 |
-| 12 | Earth | Water | `water*` | 18 pure synth | 4 (Tap Drips, Stream, Waterfall, Rain Window) |
-| 13 | Earth | Insects 1 | `insects*` | 8 pure synth | — (user-saved only) |
-| 14 | Earth | Insects 2 | `insects2*` | 8 pure synth | — (user-saved only) |
-| 15 | Granular | Legacy Granular | `grain*/density/spray/…` | 12 pure synth | — (user-saved only) |
-| 16 | Granular | Looper Voice | `looperV{n}*` | 20 pure synth (×4 voices) | — (user-saved only) |
-| 17 | Granular | Looper Legacy | `looperLegacy*` | 6 pure synth | — (user-saved only) |
-| 18 | Synth | Synth Euclidean | `synthEuclidean*` | 43 params (3 global + 4 lanes × 10) | — (user-saved only) |
-| 19 | Drums | Drum Euclidean | `drumEuclidean*` | 69 params (5 global + 4 lanes × 16) | — (user-saved only) |
-| 20 | Granular | Looper Euclidean | `looperEuclidean*` | 41 params (5 global + 4 lanes × 9) | — (user-saved only) |
+| 12 | Synth | Lead Delay | `leadDelay*` | 7 delay params | user-saved only |
+| 13 | Earth | Water | `water*` | water engine params | 8 built-ins |
+| 14 | Earth | Insects 1 | `insects*` | 8 pure synth | — (user-saved only) |
+| 15 | Earth | Insects 2 | `insects2*` | 8 pure synth | — (user-saved only) |
+| 16 | Granular | Granular Voice | `granularV{n}*` | 20 per voice (×4 voices) | user-saved only |
+| 17 | Granular | Granular Legacy | `granularLegacy*` | 6 pure synth | user-saved only |
+| 18 | Synth | Synth Euclidean | `synthEuclidean*` | sequencer params | user-saved only |
+| 19 | Drums | Drum Euclidean | `drumEuclidean*` | sequencer params | user-saved only |
+| 20 | Granular | Granular Euclidean | `granularEuclid*` | sequencer params | user-saved only |
+| 21 | Delay | Echo Line | `delayA*` | 6 engine params | 8 factory |
+| 22 | Delay | Clocked Space | `delayB*` / `granularDelay*` | 10 engine params | 8 factory + granular companions |
 
-> **Note:** L1 stores only pure sound/synthesis params. Performance params (distance,
-> variation, morph config, enabled, gain, etc.) live at **L2 (Kit Preset)** level.
+> **Note:** L1 stores engine-level sound/behavior params. Kit-level morph/config
+> params live at **L2**, source-level page behavior lives at **L3**, and cross-page
+> mix/routing lives at **L4**.
 
-> **Note:** Ocean wave synth parameters are stored as raw slider values within the
-> Earth Source Preset and do not have their own engine preset level.
+> **Note:** Ocean wave synth parameters are currently part of Earth-level config and
+> do not yet have their own stable L1 engine preset family.
 
 ### Data Format
 ```json
 {
-  "type": "voice-preset",
+  "type": "engine",
+  "scope": "drumKick",
   "engine": "drumKick",
   "name": "808 Boom",
   "author": "factory",
@@ -121,7 +164,7 @@ for individual voices like a kick drum or an FM lead.
       "v": 1,
       "note": "initial",
       "timestamp": 1740000000,
-      "params": {
+      "data": {
         "drumKickFreq": 52,
         "drumKickPitchEnv": 0.6,
         "drumKickPitchDecay": 80,
@@ -141,29 +184,32 @@ for individual voices like a kick drum or an FM lead.
 
 ### Engine Type Discriminators
 ```
-type: "voice-preset"
+type: "engine"
 engine: "drumSub" | "drumKick" | "drumClick" | "drumBeepHi" | "drumBeepLo" |
         "drumNoise" | "drumMembrane" | "pad1" | "pad2" | "lead1" | "lead2" |
-        "water" | "insects1" | "insects2" |
-        "legacyGranular" | "looperVoice" | "looperLegacy" |
-        "synthEuclidean" | "drumEuclidean" | "looperEuclidean"
+        "leadDelay" | "water" | "insects1" | "insects2" |
+        "granularVoice1" | "granularVoice2" | "granularVoice3" | "granularVoice4" |
+        "granularLegacy" | "synthEuclidean" | "drumEuclidean" | "granularEuclidean" |
+        "echoLine" | "clockedSpace"
 ```
 
 ### Storage Key
 ```
-preset:voice:drumSub:Subterranean
-preset:voice:drumKick:808 Boom
-preset:voice:pad1:Warm Wash
-preset:voice:lead1:Glass Bell
-preset:voice:water:Rain Window
-preset:voice:insects1:Summer Night
-preset:voice:insects2:Cicada Chorus
-preset:voice:legacyGranular:Cloud Texture
-preset:voice:looperVoice:Granular Scatter
-preset:voice:looperLegacy:Sparse Grains
-preset:voice:synthEuclidean:Arpeggio Weave
-preset:voice:drumEuclidean:Four On Floor
-preset:voice:looperEuclidean:Scattered Grains
+preset:engine:drumSub:Subterranean
+preset:engine:drumKick:808 Boom
+preset:engine:pad1:Warm Wash
+preset:engine:lead1:Glass Bell
+preset:engine:leadDelay:Wide Sync Echo
+preset:engine:water:Rain Window
+preset:engine:insects1:Summer Night
+preset:engine:insects2:Cicada Chorus
+preset:engine:granularVoice1:Granular Scatter
+preset:engine:granularLegacy:Sparse Grains
+preset:engine:synthEuclidean:Arpeggio Weave
+preset:engine:drumEuclidean:Four On Floor
+preset:engine:granularEuclidean:Scattered Grains
+preset:engine:echoLine:Tape Slapback
+preset:engine:clockedSpace:Dotted Eighth
 ```
 
 ### UI Placement
@@ -276,36 +322,45 @@ Each Source Page maps 1:1 to a UI tab.
 
 ### 2a. Synth Source Preset
 
-**L3-owned params (9):**
-- Shared lead delay: `leadDelayTime`, `leadDelayFeedback`, `leadDelayMix` (3)
+**L3-owned params (5 live registry params):**
+- Shared lead behavior: `leadEnabled`, `leadRandomEnabled` (2)
 - Shared lead performance: `leadVibratoDepth`, `leadVibratoRate`, `leadGlide` (3)
-- Master lead controls: `leadEnabled`, `leadRandomEnabled`, `leadLevel` (3)
+
+> `leadLevel` now lives at **L4 State**, and the lead delay family now lives in
+> its own **L1 `leadDelay`** preset scope.
 
 **References (by name):**
 - L2 Pad 1 Kit Preset ref (→ L1 Pad 1 Engine)
 - L2 Pad 2 Kit Preset ref (→ L1 Pad 2 Engine)
 - L2 Lead 1 Kit Preset ref (→ L1 Lead 1 Engine)
 - L2 Lead 2 Kit Preset ref (→ L1 Lead 2 Engine)
-- L1 Synth Euclidean engine ref (43 params)
+- L1 Lead Delay preset ref (7 params)
+- L1 Synth Euclidean engine ref (44 params)
 
 **Data Format:**
 ```json
 {
-  "type": "source-preset",
+  "type": "source",
   "source": "synth",
+  "scope": "synth",
   "name": "Ambient Pads + Arpeggios",
   "versions": [{
     "v": 1,
     "timestamp": 1740000000,
-    "pad1Ref": { "name": "Warm Wash Morph", "version": 1 },
-    "pad2Ref": { "name": "Crystal Layer", "version": 1 },
-    "lead1Ref": { "name": "Glass Bell Setup", "version": 1 },
-    "lead2Ref": { "name": "Ethereal FM Setup", "version": 1 },
-    "sequencerRef": { "name": "Arpeggio Weave", "version": 1 },
-    "sharedLead": {
-      "leadVibratoDepth": 0.3, "leadVibratoRate": 5.5,
-      "leadGlide": 0.1, "leadDelayTime": 375,
-      "leadDelayFeedback": 0.3, "leadDelayMix": 0.15
+    "data": {
+      "leadEnabled": true,
+      "leadRandomEnabled": false,
+      "leadVibratoDepth": 0.3,
+      "leadVibratoRate": 5.5,
+      "leadGlide": 0.1
+    },
+    "refs": {
+      "pad1Kit": { "name": "Warm Wash Morph", "version": 1, "scope": "pad1Kit" },
+      "pad2Kit": { "name": "Crystal Layer", "version": 1, "scope": "pad2Kit" },
+      "lead1Kit": { "name": "Glass Bell Setup", "version": 1, "scope": "lead1Kit" },
+      "lead2Kit": { "name": "Ethereal FM Setup", "version": 1, "scope": "lead2Kit" },
+      "leadDelay": { "name": "Wide Sync Echo", "version": 1, "scope": "leadDelay" },
+      "sequencer": { "name": "Arpeggio Weave", "version": 1, "scope": "synthEuclidean" }
     }
   }],
   "currentVersion": 1
@@ -318,7 +373,7 @@ Each Source Page maps 1:1 to a UI tab.
 
 ### Level 2 Kit Presets — Synth Page
 
-#### L2 Pad 1 Kit Preset (10 owned params)
+#### L2 Pad 1 Kit Preset (9 owned params)
 The "kit" layer around a Pad 1 engine sound. Stores which L1 preset(s)
 to morph between, morph settings, and performance params.
 
@@ -332,10 +387,9 @@ to morph between, morph settings, and performance params.
 | 6 | `padEnabled` | Master on/off |
 | 7 | `synthVoiceMask` | Which voices this pad uses |
 | 8 | `waveSpread` | Voice stagger timing |
-| 9 | `detune` | Voice detuning |
-| 10 | `synthOctave` | Octave offset |
+| 9 | `synthOctave` | Octave offset |
 
-Data: `{ "type": "kit-preset", "source": "pad1", "name": "Warm Wash Morph", "engineRef": { "name": "Saturated Drift", "version": 1 }, "params": { ... } }`
+Data: `{ "type": "kit", "source": "synth", "scope": "pad1Kit", "name": "Warm Wash Morph", "refs": { "pad1": { "name": "Saturated Drift", "version": 1, "scope": "pad1" } }, "data": { ... } }`
 
 #### L2 Pad 2 Kit Preset (8 owned params)
 
@@ -350,7 +404,7 @@ Data: `{ "type": "kit-preset", "source": "pad1", "name": "Warm Wash Morph", "eng
 | 7 | `pad2VoiceAssign` | Which voices this pad uses |
 | 8 | `pad2Octave` | Octave offset |
 
-#### L2 Lead 1 Kit Preset (8 owned params)
+#### L2 Lead 1 Kit Preset (7 owned params)
 
 | # | Key | Notes |
 |---|-----|-------|
@@ -361,9 +415,8 @@ Data: `{ "type": "kit-preset", "source": "pad1", "name": "Warm Wash Morph", "eng
 | 5 | `lead1MorphSpeed` | Phrases per morph cycle |
 | 6 | `lead1MorphMode` | linear / pingpong / random |
 | 7 | `lead1AlgorithmMode` | snap / presetA |
-| 8 | `lead1Level` | Lead 1 output level |
 
-#### L2 Lead 2 Kit Preset (9 owned params)
+#### L2 Lead 2 Kit Preset (8 owned params)
 
 | # | Key | Notes |
 |---|-----|-------|
@@ -374,17 +427,18 @@ Data: `{ "type": "kit-preset", "source": "pad1", "name": "Warm Wash Morph", "eng
 | 5 | `lead2MorphSpeed` | Phrases per morph cycle |
 | 6 | `lead2MorphMode` | linear / pingpong / random |
 | 7 | `lead2AlgorithmMode` | snap / presetA |
-| 8 | `lead2Level` | Lead 2 output level |
-| 9 | `lead2Enabled` | Lead 2 on/off |
+| 8 | `lead2Enabled` | Lead 2 on/off |
 
 ---
 
 ### 2b. Drums Source Preset
 
-**L3-owned params (17):**
-- Drum mixer: `drumEnabled`, `drumLevel`, `drumReverbSend`, `drumMorphSliderAnimate` (4)
+**L3-owned params (15):**
+- Drum page behavior: `drumEnabled`, `drumMorphSliderAnimate` (2)
 - Drum stereo ping-pong delay: `drumDelayEnabled`, `drumDelayNoteL/R`, `drumDelayFeedback`, `drumDelayMix`, `drumDelayFilter` (6)
 - Per-voice delay sends: `drumSubDelaySend` … `drumMembraneDelaySend` (7)
+
+> `drumLevel` and `drumReverbSend` now live at **L4 State**.
 
 **References (by name):**
 - L2 Drum Kit preset (→ which in turn references 7 × L1 voice presets)
@@ -393,28 +447,27 @@ Data: `{ "type": "kit-preset", "source": "pad1", "name": "Warm Wash Morph", "eng
 **Data Format:**
 ```json
 {
-  "type": "source-preset",
+  "type": "source",
   "source": "drums",
+  "scope": "drums",
   "name": "Ambient Drums",
   "versions": [{
     "v": 1,
     "timestamp": 1740000000,
-    "kitRef": { "name": "Ambient Kit", "version": 1 },
-    "sequencerRef": { "name": "Four On Floor", "version": 1 },
-    "mixer": {
-      "drumEnabled": true, "drumLevel": 0.8,
-      "drumReverbSend": 0.3, "drumMorphSliderAnimate": true
+    "data": {
+      "drumEnabled": true,
+      "drumMorphSliderAnimate": true,
+      "drumDelayEnabled": true,
+      "drumDelayNoteL": "1/8",
+      "drumDelayNoteR": "1/8d",
+      "drumDelayFeedback": 0.3,
+      "drumDelayMix": 0.15,
+      "drumDelayFilter": 2000,
+      "drumKickDelaySend": 0.3
     },
-    "delay": {
-      "drumDelayEnabled": true, "drumDelayNoteL": "1/8",
-      "drumDelayNoteR": "1/8d", "drumDelayFeedback": 0.3,
-      "drumDelayMix": 0.15, "drumDelayFilter": 2000
-    },
-    "delaySends": {
-      "drumSubDelaySend": 0.0, "drumKickDelaySend": 0.3,
-      "drumClickDelaySend": 0.5, "drumBeepHiDelaySend": 0.2,
-      "drumBeepLoDelaySend": 0.1, "drumNoiseDelaySend": 0.4,
-      "drumMembraneDelaySend": 0.2
+    "refs": {
+      "kit": { "name": "Ambient Kit", "version": 1, "scope": "drumKit" },
+      "sequencer": { "name": "Four On Floor", "version": 1, "scope": "drumEuclidean" }
     }
   }],
   "currentVersion": 1
@@ -425,26 +478,27 @@ Data: `{ "type": "kit-preset", "source": "pad1", "name": "Warm Wash Morph", "eng
 
 ---
 
-### 2c. Reverb Source Preset (18 params)
+### 2c. Reverb Source Preset (44 live registry params)
 
 **Contains:**
 - Core: `reverbEngine`, `reverbType`, `reverbQuality`, `reverbDecay`, `reverbSize`, `reverbDiffusion`
-- Mod: `reverbModulation`, `predelay`, `damping`, `width`
-- Shimmer: `reverbShimmer`, `reverbShimmerPitch`
-- Slow Mod: `reverbSlowModRate`, `reverbSlowModDepth`
-- Reverse: `reverbReverse`, `reverbReverseLength`
-- Config: `reverbEnabled`, `reverbFreeze`
+- Mod: `reverbModulation`, `predelay`, `damping`, `width`, chorus, warp, crossfeed, early reflections
+- Shimmer / tonal shaping: `reverbShimmer`, `reverbShimmerPitch`, `reverbScaleShimmer`, `reverbChordWash`, damping crossover/tone controls
+- Slow Mod / reverse: `reverbSlowModRate`, `reverbSlowModDepth`, `reverbReverse`, `reverbReverseLength`
+- Spectral freeze block: `spectralFreeze*` controls and routing
+- Config: `reverbEnabled` plus all other source-owned behavior toggles in the live registry
 
 **Data Format:**
 ```json
 {
-  "type": "source-preset",
+  "type": "source",
   "source": "reverb",
+  "scope": "reverb",
   "name": "Blackhole",
   "versions": [{
     "v": 1,
     "timestamp": 1740000000,
-    "params": {
+    "data": {
       "reverbEnabled": true,
       "reverbEngine": "algorithmic",
       "reverbType": "cathedral",
@@ -460,9 +514,10 @@ Data: `{ "type": "kit-preset", "source": "pad1", "name": "Warm Wash Morph", "eng
       "reverbShimmerPitch": 5,
       "reverbSlowModRate": 0.02,
       "reverbSlowModDepth": 0.7,
-      "reverbFreeze": false,
       "reverbReverse": 0.4,
-      "reverbReverseLength": 3.5
+      "reverbReverseLength": 3.5,
+      "reverbWarp": 0.1,
+      "spectralFreezeEnabled": false
     }
   }],
   "currentVersion": 1
@@ -479,43 +534,60 @@ Data: `{ "type": "kit-preset", "source": "pad1", "name": "Warm Wash Morph", "eng
 
 ### 2d. Granular Source Preset
 
-**L3-owned params (22):**
-- `granularEnabled` (1)
-- Looper master: `looperEnabled`, `looperDryWet`, `looperFreeze`, `looperFeedback`, `looperFeedbackLPF`, `looperBufferSeconds`, `looperReverbSend` (7)
-- Looper sends: `looperPad1Send`, `looperPad2Send`, `looperLead1Send`, `looperLead2Send`, `looperDrumSend`, `looperWavesSend` (6)
-- Looper delay: `looperDelayEnabled/Activity/Repeats/Time/Filter/Vibrato/Mix/ReverbSend` (8)
+**L3-owned registry params (10):**
+- `granularEnabled`
+- `granularFreeze`
+- `granularFeedback`
+- `granularFeedbackLPF`
+- `granularBufferSeconds`
+- `granularShape`
+- `granularDiffusion`
+- `granularReverbLPF`
+- `granularOutputLPF`
+- `granularChordBias`
 
-**References (by name):**
-- L2 Looper Kit Preset ref (→ L1 voices + legacy)
-- L1 Looper Euclidean engine ref (41 params)
+> **Note:** Granular no longer owns any Delay B DSP/voicing params. The 6 voicing
+> params (`granularDelayEnabled/Activity/Repeats/Time/Filter/Vibrato`) belong to
+> L1 Clocked Space. The L2 Granular Kit stores a **ref** to an L1 Clocked Space
+> preset, the send amount (`granularDelayBSend`), reverb send
+> (`granularDelayReverbSend`), and the linkage toggle (`delayBGranularLinked`).
+> `granularDryWet` is intentionally excluded from the registry — it is a UI-only
+> shortcut.
+
+**Additional L3 scene metadata for built-in granular presets:**
+- `dualRanges`
+- `sliderModes`
+- `granularEvolveConfigs`
+- `granularSubLaneStates`
+- sequencer metadata such as `stepOverrides` / `clockDivs`
+
+**Child composition:**
+- L2 `granularKit` preset (includes Clocked Space ref + send + linkage)
+- L1 `granularEuclidean` preset
+- Optional metadata refs to the selected child voice/legacy presets
 
 **Data Format:**
 ```json
 {
-  "type": "source-preset",
+  "type": "source",
   "source": "granular",
+  "scope": "granular",
   "name": "Shimmer Cloud",
   "versions": [{
     "v": 1,
     "timestamp": 1740000000,
-    "looperKitRef": { "name": "Ambient Wash", "version": 1 },
-    "sequencerRef": { "name": "Scattered Grains", "version": 1 },
-    "config": { "granularEnabled": true },
-    "looperMaster": {
-      "looperEnabled": true, "looperDryWet": 0.5, "looperFreeze": false,
-      "looperFeedback": 0.6, "looperFeedbackLPF": 6000,
-      "looperBufferSeconds": 4, "looperReverbSend": 0.3
+    "data": {
+      "granularEnabled": true,
+      "granularDryWet": 0.5,
+      "granularFeedback": 0.6,
+      "granularBufferSeconds": 4
     },
-    "sends": {
-      "looperPad1Send": 1, "looperPad2Send": 0, "looperLead1Send": 1,
-      "looperLead2Send": 0, "looperDrumSend": 0, "looperWavesSend": 0
+    "refs": {
+      "kit": { "name": "Ambient Wash", "version": 1, "scope": "granularKit" },
+      "sequencer": { "name": "Scattered Grains", "version": 1, "scope": "granularEuclidean" }
     },
-    "delay": {
-      "looperDelayEnabled": false, "looperDelayActivity": 0.3,
-      "looperDelayRepeats": 3, "looperDelayTime": "1/8",
-      "looperDelayFilter": 4000, "looperDelayVibrato": 0.1,
-      "looperDelayMix": 0.2, "looperDelayReverbSend": 0.15
-    }
+    "sliderModes": { "granularMorph": "sampleHold" },
+    "dualRanges": { "granularDelayTime": { "min": 0.2, "max": 0.45 } }
   }],
   "currentVersion": 1
 }
@@ -527,61 +599,215 @@ Data: `{ "type": "kit-preset", "source": "pad1", "name": "Warm Wash Morph", "eng
 
 ### Level 2 Kit Preset — Granular Page
 
-#### L2 Looper Kit Preset (12 owned params)
-The "kit" layer — which looper voices are active, their gains,
-and macro knobs. Named presets like "Ambient Wash", "Rhythmic Chop",
-"Glitch Scatter" etc. are L2 Looper Kit Presets.
+#### L2 Granular Kit Preset (16 owned params)
+The kit layer controls which granular voices are active, their gains, the
+five macro knobs, and the Clocked Space (Delay B) routing/linkage.
 
 | # | Key | Notes |
 |---|-----|-------|
-| 1 | `looperV1Enabled` | Voice 1 on/off |
-| 2 | `looperV1Gain` | Voice 1 output level |
-| 3 | `looperV2Enabled` | Voice 2 on/off |
-| 4 | `looperV2Gain` | Voice 2 output level |
-| 5 | `looperV3Enabled` | Voice 3 on/off |
-| 6 | `looperV3Gain` | Voice 3 output level |
-| 7 | `looperV4Enabled` | Voice 4 on/off |
-| 8 | `looperV4Gain` | Voice 4 output level |
-| 9 | `looperMacroTexture` | Macro: blur/spray/grainSize |
-| 10 | `looperMacroComplexity` | Macro: LFO rates/density |
-| 11 | `looperMacroDarkness` | Macro: speed/pitch/filter |
-| 12 | `looperMacroChaos` | Macro: reverse/spray/grainOct |
+| 1 | `granularV1Enabled` | Voice 1 on/off |
+| 2 | `granularV1Gain` | Voice 1 output level |
+| 3 | `granularV2Enabled` | Voice 2 on/off |
+| 4 | `granularV2Gain` | Voice 2 output level |
+| 5 | `granularV3Enabled` | Voice 3 on/off |
+| 6 | `granularV3Gain` | Voice 3 output level |
+| 7 | `granularV4Enabled` | Voice 4 on/off |
+| 8 | `granularV4Gain` | Voice 4 output level |
+| 9 | `granularMacroActivity` | Macro: overall activity/density |
+| 10 | `granularMacroTexture` | Macro: blur/spray/grainSize |
+| 11 | `granularMacroComplexity` | Macro: LFO rates/density |
+| 12 | `granularMacroDarkness` | Macro: speed/pitch/filter |
+| 13 | `granularMacroChaos` | Macro: reverse/spray/grainOct |
+| 14 | `granularDelayBSend` | Routing: Granular → Delay B send |
+| 15 | `granularDelayReverbSend` | Routing: Delay B → Reverb send |
+| 16 | `delayBGranularLinked` | Whether Clocked Space is linked to this kit |
 
 **References:**
-- 4 × L1 Looper Voice engine refs (by name)
-- L1 Legacy Granular engine ref (by name)
-- L1 Looper Legacy engine ref (by name)
+- 4 × L1 `granularVoice1..4` engine refs
+- Optional L1 `granularLegacy` ref
+- L1 `clockedSpace` override ref (applied only when `delayBGranularLinked = true`)
 
-Data: `{ "type": "kit-preset", "source": "looper", "name": "Ambient Wash", "voiceRefs": [ { "name": "Slow Scan V1", "version": 1 }, ... ], "legacyRef": { ... }, "params": { ... } }`
+> **Override behavior:** When `delayBGranularLinked = true` and this Granular Kit
+> is loaded, the companion L1 Clocked Space preset referenced here **overrides**
+> whichever L1 Clocked Space the Delay Kit currently has loaded. When linked = false,
+> the Delay Kit's own Clocked Space preset remains active. This lets Granular scene
+> presets ship with tuned Delay B settings without permanently owning the Delay chain.
+
+> **Important:** the live registry still contains a separate historical
+> `legacyGranular` scope used by the old generic granular FX path. Do not
+> confuse that with the page-specific `granularLegacy` child preset.
+
+Data: `{ "type": "kit", "source": "granular", "scope": "granularKit", "name": "Ambient Wash", "refs": { "voice1": { ... }, "voice2": { ... }, "legacy": { ... }, "clockedSpace": { "name": "Microcosm Delay", "scope": "clockedSpace" } }, "data": { "granularDelayBSend": 0.34, "granularDelayReverbSend": 0.4, "delayBGranularLinked": true, ... } }`
 
 ---
 
-### 2e. Earth Source Preset
+### 2f. Delay Source Preset
 
-**L3-owned params (0):**
-Just a reference to the L2 Earth Kit Preset. All Earth mixer/config params
-live at L2 (enabled, levels, sends, ocean config).
+The Delay page has its own three-tier hierarchy. Unlike other source pages,
+Delay has no Euclidean sub-preset — delay processing is continuous.
+
+**L3-owned params (1):**
+- `granularSpaceMode` — controls how Delay B routes to the Granular engine
 
 **References (by name):**
-- L2 Earth Kit Preset ref (→ L1 Water, Insects1, Insects2 engines)
+- L2 Delay Kit preset (→ cross-feeds + saturation)
+- L1 Echo Line engine preset (6 params)
 
 **Data Format:**
 ```json
 {
-  "type": "source-preset",
-  "source": "earth",
-  "name": "Rainforest Night",
+  "type": "source",
+  "source": "delay",
+  "scope": "delay",
+  "name": "Clocked Linked",
   "versions": [{
     "v": 1,
     "timestamp": 1740000000,
-    "earthKitRef": { "name": "Rainforest Night", "version": 1 }
+    "refs": {
+      "kit": { "name": "Dual Feedback", "version": 1, "scope": "delayKit" }
+    }
   }],
   "currentVersion": 1
 }
 ```
 
-> **Note:** Earth L3 is a thin wrapper — it exists so L4 State can reference all 5
-> source pages uniformly. In practice, most Earth config lives at L2.
+**Storage Key:** `preset:source:delay:Clocked Linked`
+
+---
+
+### Level 2 Kit Preset — Delay Page
+
+#### L2 Delay Kit Preset (8 owned params)
+The kit layer controls cross-feed routing between delay engines and the master
+saturation stage.
+
+| # | Key | Notes |
+|---|-----|-------|
+| 1 | `delayAToBSend` | Echo Line → Clocked Space send |
+| 2 | `delayBToASend` | Clocked Space → Echo Line send |
+| 3 | `delayACrossFeedFilter` | Cross-feed filter frequency |
+| 4 | `delayAGranularSend` | Echo Line → Granular send |
+| 5 | `delayBGranularSend` | Clocked Space → Granular send |
+| 6 | `masterSatDrive` | Master saturation drive |
+| 7 | `masterSatMode` | Saturation algorithm |
+| 8 | `masterSatTone` | Post-saturation tone |
+
+**References:**
+- L1 `echoLine`
+- L1 `clockedSpace`
+
+> **Note:** The Delay Kit owns the default L1 Clocked Space preset. However, when
+> `delayBGranularLinked = true` in the active Granular Kit, the Granular Kit's
+> companion Clocked Space preset **overrides** the one loaded here.
+
+Data: `{ "type": "kit", "source": "delay", "scope": "delayKit", "name": "Dual Feedback", "refs": { "echoLine": { "name": "Tape Slapback" }, "clockedSpace": { "name": "Dotted Eighth" } }, "data": { ... } }`
+
+---
+
+### Level 1 Engine Presets — Delay Page
+
+#### L1 Echo Line Preset (6 owned params)
+Echo Line is a modulated ping-pong style delay (Delay A).
+
+| # | Key | Notes |
+|---|-----|-------|
+| 1 | `delayAPingPong` | Ping-pong on/off |
+| 2 | `delayAModRate` | Modulation rate |
+| 3 | `delayAModDepth` | Modulation depth |
+| 4 | `delayADuck` | Ducking amount |
+| 5 | `delayAFilterType` | Filter type |
+| 6 | `delayAWidth` | Stereo width |
+
+#### L1 Clocked Space Preset (10 owned params)
+Clocked Space is a rhythmic pattern-based delay (Delay B). It owns all its own
+DSP parameters. The default L1 Clocked Space preset is referenced from the **L2
+Delay Kit**. When `delayBGranularLinked = true`, the L2 Granular Kit's companion
+Clocked Space preset overrides the Delay Kit's version.
+
+| # | Key | Notes |
+|---|-----|-------|
+| 1 | `granularDelayEnabled` | Delay on/off |
+| 2 | `granularDelayActivity` | Tap count + syncopation macro |
+| 3 | `granularDelayRepeats` | Feedback cycles |
+| 4 | `granularDelayTime` | Note division base |
+| 5 | `granularDelayFilter` | Tone LPF (200–8000 Hz) |
+| 6 | `granularDelayVibrato` | Per-tap time modulation |
+| 7 | `delayBPattern` | Rhythm pattern |
+| 8 | `delayBWarp` | Warp mode |
+| 9 | `delayBWarpIntensity` | Warp intensity |
+| 10 | `delayBSpread` | Stereo spread |
+
+> **Note:** Params 1–6 currently carry `granularDelay*` prefix from the old
+> internal delay architecture. A future rename to `delayB*` prefix would unify
+> naming but is not required for correctness — the engine reads both sets in
+> `sharedDelayB.update()`.
+
+> **Companion naming convention:** `"{GranularPresetName} Delay"`. For example,
+> the granular preset "Microcosm" has a companion L1 Clocked Space preset named
+> "Microcosm Delay".
+
+> **Linked save/load rules:**
+>
+> 1. **Load (linked):** Loading granular preset "Microcosm" also loads the L1
+>    Clocked Space preset named in its ref ("Microcosm Delay"). The ref points
+>    by name only — always loads the latest version.
+>
+> 2. **Save Delay B (linked):** When `delayBGranularLinked = true` and the active
+>    granular preset is "Microcosm", saving Delay B targets the companion name
+>    "Microcosm Delay" — pushes a new version onto that L1 preset. The granular
+>    ref does not need updating since it already points by name.
+>
+> 3. **Save As Delay B (linked):** Creates a new L1 Clocked Space preset with a
+>    user-chosen name. Also updates the active granular preset's `clockedSpace`
+>    ref to point to the new name.
+>
+> 4. **Save Delay B (unlinked):** Saves as a standalone L1 Clocked Space preset.
+>    No granular ref is touched.
+>
+> 5. **Factory companion presets:** Read-only. If the user saves over one, it
+>    creates a user copy (same as other factory presets). The granular preset's
+>    ref updates to point to the user copy.
+>
+> 6. **Modified indicator:** When Delay B params differ from the companion preset,
+>    show (●) on the Delay B preset selector to warn of unsaved changes.
+>
+> 7. **Dangling ref:** If the referenced L1 preset is deleted, fall back to a
+>    default Clocked Space preset and log a warning.
+
+---
+
+### 2e. Earth Source Preset
+
+Earth remains intentionally exceptional. There is **no stable L3 Earth source
+scope in the live registry yet**. For now, Earth should be treated as a thin
+wrapper/placeholder so the broader hierarchy can still model five source pages.
+
+**Current child composition:**
+- L2 `earthKit` config for on/off + ocean behavior
+- L1 `water`
+- L1 `insects1`
+- L1 `insects2`
+
+**Data Format:**
+```json
+{
+  "type": "source",
+  "source": "earth",
+  "scope": "earth",
+  "name": "Rainforest Night",
+  "versions": [{
+    "v": 1,
+    "timestamp": 1740000000,
+    "refs": {
+      "kit": { "name": "Rainforest Night", "version": 1, "scope": "earthKit" }
+    }
+  }],
+  "currentVersion": 1
+}
+```
+
+> **Note:** Earth should not be over-normalized yet. It is still under separate
+> audit because Water/Ocean/Insects do not behave like the cleaner Synth/Drums split.
 
 **Storage Key:** `preset:source:earth:Rainforest Night`
 
@@ -589,109 +815,89 @@ live at L2 (enabled, levels, sends, ocean config).
 
 ### Level 2 Kit Preset — Earth Page
 
-#### L2 Earth Kit Preset (19 owned params)
-Which L1 engines are on/off, their levels and sends, plus ocean synth config
-(ocean has no L1 preset system — its params live at L2). Named presets like
-"Rainforest Night", "Desert Dusk", "Coastal Dawn" are L2 Earth Kit Presets.
+#### L2 Earth Kit Preset (7 live registry params)
+The current live registry keeps Earth conservative: engine on/off plus Ocean
+sample filter config. Levels and sends have moved to **L4 State**.
 
 | # | Key | Sub-group | Notes |
 |---|-----|-----------|-------|
 | 1 | `waterEnabled` | Water config | Water engine on/off |
-| 2 | `waterLevel` | Water config | Water output volume |
-| 3 | `insectsEnabled` | Insects 1 config | Insects 1 on/off |
-| 4 | `insectsLevel` | Insects 1 config | Insects 1 volume |
-| 5 | `insectsReverbSend` | Insects 1 config | Insects 1 → reverb |
-| 6 | `insects2Enabled` | Insects 2 config | Insects 2 on/off |
-| 7 | `insects2Level` | Insects 2 config | Insects 2 volume |
-| 8 | `oceanSampleEnabled` | Ocean config | Sample on/off |
-| 9 | `oceanSampleLevel` | Ocean config | Sample volume |
-| 10 | `oceanWaveSynthEnabled` | Ocean config | Wave synth on/off |
-| 11 | `oceanWaveSynthLevel` | Ocean config | Wave synth volume |
-| 12 | `oceanReverbSend` | Ocean config | Ocean → reverb |
-| 13 | `oceanFilterType` | Ocean engine | Filter type |
-| 14 | `oceanFilterCutoff` | Ocean engine | Filter cutoff |
-| 15 | `oceanFilterResonance` | Ocean engine | Filter resonance |
-| 16 | `oceanDuration` | Ocean engine | Wave duration |
-| 17 | `oceanInterval` | Ocean engine | Time between waves |
-| 18 | `oceanFoam` | Ocean engine | Foam intensity |
-| 19 | `oceanDepth` | Ocean engine | Low rumble |
+| 2 | `insectsEnabled` | Insects 1 config | Insects 1 on/off |
+| 3 | `insects2Enabled` | Insects 2 config | Insects 2 on/off |
+| 4 | `oceanSampleEnabled` | Ocean config | Sample on/off |
+| 5 | `oceanFilterType` | Ocean engine | Filter type |
+| 6 | `oceanFilterCutoff` | Ocean engine | Filter cutoff |
+| 7 | `oceanFilterResonance` | Ocean engine | Filter resonance |
+
+> **Note:** `oceanWaveSynthEnabled`, `oceanDuration`, `oceanInterval`,
+> `oceanFoam`, and `oceanDepth` are not yet registered in the live
+> ParamRegistry. They should be added when the Earth page cleanup is done.
 
 **References:**
-- L1 Water engine ref (by name) — e.g. "Tap Drips"
-- L1 Insects 1 engine ref (by name) — e.g. "Cricket Chorus"
-- L1 Insects 2 engine ref (by name) — e.g. "Cicada Dusk"
+- L1 `water`
+- L1 `insects1`
+- L1 `insects2`
 
-Data: `{ "type": "kit-preset", "source": "earth", "name": "Rainforest Night", "waterRef": { "name": "Tap Drips" }, "insects1Ref": { "name": "Cricket Chorus" }, "insects2Ref": { "name": "Cicada Dusk" }, "params": { ... } }`
+> Ocean still has **no stable L1 preset family**. Its behavior is currently
+> configured directly from `earthKit`.
+
+Data: `{ "type": "kit", "source": "earth", "scope": "earthKit", "name": "Rainforest Night", "refs": { "water": { "name": "Tap Drips" }, "insects1": { "name": "Cricket Chorus" }, "insects2": { "name": "Cicada Dusk" } }, "data": { ... } }`
 
 ---
 
 ## Level 4: State Preset
 
 ### Scope
-Everything for one journey node: Global/Mixer params + all 5 Source Presets.
-This is the complete snapshot of the entire app state at a single point in time.
+Everything for one journey node: L4-owned global/state/mix params plus optional
+child source refs or embedded snapshots. This is the complete snapshot of the
+entire app state at a single point in time.
 
 ### Contents
 
 | Section | Keys | Description |
 |---------|------|-------------|
-| **Global/Mixer** | 23 | Master volume, harmony, CoF drift, tension, scale, chord rate, random walk, seed, mixer levels/sends |
-| **Synth Source** | ref | Pointer to L3 Synth source preset |
-| **Drums Source** | ref | Pointer to L3 Drums source preset |
-| **Reverb Source** | ref | Pointer to L3 Reverb source preset |
-| **Granular Source** | ref | Pointer to L3 Granular source preset |
-| **Earth Source** | ref | Pointer to L3 Earth source preset |
-| **Total L4-owned** | **23** | Global params only; sources are references |
+| **L4 data** | 48 live registry keys | Master, harmony, randomization, cross-page levels, reverb sends, granular sends, Earth levels/sends |
+| **Child refs** | optional metadata | Slot-aware refs to saved source/kit/engine presets when useful |
+| **Embedded snapshots** | optional | Allowed for file export, migration, and snapshot-first restore paths |
 
-### Global / Mixer Keys (23)
-```
-masterVolume, synthLevel, pad2Level, granularLevel,
-synthReverbSend, granularReverbSend, leadReverbSend, leadDelayReverbSend,
-reverbLevel, rootNote, scaleMode, manualScale, tension,
-chordRate, cofDriftEnabled, cofDriftRate, cofDriftDirection, cofDriftRange,
-cofCurrentStep, randomness, randomWalkSpeed, seedWindow, voicingSpread
-```
+### L4 Key Groups
+- Master / harmony / CoF / scale / randomization
+- Cross-page dry levels
+- Cross-page reverb sends
+- Granular input send amounts
+- Earth/Water/Ocean/Insects level and send routing
+
+> The live registry currently owns **48** L4 keys under `scope: 'global'`.
+> For exact membership, trust `src/presets/ParamRegistry.ts`.
 
 ### Data Format
 ```json
 {
-  "type": "state-preset",
+  "type": "state",
   "name": "Desert Night",
   "author": "user",
   "versions": [{
     "v": 1,
     "note": "initial composition",
     "timestamp": 1740000000,
-    "global": {
+    "data": {
       "masterVolume": 0.8,
       "rootNote": 0,
       "scaleMode": "auto",
       "tension": 0.5,
       "chordRate": 8,
-      "cofDriftEnabled": true,
-      "cofDriftRate": 4,
-      "cofDriftDirection": "random",
-      "cofDriftRange": 2,
       "synthLevel": 0.7,
-      "pad2Level": 0.6,
-      "granularLevel": 0.3,
-      "synthReverbSend": 0.4,
-      "granularReverbSend": 0.3,
-      "leadReverbSend": 0.5,
-      "leadDelayReverbSend": 0.2,
-      "reverbLevel": 0.8,
-      "randomness": 0.5,
-      "randomWalkSpeed": 0.5,
-      "seedWindow": "hour",
-      "voicingSpread": 0.5,
-      "manualScale": "major",
-      "cofCurrentStep": 0
+      "lead1ReverbSend": 0.5,
+      "granularWaterSend": 0.2,
+      "earthLevel": 0.9
     },
-    "synthRef": { "name": "Ambient Pads + Arpeggios", "version": 2 },
-    "drumsRef": { "name": "Ambient Drums", "version": 1 },
-    "reverbRef": { "name": "Blackhole", "version": 1 },
-    "granularRef": { "name": "Shimmer Cloud", "version": 1 },
-    "earthRef": { "name": "Rainforest Night", "version": 1 }
+    "refs": {
+      "synth": { "name": "Ambient Pads + Arpeggios", "version": 2, "scope": "synth" },
+      "drums": { "name": "Ambient Drums", "version": 1, "scope": "drums" },
+      "reverb": { "name": "Blackhole", "version": 1, "scope": "reverb" },
+      "granular": { "name": "Shimmer Cloud", "version": 1, "scope": "granular" },
+      "earth": { "name": "Rainforest Night", "version": 1, "scope": "earth" }
+    }
   }],
   "currentVersion": 1
 }
@@ -728,7 +934,7 @@ The complete generative composition.
 ### Data Format
 ```json
 {
-  "type": "journey-preset",
+  "type": "journey",
   "name": "Midnight Caravan",
   "author": "user",
   "versions": [{
@@ -799,7 +1005,7 @@ preset:journey:Midnight Caravan
 ├──────────────────────────────────────────────────────┤
 │ STATE: [Desert Night ▾] v1 [◀▶] [💾]                  │ ← Level 4
 ├──────────────────────────────────────────────────────┤
-│ [Global] [Synth] [Drums] [Reverb] [Granular] [Earth] │ ← Tabs
+│ [Global] [Synth] [Drums] [Delay] [Reverb] [Granular] [Earth] │ ← Tabs
 ├──────────────────────────────────────────────────────┤
 │ SOURCE: [Ambient Drums ▾] v1 [◀▶] [💾] [As]          │ ← Level 3
 │                                                       │   (per tab)
@@ -822,44 +1028,47 @@ preset:journey:Midnight Caravan
 | Load drum kit | All 7 drum voices | Sequencer, delay, mixer, other tabs |
 | Load Synth source preset | All Synth tab params (pads, leads, synth seq) | Drums, Reverb, Granular, Earth, Global |
 | Load Drums source preset | All Drums tab params (kit + drum seq + delay) | Synth, Reverb, Granular, Earth, Global |
-| Load Reverb source preset | All Reverb tab params | Synth, Drums, Granular, Earth, Global |
-| Load Granular source preset | All Granular tab params (looper, grain, looper seq) | Synth, Drums, Reverb, Earth, Global |
-| Load Earth source preset | All Earth tab params (water, ocean, insects) | Synth, Drums, Reverb, Granular, Global |
-| Load state preset | Everything (all 5 sources + global) | Other journey nodes |
+| Load delay engine (echo line) | Echo Line engine params only | Clocked Space, kit, other tabs |
+| Load delay engine (clocked space) | Clocked Space engine params only | Echo Line, kit, other tabs |
+| Load delay kit | Cross-feeds + saturation + both engines | Source routing, other tabs |
+| Load Delay source preset | All Delay tab params (source + kit + engines) | Synth, Drums, Reverb, Granular, Earth, Global |
+| Load Reverb source preset | All Reverb tab params | Synth, Drums, Delay, Granular, Earth, Global |
+| Load Granular source preset | All Granular tab params (source + kit + child voices + seq metadata) | Synth, Drums, Delay, Reverb, Earth, Global |
+| Load Earth source preset | All Earth tab params (water, ocean, insects) | Synth, Drums, Delay, Reverb, Granular, Global |
+| Load state preset | Everything (all 6 sources + global) | Other journey nodes |
 | Load journey | Everything | Nothing |
 
 ---
 
-## Reference-Based Architecture
+## Snapshot-First Composition Model
 
-Higher levels store **pointers** (preset name + version) to lower levels, not embedded
-copies. Each level only saves its own params + references to child presets.
+The live system is **snapshot-first**. Presets save their owned data directly.
+Optional `refs` metadata may point at child presets for UI, migration, or future
+composition features, but load/apply should not assume live child resolution.
 
 | Level | What it saves directly | What it references |
 |-------|----------------------|-------------------|
 | L1 | Engine sound params (own keys only) | — |
-| L2 | Distance, variation, morph config (56 params) | 7 × L1 voice preset refs (by name) |
-| L3 | Mixer, delay, sends + L3-owned config | L2 kit ref + L1 engine refs (euclidean, looper, etc.) |
-| L4 | Global/Mixer params (23) | 5 × L3 source preset refs (by name) |
-| L5 | Topology, phrase lengths, morph durations | 2–4 × L4 state preset refs (by name) |
+| L2 | Kit assembly/performance params | Optional child engine refs metadata |
+| L3 | Source/page behavior + scene metadata | Optional kit/engine refs metadata |
+| L4 | Global/state/mix params | Optional source refs metadata |
+| L5 | Topology, phrase lengths, morph durations | Optional state refs metadata or embedded node snapshots |
 
-### Loading: Reference Resolution
-When loading a state preset (L4), the system:
-1. Reads L4's 23 global params → applies directly
-2. For each L3 source ref → looks up source preset by name/version from store
-3. Each L3 source → reads its L1/L2 refs → looks those up too
-4. Applies all resolved params to SliderState
+### Loading: Current Rule
+When loading a preset, apply the saved snapshot data for that level. If refs are
+present, treat them as metadata unless that specific load path explicitly opts
+into resolving them.
 
 ### Editing Upstream Presets
-- Editing an L1 voice preset (e.g. "808 Boom") affects ALL kits/sources/states
-  that reference it by name (they resolve at load time, not at save time)
-- To pin a specific version: references include version number
-- To always get latest: omit version (or use `"version": "latest"`)
+- Editing an L1 voice preset does **not** automatically rewrite existing higher-level
+  snapshots.
+- Version numbers in refs are still useful as metadata and for explicit restore flows.
+- If a future "follow latest child preset" mode is added, it should be explicit and opt-in.
 
 ### Orphan Protection
-- Deleting a preset that is referenced elsewhere shows a warning
-- "Used by: Ambient Kit (L2), Ambient Drums (L3), Desert Night (L4)"
-- Force-delete converts downstream references to inline snapshots
+- Deleting a preset that is still mentioned in saved metadata should show a warning.
+- Snapshots remain loadable even if a referenced child preset is later removed.
+- "Used by:" analysis should scan both explicit refs metadata and embedded preset names in saved data.
 
 ---
 
@@ -891,7 +1100,7 @@ Every save pushes a new version onto a linear stack. No destructive overwrites.
 When stepping between versions, changed parameter rows flash briefly. No modal, inline only.
 
 ### Version Stack at Higher Levels
-State versions capture specific child version numbers:
+State versions may capture child version numbers in metadata:
 ```json
 {
   "synth": { "name": "Ambient Pads", "version": 2 },
@@ -901,7 +1110,8 @@ State versions capture specific child version numbers:
   "earth": { "name": "Rainforest Night", "version": 1 }
 }
 ```
-Restoring a state version restores the exact child versions it was saved with.
+Restoring a state version restores the exact saved snapshot. Child version refs
+are useful for provenance and explicit re-linking, not mandatory live resolution.
 
 ---
 
@@ -929,10 +1139,10 @@ Drums: [Ambient Kit ▾]       ← clean
 
 ### Key Scheme
 ```
-preset:voice:drumKick:808 Boom
-preset:kit:Ambient Kit
+preset:engine:drumKick:808 Boom
+preset:kit:drumKit:Ambient Kit
 preset:source:synth:Ambient Pads
-preset:source:drums:Ambient Kit
+preset:source:drums:Ambient Drums
 preset:source:reverb:Blackhole
 preset:source:granular:Shimmer Cloud
 preset:source:earth:Rainforest Night
@@ -981,7 +1191,7 @@ const PresetStore = {
 
 | Level | Factory Presets | User Save/Load | Export/Import |
 |-------|----------------|---------------|---------------|
-| **L1 Engine** | ✅ 161 drum, 18 pad, 17 FM lead, 4 water, 20 LFO, 18 looper (hardcoded/JSON) | ❌ None | ❌ None |
+| **L1 Engine** | ✅ drum, pad, lead, water, and other engine factory data exist in mixed hardcoded/JSON form | Partial | Partial |
 | **L2 Kit Preset** | ❌ None (kit config lives as flat keys in SliderState) | ❌ None | ❌ None |
 | **L3 Source** | ❌ None | ❌ None | ❌ None |
 | **L4 State** | ✅ 5 factory (Gamelantest, Lasers, Static_frequencies, StringWavesR, ZoneOut1) | ✅ **Full** — `handleSavePreset` / `handleLoadPreset` in App.tsx | ✅ File download + file upload + URL share + Supabase cloud |
@@ -1005,9 +1215,9 @@ that L4 already uses. No new stores — just slice the current state.
 
 | Level | What Gets Exported | Source of Params | Format |
 |-------|-------------------|-----------------|--------|
-| **L1 Engine** | A single engine's sound params (e.g. 48 pad1 params, 11 kick params) | Slice current `SliderState` by prefix | `{ "type": "engine", "engine": "pad1", "params": { ... } }` |
-| **L2 Kit Preset** | One kit's performance params (e.g. 10 pad1 kit params, 56 drum kit params) | Slice current `SliderState` by L2 keys | `{ "type": "kit-preset", "source": "pad1", "params": { ... } }` |
-| **L3 Source** | All params for one tab/page (e.g. full Synth page = L3 + L2 refs + L1 refs) | Slice current `SliderState` by source page | `{ "type": "source", "source": "synth", "params": { ... } }` |
+| **L1 Engine** | A single engine's sound params (e.g. 51 pad1 params, 11 kick params) | Slice current `SliderState` by scope | `{ "type": "engine", "scope": "pad1", "data": { ... } }` |
+| **L2 Kit Preset** | One kit's performance params (e.g. 9 pad1 kit params, 56 drum kit params) | Slice current `SliderState` by L2 keys | `{ "type": "kit", "scope": "pad1Kit", "data": { ... } }` |
+| **L3 Source** | All params for one tab/page (e.g. full Synth page = L3 + optional child refs/metadata) | Slice current `SliderState` by source page | `{ "type": "source", "scope": "synth", "data": { ... } }` |
 | **L4 State** | ✅ Already works — full `SliderState` | Entire `SliderState` | Existing `SavedPreset` format |
 | **L5 Journey** | Journey topology + node preset names | `JourneyConfig` from `useJourney` hook | `{ "type": "journey", "config": { nodes, connections, ... } }` |
 
@@ -1017,13 +1227,14 @@ that L4 already uses. No new stores — just slice the current state.
 {
   "kesshoPreset": true,
   "version": 1,
-  "type": "engine | kit-preset | source | state | journey",
+  "type": "engine | kit | source | state | journey",
+  "scope": "pad1 | drumKit | synth | state | journey",
   "engine": "pad1 | drumKick | lead1 | water | ...",
   "source": "synth | drums | reverb | granular | earth",
   "name": "My Cool Pad Sound",
   "exportedAt": "2026-03-05T12:00:00Z",
   "appVersion": "1.0.0",
-  "params": { "padOscAWave": "sine", "padOscAOctave": 0, "..." : "..." }
+  "data": { "padOscAWave": "sine", "padOscAOctave": 0, "..." : "..." }
 }
 ```
 
@@ -1095,9 +1306,8 @@ function importLevel(
 
 - **No preset browser** — no saved list, no dropdown, no search; just files
 - **No versioning** — each export is a standalone snapshot
-- **No references** — L3 exports embed all L2+L1 params inline (not by name ref)
-- **No back-reference resolution** — importing L1 doesn't update any L2/L3 that
-  referenced the old values
+- **No optional ref metadata yet** — exports are snapshot-first and do not try to preserve child preset relationships
+- **No live child resolution** — importing L1 data does not mutate any higher-level snapshots
 - **Lost on page refresh** — the in-memory preset list is volatile (this is already
   true for L4 today unless saved to file/cloud)
 
@@ -1136,17 +1346,473 @@ Phases 4, 6–9 can be parallelized.
 
 ---
 
+## Cloud Storage Design (Supabase)
+
+### Audit Summary
+
+Registry integrity verified: **783 params, 43 scopes, zero overlaps**. Every
+param belongs to exactly one (level, scope) pair. The reference chain has no
+circular dependencies:
+
+```
+L4 State → L3 Source → L2 Kit → L1 Engine
+               │                    ▲
+               └────────────────────┘  (direct L1 refs from L3, e.g. Euclidean)
+```
+
+The only cross-tree link is the **Granular Kit override**: L2 `granularKit` can
+override L2 `delayKit`'s L1 `clockedSpace` ref when `delayBGranularLinked = true`.
+This is safe because only one L1 Clocked Space preset is ever active at a time.
+
+---
+
+### Database Schema (replaces flat `presets` table)
+
+```sql
+CREATE TABLE presets (
+  id          UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id     UUID REFERENCES auth.users(id),      -- NULL = anonymous/factory
+  type        TEXT NOT NULL,                         -- 'engine' | 'kit' | 'source' | 'state'
+  scope       TEXT NOT NULL,                         -- 'drumKick' | 'granularKit' | 'granular' | 'state' etc.
+  name        TEXT NOT NULL,
+  author      TEXT DEFAULT 'Anonymous',
+  description TEXT,
+  version     INT NOT NULL DEFAULT 1,
+  is_base     BOOLEAN NOT NULL DEFAULT false,        -- true for v1 (full snapshot)
+  parent_id   UUID REFERENCES presets(id),           -- v1 row for this preset (NULL if is_base)
+  data        JSONB NOT NULL,                        -- v1: full snapshot; v2+: delta from v1
+  refs        JSONB,                                 -- child preset references
+  metadata    JSONB,                                 -- sliderModes, dualRanges, evolveConfigs etc.
+  is_factory  BOOLEAN DEFAULT false,
+  visibility  TEXT DEFAULT 'private',                -- 'private' | 'public' | 'featured'
+  family      TEXT,                                  -- variant group name (NULL = standalone)
+  forked_from UUID REFERENCES presets(id),           -- lineage: which preset this was derived from
+  plays       INT DEFAULT 0,
+  created_at  TIMESTAMPTZ DEFAULT now(),
+
+  UNIQUE(user_id, type, scope, name, version)        -- no duplicate name+version per user
+);
+
+CREATE INDEX idx_presets_scope ON presets(type, scope);
+CREATE INDEX idx_presets_user ON presets(user_id, type, scope);
+CREATE INDEX idx_presets_name ON presets USING gin(to_tsvector('english', name));
+CREATE INDEX idx_presets_parent ON presets(parent_id);
+CREATE INDEX idx_presets_family ON presets(user_id, family) WHERE family IS NOT NULL;
+```
+
+### Version Storage: Delta-from-Base
+
+Versions use a **delta-from-base** strategy. Version 1 (the base) stores a full
+parameter snapshot. Every subsequent version stores only the params that differ
+from v1.
+
+**Storage format:**
+
+```
+v1 (is_base=true):   data = { "drumKickFreq": 52, "drumKickDecay": 0.9, ... all 10 params }
+v2 (is_base=false):  data = { "drumKickFreq": 60, "drumKickDecay": 0.7 }   ← 2 changed
+v3 (is_base=false):  data = { "drumKickFreq": 65 }                          ← 1 changed
+```
+
+**Reconstruction:** To load version N, fetch v1 (base) + vN in a single query,
+then merge client-side:
+
+```ts
+const full = { ...base.data, ...version.data };
+```
+
+One merge, no chaining. Deleting any non-base version is always safe. The delta
+can never exceed the size of a full snapshot (worst case = every param changed).
+
+**When delta > 50% of base size:** The system may optionally promote the version
+to a new base (store full snapshot, set `is_base = true`). This is a storage
+optimization, not a correctness requirement.
+
+**Rebase on Save As:** When the user does "Save As" (new preset name), v1 of the
+new preset is always a full snapshot (new base). No dependency on the original
+preset's base.
+
+**Query pattern:**
+
+```sql
+-- Fetch version N of a preset (returns 1-2 rows: base + requested version)
+SELECT * FROM presets
+WHERE user_id = $1 AND type = $2 AND scope = $3 AND name = $4
+  AND (is_base = true OR version = $5)
+ORDER BY is_base DESC;
+```
+
+### Storage Key Convention
+
+```
+{user_id}:{type}:{scope}:{name}:{version}
+```
+
+Examples:
+```
+factory:engine:drumKick:808 Boom:1
+user_abc:kit:granularKit:Ambient Wash:3
+user_abc:source:granular:Shimmer Cloud:1
+user_abc:state:state:Desert Night:2
+```
+
+---
+
+### What Each Level Stores
+
+| Level | `type` | `data` contains | `refs` contains |
+|-------|--------|-----------------|-----------------|
+| L1 | `engine` | Own params only (e.g. 10 kick params) | — |
+| L2 | `kit` | Own params only (e.g. 16 granularKit params) | Named refs to L1 presets |
+| L3 | `source` | Own params only (e.g. 10 granular params) | Named refs to L2 kit + L1 presets |
+| L4 | `state` | 48 global/mixer params | Named refs to L3 sources |
+
+**Critical rule:** A preset's `data` field only contains params owned at that
+level. It never embeds child param values. Child presets are always referenced
+by `{ name, scope, version }` in `refs`.
+
+---
+
+### Cascade Save Rules
+
+When the user saves at a given level, the system must handle children that have
+been modified since they were last saved.
+
+#### Save L1 (Engine)
+
+Simplest case. Saves only the L1 params. No children.
+
+- **Save**: pushes a new version onto the existing preset (version increments)
+- **Save As**: creates a new preset name at version 1
+
+#### Save L2 (Kit)
+
+Saves L2-owned params + checks each referenced L1 child.
+
+1. For each L1 ref in the kit:
+   - If the L1 has **unsaved changes** (live params ≠ saved preset):
+     - **Auto-save** the L1 as a new version of the existing L1 preset
+     - Update the kit's ref to point to the new version
+   - If the L1 is **unchanged**: ref stays as-is
+2. Save the L2 kit's own params + updated refs
+
+> **Example:** Granular Kit "Ambient Wash" refs Voice 1 = "Scatter v2".
+> The user tweaked Voice 1 params. Saving the kit auto-saves Voice 1 as
+> "Scatter v3" and the kit's ref updates to `{ name: "Scatter", version: 3 }`.
+
+#### Save L3 (Source)
+
+Saves L3-owned params + checks each L2 and L1 child.
+
+1. For each L2 kit ref:
+   - Apply the L2 cascade rules above (which may auto-save L1s)
+   - If the L2 kit itself has unsaved changes, auto-save it as a new version
+2. For each direct L1 ref (e.g. Euclidean):
+   - Same as L1 save rules above
+3. Save the L3 source's own params + updated refs
+
+#### Save L4 (State)
+
+Saves L4-owned params + cascades through all L3 sources.
+
+1. For each L3 source ref:
+   - Apply the L3 cascade rules above
+2. Save the L4 state's 48 global params + updated refs
+
+---
+
+### Naming Convention for Cascade-Saved Children
+
+When a higher-level save auto-saves a modified child, the child keeps its
+**existing name** and gets a new **version number**. The name never changes
+during cascade saves.
+
+```
+Save L3 "Shimmer Cloud"
+  ├── L2 kit "Ambient Wash" modified? → save as "Ambient Wash" v4
+  │   ├── L1 voice1 "Scatter" modified? → save as "Scatter" v3
+  │   ├── L1 voice2 "Shimmer" unchanged → keep ref v2
+  │   └── L1 clockedSpace "Microcosm Delay" modified? → save as "Microcosm Delay" v5
+  └── L1 euclidean "Scattered Grains" unchanged → keep ref v1
+```
+
+**The child preset name never changes.** Only the version increments. The
+parent's ref updates to point to the new version.
+
+---
+
+### What Happens When L1 Diverges From Saved State
+
+**Scenario:** User loads L3 "Shimmer Cloud" (which refs L1 voice "Scatter v2"),
+then manually changes Voice 1 params. Now the live Voice 1 ≠ "Scatter v2".
+
+| User action | What happens |
+|-------------|-------------|
+| **Save L1** | Saves Voice 1 as "Scatter v3". Kit ref auto-updates. |
+| **Save L1 As "New Voice"** | Creates "New Voice v1". Kit ref updates to "New Voice v1". |
+| **Save L2 Kit** | Cascade: auto-saves Voice 1 as "Scatter v3", then saves kit. |
+| **Save L3 Source** | Cascade: auto-saves Voice 1 → kit → source. |
+| **Save L4 State** | Cascade: auto-saves all dirty children top-down. |
+| **Load different L1** | Discards unsaved Voice 1 changes. Warning if modified. |
+| **Load different L3** | Discards all unsaved changes. Warning if any modified. |
+
+---
+
+### The Clocked Space Override During Save
+
+When `delayBGranularLinked = true`:
+
+| User action | What happens |
+|-------------|-------------|
+| **Save Delay Kit** | Saves delayKit params + refs (including its clockedSpace ref). The override is NOT active during regular delay saves — it saves the Delay Kit's own clockedSpace ref. |
+| **Save Granular Kit** | Cascade: saves the companion clockedSpace L1 preset (auto-version), saves granularKit with updated clockedSpace ref. |
+| **Toggle linked → false** | Delay Kit's own clockedSpace becomes active again. No preset is modified. |
+| **Toggle linked → true** | Granular Kit's companion clockedSpace overrides. The Delay Kit's ref is not modified — it still points to its own L1 preset. |
+
+**Key insight:** The override is a **runtime** behavior. Both the Delay Kit and
+the Granular Kit always maintain their own separate clockedSpace refs in storage.
+The override only affects which L1 preset gets loaded into the engine.
+
+---
+
+### Modified (Dirty) Detection
+
+A preset is "dirty" (●) when live slider values differ from the last saved
+version's `data` values. Detection is per-level:
+
+```
+L1 dirty = any owned param ≠ saved L1 preset data
+L2 dirty = any L2 param ≠ saved kit data, OR any child L1 is dirty
+L3 dirty = any L3 param ≠ saved source data, OR any child L2/L1 is dirty
+L4 dirty = any L4 param ≠ saved state data, OR any child L3 is dirty
+```
+
+Dirty state bubbles up but NOT down. If L3 is dirty because an L3-owned param
+changed, the children are not affected. If L1 is dirty, the parent L2/L3/L4
+are also shown as dirty (because their saved refs point to an older version).
+
+---
+
+### Cloud Sharing
+
+When sharing a preset publicly:
+
+1. **Share L4 State** — shares the full composition. All child presets are
+   resolved and stored as concrete refs (name + version). Recipients get the
+   exact same sound.
+
+2. **Share L3 Source** — shares one page's sound. Useful for sharing a granular
+   scene or drum setup without affecting the recipient's other pages.
+
+3. **Share L2 Kit** — shares a voice configuration. Useful for sharing a drum
+   kit or granular voice setup.
+
+4. **Share L1 Engine** — shares a single sound. Most granular sharing unit.
+
+Shared presets are **immutable snapshots**. The recipient gets a copy — editing
+it does not affect the original sharer's preset.
+
+---
+
+### L4 Variant Families
+
+State presets often come in families — a base composition plus variations that
+differ in small but sonically important ways. For example:
+
+```
+String Waves (family)
+├── String Waves Base        — fully generative, drums off
+├── String Waves Drum        — adds drum sequencing
+├── String Waves Dark        — darker reverb + lower granular filter
+└── String Waves Minimal     — pads only, leads off
+```
+
+These are **not versions** of the same preset (that's the v1→v2→v3 history).
+They are **sibling variants** — different creative takes that share most of
+their structure.
+
+#### Schema support
+
+Add two fields to the `presets` table:
+
+```sql
+ALTER TABLE presets ADD COLUMN family    TEXT;           -- family group name (NULL = standalone)
+ALTER TABLE presets ADD COLUMN forked_from UUID REFERENCES presets(id);  -- which preset this was derived from
+
+CREATE INDEX idx_presets_family ON presets(user_id, family) WHERE family IS NOT NULL;
+```
+
+#### How variants work
+
+A variant stores its **own full L4 data + refs**, not a delta from the base
+variant. This is deliberate — variants need to be independently loadable and
+shareable without requiring the base variant to exist.
+
+However, the `forked_from` field tracks lineage for UI purposes (showing the
+family tree, offering "compare with base", etc.).
+
+**Example: creating "String Waves Drum" from "String Waves Base":**
+
+```
+String Waves Base (L4):
+  data: { masterVolume: 0.8, drumLevel: 0, synthLevel: 0.7, ... }
+  refs: {
+    synth:    { name: "Ethereal Pads", scope: "synth" },
+    drums:    { name: "Silent", scope: "drums" },         ← drums disabled
+    reverb:   { name: "Blackhole", scope: "reverb" },
+    granular: { name: "Shimmer Cloud", scope: "granular" },
+    delay:    { name: "Clocked Linked", scope: "delay" }
+  }
+
+String Waves Drum (L4):
+  family: "String Waves"
+  forked_from: <uuid of String Waves Base>
+  data: { masterVolume: 0.8, drumLevel: 0.6, synthLevel: 0.7, ... }  ← drumLevel changed
+  refs: {
+    synth:    { name: "Ethereal Pads", scope: "synth" },              ← shared
+    drums:    { name: "String Waves Perc", scope: "drums" },          ← different L3
+    reverb:   { name: "Blackhole", scope: "reverb" },                 ← shared
+    granular: { name: "Shimmer Cloud", scope: "granular" },           ← shared
+    delay:    { name: "Clocked Linked", scope: "delay" }              ← shared
+  }
+```
+
+**Shared children are free.** Synth, reverb, granular, and delay all point to
+the same L3 presets by name. No duplication at any level. Only the drums L3
+ref differs, and only that L3 (plus its L2/L1 children) are separate presets.
+
+#### What about the minor diffs down the chain?
+
+When a variant changes something deep (e.g., "String Waves Dark" uses a darker
+reverb filter), a new child preset is created only for the level that actually
+differs:
+
+```
+String Waves Dark (L4):
+  refs: {
+    synth:    { name: "Ethereal Pads" },         ← shared with Base
+    drums:    { name: "Silent" },                ← shared with Base
+    reverb:   { name: "Blackhole Dark" },        ← new L3, forked from "Blackhole"
+    granular: { name: "Shimmer Cloud" },         ← shared
+    delay:    { name: "Clocked Linked" }         ← shared
+  }
+
+"Blackhole Dark" (L3 reverb):
+  forked_from: <uuid of "Blackhole">
+  data: { ...same as Blackhole but reverbDamping: 0.4, reverbSize: 2.0 }
+```
+
+The fork chain only goes as deep as needed. If "Blackhole Dark" uses the same
+reverb quality and shimmer settings, those values are still in its data (it's
+a full L3 snapshot, not a delta from Blackhole). The `forked_from` is metadata
+for UI lineage only.
+
+#### Variant naming convention
+
+```
+{FamilyName}                      — the base variant
+{FamilyName} {Modifier}           — a variant
+```
+
+Examples:
+- "String Waves", "String Waves Drum", "String Waves Dark"
+- "Desert Night", "Desert Night Rain", "Desert Night Minimal"
+- "Microcosm", "Microcosm Bright", "Microcosm No Drums"
+
+The `family` field groups them: all presets with `family = "String Waves"` appear
+together in the UI.
+
+#### UI presentation
+
+```
+┌─ STATE ────────────────────────────────────────────────┐
+│ String Waves ▾                                         │
+│ ┌──────────────────┐                                   │
+│ │ ● Base           │  ← current                        │
+│ │   Drum           │                                   │
+│ │   Dark           │                                   │
+│ │   Minimal        │                                   │
+│ │ ─────────────────│                                   │
+│ │ + New Variant    │                                   │
+│ └──────────────────┘                                   │
+└────────────────────────────────────────────────────────┘
+```
+
+---
+
+### Additional Storage Optimizations
+
+#### 1. Content-Addressable L1 Deduplication
+
+Many users will end up with identical L1 engine presets (factory presets,
+popular community sounds). Instead of storing N copies:
+
+```sql
+ALTER TABLE presets ADD COLUMN data_hash TEXT GENERATED ALWAYS AS
+  (encode(digest(data::text, 'sha256'), 'hex')) STORED;
+
+CREATE INDEX idx_presets_hash ON presets(data_hash) WHERE type = 'engine';
+```
+
+When saving an L1, check if `data_hash` already exists. If so, the new preset
+row can reference the existing data (or the server deduplicates at the storage
+layer). This matters most for L1 engines where users typically tweak small
+variations — many factory presets will hash identically across users.
+
+#### 2. Lazy Child Resolution
+
+When loading an L4 state, don't fetch all L1s immediately. Load in two passes:
+
+1. **Immediate:** L4 data + L3 refs (small — just names)
+2. **On-demand:** Resolve L3 → L2 → L1 as the user navigates to each page
+
+This means opening the app loads ~100 params (L4 data) instantly. The Drums
+page's 247 params only load when the user taps the Drums tab.
+
+#### 3. Ref Sharing Across Variants (Zero-Cost Branching)
+
+The ref-based architecture means variant creation is essentially free:
+
+| What's created | Storage cost |
+|----------------|-------------|
+| New L4 variant | 1 row: 48 params + 5-6 refs (~2 KB) |
+| Shared L3 synth | 0 — reuses existing ref |
+| Shared L2 drum kit | 0 — reuses existing ref |
+| Shared L1 engines | 0 — reuses existing refs |
+| New L3 drums | 1 row: 15 params + 2 refs (~1 KB) |
+| New L1 drum sequence | 1 row: 69 params (~1.5 KB) |
+| **Total for "add drums" variant** | **~4.5 KB** |
+
+Compared to flat snapshot storage where each L4 would store all 783 params:
+~15 KB per variant. The ref architecture saves ~70% per variant.
+
+#### 4. Batch Loading for Cloud Browse
+
+When browsing community presets, only send L4 metadata (name, author,
+description, family, plays, tags) — not the full data. The full preset tree
+is only fetched on "Load".
+
+```sql
+CREATE VIEW preset_browse AS
+SELECT id, name, author, description, family, plays, visibility,
+       created_at, jsonb_object_keys(refs) as source_pages
+FROM presets
+WHERE type = 'state' AND visibility IN ('public', 'featured');
+```
+
+---
+
 ## Appendix A: Parameter Counts by Source Page
 
 | Source Page | Sound Engine | Config/Routing | Total |
 |------------|------------:|---------------:|------:|
-| Global/Mixer | 0 | 23 | **23** |
-| Synth | 163 | 36 | **199** |
-| Drums | 180 | 69 | **249** |
-| Reverb | 16 | 2 | **18** |
-| Granular (Looper) | 139 | 35 | **174** |
-| Earth | 34 | 19 | **53** |
-| **Total** | **532** | **184** | **~716** |
+| Global/Mixer | 0 | 48 | **48** |
+| Synth | 167 | 37 | **204** |
+| Drums | 176 | 71 | **247** |
+| Reverb | 0 | 44 | **44** |
+| Granular | 139 | 28 | **167** |
+| Earth | 41 | 12 | **53** |
+| **Total** | **523** | **240** | **763** |
 
 ---
 
@@ -1170,772 +1836,147 @@ load what I see."
 ## Appendix C: Complete Parameter Ownership Audit
 
 > **Rule**: Every SliderState key lives at exactly ONE level. Higher levels store
-> **name references** to lower levels — they don't duplicate params. This table is the
+> snapshot data for what they own, and may optionally carry refs metadata for
+> child presets. This table is the
 > canonical source of truth for which level owns each parameter.
 >
 > **Legend**: L1 = Sound Engine, L2 = Kit Preset (assembly/performance),
 > L3 = Source Preset (mixer/routing/delay), L4 = Global/State.
 
-### Level 4 — Global / State (23 params)
+### Live Registry Totals
+
+The current live preset registry in `src/presets/ParamRegistry.ts` owns **763**
+registry-backed keys:
+
+| Level | Count |
+|-------|------:|
+| **L4** | 48 |
+| **L3** | 80 |
+| **L2** | 112 |
+| **L1** | 523 |
+| **Total** | **763** |
+
+These counts exclude non-registry preset metadata such as `dualRanges`,
+`sliderModes`, evolve configs, sub-lane state, `stepOverrides`, and
+`clockDivs`. Those still belong to the same owning level as the params they
+control.
+
+### L4 — Global / State (48)
+
+`scope: 'global'` now owns all cross-page mix and routing:
+
+- master and harmony controls
+- page dry levels
+- reverb sends
+- granular input sends
+- Earth / Water / Ocean / Insects levels and sends
+- randomization / circle-of-fifths / scale controls
+
+Representative keys:
+`masterVolume`, `synthLevel`, `lead1Level`, `lead2Level`, `drumLevel`,
+`granularLevel`, `earthLevel`, `lead1ReverbSend`, `lead2ReverbSend`,
+`granularWaterSend`, `granularInsectsSend`, `rootNote`, `tension`,
+`cofDriftRate`, `randomWalkSpeed`.
+
+### L3 — Source Presets (80)
+
+| Scope | Count | Notes |
+|-------|------:|-------|
+| `synth` | 5 | Shared lead enable/random/vibrato/glide only |
+| `drums` | 15 | Drum page behavior + stereo delay + per-voice delay sends |
+| `reverb` | 44 | Entire reverb + spectral freeze surface |
+| `granular` | 16 | Granular source routing/delay behavior |
+
+There is still **no stable L3 Earth source scope** in the live registry. Earth
+remains a deliberate exception until the Earth page is normalized.
+
+### L2 — Kit Presets (112)
+
+| Scope | Count | Notes |
+|-------|------:|-------|
+| `pad1Kit` | 9 | Morph, enable, voice mask, spread, octave |
+| `pad2Kit` | 8 | Morph, enable, voice assign, octave |
+| `lead1Kit` | 7 | Morph + algorithm mode |
+| `lead2Kit` | 8 | Morph + algorithm mode + enable |
+| `drumKit` | 56 | Distance/variation + morph config for all drum voices |
+| `granularKit` | 12 | Voice enabled/gain + 4 macros |
+| `earthKit` | 12 | Water/Insects toggles + Ocean behavior/filter config |
+
+### L1 — Engine Presets (523)
+
+| Scope | Count |
+|-------|------:|
+| `pad1` | 51 |
+| `pad2` | 50 |
+| `lead1` | 9 |
+| `lead2` | 6 |
+| `leadDelay` | 7 |
+| `synthEuclidean` | 44 |
+| `drumSub` | 10 |
+| `drumKick` | 11 |
+| `drumClick` | 13 |
+| `drumBeepHi` | 18 |
+| `drumBeepLo` | 17 |
+| `drumNoise` | 17 |
+| `drumMembrane` | 21 |
+| `drumEuclidean` | 69 |
+| `water` | 25 |
+| `insects1` | 8 |
+| `insects2` | 8 |
+| `legacyGranular` | 12 |
+| `granularVoice1` | 20 |
+| `granularVoice2` | 20 |
+| `granularVoice3` | 20 |
+| `granularVoice4` | 20 |
+| `granularLegacy` | 6 |
+| `granularEuclidean` | 41 |
+
+### Key Ownership Calls
+
+These are the placements that were debated and are now locked in for the live
+registry:
+
+| Key / family | Final owner | Why |
+|--------------|-------------|-----|
+| `padFold*`, `pad2Fold*` | **L1 pad engines** | Part of the engine's sound identity |
+| `detune` | **L1 `pad1`** | Sound design, not kit assembly |
+| `synthVoiceMask`, `waveSpread`, `synthOctave` | **L2 `pad1Kit`** | Performance / routing around the engine |
+| `pad2VoiceAssign`, `pad2Octave` | **L2 `pad2Kit`** | Same pattern as Pad 1 kit |
+| `lead1Level`, `lead2Level` | **L4 global** | Cross-page mix, not lead kit identity |
+| `leadDelay*` | **L1 `leadDelay`** | Separate child preset family for consistency with sequencers |
+| `synthEuclidBaseBPM` | **L1 `synthEuclidean`** | Sequencer-owned timing behavior |
+| `drumLevel`, `drumReverbSend` | **L4 global** | Cross-page mix/routing |
+| `granularWaterSend`, `granularInsectsSend` | **L4 global** | Cross-page routing into granular |
+| `granular` scene metadata | **L3 granular source** | Built-in scenes need source+kit+seq behavior together |
+| Earth mix levels / sends | **L4 global** | Earth is acting like a mixer wrapper today |
 
-These are cross-cutting params not belonging to any single source tab.
+### Earth Exception
 
-| # | Key | Notes |
-|---|-----|-------|
-| 1 | `masterVolume` | Master output |
-| 2 | `synthLevel` | Pad 1 dry level |
-| 3 | `pad2Level` | Pad 2 dry level |
-| 4 | `granularLevel` | Granular output level |
-| 5 | `synthReverbSend` | Pad 1 → reverb |
-| 6 | `granularReverbSend` | Granular → reverb |
-| 7 | `leadReverbSend` | Lead → reverb |
-| 8 | `leadDelayReverbSend` | Lead delay → reverb |
-| 9 | `reverbLevel` | Reverb output level |
-| 10 | `seedWindow` | 'hour' / 'day' |
-| 11 | `randomness` | Global randomness |
-| 12 | `rootNote` | Master root note (0–11) |
-| 13 | `cofDriftEnabled` | Circle-of-fifths drift on/off |
-| 14 | `cofDriftRate` | Phrases between key changes |
-| 15 | `cofDriftDirection` | 'cw' / 'ccw' / 'random' |
-| 16 | `cofDriftRange` | Max steps from home key |
-| 17 | `cofCurrentStep` | Current CoF position |
-| 18 | `scaleMode` | 'auto' / 'manual' |
-| 19 | `manualScale` | Scale family name |
-| 20 | `tension` | Harmonic tension |
-| 21 | `chordRate` | Seconds between chord changes |
-| 22 | `voicingSpread` | Voicing spread width |
-| 23 | `randomWalkSpeed` | Speed of random walk for dual sliders |
+Earth is intentionally incomplete as a clean preset tree:
 
----
+- `earthKit` currently owns only 12 conservative keys
+- `water`, `insects1`, and `insects2` are true L1 scopes
+- Ocean behavior is still configured out of `earthKit`
+- there is no finalized `earth` L3 registry scope yet
 
-### Level 3 — Synth Source (9 params)
+Treat Earth as a thin scene wrapper for now, not as proof that every source page
+already has a clean L1/L2/L3 symmetry.
 
-Shared lead controls and master lead settings that live at L3 (not part of any L2 kit preset).
+### Intentional Exclusions
 
-| # | Key | Sub-group | Notes |
-|---|-----|-----------|-------|
-| 1 | `leadEnabled` | Lead master | Master lead on/off |
-| 2 | `leadRandomEnabled` | Lead master | Random timing mode |
-| 3 | `leadLevel` | Lead master | Master lead output level |
-| 4 | `leadDelayTime` | Shared lead delay | Delay time (ms) |
-| 5 | `leadDelayFeedback` | Shared lead delay | Feedback amount |
-| 6 | `leadDelayMix` | Shared lead delay | Wet/dry mix |
-| 7 | `leadVibratoDepth` | Shared lead perf | Vibrato depth |
-| 8 | `leadVibratoRate` | Shared lead perf | Vibrato rate |
-| 9 | `leadGlide` | Shared lead perf | Portamento speed |
+These keys are intentionally **not** registry-backed today:
 
----
-
-### Level 2 — Pad 1 Kit Preset (10 params)
-
-| # | Key | Notes |
-|---|-----|-------|
-| 1 | `padEnabled` | Master on/off for pad 1 |
-| 2 | `padPresetA` | Morph source preset name |
-| 3 | `padPresetB` | Morph target preset name |
-| 4 | `padMorph` | 0–1 morph position |
-| 5 | `padMorphAuto` | Auto-morph on/off |
-| 6 | `padMorphSpeed` | Phrases per morph cycle |
-| 7 | `synthVoiceMask` | Voice bitmask — which voices pad 1 uses |
-| 8 | `waveSpread` | Voice stagger timing |
-| 9 | `detune` | Voice detuning |
-| 10 | `synthOctave` | Octave offset |
-
-### Level 2 — Pad 2 Kit Preset (8 params)
-
-| # | Key | Notes |
-|---|-----|-------|
-| 1 | `pad2Enabled` | Master on/off for pad 2 |
-| 2 | `pad2PresetA` | Morph source preset name |
-| 3 | `pad2PresetB` | Morph target preset name |
-| 4 | `pad2Morph` | 0–1 morph position |
-| 5 | `pad2MorphAuto` | Auto-morph on/off |
-| 6 | `pad2MorphSpeed` | Phrases per morph cycle |
-| 7 | `pad2VoiceAssign` | Voice routing bitmask |
-| 8 | `pad2Octave` | Octave offset |
-
-### Level 2 — Lead 1 Kit Preset (8 params)
-
-| # | Key | Notes |
-|---|-----|-------|
-| 1 | `lead1PresetA` | FM preset A name |
-| 2 | `lead1PresetB` | FM preset B name |
-| 3 | `lead1Morph` | 0–1 morph position |
-| 4 | `lead1MorphAuto` | Auto-morph on/off |
-| 5 | `lead1MorphSpeed` | Phrases per morph cycle |
-| 6 | `lead1MorphMode` | linear / pingpong / random |
-| 7 | `lead1AlgorithmMode` | snap / presetA |
-| 8 | `lead1Level` | Lead 1 output level |
-
-### Level 2 — Lead 2 Kit Preset (9 params)
-
-| # | Key | Notes |
-|---|-----|-------|
-| 1 | `lead2Enabled` | Lead 2 on/off |
-| 2 | `lead2PresetC` | FM preset C name |
-| 3 | `lead2PresetD` | FM preset D name |
-| 4 | `lead2Morph` | 0–1 morph position |
-| 5 | `lead2MorphAuto` | Auto-morph on/off |
-| 6 | `lead2MorphSpeed` | Phrases per morph cycle |
-| 7 | `lead2MorphMode` | linear / pingpong / random |
-| 8 | `lead2AlgorithmMode` | snap / presetA |
-| 9 | `lead2Level` | Lead 2 output level |
-
----
-
-### Level 1 — Pad 1 Engine (48 params)
-
-| # | Key | Sub-group |
-|---|-----|-----------|
-| 1 | `padOscAWave` | Osc A |
-| 2 | `padOscAOctave` | Osc A |
-| 3 | `padOscADetune` | Osc A |
-| 4 | `padOscALevel` | Osc A |
-| 5 | `padOscBWave` | Osc B |
-| 6 | `padOscBOctave` | Osc B |
-| 7 | `padOscBDetune` | Osc B |
-| 8 | `padOscBLevel` | Osc B |
-| 9 | `padSubEnabled` | Sub osc |
-| 10 | `padSubOctave` | Sub osc |
-| 11 | `padSubWave` | Sub osc |
-| 12 | `padSubLevel` | Sub osc |
-| 13 | `padNoiseType` | Noise |
-| 14 | `padNoiseLevel` | Noise |
-| 15 | `filterType` | Filter A |
-| 16 | `filterCutoffMin` | Filter A |
-| 17 | `filterCutoffMax` | Filter A |
-| 18 | `filterResonance` | Filter A |
-| 19 | `filterQ` | Filter A |
-| 20 | `padFilterBEnabled` | Filter B |
-| 21 | `padFilterBType` | Filter B |
-| 22 | `padFilterBCutoff` | Filter B |
-| 23 | `padFilterBResonance` | Filter B |
-| 24 | `padFilterBQ` | Filter B |
-| 25 | `padFilterRouting` | Filter routing |
-| 26 | `hardness` | Drive/Character |
-| 27 | `warmth` | Drive/Character |
-| 28 | `presence` | Drive/Character |
-| 29 | `synthAttack` | ADSR |
-| 30 | `synthDecay` | ADSR |
-| 31 | `synthSustain` | ADSR |
-| 32 | `synthRelease` | ADSR |
-| 33 | `padLfo1Rate` | LFO 1 |
-| 34 | `padLfo1Depth` | LFO 1 |
-| 35 | `padLfo1Wave` | LFO 1 |
-| 36 | `padLfo1Dest` | LFO 1 |
-| 37 | `padLfo2Rate` | LFO 2 |
-| 38 | `padLfo2Depth` | LFO 2 |
-| 39 | `padLfo2Wave` | LFO 2 |
-| 40 | `padLfo2Dest` | LFO 2 |
-| 41 | `padModEnvEnabled` | Mod Envelope |
-| 42 | `padModEnvAttack` | Mod Envelope |
-| 43 | `padModEnvDecay` | Mod Envelope |
-| 44 | `padModEnvSustain` | Mod Envelope |
-| 45 | `padModEnvRelease` | Mod Envelope |
-| 46 | `padModEnvDepth` | Mod Envelope |
-| 47 | `padModEnvDest` | Mod Envelope |
-| 48 | `padOscMix` | Osc crossfade |
-
-> `synthOctave`, `waveSpread`, `detune` moved to **L2 Pad 1 Kit Preset**.
-
----
-
-### Level 1 — Pad 2 Engine (48 params)
-
-| # | Key | Sub-group |
-|---|-----|-----------|
-| 1 | `pad2Attack` | ADSR |
-| 2 | `pad2Decay` | ADSR |
-| 3 | `pad2Sustain` | ADSR |
-| 4 | `pad2Release` | ADSR |
-| 5 | `pad2Hardness` | Drive/Character |
-| 6 | `pad2Warmth` | Drive/Character |
-| 7 | `pad2Presence` | Drive/Character |
-| 8 | `pad2OscMix` | Osc crossfade |
-| 9 | `pad2FilterType` | Filter A |
-| 10 | `pad2FilterCutoffMin` | Filter A |
-| 11 | `pad2FilterCutoffMax` | Filter A |
-| 12 | `pad2FilterResonance` | Filter A |
-| 13 | `pad2FilterQ` | Filter A |
-| 14 | `pad2OscAWave` | Osc A |
-| 15 | `pad2OscAOctave` | Osc A |
-| 16 | `pad2OscADetune` | Osc A |
-| 17 | `pad2OscALevel` | Osc A |
-| 18 | `pad2OscBWave` | Osc B |
-| 19 | `pad2OscBOctave` | Osc B |
-| 20 | `pad2OscBDetune` | Osc B |
-| 21 | `pad2OscBLevel` | Osc B |
-| 22 | `pad2SubEnabled` | Sub osc |
-| 23 | `pad2SubOctave` | Sub osc |
-| 24 | `pad2SubWave` | Sub osc |
-| 25 | `pad2SubLevel` | Sub osc |
-| 26 | `pad2NoiseType` | Noise |
-| 27 | `pad2NoiseLevel` | Noise |
-| 28 | `pad2FilterBEnabled` | Filter B |
-| 29 | `pad2FilterBType` | Filter B |
-| 30 | `pad2FilterBCutoff` | Filter B |
-| 31 | `pad2FilterBResonance` | Filter B |
-| 32 | `pad2FilterBQ` | Filter B |
-| 33 | `pad2FilterRouting` | Filter routing |
-| 34 | `pad2Lfo1Rate` | LFO 1 |
-| 35 | `pad2Lfo1Depth` | LFO 1 |
-| 36 | `pad2Lfo1Wave` | LFO 1 |
-| 37 | `pad2Lfo1Dest` | LFO 1 |
-| 38 | `pad2Lfo2Rate` | LFO 2 |
-| 39 | `pad2Lfo2Depth` | LFO 2 |
-| 40 | `pad2Lfo2Wave` | LFO 2 |
-| 41 | `pad2Lfo2Dest` | LFO 2 |
-| 42 | `pad2ModEnvEnabled` | Mod Envelope |
-| 43 | `pad2ModEnvAttack` | Mod Envelope |
-| 44 | `pad2ModEnvDecay` | Mod Envelope |
-| 45 | `pad2ModEnvSustain` | Mod Envelope |
-| 46 | `pad2ModEnvRelease` | Mod Envelope |
-| 47 | `pad2ModEnvDepth` | Mod Envelope |
-| 48 | `pad2ModEnvDest` | Mod Envelope |
-
-> `pad2Octave` moved to **L2 Pad 2 Kit Preset**.
-
----
-
-### Level 1 — Lead 1 Engine (9 params)
-
-| # | Key | Notes |
-|---|-----|-------|
-| 1 | `lead1UseCustomAdsr` | Use custom ADSR vs preset ADSR |
-| 2 | `lead1Attack` | Attack time |
-| 3 | `lead1Decay` | Decay time |
-| 4 | `lead1Sustain` | Sustain level |
-| 5 | `lead1Hold` | Hold time |
-| 6 | `lead1Release` | Release time |
-| 7 | `lead1Density` | Notes per phrase (sparseness) |
-| 8 | `lead1Octave` | Octave offset |
-| 9 | `lead1OctaveRange` | Octave span for random notes |
-
-> `leadTimbre` dropped (legacy param ignored by 4op FM engine).
-
----
-
-### Level 1 — Lead 2 Engine (6 params)
-
-| # | Key | Notes |
-|---|-----|-------|
-| 1 | `lead2UseCustomAdsr` | Use custom ADSR vs preset ADSR |
-| 2 | `lead2Attack` | Attack time |
-| 3 | `lead2Decay` | Decay time |
-| 4 | `lead2Sustain` | Sustain level |
-| 5 | `lead2Hold` | Hold time |
-| 6 | `lead2Release` | Release time |
-
----
-
-### Level 1 — Synth Euclidean Engine (43 params)
-
-| # | Key | Notes |
-|---|-----|-------|
-| 1 | `synthEuclideanMasterEnabled` | Master on/off |
-| 2 | `synthEuclideanTempo` | Tempo multiplier |
-| 3 | `synthChordSequencerEnabled` | Chord seq toggle |
-| 4–13 | `synthEuclid1Enabled/Preset/Steps/Hits/Rotation/NoteMin/NoteMax/Level/Probability/Source` | Lane 1 (10 params) |
-| 14–23 | `synthEuclid2*` | Lane 2 (10 params) |
-| 24–33 | `synthEuclid3*` | Lane 3 (10 params) |
-| 34–43 | `synthEuclid4*` | Lane 4 (10 params) |
-
----
-
-### Level 3 — Drums Source Config (17 params)
-
-| # | Key | Sub-group | Notes |
-|---|-----|-----------|-------|
-| 1 | `drumEnabled` | Drum mixer | Master on/off |
-| 2 | `drumLevel` | Drum mixer | Master volume |
-| 3 | `drumReverbSend` | Drum mixer | Master reverb send |
-| 4 | `drumMorphSliderAnimate` | Drum mixer | UI: animate sliders on morph |
-| 5 | `drumDelayEnabled` | Drum delay | Delay on/off |
-| 6 | `drumDelayNoteL` | Drum delay | Left note division |
-| 7 | `drumDelayNoteR` | Drum delay | Right note division |
-| 8 | `drumDelayFeedback` | Drum delay | Feedback amount |
-| 9 | `drumDelayMix` | Drum delay | Wet/dry mix |
-| 10 | `drumDelayFilter` | Drum delay | Tone filter cutoff |
-| 11 | `drumSubDelaySend` | Per-voice delay send | Sub → delay |
-| 12 | `drumKickDelaySend` | Per-voice delay send | Kick → delay |
-| 13 | `drumClickDelaySend` | Per-voice delay send | Click → delay |
-| 14 | `drumBeepHiDelaySend` | Per-voice delay send | BeepHi → delay |
-| 15 | `drumBeepLoDelaySend` | Per-voice delay send | BeepLo → delay |
-| 16 | `drumNoiseDelaySend` | Per-voice delay send | Noise → delay |
-| 17 | `drumMembraneDelaySend` | Per-voice delay send | Membrane → delay |
-
-> Morph config (7×6 = 42 params) + distance/variation (7×2 = 14 params) moved to **L2 Drum Kit**.
-
----
-
-### Level 1 — Drum Sub Engine (10 params)
-
-| # | Key |
-|---|-----|
-| 1 | `drumSubFreq` |
-| 2 | `drumSubDecay` |
-| 3 | `drumSubLevel` |
-| 4 | `drumSubTone` |
-| 5 | `drumSubShape` |
-| 6 | `drumSubPitchEnv` |
-| 7 | `drumSubPitchDecay` |
-| 8 | `drumSubDrive` |
-| 9 | `drumSubSub` |
-| 10 | `drumSubAttack` |
-
-> `drumSubVariation`, `drumSubDistance` moved to **L2 Drum Kit**.
-
-### Level 1 — Drum Kick Engine (11 params)
-
-| # | Key |
-|---|-----|
-| 1 | `drumKickFreq` |
-| 2 | `drumKickPitchEnv` |
-| 3 | `drumKickPitchDecay` |
-| 4 | `drumKickDecay` |
-| 5 | `drumKickLevel` |
-| 6 | `drumKickClick` |
-| 7 | `drumKickBody` |
-| 8 | `drumKickPunch` |
-| 9 | `drumKickTail` |
-| 10 | `drumKickTone` |
-| 11 | `drumKickAttack` |
-
-> `drumKickVariation`, `drumKickDistance` moved to **L2 Drum Kit**.
-
-### Level 1 — Drum Click Engine (13 params)
-
-| # | Key |
-|---|-----|
-| 1 | `drumClickDecay` |
-| 2 | `drumClickFilter` |
-| 3 | `drumClickTone` |
-| 4 | `drumClickLevel` |
-| 5 | `drumClickResonance` |
-| 6 | `drumClickPitch` |
-| 7 | `drumClickPitchEnv` |
-| 8 | `drumClickMode` |
-| 9 | `drumClickGrainCount` |
-| 10 | `drumClickGrainSpread` |
-| 11 | `drumClickStereoWidth` |
-| 12 | `drumClickExciterColor` |
-| 13 | `drumClickAttack` |
-
-> `drumClickVariation`, `drumClickDistance` moved to **L2 Drum Kit**.
-
-### Level 1 — Drum BeepHi Engine (18 params)
-
-| # | Key |
-|---|-----|
-| 1 | `drumBeepHiFreq` |
-| 2 | `drumBeepHiAttack` |
-| 3 | `drumBeepHiDecay` |
-| 4 | `drumBeepHiLevel` |
-| 5 | `drumBeepHiTone` |
-| 6 | `drumBeepHiInharmonic` |
-| 7 | `drumBeepHiPartials` |
-| 8 | `drumBeepHiShimmer` |
-| 9 | `drumBeepHiShimmerRate` |
-| 10 | `drumBeepHiBrightness` |
-| 11 | `drumBeepHiFeedback` |
-| 12 | `drumBeepHiModEnvDecay` |
-| 13 | `drumBeepHiNoiseInMod` |
-| 14 | `drumBeepHiModRatio` |
-| 15 | `drumBeepHiModRatioFine` |
-| 16 | `drumBeepHiModPhase` |
-| 17 | `drumBeepHiModEnvEnd` |
-| 18 | `drumBeepHiNoiseDecay` |
-
-> `drumBeepHiVariation`, `drumBeepHiDistance` moved to **L2 Drum Kit**.
-
-### Level 1 — Drum BeepLo Engine (17 params)
-
-| # | Key |
-|---|-----|
-| 1 | `drumBeepLoFreq` |
-| 2 | `drumBeepLoAttack` |
-| 3 | `drumBeepLoDecay` |
-| 4 | `drumBeepLoLevel` |
-| 5 | `drumBeepLoTone` |
-| 6 | `drumBeepLoPitchEnv` |
-| 7 | `drumBeepLoPitchDecay` |
-| 8 | `drumBeepLoBody` |
-| 9 | `drumBeepLoPluck` |
-| 10 | `drumBeepLoPluckDamp` |
-| 11 | `drumBeepLoModal` |
-| 12 | `drumBeepLoModalQ` |
-| 13 | `drumBeepLoModalInharmonic` |
-| 14 | `drumBeepLoModalSpread` |
-| 15 | `drumBeepLoModalCut` |
-| 16 | `drumBeepLoOscGain` |
-| 17 | `drumBeepLoModalGain` |
-
-> `drumBeepLoVariation`, `drumBeepLoDistance` moved to **L2 Drum Kit**.
-
-### Level 1 — Drum Noise Engine (17 params)
-
-| # | Key |
-|---|-----|
-| 1 | `drumNoiseFilterFreq` |
-| 2 | `drumNoiseFilterQ` |
-| 3 | `drumNoiseFilterType` |
-| 4 | `drumNoiseDecay` |
-| 5 | `drumNoiseLevel` |
-| 6 | `drumNoiseAttack` |
-| 7 | `drumNoiseFormant` |
-| 8 | `drumNoiseBreath` |
-| 9 | `drumNoiseFilterEnv` |
-| 10 | `drumNoiseFilterEnvDecay` |
-| 11 | `drumNoiseDensity` |
-| 12 | `drumNoiseColorLFO` |
-| 13 | `drumNoiseParticleSize` |
-| 14 | `drumNoiseParticleRandom` |
-| 15 | `drumNoiseParticleRandomRate` |
-| 16 | `drumNoiseRatchetCount` |
-| 17 | `drumNoiseRatchetTime` |
-
-> `drumNoiseVariation`, `drumNoiseDistance` moved to **L2 Drum Kit**.
-
-### Level 1 — Drum Membrane Engine (21 params)
-
-| # | Key |
-|---|-----|
-| 1 | `drumMembraneExciter` |
-| 2 | `drumMembraneExcPos` |
-| 3 | `drumMembraneExcBright` |
-| 4 | `drumMembraneExcDur` |
-| 5 | `drumMembraneSize` |
-| 6 | `drumMembraneTension` |
-| 7 | `drumMembraneDamping` |
-| 8 | `drumMembraneMaterial` |
-| 9 | `drumMembraneNonlin` |
-| 10 | `drumMembraneWireMix` |
-| 11 | `drumMembraneWireDensity` |
-| 12 | `drumMembraneWireTone` |
-| 13 | `drumMembraneWireDecay` |
-| 14 | `drumMembraneBody` |
-| 15 | `drumMembraneRing` |
-| 16 | `drumMembraneOvertones` |
-| 17 | `drumMembranePitchEnv` |
-| 18 | `drumMembranePitchDecay` |
-| 19 | `drumMembraneAttack` |
-| 20 | `drumMembraneDecay` |
-| 21 | `drumMembraneLevel` |
-
-> `drumMembraneVariation`, `drumMembraneDistance` moved to **L2 Drum Kit**.
-
----
-
-### Level 1 — Drum Euclidean Engine (69 params)
-
-| # | Key | Notes |
-|---|-----|-------|
-| 1 | `drumEuclidMasterEnabled` | Master on/off |
-| 2 | `drumEuclidBaseBPM` | Base BPM |
-| 3 | `drumEuclidTempo` | Tempo multiplier |
-| 4 | `drumEuclidSwing` | Swing % |
-| 5 | `drumEuclidDivision` | Division (4/8/16/32) |
-| 6–21 | `drumEuclid1Enabled/Preset/Steps/Hits/Rotation/TargetSub/TargetKick/TargetClick/TargetBeepHi/TargetBeepLo/TargetNoise/TargetMembrane/Probability/VelocityMin/VelocityMax/Level` | Lane 1 (16 params) |
-| 22–37 | `drumEuclid2*` | Lane 2 (16 params) |
-| 38–53 | `drumEuclid3*` | Lane 3 (16 params) |
-| 54–69 | `drumEuclid4*` | Lane 4 (16 params) |
-
----
-
-### Level 3 — Reverb Source (18 params)
-
-All reverb params are source-level (no separate engine preset for reverb).
-
-| # | Key | Sub-group |
-|---|-----|-----------|
-| 1 | `reverbEnabled` | Config |
-| 2 | `reverbEngine` | Core |
-| 3 | `reverbType` | Core |
-| 4 | `reverbQuality` | Core |
-| 5 | `reverbDecay` | Core |
-| 6 | `reverbSize` | Core |
-| 7 | `reverbDiffusion` | Core |
-| 8 | `reverbModulation` | Mod |
-| 9 | `predelay` | Mod |
-| 10 | `damping` | Mod |
-| 11 | `width` | Mod |
-| 12 | `reverbShimmer` | Shimmer |
-| 13 | `reverbShimmerPitch` | Shimmer |
-| 14 | `reverbSlowModRate` | Slow Mod |
-| 15 | `reverbSlowModDepth` | Slow Mod |
-| 16 | `reverbFreeze` | Config |
-| 17 | `reverbReverse` | Reverse |
-| 18 | `reverbReverseLength` | Reverse |
-
----
-
-### Level 3 — Granular Source Config (22 params)
-
-| # | Key | Sub-group | Notes |
-|---|-----|-----------|-------|
-| 1 | `granularEnabled` | Config | Legacy granular on/off |
-| 2 | `looperEnabled` | Looper master | Looper on/off |
-| 3 | `looperDryWet` | Looper master | Output wet level |
-| 4 | `looperFreeze` | Looper master | Stop write head |
-| 5 | `looperFeedback` | Looper master | Global feedback |
-| 6 | `looperFeedbackLPF` | Looper master | Feedback darkening |
-| 7 | `looperBufferSeconds` | Looper master | Buffer length |
-| 8 | `looperReverbSend` | Looper master | Reverb send |
-| 9 | `looperPad1Send` | Looper sends | Pad 1 → looper |
-| 10 | `looperPad2Send` | Looper sends | Pad 2 → looper |
-| 11 | `looperLead1Send` | Looper sends | Lead 1 → looper |
-| 12 | `looperLead2Send` | Looper sends | Lead 2 → looper |
-| 13 | `looperDrumSend` | Looper sends | Drums → looper |
-| 14 | `looperWavesSend` | Looper sends | Waves → looper |
-| 15 | `looperDelayEnabled` | Looper delay | Delay on/off |
-| 16 | `looperDelayActivity` | Looper delay | Tap count + syncopation |
-| 17 | `looperDelayRepeats` | Looper delay | Feedback cycles |
-| 18 | `looperDelayTime` | Looper delay | Note division |
-| 19 | `looperDelayFilter` | Looper delay | Tone LPF |
-| 20 | `looperDelayVibrato` | Looper delay | Per-tap modulation |
-| 21 | `looperDelayMix` | Looper delay | Wet level |
-| 22 | `looperDelayReverbSend` | Looper delay | Delay → reverb |
-
-> Voice enabled/gain (8) + macros (4) moved to **L2 Looper Kit Preset**.
-> `looperPreset` dropped (UI-only shortcut, not saved).
-
----
-
-### Level 2 — Looper Kit Preset (12 params)
-
-| # | Key | Notes |
-|---|-----|-------|
-| 1 | `looperV1Enabled` | Voice 1 on/off |
-| 2 | `looperV1Gain` | Voice 1 output level |
-| 3 | `looperV2Enabled` | Voice 2 on/off |
-| 4 | `looperV2Gain` | Voice 2 output level |
-| 5 | `looperV3Enabled` | Voice 3 on/off |
-| 6 | `looperV3Gain` | Voice 3 output level |
-| 7 | `looperV4Enabled` | Voice 4 on/off |
-| 8 | `looperV4Gain` | Voice 4 output level |
-| 9 | `looperMacroTexture` | Macro: blur/spray/grainSize |
-| 10 | `looperMacroComplexity` | Macro: LFO rates/density |
-| 11 | `looperMacroDarkness` | Macro: speed/pitch/filter |
-| 12 | `looperMacroChaos` | Macro: reverse/spray/grainOct |
-
----
-
-### Level 1 — Legacy Granular Engine (12 params)
-
-| # | Key |
-|---|-----|
-| 1 | `maxGrains` |
-| 2 | `grainProbability` |
-| 3 | `grainSize` |
-| 4 | `density` |
-| 5 | `spray` |
-| 6 | `jitter` |
-| 7 | `grainPitchMode` |
-| 8 | `pitchSpread` |
-| 9 | `stereoSpread` |
-| 10 | `feedback` |
-| 11 | `wetHPF` |
-| 12 | `wetLPF` |
-
-### Level 1 — Looper Voice Engines (20 params × 4 voices = 80 params)
-
-Each voice (V1–V4) has the same 20 engine params:
-
-| # | Key pattern (replace N with 1–4) |
-|---|-----------------------------------|
-| 1 | `looperV{N}Mode` |
-| 2 | `looperV{N}Slice` |
-| 3 | `looperV{N}Speed` |
-| 4 | `looperV{N}Reverse` |
-| 5 | `looperV{N}Pitch` |
-| 6 | `looperV{N}Attack` |
-| 7 | `looperV{N}Decay` |
-| 8 | `looperV{N}Blur` |
-| 9 | `looperV{N}GrainOct` |
-| 10 | `looperV{N}Spray` |
-| 11 | `looperV{N}Density` |
-| 12 | `looperV{N}GrainSize` |
-| 13 | `looperV{N}Pan` |
-| 14 | `looperV{N}PosLFORate` |
-| 15 | `looperV{N}PosLFODepth` |
-| 16 | `looperV{N}PanLFORate` |
-| 17 | `looperV{N}StereoSpread` |
-| 18 | `looperV{N}ReverseLFORate` |
-| 19 | `looperV{N}WriteFollow` |
-| 20 | `looperV{N}RecordLFORate` |
-
-### Level 1 — Looper Legacy Engine (6 params)
-
-| # | Key |
-|---|-----|
-| 1 | `looperLegacyJitter` |
-| 2 | `looperLegacyProbability` |
-| 3 | `looperLegacyPitchMode` |
-| 4 | `looperLegacyPitchSpread` |
-| 5 | `looperLegacyMaxGrains` |
-| 6 | `looperLegacyFeedback` |
-
-### Level 1 — Looper Euclidean Engine (41 params)
-
-| # | Key | Notes |
-|---|-----|-------|
-| 1 | `looperEuclidMasterEnabled` | Master on/off |
-| 2 | `looperEuclidBaseBPM` | Base BPM |
-| 3 | `looperEuclidTempo` | Tempo multiplier |
-| 4 | `looperEuclidSwing` | Swing % |
-| 5 | `looperEuclidDivision` | Division |
-| 6–14 | `looperEuclid1Enabled/Preset/Steps/Hits/Rotation/Probability/VelocityMin/VelocityMax/Level` | Lane 1 (9 params) |
-| 15–23 | `looperEuclid2*` | Lane 2 (9 params) |
-| 24–32 | `looperEuclid3*` | Lane 3 (9 params) |
-| 33–41 | `looperEuclid4*` | Lane 4 (9 params) |
-
----
-
-### Level 2 — Earth Kit Preset (19 params)
-
-All Earth config lives at L2 (L3 Earth Source is just a reference wrapper).
-
-| # | Key | Sub-group | Notes |
-|---|-----|-----------|-------|
-| 1 | `waterEnabled` | Water config | Water engine on/off |
-| 2 | `waterLevel` | Water config | Water output volume |
-| 3 | `oceanSampleEnabled` | Ocean config | Sample on/off |
-| 4 | `oceanSampleLevel` | Ocean config | Sample volume |
-| 5 | `oceanWaveSynthEnabled` | Ocean config | Wave synth on/off |
-| 6 | `oceanWaveSynthLevel` | Ocean config | Wave synth volume |
-| 7 | `oceanReverbSend` | Ocean config | Ocean → reverb |
-| 8 | `oceanFilterType` | Ocean engine | Filter type |
-| 9 | `oceanFilterCutoff` | Ocean engine | Filter cutoff |
-| 10 | `oceanFilterResonance` | Ocean engine | Filter resonance |
-| 11 | `oceanDuration` | Ocean engine | Wave duration |
-| 12 | `oceanInterval` | Ocean engine | Time between waves |
-| 13 | `oceanFoam` | Ocean engine | Foam intensity |
-| 14 | `oceanDepth` | Ocean engine | Low rumble |
-| 15 | `insectsEnabled` | Insects 1 config | Insects 1 on/off |
-| 16 | `insectsLevel` | Insects 1 config | Insects 1 volume |
-| 17 | `insectsReverbSend` | Insects 1 config | Insects 1 → reverb |
-| 18 | `insects2Enabled` | Insects 2 config | Insects 2 on/off |
-| 19 | `insects2Level` | Insects 2 config | Insects 2 volume |
-
----
-
-### Level 1 — Water Engine (18 params)
-
-| # | Key |
-|---|-----|
-| 1 | `waterPreset` |
-| 2 | `waterMorphA` |
-| 3 | `waterMorphB` |
-| 4 | `waterMorph` |
-| 5 | `waterIntensity` |
-| 6 | `waterRate` |
-| 7 | `waterDistance` |
-| 8 | `waterBaseFreq` |
-| 9 | `waterDropSize` |
-| 10 | `waterHardness` |
-| 11 | `waterGlassThickness` |
-| 12 | `waterSpace` |
-| 13 | `waterLayerHardDrops` |
-| 14 | `waterLayerWaterDrops` |
-| 15 | `waterLayerTurbulence` |
-| 16 | `waterLayerBubbling` |
-| 17 | `waterLayerRoar` |
-| 18 | `waterLayerRivulets` |
-
-### Level 1 — Insects 1 Engine (8 params)
-
-| # | Key |
-|---|-----|
-| 1 | `insectsEngine` |
-| 2 | `insectsDensity` |
-| 3 | `insectsTemperature` |
-| 4 | `insectsDistance` |
-| 5 | `insectsProximity` |
-| 6 | `insectsAntiphony` |
-| 7 | `insectsClickRate` |
-| 8 | `insectsMotion` |
-
-### Level 1 — Insects 2 Engine (8 params)
-
-| # | Key |
-|---|-----|
-| 1 | `insects2Engine` |
-| 2 | `insects2Density` |
-| 3 | `insects2Temperature` |
-| 4 | `insects2Distance` |
-| 5 | `insects2Proximity` |
-| 6 | `insects2Antiphony` |
-| 7 | `insects2ClickRate` |
-| 8 | `insects2Motion` |
-
----
-
-### Ownership Totals
-
-| Level | Scope | Param Count |
-|-------|-------|-------------|
-| **L4** | Global / State | **23** |
-| **L3** | Synth Source | **9** |
-| **L3** | Drums Source | **17** |
-| **L3** | Reverb Source | **18** |
-| **L3** | Granular Source | **22** |
-| **L3** | Earth Source | **0** (ref to L2 only) |
-| **L3 total** | | **66** |
-| **L2** | Pad 1 Kit Preset | **10** |
-| **L2** | Pad 2 Kit Preset | **8** |
-| **L2** | Lead 1 Kit Preset | **8** |
-| **L2** | Lead 2 Kit Preset | **9** |
-| **L2** | Drum Kit | **56** (14 dist/var + 42 morph config) |
-| **L2** | Looper Kit Preset | **12** (8 voice + 4 macros) |
-| **L2** | Earth Kit Preset | **19** |
-| **L2 total** | | **122** |
-| **L1** | Pad 1 engine | **48** |
-| **L1** | Pad 2 engine | **48** |
-| **L1** | Lead 1 engine | **9** |
-| **L1** | Lead 2 engine | **6** |
-| **L1** | Synth Euclidean engine | **43** |
-| **L1** | Drum Sub engine | **10** |
-| **L1** | Drum Kick engine | **11** |
-| **L1** | Drum Click engine | **13** |
-| **L1** | Drum BeepHi engine | **18** |
-| **L1** | Drum BeepLo engine | **17** |
-| **L1** | Drum Noise engine | **17** |
-| **L1** | Drum Membrane engine | **21** |
-| **L1** | Drum Euclidean engine | **69** |
-| **L1** | Water engine | **18** |
-| **L1** | Insects 1 engine | **8** |
-| **L1** | Insects 2 engine | **8** |
-| **L1** | Legacy Granular engine | **12** |
-| **L1** | Looper Voice × 4 | **80** |
-| **L1** | Looper Legacy engine | **6** |
-| **L1** | Looper Euclidean engine | **41** |
-| **L1 total** | | **503** |
-| | **Grand Total** | **714** |
-
-> 716 original SliderState keys − `leadTimbre` (dropped, dead legacy) − `looperPreset` (UI-only shortcut) = **714**
-
-### Resolved Assignments
-
-All formerly-uncertain params now have definite owners:
-
-| Key | Final Level | Rationale |
-|-----|------------|-----------|
-| `synthVoiceMask` | **L2 Pad 1 Kit Preset** | Defines which voices this pad uses — part of kit assembly |
-| `pad2VoiceAssign` | **L2 Pad 2 Kit Preset** | Same — complementary to synthVoiceMask |
-| `waveSpread` | **L2 Pad 1 Kit Preset** | Voice stagger timing — performance param, not sound engine |
-| `detune` | **L2 Pad 1 Kit Preset** | Voice detuning — performance param |
-| `synthOctave` | **L2 Pad 1 Kit Preset** | Octave offset — performance param |
-| `pad2Octave` | **L2 Pad 2 Kit Preset** | Same as above for Pad 2 |
-| `leadTimbre` | **DROPPED** | Dead legacy param ignored by 4op FM engine |
-| `synthChordSequencerEnabled` | **L1 Synth Euclidean** | Tightly coupled to sequencer behavior |
-| `looperPreset` | **DROPPED** | UI-only shortcut that bulk-sets L1+L2 params — not saved |
+| Key | Status | Reason |
+|-----|--------|--------|
+| `leadTimbre` | Dropped | Dead legacy param ignored by the 4-op FM engine |
+| `granularPreset` | UI-only | Shortcut for built-in granular scenes, not a stable preset scope |
 
 ### No Double-Saves Verification
 
-Every parameter appears in **exactly one** section above. The hierarchy is fully
-reference-based — higher levels store **preset name pointers** to lower levels,
-never embedded copies. When loading:
-- L4 State resolves its L3 refs → each L3 resolves its L2 refs → each L2 resolves its L1 refs
-- The canonical "owner" of each parameter is the level listed here
-- L4 total: 23 + L3 total: 66 + L2 total: 122 + L1 total: 503 = **714 params**
-- 716 original SliderState keys − `leadTimbre` (dropped) − `looperPreset` (UI-only) = **714** ✓
+- Registry-backed params have a single owner in `PARAM_REGISTRY`.
+- Higher levels are **snapshot-first** today. They may carry `refs` metadata,
+  but loading should not assume live child resolution.
+- Metadata such as `dualRanges`, `sliderModes`, evolve configs, sub-lane states,
+  `stepOverrides`, and `clockDivs` must travel with the owning level instead of
+  being dropped at the store boundary.
+- Live totals: `48 + 80 + 112 + 523 = 763` registry-backed keys.

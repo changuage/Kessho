@@ -28,27 +28,44 @@ void  water_process_block(int block_size);
 
 void  water_set_preset(int preset);       /* 0=tapDrips 1=stream 2=waterfall 3=rainWindow */
 void  water_set_params(float intensity_min, float intensity_max,
-                       float rate_min, float rate_max,
                        float distance_min, float distance_max,
                        float base_freq_min, float base_freq_max,
                        float drop_size_min, float drop_size_max,
                        float hardness_min, float hardness_max,
                        float glass_thickness_min, float glass_thickness_max);
+void  water_set_layer_detail_params(float hard_rate, float hard_tone_hz,
+                                    float water_rate, float water_tone_hz,
+                                    float bubble_rate, float bubble_tone_hz);
 void  water_set_layer_mix(float hard_drops, float water_drops, float turbulence,
                           float bubbling, float surf, float channels);
 void  water_set_layer_density(float hard_drops, float water_drops, float turbulence,
                               float bubbling, float surf, float channels);
+void  water_set_density_loop_params(float hard_send, float water_send,
+                                    float bubble_send, float feedback, float tone_hz,
+                                    float ring, float wet);
 void  water_start(void);
 void  water_stop(void);
 void  water_set_seed(int seed);
 void  water_set_surf_params(float duration_min, float duration_max,
                            float interval_min, float interval_max,
                            float foam_min, float foam_max,
+                           float proximity_min, float proximity_max,
                            float depth_min, float depth_max,
-                           float body_freq, float spray_freq);
+                           float body_freq_min, float body_freq_max,
+                           float spray_freq_min, float spray_freq_max,
+                           float foam_bright_min, float foam_bright_max);
 void  water_set_channels_params(float morph, float speed);
 int   water_get_active_voices(void);
 int   water_get_events_per_sec(void);
+int   water_get_surf_trigger_serial(void);
+float water_get_surf_trigger_duration_pos(void);
+float water_get_surf_trigger_interval_pos(void);
+float water_get_surf_trigger_foam_pos(void);
+float water_get_surf_trigger_proximity_pos(void);
+float water_get_surf_trigger_depth_pos(void);
+float water_get_surf_trigger_body_pos(void);
+float water_get_surf_trigger_spray_pos(void);
+float water_get_surf_trigger_foam_bright_pos(void);
 
 /* ─── Insects engine ─── */
 
@@ -91,23 +108,6 @@ void  insects2_stop(void);
 void  insects2_set_seed(int seed);
 int   insects2_get_active_voices(void);
 int   insects2_get_engine_type(void);
-
-/* ─── Ocean engine ─── */
-
-int   ocean_init(float sample_rate);
-void  ocean_destroy(void);
-float* ocean_get_output_ptr(void);
-void  ocean_process_block(int block_size);
-
-void  ocean_set_params(float intensity,
-                       float wave_duration_min, float wave_duration_max,
-                       float wave_interval_min, float wave_interval_max,
-                       float wave2_offset_min, float wave2_offset_max,
-                       float foam_min, float foam_max,
-                       float depth_min, float depth_max);
-void  ocean_start(void);
-void  ocean_stop(void);
-void  ocean_set_seed(int seed);
 
 #ifdef __cplusplus
 }

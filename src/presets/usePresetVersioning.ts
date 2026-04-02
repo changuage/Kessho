@@ -3,8 +3,9 @@
 // Phase 9 — Modified (dirty) flag detection.
 
 import { useState, useCallback, useMemo } from 'react';
-import type { PresetEntry, PresetVersion } from './types';
+import type { PresetEntry, PresetVersion, PresetVersionMetadata } from './types';
 import { extractParams } from './codec';
+import { comparePresetVersions } from './presetUtils';
 import type { ParamLevel } from './ParamRegistry';
 import type { SliderState } from '../ui/state';
 
@@ -42,6 +43,7 @@ export function usePresetVersioning(
   state: SliderState,
   paramLevel: ParamLevel,
   scope?: string,
+  currentMetadata?: PresetVersionMetadata,
 ): UsePresetVersioningResult {
   const [entry, setEntry] = useState<PresetEntry | null>(null);
   const [viewingVersion, setViewingVersion] = useState(0);
@@ -62,6 +64,7 @@ export function usePresetVersioning(
   const stepBack = useCallback((): PresetVersion | null => {
     if (!canStepBack) return null;
     const prev = sortedVersions[currentIdx - 1];
+    if (!prev) return null;
     setViewingVersion(prev.v);
     return prev;
   }, [canStepBack, currentIdx, sortedVersions]);
@@ -69,6 +72,7 @@ export function usePresetVersioning(
   const stepForward = useCallback((): PresetVersion | null => {
     if (!canStepForward) return null;
     const next = sortedVersions[currentIdx + 1];
+    if (!next) return null;
     setViewingVersion(next.v);
     return next;
   }, [canStepForward, currentIdx, sortedVersions]);
@@ -82,12 +86,7 @@ export function usePresetVersioning(
     const other = sortedVersions.find(v => v.v === otherVersion);
     if (!current || !other) return [];
 
-    const changed: string[] = [];
-    const allKeys = new Set([...Object.keys(current.data), ...Object.keys(other.data)]);
-    for (const key of allKeys) {
-      if (current.data[key] !== other.data[key]) changed.push(key);
-    }
-    return changed;
+    return comparePresetVersions(current, other);
   }, [currentVersion, sortedVersions]);
 
   // Phase 9: Dirty flag — compare current state params with loaded version
@@ -97,11 +96,25 @@ export function usePresetVersioning(
     if (!savedVersion) return false;
 
     const currentParams = extractParams(state, paramLevel, scope);
-    for (const [key, value] of Object.entries(currentParams)) {
-      if (savedVersion.data[key] !== value) return true;
+    const currentSnapshot: PresetVersion = {
+      v: currentVersion,
+      note: '',
+      timestamp: savedVersion.timestamp,
+      data: currentParams,
+    };
+    if (currentMetadata) {
+      Object.assign(currentSnapshot, currentMetadata);
+      return comparePresetVersions(currentSnapshot, savedVersion).length > 0;
     }
-    return false;
-  }, [entry, state, paramLevel, scope, currentVersion, sortedVersions]);
+
+    const savedDataOnly: PresetVersion = {
+      v: savedVersion.v,
+      note: savedVersion.note,
+      timestamp: savedVersion.timestamp,
+      data: savedVersion.data,
+    };
+    return comparePresetVersions(currentSnapshot, savedDataOnly).length > 0;
+  }, [entry, state, paramLevel, scope, currentVersion, sortedVersions, currentMetadata]);
 
   // Wrap setEntry to also reset viewing version
   const handleSetEntry = useCallback((newEntry: PresetEntry | null) => {

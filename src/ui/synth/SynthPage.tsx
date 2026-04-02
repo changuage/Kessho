@@ -9,7 +9,7 @@
  * Overview = All 4 trigger lanes at once
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { SliderState } from '../state';
 import { useEuclideanSequencer, type EvolveConfig, type StepOverrides, type SubLaneKind, type SubLaneState, type PitchSettings } from '../sequencer/useEuclideanSequencer';
 // DrumStepOverrides no longer needed — SynthPage uses StepOverrides from the shared hook
@@ -19,7 +19,14 @@ import SeqSparkline from '../drums/SeqSparkline';
 import SeqMiniOverview from '../drums/SeqMiniOverview';
 import { SCALES } from '../../audio/drumSeqTypes';
 import type { ClockDivision } from '../../audio/drumSeqTypes';
+import { useSliderHelp } from '../SliderHelpOverlay';
 import './synth.css';
+import SynthPresetManager from './SynthPresetManager';
+import { usePresets } from '../../presets/usePresets';
+import { PresetDropdown } from '../../presets/PresetDropdown';
+import { extractParams } from '../../presets/codec';
+import type { PresetEntry } from '../../presets/types';
+import type { UsePresetsOptions } from '../../presets/usePresets';
 
 /** Convert a scale-degree index to semitone offset (matching SeqLane.tsx logic) */
 function scaleDegreeToSemitone(degree: number, scale: number[]): number {
@@ -28,7 +35,19 @@ function scaleDegreeToSemitone(degree: number, scale: number[]): number {
   const idx = degree % scale.length;
   return oct * 12 + (scale[idx] ?? 0);
 }
-import { getPadPresetNames, PAD_PRESETS } from '../../audio/padPresets';
+import {
+  getPadPresetOptions,
+  upsertUserPadPreset,
+  setUserPadPresets,
+  type PadPreset,
+  type PadPresetOption,
+} from '../../audio/padPresets';
+import {
+  loadLead4opFMPreset,
+  saveUserLead4opFMPreset,
+  setUserLead4opFMPresets,
+  upsertUserLead4opFMPreset,
+} from '../../audio/lead4opfm';
 import FilterLfoViz from './FilterLfoViz';
 import WaveFoldViz from './WaveFoldViz';
 import LeadAdsrViz from './LeadAdsrViz';
@@ -54,6 +73,70 @@ const SYNTH_SOURCES = [
   { value: 'synth6', label: 'Pad 6', color: '#8E5842' },
 ];
 
+const DELAY_A_NOTE_OPTIONS = [
+  { value: '1/1', label: '1/1' },
+  { value: '1/2', label: '1/2' },
+  { value: '1/2d', label: '1/2 dotted' },
+  { value: '1/4', label: '1/4' },
+  { value: '1/4d', label: '1/4 dotted' },
+  { value: '1/4t', label: '1/4 triplet' },
+  { value: '1/8', label: '1/8' },
+  { value: '1/8d', label: '1/8 dotted' },
+  { value: '1/8t', label: '1/8 triplet' },
+  { value: '1/16', label: '1/16' },
+  { value: '1/16d', label: '1/16 dotted' },
+  { value: '1/16t', label: '1/16 triplet' },
+  { value: '1/32', label: '1/32' },
+] as const;
+
+const PAD1_TO_PAD2_KEY: Record<string, string> = {
+  padOscAWave: 'pad2OscAWave', padOscAOctave: 'pad2OscAOctave', padOscADetune: 'pad2OscADetune', padOscALevel: 'pad2OscALevel',
+  padOscBWave: 'pad2OscBWave', padOscBOctave: 'pad2OscBOctave', padOscBDetune: 'pad2OscBDetune', padOscBLevel: 'pad2OscBLevel',
+  padSubEnabled: 'pad2SubEnabled', padSubOctave: 'pad2SubOctave', padSubWave: 'pad2SubWave', padSubLevel: 'pad2SubLevel',
+  padNoiseType: 'pad2NoiseType', padNoiseLevel: 'pad2NoiseLevel',
+  hardness: 'pad2Hardness', warmth: 'pad2Warmth', presence: 'pad2Presence',
+  filterType: 'pad2FilterType', filterCutoffMin: 'pad2FilterCutoffMin', filterCutoffMax: 'pad2FilterCutoffMax',
+  filterResonance: 'pad2FilterResonance', filterQ: 'pad2FilterQ',
+  padFilterBEnabled: 'pad2FilterBEnabled', padFilterBType: 'pad2FilterBType', padFilterBCutoff: 'pad2FilterBCutoff',
+  padFilterBResonance: 'pad2FilterBResonance', padFilterBQ: 'pad2FilterBQ', padFilterRouting: 'pad2FilterRouting',
+  synthAttack: 'pad2Attack', synthDecay: 'pad2Decay', synthSustain: 'pad2Sustain', synthRelease: 'pad2Release',
+  padLfo1Rate: 'pad2Lfo1Rate', padLfo1Depth: 'pad2Lfo1Depth', padLfo1Wave: 'pad2Lfo1Wave', padLfo1Dest: 'pad2Lfo1Dest',
+  padLfo2Rate: 'pad2Lfo2Rate', padLfo2Depth: 'pad2Lfo2Depth', padLfo2Wave: 'pad2Lfo2Wave', padLfo2Dest: 'pad2Lfo2Dest',
+  padModEnvEnabled: 'pad2ModEnvEnabled', padModEnvAttack: 'pad2ModEnvAttack', padModEnvDecay: 'pad2ModEnvDecay',
+  padModEnvSustain: 'pad2ModEnvSustain', padModEnvRelease: 'pad2ModEnvRelease',
+  padModEnvDepth: 'pad2ModEnvDepth', padModEnvDest: 'pad2ModEnvDest',
+};
+
+const PAD2_TO_PAD1_KEY = Object.fromEntries(
+  Object.entries(PAD1_TO_PAD2_KEY).map(([pad1Key, pad2Key]) => [pad2Key, pad1Key]),
+) as Record<string, string>;
+
+function createRuntimePadPreset(scope: 'pad1' | 'pad2', name: string, data: Record<string, unknown>): PadPreset {
+  const params: Record<string, number | string | boolean> = {};
+
+  if (scope === 'pad1') {
+    for (const [key, value] of Object.entries(data)) {
+      if (typeof value === 'number' || typeof value === 'string' || typeof value === 'boolean') {
+        params[key] = value;
+      }
+    }
+  } else {
+    for (const [key, value] of Object.entries(data)) {
+      const pad1Key = PAD2_TO_PAD1_KEY[key];
+      if (!pad1Key) continue;
+      if (typeof value === 'number' || typeof value === 'string' || typeof value === 'boolean') {
+        params[pad1Key] = value;
+      }
+    }
+  }
+
+  return {
+    name,
+    tags: [],
+    params,
+  };
+}
+
 // Inline styles available for future use — currently CSS classes handle layout
 // const inlineStyles = { ... };
 
@@ -65,6 +148,7 @@ export interface SynthPageProps {
   expandedPanels: Set<string>;
   onParamChange: (key: keyof SliderState, value: number) => void;
   onSelectChange: (key: keyof SliderState, value: SliderState[keyof SliderState]) => void;
+  onStateChange?: (newState: SliderState) => void;
   togglePanel: (id: string) => void;
   sliderProps: (paramKey: keyof SliderState) => Record<string, unknown>;
   SliderComponent: React.ComponentType<Record<string, unknown>>;
@@ -157,6 +241,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     initialPitchSettings,
     onPitchSettingsChange,
   } = props;
+  const onStateChange = props.onStateChange;
 
   const evolvedOverrides = props.evolvedOverrides;
   const initialEvolveConfigs = props.initialEvolveConfigs;
@@ -168,12 +253,333 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const [padTier, setPadTier] = useState<0 | 1 | 2>(0); // 0=closed, 1=primary, 2=advanced
   const [pad2Tier, setPad2Tier] = useState<0 | 1 | 2>(0); // Pad 2: 0=closed by default
   const [dragPopup, setDragPopup] = useState<{ x: number; y: number; text: string } | null>(null);
-  const padPresets = getPadPresetNames();
+  const {
+    presets: pad1EnginePresets,
+    save: savePad1Preset,
+    load: loadPad1Preset,
+    refresh: refreshPad1Presets,
+  } = usePresets('engine', 'pad1');
+  const {
+    presets: pad2EnginePresets,
+    save: savePad2Preset,
+    load: loadPad2Preset,
+    refresh: refreshPad2Presets,
+  } = usePresets('engine', 'pad2');
+  const {
+    presets: leadFmPresets,
+    load: loadLeadFmPresetEntry,
+    refresh: refreshLeadFmPresets,
+  } = usePresets('engine', 'lead4opfm');
   const toggleEdit = (section: string) => setEditingSection(prev => prev === section ? null : section);
 
   const Slider = SliderComponent as React.ComponentType<any>;
   const Select = SelectComponent as React.ComponentType<any>;
+  const { announceHelp } = useSliderHelp();
+  const bindHelp = useCallback((helpKey: string, options: { label?: string } = {}) => ({
+    onMouseEnter: () => announceHelp(helpKey, options),
+    onPointerDown: () => announceHelp(helpKey, options),
+    onFocus: () => announceHelp(helpKey, options),
+  }), [announceHelp]);
+
+  // ── Euclidean sequencer preset (L1 synthEuclidean) ──
+  const [euclidPresetName, setEuclidPresetName] = useState<string | undefined>();
+  const handleEuclidPresetLoad = useCallback((entry: PresetEntry, _data: Record<string, unknown>) => {
+    setEuclidPresetName(entry.name);
+  }, []);
+
+  // ── Composite extract: L3 synth source includes L1 synthEuclidean + L2 kits ──
+  const synthCompositeExtract = React.useMemo<UsePresetsOptions>(() => ({
+    customExtract: (s: SliderState) => {
+      const combined: Record<string, unknown> = {};
+      Object.assign(combined, extractParams(s, 1, 'synthEuclidean'));
+      Object.assign(combined, extractParams(s, 1, 'leadDelay'));
+      Object.assign(combined, extractParams(s, 2, 'pad1Kit'));
+      Object.assign(combined, extractParams(s, 2, 'pad2Kit'));
+      Object.assign(combined, extractParams(s, 2, 'lead1Kit'));
+      Object.assign(combined, extractParams(s, 2, 'lead2Kit'));
+      Object.assign(combined, extractParams(s, 3, 'synth'));
+      return combined;
+    },
+  }), []);
+
   // CollapsiblePanel available from CollapsiblePanelComponent prop if needed
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const syncPadRuntimePresets = async (
+      scope: 'pad1' | 'pad2',
+      summaries: typeof pad1EnginePresets,
+      loadPreset: typeof loadPad1Preset,
+    ) => {
+      const runtimePresets = await Promise.all(
+        summaries
+          .filter((preset) => preset.library !== 'stock')
+          .map(async (preset) => {
+            const entry = await loadPreset(preset.name);
+            if (!entry) return null;
+            const version = entry.versions.find(v => v.v === entry.currentVersion)
+              || entry.versions[entry.versions.length - 1];
+            if (!version) return null;
+            return {
+              id: entry.id ?? entry.name,
+              name: entry.name,
+              library: (entry.library ?? 'user') as Exclude<PadPresetOption['library'], 'stock'>,
+              preset: createRuntimePadPreset(scope, entry.name, version.data),
+            };
+          }),
+      );
+
+      if (!cancelled) {
+        setUserPadPresets(
+          scope,
+          runtimePresets.filter((preset): preset is {
+            id: string;
+            name: string;
+            library: Exclude<PadPresetOption['library'], 'stock'>;
+            preset: PadPreset;
+          } => Boolean(preset)),
+        );
+      }
+    };
+
+    syncPadRuntimePresets('pad1', pad1EnginePresets, loadPad1Preset).catch((error) => {
+      console.warn('Failed to sync pad1 L1 presets:', error);
+      if (!cancelled) setUserPadPresets('pad1', []);
+    });
+    syncPadRuntimePresets('pad2', pad2EnginePresets, loadPad2Preset).catch((error) => {
+      console.warn('Failed to sync pad2 L1 presets:', error);
+      if (!cancelled) setUserPadPresets('pad2', []);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [loadPad1Preset, loadPad2Preset, pad1EnginePresets, pad2EnginePresets]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const syncLeadRuntimePresets = async () => {
+      const runtimePresets = await Promise.all(
+        leadFmPresets
+          .filter((preset) => preset.library !== 'stock')
+          .map(async (preset) => {
+            const entry = await loadLeadFmPresetEntry(preset.name);
+            if (!entry) return null;
+            const resolvedPreset = await loadLead4opFMPreset(entry.name);
+            return {
+              id: entry.name,
+              name: entry.name,
+              library: (entry.library ?? 'user') as 'user' | 'cloud',
+              preset: resolvedPreset,
+            };
+          }),
+      );
+
+      if (!cancelled) {
+        setUserLead4opFMPresets(runtimePresets.filter((preset): preset is NonNullable<typeof preset> => Boolean(preset)));
+      }
+    };
+
+    syncLeadRuntimePresets().catch((error) => {
+      console.warn('Failed to sync lead FM L1 presets:', error);
+      if (!cancelled) setUserLead4opFMPresets([]);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [leadFmPresets, loadLeadFmPresetEntry]);
+
+  const pad1PresetOptions = getPadPresetOptions('pad1');
+  const pad2PresetOptions = getPadPresetOptions('pad2');
+  const pad1OptionById = new Map(pad1PresetOptions.map(option => [option.id, option]));
+  const pad2OptionById = new Map(pad2PresetOptions.map(option => [option.id, option]));
+  const leadPresetOptions = [
+    ...lead4opPresets.map((preset) => ({
+      id: preset.id,
+      name: preset.name,
+      library: 'stock' as const,
+    })),
+    ...leadFmPresets
+      .filter((preset) => preset.library !== 'stock')
+      .map((preset) => ({
+        id: preset.name,
+        name: preset.name,
+        library: preset.library,
+      })),
+  ];
+  const leadPresetOptionById = new Map(leadPresetOptions.map(option => [option.id, option]));
+
+  const renderPadPresetOptions = useCallback((options: PadPresetOption[]) => {
+    const stock = options.filter(option => option.library === 'stock');
+    const user = options.filter(option => option.library === 'user');
+    const cloud = options.filter(option => option.library === 'cloud');
+
+    return (
+      <>
+        <optgroup label="Stock">
+          {stock.map((option) => (
+            <option key={option.id} value={option.id}>{option.name}</option>
+          ))}
+        </optgroup>
+        {user.length > 0 && (
+          <optgroup label="My Presets">
+            {user.map((option) => (
+              <option key={option.id} value={option.id}>{option.name}</option>
+            ))}
+          </optgroup>
+        )}
+        {cloud.length > 0 && (
+          <optgroup label="Cloud">
+            {cloud.map((option) => (
+              <option key={option.id} value={option.id}>{option.name}</option>
+            ))}
+          </optgroup>
+        )}
+      </>
+    );
+  }, []);
+
+  const renderLeadPresetOptions = useCallback((options: Array<{ id: string; name: string; library: 'stock' | 'user' | 'cloud' }>) => {
+    const stock = options.filter(option => option.library === 'stock');
+    const user = options.filter(option => option.library === 'user');
+    const cloud = options.filter(option => option.library === 'cloud');
+
+    return (
+      <>
+        <optgroup label="Stock">
+          {stock.map((option) => (
+            <option key={option.id} value={option.id}>{option.name}</option>
+          ))}
+        </optgroup>
+        {user.length > 0 && (
+          <optgroup label="My Presets">
+            {user.map((option) => (
+              <option key={option.id} value={option.id}>{option.name}</option>
+            ))}
+          </optgroup>
+        )}
+        {cloud.length > 0 && (
+          <optgroup label="Cloud">
+            {cloud.map((option) => (
+              <option key={option.id} value={option.id}>{option.name}</option>
+            ))}
+          </optgroup>
+        )}
+      </>
+    );
+  }, []);
+
+  const handlePadSlotSave = useCallback(async (
+    scope: 'pad1' | 'pad2',
+    slotKey: 'padPresetA' | 'padPresetB' | 'pad2PresetA' | 'pad2PresetB',
+  ) => {
+    const currentId = String(state[slotKey] ?? '').trim();
+    const optionMap = scope === 'pad1' ? pad1OptionById : pad2OptionById;
+    const currentOption = optionMap.get(currentId);
+    const savePreset = scope === 'pad1' ? savePad1Preset : savePad2Preset;
+    const loadPreset = scope === 'pad1' ? loadPad1Preset : loadPad2Preset;
+    const refreshPresetList = scope === 'pad1' ? refreshPad1Presets : refreshPad2Presets;
+    const defaultName = currentOption?.name || `${scope === 'pad1' ? 'Pad 1' : 'Pad 2'} Preset`;
+
+    let targetName = defaultName;
+    if (!currentOption || currentOption.library !== 'user') {
+      if (typeof window === 'undefined' || typeof window.prompt !== 'function') return;
+      const requestedName = window.prompt(
+        `Save ${scope === 'pad1' ? 'Pad 1' : 'Pad 2'} slot as a new L1 preset`,
+        defaultName,
+      );
+      if (!requestedName?.trim()) return;
+      targetName = requestedName.trim();
+      const existingOption = [...optionMap.values()].find(option => option.name === targetName && option.library !== 'user');
+      if (existingOption) {
+        targetName = `${targetName} (Custom)`;
+      }
+    }
+
+    await savePreset(
+      targetName,
+      state,
+      currentOption?.library === 'user' ? 'Updated from pad slot' : 'Saved from pad slot',
+    );
+    await refreshPresetList();
+
+    const savedEntry = await loadPreset(targetName);
+    if (!savedEntry) return;
+    const version = savedEntry.versions.find(v => v.v === savedEntry.currentVersion)
+      || savedEntry.versions[savedEntry.versions.length - 1];
+    if (!version) return;
+
+    const savedId = savedEntry.id ?? savedEntry.name;
+    upsertUserPadPreset(scope, {
+      id: savedId,
+      name: savedEntry.name,
+      library: (savedEntry.library ?? 'user') as Exclude<PadPresetOption['library'], 'stock'>,
+      preset: createRuntimePadPreset(scope, savedEntry.name, version.data),
+    });
+
+    if (String(state[slotKey] ?? '') !== savedId) {
+      onSelectChange(slotKey, savedId as SliderState[keyof SliderState]);
+    }
+  }, [
+    loadPad1Preset,
+    loadPad2Preset,
+    onSelectChange,
+    pad1OptionById,
+    pad2OptionById,
+    refreshPad1Presets,
+    refreshPad2Presets,
+    savePad1Preset,
+    savePad2Preset,
+    state,
+  ]);
+
+  const handleLeadSlotSave = useCallback(async (
+    slotKey: 'lead1PresetA' | 'lead1PresetB' | 'lead2PresetC' | 'lead2PresetD',
+    fallbackName: string,
+  ) => {
+    const currentId = String(state[slotKey] ?? '').trim();
+    const currentOption = leadPresetOptionById.get(currentId);
+    const defaultName = currentOption?.name || fallbackName;
+
+    let targetName = defaultName;
+    if (!currentOption || currentOption.library !== 'user') {
+      if (typeof window === 'undefined' || typeof window.prompt !== 'function') return;
+      const requestedName = window.prompt(
+        `Save ${fallbackName} as a new L1 FM preset`,
+        defaultName,
+      );
+      if (!requestedName?.trim()) return;
+      targetName = requestedName.trim();
+      const existing = leadPresetOptions.find(option => option.name === targetName && option.library !== 'user');
+      if (existing) targetName = `${targetName} (Custom)`;
+    }
+
+    const currentPreset = await loadLead4opFMPreset(currentId);
+    const savedId = await saveUserLead4opFMPreset(
+      targetName,
+      currentPreset,
+      currentOption?.library === 'user' ? 'Updated from lead slot' : 'Saved from lead slot',
+    );
+    await refreshLeadFmPresets();
+
+    upsertUserLead4opFMPreset({
+      id: savedId,
+      name: savedId,
+      library: 'user',
+      preset: {
+        ...currentPreset,
+        id: savedId,
+        name: savedId,
+      },
+    });
+
+    if (String(state[slotKey] ?? '') !== savedId) {
+      onSelectChange(slotKey, savedId as SliderState[typeof slotKey]);
+    }
+  }, [leadPresetOptionById, leadPresetOptions, onSelectChange, refreshLeadFmPresets, state]);
 
   // ── Euclidean Sequencer Hook (reuses same hook as DrumPage) ──
   const seq = useEuclideanSequencer({
@@ -193,6 +599,13 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     initialEvolveConfigs,
     resetKey: presetVersion,
   });
+
+  const setSharedSequencerBpm = useCallback((bpm: number) => {
+    onParamChange('sequencerMasterBPM' as keyof SliderState, bpm);
+    onParamChange('synthEuclidBaseBPM' as keyof SliderState, bpm);
+    onParamChange('drumEuclidBaseBPM' as keyof SliderState, bpm);
+    onParamChange('granularEuclidBaseBPM' as keyof SliderState, bpm);
+  }, [onParamChange]);
 
   // Notify parent when viewMode changes
   useEffect(() => {
@@ -420,6 +833,20 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   return (
     <div className="synth-root">
       <div className="container">
+        {/* ═══ Synth Source Preset (L3) ═══ */}
+        <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '6px 10px', marginBottom: 4, borderRadius: 8, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>Synth Source</span>
+          <PresetDropdown
+            level="source"
+            scope="synth"
+            state={state}
+            onLoad={(_entry: PresetEntry) => {}}
+            onStateChange={onStateChange}
+            presetOptions={synthCompositeExtract}
+            compact
+          />
+        </div>
+
         {/* ════════ LEFT: Sound Panels ════════ */}
         <div className="sound-panel">
 
@@ -438,6 +865,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 className={`sc-tier-btn${padTier >= 1 ? ' active' : ''}`}
                 onClick={() => setPadTier(padTier >= 1 ? 0 : 1)}
                 title="Primary controls"
+                {...bindHelp('synthPadPrimaryTier')}
               >
                 {'\u2699'}
               </button>
@@ -445,6 +873,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 className={`sc-tier-btn adv${padTier === 2 ? ' active' : ''}`}
                 onClick={() => setPadTier(padTier === 2 ? 1 : 2)}
                 title="Advanced controls"
+                {...bindHelp('synthPadAdvancedTier')}
               >
                 {'\u270E'}
               </button>
@@ -452,28 +881,33 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
 
             {/* ══ TIER 1 — Always visible: Presets + Interactive Viz ══ */}
             <div className="synth-card-simple sc-tier1">
+              <SynthPresetManager engineScope="pad1" slotAKey={'padPresetA' as keyof SliderState} slotBKey={'padPresetB' as keyof SliderState} state={state} onSelectChange={onSelectChange} color="#4a9eff" />
               {/* Preset A / Morph / B — single row */}
               <div className="sc-morph-row">
                 <span className="sc-morph-tag" style={{ color: '#4a9eff' }}>A</span>
-                <select
-                  value={state.padPresetA}
-                  onChange={(e) => onSelectChange('padPresetA' as keyof SliderState, e.target.value)}
-                  className="sc-preset-select"
-                  style={{ borderColor: 'rgba(74,158,255,0.3)' }}
-                >
-                  {padPresets.map(id => (<option key={id} value={id}>{PAD_PRESETS[id]?.name ?? id}</option>))}
-                </select>
+                <div className="sc-preset-slot">
+                  <select
+                    value={state.padPresetA}
+                    onChange={(e) => onSelectChange('padPresetA' as keyof SliderState, e.target.value)}
+                    className="sc-preset-select"
+                    style={{ borderColor: 'rgba(74,158,255,0.3)' }}
+                  >
+                    {renderPadPresetOptions(pad1PresetOptions)}
+                  </select>
+                </div>
                 <div className="sc-morph-slider">
                   <Slider label="" value={state.padMorph} paramKey="padMorph" onChange={onParamChange} {...sliderProps('padMorph')} />
                 </div>
-                <select
-                  value={state.padPresetB}
-                  onChange={(e) => onSelectChange('padPresetB' as keyof SliderState, e.target.value)}
-                  className="sc-preset-select"
-                  style={{ borderColor: 'rgba(139,92,246,0.3)' }}
-                >
-                  {padPresets.map(id => (<option key={id} value={id}>{PAD_PRESETS[id]?.name ?? id}</option>))}
-                </select>
+                <div className="sc-preset-slot">
+                  <select
+                    value={state.padPresetB}
+                    onChange={(e) => onSelectChange('padPresetB' as keyof SliderState, e.target.value)}
+                    className="sc-preset-select"
+                    style={{ borderColor: 'rgba(139,92,246,0.3)' }}
+                  >
+                    {renderPadPresetOptions(pad1PresetOptions)}
+                  </select>
+                </div>
                 <span className="sc-morph-tag" style={{ color: '#8b5cf6' }}>B</span>
               </div>
 
@@ -565,10 +999,10 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 <div className="sc-advanced-section">
                   <div className="sc-section-label">Envelope</div>
                   <div className="sc-compact-grid-4">
-                    <Slider label="A" value={state.synthAttack} paramKey="synthAttack" unit="s" onChange={onParamChange} {...sliderProps('synthAttack')} />
-                    <Slider label="D" value={state.synthDecay} paramKey="synthDecay" unit="s" onChange={onParamChange} {...sliderProps('synthDecay')} />
-                    <Slider label="S" value={state.synthSustain} paramKey="synthSustain" onChange={onParamChange} {...sliderProps('synthSustain')} />
-                    <Slider label="R" value={state.synthRelease} paramKey="synthRelease" unit="s" onChange={onParamChange} {...sliderProps('synthRelease')} />
+                    <Slider label="Attack" value={state.synthAttack} paramKey="synthAttack" unit="s" onChange={onParamChange} {...sliderProps('synthAttack')} />
+                    <Slider label="Decay" value={state.synthDecay} paramKey="synthDecay" unit="s" onChange={onParamChange} {...sliderProps('synthDecay')} />
+                    <Slider label="Sustain" value={state.synthSustain} paramKey="synthSustain" onChange={onParamChange} {...sliderProps('synthSustain')} />
+                    <Slider label="Release" value={state.synthRelease} paramKey="synthRelease" unit="s" onChange={onParamChange} {...sliderProps('synthRelease')} />
                   </div>
                 </div>
 
@@ -589,6 +1023,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                           onParamChange('padLfo1Depth' as keyof SliderState, preset.depth);
                         }
                       }}
+                      {...bindHelp('synthLfoPresetSelect')}
                     >
                       <option value="" disabled>Select LFO preset…</option>
                       {Object.entries(LFO_PRESET_CATEGORIES).map(([cat, label]) => (
@@ -614,6 +1049,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                         { value: 'foldAmount', label: 'Fold' },
                       ]}
                       onChange={(v: string) => onSelectChange('padLfo1Dest' as keyof SliderState, v)}
+                      {...bindHelp('synthLfoDestSelect')}
                     />
                     {(state.padLfo1Dest ?? 'none') !== 'none' ? (
                       <Select
@@ -629,6 +1065,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                           { value: 'randomWalk', label: 'Walk' },
                         ]}
                         onChange={(v: string) => onSelectChange('padLfo1Wave' as keyof SliderState, v)}
+                        {...bindHelp('synthLfoWaveSelect')}
                       />
                     ) : <div />}
                   </div>
@@ -657,6 +1094,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                           onParamChange('padLfo2Depth' as keyof SliderState, preset.depth);
                         }
                       }}
+                      {...bindHelp('synthLfoPresetSelect')}
                     >
                       <option value="" disabled>Select LFO preset…</option>
                       {Object.entries(LFO_PRESET_CATEGORIES).map(([cat, label]) => (
@@ -681,6 +1119,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                         { value: 'oscBLevel', label: 'Osc B' },
                       ]}
                       onChange={(v: string) => onSelectChange('padLfo2Dest' as keyof SliderState, v)}
+                      {...bindHelp('synthLfoDestSelect')}
                     />
                     {(state.padLfo2Dest ?? 'none') !== 'none' ? (
                       <Select
@@ -696,6 +1135,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                           { value: 'randomWalk', label: 'Walk' },
                         ]}
                         onChange={(v: string) => onSelectChange('padLfo2Wave' as keyof SliderState, v)}
+                        {...bindHelp('synthLfoWaveSelect')}
                       />
                     ) : <div />}
                   </div>
@@ -848,6 +1288,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     <button
                       className={`sc-toggle-btn small${state.padModEnvEnabled ? ' on' : ''}`}
                       onClick={() => onSelectChange('padModEnvEnabled' as keyof SliderState, !state.padModEnvEnabled)}
+                      {...bindHelp('synthModEnvEnable')}
                     >
                       {state.padModEnvEnabled ? 'ON' : 'OFF'}
                     </button>
@@ -864,13 +1305,14 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                           { value: 'foldAmount', label: 'Fold' },
                         ]}
                         onChange={(v: string) => onSelectChange('padModEnvDest' as keyof SliderState, v)}
+                        {...bindHelp('synthModEnvTarget')}
                       />
                       <Slider label="Depth" value={state.padModEnvDepth ?? 0} paramKey="padModEnvDepth" onChange={onParamChange} {...sliderProps('padModEnvDepth')} />
                       <div className="sc-compact-grid-4">
-                        <Slider label="A" value={state.padModEnvAttack ?? 0.1} paramKey="padModEnvAttack" unit="s" onChange={onParamChange} {...sliderProps('padModEnvAttack')} />
-                        <Slider label="D" value={state.padModEnvDecay ?? 0.3} paramKey="padModEnvDecay" unit="s" onChange={onParamChange} {...sliderProps('padModEnvDecay')} />
-                        <Slider label="S" value={state.padModEnvSustain ?? 0} paramKey="padModEnvSustain" onChange={onParamChange} {...sliderProps('padModEnvSustain')} />
-                        <Slider label="R" value={state.padModEnvRelease ?? 0.5} paramKey="padModEnvRelease" unit="s" onChange={onParamChange} {...sliderProps('padModEnvRelease')} />
+                        <Slider label="Attack" value={state.padModEnvAttack ?? 0.1} paramKey="padModEnvAttack" unit="s" onChange={onParamChange} {...sliderProps('padModEnvAttack')} />
+                        <Slider label="Decay" value={state.padModEnvDecay ?? 0.3} paramKey="padModEnvDecay" unit="s" onChange={onParamChange} {...sliderProps('padModEnvDecay')} />
+                        <Slider label="Sustain" value={state.padModEnvSustain ?? 0} paramKey="padModEnvSustain" onChange={onParamChange} {...sliderProps('padModEnvSustain')} />
+                        <Slider label="Release" value={state.padModEnvRelease ?? 0.5} paramKey="padModEnvRelease" unit="s" onChange={onParamChange} {...sliderProps('padModEnvRelease')} />
                       </div>
                     </>
                   )}
@@ -922,6 +1364,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                         { value: 'bOnly', label: 'B Only' },
                       ]}
                       onChange={(v: string) => onSelectChange('padFilterRouting' as keyof SliderState, v)}
+                      {...bindHelp('synthFilterRoutingMode')}
                     />
                   </div>
                 )}
@@ -954,6 +1397,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                             borderColor: `hsl(${210 + voice * 25}, 60%, 50%)`,
                           } : undefined}
                           title={`Voice ${voice}`}
+                          {...bindHelp('synthVoiceMaskToggle', { label: `Voice ${voice}` })}
                         >
                           {voice}
                         </button>
@@ -997,6 +1441,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                   className={`sc-tier-btn${pad2Tier >= 1 ? ' active' : ''}`}
                   onClick={() => setPad2Tier(pad2Tier >= 1 ? 0 : 1)}
                   title="Primary controls"
+                  {...bindHelp('synthPadPrimaryTier')}
                 >
                   {'\u2699'}
                 </button>
@@ -1006,6 +1451,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                   className={`sc-tier-btn adv${pad2Tier === 2 ? ' active' : ''}`}
                   onClick={() => setPad2Tier(pad2Tier === 2 ? 1 : 2)}
                   title="Advanced controls"
+                  {...bindHelp('synthPadAdvancedTier')}
                 >
                   {'\u270E'}
                 </button>
@@ -1015,29 +1461,34 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
             {state.pad2Enabled && (<>
             {/* ══ TIER 1 — Always visible: Presets + Viz + Drive + Voice Assign ══ */}
             <div className="synth-card-simple sc-tier1">
+              <SynthPresetManager engineScope="pad2" slotAKey={'pad2PresetA' as keyof SliderState} slotBKey={'pad2PresetB' as keyof SliderState} state={state} onSelectChange={onSelectChange} color="#8b5cf6" />
               {/* Preset A/B morph */}
               {/* Preset A / Morph / B — single row */}
               <div className="sc-morph-row">
                 <span className="sc-morph-tag" style={{ color: '#8b5cf6' }}>A</span>
-                <select
-                  value={state.pad2PresetA}
-                  onChange={(e) => onSelectChange('pad2PresetA' as keyof SliderState, e.target.value)}
-                  className="sc-preset-select"
-                  style={{ borderColor: 'rgba(139,92,246,0.3)' }}
-                >
-                  {padPresets.map(id => (<option key={id} value={id}>{PAD_PRESETS[id]?.name ?? id}</option>))}
-                </select>
+                <div className="sc-preset-slot">
+                  <select
+                    value={state.pad2PresetA}
+                    onChange={(e) => onSelectChange('pad2PresetA' as keyof SliderState, e.target.value)}
+                    className="sc-preset-select"
+                    style={{ borderColor: 'rgba(139,92,246,0.3)' }}
+                  >
+                    {renderPadPresetOptions(pad2PresetOptions)}
+                  </select>
+                </div>
                 <div className="sc-morph-slider">
                   <Slider label="" value={state.pad2Morph} paramKey="pad2Morph" onChange={onParamChange} {...sliderProps('pad2Morph')} />
                 </div>
-                <select
-                  value={state.pad2PresetB}
-                  onChange={(e) => onSelectChange('pad2PresetB' as keyof SliderState, e.target.value)}
-                  className="sc-preset-select"
-                  style={{ borderColor: 'rgba(236,72,153,0.3)' }}
-                >
-                  {padPresets.map(id => (<option key={id} value={id}>{PAD_PRESETS[id]?.name ?? id}</option>))}
-                </select>
+                <div className="sc-preset-slot">
+                  <select
+                    value={state.pad2PresetB}
+                    onChange={(e) => onSelectChange('pad2PresetB' as keyof SliderState, e.target.value)}
+                    className="sc-preset-select"
+                    style={{ borderColor: 'rgba(236,72,153,0.3)' }}
+                  >
+                    {renderPadPresetOptions(pad2PresetOptions)}
+                  </select>
+                </div>
                 <span className="sc-morph-tag" style={{ color: '#ec4899' }}>B</span>
               </div>
 
@@ -1121,6 +1572,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                           borderColor: `hsl(${260 + voice * 15}, 60%, 50%)`,
                         } : undefined}
                         title={`Voice ${voice}`}
+                        {...bindHelp('synthPad2VoiceAssign', { label: `Voice ${voice}` })}
                       >
                         {voice}
                       </button>
@@ -1166,10 +1618,10 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 <div className="sc-advanced-section">
                   <div className="sc-section-label">Envelope</div>
                   <div className="sc-compact-grid-4">
-                    <Slider label="A" value={state.pad2Attack} paramKey="pad2Attack" unit="s" onChange={onParamChange} {...sliderProps('pad2Attack')} />
-                    <Slider label="D" value={state.pad2Decay} paramKey="pad2Decay" unit="s" onChange={onParamChange} {...sliderProps('pad2Decay')} />
-                    <Slider label="S" value={state.pad2Sustain} paramKey="pad2Sustain" onChange={onParamChange} {...sliderProps('pad2Sustain')} />
-                    <Slider label="R" value={state.pad2Release} paramKey="pad2Release" unit="s" onChange={onParamChange} {...sliderProps('pad2Release')} />
+                    <Slider label="Attack" value={state.pad2Attack} paramKey="pad2Attack" unit="s" onChange={onParamChange} {...sliderProps('pad2Attack')} />
+                    <Slider label="Decay" value={state.pad2Decay} paramKey="pad2Decay" unit="s" onChange={onParamChange} {...sliderProps('pad2Decay')} />
+                    <Slider label="Sustain" value={state.pad2Sustain} paramKey="pad2Sustain" onChange={onParamChange} {...sliderProps('pad2Sustain')} />
+                    <Slider label="Release" value={state.pad2Release} paramKey="pad2Release" unit="s" onChange={onParamChange} {...sliderProps('pad2Release')} />
                   </div>
                 </div>
 
@@ -1190,6 +1642,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                           onParamChange('pad2Lfo1Depth' as keyof SliderState, preset.depth);
                         }
                       }}
+                      {...bindHelp('synthLfoPresetSelect')}
                     >
                       <option value="" disabled>Select LFO preset…</option>
                       {Object.entries(LFO_PRESET_CATEGORIES).map(([cat, label]) => (
@@ -1215,6 +1668,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                         { value: 'foldAmount', label: 'Fold' },
                       ]}
                       onChange={(v: string) => onSelectChange('pad2Lfo1Dest' as keyof SliderState, v)}
+                      {...bindHelp('synthLfoDestSelect')}
                     />
                     {(state.pad2Lfo1Dest ?? 'none') !== 'none' ? (
                       <Select
@@ -1230,6 +1684,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                           { value: 'randomWalk', label: 'Walk' },
                         ]}
                         onChange={(v: string) => onSelectChange('pad2Lfo1Wave' as keyof SliderState, v)}
+                        {...bindHelp('synthLfoWaveSelect')}
                       />
                     ) : <div />}
                   </div>
@@ -1258,6 +1713,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                           onParamChange('pad2Lfo2Depth' as keyof SliderState, preset.depth);
                         }
                       }}
+                      {...bindHelp('synthLfoPresetSelect')}
                     >
                       <option value="" disabled>Select LFO preset…</option>
                       {Object.entries(LFO_PRESET_CATEGORIES).map(([cat, label]) => (
@@ -1282,6 +1738,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                         { value: 'oscBLevel', label: 'Osc B' },
                       ]}
                       onChange={(v: string) => onSelectChange('pad2Lfo2Dest' as keyof SliderState, v)}
+                      {...bindHelp('synthLfoDestSelect')}
                     />
                     {(state.pad2Lfo2Dest ?? 'none') !== 'none' ? (
                       <Select
@@ -1297,6 +1754,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                           { value: 'randomWalk', label: 'Walk' },
                         ]}
                         onChange={(v: string) => onSelectChange('pad2Lfo2Wave' as keyof SliderState, v)}
+                        {...bindHelp('synthLfoWaveSelect')}
                       />
                     ) : <div />}
                   </div>
@@ -1444,6 +1902,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     <button
                       className={`sc-toggle-btn small${state.pad2ModEnvEnabled ? ' on' : ''}`}
                       onClick={() => onSelectChange('pad2ModEnvEnabled' as keyof SliderState, !state.pad2ModEnvEnabled)}
+                      {...bindHelp('synthModEnvEnable')}
                     >
                       {state.pad2ModEnvEnabled ? 'ON' : 'OFF'}
                     </button>
@@ -1460,13 +1919,14 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                           { value: 'foldAmount', label: 'Fold' },
                         ]}
                         onChange={(v: string) => onSelectChange('pad2ModEnvDest' as keyof SliderState, v)}
+                        {...bindHelp('synthModEnvTarget')}
                       />
                       <Slider label="Depth" value={state.pad2ModEnvDepth ?? 0} paramKey="pad2ModEnvDepth" onChange={onParamChange} {...sliderProps('pad2ModEnvDepth')} />
                       <div className="sc-compact-grid-4">
-                        <Slider label="A" value={state.pad2ModEnvAttack ?? 0.1} paramKey="pad2ModEnvAttack" unit="s" onChange={onParamChange} {...sliderProps('pad2ModEnvAttack')} />
-                        <Slider label="D" value={state.pad2ModEnvDecay ?? 0.3} paramKey="pad2ModEnvDecay" unit="s" onChange={onParamChange} {...sliderProps('pad2ModEnvDecay')} />
-                        <Slider label="S" value={state.pad2ModEnvSustain ?? 0} paramKey="pad2ModEnvSustain" onChange={onParamChange} {...sliderProps('pad2ModEnvSustain')} />
-                        <Slider label="R" value={state.pad2ModEnvRelease ?? 0.5} paramKey="pad2ModEnvRelease" unit="s" onChange={onParamChange} {...sliderProps('pad2ModEnvRelease')} />
+                        <Slider label="Attack" value={state.pad2ModEnvAttack ?? 0.1} paramKey="pad2ModEnvAttack" unit="s" onChange={onParamChange} {...sliderProps('pad2ModEnvAttack')} />
+                        <Slider label="Decay" value={state.pad2ModEnvDecay ?? 0.3} paramKey="pad2ModEnvDecay" unit="s" onChange={onParamChange} {...sliderProps('pad2ModEnvDecay')} />
+                        <Slider label="Sustain" value={state.pad2ModEnvSustain ?? 0} paramKey="pad2ModEnvSustain" onChange={onParamChange} {...sliderProps('pad2ModEnvSustain')} />
+                        <Slider label="Release" value={state.pad2ModEnvRelease ?? 0.5} paramKey="pad2ModEnvRelease" unit="s" onChange={onParamChange} {...sliderProps('pad2ModEnvRelease')} />
                       </div>
                     </>
                   )}
@@ -1518,6 +1978,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                         { value: 'bOnly', label: 'B Only' },
                       ]}
                       onChange={(v: string) => onSelectChange('pad2FilterRouting' as keyof SliderState, v)}
+                      {...bindHelp('synthFilterRoutingMode')}
                     />
                   </div>
                 )}
@@ -1556,6 +2017,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 className={`sc-edit-btn${editingSection === 'lead1' ? ' active' : ''}`}
                 onClick={() => toggleEdit('lead1')}
                 title={editingSection === 'lead1' ? 'Close advanced' : 'Advanced parameters'}
+                {...bindHelp('synthLeadEdit')}
               >
                 {'\u270E'}
               </button>
@@ -1565,25 +2027,29 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
               {/* Preset A / Morph / B — single row */}
               <div className="sc-morph-row">
                 <span className="sc-morph-tag" style={{ color: '#f59e0b' }}>A</span>
-                <select
-                  value={state.lead1PresetA}
-                  onChange={(e) => onSelectChange('lead1PresetA' as keyof SliderState, e.target.value)}
-                  className="sc-preset-select"
-                  style={{ borderColor: 'rgba(245,158,11,0.3)' }}
-                >
-                  {lead4opPresets.map(p => (<option key={p.id} value={p.id}>{p.name}</option>))}
-                </select>
+                <div className="sc-preset-slot">
+                  <select
+                    value={state.lead1PresetA}
+                    onChange={(e) => onSelectChange('lead1PresetA' as keyof SliderState, e.target.value)}
+                    className="sc-preset-select"
+                    style={{ borderColor: 'rgba(245,158,11,0.3)' }}
+                  >
+                    {renderLeadPresetOptions(leadPresetOptions)}
+                  </select>
+                </div>
                 <div className="sc-morph-slider">
                   <Slider label="" value={state.lead1Morph} paramKey="lead1Morph" onChange={onParamChange} {...sliderProps('lead1Morph')} />
                 </div>
-                <select
-                  value={state.lead1PresetB}
-                  onChange={(e) => onSelectChange('lead1PresetB' as keyof SliderState, e.target.value)}
-                  className="sc-preset-select"
-                  style={{ borderColor: 'rgba(139,92,246,0.3)' }}
-                >
-                  {lead4opPresets.map(p => (<option key={p.id} value={p.id}>{p.name}</option>))}
-                </select>
+                <div className="sc-preset-slot">
+                  <select
+                    value={state.lead1PresetB}
+                    onChange={(e) => onSelectChange('lead1PresetB' as keyof SliderState, e.target.value)}
+                    className="sc-preset-select"
+                    style={{ borderColor: 'rgba(139,92,246,0.3)' }}
+                  >
+                    {renderLeadPresetOptions(leadPresetOptions)}
+                  </select>
+                </div>
                 <span className="sc-morph-tag" style={{ color: '#8b5cf6' }}>B</span>
               </div>
 
@@ -1642,10 +2108,37 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
 
                 {/* Delay */}
                 <div className="sc-advanced-section">
-                  <div className="sc-section-label">Delay Effect (per note)</div>
-                  <Slider label="Delay Time" value={state.leadDelayTime} paramKey="leadDelayTime" unit=" ms" onChange={onParamChange} {...sliderProps('leadDelayTime')} />
-                  <Slider label="Delay Feedback" value={state.leadDelayFeedback} paramKey="leadDelayFeedback" onChange={onParamChange} {...sliderProps('leadDelayFeedback')} />
-                  <Slider label="Delay Mix" value={state.leadDelayMix} paramKey="leadDelayMix" onChange={onParamChange} {...sliderProps('leadDelayMix')} />
+                  <div className="sc-section-label">Delay A</div>
+                  <Slider label="Delay A Send" value={state.lead1DelayASend} paramKey="lead1DelayASend" onChange={onParamChange} {...sliderProps('lead1DelayASend')} />
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '8px', marginBottom: '8px' }}>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.72rem', color: '#a8b6c9' }}>
+                      <span>Left</span>
+                      <select
+                        value={state.drumDelayNoteL as string}
+                        onChange={(e) => onSelectChange('drumDelayNoteL' as keyof SliderState, e.target.value as SliderState[keyof SliderState])}
+                        style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(7,12,18,0.9)', color: '#edf7ff' }}
+                      >
+                        {DELAY_A_NOTE_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.72rem', color: '#a8b6c9' }}>
+                      <span>Right</span>
+                      <select
+                        value={state.drumDelayNoteR as string}
+                        onChange={(e) => onSelectChange('drumDelayNoteR' as keyof SliderState, e.target.value as SliderState[keyof SliderState])}
+                        style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(7,12,18,0.9)', color: '#edf7ff' }}
+                      >
+                        {DELAY_A_NOTE_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                  <Slider label="Delay Feedback" value={state.delayAFeedback} paramKey="delayAFeedback" onChange={onParamChange} {...sliderProps('delayAFeedback')} />
+                  <Slider label="Delay Mix" value={state.delayAMix} paramKey="delayAMix" onChange={onParamChange} {...sliderProps('delayAMix')} />
+                  <Slider label="Delay Filter" value={state.delayAFilter} paramKey="delayAFilter" unit=" Hz" logarithmic onChange={onParamChange} {...sliderProps('delayAFilter')} />
                 </div>
               </div>
             )}
@@ -1665,6 +2158,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 className={`sc-edit-btn${editingSection === 'lead2' ? ' active' : ''}`}
                 onClick={() => toggleEdit('lead2')}
                 title={editingSection === 'lead2' ? 'Close advanced' : 'Advanced parameters'}
+                {...bindHelp('synthLeadEdit')}
               >
                 {'\u270E'}
               </button>
@@ -1675,25 +2169,29 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 {/* Preset C / Morph / D — single row */}
                 <div className="sc-morph-row">
                   <span className="sc-morph-tag" style={{ color: '#06b6d4' }}>C</span>
-                  <select
-                    value={state.lead2PresetC}
-                    onChange={(e) => onSelectChange('lead2PresetC' as keyof SliderState, e.target.value)}
-                    className="sc-preset-select"
-                    style={{ borderColor: 'rgba(6,182,212,0.3)' }}
-                  >
-                    {lead4opPresets.map(p => (<option key={p.id} value={p.id}>{p.name}</option>))}
-                  </select>
+                  <div className="sc-preset-slot">
+                    <select
+                      value={state.lead2PresetC}
+                      onChange={(e) => onSelectChange('lead2PresetC' as keyof SliderState, e.target.value)}
+                      className="sc-preset-select"
+                      style={{ borderColor: 'rgba(6,182,212,0.3)' }}
+                    >
+                      {renderLeadPresetOptions(leadPresetOptions)}
+                    </select>
+                  </div>
                   <div className="sc-morph-slider">
                     <Slider label="" value={state.lead2Morph} paramKey="lead2Morph" onChange={onParamChange} {...sliderProps('lead2Morph')} />
                   </div>
-                  <select
-                    value={state.lead2PresetD}
-                    onChange={(e) => onSelectChange('lead2PresetD' as keyof SliderState, e.target.value)}
-                    className="sc-preset-select"
-                    style={{ borderColor: 'rgba(167,139,250,0.3)' }}
-                  >
-                    {lead4opPresets.map(p => (<option key={p.id} value={p.id}>{p.name}</option>))}
-                  </select>
+                  <div className="sc-preset-slot">
+                    <select
+                      value={state.lead2PresetD}
+                      onChange={(e) => onSelectChange('lead2PresetD' as keyof SliderState, e.target.value)}
+                      className="sc-preset-select"
+                      style={{ borderColor: 'rgba(167,139,250,0.3)' }}
+                    >
+                      {renderLeadPresetOptions(leadPresetOptions)}
+                    </select>
+                  </div>
                   <span className="sc-morph-tag" style={{ color: '#a78bfa' }}>D</span>
                 </div>
 
@@ -1750,10 +2248,37 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
 
                 {/* Delay */}
                 <div className="sc-advanced-section">
-                  <div className="sc-section-label">Delay Effect (per note)</div>
-                  <Slider label="Delay Time" value={state.leadDelayTime} paramKey="leadDelayTime" unit=" ms" onChange={onParamChange} {...sliderProps('leadDelayTime')} />
-                  <Slider label="Delay Feedback" value={state.leadDelayFeedback} paramKey="leadDelayFeedback" onChange={onParamChange} {...sliderProps('leadDelayFeedback')} />
-                  <Slider label="Delay Mix" value={state.leadDelayMix} paramKey="leadDelayMix" onChange={onParamChange} {...sliderProps('leadDelayMix')} />
+                  <div className="sc-section-label">Delay A</div>
+                  <Slider label="Delay A Send" value={state.lead2DelayASend} paramKey="lead2DelayASend" onChange={onParamChange} {...sliderProps('lead2DelayASend')} />
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '8px', marginBottom: '8px' }}>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.72rem', color: '#a8b6c9' }}>
+                      <span>Left</span>
+                      <select
+                        value={state.drumDelayNoteL as string}
+                        onChange={(e) => onSelectChange('drumDelayNoteL' as keyof SliderState, e.target.value as SliderState[keyof SliderState])}
+                        style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(7,12,18,0.9)', color: '#edf7ff' }}
+                      >
+                        {DELAY_A_NOTE_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.72rem', color: '#a8b6c9' }}>
+                      <span>Right</span>
+                      <select
+                        value={state.drumDelayNoteR as string}
+                        onChange={(e) => onSelectChange('drumDelayNoteR' as keyof SliderState, e.target.value as SliderState[keyof SliderState])}
+                        style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(7,12,18,0.9)', color: '#edf7ff' }}
+                      >
+                        {DELAY_A_NOTE_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                  <Slider label="Delay Feedback" value={state.delayAFeedback} paramKey="delayAFeedback" onChange={onParamChange} {...sliderProps('delayAFeedback')} />
+                  <Slider label="Delay Mix" value={state.delayAMix} paramKey="delayAMix" onChange={onParamChange} {...sliderProps('delayAMix')} />
+                  <Slider label="Delay Filter" value={state.delayAFilter} paramKey="delayAFilter" unit=" Hz" logarithmic onChange={onParamChange} {...sliderProps('delayAFilter')} />
                 </div>
               </div>
             )}
@@ -1776,36 +2301,55 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 }
                 onSelectChange('synthEuclideanMasterEnabled' as keyof SliderState, next);
               }}
+              {...bindHelp('synthSeqPlayToggle')}
             >
               {state.synthEuclideanMasterEnabled ? '\u25A0' : '\u25B6'}
             </button>
             <DragNumber
-              value={state.synthEuclidBaseBPM as number}
+              value={state.sequencerMasterBPM as number}
               min={40}
-              max={240}
+              max={300}
               label="BPM"
-              onChange={(v) => onParamChange('synthEuclidBaseBPM' as keyof SliderState, v)}
+              onChange={setSharedSequencerBpm}
             />
             <div className="seq-view-toggle">
               <button
                 className={`seq-view-btn${seq.viewMode === 'simple' ? ' active' : ''}`}
                 onClick={() => seq.setViewMode('simple')}
+                {...bindHelp('synthSeqViewSimple')}
               >
                 Simple
               </button>
               <button
                 className={`seq-view-btn${seq.viewMode === 'detail' ? ' active' : ''}`}
                 onClick={() => seq.setViewMode('detail')}
+                {...bindHelp('synthSeqViewDetail')}
               >
                 Detail
               </button>
               <button
                 className={`seq-view-btn${seq.viewMode === 'overview' ? ' active' : ''}`}
                 onClick={() => seq.setViewMode('overview')}
+                {...bindHelp('synthSeqViewOverview')}
               >
                 Overview
               </button>
             </div>
+          </div>
+
+          {/* Sequencer Preset (L1 synthEuclidean) */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', marginBottom: 4, borderRadius: 6, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>Pattern</span>
+            <PresetDropdown
+              level="engine"
+              scope="synthEuclidean"
+              state={state}
+              currentName={euclidPresetName}
+              onLoad={handleEuclidPresetLoad}
+              onStateChange={onStateChange}
+              showSaveButton={false}
+              compact
+            />
           </div>
 
           {/* ══════ SIMPLE MODE ══════ */}
@@ -1864,6 +2408,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                             borderColor: `hsl(${210 + voice * 25}, 60%, 50%)`,
                           } : undefined}
                           title={`Voice ${voice}`}
+                          {...bindHelp('synthVoiceMaskToggle', { label: `Voice ${voice}` })}
                         >
                           {voice}
                         </button>
@@ -1956,6 +2501,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                       className="synth-source-select"
                       value={(state[getSourceKey(seq.activeTab)] as string) ?? 'lead1'}
                       onChange={(e) => onSelectChange(getSourceKey(seq.activeTab), e.target.value)}
+                      {...bindHelp('synthSeqSourceSelect')}
                       style={{
                         borderColor: getSourceColor((state[getSourceKey(seq.activeTab)] as string) ?? 'lead1') + '60',
                         color: getSourceColor((state[getSourceKey(seq.activeTab)] as string) ?? 'lead1'),
@@ -1975,6 +2521,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                         className="seq-clock-select"
                         value={seq.clockDivs[seq.activeTab]}
                         onChange={(e) => seq.setClockDiv(seq.activeTab, e.target.value as any)}
+                        {...bindHelp('synthSeqClockSelect')}
                       >
                         <option value="1/4">1/4</option>
                         <option value="1/8">1/8</option>
@@ -1999,6 +2546,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                       className={`seq-link-btn${seq.linked[seq.activeTab] ? ' on' : ''}`}
                       onClick={() => seq.toggleLinked(seq.activeTab)}
                       title={seq.linked[seq.activeTab] ? 'Sub-lanes linked to trigger steps' : 'Sub-lanes use independent step counts'}
+                      {...bindHelp('synthSeqLink')}
                     >
                       Link
                     </button>
@@ -2009,6 +2557,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                           idx === seq.activeTab ? { ...cfg, enabled: !cfg.enabled } : cfg
                         )));
                       }}
+                      {...bindHelp('synthSeqEvolve')}
                     >
                       Evolve
                     </button>
@@ -2088,6 +2637,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                   <button
                     className="seq-evolve-advanced-toggle"
                     onClick={() => setShowAdvanced(v => !v)}
+                    {...bindHelp('synthSeqEvolveAdvanced')}
                   >
                     {showAdvanced ? '▾' : '▸'} Advanced
                   </button>
@@ -2098,10 +2648,12 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                         <button
                           className={`seq-evolve-mode-btn${(seq.evolveConfigs[seq.activeTab]?.writeOffset ?? 'auto') === 'auto' ? ' active' : ''}`}
                           onClick={() => seq.setEvolveConfigs(prev => prev.map((cfg, idx) => idx === seq.activeTab ? { ...cfg, writeOffset: 'auto' } : cfg))}
+                          {...bindHelp('synthSeqWriteOffsetAuto')}
                         >Auto</button>
                         <button
                           className={`seq-evolve-mode-btn${typeof (seq.evolveConfigs[seq.activeTab]?.writeOffset ?? 'auto') === 'number' ? ' active' : ''}`}
                           onClick={() => seq.setEvolveConfigs(prev => prev.map((cfg, idx) => idx === seq.activeTab ? { ...cfg, writeOffset: 0 } : cfg))}
+                          {...bindHelp('synthSeqWriteOffsetManual')}
                         >Manual</button>
                       </span>
                       {typeof (seq.evolveConfigs[seq.activeTab]?.writeOffset ?? 'auto') === 'number' && (
@@ -2118,10 +2670,12 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                         <button
                           className={`seq-evolve-mode-btn${(seq.evolveConfigs[seq.activeTab]?.mutationMode ?? 'biased') === 'biased' ? ' active' : ''}`}
                           onClick={() => seq.setEvolveConfigs(prev => prev.map((cfg, idx) => idx === seq.activeTab ? { ...cfg, mutationMode: 'biased' } : cfg))}
+                          {...bindHelp('synthSeqMutationBiased')}
                         >Biased</button>
                         <button
                           className={`seq-evolve-mode-btn${(seq.evolveConfigs[seq.activeTab]?.mutationMode ?? 'biased') === 'strict' ? ' active' : ''}`}
                           onClick={() => seq.setEvolveConfigs(prev => prev.map((cfg, idx) => idx === seq.activeTab ? { ...cfg, mutationMode: 'strict' } : cfg))}
+                          {...bindHelp('synthSeqMutationStrict')}
                         >Strict</button>
                       </span>
                     </div>
@@ -2204,6 +2758,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                         className="seq-preset-select"
                         value={seq.getParam(seq.activeTab, 'Preset') as string}
                         onChange={(e) => seq.setParamSelect(seq.activeTab, 'Preset', e.target.value as any)}
+                        {...bindHelp('synthSeqTriggerPreset')}
                       >
                         {seq.presetNames.map((name) => (
                           <option key={name} value={name}>{name}</option>
@@ -2350,6 +2905,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                             className="seq-ov-select"
                             value={(seq.getParam(row, 'Preset') as string) ?? 'custom'}
                             onChange={(e) => seq.setParamSelect(row, 'Preset', e.target.value as any)}
+                            {...bindHelp('synthSeqTriggerPreset')}
                           >
                             {seq.presetNames.map((name) => (
                               <option key={name} value={name}>{name}</option>
@@ -2359,6 +2915,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                             className="seq-ov-select seq-ov-clk"
                             value={seqModel.clockDiv}
                             onChange={(e) => seq.setClockDiv(row, e.target.value as any)}
+                            {...bindHelp('synthSeqClockSelect')}
                           >
                             <option value="1/4">1/4</option>
                             <option value="1/8">1/8</option>
@@ -2370,6 +2927,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                             className="seq-ov-select synth-ov-source"
                             value={source}
                             onChange={(e) => onSelectChange(getSourceKey(row), e.target.value)}
+                            {...bindHelp('synthSeqSourceSelect')}
                             style={{ color: sourceInfo?.color ?? '#888' }}
                           >
                             {SYNTH_SOURCES.map(s => (

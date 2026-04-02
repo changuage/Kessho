@@ -4,13 +4,19 @@
  * A single AudioWorklet that wraps BOTH the water and insects C++ engines.
  * Presents the same postMessage interface as the JS water.worklet.js and
  * insects.worklet.js so that soundscapes-demo.html can swap transparently.
+ * Outputs:
+ *   [0] water stereo
+ *   [1] insects dry stereo (per-layer dry gains applied)
+ *   [2] insects pre-fader stereo (unity per enabled layer for reverb/granular sends)
  *
  * Message types received:
  *   'wasmBinary'       – ArrayBuffer of kessho_soundscapes.wasm
- *   'waterParams'      – water engine params (preset, intensity, rate, etc.)
+ *   'waterParams'      – water engine params (intensity, distance, droplet shape, etc.)
  *   'waterPreset'      – { preset: number }
+ *   'waterLayerDetailParams' – { hardRate, hardTone, waterRate, waterTone, bubbleRate, bubbleTone }
  *   'waterLayerMix'    – { hardDrops, waterDrops, turbulence, bubbling, surf, channels }
  *   'waterLayerDensity' – { hardDrops, waterDrops, turbulence, bubbling, surf, channels }
+ *   'waterDensityLoopParams' – { hardSend, waterSend, bubbleSend, feedback, tone, ring, wet }
  *   'waterStart'       – start water playback
  *   'waterStop'        – stop water playback
  *   'waterSeed'        – { seed: number }
@@ -24,18 +30,15 @@
  *   'insects2Start'    – start insects layer 2
  *   'insects2Stop'     – stop insects layer 2
  *   'insects2Seed'     – { seed: number }
- *   'insects2Gain'     – { gain: number } (0-1 volume for layer 2)
- *   'insectsGain'      – { gain: number } (0-1 volume for layer 1)
- *   'oceanParams'      – ocean engine params
- *   'oceanStart'       – start ocean playback
- *   'oceanStop'        – stop ocean playback
- *   'oceanSeed'        – { seed: number }
+ *   'insects2Gain'     – { gain: number } (0-1 dry volume for layer 2)
+ *   'insectsGain'      – { gain: number } (0-1 dry volume for layer 1)
  *   'enablePerf'       – toggle CPU measurement
  *
  * Message types sent:
  *   'wasmReady'        – module loaded and initialized
  *   'perf'             – CPU usage stats
  *   'waterStats'       – active voices / events per sec
+ *   'surfTrigger'      – exact per-wave Surf trigger positions for dual sliders
  *   'insectsStats'     – active voices / engine type
  *   'insects2Stats'    – active voices / engine type (layer 2)
  */
@@ -59,12 +62,10 @@ class SoundscapesWasmProcessor extends AudioWorkletProcessor {
     this._waterOutPtr = 0;
     this._insectsOutPtr = 0;
     this._insects2OutPtr = 0;
-    this._oceanOutPtr = 0;
     this._ready = false;
     this._waterActive = false;
     this._insectsActive = false;
     this._insects2Active = false;
-    this._oceanActive = false;
 
     // Per-layer gain multipliers (applied in worklet when mixing)
     this._insects1Gain = 1.0;
@@ -81,11 +82,10 @@ class SoundscapesWasmProcessor extends AudioWorkletProcessor {
     this._perfReportInterval = Math.floor(sampleRate * 0.5);
     this._perfWaterPeak = 0;
     this._perfInsectsPeak = 0;
-    this._perfOceanPeak = 0;
-
     // Stats reporting (~5 Hz)
     this._statsCounter = 0;
     this._statsInterval = Math.floor(sampleRate / 5);
+    this._lastSurfTriggerSerial = 0;
 
     // Buffered params (before WASM ready)
     this._pendingMessages = [];
@@ -123,13 +123,10 @@ class SoundscapesWasmProcessor extends AudioWorkletProcessor {
     exports.water_init(sampleRate);
     exports.insects_init(sampleRate);
     exports.insects2_init(sampleRate);
-    exports.ocean_init(sampleRate);
-
     // Cache output pointers
     this._waterOutPtr = exports.water_get_output_ptr();
     this._insectsOutPtr = exports.insects_get_output_ptr();
     this._insects2OutPtr = exports.insects2_get_output_ptr();
-    this._oceanOutPtr = exports.ocean_get_output_ptr();
 
     this._ready = true;
     this.port.postMessage({ type: 'wasmReady' });
@@ -176,8 +173,6 @@ class SoundscapesWasmProcessor extends AudioWorkletProcessor {
         w.water_set_params(
           p.intensityMin ?? p.intensity ?? 0.5,
           p.intensityMax ?? p.intensity ?? 0.5,
-          p.rateMin ?? p.rate ?? 0.5,
-          p.rateMax ?? p.rate ?? 0.5,
           p.distanceMin ?? p.distance ?? 0.3,
           p.distanceMax ?? p.distance ?? 0.3,
           p.baseFreqMin ?? p.baseFreq ?? 2500.0,
@@ -195,6 +190,19 @@ class SoundscapesWasmProcessor extends AudioWorkletProcessor {
       case 'waterPreset':
         w.water_set_preset(data.preset ?? 0);
         break;
+
+      case 'waterLayerDetailParams': {
+        const p = data;
+        w.water_set_layer_detail_params(
+          p.hardRate ?? 1.0,
+          p.hardTone ?? 12000.0,
+          p.waterRate ?? 1.0,
+          p.waterTone ?? 16000.0,
+          p.bubbleRate ?? 1.0,
+          p.bubbleTone ?? 1500.0
+        );
+        break;
+      }
 
       case 'waterLayerMix': {
         const m = data;
@@ -222,14 +230,35 @@ class SoundscapesWasmProcessor extends AudioWorkletProcessor {
         break;
       }
 
+      case 'waterDensityLoopParams': {
+        const p = data;
+        w.water_set_density_loop_params(
+          p.hardSend ?? 0.22,
+          p.waterSend ?? 0.36,
+          p.bubbleSend ?? 0.48,
+          p.feedback ?? 0.64,
+          p.tone ?? 1050.0,
+          p.ring ?? 1.0,
+          p.wet ?? 0.34
+        );
+        break;
+      }
+
       case 'waterSurfParams': {
         const p = data;
         w.water_set_surf_params(
           p.durationMin ?? 4.0, p.durationMax ?? 12.0,
           p.intervalMin ?? 5.0, p.intervalMax ?? 14.0,
           p.foamMin ?? 0.2, p.foamMax ?? 0.5,
+          p.proximityMin ?? p.proximity ?? 0.7,
+          p.proximityMax ?? p.proximity ?? 0.7,
           p.depthMin ?? 0.3, p.depthMax ?? 0.7,
-          p.bodyFreq ?? 300.0, p.sprayFreq ?? 4000.0
+          p.bodyFreqMin ?? p.bodyFreq ?? 300.0,
+          p.bodyFreqMax ?? p.bodyFreq ?? 300.0,
+          p.sprayFreqMin ?? p.sprayFreq ?? 4000.0,
+          p.sprayFreqMax ?? p.sprayFreq ?? 4000.0,
+          p.foamBrightMin ?? p.foamBright ?? 0.4,
+          p.foamBrightMax ?? p.foamBright ?? 0.4
         );
         break;
       }
@@ -345,38 +374,6 @@ class SoundscapesWasmProcessor extends AudioWorkletProcessor {
         this._insects2Gain = data.gain ?? 1.0;
         break;
 
-      case 'oceanParams': {
-        const p = data.params || data;
-        w.ocean_set_params(
-          p.intensity ?? 0.5,
-          p.waveDurationMin ?? 4,
-          p.waveDurationMax ?? 10,
-          p.waveIntervalMin ?? 5,
-          p.waveIntervalMax ?? 12,
-          p.wave2OffsetMin ?? 2,
-          p.wave2OffsetMax ?? 6,
-          p.foamMin ?? 0.2,
-          p.foamMax ?? 0.5,
-          p.depthMin ?? 0.3,
-          p.depthMax ?? 0.7
-        );
-        break;
-      }
-
-      case 'oceanStart':
-        w.ocean_start();
-        this._oceanActive = true;
-        break;
-
-      case 'oceanStop':
-        w.ocean_stop();
-        this._oceanActive = false;
-        break;
-
-      case 'oceanSeed':
-        w.ocean_set_seed(data.seed ?? 12345);
-        break;
-
       case 'enablePerf':
         this._perfEnabled = !!data.enabled;
         this._perfTotalTime = 0;
@@ -387,7 +384,6 @@ class SoundscapesWasmProcessor extends AudioWorkletProcessor {
         this._perfSamplesSinceReport = 0;
         this._perfWaterPeak = 0;
         this._perfInsectsPeak = 0;
-        this._perfOceanPeak = 0;
         break;
     }
   }
@@ -406,10 +402,9 @@ class SoundscapesWasmProcessor extends AudioWorkletProcessor {
     const hasSeparateInsectsOut = outputs.length >= 2 && outputs[1] && outputs[1].length >= 2;
     const insOutL = hasSeparateInsectsOut ? outputs[1][0] : outL;
     const insOutR = hasSeparateInsectsOut ? outputs[1][1] : outR;
-
-    const hasSeparateOceanOut = outputs.length >= 3 && outputs[2] && outputs[2].length >= 2;
-    const oceanOutL = hasSeparateOceanOut ? outputs[2][0] : outL;
-    const oceanOutR = hasSeparateOceanOut ? outputs[2][1] : outR;
+    const hasSeparateInsectsPreFaderOut = outputs.length >= 3 && outputs[2] && outputs[2].length >= 2;
+    const insWetOutL = hasSeparateInsectsPreFaderOut ? outputs[2][0] : insOutL;
+    const insWetOutR = hasSeparateInsectsPreFaderOut ? outputs[2][1] : insOutR;
 
     const t0 = this._perfEnabled ? _perfNow() : 0;
 
@@ -425,6 +420,26 @@ class SoundscapesWasmProcessor extends AudioWorkletProcessor {
         outL[i] += heap[wOff + i * 2];
         outR[i] += heap[wOff + i * 2 + 1];
       }
+
+      if (typeof this._wasm.water_get_surf_trigger_serial === 'function') {
+        const surfTriggerSerial = this._wasm.water_get_surf_trigger_serial();
+        if (surfTriggerSerial !== this._lastSurfTriggerSerial) {
+          this._lastSurfTriggerSerial = surfTriggerSerial;
+          this.port.postMessage({
+            type: 'surfTrigger',
+            positions: {
+              waterSurfDuration: this._wasm.water_get_surf_trigger_duration_pos(),
+              waterSurfInterval: this._wasm.water_get_surf_trigger_interval_pos(),
+              waterSurfFoam: this._wasm.water_get_surf_trigger_foam_pos(),
+              waterSurfProximity: this._wasm.water_get_surf_trigger_proximity_pos(),
+              waterSurfDepth: this._wasm.water_get_surf_trigger_depth_pos(),
+              waterSurfBody: this._wasm.water_get_surf_trigger_body_pos(),
+              waterSurfSpray: this._wasm.water_get_surf_trigger_spray_pos(),
+              waterSurfFoamBright: this._wasm.water_get_surf_trigger_foam_bright_pos(),
+            },
+          });
+        }
+      }
     }
 
     // ── Process insects engine ──
@@ -437,8 +452,12 @@ class SoundscapesWasmProcessor extends AudioWorkletProcessor {
       const iOff = this._insectsOutPtr >> 2;
       const g1 = this._insects1Gain;
       for (let i = 0; i < blockSize; i++) {
-        insOutL[i] += heap[iOff + i * 2] * g1;
-        insOutR[i] += heap[iOff + i * 2 + 1] * g1;
+        const sampleL = heap[iOff + i * 2];
+        const sampleR = heap[iOff + i * 2 + 1];
+        insOutL[i] += sampleL * g1;
+        insOutR[i] += sampleR * g1;
+        insWetOutL[i] += sampleL;
+        insWetOutR[i] += sampleR;
       }
     }
 
@@ -452,22 +471,12 @@ class SoundscapesWasmProcessor extends AudioWorkletProcessor {
       const i2Off = this._insects2OutPtr >> 2;
       const g2 = this._insects2Gain;
       for (let i = 0; i < blockSize; i++) {
-        insOutL[i] += heap[i2Off + i * 2] * g2;
-        insOutR[i] += heap[i2Off + i * 2 + 1] * g2;
-      }
-    }
-
-    // ── Process ocean engine ──
-    let oceanMs = 0;
-    if (this._oceanActive) {
-      const to0 = this._perfEnabled ? _perfNow() : 0;
-      this._wasm.ocean_process_block(blockSize);
-      if (this._perfEnabled) oceanMs = _perfNow() - to0;
-      const heap = this._getF32();
-      const oOff = this._oceanOutPtr >> 2;
-      for (let i = 0; i < blockSize; i++) {
-        oceanOutL[i] += heap[oOff + i * 2];
-        oceanOutR[i] += heap[oOff + i * 2 + 1];
+        const sampleL = heap[i2Off + i * 2];
+        const sampleR = heap[i2Off + i * 2 + 1];
+        insOutL[i] += sampleL * g2;
+        insOutR[i] += sampleR * g2;
+        insWetOutL[i] += sampleL;
+        insWetOutR[i] += sampleR;
       }
     }
 
@@ -487,10 +496,8 @@ class SoundscapesWasmProcessor extends AudioWorkletProcessor {
       this._perfWaterTotal = (this._perfWaterTotal || 0) + waterMs;
       this._perfInsects1Total = (this._perfInsects1Total || 0) + insects1Ms;
       this._perfInsects2Total = (this._perfInsects2Total || 0) + insects2Ms;
-      this._perfOceanTotal = (this._perfOceanTotal || 0) + oceanMs;
       this._perfWaterPeak = Math.max(this._perfWaterPeak || 0, waterMs);
       this._perfInsectsPeak = Math.max(this._perfInsectsPeak || 0, insectsMs);
-      this._perfOceanPeak = Math.max(this._perfOceanPeak || 0, oceanMs);
 
       if (this._perfSamplesSinceReport >= this._perfReportInterval) {
         const avgMs = this._perfTotalTime / this._perfCount;
@@ -506,8 +513,6 @@ class SoundscapesWasmProcessor extends AudioWorkletProcessor {
           waterPeakMs: this._perfWaterPeak,
           insectsMs: (this._perfInsects1Total + this._perfInsects2Total) / cnt,
           insectsPeakMs: this._perfInsectsPeak,
-          oceanMs: this._perfOceanTotal / cnt,
-          oceanPeakMs: this._perfOceanPeak,
         });
         this._perfTotalTime = 0;
         this._perfPeakTime = 0;
@@ -518,10 +523,8 @@ class SoundscapesWasmProcessor extends AudioWorkletProcessor {
         this._perfWaterTotal = 0;
         this._perfInsects1Total = 0;
         this._perfInsects2Total = 0;
-        this._perfOceanTotal = 0;
         this._perfWaterPeak = 0;
         this._perfInsectsPeak = 0;
-        this._perfOceanPeak = 0;
       }
     }
 

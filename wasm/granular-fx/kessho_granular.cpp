@@ -82,6 +82,7 @@ struct VoiceParams {
     int   mode;          // KESSHO_MODE_*
     int   slice;         // 0–15
     float speed;         // 0 = LFO scan, 1 = normal
+    float scan_rate;     // playback-rate multiplier for clean scan mode
     int   reverse;
     float pitch;         // semitones
     float attack;        // seconds
@@ -125,6 +126,9 @@ struct GranularState {
     float  feedback;
     float  feedback_lpf_coeff;
     float  sample_rate;
+    int    grain_shape;
+    float  bus_diffusion;
+    float  timing_randomness;
 
     // Per-voice
     VoiceParams voice[KESSHO_NUM_VOICES];
@@ -141,6 +145,7 @@ struct GranularState {
     // Per-voice scheduling
     int   samples_since_grain[KESSHO_NUM_VOICES];
     int   samples_per_grain[KESSHO_NUM_VOICES];
+    int   samples_until_grain[KESSHO_NUM_VOICES];
     float trig_density_mult[KESSHO_NUM_VOICES];
 
     // Per-voice clean mode read position
@@ -157,6 +162,15 @@ struct GranularState {
 
     // Per-voice representative grain position
     float last_grain_pos[KESSHO_NUM_VOICES];
+
+    // Per-voice grain smoothing state (used to soften transient peaking in granular mode)
+    float grain_smooth_l[KESSHO_NUM_VOICES];
+    float grain_smooth_r[KESSHO_NUM_VOICES];
+
+    // Summed granular bus smoothing/diffusion
+    AllpassDiffuser bus_diffuser;
+    float bus_smooth_l;
+    float bus_smooth_r;
 
     // Per-voice Euclidean sub-lane overrides
     int   euclid_slice_override[KESSHO_NUM_VOICES];   // -1 = none
@@ -503,28 +517,60 @@ static inline float hann_window(const GranularState* s, float phase) {
     return s->hann_table[idx] + frac * (s->hann_table[idx + 1] - s->hann_table[idx]);
 }
 
+static inline float grain_attack_curve(const GranularState* s, int shape, float t) {
+    t = clampf(t, 0.0f, 1.0f);
+    switch (shape) {
+        case KESSHO_GRAIN_SHAPE_TRIANGLE:
+            return t;
+        case KESSHO_GRAIN_SHAPE_SAW_UP:
+            return t * t;
+        case KESSHO_GRAIN_SHAPE_SAW_DOWN:
+            return sqrtf(t);
+        case KESSHO_GRAIN_SHAPE_SQUARE:
+        default:
+            // Safety-smoothed edge so square does not click aggressively.
+            return hann_window(s, t * 0.5f);
+    }
+}
+
+static inline float grain_decay_curve(const GranularState* s, int shape, float t) {
+    t = clampf(t, 0.0f, 1.0f);
+    switch (shape) {
+        case KESSHO_GRAIN_SHAPE_TRIANGLE:
+            return 1.0f - t;
+        case KESSHO_GRAIN_SHAPE_SAW_UP:
+            return powf(1.0f - t, 0.65f);
+        case KESSHO_GRAIN_SHAPE_SAW_DOWN:
+            return powf(1.0f - t, 1.4f);
+        case KESSHO_GRAIN_SHAPE_SQUARE:
+        default:
+            return hann_window(s, 0.5f + t * 0.5f);
+    }
+}
+
 /**
- * Tukey (tapered cosine) grain envelope — eliminates derivative discontinuity.
- * When atk+dec >= length, falls back to full Hann.
- * Otherwise uses half-cosine rise, flat sustain with smooth transitions, half-cosine fall.
+ * Grain envelope with discrete contour families inspired by Microcosm-style
+ * shape modes. Attack/decay still define the edge durations; shape changes the
+ * curve inside those edges.
  */
 static inline float grain_envelope(const GranularState* s, int sample, int length,
-                                     int atk_smp, int dec_smp) {
+                                     int atk_smp, int dec_smp, int shape) {
     if (length <= 0) return 0.0f;
-    if (atk_smp + dec_smp >= length) {
-        // Full Hann window
-        return hann_window(s, (float)sample / (float)length);
-    }
-    if (sample < atk_smp) {
-        // Rise portion: half Hann (0 → 1)
-        float phase = (float)sample / (float)atk_smp * 0.5f; // 0..0.5
-        return hann_window(s, phase);
-    }
+    if (atk_smp < 1) atk_smp = 1;
+    if (dec_smp < 1) dec_smp = 1;
+
     int dec_start = length - dec_smp;
+    if (dec_start < atk_smp) dec_start = atk_smp;
+
+    if (sample < atk_smp) {
+        float phase = (float)sample / (float)atk_smp;
+        return grain_attack_curve(s, shape, phase);
+    }
     if (sample >= dec_start) {
-        // Fall portion: half Hann (1 → 0)
-        float phase = 0.5f + (float)(sample - dec_start) / (float)dec_smp * 0.5f; // 0.5..1.0
-        return hann_window(s, phase);
+        float denom = (float)(length - dec_start);
+        if (denom < 1.0f) denom = 1.0f;
+        float phase = (float)(sample - dec_start) / denom;
+        return grain_decay_curve(s, shape, phase);
     }
     return 1.0f;
 }
@@ -636,6 +682,21 @@ static inline int get_slice_length(const GranularState* s) {
     return s->buffer_size / KESSHO_NUM_SLICES;
 }
 
+static inline int compute_next_grain_interval(GranularState* s, int voice_idx) {
+    float base_interval = (float)s->samples_per_grain[voice_idx];
+    float burst_mult = s->trig_density_mult[voice_idx];
+    if (burst_mult < 1.0f) burst_mult = 1.0f;
+    float mean_interval = base_interval / burst_mult;
+    float jitter = clampf(s->timing_randomness, 0.0f, 1.0f);
+    float spread = 0.08f + jitter * 0.92f;
+    float rand = (next_random(s) - 0.5f) * 2.0f;
+    float interval_scale = 1.0f + rand * spread;
+    if (interval_scale < 0.12f) interval_scale = 0.12f;
+    int next_interval = (int)(mean_interval * interval_scale);
+    if (next_interval < 1) next_interval = 1;
+    return next_interval;
+}
+
 // ═══════════════ Grain Spawning ═══════════════
 
 static void spawn_grain(GranularState* s, int voice_idx) {
@@ -691,15 +752,21 @@ static void spawn_grain(GranularState* s, int voice_idx) {
 
         // Write follow + record LFO
         float base_wf = vp->write_follow;
-        float rec_lfo_val = lfo_tick(&s->record_lfo[voice_idx], sr);
-        float write_follow = base_wf + rec_lfo_val * (1.0f - base_wf);
+        float write_follow = base_wf;
+        if (vp->record_lfo_rate > 0.01f) {
+            float rec_lfo_val = lfo_tick(&s->record_lfo[voice_idx], sr);
+            float rec_gate = rec_lfo_val > 0.62f ? 1.0f : 0.0f;
+            write_follow = base_wf + rec_gate * (1.0f - base_wf);
+        }
         if (write_follow > 1.0f) write_follow = 1.0f;
 
         float pos_lfo_val = lfo_tick(&s->pos_lfo[voice_idx], sr);
         float lfo_depth = vp->pos_lfo_depth;
         float lfo_offset = pos_lfo_val * lfo_depth * (float)s->buffer_size;
 
-        float spray_range = spray * spray * (float)s->buffer_size;
+        int slice_len = s->buffer_size / KESSHO_NUM_SLICES;
+        float spray_window = fmaxf((float)grain_samples * 4.0f, (float)slice_len * 0.6f);
+        float spray_range = spray * spray * spray_window;
         float spray_offset = spray_range * (next_random(s) - 0.5f);
 
         float base_pos;
@@ -718,7 +785,7 @@ static void spawn_grain(GranularState* s, int voice_idx) {
         if (s->euclid_pitch_active[voice_idx]) {
             pitch_semi += s->euclid_pitch_override[voice_idx];
         }
-        if (vp->grain_oct > 0.0f && next_random(s) < vp->grain_oct) {
+        if (vp->grain_oct > 0.0f && next_random(s) < vp->grain_oct * 0.6f) {
             pitch_semi += 12.0f;
         }
         float speed = vp->speed;
@@ -788,6 +855,7 @@ static void process_clean_voice(GranularState* s, int v, float* out_l, float* ou
         pitch_semi += s->euclid_pitch_override[v];
     }
     float pitch_rate = powf(2.0f, pitch_semi / 12.0f);
+    float scan_rate = clampf(vp->scan_rate, 0.25f, 4.0f);
     float effective_rate = speed * pitch_rate * (reverse ? -1.0f : 1.0f);
     float gain = vp->gain;
     float blur = vp->blur;
@@ -796,8 +864,15 @@ static void process_clean_voice(GranularState* s, int v, float* out_l, float* ou
 
     // Record LFO
     float base_wf = vp->write_follow;
-    float rec_lfo_val = lfo_tick(&s->record_lfo[v], sr);
-    float write_follow = base_wf + rec_lfo_val * (1.0f - base_wf);
+    float write_follow = base_wf;
+    if (vp->record_lfo_rate > 0.01f) {
+        // In clean mode, treat the record LFO as a gate/latch gesture instead of a
+        // continuous wobble. This keeps looper-style presets stable while still
+        // allowing periodic re-capture toward the write head.
+        float rec_lfo_val = lfo_tick(&s->record_lfo[v], sr);
+        float rec_gate = rec_lfo_val > 0.62f ? 1.0f : 0.0f;
+        write_follow = base_wf + rec_gate * (1.0f - base_wf);
+    }
     if (write_follow > 1.0f) write_follow = 1.0f;
 
     // Pan
@@ -830,26 +905,28 @@ static void process_clean_voice(GranularState* s, int v, float* out_l, float* ou
         biquad_update(aa2_r, ar);
         biquad_update(aa3_l, ar);
         biquad_update(aa3_r, ar);
-    } else {
-        if (fabsf(pitch_rate) > 1.05f) {
-            float ar = fabsf(pitch_rate);
-            biquad_update(aa_l, ar);
-            biquad_update(aa_r, ar);
-            biquad_update(aa2_l, ar);
-            biquad_update(aa2_r, ar);
-            biquad_update(aa3_l, ar);
-            biquad_update(aa3_r, ar);
-        }
     }
 
     // ═══ LFO Scan Mode ═══
     if (is_lfo_scan) {
         float half_buf = (float)s->buffer_size * 0.5f;
-        float scan_adv = pitch_rate * (reverse ? -1.0f : 1.0f);
+        // Decouple transport from pitch in scan mode so "pitch" no longer causes the
+        // scan heads themselves to race around the buffer. This makes clean loopers
+        // behave like moving tape heads instead of pitch-wobbled grain clouds.
+        float scan_adv = scan_rate * (reverse ? -1.0f : 1.0f);
+        float abs_scan_rate = fabsf(scan_adv);
         static const float SCAN_XFADE_INC = 1.0f / 5760.0f;
         static const float SCAN_DRIFT_THRESH = 7200.0f;
 
         ScanState* sc = &s->scan[v];
+        if (abs_scan_rate > 1.05f) {
+            biquad_update(aa_l, abs_scan_rate);
+            biquad_update(aa_r, abs_scan_rate);
+            biquad_update(aa2_l, abs_scan_rate);
+            biquad_update(aa2_r, abs_scan_rate);
+            biquad_update(aa3_l, abs_scan_rate);
+            biquad_update(aa3_r, abs_scan_rate);
+        }
 
         for (int i = 0; i < block_size; i++) {
             float env_gain = 1.0f;
@@ -910,7 +987,7 @@ static void process_clean_voice(GranularState* s, int v, float* out_l, float* ou
             float sR = read_buffer_sinc(s, s->buffer_r, s->buffer_size, sc->head_a) * gain_a
                       + read_buffer_sinc(s, s->buffer_r, s->buffer_size, sc->head_b) * gain_b;
 
-            if (fabsf(pitch_rate) > 1.05f) {
+            if (abs_scan_rate > 1.05f) {
                 sL = biquad_process(aa_l, biquad_process(aa2_l, biquad_process(aa3_l, sL)));
                 sR = biquad_process(aa_r, biquad_process(aa2_r, biquad_process(aa3_r, sR)));
             }
@@ -986,6 +1063,7 @@ static void process_granular_voice(GranularState* s, int v, float* out_l, float*
     Grain* pool = s->grain_pool[v];
     int is_gated = vp->euclid_gated;
     float sr = s->sample_rate;
+    float euclidSchedulerThrottle = is_gated ? 0.42f : 1.0f;
 
     // Anti-alias: max absolute rate across active grains
     float max_abs_rate = 1.0f;
@@ -1022,11 +1100,16 @@ static void process_granular_voice(GranularState* s, int v, float* out_l, float*
         // Grain scheduling
         if (s->initialized) {
             s->samples_since_grain[v]++;
-            int density_threshold = (int)((float)s->samples_per_grain[v] / s->trig_density_mult[v]);
-            if (density_threshold < 1) density_threshold = 1;
-            if (s->samples_since_grain[v] >= density_threshold) {
+            s->samples_until_grain[v]--;
+            if (s->samples_until_grain[v] <= 0) {
                 spawn_grain(s, v);
                 s->samples_since_grain[v] = 0;
+                int nextInterval = compute_next_grain_interval(s, v);
+                if (euclidSchedulerThrottle < 0.999f) {
+                    nextInterval = (int)((float)nextInterval / euclidSchedulerThrottle);
+                    if (nextInterval < 1) nextInterval = 1;
+                }
+                s->samples_until_grain[v] = nextInterval;
             }
             if (s->trig_density_mult[v] > 1.001f) {
                 s->trig_density_mult[v] *= TRIG_DENSITY_DECAY;
@@ -1049,7 +1132,7 @@ static void process_granular_voice(GranularState* s, int v, float* out_l, float*
             float sR = read_buffer_sinc(s, s->buffer_r, s->buffer_size, read_pos);
 
             float raw_env = grain_envelope(s, grain->start_sample, grain->length,
-                                        grain->attack_smp, grain->decay_smp);
+                                        grain->attack_smp, grain->decay_smp, s->grain_shape);
             // One-pole envelope smoother — removes micro-discontinuities
             float env = grain->env_z1 + 0.005f * (raw_env - grain->env_z1);
             grain->env_z1 = env;
@@ -1091,6 +1174,15 @@ static void process_granular_voice(GranularState* s, int v, float* out_l, float*
         // DC blocking (~5 Hz HPF)
         wet_l = hpf_process(&s->dc_block_l[v], wet_l);
         wet_r = hpf_process(&s->dc_block_r[v], wet_r);
+
+        // One-pole smoothing after blur/DC helps the cloud read as one texture
+        // instead of a flock of isolated transients poking through the reverb.
+        float smooth_coeff = 0.06f + blur * 0.18f;
+        s->grain_smooth_l[v] += smooth_coeff * (wet_l - s->grain_smooth_l[v]);
+        s->grain_smooth_r[v] += smooth_coeff * (wet_r - s->grain_smooth_r[v]);
+        float smooth_mix = 0.22f + blur * 0.28f;
+        wet_l = wet_l * (1.0f - smooth_mix) + s->grain_smooth_l[v] * smooth_mix;
+        wet_r = wet_r * (1.0f - smooth_mix) + s->grain_smooth_r[v] * smooth_mix;
 
         out_l[i] += wet_l * gain * env_gain;
         out_r[i] += wet_r * gain * env_gain;
@@ -1247,6 +1339,24 @@ static void process_block_internal(GranularState* s, int block_size) {
         }
     }
 
+    // ── Step 3b: Summed bus diffusion ──
+    if (s->bus_diffusion > 0.001f) {
+        float diff_amount = clampf(s->bus_diffusion, 0.0f, 1.0f);
+        float diff_mix = 0.12f + diff_amount * 0.7f;
+        float smooth_coeff = 0.03f + diff_amount * 0.2f;
+        float smooth_mix = 0.08f + diff_amount * 0.3f;
+        for (int i = 0; i < block_size; i++) {
+            float diff_l = diffuser_process_l(&s->bus_diffuser, v_out_l[i]);
+            float diff_r = diffuser_process_r(&s->bus_diffuser, v_out_r[i]);
+            float mixed_l = v_out_l[i] * (1.0f - diff_mix) + diff_l * diff_mix;
+            float mixed_r = v_out_r[i] * (1.0f - diff_mix) + diff_r * diff_mix;
+            s->bus_smooth_l += smooth_coeff * (mixed_l - s->bus_smooth_l);
+            s->bus_smooth_r += smooth_coeff * (mixed_r - s->bus_smooth_r);
+            v_out_l[i] = mixed_l * (1.0f - smooth_mix) + s->bus_smooth_l * smooth_mix;
+            v_out_r[i] = mixed_r * (1.0f - smooth_mix) + s->bus_smooth_r * smooth_mix;
+        }
+    }
+
     // ── Step 4: Output ──
     float wet_level = s->dry_wet;
 #ifdef __wasm_simd128__
@@ -1315,6 +1425,9 @@ int granular_init(float sample_rate, float buffer_seconds) {
     s->dry_wet = 0.3f;
     s->feedback = 0.1f;
     s->feedback_lpf_coeff = 0.7f;
+    s->grain_shape = KESSHO_GRAIN_SHAPE_TRIANGLE;
+    s->bus_diffusion = 0.0f;
+    s->timing_randomness = 0.35f;
     s->total_active_grains = 0;
     s->silent_samples = 0;
     // Start initialized=1 so granular works immediately with fallback LCG.
@@ -1349,6 +1462,7 @@ int granular_init(float sample_rate, float buffer_seconds) {
         vp->mode = KESSHO_MODE_GRANULAR;
         vp->slice = v * 4;
         vp->speed = 1.0f;
+        vp->scan_rate = 1.0f;
         vp->reverse = 0;
         vp->pitch = 0.0f;
         vp->attack = 0.003f;
@@ -1376,6 +1490,7 @@ int granular_init(float sample_rate, float buffer_seconds) {
         // Scheduling
         s->samples_since_grain[v] = 0;
         s->samples_per_grain[v] = (int)(sample_rate / 20.0f);
+        s->samples_until_grain[v] = s->samples_per_grain[v];
         s->trig_density_mult[v] = 1.0f;
         s->clean_read_pos[v] = 0.0f;
 
@@ -1422,6 +1537,10 @@ int granular_init(float sample_rate, float buffer_seconds) {
         // Scan state
         memset(&s->scan[v], 0, sizeof(ScanState));
     }
+
+    diffuser_init(&s->bus_diffuser, sample_rate);
+    s->bus_smooth_l = 0.0f;
+    s->bus_smooth_r = 0.0f;
 
     // Unfreeze crossfade
     s->prev_freeze = 0;
@@ -1517,6 +1636,7 @@ void granular_destroy(void) {
     for (int v = 0; v < KESSHO_NUM_VOICES; v++) {
         diffuser_destroy(&s->diffuser[v]);
     }
+    diffuser_destroy(&s->bus_diffuser);
 
     free(s);
     g_state = nullptr;
@@ -1558,6 +1678,17 @@ void granular_set_feedback(float amount, float lpf_hz) {
     // but this gives the expected behavior for the feedback filter control.
     float coeff = expf(-2.0f * (float)M_PI * lpf_hz / g_state->sample_rate);
     g_state->feedback_lpf_coeff = 1.0f - coeff;
+}
+
+void granular_set_bus_diffusion(float amount) {
+    if (!g_state) return;
+    g_state->bus_diffusion = clampf(amount, 0.0f, 1.0f);
+    g_state->bus_diffuser.g = 0.12f + g_state->bus_diffusion * 0.42f;
+}
+
+void granular_set_timing_randomness(float amount) {
+    if (!g_state) return;
+    g_state->timing_randomness = clampf(amount, 0.0f, 1.0f);
 }
 
 void granular_set_scale(const int* intervals, int count) {
@@ -1616,18 +1747,24 @@ void granular_set_buffer_size(float buffer_seconds) {
     }
 }
 
+void granular_set_grain_shape(int shape) {
+    if (!g_state) return;
+    g_state->grain_shape = clampi(shape, KESSHO_GRAIN_SHAPE_TRIANGLE, KESSHO_GRAIN_SHAPE_SQUARE);
+}
+
 void granular_set_voice_mode(int voice, int enabled, int mode) {
     if (!g_state || voice < 0 || voice >= KESSHO_NUM_VOICES) return;
     g_state->voice[voice].enabled = enabled;
     g_state->voice[voice].mode = mode;
 }
 
-void granular_set_voice_position(int voice, int slice, float speed, int reverse,
-                                float pitch, float write_follow) {
+void granular_set_voice_position(int voice, int slice, float speed, float scan_rate,
+                                int reverse, float pitch, float write_follow) {
     if (!g_state || voice < 0 || voice >= KESSHO_NUM_VOICES) return;
     VoiceParams* vp = &g_state->voice[voice];
     vp->slice = clampi(slice, 0, KESSHO_NUM_SLICES - 1);
     vp->speed = speed;
+    vp->scan_rate = clampf(scan_rate, 0.25f, 4.0f);
     vp->reverse = reverse;
     vp->pitch = pitch;
     vp->write_follow = clampf(write_follow, 0.0f, 1.0f);
@@ -1638,14 +1775,47 @@ void granular_set_voice_grain(int voice, float density, float grain_size,
                              float attack, float decay) {
     if (!g_state || voice < 0 || voice >= KESSHO_NUM_VOICES) return;
     VoiceParams* vp = &g_state->voice[voice];
+    int previousSamplesPerGrain = g_state->samples_per_grain[voice];
+    if (previousSamplesPerGrain < 1) previousSamplesPerGrain = 1;
+    int previousSince = g_state->samples_since_grain[voice];
+    int previousUntil = g_state->samples_until_grain[voice];
+    int previousInterval = previousSince + previousUntil;
+
     vp->density = density;
     vp->grain_size = grain_size;
     vp->spray = clampf(spray, 0.0f, 1.0f);
     vp->grain_oct = clampf(grain_oct, 0.0f, 1.0f);
     vp->attack = attack;
     vp->decay = decay;
-    // Update samples-per-grain
-    g_state->samples_per_grain[voice] = (int)(g_state->sample_rate / (density > 0.0f ? density : 20.0f));
+    // Update samples-per-grain, but preserve the current scheduler phase so
+    // rapid parameter drags do not keep restarting the next-grain countdown.
+    int newSamplesPerGrain = (int)(g_state->sample_rate / (density > 0.0f ? density : 20.0f));
+    if (newSamplesPerGrain < 1) newSamplesPerGrain = 1;
+    g_state->samples_per_grain[voice] = newSamplesPerGrain;
+
+    if (!g_state->initialized || previousInterval <= 0) {
+        g_state->samples_since_grain[voice] = 0;
+        g_state->samples_until_grain[voice] = compute_next_grain_interval(g_state, voice);
+        return;
+    }
+
+    float intervalScale = (float)newSamplesPerGrain / (float)previousSamplesPerGrain;
+    int newInterval = (int)roundf((float)previousInterval * intervalScale);
+    if (newInterval < 1) newInterval = 1;
+
+    float progressRatio = (float)previousSince / (float)previousInterval;
+    if (progressRatio < 0.0f) progressRatio = 0.0f;
+    if (progressRatio > 1.0f) progressRatio = 1.0f;
+
+    int newSince = (int)roundf((float)newInterval * progressRatio);
+    if (newSince < 0) newSince = 0;
+    if (newSince >= newInterval) newSince = newInterval - 1;
+
+    int newUntil = newInterval - newSince;
+    if (newUntil < 1) newUntil = 1;
+
+    g_state->samples_since_grain[voice] = newSince;
+    g_state->samples_until_grain[voice] = newUntil;
 }
 
 void granular_set_voice_output(int voice, float gain, float pan,
@@ -1657,7 +1827,7 @@ void granular_set_voice_output(int voice, float gain, float pan,
     vp->blur = clampf(blur, 0.0f, 1.0f);
     vp->stereo_spread = clampf(stereo_spread, 0.0f, 1.0f);
     // Update diffuser coefficient
-    g_state->diffuser[voice].g = blur * 0.7f;
+    g_state->diffuser[voice].g = blur * 0.5f;
 }
 
 void granular_set_voice_lfo(int voice, float pos_rate, float pos_depth,
@@ -1731,7 +1901,13 @@ void granular_euclid_trigger(int voice, float velocity, int slice_override,
     // Granular mode: force immediate spawn + density burst
     if (s->voice[voice].mode == KESSHO_MODE_GRANULAR) {
         s->samples_since_grain[voice] = s->samples_per_grain[voice];
-        s->trig_density_mult[voice] = 1.0f + 3.0f * velocity;
+        s->samples_until_grain[voice] = 0;
+        float cappedVelocity = clampf(velocity, 0.0f, 1.0f);
+        float voiceDensity = clampf(s->voice[voice].density, 1.0f, 64.0f);
+        float densityNormalized = (voiceDensity - 1.0f) / 63.0f;
+        float burstHeadroom = 1.0f - densityNormalized * 0.65f;
+        if (burstHeadroom < 0.2f) burstHeadroom = 0.2f;
+        s->trig_density_mult[voice] = 1.0f + 1.35f * cappedVelocity * burstHeadroom;
     }
 }
 
@@ -1782,4 +1958,12 @@ void granular_get_voice_positions(float* out) {
 
 int granular_get_active_grain_count(void) {
     return g_state ? g_state->total_active_grains : 0;
+}
+
+float* granular_get_buffer_ptr_l(void) {
+    return g_state ? g_state->buffer_l : nullptr;
+}
+
+int granular_get_buffer_size(void) {
+    return g_state ? g_state->buffer_size : 0;
 }

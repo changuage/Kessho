@@ -35,9 +35,18 @@ env["EMSDK"] = EMSDK_ROOT
 env["EM_CONFIG"] = os.path.normpath(os.path.join(EMSDK_ROOT, ".emscripten"))
 # Skip sanity check to avoid cache invalidation from path format differences
 env["EMCC_SKIP_SANITY_CHECK"] = "1"
-# Add LLVM + node to PATH
+# Add LLVM + node + emsdk python to PATH
 llvm_bin = os.path.normpath(os.path.join(EMSDK_ROOT, "upstream", "bin"))
 node_bin = os.path.join(EMSDK_ROOT, "node")
+python_bin = os.path.join(EMSDK_ROOT, "python")
+# Find actual python dir (version-named) so nested emcc invocations do not fall back
+# to an older system python.
+if os.path.isdir(python_bin):
+    for d in os.listdir(python_bin):
+        python_full = os.path.join(python_bin, d, "bin")
+        if os.path.isdir(python_full):
+            env["PATH"] = python_full + os.pathsep + env.get("PATH", "")
+            break
 # Find actual node dir (version-named)
 if os.path.isdir(node_bin):
     for d in os.listdir(node_bin):

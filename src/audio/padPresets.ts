@@ -9,6 +9,8 @@
  * and threshold snapping for discrete params.
  */
 
+import type { PresetLibrary } from '../presets/types';
+
 /** Keys that a pad preset controls (timbre + oscillator + filter + envelope) */
 export const PAD_PRESET_PARAM_KEYS = [
   // Oscillators
@@ -34,10 +36,46 @@ export const PAD_PRESET_PARAM_KEYS = [
 
 export type PadPresetParamKey = typeof PAD_PRESET_PARAM_KEYS[number];
 
+/** Map pad1 preset param keys → pad2 equivalents */
+export const PAD1_TO_PAD2_KEY: Record<string, string> = {
+  padOscAWave: 'pad2OscAWave', padOscAOctave: 'pad2OscAOctave', padOscADetune: 'pad2OscADetune', padOscALevel: 'pad2OscALevel',
+  padOscBWave: 'pad2OscBWave', padOscBOctave: 'pad2OscBOctave', padOscBDetune: 'pad2OscBDetune', padOscBLevel: 'pad2OscBLevel',
+  padSubEnabled: 'pad2SubEnabled', padSubOctave: 'pad2SubOctave', padSubWave: 'pad2SubWave', padSubLevel: 'pad2SubLevel',
+  padNoiseType: 'pad2NoiseType', padNoiseLevel: 'pad2NoiseLevel',
+  hardness: 'pad2Hardness', warmth: 'pad2Warmth', presence: 'pad2Presence',
+  filterType: 'pad2FilterType', filterCutoffMin: 'pad2FilterCutoffMin', filterCutoffMax: 'pad2FilterCutoffMax',
+  filterResonance: 'pad2FilterResonance', filterQ: 'pad2FilterQ',
+  padFilterBEnabled: 'pad2FilterBEnabled', padFilterBType: 'pad2FilterBType', padFilterBCutoff: 'pad2FilterBCutoff',
+  padFilterBResonance: 'pad2FilterBResonance', padFilterBQ: 'pad2FilterBQ', padFilterRouting: 'pad2FilterRouting',
+  synthAttack: 'pad2Attack', synthDecay: 'pad2Decay', synthSustain: 'pad2Sustain', synthRelease: 'pad2Release',
+  padLfo1Rate: 'pad2Lfo1Rate', padLfo1Depth: 'pad2Lfo1Depth', padLfo1Wave: 'pad2Lfo1Wave', padLfo1Dest: 'pad2Lfo1Dest',
+  padLfo2Rate: 'pad2Lfo2Rate', padLfo2Depth: 'pad2Lfo2Depth', padLfo2Wave: 'pad2Lfo2Wave', padLfo2Dest: 'pad2Lfo2Dest',
+  padModEnvEnabled: 'pad2ModEnvEnabled', padModEnvAttack: 'pad2ModEnvAttack', padModEnvDecay: 'pad2ModEnvDecay',
+  padModEnvSustain: 'pad2ModEnvSustain', padModEnvRelease: 'pad2ModEnvRelease',
+  padModEnvDepth: 'pad2ModEnvDepth', padModEnvDest: 'pad2ModEnvDest',
+};
+
+/** All pad-morph-derived keys (pad1 + pad2) — recomputed on load, not meaningful in diffs */
+export const DERIVED_PAD_KEYS = new Set<string>([
+  ...PAD_PRESET_PARAM_KEYS,
+  ...Object.values(PAD1_TO_PAD2_KEY),
+]);
+
 export interface PadPreset {
   name: string;
   tags: string[];
   params: Record<string, number | string | boolean>;
+}
+
+export interface PadPresetOption {
+  id: string;
+  name: string;
+  library: PresetLibrary;
+  scope?: 'pad1' | 'pad2';
+}
+
+interface RuntimePadPresetEntry extends PadPresetOption {
+  preset: PadPreset;
 }
 
 // ─── Preset Definitions ───
@@ -575,12 +613,70 @@ export const PAD_PRESETS: Record<string, PadPreset> = {
   serge_swarm: SERGE_SWARM,
 };
 
-export function getPadPresetNames(): string[] {
+const USER_PAD_PRESETS = new Map<string, RuntimePadPresetEntry>();
+
+export function getFactoryPadPresetIds(): string[] {
   return Object.keys(PAD_PRESETS);
 }
 
+export function getPadPresetDisplayName(id: string): string {
+  return USER_PAD_PRESETS.get(id)?.name ?? PAD_PRESETS[id]?.name ?? id;
+}
+
+export function getPadPresetOptions(scope?: 'pad1' | 'pad2'): PadPresetOption[] {
+  const options: PadPresetOption[] = getFactoryPadPresetIds().map(id => ({
+    id,
+    name: PAD_PRESETS[id]?.name ?? id,
+    library: 'stock',
+  }));
+
+  for (const entry of USER_PAD_PRESETS.values()) {
+    if (!scope || entry.scope === scope) {
+      options.push({
+        id: entry.id,
+        name: entry.name,
+        library: entry.library,
+        scope: entry.scope,
+      });
+    }
+  }
+
+  return options;
+}
+
+export function setUserPadPresets(
+  scope: 'pad1' | 'pad2',
+  presets: Array<{ id: string; name: string; library: Exclude<PresetLibrary, 'stock'>; preset: PadPreset }>,
+): void {
+  for (const [id, entry] of USER_PAD_PRESETS.entries()) {
+    if (entry.scope === scope) {
+      USER_PAD_PRESETS.delete(id);
+    }
+  }
+  for (const preset of presets) {
+    USER_PAD_PRESETS.set(preset.id, {
+      ...preset,
+      scope,
+    });
+  }
+}
+
+export function upsertUserPadPreset(
+  scope: 'pad1' | 'pad2',
+  preset: { id: string; name: string; library: Exclude<PresetLibrary, 'stock'>; preset: PadPreset },
+): void {
+  USER_PAD_PRESETS.set(preset.id, {
+    ...preset,
+    scope,
+  });
+}
+
+export function getPadPresetNames(scope?: 'pad1' | 'pad2'): string[] {
+  return getPadPresetOptions(scope).map(option => option.id);
+}
+
 export function getPadPreset(id: string): PadPreset | undefined {
-  return PAD_PRESETS[id];
+  return USER_PAD_PRESETS.get(id)?.preset ?? PAD_PRESETS[id];
 }
 
 // ─── Morphing ───

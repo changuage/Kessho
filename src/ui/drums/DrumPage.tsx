@@ -20,6 +20,11 @@ import type { SeqSimpleState } from './SeqSimple';
 import SeqMiniOverview from './SeqMiniOverview';
 import SeqLane from './SeqLane';
 import SeqSparkline from './SeqSparkline';
+import { useSliderHelp } from '../SliderHelpOverlay';
+import { PresetDropdown } from '../../presets/PresetDropdown';
+import { extractParams } from '../../presets/codec';
+import type { PresetEntry } from '../../presets/types';
+import type { UsePresetsOptions } from '../../presets/usePresets';
 
 const LANE_CONFIGS = [
   { color: '#00d4ff', name: 'Seq 1' },
@@ -39,6 +44,7 @@ export interface DrumPageProps {
   expandedPanels: Set<string>;
   onParamChange: (key: keyof SliderState, value: number) => void;
   onSelectChange: (key: keyof SliderState, value: SliderState[keyof SliderState]) => void;
+  onStateChange?: (newState: SliderState) => void;
   togglePanel: (id: string) => void;
   sliderProps: (paramKey: keyof SliderState) => Record<string, unknown>;
   getPresetNames: (voice: DrumVoiceType) => string[];
@@ -119,14 +125,46 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     onClockDivsChange,
     onSwingsChange,
   } = props;
+  const onStateChange = props.onStateChange;
   const evolvedOverrides = props.evolvedOverrides;
   const initialEvolveConfigs = props.initialEvolveConfigs;
   const presetVersion = props.presetVersion;
 
   const Slider = SliderComponent as React.ComponentType<any>;
+  const { announceHelp, announceSlider } = useSliderHelp();
 
   const [diceIntensity, setDiceIntensity] = useState(0.5);
   const [showAdvanced, setShowAdvanced] = useState(false);
+
+  const announceDrumLevelHelp = useCallback(() => {
+    announceSlider('drumLevel', { label: 'Level' });
+  }, [announceSlider]);
+
+  const announceDrumReverbHelp = useCallback(() => {
+    announceSlider('drumReverbSend', { label: 'Reverb' });
+  }, [announceSlider]);
+  const bindHelp = useCallback((helpKey: string, options: { label?: string } = {}) => ({
+    onMouseEnter: () => announceHelp(helpKey, options),
+    onPointerDown: () => announceHelp(helpKey, options),
+    onFocus: () => announceHelp(helpKey, options),
+  }), [announceHelp]);
+
+  // ── Euclidean sequencer preset (L1 drumEuclidean) ──
+  const [euclidPresetName, setEuclidPresetName] = useState<string | undefined>();
+  const handleEuclidPresetLoad = useCallback((entry: PresetEntry, _data: Record<string, unknown>) => {
+    setEuclidPresetName(entry.name);
+  }, []);
+
+  // ── Composite extract: L3 drums source includes L1 drumEuclidean + L2 drumKit ──
+  const drumsCompositeExtract = React.useMemo<UsePresetsOptions>(() => ({
+    customExtract: (s: SliderState) => {
+      const combined: Record<string, unknown> = {};
+      Object.assign(combined, extractParams(s, 1, 'drumEuclidean'));
+      Object.assign(combined, extractParams(s, 2, 'drumKit'));
+      Object.assign(combined, extractParams(s, 3, 'drums'));
+      return combined;
+    },
+  }), []);
 
   // ── Reusable sequencer hook ──
   const seq = useEuclideanSequencer({
@@ -145,6 +183,13 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     initialEvolveConfigs,
     resetKey: presetVersion,
   });
+
+  const setSharedSequencerBpm = useCallback((bpm: number) => {
+    onParamChange('sequencerMasterBPM' as keyof SliderState, bpm);
+    onParamChange('synthEuclidBaseBPM' as keyof SliderState, bpm);
+    onParamChange('drumEuclidBaseBPM' as keyof SliderState, bpm);
+    onParamChange('granularEuclidBaseBPM' as keyof SliderState, bpm);
+  }, [onParamChange]);
 
   // Notify parent when viewMode changes so it persists across tab switches
   useEffect(() => {
@@ -245,6 +290,20 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
   return (
     <div className="drum-root">
       <div className="container">
+        {/* ═══ Drums Source Preset (L3) ═══ */}
+        <div className="drums-source-preset-bar" style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '6px 10px', marginBottom: 4, borderRadius: 8, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>Drums Source</span>
+          <PresetDropdown
+            level="source"
+            scope="drums"
+            state={state}
+            onLoad={(_entry: PresetEntry) => {}}
+            onStateChange={onStateChange}
+            presetOptions={drumsCompositeExtract}
+            compact
+          />
+        </div>
+
         {/* ═══ SOUND PANEL (left, 460px) ═══ */}
         <div className="sound-panel">
           {/* Master strip */}
@@ -253,6 +312,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
               className={`drum-enable-btn${state.drumEnabled ? ' on' : ''}`}
               onClick={() => onSelectChange('drumEnabled', !state.drumEnabled)}
               title={state.drumEnabled ? 'Drum engine ON' : 'Drum engine OFF'}
+              {...bindHelp('drumEngineEnable')}
             >
               {state.drumEnabled ? 'ON' : 'OFF'}
             </button>
@@ -261,7 +321,13 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
               <input
                 type="range" min={0} max={1} step={0.01}
                 value={state.drumLevel as number}
-                onChange={(e) => onParamChange('drumLevel', parseFloat(e.target.value))}
+                onChange={(e) => {
+                  announceDrumLevelHelp();
+                  onParamChange('drumLevel', parseFloat(e.target.value));
+                }}
+                onMouseEnter={announceDrumLevelHelp}
+                onPointerDown={announceDrumLevelHelp}
+                onFocus={announceDrumLevelHelp}
               />
               <span className="val">{Math.round((state.drumLevel as number) * 100)}%</span>
             </div>
@@ -270,7 +336,13 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
               <input
                 type="range" min={0} max={1} step={0.01}
                 value={state.drumReverbSend as number}
-                onChange={(e) => onParamChange('drumReverbSend', parseFloat(e.target.value))}
+                onChange={(e) => {
+                  announceDrumReverbHelp();
+                  onParamChange('drumReverbSend', parseFloat(e.target.value));
+                }}
+                onMouseEnter={announceDrumReverbHelp}
+                onPointerDown={announceDrumReverbHelp}
+                onFocus={announceDrumReverbHelp}
               />
               <span className="val">{Math.round((state.drumReverbSend as number) * 100)}%</span>
             </div>
@@ -303,62 +375,6 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
             />
           </div>
 
-          {/* Delay section */}
-          <div className="delay-section">
-            <div
-              className={`section-header${expandedPanels.has('drumDelay') ? '' : ' collapsed'}`}
-              onClick={() => togglePanel('drumDelay')}
-            >
-              <span className="section-header-content">
-                Delay
-                <button
-                  className={`delay-toggle-btn${state.drumDelayEnabled ? ' on' : ''}`}
-                  onClick={(e) => { e.stopPropagation(); onSelectChange('drumDelayEnabled', !state.drumDelayEnabled); }}
-                >
-                  {state.drumDelayEnabled ? 'ON' : 'OFF'}
-                </button>
-                <span className="delay-bpm-info">@ {state.drumEuclidBaseBPM} BPM</span>
-              </span>
-            </div>
-            <div className={`section-body${expandedPanels.has('drumDelay') ? '' : ' collapsed'}`}>
-              {state.drumDelayEnabled && (
-                <>
-                  <div className="delay-note-row">
-                    <div className="delay-note-col">
-                      <label>Left</label>
-                      <select
-                        value={state.drumDelayNoteL as string}
-                        onChange={(e) => onParamChange('drumDelayNoteL' as keyof SliderState, e.target.value as any)}
-                      >
-                        <option value="1/1">1/1</option><option value="1/2">1/2</option><option value="1/2d">1/2 dotted</option>
-                        <option value="1/4">1/4</option><option value="1/4d">1/4 dotted</option><option value="1/4t">1/4 triplet</option>
-                        <option value="1/8">1/8</option><option value="1/8d">1/8 dotted</option><option value="1/8t">1/8 triplet</option>
-                        <option value="1/16">1/16</option><option value="1/16d">1/16 dotted</option><option value="1/16t">1/16 triplet</option>
-                        <option value="1/32">1/32</option>
-                      </select>
-                    </div>
-                    <div className="delay-note-col">
-                      <label>Right</label>
-                      <select
-                        value={state.drumDelayNoteR as string}
-                        onChange={(e) => onParamChange('drumDelayNoteR' as keyof SliderState, e.target.value as any)}
-                      >
-                        <option value="1/1">1/1</option><option value="1/2">1/2</option><option value="1/2d">1/2 dotted</option>
-                        <option value="1/4">1/4</option><option value="1/4d">1/4 dotted</option><option value="1/4t">1/4 triplet</option>
-                        <option value="1/8">1/8</option><option value="1/8d">1/8 dotted</option><option value="1/8t">1/8 triplet</option>
-                        <option value="1/16">1/16</option><option value="1/16d">1/16 dotted</option><option value="1/16t">1/16 triplet</option>
-                        <option value="1/32">1/32</option>
-                      </select>
-                    </div>
-                  </div>
-                  <Slider label="Feedback" value={state.drumDelayFeedback} paramKey="drumDelayFeedback" onChange={onParamChange} {...sliderProps('drumDelayFeedback')} />
-                  <Slider label="Mix" value={state.drumDelayMix} paramKey="drumDelayMix" onChange={onParamChange} {...sliderProps('drumDelayMix')} />
-                  <Slider label="Filter" value={state.drumDelayFilter} paramKey="drumDelayFilter" onChange={onParamChange} {...sliderProps('drumDelayFilter')} />
-                </>
-              )}
-            </div>
-          </div>
-
           {/* Status bar */}
           <div className="status-bar">
             <span className="count">64+</span> presets loaded across 7 voices
@@ -378,38 +394,57 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                 }
                 onSelectChange('drumEuclidMasterEnabled', next);
               }}
+              {...bindHelp('drumSeqPlayToggle')}
             >
               {state.drumEuclidMasterEnabled ? '■' : '▶'}
             </button>
             <DragNumber
-              value={state.drumEuclidBaseBPM as number}
+              value={state.sequencerMasterBPM as number}
               min={40}
               max={300}
               label="BPM"
-              onChange={(v) => onParamChange('drumEuclidBaseBPM' as keyof SliderState, v)}
+              onChange={setSharedSequencerBpm}
               shapeByDrag
             />
             <div className="seq-view-toggle">
               <button
                 className={`seq-view-btn${seq.viewMode === 'simple' ? ' active' : ''}`}
                 onClick={() => seq.setViewMode('simple')}
+                {...bindHelp('drumSeqViewSimple')}
               >
                 Simple
               </button>
               <button
                 className={`seq-view-btn${seq.viewMode === 'detail' ? ' active' : ''}`}
                 onClick={() => seq.setViewMode('detail')}
+                {...bindHelp('drumSeqViewDetail')}
               >
                 Detail
               </button>
               <button
                 className={`seq-view-btn${seq.viewMode === 'overview' ? ' active' : ''}`}
                 onClick={() => seq.setViewMode('overview')}
+                {...bindHelp('drumSeqViewOverview')}
               >
                 Overview
               </button>
 
             </div>
+          </div>
+
+          {/* Sequencer Preset (L1 drumEuclidean) */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', marginBottom: 4, borderRadius: 6, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>Pattern</span>
+            <PresetDropdown
+              level="engine"
+              scope="drumEuclidean"
+              state={state}
+              currentName={euclidPresetName}
+              onLoad={handleEuclidPresetLoad}
+              onStateChange={onStateChange}
+              showSaveButton={false}
+              compact
+            />
           </div>
 
           {/* ── Simple Mode (standalone random trigger) ── */}
@@ -472,6 +507,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                         style={{ '--vc': cfg.color } as React.CSSProperties}
                         onClick={() => seq.setParamSelect(seq.activeTab, `Target${voice.charAt(0).toUpperCase() + voice.slice(1)}`, !isOn as any)}
                         title={cfg.label}
+                        {...bindHelp('drumSeqSourceToggle', { label: cfg.label })}
                       >
                         {cfg.icon}
                       </button>
@@ -486,6 +522,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                       className="seq-clock-select"
                       value={seq.clockDivs[seq.activeTab]}
                       onChange={(e) => seq.setClockDiv(seq.activeTab, e.target.value as any)}
+                      {...bindHelp('drumSeqClockSelect')}
                     >
                       <option value="1/4">1/4</option>
                       <option value="1/8">1/8</option>
@@ -510,6 +547,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                     className={`seq-link-btn${seq.linked[seq.activeTab] ? ' on' : ''}`}
                     onClick={() => seq.toggleLinked(seq.activeTab)}
                     title={seq.linked[seq.activeTab] ? 'Sub-lanes linked to trigger steps' : 'Sub-lanes use independent step counts'}
+                    {...bindHelp('drumSeqLink')}
                   >
                     Link
                   </button>
@@ -520,6 +558,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                         idx === seq.activeTab ? { ...cfg, enabled: !cfg.enabled } : cfg
                       )));
                     }}
+                    {...bindHelp('drumSeqEvolve')}
                   >
                     Evolve
                   </button>
@@ -607,6 +646,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                   <button
                     className="seq-evolve-advanced-toggle"
                     onClick={() => setShowAdvanced(v => !v)}
+                    {...bindHelp('drumSeqEvolveAdvanced')}
                   >
                     {showAdvanced ? '▾' : '▸'} Advanced
                   </button>
@@ -617,10 +657,12 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                         <button
                           className={`seq-evolve-mode-btn${(seq.evolveConfigs[seq.activeTab]?.writeOffset ?? 'auto') === 'auto' ? ' active' : ''}`}
                           onClick={() => seq.setEvolveConfigs(prev => prev.map((cfg, idx) => idx === seq.activeTab ? { ...cfg, writeOffset: 'auto' } : cfg))}
+                          {...bindHelp('drumSeqWriteOffsetAuto')}
                         >Auto</button>
                         <button
                           className={`seq-evolve-mode-btn${typeof (seq.evolveConfigs[seq.activeTab]?.writeOffset ?? 'auto') === 'number' ? ' active' : ''}`}
                           onClick={() => seq.setEvolveConfigs(prev => prev.map((cfg, idx) => idx === seq.activeTab ? { ...cfg, writeOffset: 0 } : cfg))}
+                          {...bindHelp('drumSeqWriteOffsetManual')}
                         >Manual</button>
                       </span>
                       {typeof (seq.evolveConfigs[seq.activeTab]?.writeOffset ?? 'auto') === 'number' && (
@@ -637,10 +679,12 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                         <button
                           className={`seq-evolve-mode-btn${(seq.evolveConfigs[seq.activeTab]?.mutationMode ?? 'biased') === 'biased' ? ' active' : ''}`}
                           onClick={() => seq.setEvolveConfigs(prev => prev.map((cfg, idx) => idx === seq.activeTab ? { ...cfg, mutationMode: 'biased' } : cfg))}
+                          {...bindHelp('drumSeqMutationBiased')}
                         >Biased</button>
                         <button
                           className={`seq-evolve-mode-btn${(seq.evolveConfigs[seq.activeTab]?.mutationMode ?? 'biased') === 'strict' ? ' active' : ''}`}
                           onClick={() => seq.setEvolveConfigs(prev => prev.map((cfg, idx) => idx === seq.activeTab ? { ...cfg, mutationMode: 'strict' } : cfg))}
+                          {...bindHelp('drumSeqMutationStrict')}
                         >Strict</button>
                       </span>
                     </div>
@@ -701,6 +745,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                         className="seq-preset-select"
                         value={seq.getParam(seq.activeTab, 'Preset') as string}
                         onChange={(e) => seq.setParamSelect(seq.activeTab, 'Preset', e.target.value as any)}
+                        {...bindHelp('drumSeqTriggerPreset')}
                       >
                         {seq.presetNames.map((name) => (
                           <option key={name} value={name}>{name}</option>

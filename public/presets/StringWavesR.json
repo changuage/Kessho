@@ -352,23 +352,10 @@
     "drumEuclid4Level": 0.5,
     "oceanSampleEnabled": true,
     "oceanSampleLevel": 0.06,
-    "oceanWaveSynthEnabled": false,
-    "oceanWaveSynthLevel": 0.4,
     "oceanFilterType": "lowpass",
     "oceanFilterCutoff": 8000,
     "oceanFilterResonance": 0.1,
     "randomWalkSpeed": 0.2,
-    "oceanMix": 0,
-    "oceanWave2OffsetMin": 2,
-    "oceanWave2OffsetMax": 5,
-    "oceanPebblesMin": 0,
-    "oceanPebblesMax": 0.3,
-    "oceanPebbleSizeMin": 0.2,
-    "oceanPebbleSizeMax": 0.6,
-    "oceanDuration": 6.0,
-    "oceanInterval": 7.5,
-    "oceanFoam": 0.30000000000000004,
-    "oceanDepth": 0.44999999999999996,
     "leadVibratoDepth": 0,
     "leadVibratoRate": 0,
     "leadGlide": 0,
@@ -423,22 +410,6 @@
       "min": 0.19999999999999998,
       "max": 0.53
     },
-    "oceanDuration": {
-      "min": 4,
-      "max": 8
-    },
-    "oceanInterval": {
-      "min": 5,
-      "max": 10
-    },
-    "oceanFoam": {
-      "min": 0.2,
-      "max": 0.4
-    },
-    "oceanDepth": {
-      "min": 0.3,
-      "max": 0.6
-    },
     "leadDelayTime": {
       "min": 600,
       "max": 1000
@@ -458,10 +429,6 @@
   },
   "sliderModes": {
     "grainSize": "sampleHold",
-    "oceanDuration": "walk",
-    "oceanInterval": "walk",
-    "oceanFoam": "walk",
-    "oceanDepth": "walk",
     "leadDelayTime": "sampleHold",
     "leadDelayFeedback": "sampleHold",
     "leadDelayMix": "sampleHold",

@@ -1181,11 +1181,35 @@
   min-width: 8px;
   text-align: center;
 }
+.synth-root .sc-morph-row .sc-preset-slot {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
 .synth-root .sc-morph-row .sc-preset-select {
   flex: 1;
   min-width: 0;
   font-size: 0.65rem;
   padding: 2px 4px;
+}
+.synth-root .sc-morph-row .sc-slot-save {
+  flex-shrink: 0;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: var(--radius-sm, 4px);
+  background: rgba(255,255,255,0.06);
+  color: #cfd8e3;
+  font-size: 0.58rem;
+  line-height: 1;
+  padding: 4px 6px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.synth-root .sc-morph-row .sc-slot-save:hover {
+  border-color: rgba(255,255,255,0.24);
+  background: rgba(255,255,255,0.12);
+  color: #fff;
 }
 .synth-root .sc-morph-row .sc-morph-slider {
   flex: 1.2;

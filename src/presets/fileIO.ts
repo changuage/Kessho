@@ -4,8 +4,10 @@
 
 import type { PresetFile, PresetEntry, PresetLevel } from './types';
 import { extractParams } from './codec';
+import { generatePresetId, normalizePresetEntry } from './presetUtils';
 import type { ParamLevel } from './ParamRegistry';
 import type { SliderState } from '../ui/state';
+import { migratePreset } from '../ui/state';
 
 const APP_VERSION = '1.0.0';
 
@@ -23,16 +25,19 @@ function levelToPresetLevel(level: ParamLevel): PresetLevel {
 
 /** Download a PresetEntry as a .json file */
 export async function exportPresetToFile(entry: PresetEntry): Promise<void> {
+  const normalized = normalizePresetEntry(entry) ?? entry;
   const envelope: PresetFile = {
     kesshoPreset: true,
     formatVersion: 1,
-    type: entry.type,
-    engine: entry.engine,
-    source: entry.source,
-    name: entry.name,
+    id: normalized.id,
+    type: normalized.type,
+    scope: normalized.scope,
+    engine: normalized.engine,
+    source: normalized.source,
+    name: normalized.name,
     exportedAt: new Date().toISOString(),
     appVersion: APP_VERSION,
-    entry,
+    entry: normalized,
   };
 
   const blob = new Blob([JSON.stringify(envelope, null, 2)], {
@@ -86,45 +91,58 @@ export function importPresetFromFile(): Promise<PresetEntry | null> {
         const parsed = JSON.parse(text);
 
         // New Kessho format
-        if (parsed.kesshoPreset && parsed.entry) {
-          resolve(parsed.entry as PresetEntry);
+        if (parsed && typeof parsed === 'object' && parsed.kesshoPreset && parsed.entry) {
+          resolve(normalizePresetEntry(parsed.entry));
           return;
         }
 
         // Legacy SavedPreset format (full state dump)
-        if (parsed.state && parsed.name) {
+        if (parsed && typeof parsed === 'object' && parsed.state && parsed.name) {
+          const migrated = migratePreset(parsed);
+          const timestamp = Date.parse(migrated.timestamp) || Date.now();
           resolve({
+            id: generatePresetId(),
             type: 'state',
+            scope: undefined,
             name: parsed.name,
             author: 'user',
             versions: [{
               v: 1,
               note: 'imported from legacy format',
-              timestamp: Date.now(),
-              data: parsed.state,
+              timestamp,
+              data: migrated.state as unknown as Record<string, unknown>,
+              dualRanges: migrated.dualRanges,
+              sliderModes: migrated.sliderModes,
+              drumEvolveConfigs: migrated.drumEvolveConfigs,
+              synthEvolveConfigs: migrated.synthEvolveConfigs,
+              drumSubLaneStates: migrated.drumSubLaneStates,
+              synthSubLaneStates: migrated.synthSubLaneStates,
             }],
             currentVersion: 1,
-            createdAt: Date.now(),
-            updatedAt: Date.now(),
+            createdAt: timestamp,
+            updatedAt: timestamp,
           });
           return;
         }
 
         // Raw state object (no wrapper)
-        if (typeof parsed === 'object' && (parsed.masterVolume !== undefined || parsed.synthLevel !== undefined)) {
+        if (parsed && typeof parsed === 'object' && (parsed.masterVolume !== undefined || parsed.synthLevel !== undefined)) {
+          const now = Date.now();
           resolve({
+            id: generatePresetId(),
             type: 'state',
+            scope: undefined,
             name: file.name.replace('.json', ''),
             author: 'user',
             versions: [{
               v: 1,
               note: 'imported from raw state file',
-              timestamp: Date.now(),
+              timestamp: now,
               data: parsed,
             }],
             currentVersion: 1,
-            createdAt: Date.now(),
-            updatedAt: Date.now(),
+            createdAt: now,
+            updatedAt: now,
           });
           return;
         }
@@ -157,7 +175,9 @@ export async function quickExport(
   const params = extractParams(state, level, scope);
   const now = Date.now();
   const entry: PresetEntry = {
+    id: generatePresetId(),
     type: levelToPresetLevel(level),
+    scope,
     engine: level === 1 ? scope : undefined,
     source: level >= 2 ? scope : undefined,
     name: presetName,

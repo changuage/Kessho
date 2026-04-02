@@ -1,20 +1,66 @@
 // src/presets/ParamRegistry.ts
-// Phase 0 — Canonical mapping of every SliderState key to its preset level + scope.
-// Source of truth: Appendix C of Preset_Hierarchy_Plan.md (714 params).
+// Phase 0 — Canonical mapping of live preset-owned keys to their preset level + scope.
+// Intentional exclusions: `granularPreset` (UI shortcut) and `leadTimbre` (legacy/ignored).
 
 export type ParamLevel = 1 | 2 | 3 | 4;
 
 export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }> = {
 
   // ═══════════════════════════════════════════════════════════════════════
-  // L4: Global / State (23 params)
+  // L4: Global / State + Cross-Page Mix
   // ═══════════════════════════════════════════════════════════════════════
   masterVolume:          { level: 4, scope: 'global' },
   synthLevel:            { level: 4, scope: 'global' },
   pad2Level:             { level: 4, scope: 'global' },
+  drumLevel:             { level: 4, scope: 'global' },
+  leadLevel:             { level: 4, scope: 'global' },
+  lead1Level:            { level: 4, scope: 'global' },
+  lead2Level:            { level: 4, scope: 'global' },
   granularLevel:         { level: 4, scope: 'global' },
-  synthReverbSend:       { level: 4, scope: 'global' },
-  leadDelayReverbSend:   { level: 4, scope: 'global' },
+  earthLevel:            { level: 4, scope: 'global' },
+  pad1ReverbSend:        { level: 4, scope: 'global' },
+  pad2ReverbSend:        { level: 4, scope: 'global' },
+  pad1DelayASend:        { level: 4, scope: 'global' },
+  pad1DelayBSend:        { level: 4, scope: 'global' },
+  pad2DelayASend:        { level: 4, scope: 'global' },
+  pad2DelayBSend:        { level: 4, scope: 'global' },
+  drumReverbSend:        { level: 4, scope: 'global' },
+  leadReverbSend:        { level: 4, scope: 'global' },
+  lead1ReverbSend:       { level: 4, scope: 'global' },
+  lead2ReverbSend:       { level: 4, scope: 'global' },
+  lead1DelayASend:       { level: 4, scope: 'global' },
+  lead1DelayBSend:       { level: 4, scope: 'global' },
+  lead2DelayASend:       { level: 4, scope: 'global' },
+  lead2DelayBSend:       { level: 4, scope: 'global' },
+  delayAReverbSend:      { level: 4, scope: 'global' },
+  drumDelayASend:        { level: 4, scope: 'global' },
+  delayAToBSend:         { level: 2, scope: 'delayKit' },
+  delayAGranularSend:    { level: 2, scope: 'delayKit' },
+  delayBGranularSend:    { level: 2, scope: 'delayKit' },
+  drumDelayBSend:        { level: 4, scope: 'global' },
+  granularReverbSend:    { level: 4, scope: 'global' },
+  granularDelayASend:    { level: 4, scope: 'global' },
+  waterLevel:            { level: 4, scope: 'global' },
+  waterReverbSend:       { level: 4, scope: 'global' },
+  waterDelayASend:       { level: 4, scope: 'global' },
+  waterDelayBSend:       { level: 4, scope: 'global' },
+  insectsLevel:          { level: 4, scope: 'global' },
+  insects2Level:         { level: 4, scope: 'global' },
+  insectsReverbSend:     { level: 4, scope: 'global' },
+  insDelayASend:         { level: 4, scope: 'global' },
+  insDelayBSend:         { level: 4, scope: 'global' },
+  oceanSampleLevel:      { level: 4, scope: 'global' },
+  oceanReverbSend:       { level: 4, scope: 'global' },
+  oceanDelayASend:       { level: 4, scope: 'global' },
+  oceanDelayBSend:       { level: 4, scope: 'global' },
+  granularPad1Send:      { level: 4, scope: 'global' },
+  granularPad2Send:      { level: 4, scope: 'global' },
+  granularLead1Send:     { level: 4, scope: 'global' },
+  granularLead2Send:     { level: 4, scope: 'global' },
+  granularDrumSend:      { level: 4, scope: 'global' },
+  granularWavesSend:     { level: 4, scope: 'global' },
+  granularWaterSend:     { level: 4, scope: 'global' },
+  granularInsectsSend:   { level: 4, scope: 'global' },
   reverbLevel:           { level: 4, scope: 'global' },
   seedWindow:            { level: 4, scope: 'global' },
   randomness:            { level: 4, scope: 'global' },
@@ -30,26 +76,21 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   chordRate:             { level: 4, scope: 'global' },
   voicingSpread:         { level: 4, scope: 'global' },
   randomWalkSpeed:       { level: 4, scope: 'global' },
+  sequencerMasterBPM:    { level: 4, scope: 'global' },
 
   // ═══════════════════════════════════════════════════════════════════════
-  // L3: Synth Source (9 params)
+  // L3: Synth Source
   // ═══════════════════════════════════════════════════════════════════════
   leadEnabled:           { level: 3, scope: 'synth' },
   leadRandomEnabled:     { level: 3, scope: 'synth' },
-  leadLevel:             { level: 3, scope: 'synth' },
-  leadDelayTime:         { level: 3, scope: 'synth' },
-  leadDelayFeedback:     { level: 3, scope: 'synth' },
-  leadDelayMix:          { level: 3, scope: 'synth' },
   leadVibratoDepth:      { level: 3, scope: 'synth' },
   leadVibratoRate:       { level: 3, scope: 'synth' },
   leadGlide:             { level: 3, scope: 'synth' },
 
   // ═══════════════════════════════════════════════════════════════════════
-  // L3: Drums Source (17 params)
+  // L3: Drums Source
   // ═══════════════════════════════════════════════════════════════════════
   drumEnabled:           { level: 3, scope: 'drums' },
-  drumLevel:             { level: 3, scope: 'drums' },
-  drumReverbSend:        { level: 3, scope: 'drums' },
   drumMorphSliderAnimate:{ level: 3, scope: 'drums' },
   drumDelayEnabled:      { level: 3, scope: 'drums' },
   drumDelayNoteL:        { level: 3, scope: 'drums' },
@@ -66,7 +107,7 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   drumMembraneDelaySend: { level: 3, scope: 'drums' },
 
   // ═══════════════════════════════════════════════════════════════════════
-  // L3: Reverb Source (18 params)
+  // L3: Reverb Source
   // ═══════════════════════════════════════════════════════════════════════
   reverbEnabled:         { level: 3, scope: 'reverb' },
   reverbEngine:          { level: 3, scope: 'reverb' },
@@ -101,6 +142,9 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   reverbEarlyReflections: { level: 3, scope: 'reverb' },
   reverbAirAbsorption:   { level: 3, scope: 'reverb' },
   reverbSaturationMode:  { level: 3, scope: 'reverb' },
+  reverbScaleShimmer:    { level: 3, scope: 'reverb' },
+  reverbChordWash:       { level: 3, scope: 'reverb' },
+  reverbResolutionBloom: { level: 3, scope: 'reverb' },
   // v5 reverb params
   reverbTransientSmooth:  { level: 3, scope: 'reverb' },
   reverbErLpFreq:         { level: 3, scope: 'reverb' },
@@ -117,34 +161,22 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   spectralFreezeReverbCrossfade:   { level: 3, scope: 'reverb' },
 
   // ═══════════════════════════════════════════════════════════════════════
-  // L3: Granular Source (22 params)
+  // L3: Granular Source
   // ═══════════════════════════════════════════════════════════════════════
   granularEnabled:         { level: 3, scope: 'granular' },
-  granularDryWet:          { level: 3, scope: 'granular' },
   granularFreeze:          { level: 3, scope: 'granular' },
   granularFeedback:        { level: 3, scope: 'granular' },
   granularFeedbackLPF:     { level: 3, scope: 'granular' },
   granularBufferSeconds:   { level: 3, scope: 'granular' },
-  granularReverbSend:      { level: 3, scope: 'granular' },
+  granularShape:           { level: 3, scope: 'granular' },
+  granularDiffusion:       { level: 3, scope: 'granular' },
   granularReverbLPF:       { level: 3, scope: 'granular' },
   granularOutputLPF:       { level: 3, scope: 'granular' },
-  granularPad1Send:        { level: 3, scope: 'granular' },
-  granularPad2Send:        { level: 3, scope: 'granular' },
-  granularLead1Send:       { level: 3, scope: 'granular' },
-  granularLead2Send:       { level: 3, scope: 'granular' },
-  granularDrumSend:        { level: 3, scope: 'granular' },
-  granularWavesSend:       { level: 3, scope: 'granular' },
-  granularDelayEnabled:    { level: 3, scope: 'granular' },
-  granularDelayActivity:   { level: 3, scope: 'granular' },
-  granularDelayRepeats:    { level: 3, scope: 'granular' },
-  granularDelayTime:       { level: 3, scope: 'granular' },
-  granularDelayFilter:     { level: 3, scope: 'granular' },
-  granularDelayVibrato:    { level: 3, scope: 'granular' },
-  granularDelayMix:        { level: 3, scope: 'granular' },
-  granularDelayReverbSend: { level: 3, scope: 'granular' },
+  granularChordBias:       { level: 3, scope: 'granular' },
+
 
   // ═══════════════════════════════════════════════════════════════════════
-  // L2: Pad 1 Kit Preset (10 params)
+  // L2: Pad 1 Kit Preset
   // ═══════════════════════════════════════════════════════════════════════
   padEnabled:            { level: 2, scope: 'pad1Kit' },
   padPresetA:            { level: 2, scope: 'pad1Kit' },
@@ -154,11 +186,10 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   padMorphSpeed:         { level: 2, scope: 'pad1Kit' },
   synthVoiceMask:        { level: 2, scope: 'pad1Kit' },
   waveSpread:            { level: 2, scope: 'pad1Kit' },
-  detune:                { level: 2, scope: 'pad1Kit' },
   synthOctave:           { level: 2, scope: 'pad1Kit' },
 
   // ═══════════════════════════════════════════════════════════════════════
-  // L2: Pad 2 Kit Preset (8 params)
+  // L2: Pad 2 Kit Preset
   // ═══════════════════════════════════════════════════════════════════════
   pad2Enabled:           { level: 2, scope: 'pad2Kit' },
   pad2PresetA:           { level: 2, scope: 'pad2Kit' },
@@ -170,7 +201,7 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   pad2Octave:            { level: 2, scope: 'pad2Kit' },
 
   // ═══════════════════════════════════════════════════════════════════════
-  // L2: Lead 1 Kit Preset (8 params)
+  // L2: Lead 1 Kit Preset
   // ═══════════════════════════════════════════════════════════════════════
   lead1PresetA:          { level: 2, scope: 'lead1Kit' },
   lead1PresetB:          { level: 2, scope: 'lead1Kit' },
@@ -179,11 +210,9 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   lead1MorphSpeed:       { level: 2, scope: 'lead1Kit' },
   lead1MorphMode:        { level: 2, scope: 'lead1Kit' },
   lead1AlgorithmMode:    { level: 2, scope: 'lead1Kit' },
-  lead1Level:            { level: 2, scope: 'lead1Kit' },
-  lead1ReverbSend:       { level: 2, scope: 'lead1Kit' },
 
   // ═══════════════════════════════════════════════════════════════════════
-  // L2: Lead 2 Kit Preset (9 params)
+  // L2: Lead 2 Kit Preset
   // ═══════════════════════════════════════════════════════════════════════
   lead2Enabled:          { level: 2, scope: 'lead2Kit' },
   lead2PresetC:          { level: 2, scope: 'lead2Kit' },
@@ -193,8 +222,6 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   lead2MorphSpeed:       { level: 2, scope: 'lead2Kit' },
   lead2MorphMode:        { level: 2, scope: 'lead2Kit' },
   lead2AlgorithmMode:    { level: 2, scope: 'lead2Kit' },
-  lead2Level:            { level: 2, scope: 'lead2Kit' },
-  lead2ReverbSend:       { level: 2, scope: 'lead2Kit' },
 
   // ═══════════════════════════════════════════════════════════════════════
   // L2: Drum Kit (56 params = 14 distance/variation + 42 morph config)
@@ -266,7 +293,7 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   drumMembraneMorphMode: { level: 2, scope: 'drumKit' },
 
   // ═══════════════════════════════════════════════════════════════════════
-  // L2: Granular Kit Preset (12 params)
+  // L2: Granular Kit Preset
   // ═══════════════════════════════════════════════════════════════════════
   granularV1Enabled:       { level: 2, scope: 'granularKit' },
   granularV1Gain:          { level: 2, scope: 'granularKit' },
@@ -276,36 +303,28 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   granularV3Gain:          { level: 2, scope: 'granularKit' },
   granularV4Enabled:       { level: 2, scope: 'granularKit' },
   granularV4Gain:          { level: 2, scope: 'granularKit' },
+  granularMacroActivity:   { level: 2, scope: 'granularKit' },
   granularMacroTexture:    { level: 2, scope: 'granularKit' },
   granularMacroComplexity: { level: 2, scope: 'granularKit' },
   granularMacroDarkness:   { level: 2, scope: 'granularKit' },
   granularMacroChaos:      { level: 2, scope: 'granularKit' },
+  granularDelayBSend:      { level: 2, scope: 'granularKit' },
+  granularDelayReverbSend: { level: 2, scope: 'granularKit' },
+  delayBGranularLinked:    { level: 2, scope: 'granularKit' },
 
   // ═══════════════════════════════════════════════════════════════════════
-  // L2: Earth Kit Preset (19 params)
+  // L2: Earth Kit Preset
   // ═══════════════════════════════════════════════════════════════════════
   waterEnabled:          { level: 2, scope: 'earthKit' },
-  waterLevel:            { level: 2, scope: 'earthKit' },
   insectsEnabled:        { level: 2, scope: 'earthKit' },
-  insectsLevel:          { level: 2, scope: 'earthKit' },
-  insectsReverbSend:     { level: 2, scope: 'earthKit' },
   insects2Enabled:       { level: 2, scope: 'earthKit' },
-  insects2Level:         { level: 2, scope: 'earthKit' },
   oceanSampleEnabled:    { level: 2, scope: 'earthKit' },
-  oceanSampleLevel:      { level: 2, scope: 'earthKit' },
-  oceanWaveSynthEnabled: { level: 2, scope: 'earthKit' },
-  oceanWaveSynthLevel:   { level: 2, scope: 'earthKit' },
-  oceanReverbSend:       { level: 2, scope: 'earthKit' },
   oceanFilterType:       { level: 2, scope: 'earthKit' },
   oceanFilterCutoff:     { level: 2, scope: 'earthKit' },
   oceanFilterResonance:  { level: 2, scope: 'earthKit' },
-  oceanDuration:         { level: 2, scope: 'earthKit' },
-  oceanInterval:         { level: 2, scope: 'earthKit' },
-  oceanFoam:             { level: 2, scope: 'earthKit' },
-  oceanDepth:            { level: 2, scope: 'earthKit' },
 
   // ═══════════════════════════════════════════════════════════════════════
-  // L1: Pad 1 Engine (48 params)
+  // L1: Pad 1 Engine
   // ═══════════════════════════════════════════════════════════════════════
   padOscAWave:           { level: 1, scope: 'pad1' },
   padOscAOctave:         { level: 1, scope: 'pad1' },
@@ -335,6 +354,9 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   hardness:              { level: 1, scope: 'pad1' },
   warmth:                { level: 1, scope: 'pad1' },
   presence:              { level: 1, scope: 'pad1' },
+  padFoldAmount:         { level: 1, scope: 'pad1' },
+  padFoldMode:           { level: 1, scope: 'pad1' },
+  detune:                { level: 1, scope: 'pad1' },
   synthAttack:           { level: 1, scope: 'pad1' },
   synthDecay:            { level: 1, scope: 'pad1' },
   synthSustain:          { level: 1, scope: 'pad1' },
@@ -357,7 +379,7 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   padOscMix:             { level: 1, scope: 'pad1' },
 
   // ═══════════════════════════════════════════════════════════════════════
-  // L1: Pad 2 Engine (48 params)
+  // L1: Pad 2 Engine
   // ═══════════════════════════════════════════════════════════════════════
   pad2Attack:            { level: 1, scope: 'pad2' },
   pad2Decay:             { level: 1, scope: 'pad2' },
@@ -366,6 +388,8 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   pad2Hardness:          { level: 1, scope: 'pad2' },
   pad2Warmth:            { level: 1, scope: 'pad2' },
   pad2Presence:          { level: 1, scope: 'pad2' },
+  pad2FoldAmount:        { level: 1, scope: 'pad2' },
+  pad2FoldMode:          { level: 1, scope: 'pad2' },
   pad2OscMix:            { level: 1, scope: 'pad2' },
   pad2FilterType:        { level: 1, scope: 'pad2' },
   pad2FilterCutoffMin:   { level: 1, scope: 'pad2' },
@@ -409,7 +433,7 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   pad2ModEnvDest:        { level: 1, scope: 'pad2' },
 
   // ═══════════════════════════════════════════════════════════════════════
-  // L1: Lead 1 Engine (9 params)
+  // L1: Lead 1 Engine
   // ═══════════════════════════════════════════════════════════════════════
   lead1UseCustomAdsr:    { level: 1, scope: 'lead1' },
   lead1Attack:           { level: 1, scope: 'lead1' },
@@ -422,7 +446,7 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   lead1OctaveRange:      { level: 1, scope: 'lead1' },
 
   // ═══════════════════════════════════════════════════════════════════════
-  // L1: Lead 2 Engine (6 params)
+  // L1: Lead 2 Engine
   // ═══════════════════════════════════════════════════════════════════════
   lead2UseCustomAdsr:    { level: 1, scope: 'lead2' },
   lead2Attack:           { level: 1, scope: 'lead2' },
@@ -432,8 +456,20 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   lead2Release:          { level: 1, scope: 'lead2' },
 
   // ═══════════════════════════════════════════════════════════════════════
-  // L1: Synth Euclidean Engine (43 params)
+  // L1: Delay A Engine
   // ═══════════════════════════════════════════════════════════════════════
+  delayAEnabled:          { level: 1, scope: 'leadDelay' },
+  delayATime:             { level: 1, scope: 'leadDelay' },
+  delayAFeedback:         { level: 1, scope: 'leadDelay' },
+  delayAMix:              { level: 1, scope: 'leadDelay' },
+  delayASpread:           { level: 1, scope: 'leadDelay' },
+  delayAFilter:           { level: 1, scope: 'leadDelay' },
+  delayASend:             { level: 1, scope: 'leadDelay' },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // L1: Synth Euclidean Engine
+  // ═══════════════════════════════════════════════════════════════════════
+  synthEuclidBaseBPM:          { level: 1, scope: 'synthEuclidean' },
   synthEuclideanMasterEnabled: { level: 1, scope: 'synthEuclidean' },
   synthEuclideanTempo:         { level: 1, scope: 'synthEuclidean' },
   synthChordSequencerEnabled:  { level: 1, scope: 'synthEuclidean' },
@@ -695,32 +731,45 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   drumEuclid4Level:        { level: 1, scope: 'drumEuclidean' },
 
   // ═══════════════════════════════════════════════════════════════════════
-  // L1: Water Engine (18 params)
+  // L1: Water Engine
   // ═══════════════════════════════════════════════════════════════════════
   waterPreset:           { level: 1, scope: 'water' },
   waterMorphA:           { level: 1, scope: 'water' },
   waterMorphB:           { level: 1, scope: 'water' },
   waterMorph:            { level: 1, scope: 'water' },
   waterIntensity:        { level: 1, scope: 'water' },
-  waterRate:             { level: 1, scope: 'water' },
   waterDistance:         { level: 1, scope: 'water' },
   waterBaseFreq:         { level: 1, scope: 'water' },
   waterDropSize:         { level: 1, scope: 'water' },
   waterHardness:         { level: 1, scope: 'water' },
   waterGlassThickness:   { level: 1, scope: 'water' },
-  waterReverbSend:       { level: 1, scope: 'water' },
   waterLayerHardDrops:   { level: 1, scope: 'water' },
   waterLayerWaterDrops:  { level: 1, scope: 'water' },
   waterLayerTurbulence:  { level: 1, scope: 'water' },
   waterLayerBubbling:    { level: 1, scope: 'water' },
   waterLayerSurf:        { level: 1, scope: 'water' },
   waterLayerChannels:    { level: 1, scope: 'water' },
+  waterHardDropRate:     { level: 1, scope: 'water' },
+  waterHardDropLPF:      { level: 1, scope: 'water' },
+  waterWaterDropRate:    { level: 1, scope: 'water' },
+  waterWaterDropLPF:     { level: 1, scope: 'water' },
+  waterBubblingRate:     { level: 1, scope: 'water' },
+  waterBubblingLPF:      { level: 1, scope: 'water' },
   waterSurfDuration:     { level: 1, scope: 'water' },
   waterSurfInterval:     { level: 1, scope: 'water' },
   waterSurfFoam:         { level: 1, scope: 'water' },
+  waterSurfFoamBright:   { level: 1, scope: 'water' },
+  waterSurfProximity:    { level: 1, scope: 'water' },
   waterSurfDepth:        { level: 1, scope: 'water' },
   waterSurfBody:         { level: 1, scope: 'water' },
   waterSurfSpray:        { level: 1, scope: 'water' },
+  waterDensityHardSend:  { level: 1, scope: 'water' },
+  waterDensityWaterSend: { level: 1, scope: 'water' },
+  waterDensityBubbleSend:{ level: 1, scope: 'water' },
+  waterDensityFeedback:  { level: 1, scope: 'water' },
+  waterDensityTone:      { level: 1, scope: 'water' },
+  waterDensityRing:      { level: 1, scope: 'water' },
+  waterDensityWet:       { level: 1, scope: 'water' },
   waterChannelsMorph:    { level: 1, scope: 'water' },
   waterChannelsSpeed:    { level: 1, scope: 'water' },
 
@@ -765,11 +814,12 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   wetLPF:                { level: 1, scope: 'legacyGranular' },
 
   // ═══════════════════════════════════════════════════════════════════════
-  // L1: Granular Voice 1 Engine (20 params)
+  // L1: Granular Voice 1 Engine (21 params)
   // ═══════════════════════════════════════════════════════════════════════
   granularV1Mode:          { level: 1, scope: 'granularVoice1' },
   granularV1Slice:         { level: 1, scope: 'granularVoice1' },
   granularV1Speed:         { level: 1, scope: 'granularVoice1' },
+  granularV1ScanRate:      { level: 1, scope: 'granularVoice1' },
   granularV1Reverse:       { level: 1, scope: 'granularVoice1' },
   granularV1Pitch:         { level: 1, scope: 'granularVoice1' },
   granularV1Attack:        { level: 1, scope: 'granularVoice1' },
@@ -778,6 +828,8 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   granularV1GrainOct:      { level: 1, scope: 'granularVoice1' },
   granularV1Spray:         { level: 1, scope: 'granularVoice1' },
   granularV1Density:       { level: 1, scope: 'granularVoice1' },
+  granularV1TempoSync:     { level: 1, scope: 'granularVoice1' },
+  granularV1TempoDiv:      { level: 1, scope: 'granularVoice1' },
   granularV1GrainSize:     { level: 1, scope: 'granularVoice1' },
   granularV1Pan:           { level: 1, scope: 'granularVoice1' },
   granularV1PosLFORate:    { level: 1, scope: 'granularVoice1' },
@@ -789,11 +841,12 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   granularV1RecordLFORate: { level: 1, scope: 'granularVoice1' },
 
   // ═══════════════════════════════════════════════════════════════════════
-  // L1: Granular Voice 2 Engine (20 params)
+  // L1: Granular Voice 2 Engine (21 params)
   // ═══════════════════════════════════════════════════════════════════════
   granularV2Mode:          { level: 1, scope: 'granularVoice2' },
   granularV2Slice:         { level: 1, scope: 'granularVoice2' },
   granularV2Speed:         { level: 1, scope: 'granularVoice2' },
+  granularV2ScanRate:      { level: 1, scope: 'granularVoice2' },
   granularV2Reverse:       { level: 1, scope: 'granularVoice2' },
   granularV2Pitch:         { level: 1, scope: 'granularVoice2' },
   granularV2Attack:        { level: 1, scope: 'granularVoice2' },
@@ -802,6 +855,8 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   granularV2GrainOct:      { level: 1, scope: 'granularVoice2' },
   granularV2Spray:         { level: 1, scope: 'granularVoice2' },
   granularV2Density:       { level: 1, scope: 'granularVoice2' },
+  granularV2TempoSync:     { level: 1, scope: 'granularVoice2' },
+  granularV2TempoDiv:      { level: 1, scope: 'granularVoice2' },
   granularV2GrainSize:     { level: 1, scope: 'granularVoice2' },
   granularV2Pan:           { level: 1, scope: 'granularVoice2' },
   granularV2PosLFORate:    { level: 1, scope: 'granularVoice2' },
@@ -813,11 +868,12 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   granularV2RecordLFORate: { level: 1, scope: 'granularVoice2' },
 
   // ═══════════════════════════════════════════════════════════════════════
-  // L1: Granular Voice 3 Engine (20 params)
+  // L1: Granular Voice 3 Engine (21 params)
   // ═══════════════════════════════════════════════════════════════════════
   granularV3Mode:          { level: 1, scope: 'granularVoice3' },
   granularV3Slice:         { level: 1, scope: 'granularVoice3' },
   granularV3Speed:         { level: 1, scope: 'granularVoice3' },
+  granularV3ScanRate:      { level: 1, scope: 'granularVoice3' },
   granularV3Reverse:       { level: 1, scope: 'granularVoice3' },
   granularV3Pitch:         { level: 1, scope: 'granularVoice3' },
   granularV3Attack:        { level: 1, scope: 'granularVoice3' },
@@ -826,6 +882,8 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   granularV3GrainOct:      { level: 1, scope: 'granularVoice3' },
   granularV3Spray:         { level: 1, scope: 'granularVoice3' },
   granularV3Density:       { level: 1, scope: 'granularVoice3' },
+  granularV3TempoSync:     { level: 1, scope: 'granularVoice3' },
+  granularV3TempoDiv:      { level: 1, scope: 'granularVoice3' },
   granularV3GrainSize:     { level: 1, scope: 'granularVoice3' },
   granularV3Pan:           { level: 1, scope: 'granularVoice3' },
   granularV3PosLFORate:    { level: 1, scope: 'granularVoice3' },
@@ -837,11 +895,12 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   granularV3RecordLFORate: { level: 1, scope: 'granularVoice3' },
 
   // ═══════════════════════════════════════════════════════════════════════
-  // L1: Granular Voice 4 Engine (20 params)
+  // L1: Granular Voice 4 Engine (21 params)
   // ═══════════════════════════════════════════════════════════════════════
   granularV4Mode:          { level: 1, scope: 'granularVoice4' },
   granularV4Slice:         { level: 1, scope: 'granularVoice4' },
   granularV4Speed:         { level: 1, scope: 'granularVoice4' },
+  granularV4ScanRate:      { level: 1, scope: 'granularVoice4' },
   granularV4Reverse:       { level: 1, scope: 'granularVoice4' },
   granularV4Pitch:         { level: 1, scope: 'granularVoice4' },
   granularV4Attack:        { level: 1, scope: 'granularVoice4' },
@@ -850,6 +909,8 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   granularV4GrainOct:      { level: 1, scope: 'granularVoice4' },
   granularV4Spray:         { level: 1, scope: 'granularVoice4' },
   granularV4Density:       { level: 1, scope: 'granularVoice4' },
+  granularV4TempoSync:     { level: 1, scope: 'granularVoice4' },
+  granularV4TempoDiv:      { level: 1, scope: 'granularVoice4' },
   granularV4GrainSize:     { level: 1, scope: 'granularVoice4' },
   granularV4Pan:           { level: 1, scope: 'granularVoice4' },
   granularV4PosLFORate:    { level: 1, scope: 'granularVoice4' },
@@ -871,59 +932,49 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   granularLegacyFeedback:      { level: 1, scope: 'granularLegacy' },
 
   // ═══════════════════════════════════════════════════════════════════════
-  // L1: Granular Euclidean Engine (41 params)
+  // L1: Echo Line Engine (Delay A voicing — new params from delay overhaul)
   // ═══════════════════════════════════════════════════════════════════════
-  granularEuclidMasterEnabled: { level: 1, scope: 'granularEuclidean' },
-  granularEuclidBaseBPM:       { level: 1, scope: 'granularEuclidean' },
-  granularEuclidTempo:         { level: 1, scope: 'granularEuclidean' },
-  granularEuclidSwing:         { level: 1, scope: 'granularEuclidean' },
-  granularEuclidDivision:      { level: 1, scope: 'granularEuclidean' },
-  // Lane 1 (9)
-  granularEuclid1Enabled:      { level: 1, scope: 'granularEuclidean' },
-  granularEuclid1Preset:       { level: 1, scope: 'granularEuclidean' },
-  granularEuclid1Steps:        { level: 1, scope: 'granularEuclidean' },
-  granularEuclid1Hits:         { level: 1, scope: 'granularEuclidean' },
-  granularEuclid1Rotation:     { level: 1, scope: 'granularEuclidean' },
-  granularEuclid1Probability:  { level: 1, scope: 'granularEuclidean' },
-  granularEuclid1VelocityMin:  { level: 1, scope: 'granularEuclidean' },
-  granularEuclid1VelocityMax:  { level: 1, scope: 'granularEuclidean' },
-  granularEuclid1Level:        { level: 1, scope: 'granularEuclidean' },
-  // Lane 2 (9)
-  granularEuclid2Enabled:      { level: 1, scope: 'granularEuclidean' },
-  granularEuclid2Preset:       { level: 1, scope: 'granularEuclidean' },
-  granularEuclid2Steps:        { level: 1, scope: 'granularEuclidean' },
-  granularEuclid2Hits:         { level: 1, scope: 'granularEuclidean' },
-  granularEuclid2Rotation:     { level: 1, scope: 'granularEuclidean' },
-  granularEuclid2Probability:  { level: 1, scope: 'granularEuclidean' },
-  granularEuclid2VelocityMin:  { level: 1, scope: 'granularEuclidean' },
-  granularEuclid2VelocityMax:  { level: 1, scope: 'granularEuclidean' },
-  granularEuclid2Level:        { level: 1, scope: 'granularEuclidean' },
-  // Lane 3 (9)
-  granularEuclid3Enabled:      { level: 1, scope: 'granularEuclidean' },
-  granularEuclid3Preset:       { level: 1, scope: 'granularEuclidean' },
-  granularEuclid3Steps:        { level: 1, scope: 'granularEuclidean' },
-  granularEuclid3Hits:         { level: 1, scope: 'granularEuclidean' },
-  granularEuclid3Rotation:     { level: 1, scope: 'granularEuclidean' },
-  granularEuclid3Probability:  { level: 1, scope: 'granularEuclidean' },
-  granularEuclid3VelocityMin:  { level: 1, scope: 'granularEuclidean' },
-  granularEuclid3VelocityMax:  { level: 1, scope: 'granularEuclidean' },
-  granularEuclid3Level:        { level: 1, scope: 'granularEuclidean' },
-  // Lane 4 (9)
-  granularEuclid4Enabled:      { level: 1, scope: 'granularEuclidean' },
-  granularEuclid4Preset:       { level: 1, scope: 'granularEuclidean' },
-  granularEuclid4Steps:        { level: 1, scope: 'granularEuclidean' },
-  granularEuclid4Hits:         { level: 1, scope: 'granularEuclidean' },
-  granularEuclid4Rotation:     { level: 1, scope: 'granularEuclidean' },
-  granularEuclid4Probability:  { level: 1, scope: 'granularEuclidean' },
-  granularEuclid4VelocityMin:  { level: 1, scope: 'granularEuclidean' },
-  granularEuclid4VelocityMax:  { level: 1, scope: 'granularEuclidean' },
-  granularEuclid4Level:        { level: 1, scope: 'granularEuclidean' },
+  delayAPingPong:         { level: 1, scope: 'echoLine' },
+  delayAModRate:          { level: 1, scope: 'echoLine' },
+  delayAModDepth:         { level: 1, scope: 'echoLine' },
+  delayADuck:             { level: 1, scope: 'echoLine' },
+  delayAFilterType:       { level: 1, scope: 'echoLine' },
+  delayAWidth:            { level: 1, scope: 'echoLine' },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // L1: Clocked Space Engine (Delay B voicing — new params from delay overhaul)
+  // ═══════════════════════════════════════════════════════════════════════
+  delayBPattern:          { level: 1, scope: 'clockedSpace' },
+  delayBWarp:             { level: 1, scope: 'clockedSpace' },
+  delayBWarpIntensity:    { level: 1, scope: 'clockedSpace' },
+  delayBSpread:           { level: 1, scope: 'clockedSpace' },
+  granularDelayEnabled:   { level: 1, scope: 'clockedSpace' },
+  granularDelayActivity:  { level: 1, scope: 'clockedSpace' },
+  granularDelayRepeats:   { level: 1, scope: 'clockedSpace' },
+  granularDelayTime:      { level: 1, scope: 'clockedSpace' },
+  granularDelayFilter:    { level: 1, scope: 'clockedSpace' },
+  granularDelayVibrato:   { level: 1, scope: 'clockedSpace' },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // L2: Delay Kit (cross-feed routing + master saturation)
+  // ═══════════════════════════════════════════════════════════════════════
+  delayBToASend:          { level: 2, scope: 'delayKit' },
+  delayACrossFeedFilter:  { level: 2, scope: 'delayKit' },
+  masterSatDrive:         { level: 2, scope: 'delayKit' },
+  masterSatMode:          { level: 2, scope: 'delayKit' },
+  masterSatTone:          { level: 2, scope: 'delayKit' },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // L3: Delay Source (page-level modes)
+  // ═══════════════════════════════════════════════════════════════════════
+  granularSpaceMode:      { level: 3, scope: 'delay' },
+
 };
 
-// Runtime assertion — catches drift between registry and hierarchy plan
+// Runtime assertion — catches accidental registry drift.
 if (typeof globalThis !== 'undefined') {
   const count = Object.keys(PARAM_REGISTRY).length;
-  if (count !== 714) {
-    console.error(`PARAM_REGISTRY has ${count} entries, expected 714`);
+  if (count !== 783) {
+    console.error(`PARAM_REGISTRY has ${count} entries, expected 783`);
   }
 }

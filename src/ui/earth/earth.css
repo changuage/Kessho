@@ -126,6 +126,53 @@
   padding: 10px 12px;
 }
 
+.earth-root .earth-preset-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.earth-root .earth-preset-bar,
+.earth-root .earth-preset-slot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.earth-root .earth-preset-bar {
+  margin-bottom: 10px;
+}
+
+.earth-root .earth-preset-slot {
+  flex: 0 0 132px;
+}
+
+.earth-root .earth-preset-select {
+  margin-bottom: 0;
+  min-width: 0;
+}
+
+.earth-root .earth-preset-save {
+  flex-shrink: 0;
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm);
+  background: rgba(255,255,255,0.06);
+  color: var(--text-primary);
+  font-size: 0.62rem;
+  line-height: 1;
+  padding: 6px 8px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+
+.earth-root .earth-preset-save:hover {
+  border-color: rgba(255,255,255,0.28);
+  background: rgba(255,255,255,0.12);
+  color: #fff;
+}
+
 /* ── Param Row ── */
 .earth-root .param-row {
   display: flex;

@@ -13,6 +13,8 @@
 import React, { useState, useCallback } from 'react';
 import type { SliderState, SliderMode } from '../state';
 import type { DualSliderRange } from '../DualSlider';
+import { PresetDropdown } from '../../presets/PresetDropdown';
+import type { PresetEntry } from '../../presets/types';
 import './reverb.css';
 
 // ═══ Reverb Character Presets ═══
@@ -423,6 +425,7 @@ export interface ReverbPageProps {
   isMobile: boolean;
   onParamChange: (key: keyof SliderState, value: number) => void;
   onSelectChange: <K extends keyof SliderState>(key: K, value: SliderState[K]) => void;
+  onStateChange?: (newState: SliderState) => void;
   sliderProps: (paramKey: keyof SliderState) => {
     mode: SliderMode;
     dualRange?: DualSliderRange;
@@ -442,6 +445,7 @@ export default function ReverbPage({
   isMobile: _isMobile,
   onParamChange,
   onSelectChange,
+  onStateChange,
   sliderProps,
   SliderComponent,
   SelectComponent,
@@ -579,22 +583,14 @@ export default function ReverbPage({
                 {/* Character Presets */}
                 <div style={{ marginBottom: 10 }}>
                   <div className="reverb-subsection" style={{ marginTop: 0 }}>Character Preset</div>
-                  <div className="reverb-preset-grid">
-                    {Object.entries(REVERB_CHARACTER_PRESETS).map(([key, preset]) => (
-                      <button
-                        key={key}
-                        className="reverb-preset-btn"
-                        title={preset.description}
-                        onClick={() => {
-                          for (const [k, v] of Object.entries(preset.params)) {
-                            onSelectChange(k as keyof SliderState, v as SliderState[keyof SliderState]);
-                          }
-                        }}
-                      >
-                        {preset.label}
-                      </button>
-                    ))}
-                  </div>
+                  <PresetDropdown
+                    level="source"
+                    scope="reverb"
+                    state={state}
+                    onLoad={(_entry: PresetEntry, _data: Record<string, unknown>) => {}}
+                    onStateChange={onStateChange}
+                    compact
+                  />
                 </div>
 
                 {/* Core mod params */}

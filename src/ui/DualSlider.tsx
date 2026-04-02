@@ -12,6 +12,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import type { SliderMode } from './state';
+import { useSliderHelp } from './SliderHelpOverlay';
+import type { SliderPageId } from './sliderHelpCatalog';
 
 // ═══ Exported Types ═══
 
@@ -88,6 +90,10 @@ function logToLinear(value: number, min: number, max: number): number {
   return (Math.log(value) - minLog) / (maxLog - minLog);
 }
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
 // ═══ Component ═══
 
 export interface DualSliderProps<K extends string = string> {
@@ -99,11 +105,14 @@ export interface DualSliderProps<K extends string = string> {
 
   unit?: string;
   logarithmic?: boolean;
+  helpPage?: SliderPageId;
+  disabled?: boolean;
   mode: SliderMode;
   dualRange?: DualSliderRange;
   walkPosition?: number;
   isFlashing?: boolean;
   format?: (v: number) => string;
+  ghostValue?: number;
 
   onChange: (key: K, value: number) => void;
   onCycleMode: (key: K) => void;
@@ -135,11 +144,14 @@ export function DualSlider<K extends string = string>({
   quantizeFn,
   unit,
   logarithmic,
+  helpPage,
+  disabled = false,
   mode,
   dualRange,
   walkPosition,
   isFlashing,
   format: formatProp,
+  ghostValue,
   onChange,
   onCycleMode,
   onDualRangeChange,
@@ -153,12 +165,15 @@ export function DualSlider<K extends string = string>({
 }: DualSliderProps<K>) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState<'min' | 'max' | null>(null);
+  const { announceSlider } = useSliderHelp();
+  const announceHelp = () => announceSlider(String(paramKey), { label, page: helpPage });
 
   // Long press detection for mobile (cycle slider mode)
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressTriggeredRef = useRef(false);
 
   const handleLongPressStart = (_e: React.TouchEvent) => {
+    if (disabled) return;
     longPressTriggeredRef.current = false;
     longPressTimerRef.current = setTimeout(() => {
       longPressTriggeredRef.current = true;
@@ -197,9 +212,13 @@ export function DualSlider<K extends string = string>({
     return info.step < 1 ? val.toFixed(2) : String(Math.round(val));
   };
 
-  const handleDoubleClick = () => onCycleMode(paramKey);
+  const handleDoubleClick = () => {
+    if (disabled) return;
+    onCycleMode(paramKey);
+  };
 
   const handleDragStart = (thumb: 'min' | 'max') => (e: React.MouseEvent | React.TouchEvent) => {
+    if (disabled) return;
     e.preventDefault();
     setDragging(thumb);
   };
@@ -207,6 +226,7 @@ export function DualSlider<K extends string = string>({
   const isDualMode = mode !== 'single';
   const modeColor = mode === 'walk' ? '#a5c4d4' : '#D4A520';
   const modeLabel = mode === 'walk' ? '⟷ walk' : '⟷ S&H';
+  const ghostPercent = ghostValue == null ? null : valueToPercent(clamp(ghostValue, info.min, info.max));
 
   // Drag handling
   useEffect(() => {
@@ -215,7 +235,9 @@ export function DualSlider<K extends string = string>({
     const handleMove = (e: MouseEvent | TouchEvent) => {
       if (!containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
-      const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+      const clientX = 'touches' in e
+        ? (e.touches.length > 0 ? e.touches[0]!.clientX : rect.left)
+        : e.clientX;
       const percent = ((clientX - rect.left) / rect.width) * 100;
       const newValue = quantizeFn(paramKey, percentToValue(percent));
 
@@ -244,6 +266,8 @@ export function DualSlider<K extends string = string>({
   // ── Single slider mode ──
   if (!isDualMode) {
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      announceHelp();
+      if (disabled) return;
       let newValue = parseFloat(e.target.value);
       if (logarithmic) {
         newValue = linearToLog(newValue, info.min, info.max);
@@ -263,7 +287,12 @@ export function DualSlider<K extends string = string>({
       : 0;
 
     return (
-      <div className={groupClassName} style={groupStyle}>
+      <div
+        className={groupClassName}
+        style={{ ...groupStyle, opacity: disabled ? 0.58 : 1 }}
+        onMouseEnter={announceHelp}
+        onPointerDown={announceHelp}
+      >
         <div className={labelClassName} style={labelStyle}>
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flexShrink: 1 }}>
             {label}
@@ -273,24 +302,45 @@ export function DualSlider<K extends string = string>({
             {unit || ''}
           </span>
         </div>
-        <input
-          type="range"
-          min={sliderMin}
-          max={sliderMax}
-          step={sliderStep}
-          value={sliderValue}
-          onChange={handleChange}
-          onDoubleClick={handleDoubleClick}
-          onTouchStart={handleLongPressStart}
-          onTouchEnd={handleLongPressEnd}
-          onTouchMove={handleLongPressMove}
-          className={sliderClassName}
-          style={{
-            ...sliderStyle,
-            background: `linear-gradient(to right, ${fillColor} 0%, ${fillColor} ${fillPercent}%, rgba(255,255,255,0.2) ${fillPercent}%, rgba(255,255,255,0.2) 100%)`,
-          }}
-          title="Double-click or long-press to cycle mode"
-        />
+        <div style={{ position: 'relative' }}>
+          <input
+            type="range"
+            min={sliderMin}
+            max={sliderMax}
+            step={sliderStep}
+            value={sliderValue}
+            onChange={handleChange}
+            onFocus={announceHelp}
+            onDoubleClick={handleDoubleClick}
+            onTouchStart={handleLongPressStart}
+            onTouchEnd={handleLongPressEnd}
+            onTouchMove={handleLongPressMove}
+            disabled={disabled}
+            className={sliderClassName}
+            style={{
+              ...sliderStyle,
+              cursor: disabled ? 'not-allowed' : undefined,
+              background: `linear-gradient(to right, ${fillColor} 0%, ${fillColor} ${fillPercent}%, rgba(255,255,255,0.2) ${fillPercent}%, rgba(255,255,255,0.2) 100%)`,
+            }}
+            title="Double-click or long-press to cycle mode"
+          />
+          {ghostPercent !== null && Number.isFinite(ghostPercent) && (
+            <div
+              style={{
+                position: 'absolute',
+                left: `${ghostPercent}%`,
+                top: 'calc(50% + 1px)',
+                width: '2px',
+                height: '16px',
+                transform: 'translate(-50%, -50%)',
+                borderRadius: '999px',
+                background: 'rgba(255, 226, 150, 0.98)',
+                boxShadow: '0 0 8px rgba(255, 214, 120, 0.7)',
+                pointerEvents: 'none',
+              }}
+            />
+          )}
+        </div>
       </div>
     );
   }
@@ -308,7 +358,12 @@ export function DualSlider<K extends string = string>({
     : value;
 
   return (
-    <div className={`${groupClassName} dual-active`} style={groupStyle}>
+    <div
+      className={`${groupClassName} dual-active`}
+      style={{ ...groupStyle, opacity: disabled ? 0.58 : 1 }}
+      onMouseEnter={announceHelp}
+      onPointerDown={announceHelp}
+    >
       <div className={labelClassName} style={labelStyle}>
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flexShrink: 1 }}>
           {label}
@@ -325,10 +380,13 @@ export function DualSlider<K extends string = string>({
       <div
         ref={containerRef}
         style={dualStyles.container}
+        onMouseEnter={announceHelp}
+        onPointerDown={announceHelp}
         onDoubleClick={handleDoubleClick}
         onTouchStart={handleLongPressStart}
         onTouchEnd={handleLongPressEnd}
         onTouchMove={handleLongPressMove}
+        aria-disabled={disabled}
         title="Double-click or long-press to cycle mode"
       >
         {/* Range track */}
@@ -346,6 +404,7 @@ export function DualSlider<K extends string = string>({
             ...dualStyles.thumb,
             left: `${minPercent}%`,
             background: dragging === 'min' ? '#fff' : modeColor,
+            cursor: disabled ? 'not-allowed' : 'ew-resize',
           }}
           onMouseDown={handleDragStart('min')}
           onTouchStart={handleDragStart('min')}
@@ -356,6 +415,7 @@ export function DualSlider<K extends string = string>({
             ...dualStyles.thumb,
             left: `${maxPercent}%`,
             background: dragging === 'max' ? '#fff' : modeColor,
+            cursor: disabled ? 'not-allowed' : 'ew-resize',
           }}
           onMouseDown={handleDragStart('max')}
           onTouchStart={handleDragStart('max')}
@@ -374,6 +434,23 @@ export function DualSlider<K extends string = string>({
             } : {}),
           }}
         />
+        {ghostPercent !== null && Number.isFinite(ghostPercent) && (
+          <div
+            style={{
+              position: 'absolute',
+              left: `${ghostPercent}%`,
+              top: 'calc(50% + 1px)',
+              width: '2px',
+              height: '16px',
+              transform: 'translate(-50%, -50%)',
+              borderRadius: '999px',
+              background: 'rgba(255, 226, 150, 0.98)',
+              boxShadow: '0 0 8px rgba(255, 214, 120, 0.7)',
+              pointerEvents: 'none',
+              zIndex: 3,
+            }}
+          />
+        )}
       </div>
     </div>
   );

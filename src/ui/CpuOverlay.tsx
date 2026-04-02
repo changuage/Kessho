@@ -69,7 +69,7 @@ export const CpuOverlay: React.FC = () => {
     // Keep last 3 taps
     if (tapRef.current.length > 3) tapRef.current.shift();
     // Check if 3 taps within 800ms
-    if (tapRef.current.length === 3 && now - tapRef.current[0] < 800) {
+    if (tapRef.current.length === 3 && now - (tapRef.current[0] ?? now) < 800) {
       tapRef.current = [];
       toggle();
     }
@@ -91,7 +91,8 @@ export const CpuOverlay: React.FC = () => {
       }
       // Include any extra keys not in DISPLAY_ORDER
       for (const key of Object.keys(snap)) {
-        if (!(key in out)) out[key] = snap[key];
+        const metrics = snap[key];
+        if (!(key in out) && metrics) out[key] = metrics;
       }
       setDisplayPerfData(out);
     }, 2000);

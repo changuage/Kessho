@@ -2,9 +2,19 @@
 // Phase 1 — React hook for preset CRUD at any level.
 
 import { useState, useCallback, useEffect } from 'react';
-import type { PresetEntry, PresetLevel, PresetSummary } from './types';
+import type {
+  PresetEntry,
+  PresetFamilySummary,
+  PresetIdentityMetadata,
+  PresetLevel,
+  PresetSaveIdentity,
+  PresetSummary,
+  PresetVersionMetadata,
+} from './types';
 import { getPresetStore } from './PresetStore';
-import { extractParams, applyParams } from './codec';
+import { extractParams, applyParams, extractCascade, compressVersions, getVersionData } from './codec';
+import { extractPresetVersionMetadata } from './presetUtils';
+import { buildPresetFamilies } from './catalog';
 import type { ParamLevel } from './ParamRegistry';
 import type { SliderState } from '../ui/state';
 
@@ -21,10 +31,19 @@ function levelToParamLevel(level: PresetLevel): ParamLevel {
 export interface UsePresetsResult {
   /** List of preset summaries for the current level/engine */
   presets: PresetSummary[];
+  /** Presets grouped into family + horizontal variant collections */
+  families: PresetFamilySummary[];
   /** Whether the preset list is loading */
   loading: boolean;
   /** Save current state as a new preset (or push a new version if name matches) */
-  save: (name: string, state: SliderState, note?: string, tags?: string[]) => Promise<void>;
+  save: (
+    name: string,
+    state: SliderState,
+    note?: string,
+    tags?: string[],
+    metadata?: PresetVersionMetadata,
+    identity?: PresetSaveIdentity,
+  ) => Promise<void>;
   /** Load a preset by name, returns the full entry */
   load: (name: string, version?: number) => Promise<PresetEntry | null>;
   /** Delete a preset by name (only user presets) */
@@ -35,6 +54,17 @@ export interface UsePresetsResult {
   extract: (state: SliderState) => Record<string, unknown>;
   /** Apply preset data to state, returning new state */
   apply: (state: SliderState, data: Record<string, unknown>) => SliderState;
+  /** Update metadata on a preset without creating a new version */
+  updateMetadata: (name: string, meta: Partial<PresetIdentityMetadata>) => Promise<void>;
+}
+
+export interface UsePresetsOptions {
+  /**
+   * Custom param extraction function. When provided, overrides the default
+   * `extractParams(state, level, scope)` during save. Useful for composite
+   * presets (e.g. granular scenes) that span multiple levels.
+   */
+  customExtract?: (state: SliderState) => Record<string, unknown>;
 }
 
 /**
@@ -42,26 +72,28 @@ export interface UsePresetsResult {
  *
  * @param type   - Preset level ('engine', 'kit', 'source', 'state', 'journey')
  * @param scope  - For L1: engine name (e.g. 'pad1', 'drumKick'). For L2/L3: source (e.g. 'synth', 'drums')
+ * @param options - Optional config (e.g. customExtract for composite presets)
  */
-export function usePresets(type: PresetLevel, scope?: string): UsePresetsResult {
+export function usePresets(type: PresetLevel, scope?: string, options?: UsePresetsOptions): UsePresetsResult {
   const [presets, setPresets] = useState<PresetSummary[]>([]);
+  const [families, setFamilies] = useState<PresetFamilySummary[]>([]);
   const [loading, setLoading] = useState(true);
   const store = getPresetStore();
   const paramLevel = levelToParamLevel(type);
-
-  // Determine engine/source from scope depending on level
-  const engine = type === 'engine' ? scope : undefined;
+  const storeScope = scope;
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const list = await store.list(type, engine);
+      const list = await store.list(type, storeScope);
       setPresets(list);
+      setFamilies(buildPresetFamilies(list));
     } catch (e) {
       console.warn('Failed to load preset list:', e);
+      setFamilies([]);
     }
     setLoading(false);
-  }, [type, engine, store]);
+  }, [type, storeScope, store]);
 
   // Load on mount and when scope changes
   useEffect(() => {
@@ -73,38 +105,72 @@ export function usePresets(type: PresetLevel, scope?: string): UsePresetsResult 
     state: SliderState,
     note?: string,
     tags?: string[],
+    metadata?: PresetVersionMetadata,
+    identity?: PresetSaveIdentity,
   ) => {
-    const data = extractParams(state, paramLevel, scope);
+    const data = options?.customExtract
+      ? options.customExtract(state)
+      : (paramLevel >= 3 ? extractCascade(state, paramLevel, scope) : extractParams(state, paramLevel, scope));
     const now = Date.now();
 
     // Check if preset already exists → push new version
-    const existing = await store.load(type, name, engine);
-    if (existing && existing.author === 'user') {
+    const existing = await store.load(type, name, storeScope);
+    const existingVersion = existing?.versions.find(v => v.v === existing.currentVersion)
+      || existing?.versions[existing.versions.length - 1];
+    // Merge: start with preserved metadata from prior version, then overlay any caller-supplied fields
+    const preserved = extractPresetVersionMetadata(existingVersion);
+    const preservedMetadata = metadata
+      ? { ...(preserved || {}), ...metadata }
+      : preserved;
+    const isMutableUserPreset = !!existing && existing.author === 'user' && existing.library === 'user';
+    if (isMutableUserPreset && existing) {
       const maxV = Math.max(...existing.versions.map(v => v.v));
       existing.versions.push({
         v: maxV + 1,
         note: note || '',
         timestamp: now,
         data,
+        ...(preservedMetadata || {}),
       });
       existing.currentVersion = maxV + 1;
       existing.updatedAt = now;
       if (tags) existing.tags = tags;
+      if (identity?.creator !== undefined) existing.creator = identity.creator;
+      if (identity?.description !== undefined) existing.description = identity.description;
+      if (identity?.familyId !== undefined) existing.familyId = identity.familyId;
+      if (identity?.familyName !== undefined) existing.familyName = identity.familyName;
+      if (identity?.variantId !== undefined) existing.variantId = identity.variantId;
+      if (identity?.variantName !== undefined) existing.variantName = identity.variantName;
+      if (identity?.variantRank !== undefined) existing.variantRank = identity.variantRank;
+      if (identity?.visibility !== undefined) existing.visibility = identity.visibility;
+      compressVersions(existing);
       await store.save(existing);
     } else {
       // New preset (or saving over factory creates user copy)
+      const actualName = existing && existing.author !== 'user' ? `${name} (Custom)` : name;
       const entry: PresetEntry = {
         type,
-        engine,
-        source: type !== 'engine' ? scope : undefined,
-        name: existing?.author === 'factory' ? `${name} (Custom)` : name,
+        scope: storeScope,
+        engine: type === 'engine' ? storeScope : undefined,
+        source: type !== 'engine' ? storeScope : undefined,
+        name: actualName,
         author: 'user',
+        library: 'user',
+        creator: identity?.creator ?? existing?.creator,
+        description: identity?.description ?? existing?.description,
+        visibility: identity?.visibility ?? 'private',
+        familyId: identity?.familyId ?? existing?.familyId,
+        familyName: identity?.familyName ?? existing?.familyName ?? name,
+        variantId: identity?.variantId,
+        variantName: identity?.variantName ?? actualName,
+        variantRank: identity?.variantRank,
         tags: tags || [],
         versions: [{
           v: 1,
           note: note || '',
           timestamp: now,
           data,
+          ...(preservedMetadata || {}),
         }],
         currentVersion: 1,
         createdAt: now,
@@ -114,28 +180,52 @@ export function usePresets(type: PresetLevel, scope?: string): UsePresetsResult 
     }
 
     await refresh();
-  }, [type, scope, engine, paramLevel, store, refresh]);
+  }, [type, scope, storeScope, paramLevel, store, refresh, options]);
 
-  const load = useCallback(async (name: string, _version?: number): Promise<PresetEntry | null> => {
-    return store.load(type, name, engine);
-  }, [type, engine, store]);
+  const load = useCallback(async (name: string, version?: number): Promise<PresetEntry | null> => {
+    const entry = await store.load(type, name, storeScope, version);
+    // Lazy migration: compress uncompressed user presets on first load
+    if (entry && entry.author === 'user' && entry.versions.length > 1) {
+      const needsCompression = entry.versions.some(
+        (v, i) => i > 0 && !(v as Record<string, unknown>)._isDelta
+      );
+      if (needsCompression) {
+        compressVersions(entry);
+        store.save(entry).catch(() => {});
+      }
+    }
+    return entry;
+  }, [type, storeScope, store]);
 
   const remove = useCallback(async (name: string): Promise<boolean> => {
-    const entry = await store.load(type, name, engine);
+    const entry = await store.load(type, name, storeScope);
     if (!entry) return false;
-    if (entry.author === 'factory') return false; // Can't delete factory presets
-    await store.delete(type, name, engine);
+    await store.delete(type, name, storeScope);
     await refresh();
     return true;
-  }, [type, engine, store, refresh]);
+  }, [type, storeScope, store, refresh]);
 
   const extract = useCallback((state: SliderState): Record<string, unknown> => {
-    return extractParams(state, paramLevel, scope);
-  }, [paramLevel, scope]);
+    return options?.customExtract
+      ? options.customExtract(state)
+      : (paramLevel >= 3 ? extractCascade(state, paramLevel, scope) : extractParams(state, paramLevel, scope));
+  }, [paramLevel, scope, options]);
 
   const apply = useCallback((state: SliderState, data: Record<string, unknown>): SliderState => {
     return applyParams(state, data, paramLevel, scope);
   }, [paramLevel, scope]);
 
-  return { presets, loading, save, load, remove, refresh, extract, apply };
+  const updateMetadata = useCallback(async (name: string, meta: Partial<PresetIdentityMetadata>) => {
+    const entry = await store.load(type, name, storeScope);
+    if (!entry) return;
+    if (meta.rating !== undefined) entry.rating = meta.rating;
+    if (meta.description !== undefined) entry.description = meta.description;
+    if (meta.visibility !== undefined) entry.visibility = meta.visibility;
+    if (meta.creator !== undefined) entry.creator = meta.creator;
+    entry.updatedAt = Date.now();
+    await store.save(entry);
+    await refresh();
+  }, [type, storeScope, store, refresh]);
+
+  return { presets, families, loading, save, load, remove, refresh, extract, apply, updateMetadata };
 }

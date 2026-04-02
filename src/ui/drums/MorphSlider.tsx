@@ -1,6 +1,12 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import type { SliderState, SliderMode } from '../state';
 import type { DrumVoiceType } from '../../audio/drumSynth';
+import { useSliderHelp } from '../SliderHelpOverlay';
+import { usePresets } from '../../presets/usePresets';
+import {
+  getFactoryPresetNames,
+  setUserPresets,
+} from '../../audio/drumPresets';
 
 interface DualSliderRange {
   min: number;
@@ -38,6 +44,36 @@ const MODE_LABELS: Record<SliderMode, string> = {
   sampleHold: '⟷ S&H',
 };
 
+const DRUM_ENGINE_SCOPES: Record<DrumVoiceType, string> = {
+  sub: 'drumSub',
+  kick: 'drumKick',
+  click: 'drumClick',
+  beepHi: 'drumBeepHi',
+  beepLo: 'drumBeepLo',
+  noise: 'drumNoise',
+  membrane: 'drumMembrane',
+};
+
+function createRuntimeDrumPreset(
+  voice: DrumVoiceType,
+  name: string,
+  data: Record<string, unknown>,
+  tags?: string[],
+) {
+  const params: Record<string, number | string> = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (typeof value === 'number' || typeof value === 'string') {
+      params[key] = value;
+    }
+  }
+  return {
+    name,
+    voice,
+    params,
+    tags: tags ?? [],
+  };
+}
+
 const MorphSlider: React.FC<MorphSliderProps> = ({
   voice,
   state,
@@ -47,10 +83,16 @@ const MorphSlider: React.FC<MorphSliderProps> = ({
   sliderProps: getSliderProps,
 }) => {
   const morph = MORPH_KEYS[voice];
+  const engineScope = DRUM_ENGINE_SCOPES[voice];
+  const { presets: enginePresets, load } = usePresets('engine', engineScope);
   const sp = getSliderProps(morph.morph);
   const isDual = sp.mode !== 'single';
   const trackRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState<'min' | 'max' | null>(null);
+  const { announceSlider } = useSliderHelp();
+  const announceHelp = useCallback(() => {
+    announceSlider(String(morph.morph), { label: 'Morph' });
+  }, [announceSlider, morph.morph]);
 
   // Long press for mobile mode cycling
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -79,7 +121,9 @@ const MorphSlider: React.FC<MorphSliderProps> = ({
     const handleMove = (e: MouseEvent | TouchEvent) => {
       if (!trackRef.current) return;
       const rect = trackRef.current.getBoundingClientRect();
-      const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+      const clientX = 'touches' in e
+        ? (e.touches.length > 0 ? e.touches[0]!.clientX : rect.left)
+        : e.clientX;
       const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
       const newValue = Math.round(pct * 100) / 100;
 
@@ -106,19 +150,85 @@ const MorphSlider: React.FC<MorphSliderProps> = ({
 
   const morphValue = state[morph.morph] as number;
   const modeColor = sp.mode === 'walk' ? '#a5c4d4' : sp.mode === 'sampleHold' ? '#D4A520' : color;
+  const factoryPresetNames = getFactoryPresetNames(voice);
+  const knownPresetNames = getPresetNames(voice);
+  const summaryByName = new Map(enginePresets.map(preset => [preset.name, preset]));
+  const userPresetNames: string[] = [];
+  const cloudPresetNames: string[] = [];
+
+  for (const name of knownPresetNames) {
+    if (factoryPresetNames.includes(name)) continue;
+    const summary = summaryByName.get(name);
+    if (summary?.library === 'cloud') {
+      cloudPresetNames.push(name);
+    } else {
+      userPresetNames.push(name);
+    }
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const syncRuntimePresets = async () => {
+      const runtimeNames = enginePresets
+        .filter(preset => preset.library !== 'stock')
+        .map(preset => preset.name);
+
+      if (!runtimeNames.length) {
+        setUserPresets(voice, []);
+        return;
+      }
+
+      const runtimePresets = await Promise.all(runtimeNames.map(async (name) => {
+        const entry = await load(name);
+        if (!entry) return null;
+        const version = entry.versions.find(v => v.v === entry.currentVersion)
+          || entry.versions[entry.versions.length - 1];
+        if (!version) return null;
+        return createRuntimeDrumPreset(voice, entry.name, version.data, entry.tags);
+      }));
+
+      if (!cancelled) {
+        setUserPresets(voice, runtimePresets.filter((preset): preset is ReturnType<typeof createRuntimeDrumPreset> => Boolean(preset)));
+      }
+    };
+
+    syncRuntimePresets().catch((error) => {
+      console.warn(`Failed to sync drum L1 presets for ${voice}:`, error);
+      if (!cancelled) setUserPresets(voice, []);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [enginePresets, load, voice]);
 
   return (
     <div className="vc-morph-row">
       <span className="morph-label">A</span>
-      <select
-        value={String(state[morph.a])}
-        onChange={(e) => onParamChange(morph.a, e.target.value as SliderState[keyof SliderState])}
-        data-voice={voice}
-        data-slot="A"
-        title="Preset A"
-      >
-        {getPresetNames(voice).map((name) => <option key={name} value={name}>{name}</option>)}
-      </select>
+      <div className="morph-slot-wrap">
+        <select
+          value={String(state[morph.a])}
+          onChange={(e) => onParamChange(morph.a, e.target.value as SliderState[keyof SliderState])}
+          data-voice={voice}
+          data-slot="A"
+          title="Preset A"
+        >
+          <optgroup label="Stock">
+            {factoryPresetNames.map((name) => <option key={name} value={name}>{name}</option>)}
+          </optgroup>
+          {userPresetNames.length > 0 && (
+            <optgroup label="My Presets">
+              {userPresetNames.map((name) => <option key={name} value={name}>{name}</option>)}
+            </optgroup>
+          )}
+          {cloudPresetNames.length > 0 && (
+            <optgroup label="Cloud">
+              {cloudPresetNames.map((name) => <option key={name} value={name}>{name}</option>)}
+            </optgroup>
+          )}
+        </select>
+      </div>
 
       {/* Single mode: standard range input */}
       {!isDual && (
@@ -129,7 +239,13 @@ const MorphSlider: React.FC<MorphSliderProps> = ({
           step={0.01}
           value={morphValue}
           data-key={`morph-${voice}`}
-          onChange={(e) => onParamChange(morph.morph, parseFloat(e.target.value) as SliderState[keyof SliderState])}
+          onChange={(e) => {
+            announceHelp();
+            onParamChange(morph.morph, parseFloat(e.target.value) as SliderState[keyof SliderState]);
+          }}
+          onMouseEnter={announceHelp}
+          onPointerDown={announceHelp}
+          onFocus={announceHelp}
           onDoubleClick={() => sp.onCycleMode(morph.morph)}
           onTouchStart={handleLongPressStart}
           onTouchEnd={cancelLongPress}
@@ -155,6 +271,8 @@ const MorphSlider: React.FC<MorphSliderProps> = ({
             <div
               className="morph-dual-track"
               ref={trackRef}
+              onMouseEnter={announceHelp}
+              onPointerDown={announceHelp}
               onDoubleClick={() => sp.onCycleMode(morph.morph)}
               onTouchStart={handleLongPressStart}
               onTouchEnd={cancelLongPress}
@@ -181,30 +299,44 @@ const MorphSlider: React.FC<MorphSliderProps> = ({
               <div
                 className="morph-dual-thumb"
                 style={{ left: `${minPct}%`, borderColor: modeColor }}
-                onMouseDown={(e) => { e.preventDefault(); setDragging('min'); }}
-                onTouchStart={(e) => { e.stopPropagation(); setDragging('min'); }}
+                onMouseDown={(e) => { e.preventDefault(); announceHelp(); setDragging('min'); }}
+                onTouchStart={(e) => { e.stopPropagation(); announceHelp(); setDragging('min'); }}
               />
               {/* Max thumb */}
               <div
                 className="morph-dual-thumb"
                 style={{ left: `${maxPct}%`, borderColor: modeColor }}
-                onMouseDown={(e) => { e.preventDefault(); setDragging('max'); }}
-                onTouchStart={(e) => { e.stopPropagation(); setDragging('max'); }}
+                onMouseDown={(e) => { e.preventDefault(); announceHelp(); setDragging('max'); }}
+                onTouchStart={(e) => { e.stopPropagation(); announceHelp(); setDragging('max'); }}
               />
             </div>
           </div>
         );
       })()}
 
-      <select
-        value={String(state[morph.b])}
-        onChange={(e) => onParamChange(morph.b, e.target.value as SliderState[keyof SliderState])}
-        data-voice={voice}
-        data-slot="B"
-        title="Preset B"
-      >
-        {getPresetNames(voice).map((name) => <option key={name} value={name}>{name}</option>)}
-      </select>
+      <div className="morph-slot-wrap">
+        <select
+          value={String(state[morph.b])}
+          onChange={(e) => onParamChange(morph.b, e.target.value as SliderState[keyof SliderState])}
+          data-voice={voice}
+          data-slot="B"
+          title="Preset B"
+        >
+          <optgroup label="Stock">
+            {factoryPresetNames.map((name) => <option key={name} value={name}>{name}</option>)}
+          </optgroup>
+          {userPresetNames.length > 0 && (
+            <optgroup label="My Presets">
+              {userPresetNames.map((name) => <option key={name} value={name}>{name}</option>)}
+            </optgroup>
+          )}
+          {cloudPresetNames.length > 0 && (
+            <optgroup label="Cloud">
+              {cloudPresetNames.map((name) => <option key={name} value={name}>{name}</option>)}
+            </optgroup>
+          )}
+        </select>
+      </div>
       <span className="morph-label">B</span>
     </div>
   );

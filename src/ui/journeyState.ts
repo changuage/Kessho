@@ -83,7 +83,10 @@ export function useJourney(
   
   // Animation frame ref for smooth updates
   const animationRef = useRef<number | null>(null);
+  const timeoutRef = useRef<number | null>(null);
   const lastTimeRef = useRef<number>(0);
+  const stateRef = useRef(state);
+  stateRef.current = state;
   
   // Keep refs to avoid stale closures in animation loop
   const configRef = useRef<JourneyConfig | null>(null);
@@ -97,6 +100,18 @@ export function useJourney(
   
   // Calculate milliseconds per phrase (1 phrase = phraseSeconds, default 16s)
   const msPerPhrase = phraseSeconds * 1000;
+
+  const cancelScheduledTick = useCallback(() => {
+    if (animationRef.current !== null) {
+      cancelAnimationFrame(animationRef.current);
+      animationRef.current = null;
+    }
+    if (timeoutRef.current !== null) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+  }, []);
+  const scheduleTickRef = useRef<() => void>(() => {});
   
   // ========================================================================
   // CONFIGURATION ACTIONS
@@ -136,7 +151,7 @@ export function useJourney(
                   ...n, 
                   presetId: preset.name, 
                   presetName: preset.name,
-                  color: JOURNEY_NODE_COLORS[0]
+                  color: JOURNEY_NODE_COLORS[0] ?? '#8B5CF6'
                 }
               : n
           ),
@@ -153,7 +168,7 @@ export function useJourney(
                 ...n, 
                 presetId: preset.name, 
                 presetName: preset.name,
-                color: JOURNEY_NODE_COLORS[colorIndex % JOURNEY_NODE_COLORS.length]
+                color: JOURNEY_NODE_COLORS[colorIndex % JOURNEY_NODE_COLORS.length] ?? JOURNEY_NODE_COLORS[0] ?? '#8B5CF6'
               }
             : n
         ),
@@ -192,7 +207,7 @@ export function useJourney(
                 ...n, 
                 presetId: preset.name, 
                 presetName: preset.name,
-                color: JOURNEY_NODE_COLORS[colorIndex % JOURNEY_NODE_COLORS.length]
+                color: JOURNEY_NODE_COLORS[colorIndex % JOURNEY_NODE_COLORS.length] ?? JOURNEY_NODE_COLORS[0] ?? '#8B5CF6'
               }
             : n
         ),
@@ -328,7 +343,7 @@ export function useJourney(
       }
     }
     
-    return outgoing[0].toNodeId;
+    return outgoing[0]?.toNodeId ?? null;
   }, []); // No dependencies - uses configRef
   
   /**
@@ -338,14 +353,14 @@ export function useJourney(
   const animate = useCallback((timestamp: number) => {
     const currentConfig = configRef.current;
     if (!currentConfig) {
-      animationRef.current = null;
+      cancelScheduledTick();
       return;
     }
     
     // On first frame, just record the timestamp without advancing time
     if (lastTimeRef.current === 0) {
       lastTimeRef.current = timestamp;
-      animationRef.current = requestAnimationFrame(animate);
+      scheduleTickRef.current();
       return;
     }
     
@@ -563,11 +578,27 @@ export function useJourney(
     
     // Continue animation loop only if still playing
     if (shouldContinue) {
-      animationRef.current = requestAnimationFrame(animate);
+      scheduleTickRef.current();
     } else {
-      animationRef.current = null;
+      cancelScheduledTick();
     }
-  }, [msPerPhrase, selectNextNode]); // Uses refs to avoid stale closures
+  }, [cancelScheduledTick, msPerPhrase, selectNextNode]); // Uses refs to avoid stale closures
+
+  const scheduleNextTick = useCallback(() => {
+    if (document.visibilityState === 'visible') {
+      animationRef.current = requestAnimationFrame((frameTime) => {
+        animationRef.current = null;
+        animate(frameTime);
+      });
+      return;
+    }
+
+    timeoutRef.current = window.setTimeout(() => {
+      timeoutRef.current = null;
+      animate(performance.now());
+    }, 100);
+  }, [animate]);
+  scheduleTickRef.current = scheduleNextTick;
   
   /**
    * Start journey playback
@@ -600,8 +631,9 @@ export function useJourney(
         }
       }
       // Fallback to first connection if loop didn't find one
-      if (!firstNode) {
-        firstNode = config.nodes.find(n => n.id === startConnections[0].toNodeId);
+      const fallbackConnection = startConnections[0];
+      if (!firstNode && fallbackConnection) {
+        firstNode = config.nodes.find(n => n.id === fallbackConnection.toNodeId);
       }
     }
     
@@ -649,33 +681,43 @@ export function useJourney(
       resolvedMorphDuration: 0,
     });
     
+    cancelScheduledTick();
     lastTimeRef.current = 0;
-    animationRef.current = requestAnimationFrame(animate);
-  }, [config, animate]); // Uses onLoadPresetRef to avoid stale closures
+    scheduleNextTick();
+  }, [config, animate, cancelScheduledTick, scheduleNextTick]); // Uses onLoadPresetRef to avoid stale closures
   
   /**
    * Stop journey playback
    */
   const stop = useCallback(() => {
-    if (animationRef.current) {
-      cancelAnimationFrame(animationRef.current);
-      animationRef.current = null;
-    }
+    cancelScheduledTick();
     
     setState(prev => ({
       ...prev,
       phase: 'idle',
     }));
-  }, []);
+  }, [cancelScheduledTick]);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      const currentState = stateRef.current;
+      if (currentState.phase === 'idle' || currentState.phase === 'ended') return;
+      cancelScheduledTick();
+      lastTimeRef.current = performance.now();
+      scheduleNextTick();
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [cancelScheduledTick, scheduleNextTick]);
   
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-      }
+      cancelScheduledTick();
     };
-  }, []);
+  }, [cancelScheduledTick]);
   
   // ========================================================================
   // SIMULATION (for demo/testing)

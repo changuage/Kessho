@@ -49,7 +49,7 @@
 .granular-root select { color-scheme: dark; }
 .granular-root select option { background: #1a1a2e; color: #e0e0e0; }
 
-/* Layout — Two-panel (matching DrumPage/SynthPage pattern) */
+/* Layout — Two-panel (left: controls, right: voices) */
 .granular-root .granular-container {
   max-width: 1200px;
   margin: 0 auto;
@@ -57,7 +57,6 @@
   gap: 12px;
   align-items: flex-start;
   flex-wrap: wrap;
-  padding: 8px;
 }
 
 .granular-root .granular-sound-panel {
@@ -69,7 +68,7 @@
   gap: 8px;
 }
 
-.granular-root .granular-sequencer-panel {
+.granular-root .granular-voices-panel {
   flex: 1;
   min-width: 380px;
   max-width: 100%;
@@ -77,7 +76,7 @@
 
 @media (max-width: 900px) {
   .granular-root .granular-sound-panel,
-  .granular-root .granular-sequencer-panel {
+  .granular-root .granular-voices-panel {
     flex: 1 1 100%;
     min-width: 0;
     max-width: 100%;
@@ -88,11 +87,44 @@
 .granular-root .granular-global-bar {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   padding: 8px 12px;
   background: rgba(15, 25, 40, 0.95);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
+}
+
+.granular-root .granular-preset-meta {
+  margin: 0.45rem 0 0.85rem;
+  padding: 0.65rem 0.8rem 0.75rem;
+  border: 1px solid rgba(255,255,255,0.09);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.02));
+}
+
+.granular-root .granular-preset-description {
+  color: rgba(255,255,255,0.92);
+  font-size: 0.83rem;
+  line-height: 1.35;
+}
+
+.granular-root .granular-preset-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+}
+
+.granular-root .granular-preset-tag {
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.05);
+  color: rgba(255,255,255,0.72);
+  font-size: 0.68rem;
+  letter-spacing: 0.02em;
+  text-transform: lowercase;
 }
 
 .granular-root .granular-global-bar .granular-title {
@@ -158,6 +190,17 @@
   min-width: 0;
 }
 
+.granular-root .granular-input-sources-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px 10px;
+  align-items: start;
+}
+
+.granular-root .granular-input-sources-grid > * {
+  min-width: 0;
+}
+
 .granular-root .granular-preset-select {
   padding: 3px 6px;
   border-radius: var(--radius-sm);
@@ -169,16 +212,137 @@
   max-width: 120px;
 }
 
+.granular-root .granular-chip-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.granular-root .granular-chip-label {
+  font-size: var(--font-xs);
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.granular-root .granular-chip-btn {
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--font-xs);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.granular-root .granular-chip-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+}
+
+.granular-root .granular-chip-btn.active {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.24), rgba(6, 182, 212, 0.08));
+  border-color: var(--granular-accent);
+  color: #fff;
+}
+
+.granular-root .granular-top-mode-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.granular-root .granular-section-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.granular-root .granular-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px 4px;
+}
+
+.granular-root .granular-section-title {
+  font-size: var(--font-md);
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: 0.2px;
+}
+
+.granular-root .granular-section-note {
+  font-size: var(--font-xs);
+  color: var(--text-dim);
+  line-height: 1.3;
+  text-align: right;
+}
+
+.granular-root .granular-inline-note {
+  text-align: left;
+  white-space: nowrap;
+}
+
+.granular-root .granular-buffer-card {
+  border-color: rgba(74, 158, 255, 0.18);
+}
+
+.granular-root .granular-voices-card {
+  border-color: rgba(168, 85, 247, 0.16);
+}
+
+.granular-root .granular-space-card {
+  border-color: rgba(245, 158, 11, 0.18);
+}
+
+.granular-root .granular-macro-card {
+  border-color: rgba(168, 85, 247, 0.16);
+}
+
+.granular-root .granular-preset-card {
+  border-color: rgba(6, 182, 212, 0.16);
+}
+
+.granular-root .granular-routing-card {
+  border-color: rgba(46, 204, 113, 0.14);
+}
+
+.granular-root .granular-sequencer-card {
+  border-color: rgba(100, 150, 200, 0.2);
+}
+.granular-root .granular-sequencer-card .section-header {
+  color: var(--granular-accent);
+}
+
+.granular-root .granular-sequencer-body {
+  padding: 8px 10px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 /* ─── Source Sends ─── */
 .granular-root .granular-source-sends {
   display: flex;
   align-items: center;
-  gap: var(--gap-md);
-  padding: var(--gap-sm) var(--gap-lg);
-  background: var(--surface-bg);
+  gap: 8px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   margin-bottom: var(--gap-sm);
+  flex-wrap: wrap;
 }
 
 .granular-root .granular-sends-label {
@@ -193,12 +357,150 @@
   grid-template-columns: repeat(3, 1fr);
   gap: var(--gap-sm) var(--gap-md);
   flex: 1;
+  min-width: 0;
+}
+
+.granular-root .granular-space-sliders {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.granular-root .granular-space-sliders > * {
+  min-width: 120px;
+  flex: 1 1 120px;
+}
+
+.granular-root .granular-space-prototype-note,
+.granular-root .granular-macro-note {
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-secondary);
+  font-size: var(--font-xs);
+  line-height: 1.35;
+}
+
+.granular-root .granular-space-prototype-note {
+  margin-bottom: 8px;
+}
+
+.granular-root .granular-macro-card .section-body,
+.granular-root .granular-routing-card .section-body,
+.granular-root .granular-sequencer-card .section-body {
+  padding: 0 10px 10px;
+}
+
+.granular-root .granular-sequencer-card .granular-sequencer-body {
+  padding: 8px 10px 10px;
+}
+
+.granular-root .granular-preset-body {
+  padding: 0 10px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.granular-root .granular-preset-select-wide {
+  width: 100%;
+  max-width: none;
+}
+
+.granular-root .granular-preset-card .granular-preset-meta {
+  margin: 0;
 }
 
 /* ─── Buffer Visualization ─── */
+.granular-root .granular-chip-group-info {
+  margin-left: auto;
+}
+
+.granular-root .granular-chip-value {
+  color: rgba(255,255,255,0.88);
+  font-size: var(--font-sm);
+  font-weight: 700;
+}
+
+.granular-root .granular-buffer-readouts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 8px;
+}
+
+.granular-root .granular-buffer-readout {
+  --voice-color: rgba(255,255,255,0.5);
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--voice-color);
+  background: rgba(255,255,255,0.05);
+  color: rgba(255,255,255,0.84);
+  font-size: 0.64rem;
+  line-height: 1.2;
+}
+
+.granular-root .granular-buffer-legend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px 8px;
+  margin: 0 0 8px;
+  color: rgba(255,255,255,0.52);
+  font-size: 0.58rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.granular-root .granular-buffer-legend-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 6px;
+  border-radius: 999px;
+}
+
+.granular-root .granular-buffer-legend-swatch.anchor {
+  width: 1px;
+  height: 10px;
+  background: rgba(255,255,255,0.55);
+}
+
+.granular-root .granular-buffer-legend-swatch.window {
+  background: rgba(6, 182, 212, 0.35);
+}
+
+.granular-root .granular-buffer-legend-swatch.marker {
+  width: 8px;
+  height: 8px;
+  border: 1px solid rgba(255,255,255,0.8);
+  background: rgba(255,255,255,0.16);
+}
+
+.granular-root .granular-buffer-legend-swatch.particle {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(6,182,212,0.6), transparent);
+}
+
+/* Canvas-based buffer visualizer */
+.granular-root .granular-buffer-canvas-wrap {
+  width: 100%;
+}
+
+.granular-root .granular-buffer-canvas {
+  display: block;
+  width: 100%;
+  height: 128px;
+  border-radius: var(--radius-md);
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--border-subtle);
+  cursor: crosshair;
+}
+
 .granular-root .granular-buffer-viz {
   position: relative;
-  height: 60px;
+  height: 118px;
   background: rgba(0, 0, 0, 0.35);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
@@ -259,24 +561,91 @@
   opacity: 0.85;
 }
 
-/* Voice indicators on buffer */
-.granular-root .granular-buffer-voice-marker {
+.granular-root .granular-buffer-lanes {
   position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  opacity: 0.8;
+  top: 14px;
+  left: 0;
+  right: 0;
+  bottom: 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 0 0 2px;
+  z-index: 1;
   pointer-events: none;
-  transition: left 0.1s linear;
 }
-.granular-root .granular-voice-marker-label {
+
+.granular-root .granular-buffer-lane {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 14px;
+  pointer-events: auto;
+}
+
+.granular-root .granular-buffer-lane:nth-child(1) { top: 0; }
+.granular-root .granular-buffer-lane:nth-child(2) { top: 22px; }
+.granular-root .granular-buffer-lane:nth-child(3) { top: 44px; }
+.granular-root .granular-buffer-lane:nth-child(4) { top: 66px; }
+
+.granular-root .granular-buffer-voice-range {
+  position: absolute;
+  border-radius: 999px;
+  box-shadow: 0 0 10px rgba(255,255,255,0.03);
+}
+
+.granular-root .granular-buffer-voice-anchor {
   position: absolute;
   top: -1px;
-  left: 3px;
-  font-size: 0.4rem;
-  color: rgba(255,255,255,0.7);
+  bottom: -1px;
+  width: 0;
+  border-left: 1px dashed rgba(255,255,255,0.5);
+  opacity: 0.8;
+}
+
+.granular-root .granular-buffer-voice-marker {
+  position: absolute;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.85);
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 8px rgba(0,0,0,0.35);
+}
+
+.granular-root .granular-buffer-voice-marker.mode-granular {
+  border-radius: 3px;
+}
+
+.granular-root .granular-buffer-voice-marker.mode-legacy {
+  width: 11px;
+  height: 7px;
+  border-radius: 999px;
+}
+
+.granular-root .granular-voice-marker-label {
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.43rem;
+  color: rgba(255,255,255,0.72);
   pointer-events: none;
   white-space: nowrap;
+}
+
+.granular-root .granular-buffer-voice-clock {
+  position: absolute;
+  right: 4px;
+  top: -1px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: rgba(255,255,255,0.62);
+  font-size: 0.45rem;
+  letter-spacing: 0.03em;
 }
 
 .granular-root .granular-write-head {
@@ -286,7 +655,7 @@
   width: 1px;
   background: rgba(255,255,255,0.5);
   pointer-events: none;
-  z-index: 2;
+  z-index: 3;
   transition: left 0.1s linear;
 }
 .granular-root .granular-write-head.frozen {
@@ -313,9 +682,15 @@
 
 /* ─── Voice Cards (4 rows) ─── */
 .granular-root .granular-voices {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 6px;
+}
+
+@media (max-width: 600px) {
+  .granular-root .granular-voices {
+    grid-template-columns: 1fr;
+  }
 }
 
 .granular-root .granular-voice-card {
@@ -463,6 +838,11 @@
   gap: 4px 8px;
 }
 
+/* Inside voice cards, 4 columns is too tight — use 2 */
+.granular-root .granular-voice-card .granular-grid-4 {
+  grid-template-columns: 1fr 1fr;
+}
+
 .granular-root .granular-section-label {
   font-size: var(--font-xs);
   color: var(--text-muted);
@@ -471,6 +851,18 @@
   margin-top: 4px;
   padding-bottom: 2px;
   border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+
+.granular-root .granular-section-label-toggle {
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.15s;
+}
+.granular-root .granular-section-label-toggle:hover {
+  color: var(--text-secondary);
+}
+.granular-root .granular-section-label-toggle.collapsed {
+  color: var(--text-dim);
 }
 
 /* Reverse toggle */
@@ -545,6 +937,9 @@
   }
   .granular-root .granular-global-sliders {
     flex-wrap: wrap;
+  }
+  .granular-root .granular-input-sources-grid {
+    grid-template-columns: 1fr 1fr;
   }
   .granular-root .granular-grid-4 {
     grid-template-columns: 1fr 1fr;

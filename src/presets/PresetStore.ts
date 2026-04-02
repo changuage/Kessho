@@ -3,15 +3,34 @@
 // The async interface allows transparent swap to IndexedDB (Phase 12).
 
 import type { PresetEntry, PresetLevel, PresetSummary } from './types';
+import { compressVersions } from './codec';
+import {
+  buildPresetKeyCandidates,
+  getPresetScope,
+  isPresetCompatibleWithSlot,
+  makePresetKey,
+  normalizePresetEntry,
+  normalizePresetSummary,
+  parsePresetKey,
+} from './presetUtils';
+
+const PREFIX = 'preset:';
+const LIBRARY_SORT_ORDER = {
+  stock: 0,
+  user: 1,
+  cloud: 2,
+} as const;
+
+const LEGACY_DELAY_A_KEY_PATTERN = /"leadDelay(?:ReverbSend|Time|Feedback|Mix|Enabled|Spread|Filter|Send)"/;
 
 // ─── Interface ──────────────────────────────────────────────────────────────
 
 export interface IPresetStore {
   save(entry: PresetEntry): Promise<void>;
-  load(type: PresetLevel, name: string, engine?: string): Promise<PresetEntry | null>;
-  list(type: PresetLevel, engine?: string): Promise<PresetSummary[]>;
-  delete(type: PresetLevel, name: string, engine?: string): Promise<void>;
-  exists(type: PresetLevel, name: string, engine?: string): Promise<boolean>;
+  load(type: PresetLevel, name: string, scope?: string, version?: number): Promise<PresetEntry | null>;
+  list(type: PresetLevel, scope?: string): Promise<PresetSummary[]>;
+  delete(type: PresetLevel, name: string, scope?: string): Promise<void>;
+  exists(type: PresetLevel, name: string, scope?: string): Promise<boolean>;
   /** Find higher-level presets that reference this preset by name */
   findReferences(type: PresetLevel, name: string): Promise<string[]>;
   getStorageUsed(): Promise<{ bytes: number; count: number }>;
@@ -23,98 +42,126 @@ export interface IPresetStore {
 
 // ─── Key helpers ────────────────────────────────────────────────────────────
 
-const PREFIX = 'preset:';
-
-function makeKey(type: PresetLevel, name: string, engine?: string): string {
-  if (engine) return `${PREFIX}${type}:${engine}:${name}`;
-  return `${PREFIX}${type}:${name}`;
+function readNormalizedEntry(raw: string): PresetEntry | null {
+  try {
+    return normalizePresetEntry(JSON.parse(raw));
+  } catch {
+    return null;
+  }
 }
 
-function parseKey(key: string): { type: PresetLevel; engine?: string; name: string } | null {
-  if (!key.startsWith(PREFIX)) return null;
-  const rest = key.slice(PREFIX.length);
-  const parts = rest.split(':');
-  if (parts.length === 2) {
-    return { type: parts[0] as PresetLevel, name: parts[1] };
-  }
-  if (parts.length === 3) {
-    return { type: parts[0] as PresetLevel, engine: parts[1], name: parts[2] };
-  }
-  return null;
+function getLogicalKey(entry: PresetEntry): string {
+  return makePresetKey(entry.type, entry.name, getPresetScope(entry, entry.type));
 }
 
-function toSummary(entry: PresetEntry): PresetSummary {
-  return {
-    type: entry.type,
-    engine: entry.engine,
-    source: entry.source,
-    name: entry.name,
-    author: entry.author,
-    tags: entry.tags,
-    versionCount: entry.versions.length,
-    currentVersion: entry.currentVersion,
-    updatedAt: entry.updatedAt,
-  };
+function compareEntriesByFreshness(left: PresetEntry, right: PresetEntry): number {
+  if (left.updatedAt !== right.updatedAt) return left.updatedAt - right.updatedAt;
+  if (left.currentVersion !== right.currentVersion) return left.currentVersion - right.currentVersion;
+  return left.versions.length - right.versions.length;
+}
+
+function containsReferenceValue(value: unknown, needle: string): boolean {
+  if (value === needle) return true;
+  if (Array.isArray(value)) return value.some(item => containsReferenceValue(item, needle));
+  if (value && typeof value === 'object') {
+    return Object.values(value as Record<string, unknown>).some(item => containsReferenceValue(item, needle));
+  }
+  return false;
 }
 
 // ─── localStorage backend ───────────────────────────────────────────────────
 
 export class LocalStoragePresetStore implements IPresetStore {
   async save(entry: PresetEntry): Promise<void> {
-    const key = makeKey(entry.type, entry.name, entry.engine);
-    // Enforce max 20 versions (FIFO eviction)
-    if (entry.versions.length > 20) {
-      entry.versions = entry.versions.slice(-20);
+    const normalized = normalizePresetEntry(entry);
+    if (!normalized) {
+      throw new Error('Invalid preset entry');
     }
-    entry.updatedAt = Date.now();
-    localStorage.setItem(key, JSON.stringify(entry));
+
+    // Authoritative version retention/compression lives at the store boundary.
+    compressVersions(normalized);
+    normalized.updatedAt = Date.now();
+
+    const key = getLogicalKey(normalized);
+    for (const candidate of buildPresetKeyCandidates(normalized.type, normalized.name, getPresetScope(normalized, normalized.type))) {
+      if (candidate !== key) {
+        localStorage.removeItem(candidate);
+      }
+    }
+
+    localStorage.setItem(key, JSON.stringify(normalized));
   }
 
-  async load(type: PresetLevel, name: string, engine?: string): Promise<PresetEntry | null> {
-    const key = makeKey(type, name, engine);
-    const raw = localStorage.getItem(key);
-    if (!raw) return null;
-    try {
-      return JSON.parse(raw) as PresetEntry;
-    } catch {
-      return null;
+  async load(type: PresetLevel, name: string, scope?: string, version?: number): Promise<PresetEntry | null> {
+    for (const key of buildPresetKeyCandidates(type, name, scope)) {
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+      const entry = readNormalizedEntry(raw);
+      if (!entry || entry.type !== type) continue;
+      if (!isPresetCompatibleWithSlot(entry, type, scope)) continue;
+      if (LEGACY_DELAY_A_KEY_PATTERN.test(raw)) {
+        localStorage.setItem(key, JSON.stringify(entry));
+      }
+      if (version !== undefined) {
+        const selected = entry.versions.find(v => v.v === version);
+        if (!selected) continue;
+        return {
+          ...entry,
+          currentVersion: selected.v,
+        };
+      }
+      return entry;
     }
+    return null;
   }
 
-  async list(type: PresetLevel, engine?: string): Promise<PresetSummary[]> {
-    const results: PresetSummary[] = [];
+  async list(type: PresetLevel, scope?: string): Promise<PresetSummary[]> {
+    const results = new Map<string, PresetEntry>();
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
       if (!key?.startsWith(PREFIX)) continue;
-      const parsed = parseKey(key);
+      const parsed = parsePresetKey(key);
       if (!parsed) continue;
       if (parsed.type !== type) continue;
-      if (engine !== undefined && parsed.engine !== engine) continue;
       const raw = localStorage.getItem(key);
       if (!raw) continue;
-      try {
-        const entry = JSON.parse(raw) as PresetEntry;
-        results.push(toSummary(entry));
-      } catch {
-        // Skip corrupt entries
+      const entry = readNormalizedEntry(raw);
+      if (!entry) continue;
+      if (LEGACY_DELAY_A_KEY_PATTERN.test(raw)) {
+        localStorage.setItem(key, JSON.stringify(entry));
+      }
+      if (!isPresetCompatibleWithSlot(entry, type, scope)) continue;
+      const logicalKey = getLogicalKey(entry);
+      const existing = results.get(logicalKey);
+      if (!existing || compareEntriesByFreshness(existing, entry) < 0) {
+        results.set(logicalKey, entry);
       }
     }
-    // Sort: factory first (alpha), then user (alpha)
-    results.sort((a, b) => {
-      if (a.author !== b.author) return a.author === 'factory' ? -1 : 1;
+    const summaries = [...results.values()].map(normalizePresetSummary);
+    // Sort: stock first, then local user, then cloud mirrors.
+    summaries.sort((a, b) => {
+      if (a.library !== b.library) return LIBRARY_SORT_ORDER[a.library] - LIBRARY_SORT_ORDER[b.library];
+      if (a.familyName !== b.familyName) return a.familyName.localeCompare(b.familyName);
+      if ((a.variantRank ?? Number.POSITIVE_INFINITY) !== (b.variantRank ?? Number.POSITIVE_INFINITY)) {
+        return (a.variantRank ?? Number.POSITIVE_INFINITY) - (b.variantRank ?? Number.POSITIVE_INFINITY);
+      }
+      if (a.variantName !== b.variantName) return a.variantName.localeCompare(b.variantName);
       return a.name.localeCompare(b.name);
     });
-    return results;
+    return summaries;
   }
 
-  async delete(type: PresetLevel, name: string, engine?: string): Promise<void> {
-    const key = makeKey(type, name, engine);
-    localStorage.removeItem(key);
+  async delete(type: PresetLevel, name: string, scope?: string): Promise<void> {
+    for (const key of buildPresetKeyCandidates(type, name, scope)) {
+      localStorage.removeItem(key);
+    }
   }
 
-  async exists(type: PresetLevel, name: string, engine?: string): Promise<boolean> {
-    const key = makeKey(type, name, engine);
-    return localStorage.getItem(key) !== null;
+  async exists(type: PresetLevel, name: string, scope?: string): Promise<boolean> {
+    for (const key of buildPresetKeyCandidates(type, name, scope)) {
+      if (localStorage.getItem(key) !== null) return true;
+    }
+    return false;
   }
 
   async findReferences(_type: PresetLevel, name: string): Promise<string[]> {
@@ -124,21 +171,18 @@ export class LocalStoragePresetStore implements IPresetStore {
       if (!key?.startsWith(PREFIX)) continue;
       const raw = localStorage.getItem(key);
       if (!raw) continue;
-      try {
-        const entry = JSON.parse(raw) as PresetEntry;
-        // Check if any version references the target by name
-        for (const version of entry.versions) {
-          if (version.refs) {
-            for (const ref of Object.values(version.refs)) {
-              if (ref.name === name) {
-                refs.push(entry.name);
-                break;
-              }
-            }
-          }
+      const entry = readNormalizedEntry(raw);
+      if (!entry) continue;
+      for (const version of entry.versions) {
+        const versionRefs = version.refs ? Object.values(version.refs) : [];
+        if (versionRefs.some(ref => ref.name === name || ref.id === name)) {
+          refs.push(entry.name);
+          break;
         }
-      } catch {
-        // Skip
+        if (containsReferenceValue(version.data, name)) {
+          refs.push(entry.name);
+          break;
+        }
       }
     }
     return [...new Set(refs)];
@@ -160,7 +204,7 @@ export class LocalStoragePresetStore implements IPresetStore {
   }
 
   async exportAll(): Promise<Blob> {
-    const entries: PresetEntry[] = [];
+    const entries = new Map<string, PresetEntry>();
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
       if (!key?.startsWith(PREFIX)) continue;
@@ -168,18 +212,20 @@ export class LocalStoragePresetStore implements IPresetStore {
       if (key.includes('factory-loaded') || key.includes('migration-version') || key.includes('storage-backend')) continue;
       const raw = localStorage.getItem(key);
       if (!raw) continue;
-      try {
-        entries.push(JSON.parse(raw) as PresetEntry);
-      } catch {
-        // Skip
+      const entry = readNormalizedEntry(raw);
+      if (!entry) continue;
+      const logicalKey = getLogicalKey(entry);
+      const existing = entries.get(logicalKey);
+      if (!existing || compareEntriesByFreshness(existing, entry) < 0) {
+        entries.set(logicalKey, entry);
       }
     }
     const payload = {
       kesshoBackup: true,
       formatVersion: 1,
       exportedAt: new Date().toISOString(),
-      count: entries.length,
-      entries,
+      count: entries.size,
+      entries: [...entries.values()],
     };
     return new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
   }
@@ -191,8 +237,9 @@ export class LocalStoragePresetStore implements IPresetStore {
     }
     let count = 0;
     for (const entry of parsed.entries) {
-      if (entry.type && entry.name && entry.versions) {
-        await this.save(entry as PresetEntry);
+      const normalized = normalizePresetEntry(entry);
+      if (normalized) {
+        await this.save(normalized);
         count++;
       }
     }
@@ -206,9 +253,15 @@ let _store: IPresetStore | null = null;
 
 export function getPresetStore(): IPresetStore {
   if (!_store) {
-    // Phase 12 will check localStorage.getItem('preset:storage-backend')
-    // and return IndexedDBPresetStore if 'indexeddb'
     _store = new LocalStoragePresetStore();
   }
   return _store;
+}
+
+/**
+ * Replace the singleton preset store (e.g. to inject a HybridPresetStore).
+ * Called once from App init when Supabase is configured.
+ */
+export function setPresetStore(store: IPresetStore): void {
+  _store = store;
 }

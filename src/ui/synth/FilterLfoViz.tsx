@@ -118,13 +118,6 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
     const w = rect.width;
     const h = rect.height;
 
-    // Record real engine LFO value into history
-    if (props.isRunning && props.lfoDest !== 'none') {
-      const hist = lfoHistoryRef.current;
-      hist.push(props.liveLfoValue);
-      if (hist.length > LFO_HISTORY_LEN) hist.shift();
-    }
-
     ctx.clearRect(0, 0, w, h);
 
     // Layout
@@ -434,7 +427,7 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
           for (let i = 0; i < hist.length; i++) {
             const x = (i / (LFO_HISTORY_LEN - 1)) * w;
             // hist values are already depth-scaled; normalize back to -1..+1 for display
-            const norm = depth > 0 ? Math.max(-1, Math.min(1, hist[i] / maxDepth)) : 0;
+            const norm = depth > 0 ? Math.max(-1, Math.min(1, (hist[i] ?? 0) / maxDepth)) : 0;
             const y = centerY - norm * ampH;
             i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
           }
@@ -529,13 +522,36 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
     }
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    animRef.current = requestAnimationFrame(draw);
   }, [props]);
 
-  useEffect(() => {
-    animRef.current = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(animRef.current);
+  const requestDraw = useCallback(() => {
+    if (animRef.current) cancelAnimationFrame(animRef.current);
+    animRef.current = requestAnimationFrame(() => {
+      animRef.current = 0;
+      draw();
+    });
   }, [draw]);
+
+  useEffect(() => {
+    if (props.isRunning && props.lfoDest !== 'none') {
+      const hist = lfoHistoryRef.current;
+      hist.push(props.liveLfoValue);
+      if (hist.length > LFO_HISTORY_LEN) hist.shift();
+    }
+  }, [props.isRunning, props.lfoDest, props.liveLfoValue]);
+
+  useEffect(() => {
+    requestDraw();
+  }, [requestDraw]);
+
+  useEffect(() => {
+    const handleResize = () => requestDraw();
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      if (animRef.current) cancelAnimationFrame(animRef.current);
+    };
+  }, [requestDraw]);
 
   // ── Hit test: which drag target is under (x, y) in CSS coords? ──
   const hitTest = useCallback((cx: number, cy: number): DragTarget => {
@@ -637,8 +653,9 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
     if (target) {
       e.preventDefault();
       dragRef.current = { target, startX: x, startY: y };
+      requestDraw();
     }
-  }, [getCoords, hitTest]);
+  }, [getCoords, hitTest, requestDraw]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     const { x, y } = getCoords(e);
@@ -654,11 +671,13 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
         canvas.style.cursor = target ? (target.startsWith('adsr') && target !== 'adsrSustain' ? 'ew-resize' : target === 'adsrSustain' ? 'ns-resize' : 'ew-resize') : 'default';
       }
     }
-  }, [getCoords, hitTest, applyDrag]);
+    requestDraw();
+  }, [getCoords, hitTest, applyDrag, requestDraw]);
 
   const handleMouseUp = useCallback(() => {
     dragRef.current = { target: null, startX: 0, startY: 0 };
-  }, []);
+    requestDraw();
+  }, [requestDraw]);
 
   // Native non-passive touch listeners (React registers touch listeners as passive)
   useEffect(() => {
@@ -675,6 +694,7 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
       if (target) {
         e.preventDefault();
         dragRef.current = { target, startX: x, startY: y };
+        requestDraw();
       }
     };
     const onTouchMove = (e: TouchEvent) => {
@@ -682,10 +702,12 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
         e.preventDefault();
         const { x, y } = getXY(e);
         applyDrag(x, y);
+        requestDraw();
       }
     };
     const onTouchEnd = () => {
       dragRef.current = { target: null, startX: 0, startY: 0 };
+      requestDraw();
     };
     canvas.addEventListener('touchstart', onTouchStart, { passive: false });
     canvas.addEventListener('touchmove', onTouchMove, { passive: false });
@@ -695,12 +717,13 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
       canvas.removeEventListener('touchmove', onTouchMove);
       canvas.removeEventListener('touchend', onTouchEnd);
     };
-  }, [hitTest, applyDrag]);
+  }, [hitTest, applyDrag, requestDraw]);
 
   // Global mouse/touch up listener for drag release
   useEffect(() => {
     const handleGlobalUp = () => {
       dragRef.current = { target: null, startX: 0, startY: 0 };
+      requestDraw();
     };
     window.addEventListener('mouseup', handleGlobalUp);
     window.addEventListener('touchend', handleGlobalUp);
@@ -708,7 +731,7 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
       window.removeEventListener('mouseup', handleGlobalUp);
       window.removeEventListener('touchend', handleGlobalUp);
     };
-  }, []);
+  }, [requestDraw]);
 
   return (
     <canvas

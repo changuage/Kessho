@@ -35,9 +35,18 @@ env["EMSDK"] = EMSDK_ROOT
 env["EM_CONFIG"] = os.path.normpath(os.path.join(EMSDK_ROOT, ".emscripten"))
 # Skip sanity check to avoid cache invalidation from path format differences
 env["EMCC_SKIP_SANITY_CHECK"] = "1"
-# Add LLVM + node to PATH
+# Add LLVM + node + emsdk python to PATH
 llvm_bin = os.path.normpath(os.path.join(EMSDK_ROOT, "upstream", "bin"))
 node_bin = os.path.join(EMSDK_ROOT, "node")
+python_bin = os.path.join(EMSDK_ROOT, "python")
+# Find actual python dir (version-named) so nested emcc invocations do not fall back
+# to an older system python.
+if os.path.isdir(python_bin):
+    for d in os.listdir(python_bin):
+        python_full = os.path.join(python_bin, d, "bin")
+        if os.path.isdir(python_full):
+            env["PATH"] = python_full + os.pathsep + env.get("PATH", "")
+            break
 # Find actual node dir (version-named)
 if os.path.isdir(node_bin):
     for d in os.listdir(node_bin):
@@ -54,8 +63,10 @@ EXPORTS = [
     "_water_process_block",
     "_water_set_preset",
     "_water_set_params",
+    "_water_set_layer_detail_params",
     "_water_set_layer_mix",
     "_water_set_layer_density",
+    "_water_set_density_loop_params",
     "_water_start",
     "_water_stop",
     "_water_set_seed",
@@ -63,6 +74,15 @@ EXPORTS = [
     "_water_set_channels_params",
     "_water_get_active_voices",
     "_water_get_events_per_sec",
+    "_water_get_surf_trigger_serial",
+    "_water_get_surf_trigger_duration_pos",
+    "_water_get_surf_trigger_interval_pos",
+    "_water_get_surf_trigger_foam_pos",
+    "_water_get_surf_trigger_proximity_pos",
+    "_water_get_surf_trigger_depth_pos",
+    "_water_get_surf_trigger_body_pos",
+    "_water_get_surf_trigger_spray_pos",
+    "_water_get_surf_trigger_foam_bright_pos",
     "_insects_init",
     "_insects_destroy",
     "_insects_get_output_ptr",
@@ -85,14 +105,6 @@ EXPORTS = [
     "_insects2_set_seed",
     "_insects2_get_active_voices",
     "_insects2_get_engine_type",
-    "_ocean_init",
-    "_ocean_destroy",
-    "_ocean_get_output_ptr",
-    "_ocean_process_block",
-    "_ocean_set_params",
-    "_ocean_start",
-    "_ocean_stop",
-    "_ocean_set_seed",
     "_malloc",
     "_free",
 ]

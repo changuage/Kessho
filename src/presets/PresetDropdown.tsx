@@ -2,12 +2,17 @@
 // Phase 3 + 8 + 9 — Reusable preset dropdown with save/export/import/versioning/dirty flag.
 // Matches existing app styling (native <select>, dark theme, CSS custom properties).
 
-import React, { useState, useCallback } from 'react';
-import type { PresetLevel, PresetEntry } from './types';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import type { PresetLevel, PresetEntry, PresetSummary } from './types';
 import { usePresets } from './usePresets';
 import { exportPresetToFile, importPresetFromFile } from './fileIO';
 import { getPresetStore } from './PresetStore';
+import { extractPresetVersionMetadata, isPresetCompatibleWithSlot } from './presetUtils';
+import { getPresetDisplayLabel } from './catalog';
+import { extractParams } from './codec';
+import { getVersionData } from './codec';
 import type { SliderState } from '../ui/state';
+import type { UsePresetsOptions } from './usePresets';
 
 export interface PresetDropdownProps {
   /** Preset level */
@@ -30,6 +35,8 @@ export interface PresetDropdownProps {
   showFileButtons?: boolean;
   /** Whether to show the save button. Default: true */
   showSaveButton?: boolean;
+  /** Options passed to usePresets (e.g. customExtract for composite presets) */
+  presetOptions?: UsePresetsOptions;
   /** Compact mode — smaller font, less padding */
   compact?: boolean;
 }
@@ -117,13 +124,46 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
   className,
   showFileButtons = true,
   showSaveButton = true,
+  presetOptions,
   compact = false,
 }) => {
-  const { presets, save, load, remove, refresh, apply } = usePresets(level, scope);
+  const { presets, save, load, remove, refresh, apply } = usePresets(level, scope, presetOptions);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [saveName, setSaveName] = useState('');
   const [saveNote, setSaveNote] = useState('');
+  const [savePublic, setSavePublic] = useState(false);
   const [selectedName, setSelectedName] = useState(currentName || '');
+  const [loadedEntry, setLoadedEntry] = useState<PresetEntry | null>(null);
+  const [loadedData, setLoadedData] = useState<Record<string, unknown> | null>(null);
+  const selectedPresetSummary = useMemo<PresetSummary | null>(() => {
+    if (!selectedName) return null;
+    return presets.find(p => p.name === selectedName) ?? null;
+  }, [presets, selectedName]);
+  const canChangeVisibility = selectedPresetSummary?.library === 'user';
+  const isSelectedPresetPublic = selectedPresetSummary?.visibility === 'public';
+
+  // Dirty detection: compare current state params against last loaded version
+  const isDirty = useMemo(() => {
+    if (!loadedEntry || !loadedData) return false;
+    const currentParams = presetOptions?.customExtract
+      ? presetOptions.customExtract(state)
+      : extractParams(state, level === 'engine' ? 1 : level === 'kit' ? 2 : level === 'source' ? 3 : 4, scope);
+    for (const key of Object.keys(loadedData)) {
+      const saved = loadedData[key];
+      const current = currentParams[key];
+      // Tolerate small floating point differences
+      if (typeof saved === 'number' && typeof current === 'number') {
+        if (Math.abs(saved - current) > 1e-6) return true;
+      } else if (saved !== current) {
+        return true;
+      }
+    }
+    return false;
+  }, [loadedEntry, loadedData, state, level, scope, presetOptions]);
+
+  useEffect(() => {
+    setSelectedName(currentName || '');
+  }, [currentName]);
 
   // Handle preset selection from dropdown
   const handleSelect = useCallback(async (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -133,15 +173,17 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
     const entry = await load(name);
     if (!entry) return;
 
-    // Get latest version data
-    const version = entry.versions.find(v => v.v === entry.currentVersion) || entry.versions[entry.versions.length - 1];
-    if (!version) return;
+    // Get latest version data (reconstituted from delta if compressed)
+    const versionData = getVersionData(entry);
+    if (!versionData) return;
 
-    onLoad(entry, version.data);
+    setLoadedEntry(entry);
+    setLoadedData(versionData);
+    onLoad(entry, versionData);
 
     // Apply params to state and notify
     if (onStateChange) {
-      const newState = apply(state, version.data);
+      const newState = apply(state, versionData);
       onStateChange(newState);
     }
   }, [load, apply, state, onLoad, onStateChange]);
@@ -150,16 +192,40 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
   const handleSaveClick = useCallback(() => {
     setSaveName(selectedName || `My ${scope || level} Preset`);
     setSaveNote('');
+    setSavePublic(selectedPresetSummary?.visibility === 'public');
     setShowSaveDialog(true);
-  }, [selectedName, scope, level]);
+  }, [selectedName, scope, level, selectedPresetSummary]);
 
   // Confirm save
   const handleSaveConfirm = useCallback(async () => {
     if (!saveName.trim()) return;
-    await save(saveName.trim(), state, saveNote.trim() || undefined);
-    setSelectedName(saveName.trim());
+    const version = loadedEntry?.versions.find(v => v.v === loadedEntry.currentVersion)
+      || loadedEntry?.versions[loadedEntry.versions.length - 1];
+    const trimmedName = saveName.trim();
+    const actualName = loadedEntry?.author !== 'user' && trimmedName === selectedName
+      ? `${trimmedName} (Custom)`
+      : trimmedName;
+    await save(
+      trimmedName,
+      state,
+      saveNote.trim() || undefined,
+      undefined,
+      extractPresetVersionMetadata(version),
+      savePublic ? { visibility: 'public' } : { visibility: 'private' },
+    );
+    await refresh();
+    const savedEntry = await load(actualName);
+    setLoadedEntry(savedEntry ?? null);
+    // Update loadedData so dirty flag resets
+    if (savedEntry) {
+      const verData = getVersionData(savedEntry);
+      setLoadedData(verData ?? null);
+    } else {
+      setLoadedData(null);
+    }
+    setSelectedName(savedEntry?.name ?? actualName);
     setShowSaveDialog(false);
-  }, [saveName, saveNote, state, save]);
+  }, [saveName, saveNote, savePublic, state, save, loadedEntry, selectedName, refresh, load]);
 
   // Export current preset
   const handleExport = useCallback(async () => {
@@ -175,44 +241,86 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
     const entry = await importPresetFromFile();
     if (!entry) return;
 
+    if (!isPresetCompatibleWithSlot(entry, level, scope)) {
+      const message = `Imported preset "${entry.name}" is not compatible with this ${level} slot${scope ? ` (${scope})` : ''}.`;
+      if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+        window.alert(message);
+      } else {
+        console.warn(message);
+      }
+      return;
+    }
+
     // Save to store
     const store = getPresetStore();
     await store.save(entry);
     await refresh();
 
     // Load it
-    const version = entry.versions[entry.versions.length - 1];
+    const savedEntry = await load(entry.name);
+    const selectedEntry = savedEntry ?? entry;
+    const versionData = getVersionData(selectedEntry);
+    if (!versionData) return;
     setSelectedName(entry.name);
-    onLoad(entry, version.data);
+    setLoadedEntry(selectedEntry);
+    setLoadedData(versionData);
+    onLoad(selectedEntry, versionData);
     if (onStateChange) {
-      const newState = apply(state, version.data);
+      const newState = apply(state, versionData);
       onStateChange(newState);
     }
-  }, [refresh, apply, state, onLoad, onStateChange]);
+  }, [refresh, load, apply, state, onLoad, onStateChange]);
 
   // Delete selected preset
   const handleDelete = useCallback(async () => {
     if (!selectedName) return;
     const entry = await load(selectedName);
-    if (!entry || entry.author === 'factory') return;
+    if (!entry) return;
     if (!confirm(`Delete preset "${selectedName}"?`)) return;
     await remove(selectedName);
     setSelectedName('');
+    setLoadedEntry(null);
+    setLoadedData(null);
   }, [selectedName, load, remove]);
 
-  // Separate factory and user presets
-  const factoryPresets = presets.filter(p => p.author === 'factory');
-  const userPresets = presets.filter(p => p.author === 'user');
+  const handleToggleVisibility = useCallback(async () => {
+    if (!selectedName) return;
+    const entry = await load(selectedName);
+    if (!entry) return;
+
+    entry.visibility = entry.visibility === 'public' ? 'private' : 'public';
+    await getPresetStore().save(entry);
+    await refresh();
+    setLoadedEntry(entry);
+  }, [selectedName, load, refresh]);
+
+  // Separate built-in and user presets
+  const stockPresets = presets.filter(p => p.creator === 'Kessho');
+  const userPresets = presets.filter(p => p.library === 'user' && p.creator !== 'Kessho');
+  const cloudPresets = presets.filter(p => p.library === 'cloud');
 
   const selectStyle: React.CSSProperties = {
     ...dropdownStyles.select,
     ...(compact ? { fontSize: '0.7rem', padding: '2px 4px' } : {}),
     ...(accentColor ? { borderColor: `${accentColor}33` } : {}),
+    ...(isDirty ? { borderColor: '#c9913666' } : {}),
   };
 
   return (
     <>
       <div className={className} style={dropdownStyles.container}>
+        {isDirty && (
+          <span
+            style={{
+              width: 6,
+              height: 6,
+              borderRadius: '50%',
+              background: '#c99136',
+              flexShrink: 0,
+            }}
+            title="Modified — params differ from loaded preset"
+          />
+        )}
         <select
           value={selectedName}
           onChange={handleSelect}
@@ -220,11 +328,11 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
           title={`${level} preset`}
         >
           <option value="">— Select —</option>
-          {factoryPresets.length > 0 && (
-            <optgroup label="Factory">
-              {factoryPresets.map(p => (
-                <option key={`f:${p.name}`} value={p.name}>
-                  {p.name}
+          {stockPresets.length > 0 && (
+            <optgroup label="Stock">
+              {stockPresets.map(p => (
+                <option key={`s:${p.name}`} value={p.name}>
+                  {getPresetDisplayLabel(p)}
                 </option>
               ))}
             </optgroup>
@@ -233,7 +341,16 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
             <optgroup label="User">
               {userPresets.map(p => (
                 <option key={`u:${p.name}`} value={p.name}>
-                  {p.name} {p.versionCount > 1 ? `(v${p.currentVersion})` : ''}
+                  {getPresetDisplayLabel(p)} {p.visibility === 'public' ? '[public] ' : ''}{p.versionCount > 1 ? `(v${p.currentVersion})` : ''}
+                </option>
+              ))}
+            </optgroup>
+          )}
+          {cloudPresets.length > 0 && (
+            <optgroup label="Cloud">
+              {cloudPresets.map(p => (
+                <option key={`c:${p.name}`} value={p.name}>
+                  {getPresetDisplayLabel(p)}
                 </option>
               ))}
             </optgroup>
@@ -275,6 +392,18 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
           </>
         )}
 
+        {canChangeVisibility && (
+          <button
+            onClick={handleToggleVisibility}
+            style={{ ...dropdownStyles.iconBtn, color: isSelectedPresetPublic ? '#5f8f5f' : '#8a7a52' }}
+            title={isSelectedPresetPublic ? 'Make preset private' : 'Make preset public'}
+            onMouseEnter={e => { e.currentTarget.style.color = isSelectedPresetPublic ? '#8fd18f' : '#d5b06a'; }}
+            onMouseLeave={e => { e.currentTarget.style.color = isSelectedPresetPublic ? '#5f8f5f' : '#8a7a52'; }}
+          >
+            {isSelectedPresetPublic ? 'Pub' : 'Pvt'}
+          </button>
+        )}
+
         {selectedName && userPresets.some(p => p.name === selectedName) && (
           <button
             onClick={handleDelete}
@@ -312,6 +441,15 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
               style={{ ...dropdownStyles.input, fontSize: '0.8rem' }}
               onKeyDown={e => { if (e.key === 'Enter') handleSaveConfirm(); if (e.key === 'Escape') setShowSaveDialog(false); }}
             />
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', color: '#999', cursor: 'pointer', marginTop: 4 }}>
+              <input
+                type="checkbox"
+                checked={savePublic}
+                onChange={e => setSavePublic(e.target.checked)}
+                style={{ accentColor: accentColor || '#2a5a8a' }}
+              />
+              Share publicly
+            </label>
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '8px' }}>
               <button
                 onClick={() => setShowSaveDialog(false)}

@@ -1,6 +1,9 @@
 import React from 'react';
 import type { SliderState, SavedPreset } from '../state';
 import type { TensionArcType } from '../../audio/harmony';
+import type { PresetEntry } from '../../presets/types';
+import { PresetDropdown, PresetFamilyTree } from '../../presets';
+import type { SliderMode } from '../state';
 import { SCALE_FAMILIES } from '../../audio/scales';
 import { isAtEndpoint0, isAtEndpoint1 } from '../../audio/morphUtils';
 import './global.css';
@@ -12,7 +15,6 @@ const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 
 
 export interface GlobalPageProps {
   state: SliderState;
-  isMobile: boolean;
   expandedPanels: Set<string>;
   togglePanel: (id: string) => void;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -27,8 +29,6 @@ export interface GlobalPageProps {
   SelectComponent: React.ComponentType<any>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   CircleOfFifthsComponent: React.ComponentType<any>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  CloudPresetsComponent: React.ComponentType<any>;
 
   // Engine state
   engineState: {
@@ -53,18 +53,19 @@ export interface GlobalPageProps {
   morphPlayPhrases: number;
   morphTransitionPhrases: number;
   morphCountdown: { phase: string; phrasesLeft: number } | null;
-  savedPresets: SavedPreset[];
-  onSelectMorphA: (presetName: string) => void;
+  onLoadMorphA: (entry: PresetEntry, data: Record<string, unknown>) => void;
+  morphSlotAName: string;
   onClearMorphA: () => void;
-  onSelectMorphB: (presetName: string) => void;
+  onLoadMorphB: (entry: PresetEntry, data: Record<string, unknown>) => void;
+  morphSlotBName: string;
   onClearMorphB: () => void;
   onMorphPositionChange: (value: number) => void;
   onMorphModeChange: (mode: 'manual' | 'auto') => void;
   onMorphPlayPhrasesChange: (value: number) => void;
   onMorphTransitionPhrasesChange: (value: number) => void;
 
-  // Cloud Presets
-  onLoadCloudPreset: (presetState: SliderState, name: string) => void;
+  // State preset
+  statePresetName: string;
 
   // Recording
   isRecording: boolean;
@@ -82,6 +83,10 @@ export interface GlobalPageProps {
   onTimerEnabledChange: (enabled: boolean) => void;
   onTimerMinutesChange: (minutes: number) => void;
   onTimerRemainingChange: (remaining: number) => void;
+
+  // Dual slider state (for version diff comparison)
+  sliderModes?: Record<string, SliderMode>;
+  dualSliderRanges?: Record<string, { min: number; max: number }>;
 }
 
 // ═══════════════ Component ═══════════════
@@ -94,7 +99,6 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
   SliderComponent: Slider,
   SelectComponent: Select,
   CircleOfFifthsComponent: CircleOfFifths,
-  CloudPresetsComponent: CloudPresets,
   engineState,
   onResetCofDrift,
   morphCoFViz,
@@ -105,16 +109,17 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
   morphPlayPhrases,
   morphTransitionPhrases,
   morphCountdown,
-  savedPresets,
-  onSelectMorphA,
+  onLoadMorphA,
+  morphSlotAName,
   onClearMorphA,
-  onSelectMorphB,
+  onLoadMorphB,
+  morphSlotBName,
   onClearMorphB,
   onMorphPositionChange,
   onMorphModeChange,
   onMorphPlayPhrasesChange,
   onMorphTransitionPhrasesChange,
-  onLoadCloudPreset,
+  statePresetName,
   isRecording,
   recordFormats,
   recordStems,
@@ -128,9 +133,11 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
   onTimerEnabledChange,
   onTimerMinutesChange,
   onTimerRemainingChange,
+  sliderModes,
+  dualSliderRanges,
 }) => {
   const [expandedSections, setExpandedSections] = React.useState<Set<string>>(
-    () => new Set(['mixer-buses', 'scale-tension', 'root-cof', 'chord-progression', 'per-engine-tension', 'morph', 'recording', 'playback-timer'])
+    () => new Set(['mixer-buses', 'morph', 'state-presets', 'scale-tension', 'root-cof', 'chord-progression'])
   );
   const toggleSection = (id: string) => {
     setExpandedSections(prev => {
@@ -146,9 +153,9 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
       <div className="global-container">
       {/* Master Mixer */}
       <div className="global-mixer-panel">
-        <div className="mixer-card">
-          <h3 className="mixer-card-title">Master Mixer</h3>
-          <div className="harmony-section">
+          <div className="mixer-card">
+            <h3 className="mixer-card-title">Master Mixer</h3>
+            <div className="harmony-section">
             <div className="harmony-section-header" onClick={() => toggleSection('mixer-buses')}>
               <span className={`harmony-section-chevron ${expandedSections.has('mixer-buses') ? 'expanded' : ''}`}>▶</span>
               <span className="harmony-section-name">Channel Buses</span>
@@ -160,7 +167,8 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
                     <div className="mixer-bus-label">Pad</div>
                     <Slider label="Pad 1" value={state.synthLevel} paramKey="synthLevel" onChange={onParamChange} {...sliderProps('synthLevel')} />
                     <Slider label="Pad 2" value={state.pad2Level} paramKey="pad2Level" onChange={onParamChange} {...sliderProps('pad2Level')} />
-                    <Slider label="Reverb" value={state.synthReverbSend} paramKey="synthReverbSend" onChange={onParamChange} {...sliderProps('synthReverbSend')} />
+                    <Slider label="Reverb 1" value={state.pad1ReverbSend} paramKey="pad1ReverbSend" onChange={onParamChange} {...sliderProps('pad1ReverbSend')} />
+                    <Slider label="Reverb 2" value={state.pad2ReverbSend} paramKey="pad2ReverbSend" onChange={onParamChange} {...sliderProps('pad2ReverbSend')} />
                   </div>
                   <div className="mixer-bus-group">
                     <div className="mixer-bus-label">Lead</div>
@@ -181,7 +189,7 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
                   </div>
                   <div className="mixer-bus-group">
                     <div className="mixer-bus-label">Earth</div>
-                    <Slider label="Waves" value={state.oceanWaveSynthLevel} paramKey="oceanWaveSynthLevel" onChange={onParamChange} {...sliderProps('oceanWaveSynthLevel')} />
+                    <Slider label="Waves" value={state.oceanSampleLevel} paramKey="oceanSampleLevel" onChange={onParamChange} {...sliderProps('oceanSampleLevel')} />
                     <Slider label="Water" value={state.waterLevel} paramKey="waterLevel" onChange={onParamChange} {...sliderProps('waterLevel')} />
                     <Slider label="Insects" value={state.insectsLevel} paramKey="insectsLevel" onChange={onParamChange} {...sliderProps('insectsLevel')} />
                   </div>
@@ -216,16 +224,15 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
                       <button onClick={onClearMorphA} className="morph-clear-btn">✕</button>
                     )}
                   </div>
-                  <select
-                    value={morphPresetA?.name || ''}
-                    onChange={(e) => onSelectMorphA(e.target.value)}
-                    className={`morph-select ${morphPresetA ? 'filled-a' : ''}`}
-                  >
-                    <option value="">(empty - using current)</option>
-                    {savedPresets.map((preset, idx) => (
-                      <option key={`${preset.name}-${idx}`} value={preset.name}>{preset.name}</option>
-                    ))}
-                  </select>
+                  <PresetDropdown
+                    level="state"
+                    scope="global"
+                    state={state}
+                    currentName={morphSlotAName}
+                    onLoad={onLoadMorphA}
+                    showSaveButton={false}
+                    compact
+                  />
                 </div>
 
                 {/* Morph Position */}
@@ -259,16 +266,15 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
                       <button onClick={onClearMorphB} className="morph-clear-btn">✕</button>
                     )}
                   </div>
-                  <select
-                    value={morphPresetB?.name || ''}
-                    onChange={(e) => onSelectMorphB(e.target.value)}
-                    className={`morph-select ${morphPresetB ? 'filled-b' : ''}`}
-                  >
-                    <option value="">(empty - using current)</option>
-                    {savedPresets.map((preset, idx) => (
-                      <option key={`${preset.name}-${idx}`} value={preset.name}>{preset.name}</option>
-                    ))}
-                  </select>
+                  <PresetDropdown
+                    level="state"
+                    scope="global"
+                    state={state}
+                    currentName={morphSlotBName}
+                    onLoad={onLoadMorphB}
+                    showSaveButton={false}
+                    compact
+                  />
                 </div>
 
                 {/* Mode Toggle */}
@@ -328,17 +334,23 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
             )}
           </div>
 
-          {/* Cloud Presets Section */}
+          {/* State Preset Save/Load */}
           <div className="harmony-section">
-            <div className="harmony-section-header" onClick={() => toggleSection('cloud-presets')}>
-              <span className={`harmony-section-chevron ${expandedSections.has('cloud-presets') ? 'expanded' : ''}`}>▶</span>
-              <span className="harmony-section-name">Cloud Presets</span>
+            <div className="harmony-section-header" onClick={() => toggleSection('state-presets')}>
+              <span className={`harmony-section-chevron ${expandedSections.has('state-presets') ? 'expanded' : ''}`}>▶</span>
+              <span className="harmony-section-name">State Presets</span>
             </div>
-            {expandedSections.has('cloud-presets') && (
+            {expandedSections.has('state-presets') && (
               <div className="harmony-section-body">
-                <CloudPresets
-                  currentState={state}
-                  onLoadPreset={onLoadCloudPreset}
+                <PresetFamilyTree
+                  level="state"
+                  scope="global"
+                  state={state}
+                  currentName={statePresetName}
+                  onLoadSlotA={onLoadMorphA}
+                  onLoadSlotB={onLoadMorphB}
+                  sliderModes={sliderModes}
+                  dualSliderRanges={dualSliderRanges}
                 />
               </div>
             )}

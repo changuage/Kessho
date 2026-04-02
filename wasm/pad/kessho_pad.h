@@ -10,7 +10,7 @@
  * dual SVF filters (A+B, configurable routing), warmth/presence EQ,
  * saturation waveshaper, ADSR amplitude envelope, 2 LFOs, mod envelope.
  *
- * No pad-specific delay (reverb send handled externally).
+ * Pad-specific prefader taps are exposed for external FX routing.
  */
 
 #ifndef KESSHO_PAD_H
@@ -81,8 +81,11 @@ float* pad_get_output_ptr(void);
 /** Stereo interleaved reverb send output */
 float* pad_get_reverb_send_ptr(void);
 
-/** Stereo interleaved pre-fader output (for granular FX input) */
-float* pad_get_prefader_ptr(void);
+/** Stereo interleaved Pad 1 pre-fader output */
+float* pad_get_prefader_pad1_ptr(void);
+
+/** Stereo interleaved Pad 2 pre-fader output */
+float* pad_get_prefader_pad2_ptr(void);
 
 // ═══════════════ Processing ═══════════════
 

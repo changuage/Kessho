@@ -1,0 +1,414 @@
+/* ─── Delay Page — Echo Line + Clocked Space ─── */
+
+.delay-root {
+  /* ─── Shared Design Tokens (match synth.css / reverb.css) ─── */
+  --bg-base: #1a1a2e;
+  --bg-input: rgba(0, 0, 0, 0.3);
+  --bg-surface: rgba(15, 25, 40, 0.95);
+  --bg-elevated: rgba(255, 255, 255, 0.05);
+  --bg-control: rgba(255, 255, 255, 0.08);
+  --bg-control-hover: rgba(255, 255, 255, 0.15);
+  --border-subtle: rgba(255, 255, 255, 0.1);
+  --border-medium: rgba(255, 255, 255, 0.2);
+  --border-accent: rgba(100, 150, 200, 0.3);
+  --text-primary: #e0e0e0;
+  --text-secondary: #9ca3af;
+  --text-muted: #666;
+  --text-dim: #555;
+  --accent-primary: #a5c4d4;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --font-xs: 0.55rem;
+  --font-sm: 0.65rem;
+  --font-md: 0.75rem;
+  --font-lg: 0.85rem;
+  --accent-echo: #b9c9ff;
+  --accent-clocked: #9fe5f0;
+  --accent-master: #a5c4d4;
+  --accent-cross: #c4a8e0;
+
+  color: var(--text-primary);
+}
+
+.delay-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  max-width: 1200px;
+  margin: 0 auto;
+  align-items: flex-start;
+}
+
+.delay-source-preset-bar {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  margin-bottom: 2px;
+}
+
+.delay-source-preset-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+/* ─── Two-Panel Layout ─── */
+
+.delay-left {
+  flex: 0 0 460px;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.delay-right {
+  flex: 1;
+  min-width: 320px;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.delay-root.mobile .delay-container {
+  flex-direction: column;
+}
+
+.delay-root.mobile .delay-left {
+  flex: 1 1 100%;
+}
+
+/* ─── Card Pattern ─── */
+
+.delay-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-accent);
+  border-left: 3px solid var(--sc, var(--accent-primary));
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  transition: border-color 0.15s, box-shadow 0.2s;
+}
+
+.delay-card.expanded {
+  border-color: var(--sc, var(--accent-primary));
+  box-shadow: 0 0 12px rgba(165, 196, 212, 0.08);
+}
+
+/* ─── Card Header ─── */
+
+.delay-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.02);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s;
+}
+
+.delay-card-header:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.delay-card-title {
+  font-size: var(--font-lg);
+  font-weight: 700;
+  color: var(--sc, var(--accent-primary));
+}
+
+.delay-card-subtitle {
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-left: 6px;
+}
+
+.delay-card-header-left {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.delay-card-header-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.delay-card-chevron {
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+  width: 12px;
+  text-align: center;
+}
+
+/* ─── Feed Badge ─── */
+
+.delay-feed-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-control);
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.delay-feed-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ─── Card Body ─── */
+
+.delay-card-body {
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.delay-card-body-inner {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(0, 0, 0, 0.08);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ─── Mode / Toggle Buttons ─── */
+
+.delay-mode-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.delay-mode-btn {
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-control);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--font-sm);
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  min-width: 0;
+}
+
+.delay-mode-btn:hover {
+  background: var(--bg-control-hover);
+}
+
+.delay-mode-btn.active {
+  border-color: var(--sc, var(--accent-primary));
+  background: color-mix(in srgb, var(--sc, var(--accent-primary)) 15%, transparent);
+  color: var(--text-primary);
+}
+
+.delay-toggle-btn {
+  appearance: none;
+  -webkit-appearance: none;
+  min-width: 52px;
+  padding: 4px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-control);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--font-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.delay-toggle-btn:hover {
+  background: var(--bg-control-hover);
+}
+
+.delay-toggle-btn.on {
+  border-color: #10b981;
+  background: color-mix(in srgb, #10b981 18%, transparent);
+  color: var(--text-primary);
+}
+
+/* ─── Select/Dropdown ─── */
+
+.delay-select-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  gap: 8px;
+}
+
+.delay-select-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: var(--font-sm);
+  color: var(--text-secondary);
+}
+
+.delay-select-field select {
+  width: 100%;
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--font-sm);
+}
+
+.delay-select-field select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ─── Inline Toggle Row ─── */
+
+.delay-inline-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+.delay-inline-toggle-label {
+  font-size: var(--font-sm);
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+/* ─── Section Label ─── */
+
+.delay-section-label {
+  font-size: var(--font-xs);
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 4px 0 0;
+}
+
+/* ─── Linkage Note ─── */
+
+.delay-linkage-note {
+  font-size: var(--font-sm);
+  color: var(--text-secondary);
+  line-height: 1.4;
+  margin: 0;
+}
+
+/* ─── Visualization Containers ─── */
+
+.delay-viz-tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.delay-viz-tab {
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 3px 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-control);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--font-xs);
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.delay-viz-tab.active {
+  border-color: var(--accent-primary);
+  background: color-mix(in srgb, var(--accent-primary) 15%, transparent);
+  color: var(--text-primary);
+}
+
+.delay-rhythm-map,
+.delay-scope {
+  width: 100%;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+}
+
+.delay-rhythm-map { height: 160px; }
+.delay-scope { height: 140px; }
+
+.delay-rhythm-map canvas,
+.delay-scope canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.delay-algorithm-card {
+  width: 100%;
+  max-width: 260px;
+  height: 60px;
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.15);
+  border: 1px solid var(--border-subtle);
+  margin: 2px 0 6px;
+}
+
+.delay-algorithm-card canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.delay-thumbnail {
+  width: 40px;
+  height: 24px;
+  flex-shrink: 0;
+  display: block;
+}
+
+/* ─── Mobile ─── */
+
+.delay-root.mobile .delay-rhythm-map { height: 120px; }
+.delay-root.mobile .delay-scope { height: 100px; }
+.delay-root.mobile .delay-card-body { padding: 6px 8px; }
+
+@media (max-width: 900px) {
+  .delay-root:not(.mobile) .delay-container {
+    flex-direction: column;
+  }
+
+  .delay-root:not(.mobile) .delay-left {
+    flex: 1 1 100%;
+  }
+}

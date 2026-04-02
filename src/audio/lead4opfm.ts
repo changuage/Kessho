@@ -12,6 +12,9 @@
  * - Algorithm is discrete: either snap at 50% morph or always use first preset's
  */
 
+import { getPresetStore } from '../presets/PresetStore';
+import type { PresetEntry, PresetLibrary } from '../presets/types';
+
 // ─── Active note tracking for CPU overlay ───
 let activeLeadNoteCount = 0;
 
@@ -369,6 +372,144 @@ export const DEFAULT_GAMELAN: Lead4opFMPreset = {
 
 const presetCache: Map<string, Lead4opFMPreset> = new Map();
 let manifestCache: Lead4opFMManifest | null = null;
+const USER_LEAD4OP_SCOPE = 'lead4opfm';
+const USER_LEAD4OP_PRESETS = new Map<string, { preset: Lead4opFMPreset; library: Exclude<PresetLibrary, 'stock'> }>();
+
+function cloneLead4opPreset(preset: Lead4opFMPreset, id = preset.id, name = preset.name): Lead4opFMPreset {
+  return JSON.parse(JSON.stringify({
+    ...preset,
+    id,
+    name,
+  })) as Lead4opFMPreset;
+}
+
+function isLead4opFMPresetCandidate(value: unknown): value is Lead4opFMPreset {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Partial<Lead4opFMPreset>;
+  return typeof candidate.id === 'string'
+    && typeof candidate.name === 'string'
+    && typeof candidate.algorithm === 'string'
+    && !!candidate.xy
+    && !!candidate.params;
+}
+
+function parseLead4opPresetFromEntry(entry: PresetEntry, lookupName: string): Lead4opFMPreset | null {
+  const version = entry.versions.find(v => v.v === entry.currentVersion)
+    || entry.versions[entry.versions.length - 1];
+  if (!version) return null;
+
+  const data = version.data as Record<string, unknown>;
+  const rawPreset = isLead4opFMPresetCandidate(version.data)
+    ? version.data
+    : isLead4opFMPresetCandidate(data.preset)
+      ? data.preset
+      : null;
+  if (!rawPreset) return null;
+
+  return cloneLead4opPreset(rawPreset, lookupName, entry.name);
+}
+
+async function loadUserLead4opPresetFromStore(presetId: string): Promise<{ preset: Lead4opFMPreset; library: Exclude<PresetLibrary, 'stock'> } | null> {
+  const runtime = USER_LEAD4OP_PRESETS.get(presetId);
+  if (runtime) {
+    return {
+      preset: cloneLead4opPreset(runtime.preset, presetId, runtime.preset.name),
+      library: runtime.library,
+    };
+  }
+
+  const store = getPresetStore();
+  const entry = await store.load('engine', presetId, USER_LEAD4OP_SCOPE);
+  if (!entry) return null;
+
+  const preset = parseLead4opPresetFromEntry(entry, presetId);
+  if (!preset) return null;
+
+  const library = (entry.library ?? 'user') as Exclude<PresetLibrary, 'stock'>;
+  USER_LEAD4OP_PRESETS.set(presetId, { preset, library });
+  presetCache.set(presetId, preset);
+  return { preset: cloneLead4opPreset(preset, presetId, preset.name), library };
+}
+
+export function setUserLead4opFMPresets(
+  presets: Array<{ id: string; name: string; library: Exclude<PresetLibrary, 'stock'>; preset: Lead4opFMPreset }>,
+): void {
+  USER_LEAD4OP_PRESETS.clear();
+  for (const preset of presets) {
+    const cloned = cloneLead4opPreset(preset.preset, preset.id, preset.name);
+    USER_LEAD4OP_PRESETS.set(preset.id, {
+      preset: cloned,
+      library: preset.library,
+    });
+    presetCache.set(preset.id, cloned);
+  }
+}
+
+export function upsertUserLead4opFMPreset(
+  preset: { id: string; name: string; library: Exclude<PresetLibrary, 'stock'>; preset: Lead4opFMPreset },
+): void {
+  const cloned = cloneLead4opPreset(preset.preset, preset.id, preset.name);
+  USER_LEAD4OP_PRESETS.set(preset.id, {
+    preset: cloned,
+    library: preset.library,
+  });
+  presetCache.set(preset.id, cloned);
+}
+
+export async function saveUserLead4opFMPreset(
+  name: string,
+  preset: Lead4opFMPreset,
+  note = '',
+): Promise<string> {
+  const store = getPresetStore();
+  const existing = await store.load('engine', name, USER_LEAD4OP_SCOPE);
+  const now = Date.now();
+  let actualName = name;
+  const storedPreset = cloneLead4opPreset(preset, name, name);
+
+  if (existing && existing.author === 'user' && existing.library === 'user') {
+    const maxVersion = Math.max(...existing.versions.map(version => version.v));
+    existing.versions.push({
+      v: maxVersion + 1,
+      note,
+      timestamp: now,
+      data: storedPreset as unknown as Record<string, unknown>,
+    });
+    existing.currentVersion = maxVersion + 1;
+    existing.updatedAt = now;
+    await store.save(existing);
+  } else {
+    actualName = existing && existing.author !== 'user' ? `${name} (Custom)` : name;
+    const entry: PresetEntry = {
+      type: 'engine',
+      scope: USER_LEAD4OP_SCOPE,
+      engine: USER_LEAD4OP_SCOPE,
+      name: actualName,
+      author: 'user',
+      library: 'user',
+      familyName: actualName,
+      variantName: actualName,
+      versions: [{
+        v: 1,
+        note,
+        timestamp: now,
+        data: cloneLead4opPreset(storedPreset, actualName, actualName) as unknown as Record<string, unknown>,
+      }],
+      currentVersion: 1,
+      createdAt: now,
+      updatedAt: now,
+    };
+    await store.save(entry);
+  }
+
+  const finalPreset = cloneLead4opPreset(storedPreset, actualName, actualName);
+  USER_LEAD4OP_PRESETS.set(actualName, {
+    preset: finalPreset,
+    library: 'user',
+  });
+  presetCache.set(actualName, finalPreset);
+  return actualName;
+}
 
 /**
  * Load the Lead4opFM preset manifest (cached after first fetch)
@@ -401,6 +542,11 @@ export async function loadLead4opFMPreset(presetId: string): Promise<Lead4opFMPr
   // Check cache
   const cached = presetCache.get(presetId);
   if (cached) return cached;
+
+  const userPreset = await loadUserLead4opPresetFromStore(presetId);
+  if (userPreset) {
+    return userPreset.preset;
+  }
 
   // Embedded fallbacks
   if (presetId === 'soft_rhodes') {
@@ -450,7 +596,7 @@ export async function getLead4opFMPresetList(): Promise<{ id: string; name: stri
  * @param ctx - AudioContext
  * @param destination - GainNode to connect output to (the shared lead bus)
  * @param frequency - Note frequency in Hz
- * @param velocity - Note velocity 0..1
+ * @param velocity - Note timbre velocity 0..1
  * @param morphed - Pre-computed morphed params from morphPresets()
  * @param hold - Hold time in seconds (from shared leadHold param)
  * @returns stopTime (seconds) for cleanup scheduling

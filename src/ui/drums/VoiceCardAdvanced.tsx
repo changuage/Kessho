@@ -3,6 +3,7 @@ import type { SliderState } from '../state';
 import type { DrumVoiceType } from '../../audio/drumSynth';
 import type { DrumVoiceConfig } from '../../audio/drumVoiceConfig';
 import EnvelopeVisualizer from './EnvelopeVisualizer';
+import { useSliderHelp } from '../SliderHelpOverlay';
 
 interface VoiceCardAdvancedProps {
   voice: DrumVoiceType;
@@ -21,6 +22,7 @@ const VoiceCardAdvanced: React.FC<VoiceCardAdvancedProps> = ({
   isTriggered = false,
   analyserNode,
 }) => {
+  const { announceSlider } = useSliderHelp();
   return (
     <div>
       <EnvelopeVisualizer voice={voice} state={state} analyserNode={analyserNode} isTriggered={isTriggered} />
@@ -60,7 +62,12 @@ const VoiceCardAdvanced: React.FC<VoiceCardAdvancedProps> = ({
                       : `${numVal.toFixed(2)}`;
 
                 return (
-                  <div key={def.key} className="param-row">
+                  <div
+                    key={def.key}
+                    className="param-row"
+                    onMouseEnter={() => announceSlider(def.key, { label: def.label })}
+                    onPointerDown={() => announceSlider(def.key, { label: def.label })}
+                  >
                     <label>{def.label}</label>
                     <input
                       type="range"
@@ -69,7 +76,11 @@ const VoiceCardAdvanced: React.FC<VoiceCardAdvancedProps> = ({
                       step={def.step}
                       value={numVal}
                       data-key={def.key}
-                      onChange={(e) => onParamChange(paramKey, parseFloat(e.target.value) as SliderState[keyof SliderState])}
+                      onChange={(e) => {
+                        announceSlider(def.key, { label: def.label });
+                        onParamChange(paramKey, parseFloat(e.target.value) as SliderState[keyof SliderState]);
+                      }}
+                      onFocus={() => announceSlider(def.key, { label: def.label })}
                     />
                     <span className="val">{formatted}</span>
                   </div>

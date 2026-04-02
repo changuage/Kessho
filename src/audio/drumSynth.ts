@@ -104,6 +104,22 @@ function noteToSeconds(note: string, bpm: number): number {
   return (60 / bpm) * beats;
 }
 
+function getSharedSequencerBpm(
+  params?: Partial<Pick<SliderState, 'sequencerMasterBPM' | 'synthEuclidBaseBPM' | 'drumEuclidBaseBPM'>> | null,
+): number {
+  const legacyGranularBpm = (params as (Record<string, unknown> | null | undefined))?.granularEuclidBaseBPM;
+  return params?.sequencerMasterBPM
+    ?? params?.synthEuclidBaseBPM
+    ?? params?.drumEuclidBaseBPM
+    ?? (typeof legacyGranularBpm === 'number' ? legacyGranularBpm : undefined)
+    ?? 120;
+}
+
+function alignSequencerTime(now: number, stepDuration: number): number {
+  if (!Number.isFinite(stepDuration) || stepDuration <= 0) return now;
+  return Math.ceil(now / stepDuration) * stepDuration;
+}
+
 export class DrumSynth {
   private ctx: AudioContext;
   private masterGain: GainNode;
@@ -171,6 +187,8 @@ export class DrumSynth {
   private delaySends: Record<DrumVoiceType, GainNode | null> = {
     sub: null, kick: null, click: null, beepHi: null, beepLo: null, noise: null, membrane: null
   };
+  private sharedDelayInput: AudioNode | null = null;
+  private sharedDelayMasterSend: GainNode | null = null;
 
   // Cache distortion curves to avoid per-trigger Float32Array allocation
   private waveshaperCurveCache = new Map<string, Float32Array<ArrayBuffer>>();
@@ -259,6 +277,8 @@ export class DrumSynth {
     
     this.reverbSend = ctx.createGain();
     this.reverbSend.gain.value = params.drumReverbSend;
+    this.sharedDelayMasterSend = ctx.createGain();
+    this.sharedDelayMasterSend.gain.value = 0;
     
     // Pre-fader bus → master gain (drumLevel applied here)
     this.preFaderBus.connect(this.masterGain);
@@ -303,7 +323,7 @@ export class DrumSynth {
     const p = this.params;
     
     // Create delay nodes (max 2 seconds)
-    const bpm = p.drumEuclidBaseBPM ?? 120;
+    const bpm = getSharedSequencerBpm(p);
     
     this.delayLeftNode = this.ctx.createDelay(4);  // Max 4 seconds for slow tempos
     this.delayRightNode = this.ctx.createDelay(4);
@@ -343,13 +363,6 @@ export class DrumSynth {
     // Create stereo merger for output
     this.delayMerger = this.ctx.createChannelMerger(2);
     
-    // Connect per-voice sends to both delay lines
-    for (const voice of voiceTypes) {
-      const sendNode = this.delaySends[voice]!;
-      sendNode.connect(this.delayLeftNode);
-      sendNode.connect(this.delayRightNode);
-    }
-    
     // Left delay chain: delay -> filter -> feedback -> right delay (ping-pong)
     this.delayLeftNode.connect(this.delayFilterL);
     this.delayFilterL.connect(this.delayFeedbackL);
@@ -369,6 +382,8 @@ export class DrumSynth {
     // Merger -> wet gain -> master output
     this.delayMerger.connect(this.delayWetGain);
     this.delayWetGain.connect(masterOutput);
+
+    this.rewireDelaySends();
   }
 
   private getWaveshaperCurve(driveAmount: number): Float32Array<ArrayBuffer> {
@@ -557,6 +572,41 @@ export class DrumSynth {
    */
   getDelaySend(voice: DrumVoiceType): GainNode | null {
     return this.delaySends[voice];
+  }
+
+  private rewireDelaySends(): void {
+    const voiceTypes: DrumVoiceType[] = ['sub', 'kick', 'click', 'beepHi', 'beepLo', 'noise', 'membrane'];
+
+    for (const voice of voiceTypes) {
+      const sendNode = this.delaySends[voice];
+      if (!sendNode) continue;
+      try { sendNode.disconnect(); } catch { /* ignore rewiring disconnects */ }
+    }
+
+    if (this.sharedDelayMasterSend) {
+      try { this.sharedDelayMasterSend.disconnect(); } catch { /* ignore rewiring disconnects */ }
+    }
+
+    if (this.sharedDelayInput && this.sharedDelayMasterSend) {
+      this.sharedDelayMasterSend.connect(this.sharedDelayInput);
+      for (const voice of voiceTypes) {
+        this.delaySends[voice]?.connect(this.sharedDelayMasterSend);
+      }
+      return;
+    }
+
+    for (const voice of voiceTypes) {
+      const sendNode = this.delaySends[voice];
+      if (!sendNode) continue;
+      if (this.delayLeftNode) sendNode.connect(this.delayLeftNode);
+      if (this.delayRightNode) sendNode.connect(this.delayRightNode);
+    }
+  }
+
+  setSharedDelayInput(target: AudioNode | null): void {
+    this.sharedDelayInput = target;
+    this.rewireDelaySends();
+    this.updateDelayParams(this.params, this.ctx.currentTime, 0.02);
   }
 
   /** Get total number of currently-active drum voices (across all voice types) for CPU monitoring. */
@@ -864,7 +914,8 @@ export class DrumSynth {
    * Update all delay-related parameters
    */
   private updateDelayParams(params: SliderState, now: number, smoothTime: number): void {
-    const bpm = params.drumEuclidBaseBPM ?? 120;
+    const bpm = getSharedSequencerBpm(params);
+    const sharedDelayActive = !!this.sharedDelayInput && !!this.sharedDelayMasterSend;
     
     // Update delay times based on note divisions and BPM
     if (this.delayLeftNode) {
@@ -894,8 +945,13 @@ export class DrumSynth {
       this.delayFilterR.frequency.setTargetAtTime(filterFreq, now, smoothTime);
     }
     
-    // Update wet level (mute if delay disabled)
-    if (this.delayWetGain) {
+    if (sharedDelayActive && this.sharedDelayMasterSend) {
+      const sendLevel = params.drumDelayASend ?? 1;
+      this.sharedDelayMasterSend.gain.setTargetAtTime(sendLevel, now, smoothTime);
+      this.delayWetGain?.gain.setTargetAtTime(0, now, smoothTime);
+      this.delayFeedbackL?.gain.setTargetAtTime(0, now, smoothTime);
+      this.delayFeedbackR?.gain.setTargetAtTime(0, now, smoothTime);
+    } else if (this.delayWetGain) {
       const wetLevel = (params.drumDelayEnabled ?? false) ? (params.drumDelayMix ?? 0.3) : 0;
       this.delayWetGain.gain.setTargetAtTime(wetLevel, now, smoothTime);
     }
@@ -2812,10 +2868,9 @@ export class DrumSynth {
     this.euclidGlobalStepCount = 0;
     this.trigConditionCounters = [[], [], [], []];
 
-    const startTime = this.ctx.currentTime;
     this.euclidSequencers = [0, 1, 2, 3].map((id) => {
       const sequencer = createSequencer(id, `drum-euclid-${id}`);
-      sequencer.nextTime = startTime; // Start scheduling from now
+      sequencer.nextTime = 0; // Align to shared transport grid on first scheduler tick
       const evolveConfig = this.euclidEvolveConfigs[id] || defaultEvolveConfig();
       sequencer.evolve.enabled = evolveConfig.enabled;
       sequencer.evolve.everyBars = evolveConfig.everyBars;
@@ -2834,20 +2889,10 @@ export class DrumSynth {
       
       const now = this.ctx.currentTime;
 
-      // Time-jump recovery: if any sequencer is >500ms behind (e.g. tab was backgrounded),
-      // snap all sequencers forward to now instead of processing a burst of catch-up events
       const timeJumpThreshold = 0.5;
-      for (const seq of this.euclidSequencers) {
-        if (seq.nextTime > 0 && now - seq.nextTime > timeJumpThreshold) {
-          for (const s of this.euclidSequencers) {
-            s.nextTime = now;
-          }
-          break;
-        }
-      }
       
       // Calculate base beat duration from BPM
-      const baseBPM = this.params.drumEuclidBaseBPM ?? 120;
+      const baseBPM = getSharedSequencerBpm(this.params);
       const tempo = this.params.drumEuclidTempo;
       const beatDuration = 60 / (baseBPM * tempo);
 
@@ -2937,6 +2982,9 @@ export class DrumSynth {
         // Per-sequencer step duration from its own clock division
         const laneStepDuration = clockDivToSec(sequencer.clockDiv);
         const laneSwing = sequencer.swing;
+        if (sequencer.nextTime <= 0 || now - sequencer.nextTime > timeJumpThreshold) {
+          sequencer.nextTime = alignSequencerTime(now, laneStepDuration);
+        }
 
         sequencer.trigger.steps = lane.steps;
         sequencer.trigger.hits = lane.hits;
@@ -3202,6 +3250,14 @@ export class DrumSynth {
         }
         this.delaySends[voice] = null;
       }
+    }
+    if (this.sharedDelayMasterSend) {
+      try {
+        this.sharedDelayMasterSend.disconnect();
+      } catch {
+        // ignore disconnect errors during dispose
+      }
+      this.sharedDelayMasterSend = null;
     }
 
     try { this.delayLeftNode?.disconnect(); } catch {}

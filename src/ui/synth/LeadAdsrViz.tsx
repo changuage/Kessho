@@ -159,13 +159,28 @@ const LeadAdsrViz: React.FC<LeadAdsrVizProps> = (props) => {
       drawHandle(endX, botY, 'release', accentColor);
     }
 
-    animRef.current = requestAnimationFrame(draw);
   }, [props]);
 
-  useEffect(() => {
-    animRef.current = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(animRef.current);
+  const requestDraw = useCallback(() => {
+    if (animRef.current) cancelAnimationFrame(animRef.current);
+    animRef.current = requestAnimationFrame(() => {
+      animRef.current = 0;
+      draw();
+    });
   }, [draw]);
+
+  useEffect(() => {
+    requestDraw();
+  }, [requestDraw]);
+
+  useEffect(() => {
+    const handleResize = () => requestDraw();
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      if (animRef.current) cancelAnimationFrame(animRef.current);
+    };
+  }, [requestDraw]);
 
   // ── Hit test ──
   const hitTest = useCallback((cx: number, cy: number): DragTarget => {
@@ -252,8 +267,9 @@ const LeadAdsrViz: React.FC<LeadAdsrVizProps> = (props) => {
     if (target) {
       e.preventDefault();
       dragRef.current = { target, startX: x, startY: y };
+      requestDraw();
     }
-  }, [getCoords, hitTest]);
+  }, [getCoords, hitTest, requestDraw]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     const { x, y } = getCoords(e);
@@ -270,11 +286,13 @@ const LeadAdsrViz: React.FC<LeadAdsrVizProps> = (props) => {
           : 'default';
       }
     }
-  }, [getCoords, hitTest, applyDrag]);
+    requestDraw();
+  }, [getCoords, hitTest, applyDrag, requestDraw]);
 
   const handleMouseUp = useCallback(() => {
     dragRef.current = { target: null, startX: 0, startY: 0 };
-  }, []);
+    requestDraw();
+  }, [requestDraw]);
 
   // Native non-passive touch listeners (React registers touch listeners as passive)
   useEffect(() => {
@@ -291,6 +309,7 @@ const LeadAdsrViz: React.FC<LeadAdsrVizProps> = (props) => {
       if (target) {
         e.preventDefault();
         dragRef.current = { target, startX: x, startY: y };
+        requestDraw();
       }
     };
     const onTouchMove = (e: TouchEvent) => {
@@ -298,10 +317,12 @@ const LeadAdsrViz: React.FC<LeadAdsrVizProps> = (props) => {
         e.preventDefault();
         const { x, y } = getXY(e);
         applyDrag(x, y);
+        requestDraw();
       }
     };
     const onTouchEnd = () => {
       dragRef.current = { target: null, startX: 0, startY: 0 };
+      requestDraw();
     };
     canvas.addEventListener('touchstart', onTouchStart, { passive: false });
     canvas.addEventListener('touchmove', onTouchMove, { passive: false });
@@ -311,12 +332,13 @@ const LeadAdsrViz: React.FC<LeadAdsrVizProps> = (props) => {
       canvas.removeEventListener('touchmove', onTouchMove);
       canvas.removeEventListener('touchend', onTouchEnd);
     };
-  }, [hitTest, applyDrag]);
+  }, [hitTest, applyDrag, requestDraw]);
 
   // Global mouse/touch up listener for drag release
   useEffect(() => {
     const handleGlobalUp = () => {
       dragRef.current = { target: null, startX: 0, startY: 0 };
+      requestDraw();
     };
     window.addEventListener('mouseup', handleGlobalUp);
     window.addEventListener('touchend', handleGlobalUp);
@@ -324,7 +346,7 @@ const LeadAdsrViz: React.FC<LeadAdsrVizProps> = (props) => {
       window.removeEventListener('mouseup', handleGlobalUp);
       window.removeEventListener('touchend', handleGlobalUp);
     };
-  }, []);
+  }, [requestDraw]);
 
   return (
     <canvas
