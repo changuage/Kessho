@@ -48,6 +48,10 @@ function createRuntimePadPreset(scope: 'pad1' | 'pad2', name: string, data: Reco
   };
 }
 
+function toEditablePadLibrary(library: PresetEntry['library'] | undefined): 'user' | 'cloud' {
+  return library === 'cloud' ? 'cloud' : 'user';
+}
+
 interface SynthPresetManagerProps {
   engineScope: 'pad1' | 'pad2';
   slotAKey: keyof SliderState;
@@ -374,7 +378,7 @@ const SynthPresetManager: React.FC<SynthPresetManagerProps> = ({
         upsertUserPadPreset(engineScope, {
           id: entry.id ?? entry.name,
           name: entry.name,
-          library: (entry.library ?? 'user') === 'stock' ? 'user' : (entry.library ?? 'user'),
+          library: toEditablePadLibrary(entry.library),
           preset: createRuntimePadPreset(engineScope, entry.name, version.data),
         });
       }
@@ -405,7 +409,7 @@ const SynthPresetManager: React.FC<SynthPresetManagerProps> = ({
               upsertUserPadPreset(engineScope, {
                 id: entry.id ?? entry.name,
                 name: entry.name,
-                library: (entry.library ?? 'user') === 'stock' ? 'user' : (entry.library ?? 'user'),
+                library: toEditablePadLibrary(entry.library),
                 preset: createRuntimePadPreset(engineScope, entry.name, version.data),
               });
             }
@@ -428,7 +432,7 @@ const SynthPresetManager: React.FC<SynthPresetManagerProps> = ({
         upsertUserPadPreset(engineScope, {
           id: entry.id ?? entry.name,
           name: entry.name,
-          library: (entry.library ?? 'user') === 'stock' ? 'user' : (entry.library ?? 'user'),
+          library: toEditablePadLibrary(entry.library),
           preset: createRuntimePadPreset(engineScope, entry.name, version.data),
         });
       }

@@ -75,15 +75,28 @@ function computeFoldTable(amount: number, mode: number): Float32Array {
   return table;
 }
 
-/** Apply fold LUT to a sample — matches C++ WaveFolder::process */
-function applyFold(input: number, table: Float32Array): number {
-  const idx = (input + 1) * 127.5;
-  const i0 = Math.max(0, Math.min(254, Math.floor(idx)));
-  const frac = idx - i0;
-  return table[i0] + frac * (table[i0 + 1] - table[i0]);
+function sampleLinear(buffer: Float32Array, position: number): number {
+  if (buffer.length === 0) return 0;
+  if (buffer.length === 1) return buffer[0] ?? 0;
+  const clamped = Math.max(0, Math.min(buffer.length - 1, position));
+  const i0 = Math.min(buffer.length - 2, Math.floor(clamped));
+  const frac = clamped - i0;
+  const left = buffer[i0] ?? 0;
+  const right = buffer[i0 + 1] ?? left;
+  return left + frac * (right - left);
 }
 
-const MODE_COLORS = ['#60c0ff', '#80ff80', '#ff8060'];
+/** Apply fold LUT to a sample — matches C++ WaveFolder::process */
+function applyFold(input: number, table: Float32Array): number {
+  return sampleLinear(table, (input + 1) * 127.5);
+}
+
+const DEFAULT_MODE_COLOR = '#60c0ff';
+const MODE_COLORS = [DEFAULT_MODE_COLOR, '#80ff80', '#ff8060'] as const;
+
+function getModeColor(modeIndex: number): string {
+  return MODE_COLORS[modeIndex] ?? DEFAULT_MODE_COLOR;
+}
 
 const WaveFoldViz: React.FC<WaveFoldVizProps> = ({
   foldAmount, foldMode, oscAWave, oscBWave, oscALevel, oscBLevel, oscMix,
@@ -141,7 +154,7 @@ const WaveFoldViz: React.FC<WaveFoldVizProps> = ({
     const table = computeFoldTable(foldAmount, modeIndex);
     const folded = new Float32Array(N);
     for (let i = 0; i < N; i++) {
-      const dry = waveform[i];
+      const dry = waveform[i] ?? 0;
       const wet = applyFold(dry, table);
       folded[i] = dry + foldAmount * (wet - dry);
     }
@@ -153,9 +166,7 @@ const WaveFoldViz: React.FC<WaveFoldVizProps> = ({
       ctx.beginPath();
       for (let px = 0; px <= plotW; px++) {
         const idx = (px / plotW) * (N - 1);
-        const i0 = Math.min(N - 2, Math.floor(idx));
-        const frac = idx - i0;
-        const val = waveform[i0] + frac * (waveform[i0 + 1] - waveform[i0]);
+        const val = sampleLinear(waveform, idx);
         const y = pad + plotH * (1 - (val + 1) * 0.5);
         if (px === 0) ctx.moveTo(pad + px, y);
         else ctx.lineTo(pad + px, y);
@@ -165,7 +176,7 @@ const WaveFoldViz: React.FC<WaveFoldVizProps> = ({
 
     // Draw folded waveform
     const color = foldAmount > 0.001
-      ? (MODE_COLORS[modeIndex] ?? MODE_COLORS[0])
+      ? getModeColor(modeIndex)
       : 'rgba(255,255,255,0.5)';
     ctx.strokeStyle = color;
     ctx.lineWidth = 1.1 * dpr;
@@ -173,9 +184,7 @@ const WaveFoldViz: React.FC<WaveFoldVizProps> = ({
     ctx.beginPath();
     for (let px = 0; px <= plotW; px++) {
       const idx = (px / plotW) * (N - 1);
-      const i0 = Math.min(N - 2, Math.floor(idx));
-      const frac = idx - i0;
-      const val = folded[i0] + frac * (folded[i0 + 1] - folded[i0]);
+      const val = sampleLinear(folded, idx);
       const y = pad + plotH * (1 - (val + 1) * 0.5);
       if (px === 0) ctx.moveTo(pad + px, y);
       else ctx.lineTo(pad + px, y);
