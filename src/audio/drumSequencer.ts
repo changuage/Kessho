@@ -67,7 +67,7 @@ export function seqPickVoice(s: SequencerState): DrumVoiceType | null {
   const enabled = (Object.keys(s.sources) as DrumVoiceType[]).filter((v) => s.sources[v]);
   if (enabled.length === 0) return null;
   const index = Math.floor(s.rng() * enabled.length);
-  return enabled[Math.max(0, Math.min(enabled.length - 1, index))];
+  return enabled[Math.max(0, Math.min(enabled.length - 1, index))] ?? null;
 }
 
 /**

@@ -44,7 +44,7 @@ import { SliderHelpProvider, useSliderHelp } from './ui/SliderHelpOverlay';
 import { CircleOfFifths, getMorphedRootNote } from './ui/CircleOfFifths';
 import { useJourney } from './ui/journeyState';
 import type { SeqSimpleState } from './ui/drums/SeqSimple';
-import { loadFactoryPresets, PresetDropdown, setPresetStore, getVersionData, extractPresetVersionMetadata, LocalStoragePresetStore, SupabasePresetStore, HybridPresetStore } from './presets';
+import { loadFactoryPresets, setPresetStore, getVersionData, extractPresetVersionMetadata, LocalStoragePresetStore, SupabasePresetStore, HybridPresetStore } from './presets';
 import type { PresetEntry } from './presets';
 import { CollapsiblePanel } from './ui/CollapsiblePanel';
 import type { StepOverrides, SubLaneKind, SubLaneState, PitchSettings, EvolveConfig } from './ui/sequencer/useEuclideanSequencer';
@@ -470,7 +470,7 @@ function statePresetEntryToSavedPreset(entry: PresetEntry): SavedPreset | null {
   return migratePreset({
     name: entry.name,
     timestamp: new Date(version.timestamp).toISOString(),
-    state: versionData as SliderState,
+    state: versionData as unknown as SliderState,
     ...(extractPresetVersionMetadata(version) ?? {}),
   });
 }
@@ -1059,6 +1059,8 @@ function Select<T extends string>({ label, value, options, onChange, onMouseEnte
 // CollapsiblePanel imported from ./ui/CollapsiblePanel
 
 // Main App
+type StereoFloatBufferChunks = [Float32Array[], Float32Array[]];
+
 const App: React.FC = () => {
   // Splash screen state
   const [showSplash, setShowSplash] = useState(true);
@@ -1079,7 +1081,7 @@ const App: React.FC = () => {
       { baseHue: 190, name: 'teal' },    // Teal (#3C7181)
     ];
     
-    const palette = palettes[Math.floor(Math.random() * palettes.length)];
+    const palette = palettes[Math.floor(Math.random() * palettes.length)] ?? palettes[0]!;
     const hueVariation = (Math.random() - 0.5) * 20;
     
     // Muted, desaturated colors to blend with dark theme
@@ -1198,12 +1200,12 @@ const App: React.FC = () => {
   const recordingIntervalRef = useRef<number | null>(null);
   const recordingStreamDestRef = useRef<MediaStreamAudioDestinationNode | null>(null);
   // WAV recording refs
-  const wavBuffersRef = useRef<Float32Array[][]>([[], []]); // [leftChannels, rightChannels]
+  const wavBuffersRef = useRef<StereoFloatBufferChunks>([[], []]); // [leftChannels, rightChannels]
   const scriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
   
   // Stem recording refs - separate buffers and processors for each stem
   type StemName = 'synth' | 'lead' | 'drums' | 'waves' | 'granular' | 'reverb';
-  const stemBuffersRef = useRef<Record<StemName, Float32Array[][]>>({
+  const stemBuffersRef = useRef<Record<StemName, StereoFloatBufferChunks>>({
     synth: [[], []],
     lead: [[], []],
     drums: [[], []],
@@ -1262,20 +1264,11 @@ const App: React.FC = () => {
   const [presetsLoading, setPresetsLoading] = useState(true);
 
   // L4 State preset name tracking
-  const [statePresetName, setStatePresetName] = useState<string | undefined>();
-  const handleStatePresetLoad = useCallback((entry: PresetEntry, data: Record<string, unknown>) => {
-    setStatePresetName(entry.name);
-    // Apply all params to state
-    const merged: Record<string, unknown> = { ...state };
-    for (const [key, value] of Object.entries(data)) {
-      if (key in merged) merged[key] = value;
-    }
-    setState(merged as SliderState);
-  }, [state]);
+  const [statePresetName, setStatePresetName] = useState('');
 
   // Morph slot name tracking (for PresetDropdown display)
-  const [morphSlotAName, setMorphSlotAName] = useState<string | undefined>();
-  const [morphSlotBName, setMorphSlotBName] = useState<string | undefined>();
+  const [morphSlotAName, setMorphSlotAName] = useState('');
+  const [morphSlotBName, setMorphSlotBName] = useState('');
   
   // Preset Morph state
   const [morphPresetA, setMorphPresetA] = useState<SavedPreset | null>(null);
@@ -3634,7 +3627,7 @@ const App: React.FC = () => {
     let offset = 44;
     for (let i = 0; i < numSamples; i++) {
       // Left channel - clamp and convert to 24-bit signed integer
-      const leftSample = Math.max(-1, Math.min(1, leftChannel[i]));
+      const leftSample = Math.max(-1, Math.min(1, leftChannel[i] ?? 0));
       const leftInt = Math.floor(leftSample * 8388607); // 2^23 - 1
       view.setUint8(offset, leftInt & 0xFF);
       view.setUint8(offset + 1, (leftInt >> 8) & 0xFF);
@@ -3642,7 +3635,7 @@ const App: React.FC = () => {
       offset += 3;
       
       // Right channel
-      const rightSample = Math.max(-1, Math.min(1, rightChannel[i]));
+      const rightSample = Math.max(-1, Math.min(1, rightChannel[i] ?? 0));
       const rightInt = Math.floor(rightSample * 8388607);
       view.setUint8(offset, rightInt & 0xFF);
       view.setUint8(offset + 1, (rightInt >> 8) & 0xFF);
@@ -3680,8 +3673,9 @@ const App: React.FC = () => {
           const leftData = e.inputBuffer.getChannelData(0);
           const rightData = e.inputBuffer.getChannelData(1);
           // Copy the data since the buffer is reused
-          wavBuffersRef.current[0].push(new Float32Array(leftData));
-          wavBuffersRef.current[1].push(new Float32Array(rightData));
+          const [leftChunks, rightChunks] = wavBuffersRef.current;
+          leftChunks.push(new Float32Array(leftData));
+          rightChunks.push(new Float32Array(rightData));
         };
         
         limiterNode.connect(scriptProcessor);
@@ -3737,8 +3731,9 @@ const App: React.FC = () => {
           const leftData = e.inputBuffer.getChannelData(0);
           const rightData = e.inputBuffer.getChannelData(1);
           // Copy the data since the buffer is reused
-          stemBuffersRef.current[stemNameCapture][0].push(new Float32Array(leftData));
-          stemBuffersRef.current[stemNameCapture][1].push(new Float32Array(rightData));
+          const [leftChunks, rightChunks] = stemBuffersRef.current[stemNameCapture];
+          leftChunks.push(new Float32Array(leftData));
+          rightChunks.push(new Float32Array(rightData));
         };
         
         // Connect stem node to its processor
@@ -3801,9 +3796,12 @@ const App: React.FC = () => {
         const rightChannel = new Float32Array(totalSamples);
         let offset = 0;
         for (let i = 0; i < leftBuffers.length; i++) {
-          leftChannel.set(leftBuffers[i], offset);
-          rightChannel.set(rightBuffers[i], offset);
-          offset += leftBuffers[i].length;
+          const leftBuffer = leftBuffers[i];
+          const rightBuffer = rightBuffers[i];
+          if (!leftBuffer || !rightBuffer) continue;
+          leftChannel.set(leftBuffer, offset);
+          rightChannel.set(rightBuffer, offset);
+          offset += leftBuffer.length;
         }
         
         const sampleRate = ctx?.sampleRate || 48000;
@@ -3868,9 +3866,12 @@ const App: React.FC = () => {
         const rightChannel = new Float32Array(totalSamples);
         let offset = 0;
         for (let i = 0; i < leftBuffers.length; i++) {
-          leftChannel.set(leftBuffers[i], offset);
-          rightChannel.set(rightBuffers[i], offset);
-          offset += leftBuffers[i].length;
+          const leftBuffer = leftBuffers[i];
+          const rightBuffer = rightBuffers[i];
+          if (!leftBuffer || !rightBuffer) continue;
+          leftChannel.set(leftBuffer, offset);
+          rightChannel.set(rightBuffer, offset);
+          offset += leftBuffer.length;
         }
         
         const wavBuffer = encodeWav24bit(leftChannel, rightChannel, sampleRate);
@@ -3902,7 +3903,9 @@ const App: React.FC = () => {
       
       // If only one file, download directly (no need for zip)
       if (filesToZip.length === 1) {
-        const { filename, blob } = filesToZip[0];
+        const firstFile = filesToZip[0];
+        if (!firstFile) return;
+        const { filename, blob } = firstFile;
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -4741,88 +4744,15 @@ const App: React.FC = () => {
     });
   }, [morphPresetA, morphPresetB, lerpPresets, engineState.cofCurrentStep]);
 
-  // ── Morph Slot Select Callbacks (used by GlobalPage) ──
-  const handleMorphSlotASelect = useCallback((presetName: string) => {
-    if (presetName === '') {
-      setMorphPresetA(null);
-    } else {
-      const preset = savedPresets.find(p => p.name === presetName);
-      if (preset) {
-        const migratedA = migratePreset(preset);
-        const normalizedPreset: SavedPreset = {
-          ...migratedA,
-          state: normalizePresetForWeb(migratedA.state),
-        };
-        if (!morphPresetB) {
-          morphCapturedStateRef.current = { ...state };
-          const currentDualRanges: Record<string, { min: number; max: number }> = {};
-          Object.keys(sliderModes).forEach(key => {
-            const range = dualSliderRanges[key as keyof SliderState];
-            if (range) {
-              currentDualRanges[key as string] = { min: range.min, max: range.max };
-            }
-          });
-          morphCapturedDualRangesRef.current = currentDualRanges;
-          morphCapturedSliderModesRef.current = { ...sliderModes };
-        }
-        setMorphPresetA(normalizedPreset);
-        const atEndpoint0 = isAtEndpoint0(morphPosition, true);
-        const shouldApplyPresetA = atEndpoint0 || !morphPresetB;
-        if (shouldApplyPresetA) {
-          const result = applyPreset(normalizedPreset, { migrate: false, currentState: state, normalize: s => s });
-          setState(result.state);
-          applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
-          restoreEvolveConfigs(normalizedPreset);
-        }
-      }
-    }
-  }, [savedPresets, morphPresetB, morphPosition, state, sliderModes, dualSliderRanges, applyDualRangesFromPreset, restoreEvolveConfigs]);
-
   const handleMorphSlotAClear = useCallback(() => {
     setMorphPresetA(null);
-    setMorphSlotAName(undefined);
+    setMorphSlotAName('');
     setMorphPosition(0);
   }, []);
 
-  const handleMorphSlotBSelect = useCallback((presetName: string) => {
-    if (presetName === '') {
-      setMorphPresetB(null);
-    } else {
-      const preset = savedPresets.find(p => p.name === presetName);
-      if (preset) {
-        const migratedB = migratePreset(preset);
-        const normalizedPreset: SavedPreset = {
-          ...migratedB,
-          state: normalizePresetForWeb(migratedB.state),
-        };
-        if (!morphPresetA) {
-          morphCapturedStateRef.current = { ...state };
-          const currentDualRanges: Record<string, { min: number; max: number }> = {};
-          Object.keys(sliderModes).forEach(key => {
-            const range = dualSliderRanges[key as keyof SliderState];
-            if (range) {
-              currentDualRanges[key as string] = { min: range.min, max: range.max };
-            }
-          });
-          morphCapturedDualRangesRef.current = currentDualRanges;
-          morphCapturedSliderModesRef.current = { ...sliderModes };
-        }
-        setMorphPresetB(normalizedPreset);
-        const atEndpoint1 = isAtEndpoint1(morphPosition, true);
-        const shouldApplyPresetB = atEndpoint1 || !morphPresetA;
-        if (shouldApplyPresetB) {
-          const result = applyPreset(normalizedPreset, { migrate: false, currentState: state, normalize: s => s });
-          setState(result.state);
-          applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
-          restoreEvolveConfigs(normalizedPreset);
-        }
-      }
-    }
-  }, [savedPresets, morphPresetA, morphPosition, state, sliderModes, dualSliderRanges, applyDualRangesFromPreset, restoreEvolveConfigs]);
-
   const handleMorphSlotBClear = useCallback(() => {
     setMorphPresetB(null);
-    setMorphSlotBName(undefined);
+    setMorphSlotBName('');
     setMorphPosition(0);
   }, []);
 

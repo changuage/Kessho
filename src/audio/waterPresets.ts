@@ -12,6 +12,44 @@ export const WATER_PRESETS = ['Tap Drips', 'Stream', 'Waterfall', 'Rain Window',
 export const LAYER_KEYS = ['hardDrops', 'waterDrops', 'bubbling', 'turbulence', 'channels', 'surf'] as const;
 export type LayerKey = typeof LAYER_KEYS[number];
 
+export interface WaterPresetState {
+  waterBaseFreq: number;
+  waterIntensity: number;
+  waterDistance: number;
+  waterDropSize: number;
+  waterHardness: number;
+  waterGlassThickness: number;
+  waterLayerHardDrops: number;
+  waterLayerWaterDrops: number;
+  waterLayerTurbulence: number;
+  waterLayerBubbling: number;
+  waterLayerSurf: number;
+  waterLayerChannels: number;
+  waterHardDropRate: number;
+  waterHardDropLPF: number;
+  waterWaterDropRate: number;
+  waterWaterDropLPF: number;
+  waterBubblingRate: number;
+  waterBubblingLPF: number;
+  waterSurfDuration: number;
+  waterSurfInterval: number;
+  waterSurfFoam: number;
+  waterSurfFoamBright: number;
+  waterSurfProximity: number;
+  waterSurfDepth: number;
+  waterSurfBody: number;
+  waterSurfSpray: number;
+  waterDensityHardSend: number;
+  waterDensityWaterSend: number;
+  waterDensityBubbleSend: number;
+  waterDensityFeedback: number;
+  waterDensityTone: number;
+  waterDensityRing: number;
+  waterDensityWet: number;
+  waterChannelsMorph: number;
+  waterChannelsSpeed: number;
+}
+
 export const LAYER_LABELS: Record<LayerKey, string> = {
   hardDrops: 'Hard Drops',
   waterDrops: 'Water Drops',
@@ -22,7 +60,7 @@ export const LAYER_LABELS: Record<LayerKey, string> = {
 };
 
 /** Map LayerKey → SliderState key for that layer level */
-export const LAYER_TO_STATE_KEY: Record<LayerKey, string> = {
+export const LAYER_TO_STATE_KEY: Record<LayerKey, keyof WaterPresetState> = {
   hardDrops: 'waterLayerHardDrops',
   waterDrops: 'waterLayerWaterDrops',
   bubbling: 'waterLayerBubbling',
@@ -249,7 +287,7 @@ function hashRuntimePresetId(sourceId: string): number {
   return 1000 + Math.abs(hash >>> 0);
 }
 
-function buildStockWaterPresetState(presetId: number): Record<string, number> {
+function buildStockWaterPresetState(presetId: number): WaterPresetState {
   const fallbackParams = PRESET_PARAMS[0]!;
   const fallbackLayers = PRESET_LAYERS[0]!;
   const params = PRESET_PARAMS[presetId] ?? fallbackParams;
@@ -295,8 +333,10 @@ function buildStockWaterPresetState(presetId: number): Record<string, number> {
   };
 }
 
-function getWaterPresetState(presetId: number): Record<string, number> {
-  return USER_WATER_PRESETS.get(presetId)?.data ?? buildStockWaterPresetState(presetId);
+function getWaterPresetState(presetId: number): WaterPresetState {
+  const stockState = buildStockWaterPresetState(presetId);
+  const userState = USER_WATER_PRESETS.get(presetId)?.data;
+  return userState ? { ...stockState, ...userState } : stockState;
 }
 
 export function getWaterPresetOptions(): WaterPresetOption[] {
@@ -381,7 +421,7 @@ export function getWaterPresetSliderModes(presetId: number): Record<string, Slid
  */
 export function morphWaterPresets(
   idxA: number, idxB: number, t: number
-): Record<string, number> {
+): WaterPresetState {
   const presetA = getWaterPresetState(idxA);
   const presetB = getWaterPresetState(idxB);
   const fallback = buildStockWaterPresetState(0);
@@ -392,13 +432,19 @@ export function morphWaterPresets(
   const lrp = (a: number, b: number) => a + (b - a) * s;
   const eLrp = (a: number, b: number) => (a > 0 && b > 0) ? a * Math.pow(b / a, s) : lrp(a, b);
 
-  const result: Record<string, number> = {
+  const result: WaterPresetState = {
     waterBaseFreq: eLrp(presetA.waterBaseFreq ?? fallback.waterBaseFreq, presetB.waterBaseFreq ?? fallback.waterBaseFreq),
     waterIntensity: lrp(presetA.waterIntensity ?? fallback.waterIntensity, presetB.waterIntensity ?? fallback.waterIntensity),
     waterDistance: lrp(presetA.waterDistance ?? fallback.waterDistance, presetB.waterDistance ?? fallback.waterDistance),
     waterDropSize: lrp(presetA.waterDropSize ?? fallback.waterDropSize, presetB.waterDropSize ?? fallback.waterDropSize),
     waterHardness: lrp(presetA.waterHardness ?? fallback.waterHardness, presetB.waterHardness ?? fallback.waterHardness),
     waterGlassThickness: lrp(presetA.waterGlassThickness ?? fallback.waterGlassThickness, presetB.waterGlassThickness ?? fallback.waterGlassThickness),
+    waterLayerHardDrops: lrp(presetA.waterLayerHardDrops ?? fallback.waterLayerHardDrops, presetB.waterLayerHardDrops ?? fallback.waterLayerHardDrops),
+    waterLayerWaterDrops: lrp(presetA.waterLayerWaterDrops ?? fallback.waterLayerWaterDrops, presetB.waterLayerWaterDrops ?? fallback.waterLayerWaterDrops),
+    waterLayerTurbulence: lrp(presetA.waterLayerTurbulence ?? fallback.waterLayerTurbulence, presetB.waterLayerTurbulence ?? fallback.waterLayerTurbulence),
+    waterLayerBubbling: lrp(presetA.waterLayerBubbling ?? fallback.waterLayerBubbling, presetB.waterLayerBubbling ?? fallback.waterLayerBubbling),
+    waterLayerSurf: lrp(presetA.waterLayerSurf ?? fallback.waterLayerSurf, presetB.waterLayerSurf ?? fallback.waterLayerSurf),
+    waterLayerChannels: lrp(presetA.waterLayerChannels ?? fallback.waterLayerChannels, presetB.waterLayerChannels ?? fallback.waterLayerChannels),
     waterHardDropRate: lrp(presetA.waterHardDropRate ?? fallback.waterHardDropRate, presetB.waterHardDropRate ?? fallback.waterHardDropRate),
     waterHardDropLPF: eLrp(presetA.waterHardDropLPF ?? fallback.waterHardDropLPF, presetB.waterHardDropLPF ?? fallback.waterHardDropLPF),
     waterWaterDropRate: lrp(presetA.waterWaterDropRate ?? fallback.waterWaterDropRate, presetB.waterWaterDropRate ?? fallback.waterWaterDropRate),
@@ -426,9 +472,10 @@ export function morphWaterPresets(
 
   for (const key of LAYER_KEYS) {
     const stateKey = LAYER_TO_STATE_KEY[key];
+    const fallbackValue = fallback[stateKey];
     result[stateKey] = lrp(
-      presetA[stateKey] ?? fallback[stateKey],
-      presetB[stateKey] ?? fallback[stateKey],
+      presetA[stateKey] ?? fallbackValue,
+      presetB[stateKey] ?? fallbackValue,
     );
   }
 

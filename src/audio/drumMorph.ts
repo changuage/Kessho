@@ -206,6 +206,7 @@ export function clearDrumMorphEndpointOverrides(voice: DrumVoiceType, endpoint: 
   const overrides = drumMorphOverrides[voice];
   for (const param of Object.keys(overrides)) {
     const override = overrides[param];
+    if (!override) continue;
     if (override.isEndpoint) {
       // Check if this override was set at this endpoint
       if ((endpoint === 0 && override.morphPosition < 0.01) ||
@@ -219,6 +220,7 @@ export function clearDrumMorphEndpointOverrides(voice: DrumVoiceType, endpoint: 
   const dualOverrides = drumMorphDualRangeOverrides[voice];
   for (const param of Object.keys(dualOverrides)) {
     const dualOverride = dualOverrides[param];
+    if (!dualOverride) continue;
     if (endpoint === 0 && dualOverride.endpoint0) {
       delete dualOverride.endpoint0;
       // If no endpoints remain, remove the whole override
@@ -242,7 +244,9 @@ export function clearDrumMorphEndpointOverrides(voice: DrumVoiceType, endpoint: 
 export function clearMidMorphOverrides(voice: DrumVoiceType): void {
   const overrides = drumMorphOverrides[voice];
   for (const param of Object.keys(overrides)) {
-    if (!overrides[param].isEndpoint) {
+    const override = overrides[param];
+    if (!override) continue;
+    if (!override.isEndpoint) {
       delete overrides[param];
     }
   }

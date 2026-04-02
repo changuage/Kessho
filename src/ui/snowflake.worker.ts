@@ -70,12 +70,13 @@ function toGrid(x: number, y: number): { gx: number; gy: number } {
 function hasNeighbor(arm: number, gx: number, gy: number): boolean {
   const size = params.gridSize;
   const grid = armGrids[arm];
+  if (!grid) return false;
   for (let dx = -1; dx <= 1; dx++) {
     for (let dy = -1; dy <= 1; dy++) {
       if (dx === 0 && dy === 0) continue;
       const nx = gx + dx;
       const ny = gy + dy;
-      if (nx >= 0 && nx < size && ny >= 0 && ny < size && grid[nx][ny]) {
+      if (nx >= 0 && nx < size && ny >= 0 && ny < size && (grid[nx]?.[ny] ?? false)) {
         return true;
       }
     }
@@ -87,13 +88,16 @@ function hasNeighbor(arm: number, gx: number, gy: number): boolean {
 function seedSpine(arm: number, complexity: number) {
   const spineLength = Math.floor(8 + complexity * 12);  // 8-20 based on complexity
   const grid = armGrids[arm];
+  if (!grid) return;
   
   for (let i = 0; i < spineLength; i++) {
     const x = i * 2;
     const y = 0;
     const { gx, gy } = toGrid(x, y);
     if (gx >= 0 && gx < params.gridSize && gy >= 0 && gy < params.gridSize) {
-      grid[gx][gy] = true;
+      const column = grid[gx];
+      if (!column) continue;
+      column[gy] = true;
       stuckPoints.push({ x, y, radius: params.particleRadius, arm });
     }
   }
@@ -122,6 +126,7 @@ function randomStep(complexity: number): { dx: number; dy: number } {
 // Run DLA for a single arm
 async function growArm(arm: number, complexity: number): Promise<DLAPoint[]> {
   const grid = armGrids[arm];
+  if (!grid) return [];
   const newPoints: DLAPoint[] = [];
   
   // Calculate particles for this arm based on complexity
@@ -133,7 +138,8 @@ async function growArm(arm: number, complexity: number): Promise<DLAPoint[]> {
   
   while (isRunning && particlesStuck < targetParticles) {
     // Spawn walker on circle just outside current max radius
-    const spawnRadius = armMaxRadius[arm] + 8;
+    const currentMaxRadius = armMaxRadius[arm] ?? 5;
+    const spawnRadius = currentMaxRadius + 8;
     
     // Spawn within the 30° half-wedge (will be mirrored)
     const spawnAngle = Math.random() * (Math.PI / 6);  // 0 to 30 degrees
@@ -166,7 +172,7 @@ async function growArm(arm: number, complexity: number): Promise<DLAPoint[]> {
       
       // Check bounds
       const dist = Math.sqrt(x * x + y * y);
-      if (dist > params.maxRadius || dist > armMaxRadius[arm] + 30 || dist < 1) {
+      if (dist > params.maxRadius || dist > currentMaxRadius + 30 || dist < 1) {
         break;  // Respawn
       }
       
@@ -175,14 +181,16 @@ async function growArm(arm: number, complexity: number): Promise<DLAPoint[]> {
       if (gx >= 0 && gx < params.gridSize && gy >= 0 && gy < params.gridSize) {
         if (hasNeighbor(arm, gx, gy)) {
           if (Math.random() < stickiness) {
-            grid[gx][gy] = true;
+            const column = grid[gx];
+            if (!column) break;
+            column[gy] = true;
             const point = { x, y, radius: params.particleRadius, arm };
             stuckPoints.push(point);
             newPoints.push(point);
             particlesStuck++;
             stuck = true;
             
-            if (dist > armMaxRadius[arm]) {
+            if (dist > (armMaxRadius[arm] ?? 5)) {
               armMaxRadius[arm] = Math.min(dist, params.maxRadius);
             }
           }
@@ -205,7 +213,7 @@ async function runDLA() {
   
   // Seed all arms
   for (let arm = 0; arm < 6; arm++) {
-    const complexity = params.armComplexities[arm];
+    const complexity = params.armComplexities[arm] ?? 0.5;
     seedSpine(arm, complexity);
   }
   
@@ -217,7 +225,7 @@ async function runDLA() {
   
   // Grow each arm
   for (let arm = 0; arm < 6 && isRunning; arm++) {
-    const complexity = params.armComplexities[arm];
+    const complexity = params.armComplexities[arm] ?? 0.5;
     const newPoints = await growArm(arm, complexity);
     
     // Send batch update for this arm

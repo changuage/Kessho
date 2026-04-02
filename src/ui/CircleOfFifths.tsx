@@ -14,14 +14,14 @@ function semitoneToCoFIndex(semitone: number): number {
 export function cofIndexToSemitone(cofIndex: number): number {
   // Handle negative indices (wrap around)
   const normalizedIndex = ((cofIndex % 12) + 12) % 12;
-  return COF_SEQUENCE[normalizedIndex];
+  return COF_SEQUENCE[normalizedIndex] ?? COF_SEQUENCE[0] ?? 0;
 }
 
 // Calculate the effective root note based on home key and step offset
 export function calculateDriftedRoot(homeRoot: number, stepOffset: number): number {
   const homeIndex = semitoneToCoFIndex(homeRoot);
   const driftedIndex = (homeIndex + stepOffset + 12) % 12;
-  return COF_SEQUENCE[driftedIndex];
+  return COF_SEQUENCE[driftedIndex] ?? COF_SEQUENCE[0] ?? homeRoot;
 }
 
 // Calculate shortest path on Circle of Fifths between two semitones
@@ -43,7 +43,10 @@ export function calculateCoFPath(fromSemitone: number, toSemitone: number): { st
   const direction = useCW ? 1 : -1;
   for (let i = 0; i <= Math.abs(steps); i++) {
     const pathIndex = (fromIndex + i * direction + 12) % 12;
-    path.push(COF_SEQUENCE[pathIndex]);
+    const semitone = COF_SEQUENCE[pathIndex];
+    if (semitone !== undefined) {
+      path.push(semitone);
+    }
   }
   
   return { steps, path };
@@ -75,7 +78,7 @@ export function getMorphedRootNote(
   const pathIndex = Math.min(Math.floor((morphPosition + segmentSize / 2) / segmentSize), totalSteps);
   
   return { 
-    currentRoot: path[pathIndex], 
+    currentRoot: path[pathIndex] ?? fromSemitone,
     cofStep: steps > 0 ? pathIndex : -pathIndex,
     totalSteps 
   };

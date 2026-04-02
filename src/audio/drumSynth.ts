@@ -1061,6 +1061,15 @@ export class DrumSynth {
     return mode === 'mul' ? val * (1 + cl * c) * (1 + ed * e) : val + cl * c + ed * e;
   }
 
+  private getClEdConfig(voice: keyof typeof DrumSynth.CL_ED, param: string): [number, number, 'mul' | 'add'] {
+    const voiceConfig = DrumSynth.CL_ED[voice];
+    const config = voiceConfig?.[param];
+    if (!config) {
+      throw new Error(`Missing CL_ED config for ${voice}.${param}`);
+    }
+    return config;
+  }
+
   /**
    * Sample a random value from a S&H range for any param key.
    * Returns the sampled value, or undefined if no range is set.
@@ -1134,8 +1143,10 @@ export class DrumSynth {
 
     // Remove expired entries
     for (let i = pool.length - 1; i >= 0; i--) {
-      if (pool[i].endTime <= now) {
-        try { pool[i].outGain.disconnect(); } catch { /* already disconnected */ }
+      const pooledVoice = pool[i];
+      if (!pooledVoice) continue;
+      if (pooledVoice.endTime <= now) {
+        try { pooledVoice.outGain.disconnect(); } catch { /* already disconnected */ }
         pool.splice(i, 1);
       }
     }
@@ -1283,7 +1294,7 @@ export class DrumSynth {
     const v = this.computeVariation(variation);
     const d = this.computeDistance(distance);
     // Center: less drive saturation; Edge: more drive harmonics
-    const drive = this.clEd(driveRaw, d.t, DrumSynth.CL_ED.sub.drive);
+    const drive = this.clEd(driveRaw, d.t, this.getClEdConfig('sub', 'drive'));
     
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
@@ -1406,11 +1417,11 @@ export class DrumSynth {
     const v = this.computeVariation(variation);
     const d = this.computeDistance(distance);
     // Center: pitch sweep extends; Edge: tighter sweep
-    const pitchDecay = Math.min(0.5, this.clEd(Math.max(0.01, pitchDecayRaw), d.t, DrumSynth.CL_ED.kick.pitchDecay));
+    const pitchDecay = Math.min(0.5, this.clEd(Math.max(0.01, pitchDecayRaw), d.t, this.getClEdConfig('kick', 'pitchDecay')));
     // Center: more body resonance; Edge: thinner
     const body = bodyRaw * d.dBody;
     // Center: more sub sustain tail; Edge: tighter
-    const tail = Math.max(0, this.clEd(tailRaw, d.t, DrumSynth.CL_ED.kick.tail));
+    const tail = Math.max(0, this.clEd(tailRaw, d.t, this.getClEdConfig('kick', 'tail')));
     const effAttack = Math.min(Math.max(0.0001, attack * v.vAttack * d.dAttack), this.triggerRatchetAttackCap);
     const effDecay = Math.min(decay * v.vDecay * d.dDecay, this.triggerRatchetDecayCap);
     const effFreq = freq * v.vPitch * this.getPitchTuningRatio();
@@ -1566,7 +1577,7 @@ export class DrumSynth {
     const outputLevel = Math.min(1, velocity * level * v.vLevel * d.dLevel);
     const effDecay = Math.min(decay * v.vDecay * d.dDecay, this.triggerRatchetDecayCap);
     const effFilterFreq = filterFreq * v.vBright * d.dBright;
-    const effResonance = this.clEd(resonance * v.vBright, d.t, DrumSynth.CL_ED.click.resonance);
+    const effResonance = this.clEd(resonance * v.vBright, d.t, this.getClEdConfig('click', 'resonance'));
     const effAttack = Math.min(Math.max(0.0001, attack * v.vAttack * d.dAttack), this.triggerRatchetAttackCap);
     const effTone = tone * d.dBright;
     const effPitch = pitch * v.vPitch * this.getPitchTuningRatio();
@@ -1851,15 +1862,15 @@ export class DrumSynth {
     const v = this.computeVariation(variation);
     const d = this.computeDistance(distance);
     // CL_ED brightness: center=warmer, edge=brighter
-    const dBrightHi = this.clEd(1, d.t, DrumSynth.CL_ED.beepHi.bright);
+    const dBrightHi = this.clEd(1, d.t, this.getClEdConfig('beepHi', 'bright'));
     const dLevelHi = d.dLevel * d.dBody;
     const effFreq = freq * v.vPitch * this.getPitchTuningRatio();
     const effDecay = Math.min(decay * v.vDecay * d.dDecay, this.triggerRatchetDecayCap);
     const effAttack = Math.min(Math.max(0.0001, attack * v.vAttack * d.dAttack), this.triggerRatchetAttackCap);
     const effBrightness = brightness * dBrightHi;
     // CL_ED shimmer + feedback
-    const effShimmer = this.clEd(shimmer, d.t, DrumSynth.CL_ED.beepHi.shimmer);
-    const effFeedback = this.clEd(feedback, d.t, DrumSynth.CL_ED.beepHi.feedback);
+    const effShimmer = this.clEd(shimmer, d.t, this.getClEdConfig('beepHi', 'shimmer'));
+    const effFeedback = this.clEd(feedback, d.t, this.getClEdConfig('beepHi', 'feedback'));
     
     const outputLevel = Math.min(1, velocity * level * v.vLevel * dLevelHi);
     const numPartials = Math.max(1, Math.round(partials));
@@ -1979,16 +1990,18 @@ export class DrumSynth {
           sustainMod, time + envDuration
         );
         modOsc.connect(modEnvGain);
-        if (oscillators.length > 0) {
-          modEnvGain.connect(oscillators[0].frequency);
+        const carrierOsc = oscillators[0];
+        if (carrierOsc) {
+          modEnvGain.connect(carrierOsc.frequency);
         }
       } else {
         // Static mod depth (original behavior)
         modGain = this.ctx.createGain();
         modGain.gain.value = baseModDepth;
         modOsc.connect(modGain);
-        if (oscillators.length > 0) {
-          modGain.connect(oscillators[0].frequency);
+        const carrierOsc = oscillators[0];
+        if (carrierOsc) {
+          modGain.connect(carrierOsc.frequency);
         }
       }
       
@@ -2010,7 +2023,10 @@ export class DrumSynth {
         noiseGain.gain.setValueAtTime(noiseDepth, time);
         noiseGain.gain.exponentialRampToValueAtTime(0.01, time + noiseDur);
         noiseSource.connect(noiseGain);
-        noiseGain.connect(oscillators[0].frequency);
+        const carrierOsc = oscillators[0];
+        if (carrierOsc) {
+          noiseGain.connect(carrierOsc.frequency);
+        }
       }
     }
     
@@ -2077,8 +2093,8 @@ export class DrumSynth {
     const effDecay = Math.min(decay * v.vDecay * d.dDecay, this.triggerRatchetDecayCap);
     const effAttack = Math.min(Math.max(0.0001, attack * v.vAttack * d.dAttack), this.triggerRatchetAttackCap);
     // CL_ED: modalQ and modalGain
-    const effModalQ = this.clEd(modalQ, d.t, DrumSynth.CL_ED.beepLo.modalQ);
-    const effModalGainTrim = this.clEd(modalGainTrim, d.t, DrumSynth.CL_ED.beepLo.modalGain);
+    const effModalQ = this.clEd(modalQ, d.t, this.getClEdConfig('beepLo', 'modalQ'));
+    const effModalGainTrim = this.clEd(modalGainTrim, d.t, this.getClEdConfig('beepLo', 'modalGain'));
     
     const outputLevel = Math.min(1, velocity * level * v.vLevel * d.dLevel);
     
@@ -2279,21 +2295,22 @@ export class DrumSynth {
     const bellRatios = [1, 2.0, 3.0, 4.2, 5.4, 6.8];
     
     for (let i = 0; i < numModes; i++) {
-      const harmonic = harmonicRatios[i];
-      const bell = bellRatios[i];
+      const harmonic = harmonicRatios[i] ?? harmonicRatios[harmonicRatios.length - 1] ?? 1;
+      const bell = bellRatios[i] ?? bellRatios[bellRatios.length - 1] ?? harmonic;
       const baseRatio = harmonic + (bell - harmonic) * inharmonic;
       
       // Spread/warp: distort partial distribution
       // spread < 0 = compress (logarithmic), spread > 0 = expand (exponential)
       let ratio: number;
       if (Math.abs(spread) > 0.01) {
-        const normalized = baseRatio / harmonicRatios[numModes - 1]; // 0..1
+        const maxRatio = harmonicRatios[numModes - 1] ?? harmonicRatios[harmonicRatios.length - 1] ?? 1;
+        const normalized = baseRatio / maxRatio; // 0..1
         if (spread > 0) {
           // Exponential expansion — push partials apart
-          ratio = harmonicRatios[numModes - 1] * Math.pow(normalized, 1 - spread * 0.7);
+          ratio = maxRatio * Math.pow(normalized, 1 - spread * 0.7);
         } else {
           // Logarithmic compression — pull partials together
-          ratio = harmonicRatios[numModes - 1] * Math.pow(normalized, 1 + Math.abs(spread) * 2);
+          ratio = maxRatio * Math.pow(normalized, 1 + Math.abs(spread) * 2);
         }
         ratio = Math.max(ratio, 0.5); // Don't allow sub-fundamental
       } else {
@@ -2363,7 +2380,7 @@ export class DrumSynth {
     
     // Use morphed values if available, then apply variation/distance
     // CL_ED brightness modifier for noise filter
-    const noiseBright = this.clEd(1, d.t, DrumSynth.CL_ED.noise.bright);
+    const noiseBright = this.clEd(1, d.t, this.getClEdConfig('noise', 'bright'));
     const filterFreqBase = (morphed.drumNoiseFilterFreq as number) ?? p.drumNoiseFilterFreq;
     const filterFreq = Math.max(20, Math.min(20000, filterFreqBase * v.vBright * d.dBright * noiseBright));
     const filterQBase = (morphed.drumNoiseFilterQ as number) ?? p.drumNoiseFilterQ;
@@ -2373,12 +2390,12 @@ export class DrumSynth {
     const level = (morphed.drumNoiseLevel as number) ?? p.drumNoiseLevel;
     const attack = Math.min(((morphed.drumNoiseAttack as number) ?? p.drumNoiseAttack) / 1000 * v.vAttack * d.dAttack, this.triggerRatchetAttackCap);
     const formantRaw = (morphed.drumNoiseFormant as number) ?? p.drumNoiseFormant ?? 0;
-    const formant = this.clEd(formantRaw, d.t, DrumSynth.CL_ED.noise.formant);
+    const formant = this.clEd(formantRaw, d.t, this.getClEdConfig('noise', 'formant'));
     const breath = (morphed.drumNoiseBreath as number) ?? p.drumNoiseBreath ?? 0;
     const filterEnv = (morphed.drumNoiseFilterEnv as number) ?? p.drumNoiseFilterEnv ?? 0;
     const filterEnvDecay = ((morphed.drumNoiseFilterEnvDecay as number) ?? p.drumNoiseFilterEnvDecay ?? 100) / 1000;
     const densityRaw = ((morphed.drumNoiseDensity as number) ?? p.drumNoiseDensity ?? 1) * d.dTransient;
-    const density = this.clEd(densityRaw, d.t, DrumSynth.CL_ED.noise.density);
+    const density = this.clEd(densityRaw, d.t, this.getClEdConfig('noise', 'density'));
     const colorLFO = (morphed.drumNoiseColorLFO as number) ?? p.drumNoiseColorLFO ?? 0;
     const particleSize = ((morphed.drumNoiseParticleSize as number) ?? p.drumNoiseParticleSize ?? 5) / 1000;
     const particleRandom = (morphed.drumNoiseParticleRandom as number) ?? p.drumNoiseParticleRandom ?? 0;
@@ -2656,16 +2673,16 @@ export class DrumSynth {
     const excDur = Math.max(0.0005, (((morphed.drumMembraneExcDur as number) ?? p.drumMembraneExcDur) / 1000));
     const sizeHz = Math.max(30, ((morphed.drumMembraneSize as number) ?? p.drumMembraneSize) * v.vPitch * this.getPitchTuningRatio());
     const tensionRaw = Math.min(1, Math.max(0, (morphed.drumMembraneStiffness as number) ?? p.drumMembraneStiffness));
-    const tension = Math.min(1, this.clEd(tensionRaw, d.t, DrumSynth.CL_ED.membrane.tension));
+    const tension = Math.min(1, this.clEd(tensionRaw, d.t, this.getClEdConfig('membrane', 'tension')));
     const damping = Math.min(1, Math.max(0, (morphed.drumMembraneDamping as number) ?? p.drumMembraneDamping));
     const material = (morphed.drumMembraneMaterial as SliderState['drumMembraneMaterial']) ?? p.drumMembraneMaterial;
     const nonlin = Math.min(1, Math.max(0, (morphed.drumMembraneNonlin as number) ?? p.drumMembraneNonlin));
     const wireMixRaw = Math.max(0, Math.min(1, (morphed.drumMembraneWireMix as number) ?? p.drumMembraneWireMix));
-    const wireMix = Math.max(0, this.clEd(wireMixRaw, d.t, DrumSynth.CL_ED.membrane.wireMix));
+    const wireMix = Math.max(0, this.clEd(wireMixRaw, d.t, this.getClEdConfig('membrane', 'wireMix')));
     const wireDens = Math.max(0, Math.min(1, (morphed.drumMembraneWireDensity as number) ?? p.drumMembraneWireDensity));
     const wireTone = Math.max(0, Math.min(1, (morphed.drumMembraneWireTone as number) ?? p.drumMembraneWireTone));
     const wireDecayRaw = Math.max(0, Math.min(1, (morphed.drumMembraneWireDecay as number) ?? p.drumMembraneWireDecay));
-    const wireDecay = Math.min(1, this.clEd(wireDecayRaw, d.t, DrumSynth.CL_ED.membrane.wireDecay));
+    const wireDecay = Math.min(1, this.clEd(wireDecayRaw, d.t, this.getClEdConfig('membrane', 'wireDecay')));
     const body = Math.max(0, Math.min(1, (morphed.drumMembraneBody as number) ?? p.drumMembraneBody));
     const ring = Math.max(0, Math.min(1, (morphed.drumMembraneRing as number) ?? p.drumMembraneRing));
     const overtones = Math.max(1, Math.min(8, Math.round((morphed.drumMembraneOvertones as number) ?? p.drumMembraneOvertones)));
@@ -2760,7 +2777,8 @@ export class DrumSynth {
     const modeGains: GainNode[] = [];
 
     for (let m = 0; m < numModes; m++) {
-      const rawRatio = modeRatios[m] + inharm * (m * 0.08) * (Math.random() * 0.4 + 0.8);
+      const modeRatio = modeRatios[m] ?? modeRatios[modeRatios.length - 1] ?? 1;
+      const rawRatio = modeRatio + inharm * (m * 0.08) * (Math.random() * 0.4 + 0.8);
       const scaleBlend = (morphed.drumMembraneScaleBlend as number) ?? p.drumMembraneScaleBlend ?? 0.3;
       const ratio = this.scaleAlignRatio(rawRatio, scaleBlend);
       // Position affects which modes are excited (center excites odd modes more)
@@ -3103,12 +3121,14 @@ export class DrumSynth {
             const tcArr = ov.trigCondition?.[laneIndex] ?? null;
             const tc: [number, number] = (tcArr && tcArr[laneStep]) ? tcArr[laneStep] : [1, 1];
             // Ensure counter array is initialized for this lane
-            if (this.trigConditionCounters[laneIndex].length < lane.steps) {
+            const currentCounters = this.trigConditionCounters[laneIndex] ?? [];
+            if (currentCounters.length < lane.steps) {
               this.trigConditionCounters[laneIndex] = new Array(lane.steps).fill(0);
             }
+            const laneCounters = this.trigConditionCounters[laneIndex]!;
             // Increment visit counter for this step
-            this.trigConditionCounters[laneIndex][laneStep] += 1;
-            const visitCount = this.trigConditionCounters[laneIndex][laneStep];
+            laneCounters[laneStep] = (laneCounters[laneStep] ?? 0) + 1;
+            const visitCount = laneCounters[laneStep] ?? 1;
             // Gate: fire only when ((visitCount - 1) % N) + 1 === n
             const trigCondPassed = tc[1] <= 1 || (((visitCount - 1) % tc[1]) + 1 === tc[0]);
 
@@ -3121,6 +3141,7 @@ export class DrumSynth {
                 ? Math.max(0, Math.min(1, sequencer.expression.velocities[exprIndex] ?? 1.0))
                 : 1.0) * lane.level;
               const selectedVoice = seqPickVoice(sequencer) ?? lane.voices[Math.floor(this.rng() * lane.voices.length)];
+              if (!selectedVoice) continue;
 
               // Compute per-trigger morph override from sub-lane data
               if (ov.morph[laneIndex] && sequencer.morph.values.length > 0) {

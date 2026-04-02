@@ -130,7 +130,6 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
   const initialEvolveConfigs = props.initialEvolveConfigs;
   const presetVersion = props.presetVersion;
 
-  const Slider = SliderComponent as React.ComponentType<any>;
   const { announceHelp, announceSlider } = useSliderHelp();
 
   const [diceIntensity, setDiceIntensity] = useState(0.5);
@@ -538,10 +537,10 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                       min={0}
                       max={0.75}
                       step={0.05}
-                      value={seq.swings[seq.activeTab]}
+                      value={seq.swings[seq.activeTab] ?? 0}
                       onChange={(e) => seq.setSwing(seq.activeTab, parseFloat(e.target.value))}
                     />
-                    <span className="seq-swing-val">{Math.round(seq.swings[seq.activeTab] * 100)}%</span>
+                    <span className="seq-swing-val">{Math.round((seq.swings[seq.activeTab] ?? 0) * 100)}%</span>
                   </label>
                   <button
                     className={`seq-link-btn${seq.linked[seq.activeTab] ? ' on' : ''}`}
@@ -757,8 +756,8 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                     sequencer={activeSeq}
                     lane="trigger"
                     color={activeSeq.color}
-                    playhead={seq.playheads[seq.activeTab]}
-                    hitCount={seq.hitCounts[seq.activeTab]}
+                    playhead={seq.playheads[seq.activeTab] ?? 0}
+                    hitCount={seq.hitCounts[seq.activeTab] ?? 0}
                     onToggleTriggerStep={(step) => seq.toggleTriggerStep(seq.activeTab, step)}
                     onSetProbability={(step, value) => seq.setStepProbability(seq.activeTab, step, value)}
                     onResetProbability={(step) => seq.resetStepProbability(seq.activeTab, step)}
@@ -778,7 +777,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                     return (
                       <React.Fragment key={laneKind}>
                         <SeqSparkline
-                          label={`${laneKind[0].toUpperCase()}:`}
+                          label={`${laneKind.charAt(0).toUpperCase()}:`}
                           steps={subState?.steps ?? 5}
                           values={
                             laneKind === 'pitch'
@@ -814,8 +813,8 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                               sequencer={activeSeq}
                               lane={laneKind}
                               color={laneColor}
-                              playhead={seq.playheads[seq.activeTab]}
-                              hitCount={seq.hitCounts[seq.activeTab]}
+                              playhead={seq.playheads[seq.activeTab] ?? 0}
+                              hitCount={seq.hitCounts[seq.activeTab] ?? 0}
                               enabled={subState?.enabled ?? false}
                               direction={subState?.direction ?? 'forward'}
                               onToggleEnabled={() => seq.toggleSubLaneEnabled(seq.activeTab, laneKind)}

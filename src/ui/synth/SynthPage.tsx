@@ -535,6 +535,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     savePad2Preset,
     state,
   ]);
+  void handlePadSlotSave;
 
   const handleLeadSlotSave = useCallback(async (
     slotKey: 'lead1PresetA' | 'lead1PresetB' | 'lead2PresetC' | 'lead2PresetD',
@@ -580,6 +581,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       onSelectChange(slotKey, savedId as SliderState[typeof slotKey]);
     }
   }, [leadPresetOptionById, leadPresetOptions, onSelectChange, refreshLeadFmPresets, state]);
+  void handleLeadSlotSave;
 
   // ── Euclidean Sequencer Hook (reuses same hook as DrumPage) ──
   const seq = useEuclideanSequencer({
@@ -2537,10 +2539,10 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                         min={0}
                         max={0.75}
                         step={0.05}
-                        value={seq.swings[seq.activeTab]}
+                        value={seq.swings[seq.activeTab] ?? 0}
                         onChange={(e) => seq.setSwing(seq.activeTab, parseFloat(e.target.value))}
                       />
-                      <span className="seq-swing-val">{Math.round(seq.swings[seq.activeTab] * 100)}%</span>
+                      <span className="seq-swing-val">{Math.round((seq.swings[seq.activeTab] ?? 0) * 100)}%</span>
                     </label>
                     <button
                       className={`seq-link-btn${seq.linked[seq.activeTab] ? ' on' : ''}`}
@@ -2770,8 +2772,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     sequencer={activeSeq}
                     lane="trigger"
                     color={activeSeq.color}
-                    playhead={seq.playheads[seq.activeTab]}
-                    hitCount={seq.hitCounts[seq.activeTab]}
+                    playhead={seq.playheads[seq.activeTab] ?? 0}
+                    hitCount={seq.hitCounts[seq.activeTab] ?? 0}
                     onToggleTriggerStep={(step) => seq.toggleTriggerStep(seq.activeTab, step)}
                     onSetProbability={(step, value) => seq.setStepProbability(seq.activeTab, step, value)}
                     onResetProbability={(step) => seq.resetStepProbability(seq.activeTab, step)}
@@ -2794,7 +2796,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     return (
                       <React.Fragment key={laneKind}>
                         <SeqSparkline
-                          label={`${laneKind[0].toUpperCase()}:`}
+                          label={`${laneKind.charAt(0).toUpperCase()}:`}
                           steps={subState?.steps ?? 5}
                           values={
                             laneKind === 'pitch'
@@ -2829,8 +2831,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                               sequencer={activeSeq}
                               lane={laneKind}
                               color={laneColor}
-                              playhead={seq.playheads[seq.activeTab]}
-                              hitCount={seq.hitCounts[seq.activeTab]}
+                              playhead={seq.playheads[seq.activeTab] ?? 0}
+                              hitCount={seq.hitCounts[seq.activeTab] ?? 0}
                               enabled={subState?.enabled ?? false}
                               direction={subState?.direction ?? 'forward'}
                               onToggleEnabled={() => seq.toggleSubLaneEnabled(seq.activeTab, laneKind)}
@@ -2953,7 +2955,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                               {new Array(maxCells).fill(0).map((_, step) => {
                                 const inRange = step < seqModel.trigger.steps;
                                 const hit = inRange ? (seqModel.trigger.pattern[step] ?? false) : false;
-                                const isPlayhead = inRange && (seq.playheads[row] % seqModel.trigger.steps === step);
+                                const isPlayhead = inRange && ((seq.playheads[row] ?? 0) % seqModel.trigger.steps === step);
                                 const prob = inRange ? (seqModel.trigger.probability[step] ?? 1.0) : 1.0;
                                 const probPct = Math.round(prob * 100);
 

@@ -217,11 +217,16 @@ export function selectScaleFamily(
   let random = rng() * totalWeight;
 
   for (let i = 0; i < candidates.length; i++) {
-    random -= weights[i];
-    if (random <= 0) return candidates[i];
+    random -= weights[i] ?? 0;
+    const candidate = candidates[i];
+    if (random <= 0 && candidate) return candidate;
   }
 
-  return candidates[candidates.length - 1];
+  const fallback = candidates[candidates.length - 1] ?? SCALE_FAMILIES[0];
+  if (!fallback) {
+    throw new Error('No scale families available');
+  }
+  return fallback;
 }
 
 /**

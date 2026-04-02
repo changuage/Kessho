@@ -284,7 +284,7 @@ const GranularPage: React.FC<GranularPageProps> = ({
       for (const [k, v] of Object.entries(data)) {
         if (k in newState) newState[k] = v;
       }
-      onStateChange(newState as SliderState);
+      onStateChange(newState as unknown as SliderState);
     }
   }, [state, onStateChange]);
 

@@ -62,7 +62,11 @@ export function rngFloat(rng: () => number, min: number, max: number): number {
  * RNG helper: pick random element from array
  */
 export function rngPick<T>(rng: () => number, arr: readonly T[]): T {
-  return arr[Math.floor(rng() * arr.length)];
+  const pick = arr[Math.floor(rng() * arr.length)];
+  if (pick === undefined) {
+    throw new Error('rngPick requires at least one item');
+  }
+  return pick;
 }
 
 /**
@@ -72,7 +76,11 @@ export function rngShuffle<T>(rng: () => number, arr: T[]): T[] {
   const result = [...arr];
   for (let i = result.length - 1; i > 0; i--) {
     const j = Math.floor(rng() * (i + 1));
-    [result[i], result[j]] = [result[j], result[i]];
+    const valueAtI = result[i];
+    const valueAtJ = result[j];
+    if (valueAtI === undefined || valueAtJ === undefined) continue;
+    result[i] = valueAtJ;
+    result[j] = valueAtI;
   }
   return result;
 }
@@ -88,10 +96,15 @@ export function rngWeighted<T>(
   const totalWeight = weights.reduce((a, b) => a + b, 0);
   let random = rng() * totalWeight;
   for (let i = 0; i < items.length; i++) {
-    random -= weights[i];
-    if (random <= 0) return items[i];
+    random -= weights[i] ?? 0;
+    const item = items[i];
+    if (random <= 0 && item !== undefined) return item;
   }
-  return items[items.length - 1];
+  const fallback = items[items.length - 1];
+  if (fallback === undefined) {
+    throw new Error('rngWeighted requires at least one item');
+  }
+  return fallback;
 }
 
 /**

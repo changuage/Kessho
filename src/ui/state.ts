@@ -2577,6 +2577,7 @@ export const DEFAULT_STATE: SliderState = {
   granularDelayTime: '1/4' as string,
   granularDelayFilter: 0.5,
   granularDelayVibrato: 0,
+  granularDelayMix: 1.0,
   granularDelayReverbSend: 0.4,
 
   // Granular Macros

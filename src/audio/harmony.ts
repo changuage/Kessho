@@ -116,7 +116,7 @@ export function getEffectiveTension(
 export function calculateDriftedRoot(homeRoot: number, stepOffset: number): number {
   const homeIndex = semitoneToCoFIndex(homeRoot);
   const driftedIndex = ((homeIndex + stepOffset) % 12 + 12) % 12;
-  return COF_SEQUENCE[driftedIndex];
+  return COF_SEQUENCE[driftedIndex] ?? COF_SEQUENCE[0] ?? homeRoot;
 }
 
 /**
@@ -426,9 +426,10 @@ export function buildChordByTension(
         if (rootIdx >= 0) {
           for (let i = 1; i <= 4; i++) {
             const idx = rootIdx + i;
-            if (idx < availableNotes.length && !selectedNotes.includes(availableNotes[idx])) {
-              if (averageConsonance(availableNotes[idx], selectedNotes) >= consonanceThreshold) {
-                selectedNotes.push(availableNotes[idx]);
+            const candidate = availableNotes[idx];
+            if (idx < availableNotes.length && candidate !== undefined && !selectedNotes.includes(candidate)) {
+              if (averageConsonance(candidate, selectedNotes) >= consonanceThreshold) {
+                selectedNotes.push(candidate);
               }
             }
           }
@@ -505,11 +506,15 @@ export function voiceLeadChord(
 
   // For each new note, find closest unassigned previous note
   for (let i = 0; i < next.length; i++) {
+    const nextNote = next[i];
+    if (nextNote === undefined) continue;
     let bestDist = Infinity;
     let bestIdx = -1;
     for (let j = 0; j < prev.length; j++) {
       if (usedPrev.has(j)) continue;
-      const dist = Math.abs(next[i] - prev[j]);
+      const prevNote = prev[j];
+      if (prevNote === undefined) continue;
+      const dist = Math.abs(nextNote - prevNote);
       if (dist < bestDist) {
         bestDist = dist;
         bestIdx = j;

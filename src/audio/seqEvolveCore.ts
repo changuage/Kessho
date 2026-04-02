@@ -92,7 +92,10 @@ export function maskByWriteOffset(
   const pos = writeOffset === 'auto'
     ? autoWriteOffset(0, original.length, currentBar)
     : writeOffset % original.length;
-  return mutated.map((v, i) => i === pos ? v : original[i]);
+  return mutated.map((v, i) => {
+    const originalValue = original[i];
+    return i === pos ? v : (originalValue ?? v);
+  });
 }
 
 // ── Home gravity ──
@@ -145,10 +148,11 @@ export function selectMutationMethod(
   const totalWeight = weights.reduce((sum, w) => sum + w, 0);
   let roll = rng() * totalWeight;
   for (let i = 0; i < enabledMethods.length; i++) {
-    roll -= weights[i];
-    if (roll <= 0) return enabledMethods[i];
+    roll -= weights[i] ?? 0;
+    const method = enabledMethods[i];
+    if (roll <= 0 && method !== undefined) return method;
   }
-  return enabledMethods[enabledMethods.length - 1];
+  return enabledMethods[enabledMethods.length - 1] ?? null;
 }
 
 /**
@@ -190,14 +194,18 @@ export function generateDicePattern(
     const newCounts: number[][] = [];
     const minLen = Math.min(counts.length, remainders.length);
     for (let i = 0; i < minLen; i++) {
-      newCounts.push([...counts[i], ...remainders[i]]);
+      const countRow = counts[i];
+      const remainderRow = remainders[i];
+      if (!countRow || !remainderRow) continue;
+      newCounts.push([...countRow, ...remainderRow]);
     }
     const leftoverCounts = counts.slice(minLen);
     const leftoverRemainders = remainders.slice(minLen);
     counts = newCounts;
     remainders = [...leftoverCounts, ...leftoverRemainders];
   }
-  if (remainders.length === 1) counts.push(remainders[0]);
+  const finalRemainder = remainders[0];
+  if (remainders.length === 1 && finalRemainder) counts.push(finalRemainder);
 
   const flat = counts.flat();
   // Random rotation
@@ -231,7 +239,10 @@ export function blendDiceValues(
   intensity: number,
 ): number[] {
   if (!current || current.length !== targets.length) return targets;
-  return targets.map((t, i) => current[i] + (t - current[i]) * intensity);
+  return targets.map((t, i) => {
+    const currentValue = current[i] ?? t;
+    return currentValue + (t - currentValue) * intensity;
+  });
 }
 
 // ── Tension gate ──
@@ -259,7 +270,7 @@ export function tensionGate(
 export function randomOtherDirection(current: LaneDirection, rng: () => number): LaneDirection {
   const dirs: LaneDirection[] = ['forward', 'reverse', 'pingpong'];
   const cur = dirs.indexOf(current);
-  return dirs[(cur + 1 + Math.floor(rng() * 2)) % 3];
+  return dirs[(cur + 1 + Math.floor(rng() * 2)) % 3] ?? 'forward';
 }
 
 /**

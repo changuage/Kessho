@@ -46,6 +46,11 @@ type PerfMetrics = {
   missPercent: number | null;
 };
 
+type Quad<T> = [T, T, T, T];
+type Hex<T> = [T, T, T, T, T, T];
+
+const SYNTH_LANE_INDICES = [0, 1, 2, 3] as const;
+
 /**
  * Pick a note from availableNotes, weighted toward chord tones.
  * Chord tones get ~70% probability collectively; passing tones get ~30%.
@@ -335,43 +340,43 @@ export class AudioEngine {
   private lead2DelayBSend: GainNode | null = null;
   private leadMelodyTimer: number | null = null;  // Random lead mode (phrase-based)
   private leadNoteTimeouts: number[] = [];  // Track scheduled random note timeouts
-  private synthEuclidCurrentStep: number[] = [0, 0, 0, 0];  // Step position per lane
+  private synthEuclidCurrentStep: Quad<number> = [0, 0, 0, 0];  // Step position per lane
   private onSynthStepPositionChange: ((steps: number[], hitCounts: number[]) => void) | null = null;
-  private synthEuclidHitCounts: number[] = [0, 0, 0, 0];  // Hit counts per lane
+  private synthEuclidHitCounts: Quad<number> = [0, 0, 0, 0];  // Hit counts per lane
 
   // Continuous lead Euclidean scheduler (look-ahead, like drum sequencer)
   private synthEuclidScheduleTimer: number | null = null;
-  private synthEuclidNextStepTime: number[] = [0, 0, 0, 0]; // AudioContext time per lane
-  private synthEuclidStepIndex: number[] = [0, 0, 0, 0]; // Current step index per lane
-  private synthEuclidClockDivs: ClockDivision[] = ['1/8', '1/16', '1/8T', '1/4']; // Per-lane clock division
-  private synthEuclidSwings: number[] = [0, 0, 0, 0]; // Per-lane swing amount (0-1)
+  private synthEuclidNextStepTime: Quad<number> = [0, 0, 0, 0]; // AudioContext time per lane
+  private synthEuclidStepIndex: Quad<number> = [0, 0, 0, 0]; // Current step index per lane
+  private synthEuclidClockDivs: Quad<ClockDivision> = ['1/8', '1/16', '1/8T', '1/4']; // Per-lane clock division
+  private synthEuclidSwings: Quad<number> = [0, 0, 0, 0]; // Per-lane swing amount (0-1)
   private synthEuclidStarting = false;
 
   // Synth evolve state
-  private synthEvolveConfigs: SynthEvolveConfig[] = [
+  private synthEvolveConfigs: Quad<SynthEvolveConfig> = [
     defaultSynthEvolveConfig(), defaultSynthEvolveConfig(),
     defaultSynthEvolveConfig(), defaultSynthEvolveConfig(),
   ];
-  private synthEvolveStates: SynthEvolveState[] = [
+  private synthEvolveStates: Quad<SynthEvolveState> = [
     defaultSynthEvolveState(), defaultSynthEvolveState(),
     defaultSynthEvolveState(), defaultSynthEvolveState(),
   ];
-  private synthEuclidTotalStepCounts: number[] = [0, 0, 0, 0];
+  private synthEuclidTotalStepCounts: Quad<number> = [0, 0, 0, 0];
   private onSynthEvolveTrigger: ((laneIndex: number) => void) | null = null;
   private onSynthEvolveOverridesChanged: ((laneIndex: number, overrides: Partial<SynthLaneOverrides>) => void) | null = null;
   /** Per-lane pitch settings for MIDI↔offset conversion at evolve boundary */
-  private synthPitchSettings: { mode: PitchMode; root: number; scale: ScaleName }[] = [
+  private synthPitchSettings: Quad<{ mode: PitchMode; root: number; scale: ScaleName }> = [
     { mode: 'semitones', root: 60, scale: 'Major' },
     { mode: 'semitones', root: 60, scale: 'Major' },
     { mode: 'semitones', root: 60, scale: 'Major' },
     { mode: 'semitones', root: 60, scale: 'Major' },
   ];
   /** Per-lane noteRange overrides from evolve (null = use sliderState) */
-  private synthNoteRangeOverrides: ({ min: number; max: number } | null)[] = [null, null, null, null];
+  private synthNoteRangeOverrides: Quad<{ min: number; max: number } | null> = [null, null, null, null];
   /** Callback fired when evolve mutates noteRange bounds → UI updates sliders */
   private onSynthNoteRangeEvolved: ((laneIndex: number, noteMin: number, noteMax: number) => void) | null = null;
   /** Per-lane sub-lane enabled state (from UI). Keys are sub-lane names (e.g. 'expression', 'ratchet'). */
-  private synthSubLaneEnabled: Record<string, boolean>[] = [{}, {}, {}, {}];
+  private synthSubLaneEnabled: Quad<Record<string, boolean>> = [{}, {}, {}, {}];
 
   // Lead 4op FM preset slots
   private lead1PresetA: Lead4opFMPreset = DEFAULT_SOFT_RHODES;
@@ -461,7 +466,7 @@ export class AudioEngine {
   private sharedGranularDelayBSend: GainNode | null = null;
 
   private granularTempoSyncTimer: number | null = null;
-  private granularTempoSyncNextStepTime: number[] = [0, 0, 0, 0];
+  private granularTempoSyncNextStepTime: Quad<number> = [0, 0, 0, 0];
 
   // Waves sample path
   private oceanFilter: BiquadFilterNode | null = null;  // Shared waves filter
@@ -529,8 +534,8 @@ export class AudioEngine {
   private _lastPadEnabled: boolean | undefined = undefined;  // Track effective pad activity transitions
   private voiceReleaseTimers = new Set<number>();  // Track triggerSynthVoice release timeouts
   private ratchetTimers = new Set<number>();  // Track ratchet retrigger timeouts
-  private synthVoiceNoteGen = [0, 0, 0, 0, 0, 0];  // Per-voice WASM noteOff generation counter
-  private synthVoiceNoteOffTimers: Array<number | null> = [null, null, null, null, null, null];
+  private synthVoiceNoteGen: Hex<number> = [0, 0, 0, 0, 0, 0];  // Per-voice WASM noteOff generation counter
+  private synthVoiceNoteOffTimers: Hex<number | null> = [null, null, null, null, null, null];
 
   // Temp drum synth management: debounce rapid previews and track cleanup timers
   private tempDrumSynthTimer: number | null = null;
@@ -635,7 +640,7 @@ export class AudioEngine {
   };
 
   // Lead Euclidean trig condition counters per lane per step
-  private synthTrigConditionCounters: number[][] = [[], [], [], []];
+  private synthTrigConditionCounters: Quad<number[]> = [[], [], [], []];
 
   // Temporary per-trigger overrides for lead sub-lanes (set before playLeadNote, cleared after)
   private synthMorphOverride: number | null = null;  // 0-1 morph position override
@@ -1271,12 +1276,12 @@ export class AudioEngine {
 
   /** Set per-lane clock divisions for the synth Euclidean sequencer. */
   setSynthEuclidClockDivs(divs: ClockDivision[]) {
-    this.synthEuclidClockDivs = [...divs];
+    this.synthEuclidClockDivs = SYNTH_LANE_INDICES.map(i => divs[i] ?? this.synthEuclidClockDivs[i]) as Quad<ClockDivision>;
   }
 
   /** Set per-lane swing amounts for the synth Euclidean sequencer. */
   setSynthEuclidSwings(swings: number[]) {
-    this.synthEuclidSwings = [...swings];
+    this.synthEuclidSwings = SYNTH_LANE_INDICES.map(i => swings[i] ?? this.synthEuclidSwings[i]) as Quad<number>;
   }
 
   /** Set evolve configs for the synth Euclidean sequencer (from UI). */
@@ -1284,12 +1289,12 @@ export class AudioEngine {
     this.synthEvolveConfigs = this.synthEvolveConfigs.map((current, i) => ({
       ...current,
       ...(configs[i] ?? {}),
-    }));
+    })) as Quad<SynthEvolveConfig>;
   }
 
   /** Set per-lane sub-lane enabled state for synth Euclidean sequencer. */
   setSynthSubLaneEnabled(states: Record<string, boolean>[]) {
-    this.synthSubLaneEnabled = states.map(s => ({ ...s }));
+    this.synthSubLaneEnabled = SYNTH_LANE_INDICES.map(i => ({ ...(states[i] ?? {}) })) as Quad<Record<string, boolean>>;
   }
 
   /** Register callback for synth evolve trigger (UI flash). */
@@ -1304,7 +1309,7 @@ export class AudioEngine {
 
   /** Update per-lane pitch settings for MIDI↔offset conversion at evolve boundary. */
   setSynthPitchSettings(settings: { mode: PitchMode; root: number; scale: ScaleName }[]) {
-    this.synthPitchSettings = settings.map(s => ({ ...s }));
+    this.synthPitchSettings = SYNTH_LANE_INDICES.map(i => ({ ...(settings[i] ?? this.synthPitchSettings[i]) })) as Quad<{ mode: PitchMode; root: number; scale: ScaleName }>;
   }
 
   /** Register callback for noteRange evolve push-back to UI. */
@@ -1403,7 +1408,7 @@ export class AudioEngine {
     const state = this.synthEvolveStates[laneIndex];
     if (state) {
       state.home = captureSynthHomeSnapshot(newOv);
-      state.homeSwing = this.synthEuclidSwings[laneIndex];
+      state.homeSwing = this.synthEuclidSwings[laneIndex] ?? 0;
     }
   }
 
@@ -1412,14 +1417,14 @@ export class AudioEngine {
     const ov = this.synthStepOverrides;
     return {
       pitch: ov.pitch[laneIndex] ? [...ov.pitch[laneIndex]!] : null,
-      pitchDirection: ov.pitchDirection[laneIndex],
+      pitchDirection: ov.pitchDirection[laneIndex] ?? null,
       triggerToggles: new Map(ov.triggerToggles[laneIndex]),
       expression: ov.expression[laneIndex] ? [...ov.expression[laneIndex]!] : null,
-      expressionDirection: ov.expressionDirection[laneIndex],
+      expressionDirection: ov.expressionDirection[laneIndex] ?? null,
       morph: ov.morph[laneIndex] ? [...ov.morph[laneIndex]!] : null,
-      morphDirection: ov.morphDirection[laneIndex],
+      morphDirection: ov.morphDirection[laneIndex] ?? null,
       distance: ov.distance[laneIndex] ? [...ov.distance[laneIndex]!] : null,
-      distanceDirection: ov.distanceDirection[laneIndex],
+      distanceDirection: ov.distanceDirection[laneIndex] ?? null,
       probability: ov.probability[laneIndex] ? [...ov.probability[laneIndex]!] : null,
       ratchet: ov.ratchet[laneIndex] ? [...ov.ratchet[laneIndex]!] : null,
     };
@@ -1451,7 +1456,8 @@ export class AudioEngine {
         let bestDeg = 0;
         let bestDist = 99;
         for (let d = 0; d < si.length; d++) {
-          const dist = Math.abs(si[d] - rem);
+          const scaleDegree = si[d] ?? rem;
+          const dist = Math.abs(scaleDegree - rem);
           if (dist < bestDist) { bestDist = dist; bestDeg = d; }
         }
         return octave * si.length + bestDeg;
@@ -2510,8 +2516,7 @@ export class AudioEngine {
     if (!padActive && this._lastPadEnabled !== false && this.voices.length > 0) {
       const now = this.ctx.currentTime;
       const release = Math.max(0.001, sliderState.synthRelease || 1.0);
-      for (let i = 0; i < this.voices.length; i++) {
-        const voice = this.voices[i];
+      this.voices.forEach((voice, i) => {
         if (voice.active) {
           voice.envelope.gain.cancelScheduledValues(now);
           voice.envelope.gain.setTargetAtTime(0, now, release / 4);
@@ -2522,7 +2527,7 @@ export class AudioEngine {
         if (this.padWasmReady && this.padWasmNode) {
           this.padWasmNode.port.postMessage({ type: 'noteOff', voiceIndex: i });
         }
-      }
+      });
     }
     this._lastPadEnabled = padActive;
 
@@ -2540,8 +2545,7 @@ export class AudioEngine {
       if (!euclideanUsesSynth) {
         const now = this.ctx.currentTime;
         const release = Math.max(0.001, sliderState.synthRelease || 1.0);
-        for (let i = 0; i < this.voices.length; i++) {
-          const voice = this.voices[i];
+        this.voices.forEach((voice, i) => {
           if (voice.active) {
             voice.envelope.gain.cancelScheduledValues(now);
             voice.envelope.gain.setTargetAtTime(0, now, release / 4);
@@ -2550,7 +2554,7 @@ export class AudioEngine {
               this.padWasmNode.port.postMessage({ type: 'noteOff', voiceIndex: i });
             }
           }
-        }
+        });
       }
     }
 
@@ -2930,13 +2934,18 @@ export class AudioEngine {
       ? (this.sliderState?.pad2VoiceAssign ?? 0)
       : 0;
     this.lastPad2VoiceAssign = pad2Assign;
-    for (let i = 0; i < this.voices.length; i++) {
+    const pad1Bus = this.pad1Bus;
+    const pad2Bus = this.pad2Bus;
+    const pad1PreFaderBus = this.pad1PreFaderBus;
+    const pad2PreFaderBus = this.pad2PreFaderBus;
+    if (!pad1Bus || !pad2Bus || !pad1PreFaderBus || !pad2PreFaderBus) return;
+    this.voices.forEach((voice, i) => {
       const isPad2 = (pad2Assign & (1 << i)) !== 0;
       // Post-fader: mixerGain → pad bus (for main mix)
-      this.voices[i].mixerGain.connect(isPad2 ? this.pad2Bus : this.pad1Bus);
+      voice.mixerGain.connect(isPad2 ? pad2Bus : pad1Bus);
       // Pre-fader: envelope → pre-fader bus (for granular, independent of pad level)
-      this.voices[i].envelope.connect(isPad2 ? this.pad2PreFaderBus : this.pad1PreFaderBus);
-    }
+      voice.envelope.connect(isPad2 ? pad2PreFaderBus : pad1PreFaderBus);
+    });
 
     // Both pad buses feed into synthBus (preserves existing downstream)
     this.pad1Bus.connect(this.synthBus);
@@ -3419,7 +3428,7 @@ export class AudioEngine {
         const startIndex = i;
         
         // Mix: end fades out, start fades in
-        const blended = data[endIndex] * fadeOut + data[startIndex] * fadeIn;
+        const blended = (data[endIndex] ?? 0) * fadeOut + (data[startIndex] ?? 0) * fadeIn;
         data[endIndex] = blended;
       }
     }
@@ -3783,9 +3792,10 @@ export class AudioEngine {
     if (state.synthEuclideanMasterEnabled) {
       const sources = [state.synthEuclid1Source, state.synthEuclid2Source, state.synthEuclid3Source, state.synthEuclid4Source];
       const enables = [state.synthEuclid1Enabled, state.synthEuclid2Enabled, state.synthEuclid3Enabled, state.synthEuclid4Enabled];
-      for (let li = 0; li < 4; li++) {
-        if (enables[li] && sources[li]?.startsWith('synth')) {
-          const vi = parseInt(sources[li].replace('synth', ''), 10) - 1;
+      for (const li of SYNTH_LANE_INDICES) {
+        const source = sources[li];
+        if (enables[li] && source?.startsWith('synth')) {
+          const vi = parseInt(source.replace('synth', ''), 10) - 1;
           if (vi >= 0 && vi < 6) euclidOwnedVoices.add(vi);
         }
       }
@@ -3821,37 +3831,35 @@ export class AudioEngine {
     const enabledFrequencies: number[] = [];
     for (let i = 0; i < Math.min(6, frequencies.length); i++) {
       if (voiceMask & (1 << i)) {
-        enabledFrequencies.push(frequencies[i]);
+        enabledFrequencies.push(frequencies[i] ?? frequencies[0] ?? 440);
       }
     }
     // If mask would result in no voices, use at least the first frequency
     if (enabledFrequencies.length === 0) {
-      enabledFrequencies.push(frequencies[0]);
+      enabledFrequencies.push(frequencies[0] ?? 440);
     }
 
     // Generate random stagger offsets for each voice using the RNG for determinism
     const voiceOffsets: number[] = [];
-    for (let i = 0; i < this.voices.length; i++) {
+    this.voices.forEach((_voice) => {
       // Use RNG to get a random offset between 0 and waveSpread
       voiceOffsets.push(rng() * waveSpread);
-    }
+    });
     // Sort offsets so voices come in at staggered but consistent intervals
     voiceOffsets.sort((a, b) => a - b);
 
-    for (let i = 0; i < this.voices.length; i++) {
+    this.voices.forEach((voice, i) => {
       // Skip voices owned by Euclidean synth lanes — scheduler drives them
       // Also silence the JS oscillator so it doesn't conflict with WASM output
       if (euclidOwnedVoices.has(i)) {
-        const voice = this.voices[i];
         if (voice.active) {
           voice.envelope.gain.cancelScheduledValues(now);
           voice.envelope.gain.setTargetAtTime(0, now, 0.02);
           voice.active = false;
         }
-        continue;
+        return;
       }
 
-      const voice = this.voices[i];
       const isVoiceEnabled = (voiceMask & (1 << i)) !== 0;
       
       if (!isVoiceEnabled) {
@@ -3865,7 +3873,7 @@ export class AudioEngine {
             this.padWasmNode.port.postMessage({ type: 'noteOff', voiceIndex: i });
           }
         }
-        continue;
+        return;
       }
       
       // Map enabled voice index to the filtered frequency list
@@ -3873,8 +3881,8 @@ export class AudioEngine {
       for (let j = 0; j < i; j++) {
         if (voiceMask & (1 << j)) enabledIndex++;
       }
-      const freq = enabledFrequencies[enabledIndex % enabledFrequencies.length] || frequencies[0];
-      const voiceDelay = voiceOffsets[i]; // Staggered entry time for this voice
+      const freq = enabledFrequencies[enabledIndex % enabledFrequencies.length] ?? frequencies[0] ?? 440;
+      const voiceDelay = voiceOffsets[i] ?? 0; // Staggered entry time for this voice
 
       // Calculate frequency values with per-oscillator octave offsets
       const detuneOsc2 = useNewOsc ? -(state.padOscADetune ?? detune) : -detune;
@@ -3929,7 +3937,7 @@ export class AudioEngine {
 
       voice.targetFreq = freq;
       voice.active = true;
-    }
+    });
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -4163,7 +4171,7 @@ export class AudioEngine {
       // Silence the JS oscillator voice to prevent dual output through synthBus
       if (voiceIndex < this.voices.length) {
         const jsVoice = this.voices[voiceIndex];
-        if (jsVoice.active) {
+        if (jsVoice?.active) {
           const now = this.ctx.currentTime;
           jsVoice.envelope.gain.cancelScheduledValues(now);
           jsVoice.envelope.gain.setTargetAtTime(0, now, 0.02);
@@ -4171,7 +4179,8 @@ export class AudioEngine {
         }
       }
       // Increment generation counter — stale noteOff timers with old gen won't fire
-      const gen = ++this.synthVoiceNoteGen[voiceIndex];
+      const gen = (this.synthVoiceNoteGen[voiceIndex] ?? 0) + 1;
+      this.synthVoiceNoteGen[voiceIndex] = gen;
       this.padWasmNode.port.postMessage({
         type: 'noteOn', voiceIndex, frequency, velocity: clampedVelocity,
       });
@@ -4647,30 +4656,33 @@ export class AudioEngine {
     // ── Re-route voices between pad1Bus/pad2Bus when assignment changes ──
     const effectivePad2Assign = pad2On ? pad2Assign : 0;
     if (this.pad1Bus && this.pad2Bus && effectivePad2Assign !== this.lastPad2VoiceAssign) {
-      for (let i = 0; i < this.voices.length; i++) {
+      const pad1Bus = this.pad1Bus;
+      const pad2Bus = this.pad2Bus;
+      const pad1PreFaderBus = this.pad1PreFaderBus;
+      const pad2PreFaderBus = this.pad2PreFaderBus;
+      this.voices.forEach((voice, i) => {
         const wasPad2 = (this.lastPad2VoiceAssign & (1 << i)) !== 0;
         const isPad2 = (effectivePad2Assign & (1 << i)) !== 0;
         if (wasPad2 !== isPad2) {
           // Re-route post-fader (mixerGain → pad bus)
-          try { this.voices[i].mixerGain.disconnect(wasPad2 ? this.pad2Bus : this.pad1Bus); } catch (_e) { /* ignore */ }
-          this.voices[i].mixerGain.connect(isPad2 ? this.pad2Bus : this.pad1Bus);
+          try { voice.mixerGain.disconnect(wasPad2 ? pad2Bus : pad1Bus); } catch (_e) { /* ignore */ }
+          voice.mixerGain.connect(isPad2 ? pad2Bus : pad1Bus);
           // Re-route pre-fader (envelope → pre-fader bus for granular)
-          if (this.pad1PreFaderBus && this.pad2PreFaderBus) {
-            try { this.voices[i].envelope.disconnect(wasPad2 ? this.pad2PreFaderBus : this.pad1PreFaderBus); } catch (_e) { /* ignore */ }
-            this.voices[i].envelope.connect(isPad2 ? this.pad2PreFaderBus : this.pad1PreFaderBus);
+          if (pad1PreFaderBus && pad2PreFaderBus) {
+            try { voice.envelope.disconnect(wasPad2 ? pad2PreFaderBus : pad1PreFaderBus); } catch (_e) { /* ignore */ }
+            voice.envelope.connect(isPad2 ? pad2PreFaderBus : pad1PreFaderBus);
           }
           // Forward voice-pad assignment to WASM pad worklet
           if (this.padWasmReady && this.padWasmNode) {
             this.padWasmNode.port.postMessage({ type: 'voicePad', voiceIndex: i, pad: isPad2 ? 1 : 0 });
           }
         }
-      }
+      });
       this.lastPad2VoiceAssign = effectivePad2Assign;
     }
 
     // ── Unified voice loop (per-voice pad selection) ──
-    for (let i = 0; i < this.voices.length; i++) {
-      const voice = this.voices[i];
+    this.voices.forEach((voice, i) => {
       const p = (pad2On && (pad2Assign & (1 << i))) ? p2 : p1;
 
       // Waveforms
@@ -4761,22 +4773,22 @@ export class AudioEngine {
       // Per-voice mixer level (pad 1 = synthLevel, pad 2 = pad2Level)
       const voiceLevel = (pad2On && (pad2Assign & (1 << i))) ? (state.pad2Level ?? 0.6) : state.synthLevel;
       voice.mixerGain.gain.setTargetAtTime((voiceLevel ?? 0.6) * ENGINE_TRIMS.pad, now, smoothTime);
-    }
+    });
 
     // ── Saturation curves (per-pad, only on change) ──
     if (state.hardness !== this.lastHardness) {
       this.lastHardness = state.hardness;
       const curve1 = this.createSaturationCurve(state.hardness);
-      for (let i = 0; i < this.voices.length; i++) {
-        if (!(pad2On && (pad2Assign & (1 << i)))) this.voices[i].saturation.curve = curve1;
-      }
+      this.voices.forEach((voice, i) => {
+        if (!(pad2On && (pad2Assign & (1 << i)))) voice.saturation.curve = curve1;
+      });
     }
     if (pad2On && state.pad2Hardness !== this.pad2LastHardness) {
       this.pad2LastHardness = state.pad2Hardness;
       const curve2 = this.createSaturationCurve(state.pad2Hardness);
-      for (let i = 0; i < this.voices.length; i++) {
-        if (pad2Assign & (1 << i)) this.voices[i].saturation.curve = curve2;
-      }
+      this.voices.forEach((voice, i) => {
+        if (pad2Assign & (1 << i)) voice.saturation.curve = curve2;
+      });
     }
 
     // Forward pad params to WASM worklet (if active)
@@ -6202,14 +6214,18 @@ export class AudioEngine {
           : 0;
         this.lastPad2VoiceAssign = pad2a;
         if (this.pad1Bus && this.pad2Bus) {
-          for (let i = 0; i < this.voices.length; i++) {
+          const pad1Bus = this.pad1Bus;
+          const pad2Bus = this.pad2Bus;
+          const pad1PreFaderBus = this.pad1PreFaderBus;
+          const pad2PreFaderBus = this.pad2PreFaderBus;
+          this.voices.forEach((voice, i) => {
             const isPad2 = (pad2a & (1 << i)) !== 0;
-            this.voices[i].mixerGain.connect(isPad2 ? this.pad2Bus : this.pad1Bus);
+            voice.mixerGain.connect(isPad2 ? pad2Bus : pad1Bus);
             // Pre-fader connection for granular
-            if (this.pad1PreFaderBus && this.pad2PreFaderBus) {
-              this.voices[i].envelope.connect(isPad2 ? this.pad2PreFaderBus : this.pad1PreFaderBus);
+            if (pad1PreFaderBus && pad2PreFaderBus) {
+              voice.envelope.connect(isPad2 ? pad2PreFaderBus : pad1PreFaderBus);
             }
-          }
+          });
         } else if (this.synthBus) {
           for (const voice of this.voices) {
             voice.mixerGain.connect(this.synthBus);
@@ -6295,9 +6311,9 @@ export class AudioEngine {
               { enabled: this.sliderState.synthEuclid2Enabled, preset: this.sliderState.synthEuclid2Preset, steps: this.sliderState.synthEuclid2Steps, hits: this.sliderState.synthEuclid2Hits, rotation: this.sliderState.synthEuclid2Rotation, noteMin: this.sliderState.synthEuclid2NoteMin, noteMax: this.sliderState.synthEuclid2NoteMax, level: this.sliderState.synthEuclid2Level, probability: this.sliderState.synthEuclid2Probability ?? 1.0, source: (this.sliderState.synthEuclid2Source ?? 'lead') as string },
               { enabled: this.sliderState.synthEuclid3Enabled, preset: this.sliderState.synthEuclid3Preset, steps: this.sliderState.synthEuclid3Steps, hits: this.sliderState.synthEuclid3Hits, rotation: this.sliderState.synthEuclid3Rotation, noteMin: this.sliderState.synthEuclid3NoteMin, noteMax: this.sliderState.synthEuclid3NoteMax, level: this.sliderState.synthEuclid3Level, probability: this.sliderState.synthEuclid3Probability ?? 1.0, source: (this.sliderState.synthEuclid3Source ?? 'lead') as string },
               { enabled: this.sliderState.synthEuclid4Enabled, preset: this.sliderState.synthEuclid4Preset, steps: this.sliderState.synthEuclid4Steps, hits: this.sliderState.synthEuclid4Hits, rotation: this.sliderState.synthEuclid4Rotation, noteMin: this.sliderState.synthEuclid4NoteMin, noteMax: this.sliderState.synthEuclid4NoteMax, level: this.sliderState.synthEuclid4Level, probability: this.sliderState.synthEuclid4Probability ?? 1.0, source: (this.sliderState.synthEuclid4Source ?? 'lead') as string },
-            ];
+            ] as const;
 
-        for (let laneIndex = 0; laneIndex < 4; laneIndex++) {
+        for (const laneIndex of SYNTH_LANE_INDICES) {
           const lane = laneParams[laneIndex];
           if (!lane.enabled) continue;
 
@@ -6306,7 +6322,7 @@ export class AudioEngine {
           if (lane.preset === 'custom') {
             steps = lane.steps; hits = lane.hits; rotation = lane.rotation;
           } else {
-            const preset = this.EUCLIDEAN_PRESETS[lane.preset] || this.EUCLIDEAN_PRESETS.lancaran;
+            const preset = this.EUCLIDEAN_PRESETS[lane.preset] ?? this.EUCLIDEAN_PRESETS.lancaran!;
             steps = preset.steps; hits = preset.hits;
             rotation = (preset.rotation + lane.rotation) % steps;
           }
@@ -6342,13 +6358,13 @@ export class AudioEngine {
             this.synthEuclidCurrentStep[laneIndex] = stepInPattern;
 
             // Track total steps for bar-boundary detection
-            this.synthEuclidTotalStepCounts[laneIndex]++;
+            this.synthEuclidTotalStepCounts[laneIndex] += 1;
 
             // Evolve at bar boundaries (step 0 after at least one full cycle)
             if (stepInPattern === 0 && this.synthEuclidTotalStepCounts[laneIndex] > 1) {
               const bar = Math.floor(this.synthEuclidTotalStepCounts[laneIndex] / steps);
               const evolveConfig = this.synthEvolveConfigs[laneIndex];
-              if (evolveConfig.enabled) {
+              if (evolveConfig?.enabled) {
                 // Use pad tension when lane source is a pad voice, synth tension otherwise
                 const isPadSource = lane.source.startsWith('synth');
                 const evolveTension = isPadSource
@@ -6428,8 +6444,9 @@ export class AudioEngine {
 
               // Trig condition gate (Elektron-style n:N)
               const tc: [number, number] = (trigCondArr && trigCondArr[stepInPattern]) ? trigCondArr[stepInPattern] : [1, 1];
-              this.synthTrigConditionCounters[laneIndex][stepInPattern] += 1;
-              const visitCount = this.synthTrigConditionCounters[laneIndex][stepInPattern];
+              this.synthTrigConditionCounters[laneIndex][stepInPattern] =
+                (this.synthTrigConditionCounters[laneIndex][stepInPattern] ?? 0) + 1;
+              const visitCount = this.synthTrigConditionCounters[laneIndex][stepInPattern] ?? 0;
               const trigCondPassed = tc[1] <= 1 || (((visitCount - 1) % tc[1]) + 1 === tc[0]);
 
               // Per-step probability (from sub-lane, multiplied with lane probability)
@@ -6456,8 +6473,8 @@ export class AudioEngine {
                     const midPoint = (effNoteMin + effNoteMax) / 2;
                     const allScaleNotes = getScaleNotesInRange(scale, 24, 108, rootNote);
                     if (allScaleNotes.length > 0) {
-                      let nearest = allScaleNotes[0];
-                      let nearestDist = Math.abs(allScaleNotes[0] - midPoint);
+                      let nearest = allScaleNotes[0] ?? midPoint;
+                      let nearestDist = Math.abs((allScaleNotes[0] ?? midPoint) - midPoint);
                       for (const sn of allScaleNotes) {
                         const d = Math.abs(sn - midPoint);
                         if (d < nearestDist) { nearestDist = d; nearest = sn; }
@@ -6699,14 +6716,13 @@ export class AudioEngine {
       this.synthVoiceNoteOffTimers[i] = null;
     }
     // Bump all voice note generations so in-flight WASM noteOff timers are invalidated
-    for (let i = 0; i < 6; i++) this.synthVoiceNoteGen[i]++;
+    this.synthVoiceNoteGen = this.synthVoiceNoteGen.map(gen => gen + 1) as Hex<number>;
 
     // Release all active synth voices so they don't drone after sequencer stops
     if (this.ctx && this.voices.length > 0) {
       const now = this.ctx.currentTime;
       const release = Math.max(0.001, this.sliderState?.synthRelease ?? 1.0);
-      for (let i = 0; i < this.voices.length; i++) {
-        const voice = this.voices[i];
+      this.voices.forEach((voice, i) => {
         if (voice.active) {
           voice.envelope.gain.cancelScheduledValues(now);
           voice.envelope.gain.setTargetAtTime(0, now, release / 4);
@@ -6717,7 +6733,7 @@ export class AudioEngine {
         if (this.padWasmReady && this.padWasmNode) {
           this.padWasmNode.port.postMessage({ type: 'noteOff', voiceIndex: i });
         }
-      }
+      });
     }
 
     // Also tell WASM lead FM to release all notes
@@ -6746,7 +6762,7 @@ export class AudioEngine {
         const baseBPM = getSharedSequencerBpm(this.sliderState);
         const beatDuration = 60 / baseBPM;
 
-        for (let voiceIndex = 0; voiceIndex < 4; voiceIndex++) {
+        for (const voiceIndex of SYNTH_LANE_INDICES) {
           if (!this.isGranularTempoSyncVoiceActive(this.sliderState, voiceIndex)) {
             this.granularTempoSyncNextStepTime[voiceIndex] = 0;
             continue;

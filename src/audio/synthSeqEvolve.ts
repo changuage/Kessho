@@ -71,13 +71,15 @@ const ALL_SYNTH_SUB_LANES: SynthSubLane[] = ['pitch', 'expression', 'morph', 'di
 
 /** Value configs for synth sub-lanes (reuse from shared where possible, add synth-specific) */
 const SYNTH_SUB_LANE_CONFIGS: Record<SynthSubLane, SubLaneValueConfig> = {
-  pitch:       SUB_LANE_VALUE_CONFIGS.pitch,       // integer, -12..12, driftScale 1
-  expression:  SUB_LANE_VALUE_CONFIGS.expression,   // continuous, 0.2..1.0, driftScale 0.08
-  morph:       SUB_LANE_VALUE_CONFIGS.morph,         // continuous, 0..1.0, driftScale 0.05
-  distance:    SUB_LANE_VALUE_CONFIGS.distance,      // continuous, 0..1.0, driftScale 0.06
+  pitch:       SUB_LANE_VALUE_CONFIGS.pitch!,       // integer, -12..12, driftScale 1
+  expression:  SUB_LANE_VALUE_CONFIGS.expression!,   // continuous, 0.2..1.0, driftScale 0.08
+  morph:       SUB_LANE_VALUE_CONFIGS.morph!,         // continuous, 0..1.0, driftScale 0.05
+  distance:    SUB_LANE_VALUE_CONFIGS.distance!,      // continuous, 0..1.0, driftScale 0.06
   probability: { type: 'continuous', min: 0.3, max: 1.0, driftScale: 0.06 },
   ratchet:     { type: 'integer', min: 1, max: 4, driftScale: 1 },
 };
+
+type SynthDirectionLane = 'pitch' | 'expression' | 'morph' | 'distance';
 
 // ═══════════════════════════════════════════════════════════════════════
 // Sub-lane accessors
@@ -91,20 +93,37 @@ function setValues(ov: SynthLaneOverrides, lane: SynthSubLane, values: number[] 
   (ov as unknown as Record<string, unknown>)[lane] = values;
 }
 
-const DIRECTION_LANES: Record<string, keyof SynthLaneOverrides> = {
-  pitch: 'pitchDirection',
-  expression: 'expressionDirection',
-  morph: 'morphDirection',
-  distance: 'distanceDirection',
-};
+const DIRECTION_LANES: SynthDirectionLane[] = ['pitch', 'expression', 'morph', 'distance'];
+
+function getDirectionKey(lane: SynthSubLane): keyof SynthLaneOverrides | null {
+  switch (lane) {
+    case 'pitch': return 'pitchDirection';
+    case 'expression': return 'expressionDirection';
+    case 'morph': return 'morphDirection';
+    case 'distance': return 'distanceDirection';
+    default: return null;
+  }
+}
+
+function getSynthConfig(lane: SynthSubLane): SubLaneValueConfig {
+  const config = SYNTH_SUB_LANE_CONFIGS[lane];
+  if (!config) {
+    throw new Error(`Missing synth sub-lane config for ${lane}`);
+  }
+  return config;
+}
+
+function pickSynthLane(lanes: readonly SynthSubLane[], rng: () => number): SynthSubLane | null {
+  return lanes[Math.floor(rng() * lanes.length)] ?? null;
+}
 
 function getDirection(ov: SynthLaneOverrides, lane: SynthSubLane): LaneDirection | null {
-  const key = DIRECTION_LANES[lane];
+  const key = getDirectionKey(lane);
   return key ? (ov[key] as LaneDirection | null) : null;
 }
 
 function setDirection(ov: SynthLaneOverrides, lane: SynthSubLane, dir: LaneDirection): void {
-  const key = DIRECTION_LANES[lane];
+  const key = getDirectionKey(lane);
   if (key) (ov as unknown as Record<string, unknown>)[key] = dir;
 }
 
@@ -199,7 +218,7 @@ export function evolveSynthLane(
   for (const lane of ALL_SYNTH_SUB_LANES) {
     if (!enabledSubs.has(lane)) continue;
     if (getValues(next, lane) === null) {
-      const cfg = SYNTH_SUB_LANE_CONFIGS[lane];
+      const cfg = getSynthConfig(lane);
       const defaultVal = lane === 'pitch' ? 0
         : lane === 'ratchet' ? 1
         : lane === 'probability' ? 1.0
@@ -246,7 +265,8 @@ export function evolveSynthLane(
   if (methods.ratchetSpray && tGate('ratchetSpray', 0.4 * intensity) && enabledSubs.has('ratchet') && next.ratchet) {
     const idx = Math.floor(rng() * next.ratchet.length);
     const homeVal = home?.ratchet?.[idx] ?? 1;
-    next.ratchet[idx] = mutateRatchetHomeBiased(next.ratchet[idx], homeVal, intensity, rng);
+    const currentRatchet = next.ratchet[idx] ?? 1;
+    next.ratchet[idx] = mutateRatchetHomeBiased(currentRatchet, homeVal, intensity, rng);
   }
 
   // ═══════════════════════════════════════════════════════════════════
@@ -260,11 +280,12 @@ export function evolveSynthLane(
     const walkStepCount = intensity > 0.7 ? (rng() < intensity ? 2 : 1) : 1;
     for (let w = 0; w < walkStepCount; w++) {
       const idx = Math.floor(rng() * next.pitch.length);
-      const homeVal = home?.pitch ? (home.pitch[idx] ?? next.pitch[idx]) : next.pitch[idx];
+      const currentPitch = next.pitch[idx] ?? 0;
+      const homeVal = home?.pitch ? (home.pitch[idx] ?? currentPitch) : currentPitch;
 
       if (useScaleDegrees) {
         // Walk by scale degree with octave tracking (like drum evolve)
-        const cur = next.pitch[idx];
+        const cur = currentPitch;
         const dir = rng() < 0.5 ? -1 : 1;
         const newVal = cur + dir;  // ±1 scale degree
         if (Math.abs(newVal - homeVal) <= 7) {  // ±7 scale degrees from home
@@ -274,7 +295,7 @@ export function evolveSynthLane(
         // Semitone mode: ±1 or ±2 semitone offsets
         const step = (intensity > 0.6 && rng() < intensity) ? 2 : 1;
         const dir = rng() < 0.5 ? -step : step;
-        const newVal = next.pitch[idx] + dir;
+        const newVal = currentPitch + dir;
         if (Math.abs(newVal - homeVal) <= 5) {  // ±5 semitones from home
           next.pitch[idx] = clamp(newVal, -48, 48);
         }
@@ -343,7 +364,7 @@ export function evolveSynthLane(
       if (!enabledSubs.has(lane)) continue;
       const vals = getValues(next, lane);
       if (!vals) continue;
-      const cfg = SYNTH_SUB_LANE_CONFIGS[lane];
+      const cfg = getSynthConfig(lane);
       setValues(next, lane, mutateValueDrift(vals, cfg, intensity, rng, mode));
     }
   }
@@ -366,19 +387,20 @@ export function evolveSynthLane(
       if (!enabledSubs.has(lane)) continue;
       const vals = getValues(next, lane);
       if (!vals || rng() < 0.5) continue;
-      const cfg = SYNTH_SUB_LANE_CONFIGS[lane];
+      const cfg = getSynthConfig(lane);
       setValues(next, lane, mutateValueWiden(vals, cfg, intensity, rng));
     }
   }
 
   // Sub-Lane Direction Flip (Zone B, ~0.8+)
   if (methods.subLaneDirectionFlip && intensity > 0.8 && tGate('subLaneDirectionFlip', 0.08 * intensity)) {
-    const dirLanes = Object.keys(DIRECTION_LANES) as SynthSubLane[];
-    const activeDirLanes = dirLanes.filter(l => getValues(next, l) !== null);
+    const activeDirLanes = DIRECTION_LANES.filter(l => getValues(next, l) !== null);
     if (activeDirLanes.length > 0) {
-      const lane = activeDirLanes[Math.floor(rng() * activeDirLanes.length)];
-      const current = getDirection(next, lane) ?? 'forward';
-      setDirection(next, lane, randomOtherDirection(current, rng));
+      const lane = pickSynthLane(activeDirLanes, rng);
+      if (lane) {
+        const current = getDirection(next, lane) ?? 'forward';
+        setDirection(next, lane, randomOtherDirection(current, rng));
+      }
     }
   }
 
@@ -386,18 +408,25 @@ export function evolveSynthLane(
   if (methods.subLaneLengthDrift && intensity > 0.5 && chance(rng, 0.25 * intensity)) {
     const activeLanes = ALL_SYNTH_SUB_LANES.filter(l => enabledSubs.has(l) && getValues(next, l) !== null);
     if (activeLanes.length > 0) {
-      const lane = activeLanes[Math.floor(rng() * activeLanes.length)];
-      const vals = getValues(next, lane)!;
-      const dir = rng() < 0.5 ? -1 : 1;
-      const newLen = clamp(vals.length + dir, 2, 32);
-      if (newLen !== vals.length) {
-        if (newLen > vals.length) {
-          // Grow: duplicate last value
-          const grown = [...vals, vals[vals.length - 1]];
-          setValues(next, lane, grown);
-        } else {
-          // Shrink: trim last element
-          setValues(next, lane, vals.slice(0, newLen));
+      const lane = pickSynthLane(activeLanes, rng);
+      if (lane) {
+        const vals = getValues(next, lane);
+        if (vals) {
+          const dir = rng() < 0.5 ? -1 : 1;
+          const newLen = clamp(vals.length + dir, 2, 32);
+          if (newLen !== vals.length) {
+            if (newLen > vals.length) {
+              // Grow: duplicate last value
+              const lastValue = vals[vals.length - 1];
+              if (lastValue !== undefined) {
+                const grown = [...vals, lastValue];
+                setValues(next, lane, grown);
+              }
+            } else {
+              // Shrink: trim last element
+              setValues(next, lane, vals.slice(0, newLen));
+            }
+          }
         }
       }
     }
@@ -444,19 +473,22 @@ export function evolveSynthLane(
     nextSwing += (state.homeSwing - nextSwing) * 0.3;
 
     // Sub-lane value gravity
-    const lane = ALL_SYNTH_SUB_LANES[Math.floor(rng() * ALL_SYNTH_SUB_LANES.length)];
-    const currentVals = getValues(next, lane);
-    const homeVals = getValues(home, lane);
-    if (currentVals && homeVals) {
-      const cfg = SYNTH_SUB_LANE_CONFIGS[lane];
-      setValues(next, lane, gravityPullValues(currentVals, homeVals, cfg, 0.2));
-      // Length gravity: if array drifted in length, pull back toward home length
-      if (currentVals.length !== homeVals.length) {
-        const pullDir = currentVals.length > homeVals.length ? -1 : 1;
-        const pulled = pullDir > 0
-          ? [...currentVals, currentVals[currentVals.length - 1]]
-          : currentVals.slice(0, currentVals.length - 1);
-        if (pulled.length >= 2) setValues(next, lane, pulled);
+    const lane = pickSynthLane(ALL_SYNTH_SUB_LANES, rng);
+    if (lane) {
+      const currentVals = getValues(next, lane);
+      const homeVals = getValues(home, lane);
+      if (currentVals && homeVals) {
+        const cfg = getSynthConfig(lane);
+        setValues(next, lane, gravityPullValues(currentVals, homeVals, cfg, 0.2));
+        // Length gravity: if array drifted in length, pull back toward home length
+        if (currentVals.length !== homeVals.length) {
+          const pullDir = currentVals.length > homeVals.length ? -1 : 1;
+          const lastValue = currentVals[currentVals.length - 1];
+          const pulled = pullDir > 0 && lastValue !== undefined
+            ? [...currentVals, lastValue]
+            : currentVals.slice(0, currentVals.length - 1);
+          if (pulled.length >= 2) setValues(next, lane, pulled);
+        }
       }
     }
   }
@@ -471,12 +503,13 @@ export function evolveSynthLane(
 
   // Direction gravity
   if (home && chance(rng, 0.15 * (1.2 - intensity))) {
-    const dirLanes = Object.keys(DIRECTION_LANES) as SynthSubLane[];
-    const lane = dirLanes[Math.floor(rng() * dirLanes.length)];
-    const homeDir = getDirection(home, lane);
-    const currentDir = getDirection(next, lane);
-    if (homeDir && currentDir && homeDir !== currentDir) {
-      setDirection(next, lane, homeDir);
+    const lane = pickSynthLane(DIRECTION_LANES, rng);
+    if (lane) {
+      const homeDir = getDirection(home, lane);
+      const currentDir = getDirection(next, lane);
+      if (homeDir && currentDir && homeDir !== currentDir) {
+        setDirection(next, lane, homeDir);
+      }
     }
   }
 
@@ -484,11 +517,13 @@ export function evolveSynthLane(
   if (home && next.triggerToggles.size > 0 && chance(rng, 0.15 * (1.2 - intensity))) {
     const keys = Array.from(next.triggerToggles.keys());
     const key = keys[Math.floor(rng() * keys.length)];
-    const homeHas = home.triggerToggles.has(key);
-    if (!homeHas) {
-      next.triggerToggles.delete(key); // home had no override → remove ours
-    } else {
-      next.triggerToggles.set(key, home.triggerToggles.get(key)!);
+    if (key !== undefined) {
+      const homeHas = home.triggerToggles.has(key);
+      if (!homeHas) {
+        next.triggerToggles.delete(key); // home had no override → remove ours
+      } else {
+        next.triggerToggles.set(key, home.triggerToggles.get(key)!);
+      }
     }
   }
 

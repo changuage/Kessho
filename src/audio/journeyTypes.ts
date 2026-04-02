@@ -144,7 +144,7 @@ export function createJourneyNode(
     presetName: preset?.name ?? '',
     phraseLength: JOURNEY_DEFAULTS.phraseLength,
     position,
-    color: JOURNEY_NODE_COLORS[colorIndex % JOURNEY_NODE_COLORS.length],
+    color: JOURNEY_NODE_COLORS[colorIndex % JOURNEY_NODE_COLORS.length] ?? JOURNEY_NODE_COLORS[0]!,
   };
 }
 

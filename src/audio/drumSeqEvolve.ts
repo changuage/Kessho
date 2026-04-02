@@ -7,7 +7,7 @@ import {
   mutateValueWiden,
   gravityPullValues,
 } from './seqEvolveTypes';
-import type { MutationMode } from './seqEvolveTypes';
+import type { MutationMode, SubLaneValueConfig } from './seqEvolveTypes';
 import { clamp, chance, drift, tensionGate, randomOtherDirection, maskByWriteOffset, mutateRatchetHomeBiased } from './seqEvolveCore';
 
 
@@ -44,6 +44,40 @@ function getSnapshotValues(snap: SequencerSnapshot, lane: SubLaneName): number[]
 }
 
 const ALL_SUB_LANES: SubLaneName[] = ['expression', 'morph', 'distance', 'pitch', 'slice', 'reverse'];
+
+function getSubLaneConfig(lane: SubLaneName): SubLaneValueConfig {
+  const config = SUB_LANE_VALUE_CONFIGS[lane];
+  if (!config) {
+    throw new Error(`Missing sub-lane config for ${lane}`);
+  }
+  return config;
+}
+
+function pickSubLane(lanes: readonly SubLaneName[], rng: () => number): SubLaneName | null {
+  return lanes[Math.floor(rng() * lanes.length)] ?? null;
+}
+
+function getSubLaneSteps(source: SequencerState | SequencerSnapshot, lane: SubLaneName): number {
+  switch (lane) {
+    case 'expression': return source.expression.steps;
+    case 'morph': return source.morph.steps;
+    case 'distance': return source.distance.steps;
+    case 'pitch': return source.pitch.steps;
+    case 'slice': return source.slice.steps;
+    case 'reverse': return source.reverse.steps;
+  }
+}
+
+function getSubLaneDirection(source: SequencerState | SequencerSnapshot, lane: SubLaneName): LaneDirection {
+  switch (lane) {
+    case 'expression': return source.expression.direction;
+    case 'morph': return source.morph.direction;
+    case 'distance': return source.distance.direction;
+    case 'pitch': return source.pitch.direction;
+    case 'slice': return source.slice.direction;
+    case 'reverse': return source.reverse.direction;
+  }
+}
 
 /** Type-safe sub-lane steps update (avoids TS union narrowing issue with indexed access) */
 function setSubLaneSteps(s: SequencerState, lane: SubLaneName, steps: number): void {
@@ -227,7 +261,8 @@ export function evolveSequencer(
     const idx = randomActiveStep(next);
     if (idx !== null) {
       const homeVal = home?.trigger.ratchet[idx] ?? 1;
-      next.trigger.ratchet[idx] = mutateRatchetHomeBiased(next.trigger.ratchet[idx], homeVal, intensity, next.rng);
+      const currentRatchet = next.trigger.ratchet[idx] ?? 1;
+      next.trigger.ratchet[idx] = mutateRatchetHomeBiased(currentRatchet, homeVal, intensity, next.rng);
     }
   }
 
@@ -250,39 +285,40 @@ export function evolveSequencer(
     // Walk multiple steps at high intensity
     const walkStepCount = intensity > 0.8 ? (next.rng() < 0.5 ? 2 : 1) : 1;
     for (let w = 0; w < walkStepCount; w++) {
-    const idx = Math.floor(next.rng() * next.pitch.offsets.length);
-    const orig = home ? (home.pitch.offsets[idx] ?? 0) : 0;
-    const si = ctx.scaleIntervals;
-    const useScaleDegrees = next.pitch.scaleQuantize && si && si.length > 0;
+      const idx = Math.floor(next.rng() * next.pitch.offsets.length);
+      const currentOffset = next.pitch.offsets[idx] ?? 0;
+      const orig = home ? (home.pitch.offsets[idx] ?? 0) : 0;
+      const si = ctx.scaleIntervals;
+      const useScaleDegrees = next.pitch.scaleQuantize && si && si.length > 0;
 
-    if (useScaleDegrees) {
-      // Walk by one scale degree up or down
-      const cur = next.pitch.offsets[idx];
-      const octaves = Math.floor(cur / 12);
-      const rem = ((cur % 12) + 12) % 12;
-      // Find nearest scale degree index
-      let bestDeg = 0;
-      let bestDist = 99;
-      for (let d = 0; d < si.length; d++) {
-        const dist = Math.min(Math.abs(si[d] - rem), 12 - Math.abs(si[d] - rem));
-        if (dist < bestDist) { bestDist = dist; bestDeg = d; }
+      if (useScaleDegrees) {
+        // Walk by one scale degree up or down
+        const octaves = Math.floor(currentOffset / 12);
+        const rem = ((currentOffset % 12) + 12) % 12;
+        // Find nearest scale degree index
+        let bestDeg = 0;
+        let bestDist = 99;
+        for (let d = 0; d < si.length; d++) {
+          const degree = si[d] ?? rem;
+          const dist = Math.min(Math.abs(degree - rem), 12 - Math.abs(degree - rem));
+          if (dist < bestDist) { bestDist = dist; bestDeg = d; }
+        }
+        const dir = next.rng() < 0.5 ? -1 : 1;
+        let newDeg = bestDeg + dir;
+        let newOct = octaves;
+        if (newDeg < 0) { newDeg = si.length - 1; newOct--; }
+        else if (newDeg >= si.length) { newDeg = 0; newOct++; }
+        const newVal = newOct * 12 + (si[newDeg] ?? rem);
+        if (Math.abs(newVal - orig) <= 14) {
+          next.pitch.offsets[idx] = newVal;
+        }
+      } else {
+        const dir = next.rng() < 0.5 ? -1 : 1;
+        const newVal = currentOffset + dir;
+        if (Math.abs(newVal - orig) <= 5) {
+          next.pitch.offsets[idx] = newVal;
+        }
       }
-      const dir = next.rng() < 0.5 ? -1 : 1;
-      let newDeg = bestDeg + dir;
-      let newOct = octaves;
-      if (newDeg < 0) { newDeg = si.length - 1; newOct--; }
-      else if (newDeg >= si.length) { newDeg = 0; newOct++; }
-      const newVal = newOct * 12 + si[newDeg];
-      if (Math.abs(newVal - orig) <= 14) {
-        next.pitch.offsets[idx] = newVal;
-      }
-    } else {
-      const dir = next.rng() < 0.5 ? -1 : 1;
-      const newVal = next.pitch.offsets[idx] + dir;
-      if (Math.abs(newVal - orig) <= 5) {
-        next.pitch.offsets[idx] = newVal;
-      }
-    }
     }
   }
 
@@ -293,7 +329,7 @@ export function evolveSequencer(
   // Value Drift — nudge values within their natural range (Zone A)
   if (methods.valueDrift && tGate('valueDrift', 1)) {
     for (const lane of activeLanes) {
-      const config = SUB_LANE_VALUE_CONFIGS[lane];
+      const config = getSubLaneConfig(lane);
       const vals = getSubLaneValues(next, lane);
       setSubLaneValues(next, lane, mutateValueDrift(vals, config, intensity, next.rng, mode));
     }
@@ -314,7 +350,7 @@ export function evolveSequencer(
   if (methods.valueWiden && intensity > 0.6 && tGate('valueWiden', 0.15 * intensity)) {
     for (const lane of activeLanes) {
       if (next.rng() < 0.5) continue;
-      const config = SUB_LANE_VALUE_CONFIGS[lane];
+      const config = getSubLaneConfig(lane);
       const vals = getSubLaneValues(next, lane);
       setSubLaneValues(next, lane, mutateValueWiden(vals, config, intensity, next.rng));
     }
@@ -322,15 +358,19 @@ export function evolveSequencer(
 
   // Sub-Lane Length Drift — ±1 steps on a random sub-lane for polyrhythm (Zone B, ~0.5+)
   if (methods.subLaneLengthDrift && intensity > 0.5 && chance(next.rng, 0.25 * intensity)) {
-    const lane = activeLanes[Math.floor(next.rng() * activeLanes.length)];
-    const stepDir = next.rng() < 0.5 ? -1 : 1;
-    setSubLaneSteps(next, lane, clamp(next[lane].steps + stepDir, 1, 16));
+    const lane = pickSubLane(activeLanes, next.rng);
+    if (lane) {
+      const stepDir = next.rng() < 0.5 ? -1 : 1;
+      setSubLaneSteps(next, lane, clamp(getSubLaneSteps(next, lane) + stepDir, 1, 16));
+    }
   }
 
   // Sub-Lane Direction Flip — change direction on a random sub-lane (Zone B, ~0.8+)
   if (methods.subLaneDirectionFlip && intensity > 0.8 && tGate('subLaneDirectionFlip', 0.08 * intensity)) {
-    const lane = activeLanes[Math.floor(next.rng() * activeLanes.length)];
-    setSubLaneDirection(next, lane, randomOtherDirection(next[lane].direction, next.rng));
+    const lane = pickSubLane(activeLanes, next.rng);
+    if (lane) {
+      setSubLaneDirection(next, lane, randomOtherDirection(getSubLaneDirection(next, lane), next.rng));
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -371,7 +411,8 @@ export function evolveSequencer(
       case 'probability':
         for (let i = 0; i < next.trigger.steps; i++) {
           const hp = home.trigger.probability[i] ?? 1;
-          next.trigger.probability[i] += (hp - next.trigger.probability[i]) * 0.2;
+          const probability = next.trigger.probability[i] ?? hp;
+          next.trigger.probability[i] = probability + (hp - probability) * 0.2;
         }
         break;
     }
@@ -379,23 +420,30 @@ export function evolveSequencer(
 
   // Sub-lane value gravity — pull all sub-lane values toward home
   if (home && chance(next.rng, 0.15 * (1.2 - intensity))) {
-    const lane = activeLanes[Math.floor(next.rng() * activeLanes.length)];
-    const config = SUB_LANE_VALUE_CONFIGS[lane];
-    const currentVals = getSubLaneValues(next, lane);
-    const homeVals = getSnapshotValues(home, lane);
-    setSubLaneValues(next, lane, gravityPullValues(currentVals, homeVals, config, 0.2));
+    const lane = pickSubLane(activeLanes, next.rng);
+    if (lane) {
+      const config = getSubLaneConfig(lane);
+      const currentVals = getSubLaneValues(next, lane);
+      const homeVals = getSnapshotValues(home, lane);
+      setSubLaneValues(next, lane, gravityPullValues(currentVals, homeVals, config, 0.2));
+    }
   }
 
   // Sub-lane steps/direction gravity — pull toward home
   if (home && chance(next.rng, 0.15 * (1.2 - intensity))) {
-    const lane = activeLanes[Math.floor(next.rng() * activeLanes.length)];
-    const homeLane = home[lane];
-    if (next[lane].steps !== homeLane.steps) {
-      const diff = next[lane].steps - homeLane.steps;
-      setSubLaneSteps(next, lane, next[lane].steps + (diff > 0 ? -1 : 1));
-    }
-    if (next[lane].direction !== homeLane.direction) {
-      setSubLaneDirection(next, lane, homeLane.direction);
+    const lane = pickSubLane(activeLanes, next.rng);
+    if (lane) {
+      const nextSteps = getSubLaneSteps(next, lane);
+      const homeSteps = getSubLaneSteps(home, lane);
+      if (nextSteps !== homeSteps) {
+        const diff = nextSteps - homeSteps;
+        setSubLaneSteps(next, lane, nextSteps + (diff > 0 ? -1 : 1));
+      }
+      const nextDirection = getSubLaneDirection(next, lane);
+      const homeDirection = getSubLaneDirection(home, lane);
+      if (nextDirection !== homeDirection) {
+        setSubLaneDirection(next, lane, homeDirection);
+      }
     }
   }
 

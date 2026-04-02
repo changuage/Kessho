@@ -403,13 +403,15 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
       ctx.translate(centerX, centerY);
     
     for (let arm = 0; arm < 6; arm++) {
-      const length = armLengths[arm];    // Level controls length
-      const width = armWidths[arm];       // Reverb send controls width/complexity
+      const slider = MACRO_SLIDERS[arm];
+      if (!slider) continue;
+      const length = armLengths[arm] ?? 0;    // Level controls length
+      const width = armWidths[arm] ?? 0;       // Reverb send controls width/complexity
       const rotation = (arm * Math.PI * 2) / 6 - Math.PI / 2; // Start at top
       
       // Highlight branches when width is being dragged (tangential drag)
       const isWidthActive = draggingWidth === arm || hoveringWidth === arm;
-      const highlightColor = isWidthActive ? MACRO_SLIDERS[arm].color : undefined;
+      const highlightColor = isWidthActive ? slider.color : undefined;
       
       // Draw arm with 2-fold mirror symmetry (across the arm axis)
       for (const mirror of [1, -1]) {
@@ -498,7 +500,7 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
     // Handle width drag (reverb send or filter cutoff) - tangential movement
     if (draggingWidth !== null) {
       const slider = MACRO_SLIDERS[draggingWidth];
-      if (slider.reverbSendKey) {
+      if (slider?.reverbSendKey) {
         // Calculate tangential movement (perpendicular to prong direction)
         const prongAngle = (draggingWidth * 60 - 90) * (Math.PI / 180);
         // Tangent is perpendicular to the prong direction
@@ -526,6 +528,7 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
     if (dragging === null) return;
     
     const slider = MACRO_SLIDERS[dragging];
+    if (!slider) return;
     // Use scaled interaction radius (must match getProngPosition for consistent drag)
     const interactionBaseRadius = 35 * scaleFactor;
     const interactionMaxLength = 160 * scaleFactor;
@@ -546,7 +549,7 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
   // Calculate prong positions (scaled for responsive display)
   const getProngPosition = (index: number, value: number) => {
     const angle = (index * 60 - 90) * (Math.PI / 180);
-    const slider = MACRO_SLIDERS[index];
+    const slider = MACRO_SLIDERS[index] ?? MACRO_SLIDERS[0]!;
     // Apply logarithmic scaling: actual value -> slider position
     const normalizedValue = valueToSliderPosition(value, slider.min, slider.max);
     // Use scaled interaction radius

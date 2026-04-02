@@ -153,6 +153,7 @@ export function interpolateAllDualRanges(
   
   for (const param of Object.keys(overrides)) {
     const override = overrides[param];
+    if (!override) continue;
     const state0 = override.endpoint0;
     const state1 = override.endpoint1;
     

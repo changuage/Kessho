@@ -467,6 +467,7 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
 
       setSubLaneStates(prev => {
         const cur = prev[seqIdx];
+        if (!cur) return prev;
         const needsUpdate = SUB_LANE_KINDS.some(k => cur[k].steps !== activeHits);
         if (!needsUpdate) return prev;
         return prev.map((s, i) => {
@@ -854,7 +855,11 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
     []
   );
 
-  const activeSeq = sequencerModels[activeTab] ?? sequencerModels[0];
+  const fallbackSeq = sequencerModels[0];
+  if (!fallbackSeq) {
+    throw new Error('Expected at least one sequencer model');
+  }
+  const activeSeq = sequencerModels[activeTab] ?? fallbackSeq;
 
   return {
     sequencerModels,

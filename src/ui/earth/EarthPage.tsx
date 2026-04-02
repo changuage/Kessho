@@ -18,7 +18,7 @@ import { usePresets } from '../../presets/usePresets';
 import { PresetDropdown } from '../../presets/PresetDropdown';
 import type { PresetEntry } from '../../presets/types';
 import {
-  WATER_PRESETS, INSECT_ENGINES,
+  WATER_PRESETS, INSECT_ENGINES, INSECT_ENGINE_DEFAULTS,
   WATER_MORPH_PARAM_KEYS,
   LAYER_KEYS, LAYER_LABELS,
   getWaterPresetOptions,

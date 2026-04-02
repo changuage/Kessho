@@ -67,13 +67,15 @@ const ALL_GRANULAR_SUB_LANES: GranularSubLane[] = ['pitch', 'expression', 'slice
 
 /** Value configs for granular sub-lanes */
 const GRANULAR_SUB_LANE_CONFIGS: Record<GranularSubLane, SubLaneValueConfig> = {
-  pitch:       SUB_LANE_VALUE_CONFIGS.pitch,       // integer, -12..12, driftScale 1
-  expression:  SUB_LANE_VALUE_CONFIGS.expression,   // continuous, 0.2..1.0, driftScale 0.08
-  slice:       SUB_LANE_VALUE_CONFIGS.slice,         // integer, 0..15
-  reverse:     SUB_LANE_VALUE_CONFIGS.reverse,       // integer, 0..1
+  pitch:       SUB_LANE_VALUE_CONFIGS.pitch!,       // integer, -12..12, driftScale 1
+  expression:  SUB_LANE_VALUE_CONFIGS.expression!,   // continuous, 0.2..1.0, driftScale 0.08
+  slice:       SUB_LANE_VALUE_CONFIGS.slice!,         // integer, 0..15
+  reverse:     SUB_LANE_VALUE_CONFIGS.reverse!,       // integer, 0..1
   probability: { type: 'continuous', min: 0.3, max: 1.0, driftScale: 0.06 },
   ratchet:     { type: 'integer', min: 1, max: 4, driftScale: 1 },
 };
+
+type GranularDirectionLane = 'pitch' | 'expression' | 'slice' | 'reverse';
 
 // ═══════════════════════════════════════════════════════════════════════
 // Sub-lane accessors
@@ -87,20 +89,37 @@ function setValues(ov: GranularLaneOverrides, lane: GranularSubLane, values: num
   (ov as unknown as Record<string, unknown>)[lane] = values;
 }
 
-const DIRECTION_LANES: Record<string, keyof GranularLaneOverrides> = {
-  pitch: 'pitchDirection',
-  expression: 'expressionDirection',
-  slice: 'sliceDirection',
-  reverse: 'reverseDirection',
-};
+const DIRECTION_LANES: GranularDirectionLane[] = ['pitch', 'expression', 'slice', 'reverse'];
+
+function getDirectionKey(lane: GranularSubLane): keyof GranularLaneOverrides | null {
+  switch (lane) {
+    case 'pitch': return 'pitchDirection';
+    case 'expression': return 'expressionDirection';
+    case 'slice': return 'sliceDirection';
+    case 'reverse': return 'reverseDirection';
+    default: return null;
+  }
+}
+
+function getGranularConfig(lane: GranularSubLane): SubLaneValueConfig {
+  const config = GRANULAR_SUB_LANE_CONFIGS[lane];
+  if (!config) {
+    throw new Error(`Missing granular sub-lane config for ${lane}`);
+  }
+  return config;
+}
+
+function pickGranularLane(lanes: readonly GranularSubLane[], rng: () => number): GranularSubLane | null {
+  return lanes[Math.floor(rng() * lanes.length)] ?? null;
+}
 
 function getDirection(ov: GranularLaneOverrides, lane: GranularSubLane): LaneDirection | null {
-  const key = DIRECTION_LANES[lane];
+  const key = getDirectionKey(lane);
   return key ? (ov[key] as LaneDirection | null) : null;
 }
 
 function setDirection(ov: GranularLaneOverrides, lane: GranularSubLane, dir: LaneDirection): void {
-  const key = DIRECTION_LANES[lane];
+  const key = getDirectionKey(lane);
   if (key) (ov as unknown as Record<string, unknown>)[key] = dir;
 }
 
@@ -190,15 +209,17 @@ export function evolveGranularLane(
   if (methods.ratchetSpray && tGate('ratchetSpray', 0.2 * intensity) && enabledSubs.has('ratchet') && next.ratchet) {
     const idx = Math.floor(rng() * next.ratchet.length);
     const homeVal = home?.ratchet?.[idx] ?? 1;
-    next.ratchet[idx] = mutateRatchetHomeBiased(next.ratchet[idx], homeVal, intensity, rng);
+    const currentRatchet = next.ratchet[idx] ?? 1;
+    next.ratchet[idx] = mutateRatchetHomeBiased(currentRatchet, homeVal, intensity, rng);
   }
 
   // Pitch Walk
   if (methods.pitchWalk && tGate('pitchWalk', 0.25 * intensity) && enabledSubs.has('pitch') && next.pitch) {
     const idx = Math.floor(rng() * next.pitch.length);
     const dir = rng() < 0.5 ? -1 : 1;
-    const homeVal = home?.pitch ? (home.pitch[idx] ?? next.pitch[idx]) : next.pitch[idx];
-    const newVal = next.pitch[idx] + dir;
+    const currentPitch = next.pitch[idx] ?? 0;
+    const homeVal = home?.pitch ? (home.pitch[idx] ?? currentPitch) : currentPitch;
+    const newVal = currentPitch + dir;
     if (Math.abs(newVal - homeVal) <= 3) {
       next.pitch[idx] = clamp(newVal, -12, 12);
     }
@@ -210,7 +231,7 @@ export function evolveGranularLane(
       if (lane === 'pitch' || !enabledSubs.has(lane)) continue;
       const vals = getValues(next, lane);
       if (!vals) continue;
-      const cfg = GRANULAR_SUB_LANE_CONFIGS[lane];
+      const cfg = getGranularConfig(lane);
       setValues(next, lane, mutateValueDrift(vals, cfg, intensity, rng, mode));
     }
   }
@@ -232,19 +253,20 @@ export function evolveGranularLane(
       if (lane === 'pitch' || !enabledSubs.has(lane)) continue;
       const vals = getValues(next, lane);
       if (!vals || rng() < 0.5) continue;
-      const cfg = GRANULAR_SUB_LANE_CONFIGS[lane];
+      const cfg = getGranularConfig(lane);
       setValues(next, lane, mutateValueWiden(vals, cfg, intensity, rng));
     }
   }
 
   // Sub-Lane Direction Flip (Zone B, ~0.8+)
   if (methods.subLaneDirectionFlip && intensity > 0.8 && tGate('subLaneDirectionFlip', 0.08 * intensity)) {
-    const dirLanes = Object.keys(DIRECTION_LANES) as GranularSubLane[];
-    const activeDirLanes = dirLanes.filter(l => getValues(next, l) !== null);
+    const activeDirLanes = DIRECTION_LANES.filter(l => getValues(next, l) !== null);
     if (activeDirLanes.length > 0) {
-      const lane = activeDirLanes[Math.floor(rng() * activeDirLanes.length)];
-      const current = getDirection(next, lane) ?? 'forward';
-      setDirection(next, lane, randomOtherDirection(current, rng));
+      const lane = pickGranularLane(activeDirLanes, rng);
+      if (lane) {
+        const current = getDirection(next, lane) ?? 'forward';
+        setDirection(next, lane, randomOtherDirection(current, rng));
+      }
     }
   }
 
@@ -263,23 +285,26 @@ export function evolveGranularLane(
   if (home && chance(rng, 0.15 * (1.2 - intensity))) {
     nextSwing += (state.homeSwing - nextSwing) * 0.3;
 
-    const lane = ALL_GRANULAR_SUB_LANES[Math.floor(rng() * ALL_GRANULAR_SUB_LANES.length)];
-    const currentVals = getValues(next, lane);
-    const homeVals = getValues(home, lane);
-    if (currentVals && homeVals) {
-      const cfg = GRANULAR_SUB_LANE_CONFIGS[lane];
-      setValues(next, lane, gravityPullValues(currentVals, homeVals, cfg, 0.2));
+    const lane = pickGranularLane(ALL_GRANULAR_SUB_LANES, rng);
+    if (lane) {
+      const currentVals = getValues(next, lane);
+      const homeVals = getValues(home, lane);
+      if (currentVals && homeVals) {
+        const cfg = getGranularConfig(lane);
+        setValues(next, lane, gravityPullValues(currentVals, homeVals, cfg, 0.2));
+      }
     }
   }
 
   // Direction gravity
   if (home && chance(rng, 0.15 * (1.2 - intensity))) {
-    const dirLanes = Object.keys(DIRECTION_LANES) as GranularSubLane[];
-    const lane = dirLanes[Math.floor(rng() * dirLanes.length)];
-    const homeDir = getDirection(home, lane);
-    const currentDir = getDirection(next, lane);
-    if (homeDir && currentDir && homeDir !== currentDir) {
-      setDirection(next, lane, homeDir);
+    const lane = pickGranularLane(DIRECTION_LANES, rng);
+    if (lane) {
+      const homeDir = getDirection(home, lane);
+      const currentDir = getDirection(next, lane);
+      if (homeDir && currentDir && homeDir !== currentDir) {
+        setDirection(next, lane, homeDir);
+      }
     }
   }
 

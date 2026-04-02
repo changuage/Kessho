@@ -110,6 +110,8 @@ interface DragState {
   currentY: number;
 }
 
+type PointerLikeEvent = MouseEvent | TouchEvent | React.MouseEvent | React.TouchEvent;
+
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
@@ -118,7 +120,9 @@ function getNodeInitial(name: string): string {
   if (!name) return '+';
   const words = name.split(' ');
   if (words.length >= 2) {
-    return (words[0][0] + words[1][0]).toUpperCase();
+    const firstInitial = words[0]?.[0] ?? '';
+    const secondInitial = words[1]?.[0] ?? '';
+    return (firstInitial + secondInitial || '+').toUpperCase();
   }
   return name.slice(0, 2).toUpperCase();
 }
@@ -126,6 +130,21 @@ function getNodeInitial(name: string): string {
 function getProbabilityWidth(probability: number): number {
   // Scale line width from 1.5 to 4 based on probability (thinner for elegance)
   return 1.5 + probability * 2.5;
+}
+
+function getEventClientPoint(event: PointerLikeEvent): { x: number; y: number } | null {
+  if ('changedTouches' in event && event.changedTouches.length > 0) {
+    const touch = event.changedTouches[0];
+    return touch ? { x: touch.clientX, y: touch.clientY } : null;
+  }
+  if ('touches' in event && event.touches.length > 0) {
+    const touch = event.touches[0];
+    return touch ? { x: touch.clientX, y: touch.clientY } : null;
+  }
+  if ('clientX' in event && typeof event.clientX === 'number' && typeof event.clientY === 'number') {
+    return { x: event.clientX, y: event.clientY };
+  }
+  return null;
 }
 
 // ============================================================================
@@ -214,6 +233,7 @@ const DiamondNode: React.FC<DiamondNodeProps> = ({
   const handleTouchStart = (e: React.TouchEvent) => {
     e.stopPropagation();
     const touch = e.touches[0];
+    if (!touch) return;
     dragStartPos.current = { x: touch.clientX, y: touch.clientY };
     dragStarted.current = false;
     pendingEvent.current = e;
@@ -710,6 +730,7 @@ const CenterNode: React.FC<CenterNodeProps> = ({
   const handleTouchStart = (e: React.TouchEvent) => {
     e.stopPropagation();
     const touch = e.touches[0];
+    if (!touch) return;
     dragStartPos.current = { x: touch.clientX, y: touch.clientY };
     dragStarted.current = false;
     pendingEvent.current = e;
@@ -993,7 +1014,9 @@ const ConnectionArc: React.FC<ConnectionArcProps> = ({
   const handleDragStart = (e: React.MouseEvent | React.TouchEvent) => {
     e.stopPropagation();
     e.preventDefault();
-    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+    const point = getEventClientPoint(e);
+    if (!point) return;
+    const clientY = point.y;
     const isDualMode = connection.morphDurationMax !== undefined;
     const startValue = isDualMode 
       ? Math.round((connection.morphDuration + connection.morphDurationMax!) / 2)
@@ -1006,7 +1029,9 @@ const ConnectionArc: React.FC<ConnectionArcProps> = ({
     
     const handleMove = (moveE: MouseEvent | TouchEvent) => {
       if (!dragStartRef.current) return;
-      const moveY = 'touches' in moveE ? moveE.touches[0].clientY : moveE.clientY;
+      const point = getEventClientPoint(moveE);
+      if (!point) return;
+      const moveY = point.y;
       // Moving up/away = more phrases, down/towards = fewer
       const delta = (dragStartRef.current.startY - moveY) / 4;
       const newValue = Math.max(1, Math.min(100, Math.round(dragStartRef.current.startValue + delta)));
@@ -1901,6 +1926,7 @@ const NodePopup: React.FC<NodePopupProps> = ({
                 const move = (te: TouchEvent) => {
                   const rect = container.getBoundingClientRect();
                   const touch = te.touches[0];
+                  if (!touch) return;
                   const pct = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width));
                   const newVal = Math.round(1 + pct * 63);
                   onChangePhraseMin(Math.min(newVal, maxValue));
@@ -1954,6 +1980,7 @@ const NodePopup: React.FC<NodePopupProps> = ({
                 const move = (te: TouchEvent) => {
                   const rect = container.getBoundingClientRect();
                   const touch = te.touches[0];
+                  if (!touch) return;
                   const pct = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width));
                   const newVal = Math.round(1 + pct * 63);
                   onChangePhraseMax(Math.max(newVal, minValue));
@@ -2452,6 +2479,7 @@ const ConnectionPopup: React.FC<ConnectionPopupProps> = ({
                 const move = (te: TouchEvent) => {
                   const rect = container.getBoundingClientRect();
                   const touch = te.touches[0];
+                  if (!touch) return;
                   const pct = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width));
                   const newVal = Math.round(1 + pct * 63);
                   onChangeDurationMin(Math.min(newVal, maxValue));
@@ -2505,6 +2533,7 @@ const ConnectionPopup: React.FC<ConnectionPopupProps> = ({
                 const move = (te: TouchEvent) => {
                   const rect = container.getBoundingClientRect();
                   const touch = te.touches[0];
+                  if (!touch) return;
                   const pct = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width));
                   const newVal = Math.round(1 + pct * 63);
                   onChangeDurationMax(Math.max(newVal, minValue));
@@ -2750,10 +2779,16 @@ const AddPresetPopup: React.FC<AddPresetPopupProps> = ({
 function hexToRgb(hex: string): { r: number; g: number; b: number } {
   const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
   if (result) {
+    const r = result[1];
+    const g = result[2];
+    const b = result[3];
+    if (!r || !g || !b) {
+      return { r: 139, g: 92, b: 246 };
+    }
     return {
-      r: parseInt(result[1], 16),
-      g: parseInt(result[2], 16),
-      b: parseInt(result[3], 16),
+      r: parseInt(r, 16),
+      g: parseInt(g, 16),
+      b: parseInt(b, 16),
     };
   }
   // Fallback to a neutral color
@@ -3003,29 +3038,27 @@ export const DiamondJourneyUI: React.FC<DiamondJourneyUIProps> = ({
   const handleDragStart = useCallback((nodeId: string, position: DiamondPosition, e: React.MouseEvent | React.TouchEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    
-    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
-    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+    const point = getEventClientPoint(e);
+    if (!point) return;
     
     setDragState({
       isDragging: true,
       fromNodeId: nodeId,
       fromPosition: position,
-      currentX: clientX,
-      currentY: clientY,
+      currentX: point.x,
+      currentY: point.y,
     });
   }, []);
   
   const handleDragMove = useCallback((e: MouseEvent | TouchEvent) => {
     if (!dragState.isDragging) return;
-    
-    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
-    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+    const point = getEventClientPoint(e);
+    if (!point) return;
     
     setDragState(prev => ({
       ...prev,
-      currentX: clientX,
-      currentY: clientY,
+      currentX: point.x,
+      currentY: point.y,
     }));
   }, [dragState.isDragging]);
   
@@ -3041,8 +3074,10 @@ export const DiamondJourneyUI: React.FC<DiamondJourneyUIProps> = ({
       return;
     }
     
-    const clientX = 'changedTouches' in e ? e.changedTouches[0].clientX : e.clientX;
-    const clientY = 'changedTouches' in e ? e.changedTouches[0].clientY : e.clientY;
+    const point = getEventClientPoint(e);
+    if (!point) return;
+    const clientX = point.x;
+    const clientY = point.y;
     
     // Find which node we dropped on
     const svgRect = svgRef.current.getBoundingClientRect();
@@ -3528,7 +3563,7 @@ export const DiamondJourneyUI: React.FC<DiamondJourneyUIProps> = ({
                 ...n, 
                 presetId: preset.name, 
                 presetName: preset.name,
-                color: JOURNEY_NODE_COLORS[colorIndex % JOURNEY_NODE_COLORS.length]
+                color: JOURNEY_NODE_COLORS[colorIndex % JOURNEY_NODE_COLORS.length] ?? JOURNEY_NODE_COLORS[0]!
               } 
             : n
         ),

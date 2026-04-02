@@ -528,7 +528,7 @@ async function loadSynthEuclideanFactory(): Promise<PresetEntry[]> {
       ];
       for (let i = 0; i < 3; i++) {
         const n = i + 2;
-        const d = LANE_DEFAULTS[i];
+        const d = LANE_DEFAULTS[i] ?? LANE_DEFAULTS[0]!;
         Object.assign(data, {
           [`synthEuclid${n}Enabled`]: false,
           [`synthEuclid${n}Preset`]: 'custom',

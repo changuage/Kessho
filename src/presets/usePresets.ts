@@ -12,7 +12,7 @@ import type {
   PresetVersionMetadata,
 } from './types';
 import { getPresetStore } from './PresetStore';
-import { extractParams, applyParams, extractCascade, compressVersions, getVersionData } from './codec';
+import { extractParams, applyParams, extractCascade, compressVersions } from './codec';
 import { extractPresetVersionMetadata } from './presetUtils';
 import { buildPresetFamilies } from './catalog';
 import type { ParamLevel } from './ParamRegistry';
@@ -187,7 +187,7 @@ export function usePresets(type: PresetLevel, scope?: string, options?: UsePrese
     // Lazy migration: compress uncompressed user presets on first load
     if (entry && entry.author === 'user' && entry.versions.length > 1) {
       const needsCompression = entry.versions.some(
-        (v, i) => i > 0 && !(v as Record<string, unknown>)._isDelta
+        (v, i) => i > 0 && !v._isDelta
       );
       if (needsCompression) {
         compressVersions(entry);

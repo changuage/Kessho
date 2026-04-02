@@ -19,7 +19,7 @@ const SEQ_SUBSEQ_DRAG_DISTANCE_FACTOR = 1.8;
 const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 function midiToName(midi: number): string {
   if (midi < 0 || midi > 127) return '';
-  return NOTE_NAMES[midi % 12] + (Math.floor(midi / 12) - 1);
+  return (NOTE_NAMES[midi % 12] ?? '') + (Math.floor(midi / 12) - 1);
 }
 function scaleDegreeToSemitone(degree: number, scale: number[]): number {
   if (degree <= 0) return 0;

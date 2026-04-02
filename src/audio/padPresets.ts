@@ -702,7 +702,7 @@ export function morphPadPresets(
     const b = presetB.params[key];
 
     if (a === undefined) {
-      result[key] = b;
+      result[key] = b ?? 0;
     } else if (b === undefined) {
       result[key] = a;
     } else if (typeof a === 'number' && typeof b === 'number') {

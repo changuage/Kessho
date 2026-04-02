@@ -679,7 +679,19 @@ export function playLead4opFMNote(
   }
 
   // ─── Per-operator params ───
-  const opParams = [
+  type OperatorParams = {
+    ratio: number;
+    index: number;
+    decay: number;
+    sustain: number;
+    level: number;
+    feedback: number;
+    detune: number;
+    envRate: number;
+    modAttack: number;
+    modDelay: number;
+  };
+  const opParams: [OperatorParams, OperatorParams, OperatorParams, OperatorParams] = [
     { ratio: morphed.mod1Ratio, index: morphed.mod1Index, decay: morphed.mod1Decay, sustain: morphed.mod1Sustain, level: morphed.mod1Level, feedback: morphed.mod1Feedback, detune: morphed.mod1Detune, envRate: morphed.mod1EnvRate, modAttack: morphed.mod1ModAttack, modDelay: morphed.mod1ModDelay },
     { ratio: morphed.mod2Ratio, index: morphed.mod2Index, decay: morphed.mod2Decay, sustain: morphed.mod2Sustain, level: morphed.mod2Level, feedback: morphed.mod2Feedback, detune: morphed.mod2Detune, envRate: morphed.mod2EnvRate, modAttack: morphed.mod2ModAttack, modDelay: morphed.mod2ModDelay },
     { ratio: morphed.mod3Ratio, index: morphed.mod3Index, decay: morphed.mod3Decay, sustain: morphed.mod3Sustain, level: morphed.mod3Level, feedback: morphed.mod3Feedback, detune: morphed.mod3Detune, envRate: morphed.mod3EnvRate, modAttack: morphed.mod3ModAttack, modDelay: morphed.mod3ModDelay },
@@ -729,8 +741,7 @@ export function playLead4opFMNote(
     const modLevelGains: GainNode[] = []; // per-op output level
     const fbGains: GainNode[] = []; // per-op self-feedback
 
-    for (let opIdx = 0; opIdx < 4; opIdx++) {
-      const op = opParams[opIdx];
+    for (const [opIdx, op] of opParams.entries()) {
       const opFreq = unisonFreq * op.ratio * Math.pow(2, op.detune / 1200);
 
       const modulator = ctx.createOscillator();
@@ -790,10 +801,13 @@ export function playLead4opFMNote(
             (lfoTarget === 'mod4' && opIdx === 3);
 
           if (shouldModulate) {
+            const targetOp = opParams[opIdx];
+            const modGain = modGains[opIdx];
+            if (!targetOp || !modGain) continue;
             const lfoGain = ctx.createGain();
-            lfoGain.gain.value = unisonFreq * opParams[opIdx].index * morphed.lfoDepth;
+            lfoGain.gain.value = unisonFreq * targetOp.index * morphed.lfoDepth;
             lfo.connect(lfoGain);
-            lfoGain.connect(modGains[opIdx].gain);
+            lfoGain.connect(modGain.gain);
             lfoModGains.push(lfoGain);
             allNodes.push(lfoGain);
           }
@@ -835,33 +849,39 @@ export function playLead4opFMNote(
       if (right) gainNode.connect(carrier2.frequency);
     };
 
+    const [modGain1, modGain2, modGain3, modGain4] = modGains;
+    const [modulator1, modulator2, modulator3, modulator4] = modulators;
+    if (!modGain1 || !modGain2 || !modGain3 || !modGain4 || !modulator1 || !modulator2 || !modulator3 || !modulator4) {
+      throw new Error('FM operator graph incomplete');
+    }
+
     if (morphed.algorithm === 'stack') {
-      modGains[3].connect(modulators[2].frequency);
-      modGains[2].connect(modulators[1].frequency);
-      modGains[1].connect(modulators[0].frequency);
-      connectToCarriers(modGains[0], true, true);
+      modGain4.connect(modulator3.frequency);
+      modGain3.connect(modulator2.frequency);
+      modGain2.connect(modulator1.frequency);
+      connectToCarriers(modGain1, true, true);
     } else if (morphed.algorithm === 'split') {
-      modGains[0].connect(carrier1.frequency);
-      modGains[1].connect(carrier2.frequency);
-      modGains[2].connect(carrier1.frequency);
-      modGains[3].connect(carrier2.frequency);
+      modGain1.connect(carrier1.frequency);
+      modGain2.connect(carrier2.frequency);
+      modGain3.connect(carrier1.frequency);
+      modGain4.connect(carrier2.frequency);
     } else if (morphed.algorithm === 'cross') {
-      connectToCarriers(modGains[0], true, false);
-      connectToCarriers(modGains[1], true, false);
-      connectToCarriers(modGains[2], false, true);
-      connectToCarriers(modGains[3], false, true);
+      connectToCarriers(modGain1, true, false);
+      connectToCarriers(modGain2, true, false);
+      connectToCarriers(modGain3, false, true);
+      connectToCarriers(modGain4, false, true);
     } else if (morphed.algorithm === 'dx17') {
       carrier2GainNode.gain.value = 0;
-      connectToCarriers(modGains[2], true, false);
-      modGains[3].connect(modulators[2].frequency);
-      modGains[1].connect(modulators[2].frequency);
-      connectToCarriers(modGains[0], true, false);
+      connectToCarriers(modGain3, true, false);
+      modGain4.connect(modulator3.frequency);
+      modGain2.connect(modulator3.frequency);
+      connectToCarriers(modGain1, true, false);
     } else {
       // parallel: all → both carriers
-      connectToCarriers(modGains[0], true, true);
-      connectToCarriers(modGains[1], true, true);
-      connectToCarriers(modGains[2], true, true);
-      connectToCarriers(modGains[3], true, true);
+      connectToCarriers(modGain1, true, true);
+      connectToCarriers(modGain2, true, true);
+      connectToCarriers(modGain3, true, true);
+      connectToCarriers(modGain4, true, true);
     }
 
     carrier1.connect(envelope1);
@@ -989,8 +1009,9 @@ export function playLead4opFMNote(
     envelope2.gain.linearRampToValueAtTime(baseSustain * 0.8, now + att2 + dec2);
 
     // ─── Modulation Envelopes: Digitone-style ADE (Delay → Attack → Decay → End) ───
-    for (let opIdx = 0; opIdx < 4; opIdx++) {
-      const op = opParams[opIdx];
+    for (const [opIdx, op] of opParams.entries()) {
+      const modGain = modGains[opIdx];
+      if (!modGain) continue;
       const modPeakVal = opIdx === 0
         ? unisonFreq * op.index * velocity
         : unisonFreq * op.index;
@@ -1000,22 +1021,22 @@ export function playLead4opFMNote(
 
       if (modDelay > 0 || modAttack > 0) {
         // Digitone ADE: start silent → delay → ramp up → decay to end level
-        modGains[opIdx].gain.setValueAtTime(0.001, now);
+        modGain.gain.setValueAtTime(0.001, now);
         if (modDelay > 0) {
-          modGains[opIdx].gain.setValueAtTime(0.001, now + modDelay);
+          modGain.gain.setValueAtTime(0.001, now + modDelay);
         }
-        modGains[opIdx].gain.exponentialRampToValueAtTime(
+        modGain.gain.exponentialRampToValueAtTime(
           Math.max(0.001, modPeakVal),
           now + modDelay + Math.max(0.001, modAttack)
         );
-        modGains[opIdx].gain.exponentialRampToValueAtTime(
+        modGain.gain.exponentialRampToValueAtTime(
           modEndVal,
           now + modDelay + modAttack + op.decay
         );
       } else {
         // Legacy behavior: instant peak → decay to end (for presets without modAttack)
-        modGains[opIdx].gain.setValueAtTime(Math.max(0.001, modPeakVal), now);
-        modGains[opIdx].gain.exponentialRampToValueAtTime(
+        modGain.gain.setValueAtTime(Math.max(0.001, modPeakVal), now);
+        modGain.gain.exponentialRampToValueAtTime(
           modEndVal,
           now + op.decay
         );

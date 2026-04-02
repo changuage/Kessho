@@ -43,6 +43,7 @@ export interface PresetVersion extends PresetVersionMetadata {
   note: string;
   timestamp: number;
   data: Record<string, unknown>;
+  _isDelta?: boolean;
   id?: string;
   refs?: Record<string, PresetRef>;
 }

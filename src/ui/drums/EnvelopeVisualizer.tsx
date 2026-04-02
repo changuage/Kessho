@@ -123,7 +123,10 @@ const EnvelopeVisualizer: React.FC<EnvelopeVisualizerProps> = ({ voice, state, a
     pts.forEach(pt => {
       ctx.lineTo(ox + (pt.t / maxTime) * plotW, oy + plotH - pt.v * plotH);
     });
-    ctx.lineTo(ox + (pts[pts.length - 1].t / maxTime) * plotW, oy + plotH);
+    const lastPoint = pts[pts.length - 1] ?? pts[0];
+    if (lastPoint) {
+      ctx.lineTo(ox + (lastPoint.t / maxTime) * plotW, oy + plotH);
+    }
     ctx.closePath();
     ctx.globalAlpha = 0.08;
     ctx.fillStyle = VOICE_COLORS[voice] ?? '#22c55e';
@@ -203,7 +206,9 @@ const EnvelopeVisualizer: React.FC<EnvelopeVisualizerProps> = ({ voice, state, a
 
     // ── Spectrogram ──
     if (ss.columns.length > 0) {
-      const bins = ss.columns[0].length;
+      const firstColumn = ss.columns[0];
+      if (!firstColumn) return;
+      const bins = firstColumn.length;
       const ceiling = VOICE_FREQ_CEILING[voice] ?? 10000;
       const nyquist = analyserNode ? analyserNode.context.sampleRate / 2 : 22050;
       const maxBin = Math.min(bins, Math.round(ceiling / nyquist * bins));
@@ -212,9 +217,10 @@ const EnvelopeVisualizer: React.FC<EnvelopeVisualizerProps> = ({ voice, state, a
 
       for (let c = 0; c < ss.columns.length; c++) {
         const col = ss.columns[c];
+        if (!col) continue;
         const x = pad.left + c * colW;
         for (let b = 0; b < maxBin; b++) {
-          const mag = col[b];
+          const mag = col[b] ?? 0;
           if (mag < 8) continue;
           ctx.fillStyle = spectColor(mag);
           const y = liveY + liveH - (b + 1) * binH;
@@ -278,7 +284,7 @@ const EnvelopeVisualizer: React.FC<EnvelopeVisualizerProps> = ({ voice, state, a
       const wfLen = ss.waveform.length;
       for (let i = 0; i < waveW; i++) {
         const idx = Math.floor(i * wfLen / waveW);
-        const v = (ss.waveform[idx] - 128) / 128;
+        const v = ((ss.waveform[idx] ?? 128) - 128) / 128;
         const y = wfY + wfH / 2 - v * (wfH / 2 - 2);
         if (i === 0) ctx.moveTo(waveX + i, y);
         else ctx.lineTo(waveX + i, y);
@@ -391,7 +397,7 @@ const EnvelopeVisualizer: React.FC<EnvelopeVisualizerProps> = ({ voice, state, a
       // Peak level
       let mx = 0;
       for (let i = 0; i < wf.length; i++) {
-        const v = Math.abs(wf[i] - 128) / 128;
+        const v = Math.abs((wf[i] ?? 128) - 128) / 128;
         if (v > mx) mx = v;
       }
       ss.peak = Math.max(ss.peak * 0.92, mx);

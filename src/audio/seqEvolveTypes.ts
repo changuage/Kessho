@@ -95,7 +95,13 @@ export function mutateValueScramble(
   for (let s = 0; s < swapCount; s++) {
     const a = Math.floor(rng() * out.length);
     const b = Math.floor(rng() * out.length);
-    if (a !== b) { const tmp = out[a]; out[a] = out[b]; out[b] = tmp; }
+    if (a !== b) {
+      const valueAtA = out[a];
+      const valueAtB = out[b];
+      if (valueAtA === undefined || valueAtB === undefined) continue;
+      out[a] = valueAtB;
+      out[b] = valueAtA;
+    }
   }
   return out;
 }

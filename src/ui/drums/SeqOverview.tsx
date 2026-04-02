@@ -114,7 +114,7 @@ const SeqOverview: React.FC<SeqOverviewProps> = ({
               {new Array(maxCells).fill(0).map((_, step) => {
                 const inRange = step < seq.trigger.steps;
                 const hit = inRange ? (seq.trigger.pattern[step] ?? false) : false;
-                const isPlayhead = inRange && (playheads[row] % seq.trigger.steps === step);
+                const isPlayhead = inRange && ((playheads[row] ?? 0) % seq.trigger.steps === step);
                 const prob = inRange ? (seq.trigger.probability[step] ?? 1.0) : 1.0;
                 const probPct = Math.round(prob * 100);
                 const trigCond: TrigCondition = inRange ? (seq.trigger.trigCondition?.[step] ?? [1, 1]) : [1, 1];

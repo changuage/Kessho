@@ -180,16 +180,19 @@ export function compressVersions(entry: PresetEntry): void {
     entry.versions = keepers;
     // Ensure currentVersion points to a kept version
     if (!entry.versions.some(v => v.v === entry.currentVersion)) {
-      entry.currentVersion = entry.versions[entry.versions.length - 1].v;
+      const latestKept = entry.versions[entry.versions.length - 1];
+      if (latestKept) {
+        entry.currentVersion = latestKept.v;
+      }
     }
   }
 
   // Delta-compress v2+ against v1
   for (let i = 1; i < entry.versions.length; i++) {
     const ver = entry.versions[i];
-    if (!ver.data || (ver as Record<string, unknown>)._isDelta) continue;
+    if (!ver?.data || ver._isDelta) continue;
     ver.data = computeDelta(v1.data, ver.data);
-    (ver as Record<string, unknown>)._isDelta = true;
+    ver._isDelta = true;
   }
 }
 
@@ -205,7 +208,7 @@ export function getVersionData(entry: PresetEntry, version?: number): Record<str
   if (!target?.data) return null;
 
   // If not a delta (v1 or uncompressed), return as-is
-  if (!(target as Record<string, unknown>)._isDelta) return target.data;
+  if (!target._isDelta) return target.data;
 
   // Reconstitute from v1 base
   const v1 = entry.versions[0];

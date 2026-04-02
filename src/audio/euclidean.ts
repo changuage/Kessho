@@ -15,10 +15,11 @@ export function seqEuclidean(steps: number, hits: number, rotation: number): boo
   let divisor = safeSteps - safeHits;
   let level = 0;
 
-  while (remainders[level] > 1) {
-    counts.push(Math.floor(divisor / remainders[level]));
-    remainders.push(divisor % remainders[level]);
-    divisor = remainders[level];
+  while ((remainders[level] ?? 0) > 1) {
+    const remainder = remainders[level] ?? 1;
+    counts.push(Math.floor(divisor / remainder));
+    remainders.push(divisor % remainder);
+    divisor = remainder;
     level += 1;
   }
   counts.push(divisor);
@@ -33,15 +34,16 @@ export function seqEuclidean(steps: number, hits: number, rotation: number): boo
       pattern.push(1);
       return;
     }
-    for (let i = 0; i < counts[lvl]; i++) build(lvl - 1);
-    if (remainders[lvl] !== 0) build(lvl - 2);
+    const count = counts[lvl] ?? 0;
+    for (let i = 0; i < count; i++) build(lvl - 1);
+    if ((remainders[lvl] ?? 0) !== 0) build(lvl - 2);
   };
 
   build(level);
   const rotated = new Array(safeSteps).fill(false);
   const rot = ((rotation % safeSteps) + safeSteps) % safeSteps;
   for (let i = 0; i < safeSteps; i++) {
-    rotated[(i + rot) % safeSteps] = pattern[i] === 1;
+    rotated[(i + rot) % safeSteps] = (pattern[i] ?? 0) === 1;
   }
   return rotated;
 }
