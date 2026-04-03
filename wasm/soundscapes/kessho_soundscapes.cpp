@@ -393,6 +393,109 @@ static void drifting_resonator_trigger_simple(DriftingResonator* r, float freq, 
 }
 
 // ═══════════════════════════════════════════════════════════
+//  SNAP / POP VOICE
+//  Originally introduced for the Fire engine. Reused for Water hard drops
+//  so both engines can share the same sharper transient recipe.
+// ═══════════════════════════════════════════════════════════
+
+struct SnapPopVoice {
+    int   active;
+    float gain;
+    float transient_env;
+    float transient_decay;
+    float body_env;
+    float body_decay;
+    float tail_env;
+    float tail_decay;
+    float body_phase1, body_phase2;
+    float body_freq1, body_freq2;
+    float body_amp1, body_amp2;
+    float pan_l, pan_r;
+    Biquad transient_bp;
+    Biquad tail_bp;
+};
+
+static void snap_pop_trigger(SnapPopVoice* v,
+                             float strength,
+                             float activity,
+                             float moisture,
+                             float airflow,
+                             float distance,
+                             float macro_energy,
+                             Rng* rng,
+                             float sr) {
+    float size = clamp01(rng_next(rng) * 0.8f + strength * 0.28f + macro_energy * 0.12f);
+    float brightness = clamp01(lerpf(0.95f, 0.35f, moisture) * lerpf(1.0f, 0.55f, distance));
+    float width = lerpf(0.92f, 0.32f, distance);
+    float pan = rng_range(rng, -0.9f, 0.9f) * width;
+    float base_freq = lerpf(2100.0f, 520.0f, size);
+    float transient_freq = base_freq * lerpf(1.2f, 2.2f, brightness);
+    float tail_freq = lerpf(1800.0f, 700.0f, size) * lerpf(0.75f, 1.05f, brightness);
+    float trans_ms = lerpf(0.7f, 4.8f, size);
+    float body_ms = lerpf(6.0f, 34.0f, size);
+    float tail_ms = lerpf(5.0f, 48.0f, clamp01(size * 0.45f + moisture * 0.55f));
+
+    if (transient_freq > sr * 0.45f) transient_freq = sr * 0.45f;
+    if (tail_freq > sr * 0.45f) tail_freq = sr * 0.45f;
+
+    v->active = 1;
+    v->gain = lerpf(0.11f, 0.34f, size) * lerpf(0.82f, 1.35f, strength);
+    v->transient_env = lerpf(0.75f, 1.25f, brightness);
+    v->transient_decay = expf(-1.0f / (trans_ms * 0.001f * sr));
+    v->body_env = 1.0f;
+    v->body_decay = expf(-1.0f / (body_ms * 0.001f * sr));
+    v->tail_env = lerpf(0.08f, 0.34f, clamp01(moisture * 0.65f + size * 0.35f));
+    v->tail_decay = expf(-1.0f / (tail_ms * 0.001f * sr));
+    v->body_phase1 = 0.0f;
+    v->body_phase2 = rng_next(rng) * TAU_F;
+    v->body_freq1 = base_freq * lerpf(0.92f, 1.04f, rng_next(rng));
+    v->body_freq2 = base_freq * lerpf(1.35f, 1.7f, rng_next(rng));
+    v->body_amp1 = lerpf(0.06f, 0.18f, size);
+    v->body_amp2 = lerpf(0.03f, 0.11f, size) * lerpf(0.7f, 1.0f, 1.0f - moisture);
+    v->pan_l = 0.5f * (1.0f - pan);
+    v->pan_r = 0.5f * (1.0f + pan);
+
+    biquad_set_bandpass(&v->transient_bp, transient_freq, lerpf(0.55f, 1.2f, brightness), sr);
+    biquad_set_bandpass(&v->tail_bp, tail_freq, lerpf(0.7f, 1.6f, 1.0f - moisture), sr);
+    biquad_reset(&v->transient_bp);
+    biquad_reset(&v->tail_bp);
+
+    v->body_freq1 *= lerpf(0.94f, 1.06f, airflow);
+    v->body_freq2 *= lerpf(0.95f, 1.08f, activity);
+}
+
+static void snap_pop_process(SnapPopVoice* v, float* outL, float* outR,
+                             int block_size, Rng* rng, float sr) {
+    if (!v->active) return;
+
+    for (int i = 0; i < block_size; ++i) {
+        float white = rng_next(rng) * 2.0f - 1.0f;
+        float transient = biquad_process(&v->transient_bp, white) * v->transient_env;
+        float body = (fast_sin(v->body_phase1) * v->body_amp1 +
+                      fast_sin(v->body_phase2) * v->body_amp2) * v->body_env;
+        float tail = biquad_process(&v->tail_bp, white) * v->tail_env;
+        float sample = (transient * 0.95f + body * 0.52f + tail * 0.28f) * v->gain;
+
+        outL[i] += sample * v->pan_l;
+        outR[i] += sample * v->pan_r;
+
+        v->body_phase1 += TAU_F * v->body_freq1 / sr;
+        v->body_phase2 += TAU_F * v->body_freq2 / sr;
+        if (v->body_phase1 > TAU_F) v->body_phase1 -= TAU_F;
+        if (v->body_phase2 > TAU_F) v->body_phase2 -= TAU_F;
+
+        v->transient_env *= v->transient_decay;
+        v->body_env *= v->body_decay;
+        v->tail_env *= v->tail_decay;
+
+        if (v->transient_env < 0.0004f && v->body_env < 0.0008f && v->tail_env < 0.0005f) {
+            v->active = 0;
+            return;
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════
 //  WATER ENGINE — DROPLET VOICE (hard surface impact)
 //  Matches JS DropletVoice: research-based realistic water drop
 //  Impact transient (2-10ms) + damped multi-mode resonance + broadband tail
@@ -1725,7 +1828,7 @@ struct WaterState {
     int   initialized;
 
     // Voices
-    DropletVoice        hard_drops[WATER_MAX_HARD_VOICES];
+    SnapPopVoice        hard_drops[WATER_MAX_HARD_VOICES];
     WaterIntoWaterVoice soft_drops[WATER_MAX_SOFT_VOICES];
 
     // Continuous layers
@@ -1816,6 +1919,7 @@ struct WaterState {
     float  density_send_bubble;
     float  hard_drop_rate;
     float  hard_drop_lpf_hz;
+    float  hard_drop_tone;
     float  water_drop_rate;
     float  water_drop_lpf_hz;
     float  bubble_rate;
@@ -2070,6 +2174,7 @@ int water_init(float sample_rate) {
     g_water->density_send_bubble = 0.48f;
     g_water->hard_drop_rate = 1.0f;
     g_water->hard_drop_lpf_hz = 12000.0f;
+    g_water->hard_drop_tone = 1.0f;
     g_water->water_drop_rate = 1.0f;
     g_water->water_drop_lpf_hz = 16000.0f;
     g_water->bubble_rate = 1.0f;
@@ -2170,12 +2275,79 @@ void water_process_block(int block_size) {
                     if (drop_size_var > 1.0f) drop_size_var = 1.0f;
                     float hd_param = rng_range(&s->rng, s->hardness_range_min, s->hardness_range_max);
                     float hardness_var = hd_param * (0.7f + rng_next(&s->rng) * 0.6f);
-                    float decay_var = s->decay_time * (0.5f + rng_next(&s->rng) * 1.0f);
                     float bf_param = rng_range(&s->rng, s->base_freq_range_min, s->base_freq_range_max);
-                    float freq_var = bf_param * (0.75f + rng_next(&s->rng) * 0.5f);
+                    // Morph between the older more tonal/decaying hard-drop mapping
+                    // and the newer short rupture-biased mapping.
+                    float hard_tone = clamp01(s->hard_drop_tone);
+                    float base_freq_drive = clamp01((bf_param - 900.0f) / 3600.0f);
+                    float strength_drive = lerpf(
+                        clamp01(0.25f + hardness_var * 0.75f),
+                        0.04f,
+                        hard_tone
+                    );
+                    float activity_drive = lerpf(
+                        clamp01(drop_size_var * 0.72f + base_freq_drive * 0.28f),
+                        clamp01(0.08f + drop_size_var * 0.18f + base_freq_drive * 0.10f),
+                        hard_tone
+                    );
+                    float moisture_drive = lerpf(
+                        clamp01(0.06f + (1.0f - hardness_var) * 0.18f),
+                        clamp01(0.12f + (1.0f - hardness_var) * 0.10f),
+                        hard_tone
+                    );
+                    float airflow_drive = lerpf(
+                        clamp01(0.08f + rng_next(&s->rng) * 0.18f),
+                        0.02f,
+                        hard_tone
+                    );
+                    float distance_drive = lerpf(
+                        clamp01(s->smoothed_distance * 0.7f),
+                        0.97f,
+                        hard_tone
+                    );
+                    float macro_drive = lerpf(
+                        clamp01(0.22f + drop_size_var * 0.46f + hardness_var * 0.22f),
+                        clamp01(0.05f + drop_size_var * 0.10f + hardness_var * 0.06f),
+                        hard_tone
+                    );
 
-                    droplet_trigger(&s->hard_drops[idx], freq_var,
-                                   hardness_var, drop_size_var, decay_var, &s->rng, sr);
+                    SnapPopVoice* hv = &s->hard_drops[idx];
+                    snap_pop_trigger(hv,
+                                     strength_drive,
+                                     activity_drive,
+                                     moisture_drive,
+                                     airflow_drive,
+                                     distance_drive,
+                                     macro_drive,
+                                     &s->rng,
+                                     sr);
+
+                    // At tone=0 preserve a more resonant, longer follow-through.
+                    // At tone=1 keep the current short, mostly-rupture result.
+                    hv->gain *= lerpf(
+                        lerpf(0.92f, 1.16f, hardness_var),
+                        lerpf(1.2f, 1.55f, hardness_var),
+                        hard_tone
+                    );
+                    hv->transient_env *= lerpf(
+                        lerpf(0.9f, 1.04f, hardness_var),
+                        lerpf(1.12f, 1.28f, hardness_var),
+                        hard_tone
+                    );
+                    hv->body_env *= lerpf(1.0f, 0.16f, hard_tone);
+                    hv->body_amp1 *= lerpf(1.0f, 0.12f, hard_tone);
+                    hv->body_amp2 *= lerpf(1.0f, 0.08f, hard_tone);
+                    hv->body_decay = expf(-1.0f / (lerpf(
+                        lerpf(0.014f, 0.03f, drop_size_var),
+                        lerpf(0.003f, 0.007f, drop_size_var),
+                        hard_tone
+                    ) * sr));
+                    hv->tail_env *= lerpf(1.0f, 0.18f, hard_tone);
+                    hv->tail_decay = expf(-1.0f / (lerpf(
+                        lerpf(0.012f, 0.024f, drop_size_var),
+                        lerpf(0.0025f, 0.008f, drop_size_var),
+                        hard_tone
+                    ) * sr));
                     s->event_counter++;
                 }
                 water_schedule_hard_event(s);
@@ -2204,8 +2376,8 @@ void water_process_block(int block_size) {
 
     // ── Process all active hard-drop voices ──
     for (int v = 0; v < WATER_MAX_HARD_VOICES; v++) {
-        droplet_process(&s->hard_drops[v], hard_buf_l, hard_buf_r,
-                       block_size, &s->rng, sr);
+        snap_pop_process(&s->hard_drops[v], hard_buf_l, hard_buf_r,
+                         block_size, &s->rng, sr);
     }
     for (int i = 0; i < block_size; i++) {
         hard_buf_l[i] = biquad_process(&s->hard_lpf2_l,
@@ -2625,13 +2797,14 @@ void water_set_params(float intensity_min, float intensity_max,
     water_update_scheduling(g_water);
 }
 
-void water_set_layer_detail_params(float hard_rate, float hard_tone_hz,
+void water_set_layer_detail_params(float hard_rate, float hard_tone_hz, float hard_character,
                                    float water_rate, float water_tone_hz,
                                    float bubble_rate, float bubble_tone_hz) {
     if (!g_water) return;
 
     g_water->hard_drop_rate = fminf(2.0f, fmaxf(0.0f, hard_rate));
     g_water->hard_drop_lpf_hz = fminf(16000.0f, fmaxf(50.0f, hard_tone_hz));
+    g_water->hard_drop_tone = clamp01(hard_character);
     g_water->water_drop_rate = fminf(2.0f, fmaxf(0.0f, water_rate));
     g_water->water_drop_lpf_hz = fminf(16000.0f, fmaxf(50.0f, water_tone_hz));
     g_water->bubble_rate = fminf(2.0f, fmaxf(0.0f, bubble_rate));
@@ -4356,3 +4529,642 @@ int insects2_get_engine_type(void) {
 }
 
 } // extern "C" (insects API)
+
+// ═══════════════════════════════════════════════════════════
+//  FIRE ENGINE — lightweight procedural campfire bed
+//  Designed to stay cheaper than water while fitting the same
+//  flat-state / fixed-pool architecture as the rest of soundscapes.
+// ═══════════════════════════════════════════════════════════
+
+#define FIRE_MAX_SNAP_VOICES    6
+#define FIRE_MAX_STRUCT_VOICES  2
+#define FIRE_MAX_EMBER_VOICES   4
+#define FIRE_MAX_CRACKLE_VOICES 8
+
+struct FireEmberVoice {
+    int   active;
+    float env;
+    float decay;
+    float gain;
+    float pan_l, pan_r;
+    float smooth;
+    float noise_state;
+};
+
+using FireSnapVoice = SnapPopVoice;
+
+struct FireCrackleVoice {
+    int   active;
+    float env;
+    float decay;
+    float gain;
+    float pan_l, pan_r;
+    Biquad bp;
+};
+
+struct FireStructuralVoice {
+    int   active;
+    float gain;
+    float noise_env;
+    float noise_decay;
+    float tone_env;
+    float tone_decay;
+    float phase;
+    float freq;
+    float pan_l, pan_r;
+    Biquad body_bp;
+};
+
+struct FireState {
+    float sample_rate;
+    int   initialized;
+
+    float strength;
+    float activity;
+    float moisture;
+    float airflow;
+    float distance;
+
+    float strength_range_min, strength_range_max;
+    float activity_range_min, activity_range_max;
+    float moisture_range_min, moisture_range_max;
+    float airflow_range_min, airflow_range_max;
+    float distance_range_min, distance_range_max;
+
+    float smoothed_strength;
+    float smoothed_activity;
+    float smoothed_moisture;
+    float smoothed_airflow;
+    float smoothed_distance;
+
+    float fade_gain;
+    float fade_target;
+    float fade_inc;
+
+    float bed_noise_l, bed_noise_r;
+    float macro_energy;
+    float macro_target;
+    int   macro_samples_until_target;
+    float swell_phase;
+    float gust_phase;
+
+    Biquad bed_body_bp_l, bed_body_bp_r;
+    Biquad bed_turb_bp_l, bed_turb_bp_r;
+    OnePole dist_lpf_l, dist_lpf_r;
+    DCBlocker dc_l, dc_r;
+
+    int ember_samples_until_next;
+    int ember_cluster_remaining;
+    int snap_samples_until_next;
+    int snap_cluster_remaining;
+    int struct_samples_until_next;
+
+    FireEmberVoice embers[FIRE_MAX_EMBER_VOICES];
+    FireSnapVoice snaps[FIRE_MAX_SNAP_VOICES];
+    FireStructuralVoice structs[FIRE_MAX_STRUCT_VOICES];
+    FireCrackleVoice crackles[FIRE_MAX_CRACKLE_VOICES];
+    int crackle_samples_until_next;
+
+    // Sizzle band (continuous 4-8 kHz hot-coal hiss)
+    Biquad sizzle_bp_l, sizzle_bp_r;
+
+    // Flicker modulator (3-12 Hz amplitude wobble on bed)
+    float flicker_value;
+    float flicker_target;
+    float flicker_slew;
+
+    Rng rng;
+    float output[256];
+};
+
+static FireState* g_fire = nullptr;
+
+static inline int fire_poisson_samples(Rng* rng, float rate_hz, float sr,
+                                       int min_samples, int max_samples) {
+    if (rate_hz <= 0.0001f) return max_samples;
+    float u = 1.0f - rng_next(rng);
+    if (u < 1e-5f) u = 1e-5f;
+    int samples = (int)((-logf(u) / rate_hz) * sr);
+    if (samples < min_samples) samples = min_samples;
+    if (samples > max_samples) samples = max_samples;
+    return samples;
+}
+
+static void fire_update_bed_filters(FireState* s) {
+    float sr = s->sample_rate;
+    float macro = clamp01(s->macro_energy);
+    float body_freq = lerpf(220.0f, 620.0f, clamp01(s->smoothed_strength * 0.72f + macro * 0.28f));
+    float turb_freq = lerpf(900.0f, 2200.0f,
+                            clamp01(s->smoothed_activity * 0.65f + s->smoothed_airflow * 0.35f));
+    float body_r_offset = lerpf(0.96f, 1.04f, rng_next(&s->rng));
+    float turb_r_offset = lerpf(0.95f, 1.05f, rng_next(&s->rng));
+
+    if (body_freq > sr * 0.42f) body_freq = sr * 0.42f;
+    if (turb_freq > sr * 0.45f) turb_freq = sr * 0.45f;
+
+    biquad_set_bandpass(&s->bed_body_bp_l, body_freq, 0.95f, sr);
+    biquad_set_bandpass(&s->bed_body_bp_r, body_freq * body_r_offset, 0.90f, sr);
+    biquad_set_bandpass(&s->bed_turb_bp_l, turb_freq, 0.82f + s->smoothed_airflow * 0.35f, sr);
+    biquad_set_bandpass(&s->bed_turb_bp_r, turb_freq * turb_r_offset, 0.78f + s->smoothed_airflow * 0.3f, sr);
+}
+
+static void fire_schedule_ember(FireState* s) {
+    float activity = clamp01(s->smoothed_activity);
+    float strength = clamp01(s->smoothed_strength);
+    float macro = clamp01(s->macro_energy);
+    float rate = lerpf(6.0f, 68.0f, fast_powf(activity, 1.35f))
+               * lerpf(0.78f, 1.12f, strength)
+               * lerpf(0.78f, 1.18f, macro);
+
+    if (s->ember_cluster_remaining > 0) {
+        s->ember_cluster_remaining--;
+        s->ember_samples_until_next = rng_int(&s->rng, 18, 220);
+        return;
+    }
+
+    float cluster_prob = lerpf(0.01f, 0.18f, clamp01(activity * 0.7f + macro * 0.3f));
+    if (rng_next(&s->rng) < cluster_prob) {
+        s->ember_cluster_remaining = rng_int(&s->rng, 1, 3);
+    }
+
+    s->ember_samples_until_next = fire_poisson_samples(
+        &s->rng, rate, s->sample_rate, 24, (int)(s->sample_rate * 1.5f));
+}
+
+static void fire_schedule_snap(FireState* s) {
+    float activity = clamp01(s->smoothed_activity);
+    float strength = clamp01(s->smoothed_strength);
+    float airflow = clamp01(s->smoothed_airflow);
+    float macro = clamp01(s->macro_energy);
+    float rate = lerpf(1.5f, 16.0f, fast_powf(activity, 1.12f))
+               * lerpf(0.82f, 1.45f, strength)
+               * lerpf(0.92f, 1.32f, macro)
+               * lerpf(0.92f, 1.12f, airflow);
+
+    if (s->snap_cluster_remaining > 0) {
+        s->snap_cluster_remaining--;
+        s->snap_samples_until_next = rng_int(&s->rng, 480, 2800);
+        return;
+    }
+
+    float cluster_prob = lerpf(0.01f, 0.16f, clamp01(activity * 0.65f + macro * 0.35f));
+    if (rng_next(&s->rng) < cluster_prob) {
+        s->snap_cluster_remaining = rng_int(&s->rng, 1, 2);
+    }
+
+    s->snap_samples_until_next = fire_poisson_samples(
+        &s->rng, rate, s->sample_rate, 1400, (int)(s->sample_rate * 4.0f));
+}
+
+static void fire_schedule_struct(FireState* s) {
+    float drive = clamp01(s->smoothed_strength * 0.7f + s->smoothed_activity * 0.3f);
+    float rate = lerpf(0.018f, 0.16f, drive) * lerpf(0.85f, 1.2f, clamp01(s->macro_energy));
+    s->struct_samples_until_next = fire_poisson_samples(
+        &s->rng, rate, s->sample_rate, (int)(s->sample_rate * 0.7f), (int)(s->sample_rate * 10.0f));
+}
+
+static void fire_trigger_ember(FireState* s) {
+    int slot = -1;
+    float weakest = 1e9f;
+    for (int i = 0; i < FIRE_MAX_EMBER_VOICES; ++i) {
+        FireEmberVoice* v = &s->embers[i];
+        if (!v->active) { slot = i; break; }
+        if (v->env < weakest) {
+            weakest = v->env;
+            slot = i;
+        }
+    }
+
+    FireEmberVoice* v = &s->embers[slot];
+    float strength = sample_latched_param(&s->rng, s->strength_range_min, s->strength_range_max, nullptr);
+    float activity = sample_latched_param(&s->rng, s->activity_range_min, s->activity_range_max, nullptr);
+    float moisture = sample_latched_param(&s->rng, s->moisture_range_min, s->moisture_range_max, nullptr);
+    float distance = sample_latched_param(&s->rng, s->distance_range_min, s->distance_range_max, nullptr);
+
+    float bright = lerpf(0.95f, 0.35f, moisture) * lerpf(1.0f, 0.55f, distance);
+    float duration_ms = lerpf(5.0f, 30.0f, rng_next(&s->rng));
+    float decay = expf(-1.0f / (duration_ms * 0.001f * s->sample_rate));
+    float width = lerpf(0.95f, 0.45f, distance);
+    float pan = rng_range(&s->rng, -0.85f, 0.85f) * width;
+
+    v->active = 1;
+    v->env = lerpf(0.03f, 0.10f, clamp01(activity * 0.7f + strength * 0.3f));
+    v->decay = decay;
+    v->gain = lerpf(0.35f, 0.85f, bright) * lerpf(0.82f, 1.1f, strength);
+    v->pan_l = 0.5f * (1.0f - pan);
+    v->pan_r = 0.5f * (1.0f + pan);
+    v->smooth = lerpf(0.28f, 0.72f, 1.0f - bright);
+    v->noise_state = 0.0f;
+}
+
+static void fire_trigger_snap(FireState* s) {
+    int slot = -1;
+    float weakest = 1e9f;
+    for (int i = 0; i < FIRE_MAX_SNAP_VOICES; ++i) {
+        FireSnapVoice* v = &s->snaps[i];
+        float energy = v->transient_env + v->body_env + v->tail_env;
+        if (!v->active) { slot = i; break; }
+        if (energy < weakest) {
+            weakest = energy;
+            slot = i;
+        }
+    }
+
+    FireSnapVoice* v = &s->snaps[slot];
+    float strength = sample_latched_param(&s->rng, s->strength_range_min, s->strength_range_max, nullptr);
+    float activity = sample_latched_param(&s->rng, s->activity_range_min, s->activity_range_max, nullptr);
+    float moisture = sample_latched_param(&s->rng, s->moisture_range_min, s->moisture_range_max, nullptr);
+    float airflow = sample_latched_param(&s->rng, s->airflow_range_min, s->airflow_range_max, nullptr);
+    float distance = sample_latched_param(&s->rng, s->distance_range_min, s->distance_range_max, nullptr);
+
+    snap_pop_trigger(v, strength, activity, moisture, airflow, distance, s->macro_energy, &s->rng, s->sample_rate);
+}
+
+static void fire_trigger_struct(FireState* s) {
+    int slot = -1;
+    float weakest = 1e9f;
+    for (int i = 0; i < FIRE_MAX_STRUCT_VOICES; ++i) {
+        FireStructuralVoice* v = &s->structs[i];
+        float energy = v->noise_env + v->tone_env;
+        if (!v->active) { slot = i; break; }
+        if (energy < weakest) {
+            weakest = energy;
+            slot = i;
+        }
+    }
+
+    FireStructuralVoice* v = &s->structs[slot];
+    float strength = sample_latched_param(&s->rng, s->strength_range_min, s->strength_range_max, nullptr);
+    float distance = sample_latched_param(&s->rng, s->distance_range_min, s->distance_range_max, nullptr);
+    float width = lerpf(0.8f, 0.4f, distance);
+    float pan = rng_range(&s->rng, -0.55f, 0.55f) * width;
+    float freq = lerpf(95.0f, 240.0f, rng_next(&s->rng));
+    float body_ms = lerpf(38.0f, 120.0f, strength);
+    float tone_ms = lerpf(55.0f, 180.0f, strength);
+
+    v->active = 1;
+    v->gain = lerpf(0.08f, 0.2f, strength);
+    v->noise_env = 1.0f;
+    v->noise_decay = expf(-1.0f / (body_ms * 0.001f * s->sample_rate));
+    v->tone_env = 0.55f;
+    v->tone_decay = expf(-1.0f / (tone_ms * 0.001f * s->sample_rate));
+    v->phase = 0.0f;
+    v->freq = freq;
+    v->pan_l = 0.5f * (1.0f - pan);
+    v->pan_r = 0.5f * (1.0f + pan);
+
+    biquad_set_bandpass(&v->body_bp, freq * lerpf(1.0f, 1.35f, rng_next(&s->rng)), 0.8f, s->sample_rate);
+    biquad_reset(&v->body_bp);
+}
+
+static inline void fire_process_embers(FireState* s, float* l, float* r) {
+    for (int i = 0; i < FIRE_MAX_EMBER_VOICES; ++i) {
+        FireEmberVoice* v = &s->embers[i];
+        if (!v->active) continue;
+
+        float white = rng_next(&s->rng) * 2.0f - 1.0f;
+        v->noise_state = v->noise_state * v->smooth + white * (1.0f - v->smooth);
+        float bright = white - v->noise_state * 0.92f;
+        float sample = bright * v->env * v->gain;
+
+        *l += sample * v->pan_l;
+        *r += sample * v->pan_r;
+
+        v->env *= v->decay;
+        if (v->env < 0.0003f) v->active = 0;
+    }
+}
+
+static inline void fire_process_snaps(FireState* s, float* l, float* r) {
+    for (int i = 0; i < FIRE_MAX_SNAP_VOICES; ++i) {
+        snap_pop_process(&s->snaps[i], l, r, 1, &s->rng, s->sample_rate);
+    }
+}
+
+static inline void fire_process_structs(FireState* s, float* l, float* r) {
+    float sr = s->sample_rate;
+    for (int i = 0; i < FIRE_MAX_STRUCT_VOICES; ++i) {
+        FireStructuralVoice* v = &s->structs[i];
+        if (!v->active) continue;
+
+        float white = rng_next(&s->rng) * 2.0f - 1.0f;
+        float body = biquad_process(&v->body_bp, white) * v->noise_env;
+        float tone = fast_sin(v->phase) * v->tone_env;
+        float sample = (body * 0.8f + tone * 0.35f) * v->gain;
+
+        *l += sample * v->pan_l;
+        *r += sample * v->pan_r;
+
+        v->phase += TAU_F * v->freq / sr;
+        if (v->phase > TAU_F) v->phase -= TAU_F;
+        v->noise_env *= v->noise_decay;
+        v->tone_env *= v->tone_decay;
+        if (v->noise_env < 0.0004f && v->tone_env < 0.0004f) v->active = 0;
+    }
+}
+
+// ── Crackle layer: high-density micro-pops giving fire its signature texture ──
+
+static void fire_schedule_crackle(FireState* s) {
+    float activity = clamp01(s->smoothed_activity);
+    float strength = clamp01(s->smoothed_strength);
+    float macro = clamp01(s->macro_energy);
+    float rate = lerpf(8.0f, 42.0f, fast_powf(activity, 1.2f))
+               * lerpf(0.8f, 1.3f, strength)
+               * lerpf(0.75f, 1.25f, macro);
+    s->crackle_samples_until_next = fire_poisson_samples(
+        &s->rng, rate, s->sample_rate, 12, (int)(s->sample_rate * 0.5f));
+}
+
+static void fire_trigger_crackle(FireState* s) {
+    int slot = -1;
+    float weakest = 1e9f;
+    for (int i = 0; i < FIRE_MAX_CRACKLE_VOICES; ++i) {
+        FireCrackleVoice* v = &s->crackles[i];
+        if (!v->active) { slot = i; break; }
+        if (v->env < weakest) { weakest = v->env; slot = i; }
+    }
+
+    FireCrackleVoice* v = &s->crackles[slot];
+    float distance = sample_latched_param(&s->rng, s->distance_range_min, s->distance_range_max, nullptr);
+    float moisture = sample_latched_param(&s->rng, s->moisture_range_min, s->moisture_range_max, nullptr);
+    float strength = sample_latched_param(&s->rng, s->strength_range_min, s->strength_range_max, nullptr);
+    float duration_ms = lerpf(1.0f, 8.0f, rng_next(&s->rng));
+    float width = lerpf(0.92f, 0.35f, distance);
+    float pan = rng_range(&s->rng, -0.9f, 0.9f) * width;
+    float center_freq = lerpf(2200.0f, 5500.0f, rng_next(&s->rng));
+    float bright = lerpf(0.9f, 0.4f, moisture) * lerpf(1.0f, 0.6f, distance);
+
+    if (center_freq > s->sample_rate * 0.44f) center_freq = s->sample_rate * 0.44f;
+
+    v->active = 1;
+    v->env = lerpf(0.6f, 1.0f, bright);
+    v->decay = expf(-1.0f / (duration_ms * 0.001f * s->sample_rate));
+    v->gain = lerpf(0.06f, 0.18f, strength) * lerpf(0.7f, 1.0f, bright);
+    v->pan_l = 0.5f * (1.0f - pan);
+    v->pan_r = 0.5f * (1.0f + pan);
+    biquad_set_bandpass(&v->bp, center_freq, lerpf(0.8f, 1.5f, bright), s->sample_rate);
+    biquad_reset(&v->bp);
+}
+
+static inline void fire_process_crackles(FireState* s, float* l, float* r) {
+    for (int i = 0; i < FIRE_MAX_CRACKLE_VOICES; ++i) {
+        FireCrackleVoice* v = &s->crackles[i];
+        if (!v->active) continue;
+
+        float white = rng_next(&s->rng) * 2.0f - 1.0f;
+        float filtered = biquad_process(&v->bp, white);
+        float sample = filtered * v->env * v->gain;
+
+        *l += sample * v->pan_l;
+        *r += sample * v->pan_r;
+
+        v->env *= v->decay;
+        if (v->env < 0.0003f) v->active = 0;
+    }
+}
+
+extern "C" {
+
+int fire_init(float sample_rate) {
+    g_fire = new FireState();
+    memset(g_fire, 0, sizeof(FireState));
+    g_fire->sample_rate = sample_rate;
+    g_fire->initialized = 1;
+
+    g_fire->strength = 0.55f;
+    g_fire->activity = 0.5f;
+    g_fire->moisture = 0.2f;
+    g_fire->airflow = 0.35f;
+    g_fire->distance = 0.25f;
+
+    g_fire->strength_range_min = 0.55f; g_fire->strength_range_max = 0.55f;
+    g_fire->activity_range_min = 0.5f;  g_fire->activity_range_max = 0.5f;
+    g_fire->moisture_range_min = 0.2f;  g_fire->moisture_range_max = 0.2f;
+    g_fire->airflow_range_min = 0.35f;  g_fire->airflow_range_max = 0.35f;
+    g_fire->distance_range_min = 0.25f; g_fire->distance_range_max = 0.25f;
+
+    g_fire->smoothed_strength = g_fire->strength;
+    g_fire->smoothed_activity = g_fire->activity;
+    g_fire->smoothed_moisture = g_fire->moisture;
+    g_fire->smoothed_airflow = g_fire->airflow;
+    g_fire->smoothed_distance = g_fire->distance;
+
+    g_fire->fade_gain = 0.0f;
+    g_fire->fade_target = 0.0f;
+    g_fire->fade_inc = 0.0f;
+    g_fire->macro_energy = 0.55f;
+    g_fire->macro_target = 0.55f;
+    g_fire->macro_samples_until_target = (int)(sample_rate * 3.0f);
+    g_fire->rng.state = 24680u;
+    g_fire->swell_phase = rng_next(&g_fire->rng) * TAU_F;
+    g_fire->gust_phase = rng_next(&g_fire->rng) * TAU_F;
+
+    onepole_set_freq(&g_fire->dist_lpf_l, 9000.0f, sample_rate);
+    onepole_set_freq(&g_fire->dist_lpf_r, 9000.0f, sample_rate);
+    fire_update_bed_filters(g_fire);
+    biquad_reset(&g_fire->bed_body_bp_l);
+    biquad_reset(&g_fire->bed_body_bp_r);
+    biquad_reset(&g_fire->bed_turb_bp_l);
+    biquad_reset(&g_fire->bed_turb_bp_r);
+
+    // Sizzle band: hot-coal hiss at 4-8 kHz
+    float sizzle_freq = 5800.0f;
+    if (sizzle_freq > sample_rate * 0.44f) sizzle_freq = sample_rate * 0.44f;
+    biquad_set_bandpass(&g_fire->sizzle_bp_l, sizzle_freq, 0.65f, sample_rate);
+    biquad_set_bandpass(&g_fire->sizzle_bp_r, sizzle_freq * 1.06f, 0.62f, sample_rate);
+    biquad_reset(&g_fire->sizzle_bp_l);
+    biquad_reset(&g_fire->sizzle_bp_r);
+
+    // Flicker modulator
+    g_fire->flicker_value = 0.85f;
+    g_fire->flicker_target = 0.85f;
+    g_fire->flicker_slew = 0.0008f;
+
+    g_fire->ember_samples_until_next = (int)(sample_rate * 0.03f);
+    g_fire->snap_samples_until_next = (int)(sample_rate * 0.4f);
+    g_fire->struct_samples_until_next = (int)(sample_rate * 2.0f);
+    g_fire->crackle_samples_until_next = (int)(sample_rate * 0.05f);
+    return 0;
+}
+
+void fire_destroy(void) {
+    if (g_fire) { delete g_fire; g_fire = nullptr; }
+}
+
+float* fire_get_output_ptr(void) {
+    return g_fire ? g_fire->output : nullptr;
+}
+
+void fire_process_block(int block_size) {
+    if (!g_fire || !g_fire->initialized || block_size > 128) return;
+
+    FireState* s = g_fire;
+    float sr = s->sample_rate;
+
+    s->smoothed_strength += (s->strength - s->smoothed_strength) * 0.0025f;
+    s->smoothed_activity += (s->activity - s->smoothed_activity) * 0.0025f;
+    s->smoothed_moisture += (s->moisture - s->smoothed_moisture) * 0.0025f;
+    s->smoothed_airflow += (s->airflow - s->smoothed_airflow) * 0.0025f;
+    s->smoothed_distance += (s->distance - s->smoothed_distance) * 0.0025f;
+
+    if (--s->macro_samples_until_target <= 0) {
+        float drive = clamp01(s->smoothed_activity * 0.6f + s->smoothed_airflow * 0.4f);
+        float low = lerpf(0.18f, 0.38f, 1.0f - drive);
+        float high = lerpf(0.68f, 1.0f, drive);
+        s->macro_target = rng_range(&s->rng, low, high);
+        s->macro_samples_until_target = (int)(sr * rng_range(&s->rng, 2.2f, 7.0f));
+    }
+    s->macro_energy += (s->macro_target - s->macro_energy) * 0.00045f;
+
+    fire_update_bed_filters(s);
+    float dist_cutoff = lerpf(9500.0f, 1900.0f, clamp01(s->smoothed_distance));
+    onepole_set_freq(&s->dist_lpf_l, dist_cutoff, sr);
+    onepole_set_freq(&s->dist_lpf_r, dist_cutoff, sr);
+
+    float width = lerpf(0.88f, 0.3f, clamp01(s->smoothed_distance));
+    float bed_body_gain = lerpf(0.1f, 0.26f, s->smoothed_strength);
+    float bed_turb_gain = lerpf(0.04f, 0.14f, clamp01(s->smoothed_activity * 0.7f + s->smoothed_airflow * 0.3f));
+    float ember_gain = lerpf(0.22f, 0.5f, 1.0f - s->smoothed_distance);
+    float snap_gain = lerpf(1.28f, 1.7f, 1.0f - s->smoothed_distance);
+    float crackle_gain = lerpf(0.6f, 1.2f, 1.0f - s->smoothed_distance);
+    float sizzle_gain = lerpf(0.015f, 0.06f, clamp01(s->smoothed_strength * 0.65f + s->smoothed_activity * 0.35f));
+
+    for (int i = 0; i < block_size; ++i) {
+        if (s->fade_gain < s->fade_target) {
+            s->fade_gain = fminf(s->fade_gain + s->fade_inc, s->fade_target);
+        } else if (s->fade_gain > s->fade_target) {
+            s->fade_gain = fmaxf(s->fade_gain - s->fade_inc, s->fade_target);
+        }
+
+        if (--s->ember_samples_until_next <= 0) {
+            fire_trigger_ember(s);
+            fire_schedule_ember(s);
+        }
+        if (--s->snap_samples_until_next <= 0) {
+            fire_trigger_snap(s);
+            fire_schedule_snap(s);
+        }
+        if (--s->struct_samples_until_next <= 0) {
+            fire_trigger_struct(s);
+            fire_schedule_struct(s);
+        }
+        if (--s->crackle_samples_until_next <= 0) {
+            fire_trigger_crackle(s);
+            fire_schedule_crackle(s);
+        }
+
+        float swell_rate = lerpf(0.014f, 0.05f, s->smoothed_airflow);
+        float gust_rate = lerpf(0.06f, 0.22f, s->smoothed_airflow);
+        s->swell_phase += TAU_F * swell_rate / sr;
+        s->gust_phase += TAU_F * gust_rate / sr;
+        if (s->swell_phase > TAU_F) s->swell_phase -= TAU_F;
+        if (s->gust_phase > TAU_F) s->gust_phase -= TAU_F;
+
+        float swell = 0.5f + 0.5f * fast_sin(s->swell_phase);
+        float gust = 0.5f + 0.5f * fast_sin(s->gust_phase);
+        float macro = clamp01(s->macro_energy);
+
+        float white_l = rng_next(&s->rng) * 2.0f - 1.0f;
+        float white_r = rng_next(&s->rng) * 2.0f - 1.0f;
+        s->bed_noise_l = s->bed_noise_l * 0.90f + white_l * 0.10f;
+        s->bed_noise_r = s->bed_noise_r * 0.90f + white_r * 0.10f;
+
+        float body_l = biquad_process(&s->bed_body_bp_l, s->bed_noise_l);
+        float body_r = biquad_process(&s->bed_body_bp_r, s->bed_noise_r);
+        float turb_l = biquad_process(&s->bed_turb_bp_l, white_l);
+        float turb_r = biquad_process(&s->bed_turb_bp_r, white_r);
+
+        // Flicker: random 3-12 Hz amplitude wobble simulating flame turbulence
+        s->flicker_value += (s->flicker_target - s->flicker_value) * s->flicker_slew;
+        if (fabsf(s->flicker_value - s->flicker_target) < 0.01f) {
+            s->flicker_target = lerpf(0.55f, 1.0f, rng_next(&s->rng));
+            float flicker_hz = lerpf(3.0f, 12.0f, rng_next(&s->rng));
+            s->flicker_slew = 4.0f * flicker_hz / sr;
+        }
+
+        float body_gain = bed_body_gain * lerpf(0.82f, 1.35f, macro) * lerpf(0.85f, 1.15f, swell) * s->flicker_value;
+        float turb_gain = bed_turb_gain * lerpf(0.76f, 1.28f, macro) * lerpf(0.82f, 1.22f, gust) * lerpf(0.9f, 1.0f, s->flicker_value);
+
+        float bed_l = body_l * body_gain + turb_l * turb_gain;
+        float bed_r = body_r * body_gain + turb_r * turb_gain;
+        float ember_l = 0.0f, ember_r = 0.0f;
+        float snap_l = 0.0f, snap_r = 0.0f;
+        float struct_l = 0.0f, struct_r = 0.0f;
+
+        fire_process_embers(s, &ember_l, &ember_r);
+        fire_process_snaps(s, &snap_l, &snap_r);
+        fire_process_structs(s, &struct_l, &struct_r);
+
+        float crackle_l = 0.0f, crackle_r = 0.0f;
+        fire_process_crackles(s, &crackle_l, &crackle_r);
+
+        // Sizzle: continuous hot-coal hiss modulated by macro energy
+        float sizzle_l = biquad_process(&s->sizzle_bp_l, white_l) * sizzle_gain * lerpf(0.6f, 1.3f, macro);
+        float sizzle_r = biquad_process(&s->sizzle_bp_r, white_r) * sizzle_gain * lerpf(0.6f, 1.3f, macro);
+
+        float l = bed_l + ember_l * ember_gain + snap_l * snap_gain + struct_l
+                + crackle_l * crackle_gain + sizzle_l;
+        float r = bed_r + ember_r * ember_gain + snap_r * snap_gain + struct_r
+                + crackle_r * crackle_gain + sizzle_r;
+
+        l = fast_tanh(l * 1.28f) * 0.88f;
+        r = fast_tanh(r * 1.28f) * 0.88f;
+
+        float mono = 0.5f * (l + r);
+        l = mono + (l - mono) * width;
+        r = mono + (r - mono) * width;
+
+        l = onepole_process(&s->dist_lpf_l, l);
+        r = onepole_process(&s->dist_lpf_r, r);
+        l = dc_block(&s->dc_l, l);
+        r = dc_block(&s->dc_r, r);
+
+        s->output[i * 2] = l * s->fade_gain * 0.95f;
+        s->output[i * 2 + 1] = r * s->fade_gain * 0.95f;
+    }
+}
+
+void fire_set_params(float strength_min, float strength_max,
+                     float activity_min, float activity_max,
+                     float moisture_min, float moisture_max,
+                     float airflow_min, float airflow_max,
+                     float distance_min, float distance_max) {
+    if (!g_fire) return;
+
+    g_fire->strength_range_min = strength_min;
+    g_fire->strength_range_max = strength_max;
+    g_fire->activity_range_min = activity_min;
+    g_fire->activity_range_max = activity_max;
+    g_fire->moisture_range_min = moisture_min;
+    g_fire->moisture_range_max = moisture_max;
+    g_fire->airflow_range_min = airflow_min;
+    g_fire->airflow_range_max = airflow_max;
+    g_fire->distance_range_min = distance_min;
+    g_fire->distance_range_max = distance_max;
+
+    g_fire->strength = 0.5f * (strength_min + strength_max);
+    g_fire->activity = 0.5f * (activity_min + activity_max);
+    g_fire->moisture = 0.5f * (moisture_min + moisture_max);
+    g_fire->airflow = 0.5f * (airflow_min + airflow_max);
+    g_fire->distance = 0.5f * (distance_min + distance_max);
+}
+
+void fire_start(void) {
+    if (!g_fire) return;
+    g_fire->fade_target = 1.0f;
+    g_fire->fade_inc = 1.0f / (g_fire->sample_rate * 0.12f);
+}
+
+void fire_stop(void) {
+    if (!g_fire) return;
+    g_fire->fade_target = 0.0f;
+    g_fire->fade_inc = 1.0f / (g_fire->sample_rate * 0.12f);
+}
+
+void fire_set_seed(int seed) {
+    if (!g_fire) return;
+    g_fire->rng.state = (uint32_t)seed;
+}
+
+} // extern "C" (fire API)
