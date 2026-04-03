@@ -973,15 +973,6 @@ export interface SliderState {
   insects2ClickRate: number;    // 0..1
   insects2Motion: number;       // 0..1
   insects2Level: number;        // 0..1
-  // Fire
-  fireEnabled: boolean;
-  fireStrength: number;         // 0..1
-  fireActivity: number;         // 0..1
-  fireMoisture: number;         // 0..1
-  fireAirflow: number;          // 0..1
-  fireDistance: number;         // 0..1
-  fireReverbSend: number;       // 0..1
-  fireLevel: number;            // 0..1
 
   // ─── Granular FX (Unified Granular Engine) ───
   granularEnabled: boolean;           // Master on/off
@@ -1743,8 +1734,6 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'insects2Enabled', 'insects2Engine',
   'insects2Density', 'insects2Temperature', 'insects2Distance', 'insects2Proximity',
   'insects2Antiphony', 'insects2ClickRate', 'insects2Motion', 'insects2Level',
-  'fireEnabled', 'fireStrength', 'fireActivity', 'fireMoisture', 'fireAirflow',
-  'fireDistance', 'fireReverbSend', 'fireLevel',
   'randomWalkSpeed',
   // Granular FX
   'granularEnabled',
@@ -2549,14 +2538,6 @@ export const DEFAULT_STATE: SliderState = {
   insects2ClickRate: 0.3,
   insects2Motion: 0.5,
   insects2Level: 0.5,
-  fireEnabled: false,
-  fireStrength: 0.55,
-  fireActivity: 0.5,
-  fireMoisture: 0.2,
-  fireAirflow: 0.35,
-  fireDistance: 0.25,
-  fireReverbSend: 0,
-  fireLevel: 0,
 
   // ─── Granular FX ───
   granularEnabled: false,
@@ -3232,13 +3213,6 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   insects2ClickRate: { min: 0, max: 1, step: 0.01 },
   insects2Motion: { min: 0, max: 1, step: 0.01 },
   insects2Level: { min: 0, max: 1, step: 0.01 },
-  fireStrength: { min: 0, max: 1, step: 0.01 },
-  fireActivity: { min: 0, max: 1, step: 0.01 },
-  fireMoisture: { min: 0, max: 1, step: 0.01 },
-  fireAirflow: { min: 0, max: 1, step: 0.01 },
-  fireDistance: { min: 0, max: 1, step: 0.01 },
-  fireReverbSend: { min: 0, max: 1, step: 0.01 },
-  fireLevel: { min: 0, max: 1, step: 0.01 },
   // Random Walk
   randomWalkSpeed: { min: 0.1, max: 5, step: 0.1 },
   // Circle of Fifths Drift

@@ -169,11 +169,6 @@ export function applyPreset(
     newState.insects2Enabled = false;
   }
 
-  // Fire has been retired from the Earth kit. Keep legacy preset fields inert.
-  newState.fireEnabled = false;
-  newState.fireLevel = 0;
-  newState.fireReverbSend = 0;
-
   // 6. Update audio engine
   if (updateEngine) {
     audioEngine.updateParams(newState);

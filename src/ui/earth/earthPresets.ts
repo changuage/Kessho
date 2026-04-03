@@ -8,7 +8,7 @@ export interface EarthKitPreset {
   description: string;
   tags: string[];
   params: Pick<SliderState,
-    'waterEnabled' | 'insectsEnabled' | 'insects2Enabled' | 'fireEnabled' |
+    'waterEnabled' | 'insectsEnabled' | 'insects2Enabled' |
     'oceanSampleEnabled' | 'oceanFilterType' | 'oceanFilterCutoff' | 'oceanFilterResonance'
   >;
 }
@@ -22,7 +22,6 @@ export const EARTH_KIT_PRESETS: Record<string, EarthKitPreset> = {
       waterEnabled: false,
       insectsEnabled: false,
       insects2Enabled: false,
-      fireEnabled: false,
       oceanSampleEnabled: false,
       oceanFilterType: 'lowpass',
       oceanFilterCutoff: 8000,
@@ -37,7 +36,6 @@ export const EARTH_KIT_PRESETS: Record<string, EarthKitPreset> = {
       waterEnabled: true,
       insectsEnabled: false,
       insects2Enabled: false,
-      fireEnabled: false,
       oceanSampleEnabled: false,
       oceanFilterType: 'lowpass',
       oceanFilterCutoff: 8000,
@@ -52,7 +50,6 @@ export const EARTH_KIT_PRESETS: Record<string, EarthKitPreset> = {
       waterEnabled: true,
       insectsEnabled: true,
       insects2Enabled: true,
-      fireEnabled: false,
       oceanSampleEnabled: true,
       oceanFilterType: 'lowpass',
       oceanFilterCutoff: 6000,
@@ -67,7 +64,6 @@ export const EARTH_KIT_PRESETS: Record<string, EarthKitPreset> = {
       waterEnabled: false,
       insectsEnabled: true,
       insects2Enabled: true,
-      fireEnabled: false,
       oceanSampleEnabled: true,
       oceanFilterType: 'lowpass',
       oceanFilterCutoff: 3000,
@@ -82,7 +78,6 @@ export const EARTH_KIT_PRESETS: Record<string, EarthKitPreset> = {
       waterEnabled: true,
       insectsEnabled: false,
       insects2Enabled: false,
-      fireEnabled: false,
       oceanSampleEnabled: true,
       oceanFilterType: 'lowpass',
       oceanFilterCutoff: 10000,
@@ -97,7 +92,6 @@ export const EARTH_KIT_PRESETS: Record<string, EarthKitPreset> = {
       waterEnabled: false,
       insectsEnabled: false,
       insects2Enabled: false,
-      fireEnabled: false,
       oceanSampleEnabled: true,
       oceanFilterType: 'bandpass',
       oceanFilterCutoff: 2000,
@@ -112,7 +106,6 @@ export const EARTH_KIT_PRESETS: Record<string, EarthKitPreset> = {
       waterEnabled: false,
       insectsEnabled: true,
       insects2Enabled: true,
-      fireEnabled: false,
       oceanSampleEnabled: true,
       oceanFilterType: 'lowpass',
       oceanFilterCutoff: 2600,
