@@ -559,7 +559,7 @@ export class AudioEngine {
   private oceanSampleGain: GainNode | null = null;
   private oceanSampleLoaded = false;
 
-  // Soundscapes WASM worklet (water + insects engines)
+  // Soundscapes WASM worklet (water + insects + fire engines)
   private soundscapesNode: AudioWorkletNode | null = null;
   private waterPreFaderBus: GainNode | null = null;     // Pre-fader bus for reverb/granular taps
   private waterLevelGain: GainNode | null = null;       // Water dry level → earthBus
@@ -574,10 +574,13 @@ export class AudioEngine {
   private insectsLevelGain: GainNode | null = null;       // Insects on/off gate → earthBus (level controlled by WASM-side gain)
   private insectsDelayASend: GainNode | null = null;
   private insectsDelayBSend: GainNode | null = null;
+  private firePreFaderBus: GainNode | null = null;       // Pre-fader bus for fire reverb tap
+  private fireLevelGain: GainNode | null = null;         // Fire dry level → earthBus
+  private fireReverbSendNode: GainNode | null = null;    // Fire reverb send
   private granularWaterSend: GainNode | null = null;      // Water → granular
   private granularInsectsSend: GainNode | null = null;    // Insects → granular
 
-  // Earth master bus (waves + water + insects → earthBus → earthLevelGain → masterGain)
+  // Earth master bus (waves + water + insects + fire → earthBus → earthLevelGain → masterGain)
   private earthBus: GainNode | null = null;
   private earthLevelGain: GainNode | null = null;
   private wasmSoundscapesBinary: ArrayBuffer | null = null;
@@ -585,6 +588,7 @@ export class AudioEngine {
   private _scWaterStarted = false;
   private _scInsects1Started = false;
   private _scInsects2Started = false;
+  private _scFireStarted = false;
   private _scInsects1Engine = -1;
   private _scInsects2Engine = -1;
   private _scWaterPreset = -1;
@@ -1680,7 +1684,7 @@ export class AudioEngine {
           : 0,
       };
     }
-    // Soundscapes format: { avgMs, budgetMs, waterMs, insectsMs }
+    // Soundscapes format: { avgMs, budgetMs, waterMs, insectsMs, fireMs }
     if (typeof data.budgetMs === 'number' && typeof data.waterMs === 'number') {
       const budget = data.budgetMs as number;
       if (budget > 0) {
@@ -1692,6 +1696,11 @@ export class AudioEngine {
         this.perfData['insects'] = {
           avgPercent: Math.round((((data.insectsMs as number) || 0) / budget) * 1000) / 10,
           peakPercent: Math.round((((((data.insectsPeakMs as number) ?? data.insectsMs) as number) || 0) / budget) * 1000) / 10,
+          missPercent: null,
+        };
+        this.perfData['fire'] = {
+          avgPercent: Math.round((((data.fireMs as number) || 0) / budget) * 1000) / 10,
+          peakPercent: Math.round((((((data.firePeakMs as number) ?? data.fireMs) as number) || 0) / budget) * 1000) / 10,
           missPercent: null,
         };
         delete this.perfData['ocean'];
@@ -2590,8 +2599,8 @@ export class AudioEngine {
     // Start phrase scheduling
     this.schedulePhraseUpdates();
 
-    // Start continuous lead random-walk updates (for live morph indicator + parity behavior)
-    this.startLeadMorphRandomWalk();
+    // Start lead morph random-walk updates only when auto morph is actually enabled.
+    this.syncLeadMorphRandomWalk();
 
     // Start lead Euclidean scheduler if enabled
     this.stopSynthEuclidScheduler(); // Reset if already running from independent start
@@ -2718,6 +2727,7 @@ export class AudioEngine {
     this._scWaterStarted = false;
     this._scInsects1Started = false;
     this._scInsects2Started = false;
+    this._scFireStarted = false;
     this._scInsects1Engine = -1;
     this._scInsects2Engine = -1;
     this._scWaterPreset = -1;
@@ -2741,6 +2751,14 @@ export class AudioEngine {
       try { this.insectsLevelGain.disconnect(); } catch { /* */ }
       this.insectsLevelGain = null;
     }
+    if (this.firePreFaderBus) {
+      try { this.firePreFaderBus.disconnect(); } catch { /* */ }
+      this.firePreFaderBus = null;
+    }
+    if (this.fireLevelGain) {
+      try { this.fireLevelGain.disconnect(); } catch { /* */ }
+      this.fireLevelGain = null;
+    }
     if (this.granularWaterSend) {
       try { this.granularWaterSend.disconnect(); } catch { /* */ }
       this.granularWaterSend = null;
@@ -2756,6 +2774,10 @@ export class AudioEngine {
     if (this.insectsReverbSendNode) {
       try { this.insectsReverbSendNode.disconnect(); } catch { /* */ }
       this.insectsReverbSendNode = null;
+    }
+    if (this.fireReverbSendNode) {
+      try { this.fireReverbSendNode.disconnect(); } catch { /* */ }
+      this.fireReverbSendNode = null;
     }
     if (this.earthBus) {
       try { this.earthBus.disconnect(); } catch { /* */ }
@@ -2951,6 +2973,7 @@ export class AudioEngine {
     const oldSeedWindow = this.sliderState?.seedWindow;
     this.sliderState = sliderState;
     this._sliderStateJsonDirty = true;
+    this.syncLeadMorphRandomWalk();
 
     // Update Circle of Fifths config from slider state
     this.cofConfig.enabled = sliderState.cofDriftEnabled ?? false;
@@ -3338,6 +3361,10 @@ export class AudioEngine {
     this.insectsPreFaderBus.gain.value = 1.0;
     this.insectsLevelGain = ctx.createGain();
     this.insectsLevelGain.gain.value = 0;
+    this.firePreFaderBus = ctx.createGain();
+    this.firePreFaderBus.gain.value = 1.0;
+    this.fireLevelGain = ctx.createGain();
+    this.fireLevelGain.gain.value = 0;
 
     this.oceanLevelGain = ctx.createGain();
     this.oceanLevelGain.gain.value = this.sliderState?.oceanSampleLevel ?? 1.0;
@@ -3347,6 +3374,9 @@ export class AudioEngine {
 
     this.insectsReverbSendNode = ctx.createGain();
     this.insectsReverbSendNode.gain.value = this.sliderState?.insectsReverbSend ?? 0.15;
+
+    this.fireReverbSendNode = ctx.createGain();
+    this.fireReverbSendNode.gain.value = this.sliderState?.fireReverbSend ?? 0.22;
 
     // Granular FX (unified granular engine)
     try {
@@ -4232,6 +4262,24 @@ export class AudioEngine {
         });
       }
     }, updateIntervalMs);
+  }
+
+  private stopLeadMorphRandomWalk(): void {
+    if (this.leadMorphTimer !== null) {
+      clearInterval(this.leadMorphTimer);
+      this.leadMorphTimer = null;
+    }
+  }
+
+  private syncLeadMorphRandomWalk(): void {
+    const autoMorphEnabled = !!this.sliderState && (this.sliderState.lead1MorphAuto || this.sliderState.lead2MorphAuto);
+    if (!this.isRunning || !autoMorphEnabled) {
+      this.stopLeadMorphRandomWalk();
+      return;
+    }
+    if (this.leadMorphTimer === null) {
+      this.startLeadMorphRandomWalk();
+    }
   }
   
   /** Build HarmonyParams from current sliderState */
@@ -5775,7 +5823,7 @@ export class AudioEngine {
       this.startOceanSamplePlayback();
     }
     
-    // ── Soundscapes WASM — water + insects ──
+    // ── Soundscapes WASM — water + insects + fire ──
     if (this.soundscapesNode && this.soundscapesWasmReady) {
       // Water start/stop — keep running for wet-only reverb sends too
       const waterShouldRun = state.waterEnabled && (
@@ -5831,6 +5879,7 @@ export class AudioEngine {
         const waterLayerDetailParams = {
           hardRate: shv('waterHardDropRate', state.waterHardDropRate),
           hardTone: shv('waterHardDropLPF', state.waterHardDropLPF),
+          hardCharacter: shv('waterHardDropTone', state.waterHardDropTone),
           waterRate: shv('waterWaterDropRate', state.waterWaterDropRate),
           waterTone: shv('waterWaterDropLPF', state.waterWaterDropLPF),
           bubbleRate: shv('waterBubblingRate', state.waterBubblingRate),
@@ -6038,6 +6087,11 @@ export class AudioEngine {
         }, state.insects2Level);
       }
 
+      if (this._scFireStarted) {
+        this.soundscapesNode.port.postMessage({ type: 'fireStop' });
+        this._scFireStarted = false;
+      }
+
       // ── Earth master level ──
       this.earthLevelGain?.gain.setTargetAtTime(state.earthLevel ?? 1.0, now, smoothTime);
 
@@ -6070,6 +6124,9 @@ export class AudioEngine {
       this.insectsReverbSendNode?.gain.setTargetAtTime(
         (state.insectsEnabled || state.insects2Enabled) ? shv('insectsReverbSend', state.insectsReverbSend) : 0, now, smoothTime
       );
+
+      this.fireLevelGain?.gain.setTargetAtTime(0, now, smoothTime);
+      this.fireReverbSendNode?.gain.setTargetAtTime(0, now, smoothTime);
     }
   }
 

@@ -322,7 +322,7 @@ export class DrumSynth {
     // Create stereo ping-pong delay
     this.createDelayEffect(masterOutput);
 
-    // Create per-voice bus gain nodes + analyser nodes
+    // Create per-voice bus gain nodes. Visual analyser taps are attached lazily.
     const voices: DrumVoiceType[] = ['sub', 'kick', 'click', 'beepHi', 'beepLo', 'noise', 'membrane'];
     for (const v of voices) {
       // Bus gain: voice triggers → bus → masterGain (unity gain pass-through)
@@ -330,19 +330,21 @@ export class DrumSynth {
       bus.gain.value = 1;
       bus.connect(this.preFaderBus);
       this.voiceBusGains[v] = bus;
-
-      // Analyser taps the per-voice bus (not master) for isolated FFT
-      const analyser = ctx.createAnalyser();
-      analyser.fftSize = 256;
-      analyser.smoothingTimeConstant = 0.65;
-      bus.connect(analyser);
-      this.voiceAnalysers[v] = analyser;
     }
     // Default triggerTarget to preFaderBus (overridden per-trigger in triggerVoice)
     this.triggerTarget = this.preFaderBus;
+  }
 
-    // Start periodic transient node cleanup (every 2s)
+  private ensureTransientCleanupTimer(): void {
+    if (this.transientCleanupTimer !== null) return;
     this.transientCleanupTimer = window.setInterval(() => this.cleanupTransientNodes(), 2000);
+  }
+
+  private stopTransientCleanupTimer(): void {
+    if (this.transientCleanupTimer !== null) {
+      clearInterval(this.transientCleanupTimer);
+      this.transientCleanupTimer = null;
+    }
   }
   
   /**
@@ -491,6 +493,7 @@ export class DrumSynth {
         nodes: filtered,
         expiresAt: this.ctx.currentTime + lifetimeSec,
       });
+      this.ensureTransientCleanupTimer();
     }
   }
 
@@ -501,7 +504,10 @@ export class DrumSynth {
    * like 8x ambient tails are never cut short.
    */
   private cleanupTransientNodes(): void {
-    if (this.transientNodeGroups.length === 0) return;
+    if (this.transientNodeGroups.length === 0) {
+      this.stopTransientCleanupTimer();
+      return;
+    }
     const now = this.ctx.currentTime;
     const ctxClosed = this.ctx.state === 'closed';
     const surviving: { nodes: AudioNode[]; expiresAt: number }[] = [];
@@ -515,6 +521,9 @@ export class DrumSynth {
       }
     }
     this.transientNodeGroups = surviving;
+    if (this.transientNodeGroups.length === 0) {
+      this.stopTransientCleanupTimer();
+    }
   }
 
   /**
@@ -681,8 +690,19 @@ export class DrumSynth {
     return [...this.euclidCurrentStep];
   }
 
+  private ensureVoiceAnalyser(voice: DrumVoiceType): AnalyserNode {
+    const existing = this.voiceAnalysers[voice];
+    if (existing) return existing;
+    const analyser = this.ctx.createAnalyser();
+    analyser.fftSize = 256;
+    analyser.smoothingTimeConstant = 0.65;
+    this.voiceBusGains[voice]?.connect(analyser);
+    this.voiceAnalysers[voice] = analyser;
+    return analyser;
+  }
+
   getVoiceAnalyser(voice: DrumVoiceType): AnalyserNode | undefined {
-    return this.voiceAnalysers[voice];
+    return this.ensureVoiceAnalyser(voice);
   }
   
   setMorphRange(voice: DrumVoiceType, range: { min: number; max: number } | null): void {
@@ -3312,10 +3332,7 @@ export class DrumSynth {
     this.stop();
 
     // Stop transient node cleanup timer
-    if (this.transientCleanupTimer !== null) {
-      clearInterval(this.transientCleanupTimer);
-      this.transientCleanupTimer = null;
-    }
+    this.stopTransientCleanupTimer();
 
     // Force-disconnect all per-trigger transient nodes (oscillators, gains, filters, etc.)
     this.forceDisconnectAllTransientNodes();
@@ -3333,6 +3350,16 @@ export class DrumSynth {
     this.waveshaperCurveCache.clear();
 
     for (const voice of voiceTypes) {
+      const analyser = this.voiceAnalysers[voice];
+      if (analyser) {
+        try { this.voiceBusGains[voice]?.disconnect(analyser); } catch { /* ok */ }
+        try { analyser.disconnect(); } catch { /* ok */ }
+        delete this.voiceAnalysers[voice];
+      }
+      const bus = this.voiceBusGains[voice];
+      if (bus) {
+        try { bus.disconnect(); } catch { /* ok */ }
+      }
       const sendNode = this.delaySends[voice];
       if (sendNode) {
         try {

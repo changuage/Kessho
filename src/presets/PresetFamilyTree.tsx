@@ -6,8 +6,7 @@ import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import type { PresetLevel, PresetEntry, PresetSummary, PresetSaveIdentity, PresetVersionMetadata } from './types';
 import { usePresets } from './usePresets';
 import { getVersionData } from './codec';
-import { extractCascade } from './codec';
-import { PARAM_REGISTRY } from './ParamRegistry';
+import { extractCascade, getCascadeKeys } from './codec';
 import type { SliderState } from '../ui/state';
 import type { SliderMode } from '../ui/state';
 import { DERIVED_PAD_KEYS } from '../audio/padPresets';
@@ -465,13 +464,7 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
   // Keys relevant to this preset level+scope (used to filter version diffs)
   const relevantKeys = useMemo(() => {
     const paramLevel = level === 'state' ? 4 : level === 'source' ? 3 : level === 'kit' ? 2 : 1;
-    const keys = new Set<string>();
-    for (const [key, info] of Object.entries(PARAM_REGISTRY)) {
-      if (info.level === paramLevel && (!scope || info.scope === scope)) {
-        keys.add(key);
-      }
-    }
-    return keys;
+    return new Set<string>(getCascadeKeys(paramLevel as 1 | 2 | 3 | 4, scope));
   }, [level, scope]);
 
   // Load preset data and call a slot callback (with confirmation)

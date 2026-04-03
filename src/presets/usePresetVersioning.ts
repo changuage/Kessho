@@ -4,7 +4,7 @@
 
 import { useState, useCallback, useMemo } from 'react';
 import type { PresetEntry, PresetVersion, PresetVersionMetadata } from './types';
-import { extractParams } from './codec';
+import { extractParams, extractCascade } from './codec';
 import { comparePresetVersions } from './presetUtils';
 import type { ParamLevel } from './ParamRegistry';
 import type { SliderState } from '../ui/state';
@@ -95,7 +95,9 @@ export function usePresetVersioning(
     const savedVersion = sortedVersions.find(v => v.v === currentVersion);
     if (!savedVersion) return false;
 
-    const currentParams = extractParams(state, paramLevel, scope);
+    const currentParams = paramLevel >= 3
+      ? extractCascade(state, paramLevel, scope)
+      : extractParams(state, paramLevel, scope);
     const currentSnapshot: PresetVersion = {
       v: currentVersion,
       note: '',

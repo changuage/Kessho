@@ -27,6 +27,7 @@ export interface WaterPresetState {
   waterLayerChannels: number;
   waterHardDropRate: number;
   waterHardDropLPF: number;
+  waterHardDropTone: number;
   waterWaterDropRate: number;
   waterWaterDropLPF: number;
   waterBubblingRate: number;
@@ -122,6 +123,7 @@ function discreteLayerDefaults(preset: number) {
   return {
     waterHardDropRate: rateScale,
     waterHardDropLPF: 12000,
+    waterHardDropTone: 1.0,
     waterWaterDropRate: rateScale,
     waterWaterDropLPF: 16000,
     waterBubblingRate: rateScale,
@@ -133,7 +135,7 @@ function discreteLayerDefaults(preset: number) {
 const PRESET_PARAMS: Record<number, {
   waterIntensity: number; waterDistance: number;
   waterDropSize: number; waterHardness: number; waterGlassThickness: number;
-  waterHardDropRate: number; waterHardDropLPF: number;
+  waterHardDropRate: number; waterHardDropLPF: number; waterHardDropTone: number;
   waterWaterDropRate: number; waterWaterDropLPF: number;
   waterBubblingRate: number; waterBubblingLPF: number;
   waterSurfDuration: number; waterSurfInterval: number;
@@ -215,7 +217,7 @@ export const WATER_MORPH_PARAM_KEYS = [
   'waterDropSize', 'waterHardness', 'waterGlassThickness',
   'waterLayerHardDrops', 'waterLayerWaterDrops', 'waterLayerTurbulence',
   'waterLayerBubbling', 'waterLayerSurf', 'waterLayerChannels',
-  'waterHardDropRate', 'waterHardDropLPF',
+  'waterHardDropRate', 'waterHardDropLPF', 'waterHardDropTone',
   'waterWaterDropRate', 'waterWaterDropLPF',
   'waterBubblingRate', 'waterBubblingLPF',
   'waterSurfDuration', 'waterSurfInterval', 'waterSurfFoam', 'waterSurfFoamBright', 'waterSurfProximity', 'waterSurfDepth',
@@ -309,6 +311,7 @@ function buildStockWaterPresetState(presetId: number): WaterPresetState {
     waterLayerChannels: layers.channels ?? fallbackLayers.channels,
     waterHardDropRate: params.waterHardDropRate,
     waterHardDropLPF: params.waterHardDropLPF,
+    waterHardDropTone: params.waterHardDropTone,
     waterWaterDropRate: params.waterWaterDropRate,
     waterWaterDropLPF: params.waterWaterDropLPF,
     waterBubblingRate: params.waterBubblingRate,
@@ -447,6 +450,7 @@ export function morphWaterPresets(
     waterLayerChannels: lrp(presetA.waterLayerChannels ?? fallback.waterLayerChannels, presetB.waterLayerChannels ?? fallback.waterLayerChannels),
     waterHardDropRate: lrp(presetA.waterHardDropRate ?? fallback.waterHardDropRate, presetB.waterHardDropRate ?? fallback.waterHardDropRate),
     waterHardDropLPF: eLrp(presetA.waterHardDropLPF ?? fallback.waterHardDropLPF, presetB.waterHardDropLPF ?? fallback.waterHardDropLPF),
+    waterHardDropTone: lrp(presetA.waterHardDropTone ?? fallback.waterHardDropTone, presetB.waterHardDropTone ?? fallback.waterHardDropTone),
     waterWaterDropRate: lrp(presetA.waterWaterDropRate ?? fallback.waterWaterDropRate, presetB.waterWaterDropRate ?? fallback.waterWaterDropRate),
     waterWaterDropLPF: eLrp(presetA.waterWaterDropLPF ?? fallback.waterWaterDropLPF, presetB.waterWaterDropLPF ?? fallback.waterWaterDropLPF),
     waterBubblingRate: lrp(presetA.waterBubblingRate ?? fallback.waterBubblingRate, presetB.waterBubblingRate ?? fallback.waterBubblingRate),

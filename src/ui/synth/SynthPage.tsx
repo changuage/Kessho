@@ -10,7 +10,7 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { SliderState } from '../state';
+import { formatIndexedDelayDivision, getSliderNumericValue, SliderState } from '../state';
 import { useEuclideanSequencer, type EvolveConfig, type StepOverrides, type SubLaneKind, type SubLaneState, type PitchSettings } from '../sequencer/useEuclideanSequencer';
 // DrumStepOverrides no longer needed — SynthPage uses StepOverrides from the shared hook
 import DragNumber from '../drums/DragNumber';
@@ -72,22 +72,6 @@ const SYNTH_SOURCES = [
   { value: 'synth5', label: 'Pad 5', color: '#946050' },
   { value: 'synth6', label: 'Pad 6', color: '#8E5842' },
 ];
-
-const DELAY_A_NOTE_OPTIONS = [
-  { value: '1/1', label: '1/1' },
-  { value: '1/2', label: '1/2' },
-  { value: '1/2d', label: '1/2 dotted' },
-  { value: '1/4', label: '1/4' },
-  { value: '1/4d', label: '1/4 dotted' },
-  { value: '1/4t', label: '1/4 triplet' },
-  { value: '1/8', label: '1/8' },
-  { value: '1/8d', label: '1/8 dotted' },
-  { value: '1/8t', label: '1/8 triplet' },
-  { value: '1/16', label: '1/16' },
-  { value: '1/16d', label: '1/16 dotted' },
-  { value: '1/16t', label: '1/16 triplet' },
-  { value: '1/32', label: '1/32' },
-] as const;
 
 const PAD1_TO_PAD2_KEY: Record<string, string> = {
   padOscAWave: 'pad2OscAWave', padOscAOctave: 'pad2OscAOctave', padOscADetune: 'pad2OscADetune', padOscALevel: 'pad2OscALevel',
@@ -2112,32 +2096,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 <div className="sc-advanced-section">
                   <div className="sc-section-label">Delay A</div>
                   <Slider label="Delay A Send" value={state.lead1DelayASend} paramKey="lead1DelayASend" onChange={onParamChange} {...sliderProps('lead1DelayASend')} />
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '8px', marginBottom: '8px' }}>
-                    <label style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.72rem', color: '#a8b6c9' }}>
-                      <span>Left</span>
-                      <select
-                        value={state.drumDelayNoteL as string}
-                        onChange={(e) => onSelectChange('drumDelayNoteL' as keyof SliderState, e.target.value as SliderState[keyof SliderState])}
-                        style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(7,12,18,0.9)', color: '#edf7ff' }}
-                      >
-                        {DELAY_A_NOTE_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>{option.label}</option>
-                        ))}
-                      </select>
-                    </label>
-                    <label style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.72rem', color: '#a8b6c9' }}>
-                      <span>Right</span>
-                      <select
-                        value={state.drumDelayNoteR as string}
-                        onChange={(e) => onSelectChange('drumDelayNoteR' as keyof SliderState, e.target.value as SliderState[keyof SliderState])}
-                        style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(7,12,18,0.9)', color: '#edf7ff' }}
-                      >
-                        {DELAY_A_NOTE_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>{option.label}</option>
-                        ))}
-                      </select>
-                    </label>
-                  </div>
+                  <Slider label="Left Division" value={getSliderNumericValue('drumDelayNoteL', state.drumDelayNoteL) ?? 0} paramKey="drumDelayNoteL" onChange={onParamChange} format={(value: number) => formatIndexedDelayDivision('drumDelayNoteL', value)} {...sliderProps('drumDelayNoteL')} />
+                  <Slider label="Right Division" value={getSliderNumericValue('drumDelayNoteR', state.drumDelayNoteR) ?? 0} paramKey="drumDelayNoteR" onChange={onParamChange} format={(value: number) => formatIndexedDelayDivision('drumDelayNoteR', value)} {...sliderProps('drumDelayNoteR')} />
                   <Slider label="Delay Feedback" value={state.delayAFeedback} paramKey="delayAFeedback" onChange={onParamChange} {...sliderProps('delayAFeedback')} />
                   <Slider label="Delay Mix" value={state.delayAMix} paramKey="delayAMix" onChange={onParamChange} {...sliderProps('delayAMix')} />
                   <Slider label="Delay Filter" value={state.delayAFilter} paramKey="delayAFilter" unit=" Hz" logarithmic onChange={onParamChange} {...sliderProps('delayAFilter')} />
@@ -2252,32 +2212,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 <div className="sc-advanced-section">
                   <div className="sc-section-label">Delay A</div>
                   <Slider label="Delay A Send" value={state.lead2DelayASend} paramKey="lead2DelayASend" onChange={onParamChange} {...sliderProps('lead2DelayASend')} />
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '8px', marginBottom: '8px' }}>
-                    <label style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.72rem', color: '#a8b6c9' }}>
-                      <span>Left</span>
-                      <select
-                        value={state.drumDelayNoteL as string}
-                        onChange={(e) => onSelectChange('drumDelayNoteL' as keyof SliderState, e.target.value as SliderState[keyof SliderState])}
-                        style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(7,12,18,0.9)', color: '#edf7ff' }}
-                      >
-                        {DELAY_A_NOTE_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>{option.label}</option>
-                        ))}
-                      </select>
-                    </label>
-                    <label style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.72rem', color: '#a8b6c9' }}>
-                      <span>Right</span>
-                      <select
-                        value={state.drumDelayNoteR as string}
-                        onChange={(e) => onSelectChange('drumDelayNoteR' as keyof SliderState, e.target.value as SliderState[keyof SliderState])}
-                        style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(7,12,18,0.9)', color: '#edf7ff' }}
-                      >
-                        {DELAY_A_NOTE_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>{option.label}</option>
-                        ))}
-                      </select>
-                    </label>
-                  </div>
+                  <Slider label="Left Division" value={getSliderNumericValue('drumDelayNoteL', state.drumDelayNoteL) ?? 0} paramKey="drumDelayNoteL" onChange={onParamChange} format={(value: number) => formatIndexedDelayDivision('drumDelayNoteL', value)} {...sliderProps('drumDelayNoteL')} />
+                  <Slider label="Right Division" value={getSliderNumericValue('drumDelayNoteR', state.drumDelayNoteR) ?? 0} paramKey="drumDelayNoteR" onChange={onParamChange} format={(value: number) => formatIndexedDelayDivision('drumDelayNoteR', value)} {...sliderProps('drumDelayNoteR')} />
                   <Slider label="Delay Feedback" value={state.delayAFeedback} paramKey="delayAFeedback" onChange={onParamChange} {...sliderProps('delayAFeedback')} />
                   <Slider label="Delay Mix" value={state.delayAMix} paramKey="delayAMix" onChange={onParamChange} {...sliderProps('delayAMix')} />
                   <Slider label="Delay Filter" value={state.delayAFilter} paramKey="delayAFilter" unit=" Hz" logarithmic onChange={onParamChange} {...sliderProps('delayAFilter')} />

@@ -12,7 +12,7 @@
  */
 
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { SliderState, getParamInfo } from '../state';
+import { SliderState, formatIndexedDelayDivision, getParamInfo, getSliderNumericValue } from '../state';
 import type { ClockDivision } from '../../audio/drumSeqTypes';
 import { GRANULAR_PRESET_OPTIONS, getGranularPresetMeta, getGranularPresetSuggestedDelayBGranularSend } from './granularPresets';
 import { computeGranularMacroModel } from '../../audio/granularMacroModel';
@@ -118,23 +118,6 @@ const VOICE_KEYS: VoicePrefix[] = [1, 2, 3, 4].map(n => ({
 
 
 // ═══════════════ Props ═══════════════
-
-// Note division options for delay time selector
-const DELAY_NOTE_OPTIONS: { value: string; label: string }[] = [
-  { value: '1/1', label: '1/1' },
-  { value: '1/2', label: '1/2' },
-  { value: '1/2d', label: '1/2 dotted' },
-  { value: '1/4', label: '1/4' },
-  { value: '1/4d', label: '1/4 dotted' },
-  { value: '1/4t', label: '1/4 triplet' },
-  { value: '1/8', label: '1/8' },
-  { value: '1/8d', label: '1/8 dotted' },
-  { value: '1/8t', label: '1/8 triplet' },
-  { value: '1/16', label: '1/16' },
-  { value: '1/16d', label: '1/16 dotted' },
-  { value: '1/16t', label: '1/16 triplet' },
-  { value: '1/32', label: '1/32' },
-];
 
 export interface GranularPageProps {
   state: SliderState;
@@ -898,19 +881,14 @@ const GranularPage: React.FC<GranularPageProps> = ({
                       : 'This is the shared Delay B multitap path. Raise Granular -> Delay B in the Routing page or feed the bus from another engine to wake it.'}
                 </div>
                 <>
-                  <div className="delay-note-row">
-                    <div className="delay-note-col">
-                      <label>Time</label>
-                      <select
-                        value={state.granularDelayTime as string}
-                        onChange={e => onSelectChange('granularDelayTime' as keyof SliderState, e.target.value)}
-                      >
-                        {DELAY_NOTE_OPTIONS.map(opt => (
-                          <option key={opt.value} value={opt.value}>{opt.label}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
+                  <Slider
+                    label="Time Division"
+                    value={getSliderNumericValue('granularDelayTime', state.granularDelayTime) ?? 0}
+                    paramKey={'granularDelayTime' as keyof SliderState}
+                    onChange={onParamChange}
+                    format={(value: number) => formatIndexedDelayDivision('granularDelayTime', value)}
+                    {...sliderProps('granularDelayTime' as keyof SliderState)}
+                  />
                   <Slider label="Activity" value={state.granularDelayActivity ?? 0.3} paramKey={'granularDelayActivity' as keyof SliderState} onChange={onParamChange} {...sliderProps('granularDelayActivity' as keyof SliderState)} />
                   <Slider label="Repeats" value={state.granularDelayRepeats ?? 0.3} paramKey={'granularDelayRepeats' as keyof SliderState} onChange={onParamChange} {...sliderProps('granularDelayRepeats' as keyof SliderState)} />
                   <Slider label="Filter" value={state.granularDelayFilter ?? 0.5} paramKey={'granularDelayFilter' as keyof SliderState} onChange={onParamChange} {...sliderProps('granularDelayFilter' as keyof SliderState)} />

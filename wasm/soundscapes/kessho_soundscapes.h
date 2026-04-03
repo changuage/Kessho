@@ -33,7 +33,7 @@ void  water_set_params(float intensity_min, float intensity_max,
                        float drop_size_min, float drop_size_max,
                        float hardness_min, float hardness_max,
                        float glass_thickness_min, float glass_thickness_max);
-void  water_set_layer_detail_params(float hard_rate, float hard_tone_hz,
+void  water_set_layer_detail_params(float hard_rate, float hard_tone_hz, float hard_character,
                                     float water_rate, float water_tone_hz,
                                     float bubble_rate, float bubble_tone_hz);
 void  water_set_layer_mix(float hard_drops, float water_drops, float turbulence,

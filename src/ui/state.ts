@@ -11,6 +11,118 @@
 import { SCALE_FAMILIES } from '../audio/scales';
 
 export type GranularTempoDivision = '1/4' | '1/8' | '1/16' | '1/32' | '1/64' | '1/8T';
+export type IndexedDelayDivisionKey = 'drumDelayNoteL' | 'drumDelayNoteR' | 'granularDelayTime';
+
+export const DELAY_A_NOTE_DIVISION_OPTIONS = [
+  { value: '1/1', label: '1/1' },
+  { value: '1/2', label: '1/2' },
+  { value: '1/2d', label: '1/2 dotted' },
+  { value: '1/4', label: '1/4' },
+  { value: '1/4d', label: '1/4 dotted' },
+  { value: '1/4t', label: '1/4 triplet' },
+  { value: '1/8', label: '1/8' },
+  { value: '1/8d', label: '1/8 dotted' },
+  { value: '1/8t', label: '1/8 triplet' },
+  { value: '1/16', label: '1/16' },
+  { value: '1/16d', label: '1/16 dotted' },
+  { value: '1/16t', label: '1/16 triplet' },
+  { value: '1/32', label: '1/32' },
+] as const;
+
+export const DELAY_B_NOTE_DIVISION_OPTIONS = [
+  { value: '1/1', label: '1/1' },
+  { value: '1/2', label: '1/2' },
+  { value: '1/2d', label: '1/2 dotted' },
+  { value: '1/4', label: '1/4' },
+  { value: '1/4d', label: '1/4 dotted' },
+  { value: '1/4t', label: '1/4 triplet' },
+  { value: '1/8', label: '1/8' },
+  { value: '1/8d', label: '1/8 dotted' },
+  { value: '1/8t', label: '1/8 triplet' },
+  { value: '1/16', label: '1/16' },
+  { value: '1/16d', label: '1/16 dotted' },
+  { value: '1/16t', label: '1/16 triplet' },
+  { value: '1/32', label: '1/32' },
+] as const;
+
+const INDEXED_DELAY_DIVISION_ALIASES: Record<string, string> = {
+  '3/8': '1/4d',
+  '3/16': '1/16d',
+};
+
+const INDEXED_DELAY_DIVISION_OPTIONS: Record<IndexedDelayDivisionKey, readonly { value: string; label: string }[]> = {
+  drumDelayNoteL: DELAY_A_NOTE_DIVISION_OPTIONS,
+  drumDelayNoteR: DELAY_A_NOTE_DIVISION_OPTIONS,
+  granularDelayTime: DELAY_B_NOTE_DIVISION_OPTIONS,
+};
+
+function normalizeIndexedDelayDivisionValue(value: string): string {
+  return INDEXED_DELAY_DIVISION_ALIASES[value] ?? value;
+}
+
+export function isIndexedDelayDivisionKey(key: keyof SliderState | string): key is IndexedDelayDivisionKey {
+  return key === 'drumDelayNoteL' || key === 'drumDelayNoteR' || key === 'granularDelayTime';
+}
+
+export function getIndexedDelayDivisionOptions(key: IndexedDelayDivisionKey): readonly { value: string; label: string }[] {
+  return INDEXED_DELAY_DIVISION_OPTIONS[key];
+}
+
+export function getIndexedDelayDivisionIndex(
+  key: IndexedDelayDivisionKey,
+  value: string | number | null | undefined,
+): number {
+  const options = getIndexedDelayDivisionOptions(key);
+  const info = {
+    min: 0,
+    max: options.length - 1,
+    step: 1,
+  };
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const clamped = Math.max(info.min, Math.min(info.max, value));
+    return info.min + Math.round((clamped - info.min) / info.step) * info.step;
+  }
+
+  const normalizedValue = normalizeIndexedDelayDivisionValue(String(value ?? ''));
+  const index = options.findIndex((option) => option.value === normalizedValue);
+  return index >= 0 ? index : 0;
+}
+
+export function getIndexedDelayDivisionValue<K extends IndexedDelayDivisionKey>(
+  key: K,
+  value: number,
+): SliderState[K] {
+  const options = getIndexedDelayDivisionOptions(key);
+  const index = getIndexedDelayDivisionIndex(key, value);
+  return (options[index] ?? options[0] ?? { value: '1/4' }).value as SliderState[K];
+}
+
+export function formatIndexedDelayDivision(key: IndexedDelayDivisionKey, value: number): string {
+  const options = getIndexedDelayDivisionOptions(key);
+  const index = getIndexedDelayDivisionIndex(key, value);
+  return options[index]?.label ?? options[0]?.label ?? '1/4';
+}
+
+export function getSliderNumericValue<K extends keyof SliderState>(
+  key: K,
+  value: SliderState[K] | number | null | undefined,
+): number | null {
+  if (isIndexedDelayDivisionKey(key)) {
+    return getIndexedDelayDivisionIndex(key, value as string | number | null | undefined);
+  }
+  return typeof value === 'number' ? value : null;
+}
+
+export function getStateValueFromSliderNumber<K extends keyof SliderState>(
+  key: K,
+  value: number,
+): SliderState[K] | number {
+  if (isIndexedDelayDivisionKey(key)) {
+    return getIndexedDelayDivisionValue(key, value);
+  }
+  return value;
+}
 
 /**
  * Slider mode for unified 3-mode slider system
@@ -811,6 +923,7 @@ export interface SliderState {
   // Per-layer event controls for the three discrete water event layers
   waterHardDropRate: number;      // 0..2 source-local event-rate multiplier
   waterHardDropLPF: number;       // 50..16000 Hz resonant LPF cutoff
+  waterHardDropTone: number;      // 0..1 tonal -> short rupture morph
   waterWaterDropRate: number;     // 0..2 source-local event-rate multiplier
   waterWaterDropLPF: number;      // 50..16000 Hz resonant LPF cutoff
   waterBubblingRate: number;      // 0..2 source-local event-rate multiplier
@@ -860,6 +973,15 @@ export interface SliderState {
   insects2ClickRate: number;    // 0..1
   insects2Motion: number;       // 0..1
   insects2Level: number;        // 0..1
+  // Fire
+  fireEnabled: boolean;
+  fireStrength: number;         // 0..1
+  fireActivity: number;         // 0..1
+  fireMoisture: number;         // 0..1
+  fireAirflow: number;          // 0..1
+  fireDistance: number;         // 0..1
+  fireReverbSend: number;       // 0..1
+  fireLevel: number;            // 0..1
 
   // ─── Granular FX (Unified Granular Engine) ───
   granularEnabled: boolean;           // Master on/off
@@ -1607,7 +1729,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'waterReverbSend', 'waterDelayASend', 'waterDelayBSend', 'waterLevel',
   'waterLayerHardDrops', 'waterLayerWaterDrops', 'waterLayerTurbulence',
   'waterLayerBubbling', 'waterLayerSurf', 'waterLayerChannels',
-  'waterHardDropRate', 'waterHardDropLPF',
+  'waterHardDropRate', 'waterHardDropLPF', 'waterHardDropTone',
   'waterWaterDropRate', 'waterWaterDropLPF',
   'waterBubblingRate', 'waterBubblingLPF',
   'waterSurfDuration', 'waterSurfInterval', 'waterSurfFoam', 'waterSurfFoamBright', 'waterSurfProximity', 'waterSurfDepth',
@@ -1621,6 +1743,8 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'insects2Enabled', 'insects2Engine',
   'insects2Density', 'insects2Temperature', 'insects2Distance', 'insects2Proximity',
   'insects2Antiphony', 'insects2ClickRate', 'insects2Motion', 'insects2Level',
+  'fireEnabled', 'fireStrength', 'fireActivity', 'fireMoisture', 'fireAirflow',
+  'fireDistance', 'fireReverbSend', 'fireLevel',
   'randomWalkSpeed',
   // Granular FX
   'granularEnabled',
@@ -2380,6 +2504,7 @@ export const DEFAULT_STATE: SliderState = {
   waterLayerChannels: 0.0,
   waterHardDropRate: 1.0,
   waterHardDropLPF: 12000,
+  waterHardDropTone: 1.0,
   waterWaterDropRate: 1.0,
   waterWaterDropLPF: 16000,
   waterBubblingRate: 1.0,
@@ -2424,6 +2549,14 @@ export const DEFAULT_STATE: SliderState = {
   insects2ClickRate: 0.3,
   insects2Motion: 0.5,
   insects2Level: 0.5,
+  fireEnabled: false,
+  fireStrength: 0.55,
+  fireActivity: 0.5,
+  fireMoisture: 0.2,
+  fireAirflow: 0.35,
+  fireDistance: 0.25,
+  fireReverbSend: 0,
+  fireLevel: 0,
 
   // ─── Granular FX ───
   granularEnabled: false,
@@ -2633,6 +2766,8 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   delayBGranularSend: { min: 0, max: 1, step: 0.01 },
   delayAModRate: { min: 0, max: 1, step: 0.01 },
   delayAModDepth: { min: 0, max: 1, step: 0.01 },
+  drumDelayNoteL: { min: 0, max: DELAY_A_NOTE_DIVISION_OPTIONS.length - 1, step: 1 },
+  drumDelayNoteR: { min: 0, max: DELAY_A_NOTE_DIVISION_OPTIONS.length - 1, step: 1 },
   delayADuck: { min: 0, max: 1, step: 0.01 },
   delayAWidth: { min: 0, max: 1, step: 0.01 },
   delayBWarpIntensity: { min: 0, max: 1, step: 0.01 },
@@ -3056,6 +3191,7 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   waterLayerChannels: { min: 0, max: 1, step: 0.01 },
   waterHardDropRate: { min: 0, max: 2, step: 0.01 },
   waterHardDropLPF: { min: 50, max: 16000, step: 1 },
+  waterHardDropTone: { min: 0, max: 1, step: 0.01 },
   waterWaterDropRate: { min: 0, max: 2, step: 0.01 },
   waterWaterDropLPF: { min: 50, max: 16000, step: 1 },
   waterBubblingRate: { min: 0, max: 2, step: 0.01 },
@@ -3096,6 +3232,13 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   insects2ClickRate: { min: 0, max: 1, step: 0.01 },
   insects2Motion: { min: 0, max: 1, step: 0.01 },
   insects2Level: { min: 0, max: 1, step: 0.01 },
+  fireStrength: { min: 0, max: 1, step: 0.01 },
+  fireActivity: { min: 0, max: 1, step: 0.01 },
+  fireMoisture: { min: 0, max: 1, step: 0.01 },
+  fireAirflow: { min: 0, max: 1, step: 0.01 },
+  fireDistance: { min: 0, max: 1, step: 0.01 },
+  fireReverbSend: { min: 0, max: 1, step: 0.01 },
+  fireLevel: { min: 0, max: 1, step: 0.01 },
   // Random Walk
   randomWalkSpeed: { min: 0.1, max: 5, step: 0.1 },
   // Circle of Fifths Drift
@@ -3222,6 +3365,7 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   // Delay
   granularDelayActivity: { min: 0, max: 1, step: 0.01 },
   granularDelayRepeats: { min: 0, max: 0.85, step: 0.01 },
+  granularDelayTime: { min: 0, max: DELAY_B_NOTE_DIVISION_OPTIONS.length - 1, step: 1 },
   granularDelayFilter: { min: 0, max: 1, step: 0.01 },
   granularDelayVibrato: { min: 0, max: 1, step: 0.01 },
   granularDelayReverbSend: { min: 0, max: 1, step: 0.01 },
@@ -3323,6 +3467,14 @@ export function decodeStateFromUrl(search: string): SliderState | null {
     for (const key of STATE_KEYS) {
       const value = params.get(key) ?? params.get(LEGACY_STATE_KEY_FALLBACKS[key] ?? '');
       if (value === null) continue;
+
+      if (isIndexedDelayDivisionKey(key)) {
+        const normalized = normalizeIndexedDelayDivisionValue(value);
+        if (getIndexedDelayDivisionOptions(key).some((option) => option.value === normalized)) {
+          (state as Record<string, unknown>)[key] = normalized;
+        }
+        continue;
+      }
 
       const def = QUANTIZATION[key];
       if (def) {

@@ -1,47 +1,18 @@
-import React, { useCallback, useState } from 'react';
-import type { SliderState } from '../state';
+import React, { useCallback, useMemo, useState } from 'react';
+import { formatIndexedDelayDivision, getSliderNumericValue, type SliderState } from '../state';
 import type { SliderPageId } from '../sliderHelpCatalog';
 import { useSliderHelp } from '../SliderHelpOverlay';
 import { getGranularPresetMeta, getGranularPresetSuggestedDelayBGranularSend } from '../granular/granularPresets';
 import { delayNoteToSeconds } from '../../audio/delayBuses';
+import { applyParams, extractParams } from '../../presets/codec';
 import { PresetDropdown } from '../../presets/PresetDropdown';
 import type { PresetEntry } from '../../presets/types';
+import type { UsePresetsOptions } from '../../presets/usePresets';
 import DelayRhythmMap from './DelayRhythmMap';
 import DelayAlgorithmCard from './DelayAlgorithmCard';
 import DelayScope from './DelayScope';
 import DelayThumbnail from './DelayThumbnail';
 import './delay.css';
-
-const ECHO_LINE_NOTE_OPTIONS = [
-  { value: '1/1', label: '1/1' },
-  { value: '1/2', label: '1/2' },
-  { value: '1/2d', label: '1/2 dotted' },
-  { value: '1/4', label: '1/4' },
-  { value: '1/4d', label: '1/4 dotted' },
-  { value: '1/4t', label: '1/4 triplet' },
-  { value: '1/8', label: '1/8' },
-  { value: '1/8d', label: '1/8 dotted' },
-  { value: '1/8t', label: '1/8 triplet' },
-  { value: '1/16', label: '1/16' },
-  { value: '1/16d', label: '1/16 dotted' },
-  { value: '1/16t', label: '1/16 triplet' },
-  { value: '1/32', label: '1/32' },
-] as const;
-
-const CLOCKED_SPACE_NOTE_OPTIONS = [
-  { value: '1/1', label: '1/1' },
-  { value: '1/2', label: '1/2' },
-  { value: '1/2d', label: '1/2 dotted' },
-  { value: '1/4', label: '1/4' },
-  { value: '1/4d', label: '1/4 dotted' },
-  { value: '1/4t', label: '1/4 triplet' },
-  { value: '1/8', label: '1/8' },
-  { value: '1/8d', label: '1/8 dotted' },
-  { value: '1/8t', label: '1/8 triplet' },
-  { value: '1/16', label: '1/16' },
-  { value: '1/16d', label: '1/16 dotted' },
-  { value: '1/16t', label: '1/16 triplet' },
-] as const;
 
 const FILTER_TYPE_OPTIONS = [
   { value: 'lowpass', label: 'LP' },
@@ -101,6 +72,27 @@ const DelayPage: React.FC<DelayPageProps> = ({
 }) => {
   const Slider = SliderComponent as React.ComponentType<any>;
   const { announceHelp, announceSlider } = useSliderHelp();
+  const echoPresetOptions = useCallback<NonNullable<UsePresetsOptions['customExtract']>>((snapshot) => ({
+    ...extractParams(snapshot, 1, 'echoLine'),
+    ...extractParams(snapshot, 1, 'leadDelay'),
+    drumDelayNoteL: snapshot.drumDelayNoteL,
+    drumDelayNoteR: snapshot.drumDelayNoteR,
+  }), []);
+  const applyEchoPreset = useCallback<NonNullable<UsePresetsOptions['customApply']>>((snapshot, data) => {
+    let next = applyParams(snapshot, data, 1, 'echoLine');
+    next = applyParams(next, data, 1, 'leadDelay');
+    if ('drumDelayNoteL' in data) {
+      next = { ...next, drumDelayNoteL: data.drumDelayNoteL as SliderState['drumDelayNoteL'] };
+    }
+    if ('drumDelayNoteR' in data) {
+      next = { ...next, drumDelayNoteR: data.drumDelayNoteR as SliderState['drumDelayNoteR'] };
+    }
+    return next;
+  }, []);
+  const echoPresetDropdownOptions = useMemo<UsePresetsOptions>(() => ({
+    customExtract: echoPresetOptions,
+    customApply: applyEchoPreset,
+  }), [applyEchoPreset, echoPresetOptions]);
 
   const [expandedCards, setExpandedCards] = useState<Set<string>>(
     () => new Set(['echo-line', 'clocked-space']),
@@ -230,6 +222,7 @@ const DelayPage: React.FC<DelayPageProps> = ({
                 currentName={echoPresetName}
                 onLoad={handleEchoPresetLoad}
                 onStateChange={onStateChange}
+                presetOptions={echoPresetDropdownOptions}
                 compact
               />
 
@@ -246,31 +239,25 @@ const DelayPage: React.FC<DelayPageProps> = ({
               </div>
 
               {/* Timing */}
+              <Slider
+                label="Left Division"
+                value={getSliderNumericValue('drumDelayNoteL', state.drumDelayNoteL) ?? 0}
+                paramKey="drumDelayNoteL"
+                onChange={onParamChange}
+                helpPage="delay"
+                format={(value: number) => formatIndexedDelayDivision('drumDelayNoteL', value)}
+                {...sliderProps('drumDelayNoteL')}
+              />
+              <Slider
+                label="Right Division"
+                value={getSliderNumericValue('drumDelayNoteR', state.drumDelayNoteR) ?? 0}
+                paramKey="drumDelayNoteR"
+                onChange={onParamChange}
+                helpPage="delay"
+                format={(value: number) => formatIndexedDelayDivision('drumDelayNoteR', value)}
+                {...sliderProps('drumDelayNoteR')}
+              />
               <div className="delay-select-grid">
-                <label className="delay-select-field">
-                  <span>Left</span>
-                  <select
-                    value={state.drumDelayNoteL}
-                    onChange={(e) => onSelectChange('drumDelayNoteL', e.target.value as SliderState['drumDelayNoteL'])}
-                    {...bindSliderHelp('drumDelayNoteL', 'Left')}
-                  >
-                    {ECHO_LINE_NOTE_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="delay-select-field">
-                  <span>Right</span>
-                  <select
-                    value={state.drumDelayNoteR}
-                    onChange={(e) => onSelectChange('drumDelayNoteR', e.target.value as SliderState['drumDelayNoteR'])}
-                    {...bindSliderHelp('drumDelayNoteR', 'Right')}
-                  >
-                    {ECHO_LINE_NOTE_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                  </select>
-                </label>
                 <label className="delay-select-field">
                   <span>Filter Type</span>
                   <select
@@ -382,18 +369,15 @@ const DelayPage: React.FC<DelayPageProps> = ({
               <DelayAlgorithmCard pattern={state.delayBPattern} warp={state.delayBWarp} accent="#9fe5f0" />
 
               {/* Time */}
-              <label className="delay-select-field">
-                <span>Time</span>
-                <select
-                  value={state.granularDelayTime}
-                  onChange={(e) => onSelectChange('granularDelayTime', e.target.value as SliderState['granularDelayTime'])}
-                  {...bindSliderHelp('granularDelayTime', 'Time')}
-                >
-                  {CLOCKED_SPACE_NOTE_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
-              </label>
+              <Slider
+                label="Time Division"
+                value={getSliderNumericValue('granularDelayTime', state.granularDelayTime) ?? 0}
+                paramKey="granularDelayTime"
+                onChange={onParamChange}
+                helpPage="delay"
+                format={(value: number) => formatIndexedDelayDivision('granularDelayTime', value)}
+                {...sliderProps('granularDelayTime')}
+              />
 
               {/* Sliders */}
               <Slider label="Activity" value={state.granularDelayActivity} paramKey="granularDelayActivity" onChange={onParamChange} helpPage="delay" {...sliderProps('granularDelayActivity')} />

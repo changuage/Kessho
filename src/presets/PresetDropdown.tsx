@@ -9,7 +9,6 @@ import { exportPresetToFile, importPresetFromFile } from './fileIO';
 import { getPresetStore } from './PresetStore';
 import { extractPresetVersionMetadata, isPresetCompatibleWithSlot } from './presetUtils';
 import { getPresetDisplayLabel } from './catalog';
-import { extractParams } from './codec';
 import { getVersionData } from './codec';
 import type { SliderState } from '../ui/state';
 import type { UsePresetsOptions } from './usePresets';
@@ -127,7 +126,7 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
   presetOptions,
   compact = false,
 }) => {
-  const { presets, save, load, remove, refresh, apply } = usePresets(level, scope, presetOptions);
+  const { presets, save, load, remove, refresh, extract, apply } = usePresets(level, scope, presetOptions);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [saveName, setSaveName] = useState('');
   const [saveNote, setSaveNote] = useState('');
@@ -145,9 +144,7 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
   // Dirty detection: compare current state params against last loaded version
   const isDirty = useMemo(() => {
     if (!loadedEntry || !loadedData) return false;
-    const currentParams = presetOptions?.customExtract
-      ? presetOptions.customExtract(state)
-      : extractParams(state, level === 'engine' ? 1 : level === 'kit' ? 2 : level === 'source' ? 3 : 4, scope);
+    const currentParams = extract(state);
     for (const key of Object.keys(loadedData)) {
       const saved = loadedData[key];
       const current = currentParams[key];
@@ -159,7 +156,7 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
       }
     }
     return false;
-  }, [loadedEntry, loadedData, state, level, scope, presetOptions]);
+  }, [loadedEntry, loadedData, state, extract]);
 
   useEffect(() => {
     setSelectedName(currentName || '');

@@ -6,6 +6,15 @@ export type { ParamLevel } from './ParamRegistry';
 import type { PresetEntry } from './types';
 import type { SliderState } from '../ui/state';
 
+function getDirectKeys(level: ParamLevel, scope?: string): string[] {
+  if (level === 4) {
+    return Object.keys(PARAM_REGISTRY);
+  }
+  return Object.entries(PARAM_REGISTRY)
+    .filter(([, info]) => info.level === level && (!scope || info.scope === scope))
+    .map(([key]) => key);
+}
+
 /** Extract only the params owned by a level+scope from full state */
 export function extractParams(
   state: SliderState,
@@ -86,6 +95,7 @@ const SOURCE_CHILDREN: Record<string, { level: ParamLevel; scope: string }[]> = 
     { level: 2, scope: 'drumKit' },
   ],
   delay: [
+    { level: 1, scope: 'leadDelay' },
     { level: 1, scope: 'echoLine' },
     { level: 1, scope: 'clockedSpace' },
     { level: 2, scope: 'delayKit' },
@@ -106,6 +116,31 @@ const SOURCE_CHILDREN: Record<string, { level: ParamLevel; scope: string }[]> = 
   ],
 };
 
+const SOURCE_EXTRA_KEYS: Partial<Record<string, string[]>> = {
+  synth: ['drumDelayNoteL', 'drumDelayNoteR'],
+  delay: ['drumDelayNoteL', 'drumDelayNoteR'],
+};
+
+/** Get all preset-owned keys for a level+scope, including source/state cascade children. */
+export function getCascadeKeys(level: ParamLevel, scope?: string): string[] {
+  if (level === 4) {
+    return Object.keys(PARAM_REGISTRY);
+  }
+
+  const keys = new Set<string>(getDirectKeys(level, scope));
+  if (scope && SOURCE_CHILDREN[scope]) {
+    for (const child of SOURCE_CHILDREN[scope]) {
+      for (const key of getDirectKeys(child.level, child.scope)) {
+        keys.add(key);
+      }
+    }
+  }
+  for (const key of SOURCE_EXTRA_KEYS[scope ?? ''] ?? []) {
+    keys.add(key);
+  }
+  return [...keys];
+}
+
 /**
  * Extract all params at a level+scope AND all child scopes below it.
  * For L3 source presets this captures L1+L2 children; for L4 state it captures everything.
@@ -116,25 +151,29 @@ export function extractCascade(
   scope?: string,
 ): Record<string, unknown> {
   const result: Record<string, unknown> = {};
-
-  if (level === 4) {
-    // L4 state: capture everything (all levels, all scopes)
-    for (const [key] of Object.entries(PARAM_REGISTRY)) {
-      if (key in state) result[key] = (state as unknown as Record<string, unknown>)[key];
-    }
-    return result;
-  }
-
-  // Own-level params
-  Object.assign(result, extractParams(state, level, scope));
-
-  // Add child scopes
-  if (scope && SOURCE_CHILDREN[scope]) {
-    for (const child of SOURCE_CHILDREN[scope]) {
-      Object.assign(result, extractParams(state, child.level, child.scope));
+  const stateRecord = state as unknown as Record<string, unknown>;
+  for (const key of getCascadeKeys(level, scope)) {
+    if (key in stateRecord) {
+      result[key] = stateRecord[key];
     }
   }
   return result;
+}
+
+/** Apply preset params into state, including source/state cascade children. */
+export function applyCascade(
+  state: SliderState,
+  presetData: Record<string, unknown>,
+  level: ParamLevel,
+  scope?: string,
+): SliderState {
+  const merged: Record<string, unknown> = { ...state };
+  for (const key of getCascadeKeys(level, scope)) {
+    if (key in presetData) {
+      merged[key] = presetData[key];
+    }
+  }
+  return merged as unknown as SliderState;
 }
 
 // ─── Version Delta Compression ──────────────────────────────────────────────

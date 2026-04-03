@@ -12,7 +12,7 @@ import type {
   PresetVersionMetadata,
 } from './types';
 import { getPresetStore } from './PresetStore';
-import { extractParams, applyParams, extractCascade, compressVersions } from './codec';
+import { extractParams, applyParams, extractCascade, applyCascade, compressVersions } from './codec';
 import { extractPresetVersionMetadata } from './presetUtils';
 import { buildPresetFamilies } from './catalog';
 import type { ParamLevel } from './ParamRegistry';
@@ -65,6 +65,12 @@ export interface UsePresetsOptions {
    * presets (e.g. granular scenes) that span multiple levels.
    */
   customExtract?: (state: SliderState) => Record<string, unknown>;
+  /**
+   * Custom apply function. When provided, overrides the default registry-based
+   * merge during load. Useful when a preset UI intentionally spans multiple
+   * ownership buckets.
+   */
+  customApply?: (state: SliderState, data: Record<string, unknown>) => SliderState;
 }
 
 /**
@@ -212,8 +218,13 @@ export function usePresets(type: PresetLevel, scope?: string, options?: UsePrese
   }, [paramLevel, scope, options]);
 
   const apply = useCallback((state: SliderState, data: Record<string, unknown>): SliderState => {
-    return applyParams(state, data, paramLevel, scope);
-  }, [paramLevel, scope]);
+    if (options?.customApply) {
+      return options.customApply(state, data);
+    }
+    return paramLevel >= 3
+      ? applyCascade(state, data, paramLevel, scope)
+      : applyParams(state, data, paramLevel, scope);
+  }, [paramLevel, scope, options]);
 
   const updateMetadata = useCallback(async (name: string, meta: Partial<PresetIdentityMetadata>) => {
     const entry = await store.load(type, name, storeScope);

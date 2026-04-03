@@ -310,7 +310,6 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   granularMacroChaos:      { level: 2, scope: 'granularKit' },
   granularDelayBSend:      { level: 2, scope: 'granularKit' },
   granularDelayReverbSend: { level: 2, scope: 'granularKit' },
-  delayBGranularLinked:    { level: 2, scope: 'granularKit' },
 
   // ═══════════════════════════════════════════════════════════════════════
   // L2: Earth Kit Preset
@@ -751,6 +750,7 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   waterLayerChannels:    { level: 1, scope: 'water' },
   waterHardDropRate:     { level: 1, scope: 'water' },
   waterHardDropLPF:      { level: 1, scope: 'water' },
+  waterHardDropTone:     { level: 1, scope: 'water' },
   waterWaterDropRate:    { level: 1, scope: 'water' },
   waterWaterDropLPF:     { level: 1, scope: 'water' },
   waterBubblingRate:     { level: 1, scope: 'water' },
@@ -968,6 +968,7 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   // L3: Delay Source (page-level modes)
   // ═══════════════════════════════════════════════════════════════════════
   granularSpaceMode:      { level: 3, scope: 'delay' },
+  delayBGranularLinked:   { level: 3, scope: 'delay' },
 
 };
 

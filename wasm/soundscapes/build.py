@@ -20,9 +20,20 @@ OUT = os.path.join(SCRIPT_DIR, "kessho_soundscapes.wasm")
 # Normalize path fully to avoid Emscripten cache invalidation from path differences
 EMSDK_ROOT = os.path.normpath(os.path.join(SCRIPT_DIR, "..", "..", "emsdk"))
 EMCC_PY = os.path.join(EMSDK_ROOT, "upstream", "emscripten", "emcc.py")
+python_bin = os.path.join(EMSDK_ROOT, "python")
+python_exec = sys.executable
+
+# Prefer the bundled emsdk Python so emcc does not inherit an older system
+# interpreter such as Xcode's Python 3.9 on macOS.
+if os.path.isdir(python_bin):
+    for d in os.listdir(python_bin):
+        candidate = os.path.join(python_bin, d, "bin", "python3")
+        if os.path.isfile(candidate):
+            python_exec = candidate
+            break
 
 if os.path.exists(EMCC_PY):
-    EMCC = [sys.executable, EMCC_PY]
+    EMCC = [python_exec, EMCC_PY]
     print(f"Using emcc.py: {EMCC_PY}")
 else:
     # Fallback to PATH
@@ -38,7 +49,6 @@ env["EMCC_SKIP_SANITY_CHECK"] = "1"
 # Add LLVM + node + emsdk python to PATH
 llvm_bin = os.path.normpath(os.path.join(EMSDK_ROOT, "upstream", "bin"))
 node_bin = os.path.join(EMSDK_ROOT, "node")
-python_bin = os.path.join(EMSDK_ROOT, "python")
 # Find actual python dir (version-named) so nested emcc invocations do not fall back
 # to an older system python.
 if os.path.isdir(python_bin):
