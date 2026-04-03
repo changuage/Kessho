@@ -19,12 +19,18 @@
 		A1000013 /* ReverbProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000013; };
 		A1000014 /* LeadSynth.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000014; };
 		A1000015 /* OceanSynth.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000015; };
+		A1000060 /* AudioRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000060; };
+		A1000061 /* DrumMorph.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000061; };
+		A1000062 /* DrumSynth.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000062; };
+		A1000063 /* OceanSamplePlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000063; };
+		A1000073 /* DrumPresetModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000073; };
 		
 		/* Harmony */
 		A1000020 /* Scales.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000020; };
 		A1000021 /* Harmony.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000021; };
 		A1000022 /* CircleOfFifths.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000022; };
 		A1000023 /* RNG.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000023; };
+		A1000064 /* EuclideanRhythm.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000064; };
 		
 		/* State */
 		A1000030 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000030; };
@@ -36,7 +42,18 @@
 		A1000041 /* CircleOfFifthsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000041; };
 		A1000042 /* SnowflakeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000042; };
 		A1000043 /* PresetListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000043; };
-		A1000044 /* SliderComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000044; };
+		A1000065 /* RecordingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000065; };
+		A1000066 /* SliderControlsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000066; };
+		
+		/* Services */
+		A1000067 /* AudioServiceNotifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000067; };
+		A1000068 /* AudioSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000068; };
+		A1000069 /* NowPlayingManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000069; };
+		
+		/* MIDI */
+		A1000070 /* MIDIModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000070; };
+		A1000071 /* MidiMapStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000071; };
+		A1000072 /* MIDIManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000072; };
 		
 		/* Presets */
 		A1000050 /* Presets in Resources */ = {isa = PBXBuildFile; fileRef = B1000050; };
@@ -57,12 +74,18 @@
 		B1000013 /* ReverbProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReverbProcessor.swift; sourceTree = "<group>"; };
 		B1000014 /* LeadSynth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeadSynth.swift; sourceTree = "<group>"; };
 		B1000015 /* OceanSynth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OceanSynth.swift; sourceTree = "<group>"; };
+		B1000060 /* AudioRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioRecorder.swift; sourceTree = "<group>"; };
+		B1000061 /* DrumMorph.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrumMorph.swift; sourceTree = "<group>"; };
+		B1000062 /* DrumSynth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrumSynth.swift; sourceTree = "<group>"; };
+		B1000063 /* OceanSamplePlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OceanSamplePlayer.swift; sourceTree = "<group>"; };
+		B1000073 /* DrumPresetModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrumPresetModels.swift; sourceTree = "<group>"; };
 		
 		/* Harmony */
 		B1000020 /* Scales.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Scales.swift; sourceTree = "<group>"; };
 		B1000021 /* Harmony.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Harmony.swift; sourceTree = "<group>"; };
 		B1000022 /* CircleOfFifths.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CircleOfFifths.swift; sourceTree = "<group>"; };
 		B1000023 /* RNG.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RNG.swift; sourceTree = "<group>"; };
+		B1000064 /* EuclideanRhythm.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EuclideanRhythm.swift; sourceTree = "<group>"; };
 		
 		/* State */
 		B1000030 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
@@ -74,7 +97,18 @@
 		B1000041 /* CircleOfFifthsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CircleOfFifthsView.swift; sourceTree = "<group>"; };
 		B1000042 /* SnowflakeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnowflakeView.swift; sourceTree = "<group>"; };
 		B1000043 /* PresetListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetListView.swift; sourceTree = "<group>"; };
-		B1000044 /* SliderComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SliderComponents.swift; sourceTree = "<group>"; };
+		B1000065 /* RecordingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingView.swift; sourceTree = "<group>"; };
+		B1000066 /* SliderControlsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SliderControlsView.swift; sourceTree = "<group>"; };
+		
+		/* Services */
+		B1000067 /* AudioServiceNotifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioServiceNotifications.swift; sourceTree = "<group>"; };
+		B1000068 /* AudioSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioSessionManager.swift; sourceTree = "<group>"; };
+		B1000069 /* NowPlayingManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingManager.swift; sourceTree = "<group>"; };
+		
+		/* MIDI */
+		B1000070 /* MIDIModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MIDIModels.swift; sourceTree = "<group>"; };
+		B1000071 /* MidiMapStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MidiMapStore.swift; sourceTree = "<group>"; };
+		B1000072 /* MIDIManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MIDIManager.swift; sourceTree = "<group>"; };
 		
 		/* Presets folder */
 		B1000050 /* Presets */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Presets; sourceTree = "<group>"; };
@@ -117,6 +151,8 @@
 				E1000010 /* Audio */,
 				E1000020 /* Harmony */,
 				E1000030 /* State */,
+				E1000050 /* Services */,
+				E1000060 /* MIDI */,
 				E1000040 /* Views */,
 				B1000050 /* Presets */,
 			);
@@ -132,6 +168,11 @@
 				B1000013 /* ReverbProcessor.swift */,
 				B1000014 /* LeadSynth.swift */,
 				B1000015 /* OceanSynth.swift */,
+				B1000060 /* AudioRecorder.swift */,
+				B1000073 /* DrumPresetModels.swift */,
+				B1000061 /* DrumMorph.swift */,
+				B1000062 /* DrumSynth.swift */,
+				B1000063 /* OceanSamplePlayer.swift */,
 			);
 			path = Audio;
 			sourceTree = "<group>";
@@ -143,6 +184,7 @@
 				B1000021 /* Harmony.swift */,
 				B1000022 /* CircleOfFifths.swift */,
 				B1000023 /* RNG.swift */,
+				B1000064 /* EuclideanRhythm.swift */,
 			);
 			path = Harmony;
 			sourceTree = "<group>";
@@ -157,6 +199,26 @@
 			path = State;
 			sourceTree = "<group>";
 		};
+		E1000050 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				B1000067 /* AudioServiceNotifications.swift */,
+				B1000068 /* AudioSessionManager.swift */,
+				B1000069 /* NowPlayingManager.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		E1000060 /* MIDI */ = {
+			isa = PBXGroup;
+			children = (
+				B1000072 /* MIDIManager.swift */,
+				B1000070 /* MIDIModels.swift */,
+				B1000071 /* MidiMapStore.swift */,
+			);
+			path = MIDI;
+			sourceTree = "<group>";
+		};
 		E1000040 /* Views */ = {
 			isa = PBXGroup;
 			children = (
@@ -164,7 +226,8 @@
 				B1000041 /* CircleOfFifthsView.swift */,
 				B1000042 /* SnowflakeView.swift */,
 				B1000043 /* PresetListView.swift */,
-				B1000044 /* SliderComponents.swift */,
+				B1000065 /* RecordingView.swift */,
+				B1000066 /* SliderControlsView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -247,10 +310,16 @@
 				A1000013 /* ReverbProcessor.swift in Sources */,
 				A1000014 /* LeadSynth.swift in Sources */,
 				A1000015 /* OceanSynth.swift in Sources */,
+				A1000060 /* AudioRecorder.swift in Sources */,
+				A1000073 /* DrumPresetModels.swift in Sources */,
+				A1000061 /* DrumMorph.swift in Sources */,
+				A1000062 /* DrumSynth.swift in Sources */,
+				A1000063 /* OceanSamplePlayer.swift in Sources */,
 				A1000020 /* Scales.swift in Sources */,
 				A1000021 /* Harmony.swift in Sources */,
 				A1000022 /* CircleOfFifths.swift in Sources */,
 				A1000023 /* RNG.swift in Sources */,
+				A1000064 /* EuclideanRhythm.swift in Sources */,
 				A1000030 /* AppState.swift in Sources */,
 				A1000031 /* PresetManager.swift in Sources */,
 				A1000032 /* SliderState.swift in Sources */,
@@ -258,7 +327,14 @@
 				A1000041 /* CircleOfFifthsView.swift in Sources */,
 				A1000042 /* SnowflakeView.swift in Sources */,
 				A1000043 /* PresetListView.swift in Sources */,
-				A1000044 /* SliderComponents.swift in Sources */,
+				A1000065 /* RecordingView.swift in Sources */,
+				A1000066 /* SliderControlsView.swift in Sources */,
+				A1000067 /* AudioServiceNotifications.swift in Sources */,
+				A1000068 /* AudioSessionManager.swift in Sources */,
+				A1000069 /* NowPlayingManager.swift in Sources */,
+				A1000070 /* MIDIModels.swift in Sources */,
+				A1000071 /* MidiMapStore.swift in Sources */,
+				A1000072 /* MIDIManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

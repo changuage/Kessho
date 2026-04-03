@@ -8,10 +8,10 @@ struct PresetListView: View {
     @State private var showingCompatibilityWarning = false
     @State private var newPresetName = ""
     
-    /// Check if current reverb type is compatible with web app
-    private var isReverbTypeWebAppCompatible: Bool {
+    /// Check whether the current preset uses a known native-only reverb mode.
+    private var usesNativeOnlyReverbPreset: Bool {
         let webAppCompatibleTypes = ["plate", "hall", "cathedral", "darkHall"]
-        return webAppCompatibleTypes.contains(appState.state.reverbType)
+        return !webAppCompatibleTypes.contains(appState.state.reverbType)
     }
     
     var body: some View {
@@ -56,11 +56,10 @@ struct PresetListView: View {
                 
                 ToolbarItem(placement: .primaryAction) {
                     Button {
-                        // Check compatibility before showing save dialog
-                        if isReverbTypeWebAppCompatible {
-                            showingSaveDialog = true
-                        } else {
+                        if usesNativeOnlyReverbPreset {
                             showingCompatibilityWarning = true
+                        } else {
+                            showingSaveDialog = true
                         }
                     } label: {
                         Image(systemName: "plus")
@@ -79,28 +78,25 @@ struct PresetListView: View {
             } message: {
                 Text("Enter a name for your preset")
             }
-            .alert("Compatibility Warning", isPresented: $showingCompatibilityWarning) {
+            .alert("Parity Warning", isPresented: $showingCompatibilityWarning) {
                 Button("Cancel", role: .cancel) { }
-                Button("Save Anyway") {
+                Button("Save Native Preset") {
                     showingSaveDialog = true
                 }
-                Button("Fix & Save") {
-                    // Change to a compatible reverb type
+                Button("Normalize Reverb & Save") {
                     appState.state.reverbType = "cathedral"
                     showingSaveDialog = true
                 }
             } message: {
-                Text("This preset uses an iOS-only reverb type (\(appState.state.reverbType)) that won't work on the web app.\n\n• Save Anyway: Keep iOS-only settings\n• Fix & Save: Switch to Cathedral reverb")
+                Text("This native iOS prototype does not guarantee web parity. The current preset also uses a native-only reverb type (\(appState.state.reverbType)).\n\nSave Native Preset keeps the current sound on iOS. Normalize Reverb & Save switches to Cathedral before saving.")
             }
         }
     }
     
     private var bundledPresets: [SavedPreset] {
-        appState.savedPresets.filter { preset in
-            // Factory presets don't have user-generated names
-            ["Bright_Bells", "Dark_Textures", "Ethereal_Ambient", 
-             "Gamelantest", "StringWaves", "ZoneOut1",
-             "WaveformFlow", "CosmicStrings", "CrystalCaves"].contains(preset.name.replacingOccurrences(of: " ", with: "_"))
+        let bundledNames = Set(PresetManager.bundledPresetNames)
+        return appState.savedPresets.filter { preset in
+            bundledNames.contains(preset.name.replacingOccurrences(of: " ", with: "_"))
         }
     }
     
@@ -213,7 +209,7 @@ struct MorphControl: View {
                 }
                 .pickerStyle(.segmented)
                 .frame(width: 180)
-                .onChange(of: appState.morphMode) { newMode in
+                .onChange(of: appState.morphMode) { _, newMode in
                     if newMode == "auto" && appState.morphPresetA != nil && appState.morphPresetB != nil {
                         appState.startAutoMorph()
                     } else if newMode == "manual" {

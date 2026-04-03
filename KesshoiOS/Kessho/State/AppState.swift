@@ -48,6 +48,8 @@ class AppState: ObservableObject {
     @Published var recordingEnabledStems: Set<RecordingStem> = []
     @Published var showRecordingSettings: Bool = false
     @Published var lastRecordedFiles: [URL] = []
+    @Published var lastMIDIMessage: MIDIMessage?
+    @Published var midiErrorMessage: String?
     
     // Auto-morph timer
     private var autoMorphTimer: Timer?
@@ -71,23 +73,92 @@ class AppState: ObservableObject {
     private var morphManualOverrides: [String: (value: Double, morphPosition: Double)] = [:]
     private var morphDirection: String = "toB"  // "toA" or "toB"
     private var lastMorphEndpoint: Double = 0  // 0 or 100
+    private var shouldResumeAfterInterruption: Bool = false
     
     // MARK: - Audio Engine
     let audioEngine = AudioEngine()
+    let audioSessionManager = AudioSessionManager.shared
+    let nowPlayingManager = NowPlayingManager.shared
     
     // MARK: - Audio Recorder
     let audioRecorder = AudioRecorder()
     
     // MARK: - Preset Manager
     let presetManager = PresetManager()
+
+    // MARK: - MIDI
+    let midiManager = MIDIManager(autoStart: false)
+    let midiMapStore = MidiMapStore()
     
     private var cancellables = Set<AnyCancellable>()
     
     init() {
+        setupServices()
         setupBindings()
         setupRecorder()
         loadPresets()
+        setupMIDI()
         startRandomWalkTimer()
+    }
+
+    private func setupServices() {
+        do {
+            try audioSessionManager.configureForPlayback(
+                preferredSampleRate: 44_100,
+                preferredIOBufferDuration: 256.0 / 44_100.0
+            )
+        } catch {
+            print("AppState: failed to configure audio session: \(error)")
+        }
+
+        nowPlayingManager.configureRemoteCommands(
+            onPlay: { [weak self] in
+                Task { @MainActor in
+                    self?.start()
+                }
+            },
+            onPause: { [weak self] in
+                Task { @MainActor in
+                    self?.stop()
+                }
+            },
+            onTogglePlayPause: { [weak self] in
+                Task { @MainActor in
+                    self?.togglePlayback()
+                }
+            }
+        )
+
+        NotificationCenter.default.publisher(for: AudioServiceNotification.interruptionBegan)
+            .sink { [weak self] _ in
+                guard let self else { return }
+                shouldResumeAfterInterruption = isPlaying
+                if isPlaying {
+                    audioEngine.stop()
+                    isPlaying = false
+                    nowPlayingManager.setPlaybackState(isPlaying: false)
+                }
+            }
+            .store(in: &cancellables)
+
+        NotificationCenter.default.publisher(for: AudioServiceNotification.interruptionEnded)
+            .sink { [weak self] _ in
+                guard let self else { return }
+                if shouldResumeAfterInterruption {
+                    shouldResumeAfterInterruption = false
+                    start()
+                }
+            }
+            .store(in: &cancellables)
+
+        NotificationCenter.default.publisher(for: AudioServiceNotification.routeChanged)
+            .sink { [weak self] _ in
+                guard let self else { return }
+                if isPlaying {
+                    updateNowPlayingInfo()
+                }
+            }
+            .store(in: &cancellables)
     }
     
     private func setupBindings() {
@@ -110,8 +181,74 @@ class AppState: ObservableObject {
                     self?.currentChordDegrees = harmony.chordDegrees
                     self?.currentScaleName = harmony.scaleName
                 }
+                if self?.isPlaying == true {
+                    self?.updateNowPlayingInfo()
+                }
             }
         }
+    }
+
+    private func updateNowPlayingInfo() {
+        let title = currentScaleName.isEmpty ? "Generative Ambient" : currentScaleName
+        let album = currentBucket.isEmpty ? "Kessho" : currentBucket
+        nowPlayingManager.updateNowPlayingInfo(
+            title: title,
+            artist: "Kessho",
+            album: album,
+            isLiveStream: true,
+            isPlaying: isPlaying
+        )
+    }
+
+    private func setupMIDI() {
+        midiManager.$lastErrorMessage
+            .receive(on: RunLoop.main)
+            .sink { [weak self] message in
+                self?.midiErrorMessage = message
+            }
+            .store(in: &cancellables)
+
+        midiManager.events
+            .receive(on: RunLoop.main)
+            .sink { [weak self] message in
+                self?.lastMIDIMessage = message
+                self?.handleMIDIMessage(message)
+            }
+            .store(in: &cancellables)
+
+        midiManager.$connectedInputIDs
+            .dropFirst()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] connectedIDs in
+                guard let self else { return }
+                midiMapStore.setConnectedInputIDs(Array(connectedIDs))
+                midiMapStore.save()
+            }
+            .store(in: &cancellables)
+
+        do {
+            try midiManager.start()
+            let savedInputIDs = Set(midiMapStore.profile.connectedInputIDs)
+            if !savedInputIDs.isEmpty {
+                midiManager.setConnectedInputs(savedInputIDs)
+            } else {
+                midiManager.refreshAvailableInputs()
+            }
+        } catch {
+            midiErrorMessage = error.localizedDescription
+        }
+    }
+
+    var latestMIDISummary: String {
+        guard let message = lastMIDIMessage else {
+            return midiManager.connectedInputIDs.isEmpty ? "No MIDI inputs connected" : "Listening for MIDI input"
+        }
+
+        let endpointName = message.endpointName ?? "MIDI Input"
+        let channelDescription = message.channel.map { "ch \($0 + 1)" } ?? "system"
+        let data1 = message.data1.map(String.init) ?? "-"
+        let data2 = message.data2.map(String.init) ?? "-"
+        return "\(endpointName): \(message.kind.rawValue) \(channelDescription) \(data1)/\(data2)"
     }
     
     // MARK: - Random Walk Timer
@@ -455,7 +592,7 @@ class AppState: ObservableObject {
         case "reverbLevel": state.reverbLevel = value
         case "randomness": state.randomness = value
         case "tension": state.tension = value
-        case "chordRate": state.chordRate = value
+        case "chordRate": state.chordRate = Int(value.rounded())
         case "voicingSpread": state.voicingSpread = value
         case "waveSpread": state.waveSpread = value
         case "detune": state.detune = value
@@ -465,7 +602,9 @@ class AppState: ObservableObject {
         case "synthSustain": state.synthSustain = value
         case "synthRelease": state.synthRelease = value
         case "hardness": state.hardness = value
-        case "brightness": state.brightness = value
+        case "brightness", "oscBrightness":
+            state.brightness = value
+            state.oscBrightness = Int(value.rounded())
         case "filterCutoffMin": state.filterCutoffMin = value
         case "filterCutoffMax": state.filterCutoffMax = value
         case "filterModSpeed": state.filterModSpeed = value
@@ -473,25 +612,25 @@ class AppState: ObservableObject {
         case "filterQ": state.filterQ = value
         case "warmth": state.warmth = value
         case "presence": state.presence = value
-        case "air": state.air = value
+        case "air", "airNoise": state.airNoise = value
         case "reverbDecay": state.reverbDecay = value
         case "reverbSize": state.reverbSize = value
         case "reverbDiffusion": state.reverbDiffusion = value
         case "reverbModulation": state.reverbModulation = value
-        case "reverbPredelay": state.reverbPredelay = value
-        case "reverbDamping": state.reverbDamping = value
-        case "reverbWidth": state.reverbWidth = value
-        case "granularProbability": state.granularProbability = value
-        case "granularSizeMin": state.granularSizeMin = value
-        case "granularSizeMax": state.granularSizeMax = value
-        case "granularDensity": state.granularDensity = value
-        case "granularSpray": state.granularSpray = value
-        case "granularJitter": state.granularJitter = value
-        case "granularPitchSpread": state.granularPitchSpread = value
-        case "granularStereoSpread": state.granularStereoSpread = value
-        case "granularFeedback": state.granularFeedback = value
-        case "granularWetHPF": state.granularWetHPF = value
-        case "granularWetLPF": state.granularWetLPF = value
+        case "reverbPredelay", "predelay": state.predelay = value
+        case "reverbDamping", "damping": state.damping = value
+        case "reverbWidth", "width": state.width = value
+        case "granularProbability", "grainProbability": state.grainProbability = value
+        case "granularSizeMin", "grainSizeMin": state.grainSizeMin = value
+        case "granularSizeMax", "grainSizeMax": state.grainSizeMax = value
+        case "granularDensity", "density": state.density = value
+        case "granularSpray", "spray": state.spray = value
+        case "granularJitter", "jitter": state.jitter = value
+        case "granularPitchSpread", "pitchSpread": state.pitchSpread = value
+        case "granularStereoSpread", "stereoSpread": state.stereoSpread = value
+        case "granularFeedback", "feedback": state.feedback = value
+        case "granularWetHPF", "wetHPF": state.wetHPF = value
+        case "granularWetLPF", "wetLPF": state.wetLPF = value
         case "leadLevel": state.leadLevel = value
         case "leadAttack": state.leadAttack = value
         case "leadDecay": state.leadDecay = value
@@ -502,11 +641,20 @@ class AppState: ObservableObject {
         case "leadOctaveRange": state.leadOctaveRange = Int(value)
         case "leadTimbreMin": state.leadTimbreMin = value
         case "leadTimbreMax": state.leadTimbreMax = value
-        case "leadDelayTime": state.leadDelayTime = value
-        case "leadDelayFeedback": state.leadDelayFeedback = value
-        case "leadDelayMix": state.leadDelayMix = value
+        case "leadDelayTime", "leadDelayTimeMin", "leadDelayTimeMax":
+            state.leadDelayTime = value
+            state.leadDelayTimeMin = value
+            state.leadDelayTimeMax = value
+        case "leadDelayFeedback", "leadDelayFeedbackMin", "leadDelayFeedbackMax":
+            state.leadDelayFeedback = value
+            state.leadDelayFeedbackMin = value
+            state.leadDelayFeedbackMax = value
+        case "leadDelayMix", "leadDelayMixMin", "leadDelayMixMax":
+            state.leadDelayMix = value
+            state.leadDelayMixMin = value
+            state.leadDelayMixMax = value
         case "oceanSampleLevel": state.oceanSampleLevel = value
-        case "oceanSynthLevel": state.oceanSynthLevel = value
+        case "oceanSynthLevel", "oceanWaveSynthLevel": state.oceanWaveSynthLevel = value
         case "oceanFilterCutoff": state.oceanFilterCutoff = value
         case "oceanFilterResonance": state.oceanFilterResonance = value
         case "oceanDurationMin": state.oceanDurationMin = value
@@ -532,17 +680,174 @@ class AppState: ObservableObject {
     private func loadPresets() {
         savedPresets = presetManager.loadBundledPresets()
     }
+
+    func refreshMIDIInputs() {
+        do {
+            if !midiManager.isStarted {
+                try midiManager.start()
+            }
+            midiManager.refreshAvailableInputs()
+        } catch {
+            midiErrorMessage = error.localizedDescription
+        }
+    }
+
+    func setMIDIInputConnected(_ uniqueID: Int32, isConnected: Bool) {
+        do {
+            if !midiManager.isStarted {
+                try midiManager.start()
+            }
+
+            if isConnected {
+                try midiManager.connectInput(uniqueID: uniqueID)
+            } else {
+                midiManager.disconnectInput(uniqueID: uniqueID)
+            }
+        } catch {
+            midiErrorMessage = error.localizedDescription
+        }
+    }
+
+    private func handleMIDIMessage(_ message: MIDIMessage) {
+        guard let binding = midiMapStore.binding(matching: message) else { return }
+
+        switch binding.target.kind {
+        case .parameter:
+            guard let normalizedValue = normalizedMIDIValue(for: message) else { return }
+            applyMappedParameter(binding, normalizedValue: normalizedValue)
+
+        case .transport, .action, .preset:
+            guard shouldTriggerMIDIAction(for: message) else { return }
+            applyMIDITrigger(binding.target)
+
+        case .macro, .unknown:
+            break
+        }
+    }
+
+    private func applyMappedParameter(_ binding: MIDIControlBinding, normalizedValue: Double) {
+        let mappedValue = curveMappedValue(normalizedValue, binding: binding)
+        var updatedState = state
+        updateSliderStateValue(&updatedState, key: binding.target.identifier, value: mappedValue)
+        state = updatedState
+    }
+
+    private func applyMIDITrigger(_ target: MIDIMapTarget) {
+        switch target.kind {
+        case .transport:
+            switch target.identifier {
+            case "play":
+                start()
+            case "pause", "stop":
+                stop()
+            case "toggle", "togglePlayback", "togglePlayPause":
+                togglePlayback()
+            default:
+                break
+            }
+
+        case .action:
+            switch target.identifier {
+            case "toggleAutoMorph":
+                toggleAutoMorph()
+            case "toggleRecording":
+                toggleRecording()
+            case "armRecording":
+                armRecording()
+            case "disarmRecording":
+                disarmRecording()
+            default:
+                break
+            }
+
+        case .preset:
+            guard let preset = savedPresets.first(where: { $0.name == target.identifier || $0.id == target.identifier }) else {
+                return
+            }
+            loadPreset(preset)
+
+        case .parameter, .macro, .unknown:
+            break
+        }
+    }
+
+    private func normalizedMIDIValue(for message: MIDIMessage) -> Double? {
+        switch message.kind {
+        case .controlChange, .noteOn, .noteOff:
+            guard let value = message.data2 ?? message.data1 else { return nil }
+            return Double(value) / 127.0
+
+        case .programChange, .channelPressure, .polyPressure:
+            guard let value = message.data1 else { return nil }
+            return Double(value) / 127.0
+
+        case .pitchBend:
+            guard let lsb = message.data1, let msb = message.data2 else { return nil }
+            let rawValue = (Int(msb) << 7) | Int(lsb)
+            return Double(rawValue) / 16383.0
+
+        case .systemExclusive, .unknown:
+            return nil
+        }
+    }
+
+    private func curveMappedValue(_ normalizedValue: Double, binding: MIDIControlBinding) -> Double {
+        let clampedValue = min(max(normalizedValue, 0), 1)
+        let curvedValue: Double
+
+        switch binding.curve {
+        case .linear:
+            curvedValue = clampedValue
+        case .exponential:
+            curvedValue = pow(clampedValue, 2)
+        case .logarithmic:
+            curvedValue = log10(1 + (9 * clampedValue))
+        case .stepped:
+            curvedValue = (clampedValue * 7).rounded() / 7
+        }
+
+        return binding.minimumValue + ((binding.maximumValue - binding.minimumValue) * curvedValue)
+    }
+
+    private func shouldTriggerMIDIAction(for message: MIDIMessage) -> Bool {
+        switch message.kind {
+        case .noteOn:
+            return (message.data2 ?? 0) > 0
+        case .controlChange, .channelPressure, .polyPressure:
+            return (message.data2 ?? message.data1 ?? 0) >= 64
+        case .programChange:
+            return true
+        case .noteOff, .pitchBend, .systemExclusive, .unknown:
+            return false
+        }
+    }
     
     // MARK: - Playback Control
     
     func start() {
+        do {
+            if !audioSessionManager.isConfigured {
+                try audioSessionManager.configureForPlayback(
+                    preferredSampleRate: 44_100,
+                    preferredIOBufferDuration: 256.0 / 44_100.0
+                )
+            }
+            if !audioSessionManager.isActive {
+                try audioSessionManager.activate()
+            }
+        } catch {
+            print("AppState: failed to activate audio session: \(error)")
+        }
         audioEngine.start(with: state)
         isPlaying = true
+        updateNowPlayingInfo()
     }
     
     func stop() {
         audioEngine.stop()
         isPlaying = false
+        shouldResumeAfterInterruption = false
+        nowPlayingManager.setPlaybackState(isPlaying: false)
     }
     
     func togglePlayback() {
@@ -1167,7 +1472,9 @@ class AppState: ObservableObject {
         // Start timer - tick every phrase (PHRASE_LENGTH seconds)
         autoMorphTimer?.invalidate()
         autoMorphTimer = Timer.scheduledTimer(withTimeInterval: PHRASE_LENGTH, repeats: true) { [weak self] _ in
-            self?.tickAutoMorphPhrase()
+            Task { @MainActor in
+                self?.tickAutoMorphPhrase()
+            }
         }
     }
     

@@ -1,7 +1,8 @@
 import Foundation
 
-/// SliderState - Cross-platform preset format
-/// Must match the web app's SliderState interface exactly for preset compatibility
+/// SliderState for the current native iOS prototype.
+/// This model is intentionally kept separate from the web app's evolving state
+/// until a dedicated migration/parity layer is introduced.
 struct SliderState: Codable, Equatable {
     // Master
     var masterVolume: Double = 0.7
@@ -442,7 +443,7 @@ struct DualRange: Codable, Equatable {
     }
 }
 
-/// Saved preset format - matches web app exactly
+/// Saved preset format for the current iOS prototype.
 struct SavedPreset: Codable, Identifiable {
     var id: String { name }
     let name: String

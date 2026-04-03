@@ -1291,8 +1291,6 @@ struct SliderControlsView: View {
                             icon: "arrow.down.right",
                             logarithmic: true
                         )
-                            icon: "arrow.down.right"
-                        )
                         
                         ParameterSlider(
                             label: "HP Filter",
@@ -2398,7 +2396,7 @@ struct EuclideanPatternView: View {
     var color: Color = .cyan
     
     var pattern: [Bool] {
-        generateEuclideanPattern(steps: steps, hits: hits, rotation: rotation)
+        Self.generatePattern(steps: steps, hits: hits, rotation: rotation)
     }
     
     var body: some View {
@@ -2419,7 +2417,7 @@ struct EuclideanPatternView: View {
         }
     }
     
-    func generateEuclideanPattern(steps: Int, hits: Int, rotation: Int) -> [Bool] {
+    static func generatePattern(steps: Int, hits: Int, rotation: Int) -> [Bool] {
         guard hits > 0 && hits <= steps else {
             return Array(repeating: false, count: steps)
         }
@@ -2822,246 +2820,252 @@ struct DrumEuclidLaneView: View {
     
     // Check if velocity is in dual range mode
     private var isVelocityDual: Bool { velocityMin != velocityMax }
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // Lane header with colored toggle button
-            HStack(spacing: 8) {
-                Button(action: { enabled.toggle() }) {
-                    Text("\(laneNumber)")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(enabled ? .white : Color.white.opacity(0.5))
-                        .frame(width: 24, height: 24)
-                        .background(enabled ? laneColor : Color.white.opacity(0.15))
-                        .clipShape(Circle())
+
+    private var selectedPresetLabel: String {
+        if preset == "custom" {
+            return "Custom"
+        }
+        return presetGroups
+            .flatMap(\.presets)
+            .first(where: { $0.id == preset })?
+            .label ?? preset
+    }
+
+    @ViewBuilder
+    private var laneHeader: some View {
+        HStack(spacing: 8) {
+            Button(action: { enabled.toggle() }) {
+                Text("\(laneNumber)")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(enabled ? .white : Color.white.opacity(0.5))
+                    .frame(width: 24, height: 24)
+                    .background(enabled ? laneColor : Color.white.opacity(0.15))
+                    .clipShape(Circle())
+            }
+
+            Text("Lane \(laneNumber)")
+                .font(.subheadline)
+                .fontWeight(enabled ? .bold : .regular)
+                .foregroundColor(enabled ? laneColor : Color.white.opacity(0.5))
+
+            if !enabled {
+                Text("(off)")
+                    .font(.caption)
+                    .foregroundColor(.white.opacity(0.4))
+            }
+
+            Spacer()
+
+            if enabled {
+                Text("\(activeVoicesString) • \(patternHits)/\(patternSteps)")
+                    .font(.caption2)
+                    .foregroundColor(.white.opacity(0.6))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var enabledContent: some View {
+        EuclideanPatternView(steps: patternSteps, hits: patternHits, rotation: patternRotation, color: laneColor)
+            .frame(height: 28)
+
+        Menu {
+            ForEach(presetGroups, id: \.name) { group in
+                Section(group.name) {
+                    ForEach(group.presets, id: \.id) { presetOption in
+                        Button(presetOption.label) { preset = presetOption.id }
+                    }
                 }
-                
-                Text("Lane \(laneNumber)")
-                    .font(.subheadline)
-                    .fontWeight(enabled ? .bold : .regular)
-                    .foregroundColor(enabled ? laneColor : Color.white.opacity(0.5))
-                
-                if !enabled {
-                    Text("(off)")
-                        .font(.caption)
-                        .foregroundColor(.white.opacity(0.4))
-                }
-                
+            }
+            Divider()
+            Button("Custom") { preset = "custom" }
+        } label: {
+            HStack {
+                Text(selectedPresetLabel)
+                    .font(.caption)
+                    .foregroundColor(.white)
                 Spacer()
-                
-                if enabled {
-                    Text("\(activeVoicesString) • \(patternHits)/\(patternSteps)")
+                Image(systemName: "chevron.down")
+                    .font(.caption2)
+                    .foregroundColor(laneColor)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Color.black.opacity(0.4))
+            .cornerRadius(6)
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(laneColor.opacity(0.4), lineWidth: 1)
+            )
+        }
+
+        HStack(spacing: 4) {
+            ForEach(voiceData, id: \.id) { voice in
+                let isOn = voiceBinding(for: voice.id)
+                Button(action: { isOn.wrappedValue.toggle() }) {
+                    Text(voice.icon)
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(isOn.wrappedValue ? laneColor : Color.white.opacity(0.4))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 32)
+                        .background(isOn.wrappedValue ? laneColor.opacity(0.25) : Color.black.opacity(0.3))
+                        .cornerRadius(4)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 4)
+                                .stroke(isOn.wrappedValue ? laneColor : Color.white.opacity(0.2), lineWidth: isOn.wrappedValue ? 2 : 1)
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+
+        if preset == "custom" {
+            HStack(spacing: 16) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Steps: \(steps)")
+                        .font(.caption2)
+                        .foregroundColor(.white.opacity(0.6))
+                    Slider(value: Binding(
+                        get: { Double(steps) },
+                        set: { steps = Int($0) }
+                    ), in: 2...32, step: 1)
+                    .tint(laneColor)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Hits: \(hits)")
+                        .font(.caption2)
+                        .foregroundColor(.white.opacity(0.6))
+                    Slider(value: Binding(
+                        get: { Double(hits) },
+                        set: { hits = min(Int($0), steps) }
+                    ), in: 1...Double(steps), step: 1)
+                    .tint(laneColor)
+                }
+            }
+        }
+
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Probability \(Int(probability * 100))%")
+                    .font(.caption2)
+                    .foregroundColor(.white.opacity(0.6))
+                Slider(value: $probability, in: 0...1)
+                    .tint(.orange)
+            }
+            .frame(maxWidth: .infinity)
+
+            VStack(spacing: 2) {
+                Text("Rotate: \(rotation)")
+                    .font(.caption2)
+                    .foregroundColor(.white.opacity(0.6))
+                HStack(spacing: 4) {
+                    Button("←") {
+                        rotation = (rotation + 1) % max(1, patternSteps)
+                    }
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(laneColor)
+                    .frame(width: 32, height: 24)
+                    .background(laneColor.opacity(0.2))
+                    .cornerRadius(4)
+                    .overlay(RoundedRectangle(cornerRadius: 4).stroke(laneColor.opacity(0.5), lineWidth: 1))
+
+                    Button("→") {
+                        rotation = (rotation - 1 + patternSteps) % max(1, patternSteps)
+                    }
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(laneColor)
+                    .frame(width: 32, height: 24)
+                    .background(laneColor.opacity(0.2))
+                    .cornerRadius(4)
+                    .overlay(RoundedRectangle(cornerRadius: 4).stroke(laneColor.opacity(0.5), lineWidth: 1))
+                }
+            }
+            .frame(width: 80)
+        }
+
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("Level")
+                    .font(.caption2)
+                    .foregroundColor(.white.opacity(0.6))
+                if isVelocityDual {
+                    Text("\(Int(velocityMin * 100))–\(Int(velocityMax * 100))%")
+                        .font(.caption2)
+                        .foregroundColor(laneColor)
+                    Text("⟷ range")
+                        .font(.system(size: 9))
+                        .foregroundColor(laneColor)
+                } else {
+                    Text("\(Int(velocityMin * 100))%")
                         .font(.caption2)
                         .foregroundColor(.white.opacity(0.6))
                 }
+                Spacer()
+                Text("tap for range")
+                    .font(.system(size: 9))
+                    .foregroundColor(.white.opacity(0.3))
             }
-            
+
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(Color.white.opacity(0.1))
+                        .frame(height: 6)
+
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(LinearGradient(
+                            colors: [laneColor.opacity(0.6), laneColor],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        ))
+                        .frame(width: CGFloat(velocityMax - velocityMin) * geo.size.width, height: 6)
+                        .offset(x: CGFloat(velocityMin) * geo.size.width)
+                }
+            }
+            .frame(height: 6)
+            .onTapGesture {
+                if isVelocityDual {
+                    let mid = (velocityMin + velocityMax) / 2
+                    velocityMin = mid
+                    velocityMax = mid
+                } else {
+                    velocityMin = max(0, velocityMin - 0.2)
+                    velocityMax = min(1, velocityMax + 0.2)
+                }
+            }
+
+            HStack(spacing: 8) {
+                VStack {
+                    Text("Min")
+                        .font(.system(size: 9))
+                        .foregroundColor(.white.opacity(0.4))
+                    Slider(value: $velocityMin, in: 0...1)
+                        .tint(laneColor.opacity(0.6))
+                        .onChange(of: velocityMin) { _, newVal in
+                            if newVal > velocityMax { velocityMax = newVal }
+                        }
+                }
+
+                VStack {
+                    Text("Max")
+                        .font(.system(size: 9))
+                        .foregroundColor(.white.opacity(0.4))
+                    Slider(value: $velocityMax, in: 0...1)
+                        .tint(laneColor)
+                        .onChange(of: velocityMax) { _, newVal in
+                            if newVal < velocityMin { velocityMin = newVal }
+                        }
+                }
+            }
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            laneHeader
             if enabled {
-                // Pattern visualization with lane color
-                EuclideanPatternView(pattern: pattern, color: laneColor)
-                    .frame(height: 28)
-                
-                // Preset picker with grouped options
-                Menu {
-                    ForEach(presetGroups, id: \.name) { group in
-                        Section(group.name) {
-                            ForEach(group.presets, id: \.id) { p in
-                                Button(p.label) { preset = p.id }
-                            }
-                        }
-                    }
-                    Divider()
-                    Button("Custom") { preset = "custom" }
-                } label: {
-                    HStack {
-                        Text(preset == "custom" ? "Custom" : 
-                             presetGroups.flatMap { $0.presets }.first { $0.id == preset }?.label ?? preset)
-                            .font(.caption)
-                            .foregroundColor(.white)
-                        Spacer()
-                        Image(systemName: "chevron.down")
-                            .font(.caption2)
-                            .foregroundColor(laneColor)
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(Color.black.opacity(0.4))
-                    .cornerRadius(6)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 6)
-                            .stroke(laneColor.opacity(0.4), lineWidth: 1)
-                    )
-                }
-                
-                // Voice toggle buttons with icons
-                HStack(spacing: 4) {
-                    ForEach(voiceData, id: \.id) { voice in
-                        let isOn = voiceBinding(for: voice.id)
-                        Button(action: { isOn.wrappedValue.toggle() }) {
-                            Text(voice.icon)
-                                .font(.system(size: 16, weight: .bold))
-                                .foregroundColor(isOn.wrappedValue ? laneColor : Color.white.opacity(0.4))
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 32)
-                                .background(isOn.wrappedValue ? laneColor.opacity(0.25) : Color.black.opacity(0.3))
-                                .cornerRadius(4)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .stroke(isOn.wrappedValue ? laneColor : Color.white.opacity(0.2), lineWidth: isOn.wrappedValue ? 2 : 1)
-                                )
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                
-                // Custom mode: Steps & Hits
-                if preset == "custom" {
-                    HStack(spacing: 16) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Steps: \(steps)")
-                                .font(.caption2)
-                                .foregroundColor(.white.opacity(0.6))
-                            Slider(value: Binding(
-                                get: { Double(steps) },
-                                set: { steps = Int($0) }
-                            ), in: 2...32, step: 1)
-                            .tint(laneColor)
-                        }
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Hits: \(hits)")
-                                .font(.caption2)
-                                .foregroundColor(.white.opacity(0.6))
-                            Slider(value: Binding(
-                                get: { Double(hits) },
-                                set: { hits = min(Int($0), steps) }
-                            ), in: 1...Double(steps), step: 1)
-                            .tint(laneColor)
-                        }
-                    }
-                }
-                
-                // Probability and Rotation row
-                HStack(spacing: 12) {
-                    // Probability slider
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Probability \(Int(probability * 100))%")
-                            .font(.caption2)
-                            .foregroundColor(.white.opacity(0.6))
-                        Slider(value: $probability, in: 0...1)
-                            .tint(.orange)
-                    }
-                    .frame(maxWidth: .infinity)
-                    
-                    // Rotation with arrow buttons
-                    VStack(spacing: 2) {
-                        Text("Rotate: \(rotation)")
-                            .font(.caption2)
-                            .foregroundColor(.white.opacity(0.6))
-                        HStack(spacing: 4) {
-                            Button("←") {
-                                rotation = (rotation + 1) % max(1, patternSteps)
-                            }
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundColor(laneColor)
-                            .frame(width: 32, height: 24)
-                            .background(laneColor.opacity(0.2))
-                            .cornerRadius(4)
-                            .overlay(RoundedRectangle(cornerRadius: 4).stroke(laneColor.opacity(0.5), lineWidth: 1))
-                            
-                            Button("→") {
-                                rotation = (rotation - 1 + patternSteps) % max(1, patternSteps)
-                            }
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundColor(laneColor)
-                            .frame(width: 32, height: 24)
-                            .background(laneColor.opacity(0.2))
-                            .cornerRadius(4)
-                            .overlay(RoundedRectangle(cornerRadius: 4).stroke(laneColor.opacity(0.5), lineWidth: 1))
-                        }
-                    }
-                    .frame(width: 80)
-                }
-                
-                // Velocity range (dual slider like webapp)
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Text("Level")
-                            .font(.caption2)
-                            .foregroundColor(.white.opacity(0.6))
-                        if isVelocityDual {
-                            Text("\(Int(velocityMin * 100))–\(Int(velocityMax * 100))%")
-                                .font(.caption2)
-                                .foregroundColor(laneColor)
-                            Text("⟷ range")
-                                .font(.system(size: 9))
-                                .foregroundColor(laneColor)
-                        } else {
-                            Text("\(Int(velocityMin * 100))%")
-                                .font(.caption2)
-                                .foregroundColor(.white.opacity(0.6))
-                        }
-                        Spacer()
-                        Text("tap for range")
-                            .font(.system(size: 9))
-                            .foregroundColor(.white.opacity(0.3))
-                    }
-                    
-                    // Visual range bar
-                    GeometryReader { geo in
-                        ZStack(alignment: .leading) {
-                            // Background track
-                            RoundedRectangle(cornerRadius: 3)
-                                .fill(Color.white.opacity(0.1))
-                                .frame(height: 6)
-                            
-                            // Active range
-                            RoundedRectangle(cornerRadius: 3)
-                                .fill(LinearGradient(
-                                    colors: [laneColor.opacity(0.6), laneColor],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                ))
-                                .frame(width: CGFloat(velocityMax - velocityMin) * geo.size.width, height: 6)
-                                .offset(x: CGFloat(velocityMin) * geo.size.width)
-                        }
-                    }
-                    .frame(height: 6)
-                    .onTapGesture {
-                        // Toggle between single and dual mode
-                        if isVelocityDual {
-                            let mid = (velocityMin + velocityMax) / 2
-                            velocityMin = mid
-                            velocityMax = mid
-                        } else {
-                            velocityMin = max(0, velocityMin - 0.2)
-                            velocityMax = min(1, velocityMax + 0.2)
-                        }
-                    }
-                    
-                    // Dual sliders for min/max
-                    HStack(spacing: 8) {
-                        VStack {
-                            Text("Min")
-                                .font(.system(size: 9))
-                                .foregroundColor(.white.opacity(0.4))
-                            Slider(value: $velocityMin, in: 0...1)
-                                .tint(laneColor.opacity(0.6))
-                                .onChange(of: velocityMin) { _, newVal in
-                                    if newVal > velocityMax { velocityMax = newVal }
-                                }
-                        }
-                        VStack {
-                            Text("Max")
-                                .font(.system(size: 9))
-                                .foregroundColor(.white.opacity(0.4))
-                            Slider(value: $velocityMax, in: 0...1)
-                                .tint(laneColor)
-                                .onChange(of: velocityMax) { _, newVal in
-                                    if newVal < velocityMin { velocityMin = newVal }
-                                }
-                        }
-                    }
-                }
+                enabledContent
             }
         }
         .padding(10)

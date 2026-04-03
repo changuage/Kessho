@@ -2,6 +2,17 @@ import Foundation
 
 /// Manages loading and saving presets
 class PresetManager {
+    static let bundledPresetNames = [
+        "Bright_Bells",
+        "Dark_Textures",
+        "Ethereal_Ambient",
+        "Gamelantest",
+        "StringWaves",
+        "WaveOut",
+        "ZoneOut1",
+        "ZoneOutTest",
+        "ZoneOutTest2"
+    ]
     
     private let documentsDirectory: URL = {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -42,21 +53,9 @@ class PresetManager {
     
     /// Fallback: Load presets individually by known names
     private func loadFallbackBundledPresets() -> [SavedPreset] {
-        let presetNames = [
-            "Bright_Bells",
-            "Dark_Textures",
-            "Ethereal_Ambient",
-            "Gamelantest",
-            "StringWaves",
-            "ZoneOut1",
-            "WaveformFlow",
-            "CosmicStrings",
-            "CrystalCaves"
-        ]
-        
         var presets: [SavedPreset] = []
         
-        for name in presetNames {
+        for name in Self.bundledPresetNames {
             if let url = Bundle.main.url(forResource: name, withExtension: "json"),
                let preset = loadPreset(from: url) {
                 presets.append(preset)

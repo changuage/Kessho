@@ -281,6 +281,17 @@ struct RecordingButton: View {
 struct SettingsView: View {
     @Environment(\.dismiss) var dismiss
     @EnvironmentObject var appState: AppState
+
+    private func midiConnectionBinding(for input: MIDIEndpointInfo) -> Binding<Bool> {
+        Binding(
+            get: {
+                appState.midiManager.connectedInputIDs.contains(input.uniqueID)
+            },
+            set: { isConnected in
+                appState.setMIDIInputConnected(input.uniqueID, isConnected: isConnected)
+            }
+        )
+    }
     
     var body: some View {
         NavigationView {
@@ -325,6 +336,43 @@ struct SettingsView: View {
                                value: $appState.state.cofDriftRange, in: 1...6)
                     }
                 }
+
+                Section("MIDI") {
+                    Button("Refresh MIDI Inputs") {
+                        appState.refreshMIDIInputs()
+                    }
+
+                    if appState.midiManager.availableInputs.isEmpty {
+                        Text("No MIDI inputs detected")
+                            .foregroundColor(.secondary)
+                    } else {
+                        ForEach(appState.midiManager.availableInputs) { input in
+                            Toggle(isOn: midiConnectionBinding(for: input)) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(input.name)
+                                    if let manufacturer = input.manufacturer, !manufacturer.isEmpty {
+                                        Text(manufacturer)
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Text(appState.latestMIDISummary)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+
+                    if let midiErrorMessage = appState.midiErrorMessage, !midiErrorMessage.isEmpty {
+                        Text(midiErrorMessage)
+                            .font(.caption)
+                            .foregroundColor(.red)
+                    }
+                }
+            }
+            .onAppear {
+                appState.refreshMIDIInputs()
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)

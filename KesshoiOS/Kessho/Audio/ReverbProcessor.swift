@@ -15,15 +15,15 @@ enum ReverbQuality: String, CaseIterable {
     }
 }
 
-/// Reverb type presets - web app compatible and iOS-only options
+/// Reverb presets used by the current iOS prototype.
 enum ReverbType: String, CaseIterable {
-    // Web app compatible presets (cross-platform)
+    // Legacy web-aligned presets
     case plate = "plate"
     case hall = "hall"
     case cathedral = "cathedral"
     case darkHall = "darkHall"
     
-    // iOS-only Apple factory presets (not cross-platform compatible)
+    // Native Apple factory presets
     case smallRoom = "smallRoom"
     case mediumRoom = "mediumRoom"
     case largeRoom = "largeRoom"
@@ -57,7 +57,7 @@ enum ReverbType: String, CaseIterable {
         }
     }
     
-    /// Whether this preset is compatible with the web app
+    /// Whether this preset maps to a legacy web-aligned name.
     var isWebAppCompatible: Bool {
         switch self {
         case .plate, .hall, .cathedral, .darkHall:
@@ -67,12 +67,12 @@ enum ReverbType: String, CaseIterable {
         }
     }
     
-    /// Web app compatible presets only
+    /// Legacy web-aligned presets only
     static var webAppPresets: [ReverbType] {
         [.plate, .hall, .cathedral, .darkHall]
     }
     
-    /// iOS-only presets
+    /// Native-only presets
     static var iOSOnlyPresets: [ReverbType] {
         [.smallRoom, .mediumRoom, .largeRoom, .mediumHall, .largeHall,
          .mediumChamber, .largeChamber, .largeRoom2, .mediumHall2, .mediumHall3, .largeHall2]
@@ -99,7 +99,7 @@ enum ReverbType: String, CaseIterable {
         }
     }
     
-    /// FDN parameters for custom reverb modes (matching web app exactly)
+    /// FDN parameters for the custom algorithmic modes used in the prototype.
     var fdnParams: (decay: Float, damping: Float, diffusion: Float, size: Float, modDepth: Float)? {
         switch self {
         case .plate:     return (0.88, 0.25, 0.8, 0.8, 0.25)
@@ -132,7 +132,7 @@ enum ReverbType: String, CaseIterable {
 }
 
 /// Premium Ambient FDN Reverb for iOS
-/// Matches web app's reverb.worklet.js with enhancements for ambient music
+/// Algorithmic reverb for the native prototype, loosely aligned with the web flavor.
 /// Features: 8-point FDN, 6 diffuser chains, interpolated delays, smooth modulation
 class ReverbProcessor {
     let node: AVAudioUnitReverb

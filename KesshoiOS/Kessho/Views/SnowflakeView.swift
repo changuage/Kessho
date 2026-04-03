@@ -204,13 +204,13 @@ struct SnowflakeView: View {
                     let armLength = interactionBaseRadius + position * interactionMaxLength
                     
                     let handlePos = CGPoint(
-                        x: center.x + cos(angle.radians) * armLength,
-                        y: center.y + sin(angle.radians) * armLength
+                        x: center.x + CGFloat(Darwin.cos(angle.radians)) * armLength,
+                        y: center.y + CGFloat(Darwin.sin(angle.radians)) * armLength
                     )
                     
                     let lineStart = CGPoint(
-                        x: center.x + cos(angle.radians) * interactionBaseRadius,
-                        y: center.y + sin(angle.radians) * interactionBaseRadius
+                        x: center.x + CGFloat(Darwin.cos(angle.radians)) * interactionBaseRadius,
+                        y: center.y + CGFloat(Darwin.sin(angle.radians)) * interactionBaseRadius
                     )
                     
                     let isActive = draggingArm == arm || hoveringArm == arm
@@ -399,8 +399,8 @@ struct SnowflakeView: View {
         guard depth > 0 && length > 5 else { return }
         
         let endPoint = CGPoint(
-            x: origin.x + cos(angle) * length,
-            y: origin.y + sin(angle) * length
+            x: origin.x + CGFloat(Darwin.cos(angle)) * length,
+            y: origin.y + CGFloat(Darwin.sin(angle)) * length
         )
         
         var path = Path()
@@ -492,8 +492,8 @@ struct HexagonShape: Shape {
         for i in 0..<6 {
             let angle = Double(i) * .pi / 3 - .pi / 2
             let point = CGPoint(
-                x: center.x + cos(angle) * radius,
-                y: center.y + sin(angle) * radius
+                x: center.x + CGFloat(Darwin.cos(angle)) * radius,
+                y: center.y + CGFloat(Darwin.sin(angle)) * radius
             )
             if i == 0 {
                 path.move(to: point)

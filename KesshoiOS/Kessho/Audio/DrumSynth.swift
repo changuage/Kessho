@@ -969,7 +969,9 @@ class DrumSynth {
                     if pattern[currentStep] {
                         // Probability check
                         if Double(rng()) <= lane.probability {
-                            let velocity = Float(lane.velocityMin + rng() * Float(lane.velocityMax - lane.velocityMin))
+                            let velocity = Float(
+                                lane.velocityMin + (Double(rng()) * (lane.velocityMax - lane.velocityMin))
+                            )
                             // Pick random voice from enabled voices
                             let selectedVoice = voices[Int(rng() * Float(voices.count)) % voices.count]
                             triggerVoice(selectedVoice, velocity: velocity * Float(lane.level))

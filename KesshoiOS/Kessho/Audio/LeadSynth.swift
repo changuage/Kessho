@@ -25,8 +25,8 @@ private func fastSin(_ phase: Float) -> Float {
     return sineTable[i0] + frac * (sineTable[i1] - sineTable[i0])
 }
 
-/// Lead melody synthesizer - monophonic with FM synthesis (Rhodes→Gamelan morph), glide, and stereo ping-pong delay
-/// Matches web app: timbre 0 = soft Rhodes, timbre 1 = metallic gamelan
+/// Lead melody synthesizer with FM timbre morphing, glide, and stereo ping-pong delay.
+/// The native implementation aims for a similar musical role to the web lead voice.
 class LeadSynth {
     let node: AVAudioSourceNode
     
@@ -163,7 +163,7 @@ class LeadSynth {
         
         // === CARRIER 1 (main tone - using fast sine) ===
         let fmAmount = mod1 + mod2 + mod3 + mod4
-        var carrier1 = fastSin(carrier1Phase + fmAmount / (2 * .pi))
+        let carrier1 = fastSin(carrier1Phase + fmAmount / (2 * .pi))
         
         // === CARRIER 2 (gamelan shimmer - only when timbre > 0.1) ===
         var carrier2: Float = 0
@@ -287,7 +287,7 @@ class LeadSynth {
         self.envelopeStage = .attack
     }
     
-    func release() {
+    func releaseNote() {
         envelopeStage = .release
     }
     

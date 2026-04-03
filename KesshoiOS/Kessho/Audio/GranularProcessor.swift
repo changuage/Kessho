@@ -1,6 +1,6 @@
 import AVFoundation
 
-// Pre-computed pan lookup tables (matching web app for performance)
+// Pre-computed pan lookup tables used by the native granular engine.
 private let PAN_TABLE_SIZE = 256
 private var panTableL: [Float] = {
     var table = [Float](repeating: 0, count: PAN_TABLE_SIZE)
@@ -22,7 +22,7 @@ private var panTableR: [Float] = {
     return table
 }()
 
-// Pre-computed Hann window lookup table (matching web app)
+// Pre-computed Hann window lookup table.
 private let HANN_TABLE_SIZE = 1024
 private var hannTable: [Float] = {
     var table = [Float](repeating: 0, count: HANN_TABLE_SIZE)
@@ -36,7 +36,7 @@ private var hannTable: [Float] = {
 // Helper to clamp Int to range
 private extension Int {
     func clamped(to range: ClosedRange<Int>) -> Int {
-        return min(max(self, range.lowerBound), range.upperBound)
+        return Swift.min(Swift.max(self, range.lowerBound), range.upperBound)
     }
 }
 

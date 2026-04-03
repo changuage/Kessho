@@ -1,6 +1,6 @@
 # Kessho iOS
 
-A generative ambient music synthesizer for iOS, ported from the web app.
+A native iOS prototype for Kessho that is being rebuilt as the platform backbone for background playback, lock-screen controls, and MIDI input.
 
 ## Features
 
@@ -10,8 +10,9 @@ A generative ambient music synthesizer for iOS, ported from the web app.
 - **Granular Processor**: Grain-based texture generation
 - **Lead Melody**: Optional melodic lead voice
 - **Snowflake Visualization**: Real-time parameter visualization
-- **Cross-Platform Presets**: JSON presets compatible with web version
+- **Preset Backbone**: JSON preset loading for the current iOS prototype
 - **Background Audio**: Continues playing when app is in background
+- **MIDI Backbone**: CoreMIDI input discovery and mapping scaffolding
 
 ## Requirements
 
@@ -45,11 +46,20 @@ KesshoiOS/
 │   │   ├── AppState.swift
 │   │   ├── SliderState.swift
 │   │   └── PresetManager.swift
+│   ├── Services/              # iOS platform services
+│   │   ├── AudioSessionManager.swift
+│   │   ├── NowPlayingManager.swift
+│   │   └── AudioServiceNotifications.swift
+│   ├── MIDI/                  # MIDI discovery and mapping scaffolding
+│   │   ├── MIDIManager.swift
+│   │   ├── MIDIModels.swift
+│   │   └── MidiMapStore.swift
 │   ├── Views/                 # SwiftUI views
 │   │   ├── MainView.swift
 │   │   ├── CircleOfFifthsView.swift
 │   │   ├── SnowflakeView.swift
 │   │   ├── PresetListView.swift
+│   │   ├── RecordingView.swift
 │   │   └── SliderControlsView.swift
 │   └── Presets/               # Bundled preset files
 │       ├── Bright_Bells.json
@@ -63,9 +73,9 @@ KesshoiOS/
 2. Select your development team in Signing & Capabilities
 3. Build and run on simulator or device
 
-## Cross-Platform Presets
+## Presets
 
-Presets use the same JSON format as the web version:
+Presets still use JSON, but the native app should currently be treated as its own evolving target rather than a drop-in parity port of the web app.
 
 ```json
 {
@@ -80,7 +90,7 @@ Presets use the same JSON format as the web version:
 }
 ```
 
-Presets can be shared between iOS and web versions.
+Preset migration and parity work still need a dedicated shared layer.
 
 ## Background Audio
 

@@ -119,7 +119,7 @@ class OceanSamplePlayer {
         player.stop()
         
         // Schedule looping playback
-        player.scheduleBuffer(buffer, at: nil, options: .loops) { [weak self] in
+        player.scheduleBuffer(buffer, at: nil, options: .loops) {
             // Buffer finished (won't happen with .loops)
             print("Ocean sample playback ended")
         }

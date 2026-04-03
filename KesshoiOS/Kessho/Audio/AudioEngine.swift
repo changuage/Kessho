@@ -48,16 +48,13 @@ class AudioEngine {
     private let reverbSend = AVAudioMixerNode()
     private let masterMixer = AVAudioMixerNode()
     
-    // Master limiter (prevents clipping)
-    private var masterLimiter: AVAudioUnitDynamicsProcessor?
-    
     // Granular input tap for live synth processing
     private var granularInputBuffer: AVAudioPCMBuffer?
     private var granularInputWriteIndex: Int = 0
     private var granularSampleBuffer: [Float] = []  // Pre-allocated buffer for audio thread
     
     // MARK: - State
-    private var isRunning = false
+    private(set) var isRunning = false
     private var currentParams: SliderState = .default
     private var harmonyState: HarmonyState?
     private var cofState = CircleOfFifthsState()
@@ -90,18 +87,7 @@ class AudioEngine {
     // MARK: - Initialization
     
     init() {
-        setupAudioSession()
         setupAudioGraph()
-    }
-    
-    private func setupAudioSession() {
-        do {
-            let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
-            try session.setActive(true)
-        } catch {
-            print("Failed to setup audio session: \(error)")
-        }
     }
     
     private func setupAudioGraph() {
@@ -185,24 +171,8 @@ class AudioEngine {
         // Dry to master
         engine.connect(dryMixer, to: masterMixer, format: format)
         
-        // Setup master limiter (prevents clipping)
-        masterLimiter = AVAudioUnitDynamicsProcessor()
-        if let limiter = masterLimiter {
-            engine.attach(limiter)
-            
-            // Configure as limiter: threshold=-3dB, knee=0, ratio=20, fast attack/release
-            limiter.threshold = -3.0
-            limiter.headRoom = 0.0
-            limiter.attackTime = 0.001
-            limiter.releaseTime = 0.1
-            
-            // Route: masterMixer -> limiter -> mainMixerNode
-            engine.connect(masterMixer, to: limiter, format: format)
-            engine.connect(limiter, to: engine.mainMixerNode, format: format)
-        } else {
-            // Fallback: direct connection if limiter fails
-            engine.connect(masterMixer, to: engine.mainMixerNode, format: format)
-        }
+        // Route the current prototype directly to the output mixer.
+        engine.connect(masterMixer, to: engine.mainMixerNode, format: format)
         
         // Setup tap on synth mixer for granular live input
         setupGranularInputTap(format: format)
@@ -315,7 +285,7 @@ class AudioEngine {
         
         // Wire up morph trigger callback for UI visualization
         drumSynth?.onMorphTrigger = { [weak self] voiceType, morphValue in
-            self?.onDrumMorphTrigger?(voiceType, morphValue)
+            self?.onDrumMorphTrigger?(voiceType, Float(morphValue))
         }
         
         // Attach and connect to drum mixer
@@ -458,9 +428,9 @@ class AudioEngine {
         
         // Fade out voices
         for voice in synthVoices {
-            voice.release()
+            voice.releaseNote()
         }
-        leadSynth?.release()
+        leadSynth?.releaseNote()
         
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
             self?.engine.stop()
@@ -537,7 +507,7 @@ class AudioEngine {
         harmonyState = createHarmonyState(
             seedMaterial: "\(currentBucket)|\(currentSeed)",
             tension: currentParams.tension,
-            chordRate: currentParams.chordRate,
+            chordRate: Double(currentParams.chordRate),
             voicingSpread: currentParams.waveSpread,
             detuneCents: currentParams.detune,
             scaleMode: currentParams.scaleMode,
@@ -566,9 +536,9 @@ class AudioEngine {
         
         // Reverb sends (mute if reverbEnabled is false to save CPU)
         let reverbMultiplier = currentParams.reverbEnabled ? 1.0 : 0.0
-        let synthReverbAmount = Float(currentParams.synthReverbSend * currentParams.reverbLevel * reverbMultiplier)
-        let granularReverbAmount = Float(currentParams.granularReverbSend * currentParams.reverbLevel * reverbMultiplier)
-        let leadReverbAmount = Float(currentParams.leadReverbSend * currentParams.reverbLevel * reverbMultiplier)
+        _ = Float(currentParams.synthReverbSend * currentParams.reverbLevel * reverbMultiplier)
+        _ = Float(currentParams.granularReverbSend * currentParams.reverbLevel * reverbMultiplier)
+        _ = Float(currentParams.leadReverbSend * currentParams.reverbLevel * reverbMultiplier)
         
         // Update reverb quality mode
         if let quality = ReverbQuality(rawValue: currentParams.reverbQuality.capitalized) {
@@ -808,7 +778,7 @@ class AudioEngine {
         
         // Update Circle of Fifths
         let rng = createRng("\(currentBucket)|\(currentSeed)|cof")
-        let didDrift = cofState.updateAtPhraseBoundary(rng: rng)
+        _ = cofState.updateAtPhraseBoundary(rng: rng)
         
         // Reseed granular processor for this phrase
         sendGranulatorRandomSequence()
@@ -823,7 +793,7 @@ class AudioEngine {
                 seedMaterial: "\(currentBucket)|\(currentSeed)",
                 phraseIndex: phraseIndex,
                 tension: currentParams.tension,
-                chordRate: currentParams.chordRate,
+                chordRate: Double(currentParams.chordRate),
                 voicingSpread: currentParams.waveSpread,
                 detuneCents: currentParams.detune,
                 scaleMode: currentParams.scaleMode,
@@ -1183,7 +1153,7 @@ class AudioEngine {
         filterModTimerSource?.resume()
     }
     
-    /// Random walk filter modulation (matching web app exactly)
+    /// Random walk filter modulation aligned with the current web behavior.
     private func updateFilterModulation() {
         // Calculate speed factor based on mod speed setting
         // Higher modSpeed = slower movement (more phrases per wander)
@@ -1268,7 +1238,7 @@ class AudioEngine {
         
         // Schedule release after duration
         DispatchQueue.main.asyncAfter(deadline: .now() + noteDuration) { [weak voice] in
-            voice?.release()
+            voice?.releaseNote()
         }
     }
     

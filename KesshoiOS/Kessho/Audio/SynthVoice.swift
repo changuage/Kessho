@@ -1,8 +1,8 @@
 import AVFoundation
 import Accelerate
 
-/// Polyphonic synthesizer voice with 4 oscillators, filter, saturation, and envelope
-/// Matches web app's architecture: sine + triangle + sawDetuned + saw with morphing
+/// Polyphonic synthesizer voice with 4 oscillators, filter, saturation, and envelope.
+/// This native implementation follows the same broad sound design as the web synth.
 class SynthVoice {
     let node: AVAudioSourceNode
     
@@ -335,7 +335,7 @@ class SynthVoice {
         self.envelopeStage = .attack
     }
     
-    func release() {
+    func releaseNote() {
         envelopeStage = .release
     }
     

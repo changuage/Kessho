@@ -113,7 +113,7 @@ class AudioRecorder {
     /// Start recording
     func startRecording() -> Bool {
         guard state == .armed || state == .idle else { return false }
-        guard let engine = engine else {
+        guard engine != nil else {
             print("AudioRecorder: No engine configured")
             return false
         }
