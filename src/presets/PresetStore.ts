@@ -250,6 +250,7 @@ export class LocalStoragePresetStore implements IPresetStore {
 // ─── Singleton ──────────────────────────────────────────────────────────────
 
 let _store: IPresetStore | null = null;
+const _storeListeners = new Set<() => void>();
 
 export function getPresetStore(): IPresetStore {
   if (!_store) {
@@ -258,10 +259,20 @@ export function getPresetStore(): IPresetStore {
   return _store;
 }
 
+export function subscribePresetStore(listener: () => void): () => void {
+  _storeListeners.add(listener);
+  return () => {
+    _storeListeners.delete(listener);
+  };
+}
+
 /**
  * Replace the singleton preset store (e.g. to inject a HybridPresetStore).
  * Called once from App init when Supabase is configured.
  */
 export function setPresetStore(store: IPresetStore): void {
   _store = store;
+  for (const listener of _storeListeners) {
+    listener();
+  }
 }

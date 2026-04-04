@@ -1,7 +1,7 @@
 // src/presets/usePresets.ts
 // Phase 1 — React hook for preset CRUD at any level.
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useSyncExternalStore } from 'react';
 import type {
   PresetEntry,
   PresetFamilySummary,
@@ -11,7 +11,7 @@ import type {
   PresetSummary,
   PresetVersionMetadata,
 } from './types';
-import { getPresetStore } from './PresetStore';
+import { getPresetStore, subscribePresetStore } from './PresetStore';
 import { extractParams, applyParams, extractCascade, applyCascade, compressVersions } from './codec';
 import { extractPresetVersionMetadata } from './presetUtils';
 import { buildPresetFamilies } from './catalog';
@@ -84,7 +84,7 @@ export function usePresets(type: PresetLevel, scope?: string, options?: UsePrese
   const [presets, setPresets] = useState<PresetSummary[]>([]);
   const [families, setFamilies] = useState<PresetFamilySummary[]>([]);
   const [loading, setLoading] = useState(true);
-  const store = getPresetStore();
+  const store = useSyncExternalStore(subscribePresetStore, getPresetStore, getPresetStore);
   const paramLevel = levelToParamLevel(type);
   const storeScope = scope;
 

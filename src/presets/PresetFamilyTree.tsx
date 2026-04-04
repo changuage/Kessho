@@ -460,6 +460,7 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
 
   const stockDropdown = dropdownPresets.filter(p => p.library === 'stock');
   const userDropdown = dropdownPresets.filter(p => p.library === 'user');
+  const cloudDropdown = dropdownPresets.filter(p => p.library === 'cloud');
 
   // Keys relevant to this preset level+scope (used to filter version diffs)
   const relevantKeys = useMemo(() => {
@@ -666,7 +667,7 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
         if (!entry) return;
         const data = getVersionData(entry, versionNum);
         if (!data) return;
-        slotCb(entry, data);
+        slotCb({ ...entry, currentVersion: versionNum }, data);
       },
     });
   }, [load, versionEntries]);
@@ -971,6 +972,13 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
               <optgroup label="User">
                 {userDropdown.map(p => (
                   <option key={`u:${p.name}`} value={p.name}>{p.name}</option>
+                ))}
+              </optgroup>
+            )}
+            {cloudDropdown.length > 0 && (
+              <optgroup label="Cloud">
+                {cloudDropdown.map(p => (
+                  <option key={`c:${p.name}`} value={p.name}>{p.name}</option>
                 ))}
               </optgroup>
             )}

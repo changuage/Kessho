@@ -462,8 +462,16 @@ const loadPresetsFromFolder = async (): Promise<SavedPreset[]> => {
   return presets;
 };
 
-function statePresetEntryToSavedPreset(entry: PresetEntry): SavedPreset | null {
-  const version = entry.versions.find(v => v.v === entry.currentVersion) ?? entry.versions[entry.versions.length - 1];
+function statePresetEntryToSavedPreset(
+  entry: PresetEntry,
+  versionSelection: 'current' | 'highest' = 'current',
+): SavedPreset | null {
+  const version = versionSelection === 'highest'
+    ? entry.versions.reduce<typeof entry.versions[number] | null>((highest, candidate) => {
+        if (!highest || candidate.v > highest.v) return candidate;
+        return highest;
+      }, null)
+    : (entry.versions.find(v => v.v === entry.currentVersion) ?? entry.versions[entry.versions.length - 1]);
   if (!version) return null;
 
   const versionData = getVersionData(entry, version.v);
@@ -1140,52 +1148,71 @@ const App: React.FC = () => {
     // Use anonymous auth so RLS policies work (user_id is always set).
     // Supabase project must have "Allow anonymous sign-ins" enabled.
     void (async () => {
-      const { getSupabase } = await import('./cloud/supabase');
-      if (cancelled) return;
-
-      const supabaseClient = getSupabase();
-      if (!supabaseClient) return;
-
-      const local = new LocalStoragePresetStore();
-      const cloud = new SupabasePresetStore(supabaseClient);
-
       try {
-        const { data: { session } } = await supabaseClient.auth.getSession();
-        if (session?.user) {
-          cloud.setUserId(session.user.id, session.user.is_anonymous ?? false);
-        } else {
-          const { data, error } = await supabaseClient.auth.signInAnonymously();
-          if (error) {
-            console.warn('Anonymous auth failed:', error.message);
-          } else if (data.user) {
-            cloud.setUserId(data.user.id, true);
+        const { getSupabase } = await import('./cloud/supabase');
+        if (cancelled) {
+          markCloudPresetStoreReady();
+          return;
+        }
+
+        const supabaseClient = getSupabase();
+        if (!supabaseClient) {
+          markCloudPresetStoreReady();
+          return;
+        }
+
+        const local = new LocalStoragePresetStore();
+        const cloud = new SupabasePresetStore(supabaseClient);
+        cloudPresetStoreRef.current = cloud;
+
+        try {
+          const { data: { session } } = await supabaseClient.auth.getSession();
+          if (session?.user) {
+            cloud.setUserId(session.user.id, session.user.is_anonymous ?? false);
+          } else {
+            const { data, error } = await supabaseClient.auth.signInAnonymously();
+            if (error) {
+              console.warn('Anonymous auth failed:', error.message);
+            } else if (data.user) {
+              cloud.setUserId(data.user.id, true);
+            }
           }
+        } catch (e) {
+          console.warn('Auth init failed:', e);
+        }
+
+        if (cancelled) {
+          markCloudPresetStoreReady();
+          return;
+        }
+
+        const hybrid = new HybridPresetStore(local, cloud);
+        setPresetStore(hybrid);
+        markCloudPresetStoreReady();
+
+        try {
+          const autoStartEntry = await cloud.load('state', DEFAULT_AUTO_START_PRESET_NAME, 'global');
+          if (cancelled) return;
+
+          autoStartPresetRef.current = autoStartEntry
+            ? statePresetEntryToSavedPreset(autoStartEntry, 'highest')
+            : null;
+          if (autoStartPresetRef.current) {
+            console.log(`[App] Prefetched latest cloud auto-start preset: ${autoStartEntry!.name}`);
+          }
+        } catch (e) {
+          console.warn('Failed to preload cloud auto-start preset:', e);
         }
       } catch (e) {
-        console.warn('Auth init failed:', e);
-      }
-
-      if (cancelled) return;
-
-      const hybrid = new HybridPresetStore(local, cloud);
-      setPresetStore(hybrid);
-
-      try {
-        const autoStartEntry = await hybrid.load('state', DEFAULT_AUTO_START_PRESET_NAME, 'global');
-        if (cancelled) return;
-
-        autoStartPresetRef.current = autoStartEntry ? statePresetEntryToSavedPreset(autoStartEntry) : null;
-        if (autoStartPresetRef.current) {
-          console.log(`[App] Prefetched cloud auto-start preset: ${autoStartEntry!.name}`);
-        }
-      } catch (e) {
-        console.warn('Failed to preload cloud auto-start preset:', e);
+        markCloudPresetStoreReady();
+        console.warn('Cloud preset store initialization failed:', e);
       }
       console.log('Cloud preset store initialized');
     })();
 
     return () => {
       cancelled = true;
+      markCloudPresetStoreReady();
     };
   }, []);
 
@@ -1212,6 +1239,23 @@ const App: React.FC = () => {
   // Track if user has interacted with any UI element (sliders, buttons, etc.)
   const hasUserInteractedRef = useRef(false);
   const autoStartPresetRef = useRef<SavedPreset | null>(null);
+  const cloudPresetStoreRef = useRef<SupabasePresetStore | null>(null);
+  const cloudPresetStoreReadyRef = useRef(!CLOUD_ENABLED);
+  const cloudPresetStoreReadyResolveRef = useRef<(() => void) | null>(null);
+  const cloudPresetStoreReadyPromiseRef = useRef<Promise<void> | null>(null);
+  if (cloudPresetStoreReadyPromiseRef.current === null) {
+    cloudPresetStoreReadyPromiseRef.current = cloudPresetStoreReadyRef.current
+      ? Promise.resolve()
+      : new Promise<void>((resolve) => {
+          cloudPresetStoreReadyResolveRef.current = resolve;
+        });
+  }
+  const markCloudPresetStoreReady = () => {
+    if (cloudPresetStoreReadyRef.current) return;
+    cloudPresetStoreReadyRef.current = true;
+    cloudPresetStoreReadyResolveRef.current?.();
+    cloudPresetStoreReadyResolveRef.current = null;
+  };
   // Stem recording options (which buses to record pre-reverb)
   const [recordStems, setRecordStems] = useState({
     synth: false,
@@ -1476,6 +1520,64 @@ const App: React.FC = () => {
       setRandomWalkPositions({});
       randomWalkRef.current = {};
     }
+  }, []);
+
+  const applyScopedDualRangesFromPreset = useCallback((
+    relevantKeys: string[],
+    dualRanges?: Record<string, { min: number; max: number }>,
+    presetSliderModes?: Record<string, SliderMode>,
+  ) => {
+    const relevantKeySet = new Set(relevantKeys);
+    const nextWalkPositions: Record<string, number> = {};
+
+    for (const key of relevantKeySet) {
+      delete randomWalkRef.current[key as keyof SliderState];
+    }
+
+    setSliderModes(prev => {
+      const next: Record<string, SliderMode> = { ...prev };
+      for (const key of relevantKeySet) {
+        delete next[key];
+      }
+      if (dualRanges) {
+        for (const [key] of Object.entries(dualRanges)) {
+          if (!relevantKeySet.has(key)) continue;
+          next[key] = normalizeDualSliderMode(key, presetSliderModes?.[key] ?? 'walk') ?? 'walk';
+        }
+      }
+      return next;
+    });
+
+    setDualSliderRanges(prev => {
+      const next: Record<string, { min: number; max: number } | undefined> = { ...prev };
+      for (const key of relevantKeySet) {
+        delete next[key];
+      }
+      if (dualRanges) {
+        for (const [key, range] of Object.entries(dualRanges)) {
+          if (!relevantKeySet.has(key)) continue;
+          next[key] = range;
+          const mode = normalizeDualSliderMode(key, presetSliderModes?.[key] ?? 'walk') ?? 'walk';
+          if (mode === 'walk') {
+            const walkPos = Math.random();
+            nextWalkPositions[key] = walkPos;
+            randomWalkRef.current[key as keyof SliderState] = {
+              position: walkPos,
+              velocity: (Math.random() - 0.5) * 0.02,
+            };
+          }
+        }
+      }
+      return next as DualSliderState;
+    });
+
+    setRandomWalkPositions(prev => {
+      const next = { ...prev };
+      for (const key of relevantKeySet) {
+        delete next[key];
+      }
+      return { ...next, ...nextWalkPositions };
+    });
   }, []);
 
   // Lead expression trigger positions (0-1 within each range, updated on each note)
@@ -3579,14 +3681,33 @@ const App: React.FC = () => {
       // Auto-load String Waves if user hasn't loaded any preset or interacted with UI
       let stateToStart = state;
       if (!hasLoadedPresetRef.current && !hasUserInteractedRef.current) {
-        const defaultPreset = autoStartPresetRef.current
-          ?? (!CLOUD_ENABLED ? savedPresets.find(p => p.name === DEFAULT_AUTO_START_PRESET_NAME) ?? null : null);
+        let defaultPreset = autoStartPresetRef.current;
+        let defaultPresetSource: 'cloud' | 'bundled' | null = defaultPreset ? 'cloud' : null;
+        if (!defaultPreset && CLOUD_ENABLED) {
+          await cloudPresetStoreReadyPromiseRef.current;
+          try {
+            const autoStartEntry = await cloudPresetStoreRef.current?.load('state', DEFAULT_AUTO_START_PRESET_NAME, 'global');
+            defaultPreset = autoStartEntry
+              ? statePresetEntryToSavedPreset(autoStartEntry, 'highest')
+              : null;
+            autoStartPresetRef.current = defaultPreset;
+            if (defaultPreset) {
+              defaultPresetSource = 'cloud';
+              console.log(`[App] Loaded latest cloud auto-start preset on play: ${autoStartEntry!.name}`);
+            }
+          } catch (e) {
+            console.warn('Failed to load latest cloud auto-start preset on play:', e);
+          }
+        } else if (!defaultPreset) {
+          defaultPreset = savedPresets.find(p => p.name === DEFAULT_AUTO_START_PRESET_NAME) ?? null;
+          defaultPresetSource = defaultPreset ? 'bundled' : null;
+        }
         if (defaultPreset) {
-          console.log(`[App] Auto-loading default preset: ${defaultPreset.name}${autoStartPresetRef.current ? ' (cloud)' : ' (bundled)'}`);
+          console.log(`[App] Auto-loading default preset: ${defaultPreset.name}${defaultPresetSource ? ` (${defaultPresetSource})` : ''}`);
           hasLoadedPresetRef.current = true;
           const result = applyPreset(defaultPreset, { currentState: state, updateEngine: false, resetCofDrift: false, normalize: normalizePresetForWeb });
           setState(result.state);
-          if (autoStartPresetRef.current) setStatePresetName(defaultPreset.name);
+          setStatePresetName(defaultPreset.name);
           setMorphPresetA(result.preset);
           stateToStart = result.state;
           applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
@@ -4870,17 +4991,12 @@ const App: React.FC = () => {
   // Convert L4 PresetEntry data → SavedPreset and feed into morph system
   const presetEntryToSavedPreset = useCallback((entry: PresetEntry, data: Record<string, unknown>): SavedPreset => {
     const version = entry.versions.find(v => v.v === entry.currentVersion) ?? entry.versions[entry.versions.length - 1];
-    return {
+    return migratePreset({
       name: entry.name,
       timestamp: new Date().toISOString(),
       state: normalizePresetForWeb(data as unknown as SliderState),
-      dualRanges: version?.dualRanges,
-      sliderModes: version?.sliderModes,
-      drumEvolveConfigs: version?.drumEvolveConfigs,
-      synthEvolveConfigs: version?.synthEvolveConfigs,
-      drumSubLaneStates: version?.drumSubLaneStates,
-      synthSubLaneStates: version?.synthSubLaneStates,
-    };
+      ...(extractPresetVersionMetadata(version) ?? {}),
+    });
   }, []);
 
   const handleLoadMorphA = useCallback((entry: PresetEntry, data: Record<string, unknown>) => {
@@ -6209,6 +6325,9 @@ const App: React.FC = () => {
             onStateChange={setState}
             sliderProps={sliderProps}
             SliderComponent={Slider as unknown as React.ComponentType<Record<string, unknown>>}
+            sliderModes={sliderModes}
+            dualSliderRanges={dualSliderRanges}
+            onDualStateChange={applyScopedDualRangesFromPreset}
           />
         )}
 

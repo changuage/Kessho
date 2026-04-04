@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { formatIndexedDelayDivision, getSliderNumericValue, type SliderState } from '../state';
+import { formatIndexedDelayDivision, getSliderNumericValue, type SliderMode, type SliderState } from '../state';
 import type { SliderPageId } from '../sliderHelpCatalog';
 import { useSliderHelp } from '../SliderHelpOverlay';
 import { getGranularPresetMeta, getGranularPresetSuggestedDelayBGranularSend } from '../granular/granularPresets';
@@ -48,6 +48,13 @@ export interface DelayPageProps {
   onStateChange?: (newState: SliderState) => void;
   sliderProps: (paramKey: keyof SliderState) => Record<string, unknown>;
   SliderComponent: React.ComponentType<Record<string, unknown>>;
+  sliderModes?: Record<string, SliderMode>;
+  dualSliderRanges?: Record<string, { min: number; max: number }>;
+  onDualStateChange?: (
+    relevantKeys: string[],
+    dualRanges?: Record<string, { min: number; max: number }>,
+    sliderModes?: Record<string, SliderMode>,
+  ) => void;
 }
 
 /* ── Feed Badge ── */
@@ -69,6 +76,9 @@ const DelayPage: React.FC<DelayPageProps> = ({
   onStateChange,
   sliderProps,
   SliderComponent,
+  sliderModes,
+  dualSliderRanges,
+  onDualStateChange,
 }) => {
   const Slider = SliderComponent as React.ComponentType<any>;
   const { announceHelp, announceSlider } = useSliderHelp();
@@ -189,6 +199,9 @@ const DelayPage: React.FC<DelayPageProps> = ({
           currentName={sourcePresetName}
           onLoad={handleSourcePresetLoad}
           onStateChange={onStateChange}
+          sliderModes={sliderModes}
+          dualSliderRanges={dualSliderRanges}
+          onDualStateChange={onDualStateChange}
           compact
         />
       </div>
@@ -223,6 +236,9 @@ const DelayPage: React.FC<DelayPageProps> = ({
                 onLoad={handleEchoPresetLoad}
                 onStateChange={onStateChange}
                 presetOptions={echoPresetDropdownOptions}
+                sliderModes={sliderModes}
+                dualSliderRanges={dualSliderRanges}
+                onDualStateChange={onDualStateChange}
                 compact
               />
 
@@ -311,6 +327,9 @@ const DelayPage: React.FC<DelayPageProps> = ({
                 currentName={clockedPresetName}
                 onLoad={handleClockedPresetLoad}
                 onStateChange={onStateChange}
+                sliderModes={sliderModes}
+                dualSliderRanges={dualSliderRanges}
+                onDualStateChange={onDualStateChange}
                 compact
               />
 
@@ -464,6 +483,9 @@ const DelayPage: React.FC<DelayPageProps> = ({
                 currentName={kitPresetName}
                 onLoad={handleKitPresetLoad}
                 onStateChange={onStateChange}
+                sliderModes={sliderModes}
+                dualSliderRanges={dualSliderRanges}
+                onDualStateChange={onDualStateChange}
                 compact
               />
               <Slider label="Echo Line → Clocked Space" value={state.delayAToBSend} paramKey="delayAToBSend" onChange={onParamChange} helpPage="delay" {...sliderProps('delayAToBSend')} />

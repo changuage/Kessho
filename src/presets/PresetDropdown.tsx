@@ -10,7 +10,7 @@ import { getPresetStore } from './PresetStore';
 import { extractPresetVersionMetadata, isPresetCompatibleWithSlot } from './presetUtils';
 import { getPresetDisplayLabel } from './catalog';
 import { getVersionData } from './codec';
-import type { SliderState } from '../ui/state';
+import type { SliderMode, SliderState } from '../ui/state';
 import type { UsePresetsOptions } from './usePresets';
 
 export interface PresetDropdownProps {
@@ -38,6 +38,16 @@ export interface PresetDropdownProps {
   presetOptions?: UsePresetsOptions;
   /** Compact mode — smaller font, less padding */
   compact?: boolean;
+  /** Current non-single slider modes for this page, used when saving/restoring dual sliders */
+  sliderModes?: Record<string, SliderMode>;
+  /** Current dual slider ranges for this page, used when saving/restoring dual sliders */
+  dualSliderRanges?: Record<string, { min: number; max: number }>;
+  /** Apply loaded dual slider metadata back into page state */
+  onDualStateChange?: (
+    relevantKeys: string[],
+    dualRanges?: Record<string, { min: number; max: number }>,
+    sliderModes?: Record<string, SliderMode>,
+  ) => void;
 }
 
 const dropdownStyles: Record<string, React.CSSProperties> = {
@@ -125,6 +135,9 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
   showSaveButton = true,
   presetOptions,
   compact = false,
+  sliderModes,
+  dualSliderRanges,
+  onDualStateChange,
 }) => {
   const { presets, save, load, remove, refresh, extract, apply } = usePresets(level, scope, presetOptions);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
@@ -162,6 +175,39 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
     setSelectedName(currentName || '');
   }, [currentName]);
 
+  const getSelectedVersion = useCallback((entry: PresetEntry, version?: number) => (
+    entry.versions.find(v => v.v === (version ?? entry.currentVersion))
+    ?? entry.versions[entry.versions.length - 1]
+    ?? null
+  ), []);
+
+  const extractCurrentDualMetadata = useCallback((data: Record<string, unknown>) => {
+    const relevantKeys = new Set(Object.keys(data));
+    const nextDualRanges: Record<string, { min: number; max: number }> = {};
+    const nextSliderModes: Record<string, SliderMode> = {};
+
+    if (dualSliderRanges) {
+      for (const [key, range] of Object.entries(dualSliderRanges)) {
+        if (relevantKeys.has(key)) {
+          nextDualRanges[key] = { min: range.min, max: range.max };
+        }
+      }
+    }
+
+    if (sliderModes) {
+      for (const [key, mode] of Object.entries(sliderModes)) {
+        if (mode !== 'single' && relevantKeys.has(key)) {
+          nextSliderModes[key] = mode;
+        }
+      }
+    }
+
+    return {
+      dualRanges: Object.keys(nextDualRanges).length > 0 ? nextDualRanges : undefined,
+      sliderModes: Object.keys(nextSliderModes).length > 0 ? nextSliderModes : undefined,
+    };
+  }, [dualSliderRanges, sliderModes]);
+
   // Handle preset selection from dropdown
   const handleSelect = useCallback(async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const name = e.target.value;
@@ -169,6 +215,8 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
     setSelectedName(name);
     const entry = await load(name);
     if (!entry) return;
+    const version = getSelectedVersion(entry);
+    if (!version) return;
 
     // Get latest version data (reconstituted from delta if compressed)
     const versionData = getVersionData(entry);
@@ -183,7 +231,12 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
       const newState = apply(state, versionData);
       onStateChange(newState);
     }
-  }, [load, apply, state, onLoad, onStateChange]);
+    onDualStateChange?.(
+      Object.keys(versionData),
+      version.dualRanges,
+      version.sliderModes as Record<string, SliderMode> | undefined,
+    );
+  }, [load, getSelectedVersion, apply, state, onLoad, onStateChange, onDualStateChange]);
 
   // Open save dialog
   const handleSaveClick = useCallback(() => {
@@ -196,18 +249,30 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
   // Confirm save
   const handleSaveConfirm = useCallback(async () => {
     if (!saveName.trim()) return;
-    const version = loadedEntry?.versions.find(v => v.v === loadedEntry.currentVersion)
-      || loadedEntry?.versions[loadedEntry.versions.length - 1];
+    const version = loadedEntry ? getSelectedVersion(loadedEntry) : null;
     const trimmedName = saveName.trim();
     const actualName = loadedEntry?.author !== 'user' && trimmedName === selectedName
       ? `${trimmedName} (Custom)`
       : trimmedName;
+    const currentDualMetadata = extractCurrentDualMetadata(extract(state));
+    const preservedMetadata = extractPresetVersionMetadata(version);
+    const mergedMetadata = {
+      ...(preservedMetadata || {}),
+      ...(currentDualMetadata.dualRanges ? { dualRanges: currentDualMetadata.dualRanges } : {}),
+      ...(currentDualMetadata.sliderModes ? { sliderModes: currentDualMetadata.sliderModes } : {}),
+    };
+    if (!currentDualMetadata.dualRanges) {
+      delete mergedMetadata.dualRanges;
+    }
+    if (!currentDualMetadata.sliderModes) {
+      delete mergedMetadata.sliderModes;
+    }
     await save(
       trimmedName,
       state,
       saveNote.trim() || undefined,
       undefined,
-      extractPresetVersionMetadata(version),
+      Object.keys(mergedMetadata).length > 0 ? mergedMetadata : undefined,
       savePublic ? { visibility: 'public' } : { visibility: 'private' },
     );
     await refresh();
@@ -222,7 +287,7 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
     }
     setSelectedName(savedEntry?.name ?? actualName);
     setShowSaveDialog(false);
-  }, [saveName, saveNote, savePublic, state, save, loadedEntry, selectedName, refresh, load]);
+  }, [saveName, saveNote, savePublic, state, save, loadedEntry, selectedName, refresh, load, getSelectedVersion, extractCurrentDualMetadata, extract]);
 
   // Export current preset
   const handleExport = useCallback(async () => {
@@ -256,6 +321,8 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
     // Load it
     const savedEntry = await load(entry.name);
     const selectedEntry = savedEntry ?? entry;
+    const selectedVersion = getSelectedVersion(selectedEntry);
+    if (!selectedVersion) return;
     const versionData = getVersionData(selectedEntry);
     if (!versionData) return;
     setSelectedName(entry.name);
@@ -266,7 +333,12 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
       const newState = apply(state, versionData);
       onStateChange(newState);
     }
-  }, [refresh, load, apply, state, onLoad, onStateChange]);
+    onDualStateChange?.(
+      Object.keys(versionData),
+      selectedVersion.dualRanges,
+      selectedVersion.sliderModes as Record<string, SliderMode> | undefined,
+    );
+  }, [refresh, load, getSelectedVersion, apply, state, onLoad, onStateChange, onDualStateChange]);
 
   // Delete selected preset
   const handleDelete = useCallback(async () => {
