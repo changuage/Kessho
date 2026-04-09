@@ -20,7 +20,7 @@ import {
 } from './ui/state';
 import { DualSlider, DualSliderRange } from './ui/DualSlider';
 import { audioEngine, EngineState } from './audio/engine';
-import { formatChordDegrees, getTimeUntilNextPhrase, calculateDriftedRoot } from './audio/harmony';
+import { formatChordDegrees, calculateDriftedRoot } from './audio/harmony';
 import { getPresetNames, DrumVoiceType as DrumPresetVoice } from './audio/drumPresets';
 import { getPadPreset, morphPadPresets, PAD_PRESET_PARAM_KEYS, PAD1_TO_PAD2_KEY } from './audio/padPresets';
 import {
@@ -50,7 +50,11 @@ import { loadFactoryPresets, setPresetStore, getVersionData, extractPresetVersio
 import type { PresetEntry } from './presets';
 import { CollapsiblePanel } from './ui/CollapsiblePanel';
 import type { StepOverrides, SubLaneKind, SubLaneState, PitchSettings, EvolveConfig } from './ui/sequencer/useEuclideanSequencer';
+import type { PitchBindingMode } from './audio/drumSeqTypes';
 import type { SliderPageId } from './ui/sliderHelpCatalog';
+import { getSliderValueSlotWidthCh } from './ui/sliderValueLayout';
+import { sampleGlobalWalkPosition } from './audio/transport';
+import type { SynthKeyboardUiState } from './ui/synth/SynthPage';
 
 const JourneyModeView = React.lazy(() => import('./ui/JourneyModeView'));
 const GlobalPage = React.lazy(() => import('./ui/global/GlobalPage'));
@@ -185,6 +189,7 @@ interface SavedPreset {
   synthEvolveConfigs?: EvolveConfig[];
   drumSubLaneStates?: Record<SubLaneKind, SubLaneState>[];
   synthSubLaneStates?: Record<SubLaneKind, SubLaneState>[];
+  synthPitchBindingModes?: PitchBindingMode[];
 }
 
 // iOS-only reverb types that won't work on web
@@ -867,6 +872,7 @@ const FX_OWNER_LABELS = {
   pad2: 'Pad 2',
   lead1: 'Lead 1',
   lead2: 'Lead 2',
+  piano: 'Piano',
   drum: 'Drums',
 } as const;
 
@@ -874,6 +880,7 @@ const FX_ORIGIN_LABELS = {
   padChord: 'Chord',
   padEuclid: 'Euclid',
   leadNote: 'Lead Note',
+  pianoNote: 'Piano Note',
   drumHit: 'Drum Hit',
 } as const;
 
@@ -957,7 +964,10 @@ const Slider: React.FC<SliderProps> = ({
   const sliderMax = logarithmic ? 1 : info.max;
   const sliderStep = logarithmic ? 0.001 : info.step;
 
-  const displayValue = format ? format(value) : info.step < 1 ? value.toFixed(2) : Math.round(value);
+  const formatDisplayValue = (nextValue: number) =>
+    format ? format(nextValue) : info.step < 1 ? nextValue.toFixed(2) : String(Math.round(nextValue));
+  const displayValue = formatDisplayValue(value);
+  const valueSlotWidthCh = getSliderValueSlotWidthCh(info, formatDisplayValue, unit);
 
   // Compute fill percentage for visual track gradient
   const fillPercent = sliderMax > sliderMin
@@ -978,7 +988,18 @@ const Slider: React.FC<SliderProps> = ({
     >
       <div className="app-slider-label" style={styles.sliderLabel}>
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flexShrink: 1 }}>{label}</span>
-        <span style={{ flexShrink: 0, whiteSpace: 'nowrap' }}>
+        <span
+          className="app-slider-value"
+          style={{
+            flexShrink: 0,
+            whiteSpace: 'nowrap',
+            display: 'inline-flex',
+            justifyContent: 'flex-end',
+            minWidth: `${valueSlotWidthCh}ch`,
+            textAlign: 'right',
+            fontVariantNumeric: 'tabular-nums',
+          }}
+        >
           {displayValue}
           {unit || ''}
         </span>
@@ -1330,10 +1351,8 @@ const App: React.FC = () => {
       granular: { owner: null, strength: 0, lastOrigin: null, active: false },
       reverb: { owner: null, strength: 0, lastOrigin: null, active: false },
     },
+    transportDebug: null,
   });
-
-  const [countdown, setCountdown] = useState(0);
-  const countdownRef = useRef<number | null>(null);
   
   // Saved presets list - start empty, load from folder on mount
   const [savedPresets, setSavedPresets] = useState<SavedPreset[]>([]);
@@ -1666,6 +1685,8 @@ const App: React.FC = () => {
   const synthStepOverridesRef = useRef<StepOverrides | undefined>(undefined);
   const synthSubLaneStatesRef = useRef<Record<SubLaneKind, SubLaneState>[] | undefined>(undefined);
   const synthPitchSettingsRef = useRef<PitchSettings[] | undefined>(undefined);
+  const synthPitchBindingModesRef = useRef<PitchBindingMode[] | undefined>(undefined);
+  const synthKeyboardUiStateRef = useRef<SynthKeyboardUiState | undefined>(undefined);
   const synthEvolveConfigsRef = useRef<EvolveConfig[] | undefined>(undefined);
   const [synthEuclidEvolveFlashing, setSynthEuclidEvolveFlashing] = useState<boolean[]>([false, false, false, false]);
   const synthEuclidEvolveFlashTimersRef = useRef<Array<number | null>>([null, null, null, null]);
@@ -1695,6 +1716,8 @@ const App: React.FC = () => {
     // Restore sub-lane states (backward-compatible: undefined if preset lacks them)
     drumSubLaneStatesRef.current = preset.drumSubLaneStates;
     synthSubLaneStatesRef.current = preset.synthSubLaneStates;
+    synthPitchBindingModesRef.current = preset.synthPitchBindingModes;
+    audioEngine.setSynthPitchBindingModes(preset.synthPitchBindingModes ?? ['polyrhythmic', 'polyrhythmic', 'polyrhythmic', 'polyrhythmic']);
 
     // Bump all version counters so mounted pages re-initialize from refs
     setDrumPresetVersion(v => v + 1);
@@ -2038,9 +2061,17 @@ const App: React.FC = () => {
       let hasUpdates = false;
 
       walkKeys.forEach(key => {
-        const walk = randomWalkRef.current[key];
         const range = dualSliderRanges[key as keyof SliderState];
-        if (!walk || !range) return;
+        if (!range) return;
+
+        if (state.randomWalkMode === 'globalWalk') {
+          updates[key] = sampleGlobalWalkPosition(String(key), speed, state.seedWindow);
+          hasUpdates = true;
+          return;
+        }
+
+        const walk = randomWalkRef.current[key];
+        if (!walk) return;
 
         // Random walk with brownian motion
         // Add small random acceleration
@@ -2172,7 +2203,7 @@ const App: React.FC = () => {
       stopInterval();
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [sliderModes, dualSliderRanges, state.randomWalkSpeed, drumMorphKeys, engineState.isRunning]);
+  }, [sliderModes, dualSliderRanges, state.randomWalkSpeed, state.randomWalkMode, state.seedWindow, drumMorphKeys, engineState.isRunning]);
 
   // Load presets from folder on mount
   useEffect(() => {
@@ -2252,13 +2283,23 @@ const App: React.FC = () => {
         lead1: morph.lead1 >= 0 ? morph.lead1 : prev.lead1,
         lead2: morph.lead2 >= 0 ? morph.lead2 : prev.lead2,
       }));
-      // Also update the actual lead morph slider state so UI reflects the position
+      // Only write back into state in single-slider mode. In dual walk/S&H modes the
+      // callback payload is used as the in-range indicator position, and writing it
+      // into state would corrupt the actual morph value and retrigger idle teardown.
       setState(prev => {
         const updates: Partial<SliderState> = {};
-        if (morph.lead1 >= 0 && Math.abs((prev.lead1Morph ?? 0.5) - morph.lead1) > 0.001) {
+        if (
+          (sliderModes.lead1Morph ?? 'single') === 'single' &&
+          morph.lead1 >= 0 &&
+          Math.abs((prev.lead1Morph ?? 0.5) - morph.lead1) > 0.001
+        ) {
           updates.lead1Morph = morph.lead1 as SliderState['lead1Morph'];
         }
-        if (morph.lead2 >= 0 && Math.abs((prev.lead2Morph ?? 0.5) - morph.lead2) > 0.001) {
+        if (
+          (sliderModes.lead2Morph ?? 'single') === 'single' &&
+          morph.lead2 >= 0 &&
+          Math.abs((prev.lead2Morph ?? 0.5) - morph.lead2) > 0.001
+        ) {
           updates.lead2Morph = morph.lead2 as SliderState['lead2Morph'];
         }
         if (Object.keys(updates).length === 0) return prev;
@@ -2268,7 +2309,7 @@ const App: React.FC = () => {
     return () => {
       audioEngine.setLeadMorphCallback(null as unknown as (morph: { lead1: number; lead2: number }) => void);
     };
-  }, [activeTab]);
+  }, [activeTab, sliderModes.lead1Morph, sliderModes.lead2Morph]);
 
   // Pad morph sub-sequencer callback (moves padMorph slider + applies morphed preset) — throttled to ~15Hz
   useEffect(() => {
@@ -2831,18 +2872,17 @@ const App: React.FC = () => {
     };
   }, [anyDrumAutoMorphActive, anyPadAutoMorphActive, pad1AutoMorphActive, pad2AutoMorphActive, engineState.isRunning]);
 
-  // Countdown timer
+  // Transport debug polling
   useEffect(() => {
     if (engineState.isRunning) {
       const update = () => {
-        setCountdown(getTimeUntilNextPhrase(state.phraseLength ?? 16));
+        const transportDebug = audioEngine.getTransportDebugState();
+        setEngineState(prev => ({ ...prev, transportDebug }));
       };
       update();
-      countdownRef.current = window.setInterval(update, 1000); // 1Hz — displays whole seconds
+      const intervalId = window.setInterval(update, 250);
       return () => {
-        if (countdownRef.current) {
-          clearInterval(countdownRef.current);
-        }
+        clearInterval(intervalId);
       };
     }
   }, [engineState.isRunning]);
@@ -2882,6 +2922,75 @@ const App: React.FC = () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [activeTab, engineState.isRunning]);
+
+  useEffect(() => {
+    setState(prev => {
+      const barsPerPhrase = Math.max(1, prev.transportBarsPerPhrase ?? 4);
+      const beatsPerBar = Math.max(1, prev.transportBeatsPerBar ?? 4);
+      const phraseSeconds = Math.max(0.001, prev.phraseLength ?? 16);
+      const bpm = Math.max(1, prev.sequencerMasterBPM ?? prev.synthEuclidBaseBPM ?? prev.drumEuclidBaseBPM ?? 120);
+      const primaryClock = prev.transportPrimaryClock ?? 'seconds';
+      const nextBpm = quantize('sequencerMasterBPM', bpm);
+
+      if (primaryClock === 'decoupled') {
+        if (
+          nextBpm === prev.sequencerMasterBPM &&
+          nextBpm === prev.synthEuclidBaseBPM &&
+          nextBpm === prev.drumEuclidBaseBPM
+        ) {
+          return prev;
+        }
+        return {
+          ...prev,
+          sequencerMasterBPM: nextBpm,
+          synthEuclidBaseBPM: nextBpm,
+          drumEuclidBaseBPM: nextBpm,
+        };
+      }
+
+      if (primaryClock === 'seconds') {
+        const derivedBpm = quantize('sequencerMasterBPM', (barsPerPhrase * beatsPerBar * 60) / phraseSeconds);
+        if (
+          derivedBpm === prev.sequencerMasterBPM &&
+          derivedBpm === prev.synthEuclidBaseBPM &&
+          derivedBpm === prev.drumEuclidBaseBPM
+        ) {
+          return prev;
+        }
+        return {
+          ...prev,
+          sequencerMasterBPM: derivedBpm,
+          synthEuclidBaseBPM: derivedBpm,
+          drumEuclidBaseBPM: derivedBpm,
+        };
+      }
+
+      const derivedPhrase = quantize('phraseLength', (barsPerPhrase * beatsPerBar * 60) / bpm);
+      if (
+        derivedPhrase === prev.phraseLength &&
+        nextBpm === prev.sequencerMasterBPM &&
+        nextBpm === prev.synthEuclidBaseBPM &&
+        nextBpm === prev.drumEuclidBaseBPM
+      ) {
+        return prev;
+      }
+      return {
+        ...prev,
+        phraseLength: derivedPhrase,
+        sequencerMasterBPM: nextBpm,
+        synthEuclidBaseBPM: nextBpm,
+        drumEuclidBaseBPM: nextBpm,
+      };
+    });
+  }, [
+    state.transportPrimaryClock,
+    state.phraseLength,
+    state.sequencerMasterBPM,
+    state.synthEuclidBaseBPM,
+    state.drumEuclidBaseBPM,
+    state.transportBarsPerPhrase,
+    state.transportBeatsPerBar,
+  ]);
 
   // Update engine when state changes (always — drum sequencer works independently)
   useEffect(() => {
@@ -2972,6 +3081,19 @@ const App: React.FC = () => {
     
     setState((prev) => {
       let newState = { ...prev, [key]: stateValue };
+
+      if (key === 'chordProgressionSteps' && typeof stateValue === 'number') {
+        const nextSteps = Math.max(1, Math.round(stateValue));
+        const pattern = [...(prev.chordProgressionPattern ?? [0, 3, 4, 0])];
+        while (pattern.length < nextSteps) pattern.push(0);
+        const enabled = [...(prev.chordProgressionStepEnabled ?? new Array(pattern.length).fill(true))];
+        while (enabled.length < nextSteps) enabled.push(true);
+        newState.chordProgressionSteps = nextSteps;
+        newState.chordProgressionPattern = pattern.slice(0, nextSteps);
+        newState.chordProgressionStepEnabled = enabled.slice(0, nextSteps);
+        newState.chordProgressionHits = Math.min(nextSteps, Math.max(0, prev.chordProgressionHits ?? nextSteps));
+        newState.chordProgressionRotation = Math.min(Math.max(0, prev.chordProgressionRotation ?? 0), Math.max(0, nextSteps - 1));
+      }
       
       // Handle drum synth param override at any morph position
       // Works like the main morph system: endpoint changes are permanent,
@@ -2987,6 +3109,11 @@ const App: React.FC = () => {
 
       if (positiveNumber) {
         switch (routeKey) {
+          case 'delayAMix':
+          case 'delayAReverbSend':
+          case 'delayAToBSend':
+            newState.delayAEnabled = true;
+            break;
           case 'granularLevel':
           case 'granularReverbSend':
           case 'granularDelayASend':
@@ -2996,9 +3123,15 @@ const App: React.FC = () => {
             if (positiveNumber) newState.delayBGranularSend = 0;
             break;
           case 'delayAGranularSend':
+            newState.delayAEnabled = true;
             newState.granularEnabled = true;
             break;
+          case 'granularDelayReverbSend':
+          case 'delayBToASend':
+            newState.granularDelayEnabled = true;
+            break;
           case 'delayBGranularSend':
+            newState.granularDelayEnabled = true;
             newState.granularEnabled = true;
             // Mutual exclusion: zero the reverse direction
             if (positiveNumber) newState.granularDelayBSend = 0;
@@ -3023,6 +3156,16 @@ const App: React.FC = () => {
             newState.lead2Enabled = true;
             newState.granularEnabled = true;
             break;
+          case 'pianoLevel':
+          case 'pianoReverbSend':
+          case 'pianoDelayASend':
+          case 'pianoDelayBSend':
+            newState.pianoEnabled = true;
+            break;
+          case 'granularPianoSend':
+            newState.pianoEnabled = true;
+            newState.granularEnabled = true;
+            break;
           case 'drumLevel':
           case 'drumReverbSend':
           case 'drumDelayASend':
@@ -3037,11 +3180,42 @@ const App: React.FC = () => {
           case 'oceanReverbSend':
           case 'oceanDelayASend':
           case 'oceanDelayBSend':
+          case 'oceanSliceDuration':
+          case 'oceanSliceDensity':
             newState.oceanSampleEnabled = true;
             break;
           case 'granularWavesSend':
             newState.oceanSampleEnabled = true;
             newState.granularEnabled = true;
+            break;
+          case 'natureLevel':
+          case 'natureReverbSend':
+          case 'natureDelayASend':
+          case 'natureDelayBSend':
+            newState.birdsEnabled = true;
+            newState.birds2Enabled = true;
+            newState.frogsEnabled = true;
+            break;
+          case 'granularNatureSend':
+            newState.birdsEnabled = true;
+            newState.birds2Enabled = true;
+            newState.frogsEnabled = true;
+            newState.granularEnabled = true;
+            break;
+          case 'birdsLevel':
+          case 'birdsSliceDuration':
+          case 'birdsSliceDensity':
+            newState.birdsEnabled = true;
+            break;
+          case 'birds2Level':
+          case 'birds2SliceDuration':
+          case 'birds2SliceDensity':
+            newState.birds2Enabled = true;
+            break;
+          case 'frogsLevel':
+          case 'frogsSliceDuration':
+          case 'frogsSliceDensity':
+            newState.frogsEnabled = true;
             break;
           case 'synthLevel':
             newState.padEnabled = true;
@@ -3073,6 +3247,12 @@ const App: React.FC = () => {
           case 'waterReverbSend':
           case 'waterDelayASend':
           case 'waterDelayBSend':
+          case 'waterLayerHardDrops':
+          case 'waterLayerWaterDrops':
+          case 'waterLayerTurbulence':
+          case 'waterLayerBubbling':
+          case 'waterLayerSurf':
+          case 'waterLayerChannels':
             newState.waterEnabled = true;
             break;
           case 'granularWaterSend':
@@ -3122,10 +3302,22 @@ const App: React.FC = () => {
         (newState.granularPad2Send ?? 0) > 0 ||
         (newState.granularLead1Send ?? 0) > 0 ||
         (newState.granularLead2Send ?? 0) > 0 ||
+        (newState.granularPianoSend ?? 0) > 0 ||
         (newState.granularDrumSend ?? 0) > 0 ||
         (newState.granularWavesSend ?? 0) > 0 ||
+        (newState.granularNatureSend ?? 0) > 0 ||
         (newState.granularWaterSend ?? 0) > 0 ||
         (newState.granularInsectsSend ?? 0) > 0;
+      const delayAWetActive =
+        (newState.delayAMix ?? 0) > 0 ||
+        (newState.delayAReverbSend ?? 0) > 0 ||
+        (newState.delayAToBSend ?? 0) > 0 ||
+        (newState.delayAGranularSend ?? 0) > 0;
+      const delayBWetActive =
+        (newState.granularDelayMix ?? 0) > 0 ||
+        (newState.granularDelayReverbSend ?? 0) > 0 ||
+        (newState.delayBToASend ?? 0) > 0 ||
+        (newState.delayBGranularSend ?? 0) > 0;
       const lead1WetActive =
         (newState.lead1Level ?? 0) > 0 ||
         (newState.lead1ReverbSend ?? 0) > 0 ||
@@ -3138,6 +3330,12 @@ const App: React.FC = () => {
         (newState.lead2DelayASend ?? 0) > 0 ||
         (newState.lead2DelayBSend ?? 0) > 0 ||
         (newState.granularLead2Send ?? 0) > 0;
+      const pianoWetActive =
+        (newState.pianoLevel ?? 0) > 0 ||
+        (newState.pianoReverbSend ?? 0) > 0 ||
+        (newState.pianoDelayASend ?? 0) > 0 ||
+        (newState.pianoDelayBSend ?? 0) > 0 ||
+        (newState.granularPianoSend ?? 0) > 0;
       const drumWetActive =
         (newState.drumLevel ?? 0) > 0 ||
         (newState.drumReverbSend ?? 0) > 0 ||
@@ -3150,11 +3348,35 @@ const App: React.FC = () => {
         (newState.oceanDelayASend ?? 0) > 0 ||
         (newState.oceanDelayBSend ?? 0) > 0 ||
         (newState.granularWavesSend ?? 0) > 0;
+      const birdsWetActive =
+        (newState.birdsLevel ?? 0) > 0 ||
+        (newState.natureReverbSend ?? 0) > 0 ||
+        (newState.natureDelayASend ?? 0) > 0 ||
+        (newState.natureDelayBSend ?? 0) > 0 ||
+        (newState.granularNatureSend ?? 0) > 0;
+      const birds2WetActive =
+        (newState.birds2Level ?? 0) > 0 ||
+        (newState.natureReverbSend ?? 0) > 0 ||
+        (newState.natureDelayASend ?? 0) > 0 ||
+        (newState.natureDelayBSend ?? 0) > 0 ||
+        (newState.granularNatureSend ?? 0) > 0;
+      const frogsWetActive =
+        (newState.frogsLevel ?? 0) > 0 ||
+        (newState.natureReverbSend ?? 0) > 0 ||
+        (newState.natureDelayASend ?? 0) > 0 ||
+        (newState.natureDelayBSend ?? 0) > 0 ||
+        (newState.granularNatureSend ?? 0) > 0;
       const waterWetActive =
         (newState.waterLevel ?? 0) > 0 ||
         (newState.waterReverbSend ?? 0) > 0 ||
         (newState.waterDelayASend ?? 0) > 0 ||
         (newState.waterDelayBSend ?? 0) > 0 ||
+        (newState.waterLayerHardDrops ?? 0) > 0 ||
+        (newState.waterLayerWaterDrops ?? 0) > 0 ||
+        (newState.waterLayerTurbulence ?? 0) > 0 ||
+        (newState.waterLayerBubbling ?? 0) > 0 ||
+        (newState.waterLayerSurf ?? 0) > 0 ||
+        (newState.waterLayerChannels ?? 0) > 0 ||
         (newState.granularWaterSend ?? 0) > 0;
       const insectsSharedWetActive =
         (newState.insectsReverbSend ?? 0) > 0 ||
@@ -3165,17 +3387,35 @@ const App: React.FC = () => {
       if (!granularEngineActive) {
         newState.granularEnabled = false;
       }
+      if (!delayAWetActive) {
+        newState.delayAEnabled = false;
+      }
+      if (!delayBWetActive) {
+        newState.granularDelayEnabled = false;
+      }
       if (!lead1WetActive) {
         newState.leadEnabled = false;
       }
       if (!lead2WetActive) {
         newState.lead2Enabled = false;
       }
+      if (!pianoWetActive) {
+        newState.pianoEnabled = false;
+      }
       if (!drumWetActive) {
         newState.drumEnabled = false;
       }
       if (!oceanWetActive) {
         newState.oceanSampleEnabled = false;
+      }
+      if (!birdsWetActive) {
+        newState.birdsEnabled = false;
+      }
+      if (!birds2WetActive) {
+        newState.birds2Enabled = false;
+      }
+      if (!frogsWetActive) {
+        newState.frogsEnabled = false;
       }
       if (!pad1WetActive) {
         newState.padEnabled = false;
@@ -3495,7 +3735,21 @@ const App: React.FC = () => {
     // Mark that user has interacted with the UI
     hasUserInteractedRef.current = true;
     setState((prev) => {
-      const newState = { ...prev, [key]: value };
+      const newState: SliderState = { ...prev, [key]: value } as SliderState;
+
+      if (key === 'chordProgressionPattern' && Array.isArray(value)) {
+        const stepCount = Math.max(1, prev.chordProgressionSteps ?? 1, value.length);
+        const pattern = [...value];
+        while (pattern.length < stepCount) pattern.push(0);
+        newState.chordProgressionPattern = pattern.slice(0, stepCount);
+      }
+
+      if (key === 'chordProgressionStepEnabled' && Array.isArray(value)) {
+        const stepCount = Math.max(1, prev.chordProgressionSteps ?? 1, value.length);
+        const enabled = [...value];
+        while (enabled.length < stepCount) enabled.push(true);
+        newState.chordProgressionStepEnabled = enabled.slice(0, stepCount);
+      }
       
       // ═══ PAD PRESET MORPH: when preset A or B changes, re-morph and apply ═══
       if (key === 'padPresetA' || key === 'padPresetB') {
@@ -3505,7 +3759,7 @@ const App: React.FC = () => {
           const morphed = morphPadPresets(presetA, presetB, newState.padMorph as number);
           for (const k of PAD_PRESET_PARAM_KEYS) {
             if (k in morphed) {
-              (newState as Record<string, unknown>)[k] = morphed[k];
+              (newState as unknown as Record<string, unknown>)[k] = morphed[k];
             }
           }
         }
@@ -3521,7 +3775,7 @@ const App: React.FC = () => {
             if (k in morphed) {
               const pad2Key = PAD1_TO_PAD2_KEY[k];
               if (pad2Key) {
-                (newState as Record<string, unknown>)[pad2Key] = morphed[k];
+                (newState as unknown as Record<string, unknown>)[pad2Key] = morphed[k];
               }
             }
           }
@@ -3543,7 +3797,7 @@ const App: React.FC = () => {
               continue;
             }
             if (k in newState) {
-              (newState as Record<string, unknown>)[k] = (presetData as Record<string, unknown>)[k];
+              (newState as unknown as Record<string, unknown>)[k] = (presetData as Record<string, unknown>)[k];
             }
           }
           if (delayBGranularLinked) {
@@ -3564,7 +3818,7 @@ const App: React.FC = () => {
         );
         for (const k of WATER_MORPH_PARAM_KEYS) {
           if (k in morphed) {
-            (newState as Record<string, unknown>)[k] = morphed[k];
+            (newState as unknown as Record<string, unknown>)[k] = morphed[k];
           }
         }
         newState.waterPreset = (newState.waterMorph as number) < 0.5
@@ -3576,25 +3830,25 @@ const App: React.FC = () => {
       if (key === 'insectsEngine') {
         const defs = INSECT_ENGINE_DEFAULTS[value as number];
         if (defs) {
-          (newState as Record<string, unknown>).insectsDensity = defs.density;
-          (newState as Record<string, unknown>).insectsTemperature = defs.temperature;
-          (newState as Record<string, unknown>).insectsDistance = defs.distance;
-          (newState as Record<string, unknown>).insectsProximity = defs.proximity;
-          (newState as Record<string, unknown>).insectsAntiphony = defs.antiphony;
-          (newState as Record<string, unknown>).insectsClickRate = defs.clickRate;
-          (newState as Record<string, unknown>).insectsMotion = defs.motion;
+          (newState as unknown as Record<string, unknown>).insectsDensity = defs.density;
+          (newState as unknown as Record<string, unknown>).insectsTemperature = defs.temperature;
+          (newState as unknown as Record<string, unknown>).insectsDistance = defs.distance;
+          (newState as unknown as Record<string, unknown>).insectsProximity = defs.proximity;
+          (newState as unknown as Record<string, unknown>).insectsAntiphony = defs.antiphony;
+          (newState as unknown as Record<string, unknown>).insectsClickRate = defs.clickRate;
+          (newState as unknown as Record<string, unknown>).insectsMotion = defs.motion;
         }
       }
       if (key === 'insects2Engine') {
         const defs = INSECT_ENGINE_DEFAULTS[value as number];
         if (defs) {
-          (newState as Record<string, unknown>).insects2Density = defs.density;
-          (newState as Record<string, unknown>).insects2Temperature = defs.temperature;
-          (newState as Record<string, unknown>).insects2Distance = defs.distance;
-          (newState as Record<string, unknown>).insects2Proximity = defs.proximity;
-          (newState as Record<string, unknown>).insects2Antiphony = defs.antiphony;
-          (newState as Record<string, unknown>).insects2ClickRate = defs.clickRate;
-          (newState as Record<string, unknown>).insects2Motion = defs.motion;
+          (newState as unknown as Record<string, unknown>).insects2Density = defs.density;
+          (newState as unknown as Record<string, unknown>).insects2Temperature = defs.temperature;
+          (newState as unknown as Record<string, unknown>).insects2Distance = defs.distance;
+          (newState as unknown as Record<string, unknown>).insects2Proximity = defs.proximity;
+          (newState as unknown as Record<string, unknown>).insects2Antiphony = defs.antiphony;
+          (newState as unknown as Record<string, unknown>).insects2ClickRate = defs.clickRate;
+          (newState as unknown as Record<string, unknown>).insects2Motion = defs.motion;
         }
       }
 
@@ -4221,6 +4475,7 @@ const App: React.FC = () => {
       synthEvolveConfigs: synthEvolveConfigsRef.current,
       drumSubLaneStates: drumSubLaneStatesRef.current,
       synthSubLaneStates: synthSubLaneStatesRef.current,
+      synthPitchBindingModes: synthPitchBindingModesRef.current,
     };
     
     const success = await savePresetToFile(preset);
@@ -4378,8 +4633,8 @@ const App: React.FC = () => {
         'granularReverbSend', 'granularLevel', 'granularReverbLPF', 'granularOutputLPF',
         'granularDelayASend', 'granularDelayBSend',
         'delayAGranularSend', 'delayBGranularSend',
-        'granularPad1Send', 'granularPad2Send', 'granularLead1Send', 'granularLead2Send',
-        'granularDrumSend', 'granularWavesSend', 'granularWaterSend', 'granularInsectsSend',
+        'granularPad1Send', 'granularPad2Send', 'granularLead1Send', 'granularLead2Send', 'granularPianoSend',
+        'granularDrumSend', 'granularWavesSend', 'granularNatureSend', 'granularWaterSend', 'granularInsectsSend',
       ],
       leadEnabled: [
         'lead1Attack', 'lead1Decay', 'lead1Sustain', 'lead1Release',
@@ -4391,12 +4646,25 @@ const App: React.FC = () => {
         'leadGlide', 'lead1ReverbSend', 'lead2ReverbSend', 'delayAReverbSend',
         'lead1DelayASend', 'lead1DelayBSend', 'lead2DelayASend', 'lead2DelayBSend',
       ],
+      pianoEnabled: [
+        'pianoAttack', 'pianoDecay', 'pianoSustain', 'pianoHold', 'pianoRelease',
+        'pianoLevel', 'pianoReverbSend', 'pianoDelayASend', 'pianoDelayBSend', 'granularPianoSend',
+      ],
       synthEuclideanMasterEnabled: [
         'synthEuclideanTempo'
       ],
       oceanSampleEnabled: [
-        'oceanFilterCutoff', 'oceanFilterResonance', 'oceanDelayASend', 'oceanDelayBSend', 'granularWavesSend'
-      ]
+        'oceanFilterCutoff', 'oceanFilterResonance', 'oceanDelayASend', 'oceanDelayBSend', 'granularWavesSend', 'oceanSliceDuration', 'oceanSliceDensity'
+      ],
+      birdsEnabled: [
+        'birdsLevel', 'birdsSliceDuration', 'birdsSliceDensity'
+      ],
+      birds2Enabled: [
+        'birds2Level', 'birds2SliceDuration', 'birds2SliceDensity'
+      ],
+      frogsEnabled: [
+        'frogsLevel', 'frogsSliceDuration', 'frogsSliceDensity'
+      ],
     };
     
     // Determine which keys should be snapped (not morphed) based on parent boolean state
@@ -4416,12 +4684,13 @@ const App: React.FC = () => {
     const numericKeys: (keyof SliderState)[] = [
       'masterVolume', 'synthLevel', 'pad2Level', 'granularLevel', 'pad1ReverbSend', 'pad2ReverbSend', 'granularReverbSend',
       'pad1DelayASend', 'pad1DelayBSend', 'pad2DelayASend', 'pad2DelayBSend', 'lead1DelayASend', 'lead1DelayBSend', 'lead2DelayASend', 'lead2DelayBSend',
+      'pianoLevel', 'pianoReverbSend', 'pianoDelayASend', 'pianoDelayBSend',
       'drumDelayASend', 'drumDelayBSend', 'delayAToBSend', 'delayAGranularSend', 'delayBGranularSend',
       'granularDelayASend', 'granularDelayBSend',
-      'granularPad1Send', 'granularPad2Send', 'granularLead1Send', 'granularLead2Send',
-      'granularDrumSend', 'granularWavesSend', 'granularWaterSend', 'granularInsectsSend',
-      'drumReverbSend', 'oceanReverbSend', 'waterReverbSend', 'insectsReverbSend',
-      'oceanDelayASend', 'oceanDelayBSend', 'waterDelayASend', 'waterDelayBSend', 'insDelayASend', 'insDelayBSend',
+      'granularPad1Send', 'granularPad2Send', 'granularLead1Send', 'granularLead2Send', 'granularPianoSend',
+      'granularDrumSend', 'granularWavesSend', 'granularNatureSend', 'granularWaterSend', 'granularInsectsSend',
+      'drumReverbSend', 'oceanReverbSend', 'natureLevel', 'natureReverbSend', 'waterReverbSend', 'insectsReverbSend',
+      'oceanDelayASend', 'oceanDelayBSend', 'natureDelayASend', 'natureDelayBSend', 'waterDelayASend', 'waterDelayBSend', 'insDelayASend', 'insDelayBSend',
       'granularReverbLPF', 'granularOutputLPF',
       'lead1ReverbSend', 'lead2ReverbSend', 'delayAReverbSend', 'reverbLevel', 'randomness', 'tension',
       'chordRate', 'voicingSpread', 'waveSpread', 'detune', 'synthAttack', 'synthDecay',
@@ -4435,12 +4704,17 @@ const App: React.FC = () => {
       'density', 'spray', 'jitter', 'pitchSpread', 'stereoSpread', 'feedback',
       'wetHPF', 'wetLPF', 'leadLevel', 'lead1Level', 'lead2Level', 'lead1Attack', 'lead1Decay', 'lead1Sustain', 'lead1Release',
       'lead2Attack', 'lead2Decay', 'lead2Sustain', 'lead2Release',
+      'pianoAttack', 'pianoDecay', 'pianoSustain', 'pianoHold', 'pianoRelease',
       'delayATime', 'delayAFeedback',
       'delayAMix', 'lead1Density', 'lead1Octave',
       'lead1OctaveRange',
       'leadVibratoDepth', 'leadVibratoRate',
       'leadGlide', 'synthEuclideanTempo',
-      'oceanSampleLevel', 'oceanFilterCutoff', 'oceanFilterResonance',
+      'oceanSampleLevel', 'oceanFilterCutoff', 'oceanFilterResonance', 'oceanSliceDuration', 'oceanSliceDensity',
+      'birdsLevel', 'birdsSliceDuration', 'birdsSliceDensity',
+      'birds2Level', 'birds2SliceDuration', 'birds2SliceDensity',
+      'frogsLevel', 'frogsSliceDuration', 'frogsSliceDensity',
+      'natureLevel', 'natureReverbSend', 'natureDelayASend', 'natureDelayBSend', 'granularNatureSend',
       'cofDriftRate', 'cofDriftRange',
       // Drum morph positions - should interpolate when master morph changes
       'drumSubMorph', 'drumKickMorph', 'drumClickMorph',
@@ -4520,7 +4794,7 @@ const App: React.FC = () => {
     
     const engineToggleKeys: (keyof SliderState)[] = [
       'cofDriftEnabled', 'granularEnabled', 'leadEnabled', 'drumEnabled',
-      'oceanSampleEnabled'
+      'oceanSampleEnabled', 'birdsEnabled', 'birds2Enabled', 'frogsEnabled'
     ];
     for (const key of engineToggleKeys) {
       const onA = stateA[key] as boolean;
@@ -5017,6 +5291,7 @@ const App: React.FC = () => {
     if (atEndpoint0 || !morphPresetB) {
       const result = applyPreset(preset, { migrate: false, currentState: state, normalize: s => s });
       setState(result.state);
+      setStatePresetName(entry.name);
       applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
       restoreEvolveConfigs(preset);
     }
@@ -5040,6 +5315,7 @@ const App: React.FC = () => {
     if (atEndpoint1 || !morphPresetA) {
       const result = applyPreset(preset, { migrate: false, currentState: state, normalize: s => s });
       setState(result.state);
+      setStatePresetName(entry.name);
       applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
       restoreEvolveConfigs(preset);
     }
@@ -5411,6 +5687,7 @@ const App: React.FC = () => {
     if (shouldApplyPresetA) {
       const result = applyPreset(preset, { currentState: state, normalize: normalizePresetForWeb });
       setState(result.state);
+      setStatePresetName(preset.name);
       applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
       restoreEvolveConfigs(result.preset);
     }
@@ -5461,6 +5738,7 @@ const App: React.FC = () => {
           } else {
             // In snowflake mode, just apply directly
             setState(result.state);
+            setStatePresetName(importedPreset.name);
             audioEngine.updateParams(result.state);
             audioEngine.resetCofDrift();
             
@@ -5543,6 +5821,8 @@ const App: React.FC = () => {
       }
     }
   }, [savedPresets, handleLoadPresetFromList, engineState.isRunning, audioEngine, setupIOSMediaSession, connectMediaSessionToWebAudio]);
+
+  const getEarthTextureDebugState = useCallback(() => audioEngine.getEarthTextureDebugState(), []);
   
   // Journey mode: morph to a target preset over specified duration
   const journeyMorphAnimationRef = useRef<number | null>(null);
@@ -5755,6 +6035,70 @@ const App: React.FC = () => {
       cancelJourneyMorphLoop();
     };
   }, [cancelJourneyMorphLoop]);
+
+  const handleRoutingSourceToggle = useCallback((sourceId: string, enabled: boolean) => {
+    hasUserInteractedRef.current = true;
+    setState((prev) => {
+      let nextState: SliderState | null = null;
+      const ensureNextState = () => {
+        if (!nextState) nextState = { ...prev };
+        return nextState;
+      };
+      const setFlag = <K extends keyof SliderState>(key: K, value: SliderState[K]) => {
+        if (prev[key] === value) return;
+        ensureNextState()[key] = value;
+      };
+
+      switch (sourceId) {
+        case 'pad1':
+          setFlag('padEnabled', enabled);
+          break;
+        case 'pad2':
+          setFlag('pad2Enabled', enabled);
+          break;
+        case 'lead1':
+          setFlag('leadEnabled', enabled);
+          break;
+        case 'lead2':
+          setFlag('lead2Enabled', enabled);
+          break;
+        case 'piano':
+          setFlag('pianoEnabled', enabled);
+          break;
+        case 'drums':
+          setFlag('drumEnabled', enabled);
+          break;
+        case 'granular':
+          setFlag('granularEnabled', enabled);
+          break;
+        case 'waves':
+          setFlag('oceanSampleEnabled', enabled);
+          break;
+        case 'water':
+          setFlag('waterEnabled', enabled);
+          break;
+        case 'insects':
+          setFlag('insectsEnabled', enabled);
+          setFlag('insects2Enabled', enabled);
+          break;
+        case 'nature':
+          setFlag('birdsEnabled', enabled);
+          setFlag('birds2Enabled', enabled);
+          setFlag('frogsEnabled', enabled);
+          break;
+        case 'delayAOut':
+          setFlag('delayAEnabled', enabled);
+          break;
+        case 'delayBOut':
+          setFlag('granularDelayEnabled', enabled);
+          break;
+        default:
+          break;
+      }
+
+      return nextState ?? prev;
+    });
+  }, []);
 
   // Render journey mode UI
   if (uiMode === 'journey') {
@@ -6203,6 +6547,10 @@ const App: React.FC = () => {
             }}
             initialPitchSettings={synthPitchSettingsRef.current}
             onPitchSettingsChange={(settings) => { synthPitchSettingsRef.current = settings; audioEngine.setSynthPitchSettings(settings); }}
+            initialPitchBindingModes={synthPitchBindingModesRef.current}
+            onPitchBindingModesChange={(modes) => { synthPitchBindingModesRef.current = modes; audioEngine.setSynthPitchBindingModes(modes); }}
+            initialKeyboardUiState={synthKeyboardUiStateRef.current}
+            onKeyboardUiStateChange={(keyboardState) => { synthKeyboardUiStateRef.current = keyboardState; }}
             onRawStepOverridesChange={(raw) => {
               synthStepOverridesRef.current = raw;
             }}
@@ -6230,6 +6578,10 @@ const App: React.FC = () => {
             resetEvolveHome={(laneIdx) => audioEngine.resetSynthEuclidLaneHome(laneIdx)}
             diceLane={(laneIdx, intensity) => audioEngine.diceSynthEuclidLane(laneIdx, intensity)}
             evolvedOverrides={synthEvolvedOverrides}
+            onAuditionNote={(note) => {
+              void audioEngine.auditionSynthNote(note, state);
+            }}
+            harmonyState={engineState.harmonyState}
           />
         )}
 
@@ -6337,6 +6689,7 @@ const App: React.FC = () => {
             state={state}
             isMobile={isMobile}
             onParamChange={handleSliderChange}
+            onToggleSource={handleRoutingSourceToggle}
             sliderProps={sliderProps}
           />
         )}
@@ -6350,6 +6703,7 @@ const App: React.FC = () => {
             onStateChange={setState}
             sliderProps={sliderProps}
             isRunning={engineState.isRunning}
+            getEarthTextureDebugState={getEarthTextureDebugState}
           />
         )}
         </React.Suspense>
@@ -6396,15 +6750,43 @@ const App: React.FC = () => {
           </span>
         </div>
         <div style={styles.debugRow}>
-          <span style={styles.debugLabel}>Next Phrase In:</span>
+          <span style={styles.debugLabel}>Next Harmony Event:</span>
           <span style={styles.debugValue}>
-            {engineState.isRunning ? `${countdown.toFixed(1)}s` : '—'}
+            {engineState.isRunning && engineState.transportDebug && engineState.transportDebug.nextHarmonyEventIn !== null
+              ? `${engineState.transportDebug.nextHarmonyEventIn.toFixed(1)}s`
+              : '—'}
           </span>
         </div>
         <div style={styles.debugRow}>
-          <span style={styles.debugLabel}>Phrases Until Chord:</span>
+          <span style={styles.debugLabel}>Next Phrase:</span>
           <span style={styles.debugValue}>
-            {engineState.harmonyState?.phrasesUntilChange || '—'}
+            {engineState.isRunning && engineState.transportDebug
+              ? `${engineState.transportDebug.nextPhraseBoundaryIn.toFixed(1)}s`
+              : '—'}
+          </span>
+        </div>
+        <div style={styles.debugRow}>
+          <span style={styles.debugLabel}>Next Progression:</span>
+          <span style={styles.debugValue}>
+            {engineState.isRunning && engineState.transportDebug && engineState.transportDebug.nextProgressionStepIn !== null
+              ? `${engineState.transportDebug.nextProgressionStepIn.toFixed(1)}s`
+              : '—'}
+          </span>
+        </div>
+        <div style={styles.debugRow}>
+          <span style={styles.debugLabel}>Phrase Length:</span>
+          <span style={styles.debugValue}>
+            {engineState.transportDebug
+              ? `${engineState.transportDebug.effectivePhraseSeconds.toFixed(2)}s`
+              : '—'}
+          </span>
+        </div>
+        <div style={styles.debugRow}>
+          <span style={styles.debugLabel}>Beat BPM:</span>
+          <span style={styles.debugValue}>
+            {engineState.transportDebug
+              ? `${engineState.transportDebug.effectiveBpm.toFixed(1)}`
+              : '—'}
           </span>
         </div>
         <div style={{ borderTop: '1px solid #333', margin: '8px 0', paddingTop: '8px' }}>

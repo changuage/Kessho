@@ -8,6 +8,7 @@ export interface RoutingPageProps {
   state: SliderState;
   isMobile: boolean;
   onParamChange: (key: keyof SliderState, value: number) => void;
+  onToggleSource: (sourceId: string, enabled: boolean) => void;
   sliderProps: (paramKey: keyof SliderState) => {
     mode: SliderMode;
     dualRange?: DualSliderRange;
@@ -22,6 +23,7 @@ export default function RoutingPage({
   state,
   isMobile,
   onParamChange,
+  onToggleSource,
   sliderProps,
 }: RoutingPageProps) {
   return (
@@ -40,6 +42,7 @@ export default function RoutingPage({
               state={state}
               isMobile={isMobile}
               onParamChange={onParamChange}
+              onToggleSource={onToggleSource}
               sliderProps={sliderProps}
               helpPage="routing"
             />

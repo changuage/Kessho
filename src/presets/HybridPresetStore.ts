@@ -5,8 +5,38 @@
 // - list() merges local stock with cloud presets, deduplicating by name
 // - load() prefers cloud, then falls back to local stock
 
-import type { PresetEntry, PresetLevel, PresetSummary } from './types';
+import type { PresetEntry, PresetLevel, PresetLibrary, PresetSummary } from './types';
 import type { IPresetStore } from './PresetStore';
+
+function comparePresetSummaryPriority(left: PresetSummary, right: PresetSummary): number {
+  const rank = (preset: PresetSummary) => {
+    switch (preset.library) {
+      case 'cloud': return 3;
+      case 'user': return 2;
+      case 'stock':
+      default: return 1;
+    }
+  };
+  const rankDiff = rank(left) - rank(right);
+  if (rankDiff !== 0) return rankDiff;
+  return (left.updatedAt ?? 0) - (right.updatedAt ?? 0);
+}
+
+function normalizePresetName(name: string): string {
+  return name.trim().toLowerCase();
+}
+
+function dedupePresetSummariesByName(presets: PresetSummary[]): PresetSummary[] {
+  const byName = new Map<string, PresetSummary>();
+  for (const preset of presets) {
+    const key = normalizePresetName(preset.name);
+    const existing = byName.get(key);
+    if (!existing || comparePresetSummaryPriority(existing, preset) < 0) {
+      byName.set(key, preset);
+    }
+  }
+  return Array.from(byName.values());
+}
 
 export class HybridPresetStore implements IPresetStore {
   constructor(
@@ -52,28 +82,34 @@ export class HybridPresetStore implements IPresetStore {
     const localList = await this.local.list(type, scope);
     if (!this.cloud) return localList;
 
-    const localStock = localList.filter(p => p.library === 'stock');
-
     let cloudList: PresetSummary[] = [];
     try {
       cloudList = await this.cloud.list(type, scope);
     } catch (e) {
       console.warn('Cloud list failed:', e);
-      return localStock;
+      return dedupePresetSummariesByName(localList.filter(p => p.library === 'stock'));
     }
 
-    const merged: PresetSummary[] = cloudList.map(cp => ({
-      ...cp,
-      library: cp.library === 'stock' ? 'stock' : 'cloud',
-    }));
-    const seen = new Set(merged.map(p => p.name));
-    for (const local of localStock) {
-      if (!seen.has(local.name)) {
-        merged.push(local);
-        seen.add(local.name);
+    const merged: PresetSummary[] = [
+      ...cloudList.map(cp => {
+        const library: PresetLibrary = cp.library === 'stock' ? 'stock' : 'cloud';
+        return {
+          ...cp,
+          library,
+        };
+      }),
+      ...localList.filter(p => p.library === 'stock'),
+    ];
+
+    return dedupePresetSummariesByName(merged).sort((a, b) => {
+      if (a.library !== b.library) {
+        if (a.library === 'cloud') return -1;
+        if (b.library === 'cloud') return 1;
+        if (a.library === 'user') return -1;
+        if (b.library === 'user') return 1;
       }
-    }
-    return merged;
+      return a.name.localeCompare(b.name);
+    });
   }
 
   async delete(type: PresetLevel, name: string, scope?: string): Promise<void> {

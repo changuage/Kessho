@@ -14,7 +14,6 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { SliderState, formatIndexedDelayDivision, getParamInfo, getSliderNumericValue } from '../state';
 import type { ClockDivision } from '../../audio/drumSeqTypes';
-import { GRANULAR_PRESET_OPTIONS, getGranularPresetMeta, getGranularPresetSuggestedDelayBGranularSend } from './granularPresets';
 import { computeGranularMacroModel } from '../../audio/granularMacroModel';
 import GranularBufferCanvas from './GranularBufferCanvas';
 import type { CanvasVoiceVisual } from './GranularBufferCanvas';
@@ -231,14 +230,6 @@ const GranularPage: React.FC<GranularPageProps> = ({
     (state.insDelayBSend ?? 0) > 0.001;
   const delayBBusFed = delayBExternallyDriven || (state.granularDelayBSend ?? 0) > 0.001;
   const granularShape = state.granularShape ?? 'triangle';
-  const selectedPresetMeta = getGranularPresetMeta(state.granularPreset);
-  const linkedDelayBSendSuggestion = getGranularPresetSuggestedDelayBGranularSend(state.granularPreset);
-  const presetGroups = GRANULAR_PRESET_OPTIONS.reduce<Record<string, typeof GRANULAR_PRESET_OPTIONS>>((acc, option) => {
-    if (!acc[option.group]) acc[option.group] = [];
-    acc[option.group]!.push(option);
-    return acc;
-  }, {});
-
   // ── Scene preset save/load (composite: L1 voices + L2 kit + L3 source) ──
   const GRANULAR_COMPOSITE_SCOPES = [
     { level: 1 as const, scope: 'granularVoice1' },
@@ -259,8 +250,11 @@ const GranularPage: React.FC<GranularPageProps> = ({
     },
   }), []);
   const [scenePresetName, setScenePresetName] = useState<string | undefined>();
+  const [scenePresetDescription, setScenePresetDescription] = useState<string>('');
   const handleScenePresetLoad = useCallback((entry: PresetEntry, data: Record<string, unknown>) => {
     setScenePresetName(entry.name);
+    const currentVersion = entry.versions.find(version => version.v === entry.currentVersion);
+    setScenePresetDescription(entry.description ?? currentVersion?.note ?? '');
     // Apply all composite data directly to state (bypasses level filtering)
     if (onStateChange) {
       const newState = { ...state } as Record<string, unknown>;
@@ -560,48 +554,29 @@ const GranularPage: React.FC<GranularPageProps> = ({
           <div className="granular-section-card granular-preset-card">
             <div className="granular-section-head">
               <span className="granular-section-title">Preset</span>
-              <span className="granular-section-note">Choose the target sound before shaping voices</span>
+              <span className="granular-section-note">Save or recall the full granular scene</span>
             </div>
             <div className="granular-preset-body">
-              <select
-                className="granular-preset-select granular-preset-select-wide"
-                value={state.granularPreset}
-                onChange={e => onSelectChange('granularPreset' as keyof SliderState, e.target.value)}
-              >
-                {Object.entries(presetGroups).map(([group, options]) => (
-                  <optgroup key={group} label={group}>
-                    {options.map(option => (
-                      <option key={option.id} value={option.id}>{option.name}</option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
+              <PresetDropdown
+                className="granular-preset-toolbar"
+                level="source"
+                scope="granular"
+                state={state}
+                currentName={scenePresetName}
+                onLoad={handleScenePresetLoad}
+                presetOptions={granularSceneExtract}
+                compact
+              />
 
-              {selectedPresetMeta && (
-                <div className="granular-preset-meta">
-                  <div className="granular-preset-description">{selectedPresetMeta.description}</div>
-                  <div className="granular-preset-description" style={{ marginTop: 8, fontSize: '0.72rem', opacity: 0.85 }}>
-                    {state.delayBGranularLinked
-                      ? `Delay B is linked for preset loads. This preset currently suggests a ${Math.round((linkedDelayBSendSuggestion ?? 0) * 100)}% Delay B -> Granular return.`
-                      : 'Delay B is unlinked for preset loads, so Clocked Space stays where you left it. The linkage toggle lives on the Delay tab.'}
-                  </div>
-                  <div className="granular-preset-tags">
-                    {selectedPresetMeta.tags.map(tag => (
-                      <span key={tag} className="granular-preset-tag">{tag}</span>
-                    ))}
-                  </div>
+              <div className="granular-preset-meta">
+                <div className="granular-preset-description">
+                  {scenePresetDescription || (scenePresetName ? 'No description saved for this preset.' : 'Load a granular scene preset to view its description.')}
                 </div>
-              )}
+                <div className="granular-preset-description" style={{ marginTop: 8, fontSize: '0.72rem', opacity: 0.85 }}>
+                  This control stores the full granular scene: all four voices, legacy state, kit macros, and source-level controls.
+                </div>
+              </div>
             </div>
-            <PresetDropdown
-              level="source"
-              scope="granular"
-              state={state}
-              currentName={scenePresetName}
-              onLoad={handleScenePresetLoad}
-              presetOptions={granularSceneExtract}
-              compact
-            />
           </div>
 
           <div className="granular-section-card granular-buffer-card">

@@ -14,6 +14,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import type { SliderMode } from './state';
 import { useSliderHelp } from './SliderHelpOverlay';
 import type { SliderPageId } from './sliderHelpCatalog';
+import { getDualSliderValueSlotWidthCh, getSliderValueSlotWidthCh } from './sliderValueLayout';
 
 // ═══ Exported Types ═══
 
@@ -217,6 +218,9 @@ export function DualSlider<K extends string = string>({
     onCycleMode(paramKey);
   };
 
+  const singleValueSlotWidthCh = getSliderValueSlotWidthCh(info, formatValue, unit);
+  const dualValueSlotWidthCh = getDualSliderValueSlotWidthCh(info, formatValue, unit);
+
   const handleDragStart = (thumb: 'min' | 'max') => (e: React.MouseEvent | React.TouchEvent) => {
     if (disabled) return;
     e.preventDefault();
@@ -297,7 +301,18 @@ export function DualSlider<K extends string = string>({
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flexShrink: 1 }}>
             {label}
           </span>
-          <span style={{ flexShrink: 0, whiteSpace: 'nowrap' }}>
+          <span
+            className="app-slider-value"
+            style={{
+              flexShrink: 0,
+              whiteSpace: 'nowrap',
+              display: 'inline-flex',
+              justifyContent: 'flex-end',
+              minWidth: `${singleValueSlotWidthCh}ch`,
+              textAlign: 'right',
+              fontVariantNumeric: 'tabular-nums',
+            }}
+          >
             {formatValue(value)}
             {unit || ''}
           </span>
@@ -369,7 +384,19 @@ export function DualSlider<K extends string = string>({
           {label}
           <span style={{ ...dualStyles.modeIndicator, color: modeColor }}>{modeLabel}</span>
         </span>
-        <span style={{ flexShrink: 0, whiteSpace: 'nowrap', fontSize: '0.7rem' }}>
+        <span
+          className="app-slider-value"
+          style={{
+            flexShrink: 0,
+            whiteSpace: 'nowrap',
+            fontSize: '0.7rem',
+            display: 'inline-flex',
+            justifyContent: 'flex-end',
+            minWidth: `${dualValueSlotWidthCh}ch`,
+            textAlign: 'right',
+            fontVariantNumeric: 'tabular-nums',
+          }}
+        >
           {formatValue(dualRange?.min ?? info.min)}-{formatValue(dualRange?.max ?? info.max)}
           {unit || ''}
           <span style={{ color: '#fff', marginLeft: '4px' }}>

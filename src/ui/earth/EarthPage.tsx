@@ -5,7 +5,7 @@
  * State flows through SliderState; props follow the same pattern as
  * SynthPage / DrumPage / GranularPage.
  *
- * Layout: Left = Sound-engine controls, Right = Mixer
+ * Layout: Left = Sound-engine controls, Right = Scene mixer + advanced layers
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -13,6 +13,7 @@ import './earth.css';
 import { DualSlider, type DualSliderRange } from '../DualSlider';
 import type { SliderMode, SliderState } from '../state';
 import { QUANTIZATION } from '../state';
+import type { EarthTextureDebugState } from '../../audio/engine';
 import { usePresets } from '../../presets/usePresets';
 import { PresetDropdown } from '../../presets/PresetDropdown';
 import type { PresetEntry } from '../../presets/types';
@@ -32,10 +33,10 @@ import {
 } from './components/EarthControls';
 import { WaterCard } from './components/WaterCard';
 import { OceanCard } from './components/OceanCard';
+import { NatureCard } from './components/NatureCard';
 import { InsectsCard } from './components/InsectsCard';
 import { WalkSpeedCard } from './components/WalkSpeedCard';
-import { WaterLayersSection } from './components/WaterLayersSection';
-import { EarthMixerSection } from './components/EarthMixerSection';
+import { ActiveEarthMatrix } from './components/ActiveEarthMatrix';
 
 export interface EarthPageProps {
   state: SliderState;
@@ -51,18 +52,27 @@ export interface EarthPageProps {
     onDualRangeChange: (key: keyof SliderState, min: number, max: number) => void;
   };
   isRunning: boolean;
+  getEarthTextureDebugState: () => EarthTextureDebugState;
 }
 
 const EARTH_DUAL_KEYS: readonly (keyof SliderState)[] = [
+  'earthLevel',
   'waterMorph',
   'waterIntensity', 'waterDistance', 'waterDropSize',
   'waterHardness', 'waterGlassThickness', 'waterBaseFreq', 'waterReverbSend',
-  'oceanSampleLevel',
+  'oceanSampleLevel', 'oceanSliceDuration', 'oceanSliceDensity',
+  'oceanReverbSend', 'oceanDelayASend', 'oceanDelayBSend',
+  'birdsLevel', 'birdsSliceDuration', 'birdsSliceDensity',
+  'birds2Level', 'birds2SliceDuration', 'birds2SliceDensity',
+  'frogsLevel', 'frogsSliceDuration', 'frogsSliceDensity',
+  'natureLevel', 'natureReverbSend', 'natureDelayASend', 'natureDelayBSend',
   'insectsDensity', 'insectsTemperature', 'insectsDistance', 'insectsProximity',
   'insectsAntiphony', 'insectsClickRate', 'insectsMotion',
   'insects2Density', 'insects2Temperature', 'insects2Distance', 'insects2Proximity',
   'insects2Antiphony', 'insects2ClickRate', 'insects2Motion',
   'waterLevel', 'insectsLevel', 'insects2Level',
+  'insectsReverbSend', 'waterDelayASend', 'waterDelayBSend',
+  'granularWavesSend', 'granularNatureSend', 'granularWaterSend', 'granularInsectsSend',
   'waterLayerHardDrops', 'waterLayerWaterDrops', 'waterLayerTurbulence',
   'waterLayerBubbling', 'waterLayerSurf', 'waterLayerChannels',
   'waterHardDropRate', 'waterHardDropLPF', 'waterHardDropTone',
@@ -121,10 +131,8 @@ export default function EarthPage({
   onStateChange,
   sliderProps,
   isRunning: _isRunning,
+  getEarthTextureDebugState,
 }: EarthPageProps) {
-  const [expandedCards, setExpandedCards] = useState<Set<string>>(
-    () => new Set(['water']),
-  );
   const [selectedInsects1Preset, setSelectedInsects1Preset] = useState(() => `stock:${state.insectsEngine}`);
   const [selectedInsects2Preset, setSelectedInsects2Preset] = useState(() => `stock:${state.insects2Engine}`);
   const {
@@ -146,19 +154,44 @@ export default function EarthPage({
     refresh: refreshInsects2Presets,
   } = usePresets('engine', 'insects2');
 
-  const toggleCard = useCallback((id: string) => {
-    setExpandedCards(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
-
   const anyWalkMode = useMemo(
     () => EARTH_DUAL_KEYS.some(k => sliderProps(k).mode === 'walk'),
     [sliderProps],
   );
+
+  const expandedCards = useMemo(() => {
+    const next = new Set<string>();
+    const anyWaterLayerActive =
+      Number(state.waterLayerHardDrops) > 0.01 ||
+      Number(state.waterLayerWaterDrops) > 0.01 ||
+      Number(state.waterLayerBubbling) > 0.01 ||
+      Number(state.waterLayerChannels) > 0.01 ||
+      Number(state.waterLayerTurbulence) > 0.01 ||
+      Number(state.waterLayerSurf) > 0.01;
+
+    if (anyWaterLayerActive) next.add('water');
+    if (state.oceanSampleEnabled) next.add('ocean');
+    if (state.birdsEnabled) next.add('birds');
+    if (state.birds2Enabled) next.add('birds2');
+    if (state.frogsEnabled) next.add('frogs');
+    if (state.insectsEnabled) next.add('insects1');
+    if (state.insects2Enabled) next.add('insects2');
+
+    return next;
+  }, [
+    state.birds2Enabled,
+    state.birdsEnabled,
+    state.frogsEnabled,
+    state.insects2Enabled,
+    state.insectsEnabled,
+    state.oceanSampleEnabled,
+    state.waterLayerBubbling,
+    state.waterLayerChannels,
+    state.waterLayerHardDrops,
+    state.waterLayerSurf,
+    state.waterLayerTurbulence,
+    state.waterLayerWaterDrops,
+  ]);
 
   useEffect(() => {
     setSelectedInsects1Preset(prev => (prev.startsWith('stock:') ? `stock:${state.insectsEngine}` : prev));
@@ -292,23 +325,21 @@ export default function EarthPage({
     const defaultName = currentOption?.name || WATER_PRESETS[currentId] || 'Water Preset';
 
     let targetName = defaultName;
-    if (!currentOption || currentOption.library !== 'user') {
+    if (!currentOption) {
       if (typeof window === 'undefined' || typeof window.prompt !== 'function') return;
       const requestedName = window.prompt(
-        `Save ${slotKey === 'waterMorphA' ? 'Water slot A' : 'Water slot B'} as a new L1 preset`,
+        `Name this ${slotKey === 'waterMorphA' ? 'Water slot A' : 'Water slot B'} preset`,
         defaultName,
       );
       if (!requestedName?.trim()) return;
       targetName = requestedName.trim();
-      const existing = getWaterPresetOptions().find((option) => option.name === targetName && option.library !== 'user');
-      if (existing) targetName = `${targetName} (Custom)`;
     }
 
     const metadata = collectWaterPresetMetadata();
     await saveWaterPreset(
       targetName,
       state,
-      currentOption?.library === 'user' ? 'Updated from water slot' : 'Saved from water slot',
+      currentOption ? 'Updated from water slot' : 'Saved from water slot',
       undefined,
       metadata,
     );
@@ -400,16 +431,14 @@ export default function EarthPage({
     const defaultName = currentOption?.label || `${scope === 'insects1' ? 'Insects 1' : 'Insects 2'} Preset`;
     let targetName = defaultName;
 
-    if (!currentOption || currentOption.library !== 'user') {
+    if (!currentOption) {
       if (typeof window === 'undefined' || typeof window.prompt !== 'function') return;
       const requestedName = window.prompt(
-        `Save ${scope === 'insects1' ? 'Insects 1' : 'Insects 2'} as a new L1 preset`,
+        `Name this ${scope === 'insects1' ? 'Insects 1' : 'Insects 2'} preset`,
         defaultName,
       );
       if (!requestedName?.trim()) return;
       targetName = requestedName.trim();
-      const existing = options.find((option) => option.label === targetName && option.library !== 'user');
-      if (existing) targetName = `${targetName} (Custom)`;
     }
 
     const savePreset = scope === 'insects1' ? saveInsects1Preset : saveInsects2Preset;
@@ -417,7 +446,7 @@ export default function EarthPage({
     await savePreset(
       targetName,
       state,
-      currentOption?.library === 'user' ? 'Updated from insects preset strip' : 'Saved from insects preset strip',
+      currentOption ? 'Updated from insects preset strip' : 'Saved from insects preset strip',
     );
     await refreshPresetList();
 
@@ -472,8 +501,8 @@ export default function EarthPage({
   return (
     <div className="earth-root">
       <div className="container">
-        <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '6px 10px', marginBottom: 4, borderRadius: 8, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>
-          <span style={{ fontSize: 12, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>Earth Kit</span>
+        <div className="earth-kit-preset-bar">
+          <span className="earth-kit-label">Earth Kit</span>
           <PresetDropdown
             level="kit"
             scope="earthKit"
@@ -490,17 +519,59 @@ export default function EarthPage({
             ds={ds}
             waterPresetOptions={waterPresetOptions}
             expandedCards={expandedCards}
-            onToggleCard={toggleCard}
             onSelectChange={onSelectChange}
             onWaterSlotSave={(slotKey) => { void handleWaterSlotSave(slotKey); }}
+            enabled={state.waterEnabled}
           />
           <OceanCard
             state={state}
             ds={ds}
             expandedCards={expandedCards}
-            onToggleCard={toggleCard}
             onParamChange={onParamChange}
             onSelectChange={onSelectChange}
+            enabled={expandedCards.has('ocean')}
+          />
+          <NatureCard
+            cardId="birds"
+            title="Birds — Alps"
+            accent="#a5c4d4"
+            enabledKey="birdsEnabled"
+            levelKey="birdsLevel"
+            sliceDurationKey="birdsSliceDuration"
+            sliceDensityKey="birdsSliceDensity"
+            state={state}
+            ds={ds}
+            expandedCards={expandedCards}
+            onSelectChange={onSelectChange}
+            enabled={expandedCards.has('birds')}
+          />
+          <NatureCard
+            cardId="birds2"
+            title="Birds — Fujian"
+            accent="#8ec5d4"
+            enabledKey="birds2Enabled"
+            levelKey="birds2Level"
+            sliceDurationKey="birds2SliceDuration"
+            sliceDensityKey="birds2SliceDensity"
+            state={state}
+            ds={ds}
+            expandedCards={expandedCards}
+            onSelectChange={onSelectChange}
+            enabled={expandedCards.has('birds2')}
+          />
+          <NatureCard
+            cardId="frogs"
+            title="Frogs"
+            accent="#b4b450"
+            enabledKey="frogsEnabled"
+            levelKey="frogsLevel"
+            sliceDurationKey="frogsSliceDuration"
+            sliceDensityKey="frogsSliceDensity"
+            state={state}
+            ds={ds}
+            expandedCards={expandedCards}
+            onSelectChange={onSelectChange}
+            enabled={expandedCards.has('frogs')}
           />
           <InsectsCard
             scope="insects1"
@@ -509,10 +580,11 @@ export default function EarthPage({
             selectedPreset={selectedInsects1Preset}
             presetOptions={insects1PresetOptions}
             expandedCards={expandedCards}
-            onToggleCard={toggleCard}
             onPresetLoad={(scope, value) => { void handleInsectsPresetLoad(scope, value); }}
             onPresetSave={(scope) => { void handleInsectsPresetSave(scope); }}
             ds={ds}
+            enabled={expandedCards.has('insects1')}
+            engineName={INSECT_ENGINES[state.insectsEngine] ?? ''}
           />
           <InsectsCard
             scope="insects2"
@@ -521,10 +593,11 @@ export default function EarthPage({
             selectedPreset={selectedInsects2Preset}
             presetOptions={insects2PresetOptions}
             expandedCards={expandedCards}
-            onToggleCard={toggleCard}
             onPresetLoad={(scope, value) => { void handleInsectsPresetLoad(scope, value); }}
             onPresetSave={(scope) => { void handleInsectsPresetSave(scope); }}
             ds={ds}
+            enabled={expandedCards.has('insects2')}
+            engineName={INSECT_ENGINES[state.insects2Engine] ?? ''}
           />
           {anyWalkMode && (
             <WalkSpeedCard
@@ -535,15 +608,12 @@ export default function EarthPage({
         </div>
 
         <div className="mixer-panel">
-          <WaterLayersSection
+          <ActiveEarthMatrix
             state={state}
-            ds={ds}
             onParamChange={onParamChange}
-          />
-          <EarthMixerSection
-            state={state}
-            ds={ds}
             onSelectChange={onSelectChange}
+            sliderProps={sliderProps}
+            getEarthTextureDebugState={getEarthTextureDebugState}
           />
         </div>
       </div>

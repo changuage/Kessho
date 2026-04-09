@@ -36,6 +36,7 @@ export interface PresetVersionMetadata {
   synthEvolveConfigs?: SerializedEvolveConfig[];
   drumSubLaneStates?: Record<string, SerializedSubLaneState>[];
   synthSubLaneStates?: Record<string, SerializedSubLaneState>[];
+  refs?: Record<string, PresetRef>;
 }
 
 export interface PresetVersion extends PresetVersionMetadata {

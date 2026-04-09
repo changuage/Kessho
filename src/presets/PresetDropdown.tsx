@@ -7,10 +7,10 @@ import type { PresetLevel, PresetEntry, PresetSummary } from './types';
 import { usePresets } from './usePresets';
 import { exportPresetToFile, importPresetFromFile } from './fileIO';
 import { getPresetStore } from './PresetStore';
-import { extractPresetVersionMetadata, isPresetCompatibleWithSlot } from './presetUtils';
+import { extractPresetVersionMetadata, isPresetCompatibleWithSlot, presetValuesEqual } from './presetUtils';
 import { getPresetDisplayLabel } from './catalog';
 import { getVersionData } from './codec';
-import type { SliderMode, SliderState } from '../ui/state';
+import { DEFAULT_STATE, type SliderMode, type SliderState } from '../ui/state';
 import type { UsePresetsOptions } from './usePresets';
 
 export interface PresetDropdownProps {
@@ -122,6 +122,28 @@ const dropdownStyles: Record<string, React.CSSProperties> = {
   },
 };
 
+function normalizePresetName(name: string): string {
+  return name.trim().toLowerCase();
+}
+
+function dedupePresetSummaries(presets: PresetSummary[]): PresetSummary[] {
+  const byKey = new Map<string, PresetSummary>();
+  for (const preset of presets) {
+    const key = normalizePresetName(preset.name);
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, preset);
+      continue;
+    }
+    const existingRank = existing.library === 'cloud' ? 3 : existing.library === 'user' ? 2 : 1;
+    const presetRank = preset.library === 'cloud' ? 3 : preset.library === 'user' ? 2 : 1;
+    if (presetRank > existingRank || (presetRank === existingRank && (preset.updatedAt ?? 0) > (existing.updatedAt ?? 0))) {
+      byKey.set(key, preset);
+    }
+  }
+  return Array.from(byKey.values());
+}
+
 export const PresetDropdown: React.FC<PresetDropdownProps> = ({
   level,
   scope,
@@ -147,24 +169,30 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
   const [selectedName, setSelectedName] = useState(currentName || '');
   const [loadedEntry, setLoadedEntry] = useState<PresetEntry | null>(null);
   const [loadedData, setLoadedData] = useState<Record<string, unknown> | null>(null);
+  const dedupedPresets = useMemo(() => dedupePresetSummaries(presets), [presets]);
+  const sortedPresets = useMemo(
+    () => [...dedupedPresets].sort((left, right) => left.name.localeCompare(right.name)),
+    [dedupedPresets],
+  );
   const selectedPresetSummary = useMemo<PresetSummary | null>(() => {
     if (!selectedName) return null;
-    return presets.find(p => p.name === selectedName) ?? null;
-  }, [presets, selectedName]);
-  const canChangeVisibility = selectedPresetSummary?.library === 'user';
+    return sortedPresets.find(p => p.name === selectedName) ?? null;
+  }, [sortedPresets, selectedName]);
+  const canChangeVisibility = selectedPresetSummary?.library !== 'stock';
   const isSelectedPresetPublic = selectedPresetSummary?.visibility === 'public';
+
+  const canonicalizeLoadedData = useCallback((data: Record<string, unknown>) => {
+    const canonicalState = apply(DEFAULT_STATE, data);
+    return extract(canonicalState);
+  }, [apply, extract]);
 
   // Dirty detection: compare current state params against last loaded version
   const isDirty = useMemo(() => {
     if (!loadedEntry || !loadedData) return false;
     const currentParams = extract(state);
-    for (const key of Object.keys(loadedData)) {
-      const saved = loadedData[key];
-      const current = currentParams[key];
-      // Tolerate small floating point differences
-      if (typeof saved === 'number' && typeof current === 'number') {
-        if (Math.abs(saved - current) > 1e-6) return true;
-      } else if (saved !== current) {
+    const keys = new Set([...Object.keys(loadedData), ...Object.keys(currentParams)]);
+    for (const key of keys) {
+      if (!presetValuesEqual(loadedData[key], currentParams[key])) {
         return true;
       }
     }
@@ -223,7 +251,7 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
     if (!versionData) return;
 
     setLoadedEntry(entry);
-    setLoadedData(versionData);
+    setLoadedData(canonicalizeLoadedData(versionData));
     onLoad(entry, versionData);
 
     // Apply params to state and notify
@@ -236,7 +264,7 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
       version.dualRanges,
       version.sliderModes as Record<string, SliderMode> | undefined,
     );
-  }, [load, getSelectedVersion, apply, state, onLoad, onStateChange, onDualStateChange]);
+  }, [load, getSelectedVersion, apply, state, onLoad, onStateChange, onDualStateChange, canonicalizeLoadedData]);
 
   // Open save dialog
   const handleSaveClick = useCallback(() => {
@@ -251,9 +279,6 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
     if (!saveName.trim()) return;
     const version = loadedEntry ? getSelectedVersion(loadedEntry) : null;
     const trimmedName = saveName.trim();
-    const actualName = loadedEntry?.author !== 'user' && trimmedName === selectedName
-      ? `${trimmedName} (Custom)`
-      : trimmedName;
     const currentDualMetadata = extractCurrentDualMetadata(extract(state));
     const preservedMetadata = extractPresetVersionMetadata(version);
     const mergedMetadata = {
@@ -276,18 +301,18 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
       savePublic ? { visibility: 'public' } : { visibility: 'private' },
     );
     await refresh();
-    const savedEntry = await load(actualName);
+    const savedEntry = await load(trimmedName);
     setLoadedEntry(savedEntry ?? null);
     // Update loadedData so dirty flag resets
     if (savedEntry) {
       const verData = getVersionData(savedEntry);
-      setLoadedData(verData ?? null);
+      setLoadedData(verData ? canonicalizeLoadedData(verData) : null);
     } else {
       setLoadedData(null);
     }
-    setSelectedName(savedEntry?.name ?? actualName);
+    setSelectedName(savedEntry?.name ?? trimmedName);
     setShowSaveDialog(false);
-  }, [saveName, saveNote, savePublic, state, save, loadedEntry, selectedName, refresh, load, getSelectedVersion, extractCurrentDualMetadata, extract]);
+  }, [saveName, saveNote, savePublic, state, save, loadedEntry, selectedName, refresh, load, getSelectedVersion, extractCurrentDualMetadata, extract, canonicalizeLoadedData]);
 
   // Export current preset
   const handleExport = useCallback(async () => {
@@ -327,7 +352,7 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
     if (!versionData) return;
     setSelectedName(entry.name);
     setLoadedEntry(selectedEntry);
-    setLoadedData(versionData);
+    setLoadedData(canonicalizeLoadedData(versionData));
     onLoad(selectedEntry, versionData);
     if (onStateChange) {
       const newState = apply(state, versionData);
@@ -338,7 +363,7 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
       selectedVersion.dualRanges,
       selectedVersion.sliderModes as Record<string, SliderMode> | undefined,
     );
-  }, [refresh, load, getSelectedVersion, apply, state, onLoad, onStateChange, onDualStateChange]);
+  }, [refresh, load, getSelectedVersion, apply, state, onLoad, onStateChange, onDualStateChange, canonicalizeLoadedData]);
 
   // Delete selected preset
   const handleDelete = useCallback(async () => {
@@ -363,16 +388,16 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
     setLoadedEntry(entry);
   }, [selectedName, load, refresh]);
 
-  // Separate built-in and user presets
-  const stockPresets = presets.filter(p => p.creator === 'Kessho');
-  const userPresets = presets.filter(p => p.library === 'user' && p.creator !== 'Kessho');
-  const cloudPresets = presets.filter(p => p.library === 'cloud');
+  const selectBorderColor = isDirty
+    ? '#c9913666'
+    : accentColor
+      ? `${accentColor}33`
+      : 'rgba(255, 255, 255, 0.15)';
 
   const selectStyle: React.CSSProperties = {
     ...dropdownStyles.select,
     ...(compact ? { fontSize: '0.7rem', padding: '2px 4px' } : {}),
-    ...(accentColor ? { borderColor: `${accentColor}33` } : {}),
-    ...(isDirty ? { borderColor: '#c9913666' } : {}),
+    border: `1px solid ${selectBorderColor}`,
   };
 
   return (
@@ -397,33 +422,11 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
           title={`${level} preset`}
         >
           <option value="">— Select —</option>
-          {stockPresets.length > 0 && (
-            <optgroup label="Stock">
-              {stockPresets.map(p => (
-                <option key={`s:${p.name}`} value={p.name}>
-                  {getPresetDisplayLabel(p)}
-                </option>
-              ))}
-            </optgroup>
-          )}
-          {userPresets.length > 0 && (
-            <optgroup label="User">
-              {userPresets.map(p => (
-                <option key={`u:${p.name}`} value={p.name}>
-                  {getPresetDisplayLabel(p)} {p.visibility === 'public' ? '[public] ' : ''}{p.versionCount > 1 ? `(v${p.currentVersion})` : ''}
-                </option>
-              ))}
-            </optgroup>
-          )}
-          {cloudPresets.length > 0 && (
-            <optgroup label="Cloud">
-              {cloudPresets.map(p => (
-                <option key={`c:${p.name}`} value={p.name}>
-                  {getPresetDisplayLabel(p)}
-                </option>
-              ))}
-            </optgroup>
-          )}
+          {sortedPresets.map(p => (
+            <option key={`${p.library}:${p.name}`} value={p.name}>
+              {getPresetDisplayLabel(p)} {p.visibility === 'public' ? '[public] ' : ''}{p.versionCount > 1 ? `(v${p.currentVersion})` : ''}
+            </option>
+          ))}
         </select>
 
         {showSaveButton && (
@@ -473,7 +476,7 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
           </button>
         )}
 
-        {selectedName && userPresets.some(p => p.name === selectedName) && (
+        {selectedName && selectedPresetSummary && selectedPresetSummary.library !== 'stock' && (
           <button
             onClick={handleDelete}
             style={{ ...dropdownStyles.iconBtn, color: '#664444' }}

@@ -27,7 +27,9 @@ type EarthCardProps = {
   title: string;
   accent: string;
   expandedCards: Set<string>;
-  onToggleCard: (id: string) => void;
+  onToggleCard?: (id: string) => void;
+  enabled?: boolean;
+  subtitle?: string;
   children: React.ReactNode;
 };
 
@@ -37,17 +39,31 @@ export function EarthCard({
   accent,
   expandedCards,
   onToggleCard,
+  enabled,
+  subtitle,
   children,
 }: EarthCardProps) {
   const expanded = expandedCards.has(cardId);
+  const clickable = typeof onToggleCard === 'function';
   return (
     <div
       className={`earth-card${expanded ? ' expanded' : ''}`}
       style={{ '--sc': accent } as React.CSSProperties}
     >
-      <div className="earth-card-header" onClick={() => onToggleCard(cardId)}>
+      <div
+        className={`earth-card-header${clickable ? ' clickable' : ''}`}
+        onClick={clickable ? () => onToggleCard(cardId) : undefined}
+      >
         <span className="ec-name">{title}</span>
-        <span className="ec-chevron">{expanded ? '▼' : '▶'}</span>
+        {subtitle && !expanded && (
+          <span style={{ fontSize: '0.55rem', color: 'var(--text-dim)', fontWeight: 400 }}>{subtitle}</span>
+        )}
+        <div className="ec-header-right">
+          {enabled !== undefined && (
+            <span className={`ec-status-dot ${enabled ? 'on' : 'off'}`} />
+          )}
+          {clickable ? <span className="ec-chevron">{expanded ? '▼' : '▶'}</span> : null}
+        </div>
       </div>
 
       {expanded && <div className="earth-card-body">{children}</div>}
@@ -56,37 +72,15 @@ export function EarthCard({
 }
 
 export function EarthPresetOptions({ options }: { options: EarthPresetOption[] }) {
-  const stock = options.filter(option => option.library === 'stock');
-  const user = options.filter(option => option.library === 'user');
-  const cloud = options.filter(option => option.library === 'cloud');
+  const sorted = [...options].sort((left, right) => left.label.localeCompare(right.label));
 
   return (
     <>
-      <optgroup label="Stock">
-        {stock.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </optgroup>
-      {user.length > 0 && (
-        <optgroup label="My Presets">
-          {user.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </optgroup>
-      )}
-      {cloud.length > 0 && (
-        <optgroup label="Cloud">
-          {cloud.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </optgroup>
-      )}
+      {sorted.map((option) => (
+        <option key={`${option.library}:${option.value}`} value={option.value}>
+          {option.label}
+        </option>
+      ))}
     </>
   );
 }

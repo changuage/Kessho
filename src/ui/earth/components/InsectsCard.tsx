@@ -15,10 +15,12 @@ type InsectsCardProps = {
   selectedPreset: string;
   presetOptions: EarthPresetOption[];
   expandedCards: Set<string>;
-  onToggleCard: (id: string) => void;
+  onToggleCard?: (id: string) => void;
   onPresetLoad: (scope: InsectsScope, value: string) => void;
   onPresetSave: (scope: InsectsScope) => void;
   ds: EarthDualSliderRenderer;
+  enabled?: boolean;
+  engineName?: string;
 };
 
 export function InsectsCard({
@@ -32,6 +34,8 @@ export function InsectsCard({
   onPresetLoad,
   onPresetSave,
   ds,
+  enabled,
+  engineName,
 }: InsectsCardProps) {
   const prefix = scope === 'insects1' ? 'insects' : 'insects2';
 
@@ -42,6 +46,8 @@ export function InsectsCard({
       accent={accent}
       expandedCards={expandedCards}
       onToggleCard={onToggleCard}
+      enabled={enabled}
+      subtitle={engineName}
     >
       <div className="earth-preset-bar">
         <select

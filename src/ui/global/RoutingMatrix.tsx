@@ -74,6 +74,7 @@ export interface RoutingMatrixProps {
   state: SliderState;
   isMobile: boolean;
   onParamChange: (key: keyof SliderState, value: number) => void;
+  onToggleSource?: (sourceId: string, enabled: boolean) => void;
   sliderProps: (paramKey: keyof SliderState) => RoutingSliderRuntime;
   helpPage?: SliderPageId;
   showNote?: boolean;
@@ -83,6 +84,7 @@ const TRACK_PAD_PX = 6;
 const EDGE_HANDLE_PX = 8;
 const LONG_PRESS_MS = 400;
 const LONG_PRESS_MOVE_TOLERANCE_PX = 8;
+const ROUTING_MATRIX_ACTIVE_FILTER_STORAGE_KEY = 'routing-matrix:show-active-only:v1';
 
 const COLUMNS: Array<{ id: ColumnId; label: string; note?: string }> = [
   { id: 'level', label: 'Level', note: 'Drag the header left or right to trim every level in this column together.' },
@@ -142,6 +144,18 @@ const ROWS: MatrixRow[] = [
       delayB: { kind: 'editable', route: { key: 'lead2DelayBSend', label: 'Lead 2 → Delay B' } },
       granular: { kind: 'editable', route: { key: 'granularLead2Send', label: 'Lead 2 → Granular' } },
       reverb: { kind: 'editable', route: { key: 'lead2ReverbSend', label: 'Lead 2 → Reverb' } },
+    },
+  },
+  {
+    id: 'piano',
+    label: 'Piano',
+    accent: '#e7c87f',
+    cells: {
+      level: { kind: 'editable', route: { key: 'pianoLevel', label: 'Piano Level' } },
+      delayA: { kind: 'editable', route: { key: 'pianoDelayASend', label: 'Piano → Delay A' } },
+      delayB: { kind: 'editable', route: { key: 'pianoDelayBSend', label: 'Piano → Delay B' } },
+      granular: { kind: 'editable', route: { key: 'granularPianoSend', label: 'Piano → Granular' } },
+      reverb: { kind: 'editable', route: { key: 'pianoReverbSend', label: 'Piano → Reverb' } },
     },
   },
   {
@@ -208,6 +222,19 @@ const ROWS: MatrixRow[] = [
     },
   },
   {
+    id: 'nature',
+    label: 'Nature',
+    accent: '#b7d3a3',
+    note: 'Nature now has a shared dry master plus one wet bus for Birds Alps, Birds Fujian, and Frogs. Individual source levels and texture shaping still live in the Active Earth Matrix.',
+    cells: {
+      level: { kind: 'editable', route: { key: 'natureLevel', label: 'Nature Level' } },
+      delayA: { kind: 'editable', route: { key: 'natureDelayASend', label: 'Nature → Delay A' } },
+      delayB: { kind: 'editable', route: { key: 'natureDelayBSend', label: 'Nature → Delay B' } },
+      granular: { kind: 'editable', route: { key: 'granularNatureSend', label: 'Nature → Granular' } },
+      reverb: { kind: 'editable', route: { key: 'natureReverbSend', label: 'Nature → Reverb' } },
+    },
+  },
+  {
     id: 'delayAOut',
     label: 'Delay A Out',
     accent: '#b9c9ff',
@@ -258,6 +285,39 @@ function cellValue(state: SliderState, route: RouteControl | undefined): number 
   return clamp01(Number(state[route.key] ?? 0) || 0);
 }
 
+function rowIsEnabled(row: MatrixRow, state: SliderState): boolean {
+  switch (row.id) {
+    case 'pad1':
+      return !!state.padEnabled;
+    case 'pad2':
+      return !!state.pad2Enabled;
+    case 'lead1':
+      return !!state.leadEnabled;
+    case 'lead2':
+      return !!state.lead2Enabled;
+    case 'piano':
+      return !!state.pianoEnabled;
+    case 'drums':
+      return !!state.drumEnabled;
+    case 'granular':
+      return !!state.granularEnabled;
+    case 'waves':
+      return !!state.oceanSampleEnabled;
+    case 'water':
+      return !!state.waterEnabled;
+    case 'insects':
+      return !!(state.insectsEnabled || state.insects2Enabled);
+    case 'nature':
+      return !!(state.birdsEnabled || state.birds2Enabled || state.frogsEnabled);
+    case 'delayAOut':
+      return !!state.delayAEnabled;
+    case 'delayBOut':
+      return !!state.granularDelayEnabled;
+    default:
+      return true;
+  }
+}
+
 function getResolvedMode(runtime: RoutingSliderRuntime | null): SliderMode {
   if (!runtime) return 'single';
   return runtime.mode !== 'single' && runtime.dualRange ? runtime.mode : 'single';
@@ -265,13 +325,14 @@ function getResolvedMode(runtime: RoutingSliderRuntime | null): SliderMode {
 
 function getColumnTargets(
   columnId: ColumnId,
+  rows: MatrixRow[],
   state: SliderState,
   sliderProps: (paramKey: keyof SliderState) => RoutingSliderRuntime,
 ): ColumnDragTarget[] {
   const seen = new Set<keyof SliderState>();
   const targets: ColumnDragTarget[] = [];
 
-  for (const row of ROWS) {
+  for (const row of rows) {
     const cell = row.cells[columnId];
     if (cell.kind !== 'editable' || !cell.route || seen.has(cell.route.key)) continue;
     seen.add(cell.route.key);
@@ -337,6 +398,7 @@ export default function RoutingMatrix({
   state,
   isMobile,
   onParamChange,
+  onToggleSource,
   sliderProps,
   helpPage = 'routing',
   showNote = true,
@@ -344,6 +406,14 @@ export default function RoutingMatrix({
   const { announceSlider } = useSliderHelp();
   const [draggingId, setDraggingId] = React.useState<string | null>(null);
   const [activeMobileColumn, setActiveMobileColumn] = React.useState<ColumnId>('level');
+  const [showActiveOnly, setShowActiveOnly] = React.useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      return window.sessionStorage.getItem(ROUTING_MATRIX_ACTIVE_FILTER_STORAGE_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
   const dragStateRef = React.useRef<DragState | null>(null);
   const longPressTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressMetaRef = React.useRef<{
@@ -351,12 +421,25 @@ export default function RoutingMatrix({
     startX: number;
     startY: number;
   } | null>(null);
+  const longPressActionRef = React.useRef<(() => void) | null>(null);
   const longPressConsumedRef = React.useRef(false);
   const dblClickGuardRef = React.useRef<{ time: number; cellId: string } | null>(null);
   const activeColumn = React.useMemo(
     () => COLUMNS.find((column) => column.id === activeMobileColumn) ?? DEFAULT_COLUMN,
     [activeMobileColumn],
   );
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.sessionStorage.setItem(
+        ROUTING_MATRIX_ACTIVE_FILTER_STORAGE_KEY,
+        showActiveOnly ? '1' : '0',
+      );
+    } catch {
+      // Ignore storage failures; the filter can stay in-memory.
+    }
+  }, [showActiveOnly]);
 
   // Bidirectional mutual exclusion: Granular ↔ Delay B
   const granularToDelayBActive = (state.granularDelayBSend ?? 0) > 0.0001;
@@ -370,6 +453,10 @@ export default function RoutingMatrix({
     }
     return row;
   }), [granularToDelayBActive, delayBToGranularActive]);
+  const visibleRows = React.useMemo(
+    () => (showActiveOnly ? effectiveRows.filter((row) => rowIsEnabled(row, state)) : effectiveRows),
+    [effectiveRows, showActiveOnly, state],
+  );
 
   const clearLongPress = React.useCallback(() => {
     if (longPressTimerRef.current) {
@@ -377,6 +464,7 @@ export default function RoutingMatrix({
       longPressTimerRef.current = null;
     }
     longPressMetaRef.current = null;
+    longPressActionRef.current = null;
   }, []);
 
   React.useEffect(() => () => clearLongPress(), [clearLongPress]);
@@ -449,18 +537,19 @@ export default function RoutingMatrix({
     pointerId: number,
     startX: number,
     startY: number,
-    key: keyof SliderState,
-    onCycleMode: (key: keyof SliderState) => void,
+    action: () => void,
   ) => {
     clearLongPress();
     longPressConsumedRef.current = false;
     longPressMetaRef.current = { pointerId, startX, startY };
+    longPressActionRef.current = action;
     longPressTimerRef.current = setTimeout(() => {
       longPressTimerRef.current = null;
       longPressConsumedRef.current = true;
       dragStateRef.current = null;
       setDraggingId(null);
-      onCycleMode(key);
+      longPressActionRef.current?.();
+      longPressActionRef.current = null;
       if (navigator.vibrate) navigator.vibrate(50);
     }, LONG_PRESS_MS);
   }, [clearLongPress]);
@@ -534,9 +623,69 @@ export default function RoutingMatrix({
     drag.onDualRangeChange(drag.key, nextRange.min, nextRange.max);
   }, [onParamChange]);
 
+  const renderRowLabel = React.useCallback((row: MatrixRow, rowEnabled: boolean, suffix = '') => {
+    const canToggle = !showActiveOnly && !!onToggleSource;
+    const offInAll = !showActiveOnly && !rowEnabled;
+    const title = canToggle
+      ? `${row.note ?? row.label}${isMobile ? ' Long-press to toggle this source.' : ' Click to toggle this source.'}`
+      : (row.note ?? row.label);
+
+  return (
+    <button
+      key={`row:${row.id}${suffix}`}
+      type="button"
+        className={`routing-matrix-rowlabel routing-matrix-rowlabel-button${canToggle ? ' is-toggleable' : ''}${offInAll ? ' source-off' : ''}`}
+        style={{ '--row-accent': offInAll ? '#7e8794' : row.accent } as React.CSSProperties}
+        title={title}
+        aria-pressed={canToggle ? rowEnabled : undefined}
+        aria-disabled={!canToggle}
+        tabIndex={canToggle ? 0 : -1}
+        onClick={!isMobile && canToggle ? () => onToggleSource(row.id, !rowEnabled) : undefined}
+        onPointerDown={isMobile && canToggle ? (event) => {
+          if (event.pointerType !== 'touch') return;
+          clearLongPress();
+          scheduleLongPress(event.pointerId, event.clientX, event.clientY, () => {
+            onToggleSource(row.id, !rowEnabled);
+          });
+          event.currentTarget.setPointerCapture(event.pointerId);
+        } : undefined}
+        onPointerMove={isMobile && canToggle ? (event) => {
+          maybeCancelLongPress(event.pointerId, event.clientX, event.clientY);
+        } : undefined}
+        onPointerUp={isMobile && canToggle ? (event) => {
+          clearLongPress();
+          releaseCapture(event.currentTarget, event.pointerId);
+          resetInteraction();
+        } : undefined}
+        onPointerCancel={isMobile && canToggle ? (event) => {
+          clearLongPress();
+          releaseCapture(event.currentTarget, event.pointerId);
+          resetInteraction();
+        } : undefined}
+      >
+        <span className={`routing-matrix-rowdot${offInAll ? ' is-off' : ''}`} style={{ backgroundColor: offInAll ? undefined : row.accent }} />
+      <span>{row.label}</span>
+    </button>
+  );
+  }, [clearLongPress, isMobile, maybeCancelLongPress, onToggleSource, resetInteraction, scheduleLongPress, showActiveOnly]);
+
+  const renderSourceHeader = React.useCallback((suffix = '') => (
+    <button
+      key={`source-header${suffix}`}
+      type="button"
+      className="routing-matrix-corner routing-matrix-corner-button"
+      aria-pressed={showActiveOnly}
+      title={showActiveOnly ? 'Showing only active sources. Click to show every source.' : 'Showing every source. Click to show only active sources.'}
+      onClick={() => setShowActiveOnly((prev) => !prev)}
+    >
+      <span className="routing-matrix-header-label">Source</span>
+      <span className="routing-matrix-header-meta">{showActiveOnly ? 'on' : 'all'}</span>
+    </button>
+  ), [showActiveOnly]);
+
   const renderColumnHeader = React.useCallback((column: { id: ColumnId; label: string; note?: string }, className?: string) => {
     const headerId = `column:${column.id}`;
-    const targets = getColumnTargets(column.id, state, sliderProps);
+    const targets = getColumnTargets(column.id, visibleRows, state, sliderProps);
 
     return (
       <button
@@ -568,16 +717,17 @@ export default function RoutingMatrix({
         }}
       >
         <span className="routing-matrix-header-label">{column.label}</span>
-        <span className="routing-matrix-header-meta">all</span>
       </button>
     );
-  }, [applyColumnDrag, clearLongPress, draggingId, resetInteraction, sliderProps, startColumnDrag, state, stopDrag]);
+  }, [applyColumnDrag, clearLongPress, draggingId, resetInteraction, sliderProps, startColumnDrag, state, stopDrag, visibleRows]);
 
-  const renderCell = React.useCallback((row: MatrixRow, column: { id: ColumnId; label: string; note?: string }, suffix = '') => {
+  const renderCell = React.useCallback((row: MatrixRow, rowEnabled: boolean, column: { id: ColumnId; label: string; note?: string }, suffix = '') => {
     const cell = row.cells[column.id];
+    const route = cell.kind === 'editable' ? (cell.route ?? null) : null;
     const value = cellValue(state, cell.route);
     const cellId = `cell:${row.id}:${column.id}${suffix}`;
-    const runtime = cell.kind === 'editable' && cell.route ? sliderProps(cell.route.key) : null;
+    const offInAll = !showActiveOnly && !rowEnabled;
+    const runtime = route ? sliderProps(route.key) : null;
     const mode = getResolvedMode(runtime);
     const range = mode === 'single' ? undefined : normalizeRange(runtime?.dualRange);
     const indicatorNorm = range
@@ -600,25 +750,25 @@ export default function RoutingMatrix({
       <button
         key={cellId}
         type="button"
-        className={`routing-matrix-cell ${cell.kind}${column.id === 'level' ? ' level-col' : ''}${draggingId === cellId ? ' dragging' : ''}`}
-        style={{ '--row-accent': row.accent } as React.CSSProperties}
+        className={`routing-matrix-cell ${cell.kind}${column.id === 'level' ? ' level-col' : ''}${draggingId === cellId ? ' dragging' : ''}${offInAll ? ' source-off' : ''}`}
+        style={{ '--row-accent': offInAll ? '#7e8794' : row.accent } as React.CSSProperties}
         title={cell.note ?? row.note}
-        disabled={cell.kind !== 'editable'}
+        disabled={cell.kind !== 'editable' || !route}
         onMouseEnter={() => {
-          if (cell.kind !== 'editable' || !cell.route) return;
-          announceSlider(String(cell.route.key), { page: helpPage });
+          if (!route) return;
+          announceSlider(String(route.key), { page: helpPage });
         }}
         onFocus={() => {
-          if (cell.kind !== 'editable' || !cell.route) return;
-          announceSlider(String(cell.route.key), { page: helpPage });
+          if (!route) return;
+          announceSlider(String(route.key), { page: helpPage });
         }}
         onDoubleClick={() => {
-          if (cell.kind !== 'editable' || !cell.route || !runtime) return;
-          runtime.onCycleMode(cell.route.key);
+          if (!route || !runtime) return;
+          runtime.onCycleMode(route.key);
         }}
         onPointerDown={(event) => {
-          if (cell.kind !== 'editable' || !cell.route || !runtime) return;
-          announceSlider(String(cell.route.key), { page: helpPage });
+          if (!route || !runtime) return;
+          announceSlider(String(route.key), { page: helpPage });
           clearLongPress();
 
           const now = Date.now();
@@ -637,19 +787,19 @@ export default function RoutingMatrix({
 
           if (handle === 'single') {
             const next = quantize01(pointerNorm);
-            onParamChange(cell.route.key, next);
+            onParamChange(route.key, next);
           } else if (handle === 'min' && nextRange) {
             const min = quantize01(Math.min(pointerNorm, nextRange.max));
-            runtime.onDualRangeChange(cell.route.key, min, nextRange.max);
+            runtime.onDualRangeChange(route.key, min, nextRange.max);
           } else if (handle === 'max' && nextRange) {
             const max = quantize01(Math.max(pointerNorm, nextRange.min));
-            runtime.onDualRangeChange(cell.route.key, nextRange.min, max);
+            runtime.onDualRangeChange(route.key, nextRange.min, max);
           }
 
           startCellDrag(
             cellId,
             event.pointerId,
-            cell.route.key,
+            route.key,
             nextMode,
             handle,
             value,
@@ -660,7 +810,9 @@ export default function RoutingMatrix({
           event.currentTarget.setPointerCapture(event.pointerId);
 
           if (event.pointerType === 'touch') {
-            scheduleLongPress(event.pointerId, event.clientX, event.clientY, cell.route.key, runtime.onCycleMode);
+            scheduleLongPress(event.pointerId, event.clientX, event.clientY, () => {
+              runtime.onCycleMode(route.key);
+            });
           }
         }}
         onPointerMove={(event) => {
@@ -752,6 +904,7 @@ export default function RoutingMatrix({
     onParamChange,
     resetInteraction,
     scheduleLongPress,
+    showActiveOnly,
     sliderProps,
     startCellDrag,
     state,
@@ -786,37 +939,37 @@ export default function RoutingMatrix({
           </div>
 
           <div className="routing-matrix-mobile-head">
-            <div className="routing-matrix-corner">Source</div>
+            {renderSourceHeader(':mobile')}
             {renderColumnHeader(activeColumn, 'routing-matrix-mobile-header')}
           </div>
 
           <div className="routing-matrix-mobile-list">
-            {effectiveRows.map((row) => (
-              <div key={`${row.id}:${activeMobileColumn}`} className="routing-matrix-mobile-row">
-                <div className="routing-matrix-rowlabel" title={row.note}>
-                  <span className="routing-matrix-rowdot" style={{ backgroundColor: row.accent }} />
-                  <span>{row.label}</span>
+            {visibleRows.map((row) => {
+              const rowEnabled = rowIsEnabled(row, state);
+              return (
+                <div key={`${row.id}:${activeMobileColumn}`} className="routing-matrix-mobile-row">
+                  {renderRowLabel(row, rowEnabled, ':mobile')}
+                  {renderCell(row, rowEnabled, activeColumn, ':mobile')}
                 </div>
-                {renderCell(row, activeColumn, ':mobile')}
-              </div>
-            ))}
+              );
+            })}
           </div>
         </>
       ) : (
         <div className="routing-matrix-scroll">
           <div className="routing-matrix-grid">
-            <div className="routing-matrix-corner">Source</div>
+            {renderSourceHeader()}
             {COLUMNS.map((column) => renderColumnHeader(column))}
 
-            {effectiveRows.map((row) => (
-              <React.Fragment key={row.id}>
-                <div className="routing-matrix-rowlabel" title={row.note}>
-                  <span className="routing-matrix-rowdot" style={{ backgroundColor: row.accent }} />
-                  <span>{row.label}</span>
-                </div>
-                {COLUMNS.map((column) => renderCell(row, column))}
-              </React.Fragment>
-            ))}
+            {visibleRows.map((row) => {
+              const rowEnabled = rowIsEnabled(row, state);
+              return (
+                <React.Fragment key={row.id}>
+                  {renderRowLabel(row, rowEnabled)}
+                  {COLUMNS.map((column) => renderCell(row, rowEnabled, column))}
+                </React.Fragment>
+              );
+            })}
           </div>
         </div>
       )}

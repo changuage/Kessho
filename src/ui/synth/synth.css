@@ -335,6 +335,423 @@
 }
 .synth-root .seq-view-btn:hover:not(.active) { background: rgba(255,255,255,0.06); }
 
+.synth-root .synth-keyboard-toggle {
+  margin-left: 8px;
+  padding: 6px 12px;
+  border: 1px solid color-mix(in srgb, var(--kb-accent, var(--accent-cyan)) 35%, rgba(255,255,255,0.12));
+  border-radius: var(--radius-md);
+  background: rgba(255,255,255,0.04);
+  color: color-mix(in srgb, var(--kb-accent, var(--accent-cyan)) 75%, #f8fafc);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+
+.synth-root .synth-keyboard-toggle:hover {
+  background: rgba(255,255,255,0.08);
+  transform: translateY(-1px);
+}
+
+.synth-root .synth-keyboard-toggle.active {
+  background: color-mix(in srgb, var(--kb-accent, var(--accent-cyan)) 18%, rgba(255,255,255,0.04));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--kb-accent, var(--accent-cyan)) 20%, transparent);
+}
+
+.synth-root .synth-keyboard-panel {
+  margin-bottom: 8px;
+  padding: 12px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface, rgba(15, 25, 40, 0.95));
+  border: 1px solid color-mix(in srgb, var(--kb-accent, var(--accent-cyan)) 16%, rgba(255,255,255,0.08));
+  box-shadow: 0 10px 22px rgba(0,0,0,0.12);
+}
+
+.synth-root .synth-keyboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.synth-root .synth-keyboard-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.synth-root .synth-keyboard-meta,
+.synth-root .synth-keyboard-hint {
+  font-size: 0.62rem;
+  color: var(--text-secondary);
+}
+
+.synth-root .synth-keyboard-hint {
+  text-align: right;
+  line-height: 1.35;
+}
+
+.synth-root .synth-keyboard-source-row,
+.synth-root .synth-keyboard-octave-row,
+.synth-root .synth-keyboard-mode-row,
+.synth-root .synth-keyboard-sequence-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.synth-root .synth-keyboard-source-btn,
+.synth-root .synth-keyboard-octave-btn,
+.synth-root .synth-keyboard-mode-btn,
+.synth-root .synth-keyboard-nav-btn {
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: var(--radius-md);
+  background: rgba(255,255,255,0.04);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
+}
+
+.synth-root .synth-keyboard-source-btn {
+  padding: 6px 10px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.synth-root .synth-keyboard-source-btn.active {
+  background: color-mix(in srgb, var(--source-color, var(--accent-cyan)) 12%, rgba(255,255,255,0.04));
+  border-color: color-mix(in srgb, var(--source-color, var(--accent-cyan)) 28%, rgba(255,255,255,0.12));
+  color: color-mix(in srgb, var(--source-color, var(--accent-cyan)) 75%, #f8fafc);
+}
+
+.synth-root .synth-keyboard-source-btn:hover,
+.synth-root .synth-keyboard-octave-btn:hover,
+.synth-root .synth-keyboard-mode-btn:hover,
+.synth-root .synth-keyboard-nav-btn:hover {
+  transform: translateY(-1px);
+  background: rgba(255,255,255,0.08);
+}
+
+.synth-root .synth-keyboard-mode-label,
+.synth-root .synth-keyboard-octave-label {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-right: 4px;
+}
+
+.synth-root .synth-keyboard-octave-btn,
+.synth-root .synth-keyboard-mode-btn,
+.synth-root .synth-keyboard-nav-btn {
+  min-width: 54px;
+  padding: 5px 10px;
+  font-size: 0.66rem;
+  font-weight: 700;
+}
+
+.synth-root .synth-keyboard-octave-btn.active,
+.synth-root .synth-keyboard-mode-btn.active {
+  background: color-mix(in srgb, var(--kb-accent, var(--accent-cyan)) 11%, rgba(255,255,255,0.04));
+  border-color: color-mix(in srgb, var(--kb-accent, var(--accent-cyan)) 26%, rgba(255,255,255,0.12));
+  color: color-mix(in srgb, var(--kb-accent, var(--accent-cyan)) 80%, #f8fafc);
+}
+
+.synth-root .synth-keyboard-mode-status {
+  flex: 1 1 240px;
+  min-width: 180px;
+  padding: 5px 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(0,0,0,0.22);
+  font-size: 0.62rem;
+  letter-spacing: 0.04em;
+  color: rgba(255,255,255,0.72);
+}
+
+.synth-root .synth-keyboard-sequence-row {
+  justify-content: space-between;
+  gap: 8px 12px;
+}
+
+.synth-root .synth-keyboard-sequence-lane,
+.synth-root .synth-keyboard-sequence-meta {
+  font-size: 0.64rem;
+  color: var(--text-secondary);
+}
+
+.synth-root .synth-keyboard-sequence-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.synth-root .synth-keyboard-sequence-helper {
+  margin-bottom: 10px;
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(0,0,0,0.22);
+  font-size: 0.62rem;
+  line-height: 1.4;
+  color: rgba(255,255,255,0.72);
+}
+
+.synth-root .synth-keyboard-sequence-helper.ready {
+  border-color: color-mix(in srgb, var(--kb-accent, var(--accent-cyan)) 18%, rgba(255,255,255,0.08));
+  background: color-mix(in srgb, var(--kb-accent, var(--accent-cyan)) 8%, rgba(0,0,0,0.22));
+}
+
+.synth-root .synth-keyboard-sequence-helper.warning {
+  border-color: rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.025);
+}
+
+.synth-root .synth-keyboard-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.synth-root .synth-keyboard-legend-pill {
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.1);
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.82);
+  background: color-mix(in srgb, var(--note-status-color, rgba(255,255,255,0.06)) 16%, rgba(255,255,255,0.02));
+  border-color: color-mix(in srgb, var(--note-status-color, rgba(255,255,255,0.1)) 24%, rgba(255,255,255,0.08));
+}
+
+.synth-root .synth-keyboard-legend-pill.root,
+.synth-root .synth-keyboard-key.harmony-root,
+.synth-root .seq-step-cell.harmony-root {
+  --note-status-color: #ffbe1f;
+  --note-status-opacity: 0.34;
+}
+
+.synth-root .synth-keyboard-legend-pill.chord,
+.synth-root .synth-keyboard-key.harmony-chord,
+.synth-root .seq-step-cell.harmony-chord {
+  --note-status-color: #2ee48d;
+  --note-status-opacity: 0.23;
+}
+
+.synth-root .synth-keyboard-legend-pill.scale,
+.synth-root .synth-keyboard-key.harmony-scale,
+.synth-root .seq-step-cell.harmony-scale {
+  --note-status-color: #41adff;
+  --note-status-opacity: 0.19;
+}
+
+.synth-root .synth-keyboard-legend-pill.outside,
+.synth-root .synth-keyboard-key.harmony-outside,
+.synth-root .seq-step-cell.harmony-outside {
+  --note-status-color: #ff708a;
+  --note-status-opacity: 0.18;
+}
+
+.synth-root .synth-keyboard-grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--kb-row-gap, 8px);
+  padding: 10px;
+  border-radius: calc(var(--radius-lg) - 2px);
+  background: rgba(7, 16, 30, 0.76);
+  border: 1px solid rgba(255,255,255,0.07);
+  overflow-x: auto;
+}
+
+.synth-root .synth-keyboard-natural-row {
+  display: grid;
+  grid-template-columns: repeat(var(--white-key-count, 11), minmax(40px, 1fr));
+  gap: var(--kb-row-gap, 8px);
+  order: 2;
+}
+
+.synth-root .synth-keyboard-accidental-row {
+  display: grid;
+  grid-template-columns: repeat(var(--white-key-count, 11), minmax(40px, 1fr));
+  gap: var(--kb-row-gap, 8px);
+  order: 1;
+}
+
+.synth-root .synth-keyboard-key {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-start;
+  text-align: left;
+  min-width: 0;
+  aspect-ratio: 1 / 1;
+  padding: 10px 8px 8px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.08);
+  cursor: pointer;
+  transition: transform 0.08s ease, border-color 0.12s ease, background-color 0.12s ease, box-shadow 0.12s ease;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.synth-root .synth-keyboard-key::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--note-status-color, transparent) 52%, transparent), transparent 82%);
+  opacity: var(--note-status-opacity, 0);
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+  z-index: 0;
+}
+
+.synth-root .synth-keyboard-key.natural {
+  background: rgba(21, 30, 46, 0.92);
+  color: #f5f7fb;
+  box-shadow: none;
+}
+
+.synth-root .synth-keyboard-key.accidental {
+  background: rgba(15, 21, 33, 0.96);
+  color: #f8fafc;
+  border: 1px solid rgba(255,255,255,0.08);
+  box-shadow: none;
+  transform: translateX(calc(50% + (var(--kb-row-gap, 8px) / 2)));
+}
+
+.synth-root .synth-keyboard-key:hover {
+  border-color: color-mix(in srgb, var(--kb-accent, var(--accent-cyan)) 30%, rgba(255,255,255,0.12));
+  transform: translateY(-1px);
+}
+
+.synth-root .synth-keyboard-key.accidental:hover {
+  transform: translateX(calc(50% + (var(--kb-row-gap, 8px) / 2))) translateY(-1px);
+}
+
+.synth-root .synth-keyboard-key.active {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--kb-accent, var(--accent-cyan)) 24%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--kb-accent, var(--accent-cyan)) 10%, transparent);
+  transform: translateY(1px) scale(0.985);
+}
+
+.synth-root .synth-keyboard-key.accidental.active {
+  transform: translateX(calc(50% + (var(--kb-row-gap, 8px) / 2))) translateY(1px) scale(0.985);
+}
+
+.synth-root .synth-keyboard-key.natural.active {
+  background: rgba(28, 40, 60, 0.96);
+}
+
+.synth-root .synth-keyboard-key.accidental.active {
+  background: rgba(20, 29, 45, 0.98);
+}
+
+.synth-root .synth-keyboard-key-shortcut {
+  font-size: 0.6rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.78;
+}
+
+.synth-root .synth-keyboard-key.natural .synth-keyboard-key-shortcut { color: rgba(255,255,255,0.62); }
+
+.synth-root .synth-keyboard-key-note {
+  font-size: 0.76rem;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+}
+
+.synth-root .synth-keyboard-key > * {
+  position: relative;
+  z-index: 1;
+}
+
+.synth-root .synth-keyboard-key.natural .synth-keyboard-key-note { color: rgba(255,255,255,0.94); }
+.synth-root .synth-keyboard-key.accidental .synth-keyboard-key-note { color: rgba(255,255,255,0.92); }
+
+.synth-root .seq-pitch-bind-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.synth-root .seq-pitch-bind-select {
+  min-width: 118px;
+  padding: 5px 8px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.05);
+  color: var(--text-primary);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.synth-root .seq-pitch-bind-select:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent-cyan) 36%, rgba(255,255,255,0.18));
+}
+
+.synth-root .seq-step-cell.selected {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--kb-accent, var(--accent-cyan)) 46%, transparent), 0 0 12px color-mix(in srgb, var(--kb-accent, var(--accent-cyan)) 16%, transparent);
+}
+
+.synth-root .seq-step-cursor {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+  min-width: 16px;
+  min-height: 14px;
+  padding: 1px 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--kb-accent, var(--accent-cyan)) 14%, rgba(8, 14, 24, 0.88));
+  border: 1px solid color-mix(in srgb, var(--kb-accent, var(--accent-cyan)) 26%, rgba(255,255,255,0.08));
+  color: rgba(255,255,255,0.86);
+  font-size: 0.56rem;
+  font-weight: 600;
+  line-height: 1;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.synth-root .seq-step-note {
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  bottom: 2px;
+  z-index: 1;
+  text-align: center;
+  font-size: 0.43rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: color-mix(in srgb, var(--note-status-color, rgba(255,255,255,0.76)) 84%, #fff);
+  pointer-events: none;
+}
+
 /* ── Tab Bar ── */
 .synth-root .seq-tab-bar { display: flex; gap: 2px; margin-bottom: 0; }
 .synth-root .seq-tab {
@@ -607,6 +1024,7 @@
   font-size: 0.6rem; color: #555; min-width: 10px; text-align: center; flex-shrink: 0;
 }
 .synth-root .spark-playhead { transition: x 0.06s ease-out; pointer-events: none; }
+.synth-root .spark-selected-step { pointer-events: none; }
 .synth-root .seq-spark-body {
   background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.08);
   border-top: none; border-radius: 0 0 var(--radius-md) var(--radius-md);
@@ -729,6 +1147,13 @@
 .synth-root .seq-pitch-bar-wrap {
   width: 100%; height: 48px; background: #0f0f23; border-radius: var(--radius-sm);
   border: 1px solid var(--border-medium); position: relative; cursor: pointer; touch-action: none;
+}
+.synth-root .seq-pitch-bar-wrap.selected {
+  border-color: color-mix(in srgb, var(--kb-accent, var(--accent-cyan)) 48%, var(--accent-pink));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--kb-accent, var(--accent-cyan)) 22%, transparent);
+}
+.synth-root .seq-pitch-bar-wrap.selected.inactive {
+  opacity: 0.58;
 }
 .synth-root .seq-pitch-bar-wrap.inactive { opacity: 0.25; pointer-events: none; }
 .synth-root .seq-pitch-bar-wrap .pitch-center {
@@ -1524,6 +1949,22 @@
   .synth-root .seq-mini-overview { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 6px 8px; }
   .synth-root .seq-mini-row { padding: 8px 6px; min-height: 36px; }
   .synth-root .seq-view-btn { padding: 8px 12px; font-size: 0.6rem; min-height: 36px; }
+  .synth-root .synth-keyboard-toggle { margin-left: 0; }
+  .synth-root .synth-keyboard-panel { padding: 10px; }
+  .synth-root .synth-keyboard-header { flex-direction: column; align-items: flex-start; }
+  .synth-root .synth-keyboard-hint { text-align: left; }
+  .synth-root .synth-keyboard-mode-status { width: 100%; min-width: 0; }
+  .synth-root .synth-keyboard-sequence-helper { width: 100%; }
+  .synth-root .synth-keyboard-sequence-row { align-items: flex-start; }
+  .synth-root .synth-keyboard-grid { --kb-row-gap: 6px; padding: 8px; gap: 6px; }
+  .synth-root .synth-keyboard-natural-row,
+  .synth-root .synth-keyboard-accidental-row { gap: 6px; grid-template-columns: repeat(var(--white-key-count, 11), minmax(32px, 1fr)); }
+  .synth-root .synth-keyboard-key { padding: 8px 6px 7px; border-radius: 12px; }
+  .synth-root .synth-keyboard-key-note { font-size: 0.72rem; }
+  .synth-root .synth-keyboard-key-shortcut { font-size: 0.55rem; }
+  .synth-root .seq-pitch-bind-label { width: 100%; justify-content: space-between; }
+  .synth-root .seq-pitch-bind-select { min-width: 0; width: 100%; }
+  .synth-root .seq-step-note { font-size: 0.38rem; }
   .synth-root .seq-overview { overflow: hidden; max-width: 100%; width: 100%; box-sizing: border-box; }
   .synth-root .seq-ov-row { overflow: hidden; max-width: 100%; width: 100%; box-sizing: border-box; }
   .synth-root .seq-ov-header { padding: 6px 8px; min-height: 40px; gap: 4px; flex-wrap: wrap; overflow: hidden; max-width: 100%; box-sizing: border-box; }

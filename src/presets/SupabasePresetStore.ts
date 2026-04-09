@@ -34,6 +34,44 @@ interface PresetRow {
   updated_at: string;
 }
 
+function normalizeNameKey(name: string): string {
+  return name.trim().toLowerCase();
+}
+
+function getRowLogicalKey(row: PresetRow): string {
+  return `${row.type}:${row.scope ?? ''}:${normalizeNameKey(row.name)}`;
+}
+
+function comparePresetRowPriority(left: PresetRow, right: PresetRow, userId: string | null): number {
+  const leftOwn = !!userId && left.user_id === userId;
+  const rightOwn = !!userId && right.user_id === userId;
+  if (leftOwn !== rightOwn) return leftOwn ? -1 : 1;
+
+  const leftVisibilityRank = left.visibility === 'featured' ? 1 : 0;
+  const rightVisibilityRank = right.visibility === 'featured' ? 1 : 0;
+  if (leftVisibilityRank !== rightVisibilityRank) return rightVisibilityRank - leftVisibilityRank;
+
+  const leftUpdated = new Date(left.updated_at).getTime();
+  const rightUpdated = new Date(right.updated_at).getTime();
+  if (leftUpdated !== rightUpdated) return rightUpdated - leftUpdated;
+
+  const leftCreated = new Date(left.created_at).getTime();
+  const rightCreated = new Date(right.created_at).getTime();
+  return rightCreated - leftCreated;
+}
+
+function dedupePreferredRows(rows: PresetRow[], userId: string | null): PresetRow[] {
+  const preferred = new Map<string, PresetRow>();
+  for (const row of rows) {
+    const key = getRowLogicalKey(row);
+    const existing = preferred.get(key);
+    if (!existing || comparePresetRowPriority(row, existing, userId) < 0) {
+      preferred.set(key, row);
+    }
+  }
+  return Array.from(preferred.values()).sort((left, right) => comparePresetRowPriority(left, right, userId));
+}
+
 function rowToEntry(row: PresetRow): PresetEntry {
   return normalizePresetEntry({
     id: row.id,
@@ -168,6 +206,7 @@ export class SupabasePresetStore implements IPresetStore {
       .eq('name', name);
 
     if (scope) query = query.eq('scope', scope);
+    else query = query.is('scope', null);
 
     // Prefer own presets, then public
     if (this.userId) {
@@ -176,10 +215,12 @@ export class SupabasePresetStore implements IPresetStore {
       query = query.in('visibility', ['public', 'featured']);
     }
 
-    const { data, error } = await query.limit(1).maybeSingle();
-    if (error || !data) return null;
+    const { data, error } = await query;
+    if (error || !data || data.length === 0) return null;
 
-    const row = data as PresetRow;
+    const rows = dedupePreferredRows(data as PresetRow[], this.userId);
+    const row = rows[0];
+    if (!row) return null;
     const entry = rowToEntry(row);
     await this.rewriteLegacyDelayAKeysIfOwned(row, entry);
     if (version !== undefined) {
@@ -213,7 +254,7 @@ export class SupabasePresetStore implements IPresetStore {
       return [];
     }
 
-    const rows = data as PresetRow[];
+    const rows = dedupePreferredRows(data as PresetRow[], this.userId);
     const entries = rows.map(row => rowToEntry(row));
     await Promise.allSettled(entries.map((entry, index) => this.rewriteLegacyDelayAKeysIfOwned(rows[index]!, entry)));
 

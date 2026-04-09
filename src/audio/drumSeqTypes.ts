@@ -3,6 +3,7 @@ import type { DrumEvolveMethod, DrumVoiceType } from './drumSynth';
 export type ClockDivision = '1/4' | '1/8' | '1/16' | '1/32' | '1/64' | '1/8T';
 export type LaneDirection = 'forward' | 'reverse' | 'pingpong';
 export type PitchMode = 'semitones' | 'notes' | 'noteRange';
+export type PitchBindingMode = 'polyrhythmic' | 'linked' | 'sequence';
 
 export type ScaleName =
   | 'Chromatic'
@@ -24,6 +25,21 @@ export type ScaleName =
   | 'Hungarian Minor'
   | 'Japanese'
   | 'Arabic';
+
+export const NOTE_DEGREE_OFFSET_MIN = -3;
+export const NOTE_DEGREE_OFFSET_MAX = 14;
+export const NOTE_DEGREE_OFFSET_RANGE = NOTE_DEGREE_OFFSET_MAX - NOTE_DEGREE_OFFSET_MIN;
+
+export function normalizeNoteDegreeOffset(offset: number): number {
+  return Math.max(0, Math.min(1, (offset - NOTE_DEGREE_OFFSET_MIN) / NOTE_DEGREE_OFFSET_RANGE));
+}
+
+export function scaleDegreeToSemitone(degree: number, scale: number[]): number {
+  if (scale.length === 0) return 0;
+  const oct = Math.floor(degree / scale.length);
+  const idx = ((degree % scale.length) + scale.length) % scale.length;
+  return oct * 12 + (scale[idx] ?? 0);
+}
 
 /** Elektron-style trig condition: [n, N] means fire on nth of every N cycles */
 export type TrigCondition = [number, number];

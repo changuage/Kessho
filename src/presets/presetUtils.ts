@@ -87,6 +87,35 @@ function stableStringify(value: unknown): string {
   return JSON.stringify(value);
 }
 
+export function presetValuesEqual(left: unknown, right: unknown, epsilon = 1e-6): boolean {
+  if (left === right) return true;
+
+  if (typeof left === 'number' && typeof right === 'number') {
+    return Math.abs(left - right) <= epsilon;
+  }
+
+  if (Array.isArray(left) && Array.isArray(right)) {
+    if (left.length !== right.length) return false;
+    for (let i = 0; i < left.length; i++) {
+      if (!presetValuesEqual(left[i], right[i], epsilon)) return false;
+    }
+    return true;
+  }
+
+  if (isPlainObject(left) && isPlainObject(right)) {
+    const leftKeys = Object.keys(left);
+    const rightKeys = Object.keys(right);
+    if (leftKeys.length !== rightKeys.length) return false;
+    const keys = new Set([...leftKeys, ...rightKeys]);
+    for (const key of keys) {
+      if (!presetValuesEqual(left[key], right[key], epsilon)) return false;
+    }
+    return true;
+  }
+
+  return stableStringify(left) === stableStringify(right);
+}
+
 function isPresetLevel(value: unknown): value is PresetLevel {
   return value === 'engine' || value === 'kit' || value === 'source' || value === 'state' || value === 'journey';
 }
@@ -97,6 +126,18 @@ function isPresetLibrary(value: unknown): value is PresetLibrary {
 
 function isPresetVisibility(value: unknown): value is PresetVisibility {
   return value === 'private' || value === 'public' || value === 'featured';
+}
+
+function isImplicitFactorySeed(
+  input: Record<string, unknown>,
+  versions: PresetVersion[],
+): boolean {
+  if (input.author === 'factory' || input.library === 'stock') return true;
+  if (input.author === 'cloud' || input.library === 'cloud') return false;
+  if (versions.length !== 1) return false;
+  const creator = coerceString(input.creator);
+  const firstVersion = versions[0];
+  return creator === 'Kessho' && firstVersion?.note.trim().toLowerCase() === 'factory preset';
 }
 
 function normalizeTags(value: unknown): string[] | undefined {
@@ -291,9 +332,10 @@ export function normalizePresetEntry(input: unknown): PresetEntry | null {
   const familyId = coerceString(input.familyId) ?? makeDerivedFamilyId(type, normalizedScope, familyName);
   const variantId = coerceString(input.variantId) ?? makeDerivedVariantId(type, normalizedScope, familyName, variantName);
   const variantRank = input.variantRank === undefined ? undefined : coerceNumber(input.variantRank, 0);
+  const implicitFactorySeed = isImplicitFactorySeed(input, versions);
   const library = isPresetLibrary(input.library)
     ? input.library
-    : input.author === 'factory'
+    : input.author === 'factory' || implicitFactorySeed
       ? 'stock'
       : input.author === 'cloud'
         ? 'cloud'
@@ -323,7 +365,7 @@ export function normalizePresetEntry(input: unknown): PresetEntry | null {
     engine,
     source,
     name,
-    author: input.author === 'factory' ? 'factory' : input.author === 'cloud' ? 'cloud' : 'user',
+    author: input.author === 'factory' || implicitFactorySeed ? 'factory' : input.author === 'cloud' ? 'cloud' : 'user',
     library,
     creator: coerceString(input.creator),
     description: coerceString(input.description),
@@ -392,7 +434,7 @@ export function isPresetCompatibleWithSlot(
 }
 
 function diffValues(prefix: string, left: unknown, right: unknown, changed: Set<string>): void {
-  if (stableStringify(left) === stableStringify(right)) return;
+  if (presetValuesEqual(left, right)) return;
 
   if (Array.isArray(left) && Array.isArray(right)) {
     const max = Math.max(left.length, right.length);

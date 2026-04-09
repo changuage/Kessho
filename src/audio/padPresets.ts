@@ -16,6 +16,7 @@ export const PAD_PRESET_PARAM_KEYS = [
   // Oscillators
   'padOscAWave', 'padOscAOctave', 'padOscADetune', 'padOscALevel',
   'padOscBWave', 'padOscBOctave', 'padOscBDetune', 'padOscBLevel',
+  'padOscMix',
   'padSubEnabled', 'padSubOctave', 'padSubWave', 'padSubLevel',
   'padNoiseType', 'padNoiseLevel',
   // Character
@@ -40,9 +41,11 @@ export type PadPresetParamKey = typeof PAD_PRESET_PARAM_KEYS[number];
 export const PAD1_TO_PAD2_KEY: Record<string, string> = {
   padOscAWave: 'pad2OscAWave', padOscAOctave: 'pad2OscAOctave', padOscADetune: 'pad2OscADetune', padOscALevel: 'pad2OscALevel',
   padOscBWave: 'pad2OscBWave', padOscBOctave: 'pad2OscBOctave', padOscBDetune: 'pad2OscBDetune', padOscBLevel: 'pad2OscBLevel',
+  padOscMix: 'pad2OscMix',
   padSubEnabled: 'pad2SubEnabled', padSubOctave: 'pad2SubOctave', padSubWave: 'pad2SubWave', padSubLevel: 'pad2SubLevel',
   padNoiseType: 'pad2NoiseType', padNoiseLevel: 'pad2NoiseLevel',
   hardness: 'pad2Hardness', warmth: 'pad2Warmth', presence: 'pad2Presence',
+  padFoldAmount: 'pad2FoldAmount', padFoldMode: 'pad2FoldMode',
   filterType: 'pad2FilterType', filterCutoffMin: 'pad2FilterCutoffMin', filterCutoffMax: 'pad2FilterCutoffMax',
   filterResonance: 'pad2FilterResonance', filterQ: 'pad2FilterQ',
   padFilterBEnabled: 'pad2FilterBEnabled', padFilterBType: 'pad2FilterBType', padFilterBCutoff: 'pad2FilterBCutoff',
@@ -80,24 +83,28 @@ interface RuntimePadPresetEntry extends PadPresetOption {
 
 // ─── Preset Definitions ───
 
+export const PAD_PRESET_DEFAULT_PARAMS: Record<string, number | string | boolean> = {
+  padOscAWave: 'sawtooth', padOscAOctave: 0, padOscADetune: 0, padOscALevel: 0.6,
+  padOscBWave: 'triangle', padOscBOctave: 0, padOscBDetune: 8, padOscBLevel: 0.4,
+  padOscMix: 0.5,
+  padSubEnabled: false, padSubOctave: -1, padSubWave: 'sine', padSubLevel: 0.3,
+  padNoiseType: 'white', padNoiseLevel: 0.15,
+  hardness: 0.3, warmth: 0.4, presence: 0.3, padFoldAmount: 0, padFoldMode: 0, detune: 8,
+  filterType: 'lowpass', filterCutoffMin: 400, filterCutoffMax: 3000,
+  filterResonance: 0.2, filterQ: 1.0,
+  padFilterBEnabled: false, padFilterBType: 'highpass', padFilterBCutoff: 200,
+  padFilterBResonance: 0.2, padFilterBQ: 1, padFilterRouting: 'series',
+  synthAttack: 6, synthDecay: 1, synthSustain: 0.8, synthRelease: 12,
+  padLfo1Rate: 0.5, padLfo1Depth: 0, padLfo1Wave: 'sine', padLfo1Dest: 'none',
+  padLfo2Rate: 0.5, padLfo2Depth: 0, padLfo2Wave: 'sine', padLfo2Dest: 'none',
+  padModEnvEnabled: false, padModEnvAttack: 0.5, padModEnvDecay: 2,
+  padModEnvSustain: 0, padModEnvRelease: 4, padModEnvDepth: 0.5, padModEnvDest: 'filterCutoff',
+};
+
 const INIT: PadPreset = {
   name: 'Init',
   tags: ['basic', 'neutral'],
-  params: {
-    padOscAWave: 'sawtooth', padOscAOctave: 0, padOscADetune: 0, padOscALevel: 0.6,
-    padOscBWave: 'triangle', padOscBOctave: 0, padOscBDetune: 8, padOscBLevel: 0.4,
-    padSubEnabled: false, padSubOctave: -1, padSubWave: 'sine', padSubLevel: 0.3,
-    padNoiseType: 'white', padNoiseLevel: 0.15,
-    hardness: 0.3, warmth: 0.4, presence: 0.3, detune: 8,
-    filterType: 'lowpass', filterCutoffMin: 400, filterCutoffMax: 3000,
-    filterResonance: 0.2, filterQ: 1.0,
-    padFilterBEnabled: false, padFilterBType: 'highpass', padFilterBCutoff: 200,
-    padFilterBResonance: 0.2, padFilterBQ: 1, padFilterRouting: 'series',
-    synthAttack: 6, synthDecay: 1, synthSustain: 0.8, synthRelease: 12,
-    padLfo1Rate: 0.5, padLfo1Depth: 0, padLfo1Wave: 'sine', padLfo1Dest: 'none',
-    padModEnvEnabled: false, padModEnvAttack: 0.5, padModEnvDecay: 2,
-    padModEnvSustain: 0, padModEnvRelease: 4, padModEnvDepth: 0.5, padModEnvDest: 'filterCutoff',
-  },
+  params: { ...PAD_PRESET_DEFAULT_PARAMS },
 };
 
 /** Captures the "String Waves" pad sound — saturated detuned saws through dark filter */
@@ -675,8 +682,19 @@ export function getPadPresetNames(scope?: 'pad1' | 'pad2'): string[] {
   return getPadPresetOptions(scope).map(option => option.id);
 }
 
+function normalizePadPreset(preset: PadPreset | undefined): PadPreset | undefined {
+  if (!preset) return undefined;
+  return {
+    ...preset,
+    params: {
+      ...PAD_PRESET_DEFAULT_PARAMS,
+      ...preset.params,
+    },
+  };
+}
+
 export function getPadPreset(id: string): PadPreset | undefined {
-  return USER_PAD_PRESETS.get(id)?.preset ?? PAD_PRESETS[id];
+  return normalizePadPreset(USER_PAD_PRESETS.get(id)?.preset ?? PAD_PRESETS[id]);
 }
 
 // ─── Morphing ───
@@ -691,15 +709,19 @@ export function morphPadPresets(
   presetB: PadPreset,
   morph: number,
 ): Record<string, number | string | boolean> {
+  const normalizedA = normalizePadPreset(presetA);
+  const normalizedB = normalizePadPreset(presetB);
+  if (!normalizedA || !normalizedB) return {};
+
   const result: Record<string, number | string | boolean> = {};
   const allKeys = new Set([
-    ...Object.keys(presetA.params),
-    ...Object.keys(presetB.params),
+    ...Object.keys(normalizedA.params),
+    ...Object.keys(normalizedB.params),
   ]);
 
   for (const key of allKeys) {
-    const a = presetA.params[key];
-    const b = presetB.params[key];
+    const a = normalizedA.params[key];
+    const b = normalizedB.params[key];
 
     if (a === undefined) {
       result[key] = b ?? 0;

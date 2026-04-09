@@ -28,6 +28,12 @@ import { createSequencer, resolveDrumEuclidPatternParams, seqEuclidean, seqLaneI
 import { captureHomeSnapshot, evolveSequencer, resetSequencerToHome } from './drumSeqEvolve';
 import { generateDicePattern, generateDiceValues, generateDicePitchOffsets, blendDiceValues } from './seqEvolveCore';
 import { getEffectiveTension } from './harmony';
+import {
+  type TransportAnchors,
+  getEffectiveSequencerBpm,
+  getNextBarBoundaryCtxTime,
+  getNextBeatGridCtxTime,
+} from './transport';
 
 export type DrumVoiceType = 'sub' | 'kick' | 'click' | 'beepHi' | 'beepLo' | 'noise' | 'membrane';
 
@@ -105,19 +111,9 @@ function noteToSeconds(note: string, bpm: number): number {
 }
 
 function getSharedSequencerBpm(
-  params?: Partial<Pick<SliderState, 'sequencerMasterBPM' | 'synthEuclidBaseBPM' | 'drumEuclidBaseBPM'>> | null,
+  params?: Partial<SliderState> | null,
 ): number {
-  const legacyGranularBpm = (params as (Record<string, unknown> | null | undefined))?.granularEuclidBaseBPM;
-  return params?.sequencerMasterBPM
-    ?? params?.synthEuclidBaseBPM
-    ?? params?.drumEuclidBaseBPM
-    ?? (typeof legacyGranularBpm === 'number' ? legacyGranularBpm : undefined)
-    ?? 120;
-}
-
-function alignSequencerTime(now: number, stepDuration: number): number {
-  if (!Number.isFinite(stepDuration) || stepDuration <= 0) return now;
-  return Math.ceil(now / stepDuration) * stepDuration;
+  return getEffectiveSequencerBpm(params ?? {});
 }
 
 export class DrumSynth {
@@ -135,6 +131,7 @@ export class DrumSynth {
   private euclidCurrentStep: number[] = [0, 0, 0, 0]; // Step position per lane
   private euclidGlobalStepCount = 0;
   private euclidSequencers: SequencerState[] = [];
+  private prevLaneEnabled: boolean[] = [false, false, false, false];
   // Per-lane, per-step visit counters for Elektron-style trig conditions [n:N]
   private trigConditionCounters: number[][] = [[], [], [], []];
   private euclidEvolveConfigs: DrumEuclidEvolveConfig[] = [
@@ -292,7 +289,8 @@ export class DrumSynth {
     masterOutput: AudioNode,
     reverbNode: AudioNode,
     params: SliderState,
-    rng: () => number
+    rng: () => number,
+    private readonly transportAnchorsProvider?: () => TransportAnchors,
   ) {
     this.ctx = ctx;
     this.params = params;
@@ -333,6 +331,26 @@ export class DrumSynth {
     }
     // Default triggerTarget to preFaderBus (overridden per-trigger in triggerVoice)
     this.triggerTarget = this.preFaderBus;
+  }
+
+  private getTransportAnchors(): TransportAnchors {
+    return this.transportAnchorsProvider?.() ?? {
+      localPhraseWallStartSec: Date.now() / 1000,
+      localBeatWallStartSec: Date.now() / 1000,
+      localBeatCtxStartSec: this.ctx.currentTime,
+    };
+  }
+
+  resetTransportAlignment(resetCounters: boolean): void {
+    this.prevLaneEnabled = [false, false, false, false];
+    if (resetCounters) {
+      this.euclidCurrentStep = [0, 0, 0, 0];
+      this.euclidGlobalStepCount = 0;
+      this.trigConditionCounters = [[], [], [], []];
+    }
+    for (const sequencer of this.euclidSequencers) {
+      sequencer.nextTime = 0;
+    }
   }
 
   private ensureTransientCleanupTimer(): void {
@@ -753,6 +771,7 @@ export class DrumSynth {
   }
   
   updateParams(params: SliderState): void {
+    const prevParams = this.params;
     this.params = params;
     
     const now = this.ctx.currentTime;
@@ -782,6 +801,19 @@ export class DrumSynth {
       }
     } else {
       this.stopEuclidScheduler();
+    }
+
+    const beatTransportChanged = (
+      prevParams.transportPrimaryClock !== params.transportPrimaryClock ||
+      prevParams.phraseLength !== params.phraseLength ||
+      prevParams.sequencerMasterBPM !== params.sequencerMasterBPM ||
+      prevParams.transportBarsPerPhrase !== params.transportBarsPerPhrase ||
+      prevParams.transportBeatsPerBar !== params.transportBeatsPerBar ||
+      prevParams.drumEuclidClockSource !== params.drumEuclidClockSource ||
+      prevParams.drumEuclidJoinPolicy !== params.drumEuclidJoinPolicy
+    );
+    if (this.euclidScheduleTimer && beatTransportChanged) {
+      this.resetTransportAlignment((params.drumEuclidJoinPolicy ?? 'bar') === 'bar');
     }
   }
 
@@ -2976,6 +3008,7 @@ export class DrumSynth {
     this.euclidCurrentStep = [0, 0, 0, 0];
     this.euclidGlobalStepCount = 0;
     this.trigConditionCounters = [[], [], [], []];
+    this.prevLaneEnabled = [false, false, false, false];
 
     this.euclidSequencers = [0, 1, 2, 3].map((id) => {
       const sequencer = createSequencer(id, `drum-euclid-${id}`);
@@ -2997,6 +3030,8 @@ export class DrumSynth {
       }
       
       const now = this.ctx.currentTime;
+      const nowWallSec = Date.now() / 1000;
+      const anchors = this.getTransportAnchors();
 
       const timeJumpThreshold = 0.5;
       
@@ -3082,8 +3117,16 @@ export class DrumSynth {
 
       // Per-lane independent scheduling (supports polyrhythmic clock divisions)
       lanes.forEach((lane, laneIndex) => {
-        if (!lane.enabled) return;
-        if (lane.voices.length === 0) return;
+        const wasEnabled = this.prevLaneEnabled[laneIndex] ?? false;
+        const justEnabled = lane.enabled && !wasEnabled;
+        if (!lane.enabled) {
+          this.prevLaneEnabled[laneIndex] = false;
+          return;
+        }
+        if (lane.voices.length === 0) {
+          this.prevLaneEnabled[laneIndex] = false;
+          return;
+        }
 
         const sequencer = this.euclidSequencers[laneIndex];
         if (!sequencer) return;
@@ -3091,8 +3134,29 @@ export class DrumSynth {
         // Per-sequencer step duration from its own clock division
         const laneStepDuration = clockDivToSec(sequencer.clockDiv);
         const laneSwing = sequencer.swing;
-        if (sequencer.nextTime <= 0 || now - sequencer.nextTime > timeJumpThreshold) {
-          sequencer.nextTime = alignSequencerTime(now, laneStepDuration);
+        const laneClockSource = this.params.drumEuclidClockSource ?? 'localBeat';
+        const joinPolicy = this.params.drumEuclidJoinPolicy ?? 'bar';
+        if (justEnabled && joinPolicy === 'bar') {
+          this.euclidCurrentStep[laneIndex] = 0;
+          this.trigConditionCounters[laneIndex] = [];
+          sequencer.stepIndex = 0;
+          sequencer.hitCount = 0;
+          sequencer.totalStepCount = 0;
+          sequencer.nextTime = getNextBarBoundaryCtxTime(
+            laneClockSource,
+            this.params,
+            anchors,
+            nowWallSec,
+            now,
+          );
+        } else if (justEnabled || sequencer.nextTime <= 0 || now - sequencer.nextTime > timeJumpThreshold) {
+          sequencer.nextTime = getNextBeatGridCtxTime(
+            laneClockSource,
+            laneStepDuration,
+            anchors,
+            nowWallSec,
+            now,
+          );
         }
 
         sequencer.trigger.steps = lane.steps;
@@ -3295,6 +3359,8 @@ export class DrumSynth {
           this.euclidCurrentStep[laneIndex] = sequencer.stepIndex;
           sequencer.nextTime += laneStepDuration;
         }
+
+        this.prevLaneEnabled[laneIndex] = true;
       });
 
       // Global bar counter (use shortest lane step duration as reference)
@@ -3321,6 +3387,7 @@ export class DrumSynth {
       clearTimeout(this.euclidScheduleTimer);
       this.euclidScheduleTimer = null;
     }
+    this.prevLaneEnabled = [false, false, false, false];
     this.euclidSequencers = [];
   }
   

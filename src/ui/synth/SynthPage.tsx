@@ -9,7 +9,7 @@
  * Overview = All 4 trigger lanes at once
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { formatIndexedDelayDivision, getSliderNumericValue, SliderState } from '../state';
 import { useEuclideanSequencer, type EvolveConfig, type StepOverrides, type SubLaneKind, type SubLaneState, type PitchSettings } from '../sequencer/useEuclideanSequencer';
 // DrumStepOverrides no longer needed — SynthPage uses StepOverrides from the shared hook
@@ -17,8 +17,9 @@ import DragNumber from '../drums/DragNumber';
 import SeqLane from '../drums/SeqLane';
 import SeqSparkline from '../drums/SeqSparkline';
 import SeqMiniOverview from '../drums/SeqMiniOverview';
-import { SCALES } from '../../audio/drumSeqTypes';
-import type { ClockDivision } from '../../audio/drumSeqTypes';
+import { SCALES, normalizeNoteDegreeOffset, scaleDegreeToSemitone } from '../../audio/drumSeqTypes';
+import type { ClockDivision, PitchBindingMode } from '../../audio/drumSeqTypes';
+import type { HarmonyState } from '../../audio/harmony';
 import { useSliderHelp } from '../SliderHelpOverlay';
 import './synth.css';
 import SynthPresetManager from './SynthPresetManager';
@@ -27,14 +28,6 @@ import { PresetDropdown } from '../../presets/PresetDropdown';
 import { extractParams } from '../../presets/codec';
 import type { PresetEntry } from '../../presets/types';
 import type { UsePresetsOptions } from '../../presets/usePresets';
-
-/** Convert a scale-degree index to semitone offset (matching SeqLane.tsx logic) */
-function scaleDegreeToSemitone(degree: number, scale: number[]): number {
-  if (degree <= 0) return 0;
-  const oct = Math.floor(degree / scale.length);
-  const idx = degree % scale.length;
-  return oct * 12 + (scale[idx] ?? 0);
-}
 import {
   getPadPresetOptions,
   upsertUserPadPreset,
@@ -43,11 +36,20 @@ import {
   type PadPresetOption,
 } from '../../audio/padPresets';
 import {
+  applyPadScopeState,
+  blendPadScopeState,
+  createPadRandomGoal,
+  extractPadScopeState,
+  type PadRandomScope,
+  type PadScopeSnapshot,
+} from '../../audio/padRandomize';
+import {
   loadLead4opFMPreset,
   saveUserLead4opFMPreset,
   setUserLead4opFMPresets,
   upsertUserLead4opFMPreset,
 } from '../../audio/lead4opfm';
+import type { ManualSynthNoteOptions, ManualSynthSource } from '../../audio/engine';
 import FilterLfoViz from './FilterLfoViz';
 import WaveFoldViz from './WaveFoldViz';
 import LeadAdsrViz from './LeadAdsrViz';
@@ -65,6 +67,7 @@ const LANE_CONFIGS = [
 const SYNTH_SOURCES = [
   { value: 'lead1', label: 'Lead 1', color: '#f59e0b' },
   { value: 'lead2', label: 'Lead 2', color: '#06b6d4' },
+  { value: 'piano', label: 'Piano', color: '#e7c87f' },
   { value: 'synth1', label: 'Pad 1', color: '#C4724E' },
   { value: 'synth2', label: 'Pad 2', color: '#D4855E' },
   { value: 'synth3', label: 'Pad 3', color: '#B4624E' },
@@ -73,12 +76,161 @@ const SYNTH_SOURCES = [
   { value: 'synth6', label: 'Pad 6', color: '#8E5842' },
 ];
 
+const RANDOM_TIMING_SOURCES = [
+  { value: 'lead1', label: 'Lead 1', color: '#f59e0b' },
+  { value: 'lead2', label: 'Lead 2', color: '#06b6d4' },
+  { value: 'piano', label: 'Piano', color: '#e7c87f' },
+];
+
+const MANUAL_KEYBOARD_SOURCES: Array<{ value: ManualSynthSource; label: string; color: string }> = [
+  { value: 'pad1', label: 'Pad 1', color: '#C4724E' },
+  { value: 'pad2', label: 'Pad 2', color: '#D4855E' },
+  { value: 'lead1', label: 'Lead 1', color: '#f59e0b' },
+  { value: 'lead2', label: 'Lead 2', color: '#06b6d4' },
+  { value: 'piano', label: 'Piano', color: '#e7c87f' },
+];
+
+const MANUAL_KEYBOARD_LAYOUT = [
+  { code: 'KeyA', shortcut: 'A', semitone: 0, accidental: false },
+  { code: 'KeyW', shortcut: 'W', semitone: 1, accidental: true },
+  { code: 'KeyS', shortcut: 'S', semitone: 2, accidental: false },
+  { code: 'KeyE', shortcut: 'E', semitone: 3, accidental: true },
+  { code: 'KeyD', shortcut: 'D', semitone: 4, accidental: false },
+  { code: 'KeyF', shortcut: 'F', semitone: 5, accidental: false },
+  { code: 'KeyT', shortcut: 'T', semitone: 6, accidental: true },
+  { code: 'KeyG', shortcut: 'G', semitone: 7, accidental: false },
+  { code: 'KeyY', shortcut: 'Y', semitone: 8, accidental: true },
+  { code: 'KeyH', shortcut: 'H', semitone: 9, accidental: false },
+  { code: 'KeyU', shortcut: 'U', semitone: 10, accidental: true },
+  { code: 'KeyJ', shortcut: 'J', semitone: 11, accidental: false },
+  { code: 'KeyK', shortcut: 'K', semitone: 12, accidental: false },
+  { code: 'KeyO', shortcut: 'O', semitone: 13, accidental: true },
+  { code: 'KeyL', shortcut: 'L', semitone: 14, accidental: false },
+  { code: 'KeyP', shortcut: 'P', semitone: 15, accidental: true },
+  { code: 'Semicolon', shortcut: ';', semitone: 16, accidental: false },
+  { code: 'Quote', shortcut: '\'', semitone: 17, accidental: false },
+] as const;
+
+const MANUAL_KEYBOARD_VELOCITY = 0.82;
+const MAX_SUBLANE_STEPS = 16;
+const CHROMATIC_NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'] as const;
+const PITCH_BINDING_MODE_OPTIONS: Array<{ value: PitchBindingMode; label: string }> = [
+  { value: 'polyrhythmic', label: 'Polyrhythmic' },
+  { value: 'linked', label: 'Linked' },
+  { value: 'sequence', label: 'Sequence' },
+];
+
+type KeyboardInputMode = 'play' | 'sequence';
+type KeyboardHarmonyStatus = 'root' | 'chord' | 'scale' | 'outside';
+type KeyboardSequenceCursorTarget = 'trigger' | 'pitch';
+export interface SynthKeyboardUiState {
+  open: boolean;
+  inputMode: KeyboardInputMode;
+  source: ManualSynthSource;
+  octave: number;
+  sequenceSteps?: number[];
+  triggerSteps?: number[];
+  pitchSteps?: number[];
+  sequenceCursorTarget?: KeyboardSequenceCursorTarget;
+}
+
+function normalizeKeyboardStepArray(steps?: number[]): number[] {
+  return Array.from({ length: 4 }, (_, index) => {
+    const value = steps?.[index];
+    return Number.isFinite(value) ? Math.max(0, Math.floor(value as number)) : 0;
+  });
+}
+
+function formatMidiNoteName(midi: number): string {
+  const safeMidi = Math.max(0, Math.round(midi));
+  const noteName = CHROMATIC_NOTE_NAMES[((safeMidi % 12) + 12) % 12] ?? 'C';
+  const octave = Math.floor(safeMidi / 12) - 1;
+  return `${noteName}${octave}`;
+}
+
+function getPitchClass(midi: number): number {
+  return ((Math.round(midi) % 12) + 12) % 12;
+}
+
+function getManualSourceForLaneSource(source: string, pad2VoiceAssign: number | undefined): ManualSynthSource {
+  if (source === 'lead2') return 'lead2';
+  if (source === 'piano') return 'piano';
+  if (source.startsWith('synth')) {
+    const voiceIndex = Number.parseInt(source.replace('synth', ''), 10) - 1;
+    if (Number.isFinite(voiceIndex) && voiceIndex >= 0) {
+      const assignedToPad2 = ((pad2VoiceAssign ?? 0) & (1 << voiceIndex)) !== 0;
+      return assignedToPad2 ? 'pad2' : 'pad1';
+    }
+    return 'pad1';
+  }
+  return 'lead1';
+}
+
+function midiToPitchOffsetForSettings(midi: number, settings: PitchSettings): number {
+  if (settings.mode === 'notes') {
+    const scaleIntervals = SCALES[settings.scale] || [0, 2, 4, 5, 7, 9, 11];
+    const semitone = midi - settings.root;
+    const octave = Math.floor(semitone / 12);
+    const remainder = ((semitone % 12) + 12) % 12;
+    let bestDegree = 0;
+    let bestDistance = Number.POSITIVE_INFINITY;
+    scaleIntervals.forEach((interval, degree) => {
+      const distance = Math.abs(interval - remainder);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestDegree = degree;
+      }
+    });
+    return octave * scaleIntervals.length + bestDegree;
+  }
+  return midi - settings.root;
+}
+
+function pitchOffsetToMidi(offset: number, settings: PitchSettings): number | null {
+  if (!Number.isFinite(offset)) return null;
+  if (settings.mode === 'noteRange') return null;
+  if (settings.mode === 'notes') {
+    const scaleIntervals = SCALES[settings.scale] || [0, 2, 4, 5, 7, 9, 11];
+    return settings.root + scaleDegreeToSemitone(offset, scaleIntervals);
+  }
+  return settings.root + offset;
+}
+
+function isTextEntryTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  const tag = target.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
+}
+
+const PAD_VARIANT_PROGRESS = [0.2, 0.4, 0.65, 0.85, 1] as const;
+const PAD_WALK_BLEND = 0.34;
+const PAD_WALK_DISCRETE_THRESHOLD = 0.34;
+const PAD_ENDPOINT_EPSILON = 1e-3;
+
+interface PadVariationSession {
+  anchor: PadScopeSnapshot | null;
+  goal: PadScopeSnapshot | null;
+  history: PadScopeSnapshot[];
+  appliedSteps: number;
+  walkEnabled: boolean;
+}
+
+const EMPTY_PAD_VARIATION_SESSION: PadVariationSession = {
+  anchor: null,
+  goal: null,
+  history: [],
+  appliedSteps: 0,
+  walkEnabled: false,
+};
+
 const PAD1_TO_PAD2_KEY: Record<string, string> = {
   padOscAWave: 'pad2OscAWave', padOscAOctave: 'pad2OscAOctave', padOscADetune: 'pad2OscADetune', padOscALevel: 'pad2OscALevel',
   padOscBWave: 'pad2OscBWave', padOscBOctave: 'pad2OscBOctave', padOscBDetune: 'pad2OscBDetune', padOscBLevel: 'pad2OscBLevel',
+  padOscMix: 'pad2OscMix',
   padSubEnabled: 'pad2SubEnabled', padSubOctave: 'pad2SubOctave', padSubWave: 'pad2SubWave', padSubLevel: 'pad2SubLevel',
   padNoiseType: 'pad2NoiseType', padNoiseLevel: 'pad2NoiseLevel',
   hardness: 'pad2Hardness', warmth: 'pad2Warmth', presence: 'pad2Presence',
+  padFoldAmount: 'pad2FoldAmount', padFoldMode: 'pad2FoldMode',
   filterType: 'pad2FilterType', filterCutoffMin: 'pad2FilterCutoffMin', filterCutoffMax: 'pad2FilterCutoffMax',
   filterResonance: 'pad2FilterResonance', filterQ: 'pad2FilterQ',
   padFilterBEnabled: 'pad2FilterBEnabled', padFilterBType: 'pad2FilterBType', padFilterBCutoff: 'pad2FilterBCutoff',
@@ -188,6 +340,18 @@ export interface SynthPageProps {
   initialPitchSettings?: PitchSettings[];
   /** Called when pitch settings change, so parent can persist across tab switches */
   onPitchSettingsChange?: (settings: PitchSettings[]) => void;
+  /** Initial pitch binding modes to restore across tab switches */
+  initialPitchBindingModes?: PitchBindingMode[];
+  /** Called when pitch binding modes change, so parent can persist them */
+  onPitchBindingModesChange?: (modes: PitchBindingMode[]) => void;
+  /** Initial synth keyboard popup state to restore across tab switches */
+  initialKeyboardUiState?: SynthKeyboardUiState;
+  /** Called when synth keyboard popup state changes */
+  onKeyboardUiStateChange?: (state: SynthKeyboardUiState) => void;
+  /** Fire a one-shot manual audition note from the synth keyboard */
+  onAuditionNote?: (note: ManualSynthNoteOptions) => void | Promise<void>;
+  /** Current harmony snapshot for keyboard note coloring */
+  harmonyState?: HarmonyState | null;
 }
 
 // ═══════════════ Component ═══════════════
@@ -224,6 +388,12 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     onSwingsChange,
     initialPitchSettings,
     onPitchSettingsChange,
+    initialPitchBindingModes,
+    onPitchBindingModesChange,
+    initialKeyboardUiState,
+    onKeyboardUiStateChange,
+    onAuditionNote,
+    harmonyState,
   } = props;
   const onStateChange = props.onStateChange;
 
@@ -234,9 +404,26 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const [editingSection, setEditingSection] = useState<string | null>(null);
   const [diceIntensity, setDiceIntensity] = useState(0.5);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showKeyboard, setShowKeyboard] = useState(initialKeyboardUiState?.open ?? false);
+  const [keyboardInputMode, setKeyboardInputMode] = useState<KeyboardInputMode>(initialKeyboardUiState?.inputMode ?? 'play');
+  const [keyboardSource, setKeyboardSource] = useState<ManualSynthSource>(initialKeyboardUiState?.source ?? 'lead1');
+  const [keyboardOctave, setKeyboardOctave] = useState(initialKeyboardUiState?.octave ?? 4);
+  const [pitchBindingModes, setPitchBindingModes] = useState<PitchBindingMode[]>(() =>
+    initialPitchBindingModes ?? Array.from({ length: 4 }, () => 'polyrhythmic' as PitchBindingMode)
+  );
+  const [triggerKeyboardSteps, setTriggerKeyboardSteps] = useState<number[]>(() =>
+    normalizeKeyboardStepArray(initialKeyboardUiState?.triggerSteps ?? initialKeyboardUiState?.sequenceSteps)
+  );
+  const [pitchKeyboardSteps, setPitchKeyboardSteps] = useState<number[]>(() =>
+    normalizeKeyboardStepArray(initialKeyboardUiState?.pitchSteps)
+  );
+  const [keyboardSequenceCursorTarget, setKeyboardSequenceCursorTarget] = useState<KeyboardSequenceCursorTarget>(
+    initialKeyboardUiState?.sequenceCursorTarget ?? 'pitch'
+  );
   const [padTier, setPadTier] = useState<0 | 1 | 2>(0); // 0=closed, 1=primary, 2=advanced
   const [pad2Tier, setPad2Tier] = useState<0 | 1 | 2>(0); // Pad 2: 0=closed by default
   const [dragPopup, setDragPopup] = useState<{ x: number; y: number; text: string } | null>(null);
+  const [activeKeyboardCodes, setActiveKeyboardCodes] = useState<string[]>([]);
   const {
     presets: pad1EnginePresets,
     save: savePad1Preset,
@@ -264,6 +451,174 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     onPointerDown: () => announceHelp(helpKey, options),
     onFocus: () => announceHelp(helpKey, options),
   }), [announceHelp]);
+  const activeKeyboardCodeSetRef = useRef<Set<string>>(new Set());
+  const setKeyboardCodeActive = useCallback((code: string, active: boolean) => {
+    const next = new Set(activeKeyboardCodeSetRef.current);
+    if (active) next.add(code);
+    else next.delete(code);
+    activeKeyboardCodeSetRef.current = next;
+    setActiveKeyboardCodes(Array.from(next));
+  }, []);
+  const [pad1Variation, setPad1Variation] = useState<PadVariationSession>(EMPTY_PAD_VARIATION_SESSION);
+  const [pad2Variation, setPad2Variation] = useState<PadVariationSession>(EMPTY_PAD_VARIATION_SESSION);
+
+  const getPadMorphValue = useCallback((scope: PadRandomScope): number => (
+    scope === 'pad1' ? (state.padMorph ?? 0) : (state.pad2Morph ?? 0)
+  ), [state.pad2Morph, state.padMorph]);
+
+  const getPadAutoMorphEnabled = useCallback((scope: PadRandomScope): boolean => (
+    scope === 'pad1' ? !!state.padMorphAuto : !!state.pad2MorphAuto
+  ), [state.pad2MorphAuto, state.padMorphAuto]);
+
+  const getPadEndpointLabel = useCallback((scope: PadRandomScope): 'A' | 'B' | null => {
+    const morphValue = getPadMorphValue(scope);
+    if (Math.abs(morphValue) <= PAD_ENDPOINT_EPSILON) return 'A';
+    if (Math.abs(morphValue - 1) <= PAD_ENDPOINT_EPSILON) return 'B';
+    return null;
+  }, [getPadMorphValue]);
+
+  const canUsePadRandomize = useCallback((scope: PadRandomScope): boolean => (
+    !!onStateChange && getPadEndpointLabel(scope) !== null && !getPadAutoMorphEnabled(scope)
+  ), [getPadAutoMorphEnabled, getPadEndpointLabel, onStateChange]);
+
+  const setPadVariationForScope = useCallback((
+    scope: PadRandomScope,
+    updater: PadVariationSession | ((prev: PadVariationSession) => PadVariationSession),
+  ) => {
+    if (scope === 'pad1') {
+      setPad1Variation(prev => (typeof updater === 'function' ? updater(prev) : updater));
+      return;
+    }
+    setPad2Variation(prev => (typeof updater === 'function' ? updater(prev) : updater));
+  }, []);
+
+  const getPadVariationForScope = useCallback((scope: PadRandomScope): PadVariationSession => (
+    scope === 'pad1' ? pad1Variation : pad2Variation
+  ), [pad1Variation, pad2Variation]);
+
+  const applyPadVariationSnapshot = useCallback((scope: PadRandomScope, snapshot: PadScopeSnapshot) => {
+    if (!onStateChange) return;
+    onStateChange(applyPadScopeState(state, scope, snapshot));
+  }, [onStateChange, state]);
+
+  const handlePadRandomGoal = useCallback((scope: PadRandomScope) => {
+    if (!canUsePadRandomize(scope)) return;
+    const current = extractPadScopeState(state, scope);
+    const endpointLabel = getPadEndpointLabel(scope) ?? 'A';
+    const goal = createPadRandomGoal(current, scope, 'target', `${endpointLabel}|goal`);
+    setPadVariationForScope(scope, {
+      anchor: current,
+      goal,
+      history: [],
+      appliedSteps: 0,
+      walkEnabled: false,
+    });
+  }, [canUsePadRandomize, getPadEndpointLabel, setPadVariationForScope, state]);
+
+  const handlePadWalkToggle = useCallback((scope: PadRandomScope) => {
+    if (!canUsePadRandomize(scope)) return;
+    const current = extractPadScopeState(state, scope);
+    setPadVariationForScope(scope, prev => ({
+      anchor: current,
+      goal: null,
+      history: prev.walkEnabled ? prev.history : [],
+      appliedSteps: 0,
+      walkEnabled: !prev.walkEnabled,
+    }));
+  }, [canUsePadRandomize, setPadVariationForScope, state]);
+
+  const handlePadVariant = useCallback((scope: PadRandomScope) => {
+    if (!canUsePadRandomize(scope)) return;
+
+    const current = extractPadScopeState(state, scope);
+    const variation = getPadVariationForScope(scope);
+
+    if (variation.walkEnabled) {
+      const walkGoal = createPadRandomGoal(current, scope, 'walk', `walk|${variation.history.length}`);
+      const nextSnapshot = blendPadScopeState(scope, current, walkGoal, PAD_WALK_BLEND, PAD_WALK_DISCRETE_THRESHOLD);
+      applyPadVariationSnapshot(scope, nextSnapshot);
+      setPadVariationForScope(scope, prev => ({
+        ...prev,
+        anchor: prev.anchor ?? current,
+        goal: walkGoal,
+        history: [...prev.history, current],
+        appliedSteps: prev.appliedSteps + 1,
+      }));
+      return;
+    }
+
+    if (!variation.anchor || !variation.goal) return;
+    if (variation.appliedSteps >= PAD_VARIANT_PROGRESS.length) return;
+
+    const nextStepCount = variation.appliedSteps + 1;
+    const nextAmount = PAD_VARIANT_PROGRESS[nextStepCount - 1] ?? 1;
+    const nextSnapshot = blendPadScopeState(scope, variation.anchor, variation.goal, nextAmount);
+    applyPadVariationSnapshot(scope, nextSnapshot);
+    setPadVariationForScope(scope, prev => ({
+      ...prev,
+      history: [...prev.history, current],
+      appliedSteps: nextStepCount,
+    }));
+  }, [applyPadVariationSnapshot, canUsePadRandomize, getPadVariationForScope, setPadVariationForScope, state]);
+
+  const handlePadVariationUndo = useCallback((scope: PadRandomScope) => {
+    const variation = getPadVariationForScope(scope);
+    if (variation.history.length === 0) return;
+
+    const previousSnapshot = variation.history[variation.history.length - 1];
+    if (!previousSnapshot) return;
+
+    applyPadVariationSnapshot(scope, previousSnapshot);
+    setPadVariationForScope(scope, prev => ({
+      ...prev,
+      history: prev.history.slice(0, -1),
+      appliedSteps: Math.max(0, prev.appliedSteps - 1),
+    }));
+  }, [applyPadVariationSnapshot, getPadVariationForScope, setPadVariationForScope]);
+
+  const buildPadVariationControls = useCallback((scope: PadRandomScope) => {
+    const variation = getPadVariationForScope(scope);
+    const endpointLabel = getPadEndpointLabel(scope);
+    const canArm = canUsePadRandomize(scope);
+    const canVariant = canArm && (
+      variation.walkEnabled
+      || (!!variation.goal && variation.appliedSteps < PAD_VARIANT_PROGRESS.length)
+    );
+    const disabledReason = getPadAutoMorphEnabled(scope)
+      ? 'Stop Auto Morph before using Random or Walk'
+      : 'Random is only available when the preset morph slider is fully at A or B';
+
+    let progressText = endpointLabel ? `Base ${endpointLabel}` : 'Endpoint only';
+    if (variation.walkEnabled) {
+      progressText = variation.history.length > 0 ? `Walk ${variation.history.length}` : 'Walk ready';
+    } else if (variation.goal) {
+      progressText = `Goal ${variation.appliedSteps}/${PAD_VARIANT_PROGRESS.length}`;
+    }
+
+    return {
+      canArm,
+      canVariant,
+      canUndo: variation.history.length > 0,
+      walkEnabled: variation.walkEnabled,
+      targetReady: !variation.walkEnabled && !!variation.goal,
+      endpointLabel,
+      progressText,
+      disabledReason,
+      onRandom: () => handlePadRandomGoal(scope),
+      onWalkToggle: () => handlePadWalkToggle(scope),
+      onVariant: () => handlePadVariant(scope),
+      onUndo: () => handlePadVariationUndo(scope),
+    };
+  }, [
+    canUsePadRandomize,
+    getPadAutoMorphEnabled,
+    getPadEndpointLabel,
+    getPadVariationForScope,
+    handlePadRandomGoal,
+    handlePadVariationUndo,
+    handlePadVariant,
+    handlePadWalkToggle,
+  ]);
 
   // ── Euclidean sequencer preset (L1 synthEuclidean) ──
   const [euclidPresetName, setEuclidPresetName] = useState<string | undefined>();
@@ -376,6 +731,14 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     };
   }, [leadFmPresets, loadLeadFmPresetEntry]);
 
+  useEffect(() => {
+    setPad1Variation(EMPTY_PAD_VARIATION_SESSION);
+  }, [state.padPresetA, state.padPresetB, state.padMorph, state.padMorphAuto]);
+
+  useEffect(() => {
+    setPad2Variation(EMPTY_PAD_VARIATION_SESSION);
+  }, [state.pad2PresetA, state.pad2PresetB, state.pad2Morph, state.pad2MorphAuto]);
+
   const pad1PresetOptions = getPadPresetOptions('pad1');
   const pad2PresetOptions = getPadPresetOptions('pad2');
   const pad1OptionById = new Map(pad1PresetOptions.map(option => [option.id, option]));
@@ -397,61 +760,25 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const leadPresetOptionById = new Map(leadPresetOptions.map(option => [option.id, option]));
 
   const renderPadPresetOptions = useCallback((options: PadPresetOption[]) => {
-    const stock = options.filter(option => option.library === 'stock');
-    const user = options.filter(option => option.library === 'user');
-    const cloud = options.filter(option => option.library === 'cloud');
+    const sorted = [...options].sort((left, right) => left.name.localeCompare(right.name));
 
     return (
       <>
-        <optgroup label="Stock">
-          {stock.map((option) => (
-            <option key={option.id} value={option.id}>{option.name}</option>
-          ))}
-        </optgroup>
-        {user.length > 0 && (
-          <optgroup label="My Presets">
-            {user.map((option) => (
-              <option key={option.id} value={option.id}>{option.name}</option>
-            ))}
-          </optgroup>
-        )}
-        {cloud.length > 0 && (
-          <optgroup label="Cloud">
-            {cloud.map((option) => (
-              <option key={option.id} value={option.id}>{option.name}</option>
-            ))}
-          </optgroup>
-        )}
+        {sorted.map((option) => (
+          <option key={`${option.library}:${option.id}`} value={option.id}>{option.name}</option>
+        ))}
       </>
     );
   }, []);
 
   const renderLeadPresetOptions = useCallback((options: Array<{ id: string; name: string; library: 'stock' | 'user' | 'cloud' }>) => {
-    const stock = options.filter(option => option.library === 'stock');
-    const user = options.filter(option => option.library === 'user');
-    const cloud = options.filter(option => option.library === 'cloud');
+    const sorted = [...options].sort((left, right) => left.name.localeCompare(right.name));
 
     return (
       <>
-        <optgroup label="Stock">
-          {stock.map((option) => (
-            <option key={option.id} value={option.id}>{option.name}</option>
-          ))}
-        </optgroup>
-        {user.length > 0 && (
-          <optgroup label="My Presets">
-            {user.map((option) => (
-              <option key={option.id} value={option.id}>{option.name}</option>
-            ))}
-          </optgroup>
-        )}
-        {cloud.length > 0 && (
-          <optgroup label="Cloud">
-            {cloud.map((option) => (
-              <option key={option.id} value={option.id}>{option.name}</option>
-            ))}
-          </optgroup>
-        )}
+        {sorted.map((option) => (
+          <option key={`${option.library}:${option.id}`} value={option.id}>{option.name}</option>
+        ))}
       </>
     );
   }, []);
@@ -469,24 +796,20 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     const defaultName = currentOption?.name || `${scope === 'pad1' ? 'Pad 1' : 'Pad 2'} Preset`;
 
     let targetName = defaultName;
-    if (!currentOption || currentOption.library !== 'user') {
+    if (!currentOption) {
       if (typeof window === 'undefined' || typeof window.prompt !== 'function') return;
       const requestedName = window.prompt(
-        `Save ${scope === 'pad1' ? 'Pad 1' : 'Pad 2'} slot as a new L1 preset`,
+        `Name this ${scope === 'pad1' ? 'Pad 1' : 'Pad 2'} preset`,
         defaultName,
       );
       if (!requestedName?.trim()) return;
       targetName = requestedName.trim();
-      const existingOption = [...optionMap.values()].find(option => option.name === targetName && option.library !== 'user');
-      if (existingOption) {
-        targetName = `${targetName} (Custom)`;
-      }
     }
 
     await savePreset(
       targetName,
       state,
-      currentOption?.library === 'user' ? 'Updated from pad slot' : 'Saved from pad slot',
+      currentOption ? 'Updated from pad slot' : 'Saved from pad slot',
     );
     await refreshPresetList();
 
@@ -530,23 +853,21 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     const defaultName = currentOption?.name || fallbackName;
 
     let targetName = defaultName;
-    if (!currentOption || currentOption.library !== 'user') {
+    if (!currentOption) {
       if (typeof window === 'undefined' || typeof window.prompt !== 'function') return;
       const requestedName = window.prompt(
-        `Save ${fallbackName} as a new L1 FM preset`,
+        `Name this ${fallbackName} preset`,
         defaultName,
       );
       if (!requestedName?.trim()) return;
       targetName = requestedName.trim();
-      const existing = leadPresetOptions.find(option => option.name === targetName && option.library !== 'user');
-      if (existing) targetName = `${targetName} (Custom)`;
     }
 
     const currentPreset = await loadLead4opFMPreset(currentId);
     const savedId = await saveUserLead4opFMPreset(
       targetName,
       currentPreset,
-      currentOption?.library === 'user' ? 'Updated from lead slot' : 'Saved from lead slot',
+      currentOption ? 'Updated from lead slot' : 'Saved from lead slot',
     );
     await refreshLeadFmPresets();
 
@@ -586,6 +907,21 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     resetKey: presetVersion,
   });
 
+  useEffect(() => {
+    if (presetVersion === undefined) return;
+    setPitchBindingModes(initialPitchBindingModes ?? Array.from({ length: 4 }, () => 'polyrhythmic' as PitchBindingMode));
+    setTriggerKeyboardSteps(normalizeKeyboardStepArray());
+    setPitchKeyboardSteps(normalizeKeyboardStepArray());
+    setKeyboardSequenceCursorTarget('pitch');
+  }, [initialPitchBindingModes, presetVersion]);
+
+  const setPitchBindingMode = useCallback((laneIdx: number, mode: PitchBindingMode) => {
+    setPitchBindingModes((prev) => prev.map((current, index) => index === laneIdx ? mode : current));
+    if (mode === 'sequence' && seq.pitchSettings[laneIdx]?.mode === 'noteRange') {
+      seq.setPitchMode(laneIdx, 'semitones');
+    }
+  }, [seq]);
+
   const setSharedSequencerBpm = useCallback((bpm: number) => {
     onParamChange('sequencerMasterBPM' as keyof SliderState, bpm);
     onParamChange('synthEuclidBaseBPM' as keyof SliderState, bpm);
@@ -606,6 +942,53 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       onEvolveConfigsChange?.(seq.evolveConfigs);
     }
   }, [seq.evolveConfigs, onEvolveConfigsChange]);
+
+  const pitchBindingModesRef = useRef(pitchBindingModes);
+  useEffect(() => {
+    if (pitchBindingModesRef.current !== pitchBindingModes) {
+      pitchBindingModesRef.current = pitchBindingModes;
+      onPitchBindingModesChange?.(pitchBindingModes);
+    }
+  }, [onPitchBindingModesChange, pitchBindingModes]);
+
+  useEffect(() => {
+    onKeyboardUiStateChange?.({
+      open: showKeyboard,
+      inputMode: keyboardInputMode,
+      source: keyboardSource,
+      octave: keyboardOctave,
+      sequenceSteps: triggerKeyboardSteps,
+      triggerSteps: triggerKeyboardSteps,
+      pitchSteps: pitchKeyboardSteps,
+      sequenceCursorTarget: keyboardSequenceCursorTarget,
+    });
+  }, [
+    keyboardInputMode,
+    keyboardOctave,
+    keyboardSequenceCursorTarget,
+    keyboardSource,
+    onKeyboardUiStateChange,
+    pitchKeyboardSteps,
+    showKeyboard,
+    triggerKeyboardSteps,
+  ]);
+
+  useEffect(() => {
+    pitchBindingModes.forEach((mode, laneIdx) => {
+      const pitchState = seq.subLaneStates[laneIdx]?.pitch;
+      const seqModel = seq.sequencerModels[laneIdx];
+      if (!pitchState || !seqModel) return;
+      const activeHits = seqModel.trigger.pattern.filter(Boolean).length;
+      const targetSteps = mode === 'sequence'
+        ? seqModel.trigger.steps
+        : mode === 'linked'
+          ? Math.max(1, activeHits)
+          : null;
+      if (targetSteps != null && pitchState.steps !== targetSteps) {
+        seq.setSubLaneSteps(laneIdx, 'pitch', targetSteps);
+      }
+    });
+  }, [pitchBindingModes, seq.sequencerModels, seq.setSubLaneSteps, seq.subLaneStates]);
 
   // Merge evolved overrides from audio engine into visualizer state
   const evolvedVersionRef = useRef(-1);
@@ -719,6 +1102,459 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
 
   const getSourceColor = (source: string): string =>
     SYNTH_SOURCES.find(s => s.value === source)?.color ?? '#888';
+
+  const getDefaultKeyboardSource = useCallback((): ManualSynthSource => {
+    if (editingSection === 'pad2') return 'pad2';
+    if (editingSection === 'lead2') return 'lead2';
+    if (editingSection === 'piano') return 'piano';
+    if (editingSection === 'lead1') return 'lead1';
+    return getManualSourceForLaneSource(String(state[getSourceKey(seq.activeTab)] ?? 'lead1'), state.pad2VoiceAssign);
+  }, [editingSection, getSourceKey, seq.activeTab, state]);
+
+  const getTriggerStepCountForLane = useCallback((laneIdx: number) => (
+    seq.sequencerModels[laneIdx]?.trigger.steps ?? 0
+  ), [seq.sequencerModels]);
+
+  const getTriggerPatternForLane = useCallback((laneIdx: number) => (
+    seq.sequencerModels[laneIdx]?.trigger.pattern ?? []
+  ), [seq.sequencerModels]);
+
+  const getVisiblePitchStepCountForLane = useCallback((laneIdx: number) => (
+    seq.subLaneStates[laneIdx]?.pitch.steps ?? 0
+  ), [seq.subLaneStates]);
+
+  const getPitchCursorStepCountForLane = useCallback((laneIdx: number) => {
+    const bindingMode = pitchBindingModes[laneIdx] ?? 'polyrhythmic';
+    if (bindingMode === 'polyrhythmic') return MAX_SUBLANE_STEPS;
+    return getVisiblePitchStepCountForLane(laneIdx);
+  }, [getVisiblePitchStepCountForLane, pitchBindingModes]);
+
+  const getFirstTriggerKeyboardStep = useCallback((laneIdx: number) => {
+    const stepCount = getTriggerStepCountForLane(laneIdx);
+    return stepCount > 0 ? 0 : 0;
+  }, [getTriggerStepCountForLane]);
+
+  const getFirstPitchKeyboardStep = useCallback((laneIdx: number) => {
+    const stepCount = getPitchCursorStepCountForLane(laneIdx);
+    return stepCount > 0 ? 0 : 0;
+  }, [getPitchCursorStepCountForLane]);
+
+  const findAdjacentTriggerStep = useCallback((laneIdx: number, currentStep: number, direction: 1 | -1) => {
+    const stepCount = getTriggerStepCountForLane(laneIdx);
+    if (stepCount <= 0) return 0;
+    return (currentStep + direction + stepCount) % stepCount;
+  }, [getTriggerStepCountForLane]);
+
+  const findAdjacentPitchStep = useCallback((laneIdx: number, currentStep: number, direction: 1 | -1) => {
+    const stepCount = getPitchCursorStepCountForLane(laneIdx);
+    if (stepCount <= 0) return 0;
+    return (currentStep + direction + stepCount) % stepCount;
+  }, [getPitchCursorStepCountForLane]);
+
+  useEffect(() => {
+    setTriggerKeyboardSteps((prev) => prev.map((step, laneIdx) => {
+      const stepCount = getTriggerStepCountForLane(laneIdx);
+      if (stepCount <= 0) return 0;
+      if (!Number.isFinite(step) || step < 0 || step >= stepCount) {
+        return getFirstTriggerKeyboardStep(laneIdx);
+      }
+      return step;
+    }));
+  }, [getFirstTriggerKeyboardStep, getTriggerStepCountForLane]);
+
+  useEffect(() => {
+    setPitchKeyboardSteps((prev) => prev.map((step, laneIdx) => {
+      const stepCount = getPitchCursorStepCountForLane(laneIdx);
+      if (stepCount <= 0) return 0;
+      if (!Number.isFinite(step) || step < 0 || step >= stepCount) {
+        return getFirstPitchKeyboardStep(laneIdx);
+      }
+      return step;
+    }));
+  }, [getFirstPitchKeyboardStep, getPitchCursorStepCountForLane]);
+
+  const selectTriggerSequenceStep = useCallback((laneIdx: number, step: number) => {
+    const stepCount = getTriggerStepCountForLane(laneIdx);
+    if (stepCount <= 0) return;
+    const normalizedStep = ((step % stepCount) + stepCount) % stepCount;
+    seq.setActiveTab(laneIdx);
+    setTriggerKeyboardSteps((prev) => prev.map((current, index) => index === laneIdx ? normalizedStep : current));
+  }, [getTriggerStepCountForLane, seq]);
+
+  const selectPitchSequenceStep = useCallback((laneIdx: number, step: number) => {
+    const stepCount = getPitchCursorStepCountForLane(laneIdx);
+    if (stepCount <= 0) return;
+    const normalizedStep = ((step % stepCount) + stepCount) % stepCount;
+    seq.setActiveTab(laneIdx);
+    setPitchKeyboardSteps((prev) => prev.map((current, index) => index === laneIdx ? normalizedStep : current));
+  }, [getPitchCursorStepCountForLane, seq]);
+
+  const activeLaneSource = String(state[getSourceKey(seq.activeTab)] ?? 'lead1');
+  const sequenceKeyboardSource = getManualSourceForLaneSource(activeLaneSource, state.pad2VoiceAssign);
+  const effectiveKeyboardSource = keyboardInputMode === 'sequence' ? sequenceKeyboardSource : keyboardSource;
+  const activePitchBindingMode = pitchBindingModes[seq.activeTab] ?? 'polyrhythmic';
+  const activeTriggerCursorStep = triggerKeyboardSteps[seq.activeTab] ?? getFirstTriggerKeyboardStep(seq.activeTab);
+  const activePitchCursorStep = pitchKeyboardSteps[seq.activeTab] ?? getFirstPitchKeyboardStep(seq.activeTab);
+  const sequenceWritesToTriggerGrid = activePitchBindingMode === 'sequence';
+  const canToggleKeyboardCursorTarget = activePitchBindingMode !== 'sequence';
+  const activeKeyboardCursorTarget: KeyboardSequenceCursorTarget = sequenceWritesToTriggerGrid
+    ? 'trigger'
+    : keyboardSequenceCursorTarget;
+
+  const keyboardBaseMidi = 12 * (keyboardOctave + 1);
+  const keyboardSourceInfo = MANUAL_KEYBOARD_SOURCES.find((source) => source.value === effectiveKeyboardSource) ?? MANUAL_KEYBOARD_SOURCES[0]!;
+  const keyboardHarmonyContext = useMemo(() => {
+    const activePitchSettings = seq.pitchSettings[seq.activeTab] ?? { mode: 'semitones' as const, root: keyboardBaseMidi, scale: 'Major' as const };
+    const rootPitchClass = harmonyState ? getPitchClass(harmonyState.effectiveRoot) : getPitchClass(activePitchSettings.root);
+    const scaleIntervals = harmonyState?.scaleFamily.intervals ?? (SCALES[activePitchSettings.scale] || SCALES.Major);
+    const chordPitchClasses = new Set((harmonyState?.currentChord.midiNotes ?? []).map(getPitchClass));
+    const scalePitchClasses = new Set(scaleIntervals.map((interval) => (rootPitchClass + interval) % 12));
+    return {
+      rootPitchClass,
+      chordPitchClasses,
+      scalePitchClasses,
+      label: harmonyState
+        ? `${CHROMATIC_NOTE_NAMES[rootPitchClass] ?? 'C'} ${harmonyState.scaleFamily.name}`
+        : `${formatMidiNoteName(activePitchSettings.root)} root`,
+      usingHarmonyEngine: Boolean(harmonyState),
+    };
+  }, [harmonyState, keyboardBaseMidi, seq.activeTab, seq.pitchSettings]);
+
+  const classifyKeyboardMidi = useCallback((midi: number): KeyboardHarmonyStatus => {
+    const pitchClass = getPitchClass(midi);
+    if (pitchClass === keyboardHarmonyContext.rootPitchClass) return 'root';
+    if (keyboardHarmonyContext.chordPitchClasses.has(pitchClass)) return 'chord';
+    if (keyboardHarmonyContext.scalePitchClasses.has(pitchClass)) return 'scale';
+    return 'outside';
+  }, [keyboardHarmonyContext]);
+
+  const keyboardKeys = useMemo(() => {
+    let currentWhiteIndex = -1;
+    return MANUAL_KEYBOARD_LAYOUT.map((key) => {
+      if (!key.accidental) currentWhiteIndex += 1;
+      const midi = keyboardBaseMidi + key.semitone;
+      return {
+        ...key,
+        midi,
+        noteLabel: formatMidiNoteName(midi),
+        whiteIndex: currentWhiteIndex,
+        harmonyStatus: classifyKeyboardMidi(midi),
+      };
+    });
+  }, [classifyKeyboardMidi, keyboardBaseMidi]);
+  const keyboardWhiteCount = keyboardKeys.filter((key) => !key.accidental).length;
+  const keyboardNaturalKeys = keyboardKeys.filter((key) => !key.accidental);
+  const keyboardAccidentalKeys = keyboardKeys.filter((key) => key.accidental);
+  const activeLanePitchSettings = seq.pitchSettings[seq.activeTab] ?? { mode: 'semitones' as const, root: 60, scale: 'Major' as const };
+  const activePitchLaneEnabled = seq.subLaneStates[seq.activeTab]?.pitch.enabled ?? false;
+  const activeSequenceTriggerEnabled = (getTriggerPatternForLane(seq.activeTab)[activeTriggerCursorStep] ?? false) === true;
+  const activeVisiblePitchSteps = getVisiblePitchStepCountForLane(seq.activeTab);
+  const activePitchCursorIsBeyondVisibleRange = activePitchCursorStep >= activeVisiblePitchSteps;
+
+  const getSequenceStepMidi = useCallback((laneIdx: number, step: number) => {
+    const offset = seq.stepOverrides.pitch[laneIdx]?.[step];
+    if (typeof offset !== 'number' || !Number.isFinite(offset)) return null;
+    const settings = seq.pitchSettings[laneIdx] ?? { mode: 'semitones' as const, root: 60, scale: 'Major' as const };
+    return pitchOffsetToMidi(offset, settings);
+  }, [seq.pitchSettings, seq.stepOverrides.pitch]);
+
+  const getSequenceStepLabel = useCallback((laneIdx: number, step: number) => {
+    const midi = getSequenceStepMidi(laneIdx, step);
+    return midi == null ? null : formatMidiNoteName(midi);
+  }, [getSequenceStepMidi]);
+  const activePitchCursorLabel = getSequenceStepLabel(seq.activeTab, activePitchCursorStep);
+  const activeTriggerStepLabel = getSequenceStepLabel(seq.activeTab, activeTriggerCursorStep);
+  const activePitchSelectionStep = sequenceWritesToTriggerGrid ? activeTriggerCursorStep : activePitchCursorStep;
+  const canWriteSequenceNotes = keyboardInputMode === 'sequence'
+    && activePitchLaneEnabled
+    && activeLanePitchSettings.mode !== 'noteRange'
+    && (sequenceWritesToTriggerGrid || activeKeyboardCursorTarget === 'pitch');
+  const keyboardTargetVisible = showKeyboard && keyboardInputMode === 'sequence';
+  const keyboardTriggerTargetVisible = keyboardTargetVisible && (sequenceWritesToTriggerGrid || activeKeyboardCursorTarget === 'trigger');
+  const keyboardPitchTargetVisible = keyboardTargetVisible && activePitchLaneEnabled && (sequenceWritesToTriggerGrid || activeKeyboardCursorTarget === 'pitch');
+  const keyboardTargetLabel = '⌖';
+  const sequenceWriteHelper = keyboardInputMode !== 'sequence'
+    ? null
+    : !activePitchLaneEnabled
+      ? 'Enable the Pitch lane to write notes.'
+      : activeLanePitchSettings.mode === 'noteRange'
+        ? 'Set Pitch mode to Semitones or Notes to write exact notes.'
+        : sequenceWritesToTriggerGrid
+          ? 'Typing writes the selected trigger step, then advances one step to the right. Right Shift toggles the current trigger.'
+          : activeKeyboardCursorTarget === 'trigger'
+            ? 'Trigger cursor is active. Left/Right moves through the main sequence, Right Shift toggles the trigger, and Left Shift jumps back to Pitch.'
+            : activePitchBindingMode === 'polyrhythmic'
+              ? `Pitch cursor is active on step ${String(activePitchCursorStep + 1).padStart(2, '0')}. Left Shift switches to Sequence, and Right Shift sets the visible pitch length to this step.`
+              : `Pitch cursor is active on step ${String(activePitchCursorStep + 1).padStart(2, '0')}. Typing writes the pitch lane, then advances one step to the right. Left Shift switches to Sequence.`;
+  const keyboardSequenceStatus = sequenceWritesToTriggerGrid
+    ? `Seq ${seq.activeTab + 1} | ${SYNTH_SOURCES.find((source) => source.value === activeLaneSource)?.label ?? 'Lead 1'} | Sequence ${String(activeTriggerCursorStep + 1).padStart(2, '0')} | ${activeSequenceTriggerEnabled ? 'Trig On' : 'Trig Off'}${activeTriggerStepLabel ? ` | ${activeTriggerStepLabel}` : ''}`
+    : `Seq ${seq.activeTab + 1} | ${SYNTH_SOURCES.find((source) => source.value === activeLaneSource)?.label ?? 'Lead 1'} | Cursor ${activeKeyboardCursorTarget === 'trigger' ? 'Sequence' : 'Pitch'} | Sequence ${String(activeTriggerCursorStep + 1).padStart(2, '0')} ${activeSequenceTriggerEnabled ? 'On' : 'Off'} | Pitch ${String(activePitchCursorStep + 1).padStart(2, '0')}${activePitchCursorLabel ? ` ${activePitchCursorLabel}` : ''}${activePitchBindingMode === 'polyrhythmic' && activePitchCursorIsBeyondVisibleRange ? ' hidden' : ''}`;
+
+  const writeKeyboardSequenceNote = useCallback((laneIdx: number, midi: number) => {
+    const bindingMode = pitchBindingModes[laneIdx] ?? 'polyrhythmic';
+    const stepCount = bindingMode === 'sequence'
+      ? getTriggerStepCountForLane(laneIdx)
+      : getPitchCursorStepCountForLane(laneIdx);
+    if (stepCount <= 0) return;
+    const currentSettings = seq.pitchSettings[laneIdx] ?? { mode: 'semitones' as const, root: 60, scale: 'Major' as const };
+    if (currentSettings.mode === 'noteRange') return;
+    if (!(seq.subLaneStates[laneIdx]?.pitch.enabled ?? false)) return;
+    const currentStep = bindingMode === 'sequence'
+      ? (triggerKeyboardSteps[laneIdx] ?? getFirstTriggerKeyboardStep(laneIdx))
+      : (pitchKeyboardSteps[laneIdx] ?? getFirstPitchKeyboardStep(laneIdx));
+    const normalizedStep = ((currentStep % stepCount) + stepCount) % stepCount;
+    const storedValue = midiToPitchOffsetForSettings(midi, currentSettings);
+    seq.changeStepValue(laneIdx, 'pitch', normalizedStep, storedValue);
+    if (bindingMode === 'sequence') {
+      const nextStep = findAdjacentTriggerStep(laneIdx, normalizedStep, 1);
+      setTriggerKeyboardSteps((prev) => prev.map((value, index) => index === laneIdx ? nextStep : value));
+    } else {
+      const nextStep = findAdjacentPitchStep(laneIdx, normalizedStep, 1);
+      setPitchKeyboardSteps((prev) => prev.map((value, index) => index === laneIdx ? nextStep : value));
+    }
+  }, [
+    findAdjacentPitchStep,
+    findAdjacentTriggerStep,
+    getFirstPitchKeyboardStep,
+    getFirstTriggerKeyboardStep,
+    getPitchCursorStepCountForLane,
+    getTriggerStepCountForLane,
+    pitchBindingModes,
+    pitchKeyboardSteps,
+    seq,
+    triggerKeyboardSteps,
+  ]);
+
+  const toggleSequenceTriggerAtStep = useCallback((laneIdx: number, step: number) => {
+    const stepCount = getTriggerStepCountForLane(laneIdx);
+    if (stepCount <= 0) return;
+    const normalizedStep = ((step % stepCount) + stepCount) % stepCount;
+    seq.toggleTriggerStep(laneIdx, normalizedStep);
+  }, [getTriggerStepCountForLane, seq]);
+
+  const setPolyrhythmicPitchLengthAtCursor = useCallback((laneIdx: number) => {
+    if ((pitchBindingModes[laneIdx] ?? 'polyrhythmic') !== 'polyrhythmic') return;
+    const cursorStep = pitchKeyboardSteps[laneIdx] ?? getFirstPitchKeyboardStep(laneIdx);
+    const nextSteps = Math.max(1, Math.min(MAX_SUBLANE_STEPS, cursorStep + 1));
+    seq.setSubLaneSteps(laneIdx, 'pitch', nextSteps);
+  }, [getFirstPitchKeyboardStep, pitchBindingModes, pitchKeyboardSteps, seq]);
+
+  useEffect(() => {
+    if (keyboardInputMode !== 'sequence') return;
+    if (sequenceWritesToTriggerGrid && keyboardSequenceCursorTarget !== 'trigger') {
+      setKeyboardSequenceCursorTarget('trigger');
+    }
+  }, [keyboardInputMode, keyboardSequenceCursorTarget, sequenceWritesToTriggerGrid]);
+
+  const toggleSynthSequencerTransport = useCallback(() => {
+    const next = !state.synthEuclideanMasterEnabled;
+    if (next && !state.leadEnabled) {
+      onSelectChange('leadEnabled' as keyof SliderState, true);
+    }
+    if (next && !state.padEnabled) {
+      onSelectChange('padEnabled' as keyof SliderState, true);
+    }
+    onSelectChange('synthEuclideanMasterEnabled' as keyof SliderState, next);
+  }, [onSelectChange, state.leadEnabled, state.padEnabled, state.synthEuclideanMasterEnabled]);
+
+  const enterKeyboardSequenceMode = useCallback(() => {
+    setKeyboardInputMode('sequence');
+    setKeyboardSequenceCursorTarget(activePitchBindingMode === 'sequence' ? 'trigger' : 'pitch');
+    seq.setViewMode('detail');
+    seq.setOpenLane('pitch');
+    if (!(seq.subLaneStates[seq.activeTab]?.pitch.enabled ?? false)) {
+      seq.toggleSubLaneEnabled(seq.activeTab, 'pitch');
+    }
+    selectTriggerSequenceStep(seq.activeTab, activeTriggerCursorStep);
+    selectPitchSequenceStep(seq.activeTab, activePitchCursorStep);
+  }, [
+    activePitchBindingMode,
+    activePitchCursorStep,
+    activeTriggerCursorStep,
+    selectPitchSequenceStep,
+    selectTriggerSequenceStep,
+    seq.activeTab,
+    seq.setOpenLane,
+    seq.setViewMode,
+    seq.subLaneStates,
+    seq.toggleSubLaneEnabled,
+  ]);
+
+  const activeKeyboardCodeSet = useMemo(() => new Set(activeKeyboardCodes), [activeKeyboardCodes]);
+  const triggerKeyboardNote = useCallback((keyIndex: number) => {
+    const layout = MANUAL_KEYBOARD_LAYOUT[keyIndex];
+    if (!layout) return;
+    const midi = keyboardBaseMidi + layout.semitone;
+    if (keyboardInputMode === 'sequence' && canWriteSequenceNotes) {
+      writeKeyboardSequenceNote(seq.activeTab, midi);
+    }
+    if (!onAuditionNote) return;
+    void onAuditionNote({
+      source: effectiveKeyboardSource,
+      midi,
+      velocity: MANUAL_KEYBOARD_VELOCITY,
+    });
+  }, [canWriteSequenceNotes, effectiveKeyboardSource, keyboardBaseMidi, keyboardInputMode, onAuditionNote, seq.activeTab, writeKeyboardSequenceNote]);
+  const toggleKeyboardPanel = useCallback(() => {
+    setShowKeyboard((prev) => {
+      const next = !prev;
+      if (next) {
+        setKeyboardSource(getDefaultKeyboardSource());
+        setTriggerKeyboardSteps((steps) => steps.map((step, laneIdx) => {
+          const stepCount = getTriggerStepCountForLane(laneIdx);
+          if (stepCount <= 0) return 0;
+          return step >= 0 && step < stepCount ? step : getFirstTriggerKeyboardStep(laneIdx);
+        }));
+        setPitchKeyboardSteps((steps) => steps.map((step, laneIdx) => {
+          const stepCount = getPitchCursorStepCountForLane(laneIdx);
+          if (stepCount <= 0) return 0;
+          return step >= 0 && step < stepCount ? step : getFirstPitchKeyboardStep(laneIdx);
+        }));
+      }
+      return next;
+    });
+  }, [
+    getDefaultKeyboardSource,
+    getFirstPitchKeyboardStep,
+    getFirstTriggerKeyboardStep,
+    getPitchCursorStepCountForLane,
+    getTriggerStepCountForLane,
+  ]);
+
+  useEffect(() => {
+    if (showKeyboard) return;
+    activeKeyboardCodeSetRef.current.clear();
+    setActiveKeyboardCodes([]);
+  }, [showKeyboard]);
+
+  useEffect(() => {
+    if (!(showKeyboard && keyboardInputMode === 'sequence')) return;
+    seq.setViewMode('detail');
+    seq.setOpenLane('pitch');
+    if (!(seq.subLaneStates[seq.activeTab]?.pitch.enabled ?? false)) {
+      seq.toggleSubLaneEnabled(seq.activeTab, 'pitch');
+    }
+  }, [keyboardInputMode, seq.activeTab, seq.setOpenLane, seq.setViewMode, seq.subLaneStates, seq.toggleSubLaneEnabled, showKeyboard]);
+
+  useEffect(() => {
+    const handlePageHotkeys = (event: KeyboardEvent) => {
+      if (event.repeat || isTextEntryTarget(event.target)) return;
+      if (event.code !== 'Space') return;
+      event.preventDefault();
+      toggleSynthSequencerTransport();
+    };
+
+    window.addEventListener('keydown', handlePageHotkeys);
+    return () => {
+      window.removeEventListener('keydown', handlePageHotkeys);
+    };
+  }, [toggleSynthSequencerTransport]);
+
+  useEffect(() => {
+    if (!showKeyboard) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.repeat || isTextEntryTarget(event.target)) return;
+      if (event.code === 'ArrowUp') {
+        event.preventDefault();
+        setKeyboardOctave((prev) => Math.min(5, prev + 1));
+        return;
+      }
+      if (event.code === 'ArrowDown') {
+        event.preventDefault();
+        setKeyboardOctave((prev) => Math.max(2, prev - 1));
+        return;
+      }
+      if (keyboardInputMode === 'sequence') {
+        if (event.code === 'ShiftLeft') {
+          if (!canToggleKeyboardCursorTarget) return;
+          event.preventDefault();
+          setKeyboardSequenceCursorTarget((prev) => prev === 'trigger' ? 'pitch' : 'trigger');
+          return;
+        }
+        if (event.code === 'ArrowLeft') {
+          event.preventDefault();
+          if (sequenceWritesToTriggerGrid || activeKeyboardCursorTarget === 'trigger') {
+            setTriggerKeyboardSteps((prev) => prev.map((step, laneIdx) => (
+              laneIdx === seq.activeTab ? findAdjacentTriggerStep(laneIdx, step, -1) : step
+            )));
+          } else {
+            setPitchKeyboardSteps((prev) => prev.map((step, laneIdx) => (
+              laneIdx === seq.activeTab ? findAdjacentPitchStep(laneIdx, step, -1) : step
+            )));
+          }
+          return;
+        }
+        if (event.code === 'ArrowRight') {
+          event.preventDefault();
+          if (sequenceWritesToTriggerGrid || activeKeyboardCursorTarget === 'trigger') {
+            setTriggerKeyboardSteps((prev) => prev.map((step, laneIdx) => (
+              laneIdx === seq.activeTab ? findAdjacentTriggerStep(laneIdx, step, 1) : step
+            )));
+          } else {
+            setPitchKeyboardSteps((prev) => prev.map((step, laneIdx) => (
+              laneIdx === seq.activeTab ? findAdjacentPitchStep(laneIdx, step, 1) : step
+            )));
+          }
+          return;
+        }
+        if (event.code === 'ShiftRight') {
+          event.preventDefault();
+          if (sequenceWritesToTriggerGrid || activeKeyboardCursorTarget === 'trigger') {
+            const currentStep = triggerKeyboardSteps[seq.activeTab] ?? getFirstTriggerKeyboardStep(seq.activeTab);
+            toggleSequenceTriggerAtStep(seq.activeTab, currentStep);
+            return;
+          }
+          if (activePitchBindingMode === 'polyrhythmic') {
+            setPolyrhythmicPitchLengthAtCursor(seq.activeTab);
+          }
+          return;
+        }
+      }
+      const keyIndex = MANUAL_KEYBOARD_LAYOUT.findIndex((key) => key.code === event.code);
+      if (keyIndex < 0) return;
+      event.preventDefault();
+      if (activeKeyboardCodeSetRef.current.has(event.code)) return;
+      setKeyboardCodeActive(event.code, true);
+      triggerKeyboardNote(keyIndex);
+    };
+
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (!activeKeyboardCodeSetRef.current.has(event.code)) return;
+      setKeyboardCodeActive(event.code, false);
+    };
+
+    const handleBlur = () => {
+      activeKeyboardCodeSetRef.current.clear();
+      setActiveKeyboardCodes([]);
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', handleBlur);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', handleBlur);
+    };
+  }, [
+    activeKeyboardCursorTarget,
+    activePitchBindingMode,
+    canToggleKeyboardCursorTarget,
+    findAdjacentPitchStep,
+    findAdjacentTriggerStep,
+    getFirstTriggerKeyboardStep,
+    keyboardInputMode,
+    seq.activeTab,
+    sequenceWritesToTriggerGrid,
+    setKeyboardCodeActive,
+    setPolyrhythmicPitchLengthAtCursor,
+    showKeyboard,
+    toggleSequenceTriggerAtStep,
+    triggerKeyboardNote,
+    triggerKeyboardSteps,
+  ]);
 
   // ── ADSR renderer (per-lead: Lead 1 uses lead1* params, Lead 2 uses lead2* params) ──
   const renderLeadAdsr = (leadNum: 1 | 2) => {
@@ -867,7 +1703,15 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
 
             {/* ══ TIER 1 — Always visible: Presets + Interactive Viz ══ */}
             <div className="synth-card-simple sc-tier1">
-              <SynthPresetManager engineScope="pad1" slotAKey={'padPresetA' as keyof SliderState} slotBKey={'padPresetB' as keyof SliderState} state={state} onSelectChange={onSelectChange} color="#4a9eff" />
+              <SynthPresetManager
+                engineScope="pad1"
+                slotAKey={'padPresetA' as keyof SliderState}
+                slotBKey={'padPresetB' as keyof SliderState}
+                state={state}
+                onSelectChange={onSelectChange}
+                color="#4a9eff"
+                variationControls={buildPadVariationControls('pad1')}
+              />
               {/* Preset A / Morph / B — single row */}
               <div className="sc-morph-row">
                 <span className="sc-morph-tag" style={{ color: '#4a9eff' }}>A</span>
@@ -1447,7 +2291,15 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
             {state.pad2Enabled && (<>
             {/* ══ TIER 1 — Always visible: Presets + Viz + Drive + Voice Assign ══ */}
             <div className="synth-card-simple sc-tier1">
-              <SynthPresetManager engineScope="pad2" slotAKey={'pad2PresetA' as keyof SliderState} slotBKey={'pad2PresetB' as keyof SliderState} state={state} onSelectChange={onSelectChange} color="#8b5cf6" />
+              <SynthPresetManager
+                engineScope="pad2"
+                slotAKey={'pad2PresetA' as keyof SliderState}
+                slotBKey={'pad2PresetB' as keyof SliderState}
+                state={state}
+                onSelectChange={onSelectChange}
+                color="#8b5cf6"
+                variationControls={buildPadVariationControls('pad2')}
+              />
               {/* Preset A/B morph */}
               {/* Preset A / Morph / B — single row */}
               <div className="sc-morph-row">
@@ -2221,6 +3073,67 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
               </div>
             )}
           </div>
+
+          <div className={`synth-card${editingSection === 'piano' ? ' editing' : ''}`} style={{ '--sc': '#e7c87f' } as React.CSSProperties}>
+            <div className="synth-card-header">
+              <span className="sc-name">Piano</span>
+              <button
+                className={`sc-enable-btn${state.pianoEnabled ? ' on' : ''}`}
+                onClick={() => onSelectChange('pianoEnabled' as keyof SliderState, !state.pianoEnabled)}
+              >
+                {state.pianoEnabled ? 'ON' : 'OFF'}
+              </button>
+              <button
+                className={`sc-edit-btn${editingSection === 'piano' ? ' active' : ''}`}
+                onClick={() => toggleEdit('piano')}
+                title={editingSection === 'piano' ? 'Close advanced' : 'Advanced parameters'}
+              >
+                {'\u270E'}
+              </button>
+            </div>
+
+            <div className="synth-card-simple">
+              <div style={{ fontSize: '0.7rem', color: '#666', marginBottom: '6px' }}>
+                Sampled piano with randomized regular and short note variants.
+              </div>
+              <div style={{ fontSize: '0.7rem', color: '#666', marginBottom: '4px' }}>
+                Envelope — A:{state.pianoAttack.toFixed(3)}s D:{state.pianoDecay.toFixed(2)}s S:{(state.pianoSustain * 100).toFixed(0)}% R:{state.pianoRelease.toFixed(2)}s
+              </div>
+              <LeadAdsrViz
+                attack={state.pianoAttack}
+                decay={state.pianoDecay}
+                sustain={state.pianoSustain}
+                hold={state.pianoHold}
+                release={state.pianoRelease}
+                accentColor="#e7c87f"
+                accentRgba="rgba(231,200,127,"
+                onChange={(param, value) => onParamChange(param as keyof SliderState, value)}
+                paramPrefix="piano"
+              />
+              <div className="sc-compact-grid-2" style={{ marginTop: '8px' }}>
+                <Slider label="Attack" value={state.pianoAttack} paramKey="pianoAttack" unit="s" onChange={onParamChange} {...sliderProps('pianoAttack')} />
+                <Slider label="Decay" value={state.pianoDecay} paramKey="pianoDecay" unit="s" onChange={onParamChange} {...sliderProps('pianoDecay')} />
+                <Slider label="Sustain" value={state.pianoSustain} paramKey="pianoSustain" onChange={onParamChange} {...sliderProps('pianoSustain')} />
+                <Slider label="Hold" value={state.pianoHold} paramKey="pianoHold" unit="s" onChange={onParamChange} {...sliderProps('pianoHold')} />
+              </div>
+              <div style={{ marginTop: '8px' }}>
+                <Slider label="Release" value={state.pianoRelease} paramKey="pianoRelease" unit="s" onChange={onParamChange} {...sliderProps('pianoRelease')} />
+              </div>
+            </div>
+
+            {editingSection === 'piano' && (
+              <div className="synth-card-advanced">
+                <Slider label="Piano Level" value={state.pianoLevel} paramKey="pianoLevel" onChange={onParamChange} {...sliderProps('pianoLevel')} />
+                <div className="sc-advanced-section">
+                  <div className="sc-section-label">Routing</div>
+                  <Slider label="Reverb Send" value={state.pianoReverbSend} paramKey="pianoReverbSend" onChange={onParamChange} {...sliderProps('pianoReverbSend')} />
+                  <Slider label="Delay A Send" value={state.pianoDelayASend} paramKey="pianoDelayASend" onChange={onParamChange} {...sliderProps('pianoDelayASend')} />
+                  <Slider label="Delay B Send" value={state.pianoDelayBSend} paramKey="pianoDelayBSend" onChange={onParamChange} {...sliderProps('pianoDelayBSend')} />
+                  <Slider label="Granular Send" value={state.granularPianoSend} paramKey="granularPianoSend" onChange={onParamChange} {...sliderProps('granularPianoSend')} />
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* ════════ RIGHT: Sequencer Panel ════════ */}
@@ -2229,16 +3142,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
           <div className="seq-transport">
             <button
               className={`seq-play-btn${state.synthEuclideanMasterEnabled ? ' playing' : ''}`}
-              onClick={() => {
-                const next = !state.synthEuclideanMasterEnabled;
-                if (next && !state.leadEnabled) {
-                  onSelectChange('leadEnabled' as keyof SliderState, true);
-                }
-                if (next && !state.padEnabled) {
-                  onSelectChange('padEnabled' as keyof SliderState, true);
-                }
-                onSelectChange('synthEuclideanMasterEnabled' as keyof SliderState, next);
-              }}
+              onClick={toggleSynthSequencerTransport}
               {...bindHelp('synthSeqPlayToggle')}
             >
               {state.synthEuclideanMasterEnabled ? '\u25A0' : '\u25B6'}
@@ -2273,7 +3177,170 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 Overview
               </button>
             </div>
+            <button
+              className={`synth-keyboard-toggle${showKeyboard ? ' active' : ''}`}
+              onClick={toggleKeyboardPanel}
+              style={{ '--kb-accent': keyboardSourceInfo.color } as React.CSSProperties}
+              type="button"
+            >
+              Keys
+            </button>
           </div>
+
+          {showKeyboard && (
+            <div className="synth-keyboard-panel" style={{ '--kb-accent': keyboardSourceInfo.color } as React.CSSProperties}>
+              <div className="synth-keyboard-header">
+                <div>
+                  <div className="synth-keyboard-title">Manual Keyboard</div>
+                  <div className="synth-keyboard-meta">
+                    {formatMidiNoteName(keyboardBaseMidi)} to {formatMidiNoteName(keyboardBaseMidi + MANUAL_KEYBOARD_LAYOUT.length - 1)}
+                  </div>
+                  <div className="synth-keyboard-meta">
+                    {keyboardHarmonyContext.usingHarmonyEngine ? 'Harmony' : 'Pitch Root'}: {keyboardHarmonyContext.label}
+                  </div>
+                </div>
+                <div className="synth-keyboard-hint">
+                  {keyboardInputMode === 'sequence'
+                    ? sequenceWritesToTriggerGrid
+                      ? 'Space plays/stops | Left/Right moves step | Right Shift toggles trigger | Up/Down shifts octave'
+                      : activeKeyboardCursorTarget === 'trigger'
+                        ? 'Space plays/stops | Left Shift switches to Pitch | Left/Right moves sequence | Right Shift toggles trigger | Up/Down shifts octave'
+                        : activePitchBindingMode === 'polyrhythmic'
+                          ? 'Space plays/stops | Left Shift switches to Sequence | Left/Right moves pitch | Right Shift sets pitch length | Up/Down shifts octave'
+                          : 'Space plays/stops | Left Shift switches to Sequence | Left/Right moves pitch | Up/Down shifts octave'
+                    : 'Space plays/stops | Up/Down shifts octave'}
+                </div>
+              </div>
+
+              <div className="synth-keyboard-mode-row">
+                <span className="synth-keyboard-mode-label">Mode</span>
+                <button
+                  type="button"
+                  className={`synth-keyboard-mode-btn${keyboardInputMode === 'play' ? ' active' : ''}`}
+                  onClick={() => setKeyboardInputMode('play')}
+                >
+                  Play
+                </button>
+                <button
+                  type="button"
+                  className={`synth-keyboard-mode-btn${keyboardInputMode === 'sequence' ? ' active' : ''}`}
+                  onClick={enterKeyboardSequenceMode}
+                >
+                  Sequence
+                </button>
+                {keyboardInputMode === 'sequence' && (
+                  <>
+                    <span className="synth-keyboard-mode-status">{keyboardSequenceStatus}</span>
+                    <div className="synth-keyboard-sequence-nav">
+                      <button
+                        type="button"
+                        className="synth-keyboard-nav-btn"
+                        onClick={() => {
+                          if (sequenceWritesToTriggerGrid || activeKeyboardCursorTarget === 'trigger') {
+                            selectTriggerSequenceStep(seq.activeTab, findAdjacentTriggerStep(seq.activeTab, activeTriggerCursorStep, -1));
+                          } else {
+                            selectPitchSequenceStep(seq.activeTab, findAdjacentPitchStep(seq.activeTab, activePitchCursorStep, -1));
+                          }
+                        }}
+                      >
+                        ← {sequenceWritesToTriggerGrid || activeKeyboardCursorTarget === 'trigger' ? 'Seq' : 'Pitch'}
+                      </button>
+                      <button
+                        type="button"
+                        className="synth-keyboard-nav-btn"
+                        onClick={() => {
+                          if (sequenceWritesToTriggerGrid || activeKeyboardCursorTarget === 'trigger') {
+                            selectTriggerSequenceStep(seq.activeTab, findAdjacentTriggerStep(seq.activeTab, activeTriggerCursorStep, 1));
+                          } else {
+                            selectPitchSequenceStep(seq.activeTab, findAdjacentPitchStep(seq.activeTab, activePitchCursorStep, 1));
+                          }
+                        }}
+                      >
+                        {sequenceWritesToTriggerGrid || activeKeyboardCursorTarget === 'trigger' ? 'Seq' : 'Pitch'} →
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {keyboardInputMode === 'play' ? (
+                <div className="synth-keyboard-source-row">
+                  {MANUAL_KEYBOARD_SOURCES.map((source) => (
+                    <button
+                      key={source.value}
+                      type="button"
+                      className={`synth-keyboard-source-btn${keyboardSource === source.value ? ' active' : ''}`}
+                      style={{ '--source-color': source.color } as React.CSSProperties}
+                      onClick={() => setKeyboardSource(source.value)}
+                    >
+                      {source.label}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className={`synth-keyboard-sequence-helper${canWriteSequenceNotes ? ' ready' : ' warning'}`}>
+                  {sequenceWriteHelper}
+                </div>
+              )}
+
+              <div className="synth-keyboard-legend">
+                <span className="synth-keyboard-legend-pill root">Root</span>
+                <span className="synth-keyboard-legend-pill chord">Chord</span>
+                <span className="synth-keyboard-legend-pill scale">In Key</span>
+                <span className="synth-keyboard-legend-pill outside">Out</span>
+              </div>
+
+              <div className="synth-keyboard-grid" style={{ '--white-key-count': keyboardWhiteCount } as React.CSSProperties}>
+                <div className="synth-keyboard-natural-row">
+                  {keyboardNaturalKeys.map((key) => {
+                    const keyIndex = keyboardKeys.findIndex((layoutKey) => layoutKey.code === key.code);
+                    return (
+                      <button
+                        key={key.code}
+                        type="button"
+                        className={`synth-keyboard-key natural harmony-${key.harmonyStatus}${activeKeyboardCodeSet.has(key.code) ? ' active' : ''}`}
+                        onPointerDown={(event) => {
+                          event.preventDefault();
+                          setKeyboardCodeActive(key.code, true);
+                          triggerKeyboardNote(keyIndex);
+                        }}
+                        onPointerUp={() => setKeyboardCodeActive(key.code, false)}
+                        onPointerLeave={() => setKeyboardCodeActive(key.code, false)}
+                        onPointerCancel={() => setKeyboardCodeActive(key.code, false)}
+                      >
+                        <span className="synth-keyboard-key-shortcut">{key.shortcut}</span>
+                        <span className="synth-keyboard-key-note">{key.noteLabel}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="synth-keyboard-accidental-row">
+                  {keyboardAccidentalKeys.map((key) => {
+                    const keyIndex = keyboardKeys.findIndex((layoutKey) => layoutKey.code === key.code);
+                    return (
+                      <button
+                        key={key.code}
+                        type="button"
+                        className={`synth-keyboard-key accidental harmony-${key.harmonyStatus}${activeKeyboardCodeSet.has(key.code) ? ' active' : ''}`}
+                        style={{ gridColumn: `${key.whiteIndex + 1} / span 1` }}
+                        onPointerDown={(event) => {
+                          event.preventDefault();
+                          setKeyboardCodeActive(key.code, true);
+                          triggerKeyboardNote(keyIndex);
+                        }}
+                        onPointerUp={() => setKeyboardCodeActive(key.code, false)}
+                        onPointerLeave={() => setKeyboardCodeActive(key.code, false)}
+                        onPointerCancel={() => setKeyboardCodeActive(key.code, false)}
+                      >
+                        <span className="synth-keyboard-key-shortcut">{key.shortcut}</span>
+                        <span className="synth-keyboard-key-note">{key.noteLabel}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Sequencer Preset (L1 synthEuclidean) */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', marginBottom: 4, borderRadius: 6, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
@@ -2380,7 +3447,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
               {/* ── Lead Synth Random Timing ── */}
               <div className="synth-simple-section">
                 <div className="synth-simple-header">
-                  <span>Lead — Random Timing</span>
+                  <span>Random Timing</span>
                   <button
                     className={`synth-simple-enable${state.leadRandomEnabled ? ' on' : ''}`}
                     onClick={() => onSelectChange('leadRandomEnabled' as keyof SliderState, !state.leadRandomEnabled)}
@@ -2388,11 +3455,27 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     {state.leadRandomEnabled ? 'ON' : 'OFF'}
                   </button>
                 </div>
+                <label className="synth-source-label" style={{ marginBottom: '8px' }}>
+                  Source
+                  <select
+                    className="synth-source-select"
+                    value={state.leadRandomSource}
+                    onChange={(e) => onSelectChange('leadRandomSource' as keyof SliderState, e.target.value)}
+                    style={{
+                      borderColor: `${RANDOM_TIMING_SOURCES.find((source) => source.value === state.leadRandomSource)?.color ?? '#888'}60`,
+                      color: RANDOM_TIMING_SOURCES.find((source) => source.value === state.leadRandomSource)?.color ?? '#888',
+                    }}
+                  >
+                    {RANDOM_TIMING_SOURCES.map((source) => (
+                      <option key={source.value} value={source.value}>{source.label}</option>
+                    ))}
+                  </select>
+                </label>
                 <Slider label="Note Density" value={state.lead1Density} paramKey="lead1Density" unit="/phrase" onChange={onParamChange} {...sliderProps('lead1Density')} />
                 <Slider label="Octave Offset" value={state.lead1Octave} paramKey="lead1Octave" onChange={onParamChange} {...sliderProps('lead1Octave')} />
                 <Slider label="Octave Range" value={state.lead1OctaveRange} paramKey="lead1OctaveRange" unit=" oct" onChange={onParamChange} {...sliderProps('lead1OctaveRange')} />
                 <div style={{ fontSize: '0.6rem', color: '#666', marginTop: '4px' }}>
-                  Controls random lead melody timing when Euclidean mode is OFF
+                  Controls random melodic timing for the selected source when Euclidean mode is OFF
                 </div>
               </div>
             </div>
@@ -2480,14 +3563,18 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                       />
                       <span className="seq-swing-val">{Math.round((seq.swings[seq.activeTab] ?? 0) * 100)}%</span>
                     </label>
-                    <button
-                      className={`seq-link-btn${seq.linked[seq.activeTab] ? ' on' : ''}`}
-                      onClick={() => seq.toggleLinked(seq.activeTab)}
-                      title={seq.linked[seq.activeTab] ? 'Sub-lanes linked to trigger steps' : 'Sub-lanes use independent step counts'}
-                      {...bindHelp('synthSeqLink')}
-                    >
-                      Link
-                    </button>
+                    <label className="seq-pitch-bind-label" title="How pitch aligns to trigger hits or steps">
+                      Pitch
+                      <select
+                        className="seq-pitch-bind-select"
+                        value={activePitchBindingMode}
+                        onChange={(e) => setPitchBindingMode(seq.activeTab, e.target.value as PitchBindingMode)}
+                      >
+                        {PITCH_BINDING_MODE_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                    </label>
                     <button
                       className={`seq-evolve-btn${seq.evolveConfigs[seq.activeTab]?.enabled ? ' on' : ''}`}
                       onClick={() => {
@@ -2711,6 +3798,12 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     playhead={seq.playheads[seq.activeTab] ?? 0}
                     hitCount={seq.hitCounts[seq.activeTab] ?? 0}
                     onToggleTriggerStep={(step) => seq.toggleTriggerStep(seq.activeTab, step)}
+                    selectedStep={keyboardTriggerTargetVisible ? activeTriggerCursorStep : null}
+                    selectedStepLabel={keyboardTargetLabel}
+                    onSelectStep={keyboardTargetVisible ? (step) => {
+                      if (!sequenceWritesToTriggerGrid) setKeyboardSequenceCursorTarget('trigger');
+                      selectTriggerSequenceStep(seq.activeTab, step);
+                    } : undefined}
                     onSetProbability={(step, value) => seq.setStepProbability(seq.activeTab, step, value)}
                     onResetProbability={(step) => seq.resetStepProbability(seq.activeTab, step)}
                     onCycleRatchet={(step) => seq.cycleStepRatchet(seq.activeTab, step)}
@@ -2738,7 +3831,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                             laneKind === 'pitch'
                               ? activeSeq.pitch.offsets.map(off =>
                                   activeSeq.pitch.mode === 'notes'
-                                    ? Math.min(1, off / 14)
+                                    ? normalizeNoteDegreeOffset(off)
                                     : activeSeq.pitch.mode === 'noteRange'
                                       ? 0.5
                                       : (off + 24) / 48
@@ -2750,6 +3843,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                           color={laneColor}
                           playhead={seq.playheads[seq.activeTab]}
                           hitCount={seq.hitCounts[seq.activeTab]}
+                          playheadMode={laneKind === 'pitch' && activePitchBindingMode === 'sequence' ? 'step' : 'hit'}
                           direction={subState?.direction ?? 'forward'}
                           bipolar={
                             laneKind === 'morph' ||
@@ -2758,6 +3852,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                           invertFill={laneKind === 'expression'}
                           enabled={subState?.enabled ?? false}
                           expanded={seq.openLane === laneKind}
+                          selectedStep={keyboardPitchTargetVisible && laneKind === 'pitch' ? activePitchSelectionStep : null}
                           onClick={() => seq.setOpenLane(seq.openLane === laneKind ? 'trigger' : laneKind)}
                           onToggleEnabled={() => seq.toggleSubLaneEnabled(seq.activeTab, laneKind)}
                         />
@@ -2769,20 +3864,25 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                               color={laneColor}
                               playhead={seq.playheads[seq.activeTab] ?? 0}
                               hitCount={seq.hitCounts[seq.activeTab] ?? 0}
+                              selectedStep={keyboardPitchTargetVisible && laneKind === 'pitch' ? activePitchSelectionStep : null}
+                              selectedStepLabel={keyboardTargetLabel}
                               enabled={subState?.enabled ?? false}
                               direction={subState?.direction ?? 'forward'}
                               onToggleEnabled={() => seq.toggleSubLaneEnabled(seq.activeTab, laneKind)}
                               onChangeSteps={(v) => seq.setSubLaneSteps(seq.activeTab, laneKind, v)}
                               onCycleDirection={() => seq.cycleSubLaneDirection(seq.activeTab, laneKind)}
                               onChangeValue={(step, value) => seq.changeStepValue(seq.activeTab, laneKind, step, value)}
-                              linked={seq.linked[seq.activeTab]}
+                              linked={laneKind === 'pitch' && activePitchBindingMode !== 'polyrhythmic'}
                               {...(laneKind === 'expression' ? {
                                 onCycleRatchet: (step: number) => seq.cycleStepRatchet(seq.activeTab, step),
                               } : {})}
                               {...(laneKind === 'pitch' ? {
                                 onChangePitchMode: (mode) => seq.setPitchMode(seq.activeTab, mode),
+                                pitchBindingMode: activePitchBindingMode,
+                                onChangePitchBindingMode: (mode: PitchBindingMode) => setPitchBindingMode(seq.activeTab, mode),
                                 onChangePitchRoot: (root) => seq.setPitchRoot(seq.activeTab, root),
                                 onChangePitchScale: (scale) => seq.setPitchScale(seq.activeTab, scale),
+                                hidePitchNoteRange: activePitchBindingMode === 'sequence',
                                 pitchNoteMin: state[noteMinKey] as number,
                                 pitchNoteMax: state[noteMaxKey] as number,
                                 onChangePitchNoteMin: (v: number) => onParamChange(noteMinKey, v),
@@ -2894,13 +3994,24 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                                 const isPlayhead = inRange && ((seq.playheads[row] ?? 0) % seqModel.trigger.steps === step);
                                 const prob = inRange ? (seqModel.trigger.probability[step] ?? 1.0) : 1.0;
                                 const probPct = Math.round(prob * 100);
+                                const sequenceModeForRow = (pitchBindingModes[row] ?? 'polyrhythmic') === 'sequence';
+                                const triggerCursorVisibleForRow = showKeyboard
+                                  && keyboardInputMode === 'sequence'
+                                  && row === seq.activeTab
+                                  && (sequenceModeForRow || activeKeyboardCursorTarget === 'trigger');
+                                const sequenceSelected = showKeyboard
+                                  && triggerCursorVisibleForRow
+                                  && step === (triggerKeyboardSteps[row] ?? 0);
+                                const stepNoteLabel = inRange && sequenceModeForRow ? getSequenceStepLabel(row, step) : null;
+                                const stepNoteMidi = inRange && sequenceModeForRow ? getSequenceStepMidi(row, step) : null;
+                                const stepNoteStatus = stepNoteMidi == null ? null : classifyKeyboardMidi(stepNoteMidi);
 
                                 return (
                                   <div key={step} className="seq-step">
                                     <span className="seq-step-num">{step % 4 === 0 ? step + 1 : ''}</span>
                                     <button
                                       type="button"
-                                      className={`seq-step-cell${hit ? ' active' : ''}${isPlayhead ? ' playing' : ''}${!inRange ? ' inactive' : ''}`}
+                                      className={`seq-step-cell${hit ? ' active' : ''}${isPlayhead ? ' playing' : ''}${!inRange ? ' inactive' : ''}${sequenceSelected ? ' selected' : ''}${stepNoteStatus ? ` harmony-${stepNoteStatus}` : ''}`}
                                       style={{ touchAction: 'none' } as React.CSSProperties}
                                       onPointerDown={inRange ? (e) => {
                                         e.preventDefault();
@@ -2924,7 +4035,14 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                                           el.removeEventListener('pointermove', onMove);
                                           el.removeEventListener('pointerup', onUp);
                                           setDragPopup(null);
-                                          if (!dragged) seq.toggleTriggerStep(row, step);
+                                          if (!dragged) {
+                                            if (showKeyboard && keyboardInputMode === 'sequence') {
+                                              if (!sequenceModeForRow) setKeyboardSequenceCursorTarget('trigger');
+                                              selectTriggerSequenceStep(row, step);
+                                            } else {
+                                              seq.toggleTriggerStep(row, step);
+                                            }
+                                          }
                                         };
                                         el.addEventListener('pointermove', onMove);
                                         el.addEventListener('pointerup', onUp);
@@ -2938,6 +4056,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                                         <div className="prob-fill" style={{ height: `${probPct}%` }} />
                                       )}
                                       {inRange && <span className="prob-label">{probPct}%</span>}
+                                      {sequenceSelected && <span className="seq-step-cursor">{keyboardTargetLabel}</span>}
+                                      {stepNoteLabel && <span className="seq-step-note">{stepNoteLabel}</span>}
                                     </button>
                                   </div>
                                 );

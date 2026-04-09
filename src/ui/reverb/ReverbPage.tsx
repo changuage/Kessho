@@ -15,6 +15,7 @@ import type { SliderState, SliderMode } from '../state';
 import type { DualSliderRange } from '../DualSlider';
 import { PresetDropdown } from '../../presets/PresetDropdown';
 import type { PresetEntry } from '../../presets/types';
+import ReverbEnvelopeCanvas from './ReverbEnvelopeCanvas';
 import './reverb.css';
 
 // ═══ Reverb Character Presets ═══
@@ -450,17 +451,13 @@ export default function ReverbPage({
   SliderComponent,
   SelectComponent,
 }: ReverbPageProps) {
-  // Local expand/collapse state for cards
-  const [expandedCards, setExpandedCards] = useState<Set<string>>(
-    () => new Set(['core', 'mod']),
-  );
+  const [setupPresetName, setSetupPresetName] = useState<string | undefined>();
+  const [setupPresetDescription, setSetupPresetDescription] = useState<string>('');
 
-  const toggleCard = useCallback((id: string) => {
-    setExpandedCards(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
+  const handleSetupPresetLoad = useCallback((entry: PresetEntry, _data: Record<string, unknown>) => {
+    setSetupPresetName(entry.name);
+    const currentVersion = entry.versions.find(version => version.v === entry.currentVersion);
+    setSetupPresetDescription(entry.description ?? currentVersion?.note ?? '');
   }, []);
 
   // Cast components so TS allows our props
@@ -492,222 +489,360 @@ export default function ReverbPage({
 
   return (
     <div className="reverb-root">
+
       <div className="reverb-container">
 
-        {/* ════ LEFT: Core Reverb ════ */}
+        {/* ════════════ LEFT COLUMN ════════════ */}
         <div className="reverb-left">
-          <div
-            className={`reverb-card${expandedCards.has('core') ? ' expanded' : ''}`}
-            style={{ '--sc': '#8b5cf6' } as React.CSSProperties}
-          >
-            <div className="reverb-card-header" onClick={() => toggleCard('core')}>
-              <span className="rc-name">Reverb</span>
-              <span className="rc-chevron">{expandedCards.has('core') ? '▼' : '▶'}</span>
+
+          {/* ═══ Global bar — Reverb FX ON/OFF + Freeze (left column only) ═══ */}
+          <div className="reverb-global-bar">
+            <span className="reverb-title">⊞ Reverb FX</span>
+            <button
+              className={`reverb-enable-btn${state.reverbEnabled ? ' on' : ''}`}
+              onClick={() => onSelectChange('reverbEnabled', !state.reverbEnabled)}
+            >
+              {state.reverbEnabled ? 'ON' : 'OFF'}
+            </button>
+            <button
+              className={`reverb-freeze-btn${(state.spectralFreezeEnabled && state.spectralFreezeActive) ? ' frozen' : ''}`}
+              onClick={() => {
+                if (!state.spectralFreezeEnabled) {
+                  onSelectChange('spectralFreezeEnabled', true);
+                  onSelectChange('spectralFreezeActive', true);
+                } else {
+                  onSelectChange('spectralFreezeActive', !state.spectralFreezeActive);
+                }
+              }}
+            >
+              {(state.spectralFreezeEnabled && state.spectralFreezeActive) ? '❄ FROZEN' : '❄ Freeze'}
+            </button>
+          </div>
+
+          {/* ── Preset card (matches Granular preset card) ── */}
+          <div className="reverb-section-card reverb-preset-card">
+            <div className="reverb-section-head">
+              <span className="reverb-section-title">Preset</span>
+              <span className="reverb-section-note">Save or recall the full reverb setup</span>
             </div>
+            <div className="reverb-preset-body">
+              <PresetDropdown
+                className="reverb-preset-toolbar"
+                level="source"
+                scope="reverb"
+                state={state}
+                currentName={setupPresetName}
+                onLoad={handleSetupPresetLoad}
+                onStateChange={onStateChange}
+                compact
+              />
 
-            {expandedCards.has('core') && (
-              <div className="reverb-card-body">
-                {/* Active toggle */}
-                <div className="app-slider-group" style={{ marginBottom: 10 }}>
-                  <div className="app-slider-label" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', marginBottom: 4 }}>
-                    <span>Reverb</span>
-                    <span style={{
-                      color: state.reverbEnabled ? '#10b981' : '#6b7280',
-                      fontWeight: 'bold',
-                    }}>
-                      {state.reverbEnabled ? 'ON' : 'OFF'}
-                    </span>
-                  </div>
-                  <button
-                    className={`reverb-toggle ${state.reverbEnabled ? 'active' : 'inactive'}`}
-                    onClick={() => onSelectChange('reverbEnabled', !state.reverbEnabled)}
-                  >
-                    {state.reverbEnabled ? '● Active' : '○ Bypassed (saves CPU)'}
-                  </button>
+              <div className="reverb-preset-meta">
+                <div className="reverb-preset-description">
+                  {setupPresetDescription || (setupPresetName ? 'No description saved for this preset.' : 'Load a reverb preset to view its description.')}
                 </div>
+              </div>
+            </div>
+          </div>
 
-                <Select
-                  label="Engine"
-                  value={state.reverbEngine}
-                  options={[
-                    { value: 'algorithmic', label: 'Algorithmic' },
-                    { value: 'convolution', label: 'Convolution (HQ)' },
-                  ]}
-                  onChange={(v) => onSelectChange('reverbEngine', v as SliderState['reverbEngine'])}
-                />
-                <Select
-                  label="Type"
-                  value={state.reverbType}
-                  options={[
-                    { value: 'plate', label: 'Plate' },
-                    { value: 'hall', label: 'Hall' },
-                    { value: 'cathedral', label: 'Cathedral' },
-                    { value: 'darkHall', label: 'Dark Hall' },
-                    { value: 'dattorroPlate', label: 'Dattorro Plate' },
-                    { value: 'dattorroShimmer', label: 'Dattorro Shimmer' },
-                  ]}
-                  onChange={(v) => onSelectChange('reverbType', v as SliderState['reverbType'])}
-                />
-                <Select
-                  label="Quality"
-                  value={state.reverbQuality}
-                  options={[
-                    { value: 'ultra', label: 'Ultra (16-ch FDN + mid diffusion)' },
-                    { value: 'balanced', label: 'Balanced (8-ch FDN)' },
-                    { value: 'lite', label: 'Lite (4-ch, saves CPU)' },
-                  ]}
-                  onChange={(v) => onSelectChange('reverbQuality', v as SliderState['reverbQuality'])}
-                />
+          {/* ── Core Reverb card ── */}
+          <div className="reverb-section-card reverb-core-card">
+            <div className="reverb-section-head">
+              <span className="reverb-section-title">Core</span>
+              <span className="reverb-section-note">Engine, type, decay shape</span>
+            </div>
+            <div className="reverb-section-body">
+              <Select
+                label="Engine"
+                value={state.reverbEngine}
+                options={[
+                  { value: 'algorithmic', label: 'Algorithmic' },
+                  { value: 'convolution', label: 'Convolution (HQ)' },
+                ]}
+                onChange={(v) => onSelectChange('reverbEngine', v as SliderState['reverbEngine'])}
+              />
+              <Select
+                label="Type"
+                value={state.reverbType}
+                options={[
+                  { value: 'plate', label: 'Plate' },
+                  { value: 'hall', label: 'Hall' },
+                  { value: 'cathedral', label: 'Cathedral' },
+                  { value: 'darkHall', label: 'Dark Hall' },
+                  { value: 'dattorroPlate', label: 'Dattorro Plate' },
+                  { value: 'dattorroShimmer', label: 'Dattorro Shimmer' },
+                ]}
+                onChange={(v) => onSelectChange('reverbType', v as SliderState['reverbType'])}
+              />
+              <Select
+                label="Quality"
+                value={state.reverbQuality}
+                options={[
+                  { value: 'ultra', label: 'Ultra (16-ch FDN + mid diffusion)' },
+                  { value: 'balanced', label: 'Balanced (8-ch FDN)' },
+                  { value: 'lite', label: 'Lite (4-ch, saves CPU)' },
+                ]}
+                onChange={(v) => onSelectChange('reverbQuality', v as SliderState['reverbQuality'])}
+              />
 
+              <div className="reverb-grid-2">
                 <Slider label="Decay" value={state.reverbDecay} paramKey="reverbDecay" onChange={onParamChange} {...sp('reverbDecay')} />
                 <Slider label="Size" value={state.reverbSize} paramKey="reverbSize" onChange={onParamChange} {...sp('reverbSize')} />
-                <Slider label="Diffusion" value={state.reverbDiffusion} paramKey="reverbDiffusion" onChange={onParamChange} {...sp('reverbDiffusion')} />
               </div>
-            )}
+              <Slider label="Diffusion" value={state.reverbDiffusion} paramKey="reverbDiffusion" onChange={onParamChange} {...sp('reverbDiffusion')} />
+            </div>
           </div>
+
         </div>
 
-        {/* ════ RIGHT: Mod & Character ════ */}
+        {/* ════════════ RIGHT COLUMN ════════════ */}
         <div className="reverb-right">
-          <div
-            className={`reverb-card${expandedCards.has('mod') ? ' expanded' : ''}`}
-            style={{ '--sc': '#f59e0b' } as React.CSSProperties}
-          >
-            <div className="reverb-card-header" onClick={() => toggleCard('mod')}>
-              <span className="rc-name">Mod &amp; Character</span>
-              <span className="rc-chevron">{expandedCards.has('mod') ? '▼' : '▶'}</span>
+          <div className="reverb-right-grid">
+
+          {/* ── 1. Visualizer card ── */}
+          <div className="reverb-section-card reverb-visualizer-card">
+            <div className="reverb-section-head">
+              <span className="reverb-section-title">Visualizer</span>
+              <span className="reverb-section-note">Tail map, diffusion spread, freeze state</span>
             </div>
+            <div className="reverb-section-body">
+              <div className="reverb-visualizer-meta" aria-label="Reverb visualizer status">
+                <span className="reverb-viz-pill">{state.reverbEngine === 'convolution' ? 'Convolution' : 'Algorithmic'}</span>
+                <span className="reverb-viz-pill">{state.reverbQuality}</span>
+                <span className="reverb-viz-pill">Pre {Math.round(state.predelay)}ms</span>
+                <span className="reverb-viz-pill">Tail {Math.round(state.reverbDecay * 100)}%</span>
+              </div>
+              <ReverbEnvelopeCanvas
+                engine={state.reverbEngine}
+                quality={state.reverbQuality}
+                decay={state.reverbDecay}
+                size={state.reverbSize}
+                diffusion={state.reverbDiffusion}
+                modulation={state.reverbModulation}
+                predelay={state.predelay}
+                damping={state.damping}
+                width={state.width}
+                shimmer={state.reverbShimmer}
+                shimmerPitch={state.reverbShimmerPitch}
+                reverse={state.reverbReverse}
+                reverseLength={state.reverbReverseLength}
+                earlyReflections={state.reverbEarlyReflections}
+                airAbsorption={state.reverbAirAbsorption}
+                dampLow={state.reverbDampLow}
+                dampHigh={state.reverbDampHigh}
+                inputTone={state.reverbInputTone}
+                warp={state.reverbWarp}
+                saturationMode={state.reverbSaturationMode}
+                frozen={!!(state.spectralFreezeEnabled && state.spectralFreezeActive)}
+                enabled={state.reverbEnabled}
+                chorusDepth={state.reverbChorusDepth}
+                slowModDepth={state.reverbSlowModDepth}
+              />
+            </div>
+          </div>
 
-            {expandedCards.has('mod') && (
-              <div className="reverb-card-body">
-                {/* Character Presets */}
-                <div style={{ marginBottom: 10 }}>
-                  <div className="reverb-subsection" style={{ marginTop: 0 }}>Character Preset</div>
-                  <PresetDropdown
-                    level="source"
-                    scope="reverb"
-                    state={state}
-                    onLoad={(_entry: PresetEntry, _data: Record<string, unknown>) => {}}
-                    onStateChange={onStateChange}
-                    compact
-                  />
-                </div>
-
-                {/* Core mod params */}
-                <Slider label="Modulation" value={state.reverbModulation} paramKey="reverbModulation" onChange={onParamChange} {...sp('reverbModulation')} />
-                <Slider label="Pre-delay" value={state.predelay} paramKey="predelay" unit="ms" onChange={onParamChange} {...sp('predelay')} />
-                <Slider label="Damping" value={state.damping} paramKey="damping" onChange={onParamChange} {...sp('damping')} />
-                <Slider label="Width" value={state.width} paramKey="width" onChange={onParamChange} {...sp('width')} />
-
-                {/* Shimmer */}
-                <div className="reverb-subsection">Shimmer</div>
-                <Slider label="Shimmer" value={state.reverbShimmer} paramKey="reverbShimmer" onChange={onParamChange} {...sp('reverbShimmer')} />
-                <Slider label="Shimmer Pitch" value={state.reverbShimmerPitch} paramKey="reverbShimmerPitch" unit="st" onChange={onParamChange} {...sp('reverbShimmerPitch')} />
-                <Slider label="Shimmer Feedback" value={state.reverbShimmerFeedback} paramKey="reverbShimmerFeedback" onChange={onParamChange} {...sp('reverbShimmerFeedback')} />
-
-                {/* Harmony Coupling */}
-                <div className="reverb-subsection">Harmony</div>
-                <label className="reverb-harmony-toggle" title="Snap shimmer pitch to nearest scale interval">
-                  <input type="checkbox" checked={state.reverbScaleShimmer ?? false} onChange={() => onSelectChange('reverbScaleShimmer' as keyof SliderState, !state.reverbScaleShimmer as any)} />
-                  Scale Shimmer
-                </label>
-                <label className="reverb-harmony-toggle" title="Boost shimmer on chord changes">
-                  <input type="checkbox" checked={state.reverbChordWash ?? false} onChange={() => onSelectChange('reverbChordWash' as keyof SliderState, !state.reverbChordWash as any)} />
-                  Chord Wash
-                </label>
-                <label className="reverb-harmony-toggle" title="Bloom decay and shimmer on tension resolution">
-                  <input type="checkbox" checked={state.reverbResolutionBloom ?? false} onChange={() => onSelectChange('reverbResolutionBloom' as keyof SliderState, !state.reverbResolutionBloom as any)} />
-                  Resolution Bloom
-                </label>
-
-                {/* Chorus & Modulation Character */}
-                <div className="reverb-subsection">Chorus &amp; Mod Character</div>
-                <Select
-                  label="Mod Character"
-                  value={state.reverbModCharacter}
-                  options={[
-                    { value: 'sine', label: 'Sine (smooth)' },
-                    { value: 'drift', label: 'Drift (organic)' },
-                    { value: 'hybrid', label: 'Hybrid (sine + drift)' },
-                  ]}
-                  onChange={(v) => onSelectChange('reverbModCharacter', v as SliderState['reverbModCharacter'])}
-                />
-                <Slider label="Chorus Rate" value={state.reverbChorusRate} paramKey="reverbChorusRate" unit="Hz" onChange={onParamChange} {...sp('reverbChorusRate')} />
-                <Slider label="Chorus Depth" value={state.reverbChorusDepth} paramKey="reverbChorusDepth" unit="smp" onChange={onParamChange} {...sp('reverbChorusDepth')} />
-
-                {/* Multi-band Damping */}
-                <div className="reverb-subsection">Multi-band Damping</div>
-                <Slider label="Damp Low" value={state.reverbDampLow} paramKey="reverbDampLow" onChange={onParamChange} {...sp('reverbDampLow')} />
-                <Slider label="Damp High" value={state.reverbDampHigh} paramKey="reverbDampHigh" onChange={onParamChange} {...sp('reverbDampHigh')} />
-                <Slider label="Crossover" value={state.reverbCrossoverFreq} paramKey="reverbCrossoverFreq" unit="Hz" onChange={onParamChange} {...sp('reverbCrossoverFreq')} />
-
-                {/* Input Tone */}
-                <div className="reverb-subsection">Input Tone</div>
-                <Slider label="Tone" value={state.reverbInputTone} paramKey="reverbInputTone" onChange={onParamChange} {...sp('reverbInputTone')} />
-
-                {/* Slow Modulation */}
-                <div className="reverb-subsection">Slow Modulation</div>
-                <Slider label="Mod Rate" value={state.reverbSlowModRate} paramKey="reverbSlowModRate" unit="Hz" onChange={onParamChange} {...sp('reverbSlowModRate')} />
-                <Slider label="Mod Depth" value={state.reverbSlowModDepth} paramKey="reverbSlowModDepth" onChange={onParamChange} {...sp('reverbSlowModDepth')} />
-
-                {/* Special */}
-                <div className="reverb-subsection">Special</div>
-                <Slider label="Warp" value={state.reverbWarp} paramKey="reverbWarp" onChange={onParamChange} {...sp('reverbWarp')} />
-                <Slider label="Cross-Feed" value={state.reverbCrossFeed} paramKey="reverbCrossFeed" onChange={onParamChange} {...sp('reverbCrossFeed')} />
-
-                {/* v4: Spatial & Character */}
-                <div className="reverb-subsection">Spatial &amp; Character</div>
+          {/* ── 2. Spatial & Character card ── */}
+          <div className="reverb-section-card reverb-spatial-card">
+            <div className="reverb-section-head">
+              <span className="reverb-section-title">Spatial &amp; Character</span>
+              <span className="reverb-section-note">Room shape and texture</span>
+            </div>
+            <div className="reverb-section-body">
+              <div className="reverb-grid-2">
                 <Slider label="Early Reflections" value={state.reverbEarlyReflections} paramKey="reverbEarlyReflections" onChange={onParamChange} {...sp('reverbEarlyReflections')} />
                 <Slider label="ER LP Freq" value={state.reverbErLpFreq} paramKey="reverbErLpFreq" onChange={onParamChange} unit="Hz" {...sp('reverbErLpFreq')} />
+              </div>
+              <div className="reverb-grid-2">
                 <Slider label="Air Absorption" value={state.reverbAirAbsorption} paramKey="reverbAirAbsorption" onChange={onParamChange} {...sp('reverbAirAbsorption')} />
                 <Slider label="Transient Smooth" value={state.reverbTransientSmooth} paramKey="reverbTransientSmooth" onChange={onParamChange} {...sp('reverbTransientSmooth')} />
-                <Select
-                  label="Saturation"
-                  value={state.reverbSaturationMode}
-                  options={[
-                    { value: 'clean', label: 'Clean (transparent)' },
-                    { value: 'tape', label: 'Tape (warm harmonics)' },
-                    { value: 'tube', label: 'Tube (soft saturation)' },
-                  ]}
-                  onChange={(v) => onSelectChange('reverbSaturationMode', v as SliderState['reverbSaturationMode'])}
-                />
+              </div>
+            </div>
+          </div>
 
+          {/* ── 3. Modulation card ── */}
+          <div className="reverb-section-card reverb-modulation-card">
+            <div className="reverb-section-head">
+              <span className="reverb-section-title">Modulation</span>
+              <span className="reverb-section-note">Movement and animation within the tail</span>
+            </div>
+            <div className="reverb-section-body">
+              <Slider label="Modulation" value={state.reverbModulation} paramKey="reverbModulation" onChange={onParamChange} {...sp('reverbModulation')} />
+
+              <Select
+                label="Mod Character"
+                value={state.reverbModCharacter}
+                options={[
+                  { value: 'sine', label: 'Sine (smooth)' },
+                  { value: 'drift', label: 'Drift (organic)' },
+                  { value: 'hybrid', label: 'Hybrid (sine + drift)' },
+                ]}
+                onChange={(v) => onSelectChange('reverbModCharacter', v as SliderState['reverbModCharacter'])}
+              />
+
+              <div className="reverb-subsection">Chorus</div>
+              <div className="reverb-grid-2">
+                <Slider label="Rate" value={state.reverbChorusRate} paramKey="reverbChorusRate" unit="Hz" onChange={onParamChange} {...sp('reverbChorusRate')} />
+                <Slider label="Depth" value={state.reverbChorusDepth} paramKey="reverbChorusDepth" unit="smp" onChange={onParamChange} {...sp('reverbChorusDepth')} />
+              </div>
+
+              <div className="reverb-subsection">Slow Mod</div>
+              <div className="reverb-grid-2">
+                <Slider label="Rate" value={state.reverbSlowModRate} paramKey="reverbSlowModRate" unit="Hz" onChange={onParamChange} {...sp('reverbSlowModRate')} />
+                <Slider label="Depth" value={state.reverbSlowModDepth} paramKey="reverbSlowModDepth" onChange={onParamChange} {...sp('reverbSlowModDepth')} />
+              </div>
+            </div>
+          </div>
+
+          {/* ── 4. Tone & Damping card ── */}
+          <div className="reverb-section-card reverb-tone-card">
+            <div className="reverb-section-head">
+              <span className="reverb-section-title">Tone &amp; Damping</span>
+              <span className="reverb-section-note">Colour and frequency shaping</span>
+            </div>
+            <div className="reverb-section-body">
+              <div className="reverb-grid-2">
+                <Slider label="Pre-delay" value={state.predelay} paramKey="predelay" unit="ms" onChange={onParamChange} {...sp('predelay')} />
+                <Slider label="Width" value={state.width} paramKey="width" onChange={onParamChange} {...sp('width')} />
+              </div>
+              <div className="reverb-grid-2">
+                <Slider label="Damping" value={state.damping} paramKey="damping" onChange={onParamChange} {...sp('damping')} />
+                <Slider label="Input Tone" value={state.reverbInputTone} paramKey="reverbInputTone" onChange={onParamChange} {...sp('reverbInputTone')} />
+              </div>
+
+              <div className="reverb-subsection">Multi-band Damping</div>
+              <div className="reverb-grid-2">
+                <Slider label="Damp Low" value={state.reverbDampLow} paramKey="reverbDampLow" onChange={onParamChange} {...sp('reverbDampLow')} />
+                <Slider label="Damp High" value={state.reverbDampHigh} paramKey="reverbDampHigh" onChange={onParamChange} {...sp('reverbDampHigh')} />
+              </div>
+              <div className="reverb-grid-2">
+                <Slider label="Crossover" value={state.reverbCrossoverFreq} paramKey="reverbCrossoverFreq" unit="Hz" onChange={onParamChange} {...sp('reverbCrossoverFreq')} />
+                <div className="reverb-select-wrap">
+                  <Select
+                    label="Saturation"
+                    value={state.reverbSaturationMode}
+                    options={[
+                      { value: 'clean', label: 'Clean (transparent)' },
+                      { value: 'tape', label: 'Tape (warm harmonics)' },
+                      { value: 'tube', label: 'Tube (soft saturation)' },
+                    ]}
+                    onChange={(v) => onSelectChange('reverbSaturationMode', v as SliderState['reverbSaturationMode'])}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ── 5. Shimmer & Effects card ── */}
+          <div className="reverb-section-card reverb-effects-card">
+            <div className="reverb-section-head">
+              <span className="reverb-section-title">Shimmer &amp; Effects</span>
+              <span className="reverb-section-note">Pitched tails, warp, reverse</span>
+            </div>
+            <div className="reverb-section-body">
+              <div className="reverb-grid-2">
+                <Slider label="Shimmer" value={state.reverbShimmer} paramKey="reverbShimmer" onChange={onParamChange} {...sp('reverbShimmer')} />
                 <Slider label="Reverse Mix" value={state.reverbReverse} paramKey="reverbReverse" onChange={onParamChange} {...sp('reverbReverse')} />
-                {state.reverbReverse > 0 && (
-                  <Slider label="Reverse Length" value={state.reverbReverseLength} paramKey="reverbReverseLength" unit="s" onChange={onParamChange} {...sp('reverbReverseLength')} />
-                )}
+              </div>
+              {state.reverbShimmer > 0 && (
+                <div className="reverb-grid-2">
+                  <Slider label="Pitch" value={state.reverbShimmerPitch} paramKey="reverbShimmerPitch" unit="st" onChange={onParamChange} {...sp('reverbShimmerPitch')} />
+                  <Slider label="Feedback" value={state.reverbShimmerFeedback} paramKey="reverbShimmerFeedback" onChange={onParamChange} {...sp('reverbShimmerFeedback')} />
+                </div>
+              )}
 
-                {/* ═══ Spectral Freeze (STFT) ═══ */}
-                <div className="reverb-subsection">Spectral Freeze</div>
+              <div className="reverb-subsection">Harmony</div>
+              <div className="reverb-mode-row reverb-mode-row-wrap">
                 <button
-                  className={`reverb-toggle ${state.spectralFreezeEnabled ? 'freeze-on' : 'freeze-off'}`}
+                  className={`reverb-mode-btn${state.reverbScaleShimmer ? ' active' : ''}`}
+                  title="Snap shimmer pitch to nearest scale interval"
+                  onClick={() => onSelectChange('reverbScaleShimmer' as keyof SliderState, !state.reverbScaleShimmer as any)}
+                >Scale</button>
+                <button
+                  className={`reverb-mode-btn${state.reverbChordWash ? ' active' : ''}`}
+                  title="Boost shimmer on chord changes"
+                  onClick={() => onSelectChange('reverbChordWash' as keyof SliderState, !state.reverbChordWash as any)}
+                >Chord Wash</button>
+                <button
+                  className={`reverb-mode-btn${state.reverbResolutionBloom ? ' active' : ''}`}
+                  title="Bloom decay and shimmer on tension resolution"
+                  onClick={() => onSelectChange('reverbResolutionBloom' as keyof SliderState, !state.reverbResolutionBloom as any)}
+                >Bloom</button>
+              </div>
+
+              <div className="reverb-subsection">Special</div>
+              <div className="reverb-grid-2">
+                <Slider label="Warp" value={state.reverbWarp} paramKey="reverbWarp" onChange={onParamChange} {...sp('reverbWarp')} />
+                <Slider label="Cross-Feed" value={state.reverbCrossFeed} paramKey="reverbCrossFeed" onChange={onParamChange} {...sp('reverbCrossFeed')} />
+              </div>
+
+              {state.reverbReverse > 0 && (
+                <Slider label="Reverse Length" value={state.reverbReverseLength} paramKey="reverbReverseLength" unit="s" onChange={onParamChange} {...sp('reverbReverseLength')} />
+              )}
+            </div>
+          </div>
+
+          {/* ── 6. Spectral Freeze card ── */}
+          <div className="reverb-section-card reverb-freeze-card">
+            <div className="reverb-section-head">
+              <span className="reverb-section-title">Spectral Freeze</span>
+              <span className="reverb-section-note">STFT spectral hold effect</span>
+            </div>
+            <div className="reverb-section-body">
+              <div className="reverb-grid-2 reverb-freeze-row">
+                <button
+                  className={`reverb-mode-btn${state.spectralFreezeEnabled ? ' active reverb-mode-btn-freeze' : ''}`}
                   onClick={() => onSelectChange('spectralFreezeEnabled', !state.spectralFreezeEnabled)}
                 >
-                  {state.spectralFreezeEnabled ? '◆ Spectral Freeze On' : '◇ Spectral Freeze Off'}
+                  {state.spectralFreezeEnabled ? 'Freeze On' : 'Freeze Off'}
                 </button>
-                {state.spectralFreezeEnabled && (
-                  <>
-                    <button
-                      className={`reverb-toggle ${state.spectralFreezeActive ? 'freeze-on' : 'freeze-off'}`}
-                      onClick={() => onSelectChange('spectralFreezeActive', !state.spectralFreezeActive)}
-                    >
-                      {state.spectralFreezeActive ? '❄ Frozen' : '○ Thawed'}
-                    </button>
-                    <Select
-                      label="Mode"
-                      value={state.spectralFreezeSlushy ? 'slushy' : 'solid'}
-                      options={[
-                        { value: 'solid', label: 'Solid (static hold)' },
-                        { value: 'slushy', label: 'Slushy (spectral refresh)' },
-                      ]}
-                      onChange={(v) => onSelectChange('spectralFreezeSlushy', v === 'slushy')}
-                    />
-                    {state.spectralFreezeSlushy && (
+                <button
+                  className={`reverb-mode-btn${state.spectralFreezeActive ? ' active reverb-mode-btn-freeze' : ''}`}
+                  onClick={() => onSelectChange('spectralFreezeActive', !state.spectralFreezeActive)}
+                  disabled={!state.spectralFreezeEnabled}
+                >
+                  {state.spectralFreezeActive ? 'Frozen' : 'Thawed'}
+                </button>
+              </div>
+
+              {state.spectralFreezeEnabled && (
+                <>
+                  <Select
+                    label="Mode"
+                    value={state.spectralFreezeSlushy ? 'slushy' : 'solid'}
+                    options={[
+                      { value: 'solid', label: 'Solid (static hold)' },
+                      { value: 'slushy', label: 'Slushy (spectral refresh)' },
+                    ]}
+                    onChange={(v) => onSelectChange('spectralFreezeSlushy', v === 'slushy')}
+                  />
+                  {state.spectralFreezeSlushy ? (
+                    <div className="reverb-grid-2">
                       <Slider label="Speed" value={state.spectralFreezeSpeed} paramKey="spectralFreezeSpeed" onChange={onParamChange} {...sp('spectralFreezeSpeed')} />
-                    )}
+                      <Slider label="Mix" value={state.spectralFreezeMix} paramKey="spectralFreezeMix" onChange={onParamChange} {...sp('spectralFreezeMix')} />
+                    </div>
+                  ) : (
                     <Slider label="Mix" value={state.spectralFreezeMix} paramKey="spectralFreezeMix" onChange={onParamChange} {...sp('spectralFreezeMix')} />
+                  )}
+                  <div className="reverb-grid-2">
                     <Slider label="Sustain" value={state.spectralFreezeDecay} paramKey="spectralFreezeDecay" onChange={onParamChange} {...sp('spectralFreezeDecay')} />
                     <Slider label="Phase Jitter" value={state.spectralFreezePhaseJitter} paramKey="spectralFreezePhaseJitter" onChange={onParamChange} {...sp('spectralFreezePhaseJitter')} />
+                  </div>
+                  {state.spectralFreezeRouting === 'pre' ? (
+                    <div className="reverb-grid-2">
+                      <div className="reverb-select-wrap">
+                        <Select
+                          label="Routing"
+                          value={state.spectralFreezeRouting ?? 'pre'}
+                          options={[
+                            { value: 'pre', label: 'Pre-reverb' },
+                            { value: 'post', label: 'Post-reverb' },
+                          ]}
+                          onChange={(v) => onSelectChange('spectralFreezeRouting', v as 'pre' | 'post')}
+                        />
+                      </div>
+                      <Slider label="Reverb Crossfade" value={state.spectralFreezeReverbCrossfade} paramKey="spectralFreezeReverbCrossfade" onChange={onParamChange} {...sp('spectralFreezeReverbCrossfade')} />
+                    </div>
+                  ) : (
                     <Select
                       label="Routing"
                       value={state.spectralFreezeRouting ?? 'pre'}
@@ -717,14 +852,14 @@ export default function ReverbPage({
                       ]}
                       onChange={(v) => onSelectChange('spectralFreezeRouting', v as 'pre' | 'post')}
                     />
-                    {state.spectralFreezeRouting === 'pre' && (
-                      <Slider label="Reverb Crossfade" value={state.spectralFreezeReverbCrossfade} paramKey="spectralFreezeReverbCrossfade" onChange={onParamChange} {...sp('spectralFreezeReverbCrossfade')} />
-                    )}
-                  </>
-                )}
-              </div>
-            )}
+                  )}
+                </>
+              )}
+            </div>
           </div>
+
+          </div>
+
         </div>
 
       </div>

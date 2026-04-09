@@ -61,6 +61,20 @@ interface SynthPresetManagerProps {
   state: SliderState;
   onSelectChange: (key: keyof SliderState, value: SliderState[keyof SliderState]) => void;
   color: string;
+  variationControls?: {
+    canArm: boolean;
+    canVariant: boolean;
+    canUndo: boolean;
+    walkEnabled: boolean;
+    targetReady: boolean;
+    endpointLabel: 'A' | 'B' | null;
+    progressText?: string;
+    disabledReason?: string;
+    onRandom: () => void;
+    onWalkToggle: () => void;
+    onVariant: () => void;
+    onUndo: () => void;
+  };
 }
 
 /* ── Styles (matching L4 PresetFamilyTree) ── */
@@ -200,6 +214,33 @@ const s: Record<string, React.CSSProperties> = {
     padding: '0 4px 2px 18px',
     lineHeight: 1.3,
   },
+  variationRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    padding: '2px 4px 0',
+    flexWrap: 'wrap' as const,
+  },
+  variationBtn: {
+    background: 'none',
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: 'rgba(255,255,255,0.12)',
+    borderRadius: 3,
+    cursor: 'pointer',
+    padding: '3px 7px',
+    fontSize: '0.6rem',
+    lineHeight: 1.2,
+    transition: 'color 0.15s, border-color 0.15s, background 0.15s, opacity 0.15s',
+    minHeight: 22,
+    color: '#aaa',
+  },
+  variationStatus: {
+    fontSize: '0.58rem',
+    color: '#666',
+    marginLeft: 'auto',
+    whiteSpace: 'nowrap' as const,
+  },
   input: {
     width: '100%',
     padding: '5px 8px',
@@ -273,6 +314,7 @@ const SynthPresetManager: React.FC<SynthPresetManagerProps> = ({
   state,
   onSelectChange,
   color,
+  variationControls,
 }) => {
   const { presets, save, load, remove, refresh, updateMetadata } = usePresets('engine', engineScope);
 
@@ -290,10 +332,10 @@ const SynthPresetManager: React.FC<SynthPresetManagerProps> = ({
     preset => preset.id === selectedPresetId || preset.name === selectedEntryName || preset.name === selectedPresetId,
   );
 
-  // Grouped preset lists for dropdown
-  const stockPresets = useMemo(() => presetOptions.filter(option => option.library === 'stock'), [presetOptions]);
-  const userCreatedPresets = useMemo(() => presetOptions.filter(option => option.library === 'user'), [presetOptions]);
-  const cloudPresets = useMemo(() => presetOptions.filter(option => option.library === 'cloud'), [presetOptions]);
+  const sortedPresetOptions = useMemo(
+    () => [...presetOptions].sort((left, right) => left.name.localeCompare(right.name)),
+    [presetOptions],
+  );
 
   // UI state
   const [saveDialog, setSaveDialog] = useState<{ originalName: string } | null>(null);
@@ -480,27 +522,9 @@ const SynthPresetManager: React.FC<SynthPresetManagerProps> = ({
               title="Select preset"
             >
               <option value="">— Select Preset —</option>
-              {stockPresets.length > 0 && (
-                <optgroup label="Stock">
-                  {stockPresets.map(option => (
-                    <option key={`s:${option.id}`} value={option.id}>{option.name}</option>
-                  ))}
-                </optgroup>
-              )}
-              {userCreatedPresets.length > 0 && (
-                <optgroup label="My Presets">
-                  {userCreatedPresets.map(option => (
-                    <option key={`u:${option.id}`} value={option.id}>{option.name}</option>
-                  ))}
-                </optgroup>
-              )}
-              {cloudPresets.length > 0 && (
-                <optgroup label="Cloud">
-                  {cloudPresets.map(option => (
-                    <option key={`c:${option.id}`} value={option.id}>{option.name}</option>
-                  ))}
-                </optgroup>
-              )}
+              {sortedPresetOptions.map(option => (
+                <option key={`${option.library}:${option.id}`} value={option.id}>{option.name}</option>
+              ))}
             </select>
             {selectedSummary && (
               <RatingStars
@@ -536,13 +560,15 @@ const SynthPresetManager: React.FC<SynthPresetManagerProps> = ({
               onMouseLeave={e => { e.currentTarget.style.color = '#5f8f5f'; e.currentTarget.style.background = 'none'; }}
               title={`Save current state as ${selectedEntryName}`}
             >💾</button>
-            <button
-              style={s.deleteBtn}
-              onClick={handleDelete}
-              onMouseEnter={e => { e.currentTarget.style.color = '#ff6666'; e.currentTarget.style.background = 'rgba(143,95,95,0.1)'; }}
-              onMouseLeave={e => { e.currentTarget.style.color = '#8f5f5f'; e.currentTarget.style.background = 'none'; }}
-              title={`Delete ${selectedEntryName}`}
-            >✕</button>
+            {selectedSummary?.library !== 'stock' && (
+              <button
+                style={s.deleteBtn}
+                onClick={handleDelete}
+                onMouseEnter={e => { e.currentTarget.style.color = '#ff6666'; e.currentTarget.style.background = 'rgba(143,95,95,0.1)'; }}
+                onMouseLeave={e => { e.currentTarget.style.color = '#8f5f5f'; e.currentTarget.style.background = 'none'; }}
+                title={`Delete ${selectedEntryName}`}
+              >✕</button>
+            )}
             {selectedSummary && selectedSummary.versionCount > 1 && (
               <button
                 style={{ ...s.expandBtn, ...(showVersions ? { color: '#a5c4d4' } : {}) }}
@@ -592,28 +618,89 @@ const SynthPresetManager: React.FC<SynthPresetManagerProps> = ({
             title="Select preset"
           >
             <option value="">— Select Preset —</option>
-            {stockPresets.length > 0 && (
-              <optgroup label="Stock">
-                {stockPresets.map(option => (
-                  <option key={`s:${option.id}`} value={option.id}>{option.name}</option>
-                ))}
-              </optgroup>
-            )}
-            {userCreatedPresets.length > 0 && (
-              <optgroup label="My Presets">
-                {userCreatedPresets.map(option => (
-                  <option key={`u:${option.id}`} value={option.id}>{option.name}</option>
-                ))}
-              </optgroup>
-            )}
-            {cloudPresets.length > 0 && (
-              <optgroup label="Cloud">
-                {cloudPresets.map(option => (
-                  <option key={`c:${option.id}`} value={option.id}>{option.name}</option>
-                ))}
-              </optgroup>
-            )}
+            {sortedPresetOptions.map(option => (
+              <option key={`${option.library}:${option.id}`} value={option.id}>{option.name}</option>
+            ))}
           </select>
+        </div>
+      )}
+
+      {variationControls && (
+        <div style={s.variationRow}>
+          <button
+            type="button"
+            style={{
+              ...s.variationBtn,
+              color: variationControls.canArm ? '#c6c6c6' : '#666',
+              borderColor: variationControls.targetReady ? 'rgba(148, 197, 255, 0.45)' : 'rgba(255,255,255,0.12)',
+              background: variationControls.targetReady ? 'rgba(74,158,255,0.12)' : 'none',
+              opacity: variationControls.canArm ? 1 : 0.55,
+              cursor: variationControls.canArm ? 'pointer' : 'not-allowed',
+            }}
+            disabled={!variationControls.canArm}
+            onClick={variationControls.onRandom}
+            title={variationControls.canArm
+              ? `Set a random goal from preset ${variationControls.endpointLabel ?? ''}`.trim()
+              : (variationControls.disabledReason ?? 'Random is only available at preset A or B endpoints')}
+          >
+            Random
+          </button>
+          <button
+            type="button"
+            style={{
+              ...s.variationBtn,
+              color: variationControls.walkEnabled ? '#d4b26f' : (variationControls.canArm ? '#c6c6c6' : '#666'),
+              borderColor: variationControls.walkEnabled ? 'rgba(212,178,111,0.45)' : 'rgba(255,255,255,0.12)',
+              background: variationControls.walkEnabled ? 'rgba(212,178,111,0.12)' : 'none',
+              opacity: variationControls.canArm ? 1 : 0.55,
+              cursor: variationControls.canArm ? 'pointer' : 'not-allowed',
+            }}
+            disabled={!variationControls.canArm}
+            onClick={variationControls.onWalkToggle}
+            title={variationControls.canArm
+              ? (variationControls.walkEnabled ? 'Disable random walk mode' : 'Enable random walk mode')
+              : (variationControls.disabledReason ?? 'Walk is only available at preset A or B endpoints')}
+          >
+            Walk
+          </button>
+          <button
+            type="button"
+            style={{
+              ...s.variationBtn,
+              color: variationControls.canVariant ? '#9fd7aa' : '#666',
+              borderColor: variationControls.canVariant ? 'rgba(159,215,170,0.3)' : 'rgba(255,255,255,0.12)',
+              opacity: variationControls.canVariant ? 1 : 0.55,
+              cursor: variationControls.canVariant ? 'pointer' : 'not-allowed',
+            }}
+            disabled={!variationControls.canVariant}
+            onClick={variationControls.onVariant}
+            title={variationControls.walkEnabled
+              ? 'Move one step along the random walk'
+              : 'Move one step toward the stored random goal'}
+          >
+            Variant
+          </button>
+          <button
+            type="button"
+            style={{
+              ...s.variationBtn,
+              color: variationControls.canUndo ? '#d7b39f' : '#666',
+              borderColor: variationControls.canUndo ? 'rgba(215,179,159,0.3)' : 'rgba(255,255,255,0.12)',
+              opacity: variationControls.canUndo ? 1 : 0.55,
+              cursor: variationControls.canUndo ? 'pointer' : 'not-allowed',
+            }}
+            disabled={!variationControls.canUndo}
+            onClick={variationControls.onUndo}
+            title="Undo the last variation step"
+          >
+            Undo
+          </button>
+          <span style={s.variationStatus}>
+            {variationControls.walkEnabled
+              ? 'Walk mode'
+              : (variationControls.progressText
+                ?? (variationControls.endpointLabel ? `Base ${variationControls.endpointLabel}` : 'Endpoint only'))}
+          </span>
         </div>
       )}
 

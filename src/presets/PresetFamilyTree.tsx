@@ -7,11 +7,35 @@ import type { PresetLevel, PresetEntry, PresetSummary, PresetSaveIdentity, Prese
 import { usePresets } from './usePresets';
 import { getVersionData } from './codec';
 import { extractCascade, getCascadeKeys } from './codec';
-import type { SliderState } from '../ui/state';
+import { presetValuesEqual } from './presetUtils';
+import { DEFAULT_STATE, migratePreset, type SliderState } from '../ui/state';
 import type { SliderMode } from '../ui/state';
 import { DERIVED_PAD_KEYS } from '../audio/padPresets';
 
 const MAX_CHILDREN = 5;
+const FAMILY_TREE_SELECTION_STORAGE_PREFIX = 'preset-family-tree:selected:';
+
+function getFamilyTreeSelectionStorageKey(level: PresetLevel, scope?: string): string {
+  return `${FAMILY_TREE_SELECTION_STORAGE_PREFIX}${level}:${scope ?? 'global'}`;
+}
+
+function normalizePresetName(name: string): string {
+  return name.trim().toLowerCase();
+}
+
+function dedupePresetSummaries(presets: PresetSummary[]): PresetSummary[] {
+  const byKey = new Map<string, PresetSummary>();
+  for (const preset of presets) {
+    const key = normalizePresetName(preset.name);
+    const existing = byKey.get(key);
+    const existingRank = existing?.library === 'cloud' ? 3 : existing?.library === 'user' ? 2 : 1;
+    const presetRank = preset.library === 'cloud' ? 3 : preset.library === 'user' ? 2 : 1;
+    if (!existing || presetRank > existingRank || (presetRank === existingRank && (preset.updatedAt ?? 0) > (existing.updatedAt ?? 0))) {
+      byKey.set(key, preset);
+    }
+  }
+  return Array.from(byKey.values());
+}
 
 export interface PresetFamilyTreeProps {
   level: PresetLevel;
@@ -377,9 +401,17 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
   dualSliderRanges,
 }) => {
   const { presets, families, save, load, remove, refresh } = usePresets(level, scope);
+  const selectionStorageKey = useMemo(() => getFamilyTreeSelectionStorageKey(level, scope), [level, scope]);
 
   // Selected parent preset (for viewing the tree — does NOT auto-load)
-  const [selectedParentName, setSelectedParentName] = useState<string>('');
+  const [selectedParentName, setSelectedParentName] = useState<string>(() => {
+    if (typeof window === 'undefined') return '';
+    try {
+      return window.sessionStorage.getItem(getFamilyTreeSelectionStorageKey(level, scope)) ?? '';
+    } catch {
+      return '';
+    }
+  });
 
   // Filter toggle: 'parents' = parent only, 'all' = parent + children
   const [filterMode, setFilterMode] = useState<'parents' | 'all'>('parents');
@@ -410,6 +442,19 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
 
   // Tooltip
   const [tooltip, setTooltip] = useState<{ text: string; x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      if (selectedParentName) {
+        window.sessionStorage.setItem(selectionStorageKey, selectedParentName);
+      } else {
+        window.sessionStorage.removeItem(selectionStorageKey);
+      }
+    } catch {
+      // Ignore storage failures; selection can remain in-memory.
+    }
+  }, [selectionStorageKey, selectedParentName]);
 
   // Find parent presets (those that are NOT children — i.e. familyName === name or no siblings)
   const parentPresets = useMemo(() => {
@@ -458,14 +503,42 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
     return presets;
   }, [filterMode, parentPresets, presets]);
 
-  const stockDropdown = dropdownPresets.filter(p => p.library === 'stock');
-  const userDropdown = dropdownPresets.filter(p => p.library === 'user');
-  const cloudDropdown = dropdownPresets.filter(p => p.library === 'cloud');
+  const dedupedDropdownPresets = useMemo(
+    () => dedupePresetSummaries(dropdownPresets),
+    [dropdownPresets],
+  );
+  const sortedDropdownPresets = useMemo(
+    () => [...dedupedDropdownPresets].sort((left, right) => left.name.localeCompare(right.name)),
+    [dedupedDropdownPresets],
+  );
 
   // Keys relevant to this preset level+scope (used to filter version diffs)
   const relevantKeys = useMemo(() => {
     const paramLevel = level === 'state' ? 4 : level === 'source' ? 3 : level === 'kit' ? 2 : 1;
     return new Set<string>(getCascadeKeys(paramLevel as 1 | 2 | 3 | 4, scope));
+  }, [level, scope]);
+
+  const getCanonicalVersionData = useCallback((entry: PresetEntry, versionNum?: number): Record<string, unknown> => {
+    const paramLevel = level === 'state' ? 4 : level === 'source' ? 3 : level === 'kit' ? 2 : 1;
+    const rawData = getVersionData(entry, versionNum) || {};
+    // Filter reconstituted data to only PARAM_REGISTRY keys BEFORE migration.
+    // Delta reconstitution can reintroduce legacy v1 keys (e.g. oceanDurationMin)
+    // which migratePreset would then use to overwrite correct values.
+    const registryOnly: Record<string, unknown> = {};
+    const cascadeKeys = new Set(getCascadeKeys(paramLevel as 1 | 2 | 3 | 4, scope));
+    for (const [k, v] of Object.entries(rawData)) {
+      if (cascadeKeys.has(k)) registryOnly[k] = v;
+    }
+    const migrated = migratePreset({
+      name: entry.name,
+      timestamp: new Date().toISOString(),
+      state: registryOnly as unknown as SliderState,
+    });
+    const canonicalState = {
+      ...DEFAULT_STATE,
+      ...(migrated.state as Partial<SliderState>),
+    } as SliderState;
+    return extractCascade(canonicalState, paramLevel as 1 | 2 | 3 | 4, scope);
   }, [level, scope]);
 
   // Load preset data and call a slot callback (with confirmation)
@@ -713,9 +786,9 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
     const prev = targetIdx > 0 ? sorted[targetIdx - 1] : null;
 
     // Get full data for each
-    const v1Data = v1?.data || {};
-    const targetData = getVersionData(entry, versionNum) || {};
-    const prevData = prev ? (getVersionData(entry, prev.v) || {}) : null;
+    const v1Data = v1 ? getCanonicalVersionData(entry, v1.v) : {};
+    const targetData = getCanonicalVersionData(entry, versionNum);
+    const prevData = prev ? getCanonicalVersionData(entry, prev.v) : null;
 
     // Saved dual ranges per version (used for S&H/dual-mode params)
     const v1Ranges = v1?.dualRanges || {};
@@ -751,7 +824,7 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
           continue;
         }
         // Single mode: compare snapshot values
-        if (aData[key] !== bData[key]) {
+        if (!presetValuesEqual(aData[key], bData[key])) {
           result.push(humanize(key));
         }
       }
@@ -764,7 +837,7 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
       : [];
 
     return { fromV1, fromPrev };
-  }, [humanize, relevantKeys]);
+  }, [humanize, relevantKeys, getCanonicalVersionData]);
 
   // Render version panel for a preset
   const renderVersionPanel = useCallback((name: string) => {
@@ -778,10 +851,12 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
     // "Current" snapshot: live state as preset data (not saved)
     const paramLevel = level === 'state' ? 4 : level === 'source' ? 3 : level === 'kit' ? 2 : 1;
     const currentData = extractCascade(state, paramLevel as 1 | 2 | 3 | 4, scope);
-    const latestSaved = getVersionData(entry) || {};
 
-    // Get saved dual ranges from the latest version
+    // Get saved dual ranges from the latest version.
+    // Use canonicalized saved data here so old presets that predate newer params
+    // do not show phantom diffs simply because migration/default fill-ins happen on load.
     const latestVer = sorted[sorted.length - 1];
+    const latestSaved = latestVer ? getCanonicalVersionData(entry, latestVer.v) : {};
     const savedDualRanges = latestVer?.dualRanges || {};
 
     const currentDiffKeys: string[] = [];
@@ -807,7 +882,7 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
         continue;
       }
 
-      if (currentData[key] !== latestSaved[key]) currentDiffKeys.push(humanize(key));
+      if (!presetValuesEqual(currentData[key], latestSaved[key])) currentDiffKeys.push(humanize(key));
     }
 
     return (
@@ -903,7 +978,7 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
         </div>
       </div>
     );
-  }, [versionEntries, expandedVersions, getVersionDiffs, requestLoadVersion, requestPromoteVersion, onLoadSlotA, onLoadSlotB, state, level, scope, humanize, sliderModes, dualSliderRanges, relevantKeys]);
+  }, [versionEntries, expandedVersions, getVersionDiffs, requestLoadVersion, requestPromoteVersion, onLoadSlotA, onLoadSlotB, state, level, scope, humanize, sliderModes, dualSliderRanges, relevantKeys, getCanonicalVersionData]);
 
   // Tooltip handlers
   const handleChildMouseEnter = useCallback((e: React.MouseEvent, description: string) => {
@@ -961,27 +1036,9 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
             title="Select preset"
           >
             <option value="">— Select Preset —</option>
-            {stockDropdown.length > 0 && (
-              <optgroup label="Stock">
-                {stockDropdown.map(p => (
-                  <option key={`s:${p.name}`} value={p.name}>{p.name}</option>
-                ))}
-              </optgroup>
-            )}
-            {userDropdown.length > 0 && (
-              <optgroup label="User">
-                {userDropdown.map(p => (
-                  <option key={`u:${p.name}`} value={p.name}>{p.name}</option>
-                ))}
-              </optgroup>
-            )}
-            {cloudDropdown.length > 0 && (
-              <optgroup label="Cloud">
-                {cloudDropdown.map(p => (
-                  <option key={`c:${p.name}`} value={p.name}>{p.name}</option>
-                ))}
-              </optgroup>
-            )}
+            {sortedDropdownPresets.map(p => (
+              <option key={`${p.library}:${p.name}`} value={p.name}>{p.name}</option>
+            ))}
           </select>
           <button
             style={{
@@ -1025,7 +1082,7 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
                 onMouseLeave={e => { e.currentTarget.style.color = '#5f8f5f'; e.currentTarget.style.background = 'none'; }}
                 title={`Save current state as ${selectedParentName}`}
               >💾</button>
-              {presets.find(p => p.name === selectedParentName)?.library === 'user' && (
+              {presets.find(p => p.name === selectedParentName)?.library !== 'stock' && (
                 <button
                   style={treeStyles.deleteBtn}
                   onClick={() => requestDelete(selectedParentName)}
@@ -1077,7 +1134,7 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
                     onMouseLeave={e => { e.currentTarget.style.background = 'none'; }}
                     title="Load into Slot B"
                   >B</button>
-                  {child.library === 'user' && (
+                  {child.library !== 'stock' && (
                     <>
                       <button
                         style={treeStyles.saveBtn}

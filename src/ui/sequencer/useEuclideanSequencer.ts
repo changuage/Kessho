@@ -407,16 +407,15 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
     setSubLaneStates(prev => prev.map((s, i) =>
       i === seqIdx ? { ...s, [lane]: { ...s[lane], steps: newSteps } } : s
     ));
-    // Resize the stepOverrides array to match the new step count
+    // Preserve hidden values when shrinking so extending the lane can recall them later.
     setStepOverrides(old => {
       const existing = old[lane][seqIdx];
       if (!existing) return old; // no data to resize
       const next = { ...old, [lane]: [...old[lane]] };
       const defaultVal = lane === 'pitch' ? 0 : lane === 'expression' ? 1.0 : lane === 'morph' ? 0 : lane === 'slice' ? 0 : lane === 'reverse' ? 0 : 0.5;
-      const resized = new Array(newSteps).fill(defaultVal);
-      // Copy existing values
-      for (let i = 0; i < Math.min(existing.length, newSteps); i++) {
-        resized[i] = existing[i];
+      const resized = [...existing];
+      if (resized.length < newSteps) {
+        resized.push(...new Array(newSteps - resized.length).fill(defaultVal));
       }
       (next[lane] as (number[] | null)[])[seqIdx] = resized;
       return next;
@@ -729,9 +728,14 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
       setStepOverrides((prev) => {
         const next = { ...prev, [lane]: [...prev[lane]] };
         const subSteps = subLaneStates[laneIdx]?.[subLane]?.steps ?? 5;
+        const defaultValue = lane === 'pitch' ? 0 : lane === 'expression' ? 1.0 : lane === 'morph' ? 0 : lane === 'slice' ? 0 : lane === 'reverse' ? 0 : 0.5;
+        const targetLength = Math.max(subSteps, step + 1);
         const arr = next[lane][laneIdx]
           ? [...(next[lane][laneIdx] as number[])]
-          : new Array(subSteps).fill(lane === 'pitch' ? 0 : lane === 'expression' ? 1.0 : lane === 'morph' ? 0 : lane === 'slice' ? 0 : lane === 'reverse' ? 0 : 0.5);
+          : new Array(targetLength).fill(defaultValue);
+        if (arr.length < targetLength) {
+          arr.push(...new Array(targetLength - arr.length).fill(defaultValue));
+        }
         arr[step] = value;
         (next[lane] as (number[] | null)[])[laneIdx] = arr;
         return next;

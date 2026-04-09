@@ -1,6 +1,13 @@
 import React, { useState } from 'react';
-import type { SequencerState, LaneDirection, ScaleName, PitchMode, TrigCondition } from '../../audio/drumSeqTypes';
-import { SCALES } from '../../audio/drumSeqTypes';
+import type { SequencerState, LaneDirection, ScaleName, PitchMode, PitchBindingMode, TrigCondition } from '../../audio/drumSeqTypes';
+import { seqLaneIndex } from '../../audio/drumSequencer';
+import {
+  NOTE_DEGREE_OFFSET_MIN,
+  NOTE_DEGREE_OFFSET_RANGE,
+  SCALES,
+  normalizeNoteDegreeOffset,
+  scaleDegreeToSemitone,
+} from '../../audio/drumSeqTypes';
 import DragNumber from './DragNumber';
 
 type LaneKind = 'trigger' | 'pitch' | 'expression' | 'morph' | 'distance' | 'slice' | 'reverse';
@@ -20,12 +27,6 @@ const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 function midiToName(midi: number): string {
   if (midi < 0 || midi > 127) return '';
   return (NOTE_NAMES[midi % 12] ?? '') + (Math.floor(midi / 12) - 1);
-}
-function scaleDegreeToSemitone(degree: number, scale: number[]): number {
-  if (degree <= 0) return 0;
-  const oct = Math.floor(degree / scale.length);
-  const idx = degree % scale.length;
-  return oct * 12 + (scale[idx] ?? 0);
 }
 
 interface SeqLaneProps {
@@ -59,12 +60,21 @@ interface SeqLaneProps {
   linked?: boolean;
   /** Pitch-specific: change mode */
   onChangePitchMode?: (mode: PitchMode) => void;
+  /** Pitch-specific: change pitch binding/index mode */
+  pitchBindingMode?: PitchBindingMode;
+  onChangePitchBindingMode?: (mode: PitchBindingMode) => void;
   /** Pitch-specific: change root note */
   onChangePitchRoot?: (root: number) => void;
   /** Pitch-specific: change scale */
   onChangePitchScale?: (scale: ScaleName) => void;
   /** Pitch-specific: toggle scale quantize */
   onToggleScaleQuantize?: () => void;
+  /** Hide note-range mode when the caller needs direct note entry. */
+  hidePitchNoteRange?: boolean;
+  /** Optional selected step highlight, used for keyboard note-entry targeting. */
+  selectedStep?: number | null;
+  selectedStepLabel?: string;
+  onSelectStep?: (step: number) => void;
   /** Note-range pitch mode: min/max MIDI notes and callbacks */
   pitchNoteMin?: number;
   pitchNoteMax?: number;
@@ -91,13 +101,19 @@ const SeqLane: React.FC<SeqLaneProps> = ({
   onCycleDirection,
   linked = false,
   onChangePitchMode,
+  pitchBindingMode,
+  onChangePitchBindingMode,
   onChangePitchRoot,
   onChangePitchScale,
   onToggleScaleQuantize,
+  selectedStep = null,
+  selectedStepLabel = 'Step',
+  onSelectStep,
   pitchNoteMin,
   pitchNoteMax,
   onChangePitchNoteMin,
   onChangePitchNoteMax,
+  hidePitchNoteRange = false,
 }) => {
   const laneSteps = lane === 'trigger'
     ? sequencer.trigger.steps
@@ -185,8 +201,20 @@ const SeqLane: React.FC<SeqLaneProps> = ({
                 >
                   <option value="semitones">Semitones</option>
                   <option value="notes">Notes</option>
-                  <option value="noteRange">Note Range</option>
+                  {!hidePitchNoteRange && <option value="noteRange">Note Range</option>}
                 </select>
+                {onChangePitchBindingMode && (
+                  <select
+                    className="seq-pitch-mode"
+                    value={pitchBindingMode ?? 'polyrhythmic'}
+                    onChange={(e) => onChangePitchBindingMode(e.target.value as PitchBindingMode)}
+                    title="How the pitch lane aligns with trigger steps"
+                  >
+                    <option value="polyrhythmic">Polyrhythmic</option>
+                    <option value="linked">Linked</option>
+                    <option value="sequence">Sequence</option>
+                  </select>
+                )}
                 {sequencer.pitch.mode !== 'noteRange' && (
                   <>
                     <DragNumber
@@ -253,7 +281,8 @@ const SeqLane: React.FC<SeqLaneProps> = ({
       <div className="seq-lane-body">
         {(() => {
           // Adaptive: 8 columns when steps < 9, 16 when steps >= 9
-          const maxCells = laneSteps < 9 ? 8 : 16;
+          const visibleSteps = selectedStep != null && selectedStep >= 0 ? Math.max(laneSteps, selectedStep + 1) : laneSteps;
+          const maxCells = visibleSteps < 9 ? 8 : 16;
           return (
         <div
           className="seq-step-grid"
@@ -262,23 +291,18 @@ const SeqLane: React.FC<SeqLaneProps> = ({
           {new Array(maxCells).fill(0).map((_, step) => {
             const inRange = step < laneSteps;
             const value = inRange ? getValue(step) : 0;
+            const isSelected = selectedStep === step && (lane === 'pitch' || inRange);
             // Trigger lane: playhead tracks the trigger step.
             // Sub-lanes: playhead derived from hitCount (Elektron-style, advance on trigger only).
             let isPlayhead: boolean;
             if (lane === 'trigger') {
               isPlayhead = inRange && playhead % laneSteps === step;
             } else {
-              // Compute sub-lane index from hitCount, respecting direction
-              // hitCount is post-increment (incremented after trigger), so subtract 1 to show the step that was just triggered
-              const basis = Math.max(0, hitCount - 1);
-              let idx = ((basis % laneSteps) + laneSteps) % laneSteps;
-              if (direction === 'reverse') {
-                idx = laneSteps - 1 - idx;
-              } else if (direction === 'pingpong') {
-                const cycle = laneSteps > 1 ? laneSteps * 2 - 2 : 1;
-                const p = ((basis % cycle) + cycle) % cycle;
-                idx = p < laneSteps ? p : cycle - p;
-              }
+              const playheadMode = lane === 'pitch' && pitchBindingMode === 'sequence' ? 'step' : 'hit';
+              const basis = playheadMode === 'step' ? Math.max(0, playhead) : Math.max(0, hitCount - 1);
+              const idx = laneSteps > 0
+                ? seqLaneIndex({ enabled: true, steps: laneSteps, direction, _ppForward: true }, basis)
+                : -1;
               isPlayhead = inRange && idx === step;
             }
             const isBeatHead = step % 4 === 0;
@@ -289,7 +313,7 @@ const SeqLane: React.FC<SeqLaneProps> = ({
               const prob = sequencer.trigger.probability[step] ?? 1.0;
               const probPct = Math.round(prob * 100);
               const trigCond: TrigCondition = sequencer.trigger.trigCondition?.[step] ?? [1, 1];
-              const cellClass = ['seq-step-cell', active ? 'active' : '', isPlayhead ? 'playing' : '', !inRange ? 'inactive' : ''].filter(Boolean).join(' ');
+              const cellClass = ['seq-step-cell', active ? 'active' : '', isPlayhead ? 'playing' : '', isSelected ? 'selected' : '', !inRange ? 'inactive' : ''].filter(Boolean).join(' ');
 
               return (
                 <div key={step} className="seq-step">
@@ -320,7 +344,10 @@ const SeqLane: React.FC<SeqLaneProps> = ({
                         el.removeEventListener('pointermove', onMove);
                         el.removeEventListener('pointerup', onUp);
                         setDragPopup(null);
-                        if (!dragged) onToggleTriggerStep?.(step);
+                        if (!dragged) {
+                          if (onSelectStep) onSelectStep(step);
+                          else onToggleTriggerStep?.(step);
+                        }
                       };
                       el.addEventListener('pointermove', onMove);
                       el.addEventListener('pointerup', onUp);
@@ -329,6 +356,7 @@ const SeqLane: React.FC<SeqLaneProps> = ({
                   >
                     <div className="prob-fill" style={{ height: `${probPct}%` }} />
                     <span className="prob-label">{probPct}%</span>
+                    {isSelected && <span className="seq-step-cursor">{selectedStepLabel}</span>}
                   </button>
                   <button
                     type="button"
@@ -344,13 +372,13 @@ const SeqLane: React.FC<SeqLaneProps> = ({
             }
 
             if (lane === 'pitch') {
-              /* ── Pitch bar: bipolar -24..+24 or tonal 0..14 ── */
+              /* ── Pitch bar: bipolar -24..+24 or tonal -3..14 ── */
               const isNotes = sequencer.pitch.mode === 'notes';
               const off = value;
               let barStyle: React.CSSProperties;
               let valText: string;
               if (isNotes) {
-                const pct = Math.min(1, off / 14) * 100;
+                const pct = normalizeNoteDegreeOffset(off) * 100;
                 barStyle = { bottom: 0, top: `${100 - pct}%`, height: `${pct}%` };
                 valText = `${off}`;
               } else {
@@ -373,7 +401,7 @@ const SeqLane: React.FC<SeqLaneProps> = ({
                 <div key={step} className="seq-step">
                   <span className="seq-step-num" style={{ color: '#ff6b81' }}>{isBeatHead ? step + 1 : ''}</span>
                   <div
-                    className={`seq-pitch-bar-wrap${isPlayhead ? ' playing' : ''}${!inRange ? ' inactive' : ''}`}
+                    className={`seq-pitch-bar-wrap${isPlayhead ? ' playing' : ''}${isSelected ? ' selected' : ''}${!inRange ? ' inactive' : ''}`}
                     style={{ touchAction: 'none' } as React.CSSProperties}
                     onPointerDown={(e) => {
                       e.preventDefault();
@@ -381,13 +409,15 @@ const SeqLane: React.FC<SeqLaneProps> = ({
                       wrap.setPointerCapture(e.pointerId);
                       const startY = e.clientY;
                       const startNorm = isNotes
-                        ? Math.max(0, Math.min(1, off / 14))
+                        ? normalizeNoteDegreeOffset(off)
                         : Math.max(0, Math.min(1, (off + 24) / 48));
                       const onMove = (ev: PointerEvent) => {
                         const rect = wrap.getBoundingClientRect();
                         const dragRange = rect.height * SEQ_BIPOLAR_DRAG_DISTANCE_FACTOR;
                         const pct = Math.max(0, Math.min(1, startNorm + (startY - ev.clientY) / dragRange));
-                        const val = isNotes ? Math.round(pct * 14) : Math.round((pct - 0.5) * 48);
+                        const val = isNotes
+                          ? Math.round(NOTE_DEGREE_OFFSET_MIN + pct * NOTE_DEGREE_OFFSET_RANGE)
+                          : Math.round((pct - 0.5) * 48);
                         onChangeValue?.(step, val);
                         const label = isNotes ? `deg ${val}` : `${val >= 0 ? '+' : ''}${val} st`;
                         setDragPopup({ x: ev.clientX, y: ev.clientY, text: label });
@@ -403,6 +433,7 @@ const SeqLane: React.FC<SeqLaneProps> = ({
                     onDoubleClick={() => onChangeValue?.(step, 0)}
                   >
                     {!isNotes && <div className="pitch-center" />}
+                    {isSelected && <span className="seq-step-cursor">{selectedStepLabel}</span>}
                     <div className="pitch-bar" style={barStyle} />
                     <div className="pitch-val" style={off >= 0 || isNotes ? { top: 2 } : { bottom: 2 }}>{valText}</div>
                   </div>

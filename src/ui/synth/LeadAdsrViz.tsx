@@ -15,7 +15,7 @@ interface LeadAdsrVizProps {
   accentRgba: string;    // e.g. 'rgba(245,158,11,' (no closing paren)
   onChange?: (param: string, value: number) => void;
   disabled?: boolean;    // when true, show envelope but no drag handles
-  paramPrefix?: 'lead1' | 'lead2';  // which lead's params to emit (default 'lead1')
+  paramPrefix?: 'lead1' | 'lead2' | 'piano';  // which synth params to emit (default 'lead1')
 }
 
 type DragTarget = 'attack' | 'decay' | 'sustain' | 'hold' | 'release' | null;

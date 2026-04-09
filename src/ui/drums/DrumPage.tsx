@@ -10,6 +10,7 @@ import type { SliderState } from '../state';
 import type { DrumVoiceType } from '../../audio/drumSynth';
 import type { DrumStepOverrides } from '../../audio/drumSeqTypes';
 import type { ClockDivision } from '../../audio/drumSeqTypes';
+import { normalizeNoteDegreeOffset } from '../../audio/drumSeqTypes';
 import { DRUM_VOICES as VOICE_CONFIG, DRUM_VOICE_ORDER } from '../../audio/drumVoiceConfig';
 import { useEuclideanSequencer, type EvolveConfig, type StepOverrides, type SubLaneKind, type SubLaneState } from '../sequencer/useEuclideanSequencer';
 import DrumPanel from './DrumPanel';
@@ -783,7 +784,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                             laneKind === 'pitch'
                               ? activeSeq.pitch.offsets.map(off =>
                                   activeSeq.pitch.mode === 'notes'
-                                    ? Math.min(1, off / 14)
+                                    ? normalizeNoteDegreeOffset(off)
                                     : (off + 24) / 48
                                 )
                               : laneKind === 'expression'

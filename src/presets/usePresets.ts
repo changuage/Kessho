@@ -12,8 +12,8 @@ import type {
   PresetVersionMetadata,
 } from './types';
 import { getPresetStore, subscribePresetStore } from './PresetStore';
-import { extractParams, applyParams, extractCascade, applyCascade, compressVersions } from './codec';
-import { extractPresetVersionMetadata } from './presetUtils';
+import { extractParams, applyParams, extractCascade, applyCascade, compressVersions, getVersionData } from './codec';
+import { extractPresetVersionMetadata, presetValuesEqual } from './presetUtils';
 import { buildPresetFamilies } from './catalog';
 import type { ParamLevel } from './ParamRegistry';
 import type { SliderState } from '../ui/state';
@@ -121,6 +121,7 @@ export function usePresets(type: PresetLevel, scope?: string, options?: UsePrese
 
     // Check if preset already exists → push new version
     const existing = await store.load(type, name, storeScope);
+    const shouldForkExisting = !!existing && (existing.author === 'factory' || existing.library === 'stock');
     const existingVersion = existing?.versions.find(v => v.v === existing.currentVersion)
       || existing?.versions[existing.versions.length - 1];
     // Merge: start with preserved metadata from prior version, then overlay any caller-supplied fields
@@ -128,8 +129,26 @@ export function usePresets(type: PresetLevel, scope?: string, options?: UsePrese
     const preservedMetadata = metadata
       ? { ...(preserved || {}), ...metadata }
       : preserved;
-    const isMutableUserPreset = !!existing && existing.author === 'user' && existing.library === 'user';
-    if (isMutableUserPreset && existing) {
+    if (existing && !shouldForkExisting) {
+      const currentVersionData = getVersionData(existing) ?? existingVersion?.data ?? {};
+      const sameData = presetValuesEqual(currentVersionData, data);
+      const sameMetadata = presetValuesEqual(preserved ?? {}, preservedMetadata ?? {});
+      const identityUnchanged =
+        identity?.creator === undefined &&
+        identity?.description === undefined &&
+        identity?.familyId === undefined &&
+        identity?.familyName === undefined &&
+        identity?.variantId === undefined &&
+        identity?.variantName === undefined &&
+        identity?.variantRank === undefined &&
+        identity?.visibility === undefined;
+      const tagsUnchanged = !tags;
+
+      if (sameData && sameMetadata && identityUnchanged && tagsUnchanged && !note?.trim()) {
+        await refresh();
+        return;
+      }
+
       const maxV = Math.max(...existing.versions.map(v => v.v));
       existing.versions.push({
         v: maxV + 1,
@@ -152,25 +171,24 @@ export function usePresets(type: PresetLevel, scope?: string, options?: UsePrese
       compressVersions(existing);
       await store.save(existing);
     } else {
-      // New preset (or saving over factory creates user copy)
-      const actualName = existing && existing.author !== 'user' ? `${name} (Custom)` : name;
+      // New preset
       const entry: PresetEntry = {
         type,
         scope: storeScope,
         engine: type === 'engine' ? storeScope : undefined,
         source: type !== 'engine' ? storeScope : undefined,
-        name: actualName,
+        name,
         author: 'user',
         library: 'user',
         creator: identity?.creator ?? existing?.creator,
         description: identity?.description ?? existing?.description,
-        visibility: identity?.visibility ?? 'private',
+        visibility: identity?.visibility ?? (shouldForkExisting ? 'private' : existing?.visibility) ?? 'private',
         familyId: identity?.familyId ?? existing?.familyId,
         familyName: identity?.familyName ?? existing?.familyName ?? name,
-        variantId: identity?.variantId,
-        variantName: identity?.variantName ?? actualName,
-        variantRank: identity?.variantRank,
-        tags: tags || [],
+        variantId: identity?.variantId ?? existing?.variantId,
+        variantName: identity?.variantName ?? existing?.variantName ?? name,
+        variantRank: identity?.variantRank ?? existing?.variantRank,
+        tags: tags || existing?.tags || [],
         versions: [{
           v: 1,
           note: note || '',

@@ -1,4 +1,5 @@
 import React from 'react';
+import { seqLaneIndex } from '../../audio/drumSequencer';
 
 interface SeqSparklineProps {
   values: number[];
@@ -10,36 +11,30 @@ interface SeqSparklineProps {
   hitCount?: number;
   /** Sub-lane direction for playhead calculation */
   direction?: 'forward' | 'reverse' | 'pingpong';
+  /** Sequence pitch mode advances on every trigger step instead of only hits. */
+  playheadMode?: 'hit' | 'step';
   bipolar?: boolean;
   invertFill?: boolean;
   enabled?: boolean;
   onClick?: () => void;
   onToggleEnabled?: () => void;
   expanded?: boolean;
+  selectedStep?: number | null;
   /** Display mode: 'reverse' renders direction-aware up/down bars instead of magnitudes */
   mode?: 'default' | 'reverse';
 }
 
-const SeqSparkline: React.FC<SeqSparklineProps> = ({ values, color, label, steps, playhead = -1, hitCount = 0, direction = 'forward', bipolar = false, invertFill = false, enabled = true, onClick, onToggleEnabled, expanded = false, mode = 'default' }) => {
+const SeqSparkline: React.FC<SeqSparklineProps> = ({ values, color, label, steps, playhead = -1, hitCount = 0, direction = 'forward', playheadMode = 'hit', bipolar = false, invertFill = false, enabled = true, onClick, onToggleEnabled, expanded = false, selectedStep = null, mode = 'default' }) => {
   const width = 200;
   const height = 20;
   const count = 16; // always 16 slots
   const barW = width / count;
 
-  // Sub-lane sparkline playhead: derived from hitCount (Elektron-style)
+  // Sub-lane sparkline playhead: either hit-linked or step-linked, depending on mode.
   const subPlayhead = (() => {
-    if (playhead < 0) return -1;
-    // hitCount is post-increment (incremented after trigger), so subtract 1 to show the step that was just triggered
-    const basis = Math.max(0, hitCount - 1);
-    let idx = ((basis % steps) + steps) % steps;
-    if (direction === 'reverse') {
-      idx = steps - 1 - idx;
-    } else if (direction === 'pingpong') {
-      const cycle = steps > 1 ? steps * 2 - 2 : 1;
-      const p = ((basis % cycle) + cycle) % cycle;
-      idx = p < steps ? p : cycle - p;
-    }
-    return idx;
+    if (playhead < 0 || steps <= 0) return -1;
+    const basis = playheadMode === 'step' ? Math.max(0, playhead) : Math.max(0, hitCount - 1);
+    return seqLaneIndex({ enabled: true, steps, direction, _ppForward: true }, basis);
   })();
 
   return (
@@ -124,6 +119,21 @@ const SeqSparkline: React.FC<SeqSparklineProps> = ({ values, color, label, steps
             const opacity = inRange ? (0.25 + v * 0.6) : 0.06;
             return <rect key={i} x={x} y={barY} width={w} height={barH} rx={0.8} fill={color} opacity={opacity} />;
           })}
+
+          {selectedStep != null && selectedStep >= 0 && selectedStep < count && (
+            <rect
+              className="spark-selected-step"
+              x={Math.round((selectedStep % count) * barW) + 0.5}
+              y={0.5}
+              width={Math.max(1, Math.floor(barW) - 1)}
+              height={height - 1}
+              rx={1.2}
+              fill="none"
+              stroke={color}
+              strokeOpacity={0.7}
+              strokeWidth={1}
+            />
+          )}
 
           {subPlayhead >= 0 && (
             <rect

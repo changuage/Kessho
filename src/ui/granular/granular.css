@@ -212,6 +212,10 @@
   max-width: 120px;
 }
 
+.granular-root .granular-preset-toolbar {
+  width: 100%;
+}
+
 .granular-root .granular-chip-group {
   display: inline-flex;
   align-items: center;

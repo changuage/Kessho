@@ -370,7 +370,12 @@ const globalEntries: Record<string, SliderHelpEntry> = {
     'Sets how long each harmony phrase lasts.',
     'make the music change harmonic scenes more often',
     'let each phrase breathe longer before the next structural turn',
-    [g('Scale & Tension', 'Phrase')],
+    [g('Transport & Sync', 'Phrase Seconds')],
+  ),
+  sequencerMasterBPM: entry(
+    'Sets the shared beat-grid tempo used by BPM-driven sequencers.',
+    'Lower values slow beat-synced engines like synth Euclid and drum Euclid. Higher values tighten the beat grid and, when BPM is the primary clock, also shorten the derived phrase length.',
+    [g('Transport & Sync', 'Shared BPM')],
   ),
   randomness: lowHigh(
     'Sets how far the generators stray from their most stable choices.',
@@ -385,6 +390,66 @@ const globalEntries: Record<string, SliderHelpEntry> = {
       g('Scale & Tension', 'Walk Speed', 'single-only', [GLOBAL_SINGLE_NOTE]),
       ea('Walk Speed', 'Walk Speed', 'single-only', [NATIVE_SINGLE_NOTE]),
     ],
+  ),
+  randomWalkMode: entry(
+    'Chooses whether walk-mode sliders use local drift or shared epoch drift.',
+    'Local Brownian uses each browser session\'s own wandering motion. Global Epoch Walk reads a deterministic wall-clock curve, so users on the same clock window hear the same walk positions. This only affects sliders in walk mode; it does not change harmony or Euclidean clocks.',
+    [g('Scale & Tension', 'Walk Mode', 'single-only', [GLOBAL_SINGLE_NOTE])],
+  ),
+  transportPrimaryClock: entry(
+    'Chooses which top-level time domain is authoritative.',
+    'Phrase Seconds Master treats phrase length as the source of truth and derives BPM from bars-per-phrase plus beats-per-bar. Shared BPM Master does the reverse: the beat grid becomes authoritative and phrase length is derived from it. Decoupled keeps Phrase Seconds and Shared BPM independent so phrase-based clocks read phrase length directly while beat-based clocks read the shared BPM grid. This switch does not pick an engine\'s clock source by itself; it controls whether the seconds and BPM domains stay linked.',
+    [g('Transport & Sync', 'Primary Clock', 'single-only', [GLOBAL_SINGLE_NOTE])],
+  ),
+  transportBarsPerPhrase: entry(
+    'Sets how many bars fit inside one phrase when converting between seconds and BPM.',
+    'Lower values make each phrase represent fewer bars. Higher values stretch the phrase across more bars, which changes the BPM-to-seconds conversion for any engine using the transport helpers.',
+    [g('Transport & Sync', 'Bars / Phrase')],
+  ),
+  transportBeatsPerBar: entry(
+    'Sets the beat count used for each bar in the shared transport math.',
+    'Lower values shorten each bar and reduce phrase duration in beat-clock modes. Higher values lengthen bars and therefore lengthen any phrase derived from the beat grid.',
+    [g('Transport & Sync', 'Beats / Bar')],
+  ),
+  harmonyClockSource: entry(
+    'Chooses the phrase clock used by the harmony engine and pad chord refresh.',
+    'Global Phrase uses wall-clock phrases shared across users. Local Phrase anchors phrases to this session\'s local start point. Global Beat Phrase and Local Beat Phrase derive phrase timing from the BPM grid instead of raw seconds. The pads do not have a separate random phrase clock because their chord changes follow harmony; pad Euclidean lanes still use the synth Euclid beat clock instead.',
+    [g('Transport & Sync', 'Harmony / Pad Clock', 'single-only', [GLOBAL_SINGLE_NOTE])],
+  ),
+  harmonySyncPolicy: entry(
+    'Chooses when harmony and pad clock edits take effect.',
+    'Next Phrase waits for the next phrase boundary before applying transport edits, which keeps live changes predictable. Immediate keeps the current anchors and lets the next scheduled event use the new values right away. Restart Now re-anchors the relevant local clock and restarts harmony scheduling immediately.',
+    [g('Transport & Sync', 'Harmony / Pad Apply', 'single-only', [GLOBAL_SINGLE_NOTE])],
+  ),
+  leadRandomClockSource: entry(
+    'Chooses the phrase clock for the free-running random lead melody.',
+    'This only affects the random Lead 1 phrase scheduler. It does not change lead Euclidean lanes, pad chords, or harmony itself. Phrase modes schedule random lead events over phrase windows; beat-phrase modes derive those windows from the BPM transport.',
+    [g('Transport & Sync', 'Lead Random Clock', 'single-only', [GLOBAL_SINGLE_NOTE])],
+  ),
+  leadRandomSyncPolicy: entry(
+    'Chooses when the random lead melody adopts timing changes.',
+    'Next Phrase defers edits until the next phrase boundary so the current lead phrase can finish cleanly. Immediate clears the pending lead phrase and reschedules right away on the new timing model.',
+    [g('Transport & Sync', 'Lead Random Apply', 'single-only', [GLOBAL_SINGLE_NOTE])],
+  ),
+  synthEuclidClockSource: entry(
+    'Chooses the beat clock used by the synth Euclidean sequencer.',
+    'Local Beat anchors synth Euclid to this session\'s local beat transport. Global Beat ties it to the shared wall-clock beat grid. This clock applies to both lead-sourced Euclidean lanes and any pad-sourced Euclidean lanes.',
+    [g('Transport & Sync', 'Synth Euclid Clock', 'single-only', [GLOBAL_SINGLE_NOTE])],
+  ),
+  synthEuclidJoinPolicy: entry(
+    'Chooses how newly enabled synth Euclidean lanes join the current beat transport.',
+    'Grid starts the lane on the next available step division, which can preserve phase offsets between lanes. Next Bar waits for the next full bar and resets the lane to step 1, which is better when you want multiple synth Euclid lanes to come back in together live.',
+    [g('Transport & Sync', 'Synth Euclid Join', 'single-only', [GLOBAL_SINGLE_NOTE])],
+  ),
+  drumEuclidClockSource: entry(
+    'Chooses the beat clock used by the drum Euclidean sequencer.',
+    'Local Beat anchors the drum engine to this session\'s local beat transport. Global Beat ties it to the shared wall-clock beat grid so multiple users can line up on the same beat phase.',
+    [g('Transport & Sync', 'Drum Euclid Clock', 'single-only', [GLOBAL_SINGLE_NOTE])],
+  ),
+  drumEuclidJoinPolicy: entry(
+    'Chooses how newly enabled drum Euclidean lanes join the beat transport.',
+    'Grid starts the lane on the next matching step division. Next Bar waits for the next bar boundary and resets the lane so different drum lanes can realign in a more predictable way during live edits.',
+    [g('Transport & Sync', 'Drum Euclid Join', 'single-only', [GLOBAL_SINGLE_NOTE])],
   ),
   cofDriftRate: entry(
     'Sets how many phrases pass between Circle-of-Fifths moves.',
@@ -401,10 +466,20 @@ const globalEntries: Record<string, SliderHelpEntry> = {
     'Low values create a shorter, more repetitive cycle. High values create a longer loop with more room for harmonic variation.',
     [g('Chord Progression', 'Pattern Length')],
   ),
-  chordProgressionHits: entry(
-    'Sets how many steps in the progression actually trigger a chord change.',
-    'Low values leave more sustaining rests between chord moves. High values refresh the harmony on more of the loop steps.',
-    [g('Chord Progression', 'Euclidean Hits')],
+  chordProgressionClockSource: entry(
+    'Chooses which phrase clock advances the chord progression steps.',
+    'Follow Harmony uses the same clock as harmony and the pad chord engine. Global Phrase and Local Phrase let the progression keep its own phrase transport while still feeding harmony degrees. This affects when progression steps advance, not how fast sub-phrase chord voicings move inside a step.',
+    [g('Chord Progression', 'Clock Source', 'single-only', [GLOBAL_SINGLE_NOTE])],
+  ),
+  chordProgressionPhraseMultiplier: entry(
+    'Sets how many phrases each progression step lasts.',
+    'Lower values move to the next progression step every phrase. Higher values hold each degree across multiple phrases before advancing.',
+    [g('Chord Progression', 'Step Length', 'single-only', [GLOBAL_SINGLE_NOTE])],
+  ),
+  chordProgressionStepEnabled: entry(
+    'Turns individual progression steps on or off.',
+    'On steps advance harmony to their chosen degree. Off steps preserve the current progression degree for that slot, which creates held chords without Euclidean hits or rotation.',
+    [g('Chord Progression', 'Step On/Off', 'single-only', [GLOBAL_SINGLE_NOTE])],
   ),
 };
 
@@ -993,6 +1068,11 @@ const granularEntries: Record<string, SliderHelpEntry> = {
     rt('Routing Matrix', 'Waves → Granular'),
     ea('Earth Mixer', 'Waves → Granular'),
   ]),
+  granularNatureSend: entry('Sets how much the shared Nature bus is routed into the granular buffer.', 'Low values keep birds and frogs mostly direct. High values let the combined Nature textures feed the granular engine more strongly.', [
+    gr('Input Sources', 'Nature'),
+    rt('Routing Matrix', 'Nature → Granular'),
+    ea('Active Earth Matrix', 'Nature Granular'),
+  ]),
   granularWaterSend: entry('Sets how much the water engine is routed into the granular buffer.', 'Low values keep the synthesized water mostly clean. High values let more water energy feed the granular cloud.', [
     gr('Input Sources', 'Water'),
     rt('Routing Matrix', 'Water → Granular'),
@@ -1038,6 +1118,38 @@ const earthEntries: Record<string, SliderHelpEntry> = {
     'Sets how much the waves layer feeds shared Delay B.',
     'Low values keep the waves out of the multitap bus. High values let more surf energy feed Delay B.',
     [rt('Routing Matrix', 'Waves → Delay B')],
+  ),
+  natureLevel: entry(
+    'Sets the shared dry master for the Nature sample group.',
+    'Low values pull Birds Alps, Birds Fujian, and Frogs down together while preserving their relative balance. High values let the Nature stack sit forward in the Earth mix.',
+    [
+      rt('Routing Matrix', 'Nature Level'),
+      ea('Active Earth Matrix', 'Nature Master'),
+    ],
+  ),
+  natureReverbSend: entry(
+    'Sets how much the shared Nature bus feeds the common reverb.',
+    'Low values keep birds and frogs more direct. High values let the Nature layers dissolve further into the shared ambience.',
+    [
+      rt('Routing Matrix', 'Nature → Reverb'),
+      ea('Active Earth Matrix', 'Nature Reverb'),
+    ],
+  ),
+  natureDelayASend: entry(
+    'Sets how much the shared Nature bus feeds Delay A.',
+    'Low values keep birds and frogs out of the single-line delay bus. High values let more Nature texture seed Delay A.',
+    [
+      rt('Routing Matrix', 'Nature → Delay A'),
+      ea('Active Earth Matrix', 'Nature Delay A'),
+    ],
+  ),
+  natureDelayBSend: entry(
+    'Sets how much the shared Nature bus feeds Delay B.',
+    'Low values keep birds and frogs out of the multitap delay bus. High values let more Nature texture seed Delay B.',
+    [
+      rt('Routing Matrix', 'Nature → Delay B'),
+      ea('Active Earth Matrix', 'Nature Delay B'),
+    ],
   ),
   waterMorph: entry(
     'Morphs the water engine between preset A and preset B.',

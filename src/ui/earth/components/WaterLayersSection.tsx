@@ -28,7 +28,7 @@ export function WaterLayersSection({ state, ds, onParamChange }: WaterLayersSect
           return (
             <div
               key={key}
-              style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}
+              style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 2 }}
             >
               <button
                 className={`layer-toggle ${level > 0.01 ? 'on' : ''}`}

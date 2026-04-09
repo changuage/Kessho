@@ -5,6 +5,7 @@ import { PARAM_REGISTRY, type ParamLevel } from './ParamRegistry';
 export type { ParamLevel } from './ParamRegistry';
 import type { PresetEntry } from './types';
 import type { SliderState } from '../ui/state';
+import { presetValuesEqual } from './presetUtils';
 
 function getDirectKeys(level: ParamLevel, scope?: string): string[] {
   if (level === 4) {
@@ -188,7 +189,7 @@ const MAX_VERSIONS = 5;
 function computeDelta(base: Record<string, unknown>, full: Record<string, unknown>): Record<string, unknown> {
   const delta: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(full)) {
-    if (!(key in base) || base[key] !== value) {
+    if (!(key in base) || !presetValuesEqual(base[key], value)) {
       delta[key] = value;
     }
   }

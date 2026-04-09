@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { SliderState } from '../../state';
 import {
   EarthCard,
@@ -11,10 +12,35 @@ type WaterCardProps = {
   ds: EarthDualSliderRenderer;
   waterPresetOptions: EarthPresetOption[];
   expandedCards: Set<string>;
-  onToggleCard: (id: string) => void;
+  onToggleCard?: (id: string) => void;
   onSelectChange: <K extends keyof SliderState>(key: K, value: SliderState[K]) => void;
   onWaterSlotSave: (slotKey: 'waterMorphA' | 'waterMorphB') => void;
+  enabled?: boolean;
 };
+
+function SubSection({
+  title,
+  count,
+  defaultOpen = false,
+  children,
+}: {
+  title: string;
+  count: number;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="earth-sub-section">
+      <div className="earth-sub-header" onClick={() => setOpen(o => !o)}>
+        <span className="earth-sub-chevron">{open ? '▼' : '▶'}</span>
+        <span className="earth-sub-title">{title}</span>
+        <span className="earth-sub-count">{count}</span>
+      </div>
+      {open && <div className="earth-sub-body">{children}</div>}
+    </div>
+  );
+}
 
 export function WaterCard({
   state,
@@ -24,6 +50,7 @@ export function WaterCard({
   onToggleCard,
   onSelectChange,
   onWaterSlotSave,
+  enabled,
 }: WaterCardProps) {
   return (
     <EarthCard
@@ -32,6 +59,7 @@ export function WaterCard({
       accent="#4a9eff"
       expandedCards={expandedCards}
       onToggleCard={onToggleCard}
+      enabled={enabled}
     >
       <div className="earth-preset-row">
         <div className="earth-preset-slot">
@@ -89,72 +117,64 @@ export function WaterCard({
       })}
       {ds('waterReverbSend', 'Reverb Send', 'rgba(139,92,246,0.5)')}
 
-      <div className="section-divider" />
-      <div className="param-section-label" style={{ fontSize: 11, opacity: 0.6, margin: '6px 0 2px' }}>
-        Discrete Layers
-      </div>
-      {ds('waterHardDropRate', 'Hard Drop Rate', 'rgba(74,158,255,0.5)')}
-      {ds('waterHardDropLPF', 'Hard Drop LPF', 'rgba(74,158,255,0.5)', {
-        logarithmic: true,
-        format: v => `${Math.round(v)} Hz`,
-      })}
-      {ds('waterHardDropTone', 'Hard Drop Tone', 'rgba(74,158,255,0.5)')}
-      {ds('waterWaterDropRate', 'Water Drop Rate', 'rgba(74,158,255,0.5)')}
-      {ds('waterWaterDropLPF', 'Water Drop LPF', 'rgba(74,158,255,0.5)', {
-        logarithmic: true,
-        format: v => `${Math.round(v)} Hz`,
-      })}
-      {ds('waterBubblingRate', 'Bubbling Rate', 'rgba(74,158,255,0.5)')}
-      {ds('waterBubblingLPF', 'Bubbling LPF', 'rgba(74,158,255,0.5)', {
-        logarithmic: true,
-        format: v => `${Math.round(v)} Hz`,
-      })}
+      <SubSection title="Discrete Layers" count={7} defaultOpen={false}>
+        {ds('waterHardDropRate', 'Hard Drop Rate', 'rgba(74,158,255,0.5)')}
+        {ds('waterHardDropLPF', 'Hard Drop LPF', 'rgba(74,158,255,0.5)', {
+          logarithmic: true,
+          format: v => `${Math.round(v)} Hz`,
+        })}
+        {ds('waterHardDropTone', 'Hard Drop Tone', 'rgba(74,158,255,0.5)')}
+        {ds('waterWaterDropRate', 'Water Drop Rate', 'rgba(74,158,255,0.5)')}
+        {ds('waterWaterDropLPF', 'Water Drop LPF', 'rgba(74,158,255,0.5)', {
+          logarithmic: true,
+          format: v => `${Math.round(v)} Hz`,
+        })}
+        {ds('waterBubblingRate', 'Bubbling Rate', 'rgba(74,158,255,0.5)')}
+        {ds('waterBubblingLPF', 'Bubbling LPF', 'rgba(74,158,255,0.5)', {
+          logarithmic: true,
+          format: v => `${Math.round(v)} Hz`,
+        })}
+      </SubSection>
 
-      <div className="section-divider" />
-      <div className="param-section-label" style={{ fontSize: 11, opacity: 0.6, margin: '6px 0 2px' }}>
-        Density Loop (Drops + Bubbling)
-      </div>
-      {ds('waterDensityHardSend', 'Hard Send', 'rgba(96,165,250,0.5)')}
-      {ds('waterDensityWaterSend', 'Drop Send', 'rgba(96,165,250,0.5)')}
-      {ds('waterDensityBubbleSend', 'Bubble Send', 'rgba(96,165,250,0.5)')}
-      {ds('waterDensityFeedback', 'Feedback', 'rgba(96,165,250,0.5)')}
-      {ds('waterDensityTone', 'Tone', 'rgba(96,165,250,0.5)', {
-        format: v => `${Math.round(v)} Hz`,
-      })}
-      {ds('waterDensityRing', 'Ring Amount', 'rgba(96,165,250,0.5)')}
-      {ds('waterDensityWet', 'Density Wet', 'rgba(96,165,250,0.5)')}
+      <SubSection title="Density Loop" count={7} defaultOpen={false}>
+        {ds('waterDensityHardSend', 'Hard Send', 'rgba(96,165,250,0.5)')}
+        {ds('waterDensityWaterSend', 'Drop Send', 'rgba(96,165,250,0.5)')}
+        {ds('waterDensityBubbleSend', 'Bubble Send', 'rgba(96,165,250,0.5)')}
+        {ds('waterDensityFeedback', 'Feedback', 'rgba(96,165,250,0.5)')}
+        {ds('waterDensityTone', 'Tone', 'rgba(96,165,250,0.5)', {
+          format: v => `${Math.round(v)} Hz`,
+        })}
+        {ds('waterDensityRing', 'Ring Amount', 'rgba(96,165,250,0.5)')}
+        {ds('waterDensityWet', 'Density Wet', 'rgba(96,165,250,0.5)')}
+      </SubSection>
 
-      <div className="section-divider" />
-      <div className="param-section-label" style={{ fontSize: 11, opacity: 0.6, margin: '6px 0 2px' }}>
-        Surf (Wave Envelope)
-      </div>
-      {ds('waterSurfDuration', 'Wave Duration', 'rgba(0,180,216,0.5)', {
-        format: v => `${v.toFixed(1)}s`,
-      })}
-      {ds('waterSurfInterval', 'Wave Interval', 'rgba(0,180,216,0.5)', {
-        format: v => `${v.toFixed(1)}s`,
-      })}
-      {ds('waterSurfFoam', 'Foam', 'rgba(0,180,216,0.5)')}
-      {ds('waterSurfFoamBright', 'Foam Bright', 'rgba(0,180,216,0.5)')}
-      {ds('waterSurfProximity', 'Proximity', 'rgba(0,180,216,0.5)', {
-        format: v => v < 0.34 ? 'Far' : v > 0.66 ? 'Near' : 'Mid',
-      })}
-      {ds('waterSurfDepth', 'Depth', 'rgba(0,180,216,0.5)')}
-      {ds('waterSurfBody', 'Body Freq', 'rgba(0,180,216,0.5)', {
-        format: v => `${Math.round(v)} Hz`,
-      })}
-      {ds('waterSurfSpray', 'Spray Freq', 'rgba(0,180,216,0.5)', {
-        format: v => `${Math.round(v)} Hz`,
-      })}
+      <SubSection title="Surf" count={8} defaultOpen={false}>
+        {ds('waterSurfDuration', 'Wave Duration', 'rgba(0,180,216,0.5)', {
+          format: v => `${v.toFixed(1)}s`,
+        })}
+        {ds('waterSurfInterval', 'Wave Interval', 'rgba(0,180,216,0.5)', {
+          format: v => `${v.toFixed(1)}s`,
+        })}
+        {ds('waterSurfFoam', 'Foam', 'rgba(0,180,216,0.5)')}
+        {ds('waterSurfFoamBright', 'Foam Bright', 'rgba(0,180,216,0.5)')}
+        {ds('waterSurfProximity', 'Proximity', 'rgba(0,180,216,0.5)', {
+          format: v => v < 0.34 ? 'Far' : v > 0.66 ? 'Near' : 'Mid',
+        })}
+        {ds('waterSurfDepth', 'Depth', 'rgba(0,180,216,0.5)')}
+        {ds('waterSurfBody', 'Body Freq', 'rgba(0,180,216,0.5)', {
+          format: v => `${Math.round(v)} Hz`,
+        })}
+        {ds('waterSurfSpray', 'Spray Freq', 'rgba(0,180,216,0.5)', {
+          format: v => `${Math.round(v)} Hz`,
+        })}
+      </SubSection>
 
-      <div className="section-divider" />
-      <div className="param-section-label" style={{ fontSize: 11, opacity: 0.6, margin: '6px 0 2px' }}>
-        Channels (Wind↔Stream)
-      </div>
-      {ds('waterChannelsMorph', 'Morph', 'rgba(0,150,136,0.5)', {
-        format: v => v < 0.3 ? 'Stream' : v > 0.7 ? 'Wind' : 'Blend',
-      })}
-      {ds('waterChannelsSpeed', 'Speed', 'rgba(0,150,136,0.5)')}
+      <SubSection title="Channels" count={2} defaultOpen={false}>
+        {ds('waterChannelsMorph', 'Morph', 'rgba(0,150,136,0.5)', {
+          format: v => v < 0.3 ? 'Stream' : v > 0.7 ? 'Wind' : 'Blend',
+        })}
+        {ds('waterChannelsSpeed', 'Speed', 'rgba(0,150,136,0.5)')}
+      </SubSection>
     </EarthCard>
   );
 }

@@ -5,9 +5,10 @@ type OceanCardProps = {
   state: SliderState;
   ds: EarthDualSliderRenderer;
   expandedCards: Set<string>;
-  onToggleCard: (id: string) => void;
+  onToggleCard?: (id: string) => void;
   onParamChange: (key: keyof SliderState, value: number) => void;
   onSelectChange: <K extends keyof SliderState>(key: K, value: SliderState[K]) => void;
+  enabled?: boolean;
 };
 
 export function OceanCard({
@@ -17,6 +18,7 @@ export function OceanCard({
   onToggleCard,
   onParamChange,
   onSelectChange,
+  enabled,
 }: OceanCardProps) {
   return (
     <EarthCard
@@ -25,8 +27,9 @@ export function OceanCard({
       accent="#00d4ff"
       expandedCards={expandedCards}
       onToggleCard={onToggleCard}
+      enabled={enabled}
     >
-      <div className="layer-row" style={{ marginBottom: 10 }}>
+      <div className="layer-row" style={{ marginBottom: 4 }}>
         <button
           className={`layer-toggle ${state.oceanSampleEnabled ? 'on' : ''}`}
           onClick={() => onSelectChange('oceanSampleEnabled', !state.oceanSampleEnabled)}
@@ -38,11 +41,13 @@ export function OceanCard({
         <span className="layer-value">{state.oceanSampleEnabled ? 'ON' : 'OFF'}</span>
       </div>
       {ds('oceanSampleLevel', 'Waves Level', 'rgba(0,212,255,0.5)')}
+      {ds('oceanSliceDuration', 'Slice Duration', 'rgba(0,212,255,0.35)', {
+        format: (v) => `${v.toFixed(1)} s`,
+      })}
+      {ds('oceanSliceDensity', 'Slice Density', 'rgba(0,212,255,0.28)')}
 
-      <div style={{ marginTop: 12, marginBottom: 8 }}>
-        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-          Waves Filter
-        </span>
+      <div className="earth-section-label" style={{ marginTop: 6, marginBottom: 4 }}>
+        Waves Filter
       </div>
       <div className="param-row">
         <span className="param-label">Filter Type</span>

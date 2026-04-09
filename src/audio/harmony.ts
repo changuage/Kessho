@@ -45,7 +45,7 @@ export interface ProgressionState {
   enabled: boolean;
   pattern: number[];          // chord degrees (0-6), length = steps
   step: number;               // current position in pattern
-  hits: boolean[];            // Euclidean hit pattern
+  stepEnabled: boolean[];     // explicit trigger/hold per step
   phraseMultiplier: 1 | 2 | 4 | 8;
   phraseCounter: number;      // phrases since last step advance
 }
@@ -538,24 +538,6 @@ export function voiceLeadChord(
   return { midiNotes: finalNotes, frequencies };
 }
 
-// ── Euclidean Rhythm for Chord Progression (Step 6.1C) ──────────────────
-
-/**
- * Generate Euclidean rhythm pattern (boolean array).
- * Used for chord progression hit pattern.
- */
-function euclideanRhythm(steps: number, hits: number): boolean[] {
-  const pattern: boolean[] = new Array(steps).fill(false);
-  if (hits <= 0) return pattern;
-  if (hits >= steps) return new Array(steps).fill(true);
-
-  // Bjorklund algorithm
-  for (let i = 0; i < steps; i++) {
-    pattern[i] = (((i * hits) % steps) < hits);
-  }
-  return pattern;
-}
-
 // ── Resolution Arcs (Step 6.1E) ─────────────────────────────────────────
 
 /**
@@ -627,7 +609,7 @@ export interface HarmonyParams {
   chordProgressionEnabled: boolean;
   chordProgressionPattern: number[];
   chordProgressionSteps: number;
-  chordProgressionHits: number;
+  chordProgressionStepEnabled: boolean[];
   chordProgressionPhraseMultiplier: 1 | 2 | 4 | 8;
 }
 
@@ -648,17 +630,21 @@ export const DEFAULT_HARMONY_PARAMS: HarmonyParams = {
   chordProgressionEnabled: false,
   chordProgressionPattern: [0, 3, 4, 0],
   chordProgressionSteps: 4,
-  chordProgressionHits: 4,
+  chordProgressionStepEnabled: [true, true, true, true],
   chordProgressionPhraseMultiplier: 1,
 };
 
 /** Create default progression state */
 function createDefaultProgression(params: HarmonyParams): ProgressionState {
+  const steps = Math.max(1, params.chordProgressionSteps);
+  const stepEnabled = params.chordProgressionStepEnabled
+    .slice(0, steps)
+    .concat(new Array(Math.max(0, steps - params.chordProgressionStepEnabled.length)).fill(true));
   return {
     enabled: params.chordProgressionEnabled,
     pattern: params.chordProgressionPattern,
     step: 0,
-    hits: euclideanRhythm(params.chordProgressionSteps, params.chordProgressionHits),
+    stepEnabled,
     phraseMultiplier: params.chordProgressionPhraseMultiplier,
     phraseCounter: 0,
   };
@@ -707,7 +693,7 @@ export function createHarmonyState(
   return {
     scaleFamily,
     currentChord,
-    nextPhraseTime: getNextPhraseBoundary(phraseLength),
+    nextPhraseTime: phraseLength,
     phrasesUntilChange: phrasesPerChord,
     chordDegrees: currentChord.midiNotes.map((n) => n % 12),
     chordTension,
@@ -747,6 +733,7 @@ export function updateHarmonyState(
   rootNote: number = 4,
   phraseLength: number = DEFAULT_PHRASE_LENGTH,
   params?: Partial<HarmonyParams>,
+  progressionPhraseIndex: number = phraseIndex,
   isPhraseBoundary: boolean = true
 ): HarmonyState {
   const rng = createRng(`${seedMaterial}|phrase:${phraseIndex}`);
@@ -791,21 +778,26 @@ export function updateHarmonyState(
   progression.enabled = fullParams.chordProgressionEnabled;
   if (isPhraseBoundary && progression.enabled) {
     progression.pattern = fullParams.chordProgressionPattern;
-    progression.hits = euclideanRhythm(fullParams.chordProgressionSteps, fullParams.chordProgressionHits);
+    progression.stepEnabled = fullParams.chordProgressionStepEnabled
+      .slice(0, Math.max(1, fullParams.chordProgressionSteps))
+      .concat(
+        new Array(
+          Math.max(0, Math.max(1, fullParams.chordProgressionSteps) - fullParams.chordProgressionStepEnabled.length),
+        ).fill(true),
+      );
     progression.phraseMultiplier = fullParams.chordProgressionPhraseMultiplier;
 
-    // Advance progression on phrase clock
-    progression.phraseCounter++;
-    if (progression.phraseCounter >= progression.phraseMultiplier) {
-      progression.phraseCounter = 0;
-      // Advance step
-      const nextStep = (progression.step + 1) % fullParams.chordProgressionSteps;
-      progression.step = nextStep;
-      // If this is a hit, force chord change with the progression's degree
-      if (progression.hits[nextStep]) {
-        forceNewChord = true;
-        progressionDegree = progression.pattern[nextStep] ?? 0;
-      }
+    const nextStep = Math.floor(
+      Math.max(0, progressionPhraseIndex) / Math.max(1, progression.phraseMultiplier),
+    ) % Math.max(1, fullParams.chordProgressionSteps);
+    const stepChanged = nextStep !== progression.step;
+    progression.step = nextStep;
+    progression.phraseCounter = progressionPhraseIndex % Math.max(1, progression.phraseMultiplier);
+
+    // If this step is a hit, force chord change with the progression's degree
+    if (stepChanged && progression.stepEnabled[nextStep]) {
+      forceNewChord = true;
+      progressionDegree = progression.pattern[nextStep] ?? 0;
     }
   }
 
@@ -851,7 +843,7 @@ export function updateHarmonyState(
     return {
       scaleFamily,
       currentChord,
-      nextPhraseTime: getNextPhraseBoundary(phraseLength),
+      nextPhraseTime: (phraseIndex + 1) * phraseLength,
       // In sub-phrase mode, only reset the countdown on phrase boundaries
       phrasesUntilChange: isPhraseBoundary ? phrasesPerChord : state.phrasesUntilChange,
       chordDegrees: currentChord.midiNotes.map((n) => n % 12),
@@ -870,7 +862,7 @@ export function updateHarmonyState(
   // No chord change — update countdown and CoF/arc state
   return {
     ...state,
-    nextPhraseTime: getNextPhraseBoundary(phraseLength),
+    nextPhraseTime: (phraseIndex + 1) * phraseLength,
     phrasesUntilChange: isPhraseBoundary ? state.phrasesUntilChange - 1 : state.phrasesUntilChange,
     chordTension,
     scaleTension: tension,

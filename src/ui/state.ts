@@ -131,6 +131,15 @@ export function getStateValueFromSliderNumber<K extends keyof SliderState>(
  * - 'sampleHold': per-trigger random sample between min/max
  */
 export type SliderMode = 'single' | 'walk' | 'sampleHold';
+export type PhraseClockSource = 'localPhrase' | 'globalPhrase' | 'localBeat' | 'globalBeat';
+export type BeatClockSource = 'localBeat' | 'globalBeat';
+export type HarmonySyncPolicy = 'free' | 'nextPhrase' | 'restartNow';
+export type SequencerJoinPolicy = 'grid' | 'bar';
+export type RandomWalkMode = 'localBrownian' | 'globalWalk';
+export type ProgressionClockSource = 'harmony' | 'localPhrase' | 'globalPhrase';
+export type TransportPrimaryClock = 'seconds' | 'bpm' | 'decoupled';
+export type LeadRandomSource = 'lead1' | 'lead2' | 'piano';
+export type SynthEuclidSource = 'lead' | 'lead1' | 'lead2' | 'piano' | 'synth1' | 'synth2' | 'synth3' | 'synth4' | 'synth5' | 'synth6';
 
 /**
  * Serialized evolve config for preset save/load.
@@ -188,6 +197,9 @@ export interface SliderState {
   lead1DelayBSend: number;    // 0..1 - Lead 1 send into shared Delay B
   lead2DelayASend: number;    // 0..1 - Lead 2 trim into shared Delay A
   lead2DelayBSend: number;    // 0..1 - Lead 2 send into shared Delay B
+  pianoLevel: number;         // 0..1 step 0.01 - piano dry level
+  pianoDelayASend: number;    // 0..1 - Piano send into shared Delay A
+  pianoDelayBSend: number;    // 0..1 - Piano send into shared Delay B
   delayAReverbSend: number;   // 0..1 step 0.01 - how much shared Delay A goes to reverb
   drumDelayASend: number;     // 0..1 - whole drum bus send into shared Delay A
   delayAToBSend: number;      // 0..1 - shared Delay A output cross-feed into Delay B
@@ -228,7 +240,10 @@ export interface SliderState {
   chordProgressionPattern: number[];     // chord degrees (0-6), e.g. [0,3,4,0] = I,IV,V,I
   chordProgressionSteps: number;         // 2..8 pattern length
   chordProgressionHits: number;          // Euclidean hits (which steps trigger chord change)
+  chordProgressionRotation: number;      // Euclidean rotation (0..steps-1)
+  chordProgressionStepEnabled: boolean[]; // explicit on/off per progression step
   chordProgressionPhraseMultiplier: 1 | 2 | 4 | 8;  // phrases per step
+  chordProgressionClockSource: ProgressionClockSource; // Which phrase clock advances the progression
 
   // Per-engine tension overrides (6 engines × mode + value)
   padTensionMode: 'follow' | 'locked' | 'bypass';
@@ -258,6 +273,19 @@ export interface SliderState {
   synthDecay: number;         // 0.01..8 seconds
   synthSustain: number;       // 0..1 level
   synthRelease: number;       // 0.01..16 seconds
+  // Shared transport / timing infrastructure
+  transportPrimaryClock: TransportPrimaryClock; // Which transport domain is authoritative, or whether phrase seconds and BPM are independent
+  transportBarsPerPhrase: number;     // 1..16 bars per phrase when using beat-derived phrase clocks
+  transportBeatsPerBar: number;       // 2..12 beats per bar
+  harmonyClockSource: PhraseClockSource;
+  harmonySyncPolicy: HarmonySyncPolicy;
+  leadRandomClockSource: PhraseClockSource;
+  leadRandomSyncPolicy: HarmonySyncPolicy;
+  synthEuclidClockSource: BeatClockSource;
+  synthEuclidJoinPolicy: SequencerJoinPolicy;
+  drumEuclidClockSource: BeatClockSource;
+  drumEuclidJoinPolicy: SequencerJoinPolicy;
+  randomWalkMode: RandomWalkMode;
   synthVoiceMask: number;     // 1..63 binary mask for which voices play (1=voice1, 2=voice2, 4=voice3, etc)
   synthOctave: number;        // -2..+2 octave shift
 
@@ -485,6 +513,7 @@ export interface SliderState {
   // Lead Synth (Rhodes/Bell)
   leadEnabled: boolean;       // on/off toggle (master: mutes gain + gates playLeadNote)
   leadRandomEnabled: boolean; // on/off toggle for random timing mode
+  leadRandomSource: LeadRandomSource;
   leadLevel: number;          // 0..1 step 0.01
   lead1UseCustomAdsr: boolean; // when true, use lead ADSR sliders instead of preset ADSR
   lead1Attack: number;         // 0.001..2 seconds
@@ -533,6 +562,15 @@ export interface SliderState {
   lead2Hold: number;           // 0..4 seconds - how long to hold at sustain level
   lead2Release: number;        // 0.01..8 seconds
 
+  // Piano sampler
+  pianoEnabled: boolean;
+  pianoAttack: number;
+  pianoDecay: number;
+  pianoSustain: number;
+  pianoHold: number;
+  pianoRelease: number;
+  pianoReverbSend: number;
+
   leadVibratoDepth: number;     // 0..1 - vibrato depth (range in dualSliderRanges)
   leadVibratoRate: number;      // 0..1 - vibrato rate (range in dualSliderRanges)
   leadGlide: number;            // 0..1 - portamento/glide speed (range in dualSliderRanges)
@@ -552,7 +590,7 @@ export interface SliderState {
   synthEuclid1NoteMax: number;    // 36..96 MIDI note - high end of note range
   synthEuclid1Level: number;      // 0..1 velocity/level for this lane
   synthEuclid1Probability: number; // 0..1 probability of triggering each hit
-  synthEuclid1Source: 'lead' | 'lead1' | 'lead2' | 'synth1' | 'synth2' | 'synth3' | 'synth4' | 'synth5' | 'synth6';
+  synthEuclid1Source: SynthEuclidSource;
   // Lane 2
   synthEuclid2Enabled: boolean;
   synthEuclid2Preset: string;
@@ -563,7 +601,7 @@ export interface SliderState {
   synthEuclid2NoteMax: number;
   synthEuclid2Level: number;
   synthEuclid2Probability: number;
-  synthEuclid2Source: 'lead' | 'lead1' | 'lead2' | 'synth1' | 'synth2' | 'synth3' | 'synth4' | 'synth5' | 'synth6';
+  synthEuclid2Source: SynthEuclidSource;
   // Lane 3
   synthEuclid3Enabled: boolean;
   synthEuclid3Preset: string;
@@ -574,7 +612,7 @@ export interface SliderState {
   synthEuclid3NoteMax: number;
   synthEuclid3Level: number;
   synthEuclid3Probability: number;
-  synthEuclid3Source: 'lead' | 'lead1' | 'lead2' | 'synth1' | 'synth2' | 'synth3' | 'synth4' | 'synth5' | 'synth6';
+  synthEuclid3Source: SynthEuclidSource;
   // Lane 4
   synthEuclid4Enabled: boolean;
   synthEuclid4Preset: string;
@@ -585,7 +623,7 @@ export interface SliderState {
   synthEuclid4NoteMax: number;
   synthEuclid4Level: number;
   synthEuclid4Probability: number;
-  synthEuclid4Source: 'lead' | 'lead1' | 'lead2' | 'synth1' | 'synth2' | 'synth3' | 'synth4' | 'synth5' | 'synth6';
+  synthEuclid4Source: SynthEuclidSource;
   
   // Synth chord sequencer toggle (when false, synth only plays from Euclidean triggers)
   synthChordSequencerEnabled: boolean;
@@ -893,9 +931,36 @@ export interface SliderState {
   oceanReverbSend: number;       // 0..1 reverb send for waves sample, post-filter
   oceanDelayASend: number;       // 0..1 waves send into shared Delay A
   oceanDelayBSend: number;       // 0..1 waves send into shared Delay B
+  oceanSliceDuration: number;    // seconds of each waves texture slice
+  oceanSliceDensity: number;     // 0..1 overlap density
   oceanFilterType: 'lowpass' | 'bandpass' | 'highpass' | 'notch'; // filter type
   oceanFilterCutoff: number;     // 40..12000 Hz
   oceanFilterResonance: number;  // 0..1 step 0.01
+  birdsEnabled: boolean;         // Alps birds texture
+  birdsLevel: number;            // 0..1
+  birdsReverbSend: number;       // legacy per-source field (shared Nature send now used)
+  birdsDelayASend: number;       // legacy per-source field (shared Nature send now used)
+  birdsDelayBSend: number;       // legacy per-source field (shared Nature send now used)
+  birdsSliceDuration: number;    // seconds of each birds texture slice
+  birdsSliceDensity: number;     // 0..1 overlap density
+  birds2Enabled: boolean;        // Fujian birds texture
+  birds2Level: number;           // 0..1
+  birds2ReverbSend: number;      // legacy per-source field (shared Nature send now used)
+  birds2DelayASend: number;      // legacy per-source field (shared Nature send now used)
+  birds2DelayBSend: number;      // legacy per-source field (shared Nature send now used)
+  birds2SliceDuration: number;   // seconds of each birds 2 texture slice
+  birds2SliceDensity: number;    // 0..1 overlap density
+  frogsEnabled: boolean;         // Fujian frogs texture
+  frogsLevel: number;            // 0..1
+  frogsReverbSend: number;       // legacy per-source field (shared Nature send now used)
+  frogsDelayASend: number;       // legacy per-source field (shared Nature send now used)
+  frogsDelayBSend: number;       // legacy per-source field (shared Nature send now used)
+  frogsSliceDuration: number;    // seconds of each frogs texture slice
+  frogsSliceDensity: number;     // 0..1 overlap density
+  natureLevel: number;           // 0..1 shared dry master for birds + birds2 + frogs
+  natureReverbSend: number;      // 0..1 shared reverb send for birds + birds2 + frogs
+  natureDelayASend: number;      // 0..1 shared Nature send into shared Delay A
+  natureDelayBSend: number;      // 0..1 shared Nature send into shared Delay B
 
   // ─── Soundscapes (Water + Insects) ───
   waterEnabled: boolean;        // master on/off for water engine
@@ -995,8 +1060,10 @@ export interface SliderState {
   granularPad2Send: number;           // 0..1 pad 2 send to granular
   granularLead1Send: number;          // 0..1 lead 1 send to granular
   granularLead2Send: number;          // 0..1 lead 2 send to granular
+  granularPianoSend: number;          // 0..1 piano send to granular
   granularDrumSend: number;           // 0..1 drum engines send to granular
   granularWavesSend: number;          // 0..1 waves send to granular
+  granularNatureSend: number;         // 0..1 nature samples send to granular
   granularWaterSend: number;          // 0..1 water send to granular
   granularInsectsSend: number;        // 0..1 insects send to granular
 
@@ -1157,6 +1224,9 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'lead1DelayBSend',
   'lead2DelayASend',
   'lead2DelayBSend',
+  'pianoLevel',
+  'pianoDelayASend',
+  'pianoDelayBSend',
   'delayAReverbSend',
   'drumDelayASend',
   'delayAToBSend',
@@ -1181,6 +1251,31 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'masterSatTone',
   'seedWindow',
   'randomness',
+  'randomWalkSpeed',
+  'randomWalkMode',
+  'rootNote',
+  'cofDriftEnabled',
+  'cofDriftRate',
+  'cofDriftDirection',
+  'cofDriftRange',
+  'transportPrimaryClock',
+  'transportBarsPerPhrase',
+  'transportBeatsPerBar',
+  'harmonyClockSource',
+  'harmonySyncPolicy',
+  'leadRandomClockSource',
+  'leadRandomSyncPolicy',
+  'leadRandomSource',
+  'synthEuclidClockSource',
+  'synthEuclidJoinPolicy',
+  'drumEuclidClockSource',
+  'drumEuclidJoinPolicy',
+  'chordProgressionEnabled',
+  'chordProgressionPattern',
+  'chordProgressionSteps',
+  'chordProgressionStepEnabled',
+  'chordProgressionPhraseMultiplier',
+  'chordProgressionClockSource',
   'scaleMode',
   'manualScale',
   'tension',
@@ -1364,6 +1459,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'padEnabled',
   'leadEnabled',
   'leadRandomEnabled',
+  'leadRandomSource',
   'leadLevel',
   'lead1UseCustomAdsr',
   'lead1Attack',
@@ -1407,6 +1503,16 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'lead2Decay',
   'lead2Sustain',
   'lead2Release',
+  'pianoEnabled',
+  'pianoAttack',
+  'pianoDecay',
+  'pianoSustain',
+  'pianoHold',
+  'pianoRelease',
+  'pianoReverbSend',
+  'pianoLevel',
+  'pianoDelayASend',
+  'pianoDelayBSend',
   'leadVibratoDepth',
   'leadVibratoRate',
   'leadGlide',
@@ -1709,9 +1815,14 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'earthLevel',
   'oceanSampleEnabled',
   'oceanSampleLevel', 'oceanReverbSend', 'oceanDelayASend', 'oceanDelayBSend',
+  'oceanSliceDuration', 'oceanSliceDensity',
   'oceanFilterType',
   'oceanFilterCutoff',
   'oceanFilterResonance',
+  'birdsEnabled', 'birdsLevel', 'birdsReverbSend', 'birdsDelayASend', 'birdsDelayBSend', 'birdsSliceDuration', 'birdsSliceDensity',
+  'birds2Enabled', 'birds2Level', 'birds2ReverbSend', 'birds2DelayASend', 'birds2DelayBSend', 'birds2SliceDuration', 'birds2SliceDensity',
+  'frogsEnabled', 'frogsLevel', 'frogsReverbSend', 'frogsDelayASend', 'frogsDelayBSend', 'frogsSliceDuration', 'frogsSliceDensity',
+  'natureLevel', 'natureReverbSend', 'natureDelayASend', 'natureDelayBSend',
   // Soundscapes (Water + Insects)
   'waterEnabled',
   'waterPreset', 'waterMorphA', 'waterMorphB', 'waterMorph',
@@ -1751,7 +1862,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'granularReverbLPF',
   'granularOutputLPF',
   'granularDelayASend', 'granularDelayBSend',
-  'granularPad1Send', 'granularPad2Send', 'granularLead1Send', 'granularLead2Send', 'granularDrumSend', 'granularWavesSend', 'granularWaterSend', 'granularInsectsSend',
+  'granularPad1Send', 'granularPad2Send', 'granularLead1Send', 'granularLead2Send', 'granularPianoSend', 'granularDrumSend', 'granularWavesSend', 'granularNatureSend', 'granularWaterSend', 'granularInsectsSend',
   'granularV1Enabled', 'granularV1Mode', 'granularV1Slice', 'granularV1Speed', 'granularV1Reverse',
   'granularV1ScanRate',
   'granularV1Pitch', 'granularV1Attack', 'granularV1Decay', 'granularV1Blur', 'granularV1GrainOct',
@@ -1806,6 +1917,9 @@ export const DEFAULT_STATE: SliderState = {
   lead1DelayBSend: 0,
   lead2DelayASend: 1,
   lead2DelayBSend: 0,
+  pianoLevel: 0.75,
+  pianoDelayASend: 0,
+  pianoDelayBSend: 0,
   delayAReverbSend: 0.4,
   drumDelayASend: 1,
   delayAToBSend: 0,
@@ -1846,7 +1960,10 @@ export const DEFAULT_STATE: SliderState = {
   chordProgressionPattern: [0, 3, 4, 0],  // I, IV, V, I
   chordProgressionSteps: 4,
   chordProgressionHits: 4,
+  chordProgressionRotation: 0,
+  chordProgressionStepEnabled: [true, true, true, true],
   chordProgressionPhraseMultiplier: 1 as const,
+  chordProgressionClockSource: 'harmony',
 
   // Per-engine tension overrides
   padTensionMode: 'follow' as const,
@@ -1875,6 +1992,18 @@ export const DEFAULT_STATE: SliderState = {
   synthDecay: 1.0,
   synthSustain: 0.8,
   synthRelease: 12.0,
+  transportPrimaryClock: 'seconds',
+  transportBarsPerPhrase: 4,
+  transportBeatsPerBar: 4,
+  harmonyClockSource: 'globalPhrase',
+  harmonySyncPolicy: 'nextPhrase',
+  leadRandomClockSource: 'globalPhrase',
+  leadRandomSyncPolicy: 'nextPhrase',
+  synthEuclidClockSource: 'localBeat',
+  synthEuclidJoinPolicy: 'bar',
+  drumEuclidClockSource: 'localBeat',
+  drumEuclidJoinPolicy: 'bar',
+  randomWalkMode: 'localBrownian',
   synthVoiceMask: 63,  // All 6 voices (binary 111111)
   synthOctave: 0,      // No octave shift
 
@@ -2070,6 +2199,7 @@ export const DEFAULT_STATE: SliderState = {
   // Lead Synth (Rhodes/Bell)
   leadEnabled: false,
   leadRandomEnabled: false,
+  leadRandomSource: 'lead1',
   leadLevel: 0,
   lead1UseCustomAdsr: false,
   lead1Attack: 0.01,
@@ -2115,6 +2245,13 @@ export const DEFAULT_STATE: SliderState = {
   lead2Sustain: 0.3,
   lead2Hold: 0.5,
   lead2Release: 2.0,
+  pianoEnabled: false,
+  pianoAttack: 0.005,
+  pianoDecay: 0.65,
+  pianoSustain: 0.72,
+  pianoHold: 0.2,
+  pianoRelease: 1.4,
+  pianoReverbSend: 0.35,
   leadVibratoDepth: 0,
   leadVibratoRate: 0,
   leadGlide: 0,
@@ -2465,9 +2602,36 @@ export const DEFAULT_STATE: SliderState = {
   oceanReverbSend: 0.2,
   oceanDelayASend: 0,
   oceanDelayBSend: 0,
+  oceanSliceDuration: 22,
+  oceanSliceDensity: 0.38,
   oceanFilterType: 'lowpass' as const,
   oceanFilterCutoff: 8000,
   oceanFilterResonance: 0.1,
+  birdsEnabled: false,
+  birdsLevel: 0.6,
+  birdsReverbSend: 0.15,
+  birdsDelayASend: 0,
+  birdsDelayBSend: 0,
+  birdsSliceDuration: 20,
+  birdsSliceDensity: 0.45,
+  birds2Enabled: false,
+  birds2Level: 0.52,
+  birds2ReverbSend: 0.16,
+  birds2DelayASend: 0,
+  birds2DelayBSend: 0,
+  birds2SliceDuration: 20,
+  birds2SliceDensity: 0.48,
+  frogsEnabled: false,
+  frogsLevel: 0.5,
+  frogsReverbSend: 0.2,
+  frogsDelayASend: 0,
+  frogsDelayBSend: 0,
+  frogsSliceDuration: 18,
+  frogsSliceDensity: 0.52,
+  natureLevel: 1.0,
+  natureReverbSend: 0.18,
+  natureDelayASend: 0,
+  natureDelayBSend: 0,
 
   // ─── Soundscapes (Water + Insects) ───
   waterEnabled: false,
@@ -2560,8 +2724,10 @@ export const DEFAULT_STATE: SliderState = {
   granularPad2Send: 0.0,
   granularLead1Send: 0.0,
   granularLead2Send: 0.0,
+  granularPianoSend: 0.0,
   granularDrumSend: 0.0,
   granularWavesSend: 0.0,
+  granularNatureSend: 0.0,
   granularWaterSend: 0.0,
   granularInsectsSend: 0.0,
 
@@ -3076,6 +3242,15 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   lead2Sustain: { min: 0, max: 1, step: 0.01 },
   lead2Hold: { min: 0, max: 4, step: 0.01 },
   lead2Release: { min: 0.01, max: 8, step: 0.01 },
+  pianoLevel: { min: 0, max: 1, step: 0.01 },
+  pianoAttack: { min: 0.001, max: 2, step: 0.001 },
+  pianoDecay: { min: 0.01, max: 4, step: 0.01 },
+  pianoSustain: { min: 0, max: 1, step: 0.01 },
+  pianoHold: { min: 0, max: 4, step: 0.01 },
+  pianoRelease: { min: 0.01, max: 8, step: 0.01 },
+  pianoReverbSend: { min: 0, max: 1, step: 0.01 },
+  pianoDelayASend: { min: 0, max: 1, step: 0.01 },
+  pianoDelayBSend: { min: 0, max: 1, step: 0.01 },
   leadVibratoDepth: { min: 0, max: 1, step: 0.01 },
   leadVibratoRate: { min: 0, max: 1, step: 0.01 },
   leadGlide: { min: 0, max: 1, step: 0.01 },
@@ -3150,8 +3325,32 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   oceanReverbSend: { min: 0, max: 1, step: 0.01 },
   oceanDelayASend: { min: 0, max: 1, step: 0.01 },
   oceanDelayBSend: { min: 0, max: 1, step: 0.01 },
+  oceanSliceDuration: { min: 4, max: 40, step: 0.1 },
+  oceanSliceDensity: { min: 0, max: 1, step: 0.01 },
   oceanFilterCutoff: { min: 40, max: 12000, step: 10 },
   oceanFilterResonance: { min: 0, max: 1, step: 0.01 },
+  birdsLevel: { min: 0, max: 1, step: 0.01 },
+  birdsReverbSend: { min: 0, max: 1, step: 0.01 },
+  birdsDelayASend: { min: 0, max: 1, step: 0.01 },
+  birdsDelayBSend: { min: 0, max: 1, step: 0.01 },
+  birdsSliceDuration: { min: 2, max: 20, step: 0.1 },
+  birdsSliceDensity: { min: 0, max: 1, step: 0.01 },
+  birds2Level: { min: 0, max: 1, step: 0.01 },
+  birds2ReverbSend: { min: 0, max: 1, step: 0.01 },
+  birds2DelayASend: { min: 0, max: 1, step: 0.01 },
+  birds2DelayBSend: { min: 0, max: 1, step: 0.01 },
+  birds2SliceDuration: { min: 2, max: 20, step: 0.1 },
+  birds2SliceDensity: { min: 0, max: 1, step: 0.01 },
+  frogsLevel: { min: 0, max: 1, step: 0.01 },
+  frogsReverbSend: { min: 0, max: 1, step: 0.01 },
+  frogsDelayASend: { min: 0, max: 1, step: 0.01 },
+  frogsDelayBSend: { min: 0, max: 1, step: 0.01 },
+  frogsSliceDuration: { min: 2, max: 18, step: 0.1 },
+  frogsSliceDensity: { min: 0, max: 1, step: 0.01 },
+  natureLevel: { min: 0, max: 1, step: 0.01 },
+  natureReverbSend: { min: 0, max: 1, step: 0.01 },
+  natureDelayASend: { min: 0, max: 1, step: 0.01 },
+  natureDelayBSend: { min: 0, max: 1, step: 0.01 },
   // Soundscapes (Water + Insects)
   waterMorph: { min: 0, max: 1, step: 0.01 },
   waterIntensity: { min: 0, max: 1, step: 0.01 },
@@ -3220,6 +3419,9 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   cofDriftRange: { min: 1, max: 6, step: 1 },
   chordProgressionSteps: { min: 2, max: 8, step: 1 },
   chordProgressionHits: { min: 1, max: 8, step: 1 },
+  chordProgressionRotation: { min: 0, max: 7, step: 1 },
+  transportBarsPerPhrase: { min: 1, max: 16, step: 1 },
+  transportBeatsPerBar: { min: 2, max: 12, step: 1 },
 
   // Per-engine tension overrides (value range depends on mode: follow = ±0.5 offset, locked = 0..1 absolute)
   padTensionValue: { min: -0.5, max: 0.5, step: 0.01 },
@@ -3243,8 +3445,10 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   granularPad2Send: { min: 0, max: 1, step: 0.01 },
   granularLead1Send: { min: 0, max: 1, step: 0.01 },
   granularLead2Send: { min: 0, max: 1, step: 0.01 },
+  granularPianoSend: { min: 0, max: 1, step: 0.01 },
   granularDrumSend: { min: 0, max: 1, step: 0.01 },
   granularWavesSend: { min: 0, max: 1, step: 0.01 },
+  granularNatureSend: { min: 0, max: 1, step: 0.01 },
   granularWaterSend: { min: 0, max: 1, step: 0.01 },
   granularInsectsSend: { min: 0, max: 1, step: 0.01 },
   // Per-voice shared quantization (all 4 voices)
@@ -3461,8 +3665,52 @@ export function decodeStateFromUrl(search: string): SliderState | null {
         // String parameter - validate
         if (key === 'seedWindow' && (value === 'hour' || value === 'day')) {
           state.seedWindow = value;
+        } else if (key === 'randomWalkMode' && (value === 'localBrownian' || value === 'globalWalk')) {
+          state.randomWalkMode = value;
         } else if (key === 'scaleMode' && (value === 'auto' || value === 'manual')) {
           state.scaleMode = value;
+        } else if (key === 'transportPrimaryClock' && (value === 'seconds' || value === 'bpm' || value === 'decoupled')) {
+          state.transportPrimaryClock = value;
+        } else if (
+          key === 'harmonyClockSource' &&
+          (value === 'localPhrase' || value === 'globalPhrase' || value === 'localBeat' || value === 'globalBeat')
+        ) {
+          state.harmonyClockSource = value;
+        } else if (
+          key === 'leadRandomClockSource' &&
+          (value === 'localPhrase' || value === 'globalPhrase' || value === 'localBeat' || value === 'globalBeat')
+        ) {
+          state.leadRandomClockSource = value;
+        } else if (
+          key === 'synthEuclidClockSource' &&
+          (value === 'localBeat' || value === 'globalBeat')
+        ) {
+          state.synthEuclidClockSource = value;
+        } else if (
+          key === 'drumEuclidClockSource' &&
+          (value === 'localBeat' || value === 'globalBeat')
+        ) {
+          state.drumEuclidClockSource = value;
+        } else if (key === 'harmonySyncPolicy' && (value === 'free' || value === 'nextPhrase' || value === 'restartNow')) {
+          state.harmonySyncPolicy = value;
+        } else if (key === 'leadRandomSyncPolicy' && (value === 'free' || value === 'nextPhrase' || value === 'restartNow')) {
+          state.leadRandomSyncPolicy = value;
+        } else if (key === 'leadRandomSource' && (value === 'lead1' || value === 'lead2' || value === 'piano')) {
+          state.leadRandomSource = value;
+        } else if (key === 'synthEuclidJoinPolicy' && (value === 'grid' || value === 'bar')) {
+          state.synthEuclidJoinPolicy = value;
+        } else if (key === 'drumEuclidJoinPolicy' && (value === 'grid' || value === 'bar')) {
+          state.drumEuclidJoinPolicy = value;
+        } else if (
+          /^synthEuclid[1-4]Source$/.test(key) &&
+          (value === 'lead' || value === 'lead1' || value === 'lead2' || value === 'piano' || value === 'synth1' || value === 'synth2' || value === 'synth3' || value === 'synth4' || value === 'synth5' || value === 'synth6')
+        ) {
+          (state as Record<string, unknown>)[key] = value;
+        } else if (
+          key === 'chordProgressionClockSource' &&
+          (value === 'harmony' || value === 'localPhrase' || value === 'globalPhrase')
+        ) {
+          state.chordProgressionClockSource = value;
         } else if (key === 'manualScale' && SCALE_FAMILIES.some((s) => s.name === value)) {
           state.manualScale = value;
         } else if (key === 'reverbEngine' && (value === 'algorithmic' || value === 'convolution')) {
@@ -3565,6 +3813,8 @@ export function decodeStateFromUrl(search: string): SliderState | null {
           state.leadEnabled = value === 'true';
         } else if (key === 'leadRandomEnabled') {
           state.leadRandomEnabled = value === 'true';
+        } else if (key === 'pianoEnabled') {
+          state.pianoEnabled = value === 'true';
         } else if (
           key === 'granularV1TempoSync' ||
           key === 'granularV2TempoSync' ||
@@ -3617,6 +3867,12 @@ export function decodeStateFromUrl(search: string): SliderState | null {
           state.synthEuclid4Preset = value;
         } else if (key === 'oceanSampleEnabled') {
           state.oceanSampleEnabled = value === 'true';
+        } else if (key === 'birdsEnabled') {
+          state.birdsEnabled = value === 'true';
+        } else if (key === 'birds2Enabled') {
+          state.birds2Enabled = value === 'true';
+        } else if (key === 'frogsEnabled') {
+          state.frogsEnabled = value === 'true';
         }
       }
     }
@@ -3944,9 +4200,56 @@ export function migratePreset(preset: any): SavedPreset {
     }
   }
 
-  // ═══ Remove dead BPM clock source fields ═══
-  delete state.chordProgressionClockSource;
-  delete state.chordProgressionBarsPerStep;
+  // ═══ Migrate older chord progression transport fields ═══
+  if (typeof (preset as Record<string, unknown>).chordProgressionBarsPerStep === 'number'
+      && typeof state.chordProgressionPhraseMultiplier !== 'number') {
+    const barsPerStep = Number((preset as Record<string, unknown>).chordProgressionBarsPerStep);
+    state.chordProgressionPhraseMultiplier = (barsPerStep <= 1 ? 1 : barsPerStep <= 2 ? 2 : barsPerStep <= 4 ? 4 : 8) as 1 | 2 | 4 | 8;
+  }
+  const progressionStepCountRaw = Number(state.chordProgressionSteps ?? DEFAULT_STATE.chordProgressionSteps);
+  const progressionStepCount = Number.isFinite(progressionStepCountRaw)
+    ? Math.max(2, Math.min(8, Math.round(progressionStepCountRaw)))
+    : DEFAULT_STATE.chordProgressionSteps;
+  state.chordProgressionSteps = progressionStepCount;
+
+  const progressionPattern = Array.isArray(state.chordProgressionPattern)
+    ? state.chordProgressionPattern
+        .map((value: unknown) => {
+          const numericValue = Number(value);
+          return Number.isFinite(numericValue)
+            ? Math.max(0, Math.min(6, Math.round(numericValue)))
+            : 0;
+        })
+        .slice(0, progressionStepCount)
+    : [];
+  state.chordProgressionPattern = progressionPattern.concat(
+    DEFAULT_STATE.chordProgressionPattern.slice(progressionPattern.length, progressionStepCount),
+  );
+
+  if (!Array.isArray((state as Record<string, unknown>).chordProgressionStepEnabled)) {
+    const hitsRaw = Number((preset as Record<string, unknown>).chordProgressionHits ?? state.chordProgressionHits ?? DEFAULT_STATE.chordProgressionHits);
+    const rotationRaw = Number((preset as Record<string, unknown>).chordProgressionRotation ?? state.chordProgressionRotation ?? DEFAULT_STATE.chordProgressionRotation);
+    const hits = Number.isFinite(hitsRaw) ? Math.max(0, Math.min(progressionStepCount, Math.round(hitsRaw))) : DEFAULT_STATE.chordProgressionHits;
+    const rotation = Number.isFinite(rotationRaw) ? Math.max(0, Math.round(rotationRaw)) : DEFAULT_STATE.chordProgressionRotation;
+    const enabled = new Array(progressionStepCount).fill(false);
+    if (hits >= progressionStepCount) {
+      enabled.fill(true);
+    } else if (hits > 0) {
+      const step = progressionStepCount / hits;
+      for (let i = 0; i < hits; i++) {
+        const index = ((Math.floor(i * step) + rotation) % progressionStepCount + progressionStepCount) % progressionStepCount;
+        enabled[index] = true;
+      }
+    }
+    state.chordProgressionStepEnabled = enabled;
+  } else {
+    state.chordProgressionStepEnabled = state.chordProgressionStepEnabled
+      .map((value: unknown) => Boolean(value))
+      .slice(0, progressionStepCount)
+      .concat(
+        new Array(Math.max(0, progressionStepCount - state.chordProgressionStepEnabled.length)).fill(true),
+      );
+  }
 
   // ═══ Evolve configs: migrate intensity → evolution if present ═══
   let drumEvolveConfigs = preset.drumEvolveConfigs as SerializedEvolveConfig[] | undefined;

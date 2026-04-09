@@ -1,7 +1,7 @@
 /* ══════════════════════════════════════════════════════════════════
    Reverb Page Styles
    Scoped under .reverb-root
-   Matches Kessho Synth/Drum/Granular/Earth aesthetics
+   Matches Kessho Granular/Delay aesthetics (section-card pattern)
    ══════════════════════════════════════════════════════════════════ */
 
 /* ══ Design Tokens ══ */
@@ -24,6 +24,8 @@
   --accent-mod: #f59e0b;
   --accent-green: #10b981;
   --accent-blue: #3b82f6;
+  --accent-pink: #f472b6;
+  --accent-teal: #06b6d4;
   --radius-sm: 6px;
   --radius-md: 8px;
   --radius-lg: 12px;
@@ -41,18 +43,75 @@
   color: #e0e0e0;
 }
 
+/* ══ Global bar (matches granular-global-bar) ══ */
+.reverb-root .reverb-global-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(15, 25, 40, 0.95);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  margin-bottom: 8px;
+}
+.reverb-root .reverb-title {
+  font-size: var(--font-md);
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: 0.3px;
+  flex: 1;
+}
+.reverb-root .reverb-enable-btn {
+  padding: 3px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-medium);
+  background: rgba(30, 30, 40, 0.6);
+  color: var(--text-muted);
+  font-size: var(--font-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.reverb-root .reverb-enable-btn.on {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.3), rgba(139, 92, 246, 0.15));
+  border-color: var(--accent-reverb);
+  color: var(--accent-reverb);
+}
+.reverb-root .reverb-freeze-btn {
+  padding: 3px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-medium);
+  background: rgba(30, 30, 40, 0.6);
+  color: var(--text-muted);
+  font-size: var(--font-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.reverb-root .reverb-freeze-btn.frozen {
+  background: linear-gradient(135deg, rgba(59,130,246,0.4), rgba(59,130,246,0.15));
+  border-color: #3b82f6;
+  color: #60a5fa;
+  animation: reverb-freeze-pulse 2s infinite ease-in-out;
+}
+@keyframes reverb-freeze-pulse {
+  0%, 100% { box-shadow: 0 0 4px rgba(59,130,246,0.2); }
+  50%      { box-shadow: 0 0 10px rgba(59,130,246,0.5); }
+}
+
 /* ── Two-column layout ── */
 .reverb-root .reverb-container {
   max-width: 1200px;
   margin: 0 auto;
   display: flex;
-  gap: 12px;
+  gap: 10px;
   align-items: flex-start;
   flex-wrap: wrap;
 }
 
 .reverb-root .reverb-left {
-  flex: 0 0 460px;
+  flex: 0 0 420px;
   min-width: 0;
   max-width: 100%;
 }
@@ -63,6 +122,13 @@
   max-width: 100%;
 }
 
+.reverb-root .reverb-right-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  align-items: start;
+}
+
 @media (max-width: 900px) {
   .reverb-root .reverb-left,
   .reverb-root .reverb-right {
@@ -70,115 +136,229 @@
     min-width: 0;
     max-width: 100%;
   }
+
+  .reverb-root .reverb-right-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
-/* ── Card ── */
-.reverb-root .reverb-card {
+/* ── Section Card (matches granular-section-card — NO border-left accent) ── */
+.reverb-root .reverb-section-card {
   background: var(--bg-surface);
-  border: 1px solid var(--border-accent);
-  border-left: 3px solid var(--sc, #888);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   overflow: hidden;
-  transition: border-color 0.15s, box-shadow 0.2s;
-  margin-bottom: 10px;
-  padding: 0;
-}
-.reverb-root .reverb-card.expanded {
-  border-color: var(--sc, var(--border-accent));
-  box-shadow: 0 0 12px rgba(165,196,212,0.08);
+  margin-bottom: 8px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
 }
 
-/* ── Card Header ── */
-.reverb-root .reverb-card-header {
+/* Per-card border colour variants (subtle, like granular) */
+.reverb-root .reverb-preset-card     { border-color: rgba(139, 92, 246, 0.16); }
+.reverb-root .reverb-core-card       { border-color: rgba(139, 92, 246, 0.18); }
+.reverb-root .reverb-modulation-card { border-color: rgba(245, 158, 11, 0.18); }
+.reverb-root .reverb-tone-card       { border-color: rgba(167, 139, 250, 0.16); }
+.reverb-root .reverb-effects-card    { border-color: rgba(244, 114, 182, 0.16); }
+.reverb-root .reverb-visualizer-card { border-color: rgba(100, 150, 200, 0.2); }
+.reverb-root .reverb-spatial-card    { border-color: rgba(52, 211, 153, 0.16); }
+.reverb-root .reverb-freeze-card     { border-color: rgba(59, 130, 246, 0.18); }
+
+/* ── Section Head (matches granular-section-head) ── */
+.reverb-root .reverb-section-head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
+  justify-content: space-between;
   gap: 8px;
-  padding: 6px 10px;
-  user-select: none;
-  cursor: pointer;
-  background: rgba(255,255,255,0.02);
+  padding: 9px 12px 8px;
+  background: rgba(255,255,255,0.035);
+  border-bottom: 1px solid rgba(255,255,255,0.08);
 }
-.reverb-root .reverb-card-header:hover {
-  background: rgba(255,255,255,0.04);
-}
-.reverb-root .rc-name {
-  font-size: 0.7rem;
+.reverb-root .reverb-section-title {
+  font-size: 0.8rem;
   font-weight: 700;
-  color: var(--sc, #ccc);
-  white-space: nowrap;
-  flex: 1;
+  color: var(--text-primary);
+  letter-spacing: 0.3px;
 }
-.reverb-root .rc-chevron {
-  font-size: 0.55rem;
-  color: var(--text-muted);
-  transition: transform 0.2s;
-  flex-shrink: 0;
-}
-
-/* When expanded, show separator between header and body */
-.reverb-root .reverb-card.expanded .reverb-card-header {
-  border-bottom: 1px solid rgba(255,255,255,0.05);
+.reverb-root .reverb-section-note {
+  font-size: 0.6rem;
+  color: var(--text-dim);
+  line-height: 1.3;
+  text-align: right;
 }
 
-/* ── Card Body ── */
-.reverb-root .reverb-card-body {
-  padding: 10px 12px;
+/* ── Section Body ── */
+.reverb-root .reverb-section-body {
+  padding: 10px 12px 12px;
+}
+
+/* ── Preset card body & meta (matches granular-preset pattern) ── */
+.reverb-root .reverb-preset-body {
+  padding: 10px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.reverb-root .reverb-preset-toolbar {
+  width: 100%;
+}
+.reverb-root .reverb-preset-meta {
+  margin: 0;
+  padding: 0.65rem 0.8rem 0.75rem;
+  border: 1px solid rgba(255,255,255,0.09);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.02));
+}
+.reverb-root .reverb-preset-description {
+  color: rgba(255,255,255,0.92);
+  font-size: 0.83rem;
+  line-height: 1.35;
 }
 
 /* ── Subsection label ── */
 .reverb-root .reverb-subsection {
-  margin-top: 12px;
+  margin-top: 10px;
   margin-bottom: 4px;
   font-size: 11px;
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
+.reverb-root .reverb-subsection:first-child { margin-top: 0; }
 
-/* ── Preset buttons ── */
-.reverb-root .reverb-preset-grid {
+/* ── Slider grids (pairs / triples) ── */
+.reverb-root .reverb-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 8px;
+}
+.reverb-root .reverb-grid-3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 4px 8px;
+}
+
+.reverb-root .reverb-grid-2 > * {
+  min-width: 0;
+}
+
+.reverb-root .reverb-select-wrap {
+  min-width: 0;
+}
+
+.reverb-root .reverb-freeze-row {
+  margin-bottom: 10px;
+}
+
+/* ── Compact toggle button (matches delay-toggle-btn) ── */
+.reverb-root .reverb-toggle-btn {
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-medium);
+  background: rgba(30, 30, 40, 0.6);
+  color: var(--text-muted);
+  font-size: var(--font-xs);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.reverb-root .reverb-toggle-btn.on {
+  background: rgba(139, 92, 246, 0.3);
+  border-color: var(--accent-reverb);
+  color: #fff;
+}
+.reverb-root .reverb-toggle-btn.freeze-on {
+  background: rgba(59, 130, 246, 0.35);
+  border-color: var(--accent-blue);
+  color: #fff;
+}
+
+/* ── Enable/bypass inline toggle ── */
+.reverb-root .reverb-inline-toggle {
   display: flex;
-  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 0;
+}
+.reverb-root .reverb-inline-toggle-label {
+  font-size: var(--font-sm);
+  color: var(--text-secondary);
+}
+
+/* ── Mode rows/buttons (match granular Free/Tempo buttons) ── */
+.reverb-root .reverb-mode-row {
+  display: flex;
   gap: 4px;
+}
+
+.reverb-root .reverb-mode-row-wrap {
+  flex-wrap: wrap;
+}
+
+.reverb-root .reverb-mode-btn {
+  flex: 1;
+  padding: 4px 0;
+  font-size: var(--font-xs);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: 1px solid var(--border-subtle);
+  background: rgba(30, 30, 40, 0.6);
+  color: var(--text-muted);
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.reverb-root .reverb-mode-btn.active {
+  font-weight: bold;
+  color: #fff;
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.24), rgba(139, 92, 246, 0.08));
+  border-color: var(--accent-reverb);
+}
+
+.reverb-root .reverb-mode-btn.reverb-mode-btn-freeze.active {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.3), rgba(59, 130, 246, 0.1));
+  border-color: var(--accent-blue);
+}
+
+.reverb-root .reverb-mode-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ── Visualiser wrapper ── */
+.reverb-root .reverb-envelope-canvas-wrap {
+  width: 100%;
+  height: 140px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  background: #0e1420;
   margin-bottom: 8px;
 }
-.reverb-root .reverb-preset-btn {
-  padding: 5px 10px;
-  border-radius: 4px;
-  border: none;
-  cursor: pointer;
-  font-size: 11px;
-  background: var(--bg-control);
-  color: #d1d5db;
-  transition: all 0.15s;
-}
-.reverb-root .reverb-preset-btn:hover {
-  background: rgba(99, 102, 241, 0.3);
+
+.reverb-root .reverb-visualizer-card .reverb-envelope-canvas-wrap {
+  margin-bottom: 0;
 }
 
-/* ── Toggle button ── */
-.reverb-root .reverb-toggle {
-  width: 100%;
-  padding: 10px;
-  border-radius: var(--radius-sm);
-  border: none;
-  cursor: pointer;
-  font-weight: bold;
-  transition: all 0.2s;
+.reverb-root .reverb-visualizer-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
 }
-.reverb-root .reverb-toggle.active {
-  background: linear-gradient(135deg, #10b981, #059669);
-  color: white;
-}
-.reverb-root .reverb-toggle.inactive {
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--text-secondary);
-}
-.reverb-root .reverb-toggle.freeze-on {
-  background: linear-gradient(135deg, #3b82f6, #2563eb);
-  color: white;
-}
-.reverb-root .reverb-toggle.freeze-off {
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--text-secondary);
+
+.reverb-root .reverb-viz-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.035);
+  color: rgba(240,244,255,0.78);
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }

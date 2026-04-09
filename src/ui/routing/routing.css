@@ -120,6 +120,23 @@
   padding: 0 12px;
 }
 
+.routing-root .routing-matrix-corner-button {
+  appearance: none;
+  -webkit-appearance: none;
+  justify-content: space-between;
+  width: 100%;
+  padding: 8px 12px;
+  cursor: pointer;
+  user-select: none;
+  font: inherit;
+  text-align: left;
+}
+
+.routing-root .routing-matrix-corner-button:hover {
+  border-color: rgba(165, 196, 212, 0.22);
+  background: rgba(255, 255, 255, 0.04);
+}
+
 .routing-root .routing-matrix-header-button {
   appearance: none;
   -webkit-appearance: none;
@@ -171,12 +188,40 @@
   font-weight: 600;
 }
 
+.routing-root .routing-matrix-rowlabel-button {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+}
+
+.routing-root .routing-matrix-rowlabel-button.is-toggleable {
+  cursor: pointer;
+}
+
+.routing-root .routing-matrix-rowlabel-button.is-toggleable:hover {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.routing-root .routing-matrix-rowlabel.source-off {
+  background: rgba(255, 255, 255, 0.018);
+  color: rgba(224, 224, 224, 0.64);
+  opacity: 0.78;
+}
+
 .routing-root .routing-matrix-rowdot {
   width: 8px;
   height: 8px;
   border-radius: 999px;
   flex-shrink: 0;
   box-shadow: 0 0 10px rgba(255, 255, 255, 0.12);
+}
+
+.routing-root .routing-matrix-rowdot.is-off {
+  background: rgba(255, 255, 255, 0.18) !important;
+  box-shadow: none;
 }
 
 .routing-root .routing-matrix-cell {
@@ -211,6 +256,21 @@
 
 .routing-root .routing-matrix-cell.level-col {
   border-left: 2px solid color-mix(in srgb, var(--row-accent, #a5c4d4) 32%, transparent);
+}
+
+.routing-root .routing-matrix-cell.source-off {
+  background: rgba(255, 255, 255, 0.02);
+  border-color: rgba(255, 255, 255, 0.06);
+  opacity: 0.78;
+}
+
+.routing-root .routing-matrix-cell.source-off.editable:hover {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.026);
+}
+
+.routing-root .routing-matrix-cell.source-off.level-col {
+  border-left-color: rgba(255, 255, 255, 0.14);
 }
 
 .routing-root .routing-matrix-cell.self,

@@ -124,6 +124,33 @@ export function applyPreset(
     newState.oceanSampleEnabled = false;
   }
   if (
+    newState.birdsLevel === 0 &&
+    (newState.natureReverbSend ?? 0) === 0 &&
+    (newState.natureDelayASend ?? 0) === 0 &&
+    (newState.natureDelayBSend ?? 0) === 0 &&
+    (newState.granularNatureSend ?? 0) === 0
+  ) {
+    newState.birdsEnabled = false;
+  }
+  if (
+    newState.birds2Level === 0 &&
+    (newState.natureReverbSend ?? 0) === 0 &&
+    (newState.natureDelayASend ?? 0) === 0 &&
+    (newState.natureDelayBSend ?? 0) === 0 &&
+    (newState.granularNatureSend ?? 0) === 0
+  ) {
+    newState.birds2Enabled = false;
+  }
+  if (
+    newState.frogsLevel === 0 &&
+    (newState.natureReverbSend ?? 0) === 0 &&
+    (newState.natureDelayASend ?? 0) === 0 &&
+    (newState.natureDelayBSend ?? 0) === 0 &&
+    (newState.granularNatureSend ?? 0) === 0
+  ) {
+    newState.frogsEnabled = false;
+  }
+  if (
     newState.synthLevel === 0 &&
     newState.pad1ReverbSend === 0 &&
     (newState.pad1DelayASend ?? 0) === 0 &&
