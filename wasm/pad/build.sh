@@ -26,6 +26,8 @@ EXPORTS="[
   '_pad_get_reverb_send_ptr',
   '_pad_get_prefader_pad1_ptr',
   '_pad_get_prefader_pad2_ptr',
+  '_pad_get_postfader_pad1_ptr',
+  '_pad_get_postfader_pad2_ptr',
   '_pad_process_block',
   '_pad_note_on',
   '_pad_note_off',

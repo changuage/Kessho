@@ -269,6 +269,10 @@ export class SharedDelayBusA {
     this.granularSendGain.connect(target);
   }
 
+  getDirectOutputNode(): GainNode {
+    return this.directGain;
+  }
+
   private sampleInputEnvelope(): number {
     this.inputAnalyser.getFloatTimeDomainData(this.analyserBuffer);
     let peak = 0;
@@ -481,6 +485,10 @@ export class SharedDelayBusB {
 
   connectDelayAInput(target: AudioNode): void {
     this.delayASendGain.connect(target);
+  }
+
+  getDirectOutputNode(): GainNode {
+    return this.directGain;
   }
 
   update(params: DelayBusBParams, now: number, smoothTime: number): void {

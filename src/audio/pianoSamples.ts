@@ -3,6 +3,14 @@ export type PianoSampleVariant = 'regular' | 'short';
 export const PIANO_SAMPLE_ROOT = 'Piano';
 export const PIANO_BASE_MIDI = 21;
 export const PIANO_SAMPLE_COUNT = 64;
+export const MANUAL_PIANO_KEYBOARD_SEMITONE_COUNT = 18;
+
+const MANUAL_PIANO_PRIORITY_OCTAVES = [3, 4, 2, 5] as const;
+
+export function getPianoSampleMidi(index: number): number {
+  const safeIndex = Math.max(1, Math.min(PIANO_SAMPLE_COUNT, Math.round(index)));
+  return PIANO_BASE_MIDI + safeIndex - 1;
+}
 
 export function getNearestPianoSample(midiNote: number): { index: number; sampleMidi: number } {
   const clampedMidi = Math.max(
@@ -27,4 +35,21 @@ export function getPianoSamplePath(variant: PianoSampleVariant, index: number): 
 export function frequencyToMidiNote(frequency: number): number {
   const safeFrequency = Math.max(frequency, 1e-6);
   return 69 + 12 * Math.log2(safeFrequency / 440);
+}
+
+export function getManualPianoPrioritySampleIndices(): number[] {
+  const seen = new Set<number>();
+  const indices: number[] = [];
+
+  for (const octave of MANUAL_PIANO_PRIORITY_OCTAVES) {
+    const baseMidi = 12 * (octave + 1);
+    for (let semitone = 0; semitone < MANUAL_PIANO_KEYBOARD_SEMITONE_COUNT; semitone += 1) {
+      const { index } = getNearestPianoSample(baseMidi + semitone);
+      if (seen.has(index)) continue;
+      seen.add(index);
+      indices.push(index);
+    }
+  }
+
+  return indices;
 }

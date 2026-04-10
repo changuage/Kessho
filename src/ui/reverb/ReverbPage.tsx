@@ -443,7 +443,7 @@ export interface ReverbPageProps {
 
 export default function ReverbPage({
   state,
-  isMobile: _isMobile,
+  isMobile,
   onParamChange,
   onSelectChange,
   onStateChange,
@@ -453,6 +453,7 @@ export default function ReverbPage({
 }: ReverbPageProps) {
   const [setupPresetName, setSetupPresetName] = useState<string | undefined>();
   const [setupPresetDescription, setSetupPresetDescription] = useState<string>('');
+  const [visualizerEnabled, setVisualizerEnabled] = useState(() => !isMobile);
 
   const handleSetupPresetLoad = useCallback((entry: PresetEntry, _data: Record<string, unknown>) => {
     setSetupPresetName(entry.name);
@@ -612,32 +613,45 @@ export default function ReverbPage({
                 <span className="reverb-viz-pill">Pre {Math.round(state.predelay)}ms</span>
                 <span className="reverb-viz-pill">Tail {Math.round(state.reverbDecay * 100)}%</span>
               </div>
-              <ReverbEnvelopeCanvas
-                engine={state.reverbEngine}
-                quality={state.reverbQuality}
-                decay={state.reverbDecay}
-                size={state.reverbSize}
-                diffusion={state.reverbDiffusion}
-                modulation={state.reverbModulation}
-                predelay={state.predelay}
-                damping={state.damping}
-                width={state.width}
-                shimmer={state.reverbShimmer}
-                shimmerPitch={state.reverbShimmerPitch}
-                reverse={state.reverbReverse}
-                reverseLength={state.reverbReverseLength}
-                earlyReflections={state.reverbEarlyReflections}
-                airAbsorption={state.reverbAirAbsorption}
-                dampLow={state.reverbDampLow}
-                dampHigh={state.reverbDampHigh}
-                inputTone={state.reverbInputTone}
-                warp={state.reverbWarp}
-                saturationMode={state.reverbSaturationMode}
-                frozen={!!(state.spectralFreezeEnabled && state.spectralFreezeActive)}
-                enabled={state.reverbEnabled}
-                chorusDepth={state.reverbChorusDepth}
-                slowModDepth={state.reverbSlowModDepth}
-              />
+              {visualizerEnabled ? (
+                <ReverbEnvelopeCanvas
+                  engine={state.reverbEngine}
+                  quality={state.reverbQuality}
+                  decay={state.reverbDecay}
+                  size={state.reverbSize}
+                  diffusion={state.reverbDiffusion}
+                  modulation={state.reverbModulation}
+                  predelay={state.predelay}
+                  damping={state.damping}
+                  width={state.width}
+                  shimmer={state.reverbShimmer}
+                  shimmerPitch={state.reverbShimmerPitch}
+                  reverse={state.reverbReverse}
+                  reverseLength={state.reverbReverseLength}
+                  earlyReflections={state.reverbEarlyReflections}
+                  airAbsorption={state.reverbAirAbsorption}
+                  dampLow={state.reverbDampLow}
+                  dampHigh={state.reverbDampHigh}
+                  inputTone={state.reverbInputTone}
+                  warp={state.reverbWarp}
+                  saturationMode={state.reverbSaturationMode}
+                  frozen={!!(state.spectralFreezeEnabled && state.spectralFreezeActive)}
+                  enabled={state.reverbEnabled}
+                  chorusDepth={state.reverbChorusDepth}
+                  slowModDepth={state.reverbSlowModDepth}
+                />
+              ) : (
+                <div className="reverb-visualizer-meta" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                  <span>Mobile default keeps the tail visualizer off to reduce layout and canvas work.</span>
+                  <button
+                    type="button"
+                    className="reverb-mode-btn active"
+                    onClick={() => setVisualizerEnabled(true)}
+                  >
+                    Enable Visualizer
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 

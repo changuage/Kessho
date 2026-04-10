@@ -11,6 +11,8 @@ import type { DrumVoiceType } from '../../audio/drumSynth';
 import type { DrumStepOverrides } from '../../audio/drumSeqTypes';
 import type { ClockDivision } from '../../audio/drumSeqTypes';
 import { normalizeNoteDegreeOffset } from '../../audio/drumSeqTypes';
+import { audioEngine } from '../../audio/engine';
+import { getPresetNames as getDrumPresetNames } from '../../audio/drumPresets';
 import { DRUM_VOICES as VOICE_CONFIG, DRUM_VOICE_ORDER } from '../../audio/drumVoiceConfig';
 import { useEuclideanSequencer, type EvolveConfig, type StepOverrides, type SubLaneKind, type SubLaneState } from '../sequencer/useEuclideanSequencer';
 import DrumPanel from './DrumPanel';
@@ -39,6 +41,24 @@ const KEY_TO_VOICE: Record<string, DrumVoiceType> = {
   a: 'sub', s: 'kick', d: 'click', f: 'beepHi', g: 'beepLo', h: 'noise', j: 'membrane',
 };
 
+type DrumKeyboardLane = 'trigger' | 'pitch' | 'expression' | 'morph' | 'distance';
+const DRUM_KEYBOARD_LANES: readonly DrumKeyboardLane[] = ['trigger', 'pitch', 'expression', 'morph', 'distance'] as const;
+
+function makeDefaultKeyboardLaneSteps(): Record<DrumKeyboardLane, number[]> {
+  return {
+    trigger: [0, 0, 0, 0],
+    pitch: [0, 0, 0, 0],
+    expression: [0, 0, 0, 0],
+    morph: [0, 0, 0, 0],
+    distance: [0, 0, 0, 0],
+  };
+}
+
+function getDrumKeyboardLane(openLane: string): DrumKeyboardLane {
+  if (openLane === 'pitch' || openLane === 'expression' || openLane === 'morph' || openLane === 'distance') return openLane;
+  return 'trigger';
+}
+
 export interface DrumPageProps {
   state: SliderState;
   isMobile: boolean;
@@ -48,7 +68,6 @@ export interface DrumPageProps {
   onStateChange?: (newState: SliderState) => void;
   togglePanel: (id: string) => void;
   sliderProps: (paramKey: keyof SliderState) => Record<string, unknown>;
-  getPresetNames: (voice: DrumVoiceType) => string[];
   triggerVoice: (voice: DrumVoiceType) => void;
   getAnalyserNode: (voice: DrumVoiceType) => AnalyserNode | undefined;
   resetEvolveHome: (laneIdx: number) => void;
@@ -57,13 +76,6 @@ export interface DrumPageProps {
   CollapsiblePanelComponent: React.ComponentType<Record<string, unknown>>;
   editingVoice: string | null;
   onToggleEditing: (voice: string) => void;
-  triggeredVoices: Record<string, boolean>;
-  /** Playhead positions from audio engine callback */
-  playheads: number[];
-  /** Hit counts per lane from audio engine (for sub-lane playheads) */
-  hitCounts: number[];
-  /** Evolve flash state from audio engine callback */
-  evolveFlashing?: boolean[];
   /** Called when evolve configs change, so parent can sync to audio engine */
   onEvolveConfigsChange?: (configs: EvolveConfig[]) => void;
   /** Initial evolve configs to restore across tab switches / preset loads */
@@ -103,7 +115,6 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     onSelectChange,
     togglePanel,
     sliderProps,
-    getPresetNames,
     triggerVoice,
     getAnalyserNode,
     resetEvolveHome,
@@ -112,10 +123,6 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     CollapsiblePanelComponent,
     editingVoice,
     onToggleEditing,
-    triggeredVoices,
-    playheads,
-    hitCounts,
-    evolveFlashing,
     onEvolveConfigsChange,
     onStepOverridesChange,
     initialStepOverrides,
@@ -135,6 +142,15 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
 
   const [diceIntensity, setDiceIntensity] = useState(0.5);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [keyboardLaneSteps, setKeyboardLaneSteps] = useState<Record<DrumKeyboardLane, number[]>>(() => makeDefaultKeyboardLaneSteps());
+  const [playheads, setPlayheads] = useState<number[]>([0, 0, 0, 0]);
+  const [hitCounts, setHitCounts] = useState<number[]>([0, 0, 0, 0]);
+  const [evolveFlashing, setEvolveFlashing] = useState<boolean[]>([false, false, false, false]);
+  const [triggeredVoices, setTriggeredVoices] = useState<Record<string, boolean>>({});
+  const leftShiftHeldRef = useRef(false);
+  const zHeldRef = useRef(false);
+  const drumTriggerTimersRef = useRef<Record<string, number | null>>({});
+  const evolveFlashTimersRef = useRef<Array<number | null>>([null, null, null, null]);
 
   const announceDrumLevelHelp = useCallback(() => {
     announceSlider('drumLevel', { label: 'Level' });
@@ -195,6 +211,78 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
   useEffect(() => {
     onViewModeChange?.(seq.viewMode);
   }, [seq.viewMode, onViewModeChange]);
+
+  useEffect(() => {
+    let lastDrumStep = 0;
+    audioEngine.setDrumStepPositionCallback((nextSteps: number[], nextHitCounts: number[]) => {
+      if (document.visibilityState !== 'visible') return;
+      const now = performance.now();
+      if (now - lastDrumStep < 120) return;
+      lastDrumStep = now;
+      setPlayheads(nextSteps);
+      setHitCounts(nextHitCounts);
+    });
+    return () => {
+      audioEngine.setDrumStepPositionCallback(() => {});
+    };
+  }, []);
+
+  useEffect(() => {
+    audioEngine.setDrumEuclidEvolveTriggerCallback((laneIndex: number) => {
+      if (document.visibilityState !== 'visible') return;
+      if (laneIndex < 0 || laneIndex > 3) return;
+      setEvolveFlashing(prev => prev.map((value, index) => (index === laneIndex ? true : value)));
+
+      const existingTimer = evolveFlashTimersRef.current[laneIndex];
+      if (existingTimer) {
+        window.clearTimeout(existingTimer);
+      }
+
+      evolveFlashTimersRef.current[laneIndex] = window.setTimeout(() => {
+        setEvolveFlashing(prev => prev.map((value, index) => (index === laneIndex ? false : value)));
+        evolveFlashTimersRef.current[laneIndex] = null;
+      }, 180);
+    });
+
+    return () => {
+      audioEngine.setDrumEuclidEvolveTriggerCallback(() => {});
+      evolveFlashTimersRef.current.forEach((timer, laneIndex) => {
+        if (timer) {
+          window.clearTimeout(timer);
+          evolveFlashTimersRef.current[laneIndex] = null;
+        }
+      });
+    };
+  }, []);
+
+  useEffect(() => {
+    const lastTriggerTime: Record<string, number> = {};
+    audioEngine.setDrumTriggerCallback((voice: string, _velocity: number) => {
+      if (document.visibilityState !== 'visible') return;
+      const now = performance.now();
+      if (now - (lastTriggerTime[voice] || 0) < 80) return;
+      lastTriggerTime[voice] = now;
+      setTriggeredVoices(prev => ({ ...prev, [voice]: true }));
+      const existingTimer = drumTriggerTimersRef.current[voice];
+      if (existingTimer) {
+        window.clearTimeout(existingTimer);
+      }
+      drumTriggerTimersRef.current[voice] = window.setTimeout(() => {
+        setTriggeredVoices(prev => ({ ...prev, [voice]: false }));
+        drumTriggerTimersRef.current[voice] = null;
+      }, 120);
+    });
+
+    return () => {
+      audioEngine.setDrumTriggerCallback(() => {});
+      Object.values(drumTriggerTimersRef.current).forEach((timer) => {
+        if (timer) {
+          window.clearTimeout(timer);
+        }
+      });
+      drumTriggerTimersRef.current = {};
+    };
+  }, []);
 
   // Sync evolve configs to audio engine when they change
   const evolveConfigsRef = useRef(seq.evolveConfigs);
@@ -267,25 +355,276 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
   }, [seq.swings, onSwingsChange]);
 
   const activeSeq = seq.activeSeq;
+  const activeKeyboardLane = getDrumKeyboardLane(seq.openLane);
+  const activeKeyboardStep = keyboardLaneSteps[activeKeyboardLane][seq.activeTab] ?? 0;
+  const activeTriggerKeyboardStep = keyboardLaneSteps.trigger[seq.activeTab] ?? 0;
+
+  const getDrumKeyboardLaneStepCount = useCallback((laneIdx: number, lane: DrumKeyboardLane) => {
+    if (lane === 'trigger') return seq.sequencerModels[laneIdx]?.trigger.steps ?? 0;
+    return seq.subLaneStates[laneIdx]?.[lane]?.steps ?? 0;
+  }, [seq.sequencerModels, seq.subLaneStates]);
+
+  const selectDrumKeyboardStep = useCallback((laneIdx: number, lane: DrumKeyboardLane, step: number) => {
+    const stepCount = getDrumKeyboardLaneStepCount(laneIdx, lane);
+    if (stepCount <= 0) return;
+    const normalizedStep = ((step % stepCount) + stepCount) % stepCount;
+    seq.setActiveTab(laneIdx);
+    setKeyboardLaneSteps((prev) => ({
+      ...prev,
+      [lane]: prev[lane].map((current, index) => index === laneIdx ? normalizedStep : current),
+    }));
+  }, [getDrumKeyboardLaneStepCount, seq]);
+
+  const moveDrumKeyboardStep = useCallback((laneIdx: number, lane: DrumKeyboardLane, direction: 1 | -1) => {
+    const stepCount = getDrumKeyboardLaneStepCount(laneIdx, lane);
+    if (stepCount <= 0) return;
+    const currentStep = keyboardLaneSteps[lane][laneIdx] ?? 0;
+    selectDrumKeyboardStep(laneIdx, lane, currentStep + direction);
+  }, [getDrumKeyboardLaneStepCount, keyboardLaneSteps, selectDrumKeyboardStep]);
+
+  useEffect(() => {
+    setKeyboardLaneSteps((prev) => {
+      const next = makeDefaultKeyboardLaneSteps();
+      DRUM_KEYBOARD_LANES.forEach((lane) => {
+        next[lane] = prev[lane].map((step, laneIdx) => {
+          const stepCount = getDrumKeyboardLaneStepCount(laneIdx, lane);
+          if (stepCount <= 0) return 0;
+          if (!Number.isFinite(step) || step < 0 || step >= stepCount) return 0;
+          return step;
+        });
+      });
+      return next;
+    });
+  }, [getDrumKeyboardLaneStepCount]);
+
+  const cycleDrumKeyboardLane = useCallback((direction: 1 | -1) => {
+    const currentLane = getDrumKeyboardLane(seq.openLane);
+    const currentIndex = DRUM_KEYBOARD_LANES.indexOf(currentLane);
+    const nextLane = DRUM_KEYBOARD_LANES[(currentIndex + direction + DRUM_KEYBOARD_LANES.length) % DRUM_KEYBOARD_LANES.length] ?? 'trigger';
+    seq.setOpenLane(nextLane);
+    seq.setViewMode('detail');
+  }, [seq.openLane, seq.setOpenLane, seq.setViewMode]);
+
+  const cycleDrumKeyboardSequencer = useCallback((direction: 1 | -1) => {
+    const nextLaneIdx = (seq.activeTab + direction + LANE_CONFIGS.length) % LANE_CONFIGS.length;
+    seq.setActiveTab(nextLaneIdx);
+    seq.setViewMode('detail');
+  }, [seq]);
+
+  const adjustDrumKeyboardLaneSteps = useCallback((direction: 1 | -1) => {
+    if (activeKeyboardLane === 'trigger') {
+      const currentSteps = seq.sequencerModels[seq.activeTab]?.trigger.steps ?? 16;
+      const nextSteps = Math.max(2, Math.min(16, currentSteps + direction));
+      if (nextSteps === currentSteps) return;
+      seq.setParam(seq.activeTab, 'Steps', nextSteps);
+      selectDrumKeyboardStep(seq.activeTab, 'trigger', Math.min(activeKeyboardStep, nextSteps - 1));
+      return;
+    }
+
+    const currentSteps = seq.subLaneStates[seq.activeTab]?.[activeKeyboardLane]?.steps ?? 0;
+    const nextSteps = Math.max(1, Math.min(16, currentSteps + direction));
+    if (nextSteps === currentSteps) return;
+    seq.setSubLaneSteps(seq.activeTab, activeKeyboardLane, nextSteps);
+    selectDrumKeyboardStep(seq.activeTab, activeKeyboardLane, Math.min(activeKeyboardStep, nextSteps - 1));
+  }, [activeKeyboardLane, activeKeyboardStep, selectDrumKeyboardStep, seq]);
+
+  const toggleDrumKeyboardLane = useCallback(() => {
+    if (activeKeyboardLane === 'trigger') {
+      seq.toggleTriggerStep(seq.activeTab, activeKeyboardStep);
+      return;
+    }
+    seq.toggleSubLaneEnabled(seq.activeTab, activeKeyboardLane);
+  }, [activeKeyboardLane, activeKeyboardStep, seq]);
+
+  const adjustDrumKeyboardLaneValue = useCallback((direction: 1 | -1, coarse: boolean) => {
+    if (activeKeyboardLane === 'trigger') {
+      const current = activeSeq.trigger.probability[activeKeyboardStep] ?? 1;
+      const delta = coarse ? 0.2 : 0.05;
+      const next = Math.max(0, Math.min(1, Math.round((current + direction * delta) * 20) / 20));
+      seq.setStepProbability(seq.activeTab, activeKeyboardStep, next);
+      return;
+    }
+
+    if (activeKeyboardLane === 'pitch') {
+      const current = seq.stepOverrides.pitch[seq.activeTab]?.[activeKeyboardStep]
+        ?? activeSeq.pitch.offsets[activeKeyboardStep % Math.max(1, activeSeq.pitch.offsets.length)]
+        ?? 0;
+      const delta = coarse ? 4 : 1;
+      seq.changeStepValue(seq.activeTab, 'pitch', activeKeyboardStep, current + direction * delta);
+      return;
+    }
+
+    if (activeKeyboardLane === 'expression') {
+      const current = seq.stepOverrides.expression[seq.activeTab]?.[activeKeyboardStep]
+        ?? activeSeq.expression.velocities[activeKeyboardStep % Math.max(1, activeSeq.expression.velocities.length)]
+        ?? 1;
+      const delta = coarse ? 0.2 : 0.05;
+      const next = Math.max(0, Math.min(1, Math.round((current + direction * delta) * 20) / 20));
+      seq.changeStepValue(seq.activeTab, 'expression', activeKeyboardStep, next);
+      return;
+    }
+
+    if (activeKeyboardLane === 'morph') {
+      const current = seq.stepOverrides.morph[seq.activeTab]?.[activeKeyboardStep]
+        ?? activeSeq.morph.values[activeKeyboardStep % Math.max(1, activeSeq.morph.values.length)]
+        ?? 0.5;
+      const delta = coarse ? 0.1 : 0.025;
+      const next = Math.max(0, Math.min(1, Math.round((current + direction * delta) * 40) / 40));
+      seq.changeStepValue(seq.activeTab, 'morph', activeKeyboardStep, next);
+      return;
+    }
+
+    const current = seq.stepOverrides.distance[seq.activeTab]?.[activeKeyboardStep]
+      ?? activeSeq.distance.values[activeKeyboardStep % Math.max(1, activeSeq.distance.values.length)]
+      ?? 0.5;
+    const delta = coarse ? 0.2 : 0.05;
+    const next = Math.max(0, Math.min(1, Math.round((current + direction * delta) * 20) / 20));
+    seq.changeStepValue(seq.activeTab, 'distance', activeKeyboardStep, next);
+  }, [activeKeyboardLane, activeKeyboardStep, activeSeq, seq]);
 
   // ── Keyboard shortcuts ──
   const triggerVoiceRef = useRef(triggerVoice);
   triggerVoiceRef.current = triggerVoice;
 
+  const cycleDrumViewMode = useCallback((direction: 1 | -1) => {
+    const modes: Array<'simple' | 'detail' | 'overview'> = ['simple', 'detail', 'overview'];
+    const currentIndex = modes.indexOf(seq.viewMode);
+    const nextMode = modes[(currentIndex + direction + modes.length) % modes.length] ?? 'detail';
+    seq.setViewMode(nextMode);
+  }, [seq.viewMode, seq.setViewMode]);
+
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     const tag = (e.target as HTMLElement)?.tagName;
     if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
     if (e.repeat) return;
+
+    if (e.code === 'ShiftLeft') {
+      leftShiftHeldRef.current = true;
+      return;
+    }
+    if (e.shiftKey && e.code === 'KeyZ') {
+      e.preventDefault();
+      seq.toggleMute(seq.activeTab);
+      return;
+    }
+    if (e.shiftKey && e.code === 'KeyX') {
+      e.preventDefault();
+      seq.toggleSolo(seq.activeTab);
+      return;
+    }
+    if (e.code === 'KeyX') {
+      e.preventDefault();
+      seq.toggleTriggerStep(seq.activeTab, activeTriggerKeyboardStep);
+      return;
+    }
+    if (e.code === 'KeyZ') {
+      zHeldRef.current = true;
+      return;
+    }
+
+    if (e.code === 'Comma') {
+      e.preventDefault();
+      cycleDrumViewMode(-1);
+      return;
+    }
+    if (e.code === 'Period') {
+      e.preventDefault();
+      cycleDrumViewMode(1);
+      return;
+    }
+    if (e.code === 'Tab') {
+      e.preventDefault();
+      toggleDrumKeyboardLane();
+      return;
+    }
+
+    if (leftShiftHeldRef.current && e.code === 'ArrowLeft') {
+      e.preventDefault();
+      cycleDrumKeyboardSequencer(-1);
+      return;
+    }
+    if (leftShiftHeldRef.current && e.code === 'ArrowRight') {
+      e.preventDefault();
+      cycleDrumKeyboardSequencer(1);
+      return;
+    }
+    if (leftShiftHeldRef.current && e.code === 'ArrowUp') {
+      e.preventDefault();
+      cycleDrumKeyboardLane(-1);
+      return;
+    }
+    if (leftShiftHeldRef.current && e.code === 'ArrowDown') {
+      e.preventDefault();
+      cycleDrumKeyboardLane(1);
+      return;
+    }
+
+    if (e.code === 'ArrowLeft') {
+      e.preventDefault();
+      if (zHeldRef.current) {
+        adjustDrumKeyboardLaneSteps(-1);
+        return;
+      }
+      moveDrumKeyboardStep(seq.activeTab, activeKeyboardLane, -1);
+      return;
+    }
+    if (e.code === 'ArrowRight') {
+      e.preventDefault();
+      if (zHeldRef.current) {
+        adjustDrumKeyboardLaneSteps(1);
+        return;
+      }
+      moveDrumKeyboardStep(seq.activeTab, activeKeyboardLane, 1);
+      return;
+    }
+    if (e.code === 'ArrowUp') {
+      e.preventDefault();
+      adjustDrumKeyboardLaneValue(1, !zHeldRef.current);
+      return;
+    }
+    if (e.code === 'ArrowDown') {
+      e.preventDefault();
+      adjustDrumKeyboardLaneValue(-1, !zHeldRef.current);
+      return;
+    }
+    if (e.code === 'Space') {
+      e.preventDefault();
+      onSelectChange('drumEuclidMasterEnabled' as keyof SliderState, !(state.drumEuclidMasterEnabled as boolean));
+      return;
+    }
+
     const voice = KEY_TO_VOICE[e.key?.toLowerCase()];
     if (!voice) return;
     e.preventDefault();
     triggerVoiceRef.current(voice);
+  }, [
+    activeKeyboardLane,
+    adjustDrumKeyboardLaneValue,
+    adjustDrumKeyboardLaneSteps,
+    activeTriggerKeyboardStep,
+    cycleDrumKeyboardLane,
+    cycleDrumKeyboardSequencer,
+    cycleDrumViewMode,
+    moveDrumKeyboardStep,
+    onSelectChange,
+    seq.activeTab,
+    state.drumEuclidMasterEnabled,
+    toggleDrumKeyboardLane,
+  ]);
+
+  const handleKeyUp = useCallback((e: KeyboardEvent) => {
+    if (e.code === 'ShiftLeft') leftShiftHeldRef.current = false;
+    if (e.code === 'KeyZ') zHeldRef.current = false;
   }, []);
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleKeyDown]);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [handleKeyDown, handleKeyUp]);
 
   return (
     <div className="drum-root">
@@ -364,7 +703,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
               togglePanel={togglePanel}
               onParamChange={onParamChange as (key: keyof SliderState, value: SliderState[keyof SliderState]) => void}
               sliderProps={sliderProps}
-              getPresetNames={getPresetNames}
+              getPresetNames={getDrumPresetNames}
               triggerVoice={triggerVoice}
               SliderComponent={SliderComponent}
               CollapsiblePanelComponent={CollapsiblePanelComponent}
@@ -759,6 +1098,8 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                     color={activeSeq.color}
                     playhead={seq.playheads[seq.activeTab] ?? 0}
                     hitCount={seq.hitCounts[seq.activeTab] ?? 0}
+                    selectedStep={activeKeyboardLane === 'trigger' ? activeKeyboardStep : null}
+                    selectedStepLabel="⌖"
                     onToggleTriggerStep={(step) => seq.toggleTriggerStep(seq.activeTab, step)}
                     onSetProbability={(step, value) => seq.setStepProbability(seq.activeTab, step, value)}
                     onResetProbability={(step) => seq.resetStepProbability(seq.activeTab, step)}
@@ -804,6 +1145,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                           invertFill={laneKind === 'expression'}
                           enabled={subState?.enabled ?? false}
                           expanded={seq.openLane === laneKind}
+                          selectedStep={activeKeyboardLane === laneKind ? activeKeyboardStep : null}
                           onClick={() => seq.setOpenLane(seq.openLane === laneKind ? 'trigger' : laneKind)}
                           onToggleEnabled={() => seq.toggleSubLaneEnabled(seq.activeTab, laneKind)}
                         />
@@ -816,6 +1158,8 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                               color={laneColor}
                               playhead={seq.playheads[seq.activeTab] ?? 0}
                               hitCount={seq.hitCounts[seq.activeTab] ?? 0}
+                              selectedStep={activeKeyboardLane === laneKind ? activeKeyboardStep : null}
+                              selectedStepLabel="⌖"
                               enabled={subState?.enabled ?? false}
                               direction={subState?.direction ?? 'forward'}
                               onToggleEnabled={() => seq.toggleSubLaneEnabled(seq.activeTab, laneKind)}

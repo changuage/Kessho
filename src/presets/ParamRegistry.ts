@@ -1013,6 +1013,7 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   granularDelayTime:      { level: 1, scope: 'clockedSpace' },
   granularDelayFilter:    { level: 1, scope: 'clockedSpace' },
   granularDelayVibrato:   { level: 1, scope: 'clockedSpace' },
+  granularDelayMix:       { level: 1, scope: 'clockedSpace' },
 
   // ═══════════════════════════════════════════════════════════════════════
   // L2: Delay Kit (cross-feed routing + master saturation)

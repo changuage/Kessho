@@ -570,10 +570,11 @@
 .global-root .utility-btn-row {
   display: flex;
   gap: 6px;
+  flex-wrap: wrap;
 }
 
 .global-root .utility-toggle-btn {
-  flex: 1;
+  flex: 1 1 148px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -607,11 +608,12 @@
 .global-root .utility-toggle-hint {
   font-size: 0.55rem;
   color: var(--text-dim);
+  text-align: center;
 }
 
 .global-root .utility-stem-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 4px;
 }
 
@@ -625,6 +627,8 @@
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s, color 0.15s;
   text-align: center;
+  white-space: normal;
+  line-height: 1.25;
 }
 .global-root .utility-stem-btn:hover:not(:disabled) {
   background: rgba(255,255,255,0.04);
@@ -698,6 +702,22 @@
   flex-wrap: wrap;
   gap: 4px;
   align-items: center;
+}
+
+@media (max-width: 480px) {
+  .global-root .utility-btn-row {
+    flex-direction: column;
+  }
+
+  .global-root .utility-stem-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 360px) {
+  .global-root .utility-stem-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .global-root .utility-dur-btn {

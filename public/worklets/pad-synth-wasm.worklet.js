@@ -198,6 +198,8 @@ class PadSynthWasmProcessor extends AudioWorkletProcessor {
     this.reverbPtr = 0;
     this.prefaderPad1Ptr = 0;
     this.prefaderPad2Ptr = 0;
+    this.postfaderPad1Ptr = 0;
+    this.postfaderPad2Ptr = 0;
     this.ready = false;
 
     this.perfEnabled = false;
@@ -263,6 +265,8 @@ class PadSynthWasmProcessor extends AudioWorkletProcessor {
       this.reverbPtr = this.wasm.pad_get_reverb_send_ptr();
       this.prefaderPad1Ptr = this.wasm.pad_get_prefader_pad1_ptr();
       this.prefaderPad2Ptr = this.wasm.pad_get_prefader_pad2_ptr();
+      this.postfaderPad1Ptr = this.wasm.pad_get_postfader_pad1_ptr();
+      this.postfaderPad2Ptr = this.wasm.pad_get_postfader_pad2_ptr();
 
       this.ready = true;
       this.port.postMessage({ type: 'wasmReady' });
@@ -414,10 +418,12 @@ class PadSynthWasmProcessor extends AudioWorkletProcessor {
 
     try {
       const perfStart = this.perfEnabled ? _perfNow() : 0;
-      const output = outputs[0];        // main stereo
-      const reverbOut = outputs[1];     // reverb send stereo
+      const output = outputs[0];            // main stereo
+      const reverbOut = outputs[1];         // reverb send stereo
       const prefaderPad1Out = outputs[2];   // Pad 1 pre-fader stereo
       const prefaderPad2Out = outputs[3];   // Pad 2 pre-fader stereo
+      const postfaderPad1Out = outputs[4];  // Pad 1 post-level stereo
+      const postfaderPad2Out = outputs[5];  // Pad 2 post-level stereo
       const blockSize = output[0]?.length || 128;
 
       this.wasm.pad_process_block(blockSize);
@@ -463,6 +469,26 @@ class PadSynthWasmProcessor extends AudioWorkletProcessor {
         for (let i = 0; i < blockSize; i++) {
           pfL[i] = this.sanitizeSample('process-prefader-pad2', heap[pfOffset + i * 2]);
           if (pfR !== pfL) pfR[i] = this.sanitizeSample('process-prefader-pad2', heap[pfOffset + i * 2 + 1]);
+        }
+      }
+
+      if (postfaderPad1Out && postfaderPad1Out[0]) {
+        const postOffset = this.postfaderPad1Ptr >> 2;
+        const postL = postfaderPad1Out[0];
+        const postR = postfaderPad1Out[1] || postL;
+        for (let i = 0; i < blockSize; i++) {
+          postL[i] = this.sanitizeSample('process-postfader-pad1', heap[postOffset + i * 2]);
+          if (postR !== postL) postR[i] = this.sanitizeSample('process-postfader-pad1', heap[postOffset + i * 2 + 1]);
+        }
+      }
+
+      if (postfaderPad2Out && postfaderPad2Out[0]) {
+        const postOffset = this.postfaderPad2Ptr >> 2;
+        const postL = postfaderPad2Out[0];
+        const postR = postfaderPad2Out[1] || postL;
+        for (let i = 0; i < blockSize; i++) {
+          postL[i] = this.sanitizeSample('process-postfader-pad2', heap[postOffset + i * 2]);
+          if (postR !== postL) postR[i] = this.sanitizeSample('process-postfader-pad2', heap[postOffset + i * 2 + 1]);
         }
       }
 

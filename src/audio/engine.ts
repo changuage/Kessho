@@ -37,6 +37,7 @@ import {
 import type { SynthEvolveConfig, SynthEvolveState, SynthLaneOverrides } from './synthSeqEvolve';
 import { computeGranularMacroModel } from './granularMacroModel';
 import { SharedDelayBusA, SharedDelayBusB, delayNoteToSeconds } from './delayBuses';
+import { isIOSLikeDevice, isMobileDevice } from '../platform';
 import {
   EarthTexturePlayer,
   type EarthTexturePlayerDebugSnapshot,
@@ -44,8 +45,10 @@ import {
 import {
   type PianoSampleVariant,
   frequencyToMidiNote,
+  getManualPianoPrioritySampleIndices,
   getNearestPianoSample,
   getPianoSamplePath,
+  getPianoSampleMidi,
   PIANO_SAMPLE_COUNT,
 } from './pianoSamples';
 import {
@@ -56,10 +59,68 @@ import {
   getNextBarBoundaryCtxTime,
   getNextBeatGridCtxTime,
   getPhraseDurationForClockSource,
+  sampleGlobalWalkPosition,
   getTimeUntilNextBoundaryWall,
   getTransportMetrics,
   resolveProgressionPhraseClockSource,
 } from './transport';
+import type { StemRecordTrackId } from './recordingTracks';
+import { getIndexedDelayDivisionValue, getStateValueFromSliderNumber, quantize, type IndexedDelayDivisionKey, type SliderState } from '../ui/state';
+export interface RecordableTrackSource {
+  node: AudioNode | null;
+  outputIndex?: number;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function cloneSignatureSnapshot(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(cloneSignatureSnapshot);
+  }
+  if (isPlainObject(value)) {
+    const snapshot: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(value)) {
+      snapshot[key] = cloneSignatureSnapshot(entry);
+    }
+    return snapshot;
+  }
+  return value;
+}
+
+function areSignatureSnapshotsEqual(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (Array.isArray(left) && Array.isArray(right)) {
+    if (left.length !== right.length) return false;
+    for (let index = 0; index < left.length; index += 1) {
+      if (!areSignatureSnapshotsEqual(left[index], right[index])) return false;
+    }
+    return true;
+  }
+  if (isPlainObject(left) && isPlainObject(right)) {
+    const leftKeys = Object.keys(left);
+    const rightKeys = Object.keys(right);
+    if (leftKeys.length !== rightKeys.length) return false;
+    for (const key of leftKeys) {
+      if (!(key in right)) return false;
+      if (!areSignatureSnapshotsEqual(left[key], right[key])) return false;
+    }
+    return true;
+  }
+  return false;
+}
+
+function areBooleanArraysEqual(left: boolean[] | undefined, right: boolean[] | undefined): boolean {
+  if (left === right) return true;
+  const safeLeft = left ?? [];
+  const safeRight = right ?? [];
+  if (safeLeft.length !== safeRight.length) return false;
+  for (let index = 0; index < safeLeft.length; index += 1) {
+    if (safeLeft[index] !== safeRight[index]) return false;
+  }
+  return true;
+}
 
 type PerfMetrics = {
   avgPercent: number;
@@ -81,6 +142,23 @@ type EarthTextureRuntime = {
 type ActivePianoVoice = {
   source: AudioBufferSourceNode;
   gain: GainNode;
+};
+
+type RuntimeWalkRange = {
+  min: number;
+  max: number;
+};
+
+type RuntimeWalkState = {
+  position: number;
+  velocity: number;
+};
+
+type BootCapabilities = {
+  reverb: boolean;
+  spectralFreeze: boolean;
+  soundscapes: boolean;
+  granular: boolean;
 };
 
 export type ManualSynthSource = 'pad1' | 'pad2' | 'lead1' | 'lead2' | 'piano';
@@ -151,8 +229,8 @@ function pickChordWeightedNote(
   if (rng() < chordBias) return chordTones[Math.floor(rng() * chordTones.length)]!;
   return passingTones[Math.floor(rng() * passingTones.length)]!;
 }
-import { getIndexedDelayDivisionValue, type IndexedDelayDivisionKey, type SliderState } from '../ui/state';
 import { getPadPreset, morphPadPresets, PAD_PRESET_PARAM_KEYS } from './padPresets';
+import { applyMorphToState, DrumMorphManager, updateAutoMorph, VOICE_MORPH_KEYS } from './drumMorph';
 import {
   type Lead4opFMPreset,
   type Lead4opFMMorphedParams,
@@ -162,6 +240,7 @@ import {
   DEFAULT_SOFT_RHODES,
   DEFAULT_GAMELAN,
 } from './lead4opfm';
+import { morphWaterPresets, WATER_MORPH_PARAM_KEYS } from './waterPresets';
 
 type GranularVoiceMode = SliderState['granularV1Mode'];
 type GranularGrainShape = NonNullable<SliderState['granularShape']>;
@@ -253,6 +332,14 @@ const PAD1_TO_PAD2_ENGINE: Record<string, string> = {
 
 const PAD1_MORPH_HOLD_KEYS = new Set<string>(PAD_PRESET_PARAM_KEYS);
 const PAD2_MORPH_HOLD_KEYS = new Set<string>(Object.values(PAD1_TO_PAD2_ENGINE));
+const DRUM_AUTO_MORPH_VOICES: DrumVoiceType[] = ['sub', 'kick', 'click', 'beepHi', 'beepLo', 'noise', 'membrane'];
+
+function clampUnitInterval(value: number | undefined): number {
+  const safeValue = Number.isFinite(value) ? (value as number) : 0;
+  if (safeValue <= 0) return 0;
+  if (safeValue >= 1) return 1;
+  return safeValue;
+}
 const PAD1_TRIGGER_HOLD_KEYS = new Set<string>([
   ...PAD1_MORPH_HOLD_KEYS,
   'padMorph',
@@ -301,6 +388,8 @@ const padSynthWasmWorkletUrl = getWorkletUrl('pad-synth-wasm.worklet.js');
 const leadFmWasmWorkletUrl = getWorkletUrl('lead-fm-wasm.worklet.js');
 const drumSynthWasmWorkletUrl = getWorkletUrl('drum-synth-wasm.worklet.js');
 const GRANULAR_WORKLET_DISPATCH_INTERVAL_MS = 16;
+const RUNTIME_RANDOM_WALK_INTERVAL_MS = 100;
+const PIANO_SAMPLE_CACHE_LIMIT_PER_VARIANT = 24;
 
 /**
  * Single source of truth for per-engine output scaling.
@@ -457,6 +546,7 @@ export class AudioEngine {
   private lastMasterSatMode: 'clean' | 'tape' | 'tube' | null = null;
   private mediaStreamDest: MediaStreamAudioDestinationNode | null = null;
   private voices: Voice[] = [];
+  private voicesStarted = false;
   private reverbNode: AudioWorkletNode | null = null;
   private reverbOutputGain: GainNode | null = null;
 
@@ -599,11 +689,21 @@ export class AudioEngine {
   private leadWasmLevelGain: GainNode | null = null;  // WASM lead dry-path level (FX sends remain independent)
   private leadWasmLead2LevelGain: GainNode | null = null;  // WASM lead 2 dry-path level
   private pianoReverbSend: GainNode | null = null;
-  private pianoLoadPromise: Promise<void> | null = null;
   private readonly pianoBuffers: { regular: Map<number, AudioBuffer>; short: Map<number, AudioBuffer> } = {
     regular: new Map(),
     short: new Map(),
   };
+  private readonly pianoBufferPromises: { regular: Map<number, Promise<AudioBuffer | null>>; short: Map<number, Promise<AudioBuffer | null>> } = {
+    regular: new Map(),
+    short: new Map(),
+  };
+  private readonly pianoBufferLastUsed: { regular: Map<number, number>; short: Map<number, number> } = {
+    regular: new Map(),
+    short: new Map(),
+  };
+  private pianoPriorityWarmupPromise: Promise<void> | null = null;
+  private pianoPriorityWarmupGeneration = 0;
+  private pianoBufferUseSequence = 0;
   private readonly activePianoVoices = new Set<ActivePianoVoice>();
   private lastPad2VoiceAssign = 0;                    // track for re-routing
   private granularWriteHeadPosition = 0;     // 0-1 for UI
@@ -700,6 +800,7 @@ export class AudioEngine {
   private currentSeed = 0;
   private currentBucket = '';
   private sliderState: SliderState | null = null;
+  private sourceSliderState: SliderState | null = null;
   private _sliderStateJsonCache = '';
   private _sliderStateJsonDirty = true;
   private lastHardness = -1;  // Track to avoid unnecessary saturation curve updates
@@ -720,8 +821,18 @@ export class AudioEngine {
   private rng: (() => number) | null = null;
   private isRunning = false;
   private isStarting = false; // true while start() is loading worklets — prevents updateParams teardown
+  private graphBootstrapped = false;
+  private bootCapabilities: BootCapabilities = {
+    reverb: false,
+    spectralFreeze: false,
+    soundscapes: false,
+    granular: false,
+  };
+  private forceHardGraphTeardown = false;
+  private graphRebuildPromise: Promise<void> | null = null;
   private _applyParamsDirty = false;  // Dirty flag for RAF-batched applyParams
   private _applyParamsRaf: number | null = null;  // RAF handle for batched applyParams
+  private _stateChangeNotifyRaf: number | null = null;
   private seedLocked = false; // When true, don't recompute seed on param changes (for morphing)
   private isMobile = false; // Detected in createAudioGraph, used for CPU-saving defaults
 
@@ -734,7 +845,7 @@ export class AudioEngine {
   private _prevSfDecay = 0;
   private _prevSfPhaseJitter = 0;
   private _sfParamsInitialized = false;
-  private _messageSignatures = new Map<string, string>();
+  private _messageSignatures = new Map<string, unknown>();
 
   private currentFilterFreq = 1000;  // Current filter frequency for UI display
   private currentLfoValue = 0;       // Current LFO 1 output (-1..+1 after depth) for UI
@@ -752,11 +863,34 @@ export class AudioEngine {
   private onDrumEuclidEvolveTrigger: ((laneIndex: number) => void) | null = null;
   private onDrumStepPositionChange: ((steps: number[], hitCounts: number[]) => void) | null = null;
   private leadMorphTimer: number | null = null;
+  private autoMorphTimer: number | null = null;
+  private runtimeRandomWalkTimer: number | null = null;
+  private runtimeWalkRanges: Partial<Record<string, RuntimeWalkRange>> = {};
+  private runtimeWalkStates = new Map<string, RuntimeWalkState>();
+  private runtimeWalkPositions: Record<string, number> = {};
+  private drumAutoMorphManager = new DrumMorphManager();
+  private drumAutoMorphValues: Record<DrumVoiceType, number> = {
+    sub: 0,
+    kick: 0,
+    click: 0,
+    beepHi: 0,
+    beepLo: 0,
+    noise: 0,
+    membrane: 0,
+  };
+  private padAutoMorphStates: {
+    pad1: { phase: number; direction: 1 | -1 };
+    pad2: { phase: number; direction: 1 | -1 };
+  } = {
+    pad1: { phase: 0, direction: 1 },
+    pad2: { phase: 0, direction: 1 },
+  };
 
   // CPU performance monitoring (per-worklet % reported ~1Hz)
   private perfMonitorEnabled = false;
   private perfData: Record<string, PerfMetrics> = {};
   private onPerfUpdate: ((data: Record<string, PerfMetrics>) => void) | null = null;
+  private onRuntimeWalkPositionsChange: ((positions: Record<string, number>) => void) | null = null;
   // Lead morph random walk state (per-lead, momentum-based)
   private leadMorphWalkStates: {
     lead1: { position: number; velocity: number; initialized: boolean };
@@ -969,6 +1103,66 @@ export class AudioEngine {
       }
     }
     this.cleanupPadHeldOverrides(ranges);
+  }
+
+  setRuntimeWalkRanges(ranges: Partial<Record<string, RuntimeWalkRange>>) {
+    const nextRanges: Partial<Record<string, RuntimeWalkRange>> = {};
+    for (const [key, range] of Object.entries(ranges)) {
+      if (!range) continue;
+      nextRanges[key] = { min: range.min, max: range.max };
+      if (!this.runtimeWalkStates.has(key)) {
+        this.runtimeWalkStates.set(key, {
+          position: Math.random(),
+          velocity: (Math.random() - 0.5) * 0.02,
+        });
+      }
+    }
+
+    for (const key of Array.from(this.runtimeWalkStates.keys())) {
+      if (!(key in nextRanges)) {
+        this.runtimeWalkStates.delete(key);
+      }
+    }
+
+    this.runtimeWalkRanges = nextRanges;
+    this.emitRuntimeWalkPositions(true);
+    this.syncRuntimeRandomWalk();
+    if (this.sourceSliderState) {
+      this.updateParams(this.sourceSliderState);
+    }
+  }
+
+  setRuntimeWalkPositionsCallback(callback: ((positions: Record<string, number>) => void) | null) {
+    this.onRuntimeWalkPositionsChange = callback;
+    if (callback) {
+      callback({ ...this.runtimeWalkPositions });
+    }
+  }
+
+  private emitRuntimeWalkPositions(force = false): void {
+    const nextPositions: Record<string, number> = {};
+    for (const key of Object.keys(this.runtimeWalkRanges)) {
+      nextPositions[key] = this.runtimeWalkStates.get(key)?.position ?? 0.5;
+    }
+
+    let changed = force;
+    if (!changed) {
+      const prevKeys = Object.keys(this.runtimeWalkPositions);
+      const nextKeys = Object.keys(nextPositions);
+      changed = prevKeys.length !== nextKeys.length;
+      if (!changed) {
+        for (const key of nextKeys) {
+          if (Math.abs((this.runtimeWalkPositions[key] ?? 0.5) - nextPositions[key]!) > 0.0005) {
+            changed = true;
+            break;
+          }
+        }
+      }
+    }
+    if (!changed) return;
+
+    this.runtimeWalkPositions = nextPositions;
+    this.onRuntimeWalkPositionsChange?.({ ...nextPositions });
   }
 
   private isPadTriggerDrivenKey(key: string): boolean {
@@ -1382,10 +1576,11 @@ export class AudioEngine {
     this.sendLeadFmWasmDelay(state);
   }
 
-  private async prepareManualSynthChain(state: SliderState, source: ManualSynthSource): Promise<void> {
+  private async prepareManualSynthChain(state: SliderState, source: ManualSynthSource, focusMidi?: number): Promise<void> {
     if (this.ctx?.state === 'closed') {
       this.resetIndependentSynthContextState();
       this.ctx = null;
+      this.graphBootstrapped = false;
       this.transportAnchors = null;
     }
 
@@ -1404,7 +1599,7 @@ export class AudioEngine {
     }
 
     if (source === 'piano') {
-      await this.ensurePianoSamplesLoaded();
+      await this.ensurePianoFocusSampleLoaded(focusMidi);
     }
 
     if (this.ctx?.state === 'suspended') {
@@ -1520,6 +1715,80 @@ export class AudioEngine {
     this.lastMasterSatMode = null;
     this.lastPad2VoiceAssign = 0;
     this.voices = [];
+    this.voicesStarted = false;
+    this.resetBootCapabilities();
+    this.resetWorkletParamCaches();
+  }
+
+  private resetBootCapabilities(): void {
+    this.bootCapabilities = {
+      reverb: false,
+      spectralFreeze: false,
+      soundscapes: false,
+      granular: false,
+    };
+  }
+
+  private resetWorkletParamCaches(): void {
+    this._prevReverbParams = null;
+    this._prevSfFreeze = false;
+    this._prevSfSlushy = false;
+    this._prevSfSpeed = 0.3;
+    this._prevSfMix = 1.0;
+    this._prevSfDecay = 0;
+    this._prevSfPhaseJitter = 0;
+    this._sfParamsInitialized = false;
+    this.currentSpectralFreezeRouting = null;
+    this._messageSignatures.clear();
+  }
+
+  private getRequiredBootCapabilities(state: SliderState): BootCapabilities {
+    const lead1RouteActive = this.isLead1RouteActive(state);
+    const lead2RouteActive = this.isLead2RouteActive(state);
+    const pianoRouteActive = this.isPianoRouteActive(state);
+    return {
+      reverb: !!state.reverbEnabled || !!state.spectralFreezeEnabled,
+      spectralFreeze: !!state.spectralFreezeEnabled,
+      soundscapes: !!state.waterEnabled || !!state.insectsEnabled || !!state.insects2Enabled,
+      granular: this.isGranularBusArmed(state, lead1RouteActive, lead2RouteActive, pianoRouteActive),
+    };
+  }
+
+  private hasRequiredBootCapabilities(state: SliderState): boolean {
+    const required = this.getRequiredBootCapabilities(state);
+    return (
+      (!required.reverb || this.bootCapabilities.reverb) &&
+      (!required.spectralFreeze || this.bootCapabilities.spectralFreeze) &&
+      (!required.soundscapes || this.bootCapabilities.soundscapes) &&
+      (!required.granular || this.bootCapabilities.granular)
+    );
+  }
+
+  private async rebuildGraphForState(state: SliderState): Promise<void> {
+    if (this.graphRebuildPromise) {
+      return this.graphRebuildPromise;
+    }
+
+    this.graphRebuildPromise = (async () => {
+      console.info('Rebuilding audio graph to enable deferred engines');
+      this.forceHardGraphTeardown = true;
+      try {
+        this.stop();
+      } finally {
+        this.forceHardGraphTeardown = false;
+      }
+
+      const restartState = this.sourceSliderState ?? state;
+      await this.start(restartState);
+    })()
+      .catch((error) => {
+        console.error('Audio graph rebuild failed:', error);
+      })
+      .finally(() => {
+        this.graphRebuildPromise = null;
+      });
+
+    return this.graphRebuildPromise;
   }
 
   private getManualPadTapDuration(state: SliderState, pad: 'pad1' | 'pad2'): number {
@@ -1669,7 +1938,7 @@ export class AudioEngine {
         noteDiv: this.shDelayDivision('granularDelayTime', (state.granularDelayTime as string) ?? '1/4'),
         tone: this.shv('granularDelayFilter', state.granularDelayFilter ?? 0.5),
         vibrato: this.shv('granularDelayVibrato', state.granularDelayVibrato ?? 0),
-        mix: 1.0,
+        mix: this.shv('granularDelayMix', state.granularDelayMix ?? 1.0),
         reverbSend: (delayBEnabled && state.reverbEnabled) ? this.shv('granularDelayReverbSend', state.granularDelayReverbSend ?? 0.4) : 0,
         granularSend: (delayBEnabled && granularDelaySourceLevel < 0.0001) ? this.shv('delayBGranularSend', state.delayBGranularSend ?? 0) : 0,
         toDelayA: delayBEnabled ? crossFeeds.bToA : 0,
@@ -1764,9 +2033,9 @@ export class AudioEngine {
     signatureSource: unknown = message,
   ): void {
     if (!node) return;
-    const signature = JSON.stringify(signatureSource);
-    if (this._messageSignatures.get(cacheKey) === signature) return;
-    this._messageSignatures.set(cacheKey, signature);
+    const previousSignature = this._messageSignatures.get(cacheKey);
+    if (previousSignature !== undefined && areSignatureSnapshotsEqual(previousSignature, signatureSource)) return;
+    this._messageSignatures.set(cacheKey, cloneSignatureSnapshot(signatureSource));
     node.port.postMessage(message);
   }
 
@@ -2864,7 +3133,7 @@ export class AudioEngine {
     // Create AudioContext if needed
     if (!this.ctx) {
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-      const isIOSDevice = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      const isIOSDevice = isIOSLikeDevice();
       this.ctx = new AudioContextClass(isIOSDevice ? { latencyHint: 'playback' } : undefined);
     }
     this.attachAudioContextMonitoring();
@@ -2895,7 +3164,7 @@ export class AudioEngine {
       this.drumSynth = new DrumSynth(
         this.ctx,
         this.masterGain,
-        this.reverbNode as any,
+        (this.reverbInputBus ?? this.reverbNode) as any,
         sliderState,
         this.rng,
         () => this.ensureTransportAnchors(),
@@ -2945,7 +3214,11 @@ export class AudioEngine {
   }
 
   private notifyStateChange() {
-    if (this.onStateChange) {
+    if (!this.onStateChange) return;
+    if (this._stateChangeNotifyRaf !== null) return;
+    this._stateChangeNotifyRaf = requestAnimationFrame(() => {
+      this._stateChangeNotifyRaf = null;
+      if (!this.onStateChange) return;
       this.onStateChange({
         isRunning: this.isRunning,
         harmonyState: this.harmonyState,
@@ -2958,7 +3231,7 @@ export class AudioEngine {
         fxOwners: this.getFxOwnerDebugState(),
         transportDebug: this.getTransportDebugStateInternal(),
       });
-    }
+    });
   }
 
   // Getter for current filter frequency (for live UI updates)
@@ -3018,7 +3291,7 @@ export class AudioEngine {
     // Create AudioContext if needed
     if (!this.ctx) {
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-      const isIOSDevice = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      const isIOSDevice = isIOSLikeDevice();
       this.ctx = new AudioContextClass(isIOSDevice ? { latencyHint: 'playback' } : undefined);
     }
     
@@ -3087,7 +3360,7 @@ export class AudioEngine {
     const effectiveState = this.createManualAuditionState(note.source, baseState, voiceIndex);
     const previousState = this.sliderState ?? baseState;
 
-    await this.prepareManualSynthChain(effectiveState, note.source);
+    await this.prepareManualSynthChain(effectiveState, note.source, safeMidi);
 
     try {
       switch (note.source) {
@@ -3193,13 +3466,23 @@ export class AudioEngine {
     this.isStarting = true;
 
     this.sliderState = sliderState;
+    this.sourceSliderState = sliderState;
     // Eagerly compute the initial JSON snapshot (used for harmony seeding)
     this._sliderStateJsonCache = JSON.stringify(sliderState);
     this._sliderStateJsonDirty = false;
 
+    if (this.graphBootstrapped && !this.hasRequiredBootCapabilities(sliderState)) {
+      this.forceHardGraphTeardown = true;
+      try {
+        this.stop();
+      } finally {
+        this.forceHardGraphTeardown = false;
+      }
+    }
+
     // If a drum-only context exists from independent drum mode, tear it down.
     // We need a fresh context for the full audio graph (worklets can't be re-added).
-    if (this.ctx) {
+    if (this.ctx && !this.graphBootstrapped) {
       if (this.drumSynth) {
         this.drumSynth.dispose();
         this.drumSynth = null;
@@ -3211,6 +3494,7 @@ export class AudioEngine {
       }
       this.ctx.close();
       this.ctx = null;
+      this.graphBootstrapped = false;
       this.masterGain = null;
       this.limiter = null;
       if (this.satPreGain) {
@@ -3268,21 +3552,26 @@ export class AudioEngine {
       this.insectsDelayASend = null;
       this.insectsDelayBSend = null;
       this.voices = [];
+      this.voicesStarted = false;
       this.resetIndependentSynthContextState();
+      this.resetBootCapabilities();
+      this.resetWorkletParamCaches();
     }
 
     const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-    if (!AudioContextClass) {
-      console.error('Web Audio API not supported');
-      this.isStarting = false;
-      throw new Error('Web Audio API not supported in this browser');
+    if (!this.ctx) {
+      if (!AudioContextClass) {
+        console.error('Web Audio API not supported');
+        this.isStarting = false;
+        throw new Error('Web Audio API not supported in this browser');
+      }
+      // Use 'playback' latency hint on iOS to request larger audio buffers —
+      // reduces underruns especially with USB audio interfaces.
+      const isIOSDevice = isIOSLikeDevice();
+      this.ctx = new AudioContextClass(isIOSDevice ? { latencyHint: 'playback' } : undefined);
+      console.log('AudioContext created, state:', this.ctx.state, 'sampleRate:', this.ctx.sampleRate, 'baseLatency:', (this.ctx as any).baseLatency);
+      this.attachAudioContextMonitoring();
     }
-    // Use 'playback' latency hint on iOS to request larger audio buffers —
-    // reduces underruns especially with USB audio interfaces.
-    const isIOSDevice = /iPad|iPhone|iPod/.test(navigator.userAgent);
-    this.ctx = new AudioContextClass(isIOSDevice ? { latencyHint: 'playback' } : undefined);
-    console.log('AudioContext created, state:', this.ctx.state, 'sampleRate:', this.ctx.sampleRate, 'baseLatency:', (this.ctx as any).baseLatency);
-    this.attachAudioContextMonitoring();
 
     // iOS Safari requires resume to be called in response to user interaction
     if (this.ctx.state === 'suspended') {
@@ -3297,113 +3586,145 @@ export class AudioEngine {
 
     // Register worklets with error handling
     // Legacy JS granular worklet REMOVED — all granular processing now handled by Granular FX WASM engine
-    console.log('Loading worklets...');
-    
-    // Load Reverb WASM worklet + binary
-    try {
-      const reverbWasmUrl = getWorkletUrl('kessho_reverb.wasm');
-      const reverbWasmResp = await fetch(reverbWasmUrl);
-      if (!reverbWasmResp.ok) throw new Error(`Reverb WASM fetch failed: ${reverbWasmResp.status}`);
-      this.wasmReverbBinary = await reverbWasmResp.arrayBuffer();
-      await this.ctx.audioWorklet.addModule(reverbWasmWorkletUrl);
-      console.log('Reverb WASM worklet loaded (%d KB)', Math.round(this.wasmReverbBinary.byteLength / 1024));
-    } catch (e) {
-      console.warn('Reverb WASM load failed (non-fatal, reverb will be unavailable):', e);
-    }
+    if (!this.graphBootstrapped) {
+      const requiredBootCapabilities = this.getRequiredBootCapabilities(sliderState);
+      const lead1RouteActive = this.isLead1RouteActive(sliderState);
+      const lead2RouteActive = this.isLead2RouteActive(sliderState);
+      const shouldLoadReverb = requiredBootCapabilities.reverb;
+      const shouldLoadSpectralFreeze = requiredBootCapabilities.spectralFreeze;
+      const shouldLoadSoundscapes = requiredBootCapabilities.soundscapes;
+      const shouldLoadGranular = requiredBootCapabilities.granular;
+      const shouldLoadPadWasm = sliderState.padEnabled !== false || !!sliderState.pad2Enabled || this.euclideanUsesPadSource(sliderState);
+      const shouldLoadLeadFm = lead1RouteActive || lead2RouteActive;
+      const shouldLoadDrumWasm = !!sliderState.drumEnabled || !!sliderState.drumEuclidMasterEnabled;
 
-    // Spectral Freeze WASM worklet
-    try {
-      const sfWasmUrl = getWorkletUrl('kessho_spectral_freeze.wasm');
-      const sfWasmResp = await fetch(sfWasmUrl);
-      if (sfWasmResp.ok) {
-        this.wasmSpectralFreezeBinary = await sfWasmResp.arrayBuffer();
-        await this.ctx.audioWorklet.addModule(spectralFreezeWorkletUrl);
-        console.log('Spectral Freeze WASM worklet loaded (%d KB)', Math.round(this.wasmSpectralFreezeBinary.byteLength / 1024));
-      }
-    } catch (e) {
-      console.warn('Spectral Freeze WASM load failed (non-fatal):', e);
-    }
+      console.log('Loading worklets...');
+      await Promise.all([
+      shouldLoadReverb ? (async () => {
+        try {
+          const reverbWasmUrl = getWorkletUrl('kessho_reverb.wasm');
+          const reverbWasmResp = await fetch(reverbWasmUrl);
+          if (!reverbWasmResp.ok) throw new Error(`Reverb WASM fetch failed: ${reverbWasmResp.status}`);
+          const [binary] = await Promise.all([
+            reverbWasmResp.arrayBuffer(),
+            this.ctx!.audioWorklet.addModule(reverbWasmWorkletUrl),
+          ]);
+          this.wasmReverbBinary = binary;
+          console.log('Reverb WASM worklet loaded (%d KB)', Math.round(binary.byteLength / 1024));
+        } catch (e) {
+          console.warn('Reverb WASM load failed (non-fatal, reverb will be unavailable):', e);
+        }
+      })() : Promise.resolve(),
+      shouldLoadSpectralFreeze ? (async () => {
+        try {
+          const sfWasmUrl = getWorkletUrl('kessho_spectral_freeze.wasm');
+          const sfWasmResp = await fetch(sfWasmUrl);
+          if (!sfWasmResp.ok) return;
+          const [binary] = await Promise.all([
+            sfWasmResp.arrayBuffer(),
+            this.ctx!.audioWorklet.addModule(spectralFreezeWorkletUrl),
+          ]);
+          this.wasmSpectralFreezeBinary = binary;
+          console.log('Spectral Freeze WASM worklet loaded (%d KB)', Math.round(binary.byteLength / 1024));
+        } catch (e) {
+          console.warn('Spectral Freeze WASM load failed (non-fatal):', e);
+        }
+      })() : Promise.resolve(),
+      shouldLoadSoundscapes ? (async () => {
+        try {
+          const scWasmUrl = getWorkletUrl('kessho_soundscapes.wasm');
+          const scWasmResp = await fetch(scWasmUrl);
+          await this.ctx!.audioWorklet.addModule(soundscapesWorkletUrl);
+          console.log('Soundscapes WASM worklet loaded');
+          if (scWasmResp.ok) {
+            this.wasmSoundscapesBinary = await scWasmResp.arrayBuffer();
+            console.log('Soundscapes WASM binary loaded (%d KB)', Math.round(this.wasmSoundscapesBinary.byteLength / 1024));
+          } else {
+            console.warn('Soundscapes WASM binary not available');
+          }
+        } catch (e) {
+          console.warn('Soundscapes (water/insects) worklet not available:', e);
+        }
+      })() : Promise.resolve(),
+      shouldLoadGranular ? (async () => {
+        try {
+          const wasmUrl = getWorkletUrl('kessho_granular.wasm');
+          const wasmResp = await fetch(wasmUrl);
+          if (!wasmResp.ok) throw new Error(`WASM fetch failed: ${wasmResp.status}`);
+          const [binary] = await Promise.all([
+            wasmResp.arrayBuffer(),
+            this.ctx!.audioWorklet.addModule(granularFxWasmWorkletUrl),
+          ]);
+          this.wasmGranularBinary = binary;
+          console.log('Granular FX WASM worklet loaded (%d KB)', Math.round(binary.byteLength / 1024));
+        } catch (e) {
+          console.error('Failed to load WASM granular:', e);
+          console.warn('Granular FX will be unavailable — WASM binary could not be loaded');
+        }
+      })() : Promise.resolve(),
+      shouldLoadPadWasm ? (async () => {
+        try {
+          const padWasmUrl = getWorkletUrl('kessho_pad.wasm');
+          const padResp = await fetch(padWasmUrl);
+          if (!padResp.ok) return;
+          const [binary] = await Promise.all([
+            padResp.arrayBuffer(),
+            this.ctx!.audioWorklet.addModule(padSynthWasmWorkletUrl),
+          ]);
+          this.wasmPadBinary = binary;
+          this.padWasmModuleContext = this.ctx;
+          console.log('Pad Synth WASM worklet loaded (%d KB)', Math.round(binary.byteLength / 1024));
+        } catch (e) {
+          console.warn('Pad Synth WASM load failed (non-fatal, JS voices will be used):', e);
+        }
+      })() : Promise.resolve(),
+      shouldLoadLeadFm ? (async () => {
+        try {
+          const leadFmWasmUrl = getWorkletUrl('kessho_lead_fm.wasm');
+          const leadFmResp = await fetch(leadFmWasmUrl);
+          if (!leadFmResp.ok) return;
+          const [binary] = await Promise.all([
+            leadFmResp.arrayBuffer(),
+            this.ctx!.audioWorklet.addModule(leadFmWasmWorkletUrl),
+          ]);
+          this.wasmLeadFmBinary = binary;
+          console.log('Lead FM WASM worklet loaded (%d KB)', Math.round(binary.byteLength / 1024));
+        } catch (e) {
+          console.warn('Lead FM WASM load failed (non-fatal, JS synthesis will be used):', e);
+        }
+      })() : Promise.resolve(),
+      shouldLoadDrumWasm ? (async () => {
+        try {
+          const drumWasmUrl = getWorkletUrl('kessho_drum.wasm');
+          const drumResp = await fetch(drumWasmUrl);
+          if (!drumResp.ok) return;
+          const [binary] = await Promise.all([
+            drumResp.arrayBuffer(),
+            this.ctx!.audioWorklet.addModule(drumSynthWasmWorkletUrl),
+          ]);
+          this.wasmDrumBinary = binary;
+          console.log('Drum Synth WASM worklet loaded (%d KB)', Math.round(binary.byteLength / 1024));
+        } catch (e) {
+          console.warn('Drum Synth WASM load failed (non-fatal, JS synthesis will be used):', e);
+        }
+      })() : Promise.resolve(),
+      ]);
 
-    // Soundscapes WASM worklet (water + insects)
-    try {
-      await this.ctx.audioWorklet.addModule(soundscapesWorkletUrl);
-      console.log('Soundscapes WASM worklet loaded');
-      const scWasmUrl = getWorkletUrl('kessho_soundscapes.wasm');
-      const scWasmResp = await fetch(scWasmUrl);
-      if (scWasmResp.ok) {
-        this.wasmSoundscapesBinary = await scWasmResp.arrayBuffer();
-        console.log('Soundscapes WASM binary loaded (%d KB)', Math.round(this.wasmSoundscapesBinary.byteLength / 1024));
-      } else {
-        console.warn('Soundscapes WASM binary not available');
-      }
-    } catch (e) {
-      console.warn('Soundscapes (water/insects) worklet not available:', e);
-    }
+      this.bootCapabilities = { ...requiredBootCapabilities };
 
-    // Load WASM granular
-    try {
-      const wasmUrl = getWorkletUrl('kessho_granular.wasm');
-      const wasmResp = await fetch(wasmUrl);
-      if (!wasmResp.ok) throw new Error(`WASM fetch failed: ${wasmResp.status}`);
-      this.wasmGranularBinary = await wasmResp.arrayBuffer();
-      await this.ctx.audioWorklet.addModule(granularFxWasmWorkletUrl);
-      console.log('Granular FX WASM worklet loaded (%d KB)', Math.round(this.wasmGranularBinary.byteLength / 1024));
-    } catch (e) {
-      console.error('Failed to load WASM granular:', e);
-      console.warn('Granular FX will be unavailable — WASM binary could not be loaded');
+      // Create audio graph
+      await this.createAudioGraph();
     }
-
-    // Load Pad Synth WASM worklet + binary
-    try {
-      const padWasmUrl = getWorkletUrl('kessho_pad.wasm');
-      const padResp = await fetch(padWasmUrl);
-      if (padResp.ok) {
-        this.wasmPadBinary = await padResp.arrayBuffer();
-        await this.ctx.audioWorklet.addModule(padSynthWasmWorkletUrl);
-        console.log('Pad Synth WASM worklet loaded (%d KB)', Math.round(this.wasmPadBinary.byteLength / 1024));
-      }
-    } catch (e) {
-      console.warn('Pad Synth WASM load failed (non-fatal, JS voices will be used):', e);
-    }
-
-    // Load Lead FM WASM worklet + binary
-    try {
-      const leadFmWasmUrl = getWorkletUrl('kessho_lead_fm.wasm');
-      const leadFmResp = await fetch(leadFmWasmUrl);
-      if (leadFmResp.ok) {
-        this.wasmLeadFmBinary = await leadFmResp.arrayBuffer();
-        await this.ctx.audioWorklet.addModule(leadFmWasmWorkletUrl);
-        console.log('Lead FM WASM worklet loaded (%d KB)', Math.round(this.wasmLeadFmBinary.byteLength / 1024));
-      }
-    } catch (e) {
-      console.warn('Lead FM WASM load failed (non-fatal, JS synthesis will be used):', e);
-    }
-
-    // Load Drum Synth WASM worklet + binary
-    try {
-      const drumWasmUrl = getWorkletUrl('kessho_drum.wasm');
-      const drumResp = await fetch(drumWasmUrl);
-      if (drumResp.ok) {
-        this.wasmDrumBinary = await drumResp.arrayBuffer();
-        await this.ctx.audioWorklet.addModule(drumSynthWasmWorkletUrl);
-        console.log('Drum Synth WASM worklet loaded (%d KB)', Math.round(this.wasmDrumBinary.byteLength / 1024));
-      }
-    } catch (e) {
-      console.warn('Drum Synth WASM load failed (non-fatal, JS synthesis will be used):', e);
-    }
-
-    // Create audio graph
-    await this.createAudioGraph();
 
     // Initialize harmony (sets rng)
     this.initializeHarmony();
 
     // Create drum synth (always fresh — any prior drum-only instance was torn down above)
-    if (this.ctx && this.rng && this.masterGain && this.reverbNode) {
+    if (!this.drumSynth && this.ctx && this.rng && this.masterGain && this.reverbNode) {
       this.drumSynth = new DrumSynth(
         this.ctx,
         this.masterGain,
-        this.reverbNode,
+        (this.reverbInputBus ?? this.reverbNode),
         this.sliderState!,
         this.rng,
         () => this.ensureTransportAnchors(),
@@ -3411,6 +3732,9 @@ export class AudioEngine {
       this.wireDrumSynthCallbacks();
       this.wireDrumGranularSend();
       this.wireDrumDelaySends(this.ctx);
+    } else if (this.drumSynth) {
+      this.drumSynth.updateParams(this.sliderState!);
+      this.wireDrumSynthCallbacks();
     }
 
     // Start voices
@@ -3442,6 +3766,7 @@ export class AudioEngine {
     }
 
     // Media session is now handled in App.tsx for proper iOS support
+    this.applyParams(this.sliderState!);
 
     this.isRunning = true;
     this.isStarting = false;
@@ -3449,7 +3774,7 @@ export class AudioEngine {
   }
 
   stop(): void {
-    if (!this.isRunning) return;
+    if (!this.isRunning && !this.forceHardGraphTeardown) return;
 
     // Stop CPU perf monitor interval (must be cleared here — survives start/stop otherwise)
     if (this.synthPerfTimer !== null) {
@@ -3463,6 +3788,15 @@ export class AudioEngine {
       this._applyParamsRaf = null;
       this._applyParamsDirty = false;
     }
+    if (this._stateChangeNotifyRaf !== null) {
+      cancelAnimationFrame(this._stateChangeNotifyRaf);
+      this._stateChangeNotifyRaf = null;
+    }
+    if (this.granularWorkletDispatchTimer !== null) {
+      clearTimeout(this.granularWorkletDispatchTimer);
+      this.granularWorkletDispatchTimer = null;
+    }
+    this.pendingGranularWorkletUpdate = null;
 
     // Stop phrase timer
     if (this.phraseTimer !== null) {
@@ -3512,6 +3846,21 @@ export class AudioEngine {
       this.leadMorphTimer = null;
     }
 
+    if (this.graphBootstrapped && !this.forceHardGraphTeardown) {
+      this.cancelPianoPriorityWarmup();
+      this.drumSynth?.stop();
+      this.oceanTexturePlayer?.stop();
+      this.birdsTexture?.player.stop();
+      this.birds2Texture?.player.stop();
+      this.frogsTexture?.player.stop();
+      if (this.ctx?.state === 'running') {
+        void this.ctx.suspend();
+      }
+      this.isRunning = false;
+      this.notifyStateChange();
+      return;
+    }
+
     // Stop voices
     for (const voice of this.voices) {
       try {
@@ -3525,6 +3874,7 @@ export class AudioEngine {
       }
     }
     this.voices = [];
+    this.voicesStarted = false;
 
     this.oceanTexturePlayer?.dispose();
     this.oceanTexturePlayer = null;
@@ -3613,7 +3963,7 @@ export class AudioEngine {
       try { this.earthLevelGain.disconnect(); } catch { /* */ }
       this.earthLevelGain = null;
     }
-    this._messageSignatures.clear();
+    this.resetWorkletParamCaches();
 
     // Tear down reverb WASM worklet (free WASM heap + close port)
     if (this.reverbNode) {
@@ -3782,6 +4132,8 @@ export class AudioEngine {
     // Close AudioContext — full teardown
     this.ctx?.close();
     this.ctx = null;
+    this.graphBootstrapped = false;
+    this.resetBootCapabilities();
     this.masterGain = null;
     this.limiter = null;
     this.reverbNode = null;
@@ -3799,62 +4151,74 @@ export class AudioEngine {
       this.granularWorkletDispatchTimer = null;
     }
     this.pendingGranularWorkletUpdate = null;
+    this.stopRuntimeRandomWalk();
+    this.stopRuntimeAutoMorph();
+    this.cancelPianoPriorityWarmup();
     this.stop();
   }
 
   updateParams(sliderState: SliderState): void {
     // Always update stored state and CoF config, even when not running
+    const prevSourceState = this.sourceSliderState;
+    this.sourceSliderState = sliderState;
+    if (prevSourceState !== sliderState) {
+      this.syncRuntimeAutoMorphSource(sliderState, prevSourceState);
+    }
+    const walkedState = this.getEffectiveRuntimeRandomWalkState(sliderState);
+    const effectiveState = this.getEffectiveRuntimeAutoMorphState(walkedState);
     const prevState = this.sliderState;
     const oldSeedWindow = this.sliderState?.seedWindow;
-    this.sliderState = sliderState;
+    this.sliderState = effectiveState;
     this._sliderStateJsonDirty = true;
     this.syncLeadMorphRandomWalk();
+    this.syncRuntimeRandomWalk();
+    this.syncRuntimeAutoMorph();
     this.ensureTransportAnchors();
 
     const harmonyTransportChanged = !!prevState && (
-      prevState.transportPrimaryClock !== sliderState.transportPrimaryClock ||
-      prevState.phraseLength !== sliderState.phraseLength ||
-      prevState.sequencerMasterBPM !== sliderState.sequencerMasterBPM ||
-      prevState.chordRate !== sliderState.chordRate ||
-      prevState.harmonyClockSource !== sliderState.harmonyClockSource ||
-      prevState.transportBarsPerPhrase !== sliderState.transportBarsPerPhrase ||
-      prevState.transportBeatsPerBar !== sliderState.transportBeatsPerBar ||
-      prevState.chordProgressionClockSource !== sliderState.chordProgressionClockSource ||
-      prevState.chordProgressionPhraseMultiplier !== sliderState.chordProgressionPhraseMultiplier ||
-      JSON.stringify(prevState.chordProgressionStepEnabled ?? []) !== JSON.stringify(sliderState.chordProgressionStepEnabled ?? [])
+      prevState.transportPrimaryClock !== effectiveState.transportPrimaryClock ||
+      prevState.phraseLength !== effectiveState.phraseLength ||
+      prevState.sequencerMasterBPM !== effectiveState.sequencerMasterBPM ||
+      prevState.chordRate !== effectiveState.chordRate ||
+      prevState.harmonyClockSource !== effectiveState.harmonyClockSource ||
+      prevState.transportBarsPerPhrase !== effectiveState.transportBarsPerPhrase ||
+      prevState.transportBeatsPerBar !== effectiveState.transportBeatsPerBar ||
+      prevState.chordProgressionClockSource !== effectiveState.chordProgressionClockSource ||
+      prevState.chordProgressionPhraseMultiplier !== effectiveState.chordProgressionPhraseMultiplier ||
+      !areBooleanArraysEqual(prevState.chordProgressionStepEnabled, effectiveState.chordProgressionStepEnabled)
     );
     const leadTimingChanged = !!prevState && (
-      prevState.transportPrimaryClock !== sliderState.transportPrimaryClock ||
-      prevState.leadRandomClockSource !== sliderState.leadRandomClockSource ||
-      prevState.phraseLength !== sliderState.phraseLength ||
-      prevState.sequencerMasterBPM !== sliderState.sequencerMasterBPM ||
-      prevState.transportBarsPerPhrase !== sliderState.transportBarsPerPhrase ||
-      prevState.transportBeatsPerBar !== sliderState.transportBeatsPerBar
+      prevState.transportPrimaryClock !== effectiveState.transportPrimaryClock ||
+      prevState.leadRandomClockSource !== effectiveState.leadRandomClockSource ||
+      prevState.phraseLength !== effectiveState.phraseLength ||
+      prevState.sequencerMasterBPM !== effectiveState.sequencerMasterBPM ||
+      prevState.transportBarsPerPhrase !== effectiveState.transportBarsPerPhrase ||
+      prevState.transportBeatsPerBar !== effectiveState.transportBeatsPerBar
     );
     const synthBeatTransportChanged = !!prevState && (
-      prevState.transportPrimaryClock !== sliderState.transportPrimaryClock ||
-      prevState.phraseLength !== sliderState.phraseLength ||
-      prevState.sequencerMasterBPM !== sliderState.sequencerMasterBPM ||
-      prevState.transportBeatsPerBar !== sliderState.transportBeatsPerBar ||
-      prevState.transportBarsPerPhrase !== sliderState.transportBarsPerPhrase ||
-      prevState.synthEuclidClockSource !== sliderState.synthEuclidClockSource ||
-      prevState.synthEuclidJoinPolicy !== sliderState.synthEuclidJoinPolicy
+      prevState.transportPrimaryClock !== effectiveState.transportPrimaryClock ||
+      prevState.phraseLength !== effectiveState.phraseLength ||
+      prevState.sequencerMasterBPM !== effectiveState.sequencerMasterBPM ||
+      prevState.transportBeatsPerBar !== effectiveState.transportBeatsPerBar ||
+      prevState.transportBarsPerPhrase !== effectiveState.transportBarsPerPhrase ||
+      prevState.synthEuclidClockSource !== effectiveState.synthEuclidClockSource ||
+      prevState.synthEuclidJoinPolicy !== effectiveState.synthEuclidJoinPolicy
     );
     const drumBeatTransportChanged = !!prevState && (
-      prevState.transportPrimaryClock !== sliderState.transportPrimaryClock ||
-      prevState.phraseLength !== sliderState.phraseLength ||
-      prevState.sequencerMasterBPM !== sliderState.sequencerMasterBPM ||
-      prevState.transportBeatsPerBar !== sliderState.transportBeatsPerBar ||
-      prevState.transportBarsPerPhrase !== sliderState.transportBarsPerPhrase ||
-      prevState.drumEuclidClockSource !== sliderState.drumEuclidClockSource ||
-      prevState.drumEuclidJoinPolicy !== sliderState.drumEuclidJoinPolicy
+      prevState.transportPrimaryClock !== effectiveState.transportPrimaryClock ||
+      prevState.phraseLength !== effectiveState.phraseLength ||
+      prevState.sequencerMasterBPM !== effectiveState.sequencerMasterBPM ||
+      prevState.transportBeatsPerBar !== effectiveState.transportBeatsPerBar ||
+      prevState.transportBarsPerPhrase !== effectiveState.transportBarsPerPhrase ||
+      prevState.drumEuclidClockSource !== effectiveState.drumEuclidClockSource ||
+      prevState.drumEuclidJoinPolicy !== effectiveState.drumEuclidJoinPolicy
     );
 
     // Update Circle of Fifths config from slider state
-    this.cofConfig.enabled = sliderState.cofDriftEnabled ?? false;
-    this.cofConfig.driftRate = sliderState.cofDriftRate ?? 2;
-    this.cofConfig.direction = sliderState.cofDriftDirection ?? 'cw';
-    this.cofConfig.range = sliderState.cofDriftRange ?? 3;
+    this.cofConfig.enabled = effectiveState.cofDriftEnabled ?? false;
+    this.cofConfig.driftRate = effectiveState.cofDriftRate ?? 2;
+    this.cofConfig.direction = effectiveState.cofDriftDirection ?? 'cw';
+    this.cofConfig.range = effectiveState.cofDriftRange ?? 3;
     // Reset step if CoF is disabled
     if (!this.cofConfig.enabled) {
       this.cofConfig.currentStep = 0;
@@ -3864,20 +4228,25 @@ export class AudioEngine {
     // If engine is in the middle of starting, skip all audio operations.
     // start() will apply params with the final sliderState when ready.
     if (this.isStarting) return;
+    if (this.graphRebuildPromise) return;
+    if (this.isRunning && this.graphBootstrapped && !this.hasRequiredBootCapabilities(effectiveState)) {
+      void this.rebuildGraphForState(this.sourceSliderState ?? sliderState);
+      return;
+    }
 
     // Drum synth operates independently of master play (synchronous)
-    if (sliderState.drumEnabled || sliderState.drumEuclidMasterEnabled) {
-      this.ensureDrumSynth(sliderState);
+    if (effectiveState.drumEnabled || effectiveState.drumEuclidMasterEnabled) {
+      this.ensureDrumSynth(effectiveState);
     }
     if (this.drumSynth) {
-      this.drumSynth.updateParams(sliderState);
+      this.drumSynth.updateParams(effectiveState);
     }
     // Forward drum params to WASM worklet (if active)
-    this.sendDrumWasmParams(sliderState);
-    this.sendDrumWasmDelay(sliderState);
+    this.sendDrumWasmParams(effectiveState);
+    this.sendDrumWasmDelay(effectiveState);
 
     // If drum is completely off and synth sequencer is off and engine isn't running, tear down context
-    if (!this.isRunning && !this.isStarting && !sliderState.drumEnabled && !sliderState.drumEuclidMasterEnabled && !sliderState.synthEuclideanMasterEnabled) {
+    if (!this.isRunning && !this.isStarting && !this.graphBootstrapped && !effectiveState.drumEnabled && !effectiveState.drumEuclidMasterEnabled && !effectiveState.synthEuclideanMasterEnabled) {
       if (this.drumSynth) {
         this.drumSynth.dispose();
         this.drumSynth = null;
@@ -3890,6 +4259,9 @@ export class AudioEngine {
         }
         this.ctx.close();
         this.ctx = null;
+        this.graphBootstrapped = false;
+        this.resetBootCapabilities();
+        this.resetWorkletParamCaches();
         this.transportAnchors = null;
         this.nextHarmonyEventWallSec = null;
         this.masterGain = null;
@@ -3943,23 +4315,24 @@ export class AudioEngine {
         this.padWasmNode = null;
         this.padWasmReady = false;
         this.voices = [];
+        this.voicesStarted = false;
         this.resetIndependentSynthContextState();
       }
     }
 
     // Synth Euclidean scheduler operates independently of master play (like drum sequencer)
-    if (sliderState.synthEuclideanMasterEnabled && !this.synthEuclidScheduleTimer) {
+    if (effectiveState.synthEuclideanMasterEnabled && !this.synthEuclidScheduleTimer) {
       this.startSynthEuclidScheduler();
-    } else if (!sliderState.synthEuclideanMasterEnabled && this.synthEuclidScheduleTimer) {
+    } else if (!effectiveState.synthEuclideanMasterEnabled && this.synthEuclidScheduleTimer) {
       this.stopSynthEuclidScheduler();
     }
 
     if (this.isRunning && harmonyTransportChanged) {
-      const harmonyPolicy = sliderState.harmonySyncPolicy ?? 'nextPhrase';
+      const harmonyPolicy = effectiveState.harmonySyncPolicy ?? 'nextPhrase';
       if (harmonyPolicy === 'restartNow') {
-        if (sliderState.harmonyClockSource === 'localPhrase') {
+        if (effectiveState.harmonyClockSource === 'localPhrase') {
           this.resetLocalPhraseAnchor();
-        } else if (sliderState.harmonyClockSource === 'localBeat') {
+        } else if (effectiveState.harmonyClockSource === 'localBeat') {
           this.resetLocalBeatAnchor();
         }
         this.initializeHarmony();
@@ -3969,40 +4342,40 @@ export class AudioEngine {
       }
     }
 
-    if (this.isRunning && leadTimingChanged && sliderState.leadRandomEnabled) {
-      const leadPolicy = sliderState.leadRandomSyncPolicy ?? 'nextPhrase';
+    if (this.isRunning && leadTimingChanged && effectiveState.leadRandomEnabled) {
+      const leadPolicy = effectiveState.leadRandomSyncPolicy ?? 'nextPhrase';
       this.startLeadMelody(leadPolicy === 'nextPhrase');
     }
 
     if (this.synthEuclidScheduleTimer && synthBeatTransportChanged) {
-      const resetCounters = (sliderState.synthEuclidJoinPolicy ?? 'bar') === 'bar';
-      if (sliderState.synthEuclidClockSource === 'localBeat') {
+      const resetCounters = (effectiveState.synthEuclidJoinPolicy ?? 'bar') === 'bar';
+      if (effectiveState.synthEuclidClockSource === 'localBeat') {
         this.resetLocalBeatAnchor();
       }
       this.resetSynthEuclidTransportAlignment(resetCounters);
     }
 
     if (this.drumSynth && drumBeatTransportChanged) {
-      this.drumSynth.resetTransportAlignment((sliderState.drumEuclidJoinPolicy ?? 'bar') === 'bar');
+      this.drumSynth.resetTransportAlignment((effectiveState.drumEuclidJoinPolicy ?? 'bar') === 'bar');
     }
 
-    if (this.isRunning && this.hasGranularTempoSyncVoices(sliderState) && !this.granularTempoSyncTimer) {
+    if (this.isRunning && this.hasGranularTempoSyncVoices(effectiveState) && !this.granularTempoSyncTimer) {
       this.startGranularTempoSyncScheduler();
-    } else if ((!this.isRunning || !this.hasGranularTempoSyncVoices(sliderState)) && this.granularTempoSyncTimer) {
+    } else if ((!this.isRunning || !this.hasGranularTempoSyncVoices(effectiveState)) && this.granularTempoSyncTimer) {
       this.stopGranularTempoSyncScheduler();
     }
 
     // Apply non-drum audio parameters if engine is running OR synth Euclidean is active
     // (Euclidean synth runs independently of master play, but needs continuous param updates)
-    if (!this.ctx || (!this.isRunning && !sliderState.synthEuclideanMasterEnabled)) return;
+    if (!this.ctx || (!this.isRunning && !effectiveState.synthEuclideanMasterEnabled)) return;
 
-    const padActive = sliderState.padEnabled !== false || this.euclideanUsesPadSource(sliderState);
+    const padActive = effectiveState.padEnabled !== false || this.euclideanUsesPadSource(effectiveState);
 
     // If pad output just became fully inactive, release all active synth voices immediately.
     // Euclidean synth lanes can keep pad voices active even when the pad engine toggle is off.
     if (!padActive && this._lastPadEnabled !== false && this.voices.length > 0) {
       const now = this.ctx.currentTime;
-      const release = Math.max(0.001, sliderState.synthRelease || 1.0);
+      const release = Math.max(0.001, effectiveState.synthRelease || 1.0);
       this.voices.forEach((voice, i) => {
         if (voice.active) {
           voice.envelope.gain.cancelScheduledValues(now);
@@ -4020,18 +4393,18 @@ export class AudioEngine {
 
     // If synth chord sequencer was just disabled, silence all synth voices
     // BUT only if no Euclidean lanes are using synth sources
-    if (sliderState.synthChordSequencerEnabled === false && this.voices.length > 0) {
+    if (effectiveState.synthChordSequencerEnabled === false && this.voices.length > 0) {
       const isLeadSrc = (s: string) => this.isNonPadMelodicSource(s);
       const euclideanUsesSynth = [
-        sliderState.synthEuclid1Enabled && !isLeadSrc(sliderState.synthEuclid1Source),
-        sliderState.synthEuclid2Enabled && !isLeadSrc(sliderState.synthEuclid2Source),
-        sliderState.synthEuclid3Enabled && !isLeadSrc(sliderState.synthEuclid3Source),
-        sliderState.synthEuclid4Enabled && !isLeadSrc(sliderState.synthEuclid4Source),
+        effectiveState.synthEuclid1Enabled && !isLeadSrc(effectiveState.synthEuclid1Source),
+        effectiveState.synthEuclid2Enabled && !isLeadSrc(effectiveState.synthEuclid2Source),
+        effectiveState.synthEuclid3Enabled && !isLeadSrc(effectiveState.synthEuclid3Source),
+        effectiveState.synthEuclid4Enabled && !isLeadSrc(effectiveState.synthEuclid4Source),
       ].some(Boolean);
 
       if (!euclideanUsesSynth) {
         const now = this.ctx.currentTime;
-        const release = Math.max(0.001, sliderState.synthRelease || 1.0);
+        const release = Math.max(0.001, effectiveState.synthRelease || 1.0);
         this.voices.forEach((voice, i) => {
           if (voice.active) {
             voice.envelope.gain.cancelScheduledValues(now);
@@ -4060,7 +4433,7 @@ export class AudioEngine {
     // (drum synth params already updated above, before isRunning guard)
 
     // Only recompute seed if seedWindow setting changed (not on every param change)
-    if (oldSeedWindow !== sliderState.seedWindow) {
+    if (oldSeedWindow !== effectiveState.seedWindow) {
       this.recomputeSeed();
     }
   }
@@ -4113,9 +4486,11 @@ export class AudioEngine {
       this.wasmReverbBinary = null;
       this.reverbNode.port.postMessage({ type: 'wasmBinary', binary: reverbBin }, [reverbBin]);
     } else {
-      // Fallback: passthrough gain node when reverb WASM is unavailable
-      this.reverbNode = ctx.createGain() as any;
-      console.warn('Reverb WASM unavailable — using passthrough (no reverb)');
+      // Silent fallback until the reverb runtime is loaded or intentionally unavailable.
+      const fallbackReverb = ctx.createGain();
+      fallbackReverb.gain.value = 0;
+      this.reverbNode = fallbackReverb as any;
+      console.warn('Reverb WASM unavailable — using silent fallback (no reverb)');
     }
 
     // Reverb output level
@@ -4146,8 +4521,10 @@ export class AudioEngine {
       this.spectralFreezeNode.port.postMessage({ type: 'wasmBinary', binary: sfBin }, [sfBin]);
     }
 
-    // Pad Synth WASM worklet — 4 outputs: [0]=main stereo, [1]=legacy combined reverb send,
-    // [2]=Pad 1 pre-fader, [3]=Pad 2 pre-fader
+    // Pad Synth WASM worklet — 6 outputs:
+    // [0]=main stereo, [1]=legacy combined reverb send,
+    // [2]=Pad 1 pre-fader, [3]=Pad 2 pre-fader,
+    // [4]=Pad 1 post-level, [5]=Pad 2 post-level
     if (this.wasmPadBinary) {
       this.createPadWasmNode(ctx);
     }
@@ -4233,21 +4610,14 @@ export class AudioEngine {
       const binary = this.wasmSoundscapesBinary;
       this.wasmSoundscapesBinary = null;
       this.soundscapesNode.port.postMessage({ type: 'wasmBinary', binary }, [binary]);
-      // Wait for WASM ready handshake
-      await new Promise<void>((resolve) => {
-        this.soundscapesNode!.port.onmessage = (e) => {
-          if (e.data.type === 'wasmReady') {
-            this.soundscapesWasmReady = true;
-            console.log('Soundscapes WASM engine initialized');
-            resolve();
-          } else if (e.data.type === 'perf') {
-            this.handlePerfMessage(e.data);
-          }
-        };
-      });
-      // After WASM ready, set up permanent message handler
       this.soundscapesNode.port.onmessage = (e) => {
-        if (e.data.type === 'perf') {
+        if (e.data.type === 'wasmReady') {
+          this.soundscapesWasmReady = true;
+          console.log('Soundscapes WASM engine initialized');
+          if (this.sliderState) {
+            this.scheduleApplyParamsRefresh();
+          }
+        } else if (e.data.type === 'perf') {
           this.handlePerfMessage(e.data);
         } else if (e.data.type === 'surfTrigger' && this.onGranularSHTrigger) {
           this.onGranularSHTrigger(e.data.positions ?? {});
@@ -4738,8 +5108,8 @@ export class AudioEngine {
     
     // Detect iOS specifically - only iOS needs MediaStream routing for
     // lock-screen/background media session continuity.
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    const isIOS = isIOSLikeDevice();
+    const isMobile = isMobileDevice();
     this.isMobile = isMobile || isIOS;
     
     try { this.limiter.disconnect(); } catch { /* */ }
@@ -4770,6 +5140,7 @@ export class AudioEngine {
     if (this.perfMonitorEnabled) {
       this.sendEnablePerfToWorklets(true);
     }
+    this.graphBootstrapped = true;
   }
 
   private async createVoices(): Promise<void> {
@@ -5070,6 +5441,7 @@ export class AudioEngine {
 
   private startVoices(): void {
     if (!this.ctx) return;
+    if (this.voicesStarted) return;
 
     for (const voice of this.voices) {
       try {
@@ -5083,6 +5455,7 @@ export class AudioEngine {
         console.warn('Voice already started, skipping');
       }
     }
+    this.voicesStarted = true;
   }
 
   private initializeHarmony(): void {
@@ -5211,6 +5584,340 @@ export class AudioEngine {
       this.onHarmonyTick(true); // First tick is always a phrase boundary
       scheduleNext();
     }, timeUntilNext * 1000);
+  }
+
+  private getEffectiveRuntimeRandomWalkState(baseState: SliderState): SliderState {
+    const walkEntries = Object.entries(this.runtimeWalkRanges);
+    if (walkEntries.length === 0) {
+      return baseState;
+    }
+
+    const nextState = { ...baseState } as SliderState;
+    const nextStateRecord = nextState as unknown as Record<string, SliderState[keyof SliderState]>;
+
+    for (const [key, range] of walkEntries) {
+      if (!range) continue;
+      const position = this.runtimeWalkStates.get(key)?.position ?? 0.5;
+      const paramKey = key as keyof SliderState;
+      const numericValue = quantize(paramKey, range.min + position * (range.max - range.min));
+      nextStateRecord[key] = getStateValueFromSliderNumber(paramKey, numericValue) as SliderState[keyof SliderState];
+    }
+
+    if (this.runtimeWalkRanges.padMorph) {
+      const presetA = getPadPreset(nextState.padPresetA as string);
+      const presetB = getPadPreset(nextState.padPresetB as string);
+      if (presetA && presetB) {
+        const morphed = morphPadPresets(presetA, presetB, nextState.padMorph as number);
+        for (const key of PAD_PRESET_PARAM_KEYS) {
+          if (key in morphed) {
+            nextStateRecord[key] = morphed[key] as SliderState[keyof SliderState];
+          }
+        }
+      }
+    }
+
+    if (this.runtimeWalkRanges.pad2Morph) {
+      const presetA = getPadPreset(nextState.pad2PresetA as string);
+      const presetB = getPadPreset(nextState.pad2PresetB as string);
+      if (presetA && presetB) {
+        const morphed = morphPadPresets(presetA, presetB, nextState.pad2Morph as number);
+        for (const key of PAD_PRESET_PARAM_KEYS) {
+          if (key in morphed) {
+            const pad2Key = PAD1_TO_PAD2_ENGINE[key];
+            if (pad2Key) {
+              nextStateRecord[pad2Key] = morphed[key] as SliderState[keyof SliderState];
+            }
+          }
+        }
+      }
+    }
+
+    if (this.runtimeWalkRanges.waterMorph) {
+      const morphed = morphWaterPresets(
+        nextState.waterMorphA as number,
+        nextState.waterMorphB as number,
+        nextState.waterMorph as number,
+      );
+      for (const key of WATER_MORPH_PARAM_KEYS) {
+        if (key in morphed) {
+          nextStateRecord[key] = morphed[key] as SliderState[keyof SliderState];
+        }
+      }
+      nextState.waterPreset = (nextState.waterMorph as number) < 0.5
+        ? (nextState.waterMorphA as number)
+        : (nextState.waterMorphB as number);
+    }
+
+    const drumWalkMorphMap: Record<string, DrumVoiceType> = {
+      drumSubMorph: 'sub',
+      drumKickMorph: 'kick',
+      drumClickMorph: 'click',
+      drumBeepHiMorph: 'beepHi',
+      drumBeepLoMorph: 'beepLo',
+      drumNoiseMorph: 'noise',
+      drumMembraneMorph: 'membrane',
+    };
+    for (const [morphKey, voice] of Object.entries(drumWalkMorphMap)) {
+      if (!(morphKey in this.runtimeWalkRanges)) continue;
+      Object.assign(nextState, applyMorphToState(nextState, voice));
+    }
+
+    return nextState;
+  }
+
+  private startRuntimeRandomWalk(): void {
+    if (this.runtimeRandomWalkTimer !== null) {
+      clearInterval(this.runtimeRandomWalkTimer);
+      this.runtimeRandomWalkTimer = null;
+    }
+
+    this.runtimeRandomWalkTimer = window.setInterval(() => {
+      const sourceState = this.sourceSliderState;
+      if (!sourceState) return;
+
+      const shouldAnimate = this.isRunning || document.visibilityState === 'visible';
+      if (!shouldAnimate) return;
+
+      const speed = Math.max(0.01, sourceState.randomWalkSpeed ?? 1);
+      const globalWalk = sourceState.randomWalkMode === 'globalWalk';
+      let runtimeChanged = false;
+
+      for (const key of Object.keys(this.runtimeWalkRanges)) {
+        const walkState = this.runtimeWalkStates.get(key) ?? { position: 0.5, velocity: 0 };
+        let nextPosition = walkState.position;
+        let nextVelocity = walkState.velocity;
+
+        if (globalWalk) {
+          nextPosition = sampleGlobalWalkPosition(key, speed, sourceState.seedWindow);
+          nextVelocity = 0;
+        } else {
+          nextVelocity += (Math.random() - 0.5) * 0.01 * speed;
+          nextVelocity *= 0.98;
+          nextVelocity = Math.max(-0.05 * speed, Math.min(0.05 * speed, nextVelocity));
+          nextPosition += nextVelocity;
+
+          if (nextPosition < 0) {
+            nextPosition = 0;
+            nextVelocity = Math.abs(nextVelocity);
+          } else if (nextPosition > 1) {
+            nextPosition = 1;
+            nextVelocity = -Math.abs(nextVelocity);
+          }
+        }
+
+        if (Math.abs(walkState.position - nextPosition) > 0.0005 || Math.abs(walkState.velocity - nextVelocity) > 0.0005) {
+          runtimeChanged = true;
+          this.runtimeWalkStates.set(key, {
+            position: nextPosition,
+            velocity: nextVelocity,
+          });
+        }
+      }
+
+      if (!runtimeChanged) return;
+      this.emitRuntimeWalkPositions();
+      this.updateParams(sourceState);
+    }, RUNTIME_RANDOM_WALK_INTERVAL_MS);
+  }
+
+  private stopRuntimeRandomWalk(): void {
+    if (this.runtimeRandomWalkTimer !== null) {
+      clearInterval(this.runtimeRandomWalkTimer);
+      this.runtimeRandomWalkTimer = null;
+    }
+  }
+
+  private syncRuntimeRandomWalk(): void {
+    const hasRuntimeWalks = Object.keys(this.runtimeWalkRanges).length > 0;
+    if (!hasRuntimeWalks || !this.sourceSliderState) {
+      this.stopRuntimeRandomWalk();
+      this.emitRuntimeWalkPositions(true);
+      return;
+    }
+
+    if (this.runtimeRandomWalkTimer === null) {
+      this.startRuntimeRandomWalk();
+    }
+  }
+
+  private syncRuntimeAutoMorphSource(baseState: SliderState, prevBaseState: SliderState | null): void {
+    const syncPadState = (
+      pad: 'pad1' | 'pad2',
+      nextValue: number | undefined,
+      autoEnabled: boolean,
+      prevValue: number | undefined,
+      prevAutoEnabled: boolean,
+    ) => {
+      if (prevBaseState && nextValue === prevValue && autoEnabled === prevAutoEnabled) return;
+      const nextPhase = clampUnitInterval(nextValue);
+      const target = this.padAutoMorphStates[pad];
+      target.phase = nextPhase;
+      if (!autoEnabled || nextPhase <= 0.001 || nextPhase >= 0.999) {
+        target.direction = nextPhase >= 0.999 ? -1 : 1;
+      }
+    };
+
+    syncPadState(
+      'pad1',
+      baseState.padMorph,
+      !!baseState.padMorphAuto,
+      prevBaseState?.padMorph,
+      !!prevBaseState?.padMorphAuto,
+    );
+    syncPadState(
+      'pad2',
+      baseState.pad2Morph,
+      !!baseState.pad2MorphAuto,
+      prevBaseState?.pad2Morph,
+      !!prevBaseState?.pad2MorphAuto,
+    );
+
+    for (const voice of DRUM_AUTO_MORPH_VOICES) {
+      const keys = VOICE_MORPH_KEYS[voice];
+      const nextMorph = clampUnitInterval(baseState[keys.morph] as number | undefined);
+      const prevMorph = clampUnitInterval(prevBaseState?.[keys.morph] as number | undefined);
+      const autoEnabled = !!baseState[keys.auto];
+      const prevAutoEnabled = !!prevBaseState?.[keys.auto];
+      if (prevBaseState && nextMorph === prevMorph && autoEnabled === prevAutoEnabled) continue;
+      this.drumAutoMorphValues[voice] = nextMorph;
+      this.drumAutoMorphManager.setVoiceState(voice, nextMorph);
+    }
+  }
+
+  private getEffectiveRuntimeAutoMorphState(baseState: SliderState): SliderState {
+    const pad1AutoActive = !!baseState.padMorphAuto;
+    const pad2AutoActive = !!baseState.pad2MorphAuto;
+    const anyDrumAutoActive = DRUM_AUTO_MORPH_VOICES.some((voice) => !!baseState[VOICE_MORPH_KEYS[voice].auto]);
+    if (!pad1AutoActive && !pad2AutoActive && !anyDrumAutoActive) {
+      return baseState;
+    }
+
+    const nextState = { ...baseState } as SliderState;
+    const nextStateRecord = nextState as unknown as Record<string, SliderState[keyof SliderState]>;
+
+    const applyPadMorphRuntime = (pad: 'pad1' | 'pad2') => {
+      const morphKey = pad === 'pad2' ? 'pad2Morph' : 'padMorph';
+      const presetAKey = pad === 'pad2' ? 'pad2PresetA' : 'padPresetA';
+      const presetBKey = pad === 'pad2' ? 'pad2PresetB' : 'padPresetB';
+      const effectiveMorph = clampUnitInterval(this.padAutoMorphStates[pad].phase);
+      nextStateRecord[morphKey] = effectiveMorph as SliderState[keyof SliderState];
+
+      const presetA = getPadPreset(nextState[presetAKey] as string);
+      const presetB = getPadPreset(nextState[presetBKey] as string);
+      if (!presetA || !presetB) return;
+
+      const morphed = morphPadPresets(presetA, presetB, effectiveMorph);
+      for (const key of PAD_PRESET_PARAM_KEYS) {
+        if (!(key in morphed)) continue;
+        const targetKey = (pad === 'pad2' ? PAD1_TO_PAD2_ENGINE[key] : key) as keyof SliderState;
+        nextStateRecord[targetKey as string] = morphed[key] as SliderState[keyof SliderState];
+      }
+    };
+
+    if (pad1AutoActive) applyPadMorphRuntime('pad1');
+    if (pad2AutoActive) applyPadMorphRuntime('pad2');
+
+    if (anyDrumAutoActive) {
+      for (const voice of DRUM_AUTO_MORPH_VOICES) {
+        const keys = VOICE_MORPH_KEYS[voice];
+        if (!nextState[keys.auto]) continue;
+        nextStateRecord[keys.morph as string] = clampUnitInterval(this.drumAutoMorphValues[voice]) as SliderState[keyof SliderState];
+        Object.assign(nextStateRecord, applyMorphToState(nextState, voice));
+      }
+    }
+
+    return nextState;
+  }
+
+  private startRuntimeAutoMorph(): void {
+    if (this.autoMorphTimer !== null) {
+      clearInterval(this.autoMorphTimer);
+      this.autoMorphTimer = null;
+    }
+
+    let lastPadUpdateTime = performance.now();
+    this.autoMorphTimer = window.setInterval(() => {
+      const baseState = this.sourceSliderState;
+      if (!baseState) return;
+
+      const now = performance.now();
+      const canAnimate = this.isRunning || document.visibilityState === 'visible';
+      if (!canAnimate) {
+        lastPadUpdateTime = now;
+        this.drumAutoMorphManager.syncClock(now);
+        return;
+      }
+
+      const deltaTime = Math.max(0, (now - lastPadUpdateTime) / 1000);
+      lastPadUpdateTime = now;
+      let runtimeChanged = false;
+
+      const updatePad = (pad: 'pad1' | 'pad2'): number | null => {
+        const autoEnabled = pad === 'pad1' ? !!baseState.padMorphAuto : !!baseState.pad2MorphAuto;
+        if (!autoEnabled) return null;
+
+        const phraseLengthSeconds = Math.max(0.001, baseState.phraseLength ?? 16);
+        const phrasesPerSweep = Math.max(
+          1,
+          pad === 'pad1' ? (baseState.padMorphSpeed ?? 8) : (baseState.pad2MorphSpeed ?? 8),
+        );
+        const cyclesPerMinute = 120 / (phrasesPerSweep * phraseLengthSeconds);
+        const target = this.padAutoMorphStates[pad];
+        const result = updateAutoMorph(target.phase, target.direction, 'pingpong', cyclesPerMinute, deltaTime);
+        const nextMorph = clampUnitInterval(result.morph);
+        if (Math.abs(target.phase - nextMorph) > 0.0005 || target.direction !== (result.direction as 1 | -1)) {
+          runtimeChanged = true;
+        }
+        target.phase = nextMorph;
+        target.direction = result.direction as 1 | -1;
+        return nextMorph;
+      };
+
+      const nextPad1Morph = updatePad('pad1');
+      const nextPad2Morph = updatePad('pad2');
+      if (nextPad1Morph !== null) this.onPadMorphTrigger?.(nextPad1Morph);
+      if (nextPad2Morph !== null) this.onPad2MorphTrigger?.(nextPad2Morph);
+
+      const nextDrumMorphs = this.drumAutoMorphManager.update(baseState, now);
+      for (const voice of DRUM_AUTO_MORPH_VOICES) {
+        const keys = VOICE_MORPH_KEYS[voice];
+        if (!baseState[keys.auto]) continue;
+        const nextMorph = clampUnitInterval(nextDrumMorphs.get(voice) ?? this.drumAutoMorphValues[voice]);
+        if (Math.abs(this.drumAutoMorphValues[voice] - nextMorph) > 0.0005) {
+          runtimeChanged = true;
+          this.drumAutoMorphValues[voice] = nextMorph;
+        }
+        this.onDrumMorphTrigger?.(voice, nextMorph);
+      }
+
+      if (!runtimeChanged || !this.sourceSliderState) return;
+      this.updateParams(this.sourceSliderState);
+    }, 80);
+  }
+
+  private stopRuntimeAutoMorph(): void {
+    if (this.autoMorphTimer !== null) {
+      clearInterval(this.autoMorphTimer);
+      this.autoMorphTimer = null;
+    }
+  }
+
+  private syncRuntimeAutoMorph(): void {
+    const sourceState = this.sourceSliderState;
+    const autoMorphEnabled = !!sourceState && (
+      sourceState.padMorphAuto ||
+      sourceState.pad2MorphAuto ||
+      DRUM_AUTO_MORPH_VOICES.some((voice) => !!sourceState[VOICE_MORPH_KEYS[voice].auto])
+    );
+
+    if (!autoMorphEnabled) {
+      this.stopRuntimeAutoMorph();
+      return;
+    }
+
+    if (this.autoMorphTimer === null) {
+      this.startRuntimeAutoMorph();
+    }
   }
 
   private startLeadMorphRandomWalk(): void {
@@ -5562,8 +6269,8 @@ export class AudioEngine {
     if (!this.wasmPadBinary) return;
     this.padWasmNode = new AudioWorkletNode(ctx, 'pad-synth-wasm', {
       numberOfInputs: 0,
-      numberOfOutputs: 4,
-      outputChannelCount: [2, 2, 2, 2],
+      numberOfOutputs: 6,
+      outputChannelCount: [2, 2, 2, 2, 2, 2],
     });
     this.padWasmReady = false;
     this.padWasmNode.onprocessorerror = () => {
@@ -6455,7 +7162,9 @@ export class AudioEngine {
     let delayBEnabled = false;
 
     if (pianoWetActive) {
-      void this.ensurePianoSamplesLoaded();
+      this.startPianoPriorityWarmup();
+    } else {
+      this.cancelPianoPriorityWarmup();
     }
 
     // Granular FX (Granular) parameters
@@ -7517,43 +8226,150 @@ export class AudioEngine {
     //  when the per-note function supports passing vibrato params.)
   }
 
-  private async ensurePianoSamplesLoaded(): Promise<void> {
-    if (!this.ctx) return;
-    const regularLoaded = this.pianoBuffers.regular.size >= PIANO_SAMPLE_COUNT;
-    const shortLoaded = this.pianoBuffers.short.size >= PIANO_SAMPLE_COUNT;
-    if (regularLoaded && shortLoaded) return;
-    if (this.pianoLoadPromise) return this.pianoLoadPromise;
+  private getPianoPrioritySampleIndices(): number[] {
+    return getManualPianoPrioritySampleIndices();
+  }
 
-    const ctx = this.ctx;
+  private markPianoBufferUsed(variant: PianoSampleVariant, index: number): void {
+    this.pianoBufferLastUsed[variant].set(index, ++this.pianoBufferUseSequence);
+  }
 
-    const loadVariant = async (variant: PianoSampleVariant): Promise<void> => {
-      const targetMap = this.pianoBuffers[variant];
-      for (let index = 1; index <= PIANO_SAMPLE_COUNT; index += 1) {
-        if (targetMap.has(index)) continue;
-        const samplePath = getPianoSamplePath(variant, index);
-        try {
-          const response = await fetch(resolvePublicSampleUrl(samplePath));
-          if (!response.ok) {
-            console.warn(`Piano sample not found: ${samplePath}`);
-            continue;
-          }
-          const arrayBuffer = await response.arrayBuffer();
-          const decoded = await ctx.decodeAudioData(arrayBuffer.slice(0));
-          targetMap.set(index, decoded);
-        } catch (error) {
-          console.warn(`Failed to load piano sample ${samplePath}:`, error);
+  private evictPianoBuffers(
+    variant: PianoSampleVariant,
+    protectedIndices: ReadonlySet<number> = new Set<number>(),
+  ): void {
+    const buffers = this.pianoBuffers[variant];
+    const lastUsed = this.pianoBufferLastUsed[variant];
+    while (buffers.size > PIANO_SAMPLE_CACHE_LIMIT_PER_VARIANT) {
+      let evictionIndex: number | null = null;
+      let evictionAge = Infinity;
+      for (const index of buffers.keys()) {
+        if (protectedIndices.has(index)) continue;
+        const age = lastUsed.get(index) ?? 0;
+        if (age < evictionAge) {
+          evictionAge = age;
+          evictionIndex = index;
         }
       }
-    };
+      if (evictionIndex === null) break;
+      buffers.delete(evictionIndex);
+      lastUsed.delete(evictionIndex);
+    }
+  }
 
-    this.pianoLoadPromise = (async () => {
-      await loadVariant('regular');
-      await loadVariant('short');
+  private cancelPianoPriorityWarmup(): void {
+    this.pianoPriorityWarmupGeneration += 1;
+    this.pianoPriorityWarmupPromise = null;
+  }
+
+  private async loadPianoSample(variant: PianoSampleVariant, index: number): Promise<AudioBuffer | null> {
+    if (!this.ctx) return null;
+    const safeIndex = Math.max(1, Math.min(PIANO_SAMPLE_COUNT, Math.round(index)));
+    const targetMap = this.pianoBuffers[variant];
+    const existing = targetMap.get(safeIndex);
+    if (existing) {
+      this.markPianoBufferUsed(variant, safeIndex);
+      return existing;
+    }
+
+    const pending = this.pianoBufferPromises[variant].get(safeIndex);
+    if (pending) return pending;
+
+    const samplePath = getPianoSamplePath(variant, safeIndex);
+    const ctx = this.ctx;
+    const loadPromise = (async () => {
+      try {
+        const response = await fetch(resolvePublicSampleUrl(samplePath));
+        if (!response.ok) {
+          console.warn(`Piano sample not found: ${samplePath}`);
+          return null;
+        }
+        const arrayBuffer = await response.arrayBuffer();
+        const decoded = await ctx.decodeAudioData(arrayBuffer.slice(0));
+        targetMap.set(safeIndex, decoded);
+        this.markPianoBufferUsed(variant, safeIndex);
+        const protectedIndices = new Set<number>([
+          safeIndex,
+          ...this.pianoBufferPromises[variant].keys(),
+        ]);
+        this.evictPianoBuffers(variant, protectedIndices);
+        return decoded;
+      } catch (error) {
+        console.warn(`Failed to load piano sample ${samplePath}:`, error);
+        return null;
+      } finally {
+        this.pianoBufferPromises[variant].delete(safeIndex);
+      }
+    })();
+
+    this.pianoBufferPromises[variant].set(safeIndex, loadPromise);
+    return loadPromise;
+  }
+
+  private async ensurePianoSamplePairLoaded(index: number): Promise<void> {
+    await Promise.all([
+      this.loadPianoSample('regular', index),
+      this.loadPianoSample('short', index),
+    ]);
+  }
+
+  private startPianoPriorityWarmup(): void {
+    if (this.pianoPriorityWarmupPromise) return;
+    const priorityIndices = this.getPianoPrioritySampleIndices();
+    const generation = this.pianoPriorityWarmupGeneration + 1;
+    this.pianoPriorityWarmupGeneration = generation;
+    this.pianoPriorityWarmupPromise = (async () => {
+      for (const index of priorityIndices) {
+        if (generation !== this.pianoPriorityWarmupGeneration) break;
+        if (!this.sliderState || !this.isPianoRouteActive(this.sliderState)) break;
+        await this.ensurePianoSamplePairLoaded(index);
+      }
     })().finally(() => {
-      this.pianoLoadPromise = null;
+      if (generation === this.pianoPriorityWarmupGeneration) {
+        this.pianoPriorityWarmupPromise = null;
+      }
     });
+  }
 
-    return this.pianoLoadPromise;
+  private async ensurePianoFocusSampleLoaded(focusMidi?: number): Promise<void> {
+    this.startPianoPriorityWarmup();
+    if (!this.ctx) return;
+    const priorityIndices = this.getPianoPrioritySampleIndices();
+    const fallbackIndex = priorityIndices[0] ?? 1;
+    const focusIndex = focusMidi != null
+      ? getNearestPianoSample(focusMidi).index
+      : fallbackIndex;
+    await this.ensurePianoSamplePairLoaded(focusIndex);
+  }
+
+  private getClosestLoadedPianoBuffer(
+    targetIndex: number,
+    variants: PianoSampleVariant[],
+  ): { buffer: AudioBuffer; sampleMidi: number } | null {
+    let bestMatch: { distance: number; buffer: AudioBuffer; sampleMidi: number; variant: PianoSampleVariant; index: number } | null = null;
+
+    for (const variant of variants) {
+      for (const [loadedIndex, buffer] of this.pianoBuffers[variant]) {
+        const distance = Math.abs(loadedIndex - targetIndex);
+        if (!bestMatch || distance < bestMatch.distance) {
+          bestMatch = {
+            distance,
+            buffer,
+            sampleMidi: getPianoSampleMidi(loadedIndex),
+            variant,
+            index: loadedIndex,
+          };
+          if (distance === 0) {
+            this.markPianoBufferUsed(variant, loadedIndex);
+            return { buffer, sampleMidi: getPianoSampleMidi(loadedIndex) };
+          }
+        }
+      }
+    }
+
+    if (!bestMatch) return null;
+    this.markPianoBufferUsed(bestMatch.variant, bestMatch.index);
+    return { buffer: bestMatch.buffer, sampleMidi: bestMatch.sampleMidi };
   }
 
   private playPianoNote(frequency: number, velocity = 0.8): void {
@@ -7565,12 +8381,24 @@ export class AudioEngine {
     if (!this.isPianoRouteActive(this.sliderState)) return;
 
     const midiNote = frequencyToMidiNote(frequency);
-    const variant: PianoSampleVariant = Math.random() < 0.5 ? 'regular' : 'short';
+    const preferredVariant: PianoSampleVariant = Math.random() < 0.5 ? 'regular' : 'short';
+    const fallbackVariant: PianoSampleVariant = preferredVariant === 'regular' ? 'short' : 'regular';
     const { index, sampleMidi } = getNearestPianoSample(midiNote);
-    const buffer = this.pianoBuffers[variant].get(index);
+    let resolvedSampleMidi = sampleMidi;
+    let buffer = this.pianoBuffers[preferredVariant].get(index)
+      ?? this.pianoBuffers[fallbackVariant].get(index)
+      ?? null;
+
     if (!buffer) {
-      void this.ensurePianoSamplesLoaded();
-      return;
+      this.startPianoPriorityWarmup();
+      void this.ensurePianoSamplePairLoaded(index);
+      const fallbackBuffer = this.getClosestLoadedPianoBuffer(index, [preferredVariant, fallbackVariant]);
+      if (!fallbackBuffer) return;
+      buffer = fallbackBuffer.buffer;
+      resolvedSampleMidi = fallbackBuffer.sampleMidi;
+    } else {
+      const loadedVariant = this.pianoBuffers[preferredVariant].has(index) ? preferredVariant : fallbackVariant;
+      this.markPianoBufferUsed(loadedVariant, index);
     }
 
     const ctx = this.ctx;
@@ -7590,7 +8418,7 @@ export class AudioEngine {
 
     const source = ctx.createBufferSource();
     source.buffer = buffer;
-    const playbackRate = Math.pow(2, (midiNote - sampleMidi) / 12);
+    const playbackRate = Math.pow(2, (midiNote - resolvedSampleMidi) / 12);
     source.playbackRate.setValueAtTime(playbackRate, now);
 
     const gain = ctx.createGain();
@@ -7825,13 +8653,14 @@ export class AudioEngine {
     if (this.ctx?.state === 'closed') {
       this.resetIndependentSynthContextState();
       this.ctx = null;
+      this.graphBootstrapped = false;
       this.transportAnchors = null;
     }
 
     // Create AudioContext if needed
     if (!this.ctx) {
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-      const isIOSDevice = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      const isIOSDevice = isIOSLikeDevice();
       this.ctx = new AudioContextClass(isIOSDevice ? { latencyHint: 'playback' } : undefined);
     }
     if (this.ctx.state === 'suspended') {
@@ -7847,7 +8676,9 @@ export class AudioEngine {
     }
     // Dummy reverb node if real reverb not created yet
     if (!this.reverbNode) {
-      this.reverbNode = this.ctx.createGain() as any;
+      const fallbackReverb = this.ctx.createGain();
+      fallbackReverb.gain.value = 0;
+      this.reverbNode = fallbackReverb as any;
     }
     // Create RNG if needed
     if (!this.rng) {
@@ -8621,67 +9452,35 @@ export class AudioEngine {
   }
 
   // ===== STEM RECORDING SUPPORT =====
-  // Get individual bus nodes for stem recording (pre-reverb)
-  
-  /**
-   * Get synth bus output (dry synth before reverb send)
-   * This is the synthDirect node which carries the dry synth signal to master
-   */
-  getSynthStemNode(): GainNode | null {
-    return this.synthDirect;
-  }
+  // Routing-level taps expose the same signal each row's Level control affects.
 
-  /**
-   * Get lead bus output (dry lead before reverb send)
-   * This is the leadDry node which carries the dry lead signal to master
-   */
-  getLeadStemNode(): GainNode | null {
-    return this.leadDry;
-  }
-
-  /**
-   * Get drums bus output (drum master gain, includes delay)
-   * Returns the drumSynth's internal master gain
-   */
-  getDrumsStemNode(): GainNode | null {
-    return this.drumSynth?.getMasterGain() ?? null;
-  }
-
-  /**
-   * Get waves bus output (sample after the shared waves filter)
-   */
-  getWavesStemNode(): BiquadFilterNode | null {
-    return this.oceanFilter;
-  }
-
-  /**
-   * Get granular bus output (now routed through Granular FX engine)
-   * Returns the granularFxDirect node carrying processed granular audio
-   */
-  getGranularStemNode(): GainNode | null {
-    return this.granularFxDirect;
-  }
-
-  /**
-   * Get reverb output (wet reverb signal)
-   * This is the reverbOutputGain node carrying the reverb wet signal
-   */
-  getReverbStemNode(): GainNode | null {
-    return this.reverbOutputGain;
-  }
-
-  /**
-   * Get all stem nodes as an object for easy iteration
-   */
-  getAllStemNodes(): Record<string, AudioNode | null> {
+  getRecordableBusNodes(): Record<StemRecordTrackId, RecordableTrackSource> {
     return {
-      synth: this.getSynthStemNode(),
-      lead: this.getLeadStemNode(),
-      drums: this.getDrumsStemNode(),
-      waves: this.getWavesStemNode(),
-      granular: this.getGranularStemNode(),
-      reverb: this.getReverbStemNode(),
+      pad1: this.padWasmNode
+        ? { node: this.padWasmNode, outputIndex: 4 }
+        : { node: this.pad1Bus },
+      pad2: this.padWasmNode
+        ? { node: this.padWasmNode, outputIndex: 5 }
+        : { node: this.pad2Bus },
+      lead1: { node: this.leadWasmLevelGain ?? this.lead1LevelGain },
+      lead2: { node: this.leadWasmLead2LevelGain ?? this.lead2LevelGain },
+      piano: { node: this.pianoLevelGain },
+      drums: this.drumWasmNode
+        ? { node: this.drumWasmNode, outputIndex: 0 }
+        : { node: this.drumSynth?.getMasterGain() ?? null },
+      granular: { node: this.granularFxDirect },
+      waves: { node: this.oceanLevelGain },
+      water: { node: this.waterLevelGain },
+      insects: { node: this.insectsLevelGain },
+      nature: { node: this.natureLevelGain },
+      delayAOut: { node: this.sharedDelayA?.getDirectOutputNode() ?? null },
+      delayBOut: { node: this.sharedDelayB?.getDirectOutputNode() ?? null },
+      reverb: { node: this.reverbOutputGain },
     };
+  }
+
+  getAllStemNodes(): Record<StemRecordTrackId, RecordableTrackSource> {
+    return this.getRecordableBusNodes();
   }
 }
 

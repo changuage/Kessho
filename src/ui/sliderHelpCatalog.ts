@@ -1049,6 +1049,15 @@ const granularEntries: Record<string, SliderHelpEntry> = {
       dy('Delay B', 'Vibrato'),
     ],
   ),
+  granularDelayMix: entry(
+    'Sets the output level of the shared Delay B return.',
+    'Low values keep Clocked Space tucked behind the dry sources. High values bring the whole multitap return forward in the mix without changing its send relationships.',
+    [
+      rt('Routing Matrix', 'Delay B Out → Level'),
+      gr('Clocked Space', 'Level'),
+      dy('Delay B', 'Level'),
+    ],
+  ),
   granularDelayReverbSend: entry(
     'Sets how much the granular clocked-space output feeds the shared reverb.',
     'Low values keep the multitap path more self-contained. High values let the delay spill further into the common reverb tail.',

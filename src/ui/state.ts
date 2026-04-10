@@ -1193,7 +1193,7 @@ export interface SliderState {
   granularDelayTime: string;            // note division base (1/4, 1/8, etc.)
   granularDelayFilter: number;          // 0..1 maps to 200-8000Hz tone LPF
   granularDelayVibrato: number;         // 0..1 per-tap delay time modulation
-  granularDelayMix: number;             // DEPRECATED — hardcoded to 1.0, kept for saved-state compat
+  granularDelayMix: number;             // 0..1 Delay B output level
   granularDelayReverbSend: number;      // 0..1 delay output to reverb
 
   // ─── Granular Macros ───
@@ -1245,6 +1245,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'delayBToASend',
   'delayACrossFeedFilter',
   'drumDelayBSend',
+  'granularDelayMix',
   'reverbLevel',
   'masterSatDrive',
   'masterSatMode',
@@ -1892,7 +1893,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'granularChordBias',
   // Delay
   'granularDelayEnabled', 'granularDelayActivity', 'granularDelayRepeats', 'granularDelayTime',
-  'granularDelayFilter', 'granularDelayVibrato', 'granularDelayReverbSend',
+  'granularDelayFilter', 'granularDelayVibrato', 'granularDelayMix', 'granularDelayReverbSend',
   // Macros
   'granularMacroActivity', 'granularMacroTexture', 'granularMacroComplexity', 'granularMacroDarkness', 'granularMacroChaos',
 ];
@@ -3546,6 +3547,7 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   granularDelayTime: { min: 0, max: DELAY_B_NOTE_DIVISION_OPTIONS.length - 1, step: 1 },
   granularDelayFilter: { min: 0, max: 1, step: 0.01 },
   granularDelayVibrato: { min: 0, max: 1, step: 0.01 },
+  granularDelayMix: { min: 0, max: 1, step: 0.01 },
   granularDelayReverbSend: { min: 0, max: 1, step: 0.01 },
   // Macros
   granularMacroActivity: { min: 0, max: 1, step: 0.01 },

@@ -767,6 +767,106 @@
   line-height: 1.45;
 }
 
+.earth-root .earth-matrix-mobile-column-note {
+  margin: 0 10px 8px;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(255,255,255,0.06);
+  background: rgba(255,255,255,0.024);
+  color: rgba(255,255,255,0.52);
+  font-size: 0.58rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.earth-root .earth-matrix-mobile-picker {
+  display: flex;
+  gap: 6px;
+  padding: 0 10px 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.earth-root .earth-matrix-mobile-picker::-webkit-scrollbar {
+  display: none;
+}
+
+.earth-root .earth-matrix-mobile-picker-button {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: 0 0 auto;
+  min-height: 34px;
+  min-width: 74px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.028);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--font-sm);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.earth-root .earth-matrix-mobile-picker-button.active {
+  border-color: rgba(165,196,212,0.32);
+  background: rgba(255,255,255,0.05);
+  color: var(--text-primary);
+}
+
+.earth-root .earth-matrix-mobile-list {
+  display: grid;
+  gap: 8px;
+  padding: 0 10px 10px;
+}
+
+.earth-root .earth-matrix-mobile-card {
+  display: grid;
+  gap: 6px;
+}
+
+.earth-root .earth-matrix-mobile-field {
+  display: grid;
+  gap: 4px;
+}
+
+.earth-root .earth-matrix-mobile-field-grow {
+  min-width: 0;
+}
+
+.earth-root .earth-matrix-mobile-field-label {
+  font-size: 0.5rem;
+  font-weight: 700;
+  color: rgba(255,255,255,0.46);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.earth-root .earth-matrix-mobile-preview-row {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 6px;
+  align-items: start;
+}
+
+.earth-root .earth-matrix-mobile-card .earth-matrix-rowlabel,
+.earth-root .earth-matrix-mobile-card .earth-matrix-preview-cell,
+.earth-root .earth-matrix-mobile-card .earth-matrix-cell {
+  width: 100%;
+}
+
+.earth-root .earth-matrix-mobile-card .earth-matrix-preview-cell {
+  min-height: 48px;
+}
+
+.earth-root .earth-matrix-mobile-card .earth-matrix-info-text {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+  line-height: 1.4;
+}
+
 .earth-root .earth-shared-matrix-grid {
   display: grid;
   width: 100%;
@@ -1349,13 +1449,23 @@
 
 @media (max-width: 900px) {
   .earth-root .earth-shared-matrix-grid {
-    grid-template-columns: 152px 70px repeat(5, minmax(86px, 1fr));
-    min-width: 760px;
+    grid-template-columns: minmax(118px, 1.05fr) repeat(5, minmax(68px, 0.85fr));
   }
 
   .earth-root .earth-child-matrix-grid {
-    grid-template-columns: 152px 70px minmax(96px, 1fr) minmax(140px, 1fr);
-    min-width: 560px;
+    grid-template-columns: minmax(118px, 1fr) 64px minmax(92px, 0.84fr) minmax(0, 1.28fr);
+  }
+}
+
+@media (max-width: 760px) {
+  .earth-root .earth-matrix-section-head {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 420px) {
+  .earth-root .earth-matrix-mobile-preview-row {
+    grid-template-columns: 1fr;
   }
 }
 

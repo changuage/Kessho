@@ -21,7 +21,7 @@ import {
 import { DualSlider, DualSliderRange } from './ui/DualSlider';
 import { audioEngine, EngineState } from './audio/engine';
 import { formatChordDegrees, calculateDriftedRoot } from './audio/harmony';
-import { getPresetNames, DrumVoiceType as DrumPresetVoice } from './audio/drumPresets';
+import { DrumVoiceType as DrumPresetVoice } from './audio/drumPresets';
 import { getPadPreset, morphPadPresets, PAD_PRESET_PARAM_KEYS, PAD1_TO_PAD2_KEY } from './audio/padPresets';
 import {
   morphWaterPresets,
@@ -30,11 +30,10 @@ import {
   getWaterPresetDualRanges,
   getWaterPresetSliderModes,
 } from './audio/waterPresets';
-import { applyMorphToState, setDrumMorphOverride, clearDrumMorphEndpointOverrides, clearMidMorphOverrides, setDrumMorphDualRangeOverride, getDrumMorphDualRangeOverrides, interpolateDrumMorphDualRanges, drumMorphManager, updateAutoMorph } from './audio/drumMorph';
+import { applyMorphToState, setDrumMorphOverride, clearDrumMorphEndpointOverrides, clearMidMorphOverrides, setDrumMorphDualRangeOverride, getDrumMorphDualRangeOverrides, interpolateDrumMorphDualRanges } from './audio/drumMorph';
 
 import { isInMidMorph, isAtEndpoint0, isAtEndpoint1 } from './audio/morphUtils';
 import { applyPreset, USER_PREFERENCE_KEYS } from './ui/presetUtils';
-import { getLead4opFMPresetList } from './audio/lead4opfm';
 import {
   getGranularPresetData,
   getGranularPresetSliderModes,
@@ -46,15 +45,24 @@ import { SliderHelpProvider, useSliderHelp } from './ui/SliderHelpOverlay';
 import { CircleOfFifths, getMorphedRootNote } from './ui/CircleOfFifths';
 import { useJourney } from './ui/journeyState';
 import type { SeqSimpleState } from './ui/drums/SeqSimple';
-import { loadFactoryPresets, setPresetStore, getVersionData, extractPresetVersionMetadata, LocalStoragePresetStore, SupabasePresetStore, HybridPresetStore } from './presets';
-import type { PresetEntry } from './presets';
+import { getVersionData } from './presets/codec';
+import type { IPresetStore } from './presets/PresetStore';
+import { extractPresetVersionMetadata } from './presets/presetUtils';
+import type { PresetEntry } from './presets/types';
 import { CollapsiblePanel } from './ui/CollapsiblePanel';
 import type { StepOverrides, SubLaneKind, SubLaneState, PitchSettings, EvolveConfig } from './ui/sequencer/useEuclideanSequencer';
 import type { PitchBindingMode } from './audio/drumSeqTypes';
 import type { SliderPageId } from './ui/sliderHelpCatalog';
 import { getSliderValueSlotWidthCh } from './ui/sliderValueLayout';
-import { sampleGlobalWalkPosition } from './audio/transport';
+import { isIOSLikeDevice, isMobileDevice } from './platform';
 import type { SynthKeyboardUiState } from './ui/synth/SynthPage';
+import {
+  RECORD_TRACK_FILENAME_SUFFIX,
+  STEM_RECORD_DEFAULTS,
+  STEM_RECORD_TRACK_IDS,
+  type RecordTrackId,
+  type StemRecordTrackId,
+} from './audio/recordingTracks';
 
 const JourneyModeView = React.lazy(() => import('./ui/JourneyModeView'));
 const GlobalPage = React.lazy(() => import('./ui/global/GlobalPage'));
@@ -145,6 +153,11 @@ const setupIOSMediaSession = async () => {
   });
 };
 
+const recorderTapWorkletUrl = new URL(
+  `${import.meta.env.BASE_URL}worklets/recorder-tap.worklet.js`,
+  window.location.href,
+).toString();
+
 // Connect the audio element to Web Audio MediaStream (call after engine starts)
 // iOS-only: other mobile browsers are more stable via direct AudioContext output.
 const connectMediaSessionToWebAudio = () => {
@@ -152,7 +165,7 @@ const connectMediaSessionToWebAudio = () => {
   
   // Only connect on iOS - non-iOS browsers don't need MediaStream bridging
   // and can exhibit periodic output stutter through the extra stream path.
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  const isIOS = isIOSLikeDevice();
   
   if (!isIOS) {
     console.log('Skipping MediaStream audio element on non-iOS devices');
@@ -790,13 +803,6 @@ const styles = {
 // Dual slider state type - stores min/max for each parameter when in dual mode
 type DualSliderState = Partial<Record<keyof SliderState, DualSliderRange>>;
 
-// Random walk state for each slider
-interface RandomWalkState {
-  position: number;  // Current position (0-1) within the range
-  velocity: number;  // Current velocity
-}
-type RandomWalkStates = Partial<Record<keyof SliderState, RandomWalkState>>;
-
 type AdvancedTab = 'global' | 'synth' | 'drums' | 'reverb' | 'granular' | 'earth' | 'delay' | 'routing';
 
 const ADVANCED_TAB_SHORTCUTS: Record<string, AdvancedTab> = {
@@ -1114,8 +1120,31 @@ function Select<T extends string>({ label, value, options, onChange, onMouseEnte
 
 // CollapsiblePanel imported from ./ui/CollapsiblePanel
 
+type RecorderTapSession = {
+  trackId: RecordTrackId;
+  sourceNode: AudioNode;
+  tapNode: AudioWorkletNode;
+  sinkNode: GainNode;
+  flushPromise: Promise<void>;
+  resolveFlush: () => void;
+  handleMessage: (event: MessageEvent<unknown>) => void;
+};
+
+type RecorderWorkerFinalizedMessage = {
+  type: 'finalized';
+  files: Array<{
+    trackId: RecordTrackId;
+    totalFrames: number;
+    blob: Blob;
+  }>;
+};
+
+const createEmptyRecorderTapSessions = (): Record<RecordTrackId, RecorderTapSession | null> => ({
+  mix: null,
+  ...Object.fromEntries(STEM_RECORD_TRACK_IDS.map((trackId) => [trackId, null])) as Record<StemRecordTrackId, null>,
+});
+
 // Main App
-type StereoFloatBufferChunks = [Float32Array[], Float32Array[]];
 
 const App: React.FC = () => {
   // Splash screen state
@@ -1171,6 +1200,12 @@ const App: React.FC = () => {
     void (async () => {
       try {
         const { getSupabase } = await import('./cloud/supabase');
+        const {
+          LocalStoragePresetStore,
+          SupabasePresetStore,
+          HybridPresetStore,
+          setPresetStore,
+        } = await import('./presets');
         if (cancelled) {
           markCloudPresetStoreReady();
           return;
@@ -1239,7 +1274,9 @@ const App: React.FC = () => {
 
   // Seed factory presets into PresetStore on first launch
   useEffect(() => {
-    loadFactoryPresets().then(n => { if (n > 0) console.log(`Seeded ${n} factory presets`); });
+    void import('./presets').then(({ loadFactoryPresets }) =>
+      loadFactoryPresets().then(n => { if (n > 0) console.log(`Seeded ${n} factory presets`); })
+    );
   }, []);
   
   // Recording state
@@ -1260,7 +1297,7 @@ const App: React.FC = () => {
   // Track if user has interacted with any UI element (sliders, buttons, etc.)
   const hasUserInteractedRef = useRef(false);
   const autoStartPresetRef = useRef<SavedPreset | null>(null);
-  const cloudPresetStoreRef = useRef<SupabasePresetStore | null>(null);
+  const cloudPresetStoreRef = useRef<IPresetStore | null>(null);
   const cloudPresetStoreReadyRef = useRef(!CLOUD_ENABLED);
   const cloudPresetStoreReadyResolveRef = useRef<(() => void) | null>(null);
   const cloudPresetStoreReadyPromiseRef = useRef<Promise<void> | null>(null);
@@ -1277,42 +1314,17 @@ const App: React.FC = () => {
     cloudPresetStoreReadyResolveRef.current?.();
     cloudPresetStoreReadyResolveRef.current = null;
   };
-  // Stem recording options (which buses to record pre-reverb)
-  const [recordStems, setRecordStems] = useState({
-    synth: false,
-    lead: false,
-    drums: false,
-    waves: false,
-    granular: false,
-    reverb: false,
-  });
+  type StemName = StemRecordTrackId;
+  // Routing-level stem recording options.
+  const [recordStems, setRecordStems] = useState<Record<StemName, boolean>>(STEM_RECORD_DEFAULTS);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
   const recordingStartTimeRef = useRef<number>(0);
   const recordingIntervalRef = useRef<number | null>(null);
   const recordingStreamDestRef = useRef<MediaStreamAudioDestinationNode | null>(null);
-  // WAV recording refs
-  const wavBuffersRef = useRef<StereoFloatBufferChunks>([[], []]); // [leftChannels, rightChannels]
-  const scriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
-  
-  // Stem recording refs - separate buffers and processors for each stem
-  type StemName = 'synth' | 'lead' | 'drums' | 'waves' | 'granular' | 'reverb';
-  const stemBuffersRef = useRef<Record<StemName, StereoFloatBufferChunks>>({
-    synth: [[], []],
-    lead: [[], []],
-    drums: [[], []],
-    waves: [[], []],
-    granular: [[], []],
-    reverb: [[], []],
-  });
-  const stemProcessorsRef = useRef<Record<StemName, ScriptProcessorNode | null>>({
-    synth: null,
-    lead: null,
-    drums: null,
-    waves: null,
-    granular: null,
-    reverb: null,
-  });
+  const recordingExportWorkerRef = useRef<Worker | null>(null);
+  const recorderWorkletContextRef = useRef<AudioContext | null>(null);
+  const recorderTapSessionsRef = useRef<Record<RecordTrackId, RecorderTapSession | null>>(createEmptyRecorderTapSessions());
 
   // Splash screen animation
   useEffect(() => {
@@ -1335,6 +1347,8 @@ const App: React.FC = () => {
     const urlState = decodeStateFromUrl(window.location.search);
     return normalizePresetForWeb(urlState || DEFAULT_STATE);
   });
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   const [engineState, setEngineState] = useState<EngineState>({
     isRunning: false,
@@ -1504,7 +1518,6 @@ const App: React.FC = () => {
   const [sliderModes, setSliderModes] = useState<Record<string, SliderMode>>({});
   const [dualSliderRanges, setDualSliderRanges] = useState<DualSliderState>({});
   const [randomWalkPositions, setRandomWalkPositions] = useState<Record<string, number>>({});
-  const randomWalkRef = useRef<RandomWalkStates>({});
 
   const applyDualRangesFromPreset = useCallback((
     dualRanges?: Record<string, { min: number; max: number }>,
@@ -1521,12 +1534,7 @@ const App: React.FC = () => {
         newSliderModes[key] = normalizeDualSliderMode(key, presetSliderModes?.[key] ?? 'walk') ?? 'walk';
         newDualRanges[paramKey] = range;
         if (newSliderModes[key] === 'walk') {
-          const walkPos = Math.random();
-          newWalkPositions[key] = walkPos;
-          randomWalkRef.current[paramKey] = {
-            position: walkPos,
-            velocity: (Math.random() - 0.5) * 0.02,
-          };
+          newWalkPositions[key] = 0.5;
         }
       });
 
@@ -1537,7 +1545,6 @@ const App: React.FC = () => {
       setSliderModes({});
       setDualSliderRanges({});
       setRandomWalkPositions({});
-      randomWalkRef.current = {};
     }
   }, []);
 
@@ -1548,10 +1555,6 @@ const App: React.FC = () => {
   ) => {
     const relevantKeySet = new Set(relevantKeys);
     const nextWalkPositions: Record<string, number> = {};
-
-    for (const key of relevantKeySet) {
-      delete randomWalkRef.current[key as keyof SliderState];
-    }
 
     setSliderModes(prev => {
       const next: Record<string, SliderMode> = { ...prev };
@@ -1578,12 +1581,7 @@ const App: React.FC = () => {
           next[key] = range;
           const mode = normalizeDualSliderMode(key, presetSliderModes?.[key] ?? 'walk') ?? 'walk';
           if (mode === 'walk') {
-            const walkPos = Math.random();
-            nextWalkPositions[key] = walkPos;
-            randomWalkRef.current[key as keyof SliderState] = {
-              position: walkPos,
-              velocity: (Math.random() - 0.5) * 0.02,
-            };
+            nextWalkPositions[key] = 0.5;
           }
         }
       }
@@ -1605,18 +1603,6 @@ const App: React.FC = () => {
     vibratoRate: number;
     glide: number;
   }>({ vibratoDepth: 0.5, vibratoRate: 0.5, glide: 0.5 });
-
-  // Lead 4op FM preset list (loaded async from manifest)
-  const [lead4opPresets, setLead4opPresets] = useState<Array<{ id: string; name: string }>>([]);
-  useEffect(() => {
-    getLead4opFMPresetList().then(setLead4opPresets).catch(() => {
-      // Fallback if manifest fails — use embedded defaults
-      setLead4opPresets([
-        { id: 'soft_rhodes', name: 'Soft Rhodes' },
-        { id: 'gamelan', name: 'Gamelan' },
-      ]);
-    });
-  }, []);
 
   // Track which expression params are in dual (range) mode vs single mode
   // (Now unified in sliderModes - these are kept as convenience getters)
@@ -1660,27 +1646,18 @@ const App: React.FC = () => {
   const [shPositions, setShPositions] = useState<Record<string, number>>({});
   const shFlashTimerRef = useRef<number | null>(null);
 
-  const [drumSeqPlayheads, setDrumSeqPlayheads] = useState<number[]>([0, 0, 0, 0]);
-  const [drumSeqHitCounts, setDrumSeqHitCounts] = useState<number[]>([0, 0, 0, 0]);
   const [drumEditingVoice, setDrumEditingVoice] = useState<string | null>(null);
-  const [drumTriggeredVoices, setDrumTriggeredVoices] = useState<Record<string, boolean>>({});
-  const drumTriggerTimersRef = useRef<Record<string, number | null>>({});
   const drumViewModeRef = useRef<'simple' | 'detail' | 'overview'>('detail');
   const drumStepOverridesRef = useRef<StepOverrides | undefined>(undefined);
   const drumSubLaneStatesRef = useRef<Record<SubLaneKind, SubLaneState>[] | undefined>(undefined);
   const drumEvolveConfigsRef = useRef<EvolveConfig[] | undefined>(undefined);
   const drumSeqSimpleStateRef = useRef<SeqSimpleState | undefined>(undefined);
 
-  // Evolve flash state — driven by audio engine callback, passed to DrumPage
-  const [drumEuclidEvolveFlashing, setDrumEuclidEvolveFlashing] = useState<boolean[]>([false, false, false, false]);
-  const drumEuclidEvolveFlashTimersRef = useRef<Array<number | null>>([null, null, null, null]);
   // Evolved step overrides pushed from audio engine for visual sync
   const [drumEvolvedOverrides, setDrumEvolvedOverrides] = useState<{ laneIndex: number; version: number; data: Partial<StepOverrides> } | undefined>(undefined);
   const drumEvolvedVersionRef = useRef(0);
 
   // ── Lead/Synth Euclidean sequencer state ──
-  const [leadSeqPlayheads, setLeadSeqPlayheads] = useState<number[]>([0, 0, 0, 0]);
-  const [leadSeqHitCounts, setLeadSeqHitCounts] = useState<number[]>([0, 0, 0, 0]);
   const synthViewModeRef = useRef<'simple' | 'detail' | 'overview'>('simple');
   const synthStepOverridesRef = useRef<StepOverrides | undefined>(undefined);
   const synthSubLaneStatesRef = useRef<Record<SubLaneKind, SubLaneState>[] | undefined>(undefined);
@@ -1688,8 +1665,6 @@ const App: React.FC = () => {
   const synthPitchBindingModesRef = useRef<PitchBindingMode[] | undefined>(undefined);
   const synthKeyboardUiStateRef = useRef<SynthKeyboardUiState | undefined>(undefined);
   const synthEvolveConfigsRef = useRef<EvolveConfig[] | undefined>(undefined);
-  const [synthEuclidEvolveFlashing, setSynthEuclidEvolveFlashing] = useState<boolean[]>([false, false, false, false]);
-  const synthEuclidEvolveFlashTimersRef = useRef<Array<number | null>>([null, null, null, null]);
   // Evolved step overrides pushed from audio engine for visual sync
   const [synthEvolvedOverrides, setSynthEvolvedOverrides] = useState<{ laneIndex: number; version: number; data: Partial<StepOverrides> } | undefined>(undefined);
   const synthEvolvedVersionRef = useRef(0);
@@ -1723,12 +1698,6 @@ const App: React.FC = () => {
     setDrumPresetVersion(v => v + 1);
     setSynthPresetVersion(v => v + 1);
   }, []);
-
-  // ── Granular buffer position state (from worklet) ──
-  const [granularWriteHead, setGranularWriteHead] = useState(0);
-  const [granularVoicePositions, setGranularVoicePositions] = useState<number[]>([0, 0, 0, 0]);
-  const [granularActiveGrains, setGranularActiveGrains] = useState(0);
-  const [granularBufferWaveform, setGranularBufferWaveform] = useState<Float32Array | null>(null);
 
   // Trigger position map: maps slider keys to their per-trigger position values
   const triggerPositionMap = useMemo<Record<string, number>>(() => ({
@@ -1818,7 +1787,11 @@ const App: React.FC = () => {
         delete newRanges[key];
         return newRanges;
       });
-      delete randomWalkRef.current[key];
+      setRandomWalkPositions(prev => {
+        const next = { ...prev };
+        delete next[keyStr];
+        return next;
+      });
       setSliderModes(prev => {
         const next = { ...prev };
         delete next[keyStr];
@@ -1882,11 +1855,7 @@ const App: React.FC = () => {
 
           // Initialize random walk for walk mode (not for sampleHold)
           if (nextMode === 'walk') {
-            randomWalkRef.current[key] = {
-              position: Math.random(),
-              velocity: (Math.random() - 0.5) * 0.02,
-            };
-            setRandomWalkPositions(p => ({ ...p, [keyStr]: randomWalkRef.current[key]!.position }));
+            setRandomWalkPositions(p => ({ ...p, [keyStr]: 0.5 }));
           }
 
           // Update morph preset dualRanges at endpoints (Rule 2)
@@ -1918,7 +1887,11 @@ const App: React.FC = () => {
         }
       } else if (current === 'walk' && nextMode === 'sampleHold') {
         // Switching from walk to sampleHold — stop walk, keep range
-        delete randomWalkRef.current[key];
+        setRandomWalkPositions(prev => {
+          const next = { ...prev };
+          delete next[keyStr];
+          return next;
+        });
 
         // Update morph preset sliderModes at endpoints (range is unchanged)
         if (isMorphActive) {
@@ -2045,165 +2018,43 @@ const App: React.FC = () => {
     }
   }, [dualSliderRanges, sliderModes, drumSHParamKeys]);
 
-  // Random walk animation (for all sliders in 'walk' mode)
+  // Engine-owned random-walk runtime: App only mirrors lightweight positions for slider indicators.
   useEffect(() => {
-    const walkKeys = Object.entries(sliderModes)
-      .filter(([_key, mode]) => mode === 'walk')
-      .map(([key]) => key as keyof SliderState);
-    if (walkKeys.length === 0) return;
+    const walkRanges: Record<string, { min: number; max: number }> = {};
+    Object.entries(sliderModes).forEach(([key, mode]) => {
+      if (mode !== 'walk') return;
+      const range = dualSliderRanges[key as keyof SliderState];
+      if (range) {
+        walkRanges[key] = range;
+      }
+    });
+    audioEngine.setRuntimeWalkRanges(walkRanges);
+  }, [sliderModes, dualSliderRanges]);
 
-    let intervalId: number | null = null;
-    const shouldAnimate = () => engineState.isRunning || document.visibilityState === 'visible';
-
-    const animate = () => {
-      const speed = state.randomWalkSpeed;
-      const updates: Record<string, number> = {};
-      let hasUpdates = false;
-
-      walkKeys.forEach(key => {
-        const range = dualSliderRanges[key as keyof SliderState];
-        if (!range) return;
-
-        if (state.randomWalkMode === 'globalWalk') {
-          updates[key] = sampleGlobalWalkPosition(String(key), speed, state.seedWindow);
-          hasUpdates = true;
-          return;
+  useEffect(() => {
+    audioEngine.setRuntimeWalkPositionsCallback((positions) => {
+      setRandomWalkPositions((prev) => {
+        const prevKeys = Object.keys(prev);
+        const nextKeys = Object.keys(positions);
+        if (prevKeys.length === nextKeys.length) {
+          let changed = false;
+          for (const key of nextKeys) {
+            if (Math.abs((prev[key] ?? 0.5) - positions[key]!) > 0.0005) {
+              changed = true;
+              break;
+            }
+          }
+          if (!changed) {
+            return prev;
+          }
         }
-
-        const walk = randomWalkRef.current[key];
-        if (!walk) return;
-
-        // Random walk with brownian motion
-        // Add small random acceleration
-        walk.velocity += (Math.random() - 0.5) * 0.01 * speed;
-        // Dampen velocity
-        walk.velocity *= 0.98;
-        // Clamp velocity
-        walk.velocity = Math.max(-0.05 * speed, Math.min(0.05 * speed, walk.velocity));
-        // Update position
-        walk.position += walk.velocity;
-        
-        // Bounce off boundaries
-        if (walk.position < 0) {
-          walk.position = 0;
-          walk.velocity = Math.abs(walk.velocity);
-        } else if (walk.position > 1) {
-          walk.position = 1;
-          walk.velocity = -Math.abs(walk.velocity);
-        }
-
-        updates[key] = walk.position;
-        hasUpdates = true;
+        return positions;
       });
-
-      if (hasUpdates) {
-        setRandomWalkPositions(prev => ({ ...prev, ...updates }));
-        
-        // Update actual parameter values for the audio engine
-        setState(prev => {
-          const newState = { ...prev };
-          walkKeys.forEach(key => {
-            const range = dualSliderRanges[key as keyof SliderState];
-            const walkPos = updates[key] ?? randomWalkPositions[key] ?? 0.5;
-            if (range) {
-              const nextNumericValue = quantize(key, range.min + walkPos * (range.max - range.min));
-              (newState as Record<string, unknown>)[key] = getStateValueFromSliderNumber(key, nextNumericValue);
-            }
-          });
-
-          // Apply pad morph preset interpolation when padMorph is walking
-          if ('padMorph' in updates) {
-            const presetA = getPadPreset(newState.padPresetA as string);
-            const presetB = getPadPreset(newState.padPresetB as string);
-            if (presetA && presetB) {
-              const morphed = morphPadPresets(presetA, presetB, newState.padMorph as number);
-              for (const k of PAD_PRESET_PARAM_KEYS) {
-                if (k in morphed) {
-                  (newState as Record<string, unknown>)[k] = morphed[k];
-                }
-              }
-            }
-          }
-
-          // Apply pad2 morph preset interpolation when pad2Morph is walking
-          if ('pad2Morph' in updates) {
-            const presetA = getPadPreset(newState.pad2PresetA as string);
-            const presetB = getPadPreset(newState.pad2PresetB as string);
-            if (presetA && presetB) {
-              const morphed = morphPadPresets(presetA, presetB, newState.pad2Morph as number);
-              for (const k of PAD_PRESET_PARAM_KEYS) {
-                if (k in morphed) {
-                  const pad2Key = PAD1_TO_PAD2_KEY[k];
-                  if (pad2Key) {
-                    (newState as Record<string, unknown>)[pad2Key] = morphed[k];
-                  }
-                }
-              }
-            }
-          }
-
-          // Apply water morph preset interpolation when waterMorph is walking
-          if ('waterMorph' in updates) {
-            const morphed = morphWaterPresets(
-              newState.waterMorphA as number,
-              newState.waterMorphB as number,
-              newState.waterMorph as number,
-            );
-            for (const k of WATER_MORPH_PARAM_KEYS) {
-              if (k in morphed) {
-                (newState as Record<string, unknown>)[k] = morphed[k];
-              }
-            }
-            newState.waterPreset = (newState.waterMorph as number) < 0.5
-              ? (newState.waterMorphA as number)
-              : (newState.waterMorphB as number);
-          }
-
-          // Apply drum morph preset interpolation when any drumXxxMorph is walking
-          const drumWalkMorphMap: Record<string, DrumPresetVoice> = {
-            drumSubMorph: 'sub', drumKickMorph: 'kick', drumClickMorph: 'click',
-            drumBeepHiMorph: 'beepHi', drumBeepLoMorph: 'beepLo', drumNoiseMorph: 'noise', drumMembraneMorph: 'membrane',
-          };
-          for (const [morphKey, voice] of Object.entries(drumWalkMorphMap)) {
-            if (morphKey in updates) {
-              const morphedParams = applyMorphToState(newState as SliderState, voice);
-              Object.assign(newState, morphedParams);
-            }
-          }
-
-          return newState;
-        });
-      }
-    };
-
-    const stopInterval = () => {
-      if (intervalId !== null) {
-        clearInterval(intervalId);
-        intervalId = null;
-      }
-    };
-
-    const startInterval = () => {
-      if (intervalId !== null || !shouldAnimate()) return;
-      intervalId = window.setInterval(animate, 100); // 10 Hz for smooth but efficient animation
-    };
-
-    const handleVisibilityChange = () => {
-      if (shouldAnimate()) {
-        animate();
-        startInterval();
-      } else {
-        stopInterval();
-      }
-    };
-
-    startInterval();
-    document.addEventListener('visibilitychange', handleVisibilityChange);
+    });
     return () => {
-      stopInterval();
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      audioEngine.setRuntimeWalkPositionsCallback(null);
     };
-  }, [sliderModes, dualSliderRanges, state.randomWalkSpeed, state.randomWalkMode, state.seedWindow, drumMorphKeys, engineState.isRunning]);
+  }, []);
 
   // Load presets from folder on mount
   useEffect(() => {
@@ -2475,64 +2326,6 @@ const App: React.FC = () => {
     };
   }, []);
 
-  // Drum Euclid evolve trigger callback (lane mutation pulse)
-  useEffect(() => {
-    audioEngine.setDrumEuclidEvolveTriggerCallback((laneIndex: number) => {
-      if (activeTab !== 'drums' || document.visibilityState !== 'visible') return;
-      if (laneIndex < 0 || laneIndex > 3) return;
-      setDrumEuclidEvolveFlashing(prev => prev.map((v, idx) => (idx === laneIndex ? true : v)));
-
-      const existingTimer = drumEuclidEvolveFlashTimersRef.current[laneIndex];
-      if (existingTimer) {
-        window.clearTimeout(existingTimer);
-      }
-
-      drumEuclidEvolveFlashTimersRef.current[laneIndex] = window.setTimeout(() => {
-        setDrumEuclidEvolveFlashing(prev => prev.map((v, idx) => (idx === laneIndex ? false : v)));
-        drumEuclidEvolveFlashTimersRef.current[laneIndex] = null;
-      }, 180);
-    });
-
-    return () => {
-      audioEngine.setDrumEuclidEvolveTriggerCallback(() => {});
-      drumEuclidEvolveFlashTimersRef.current.forEach((timer, laneIndex) => {
-        if (timer) {
-          window.clearTimeout(timer);
-          drumEuclidEvolveFlashTimersRef.current[laneIndex] = null;
-        }
-      });
-    };
-  }, [activeTab]);
-
-  // Synth Euclid evolve trigger callback (lane mutation pulse)
-  useEffect(() => {
-    audioEngine.setSynthEuclidEvolveTriggerCallback((laneIndex: number) => {
-      if (activeTab !== 'synth' || document.visibilityState !== 'visible') return;
-      if (laneIndex < 0 || laneIndex > 3) return;
-      setSynthEuclidEvolveFlashing(prev => prev.map((v, idx) => (idx === laneIndex ? true : v)));
-
-      const existingTimer = synthEuclidEvolveFlashTimersRef.current[laneIndex];
-      if (existingTimer) {
-        window.clearTimeout(existingTimer);
-      }
-
-      synthEuclidEvolveFlashTimersRef.current[laneIndex] = window.setTimeout(() => {
-        setSynthEuclidEvolveFlashing(prev => prev.map((v, idx) => (idx === laneIndex ? false : v)));
-        synthEuclidEvolveFlashTimersRef.current[laneIndex] = null;
-      }, 180);
-    });
-
-    return () => {
-      audioEngine.setSynthEuclidEvolveTriggerCallback(() => {});
-      synthEuclidEvolveFlashTimersRef.current.forEach((timer, laneIndex) => {
-        if (timer) {
-          window.clearTimeout(timer);
-          synthEuclidEvolveFlashTimersRef.current[laneIndex] = null;
-        }
-      });
-    };
-  }, [activeTab]);
-
   // Drum evolve overrides callback — push evolved values to UI for visual sync
   useEffect(() => {
     audioEngine.setDrumEvolveOverridesChangedCallback((laneIndex, overrides) => {
@@ -2605,323 +2398,60 @@ const App: React.FC = () => {
     });
   }, []);
 
-  // Drum Euclid step position callback (live playhead tracking) — throttled to ~8Hz
-  useEffect(() => {
-    let lastDrumStep = 0;
-    audioEngine.setDrumStepPositionCallback((steps: number[], hitCounts: number[]) => {
-      if (activeTab !== 'drums' || document.visibilityState !== 'visible') return;
-      const now = performance.now();
-      if (now - lastDrumStep < 120) return;
-      lastDrumStep = now;
-      setDrumSeqPlayheads(steps);
-      setDrumSeqHitCounts(hitCounts);
-    });
-    return () => {
-      audioEngine.setDrumStepPositionCallback(() => {});
-    };
-  }, [activeTab]);
-
-  // Lead Euclid step position callback (live playhead tracking) — throttled to ~8Hz
-  useEffect(() => {
-    let lastLeadStep = 0;
-    audioEngine.setSynthStepPositionCallback((steps: number[], hitCounts: number[]) => {
-      if (activeTab !== 'synth' || document.visibilityState !== 'visible') return;
-      const now = performance.now();
-      if (now - lastLeadStep < 120) return;
-      lastLeadStep = now;
-      setLeadSeqPlayheads(steps);
-      setLeadSeqHitCounts(hitCounts);
-    });
-    return () => {
-      audioEngine.setSynthStepPositionCallback(() => {});
-    };
-  }, [activeTab]);
-
-  const granularTabActive = activeTab === 'granular';
-
-  useEffect(() => {
-    audioEngine.setGranularUiActive(engineState.isRunning && granularTabActive);
-    if (granularTabActive) {
-      setGranularWriteHead(audioEngine.getGranularWriteHeadPosition());
-      setGranularVoicePositions(audioEngine.getGranularVoicePositions());
-      setGranularActiveGrains(audioEngine.getGranularActiveGrainCount());
-      setGranularBufferWaveform(audioEngine.getGranularBufferWaveform());
-    }
-  }, [engineState.isRunning, granularTabActive]);
-
-  // Granular buffer position polling — only while the granular tab is visible
-  useEffect(() => {
-    if (!engineState.isRunning || !granularTabActive) return;
-    const syncGranularUi = () => {
-      setGranularWriteHead(audioEngine.getGranularWriteHeadPosition());
-      setGranularVoicePositions(audioEngine.getGranularVoicePositions());
-      setGranularActiveGrains(audioEngine.getGranularActiveGrainCount());
-      const wf = audioEngine.getGranularBufferWaveform();
-      if (wf) setGranularBufferWaveform(wf);
-    };
-    syncGranularUi();
-    const id = setInterval(() => {
-      syncGranularUi();
-    }, 80); // ~12fps — matches CSS transition for continuous motion
-    return () => clearInterval(id);
-  }, [engineState.isRunning, granularTabActive]);
-
-  // Drum trigger callback (per-voice flash for envelope visualizer) — throttled to ~12Hz per voice
-  useEffect(() => {
-    const lastTrigTime: Record<string, number> = {};
-    audioEngine.setDrumTriggerCallback((voice: string, _velocity: number) => {
-      if (activeTab !== 'drums' || document.visibilityState !== 'visible') return;
-      const now = performance.now();
-      if (now - (lastTrigTime[voice] || 0) < 80) return;
-      lastTrigTime[voice] = now;
-      setDrumTriggeredVoices(prev => ({ ...prev, [voice]: true }));
-      const existing = drumTriggerTimersRef.current[voice];
-      if (existing) window.clearTimeout(existing);
-      drumTriggerTimersRef.current[voice] = window.setTimeout(() => {
-        setDrumTriggeredVoices(prev => ({ ...prev, [voice]: false }));
-        drumTriggerTimersRef.current[voice] = null;
-      }, 120);
-    });
-    return () => {
-      audioEngine.setDrumTriggerCallback(() => {});
-    };
-  }, [activeTab]);
-
-  // Auto-morph animation loop — drives drum voice morphs plus pad preset morphs when enabled.
-  const autoMorphRafRef = useRef<number | null>(null);
-  const autoMorphStateRef = useRef(state);
-  autoMorphStateRef.current = state;
-  const padAutoMorphRef = useRef({
-    pad1: { phase: state.padMorph ?? 0, direction: 1 as 1 | -1 },
-    pad2: { phase: state.pad2Morph ?? 0, direction: 1 as 1 | -1 },
-  });
-
-  useEffect(() => {
-    const syncPadState = (
-      pad: 'pad1' | 'pad2',
-      value: number | undefined,
-      autoEnabled: boolean,
-    ) => {
-      const nextPhase = Math.max(0, Math.min(1, value ?? 0));
-      const target = padAutoMorphRef.current[pad];
-      target.phase = nextPhase;
-      if (!autoEnabled || nextPhase <= 0.001 || nextPhase >= 0.999) {
-        target.direction = nextPhase >= 0.999 ? -1 : 1;
-      }
-    };
-
-    syncPadState('pad1', state.padMorph, state.padMorphAuto && (sliderModes.padMorph ?? 'single') === 'single');
-    syncPadState('pad2', state.pad2Morph, state.pad2MorphAuto && (sliderModes.pad2Morph ?? 'single') === 'single');
-  }, [state.padMorph, state.padMorphAuto, state.pad2Morph, state.pad2MorphAuto, sliderModes.padMorph, sliderModes.pad2Morph]);
-
-  const anyDrumAutoMorphActive = (
-    state.drumSubMorphAuto || state.drumKickMorphAuto || state.drumClickMorphAuto ||
-    state.drumBeepHiMorphAuto || state.drumBeepLoMorphAuto ||
-    state.drumNoiseMorphAuto || state.drumMembraneMorphAuto
-  );
-  const pad1AutoMorphActive = state.padMorphAuto && (sliderModes.padMorph ?? 'single') === 'single';
-  const pad2AutoMorphActive = state.pad2MorphAuto && (sliderModes.pad2Morph ?? 'single') === 'single';
-  const anyPadAutoMorphActive = pad1AutoMorphActive || pad2AutoMorphActive;
-
-  useEffect(() => {
-    if (!anyDrumAutoMorphActive && !anyPadAutoMorphActive) return;
-
-    const MORPH_STATE_KEYS: Record<string, keyof SliderState> = {
-      sub: 'drumSubMorph',
-      kick: 'drumKickMorph',
-      click: 'drumClickMorph',
-      beepHi: 'drumBeepHiMorph',
-      beepLo: 'drumBeepLoMorph',
-      noise: 'drumNoiseMorph',
-      membrane: 'drumMembraneMorph',
-    };
-
-    let active = true;
-    let lastPadUpdateTime = performance.now();
-    const shouldAnimate = () => engineState.isRunning || document.visibilityState === 'visible';
-
-    const resolvePadAutoMorph = (
-      pad: 'pad1' | 'pad2',
-      currentState: SliderState,
-      deltaTime: number,
-    ): number | null => {
-      const padState = padAutoMorphRef.current[pad];
-      const phraseLengthSeconds = Math.max(0.001, currentState.phraseLength ?? 16);
-      const phrasesPerSweep = Math.max(1, pad === 'pad1'
-        ? (currentState.padMorphSpeed ?? 8)
-        : (currentState.pad2MorphSpeed ?? 8));
-      const cyclesPerMinute = 120 / (phrasesPerSweep * phraseLengthSeconds);
-      const result = updateAutoMorph(
-        padState.phase,
-        padState.direction,
-        'pingpong',
-        cyclesPerMinute,
-        deltaTime,
-      );
-      padState.phase = result.phase;
-      padState.direction = result.direction as 1 | -1;
-      return result.morph;
-    };
-
-    const tick = () => {
-      if (!active) return;
-      if (!shouldAnimate()) {
-        autoMorphRafRef.current = null;
-        return;
-      }
-      const now = performance.now();
-      const deltaTime = Math.max(0, (now - lastPadUpdateTime) / 1000);
-      lastPadUpdateTime = now;
-      const currentState = autoMorphStateRef.current;
-      const newValues = anyDrumAutoMorphActive
-        ? drumMorphManager.update(currentState, now)
-        : new Map<DrumPresetVoice, number>();
-      const nextPadMorph = pad1AutoMorphActive
-        ? resolvePadAutoMorph('pad1', currentState, deltaTime)
-        : null;
-      const nextPad2Morph = pad2AutoMorphActive
-        ? resolvePadAutoMorph('pad2', currentState, deltaTime)
-        : null;
-
-      if (newValues.size > 0 || nextPadMorph !== null || nextPad2Morph !== null) {
-        setState(prev => {
-          const updates: Partial<SliderState> = {};
-          for (const [voice, value] of newValues) {
-            const key = MORPH_STATE_KEYS[voice];
-            if (key && Math.abs((prev[key] as number) - value) > 0.001) {
-              (updates as Record<string, unknown>)[key] = value;
-            }
-          }
-          if (nextPadMorph !== null && Math.abs((prev.padMorph ?? 0) - nextPadMorph) > 0.001) {
-            updates.padMorph = nextPadMorph;
-          }
-          if (nextPad2Morph !== null && Math.abs((prev.pad2Morph ?? 0) - nextPad2Morph) > 0.001) {
-            updates.pad2Morph = nextPad2Morph;
-          }
-          if (Object.keys(updates).length === 0) return prev;
-
-          let newState = { ...prev, ...updates };
-
-          if (updates.padMorph !== undefined) {
-            const presetA = getPadPreset(newState.padPresetA as string);
-            const presetB = getPadPreset(newState.padPresetB as string);
-            if (presetA && presetB) {
-              const morphed = morphPadPresets(presetA, presetB, newState.padMorph as number);
-              for (const k of PAD_PRESET_PARAM_KEYS) {
-                if (k in morphed) {
-                  (newState as Record<string, unknown>)[k] = morphed[k];
-                }
-              }
-            }
-          }
-
-          if (updates.pad2Morph !== undefined) {
-            const presetA = getPadPreset(newState.pad2PresetA as string);
-            const presetB = getPadPreset(newState.pad2PresetB as string);
-            if (presetA && presetB) {
-              const morphed = morphPadPresets(presetA, presetB, newState.pad2Morph as number);
-              for (const k of PAD_PRESET_PARAM_KEYS) {
-                if (k in morphed) {
-                  const pad2Key = PAD1_TO_PAD2_KEY[k];
-                  if (pad2Key) {
-                    (newState as Record<string, unknown>)[pad2Key] = morphed[k];
-                  }
-                }
-              }
-            }
-          }
-
-          for (const [voice] of newValues) {
-            const morphedParams = applyMorphToState(newState as SliderState, voice as DrumPresetVoice);
-            newState = { ...newState, ...morphedParams };
-          }
-
-          return newState;
-        });
-      }
-      autoMorphRafRef.current = requestAnimationFrame(tick);
-    };
-
-    const stopLoop = () => {
-      if (autoMorphRafRef.current !== null) {
-        cancelAnimationFrame(autoMorphRafRef.current);
-        autoMorphRafRef.current = null;
-      }
-    };
-
-    const startLoop = () => {
-      if (autoMorphRafRef.current !== null || !shouldAnimate()) return;
-      lastPadUpdateTime = performance.now();
-      autoMorphRafRef.current = requestAnimationFrame(tick);
-    };
-
-    const handleVisibilityChange = () => {
-      if (shouldAnimate()) {
-        startLoop();
-      } else {
-        stopLoop();
-      }
-    };
-
-    startLoop();
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => {
-      active = false;
-      stopLoop();
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [anyDrumAutoMorphActive, anyPadAutoMorphActive, pad1AutoMorphActive, pad2AutoMorphActive, engineState.isRunning]);
-
   // Transport debug polling
   useEffect(() => {
-    if (engineState.isRunning) {
-      const update = () => {
-        const transportDebug = audioEngine.getTransportDebugState();
-        setEngineState(prev => ({ ...prev, transportDebug }));
-      };
-      update();
-      const intervalId = window.setInterval(update, 250);
-      return () => {
-        clearInterval(intervalId);
-      };
-    }
-  }, [engineState.isRunning]);
+    if (!engineState.isRunning) return;
 
-  // Filter frequency + LFO value polling for live visualization
-  const [liveFilterFreq, setLiveFilterFreq] = useState(1000);
-  const [liveLfoValue, setLiveLfoValue] = useState(0);
-  useEffect(() => {
-    let filterId: number | null = null;
-    const stopPolling = () => {
-      if (filterId !== null) {
-        clearInterval(filterId);
-        filterId = null;
+    let intervalId: number | null = null;
+
+    const clearPolling = () => {
+      if (intervalId !== null) {
+        window.clearInterval(intervalId);
+        intervalId = null;
       }
     };
-    const startPolling = () => {
-      if (filterId !== null) return;
-      if (!engineState.isRunning || activeTab !== 'synth' || document.visibilityState !== 'visible') return;
-      const updateFilter = () => {
-        setLiveFilterFreq(audioEngine.getCurrentFilterFreq());
-        setLiveLfoValue(audioEngine.getCurrentLfoValue());
-      };
-      updateFilter();
-      filterId = window.setInterval(updateFilter, 150); // ~7fps — throttled to reduce re-renders
+
+    const update = () => {
+      const transportDebug = audioEngine.getTransportDebugState();
+      setEngineState(prev => {
+        const current = prev.transportDebug;
+        if (
+          current &&
+          transportDebug &&
+          Math.abs(current.effectiveBpm - transportDebug.effectiveBpm) < 0.05 &&
+          Math.abs(current.effectivePhraseSeconds - transportDebug.effectivePhraseSeconds) < 0.05 &&
+          Math.abs(current.nextPhraseBoundaryIn - transportDebug.nextPhraseBoundaryIn) < 0.05 &&
+          Math.abs((current.nextHarmonyEventIn ?? -1) - (transportDebug.nextHarmonyEventIn ?? -1)) < 0.05 &&
+          Math.abs((current.nextProgressionStepIn ?? -1) - (transportDebug.nextProgressionStepIn ?? -1)) < 0.05
+        ) {
+          return prev;
+        }
+        return { ...prev, transportDebug };
+      });
     };
+
+    const startPolling = () => {
+      clearPolling();
+      if (document.visibilityState !== 'visible') return;
+      update();
+      intervalId = window.setInterval(update, 1000);
+    };
+
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         startPolling();
       } else {
-        stopPolling();
+        clearPolling();
       }
     };
+
     startPolling();
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
-      stopPolling();
+      clearPolling();
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [activeTab, engineState.isRunning]);
+  }, [engineState.isRunning]);
 
   useEffect(() => {
     setState(prev => {
@@ -2995,7 +2525,7 @@ const App: React.FC = () => {
   // Update engine when state changes (always — drum sequencer works independently)
   useEffect(() => {
     audioEngine.updateParams(state);
-  }, [state, engineState.isRunning]);
+  }, [state]);
 
   // Handle slider change
   const handleSliderChange = useCallback((key: keyof SliderState, value: number | string) => {
@@ -3871,7 +3401,7 @@ const App: React.FC = () => {
           return next;
         });
 
-        // 2. Initialise dualSliderRanges + randomWalkRef for walk/sampleHold keys
+        // 2. Initialise dualSliderRanges for walk/sampleHold keys
         //    so that the walk animation and sampleHold triggers actually fire.
         const presetData = getGranularPresetData(value as string);
         const newDualRanges: DualSliderState = {};
@@ -3889,12 +3419,7 @@ const App: React.FC = () => {
           newDualRanges[paramKey] = { min: rMin, max: rMax };
 
           if (mode === 'walk') {
-            const walkPos = Math.random();
-            newWalkPositions[k] = walkPos;
-            randomWalkRef.current[paramKey] = {
-              position: walkPos,
-              velocity: (Math.random() - 0.5) * 0.02,
-            };
+            newWalkPositions[k] = 0.5;
           }
         }
         // Merge with existing non-granular ranges
@@ -3913,12 +3438,6 @@ const App: React.FC = () => {
           }
           return { ...next, ...newWalkPositions };
         });
-        // Clean up stale walk refs for granular keys
-        for (const k of Object.keys(randomWalkRef.current)) {
-          if (k.startsWith('granularV') && !(k in modes)) {
-            delete randomWalkRef.current[k as keyof SliderState];
-          }
-        }
       }
 
     }
@@ -3980,7 +3499,7 @@ const App: React.FC = () => {
         setIsRecordingArmed(false);
         // Small delay to ensure audio context is fully running
         setTimeout(() => {
-          handleStartRecording();
+          void handleStartRecording();
         }, 50);
       }
     } catch (err) {
@@ -4069,68 +3588,219 @@ const App: React.FC = () => {
     setIsRecordingArmed(prev => !prev);
   };
 
-  // WAV encoding helper - creates 24-bit 48kHz WAV
-  const encodeWav24bit = (leftChannel: Float32Array, rightChannel: Float32Array, sampleRate: number): ArrayBuffer => {
-    const numChannels = 2;
-    const bitsPerSample = 24;
-    const bytesPerSample = bitsPerSample / 8;
-    const numSamples = leftChannel.length;
-    const dataSize = numSamples * numChannels * bytesPerSample;
-    const headerSize = 44;
-    const buffer = new ArrayBuffer(headerSize + dataSize);
-    const view = new DataView(buffer);
-    
-    // Helper to write string
-    const writeString = (offset: number, str: string) => {
-      for (let i = 0; i < str.length; i++) {
-        view.setUint8(offset + i, str.charCodeAt(i));
-      }
-    };
-    
-    // RIFF header
-    writeString(0, 'RIFF');
-    view.setUint32(4, 36 + dataSize, true);
-    writeString(8, 'WAVE');
-    
-    // fmt chunk
-    writeString(12, 'fmt ');
-    view.setUint32(16, 16, true); // chunk size
-    view.setUint16(20, 1, true); // PCM format
-    view.setUint16(22, numChannels, true);
-    view.setUint32(24, sampleRate, true);
-    view.setUint32(28, sampleRate * numChannels * bytesPerSample, true); // byte rate
-    view.setUint16(32, numChannels * bytesPerSample, true); // block align
-    view.setUint16(34, bitsPerSample, true);
-    
-    // data chunk
-    writeString(36, 'data');
-    view.setUint32(40, dataSize, true);
-    
-    // Write interleaved 24-bit samples
-    let offset = 44;
-    for (let i = 0; i < numSamples; i++) {
-      // Left channel - clamp and convert to 24-bit signed integer
-      const leftSample = Math.max(-1, Math.min(1, leftChannel[i] ?? 0));
-      const leftInt = Math.floor(leftSample * 8388607); // 2^23 - 1
-      view.setUint8(offset, leftInt & 0xFF);
-      view.setUint8(offset + 1, (leftInt >> 8) & 0xFF);
-      view.setUint8(offset + 2, (leftInt >> 16) & 0xFF);
-      offset += 3;
-      
-      // Right channel
-      const rightSample = Math.max(-1, Math.min(1, rightChannel[i] ?? 0));
-      const rightInt = Math.floor(rightSample * 8388607);
-      view.setUint8(offset, rightInt & 0xFF);
-      view.setUint8(offset + 1, (rightInt >> 8) & 0xFF);
-      view.setUint8(offset + 2, (rightInt >> 16) & 0xFF);
-      offset += 3;
-    }
-    
-    return buffer;
+  const downloadBlob = (filename: string, blob: Blob) => {
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
   };
 
+  const downloadRecordingArchive = async (
+    filesToExport: Array<{ filename: string; blob: Blob }>,
+    timestamp: string,
+  ) => {
+    if (filesToExport.length === 0) {
+      console.log('No files to export');
+      return;
+    }
+
+    if (filesToExport.length === 1) {
+      const firstFile = filesToExport[0];
+      if (!firstFile) return;
+      downloadBlob(firstFile.filename, firstFile.blob);
+      console.log(`Exported: ${firstFile.filename}`);
+      return;
+    }
+
+    console.log(`Creating zip archive with ${filesToExport.length} files...`);
+    const { default: JSZip } = await import('jszip');
+    const zip = new JSZip();
+    for (const { filename, blob } of filesToExport) {
+      zip.file(filename, blob);
+    }
+    const zipBlob = await zip.generateAsync({
+      type: 'blob',
+      compression: 'DEFLATE',
+      compressionOptions: { level: 6 },
+    });
+    downloadBlob(`kessho-${timestamp}.zip`, zipBlob);
+    console.log(`Exported: kessho-${timestamp}.zip (${filesToExport.length} files)`);
+  };
+
+  const ensureRecorderTapWorklet = useCallback(async (ctx: AudioContext) => {
+    if (recorderWorkletContextRef.current === ctx) return;
+    await ctx.audioWorklet.addModule(recorderTapWorkletUrl);
+    recorderWorkletContextRef.current = ctx;
+  }, []);
+
+  const ensureRecordingExportWorker = useCallback(() => {
+    if (recordingExportWorkerRef.current) return recordingExportWorkerRef.current;
+    const worker = new Worker(
+      new URL('./audio/recording/exportRecorder.worker.ts', import.meta.url),
+      { type: 'module' },
+    );
+    recordingExportWorkerRef.current = worker;
+    return worker;
+  }, []);
+
+  const attachRecorderTap = useCallback((
+    ctx: AudioContext,
+    trackId: RecordTrackId,
+    sourceNode: AudioNode,
+    worker: Worker,
+    outputIndex = 0,
+  ) => {
+    let resolveFlush = () => {};
+    const flushPromise = new Promise<void>((resolve) => {
+      resolveFlush = resolve;
+    });
+
+    const tapNode = new AudioWorkletNode(ctx, 'kessho-recorder-tap', {
+      numberOfInputs: 1,
+      numberOfOutputs: 1,
+      outputChannelCount: [2],
+      channelCount: 2,
+      channelCountMode: 'explicit',
+      processorOptions: {
+        trackId,
+        chunkFrames: 4096,
+      },
+    });
+    const sinkNode = ctx.createGain();
+    sinkNode.gain.value = 0;
+
+    const handleMessage = (event: MessageEvent<unknown>) => {
+      const message = event.data as {
+        type?: string;
+        trackId?: RecordTrackId;
+        frameCount?: number;
+        left?: Float32Array;
+        right?: Float32Array;
+      };
+      if (message.type === 'chunk' && message.left && message.right && typeof message.frameCount === 'number') {
+        worker.postMessage(
+          {
+            type: 'chunk',
+            trackId,
+            frameCount: message.frameCount,
+            left: message.left,
+            right: message.right,
+          },
+          [message.left.buffer, message.right.buffer],
+        );
+        return;
+      }
+      if (message.type === 'flushed') {
+        resolveFlush();
+      }
+    };
+
+    tapNode.port.addEventListener('message', handleMessage as EventListener);
+    tapNode.port.start?.();
+    sourceNode.connect(tapNode, outputIndex);
+    tapNode.connect(sinkNode);
+    sinkNode.connect(ctx.destination);
+
+    recorderTapSessionsRef.current[trackId] = {
+      trackId,
+      sourceNode,
+      tapNode,
+      sinkNode,
+      flushPromise,
+      resolveFlush,
+      handleMessage,
+    };
+  }, []);
+
+  const flushAndDetachRecorderTapSessions = useCallback(async () => {
+    const sessions = Object.values(recorderTapSessionsRef.current).filter((session): session is RecorderTapSession => Boolean(session));
+    if (sessions.length === 0) return;
+
+    for (const session of sessions) {
+      session.tapNode.port.postMessage({ type: 'flush' });
+    }
+
+    await Promise.all(sessions.map((session) => session.flushPromise));
+
+    for (const session of sessions) {
+      try {
+        session.sourceNode.disconnect(session.tapNode);
+      } catch { /* noop */ }
+      session.tapNode.port.removeEventListener('message', session.handleMessage as EventListener);
+      try {
+        session.tapNode.port.postMessage({ type: 'destroy' });
+      } catch { /* noop */ }
+      try {
+        session.tapNode.disconnect();
+      } catch { /* noop */ }
+      try {
+        session.sinkNode.disconnect();
+      } catch { /* noop */ }
+      recorderTapSessionsRef.current[session.trackId] = null;
+    }
+  }, []);
+
+  const finalizeRecordingWorkerFiles = useCallback((timestamp: string) => {
+    const worker = recordingExportWorkerRef.current;
+    if (!worker) return Promise.resolve<Array<{ filename: string; blob: Blob }>>([]);
+
+    return new Promise<Array<{ filename: string; blob: Blob }>>((resolve, reject) => {
+      const handleMessage = (event: MessageEvent<RecorderWorkerFinalizedMessage>) => {
+        if (event.data?.type !== 'finalized') return;
+        worker.removeEventListener('message', handleMessage as EventListener);
+        worker.removeEventListener('error', handleError as EventListener);
+        const files = event.data.files.map(({ trackId, blob, totalFrames }) => {
+          const suffix = RECORD_TRACK_FILENAME_SUFFIX[trackId];
+          const filename = suffix
+            ? `kessho-${timestamp}-${suffix}.wav`
+            : `kessho-${timestamp}.wav`;
+          console.log(`Prepared ${filename} (${totalFrames} frames, 24-bit WAV)`);
+          return { filename, blob };
+        });
+        worker.terminate();
+        recordingExportWorkerRef.current = null;
+        resolve(files);
+      };
+
+      const handleError = (event: Event) => {
+        worker.removeEventListener('message', handleMessage as EventListener);
+        worker.removeEventListener('error', handleError as EventListener);
+        worker.terminate();
+        recordingExportWorkerRef.current = null;
+        reject(event);
+      };
+
+      worker.addEventListener('message', handleMessage as EventListener);
+      worker.addEventListener('error', handleError as EventListener);
+      worker.postMessage({ type: 'finalize' });
+    });
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      for (const session of Object.values(recorderTapSessionsRef.current)) {
+        if (!session) continue;
+        try {
+          session.sourceNode.disconnect(session.tapNode);
+        } catch { /* noop */ }
+        try {
+          session.tapNode.disconnect();
+        } catch { /* noop */ }
+        try {
+          session.sinkNode.disconnect();
+        } catch { /* noop */ }
+      }
+      recordingExportWorkerRef.current?.terminate();
+      recordingExportWorkerRef.current = null;
+    };
+  }, []);
+
   // Recording functions
-  const handleStartRecording = () => {
+  const handleStartRecording = async () => {
     const ctx = audioEngine.getAudioContext();
     const limiterNode = audioEngine.getLimiterNode();
     if (!ctx || !limiterNode) {
@@ -4144,28 +3814,13 @@ const App: React.FC = () => {
       return;
     }
 
+    const enabledStemIds = STEM_RECORD_TRACK_IDS.filter((trackId) => recordStems[trackId]);
+    if (isMobileDevice() && (recordFormats.wav || enabledStemIds.length > 0)) {
+      alert('Mobile recording is limited to the stereo WebM mix to avoid high CPU and memory use. Disable WAV and stem capture, or record on desktop.');
+      return;
+    }
+
     try {
-      // Always capture WAV data (for WAV output or both)
-      if (recordFormats.wav || recordFormats.webm) {
-        // WAV recording using ScriptProcessorNode for raw PCM capture
-        wavBuffersRef.current = [[], []];
-        const bufferSize = 4096;
-        const scriptProcessor = ctx.createScriptProcessor(bufferSize, 2, 2);
-        
-        scriptProcessor.onaudioprocess = (e) => {
-          const leftData = e.inputBuffer.getChannelData(0);
-          const rightData = e.inputBuffer.getChannelData(1);
-          // Copy the data since the buffer is reused
-          const [leftChunks, rightChunks] = wavBuffersRef.current;
-          leftChunks.push(new Float32Array(leftData));
-          rightChunks.push(new Float32Array(rightData));
-        };
-        
-        limiterNode.connect(scriptProcessor);
-        scriptProcessor.connect(ctx.destination); // Required for processing to work
-        scriptProcessorRef.current = scriptProcessor;
-      }
-      
       // WebM recording using MediaRecorder (if selected)
       if (recordFormats.webm) {
         const streamDest = ctx.createMediaStreamDestination();
@@ -4188,43 +3843,34 @@ const App: React.FC = () => {
         mediaRecorder.start(1000);
         mediaRecorderRef.current = mediaRecorder;
       }
-      
-      // Set up stem recording for each enabled stem
-      const stemNodes = audioEngine.getAllStemNodes();
-      const enabledStems = Object.entries(recordStems).filter(([, enabled]) => enabled);
-      
-      for (const [stemName, isEnabled] of enabledStems) {
-        if (!isEnabled) continue;
-        
-        const stemNode = stemNodes[stemName];
-        if (!stemNode) {
-          console.warn(`Stem node not available for ${stemName}`);
-          continue;
+
+      const trackIdsToCapture: RecordTrackId[] = [];
+      if (recordFormats.wav) trackIdsToCapture.push('mix');
+      trackIdsToCapture.push(...enabledStemIds);
+
+      if (trackIdsToCapture.length > 0) {
+        await ensureRecorderTapWorklet(ctx);
+        const worker = ensureRecordingExportWorker();
+        worker.postMessage({
+          type: 'init',
+          sampleRate: ctx.sampleRate,
+          trackIds: trackIdsToCapture,
+        });
+
+        if (recordFormats.wav) {
+          attachRecorderTap(ctx, 'mix', limiterNode, worker);
         }
-        
-        // Clear previous buffers
-        stemBuffersRef.current[stemName as StemName] = [[], []];
-        
-        // Create ScriptProcessor for this stem
-        const bufferSize = 4096;
-        const stemProcessor = ctx.createScriptProcessor(bufferSize, 2, 2);
-        
-        const stemNameCapture = stemName as StemName;
-        stemProcessor.onaudioprocess = (e) => {
-          const leftData = e.inputBuffer.getChannelData(0);
-          const rightData = e.inputBuffer.getChannelData(1);
-          // Copy the data since the buffer is reused
-          const [leftChunks, rightChunks] = stemBuffersRef.current[stemNameCapture];
-          leftChunks.push(new Float32Array(leftData));
-          rightChunks.push(new Float32Array(rightData));
-        };
-        
-        // Connect stem node to its processor
-        stemNode.connect(stemProcessor);
-        stemProcessor.connect(ctx.destination); // Required for processing to work
-        stemProcessorsRef.current[stemName as StemName] = stemProcessor;
-        
-        console.log(`Stem recording started for: ${stemName}`);
+
+        const recordableNodes = audioEngine.getRecordableBusNodes();
+        for (const stemName of enabledStemIds) {
+          const stemSource = recordableNodes[stemName];
+          if (!stemSource?.node) {
+            console.warn(`Stem node not available for ${stemName}`);
+            continue;
+          }
+          attachRecorderTap(ctx, stemName, stemSource.node, worker, stemSource.outputIndex ?? 0);
+          console.log(`Stem recording started for: ${stemName}`);
+        }
       }
       
       recordingStartTimeRef.current = Date.now();
@@ -4236,203 +3882,79 @@ const App: React.FC = () => {
       }, 1000);
 
       const formats = [recordFormats.webm && 'WebM', recordFormats.wav && 'WAV'].filter(Boolean).join(' + ');
-      const stemCount = Object.values(recordStems).filter(Boolean).length;
+      const stemCount = enabledStemIds.length;
       const stemInfo = stemCount > 0 ? ` + ${stemCount} stems` : '';
       console.log(`Recording started: ${formats}${stemInfo}`);
     } catch (err) {
       console.error('Failed to start recording:', err);
+      await flushAndDetachRecorderTapSessions();
+      recordingExportWorkerRef.current?.terminate();
+      recordingExportWorkerRef.current = null;
+      if (recordingStreamDestRef.current && limiterNode) {
+        try {
+          limiterNode.disconnect(recordingStreamDestRef.current);
+        } catch { /* noop */ }
+        recordingStreamDestRef.current = null;
+      }
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        try {
+          mediaRecorderRef.current.stop();
+        } catch { /* noop */ }
+      }
+      mediaRecorderRef.current = null;
     }
   };
 
-  const handleStopRecording = () => {
+  const handleStopRecording = async () => {
     if (recordingIntervalRef.current) {
       clearInterval(recordingIntervalRef.current);
       recordingIntervalRef.current = null;
     }
     
-    const ctx = audioEngine.getAudioContext();
     const limiterNode = audioEngine.getLimiterNode();
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    
-    // Stop ScriptProcessor for WAV
-    if (scriptProcessorRef.current) {
-      if (limiterNode) {
-        try {
-          limiterNode.disconnect(scriptProcessorRef.current);
-        } catch (e) { /* ignore */ }
-      }
-      scriptProcessorRef.current.disconnect();
-      scriptProcessorRef.current = null;
-    }
-    
-    // Collect all files for zip archive
-    const filesToZip: Array<{ filename: string; blob: Blob }> = [];
-    
-    // Export WAV if selected
-    if (recordFormats.wav) {
-      const leftBuffers = wavBuffersRef.current[0];
-      const rightBuffers = wavBuffersRef.current[1];
-      const totalSamples = leftBuffers.reduce((acc, buf) => acc + buf.length, 0);
-      
-      if (totalSamples > 0) {
-        const leftChannel = new Float32Array(totalSamples);
-        const rightChannel = new Float32Array(totalSamples);
-        let offset = 0;
-        for (let i = 0; i < leftBuffers.length; i++) {
-          const leftBuffer = leftBuffers[i];
-          const rightBuffer = rightBuffers[i];
-          if (!leftBuffer || !rightBuffer) continue;
-          leftChannel.set(leftBuffer, offset);
-          rightChannel.set(rightBuffer, offset);
-          offset += leftBuffer.length;
-        }
-        
-        const sampleRate = ctx?.sampleRate || 48000;
-        const wavBuffer = encodeWav24bit(leftChannel, rightChannel, sampleRate);
-        const blob = new Blob([wavBuffer], { type: 'audio/wav' });
-        filesToZip.push({ filename: `kessho-${timestamp}.wav`, blob });
-        
-        console.log(`WAV prepared: ${totalSamples} samples at ${sampleRate}Hz, 24-bit`);
-      }
-    }
-    
-    wavBuffersRef.current = [[], []];
-    
-    // Stop and export WebM if selected
-    let webmPending = false;
-    if (recordFormats.webm && mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      webmPending = true;
-      // Set up export callback before stopping
-      mediaRecorderRef.current.onstop = () => {
-        const blob = new Blob(recordedChunksRef.current, { type: 'audio/webm' });
-        filesToZip.push({ filename: `kessho-${timestamp}.webm`, blob });
-        webmPending = false;
 
-        if (recordingStreamDestRef.current && limiterNode) {
-          try {
-            limiterNode.disconnect(recordingStreamDestRef.current);
-          } catch (e) { /* ignore */ }
-          recordingStreamDestRef.current = null;
-        }
-        
-        console.log('WebM prepared');
-      };
-      
-      mediaRecorderRef.current.stop();
-    }
-    
-    // Stop and export stem recordings
-    const stemNodes = audioEngine.getAllStemNodes();
-    const sampleRate = ctx?.sampleRate || 48000;
-    
-    for (const [stemName, processor] of Object.entries(stemProcessorsRef.current)) {
-      if (!processor) continue;
-      
-      const stemNode = stemNodes[stemName];
-      
-      // Disconnect the processor
-      if (stemNode) {
-        try {
-          stemNode.disconnect(processor);
-        } catch (e) { /* ignore */ }
-      }
-      processor.disconnect();
-      stemProcessorsRef.current[stemName as StemName] = null;
-      
-      // Prepare stem WAV
-      const leftBuffers = stemBuffersRef.current[stemName as StemName][0];
-      const rightBuffers = stemBuffersRef.current[stemName as StemName][1];
-      const totalSamples = leftBuffers.reduce((acc, buf) => acc + buf.length, 0);
-      
-      if (totalSamples > 0) {
-        const leftChannel = new Float32Array(totalSamples);
-        const rightChannel = new Float32Array(totalSamples);
-        let offset = 0;
-        for (let i = 0; i < leftBuffers.length; i++) {
-          const leftBuffer = leftBuffers[i];
-          const rightBuffer = rightBuffers[i];
-          if (!leftBuffer || !rightBuffer) continue;
-          leftChannel.set(leftBuffer, offset);
-          rightChannel.set(rightBuffer, offset);
-          offset += leftBuffer.length;
-        }
-        
-        const wavBuffer = encodeWav24bit(leftChannel, rightChannel, sampleRate);
-        const blob = new Blob([wavBuffer], { type: 'audio/wav' });
-        filesToZip.push({ filename: `kessho-${timestamp}-${stemName}.wav`, blob });
-        
-        console.log(`Stem prepared: ${stemName} - ${totalSamples} samples at ${sampleRate}Hz, 24-bit`);
-      }
-      
-      // Clear buffer
-      stemBuffersRef.current[stemName as StemName] = [[], []];
-    }
-    
-    // Create and download zip archive (or single file if only one)
-    const createAndDownloadArchive = async () => {
-      // Wait for WebM onstop callback if WebM recording was active
-      if (webmPending) {
-        let waitCount = 0;
-        while (webmPending && waitCount < 50) { // Max 5 seconds wait
-          await new Promise(resolve => setTimeout(resolve, 100));
-          waitCount++;
-        }
-      }
-      
-      if (filesToZip.length === 0) {
-        console.log('No files to export');
-        return;
-      }
-      
-      // If only one file, download directly (no need for zip)
-      if (filesToZip.length === 1) {
-        const firstFile = filesToZip[0];
-        if (!firstFile) return;
-        const { filename, blob } = firstFile;
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        console.log(`Exported: ${filename}`);
-        return;
-      }
-      
-      // Multiple files: create a zip archive
-      console.log(`Creating zip archive with ${filesToZip.length} files...`);
-      const { default: JSZip } = await import('jszip');
-      const zip = new JSZip();
-      
-      // Add all files to zip
-      for (const { filename, blob } of filesToZip) {
-        zip.file(filename, blob);
-      }
-      
-      // Generate zip blob
-      const zipBlob = await zip.generateAsync({ 
-        type: 'blob',
-        compression: 'DEFLATE',
-        compressionOptions: { level: 6 } // Balance between speed and compression
+    const filesToZip: Array<{ filename: string; blob: Blob }> = [];
+    let webmFilePromise: Promise<{ filename: string; blob: Blob } | null> = Promise.resolve(null);
+
+    if (recordFormats.webm && mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      webmFilePromise = new Promise((resolve) => {
+        mediaRecorderRef.current!.onstop = () => {
+          const blob = new Blob(recordedChunksRef.current, { type: 'audio/webm' });
+          if (recordingStreamDestRef.current && limiterNode) {
+            try {
+              limiterNode.disconnect(recordingStreamDestRef.current);
+            } catch { /* noop */ }
+            recordingStreamDestRef.current = null;
+          }
+          mediaRecorderRef.current = null;
+          console.log('WebM prepared');
+          resolve({ filename: `kessho-${timestamp}.webm`, blob });
+        };
       });
-      
-      // Download zip
-      const url = URL.createObjectURL(zipBlob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `kessho-${timestamp}.zip`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      
-      console.log(`Exported: kessho-${timestamp}.zip (${filesToZip.length} files)`);
-    };
-    
-    // Start archive creation with a brief initial delay
-    setTimeout(() => createAndDownloadArchive(), 100);
+      mediaRecorderRef.current.stop();
+    } else if (recordingStreamDestRef.current && limiterNode) {
+      try {
+        limiterNode.disconnect(recordingStreamDestRef.current);
+      } catch { /* noop */ }
+      recordingStreamDestRef.current = null;
+    }
+
+    try {
+      await flushAndDetachRecorderTapSessions();
+      const [webmFile, wavFiles] = await Promise.all([
+        webmFilePromise,
+        finalizeRecordingWorkerFiles(timestamp),
+      ]);
+
+      if (webmFile) filesToZip.push(webmFile);
+      filesToZip.push(...wavFiles);
+      await downloadRecordingArchive(filesToZip, timestamp);
+    } catch (error) {
+      console.error('Failed to finalize recording:', error);
+      recordingExportWorkerRef.current?.terminate();
+      recordingExportWorkerRef.current = null;
+    }
     
     setIsRecording(false);
     setRecordingDuration(0);
@@ -5014,7 +4536,7 @@ const App: React.FC = () => {
     
     for (const voice of drumVoices) {
       const keys = presetKeys[voice];
-      const currentState = autoMorphStateRef.current; // Read current state from ref
+      const currentState = stateRef.current; // Read current state from ref
       const presetA = currentState[keys.a] as string;
       const presetB = currentState[keys.b] as string;
       const morphValue = currentState[keys.morph] as number;
@@ -5219,34 +4741,13 @@ const App: React.FC = () => {
       return next;
     });
     
-    // Initialize random walk for any new dual sliders and update positions state
+    // Initialize indicator defaults for any new walk sliders while the engine syncs.
     const newWalkPositions: Record<string, number> = {};
     Object.entries(morphResult.dualModes).forEach(([key, mode]) => {
       if (mode === 'single') return; // Skip keys that collapsed to single
-      const paramKey = key as keyof SliderState;
-      if (!randomWalkRef.current[paramKey]) {
-        const walkPos = Math.random();
-        randomWalkRef.current[paramKey] = {
-          position: walkPos,
-          velocity: (Math.random() - 0.5) * 0.02,
-        };
-      }
-      // Always sync ref to state for all active dual sliders
-      newWalkPositions[key] = randomWalkRef.current[paramKey]?.position ?? 0.5;
+      newWalkPositions[key] = 0.5;
     });
     setRandomWalkPositions(newWalkPositions);
-    
-    // Clean up refs for sliders that are no longer dual (or collapsed to single by morph)
-    Object.keys(randomWalkRef.current).forEach(key => {
-      const morphMode = morphResult.dualModes[key];
-      // Remove if: not morph-managed at all, OR morph says it's now single
-      if (morphMode === undefined || morphMode === 'single') {
-        // But only remove if it was morph-managed — keep user-set walk refs
-        if (morphMode === 'single') {
-          delete randomWalkRef.current[key as keyof SliderState];
-        }
-      }
-    });
   }, [morphPresetA, morphPresetB, lerpPresets, engineState.cofCurrentStep]);
 
   const handleMorphSlotAClear = useCallback(() => {
@@ -5439,7 +4940,7 @@ const App: React.FC = () => {
       const phaseElapsed = now - phaseStartTimeRef.current;
       const phaseDuration = phaseDurationRef.current;
       const isVisible = document.visibilityState === 'visible';
-      const currentState = autoMorphStateRef.current;
+      const currentState = stateRef.current;
       
       let newPos: number;
       let phaseName: string;
@@ -5584,23 +5085,9 @@ const App: React.FC = () => {
           const newWalkPositions: Record<string, number> = {};
           Object.entries(morphResult.dualModes).forEach(([key, mode]) => {
             if (mode === 'single') return;
-            const paramKey = key as keyof SliderState;
-            if (!randomWalkRef.current[paramKey]) {
-              const walkPos = Math.random();
-              randomWalkRef.current[paramKey] = {
-                position: walkPos,
-                velocity: (Math.random() - 0.5) * 0.02,
-              };
-            }
-            newWalkPositions[key] = randomWalkRef.current[paramKey]?.position ?? 0.5;
+            newWalkPositions[key] = 0.5;
           });
           setRandomWalkPositions(newWalkPositions);
-
-          Object.keys(randomWalkRef.current).forEach(key => {
-            if (morphResult?.dualModes[key] === 'single') {
-              delete randomWalkRef.current[key as keyof SliderState];
-            }
-          });
         }
       }
       
@@ -5916,7 +5403,7 @@ const App: React.FC = () => {
       // Preserve user preference keys (like reverbQuality) that shouldn't change with morphing
       // Use ref to read current state — avoids stale closure from useCallback
       const stateWithPrefs = { ...morphResult.state };
-      const currentState = autoMorphStateRef.current;
+      const currentState = stateRef.current;
       for (const key of USER_PREFERENCE_KEYS) {
         (stateWithPrefs as Record<string, unknown>)[key] = currentState[key];
       }
@@ -6255,9 +5742,9 @@ const App: React.FC = () => {
           }}
           onClick={() => {
             if (isRecording) {
-              handleStopRecording();
+              void handleStopRecording();
             } else if (engineState.isRunning) {
-              handleStartRecording();
+              void handleStartRecording();
             } else {
               handleArmRecording();
             }
@@ -6525,14 +6012,8 @@ const App: React.FC = () => {
             SliderComponent={Slider as unknown as React.ComponentType<Record<string, unknown>>}
             SelectComponent={Select as unknown as React.ComponentType<Record<string, unknown>>}
             CollapsiblePanelComponent={CollapsiblePanel as unknown as React.ComponentType<Record<string, unknown>>}
-            lead4opPresets={lead4opPresets}
-            liveFilterFreq={liveFilterFreq}
-            liveLfoValue={liveLfoValue}
             isRunning={engineState.isRunning}
             getLeadMorphedParams={(lead: 1 | 2) => audioEngine.getLeadMorphedParams(lead)}
-            playheads={leadSeqPlayheads}
-            hitCounts={leadSeqHitCounts}
-            evolveFlashing={synthEuclidEvolveFlashing}
             initialViewMode={synthViewModeRef.current}
             onViewModeChange={(mode) => { synthViewModeRef.current = mode; }}
             initialStepOverrides={synthStepOverridesRef.current}
@@ -6610,7 +6091,6 @@ const App: React.FC = () => {
             onStateChange={setState}
             togglePanel={togglePanel}
             sliderProps={sliderProps}
-            getPresetNames={getPresetNames}
             triggerVoice={(voice) => { void audioEngine.triggerDrumVoice(voice, 0.8, state); }}
             getAnalyserNode={(v) => audioEngine.getDrumVoiceAnalyser(v)}
             resetEvolveHome={(laneIdx) => audioEngine.resetDrumEuclidLaneHome(laneIdx)}
@@ -6620,10 +6100,6 @@ const App: React.FC = () => {
             CollapsiblePanelComponent={CollapsiblePanel as unknown as React.ComponentType<Record<string, unknown>>}
             editingVoice={drumEditingVoice}
             onToggleEditing={(v) => setDrumEditingVoice(prev => prev === v ? null : v)}
-            triggeredVoices={drumTriggeredVoices}
-            playheads={drumSeqPlayheads}
-            hitCounts={drumSeqHitCounts}
-            evolveFlashing={drumEuclidEvolveFlashing}
             onEvolveConfigsChange={(configs) => { drumEvolveConfigsRef.current = configs; audioEngine.setDrumEuclidEvolveConfigs(configs); }}
             initialEvolveConfigs={drumEvolveConfigsRef.current}
             presetVersion={drumPresetVersion}
@@ -6660,10 +6136,6 @@ const App: React.FC = () => {
             onStateChange={setState}
             sliderProps={sliderProps}
             SliderComponent={Slider as unknown as React.ComponentType<Record<string, unknown>>}
-            writeHeadPosition={granularWriteHead}
-            voicePositions={granularVoicePositions}
-            activeGrainCount={granularActiveGrains}
-            bufferWaveform={granularBufferWaveform}
           />
         )}
 
@@ -6961,9 +6433,11 @@ const App: React.FC = () => {
             border: '1px solid #444',
             borderRadius: '12px',
             padding: '24px',
-            minWidth: '280px',
+            width: 'min(320px, calc(100vw - 24px))',
+            minWidth: 'min(280px, calc(100vw - 24px))',
             textAlign: 'center',
             boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
+            boxSizing: 'border-box',
           }}>
             <div style={{ fontSize: '1rem', marginBottom: '8px', color: '#e0e0e0' }}>
               Load to which slot?

@@ -37,7 +37,7 @@ export function OceanCard({
         >
           {state.oceanSampleEnabled ? '●' : '○'}
         </button>
-        <span className="layer-label" style={{ minWidth: 100 }}>Ghetary Waves</span>
+        <span className="layer-label" style={{ minWidth: 'clamp(72px, 24vw, 100px)' }}>Ghetary Waves</span>
         <span className="layer-value">{state.oceanSampleEnabled ? 'ON' : 'OFF'}</span>
       </div>
       {ds('oceanSampleLevel', 'Waves Level', 'rgba(0,212,255,0.5)')}

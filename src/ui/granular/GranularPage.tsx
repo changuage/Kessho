@@ -15,6 +15,7 @@ import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { SliderState, formatIndexedDelayDivision, getParamInfo, getSliderNumericValue } from '../state';
 import type { ClockDivision } from '../../audio/drumSeqTypes';
 import { computeGranularMacroModel } from '../../audio/granularMacroModel';
+import { audioEngine } from '../../audio/engine';
 import GranularBufferCanvas from './GranularBufferCanvas';
 import type { CanvasVoiceVisual } from './GranularBufferCanvas';
 import { useSliderHelp } from '../SliderHelpOverlay';
@@ -129,14 +130,6 @@ export interface GranularPageProps {
   onStateChange?: (newState: SliderState) => void;
   sliderProps: (paramKey: keyof SliderState) => Record<string, unknown>;
   SliderComponent: React.ComponentType<Record<string, unknown>>;
-  /** Write head position 0-1 from engine */
-  writeHeadPosition: number;
-  /** Per-voice read positions 0-1 from engine (array of 4) */
-  voicePositions: number[];
-  /** Current total active grain count from the engine */
-  activeGrainCount: number;
-  /** Downsampled buffer waveform peaks for visualization */
-  bufferWaveform: Float32Array | null;
 }
 
 interface BufferRangeSegment {
@@ -197,11 +190,20 @@ const makeWrappedRangeSegments = (start: number, width: number): BufferRangeSegm
   return segments;
 };
 
+function positionsEqual(left: number[], right: number[], epsilon = 0.002): boolean {
+  if (left === right) return true;
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index += 1) {
+    if (Math.abs((left[index] ?? 0) - (right[index] ?? 0)) > epsilon) return false;
+  }
+  return true;
+}
+
 // ═══════════════ Component ═══════════════
 
 const GranularPage: React.FC<GranularPageProps> = ({
   state,
-  isMobile: _isMobile,
+  isMobile,
   isRunning,
   expandedPanels,
   togglePanel,
@@ -210,14 +212,76 @@ const GranularPage: React.FC<GranularPageProps> = ({
   onStateChange,
   sliderProps,
   SliderComponent,
-  writeHeadPosition,
-  voicePositions,
-  activeGrainCount,
-  bufferWaveform,
 }) => {
   const { announceHelp } = useSliderHelp();
   const spaceMode = state.granularSpaceMode ?? 'clocked';
   const presetBehavior = state.granularPresetBehavior ?? 'expressive';
+  const [writeHeadPosition, setWriteHeadPosition] = useState(0);
+  const [voicePositions, setVoicePositions] = useState<number[]>([0, 0, 0, 0]);
+  const [activeGrainCount, setActiveGrainCount] = useState(0);
+  const [bufferWaveform, setBufferWaveform] = useState<Float32Array | null>(null);
+  const [visualizerEnabled, setVisualizerEnabled] = useState(() => !isMobile);
+
+  useEffect(() => {
+    audioEngine.setGranularUiActive(isRunning && visualizerEnabled);
+
+    if (!isRunning || !visualizerEnabled) {
+      setWriteHeadPosition(prev => (prev === 0 ? prev : 0));
+      setVoicePositions(prev => (positionsEqual(prev, [0, 0, 0, 0]) ? prev : [0, 0, 0, 0]));
+      setActiveGrainCount(prev => (prev === 0 ? prev : 0));
+      setBufferWaveform(prev => (prev === null ? prev : null));
+      return () => {
+        audioEngine.setGranularUiActive(false);
+      };
+    }
+
+    let intervalId: number | null = null;
+
+    const syncGranularUi = () => {
+      const nextWriteHead = audioEngine.getGranularWriteHeadPosition();
+      const nextVoicePositions = audioEngine.getGranularVoicePositions();
+      const nextActiveGrains = audioEngine.getGranularActiveGrainCount();
+
+      setWriteHeadPosition(prev => (Math.abs(prev - nextWriteHead) > 0.002 ? nextWriteHead : prev));
+      setVoicePositions(prev => (positionsEqual(prev, nextVoicePositions) ? prev : nextVoicePositions));
+      setActiveGrainCount(prev => (prev === nextActiveGrains ? prev : nextActiveGrains));
+
+      const waveform = audioEngine.getGranularBufferWaveform();
+      if (waveform) {
+        setBufferWaveform(prev => (prev === waveform ? prev : waveform));
+      }
+    };
+
+    const clearPolling = () => {
+      if (intervalId !== null) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+    };
+
+    const startPolling = () => {
+      clearPolling();
+      if (document.visibilityState !== 'visible') return;
+      syncGranularUi();
+      intervalId = window.setInterval(syncGranularUi, 100);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        startPolling();
+      } else {
+        clearPolling();
+      }
+    };
+
+    startPolling();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      clearPolling();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      audioEngine.setGranularUiActive(false);
+    };
+  }, [isRunning, visualizerEnabled]);
   const delayBExternallyDriven =
     (state.delayAToBSend ?? 0) > 0.001 ||
     (state.pad1DelayBSend ?? 0) > 0.001 ||
@@ -605,42 +669,59 @@ const GranularPage: React.FC<GranularPageProps> = ({
                 <span className="granular-chip-value">{activeGrainCount}</span>
               </div>
             </div>
-            {bufferVoiceVisuals.length > 0 && (
-              <div className="granular-buffer-readouts">
-                {bufferVoiceVisuals.map((voice) => (
-                  <div
-                    key={voice.index}
-                    className={`granular-buffer-readout mode-${voice.mode}`}
-                    style={{ '--voice-color': voice.color } as React.CSSProperties}
-                    title={voice.title}
-                  >
-                    {voice.summary}
+            {visualizerEnabled ? (
+              <>
+                {bufferVoiceVisuals.length > 0 && (
+                  <div className="granular-buffer-readouts">
+                    {bufferVoiceVisuals.map((voice) => (
+                      <div
+                        key={voice.index}
+                        className={`granular-buffer-readout mode-${voice.mode}`}
+                        style={{ '--voice-color': voice.color } as React.CSSProperties}
+                        title={voice.title}
+                      >
+                        {voice.summary}
+                      </div>
+                    ))}
                   </div>
-                ))}
+                )}
+                <div className="granular-buffer-legend">
+                  <span className="granular-buffer-legend-swatch anchor" />
+                  <span>anchor</span>
+                  <span className="granular-buffer-legend-swatch window" />
+                  <span>window</span>
+                  <span className="granular-buffer-legend-swatch marker" />
+                  <span>current</span>
+                  <span className="granular-buffer-legend-swatch particle" />
+                  <span>grains</span>
+                </div>
+                <GranularBufferCanvas
+                  height={128}
+                  isRunning={isRunning}
+                  voices={bufferVoiceVisuals as CanvasVoiceVisual[]}
+                  writeHeadPosition={writeHeadPosition}
+                  activeGrainCount={activeGrainCount}
+                  bufferWaveform={bufferWaveform}
+                  bufferSeconds={(state.granularBufferSeconds as number) || 16}
+                  isFrozen={Boolean(state.granularFreeze)}
+                  activeSlices={activeSlices}
+                  numSlices={NUM_SLICES}
+                />
+              </>
+            ) : (
+              <div className="granular-buffer-readouts" style={{ gap: 12 }}>
+                <div className="granular-buffer-readout" style={{ '--voice-color': '#6b7280' } as React.CSSProperties}>
+                  Mobile default keeps the live buffer canvas off to save CPU and battery.
+                </div>
+                <button
+                  type="button"
+                  className="granular-chip-btn active"
+                  onClick={() => setVisualizerEnabled(true)}
+                >
+                  Enable Visualizer
+                </button>
               </div>
             )}
-            <div className="granular-buffer-legend">
-              <span className="granular-buffer-legend-swatch anchor" />
-              <span>anchor</span>
-              <span className="granular-buffer-legend-swatch window" />
-              <span>window</span>
-              <span className="granular-buffer-legend-swatch marker" />
-              <span>current</span>
-              <span className="granular-buffer-legend-swatch particle" />
-              <span>grains</span>
-            </div>
-            <GranularBufferCanvas
-              height={128}
-              isRunning={isRunning}
-              voices={bufferVoiceVisuals as CanvasVoiceVisual[]}
-              writeHeadPosition={writeHeadPosition}
-              activeGrainCount={activeGrainCount}
-              bufferWaveform={bufferWaveform}
-              bufferSeconds={(state.granularBufferSeconds as number) || 16}
-              isFrozen={Boolean(state.granularFreeze)}
-              activeSlices={activeSlices}
-              numSlices={NUM_SLICES}
-            />
           </div>
 
           <div className="granular-section-card granular-macro-card">

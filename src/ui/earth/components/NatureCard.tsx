@@ -51,7 +51,7 @@ export function NatureCard({
         >
           {isEnabled ? '●' : '○'}
         </button>
-        <span className="layer-label" style={{ minWidth: 100 }}>Sample</span>
+        <span className="layer-label" style={{ minWidth: 'clamp(72px, 24vw, 100px)' }}>Sample</span>
         <span className="layer-value">{isEnabled ? 'ON' : 'OFF'}</span>
       </div>
 

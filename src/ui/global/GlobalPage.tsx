@@ -8,6 +8,7 @@ import type { SliderMode } from '../state';
 import { SCALE_FAMILIES } from '../../audio/scales';
 import { isAtEndpoint0, isAtEndpoint1 } from '../../audio/morphUtils';
 import { getTransportMetrics } from '../../audio/transport';
+import { STEM_RECORD_TRACK_IDS, STEM_RECORD_TRACK_LABELS } from '../../audio/recordingTracks';
 import { useSliderHelp } from '../SliderHelpOverlay';
 import './global.css';
 
@@ -1068,21 +1069,14 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
                 </div>
                 <div className="utility-sub-label" style={{ marginTop: '6px' }}>Stem Recording (Pre-Reverb)</div>
                 <div className="utility-stem-grid">
-                  {[
-                    { key: 'synth', label: 'Synth' },
-                    { key: 'lead', label: 'Lead' },
-                    { key: 'drums', label: 'Drums' },
-                    { key: 'waves', label: 'Waves' },
-                    { key: 'granular', label: 'Granular' },
-                    { key: 'reverb', label: 'Reverb' },
-                  ].map(({ key, label }) => (
+                  {STEM_RECORD_TRACK_IDS.map((key) => (
                     <button
                       key={key}
                       onClick={() => onRecordStemsChange(key)}
                       disabled={isRecording}
                       className={`utility-stem-btn ${recordStems[key] ? 'active' : ''}`}
                     >
-                      {recordStems[key] ? '●' : '○'} {label}
+                      {recordStems[key] ? '●' : '○'} {STEM_RECORD_TRACK_LABELS[key]}
                     </button>
                   ))}
                 </div>

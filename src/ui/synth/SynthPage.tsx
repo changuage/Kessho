@@ -44,12 +44,13 @@ import {
   type PadScopeSnapshot,
 } from '../../audio/padRandomize';
 import {
+  getLead4opFMPresetList,
   loadLead4opFMPreset,
   saveUserLead4opFMPreset,
   setUserLead4opFMPresets,
   upsertUserLead4opFMPreset,
 } from '../../audio/lead4opfm';
-import type { ManualSynthNoteOptions, ManualSynthSource } from '../../audio/engine';
+import { audioEngine, type ManualSynthNoteOptions, type ManualSynthSource } from '../../audio/engine';
 import FilterLfoViz from './FilterLfoViz';
 import WaveFoldViz from './WaveFoldViz';
 import LeadAdsrViz from './LeadAdsrViz';
@@ -110,6 +111,7 @@ const MANUAL_KEYBOARD_LAYOUT = [
   { code: 'Semicolon', shortcut: ';', semitone: 16, accidental: false },
   { code: 'Quote', shortcut: '\'', semitone: 17, accidental: false },
 ] as const;
+const MANUAL_KEYBOARD_VISIBLE_LAYOUT = MANUAL_KEYBOARD_LAYOUT.slice(0, 13);
 
 const MANUAL_KEYBOARD_VELOCITY = 0.82;
 const MAX_SUBLANE_STEPS = 16;
@@ -120,9 +122,39 @@ const PITCH_BINDING_MODE_OPTIONS: Array<{ value: PitchBindingMode; label: string
   { value: 'sequence', label: 'Sequence' },
 ];
 
+function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
+  const normalized = hex.trim().replace('#', '');
+  const full = normalized.length === 3
+    ? normalized.split('').map((c) => c + c).join('')
+    : normalized;
+  if (!/^[0-9a-fA-F]{6}$/.test(full)) return null;
+  const value = Number.parseInt(full, 16);
+  return { r: (value >> 16) & 255, g: (value >> 8) & 255, b: value & 255 };
+}
+
+function rgbToHex(r: number, g: number, b: number): string {
+  return `#${[r, g, b]
+    .map((value) => Math.max(0, Math.min(255, Math.round(value))).toString(16).padStart(2, '0'))
+    .join('')}`;
+}
+
+function getComplementaryHex(hex: string): string {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return '#ffffff';
+  return rgbToHex(255 - rgb.r, 255 - rgb.g, 255 - rgb.b);
+}
+
+function getKeyboardCursorMarkerStyle(color: string): React.CSSProperties {
+  return {
+    '--cursor-color': color,
+    '--cursor-accent': getComplementaryHex(color),
+  } as React.CSSProperties;
+}
+
 type KeyboardInputMode = 'play' | 'sequence';
 type KeyboardHarmonyStatus = 'root' | 'chord' | 'scale' | 'outside';
 type KeyboardSequenceCursorTarget = 'trigger' | 'pitch';
+type SynthKeyboardEditLane = 'trigger' | 'pitch' | 'expression' | 'morph';
 export interface SynthKeyboardUiState {
   open: boolean;
   inputMode: KeyboardInputMode;
@@ -134,11 +166,18 @@ export interface SynthKeyboardUiState {
   sequenceCursorTarget?: KeyboardSequenceCursorTarget;
 }
 
+const SYNTH_KEYBOARD_EDIT_LANES: readonly SynthKeyboardEditLane[] = ['trigger', 'pitch', 'expression', 'morph'] as const;
+
 function normalizeKeyboardStepArray(steps?: number[]): number[] {
   return Array.from({ length: 4 }, (_, index) => {
     const value = steps?.[index];
     return Number.isFinite(value) ? Math.max(0, Math.floor(value as number)) : 0;
   });
+}
+
+function getSynthKeyboardEditLane(openLane: string): SynthKeyboardEditLane {
+  if (openLane === 'pitch' || openLane === 'expression' || openLane === 'morph') return openLane;
+  return 'trigger';
 }
 
 function formatMidiNoteName(midi: number): string {
@@ -290,22 +329,10 @@ export interface SynthPageProps {
   SliderComponent: React.ComponentType<Record<string, unknown>>;
   SelectComponent: React.ComponentType<Record<string, unknown>>;
   CollapsiblePanelComponent: React.ComponentType<Record<string, unknown>>;
-  /** Lead 4op FM preset list */
-  lead4opPresets: Array<{ id: string; name: string }>;
-  /** Live filter frequency from audio engine */
-  liveFilterFreq: number;
-  /** Live LFO value from audio engine (-1 to +1 after depth) */
-  liveLfoValue: number;
   /** Whether audio engine is running */
   isRunning: boolean;
   /** Get morphed lead params for ADSR preview */
   getLeadMorphedParams: (lead: 1 | 2) => { attack: number; decay: number; sustain: number; release: number } | null;
-  /** Sequencer playheads from audio engine */
-  playheads: number[];
-  /** Sequencer hit counts from audio engine */
-  hitCounts: number[];
-  /** Evolve flash state */
-  evolveFlashing?: boolean[];
   /** Evolve configs change callback */
   onEvolveConfigsChange?: (configs: EvolveConfig[]) => void;
   /** Initial evolve configs to restore across tab switches / preset loads */
@@ -359,21 +386,16 @@ export interface SynthPageProps {
 const SynthPage: React.FC<SynthPageProps> = (props) => {
   const {
     state,
-    // isMobile, expandedPanels, togglePanel — available via props if needed
+    isMobile,
+    // expandedPanels, togglePanel — available via props if needed
     onParamChange,
     onSelectChange,
     sliderProps,
     SliderComponent,
     SelectComponent,
     // CollapsiblePanelComponent — available via props if needed
-    lead4opPresets,
-    liveFilterFreq,
-    liveLfoValue,
     isRunning,
     getLeadMorphedParams,
-    playheads,
-    hitCounts,
-    evolveFlashing,
     onEvolveConfigsChange,
     onStepOverridesChange,
     onRawStepOverridesChange,
@@ -417,6 +439,12 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const [pitchKeyboardSteps, setPitchKeyboardSteps] = useState<number[]>(() =>
     normalizeKeyboardStepArray(initialKeyboardUiState?.pitchSteps)
   );
+  const [expressionKeyboardSteps, setExpressionKeyboardSteps] = useState<number[]>(() =>
+    normalizeKeyboardStepArray()
+  );
+  const [morphKeyboardSteps, setMorphKeyboardSteps] = useState<number[]>(() =>
+    normalizeKeyboardStepArray()
+  );
   const [keyboardSequenceCursorTarget, setKeyboardSequenceCursorTarget] = useState<KeyboardSequenceCursorTarget>(
     initialKeyboardUiState?.sequenceCursorTarget ?? 'pitch'
   );
@@ -424,6 +452,12 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const [pad2Tier, setPad2Tier] = useState<0 | 1 | 2>(0); // Pad 2: 0=closed by default
   const [dragPopup, setDragPopup] = useState<{ x: number; y: number; text: string } | null>(null);
   const [activeKeyboardCodes, setActiveKeyboardCodes] = useState<string[]>([]);
+  const [lead4opPresets, setLead4opPresets] = useState<Array<{ id: string; name: string }>>([]);
+  const [liveFilterFreq, setLiveFilterFreq] = useState(1000);
+  const [liveLfoValue, setLiveLfoValue] = useState(0);
+  const [playheads, setPlayheads] = useState<number[]>([0, 0, 0, 0]);
+  const [hitCounts, setHitCounts] = useState<number[]>([0, 0, 0, 0]);
+  const [evolveFlashing, setEvolveFlashing] = useState<boolean[]>([false, false, false, false]);
   const {
     presets: pad1EnginePresets,
     save: savePad1Preset,
@@ -452,6 +486,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     onFocus: () => announceHelp(helpKey, options),
   }), [announceHelp]);
   const activeKeyboardCodeSetRef = useRef<Set<string>>(new Set());
+  const leftShiftHeldRef = useRef(false);
+  const zHeldRef = useRef(false);
   const setKeyboardCodeActive = useCallback((code: string, active: boolean) => {
     const next = new Set(activeKeyboardCodeSetRef.current);
     if (active) next.add(code);
@@ -461,6 +497,91 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   }, []);
   const [pad1Variation, setPad1Variation] = useState<PadVariationSession>(EMPTY_PAD_VARIATION_SESSION);
   const [pad2Variation, setPad2Variation] = useState<PadVariationSession>(EMPTY_PAD_VARIATION_SESSION);
+
+  useEffect(() => {
+    getLead4opFMPresetList().then(setLead4opPresets).catch(() => {
+      setLead4opPresets([
+        { id: 'soft_rhodes', name: 'Soft Rhodes' },
+        { id: 'gamelan', name: 'Gamelan' },
+      ]);
+    });
+  }, []);
+
+  useEffect(() => {
+    let lastLeadStep = 0;
+    audioEngine.setSynthStepPositionCallback((nextSteps: number[], nextHitCounts: number[]) => {
+      if (document.visibilityState !== 'visible') return;
+      const now = performance.now();
+      if (now - lastLeadStep < 120) return;
+      lastLeadStep = now;
+      setPlayheads(nextSteps);
+      setHitCounts(nextHitCounts);
+    });
+    return () => {
+      audioEngine.setSynthStepPositionCallback(() => {});
+    };
+  }, []);
+
+  useEffect(() => {
+    const flashTimers: Array<number | null> = [null, null, null, null];
+    audioEngine.setSynthEuclidEvolveTriggerCallback((laneIndex: number) => {
+      if (document.visibilityState !== 'visible') return;
+      if (laneIndex < 0 || laneIndex > 3) return;
+      setEvolveFlashing(prev => prev.map((value, index) => (index === laneIndex ? true : value)));
+
+      const existingTimer = flashTimers[laneIndex];
+      if (existingTimer) {
+        window.clearTimeout(existingTimer);
+      }
+
+      flashTimers[laneIndex] = window.setTimeout(() => {
+        setEvolveFlashing(prev => prev.map((value, index) => (index === laneIndex ? false : value)));
+        flashTimers[laneIndex] = null;
+      }, 180);
+    });
+
+    return () => {
+      audioEngine.setSynthEuclidEvolveTriggerCallback(() => {});
+      flashTimers.forEach((timer) => {
+        if (timer) {
+          window.clearTimeout(timer);
+        }
+      });
+    };
+  }, []);
+
+  useEffect(() => {
+    let filterId: number | null = null;
+    const stopPolling = () => {
+      if (filterId !== null) {
+        clearInterval(filterId);
+        filterId = null;
+      }
+    };
+    const startPolling = () => {
+      if (filterId !== null) return;
+      if (!isRunning || document.visibilityState !== 'visible') return;
+      const updateFilter = () => {
+        setLiveFilterFreq(audioEngine.getCurrentFilterFreq());
+        setLiveLfoValue(audioEngine.getCurrentLfoValue());
+      };
+      updateFilter();
+      filterId = window.setInterval(updateFilter, 150);
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        startPolling();
+      } else {
+        stopPolling();
+      }
+    };
+    startPolling();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      stopPolling();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [isRunning]);
 
   const getPadMorphValue = useCallback((scope: PadRandomScope): number => (
     scope === 'pad1' ? (state.padMorph ?? 0) : (state.pad2Morph ?? 0)
@@ -1129,6 +1250,12 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     return getVisiblePitchStepCountForLane(laneIdx);
   }, [getVisiblePitchStepCountForLane, pitchBindingModes]);
 
+  const getSynthKeyboardLaneStepCount = useCallback((laneIdx: number, lane: SynthKeyboardEditLane) => {
+    if (lane === 'trigger') return getTriggerStepCountForLane(laneIdx);
+    if (lane === 'pitch') return getPitchCursorStepCountForLane(laneIdx);
+    return seq.subLaneStates[laneIdx]?.[lane]?.steps ?? 0;
+  }, [getPitchCursorStepCountForLane, getTriggerStepCountForLane, seq.subLaneStates]);
+
   const getFirstTriggerKeyboardStep = useCallback((laneIdx: number) => {
     const stepCount = getTriggerStepCountForLane(laneIdx);
     return stepCount > 0 ? 0 : 0;
@@ -1138,6 +1265,11 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     const stepCount = getPitchCursorStepCountForLane(laneIdx);
     return stepCount > 0 ? 0 : 0;
   }, [getPitchCursorStepCountForLane]);
+
+  const getFirstSynthKeyboardLaneStep = useCallback((laneIdx: number, lane: SynthKeyboardEditLane) => {
+    const stepCount = getSynthKeyboardLaneStepCount(laneIdx, lane);
+    return stepCount > 0 ? 0 : 0;
+  }, [getSynthKeyboardLaneStepCount]);
 
   const findAdjacentTriggerStep = useCallback((laneIdx: number, currentStep: number, direction: 1 | -1) => {
     const stepCount = getTriggerStepCountForLane(laneIdx);
@@ -1150,6 +1282,12 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     if (stepCount <= 0) return 0;
     return (currentStep + direction + stepCount) % stepCount;
   }, [getPitchCursorStepCountForLane]);
+
+  const findAdjacentSynthKeyboardLaneStep = useCallback((laneIdx: number, lane: SynthKeyboardEditLane, currentStep: number, direction: 1 | -1) => {
+    const stepCount = getSynthKeyboardLaneStepCount(laneIdx, lane);
+    if (stepCount <= 0) return 0;
+    return (currentStep + direction + stepCount) % stepCount;
+  }, [getSynthKeyboardLaneStepCount]);
 
   useEffect(() => {
     setTriggerKeyboardSteps((prev) => prev.map((step, laneIdx) => {
@@ -1173,6 +1311,25 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     }));
   }, [getFirstPitchKeyboardStep, getPitchCursorStepCountForLane]);
 
+  useEffect(() => {
+    setExpressionKeyboardSteps((prev) => prev.map((step, laneIdx) => {
+      const stepCount = getSynthKeyboardLaneStepCount(laneIdx, 'expression');
+      if (stepCount <= 0) return 0;
+      if (!Number.isFinite(step) || step < 0 || step >= stepCount) {
+        return getFirstSynthKeyboardLaneStep(laneIdx, 'expression');
+      }
+      return step;
+    }));
+    setMorphKeyboardSteps((prev) => prev.map((step, laneIdx) => {
+      const stepCount = getSynthKeyboardLaneStepCount(laneIdx, 'morph');
+      if (stepCount <= 0) return 0;
+      if (!Number.isFinite(step) || step < 0 || step >= stepCount) {
+        return getFirstSynthKeyboardLaneStep(laneIdx, 'morph');
+      }
+      return step;
+    }));
+  }, [getFirstSynthKeyboardLaneStep, getSynthKeyboardLaneStepCount]);
+
   const selectTriggerSequenceStep = useCallback((laneIdx: number, step: number) => {
     const stepCount = getTriggerStepCountForLane(laneIdx);
     if (stepCount <= 0) return;
@@ -1189,17 +1346,43 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     setPitchKeyboardSteps((prev) => prev.map((current, index) => index === laneIdx ? normalizedStep : current));
   }, [getPitchCursorStepCountForLane, seq]);
 
+  const selectSynthKeyboardLaneStep = useCallback((laneIdx: number, lane: SynthKeyboardEditLane, step: number) => {
+    const stepCount = getSynthKeyboardLaneStepCount(laneIdx, lane);
+    if (stepCount <= 0) return;
+    const normalizedStep = ((step % stepCount) + stepCount) % stepCount;
+    seq.setActiveTab(laneIdx);
+    if (lane === 'trigger') {
+      setTriggerKeyboardSteps((prev) => prev.map((current, index) => index === laneIdx ? normalizedStep : current));
+      return;
+    }
+    if (lane === 'pitch') {
+      setPitchKeyboardSteps((prev) => prev.map((current, index) => index === laneIdx ? normalizedStep : current));
+      return;
+    }
+    if (lane === 'expression') {
+      setExpressionKeyboardSteps((prev) => prev.map((current, index) => index === laneIdx ? normalizedStep : current));
+      return;
+    }
+    setMorphKeyboardSteps((prev) => prev.map((current, index) => index === laneIdx ? normalizedStep : current));
+  }, [getSynthKeyboardLaneStepCount, seq]);
+
   const activeLaneSource = String(state[getSourceKey(seq.activeTab)] ?? 'lead1');
   const sequenceKeyboardSource = getManualSourceForLaneSource(activeLaneSource, state.pad2VoiceAssign);
   const effectiveKeyboardSource = keyboardInputMode === 'sequence' ? sequenceKeyboardSource : keyboardSource;
   const activePitchBindingMode = pitchBindingModes[seq.activeTab] ?? 'polyrhythmic';
   const activeTriggerCursorStep = triggerKeyboardSteps[seq.activeTab] ?? getFirstTriggerKeyboardStep(seq.activeTab);
   const activePitchCursorStep = pitchKeyboardSteps[seq.activeTab] ?? getFirstPitchKeyboardStep(seq.activeTab);
+  const activeExpressionCursorStep = expressionKeyboardSteps[seq.activeTab] ?? getFirstSynthKeyboardLaneStep(seq.activeTab, 'expression');
+  const activeMorphCursorStep = morphKeyboardSteps[seq.activeTab] ?? getFirstSynthKeyboardLaneStep(seq.activeTab, 'morph');
   const sequenceWritesToTriggerGrid = activePitchBindingMode === 'sequence';
-  const canToggleKeyboardCursorTarget = activePitchBindingMode !== 'sequence';
-  const activeKeyboardCursorTarget: KeyboardSequenceCursorTarget = sequenceWritesToTriggerGrid
-    ? 'trigger'
-    : keyboardSequenceCursorTarget;
+  const activeKeyboardEditLane = getSynthKeyboardEditLane(seq.openLane);
+  const activeSynthKeyboardStep = activeKeyboardEditLane === 'trigger'
+    ? activeTriggerCursorStep
+    : activeKeyboardEditLane === 'pitch'
+      ? activePitchCursorStep
+      : activeKeyboardEditLane === 'expression'
+        ? activeExpressionCursorStep
+        : activeMorphCursorStep;
 
   const keyboardBaseMidi = 12 * (keyboardOctave + 1);
   const keyboardSourceInfo = MANUAL_KEYBOARD_SOURCES.find((source) => source.value === effectiveKeyboardSource) ?? MANUAL_KEYBOARD_SOURCES[0]!;
@@ -1230,11 +1413,12 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
 
   const keyboardKeys = useMemo(() => {
     let currentWhiteIndex = -1;
-    return MANUAL_KEYBOARD_LAYOUT.map((key) => {
+    return MANUAL_KEYBOARD_LAYOUT.map((key, layoutIndex) => {
       if (!key.accidental) currentWhiteIndex += 1;
       const midi = keyboardBaseMidi + key.semitone;
       return {
         ...key,
+        layoutIndex,
         midi,
         noteLabel: formatMidiNoteName(midi),
         whiteIndex: currentWhiteIndex,
@@ -1242,9 +1426,13 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       };
     });
   }, [classifyKeyboardMidi, keyboardBaseMidi]);
-  const keyboardWhiteCount = keyboardKeys.filter((key) => !key.accidental).length;
-  const keyboardNaturalKeys = keyboardKeys.filter((key) => !key.accidental);
-  const keyboardAccidentalKeys = keyboardKeys.filter((key) => key.accidental);
+  const keyboardVisibleKeys = useMemo(
+    () => keyboardKeys.filter((key) => MANUAL_KEYBOARD_VISIBLE_LAYOUT.some((visibleKey) => visibleKey.code === key.code)),
+    [keyboardKeys],
+  );
+  const keyboardWhiteCount = keyboardVisibleKeys.filter((key) => !key.accidental).length;
+  const keyboardNaturalKeys = keyboardVisibleKeys.filter((key) => !key.accidental);
+  const keyboardAccidentalKeys = keyboardVisibleKeys.filter((key) => key.accidental);
   const activeLanePitchSettings = seq.pitchSettings[seq.activeTab] ?? { mode: 'semitones' as const, root: 60, scale: 'Major' as const };
   const activePitchLaneEnabled = seq.subLaneStates[seq.activeTab]?.pitch.enabled ?? false;
   const activeSequenceTriggerEnabled = (getTriggerPatternForLane(seq.activeTab)[activeTriggerCursorStep] ?? false) === true;
@@ -1263,15 +1451,13 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     return midi == null ? null : formatMidiNoteName(midi);
   }, [getSequenceStepMidi]);
   const activePitchCursorLabel = getSequenceStepLabel(seq.activeTab, activePitchCursorStep);
-  const activeTriggerStepLabel = getSequenceStepLabel(seq.activeTab, activeTriggerCursorStep);
   const activePitchSelectionStep = sequenceWritesToTriggerGrid ? activeTriggerCursorStep : activePitchCursorStep;
   const canWriteSequenceNotes = keyboardInputMode === 'sequence'
     && activePitchLaneEnabled
     && activeLanePitchSettings.mode !== 'noteRange'
-    && (sequenceWritesToTriggerGrid || activeKeyboardCursorTarget === 'pitch');
+    && activeKeyboardEditLane === 'pitch';
   const keyboardTargetVisible = showKeyboard && keyboardInputMode === 'sequence';
-  const keyboardTriggerTargetVisible = keyboardTargetVisible && (sequenceWritesToTriggerGrid || activeKeyboardCursorTarget === 'trigger');
-  const keyboardPitchTargetVisible = keyboardTargetVisible && activePitchLaneEnabled && (sequenceWritesToTriggerGrid || activeKeyboardCursorTarget === 'pitch');
+  const keyboardTriggerTargetVisible = keyboardTargetVisible && activeKeyboardEditLane === 'trigger';
   const keyboardTargetLabel = '⌖';
   const sequenceWriteHelper = keyboardInputMode !== 'sequence'
     ? null
@@ -1279,16 +1465,14 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       ? 'Enable the Pitch lane to write notes.'
       : activeLanePitchSettings.mode === 'noteRange'
         ? 'Set Pitch mode to Semitones or Notes to write exact notes.'
-        : sequenceWritesToTriggerGrid
-          ? 'Typing writes the selected trigger step, then advances one step to the right. Right Shift toggles the current trigger.'
-          : activeKeyboardCursorTarget === 'trigger'
-            ? 'Trigger cursor is active. Left/Right moves through the main sequence, Right Shift toggles the trigger, and Left Shift jumps back to Pitch.'
-            : activePitchBindingMode === 'polyrhythmic'
-              ? `Pitch cursor is active on step ${String(activePitchCursorStep + 1).padStart(2, '0')}. Left Shift switches to Sequence, and Right Shift sets the visible pitch length to this step.`
-              : `Pitch cursor is active on step ${String(activePitchCursorStep + 1).padStart(2, '0')}. Typing writes the pitch lane, then advances one step to the right. Left Shift switches to Sequence.`;
-  const keyboardSequenceStatus = sequenceWritesToTriggerGrid
-    ? `Seq ${seq.activeTab + 1} | ${SYNTH_SOURCES.find((source) => source.value === activeLaneSource)?.label ?? 'Lead 1'} | Sequence ${String(activeTriggerCursorStep + 1).padStart(2, '0')} | ${activeSequenceTriggerEnabled ? 'Trig On' : 'Trig Off'}${activeTriggerStepLabel ? ` | ${activeTriggerStepLabel}` : ''}`
-    : `Seq ${seq.activeTab + 1} | ${SYNTH_SOURCES.find((source) => source.value === activeLaneSource)?.label ?? 'Lead 1'} | Cursor ${activeKeyboardCursorTarget === 'trigger' ? 'Sequence' : 'Pitch'} | Sequence ${String(activeTriggerCursorStep + 1).padStart(2, '0')} ${activeSequenceTriggerEnabled ? 'On' : 'Off'} | Pitch ${String(activePitchCursorStep + 1).padStart(2, '0')}${activePitchCursorLabel ? ` ${activePitchCursorLabel}` : ''}${activePitchBindingMode === 'polyrhythmic' && activePitchCursorIsBeyondVisibleRange ? ' hidden' : ''}`;
+        : activeKeyboardEditLane === 'trigger'
+          ? 'Trigger lane is active. Left/Right moves steps, Up/Down changes probability, and Tab toggles the trigger on or off.'
+          : activeKeyboardEditLane === 'pitch'
+            ? `Pitch lane is active on step ${String(activePitchCursorStep + 1).padStart(2, '0')}. Left/Right moves steps, Up/Down changes pitch, Z/X shifts octave for typing notes.`
+            : activeKeyboardEditLane === 'expression'
+              ? 'Expression lane is active. Left/Right moves steps and Up/Down changes the value.'
+              : 'Morph lane is active. Left/Right moves steps and Up/Down changes the value.';
+  const keyboardSequenceStatus = `Seq ${seq.activeTab + 1} | ${SYNTH_SOURCES.find((source) => source.value === activeLaneSource)?.label ?? 'Lead 1'} | Lane ${activeKeyboardEditLane === 'trigger' ? 'Sequence' : activeKeyboardEditLane.charAt(0).toUpperCase() + activeKeyboardEditLane.slice(1)} | Step ${String(activeSynthKeyboardStep + 1).padStart(2, '0')}${activeKeyboardEditLane === 'trigger' ? ` | ${activeSequenceTriggerEnabled ? 'On' : 'Off'}` : ''}${activeKeyboardEditLane === 'pitch' && activePitchCursorLabel ? ` | ${activePitchCursorLabel}` : ''}${activeKeyboardEditLane === 'pitch' && activePitchBindingMode === 'polyrhythmic' && activePitchCursorIsBeyondVisibleRange ? ' | Hidden' : ''}`;
 
   const writeKeyboardSequenceNote = useCallback((laneIdx: number, midi: number) => {
     const bindingMode = pitchBindingModes[laneIdx] ?? 'polyrhythmic';
@@ -1332,19 +1516,102 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     seq.toggleTriggerStep(laneIdx, normalizedStep);
   }, [getTriggerStepCountForLane, seq]);
 
-  const setPolyrhythmicPitchLengthAtCursor = useCallback((laneIdx: number) => {
-    if ((pitchBindingModes[laneIdx] ?? 'polyrhythmic') !== 'polyrhythmic') return;
-    const cursorStep = pitchKeyboardSteps[laneIdx] ?? getFirstPitchKeyboardStep(laneIdx);
-    const nextSteps = Math.max(1, Math.min(MAX_SUBLANE_STEPS, cursorStep + 1));
-    seq.setSubLaneSteps(laneIdx, 'pitch', nextSteps);
-  }, [getFirstPitchKeyboardStep, pitchBindingModes, pitchKeyboardSteps, seq]);
+  const cycleSynthKeyboardLane = useCallback((direction: 1 | -1) => {
+    const currentLane = getSynthKeyboardEditLane(seq.openLane);
+    const currentIndex = SYNTH_KEYBOARD_EDIT_LANES.indexOf(currentLane);
+    const nextLane = SYNTH_KEYBOARD_EDIT_LANES[(currentIndex + direction + SYNTH_KEYBOARD_EDIT_LANES.length) % SYNTH_KEYBOARD_EDIT_LANES.length] ?? 'trigger';
+    seq.setOpenLane(nextLane);
+  }, [seq.openLane, seq.setOpenLane]);
 
-  useEffect(() => {
-    if (keyboardInputMode !== 'sequence') return;
-    if (sequenceWritesToTriggerGrid && keyboardSequenceCursorTarget !== 'trigger') {
-      setKeyboardSequenceCursorTarget('trigger');
+  const cycleSynthKeyboardSequencer = useCallback((direction: 1 | -1) => {
+    const nextLaneIdx = (seq.activeTab + direction + LANE_CONFIGS.length) % LANE_CONFIGS.length;
+    seq.setActiveTab(nextLaneIdx);
+    seq.setViewMode('detail');
+  }, [seq]);
+
+  const toggleSynthKeyboardLane = useCallback(() => {
+    if (activeKeyboardEditLane === 'trigger') {
+      toggleSequenceTriggerAtStep(seq.activeTab, activeTriggerCursorStep);
+      return;
     }
-  }, [keyboardInputMode, keyboardSequenceCursorTarget, sequenceWritesToTriggerGrid]);
+    seq.toggleSubLaneEnabled(seq.activeTab, activeKeyboardEditLane);
+  }, [activeKeyboardEditLane, activeTriggerCursorStep, seq, toggleSequenceTriggerAtStep]);
+
+  const adjustSynthKeyboardLaneValue = useCallback((direction: 1 | -1, coarse: boolean) => {
+    if (activeKeyboardEditLane === 'trigger') {
+      const current = activeSeq.trigger.probability[activeTriggerCursorStep] ?? 1;
+      const delta = coarse ? 0.2 : 0.05;
+      const next = Math.max(0, Math.min(1, Math.round((current + direction * delta) * 20) / 20));
+      seq.setStepProbability(seq.activeTab, activeTriggerCursorStep, next);
+      return;
+    }
+
+    if (activeKeyboardEditLane === 'pitch') {
+      if (activeLanePitchSettings.mode === 'noteRange') return;
+      const current = seq.stepOverrides.pitch[seq.activeTab]?.[activePitchCursorStep]
+        ?? activeSeq.pitch.offsets[activePitchCursorStep % Math.max(1, activeSeq.pitch.offsets.length)]
+        ?? 0;
+      const delta = coarse ? 4 : 1;
+      seq.changeStepValue(seq.activeTab, 'pitch', activePitchCursorStep, current + direction * delta);
+      return;
+    }
+
+    if (activeKeyboardEditLane === 'expression') {
+      const current = seq.stepOverrides.expression[seq.activeTab]?.[activeExpressionCursorStep]
+        ?? activeSeq.expression.velocities[activeExpressionCursorStep % Math.max(1, activeSeq.expression.velocities.length)]
+        ?? 1;
+      const delta = coarse ? 0.2 : 0.05;
+      const next = Math.max(0, Math.min(1, Math.round((current + direction * delta) * 20) / 20));
+      seq.changeStepValue(seq.activeTab, 'expression', activeExpressionCursorStep, next);
+      return;
+    }
+
+    const current = seq.stepOverrides.morph[seq.activeTab]?.[activeMorphCursorStep]
+      ?? activeSeq.morph.values[activeMorphCursorStep % Math.max(1, activeSeq.morph.values.length)]
+      ?? 0.5;
+    const delta = coarse ? 0.1 : 0.025;
+    const next = Math.max(0, Math.min(1, Math.round((current + direction * delta) * 40) / 40));
+    seq.changeStepValue(seq.activeTab, 'morph', activeMorphCursorStep, next);
+  }, [
+    activeExpressionCursorStep,
+    activeKeyboardEditLane,
+    activeLanePitchSettings.mode,
+    activeMorphCursorStep,
+    activePitchCursorStep,
+    activeSeq.expression.velocities,
+    activeSeq.morph.values,
+    activeSeq.pitch.offsets,
+    activeSeq.trigger.probability,
+    activeTriggerCursorStep,
+    seq,
+  ]);
+
+  const adjustSynthKeyboardLaneSteps = useCallback((direction: 1 | -1) => {
+    if (activeKeyboardEditLane === 'trigger') {
+      const currentSteps = getTriggerStepCountForLane(seq.activeTab);
+      const nextSteps = Math.max(2, Math.min(16, currentSteps + direction));
+      if (nextSteps === currentSteps) return;
+      seq.setParam(seq.activeTab, 'Steps', nextSteps);
+      selectSynthKeyboardLaneStep(seq.activeTab, 'trigger', Math.min(activeTriggerCursorStep, nextSteps - 1));
+      return;
+    }
+
+    const currentSteps = activeKeyboardEditLane === 'pitch'
+      ? getVisiblePitchStepCountForLane(seq.activeTab)
+      : seq.subLaneStates[seq.activeTab]?.[activeKeyboardEditLane]?.steps ?? 0;
+    const nextSteps = Math.max(1, Math.min(16, currentSteps + direction));
+    if (nextSteps === currentSteps) return;
+    seq.setSubLaneSteps(seq.activeTab, activeKeyboardEditLane, nextSteps);
+    selectSynthKeyboardLaneStep(seq.activeTab, activeKeyboardEditLane, Math.min(activeSynthKeyboardStep, nextSteps - 1));
+  }, [
+    activeKeyboardEditLane,
+    activeSynthKeyboardStep,
+    activeTriggerCursorStep,
+    getTriggerStepCountForLane,
+    getVisiblePitchStepCountForLane,
+    selectSynthKeyboardLaneStep,
+    seq,
+  ]);
 
   const toggleSynthSequencerTransport = useCallback(() => {
     const next = !state.synthEuclideanMasterEnabled;
@@ -1361,7 +1628,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     setKeyboardInputMode('sequence');
     setKeyboardSequenceCursorTarget(activePitchBindingMode === 'sequence' ? 'trigger' : 'pitch');
     seq.setViewMode('detail');
-    seq.setOpenLane('pitch');
+    seq.setOpenLane(getSynthKeyboardEditLane(seq.openLane));
     if (!(seq.subLaneStates[seq.activeTab]?.pitch.enabled ?? false)) {
       seq.toggleSubLaneEnabled(seq.activeTab, 'pitch');
     }
@@ -1371,9 +1638,11 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     activePitchBindingMode,
     activePitchCursorStep,
     activeTriggerCursorStep,
+    getSynthKeyboardEditLane,
     selectPitchSequenceStep,
     selectTriggerSequenceStep,
     seq.activeTab,
+    seq.openLane,
     seq.setOpenLane,
     seq.setViewMode,
     seq.subLaneStates,
@@ -1421,6 +1690,55 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     getTriggerStepCountForLane,
   ]);
 
+  const cycleKeyboardPanelHotkeyState = useCallback(() => {
+    if (!showKeyboard) {
+      setKeyboardInputMode('play');
+      setShowKeyboard(true);
+      setKeyboardSource(getDefaultKeyboardSource());
+      setTriggerKeyboardSteps((steps) => steps.map((step, laneIdx) => {
+        const stepCount = getTriggerStepCountForLane(laneIdx);
+        if (stepCount <= 0) return 0;
+        return step >= 0 && step < stepCount ? step : getFirstTriggerKeyboardStep(laneIdx);
+      }));
+      setPitchKeyboardSteps((steps) => steps.map((step, laneIdx) => {
+        const stepCount = getPitchCursorStepCountForLane(laneIdx);
+        if (stepCount <= 0) return 0;
+        return step >= 0 && step < stepCount ? step : getFirstPitchKeyboardStep(laneIdx);
+      }));
+      return;
+    }
+
+    if (keyboardInputMode === 'play') {
+      enterKeyboardSequenceMode();
+      return;
+    }
+
+    setShowKeyboard(false);
+    setKeyboardInputMode('play');
+  }, [
+    enterKeyboardSequenceMode,
+    getDefaultKeyboardSource,
+    getFirstPitchKeyboardStep,
+    getFirstTriggerKeyboardStep,
+    getPitchCursorStepCountForLane,
+    getTriggerStepCountForLane,
+    keyboardInputMode,
+    showKeyboard,
+  ]);
+
+  const cycleSynthViewMode = useCallback((direction: 1 | -1) => {
+    const modes: Array<'simple' | 'detail' | 'overview'> = ['simple', 'detail', 'overview'];
+    const currentIndex = modes.indexOf(seq.viewMode);
+    const nextMode = modes[(currentIndex + direction + modes.length) % modes.length] ?? 'detail';
+    seq.setViewMode(nextMode);
+  }, [seq.viewMode, seq.setViewMode]);
+
+  useEffect(() => {
+    if (!isMobile) return;
+    setShowKeyboard(false);
+    setKeyboardInputMode('play');
+  }, [isMobile]);
+
   useEffect(() => {
     if (showKeyboard) return;
     activeKeyboardCodeSetRef.current.clear();
@@ -1430,84 +1748,139 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   useEffect(() => {
     if (!(showKeyboard && keyboardInputMode === 'sequence')) return;
     seq.setViewMode('detail');
-    seq.setOpenLane('pitch');
     if (!(seq.subLaneStates[seq.activeTab]?.pitch.enabled ?? false)) {
       seq.toggleSubLaneEnabled(seq.activeTab, 'pitch');
     }
-  }, [keyboardInputMode, seq.activeTab, seq.setOpenLane, seq.setViewMode, seq.subLaneStates, seq.toggleSubLaneEnabled, showKeyboard]);
+  }, [keyboardInputMode, seq.activeTab, seq.setViewMode, seq.subLaneStates, seq.toggleSubLaneEnabled, showKeyboard]);
 
   useEffect(() => {
     const handlePageHotkeys = (event: KeyboardEvent) => {
       if (event.repeat || isTextEntryTarget(event.target)) return;
-      if (event.code !== 'Space') return;
-      event.preventDefault();
-      toggleSynthSequencerTransport();
+      if (event.shiftKey && event.code === 'KeyZ') {
+        event.preventDefault();
+        seq.toggleMute(seq.activeTab);
+        return;
+      }
+      if (event.shiftKey && event.code === 'KeyX') {
+        event.preventDefault();
+        seq.toggleSolo(seq.activeTab);
+        return;
+      }
+      if (event.code === 'KeyX') {
+        event.preventDefault();
+        toggleSequenceTriggerAtStep(seq.activeTab, activeTriggerCursorStep);
+        return;
+      }
+      if (event.code === 'Space') {
+        event.preventDefault();
+        toggleSynthSequencerTransport();
+        return;
+      }
+      if (event.code === 'KeyQ') {
+        event.preventDefault();
+        cycleKeyboardPanelHotkeyState();
+        return;
+      }
+      if (event.code === 'Comma') {
+        event.preventDefault();
+        cycleSynthViewMode(-1);
+        return;
+      }
+      if (event.code === 'Period') {
+        event.preventDefault();
+        cycleSynthViewMode(1);
+      }
     };
 
     window.addEventListener('keydown', handlePageHotkeys);
     return () => {
       window.removeEventListener('keydown', handlePageHotkeys);
     };
-  }, [toggleSynthSequencerTransport]);
+  }, [activeTriggerCursorStep, cycleKeyboardPanelHotkeyState, cycleSynthViewMode, seq, toggleSequenceTriggerAtStep, toggleSynthSequencerTransport]);
 
   useEffect(() => {
     if (!showKeyboard) return;
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.repeat || isTextEntryTarget(event.target)) return;
-      if (event.code === 'ArrowUp') {
-        event.preventDefault();
-        setKeyboardOctave((prev) => Math.min(5, prev + 1));
+      if (event.defaultPrevented || event.repeat || isTextEntryTarget(event.target)) return;
+      if (event.code === 'ShiftLeft') {
+        leftShiftHeldRef.current = true;
         return;
       }
-      if (event.code === 'ArrowDown') {
+      if (event.code === 'KeyZ') {
+        zHeldRef.current = true;
+        return;
+      }
+      if (event.code === 'BracketLeft') {
         event.preventDefault();
         setKeyboardOctave((prev) => Math.max(2, prev - 1));
         return;
       }
+      if (event.code === 'BracketRight') {
+        event.preventDefault();
+        setKeyboardOctave((prev) => Math.min(5, prev + 1));
+        return;
+      }
       if (keyboardInputMode === 'sequence') {
-        if (event.code === 'ShiftLeft') {
-          if (!canToggleKeyboardCursorTarget) return;
+        if (event.code === 'Tab') {
           event.preventDefault();
-          setKeyboardSequenceCursorTarget((prev) => prev === 'trigger' ? 'pitch' : 'trigger');
+          toggleSynthKeyboardLane();
+          return;
+        }
+        if (leftShiftHeldRef.current && event.code === 'ArrowLeft') {
+          event.preventDefault();
+          cycleSynthKeyboardSequencer(-1);
+          return;
+        }
+        if (leftShiftHeldRef.current && event.code === 'ArrowRight') {
+          event.preventDefault();
+          cycleSynthKeyboardSequencer(1);
+          return;
+        }
+        if (leftShiftHeldRef.current && event.code === 'ArrowUp') {
+          event.preventDefault();
+          cycleSynthKeyboardLane(-1);
+          return;
+        }
+        if (leftShiftHeldRef.current && event.code === 'ArrowDown') {
+          event.preventDefault();
+          cycleSynthKeyboardLane(1);
           return;
         }
         if (event.code === 'ArrowLeft') {
           event.preventDefault();
-          if (sequenceWritesToTriggerGrid || activeKeyboardCursorTarget === 'trigger') {
-            setTriggerKeyboardSteps((prev) => prev.map((step, laneIdx) => (
-              laneIdx === seq.activeTab ? findAdjacentTriggerStep(laneIdx, step, -1) : step
-            )));
-          } else {
-            setPitchKeyboardSteps((prev) => prev.map((step, laneIdx) => (
-              laneIdx === seq.activeTab ? findAdjacentPitchStep(laneIdx, step, -1) : step
-            )));
+          if (zHeldRef.current) {
+            adjustSynthKeyboardLaneSteps(-1);
+            return;
           }
+          selectSynthKeyboardLaneStep(
+            seq.activeTab,
+            activeKeyboardEditLane,
+            findAdjacentSynthKeyboardLaneStep(seq.activeTab, activeKeyboardEditLane, activeSynthKeyboardStep, -1),
+          );
           return;
         }
         if (event.code === 'ArrowRight') {
           event.preventDefault();
-          if (sequenceWritesToTriggerGrid || activeKeyboardCursorTarget === 'trigger') {
-            setTriggerKeyboardSteps((prev) => prev.map((step, laneIdx) => (
-              laneIdx === seq.activeTab ? findAdjacentTriggerStep(laneIdx, step, 1) : step
-            )));
-          } else {
-            setPitchKeyboardSteps((prev) => prev.map((step, laneIdx) => (
-              laneIdx === seq.activeTab ? findAdjacentPitchStep(laneIdx, step, 1) : step
-            )));
-          }
-          return;
-        }
-        if (event.code === 'ShiftRight') {
-          event.preventDefault();
-          if (sequenceWritesToTriggerGrid || activeKeyboardCursorTarget === 'trigger') {
-            const currentStep = triggerKeyboardSteps[seq.activeTab] ?? getFirstTriggerKeyboardStep(seq.activeTab);
-            toggleSequenceTriggerAtStep(seq.activeTab, currentStep);
+          if (zHeldRef.current) {
+            adjustSynthKeyboardLaneSteps(1);
             return;
           }
-          if (activePitchBindingMode === 'polyrhythmic') {
-            setPolyrhythmicPitchLengthAtCursor(seq.activeTab);
-          }
+          selectSynthKeyboardLaneStep(
+            seq.activeTab,
+            activeKeyboardEditLane,
+            findAdjacentSynthKeyboardLaneStep(seq.activeTab, activeKeyboardEditLane, activeSynthKeyboardStep, 1),
+          );
+          return;
+        }
+        if (event.code === 'ArrowUp') {
+          event.preventDefault();
+          adjustSynthKeyboardLaneValue(1, !zHeldRef.current);
+          return;
+        }
+        if (event.code === 'ArrowDown') {
+          event.preventDefault();
+          adjustSynthKeyboardLaneValue(-1, !zHeldRef.current);
           return;
         }
       }
@@ -1520,11 +1893,21 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     };
 
     const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.code === 'ShiftLeft') {
+        leftShiftHeldRef.current = false;
+        return;
+      }
+      if (event.code === 'KeyZ') {
+        zHeldRef.current = false;
+        return;
+      }
       if (!activeKeyboardCodeSetRef.current.has(event.code)) return;
       setKeyboardCodeActive(event.code, false);
     };
 
     const handleBlur = () => {
+      leftShiftHeldRef.current = false;
+      zHeldRef.current = false;
       activeKeyboardCodeSetRef.current.clear();
       setActiveKeyboardCodes([]);
     };
@@ -1539,21 +1922,22 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       window.removeEventListener('blur', handleBlur);
     };
   }, [
-    activeKeyboardCursorTarget,
+    activeKeyboardEditLane,
     activePitchBindingMode,
-    canToggleKeyboardCursorTarget,
-    findAdjacentPitchStep,
-    findAdjacentTriggerStep,
-    getFirstTriggerKeyboardStep,
+    activeSynthKeyboardStep,
+    adjustSynthKeyboardLaneValue,
+    adjustSynthKeyboardLaneSteps,
+    cycleSynthKeyboardLane,
+    cycleSynthKeyboardSequencer,
+    findAdjacentSynthKeyboardLaneStep,
     keyboardInputMode,
+    leftShiftHeldRef,
+    selectSynthKeyboardLaneStep,
     seq.activeTab,
-    sequenceWritesToTriggerGrid,
     setKeyboardCodeActive,
-    setPolyrhythmicPitchLengthAtCursor,
     showKeyboard,
-    toggleSequenceTriggerAtStep,
+    toggleSynthKeyboardLane,
     triggerKeyboardNote,
-    triggerKeyboardSteps,
   ]);
 
   // ── ADSR renderer (per-lead: Lead 1 uses lead1* params, Lead 2 uses lead2* params) ──
@@ -3177,38 +3561,34 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 Overview
               </button>
             </div>
-            <button
-              className={`synth-keyboard-toggle${showKeyboard ? ' active' : ''}`}
-              onClick={toggleKeyboardPanel}
-              style={{ '--kb-accent': keyboardSourceInfo.color } as React.CSSProperties}
-              type="button"
-            >
-              Keys
-            </button>
+            {!isMobile && (
+              <button
+                className={`synth-keyboard-toggle${showKeyboard ? ' active' : ''}`}
+                onClick={toggleKeyboardPanel}
+                style={{ '--kb-accent': keyboardSourceInfo.color } as React.CSSProperties}
+                type="button"
+              >
+                Keys
+              </button>
+            )}
           </div>
 
-          {showKeyboard && (
+          {!isMobile && showKeyboard && (
             <div className="synth-keyboard-panel" style={{ '--kb-accent': keyboardSourceInfo.color } as React.CSSProperties}>
               <div className="synth-keyboard-header">
                 <div>
                   <div className="synth-keyboard-title">Manual Keyboard</div>
                   <div className="synth-keyboard-meta">
-                    {formatMidiNoteName(keyboardBaseMidi)} to {formatMidiNoteName(keyboardBaseMidi + MANUAL_KEYBOARD_LAYOUT.length - 1)}
+                    {keyboardVisibleKeys[0]?.noteLabel ?? formatMidiNoteName(keyboardBaseMidi)} to {keyboardVisibleKeys[keyboardVisibleKeys.length - 1]?.noteLabel ?? formatMidiNoteName(keyboardBaseMidi + 12)}
                   </div>
                   <div className="synth-keyboard-meta">
                     {keyboardHarmonyContext.usingHarmonyEngine ? 'Harmony' : 'Pitch Root'}: {keyboardHarmonyContext.label}
                   </div>
                 </div>
-                <div className="synth-keyboard-hint">
+                  <div className="synth-keyboard-hint">
                   {keyboardInputMode === 'sequence'
-                    ? sequenceWritesToTriggerGrid
-                      ? 'Space plays/stops | Left/Right moves step | Right Shift toggles trigger | Up/Down shifts octave'
-                      : activeKeyboardCursorTarget === 'trigger'
-                        ? 'Space plays/stops | Left Shift switches to Pitch | Left/Right moves sequence | Right Shift toggles trigger | Up/Down shifts octave'
-                        : activePitchBindingMode === 'polyrhythmic'
-                          ? 'Space plays/stops | Left Shift switches to Sequence | Left/Right moves pitch | Right Shift sets pitch length | Up/Down shifts octave'
-                          : 'Space plays/stops | Left Shift switches to Sequence | Left/Right moves pitch | Up/Down shifts octave'
-                    : 'Space plays/stops | Up/Down shifts octave'}
+                    ? 'Space plays/stops | Left/Right step | Z+Left/Right steps | Up/Down coarse | Z+Up/Down fine | Left Shift + arrows lane/seq | Tab toggle | [ ] octave | Shift+Z mute | Shift+X solo'
+                    : 'Space plays/stops | [ ] octave | Shift+Z mute | Shift+X solo'}
                 </div>
               </div>
 
@@ -3236,27 +3616,27 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                         type="button"
                         className="synth-keyboard-nav-btn"
                         onClick={() => {
-                          if (sequenceWritesToTriggerGrid || activeKeyboardCursorTarget === 'trigger') {
-                            selectTriggerSequenceStep(seq.activeTab, findAdjacentTriggerStep(seq.activeTab, activeTriggerCursorStep, -1));
-                          } else {
-                            selectPitchSequenceStep(seq.activeTab, findAdjacentPitchStep(seq.activeTab, activePitchCursorStep, -1));
-                          }
+                          selectSynthKeyboardLaneStep(
+                            seq.activeTab,
+                            activeKeyboardEditLane,
+                            findAdjacentSynthKeyboardLaneStep(seq.activeTab, activeKeyboardEditLane, activeSynthKeyboardStep, -1),
+                          );
                         }}
                       >
-                        ← {sequenceWritesToTriggerGrid || activeKeyboardCursorTarget === 'trigger' ? 'Seq' : 'Pitch'}
+                        ← Step
                       </button>
                       <button
                         type="button"
                         className="synth-keyboard-nav-btn"
                         onClick={() => {
-                          if (sequenceWritesToTriggerGrid || activeKeyboardCursorTarget === 'trigger') {
-                            selectTriggerSequenceStep(seq.activeTab, findAdjacentTriggerStep(seq.activeTab, activeTriggerCursorStep, 1));
-                          } else {
-                            selectPitchSequenceStep(seq.activeTab, findAdjacentPitchStep(seq.activeTab, activePitchCursorStep, 1));
-                          }
+                          selectSynthKeyboardLaneStep(
+                            seq.activeTab,
+                            activeKeyboardEditLane,
+                            findAdjacentSynthKeyboardLaneStep(seq.activeTab, activeKeyboardEditLane, activeSynthKeyboardStep, 1),
+                          );
                         }}
                       >
-                        {sequenceWritesToTriggerGrid || activeKeyboardCursorTarget === 'trigger' ? 'Seq' : 'Pitch'} →
+                        Step →
                       </button>
                     </div>
                   </>
@@ -3293,7 +3673,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
               <div className="synth-keyboard-grid" style={{ '--white-key-count': keyboardWhiteCount } as React.CSSProperties}>
                 <div className="synth-keyboard-natural-row">
                   {keyboardNaturalKeys.map((key) => {
-                    const keyIndex = keyboardKeys.findIndex((layoutKey) => layoutKey.code === key.code);
                     return (
                       <button
                         key={key.code}
@@ -3302,7 +3681,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                         onPointerDown={(event) => {
                           event.preventDefault();
                           setKeyboardCodeActive(key.code, true);
-                          triggerKeyboardNote(keyIndex);
+                          triggerKeyboardNote(key.layoutIndex);
                         }}
                         onPointerUp={() => setKeyboardCodeActive(key.code, false)}
                         onPointerLeave={() => setKeyboardCodeActive(key.code, false)}
@@ -3316,7 +3695,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 </div>
                 <div className="synth-keyboard-accidental-row">
                   {keyboardAccidentalKeys.map((key) => {
-                    const keyIndex = keyboardKeys.findIndex((layoutKey) => layoutKey.code === key.code);
                     return (
                       <button
                         key={key.code}
@@ -3326,7 +3704,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                         onPointerDown={(event) => {
                           event.preventDefault();
                           setKeyboardCodeActive(key.code, true);
-                          triggerKeyboardNote(keyIndex);
+                          triggerKeyboardNote(key.layoutIndex);
                         }}
                         onPointerUp={() => setKeyboardCodeActive(key.code, false)}
                         onPointerLeave={() => setKeyboardCodeActive(key.code, false)}
@@ -3801,7 +4179,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     selectedStep={keyboardTriggerTargetVisible ? activeTriggerCursorStep : null}
                     selectedStepLabel={keyboardTargetLabel}
                     onSelectStep={keyboardTargetVisible ? (step) => {
-                      if (!sequenceWritesToTriggerGrid) setKeyboardSequenceCursorTarget('trigger');
                       selectTriggerSequenceStep(seq.activeTab, step);
                     } : undefined}
                     onSetProbability={(step, value) => seq.setStepProbability(seq.activeTab, step, value)}
@@ -3852,7 +4229,21 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                           invertFill={laneKind === 'expression'}
                           enabled={subState?.enabled ?? false}
                           expanded={seq.openLane === laneKind}
-                          selectedStep={keyboardPitchTargetVisible && laneKind === 'pitch' ? activePitchSelectionStep : null}
+                          selectedStep={keyboardTargetVisible ? (
+                            laneKind === 'pitch'
+                              ? activeKeyboardEditLane === 'pitch'
+                                ? activePitchSelectionStep
+                                : null
+                              : laneKind === 'expression'
+                                ? activeKeyboardEditLane === 'expression'
+                                  ? activeExpressionCursorStep
+                                  : null
+                                : laneKind === 'morph'
+                                  ? activeKeyboardEditLane === 'morph'
+                                    ? activeMorphCursorStep
+                                    : null
+                                  : null
+                          ) : null}
                           onClick={() => seq.setOpenLane(seq.openLane === laneKind ? 'trigger' : laneKind)}
                           onToggleEnabled={() => seq.toggleSubLaneEnabled(seq.activeTab, laneKind)}
                         />
@@ -3864,7 +4255,21 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                               color={laneColor}
                               playhead={seq.playheads[seq.activeTab] ?? 0}
                               hitCount={seq.hitCounts[seq.activeTab] ?? 0}
-                              selectedStep={keyboardPitchTargetVisible && laneKind === 'pitch' ? activePitchSelectionStep : null}
+                              selectedStep={keyboardTargetVisible ? (
+                                laneKind === 'pitch'
+                                  ? activeKeyboardEditLane === 'pitch'
+                                    ? activePitchSelectionStep
+                                    : null
+                                  : laneKind === 'expression'
+                                    ? activeKeyboardEditLane === 'expression'
+                                      ? activeExpressionCursorStep
+                                      : null
+                                    : laneKind === 'morph'
+                                      ? activeKeyboardEditLane === 'morph'
+                                        ? activeMorphCursorStep
+                                        : null
+                                      : null
+                              ) : null}
                               selectedStepLabel={keyboardTargetLabel}
                               enabled={subState?.enabled ?? false}
                               direction={subState?.direction ?? 'forward'}
@@ -3998,7 +4403,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                                 const triggerCursorVisibleForRow = showKeyboard
                                   && keyboardInputMode === 'sequence'
                                   && row === seq.activeTab
-                                  && (sequenceModeForRow || activeKeyboardCursorTarget === 'trigger');
+                                  && activeKeyboardEditLane === 'trigger';
                                 const sequenceSelected = showKeyboard
                                   && triggerCursorVisibleForRow
                                   && step === (triggerKeyboardSteps[row] ?? 0);
@@ -4037,7 +4442,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                                           setDragPopup(null);
                                           if (!dragged) {
                                             if (showKeyboard && keyboardInputMode === 'sequence') {
-                                              if (!sequenceModeForRow) setKeyboardSequenceCursorTarget('trigger');
                                               selectTriggerSequenceStep(row, step);
                                             } else {
                                               seq.toggleTriggerStep(row, step);
@@ -4056,7 +4460,15 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                                         <div className="prob-fill" style={{ height: `${probPct}%` }} />
                                       )}
                                       {inRange && <span className="prob-label">{probPct}%</span>}
-                                      {sequenceSelected && <span className="seq-step-cursor">{keyboardTargetLabel}</span>}
+                                      {sequenceSelected && (
+                                        <span
+                                          className="seq-step-cursor"
+                                          style={getKeyboardCursorMarkerStyle(seqModel.color)}
+                                          aria-hidden="true"
+                                        >
+                                          {keyboardTargetLabel}
+                                        </span>
+                                      )}
                                       {stepNoteLabel && <span className="seq-step-note">{stepNoteLabel}</span>}
                                     </button>
                                   </div>

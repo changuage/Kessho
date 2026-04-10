@@ -401,6 +401,7 @@ const DelayPage: React.FC<DelayPageProps> = ({
               {/* Sliders */}
               <Slider label="Activity" value={state.granularDelayActivity} paramKey="granularDelayActivity" onChange={onParamChange} helpPage="delay" {...sliderProps('granularDelayActivity')} />
               <Slider label="Repeats" value={state.granularDelayRepeats} paramKey="granularDelayRepeats" onChange={onParamChange} helpPage="delay" {...sliderProps('granularDelayRepeats')} />
+              <Slider label="Level" value={state.granularDelayMix} paramKey="granularDelayMix" onChange={onParamChange} helpPage="delay" {...sliderProps('granularDelayMix')} />
               <Slider label="Filter" value={state.granularDelayFilter} paramKey="granularDelayFilter" onChange={onParamChange} helpPage="delay" {...sliderProps('granularDelayFilter')} />
               <Slider label="Intensity" value={state.delayBWarpIntensity} paramKey="delayBWarpIntensity" onChange={onParamChange} helpPage="delay" {...sliderProps('delayBWarpIntensity')} />
               <Slider label="Spread" value={state.delayBSpread} paramKey="delayBSpread" onChange={onParamChange} helpPage="delay" {...sliderProps('delayBSpread')} />

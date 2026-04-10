@@ -445,7 +445,7 @@ export function updateAutoMorph(
 // STATE INTEGRATION
 // ═══════════════════════════════════════════════════════════════════════════
 
-const VOICE_MORPH_KEYS: Record<DrumVoiceType, {
+export const VOICE_MORPH_KEYS: Record<DrumVoiceType, {
   presetA: keyof SliderState;
   presetB: keyof SliderState;
   morph: keyof SliderState;
@@ -692,6 +692,20 @@ export class DrumMorphManager {
       voiceState.lastMorph = 0;
     }
   }
+
+  /**
+   * Synchronize a voice to an explicit morph position without advancing time.
+   * Used when the UI changes the stored morph value and we want runtime motion
+   * to resume smoothly from that position instead of snapping back to zero.
+   */
+  setVoiceState(voice: DrumVoiceType, morph: number, direction?: number): void {
+    const voiceState = this.voiceStates.get(voice);
+    if (!voiceState) return;
+    const nextMorph = Math.max(0, Math.min(1, Number.isFinite(morph) ? morph : 0));
+    voiceState.phase = nextMorph;
+    voiceState.lastMorph = nextMorph;
+    voiceState.direction = direction ?? (nextMorph >= 0.999 ? -1 : 1);
+  }
   
   /**
    * Reset all voices
@@ -702,6 +716,10 @@ export class DrumMorphManager {
       this.resetVoice(voice);
     }
     this.lastUpdateTime = 0;
+  }
+
+  syncClock(currentTime: number): void {
+    this.lastUpdateTime = currentTime;
   }
 }
 

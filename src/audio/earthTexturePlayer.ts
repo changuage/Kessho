@@ -79,7 +79,16 @@ function makePowerCurve(forward: boolean): Float32Array {
   return curve;
 }
 
+type EarthTextureSchedulerGroup = {
+  players: Set<EarthTexturePlayer>;
+  timer: number | null;
+};
+
 export class EarthTexturePlayer {
+  private static readonly decodedBufferCache = new WeakMap<AudioContext, Map<string, AudioBuffer>>();
+  private static readonly loadPromiseCache = new WeakMap<AudioContext, Map<string, Promise<AudioBuffer | null>>>();
+  private static readonly schedulerGroups = new WeakMap<AudioContext, EarthTextureSchedulerGroup>();
+
   private readonly ctx: AudioContext;
   private readonly output: AudioNode;
   private readonly fadeInCurve = makePowerCurve(true);
@@ -92,9 +101,6 @@ export class EarthTexturePlayer {
   private fadeTime: number;
   private density: number;
 
-  private buffer: AudioBuffer | null = null;
-  private loadPromise: Promise<AudioBuffer | null> | null = null;
-  private schedulerTimer: number | null = null;
   private nextStartTime = 0;
   private running = false;
   private recentOffsets: number[] = [];
@@ -112,11 +118,47 @@ export class EarthTexturePlayer {
     this.schedulerIntervalMs = config.schedulerIntervalMs ?? 140;
   }
 
-  async ensureLoaded(): Promise<AudioBuffer | null> {
-    if (this.buffer) return this.buffer;
-    if (this.loadPromise) return this.loadPromise;
+  private getSharedDecodedBufferCache(): Map<string, AudioBuffer> {
+    let cache = EarthTexturePlayer.decodedBufferCache.get(this.ctx);
+    if (!cache) {
+      cache = new Map();
+      EarthTexturePlayer.decodedBufferCache.set(this.ctx, cache);
+    }
+    return cache;
+  }
 
-    this.loadPromise = (async () => {
+  private getSharedLoadPromiseCache(): Map<string, Promise<AudioBuffer | null>> {
+    let cache = EarthTexturePlayer.loadPromiseCache.get(this.ctx);
+    if (!cache) {
+      cache = new Map();
+      EarthTexturePlayer.loadPromiseCache.set(this.ctx, cache);
+    }
+    return cache;
+  }
+
+  private static getSchedulerGroup(ctx: AudioContext): EarthTextureSchedulerGroup {
+    let group = EarthTexturePlayer.schedulerGroups.get(ctx);
+    if (!group) {
+      group = { players: new Set(), timer: null };
+      EarthTexturePlayer.schedulerGroups.set(ctx, group);
+    }
+    return group;
+  }
+
+  private get buffer(): AudioBuffer | null {
+    return this.getSharedDecodedBufferCache().get(this.fileName) ?? null;
+  }
+
+  async ensureLoaded(): Promise<AudioBuffer | null> {
+    const sharedBuffers = this.getSharedDecodedBufferCache();
+    const existing = sharedBuffers.get(this.fileName);
+    if (existing) return existing;
+
+    const sharedPromises = this.getSharedLoadPromiseCache();
+    const pending = sharedPromises.get(this.fileName);
+    if (pending) return pending;
+
+    const loadPromise = (async () => {
       try {
         const response = await fetch(resolveSampleUrl(this.fileName));
         if (!response.ok) {
@@ -124,17 +166,19 @@ export class EarthTexturePlayer {
           return null;
         }
         const arrayBuffer = await response.arrayBuffer();
-        this.buffer = await this.ctx.decodeAudioData(arrayBuffer);
-        return this.buffer;
+        const decoded = await this.ctx.decodeAudioData(arrayBuffer);
+        sharedBuffers.set(this.fileName, decoded);
+        return decoded;
       } catch (error) {
         console.warn(`Failed to load Earth texture sample ${this.fileName}:`, error);
         return null;
       } finally {
-        this.loadPromise = null;
+        sharedPromises.delete(this.fileName);
       }
     })();
 
-    return this.loadPromise;
+    sharedPromises.set(this.fileName, loadPromise);
+    return loadPromise;
   }
 
   update(config: Partial<Pick<EarthTexturePlayerConfig, 'sliceDuration' | 'fadeTime' | 'density'>>): void {
@@ -144,7 +188,7 @@ export class EarthTexturePlayer {
   }
 
   async start(): Promise<void> {
-    if (this.running && (this.schedulerTimer !== null || this.loadPromise !== null || this.activeSlices.size > 0 || this.nextStartTime > 0)) {
+    if (this.running && (this.activeSlices.size > 0 || this.nextStartTime > 0)) {
       return;
     }
     this.running = true;
@@ -156,16 +200,13 @@ export class EarthTexturePlayer {
     }
 
     this.scheduleAhead();
-    this.armScheduler();
+    this.registerWithSharedScheduler();
   }
 
   stop(): void {
     this.running = false;
     this.nextStartTime = 0;
-    if (this.schedulerTimer !== null) {
-      clearTimeout(this.schedulerTimer);
-      this.schedulerTimer = null;
-    }
+    this.unregisterFromSharedScheduler();
 
     const now = this.ctx.currentTime;
     for (const slice of Array.from(this.activeSlices)) {
@@ -181,7 +222,6 @@ export class EarthTexturePlayer {
 
   dispose(): void {
     this.stop();
-    this.buffer = null;
     this.recentOffsets = [];
   }
 
@@ -219,17 +259,39 @@ export class EarthTexturePlayer {
     };
   }
 
-  private armScheduler(): void {
-    if (this.schedulerTimer !== null) return;
+  private registerWithSharedScheduler(): void {
+    const group = EarthTexturePlayer.getSchedulerGroup(this.ctx);
+    group.players.add(this);
+    EarthTexturePlayer.ensureSharedScheduler(this.ctx);
+  }
+
+  private unregisterFromSharedScheduler(): void {
+    const group = EarthTexturePlayer.getSchedulerGroup(this.ctx);
+    group.players.delete(this);
+    if (group.players.size === 0 && group.timer !== null) {
+      clearTimeout(group.timer);
+      group.timer = null;
+    }
+  }
+
+  private static ensureSharedScheduler(ctx: AudioContext): void {
+    const group = EarthTexturePlayer.getSchedulerGroup(ctx);
+    if (group.timer !== null || group.players.size === 0) return;
 
     const tick = () => {
-      this.schedulerTimer = null;
-      if (!this.running) return;
-      this.scheduleAhead();
-      this.schedulerTimer = window.setTimeout(tick, this.schedulerIntervalMs);
+      group.timer = null;
+      if (group.players.size === 0) return;
+      for (const player of Array.from(group.players)) {
+        player.scheduleAhead();
+      }
+      EarthTexturePlayer.ensureSharedScheduler(ctx);
     };
 
-    this.schedulerTimer = window.setTimeout(tick, this.schedulerIntervalMs);
+    let nextIntervalMs = Infinity;
+    for (const player of group.players) {
+      nextIntervalMs = Math.min(nextIntervalMs, player.schedulerIntervalMs);
+    }
+    group.timer = window.setTimeout(tick, Number.isFinite(nextIntervalMs) ? nextIntervalMs : 140);
   }
 
   private scheduleAhead(): void {

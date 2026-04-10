@@ -738,7 +738,12 @@
   border: 1px solid var(--border-medium); position: relative; cursor: pointer;
   touch-action: none;
 }
+.drum-root .seq-dist-bar-wrap.selected {
+  border-color: color-mix(in srgb, var(--accent-teal) 48%, rgba(255,255,255,0.12));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-teal) 20%, transparent);
+}
 .drum-root .seq-dist-bar-wrap.inactive { opacity: 0.25; pointer-events: none; }
+.drum-root .seq-dist-bar-wrap.selected.inactive { opacity: 0.58; }
 .drum-root .seq-dist-bar-wrap .dist-center {
   position: absolute; left: 0; right: 0; top: 50%;
   height: 1px; background: #555; pointer-events: none;
@@ -767,7 +772,12 @@
   border: 1px solid var(--border-medium); position: relative; cursor: pointer;
   touch-action: none;
 }
+.drum-root .seq-morph-bar-wrap.selected {
+  border-color: color-mix(in srgb, var(--accent-lavender) 48%, rgba(255,255,255,0.12));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-lavender) 20%, transparent);
+}
 .drum-root .seq-morph-bar-wrap.inactive { opacity: 0.25; pointer-events: none; }
+.drum-root .seq-morph-bar-wrap.selected.inactive { opacity: 0.58; }
 .drum-root .seq-morph-bar-wrap .morph-center {
   position: absolute; left: 0; right: 0; top: 50%;
   height: 1px; background: #555; pointer-events: none;
@@ -935,7 +945,12 @@
   border: 1px solid var(--border-medium); position: relative; cursor: pointer;
   touch-action: none;
 }
+.drum-root .seq-pitch-bar-wrap.selected {
+  border-color: color-mix(in srgb, var(--accent-pink) 48%, rgba(255,255,255,0.12));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-pink) 20%, transparent);
+}
 .drum-root .seq-pitch-bar-wrap.inactive { opacity: 0.25; pointer-events: none; }
+.drum-root .seq-pitch-bar-wrap.selected.inactive { opacity: 0.58; }
 .drum-root .seq-pitch-bar-wrap .pitch-center {
   position: absolute; left: 0; right: 0; top: 50%;
   height: 1px; background: #444; pointer-events: none;
@@ -960,7 +975,12 @@
   border: 1px solid var(--border-medium); position: relative; cursor: pointer;
   display: flex; align-items: flex-end; touch-action: none;
 }
+.drum-root .seq-vel-bar-wrap.selected {
+  border-color: color-mix(in srgb, var(--accent-orange) 48%, rgba(255,255,255,0.12));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-orange) 18%, transparent);
+}
 .drum-root .seq-vel-bar-wrap.inactive { opacity: 0.25; pointer-events: none; }
+.drum-root .seq-vel-bar-wrap.selected.inactive { opacity: 0.58; }
 .drum-root .seq-vel-bar {
   width: 100%; background: var(--accent-orange); border-radius: 0 0 2px 2px;
   transition: height 0.05s;
@@ -1796,4 +1816,36 @@
 .drum-root .seq-ov-rot button:hover { background: var(--bg-control-hover); color: #fff; }
 .drum-root .seq-ov-rot .seq-rotation-val {
   font-size: 0.55rem; color: #888; min-width: 12px; text-align: center;
+}
+.drum-root .seq-step-cell.selected {
+  box-shadow: 0 0 0 1px rgba(0, 212, 255, 0.42), 0 0 12px rgba(0, 212, 255, 0.14);
+}
+
+.drum-root .seq-step-cursor {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: block;
+  z-index: 1;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at center,
+      color-mix(in srgb, var(--cursor-accent, #fff) 94%, #fff 6%) 0%,
+      color-mix(in srgb, var(--cursor-color, #00d4ff) 84%, var(--cursor-accent, #fff) 16%) 32%,
+      color-mix(in srgb, var(--cursor-color, #00d4ff) 52%, transparent) 58%,
+      transparent 82%);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--cursor-color, #00d4ff) 24%, rgba(255,255,255,0.06)),
+    0 0 18px color-mix(in srgb, var(--cursor-color, #00d4ff) 24%, transparent);
+  color: transparent;
+  font-size: 0;
+  line-height: 0;
+  pointer-events: none;
+}
+
+.drum-root .spark-selected-step {
+  pointer-events: none;
 }

@@ -104,6 +104,7 @@ const TRACK_PAD_PX = 6;
 const EDGE_HANDLE_PX = 8;
 const LONG_PRESS_MS = 400;
 const LONG_PRESS_MOVE_TOLERANCE_PX = 8;
+const MOBILE_EARTH_MATRIX_QUERY = '(max-width: 760px)';
 
 const SHARED_COLUMNS: Array<{ id: SharedColumnId; label: string }> = [
   { id: 'level', label: 'Level' },
@@ -112,6 +113,7 @@ const SHARED_COLUMNS: Array<{ id: SharedColumnId; label: string }> = [
   { id: 'delayB', label: 'Delay B' },
   { id: 'granular', label: 'Granular' },
 ];
+const DEFAULT_SHARED_COLUMN: SharedColumnId = SHARED_COLUMNS[0]?.id ?? 'level';
 
 const WATER_LAYER_KEYS: readonly NumericSliderKey[] = [
   'waterLayerHardDrops',
@@ -781,6 +783,81 @@ export function ActiveEarthMatrix({
     return rows;
   }, [onSelectChange, state, toggleWaterChild]);
 
+  const activeTextureDebugKeys = useMemo(
+    () => activeRows
+      .map((row) => row.textureDebugKey)
+      .filter((key): key is keyof EarthTextureDebugState => Boolean(key)),
+    [activeRows],
+  );
+  const [activeSharedColumn, setActiveSharedColumn] = useState<SharedColumnId>(DEFAULT_SHARED_COLUMN);
+  const [isCompactLayout, setIsCompactLayout] = useState<boolean>(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
+    return window.matchMedia(MOBILE_EARTH_MATRIX_QUERY).matches;
+  });
+  const activeSharedColumnConfig = useMemo(
+    () => SHARED_COLUMNS.find((column) => column.id === activeSharedColumn) ?? SHARED_COLUMNS[0]!,
+    [activeSharedColumn],
+  );
+  const [textureDebugState, setTextureDebugState] = useState<EarthTextureDebugState>(() => getEarthTextureDebugState());
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const mediaQuery = window.matchMedia(MOBILE_EARTH_MATRIX_QUERY);
+    const updateLayout = () => setIsCompactLayout(mediaQuery.matches);
+    updateLayout();
+
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', updateLayout);
+      return () => mediaQuery.removeEventListener('change', updateLayout);
+    }
+
+    mediaQuery.addListener(updateLayout);
+    return () => mediaQuery.removeListener(updateLayout);
+  }, []);
+
+  useEffect(() => {
+    if (activeTextureDebugKeys.length === 0) return;
+
+    let intervalId: number | null = null;
+
+    const clearPolling = () => {
+      if (intervalId !== null) {
+        window.clearInterval(intervalId);
+        intervalId = null;
+      }
+    };
+
+    const updateTextureDebugState = () => {
+      const nextState = getEarthTextureDebugState();
+      setTextureDebugState((prev) => {
+        const changed = activeTextureDebugKeys.some((key) => !snapshotsEqual(prev[key], nextState[key]));
+        return changed ? nextState : prev;
+      });
+    };
+
+    const startPolling = () => {
+      clearPolling();
+      if (document.visibilityState !== 'visible') return;
+      updateTextureDebugState();
+      intervalId = window.setInterval(updateTextureDebugState, 250);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        startPolling();
+      } else {
+        clearPolling();
+      }
+    };
+
+    startPolling();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      clearPolling();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [activeTextureDebugKeys, getEarthTextureDebugState]);
+
   return (
     <section className="mixer-section earth-active-matrix">
       <div className="mixer-section-header">Active Earth Matrix</div>
@@ -815,26 +892,58 @@ export function ActiveEarthMatrix({
           <span className="earth-matrix-section-meta">{sharedRows.length} active</span>
         </div>
         {sharedRows.length > 0 ? (
-          <div className="earth-matrix-scroll">
-            <div className="earth-shared-matrix-grid">
-              <div className="earth-matrix-corner">Source</div>
-              {SHARED_COLUMNS.map((column) => (
-                <div key={column.id} className="earth-matrix-header">
-                  {column.label}
-                </div>
-              ))}
+          isCompactLayout ? (
+            <>
+              <div className="earth-matrix-mobile-picker" role="tablist" aria-label="Shared Earth routing columns">
+                {SHARED_COLUMNS.map((column) => (
+                  <button
+                    key={column.id}
+                    type="button"
+                    className={`earth-matrix-mobile-picker-button${activeSharedColumn === column.id ? ' active' : ''}`}
+                    onClick={() => setActiveSharedColumn(column.id)}
+                  >
+                    {column.label}
+                  </button>
+                ))}
+              </div>
+              <div className="earth-matrix-mobile-column-note">
+                Shared routing column: {activeSharedColumnConfig.label}
+              </div>
+              <div className="earth-matrix-mobile-list">
+                {sharedRows.map((row) => (
+                  <SharedMatrixMobileCard
+                    key={`${row.id}:${activeSharedColumn}`}
+                    row={row}
+                    column={activeSharedColumnConfig}
+                    state={state}
+                    sliderProps={sliderProps}
+                    onParamChange={onParamChange}
+                  />
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="earth-matrix-scroll">
+              <div className="earth-shared-matrix-grid">
+                <div className="earth-matrix-corner">Source</div>
+                {SHARED_COLUMNS.map((column) => (
+                  <div key={column.id} className="earth-matrix-header">
+                    {column.label}
+                  </div>
+                ))}
 
-              {sharedRows.map((row) => (
-                <SharedMatrixRow
-                  key={row.id}
-                  row={row}
-                  state={state}
-                  sliderProps={sliderProps}
-                  onParamChange={onParamChange}
-                />
-              ))}
+                {sharedRows.map((row) => (
+                  <SharedMatrixRow
+                    key={row.id}
+                    row={row}
+                    state={state}
+                    sliderProps={sliderProps}
+                    onParamChange={onParamChange}
+                  />
+                ))}
+              </div>
             </div>
-          </div>
+          )
         ) : (
           <div className="earth-matrix-empty">Activate a source to expose its shared routing row.</div>
         )}
@@ -846,31 +955,99 @@ export function ActiveEarthMatrix({
           <span className="earth-matrix-section-meta">{activeRows.length} active</span>
         </div>
         {activeRows.length > 0 ? (
-          <div className="earth-matrix-scroll">
-            <div className="earth-child-matrix-grid">
-              <div className="earth-matrix-corner">Source</div>
-              <div className="earth-matrix-header">Preview</div>
-              <div className="earth-matrix-header">Level</div>
-              <div className="earth-matrix-header">Info</div>
-
+          isCompactLayout ? (
+            <div className="earth-matrix-mobile-list">
               {activeRows.map((row) => (
-                <ChildMatrixRow
+                <ChildMatrixMobileCard
                   key={row.id}
                   row={row}
                   state={state}
                   sliderProps={sliderProps}
                   onParamChange={onParamChange}
-                  getEarthTextureDebugState={getEarthTextureDebugState}
+                  textureDebugState={textureDebugState}
                 />
               ))}
             </div>
-          </div>
+          ) : (
+            <div className="earth-matrix-scroll">
+              <div className="earth-child-matrix-grid">
+                <div className="earth-matrix-corner">Source</div>
+                <div className="earth-matrix-header">Preview</div>
+                <div className="earth-matrix-header">Level</div>
+                <div className="earth-matrix-header">Info</div>
+
+                {activeRows.map((row) => (
+                  <ChildMatrixRow
+                    key={row.id}
+                    row={row}
+                    state={state}
+                    sliderProps={sliderProps}
+                    onParamChange={onParamChange}
+                    textureDebugState={textureDebugState}
+                  />
+                ))}
+              </div>
+            </div>
+          )
         ) : (
           <div className="earth-matrix-empty">Choose child sources above to build the active matrix.</div>
         )}
       </div>
     </section>
   );
+}
+
+function MatrixStaticCell({
+  accent,
+  text,
+  blocked = false,
+}: {
+  accent: string;
+  text?: string;
+  blocked?: boolean;
+}) {
+  return (
+    <div
+      className={`earth-matrix-cell earth-matrix-static${blocked ? ' blocked' : ''}`}
+      style={{ '--row-accent': accent } as CSSProperties}
+    >
+      <span className="earth-matrix-static-text">{text ?? '—'}</span>
+    </div>
+  );
+}
+
+function SharedCellView({
+  rowId,
+  columnId,
+  cell,
+  accent,
+  state,
+  sliderProps,
+  onParamChange,
+}: {
+  rowId: string;
+  columnId: SharedColumnId;
+  cell: SharedCell;
+  accent: string;
+  state: SliderState;
+  sliderProps: (paramKey: keyof SliderState) => SliderRuntime;
+  onParamChange: (key: keyof SliderState, value: number) => void;
+}) {
+  if (cell.kind === 'slider') {
+    return (
+      <EarthMatrixSliderCell
+        control={cell.control}
+        rowId={rowId}
+        columnId={columnId}
+        accent={accent}
+        state={state}
+        sliderProps={sliderProps}
+        onParamChange={onParamChange}
+      />
+    );
+  }
+
+  return <MatrixStaticCell accent={accent} text={cell.text} blocked={cell.kind === 'blocked'} />;
 }
 
 function SharedMatrixRow({
@@ -900,32 +1077,63 @@ function SharedMatrixRow({
 
       {SHARED_COLUMNS.map((column) => {
         const cell = row.cells[column.id];
-        if (cell.kind === 'slider') {
-          return (
-            <EarthMatrixSliderCell
-              key={`${row.id}:${column.id}:${String(cell.control.key)}`}
-              control={cell.control}
-              rowId={row.id}
-              columnId={column.id}
-              accent={row.accent}
-              state={state}
-              sliderProps={sliderProps}
-              onParamChange={onParamChange}
-            />
-          );
-        }
-
         return (
-          <div
+          <SharedCellView
             key={`${row.id}:${column.id}`}
-            className={`earth-matrix-cell earth-matrix-static${cell.kind === 'blocked' ? ' blocked' : ''}`}
-            style={{ '--row-accent': row.accent } as CSSProperties}
-          >
-            <span className="earth-matrix-static-text">{cell.text ?? '—'}</span>
-          </div>
+            rowId={row.id}
+            columnId={column.id}
+            cell={cell}
+            accent={row.accent}
+            state={state}
+            sliderProps={sliderProps}
+            onParamChange={onParamChange}
+          />
         );
       })}
     </>
+  );
+}
+
+function SharedMatrixMobileCard({
+  row,
+  column,
+  state,
+  sliderProps,
+  onParamChange,
+}: {
+  row: SharedRow;
+  column: { id: SharedColumnId; label: string };
+  state: SliderState;
+  sliderProps: (paramKey: keyof SliderState) => SliderRuntime;
+  onParamChange: (key: keyof SliderState, value: number) => void;
+}) {
+  return (
+    <div className="earth-matrix-mobile-card">
+      <div
+        className="earth-matrix-rowlabel group"
+        title={row.detail}
+        style={{ '--row-accent': row.accent } as CSSProperties}
+      >
+        <SectionToggle active onClick={row.toggle} title={row.toggleTitle} />
+        <span className="earth-matrix-rowmeta">
+          <span className="earth-matrix-rowname">{row.label}</span>
+          {row.detail ? <span className="earth-matrix-rowdetail">{row.detail}</span> : null}
+        </span>
+      </div>
+
+      <div className="earth-matrix-mobile-field">
+        <span className="earth-matrix-mobile-field-label">{column.label}</span>
+        <SharedCellView
+          rowId={row.id}
+          columnId={column.id}
+          cell={row.cells[column.id]}
+          accent={row.accent}
+          state={state}
+          sliderProps={sliderProps}
+          onParamChange={onParamChange}
+        />
+      </div>
+    </div>
   );
 }
 
@@ -934,13 +1142,13 @@ function ChildMatrixRow({
   state,
   sliderProps,
   onParamChange,
-  getEarthTextureDebugState,
+  textureDebugState,
 }: {
   row: ChildRow;
   state: SliderState;
   sliderProps: (paramKey: keyof SliderState) => SliderRuntime;
   onParamChange: (key: keyof SliderState, value: number) => void;
-  getEarthTextureDebugState: () => EarthTextureDebugState;
+  textureDebugState: EarthTextureDebugState;
 }) {
   return (
     <>
@@ -982,7 +1190,7 @@ function ChildMatrixRow({
         {row.textureDebugKey ? (
           <EarthTextureInfoCell
             debugKey={row.textureDebugKey}
-            getEarthTextureDebugState={getEarthTextureDebugState}
+            textureDebugState={textureDebugState}
             accent={row.accent}
             label={row.label}
           />
@@ -991,6 +1199,82 @@ function ChildMatrixRow({
         )}
       </div>
     </>
+  );
+}
+
+function ChildMatrixMobileCard({
+  row,
+  state,
+  sliderProps,
+  onParamChange,
+  textureDebugState,
+}: {
+  row: ChildRow;
+  state: SliderState;
+  sliderProps: (paramKey: keyof SliderState) => SliderRuntime;
+  onParamChange: (key: keyof SliderState, value: number) => void;
+  textureDebugState: EarthTextureDebugState;
+}) {
+  return (
+    <div className="earth-matrix-mobile-card">
+      <div
+        className="earth-matrix-rowlabel sub"
+        title={row.info ?? row.label}
+        style={{ '--row-accent': row.accent } as CSSProperties}
+      >
+        <SectionToggle active onClick={row.toggle} title={row.toggleTitle} />
+        <span className="earth-matrix-rowmeta">
+          <span className="earth-matrix-rowname">{row.label}</span>
+          <span className="earth-matrix-rowdetail">{row.family}</span>
+        </span>
+      </div>
+
+      <div className="earth-matrix-mobile-preview-row">
+        <div className="earth-matrix-mobile-field">
+          <span className="earth-matrix-mobile-field-label">Preview</span>
+          <div className="earth-matrix-preview-cell">
+            <MatrixPreview
+              kind={row.preview}
+              accent={row.accent}
+              density={row.density}
+              intensity={row.intensity}
+            />
+          </div>
+        </div>
+
+        <div className="earth-matrix-mobile-field earth-matrix-mobile-field-grow">
+          <span className="earth-matrix-mobile-field-label">Level</span>
+          <EarthMatrixSliderCell
+            control={row.level}
+            rowId={row.id}
+            columnId="level"
+            accent={row.accent}
+            state={state}
+            sliderProps={sliderProps}
+            onParamChange={onParamChange}
+          />
+        </div>
+      </div>
+
+      <div className="earth-matrix-mobile-field">
+        <span className="earth-matrix-mobile-field-label">Info</span>
+        <div
+          className={`earth-matrix-cell earth-matrix-info-cell${row.textureDebugKey ? ' nature' : ''}`}
+          style={{ '--row-accent': row.accent } as CSSProperties}
+        >
+          {row.textureDebugKey ? (
+            <EarthTextureInfoCell
+              debugKey={row.textureDebugKey}
+              textureDebugState={textureDebugState}
+              accent={row.accent}
+              label={row.label}
+            />
+          ) : (
+            <span className="earth-matrix-info-text">{row.info}</span>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1036,68 +1320,16 @@ function snapshotsEqual(
 
 function EarthTextureInfoCell({
   debugKey,
-  getEarthTextureDebugState,
+  textureDebugState,
   accent,
   label,
 }: {
   debugKey: keyof EarthTextureDebugState;
-  getEarthTextureDebugState: () => EarthTextureDebugState;
+  textureDebugState: EarthTextureDebugState;
   accent: string;
   label: string;
 }) {
-  const [snapshot, setSnapshot] = useState<EarthTextureDebugState[keyof EarthTextureDebugState] | null>(() => {
-    const initial = getEarthTextureDebugState();
-    return initial[debugKey] ?? null;
-  });
-
-  useEffect(() => {
-    let mounted = true;
-    let intervalId: number | null = null;
-
-    const updateSnapshot = () => {
-      if (!mounted) return;
-      const next = getEarthTextureDebugState()[debugKey] ?? null;
-      setSnapshot((prev) => {
-        if (!next && !prev) return prev;
-        if (next && prev && next.activeSliceCount === 0 && prev.activeSliceCount === 0 && snapshotsEqual(prev, next)) {
-          return prev;
-        }
-        if (snapshotsEqual(prev, next)) return prev;
-        return next;
-      });
-    };
-
-    const clearPolling = () => {
-      if (intervalId !== null) {
-        window.clearInterval(intervalId);
-        intervalId = null;
-      }
-    };
-
-    const startPolling = () => {
-      clearPolling();
-      if (document.visibilityState !== 'visible') return;
-      updateSnapshot();
-      intervalId = window.setInterval(updateSnapshot, 180);
-    };
-
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') {
-        startPolling();
-      } else {
-        clearPolling();
-      }
-    };
-
-    startPolling();
-    document.addEventListener('visibilitychange', handleVisibility);
-
-    return () => {
-      mounted = false;
-      clearPolling();
-      document.removeEventListener('visibilitychange', handleVisibility);
-    };
-  }, [debugKey, getEarthTextureDebugState]);
+  const snapshot = textureDebugState[debugKey] ?? null;
 
   return (
     <NatureSliceViz

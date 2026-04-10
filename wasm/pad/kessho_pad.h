@@ -87,6 +87,12 @@ float* pad_get_prefader_pad1_ptr(void);
 /** Stereo interleaved Pad 2 pre-fader output */
 float* pad_get_prefader_pad2_ptr(void);
 
+/** Stereo interleaved Pad 1 post-level output */
+float* pad_get_postfader_pad1_ptr(void);
+
+/** Stereo interleaved Pad 2 post-level output */
+float* pad_get_postfader_pad2_ptr(void);
+
 // ═══════════════ Processing ═══════════════
 
 void pad_process_block(int block_size);

@@ -77,6 +77,7 @@ const PARTICLE_LIFETIME = 350;    // ms
 const MAX_PARTICLES = 40;
 const WRITE_HEAD_TRAIL_LEN = 8;
 const POS_CHANGE_THRESHOLD = 0.002; // minimum normalized position change to spawn particle
+const TARGET_FRAME_MS = 1000 / 30;
 
 // ═══════════════ Helpers ═══════════════
 
@@ -115,6 +116,7 @@ const GranularBufferCanvas: React.FC<GranularBufferCanvasProps> = ({
   const writeHeadTrailRef = useRef<number[]>([]);
   const ghostWaveformRef = useRef<Float32Array | null>(null);
   const wasFrozenRef = useRef(false);
+  const lastDrawTimeRef = useRef(0);
 
   // Mutable refs to avoid stale closures in rAF
   const voicesRef = useRef(voices);
@@ -160,7 +162,18 @@ const GranularBufferCanvas: React.FC<GranularBufferCanvasProps> = ({
     return () => ro.disconnect();
   }, []);
 
-  const draw = useCallback(() => {
+  const draw = useCallback((frameTime = performance.now()) => {
+    if (isRunningRef.current && document.visibilityState === 'visible') {
+      const lastDrawTime = lastDrawTimeRef.current;
+      if (lastDrawTime !== 0 && frameTime - lastDrawTime < TARGET_FRAME_MS) {
+        animFrameRef.current = requestAnimationFrame(draw);
+        return;
+      }
+      lastDrawTimeRef.current = frameTime;
+    } else {
+      lastDrawTimeRef.current = 0;
+    }
+
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -180,7 +193,7 @@ const GranularBufferCanvas: React.FC<GranularBufferCanvasProps> = ({
 
     ctx.clearRect(0, 0, w, h);
 
-    const now = performance.now();
+    const now = frameTime;
     const vs = voicesRef.current;
     const wh = writeHeadRef.current;
     const gc = grainCountRef.current;
@@ -569,6 +582,7 @@ const GranularBufferCanvas: React.FC<GranularBufferCanvasProps> = ({
 
   const requestDraw = useCallback(() => {
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+    lastDrawTimeRef.current = 0;
     animFrameRef.current = requestAnimationFrame(draw);
   }, [draw]);
 

@@ -148,7 +148,8 @@ export const JourneyModeView: React.FC<JourneyModeViewProps> = ({
 
 const styles: { [key: string]: React.CSSProperties } = {
   container: {
-    width: '100vw',
+    width: '100%',
+    minHeight: '100dvh',
     height: '100dvh',
     // Match SnowflakeUI background gradient
     background: 'linear-gradient(180deg, #0a0a18 0%, #101828 40%, #182040 100%)',
@@ -160,9 +161,13 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontFamily: "'Avenir', 'Avenir Next', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
     color: '#e0e0e0',
     overflow: 'hidden',
+    padding: 'calc(10px + env(safe-area-inset-top)) calc(5px + env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom)) calc(5px + env(safe-area-inset-left))',
+    boxSizing: 'border-box',
     position: 'fixed',
     top: 0,
     left: 0,
+    right: 0,
+    bottom: 0,
   },
   journeyContainer: {
     flex: 1,

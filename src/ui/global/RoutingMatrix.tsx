@@ -251,11 +251,24 @@ const ROWS: MatrixRow[] = [
     label: 'Delay B Out',
     accent: '#9fe5f0',
     cells: {
-      level: { kind: 'self' },
+      level: { kind: 'editable', route: { key: 'granularDelayMix', label: 'Delay B Level' } },
       delayA: { kind: 'editable', route: { key: 'delayBToASend', label: 'Delay B → Delay A' } },
       delayB: { kind: 'self' },
       granular: { kind: 'editable', route: { key: 'delayBGranularSend', label: 'Delay B → Granular' } },  // overridden dynamically
       reverb: { kind: 'editable', route: { key: 'granularDelayReverbSend', label: 'Delay B → Reverb' } },
+    },
+  },
+  {
+    id: 'reverb',
+    label: 'Reverb',
+    accent: '#d9c7a0',
+    note: 'Reverb is a return bus here. Its routing row trims the wet output level while source sends still live on their own rows.',
+    cells: {
+      level: { kind: 'editable', route: { key: 'reverbLevel', label: 'Reverb Level' } },
+      delayA: { kind: 'blocked', note: 'Reverb does not currently feed Delay A.' },
+      delayB: { kind: 'blocked', note: 'Reverb does not currently feed Delay B.' },
+      granular: { kind: 'blocked', note: 'Reverb does not currently feed Granular.' },
+      reverb: { kind: 'self' },
     },
   },
 ];
@@ -313,6 +326,8 @@ function rowIsEnabled(row: MatrixRow, state: SliderState): boolean {
       return !!state.delayAEnabled;
     case 'delayBOut':
       return !!state.granularDelayEnabled;
+    case 'reverb':
+      return !!state.reverbEnabled;
     default:
       return true;
   }

@@ -22,6 +22,33 @@ const PROB_DRAG_RANGE_PX = 80; // vertical pixel range for full 0–100% drag
 const SEQ_BIPOLAR_DRAG_DISTANCE_FACTOR = 3.6;
 const SEQ_SUBSEQ_DRAG_DISTANCE_FACTOR = 1.8;
 
+function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
+  const normalized = hex.trim().replace('#', '');
+  const full = normalized.length === 3
+    ? normalized.split('').map((c) => c + c).join('')
+    : normalized;
+  if (!/^[0-9a-fA-F]{6}$/.test(full)) return null;
+  const value = Number.parseInt(full, 16);
+  return { r: (value >> 16) & 255, g: (value >> 8) & 255, b: value & 255 };
+}
+
+function rgbToHex(r: number, g: number, b: number): string {
+  return `#${[r, g, b].map((value) => Math.max(0, Math.min(255, Math.round(value))).toString(16).padStart(2, '0')).join('')}`;
+}
+
+function getComplementaryHex(hex: string): string {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return '#ffffff';
+  return rgbToHex(255 - rgb.r, 255 - rgb.g, 255 - rgb.b);
+}
+
+function getCursorMarkerStyle(color: string): React.CSSProperties {
+  return {
+    '--cursor-color': color,
+    '--cursor-accent': getComplementaryHex(color),
+  } as React.CSSProperties;
+}
+
 /* ── MIDI note name helper ── */
 const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 function midiToName(midi: number): string {
@@ -115,6 +142,7 @@ const SeqLane: React.FC<SeqLaneProps> = ({
   onChangePitchNoteMax,
   hidePitchNoteRange = false,
 }) => {
+  const cursorMarkerStyle = getCursorMarkerStyle(color);
   const laneSteps = lane === 'trigger'
     ? sequencer.trigger.steps
     : lane === 'pitch'
@@ -356,7 +384,11 @@ const SeqLane: React.FC<SeqLaneProps> = ({
                   >
                     <div className="prob-fill" style={{ height: `${probPct}%` }} />
                     <span className="prob-label">{probPct}%</span>
-                    {isSelected && <span className="seq-step-cursor">{selectedStepLabel}</span>}
+                    {isSelected && (
+                      <span className="seq-step-cursor" style={cursorMarkerStyle} aria-hidden="true">
+                        {selectedStepLabel}
+                      </span>
+                    )}
                   </button>
                   <button
                     type="button"
@@ -433,7 +465,11 @@ const SeqLane: React.FC<SeqLaneProps> = ({
                     onDoubleClick={() => onChangeValue?.(step, 0)}
                   >
                     {!isNotes && <div className="pitch-center" />}
-                    {isSelected && <span className="seq-step-cursor">{selectedStepLabel}</span>}
+                    {isSelected && (
+                      <span className="seq-step-cursor" style={cursorMarkerStyle} aria-hidden="true">
+                        {selectedStepLabel}
+                      </span>
+                    )}
                     <div className="pitch-bar" style={barStyle} />
                     <div className="pitch-val" style={off >= 0 || isNotes ? { top: 2 } : { bottom: 2 }}>{valText}</div>
                   </div>
@@ -453,7 +489,7 @@ const SeqLane: React.FC<SeqLaneProps> = ({
                 <div key={step} className="seq-step">
                   <span className="seq-step-num" style={{ color: '#ffa502' }}>{isBeatHead ? step + 1 : ''}</span>
                   <div
-                    className={`seq-vel-bar-wrap${isPlayhead ? ' playing' : ''}${!inRange ? ' inactive' : ''}`}
+                    className={`seq-vel-bar-wrap${isPlayhead ? ' playing' : ''}${isSelected ? ' selected' : ''}${!inRange ? ' inactive' : ''}`}
                     style={{ touchAction: 'none' } as React.CSSProperties}
                     onPointerDown={(e) => {
                       e.preventDefault();
@@ -479,6 +515,11 @@ const SeqLane: React.FC<SeqLaneProps> = ({
                     }}
                     onDoubleClick={() => onChangeValue?.(step, 1.0)}
                   >
+                    {isSelected && (
+                      <span className="seq-step-cursor" style={cursorMarkerStyle} aria-hidden="true">
+                        {selectedStepLabel}
+                      </span>
+                    )}
                     <div
                       className="seq-vel-bar"
                       style={{
@@ -529,7 +570,7 @@ const SeqLane: React.FC<SeqLaneProps> = ({
                 <div key={step} className="seq-step">
                   <span className="seq-step-num" style={{ color: '#c084fc' }}>{isBeatHead ? step + 1 : ''}</span>
                   <div
-                    className={`seq-morph-bar-wrap${isPlayhead ? ' playing' : ''}${!inRange ? ' inactive' : ''}`}
+                    className={`seq-morph-bar-wrap${isPlayhead ? ' playing' : ''}${isSelected ? ' selected' : ''}${!inRange ? ' inactive' : ''}`}
                     style={{ touchAction: 'none' } as React.CSSProperties}
                     onPointerDown={(e) => {
                       e.preventDefault();
@@ -558,6 +599,11 @@ const SeqLane: React.FC<SeqLaneProps> = ({
                     }}
                     onDoubleClick={() => onChangeValue?.(step, 0.5)}
                   >
+                    {isSelected && (
+                      <span className="seq-step-cursor" style={cursorMarkerStyle} aria-hidden="true">
+                        {selectedStepLabel}
+                      </span>
+                    )}
                     <div className="morph-center" />
                     <div className="morph-bar" style={barStyle} />
                     <div className="morph-val" style={val >= 0.5 ? { top: 2 } : { bottom: 2 }}>{labelText}</div>
@@ -652,7 +698,7 @@ const SeqLane: React.FC<SeqLaneProps> = ({
                 <div key={step} className="seq-step">
                   <span className="seq-step-num" style={{ color: '#2dd4bf' }}>{isBeatHead ? step + 1 : ''}</span>
                   <div
-                    className={`seq-dist-bar-wrap${isPlayhead ? ' playing' : ''}${!inRange ? ' inactive' : ''}`}
+                    className={`seq-dist-bar-wrap${isPlayhead ? ' playing' : ''}${isSelected ? ' selected' : ''}${!inRange ? ' inactive' : ''}`}
                     style={{ touchAction: 'none' } as React.CSSProperties}
                     onPointerDown={(e) => {
                       e.preventDefault();
@@ -678,6 +724,11 @@ const SeqLane: React.FC<SeqLaneProps> = ({
                     }}
                     onDoubleClick={() => onChangeValue?.(step, 0.5)}
                   >
+                    {isSelected && (
+                      <span className="seq-step-cursor" style={cursorMarkerStyle} aria-hidden="true">
+                        {selectedStepLabel}
+                      </span>
+                    )}
                     <div className="dist-center" />
                     <div className="dist-bar" style={barStyle} />
                     <div className="dist-val" style={val >= 0.5 ? { top: 2 } : { bottom: 2 }}>{pct}%</div>
