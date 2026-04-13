@@ -7,7 +7,7 @@
  * Outputs:
  *   [0] water stereo
  *   [1] insects dry stereo (per-layer dry gains applied)
- *   [2] insects pre-fader stereo (unity per enabled layer for reverb/granular sends)
+ *   [2] insects pre-fader stereo (per-layer level + fade gates for reverb/granular sends)
  *
  * Message types received:
  *   'wasmBinary'       – ArrayBuffer of kessho_soundscapes.wasm
@@ -32,6 +32,8 @@
  *   'insects2Seed'     – { seed: number }
  *   'insects2Gain'     – { gain: number } (0-1 dry volume for layer 2)
  *   'insectsGain'      – { gain: number } (0-1 dry volume for layer 1)
+ *   'insectsGate'      – { enabled: boolean, fadeSeconds?: number } (layer 1 on/off fade)
+ *   'insects2Gate'     – { enabled: boolean, fadeSeconds?: number } (layer 2 on/off fade)
  *   'enablePerf'       – toggle CPU measurement
  *
  * Message types sent:
@@ -70,6 +72,14 @@ class SoundscapesWasmProcessor extends AudioWorkletProcessor {
     // Per-layer gain multipliers (applied in worklet when mixing)
     this._insects1Gain = 1.0;
     this._insects2Gain = 1.0;
+    this._insects1GateCurrent = 0.0;
+    this._insects1GateTarget = 0.0;
+    this._insects1GateStep = 0.0;
+    this._insects1GateSamplesRemaining = 0;
+    this._insects2GateCurrent = 0.0;
+    this._insects2GateTarget = 0.0;
+    this._insects2GateStep = 0.0;
+    this._insects2GateSamplesRemaining = 0;
 
     // Perf measurement
     this._perfEnabled = false;
@@ -91,6 +101,27 @@ class SoundscapesWasmProcessor extends AudioWorkletProcessor {
     this._pendingMessages = [];
 
     this.port.onmessage = (e) => this._handleMessage(e.data);
+  }
+
+  _setLayerGate(layer, enabled, fadeSeconds = 0) {
+    const target = enabled ? 1.0 : 0.0;
+    const currentKey = layer === 1 ? '_insects1GateCurrent' : '_insects2GateCurrent';
+    const targetKey = layer === 1 ? '_insects1GateTarget' : '_insects2GateTarget';
+    const stepKey = layer === 1 ? '_insects1GateStep' : '_insects2GateStep';
+    const remainingKey = layer === 1 ? '_insects1GateSamplesRemaining' : '_insects2GateSamplesRemaining';
+    const current = this[currentKey];
+    const fadeSamples = Math.max(0, Math.round((fadeSeconds || 0) * sampleRate));
+
+    this[targetKey] = target;
+    if (fadeSamples <= 0) {
+      this[currentKey] = target;
+      this[stepKey] = 0;
+      this[remainingKey] = 0;
+      return;
+    }
+
+    this[stepKey] = (target - current) / fadeSamples;
+    this[remainingKey] = fadeSamples;
   }
 
   async _initWasm(wasmBinary) {
@@ -375,6 +406,14 @@ class SoundscapesWasmProcessor extends AudioWorkletProcessor {
         this._insects2Gain = data.gain ?? 1.0;
         break;
 
+      case 'insectsGate':
+        this._setLayerGate(1, !!data.enabled, data.fadeSeconds ?? 0);
+        break;
+
+      case 'insects2Gate':
+        this._setLayerGate(2, !!data.enabled, data.fadeSeconds ?? 0);
+        break;
+
       case 'enablePerf':
         this._perfEnabled = !!data.enabled;
         this._perfTotalTime = 0;
@@ -455,14 +494,24 @@ class SoundscapesWasmProcessor extends AudioWorkletProcessor {
       const heap = this._getF32();
       const iOff = this._insectsOutPtr >> 2;
       const g1 = this._insects1Gain;
+      let gate1 = this._insects1GateCurrent;
+      let gate1Remaining = this._insects1GateSamplesRemaining;
+      const gate1Step = this._insects1GateStep;
       for (let i = 0; i < blockSize; i++) {
+        if (gate1Remaining > 0) {
+          gate1 += gate1Step;
+          gate1Remaining--;
+          if (gate1Remaining === 0) gate1 = this._insects1GateTarget;
+        }
         const sampleL = heap[iOff + i * 2];
         const sampleR = heap[iOff + i * 2 + 1];
-        insOutL[i] += sampleL * g1;
-        insOutR[i] += sampleR * g1;
-        insWetOutL[i] += sampleL;
-        insWetOutR[i] += sampleR;
+        insOutL[i] += sampleL * g1 * gate1;
+        insOutR[i] += sampleR * g1 * gate1;
+        insWetOutL[i] += sampleL * g1 * gate1;
+        insWetOutR[i] += sampleR * g1 * gate1;
       }
+      this._insects1GateCurrent = gate1;
+      this._insects1GateSamplesRemaining = gate1Remaining;
     }
 
     // ── Process insects engine 2 (dual layer) ──
@@ -474,14 +523,24 @@ class SoundscapesWasmProcessor extends AudioWorkletProcessor {
       const heap = this._getF32();
       const i2Off = this._insects2OutPtr >> 2;
       const g2 = this._insects2Gain;
+      let gate2 = this._insects2GateCurrent;
+      let gate2Remaining = this._insects2GateSamplesRemaining;
+      const gate2Step = this._insects2GateStep;
       for (let i = 0; i < blockSize; i++) {
+        if (gate2Remaining > 0) {
+          gate2 += gate2Step;
+          gate2Remaining--;
+          if (gate2Remaining === 0) gate2 = this._insects2GateTarget;
+        }
         const sampleL = heap[i2Off + i * 2];
         const sampleR = heap[i2Off + i * 2 + 1];
-        insOutL[i] += sampleL * g2;
-        insOutR[i] += sampleR * g2;
-        insWetOutL[i] += sampleL;
-        insWetOutR[i] += sampleR;
+        insOutL[i] += sampleL * g2 * gate2;
+        insOutR[i] += sampleR * g2 * gate2;
+        insWetOutL[i] += sampleL * g2 * gate2;
+        insWetOutR[i] += sampleR * g2 * gate2;
       }
+      this._insects2GateCurrent = gate2;
+      this._insects2GateSamplesRemaining = gate2Remaining;
     }
 
     // ── Perf reporting ──

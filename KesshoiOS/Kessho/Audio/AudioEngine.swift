@@ -12,7 +12,7 @@ struct EngineStateUpdate {
 }
 
 /// Main audio engine using AVAudioEngine
-class AudioEngine {
+public final class AudioEngine {
     
     // MARK: - AVAudioEngine Components
     private let engine = AVAudioEngine()
@@ -47,6 +47,7 @@ class AudioEngine {
     private let dryMixer = AVAudioMixerNode()
     private let reverbSend = AVAudioMixerNode()
     private let masterMixer = AVAudioMixerNode()
+    private let outputBridgeMixer = AVAudioMixerNode()
     
     // Granular input tap for live synth processing
     private var granularInputBuffer: AVAudioPCMBuffer?
@@ -83,15 +84,33 @@ class AudioEngine {
     
     // Callback for drum triggers (for UI visualization)
     var onDrumTrigger: ((DrumVoiceType, Float) -> Void)?
+
+    // Lightweight mixer signal diagnostics for device debugging.
+    private var signalDebugCounters: [String: Int] = [:]
+    private var signalDebugPeaks: [String: Float] = [:]
     
     // MARK: - Initialization
     
-    init() {
+    public init() {
         setupAudioGraph()
     }
     
     private func setupAudioGraph() {
         let format = AVAudioFormat(standardFormatWithSampleRate: 44100, channels: 2)!
+
+        // AVAudioEngine requires both ends of a connection to be attached first.
+        // Attach the shared routing mixers up front before connecting any sources.
+        engine.attach(synthMixer)
+        engine.attach(granularMixer)
+        engine.attach(leadMixer)
+        engine.attach(oceanMixer)
+        engine.attach(drumMixer)
+        engine.attach(drumDelaySendMixer)
+        engine.attach(drumDelayMixer)
+        engine.attach(dryMixer)
+        engine.attach(reverbSend)
+        engine.attach(masterMixer)
+        engine.attach(outputBridgeMixer)
         
         // Create synth voices
         for _ in 0..<VOICE_COUNT {
@@ -120,8 +139,7 @@ class AudioEngine {
             engine.connect(lead.node, to: leadMixer, format: format)
         }
         
-        // Attach ocean mixer and connect ocean synth
-        engine.attach(oceanMixer)
+        // Connect ocean synth after its destination mixer is attached
         if let ocean = oceanSynth {
             engine.attach(ocean.node)
             engine.connect(ocean.node, to: oceanMixer, format: format)
@@ -130,17 +148,6 @@ class AudioEngine {
         // Create ocean sample player and connect to ocean mixer
         oceanSamplePlayer = OceanSamplePlayer()
         oceanSamplePlayer?.setupConnections(engine: engine, outputMixer: oceanMixer)
-        
-        // Attach mixers
-        engine.attach(synthMixer)
-        engine.attach(granularMixer)
-        engine.attach(leadMixer)
-        engine.attach(drumMixer)
-        engine.attach(drumDelaySendMixer)
-        engine.attach(drumDelayMixer)
-        engine.attach(dryMixer)
-        engine.attach(reverbSend)
-        engine.attach(masterMixer)
         
         // Setup drum stereo ping-pong delay
         setupDrumDelay(format: format)
@@ -171,14 +178,53 @@ class AudioEngine {
         // Dry to master
         engine.connect(dryMixer, to: masterMixer, format: format)
         
-        // Route the current prototype directly to the output mixer.
-        engine.connect(masterMixer, to: engine.mainMixerNode, format: format)
+        // Use an explicit final bridge into the hardware output instead of
+        // relying on AVAudioEngine's implicit main-mixer handoff.
+        let outputNode = engine.outputNode
+        let outputFormat = outputNode.inputFormat(forBus: 0)
+        outputBridgeMixer.outputVolume = 1.0
+        engine.connect(masterMixer, to: outputBridgeMixer, format: nil)
+        engine.connect(outputBridgeMixer, to: outputNode, format: outputFormat)
+
+        installSignalDebugTap(on: leadMixer, label: "lead")
+        installSignalDebugTap(on: masterMixer, label: "master")
+        installSignalDebugTap(on: outputBridgeMixer, label: "bridge")
         
         // Setup tap on synth mixer for granular live input
         setupGranularInputTap(format: format)
         
         // Prepare engine
         engine.prepare()
+    }
+
+    private func installSignalDebugTap(on node: AVAudioMixerNode, label: String) {
+        let format = node.outputFormat(forBus: 0)
+        node.removeTap(onBus: 0)
+        node.installTap(onBus: 0, bufferSize: 2048, format: format) { [weak self] buffer, _ in
+            guard let self,
+                  let channelData = buffer.floatChannelData,
+                  buffer.frameLength > 0 else { return }
+
+            let samples = channelData[0]
+            let frameCount = Int(buffer.frameLength)
+            var peak: Float = 0
+            for frame in 0..<frameCount {
+                peak = max(peak, abs(samples[frame]))
+            }
+
+            let nextCount = (self.signalDebugCounters[label] ?? 0) + 1
+            self.signalDebugCounters[label] = nextCount
+            self.signalDebugPeaks[label] = max(self.signalDebugPeaks[label] ?? 0, peak)
+
+            if nextCount >= 24 {
+                let loggedPeak = self.signalDebugPeaks[label] ?? 0
+                self.signalDebugCounters[label] = 0
+                self.signalDebugPeaks[label] = 0
+                DispatchQueue.main.async {
+                    print("AudioEngine signal \(label): peak=\(loggedPeak)")
+                }
+            }
+        }
     }
     
     /// Install a tap on synth mixer to feed audio to granular processor
@@ -226,10 +272,23 @@ class AudioEngine {
     
     // MARK: - Playback Control
     
-    func start(with params: SliderState) {
+    public func start(with params: SliderState) {
         guard !isRunning else { return }
         
         currentParams = params
+        print(
+            "AudioEngine start state:",
+            "master=\(currentParams.masterVolume)",
+            "synth=\(currentParams.synthLevel)",
+            "granularEnabled=\(currentParams.granularEnabled)",
+            "granular=\(currentParams.granularLevel)",
+            "leadEnabled=\(currentParams.leadEnabled)",
+            "lead=\(currentParams.leadLevel)",
+            "euclidMaster=\(currentParams.synthEuclideanMasterEnabled)",
+            "chordSeq=\(currentParams.synthChordSequencerEnabled)",
+            "bridgeFormat=\(outputBridgeMixer.outputFormat(forBus: 0))",
+            "outputFormat=\(engine.outputNode.inputFormat(forBus: 0))"
+        )
         updateBucket()
         initializeHarmony()
         updateEuclideanSequencer()
@@ -239,12 +298,26 @@ class AudioEngine {
         createDrumSynth()
         
         do {
+            // Apply startup state before the render thread begins touching DSP state.
+            sendGranulatorRandomSequence()
+            applyParams()
+
+            engine.prepare()
             try engine.start()
             isRunning = true
-            
-            // Send initial random sequence to granular processor
-            sendGranulatorRandomSequence()
-            
+
+            // Kick off the currently selected musical state immediately so native
+            // playback is audible on first tap instead of waiting for the next phrase boundary.
+            if let harmony = harmonyState {
+                triggerChord(harmony.currentChord)
+            }
+            if currentParams.synthEuclideanMasterEnabled {
+                scheduleEuclideanPhrase()
+            } else if currentParams.leadEnabled {
+                triggerImmediateLeadNote()
+                scheduleRandomLeadPhrase()
+            }
+
             // Start scheduling
             startPhraseScheduler()
             startNoteScheduler()
@@ -258,46 +331,85 @@ class AudioEngine {
             
             // Start drum synth if enabled
             drumSynth?.start()
-            
-            // Apply initial parameters
-            applyParams()
-            
+
         } catch {
             print("Failed to start audio engine: \(error)")
         }
+    }
+
+    private func triggerImmediateLeadNote() {
+        guard currentParams.leadEnabled,
+              !currentParams.synthEuclideanMasterEnabled,
+              let harmony = harmonyState else { return }
+
+        let baseOctaveOffset = currentParams.leadOctave
+        let octaveRange = currentParams.leadOctaveRange
+        let baseLow = 64 + (baseOctaveOffset * 12)
+        let baseHigh = baseLow + max(12, octaveRange * 12)
+        let scaleNotes = getScaleNotesInRange(
+            scale: harmony.scaleFamily,
+            lowMidi: max(24, baseLow),
+            highMidi: min(108, baseHigh),
+            rootNote: cofState.effectiveRoot
+        )
+
+        guard !scaleNotes.isEmpty else { return }
+
+        let noteIndex = min(scaleNotes.count - 1, max(0, scaleNotes.count / 2))
+        let midiNote = scaleNotes[noteIndex]
+        let rng = createRng("\(currentBucket)|\(currentSeed)|lead|immediate")
+
+        leadSynth?.randomizeTimbre(rng)
+        leadSynth?.randomizeExpression(rng)
+        leadSynth?.randomizeDelay(rng)
+        leadSynth?.playNote(midiNote: midiNote, velocity: 0.72)
+
+        print("AudioEngine immediate lead note:", midiNote)
     }
     
     /// Create DrumSynth after harmony is initialized (provides RNG)
     /// This must be called AFTER initializeHarmony() - critical learning from web implementation!
     private func createDrumSynth() {
         let format = AVAudioFormat(standardFormatWithSampleRate: 44100, channels: 2)!
-        
-        drumSynth = DrumSynth()
-        
+
         // Set up seeded RNG for deterministic randomness
         let rng = createRng("\(currentBucket)|\(currentSeed)|drum")
-        drumSynth?.setRng(rng)
-        
+
+        if let existingDrumSynth = drumSynth {
+            existingDrumSynth.stop()
+            existingDrumSynth.setRng(rng)
+            existingDrumSynth.onDrumTrigger = { [weak self] voiceType, velocity in
+                self?.onDrumTrigger?(voiceType, velocity)
+            }
+            existingDrumSynth.onMorphTrigger = { [weak self] voiceType, morphValue in
+                self?.onDrumMorphTrigger?(voiceType, Float(morphValue))
+            }
+            existingDrumSynth.updateParams(currentParams)
+            return
+        }
+
+        let newDrumSynth = DrumSynth()
+        drumSynth = newDrumSynth
+        newDrumSynth.setRng(rng)
+
         // Wire up drum trigger callback for UI visualization
-        drumSynth?.onDrumTrigger = { [weak self] voiceType, velocity in
+        newDrumSynth.onDrumTrigger = { [weak self] voiceType, velocity in
             self?.onDrumTrigger?(voiceType, velocity)
         }
-        
+
         // Wire up morph trigger callback for UI visualization
-        drumSynth?.onMorphTrigger = { [weak self] voiceType, morphValue in
+        newDrumSynth.onMorphTrigger = { [weak self] voiceType, morphValue in
             self?.onDrumMorphTrigger?(voiceType, Float(morphValue))
         }
         
         // Attach and connect to drum mixer
-        if let drum = drumSynth {
-            engine.attach(drum.node)
-            engine.connect(drum.node, to: drumMixer, format: format)
-            // Also connect to delay send
-            engine.connect(drum.node, to: drumDelaySendMixer, format: format)
-        }
+        engine.attach(newDrumSynth.node)
+        engine.connect(newDrumSynth.node, to: drumMixer, format: format)
+        // Also connect to delay send
+        engine.connect(newDrumSynth.node, to: drumDelaySendMixer, format: format)
         
         // Set initial parameters
-        drumSynth?.updateParams(currentParams)
+        newDrumSynth.updateParams(currentParams)
     }
     
     // Note division to beat fraction mapping (matching web app)
@@ -390,7 +502,7 @@ class AudioEngine {
         drumDelayMixer.outputVolume = currentParams.drumDelayEnabled ? Float(currentParams.drumDelayMix) : 0
     }
 
-    func stop() {
+    public func stop(fadeOut: Bool = true) {
         guard isRunning else { return }
         
         // Cancel old Timer-based timers (if any)
@@ -420,6 +532,33 @@ class AudioEngine {
         }
         scheduledLeadNotes.removeAll()
         
+        if !fadeOut {
+            oceanSamplePlayer?.stopPlayback()
+            drumSynth?.stop()
+            granularProcessor?.hardReset()
+            oceanSynth?.hardReset()
+            leadSynth?.hardReset()
+            for voice in synthVoices {
+                voice.hardReset()
+            }
+            synthMixer.outputVolume = 0
+            granularMixer.outputVolume = 0
+            leadMixer.outputVolume = 0
+            oceanMixer.outputVolume = 0
+            drumMixer.outputVolume = 0
+            drumDelaySendMixer.outputVolume = 0
+            drumDelayMixer.outputVolume = 0
+            dryMixer.outputVolume = 0
+            reverbSend.outputVolume = 0
+            masterMixer.outputVolume = 0
+            outputBridgeMixer.outputVolume = 0
+            engine.pause()
+            engine.stop()
+            engine.reset()
+            isRunning = false
+            return
+        }
+
         // Stop ocean sample
         oceanSamplePlayer?.stopPlayback()
         
@@ -431,14 +570,14 @@ class AudioEngine {
             voice.releaseNote()
         }
         leadSynth?.releaseNote()
-        
+
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
             self?.engine.stop()
             self?.isRunning = false
         }
     }
     
-    func updateParams(_ params: SliderState) {
+    public func updateParams(_ params: SliderState) {
         currentParams = params
         
         // Update CoF state
@@ -453,7 +592,7 @@ class AudioEngine {
         }
     }
     
-    func resetCofDrift() {
+    public func resetCofDrift() {
         cofState.resetDrift()
         notifyStateChange()
     }

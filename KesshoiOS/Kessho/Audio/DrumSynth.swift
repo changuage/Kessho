@@ -1,5 +1,36 @@
 import AVFoundation
 
+@inline(__always)
+private func writeDrumStereoFrame(
+    _ left: Float,
+    _ right: Float,
+    frame: Int,
+    to buffers: UnsafeMutableAudioBufferListPointer
+) {
+    if buffers.count == 1, let data = buffers[0].mData?.assumingMemoryBound(to: Float.self) {
+        let channelCount = max(Int(buffers[0].mNumberChannels), 1)
+        let baseIndex = frame * channelCount
+        if channelCount >= 2 {
+            data[baseIndex] = left
+            data[baseIndex + 1] = right
+            if channelCount > 2 {
+                let mono = (left + right) * 0.5
+                for channel in 2..<channelCount {
+                    data[baseIndex + channel] = mono
+                }
+            }
+        } else {
+            data[frame] = (left + right) * 0.5
+        }
+        return
+    }
+
+    for (index, buffer) in buffers.enumerated() {
+        guard let data = buffer.mData?.assumingMemoryBound(to: Float.self) else { continue }
+        data[frame] = index == 0 ? left : (index == 1 ? right : (left + right) * 0.5)
+    }
+}
+
 /// Drum voice types matching web app
 enum DrumVoiceType: String, CaseIterable {
     case sub = "sub"
@@ -18,7 +49,26 @@ enum DrumVoiceType: String, CaseIterable {
 /// - Filtered noise bursts
 /// - Mathematical precision with probability-based triggering
 class DrumSynth {
-    let node: AVAudioSourceNode
+    lazy var node: AVAudioSourceNode = { [weak self] in
+        let renderFormat = AVAudioFormat(standardFormatWithSampleRate: 44_100, channels: 2)!
+        return AVAudioSourceNode(format: renderFormat) { _, _, frameCount, audioBufferList -> OSStatus in
+            let ablPointer = UnsafeMutableAudioBufferListPointer(audioBufferList)
+            guard let self = self, self.enabled else {
+                for frame in 0..<Int(frameCount) {
+                    writeDrumStereoFrame(0, 0, frame: frame, to: ablPointer)
+                }
+                return noErr
+            }
+
+            for frame in 0..<Int(frameCount) {
+                let (mainSample, _) = self.generateSampleWithDelay()
+                let output = mainSample * self.masterLevel
+                writeDrumStereoFrame(output, output, frame: frame, to: ablPointer)
+            }
+
+            return noErr
+        }
+    }()
     
     // Parameters
     private var params: SliderState = .default
@@ -210,32 +260,6 @@ class DrumSynth {
             noiseBuffer[i] = Float.random(in: -1...1)
         }
         
-        node = AVAudioSourceNode { [weak self] _, _, frameCount, audioBufferList -> OSStatus in
-            guard let self = self, self.enabled else {
-                // Output silence if disabled
-                let ablPointer = UnsafeMutableAudioBufferListPointer(audioBufferList)
-                for frame in 0..<Int(frameCount) {
-                    for buffer in ablPointer {
-                        buffer.mData?.assumingMemoryBound(to: Float.self)[frame] = 0
-                    }
-                }
-                return noErr
-            }
-            
-            let ablPointer = UnsafeMutableAudioBufferListPointer(audioBufferList)
-            guard ablPointer.count >= 2,
-                  let leftBuffer = ablPointer[0].mData?.assumingMemoryBound(to: Float.self),
-                  let rightBuffer = ablPointer[1].mData?.assumingMemoryBound(to: Float.self)
-            else { return noErr }
-            
-            for frame in 0..<Int(frameCount) {
-                let (mainSample, _) = self.generateSampleWithDelay()
-                leftBuffer[frame] = mainSample * self.masterLevel
-                rightBuffer[frame] = mainSample * self.masterLevel
-            }
-            
-            return noErr
-        }
     }
     
     /// Set seeded RNG for deterministic randomness
@@ -855,6 +879,16 @@ class DrumSynth {
     func stop() {
         stopRandomScheduler()
         stopEuclidScheduler()
+        voiceLock.lock()
+        activeVoices.removeAll()
+        voiceLock.unlock()
+        if !delayOutputBuffer.isEmpty {
+            for index in 0..<delayOutputBuffer.count {
+                delayOutputBuffer[index] = 0
+            }
+        }
+        delayBufferWriteIndex = 0
+        euclidCurrentStep = [0, 0, 0, 0]
     }
     
     // MARK: - Random Scheduler

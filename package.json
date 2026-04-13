@@ -7,9 +7,15 @@
     "build": "tsc && vite build",
     "type-check": "tsc --noEmit",
     "preview": "vite preview",
-    "check:mac": "bash scripts/check-macos.sh"
+    "check:mac": "bash scripts/check-macos.sh",
+    "cap:sync:ios": "npm run build && npx cap sync ios",
+    "cap:open:ios": "npx cap open ios"
   },
   "dependencies": {
+    "@capacitor/cli": "^8.3.0",
+    "@capacitor/core": "^8.3.0",
+    "@capacitor/ios": "^8.3.0",
+    "@kessho/capacitor-background-audio-spike": "file:plugins/kessho-background-audio-spike",
     "@supabase/supabase-js": "^2.93.3",
     "jszip": "^3.10.1",
     "react": "^18.2.0",

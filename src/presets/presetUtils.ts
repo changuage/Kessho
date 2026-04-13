@@ -20,6 +20,7 @@ const METADATA_FIELDS = [
   'synthEvolveConfigs',
   'drumSubLaneStates',
   'synthSubLaneStates',
+  'synthPitchBindingModes',
 ] as const;
 
 const LEGACY_DELAY_A_KEY_ALIASES = {

@@ -5,8 +5,8 @@ import MediaPlayer
 ///
 /// This service is intentionally lightweight so the UI can adopt it later
 /// without pulling playback logic into view code.
-final class NowPlayingManager {
-    static let shared = NowPlayingManager()
+public final class NowPlayingManager {
+    public static let shared = NowPlayingManager()
 
     private let commandTarget = RemoteCommandTarget()
     private var remoteCommandsConfigured = false
@@ -14,7 +14,7 @@ final class NowPlayingManager {
     private init() {}
 
     /// Configure the metadata shown in Control Center and on the lock screen.
-    func updateNowPlayingInfo(
+    public func updateNowPlayingInfo(
         title: String,
         artist: String = "Kessho",
         album: String = "Generative Ambient",
@@ -40,7 +40,7 @@ final class NowPlayingManager {
     }
 
     /// Update only the current playback state.
-    func setPlaybackState(isPlaying: Bool) {
+    public func setPlaybackState(isPlaying: Bool) {
         guard var info = MPNowPlayingInfoCenter.default().nowPlayingInfo else {
             MPNowPlayingInfoCenter.default().nowPlayingInfo = [
                 MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0
@@ -55,7 +55,7 @@ final class NowPlayingManager {
     }
 
     /// Clear lock-screen metadata and disable playback state.
-    func clearNowPlayingInfo() {
+    public func clearNowPlayingInfo() {
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
         NotificationCenter.default.post(name: AudioServiceNotification.nowPlayingChanged, object: self)
     }
@@ -64,7 +64,7 @@ final class NowPlayingManager {
     ///
     /// The caller supplies closures so this manager stays decoupled from the
     /// audio engine or app state layer.
-    func configureRemoteCommands(
+    public func configureRemoteCommands(
         onPlay: @escaping () -> Void,
         onPause: @escaping () -> Void,
         onTogglePlayPause: @escaping () -> Void
@@ -96,7 +96,7 @@ final class NowPlayingManager {
     }
 
     /// Remove all remote command handlers.
-    func resetRemoteCommands() {
+    public func resetRemoteCommands() {
         let center = MPRemoteCommandCenter.shared()
         center.playCommand.removeTarget(nil)
         center.pauseCommand.removeTarget(nil)
@@ -104,7 +104,7 @@ final class NowPlayingManager {
         remoteCommandsConfigured = false
     }
 
-    var hasConfiguredRemoteCommands: Bool {
+    public var hasConfiguredRemoteCommands: Bool {
         remoteCommandsConfigured
     }
 }
@@ -129,4 +129,3 @@ private final class RemoteCommandTarget: NSObject {
         return .success
     }
 }
-

@@ -148,10 +148,6 @@ function sliderCell(control: MatrixControl): SharedCell {
   return { kind: 'slider', control };
 }
 
-function blockedCell(text = '—'): SharedCell {
-  return { kind: 'blocked', text };
-}
-
 function stepDecimals(step: number): number {
   if (!Number.isFinite(step)) return 0;
   const text = String(step);
@@ -573,7 +569,7 @@ export function ActiveEarthMatrix({
         toggle: disableInsectsFamily,
         toggleTitle: 'Disable Insect layers',
         cells: {
-          level: blockedCell('per row'),
+          level: sliderCell({ key: 'insectsSharedLevel', label: 'Insects Level', accent: 'rgba(120,217,141,0.40)' }),
           space: sliderCell({ key: 'insectsReverbSend', label: 'Insects Reverb', accent: 'rgba(163,110,255,0.38)' }),
           delayA: sliderCell({ key: 'insDelayASend', label: 'Insects Delay A', accent: 'rgba(181,132,255,0.34)' }),
           delayB: sliderCell({ key: 'insDelayBSend', label: 'Insects Delay B', accent: 'rgba(181,132,255,0.30)' }),

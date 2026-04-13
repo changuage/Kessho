@@ -55,6 +55,17 @@ import type { PitchBindingMode } from './audio/drumSeqTypes';
 import type { SliderPageId } from './ui/sliderHelpCatalog';
 import { getSliderValueSlotWidthCh } from './ui/sliderValueLayout';
 import { isIOSLikeDevice, isMobileDevice } from './platform';
+import {
+  addCapacitorRemoteCommandListener,
+  getCapacitorBackgroundAudioStatus,
+  isCapacitorBackgroundAudioAvailable,
+  isCapacitorNativeShell,
+  setCapacitorNowPlaying,
+  shouldUseCapacitorNativeAudioSpike,
+  startCapacitorNativePlayback,
+  stopCapacitorNativePlayback,
+  syncCapacitorNativeAudioState,
+} from './native/capacitorBackgroundAudio';
 import type { SynthKeyboardUiState } from './ui/synth/SynthPage';
 import {
   RECORD_TRACK_FILENAME_SUFFIX,
@@ -103,6 +114,7 @@ const TEXT_SYMBOLS = {
 
 const DEFAULT_AUTO_START_PRESET_NAME = 'String Waves';
 const CLOUD_ENABLED = !!import.meta.env.VITE_SUPABASE_URL && !!import.meta.env.VITE_SUPABASE_ANON_KEY;
+const CAPACITOR_LOCAL_STATE_PRESET_SCOPE = 'global';
 
 const LAZY_PAGE_FALLBACK = (
   <div style={{ padding: '24px', color: '#9ca3af', textAlign: 'center' }}>
@@ -503,6 +515,97 @@ function statePresetEntryToSavedPreset(
   });
 }
 
+async function loadCapacitorLocalStatePresets(): Promise<SavedPreset[]> {
+  const { LocalStoragePresetStore } = await import('./presets');
+  const store = new LocalStoragePresetStore();
+  const summaries = await store.list('state', CAPACITOR_LOCAL_STATE_PRESET_SCOPE);
+  const entries = await Promise.all(
+    summaries
+      .filter((summary) => summary.author !== 'factory' && summary.library !== 'stock')
+      .map((summary) => store.load('state', summary.name, CAPACITOR_LOCAL_STATE_PRESET_SCOPE)),
+  );
+
+  return entries
+    .map((entry) => (entry ? statePresetEntryToSavedPreset(entry) : null))
+    .filter((preset): preset is SavedPreset => !!preset)
+    .sort((left, right) => {
+      const timeDiff = new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime();
+      if (timeDiff !== 0) return timeDiff;
+      return left.name.localeCompare(right.name);
+    });
+}
+
+async function saveCapacitorLocalStatePreset(preset: SavedPreset): Promise<void> {
+  const { LocalStoragePresetStore } = await import('./presets');
+  const store = new LocalStoragePresetStore();
+  const existing = await store.load('state', preset.name, CAPACITOR_LOCAL_STATE_PRESET_SCOPE);
+  const parsedTimestamp = Date.parse(preset.timestamp);
+  const timestamp = Number.isFinite(parsedTimestamp) ? parsedTimestamp : Date.now();
+  const versionMetadata = {
+    ...(preset.dualRanges ? { dualRanges: preset.dualRanges } : {}),
+    ...(preset.sliderModes ? { sliderModes: preset.sliderModes } : {}),
+    ...(preset.drumEvolveConfigs ? { drumEvolveConfigs: preset.drumEvolveConfigs } : {}),
+    ...(preset.synthEvolveConfigs ? { synthEvolveConfigs: preset.synthEvolveConfigs } : {}),
+    ...(preset.drumSubLaneStates ? { drumSubLaneStates: preset.drumSubLaneStates } : {}),
+    ...(preset.synthSubLaneStates ? { synthSubLaneStates: preset.synthSubLaneStates } : {}),
+    ...(preset.synthPitchBindingModes ? { synthPitchBindingModes: preset.synthPitchBindingModes } : {}),
+  };
+
+  if (existing && existing.author !== 'factory' && existing.library !== 'stock') {
+    const nextVersion = Math.max(...existing.versions.map((version) => version.v), 0) + 1;
+    existing.versions.push({
+      v: nextVersion,
+      note: 'Saved from Capacitor shell',
+      timestamp,
+      data: preset.state as unknown as Record<string, unknown>,
+      ...versionMetadata,
+    });
+    existing.currentVersion = nextVersion;
+    existing.updatedAt = timestamp;
+    await store.save(existing);
+    return;
+  }
+
+  await store.save({
+    id: existing?.id,
+    type: 'state',
+    scope: CAPACITOR_LOCAL_STATE_PRESET_SCOPE,
+    name: preset.name,
+    author: 'user',
+    library: 'user',
+    visibility: existing?.visibility ?? 'private',
+    creator: existing?.creator,
+    description: existing?.description,
+    familyId: existing?.familyId,
+    familyName: existing?.familyName ?? preset.name,
+    variantId: existing?.variantId,
+    variantName: existing?.variantName ?? preset.name,
+    variantRank: existing?.variantRank,
+    tags: existing?.tags ?? [],
+    versions: [{
+      v: 1,
+      note: 'Saved from Capacitor shell',
+      timestamp,
+      data: preset.state as unknown as Record<string, unknown>,
+      ...versionMetadata,
+    }],
+    currentVersion: 1,
+    createdAt: existing?.createdAt ?? timestamp,
+    updatedAt: timestamp,
+  });
+}
+
+async function loadBundledPresetByName(name: string): Promise<SavedPreset | null> {
+  const presets = await loadPresetsFromFolder();
+  return presets.find((preset) => preset.name === name) ?? null;
+}
+
+async function deleteCapacitorLocalStatePreset(name: string): Promise<void> {
+  const { LocalStoragePresetStore } = await import('./presets');
+  const store = new LocalStoragePresetStore();
+  await store.delete('state', name, CAPACITOR_LOCAL_STATE_PRESET_SCOPE);
+}
+
 // Save preset to file using File System Access API
 const savePresetToFile = async (preset: SavedPreset): Promise<boolean> => {
   try {
@@ -570,6 +673,7 @@ const styles = {
     gap: '10px',
     justifyContent: 'center',
     marginBottom: '30px',
+    paddingTop: 'calc(12px + env(safe-area-inset-top))',
     flexWrap: 'wrap' as const,
   } as React.CSSProperties,
   button: {
@@ -802,6 +906,15 @@ const styles = {
 
 // Dual slider state type - stores min/max for each parameter when in dual mode
 type DualSliderState = Partial<Record<keyof SliderState, DualSliderRange>>;
+
+function extractNativeDualRanges(ranges: DualSliderState): Record<string, { min: number; max: number }> {
+  const output: Record<string, { min: number; max: number }> = {};
+  for (const [key, range] of Object.entries(ranges)) {
+    if (!range) continue;
+    output[key] = { min: range.min, max: range.max };
+  }
+  return output;
+}
 
 type AdvancedTab = 'global' | 'synth' | 'drums' | 'reverb' | 'granular' | 'earth' | 'delay' | 'routing';
 
@@ -1192,6 +1305,10 @@ const App: React.FC = () => {
   // Initialize cloud preset store if Supabase is configured
   useEffect(() => {
     if (!CLOUD_ENABLED) return;
+    if (isCapacitorNativeShell()) {
+      markCloudPresetStoreReady();
+      return;
+    }
 
     let cancelled = false;
 
@@ -1254,6 +1371,7 @@ const App: React.FC = () => {
             ? statePresetEntryToSavedPreset(autoStartEntry, 'highest')
             : null;
           if (autoStartPresetRef.current) {
+            autoStartPresetSourceRef.current = 'cloud';
             console.log(`[App] Prefetched latest cloud auto-start preset: ${autoStartEntry!.name}`);
           }
         } catch (e) {
@@ -1297,7 +1415,9 @@ const App: React.FC = () => {
   // Track if user has interacted with any UI element (sliders, buttons, etc.)
   const hasUserInteractedRef = useRef(false);
   const autoStartPresetRef = useRef<SavedPreset | null>(null);
+  const autoStartPresetSourceRef = useRef<'cloud' | 'device-local' | 'bundled' | null>(null);
   const cloudPresetStoreRef = useRef<IPresetStore | null>(null);
+  const cloudAutoStartStoreInitPromiseRef = useRef<Promise<IPresetStore | null> | null>(null);
   const cloudPresetStoreReadyRef = useRef(!CLOUD_ENABLED);
   const cloudPresetStoreReadyResolveRef = useRef<(() => void) | null>(null);
   const cloudPresetStoreReadyPromiseRef = useRef<Promise<void> | null>(null);
@@ -1367,6 +1487,9 @@ const App: React.FC = () => {
     },
     transportDebug: null,
   });
+  const [nativeBackgroundAudioMode, setNativeBackgroundAudioMode] = useState(false);
+  const [nativePlaybackState, setNativePlaybackState] = useState(false);
+  const nativeRemoteCommandCleanupRef = useRef<(() => Promise<void>) | null>(null);
   
   // Saved presets list - start empty, load from folder on mount
   const [savedPresets, setSavedPresets] = useState<SavedPreset[]>([]);
@@ -1518,6 +1641,188 @@ const App: React.FC = () => {
   const [sliderModes, setSliderModes] = useState<Record<string, SliderMode>>({});
   const [dualSliderRanges, setDualSliderRanges] = useState<DualSliderState>({});
   const [randomWalkPositions, setRandomWalkPositions] = useState<Record<string, number>>({});
+  const usesCapacitorLocalPresetLibrary = isCapacitorNativeShell();
+  const playbackIsRunning = nativeBackgroundAudioMode ? nativePlaybackState : engineState.isRunning;
+
+  const ensureCloudAutoStartPresetStore = useCallback(async (): Promise<IPresetStore | null> => {
+    if (!CLOUD_ENABLED) return null;
+    if (cloudPresetStoreRef.current) return cloudPresetStoreRef.current;
+    if (!cloudAutoStartStoreInitPromiseRef.current) {
+      cloudAutoStartStoreInitPromiseRef.current = (async () => {
+        try {
+          const { getSupabase } = await import('./cloud/supabase');
+          const { SupabasePresetStore } = await import('./presets');
+          const supabaseClient = getSupabase();
+          if (!supabaseClient) return null;
+
+          const cloud = new SupabasePresetStore(supabaseClient);
+
+          try {
+            const { data: { session } } = await supabaseClient.auth.getSession();
+            if (session?.user) {
+              cloud.setUserId(session.user.id, session.user.is_anonymous ?? false);
+            } else {
+              const { data, error } = await supabaseClient.auth.signInAnonymously();
+              if (error) {
+                console.warn('Anonymous auth failed for cloud auto-start preset:', error.message);
+              } else if (data.user) {
+                cloud.setUserId(data.user.id, true);
+              }
+            }
+          } catch (error) {
+            console.warn('Cloud auto-start auth init failed:', error);
+          }
+
+          cloudPresetStoreRef.current = cloud;
+          return cloud;
+        } catch (error) {
+          console.warn('Cloud auto-start preset store initialization failed:', error);
+          return null;
+        }
+      })();
+    }
+
+    return cloudAutoStartStoreInitPromiseRef.current;
+  }, []);
+
+  const loadCloudAutoStartPreset = useCallback(async (): Promise<SavedPreset | null> => {
+    if (!CLOUD_ENABLED) return null;
+
+    const store = await ensureCloudAutoStartPresetStore();
+    if (!store) return null;
+
+    try {
+      const autoStartEntry = await store.load('state', DEFAULT_AUTO_START_PRESET_NAME, 'global');
+      const preset = autoStartEntry
+        ? statePresetEntryToSavedPreset(autoStartEntry, 'highest')
+        : null;
+
+      if (preset) {
+        autoStartPresetRef.current = preset;
+        autoStartPresetSourceRef.current = 'cloud';
+        console.log(`[App] Loaded latest cloud auto-start preset: ${autoStartEntry!.name}`);
+      }
+
+      return preset;
+    } catch (error) {
+      console.warn('Failed to load latest cloud auto-start preset:', error);
+      return null;
+    }
+  }, [ensureCloudAutoStartPresetStore]);
+
+  const resolveDefaultAutoStartPreset = useCallback(async (): Promise<{
+    preset: SavedPreset | null;
+    source: 'cloud' | 'device-local' | 'bundled' | null;
+  }> => {
+    if (autoStartPresetRef.current) {
+      return {
+        preset: autoStartPresetRef.current,
+        source: autoStartPresetSourceRef.current,
+      };
+    }
+
+    if (CLOUD_ENABLED) {
+      const timeoutMs = 1500;
+      const timedCloudPreset = await Promise.race<SavedPreset | null>([
+        loadCloudAutoStartPreset(),
+        new Promise<SavedPreset | null>((resolve) => {
+          window.setTimeout(() => resolve(null), timeoutMs);
+        }),
+      ]);
+      if (timedCloudPreset) {
+        return { preset: timedCloudPreset, source: 'cloud' };
+      }
+    }
+
+    const deviceLocalPreset = savedPresets.find((preset) => preset.name === DEFAULT_AUTO_START_PRESET_NAME) ?? null;
+    if (deviceLocalPreset) {
+      autoStartPresetRef.current = deviceLocalPreset;
+      autoStartPresetSourceRef.current = usesCapacitorLocalPresetLibrary ? 'device-local' : 'bundled';
+      return {
+        preset: deviceLocalPreset,
+        source: autoStartPresetSourceRef.current,
+      };
+    }
+
+    const bundledPreset = await loadBundledPresetByName(DEFAULT_AUTO_START_PRESET_NAME);
+    if (bundledPreset) {
+      autoStartPresetRef.current = bundledPreset;
+      autoStartPresetSourceRef.current = 'bundled';
+      return {
+        preset: bundledPreset,
+        source: 'bundled',
+      };
+    }
+
+    return { preset: null, source: null };
+  }, [loadCloudAutoStartPreset, savedPresets, usesCapacitorLocalPresetLibrary]);
+
+  useEffect(() => {
+    if (!usesCapacitorLocalPresetLibrary || !CLOUD_ENABLED || autoStartPresetRef.current) return;
+    void loadCloudAutoStartPreset();
+  }, [loadCloudAutoStartPreset, usesCapacitorLocalPresetLibrary]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let retryTimer: number | null = null;
+
+    const setupNativeMode = () => {
+      if (cancelled) return;
+      if (!shouldUseCapacitorNativeAudioSpike() || !isCapacitorBackgroundAudioAvailable()) {
+        retryTimer = window.setTimeout(setupNativeMode, 250);
+        return;
+      }
+
+      setNativeBackgroundAudioMode(true);
+
+      void getCapacitorBackgroundAudioStatus().then((status) => {
+        if (!cancelled && status) {
+          setNativePlaybackState(!!status.isPlaying);
+        }
+      });
+
+      void addCapacitorRemoteCommandListener((command) => {
+        if (cancelled) return;
+        if (command === 'play') {
+          setNativePlaybackState(true);
+        } else if (command === 'pause') {
+          setNativePlaybackState(false);
+        } else {
+          setNativePlaybackState((prev) => !prev);
+        }
+      }).then((cleanup) => {
+        if (cancelled) {
+          void cleanup?.();
+          return;
+        }
+        nativeRemoteCommandCleanupRef.current = cleanup;
+      });
+    };
+
+    setupNativeMode();
+
+    return () => {
+      cancelled = true;
+      if (retryTimer !== null) {
+        window.clearTimeout(retryTimer);
+      }
+      const cleanup = nativeRemoteCommandCleanupRef.current;
+      nativeRemoteCommandCleanupRef.current = null;
+      if (cleanup) void cleanup();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!nativeBackgroundAudioMode) return;
+    void setCapacitorNowPlaying({
+      title: statePresetName || 'Generative Ambient',
+      artist: 'Kessho',
+      album: 'Kessho Native',
+      isLiveStream: true,
+      isPlaying: nativePlaybackState,
+      elapsedTime: 0,
+    });
+  }, [nativeBackgroundAudioMode, nativePlaybackState, statePresetName]);
 
   const applyDualRangesFromPreset = useCallback((
     dualRanges?: Record<string, { min: number; max: number }>,
@@ -2060,7 +2365,11 @@ const App: React.FC = () => {
   useEffect(() => {
     let cancelled = false;
 
-    loadPresetsFromFolder().then((presets) => {
+    const loadPresets = usesCapacitorLocalPresetLibrary
+      ? loadCapacitorLocalStatePresets
+      : loadPresetsFromFolder;
+
+    loadPresets().then((presets) => {
       if (cancelled) return;
       setSavedPresets(presets);
       setPresetsLoading(false);
@@ -2103,7 +2412,7 @@ const App: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [applyDualRangesFromPreset, restoreEvolveConfigs]);
+  }, [applyDualRangesFromPreset, restoreEvolveConfigs, usesCapacitorLocalPresetLibrary]);
 
   // Engine state callback
   useEffect(() => {
@@ -2524,8 +2833,15 @@ const App: React.FC = () => {
 
   // Update engine when state changes (always — drum sequencer works independently)
   useEffect(() => {
+    if (nativeBackgroundAudioMode) {
+      void syncCapacitorNativeAudioState({
+        state,
+        dualRanges: extractNativeDualRanges(dualSliderRanges),
+      });
+      return;
+    }
     audioEngine.updateParams(state);
-  }, [state]);
+  }, [state, dualSliderRanges, nativeBackgroundAudioMode]);
 
   // Handle slider change
   const handleSliderChange = useCallback((key: keyof SliderState, value: number | string) => {
@@ -2722,14 +3038,8 @@ const App: React.FC = () => {
           case 'natureReverbSend':
           case 'natureDelayASend':
           case 'natureDelayBSend':
-            newState.birdsEnabled = true;
-            newState.birds2Enabled = true;
-            newState.frogsEnabled = true;
             break;
           case 'granularNatureSend':
-            newState.birdsEnabled = true;
-            newState.birds2Enabled = true;
-            newState.frogsEnabled = true;
             newState.granularEnabled = true;
             break;
           case 'birdsLevel':
@@ -2792,16 +3102,16 @@ const App: React.FC = () => {
           case 'insectsLevel':
             newState.insectsEnabled = true;
             break;
+          case 'insectsSharedLevel':
+            break;
           case 'insects2Level':
             newState.insects2Enabled = true;
             break;
           case 'insectsReverbSend':
           case 'insDelayASend':
           case 'insDelayBSend':
-            newState.insectsEnabled = true;
             break;
           case 'granularInsectsSend':
-            newState.insectsEnabled = true;
             newState.granularEnabled = true;
             break;
           default:
@@ -3448,33 +3758,11 @@ const App: React.FC = () => {
     try {
       // Activate snowflake on first play
       if (!snowflakeActivated) setSnowflakeActivated(true);
-      // Setup iOS media session FIRST (must be synchronous from user gesture)
-      setupIOSMediaSession();
       
       // Auto-load String Waves if user hasn't loaded any preset or interacted with UI
       let stateToStart = state;
       if (!hasLoadedPresetRef.current && !hasUserInteractedRef.current) {
-        let defaultPreset = autoStartPresetRef.current;
-        let defaultPresetSource: 'cloud' | 'bundled' | null = defaultPreset ? 'cloud' : null;
-        if (!defaultPreset && CLOUD_ENABLED) {
-          await cloudPresetStoreReadyPromiseRef.current;
-          try {
-            const autoStartEntry = await cloudPresetStoreRef.current?.load('state', DEFAULT_AUTO_START_PRESET_NAME, 'global');
-            defaultPreset = autoStartEntry
-              ? statePresetEntryToSavedPreset(autoStartEntry, 'highest')
-              : null;
-            autoStartPresetRef.current = defaultPreset;
-            if (defaultPreset) {
-              defaultPresetSource = 'cloud';
-              console.log(`[App] Loaded latest cloud auto-start preset on play: ${autoStartEntry!.name}`);
-            }
-          } catch (e) {
-            console.warn('Failed to load latest cloud auto-start preset on play:', e);
-          }
-        } else if (!defaultPreset) {
-          defaultPreset = savedPresets.find(p => p.name === DEFAULT_AUTO_START_PRESET_NAME) ?? null;
-          defaultPresetSource = defaultPreset ? 'bundled' : null;
-        }
+        const { preset: defaultPreset, source: defaultPresetSource } = await resolveDefaultAutoStartPreset();
         if (defaultPreset) {
           console.log(`[App] Auto-loading default preset: ${defaultPreset.name}${defaultPresetSource ? ` (${defaultPresetSource})` : ''}`);
           hasLoadedPresetRef.current = true;
@@ -3487,6 +3775,35 @@ const App: React.FC = () => {
           restoreEvolveConfigs(result.preset);
         }
       }
+
+      if (!nativeBackgroundAudioMode && isCapacitorNativeShell() && isCapacitorBackgroundAudioAvailable()) {
+        setNativeBackgroundAudioMode(true);
+      }
+
+      if (nativeBackgroundAudioMode) {
+        await startCapacitorNativePlayback(
+          {
+            state: stateToStart,
+            dualRanges: extractNativeDualRanges(dualSliderRanges),
+          },
+          {
+            title: 'Generative Ambient',
+            artist: 'Kessho',
+            album: 'Kessho Native',
+            isLiveStream: true,
+            isPlaying: true,
+          },
+        );
+        setNativePlaybackState(true);
+        return;
+      }
+
+      if (isCapacitorNativeShell()) {
+        throw new Error('Native background audio plugin is not ready yet. Relaunch the app after sync if this persists.');
+      }
+
+      // Setup iOS media session FIRST (must be synchronous from user gesture)
+      setupIOSMediaSession();
       
       // Then start the audio engine
       await audioEngine.start(stateToStart);
@@ -3509,6 +3826,12 @@ const App: React.FC = () => {
   };
 
   const handleStop = () => {
+    if (nativeBackgroundAudioMode) {
+      void stopCapacitorNativePlayback();
+      setNativePlaybackState(false);
+      return;
+    }
+
     // Don't stop recording when stopping playback - let tails continue
     // Recording must be stopped manually
     stopIOSMediaSession();
@@ -3543,7 +3866,7 @@ const App: React.FC = () => {
       playbackTimerIntervalRef.current = null;
     }
     
-    if (engineState.isRunning && playbackTimerEnabled) {
+    if (playbackIsRunning && playbackTimerEnabled) {
       // Start or restart the countdown
       // If no remaining time set, initialize from minutes setting
       if (playbackTimerRemaining === null) {
@@ -3562,15 +3885,20 @@ const App: React.FC = () => {
             }
             // Use setTimeout to avoid state update during render
             setTimeout(() => {
-              audioEngine.stop();
-              stopIOSMediaSession();
+              if (nativeBackgroundAudioMode) {
+                void stopCapacitorNativePlayback();
+                setNativePlaybackState(false);
+              } else {
+                audioEngine.stop();
+                stopIOSMediaSession();
+              }
             }, 0);
             return null;
           }
           return prev - 1;
         });
       }, 1000);
-    } else if (!engineState.isRunning) {
+    } else if (!playbackIsRunning) {
       // Playback stopped - clear timer state
       setPlaybackTimerRemaining(null);
     }
@@ -3581,7 +3909,7 @@ const App: React.FC = () => {
         playbackTimerIntervalRef.current = null;
       }
     };
-  }, [engineState.isRunning, playbackTimerEnabled]);
+  }, [playbackIsRunning, playbackTimerEnabled, nativeBackgroundAudioMode]);
   
   // Arm recording - will start recording when playback starts
   const handleArmRecording = () => {
@@ -3999,7 +4327,15 @@ const App: React.FC = () => {
       synthSubLaneStates: synthSubLaneStatesRef.current,
       synthPitchBindingModes: synthPitchBindingModesRef.current,
     };
-    
+
+    if (usesCapacitorLocalPresetLibrary) {
+      await saveCapacitorLocalStatePreset(preset);
+      setSavedPresets(await loadCapacitorLocalStatePresets());
+      setStatePresetName(name);
+      setShowPresetList(true);
+      return;
+    }
+
     const success = await savePresetToFile(preset);
     if (success) {
       // Add to local list for immediate display
@@ -4211,7 +4547,7 @@ const App: React.FC = () => {
       'granularDelayASend', 'granularDelayBSend',
       'granularPad1Send', 'granularPad2Send', 'granularLead1Send', 'granularLead2Send', 'granularPianoSend',
       'granularDrumSend', 'granularWavesSend', 'granularNatureSend', 'granularWaterSend', 'granularInsectsSend',
-      'drumReverbSend', 'oceanReverbSend', 'natureLevel', 'natureReverbSend', 'waterReverbSend', 'insectsReverbSend',
+      'drumReverbSend', 'oceanReverbSend', 'natureLevel', 'natureReverbSend', 'waterReverbSend', 'insectsSharedLevel', 'insectsReverbSend',
       'oceanDelayASend', 'oceanDelayBSend', 'natureDelayASend', 'natureDelayBSend', 'waterDelayASend', 'waterDelayBSend', 'insDelayASend', 'insDelayBSend',
       'granularReverbLPF', 'granularOutputLPF',
       'lead1ReverbSend', 'lead2ReverbSend', 'delayAReverbSend', 'reverbLevel', 'randomness', 'tension',
@@ -5184,7 +5520,16 @@ const App: React.FC = () => {
   }, [uiMode, morphLoadTarget, handleLoadPresetToSlot, state, sliderModes, dualSliderRanges, morphPresetB, morphPosition, snowflakeActivated]);
 
   // Delete preset - just removes from UI list (can't delete files from browser)
-  const handleDeletePreset = (index: number) => {
+  const handleDeletePreset = async (index: number) => {
+    if (usesCapacitorLocalPresetLibrary) {
+      const preset = savedPresets[index];
+      if (!preset) return;
+      if (!confirm(`Delete local preset "${preset.name}" from this device?`)) return;
+      await deleteCapacitorLocalStatePreset(preset.name);
+      setSavedPresets(await loadCapacitorLocalStatePresets());
+      return;
+    }
+
     const updatedPresets = savedPresets.filter((_, i) => i !== index);
     setSavedPresets(updatedPresets);
   };
@@ -5196,7 +5541,8 @@ const App: React.FC = () => {
     
     const reader = new FileReader();
     reader.onload = (e) => {
-      try {
+      void (async () => {
+        try {
         const parsed = JSON.parse(e.target?.result as string);
         if (parsed.state) {
           // Migrate, normalize, merge with defaults, and preserve user preferences
@@ -5213,10 +5559,16 @@ const App: React.FC = () => {
             synthEvolveConfigs: result.preset.synthEvolveConfigs,
             drumSubLaneStates: result.preset.drumSubLaneStates,
             synthSubLaneStates: result.preset.synthSubLaneStates,
+            synthPitchBindingModes: parsed.synthPitchBindingModes,
           };
-          
-          // Add to preset list for display
-          setSavedPresets(prev => [...prev, importedPreset]);
+
+          if (usesCapacitorLocalPresetLibrary) {
+            await saveCapacitorLocalStatePreset(importedPreset);
+            setSavedPresets(await loadCapacitorLocalStatePresets());
+          } else {
+            // Add to preset list for display
+            setSavedPresets(prev => [...prev, importedPreset]);
+          }
           
           // In advanced mode, show dialog to choose slot A or B
           if (uiMode === 'advanced') {
@@ -5234,10 +5586,11 @@ const App: React.FC = () => {
             restoreEvolveConfigs(result.preset);
           }
         }
-      } catch (err) {
-        console.error('Failed to load preset:', err);
-        alert('Failed to load preset. Invalid file format.');
-      }
+        } catch (err) {
+          console.error('Failed to load preset:', err);
+          alert('Failed to load preset. Invalid file format.');
+        }
+      })();
     };
     reader.readAsText(file);
     // Reset input so same file can be loaded again
@@ -5297,17 +5650,34 @@ const App: React.FC = () => {
     journeyPresetBRef.current = null;
     
     // Start audio engine if not already running
-    if (!engineState.isRunning) {
+    if (!playbackIsRunning) {
       console.log('[Journey] Starting audio engine');
       try {
-        setupIOSMediaSession();
-        await audioEngine.start(preset.state);
-        connectMediaSessionToWebAudio();
+        if (nativeBackgroundAudioMode) {
+          await startCapacitorNativePlayback(
+            {
+              state: preset.state,
+              dualRanges: extractNativeDualRanges(dualSliderRanges),
+            },
+            {
+              title: preset.name,
+              artist: 'Kessho',
+              album: 'Kessho Native',
+              isLiveStream: true,
+              isPlaying: true,
+            },
+          );
+          setNativePlaybackState(true);
+        } else {
+          setupIOSMediaSession();
+          await audioEngine.start(preset.state);
+          connectMediaSessionToWebAudio();
+        }
       } catch (err) {
         console.error('[Journey] Failed to start audio:', err);
       }
     }
-  }, [savedPresets, handleLoadPresetFromList, engineState.isRunning, audioEngine, setupIOSMediaSession, connectMediaSessionToWebAudio]);
+  }, [savedPresets, handleLoadPresetFromList, playbackIsRunning, nativeBackgroundAudioMode, dualSliderRanges, audioEngine, setupIOSMediaSession, connectMediaSessionToWebAudio]);
 
   const getEarthTextureDebugState = useCallback(() => audioEngine.getEarthTextureDebugState(), []);
   
@@ -5565,13 +5935,17 @@ const App: React.FC = () => {
           setFlag('waterEnabled', enabled);
           break;
         case 'insects':
-          setFlag('insectsEnabled', enabled);
-          setFlag('insects2Enabled', enabled);
+          if (!enabled) {
+            setFlag('insectsEnabled', false);
+            setFlag('insects2Enabled', false);
+          }
           break;
         case 'nature':
-          setFlag('birdsEnabled', enabled);
-          setFlag('birds2Enabled', enabled);
-          setFlag('frogsEnabled', enabled);
+          if (!enabled) {
+            setFlag('birdsEnabled', false);
+            setFlag('birds2Enabled', false);
+            setFlag('frogsEnabled', false);
+          }
           break;
         case 'delayAOut':
           setFlag('delayAEnabled', enabled);
@@ -5598,7 +5972,7 @@ const App: React.FC = () => {
           onStopAudio={handleStop}
           onShowSnowflake={() => setUiMode('snowflake')}
           onShowAdvanced={() => setUiMode('advanced')}
-          isPlaying={engineState.isRunning}
+          isPlaying={playbackIsRunning}
         />
       </React.Suspense>
     );
@@ -5691,10 +6065,10 @@ const App: React.FC = () => {
             onChange={snowflakeActivated ? handleSliderChange : handleWelcomeSliderChange}
             onShowAdvanced={() => { if (!snowflakeActivated) setSnowflakeActivated(true); setUiMode('advanced'); }}
             onShowJourney={() => { if (!snowflakeActivated) setSnowflakeActivated(true); setUiMode('journey'); }}
-            onTogglePlay={(engineState.isRunning || isJourneyPlaying) ? handleStop : handleStart}
+            onTogglePlay={(playbackIsRunning || isJourneyPlaying) ? handleStop : handleStart}
             onLoadPreset={handleLoadPresetFromList}
             presets={savedPresets}
-            isPlaying={engineState.isRunning || isJourneyPlaying}
+            isPlaying={playbackIsRunning || isJourneyPlaying}
             isRecording={isRecording}
             recordingDuration={recordingDuration}
             onStopRecording={handleStopRecording}
@@ -5714,7 +6088,7 @@ const App: React.FC = () => {
         <CpuOverlay />
         {/* Controls - centered */}
         <div className="app-controls" style={{ ...styles.controls, paddingTop: '12px', ...m?.controls }}>
-        {!(engineState.isRunning || isJourneyPlaying) ? (
+        {!(playbackIsRunning || isJourneyPlaying) ? (
           <button
             style={{ ...styles.iconButton, ...styles.startButton, ...m?.iconButton }}
             onClick={handleStart}
@@ -5743,13 +6117,24 @@ const App: React.FC = () => {
           onClick={() => {
             if (isRecording) {
               void handleStopRecording();
-            } else if (engineState.isRunning) {
+            } else if (nativeBackgroundAudioMode) {
+              return;
+            } else if (playbackIsRunning) {
               void handleStartRecording();
             } else {
               handleArmRecording();
             }
           }}
-          title={isRecording ? `Recording ${formatRecordingTime(recordingDuration)} - Click to stop` : isRecordingArmed ? 'Recording armed - will start with playback (click to disarm)' : (engineState.isRunning ? 'Start Recording' : 'Arm Recording (will start with playback)')}
+          title={
+            nativeBackgroundAudioMode
+              ? 'Recording is unavailable in the Capacitor native audio spike'
+              : isRecording
+                ? `Recording ${formatRecordingTime(recordingDuration)} - Click to stop`
+                : isRecordingArmed
+                  ? 'Recording armed - will start with playback (click to disarm)'
+                  : (playbackIsRunning ? 'Start Recording' : 'Arm Recording (will start with playback)')
+          }
+          disabled={nativeBackgroundAudioMode}
         >
           {TEXT_SYMBOLS.record}
           {isRecording && (
@@ -5778,8 +6163,14 @@ const App: React.FC = () => {
         </button>
         <button
           style={{ ...styles.iconButton, ...styles.presetButton, ...m?.iconButton }}
-          onClick={() => fileInputRef.current?.click()}
-          title="Import Preset"
+          onClick={() => {
+            if (usesCapacitorLocalPresetLibrary) {
+              setShowPresetList(prev => !prev);
+            } else {
+              fileInputRef.current?.click();
+            }
+          }}
+          title={usesCapacitorLocalPresetLibrary ? 'Load Local Preset' : 'Import Preset'}
         >
           {TEXT_SYMBOLS.upload}
         </button>
@@ -5809,11 +6200,17 @@ const App: React.FC = () => {
       {/* Preset List */}
       {showPresetList && (
         <div className="app-preset-list" style={{ ...styles.presetListContainer, ...m?.presetList }}>
-          <h4 style={{ margin: '0 0 10px', color: '#a855f7' }}>Presets (from /presets folder)</h4>
+          <h4 style={{ margin: '0 0 10px', color: '#a855f7' }}>
+            {usesCapacitorLocalPresetLibrary ? 'Local Presets (saved on this device)' : 'Presets (from /presets folder)'}
+          </h4>
           {presetsLoading ? (
             <p style={{ color: '#6b7280', fontStyle: 'italic' }}>Loading presets...</p>
           ) : savedPresets.length === 0 ? (
-            <p style={{ color: '#6b7280', fontStyle: 'italic' }}>No presets found. Save one to the presets folder.</p>
+            <p style={{ color: '#6b7280', fontStyle: 'italic' }}>
+              {usesCapacitorLocalPresetLibrary
+                ? 'No local presets saved on this device yet.'
+                : 'No presets found. Save one to the presets folder.'}
+            </p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {savedPresets.map((preset, index) => (
@@ -5833,7 +6230,7 @@ const App: React.FC = () => {
                   <button
                     style={{ ...styles.button, ...styles.deletePresetBtn }}
                     onClick={() => handleDeletePreset(index)}
-                    title="Remove from list (doesn't delete file)"
+                    title={usesCapacitorLocalPresetLibrary ? 'Delete local preset from this device' : 'Remove from list (doesn\'t delete file)'}
                   >
                     ✕
                   </button>
@@ -6012,7 +6409,7 @@ const App: React.FC = () => {
             SliderComponent={Slider as unknown as React.ComponentType<Record<string, unknown>>}
             SelectComponent={Select as unknown as React.ComponentType<Record<string, unknown>>}
             CollapsiblePanelComponent={CollapsiblePanel as unknown as React.ComponentType<Record<string, unknown>>}
-            isRunning={engineState.isRunning}
+            isRunning={playbackIsRunning}
             getLeadMorphedParams={(lead: 1 | 2) => audioEngine.getLeadMorphedParams(lead)}
             initialViewMode={synthViewModeRef.current}
             onViewModeChange={(mode) => { synthViewModeRef.current = mode; }}
@@ -6128,7 +6525,7 @@ const App: React.FC = () => {
           <GranularPage
             state={state}
             isMobile={isMobile}
-            isRunning={engineState.isRunning}
+            isRunning={playbackIsRunning}
             expandedPanels={expandedPanels}
             togglePanel={togglePanel}
             onParamChange={handleSliderChange}
@@ -6174,7 +6571,7 @@ const App: React.FC = () => {
             onSelectChange={handleSelectChange}
             onStateChange={setState}
             sliderProps={sliderProps}
-            isRunning={engineState.isRunning}
+            isRunning={playbackIsRunning}
             getEarthTextureDebugState={getEarthTextureDebugState}
           />
         )}

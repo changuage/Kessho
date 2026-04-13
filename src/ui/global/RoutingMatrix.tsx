@@ -212,9 +212,9 @@ const ROWS: MatrixRow[] = [
     id: 'insects',
     label: 'Insects',
     accent: '#78d98d',
-    note: 'The current Earth engine exposes one shared wet bus for both insect layers, so this row controls their combined sends.',
+    note: 'The current Earth engine exposes one shared insects dry master plus combined wet sends for both insect layers, so this row controls the family-level routing.',
     cells: {
-      level: { kind: 'editable', route: { key: 'insectsLevel', label: 'Insects Level' } },
+      level: { kind: 'editable', route: { key: 'insectsSharedLevel', label: 'Insects Level' } },
       delayA: { kind: 'editable', route: { key: 'insDelayASend', label: 'Insects → Delay A' } },
       delayB: { kind: 'editable', route: { key: 'insDelayBSend', label: 'Insects → Delay B' } },
       granular: { kind: 'editable', route: { key: 'granularInsectsSend', label: 'Insects → Granular' } },

@@ -6,14 +6,14 @@ import Foundation
 /// This service is intentionally separate from the audio engine so the iOS
 /// app can evolve background playback, interruption handling, and route-change
 /// behavior without coupling that logic to DSP code.
-final class AudioSessionManager {
-    static let shared = AudioSessionManager()
+public final class AudioSessionManager {
+    public static let shared = AudioSessionManager()
 
     private let session = AVAudioSession.sharedInstance()
     private var observers: [NSObjectProtocol] = []
 
-    private(set) var isConfigured = false
-    private(set) var isActive = false
+    public private(set) var isConfigured = false
+    public private(set) var isActive = false
 
     private init() {}
 
@@ -25,11 +25,13 @@ final class AudioSessionManager {
     ///
     /// The default policy is playback + mixWithOthers so the app can continue
     /// under lock screen and coexist with other audio where appropriate.
-    func configureForPlayback(
+    public func configureForPlayback(
         preferredSampleRate: Double? = nil,
-        preferredIOBufferDuration: TimeInterval? = nil
+        preferredIOBufferDuration: TimeInterval? = nil,
+        mixWithOthers: Bool = true
     ) throws {
-        try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
+        let options: AVAudioSession.CategoryOptions = mixWithOthers ? [.mixWithOthers] : []
+        try session.setCategory(.playback, mode: .default, options: options)
 
         if let preferredSampleRate {
             try session.setPreferredSampleRate(preferredSampleRate)
@@ -44,37 +46,49 @@ final class AudioSessionManager {
     }
 
     /// Activate the shared audio session.
-    func activate() throws {
+    public func activate() throws {
         if !isConfigured {
             try configureForPlayback()
         }
 
         try session.setActive(true)
         isActive = true
+        let outputs = session.currentRoute.outputs.map { output in
+            "\(output.portType.rawValue):\(output.portName)"
+        }.joined(separator: ", ")
+        print(
+            "AudioSession route:",
+            outputs.isEmpty ? "none" : outputs,
+            "sampleRate=\(session.sampleRate)",
+            "ioBuffer=\(session.ioBufferDuration)",
+            "outputVolume=\(session.outputVolume)"
+        )
         NotificationCenter.default.post(name: AudioServiceNotification.didActivate, object: self)
     }
 
     /// Deactivate the shared audio session.
-    func deactivate(options: AVAudioSession.SetActiveOptions = []) throws {
+    public func deactivate(options: AVAudioSession.SetActiveOptions = []) throws {
         try session.setActive(false, options: options)
         isActive = false
         NotificationCenter.default.post(name: AudioServiceNotification.didDeactivate, object: self)
     }
 
     /// Re-run the standard playback configuration after route or app state changes.
-    func reconfigureForPlayback(
+    public func reconfigureForPlayback(
         preferredSampleRate: Double? = nil,
-        preferredIOBufferDuration: TimeInterval? = nil
+        preferredIOBufferDuration: TimeInterval? = nil,
+        mixWithOthers: Bool = true
     ) throws {
         isConfigured = false
         try configureForPlayback(
             preferredSampleRate: preferredSampleRate,
-            preferredIOBufferDuration: preferredIOBufferDuration
+            preferredIOBufferDuration: preferredIOBufferDuration,
+            mixWithOthers: mixWithOthers
         )
     }
 
     /// Return the current shared audio session for diagnostics.
-    func currentSession() -> AVAudioSession {
+    public func currentSession() -> AVAudioSession {
         session
     }
 
@@ -176,4 +190,3 @@ final class AudioSessionManager {
         )
     }
 }
-

@@ -45,6 +45,7 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   waterDelayASend:       { level: 4, scope: 'global' },
   waterDelayBSend:       { level: 4, scope: 'global' },
   insectsLevel:          { level: 4, scope: 'global' },
+  insectsSharedLevel:    { level: 4, scope: 'global' },
   insects2Level:         { level: 4, scope: 'global' },
   insectsReverbSend:     { level: 4, scope: 'global' },
   insDelayASend:         { level: 4, scope: 'global' },

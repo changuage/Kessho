@@ -233,7 +233,7 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
                     <div className="mixer-bus-label">Earth</div>
                     <Slider label="Waves" value={state.oceanSampleLevel} paramKey="oceanSampleLevel" onChange={onParamChange} {...sliderProps('oceanSampleLevel')} />
                     <Slider label="Water" value={state.waterLevel} paramKey="waterLevel" onChange={onParamChange} {...sliderProps('waterLevel')} />
-                    <Slider label="Insects" value={state.insectsLevel} paramKey="insectsLevel" onChange={onParamChange} {...sliderProps('insectsLevel')} />
+                    <Slider label="Insects" value={state.insectsSharedLevel} paramKey="insectsSharedLevel" onChange={onParamChange} {...sliderProps('insectsSharedLevel')} />
                   </div>
                   <div className="mixer-bus-group">
                     <div className="mixer-bus-label">Output</div>

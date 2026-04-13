@@ -6,6 +6,7 @@ import type {
   SerializedSubLaneState,
   SliderMode,
 } from '../ui/state';
+import type { PitchBindingMode } from '../audio/drumSeqTypes';
 
 export type PresetLevel = 'engine' | 'kit' | 'source' | 'state' | 'journey';
 export type PresetLibrary = 'stock' | 'user' | 'cloud';
@@ -36,6 +37,7 @@ export interface PresetVersionMetadata {
   synthEvolveConfigs?: SerializedEvolveConfig[];
   drumSubLaneStates?: Record<string, SerializedSubLaneState>[];
   synthSubLaneStates?: Record<string, SerializedSubLaneState>[];
+  synthPitchBindingModes?: PitchBindingMode[];
   refs?: Record<string, PresetRef>;
 }
 

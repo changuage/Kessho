@@ -231,10 +231,14 @@ class ReverbProcessor {
     init(sampleRate: Float = 44100) {
         self.sampleRate = sampleRate
         self.srScale = sampleRate / 48000
+        let scaledDelayFactor = self.srScale
+        let scaledDiffuserTimes = DIFFUSER_TIMES_BASE.map { delayGroup in
+            delayGroup.map { Int(Float($0) * scaledDelayFactor) }
+        }
         
         // Initialize FDN delays
         for i in 0..<8 {
-            let baseTime = FDN_TIMES_MS[i] * srScale
+            let baseTime = FDN_TIMES_MS[i] * scaledDelayFactor
             let maxSamples = Int(baseTime * sampleRate / 1000 * 4) + 100
             fdnDelays.append(SmoothDelay(maxSamples: maxSamples))
             fdnDelayTimes.append(baseTime * sampleRate / 1000)
@@ -242,12 +246,12 @@ class ReverbProcessor {
         }
         
         // Initialize diffuser chains with scaled delay times
-        preDiffuserL = DiffuserChain(delays: DIFFUSER_TIMES_BASE[0].map { Int(Float($0) * srScale) }, feedback: 0.65)
-        preDiffuserR = DiffuserChain(delays: DIFFUSER_TIMES_BASE[1].map { Int(Float($0) * srScale) }, feedback: 0.65)
-        midDiffuserL = DiffuserChain(delays: DIFFUSER_TIMES_BASE[2].map { Int(Float($0) * srScale) }, feedback: 0.55)
-        midDiffuserR = DiffuserChain(delays: DIFFUSER_TIMES_BASE[3].map { Int(Float($0) * srScale) }, feedback: 0.55)
-        postDiffuserL = DiffuserChain(delays: DIFFUSER_TIMES_BASE[4].map { Int(Float($0) * srScale) }, feedback: 0.5)
-        postDiffuserR = DiffuserChain(delays: DIFFUSER_TIMES_BASE[5].map { Int(Float($0) * srScale) }, feedback: 0.5)
+        preDiffuserL = DiffuserChain(delays: scaledDiffuserTimes[0], feedback: 0.65)
+        preDiffuserR = DiffuserChain(delays: scaledDiffuserTimes[1], feedback: 0.65)
+        midDiffuserL = DiffuserChain(delays: scaledDiffuserTimes[2], feedback: 0.55)
+        midDiffuserR = DiffuserChain(delays: scaledDiffuserTimes[3], feedback: 0.55)
+        postDiffuserL = DiffuserChain(delays: scaledDiffuserTimes[4], feedback: 0.5)
+        postDiffuserR = DiffuserChain(delays: scaledDiffuserTimes[5], feedback: 0.5)
         
         // Initialize predelay (max 500ms for ambient music)
         let maxPredelaySamples = Int(0.5 * sampleRate) + 100

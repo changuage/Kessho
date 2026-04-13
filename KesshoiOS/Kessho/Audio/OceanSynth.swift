@@ -1,9 +1,58 @@
 import AVFoundation
 
+@inline(__always)
+private func writeOceanStereoFrame(
+    _ left: Float,
+    _ right: Float,
+    frame: Int,
+    to buffers: UnsafeMutableAudioBufferListPointer
+) {
+    if buffers.count == 1, let data = buffers[0].mData?.assumingMemoryBound(to: Float.self) {
+        let channelCount = max(Int(buffers[0].mNumberChannels), 1)
+        let baseIndex = frame * channelCount
+        if channelCount >= 2 {
+            data[baseIndex] = left
+            data[baseIndex + 1] = right
+            if channelCount > 2 {
+                let mono = (left + right) * 0.5
+                for channel in 2..<channelCount {
+                    data[baseIndex + channel] = mono
+                }
+            }
+        } else {
+            data[frame] = (left + right) * 0.5
+        }
+        return
+    }
+
+    for (index, buffer) in buffers.enumerated() {
+        guard let data = buffer.mData?.assumingMemoryBound(to: Float.self) else { continue }
+        data[frame] = index == 0 ? left : (index == 1 ? right : (left + right) * 0.5)
+    }
+}
+
 /// Ocean wave synthesizer with discrete wave events (matching web app's ocean.worklet.js)
 /// Two independent wave generators that can overlap, with foam and rumble layers
 class OceanSynth {
-    let node: AVAudioSourceNode
+    lazy var node: AVAudioSourceNode = { [weak self] in
+        let renderFormat = AVAudioFormat(standardFormatWithSampleRate: 44_100, channels: 2)!
+        return AVAudioSourceNode(format: renderFormat) { _, _, frameCount, audioBufferList -> OSStatus in
+            let ablPointer = UnsafeMutableAudioBufferListPointer(audioBufferList)
+            guard let self = self, self.enabled else {
+                for frame in 0..<Int(frameCount) {
+                    writeOceanStereoFrame(0, 0, frame: frame, to: ablPointer)
+                }
+                return noErr
+            }
+
+            for frame in 0..<Int(frameCount) {
+                let (left, right) = self.generateStereoSample()
+                writeOceanStereoFrame(left, right, frame: frame, to: ablPointer)
+            }
+
+            return noErr
+        }
+    }()
     
     private var enabled: Bool = false
     private var level: Float = 0.3
@@ -63,31 +112,6 @@ class OceanSynth {
         gen2.timeSinceLastWave = Int(sampleRate * 8 * 0.5)  // Offset start
         gen2.nextWaveInterval = Int(sampleRate * 7)
         
-        node = AVAudioSourceNode { [weak self] _, _, frameCount, audioBufferList -> OSStatus in
-            guard let self = self, self.enabled else {
-                let ablPointer = UnsafeMutableAudioBufferListPointer(audioBufferList)
-                for frame in 0..<Int(frameCount) {
-                    for buffer in ablPointer {
-                        buffer.mData?.assumingMemoryBound(to: Float.self)[frame] = 0
-                    }
-                }
-                return noErr
-            }
-            
-            let ablPointer = UnsafeMutableAudioBufferListPointer(audioBufferList)
-            guard ablPointer.count >= 2,
-                  let leftBuffer = ablPointer[0].mData?.assumingMemoryBound(to: Float.self),
-                  let rightBuffer = ablPointer[1].mData?.assumingMemoryBound(to: Float.self)
-            else { return noErr }
-            
-            for frame in 0..<Int(frameCount) {
-                let (left, right) = self.generateStereoSample()
-                leftBuffer[frame] = left
-                rightBuffer[frame] = right
-            }
-            
-            return noErr
-        }
     }
     
     // System random for organic wave variation (matching web app's Math.random())
@@ -285,5 +309,18 @@ class OceanSynth {
     func setDepth(min: Float, max: Float) {
         self.depthMin = Swift.min(Swift.max(min, 0), 1)
         self.depthMax = Swift.min(Swift.max(max, 0), 1)
+    }
+
+    func hardReset() {
+        gen1 = WaveGenerator()
+        gen2 = WaveGenerator()
+        masterLpfL = 0
+        masterLpfR = 0
+        masterHpfL = 0
+        masterHpfR = 0
+        foamLpfL = 0
+        foamLpfR = 0
+        rumbleLpfL = 0
+        rumbleLpfR = 0
     }
 }

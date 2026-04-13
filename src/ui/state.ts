@@ -9,6 +9,7 @@
  */
 
 import { SCALE_FAMILIES } from '../audio/scales';
+import type { PitchBindingMode } from '../audio/drumSeqTypes';
 
 export type GranularTempoDivision = '1/4' | '1/8' | '1/16' | '1/32' | '1/64' | '1/8T';
 export type IndexedDelayDivisionKey = 'drumDelayNoteL' | 'drumDelayNoteR' | 'granularDelayTime';
@@ -178,6 +179,7 @@ export interface SavedPreset {
   synthEvolveConfigs?: SerializedEvolveConfig[];
   drumSubLaneStates?: Record<string, SerializedSubLaneState>[];
   synthSubLaneStates?: Record<string, SerializedSubLaneState>[];
+  synthPitchBindingModes?: PitchBindingMode[];
 }
 
 export interface SliderState {
@@ -1024,6 +1026,7 @@ export interface SliderState {
   insectsClickRate: number;     // 0..1
   insectsMotion: number;        // 0..1
   insectsLevel: number;         // 0..1
+  insectsSharedLevel: number;   // 0..1 shared dry master for both insect layers
   insectsReverbSend: number;    // 0..1 reverb send for insects
   insDelayASend: number;        // 0..1 insects bus send into shared Delay A
   insDelayBSend: number;        // 0..1 insects bus send into shared Delay B
@@ -1842,7 +1845,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'waterChannelsMorph', 'waterChannelsSpeed',
   'insectsEnabled', 'insectsEngine',
   'insectsDensity', 'insectsTemperature', 'insectsDistance', 'insectsProximity',
-  'insectsAntiphony', 'insectsClickRate', 'insectsMotion', 'insectsLevel', 'insectsReverbSend', 'insDelayASend', 'insDelayBSend',
+  'insectsAntiphony', 'insectsClickRate', 'insectsMotion', 'insectsLevel', 'insectsSharedLevel', 'insectsReverbSend', 'insDelayASend', 'insDelayBSend',
   'insects2Enabled', 'insects2Engine',
   'insects2Density', 'insects2Temperature', 'insects2Distance', 'insects2Proximity',
   'insects2Antiphony', 'insects2ClickRate', 'insects2Motion', 'insects2Level',
@@ -2690,6 +2693,7 @@ export const DEFAULT_STATE: SliderState = {
   insectsClickRate: 0.3,
   insectsMotion: 0.5,
   insectsLevel: 0.7,
+  insectsSharedLevel: 1.0,
   insectsReverbSend: 0.15,
   insDelayASend: 0,
   insDelayBSend: 0,
@@ -3402,6 +3406,7 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   insectsClickRate: { min: 0, max: 1, step: 0.01 },
   insectsMotion: { min: 0, max: 1, step: 0.01 },
   insectsLevel: { min: 0, max: 1, step: 0.01 },
+  insectsSharedLevel: { min: 0, max: 1, step: 0.01 },
   insectsReverbSend: { min: 0, max: 1, step: 0.01 },
   insDelayASend: { min: 0, max: 1, step: 0.01 },
   insDelayBSend: { min: 0, max: 1, step: 0.01 },

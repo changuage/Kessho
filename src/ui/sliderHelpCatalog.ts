@@ -322,9 +322,9 @@ const mixEntries: Record<string, SliderHelpEntry> = {
     ],
   ),
   waterLevel: lowHigh(
-    'Sets the water engine output level.',
-    'keep the synthesized water layers subtle or silent',
-    'bring the water engine forward without changing its internal blend',
+    'Sets the water engine output level and scales its shared FX sends.',
+    'keep the synthesized water layers subtle or silent while also pulling their shared space routing down',
+    'bring the water engine forward and feed more of that same water balance into the shared FX',
     [
       g('Master Mixer / Earth', 'Water'),
       ea('Earth Mixer', 'Water'),
@@ -334,9 +334,16 @@ const mixEntries: Record<string, SliderHelpEntry> = {
     'Sets the first insect layer level.',
     'keep insect layer 1 quiet or fully muted',
     'let the first insect layer sit clearly on top of the ambience',
+    [ea('Earth Mixer', 'Insect 1')],
+  ),
+  insectsSharedLevel: lowHigh(
+    'Sets the shared insects bus level for both insect layers together and scales their shared FX sends.',
+    'pull both insect layers and their shared routing down together without changing their internal balance',
+    'raise the combined insects presence while leaving Insects 1 and Insects 2 relative levels intact',
     [
       g('Master Mixer / Earth', 'Insects'),
-      ea('Earth Mixer', 'Insect 1'),
+      rt('Routing Matrix', 'Insects Level'),
+      ea('Earth Mixer', 'Insects Level'),
     ],
   ),
   insects2Level: lowHigh(
@@ -1129,8 +1136,8 @@ const earthEntries: Record<string, SliderHelpEntry> = {
     [rt('Routing Matrix', 'Waves → Delay B')],
   ),
   natureLevel: entry(
-    'Sets the shared dry master for the Nature sample group.',
-    'Low values pull Birds Alps, Birds Fujian, and Frogs down together while preserving their relative balance. High values let the Nature stack sit forward in the Earth mix.',
+    'Sets the shared master for the Nature sample group and scales the group FX routing.',
+    'Low values pull Birds Alps, Birds Fujian, and Frogs down together while also reducing their shared FX feed. High values let the Nature stack sit forward in the Earth mix with proportionally stronger routing.',
     [
       rt('Routing Matrix', 'Nature Level'),
       ea('Active Earth Matrix', 'Nature Master'),
@@ -1261,6 +1268,14 @@ Object.assign(earthEntries, {
   insectsAntiphony: insectsAntiphonyHelp,
   insectsClickRate: insectsClickRateHelp,
   insectsMotion: insectsMotionHelp,
+  insectsSharedLevel: entry(
+    'Sets the shared insects bus level for both insect layers together.',
+    'Low values pull both insect layers down together without changing their internal balance. High values raise the combined insects presence while keeping the Insects 1 and Insects 2 balance intact.',
+    [
+      ea('Earth Mixer', 'Insects Level'),
+      rt('Routing Matrix', 'Insects Level'),
+    ],
+  ),
   insects2Density: cloneEntry(insectsDensityHelp, [ea('Insects — Layer 2', 'Density', 'walk-only', [WALK_ONLY_NOTE])]),
   insects2Temperature: cloneEntry(insectsTemperatureHelp, [ea('Insects — Layer 2', 'Temperature', 'walk-only', [WALK_ONLY_NOTE])]),
   insects2Distance: cloneEntry(insectsDistanceHelp, [ea('Insects — Layer 2', 'Distance', 'walk-only', [WALK_ONLY_NOTE])]),

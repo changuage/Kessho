@@ -1,5 +1,36 @@
 import AVFoundation
 
+@inline(__always)
+private func writeGranularStereoFrame(
+    _ left: Float,
+    _ right: Float,
+    frame: Int,
+    to buffers: UnsafeMutableAudioBufferListPointer
+) {
+    if buffers.count == 1, let data = buffers[0].mData?.assumingMemoryBound(to: Float.self) {
+        let channelCount = max(Int(buffers[0].mNumberChannels), 1)
+        let baseIndex = frame * channelCount
+        if channelCount >= 2 {
+            data[baseIndex] = left
+            data[baseIndex + 1] = right
+            if channelCount > 2 {
+                let mono = (left + right) * 0.5
+                for channel in 2..<channelCount {
+                    data[baseIndex + channel] = mono
+                }
+            }
+        } else {
+            data[frame] = (left + right) * 0.5
+        }
+        return
+    }
+
+    for (index, buffer) in buffers.enumerated() {
+        guard let data = buffer.mData?.assumingMemoryBound(to: Float.self) else { continue }
+        data[frame] = index == 0 ? left : (index == 1 ? right : (left + right) * 0.5)
+    }
+}
+
 // Pre-computed pan lookup tables used by the native granular engine.
 private let PAN_TABLE_SIZE = 256
 private var panTableL: [Float] = {
@@ -42,7 +73,26 @@ private extension Int {
 
 /// Granular synthesis processor with spray, jitter, feedback, and harmonic pitch modes
 class GranularProcessor {
-    let node: AVAudioSourceNode
+    private let stateLock = NSLock()
+    private let randomSequenceCapacity = 10_000
+    lazy var node: AVAudioSourceNode = { [weak self] in
+        let renderFormat = AVAudioFormat(standardFormatWithSampleRate: 44_100, channels: 2)!
+        return AVAudioSourceNode(format: renderFormat) { _, _, frameCount, audioBufferList -> OSStatus in
+            guard let self = self else { return noErr }
+
+            let ablPointer = UnsafeMutableAudioBufferListPointer(audioBufferList)
+
+            self.stateLock.lock()
+            defer { self.stateLock.unlock() }
+
+            for frame in 0..<Int(frameCount) {
+                let (left, right) = self.generateStereoSample()
+                writeGranularStereoFrame(left, right, frame: frame, to: ablPointer)
+            }
+
+            return noErr
+        }
+    }()
     
     // Grain parameters
     private var density: Float = 0.5          // 0-1, grains per second
@@ -77,6 +127,7 @@ class GranularProcessor {
     // Pre-seeded random sequence (matching web app for determinism)
     private var randomSequence: [Float] = []
     private var randomIndex: Int = 0
+    private var randomSequenceLength: Int = 0
     
     // Active grains
     private var grains: [Grain] = []
@@ -106,29 +157,12 @@ class GranularProcessor {
     init() {
         inputBufferL = [Float](repeating: 0, count: inputBufferSize)
         inputBufferR = [Float](repeating: 0, count: inputBufferSize)
+        randomSequence = [Float](repeating: 0.5, count: randomSequenceCapacity)
         
         // Pre-allocate grain pool (matching web app pattern - avoids allocation on audio thread)
         grains = (0..<128).map { _ in
             Grain(position: 0, startSample: 0, length: 0, playbackRate: 1.0,
                   panL: 0.5, panR: 0.5, active: false)
-        }
-        
-        node = AVAudioSourceNode { [weak self] _, _, frameCount, audioBufferList -> OSStatus in
-            guard let self = self else { return noErr }
-            
-            let ablPointer = UnsafeMutableAudioBufferListPointer(audioBufferList)
-            guard ablPointer.count >= 2,
-                  let leftBuffer = ablPointer[0].mData?.assumingMemoryBound(to: Float.self),
-                  let rightBuffer = ablPointer[1].mData?.assumingMemoryBound(to: Float.self)
-            else { return noErr }
-            
-            for frame in 0..<Int(frameCount) {
-                let (left, right) = self.generateStereoSample()
-                leftBuffer[frame] = left
-                rightBuffer[frame] = right
-            }
-            
-            return noErr
         }
         
         // Generate initial noise buffer for texture
@@ -137,9 +171,9 @@ class GranularProcessor {
     
     /// Get next value from pre-seeded random sequence (matching web app)
     private func nextRandom() -> Float {
-        if randomSequence.isEmpty { return 0.5 }
+        if randomSequenceLength == 0 { return 0.5 }
         let value = randomSequence[randomIndex]
-        randomIndex = (randomIndex + 1) % randomSequence.count
+        randomIndex = (randomIndex + 1) % randomSequenceLength
         return value
     }
     
@@ -402,12 +436,29 @@ class GranularProcessor {
     
     /// Set pre-seeded random sequence for deterministic granular synthesis (matching web app)
     func setRandomSequence(_ sequence: [Float]) {
-        self.randomSequence = sequence
-        self.randomIndex = 0
+        stateLock.lock()
+        defer { stateLock.unlock() }
+
+        let copyCount = min(sequence.count, randomSequenceCapacity)
+        if copyCount > 0 {
+            for index in 0..<copyCount {
+                randomSequence[index] = sequence[index]
+            }
+        }
+        if copyCount < randomSequenceCapacity {
+            for index in copyCount..<randomSequenceCapacity {
+                randomSequence[index] = 0.5
+            }
+        }
+        randomSequenceLength = copyCount
+        randomIndex = 0
     }
     
     /// Load a mono sample buffer for granular processing (copies to both L and R)
     func loadSample(_ samples: [Float], sampleRate: Float) {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+
         self.sampleRate = sampleRate
         self.invSampleRate = 1.0 / sampleRate
         // Copy samples to input buffers (mono to stereo)
@@ -416,17 +467,48 @@ class GranularProcessor {
             inputBufferL[i] = samples[i]
             inputBufferR[i] = samples[i]
         }
+        if copyLength < inputBufferSize {
+            for i in copyLength..<inputBufferSize {
+                inputBufferL[i] = 0
+                inputBufferR[i] = 0
+            }
+        }
     }
     
     /// Clear input/feedback buffers
     func clearFeedback() {
-        inputBufferL = [Float](repeating: 0, count: inputBufferSize)
-        inputBufferR = [Float](repeating: 0, count: inputBufferSize)
+        stateLock.lock()
+        defer { stateLock.unlock() }
+
+        for i in 0..<inputBufferSize {
+            inputBufferL[i] = 0
+            inputBufferR[i] = 0
+        }
         inputWriteIndex = 0
+    }
+
+    func hardReset() {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+
+        for i in 0..<inputBufferSize {
+            inputBufferL[i] = 0
+            inputBufferR[i] = 0
+        }
+        inputWriteIndex = 0
+        samplesSinceLastGrain = 0
+        randomIndex = 0
+        for i in 0..<grains.count {
+            grains[i].active = false
+            grains[i].startSample = 0
+        }
     }
     
     /// Write input samples to buffer (call from audio callback with live audio)
     func writeInput(left: Float, right: Float) {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+
         inputBufferL[inputWriteIndex] = left
         inputBufferR[inputWriteIndex] = right
         // Note: inputWriteIndex is advanced in generateStereoSample after processing

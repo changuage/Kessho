@@ -1,10 +1,45 @@
 import AVFoundation
 import Accelerate
 
+@inline(__always)
+private func writeSynthVoiceFrame(
+    _ sample: Float,
+    frame: Int,
+    to buffers: UnsafeMutableAudioBufferListPointer
+) {
+    if buffers.count == 1, let data = buffers[0].mData?.assumingMemoryBound(to: Float.self) {
+        let channelCount = max(Int(buffers[0].mNumberChannels), 1)
+        let baseIndex = frame * channelCount
+        for channel in 0..<channelCount {
+            data[baseIndex + channel] = sample
+        }
+        return
+    }
+
+    for buffer in buffers {
+        let data = buffer.mData?.assumingMemoryBound(to: Float.self)
+        data?[frame] = sample
+    }
+}
+
 /// Polyphonic synthesizer voice with 4 oscillators, filter, saturation, and envelope.
 /// This native implementation follows the same broad sound design as the web synth.
 class SynthVoice {
-    let node: AVAudioSourceNode
+    lazy var node: AVAudioSourceNode = { [weak self] in
+        let renderFormat = AVAudioFormat(standardFormatWithSampleRate: 44_100, channels: 2)!
+        return AVAudioSourceNode(format: renderFormat) { _, _, frameCount, audioBufferList -> OSStatus in
+            guard let self = self else { return noErr }
+
+            let ablPointer = UnsafeMutableAudioBufferListPointer(audioBufferList)
+
+            for frame in 0..<Int(frameCount) {
+                let sample = self.generateSample()
+                writeSynthVoiceFrame(sample, frame: frame, to: ablPointer)
+            }
+
+            return noErr
+        }
+    }()
     
     // 4 oscillator phases (matching web app)
     private var phase1: Float = 0  // sine
@@ -83,22 +118,6 @@ class SynthVoice {
         // Set initial oscillator gains for oscBrightness=2
         updateOscillatorGains()
         
-        node = AVAudioSourceNode { [weak self] _, _, frameCount, audioBufferList -> OSStatus in
-            guard let self = self else { return noErr }
-            
-            let ablPointer = UnsafeMutableAudioBufferListPointer(audioBufferList)
-            
-            for frame in 0..<Int(frameCount) {
-                let sample = self.generateSample()
-                
-                for buffer in ablPointer {
-                    let buf = buffer.mData?.assumingMemoryBound(to: Float.self)
-                    buf?[frame] = sample
-                }
-            }
-            
-            return noErr
-        }
     }
     
     private func generateSample() -> Float {
@@ -391,5 +410,19 @@ class SynthVoice {
     
     func setOctaveShift(_ octave: Int) {
         self.octaveShift = min(max(octave, -2), 2)
+    }
+
+    func hardReset() {
+        envelope = 0
+        envelopeStage = .off
+        velocity = 0
+        phase1 = 0
+        phase2 = 0
+        phase3 = 0
+        phase4 = 0
+        filterState = [0, 0]
+        warmthState = 0
+        presenceState = 0
+        presenceBandState = 0
     }
 }

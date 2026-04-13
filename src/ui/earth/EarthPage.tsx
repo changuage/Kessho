@@ -70,7 +70,7 @@ const EARTH_DUAL_KEYS: readonly (keyof SliderState)[] = [
   'insectsAntiphony', 'insectsClickRate', 'insectsMotion',
   'insects2Density', 'insects2Temperature', 'insects2Distance', 'insects2Proximity',
   'insects2Antiphony', 'insects2ClickRate', 'insects2Motion',
-  'waterLevel', 'insectsLevel', 'insects2Level',
+  'waterLevel', 'insectsLevel', 'insectsSharedLevel', 'insects2Level',
   'insectsReverbSend', 'waterDelayASend', 'waterDelayBSend',
   'granularWavesSend', 'granularNatureSend', 'granularWaterSend', 'granularInsectsSend',
   'waterLayerHardDrops', 'waterLayerWaterDrops', 'waterLayerTurbulence',

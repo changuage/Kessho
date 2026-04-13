@@ -131,12 +131,24 @@ type PerfMetrics = {
 type EarthTextureRuntime = {
   player: EarthTexturePlayer;
   sourceBus: GainNode;
+  gateGain: GainNode;
   preFaderBus: GainNode;
   levelGain: GainNode;
   reverbSend: GainNode;
   delayASend: GainNode | null;
   delayBSend: GainNode | null;
   granularSend: GainNode | null;
+  fadeState: EarthFadeState;
+};
+
+type EarthFadeState = {
+  initialized: boolean;
+  targetEnabled: boolean;
+  from: number;
+  to: number;
+  rampStartTime: number;
+  rampEndTime: number;
+  stopTimer: number | null;
 };
 
 type ActivePianoVoice = {
@@ -160,6 +172,21 @@ type BootCapabilities = {
   soundscapes: boolean;
   granular: boolean;
 };
+
+const EARTH_LAYER_FADE_SECONDS = 5;
+const EARTH_LAYER_FADE_MS = EARTH_LAYER_FADE_SECONDS * 1000;
+
+function createEarthFadeState(): EarthFadeState {
+  return {
+    initialized: false,
+    targetEnabled: false,
+    from: 0,
+    to: 0,
+    rampStartTime: 0,
+    rampEndTime: 0,
+    stopTimer: null,
+  };
+}
 
 export type ManualSynthSource = 'pad1' | 'pad2' | 'lead1' | 'lead2' | 'piano';
 
@@ -735,9 +762,11 @@ export class AudioEngine {
 
   // Waves sample path
   private oceanFilter: BiquadFilterNode | null = null;  // Shared waves filter
+  private oceanGateGain: GainNode | null = null;        // Waves on/off fade gate before dry/wet splits
   private oceanLevelGain: GainNode | null = null;       // Waves dry level → earthBus
   private oceanSourceBus: GainNode | null = null;       // Mono slice bus before filter
   private oceanPreFaderBus: GainNode | null = null;     // Stereo widened bus after filter
+  private readonly oceanFadeState = createEarthFadeState();
 
   // Earth texture players (mono snippets widened to stereo)
   private oceanTexturePlayer: EarthTexturePlayer | null = null;
@@ -749,6 +778,7 @@ export class AudioEngine {
 
   // Soundscapes WASM worklet (water + insects + fire engines)
   private soundscapesNode: AudioWorkletNode | null = null;
+  private waterGateGain: GainNode | null = null;        // Water on/off fade gate before dry/wet splits
   private waterPreFaderBus: GainNode | null = null;     // Pre-fader bus for reverb/granular taps
   private waterLevelGain: GainNode | null = null;       // Water dry level → earthBus
   private waterReverbSend: GainNode | null = null;
@@ -759,7 +789,7 @@ export class AudioEngine {
   private oceanDelayBSend: GainNode | null = null;
   private insectsReverbSendNode: GainNode | null = null;  // Insects reverb send
   private insectsPreFaderBus: GainNode | null = null;     // Pre-fader bus for reverb/granular taps
-  private insectsLevelGain: GainNode | null = null;       // Insects on/off gate → earthBus (level controlled by WASM-side gain)
+  private insectsLevelGain: GainNode | null = null;       // Insects dry mix → earthBus (per-layer fades happen in the worklet)
   private insectsDelayASend: GainNode | null = null;
   private insectsDelayBSend: GainNode | null = null;
   private granularWaterSend: GainNode | null = null;      // Water → granular
@@ -776,6 +806,9 @@ export class AudioEngine {
   private _scInsects1Engine = -1;
   private _scInsects2Engine = -1;
   private _scWaterPreset = -1;
+  private readonly waterFadeState = createEarthFadeState();
+  private readonly insects1FadeState = createEarthFadeState();
+  private readonly insects2FadeState = createEarthFadeState();
 
   private harmonyState: HarmonyState | null = null;
   private cofConfig: CircleOfFifthsConfig = {
@@ -1910,6 +1943,14 @@ export class AudioEngine {
     pianoRoutingActive: boolean,
     granularEnabled: boolean,
   ) {
+    const now = this.ctx?.currentTime ?? 0;
+    const oceanLayerActive = this.isOceanLayerFadeActive(state, now);
+    const natureLayerActive = this.isNatureLayerFadeActive(state, now);
+    const waterLayerActive = this.isWaterLayerFadeActive(state, now);
+    const insectsLayerActive = this.isInsectsLayerFadeActive(state, now);
+    const natureFamilySendScale = this.getNatureFamilySendScale(state);
+    const waterFamilySendScale = this.getWaterFamilySendScale(state);
+    const insectsFamilySendScale = this.getInsectsFamilySendScale(state);
     const spaceMode = computeGranularMacroModel(state, (key, fallback) => this.shv(key as string, fallback)).spaceMode;
     const delayBGranularReturn = this.shv('delayBGranularSend', state.delayBGranularSend ?? 0);
     const granularDelaySourceLevel = (granularEnabled && delayBGranularReturn < 0.0001) ? (state.granularDelayBSend ?? 0) : 0;
@@ -1921,10 +1962,10 @@ export class AudioEngine {
       (lead2RoutingActive && (state.lead2DelayBSend ?? 0) > 0.0001) ||
       (pianoRoutingActive && (state.pianoDelayBSend ?? 0) > 0.0001) ||
       (state.drumEnabled && (state.drumDelayBSend ?? 0) > 0.0001) ||
-      (state.oceanSampleEnabled && (state.oceanDelayBSend ?? 0) > 0.0001) ||
-      ((state.birdsEnabled || state.birds2Enabled || state.frogsEnabled) && (state.natureDelayBSend ?? 0) > 0.0001) ||
-      (state.waterEnabled && (state.waterDelayBSend ?? 0) > 0.0001) ||
-      ((state.insectsEnabled || state.insects2Enabled) && (state.insDelayBSend ?? 0) > 0.0001) ||
+      (oceanLayerActive && (state.oceanDelayBSend ?? 0) > 0.0001) ||
+      (natureLayerActive && this.scaleEarthSend(state.natureDelayBSend ?? 0, natureFamilySendScale) > 0.0001) ||
+      (waterLayerActive && this.scaleEarthSend(state.waterDelayBSend ?? 0, waterFamilySendScale) > 0.0001) ||
+      (insectsLayerActive && this.scaleEarthSend(state.insDelayBSend ?? 0, insectsFamilySendScale) > 0.0001) ||
       (crossFeeds.aToB > 0.0001);
     const delayBEnabled = granularDelaySourceLevel > 0.0001 || delayBExternalFeedActive;
 
@@ -2271,7 +2312,10 @@ export class AudioEngine {
   ): EarthTextureRuntime {
     const sourceBus = ctx.createGain();
     sourceBus.gain.value = 1;
-    const preFaderBus = this.createHaasWidenedBus(ctx, sourceBus, {
+    const gateGain = ctx.createGain();
+    gateGain.gain.value = 0;
+    sourceBus.connect(gateGain);
+    const preFaderBus = this.createHaasWidenedBus(ctx, gateGain, {
       delayMs: config.delayMs,
       sideGain: config.sideGain,
       centerGain: config.centerGain,
@@ -2296,17 +2340,20 @@ export class AudioEngine {
     return {
       player,
       sourceBus,
+      gateGain,
       preFaderBus,
       levelGain,
       reverbSend,
       delayASend: null,
       delayBSend: null,
       granularSend: null,
+      fadeState: createEarthFadeState(),
     };
   }
 
   private destroyEarthTextureRuntime(runtime: EarthTextureRuntime | null): null {
     if (!runtime) return null;
+    this.clearEarthFadeStopTimer(runtime.fadeState);
     runtime.player.dispose();
     try { runtime.levelGain.disconnect(); } catch { /* */ }
     try { runtime.reverbSend.disconnect(); } catch { /* */ }
@@ -2314,8 +2361,163 @@ export class AudioEngine {
     try { runtime.delayBSend?.disconnect(); } catch { /* */ }
     try { runtime.granularSend?.disconnect(); } catch { /* */ }
     try { runtime.preFaderBus.disconnect(); } catch { /* */ }
+    try { runtime.gateGain.disconnect(); } catch { /* */ }
     try { runtime.sourceBus.disconnect(); } catch { /* */ }
     return null;
+  }
+
+  private clearEarthFadeStopTimer(fadeState: EarthFadeState): void {
+    if (fadeState.stopTimer !== null) {
+      clearTimeout(fadeState.stopTimer);
+      fadeState.stopTimer = null;
+    }
+  }
+
+  private resetEarthFadeState(fadeState: EarthFadeState): void {
+    this.clearEarthFadeStopTimer(fadeState);
+    fadeState.initialized = false;
+    fadeState.targetEnabled = false;
+    fadeState.from = 0;
+    fadeState.to = 0;
+    fadeState.rampStartTime = 0;
+    fadeState.rampEndTime = 0;
+  }
+
+  private getEarthFadeValue(fadeState: EarthFadeState, now: number): number {
+    if (!fadeState.initialized) return 0;
+    if (fadeState.rampEndTime <= fadeState.rampStartTime) return fadeState.to;
+    if (now <= fadeState.rampStartTime) return fadeState.from;
+    if (now >= fadeState.rampEndTime) return fadeState.to;
+    const progress = (now - fadeState.rampStartTime) / (fadeState.rampEndTime - fadeState.rampStartTime);
+    return fadeState.from + (fadeState.to - fadeState.from) * progress;
+  }
+
+  private isEarthFadeActive(fadeState: EarthFadeState, now: number): boolean {
+    return fadeState.targetEnabled || this.getEarthFadeValue(fadeState, now) > 0.0001;
+  }
+
+  private isOceanLayerFadeActive(state: SliderState, now = this.ctx?.currentTime ?? 0): boolean {
+    return !!state.oceanSampleEnabled || this.isEarthFadeActive(this.oceanFadeState, now);
+  }
+
+  private isNatureLayerFadeActive(state: SliderState, now = this.ctx?.currentTime ?? 0): boolean {
+    return (
+      !!state.birdsEnabled ||
+      !!state.birds2Enabled ||
+      !!state.frogsEnabled ||
+      (this.birdsTexture ? this.isEarthFadeActive(this.birdsTexture.fadeState, now) : false) ||
+      (this.birds2Texture ? this.isEarthFadeActive(this.birds2Texture.fadeState, now) : false) ||
+      (this.frogsTexture ? this.isEarthFadeActive(this.frogsTexture.fadeState, now) : false)
+    );
+  }
+
+  private isWaterLayerFadeActive(state: SliderState, now = this.ctx?.currentTime ?? 0): boolean {
+    return !!state.waterEnabled || this.isEarthFadeActive(this.waterFadeState, now);
+  }
+
+  private isInsectsLayerFadeActive(state: SliderState, now = this.ctx?.currentTime ?? 0): boolean {
+    return (
+      !!state.insectsEnabled ||
+      !!state.insects2Enabled ||
+      this.isEarthFadeActive(this.insects1FadeState, now) ||
+      this.isEarthFadeActive(this.insects2FadeState, now)
+    );
+  }
+
+  private getEarthLayerOutputScale(level: number | undefined, masterLevel = 1): number {
+    return Math.max(0, level ?? 0) * Math.max(0, masterLevel);
+  }
+
+  private scaleEarthSend(send: number | undefined, levelScale: number): number {
+    const safeSend = Math.max(0, send ?? 0);
+    if (safeSend <= 0.0001 || levelScale <= 0.0001) return 0;
+    return safeSend * levelScale;
+  }
+
+  private getNatureFamilySendScale(state: SliderState): number {
+    return this.getEarthLayerOutputScale(
+      Math.max(state.birdsLevel ?? 0, state.birds2Level ?? 0, state.frogsLevel ?? 0),
+      state.natureLevel ?? 1,
+    );
+  }
+
+  private getWaterFamilySendScale(state: SliderState): number {
+    return Math.max(0, state.waterLevel ?? 0);
+  }
+
+  private getInsectsSharedMasterScale(state: SliderState): number {
+    return Math.max(0, state.insectsSharedLevel ?? 1);
+  }
+
+  private getInsectsFamilySendScale(state: SliderState): number {
+    return this.getEarthLayerOutputScale(
+      Math.max(state.insectsLevel ?? 0, state.insects2Level ?? 0),
+      this.getInsectsSharedMasterScale(state),
+    );
+  }
+
+  private syncEarthFadeState(
+    fadeState: EarthFadeState,
+    enabled: boolean,
+    now: number,
+    handlers: {
+      onInit: (target: number) => void;
+      onTransition: (current: number, target: number, endTime: number) => void;
+      onFadeOutComplete?: () => void;
+    },
+  ): void {
+    if (!fadeState.initialized) {
+      this.clearEarthFadeStopTimer(fadeState);
+      const target = enabled ? 1 : 0;
+      fadeState.initialized = true;
+      fadeState.targetEnabled = enabled;
+      fadeState.from = target;
+      fadeState.to = target;
+      fadeState.rampStartTime = now;
+      fadeState.rampEndTime = now;
+      handlers.onInit(target);
+      return;
+    }
+
+    if (fadeState.targetEnabled === enabled) return;
+
+    const current = this.getEarthFadeValue(fadeState, now);
+    const target = enabled ? 1 : 0;
+    const endTime = now + EARTH_LAYER_FADE_SECONDS;
+
+    this.clearEarthFadeStopTimer(fadeState);
+    fadeState.targetEnabled = enabled;
+    fadeState.from = current;
+    fadeState.to = target;
+    fadeState.rampStartTime = now;
+    fadeState.rampEndTime = endTime;
+    handlers.onTransition(current, target, endTime);
+
+    if (!enabled && handlers.onFadeOutComplete) {
+      fadeState.stopTimer = window.setTimeout(() => {
+        fadeState.stopTimer = null;
+        if (!fadeState.targetEnabled) handlers.onFadeOutComplete?.();
+      }, EARTH_LAYER_FADE_MS);
+    }
+  }
+
+  private setAudioParamImmediate(param: AudioParam | null | undefined, value: number, now: number): void {
+    if (!param) return;
+    param.cancelScheduledValues(now);
+    param.setValueAtTime(value, now);
+  }
+
+  private rampAudioParam(
+    param: AudioParam | null | undefined,
+    current: number,
+    target: number,
+    now: number,
+    endTime: number,
+  ): void {
+    if (!param) return;
+    param.cancelScheduledValues(now);
+    param.setValueAtTime(current, now);
+    param.linearRampToValueAtTime(target, endTime);
   }
 
   private getDrumDelaySendProfile(state: SliderState): number {
@@ -2442,6 +2644,14 @@ export class AudioEngine {
   }
 
   private isGranularBusArmed(state: SliderState, lead1WetActive: boolean, lead2WetActive: boolean, pianoWetActive: boolean): boolean {
+    const now = this.ctx?.currentTime ?? 0;
+    const oceanLayerActive = this.isOceanLayerFadeActive(state, now);
+    const natureLayerActive = this.isNatureLayerFadeActive(state, now);
+    const waterLayerActive = this.isWaterLayerFadeActive(state, now);
+    const insectsLayerActive = this.isInsectsLayerFadeActive(state, now);
+    const natureFamilySendScale = this.getNatureFamilySendScale(state);
+    const waterFamilySendScale = this.getWaterFamilySendScale(state);
+    const insectsFamilySendScale = this.getInsectsFamilySendScale(state);
     const hasIncomingFeed =
       ((state.padEnabled ?? true) && (state.granularPad1Send ?? 0) > 0.0001) ||
       ((state.pad2Enabled ?? false) && (state.granularPad2Send ?? 0) > 0.0001) ||
@@ -2449,10 +2659,10 @@ export class AudioEngine {
       (lead2WetActive && (state.granularLead2Send ?? 0) > 0.0001) ||
       (pianoWetActive && (state.granularPianoSend ?? 0) > 0.0001) ||
       (state.drumEnabled && (state.granularDrumSend ?? 0) > 0.0001) ||
-      (state.oceanSampleEnabled && (state.granularWavesSend ?? 0) > 0.0001) ||
-      ((state.birdsEnabled || state.birds2Enabled || state.frogsEnabled) && (state.granularNatureSend ?? 0) > 0.0001) ||
-      (state.waterEnabled && (state.granularWaterSend ?? 0) > 0.0001) ||
-      ((state.insectsEnabled || state.insects2Enabled) && (state.granularInsectsSend ?? 0) > 0.0001) ||
+      (oceanLayerActive && (state.granularWavesSend ?? 0) > 0.0001) ||
+      (natureLayerActive && this.scaleEarthSend(state.granularNatureSend ?? 0, natureFamilySendScale) > 0.0001) ||
+      (waterLayerActive && this.scaleEarthSend(state.granularWaterSend ?? 0, waterFamilySendScale) > 0.0001) ||
+      (insectsLayerActive && this.scaleEarthSend(state.granularInsectsSend ?? 0, insectsFamilySendScale) > 0.0001) ||
       (this.shv('delayAGranularSend', state.delayAGranularSend ?? 0) > 0.0001) ||
       (this.shv('delayBGranularSend', state.delayBGranularSend ?? 0) > 0.0001);
     const hasOutgoingPath =
@@ -2474,6 +2684,14 @@ export class AudioEngine {
     delayAEnabled: boolean,
     delayBEnabled: boolean,
   ): boolean {
+    const now = this.ctx?.currentTime ?? 0;
+    const oceanLayerActive = this.isOceanLayerFadeActive(state, now);
+    const natureLayerActive = this.isNatureLayerFadeActive(state, now);
+    const waterLayerActive = this.isWaterLayerFadeActive(state, now);
+    const insectsLayerActive = this.isInsectsLayerFadeActive(state, now);
+    const natureFamilySendScale = this.getNatureFamilySendScale(state);
+    const waterFamilySendScale = this.getWaterFamilySendScale(state);
+    const insectsFamilySendScale = this.getInsectsFamilySendScale(state);
     return (
       (pad1Active && (state.pad1ReverbSend ?? 0) > 0.0001) ||
       (pad2Active && (state.pad2ReverbSend ?? 0) > 0.0001) ||
@@ -2484,10 +2702,10 @@ export class AudioEngine {
       (granularBusArmed && this.shv('granularReverbSend', state.granularReverbSend ?? 0) > 0.0001) ||
       (delayAEnabled && this.shv('delayAReverbSend', state.delayAReverbSend ?? 0) > 0.0001) ||
       (delayBEnabled && this.shv('granularDelayReverbSend', state.granularDelayReverbSend ?? 0) > 0.0001) ||
-      (state.oceanSampleEnabled && (state.oceanReverbSend ?? 0) > 0.0001) ||
-      ((state.birdsEnabled || state.birds2Enabled || state.frogsEnabled) && (state.natureReverbSend ?? 0) > 0.0001) ||
-      (state.waterEnabled && (state.waterReverbSend ?? 0) > 0.0001) ||
-      ((state.insectsEnabled || state.insects2Enabled) && (state.insectsReverbSend ?? 0) > 0.0001)
+      (oceanLayerActive && (state.oceanReverbSend ?? 0) > 0.0001) ||
+      (natureLayerActive && this.scaleEarthSend(state.natureReverbSend ?? 0, natureFamilySendScale) > 0.0001) ||
+      (waterLayerActive && this.scaleEarthSend(state.waterReverbSend ?? 0, waterFamilySendScale) > 0.0001) ||
+      (insectsLayerActive && this.scaleEarthSend(state.insectsReverbSend ?? 0, insectsFamilySendScale) > 0.0001)
     );
   }
 
@@ -2499,6 +2717,14 @@ export class AudioEngine {
     granularBusArmed: boolean,
     delayBEnabled = false,
   ) {
+    const now = this.ctx?.currentTime ?? 0;
+    const oceanLayerActive = this.isOceanLayerFadeActive(state, now);
+    const natureLayerActive = this.isNatureLayerFadeActive(state, now);
+    const waterLayerActive = this.isWaterLayerFadeActive(state, now);
+    const insectsLayerActive = this.isInsectsLayerFadeActive(state, now);
+    const natureFamilySendScale = this.getNatureFamilySendScale(state);
+    const waterFamilySendScale = this.getWaterFamilySendScale(state);
+    const insectsFamilySendScale = this.getInsectsFamilySendScale(state);
     const { leftMs, rightMs } = this.getSharedDelayATimes(state);
     const drumDelayProfile = this.getDrumDelaySendProfile(state);
     const crossFeeds = this.getSafeDelayCrossFeedLevels(state);
@@ -2521,10 +2747,10 @@ export class AudioEngine {
       (state.drumEnabled && drumDelayProfile * (state.drumDelayASend ?? 0) > 0.0001) ||
       (granularBusArmed && (state.granularDelayASend ?? 0) > 0.0001) ||
       (delayBEnabled && crossFeeds.bToA > 0.0001) ||
-      (state.oceanSampleEnabled && (state.oceanDelayASend ?? 0) > 0.0001) ||
-      ((state.birdsEnabled || state.birds2Enabled || state.frogsEnabled) && (state.natureDelayASend ?? 0) > 0.0001) ||
-      (state.waterEnabled && (state.waterDelayASend ?? 0) > 0.0001) ||
-      ((state.insectsEnabled || state.insects2Enabled) && (state.insDelayASend ?? 0) > 0.0001);
+      (oceanLayerActive && (state.oceanDelayASend ?? 0) > 0.0001) ||
+      (natureLayerActive && this.scaleEarthSend(state.natureDelayASend ?? 0, natureFamilySendScale) > 0.0001) ||
+      (waterLayerActive && this.scaleEarthSend(state.waterDelayASend ?? 0, waterFamilySendScale) > 0.0001) ||
+      (insectsLayerActive && this.scaleEarthSend(state.insDelayASend ?? 0, insectsFamilySendScale) > 0.0001);
 
     return {
       enabled: delayAExternalFeedActive,
@@ -3592,7 +3818,9 @@ export class AudioEngine {
       const lead2RouteActive = this.isLead2RouteActive(sliderState);
       const shouldLoadReverb = requiredBootCapabilities.reverb;
       const shouldLoadSpectralFreeze = requiredBootCapabilities.spectralFreeze;
-      const shouldLoadSoundscapes = requiredBootCapabilities.soundscapes;
+      // Load soundscapes eagerly on first boot so enabling water/insects later
+      // can start them in-place without rebuilding the whole audio graph.
+      const shouldLoadSoundscapes = true;
       const shouldLoadGranular = requiredBootCapabilities.granular;
       const shouldLoadPadWasm = sliderState.padEnabled !== false || !!sliderState.pad2Enabled || this.euclideanUsesPadSource(sliderState);
       const shouldLoadLeadFm = lead1RouteActive || lead2RouteActive;
@@ -3710,7 +3938,10 @@ export class AudioEngine {
       })() : Promise.resolve(),
       ]);
 
-      this.bootCapabilities = { ...requiredBootCapabilities };
+      this.bootCapabilities = {
+        ...requiredBootCapabilities,
+        soundscapes: true,
+      };
 
       // Create audio graph
       await this.createAudioGraph();
@@ -3765,11 +3996,14 @@ export class AudioEngine {
       this.drumSynth.start();
     }
 
-    // Media session is now handled in App.tsx for proper iOS support
+    this.isStarting = false;
+
+    // Media session is now handled in App.tsx for proper iOS support.
+    // Apply params only after the startup guard is lowered so Earth textures,
+    // soundscape engines, and other runtime-controlled sources actually start.
     this.applyParams(this.sliderState!);
 
     this.isRunning = true;
-    this.isStarting = false;
     this.notifyStateChange();
   }
 
@@ -3846,8 +4080,56 @@ export class AudioEngine {
       this.leadMorphTimer = null;
     }
 
+    const now = this.ctx?.currentTime ?? 0;
+    this.setAudioParamImmediate(this.oceanGateGain?.gain, 0, now);
+    this.setAudioParamImmediate(this.waterGateGain?.gain, 0, now);
+    this.setAudioParamImmediate(this.birdsTexture?.gateGain.gain, 0, now);
+    this.setAudioParamImmediate(this.birds2Texture?.gateGain.gain, 0, now);
+    this.setAudioParamImmediate(this.frogsTexture?.gateGain.gain, 0, now);
+    this.resetEarthFadeState(this.oceanFadeState);
+    this.resetEarthFadeState(this.waterFadeState);
+    this.resetEarthFadeState(this.insects1FadeState);
+    this.resetEarthFadeState(this.insects2FadeState);
+    if (this.birdsTexture) this.resetEarthFadeState(this.birdsTexture.fadeState);
+    if (this.birds2Texture) this.resetEarthFadeState(this.birds2Texture.fadeState);
+    if (this.frogsTexture) this.resetEarthFadeState(this.frogsTexture.fadeState);
+
     if (this.graphBootstrapped && !this.forceHardGraphTeardown) {
       this.cancelPianoPriorityWarmup();
+      if (this.soundscapesNode && this.soundscapesWasmReady) {
+        try {
+          this.soundscapesNode.port.postMessage({ type: 'insectsGate', enabled: false, fadeSeconds: 0 });
+          this.soundscapesNode.port.postMessage({ type: 'insects2Gate', enabled: false, fadeSeconds: 0 });
+          if (this._scWaterStarted) this.soundscapesNode.port.postMessage({ type: 'waterStop' });
+          if (this._scInsects1Started) this.soundscapesNode.port.postMessage({ type: 'insectsStop' });
+          if (this._scInsects2Started) this.soundscapesNode.port.postMessage({ type: 'insects2Stop' });
+        } catch {
+          // Ignore stale worklet ports during soft-stop.
+        }
+      }
+      this._scWaterStarted = false;
+      this._scInsects1Started = false;
+      this._scInsects2Started = false;
+
+      // Mute soundscapes outputs immediately so water/insects cannot linger if a
+      // suspended context defers worklet stop messages until the next resume.
+      this.waterLevelGain?.gain.cancelScheduledValues(now);
+      this.waterLevelGain?.gain.setValueAtTime(0, now);
+      this.waterReverbSend?.gain.cancelScheduledValues(now);
+      this.waterReverbSend?.gain.setValueAtTime(0, now);
+      this.waterDelayASend?.gain.cancelScheduledValues(now);
+      this.waterDelayASend?.gain.setValueAtTime(0, now);
+      this.waterDelayBSend?.gain.cancelScheduledValues(now);
+      this.waterDelayBSend?.gain.setValueAtTime(0, now);
+      this.insectsLevelGain?.gain.cancelScheduledValues(now);
+      this.insectsLevelGain?.gain.setValueAtTime(0, now);
+      this.insectsReverbSendNode?.gain.cancelScheduledValues(now);
+      this.insectsReverbSendNode?.gain.setValueAtTime(0, now);
+      this.insectsDelayASend?.gain.cancelScheduledValues(now);
+      this.insectsDelayASend?.gain.setValueAtTime(0, now);
+      this.insectsDelayBSend?.gain.cancelScheduledValues(now);
+      this.insectsDelayBSend?.gain.setValueAtTime(0, now);
+
       this.drumSynth?.stop();
       this.oceanTexturePlayer?.stop();
       this.birdsTexture?.player.stop();
@@ -3894,6 +4176,10 @@ export class AudioEngine {
       try { this.oceanLevelGain.disconnect(); } catch { /* */ }
       this.oceanLevelGain = null;
     }
+    if (this.oceanGateGain) {
+      try { this.oceanGateGain.disconnect(); } catch { /* */ }
+      this.oceanGateGain = null;
+    }
     if (this.natureBus) {
       try { this.natureBus.disconnect(); } catch { /* */ }
       this.natureBus = null;
@@ -3922,6 +4208,10 @@ export class AudioEngine {
     if (this.waterPreFaderBus) {
       try { this.waterPreFaderBus.disconnect(); } catch { /* */ }
       this.waterPreFaderBus = null;
+    }
+    if (this.waterGateGain) {
+      try { this.waterGateGain.disconnect(); } catch { /* */ }
+      this.waterGateGain = null;
     }
     if (this.waterLevelGain) {
       try { this.waterLevelGain.disconnect(); } catch { /* */ }
@@ -4634,6 +4924,8 @@ export class AudioEngine {
     // Soundscapes gain nodes — pre-fader buses for reverb/granular taps
     this.waterPreFaderBus = ctx.createGain();
     this.waterPreFaderBus.gain.value = 1.0;
+    this.waterGateGain = ctx.createGain();
+    this.waterGateGain.gain.value = 0;
     this.waterLevelGain = ctx.createGain();
     this.waterLevelGain.gain.value = 0;
     this.waterReverbSend = ctx.createGain();
@@ -4660,6 +4952,8 @@ export class AudioEngine {
 
     this.oceanSourceBus = ctx.createGain();
     this.oceanSourceBus.gain.value = 1.0;
+    this.oceanGateGain = ctx.createGain();
+    this.oceanGateGain.gain.value = 0;
     this.oceanTexturePlayer = new EarthTexturePlayer(ctx, this.oceanSourceBus, {
       fileName: 'Ghetary-Waves-Rocks_120s_m_441_cl-normalized.ogg',
       sliceDuration: 22,
@@ -5042,7 +5336,8 @@ export class AudioEngine {
       pan: 0.85,
     });
 
-    this.oceanSourceBus!.connect(this.oceanFilter);
+    this.oceanSourceBus!.connect(this.oceanGateGain!);
+    this.oceanGateGain!.connect(this.oceanFilter);
     // Reverb send (pre-fader — taps after filter and widening, before oceanLevelGain)
     if (this.oceanReverbSendNode) {
       this.oceanPreFaderBus.connect(this.oceanReverbSendNode);
@@ -5097,7 +5392,8 @@ export class AudioEngine {
 
     // Soundscapes WASM → pre-fader buses
     if (this.soundscapesNode) {
-      this.soundscapesNode.connect(this.waterPreFaderBus!, 0);     // output[0] water
+      this.soundscapesNode.connect(this.waterGateGain!, 0);        // output[0] water
+      this.waterGateGain!.connect(this.waterPreFaderBus!);
       this.soundscapesNode.connect(this.insectsLevelGain!, 1);     // output[1] insects dry
       this.soundscapesNode.connect(this.insectsPreFaderBus!, 2);   // output[2] insects pre-fader
     }
@@ -7159,6 +7455,9 @@ export class AudioEngine {
     const lead2Lvl = shv('lead2Level', state.lead2Level ?? 0.6);
     const pianoLvl = shv('pianoLevel', state.pianoLevel ?? 0.75);
     const granularBusArmed = this.isGranularBusArmed(state, lead1WetActive, lead2WetActive, pianoWetActive);
+    const oceanLayerActive = this.isOceanLayerFadeActive(state, now);
+    const waterLayerActive = this.isWaterLayerFadeActive(state, now);
+    const insectsLayerActive = this.isInsectsLayerFadeActive(state, now);
     let delayBEnabled = false;
 
     if (pianoWetActive) {
@@ -7191,9 +7490,13 @@ export class AudioEngine {
       const lead2Send = (granularEnabled && lead2RoutingActive) ? shv('granularLead2Send', state.granularLead2Send ?? 0.0) : 0;
       const pianoSend = (granularEnabled && pianoRoutingActive) ? shv('granularPianoSend', state.granularPianoSend ?? 0.0) : 0;
       const drumSend = (granularEnabled && state.drumEnabled) ? (state.granularDrumSend ?? 0.0) : 0;
-      const wavesSend = (granularEnabled && state.oceanSampleEnabled) ? (state.granularWavesSend ?? 0.0) : 0;
-      const waterSend = (granularEnabled && state.waterEnabled) ? (state.granularWaterSend ?? 0.0) : 0;
-      const insectsSend = (granularEnabled && (state.insectsEnabled || state.insects2Enabled)) ? (state.granularInsectsSend ?? 0.0) : 0;
+      const wavesSend = (granularEnabled && oceanLayerActive) ? (state.granularWavesSend ?? 0.0) : 0;
+      const waterSend = (granularEnabled && waterLayerActive)
+        ? this.scaleEarthSend(state.granularWaterSend ?? 0.0, this.getWaterFamilySendScale(state))
+        : 0;
+      const insectsSend = (granularEnabled && insectsLayerActive)
+        ? this.scaleEarthSend(state.granularInsectsSend ?? 0.0, this.getInsectsSharedMasterScale(state))
+        : 0;
       this.granularPad1Send?.gain.setTargetAtTime(pad1Send, now, smoothTime);
       this.granularPad2Send?.gain.setTargetAtTime(pad2Send, now, smoothTime);
       this.granularLead1Send?.gain.setTargetAtTime(lead1Send, now, smoothTime);
@@ -7346,13 +7649,29 @@ export class AudioEngine {
     this.drumDelayASend?.gain.setTargetAtTime(drumDelaySend, now, smoothTime);
     this.drumDelayBSend?.gain.setTargetAtTime(state.drumEnabled ? (state.drumDelayBSend ?? 0) : 0, now, smoothTime);
     this.granularDelayASend?.gain.setTargetAtTime(granularBusArmed ? (state.granularDelayASend ?? 0) : 0, now, smoothTime);
-    this.oceanDelayASend?.gain.setTargetAtTime(state.oceanSampleEnabled ? (state.oceanDelayASend ?? 0) : 0, now, smoothTime);
-    this.oceanDelayBSend?.gain.setTargetAtTime(state.oceanSampleEnabled ? (state.oceanDelayBSend ?? 0) : 0, now, smoothTime);
-    this.waterDelayASend?.gain.setTargetAtTime(state.waterEnabled ? (state.waterDelayASend ?? 0) : 0, now, smoothTime);
-    this.waterDelayBSend?.gain.setTargetAtTime(state.waterEnabled ? (state.waterDelayBSend ?? 0) : 0, now, smoothTime);
-    const insectsDelaySendActive = state.insectsEnabled || state.insects2Enabled;
-    this.insectsDelayASend?.gain.setTargetAtTime(insectsDelaySendActive ? (state.insDelayASend ?? 0) : 0, now, smoothTime);
-    this.insectsDelayBSend?.gain.setTargetAtTime(insectsDelaySendActive ? (state.insDelayBSend ?? 0) : 0, now, smoothTime);
+    this.oceanDelayASend?.gain.setTargetAtTime(oceanLayerActive ? (state.oceanDelayASend ?? 0) : 0, now, smoothTime);
+    this.oceanDelayBSend?.gain.setTargetAtTime(oceanLayerActive ? (state.oceanDelayBSend ?? 0) : 0, now, smoothTime);
+    this.waterDelayASend?.gain.setTargetAtTime(
+      waterLayerActive ? this.scaleEarthSend(state.waterDelayASend ?? 0, this.getWaterFamilySendScale(state)) : 0,
+      now,
+      smoothTime,
+    );
+    this.waterDelayBSend?.gain.setTargetAtTime(
+      waterLayerActive ? this.scaleEarthSend(state.waterDelayBSend ?? 0, this.getWaterFamilySendScale(state)) : 0,
+      now,
+      smoothTime,
+    );
+    const insectsDelaySendActive = insectsLayerActive;
+    this.insectsDelayASend?.gain.setTargetAtTime(
+      insectsDelaySendActive ? this.scaleEarthSend(state.insDelayASend ?? 0, this.getInsectsSharedMasterScale(state)) : 0,
+      now,
+      smoothTime,
+    );
+    this.insectsDelayBSend?.gain.setTargetAtTime(
+      insectsDelaySendActive ? this.scaleEarthSend(state.insDelayBSend ?? 0, this.getInsectsSharedMasterScale(state)) : 0,
+      now,
+      smoothTime,
+    );
 
     // Per-lead dry-path level only. FX sends stay independent so lead can be fully wet at dry level 0.
     this.lead1LevelGain?.gain.setTargetAtTime(lead1Fader, now, smoothTime);
@@ -7553,14 +7872,20 @@ export class AudioEngine {
     
     // ── Soundscapes WASM — water + insects + fire ──
     if (this.soundscapesNode && this.soundscapesWasmReady) {
-      // Water start/stop — keep running for wet-only reverb sends too
-      const waterShouldRun = state.waterEnabled && (
-        state.waterLevel > 0 ||
-        state.waterReverbSend > 0 ||
-        (state.waterDelayASend ?? 0) > 0 ||
-        (state.waterDelayBSend ?? 0) > 0 ||
-        (state.granularWaterSend ?? 0) > 0
-      );
+      this.syncEarthFadeState(this.waterFadeState, state.waterEnabled, now, {
+        onInit: (target) => this.setAudioParamImmediate(this.waterGateGain?.gain, target, now),
+        onTransition: (current, target, endTime) => this.rampAudioParam(this.waterGateGain?.gain, current, target, now, endTime),
+        onFadeOutComplete: () => {
+          if (this._scWaterStarted && this.soundscapesNode) {
+            this.soundscapesNode.port.postMessage({ type: 'waterStop' });
+            this._scWaterStarted = false;
+          }
+        },
+      });
+      const waterSignalActive = this.getWaterFamilySendScale(state) > 0.0001;
+
+      // Water start/stop follows the shared water level so dry and wet scale together.
+      const waterShouldRun = this.isEarthFadeActive(this.waterFadeState, now) && waterSignalActive;
       if (waterShouldRun && !this._scWaterStarted) {
         this.soundscapesNode.port.postMessage({ type: 'waterStart' });
         this._scWaterStarted = true;
@@ -7576,143 +7901,156 @@ export class AudioEngine {
         this._scWaterPreset = waterPresetIdx;
       }
 
-      // Water synthesis params (only send when water is enabled)
-      if (state.waterEnabled) {
-        // Water synthesis params with dualRange min/max support
-        const wInt = this.dualRanges['waterIntensity'];
-        const wDist = this.dualRanges['waterDistance'];
-        const wBf = this.dualRanges['waterBaseFreq'];
-        const wDs = this.dualRanges['waterDropSize'];
-        const wHd = this.dualRanges['waterHardness'];
-        const wGt = this.dualRanges['waterGlassThickness'];
-        const waterParams = {
-          intensityMin: wInt ? wInt.min : state.waterIntensity,
-          intensityMax: wInt ? wInt.max : state.waterIntensity,
-          distanceMin: wDist ? wDist.min : state.waterDistance,
-          distanceMax: wDist ? wDist.max : state.waterDistance,
-          baseFreqMin: wBf ? wBf.min : state.waterBaseFreq,
-          baseFreqMax: wBf ? wBf.max : state.waterBaseFreq,
-          dropSizeMin: wDs ? wDs.min : state.waterDropSize,
-          dropSizeMax: wDs ? wDs.max : state.waterDropSize,
-          hardnessMin: wHd ? wHd.min : state.waterHardness,
-          hardnessMax: wHd ? wHd.max : state.waterHardness,
-          glassThicknessMin: wGt ? wGt.min : state.waterGlassThickness,
-          glassThicknessMax: wGt ? wGt.max : state.waterGlassThickness,
-        };
-        this.postCachedWorkletMessage('soundscapes:waterParams', this.soundscapesNode, {
-          type: 'waterParams',
-          params: waterParams,
-        }, waterParams);
+      // Water synthesis params with dualRange min/max support
+      const wInt = this.dualRanges['waterIntensity'];
+      const wDist = this.dualRanges['waterDistance'];
+      const wBf = this.dualRanges['waterBaseFreq'];
+      const wDs = this.dualRanges['waterDropSize'];
+      const wHd = this.dualRanges['waterHardness'];
+      const wGt = this.dualRanges['waterGlassThickness'];
+      const waterParams = {
+        intensityMin: wInt ? wInt.min : state.waterIntensity,
+        intensityMax: wInt ? wInt.max : state.waterIntensity,
+        distanceMin: wDist ? wDist.min : state.waterDistance,
+        distanceMax: wDist ? wDist.max : state.waterDistance,
+        baseFreqMin: wBf ? wBf.min : state.waterBaseFreq,
+        baseFreqMax: wBf ? wBf.max : state.waterBaseFreq,
+        dropSizeMin: wDs ? wDs.min : state.waterDropSize,
+        dropSizeMax: wDs ? wDs.max : state.waterDropSize,
+        hardnessMin: wHd ? wHd.min : state.waterHardness,
+        hardnessMax: wHd ? wHd.max : state.waterHardness,
+        glassThicknessMin: wGt ? wGt.min : state.waterGlassThickness,
+        glassThicknessMax: wGt ? wGt.max : state.waterGlassThickness,
+      };
+      this.postCachedWorkletMessage('soundscapes:waterParams', this.soundscapesNode, {
+        type: 'waterParams',
+        params: waterParams,
+      }, waterParams);
 
-        const waterLayerDetailParams = {
-          hardRate: shv('waterHardDropRate', state.waterHardDropRate),
-          hardTone: shv('waterHardDropLPF', state.waterHardDropLPF),
-          hardCharacter: shv('waterHardDropTone', state.waterHardDropTone),
-          waterRate: shv('waterWaterDropRate', state.waterWaterDropRate),
-          waterTone: shv('waterWaterDropLPF', state.waterWaterDropLPF),
-          bubbleRate: shv('waterBubblingRate', state.waterBubblingRate),
-          bubbleTone: shv('waterBubblingLPF', state.waterBubblingLPF),
-        };
-        this.postCachedWorkletMessage('soundscapes:waterLayerDetailParams', this.soundscapesNode, {
-          type: 'waterLayerDetailParams',
-          ...waterLayerDetailParams,
-        }, waterLayerDetailParams);
+      const waterLayerDetailParams = {
+        hardRate: shv('waterHardDropRate', state.waterHardDropRate),
+        hardTone: shv('waterHardDropLPF', state.waterHardDropLPF),
+        hardCharacter: shv('waterHardDropTone', state.waterHardDropTone),
+        waterRate: shv('waterWaterDropRate', state.waterWaterDropRate),
+        waterTone: shv('waterWaterDropLPF', state.waterWaterDropLPF),
+        bubbleRate: shv('waterBubblingRate', state.waterBubblingRate),
+        bubbleTone: shv('waterBubblingLPF', state.waterBubblingLPF),
+      };
+      this.postCachedWorkletMessage('soundscapes:waterLayerDetailParams', this.soundscapesNode, {
+        type: 'waterLayerDetailParams',
+        ...waterLayerDetailParams,
+      }, waterLayerDetailParams);
 
-        // Water layer mix
-        const waterLayerMix = {
-          hardDrops: state.waterLayerHardDrops,
-          waterDrops: state.waterLayerWaterDrops,
-          turbulence: state.waterLayerTurbulence,
-          bubbling: state.waterLayerBubbling,
-          surf: state.waterLayerSurf,
-          channels: state.waterLayerChannels,
-        };
-        this.postCachedWorkletMessage('soundscapes:waterLayerMix', this.soundscapesNode, {
-          type: 'waterLayerMix',
-          ...waterLayerMix,
-        }, waterLayerMix);
+      // Water layer mix
+      const waterLayerMix = {
+        hardDrops: state.waterLayerHardDrops,
+        waterDrops: state.waterLayerWaterDrops,
+        turbulence: state.waterLayerTurbulence,
+        bubbling: state.waterLayerBubbling,
+        surf: state.waterLayerSurf,
+        channels: state.waterLayerChannels,
+      };
+      this.postCachedWorkletMessage('soundscapes:waterLayerMix', this.soundscapesNode, {
+        type: 'waterLayerMix',
+        ...waterLayerMix,
+      }, waterLayerMix);
 
-        // Density is not user-facing yet. Keep legacy drop/turbulence density, but
-        // run surf/channels at full density so wave-oriented presets have full body.
-        const waterLayerDensity = {
-          hardDrops: 0.5,
-          waterDrops: 0.5,
-          turbulence: 0.5,
-          bubbling: 0.5,
-          surf: 1.0,
-          channels: 1.0,
-        };
-        this.postCachedWorkletMessage('soundscapes:waterLayerDensity', this.soundscapesNode, {
-          type: 'waterLayerDensity',
-          ...waterLayerDensity,
-        }, waterLayerDensity);
+      // Density is not user-facing yet. Keep legacy drop/turbulence density, but
+      // run surf/channels at full density so wave-oriented presets have full body.
+      const waterLayerDensity = {
+        hardDrops: 0.5,
+        waterDrops: 0.5,
+        turbulence: 0.5,
+        bubbling: 0.5,
+        surf: 1.0,
+        channels: 1.0,
+      };
+      this.postCachedWorkletMessage('soundscapes:waterLayerDensity', this.soundscapesNode, {
+        type: 'waterLayerDensity',
+        ...waterLayerDensity,
+      }, waterLayerDensity);
 
-        // Surf params (wave-envelope driven 3-band noise)
-        const sDur = this.dualRanges['waterSurfDuration'];
-        const sInt = this.dualRanges['waterSurfInterval'];
-        const sFoam = this.dualRanges['waterSurfFoam'];
-        const sProx = this.dualRanges['waterSurfProximity'];
-        const sDep = this.dualRanges['waterSurfDepth'];
-        const sBody = this.dualRanges['waterSurfBody'];
-        const sSpray = this.dualRanges['waterSurfSpray'];
-        const sFoamBright = this.dualRanges['waterSurfFoamBright'];
-        const surfParams = {
-          durationMin: sDur ? sDur.min : state.waterSurfDuration,
-          durationMax: sDur ? sDur.max : state.waterSurfDuration,
-          intervalMin: sInt ? sInt.min : state.waterSurfInterval,
-          intervalMax: sInt ? sInt.max : state.waterSurfInterval,
-          foamMin: sFoam ? sFoam.min : state.waterSurfFoam,
-          foamMax: sFoam ? sFoam.max : state.waterSurfFoam,
-          proximityMin: sProx ? sProx.min : state.waterSurfProximity,
-          proximityMax: sProx ? sProx.max : state.waterSurfProximity,
-          depthMin: sDep ? sDep.min : state.waterSurfDepth,
-          depthMax: sDep ? sDep.max : state.waterSurfDepth,
-          bodyFreqMin: sBody ? sBody.min : state.waterSurfBody,
-          bodyFreqMax: sBody ? sBody.max : state.waterSurfBody,
-          sprayFreqMin: sSpray ? sSpray.min : state.waterSurfSpray,
-          sprayFreqMax: sSpray ? sSpray.max : state.waterSurfSpray,
-          foamBrightMin: sFoamBright ? sFoamBright.min : state.waterSurfFoamBright,
-          foamBrightMax: sFoamBright ? sFoamBright.max : state.waterSurfFoamBright,
-        };
-        this.postCachedWorkletMessage('soundscapes:waterSurfParams', this.soundscapesNode, {
-          type: 'waterSurfParams',
-          ...surfParams,
-        }, surfParams);
+      // Surf params (wave-envelope driven 3-band noise)
+      const sDur = this.dualRanges['waterSurfDuration'];
+      const sInt = this.dualRanges['waterSurfInterval'];
+      const sFoam = this.dualRanges['waterSurfFoam'];
+      const sProx = this.dualRanges['waterSurfProximity'];
+      const sDep = this.dualRanges['waterSurfDepth'];
+      const sBody = this.dualRanges['waterSurfBody'];
+      const sSpray = this.dualRanges['waterSurfSpray'];
+      const sFoamBright = this.dualRanges['waterSurfFoamBright'];
+      const surfParams = {
+        durationMin: sDur ? sDur.min : state.waterSurfDuration,
+        durationMax: sDur ? sDur.max : state.waterSurfDuration,
+        intervalMin: sInt ? sInt.min : state.waterSurfInterval,
+        intervalMax: sInt ? sInt.max : state.waterSurfInterval,
+        foamMin: sFoam ? sFoam.min : state.waterSurfFoam,
+        foamMax: sFoam ? sFoam.max : state.waterSurfFoam,
+        proximityMin: sProx ? sProx.min : state.waterSurfProximity,
+        proximityMax: sProx ? sProx.max : state.waterSurfProximity,
+        depthMin: sDep ? sDep.min : state.waterSurfDepth,
+        depthMax: sDep ? sDep.max : state.waterSurfDepth,
+        bodyFreqMin: sBody ? sBody.min : state.waterSurfBody,
+        bodyFreqMax: sBody ? sBody.max : state.waterSurfBody,
+        sprayFreqMin: sSpray ? sSpray.min : state.waterSurfSpray,
+        sprayFreqMax: sSpray ? sSpray.max : state.waterSurfSpray,
+        foamBrightMin: sFoamBright ? sFoamBright.min : state.waterSurfFoamBright,
+        foamBrightMax: sFoamBright ? sFoamBright.max : state.waterSurfFoamBright,
+      };
+      this.postCachedWorkletMessage('soundscapes:waterSurfParams', this.soundscapesNode, {
+        type: 'waterSurfParams',
+        ...surfParams,
+      }, surfParams);
 
-        // Channels params (stream↔wind morph)
-        const cMorph = this.dualRanges['waterChannelsMorph'];
-        const cSpeed = this.dualRanges['waterChannelsSpeed'];
-        const channelsParams = {
-          morph: cMorph ? (cMorph.min + cMorph.max) * 0.5 : state.waterChannelsMorph,
-          speed: cSpeed ? (cSpeed.min + cSpeed.max) * 0.5 : state.waterChannelsSpeed,
-        };
-        this.postCachedWorkletMessage('soundscapes:waterChannelsParams', this.soundscapesNode, {
-          type: 'waterChannelsParams',
-          ...channelsParams,
-        }, channelsParams);
+      // Channels params (stream↔wind morph)
+      const cMorph = this.dualRanges['waterChannelsMorph'];
+      const cSpeed = this.dualRanges['waterChannelsSpeed'];
+      const channelsParams = {
+        morph: cMorph ? (cMorph.min + cMorph.max) * 0.5 : state.waterChannelsMorph,
+        speed: cSpeed ? (cSpeed.min + cSpeed.max) * 0.5 : state.waterChannelsSpeed,
+      };
+      this.postCachedWorkletMessage('soundscapes:waterChannelsParams', this.soundscapesNode, {
+        type: 'waterChannelsParams',
+        ...channelsParams,
+      }, channelsParams);
 
-        const densityLoopParams = {
-          hardSend: shv('waterDensityHardSend', state.waterDensityHardSend),
-          waterSend: shv('waterDensityWaterSend', state.waterDensityWaterSend),
-          bubbleSend: shv('waterDensityBubbleSend', state.waterDensityBubbleSend),
-          feedback: shv('waterDensityFeedback', state.waterDensityFeedback),
-          tone: shv('waterDensityTone', state.waterDensityTone),
-          ring: shv('waterDensityRing', state.waterDensityRing),
-          wet: shv('waterDensityWet', state.waterDensityWet),
-        };
-        this.postCachedWorkletMessage('soundscapes:waterDensityLoopParams', this.soundscapesNode, {
-          type: 'waterDensityLoopParams',
-          ...densityLoopParams,
-        }, densityLoopParams);
-      }
+      const densityLoopParams = {
+        hardSend: shv('waterDensityHardSend', state.waterDensityHardSend),
+        waterSend: shv('waterDensityWaterSend', state.waterDensityWaterSend),
+        bubbleSend: shv('waterDensityBubbleSend', state.waterDensityBubbleSend),
+        feedback: shv('waterDensityFeedback', state.waterDensityFeedback),
+        tone: shv('waterDensityTone', state.waterDensityTone),
+        ring: shv('waterDensityRing', state.waterDensityRing),
+        wet: shv('waterDensityWet', state.waterDensityWet),
+      };
+      this.postCachedWorkletMessage('soundscapes:waterDensityLoopParams', this.soundscapesNode, {
+        type: 'waterDensityLoopParams',
+        ...densityLoopParams,
+      }, densityLoopParams);
 
-      // Insects 1 start/stop — keep running for wet-only reverb sends too
-      const insectsSharedWetActive =
-        state.insectsReverbSend > 0 ||
-        (state.granularInsectsSend ?? 0) > 0 ||
-        (state.insDelayASend ?? 0) > 0 ||
-        (state.insDelayBSend ?? 0) > 0;
-      const insects1ShouldRun = state.insectsEnabled && (state.insectsLevel > 0 || insectsSharedWetActive);
+      // Insects dry and wet both follow the per-layer level plus the shared insects master.
+      const insectsSharedMasterScale = this.getInsectsSharedMasterScale(state);
+      const insects1EffectiveLevel = this.getEarthLayerOutputScale(state.insectsLevel, insectsSharedMasterScale);
+      const insects2EffectiveLevel = this.getEarthLayerOutputScale(state.insects2Level, insectsSharedMasterScale);
+      this.syncEarthFadeState(this.insects1FadeState, state.insectsEnabled, now, {
+        onInit: (target) => {
+          this.soundscapesNode?.port.postMessage({ type: 'insectsGate', enabled: target > 0.5, fadeSeconds: 0 });
+        },
+        onTransition: (_current, target) => {
+          this.soundscapesNode?.port.postMessage({
+            type: 'insectsGate',
+            enabled: target > 0.5,
+            fadeSeconds: EARTH_LAYER_FADE_SECONDS,
+          });
+        },
+        onFadeOutComplete: () => {
+          if (this._scInsects1Started && this.soundscapesNode) {
+            this.soundscapesNode.port.postMessage({ type: 'insectsStop' });
+            this._scInsects1Started = false;
+          }
+        },
+      });
+      const insects1ShouldRun = this.isEarthFadeActive(this.insects1FadeState, now) && insects1EffectiveLevel > 0.0001;
       if (insects1ShouldRun && !this._scInsects1Started) {
         this.soundscapesNode.port.postMessage({ type: 'insectsStart' });
         this._scInsects1Started = true;
@@ -7727,44 +8065,58 @@ export class AudioEngine {
         this._scInsects1Engine = state.insectsEngine;
       }
 
-      // Insects 1 params + dry gain (only send when enabled)
-      if (state.insectsEnabled) {
-        // Insects 1 params with dualRange min/max support
-        const iDen = this.dualRanges['insectsDensity'];
-        const iTemp = this.dualRanges['insectsTemperature'];
-        const iDist = this.dualRanges['insectsDistance'];
-        const iProx = this.dualRanges['insectsProximity'];
-        const iAnti = this.dualRanges['insectsAntiphony'];
-        const iCr = this.dualRanges['insectsClickRate'];
-        const iMot = this.dualRanges['insectsMotion'];
-        const insectsParams = {
-          densityMin: iDen ? iDen.min : state.insectsDensity,
-          densityMax: iDen ? iDen.max : state.insectsDensity,
-          temperatureMin: iTemp ? iTemp.min : state.insectsTemperature,
-          temperatureMax: iTemp ? iTemp.max : state.insectsTemperature,
-          distanceMin: iDist ? iDist.min : state.insectsDistance,
-          distanceMax: iDist ? iDist.max : state.insectsDistance,
-          proximityMin: iProx ? iProx.min : state.insectsProximity,
-          proximityMax: iProx ? iProx.max : state.insectsProximity,
-          antiphonyMin: iAnti ? iAnti.min : state.insectsAntiphony,
-          antiphonyMax: iAnti ? iAnti.max : state.insectsAntiphony,
-          clickRateMin: iCr ? iCr.min : state.insectsClickRate,
-          clickRateMax: iCr ? iCr.max : state.insectsClickRate,
-          motionMin: iMot ? iMot.min : state.insectsMotion,
-          motionMax: iMot ? iMot.max : state.insectsMotion,
-        };
-        this.postCachedWorkletMessage('soundscapes:insects1Params', this.soundscapesNode, {
-          type: 'insectsParams',
-          params: insectsParams,
-        }, insectsParams);
-        this.postCachedWorkletMessage('soundscapes:insects1Gain', this.soundscapesNode, {
-          type: 'insectsGain',
-          gain: state.insectsLevel,
-        }, state.insectsLevel);
-      }
+      const iDen = this.dualRanges['insectsDensity'];
+      const iTemp = this.dualRanges['insectsTemperature'];
+      const iDist = this.dualRanges['insectsDistance'];
+      const iProx = this.dualRanges['insectsProximity'];
+      const iAnti = this.dualRanges['insectsAntiphony'];
+      const iCr = this.dualRanges['insectsClickRate'];
+      const iMot = this.dualRanges['insectsMotion'];
+      const insectsParams = {
+        densityMin: iDen ? iDen.min : state.insectsDensity,
+        densityMax: iDen ? iDen.max : state.insectsDensity,
+        temperatureMin: iTemp ? iTemp.min : state.insectsTemperature,
+        temperatureMax: iTemp ? iTemp.max : state.insectsTemperature,
+        distanceMin: iDist ? iDist.min : state.insectsDistance,
+        distanceMax: iDist ? iDist.max : state.insectsDistance,
+        proximityMin: iProx ? iProx.min : state.insectsProximity,
+        proximityMax: iProx ? iProx.max : state.insectsProximity,
+        antiphonyMin: iAnti ? iAnti.min : state.insectsAntiphony,
+        antiphonyMax: iAnti ? iAnti.max : state.insectsAntiphony,
+        clickRateMin: iCr ? iCr.min : state.insectsClickRate,
+        clickRateMax: iCr ? iCr.max : state.insectsClickRate,
+        motionMin: iMot ? iMot.min : state.insectsMotion,
+        motionMax: iMot ? iMot.max : state.insectsMotion,
+      };
+      this.postCachedWorkletMessage('soundscapes:insects1Params', this.soundscapesNode, {
+        type: 'insectsParams',
+        params: insectsParams,
+      }, insectsParams);
+      this.postCachedWorkletMessage('soundscapes:insects1Gain', this.soundscapesNode, {
+        type: 'insectsGain',
+        gain: state.insectsLevel,
+      }, state.insectsLevel);
 
-      // Insects 2 start/stop — keep running for wet-only reverb sends too
-      const insects2ShouldRun = state.insects2Enabled && (state.insects2Level > 0 || insectsSharedWetActive);
+      // Insects 2 start/stop
+      this.syncEarthFadeState(this.insects2FadeState, state.insects2Enabled, now, {
+        onInit: (target) => {
+          this.soundscapesNode?.port.postMessage({ type: 'insects2Gate', enabled: target > 0.5, fadeSeconds: 0 });
+        },
+        onTransition: (_current, target) => {
+          this.soundscapesNode?.port.postMessage({
+            type: 'insects2Gate',
+            enabled: target > 0.5,
+            fadeSeconds: EARTH_LAYER_FADE_SECONDS,
+          });
+        },
+        onFadeOutComplete: () => {
+          if (this._scInsects2Started && this.soundscapesNode) {
+            this.soundscapesNode.port.postMessage({ type: 'insects2Stop' });
+            this._scInsects2Started = false;
+          }
+        },
+      });
+      const insects2ShouldRun = this.isEarthFadeActive(this.insects2FadeState, now) && insects2EffectiveLevel > 0.0001;
       if (insects2ShouldRun && !this._scInsects2Started) {
         this.soundscapesNode.port.postMessage({ type: 'insects2Start' });
         this._scInsects2Started = true;
@@ -7779,130 +8131,133 @@ export class AudioEngine {
         this._scInsects2Engine = state.insects2Engine;
       }
 
-      // Insects 2 params + dry gain (only send when enabled)
-      if (state.insects2Enabled) {
-        // Insects 2 params with dualRange min/max support
-        const i2Den = this.dualRanges['insects2Density'];
-        const i2Temp = this.dualRanges['insects2Temperature'];
-        const i2Dist = this.dualRanges['insects2Distance'];
-        const i2Prox = this.dualRanges['insects2Proximity'];
-        const i2Anti = this.dualRanges['insects2Antiphony'];
-        const i2Cr = this.dualRanges['insects2ClickRate'];
-        const i2Mot = this.dualRanges['insects2Motion'];
-        const insects2Params = {
-          densityMin: i2Den ? i2Den.min : state.insects2Density,
-          densityMax: i2Den ? i2Den.max : state.insects2Density,
-          temperatureMin: i2Temp ? i2Temp.min : state.insects2Temperature,
-          temperatureMax: i2Temp ? i2Temp.max : state.insects2Temperature,
-          distanceMin: i2Dist ? i2Dist.min : state.insects2Distance,
-          distanceMax: i2Dist ? i2Dist.max : state.insects2Distance,
-          proximityMin: i2Prox ? i2Prox.min : state.insects2Proximity,
-          proximityMax: i2Prox ? i2Prox.max : state.insects2Proximity,
-          antiphonyMin: i2Anti ? i2Anti.min : state.insects2Antiphony,
-          antiphonyMax: i2Anti ? i2Anti.max : state.insects2Antiphony,
-          clickRateMin: i2Cr ? i2Cr.min : state.insects2ClickRate,
-          clickRateMax: i2Cr ? i2Cr.max : state.insects2ClickRate,
-          motionMin: i2Mot ? i2Mot.min : state.insects2Motion,
-          motionMax: i2Mot ? i2Mot.max : state.insects2Motion,
-        };
-        this.postCachedWorkletMessage('soundscapes:insects2Params', this.soundscapesNode, {
-          type: 'insects2Params',
-          params: insects2Params,
-        }, insects2Params);
-        this.postCachedWorkletMessage('soundscapes:insects2Gain', this.soundscapesNode, {
-          type: 'insects2Gain',
-          gain: state.insects2Level,
-        }, state.insects2Level);
-      }
+      const i2Den = this.dualRanges['insects2Density'];
+      const i2Temp = this.dualRanges['insects2Temperature'];
+      const i2Dist = this.dualRanges['insects2Distance'];
+      const i2Prox = this.dualRanges['insects2Proximity'];
+      const i2Anti = this.dualRanges['insects2Antiphony'];
+      const i2Cr = this.dualRanges['insects2ClickRate'];
+      const i2Mot = this.dualRanges['insects2Motion'];
+      const insects2Params = {
+        densityMin: i2Den ? i2Den.min : state.insects2Density,
+        densityMax: i2Den ? i2Den.max : state.insects2Density,
+        temperatureMin: i2Temp ? i2Temp.min : state.insects2Temperature,
+        temperatureMax: i2Temp ? i2Temp.max : state.insects2Temperature,
+        distanceMin: i2Dist ? i2Dist.min : state.insects2Distance,
+        distanceMax: i2Dist ? i2Dist.max : state.insects2Distance,
+        proximityMin: i2Prox ? i2Prox.min : state.insects2Proximity,
+        proximityMax: i2Prox ? i2Prox.max : state.insects2Proximity,
+        antiphonyMin: i2Anti ? i2Anti.min : state.insects2Antiphony,
+        antiphonyMax: i2Anti ? i2Anti.max : state.insects2Antiphony,
+        clickRateMin: i2Cr ? i2Cr.min : state.insects2ClickRate,
+        clickRateMax: i2Cr ? i2Cr.max : state.insects2ClickRate,
+        motionMin: i2Mot ? i2Mot.min : state.insects2Motion,
+        motionMax: i2Mot ? i2Mot.max : state.insects2Motion,
+      };
+      this.postCachedWorkletMessage('soundscapes:insects2Params', this.soundscapesNode, {
+        type: 'insects2Params',
+        params: insects2Params,
+      }, insects2Params);
+      this.postCachedWorkletMessage('soundscapes:insects2Gain', this.soundscapesNode, {
+        type: 'insects2Gain',
+        gain: state.insects2Level,
+      }, state.insects2Level);
 
-      // ── Earth master level ──
-      this.earthLevelGain?.gain.setTargetAtTime(state.earthLevel ?? 1.0, now, smoothTime);
-
-      // ── Per-engine dry levels (these control the dry path through earthBus only) ──
-      // Water dry level
-      this.waterLevelGain?.gain.setTargetAtTime(
-        state.waterEnabled ? state.waterLevel : 0, now, smoothTime
-      );
-      // Water reverb send (pre-fader — unaffected by waterLevelGain) — S&H aware
-      this.waterReverbSend?.gain.setTargetAtTime(
-        state.waterEnabled ? shv('waterReverbSend', state.waterReverbSend) : 0, now, smoothTime
-      );
-
-      // Insects on/off gate (level controlled by WASM-side _insects1Gain/_insects2Gain)
-      this.insectsLevelGain?.gain.setTargetAtTime(
-        (state.insectsEnabled || state.insects2Enabled) ? 1.0 : 0, now, smoothTime
-      );
-      this.natureLevelGain?.gain.setTargetAtTime(state.natureLevel ?? 1.0, now, smoothTime);
-
-      const oceanLevel = state.oceanSampleLevel ?? 0;
-      const oceanReverb = shv('oceanReverbSend', state.oceanReverbSend);
-      const oceanDelayA = state.oceanDelayASend ?? 0;
-      const oceanDelayB = state.oceanDelayBSend ?? 0;
-      this.oceanLevelGain?.gain.setTargetAtTime(
-        state.oceanSampleEnabled ? oceanLevel : 0, now, smoothTime
-      );
-      this.oceanReverbSendNode?.gain.setTargetAtTime(
-        state.oceanSampleEnabled ? oceanReverb : 0, now, smoothTime
-      );
-      const oceanShouldRun = state.oceanSampleEnabled && (
-        oceanLevel > 0.0001 ||
-        oceanReverb > 0.0001 ||
-        oceanDelayA > 0.0001 ||
-        oceanDelayB > 0.0001 ||
-        (state.granularWavesSend ?? 0) > 0.0001
-      );
-      this.oceanTexturePlayer?.update({
-        sliceDuration: state.oceanSliceDuration ?? 22,
-        density: state.oceanSliceDensity ?? 0.38,
-      });
-      if (oceanShouldRun) void this.oceanTexturePlayer?.start();
-      else this.oceanTexturePlayer?.stop();
-
-      this.updateEarthTextureRuntime(this.birdsTexture, {
-        enabled: state.birdsEnabled,
-        level: state.birdsLevel,
-        masterLevel: state.natureLevel ?? 1.0,
-        reverbSend: shv('natureReverbSend', state.natureReverbSend),
-        delayASend: shv('natureDelayASend', state.natureDelayASend ?? 0),
-        delayBSend: shv('natureDelayBSend', state.natureDelayBSend ?? 0),
-        granularSend: shv('granularNatureSend', state.granularNatureSend ?? 0),
-        sliceDuration: state.birdsSliceDuration ?? 20,
-        density: state.birdsSliceDensity ?? 0.45,
-        smoothTime,
-        now,
-      });
-      this.updateEarthTextureRuntime(this.birds2Texture, {
-        enabled: state.birds2Enabled,
-        level: state.birds2Level,
-        masterLevel: state.natureLevel ?? 1.0,
-        reverbSend: shv('natureReverbSend', state.natureReverbSend),
-        delayASend: shv('natureDelayASend', state.natureDelayASend ?? 0),
-        delayBSend: shv('natureDelayBSend', state.natureDelayBSend ?? 0),
-        granularSend: shv('granularNatureSend', state.granularNatureSend ?? 0),
-        sliceDuration: state.birds2SliceDuration ?? 20,
-        density: state.birds2SliceDensity ?? 0.48,
-        smoothTime,
-        now,
-      });
-      this.updateEarthTextureRuntime(this.frogsTexture, {
-        enabled: state.frogsEnabled,
-        level: state.frogsLevel,
-        masterLevel: state.natureLevel ?? 1.0,
-        reverbSend: shv('natureReverbSend', state.natureReverbSend),
-        delayASend: shv('natureDelayASend', state.natureDelayASend ?? 0),
-        delayBSend: shv('natureDelayBSend', state.natureDelayBSend ?? 0),
-        granularSend: shv('granularNatureSend', state.granularNatureSend ?? 0),
-        sliceDuration: state.frogsSliceDuration ?? 18,
-        density: state.frogsSliceDensity ?? 0.52,
-        smoothTime,
-        now,
-      });
-
-      // Insects reverb send (pre-fader) — S&H aware
-      this.insectsReverbSendNode?.gain.setTargetAtTime(
-        (state.insectsEnabled || state.insects2Enabled) ? shv('insectsReverbSend', state.insectsReverbSend) : 0, now, smoothTime
-      );
     }
+
+    // ── Earth master + texture engines ──
+    // Keep these updates outside the soundscapes guard so ocean/nature work
+    // even when the water/insects WASM engine is not loaded.
+    this.earthLevelGain?.gain.setTargetAtTime(state.earthLevel ?? 1.0, now, smoothTime);
+
+    // Water dry/wet levels stay at their live targets; the dedicated fade gate
+    // handles the layer on/off motion.
+    this.waterLevelGain?.gain.setTargetAtTime(this.getWaterFamilySendScale(state), now, smoothTime);
+    this.waterReverbSend?.gain.setTargetAtTime(
+      this.scaleEarthSend(shv('waterReverbSend', state.waterReverbSend), this.getWaterFamilySendScale(state)),
+      now,
+      smoothTime,
+    );
+
+    // Insects dry bus stays open while either insects layer is enabled or fading.
+    this.insectsLevelGain?.gain.setTargetAtTime(
+      insectsLayerActive ? this.getInsectsSharedMasterScale(state) : 0, now, smoothTime
+    );
+    this.natureLevelGain?.gain.setTargetAtTime(state.natureLevel ?? 1.0, now, smoothTime);
+
+    const oceanLevel = state.oceanSampleLevel ?? 0;
+    const oceanReverb = shv('oceanReverbSend', state.oceanReverbSend);
+    const oceanDelayA = state.oceanDelayASend ?? 0;
+    const oceanDelayB = state.oceanDelayBSend ?? 0;
+    this.syncEarthFadeState(this.oceanFadeState, state.oceanSampleEnabled, now, {
+      onInit: (target) => this.setAudioParamImmediate(this.oceanGateGain?.gain, target, now),
+      onTransition: (current, target, endTime) => this.rampAudioParam(this.oceanGateGain?.gain, current, target, now, endTime),
+      onFadeOutComplete: () => this.oceanTexturePlayer?.stop(),
+    });
+    this.oceanLevelGain?.gain.setTargetAtTime(oceanLevel, now, smoothTime);
+    this.oceanReverbSendNode?.gain.setTargetAtTime(oceanReverb, now, smoothTime);
+    const oceanShouldRun = this.isEarthFadeActive(this.oceanFadeState, now) && (
+      oceanLevel > 0.0001 ||
+      oceanReverb > 0.0001 ||
+      oceanDelayA > 0.0001 ||
+      oceanDelayB > 0.0001 ||
+      (state.granularWavesSend ?? 0) > 0.0001
+    );
+    this.oceanTexturePlayer?.update({
+      sliceDuration: state.oceanSliceDuration ?? 22,
+      density: state.oceanSliceDensity ?? 0.38,
+    });
+    if (oceanShouldRun) void this.oceanTexturePlayer?.start();
+    else this.oceanTexturePlayer?.stop();
+
+    this.updateEarthTextureRuntime(this.birdsTexture, {
+      enabled: state.birdsEnabled,
+      level: state.birdsLevel,
+      masterLevel: state.natureLevel ?? 1.0,
+      reverbSend: shv('natureReverbSend', state.natureReverbSend),
+      delayASend: shv('natureDelayASend', state.natureDelayASend ?? 0),
+      delayBSend: shv('natureDelayBSend', state.natureDelayBSend ?? 0),
+      granularSend: shv('granularNatureSend', state.granularNatureSend ?? 0),
+      sliceDuration: state.birdsSliceDuration ?? 20,
+      density: state.birdsSliceDensity ?? 0.45,
+      smoothTime,
+      now,
+    });
+    this.updateEarthTextureRuntime(this.birds2Texture, {
+      enabled: state.birds2Enabled,
+      level: state.birds2Level,
+      masterLevel: state.natureLevel ?? 1.0,
+      reverbSend: shv('natureReverbSend', state.natureReverbSend),
+      delayASend: shv('natureDelayASend', state.natureDelayASend ?? 0),
+      delayBSend: shv('natureDelayBSend', state.natureDelayBSend ?? 0),
+      granularSend: shv('granularNatureSend', state.granularNatureSend ?? 0),
+      sliceDuration: state.birds2SliceDuration ?? 20,
+      density: state.birds2SliceDensity ?? 0.48,
+      smoothTime,
+      now,
+    });
+    this.updateEarthTextureRuntime(this.frogsTexture, {
+      enabled: state.frogsEnabled,
+      level: state.frogsLevel,
+      masterLevel: state.natureLevel ?? 1.0,
+      reverbSend: shv('natureReverbSend', state.natureReverbSend),
+      delayASend: shv('natureDelayASend', state.natureDelayASend ?? 0),
+      delayBSend: shv('natureDelayBSend', state.natureDelayBSend ?? 0),
+      granularSend: shv('granularNatureSend', state.granularNatureSend ?? 0),
+      sliceDuration: state.frogsSliceDuration ?? 18,
+      density: state.frogsSliceDensity ?? 0.52,
+      smoothTime,
+      now,
+    });
+
+    // Insects reverb send (pre-fader) — S&H aware
+    this.insectsReverbSendNode?.gain.setTargetAtTime(
+      insectsLayerActive
+        ? this.scaleEarthSend(shv('insectsReverbSend', state.insectsReverbSend), this.getInsectsSharedMasterScale(state))
+        : 0,
+      now,
+      smoothTime,
+    );
   }
 
   private preloadEarthTextures(): void {
@@ -7927,23 +8282,38 @@ export class AudioEngine {
   ): void {
     if (!runtime) return;
 
-    runtime.levelGain.gain.setTargetAtTime(options.enabled ? options.level : 0, options.now, options.smoothTime);
-    runtime.reverbSend.gain.setTargetAtTime(options.enabled ? options.reverbSend : 0, options.now, options.smoothTime);
-    runtime.delayASend?.gain.setTargetAtTime(options.enabled ? options.delayASend : 0, options.now, options.smoothTime);
-    runtime.delayBSend?.gain.setTargetAtTime(options.enabled ? options.delayBSend : 0, options.now, options.smoothTime);
-    runtime.granularSend?.gain.setTargetAtTime(options.enabled ? options.granularSend : 0, options.now, options.smoothTime);
+    this.syncEarthFadeState(runtime.fadeState, options.enabled, options.now, {
+      onInit: (target) => this.setAudioParamImmediate(runtime.gateGain.gain, target, options.now),
+      onTransition: (current, target, endTime) => this.rampAudioParam(runtime.gateGain.gain, current, target, options.now, endTime),
+      onFadeOutComplete: () => runtime.player.stop(),
+    });
+
+    const gateActive = this.isEarthFadeActive(runtime.fadeState, options.now);
+    const routedActive = options.enabled || gateActive;
+    const routedLevel = routedActive ? options.level : 0;
+    const effectiveLevelScale = this.getEarthLayerOutputScale(routedLevel, options.masterLevel ?? 1);
+    const routedReverbSend = routedActive ? this.scaleEarthSend(options.reverbSend, effectiveLevelScale) : 0;
+    const routedDelayASend = routedActive ? this.scaleEarthSend(options.delayASend, effectiveLevelScale) : 0;
+    const routedDelayBSend = routedActive ? this.scaleEarthSend(options.delayBSend, effectiveLevelScale) : 0;
+    const routedGranularSend = routedActive ? this.scaleEarthSend(options.granularSend, effectiveLevelScale) : 0;
+
+    runtime.levelGain.gain.setTargetAtTime(routedLevel, options.now, options.smoothTime);
+    runtime.reverbSend.gain.setTargetAtTime(routedReverbSend, options.now, options.smoothTime);
+    runtime.delayASend?.gain.setTargetAtTime(routedDelayASend, options.now, options.smoothTime);
+    runtime.delayBSend?.gain.setTargetAtTime(routedDelayBSend, options.now, options.smoothTime);
+    runtime.granularSend?.gain.setTargetAtTime(routedGranularSend, options.now, options.smoothTime);
     runtime.player.update({ sliceDuration: options.sliceDuration, density: options.density });
 
-    const effectiveDryLevel = options.level * (options.masterLevel ?? 1);
+    const effectiveDryLevel = effectiveLevelScale;
 
     const wetActive =
       effectiveDryLevel > 0.0001 ||
-      options.reverbSend > 0.0001 ||
-      options.delayASend > 0.0001 ||
-      options.delayBSend > 0.0001 ||
-      options.granularSend > 0.0001;
+      routedReverbSend > 0.0001 ||
+      routedDelayASend > 0.0001 ||
+      routedDelayBSend > 0.0001 ||
+      routedGranularSend > 0.0001;
 
-    if (options.enabled && wetActive) {
+    if (gateActive && wetActive) {
       void runtime.player.start();
     } else {
       runtime.player.stop();

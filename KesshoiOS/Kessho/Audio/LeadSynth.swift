@@ -1,5 +1,36 @@
 import AVFoundation
 
+@inline(__always)
+private func writeStereoFrame(
+    _ left: Float,
+    _ right: Float,
+    frame: Int,
+    to buffers: UnsafeMutableAudioBufferListPointer
+) {
+    if buffers.count == 1, let data = buffers[0].mData?.assumingMemoryBound(to: Float.self) {
+        let channelCount = max(Int(buffers[0].mNumberChannels), 1)
+        let baseIndex = frame * channelCount
+        if channelCount >= 2 {
+            data[baseIndex] = left
+            data[baseIndex + 1] = right
+            if channelCount > 2 {
+                let mono = (left + right) * 0.5
+                for channel in 2..<channelCount {
+                    data[baseIndex + channel] = mono
+                }
+            }
+        } else {
+            data[frame] = (left + right) * 0.5
+        }
+        return
+    }
+
+    for (index, buffer) in buffers.enumerated() {
+        guard let data = buffer.mData?.assumingMemoryBound(to: Float.self) else { continue }
+        data[frame] = index == 0 ? left : (index == 1 ? right : (left + right) * 0.5)
+    }
+}
+
 // Pre-computed sine lookup table for fast FM synthesis
 private let SINE_TABLE_SIZE = 2048
 private var sineTable: [Float] = {
@@ -28,7 +59,25 @@ private func fastSin(_ phase: Float) -> Float {
 /// Lead melody synthesizer with FM timbre morphing, glide, and stereo ping-pong delay.
 /// The native implementation aims for a similar musical role to the web lead voice.
 class LeadSynth {
-    let node: AVAudioSourceNode
+    lazy var node: AVAudioSourceNode = { [weak self] in
+        let renderFormat = AVAudioFormat(standardFormatWithSampleRate: 44_100, channels: 2)!
+        return AVAudioSourceNode(format: renderFormat) { _, _, frameCount, audioBufferList -> OSStatus in
+            let ablPointer = UnsafeMutableAudioBufferListPointer(audioBufferList)
+            guard let self = self, self.enabled else {
+                for frame in 0..<Int(frameCount) {
+                    writeStereoFrame(0, 0, frame: frame, to: ablPointer)
+                }
+                return noErr
+            }
+
+            for frame in 0..<Int(frameCount) {
+                let (left, right) = self.generateStereoSample()
+                writeStereoFrame(left, right, frame: frame, to: ablPointer)
+            }
+
+            return noErr
+        }
+    }()
     
     private var enabled: Bool = false
     private var frequency: Float = 440
@@ -101,32 +150,6 @@ class LeadSynth {
         delayBufferL = [Float](repeating: 0, count: bufferSize)
         delayBufferR = [Float](repeating: 0, count: bufferSize)
         
-        node = AVAudioSourceNode { [weak self] _, _, frameCount, audioBufferList -> OSStatus in
-            guard let self = self, self.enabled else {
-                // Output silence if disabled
-                let ablPointer = UnsafeMutableAudioBufferListPointer(audioBufferList)
-                for frame in 0..<Int(frameCount) {
-                    for buffer in ablPointer {
-                        buffer.mData?.assumingMemoryBound(to: Float.self)[frame] = 0
-                    }
-                }
-                return noErr
-            }
-            
-            let ablPointer = UnsafeMutableAudioBufferListPointer(audioBufferList)
-            guard ablPointer.count >= 2,
-                  let leftBuffer = ablPointer[0].mData?.assumingMemoryBound(to: Float.self),
-                  let rightBuffer = ablPointer[1].mData?.assumingMemoryBound(to: Float.self)
-            else { return noErr }
-            
-            for frame in 0..<Int(frameCount) {
-                let (left, right) = self.generateStereoSample()
-                leftBuffer[frame] = left
-                rightBuffer[frame] = right
-            }
-            
-            return noErr
-        }
     }
     
     private func generateStereoSample() -> (Float, Float) {
@@ -384,5 +407,20 @@ class LeadSynth {
         delayBufferR = [Float](repeating: 0, count: delayBufferR.count)
         delayWriteIndexL = 0
         delayWriteIndexR = 0
+    }
+
+    func hardReset() {
+        envelope = 0
+        envelopeStage = .off
+        holdCounter = 0
+        velocity = 0
+        carrier1Phase = 0
+        carrier2Phase = 0
+        mod1Phase = 0
+        mod2Phase = 0
+        mod3Phase = 0
+        mod4Phase = 0
+        vibratoPhase = 0
+        clearDelay()
     }
 }

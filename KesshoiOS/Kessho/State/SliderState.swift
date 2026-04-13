@@ -3,7 +3,7 @@ import Foundation
 /// SliderState for the current native iOS prototype.
 /// This model is intentionally kept separate from the web app's evolving state
 /// until a dedicated migration/parity layer is introduced.
-struct SliderState: Codable, Equatable {
+public struct SliderState: Codable, Equatable {
     // Master
     var masterVolume: Double = 0.7
     var synthLevel: Double = 0.6
@@ -455,4 +455,5 @@ struct SavedPreset: Codable, Identifiable {
 // MARK: - Default State
 extension SliderState {
     static let `default` = SliderState()
+    public static let defaultState = SliderState()
 }
