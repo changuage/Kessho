@@ -13,8 +13,9 @@
 import type { PresetEntry } from './types';
 import { getPresetStore } from './PresetStore';
 import { morphWaterPresets, WATER_PRESETS } from '../audio/waterPresets';
+import { SHARED_PRESET_TEST_MODE } from './sharedMode';
 
-const FACTORY_LOADED_KEY = 'preset:factory-loaded:v9';
+const FACTORY_LOADED_KEY = 'preset:factory-loaded:v10';
 
 function canUseLocalStorage(): boolean {
   try {
@@ -589,13 +590,25 @@ export async function loadFactoryPresets(): Promise<number> {
     addFactoryEntry(all, seen, entry);
   }
 
-  // Save all to store
+  let savedCount = 0;
+
+  // Save all to store.
+  // In shared testing mode, only seed missing entries so we never overwrite
+  // newer shared presets with an older bundled factory snapshot.
   for (const entry of all) {
+    if (SHARED_PRESET_TEST_MODE) {
+      const scope = entry.scope ?? entry.engine ?? entry.source;
+      if (await store.exists(entry.type, entry.name, scope)) {
+        continue;
+      }
+    }
+
     await store.save(entry);
+    savedCount += 1;
   }
 
   // Mark as loaded
   writeFactoryLoadedFlag();
-  console.log(`Loaded ${all.length} factory presets`);
-  return all.length;
+  console.log(`Loaded ${savedCount} factory presets`);
+  return savedCount;
 }

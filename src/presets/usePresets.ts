@@ -15,6 +15,7 @@ import { getPresetStore, subscribePresetStore } from './PresetStore';
 import { extractParams, applyParams, extractCascade, applyCascade, compressVersions, getVersionData } from './codec';
 import { extractPresetVersionMetadata, presetValuesEqual } from './presetUtils';
 import { buildPresetFamilies } from './catalog';
+import { SHARED_PRESET_TEST_MODE } from './sharedMode';
 import type { ParamLevel } from './ParamRegistry';
 import type { SliderState } from '../ui/state';
 
@@ -121,7 +122,7 @@ export function usePresets(type: PresetLevel, scope?: string, options?: UsePrese
 
     // Check if preset already exists → push new version
     const existing = await store.load(type, name, storeScope);
-    const shouldForkExisting = !!existing && (existing.author === 'factory' || existing.library === 'stock');
+    const shouldForkExisting = !SHARED_PRESET_TEST_MODE && !!existing && (existing.author === 'factory' || existing.library === 'stock');
     const existingVersion = existing?.versions.find(v => v.v === existing.currentVersion)
       || existing?.versions[existing.versions.length - 1];
     // Merge: start with preserved metadata from prior version, then overlay any caller-supplied fields
@@ -182,7 +183,7 @@ export function usePresets(type: PresetLevel, scope?: string, options?: UsePrese
         library: 'user',
         creator: identity?.creator ?? existing?.creator,
         description: identity?.description ?? existing?.description,
-        visibility: identity?.visibility ?? (shouldForkExisting ? 'private' : existing?.visibility) ?? 'private',
+        visibility: identity?.visibility ?? (SHARED_PRESET_TEST_MODE ? 'public' : (shouldForkExisting ? 'private' : existing?.visibility) ?? 'private'),
         familyId: identity?.familyId ?? existing?.familyId,
         familyName: identity?.familyName ?? existing?.familyName ?? name,
         variantId: identity?.variantId ?? existing?.variantId,

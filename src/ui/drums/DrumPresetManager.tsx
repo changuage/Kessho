@@ -8,6 +8,7 @@ import type { SliderState } from '../state';
 import type { DrumVoiceType } from '../../audio/drumSynth';
 import { usePresets } from '../../presets/usePresets';
 import { getVersionData } from '../../presets/codec';
+import { SHARED_PRESET_TEST_MODE } from '../../presets/sharedMode';
 import {
   upsertUserPreset,
 } from '../../audio/drumPresets';
@@ -497,13 +498,15 @@ const DrumPresetManager: React.FC<DrumPresetManagerProps> = ({
               onMouseLeave={e => { e.currentTarget.style.color = '#5f8f5f'; e.currentTarget.style.background = 'none'; }}
               title={`Save current state as ${selectedPresetName}`}
             >💾</button>
-            <button
-              style={s.deleteBtn}
-              onClick={handleDelete}
-              onMouseEnter={e => { e.currentTarget.style.color = '#ff6666'; e.currentTarget.style.background = 'rgba(143,95,95,0.1)'; }}
-              onMouseLeave={e => { e.currentTarget.style.color = '#8f5f5f'; e.currentTarget.style.background = 'none'; }}
-              title={`Delete ${selectedPresetName}`}
-            >✕</button>
+            {!SHARED_PRESET_TEST_MODE && (
+              <button
+                style={s.deleteBtn}
+                onClick={handleDelete}
+                onMouseEnter={e => { e.currentTarget.style.color = '#ff6666'; e.currentTarget.style.background = 'rgba(143,95,95,0.1)'; }}
+                onMouseLeave={e => { e.currentTarget.style.color = '#8f5f5f'; e.currentTarget.style.background = 'none'; }}
+                title={`Delete ${selectedPresetName}`}
+              >✕</button>
+            )}
             {selectedSummary && selectedSummary.versionCount > 1 && (
               <button
                 style={{ ...s.expandBtn, ...(showVersions ? { color: '#a5c4d4' } : {}) }}

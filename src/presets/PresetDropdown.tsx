@@ -10,6 +10,7 @@ import { getPresetStore } from './PresetStore';
 import { extractPresetVersionMetadata, isPresetCompatibleWithSlot, presetValuesEqual } from './presetUtils';
 import { getPresetDisplayLabel } from './catalog';
 import { getVersionData } from './codec';
+import { SHARED_PRESET_TEST_MODE } from './sharedMode';
 import { DEFAULT_STATE, type SliderMode, type SliderState } from '../ui/state';
 import type { UsePresetsOptions } from './usePresets';
 
@@ -170,7 +171,7 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [saveName, setSaveName] = useState('');
   const [saveNote, setSaveNote] = useState('');
-  const [savePublic, setSavePublic] = useState(false);
+  const [savePublic, setSavePublic] = useState(SHARED_PRESET_TEST_MODE);
   const [selectedName, setSelectedName] = useState(currentName || '');
   const [loadedEntry, setLoadedEntry] = useState<PresetEntry | null>(null);
   const [loadedData, setLoadedData] = useState<Record<string, unknown> | null>(null);
@@ -183,7 +184,7 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
     if (!selectedName) return null;
     return sortedPresets.find(p => p.name === selectedName) ?? null;
   }, [sortedPresets, selectedName]);
-  const canChangeVisibility = selectedPresetSummary?.library !== 'stock';
+  const canChangeVisibility = !SHARED_PRESET_TEST_MODE && selectedPresetSummary?.library !== 'stock';
   const isSelectedPresetPublic = selectedPresetSummary?.visibility === 'public';
 
   const canonicalizeLoadedData = useCallback((data: Record<string, unknown>) => {
@@ -275,7 +276,7 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
   const handleSaveClick = useCallback(() => {
     setSaveName(selectedName || `My ${scope || level} Preset`);
     setSaveNote('');
-    setSavePublic(selectedPresetSummary?.visibility === 'public');
+    setSavePublic(SHARED_PRESET_TEST_MODE || selectedPresetSummary?.visibility === 'public');
     setShowSaveDialog(true);
   }, [selectedName, scope, level, selectedPresetSummary]);
 
@@ -297,13 +298,14 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
     if (!currentDualMetadata.sliderModes) {
       delete mergedMetadata.sliderModes;
     }
+    const visibility = SHARED_PRESET_TEST_MODE || savePublic ? 'public' : 'private';
     await save(
       trimmedName,
       state,
       saveNote.trim() || undefined,
       undefined,
       Object.keys(mergedMetadata).length > 0 ? mergedMetadata : undefined,
-      savePublic ? { visibility: 'public' } : { visibility: 'private' },
+      { visibility },
     );
     await refresh();
     const savedEntry = await load(trimmedName);
@@ -372,6 +374,7 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
 
   // Delete selected preset
   const handleDelete = useCallback(async () => {
+    if (SHARED_PRESET_TEST_MODE) return;
     if (!selectedName) return;
     const entry = await load(selectedName);
     if (!entry) return;
@@ -383,6 +386,7 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
   }, [selectedName, load, remove]);
 
   const handleToggleVisibility = useCallback(async () => {
+    if (SHARED_PRESET_TEST_MODE) return;
     if (!selectedName) return;
     const entry = await load(selectedName);
     if (!entry) return;
@@ -481,7 +485,7 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
           </button>
         )}
 
-        {selectedName && selectedPresetSummary && selectedPresetSummary.library !== 'stock' && (
+        {!SHARED_PRESET_TEST_MODE && selectedName && selectedPresetSummary && selectedPresetSummary.library !== 'stock' && (
           <button
             onClick={handleDelete}
             style={{ ...dropdownStyles.iconBtn, color: '#664444' }}
@@ -518,15 +522,21 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
               style={{ ...dropdownStyles.input, fontSize: '0.8rem' }}
               onKeyDown={e => { if (e.key === 'Enter') handleSaveConfirm(); if (e.key === 'Escape') setShowSaveDialog(false); }}
             />
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', color: '#999', cursor: 'pointer', marginTop: 4 }}>
-              <input
-                type="checkbox"
-                checked={savePublic}
-                onChange={e => setSavePublic(e.target.checked)}
-                style={{ accentColor: accentColor || '#2a5a8a' }}
-              />
-              Share publicly
-            </label>
+            {SHARED_PRESET_TEST_MODE ? (
+              <div style={{ fontSize: '0.8rem', color: '#999', marginTop: 4 }}>
+                Shared testing mode: saves are public for everyone.
+              </div>
+            ) : (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', color: '#999', cursor: 'pointer', marginTop: 4 }}>
+                <input
+                  type="checkbox"
+                  checked={savePublic}
+                  onChange={e => setSavePublic(e.target.checked)}
+                  style={{ accentColor: accentColor || '#2a5a8a' }}
+                />
+                Share publicly
+              </label>
+            )}
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '8px' }}>
               <button
                 onClick={() => setShowSaveDialog(false)}

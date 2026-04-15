@@ -7,6 +7,7 @@ import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import type { SliderState } from '../state';
 import { usePresets } from '../../presets/usePresets';
 import { getVersionData } from '../../presets/codec';
+import { SHARED_PRESET_TEST_MODE } from '../../presets/sharedMode';
 import {
   getPadPresetOptions,
   PAD1_TO_PAD2_KEY,
@@ -560,7 +561,7 @@ const SynthPresetManager: React.FC<SynthPresetManagerProps> = ({
               onMouseLeave={e => { e.currentTarget.style.color = '#5f8f5f'; e.currentTarget.style.background = 'none'; }}
               title={`Save current state as ${selectedEntryName}`}
             >💾</button>
-            {selectedSummary?.library !== 'stock' && (
+            {!SHARED_PRESET_TEST_MODE && selectedSummary?.library !== 'stock' && (
               <button
                 style={s.deleteBtn}
                 onClick={handleDelete}

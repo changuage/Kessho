@@ -8,12 +8,26 @@ import { usePresets } from './usePresets';
 import { getVersionData } from './codec';
 import { extractCascade, getCascadeKeys } from './codec';
 import { presetValuesEqual } from './presetUtils';
+import { SHARED_PRESET_TEST_MODE } from './sharedMode';
 import { DEFAULT_STATE, migratePreset, type SliderState } from '../ui/state';
 import type { SliderMode } from '../ui/state';
 import { DERIVED_PAD_KEYS } from '../audio/padPresets';
 
 const MAX_CHILDREN = 5;
 const FAMILY_TREE_SELECTION_STORAGE_PREFIX = 'preset-family-tree:selected:';
+
+/* ── Rating Stars ── */
+const RatingStars: React.FC<{ value: number; onChange: (r: number) => void; size?: string }> = ({ value, onChange, size = '0.75rem' }) => (
+  <span style={{ display: 'inline-flex', gap: 1, cursor: 'pointer', lineHeight: 1 }}>
+    {[1, 2, 3, 4, 5].map(n => (
+      <span
+        key={n}
+        onClick={(e) => { e.stopPropagation(); onChange(value === n ? 0 : n); }}
+        style={{ color: n <= value ? '#d4a55a' : '#444', fontSize: size, userSelect: 'none' }}
+      >★</span>
+    ))}
+  </span>
+);
 
 function getFamilyTreeSelectionStorageKey(level: PresetLevel, scope?: string): string {
   return `${FAMILY_TREE_SELECTION_STORAGE_PREFIX}${level}:${scope ?? 'global'}`;
@@ -408,8 +422,15 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
   sliderModes,
   dualSliderRanges,
 }) => {
-  const { presets, families, save, load, remove, refresh } = usePresets(level, scope);
+  const { presets, families, save, load, remove, refresh, updateMetadata } = usePresets(level, scope);
   const selectionStorageKey = useMemo(() => getFamilyTreeSelectionStorageKey(level, scope), [level, scope]);
+
+  // Optimistic local rating state (keyed by preset name)
+  const [localRatings, setLocalRatings] = useState<Record<string, number>>({});
+  const handleRate = useCallback(async (name: string, r: number) => {
+    setLocalRatings(prev => ({ ...prev, [name]: r }));
+    await updateMetadata(name, { rating: r || undefined });
+  }, [updateMetadata]);
 
   // Selected parent preset (for viewing the tree — does NOT auto-load)
   const [selectedParentName, setSelectedParentName] = useState<string>(() => {
@@ -1069,6 +1090,10 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
               <span style={treeStyles.parentName}>
                 {selectedParentName}
               </span>
+              <RatingStars
+                value={localRatings[selectedParentName] ?? presets.find(p => p.name === selectedParentName)?.rating ?? 0}
+                onChange={(r) => { void handleRate(selectedParentName, r); }}
+              />
               <button
                 style={{ ...treeStyles.slotBtn, ...treeStyles.slotA }}
                 onClick={() => requestLoadToSlot(selectedParentName, 'A', onLoadSlotA)}
@@ -1090,7 +1115,7 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
                 onMouseLeave={e => { e.currentTarget.style.color = '#5f8f5f'; e.currentTarget.style.background = 'none'; }}
                 title={`Save current state as ${selectedParentName}`}
               >💾</button>
-              {presets.find(p => p.name === selectedParentName)?.library !== 'stock' && (
+              {!SHARED_PRESET_TEST_MODE && presets.find(p => p.name === selectedParentName)?.library !== 'stock' && (
                 <button
                   style={treeStyles.deleteBtn}
                   onClick={() => requestDelete(selectedParentName)}
@@ -1151,13 +1176,15 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
                         onMouseLeave={e => { e.currentTarget.style.color = '#5f8f5f'; e.currentTarget.style.background = 'none'; }}
                         title={`Save current state as v${(child.currentVersion || 1) + 1} of ${child.variantName !== child.familyName ? child.variantName : child.name}`}
                       >💾</button>
-                      <button
-                        style={treeStyles.deleteBtn}
-                        onClick={() => requestDelete(child.name)}
-                        onMouseEnter={e => { e.currentTarget.style.color = '#ff6666'; e.currentTarget.style.background = 'rgba(143,95,95,0.1)'; }}
-                        onMouseLeave={e => { e.currentTarget.style.color = '#8f5f5f'; e.currentTarget.style.background = 'none'; }}
-                        title={`Delete ${child.variantName !== child.familyName ? child.variantName : child.name}`}
-                      >✕</button>
+                      {!SHARED_PRESET_TEST_MODE && (
+                        <button
+                          style={treeStyles.deleteBtn}
+                          onClick={() => requestDelete(child.name)}
+                          onMouseEnter={e => { e.currentTarget.style.color = '#ff6666'; e.currentTarget.style.background = 'rgba(143,95,95,0.1)'; }}
+                          onMouseLeave={e => { e.currentTarget.style.color = '#8f5f5f'; e.currentTarget.style.background = 'none'; }}
+                          title={`Delete ${child.variantName !== child.familyName ? child.variantName : child.name}`}
+                        >✕</button>
+                      )}
                     </>
                   )}
                   {child.versionCount > 1 && (

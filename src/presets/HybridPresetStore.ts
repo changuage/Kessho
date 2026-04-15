@@ -7,6 +7,7 @@
 
 import type { PresetEntry, PresetLevel, PresetLibrary, PresetSummary } from './types';
 import type { IPresetStore } from './PresetStore';
+import { SHARED_PRESET_TEST_MODE } from './sharedMode';
 
 function comparePresetSummaryPriority(left: PresetSummary, right: PresetSummary): number {
   const rank = (preset: PresetSummary) => {
@@ -50,6 +51,7 @@ export class HybridPresetStore implements IPresetStore {
   }
 
   private isCloudManagedEntry(entry: PresetEntry): boolean {
+    if (SHARED_PRESET_TEST_MODE) return !!this.cloud;
     return !!this.cloud && entry.author !== 'factory' && entry.library !== 'stock';
   }
 
@@ -68,8 +70,10 @@ export class HybridPresetStore implements IPresetStore {
       try {
         const cloudEntry = await this.cloud.load(type, name, scope, version);
         if (cloudEntry) return cloudEntry;
+        if (SHARED_PRESET_TEST_MODE) return null;
       } catch (e) {
         console.warn('Cloud load failed:', e);
+        if (SHARED_PRESET_TEST_MODE) return null;
       }
     }
 
@@ -87,7 +91,12 @@ export class HybridPresetStore implements IPresetStore {
       cloudList = await this.cloud.list(type, scope);
     } catch (e) {
       console.warn('Cloud list failed:', e);
+      if (SHARED_PRESET_TEST_MODE) return [];
       return dedupePresetSummariesByName(localList.filter(p => p.library === 'stock'));
+    }
+
+    if (SHARED_PRESET_TEST_MODE) {
+      return dedupePresetSummariesByName(cloudList).sort((a, b) => a.name.localeCompare(b.name));
     }
 
     const merged: PresetSummary[] = [
@@ -113,6 +122,11 @@ export class HybridPresetStore implements IPresetStore {
   }
 
   async delete(type: PresetLevel, name: string, scope?: string): Promise<void> {
+    if (SHARED_PRESET_TEST_MODE && this.cloud) {
+      console.warn('Shared preset delete is disabled in testing mode:', type, scope ?? '', name);
+      return;
+    }
+
     await this.local.delete(type, name, scope);
     if (this.cloud) {
       try {
@@ -127,7 +141,9 @@ export class HybridPresetStore implements IPresetStore {
     if (this.cloud) {
       try {
         if (await this.cloud.exists(type, name, scope)) return true;
+        if (SHARED_PRESET_TEST_MODE) return false;
       } catch {
+        if (SHARED_PRESET_TEST_MODE) return false;
         const local = await this.local.load(type, name, scope);
         return !!local && (local.library === 'stock' || local.author === 'factory');
       }

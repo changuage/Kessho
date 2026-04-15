@@ -7,6 +7,7 @@ import type { PresetEntry, PresetLevel, PresetSummary } from './types';
 import type { IPresetStore } from './PresetStore';
 import { compressVersions } from './codec';
 import { normalizePresetEntry, normalizePresetSummary, getPresetScope } from './presetUtils';
+import { SHARED_PRESET_TEST_MODE } from './sharedMode';
 
 const LEGACY_DELAY_A_KEY_PATTERN = /"leadDelay(?:ReverbSend|Time|Feedback|Mix|Enabled|Spread|Filter|Send)"/;
 
@@ -32,6 +33,7 @@ interface PresetRow {
   current_version: number;
   created_at: string;
   updated_at: string;
+  rating: number | null;
 }
 
 function normalizeNameKey(name: string): string {
@@ -43,6 +45,21 @@ function getRowLogicalKey(row: PresetRow): string {
 }
 
 function comparePresetRowPriority(left: PresetRow, right: PresetRow, userId: string | null): number {
+  const leftVersionCount = Array.isArray(left.versions) ? left.versions.length : 0;
+  const rightVersionCount = Array.isArray(right.versions) ? right.versions.length : 0;
+
+  if (SHARED_PRESET_TEST_MODE) {
+    if (leftVersionCount !== rightVersionCount) return rightVersionCount - leftVersionCount;
+
+    const leftUpdated = new Date(left.updated_at).getTime();
+    const rightUpdated = new Date(right.updated_at).getTime();
+    if (leftUpdated !== rightUpdated) return rightUpdated - leftUpdated;
+
+    const leftCreated = new Date(left.created_at).getTime();
+    const rightCreated = new Date(right.created_at).getTime();
+    return rightCreated - leftCreated;
+  }
+
   const leftOwn = !!userId && left.user_id === userId;
   const rightOwn = !!userId && right.user_id === userId;
   if (leftOwn !== rightOwn) return leftOwn ? -1 : 1;
@@ -54,6 +71,8 @@ function comparePresetRowPriority(left: PresetRow, right: PresetRow, userId: str
   const leftUpdated = new Date(left.updated_at).getTime();
   const rightUpdated = new Date(right.updated_at).getTime();
   if (leftUpdated !== rightUpdated) return rightUpdated - leftUpdated;
+
+  if (leftVersionCount !== rightVersionCount) return rightVersionCount - leftVersionCount;
 
   const leftCreated = new Date(left.created_at).getTime();
   const rightCreated = new Date(right.created_at).getTime();
@@ -95,6 +114,7 @@ function rowToEntry(row: PresetRow): PresetEntry {
     updatedAt: new Date(row.updated_at).getTime(),
     remoteId: row.id,
     playCount: row.plays,
+    rating: row.rating ?? undefined,
   })!;
 }
 
@@ -115,6 +135,7 @@ function entryToRow(entry: PresetEntry, userId: string | null): Record<string, u
     variant_rank: entry.variantRank ?? null,
     versions: entry.versions,
     current_version: entry.currentVersion,
+    rating: entry.rating ?? null,
   };
 }
 
@@ -159,25 +180,40 @@ export class SupabasePresetStore implements IPresetStore {
     compressVersions(normalized);
 
     const scope = getPresetScope(normalized, normalized.type);
-    const row = entryToRow(normalized, this.userId);    // Anonymous users default to public so presets work cross-device
-    if (this.isAnonymous && !normalized.visibility) {
+    const row = entryToRow(normalized, this.userId);
+    if (SHARED_PRESET_TEST_MODE) {
+      row.visibility = 'public';
+    } else if (this.isAnonymous && !normalized.visibility) {
       row.visibility = 'public';
     }
     // Select-then-insert/update because PostgREST upsert doesn't support
     // functional unique indexes (COALESCE(scope, '')).
     let existingQuery = this.client
       .from('presets')
-      .select('id')
+      .select('*')
       .eq('type', normalized.type)
       .eq('name', normalized.name);
-    
-    if (this.userId) existingQuery = existingQuery.eq('user_id', this.userId);
-    else existingQuery = existingQuery.is('user_id', null);
+
+    if (!SHARED_PRESET_TEST_MODE) {
+      if (this.userId) existingQuery = existingQuery.eq('user_id', this.userId);
+      else existingQuery = existingQuery.is('user_id', null);
+    }
     
     if (scope) existingQuery = existingQuery.eq('scope', scope);
     else existingQuery = existingQuery.is('scope', null);
 
-    const { data: existing } = await existingQuery.limit(1).maybeSingle();
+    const { data: existingRows, error: existingLookupError } = await existingQuery
+      .order('updated_at', { ascending: false })
+      .limit(20);
+
+    if (existingLookupError) {
+      console.error('SupabasePresetStore.save lookup error:', existingLookupError);
+      throw new Error(`Cloud lookup failed: ${existingLookupError.message}`);
+    }
+
+    const existing = existingRows?.length
+      ? dedupePreferredRows(existingRows as PresetRow[], SHARED_PRESET_TEST_MODE ? null : this.userId)[0]
+      : null;
 
     let error;
     if (existing) {
@@ -208,17 +244,22 @@ export class SupabasePresetStore implements IPresetStore {
     if (scope) query = query.eq('scope', scope);
     else query = query.is('scope', null);
 
-    // Prefer own presets, then public
-    if (this.userId) {
-      query = query.or(`user_id.eq.${this.userId},visibility.in.(public,featured)`);
+    if (!SHARED_PRESET_TEST_MODE) {
+      // Prefer own presets, then public
+      if (this.userId) {
+        query = query.or(`user_id.eq.${this.userId},visibility.in.(public,featured)`);
+      } else {
+        query = query.in('visibility', ['public', 'featured']);
+      }
     } else {
-      query = query.in('visibility', ['public', 'featured']);
+      // Shared testing mode: RLS handles row visibility.
+      // No client-side filter so owners can still see their own rows.
     }
 
     const { data, error } = await query;
     if (error || !data || data.length === 0) return null;
 
-    const rows = dedupePreferredRows(data as PresetRow[], this.userId);
+    const rows = dedupePreferredRows(data as PresetRow[], SHARED_PRESET_TEST_MODE ? null : this.userId);
     const row = rows[0];
     if (!row) return null;
     const entry = rowToEntry(row);
@@ -239,11 +280,16 @@ export class SupabasePresetStore implements IPresetStore {
 
     if (scope) query = query.eq('scope', scope);
 
-    // Show own presets + public presets
-    if (this.userId) {
-      query = query.or(`user_id.eq.${this.userId},visibility.in.(public,featured)`);
+    if (!SHARED_PRESET_TEST_MODE) {
+      // Show own presets + public presets
+      if (this.userId) {
+        query = query.or(`user_id.eq.${this.userId},visibility.in.(public,featured)`);
+      } else {
+        query = query.in('visibility', ['public', 'featured']);
+      }
     } else {
-      query = query.in('visibility', ['public', 'featured']);
+      // Shared testing mode: RLS handles row visibility.
+      // No client-side filter so owners can still see their own rows.
     }
 
     query = query.order('updated_at', { ascending: false }).limit(200);
@@ -254,7 +300,7 @@ export class SupabasePresetStore implements IPresetStore {
       return [];
     }
 
-    const rows = dedupePreferredRows(data as PresetRow[], this.userId);
+    const rows = dedupePreferredRows(data as PresetRow[], SHARED_PRESET_TEST_MODE ? null : this.userId);
     const entries = rows.map(row => rowToEntry(row));
     await Promise.allSettled(entries.map((entry, index) => this.rewriteLegacyDelayAKeysIfOwned(rows[index]!, entry)));
 
@@ -264,6 +310,11 @@ export class SupabasePresetStore implements IPresetStore {
   }
 
   async delete(type: PresetLevel, name: string, scope?: string): Promise<void> {
+    if (SHARED_PRESET_TEST_MODE) {
+      console.warn('Shared preset delete is disabled in testing mode:', type, scope ?? '', name);
+      return;
+    }
+
     if (!this.userId) return; // Can't delete without auth
 
     let query = this.client
@@ -289,7 +340,7 @@ export class SupabasePresetStore implements IPresetStore {
       .eq('name', name);
 
     if (scope) query = query.eq('scope', scope);
-    if (this.userId) query = query.eq('user_id', this.userId);
+    if (!SHARED_PRESET_TEST_MODE && this.userId) query = query.eq('user_id', this.userId);
 
     const { data } = await query.limit(1);
     return !!data && data.length > 0;

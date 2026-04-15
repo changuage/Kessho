@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS presets (
   variant_rank INT,
   forked_from UUID REFERENCES presets(id),
   plays INT DEFAULT 0,
+  rating SMALLINT CHECK (rating IS NULL OR (rating >= 0 AND rating <= 5)),
   versions JSONB NOT NULL DEFAULT '[]',  -- Array of { v, note, timestamp, data, ... }
   current_version INT NOT NULL DEFAULT 1,
   created_at TIMESTAMPTZ DEFAULT now(),
@@ -65,6 +66,17 @@ CREATE POLICY "Users insert own presets" ON presets
 -- Policy: Users can update their own presets
 CREATE POLICY "Users update own presets" ON presets
   FOR UPDATE USING (auth.uid() = user_id);
+
+-- Temporary testing policy: any authenticated user can update shared public presets.
+-- Keep DELETE owner-only so shared presets cannot be removed by other visitors.
+CREATE POLICY "Authenticated users update shared public presets" ON presets
+  FOR UPDATE USING (
+    auth.uid() IS NOT NULL
+    AND visibility IN ('public', 'featured')
+  )
+  WITH CHECK (
+    visibility IN ('public', 'featured')
+  );
 
 -- Policy: Users can delete their own presets
 CREATE POLICY "Users delete own presets" ON presets

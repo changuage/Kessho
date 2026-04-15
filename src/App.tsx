@@ -48,6 +48,7 @@ import type { SeqSimpleState } from './ui/drums/SeqSimple';
 import { getVersionData } from './presets/codec';
 import type { IPresetStore } from './presets/PresetStore';
 import { extractPresetVersionMetadata } from './presets/presetUtils';
+import { SHARED_PRESET_TEST_MODE } from './presets/sharedMode';
 import type { PresetEntry } from './presets/types';
 import { CollapsiblePanel } from './ui/CollapsiblePanel';
 import type { StepOverrides, SubLaneKind, SubLaneState, PitchSettings, EvolveConfig } from './ui/sequencer/useEuclideanSequencer';
@@ -439,7 +440,7 @@ const loadPresetsFromFolder = async (): Promise<SavedPreset[]> => {
     if (!manifestResponse.ok) {
       console.warn('No preset manifest found, trying known files...');
       // Fallback: try known preset files
-      const knownFiles = ['Ethereal_Ambient.json', 'Dark_Textures.json', 'Bright_Bells.json', 'StringWaves.json', 'ZoneOut1.json', 'Gamelantest.json'];
+      const knownFiles = ['Ethereal_Ambient.json', 'Dark_Textures.json', 'Bright_Bells.json', 'StringWavesR.json', 'ZoneOut1.json', 'Gamelantest.json'];
       for (const file of knownFiles) {
         try {
           const response = await fetch(`/presets/${file}`);
@@ -1392,9 +1393,26 @@ const App: React.FC = () => {
 
   // Seed factory presets into PresetStore on first launch
   useEffect(() => {
-    void import('./presets').then(({ loadFactoryPresets }) =>
-      loadFactoryPresets().then(n => { if (n > 0) console.log(`Seeded ${n} factory presets`); })
-    );
+    let cancelled = false;
+
+    void (async () => {
+      if (SHARED_PRESET_TEST_MODE && CLOUD_ENABLED) {
+        await cloudPresetStoreReadyPromiseRef.current;
+      }
+      if (cancelled) return;
+
+      const { loadFactoryPresets } = await import('./presets');
+      if (cancelled) return;
+
+      const n = await loadFactoryPresets();
+      if (!cancelled && n > 0) {
+        console.log(`Seeded ${n} factory presets`);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
   
   // Recording state
