@@ -88,6 +88,7 @@ export class EarthTexturePlayer {
   private static readonly decodedBufferCache = new WeakMap<AudioContext, Map<string, AudioBuffer>>();
   private static readonly loadPromiseCache = new WeakMap<AudioContext, Map<string, Promise<AudioBuffer | null>>>();
   private static readonly schedulerGroups = new WeakMap<AudioContext, EarthTextureSchedulerGroup>();
+  private static readonly missingFileCache = new Set<string>();
 
   private readonly ctx: AudioContext;
   private readonly output: AudioNode;
@@ -150,6 +151,8 @@ export class EarthTexturePlayer {
   }
 
   async ensureLoaded(): Promise<AudioBuffer | null> {
+    if (EarthTexturePlayer.missingFileCache.has(this.fileName)) return null;
+
     const sharedBuffers = this.getSharedDecodedBufferCache();
     const existing = sharedBuffers.get(this.fileName);
     if (existing) return existing;
@@ -162,7 +165,16 @@ export class EarthTexturePlayer {
       try {
         const response = await fetch(resolveSampleUrl(this.fileName));
         if (!response.ok) {
-          console.warn(`Earth texture sample not found: ${this.fileName}`);
+          if (response.status === 404) {
+            const alreadyMarkedMissing = EarthTexturePlayer.missingFileCache.has(this.fileName);
+            EarthTexturePlayer.missingFileCache.add(this.fileName);
+            if (!alreadyMarkedMissing) {
+              console.warn(`Earth texture sample not found: ${this.fileName}`);
+            }
+            return null;
+          }
+
+          console.warn(`Failed to load Earth texture sample ${this.fileName}: HTTP ${response.status}`);
           return null;
         }
         const arrayBuffer = await response.arrayBuffer();
