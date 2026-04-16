@@ -20,6 +20,7 @@ import {
 } from './ui/state';
 import { DualSlider, DualSliderRange } from './ui/DualSlider';
 import { audioEngine, EngineState } from './audio/engine';
+import { isCloudEnabled as isCloudPresetConfigEnabled } from './cloud/supabase';
 import { formatChordDegrees, calculateDriftedRoot } from './audio/harmony';
 import { DrumVoiceType as DrumPresetVoice } from './audio/drumPresets';
 import { getPadPreset, morphPadPresets, PAD_PRESET_PARAM_KEYS, PAD1_TO_PAD2_KEY } from './audio/padPresets';
@@ -114,7 +115,7 @@ const TEXT_SYMBOLS = {
 } as const;
 
 const DEFAULT_AUTO_START_PRESET_NAME = 'String Waves';
-const CLOUD_ENABLED = !!import.meta.env.VITE_SUPABASE_URL && !!import.meta.env.VITE_SUPABASE_ANON_KEY;
+const CLOUD_ENABLED = isCloudPresetConfigEnabled();
 const CAPACITOR_LOCAL_STATE_PRESET_SCOPE = 'global';
 
 const LAZY_PAGE_FALLBACK = (
@@ -1363,6 +1364,7 @@ const App: React.FC = () => {
         const hybrid = new HybridPresetStore(local, cloud);
         setPresetStore(hybrid);
         markCloudPresetStoreReady();
+        console.log('Cloud preset store initialized');
 
         try {
           const autoStartEntry = await cloud.load('state', DEFAULT_AUTO_START_PRESET_NAME, 'global');
@@ -1382,7 +1384,6 @@ const App: React.FC = () => {
         markCloudPresetStoreReady();
         console.warn('Cloud preset store initialization failed:', e);
       }
-      console.log('Cloud preset store initialized');
     })();
 
     return () => {

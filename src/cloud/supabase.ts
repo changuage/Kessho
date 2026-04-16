@@ -12,6 +12,34 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { SliderState } from '../ui/state';
 
+type PublicSupabaseEnvName = 'VITE_SUPABASE_URL' | 'VITE_SUPABASE_ANON_KEY';
+
+function normalizePublicSupabaseEnvValue(name: PublicSupabaseEnvName, rawValue?: string): string | null {
+  let value = rawValue?.trim() ?? '';
+  if (!value) return null;
+
+  const assignmentPrefix = `${name}=`;
+  if (value.startsWith(assignmentPrefix)) {
+    value = value.slice(assignmentPrefix.length).trim();
+  }
+
+  if (
+    (value.startsWith('"') && value.endsWith('"'))
+    || (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    value = value.slice(1, -1).trim();
+  }
+
+  return value || null;
+}
+
+function getPublicSupabaseConfig(): { url: string | null; anonKey: string | null } {
+  return {
+    url: normalizePublicSupabaseEnvValue('VITE_SUPABASE_URL', import.meta.env.VITE_SUPABASE_URL),
+    anonKey: normalizePublicSupabaseEnvValue('VITE_SUPABASE_ANON_KEY', import.meta.env.VITE_SUPABASE_ANON_KEY),
+  };
+}
+
 // Types for cloud presets
 export interface CloudPreset {
   id: string;
@@ -37,11 +65,15 @@ let supabase: SupabaseClient | null = null;
 export function getSupabase(): SupabaseClient | null {
   if (supabase) return supabase;
 
-  const url = import.meta.env.VITE_SUPABASE_URL;
-  const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  const { url, anonKey } = getPublicSupabaseConfig();
 
   if (!url || !anonKey) {
     console.warn('Supabase not configured. Cloud presets disabled.');
+    return null;
+  }
+
+  if (!/^https?:\/\//i.test(url)) {
+    console.warn('Supabase config invalid. VITE_SUPABASE_URL must be only the bare https://... project URL.');
     return null;
   }
 
@@ -50,7 +82,8 @@ export function getSupabase(): SupabaseClient | null {
 }
 
 export function isCloudEnabled(): boolean {
-  return !!import.meta.env.VITE_SUPABASE_URL && !!import.meta.env.VITE_SUPABASE_ANON_KEY;
+  const { url, anonKey } = getPublicSupabaseConfig();
+  return !!url && !!anonKey && /^https?:\/\//i.test(url);
 }
 
 /**
