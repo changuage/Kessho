@@ -680,41 +680,25 @@ static void updateCrossover() {
 
 // ── Hadamard mixing — 16×16, 8×8, 4×4 ──
 
-// 16×16 Hadamard via recursive doubling of 8×8
+// 16×16 Hadamard via fast Walsh-Hadamard butterfly stages.
 static inline void mixFDN16(const float* in, float* out) {
     const float s = 0.25f;  // 1/sqrt(16)
-    // H16 = H2 ⊗ H8: split into two halves, mix with ±
-    float a[8], b[8];
-    for (int i = 0; i < 8; i++) {
-        a[i] = in[i] + in[i + 8];
-        b[i] = in[i] - in[i + 8];
-    }
-    // Apply H8 to each half
-    float ha[8], hb[8];
-    // H8 rows (Hadamard pattern: rows are Walsh functions)
-    const int H8[8][8] = {
-        { 1, 1, 1, 1, 1, 1, 1, 1},
-        { 1,-1, 1,-1, 1,-1, 1,-1},
-        { 1, 1,-1,-1, 1, 1,-1,-1},
-        { 1,-1,-1, 1, 1,-1,-1, 1},
-        { 1, 1, 1, 1,-1,-1,-1,-1},
-        { 1,-1, 1,-1,-1, 1,-1, 1},
-        { 1, 1,-1,-1,-1,-1, 1, 1},
-        { 1,-1,-1, 1,-1, 1, 1,-1}
-    };
-    for (int r = 0; r < 8; r++) {
-        float sumA = 0.0f, sumB = 0.0f;
-        for (int c = 0; c < 8; c++) {
-            sumA += (float)H8[r][c] * a[c];
-            sumB += (float)H8[r][c] * b[c];
+    float x[16];
+    for (int i = 0; i < 16; i++) x[i] = in[i];
+
+    for (int stride = 1; stride < 16; stride <<= 1) {
+        int step = stride << 1;
+        for (int base = 0; base < 16; base += step) {
+            for (int j = 0; j < stride; j++) {
+                float a = x[base + j];
+                float b = x[base + j + stride];
+                x[base + j] = a + b;
+                x[base + j + stride] = a - b;
+            }
         }
-        ha[r] = sumA;
-        hb[r] = sumB;
     }
-    for (int i = 0; i < 8; i++) {
-        out[i]     = ha[i] * s;
-        out[i + 8] = hb[i] * s;
-    }
+
+    for (int i = 0; i < 16; i++) out[i] = x[i] * s;
 }
 
 static inline void mixFDN8(const float* state, float* out) {
@@ -1405,6 +1389,11 @@ void reverb_process_block(int block_size) {
     float predelayModRate = 0.1f / sr;
     float predelayModMaxSamples = 0.002f * sr;
     float transSmooth = g_reverb.transientSmooth;
+    float erAlpha = 0.0f;
+    if (erAmount > 0.0f) {
+        float erOmega = g_reverb.erLpFreq * g_reverb.twoPiOverSr;
+        erAlpha = erOmega / (1.0f + erOmega);
+    }
 
     // Velvet noise density: sparse impulse injection for density at high decay.
     float velvetThreshold = 0.0f;
@@ -1722,8 +1711,6 @@ void reverb_process_block(int block_size) {
                 erR += g_reverb.erDelayR.read(g_reverb.erTapSamplesR[t]) * ER_GAINS[t];
             }
             // ER low-pass filter (one-pole)
-            float erOmega = g_reverb.erLpFreq * g_reverb.twoPiOverSr;
-            float erAlpha = erOmega / (1.0f + erOmega);
             g_reverb.erLpStateL += erAlpha * (erL - g_reverb.erLpStateL);
             g_reverb.erLpStateR += erAlpha * (erR - g_reverb.erLpStateR);
             rawL += g_reverb.erLpStateL * erAmount * 0.12f;

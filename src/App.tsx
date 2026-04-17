@@ -2978,22 +2978,35 @@ const App: React.FC = () => {
           case 'delayAReverbSend':
           case 'delayAToBSend':
             newState.delayAEnabled = true;
+            if (routeKey === 'delayAToBSend') {
+              newState.granularDelayEnabled = true;
+            }
+            break;
+          case 'granularDelayActivity':
+          case 'granularDelayRepeats':
+          case 'granularDelayMix':
+          case 'granularDelayReverbSend':
+          case 'granularDelayFilter':
+          case 'granularDelayVibrato':
+          case 'delayBToASend':
+          case 'delayBWarpIntensity':
+          case 'delayBSpread':
+            newState.granularDelayEnabled = true;
             break;
           case 'granularLevel':
           case 'granularReverbSend':
           case 'granularDelayASend':
           case 'granularDelayBSend':
             newState.granularEnabled = true;
+            if (routeKey === 'granularDelayBSend') {
+              newState.granularDelayEnabled = true;
+            }
             // Mutual exclusion: zero the reverse direction
             if (positiveNumber) newState.delayBGranularSend = 0;
             break;
           case 'delayAGranularSend':
             newState.delayAEnabled = true;
             newState.granularEnabled = true;
-            break;
-          case 'granularDelayReverbSend':
-          case 'delayBToASend':
-            newState.granularDelayEnabled = true;
             break;
           case 'delayBGranularSend':
             newState.granularDelayEnabled = true;
@@ -3006,6 +3019,9 @@ const App: React.FC = () => {
           case 'lead1DelayASend':
           case 'lead1DelayBSend':
             newState.leadEnabled = true;
+            if (routeKey === 'lead1DelayBSend') {
+              newState.granularDelayEnabled = true;
+            }
             break;
           case 'granularLead1Send':
             newState.leadEnabled = true;
@@ -3016,6 +3032,9 @@ const App: React.FC = () => {
           case 'lead2DelayASend':
           case 'lead2DelayBSend':
             newState.lead2Enabled = true;
+            if (routeKey === 'lead2DelayBSend') {
+              newState.granularDelayEnabled = true;
+            }
             break;
           case 'granularLead2Send':
             newState.lead2Enabled = true;
@@ -3026,6 +3045,9 @@ const App: React.FC = () => {
           case 'pianoDelayASend':
           case 'pianoDelayBSend':
             newState.pianoEnabled = true;
+            if (routeKey === 'pianoDelayBSend') {
+              newState.granularDelayEnabled = true;
+            }
             break;
           case 'granularPianoSend':
             newState.pianoEnabled = true;
@@ -3036,6 +3058,9 @@ const App: React.FC = () => {
           case 'drumDelayASend':
           case 'drumDelayBSend':
             newState.drumEnabled = true;
+            if (routeKey === 'drumDelayBSend') {
+              newState.granularDelayEnabled = true;
+            }
             break;
           case 'granularDrumSend':
             newState.drumEnabled = true;
@@ -3048,6 +3073,9 @@ const App: React.FC = () => {
           case 'oceanSliceDuration':
           case 'oceanSliceDensity':
             newState.oceanSampleEnabled = true;
+            if (routeKey === 'oceanDelayBSend') {
+              newState.granularDelayEnabled = true;
+            }
             break;
           case 'granularWavesSend':
             newState.oceanSampleEnabled = true;
@@ -3057,6 +3085,9 @@ const App: React.FC = () => {
           case 'natureReverbSend':
           case 'natureDelayASend':
           case 'natureDelayBSend':
+            if (routeKey === 'natureDelayBSend') {
+              newState.granularDelayEnabled = true;
+            }
             break;
           case 'granularNatureSend':
             newState.granularEnabled = true;
@@ -3113,6 +3144,9 @@ const App: React.FC = () => {
           case 'waterLayerSurf':
           case 'waterLayerChannels':
             newState.waterEnabled = true;
+            if (routeKey === 'waterDelayBSend') {
+              newState.granularDelayEnabled = true;
+            }
             break;
           case 'granularWaterSend':
             newState.waterEnabled = true;
@@ -3129,6 +3163,9 @@ const App: React.FC = () => {
           case 'insectsReverbSend':
           case 'insDelayASend':
           case 'insDelayBSend':
+            if (routeKey === 'insDelayBSend') {
+              newState.granularDelayEnabled = true;
+            }
             break;
           case 'granularInsectsSend':
             newState.granularEnabled = true;
@@ -3589,6 +3626,14 @@ const App: React.FC = () => {
     };
   }, [sliderModes, dualSliderRanges, randomWalkPositions, triggerPositionMap, shPositions, drumMorphPositions, drumMorphKeys, drumMorphKeyToVoice, drumSHParamKeys, drumParamSHPositions, shFlashKeys, handleCycleSliderMode, handleDualRangeChange]);
 
+  const shouldDisableLeadRandomTiming = useCallback((nextState: SliderState): boolean => {
+    if (!nextState.leadRandomEnabled) return false;
+    const randomSource = nextState.leadRandomSource ?? 'lead1';
+    if (randomSource === 'lead2') return !nextState.lead2Enabled;
+    if (randomSource === 'piano') return !nextState.pianoEnabled;
+    return !nextState.leadEnabled;
+  }, []);
+
   // Handle select change
   const handleSelectChange = useCallback(<K extends keyof SliderState>(key: K, value: SliderState[K]) => {
     // Mark that user has interacted with the UI
@@ -3664,6 +3709,9 @@ const App: React.FC = () => {
             if (!('granularDelayBSend' in presetData)) {
               newState.granularDelayBSend = presetData.granularDelayEnabled === true ? 1 : 0;
             }
+            if ((newState.granularDelayBSend ?? 0) > 0) {
+              newState.granularDelayEnabled = true;
+            }
           }
         }
       }
@@ -3709,6 +3757,10 @@ const App: React.FC = () => {
           (newState as unknown as Record<string, unknown>).insects2ClickRate = defs.clickRate;
           (newState as unknown as Record<string, unknown>).insects2Motion = defs.motion;
         }
+      }
+
+      if (shouldDisableLeadRandomTiming(newState)) {
+        newState.leadRandomEnabled = false;
       }
 
       return newState;
@@ -3768,9 +3820,23 @@ const App: React.FC = () => {
           return { ...next, ...newWalkPositions };
         });
       }
-
     }
-  }, []);
+  }, [shouldDisableLeadRandomTiming]);
+
+  useEffect(() => {
+    if (!shouldDisableLeadRandomTiming(state)) return;
+    setState(prev => {
+      if (!shouldDisableLeadRandomTiming(prev)) return prev;
+      return { ...prev, leadRandomEnabled: false };
+    });
+  }, [
+    shouldDisableLeadRandomTiming,
+    state.leadEnabled,
+    state.lead2Enabled,
+    state.pianoEnabled,
+    state.leadRandomEnabled,
+    state.leadRandomSource,
+  ]);
 
   // Start/Stop
   const handleStart = async () => {

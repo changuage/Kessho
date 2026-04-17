@@ -1434,6 +1434,19 @@ export class AudioEngine {
     return state.leadRandomSource ?? 'lead1';
   }
 
+  private isLeadRandomSourceEnabled(state: SliderState): boolean {
+    const randomSource = this.getLeadRandomSource(state);
+    if (randomSource === 'lead2') return !!state.lead2Enabled;
+    if (randomSource === 'piano') return !!state.pianoEnabled;
+    return !!state.leadEnabled;
+  }
+
+  private usesRandomLeadPath(state: SliderState): boolean {
+    if (!state.leadRandomEnabled || !this.isLeadRandomSourceEnabled(state)) return false;
+    const randomSource = this.getLeadRandomSource(state);
+    return randomSource === 'lead1' || randomSource === 'lead2';
+  }
+
   private euclidUsesLead1Source(state: SliderState): boolean {
     return !!(
       state.synthEuclideanMasterEnabled && (
@@ -1468,15 +1481,15 @@ export class AudioEngine {
   }
 
   private isLead1RouteActive(state: SliderState): boolean {
-    return !!state.leadEnabled || (state.leadRandomEnabled && this.getLeadRandomSource(state) === 'lead1') || this.euclidUsesLead1Source(state);
+    return !!state.leadEnabled || this.euclidUsesLead1Source(state);
   }
 
   private isLead2RouteActive(state: SliderState): boolean {
-    return !!state.lead2Enabled || (state.leadRandomEnabled && this.getLeadRandomSource(state) === 'lead2') || this.euclidUsesLead2Source(state);
+    return !!state.lead2Enabled || this.euclidUsesLead2Source(state);
   }
 
   private isPianoRouteActive(state: SliderState): boolean {
-    return !!state.pianoEnabled || (state.leadRandomEnabled && this.getLeadRandomSource(state) === 'piano') || this.euclidUsesPianoSource(state);
+    return !!state.pianoEnabled || this.euclidUsesPianoSource(state);
   }
 
   private setPadVoiceTarget(voiceIndex: number, isPad2: boolean): void {
@@ -1944,6 +1957,7 @@ export class AudioEngine {
     granularEnabled: boolean,
   ) {
     const now = this.ctx?.currentTime ?? 0;
+    const delayBArmed = !!state.granularDelayEnabled;
     const oceanLayerActive = this.isOceanLayerFadeActive(state, now);
     const natureLayerActive = this.isNatureLayerFadeActive(state, now);
     const waterLayerActive = this.isWaterLayerFadeActive(state, now);
@@ -1952,10 +1966,13 @@ export class AudioEngine {
     const waterFamilySendScale = this.getWaterFamilySendScale(state);
     const insectsFamilySendScale = this.getInsectsFamilySendScale(state);
     const spaceMode = computeGranularMacroModel(state, (key, fallback) => this.shv(key as string, fallback)).spaceMode;
-    const delayBGranularReturn = this.shv('delayBGranularSend', state.delayBGranularSend ?? 0);
-    const granularDelaySourceLevel = (granularEnabled && delayBGranularReturn < 0.0001) ? (state.granularDelayBSend ?? 0) : 0;
+    const delayBGranularReturn = delayBArmed ? this.shv('delayBGranularSend', state.delayBGranularSend ?? 0) : 0;
+    const granularDelaySourceLevel =
+      (delayBArmed && granularEnabled && delayBGranularReturn < 0.0001)
+        ? (state.granularDelayBSend ?? 0)
+        : 0;
     const crossFeeds = this.getSafeDelayCrossFeedLevels(state);
-    const delayBExternalFeedActive =
+    const delayBExternalFeedActive = delayBArmed && (
       (pad1Active && (state.pad1DelayBSend ?? 0) > 0.0001) ||
       (pad2Active && (state.pad2DelayBSend ?? 0) > 0.0001) ||
       (lead1RoutingActive && (state.lead1DelayBSend ?? 0) > 0.0001) ||
@@ -1966,8 +1983,9 @@ export class AudioEngine {
       (natureLayerActive && this.scaleEarthSend(state.natureDelayBSend ?? 0, natureFamilySendScale) > 0.0001) ||
       (waterLayerActive && this.scaleEarthSend(state.waterDelayBSend ?? 0, waterFamilySendScale) > 0.0001) ||
       (insectsLayerActive && this.scaleEarthSend(state.insDelayBSend ?? 0, insectsFamilySendScale) > 0.0001) ||
-      (crossFeeds.aToB > 0.0001);
-    const delayBEnabled = granularDelaySourceLevel > 0.0001 || delayBExternalFeedActive;
+      (crossFeeds.aToB > 0.0001)
+    );
+    const delayBEnabled = delayBArmed && (granularDelaySourceLevel > 0.0001 || delayBExternalFeedActive);
 
     return {
       delayBEnabled,
@@ -3987,7 +4005,7 @@ export class AudioEngine {
       this.startGranularTempoSyncScheduler();
     }
     // Start random lead scheduling if enabled
-    if (this.sliderState?.leadRandomEnabled) {
+    if (this.sliderState?.leadRandomEnabled && this.isLeadRandomSourceEnabled(this.sliderState)) {
       this.startLeadMelody((this.sliderState.leadRandomSyncPolicy ?? 'nextPhrase') === 'nextPhrase');
     }
 
@@ -4632,7 +4650,7 @@ export class AudioEngine {
       }
     }
 
-    if (this.isRunning && leadTimingChanged && effectiveState.leadRandomEnabled) {
+    if (this.isRunning && leadTimingChanged && effectiveState.leadRandomEnabled && this.isLeadRandomSourceEnabled(effectiveState)) {
       const leadPolicy = effectiveState.leadRandomSyncPolicy ?? 'nextPhrase';
       this.startLeadMelody(leadPolicy === 'nextPhrase');
     }
@@ -4873,7 +4891,9 @@ export class AudioEngine {
 
     // Lead synth (Rhodes/Bell)
     this.leadGain = ctx.createGain();
-    this.leadGain.gain.value = (this.sliderState?.leadEnabled || this.sliderState?.leadRandomEnabled || this.sliderState?.synthEuclideanMasterEnabled) ? 1.0 : 0;
+    this.leadGain.gain.value = this.sliderState
+      ? ((this.isLead1RouteActive(this.sliderState) || this.isLead2RouteActive(this.sliderState) || this.usesRandomLeadPath(this.sliderState)) ? 1.0 : 0)
+      : 0;
 
     this.leadFilter = ctx.createBiquadFilter();
     this.leadFilter.type = 'lowpass';
@@ -7835,13 +7855,16 @@ export class AudioEngine {
 
     // Lead synth parameters — leadDry gates active/inactive; per-lead level on lead1/2LevelGain + WASM per-lead gains
     // Keep gain active if Euclidean sequencer is driving lead
-    const leadActive = state.leadEnabled || state.leadRandomEnabled || state.synthEuclideanMasterEnabled;
+    const leadActive =
+      this.isLead1RouteActive(state) ||
+      this.isLead2RouteActive(state) ||
+      this.usesRandomLeadPath(state);
     this.leadDry?.gain.setTargetAtTime(leadActive ? 1.0 : 0, now, smoothTime);
 
     // Lead random scheduling (phrase-based, independent of Euclidean)
-    if (state.leadRandomEnabled && this.leadMelodyTimer === null && this.isRunning) {
+    if (state.leadRandomEnabled && this.isLeadRandomSourceEnabled(state) && this.leadMelodyTimer === null && this.isRunning) {
       this.startLeadMelody((state.leadRandomSyncPolicy ?? 'nextPhrase') === 'nextPhrase');
-    } else if (!state.leadRandomEnabled && this.leadMelodyTimer !== null) {
+    } else if ((!state.leadRandomEnabled || !this.isLeadRandomSourceEnabled(state)) && this.leadMelodyTimer !== null) {
       clearTimeout(this.leadMelodyTimer);
       this.leadMelodyTimer = null;
       for (const timeout of this.leadNoteTimeouts) clearTimeout(timeout);
@@ -8515,8 +8538,8 @@ export class AudioEngine {
     }
 
     // ─── Shared delay (NOT from presets) ───
-    const lead1DelayActive = !!(this.sliderState.leadEnabled || this.sliderState.leadRandomEnabled || this.sliderState.synthEuclideanMasterEnabled);
-    const lead2DelayActive = !!this.sliderState.lead2Enabled;
+    const lead1DelayActive = this.isLead1RouteActive(this.sliderState) || (this.sliderState.leadRandomEnabled && this.getLeadRandomSource(this.sliderState) === 'lead1' && this.isLeadRandomSourceEnabled(this.sliderState));
+    const lead2DelayActive = this.isLead2RouteActive(this.sliderState) || (this.sliderState.leadRandomEnabled && this.getLeadRandomSource(this.sliderState) === 'lead2' && this.isLeadRandomSourceEnabled(this.sliderState));
     const pianoDelayActive = this.isPianoRouteActive(this.sliderState);
     const granularBusArmed = this.isGranularBusArmed(this.sliderState, lead1DelayActive, lead2DelayActive, pianoDelayActive);
     const delayAState = this.getSharedDelayAState(
@@ -8908,6 +8931,14 @@ export class AudioEngine {
       return;
     }
 
+    if (!this.isLeadRandomSourceEnabled(this.sliderState)) {
+      if (this.leadMelodyTimer !== null) {
+        clearTimeout(this.leadMelodyTimer);
+        this.leadMelodyTimer = null;
+      }
+      return;
+    }
+
     const randomSource = this.getLeadRandomSource(this.sliderState);
     const matchesRandomSource = (source: string): boolean => {
       if (randomSource === 'lead1') return source === 'lead' || source === 'lead1';
@@ -8992,7 +9023,7 @@ export class AudioEngine {
     for (const timeout of this.leadNoteTimeouts) clearTimeout(timeout);
     this.leadNoteTimeouts = [];
 
-    if (this.sliderState?.leadRandomEnabled) {
+    if (this.sliderState?.leadRandomEnabled && this.isLeadRandomSourceEnabled(this.sliderState)) {
       if (deferToBoundary && this.sliderState) {
         const anchors = this.ensureTransportAnchors();
         const nowWallSec = Date.now() / 1000;
