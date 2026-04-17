@@ -17,6 +17,7 @@
  */
 
 import React, { useRef, useEffect, useCallback, useMemo } from 'react';
+import { getCappedCanvasDpr, useAnimationVisibility } from '../hooks/useAnimationVisibility';
 
 export interface ReverbEnvelopeCanvasProps {
   engine: 'algorithmic' | 'convolution';
@@ -66,10 +67,12 @@ const TAPE_TINT = 'rgba(245, 158, 11, 0.06)';
 const TUBE_TINT = 'rgba(239, 68, 68, 0.06)';
 
 const ReverbEnvelopeCanvas: React.FC<ReverbEnvelopeCanvasProps> = (props) => {
+  const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef(0);
   const timeRef = useRef(0);
   const lastFrameTimeRef = useRef<number | null>(null);
+  const { canAnimate } = useAnimationVisibility(containerRef);
 
   // Memoise shimmer sparkle positions (stable across frames)
   const sparkles = useMemo(() => {
@@ -91,7 +94,7 @@ const ReverbEnvelopeCanvas: React.FC<ReverbEnvelopeCanvasProps> = (props) => {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = getCappedCanvasDpr();
     const rect = canvas.getBoundingClientRect();
     const w = rect.width;
     const h = rect.height;
@@ -449,37 +452,26 @@ const ReverbEnvelopeCanvas: React.FC<ReverbEnvelopeCanvasProps> = (props) => {
         lastFrameTimeRef.current = timestamp;
         draw();
       }
-      if (document.visibilityState === 'visible') {
+      if (canAnimate) {
         rafRef.current = requestAnimationFrame(loop);
       } else {
         rafRef.current = 0;
       }
     };
-    const onVisibility = () => {
-      cancelLoop();
-      if (!running || document.visibilityState !== 'visible') return;
-      lastFrameTimeRef.current = null;
-      draw();
-      if (shouldAnimate) {
-        rafRef.current = requestAnimationFrame(loop);
-      }
-    };
     lastFrameTimeRef.current = null;
     draw();
-    if (document.visibilityState === 'visible' && shouldAnimate) {
+    if (canAnimate && shouldAnimate) {
       rafRef.current = requestAnimationFrame(loop);
     }
-    document.addEventListener('visibilitychange', onVisibility);
     return () => {
       running = false;
       lastFrameTimeRef.current = null;
       cancelLoop();
-      document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, [draw, props]);
+  }, [canAnimate, draw, props]);
 
   return (
-    <div className="reverb-envelope-canvas-wrap">
+    <div ref={containerRef} className="reverb-envelope-canvas-wrap">
       <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block' }} />
     </div>
   );

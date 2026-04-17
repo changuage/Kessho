@@ -8,6 +8,7 @@
  * All live data comes from the engine via props — no local simulation.
  */
 import React, { useRef, useEffect, useCallback } from 'react';
+import { getCappedCanvasDpr, useAnimationVisibility } from '../hooks/useAnimationVisibility';
 
 interface FilterLfoVizProps {
   filterAType: string;
@@ -97,6 +98,7 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
   const hoverRef = useRef<DragTarget>(null);
   // Store layout metrics for hit testing (updated each frame)
   const layoutRef = useRef({ filterH: 0, envY: 0, envH: 0, w: 0, h: 0 });
+  const { canAnimate } = useAnimationVisibility(canvasRef, { rootMargin: '120px' });
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -104,7 +106,7 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = getCappedCanvasDpr();
     const rect = canvas.getBoundingClientRect();
     const W = Math.round(rect.width * dpr);
     const H = Math.round(rect.height * dpr);
@@ -525,12 +527,13 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
   }, [props]);
 
   const requestDraw = useCallback(() => {
+    if (!canAnimate) return;
     if (animRef.current) cancelAnimationFrame(animRef.current);
     animRef.current = requestAnimationFrame(() => {
       animRef.current = 0;
       draw();
     });
-  }, [draw]);
+  }, [canAnimate, draw]);
 
   useEffect(() => {
     if (props.isRunning && props.lfoDest !== 'none') {
@@ -542,7 +545,7 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
 
   useEffect(() => {
     requestDraw();
-  }, [requestDraw]);
+  }, [requestDraw, canAnimate]);
 
   useEffect(() => {
     const handleResize = () => requestDraw();

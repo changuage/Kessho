@@ -29,7 +29,8 @@ const MODE_MAP = { clean: 0, granular: 1, legacy: 2 };
 const SHAPE_MAP = { triangle: 0, sawUp: 1, sawDown: 2, square: 3 };
 const POS_REPORT_INTERVAL = Math.floor(sampleRate / 20);
 const WAVEFORM_BINS = 512;         // downsample buffer to this many points
-const WAVEFORM_SKIP = 5;           // send waveform every Nth position report (~4Hz)
+const WAVEFORM_SKIP = 10;          // send waveform every Nth position report (~2Hz)
+const WAVEFORM_SAMPLES_PER_BIN = 8;
 
 // --------------- Processor ---------------
 
@@ -612,7 +613,9 @@ class GranularFXWasmProcessor extends AudioWorkletProcessor {
           ],
         };
 
-        // Waveform snapshot (~4 Hz): peak-downsample left channel buffer
+        // Waveform snapshot (~2 Hz): sparse peak probes across the left buffer.
+        // This keeps the UI background readable without walking the entire
+        // circular buffer on the audio thread.
         this.waveformReportCounter++;
         if (this.waveformReportCounter >= WAVEFORM_SKIP) {
           this.waveformReportCounter = 0;
@@ -626,9 +629,12 @@ class GranularFXWasmProcessor extends AudioWorkletProcessor {
               const samplesPerBin = bufSize / WAVEFORM_BINS;
               for (let bin = 0; bin < WAVEFORM_BINS; bin++) {
                 const start = Math.floor(bin * samplesPerBin);
-                const end = Math.floor((bin + 1) * samplesPerBin);
+                const end = Math.max(start + 1, Math.floor((bin + 1) * samplesPerBin));
+                const span = end - start;
                 let peak = 0;
-                for (let s = start; s < end; s++) {
+                for (let sampleIndex = 0; sampleIndex < WAVEFORM_SAMPLES_PER_BIN; sampleIndex++) {
+                  let s = start + Math.floor(((sampleIndex + 0.5) * span) / WAVEFORM_SAMPLES_PER_BIN);
+                  if (s >= end) s = end - 1;
                   const v = Math.abs(latestHeap[bufOffset + s] ?? 0);
                   if (v > peak) peak = v;
                 }

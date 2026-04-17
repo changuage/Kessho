@@ -2,6 +2,8 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProper
 import type { DualSliderRange } from '../../DualSlider';
 import { useSliderHelp } from '../../SliderHelpOverlay';
 import { QUANTIZATION, type SliderMode, type SliderState } from '../../state';
+import { useAnimationVisibility } from '../../hooks/useAnimationVisibility';
+import { useVisibleInterval } from '../../hooks/useVisibleInterval';
 import { INSECT_ENGINES } from '../../../audio/waterPresets';
 import type { EarthTextureDebugState } from '../../../audio/engine';
 import { NatureSliceViz } from './NatureSliceViz';
@@ -795,6 +797,8 @@ export function ActiveEarthMatrix({
     [activeSharedColumn],
   );
   const [textureDebugState, setTextureDebugState] = useState<EarthTextureDebugState>(() => getEarthTextureDebugState());
+  const sectionRef = useRef<HTMLElement>(null);
+  const { canAnimate: canPollTextureDebug } = useAnimationVisibility(sectionRef, { rootMargin: '220px' });
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
@@ -813,49 +817,28 @@ export function ActiveEarthMatrix({
 
   useEffect(() => {
     if (activeTextureDebugKeys.length === 0) return;
-
-    let intervalId: number | null = null;
-
-    const clearPolling = () => {
-      if (intervalId !== null) {
-        window.clearInterval(intervalId);
-        intervalId = null;
-      }
-    };
-
-    const updateTextureDebugState = () => {
-      const nextState = getEarthTextureDebugState();
-      setTextureDebugState((prev) => {
-        const changed = activeTextureDebugKeys.some((key) => !snapshotsEqual(prev[key], nextState[key]));
-        return changed ? nextState : prev;
-      });
-    };
-
-    const startPolling = () => {
-      clearPolling();
-      if (document.visibilityState !== 'visible') return;
-      updateTextureDebugState();
-      intervalId = window.setInterval(updateTextureDebugState, 250);
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        startPolling();
-      } else {
-        clearPolling();
-      }
-    };
-
-    startPolling();
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => {
-      clearPolling();
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
+    const nextState = getEarthTextureDebugState();
+    setTextureDebugState((prev) => {
+      const changed = activeTextureDebugKeys.some((key) => !snapshotsEqual(prev[key], nextState[key]));
+      return changed ? nextState : prev;
+    });
   }, [activeTextureDebugKeys, getEarthTextureDebugState]);
 
+  const updateTextureDebugState = useCallback(() => {
+    const nextState = getEarthTextureDebugState();
+    setTextureDebugState((prev) => {
+      const changed = activeTextureDebugKeys.some((key) => !snapshotsEqual(prev[key], nextState[key]));
+      return changed ? nextState : prev;
+    });
+  }, [activeTextureDebugKeys, getEarthTextureDebugState]);
+
+  useVisibleInterval(updateTextureDebugState, 250, {
+    enabled: activeTextureDebugKeys.length > 0,
+    isVisible: canPollTextureDebug,
+  });
+
   return (
-    <section className="mixer-section earth-active-matrix">
+    <section ref={sectionRef} className="mixer-section earth-active-matrix">
       <div className="mixer-section-header">Active Earth Matrix</div>
       <div className="earth-active-matrix-note">
         Choose sources below. Shared routing appears per active family, while the active-source matrix keeps only the engines you have in play.

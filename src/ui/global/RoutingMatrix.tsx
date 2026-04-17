@@ -250,6 +250,7 @@ const ROWS: MatrixRow[] = [
     id: 'delayBOut',
     label: 'Delay B Out',
     accent: '#9fe5f0',
+    note: 'Level trims the direct Clocked Space return. Reverb and Granular sends stay independent, so mute those too for total silence.',
     cells: {
       level: { kind: 'editable', route: { key: 'granularDelayMix', label: 'Delay B Level' } },
       delayA: { kind: 'editable', route: { key: 'delayBToASend', label: 'Delay B → Delay A' } },

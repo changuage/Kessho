@@ -64,6 +64,7 @@ import {
   getTransportMetrics,
   resolveProgressionPhraseClockSource,
 } from './transport';
+import { SEQUENCER_VISUAL_SYNC_OFFSET_MS } from './sequencerVisualSync';
 import type { StemRecordTrackId } from './recordingTracks';
 import { getIndexedDelayDivisionValue, getStateValueFromSliderNumber, quantize, type IndexedDelayDivisionKey, type SliderState } from '../ui/state';
 export interface RecordableTrackSource {
@@ -523,11 +524,14 @@ import { defaultEvolveConfig as defaultDrumEuclidEvolveConfig } from './drumSynt
 function clockDivToSeconds(clockDiv: ClockDivision, beatDuration: number): number {
   switch (clockDiv) {
     case '1/4': return beatDuration;
+    case '1/4T': return beatDuration * (2 / 3);
     case '1/8': return beatDuration / 2;
-    case '1/16': return beatDuration / 4;
-    case '1/32': return beatDuration / 8;
-    case '1/64': return beatDuration / 16;
     case '1/8T': return beatDuration / 3;
+    case '1/16': return beatDuration / 4;
+    case '1/16T': return beatDuration / 6;
+    case '1/32': return beatDuration / 8;
+    case '1/32T': return beatDuration / 12;
+    case '1/64': return beatDuration / 16;
     default: return beatDuration / 2;
   }
 }
@@ -613,6 +617,9 @@ export class AudioEngine {
   private synthEuclidCurrentStep: Quad<number> = [0, 0, 0, 0];  // Step position per lane
   private onSynthStepPositionChange: ((steps: number[], hitCounts: number[]) => void) | null = null;
   private synthEuclidHitCounts: Quad<number> = [0, 0, 0, 0];  // Hit counts per lane
+  private synthEuclidVisualStep: Quad<number> = [0, 0, 0, 0];
+  private synthEuclidVisualHitCounts: Quad<number> = [0, 0, 0, 0];
+  private synthEuclidVisualTimers = new Set<number>();
 
   // Continuous lead Euclidean scheduler (look-ahead, like drum sequencer)
   private synthEuclidScheduleTimer: number | null = null;
@@ -3031,6 +3038,42 @@ export class AudioEngine {
 
   setSynthStepPositionCallback(callback: (steps: number[], hitCounts: number[]) => void) {
     this.onSynthStepPositionChange = callback;
+    callback([...this.synthEuclidVisualStep], [...this.synthEuclidVisualHitCounts]);
+  }
+
+  private clearSynthEuclidVisualTimers(resetVisualState = false): void {
+    for (const timerId of this.synthEuclidVisualTimers) {
+      window.clearTimeout(timerId);
+    }
+    this.synthEuclidVisualTimers.clear();
+    if (resetVisualState) {
+      this.synthEuclidVisualStep = [0, 0, 0, 0];
+      this.synthEuclidVisualHitCounts = [0, 0, 0, 0];
+    }
+  }
+
+  private queueSynthEuclidVisualStep(
+    laneIndex: number,
+    stepIndex: number,
+    hitCount: number,
+    delayMs: number,
+  ): void {
+    const visualDelayMs = Math.max(0, delayMs + SEQUENCER_VISUAL_SYNC_OFFSET_MS);
+    const publish = () => {
+      this.synthEuclidVisualTimers.delete(timerId);
+      this.synthEuclidVisualStep[laneIndex] = stepIndex;
+      this.synthEuclidVisualHitCounts[laneIndex] = hitCount;
+      this.onSynthStepPositionChange?.([...this.synthEuclidVisualStep], [...this.synthEuclidVisualHitCounts]);
+    };
+
+    let timerId = 0;
+    if (visualDelayMs <= 1) {
+      publish();
+      return;
+    }
+
+    timerId = window.setTimeout(publish, visualDelayMs);
+    this.synthEuclidVisualTimers.add(timerId);
   }
 
   setSynthStepOverrides(overrides: {
@@ -8940,59 +8983,46 @@ export class AudioEngine {
     }
 
     const randomSource = this.getLeadRandomSource(this.sliderState);
-    const matchesRandomSource = (source: string): boolean => {
-      if (randomSource === 'lead1') return source === 'lead' || source === 'lead1';
-      return source === randomSource;
-    };
-    const euclideanRandomSourceActive = this.sliderState.synthEuclideanMasterEnabled && (
-      (this.sliderState.synthEuclid1Enabled && matchesRandomSource(this.sliderState.synthEuclid1Source ?? 'lead')) ||
-      (this.sliderState.synthEuclid2Enabled && matchesRandomSource(this.sliderState.synthEuclid2Source ?? 'lead')) ||
-      (this.sliderState.synthEuclid3Enabled && matchesRandomSource(this.sliderState.synthEuclid3Source ?? 'lead')) ||
-      (this.sliderState.synthEuclid4Enabled && matchesRandomSource(this.sliderState.synthEuclid4Source ?? 'lead'))
+    const rng = this.rng;
+    const scale = this.harmonyState.scaleFamily;
+    const rootNote = this.effectiveRoot;
+    const baseOctaveOffset = this.sliderState.lead1Octave;
+    const octaveRange = this.sliderState.lead1OctaveRange ?? 2;
+    const phraseDuration = getPhraseDurationForClockSource(
+      this.sliderState,
+      this.sliderState.leadRandomClockSource ?? 'globalPhrase',
+    ) * 1000;
+    const density = this.sliderState.lead1Density;
+    const notesThisPhrase = Math.max(1, Math.round(density * 3 + rng() * 2));
+    const baseLow = 64 + (baseOctaveOffset * 12);
+    const baseHigh = baseLow + (octaveRange * 12);
+
+    const chordMidi = this.harmonyState.currentChord?.midiNotes;
+    const leadT = getEffectiveTension(
+      this.sliderState.tension ?? 0.3,
+      this.sliderState.leadTensionMode ?? 'follow',
+      this.sliderState.leadTensionValue ?? 0,
     );
-
-    if (!euclideanRandomSourceActive) {
-      const rng = this.rng;
-      const scale = this.harmonyState.scaleFamily;
-      const rootNote = this.effectiveRoot;
-      const baseOctaveOffset = this.sliderState.lead1Octave;
-      const octaveRange = this.sliderState.lead1OctaveRange ?? 2;
-      const phraseDuration = getPhraseDurationForClockSource(
-        this.sliderState,
-        this.sliderState.leadRandomClockSource ?? 'globalPhrase',
-      ) * 1000;
-      const density = this.sliderState.lead1Density;
-      const notesThisPhrase = Math.max(1, Math.round(density * 3 + rng() * 2));
-      const baseLow = 64 + (baseOctaveOffset * 12);
-      const baseHigh = baseLow + (octaveRange * 12);
-
-      const chordMidi = this.harmonyState.currentChord?.midiNotes;
-      const leadT = getEffectiveTension(
-        this.sliderState.tension ?? 0.3,
-        this.sliderState.leadTensionMode ?? 'follow',
-        this.sliderState.leadTensionValue ?? 0,
-      );
-      const leadChordBias = leadT < 0 ? 0.9 : 0.9 - leadT * 0.4;
-      for (let i = 0; i < notesThisPhrase; i++) {
-        const timing = rng() * phraseDuration;
-        let availableNotes = getScaleNotesInRange(scale, Math.max(24, baseLow), Math.min(108, baseHigh), rootNote);
-        if (availableNotes.length === 0) continue;
-        const midiNote = pickChordWeightedNote(rng, availableNotes, chordMidi, leadChordBias);
-        const frequency = midiToFreq(midiNote);
-        const velocity = rngFloat(rng, 0.5, 0.9); // Per-note loudness + timbre; per-lead mix level still lives on lead1LevelGain
-        const timeoutId = window.setTimeout(() => {
-          const idx = this.leadNoteTimeouts.indexOf(timeoutId);
-          if (idx > -1) this.leadNoteTimeouts.splice(idx, 1);
-          if (randomSource === 'lead2') {
-            this.playLeadNote(frequency, velocity, 'lead2');
-          } else if (randomSource === 'piano') {
-            this.playPianoNote(frequency, velocity);
-          } else {
-            this.playLeadNote(frequency, velocity, 'lead1');
-          }
-        }, timing);
-        this.leadNoteTimeouts.push(timeoutId);
-      }
+    const leadChordBias = leadT < 0 ? 0.9 : 0.9 - leadT * 0.4;
+    for (let i = 0; i < notesThisPhrase; i++) {
+      const timing = rng() * phraseDuration;
+      let availableNotes = getScaleNotesInRange(scale, Math.max(24, baseLow), Math.min(108, baseHigh), rootNote);
+      if (availableNotes.length === 0) continue;
+      const midiNote = pickChordWeightedNote(rng, availableNotes, chordMidi, leadChordBias);
+      const frequency = midiToFreq(midiNote);
+      const velocity = rngFloat(rng, 0.5, 0.9); // Per-note loudness + timbre; per-lead mix level still lives on lead1LevelGain
+      const timeoutId = window.setTimeout(() => {
+        const idx = this.leadNoteTimeouts.indexOf(timeoutId);
+        if (idx > -1) this.leadNoteTimeouts.splice(idx, 1);
+        if (randomSource === 'lead2') {
+          this.playLeadNote(frequency, velocity, 'lead2');
+        } else if (randomSource === 'piano') {
+          this.playPianoNote(frequency, velocity);
+        } else {
+          this.playLeadNote(frequency, velocity, 'lead1');
+        }
+      }, timing);
+      this.leadNoteTimeouts.push(timeoutId);
     }
 
     // Schedule next phrase
@@ -9330,6 +9360,7 @@ export class AudioEngine {
         // Reset step positions
         this.synthEuclidCurrentStep = [0, 0, 0, 0];
         this.synthEuclidHitCounts = [0, 0, 0, 0];
+        this.clearSynthEuclidVisualTimers(true);
         this.synthEuclidStepIndex = [0, 0, 0, 0];
 
         this.synthEuclidNextStepTime = [0, 0, 0, 0];
@@ -9674,8 +9705,12 @@ export class AudioEngine {
               }
             }
 
-            // Fire step position callback (synchronous, like drum sequencer)
-            this.onSynthStepPositionChange?.([...this.synthEuclidCurrentStep], [...this.synthEuclidHitCounts]);
+            this.queueSynthEuclidVisualStep(
+              laneIndex,
+              stepInPattern,
+              this.synthEuclidHitCounts[laneIndex],
+              delayMs,
+            );
 
             // Advance step with per-lane clock division and swing
             const laneSwing = this.synthEuclidSwings[laneIndex] ?? 0;
@@ -9709,6 +9744,7 @@ export class AudioEngine {
       clearTimeout(this.synthEuclidScheduleTimer);
       this.synthEuclidScheduleTimer = null;
     }
+    this.clearSynthEuclidVisualTimers(true);
     this.synthMorphOverride = null; // Clear morph sub-lane override so slider control resumes
     this.synthNoteRangeOverrides = [null, null, null, null]; // Clear noteRange overrides so slider control resumes
     this.synthEuclidCurrentStep = [0, 0, 0, 0];

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useCallback } from 'react';
 import type { DrumVoiceType } from '../../audio/drumSynth';
 import type { SliderState } from '../state';
+import { getCappedCanvasDpr, useAnimationVisibility } from '../hooks/useAnimationVisibility';
 
 interface EnvelopeVisualizerProps {
   voice: DrumVoiceType;
@@ -53,6 +54,7 @@ function spectColor(mag: number): string {
 }
 
 const EnvelopeVisualizer: React.FC<EnvelopeVisualizerProps> = ({ voice, state, analyserNode, isTriggered }) => {
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rafRef = useRef<number | null>(null);
   const spectRef = useRef<SpectState | null>(null);
@@ -60,6 +62,7 @@ const EnvelopeVisualizer: React.FC<EnvelopeVisualizerProps> = ({ voice, state, a
   const fadeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const labelRef = useRef<HTMLSpanElement | null>(null);
   const prevTriggeredRef = useRef(false);
+  const { canAnimate } = useAnimationVisibility(containerRef, { rootMargin: '140px' });
 
   // Get voice-specific envelope params for static curve
   const getEnvelopeParams = useCallback(() => {
@@ -158,8 +161,9 @@ const EnvelopeVisualizer: React.FC<EnvelopeVisualizerProps> = ({ voice, state, a
 
   // Draw the full combined visualization
   const drawCombinedViz = useCallback((canvas: HTMLCanvasElement) => {
+    if (!canAnimate) return;
     const ss = spectRef.current;
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = getCappedCanvasDpr();
     const rect = canvas.getBoundingClientRect();
     if (rect.width === 0) return;
 
@@ -328,7 +332,23 @@ const EnvelopeVisualizer: React.FC<EnvelopeVisualizerProps> = ({ voice, state, a
     }
 
     ctx.globalAlpha = 1;
-  }, [voice, analyserNode, drawEnvelopeRegion]);
+  }, [canAnimate, voice, analyserNode, drawEnvelopeRegion]);
+
+  const renderFrame = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !canAnimate) {
+      rafRef.current = null;
+      return;
+    }
+    drawCombinedViz(canvas);
+    const ss = spectRef.current;
+    if (ss && (ss.capturing || ss.fadeAlpha > 0.01)) {
+      rafRef.current = requestAnimationFrame(renderFrame);
+    } else {
+      rafRef.current = null;
+      drawCombinedViz(canvas);
+    }
+  }, [canAnimate, drawCombinedViz]);
 
   // Start spectrogram capture when trigger fires
   useEffect(() => {
@@ -362,6 +382,7 @@ const EnvelopeVisualizer: React.FC<EnvelopeVisualizerProps> = ({ voice, state, a
 
     // FFT capture interval
     captureTimerRef.current = setInterval(() => {
+      if (!canAnimate) return;
       if (!ss.capturing) {
         if (captureTimerRef.current) clearInterval(captureTimerRef.current);
         return;
@@ -373,6 +394,7 @@ const EnvelopeVisualizer: React.FC<EnvelopeVisualizerProps> = ({ voice, state, a
         // Begin fade
         if (labelRef.current) labelRef.current.textContent = 'fading...';
         fadeTimerRef.current = setInterval(() => {
+          if (!canAnimate) return;
           ss.fadeAlpha -= 0.02;
           if (ss.fadeAlpha <= 0) {
             ss.fadeAlpha = 0;
@@ -403,20 +425,11 @@ const EnvelopeVisualizer: React.FC<EnvelopeVisualizerProps> = ({ voice, state, a
       ss.peak = Math.max(ss.peak * 0.92, mx);
     }, SPECT_CAPTURE_MS);
 
-    // Render loop
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const renderLoop = () => {
-      drawCombinedViz(canvas);
-      if (ss.capturing || ss.fadeAlpha > 0.01) {
-        rafRef.current = requestAnimationFrame(renderLoop);
-      } else {
-        // Fully faded — draw static envelope only
-        drawCombinedViz(canvas);
-      }
-    };
-    rafRef.current = requestAnimationFrame(renderLoop);
-  }, [isTriggered, analyserNode, getEnvelopeParams, drawCombinedViz]);
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    if (canAnimate) {
+      rafRef.current = requestAnimationFrame(renderFrame);
+    }
+  }, [isTriggered, analyserNode, getEnvelopeParams, drawCombinedViz, canAnimate, renderFrame]);
 
   // Reset trigger tracking when trigger goes false
   useEffect(() => {
@@ -427,12 +440,31 @@ const EnvelopeVisualizer: React.FC<EnvelopeVisualizerProps> = ({ voice, state, a
 
   // Draw static envelope on mount or param change (no live data)
   useEffect(() => {
+    if (!canAnimate) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ss = spectRef.current;
     if (ss && (ss.capturing || ss.fadeAlpha > 0.01)) return; // live viz active
     drawCombinedViz(canvas);
-  }, [state, voice, drawCombinedViz]);
+  }, [state, voice, drawCombinedViz, canAnimate]);
+
+  useEffect(() => {
+    if (!canAnimate) {
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+      return;
+    }
+    const ss = spectRef.current;
+    if (ss && (ss.capturing || ss.fadeAlpha > 0.01)) {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      rafRef.current = requestAnimationFrame(renderFrame);
+      return;
+    }
+    const canvas = canvasRef.current;
+    if (canvas) drawCombinedViz(canvas);
+  }, [canAnimate, drawCombinedViz, renderFrame]);
 
   // Cleanup
   useEffect(() => {
@@ -444,7 +476,7 @@ const EnvelopeVisualizer: React.FC<EnvelopeVisualizerProps> = ({ voice, state, a
   }, []);
 
   return (
-    <div className="env-visualizer-wrap">
+    <div ref={containerRef} className="env-visualizer-wrap">
       <span ref={labelRef} className="viz-mode-label">envelopes</span>
       <canvas ref={canvasRef} className="env-visualizer" />
     </div>

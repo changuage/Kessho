@@ -213,16 +213,24 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
   }, [seq.viewMode, onViewModeChange]);
 
   useEffect(() => {
-    let lastDrumStep = 0;
+    let rafId: number | null = null;
+    let pendingSteps: number[] = [0, 0, 0, 0];
+    let pendingHitCounts: number[] = [0, 0, 0, 0];
     audioEngine.setDrumStepPositionCallback((nextSteps: number[], nextHitCounts: number[]) => {
       if (document.visibilityState !== 'visible') return;
-      const now = performance.now();
-      if (now - lastDrumStep < 120) return;
-      lastDrumStep = now;
-      setPlayheads(nextSteps);
-      setHitCounts(nextHitCounts);
+      pendingSteps = [...nextSteps];
+      pendingHitCounts = [...nextHitCounts];
+      if (rafId !== null) return;
+      rafId = window.requestAnimationFrame(() => {
+        rafId = null;
+        setPlayheads(pendingSteps);
+        setHitCounts(pendingHitCounts);
+      });
     });
     return () => {
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId);
+      }
       audioEngine.setDrumStepPositionCallback(() => {});
     };
   }, []);
@@ -864,9 +872,13 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                       {...bindHelp('drumSeqClockSelect')}
                     >
                       <option value="1/4">1/4</option>
+                      <option value="1/4T">1/4T</option>
                       <option value="1/8">1/8</option>
-                      <option value="1/16">1/16</option>
                       <option value="1/8T">1/8T</option>
+                      <option value="1/16">1/16</option>
+                      <option value="1/16T">1/16T</option>
+                      <option value="1/32">1/32</option>
+                      <option value="1/32T">1/32T</option>
                     </select>
                   </label>
                   <label className="seq-swing-label">

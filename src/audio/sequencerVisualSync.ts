@@ -1,0 +1,1 @@
+export const SEQUENCER_VISUAL_SYNC_OFFSET_MS = 250;

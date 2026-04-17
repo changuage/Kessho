@@ -75,9 +75,13 @@ const SeqOverview: React.FC<SeqOverviewProps> = ({
                 onChange={(e) => onSetClockDiv?.(row, e.target.value as ClockDivision)}
               >
                 <option value="1/4">1/4</option>
+                <option value="1/4T">1/4T</option>
                 <option value="1/8">1/8</option>
-                <option value="1/16">1/16</option>
                 <option value="1/8T">1/8T</option>
+                <option value="1/16">1/16</option>
+                <option value="1/16T">1/16T</option>
+                <option value="1/32">1/32</option>
+                <option value="1/32T">1/32T</option>
               </select>
               <div className="seq-ov-sources">
                 {DRUM_VOICE_ORDER.map((voice) => {

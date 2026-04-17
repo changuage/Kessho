@@ -165,6 +165,8 @@ interface KesshoWasm {
   granular_get_write_head(): number;
   granular_get_voice_positions(outPtr: number): void;
   granular_get_active_grain_count(): number;
+  granular_get_buffer_ptr_l(): number;
+  granular_get_buffer_size(): number;
   // Memory management
   malloc(size: number): number;
   free(ptr: number): void;
@@ -176,6 +178,9 @@ const NUM_VOICES = 4;
 const MODE_MAP: Record<VoiceMode, number> = { clean: 0, granular: 1, legacy: 2 };
 const SHAPE_MAP: Record<GrainShape, number> = { triangle: 0, sawUp: 1, sawDown: 2, square: 3 };
 const POS_REPORT_INTERVAL = Math.floor(sampleRate / 20);
+const WAVEFORM_BINS = 512;
+const WAVEFORM_SKIP = 10;
+const WAVEFORM_SAMPLES_PER_BIN = 8;
 
 // --------------- Processor ---------------
 
@@ -199,6 +204,7 @@ class GranularFXWasmProcessor extends AudioWorkletProcessor {
 
   // Position reporting
   private posReportCounter = 0;
+  private waveformReportCounter = 0;
   private uiActive = false;
 
   // Latest params received from the main thread (split by concern so we can
@@ -762,17 +768,58 @@ class GranularFXWasmProcessor extends AudioWorkletProcessor {
         const freshHeap = this.getHeapF32();
         this.wasm.granular_get_voice_positions(this.positionsPtr);
         const posOffset = this.positionsPtr >> 2;
-        this.port.postMessage({
+        const message: {
+          type: 'position';
+          writeHead: number;
+          activeGrains: number;
+          voices: number[];
+          waveform?: Float32Array;
+        } = {
           type: 'position',
           writeHead: this.wasm.granular_get_write_head(),
           activeGrains: this.wasm.granular_get_active_grain_count(),
           voices: [
-            freshHeap[posOffset],
-            freshHeap[posOffset + 1],
-            freshHeap[posOffset + 2],
-            freshHeap[posOffset + 3],
+            freshHeap[posOffset] ?? 0,
+            freshHeap[posOffset + 1] ?? 0,
+            freshHeap[posOffset + 2] ?? 0,
+            freshHeap[posOffset + 3] ?? 0,
           ],
-        });
+        };
+
+        // Keep the background waveform responsive without scanning the full
+        // circular buffer on the audio thread. Eight probes per bin preserves
+        // the large-scale shape while avoiding periodic CPU spikes.
+        this.waveformReportCounter++;
+        if (this.waveformReportCounter >= WAVEFORM_SKIP) {
+          this.waveformReportCounter = 0;
+          try {
+            const bufPtr = this.wasm.granular_get_buffer_ptr_l();
+            const bufSize = this.wasm.granular_get_buffer_size();
+            if (bufPtr && bufSize > 0) {
+              const latestHeap = this.getHeapF32();
+              const bufOffset = bufPtr >> 2;
+              const waveform = new Float32Array(WAVEFORM_BINS);
+              const samplesPerBin = bufSize / WAVEFORM_BINS;
+              for (let bin = 0; bin < WAVEFORM_BINS; bin++) {
+                const start = Math.floor(bin * samplesPerBin);
+                const end = Math.max(start + 1, Math.floor((bin + 1) * samplesPerBin));
+                const span = end - start;
+                let peak = 0;
+                for (let sampleIndex = 0; sampleIndex < WAVEFORM_SAMPLES_PER_BIN; sampleIndex++) {
+                  let pos = start + Math.floor(((sampleIndex + 0.5) * span) / WAVEFORM_SAMPLES_PER_BIN);
+                  if (pos >= end) pos = end - 1;
+                  const value = Math.abs(latestHeap[bufOffset + pos] ?? 0);
+                  if (value > peak) peak = value;
+                }
+                waveform[bin] = peak;
+              }
+              message.waveform = waveform;
+            }
+          } catch {
+            // Ignore optional waveform export errors; position reporting remains useful.
+          }
+        }
+        this.port.postMessage(message);
       }
     }
 

@@ -18,6 +18,7 @@
  */
 
 import React, { useRef, useEffect, useCallback, useState } from 'react';
+import { getCappedCanvasDpr, useAnimationVisibility } from '../hooks/useAnimationVisibility';
 
 // ═══════════════ Types ═══════════════
 
@@ -117,6 +118,7 @@ const GranularBufferCanvas: React.FC<GranularBufferCanvasProps> = ({
   const ghostWaveformRef = useRef<Float32Array | null>(null);
   const wasFrozenRef = useRef(false);
   const lastDrawTimeRef = useRef(0);
+  const { canAnimate } = useAnimationVisibility(containerRef);
 
   // Mutable refs to avoid stale closures in rAF
   const voicesRef = useRef(voices);
@@ -163,7 +165,7 @@ const GranularBufferCanvas: React.FC<GranularBufferCanvasProps> = ({
   }, []);
 
   const draw = useCallback((frameTime = performance.now()) => {
-    if (isRunningRef.current && document.visibilityState === 'visible') {
+    if (isRunningRef.current && canAnimate) {
       const lastDrawTime = lastDrawTimeRef.current;
       if (lastDrawTime !== 0 && frameTime - lastDrawTime < TARGET_FRAME_MS) {
         animFrameRef.current = requestAnimationFrame(draw);
@@ -179,7 +181,7 @@ const GranularBufferCanvas: React.FC<GranularBufferCanvasProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = getCappedCanvasDpr();
     const w = measuredWidth || 400;
     const h = height;
 
@@ -573,18 +575,19 @@ const GranularBufferCanvas: React.FC<GranularBufferCanvasProps> = ({
       ctx.fillText(`${t}s`, tx, h - 1);
     }
 
-    if (isRunningRef.current && document.visibilityState === 'visible') {
+    if (isRunningRef.current && canAnimate) {
       animFrameRef.current = requestAnimationFrame(draw);
     } else {
       animFrameRef.current = 0;
     }
-  }, [measuredWidth, height, numSlices]);
+  }, [canAnimate, measuredWidth, height, numSlices]);
 
   const requestDraw = useCallback(() => {
+    if (!canAnimate) return;
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     lastDrawTimeRef.current = 0;
     animFrameRef.current = requestAnimationFrame(draw);
-  }, [draw]);
+  }, [canAnimate, draw]);
 
   useEffect(() => {
     requestDraw();
@@ -604,21 +607,21 @@ const GranularBufferCanvas: React.FC<GranularBufferCanvasProps> = ({
   ]);
 
   useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'hidden') {
-        if (animFrameRef.current) {
-          cancelAnimationFrame(animFrameRef.current);
-          animFrameRef.current = 0;
-        }
-        return;
+    if (!canAnimate) {
+      if (animFrameRef.current) {
+        cancelAnimationFrame(animFrameRef.current);
+        animFrameRef.current = 0;
       }
-      requestDraw();
-    };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
+      return undefined;
+    }
+    requestDraw();
     return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (animFrameRef.current) {
+        cancelAnimationFrame(animFrameRef.current);
+        animFrameRef.current = 0;
+      }
     };
-  }, [requestDraw]);
+  }, [canAnimate, requestDraw]);
 
   // ── 11. Slice click-to-assign ──
   const handleCanvasClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {

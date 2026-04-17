@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useCallback } from 'react';
+import { getCappedCanvasDpr, useAnimationVisibility } from '../hooks/useAnimationVisibility';
 
 /* ── Pattern presets (mirrored from delayBuses.ts for drawing) ── */
 const PATTERN_PRESETS: Record<string, { subdivisions: number[]; gains: number[]; pans: number[] }> = {
@@ -78,9 +79,11 @@ const ECHO_COLOR = 'rgba(185, 201, 255, 1)';
 const CLOCKED_COLOR = 'rgba(159, 229, 240, 1)';
 
 const DelayRhythmMap: React.FC<DelayRhythmMapProps> = (props) => {
+  const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef(0);
   const playheadRef = useRef(0);
+  const { canAnimate } = useAnimationVisibility(containerRef);
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -88,7 +91,7 @@ const DelayRhythmMap: React.FC<DelayRhythmMapProps> = (props) => {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = getCappedCanvasDpr();
     const rect = canvas.getBoundingClientRect();
     const w = rect.width;
     const h = rect.height;
@@ -243,33 +246,24 @@ const DelayRhythmMap: React.FC<DelayRhythmMapProps> = (props) => {
       if (!running) return;
       frame++;
       if (frame % 2 === 0) draw(); // 30fps cap
-      if (document.visibilityState === 'visible') {
+      if (canAnimate) {
         rafRef.current = requestAnimationFrame(loop);
       } else {
         rafRef.current = 0;
       }
     };
-    const handleVisibilityChange = () => {
-      cancelLoop();
-      if (!running || document.visibilityState !== 'visible') return;
-      draw();
-      rafRef.current = requestAnimationFrame(loop);
-    };
-
-    if (document.visibilityState === 'visible') {
+    if (canAnimate) {
       draw();
       rafRef.current = requestAnimationFrame(loop);
     }
-    document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
       running = false;
       cancelLoop();
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [draw]);
+  }, [canAnimate, draw]);
 
   return (
-    <div className="delay-rhythm-map">
+    <div ref={containerRef} className="delay-rhythm-map">
       <canvas ref={canvasRef} />
     </div>
   );

@@ -19,6 +19,7 @@ import { audioEngine } from '../../audio/engine';
 import GranularBufferCanvas from './GranularBufferCanvas';
 import type { CanvasVoiceVisual } from './GranularBufferCanvas';
 import { useSliderHelp } from '../SliderHelpOverlay';
+import { useVisibleInterval } from '../hooks/useVisibleInterval';
 import { PresetDropdown } from '../../presets/PresetDropdown';
 import { extractParams } from '../../presets/codec';
 import type { PresetEntry } from '../../presets/types';
@@ -222,6 +223,25 @@ const GranularPage: React.FC<GranularPageProps> = ({
   const [bufferWaveform, setBufferWaveform] = useState<Float32Array | null>(null);
   const [visualizerEnabled, setVisualizerEnabled] = useState(() => !isMobile);
 
+  const syncGranularUi = useCallback(() => {
+    const nextWriteHead = audioEngine.getGranularWriteHeadPosition();
+    const nextVoicePositions = audioEngine.getGranularVoicePositions();
+    const nextActiveGrains = audioEngine.getGranularActiveGrainCount();
+
+    setWriteHeadPosition(prev => (Math.abs(prev - nextWriteHead) > 0.002 ? nextWriteHead : prev));
+    setVoicePositions(prev => (positionsEqual(prev, nextVoicePositions) ? prev : nextVoicePositions));
+    setActiveGrainCount(prev => (prev === nextActiveGrains ? prev : nextActiveGrains));
+
+    const waveform = audioEngine.getGranularBufferWaveform();
+    if (waveform) {
+      setBufferWaveform(prev => (prev === waveform ? prev : waveform));
+    }
+  }, []);
+
+  useVisibleInterval(syncGranularUi, 100, {
+    enabled: isRunning && visualizerEnabled,
+  });
+
   useEffect(() => {
     audioEngine.setGranularUiActive(isRunning && visualizerEnabled);
 
@@ -234,51 +254,7 @@ const GranularPage: React.FC<GranularPageProps> = ({
         audioEngine.setGranularUiActive(false);
       };
     }
-
-    let intervalId: number | null = null;
-
-    const syncGranularUi = () => {
-      const nextWriteHead = audioEngine.getGranularWriteHeadPosition();
-      const nextVoicePositions = audioEngine.getGranularVoicePositions();
-      const nextActiveGrains = audioEngine.getGranularActiveGrainCount();
-
-      setWriteHeadPosition(prev => (Math.abs(prev - nextWriteHead) > 0.002 ? nextWriteHead : prev));
-      setVoicePositions(prev => (positionsEqual(prev, nextVoicePositions) ? prev : nextVoicePositions));
-      setActiveGrainCount(prev => (prev === nextActiveGrains ? prev : nextActiveGrains));
-
-      const waveform = audioEngine.getGranularBufferWaveform();
-      if (waveform) {
-        setBufferWaveform(prev => (prev === waveform ? prev : waveform));
-      }
-    };
-
-    const clearPolling = () => {
-      if (intervalId !== null) {
-        clearInterval(intervalId);
-        intervalId = null;
-      }
-    };
-
-    const startPolling = () => {
-      clearPolling();
-      if (document.visibilityState !== 'visible') return;
-      syncGranularUi();
-      intervalId = window.setInterval(syncGranularUi, 100);
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        startPolling();
-      } else {
-        clearPolling();
-      }
-    };
-
-    startPolling();
-    document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
-      clearPolling();
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
       audioEngine.setGranularUiActive(false);
     };
   }, [isRunning, visualizerEnabled]);

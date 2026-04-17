@@ -78,6 +78,28 @@ export function applyPreset(
     newState.granularDelayBSend = presetState.granularDelayEnabled ? 1 : 0;
   }
 
+  const delayBHasFeed =
+    (newState.granularDelayBSend ?? 0) > 0 ||
+    (newState.pad1DelayBSend ?? 0) > 0 ||
+    (newState.pad2DelayBSend ?? 0) > 0 ||
+    (newState.lead1DelayBSend ?? 0) > 0 ||
+    (newState.lead2DelayBSend ?? 0) > 0 ||
+    (newState.pianoDelayBSend ?? 0) > 0 ||
+    (newState.drumDelayBSend ?? 0) > 0 ||
+    (newState.oceanDelayBSend ?? 0) > 0 ||
+    (newState.natureDelayBSend ?? 0) > 0 ||
+    (newState.waterDelayBSend ?? 0) > 0 ||
+    (newState.insDelayBSend ?? 0) > 0 ||
+    (newState.delayAToBSend ?? 0) > 0;
+  const delayBHasOutput =
+    (newState.granularDelayMix ?? 0) > 0 ||
+    (newState.granularDelayReverbSend ?? 0) > 0 ||
+    (newState.delayBToASend ?? 0) > 0 ||
+    (newState.delayBGranularSend ?? 0) > 0;
+  if (delayBHasFeed && delayBHasOutput) {
+    newState.granularDelayEnabled = true;
+  }
+
   // 5. Auto-disable engines if both dry level and reverb send are 0
   if (
     newState.granularLevel === 0 &&

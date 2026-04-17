@@ -1,6 +1,6 @@
 import type { DrumEvolveMethod, DrumVoiceType } from './drumSynth';
 
-export type ClockDivision = '1/4' | '1/8' | '1/16' | '1/32' | '1/64' | '1/8T';
+export type ClockDivision = '1/4' | '1/4T' | '1/8' | '1/8T' | '1/16' | '1/16T' | '1/32' | '1/32T' | '1/64';
 export type LaneDirection = 'forward' | 'reverse' | 'pingpong';
 export type PitchMode = 'semitones' | 'notes' | 'noteRange';
 export type PitchBindingMode = 'polyrhythmic' | 'linked' | 'sequence';

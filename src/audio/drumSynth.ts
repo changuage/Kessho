@@ -34,6 +34,7 @@ import {
   getNextBarBoundaryCtxTime,
   getNextBeatGridCtxTime,
 } from './transport';
+import { SEQUENCER_VISUAL_SYNC_OFFSET_MS } from './sequencerVisualSync';
 
 export type DrumVoiceType = 'sub' | 'kick' | 'click' | 'beepHi' | 'beepLo' | 'noise' | 'membrane';
 
@@ -129,6 +130,8 @@ export class DrumSynth {
   // Euclidean scheduling
   private euclidScheduleTimer: number | null = null;
   private euclidCurrentStep: number[] = [0, 0, 0, 0]; // Step position per lane
+  private euclidVisualHitCounts: number[] = [0, 0, 0, 0];
+  private euclidVisualTimers = new Set<number>();
   private euclidGlobalStepCount = 0;
   private euclidSequencers: SequencerState[] = [];
   private prevLaneEnabled: boolean[] = [false, false, false, false];
@@ -702,10 +705,46 @@ export class DrumSynth {
 
   setStepPositionCallback(callback: (steps: number[], hitCounts: number[]) => void): void {
     this.onStepPositionChange = callback;
+    callback([...this.euclidCurrentStep], [...this.euclidVisualHitCounts]);
   }
 
   getEuclidCurrentStep(): number[] {
     return [...this.euclidCurrentStep];
+  }
+
+  private clearEuclidVisualTimers(resetVisualState = false): void {
+    for (const timerId of this.euclidVisualTimers) {
+      window.clearTimeout(timerId);
+    }
+    this.euclidVisualTimers.clear();
+    if (resetVisualState) {
+      this.euclidCurrentStep = [0, 0, 0, 0];
+      this.euclidVisualHitCounts = [0, 0, 0, 0];
+    }
+  }
+
+  private queueEuclidVisualStep(
+    laneIndex: number,
+    stepIndex: number,
+    hitCount: number,
+    delayMs: number,
+  ): void {
+    const visualDelayMs = Math.max(0, delayMs + SEQUENCER_VISUAL_SYNC_OFFSET_MS);
+    const publish = () => {
+      this.euclidVisualTimers.delete(timerId);
+      this.euclidCurrentStep[laneIndex] = stepIndex;
+      this.euclidVisualHitCounts[laneIndex] = hitCount;
+      this.onStepPositionChange?.([...this.euclidCurrentStep], [...this.euclidVisualHitCounts]);
+    };
+
+    let timerId = 0;
+    if (visualDelayMs <= 1) {
+      publish();
+      return;
+    }
+
+    timerId = window.setTimeout(publish, visualDelayMs);
+    this.euclidVisualTimers.add(timerId);
   }
 
   private ensureVoiceAnalyser(voice: DrumVoiceType): AnalyserNode {
@@ -3006,6 +3045,8 @@ export class DrumSynth {
     
     // Reset step counters
     this.euclidCurrentStep = [0, 0, 0, 0];
+    this.euclidVisualHitCounts = [0, 0, 0, 0];
+    this.clearEuclidVisualTimers();
     this.euclidGlobalStepCount = 0;
     this.trigConditionCounters = [[], [], [], []];
     this.prevLaneEnabled = [false, false, false, false];
@@ -3044,9 +3085,13 @@ export class DrumSynth {
       const clockDivToSec = (clockDiv: string): number => {
         switch (clockDiv) {
           case '1/4': return beatDuration;
+          case '1/4T': return beatDuration * (2 / 3);
           case '1/8': return beatDuration / 2;
-          case '1/16': return beatDuration / 4;
           case '1/8T': return beatDuration / 3;
+          case '1/16': return beatDuration / 4;
+          case '1/16T': return beatDuration / 6;
+          case '1/32': return beatDuration / 8;
+          case '1/32T': return beatDuration / 12;
           default: return beatDuration / 2;
         }
       };
@@ -3244,6 +3289,7 @@ export class DrumSynth {
           // Apply per-sequencer swing (delay offbeat steps)
           const swingOff = (sequencer.stepIndex % 2 === 1) ? laneStepDuration * laneSwing * 0.5 : 0;
           const scheduleTime = sequencer.nextTime + swingOff;
+          const delayMs = Math.max(0, (scheduleTime - now) * 1000);
 
           // Evolve at bar boundaries
           sequencer.totalStepCount++;
@@ -3354,9 +3400,15 @@ export class DrumSynth {
             }
           }
 
+          this.queueEuclidVisualStep(
+            laneIndex,
+            laneStep,
+            sequencer.hitCount,
+            delayMs,
+          );
+
           // Advance trigger step
           sequencer.stepIndex = (sequencer.stepIndex + 1) % lane.steps;
-          this.euclidCurrentStep[laneIndex] = sequencer.stepIndex;
           sequencer.nextTime += laneStepDuration;
         }
 
@@ -3365,10 +3417,6 @@ export class DrumSynth {
 
       // Global bar counter (use shortest lane step duration as reference)
       this.euclidGlobalStepCount += 1;
-
-      // Notify UI of step positions + hit counts (for sub-lane playheads)
-      const hitCounts = this.euclidSequencers.map(s => s.hitCount);
-      this.onStepPositionChange?.([...this.euclidCurrentStep], hitCounts);
       
       // Schedule next iteration
       this.euclidScheduleTimer = window.setTimeout(scheduleEuclid, 50);
@@ -3387,8 +3435,10 @@ export class DrumSynth {
       clearTimeout(this.euclidScheduleTimer);
       this.euclidScheduleTimer = null;
     }
+    this.clearEuclidVisualTimers(true);
     this.prevLaneEnabled = [false, false, false, false];
     this.euclidSequencers = [];
+    this.onStepPositionChange?.([0, 0, 0, 0], [0, 0, 0, 0]);
   }
   
   // ═══════════════════════════════════════════════════════════════════════════

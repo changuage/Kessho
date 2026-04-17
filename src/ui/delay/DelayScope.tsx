@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useCallback } from 'react';
+import { getCappedCanvasDpr, useAnimationVisibility } from '../hooks/useAnimationVisibility';
 
 export interface DelayScopeProps {
   echoAnalyser: AnalyserNode | null;
@@ -17,6 +18,7 @@ const DelayScope: React.FC<DelayScopeProps> = ({
   echoPingPong,
   clockedWarp,
 }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef(0);
   const echoBufferRef = useRef<Float32Array>(new Float32Array(BUFFER_SIZE));
@@ -24,6 +26,7 @@ const DelayScope: React.FC<DelayScopeProps> = ({
   const writeIndexRef = useRef(0);
   const echoDataRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
   const clockedDataRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
+  const { canAnimate } = useAnimationVisibility(containerRef);
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -31,7 +34,7 @@ const DelayScope: React.FC<DelayScopeProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = getCappedCanvasDpr();
     const rect = canvas.getBoundingClientRect();
     const w = rect.width;
     const h = rect.height;
@@ -160,33 +163,24 @@ const DelayScope: React.FC<DelayScopeProps> = ({
       if (!running) return;
       frame++;
       if (frame % 2 === 0) draw();
-      if (document.visibilityState === 'visible') {
+      if (canAnimate) {
         rafRef.current = requestAnimationFrame(loop);
       } else {
         rafRef.current = 0;
       }
     };
-    const handleVisibilityChange = () => {
-      cancelLoop();
-      if (!running || document.visibilityState !== 'visible') return;
-      draw();
-      rafRef.current = requestAnimationFrame(loop);
-    };
-
-    if (document.visibilityState === 'visible') {
+    if (canAnimate) {
       draw();
       rafRef.current = requestAnimationFrame(loop);
     }
-    document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
       running = false;
       cancelLoop();
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [draw]);
+  }, [canAnimate, draw]);
 
   return (
-    <div className="delay-scope">
+    <div ref={containerRef} className="delay-scope">
       <canvas ref={canvasRef} />
     </div>
   );

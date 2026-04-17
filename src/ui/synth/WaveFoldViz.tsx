@@ -11,6 +11,7 @@
  * Dominant osc = whichever has greater effective level after oscMix crossfade.
  */
 import React, { useRef, useEffect } from 'react';
+import { getCappedCanvasDpr, useAnimationVisibility } from '../hooks/useAnimationVisibility';
 
 interface WaveFoldVizProps {
   foldAmount: number;   // 0..1
@@ -103,8 +104,10 @@ const WaveFoldViz: React.FC<WaveFoldVizProps> = ({
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const prevRef = useRef('');
+  const { canAnimate } = useAnimationVisibility(canvasRef, { rootMargin: '120px' });
 
   useEffect(() => {
+    if (!canAnimate) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -116,7 +119,7 @@ const WaveFoldViz: React.FC<WaveFoldVizProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = getCappedCanvasDpr();
     const rect = canvas.getBoundingClientRect();
     const W = Math.round(rect.width * dpr);
     const H = Math.round(rect.height * dpr);
@@ -195,7 +198,7 @@ const WaveFoldViz: React.FC<WaveFoldVizProps> = ({
     ctx.strokeStyle = color.replace(')', ',0.15)').replace('rgb', 'rgba');
     ctx.lineWidth = 2.5 * dpr;
     ctx.stroke();
-  }, [foldAmount, foldMode, oscAWave, oscBWave, oscALevel, oscBLevel, oscMix]);
+  }, [canAnimate, foldAmount, foldMode, oscAWave, oscBWave, oscALevel, oscBLevel, oscMix]);
 
   return (
     <canvas

@@ -5,6 +5,7 @@
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { audioEngine } from '../audio/engine';
+import { useVisibleInterval } from './hooks/useVisibleInterval';
 
 type PerfMetrics = {
   avgPercent: number;
@@ -81,26 +82,26 @@ export const CpuOverlay: React.FC = () => {
     audioEngine.setPerfUpdateCallback((data) => {
       latestPerfRef.current = data;
     });
-    const timer = window.setInterval(() => {
-      const snap = latestPerfRef.current;
-      if (Object.keys(snap).length === 0) return;
-      // Ensure every DISPLAY_ORDER key is present (default 0)
-      const out: Record<string, PerfMetrics> = {};
-      for (const key of DISPLAY_ORDER) {
-        out[key] = snap[key] ?? { avgPercent: 0, peakPercent: 0, missPercent: 0 };
-      }
-      // Include any extra keys not in DISPLAY_ORDER
-      for (const key of Object.keys(snap)) {
-        const metrics = snap[key];
-        if (!(key in out) && metrics) out[key] = metrics;
-      }
-      setDisplayPerfData(out);
-    }, 2000);
     return () => {
-      clearInterval(timer);
       audioEngine.setPerfUpdateCallback(null);
     };
   }, [visible]);
+
+  useVisibleInterval(() => {
+    const snap = latestPerfRef.current;
+    if (Object.keys(snap).length === 0) return;
+    const out: Record<string, PerfMetrics> = {};
+    for (const key of DISPLAY_ORDER) {
+      out[key] = snap[key] ?? { avgPercent: 0, peakPercent: 0, missPercent: 0 };
+    }
+    for (const key of Object.keys(snap)) {
+      const metrics = snap[key];
+      if (!(key in out) && metrics) out[key] = metrics;
+    }
+    setDisplayPerfData(out);
+  }, 2000, {
+    enabled: visible,
+  });
 
   // Keyboard shortcut: Ctrl+Shift+P
   useEffect(() => {

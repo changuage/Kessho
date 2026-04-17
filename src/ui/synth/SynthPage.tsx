@@ -21,6 +21,7 @@ import { SCALES, normalizeNoteDegreeOffset, scaleDegreeToSemitone } from '../../
 import type { ClockDivision, PitchBindingMode } from '../../audio/drumSeqTypes';
 import type { HarmonyState } from '../../audio/harmony';
 import { useSliderHelp } from '../SliderHelpOverlay';
+import { useVisibleInterval } from '../hooks/useVisibleInterval';
 import './synth.css';
 import SynthPresetManager from './SynthPresetManager';
 import { usePresets } from '../../presets/usePresets';
@@ -114,6 +115,8 @@ const MANUAL_KEYBOARD_LAYOUT = [
 const MANUAL_KEYBOARD_VISIBLE_LAYOUT = MANUAL_KEYBOARD_LAYOUT.slice(0, 13);
 
 const MANUAL_KEYBOARD_VELOCITY = 0.82;
+const MANUAL_KEYBOARD_MIN_OCTAVE = 1;
+const MANUAL_KEYBOARD_MAX_OCTAVE = 6;
 const MAX_SUBLANE_STEPS = 16;
 const CHROMATIC_NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'] as const;
 const PITCH_BINDING_MODE_OPTIONS: Array<{ value: PitchBindingMode; label: string }> = [
@@ -508,16 +511,24 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   }, []);
 
   useEffect(() => {
-    let lastLeadStep = 0;
+    let rafId: number | null = null;
+    let pendingSteps: number[] = [0, 0, 0, 0];
+    let pendingHitCounts: number[] = [0, 0, 0, 0];
     audioEngine.setSynthStepPositionCallback((nextSteps: number[], nextHitCounts: number[]) => {
       if (document.visibilityState !== 'visible') return;
-      const now = performance.now();
-      if (now - lastLeadStep < 120) return;
-      lastLeadStep = now;
-      setPlayheads(nextSteps);
-      setHitCounts(nextHitCounts);
+      pendingSteps = [...nextSteps];
+      pendingHitCounts = [...nextHitCounts];
+      if (rafId !== null) return;
+      rafId = window.requestAnimationFrame(() => {
+        rafId = null;
+        setPlayheads(pendingSteps);
+        setHitCounts(pendingHitCounts);
+      });
     });
     return () => {
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId);
+      }
       audioEngine.setSynthStepPositionCallback(() => {});
     };
   }, []);
@@ -550,38 +561,14 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     };
   }, []);
 
-  useEffect(() => {
-    let filterId: number | null = null;
-    const stopPolling = () => {
-      if (filterId !== null) {
-        clearInterval(filterId);
-        filterId = null;
-      }
-    };
-    const startPolling = () => {
-      if (filterId !== null) return;
-      if (!isRunning || document.visibilityState !== 'visible') return;
-      const updateFilter = () => {
-        setLiveFilterFreq(audioEngine.getCurrentFilterFreq());
-        setLiveLfoValue(audioEngine.getCurrentLfoValue());
-      };
-      updateFilter();
-      filterId = window.setInterval(updateFilter, 150);
-    };
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        startPolling();
-      } else {
-        stopPolling();
-      }
-    };
-    startPolling();
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => {
-      stopPolling();
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [isRunning]);
+  const updateLiveFilterViz = useCallback(() => {
+    setLiveFilterFreq(audioEngine.getCurrentFilterFreq());
+    setLiveLfoValue(audioEngine.getCurrentLfoValue());
+  }, []);
+
+  useVisibleInterval(updateLiveFilterViz, 150, {
+    enabled: isRunning,
+  });
 
   const getPadMorphValue = useCallback((scope: PadRandomScope): number => (
     scope === 'pad1' ? (state.padMorph ?? 0) : (state.pad2Morph ?? 0)
@@ -1813,12 +1800,12 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       }
       if (event.code === 'BracketLeft') {
         event.preventDefault();
-        setKeyboardOctave((prev) => Math.max(2, prev - 1));
+        setKeyboardOctave((prev) => Math.max(MANUAL_KEYBOARD_MIN_OCTAVE, prev - 1));
         return;
       }
       if (event.code === 'BracketRight') {
         event.preventDefault();
-        setKeyboardOctave((prev) => Math.min(5, prev + 1));
+        setKeyboardOctave((prev) => Math.min(MANUAL_KEYBOARD_MAX_OCTAVE, prev + 1));
         return;
       }
       if (keyboardInputMode === 'sequence') {
@@ -3923,9 +3910,13 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                         {...bindHelp('synthSeqClockSelect')}
                       >
                         <option value="1/4">1/4</option>
+                        <option value="1/4T">1/4T</option>
                         <option value="1/8">1/8</option>
-                        <option value="1/16">1/16</option>
                         <option value="1/8T">1/8T</option>
+                        <option value="1/16">1/16</option>
+                        <option value="1/16T">1/16T</option>
+                        <option value="1/32">1/32</option>
+                        <option value="1/32T">1/32T</option>
                       </select>
                     </label>
                     <label className="seq-swing-label">
@@ -4361,9 +4352,13 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                             {...bindHelp('synthSeqClockSelect')}
                           >
                             <option value="1/4">1/4</option>
+                            <option value="1/4T">1/4T</option>
                             <option value="1/8">1/8</option>
-                            <option value="1/16">1/16</option>
                             <option value="1/8T">1/8T</option>
+                            <option value="1/16">1/16</option>
+                            <option value="1/16T">1/16T</option>
+                            <option value="1/32">1/32</option>
+                            <option value="1/32T">1/32T</option>
                           </select>
                           {/* Source dropdown */}
                           <select

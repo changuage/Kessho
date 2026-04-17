@@ -4,6 +4,7 @@
  * Matches the look & feel of the pad synth's FilterLfoViz envelope section.
  */
 import React, { useRef, useEffect, useCallback } from 'react';
+import { getCappedCanvasDpr, useAnimationVisibility } from '../hooks/useAnimationVisibility';
 
 interface LeadAdsrVizProps {
   attack: number;
@@ -27,6 +28,7 @@ const LeadAdsrViz: React.FC<LeadAdsrVizProps> = (props) => {
   const dragRef = useRef<{ target: DragTarget; startX: number; startY: number }>({ target: null, startX: 0, startY: 0 });
   const hoverRef = useRef<DragTarget>(null);
   const layoutRef = useRef({ w: 0, h: 0 });
+  const { canAnimate } = useAnimationVisibility(canvasRef, { rootMargin: '120px' });
 
   // ── Draw ──
   const draw = useCallback(() => {
@@ -35,7 +37,7 @@ const LeadAdsrViz: React.FC<LeadAdsrVizProps> = (props) => {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = getCappedCanvasDpr();
     const rect = canvas.getBoundingClientRect();
     const w = rect.width;
     const h = rect.height;
@@ -162,16 +164,17 @@ const LeadAdsrViz: React.FC<LeadAdsrVizProps> = (props) => {
   }, [props]);
 
   const requestDraw = useCallback(() => {
+    if (!canAnimate) return;
     if (animRef.current) cancelAnimationFrame(animRef.current);
     animRef.current = requestAnimationFrame(() => {
       animRef.current = 0;
       draw();
     });
-  }, [draw]);
+  }, [canAnimate, draw]);
 
   useEffect(() => {
     requestDraw();
-  }, [requestDraw]);
+  }, [requestDraw, canAnimate]);
 
   useEffect(() => {
     const handleResize = () => requestDraw();

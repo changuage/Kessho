@@ -28,11 +28,14 @@ struct Grain {
     float position;      // read position in buffer (fractional samples)
     float playback_rate; // pitch shift rate (negative = reverse)
     float pan;           // -1 to 1
+    float pan_l;         // cached constant-power gain at grain spawn
+    float pan_r;         // cached constant-power gain at grain spawn
     int   start_sample;  // samples elapsed since grain start
     int   length;        // grain length in samples
     int   attack_smp;    // rise time in samples
     int   decay_smp;     // fall time in samples
     int   active;        // 0 or 1
+    int   active_list_pos; // slot inside per-voice active grain index list
     float env_z1;        // one-pole envelope smoother state
 };
 
@@ -133,6 +136,8 @@ struct GranularState {
     // Per-voice
     VoiceParams voice[KESSHO_NUM_VOICES];
     Grain       grain_pool[KESSHO_NUM_VOICES][KESSHO_MAX_GRAINS];
+    int         active_grain_indices[KESSHO_NUM_VOICES][KESSHO_MAX_GRAINS];
+    int         active_grain_counts[KESSHO_NUM_VOICES];
     AllpassDiffuser diffuser[KESSHO_NUM_VOICES];
     TriLFO      pos_lfo[KESSHO_NUM_VOICES];
     TriLFO      pan_lfo[KESSHO_NUM_VOICES];
@@ -826,7 +831,19 @@ static void spawn_grain(GranularState* s, int voice_idx) {
     grain->start_sample = 0;
     grain->length = grain_samples;
     grain->env_z1 = 0.0f;
+    get_pan_lr(s, grain->pan, &grain->pan_l, &grain->pan_r);
     grain->active = 1;
+    int grain_index = (int)(grain - pool);
+    int active_count = s->active_grain_counts[voice_idx];
+    if (active_count < KESSHO_MAX_GRAINS) {
+        s->active_grain_indices[voice_idx][active_count] = grain_index;
+        grain->active_list_pos = active_count;
+        s->active_grain_counts[voice_idx] = active_count + 1;
+    } else {
+        grain->active = 0;
+        grain->active_list_pos = -1;
+        return;
+    }
     s->total_active_grains++;
 }
 
@@ -1061,17 +1078,18 @@ static void process_granular_voice(GranularState* s, int v, float* out_l, float*
     float gain = vp->gain;
     float blur = vp->blur;
     Grain* pool = s->grain_pool[v];
+    int* active_indices = s->active_grain_indices[v];
     int is_gated = vp->euclid_gated;
     float sr = s->sample_rate;
     float euclidSchedulerThrottle = is_gated ? 0.42f : 1.0f;
 
     // Anti-alias: max absolute rate across active grains
     float max_abs_rate = 1.0f;
-    for (int g = 0; g < KESSHO_MAX_GRAINS; g++) {
-        if (pool[g].active) {
-            float ar = fabsf(pool[g].playback_rate);
-            if (ar > max_abs_rate) max_abs_rate = ar;
-        }
+    int active_grain_count = s->active_grain_counts[v];
+    for (int gi = 0; gi < active_grain_count; gi++) {
+        Grain* grain = &pool[active_indices[gi]];
+        float ar = fabsf(grain->playback_rate);
+        if (ar > max_abs_rate) max_abs_rate = ar;
     }
     // 3-stage cascaded biquad (36 dB/oct)
     BiquadFilter* aa_l  = &s->anti_alias_l[v];
@@ -1088,6 +1106,8 @@ static void process_granular_voice(GranularState* s, int v, float* out_l, float*
     biquad_update(aa3_r, max_abs_rate);
 
     static const float TRIG_DENSITY_DECAY = 0.9997f;
+    float smooth_coeff = 0.06f + blur * 0.18f;
+    float smooth_mix = 0.22f + blur * 0.28f;
 
     for (int i = 0; i < block_size; i++) {
         // Euclidean gating
@@ -1117,14 +1137,15 @@ static void process_granular_voice(GranularState* s, int v, float* out_l, float*
                 s->trig_density_mult[v] = 1.0f;
             }
         }
+        active_grain_count = s->active_grain_counts[v];
 
         // Accumulate active grains
         float wet_l = 0.0f, wet_r = 0.0f;
         int active_count = 0;
 
-        for (int g = 0; g < KESSHO_MAX_GRAINS; g++) {
-            Grain* grain = &pool[g];
-            if (!grain->active) continue;
+        int gi = 0;
+        while (gi < active_grain_count) {
+            Grain* grain = &pool[active_indices[gi]];
             active_count++;
 
             float read_pos = grain->position + (float)grain->start_sample * grain->playback_rate;
@@ -1137,17 +1158,26 @@ static void process_granular_voice(GranularState* s, int v, float* out_l, float*
             float env = grain->env_z1 + 0.005f * (raw_env - grain->env_z1);
             grain->env_z1 = env;
 
-            float p_l, p_r;
-            get_pan_lr(s, grain->pan, &p_l, &p_r);
-
-            wet_l += sL * env * p_l;
-            wet_r += sR * env * p_r;
+            wet_l += sL * env * grain->pan_l;
+            wet_r += sR * env * grain->pan_r;
 
             grain->start_sample++;
             if (grain->start_sample >= grain->length) {
                 grain->active = 0;
+                int remove_pos = grain->active_list_pos;
+                int last_pos = active_grain_count - 1;
+                if (remove_pos >= 0 && remove_pos <= last_pos) {
+                    int moved_index = active_indices[last_pos];
+                    active_indices[remove_pos] = moved_index;
+                    pool[moved_index].active_list_pos = remove_pos;
+                    active_grain_count = last_pos;
+                    s->active_grain_counts[v] = active_grain_count;
+                }
+                grain->active_list_pos = -1;
                 s->total_active_grains--;
+                continue;
             }
+            gi++;
         }
 
         // Gain compensation
@@ -1177,10 +1207,8 @@ static void process_granular_voice(GranularState* s, int v, float* out_l, float*
 
         // One-pole smoothing after blur/DC helps the cloud read as one texture
         // instead of a flock of isolated transients poking through the reverb.
-        float smooth_coeff = 0.06f + blur * 0.18f;
         s->grain_smooth_l[v] += smooth_coeff * (wet_l - s->grain_smooth_l[v]);
         s->grain_smooth_r[v] += smooth_coeff * (wet_r - s->grain_smooth_r[v]);
-        float smooth_mix = 0.22f + blur * 0.28f;
         wet_l = wet_l * (1.0f - smooth_mix) + s->grain_smooth_l[v] * smooth_mix;
         wet_r = wet_r * (1.0f - smooth_mix) + s->grain_smooth_r[v] * smooth_mix;
 
@@ -1429,6 +1457,7 @@ int granular_init(float sample_rate, float buffer_seconds) {
     s->bus_diffusion = 0.0f;
     s->timing_randomness = 0.35f;
     s->total_active_grains = 0;
+    memset(s->active_grain_counts, 0, sizeof(s->active_grain_counts));
     s->silent_samples = 0;
     // Start initialized=1 so granular works immediately with fallback LCG.
     // If granular_set_random_sequence is called later, it replaces the LCG.
@@ -1486,6 +1515,9 @@ int granular_init(float sample_rate, float buffer_seconds) {
 
         // Grain pools
         memset(s->grain_pool[v], 0, sizeof(Grain) * KESSHO_MAX_GRAINS);
+        for (int g = 0; g < KESSHO_MAX_GRAINS; g++) {
+            s->grain_pool[v][g].active_list_pos = -1;
+        }
 
         // Scheduling
         s->samples_since_grain[v] = 0;

@@ -57,6 +57,7 @@ import type { PitchBindingMode } from './audio/drumSeqTypes';
 import type { SliderPageId } from './ui/sliderHelpCatalog';
 import { getSliderValueSlotWidthCh } from './ui/sliderValueLayout';
 import { isIOSLikeDevice, isMobileDevice } from './platform';
+import { useVisibleInterval } from './ui/hooks/useVisibleInterval';
 import {
   addCapacitorRemoteCommandListener,
   getCapacitorBackgroundAudioStatus,
@@ -1427,7 +1428,7 @@ const App: React.FC = () => {
   const [playbackTimerEnabled, setPlaybackTimerEnabled] = useState(false);
   const [playbackTimerMinutes, setPlaybackTimerMinutes] = useState(30); // Default 30 minutes
   const [playbackTimerRemaining, setPlaybackTimerRemaining] = useState<number | null>(null);
-  const playbackTimerIntervalRef = useRef<number | null>(null);
+  const playbackTimerTargetTimeRef = useRef<number | null>(null);
   
   // Track if user has loaded a preset (for auto-loading default on first play)
   const hasLoadedPresetRef = useRef(false);
@@ -1459,7 +1460,6 @@ const App: React.FC = () => {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
   const recordingStartTimeRef = useRef<number>(0);
-  const recordingIntervalRef = useRef<number | null>(null);
   const recordingStreamDestRef = useRef<MediaStreamAudioDestinationNode | null>(null);
   const recordingExportWorkerRef = useRef<Worker | null>(null);
   const recorderWorkletContextRef = useRef<AudioContext | null>(null);
@@ -1660,8 +1660,31 @@ const App: React.FC = () => {
   const [sliderModes, setSliderModes] = useState<Record<string, SliderMode>>({});
   const [dualSliderRanges, setDualSliderRanges] = useState<DualSliderState>({});
   const [randomWalkPositions, setRandomWalkPositions] = useState<Record<string, number>>({});
+  const [isDocumentVisible, setIsDocumentVisible] = useState(() => (
+    typeof document === 'undefined' ? true : document.visibilityState === 'visible'
+  ));
   const usesCapacitorLocalPresetLibrary = isCapacitorNativeShell();
   const playbackIsRunning = nativeBackgroundAudioMode ? nativePlaybackState : engineState.isRunning;
+
+  const setRandomWalkPositionsIfChanged = useCallback((nextPositions: Record<string, number>) => {
+    setRandomWalkPositions(prev => {
+      const prevKeys = Object.keys(prev);
+      const nextKeys = Object.keys(nextPositions);
+      if (prevKeys.length === nextKeys.length) {
+        let changed = false;
+        for (const key of nextKeys) {
+          if (Math.abs((prev[key] ?? 0.5) - (nextPositions[key] ?? 0.5)) > 0.0005) {
+            changed = true;
+            break;
+          }
+        }
+        if (!changed) {
+          return prev;
+        }
+      }
+      return nextPositions;
+    });
+  }, []);
 
   const ensureCloudAutoStartPresetStore = useCallback(async (): Promise<IPresetStore | null> => {
     if (!CLOUD_ENABLED) return null;
@@ -1864,13 +1887,13 @@ const App: React.FC = () => {
 
       setSliderModes(newSliderModes);
       setDualSliderRanges(newDualRanges);
-      setRandomWalkPositions(newWalkPositions);
+      setRandomWalkPositionsIfChanged(newWalkPositions);
     } else {
       setSliderModes({});
       setDualSliderRanges({});
-      setRandomWalkPositions({});
+      setRandomWalkPositionsIfChanged({});
     }
-  }, []);
+  }, [setRandomWalkPositionsIfChanged]);
 
   const applyScopedDualRangesFromPreset = useCallback((
     relevantKeys: string[],
@@ -2356,6 +2379,27 @@ const App: React.FC = () => {
   }, [sliderModes, dualSliderRanges]);
 
   useEffect(() => {
+    if (typeof document === 'undefined') return;
+
+    const updateVisibility = () => {
+      setIsDocumentVisible(document.visibilityState === 'visible');
+    };
+
+    updateVisibility();
+    document.addEventListener('visibilitychange', updateVisibility);
+    return () => {
+      document.removeEventListener('visibilitychange', updateVisibility);
+    };
+  }, []);
+
+  const shouldMirrorRuntimeWalkPositions = uiMode === 'advanced' && isDocumentVisible;
+
+  useEffect(() => {
+    if (!shouldMirrorRuntimeWalkPositions) {
+      audioEngine.setRuntimeWalkPositionsCallback(null);
+      return;
+    }
+
     audioEngine.setRuntimeWalkPositionsCallback((positions) => {
       setRandomWalkPositions((prev) => {
         const prevKeys = Object.keys(prev);
@@ -2375,10 +2419,11 @@ const App: React.FC = () => {
         return positions;
       });
     });
+
     return () => {
       audioEngine.setRuntimeWalkPositionsCallback(null);
     };
-  }, []);
+  }, [shouldMirrorRuntimeWalkPositions]);
 
   // Load presets from folder on mount
   useEffect(() => {
@@ -2726,60 +2771,28 @@ const App: React.FC = () => {
     });
   }, []);
 
-  // Transport debug polling
-  useEffect(() => {
-    if (!engineState.isRunning) return;
-
-    let intervalId: number | null = null;
-
-    const clearPolling = () => {
-      if (intervalId !== null) {
-        window.clearInterval(intervalId);
-        intervalId = null;
+  const updateTransportDebug = useCallback(() => {
+    const transportDebug = audioEngine.getTransportDebugState();
+    setEngineState(prev => {
+      const current = prev.transportDebug;
+      if (
+        current &&
+        transportDebug &&
+        Math.abs(current.effectiveBpm - transportDebug.effectiveBpm) < 0.05 &&
+        Math.abs(current.effectivePhraseSeconds - transportDebug.effectivePhraseSeconds) < 0.05 &&
+        Math.abs(current.nextPhraseBoundaryIn - transportDebug.nextPhraseBoundaryIn) < 0.05 &&
+        Math.abs((current.nextHarmonyEventIn ?? -1) - (transportDebug.nextHarmonyEventIn ?? -1)) < 0.05 &&
+        Math.abs((current.nextProgressionStepIn ?? -1) - (transportDebug.nextProgressionStepIn ?? -1)) < 0.05
+      ) {
+        return prev;
       }
-    };
+      return { ...prev, transportDebug };
+    });
+  }, []);
 
-    const update = () => {
-      const transportDebug = audioEngine.getTransportDebugState();
-      setEngineState(prev => {
-        const current = prev.transportDebug;
-        if (
-          current &&
-          transportDebug &&
-          Math.abs(current.effectiveBpm - transportDebug.effectiveBpm) < 0.05 &&
-          Math.abs(current.effectivePhraseSeconds - transportDebug.effectivePhraseSeconds) < 0.05 &&
-          Math.abs(current.nextPhraseBoundaryIn - transportDebug.nextPhraseBoundaryIn) < 0.05 &&
-          Math.abs((current.nextHarmonyEventIn ?? -1) - (transportDebug.nextHarmonyEventIn ?? -1)) < 0.05 &&
-          Math.abs((current.nextProgressionStepIn ?? -1) - (transportDebug.nextProgressionStepIn ?? -1)) < 0.05
-        ) {
-          return prev;
-        }
-        return { ...prev, transportDebug };
-      });
-    };
-
-    const startPolling = () => {
-      clearPolling();
-      if (document.visibilityState !== 'visible') return;
-      update();
-      intervalId = window.setInterval(update, 1000);
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        startPolling();
-      } else {
-        clearPolling();
-      }
-    };
-
-    startPolling();
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => {
-      clearPolling();
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [engineState.isRunning]);
+  useVisibleInterval(updateTransportDebug, 1000, {
+    enabled: engineState.isRunning,
+  });
 
   useEffect(() => {
     setState(prev => {
@@ -2850,17 +2863,25 @@ const App: React.FC = () => {
     state.transportBeatsPerBar,
   ]);
 
-  // Update engine when state changes (always — drum sequencer works independently)
+  const nativeDualRanges = useMemo(
+    () => extractNativeDualRanges(dualSliderRanges),
+    [dualSliderRanges],
+  );
+
+  // Web audio does not consume dual-slider ranges, so avoid re-sending params when
+  // only the UI runtime range model changes.
   useEffect(() => {
-    if (nativeBackgroundAudioMode) {
-      void syncCapacitorNativeAudioState({
-        state,
-        dualRanges: extractNativeDualRanges(dualSliderRanges),
-      });
-      return;
-    }
+    if (nativeBackgroundAudioMode) return;
     audioEngine.updateParams(state);
-  }, [state, dualSliderRanges, nativeBackgroundAudioMode]);
+  }, [state, nativeBackgroundAudioMode]);
+
+  useEffect(() => {
+    if (!nativeBackgroundAudioMode) return;
+    void syncCapacitorNativeAudioState({
+      state,
+      dualRanges: nativeDualRanges,
+    });
+  }, [state, nativeBackgroundAudioMode, nativeDualRanges]);
 
   // Handle slider change
   const handleSliderChange = useCallback((key: keyof SliderState, value: number | string) => {
@@ -3934,67 +3955,71 @@ const App: React.FC = () => {
       }
       setIsJourneyPlaying(false);
     }
-    
-    // Clear playback timer
-    if (playbackTimerIntervalRef.current) {
-      clearInterval(playbackTimerIntervalRef.current);
-      playbackTimerIntervalRef.current = null;
-    }
+
+    playbackTimerTargetTimeRef.current = null;
     setPlaybackTimerRemaining(null);
   };
-  
-  // Playback timer effect - starts countdown when playback starts
-  useEffect(() => {
-    // Clear any existing interval first
-    if (playbackTimerIntervalRef.current) {
-      clearInterval(playbackTimerIntervalRef.current);
-      playbackTimerIntervalRef.current = null;
-    }
-    
-    if (playbackIsRunning && playbackTimerEnabled) {
-      // Start or restart the countdown
-      // If no remaining time set, initialize from minutes setting
-      if (playbackTimerRemaining === null) {
-        const totalSeconds = playbackTimerMinutes * 60;
-        setPlaybackTimerRemaining(totalSeconds);
-      }
-      
-      // Start the interval
-      playbackTimerIntervalRef.current = window.setInterval(() => {
-        setPlaybackTimerRemaining(prev => {
-          if (prev === null || prev <= 1) {
-            // Timer reached zero - stop playback
-            if (playbackTimerIntervalRef.current) {
-              clearInterval(playbackTimerIntervalRef.current);
-              playbackTimerIntervalRef.current = null;
-            }
-            // Use setTimeout to avoid state update during render
-            setTimeout(() => {
-              if (nativeBackgroundAudioMode) {
-                void stopCapacitorNativePlayback();
-                setNativePlaybackState(false);
-              } else {
-                audioEngine.stop();
-                stopIOSMediaSession();
-              }
-            }, 0);
-            return null;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    } else if (!playbackIsRunning) {
-      // Playback stopped - clear timer state
+
+  const updatePlaybackTimerCountdown = useCallback(() => {
+    if (!playbackIsRunning || !playbackTimerEnabled) return;
+
+    const targetTime = playbackTimerTargetTimeRef.current;
+    if (targetTime === null) return;
+
+    const remainingMs = targetTime - Date.now();
+    if (remainingMs <= 0) {
+      playbackTimerTargetTimeRef.current = null;
       setPlaybackTimerRemaining(null);
+
+      window.setTimeout(() => {
+        if (nativeBackgroundAudioMode) {
+          void stopCapacitorNativePlayback();
+          setNativePlaybackState(false);
+        } else {
+          audioEngine.stop();
+          stopIOSMediaSession();
+        }
+      }, 0);
+      return;
     }
-    
-    return () => {
-      if (playbackTimerIntervalRef.current) {
-        clearInterval(playbackTimerIntervalRef.current);
-        playbackTimerIntervalRef.current = null;
-      }
-    };
+
+    const nextRemaining = Math.ceil(remainingMs / 1000);
+    setPlaybackTimerRemaining(prev => (prev === nextRemaining ? prev : nextRemaining));
   }, [playbackIsRunning, playbackTimerEnabled, nativeBackgroundAudioMode]);
+
+  // Playback timer effect - keeps countdown based on absolute time so hidden tabs do not drift.
+  useEffect(() => {
+    if (playbackIsRunning && playbackTimerEnabled) {
+      if (playbackTimerTargetTimeRef.current === null) {
+        const initialRemaining = playbackTimerRemaining ?? playbackTimerMinutes * 60;
+        playbackTimerTargetTimeRef.current = Date.now() + initialRemaining * 1000;
+        if (playbackTimerRemaining === null) {
+          setPlaybackTimerRemaining(initialRemaining);
+        }
+      }
+      updatePlaybackTimerCountdown();
+      return;
+    }
+
+    if (!playbackIsRunning) {
+      playbackTimerTargetTimeRef.current = null;
+      setPlaybackTimerRemaining(null);
+      return;
+    }
+
+    playbackTimerTargetTimeRef.current = null;
+  }, [
+    playbackIsRunning,
+    playbackTimerEnabled,
+    playbackTimerMinutes,
+    playbackTimerRemaining,
+    updatePlaybackTimerCountdown,
+  ]);
+
+  useVisibleInterval(updatePlaybackTimerCountdown, 1000, {
+    enabled: playbackIsRunning && playbackTimerEnabled,
+    immediate: false,
+  });
   
   // Arm recording - will start recording when playback starts
   const handleArmRecording = () => {
@@ -4290,10 +4315,6 @@ const App: React.FC = () => {
       setIsRecording(true);
       setRecordingDuration(0);
 
-      recordingIntervalRef.current = window.setInterval(() => {
-        setRecordingDuration(Math.floor((Date.now() - recordingStartTimeRef.current) / 1000));
-      }, 1000);
-
       const formats = [recordFormats.webm && 'WebM', recordFormats.wav && 'WAV'].filter(Boolean).join(' + ');
       const stemCount = enabledStemIds.length;
       const stemInfo = stemCount > 0 ? ` + ${stemCount} stems` : '';
@@ -4319,11 +4340,6 @@ const App: React.FC = () => {
   };
 
   const handleStopRecording = async () => {
-    if (recordingIntervalRef.current) {
-      clearInterval(recordingIntervalRef.current);
-      recordingIntervalRef.current = null;
-    }
-    
     const limiterNode = audioEngine.getLimiterNode();
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
 
@@ -4379,6 +4395,14 @@ const App: React.FC = () => {
     const secs = seconds % 60;
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
+
+  useVisibleInterval(() => {
+    const nextDuration = Math.floor((Date.now() - recordingStartTimeRef.current) / 1000);
+    setRecordingDuration(prev => (prev === nextDuration ? prev : nextDuration));
+  }, 1000, {
+    enabled: isRecording,
+    immediate: false,
+  });
 
   // Save preset to file in presets folder
   const handleSavePreset = async () => {
@@ -5168,8 +5192,8 @@ const App: React.FC = () => {
       if (mode === 'single') return; // Skip keys that collapsed to single
       newWalkPositions[key] = 0.5;
     });
-    setRandomWalkPositions(newWalkPositions);
-  }, [morphPresetA, morphPresetB, lerpPresets, engineState.cofCurrentStep]);
+    setRandomWalkPositionsIfChanged(newWalkPositions);
+  }, [morphPresetA, morphPresetB, lerpPresets, engineState.cofCurrentStep, setRandomWalkPositionsIfChanged]);
 
   const handleMorphSlotAClear = useCallback(() => {
     setMorphPresetA(null);
@@ -5508,13 +5532,17 @@ const App: React.FC = () => {
             if (mode === 'single') return;
             newWalkPositions[key] = 0.5;
           });
-          setRandomWalkPositions(newWalkPositions);
+          setRandomWalkPositionsIfChanged(newWalkPositions);
         }
       }
       
       if (isVisible) {
         const phrasesLeft = Math.ceil(timeLeftInPhase / ((currentState.phraseLength ?? 16) * 1000));
-        setMorphCountdown({ phase: phaseName, phrasesLeft });
+        setMorphCountdown(prev => (
+          prev?.phase === phaseName && prev.phrasesLeft === phrasesLeft
+            ? prev
+            : { phase: phaseName, phrasesLeft }
+        ));
       }
     };
 
@@ -5543,7 +5571,7 @@ const App: React.FC = () => {
       setMorphCountdown(null);
       setMorphCoFViz(null); // Clear CoF morph visualization
     };
-  }, [morphMode, engineState.isRunning, morphPresetA, morphPresetB, lerpPresets]);
+  }, [morphMode, engineState.isRunning, morphPresetA, morphPresetB, lerpPresets, setRandomWalkPositionsIfChanged]);
 
   // Load preset from list - modified to support morph slots in advanced mode
   const handleLoadPresetFromList = useCallback((preset: SavedPreset) => {
