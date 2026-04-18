@@ -7,7 +7,7 @@
  */
 
 import { SliderState, DEFAULT_STATE, migratePreset, SavedPreset } from './state';
-import { audioEngine } from '../audio/engine';
+import { audioEngine } from '../audio/runtime';
 
 // User preference keys — audio processing settings that should NOT change
 // when loading presets or morphing between them.

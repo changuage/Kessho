@@ -900,8 +900,12 @@ export class AudioEngine {
   private onDrumParamSHTrigger: ((voice: DrumVoiceType, key: string, position: number) => void) | null = null;
   private onPadMorphTrigger: ((morphPosition: number) => void) | null = null;
   private onPad2MorphTrigger: ((morphPosition: number) => void) | null = null;
+  private onJourneyMorphClockFrame: ((now: number) => void) | null = null;
   private onDrumEuclidEvolveTrigger: ((laneIndex: number) => void) | null = null;
   private onDrumStepPositionChange: ((steps: number[], hitCounts: number[]) => void) | null = null;
+  private journeyMorphClockRaf: number | null = null;
+  private journeyMorphClockTimeout: number | null = null;
+  private journeyMorphClockActive = false;
   private leadMorphTimer: number | null = null;
   private autoMorphTimer: number | null = null;
   private runtimeRandomWalkTimer: number | null = null;
@@ -965,10 +969,13 @@ export class AudioEngine {
     triggerToggles: Map<number, boolean>[];
     expression: (number[] | null)[];
     expressionDirection: (LaneDirection | null)[];
+    expressionRanges: ({ min: number; max: number } | null)[];
     morph: (number[] | null)[];
     morphDirection: (LaneDirection | null)[];
+    morphRanges: ({ min: number; max: number } | null)[];
     distance: (number[] | null)[];
     distanceDirection: (LaneDirection | null)[];
+    distanceRanges: ({ min: number; max: number } | null)[];
     probability: (number[] | null)[];
     ratchet: (number[] | null)[];
     trigCondition: (TrigCondition[] | null)[];
@@ -978,10 +985,13 @@ export class AudioEngine {
     triggerToggles: [new Map(), new Map(), new Map(), new Map()],
     expression: [null, null, null, null],
     expressionDirection: [null, null, null, null],
+    expressionRanges: [null, null, null, null],
     morph: [null, null, null, null],
     morphDirection: [null, null, null, null],
+    morphRanges: [null, null, null, null],
     distance: [null, null, null, null],
     distanceDirection: [null, null, null, null],
+    distanceRanges: [null, null, null, null],
     probability: [null, null, null, null],
     ratchet: [null, null, null, null],
     trigCondition: [null, null, null, null],
@@ -3041,6 +3051,68 @@ export class AudioEngine {
     callback([...this.synthEuclidVisualStep], [...this.synthEuclidVisualHitCounts]);
   }
 
+  setJourneyMorphClockCallback(callback: ((now: number) => void) | null) {
+    this.onJourneyMorphClockFrame = callback;
+    if (!callback) {
+      this.stopJourneyMorphClock();
+    }
+  }
+
+  startJourneyMorphClock(): void {
+    if (this.journeyMorphClockActive || !this.onJourneyMorphClockFrame) return;
+    this.journeyMorphClockActive = true;
+    this.scheduleJourneyMorphClockTick();
+  }
+
+  stopJourneyMorphClock(): void {
+    this.journeyMorphClockActive = false;
+    if (this.journeyMorphClockRaf !== null) {
+      cancelAnimationFrame(this.journeyMorphClockRaf);
+      this.journeyMorphClockRaf = null;
+    }
+    if (this.journeyMorphClockTimeout !== null) {
+      clearTimeout(this.journeyMorphClockTimeout);
+      this.journeyMorphClockTimeout = null;
+    }
+  }
+
+  private scheduleJourneyMorphClockTick(): void {
+    if (!this.journeyMorphClockActive || !this.onJourneyMorphClockFrame) return;
+
+    const tick = (now: number) => {
+      this.journeyMorphClockRaf = null;
+      this.journeyMorphClockTimeout = null;
+      if (!this.journeyMorphClockActive || !this.onJourneyMorphClockFrame) return;
+
+      this.onJourneyMorphClockFrame(now);
+      if (!this.journeyMorphClockActive || !this.onJourneyMorphClockFrame) return;
+
+      if (document.visibilityState === 'visible') {
+        this.journeyMorphClockRaf = requestAnimationFrame(tick);
+        return;
+      }
+      if (!this.isRunning) {
+        this.stopJourneyMorphClock();
+        return;
+      }
+      this.journeyMorphClockTimeout = window.setTimeout(() => {
+        tick(performance.now());
+      }, 50);
+    };
+
+    if (document.visibilityState === 'visible') {
+      this.journeyMorphClockRaf = requestAnimationFrame(tick);
+      return;
+    }
+    if (!this.isRunning) {
+      this.stopJourneyMorphClock();
+      return;
+    }
+    this.journeyMorphClockTimeout = window.setTimeout(() => {
+      tick(performance.now());
+    }, 50);
+  }
+
   private clearSynthEuclidVisualTimers(resetVisualState = false): void {
     for (const timerId of this.synthEuclidVisualTimers) {
       window.clearTimeout(timerId);
@@ -3082,10 +3154,13 @@ export class AudioEngine {
     triggerToggles?: Map<number, boolean>[];
     expression?: (number[] | null)[];
     expressionDirection?: (LaneDirection | null)[];
+    expressionRanges?: ({ min: number; max: number } | null)[];
     morph?: (number[] | null)[];
     morphDirection?: (LaneDirection | null)[];
+    morphRanges?: ({ min: number; max: number } | null)[];
     distance?: (number[] | null)[];
     distanceDirection?: (LaneDirection | null)[];
+    distanceRanges?: ({ min: number; max: number } | null)[];
     probability?: (number[] | null)[];
     ratchet?: (number[] | null)[];
     trigCondition?: (TrigCondition[] | null)[];
@@ -3096,10 +3171,13 @@ export class AudioEngine {
       triggerToggles: overrides.triggerToggles ?? this.synthStepOverrides.triggerToggles,
       expression: overrides.expression ?? this.synthStepOverrides.expression,
       expressionDirection: overrides.expressionDirection ?? this.synthStepOverrides.expressionDirection,
+      expressionRanges: overrides.expressionRanges ?? this.synthStepOverrides.expressionRanges,
       morph: overrides.morph ?? this.synthStepOverrides.morph,
       morphDirection: overrides.morphDirection ?? this.synthStepOverrides.morphDirection,
+      morphRanges: overrides.morphRanges ?? this.synthStepOverrides.morphRanges,
       distance: overrides.distance ?? this.synthStepOverrides.distance,
       distanceDirection: overrides.distanceDirection ?? this.synthStepOverrides.distanceDirection,
+      distanceRanges: overrides.distanceRanges ?? this.synthStepOverrides.distanceRanges,
       probability: overrides.probability ?? this.synthStepOverrides.probability,
       ratchet: overrides.ratchet ?? this.synthStepOverrides.ratchet,
       trigCondition: overrides.trigCondition ?? this.synthStepOverrides.trigCondition,
@@ -3877,8 +3955,10 @@ export class AudioEngine {
       const requiredBootCapabilities = this.getRequiredBootCapabilities(sliderState);
       const lead1RouteActive = this.isLead1RouteActive(sliderState);
       const lead2RouteActive = this.isLead2RouteActive(sliderState);
-      const shouldLoadReverb = requiredBootCapabilities.reverb;
-      const shouldLoadSpectralFreeze = requiredBootCapabilities.spectralFreeze;
+      // Eager-load the shared space stack so the first spectral-freeze toggle
+      // can switch routing in-place instead of hard-restarting the audio graph.
+      const shouldLoadReverb = true;
+      const shouldLoadSpectralFreeze = true;
       // Load soundscapes eagerly on first boot so enabling water/insects later
       // can start them in-place without rebuilding the whole audio graph.
       const shouldLoadSoundscapes = true;
@@ -4000,8 +4080,10 @@ export class AudioEngine {
       ]);
 
       this.bootCapabilities = {
-        ...requiredBootCapabilities,
+        reverb: shouldLoadReverb,
+        spectralFreeze: shouldLoadSpectralFreeze,
         soundscapes: true,
+        granular: shouldLoadGranular,
       };
 
       // Create audio graph
@@ -4140,6 +4222,7 @@ export class AudioEngine {
       clearInterval(this.leadMorphTimer);
       this.leadMorphTimer = null;
     }
+    this.stopJourneyMorphClock();
 
     const now = this.ctx?.currentTime ?? 0;
     this.setAudioParamImmediate(this.oceanGateGain?.gain, 0, now);
@@ -4504,6 +4587,7 @@ export class AudioEngine {
     this.pendingGranularWorkletUpdate = null;
     this.stopRuntimeRandomWalk();
     this.stopRuntimeAutoMorph();
+    this.stopJourneyMorphClock();
     this.cancelPianoPriorityWarmup();
     this.stop();
   }
@@ -9543,16 +9627,18 @@ export class AudioEngine {
               // Read sub-lane arrays fresh each step (so evolve changes take effect immediately)
               // Gate on per-lane enabled state — disabled sub-lanes are treated as absent
               const slEnabled = this.synthSubLaneEnabled[laneIndex] ?? {};
-              const pitchOffsets = (slEnabled.pitch !== false) ? ov.pitch[laneIndex] : null;
-              const pitchDir = ov.pitchDirection[laneIndex] ?? 'forward';
-              const pitchSteps = pitchOffsets?.length ?? 0;
-              const exprArr = (slEnabled.expression !== false) ? ov.expression[laneIndex] : null;
-              const exprDir = ov.expressionDirection[laneIndex] ?? 'forward';
-              const exprSteps = exprArr?.length ?? 0;
-              const morphArr = (slEnabled.morph !== false) ? ov.morph[laneIndex] : null;
-              const morphDir = ov.morphDirection[laneIndex] ?? 'forward';
-              const morphSteps = morphArr?.length ?? 0;
-              const probArr = (slEnabled.expression !== false) ? ov.probability[laneIndex] : null;
+	              const pitchOffsets = (slEnabled.pitch !== false) ? ov.pitch[laneIndex] : null;
+	              const pitchDir = ov.pitchDirection[laneIndex] ?? 'forward';
+	              const pitchSteps = pitchOffsets?.length ?? 0;
+	              const exprArr = (slEnabled.expression !== false) ? ov.expression[laneIndex] : null;
+	              const exprRange = (slEnabled.expression !== false) ? ov.expressionRanges[laneIndex] : null;
+	              const exprDir = ov.expressionDirection[laneIndex] ?? 'forward';
+	              const exprSteps = exprArr?.length ?? 0;
+	              const morphArr = (slEnabled.morph !== false) ? ov.morph[laneIndex] : null;
+	              const morphRange = (slEnabled.morph !== false) ? ov.morphRanges[laneIndex] : null;
+	              const morphDir = ov.morphDirection[laneIndex] ?? 'forward';
+	              const morphSteps = morphArr?.length ?? 0;
+	              const probArr = (slEnabled.expression !== false) ? ov.probability[laneIndex] : null;
               const ratchetArr = (slEnabled.expression !== false) ? ov.ratchet[laneIndex] : null;
               const trigCondArr = ov.trigCondition[laneIndex];
 
@@ -9618,25 +9704,29 @@ export class AudioEngine {
                 if (midiNote !== undefined) {
                   const frequency = midiToFreq(midiNote);
 
-                  // Expression/velocity sub-lane: dynamics × lane level.
-                  // This is note velocity (timbre + amplitude), NOT bus gain.
-                  // Per-lead mix level lives on lead1LevelGain/lead2LevelGain nodes.
-                  let velocity: number;
-                  if (exprArr && exprSteps > 0) {
-                    const exprIdx = seqLaneIndex(
-                      { enabled: true, steps: exprSteps, direction: exprDir, _ppForward: true },
-                      this.synthEuclidHitCounts[laneIndex] - 1
+	                  // Expression/velocity sub-lane: dynamics × lane level.
+	                  // This is note velocity (timbre + amplitude), NOT bus gain.
+	                  // Per-lead mix level lives on lead1LevelGain/lead2LevelGain nodes.
+	                  let velocity: number;
+	                  if (exprRange) {
+	                    velocity = Math.max(0, Math.min(1, exprRange.min + rng() * (exprRange.max - exprRange.min))) * lane.level;
+	                  } else if (exprArr && exprSteps > 0) {
+	                    const exprIdx = seqLaneIndex(
+	                      { enabled: true, steps: exprSteps, direction: exprDir, _ppForward: true },
+	                      this.synthEuclidHitCounts[laneIndex] - 1
                     );
                     velocity = Math.max(0, Math.min(1, exprArr[exprIdx] ?? 1.0)) * lane.level;
                   } else {
                     velocity = 1.0 * lane.level;
                   }
 
-                  // Morph sub-lane: set temporary override for playLeadNote
-                  if (morphArr && morphSteps > 0) {
-                    const morphIdx = seqLaneIndex(
-                      { enabled: true, steps: morphSteps, direction: morphDir, _ppForward: true },
-                      this.synthEuclidHitCounts[laneIndex] - 1
+	                  // Morph sub-lane: set temporary override for playLeadNote
+	                  if (morphRange) {
+	                    this.synthMorphOverride = morphRange.min + rng() * (morphRange.max - morphRange.min);
+	                  } else if (morphArr && morphSteps > 0) {
+	                    const morphIdx = seqLaneIndex(
+	                      { enabled: true, steps: morphSteps, direction: morphDir, _ppForward: true },
+	                      this.synthEuclidHitCounts[laneIndex] - 1
                     );
                     this.synthMorphOverride = morphArr[morphIdx % morphSteps] ?? null;
                   } else {

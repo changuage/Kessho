@@ -6,7 +6,6 @@
 
 import React, { useState, useEffect } from 'react';
 import {
-  isCloudEnabled,
   fetchCloudPresets,
   fetchFeaturedPresets,
   searchCloudPresets,
@@ -14,6 +13,7 @@ import {
   incrementPresetPlays,
   CloudPreset,
 } from '../cloud/supabase';
+import { isCloudEnabled } from '../cloud/config';
 import { SliderState } from './state';
 
 // Unicode symbols with text variation selector (U+FE0E) to prevent emoji rendering on mobile

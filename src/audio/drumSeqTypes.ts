@@ -66,6 +66,9 @@ export interface DrumStepOverrides {
   pitchDirection: (LaneDirection | null)[];
   sliceDirection: (LaneDirection | null)[];
   reverseDirection: (LaneDirection | null)[];
+  expressionRanges?: ({ min: number; max: number } | null)[];
+  morphRanges?: ({ min: number; max: number } | null)[];
+  distanceRanges?: ({ min: number; max: number } | null)[];
 }
 
 export interface TriggerLane {

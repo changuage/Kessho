@@ -84,6 +84,12 @@ const DelayRhythmMap: React.FC<DelayRhythmMapProps> = (props) => {
   const rafRef = useRef(0);
   const playheadRef = useRef(0);
   const { canAnimate } = useAnimationVisibility(containerRef);
+  const hasAnimatedContent =
+    props.echoFeedback > 0.01 ||
+    props.clockedActivity > 0.01 ||
+    props.aToBSend > 0.01 ||
+    props.bToASend > 0.01;
+  const shouldAnimate = canAnimate && hasAnimatedContent;
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -246,21 +252,21 @@ const DelayRhythmMap: React.FC<DelayRhythmMapProps> = (props) => {
       if (!running) return;
       frame++;
       if (frame % 2 === 0) draw(); // 30fps cap
-      if (canAnimate) {
+      if (shouldAnimate) {
         rafRef.current = requestAnimationFrame(loop);
       } else {
         rafRef.current = 0;
       }
     };
-    if (canAnimate) {
-      draw();
+    draw();
+    if (shouldAnimate) {
       rafRef.current = requestAnimationFrame(loop);
     }
     return () => {
       running = false;
       cancelLoop();
     };
-  }, [canAnimate, draw]);
+  }, [draw, shouldAnimate]);
 
   return (
     <div ref={containerRef} className="delay-rhythm-map">

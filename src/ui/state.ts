@@ -164,6 +164,9 @@ export interface SerializedSubLaneState {
   steps: number;
   direction: 'forward' | 'reverse' | 'pingpong';
   scaleQuantize?: boolean;
+  valueMode?: 'sequence' | 'range';
+  rangeMin?: number;
+  rangeMax?: number;
 }
 
 /**

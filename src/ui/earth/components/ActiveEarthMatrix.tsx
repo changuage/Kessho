@@ -4,6 +4,7 @@ import { useSliderHelp } from '../../SliderHelpOverlay';
 import { QUANTIZATION, type SliderMode, type SliderState } from '../../state';
 import { useAnimationVisibility } from '../../hooks/useAnimationVisibility';
 import { useVisibleInterval } from '../../hooks/useVisibleInterval';
+import { useRuntimeSliderIndicator } from '../../runtimeSliderState';
 import { INSECT_ENGINES } from '../../../audio/waterPresets';
 import type { EarthTextureDebugState } from '../../../audio/engine';
 import { NatureSliceViz } from './NatureSliceViz';
@@ -832,7 +833,13 @@ export function ActiveEarthMatrix({
     });
   }, [activeTextureDebugKeys, getEarthTextureDebugState]);
 
-  useVisibleInterval(updateTextureDebugState, 250, {
+  const textureDebugPollMs = useMemo(() => {
+    if (activeTextureDebugKeys.length <= 1) return 180;
+    if (activeTextureDebugKeys.length === 2) return 260;
+    return 340;
+  }, [activeTextureDebugKeys.length]);
+
+  useVisibleInterval(updateTextureDebugState, textureDebugPollMs, {
     enabled: activeTextureDebugKeys.length > 0,
     isVisible: canPollTextureDebug,
   });
@@ -1343,6 +1350,12 @@ function EarthMatrixSliderCell({
   const cellId = `${rowId}:${columnId}:${String(control.key)}`;
   const runtime = sliderProps(control.key);
   const mode = runtime.mode !== 'single' && runtime.dualRange ? runtime.mode : 'single';
+  const runtimeIndicator = useRuntimeSliderIndicator(
+    String(control.key),
+    mode,
+    runtime.walkPosition,
+    runtime.isFlashing,
+  );
   const value = numeric(state, control.key);
   const range = quantization && mode !== 'single'
     ? normalizeRange(runtime.dualRange, quantization, control.logarithmic)
@@ -1355,7 +1368,7 @@ function EarthMatrixSliderCell({
       }
     : undefined;
   const walkNorm = rangeNorm
-    ? rangeNorm.min + clamp01(runtime.walkPosition ?? 0.5) * (rangeNorm.max - rangeNorm.min)
+    ? rangeNorm.min + clamp01(runtimeIndicator.walkPosition ?? runtime.walkPosition ?? 0.5) * (rangeNorm.max - rangeNorm.min)
     : valueNorm;
   const fillLeft = rangeNorm ? trackLeftCalc(rangeNorm.min) : `${TRACK_PAD_PX}px`;
   const fillWidth = rangeNorm ? trackWidthCalc(rangeNorm.max - rangeNorm.min) : trackWidthCalc(valueNorm);
@@ -1548,7 +1561,7 @@ function EarthMatrixSliderCell({
       ) : null}
       {mode === 'sampleHold' && rangeNorm ? (
         <span
-          className={`earth-matrix-cell-indicator sample-hold${runtime.isFlashing ? ' flashing' : ''}`}
+          className={`earth-matrix-cell-indicator sample-hold${runtimeIndicator.isFlashing ? ' flashing' : ''}`}
           style={{ left: trackLeftCalc(walkNorm) }}
         />
       ) : null}

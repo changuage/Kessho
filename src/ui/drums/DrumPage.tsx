@@ -11,7 +11,7 @@ import type { DrumVoiceType } from '../../audio/drumSynth';
 import type { DrumStepOverrides } from '../../audio/drumSeqTypes';
 import type { ClockDivision } from '../../audio/drumSeqTypes';
 import { normalizeNoteDegreeOffset } from '../../audio/drumSeqTypes';
-import { audioEngine } from '../../audio/engine';
+import { audioEngine } from '../../audio/runtime';
 import { getPresetNames as getDrumPresetNames } from '../../audio/drumPresets';
 import { DRUM_VOICES as VOICE_CONFIG, DRUM_VOICE_ORDER } from '../../audio/drumVoiceConfig';
 import { useEuclideanSequencer, type EvolveConfig, type StepOverrides, type SubLaneKind, type SubLaneState } from '../sequencer/useEuclideanSequencer';
@@ -327,13 +327,32 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
   }, [evolvedOverrides, seq]);
 
   // Sync step overrides (all sub-lane data) to audio engine when they change
-  const stepOverridesRef = useRef(seq.stepOverrides);
   useEffect(() => {
-    if (stepOverridesRef.current !== seq.stepOverrides) {
-      stepOverridesRef.current = seq.stepOverrides;
-      onStepOverridesChange?.(seq.stepOverrides);
-    }
-  }, [seq.stepOverrides, onStepOverridesChange]);
+    const expressionRanges = seq.subLaneStates.map((laneState) => {
+      const lane = laneState.expression;
+      return lane.enabled && lane.valueMode === 'range'
+        ? { min: Math.min(lane.rangeMin ?? 0.75, lane.rangeMax ?? 1), max: Math.max(lane.rangeMin ?? 0.75, lane.rangeMax ?? 1) }
+        : null;
+    });
+    const morphRanges = seq.subLaneStates.map((laneState) => {
+      const lane = laneState.morph;
+      return lane.enabled && lane.valueMode === 'range'
+        ? { min: Math.min(lane.rangeMin ?? 0.25, lane.rangeMax ?? 0.75), max: Math.max(lane.rangeMin ?? 0.25, lane.rangeMax ?? 0.75) }
+        : null;
+    });
+    const distanceRanges = seq.subLaneStates.map((laneState) => {
+      const lane = laneState.distance;
+      return lane.enabled && lane.valueMode === 'range'
+        ? { min: Math.min(lane.rangeMin ?? 0.25, lane.rangeMax ?? 0.75), max: Math.max(lane.rangeMin ?? 0.25, lane.rangeMax ?? 0.75) }
+        : null;
+    });
+    onStepOverridesChange?.({
+      ...seq.stepOverrides,
+      expressionRanges,
+      morphRanges,
+      distanceRanges,
+    });
+  }, [seq.stepOverrides, seq.subLaneStates, onStepOverridesChange]);
 
   // Persist sub-lane states (enabled/steps/direction) across tab switches
   const subLaneStatesRef = useRef(seq.subLaneStates);
@@ -1140,11 +1159,17 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                                     ? normalizeNoteDegreeOffset(off)
                                     : (off + 24) / 48
                                 )
-                              : laneKind === 'expression'
-                                ? activeSeq.expression.velocities
-                                : laneKind === 'morph'
-                                  ? activeSeq.morph.values
-                                  : activeSeq.distance.values
+                              : laneKind === 'expression' && subState?.valueMode === 'range'
+                                ? new Array(subState.steps).fill(((subState.rangeMin ?? 0.75) + (subState.rangeMax ?? 1)) * 0.5)
+                                : laneKind === 'expression'
+                                  ? activeSeq.expression.velocities
+                                  : laneKind === 'morph' && subState?.valueMode === 'range'
+                                    ? new Array(subState.steps).fill(((subState.rangeMin ?? 0.25) + (subState.rangeMax ?? 0.75)) * 0.5)
+                                    : laneKind === 'morph'
+                                      ? activeSeq.morph.values
+                                      : subState?.valueMode === 'range'
+                                        ? new Array(subState.steps).fill(((subState.rangeMin ?? 0.25) + (subState.rangeMax ?? 0.75)) * 0.5)
+                                        : activeSeq.distance.values
                           }
                           color={laneColor}
                           playhead={seq.playheads[seq.activeTab]}
@@ -1178,6 +1203,15 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                               onChangeSteps={(v) => seq.setSubLaneSteps(seq.activeTab, laneKind, v)}
                               onCycleDirection={() => seq.cycleSubLaneDirection(seq.activeTab, laneKind)}
                               onChangeValue={(step, value) => seq.changeStepValue(seq.activeTab, laneKind, step, value)}
+                              valueMode={laneKind === 'expression' || laneKind === 'morph' || laneKind === 'distance' ? subState?.valueMode ?? 'sequence' : undefined}
+                              rangeMin={laneKind === 'expression' || laneKind === 'morph' || laneKind === 'distance' ? subState?.rangeMin : undefined}
+                              rangeMax={laneKind === 'expression' || laneKind === 'morph' || laneKind === 'distance' ? subState?.rangeMax : undefined}
+                              onChangeValueMode={laneKind === 'expression' || laneKind === 'morph' || laneKind === 'distance'
+                                ? (mode) => seq.setSubLaneValueMode(seq.activeTab, laneKind, mode)
+                                : undefined}
+                              onChangeRange={laneKind === 'expression' || laneKind === 'morph' || laneKind === 'distance'
+                                ? (min, max) => seq.setSubLaneRange(seq.activeTab, laneKind, min, max)
+                                : undefined}
                               linked={seq.linked[seq.activeTab]}
                               {...(laneKind === 'expression' ? {
                                 onCycleRatchet: (step: number) => seq.cycleStepRatchet(seq.activeTab, step),

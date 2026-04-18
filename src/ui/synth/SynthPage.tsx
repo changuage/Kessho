@@ -22,6 +22,7 @@ import type { ClockDivision, PitchBindingMode } from '../../audio/drumSeqTypes';
 import type { HarmonyState } from '../../audio/harmony';
 import { useSliderHelp } from '../SliderHelpOverlay';
 import { useVisibleInterval } from '../hooks/useVisibleInterval';
+import { useRuntimeValue } from '../runtimeValueState';
 import './synth.css';
 import SynthPresetManager from './SynthPresetManager';
 import { usePresets } from '../../presets/usePresets';
@@ -51,7 +52,7 @@ import {
   setUserLead4opFMPresets,
   upsertUserLead4opFMPreset,
 } from '../../audio/lead4opfm';
-import { audioEngine, type ManualSynthNoteOptions, type ManualSynthSource } from '../../audio/engine';
+import { audioEngine, type ManualSynthNoteOptions, type ManualSynthSource } from '../../audio/runtime';
 import FilterLfoViz from './FilterLfoViz';
 import WaveFoldViz from './WaveFoldViz';
 import LeadAdsrViz from './LeadAdsrViz';
@@ -157,7 +158,7 @@ function getKeyboardCursorMarkerStyle(color: string): React.CSSProperties {
 type KeyboardInputMode = 'play' | 'sequence';
 type KeyboardHarmonyStatus = 'root' | 'chord' | 'scale' | 'outside';
 type KeyboardSequenceCursorTarget = 'trigger' | 'pitch';
-type SynthKeyboardEditLane = 'trigger' | 'pitch' | 'expression' | 'morph';
+type SynthKeyboardEditLane = 'trigger' | 'pitch' | 'expression' | 'morph' | 'distance';
 export interface SynthKeyboardUiState {
   open: boolean;
   inputMode: KeyboardInputMode;
@@ -169,7 +170,7 @@ export interface SynthKeyboardUiState {
   sequenceCursorTarget?: KeyboardSequenceCursorTarget;
 }
 
-const SYNTH_KEYBOARD_EDIT_LANES: readonly SynthKeyboardEditLane[] = ['trigger', 'pitch', 'expression', 'morph'] as const;
+const SYNTH_KEYBOARD_EDIT_LANES: readonly SynthKeyboardEditLane[] = ['trigger', 'pitch', 'expression', 'morph', 'distance'] as const;
 
 function normalizeKeyboardStepArray(steps?: number[]): number[] {
   return Array.from({ length: 4 }, (_, index) => {
@@ -179,7 +180,7 @@ function normalizeKeyboardStepArray(steps?: number[]): number[] {
 }
 
 function getSynthKeyboardEditLane(openLane: string): SynthKeyboardEditLane {
-  if (openLane === 'pitch' || openLane === 'expression' || openLane === 'morph') return openLane;
+  if (openLane === 'pitch' || openLane === 'expression' || openLane === 'morph' || openLane === 'distance') return openLane;
   return 'trigger';
 }
 
@@ -448,6 +449,9 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const [morphKeyboardSteps, setMorphKeyboardSteps] = useState<number[]>(() =>
     normalizeKeyboardStepArray()
   );
+  const [distanceKeyboardSteps, setDistanceKeyboardSteps] = useState<number[]>(() =>
+    normalizeKeyboardStepArray()
+  );
   const [keyboardSequenceCursorTarget, setKeyboardSequenceCursorTarget] = useState<KeyboardSequenceCursorTarget>(
     initialKeyboardUiState?.sequenceCursorTarget ?? 'pitch'
   );
@@ -566,13 +570,56 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     setLiveLfoValue(audioEngine.getCurrentLfoValue());
   }, []);
 
-  useVisibleInterval(updateLiveFilterViz, 150, {
+  const livePad1Morph = useRuntimeValue('padMorph', state.padMorph ?? 0) ?? (state.padMorph ?? 0);
+  const livePad2Morph = useRuntimeValue('pad2Morph', state.pad2Morph ?? 0) ?? (state.pad2Morph ?? 0);
+  const liveLead1Morph = useRuntimeValue('lead1Morph', state.lead1Morph ?? 0) ?? (state.lead1Morph ?? 0);
+  const liveLead2Morph = useRuntimeValue('lead2Morph', state.lead2Morph ?? 0) ?? (state.lead2Morph ?? 0);
+  const liveSynthNoteMin1 = useRuntimeValue('synthEuclid1NoteMin', state.synthEuclid1NoteMin ?? 48) ?? (state.synthEuclid1NoteMin ?? 48);
+  const liveSynthNoteMax1 = useRuntimeValue('synthEuclid1NoteMax', state.synthEuclid1NoteMax ?? 72) ?? (state.synthEuclid1NoteMax ?? 72);
+  const liveSynthNoteMin2 = useRuntimeValue('synthEuclid2NoteMin', state.synthEuclid2NoteMin ?? 48) ?? (state.synthEuclid2NoteMin ?? 48);
+  const liveSynthNoteMax2 = useRuntimeValue('synthEuclid2NoteMax', state.synthEuclid2NoteMax ?? 72) ?? (state.synthEuclid2NoteMax ?? 72);
+  const liveSynthNoteMin3 = useRuntimeValue('synthEuclid3NoteMin', state.synthEuclid3NoteMin ?? 48) ?? (state.synthEuclid3NoteMin ?? 48);
+  const liveSynthNoteMax3 = useRuntimeValue('synthEuclid3NoteMax', state.synthEuclid3NoteMax ?? 72) ?? (state.synthEuclid3NoteMax ?? 72);
+  const liveSynthNoteMin4 = useRuntimeValue('synthEuclid4NoteMin', state.synthEuclid4NoteMin ?? 48) ?? (state.synthEuclid4NoteMin ?? 48);
+  const liveSynthNoteMax4 = useRuntimeValue('synthEuclid4NoteMax', state.synthEuclid4NoteMax ?? 72) ?? (state.synthEuclid4NoteMax ?? 72);
+  const pad1MorphValue = state.padMorphAuto ? livePad1Morph : (state.padMorph ?? 0);
+  const pad2MorphValue = state.pad2MorphAuto ? livePad2Morph : (state.pad2Morph ?? 0);
+  const lead1MorphValue = state.lead1MorphAuto ? liveLead1Morph : (state.lead1Morph ?? 0);
+  const lead2MorphValue = state.lead2MorphAuto ? liveLead2Morph : (state.lead2Morph ?? 0);
+  const liveSynthNoteMins = [liveSynthNoteMin1, liveSynthNoteMin2, liveSynthNoteMin3, liveSynthNoteMin4];
+  const liveSynthNoteMaxs = [liveSynthNoteMax1, liveSynthNoteMax2, liveSynthNoteMax3, liveSynthNoteMax4];
+
+  const synthLivePollMs = useMemo(() => {
+    const hasAnimatedFilterView =
+      !!state.synthEuclideanMasterEnabled ||
+      !!state.leadRandomEnabled ||
+      (((state.padLfo1Dest ?? 'none') !== 'none') && (state.padLfo1Depth ?? 0) > 0.001) ||
+      (((state.padLfo2Dest ?? 'none') !== 'none') && (state.padLfo2Depth ?? 0) > 0.001) ||
+      (((state.pad2Lfo1Dest ?? 'none') !== 'none') && (state.pad2Lfo1Depth ?? 0) > 0.001) ||
+      (((state.pad2Lfo2Dest ?? 'none') !== 'none') && (state.pad2Lfo2Depth ?? 0) > 0.001) ||
+      (state.leadVibratoDepth ?? 0) > 0.001;
+    return hasAnimatedFilterView ? 120 : 240;
+  }, [
+    state.leadRandomEnabled,
+    state.leadVibratoDepth,
+    state.pad2Lfo1Depth,
+    state.pad2Lfo1Dest,
+    state.pad2Lfo2Depth,
+    state.pad2Lfo2Dest,
+    state.padLfo1Depth,
+    state.padLfo1Dest,
+    state.padLfo2Depth,
+    state.padLfo2Dest,
+    state.synthEuclideanMasterEnabled,
+  ]);
+
+  useVisibleInterval(updateLiveFilterViz, synthLivePollMs, {
     enabled: isRunning,
   });
 
   const getPadMorphValue = useCallback((scope: PadRandomScope): number => (
-    scope === 'pad1' ? (state.padMorph ?? 0) : (state.pad2Morph ?? 0)
-  ), [state.pad2Morph, state.padMorph]);
+    scope === 'pad1' ? pad1MorphValue : pad2MorphValue
+  ), [pad1MorphValue, pad2MorphValue]);
 
   const getPadAutoMorphEnabled = useCallback((scope: PadRandomScope): boolean => (
     scope === 'pad1' ? !!state.padMorphAuto : !!state.pad2MorphAuto
@@ -1158,10 +1205,31 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       if (overridesChanged) {
         onRawStepOverridesChange?.(seq.stepOverrides);
       }
+      const expressionRanges = seq.subLaneStates.map((laneState) => {
+        const lane = laneState.expression;
+        return lane.enabled && lane.valueMode === 'range'
+          ? { min: Math.min(lane.rangeMin ?? 0.75, lane.rangeMax ?? 1), max: Math.max(lane.rangeMin ?? 0.75, lane.rangeMax ?? 1) }
+          : null;
+      });
+      const morphRanges = seq.subLaneStates.map((laneState) => {
+        const lane = laneState.morph;
+        return lane.enabled && lane.valueMode === 'range'
+          ? { min: Math.min(lane.rangeMin ?? 0.25, lane.rangeMax ?? 0.75), max: Math.max(lane.rangeMin ?? 0.25, lane.rangeMax ?? 0.75) }
+          : null;
+      });
+      const distanceRanges = seq.subLaneStates.map((laneState) => {
+        const lane = laneState.distance;
+        return lane.enabled && lane.valueMode === 'range'
+          ? { min: Math.min(lane.rangeMin ?? 0.25, lane.rangeMax ?? 0.75), max: Math.max(lane.rangeMin ?? 0.25, lane.rangeMax ?? 0.75) }
+          : null;
+      });
       // Send MIDI-converted pitch to audio engine
       onStepOverridesChange?.({
         ...seq.stepOverrides,
         pitch: convertedPitch,  // Send MIDI notes, not raw offsets
+        expressionRanges,
+        morphRanges,
+        distanceRanges,
       });
     }
   }, [seq.stepOverrides, seq.pitchSettings, seq.subLaneStates, onStepOverridesChange, onRawStepOverridesChange]);
@@ -1315,6 +1383,14 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       }
       return step;
     }));
+    setDistanceKeyboardSteps((prev) => prev.map((step, laneIdx) => {
+      const stepCount = getSynthKeyboardLaneStepCount(laneIdx, 'distance');
+      if (stepCount <= 0) return 0;
+      if (!Number.isFinite(step) || step < 0 || step >= stepCount) {
+        return getFirstSynthKeyboardLaneStep(laneIdx, 'distance');
+      }
+      return step;
+    }));
   }, [getFirstSynthKeyboardLaneStep, getSynthKeyboardLaneStepCount]);
 
   const selectTriggerSequenceStep = useCallback((laneIdx: number, step: number) => {
@@ -1350,7 +1426,11 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       setExpressionKeyboardSteps((prev) => prev.map((current, index) => index === laneIdx ? normalizedStep : current));
       return;
     }
-    setMorphKeyboardSteps((prev) => prev.map((current, index) => index === laneIdx ? normalizedStep : current));
+    if (lane === 'morph') {
+      setMorphKeyboardSteps((prev) => prev.map((current, index) => index === laneIdx ? normalizedStep : current));
+      return;
+    }
+    setDistanceKeyboardSteps((prev) => prev.map((current, index) => index === laneIdx ? normalizedStep : current));
   }, [getSynthKeyboardLaneStepCount, seq]);
 
   const activeLaneSource = String(state[getSourceKey(seq.activeTab)] ?? 'lead1');
@@ -1361,6 +1441,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const activePitchCursorStep = pitchKeyboardSteps[seq.activeTab] ?? getFirstPitchKeyboardStep(seq.activeTab);
   const activeExpressionCursorStep = expressionKeyboardSteps[seq.activeTab] ?? getFirstSynthKeyboardLaneStep(seq.activeTab, 'expression');
   const activeMorphCursorStep = morphKeyboardSteps[seq.activeTab] ?? getFirstSynthKeyboardLaneStep(seq.activeTab, 'morph');
+  const activeDistanceCursorStep = distanceKeyboardSteps[seq.activeTab] ?? getFirstSynthKeyboardLaneStep(seq.activeTab, 'distance');
   const sequenceWritesToTriggerGrid = activePitchBindingMode === 'sequence';
   const activeKeyboardEditLane = getSynthKeyboardEditLane(seq.openLane);
   const activeSynthKeyboardStep = activeKeyboardEditLane === 'trigger'
@@ -1369,7 +1450,9 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       ? activePitchCursorStep
       : activeKeyboardEditLane === 'expression'
         ? activeExpressionCursorStep
-        : activeMorphCursorStep;
+        : activeKeyboardEditLane === 'morph'
+          ? activeMorphCursorStep
+          : activeDistanceCursorStep;
 
   const keyboardBaseMidi = 12 * (keyboardOctave + 1);
   const keyboardSourceInfo = MANUAL_KEYBOARD_SOURCES.find((source) => source.value === effectiveKeyboardSource) ?? MANUAL_KEYBOARD_SOURCES[0]!;
@@ -1458,7 +1541,9 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
             ? `Pitch lane is active on step ${String(activePitchCursorStep + 1).padStart(2, '0')}. Left/Right moves steps, Up/Down changes pitch, Z/X shifts octave for typing notes.`
             : activeKeyboardEditLane === 'expression'
               ? 'Expression lane is active. Left/Right moves steps and Up/Down changes the value.'
-              : 'Morph lane is active. Left/Right moves steps and Up/Down changes the value.';
+              : activeKeyboardEditLane === 'morph'
+                ? 'Morph lane is active. Left/Right moves steps and Up/Down changes the value.'
+                : 'Distance lane is active. Left/Right moves steps and Up/Down changes the value.';
   const keyboardSequenceStatus = `Seq ${seq.activeTab + 1} | ${SYNTH_SOURCES.find((source) => source.value === activeLaneSource)?.label ?? 'Lead 1'} | Lane ${activeKeyboardEditLane === 'trigger' ? 'Sequence' : activeKeyboardEditLane.charAt(0).toUpperCase() + activeKeyboardEditLane.slice(1)} | Step ${String(activeSynthKeyboardStep + 1).padStart(2, '0')}${activeKeyboardEditLane === 'trigger' ? ` | ${activeSequenceTriggerEnabled ? 'On' : 'Off'}` : ''}${activeKeyboardEditLane === 'pitch' && activePitchCursorLabel ? ` | ${activePitchCursorLabel}` : ''}${activeKeyboardEditLane === 'pitch' && activePitchBindingMode === 'polyrhythmic' && activePitchCursorIsBeyondVisibleRange ? ' | Hidden' : ''}`;
 
   const writeKeyboardSequenceNote = useCallback((laneIdx: number, midi: number) => {
@@ -1558,13 +1643,25 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       ?? 0.5;
     const delta = coarse ? 0.1 : 0.025;
     const next = Math.max(0, Math.min(1, Math.round((current + direction * delta) * 40) / 40));
-    seq.changeStepValue(seq.activeTab, 'morph', activeMorphCursorStep, next);
+    if (activeKeyboardEditLane === 'morph') {
+      seq.changeStepValue(seq.activeTab, 'morph', activeMorphCursorStep, next);
+      return;
+    }
+
+    const currentDistance = seq.stepOverrides.distance[seq.activeTab]?.[activeDistanceCursorStep]
+      ?? activeSeq.distance.values[activeDistanceCursorStep % Math.max(1, activeSeq.distance.values.length)]
+      ?? 0.5;
+    const distanceDelta = coarse ? 0.1 : 0.05;
+    const nextDistance = Math.max(0, Math.min(1, Math.round((currentDistance + direction * distanceDelta) * 20) / 20));
+    seq.changeStepValue(seq.activeTab, 'distance', activeDistanceCursorStep, nextDistance);
   }, [
+    activeDistanceCursorStep,
     activeExpressionCursorStep,
     activeKeyboardEditLane,
     activeLanePitchSettings.mode,
     activeMorphCursorStep,
     activePitchCursorStep,
+    activeSeq.distance.values,
     activeSeq.expression.velocities,
     activeSeq.morph.values,
     activeSeq.pitch.offsets,
@@ -2097,7 +2194,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                   </select>
                 </div>
                 <div className="sc-morph-slider">
-                  <Slider label="" value={state.padMorph} paramKey="padMorph" onChange={onParamChange} {...sliderProps('padMorph')} />
+                  <Slider label="" value={pad1MorphValue} paramKey="padMorph" onChange={onParamChange} {...sliderProps('padMorph')} />
                 </div>
                 <div className="sc-preset-slot">
                   <select
@@ -2686,7 +2783,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                   </select>
                 </div>
                 <div className="sc-morph-slider">
-                  <Slider label="" value={state.pad2Morph} paramKey="pad2Morph" onChange={onParamChange} {...sliderProps('pad2Morph')} />
+                  <Slider label="" value={pad2MorphValue} paramKey="pad2Morph" onChange={onParamChange} {...sliderProps('pad2Morph')} />
                 </div>
                 <div className="sc-preset-slot">
                   <select
@@ -3247,7 +3344,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                   </select>
                 </div>
                 <div className="sc-morph-slider">
-                  <Slider label="" value={state.lead1Morph} paramKey="lead1Morph" onChange={onParamChange} {...sliderProps('lead1Morph')} />
+                  <Slider label="" value={lead1MorphValue} paramKey="lead1Morph" onChange={onParamChange} {...sliderProps('lead1Morph')} />
                 </div>
                 <div className="sc-preset-slot">
                   <select
@@ -3365,7 +3462,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     </select>
                   </div>
                   <div className="sc-morph-slider">
-                    <Slider label="" value={state.lead2Morph} paramKey="lead2Morph" onChange={onParamChange} {...sliderProps('lead2Morph')} />
+                  <Slider label="" value={lead2MorphValue} paramKey="lead2Morph" onChange={onParamChange} {...sliderProps('lead2Morph')} />
                   </div>
                   <div className="sc-preset-slot">
                     <select
@@ -4179,13 +4276,13 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                   />
                 </div>
 
-                {/* ── Sub-lane sparklines: pitch, expression, morph (no distance) ── */}
+                {/* ── Sub-lane sparklines: pitch, expression, morph, distance ── */}
                 <div className="seq-spark-container">
-                  {(['pitch', 'expression', 'morph'] as const).map((laneKind) => {
+                  {(['pitch', 'expression', 'morph', 'distance'] as const).map((laneKind) => {
                     const subState = seq.subLaneStates[seq.activeTab]?.[laneKind];
                     const laneColor = laneKind === 'pitch' ? '#ff6b81'
                       : laneKind === 'expression' ? '#ffa502'
-                      : '#c084fc';
+                      : laneKind === 'morph' ? '#c084fc' : '#2dd4bf';
 
                     const noteMinKey = `synthEuclid${seq.activeTab + 1}NoteMin` as keyof SliderState;
                     const noteMaxKey = `synthEuclid${seq.activeTab + 1}NoteMax` as keyof SliderState;
@@ -4204,9 +4301,17 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                                       ? 0.5
                                       : (off + 24) / 48
                                 )
-                              : laneKind === 'expression'
-                                ? activeSeq.expression.velocities
-                                : activeSeq.morph.values
+                              : laneKind === 'expression' && subState?.valueMode === 'range'
+                                ? new Array(subState.steps).fill(((subState.rangeMin ?? 0.75) + (subState.rangeMax ?? 1)) * 0.5)
+                                : laneKind === 'expression'
+                                  ? activeSeq.expression.velocities
+                                  : laneKind === 'morph' && subState?.valueMode === 'range'
+                                    ? new Array(subState.steps).fill(((subState.rangeMin ?? 0.25) + (subState.rangeMax ?? 0.75)) * 0.5)
+                                    : laneKind === 'morph'
+                                      ? activeSeq.morph.values
+                                      : subState?.valueMode === 'range'
+                                        ? new Array(subState.steps).fill(((subState.rangeMin ?? 0.25) + (subState.rangeMax ?? 0.75)) * 0.5)
+                                        : activeSeq.distance.values
                           }
                           color={laneColor}
                           playhead={seq.playheads[seq.activeTab]}
@@ -4215,6 +4320,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                           direction={subState?.direction ?? 'forward'}
                           bipolar={
                             laneKind === 'morph' ||
+                            laneKind === 'distance' ||
                             (laneKind === 'pitch' && activeSeq.pitch.mode !== 'notes' && activeSeq.pitch.mode !== 'noteRange')
                           }
                           invertFill={laneKind === 'expression'}
@@ -4233,7 +4339,9 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                                   ? activeKeyboardEditLane === 'morph'
                                     ? activeMorphCursorStep
                                     : null
-                                  : null
+                                  : activeKeyboardEditLane === 'distance'
+                                    ? activeDistanceCursorStep
+                                    : null
                           ) : null}
                           onClick={() => seq.setOpenLane(seq.openLane === laneKind ? 'trigger' : laneKind)}
                           onToggleEnabled={() => seq.toggleSubLaneEnabled(seq.activeTab, laneKind)}
@@ -4259,7 +4367,9 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                                       ? activeKeyboardEditLane === 'morph'
                                         ? activeMorphCursorStep
                                         : null
-                                      : null
+                                      : activeKeyboardEditLane === 'distance'
+                                        ? activeDistanceCursorStep
+                                        : null
                               ) : null}
                               selectedStepLabel={keyboardTargetLabel}
                               enabled={subState?.enabled ?? false}
@@ -4268,6 +4378,15 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                               onChangeSteps={(v) => seq.setSubLaneSteps(seq.activeTab, laneKind, v)}
                               onCycleDirection={() => seq.cycleSubLaneDirection(seq.activeTab, laneKind)}
                               onChangeValue={(step, value) => seq.changeStepValue(seq.activeTab, laneKind, step, value)}
+                              valueMode={laneKind === 'expression' || laneKind === 'morph' || laneKind === 'distance' ? subState?.valueMode ?? 'sequence' : undefined}
+                              rangeMin={laneKind === 'expression' || laneKind === 'morph' || laneKind === 'distance' ? subState?.rangeMin : undefined}
+                              rangeMax={laneKind === 'expression' || laneKind === 'morph' || laneKind === 'distance' ? subState?.rangeMax : undefined}
+                              onChangeValueMode={laneKind === 'expression' || laneKind === 'morph' || laneKind === 'distance'
+                                ? (mode) => seq.setSubLaneValueMode(seq.activeTab, laneKind, mode)
+                                : undefined}
+                              onChangeRange={laneKind === 'expression' || laneKind === 'morph' || laneKind === 'distance'
+                                ? (min, max) => seq.setSubLaneRange(seq.activeTab, laneKind, min, max)
+                                : undefined}
                               linked={laneKind === 'pitch' && activePitchBindingMode !== 'polyrhythmic'}
                               {...(laneKind === 'expression' ? {
                                 onCycleRatchet: (step: number) => seq.cycleStepRatchet(seq.activeTab, step),
@@ -4279,8 +4398,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                                 onChangePitchRoot: (root) => seq.setPitchRoot(seq.activeTab, root),
                                 onChangePitchScale: (scale) => seq.setPitchScale(seq.activeTab, scale),
                                 hidePitchNoteRange: activePitchBindingMode === 'sequence',
-                                pitchNoteMin: state[noteMinKey] as number,
-                                pitchNoteMax: state[noteMaxKey] as number,
+                                pitchNoteMin: liveSynthNoteMins[seq.activeTab] ?? (state[noteMinKey] as number),
+                                pitchNoteMax: liveSynthNoteMaxs[seq.activeTab] ?? (state[noteMaxKey] as number),
                                 onChangePitchNoteMin: (v: number) => onParamChange(noteMinKey, v),
                                 onChangePitchNoteMax: (v: number) => onParamChange(noteMaxKey, v),
                               } : {})}

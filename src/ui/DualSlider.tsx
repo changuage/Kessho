@@ -15,6 +15,7 @@ import type { SliderMode } from './state';
 import { useSliderHelp } from './SliderHelpOverlay';
 import type { SliderPageId } from './sliderHelpCatalog';
 import { getDualSliderValueSlotWidthCh, getSliderValueSlotWidthCh } from './sliderValueLayout';
+import { useRuntimeSliderIndicator } from './runtimeSliderState';
 
 // ═══ Exported Types ═══
 
@@ -231,6 +232,9 @@ export function DualSlider<K extends string = string>({
   const modeColor = mode === 'walk' ? '#a5c4d4' : '#D4A520';
   const modeLabel = mode === 'walk' ? '⟷ walk' : '⟷ S&H';
   const ghostPercent = ghostValue == null ? null : valueToPercent(clamp(ghostValue, info.min, info.max));
+  const runtimeIndicator = useRuntimeSliderIndicator(String(paramKey), mode, walkPosition, isFlashing);
+  const effectiveWalkPosition = runtimeIndicator.walkPosition ?? walkPosition;
+  const effectiveIsFlashing = runtimeIndicator.isFlashing;
 
   // Drag handling
   useEffect(() => {
@@ -364,12 +368,12 @@ export function DualSlider<K extends string = string>({
   const minPercent = valueToPercent(dualRange?.min ?? info.min);
   const maxPercent = valueToPercent(dualRange?.max ?? info.max);
 
-  const walkPercent = walkPosition !== undefined
-    ? minPercent + (walkPosition * (maxPercent - minPercent))
+  const walkPercent = effectiveWalkPosition !== undefined
+    ? minPercent + (effectiveWalkPosition * (maxPercent - minPercent))
     : (minPercent + maxPercent) / 2;
 
   const currentValue = dualRange
-    ? dualRange.min + (walkPosition ?? 0.5) * (dualRange.max - dualRange.min)
+    ? dualRange.min + (effectiveWalkPosition ?? 0.5) * (dualRange.max - dualRange.min)
     : value;
 
   return (
@@ -452,8 +456,8 @@ export function DualSlider<K extends string = string>({
           style={{
             ...dualStyles.walkIndicator,
             left: `${walkPercent}%`,
-            transition: isFlashing ? 'all 0.05s ease-out' : 'all 0.18s ease-in',
-            ...(isFlashing ? {
+            transition: effectiveIsFlashing ? 'all 0.05s ease-out' : 'all 0.18s ease-in',
+            ...(effectiveIsFlashing ? {
               width: '14px',
               height: '14px',
               background: '#D4A520',

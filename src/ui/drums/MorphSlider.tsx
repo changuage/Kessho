@@ -3,6 +3,8 @@ import type { SliderState, SliderMode } from '../state';
 import type { DrumVoiceType } from '../../audio/drumSynth';
 import { useSliderHelp } from '../SliderHelpOverlay';
 import { usePresets } from '../../presets/usePresets';
+import { useRuntimeSliderPosition } from '../runtimeSliderState';
+import { useRuntimeValue } from '../runtimeValueState';
 import {
   getFactoryPresetNames,
   setUserPresets,
@@ -36,6 +38,16 @@ const MORPH_KEYS: Record<DrumVoiceType, { a: keyof SliderState; b: keyof SliderS
   beepLo: { a: 'drumBeepLoPresetA', b: 'drumBeepLoPresetB', morph: 'drumBeepLoMorph' },
   noise: { a: 'drumNoisePresetA', b: 'drumNoisePresetB', morph: 'drumNoiseMorph' },
   membrane: { a: 'drumMembranePresetA', b: 'drumMembranePresetB', morph: 'drumMembraneMorph' },
+};
+
+const AUTO_KEYS: Record<DrumVoiceType, keyof SliderState> = {
+  sub: 'drumSubMorphAuto',
+  kick: 'drumKickMorphAuto',
+  click: 'drumClickMorphAuto',
+  beepHi: 'drumBeepHiMorphAuto',
+  beepLo: 'drumBeepLoMorphAuto',
+  noise: 'drumNoiseMorphAuto',
+  membrane: 'drumMembraneMorphAuto',
 };
 
 const MODE_LABELS: Record<SliderMode, string> = {
@@ -87,6 +99,8 @@ const MorphSlider: React.FC<MorphSliderProps> = ({
   const { presets: enginePresets, load } = usePresets('engine', engineScope);
   const sp = getSliderProps(morph.morph);
   const isDual = sp.mode !== 'single';
+  const liveWalkPosition = useRuntimeSliderPosition(String(morph.morph), sp.mode, sp.walkPosition);
+  const liveMorphValue = useRuntimeValue(String(morph.morph), state[morph.morph] as number);
   const trackRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState<'min' | 'max' | null>(null);
   const { announceSlider } = useSliderHelp();
@@ -148,7 +162,11 @@ const MorphSlider: React.FC<MorphSliderProps> = ({
     };
   }, [dragging, isDual, sp, morph.morph]);
 
-  const morphValue = state[morph.morph] as number;
+  const autoEnabled = Boolean(state[AUTO_KEYS[voice]]);
+  const animateMorphValue = autoEnabled && Boolean(state.drumMorphSliderAnimate);
+  const morphValue = animateMorphValue
+    ? (liveMorphValue ?? (state[morph.morph] as number))
+    : (state[morph.morph] as number);
   const modeColor = sp.mode === 'walk' ? '#a5c4d4' : sp.mode === 'sampleHold' ? '#D4A520' : color;
   const factoryPresetNames = getFactoryPresetNames(voice);
   const knownPresetNames = getPresetNames(voice);
@@ -258,7 +276,7 @@ const MorphSlider: React.FC<MorphSliderProps> = ({
       {isDual && (() => {
         const dMin = sp.dualRange?.min ?? 0;
         const dMax = sp.dualRange?.max ?? 1;
-        const walkPos = sp.walkPosition ?? 0.5;
+        const walkPos = liveWalkPosition ?? sp.walkPosition ?? 0.5;
         const walkPct = (dMin + walkPos * (dMax - dMin)) * 100;
         const minPct = dMin * 100;
         const maxPct = dMax * 100;

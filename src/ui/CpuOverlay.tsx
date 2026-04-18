@@ -4,7 +4,7 @@
  */
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { audioEngine } from '../audio/engine';
+import { audioEngine } from '../audio/runtime';
 import { useVisibleInterval } from './hooks/useVisibleInterval';
 
 type PerfMetrics = {

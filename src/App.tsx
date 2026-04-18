@@ -19,8 +19,9 @@ import {
   DRUM_MORPH_KEYS,
 } from './ui/state';
 import { DualSlider, DualSliderRange } from './ui/DualSlider';
-import { audioEngine, EngineState } from './audio/engine';
-import { isCloudEnabled as isCloudPresetConfigEnabled } from './cloud/supabase';
+import { audioEngine, preloadAudioEngine } from './audio/runtime';
+import type { EngineState } from './audio/runtime';
+import { isCloudEnabled as isCloudPresetConfigEnabled } from './cloud/config';
 import { formatChordDegrees, calculateDriftedRoot } from './audio/harmony';
 import { DrumVoiceType as DrumPresetVoice } from './audio/drumPresets';
 import { getPadPreset, morphPadPresets, PAD_PRESET_PARAM_KEYS, PAD1_TO_PAD2_KEY } from './audio/padPresets';
@@ -35,6 +36,21 @@ import { applyMorphToState, setDrumMorphOverride, clearDrumMorphEndpointOverride
 
 import { isInMidMorph, isAtEndpoint0, isAtEndpoint1 } from './audio/morphUtils';
 import { applyPreset, USER_PREFERENCE_KEYS } from './ui/presetUtils';
+import {
+  clearRuntimeFlashKeys,
+  getRuntimeSliderFlashing,
+  getRuntimeSliderPosition,
+  mergeRuntimeTriggerPositions,
+  mergeRuntimeWalkPositions,
+  removeRuntimeTriggerPositions,
+  removeRuntimeWalkPositions,
+  replaceRuntimeWalkPositions,
+  setRuntimeFlashKeys,
+} from './ui/runtimeSliderState';
+import {
+  mergeRuntimeValues,
+  removeRuntimeValues,
+} from './ui/runtimeValueState';
 import {
   getGranularPresetData,
   getGranularPresetSliderModes,
@@ -1535,6 +1551,18 @@ const App: React.FC = () => {
   // Refs for journey mode animation - updated synchronously to avoid stale closures
   const journeyPresetARef = useRef<SavedPreset | null>(null);
   const journeyPresetBRef = useRef<SavedPreset | null>(null);
+  const journeyLastAppliedStateRef = useRef<SliderState | null>(null);
+  const journeyLastDualModesRef = useRef<Record<string, SliderMode>>({});
+  const journeyLastDualRangesRef = useRef<Partial<Record<keyof SliderState, DualSliderRange>>>({});
+  const journeyLastMorphPositionRef = useRef<number | null>(null);
+  const journeyLastMorphCoFVizRef = useRef<{
+    isMorphing: boolean;
+    startRoot: number;
+    effectiveRoot: number;
+    targetRoot: number;
+    cofStep: number;
+    totalSteps: number;
+  } | null>(null);
   
   // Upload slot choice dialog
   const [uploadSlotDialogOpen, setUploadSlotDialogOpen] = useState(false);
@@ -1635,6 +1663,7 @@ const App: React.FC = () => {
     if (uiMode === 'snowflake' && !snowflakeActivated) {
       setSnowflakeActivated(true);
     }
+    void preloadAudioEngine();
     setActiveTab(tab);
     setUiMode('advanced');
   }, [uiMode, snowflakeActivated]);
@@ -1659,32 +1688,11 @@ const App: React.FC = () => {
   // Absent key means 'single'. dualSliderRanges stores ranges for walk/sampleHold modes.
   const [sliderModes, setSliderModes] = useState<Record<string, SliderMode>>({});
   const [dualSliderRanges, setDualSliderRanges] = useState<DualSliderState>({});
-  const [randomWalkPositions, setRandomWalkPositions] = useState<Record<string, number>>({});
   const [isDocumentVisible, setIsDocumentVisible] = useState(() => (
     typeof document === 'undefined' ? true : document.visibilityState === 'visible'
   ));
   const usesCapacitorLocalPresetLibrary = isCapacitorNativeShell();
   const playbackIsRunning = nativeBackgroundAudioMode ? nativePlaybackState : engineState.isRunning;
-
-  const setRandomWalkPositionsIfChanged = useCallback((nextPositions: Record<string, number>) => {
-    setRandomWalkPositions(prev => {
-      const prevKeys = Object.keys(prev);
-      const nextKeys = Object.keys(nextPositions);
-      if (prevKeys.length === nextKeys.length) {
-        let changed = false;
-        for (const key of nextKeys) {
-          if (Math.abs((prev[key] ?? 0.5) - (nextPositions[key] ?? 0.5)) > 0.0005) {
-            changed = true;
-            break;
-          }
-        }
-        if (!changed) {
-          return prev;
-        }
-      }
-      return nextPositions;
-    });
-  }, []);
 
   const ensureCloudAutoStartPresetStore = useCallback(async (): Promise<IPresetStore | null> => {
     if (!CLOUD_ENABLED) return null;
@@ -1887,13 +1895,13 @@ const App: React.FC = () => {
 
       setSliderModes(newSliderModes);
       setDualSliderRanges(newDualRanges);
-      setRandomWalkPositionsIfChanged(newWalkPositions);
+      replaceRuntimeWalkPositions(newWalkPositions);
     } else {
       setSliderModes({});
       setDualSliderRanges({});
-      setRandomWalkPositionsIfChanged({});
+      replaceRuntimeWalkPositions({});
     }
-  }, [setRandomWalkPositionsIfChanged]);
+  }, []);
 
   const applyScopedDualRangesFromPreset = useCallback((
     relevantKeys: string[],
@@ -1935,62 +1943,9 @@ const App: React.FC = () => {
       return next as DualSliderState;
     });
 
-    setRandomWalkPositions(prev => {
-      const next = { ...prev };
-      for (const key of relevantKeySet) {
-        delete next[key];
-      }
-      return { ...next, ...nextWalkPositions };
-    });
+    removeRuntimeWalkPositions(relevantKeySet);
+    mergeRuntimeWalkPositions(nextWalkPositions);
   }, []);
-
-  // Lead expression trigger positions (0-1 within each range, updated on each note)
-  const [leadExpressionPositions, setLeadExpressionPositions] = useState<{
-    vibratoDepth: number;
-    vibratoRate: number;
-    glide: number;
-  }>({ vibratoDepth: 0.5, vibratoRate: 0.5, glide: 0.5 });
-
-  // Track which expression params are in dual (range) mode vs single mode
-  // (Now unified in sliderModes - these are kept as convenience getters)
-
-  // Lead morph trigger positions (0-1 within min/max range, updated per note)
-  const [leadMorphPositions, setLeadMorphPositions] = useState<{
-    lead1: number;
-    lead2: number;
-  }>({ lead1: 0.5, lead2: 0.5 });
-
-  // Pad morph trigger positions (updated per synth voice trigger in S&H/walk mode)
-  const [padMorphPositions, setPadMorphPositions] = useState<{
-    pad1: number;
-    pad2: number;
-  }>({ pad1: 0.5, pad2: 0.5 });
-
-  // Track last triggered delay values for the indicator
-  const [leadDelayPositions, setLeadDelayPositions] = useState<{
-    time: number;
-    feedback: number;
-    mix: number;
-  }>({ time: 0.5, feedback: 0.5, mix: 0.5 });
-
-  // Track last triggered drum morph positions (per-trigger random values)
-  const [drumMorphPositions, setDrumMorphPositions] = useState<{
-    sub: number;
-    kick: number;
-    click: number;
-    beepHi: number;
-    beepLo: number;
-    noise: number;
-    membrane: number;
-  }>({ sub: 0.5, kick: 0.5, click: 0.5, beepHi: 0.5, beepLo: 0.5, noise: 0.5, membrane: 0.5 });
-
-  // Track last triggered drum S&H positions for any param (keyed by full param name)
-  const [drumParamSHPositions, setDrumParamSHPositions] = useState<Record<string, number>>({});
-
-  // Granular/Earth S&H flash + position state: set of param keys currently pulsing,
-  // and their normalized 0-1 sampled positions within the dual range.
-  const [shFlashKeys, setShFlashKeys] = useState<Set<string>>(new Set());
-  const [shPositions, setShPositions] = useState<Record<string, number>>({});
   const shFlashTimerRef = useRef<number | null>(null);
 
   const [drumEditingVoice, setDrumEditingVoice] = useState<string | null>(null);
@@ -2045,20 +2000,6 @@ const App: React.FC = () => {
     setDrumPresetVersion(v => v + 1);
     setSynthPresetVersion(v => v + 1);
   }, []);
-
-  // Trigger position map: maps slider keys to their per-trigger position values
-  const triggerPositionMap = useMemo<Record<string, number>>(() => ({
-    leadVibratoDepth: leadExpressionPositions.vibratoDepth,
-    leadVibratoRate: leadExpressionPositions.vibratoRate,
-    leadGlide: leadExpressionPositions.glide,
-    delayATime: leadDelayPositions.time,
-    delayAFeedback: leadDelayPositions.feedback,
-    delayAMix: leadDelayPositions.mix,
-    lead1Morph: leadMorphPositions.lead1,
-    lead2Morph: leadMorphPositions.lead2,
-    padMorph: padMorphPositions.pad1,
-    pad2Morph: padMorphPositions.pad2,
-  }), [leadExpressionPositions, leadDelayPositions, leadMorphPositions, padMorphPositions]);
 
   // Drum morph keys - these use per-trigger randomization, not random walk
   const drumMorphKeys = useMemo(() => new Set<keyof SliderState>([
@@ -2121,7 +2062,7 @@ const App: React.FC = () => {
     if (nextMode === 'single') {
       // Collapsing to single — use the current walk/trigger position value
       const range = dualSliderRanges[key as keyof SliderState];
-      const walkPos = randomWalkPositions[keyStr] ?? triggerPositionMap[keyStr] ?? 0.5;
+      const walkPos = getRuntimeSliderPosition(keyStr, current) ?? 0.5;
       if (range) {
         const meanValue = range.min + walkPos * (range.max - range.min);
         const quantizedValue = quantize(key, meanValue);
@@ -2134,11 +2075,8 @@ const App: React.FC = () => {
         delete newRanges[key];
         return newRanges;
       });
-      setRandomWalkPositions(prev => {
-        const next = { ...prev };
-        delete next[keyStr];
-        return next;
-      });
+      removeRuntimeWalkPositions([keyStr]);
+      removeRuntimeTriggerPositions([keyStr]);
       setSliderModes(prev => {
         const next = { ...prev };
         delete next[keyStr];
@@ -2202,7 +2140,7 @@ const App: React.FC = () => {
 
           // Initialize random walk for walk mode (not for sampleHold)
           if (nextMode === 'walk') {
-            setRandomWalkPositions(p => ({ ...p, [keyStr]: 0.5 }));
+            mergeRuntimeWalkPositions({ [keyStr]: 0.5 });
           }
 
           // Update morph preset dualRanges at endpoints (Rule 2)
@@ -2234,11 +2172,7 @@ const App: React.FC = () => {
         }
       } else if (current === 'walk' && nextMode === 'sampleHold') {
         // Switching from walk to sampleHold — stop walk, keep range
-        setRandomWalkPositions(prev => {
-          const next = { ...prev };
-          delete next[keyStr];
-          return next;
-        });
+        removeRuntimeWalkPositions([keyStr]);
 
         // Update morph preset sliderModes at endpoints (range is unchanged)
         if (isMorphActive) {
@@ -2256,7 +2190,7 @@ const App: React.FC = () => {
         }
       }
     }
-  }, [isJourneyPlaying, dualSliderRanges, randomWalkPositions, triggerPositionMap, sliderModes, state, drumMorphKeys, morphPosition, morphPresetA, morphPresetB]);
+  }, [isJourneyPlaying, dualSliderRanges, sliderModes, state, drumMorphKeys, morphPosition, morphPresetA, morphPresetB]);
 
   // Update dual slider range
   const handleDualRangeChange = useCallback((key: keyof SliderState, min: number, max: number) => {
@@ -2401,23 +2335,7 @@ const App: React.FC = () => {
     }
 
     audioEngine.setRuntimeWalkPositionsCallback((positions) => {
-      setRandomWalkPositions((prev) => {
-        const prevKeys = Object.keys(prev);
-        const nextKeys = Object.keys(positions);
-        if (prevKeys.length === nextKeys.length) {
-          let changed = false;
-          for (const key of nextKeys) {
-            if (Math.abs((prev[key] ?? 0.5) - positions[key]!) > 0.0005) {
-              changed = true;
-              break;
-            }
-          }
-          if (!changed) {
-            return prev;
-          }
-        }
-        return positions;
-      });
+      replaceRuntimeWalkPositions(positions);
     });
 
     return () => {
@@ -2480,224 +2398,213 @@ const App: React.FC = () => {
 
   // Engine state callback
   useEffect(() => {
-    audioEngine.setStateChangeCallback(setEngineState);
+    audioEngine.setStateChangeCallback((nextState) => {
+      setEngineState((prev) => {
+        const fxOwnersChanged =
+          ['delayA', 'delayB', 'granular', 'reverb'].some((bus) => {
+            const previous = prev.fxOwners[bus as keyof typeof prev.fxOwners];
+            const next = nextState.fxOwners[bus as keyof typeof nextState.fxOwners];
+            return (
+              previous.owner !== next.owner ||
+              Math.abs(previous.strength - next.strength) > 0.0005 ||
+              previous.lastOrigin !== next.lastOrigin ||
+              previous.active !== next.active
+            );
+          });
+
+        if (
+          prev.isRunning === nextState.isRunning &&
+          prev.harmonyState === nextState.harmonyState &&
+          prev.currentSeed === nextState.currentSeed &&
+          prev.currentBucket === nextState.currentBucket &&
+          prev.cofCurrentStep === nextState.cofCurrentStep &&
+          !fxOwnersChanged
+        ) {
+          return prev;
+        }
+
+        return {
+          ...prev,
+          isRunning: nextState.isRunning,
+          harmonyState: nextState.harmonyState,
+          currentSeed: nextState.currentSeed,
+          currentBucket: nextState.currentBucket,
+          cofCurrentStep: nextState.cofCurrentStep,
+          fxOwners: fxOwnersChanged ? nextState.fxOwners : prev.fxOwners,
+        };
+      });
+    });
     return () => { audioEngine.setStateChangeCallback(null as unknown as (state: EngineState) => void); };
   }, []);
 
   // Lead expression trigger callback
   useEffect(() => {
     audioEngine.setLeadExpressionCallback((expression) => {
-      if (activeTab !== 'synth' || document.visibilityState !== 'visible') return;
-      setLeadExpressionPositions(expression);
-    });
-    return () => {
-      audioEngine.setLeadExpressionCallback(null as unknown as typeof setLeadExpressionPositions);
-    };
-  }, [activeTab]);
-
-  // Lead morph trigger callback (updates walk indicator + actual morph slider value) — throttled to ~15Hz
-  useEffect(() => {
-    let lastLeadMorph = 0;
-    audioEngine.setLeadMorphCallback((morph) => {
-      if (activeTab !== 'synth' || document.visibilityState !== 'visible') return;
-      const now = performance.now();
-      if (now - lastLeadMorph < 66) return;
-      lastLeadMorph = now;
-      setLeadMorphPositions(prev => ({
-        lead1: morph.lead1 >= 0 ? morph.lead1 : prev.lead1,
-        lead2: morph.lead2 >= 0 ? morph.lead2 : prev.lead2,
-      }));
-      // Only write back into state in single-slider mode. In dual walk/S&H modes the
-      // callback payload is used as the in-range indicator position, and writing it
-      // into state would corrupt the actual morph value and retrigger idle teardown.
-      setState(prev => {
-        const updates: Partial<SliderState> = {};
-        if (
-          (sliderModes.lead1Morph ?? 'single') === 'single' &&
-          morph.lead1 >= 0 &&
-          Math.abs((prev.lead1Morph ?? 0.5) - morph.lead1) > 0.001
-        ) {
-          updates.lead1Morph = morph.lead1 as SliderState['lead1Morph'];
-        }
-        if (
-          (sliderModes.lead2Morph ?? 'single') === 'single' &&
-          morph.lead2 >= 0 &&
-          Math.abs((prev.lead2Morph ?? 0.5) - morph.lead2) > 0.001
-        ) {
-          updates.lead2Morph = morph.lead2 as SliderState['lead2Morph'];
-        }
-        if (Object.keys(updates).length === 0) return prev;
-        return { ...prev, ...updates };
+      if (uiMode !== 'advanced' || activeTab !== 'synth' || document.visibilityState !== 'visible') return;
+      mergeRuntimeTriggerPositions({
+        leadVibratoDepth: expression.vibratoDepth,
+        leadVibratoRate: expression.vibratoRate,
+        leadGlide: expression.glide,
       });
     });
     return () => {
-      audioEngine.setLeadMorphCallback(null as unknown as (morph: { lead1: number; lead2: number }) => void);
+      audioEngine.setLeadExpressionCallback(null as unknown as (expression: {
+        vibratoDepth: number;
+        vibratoRate: number;
+        glide: number;
+      }) => void);
     };
-  }, [activeTab, sliderModes.lead1Morph, sliderModes.lead2Morph]);
+  }, [activeTab, uiMode]);
+
+  // Lead morph trigger callback — keep live values in the external runtime store so
+  // the synth page can mirror them without fanning updates through root App state.
+  useEffect(() => {
+    let lastLeadMorph = 0;
+    audioEngine.setLeadMorphCallback((morph) => {
+      if (uiMode !== 'advanced' || activeTab !== 'synth' || document.visibilityState !== 'visible') return;
+      const now = performance.now();
+      if (now - lastLeadMorph < 66) return;
+      lastLeadMorph = now;
+      const triggerUpdates: Record<string, number> = {};
+      if (morph.lead1 >= 0) triggerUpdates.lead1Morph = morph.lead1;
+      if (morph.lead2 >= 0) triggerUpdates.lead2Morph = morph.lead2;
+      if (Object.keys(triggerUpdates).length > 0) {
+        mergeRuntimeTriggerPositions(triggerUpdates);
+        mergeRuntimeValues(triggerUpdates);
+      }
+    });
+    return () => {
+      audioEngine.setLeadMorphCallback(null as unknown as (morph: { lead1: number; lead2: number }) => void);
+      removeRuntimeValues(['lead1Morph', 'lead2Morph']);
+    };
+  }, [activeTab, uiMode]);
 
   // Pad morph sub-sequencer callback (moves padMorph slider + applies morphed preset) — throttled to ~15Hz
   useEffect(() => {
     let lastPad1Morph = 0;
     audioEngine.setPadMorphTriggerCallback((morphPosition: number) => {
-      if (activeTab !== 'synth' || document.visibilityState !== 'visible') return;
+      if (uiMode !== 'advanced' || activeTab !== 'synth' || document.visibilityState !== 'visible') return;
       const now = performance.now();
       if (now - lastPad1Morph < 66) return;
       lastPad1Morph = now;
-      setPadMorphPositions(prev => ({ ...prev, pad1: morphPosition }));
-      setState(prev => {
-        if (Math.abs((prev.padMorph ?? 0.5) - morphPosition) <= 0.001) return prev;
-        const presetA = getPadPreset(prev.padPresetA as string);
-        const presetB = getPadPreset(prev.padPresetB as string);
-        let newState = { ...prev, padMorph: morphPosition };
-        if (presetA && presetB) {
-          const morphed = morphPadPresets(presetA, presetB, morphPosition);
-          for (const k of PAD_PRESET_PARAM_KEYS) {
-            if (k in morphed) {
-              (newState as Record<string, unknown>)[k] = morphed[k];
-            }
-          }
-        }
-        return newState;
-      });
+      mergeRuntimeTriggerPositions({ padMorph: morphPosition });
+      mergeRuntimeValues({ padMorph: morphPosition });
     });
     return () => {
       audioEngine.setPadMorphTriggerCallback(null as unknown as (morphPosition: number) => void);
+      removeRuntimeValues(['padMorph']);
     };
-  }, [activeTab]);
+  }, [activeTab, uiMode]);
 
   // Pad 2 morph sub-sequencer callback (moves pad2Morph slider + applies morphed preset to pad2 keys) — throttled to ~15Hz
   useEffect(() => {
     let lastPad2Morph = 0;
     audioEngine.setPad2MorphTriggerCallback((morphPosition: number) => {
-      if (activeTab !== 'synth' || document.visibilityState !== 'visible') return;
+      if (uiMode !== 'advanced' || activeTab !== 'synth' || document.visibilityState !== 'visible') return;
       const now = performance.now();
       if (now - lastPad2Morph < 66) return;
       lastPad2Morph = now;
-      setPadMorphPositions(prev => ({ ...prev, pad2: morphPosition }));
-      setState(prev => {
-        if (Math.abs((prev.pad2Morph ?? 0.5) - morphPosition) <= 0.001) return prev;
-        const presetA = getPadPreset(prev.pad2PresetA as string);
-        const presetB = getPadPreset(prev.pad2PresetB as string);
-        let newState = { ...prev, pad2Morph: morphPosition };
-        if (presetA && presetB) {
-          const morphed = morphPadPresets(presetA, presetB, morphPosition);
-          for (const k of PAD_PRESET_PARAM_KEYS) {
-            if (k in morphed) {
-              const pad2Key = PAD1_TO_PAD2_KEY[k];
-              if (pad2Key) {
-                (newState as Record<string, unknown>)[pad2Key] = morphed[k];
-              }
-            }
-          }
-        }
-        return newState;
-      });
+      mergeRuntimeTriggerPositions({ pad2Morph: morphPosition });
+      mergeRuntimeValues({ pad2Morph: morphPosition });
     });
     return () => {
       audioEngine.setPad2MorphTriggerCallback(null as unknown as (morphPosition: number) => void);
+      removeRuntimeValues(['pad2Morph']);
     };
-  }, [activeTab]);
+  }, [activeTab, uiMode]);
 
   // Lead delay trigger callback
   useEffect(() => {
     audioEngine.setLeadDelayCallback((delay) => {
-      if ((activeTab !== 'synth' && activeTab !== 'delay') || document.visibilityState !== 'visible') return;
-      setLeadDelayPositions(delay);
+      if (uiMode !== 'advanced' || (activeTab !== 'synth' && activeTab !== 'delay') || document.visibilityState !== 'visible') return;
+      mergeRuntimeTriggerPositions({
+        delayATime: delay.time,
+        delayAFeedback: delay.feedback,
+        delayAMix: delay.mix,
+      });
     });
-    return () => { audioEngine.setLeadDelayCallback(null as unknown as typeof setLeadDelayPositions); };
-  }, [activeTab]);
+    return () => { audioEngine.setLeadDelayCallback(null as unknown as (delay: {
+      time: number;
+      feedback: number;
+      mix: number;
+    }) => void); };
+  }, [activeTab, uiMode]);
 
   // Drum morph trigger callback (per-trigger random morph position)
-  // Updates both the indicator position AND the individual parameter sliders
-  // Throttled: morph indicator at ~15Hz, full setState at ~10Hz to avoid re-render storms
+  // Updates the morph indicator plus an optional lightweight live morph value mirror.
   useEffect(() => {
     if (audioEngine.setDrumMorphTriggerCallback) {
       const lastMorphIndicator: Record<string, number> = {};
       let lastMorphState = 0;
+      const voiceToMorphKey: Record<string, keyof SliderState> = {
+        sub: 'drumSubMorph',
+        kick: 'drumKickMorph',
+        click: 'drumClickMorph',
+        beepHi: 'drumBeepHiMorph',
+        beepLo: 'drumBeepLoMorph',
+        noise: 'drumNoiseMorph',
+        membrane: 'drumMembraneMorph',
+      };
       audioEngine.setDrumMorphTriggerCallback((voice, morphPosition) => {
-        if (activeTab !== 'drums' || document.visibilityState !== 'visible') return;
+        if (uiMode !== 'advanced' || activeTab !== 'drums' || document.visibilityState !== 'visible') return;
         const now = performance.now();
+        const morphKey = voiceToMorphKey[voice];
         // Throttle indicator update to ~15Hz per voice
         if (now - (lastMorphIndicator[voice] || 0) >= 66) {
           lastMorphIndicator[voice] = now;
-          setDrumMorphPositions(prev => ({ ...prev, [voice]: morphPosition }));
+          if (morphKey) {
+            mergeRuntimeTriggerPositions({ [morphKey]: morphPosition });
+          }
         }
-        
-        // Map voice to morph key and update slider state with morphed values
-        const voiceToMorphKey: Record<string, keyof SliderState> = {
-          sub: 'drumSubMorph',
-          kick: 'drumKickMorph',
-          click: 'drumClickMorph',
-          beepHi: 'drumBeepHiMorph',
-          beepLo: 'drumBeepLoMorph',
-          noise: 'drumNoiseMorph',
-          membrane: 'drumMembraneMorph',
-        };
-        const morphKey = voiceToMorphKey[voice];
-        
-        // Throttle full state updates to ~10Hz (audio engine already got correct morph values)
-        if (morphKey && now - lastMorphState >= 100) {
-          lastMorphState = now;
-          setState(prev => {
-            // Check if updates are enabled
-            if (!prev.drumMorphSliderAnimate) return prev;
 
-            // Convert normalized position (0-1) back to actual morph value using the range
-            const range = dualSliderRanges[morphKey];
-            const actualMorphValue = range 
-              ? range.min + morphPosition * (range.max - range.min)
-              : prev[morphKey] as number;
-            
-            // Create state with the random morph value
-            const stateWithMorph = { ...prev, [morphKey]: actualMorphValue };
-            
-            // Apply morphed preset values to the sliders
-            const morphedParams = applyMorphToState(stateWithMorph, voice as DrumPresetVoice);
-            return { ...stateWithMorph, ...morphedParams };
-          });
+        // Mirror the normalized morph value into a lightweight external store instead of
+        // re-running the full App tree during auto-morph playback.
+        if (morphKey && stateRef.current.drumMorphSliderAnimate && now - lastMorphState >= 100) {
+          lastMorphState = now;
+          mergeRuntimeValues({ [morphKey]: morphPosition });
         }
       });
       return () => {
         audioEngine.setDrumMorphTriggerCallback(() => {});
+        removeRuntimeValues(Object.values(voiceToMorphKey));
       };
     }
-  }, [activeTab, dualSliderRanges]);
+  }, [activeTab, uiMode]);
 
   // Drum distance trigger callback (per-trigger random distance position for S&H) — throttled per-key
   useEffect(() => {
     if (audioEngine.setDrumParamSHTriggerCallback) {
       const lastSH: Record<string, number> = {};
       audioEngine.setDrumParamSHTriggerCallback((_voice, key, position) => {
-        if (activeTab !== 'drums' || document.visibilityState !== 'visible') return;
+        if (uiMode !== 'advanced' || activeTab !== 'drums' || document.visibilityState !== 'visible') return;
         const now = performance.now();
         if (now - (lastSH[key] || 0) < 80) return; // max ~12Hz per key
         lastSH[key] = now;
-        setDrumParamSHPositions(prev => ({ ...prev, [key]: position }));
+        mergeRuntimeTriggerPositions({ [key]: position });
       });
       return () => {
         audioEngine.setDrumParamSHTriggerCallback(() => {});
       };
     }
-  }, [activeTab]);
+  }, [activeTab, uiMode]);
 
   // Granular/Earth S&H trigger callback (generic engine-side resampling + exact Surf wave triggers)
   useEffect(() => {
     audioEngine.setGranularSHTriggerCallback((positions: Record<string, number>) => {
-      if (document.visibilityState !== 'visible') return;
-      setShFlashKeys(new Set(Object.keys(positions)));
-      // Merge per-key trigger positions so exact Surf wave triggers do not get
-      // immediately blown away by the generic 10 Hz S&H callback for other keys.
-      setShPositions(prev => ({ ...prev, ...positions }));
+      if (uiMode !== 'advanced' || (activeTab === 'synth' || activeTab === 'drums') || document.visibilityState !== 'visible') return;
+      setRuntimeFlashKeys(Object.keys(positions));
+      mergeRuntimeTriggerPositions(positions);
       if (shFlashTimerRef.current) window.clearTimeout(shFlashTimerRef.current);
       shFlashTimerRef.current = window.setTimeout(() => {
-        setShFlashKeys(new Set());
+        clearRuntimeFlashKeys();
       }, 70);
     });
     return () => {
       audioEngine.setGranularSHTriggerCallback(() => {});
       if (shFlashTimerRef.current) window.clearTimeout(shFlashTimerRef.current);
+      clearRuntimeFlashKeys();
     };
-  }, []);
+  }, [activeTab, uiMode]);
 
   // Drum evolve overrides callback — push evolved values to UI for visual sync
   useEffect(() => {
@@ -2765,11 +2672,31 @@ const App: React.FC = () => {
   // Synth noteRange evolve callback — push evolved noteMin/noteMax to UI sliders
   useEffect(() => {
     audioEngine.setSynthNoteRangeEvolvedCallback((laneIndex, noteMin, noteMax) => {
-      const minKey = `synthEuclid${laneIndex + 1}NoteMin` as keyof SliderState;
-      const maxKey = `synthEuclid${laneIndex + 1}NoteMax` as keyof SliderState;
-      setState(prev => ({ ...prev, [minKey]: noteMin, [maxKey]: noteMax }));
+      mergeRuntimeValues({
+        [`synthEuclid${laneIndex + 1}NoteMin`]: noteMin,
+        [`synthEuclid${laneIndex + 1}NoteMax`]: noteMax,
+      });
     });
+    return () => {
+      audioEngine.setSynthNoteRangeEvolvedCallback(null as unknown as (laneIndex: number, noteMin: number, noteMax: number) => void);
+    };
   }, []);
+
+  useEffect(() => {
+    if (playbackIsRunning) return;
+    removeRuntimeValues([
+      'lead1Morph',
+      'lead2Morph',
+      'synthEuclid1NoteMin',
+      'synthEuclid1NoteMax',
+      'synthEuclid2NoteMin',
+      'synthEuclid2NoteMax',
+      'synthEuclid3NoteMin',
+      'synthEuclid3NoteMax',
+      'synthEuclid4NoteMin',
+      'synthEuclid4NoteMax',
+    ]);
+  }, [playbackIsRunning]);
 
   const updateTransportDebug = useCallback(() => {
     const transportDebug = audioEngine.getTransportDebugState();
@@ -3607,35 +3534,8 @@ const App: React.FC = () => {
   } => {
     const keyStr = paramKey as string;
     const mode: SliderMode = sliderModes[keyStr] ?? 'single';
-
-    // Determine walk/trigger position based on mode
-    let walkPos: number | undefined;
-    if (mode === 'walk') {
-      walkPos = randomWalkPositions[keyStr];
-    } else if (mode === 'sampleHold') {
-      // Per-trigger callbacks (lead expression/delay/morph, pad morph) have exact positions
-      walkPos = triggerPositionMap[keyStr];
-      // Fallback to engine/worklet S&H positions (exact Surf wave triggers, plus generic Earth/reverb fallback)
-      if (walkPos === undefined && shPositions[keyStr] !== undefined) {
-        walkPos = shPositions[keyStr];
-      }
-    }
-
-    // For drum morph keys in sampleHold, use per-trigger positions
-    if (drumMorphKeys.has(paramKey) && mode === 'sampleHold') {
-      const voice = drumMorphKeyToVoice[paramKey];
-      if (voice) {
-        walkPos = drumMorphPositions[voice];
-      }
-    }
-
-    // For any drum S&H param key (distance, etc.), use the generic per-trigger positions
-    if (drumSHParamKeys.has(keyStr) && mode === 'sampleHold') {
-      walkPos = drumParamSHPositions[keyStr];
-    }
-
-    // S&H flash for engine-side 10Hz re-sampling (reverb sends, ocean, water, insects, granular)
-    const isFlashing = mode === 'sampleHold' && shFlashKeys.has(keyStr);
+    const walkPos = getRuntimeSliderPosition(keyStr, mode);
+    const isFlashing = getRuntimeSliderFlashing(keyStr, mode);
 
     return {
       mode,
@@ -3645,7 +3545,7 @@ const App: React.FC = () => {
       onCycleMode: handleCycleSliderMode,
       onDualRangeChange: handleDualRangeChange,
     };
-  }, [sliderModes, dualSliderRanges, randomWalkPositions, triggerPositionMap, shPositions, drumMorphPositions, drumMorphKeys, drumMorphKeyToVoice, drumSHParamKeys, drumParamSHPositions, shFlashKeys, handleCycleSliderMode, handleDualRangeChange]);
+  }, [sliderModes, dualSliderRanges, handleCycleSliderMode, handleDualRangeChange]);
 
   const shouldDisableLeadRandomTiming = useCallback((nextState: SliderState): boolean => {
     if (!nextState.leadRandomEnabled) return false;
@@ -3833,13 +3733,8 @@ const App: React.FC = () => {
           Object.assign(next, newDualRanges);
           return next as DualSliderState;
         });
-        setRandomWalkPositions(prev => {
-          const next = { ...prev };
-          for (const k of Object.keys(next)) {
-            if (k.startsWith('granularV')) delete next[k];
-          }
-          return { ...next, ...newWalkPositions };
-        });
+        removeRuntimeWalkPositions(Object.keys(DEFAULT_STATE).filter((key) => key.startsWith('granularV')));
+        mergeRuntimeWalkPositions(newWalkPositions);
       }
     }
   }, [shouldDisableLeadRandomTiming]);
@@ -3949,10 +3844,7 @@ const App: React.FC = () => {
     // Stop journey playback if running
     if (isJourneyPlaying) {
       journey.stop();
-      if (journeyMorphAnimationRef.current) {
-        cancelAnimationFrame(journeyMorphAnimationRef.current);
-        journeyMorphAnimationRef.current = null;
-      }
+      stopJourneyMorphPlayback(true);
       setIsJourneyPlaying(false);
     }
 
@@ -5188,12 +5080,14 @@ const App: React.FC = () => {
     
     // Initialize indicator defaults for any new walk sliders while the engine syncs.
     const newWalkPositions: Record<string, number> = {};
+    const morphWalkKeys = Object.keys(morphResult.dualModes);
     Object.entries(morphResult.dualModes).forEach(([key, mode]) => {
       if (mode === 'single') return; // Skip keys that collapsed to single
       newWalkPositions[key] = 0.5;
     });
-    setRandomWalkPositionsIfChanged(newWalkPositions);
-  }, [morphPresetA, morphPresetB, lerpPresets, engineState.cofCurrentStep, setRandomWalkPositionsIfChanged]);
+    removeRuntimeWalkPositions(morphWalkKeys);
+    mergeRuntimeWalkPositions(newWalkPositions);
+  }, [morphPresetA, morphPresetB, lerpPresets, engineState.cofCurrentStep]);
 
   const handleMorphSlotAClear = useCallback(() => {
     setMorphPresetA(null);
@@ -5528,11 +5422,13 @@ const App: React.FC = () => {
           });
 
           const newWalkPositions: Record<string, number> = {};
+          const morphWalkKeys = Object.keys(morphResult.dualModes);
           Object.entries(morphResult.dualModes).forEach(([key, mode]) => {
             if (mode === 'single') return;
             newWalkPositions[key] = 0.5;
           });
-          setRandomWalkPositionsIfChanged(newWalkPositions);
+          removeRuntimeWalkPositions(morphWalkKeys);
+          mergeRuntimeWalkPositions(newWalkPositions);
         }
       }
       
@@ -5571,7 +5467,7 @@ const App: React.FC = () => {
       setMorphCountdown(null);
       setMorphCoFViz(null); // Clear CoF morph visualization
     };
-  }, [morphMode, engineState.isRunning, morphPresetA, morphPresetB, lerpPresets, setRandomWalkPositionsIfChanged]);
+  }, [morphMode, engineState.isRunning, morphPresetA, morphPresetB, lerpPresets]);
 
   // Load preset from list - modified to support morph slots in advanced mode
   const handleLoadPresetFromList = useCallback((preset: SavedPreset) => {
@@ -5761,6 +5657,11 @@ const App: React.FC = () => {
     // Update refs synchronously for animation loop
     journeyPresetARef.current = preset;
     journeyPresetBRef.current = null;
+    journeyLastAppliedStateRef.current = preset.state;
+    journeyLastDualModesRef.current = {};
+    journeyLastDualRangesRef.current = {};
+    journeyLastMorphPositionRef.current = 0;
+    journeyLastMorphCoFVizRef.current = null;
     
     // Start audio engine if not already running
     if (!playbackIsRunning) {
@@ -5793,22 +5694,62 @@ const App: React.FC = () => {
   }, [savedPresets, handleLoadPresetFromList, playbackIsRunning, nativeBackgroundAudioMode, dualSliderRanges, audioEngine, setupIOSMediaSession, connectMediaSessionToWebAudio]);
 
   const getEarthTextureDebugState = useCallback(() => audioEngine.getEarthTextureDebugState(), []);
-  
-  // Journey mode: morph to a target preset over specified duration
-  const journeyMorphAnimationRef = useRef<number | null>(null);
-  const journeyMorphTimeoutRef = useRef<number | null>(null);
-  const journeyMorphScheduleRef = useRef<() => void>(() => {});
-  const cancelJourneyMorphLoop = useCallback(() => {
-    if (journeyMorphAnimationRef.current !== null) {
-      cancelAnimationFrame(journeyMorphAnimationRef.current);
-      journeyMorphAnimationRef.current = null;
-    }
-    if (journeyMorphTimeoutRef.current !== null) {
-      clearTimeout(journeyMorphTimeoutRef.current);
-      journeyMorphTimeoutRef.current = null;
-    }
+
+  const applyJourneyDualSnapshot = useCallback((
+    nextDualModes: Record<string, SliderMode>,
+    nextDualRanges: Partial<Record<keyof SliderState, DualSliderRange>>,
+  ) => {
+    setSliderModes((prev) => {
+      const next: Record<string, SliderMode> = {};
+      for (const [key, mode] of Object.entries(prev)) {
+        if (!(key in nextDualModes)) {
+          next[key] = mode;
+        }
+      }
+      for (const [key, mode] of Object.entries(nextDualModes)) {
+        if (mode !== 'single') {
+          next[key] = mode;
+        }
+      }
+      return next;
+    });
+    setDualSliderRanges((prev) => {
+      const next: typeof prev = {};
+      for (const [key, range] of Object.entries(prev)) {
+        if (!(key in nextDualModes)) {
+          next[key as keyof SliderState] = range;
+        }
+      }
+      for (const [key, range] of Object.entries(nextDualRanges)) {
+        if (range) {
+          next[key as keyof SliderState] = range;
+        }
+      }
+      return next;
+    });
   }, []);
-  
+
+  const commitJourneyRuntimeState = useCallback(() => {
+    const nextState = journeyLastAppliedStateRef.current;
+    if (nextState) {
+      setState(nextState);
+    }
+    applyJourneyDualSnapshot(journeyLastDualModesRef.current, journeyLastDualRangesRef.current);
+    if (journeyLastMorphPositionRef.current !== null) {
+      setMorphPosition(journeyLastMorphPositionRef.current);
+    }
+    setMorphCoFViz(journeyLastMorphCoFVizRef.current);
+  }, [applyJourneyDualSnapshot]);
+
+  const stopJourneyMorphPlayback = useCallback((commitRuntimeState = false) => {
+    audioEngine.stopJourneyMorphClock();
+    audioEngine.setJourneyMorphClockCallback(null);
+    if (commitRuntimeState) {
+      commitJourneyRuntimeState();
+    }
+  }, [audioEngine, commitJourneyRuntimeState]);
+
+  // Journey mode: morph to a target preset over specified duration
   const handleJourneyMorphTo = useCallback((targetPresetName: string, durationPhrases: number) => {
     const preset = savedPresets.find(p => p.name === targetPresetName);
     if (!preset) {
@@ -5818,9 +5759,8 @@ const App: React.FC = () => {
     
     const direction = journeyMorphDirectionRef.current;
     console.log('[Journey] Morphing to:', targetPresetName, 'over', durationPhrases, 'phrases', 'direction:', direction);
-    
-    // Cancel any existing morph animation
-    cancelJourneyMorphLoop();
+
+    stopJourneyMorphPlayback(false);
     
     // Calculate duration in milliseconds using phrase-based timing
     // 1 phrase = phraseLength seconds (default 16s)
@@ -5890,121 +5830,63 @@ const App: React.FC = () => {
       for (const key of USER_PREFERENCE_KEYS) {
         (stateWithPrefs as Record<string, unknown>)[key] = currentState[key];
       }
-      
+
+      const atEndpoint = isAtEndpoint0(newPosition, true) || isAtEndpoint1(newPosition, true);
+      const nextMorphCoFViz = atEndpoint ? null : (morphResult.morphCoFInfo || null);
+      journeyLastAppliedStateRef.current = stateWithPrefs;
+      journeyLastDualModesRef.current = morphResult.dualModes;
+      journeyLastDualRangesRef.current = morphResult.dualRanges;
+      journeyLastMorphPositionRef.current = newPosition;
+      journeyLastMorphCoFVizRef.current = nextMorphCoFViz;
+
       // ALWAYS update audio engine at full frame rate for smooth audio
       audioEngine.updateParams(stateWithPrefs);
       
-      // Throttle React setState calls to ~15fps to avoid re-render storms
+      // Throttle visible UI sync while the engine owns the actual morph clock.
       const shouldUpdateUI = now - lastUIUpdate >= 66 || progress >= 1;
       if (shouldUpdateUI) {
         lastUIUpdate = now;
-        
-        // Update position state
         setMorphPosition(newPosition);
-        
-        // Apply the morphed state to React
-        setState(stateWithPrefs);
-        
-        // Update CoF morph visualization (clear at endpoints)
-        const atEndpoint = isAtEndpoint0(newPosition, true) || isAtEndpoint1(newPosition, true);
-        setMorphCoFViz(atEndpoint ? null : (morphResult.morphCoFInfo || null));
-        
+        setMorphCoFViz(nextMorphCoFViz);
         if (atEndpoint) {
           audioEngine.resetCofDrift();
         }
-        
-        // Apply interpolated dual ranges — merge (don't wipe modes unrelated to morph)
-        setSliderModes(prev => {
-          const next: Record<string, SliderMode> = {};
-          for (const [key, mode] of Object.entries(prev)) {
-            if (!(key in morphResult.dualModes)) {
-              next[key] = mode;
-            }
-          }
-          for (const [key, mode] of Object.entries(morphResult.dualModes)) {
-            if (mode !== 'single') {
-              next[key] = mode;
-            }
-          }
-          return next;
-        });
-        setDualSliderRanges(prev => {
-          const next: typeof prev = {};
-          for (const [key, range] of Object.entries(prev)) {
-            if (!(key in morphResult.dualModes)) {
-              next[key as keyof SliderState] = range;
-            }
-          }
-          for (const [key, range] of Object.entries(morphResult.dualRanges)) {
-            next[key as keyof SliderState] = range;
-          }
-          return next;
-        });
       }
       
-      if (progress < 1) {
-        journeyMorphScheduleRef.current();
-      } else {
+      if (progress >= 1) {
+        commitJourneyRuntimeState();
         // Morph complete - alternate direction for next morph
-        // console.log('[Journey] Morph complete at position:', endPosition);
         journeyMorphDirectionRef.current = direction === 'toB' ? 'toA' : 'toB';
-        cancelJourneyMorphLoop();
+        stopJourneyMorphPlayback(false);
       }
     };
 
-    const scheduleNextTick = () => {
-      if (document.visibilityState === 'visible') {
-        journeyMorphAnimationRef.current = requestAnimationFrame((frameTime) => {
-          journeyMorphAnimationRef.current = null;
-          animateMorph(frameTime);
-        });
-        return;
-      }
-      if (!engineState.isRunning) {
-        cancelJourneyMorphLoop();
-        return;
-      }
-      journeyMorphTimeoutRef.current = window.setTimeout(() => {
-        journeyMorphTimeoutRef.current = null;
-        animateMorph(performance.now());
-      }, 50);
-    };
-
-    journeyMorphScheduleRef.current = scheduleNextTick;
-    scheduleNextTick();
-  }, [savedPresets, lerpPresets, engineState.cofCurrentStep, engineState.isRunning, audioEngine, cancelJourneyMorphLoop]);
+    audioEngine.setJourneyMorphClockCallback(animateMorph);
+    audioEngine.startJourneyMorphClock();
+  }, [savedPresets, stopJourneyMorphPlayback, state.phraseLength, lerpPresets, engineState.cofCurrentStep, audioEngine, commitJourneyRuntimeState]);
   
   // Journey mode: handle journey end
   const handleJourneyEnd = useCallback(() => {
-    // Cancel any ongoing morph animation
-    cancelJourneyMorphLoop();
-    
+    stopJourneyMorphPlayback(true);
     // Unlock sliders
     setIsJourneyPlaying(false);
     
     // Keep the last preset playing - don't stop audio
     // User can manually stop if desired
-  }, [cancelJourneyMorphLoop]);
+  }, [stopJourneyMorphPlayback]);
   
   // Update refs for journey hook callbacks
   useEffect(() => {
     journeyLoadPresetRef.current = handleJourneyLoadPreset;
     journeyMorphToRef.current = handleJourneyMorphTo;
   }, [handleJourneyLoadPreset, handleJourneyMorphTo]);
-  
+
   // Cleanup journey animation on unmount
   useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (journeyMorphAnimationRef.current === null && journeyMorphTimeoutRef.current === null) return;
-      cancelJourneyMorphLoop();
-      journeyMorphScheduleRef.current();
-    };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      cancelJourneyMorphLoop();
+      stopJourneyMorphPlayback(false);
     };
-  }, [cancelJourneyMorphLoop]);
+  }, [stopJourneyMorphPlayback]);
 
   const handleRoutingSourceToggle = useCallback((sourceId: string, enabled: boolean) => {
     hasUserInteractedRef.current = true;
@@ -6552,10 +6434,13 @@ const App: React.FC = () => {
                 triggerToggles: overrides.triggerToggles,
                 expression: overrides.expression,
                 expressionDirection: overrides.expressionDirection,
+                expressionRanges: overrides.expressionRanges,
                 morph: overrides.morph,
                 morphDirection: overrides.morphDirection,
+                morphRanges: overrides.morphRanges,
                 distance: overrides.distance,
                 distanceDirection: overrides.distanceDirection,
+                distanceRanges: overrides.distanceRanges,
                 probability: overrides.probability,
                 ratchet: overrides.ratchet,
                 trigCondition: overrides.trigCondition,

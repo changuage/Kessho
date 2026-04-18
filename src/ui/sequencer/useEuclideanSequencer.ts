@@ -28,6 +28,8 @@ export type PitchSettings = { mode: PitchMode; root: number; scale: ScaleName };
 
 export type LaneKind = 'trigger' | 'pitch' | 'expression' | 'morph' | 'distance' | 'slice' | 'reverse';
 export type SubLaneKind = Exclude<LaneKind, 'trigger'>;
+export type RangeSubLaneKind = Extract<SubLaneKind, 'expression' | 'morph' | 'distance'>;
+export type SubLaneValueMode = 'sequence' | 'range';
 
 /** Per-sub-lane UI state (per sequencer × per sub-lane) */
 export interface SubLaneState {
@@ -36,6 +38,10 @@ export interface SubLaneState {
   direction: LaneDirection;
   /** Pitch-only: snap pitch offsets to current harmony scale */
   scaleQuantize?: boolean;
+  /** Expression / morph / distance can switch to per-trigger random range mode */
+  valueMode?: SubLaneValueMode;
+  rangeMin?: number;
+  rangeMax?: number;
 }
 
 export interface StepOverrides {
@@ -55,6 +61,9 @@ export interface StepOverrides {
   pitchDirection: (LaneDirection | null)[];
   sliceDirection: (LaneDirection | null)[];
   reverseDirection: (LaneDirection | null)[];
+  expressionRanges?: ({ min: number; max: number } | null)[];
+  morphRanges?: ({ min: number; max: number } | null)[];
+  distanceRanges?: ({ min: number; max: number } | null)[];
 }
 
 export interface EvolveConfig {
@@ -162,6 +171,8 @@ export interface UseEuclideanSequencerResult {
   toggleSubLaneEnabled: (seqIdx: number, lane: SubLaneKind) => void;
   setSubLaneSteps: (seqIdx: number, lane: SubLaneKind, steps: number) => void;
   cycleSubLaneDirection: (seqIdx: number, lane: SubLaneKind) => void;
+  setSubLaneValueMode: (seqIdx: number, lane: RangeSubLaneKind, mode: SubLaneValueMode) => void;
+  setSubLaneRange: (seqIdx: number, lane: RangeSubLaneKind, min: number, max: number) => void;
   /** Per-sequencer linked state */
   linked: boolean[];
   toggleLinked: (seqIdx: number) => void;
@@ -223,6 +234,158 @@ function makeGlobalKey(prefix: string, suffix: string): keyof SliderState {
   return `${prefix}Euclid${suffix}` as keyof SliderState;
 }
 
+const RANGE_DEFAULTS: Record<RangeSubLaneKind, { min: number; max: number }> = {
+  expression: { min: 0.75, max: 1 },
+  morph: { min: 0.25, max: 0.75 },
+  distance: { min: 0.25, max: 0.75 },
+};
+
+function isRangeSubLane(lane: SubLaneKind): lane is RangeSubLaneKind {
+  return lane === 'expression' || lane === 'morph' || lane === 'distance';
+}
+
+function clampUnit(value: number): number {
+  return Math.max(0, Math.min(1, value));
+}
+
+function normalizeRangeState(
+  lane: RangeSubLaneKind,
+  state?: Partial<SubLaneState>,
+): Pick<SubLaneState, 'valueMode' | 'rangeMin' | 'rangeMax'> {
+  const defaults = RANGE_DEFAULTS[lane];
+  const rawMin = typeof state?.rangeMin === 'number' ? clampUnit(state.rangeMin) : defaults.min;
+  const rawMax = typeof state?.rangeMax === 'number' ? clampUnit(state.rangeMax) : defaults.max;
+  return {
+    valueMode: state?.valueMode === 'range' ? 'range' : 'sequence',
+    rangeMin: Math.min(rawMin, rawMax),
+    rangeMax: Math.max(rawMin, rawMax),
+  };
+}
+
+function getDefaultSubLaneState(lane: SubLaneKind): SubLaneState {
+  const base: SubLaneState = {
+    enabled: false,
+    steps: lane === 'pitch' ? 5 : 4,
+    direction: 'forward' as LaneDirection,
+    ...(lane === 'pitch' ? { scaleQuantize: false } : {}),
+  };
+  if (isRangeSubLane(lane)) {
+    return {
+      ...base,
+      ...normalizeRangeState(lane),
+    };
+  }
+  return base;
+}
+
+function normalizeSubLaneState(lane: SubLaneKind, state?: Partial<SubLaneState>): SubLaneState {
+  const fallback = getDefaultSubLaneState(lane);
+  const next: SubLaneState = {
+    ...fallback,
+    ...state,
+    enabled: state?.enabled ?? fallback.enabled,
+    steps: Math.max(1, Math.min(16, Math.floor(state?.steps ?? fallback.steps))),
+    direction: state?.direction ?? fallback.direction,
+  };
+  if (lane === 'pitch') {
+    next.scaleQuantize = state?.scaleQuantize ?? fallback.scaleQuantize ?? false;
+  }
+  if (isRangeSubLane(lane)) {
+    Object.assign(next, normalizeRangeState(lane, state));
+  }
+  return next;
+}
+
+function deriveRangeFromValues(
+  lane: RangeSubLaneKind,
+  values: number[] | null | undefined,
+): { min: number; max: number } {
+  const defaults = RANGE_DEFAULTS[lane];
+  if (!values || values.length === 0) return defaults;
+  const numeric = values.filter((value) => Number.isFinite(value)).map(clampUnit);
+  if (numeric.length === 0) return defaults;
+  const min = Math.min(...numeric);
+  const max = Math.max(...numeric);
+  if (max - min > 0.0005) {
+    return { min, max };
+  }
+  const center = numeric[0] ?? ((defaults.min + defaults.max) * 0.5);
+  const spread = lane === 'expression' ? 0.25 : 0.2;
+  return {
+    min: clampUnit(center - spread),
+    max: clampUnit(center + spread),
+  };
+}
+
+function createEmptyStepOverrides(laneCount: number): StepOverrides {
+  return {
+    triggerToggles: Array.from({ length: laneCount }, () => new Map<number, boolean>()),
+    probability: Array.from({ length: laneCount }, () => null as number[] | null),
+    ratchet: Array.from({ length: laneCount }, () => null as number[] | null),
+    trigCondition: Array.from({ length: laneCount }, () => null as TrigCondition[] | null),
+    expression: Array.from({ length: laneCount }, () => null as number[] | null),
+    pitch: Array.from({ length: laneCount }, () => null as number[] | null),
+    morph: Array.from({ length: laneCount }, () => null as number[] | null),
+    distance: Array.from({ length: laneCount }, () => null as number[] | null),
+    slice: Array.from({ length: laneCount }, () => null as number[] | null),
+    reverse: Array.from({ length: laneCount }, () => null as number[] | null),
+    expressionDirection: Array.from({ length: laneCount }, () => null as LaneDirection | null),
+    morphDirection: Array.from({ length: laneCount }, () => null as LaneDirection | null),
+    distanceDirection: Array.from({ length: laneCount }, () => null as LaneDirection | null),
+    pitchDirection: Array.from({ length: laneCount }, () => null as LaneDirection | null),
+    sliceDirection: Array.from({ length: laneCount }, () => null as LaneDirection | null),
+    reverseDirection: Array.from({ length: laneCount }, () => null as LaneDirection | null),
+    expressionRanges: Array.from({ length: laneCount }, () => null as { min: number; max: number } | null),
+    morphRanges: Array.from({ length: laneCount }, () => null as { min: number; max: number } | null),
+    distanceRanges: Array.from({ length: laneCount }, () => null as { min: number; max: number } | null),
+  };
+}
+
+function normalizeStepOverrides(overrides: StepOverrides | undefined, laneCount: number): StepOverrides {
+  const fallback = createEmptyStepOverrides(laneCount);
+  if (!overrides) return fallback;
+  return {
+    ...fallback,
+    ...overrides,
+    triggerToggles: overrides.triggerToggles?.map((map) => new Map(map)) ?? fallback.triggerToggles,
+    probability: overrides.probability ?? fallback.probability,
+    ratchet: overrides.ratchet ?? fallback.ratchet,
+    trigCondition: overrides.trigCondition ?? fallback.trigCondition,
+    expression: overrides.expression ?? fallback.expression,
+    pitch: overrides.pitch ?? fallback.pitch,
+    morph: overrides.morph ?? fallback.morph,
+    distance: overrides.distance ?? fallback.distance,
+    slice: overrides.slice ?? fallback.slice,
+    reverse: overrides.reverse ?? fallback.reverse,
+    expressionDirection: overrides.expressionDirection ?? fallback.expressionDirection,
+    morphDirection: overrides.morphDirection ?? fallback.morphDirection,
+    distanceDirection: overrides.distanceDirection ?? fallback.distanceDirection,
+    pitchDirection: overrides.pitchDirection ?? fallback.pitchDirection,
+    sliceDirection: overrides.sliceDirection ?? fallback.sliceDirection,
+    reverseDirection: overrides.reverseDirection ?? fallback.reverseDirection,
+    expressionRanges: overrides.expressionRanges ?? fallback.expressionRanges,
+    morphRanges: overrides.morphRanges ?? fallback.morphRanges,
+    distanceRanges: overrides.distanceRanges ?? fallback.distanceRanges,
+  };
+}
+
+function normalizeSubLaneStates(
+  states: Record<SubLaneKind, SubLaneState>[] | undefined,
+  laneCount: number,
+): Record<SubLaneKind, SubLaneState>[] {
+  return Array.from({ length: laneCount }, (_, index) => {
+    const incoming = states?.[index];
+    return {
+      pitch: normalizeSubLaneState('pitch', incoming?.pitch),
+      expression: normalizeSubLaneState('expression', incoming?.expression),
+      morph: normalizeSubLaneState('morph', incoming?.morph),
+      distance: normalizeSubLaneState('distance', incoming?.distance),
+      slice: normalizeSubLaneState('slice', incoming?.slice),
+      reverse: normalizeSubLaneState('reverse', incoming?.reverse),
+    };
+  });
+}
+
 export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEuclideanSequencerResult {
   const {
     state,
@@ -256,24 +419,7 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
   const [openLane, setOpenLane] = useState<LaneKind>('trigger');
 
   // ── Step Overrides ──
-  const [stepOverrides, setStepOverrides] = useState<StepOverrides>(() => initialStepOverrides ?? ({
-    triggerToggles: Array.from({ length: laneCount }, () => new Map<number, boolean>()),
-    probability: Array.from({ length: laneCount }, () => null as number[] | null),
-    ratchet: Array.from({ length: laneCount }, () => null as number[] | null),
-    trigCondition: Array.from({ length: laneCount }, () => null as TrigCondition[] | null),
-    expression: Array.from({ length: laneCount }, () => null as number[] | null),
-    pitch: Array.from({ length: laneCount }, () => null as number[] | null),
-    morph: Array.from({ length: laneCount }, () => null as number[] | null),
-    distance: Array.from({ length: laneCount }, () => null as number[] | null),
-    slice: Array.from({ length: laneCount }, () => null as number[] | null),
-    reverse: Array.from({ length: laneCount }, () => null as number[] | null),
-    expressionDirection: Array.from({ length: laneCount }, () => null as LaneDirection | null),
-    morphDirection: Array.from({ length: laneCount }, () => null as LaneDirection | null),
-    distanceDirection: Array.from({ length: laneCount }, () => null as LaneDirection | null),
-    pitchDirection: Array.from({ length: laneCount }, () => null as LaneDirection | null),
-    sliceDirection: Array.from({ length: laneCount }, () => null as LaneDirection | null),
-    reverseDirection: Array.from({ length: laneCount }, () => null as LaneDirection | null),
-  }));
+  const [stepOverrides, setStepOverrides] = useState<StepOverrides>(() => normalizeStepOverrides(initialStepOverrides, laneCount));
 
   // ── Evolve ──
   const [evolveConfigs, setEvolveConfigs] = useState<EvolveConfig[]>(() =>
@@ -292,14 +438,7 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
   const DIRECTION_ORDER: LaneDirection[] = ['forward', 'reverse', 'pingpong'];
 
   const [subLaneStates, setSubLaneStates] = useState<Record<SubLaneKind, SubLaneState>[]>(() =>
-    initialSubLaneStates ?? Array.from({ length: laneCount }, () => ({
-      pitch: { enabled: false, steps: 5, direction: 'forward' as LaneDirection, scaleQuantize: false },
-      expression: { enabled: false, steps: 5, direction: 'forward' as LaneDirection },
-      morph: { enabled: false, steps: 4, direction: 'forward' as LaneDirection },
-      distance: { enabled: false, steps: 4, direction: 'forward' as LaneDirection },
-      slice: { enabled: false, steps: 4, direction: 'forward' as LaneDirection },
-      reverse: { enabled: false, steps: 4, direction: 'forward' as LaneDirection },
-    }))
+    normalizeSubLaneStates(initialSubLaneStates, laneCount)
   );
 
   const [linked, setLinked] = useState<boolean[]>(() =>
@@ -324,8 +463,8 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
   useEffect(() => {
     if (resetKey !== undefined && resetKey !== prevResetKey.current) {
       prevResetKey.current = resetKey;
-      if (initialStepOverrides) setStepOverrides(initialStepOverrides);
-      if (initialSubLaneStates) setSubLaneStates(initialSubLaneStates);
+      setStepOverrides(normalizeStepOverrides(initialStepOverrides, laneCount));
+      setSubLaneStates(normalizeSubLaneStates(initialSubLaneStates, laneCount));
       if (initialClockDivs) setClockDivs(initialClockDivs);
       if (initialPitchSettings) setPitchSettings(initialPitchSettings);
       if (initialEvolveConfigs) setEvolveConfigs(initialEvolveConfigs);
@@ -420,6 +559,42 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
       (next[lane] as (number[] | null)[])[seqIdx] = resized;
       return next;
     });
+  }, []);
+
+  const setSubLaneValueMode = useCallback((seqIdx: number, lane: RangeSubLaneKind, mode: SubLaneValueMode) => {
+    setSubLaneStates(prev => prev.map((state, index) => {
+      if (index !== seqIdx) return state;
+      const currentLane = state[lane];
+      const derivedRange = deriveRangeFromValues(lane, stepOverrides[lane][seqIdx]);
+      return {
+        ...state,
+        [lane]: {
+          ...currentLane,
+          ...normalizeRangeState(lane, currentLane),
+          valueMode: mode,
+          rangeMin: currentLane.rangeMin ?? derivedRange.min,
+          rangeMax: currentLane.rangeMax ?? derivedRange.max,
+        },
+      };
+    }));
+  }, [stepOverrides]);
+
+  const setSubLaneRange = useCallback((seqIdx: number, lane: RangeSubLaneKind, min: number, max: number) => {
+    const rangeMin = clampUnit(Math.min(min, max));
+    const rangeMax = clampUnit(Math.max(min, max));
+    setSubLaneStates(prev => prev.map((state, index) => (
+      index === seqIdx
+        ? {
+            ...state,
+            [lane]: {
+              ...state[lane],
+              ...normalizeRangeState(lane, state[lane]),
+              rangeMin,
+              rangeMax,
+            },
+          }
+        : state
+    )));
   }, []);
 
   const cycleSubLaneDirection = useCallback((seqIdx: number, lane: SubLaneKind) => {
@@ -901,6 +1076,8 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
     toggleSubLaneEnabled,
     setSubLaneSteps,
     cycleSubLaneDirection,
+    setSubLaneValueMode,
+    setSubLaneRange,
     linked,
     toggleLinked,
     clockDivs,

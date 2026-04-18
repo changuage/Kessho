@@ -27,6 +27,8 @@ const DelayScope: React.FC<DelayScopeProps> = ({
   const echoDataRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
   const clockedDataRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
   const { canAnimate } = useAnimationVisibility(containerRef);
+  const hasActiveAnalysers = Boolean(echoAnalyser || clockedAnalyser);
+  const shouldAnimate = canAnimate && hasActiveAnalysers;
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -163,21 +165,21 @@ const DelayScope: React.FC<DelayScopeProps> = ({
       if (!running) return;
       frame++;
       if (frame % 2 === 0) draw();
-      if (canAnimate) {
+      if (shouldAnimate) {
         rafRef.current = requestAnimationFrame(loop);
       } else {
         rafRef.current = 0;
       }
     };
-    if (canAnimate) {
-      draw();
+    draw();
+    if (shouldAnimate) {
       rafRef.current = requestAnimationFrame(loop);
     }
     return () => {
       running = false;
       cancelLoop();
     };
-  }, [canAnimate, draw]);
+  }, [draw, shouldAnimate]);
 
   return (
     <div ref={containerRef} className="delay-scope">

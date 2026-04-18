@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import type { SequencerState, LaneDirection, ScaleName, PitchMode, PitchBindingMode, TrigCondition } from '../../audio/drumSeqTypes';
+import type { SubLaneValueMode } from '../sequencer/useEuclideanSequencer';
 import { seqLaneIndex } from '../../audio/drumSequencer';
 import {
   NOTE_DEGREE_OFFSET_MIN,
@@ -56,6 +57,33 @@ function midiToName(midi: number): string {
   return (NOTE_NAMES[midi % 12] ?? '') + (Math.floor(midi / 12) - 1);
 }
 
+function clampUnit(value: number): number {
+  return Math.max(0, Math.min(1, value));
+}
+
+function formatRangeValue(lane: LaneKind, value: number): string {
+  const safe = clampUnit(value);
+  if (lane === 'expression' || lane === 'distance') {
+    return `${Math.round(safe * 100)}%`;
+  }
+  if (lane === 'morph') {
+    return safe >= 0.5
+      ? `${Math.round((safe - 0.5) * 200)}% B`
+      : `${Math.round((0.5 - safe) * 200)}% A`;
+  }
+  return `${Math.round(safe * 100)}%`;
+}
+
+function getRangeHint(lane: LaneKind, min: number, max: number): string {
+  if (lane === 'expression') {
+    return `Each trigger picks a random expression between ${formatRangeValue(lane, min)} and ${formatRangeValue(lane, max)}.`;
+  }
+  if (lane === 'morph') {
+    return `Each trigger picks a random preset morph between ${formatRangeValue(lane, min)} and ${formatRangeValue(lane, max)}.`;
+  }
+  return `Each trigger picks a random distance between ${formatRangeValue(lane, min)} and ${formatRangeValue(lane, max)}.`;
+}
+
 interface SeqLaneProps {
   sequencer: SequencerState;
   lane: LaneKind;
@@ -102,6 +130,12 @@ interface SeqLaneProps {
   selectedStep?: number | null;
   selectedStepLabel?: string;
   onSelectStep?: (step: number) => void;
+  /** Expression / morph / distance can switch to per-trigger range mode */
+  valueMode?: SubLaneValueMode;
+  onChangeValueMode?: (mode: SubLaneValueMode) => void;
+  rangeMin?: number;
+  rangeMax?: number;
+  onChangeRange?: (min: number, max: number) => void;
   /** Note-range pitch mode: min/max MIDI notes and callbacks */
   pitchNoteMin?: number;
   pitchNoteMax?: number;
@@ -136,6 +170,11 @@ const SeqLane: React.FC<SeqLaneProps> = ({
   selectedStep = null,
   selectedStepLabel = 'Step',
   onSelectStep,
+  valueMode = 'sequence',
+  onChangeValueMode,
+  rangeMin,
+  rangeMax,
+  onChangeRange,
   pitchNoteMin,
   pitchNoteMax,
   onChangePitchNoteMin,
@@ -189,6 +228,12 @@ const SeqLane: React.FC<SeqLaneProps> = ({
     slice: '● SLICE',
     reverse: '● REVERSE',
   };
+
+  const supportsRangeMode = lane === 'expression' || lane === 'morph' || lane === 'distance';
+  const normalizedRangeMin = clampUnit(rangeMin ?? (lane === 'expression' ? 0.75 : 0.25));
+  const normalizedRangeMax = clampUnit(rangeMax ?? (lane === 'expression' ? 1 : 0.75));
+  const rangeLow = Math.min(normalizedRangeMin, normalizedRangeMax);
+  const rangeHigh = Math.max(normalizedRangeMin, normalizedRangeMax);
 
   return (
     <div className={`seq-lane ${laneClassMap[lane]}${!enabled ? ' disabled' : ''}`}>
@@ -273,6 +318,19 @@ const SeqLane: React.FC<SeqLaneProps> = ({
                 )}
               </div>
             )}
+            {supportsRangeMode && (
+              <div className="seq-pitch-controls">
+                <select
+                  className="seq-pitch-mode"
+                  value={valueMode}
+                  onChange={(e) => onChangeValueMode?.(e.target.value as SubLaneValueMode)}
+                  title="Choose between a per-step sequencer and a per-trigger random range"
+                >
+                  <option value="sequence">Sequence</option>
+                  <option value="range">Range</option>
+                </select>
+              </div>
+            )}
           </div>
       </div>
       )}
@@ -303,6 +361,42 @@ const SeqLane: React.FC<SeqLaneProps> = ({
           </div>
           <div style={{ fontSize: '0.6rem', color: '#666', textAlign: 'center' }}>
             Each trigger picks a random note between {midiToName(pitchNoteMin ?? 48)} and {midiToName(pitchNoteMax ?? 72)}
+          </div>
+        </div>
+      ) : supportsRangeMode && valueMode === 'range' ? (
+        <div className="seq-lane-body seq-noterange-body">
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center', padding: '8px 4px' }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: '0.65rem', color: '#888', marginBottom: '2px' }}>
+                Low: {formatRangeValue(lane, rangeLow)}
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.01}
+                value={rangeLow}
+                onChange={(e) => onChangeRange?.(Math.min(parseFloat(e.target.value), rangeHigh), rangeHigh)}
+                style={{ width: '100%', cursor: 'pointer' }}
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: '0.65rem', color: '#888', marginBottom: '2px' }}>
+                High: {formatRangeValue(lane, rangeHigh)}
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.01}
+                value={rangeHigh}
+                onChange={(e) => onChangeRange?.(rangeLow, Math.max(parseFloat(e.target.value), rangeLow))}
+                style={{ width: '100%', cursor: 'pointer' }}
+              />
+            </div>
+          </div>
+          <div style={{ fontSize: '0.6rem', color: '#666', textAlign: 'center' }}>
+            {getRangeHint(lane, rangeLow, rangeHigh)}
           </div>
         </div>
       ) : (

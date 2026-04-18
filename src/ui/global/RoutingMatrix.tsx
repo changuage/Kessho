@@ -3,6 +3,7 @@ import type { DualSliderRange } from '../DualSlider';
 import { useSliderHelp } from '../SliderHelpOverlay';
 import type { SliderPageId } from '../sliderHelpCatalog';
 import type { SliderMode, SliderState } from '../state';
+import { useRuntimeSliderIndicator } from '../runtimeSliderState';
 
 type ColumnId = 'level' | 'delayA' | 'delayB' | 'granular' | 'reverb';
 type CellHandle = 'single' | 'min' | 'max' | 'both';
@@ -404,6 +405,59 @@ function trackWidthCalc(value: number): string {
   return `calc((100% - ${TRACK_PAD_PX * 2}px) * ${clamp01(value)})`;
 }
 
+type RoutingMatrixCellIndicatorLayerProps = {
+  routeKey: keyof SliderState;
+  mode: SliderMode;
+  value: number;
+  range?: DualSliderRange;
+  fallbackWalkPosition?: number;
+  fallbackFlashing?: boolean;
+};
+
+const RoutingMatrixCellIndicatorLayer = React.memo(function RoutingMatrixCellIndicatorLayer({
+  routeKey,
+  mode,
+  value,
+  range,
+  fallbackWalkPosition,
+  fallbackFlashing = false,
+}: RoutingMatrixCellIndicatorLayerProps) {
+  const runtimeIndicator = useRuntimeSliderIndicator(
+    String(routeKey),
+    mode,
+    fallbackWalkPosition,
+    fallbackFlashing,
+  );
+  const indicatorNorm = range
+    ? clamp01(
+      range.min + (clamp01(runtimeIndicator.walkPosition ?? fallbackWalkPosition ?? value) * (range.max - range.min)),
+    )
+    : value;
+
+  return (
+    <>
+      {mode === 'single' && (
+        <span
+          className="routing-matrix-cell-indicator single"
+          style={{ left: trackLeftCalc(value) }}
+        />
+      )}
+      {mode === 'walk' && range && (
+        <span
+          className="routing-matrix-cell-indicator walk"
+          style={{ left: trackLeftCalc(indicatorNorm) }}
+        />
+      )}
+      {mode === 'sampleHold' && range && (
+        <span
+          className={`routing-matrix-cell-indicator sample-hold${runtimeIndicator.isFlashing ? ' flashing' : ''}`}
+          style={{ left: trackLeftCalc(indicatorNorm) }}
+        />
+      )}
+    </>
+  );
+});
+
 function releaseCapture(target: EventTarget & HTMLElement, pointerId: number): void {
   if (target.hasPointerCapture(pointerId)) {
     target.releasePointerCapture(pointerId);
@@ -746,9 +800,6 @@ export default function RoutingMatrix({
     const runtime = route ? sliderProps(route.key) : null;
     const mode = getResolvedMode(runtime);
     const range = mode === 'single' ? undefined : normalizeRange(runtime?.dualRange);
-    const indicatorNorm = range
-      ? clamp01(range.min + (clamp01(runtime?.walkPosition ?? value) * (range.max - range.min)))
-      : value;
     const fillLeft = range ? trackLeftCalc(range.min) : `${TRACK_PAD_PX}px`;
     const fillWidth = range ? trackWidthCalc(range.max - range.min) : trackWidthCalc(value);
     const readout = cell.kind === 'editable'
@@ -861,22 +912,14 @@ export default function RoutingMatrix({
                 opacity: 0.15 + (range ? range.max : value) * 0.85,
               }}
             />
-            {mode === 'single' && (
-              <span
-                className="routing-matrix-cell-indicator single"
-                style={{ left: trackLeftCalc(value) }}
-              />
-            )}
-            {isWalk && (
-              <span
-                className="routing-matrix-cell-indicator walk"
-                style={{ left: trackLeftCalc(indicatorNorm) }}
-              />
-            )}
-            {isSampleHold && (
-              <span
-                className={`routing-matrix-cell-indicator sample-hold${runtime?.isFlashing ? ' flashing' : ''}`}
-                style={{ left: trackLeftCalc(indicatorNorm) }}
+            {route && (
+              <RoutingMatrixCellIndicatorLayer
+                routeKey={route.key}
+                mode={mode}
+                value={value}
+                range={range}
+                fallbackWalkPosition={runtime?.walkPosition}
+                fallbackFlashing={runtime?.isFlashing}
               />
             )}
             {range && (

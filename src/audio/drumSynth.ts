@@ -173,6 +173,13 @@ export class DrumSynth {
   // Callback for step position updates (UI playhead)
   private onStepPositionChange: ((steps: number[], hitCounts: number[]) => void) | null = null;
 
+  // Optional per-lane random ranges for expression / morph / distance sub-lanes.
+  // When present, the sequencer samples a new value inside the range on each trigger
+  // instead of indexing the per-step sequence array.
+  private expressionSubLaneRanges: ({ min: number; max: number } | null)[] = [null, null, null, null];
+  private morphSubLaneRanges: ({ min: number; max: number } | null)[] = [null, null, null, null];
+  private distanceSubLaneRanges: ({ min: number; max: number } | null)[] = [null, null, null, null];
+
   // Stereo ping-pong delay
   private delayLeftNode: DelayNode | null = null;
   private delayRightNode: DelayNode | null = null;
@@ -214,6 +221,9 @@ export class DrumSynth {
     pitchDirection: [null, null, null, null],
     sliceDirection: [null, null, null, null],
     reverseDirection: [null, null, null, null],
+    expressionRanges: [null, null, null, null],
+    morphRanges: [null, null, null, null],
+    distanceRanges: [null, null, null, null],
   };
   /** Per-lane sub-lane enabled state from UI (keys are sub-lane names). */
   private subLaneEnabled: Record<string, boolean>[] = [{}, {}, {}, {}];
@@ -1023,7 +1033,13 @@ export class DrumSynth {
       pitchDirection: overrides.pitchDirection ?? [null, null, null, null],
       sliceDirection: overrides.sliceDirection ?? [null, null, null, null],
       reverseDirection: overrides.reverseDirection ?? [null, null, null, null],
+      expressionRanges: overrides.expressionRanges ?? [null, null, null, null],
+      morphRanges: overrides.morphRanges ?? [null, null, null, null],
+      distanceRanges: overrides.distanceRanges ?? [null, null, null, null],
     };
+    this.expressionSubLaneRanges = [...(overrides.expressionRanges ?? [null, null, null, null])];
+    this.morphSubLaneRanges = [...(overrides.morphRanges ?? [null, null, null, null])];
+    this.distanceSubLaneRanges = [...(overrides.distanceRanges ?? [null, null, null, null])];
   }
 
   /** Set per-lane sub-lane enabled state from the UI. */
@@ -3333,32 +3349,46 @@ export class DrumSynth {
             // Gate: fire only when ((visitCount - 1) % N) + 1 === n
             const trigCondPassed = tc[1] <= 1 || (((visitCount - 1) % tc[1]) + 1 === tc[0]);
 
-            const stepProbability = Math.max(0, Math.min(1, sequencer.trigger.probability[laneStep] ?? 1));
-            if (trigCondPassed && this.rng() <= lane.prob * stepProbability) {
-              // Velocity: use expression sub-lane when enabled, otherwise constant 1.0
-              // (matches prototype — no random velocity jitter when expression is off)
-              const exprIndex = seqLaneIndex(sequencer.expression, sequencer.hitCount);
-              const velocity = (sequencer.expression.enabled
-                ? Math.max(0, Math.min(1, sequencer.expression.velocities[exprIndex] ?? 1.0))
-                : 1.0) * lane.level;
-              const selectedVoice = seqPickVoice(sequencer) ?? lane.voices[Math.floor(this.rng() * lane.voices.length)];
-              if (!selectedVoice) continue;
+	            const stepProbability = Math.max(0, Math.min(1, sequencer.trigger.probability[laneStep] ?? 1));
+	            if (trigCondPassed && this.rng() <= lane.prob * stepProbability) {
+	              const exprRange = this.expressionSubLaneRanges[laneIndex];
+	              const morphRange = this.morphSubLaneRanges[laneIndex];
+	              const distanceRange = this.distanceSubLaneRanges[laneIndex];
 
-              // Compute per-trigger morph override from sub-lane data
-              if (ov.morph[laneIndex] && sequencer.morph.values.length > 0) {
-                const morphIndex = seqLaneIndex(sequencer.morph, sequencer.hitCount);
-                this.triggerMorphOverride = sequencer.morph.values[morphIndex % sequencer.morph.values.length] ?? null;
-              } else {
-                this.triggerMorphOverride = null;
-              }
+	              // Velocity: use expression sub-lane sequence or a per-trigger random value
+	              // when the lane is in range mode.
+	              let velocitySource = 1.0;
+	              if (sequencer.expression.enabled) {
+	                if (exprRange) {
+	                  velocitySource = exprRange.min + this.rng() * (exprRange.max - exprRange.min);
+	                } else {
+	                  const exprIndex = seqLaneIndex(sequencer.expression, sequencer.hitCount);
+	                  velocitySource = sequencer.expression.velocities[exprIndex] ?? 1.0;
+	                }
+	              }
+	              const velocity = Math.max(0, Math.min(1, velocitySource)) * lane.level;
+	              const selectedVoice = seqPickVoice(sequencer) ?? lane.voices[Math.floor(this.rng() * lane.voices.length)];
+	              if (!selectedVoice) continue;
 
-              // Compute per-trigger distance override from sub-lane data
-              if (ov.distance[laneIndex] && sequencer.distance.values.length > 0) {
-                const distIndex = seqLaneIndex(sequencer.distance, sequencer.hitCount);
-                this.triggerDistanceOverride = sequencer.distance.values[distIndex % sequencer.distance.values.length] ?? null;
-              } else {
-                this.triggerDistanceOverride = null;
-              }
+	              // Compute per-trigger morph override from sub-lane data or range mode
+	              if (morphRange) {
+	                this.triggerMorphOverride = morphRange.min + this.rng() * (morphRange.max - morphRange.min);
+	              } else if (ov.morph[laneIndex] && sequencer.morph.values.length > 0) {
+	                const morphIndex = seqLaneIndex(sequencer.morph, sequencer.hitCount);
+	                this.triggerMorphOverride = sequencer.morph.values[morphIndex % sequencer.morph.values.length] ?? null;
+	              } else {
+	                this.triggerMorphOverride = null;
+	              }
+
+	              // Compute per-trigger distance override from sub-lane data or range mode
+	              if (distanceRange) {
+	                this.triggerDistanceOverride = distanceRange.min + this.rng() * (distanceRange.max - distanceRange.min);
+	              } else if (ov.distance[laneIndex] && sequencer.distance.values.length > 0) {
+	                const distIndex = seqLaneIndex(sequencer.distance, sequencer.hitCount);
+	                this.triggerDistanceOverride = sequencer.distance.values[distIndex % sequencer.distance.values.length] ?? null;
+	              } else {
+	                this.triggerDistanceOverride = null;
+	              }
 
               // Compute per-trigger pitch override from sub-lane data (semitone offset for A=432 tuning)
               if (ov.pitch[laneIndex] && sequencer.pitch.offsets.length > 0) {

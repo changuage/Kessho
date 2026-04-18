@@ -15,11 +15,12 @@ import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { SliderState, formatIndexedDelayDivision, getParamInfo, getSliderNumericValue } from '../state';
 import type { ClockDivision } from '../../audio/drumSeqTypes';
 import { computeGranularMacroModel } from '../../audio/granularMacroModel';
-import { audioEngine } from '../../audio/engine';
+import { audioEngine } from '../../audio/runtime';
 import GranularBufferCanvas from './GranularBufferCanvas';
 import type { CanvasVoiceVisual } from './GranularBufferCanvas';
 import { useSliderHelp } from '../SliderHelpOverlay';
 import { useVisibleInterval } from '../hooks/useVisibleInterval';
+import { useRuntimeSliderVersion } from '../runtimeSliderState';
 import { PresetDropdown } from '../../presets/PresetDropdown';
 import { extractParams } from '../../presets/codec';
 import type { PresetEntry } from '../../presets/types';
@@ -238,7 +239,13 @@ const GranularPage: React.FC<GranularPageProps> = ({
     }
   }, []);
 
-  useVisibleInterval(syncGranularUi, 100, {
+  const granularUiPollMs = useMemo(() => {
+    if (activeGrainCount > 0 || state.granularFreeze) return 90;
+    if (state.granularEnabled) return 160;
+    return 220;
+  }, [activeGrainCount, state.granularEnabled, state.granularFreeze]);
+
+  useVisibleInterval(syncGranularUi, granularUiPollMs, {
     enabled: isRunning && visualizerEnabled,
   });
 
@@ -291,6 +298,7 @@ const GranularPage: React.FC<GranularPageProps> = ({
   }), []);
   const [scenePresetName, setScenePresetName] = useState<string | undefined>();
   const [scenePresetDescription, setScenePresetDescription] = useState<string>('');
+  const runtimeSliderVersion = useRuntimeSliderVersion();
   const handleScenePresetLoad = useCallback((entry: PresetEntry, data: Record<string, unknown>) => {
     setScenePresetName(entry.name);
     const currentVersion = entry.versions.find(version => version.v === entry.currentVersion);
@@ -328,7 +336,7 @@ const GranularPage: React.FC<GranularPageProps> = ({
     if (runtime.mode !== 'walk' && runtime.mode !== 'sampleHold') return numericBase;
     if (!runtime.dualRange || runtime.walkPosition === undefined) return numericBase;
     return runtime.dualRange.min + runtime.walkPosition * (runtime.dualRange.max - runtime.dualRange.min);
-  }, [sliderProps, state]);
+  }, [runtimeSliderVersion, sliderProps, state]);
 
   const granularMacroModel = useMemo(() => (
     computeGranularMacroModel(state, (paramKey, fallback) => {

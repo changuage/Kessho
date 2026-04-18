@@ -6,6 +6,7 @@ import MorphSlider from './MorphSlider';
 import VoiceCardAdvanced from './VoiceCardAdvanced';
 import DrumPresetManager from './DrumPresetManager';
 import { useSliderHelp } from '../SliderHelpOverlay';
+import { useRuntimeSliderPosition } from '../runtimeSliderState';
 
 interface VoiceCardProps {
   voice: DrumVoiceType;
@@ -224,6 +225,7 @@ const MacroSlider: React.FC<{
 }> = ({ label, value, color, paramKey, onChange, sliderProps: getSliderProps }) => {
   const sp = getSliderProps(paramKey);
   const isDual = sp.mode !== 'single';
+  const liveWalkPosition = useRuntimeSliderPosition(String(paramKey), sp.mode, sp.walkPosition);
   const trackRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState<'min' | 'max' | null>(null);
   const { announceSlider } = useSliderHelp();
@@ -316,7 +318,7 @@ const MacroSlider: React.FC<{
   // Dual mode
   const dMin = sp.dualRange?.min ?? 0;
   const dMax = sp.dualRange?.max ?? 1;
-  const walkPos = sp.walkPosition ?? 0.5;
+  const walkPos = liveWalkPosition ?? sp.walkPosition ?? 0.5;
   const walkPct = (dMin + walkPos * (dMax - dMin)) * 100;
   const minPct = dMin * 100;
   const maxPct = dMax * 100;
