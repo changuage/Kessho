@@ -337,13 +337,13 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     const morphRanges = seq.subLaneStates.map((laneState) => {
       const lane = laneState.morph;
       return lane.enabled && lane.valueMode === 'range'
-        ? { min: Math.min(lane.rangeMin ?? 0.25, lane.rangeMax ?? 0.75), max: Math.max(lane.rangeMin ?? 0.25, lane.rangeMax ?? 0.75) }
+        ? { min: Math.min(lane.rangeMin ?? 0, lane.rangeMax ?? 1), max: Math.max(lane.rangeMin ?? 0, lane.rangeMax ?? 1) }
         : null;
     });
     const distanceRanges = seq.subLaneStates.map((laneState) => {
       const lane = laneState.distance;
       return lane.enabled && lane.valueMode === 'range'
-        ? { min: Math.min(lane.rangeMin ?? 0.25, lane.rangeMax ?? 0.75), max: Math.max(lane.rangeMin ?? 0.25, lane.rangeMax ?? 0.75) }
+        ? { min: Math.min(lane.rangeMin ?? 0, lane.rangeMax ?? 1), max: Math.max(lane.rangeMin ?? 0, lane.rangeMax ?? 1) }
         : null;
     });
     onStepOverridesChange?.({
@@ -503,7 +503,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
 
     const current = seq.stepOverrides.distance[seq.activeTab]?.[activeKeyboardStep]
       ?? activeSeq.distance.values[activeKeyboardStep % Math.max(1, activeSeq.distance.values.length)]
-      ?? 0.5;
+      ?? 0;
     const delta = coarse ? 0.2 : 0.05;
     const next = Math.max(0, Math.min(1, Math.round((current + direction * delta) * 20) / 20));
     seq.changeStepValue(seq.activeTab, 'distance', activeKeyboardStep, next);
@@ -1168,7 +1168,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                                     : laneKind === 'morph'
                                       ? activeSeq.morph.values
                                       : subState?.valueMode === 'range'
-                                        ? new Array(subState.steps).fill(((subState.rangeMin ?? 0.25) + (subState.rangeMax ?? 0.75)) * 0.5)
+                                        ? new Array(subState.steps).fill(((subState.rangeMin ?? 0) + (subState.rangeMax ?? 1)) * 0.5)
                                         : activeSeq.distance.values
                           }
                           color={laneColor}
@@ -1176,7 +1176,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                           hitCount={seq.hitCounts[seq.activeTab]}
                           direction={subState?.direction ?? 'forward'}
                           bipolar={
-                            laneKind === 'morph' || laneKind === 'distance' ||
+                            laneKind === 'morph' ||
                             (laneKind === 'pitch' && activeSeq.pitch.mode !== 'notes')
                           }
                           invertFill={laneKind === 'expression'}
@@ -1197,6 +1197,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                               hitCount={seq.hitCounts[seq.activeTab] ?? 0}
                               selectedStep={activeKeyboardLane === laneKind ? activeKeyboardStep : null}
                               selectedStepLabel="⌖"
+                              onSelectStep={(step) => selectDrumKeyboardStep(seq.activeTab, laneKind, step)}
                               enabled={subState?.enabled ?? false}
                               direction={subState?.direction ?? 'forward'}
                               onToggleEnabled={() => seq.toggleSubLaneEnabled(seq.activeTab, laneKind)}

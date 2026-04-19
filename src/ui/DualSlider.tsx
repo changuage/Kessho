@@ -14,6 +14,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import type { SliderMode } from './state';
 import { useSliderHelp } from './SliderHelpOverlay';
 import type { SliderPageId } from './sliderHelpCatalog';
+import { APP_SLIDER_THUMB_SIZE_CSS, getNativeRangeVisualLeft } from './nativeRangeGeometry';
 import { getDualSliderValueSlotWidthCh, getSliderValueSlotWidthCh } from './sliderValueLayout';
 import { useRuntimeSliderIndicator } from './runtimeSliderState';
 
@@ -94,6 +95,10 @@ function logToLinear(value: number, min: number, max: number): number {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+function valuesNearlyEqual(a: number, b: number, tolerance: number): boolean {
+  return Math.abs(a - b) <= tolerance;
 }
 
 // ═══ Component ═══
@@ -231,7 +236,11 @@ export function DualSlider<K extends string = string>({
   const isDualMode = mode !== 'single';
   const modeColor = mode === 'walk' ? '#a5c4d4' : '#D4A520';
   const modeLabel = mode === 'walk' ? '⟷ walk' : '⟷ S&H';
-  const ghostPercent = ghostValue == null ? null : valueToPercent(clamp(ghostValue, info.min, info.max));
+  const previewTolerance = Math.max(info.step * 0.5, (info.max - info.min) * 1e-6);
+  const hasGhostShift = ghostValue != null
+    && Number.isFinite(ghostValue)
+    && !valuesNearlyEqual(clamp(ghostValue, info.min, info.max), clamp(value, info.min, info.max), previewTolerance);
+  const ghostPercent = hasGhostShift ? valueToPercent(clamp(ghostValue as number, info.min, info.max)) : null;
   const runtimeIndicator = useRuntimeSliderIndicator(String(paramKey), mode, walkPosition, isFlashing);
   const effectiveWalkPosition = runtimeIndicator.walkPosition ?? walkPosition;
   const effectiveIsFlashing = runtimeIndicator.isFlashing;
@@ -293,6 +302,10 @@ export function DualSlider<K extends string = string>({
     const fillPercent = sliderMax > sliderMin
       ? ((sliderValue - sliderMin) / (sliderMax - sliderMin)) * 100
       : 0;
+    const fillStop = getNativeRangeVisualLeft(fillPercent);
+    const ghostLeft = ghostPercent == null || !Number.isFinite(ghostPercent)
+      ? null
+      : getNativeRangeVisualLeft(ghostPercent);
 
     return (
       <div
@@ -338,16 +351,17 @@ export function DualSlider<K extends string = string>({
             className={sliderClassName}
             style={{
               ...sliderStyle,
+              ['--app-slider-thumb-size' as string]: APP_SLIDER_THUMB_SIZE_CSS,
               cursor: disabled ? 'not-allowed' : undefined,
-              background: `linear-gradient(to right, ${fillColor} 0%, ${fillColor} ${fillPercent}%, rgba(255,255,255,0.2) ${fillPercent}%, rgba(255,255,255,0.2) 100%)`,
+              background: `linear-gradient(to right, ${fillColor} 0%, ${fillColor} ${fillStop}, rgba(255,255,255,0.2) ${fillStop}, rgba(255,255,255,0.2) 100%)`,
             }}
             title="Double-click or long-press to cycle mode"
           />
-          {ghostPercent !== null && Number.isFinite(ghostPercent) && (
+          {ghostLeft !== null && (
             <div
               style={{
                 position: 'absolute',
-                left: `${ghostPercent}%`,
+                left: ghostLeft,
                 top: 'calc(50% + 1px)',
                 width: '2px',
                 height: '16px',
@@ -375,6 +389,52 @@ export function DualSlider<K extends string = string>({
   const currentValue = dualRange
     ? dualRange.min + (effectiveWalkPosition ?? 0.5) * (dualRange.max - dualRange.min)
     : value;
+  const translatedGhostRange = dualRange && hasGhostShift
+    ? (() => {
+        const clampedGhost = clamp(ghostValue as number, info.min, info.max);
+        const clampedValue = clamp(value, info.min, info.max);
+        let shiftedMin: number;
+        let shiftedMax: number;
+
+        if (logarithmic && clampedValue > 0) {
+          const ratio = clampedGhost / clampedValue;
+          shiftedMin = dualRange.min * ratio;
+          shiftedMax = dualRange.max * ratio;
+        } else {
+          const delta = clampedGhost - clampedValue;
+          shiftedMin = dualRange.min + delta;
+          shiftedMax = dualRange.max + delta;
+        }
+
+        if (shiftedMin < info.min) {
+          shiftedMax += info.min - shiftedMin;
+          shiftedMin = info.min;
+        }
+        if (shiftedMax > info.max) {
+          shiftedMin -= shiftedMax - info.max;
+          shiftedMax = info.max;
+        }
+
+        shiftedMin = clamp(shiftedMin, info.min, info.max);
+        shiftedMax = clamp(shiftedMax, info.min, info.max);
+
+        const quantizedMin = quantizeFn(paramKey, shiftedMin);
+        const quantizedMax = quantizeFn(paramKey, shiftedMax);
+        const nextRange = quantizedMin <= quantizedMax
+          ? { min: quantizedMin, max: quantizedMax }
+          : { min: quantizedMax, max: quantizedMin };
+        return valuesNearlyEqual(nextRange.min, dualRange.min, previewTolerance)
+          && valuesNearlyEqual(nextRange.max, dualRange.max, previewTolerance)
+          ? null
+          : nextRange;
+      })()
+    : null;
+  const ghostMinPercent = translatedGhostRange == null
+    ? null
+    : valueToPercent(clamp(translatedGhostRange.min, info.min, info.max));
+  const ghostMaxPercent = translatedGhostRange == null
+    ? null
+    : valueToPercent(clamp(translatedGhostRange.max, info.min, info.max));
 
   return (
     <div
@@ -465,7 +525,41 @@ export function DualSlider<K extends string = string>({
             } : {}),
           }}
         />
-        {ghostPercent !== null && Number.isFinite(ghostPercent) && (
+        {ghostMinPercent !== null && Number.isFinite(ghostMinPercent) && (
+          <div
+            style={{
+              position: 'absolute',
+              left: `${ghostMinPercent}%`,
+              top: 'calc(50% + 1px)',
+              width: '2px',
+              height: '16px',
+              transform: 'translate(-50%, -50%)',
+              borderRadius: '999px',
+              background: 'rgba(255, 226, 150, 0.98)',
+              boxShadow: '0 0 8px rgba(255, 214, 120, 0.7)',
+              pointerEvents: 'none',
+              zIndex: 3,
+            }}
+          />
+        )}
+        {ghostMaxPercent !== null && Number.isFinite(ghostMaxPercent) && (
+          <div
+            style={{
+              position: 'absolute',
+              left: `${ghostMaxPercent}%`,
+              top: 'calc(50% + 1px)',
+              width: '2px',
+              height: '16px',
+              transform: 'translate(-50%, -50%)',
+              borderRadius: '999px',
+              background: 'rgba(255, 226, 150, 0.98)',
+              boxShadow: '0 0 8px rgba(255, 214, 120, 0.7)',
+              pointerEvents: 'none',
+              zIndex: 3,
+            }}
+          />
+        )}
+        {translatedGhostRange == null && ghostPercent !== null && Number.isFinite(ghostPercent) && (
           <div
             style={{
               position: 'absolute',

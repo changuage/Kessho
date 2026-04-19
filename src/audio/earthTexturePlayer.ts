@@ -85,6 +85,8 @@ type EarthTextureSchedulerGroup = {
 };
 
 export class EarthTexturePlayer {
+  private static readonly minimumQueuedSlices = 4;
+
   private static readonly decodedBufferCache = new WeakMap<AudioContext, Map<string, AudioBuffer>>();
   private static readonly loadPromiseCache = new WeakMap<AudioContext, Map<string, Promise<AudioBuffer | null>>>();
   private static readonly schedulerGroups = new WeakMap<AudioContext, EarthTextureSchedulerGroup>();
@@ -314,7 +316,7 @@ export class EarthTexturePlayer {
       this.nextStartTime = this.ctx.currentTime + 0.025;
     }
 
-    while (this.nextStartTime < horizon) {
+    while (this.nextStartTime < horizon || this.activeSlices.size < EarthTexturePlayer.minimumQueuedSlices) {
       const scheduled = this.scheduleSlice(this.nextStartTime);
       if (!scheduled) break;
       this.nextStartTime += this.computeStrideSeconds(scheduled.outputDuration, scheduled.fade);
@@ -386,6 +388,14 @@ export class EarthTexturePlayer {
         env.disconnect();
       } catch {
         // Ignore.
+      }
+
+      if (this.running) {
+        if (this.nextStartTime <= this.ctx.currentTime) {
+          this.nextStartTime = this.ctx.currentTime + 0.025;
+        }
+        this.scheduleAhead();
+        this.registerWithSharedScheduler();
       }
     };
 

@@ -207,6 +207,19 @@ function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
 }
 
+function computeAttackTransientScale(attackSeconds: number): number {
+  const attack = Math.max(0, attackSeconds);
+  const fullTransientAttack = 0.012;
+  const nearMutedAttack = 0.18;
+
+  if (attack <= fullTransientAttack) return 1;
+  if (attack >= nearMutedAttack) return 0.04;
+
+  const normalized = (attack - fullTransientAttack) / (nearMutedAttack - fullTransientAttack);
+  const eased = normalized * normalized * (3 - 2 * normalized);
+  return 1 - eased * 0.96;
+}
+
 /**
  * Interpolate between two Lead4opFM presets at morph position t (0..1).
  * Algorithm is handled discretely based on algorithmMode.
@@ -1082,7 +1095,8 @@ export function playLead4opFMNote(
   if (noiseBufferSource) noiseBufferSource.start(now);
   if (transientGain) {
     const noiseDur = morphed.transientDuration / 1000;
-    const totalTransient = (morphed.transientClick + morphed.transientNoise) * velocity * 0.8;
+    const transientAttackScale = computeAttackTransientScale(baseAttack);
+    const totalTransient = (morphed.transientClick + morphed.transientNoise) * velocity * 0.8 * transientAttackScale;
     transientGain.gain.setValueAtTime(totalTransient, now);
     transientGain.gain.exponentialRampToValueAtTime(0.001, now + noiseDur + 0.01);
     allNodes.push(transientGain);

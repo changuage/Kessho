@@ -237,7 +237,7 @@ function makeGlobalKey(prefix: string, suffix: string): keyof SliderState {
 const RANGE_DEFAULTS: Record<RangeSubLaneKind, { min: number; max: number }> = {
   expression: { min: 0.75, max: 1 },
   morph: { min: 0.25, max: 0.75 },
-  distance: { min: 0.25, max: 0.75 },
+  distance: { min: 0, max: 1 },
 };
 
 function isRangeSubLane(lane: SubLaneKind): lane is RangeSubLaneKind {
@@ -308,6 +308,9 @@ function deriveRangeFromValues(
   const max = Math.max(...numeric);
   if (max - min > 0.0005) {
     return { min, max };
+  }
+  if (lane === 'distance' && (numeric[0] ?? 0) <= 0.0005) {
+    return defaults;
   }
   const center = numeric[0] ?? ((defaults.min + defaults.max) * 0.5);
   const spread = lane === 'expression' ? 0.25 : 0.2;
@@ -524,7 +527,7 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
             : lane === 'morph' ? new Array(subSteps).fill(0)
             : lane === 'slice' ? new Array(subSteps).fill(0)
             : lane === 'reverse' ? new Array(subSteps).fill(0)
-            : new Array(subSteps).fill(0.5); // distance
+            : new Array(subSteps).fill(0); // distance
           (next[lane] as (number[] | null)[])[seqIdx] = defaults;
           return next;
         });
@@ -551,7 +554,7 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
       const existing = old[lane][seqIdx];
       if (!existing) return old; // no data to resize
       const next = { ...old, [lane]: [...old[lane]] };
-      const defaultVal = lane === 'pitch' ? 0 : lane === 'expression' ? 1.0 : lane === 'morph' ? 0 : lane === 'slice' ? 0 : lane === 'reverse' ? 0 : 0.5;
+      const defaultVal = lane === 'pitch' ? 0 : lane === 'expression' ? 1.0 : lane === 'morph' ? 0 : lane === 'slice' ? 0 : lane === 'reverse' ? 0 : 0;
       const resized = [...existing];
       if (resized.length < newSteps) {
         resized.push(...new Array(newSteps - resized.length).fill(defaultVal));
@@ -828,7 +831,7 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
           steps: subLaneStates[idx]?.distance.steps ?? 4,
           direction: subLaneStates[idx]?.distance.direction ?? 'forward',
           _ppForward: true,
-          values: stepOverrides.distance[idx] ?? new Array(subLaneStates[idx]?.distance.steps ?? 4).fill(0.5),
+          values: stepOverrides.distance[idx] ?? new Array(subLaneStates[idx]?.distance.steps ?? 4).fill(0),
         },
         slice: {
           enabled: subLaneStates[idx]?.slice.enabled ?? false,
@@ -903,7 +906,7 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
       setStepOverrides((prev) => {
         const next = { ...prev, [lane]: [...prev[lane]] };
         const subSteps = subLaneStates[laneIdx]?.[subLane]?.steps ?? 5;
-        const defaultValue = lane === 'pitch' ? 0 : lane === 'expression' ? 1.0 : lane === 'morph' ? 0 : lane === 'slice' ? 0 : lane === 'reverse' ? 0 : 0.5;
+        const defaultValue = lane === 'pitch' ? 0 : lane === 'expression' ? 1.0 : lane === 'morph' ? 0 : lane === 'slice' ? 0 : lane === 'reverse' ? 0 : 0;
         const targetLength = Math.max(subSteps, step + 1);
         const arr = next[lane][laneIdx]
           ? [...(next[lane][laneIdx] as number[])]

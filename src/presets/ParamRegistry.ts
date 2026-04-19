@@ -143,6 +143,10 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   pianoSustain:          { level: 3, scope: 'synth' },
   pianoHold:             { level: 3, scope: 'synth' },
   pianoRelease:          { level: 3, scope: 'synth' },
+  pianoDistance:         { level: 3, scope: 'synth' },
+  pianoPostLPF:          { level: 3, scope: 'synth' },
+  pianoStereoWidth:      { level: 3, scope: 'synth' },
+  pianoDiffuseSend:      { level: 3, scope: 'synth' },
 
   // ═══════════════════════════════════════════════════════════════════════
   // L3: Drums Source
@@ -436,6 +440,10 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   padModEnvDepth:        { level: 1, scope: 'pad1' },
   padModEnvDest:         { level: 1, scope: 'pad1' },
   padOscMix:             { level: 1, scope: 'pad1' },
+  padDistance:           { level: 1, scope: 'pad1' },
+  padPostLPF:            { level: 1, scope: 'pad1' },
+  padStereoWidth:        { level: 1, scope: 'pad1' },
+  padDiffuseSend:        { level: 1, scope: 'pad1' },
 
   // ═══════════════════════════════════════════════════════════════════════
   // L1: Pad 2 Engine
@@ -490,6 +498,10 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   pad2ModEnvRelease:     { level: 1, scope: 'pad2' },
   pad2ModEnvDepth:       { level: 1, scope: 'pad2' },
   pad2ModEnvDest:        { level: 1, scope: 'pad2' },
+  pad2Distance:          { level: 1, scope: 'pad2' },
+  pad2PostLPF:           { level: 1, scope: 'pad2' },
+  pad2StereoWidth:       { level: 1, scope: 'pad2' },
+  pad2DiffuseSend:       { level: 1, scope: 'pad2' },
 
   // ═══════════════════════════════════════════════════════════════════════
   // L1: Lead 1 Engine
@@ -503,6 +515,10 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   lead1Density:          { level: 1, scope: 'lead1' },
   lead1Octave:           { level: 1, scope: 'lead1' },
   lead1OctaveRange:      { level: 1, scope: 'lead1' },
+  lead1Distance:         { level: 1, scope: 'lead1' },
+  lead1PostLPF:          { level: 1, scope: 'lead1' },
+  lead1StereoWidth:      { level: 1, scope: 'lead1' },
+  lead1DiffuseSend:      { level: 1, scope: 'lead1' },
 
   // ═══════════════════════════════════════════════════════════════════════
   // L1: Lead 2 Engine
@@ -513,6 +529,10 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   lead2Sustain:          { level: 1, scope: 'lead2' },
   lead2Hold:             { level: 1, scope: 'lead2' },
   lead2Release:          { level: 1, scope: 'lead2' },
+  lead2Distance:         { level: 1, scope: 'lead2' },
+  lead2PostLPF:          { level: 1, scope: 'lead2' },
+  lead2StereoWidth:      { level: 1, scope: 'lead2' },
+  lead2DiffuseSend:      { level: 1, scope: 'lead2' },
 
   // ═══════════════════════════════════════════════════════════════════════
   // L1: Delay A Engine
@@ -1036,7 +1056,7 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
 // Runtime assertion — catches accidental registry drift.
 if (typeof globalThis !== 'undefined') {
   const count = Object.keys(PARAM_REGISTRY).length;
-  if (count !== 845) {
-    console.error(`PARAM_REGISTRY has ${count} entries, expected 845`);
+  if (count !== 865) {
+    console.error(`PARAM_REGISTRY has ${count} entries, expected 865`);
   }
 }

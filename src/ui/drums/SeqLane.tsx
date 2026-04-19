@@ -200,7 +200,7 @@ const SeqLane: React.FC<SeqLaneProps> = ({
     if (lane === 'pitch') return sequencer.pitch.offsets[step % sequencer.pitch.offsets.length] ?? 0;
     if (lane === 'expression') return sequencer.expression.velocities[step % sequencer.expression.velocities.length] ?? 0;
     if (lane === 'morph') return sequencer.morph.values[step % sequencer.morph.values.length] ?? 0.5;
-    if (lane === 'distance') return sequencer.distance.values[step % sequencer.distance.values.length] ?? 0.5;
+    if (lane === 'distance') return sequencer.distance.values[step % sequencer.distance.values.length] ?? 0;
     if (lane === 'slice') return sequencer.slice.values[step % sequencer.slice.values.length] ?? 0;
     if (lane === 'reverse') return sequencer.reverse.values[step % sequencer.reverse.values.length] ?? 0;
     return sequencer.trigger.pattern[step] ? 1 : 0;
@@ -230,8 +230,8 @@ const SeqLane: React.FC<SeqLaneProps> = ({
   };
 
   const supportsRangeMode = lane === 'expression' || lane === 'morph' || lane === 'distance';
-  const normalizedRangeMin = clampUnit(rangeMin ?? (lane === 'expression' ? 0.75 : 0.25));
-  const normalizedRangeMax = clampUnit(rangeMax ?? (lane === 'expression' ? 1 : 0.75));
+  const normalizedRangeMin = clampUnit(rangeMin ?? (lane === 'expression' ? 0.75 : lane === 'distance' ? 0 : 0.25));
+  const normalizedRangeMax = clampUnit(rangeMax ?? (lane === 'expression' ? 1 : lane === 'distance' ? 1 : 0.75));
   const rangeLow = Math.min(normalizedRangeMin, normalizedRangeMax);
   const rangeHigh = Math.max(normalizedRangeMin, normalizedRangeMax);
 
@@ -537,7 +537,9 @@ const SeqLane: React.FC<SeqLaneProps> = ({
                       const startNorm = isNotes
                         ? normalizeNoteDegreeOffset(off)
                         : Math.max(0, Math.min(1, (off + 24) / 48));
+                      let dragged = false;
                       const onMove = (ev: PointerEvent) => {
+                        if (Math.abs(ev.clientY - startY) > 5) dragged = true;
                         const rect = wrap.getBoundingClientRect();
                         const dragRange = rect.height * SEQ_BIPOLAR_DRAG_DISTANCE_FACTOR;
                         const pct = Math.max(0, Math.min(1, startNorm + (startY - ev.clientY) / dragRange));
@@ -552,6 +554,9 @@ const SeqLane: React.FC<SeqLaneProps> = ({
                         wrap.removeEventListener('pointermove', onMove);
                         wrap.removeEventListener('pointerup', onUp);
                         setDragPopup(null);
+                        if (!dragged && inRange) {
+                          onSelectStep?.(step);
+                        }
                       };
                       wrap.addEventListener('pointermove', onMove);
                       wrap.addEventListener('pointerup', onUp);
@@ -591,7 +596,9 @@ const SeqLane: React.FC<SeqLaneProps> = ({
                       wrap.setPointerCapture(e.pointerId);
                       const startY = e.clientY;
                       const startVal = Math.max(0, Math.min(1, vel));
+                      let dragged = false;
                       const onMove = (ev: PointerEvent) => {
+                        if (Math.abs(ev.clientY - startY) > 5) dragged = true;
                         const rect = wrap.getBoundingClientRect();
                         const dragRange = rect.height * SEQ_BIPOLAR_DRAG_DISTANCE_FACTOR;
                         const raw = Math.max(0, Math.min(1, startVal + (startY - ev.clientY) / dragRange));
@@ -603,6 +610,9 @@ const SeqLane: React.FC<SeqLaneProps> = ({
                         wrap.removeEventListener('pointermove', onMove);
                         wrap.removeEventListener('pointerup', onUp);
                         setDragPopup(null);
+                        if (!dragged && inRange) {
+                          onSelectStep?.(step);
+                        }
                       };
                       wrap.addEventListener('pointermove', onMove);
                       wrap.addEventListener('pointerup', onUp);
@@ -672,9 +682,11 @@ const SeqLane: React.FC<SeqLaneProps> = ({
                       wrap.setPointerCapture(e.pointerId);
                       const startY = e.clientY;
                       const startVal = Math.max(0, Math.min(1, val));
+                      let dragged = false;
                       const onMove = (ev: PointerEvent) => {
+                        if (Math.abs(ev.clientY - startY) > 5) dragged = true;
                         const rect = wrap.getBoundingClientRect();
-                        const dragRange = rect.height * SEQ_SUBSEQ_DRAG_DISTANCE_FACTOR;
+                        const dragRange = rect.height * SEQ_BIPOLAR_DRAG_DISTANCE_FACTOR;
                         const raw = Math.max(0, Math.min(1, startVal + (startY - ev.clientY) / dragRange));
                         const snapVal = Math.round(raw * 40) / 40;
                         onChangeValue?.(step, snapVal);
@@ -687,11 +699,14 @@ const SeqLane: React.FC<SeqLaneProps> = ({
                         wrap.removeEventListener('pointermove', onMove);
                         wrap.removeEventListener('pointerup', onUp);
                         setDragPopup(null);
+                        if (!dragged && inRange) {
+                          onSelectStep?.(step);
+                        }
                       };
                       wrap.addEventListener('pointermove', onMove);
                       wrap.addEventListener('pointerup', onUp);
                     }}
-                    onDoubleClick={() => onChangeValue?.(step, 0.5)}
+                    onDoubleClick={() => onChangeValue?.(step, 0)}
                   >
                     {isSelected && (
                       <span className="seq-step-cursor" style={cursorMarkerStyle} aria-hidden="true">
@@ -775,24 +790,18 @@ const SeqLane: React.FC<SeqLaneProps> = ({
               );
             }
 
-            /* ── Distance bar: bipolar 0..1, center=0.5 ── */
+            /* ── Distance bar: 0..1, same box treatment as expression ── */
             {
               const val = value;
-              let barStyle: React.CSSProperties;
-              if (val >= 0.5) {
-                const heightPct = (val - 0.5) * 100;
-                barStyle = { top: `${50 - heightPct}%`, height: `${heightPct}%` };
-              } else {
-                const heightPct = (0.5 - val) * 100;
-                barStyle = { top: '50%', height: `${heightPct}%` };
-              }
               const pct = Math.round(val * 100);
+              const alpha = (0.12 + val * 0.88).toFixed(3);
+              const bright = (0.45 + val * 0.55).toFixed(3);
 
               return (
                 <div key={step} className="seq-step">
                   <span className="seq-step-num" style={{ color: '#2dd4bf' }}>{isBeatHead ? step + 1 : ''}</span>
                   <div
-                    className={`seq-dist-bar-wrap${isPlayhead ? ' playing' : ''}${isSelected ? ' selected' : ''}${!inRange ? ' inactive' : ''}`}
+                    className={`seq-vel-bar-wrap${isPlayhead ? ' playing' : ''}${isSelected ? ' selected' : ''}${!inRange ? ' inactive' : ''}`}
                     style={{ touchAction: 'none' } as React.CSSProperties}
                     onPointerDown={(e) => {
                       e.preventDefault();
@@ -800,9 +809,11 @@ const SeqLane: React.FC<SeqLaneProps> = ({
                       wrap.setPointerCapture(e.pointerId);
                       const startY = e.clientY;
                       const startVal = Math.max(0, Math.min(1, val));
+                      let dragged = false;
                       const onMove = (ev: PointerEvent) => {
+                        if (Math.abs(ev.clientY - startY) > 5) dragged = true;
                         const rect = wrap.getBoundingClientRect();
-                        const dragRange = rect.height * SEQ_SUBSEQ_DRAG_DISTANCE_FACTOR;
+                        const dragRange = rect.height * SEQ_BIPOLAR_DRAG_DISTANCE_FACTOR;
                         const raw = Math.max(0, Math.min(1, startVal + (startY - ev.clientY) / dragRange));
                         const snapVal = Math.round(raw * 20) / 20;
                         onChangeValue?.(step, snapVal);
@@ -812,22 +823,29 @@ const SeqLane: React.FC<SeqLaneProps> = ({
                         wrap.removeEventListener('pointermove', onMove);
                         wrap.removeEventListener('pointerup', onUp);
                         setDragPopup(null);
+                        if (!dragged && inRange) {
+                          onSelectStep?.(step);
+                        }
                       };
                       wrap.addEventListener('pointermove', onMove);
                       wrap.addEventListener('pointerup', onUp);
                     }}
-                    onDoubleClick={() => onChangeValue?.(step, 0.5)}
+                    onDoubleClick={() => onChangeValue?.(step, 0)}
                   >
                     {isSelected && (
                       <span className="seq-step-cursor" style={cursorMarkerStyle} aria-hidden="true">
                         {selectedStepLabel}
                       </span>
                     )}
-                    <div className="dist-center" />
-                    <div className="dist-bar" style={barStyle} />
-                    <div className="dist-val" style={val >= 0.5 ? { top: 2 } : { bottom: 2 }}>{pct}%</div>
-                    <div className="dist-label-max">1</div>
-                    <div className="dist-label-min">0</div>
+                    <div
+                      className="seq-vel-bar"
+                      style={{
+                        height: `${val * 100}%`,
+                        background: `rgba(45,212,191,${alpha})`,
+                        filter: `brightness(${bright})`,
+                      }}
+                    />
+                    <div className="seq-vel-label">{pct}%</div>
                   </div>
                 </div>
               );

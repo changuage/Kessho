@@ -369,6 +369,10 @@ export interface SliderState {
 
   // Osc Mix — crossfade between Osc A and Osc B levels
   padOscMix: number;            // 0..1 (0=A only, 0.5=both full, 1=B only)
+  padDistance: number;          // 0..1 expressive placement macro
+  padPostLPF: number;           // 40..8000 Hz post-voice LPF
+  padStereoWidth: number;       // 0..1 post-voice stereo width
+  padDiffuseSend: number;       // 0..1 diffuse room send
 
   // ─── Pad Synth 2 ───
   pad2Enabled: boolean;
@@ -440,6 +444,10 @@ export interface SliderState {
   pad2Morph: number;
   pad2MorphAuto: boolean;
   pad2MorphSpeed: number;
+  pad2Distance: number;
+  pad2PostLPF: number;          // 40..8000 Hz post-voice LPF
+  pad2StereoWidth: number;
+  pad2DiffuseSend: number;
 
   // Space
   reverbEnabled: boolean;     // on/off toggle for reverb (saves CPU when off)
@@ -548,6 +556,10 @@ export interface SliderState {
   lead1AlgorithmMode: 'snap' | 'presetA'; // snap=switch at 50%, presetA=always use A's
   lead1Level: number;         // 0..1 level for lead 1
   lead1ReverbSend: number;    // 0..1 step 0.01 - how much lead 1 goes to reverb
+  lead1Distance: number;      // 0..1 expressive placement macro
+  lead1PostLPF: number;       // 40..8000 Hz post-voice LPF
+  lead1StereoWidth: number;   // 0..1 post-voice stereo width
+  lead1DiffuseSend: number;   // 0..1 diffuse room send
 
   // Lead 2 — 4op FM preset morph (C ↔ D)
   lead2Enabled: boolean;      // on/off (default off)
@@ -566,6 +578,10 @@ export interface SliderState {
   lead2Sustain: number;        // 0..1 level
   lead2Hold: number;           // 0..4 seconds - how long to hold at sustain level
   lead2Release: number;        // 0.01..8 seconds
+  lead2Distance: number;
+  lead2PostLPF: number;       // 40..8000 Hz post-voice LPF
+  lead2StereoWidth: number;
+  lead2DiffuseSend: number;
 
   // Piano sampler
   pianoEnabled: boolean;
@@ -575,6 +591,10 @@ export interface SliderState {
   pianoHold: number;
   pianoRelease: number;
   pianoReverbSend: number;
+  pianoDistance: number;
+  pianoPostLPF: number;       // 40..8000 Hz post-voice LPF
+  pianoStereoWidth: number;
+  pianoDiffuseSend: number;
 
   leadVibratoDepth: number;     // 0..1 - vibrato depth (range in dualSliderRanges)
   leadVibratoRate: number;      // 0..1 - vibrato rate (range in dualSliderRanges)
@@ -1346,6 +1366,10 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'padMorphAuto',
   'padMorphSpeed',
   'padOscMix',
+  'padDistance',
+  'padPostLPF',
+  'padStereoWidth',
+  'padDiffuseSend',
   // Pad Synth 2
   'pad2Enabled',
   'pad2VoiceAssign',
@@ -1405,6 +1429,10 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'pad2Morph',
   'pad2MorphAuto',
   'pad2MorphSpeed',
+  'pad2Distance',
+  'pad2PostLPF',
+  'pad2StereoWidth',
+  'pad2DiffuseSend',
   'reverbEngine',
   'reverbType',
   'reverbQuality',
@@ -1494,6 +1522,10 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'lead1AlgorithmMode',
   'lead1Level',
   'lead1ReverbSend',
+  'lead1Distance',
+  'lead1PostLPF',
+  'lead1StereoWidth',
+  'lead1DiffuseSend',
   // Lead 2 morph
   'lead2Enabled',
   'lead2PresetC',
@@ -1510,6 +1542,10 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'lead2Decay',
   'lead2Sustain',
   'lead2Release',
+  'lead2Distance',
+  'lead2PostLPF',
+  'lead2StereoWidth',
+  'lead2DiffuseSend',
   'pianoEnabled',
   'pianoAttack',
   'pianoDecay',
@@ -1517,6 +1553,10 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'pianoHold',
   'pianoRelease',
   'pianoReverbSend',
+  'pianoDistance',
+  'pianoPostLPF',
+  'pianoStereoWidth',
+  'pianoDiffuseSend',
   'pianoLevel',
   'pianoDelayASend',
   'pianoDelayBSend',
@@ -2068,6 +2108,10 @@ export const DEFAULT_STATE: SliderState = {
   padMorphAuto: false,
   padMorphSpeed: 8,
   padOscMix: 0.5,  // Center = both at full level
+  padDistance: 0,
+  padPostLPF: 18000,
+  padStereoWidth: 1,
+  padDiffuseSend: 0,
 
   // Pad Synth 2
   pad2Enabled: false,
@@ -2128,6 +2172,10 @@ export const DEFAULT_STATE: SliderState = {
   pad2Morph: 0,
   pad2MorphAuto: false,
   pad2MorphSpeed: 8,
+  pad2Distance: 0,
+  pad2PostLPF: 18000,
+  pad2StereoWidth: 1,
+  pad2DiffuseSend: 0,
 
   // Space
   reverbEnabled: true,
@@ -2235,6 +2283,10 @@ export const DEFAULT_STATE: SliderState = {
   lead1AlgorithmMode: 'snap' as const,
   lead1Level: 0.8,
   lead1ReverbSend: 0.5,
+  lead1Distance: 0,
+  lead1PostLPF: 18000,
+  lead1StereoWidth: 1,
+  lead1DiffuseSend: 0,
   // Lead 2 — 4op FM preset morph
   lead2Enabled: false,
   lead2PresetC: 'soft_rhodes',
@@ -2252,6 +2304,10 @@ export const DEFAULT_STATE: SliderState = {
   lead2Sustain: 0.3,
   lead2Hold: 0.5,
   lead2Release: 2.0,
+  lead2Distance: 0,
+  lead2PostLPF: 18000,
+  lead2StereoWidth: 1,
+  lead2DiffuseSend: 0,
   pianoEnabled: false,
   pianoAttack: 0.005,
   pianoDecay: 0.65,
@@ -2259,6 +2315,10 @@ export const DEFAULT_STATE: SliderState = {
   pianoHold: 0.2,
   pianoRelease: 1.4,
   pianoReverbSend: 0.35,
+  pianoDistance: 0,
+  pianoPostLPF: 16000,
+  pianoStereoWidth: 0.85,
+  pianoDiffuseSend: 0,
   leadVibratoDepth: 0,
   leadVibratoRate: 0,
   leadGlide: 0,
@@ -2979,6 +3039,10 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   padModEnvDepth: { min: -1, max: 1, step: 0.01 },
   padMorphSpeed: { min: 1, max: 32, step: 1 },
   padOscMix: { min: 0, max: 1, step: 0.01 },
+  padDistance: { min: 0, max: 1, step: 0.01 },
+  padPostLPF: { min: 40, max: 8000, step: 10 },
+  padStereoWidth: { min: 0, max: 1, step: 0.01 },
+  padDiffuseSend: { min: 0, max: 1, step: 0.01 },
   // Pad Synth 2
   pad2VoiceAssign: { min: 0, max: 63, step: 1 },
   pad2Attack: { min: 0.01, max: 16, step: 0.01 },
@@ -3019,6 +3083,10 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   pad2ModEnvDepth: { min: -1, max: 1, step: 0.01 },
   pad2Morph: { min: 0, max: 1, step: 0.01 },
   pad2MorphSpeed: { min: 1, max: 32, step: 1 },
+  pad2Distance: { min: 0, max: 1, step: 0.01 },
+  pad2PostLPF: { min: 40, max: 8000, step: 10 },
+  pad2StereoWidth: { min: 0, max: 1, step: 0.01 },
+  pad2DiffuseSend: { min: 0, max: 1, step: 0.01 },
   reverbLevel: { min: 0, max: 1, step: 0.01 },
   reverbDecay: { min: 0, max: 1, step: 0.01 },
   reverbSize: { min: 0.5, max: 10, step: 0.1 },
@@ -3241,6 +3309,10 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   lead1MorphSpeed: { min: 1, max: 32, step: 1 },
   lead1Level: { min: 0, max: 1, step: 0.01 },
   lead1ReverbSend: { min: 0, max: 1, step: 0.01 },
+  lead1Distance: { min: 0, max: 1, step: 0.01 },
+  lead1PostLPF: { min: 40, max: 8000, step: 10 },
+  lead1StereoWidth: { min: 0, max: 1, step: 0.01 },
+  lead1DiffuseSend: { min: 0, max: 1, step: 0.01 },
   lead2Morph: { min: 0, max: 1, step: 0.01 },
   lead2MorphSpeed: { min: 1, max: 32, step: 1 },
   lead2Level: { min: 0, max: 1, step: 0.01 },
@@ -3250,6 +3322,10 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   lead2Sustain: { min: 0, max: 1, step: 0.01 },
   lead2Hold: { min: 0, max: 4, step: 0.01 },
   lead2Release: { min: 0.01, max: 8, step: 0.01 },
+  lead2Distance: { min: 0, max: 1, step: 0.01 },
+  lead2PostLPF: { min: 40, max: 8000, step: 10 },
+  lead2StereoWidth: { min: 0, max: 1, step: 0.01 },
+  lead2DiffuseSend: { min: 0, max: 1, step: 0.01 },
   pianoLevel: { min: 0, max: 1, step: 0.01 },
   pianoAttack: { min: 0.001, max: 2, step: 0.001 },
   pianoDecay: { min: 0.01, max: 4, step: 0.01 },
@@ -3257,6 +3333,10 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   pianoHold: { min: 0, max: 4, step: 0.01 },
   pianoRelease: { min: 0.01, max: 8, step: 0.01 },
   pianoReverbSend: { min: 0, max: 1, step: 0.01 },
+  pianoDistance: { min: 0, max: 1, step: 0.01 },
+  pianoPostLPF: { min: 40, max: 8000, step: 10 },
+  pianoStereoWidth: { min: 0, max: 1, step: 0.01 },
+  pianoDiffuseSend: { min: 0, max: 1, step: 0.01 },
   pianoDelayASend: { min: 0, max: 1, step: 0.01 },
   pianoDelayBSend: { min: 0, max: 1, step: 0.01 },
   leadVibratoDepth: { min: 0, max: 1, step: 0.01 },

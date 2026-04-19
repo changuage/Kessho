@@ -72,6 +72,7 @@ import type { StepOverrides, SubLaneKind, SubLaneState, PitchSettings, EvolveCon
 import type { PitchBindingMode } from './audio/drumSeqTypes';
 import type { SliderPageId } from './ui/sliderHelpCatalog';
 import { getSliderValueSlotWidthCh } from './ui/sliderValueLayout';
+import { APP_SLIDER_THUMB_SIZE_CSS, getNativeRangeVisualLeft } from './ui/nativeRangeGeometry';
 import { isIOSLikeDevice, isMobileDevice } from './platform';
 import { useVisibleInterval } from './ui/hooks/useVisibleInterval';
 import {
@@ -1116,6 +1117,10 @@ const Slider: React.FC<SliderProps> = ({
     : logarithmic
       ? logToLinear(Math.max(info.min, Math.min(info.max, ghostValue)), info.min, info.max) * 100
       : ((Math.max(info.min, Math.min(info.max, ghostValue)) - info.min) / (info.max - info.min)) * 100;
+  const fillStop = getNativeRangeVisualLeft(fillPercent);
+  const ghostLeft = ghostPercent == null || !Number.isFinite(ghostPercent)
+    ? null
+    : getNativeRangeVisualLeft(ghostPercent);
 
   return (
     <div
@@ -1155,15 +1160,16 @@ const Slider: React.FC<SliderProps> = ({
           className="app-slider"
           style={{
             ...styles.slider,
+            ['--app-slider-thumb-size' as string]: APP_SLIDER_THUMB_SIZE_CSS,
             cursor: disabled ? 'not-allowed' : undefined,
-            background: `linear-gradient(to right, rgba(160,200,220,0.5) 0%, rgba(160,200,220,0.5) ${fillPercent}%, rgba(255,255,255,0.2) ${fillPercent}%, rgba(255,255,255,0.2) 100%)`,
+            background: `linear-gradient(to right, rgba(160,200,220,0.5) 0%, rgba(160,200,220,0.5) ${fillStop}, rgba(255,255,255,0.2) ${fillStop}, rgba(255,255,255,0.2) 100%)`,
           }}
         />
-        {ghostPercent !== null && Number.isFinite(ghostPercent) && (
+        {ghostLeft !== null && (
           <div
             style={{
               position: 'absolute',
-              left: `${ghostPercent}%`,
+              left: ghostLeft,
               top: 'calc(50% + 1px)',
               width: '2px',
               height: '16px',
@@ -2513,6 +2519,46 @@ const App: React.FC = () => {
     };
   }, [activeTab, uiMode]);
 
+  useEffect(() => {
+    const distanceKeys = ['lead1Distance', 'lead2Distance', 'padDistance', 'pad2Distance', 'pianoDistance'] as const;
+    const lastDistanceUpdate = {
+      lead1Distance: 0,
+      lead2Distance: 0,
+      padDistance: 0,
+      pad2Distance: 0,
+      pianoDistance: 0,
+    } as Record<typeof distanceKeys[number], number>;
+    const commitDistance = (key: typeof distanceKeys[number], value: number) => {
+      if (uiMode !== 'advanced' || activeTab !== 'synth' || document.visibilityState !== 'visible') return;
+      const now = performance.now();
+      if (now - lastDistanceUpdate[key] < 66) return;
+      lastDistanceUpdate[key] = now;
+      mergeRuntimeTriggerPositions({ [key]: value });
+      mergeRuntimeValues({ [key]: value });
+    };
+    audioEngine.setLeadDistanceCallback((distance) => {
+      if (distance.lead1 >= 0) commitDistance('lead1Distance', distance.lead1);
+      if (distance.lead2 >= 0) commitDistance('lead2Distance', distance.lead2);
+    });
+    audioEngine.setPadDistanceTriggerCallback((distance) => {
+      commitDistance('padDistance', distance);
+    });
+    audioEngine.setPad2DistanceTriggerCallback((distance) => {
+      commitDistance('pad2Distance', distance);
+    });
+    audioEngine.setPianoDistanceTriggerCallback((distance) => {
+      commitDistance('pianoDistance', distance);
+    });
+    return () => {
+      audioEngine.setLeadDistanceCallback(null as unknown as (distance: { lead1: number; lead2: number }) => void);
+      audioEngine.setPadDistanceTriggerCallback(null as unknown as (distance: number) => void);
+      audioEngine.setPad2DistanceTriggerCallback(null as unknown as (distance: number) => void);
+      audioEngine.setPianoDistanceTriggerCallback(null as unknown as (distance: number) => void);
+      removeRuntimeTriggerPositions(distanceKeys);
+      removeRuntimeValues(distanceKeys);
+    };
+  }, [activeTab, uiMode]);
+
   // Lead delay trigger callback
   useEffect(() => {
     audioEngine.setLeadDelayCallback((delay) => {
@@ -2687,6 +2733,11 @@ const App: React.FC = () => {
     removeRuntimeValues([
       'lead1Morph',
       'lead2Morph',
+      'lead1Distance',
+      'lead2Distance',
+      'padDistance',
+      'pad2Distance',
+      'pianoDistance',
       'synthEuclid1NoteMin',
       'synthEuclid1NoteMax',
       'synthEuclid2NoteMin',
@@ -2695,6 +2746,13 @@ const App: React.FC = () => {
       'synthEuclid3NoteMax',
       'synthEuclid4NoteMin',
       'synthEuclid4NoteMax',
+    ]);
+    removeRuntimeTriggerPositions([
+      'lead1Distance',
+      'lead2Distance',
+      'padDistance',
+      'pad2Distance',
+      'pianoDistance',
     ]);
   }, [playbackIsRunning]);
 

@@ -67,10 +67,35 @@ import {
 import { SEQUENCER_VISUAL_SYNC_OFFSET_MS } from './sequencerVisualSync';
 import type { StemRecordTrackId } from './recordingTracks';
 import { getIndexedDelayDivisionValue, getStateValueFromSliderNumber, quantize, type IndexedDelayDivisionKey, type SliderState } from '../ui/state';
+import {
+  applyDistanceValue,
+  applyLeadDistanceEnvelope,
+  applyPadDistanceToState,
+  applyPianoDistanceEnvelope,
+  getVoiceDistanceValue,
+} from './distanceMacro';
 export interface RecordableTrackSource {
   node: AudioNode | null;
   outputIndex?: number;
 }
+
+type StereoWidthProcessor = {
+  input: GainNode;
+  splitter: ChannelSplitterNode;
+  merger: ChannelMergerNode;
+  output: GainNode;
+  leftDirectGain: GainNode;
+  rightDirectGain: GainNode;
+  leftCrossGain: GainNode;
+  rightCrossGain: GainNode;
+};
+
+type VoiceSpatialChain = {
+  postLpf: BiquadFilterNode;
+  width: StereoWidthProcessor;
+  diffuseSend: GainNode;
+  output: GainNode;
+};
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -155,6 +180,7 @@ type EarthFadeState = {
 type ActivePianoVoice = {
   source: AudioBufferSourceNode;
   gain: GainNode;
+  filter?: BiquadFilterNode | null;
 };
 
 type RuntimeWalkRange = {
@@ -580,6 +606,8 @@ export class AudioEngine {
   private voicesStarted = false;
   private reverbNode: AudioWorkletNode | null = null;
   private reverbOutputGain: GainNode | null = null;
+  private reverbPreCompressor: DynamicsCompressorNode | null = null;
+  private reverbPreMakeupGain: GainNode | null = null;
 
   // Spectral Freeze (STFT WASM)
   private spectralFreezeNode: AudioWorkletNode | null = null;
@@ -592,6 +620,14 @@ export class AudioEngine {
   private pad1ReverbSend: GainNode | null = null;
   private pad2ReverbSend: GainNode | null = null;
   private synthDirect: GainNode | null = null;
+  private diffuseInputBus: GainNode | null = null;
+  private diffuseHighpass: BiquadFilterNode | null = null;
+  private diffuseLowpass: BiquadFilterNode | null = null;
+  private diffuseSpreadBus: GainNode | null = null;
+  private diffuseOutputGain: GainNode | null = null;
+  private diffuseReverbSend: GainNode | null = null;
+  private pad1SpatialChain: VoiceSpatialChain | null = null;
+  private pad2SpatialChain: VoiceSpatialChain | null = null;
   private sharedDelayA: SharedDelayBusA | null = null;
   private sharedDelayB: SharedDelayBusB | null = null;
   private sharedDelayGranularLinksWired = false;
@@ -723,6 +759,9 @@ export class AudioEngine {
   private leadWasmLevelGain: GainNode | null = null;  // WASM lead dry-path level (FX sends remain independent)
   private leadWasmLead2LevelGain: GainNode | null = null;  // WASM lead 2 dry-path level
   private pianoReverbSend: GainNode | null = null;
+  private lead1SpatialChain: VoiceSpatialChain | null = null;
+  private lead2SpatialChain: VoiceSpatialChain | null = null;
+  private pianoSpatialChain: VoiceSpatialChain | null = null;
   private readonly pianoBuffers: { regular: Map<number, AudioBuffer>; short: Map<number, AudioBuffer> } = {
     regular: new Map(),
     short: new Map(),
@@ -900,6 +939,10 @@ export class AudioEngine {
   private onDrumParamSHTrigger: ((voice: DrumVoiceType, key: string, position: number) => void) | null = null;
   private onPadMorphTrigger: ((morphPosition: number) => void) | null = null;
   private onPad2MorphTrigger: ((morphPosition: number) => void) | null = null;
+  private onLeadDistanceTrigger: ((distance: { lead1: number; lead2: number }) => void) | null = null;
+  private onPianoDistanceTrigger: ((distance: number) => void) | null = null;
+  private onPadDistanceTrigger: ((distance: number) => void) | null = null;
+  private onPad2DistanceTrigger: ((distance: number) => void) | null = null;
   private onJourneyMorphClockFrame: ((now: number) => void) | null = null;
   private onDrumEuclidEvolveTrigger: ((laneIndex: number) => void) | null = null;
   private onDrumStepPositionChange: ((steps: number[], hitCounts: number[]) => void) | null = null;
@@ -1234,17 +1277,43 @@ export class AudioEngine {
   }
 
   private getEffectivePadState(state: SliderState): SliderState {
-    return Object.keys(this.padHeldOverrides).length > 0
+    const baseState = Object.keys(this.padHeldOverrides).length > 0
       ? ({ ...state, ...this.padHeldOverrides } as SliderState)
       : state;
+    const pad1State = applyPadDistanceToState(baseState, 'pad1');
+    return applyPadDistanceToState(pad1State, 'pad2');
   }
 
   private buildPadTriggerState(
     pad: 'pad1' | 'pad2',
     baseState: SliderState,
     morphOverride: number | null = null,
+    distanceOverride: number | null = null,
   ): SliderState | null {
-    const effectiveBase = this.getEffectivePadState(baseState);
+    const heldBaseState = Object.keys(this.padHeldOverrides).length > 0
+      ? ({ ...baseState, ...this.padHeldOverrides } as SliderState)
+      : baseState;
+    const effectiveDistance = Math.max(
+      0,
+      Math.min(
+        1,
+        distanceOverride ?? getVoiceDistanceValue(heldBaseState, pad === 'pad2' ? 'pad2' : 'pad1'),
+      ),
+    );
+    const effectiveBase = applyPadDistanceToState(
+      applyPadDistanceToState(
+        heldBaseState,
+        'pad1',
+        pad === 'pad1' ? distanceOverride : null,
+      ),
+      'pad2',
+      pad === 'pad2' ? distanceOverride : null,
+    );
+    if (pad === 'pad2') {
+      this.onPad2DistanceTrigger?.(effectiveDistance);
+    } else {
+      this.onPadDistanceTrigger?.(effectiveDistance);
+    }
     const nextState = { ...effectiveBase } as SliderState;
     const nextStateRecord = nextState as unknown as Record<string, SliderState[keyof SliderState]>;
     const heldOverrideRecord = this.padHeldOverrides as Record<string, SliderState[keyof SliderState] | undefined>;
@@ -1315,6 +1384,34 @@ export class AudioEngine {
       return nextState;
     }
     return Object.keys(this.padHeldOverrides).length > 0 ? nextState : null;
+  }
+
+  private shapeNoteDistance(distance: number): number {
+    const safe = clampVal(distance, 0, 1);
+    return 1 - Math.pow(1 - safe, 2);
+  }
+
+  private applyLeadDistanceTimbre(
+    morphed: Lead4opFMMorphedParams,
+    distance: number,
+  ): Lead4opFMMorphedParams {
+    if (distance <= 1e-4) return morphed;
+    const shaped = this.shapeNoteDistance(distance);
+    return {
+      ...morphed,
+      filterFreq: Math.max(80, morphed.filterFreq * (1 - shaped * 0.72)),
+      filterQ: Math.max(0.05, morphed.filterQ * (1 - shaped * 0.18)),
+      filterEnvDepth: morphed.filterEnvDepth * (1 - shaped * 0.55),
+      transientClick: morphed.transientClick * (1 - shaped * 0.92),
+      transientNoise: morphed.transientNoise * (1 - shaped * 0.82),
+      mod1Index: morphed.mod1Index * (1 - shaped * 0.34),
+      mod2Index: morphed.mod2Index * (1 - shaped * 0.30),
+      mod3Index: morphed.mod3Index * (1 - shaped * 0.24),
+      mod4Index: morphed.mod4Index * (1 - shaped * 0.18),
+      drive: morphed.drive * (1 - shaped * 0.62),
+      carrier2Mix: morphed.carrier2Mix * (1 - shaped * 0.12),
+      gain: morphed.gain * (1 - shaped * 0.15),
+    };
   }
 
   private getFxOwnershipBusForKey(key: string): FxOwnershipBus | null {
@@ -1603,12 +1700,13 @@ export class AudioEngine {
     const now = this.ctx.currentTime;
     const smoothTime = 0.01;
     const shv = (key: string, fallback: number) => this.shv(key, fallback);
+    const padState = this.getEffectivePadState(state);
 
     if (source === 'pad1' || source === 'pad2') {
       const isPad2 = source === 'pad2';
       this.synthDirect?.gain.setTargetAtTime(1, now, smoothTime);
-      this.pad1ReverbSend?.gain.setTargetAtTime(!isPad2 && state.reverbEnabled ? shv('pad1ReverbSend', state.pad1ReverbSend ?? 0) : 0, now, smoothTime);
-      this.pad2ReverbSend?.gain.setTargetAtTime(isPad2 && state.reverbEnabled ? shv('pad2ReverbSend', state.pad2ReverbSend ?? 0) : 0, now, smoothTime);
+      this.pad1ReverbSend?.gain.setTargetAtTime(!isPad2 && state.reverbEnabled ? shv('pad1ReverbSend', padState.pad1ReverbSend ?? 0) : 0, now, smoothTime);
+      this.pad2ReverbSend?.gain.setTargetAtTime(isPad2 && state.reverbEnabled ? shv('pad2ReverbSend', padState.pad2ReverbSend ?? 0) : 0, now, smoothTime);
       this.pad1DelayASend?.gain.setTargetAtTime(!isPad2 ? (state.pad1DelayASend ?? 0) : 0, now, smoothTime);
       this.pad1DelayBSend?.gain.setTargetAtTime(!isPad2 ? (state.pad1DelayBSend ?? 0) : 0, now, smoothTime);
       this.pad2DelayASend?.gain.setTargetAtTime(isPad2 ? (state.pad2DelayASend ?? 0) : 0, now, smoothTime);
@@ -1616,9 +1714,9 @@ export class AudioEngine {
       return;
     }
 
-    const lead1Level = shv('lead1Level', state.lead1Level ?? 0.8);
-    const lead2Level = shv('lead2Level', state.lead2Level ?? 0.6);
-    const pianoLevel = shv('pianoLevel', state.pianoLevel ?? 0.75) * ENGINE_TRIMS.piano;
+    const lead1Level = applyDistanceValue('lead1Level', state, 'lead1');
+    const lead2Level = applyDistanceValue('lead2Level', state, 'lead2');
+    const pianoLevel = applyDistanceValue('pianoLevel', state, 'piano') * ENGINE_TRIMS.piano;
 
     this.lead1LevelGain?.gain.setTargetAtTime(source === 'lead1' ? lead1Level : 0, now, smoothTime);
     this.leadWasmLevelGain?.gain.setTargetAtTime(source === 'lead1' ? lead1Level : 0, now, smoothTime);
@@ -1626,9 +1724,9 @@ export class AudioEngine {
     this.leadWasmLead2LevelGain?.gain.setTargetAtTime(source === 'lead2' ? lead2Level : 0, now, smoothTime);
     this.pianoLevelGain?.gain.setTargetAtTime(source === 'piano' ? pianoLevel : 0, now, smoothTime);
 
-    this.lead1ReverbSend?.gain.setTargetAtTime(source === 'lead1' && state.reverbEnabled ? shv('lead1ReverbSend', state.lead1ReverbSend ?? 0) : 0, now, smoothTime);
-    this.lead2ReverbSend?.gain.setTargetAtTime(source === 'lead2' && state.reverbEnabled ? shv('lead2ReverbSend', state.lead2ReverbSend ?? 0) : 0, now, smoothTime);
-    this.pianoReverbSend?.gain.setTargetAtTime(source === 'piano' && state.reverbEnabled ? shv('pianoReverbSend', state.pianoReverbSend ?? 0.35) : 0, now, smoothTime);
+    this.lead1ReverbSend?.gain.setTargetAtTime(source === 'lead1' && state.reverbEnabled ? applyDistanceValue('lead1ReverbSend', state, 'lead1') : 0, now, smoothTime);
+    this.lead2ReverbSend?.gain.setTargetAtTime(source === 'lead2' && state.reverbEnabled ? applyDistanceValue('lead2ReverbSend', state, 'lead2') : 0, now, smoothTime);
+    this.pianoReverbSend?.gain.setTargetAtTime(source === 'piano' && state.reverbEnabled ? applyDistanceValue('pianoReverbSend', state, 'piano') : 0, now, smoothTime);
 
     this.lead1DelayASend?.gain.setTargetAtTime(source === 'lead1' ? shv('lead1DelayASend', state.lead1DelayASend ?? 0) : 0, now, smoothTime);
     this.lead1DelayBSend?.gain.setTargetAtTime(source === 'lead1' ? shv('lead1DelayBSend', state.lead1DelayBSend ?? 0) : 0, now, smoothTime);
@@ -1692,6 +1790,7 @@ export class AudioEngine {
       try { voice.source.stop(); } catch { /* ignore stale piano source */ }
       try { voice.source.disconnect(); } catch { /* ignore stale piano source */ }
       try { voice.gain.disconnect(); } catch { /* ignore stale piano gain */ }
+      try { voice.filter?.disconnect(); } catch { /* ignore stale piano filter */ }
     }
     this.activePianoVoices.clear();
 
@@ -1731,6 +1830,12 @@ export class AudioEngine {
       'pad1ReverbSend',
       'pad2ReverbSend',
       'synthDirect',
+      'diffuseInputBus',
+      'diffuseHighpass',
+      'diffuseLowpass',
+      'diffuseSpreadBus',
+      'diffuseOutputGain',
+      'diffuseReverbSend',
       'leadGain',
       'leadFilter',
       'leadDry',
@@ -1769,6 +1874,17 @@ export class AudioEngine {
         this[key] = null;
       }
     }
+
+    this.disposeVoiceSpatialChain(this.pad1SpatialChain);
+    this.pad1SpatialChain = null;
+    this.disposeVoiceSpatialChain(this.pad2SpatialChain);
+    this.pad2SpatialChain = null;
+    this.disposeVoiceSpatialChain(this.lead1SpatialChain);
+    this.lead1SpatialChain = null;
+    this.disposeVoiceSpatialChain(this.lead2SpatialChain);
+    this.lead2SpatialChain = null;
+    this.disposeVoiceSpatialChain(this.pianoSpatialChain);
+    this.pianoSpatialChain = null;
 
     this.sharedDelayA?.dispose();
     this.sharedDelayA = null;
@@ -2330,6 +2446,176 @@ export class AudioEngine {
     return output;
   }
 
+  private getReverbSendDestination(): AudioNode | null {
+    return this.reverbInputBus ?? this.reverbNode ?? null;
+  }
+
+  private createStereoWidthProcessor(ctx: AudioContext, initialWidth = 1): StereoWidthProcessor {
+    const input = ctx.createGain();
+    input.gain.value = 1;
+    const splitter = ctx.createChannelSplitter(2);
+    const merger = ctx.createChannelMerger(2);
+    const output = ctx.createGain();
+    output.gain.value = 1;
+    const leftDirectGain = ctx.createGain();
+    const rightDirectGain = ctx.createGain();
+    const leftCrossGain = ctx.createGain();
+    const rightCrossGain = ctx.createGain();
+
+    input.connect(splitter);
+    splitter.connect(leftDirectGain, 0);
+    leftDirectGain.connect(merger, 0, 0);
+    splitter.connect(rightCrossGain, 1);
+    rightCrossGain.connect(merger, 0, 0);
+    splitter.connect(leftCrossGain, 0);
+    leftCrossGain.connect(merger, 0, 1);
+    splitter.connect(rightDirectGain, 1);
+    rightDirectGain.connect(merger, 0, 1);
+    merger.connect(output);
+
+    const processor: StereoWidthProcessor = {
+      input,
+      splitter,
+      merger,
+      output,
+      leftDirectGain,
+      rightDirectGain,
+      leftCrossGain,
+      rightCrossGain,
+    };
+    this.setStereoWidthProcessor(processor, initialWidth);
+    return processor;
+  }
+
+  private setStereoWidthProcessor(
+    processor: StereoWidthProcessor | null,
+    width: number,
+    now?: number,
+    smoothTime = 0.05,
+  ): void {
+    if (!processor) return;
+    const safeWidth = clampVal(width, 0, 1);
+    const direct = 0.5 * (1 + safeWidth);
+    const cross = 0.5 * (1 - safeWidth);
+    const apply = (param: AudioParam, value: number) => {
+      if (now == null) {
+        param.value = value;
+      } else {
+        param.setTargetAtTime(value, now, smoothTime);
+      }
+    };
+    apply(processor.leftDirectGain.gain, direct);
+    apply(processor.rightDirectGain.gain, direct);
+    apply(processor.leftCrossGain.gain, cross);
+    apply(processor.rightCrossGain.gain, cross);
+  }
+
+  private disposeStereoWidthProcessor(processor: StereoWidthProcessor | null): void {
+    if (!processor) return;
+    try { processor.input.disconnect(); } catch { /* ignore stale stereo width input */ }
+    try { processor.splitter.disconnect(); } catch { /* ignore stale stereo width splitter */ }
+    try { processor.leftDirectGain.disconnect(); } catch { /* ignore stale stereo width gain */ }
+    try { processor.rightDirectGain.disconnect(); } catch { /* ignore stale stereo width gain */ }
+    try { processor.leftCrossGain.disconnect(); } catch { /* ignore stale stereo width gain */ }
+    try { processor.rightCrossGain.disconnect(); } catch { /* ignore stale stereo width gain */ }
+    try { processor.merger.disconnect(); } catch { /* ignore stale stereo width merger */ }
+    try { processor.output.disconnect(); } catch { /* ignore stale stereo width output */ }
+  }
+
+  private ensureDiffuseBus(ctx: AudioContext): void {
+    if (this.diffuseInputBus || !this.masterGain) return;
+    const reverbDestination = this.getReverbSendDestination();
+
+    this.diffuseInputBus = ctx.createGain();
+    this.diffuseInputBus.gain.value = 1;
+    this.diffuseHighpass = ctx.createBiquadFilter();
+    this.diffuseHighpass.type = 'highpass';
+    this.diffuseHighpass.frequency.value = 180;
+    this.diffuseHighpass.Q.value = 0.7;
+    this.diffuseLowpass = ctx.createBiquadFilter();
+    this.diffuseLowpass.type = 'lowpass';
+    this.diffuseLowpass.frequency.value = 7200;
+    this.diffuseLowpass.Q.value = 0.7;
+    this.diffuseSpreadBus = this.createHaasWidenedBus(ctx, this.diffuseLowpass, {
+      delayMs: 14,
+      sideGain: 0.28,
+      centerGain: 0.78,
+      pan: 1,
+    });
+    this.diffuseOutputGain = ctx.createGain();
+    this.diffuseOutputGain.gain.value = 0.22;
+    this.diffuseReverbSend = ctx.createGain();
+    this.diffuseReverbSend.gain.value = 0.18;
+
+    this.diffuseInputBus.connect(this.diffuseHighpass);
+    this.diffuseHighpass.connect(this.diffuseLowpass);
+    this.diffuseSpreadBus.connect(this.diffuseOutputGain);
+    this.diffuseOutputGain.connect(this.masterGain);
+    if (reverbDestination) {
+      this.diffuseSpreadBus.connect(this.diffuseReverbSend);
+      this.diffuseReverbSend.connect(reverbDestination);
+    }
+  }
+
+  private createVoiceSpatialChain(
+    ctx: AudioContext,
+    options: {
+      initialPostLpf: number;
+      initialStereoWidth: number;
+      initialDiffuseSend: number;
+      dryDestination: AudioNode;
+    },
+  ): VoiceSpatialChain {
+    this.ensureDiffuseBus(ctx);
+    const postLpf = ctx.createBiquadFilter();
+    postLpf.type = 'lowpass';
+    postLpf.frequency.value = options.initialPostLpf;
+    postLpf.Q.value = 0.7;
+    const width = this.createStereoWidthProcessor(ctx, options.initialStereoWidth);
+    const diffuseSend = ctx.createGain();
+    diffuseSend.gain.value = options.initialDiffuseSend;
+
+    postLpf.connect(width.input);
+    width.output.connect(options.dryDestination);
+    if (this.diffuseInputBus) {
+      width.output.connect(diffuseSend);
+      diffuseSend.connect(this.diffuseInputBus);
+    }
+
+    return {
+      postLpf,
+      width,
+      diffuseSend,
+      output: width.output,
+    };
+  }
+
+  private disposeVoiceSpatialChain(chain: VoiceSpatialChain | null): void {
+    if (!chain) return;
+    try { chain.postLpf.disconnect(); } catch { /* ignore stale spatial filter */ }
+    try { chain.diffuseSend.disconnect(); } catch { /* ignore stale diffuse send */ }
+    this.disposeStereoWidthProcessor(chain.width);
+  }
+
+  private setVoiceSpatialChainState(
+    chain: VoiceSpatialChain | null,
+    options: {
+      active: boolean;
+      postLpf: number;
+      stereoWidth: number;
+      diffuseSend: number;
+      now: number;
+      smoothTime: number;
+    },
+  ): void {
+    if (!chain) return;
+    const activeWidth = options.active ? options.stereoWidth : 1;
+    const activeDiffuse = options.active ? options.diffuseSend : 0;
+    chain.postLpf.frequency.setTargetAtTime(options.postLpf, options.now, options.smoothTime);
+    chain.diffuseSend.gain.setTargetAtTime(activeDiffuse, options.now, options.smoothTime);
+    this.setStereoWidthProcessor(chain.width, activeWidth, options.now, options.smoothTime);
+  }
+
   private createEarthTextureRuntime(
     ctx: AudioContext,
     config: {
@@ -2578,6 +2864,18 @@ export class AudioEngine {
     limiter.attack.value = 0.001;
     limiter.release.value = 0.1;
     return limiter;
+  }
+
+  private createSharedReverbPreCompressor(ctx: AudioContext): DynamicsCompressorNode {
+    const compressor = ctx.createDynamicsCompressor();
+    // Gentle bus shaping: reduce the dry hit that reaches the tank, then let a
+    // small makeup gain feed a denser, more even bloom into the reverb.
+    compressor.threshold.value = -27;
+    compressor.knee.value = 12;
+    compressor.ratio.value = 3.5;
+    compressor.attack.value = 0.0025;
+    compressor.release.value = 0.35;
+    return compressor;
   }
 
   private ensureMasterSaturationNodes(ctx: AudioContext): void {
@@ -3030,6 +3328,22 @@ export class AudioEngine {
 
   setPad2MorphTriggerCallback(callback: (morphPosition: number) => void) {
     this.onPad2MorphTrigger = callback;
+  }
+
+  setLeadDistanceCallback(callback: (distance: { lead1: number; lead2: number }) => void) {
+    this.onLeadDistanceTrigger = callback;
+  }
+
+  setPianoDistanceTriggerCallback(callback: (distance: number) => void) {
+    this.onPianoDistanceTrigger = callback;
+  }
+
+  setPadDistanceTriggerCallback(callback: (distance: number) => void) {
+    this.onPadDistanceTrigger = callback;
+  }
+
+  setPad2DistanceTriggerCallback(callback: (distance: number) => void) {
+    this.onPad2DistanceTrigger = callback;
   }
 
   setDrumEuclidEvolveTriggerCallback(callback: (laneIndex: number) => void) {
@@ -4214,6 +4528,7 @@ export class AudioEngine {
       try { voice.source.stop(); } catch { /* ignore stale piano source */ }
       try { voice.source.disconnect(); } catch { /* ignore stale piano source */ }
       try { voice.gain.disconnect(); } catch { /* ignore stale piano gain */ }
+      try { voice.filter?.disconnect(); } catch { /* ignore stale piano filter */ }
     }
     this.activePianoVoices.clear();
 
@@ -4406,6 +4721,14 @@ export class AudioEngine {
       try { this.reverbNode.disconnect(); } catch { /* */ }
       this.reverbNode = null;
     }
+    if (this.reverbPreMakeupGain) {
+      try { this.reverbPreMakeupGain.disconnect(); } catch { /* */ }
+      this.reverbPreMakeupGain = null;
+    }
+    if (this.reverbPreCompressor) {
+      try { this.reverbPreCompressor.disconnect(); } catch { /* */ }
+      this.reverbPreCompressor = null;
+    }
 
     // Tear down spectral freeze WASM worklet
     if (this.spectralFreezeNode) {
@@ -4464,6 +4787,16 @@ export class AudioEngine {
     if (this.pad1ReverbSend) { try { this.pad1ReverbSend.disconnect(); } catch { /* */ } this.pad1ReverbSend = null; }
     if (this.pad2ReverbSend) { try { this.pad2ReverbSend.disconnect(); } catch { /* */ } this.pad2ReverbSend = null; }
     if (this.synthDirect) { try { this.synthDirect.disconnect(); } catch { /* */ } this.synthDirect = null; }
+    if (this.diffuseInputBus) { try { this.diffuseInputBus.disconnect(); } catch { /* */ } this.diffuseInputBus = null; }
+    if (this.diffuseHighpass) { try { this.diffuseHighpass.disconnect(); } catch { /* */ } this.diffuseHighpass = null; }
+    if (this.diffuseLowpass) { try { this.diffuseLowpass.disconnect(); } catch { /* */ } this.diffuseLowpass = null; }
+    if (this.diffuseSpreadBus) { try { this.diffuseSpreadBus.disconnect(); } catch { /* */ } this.diffuseSpreadBus = null; }
+    if (this.diffuseOutputGain) { try { this.diffuseOutputGain.disconnect(); } catch { /* */ } this.diffuseOutputGain = null; }
+    if (this.diffuseReverbSend) { try { this.diffuseReverbSend.disconnect(); } catch { /* */ } this.diffuseReverbSend = null; }
+    this.disposeVoiceSpatialChain(this.pad1SpatialChain);
+    this.pad1SpatialChain = null;
+    this.disposeVoiceSpatialChain(this.pad2SpatialChain);
+    this.pad2SpatialChain = null;
 
     // Disconnect lead synth chain
     if (this.leadGain) { try { this.leadGain.disconnect(); } catch { /* */ } this.leadGain = null; }
@@ -4476,6 +4809,12 @@ export class AudioEngine {
     if (this.pianoBus) { try { this.pianoBus.disconnect(); } catch { /* */ } this.pianoBus = null; }
     if (this.pianoLevelGain) { try { this.pianoLevelGain.disconnect(); } catch { /* */ } this.pianoLevelGain = null; }
     if (this.pianoReverbSend) { try { this.pianoReverbSend.disconnect(); } catch { /* */ } this.pianoReverbSend = null; }
+    this.disposeVoiceSpatialChain(this.lead1SpatialChain);
+    this.lead1SpatialChain = null;
+    this.disposeVoiceSpatialChain(this.lead2SpatialChain);
+    this.lead2SpatialChain = null;
+    this.disposeVoiceSpatialChain(this.pianoSpatialChain);
+    this.pianoSpatialChain = null;
     if (this.pad1DelayASend) { try { this.pad1DelayASend.disconnect(); } catch { /* */ } this.pad1DelayASend = null; }
     if (this.pad1DelayBSend) { try { this.pad1DelayBSend.disconnect(); } catch { /* */ } this.pad1DelayBSend = null; }
     if (this.pad2DelayASend) { try { this.pad2DelayASend.disconnect(); } catch { /* */ } this.pad2DelayASend = null; }
@@ -4571,6 +4910,11 @@ export class AudioEngine {
     this.masterGain = null;
     this.limiter = null;
     this.reverbNode = null;
+    this.reverbOutputGain = null;
+    this.reverbPreCompressor = null;
+    this.reverbPreMakeupGain = null;
+    this.reverbInputBus = null;
+    this.reverbDirectSend = null;
     this.transportAnchors = null;
     this.prevSynthEuclidLaneEnabled = [false, false, false, false];
 
@@ -4708,6 +5052,10 @@ export class AudioEngine {
         this.lastMasterSatMode = null;
         this.reverbNode = null;
         this.reverbOutputGain = null;
+        this.reverbPreCompressor = null;
+        this.reverbPreMakeupGain = null;
+        this.reverbInputBus = null;
+        this.reverbDirectSend = null;
         this.sharedDelayA?.dispose();
         this.sharedDelayA = null;
         this.sharedDelayB?.dispose();
@@ -4935,6 +5283,14 @@ export class AudioEngine {
     // Reverb input bus — collects all reverb sources (gain stays at 1.0)
     this.reverbInputBus = ctx.createGain();
     this.reverbInputBus.gain.value = 1.0;
+
+    // Shared pre-reverb dynamics: smooth source transients before they hit the
+    // reverb/spectral-freeze path so long presets bloom more evenly.
+    this.reverbPreCompressor = this.createSharedReverbPreCompressor(ctx);
+    this.reverbPreMakeupGain = ctx.createGain();
+    this.reverbPreMakeupGain.gain.value = 1.8;
+    this.reverbInputBus.connect(this.reverbPreCompressor);
+    this.reverbPreCompressor.connect(this.reverbPreMakeupGain);
 
     // Direct send — crossfade-controlled path from sources to reverb (used in pre-mode)
     this.reverbDirectSend = ctx.createGain();
@@ -5279,9 +5635,47 @@ export class AudioEngine {
     this.pianoReverbSend.gain.value = this.sliderState?.pianoReverbSend ?? 0.35;
 
     // Connect graph:
-    // Voices -> mixerGain -> Pad1Bus/Pad2Bus -> SynthBus (post-fader main mix)
+    // Voices -> mixerGain -> Pad1Bus/Pad2Bus -> post LPF/width -> SynthBus (post-fader main mix)
     // Voices -> envelope  -> Pad1PreFaderBus/Pad2PreFaderBus -> GranularPadSend (pre-fader granular)
-    // Lead notes -> Lead1Bus/Lead2Bus -> per-lead dry faders -> LeadFilter -> LeadVoiceLevel -> LeadDry
+    // Lead notes -> Lead1Bus/Lead2Bus -> dry faders -> post LPF/width -> LeadVoiceLevel -> LeadDry
+    // Piano notes -> PianoBus -> dry fader -> post LPF/width -> Master
+
+    this.leadVoiceLevel = ctx.createGain();
+    this.leadVoiceLevel.gain.value = ENGINE_TRIMS.lead;
+    this.leadVoiceLevel.connect(this.leadDry);
+    this.leadDry.connect(this.masterGain);
+    this.ensureDiffuseBus(ctx);
+
+    this.pad1SpatialChain = this.createVoiceSpatialChain(ctx, {
+      initialPostLpf: applyDistanceValue('padPostLPF', this.sliderState!, 'pad1'),
+      initialStereoWidth: applyDistanceValue('padStereoWidth', this.sliderState!, 'pad1'),
+      initialDiffuseSend: applyDistanceValue('padDiffuseSend', this.sliderState!, 'pad1'),
+      dryDestination: this.synthBus!,
+    });
+    this.pad2SpatialChain = this.createVoiceSpatialChain(ctx, {
+      initialPostLpf: applyDistanceValue('pad2PostLPF', this.sliderState!, 'pad2'),
+      initialStereoWidth: applyDistanceValue('pad2StereoWidth', this.sliderState!, 'pad2'),
+      initialDiffuseSend: applyDistanceValue('pad2DiffuseSend', this.sliderState!, 'pad2'),
+      dryDestination: this.synthBus!,
+    });
+    this.lead1SpatialChain = this.createVoiceSpatialChain(ctx, {
+      initialPostLpf: applyDistanceValue('lead1PostLPF', this.sliderState!, 'lead1'),
+      initialStereoWidth: applyDistanceValue('lead1StereoWidth', this.sliderState!, 'lead1'),
+      initialDiffuseSend: applyDistanceValue('lead1DiffuseSend', this.sliderState!, 'lead1'),
+      dryDestination: this.leadVoiceLevel!,
+    });
+    this.lead2SpatialChain = this.createVoiceSpatialChain(ctx, {
+      initialPostLpf: applyDistanceValue('lead2PostLPF', this.sliderState!, 'lead2'),
+      initialStereoWidth: applyDistanceValue('lead2StereoWidth', this.sliderState!, 'lead2'),
+      initialDiffuseSend: applyDistanceValue('lead2DiffuseSend', this.sliderState!, 'lead2'),
+      dryDestination: this.leadVoiceLevel!,
+    });
+    this.pianoSpatialChain = this.createVoiceSpatialChain(ctx, {
+      initialPostLpf: applyDistanceValue('pianoPostLPF', this.sliderState!, 'piano'),
+      initialStereoWidth: applyDistanceValue('pianoStereoWidth', this.sliderState!, 'piano'),
+      initialDiffuseSend: applyDistanceValue('pianoDiffuseSend', this.sliderState!, 'piano'),
+      dryDestination: this.masterGain!,
+    });
 
     // Route voices to pad buses based on pad2VoiceAssign
     const pad2Assign = this.sliderState?.pad2Enabled
@@ -5301,26 +5695,28 @@ export class AudioEngine {
       voice.envelope.connect(isPad2 ? pad2PreFaderBus : pad1PreFaderBus);
     });
 
-    // Both pad buses feed into synthBus (preserves existing downstream)
-    this.pad1Bus.connect(this.synthBus);
-    this.pad2Bus.connect(this.synthBus);
+    // Both pad buses feed their per-pad post chains before the shared synth dry bus.
+    this.pad1Bus.connect(this.pad1SpatialChain.postLpf);
+    this.pad2Bus.connect(this.pad2SpatialChain.postLpf);
 
     // Pad WASM node outputs (parallel to JS oscillator path — JS voices silenced when WASM active)
+    // [2]/[3] remain pre-fader send taps, while [4]/[5] feed the post-voice dry chains.
     if (this.padWasmNode) {
-      this.padWasmNode.connect(this.synthBus, 0);           // output[0] main → synthBus
+      this.padWasmNode.connect(this.pad1Bus!, 4);           // output[4] pad 1 post-level → pad1 chain
+      this.padWasmNode.connect(this.pad2Bus!, 5);           // output[5] pad 2 post-level → pad2 chain
       if (this.pad1ReverbSend) this.padWasmNode.connect(this.pad1ReverbSend, 2);
       if (this.pad2ReverbSend) this.padWasmNode.connect(this.pad2ReverbSend, 3);
     }
 
-    // Lead buses feed through per-lead level gains into leadFilter.
+    // Lead buses feed through per-lead dry faders into their post chains.
     // Reverb + delay + granular sends tap from lead1Bus/lead2Bus before the dry-path
     // level gains so FX can still be heard with dry level at 0.
     this.lead1Bus.connect(this.lead1LevelGain);
-    this.lead1LevelGain.connect(this.leadFilter);
+    this.lead1LevelGain.connect(this.lead1SpatialChain!.postLpf);
     this.lead2Bus.connect(this.lead2LevelGain);
-    this.lead2LevelGain.connect(this.leadFilter);
+    this.lead2LevelGain.connect(this.lead2SpatialChain!.postLpf);
     this.pianoBus.connect(this.pianoLevelGain);
-    this.pianoLevelGain.connect(this.masterGain);
+    this.pianoLevelGain.connect(this.pianoSpatialChain!.postLpf);
 
     // Per-lead reverb sends (tapped from lead buses before the dry path)
     this.lead1Bus.connect(this.lead1ReverbSend);
@@ -5406,26 +5802,16 @@ export class AudioEngine {
     // (and optionally inserts spectralFreezeNode in pre or post position)
     this.applySpectralFreezeRouting();
 
-    // Lead synth dry path:
-    // Lead1/2Bus -> per-lead level gain -> LeadFilter -> LeadVoiceLevel (final trim) -> LeadDry -> Master
-    // Reverb + granular + shared Delay A/B sends tap upstream from lead1Bus/lead2Bus.
-    this.leadVoiceLevel = ctx.createGain();
-    this.leadVoiceLevel.gain.value = ENGINE_TRIMS.lead;
-    this.leadFilter.connect(this.leadVoiceLevel);
-    this.leadVoiceLevel.connect(this.leadDry);
-    this.leadDry.connect(this.masterGain);
-
     // Lead FM WASM node outputs (parallel to JS lead path — JS lead silenced when WASM active)
     // WASM has 2 outputs: [0]=lead1 stereo, [1]=lead2 stereo.
-    // Each output routes through per-lead level gain → leadVoiceLevel → master (bypassing leadFilter
-    // since WASM applies its own internal filter). Send taps come directly from the WASM outputs,
+    // Each output routes through per-lead dry fader → post LPF/width → lead dry path. Send taps come directly from the WASM outputs,
     // so the FX feed remains available even when the dry fader is at 0.
     if (this.leadFmWasmNode) {
-      // Lead 1 dry path: output[0] → per-lead level gain → leadVoiceLevel → leadDry → master
+      // Lead 1 dry path: output[0] → per-lead level gain → post chain → lead dry → master
       this.leadWasmLevelGain = ctx.createGain();
       this.leadWasmLevelGain.gain.value = this.sliderState?.lead1Level ?? 0.8;
       this.leadFmWasmNode.connect(this.leadWasmLevelGain, 0);
-      this.leadWasmLevelGain.connect(this.leadVoiceLevel!);
+      this.leadWasmLevelGain.connect(this.lead1SpatialChain!.postLpf);
       // Lead 1 pre-fader sends
         this.leadFmWasmNode.connect(this.lead1ReverbSend!, 0);
         if (this.granularLead1Send) {
@@ -5438,11 +5824,11 @@ export class AudioEngine {
           this.leadFmWasmNode.connect(this.lead1DelayBSend, 0);
         }
 
-      // Lead 2 dry path: output[1] → per-lead level gain → leadVoiceLevel → leadDry → master
+      // Lead 2 dry path: output[1] → per-lead level gain → post chain → lead dry → master
       this.leadWasmLead2LevelGain = ctx.createGain();
       this.leadWasmLead2LevelGain.gain.value = this.sliderState?.lead2Level ?? 0.6;
       this.leadFmWasmNode.connect(this.leadWasmLead2LevelGain, 1);
-      this.leadWasmLead2LevelGain.connect(this.leadVoiceLevel!);
+      this.leadWasmLead2LevelGain.connect(this.lead2SpatialChain!.postLpf);
       // Lead 2 pre-fader sends
         this.leadFmWasmNode.connect(this.lead2ReverbSend!, 1);
         if (this.granularLead2Send) {
@@ -6787,7 +7173,12 @@ export class AudioEngine {
 
       this.createPadWasmNode(this.ctx);
 
-      this.padWasmNode!.connect(this.synthBus, 0);
+      if (this.pad1Bus) {
+        this.padWasmNode!.connect(this.pad1Bus, 4);
+      }
+      if (this.pad2Bus) {
+        this.padWasmNode!.connect(this.pad2Bus, 5);
+      }
       if (this.pad1ReverbSend) {
         this.padWasmNode!.connect(this.pad1ReverbSend, 2);
       }
@@ -6974,7 +7365,7 @@ export class AudioEngine {
     
     if (!voice) return;
     
-    const state = this.sliderState;
+    const state = padParamsOverride ?? this.sliderState;
     const detune = state.detune;
 
     // Get ADSR from correct pad (scaled by ratchet factor for tighter envelope)
@@ -7111,18 +7502,19 @@ export class AudioEngine {
    * Wire spectral freeze node into the audio graph.
    *
    * Pre-reverb routing:
-   *   reverbInputBus → spectralFreezeNode → reverbNode  (frozen/processed signal)
-   *   reverbInputBus → reverbDirectSend  → reverbNode  (live signal, crossfade-controlled)
+   *   reverbInputBus → pre-comp/makeup → spectralFreezeNode → reverbNode
+   *   reverbInputBus → pre-comp/makeup → reverbDirectSend  → reverbNode
    *   reverbNode → reverbOutputGain
    *
    * Post-reverb routing:
-   *   reverbInputBus → reverbNode → spectralFreezeNode → reverbOutputGain
+   *   reverbInputBus → pre-comp/makeup → reverbNode → spectralFreezeNode → reverbOutputGain
    *
    * Disabled:
-   *   reverbInputBus → reverbNode → reverbOutputGain  (direct, no spectral freeze)
+   *   reverbInputBus → pre-comp/makeup → reverbNode → reverbOutputGain
    */
   private applySpectralFreezeRouting(): void {
-    if (!this.reverbNode || !this.reverbOutputGain || !this.reverbInputBus || !this.reverbDirectSend) return;
+    const reverbSourceNode = this.reverbPreMakeupGain ?? this.reverbPreCompressor ?? this.reverbInputBus;
+    if (!this.reverbNode || !this.reverbOutputGain || !this.reverbInputBus || !this.reverbDirectSend || !reverbSourceNode) return;
     const state = this.sliderState;
     const routing = state?.spectralFreezeRouting ?? 'pre';
     const enabled = state?.spectralFreezeEnabled ?? false;
@@ -7132,14 +7524,13 @@ export class AudioEngine {
     if (this.spectralFreezeNode) {
       try { this.spectralFreezeNode.disconnect(); } catch (_) { /* */ }
     }
-    // Disconnect reverbInputBus → spectralFreezeNode (pre-mode input)
+    // Disconnect conditioned reverb source → spectralFreezeNode (pre-mode input)
     if (this.spectralFreezeNode) {
-      try { this.reverbInputBus.disconnect(this.spectralFreezeNode); } catch (_) { /* */ }
+      try { reverbSourceNode.disconnect(this.spectralFreezeNode); } catch (_) { /* */ }
     }
-    // Disconnect reverbInputBus → reverbNode (direct path)
-    try { this.reverbInputBus.disconnect(this.reverbNode); } catch (_) { /* */ }
-    // Disconnect reverbInputBus → reverbDirectSend
-    try { this.reverbInputBus.disconnect(this.reverbDirectSend); } catch (_) { /* */ }
+    // Disconnect conditioned reverb source → reverbNode / reverbDirectSend
+    try { reverbSourceNode.disconnect(this.reverbNode); } catch (_) { /* */ }
+    try { reverbSourceNode.disconnect(this.reverbDirectSend); } catch (_) { /* */ }
     // Disconnect reverbDirectSend → reverbNode
     try { this.reverbDirectSend.disconnect(this.reverbNode); } catch (_) { /* */ }
     // Disconnect reverbNode outputs
@@ -7150,8 +7541,8 @@ export class AudioEngine {
 
     if (!enabled || !this.spectralFreezeNode) {
       // ── Disabled: direct routing ──
-      // reverbInputBus → reverbNode → reverbOutputGain
-      this.reverbInputBus.connect(this.reverbNode);
+      // conditioned reverb source → reverbNode → reverbOutputGain
+      reverbSourceNode.connect(this.reverbNode);
       this.reverbNode.connect(this.reverbOutputGain);
       this.reverbDirectSend.gain.value = 0;  // unused
       this.currentSpectralFreezeRouting = null;
@@ -7160,13 +7551,13 @@ export class AudioEngine {
 
     if (routing === 'pre') {
       // ── Pre-reverb ──
-      // Path 1 (frozen): reverbInputBus → spectralFreezeNode → reverbNode
-      this.reverbInputBus.connect(this.spectralFreezeNode);
+      // Path 1 (frozen): conditioned reverb source → spectralFreezeNode → reverbNode
+      reverbSourceNode.connect(this.spectralFreezeNode);
       this.spectralFreezeNode.connect(this.reverbNode);
 
-      // Path 2 (live crossfade): reverbInputBus → reverbDirectSend → reverbNode
+      // Path 2 (live crossfade): conditioned reverb source → reverbDirectSend → reverbNode
       // crossfade=1 means "fully frozen" = no live bleed, crossfade=0 = full live signal
-      this.reverbInputBus.connect(this.reverbDirectSend);
+      reverbSourceNode.connect(this.reverbDirectSend);
       this.reverbDirectSend.connect(this.reverbNode);
       const crossfade = state?.spectralFreezeReverbCrossfade ?? 0.5;
       this.reverbDirectSend.gain.value = 1.0 - crossfade;
@@ -7175,8 +7566,8 @@ export class AudioEngine {
       this.reverbNode.connect(this.reverbOutputGain);
     } else {
       // ── Post-reverb ──
-      // reverbInputBus → reverbNode → spectralFreezeNode → reverbOutputGain
-      this.reverbInputBus.connect(this.reverbNode);
+      // conditioned reverb source → reverbNode → spectralFreezeNode → reverbOutputGain
+      reverbSourceNode.connect(this.reverbNode);
       this.reverbNode.connect(this.spectralFreezeNode);
       this.spectralFreezeNode.connect(this.reverbOutputGain);
       this.reverbDirectSend.gain.value = 0;  // unused
@@ -7598,9 +7989,29 @@ export class AudioEngine {
     const lead1WetActive = this.isLead1RouteActive(state);
     const lead2WetActive = this.isLead2RouteActive(state);
     const pianoWetActive = this.isPianoRouteActive(state);
-    const lead1Lvl = shv('lead1Level', state.lead1Level ?? 0.8);
-    const lead2Lvl = shv('lead2Level', state.lead2Level ?? 0.6);
-    const pianoLvl = shv('pianoLevel', state.pianoLevel ?? 0.75);
+    const lead1Lvl = applyDistanceValue('lead1Level', state, 'lead1');
+    const lead2Lvl = applyDistanceValue('lead2Level', state, 'lead2');
+    const pianoLvl = applyDistanceValue('pianoLevel', state, 'piano');
+    const pad1ReverbLevel = shv('pad1ReverbSend', padState.pad1ReverbSend ?? 0);
+    const pad2ReverbLevel = shv('pad2ReverbSend', padState.pad2ReverbSend ?? 0);
+    const lead1ReverbLevel = applyDistanceValue('lead1ReverbSend', state, 'lead1');
+    const lead2ReverbLevel = applyDistanceValue('lead2ReverbSend', state, 'lead2');
+    const pianoReverbLevel = applyDistanceValue('pianoReverbSend', state, 'piano');
+    const pad1PostLpf = applyDistanceValue('padPostLPF', state, 'pad1');
+    const pad2PostLpf = applyDistanceValue('pad2PostLPF', state, 'pad2');
+    const lead1PostLpf = applyDistanceValue('lead1PostLPF', state, 'lead1');
+    const lead2PostLpf = applyDistanceValue('lead2PostLPF', state, 'lead2');
+    const pianoPostLpf = applyDistanceValue('pianoPostLPF', state, 'piano');
+    const pad1StereoWidth = applyDistanceValue('padStereoWidth', state, 'pad1');
+    const pad2StereoWidth = applyDistanceValue('pad2StereoWidth', state, 'pad2');
+    const lead1StereoWidth = applyDistanceValue('lead1StereoWidth', state, 'lead1');
+    const lead2StereoWidth = applyDistanceValue('lead2StereoWidth', state, 'lead2');
+    const pianoStereoWidth = applyDistanceValue('pianoStereoWidth', state, 'piano');
+    const pad1DiffuseSend = applyDistanceValue('padDiffuseSend', state, 'pad1');
+    const pad2DiffuseSend = applyDistanceValue('pad2DiffuseSend', state, 'pad2');
+    const lead1DiffuseSend = applyDistanceValue('lead1DiffuseSend', state, 'lead1');
+    const lead2DiffuseSend = applyDistanceValue('lead2DiffuseSend', state, 'lead2');
+    const pianoDiffuseSend = applyDistanceValue('pianoDiffuseSend', state, 'piano');
     const granularBusArmed = this.isGranularBusArmed(state, lead1WetActive, lead2WetActive, pianoWetActive);
     const oceanLayerActive = this.isOceanLayerFadeActive(state, now);
     const waterLayerActive = this.isWaterLayerFadeActive(state, now);
@@ -7759,9 +8170,49 @@ export class AudioEngine {
     const sfActive = state.spectralFreezeActive ?? false;
     const sfCrossfade = state.spectralFreezeReverbCrossfade ?? 1.0;
     const dryGain = (sfEnabled && sfActive) ? (1.0 - sfCrossfade) : 1.0;
+    this.setVoiceSpatialChainState(this.pad1SpatialChain, {
+      active: pad1Active,
+      postLpf: pad1PostLpf,
+      stereoWidth: pad1StereoWidth,
+      diffuseSend: pad1DiffuseSend,
+      now,
+      smoothTime,
+    });
+    this.setVoiceSpatialChainState(this.pad2SpatialChain, {
+      active: pad2Active,
+      postLpf: pad2PostLpf,
+      stereoWidth: pad2StereoWidth,
+      diffuseSend: pad2DiffuseSend,
+      now,
+      smoothTime,
+    });
+    this.setVoiceSpatialChainState(this.lead1SpatialChain, {
+      active: lead1WetActive,
+      postLpf: lead1PostLpf,
+      stereoWidth: lead1StereoWidth,
+      diffuseSend: lead1DiffuseSend,
+      now,
+      smoothTime,
+    });
+    this.setVoiceSpatialChainState(this.lead2SpatialChain, {
+      active: lead2WetActive,
+      postLpf: lead2PostLpf,
+      stereoWidth: lead2StereoWidth,
+      diffuseSend: lead2DiffuseSend,
+      now,
+      smoothTime,
+    });
+    this.setVoiceSpatialChainState(this.pianoSpatialChain, {
+      active: pianoWetActive,
+      postLpf: pianoPostLpf,
+      stereoWidth: pianoStereoWidth,
+      diffuseSend: pianoDiffuseSend,
+      now,
+      smoothTime,
+    });
     this.synthDirect?.gain.setTargetAtTime(padActive ? dryGain : 0, now, smoothTime);
-    this.pad1ReverbSend?.gain.setTargetAtTime((pad1Active && state.reverbEnabled) ? shv('pad1ReverbSend', state.pad1ReverbSend) : 0, now, smoothTime);
-    this.pad2ReverbSend?.gain.setTargetAtTime((pad2Active && state.reverbEnabled) ? shv('pad2ReverbSend', state.pad2ReverbSend) : 0, now, smoothTime);
+    this.pad1ReverbSend?.gain.setTargetAtTime((pad1Active && state.reverbEnabled) ? pad1ReverbLevel : 0, now, smoothTime);
+    this.pad2ReverbSend?.gain.setTargetAtTime((pad2Active && state.reverbEnabled) ? pad2ReverbLevel : 0, now, smoothTime);
     this.pad1DelayASend?.gain.setTargetAtTime(pad1Active ? (state.pad1DelayASend ?? 0) : 0, now, smoothTime);
     this.pad1DelayBSend?.gain.setTargetAtTime(pad1Active ? (state.pad1DelayBSend ?? 0) : 0, now, smoothTime);
     this.pad2DelayASend?.gain.setTargetAtTime(pad2Active ? (state.pad2DelayASend ?? 0) : 0, now, smoothTime);
@@ -7770,9 +8221,9 @@ export class AudioEngine {
     const lead1Fader = lead1WetActive ? lead1Lvl : 0;
     const lead2Fader = lead2WetActive ? lead2Lvl : 0;
     const pianoFader = pianoWetActive ? pianoLvl * ENGINE_TRIMS.piano : 0;
-    this.lead1ReverbSend?.gain.setTargetAtTime((state.reverbEnabled && lead1WetActive) ? shv('lead1ReverbSend', state.lead1ReverbSend) : 0, now, smoothTime);
-    this.lead2ReverbSend?.gain.setTargetAtTime((state.reverbEnabled && lead2WetActive) ? shv('lead2ReverbSend', state.lead2ReverbSend) : 0, now, smoothTime);
-    this.pianoReverbSend?.gain.setTargetAtTime((state.reverbEnabled && pianoWetActive) ? shv('pianoReverbSend', state.pianoReverbSend ?? 0.35) : 0, now, smoothTime);
+    this.lead1ReverbSend?.gain.setTargetAtTime((state.reverbEnabled && lead1WetActive) ? lead1ReverbLevel : 0, now, smoothTime);
+    this.lead2ReverbSend?.gain.setTargetAtTime((state.reverbEnabled && lead2WetActive) ? lead2ReverbLevel : 0, now, smoothTime);
+    this.pianoReverbSend?.gain.setTargetAtTime((state.reverbEnabled && pianoWetActive) ? pianoReverbLevel : 0, now, smoothTime);
 
     const sharedDelayAState = this.getSharedDelayAState(state, lead1WetActive, lead2WetActive, pianoWetActive, granularBusArmed, delayBEnabled);
     this.sharedDelayA?.update(sharedDelayAState, now, smoothTime);
@@ -7833,7 +8284,7 @@ export class AudioEngine {
 
     // Reverb parameters (only update if enabled to save CPU)
     // Guard: reverbNode may be a dummy GainNode (no .port) when Euclidean runs standalone
-    const reverbBusActive = state.reverbEnabled && this.hasAnyReverbFeed(
+    const reverbHasFeed = state.reverbEnabled && this.hasAnyReverbFeed(
       state,
       pad1Active,
       pad2Active,
@@ -7844,7 +8295,10 @@ export class AudioEngine {
       sharedDelayAState.enabled,
       delayBEnabled,
     );
-    if (this.reverbNode && (this.reverbNode as any).port && reverbBusActive) {
+    // Keep the shared reverb return audible while the engine is enabled so
+    // long tails can decay naturally even after source sends fall to zero.
+    const reverbReturnEnabled = !!state.reverbEnabled || !!state.spectralFreezeEnabled || reverbHasFeed;
+    if (this.reverbNode && (this.reverbNode as any).port && reverbReturnEnabled) {
       // Per-engine tension → subtle additive offsets on decay/diffusion/shimmer
       const reverbT = getEffectiveTension(
         state.tension ?? 0.3,
@@ -7936,7 +8390,7 @@ export class AudioEngine {
     }
 
     // Reverb output level (mute if disabled)
-    this.reverbOutputGain?.gain.setTargetAtTime(reverbBusActive ? shv('reverbLevel', state.reverbLevel) * ENGINE_TRIMS.reverb : 0, now, smoothTime);
+    this.reverbOutputGain?.gain.setTargetAtTime(reverbReturnEnabled ? shv('reverbLevel', state.reverbLevel) * ENGINE_TRIMS.reverb : 0, now, smoothTime);
 
     // Spectral Freeze parameters
     if (this.spectralFreezeNode && (this.spectralFreezeNode as any).port) {
@@ -8546,6 +9000,7 @@ export class AudioEngine {
     frequency: number,
     velocity: number = 0.8,
     leadSource: 'lead' | 'lead1' | 'lead2' = 'lead1',
+    distanceOverride: number | null = null,
   ): void {
     if (!this.ctx || !this.leadGain || !this.sliderState) return;
     // Determine which lead to use and check if enabled
@@ -8594,6 +9049,30 @@ export class AudioEngine {
         }
       : morphed;
 
+    const leadVoice = useLead2 ? 'lead2' : 'lead1';
+    const leadDistance = Math.max(0, Math.min(1, distanceOverride ?? getVoiceDistanceValue(this.sliderState, leadVoice)));
+    this.onLeadDistanceTrigger?.({
+      lead1: useLead2 ? -1 : leadDistance,
+      lead2: useLead2 ? leadDistance : -1,
+    });
+    let hold = useLead2 ? this.sliderState.lead2Hold : this.sliderState.lead1Hold;
+    const distanceEnv = applyLeadDistanceEnvelope(
+      useLead2 ? 'lead2' : 'lead1',
+      {
+        attack: effectiveMorphed.attack ?? 0.01,
+        decay: effectiveMorphed.decay ?? 0.3,
+        sustain: effectiveMorphed.sustain ?? 0.7,
+        hold,
+        release: effectiveMorphed.release ?? 0.5,
+      },
+      leadDistance,
+    );
+    effectiveMorphed.attack = distanceEnv.attack;
+    effectiveMorphed.decay = distanceEnv.decay;
+    effectiveMorphed.sustain = distanceEnv.sustain;
+    effectiveMorphed.release = distanceEnv.release;
+    hold = distanceEnv.hold ?? hold;
+
     // Apply ratchet factor to tighten ADSR for ratchet retrigs
     if (this.synthRatchetFactor < 1) {
       const rf = this.synthRatchetFactor;
@@ -8627,7 +9106,15 @@ export class AudioEngine {
     }
     this.emitOwnedSamplePositions(leadSHPositions);
 
-    if (velocity < 0.001) return;
+    const levelKey = useLead2 ? 'lead2Level' : 'lead1Level';
+    const baselineLeadLevel = Math.max(
+      0.0001,
+      applyDistanceValue(levelKey, this.sliderState, leadVoice, getVoiceDistanceValue(this.sliderState, leadVoice))
+    );
+    const triggeredLeadLevel = applyDistanceValue(levelKey, this.sliderState, leadVoice, leadDistance);
+    const effectiveVelocity = Math.max(0, Math.min(1.5, velocity * Math.max(0, triggeredLeadLevel / baselineLeadLevel)));
+
+    if (effectiveVelocity < 0.001) return;
 
     const ctx = this.ctx;
     const now = ctx.currentTime;
@@ -8690,9 +9177,6 @@ export class AudioEngine {
       noteFreq = frequency * (1 + (Math.random() - 0.5) * glide * 0.2);
     }
 
-    // Hold time — per-lead custom param (not in presets)
-    const hold = useLead2 ? this.sliderState.lead2Hold : this.sliderState.lead1Hold;
-
     // ─── Per-engine tension → timbre randomization ───
     // Higher tension adds random offsets to FM params (mod index, feedback, beat detune)
     const leadTension = getEffectiveTension(
@@ -8709,13 +9193,14 @@ export class AudioEngine {
       effectiveMorphed.beatDetune = (effectiveMorphed.beatDetune ?? 0) + rOff() * 4;
       effectiveMorphed.carrier2Mix = Math.max(0, Math.min(1, (effectiveMorphed.carrier2Mix ?? 0.5) + rOff() * 0.2));
     }
+    const noteLocalMorphed = this.applyLeadDistanceTimbre(effectiveMorphed, leadDistance);
 
     // WASM path: send morphed params + delay + noteOn to the lead FM worklet
     // WASM has separate outputs per lead — output[0]=lead1, output[1]=lead2.
     // Each output routes through its own level gain and pre-fader sends in the Web Audio graph.
     if (this.leadFmWasmReady && this.leadFmWasmNode) {
       const port = this.leadFmWasmNode.port;
-      port.postMessage({ type: 'params', params: effectiveMorphed });
+      port.postMessage({ type: 'params', params: noteLocalMorphed });
       port.postMessage({
         type: 'delay',
         params: {
@@ -8728,7 +9213,7 @@ export class AudioEngine {
           send: 0,
         },
       });
-      port.postMessage({ type: 'noteOn', frequency: noteFreq, velocity, hold, leadIndex: useLead2 ? 1 : 0 });
+      port.postMessage({ type: 'noteOn', frequency: noteFreq, velocity: effectiveVelocity, hold, leadIndex: useLead2 ? 1 : 0 });
       return;
     }
 
@@ -8736,7 +9221,7 @@ export class AudioEngine {
     const leadDest = useLead2
       ? (this.lead2Bus ?? this.leadGain)
       : (this.lead1Bus ?? this.leadGain);
-    playLead4opFMNote(ctx, leadDest, noteFreq, velocity, effectiveMorphed, hold);
+    playLead4opFMNote(ctx, leadDest, noteFreq, effectiveVelocity, noteLocalMorphed, hold);
 
     // If glide, schedule frequency ramp on all carriers (handled inside playLead4opFMNote is per-note)
     // Vibrato: add LFO modulation if depth > threshold
@@ -8892,7 +9377,7 @@ export class AudioEngine {
     return { buffer: bestMatch.buffer, sampleMidi: bestMatch.sampleMidi };
   }
 
-  private playPianoNote(frequency: number, velocity = 0.8): void {
+  private playPianoNote(frequency: number, velocity = 0.8, distanceOverride: number | null = null): void {
     if (!this.sliderState) return;
     if (!this.ctx || !this.masterGain) {
       this.ensureSynthChain();
@@ -8943,14 +9428,40 @@ export class AudioEngine {
 
     const gain = ctx.createGain();
     source.connect(gain);
-    gain.connect(this.pianoBus);
 
-    const attack = Math.max(0.001, this.shv('pianoAttack', this.sliderState.pianoAttack ?? 0.005));
-    const decay = Math.max(0.01, this.shv('pianoDecay', this.sliderState.pianoDecay ?? 0.65));
-    const sustain = Math.max(0, Math.min(1, this.shv('pianoSustain', this.sliderState.pianoSustain ?? 0.72)));
-    const hold = Math.max(0, this.shv('pianoHold', this.sliderState.pianoHold ?? 0.2));
-    const release = Math.max(0.01, this.shv('pianoRelease', this.sliderState.pianoRelease ?? 1.4));
-    const peak = Math.max(0.001, Math.min(1.25, velocity));
+    const baselinePianoDistance = getVoiceDistanceValue(this.sliderState, 'piano');
+    const pianoDistance = Math.max(0, Math.min(1, distanceOverride ?? baselinePianoDistance));
+    this.onPianoDistanceTrigger?.(pianoDistance);
+    const pianoEnv = applyPianoDistanceEnvelope({
+      attack: Math.max(0.001, this.shv('pianoAttack', this.sliderState.pianoAttack ?? 0.005)),
+      decay: Math.max(0.01, this.shv('pianoDecay', this.sliderState.pianoDecay ?? 0.65)),
+      sustain: Math.max(0, Math.min(1, this.shv('pianoSustain', this.sliderState.pianoSustain ?? 0.72))),
+      hold: Math.max(0, this.shv('pianoHold', this.sliderState.pianoHold ?? 0.2)),
+      release: Math.max(0.01, this.shv('pianoRelease', this.sliderState.pianoRelease ?? 1.4)),
+    }, pianoDistance);
+    const attack = Math.max(0.001, pianoEnv.attack);
+    const decay = Math.max(0.01, pianoEnv.decay);
+    const sustain = Math.max(0, Math.min(1, pianoEnv.sustain));
+    const hold = Math.max(0, pianoEnv.hold ?? 0);
+    const release = Math.max(0.01, pianoEnv.release);
+    const baselinePianoLevel = Math.max(
+      0.0001,
+      applyDistanceValue('pianoLevel', this.sliderState, 'piano', baselinePianoDistance)
+    );
+    const triggeredPianoLevel = applyDistanceValue('pianoLevel', this.sliderState, 'piano', pianoDistance);
+    const noteFilterCutoff = applyDistanceValue('pianoPostLPF', this.sliderState, 'piano', pianoDistance);
+    let noteFilter: BiquadFilterNode | null = null;
+    if (pianoDistance > 1e-4) {
+      noteFilter = ctx.createBiquadFilter();
+      noteFilter.type = 'lowpass';
+      noteFilter.frequency.setValueAtTime(Math.max(40, noteFilterCutoff), now);
+      noteFilter.Q.value = 0.707;
+      gain.connect(noteFilter);
+      noteFilter.connect(this.pianoBus);
+    } else {
+      gain.connect(this.pianoBus);
+    }
+    const peak = Math.max(0.001, Math.min(1.25, velocity * Math.max(0, triggeredPianoLevel / baselinePianoLevel)));
     const sustainLevel = peak * sustain;
     const attackEnd = now + attack;
     const decayEnd = attackEnd + decay;
@@ -8963,13 +9474,14 @@ export class AudioEngine {
     gain.gain.setValueAtTime(sustainLevel, holdEnd);
     gain.gain.linearRampToValueAtTime(0.0001, holdEnd + release);
 
-    const activeVoice: ActivePianoVoice = { source, gain };
+    const activeVoice: ActivePianoVoice = { source, gain, filter: noteFilter };
     this.activePianoVoices.add(activeVoice);
 
     source.onended = () => {
       this.activePianoVoices.delete(activeVoice);
       try { source.disconnect(); } catch { /* ignore stale piano source */ }
       try { gain.disconnect(); } catch { /* ignore stale piano gain */ }
+      try { noteFilter?.disconnect(); } catch { /* ignore stale piano filter */ }
     };
 
     source.start(now);
@@ -9231,10 +9743,10 @@ export class AudioEngine {
       this.leadFilter.Q.value = 0.7;
       this.leadDry = ctx.createGain();
       this.leadDry.gain.value = leadActive ? 1.0 : 0;
+      this.ensureDiffuseBus(ctx);
       // Connect lead signal path (pre-fader reverb: leadLevel is the shared master, leadVoiceLevel provides final trim)
       this.leadVoiceLevel = ctx.createGain();
       this.leadVoiceLevel.gain.value = ENGINE_TRIMS.lead;
-      this.leadFilter.connect(this.leadVoiceLevel);
       this.leadVoiceLevel.connect(this.leadDry);
       this.leadDry.connect(this.masterGain);
 
@@ -9247,8 +9759,14 @@ export class AudioEngine {
         this.lead1LevelGain = ctx.createGain();
         this.lead1LevelGain.gain.value = this.sliderState?.lead1Level ?? 0.8;
       }
+      this.lead1SpatialChain = this.createVoiceSpatialChain(ctx, {
+        initialPostLpf: applyDistanceValue('lead1PostLPF', this.sliderState!, 'lead1'),
+        initialStereoWidth: applyDistanceValue('lead1StereoWidth', this.sliderState!, 'lead1'),
+        initialDiffuseSend: applyDistanceValue('lead1DiffuseSend', this.sliderState!, 'lead1'),
+        dryDestination: this.leadVoiceLevel!,
+      });
       this.lead1Bus.connect(this.lead1LevelGain);
-      this.lead1LevelGain.connect(this.leadFilter);
+      this.lead1LevelGain.connect(this.lead1SpatialChain!.postLpf);
       if (!this.lead2Bus) {
         this.lead2Bus = ctx.createGain();
         this.lead2Bus.gain.value = 1.0;
@@ -9257,26 +9775,33 @@ export class AudioEngine {
         this.lead2LevelGain = ctx.createGain();
         this.lead2LevelGain.gain.value = this.sliderState?.lead2Level ?? 0.6;
       }
+      this.lead2SpatialChain = this.createVoiceSpatialChain(ctx, {
+        initialPostLpf: applyDistanceValue('lead2PostLPF', this.sliderState!, 'lead2'),
+        initialStereoWidth: applyDistanceValue('lead2StereoWidth', this.sliderState!, 'lead2'),
+        initialDiffuseSend: applyDistanceValue('lead2DiffuseSend', this.sliderState!, 'lead2'),
+        dryDestination: this.leadVoiceLevel!,
+      });
       this.lead2Bus.connect(this.lead2LevelGain);
-      this.lead2LevelGain.connect(this.leadFilter);
+      this.lead2LevelGain.connect(this.lead2SpatialChain!.postLpf);
       // Per-lead reverb sends (bus → send → reverb)
+      const reverbDestination = this.getReverbSendDestination();
       this.lead1ReverbSend = ctx.createGain();
       this.lead1ReverbSend.gain.value = this.sliderState?.lead1ReverbSend ?? 0.5;
       this.lead1Bus.connect(this.lead1ReverbSend);
-      this.lead1ReverbSend.connect(this.reverbNode!);
+      if (reverbDestination) this.lead1ReverbSend.connect(reverbDestination);
       this.lead2ReverbSend = ctx.createGain();
       this.lead2ReverbSend.gain.value = this.sliderState?.lead2ReverbSend ?? 0.5;
       this.lead2Bus.connect(this.lead2ReverbSend);
-      this.lead2ReverbSend.connect(this.reverbNode!);
+      if (reverbDestination) this.lead2ReverbSend.connect(reverbDestination);
       this.ensureLeadDelaySends(ctx);
 
       // WASM lead connections (if WASM node exists, per-lead output routing)
       if (this.leadFmWasmNode) {
-        // Lead 1 dry: output[0] → level gain → leadVoiceLevel (bypasses leadFilter)
+        // Lead 1 dry: output[0] → level gain → post chain → lead dry output
         this.leadWasmLevelGain = ctx.createGain();
         this.leadWasmLevelGain.gain.value = this.sliderState?.lead1Level ?? 0.8;
         this.leadFmWasmNode.connect(this.leadWasmLevelGain, 0);
-        this.leadWasmLevelGain.connect(this.leadVoiceLevel!);
+        this.leadWasmLevelGain.connect(this.lead1SpatialChain!.postLpf);
         // Lead 1 pre-fader sends
         this.leadFmWasmNode.connect(this.lead1ReverbSend, 0);
         if (this.granularLead1Send) {
@@ -9289,11 +9814,11 @@ export class AudioEngine {
           this.leadFmWasmNode.connect(this.lead1DelayBSend, 0);
         }
 
-        // Lead 2 dry: output[1] → level gain → leadVoiceLevel (bypasses leadFilter)
+        // Lead 2 dry: output[1] → level gain → post chain → lead dry output
         this.leadWasmLead2LevelGain = ctx.createGain();
         this.leadWasmLead2LevelGain.gain.value = this.sliderState?.lead2Level ?? 0.6;
         this.leadFmWasmNode.connect(this.leadWasmLead2LevelGain, 1);
-        this.leadWasmLead2LevelGain.connect(this.leadVoiceLevel!);
+        this.leadWasmLead2LevelGain.connect(this.lead2SpatialChain!.postLpf);
         // Lead 2 pre-fader sends
         this.leadFmWasmNode.connect(this.lead2ReverbSend, 1);
         if (this.granularLead2Send) {
@@ -9314,13 +9839,21 @@ export class AudioEngine {
       this.pianoBus.gain.value = 1.0;
       this.pianoLevelGain = ctx.createGain();
       this.pianoLevelGain.gain.value = (this.sliderState?.pianoLevel ?? 0.75) * ENGINE_TRIMS.piano;
+      this.ensureDiffuseBus(ctx);
+      this.pianoSpatialChain = this.createVoiceSpatialChain(ctx, {
+        initialPostLpf: applyDistanceValue('pianoPostLPF', this.sliderState!, 'piano'),
+        initialStereoWidth: applyDistanceValue('pianoStereoWidth', this.sliderState!, 'piano'),
+        initialDiffuseSend: applyDistanceValue('pianoDiffuseSend', this.sliderState!, 'piano'),
+        dryDestination: this.masterGain!,
+      });
       this.pianoBus.connect(this.pianoLevelGain);
-      this.pianoLevelGain.connect(this.masterGain);
+      this.pianoLevelGain.connect(this.pianoSpatialChain!.postLpf);
       this.pianoReverbSend = ctx.createGain();
       this.pianoReverbSend.gain.value = this.sliderState?.pianoReverbSend ?? 0.35;
-      if (this.reverbNode) {
+      const reverbDestination = this.getReverbSendDestination();
+      if (reverbDestination) {
         this.pianoBus.connect(this.pianoReverbSend);
-        this.pianoReverbSend.connect(this.reverbNode);
+        this.pianoReverbSend.connect(reverbDestination);
       }
       this.ensurePianoDelaySends(ctx);
       if (this.granularPianoSend && this.granularFxInputGain) {
@@ -9341,17 +9874,30 @@ export class AudioEngine {
       this.pad2ReverbSend.gain.value = this.sliderState?.pad2ReverbSend ?? 0.7;
       this.synthDirect = ctx.createGain();
       this.synthDirect.gain.value = 1.0;  // Level is per-voice via mixerGain
+      this.ensureDiffuseBus(ctx);
       // Create pad split buses for separate granular tapping
       if (!this.pad1Bus) {
         this.pad1Bus = ctx.createGain();
         this.pad1Bus.gain.value = 1.0;
-        this.pad1Bus.connect(this.synthBus);
       }
       if (!this.pad2Bus) {
         this.pad2Bus = ctx.createGain();
         this.pad2Bus.gain.value = 1.0;
-        this.pad2Bus.connect(this.synthBus);
       }
+      this.pad1SpatialChain = this.createVoiceSpatialChain(ctx, {
+        initialPostLpf: applyDistanceValue('padPostLPF', this.sliderState!, 'pad1'),
+        initialStereoWidth: applyDistanceValue('padStereoWidth', this.sliderState!, 'pad1'),
+        initialDiffuseSend: applyDistanceValue('padDiffuseSend', this.sliderState!, 'pad1'),
+        dryDestination: this.synthBus!,
+      });
+      this.pad2SpatialChain = this.createVoiceSpatialChain(ctx, {
+        initialPostLpf: applyDistanceValue('pad2PostLPF', this.sliderState!, 'pad2'),
+        initialStereoWidth: applyDistanceValue('pad2StereoWidth', this.sliderState!, 'pad2'),
+        initialDiffuseSend: applyDistanceValue('pad2DiffuseSend', this.sliderState!, 'pad2'),
+        dryDestination: this.synthBus!,
+      });
+      this.pad1Bus.connect(this.pad1SpatialChain!.postLpf);
+      this.pad2Bus.connect(this.pad2SpatialChain!.postLpf);
       if (!this.pad1PreFaderBus) {
         this.pad1PreFaderBus = ctx.createGain();
         this.pad1PreFaderBus.gain.value = 1.0;
@@ -9366,8 +9912,11 @@ export class AudioEngine {
       if (this.pad1PreFaderBus && this.pad1ReverbSend) this.pad1PreFaderBus.connect(this.pad1ReverbSend);
       if (this.pad2PreFaderBus && this.pad2ReverbSend) this.pad2PreFaderBus.connect(this.pad2ReverbSend);
       this.dryBus.connect(this.synthDirect);
-      this.pad1ReverbSend?.connect(this.reverbNode!);
-      this.pad2ReverbSend?.connect(this.reverbNode!);
+      const reverbDestination = this.getReverbSendDestination();
+      if (reverbDestination) {
+        this.pad1ReverbSend?.connect(reverbDestination);
+        this.pad2ReverbSend?.connect(reverbDestination);
+      }
       this.synthDirect.connect(this.masterGain);
     }
 
@@ -9627,18 +10176,22 @@ export class AudioEngine {
               // Read sub-lane arrays fresh each step (so evolve changes take effect immediately)
               // Gate on per-lane enabled state — disabled sub-lanes are treated as absent
               const slEnabled = this.synthSubLaneEnabled[laneIndex] ?? {};
-	              const pitchOffsets = (slEnabled.pitch !== false) ? ov.pitch[laneIndex] : null;
-	              const pitchDir = ov.pitchDirection[laneIndex] ?? 'forward';
-	              const pitchSteps = pitchOffsets?.length ?? 0;
-	              const exprArr = (slEnabled.expression !== false) ? ov.expression[laneIndex] : null;
-	              const exprRange = (slEnabled.expression !== false) ? ov.expressionRanges[laneIndex] : null;
-	              const exprDir = ov.expressionDirection[laneIndex] ?? 'forward';
-	              const exprSteps = exprArr?.length ?? 0;
-	              const morphArr = (slEnabled.morph !== false) ? ov.morph[laneIndex] : null;
-	              const morphRange = (slEnabled.morph !== false) ? ov.morphRanges[laneIndex] : null;
-	              const morphDir = ov.morphDirection[laneIndex] ?? 'forward';
-	              const morphSteps = morphArr?.length ?? 0;
-	              const probArr = (slEnabled.expression !== false) ? ov.probability[laneIndex] : null;
+              const pitchOffsets = (slEnabled.pitch !== false) ? ov.pitch[laneIndex] : null;
+              const pitchDir = ov.pitchDirection[laneIndex] ?? 'forward';
+              const pitchSteps = pitchOffsets?.length ?? 0;
+              const exprArr = (slEnabled.expression !== false) ? ov.expression[laneIndex] : null;
+              const exprRange = (slEnabled.expression !== false) ? ov.expressionRanges[laneIndex] : null;
+              const exprDir = ov.expressionDirection[laneIndex] ?? 'forward';
+              const exprSteps = exprArr?.length ?? 0;
+              const morphArr = (slEnabled.morph !== false) ? ov.morph[laneIndex] : null;
+              const morphRange = (slEnabled.morph !== false) ? ov.morphRanges[laneIndex] : null;
+              const morphDir = ov.morphDirection[laneIndex] ?? 'forward';
+              const morphSteps = morphArr?.length ?? 0;
+              const distanceArr = (slEnabled.distance !== false) ? ov.distance[laneIndex] : null;
+              const distanceRange = (slEnabled.distance !== false) ? ov.distanceRanges[laneIndex] : null;
+              const distanceDir = ov.distanceDirection[laneIndex] ?? 'forward';
+              const distanceSteps = distanceArr?.length ?? 0;
+              const probArr = (slEnabled.expression !== false) ? ov.probability[laneIndex] : null;
               const ratchetArr = (slEnabled.expression !== false) ? ov.ratchet[laneIndex] : null;
               const trigCondArr = ov.trigCondition[laneIndex];
 
@@ -9704,34 +10257,48 @@ export class AudioEngine {
                 if (midiNote !== undefined) {
                   const frequency = midiToFreq(midiNote);
 
-	                  // Expression/velocity sub-lane: dynamics × lane level.
-	                  // This is note velocity (timbre + amplitude), NOT bus gain.
-	                  // Per-lead mix level lives on lead1LevelGain/lead2LevelGain nodes.
-	                  let velocity: number;
-	                  if (exprRange) {
-	                    velocity = Math.max(0, Math.min(1, exprRange.min + rng() * (exprRange.max - exprRange.min))) * lane.level;
-	                  } else if (exprArr && exprSteps > 0) {
-	                    const exprIdx = seqLaneIndex(
-	                      { enabled: true, steps: exprSteps, direction: exprDir, _ppForward: true },
-	                      this.synthEuclidHitCounts[laneIndex] - 1
+                  // Expression/velocity sub-lane: dynamics × lane level.
+                  // This is note velocity (timbre + amplitude), NOT bus gain.
+                  // Per-lead mix level lives on lead1LevelGain/lead2LevelGain nodes.
+                  let velocity: number;
+                  if (exprRange) {
+                    velocity = Math.max(0, Math.min(1, exprRange.min + rng() * (exprRange.max - exprRange.min))) * lane.level;
+                  } else if (exprArr && exprSteps > 0) {
+                    const exprIdx = seqLaneIndex(
+                      { enabled: true, steps: exprSteps, direction: exprDir, _ppForward: true },
+                      this.synthEuclidHitCounts[laneIndex] - 1
                     );
                     velocity = Math.max(0, Math.min(1, exprArr[exprIdx] ?? 1.0)) * lane.level;
                   } else {
                     velocity = 1.0 * lane.level;
                   }
 
-	                  // Morph sub-lane: set temporary override for playLeadNote
-	                  if (morphRange) {
-	                    this.synthMorphOverride = morphRange.min + rng() * (morphRange.max - morphRange.min);
-	                  } else if (morphArr && morphSteps > 0) {
-	                    const morphIdx = seqLaneIndex(
-	                      { enabled: true, steps: morphSteps, direction: morphDir, _ppForward: true },
-	                      this.synthEuclidHitCounts[laneIndex] - 1
+                  // Morph sub-lane: set temporary override for playLeadNote
+                  if (morphRange) {
+                    this.synthMorphOverride = morphRange.min + rng() * (morphRange.max - morphRange.min);
+                  } else if (morphArr && morphSteps > 0) {
+                    const morphIdx = seqLaneIndex(
+                      { enabled: true, steps: morphSteps, direction: morphDir, _ppForward: true },
+                      this.synthEuclidHitCounts[laneIndex] - 1
                     );
                     this.synthMorphOverride = morphArr[morphIdx % morphSteps] ?? null;
                   } else {
                     this.synthMorphOverride = null;
                   }
+
+                  let distanceValue: number | null = null;
+                  if (distanceRange) {
+                    distanceValue = distanceRange.min + rng() * (distanceRange.max - distanceRange.min);
+                  } else if (distanceArr && distanceSteps > 0) {
+                    const distanceIdx = seqLaneIndex(
+                      { enabled: true, steps: distanceSteps, direction: distanceDir, _ppForward: true },
+                      this.synthEuclidHitCounts[laneIndex] - 1
+                    );
+                    distanceValue = distanceArr[distanceIdx % distanceSteps] ?? 0;
+                  }
+                  const capturedDistanceOverride = distanceValue == null
+                    ? null
+                    : Math.max(0, Math.min(1, distanceValue));
 
                   const noteSource = lane.source;
 
@@ -9760,18 +10327,23 @@ export class AudioEngine {
                       this.synthMorphOverride = capturedMorphOverride;
                       this.synthRatchetFactor = ratchetFactor;
                       if (noteSource === 'lead' || noteSource === 'lead1') {
-                        this.playLeadNote(frequency, velocity, 'lead1');
+                        this.playLeadNote(frequency, velocity, 'lead1', capturedDistanceOverride);
                       } else if (noteSource === 'lead2') {
-                        this.playLeadNote(frequency, velocity, 'lead2');
+                        this.playLeadNote(frequency, velocity, 'lead2', capturedDistanceOverride);
                         } else if (noteSource === 'piano') {
-                          this.playPianoNote(frequency, velocity);
+                          this.playPianoNote(frequency, velocity, capturedDistanceOverride);
                       } else if (noteSource.startsWith('synth')) {
                         const voiceIndex = parseInt(noteSource.replace('synth', '')) - 1;
                         // Determine if this voice belongs to Pad 2
                         const isPad2 = this.sliderState?.pad2Enabled &&
                           ((this.sliderState?.pad2VoiceAssign ?? 0) & (1 << voiceIndex)) !== 0;
                         const padParamsOverride = this.sliderState
-                          ? (this.buildPadTriggerState(isPad2 ? 'pad2' : 'pad1', this.sliderState, capturedMorphOverride) ?? undefined)
+                          ? (this.buildPadTriggerState(
+                              isPad2 ? 'pad2' : 'pad1',
+                              this.sliderState,
+                              capturedMorphOverride,
+                              capturedDistanceOverride
+                            ) ?? undefined)
                           : undefined;
                         const padTriggerState = padParamsOverride ?? this.sliderState;
                         // Use correct pad's ADSR for ratchet note duration
@@ -9983,15 +10555,11 @@ export class AudioEngine {
 
   getRecordableBusNodes(): Record<StemRecordTrackId, RecordableTrackSource> {
     return {
-      pad1: this.padWasmNode
-        ? { node: this.padWasmNode, outputIndex: 4 }
-        : { node: this.pad1Bus },
-      pad2: this.padWasmNode
-        ? { node: this.padWasmNode, outputIndex: 5 }
-        : { node: this.pad2Bus },
-      lead1: { node: this.leadWasmLevelGain ?? this.lead1LevelGain },
-      lead2: { node: this.leadWasmLead2LevelGain ?? this.lead2LevelGain },
-      piano: { node: this.pianoLevelGain },
+      pad1: { node: this.pad1SpatialChain?.output ?? (this.padWasmNode ? this.padWasmNode : this.pad1Bus), outputIndex: this.pad1SpatialChain ? undefined : (this.padWasmNode ? 4 : undefined) },
+      pad2: { node: this.pad2SpatialChain?.output ?? (this.padWasmNode ? this.padWasmNode : this.pad2Bus), outputIndex: this.pad2SpatialChain ? undefined : (this.padWasmNode ? 5 : undefined) },
+      lead1: { node: this.lead1SpatialChain?.output ?? this.leadWasmLevelGain ?? this.lead1LevelGain },
+      lead2: { node: this.lead2SpatialChain?.output ?? this.leadWasmLead2LevelGain ?? this.lead2LevelGain },
+      piano: { node: this.pianoSpatialChain?.output ?? this.pianoLevelGain },
       drums: this.drumWasmNode
         ? { node: this.drumWasmNode, outputIndex: 0 }
         : { node: this.drumSynth?.getMasterGain() ?? null },

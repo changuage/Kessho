@@ -53,6 +53,13 @@ import {
   upsertUserLead4opFMPreset,
 } from '../../audio/lead4opfm';
 import { audioEngine, type ManualSynthNoteOptions, type ManualSynthSource } from '../../audio/runtime';
+import {
+  applyLeadDistanceEnvelope,
+  applyPianoDistanceEnvelope,
+  getLeadDistancePreview,
+  getPadDistancePreview,
+  getPianoDistancePreview,
+} from '../../audio/distanceMacro';
 import FilterLfoViz from './FilterLfoViz';
 import WaveFoldViz from './WaveFoldViz';
 import LeadAdsrViz from './LeadAdsrViz';
@@ -574,6 +581,11 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const livePad2Morph = useRuntimeValue('pad2Morph', state.pad2Morph ?? 0) ?? (state.pad2Morph ?? 0);
   const liveLead1Morph = useRuntimeValue('lead1Morph', state.lead1Morph ?? 0) ?? (state.lead1Morph ?? 0);
   const liveLead2Morph = useRuntimeValue('lead2Morph', state.lead2Morph ?? 0) ?? (state.lead2Morph ?? 0);
+  const livePad1Distance = useRuntimeValue('padDistance', state.padDistance ?? 0) ?? (state.padDistance ?? 0);
+  const livePad2Distance = useRuntimeValue('pad2Distance', state.pad2Distance ?? 0) ?? (state.pad2Distance ?? 0);
+  const liveLead1Distance = useRuntimeValue('lead1Distance', state.lead1Distance ?? 0) ?? (state.lead1Distance ?? 0);
+  const liveLead2Distance = useRuntimeValue('lead2Distance', state.lead2Distance ?? 0) ?? (state.lead2Distance ?? 0);
+  const livePianoDistance = useRuntimeValue('pianoDistance', state.pianoDistance ?? 0) ?? (state.pianoDistance ?? 0);
   const liveSynthNoteMin1 = useRuntimeValue('synthEuclid1NoteMin', state.synthEuclid1NoteMin ?? 48) ?? (state.synthEuclid1NoteMin ?? 48);
   const liveSynthNoteMax1 = useRuntimeValue('synthEuclid1NoteMax', state.synthEuclid1NoteMax ?? 72) ?? (state.synthEuclid1NoteMax ?? 72);
   const liveSynthNoteMin2 = useRuntimeValue('synthEuclid2NoteMin', state.synthEuclid2NoteMin ?? 48) ?? (state.synthEuclid2NoteMin ?? 48);
@@ -586,8 +598,45 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const pad2MorphValue = state.pad2MorphAuto ? livePad2Morph : (state.pad2Morph ?? 0);
   const lead1MorphValue = state.lead1MorphAuto ? liveLead1Morph : (state.lead1Morph ?? 0);
   const lead2MorphValue = state.lead2MorphAuto ? liveLead2Morph : (state.lead2Morph ?? 0);
+  const pad1DistancePreview = useMemo(() => getPadDistancePreview(state, 'pad1', livePad1Distance), [livePad1Distance, state]);
+  const pad2DistancePreview = useMemo(() => getPadDistancePreview(state, 'pad2', livePad2Distance), [livePad2Distance, state]);
+  const lead1DistancePreview = useMemo(() => getLeadDistancePreview(state, 'lead1', liveLead1Distance), [liveLead1Distance, state]);
+  const lead2DistancePreview = useMemo(() => getLeadDistancePreview(state, 'lead2', liveLead2Distance), [liveLead2Distance, state]);
+  const pianoDistancePreview = useMemo(() => getPianoDistancePreview(state, livePianoDistance), [livePianoDistance, state]);
+  const pianoDistanceEnv = useMemo(() => applyPianoDistanceEnvelope({
+    attack: state.pianoAttack,
+    decay: state.pianoDecay,
+    sustain: state.pianoSustain,
+    hold: state.pianoHold,
+    release: state.pianoRelease,
+  }, livePianoDistance), [
+    state.pianoAttack,
+    state.pianoDecay,
+    state.pianoHold,
+    state.pianoRelease,
+    state.pianoSustain,
+    livePianoDistance,
+  ]);
   const liveSynthNoteMins = [liveSynthNoteMin1, liveSynthNoteMin2, liveSynthNoteMin3, liveSynthNoteMin4];
   const liveSynthNoteMaxs = [liveSynthNoteMax1, liveSynthNoteMax2, liveSynthNoteMax3, liveSynthNoteMax4];
+
+  const getPreviewValue = useCallback((
+    preview: Partial<Record<keyof SliderState, number>>,
+    key: keyof SliderState,
+  ): number | undefined => {
+    const value = preview[key];
+    return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+  }, []);
+
+  const getDistanceGhostValue = useCallback((key: keyof SliderState, liveValue: number): number | undefined => {
+    const sliderState = sliderProps(key) as { mode?: string };
+    if ((sliderState.mode ?? 'single') !== 'single') return undefined;
+    const baseValue = state[key];
+    if (typeof baseValue !== 'number' || !Number.isFinite(baseValue) || !Number.isFinite(liveValue)) {
+      return undefined;
+    }
+    return Math.abs(baseValue - liveValue) > 1e-6 ? liveValue : undefined;
+  }, [sliderProps, state]);
 
   const synthLivePollMs = useMemo(() => {
     const hasAnimatedFilterView =
@@ -1214,13 +1263,13 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       const morphRanges = seq.subLaneStates.map((laneState) => {
         const lane = laneState.morph;
         return lane.enabled && lane.valueMode === 'range'
-          ? { min: Math.min(lane.rangeMin ?? 0.25, lane.rangeMax ?? 0.75), max: Math.max(lane.rangeMin ?? 0.25, lane.rangeMax ?? 0.75) }
+          ? { min: Math.min(lane.rangeMin ?? 0, lane.rangeMax ?? 1), max: Math.max(lane.rangeMin ?? 0, lane.rangeMax ?? 1) }
           : null;
       });
       const distanceRanges = seq.subLaneStates.map((laneState) => {
         const lane = laneState.distance;
         return lane.enabled && lane.valueMode === 'range'
-          ? { min: Math.min(lane.rangeMin ?? 0.25, lane.rangeMax ?? 0.75), max: Math.max(lane.rangeMin ?? 0.25, lane.rangeMax ?? 0.75) }
+          ? { min: Math.min(lane.rangeMin ?? 0, lane.rangeMax ?? 1), max: Math.max(lane.rangeMin ?? 0, lane.rangeMax ?? 1) }
           : null;
       });
       // Send MIDI-converted pitch to audio engine
@@ -1650,7 +1699,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
 
     const currentDistance = seq.stepOverrides.distance[seq.activeTab]?.[activeDistanceCursorStep]
       ?? activeSeq.distance.values[activeDistanceCursorStep % Math.max(1, activeSeq.distance.values.length)]
-      ?? 0.5;
+      ?? 0;
     const distanceDelta = coarse ? 0.1 : 0.05;
     const nextDistance = Math.max(0, Math.min(1, Math.round((currentDistance + direction * distanceDelta) * 20) / 20));
     seq.changeStepValue(seq.activeTab, 'distance', activeDistanceCursorStep, nextDistance);
@@ -2030,6 +2079,9 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     const env = mp
       ? { attack: mp.attack, decay: mp.decay, sustain: mp.sustain, release: mp.release }
       : null;
+    const voice = leadNum === 2 ? 'lead2' : 'lead1';
+    const distance = voice === 'lead2' ? liveLead2Distance : liveLead1Distance;
+    const distancePreview = voice === 'lead2' ? lead2DistancePreview : lead1DistancePreview;
     const useCustomAdsr = leadNum === 2 ? state.lead2UseCustomAdsr : state.lead1UseCustomAdsr;
     const customAdsrKey = leadNum === 2 ? 'lead2UseCustomAdsr' : 'lead1UseCustomAdsr';
     const attackKey = leadNum === 2 ? 'lead2Attack' : 'lead1Attack';
@@ -2060,6 +2112,13 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     }
 
     const sourceLabel = useCustomAdsr ? 'custom' : (hasPresetEnv ? 'from preset' : 'fallback');
+    const distanceEnv = applyLeadDistanceEnvelope(voice, {
+      attack: safeEnv.attack,
+      decay: safeEnv.decay,
+      sustain: safeEnv.sustain,
+      hold: state[holdKey],
+      release: safeEnv.release,
+    }, distance);
 
     const accentColor = leadNum === 1 ? '#f59e0b' : '#06b6d4';
     const accentRgba = leadNum === 1 ? 'rgba(245,158,11,' : 'rgba(6,182,212,';
@@ -2093,6 +2152,11 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
         <div style={{ fontSize: '0.7rem', color: '#666', marginBottom: '4px' }}>
           Envelope ({sourceLabel}) — A:{safeEnv.attack.toFixed(3)}s D:{safeEnv.decay.toFixed(2)}s S:{(safeEnv.sustain * 100).toFixed(0)}% R:{safeEnv.release.toFixed(2)}s
         </div>
+        {distance > 0.001 && (
+          <div style={{ fontSize: '0.68rem', color: '#888', marginBottom: '4px' }}>
+            Distance target — A:{distanceEnv.attack.toFixed(3)}s D:{distanceEnv.decay.toFixed(2)}s S:{(distanceEnv.sustain * 100).toFixed(0)}% H:{(distanceEnv.hold ?? state[holdKey]).toFixed(2)}s R:{distanceEnv.release.toFixed(2)}s
+          </div>
+        )}
         <LeadAdsrViz
           attack={safeEnv.attack}
           decay={safeEnv.decay}
@@ -2107,11 +2171,11 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
         />
         {useCustomAdsr && (
           <div style={{ marginTop: '8px' }}>
-            <Slider label="Attack" value={state[attackKey]} paramKey={attackKey} unit="s" onChange={onParamChange} {...sliderProps(attackKey)} />
-            <Slider label="Decay" value={state[decayKey]} paramKey={decayKey} unit="s" onChange={onParamChange} {...sliderProps(decayKey)} />
-            <Slider label="Sustain" value={state[sustainKey]} paramKey={sustainKey} onChange={onParamChange} {...sliderProps(sustainKey)} />
-            <Slider label="Hold" value={state[holdKey]} paramKey={holdKey} unit="s" onChange={onParamChange} {...sliderProps(holdKey)} />
-            <Slider label="Release" value={state[releaseKey]} paramKey={releaseKey} unit="s" onChange={onParamChange} {...sliderProps(releaseKey)} />
+            <Slider label="Attack" value={state[attackKey]} paramKey={attackKey} unit="s" ghostValue={getPreviewValue(distancePreview, attackKey)} onChange={onParamChange} {...sliderProps(attackKey)} />
+            <Slider label="Decay" value={state[decayKey]} paramKey={decayKey} unit="s" ghostValue={getPreviewValue(distancePreview, decayKey)} onChange={onParamChange} {...sliderProps(decayKey)} />
+            <Slider label="Sustain" value={state[sustainKey]} paramKey={sustainKey} ghostValue={getPreviewValue(distancePreview, sustainKey)} onChange={onParamChange} {...sliderProps(sustainKey)} />
+            <Slider label="Hold" value={state[holdKey]} paramKey={holdKey} unit="s" ghostValue={getPreviewValue(distancePreview, holdKey)} onChange={onParamChange} {...sliderProps(holdKey)} />
+            <Slider label="Release" value={state[releaseKey]} paramKey={releaseKey} unit="s" ghostValue={getPreviewValue(distancePreview, releaseKey)} onChange={onParamChange} {...sliderProps(releaseKey)} />
           </div>
         )}
       </div>
@@ -2241,7 +2305,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
 
               {/* Drive + Osc Mix — same line */}
               <div className="sc-compact-grid-2">
-                <Slider label="Drive" value={state.hardness} paramKey="hardness" onChange={onParamChange} {...sliderProps('hardness')} />
+                <Slider label="Drive" value={state.hardness} paramKey="hardness" ghostValue={getPreviewValue(pad1DistancePreview, 'hardness')} onChange={onParamChange} {...sliderProps('hardness')} />
                 <Slider label="Osc Mix" value={state.padOscMix ?? 0.5} paramKey="padOscMix" onChange={onParamChange} {...sliderProps('padOscMix')} />
               </div>
 
@@ -2284,8 +2348,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     />
                   </div>
                   <div className="sc-compact-grid-2">
-                    <Slider label="Min" value={state.filterCutoffMin} paramKey="filterCutoffMin" unit="Hz" logarithmic onChange={onParamChange} {...sliderProps('filterCutoffMin')} />
-                    <Slider label="Max" value={state.filterCutoffMax} paramKey="filterCutoffMax" unit="Hz" logarithmic onChange={onParamChange} {...sliderProps('filterCutoffMax')} />
+                    <Slider label="Min" value={state.filterCutoffMin} paramKey="filterCutoffMin" unit="Hz" logarithmic ghostValue={getPreviewValue(pad1DistancePreview, 'filterCutoffMin')} onChange={onParamChange} {...sliderProps('filterCutoffMin')} />
+                    <Slider label="Max" value={state.filterCutoffMax} paramKey="filterCutoffMax" unit="Hz" logarithmic ghostValue={getPreviewValue(pad1DistancePreview, 'filterCutoffMax')} onChange={onParamChange} {...sliderProps('filterCutoffMax')} />
                   </div>
                   <div className="sc-compact-grid-2">
                     <Slider label="Resonance" value={state.filterResonance} paramKey="filterResonance" onChange={onParamChange} {...sliderProps('filterResonance')} />
@@ -2297,10 +2361,29 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 <div className="sc-advanced-section">
                   <div className="sc-section-label">Envelope</div>
                   <div className="sc-compact-grid-4">
-                    <Slider label="Attack" value={state.synthAttack} paramKey="synthAttack" unit="s" onChange={onParamChange} {...sliderProps('synthAttack')} />
-                    <Slider label="Decay" value={state.synthDecay} paramKey="synthDecay" unit="s" onChange={onParamChange} {...sliderProps('synthDecay')} />
-                    <Slider label="Sustain" value={state.synthSustain} paramKey="synthSustain" onChange={onParamChange} {...sliderProps('synthSustain')} />
-                    <Slider label="Release" value={state.synthRelease} paramKey="synthRelease" unit="s" onChange={onParamChange} {...sliderProps('synthRelease')} />
+                    <Slider label="Attack" value={state.synthAttack} paramKey="synthAttack" unit="s" ghostValue={getPreviewValue(pad1DistancePreview, 'synthAttack')} onChange={onParamChange} {...sliderProps('synthAttack')} />
+                    <Slider label="Decay" value={state.synthDecay} paramKey="synthDecay" unit="s" ghostValue={getPreviewValue(pad1DistancePreview, 'synthDecay')} onChange={onParamChange} {...sliderProps('synthDecay')} />
+                    <Slider label="Sustain" value={state.synthSustain} paramKey="synthSustain" ghostValue={getPreviewValue(pad1DistancePreview, 'synthSustain')} onChange={onParamChange} {...sliderProps('synthSustain')} />
+                    <Slider label="Release" value={state.synthRelease} paramKey="synthRelease" unit="s" ghostValue={getPreviewValue(pad1DistancePreview, 'synthRelease')} onChange={onParamChange} {...sliderProps('synthRelease')} />
+                  </div>
+                </div>
+
+                <div className="sc-advanced-section">
+                  <div className="sc-section-label">Space</div>
+                  <div style={{ fontSize: '0.62rem', color: '#888', marginBottom: '6px' }}>
+                    Distance pushes the pad back by darkening, narrowing, and increasing the diffuse halo.
+                  </div>
+                  <div className="sc-compact-grid-2">
+                  <Slider label="Distance" value={state.padDistance} paramKey="padDistance" ghostValue={getDistanceGhostValue('padDistance', livePad1Distance)} onChange={onParamChange} {...sliderProps('padDistance')} />
+                    <Slider label="Level" value={state.synthLevel} paramKey="synthLevel" ghostValue={getPreviewValue(pad1DistancePreview, 'synthLevel')} onChange={onParamChange} {...sliderProps('synthLevel')} />
+                  </div>
+                  <div className="sc-compact-grid-2">
+                    <Slider label="Reverb Send" value={state.pad1ReverbSend} paramKey="pad1ReverbSend" ghostValue={getPreviewValue(pad1DistancePreview, 'pad1ReverbSend')} onChange={onParamChange} {...sliderProps('pad1ReverbSend')} />
+                    <Slider label="Post LPF" value={state.padPostLPF} paramKey="padPostLPF" unit=" Hz" logarithmic ghostValue={getPreviewValue(pad1DistancePreview, 'padPostLPF')} onChange={onParamChange} {...sliderProps('padPostLPF')} />
+                  </div>
+                  <div className="sc-compact-grid-2">
+                    <Slider label="Stereo Width" value={state.padStereoWidth} paramKey="padStereoWidth" ghostValue={getPreviewValue(pad1DistancePreview, 'padStereoWidth')} onChange={onParamChange} {...sliderProps('padStereoWidth')} />
+                    <Slider label="Diffuse Send" value={state.padDiffuseSend} paramKey="padDiffuseSend" ghostValue={getPreviewValue(pad1DistancePreview, 'padDiffuseSend')} onChange={onParamChange} {...sliderProps('padDiffuseSend')} />
                   </div>
                 </div>
 
@@ -2573,8 +2656,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 <div className="sc-advanced-section">
                   <div className="sc-section-label">Character</div>
                   <div className="sc-compact-grid-2">
-                    <Slider label="Warmth" value={state.warmth} paramKey="warmth" onChange={onParamChange} {...sliderProps('warmth')} />
-                    <Slider label="Presence" value={state.presence} paramKey="presence" onChange={onParamChange} {...sliderProps('presence')} />
+                    <Slider label="Warmth" value={state.warmth} paramKey="warmth" ghostValue={getPreviewValue(pad1DistancePreview, 'warmth')} onChange={onParamChange} {...sliderProps('warmth')} />
+                    <Slider label="Presence" value={state.presence} paramKey="presence" ghostValue={getPreviewValue(pad1DistancePreview, 'presence')} onChange={onParamChange} {...sliderProps('presence')} />
                   </div>
                   {/* Legacy: global detune — superseded by per-osc detune */}
                 </div>
@@ -2836,7 +2919,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
 
               {/* Drive + Osc Mix */}
               <div className="sc-compact-grid-2">
-                <Slider label="Drive" value={state.pad2Hardness} paramKey="pad2Hardness" onChange={onParamChange} {...sliderProps('pad2Hardness')} />
+                <Slider label="Drive" value={state.pad2Hardness} paramKey="pad2Hardness" ghostValue={getPreviewValue(pad2DistancePreview, 'pad2Hardness')} onChange={onParamChange} {...sliderProps('pad2Hardness')} />
                 <Slider label="Osc Mix" value={state.pad2OscMix ?? 0.5} paramKey="pad2OscMix" onChange={onParamChange} {...sliderProps('pad2OscMix')} />
               </div>
 
@@ -2911,8 +2994,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     />
                   </div>
                   <div className="sc-compact-grid-2">
-                    <Slider label="Min" value={state.pad2FilterCutoffMin} paramKey="pad2FilterCutoffMin" unit="Hz" logarithmic onChange={onParamChange} {...sliderProps('pad2FilterCutoffMin')} />
-                    <Slider label="Max" value={state.pad2FilterCutoffMax} paramKey="pad2FilterCutoffMax" unit="Hz" logarithmic onChange={onParamChange} {...sliderProps('pad2FilterCutoffMax')} />
+                    <Slider label="Min" value={state.pad2FilterCutoffMin} paramKey="pad2FilterCutoffMin" unit="Hz" logarithmic ghostValue={getPreviewValue(pad2DistancePreview, 'pad2FilterCutoffMin')} onChange={onParamChange} {...sliderProps('pad2FilterCutoffMin')} />
+                    <Slider label="Max" value={state.pad2FilterCutoffMax} paramKey="pad2FilterCutoffMax" unit="Hz" logarithmic ghostValue={getPreviewValue(pad2DistancePreview, 'pad2FilterCutoffMax')} onChange={onParamChange} {...sliderProps('pad2FilterCutoffMax')} />
                   </div>
                   <div className="sc-compact-grid-2">
                     <Slider label="Resonance" value={state.pad2FilterResonance} paramKey="pad2FilterResonance" onChange={onParamChange} {...sliderProps('pad2FilterResonance')} />
@@ -2924,10 +3007,29 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 <div className="sc-advanced-section">
                   <div className="sc-section-label">Envelope</div>
                   <div className="sc-compact-grid-4">
-                    <Slider label="Attack" value={state.pad2Attack} paramKey="pad2Attack" unit="s" onChange={onParamChange} {...sliderProps('pad2Attack')} />
-                    <Slider label="Decay" value={state.pad2Decay} paramKey="pad2Decay" unit="s" onChange={onParamChange} {...sliderProps('pad2Decay')} />
-                    <Slider label="Sustain" value={state.pad2Sustain} paramKey="pad2Sustain" onChange={onParamChange} {...sliderProps('pad2Sustain')} />
-                    <Slider label="Release" value={state.pad2Release} paramKey="pad2Release" unit="s" onChange={onParamChange} {...sliderProps('pad2Release')} />
+                    <Slider label="Attack" value={state.pad2Attack} paramKey="pad2Attack" unit="s" ghostValue={getPreviewValue(pad2DistancePreview, 'pad2Attack')} onChange={onParamChange} {...sliderProps('pad2Attack')} />
+                    <Slider label="Decay" value={state.pad2Decay} paramKey="pad2Decay" unit="s" ghostValue={getPreviewValue(pad2DistancePreview, 'pad2Decay')} onChange={onParamChange} {...sliderProps('pad2Decay')} />
+                    <Slider label="Sustain" value={state.pad2Sustain} paramKey="pad2Sustain" ghostValue={getPreviewValue(pad2DistancePreview, 'pad2Sustain')} onChange={onParamChange} {...sliderProps('pad2Sustain')} />
+                    <Slider label="Release" value={state.pad2Release} paramKey="pad2Release" unit="s" ghostValue={getPreviewValue(pad2DistancePreview, 'pad2Release')} onChange={onParamChange} {...sliderProps('pad2Release')} />
+                  </div>
+                </div>
+
+                <div className="sc-advanced-section">
+                  <div className="sc-section-label">Space</div>
+                  <div style={{ fontSize: '0.62rem', color: '#888', marginBottom: '6px' }}>
+                    Distance pushes Pad 2 back with darker filtering, tighter width, and more diffuse spread.
+                  </div>
+                  <div className="sc-compact-grid-2">
+                    <Slider label="Distance" value={state.pad2Distance} paramKey="pad2Distance" ghostValue={getDistanceGhostValue('pad2Distance', livePad2Distance)} onChange={onParamChange} {...sliderProps('pad2Distance')} />
+                    <Slider label="Level" value={state.pad2Level} paramKey="pad2Level" ghostValue={getPreviewValue(pad2DistancePreview, 'pad2Level')} onChange={onParamChange} {...sliderProps('pad2Level')} />
+                  </div>
+                  <div className="sc-compact-grid-2">
+                    <Slider label="Reverb Send" value={state.pad2ReverbSend} paramKey="pad2ReverbSend" ghostValue={getPreviewValue(pad2DistancePreview, 'pad2ReverbSend')} onChange={onParamChange} {...sliderProps('pad2ReverbSend')} />
+                    <Slider label="Post LPF" value={state.pad2PostLPF} paramKey="pad2PostLPF" unit=" Hz" logarithmic ghostValue={getPreviewValue(pad2DistancePreview, 'pad2PostLPF')} onChange={onParamChange} {...sliderProps('pad2PostLPF')} />
+                  </div>
+                  <div className="sc-compact-grid-2">
+                    <Slider label="Stereo Width" value={state.pad2StereoWidth} paramKey="pad2StereoWidth" ghostValue={getPreviewValue(pad2DistancePreview, 'pad2StereoWidth')} onChange={onParamChange} {...sliderProps('pad2StereoWidth')} />
+                    <Slider label="Diffuse Send" value={state.pad2DiffuseSend} paramKey="pad2DiffuseSend" ghostValue={getPreviewValue(pad2DistancePreview, 'pad2DiffuseSend')} onChange={onParamChange} {...sliderProps('pad2DiffuseSend')} />
                   </div>
                 </div>
 
@@ -3196,8 +3298,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 <div className="sc-advanced-section">
                   <div className="sc-section-label">Character</div>
                   <div className="sc-compact-grid-2">
-                    <Slider label="Warmth" value={state.pad2Warmth} paramKey="pad2Warmth" onChange={onParamChange} {...sliderProps('pad2Warmth')} />
-                    <Slider label="Presence" value={state.pad2Presence} paramKey="pad2Presence" onChange={onParamChange} {...sliderProps('pad2Presence')} />
+                    <Slider label="Warmth" value={state.pad2Warmth} paramKey="pad2Warmth" ghostValue={getPreviewValue(pad2DistancePreview, 'pad2Warmth')} onChange={onParamChange} {...sliderProps('pad2Warmth')} />
+                    <Slider label="Presence" value={state.pad2Presence} paramKey="pad2Presence" ghostValue={getPreviewValue(pad2DistancePreview, 'pad2Presence')} onChange={onParamChange} {...sliderProps('pad2Presence')} />
                   </div>
                 </div>
 
@@ -3399,10 +3501,19 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                   </button>
                 </div>
 
-                <Slider label="Lead 1 Level" value={state.lead1Level} paramKey="lead1Level" onChange={onParamChange} {...sliderProps('lead1Level')} />
+                <Slider label="Lead 1 Level" value={state.lead1Level} paramKey="lead1Level" ghostValue={getPreviewValue(lead1DistancePreview, 'lead1Level')} onChange={onParamChange} {...sliderProps('lead1Level')} />
 
                 {/* Hold Time (shared) */}
-                <Slider label="Hold Time" value={state.lead1Hold} paramKey="lead1Hold" unit="s" onChange={onParamChange} {...sliderProps('lead1Hold')} />
+                <Slider label="Hold Time" value={state.lead1Hold} paramKey="lead1Hold" unit="s" ghostValue={getPreviewValue(lead1DistancePreview, 'lead1Hold')} onChange={onParamChange} {...sliderProps('lead1Hold')} />
+
+                <div className="sc-advanced-section">
+                  <div className="sc-section-label">Distance</div>
+                  <Slider label="Distance" value={state.lead1Distance} paramKey="lead1Distance" ghostValue={getDistanceGhostValue('lead1Distance', liveLead1Distance)} onChange={onParamChange} {...sliderProps('lead1Distance')} />
+                  <Slider label="Post LPF" value={state.lead1PostLPF} paramKey="lead1PostLPF" unit=" Hz" logarithmic ghostValue={getPreviewValue(lead1DistancePreview, 'lead1PostLPF')} onChange={onParamChange} {...sliderProps('lead1PostLPF')} />
+                  <Slider label="Stereo Width" value={state.lead1StereoWidth} paramKey="lead1StereoWidth" ghostValue={getPreviewValue(lead1DistancePreview, 'lead1StereoWidth')} onChange={onParamChange} {...sliderProps('lead1StereoWidth')} />
+                  <Slider label="Diffuse Send" value={state.lead1DiffuseSend} paramKey="lead1DiffuseSend" ghostValue={getPreviewValue(lead1DistancePreview, 'lead1DiffuseSend')} onChange={onParamChange} {...sliderProps('lead1DiffuseSend')} />
+                  <Slider label="Reverb Send" value={state.lead1ReverbSend} paramKey="lead1ReverbSend" ghostValue={getPreviewValue(lead1DistancePreview, 'lead1ReverbSend')} onChange={onParamChange} {...sliderProps('lead1ReverbSend')} />
+                </div>
 
                 {/* Expression */}
                 <div className="sc-advanced-section">
@@ -3518,7 +3629,17 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                   </button>
                 </div>
 
-                <Slider label="Lead 2 Level" value={state.lead2Level} paramKey="lead2Level" onChange={onParamChange} {...sliderProps('lead2Level')} />
+                <Slider label="Lead 2 Level" value={state.lead2Level} paramKey="lead2Level" ghostValue={getPreviewValue(lead2DistancePreview, 'lead2Level')} onChange={onParamChange} {...sliderProps('lead2Level')} />
+
+                <div className="sc-advanced-section">
+                  <div className="sc-section-label">Distance</div>
+                  <Slider label="Distance" value={state.lead2Distance} paramKey="lead2Distance" ghostValue={getDistanceGhostValue('lead2Distance', liveLead2Distance)} onChange={onParamChange} {...sliderProps('lead2Distance')} />
+                  <Slider label="Hold Time" value={state.lead2Hold} paramKey="lead2Hold" unit="s" ghostValue={getPreviewValue(lead2DistancePreview, 'lead2Hold')} onChange={onParamChange} {...sliderProps('lead2Hold')} />
+                  <Slider label="Post LPF" value={state.lead2PostLPF} paramKey="lead2PostLPF" unit=" Hz" logarithmic ghostValue={getPreviewValue(lead2DistancePreview, 'lead2PostLPF')} onChange={onParamChange} {...sliderProps('lead2PostLPF')} />
+                  <Slider label="Stereo Width" value={state.lead2StereoWidth} paramKey="lead2StereoWidth" ghostValue={getPreviewValue(lead2DistancePreview, 'lead2StereoWidth')} onChange={onParamChange} {...sliderProps('lead2StereoWidth')} />
+                  <Slider label="Diffuse Send" value={state.lead2DiffuseSend} paramKey="lead2DiffuseSend" ghostValue={getPreviewValue(lead2DistancePreview, 'lead2DiffuseSend')} onChange={onParamChange} {...sliderProps('lead2DiffuseSend')} />
+                  <Slider label="Reverb Send" value={state.lead2ReverbSend} paramKey="lead2ReverbSend" ghostValue={getPreviewValue(lead2DistancePreview, 'lead2ReverbSend')} onChange={onParamChange} {...sliderProps('lead2ReverbSend')} />
+                </div>
 
                 {/* Expression */}
                 <div className="sc-advanced-section">
@@ -3567,6 +3688,11 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
               <div style={{ fontSize: '0.7rem', color: '#666', marginBottom: '4px' }}>
                 Envelope — A:{state.pianoAttack.toFixed(3)}s D:{state.pianoDecay.toFixed(2)}s S:{(state.pianoSustain * 100).toFixed(0)}% R:{state.pianoRelease.toFixed(2)}s
               </div>
+              {livePianoDistance > 0.001 && (
+                <div style={{ fontSize: '0.68rem', color: '#888', marginBottom: '4px' }}>
+                  Distance target — A:{pianoDistanceEnv.attack.toFixed(3)}s D:{pianoDistanceEnv.decay.toFixed(2)}s S:{(pianoDistanceEnv.sustain * 100).toFixed(0)}% H:{(pianoDistanceEnv.hold ?? state.pianoHold).toFixed(2)}s R:{pianoDistanceEnv.release.toFixed(2)}s
+                </div>
+              )}
               <LeadAdsrViz
                 attack={state.pianoAttack}
                 decay={state.pianoDecay}
@@ -3579,22 +3705,29 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 paramPrefix="piano"
               />
               <div className="sc-compact-grid-2" style={{ marginTop: '8px' }}>
-                <Slider label="Attack" value={state.pianoAttack} paramKey="pianoAttack" unit="s" onChange={onParamChange} {...sliderProps('pianoAttack')} />
-                <Slider label="Decay" value={state.pianoDecay} paramKey="pianoDecay" unit="s" onChange={onParamChange} {...sliderProps('pianoDecay')} />
-                <Slider label="Sustain" value={state.pianoSustain} paramKey="pianoSustain" onChange={onParamChange} {...sliderProps('pianoSustain')} />
-                <Slider label="Hold" value={state.pianoHold} paramKey="pianoHold" unit="s" onChange={onParamChange} {...sliderProps('pianoHold')} />
+                <Slider label="Attack" value={state.pianoAttack} paramKey="pianoAttack" unit="s" ghostValue={getPreviewValue(pianoDistancePreview, 'pianoAttack')} onChange={onParamChange} {...sliderProps('pianoAttack')} />
+                <Slider label="Decay" value={state.pianoDecay} paramKey="pianoDecay" unit="s" ghostValue={getPreviewValue(pianoDistancePreview, 'pianoDecay')} onChange={onParamChange} {...sliderProps('pianoDecay')} />
+                <Slider label="Sustain" value={state.pianoSustain} paramKey="pianoSustain" ghostValue={getPreviewValue(pianoDistancePreview, 'pianoSustain')} onChange={onParamChange} {...sliderProps('pianoSustain')} />
+                <Slider label="Hold" value={state.pianoHold} paramKey="pianoHold" unit="s" ghostValue={getPreviewValue(pianoDistancePreview, 'pianoHold')} onChange={onParamChange} {...sliderProps('pianoHold')} />
               </div>
               <div style={{ marginTop: '8px' }}>
-                <Slider label="Release" value={state.pianoRelease} paramKey="pianoRelease" unit="s" onChange={onParamChange} {...sliderProps('pianoRelease')} />
+                <Slider label="Release" value={state.pianoRelease} paramKey="pianoRelease" unit="s" ghostValue={getPreviewValue(pianoDistancePreview, 'pianoRelease')} onChange={onParamChange} {...sliderProps('pianoRelease')} />
               </div>
             </div>
 
             {editingSection === 'piano' && (
               <div className="synth-card-advanced">
-                <Slider label="Piano Level" value={state.pianoLevel} paramKey="pianoLevel" onChange={onParamChange} {...sliderProps('pianoLevel')} />
+                <Slider label="Piano Level" value={state.pianoLevel} paramKey="pianoLevel" ghostValue={getPreviewValue(pianoDistancePreview, 'pianoLevel')} onChange={onParamChange} {...sliderProps('pianoLevel')} />
+                <div className="sc-advanced-section">
+                  <div className="sc-section-label">Distance</div>
+                  <Slider label="Distance" value={state.pianoDistance} paramKey="pianoDistance" ghostValue={getDistanceGhostValue('pianoDistance', livePianoDistance)} onChange={onParamChange} {...sliderProps('pianoDistance')} />
+                  <Slider label="Post LPF" value={state.pianoPostLPF} paramKey="pianoPostLPF" unit=" Hz" logarithmic ghostValue={getPreviewValue(pianoDistancePreview, 'pianoPostLPF')} onChange={onParamChange} {...sliderProps('pianoPostLPF')} />
+                  <Slider label="Stereo Width" value={state.pianoStereoWidth} paramKey="pianoStereoWidth" ghostValue={getPreviewValue(pianoDistancePreview, 'pianoStereoWidth')} onChange={onParamChange} {...sliderProps('pianoStereoWidth')} />
+                  <Slider label="Diffuse Send" value={state.pianoDiffuseSend} paramKey="pianoDiffuseSend" ghostValue={getPreviewValue(pianoDistancePreview, 'pianoDiffuseSend')} onChange={onParamChange} {...sliderProps('pianoDiffuseSend')} />
+                </div>
                 <div className="sc-advanced-section">
                   <div className="sc-section-label">Routing</div>
-                  <Slider label="Reverb Send" value={state.pianoReverbSend} paramKey="pianoReverbSend" onChange={onParamChange} {...sliderProps('pianoReverbSend')} />
+                  <Slider label="Reverb Send" value={state.pianoReverbSend} paramKey="pianoReverbSend" ghostValue={getPreviewValue(pianoDistancePreview, 'pianoReverbSend')} onChange={onParamChange} {...sliderProps('pianoReverbSend')} />
                   <Slider label="Delay A Send" value={state.pianoDelayASend} paramKey="pianoDelayASend" onChange={onParamChange} {...sliderProps('pianoDelayASend')} />
                   <Slider label="Delay B Send" value={state.pianoDelayBSend} paramKey="pianoDelayBSend" onChange={onParamChange} {...sliderProps('pianoDelayBSend')} />
                   <Slider label="Granular Send" value={state.granularPianoSend} paramKey="granularPianoSend" onChange={onParamChange} {...sliderProps('granularPianoSend')} />
@@ -4310,7 +4443,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                                     : laneKind === 'morph'
                                       ? activeSeq.morph.values
                                       : subState?.valueMode === 'range'
-                                        ? new Array(subState.steps).fill(((subState.rangeMin ?? 0.25) + (subState.rangeMax ?? 0.75)) * 0.5)
+                                        ? new Array(subState.steps).fill(((subState.rangeMin ?? 0) + (subState.rangeMax ?? 1)) * 0.5)
                                         : activeSeq.distance.values
                           }
                           color={laneColor}
@@ -4320,7 +4453,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                           direction={subState?.direction ?? 'forward'}
                           bipolar={
                             laneKind === 'morph' ||
-                            laneKind === 'distance' ||
                             (laneKind === 'pitch' && activeSeq.pitch.mode !== 'notes' && activeSeq.pitch.mode !== 'noteRange')
                           }
                           invertFill={laneKind === 'expression'}
@@ -4372,6 +4504,9 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                                         : null
                               ) : null}
                               selectedStepLabel={keyboardTargetLabel}
+                              onSelectStep={keyboardTargetVisible
+                                ? (step) => selectSynthKeyboardLaneStep(seq.activeTab, laneKind, step)
+                                : undefined}
                               enabled={subState?.enabled ?? false}
                               direction={subState?.direction ?? 'forward'}
                               onToggleEnabled={() => seq.toggleSubLaneEnabled(seq.activeTab, laneKind)}
