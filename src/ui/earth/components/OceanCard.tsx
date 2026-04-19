@@ -1,12 +1,11 @@
 import type { SliderState } from '../../state';
-import { EarthCard, EarthDualSliderRenderer, ParamSlider } from './EarthControls';
+import { EarthCard, EarthDualSliderRenderer } from './EarthControls';
 
 type OceanCardProps = {
   state: SliderState;
   ds: EarthDualSliderRenderer;
   expandedCards: Set<string>;
   onToggleCard?: (id: string) => void;
-  onParamChange: (key: keyof SliderState, value: number) => void;
   onSelectChange: <K extends keyof SliderState>(key: K, value: SliderState[K]) => void;
   enabled?: boolean;
 };
@@ -16,7 +15,6 @@ export function OceanCard({
   ds,
   expandedCards,
   onToggleCard,
-  onParamChange,
   onSelectChange,
   enabled,
 }: OceanCardProps) {
@@ -70,22 +68,11 @@ export function OceanCard({
         <span className="param-value">&nbsp;</span>
       </div>
 
-      <ParamSlider
-        paramKey="oceanFilterCutoff"
-        label="Filter Cutoff"
-        value={state.oceanFilterCutoff}
-        min={40}
-        max={12000}
-        step={10}
-        onChange={v => onParamChange('oceanFilterCutoff', v)}
-        format={v => `${Math.round(v)} Hz`}
-      />
-      <ParamSlider
-        paramKey="oceanFilterResonance"
-        label="Filter Resonance"
-        value={state.oceanFilterResonance}
-        onChange={v => onParamChange('oceanFilterResonance', v)}
-      />
+      {ds('oceanFilterCutoff', 'Filter Cutoff', 'rgba(0,212,255,0.24)', {
+        format: (v) => `${Math.round(v)} Hz`,
+        logarithmic: true,
+      })}
+      {ds('oceanFilterResonance', 'Filter Resonance', 'rgba(0,212,255,0.18)')}
     </EarthCard>
   );
 }

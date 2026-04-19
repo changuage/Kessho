@@ -66,7 +66,7 @@ import {
 } from './transport';
 import { SEQUENCER_VISUAL_SYNC_OFFSET_MS } from './sequencerVisualSync';
 import type { StemRecordTrackId } from './recordingTracks';
-import { getIndexedDelayDivisionValue, getStateValueFromSliderNumber, quantize, type IndexedDelayDivisionKey, type SliderState } from '../ui/state';
+import { DEFAULT_REVERB_PRE_COMP, getIndexedDelayDivisionValue, getStateValueFromSliderNumber, quantize, type IndexedDelayDivisionKey, type SliderState } from '../ui/state';
 import {
   applyDistanceValue,
   applyLeadDistanceEnvelope,
@@ -399,12 +399,20 @@ const PAD1_TRIGGER_HOLD_KEYS = new Set<string>([
   'padMorph',
   'synthLevel',
   'synthOctave',
+  'pad1ReverbSend',
+  'pad1DelayASend',
+  'pad1DelayBSend',
+  'granularPad1Send',
 ]);
 const PAD2_TRIGGER_HOLD_KEYS = new Set<string>([
   ...PAD2_MORPH_HOLD_KEYS,
   'pad2Morph',
   'pad2Level',
   'pad2Octave',
+  'pad2ReverbSend',
+  'pad2DelayASend',
+  'pad2DelayBSend',
+  'granularPad2Send',
 ]);
 const PIANO_TRIGGER_HOLD_KEYS = new Set<string>([
   'pianoLevel',
@@ -493,6 +501,12 @@ const REVERB_OWNERSHIP_KEYS = new Set<string>([
   'reverbAirAbsorption',
   'reverbTransientSmooth',
   'reverbErLpFreq',
+  'reverbPreCompThreshold',
+  'reverbPreCompKnee',
+  'reverbPreCompRatio',
+  'reverbPreCompAttackMs',
+  'reverbPreCompReleaseMs',
+  'reverbPreCompMakeup',
 ]);
 
 const GRANULAR_OWNERSHIP_PREFIX_EXCLUSIONS = [
@@ -1707,10 +1721,10 @@ export class AudioEngine {
       this.synthDirect?.gain.setTargetAtTime(1, now, smoothTime);
       this.pad1ReverbSend?.gain.setTargetAtTime(!isPad2 && state.reverbEnabled ? shv('pad1ReverbSend', padState.pad1ReverbSend ?? 0) : 0, now, smoothTime);
       this.pad2ReverbSend?.gain.setTargetAtTime(isPad2 && state.reverbEnabled ? shv('pad2ReverbSend', padState.pad2ReverbSend ?? 0) : 0, now, smoothTime);
-      this.pad1DelayASend?.gain.setTargetAtTime(!isPad2 ? (state.pad1DelayASend ?? 0) : 0, now, smoothTime);
-      this.pad1DelayBSend?.gain.setTargetAtTime(!isPad2 ? (state.pad1DelayBSend ?? 0) : 0, now, smoothTime);
-      this.pad2DelayASend?.gain.setTargetAtTime(isPad2 ? (state.pad2DelayASend ?? 0) : 0, now, smoothTime);
-      this.pad2DelayBSend?.gain.setTargetAtTime(isPad2 ? (state.pad2DelayBSend ?? 0) : 0, now, smoothTime);
+      this.pad1DelayASend?.gain.setTargetAtTime(!isPad2 ? shv('pad1DelayASend', padState.pad1DelayASend ?? 0) : 0, now, smoothTime);
+      this.pad1DelayBSend?.gain.setTargetAtTime(!isPad2 ? shv('pad1DelayBSend', padState.pad1DelayBSend ?? 0) : 0, now, smoothTime);
+      this.pad2DelayASend?.gain.setTargetAtTime(isPad2 ? shv('pad2DelayASend', padState.pad2DelayASend ?? 0) : 0, now, smoothTime);
+      this.pad2DelayBSend?.gain.setTargetAtTime(isPad2 ? shv('pad2DelayBSend', padState.pad2DelayBSend ?? 0) : 0, now, smoothTime);
       return;
     }
 
@@ -1985,6 +1999,7 @@ export class AudioEngine {
     source: FxOwnershipSource,
     state: SliderState,
   ): number {
+    const padState = this.getEffectivePadState(state);
     const lead1WetActive = this.isLead1RouteActive(state);
     const lead2WetActive = this.isLead2RouteActive(state);
     const pianoWetActive = this.isPianoRouteActive(state);
@@ -1995,8 +2010,8 @@ export class AudioEngine {
     switch (bus) {
       case 'delayA':
         switch (source) {
-          case 'pad1': return pad1Active ? (state.pad1DelayASend ?? 0) : 0;
-          case 'pad2': return pad2Active ? (state.pad2DelayASend ?? 0) : 0;
+          case 'pad1': return pad1Active ? this.shv('pad1DelayASend', padState.pad1DelayASend ?? 0) : 0;
+          case 'pad2': return pad2Active ? this.shv('pad2DelayASend', padState.pad2DelayASend ?? 0) : 0;
           case 'lead1': return lead1WetActive ? this.shv('lead1DelayASend', state.lead1DelayASend ?? 0) : 0;
           case 'lead2': return lead2WetActive ? this.shv('lead2DelayASend', state.lead2DelayASend ?? 0) : 0;
           case 'piano': return pianoWetActive ? this.shv('pianoDelayASend', state.pianoDelayASend ?? 0) : 0;
@@ -2005,8 +2020,8 @@ export class AudioEngine {
         break;
       case 'delayB':
         switch (source) {
-          case 'pad1': return pad1Active ? (state.pad1DelayBSend ?? 0) : 0;
-          case 'pad2': return pad2Active ? (state.pad2DelayBSend ?? 0) : 0;
+          case 'pad1': return pad1Active ? this.shv('pad1DelayBSend', padState.pad1DelayBSend ?? 0) : 0;
+          case 'pad2': return pad2Active ? this.shv('pad2DelayBSend', padState.pad2DelayBSend ?? 0) : 0;
           case 'lead1': return lead1WetActive ? this.shv('lead1DelayBSend', state.lead1DelayBSend ?? 0) : 0;
           case 'lead2': return lead2WetActive ? this.shv('lead2DelayBSend', state.lead2DelayBSend ?? 0) : 0;
           case 'piano': return pianoWetActive ? this.shv('pianoDelayBSend', state.pianoDelayBSend ?? 0) : 0;
@@ -2016,8 +2031,8 @@ export class AudioEngine {
       case 'granular':
         if (!granularBusArmed) return 0;
         switch (source) {
-          case 'pad1': return pad1Active ? (state.granularPad1Send ?? 0) : 0;
-          case 'pad2': return pad2Active ? (state.granularPad2Send ?? 0) : 0;
+          case 'pad1': return pad1Active ? this.shv('granularPad1Send', padState.granularPad1Send ?? 0) : 0;
+          case 'pad2': return pad2Active ? this.shv('granularPad2Send', padState.granularPad2Send ?? 0) : 0;
           case 'lead1': return lead1WetActive ? this.shv('granularLead1Send', state.granularLead1Send ?? 0) : 0;
           case 'lead2': return lead2WetActive ? this.shv('granularLead2Send', state.granularLead2Send ?? 0) : 0;
           case 'piano': return pianoWetActive ? this.shv('granularPianoSend', state.granularPianoSend ?? 0) : 0;
@@ -2104,10 +2119,11 @@ export class AudioEngine {
       (delayBArmed && granularEnabled && delayBGranularReturn < 0.0001)
         ? (state.granularDelayBSend ?? 0)
         : 0;
+    const padState = this.getEffectivePadState(state);
     const crossFeeds = this.getSafeDelayCrossFeedLevels(state);
     const delayBExternalFeedActive = delayBArmed && (
-      (pad1Active && (state.pad1DelayBSend ?? 0) > 0.0001) ||
-      (pad2Active && (state.pad2DelayBSend ?? 0) > 0.0001) ||
+      (pad1Active && this.shv('pad1DelayBSend', padState.pad1DelayBSend ?? 0) > 0.0001) ||
+      (pad2Active && this.shv('pad2DelayBSend', padState.pad2DelayBSend ?? 0) > 0.0001) ||
       (lead1RoutingActive && (state.lead1DelayBSend ?? 0) > 0.0001) ||
       (lead2RoutingActive && (state.lead2DelayBSend ?? 0) > 0.0001) ||
       (pianoRoutingActive && (state.pianoDelayBSend ?? 0) > 0.0001) ||
@@ -2870,11 +2886,11 @@ export class AudioEngine {
     const compressor = ctx.createDynamicsCompressor();
     // Gentle bus shaping: reduce the dry hit that reaches the tank, then let a
     // small makeup gain feed a denser, more even bloom into the reverb.
-    compressor.threshold.value = -27;
-    compressor.knee.value = 12;
-    compressor.ratio.value = 3.5;
-    compressor.attack.value = 0.0025;
-    compressor.release.value = 0.35;
+    compressor.threshold.value = this.sliderState?.reverbPreCompThreshold ?? DEFAULT_REVERB_PRE_COMP.threshold;
+    compressor.knee.value = this.sliderState?.reverbPreCompKnee ?? DEFAULT_REVERB_PRE_COMP.knee;
+    compressor.ratio.value = this.sliderState?.reverbPreCompRatio ?? DEFAULT_REVERB_PRE_COMP.ratio;
+    compressor.attack.value = (this.sliderState?.reverbPreCompAttackMs ?? DEFAULT_REVERB_PRE_COMP.attackMs) / 1000;
+    compressor.release.value = (this.sliderState?.reverbPreCompReleaseMs ?? DEFAULT_REVERB_PRE_COMP.releaseMs) / 1000;
     return compressor;
   }
 
@@ -2978,6 +2994,7 @@ export class AudioEngine {
 
   private isGranularBusArmed(state: SliderState, lead1WetActive: boolean, lead2WetActive: boolean, pianoWetActive: boolean): boolean {
     const now = this.ctx?.currentTime ?? 0;
+    const padState = this.getEffectivePadState(state);
     const oceanLayerActive = this.isOceanLayerFadeActive(state, now);
     const natureLayerActive = this.isNatureLayerFadeActive(state, now);
     const waterLayerActive = this.isWaterLayerFadeActive(state, now);
@@ -2986,8 +3003,8 @@ export class AudioEngine {
     const waterFamilySendScale = this.getWaterFamilySendScale(state);
     const insectsFamilySendScale = this.getInsectsFamilySendScale(state);
     const hasIncomingFeed =
-      ((state.padEnabled ?? true) && (state.granularPad1Send ?? 0) > 0.0001) ||
-      ((state.pad2Enabled ?? false) && (state.granularPad2Send ?? 0) > 0.0001) ||
+      ((state.padEnabled ?? true) && this.shv('granularPad1Send', padState.granularPad1Send ?? 0) > 0.0001) ||
+      ((state.pad2Enabled ?? false) && this.shv('granularPad2Send', padState.granularPad2Send ?? 0) > 0.0001) ||
       (lead1WetActive && (state.granularLead1Send ?? 0) > 0.0001) ||
       (lead2WetActive && (state.granularLead2Send ?? 0) > 0.0001) ||
       (pianoWetActive && (state.granularPianoSend ?? 0) > 0.0001) ||
@@ -3018,6 +3035,7 @@ export class AudioEngine {
     delayBEnabled: boolean,
   ): boolean {
     const now = this.ctx?.currentTime ?? 0;
+    const padState = this.getEffectivePadState(state);
     const oceanLayerActive = this.isOceanLayerFadeActive(state, now);
     const natureLayerActive = this.isNatureLayerFadeActive(state, now);
     const waterLayerActive = this.isWaterLayerFadeActive(state, now);
@@ -3026,8 +3044,8 @@ export class AudioEngine {
     const waterFamilySendScale = this.getWaterFamilySendScale(state);
     const insectsFamilySendScale = this.getInsectsFamilySendScale(state);
     return (
-      (pad1Active && (state.pad1ReverbSend ?? 0) > 0.0001) ||
-      (pad2Active && (state.pad2ReverbSend ?? 0) > 0.0001) ||
+      (pad1Active && this.shv('pad1ReverbSend', padState.pad1ReverbSend ?? 0) > 0.0001) ||
+      (pad2Active && this.shv('pad2ReverbSend', padState.pad2ReverbSend ?? 0) > 0.0001) ||
       (lead1WetActive && (state.lead1ReverbSend ?? 0) > 0.0001) ||
       (lead2WetActive && (state.lead2ReverbSend ?? 0) > 0.0001) ||
       (pianoWetActive && (state.pianoReverbSend ?? 0) > 0.0001) ||
@@ -3071,9 +3089,10 @@ export class AudioEngine {
     const delayWidth = this.shv('delayAWidth', state.delayAWidth ?? 0.5);
     const delayCrossFeedFilter = this.shv('delayACrossFeedFilter', state.delayACrossFeedFilter ?? 1);
     const delayGranularSend = this.shv('delayAGranularSend', state.delayAGranularSend ?? 0);
+    const padState = this.getEffectivePadState(state);
     const delayAExternalFeedActive =
-      ((state.padEnabled ?? true) && (state.pad1DelayASend ?? 0) > 0.0001) ||
-      ((state.pad2Enabled ?? false) && (state.pad2DelayASend ?? 0) > 0.0001) ||
+      ((state.padEnabled ?? true) && this.shv('pad1DelayASend', padState.pad1DelayASend ?? 0) > 0.0001) ||
+      ((state.pad2Enabled ?? false) && this.shv('pad2DelayASend', padState.pad2DelayASend ?? 0) > 0.0001) ||
       (lead1WetActive && (state.lead1DelayASend ?? 0) > 0.0001) ||
       (lead2WetActive && (state.lead2DelayASend ?? 0) > 0.0001) ||
       (pianoWetActive && (state.pianoDelayASend ?? 0) > 0.0001) ||
@@ -3187,7 +3206,7 @@ export class AudioEngine {
     }, waitMs);
   }
 
-  /** Callback fired on each S&H re-sample (~10Hz) with normalized positions per key */
+  /** Callback fired when engine-owned S&H params resample, including onset-driven owners. */
   setGranularSHTriggerCallback(cb: (positions: Record<string, number>) => void) {
     this.onGranularSHTrigger = cb;
   }
@@ -5288,7 +5307,7 @@ export class AudioEngine {
     // reverb/spectral-freeze path so long presets bloom more evenly.
     this.reverbPreCompressor = this.createSharedReverbPreCompressor(ctx);
     this.reverbPreMakeupGain = ctx.createGain();
-    this.reverbPreMakeupGain.gain.value = 1.8;
+    this.reverbPreMakeupGain.gain.value = this.sliderState?.reverbPreCompMakeup ?? DEFAULT_REVERB_PRE_COMP.makeup;
     this.reverbInputBus.connect(this.reverbPreCompressor);
     this.reverbPreCompressor.connect(this.reverbPreMakeupGain);
 
@@ -8042,8 +8061,8 @@ export class AudioEngine {
 
       // Granular now idles when the whole bus is unused, but the individual source sends
       // themselves are driven by the routing matrix rather than extra per-source gates.
-      const pad1Send = (granularEnabled && pad1Active) ? (state.granularPad1Send ?? 1.0) : 0;
-      const pad2Send = (granularEnabled && pad2Active) ? (state.granularPad2Send ?? 0.0) : 0;
+      const pad1Send = (granularEnabled && pad1Active) ? shv('granularPad1Send', padState.granularPad1Send ?? 1.0) : 0;
+      const pad2Send = (granularEnabled && pad2Active) ? shv('granularPad2Send', padState.granularPad2Send ?? 0.0) : 0;
       const lead1Send = (granularEnabled && lead1RoutingActive) ? shv('granularLead1Send', state.granularLead1Send ?? 0.0) : 0;
       const lead2Send = (granularEnabled && lead2RoutingActive) ? shv('granularLead2Send', state.granularLead2Send ?? 0.0) : 0;
       const pianoSend = (granularEnabled && pianoRoutingActive) ? shv('granularPianoSend', state.granularPianoSend ?? 0.0) : 0;
@@ -8213,10 +8232,10 @@ export class AudioEngine {
     this.synthDirect?.gain.setTargetAtTime(padActive ? dryGain : 0, now, smoothTime);
     this.pad1ReverbSend?.gain.setTargetAtTime((pad1Active && state.reverbEnabled) ? pad1ReverbLevel : 0, now, smoothTime);
     this.pad2ReverbSend?.gain.setTargetAtTime((pad2Active && state.reverbEnabled) ? pad2ReverbLevel : 0, now, smoothTime);
-    this.pad1DelayASend?.gain.setTargetAtTime(pad1Active ? (state.pad1DelayASend ?? 0) : 0, now, smoothTime);
-    this.pad1DelayBSend?.gain.setTargetAtTime(pad1Active ? (state.pad1DelayBSend ?? 0) : 0, now, smoothTime);
-    this.pad2DelayASend?.gain.setTargetAtTime(pad2Active ? (state.pad2DelayASend ?? 0) : 0, now, smoothTime);
-    this.pad2DelayBSend?.gain.setTargetAtTime(pad2Active ? (state.pad2DelayBSend ?? 0) : 0, now, smoothTime);
+    this.pad1DelayASend?.gain.setTargetAtTime(pad1Active ? shv('pad1DelayASend', padState.pad1DelayASend ?? 0) : 0, now, smoothTime);
+    this.pad1DelayBSend?.gain.setTargetAtTime(pad1Active ? shv('pad1DelayBSend', padState.pad1DelayBSend ?? 0) : 0, now, smoothTime);
+    this.pad2DelayASend?.gain.setTargetAtTime(pad2Active ? shv('pad2DelayASend', padState.pad2DelayASend ?? 0) : 0, now, smoothTime);
+    this.pad2DelayBSend?.gain.setTargetAtTime(pad2Active ? shv('pad2DelayBSend', padState.pad2DelayBSend ?? 0) : 0, now, smoothTime);
 
     const lead1Fader = lead1WetActive ? lead1Lvl : 0;
     const lead2Fader = lead2WetActive ? lead2Lvl : 0;
@@ -8391,6 +8410,19 @@ export class AudioEngine {
 
     // Reverb output level (mute if disabled)
     this.reverbOutputGain?.gain.setTargetAtTime(reverbReturnEnabled ? shv('reverbLevel', state.reverbLevel) * ENGINE_TRIMS.reverb : 0, now, smoothTime);
+
+    const reverbPreCompThreshold = shv('reverbPreCompThreshold', state.reverbPreCompThreshold ?? DEFAULT_REVERB_PRE_COMP.threshold);
+    const reverbPreCompKnee = shv('reverbPreCompKnee', state.reverbPreCompKnee ?? DEFAULT_REVERB_PRE_COMP.knee);
+    const reverbPreCompRatio = shv('reverbPreCompRatio', state.reverbPreCompRatio ?? DEFAULT_REVERB_PRE_COMP.ratio);
+    const reverbPreCompAttack = Math.max(0, Math.min(1, shv('reverbPreCompAttackMs', state.reverbPreCompAttackMs ?? DEFAULT_REVERB_PRE_COMP.attackMs) / 1000));
+    const reverbPreCompRelease = Math.max(0, Math.min(1, shv('reverbPreCompReleaseMs', state.reverbPreCompReleaseMs ?? DEFAULT_REVERB_PRE_COMP.releaseMs) / 1000));
+    const reverbPreCompMakeup = shv('reverbPreCompMakeup', state.reverbPreCompMakeup ?? DEFAULT_REVERB_PRE_COMP.makeup);
+    this.reverbPreCompressor?.threshold.setTargetAtTime(reverbPreCompThreshold, now, 0.05);
+    this.reverbPreCompressor?.knee.setTargetAtTime(reverbPreCompKnee, now, 0.05);
+    this.reverbPreCompressor?.ratio.setTargetAtTime(reverbPreCompRatio, now, 0.05);
+    this.reverbPreCompressor?.attack.setTargetAtTime(reverbPreCompAttack, now, 0.05);
+    this.reverbPreCompressor?.release.setTargetAtTime(reverbPreCompRelease, now, 0.05);
+    this.reverbPreMakeupGain?.gain.setTargetAtTime(reverbPreCompMakeup, now, 0.08);
 
     // Spectral Freeze parameters
     if (this.spectralFreezeNode && (this.spectralFreezeNode as any).port) {

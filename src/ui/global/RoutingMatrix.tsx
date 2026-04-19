@@ -44,6 +44,18 @@ interface ColumnDragTarget {
   onDualRangeChange: (key: keyof SliderState, min: number, max: number) => void;
 }
 
+interface ColumnDragMemoryTarget {
+  key: keyof SliderState;
+  mode: SliderMode;
+  startValue: number;
+  startRange?: DualSliderRange;
+}
+
+interface ColumnDragMemory {
+  targets: ColumnDragMemoryTarget[];
+  lastDelta: number;
+}
+
 interface CellDragState {
   kind: 'cell';
   dragId: string;
@@ -61,10 +73,12 @@ interface CellDragState {
 
 interface ColumnDragState {
   kind: 'column';
+  columnId: ColumnId;
   dragId: string;
   pointerId: number;
   startClientX: number;
   targets: ColumnDragTarget[];
+  currentDelta: number;
   lastValues: Partial<Record<keyof SliderState, number>>;
   lastRanges: Partial<Record<keyof SliderState, DualSliderRange>>;
 }
@@ -75,6 +89,7 @@ export interface RoutingMatrixProps {
   state: SliderState;
   isMobile: boolean;
   onParamChange: (key: keyof SliderState, value: number) => void;
+  onColumnParamChange?: (key: keyof SliderState, value: number) => void;
   onToggleSource?: (sourceId: string, enabled: boolean) => void;
   sliderProps: (paramKey: keyof SliderState) => RoutingSliderRuntime;
   helpPage?: SliderPageId;
@@ -290,6 +305,68 @@ function normalizeRange(range?: DualSliderRange): DualSliderRange | undefined {
   return { min, max };
 }
 
+function scaleRangeTowardZero(range: DualSliderRange, delta: number): DualSliderRange {
+  const startMin = clamp01(range.min);
+  const startMax = clamp01(range.max);
+  if (startMax <= 0.0005) {
+    const point = quantize01(clamp01(delta));
+    return { min: point, max: point };
+  }
+
+  const scaledMax = clamp01(startMax + delta);
+  const scale = scaledMax / startMax;
+  return {
+    min: quantize01(clamp01(startMin * scale)),
+    max: quantize01(clamp01(startMax * scale)),
+  };
+}
+
+function columnTargetIsSingle(target: Pick<ColumnDragTarget, 'mode' | 'startRange'> | Pick<ColumnDragMemoryTarget, 'mode' | 'startRange'>): boolean {
+  return target.mode === 'single' || !target.startRange;
+}
+
+function stripColumnDragTarget(target: ColumnDragTarget): ColumnDragMemoryTarget {
+  return {
+    key: target.key,
+    mode: target.mode,
+    startValue: target.startValue,
+    startRange: target.startRange,
+  };
+}
+
+function computeColumnTargetValue(target: ColumnDragMemoryTarget, delta: number): number {
+  return quantize01(target.startValue + delta);
+}
+
+function computeColumnTargetRange(target: ColumnDragMemoryTarget, delta: number): DualSliderRange | undefined {
+  if (columnTargetIsSingle(target) || !target.startRange) return undefined;
+  return scaleRangeTowardZero(target.startRange, delta);
+}
+
+function columnDragMemoryMatches(memory: ColumnDragMemory, targets: ColumnDragTarget[]): boolean {
+  if (memory.targets.length !== targets.length) return false;
+
+  for (const target of targets) {
+    const memoryTarget = memory.targets.find((entry) => entry.key === target.key);
+    if (!memoryTarget) return false;
+    if (columnTargetIsSingle(memoryTarget) !== columnTargetIsSingle(target)) return false;
+
+    if (columnTargetIsSingle(memoryTarget)) {
+      if (Math.abs(computeColumnTargetValue(memoryTarget, memory.lastDelta) - target.startValue) > 0.0005) {
+        return false;
+      }
+      continue;
+    }
+
+    const expectedRange = computeColumnTargetRange(memoryTarget, memory.lastDelta);
+    if (!expectedRange || !rangesEqual(expectedRange, target.startRange)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 function rangesEqual(a?: DualSliderRange, b?: DualSliderRange): boolean {
   if (!a || !b) return false;
   return a.min === b.min && a.max === b.max;
@@ -350,6 +427,7 @@ function getColumnTargets(
   const targets: ColumnDragTarget[] = [];
 
   for (const row of rows) {
+    if (!rowIsEnabled(row, state)) continue;
     const cell = row.cells[columnId];
     if (cell.kind !== 'editable' || !cell.route || seen.has(cell.route.key)) continue;
     seen.add(cell.route.key);
@@ -468,6 +546,7 @@ export default function RoutingMatrix({
   state,
   isMobile,
   onParamChange,
+  onColumnParamChange,
   onToggleSource,
   sliderProps,
   helpPage = 'routing',
@@ -485,6 +564,7 @@ export default function RoutingMatrix({
     }
   });
   const dragStateRef = React.useRef<DragState | null>(null);
+  const columnDragMemoryRef = React.useRef<Partial<Record<ColumnId, ColumnDragMemory>>>({});
   const longPressTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressMetaRef = React.useRef<{
     pointerId: number;
@@ -542,6 +622,12 @@ export default function RoutingMatrix({
   const stopDrag = React.useCallback((dragId: string, pointerId: number) => {
     const drag = dragStateRef.current;
     if (!drag || drag.dragId !== dragId || drag.pointerId !== pointerId) return false;
+    if (drag.kind === 'column') {
+      columnDragMemoryRef.current[drag.columnId] = {
+        targets: drag.targets.map(stripColumnDragTarget),
+        lastDelta: drag.currentDelta,
+      };
+    }
     dragStateRef.current = null;
     setDraggingId(null);
     return true;
@@ -554,13 +640,39 @@ export default function RoutingMatrix({
     longPressConsumedRef.current = false;
   }, [clearLongPress]);
 
-  const startColumnDrag = React.useCallback((dragId: string, pointerId: number, startClientX: number, targets: ColumnDragTarget[]) => {
+  const startColumnDrag = React.useCallback((
+    columnId: ColumnId,
+    dragId: string,
+    pointerId: number,
+    startClientX: number,
+    width: number,
+    targets: ColumnDragTarget[],
+  ) => {
+    const savedMemory = columnDragMemoryRef.current[columnId];
+    const activeMemory = savedMemory && columnDragMemoryMatches(savedMemory, targets)
+      ? savedMemory
+      : null;
+    const baseTargets = activeMemory
+      ? targets.map((target) => {
+          const memoryTarget = activeMemory.targets.find((entry) => entry.key === target.key);
+          return memoryTarget ? {
+            ...target,
+            mode: memoryTarget.mode,
+            startValue: memoryTarget.startValue,
+            startRange: memoryTarget.startRange,
+          } : target;
+        })
+      : targets;
+    const initialDelta = activeMemory?.lastDelta ?? 0;
+
     dragStateRef.current = {
       kind: 'column',
+      columnId,
       dragId,
       pointerId,
-      startClientX,
-      targets,
+      startClientX: startClientX - initialDelta * Math.max(1, width),
+      targets: baseTargets,
+      currentDelta: initialDelta,
       lastValues: Object.fromEntries(
         targets
           .filter((target) => target.mode === 'single' || !target.startRange)
@@ -636,24 +748,23 @@ export default function RoutingMatrix({
     const drag = dragStateRef.current;
     if (!drag || drag.kind !== 'column') return;
     const delta = (clientX - drag.startClientX) / Math.max(1, width);
+    drag.currentDelta = delta;
 
     for (const target of drag.targets) {
       if (target.mode === 'single' || !target.startRange) {
         const next = quantize01(target.startValue + delta);
         if (drag.lastValues[target.key] === next) continue;
         drag.lastValues[target.key] = next;
-        onParamChange(target.key, next);
+        (onColumnParamChange ?? onParamChange)(target.key, next);
         continue;
       }
 
-      const widthNorm = target.startRange.max - target.startRange.min;
-      const nextMin = quantize01(clamp01(Math.min(target.startRange.min + delta, 1 - widthNorm)));
-      const nextRange = { min: nextMin, max: quantize01(nextMin + widthNorm) };
+      const nextRange = scaleRangeTowardZero(target.startRange, delta);
       if (rangesEqual(drag.lastRanges[target.key], nextRange)) continue;
       drag.lastRanges[target.key] = nextRange;
       target.onDualRangeChange(target.key, nextRange.min, nextRange.max);
     }
-  }, [onParamChange]);
+  }, [onColumnParamChange, onParamChange]);
 
   const applyCellDrag = React.useCallback((pointerNorm: number) => {
     const drag = dragStateRef.current;
@@ -767,7 +878,7 @@ export default function RoutingMatrix({
         onPointerDown={(event) => {
           if (targets.length === 0) return;
           clearLongPress();
-          startColumnDrag(headerId, event.pointerId, event.clientX, targets);
+          startColumnDrag(column.id, headerId, event.pointerId, event.clientX, event.currentTarget.getBoundingClientRect().width, targets);
           event.currentTarget.setPointerCapture(event.pointerId);
         }}
         onPointerMove={(event) => {

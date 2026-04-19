@@ -2868,8 +2868,15 @@ const App: React.FC = () => {
     });
   }, [state, nativeBackgroundAudioMode, nativeDualRanges]);
 
-  // Handle slider change
-  const handleSliderChange = useCallback((key: keyof SliderState, value: number | string) => {
+  type SliderChangeOptions = {
+    preserveEnabledFlags?: boolean;
+  };
+
+  const handleSliderChangeWithOptions = useCallback((
+    key: keyof SliderState,
+    value: number | string,
+    options?: SliderChangeOptions,
+  ) => {
     // Mark that user has interacted with the UI
     hasUserInteractedRef.current = true;
     
@@ -2951,6 +2958,27 @@ const App: React.FC = () => {
     }
     
     setState((prev) => {
+      const preservedEnabledFlags = options?.preserveEnabledFlags
+        ? {
+            padEnabled: prev.padEnabled,
+            pad2Enabled: prev.pad2Enabled,
+            leadEnabled: prev.leadEnabled,
+            lead2Enabled: prev.lead2Enabled,
+            pianoEnabled: prev.pianoEnabled,
+            drumEnabled: prev.drumEnabled,
+            granularEnabled: prev.granularEnabled,
+            oceanSampleEnabled: prev.oceanSampleEnabled,
+            waterEnabled: prev.waterEnabled,
+            insectsEnabled: prev.insectsEnabled,
+            insects2Enabled: prev.insects2Enabled,
+            birdsEnabled: prev.birdsEnabled,
+            birds2Enabled: prev.birds2Enabled,
+            frogsEnabled: prev.frogsEnabled,
+            delayAEnabled: prev.delayAEnabled,
+            granularDelayEnabled: prev.granularDelayEnabled,
+            reverbEnabled: prev.reverbEnabled,
+          }
+        : null;
       let newState = { ...prev, [key]: stateValue };
 
       if (key === 'chordProgressionSteps' && typeof stateValue === 'number') {
@@ -3428,6 +3456,13 @@ const App: React.FC = () => {
           ? (newState.waterMorphA as number)
           : (newState.waterMorphB as number);
       }
+
+      if (preservedEnabledFlags) {
+        newState = {
+          ...newState,
+          ...preservedEnabledFlags,
+        };
+      }
       
       return newState;
     });
@@ -3580,6 +3615,15 @@ const App: React.FC = () => {
       }
     }
   }, [isJourneyPlaying, morphPosition, morphPresetA, morphPresetB, setMorphPresetA, setMorphPresetB, state]);
+
+  // Handle slider change
+  const handleSliderChange = useCallback((key: keyof SliderState, value: number | string) => {
+    handleSliderChangeWithOptions(key, value);
+  }, [handleSliderChangeWithOptions]);
+
+  const handleRoutingColumnChange = useCallback((key: keyof SliderState, value: number) => {
+    handleSliderChangeWithOptions(key, value, { preserveEnabledFlags: true });
+  }, [handleSliderChangeWithOptions]);
 
   // Helper to create slider props with dual mode support
   const sliderProps = useCallback((paramKey: keyof SliderState): {
@@ -6614,6 +6658,7 @@ const App: React.FC = () => {
             state={state}
             isMobile={isMobile}
             onParamChange={handleSliderChange}
+            onColumnParamChange={handleRoutingColumnChange}
             onToggleSource={handleRoutingSourceToggle}
             sliderProps={sliderProps}
           />

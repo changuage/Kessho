@@ -46,6 +46,15 @@ export const DELAY_B_NOTE_DIVISION_OPTIONS = [
   { value: '1/32', label: '1/32' },
 ] as const;
 
+export const DEFAULT_REVERB_PRE_COMP = {
+  threshold: -36,
+  knee: 20,
+  ratio: 5,
+  attackMs: 0.7,
+  releaseMs: 700,
+  makeup: 2.9,
+} as const;
+
 const INDEXED_DELAY_DIVISION_ALIASES: Record<string, string> = {
   '3/8': '1/4d',
   '3/16': '1/16d',
@@ -489,6 +498,12 @@ export interface SliderState {
   // v5 parameters
   reverbTransientSmooth: number;  // 0..1 step 0.01 - pre-tank transient conditioning
   reverbErLpFreq: number;          // 200-12000 Hz - LP cutoff for early reflections
+  reverbPreCompThreshold: number;  // -60..0 dB - onset of pre-tank leveling
+  reverbPreCompKnee: number;       // 0..40 dB - softness of compression onset
+  reverbPreCompRatio: number;      // 1..20 - amount of peak control
+  reverbPreCompAttackMs: number;   // 0.1..30 ms - how quickly peaks are caught
+  reverbPreCompReleaseMs: number;  // 20..1000 ms - how long the bloom stays glued
+  reverbPreCompMakeup: number;     // 0.5..4x - gain restored before the tank
 
   // ─── Reverb Harmony Coupling ───
   reverbScaleShimmer: boolean;     // snap shimmer pitch to nearest scale interval
@@ -1465,6 +1480,15 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'reverbEarlyReflections',
   'reverbAirAbsorption',
   'reverbSaturationMode',
+  // v5/v6 params
+  'reverbTransientSmooth',
+  'reverbErLpFreq',
+  'reverbPreCompThreshold',
+  'reverbPreCompKnee',
+  'reverbPreCompRatio',
+  'reverbPreCompAttackMs',
+  'reverbPreCompReleaseMs',
+  'reverbPreCompMakeup',
   'reverbScaleShimmer',
   'reverbChordWash',
   'reverbResolutionBloom',
@@ -2217,6 +2241,12 @@ export const DEFAULT_STATE: SliderState = {
   // v5 defaults
   reverbTransientSmooth: 0,
   reverbErLpFreq: 2500,
+  reverbPreCompThreshold: DEFAULT_REVERB_PRE_COMP.threshold,
+  reverbPreCompKnee: DEFAULT_REVERB_PRE_COMP.knee,
+  reverbPreCompRatio: DEFAULT_REVERB_PRE_COMP.ratio,
+  reverbPreCompAttackMs: DEFAULT_REVERB_PRE_COMP.attackMs,
+  reverbPreCompReleaseMs: DEFAULT_REVERB_PRE_COMP.releaseMs,
+  reverbPreCompMakeup: DEFAULT_REVERB_PRE_COMP.makeup,
 
   // Reverb Harmony
   reverbScaleShimmer: false,
@@ -3116,6 +3146,12 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   reverbAirAbsorption: { min: 0, max: 1, step: 0.01 },
   reverbTransientSmooth: { min: 0, max: 1, step: 0.01 },
   reverbErLpFreq: { min: 200, max: 12000, step: 10 },
+  reverbPreCompThreshold: { min: -60, max: 0, step: 1 },
+  reverbPreCompKnee: { min: 0, max: 40, step: 1 },
+  reverbPreCompRatio: { min: 1, max: 20, step: 0.1 },
+  reverbPreCompAttackMs: { min: 0.1, max: 30, step: 0.1 },
+  reverbPreCompReleaseMs: { min: 20, max: 1000, step: 5 },
+  reverbPreCompMakeup: { min: 0.5, max: 4, step: 0.05 },
   // Spectral Freeze
   spectralFreezeSpeed: { min: 0, max: 1, step: 0.01 },
   spectralFreezeMix: { min: 0, max: 1, step: 0.01 },

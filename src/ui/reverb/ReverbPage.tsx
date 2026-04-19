@@ -11,7 +11,7 @@
  */
 
 import React, { useState, useCallback } from 'react';
-import type { SliderState, SliderMode } from '../state';
+import { DEFAULT_STATE, type SliderState, type SliderMode } from '../state';
 import type { DualSliderRange } from '../DualSlider';
 import { PresetDropdown } from '../../presets/PresetDropdown';
 import type { PresetEntry } from '../../presets/types';
@@ -454,6 +454,13 @@ export default function ReverbPage({
   const [setupPresetName, setSetupPresetName] = useState<string | undefined>();
   const [setupPresetDescription, setSetupPresetDescription] = useState<string>('');
   const [visualizerEnabled, setVisualizerEnabled] = useState(() => !isMobile);
+  const reverbLevel = state.reverbLevel ?? DEFAULT_STATE.reverbLevel;
+  const reverbPreCompThreshold = state.reverbPreCompThreshold ?? DEFAULT_STATE.reverbPreCompThreshold;
+  const reverbPreCompKnee = state.reverbPreCompKnee ?? DEFAULT_STATE.reverbPreCompKnee;
+  const reverbPreCompRatio = state.reverbPreCompRatio ?? DEFAULT_STATE.reverbPreCompRatio;
+  const reverbPreCompAttackMs = state.reverbPreCompAttackMs ?? DEFAULT_STATE.reverbPreCompAttackMs;
+  const reverbPreCompReleaseMs = state.reverbPreCompReleaseMs ?? DEFAULT_STATE.reverbPreCompReleaseMs;
+  const reverbPreCompMakeup = state.reverbPreCompMakeup ?? DEFAULT_STATE.reverbPreCompMakeup;
 
   const handleSetupPresetLoad = useCallback((entry: PresetEntry, _data: Record<string, unknown>) => {
     setSetupPresetName(entry.name);
@@ -587,10 +594,13 @@ export default function ReverbPage({
               />
 
               <div className="reverb-grid-2">
+                <Slider label="Return" value={reverbLevel} paramKey="reverbLevel" onChange={onParamChange} {...sp('reverbLevel')} />
                 <Slider label="Decay" value={state.reverbDecay} paramKey="reverbDecay" onChange={onParamChange} {...sp('reverbDecay')} />
-                <Slider label="Size" value={state.reverbSize} paramKey="reverbSize" onChange={onParamChange} {...sp('reverbSize')} />
               </div>
-              <Slider label="Diffusion" value={state.reverbDiffusion} paramKey="reverbDiffusion" onChange={onParamChange} {...sp('reverbDiffusion')} />
+              <div className="reverb-grid-2">
+                <Slider label="Size" value={state.reverbSize} paramKey="reverbSize" onChange={onParamChange} {...sp('reverbSize')} />
+                <Slider label="Diffusion" value={state.reverbDiffusion} paramKey="reverbDiffusion" onChange={onParamChange} {...sp('reverbDiffusion')} />
+              </div>
             </div>
           </div>
 
@@ -673,7 +683,29 @@ export default function ReverbPage({
             </div>
           </div>
 
-          {/* ── 3. Modulation card ── */}
+          {/* ── 3. Input Dynamics card ── */}
+          <div className="reverb-section-card reverb-dynamics-card">
+            <div className="reverb-section-head">
+              <span className="reverb-section-title">Input Dynamics</span>
+              <span className="reverb-section-note">Level the hit before it blooms into the tank</span>
+            </div>
+            <div className="reverb-section-body">
+              <div className="reverb-grid-2">
+                <Slider label="Threshold" value={reverbPreCompThreshold} paramKey="reverbPreCompThreshold" unit="dB" onChange={onParamChange} {...sp('reverbPreCompThreshold')} />
+                <Slider label="Knee" value={reverbPreCompKnee} paramKey="reverbPreCompKnee" unit="dB" onChange={onParamChange} {...sp('reverbPreCompKnee')} />
+              </div>
+              <div className="reverb-grid-2">
+                <Slider label="Ratio" value={reverbPreCompRatio} paramKey="reverbPreCompRatio" onChange={onParamChange} {...sp('reverbPreCompRatio')} />
+                <Slider label="Makeup" value={reverbPreCompMakeup} paramKey="reverbPreCompMakeup" unit="x" onChange={onParamChange} {...sp('reverbPreCompMakeup')} />
+              </div>
+              <div className="reverb-grid-2">
+                <Slider label="Attack" value={reverbPreCompAttackMs} paramKey="reverbPreCompAttackMs" unit="ms" onChange={onParamChange} {...sp('reverbPreCompAttackMs')} />
+                <Slider label="Release" value={reverbPreCompReleaseMs} paramKey="reverbPreCompReleaseMs" unit="ms" onChange={onParamChange} {...sp('reverbPreCompReleaseMs')} />
+              </div>
+            </div>
+          </div>
+
+          {/* ── 4. Modulation card ── */}
           <div className="reverb-section-card reverb-modulation-card">
             <div className="reverb-section-head">
               <span className="reverb-section-title">Modulation</span>
@@ -707,7 +739,7 @@ export default function ReverbPage({
             </div>
           </div>
 
-          {/* ── 4. Tone & Damping card ── */}
+          {/* ── 5. Tone & Damping card ── */}
           <div className="reverb-section-card reverb-tone-card">
             <div className="reverb-section-head">
               <span className="reverb-section-title">Tone &amp; Damping</span>
@@ -746,7 +778,7 @@ export default function ReverbPage({
             </div>
           </div>
 
-          {/* ── 5. Shimmer & Effects card ── */}
+          {/* ── 6. Shimmer & Effects card ── */}
           <div className="reverb-section-card reverb-effects-card">
             <div className="reverb-section-head">
               <span className="reverb-section-title">Shimmer &amp; Effects</span>
@@ -795,7 +827,7 @@ export default function ReverbPage({
             </div>
           </div>
 
-          {/* ── 6. Spectral Freeze card ── */}
+          {/* ── 7. Spectral Freeze card ── */}
           <div className="reverb-section-card reverb-freeze-card">
             <div className="reverb-section-head">
               <span className="reverb-section-title">Spectral Freeze</span>

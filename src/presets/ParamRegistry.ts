@@ -209,6 +209,12 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   // v5 reverb params
   reverbTransientSmooth:  { level: 3, scope: 'reverb' },
   reverbErLpFreq:         { level: 3, scope: 'reverb' },
+  reverbPreCompThreshold: { level: 3, scope: 'reverb' },
+  reverbPreCompKnee:      { level: 3, scope: 'reverb' },
+  reverbPreCompRatio:     { level: 3, scope: 'reverb' },
+  reverbPreCompAttackMs:  { level: 3, scope: 'reverb' },
+  reverbPreCompReleaseMs: { level: 3, scope: 'reverb' },
+  reverbPreCompMakeup:    { level: 3, scope: 'reverb' },
 
   // Spectral Freeze (STFT module)
   spectralFreezeEnabled:           { level: 3, scope: 'reverb' },

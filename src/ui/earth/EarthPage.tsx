@@ -61,6 +61,7 @@ const EARTH_DUAL_KEYS: readonly (keyof SliderState)[] = [
   'waterIntensity', 'waterDistance', 'waterDropSize',
   'waterHardness', 'waterGlassThickness', 'waterBaseFreq', 'waterReverbSend',
   'oceanSampleLevel', 'oceanSliceDuration', 'oceanSliceDensity',
+  'oceanFilterCutoff', 'oceanFilterResonance',
   'oceanReverbSend', 'oceanDelayASend', 'oceanDelayBSend',
   'birdsLevel', 'birdsSliceDuration', 'birdsSliceDensity',
   'birds2Level', 'birds2SliceDuration', 'birds2SliceDensity',
@@ -527,7 +528,6 @@ export default function EarthPage({
             state={state}
             ds={ds}
             expandedCards={expandedCards}
-            onParamChange={onParamChange}
             onSelectChange={onSelectChange}
             enabled={expandedCards.has('ocean')}
           />

@@ -362,7 +362,10 @@ const mixEntries: Record<string, SliderHelpEntry> = {
     'Sets the shared reverb return level.',
     'leave more of the mix dry and direct',
     'make the common reverb tail a larger part of the overall sound',
-    [g('Master Mixer / Output', 'Reverb')],
+    [
+      g('Master Mixer / Output', 'Reverb'),
+      rv('Core', 'Return'),
+    ],
   ),
 };
 
@@ -971,6 +974,12 @@ const reverbEntries: Record<string, SliderHelpEntry> = {
   reverbErLpFreq: entry('Sets the low-pass cutoff on the early reflections path.', 'Low values make the early reflections darker and softer. High values let more edge and brightness through the early room cues.', [rv('Spatial & Character', 'ER LP Freq')]),
   reverbAirAbsorption: entry('Sets how much high-frequency air loss happens in the reverb tail.', 'Low values keep the tail clearer. High values make distance and atmospheric rolloff more obvious.', [rv('Spatial & Character', 'Air Absorption')]),
   reverbTransientSmooth: entry('Softens transients before they enter the reverb tank.', 'Low values let attacks hit the reverb more directly. High values round off the front edge before it blooms into the space.', [rv('Spatial & Character', 'Transient Smooth')]),
+  reverbPreCompThreshold: entry('Sets where the pre-reverb compressor starts reacting.', 'Low values make it clamp down earlier and level more of the incoming signal. High values let more raw attack pass into the tank before compression begins.', [rv('Input Dynamics', 'Threshold')]),
+  reverbPreCompKnee: entry('Sets how gradually the pre-reverb compressor transitions into gain reduction.', 'Low values make the compressor engage more abruptly. High values make the leveling feel smoother and less obvious.', [rv('Input Dynamics', 'Knee')]),
+  reverbPreCompRatio: entry('Sets how strongly the pre-reverb compressor evens out peaks.', 'Low values keep more of the original attack contour. High values flatten peaks more and make the bloom feel denser and more sustained.', [rv('Input Dynamics', 'Ratio')]),
+  reverbPreCompAttackMs: entry('Sets how quickly the pre-reverb compressor catches the front edge.', 'Low values grab transients faster and soften the hit going into the tank. High values let more initial bite through before the reverb bloom is leveled.', [rv('Input Dynamics', 'Attack')]),
+  reverbPreCompReleaseMs: entry('Sets how long the pre-reverb compressor stays engaged after a peak.', 'Low values recover faster and keep the reverb input more lively. High values hold the gain reduction longer, which can make the tail feel smoother and more glued together.', [rv('Input Dynamics', 'Release')]),
+  reverbPreCompMakeup: entry('Sets the gain added back after the pre-reverb compressor.', 'Low values keep the reverb feed more restrained. High values push more level into the tank so the wet bloom comes forward and feels fuller.', [rv('Input Dynamics', 'Makeup')]),
   reverbReverse: entry('Blends reverse-style ambience into the shared reverb.', 'Low values keep the reverb behaving normally. High values emphasize reverse swells and suction-like blooms.', [rv('Special', 'Reverse Mix')]),
   reverbReverseLength: entry('Sets how long the reverse reverb buffer is.', 'Low values create tighter reverse swells. High values create slower, longer reverse ramps.', [rv('Special', 'Reverse Length')]),
   spectralFreezeSpeed: entry('Sets how fast slushy spectral freeze refreshes itself.', 'Low values make the frozen texture smear and mutate slowly. High values refresh the held spectrum more actively.', [rv('Spectral Freeze', 'Speed')]),
@@ -1110,12 +1119,12 @@ const earthEntries: Record<string, SliderHelpEntry> = {
   oceanFilterCutoff: entry(
     'Sets the waves filter cutoff.',
     'Low values darken the recorded surf and hide more top end. High values open the filter and keep more hiss, foam, and brightness.',
-    [ea('Waves', 'Filter Cutoff', 'single-only', [NATIVE_SINGLE_NOTE])],
+    [ea('Waves', 'Filter Cutoff')],
   ),
   oceanFilterResonance: entry(
     'Sets how strongly the waves filter emphasizes its cutoff point.',
     'Low values keep the waves filter smooth. High values make the cutoff peak more obvious and more resonant.',
-    [ea('Waves', 'Filter Resonance', 'single-only', [NATIVE_SINGLE_NOTE])],
+    [ea('Waves', 'Filter Resonance')],
   ),
   oceanReverbSend: entry(
     'Sets how much the waves layer feeds the shared reverb.',
@@ -1875,6 +1884,6 @@ export const SLIDER_AUDIT_SUMMARY: SliderAuditSummary[] = [
   {
     severity: 'limitation',
     scope: 'Single-only global/earth utility sliders',
-    note: '`randomWalkSpeed`, `cofDriftRate`, `cofDriftRange`, `oceanFilterCutoff`, and `oceanFilterResonance` are all single-only on their current surfaces.',
+    note: '`randomWalkSpeed`, `cofDriftRate`, and `cofDriftRange` are still single-only on their current surfaces.',
   },
 ];

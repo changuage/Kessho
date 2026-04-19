@@ -46,15 +46,23 @@ static const int DIFF_MID_L[4]  = {167, 229, 313, 421};
 static const int DIFF_MID_R[4]  = {173, 241, 331, 433};
 static const int DIFF_POST_L[6] = {211, 283, 367, 457, 547, 641};
 static const int DIFF_POST_R[6] = {223, 293, 379, 467, 557, 653};
+static const int DIFF_LATE_L[4] = {313, 419, 557, 719};
+static const int DIFF_LATE_R[4] = {331, 443, 587, 743};
 
 // Preset configs (damping/size removed — multi-band damping uses dampLow/dampHigh,
 // size uses g_reverb.size directly)
-struct PresetConfig { float decay, diffusion, modDepth; };
+struct PresetConfig {
+    float decay;
+    float diffusion;
+    float modDepth;
+    float maxFeedback;
+    float lateSmear;
+};
 static const PresetConfig PRESETS[4] = {
-    {0.92f, 0.80f, 0.25f},  // plate
-    {0.95f, 0.85f, 0.30f},  // hall
-    {0.97f, 0.95f, 0.40f},  // cathedral
-    {0.96f, 0.90f, 0.30f},  // darkHall
+    {0.92f, 0.80f, 0.25f, 0.99962f, 0.12f},  // plate
+    {0.95f, 0.85f, 0.30f, 0.99974f, 0.18f},  // hall
+    {0.972f, 0.95f, 0.40f, 0.99984f, 0.26f}, // cathedral
+    {0.965f, 0.90f, 0.30f, 0.99978f, 0.22f}, // darkHall
 };
 
 // Stereo decorrelation tap coefficients — separate L/R arrays
@@ -488,6 +496,7 @@ static struct {
     DiffuserChain preDiffL, preDiffR;
     DiffuserChain midDiffL, midDiffR;
     DiffuserChain postDiffL, postDiffR;
+    DiffuserChain lateDiffL, lateDiffR;
 
     // Predelay
     SmoothDelay predelayL, predelayR;
@@ -612,6 +621,8 @@ static struct {
     float feedbackGain;
     float smoothDampLow;
     float smoothDampHigh;
+    float bloomEnv;
+    float bloomGain;
 
     int initialized;
 } g_reverb;
@@ -630,8 +641,15 @@ static void updatePreset() {
 
     // Feedback gain (with decay-dependent damping adjustment)
     float baseDecay = preset.decay;
-    float effectiveDecay = baseDecay + (1.0f - baseDecay) * userDecay * 0.98f;
-    g_reverb.feedbackGain = fminf(0.9995f, effectiveDecay);
+    float maxFeedback = preset.maxFeedback;
+    float effectiveDecay = baseDecay + (maxFeedback - baseDecay) * userDecay * 0.985f;
+    if (userDecay > 0.82f) {
+        float t = (userDecay - 0.82f) / 0.18f;
+        if (t > 1.0f) t = 1.0f;
+        float tailLift = t * (0.35f + 0.65f * t);
+        effectiveDecay += (maxFeedback - effectiveDecay) * tailLift;
+    }
+    g_reverb.feedbackGain = fminf(maxFeedback, effectiveDecay);
 
     // FDN delay times — size range extended to 10.0 for massive spaces
     int maxChannels = (g_reverb.quality == 0) ? 16 : (g_reverb.quality == 1) ? 8 : 4;
@@ -642,10 +660,11 @@ static void updatePreset() {
     // Diffuser feedback
     float baseDiff = preset.diffusion;
     float userDiff = g_reverb.diffusion;
-    float effectiveDiff = baseDiff * (0.6f + userDiff * 0.4f);
-    float preFb  = 0.5f + effectiveDiff * 0.4f;
-    float midFb  = 0.45f + effectiveDiff * 0.4f;
-    float postFb = 0.4f + effectiveDiff * 0.4f;
+    float effectiveDiff = fminf(1.12f, baseDiff * (0.72f + userDiff * 0.52f));
+    float preFb  = fminf(0.94f, 0.56f + effectiveDiff * 0.34f);
+    float midFb  = fminf(0.88f, 0.50f + effectiveDiff * 0.33f);
+    float postFb = fminf(0.84f, 0.46f + effectiveDiff * 0.32f);
+    float lateFb = fminf(0.82f, 0.43f + effectiveDiff * 0.34f);
 
     g_reverb.preDiffL.setFeedback(preFb);
     g_reverb.preDiffR.setFeedback(preFb);
@@ -653,6 +672,8 @@ static void updatePreset() {
     g_reverb.midDiffR.setFeedback(midFb);
     g_reverb.postDiffL.setFeedback(postFb);
     g_reverb.postDiffR.setFeedback(postFb);
+    g_reverb.lateDiffL.setFeedback(lateFb);
+    g_reverb.lateDiffR.setFeedback(lateFb);
 }
 
 static void updatePredelay() {
@@ -814,6 +835,8 @@ int reverb_init(float sample_rate) {
     g_reverb.midDiffR.init(DIFF_MID_R, 4, scale, 0.55f);
     g_reverb.postDiffL.init(DIFF_POST_L, 6, scale, 0.5f);
     g_reverb.postDiffR.init(DIFF_POST_R, 6, scale, 0.5f);
+    g_reverb.lateDiffL.init(DIFF_LATE_L, 4, scale, 0.48f);
+    g_reverb.lateDiffR.init(DIFF_LATE_R, 4, scale, 0.48f);
 
     // Predelay (up to 300 ms)
     int maxPredelay = (int)ceilf(0.3f * sample_rate);
@@ -891,6 +914,8 @@ int reverb_init(float sample_rate) {
     // Computed
     g_reverb.smoothDampLow = g_reverb.dampLow;
     g_reverb.smoothDampHigh = g_reverb.dampHigh;
+    g_reverb.bloomEnv = 0.0f;
+    g_reverb.bloomGain = 1.0f;
     g_reverb.tiltCoeff = expf(-2.0f * (float)M_PI * 1000.0f / sample_rate);
 
     updateCrossover();
@@ -910,6 +935,7 @@ void reverb_destroy(void) {
     g_reverb.preDiffL.destroy();  g_reverb.preDiffR.destroy();
     g_reverb.midDiffL.destroy();  g_reverb.midDiffR.destroy();
     g_reverb.postDiffL.destroy(); g_reverb.postDiffR.destroy();
+    g_reverb.lateDiffL.destroy(); g_reverb.lateDiffR.destroy();
     g_reverb.predelayL.destroy(); g_reverb.predelayR.destroy();
     g_reverb.transSmoothL.destroy(); g_reverb.transSmoothR.destroy();
     free(g_reverb.reverseBufL);
@@ -1295,6 +1321,8 @@ void reverb_process_block(int block_size) {
     float blockDampLow  = g_reverb.smoothDampLow;
     float blockDampHigh = g_reverb.smoothDampHigh;
     float crossCoeff    = g_reverb.crossoverCoeff;
+    float spatialDrift = 0.0f;
+    float lateSmearBoost = 0.0f;
 
     // Decay-dependent damping: reduce high damping at very high decay to maintain presence
     if (blockFeedback > 0.9f) {
@@ -1322,13 +1350,12 @@ void reverb_process_block(int block_size) {
             // Taper slow-mod depth as presets approach the decay ceiling so motion stays
             // audible without turning into a periodic feedback swell.
             float ceilingProximity = fmaxf(0.0f, (g_reverb.feedbackGain - 0.92f) / 0.0795f);
-            float safeSlowDepth = slowDepth * (1.0f - 0.7f * ceilingProximity);
-
-            // Keep slow modulation on loss/tone only. The first LFO only increases high
-            // damping, so decay character can shorten/darken but never gain energy.
-            float dampRise = 0.5f * (m1 + 1.0f);
-            blockDampHigh = fmaxf(0.0f, fminf(1.0f,
-                blockDampHigh + dampRise * safeSlowDepth * 0.12f + m2 * safeSlowDepth * 0.04f));
+            float safeSlowDepth = slowDepth * (1.0f - 0.88f * ceilingProximity);
+            float motion = 0.5f * (m1 + 1.0f);
+            spatialDrift = safeSlowDepth * (0.02f + 0.02f * motion);
+            lateSmearBoost = safeSlowDepth * (0.04f + 0.05f * (0.5f * (m2 + 1.0f)));
+            blockDampLow = fmaxf(0.0f, fminf(1.0f, blockDampLow + m1 * safeSlowDepth * 0.008f));
+            blockDampHigh = fmaxf(0.0f, fminf(1.0f, blockDampHigh + m2 * safeSlowDepth * 0.015f));
     }
 
     // Shimmer
@@ -1356,6 +1383,17 @@ void reverb_process_block(int block_size) {
         useMidDiff = false;
     }
     bool isLite = (g_reverb.quality == 2);
+    float lateBlend = 0.08f + g_reverb.diffusion * 0.16f + preset.lateSmear * 0.18f
+                    + (useMidDiff ? 0.06f : 0.0f) + lateSmearBoost;
+    if (lateBlend > 0.42f) lateBlend = 0.42f;
+    float bloomStrength = 0.0f;
+    if (blockFeedback > 0.997f) {
+        bloomStrength = (blockFeedback - 0.997f) / 0.00284f;
+        if (bloomStrength > 1.0f) bloomStrength = 1.0f;
+        bloomStrength *= fminf(1.0f, 0.45f + g_reverb.diffusion * 0.35f + (useMidDiff ? 0.15f : 0.0f));
+    }
+    const float bloomAttack = 1.0f - expf(-1.0f / (0.012f * sr));
+    const float bloomRelease = 1.0f - expf(-1.0f / (0.45f * sr));
 
     // HPF
     float hpC = g_reverb.hpCoeff;
@@ -1675,8 +1713,10 @@ void reverb_process_block(int block_size) {
         float rawL = 0.0f, rawR = 0.0f;
         if (fdnCount == 16) {
             // True decorrelation with spatial modulation: slowly evolving stereo image
+            float tapModDepth = 0.04f + spatialDrift;
+            if (tapModDepth > 0.09f) tapModDepth = 0.09f;
             for (int j = 0; j < 16; j++) {
-                float tapMod = 0.04f * fast_sinf(g_reverb.tapModPhases[j] * 2.0f * (float)M_PI);
+                float tapMod = tapModDepth * fast_sinf(g_reverb.tapModPhases[j] * 2.0f * (float)M_PI);
                 float modTapL = STEREO_TAPS_L[j] + tapMod;
                 float modTapR = STEREO_TAPS_R[j] - tapMod;  // anti-phase for energy conservation
                 rawL += g_reverb.fdnReads[j] * modTapL;
@@ -1720,6 +1760,12 @@ void reverb_process_block(int block_size) {
         // Post-diffusion
         rawL = g_reverb.postDiffL.process(rawL);
         rawR = g_reverb.postDiffR.process(rawR);
+        if (lateBlend > 0.0001f) {
+            float lateL = g_reverb.lateDiffL.process(rawL);
+            float lateR = g_reverb.lateDiffR.process(rawR);
+            rawL += (lateL - rawL) * lateBlend;
+            rawR += (lateR - rawR) * lateBlend;
+        }
 
         // Shimmer buffer write (source for shimmer grain reader)
         if (shimmerAmount > 0.0f) {
@@ -1747,6 +1793,33 @@ void reverb_process_block(int block_size) {
                 g_reverb.reverseReadPhase = 0.0f;
             }
             g_reverb.reverseWriteIdx = (g_reverb.reverseWriteIdx + 1) % rCycleLen;
+        }
+
+        // Gentle bloom leveling: flatten the initial hit and keep the long tail
+        // more present without feeding energy back into the tank.
+        if (bloomStrength > 0.0001f) {
+            float monoEnv = 0.5f * (fabsf(rawL) + fabsf(rawR));
+            if (monoEnv > g_reverb.bloomEnv) {
+                g_reverb.bloomEnv += (monoEnv - g_reverb.bloomEnv) * bloomAttack;
+            } else {
+                g_reverb.bloomEnv += (monoEnv - g_reverb.bloomEnv) * bloomRelease;
+            }
+            float targetEnv = 0.07f + bloomStrength * 0.05f;
+            float envRatio = targetEnv / (g_reverb.bloomEnv + 0.02f);
+            if (envRatio < 0.55f) envRatio = 0.55f;
+            if (envRatio > 1.85f) envRatio = 1.85f;
+            float gainShape = 0.16f + bloomStrength * 0.10f;
+            float targetGain = powf(envRatio, gainShape);
+            float minGain = 0.82f - bloomStrength * 0.10f;
+            float maxGain = 1.22f + bloomStrength * 0.18f;
+            if (targetGain < minGain) targetGain = minGain;
+            if (targetGain > maxGain) targetGain = maxGain;
+            g_reverb.bloomGain += (targetGain - g_reverb.bloomGain) * (0.015f + bloomStrength * 0.035f);
+            rawL *= g_reverb.bloomGain;
+            rawR *= g_reverb.bloomGain;
+        } else {
+            g_reverb.bloomEnv *= 0.9995f;
+            g_reverb.bloomGain += (1.0f - g_reverb.bloomGain) * 0.01f;
         }
 
         // DC blocking
