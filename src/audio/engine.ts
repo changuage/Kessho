@@ -1345,8 +1345,8 @@ export class AudioEngine {
     }
 
     if (effectiveMorph !== null) {
-      const presetA = getPadPreset((pad === 'pad2' ? effectiveBase.pad2PresetA : effectiveBase.padPresetA) as string);
-      const presetB = getPadPreset((pad === 'pad2' ? effectiveBase.pad2PresetB : effectiveBase.padPresetB) as string);
+      const presetA = getPadPreset((pad === 'pad2' ? effectiveBase.pad2PresetA : effectiveBase.padPresetA) as string, pad);
+      const presetB = getPadPreset((pad === 'pad2' ? effectiveBase.pad2PresetB : effectiveBase.padPresetB) as string, pad);
       if (presetA && presetB) {
         const morphed = morphPadPresets(presetA, presetB, effectiveMorph);
         for (const key of PAD_PRESET_PARAM_KEYS) {
@@ -6452,8 +6452,8 @@ export class AudioEngine {
     }
 
     if (this.runtimeWalkRanges.padMorph) {
-      const presetA = getPadPreset(nextState.padPresetA as string);
-      const presetB = getPadPreset(nextState.padPresetB as string);
+      const presetA = getPadPreset(nextState.padPresetA as string, 'pad1');
+      const presetB = getPadPreset(nextState.padPresetB as string, 'pad1');
       if (presetA && presetB) {
         const morphed = morphPadPresets(presetA, presetB, nextState.padMorph as number);
         for (const key of PAD_PRESET_PARAM_KEYS) {
@@ -6465,8 +6465,8 @@ export class AudioEngine {
     }
 
     if (this.runtimeWalkRanges.pad2Morph) {
-      const presetA = getPadPreset(nextState.pad2PresetA as string);
-      const presetB = getPadPreset(nextState.pad2PresetB as string);
+      const presetA = getPadPreset(nextState.pad2PresetA as string, 'pad2');
+      const presetB = getPadPreset(nextState.pad2PresetB as string, 'pad2');
       if (presetA && presetB) {
         const morphed = morphPadPresets(presetA, presetB, nextState.pad2Morph as number);
         for (const key of PAD_PRESET_PARAM_KEYS) {
@@ -6650,8 +6650,8 @@ export class AudioEngine {
       const effectiveMorph = clampUnitInterval(this.padAutoMorphStates[pad].phase);
       nextStateRecord[morphKey] = effectiveMorph as SliderState[keyof SliderState];
 
-      const presetA = getPadPreset(nextState[presetAKey] as string);
-      const presetB = getPadPreset(nextState[presetBKey] as string);
+      const presetA = getPadPreset(nextState[presetAKey] as string, pad);
+      const presetB = getPadPreset(nextState[presetBKey] as string, pad);
       if (!presetA || !presetB) return;
 
       const morphed = morphPadPresets(presetA, presetB, effectiveMorph);

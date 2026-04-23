@@ -66,7 +66,9 @@ import { getVersionData } from './presets/codec';
 import type { IPresetStore } from './presets/PresetStore';
 import { extractPresetVersionMetadata } from './presets/presetUtils';
 import { SHARED_PRESET_TEST_MODE } from './presets/sharedMode';
+import { extractOptimizedStatePresetData } from './presets/statePresetOptimization';
 import type { PresetEntry } from './presets/types';
+import { buildPresetVersionMetadata } from './presets/versionMetadataHelpers';
 import { CollapsiblePanel } from './ui/CollapsiblePanel';
 import type { StepOverrides, SubLaneKind, SubLaneState, PitchSettings, EvolveConfig } from './ui/sequencer/useEuclideanSequencer';
 import type { PitchBindingMode } from './audio/drumSeqTypes';
@@ -421,26 +423,26 @@ const normalizePresetForWeb = (state: SliderState): SliderState => {
 
   // ── Apply pad preset morph params ──
   // When loading a preset that specifies padPresetA/B, morph their params onto state
-  const presetA = getPadPreset(merged.padPresetA);
-  const presetB = getPadPreset(merged.padPresetB);
+  const presetA = getPadPreset(merged.padPresetA, 'pad1');
+  const presetB = getPadPreset(merged.padPresetB, 'pad1');
   if (presetA && presetB) {
     const morphed = morphPadPresets(presetA, presetB, merged.padMorph);
     for (const k of PAD_PRESET_PARAM_KEYS) {
-      if (k in morphed) {
+      if (k in morphed && !Object.prototype.hasOwnProperty.call(raw, k)) {
         (merged as unknown as Record<string, unknown>)[k] = morphed[k];
       }
     }
   }
 
   // ── Apply pad2 preset morph params ──
-  const pad2A = getPadPreset(merged.pad2PresetA);
-  const pad2B = getPadPreset(merged.pad2PresetB);
+  const pad2A = getPadPreset(merged.pad2PresetA, 'pad2');
+  const pad2B = getPadPreset(merged.pad2PresetB, 'pad2');
   if (pad2A && pad2B) {
     const morphed = morphPadPresets(pad2A, pad2B, merged.pad2Morph);
     for (const k of PAD_PRESET_PARAM_KEYS) {
       if (k in morphed) {
         const pad2Key = PAD1_TO_PAD2_KEY[k];
-        if (pad2Key) {
+        if (pad2Key && !Object.prototype.hasOwnProperty.call(raw, pad2Key)) {
           (merged as unknown as Record<string, unknown>)[pad2Key] = morphed[k];
         }
       }
@@ -475,6 +477,7 @@ const loadPresetsFromFolder = async (): Promise<SavedPreset[]> => {
               synthEvolveConfigs: data.synthEvolveConfigs,
               drumSubLaneStates: data.drumSubLaneStates,
               synthSubLaneStates: data.synthSubLaneStates,
+              synthPitchBindingModes: data.synthPitchBindingModes,
             }));
           }
         } catch (e) {
@@ -500,6 +503,7 @@ const loadPresetsFromFolder = async (): Promise<SavedPreset[]> => {
             synthEvolveConfigs: data.synthEvolveConfigs,
             drumSubLaneStates: data.drumSubLaneStates,
             synthSubLaneStates: data.synthSubLaneStates,
+            synthPitchBindingModes: data.synthPitchBindingModes,
           }));
         }
       } catch (e) {
@@ -561,15 +565,9 @@ async function saveCapacitorLocalStatePreset(preset: SavedPreset): Promise<void>
   const existing = await store.load('state', preset.name, CAPACITOR_LOCAL_STATE_PRESET_SCOPE);
   const parsedTimestamp = Date.parse(preset.timestamp);
   const timestamp = Number.isFinite(parsedTimestamp) ? parsedTimestamp : Date.now();
-  const versionMetadata = {
-    ...(preset.dualRanges ? { dualRanges: preset.dualRanges } : {}),
-    ...(preset.sliderModes ? { sliderModes: preset.sliderModes } : {}),
-    ...(preset.drumEvolveConfigs ? { drumEvolveConfigs: preset.drumEvolveConfigs } : {}),
-    ...(preset.synthEvolveConfigs ? { synthEvolveConfigs: preset.synthEvolveConfigs } : {}),
-    ...(preset.drumSubLaneStates ? { drumSubLaneStates: preset.drumSubLaneStates } : {}),
-    ...(preset.synthSubLaneStates ? { synthSubLaneStates: preset.synthSubLaneStates } : {}),
-    ...(preset.synthPitchBindingModes ? { synthPitchBindingModes: preset.synthPitchBindingModes } : {}),
-  };
+  const migratedPreset = migratePreset(preset);
+  const versionMetadata = buildPresetVersionMetadata(migratedPreset);
+  const optimizedState = extractOptimizedStatePresetData(migratedPreset.state);
 
   if (existing && existing.author !== 'factory' && existing.library !== 'stock') {
     const nextVersion = Math.max(...existing.versions.map((version) => version.v), 0) + 1;
@@ -577,7 +575,7 @@ async function saveCapacitorLocalStatePreset(preset: SavedPreset): Promise<void>
       v: nextVersion,
       note: 'Saved from Capacitor shell',
       timestamp,
-      data: preset.state as unknown as Record<string, unknown>,
+      data: optimizedState,
       ...versionMetadata,
     });
     existing.currentVersion = nextVersion;
@@ -606,7 +604,7 @@ async function saveCapacitorLocalStatePreset(preset: SavedPreset): Promise<void>
       v: 1,
       note: 'Saved from Capacitor shell',
       timestamp,
-      data: preset.state as unknown as Record<string, unknown>,
+      data: optimizedState,
       ...versionMetadata,
     }],
     currentVersion: 1,
@@ -1694,9 +1692,6 @@ const App: React.FC = () => {
   // Absent key means 'single'. dualSliderRanges stores ranges for walk/sampleHold modes.
   const [sliderModes, setSliderModes] = useState<Record<string, SliderMode>>({});
   const [dualSliderRanges, setDualSliderRanges] = useState<DualSliderState>({});
-  const [isDocumentVisible, setIsDocumentVisible] = useState(() => (
-    typeof document === 'undefined' ? true : document.visibilityState === 'visible'
-  ));
   const usesCapacitorLocalPresetLibrary = isCapacitorNativeShell();
   const playbackIsRunning = nativeBackgroundAudioMode ? nativePlaybackState : engineState.isRunning;
 
@@ -1980,6 +1975,57 @@ const App: React.FC = () => {
   const [drumPresetVersion, setDrumPresetVersion] = useState(0);
   const [synthPresetVersion, setSynthPresetVersion] = useState(0);
 
+  const createEmptyStepOverrides = useCallback((): StepOverrides => ({
+    triggerToggles: Array.from({ length: 4 }, () => new Map<number, boolean>()),
+    probability: Array.from({ length: 4 }, () => null),
+    ratchet: Array.from({ length: 4 }, () => null),
+    trigCondition: Array.from({ length: 4 }, () => null),
+    expression: Array.from({ length: 4 }, () => null),
+    pitch: Array.from({ length: 4 }, () => null),
+    morph: Array.from({ length: 4 }, () => null),
+    distance: Array.from({ length: 4 }, () => null),
+    slice: Array.from({ length: 4 }, () => null),
+    reverse: Array.from({ length: 4 }, () => null),
+    expressionDirection: Array.from({ length: 4 }, () => null),
+    morphDirection: Array.from({ length: 4 }, () => null),
+    distanceDirection: Array.from({ length: 4 }, () => null),
+    pitchDirection: Array.from({ length: 4 }, () => null),
+    sliceDirection: Array.from({ length: 4 }, () => null),
+    reverseDirection: Array.from({ length: 4 }, () => null),
+    expressionRanges: Array.from({ length: 4 }, () => null),
+    morphRanges: Array.from({ length: 4 }, () => null),
+    distanceRanges: Array.from({ length: 4 }, () => null),
+  }), []);
+
+  const createDisabledSubLaneFlags = useCallback((): Record<SubLaneKind, boolean>[] => (
+    Array.from({ length: 4 }, () => ({
+      pitch: false,
+      expression: false,
+      morph: false,
+      distance: false,
+      slice: false,
+      reverse: false,
+    }))
+  ), []);
+
+  const mapSubLaneStatesToEnabledFlags = useCallback((
+    states: Record<SubLaneKind, SubLaneState>[] | undefined,
+  ): Record<SubLaneKind, boolean>[] => {
+    if (!states) return createDisabledSubLaneFlags();
+    return Array.from({ length: 4 }, (_, index) => ({
+      pitch: states[index]?.pitch.enabled === true,
+      expression: states[index]?.expression.enabled === true,
+      morph: states[index]?.morph.enabled === true,
+      distance: states[index]?.distance.enabled === true,
+      slice: states[index]?.slice.enabled === true,
+      reverse: states[index]?.reverse.enabled === true,
+    }));
+  }, [createDisabledSubLaneFlags]);
+
+  const createDefaultSynthPitchSettings = useCallback((): PitchSettings[] => (
+    Array.from({ length: 4 }, () => ({ mode: 'semitones', root: 60, scale: 'Major' }))
+  ), []);
+
   // Helper: restore evolve configs from a loaded preset into refs + engine
   const restoreEvolveConfigs = useCallback((preset: SavedPreset) => {
     const defaultEvolve = (): EvolveConfig => ({
@@ -1996,16 +2042,44 @@ const App: React.FC = () => {
     synthEvolveConfigsRef.current = synthConfigs;
     audioEngine.setSynthEuclidEvolveConfigs(synthConfigs);
 
+    // Presets do not persist per-step sequencer edits, so clear any in-memory leftovers.
+    drumStepOverridesRef.current = undefined;
+    audioEngine.setDrumStepOverrides(createEmptyStepOverrides());
+    synthStepOverridesRef.current = undefined;
+    audioEngine.setSynthStepOverrides(createEmptyStepOverrides());
+
     // Restore sub-lane states (backward-compatible: undefined if preset lacks them)
     drumSubLaneStatesRef.current = preset.drumSubLaneStates;
     synthSubLaneStatesRef.current = preset.synthSubLaneStates;
+    audioEngine.setDrumSubLaneEnabled(mapSubLaneStatesToEnabledFlags(preset.drumSubLaneStates));
+    audioEngine.setSynthSubLaneEnabled(mapSubLaneStatesToEnabledFlags(preset.synthSubLaneStates));
+
+    // Pitch settings are UI-only sequencer metadata; reset them to defaults when a preset loads.
+    synthPitchSettingsRef.current = undefined;
+    audioEngine.setSynthPitchSettings(createDefaultSynthPitchSettings());
+
     synthPitchBindingModesRef.current = preset.synthPitchBindingModes;
     audioEngine.setSynthPitchBindingModes(preset.synthPitchBindingModes ?? ['polyrhythmic', 'polyrhythmic', 'polyrhythmic', 'polyrhythmic']);
 
     // Bump all version counters so mounted pages re-initialize from refs
     setDrumPresetVersion(v => v + 1);
     setSynthPresetVersion(v => v + 1);
-  }, []);
+  }, [
+    createDefaultSynthPitchSettings,
+    createDisabledSubLaneFlags,
+    createEmptyStepOverrides,
+    mapSubLaneStatesToEnabledFlags,
+  ]);
+
+  const getStatePresetSaveMetadata = useCallback(() => buildPresetVersionMetadata({
+    dualRanges: dualSliderRanges as Record<string, { min: number; max: number }>,
+    sliderModes,
+    drumEvolveConfigs: drumEvolveConfigsRef.current,
+    synthEvolveConfigs: synthEvolveConfigsRef.current,
+    drumSubLaneStates: drumSubLaneStatesRef.current,
+    synthSubLaneStates: synthSubLaneStatesRef.current,
+    synthPitchBindingModes: synthPitchBindingModesRef.current,
+  }), [dualSliderRanges, sliderModes]);
 
   // Drum morph keys - these use per-trigger randomization, not random walk
   const drumMorphKeys = useMemo(() => new Set<keyof SliderState>([
@@ -2318,21 +2392,9 @@ const App: React.FC = () => {
     audioEngine.setRuntimeWalkRanges(walkRanges);
   }, [sliderModes, dualSliderRanges]);
 
-  useEffect(() => {
-    if (typeof document === 'undefined') return;
-
-    const updateVisibility = () => {
-      setIsDocumentVisible(document.visibilityState === 'visible');
-    };
-
-    updateVisibility();
-    document.addEventListener('visibilitychange', updateVisibility);
-    return () => {
-      document.removeEventListener('visibilitychange', updateVisibility);
-    };
-  }, []);
-
-  const shouldMirrorRuntimeWalkPositions = uiMode === 'advanced' && isDocumentVisible;
+  // Keep the runtime walk indicator store live while hidden so walk-mode sliders
+  // do not resubscribe to a stale snapshot and visibly jump on tab restore.
+  const shouldMirrorRuntimeWalkPositions = uiMode === 'advanced';
 
   useEffect(() => {
     if (!shouldMirrorRuntimeWalkPositions) {
@@ -2376,7 +2438,7 @@ const App: React.FC = () => {
             rawData !== null &&
             typeof rawData === 'object' &&
             Object.prototype.hasOwnProperty.call(rawData, 'state')
-              ? (rawData as { state?: SliderState; dualRanges?: Record<string, { min: number; max: number }> })
+              ? (rawData as Partial<SavedPreset>)
               : null;
 
           const presetState = wrappedData?.state && typeof wrappedData.state === 'object'
@@ -2388,6 +2450,12 @@ const App: React.FC = () => {
             timestamp: new Date().toISOString(),
             state: presetState,
             dualRanges: wrappedData?.dualRanges,
+            sliderModes: wrappedData?.sliderModes,
+            drumEvolveConfigs: wrappedData?.drumEvolveConfigs,
+            synthEvolveConfigs: wrappedData?.synthEvolveConfigs,
+            drumSubLaneStates: wrappedData?.drumSubLaneStates,
+            synthSubLaneStates: wrappedData?.synthSubLaneStates,
+            synthPitchBindingModes: wrappedData?.synthPitchBindingModes,
           }, { currentState: state, normalize: normalizePresetForWeb });
           setState(result.state);
           applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
@@ -3403,8 +3471,8 @@ const App: React.FC = () => {
       // and apply the resulting params to state
       // ═══════════════════════════════════════════════════════════════════════
       if (key === 'padMorph') {
-        const presetA = getPadPreset(newState.padPresetA as string);
-        const presetB = getPadPreset(newState.padPresetB as string);
+        const presetA = getPadPreset(newState.padPresetA as string, 'pad1');
+        const presetB = getPadPreset(newState.padPresetB as string, 'pad1');
         if (presetA && presetB) {
           const morphed = morphPadPresets(presetA, presetB, newState.padMorph as number);
           for (const k of PAD_PRESET_PARAM_KEYS) {
@@ -3421,8 +3489,8 @@ const App: React.FC = () => {
       // and apply the resulting params to pad2 state keys
       // ═══════════════════════════════════════════════════════════════════════
       if (key === 'pad2Morph') {
-        const presetA = getPadPreset(newState.pad2PresetA as string);
-        const presetB = getPadPreset(newState.pad2PresetB as string);
+        const presetA = getPadPreset(newState.pad2PresetA as string, 'pad2');
+        const presetB = getPadPreset(newState.pad2PresetB as string, 'pad2');
         if (presetA && presetB) {
           const morphed = morphPadPresets(presetA, presetB, newState.pad2Morph as number);
           for (const k of PAD_PRESET_PARAM_KEYS) {
@@ -3680,8 +3748,8 @@ const App: React.FC = () => {
       
       // ═══ PAD PRESET MORPH: when preset A or B changes, re-morph and apply ═══
       if (key === 'padPresetA' || key === 'padPresetB') {
-        const presetA = getPadPreset(newState.padPresetA as string);
-        const presetB = getPadPreset(newState.padPresetB as string);
+        const presetA = getPadPreset(newState.padPresetA as string, 'pad1');
+        const presetB = getPadPreset(newState.padPresetB as string, 'pad1');
         if (presetA && presetB) {
           const morphed = morphPadPresets(presetA, presetB, newState.padMorph as number);
           for (const k of PAD_PRESET_PARAM_KEYS) {
@@ -3694,8 +3762,8 @@ const App: React.FC = () => {
 
       // ═══ PAD 2 PRESET MORPH: when pad2 preset A or B changes, re-morph and apply ═══
       if (key === 'pad2PresetA' || key === 'pad2PresetB') {
-        const presetA = getPadPreset(newState.pad2PresetA as string);
-        const presetB = getPadPreset(newState.pad2PresetB as string);
+        const presetA = getPadPreset(newState.pad2PresetA as string, 'pad2');
+        const presetB = getPadPreset(newState.pad2PresetB as string, 'pad2');
         if (presetA && presetB) {
           const morphed = morphPadPresets(presetA, presetB, newState.pad2Morph as number);
           for (const k of PAD_PRESET_PARAM_KEYS) {
@@ -4421,7 +4489,7 @@ const App: React.FC = () => {
     const preset: SavedPreset = {
       name,
       timestamp: new Date().toISOString(),
-      state,
+      state: extractOptimizedStatePresetData(state) as unknown as SliderState,
       dualRanges: Object.keys(dualRangesObj).length > 0 ? dualRangesObj : undefined,
       sliderModes: Object.keys(modesObj).length > 0 ? modesObj : undefined,
       drumEvolveConfigs: drumEvolveConfigsRef.current,
@@ -5670,7 +5738,7 @@ const App: React.FC = () => {
             synthEvolveConfigs: result.preset.synthEvolveConfigs,
             drumSubLaneStates: result.preset.drumSubLaneStates,
             synthSubLaneStates: result.preset.synthSubLaneStates,
-            synthPitchBindingModes: parsed.synthPitchBindingModes,
+            synthPitchBindingModes: result.preset.synthPitchBindingModes,
           };
 
           if (usesCapacitorLocalPresetLibrary) {
@@ -6489,6 +6557,7 @@ const App: React.FC = () => {
             onTimerRemainingChange={setPlaybackTimerRemaining}
             sliderModes={sliderModes}
             dualSliderRanges={dualSliderRanges as Record<string, { min: number; max: number }>}
+            getStatePresetSaveMetadata={getStatePresetSaveMetadata}
           />
         )}
 

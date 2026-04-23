@@ -2,8 +2,9 @@ import React from 'react';
 import type { SliderState, SavedPreset } from '../state';
 import type { EngineState } from '../../audio/engine';
 import type { TensionArcType } from '../../audio/harmony';
-import type { PresetEntry } from '../../presets/types';
+import type { PresetEntry, PresetVersionMetadata } from '../../presets/types';
 import { PresetDropdown, PresetFamilyTree } from '../../presets';
+import { extractOptimizedStatePresetData } from '../../presets/statePresetOptimization';
 import type { SliderMode } from '../state';
 import { SCALE_FAMILIES } from '../../audio/scales';
 import { isAtEndpoint0, isAtEndpoint1 } from '../../audio/morphUtils';
@@ -89,6 +90,7 @@ export interface GlobalPageProps {
   // Dual slider state (for version diff comparison)
   sliderModes?: Record<string, SliderMode>;
   dualSliderRanges?: Record<string, { min: number; max: number }>;
+  getStatePresetSaveMetadata?: () => PresetVersionMetadata | undefined;
 }
 
 // ═══════════════ Component ═══════════════
@@ -137,6 +139,7 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
   onTimerRemainingChange,
   sliderModes,
   dualSliderRanges,
+  getStatePresetSaveMetadata,
 }) => {
   const [expandedSections, setExpandedSections] = React.useState<Set<string>>(
     () => {
@@ -393,6 +396,8 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
                   onLoadSlotB={onLoadMorphB}
                   sliderModes={sliderModes}
                   dualSliderRanges={dualSliderRanges}
+                  getSaveMetadata={getStatePresetSaveMetadata}
+                  customExtract={extractOptimizedStatePresetData}
                 />
               </div>
             )}

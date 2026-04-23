@@ -6,8 +6,9 @@ import type { PresetFile, PresetEntry, PresetLevel } from './types';
 import { extractParams } from './codec';
 import { generatePresetId, normalizePresetEntry } from './presetUtils';
 import type { ParamLevel } from './ParamRegistry';
-import type { SliderState } from '../ui/state';
+import type { SavedPreset, SliderState } from '../ui/state';
 import { migratePreset } from '../ui/state';
+import { buildPresetVersionMetadata } from './versionMetadataHelpers';
 
 const APP_VERSION = '1.0.0';
 
@@ -78,6 +79,28 @@ export async function exportPresetToFile(entry: PresetEntry): Promise<void> {
 // ─── Import ─────────────────────────────────────────────────────────────────
 
 /** Upload a .json file and return the parsed PresetEntry */
+export function createLegacyStatePresetEntry(parsed: SavedPreset): PresetEntry {
+  const migrated = migratePreset(parsed);
+  const timestamp = Date.parse(migrated.timestamp) || Date.now();
+  return {
+    id: generatePresetId(),
+    type: 'state',
+    scope: undefined,
+    name: parsed.name,
+    author: 'user',
+    versions: [{
+      v: 1,
+      note: 'imported from legacy format',
+      timestamp,
+      data: migrated.state as unknown as Record<string, unknown>,
+      ...(buildPresetVersionMetadata(migrated) ?? {}),
+    }],
+    currentVersion: 1,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
 export function importPresetFromFile(): Promise<PresetEntry | null> {
   return new Promise((resolve) => {
     const input = document.createElement('input');
@@ -98,30 +121,7 @@ export function importPresetFromFile(): Promise<PresetEntry | null> {
 
         // Legacy SavedPreset format (full state dump)
         if (parsed && typeof parsed === 'object' && parsed.state && parsed.name) {
-          const migrated = migratePreset(parsed);
-          const timestamp = Date.parse(migrated.timestamp) || Date.now();
-          resolve({
-            id: generatePresetId(),
-            type: 'state',
-            scope: undefined,
-            name: parsed.name,
-            author: 'user',
-            versions: [{
-              v: 1,
-              note: 'imported from legacy format',
-              timestamp,
-              data: migrated.state as unknown as Record<string, unknown>,
-              dualRanges: migrated.dualRanges,
-              sliderModes: migrated.sliderModes,
-              drumEvolveConfigs: migrated.drumEvolveConfigs,
-              synthEvolveConfigs: migrated.synthEvolveConfigs,
-              drumSubLaneStates: migrated.drumSubLaneStates,
-              synthSubLaneStates: migrated.synthSubLaneStates,
-            }],
-            currentVersion: 1,
-            createdAt: timestamp,
-            updatedAt: timestamp,
-          });
+          resolve(createLegacyStatePresetEntry(parsed as SavedPreset));
           return;
         }
 

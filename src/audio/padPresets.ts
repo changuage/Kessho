@@ -622,24 +622,83 @@ export const PAD_PRESETS: Record<string, PadPreset> = {
 
 const USER_PAD_PRESETS = new Map<string, RuntimePadPresetEntry>();
 
+function normalizePadPresetName(name: string): string {
+  return name.trim().toLowerCase();
+}
+
+function makeRuntimePadPresetKey(scope: 'pad1' | 'pad2', id: string): string {
+  return `${scope}:${id}`;
+}
+
+function getPadPresetOptionPriority(option: Pick<PadPresetOption, 'library'>): number {
+  switch (option.library) {
+    case 'cloud':
+      return 3;
+    case 'user':
+      return 2;
+    case 'stock':
+    default:
+      return 1;
+  }
+}
+
 export function getFactoryPadPresetIds(): string[] {
   return Object.keys(PAD_PRESETS);
 }
 
-export function getPadPresetDisplayName(id: string): string {
-  return USER_PAD_PRESETS.get(id)?.name ?? PAD_PRESETS[id]?.name ?? id;
+export function getFactoryPadPresetIdByName(name: string): string | null {
+  const normalizedName = normalizePadPresetName(name);
+  for (const id of getFactoryPadPresetIds()) {
+    if (normalizePadPresetName(PAD_PRESETS[id]?.name ?? id) === normalizedName) {
+      return id;
+    }
+  }
+  return null;
+}
+
+export function getPadPresetDisplayName(id: string, scope?: 'pad1' | 'pad2'): string {
+  if (scope) {
+    return USER_PAD_PRESETS.get(makeRuntimePadPresetKey(scope, id))?.name ?? PAD_PRESETS[id]?.name ?? id;
+  }
+  return [...USER_PAD_PRESETS.values()].find((entry) => entry.id === id)?.name ?? PAD_PRESETS[id]?.name ?? id;
 }
 
 export function getPadPresetOptions(scope?: 'pad1' | 'pad2'): PadPresetOption[] {
-  const options: PadPresetOption[] = getFactoryPadPresetIds().map(id => ({
-    id,
-    name: PAD_PRESETS[id]?.name ?? id,
-    library: 'stock',
-  }));
+  const optionsById = new Map<string, PadPresetOption>();
+  const optionIdByName = new Map<string, string>();
+
+  const mergeOption = (option: PadPresetOption) => {
+    const normalizedName = normalizePadPresetName(option.name);
+    const existingById = optionsById.get(option.id);
+    if (existingById && getPadPresetOptionPriority(existingById) >= getPadPresetOptionPriority(option)) {
+      optionIdByName.set(normalizedName, existingById.id);
+      return;
+    }
+
+    const existingIdByName = optionIdByName.get(normalizedName);
+    if (existingIdByName) {
+      const existingByName = optionsById.get(existingIdByName);
+      if (existingByName && getPadPresetOptionPriority(existingByName) > getPadPresetOptionPriority(option)) {
+        return;
+      }
+      optionsById.delete(existingIdByName);
+    }
+
+    optionsById.set(option.id, option);
+    optionIdByName.set(normalizedName, option.id);
+  };
+
+  for (const id of getFactoryPadPresetIds()) {
+    mergeOption({
+      id,
+      name: PAD_PRESETS[id]?.name ?? id,
+      library: 'stock',
+    });
+  }
 
   for (const entry of USER_PAD_PRESETS.values()) {
     if (!scope || entry.scope === scope) {
-      options.push({
+      mergeOption({
         id: entry.id,
         name: entry.name,
         library: entry.library,
@@ -648,20 +707,20 @@ export function getPadPresetOptions(scope?: 'pad1' | 'pad2'): PadPresetOption[] 
     }
   }
 
-  return options;
+  return [...optionsById.values()];
 }
 
 export function setUserPadPresets(
   scope: 'pad1' | 'pad2',
   presets: Array<{ id: string; name: string; library: Exclude<PresetLibrary, 'stock'>; preset: PadPreset }>,
 ): void {
-  for (const [id, entry] of USER_PAD_PRESETS.entries()) {
+  for (const [runtimeKey, entry] of USER_PAD_PRESETS.entries()) {
     if (entry.scope === scope) {
-      USER_PAD_PRESETS.delete(id);
+      USER_PAD_PRESETS.delete(runtimeKey);
     }
   }
   for (const preset of presets) {
-    USER_PAD_PRESETS.set(preset.id, {
+    USER_PAD_PRESETS.set(makeRuntimePadPresetKey(scope, preset.id), {
       ...preset,
       scope,
     });
@@ -672,7 +731,7 @@ export function upsertUserPadPreset(
   scope: 'pad1' | 'pad2',
   preset: { id: string; name: string; library: Exclude<PresetLibrary, 'stock'>; preset: PadPreset },
 ): void {
-  USER_PAD_PRESETS.set(preset.id, {
+  USER_PAD_PRESETS.set(makeRuntimePadPresetKey(scope, preset.id), {
     ...preset,
     scope,
   });
@@ -693,8 +752,11 @@ function normalizePadPreset(preset: PadPreset | undefined): PadPreset | undefine
   };
 }
 
-export function getPadPreset(id: string): PadPreset | undefined {
-  return normalizePadPreset(USER_PAD_PRESETS.get(id)?.preset ?? PAD_PRESETS[id]);
+export function getPadPreset(id: string, scope?: 'pad1' | 'pad2'): PadPreset | undefined {
+  const scopedPreset = scope
+    ? USER_PAD_PRESETS.get(makeRuntimePadPresetKey(scope, id))?.preset
+    : [...USER_PAD_PRESETS.values()].find((entry) => entry.id === id)?.preset;
+  return normalizePadPreset(scopedPreset ?? PAD_PRESETS[id]);
 }
 
 // ─── Morphing ───

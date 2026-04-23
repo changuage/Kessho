@@ -101,6 +101,10 @@ npm run dev
 # Use:
 & "C:\Program Files\nodejs\node.exe" "node_modules\vite\bin\vite.js"
 ```
+on mac
+node node_modules/vite/bin/vite.js
+
+
 
 ### Why This Works
 - Group policy blocks `npm.cmd` and `npx.cmd` batch files

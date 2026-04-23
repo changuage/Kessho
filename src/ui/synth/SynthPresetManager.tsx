@@ -9,6 +9,7 @@ import { usePresets } from '../../presets/usePresets';
 import { getVersionData } from '../../presets/codec';
 import { SHARED_PRESET_TEST_MODE } from '../../presets/sharedMode';
 import {
+  getFactoryPadPresetIdByName,
   getPadPresetOptions,
   PAD1_TO_PAD2_KEY,
   upsertUserPadPreset,
@@ -51,6 +52,10 @@ function createRuntimePadPreset(scope: 'pad1' | 'pad2', name: string, data: Reco
 
 function toEditablePadLibrary(library: PresetEntry['library'] | undefined): 'user' | 'cloud' {
   return library === 'cloud' ? 'cloud' : 'user';
+}
+
+function resolveRuntimePadPresetId(entry: Pick<PresetEntry, 'id' | 'name'>): string {
+  return getFactoryPadPresetIdByName(entry.name) ?? entry.id ?? entry.name;
 }
 
 interface SynthPresetManagerProps {
@@ -418,15 +423,16 @@ const SynthPresetManager: React.FC<SynthPresetManagerProps> = ({
       const version = entry.versions.find(item => item.v === entry.currentVersion)
         || entry.versions[entry.versions.length - 1];
       if (version) {
+        const runtimeId = resolveRuntimePadPresetId(entry);
         upsertUserPadPreset(engineScope, {
-          id: entry.id ?? entry.name,
+          id: runtimeId,
           name: entry.name,
           library: toEditablePadLibrary(entry.library),
           preset: createRuntimePadPreset(engineScope, entry.name, version.data),
         });
       }
       if (selectedEntryName === entry.name) setVersionEntry(entry);
-      setSelectedPresetId(entry.id ?? entry.name);
+      setSelectedPresetId(resolveRuntimePadPresetId(entry));
     }
     setSaveDialog(null);
   }, [engineScope, load, refresh, save, saveDialog, selectedEntryName, state]);
@@ -449,14 +455,15 @@ const SynthPresetManager: React.FC<SynthPresetManagerProps> = ({
             const version = entry.versions.find(item => item.v === entry.currentVersion)
               || entry.versions[entry.versions.length - 1];
             if (version) {
+              const runtimeId = resolveRuntimePadPresetId(entry);
               upsertUserPadPreset(engineScope, {
-                id: entry.id ?? entry.name,
+                id: runtimeId,
                 name: entry.name,
                 library: toEditablePadLibrary(entry.library),
                 preset: createRuntimePadPreset(engineScope, entry.name, version.data),
               });
             }
-            setSelectedPresetId(entry.id ?? entry.name);
+            setSelectedPresetId(resolveRuntimePadPresetId(entry));
           }
           setConfirm(null);
           setSaveAsName('');
@@ -472,14 +479,15 @@ const SynthPresetManager: React.FC<SynthPresetManagerProps> = ({
       const version = entry.versions.find(item => item.v === entry.currentVersion)
         || entry.versions[entry.versions.length - 1];
       if (version) {
+        const runtimeId = resolveRuntimePadPresetId(entry);
         upsertUserPadPreset(engineScope, {
-          id: entry.id ?? entry.name,
+          id: runtimeId,
           name: entry.name,
           library: toEditablePadLibrary(entry.library),
           preset: createRuntimePadPreset(engineScope, entry.name, version.data),
         });
       }
-      setSelectedPresetId(entry.id ?? entry.name);
+      setSelectedPresetId(resolveRuntimePadPresetId(entry));
     }
     setSaveDialog(null);
     setSaveAsName('');

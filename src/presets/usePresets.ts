@@ -160,6 +160,7 @@ export function usePresets(type: PresetLevel, scope?: string, options?: UsePrese
       });
       existing.currentVersion = maxV + 1;
       existing.updatedAt = now;
+      if (SHARED_PRESET_TEST_MODE) existing.visibility = 'public';
       if (tags) existing.tags = tags;
       if (identity?.creator !== undefined) existing.creator = identity.creator;
       if (identity?.description !== undefined) existing.description = identity.description;
@@ -169,7 +170,9 @@ export function usePresets(type: PresetLevel, scope?: string, options?: UsePrese
       if (identity?.variantName !== undefined) existing.variantName = identity.variantName;
       if (identity?.variantRank !== undefined) existing.variantRank = identity.variantRank;
       if (identity?.visibility !== undefined) existing.visibility = identity.visibility;
-      compressVersions(existing);
+      if (!existing.remoteId) {
+        compressVersions(existing);
+      }
       await store.save(existing);
     } else {
       // New preset
@@ -210,7 +213,7 @@ export function usePresets(type: PresetLevel, scope?: string, options?: UsePrese
   const load = useCallback(async (name: string, version?: number): Promise<PresetEntry | null> => {
     const entry = await store.load(type, name, storeScope, version);
     // Lazy migration: compress uncompressed user presets on first load
-    if (entry && entry.author === 'user' && entry.versions.length > 1) {
+    if (entry && !entry.remoteId && entry.author === 'user' && entry.versions.length > 1) {
       const needsCompression = entry.versions.some(
         (v, i) => i > 0 && !v._isDelta
       );
@@ -251,6 +254,7 @@ export function usePresets(type: PresetLevel, scope?: string, options?: UsePrese
     if (meta.rating !== undefined) entry.rating = meta.rating;
     if (meta.description !== undefined) entry.description = meta.description;
     if (meta.visibility !== undefined) entry.visibility = meta.visibility;
+    else if (SHARED_PRESET_TEST_MODE) entry.visibility = 'public';
     if (meta.creator !== undefined) entry.creator = meta.creator;
     entry.updatedAt = Date.now();
     await store.save(entry);

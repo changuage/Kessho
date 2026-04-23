@@ -188,9 +188,7 @@ const MorphSlider: React.FC<MorphSliderProps> = ({
     let cancelled = false;
 
     const syncRuntimePresets = async () => {
-      const runtimeNames = enginePresets
-        .filter(preset => preset.library !== 'stock')
-        .map(preset => preset.name);
+      const runtimeNames = Array.from(new Set(enginePresets.map(preset => preset.name)));
 
       if (!runtimeNames.length) {
         setUserPresets(voice, []);

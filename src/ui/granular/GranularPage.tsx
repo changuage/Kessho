@@ -211,7 +211,6 @@ const GranularPage: React.FC<GranularPageProps> = ({
   togglePanel,
   onParamChange,
   onSelectChange,
-  onStateChange,
   sliderProps,
   SliderComponent,
 }) => {
@@ -295,23 +294,22 @@ const GranularPage: React.FC<GranularPageProps> = ({
       }
       return combined;
     },
+    customApply: (snapshot: SliderState, data: Record<string, unknown>) => {
+      const next = { ...snapshot } as Record<string, unknown>;
+      for (const [key, value] of Object.entries(data)) {
+        if (key in next) next[key] = value;
+      }
+      return next as unknown as SliderState;
+    },
   }), []);
   const [scenePresetName, setScenePresetName] = useState<string | undefined>();
   const [scenePresetDescription, setScenePresetDescription] = useState<string>('');
   const runtimeSliderVersion = useRuntimeSliderVersion();
-  const handleScenePresetLoad = useCallback((entry: PresetEntry, data: Record<string, unknown>) => {
+  const handleScenePresetLoad = useCallback((entry: PresetEntry, _data: Record<string, unknown>) => {
     setScenePresetName(entry.name);
     const currentVersion = entry.versions.find(version => version.v === entry.currentVersion);
     setScenePresetDescription(entry.description ?? currentVersion?.note ?? '');
-    // Apply all composite data directly to state (bypasses level filtering)
-    if (onStateChange) {
-      const newState = { ...state } as Record<string, unknown>;
-      for (const [k, v] of Object.entries(data)) {
-        if (k in newState) newState[k] = v;
-      }
-      onStateChange(newState as unknown as SliderState);
-    }
-  }, [state, onStateChange]);
+  }, []);
 
   // Alias Slider for convenience (it's passed as generic ComponentType)
   const Slider = SliderComponent as React.ComponentType<{

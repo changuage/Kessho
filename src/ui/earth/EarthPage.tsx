@@ -22,6 +22,7 @@ import {
   INSECT_ENGINE_DEFAULTS,
   WATER_MORPH_PARAM_KEYS,
   WATER_PRESETS,
+  getStockWaterPresetIdByName,
   getWaterPresetOptions,
   setUserWaterPresets,
   upsertUserWaterPreset,
@@ -208,7 +209,6 @@ export default function EarthPage({
     const syncWaterRuntimePresets = async () => {
       const runtimePresets = await Promise.all(
         waterEnginePresets
-          .filter((preset) => preset.library !== 'stock')
           .map(async (preset) => {
             const entry = await loadWaterPreset(preset.name);
             if (!entry) return null;
@@ -220,11 +220,15 @@ export default function EarthPage({
                 .map((key) => [key, version.data[key]])
                 .filter(([, value]) => typeof value === 'number'),
             ) as Record<string, number>;
+            const stockId = getStockWaterPresetIdByName(entry.name);
+            const runtimeLibrary: 'user' | 'cloud' = entry.library === 'cloud' ? 'cloud' : 'user';
 
             return {
-              sourceId: entry.id ?? entry.name,
+              sourceId: stockId != null
+                ? `stock:${stockId}`
+                : entry.id ?? entry.name,
               name: entry.name,
-              library: (entry.library ?? 'user') as 'user' | 'cloud',
+              library: runtimeLibrary,
               data,
               dualRanges: version.dualRanges,
               sliderModes: version.sliderModes as Record<string, SliderMode> | undefined,
@@ -257,14 +261,22 @@ export default function EarthPage({
   );
 
   const insects1PresetOptions = useMemo<EarthPresetOption[]>(() => {
-    const stock = INSECT_ENGINES.map((name, index) => ({
-      value: `stock:${index}`,
-      label: name,
-      library: 'stock' as const,
-      stockIndex: index,
-    }));
+    const stockNames = new Set(INSECT_ENGINES.map((name) => name.trim().toLowerCase()));
+    const presetsByName = new Map(
+      insects1EnginePresets.map((preset) => [preset.name.trim().toLowerCase(), preset]),
+    );
+    const stock = INSECT_ENGINES.map((name, index) => {
+      const preset = presetsByName.get(name.trim().toLowerCase());
+      return {
+        value: `stock:${index}`,
+        label: name,
+        library: preset?.library ?? 'stock',
+        stockIndex: index,
+        presetName: preset?.name,
+      };
+    });
     const custom = insects1EnginePresets
-      .filter((preset) => preset.library !== 'stock')
+      .filter((preset) => !stockNames.has(preset.name.trim().toLowerCase()))
       .map((preset) => ({
         value: `${preset.library}:${preset.name}`,
         label: preset.name,
@@ -275,14 +287,22 @@ export default function EarthPage({
   }, [insects1EnginePresets]);
 
   const insects2PresetOptions = useMemo<EarthPresetOption[]>(() => {
-    const stock = INSECT_ENGINES.map((name, index) => ({
-      value: `stock:${index}`,
-      label: name,
-      library: 'stock' as const,
-      stockIndex: index,
-    }));
+    const stockNames = new Set(INSECT_ENGINES.map((name) => name.trim().toLowerCase()));
+    const presetsByName = new Map(
+      insects2EnginePresets.map((preset) => [preset.name.trim().toLowerCase(), preset]),
+    );
+    const stock = INSECT_ENGINES.map((name, index) => {
+      const preset = presetsByName.get(name.trim().toLowerCase());
+      return {
+        value: `stock:${index}`,
+        label: name,
+        library: preset?.library ?? 'stock',
+        stockIndex: index,
+        presetName: preset?.name,
+      };
+    });
     const custom = insects2EnginePresets
-      .filter((preset) => preset.library !== 'stock')
+      .filter((preset) => !stockNames.has(preset.name.trim().toLowerCase()))
       .map((preset) => ({
         value: `${preset.library}:${preset.name}`,
         label: preset.name,
@@ -357,11 +377,14 @@ export default function EarthPage({
         .map((key) => [key, version.data[key]])
         .filter(([, value]) => typeof value === 'number'),
     ) as Record<string, number>;
+    const stockId = getStockWaterPresetIdByName(savedEntry.name);
 
     const savedId = upsertUserWaterPreset({
-      sourceId: savedEntry.id ?? savedEntry.name,
+      sourceId: stockId != null
+        ? `stock:${stockId}`
+        : savedEntry.id ?? savedEntry.name,
       name: savedEntry.name,
-      library: (savedEntry.library ?? 'user') as 'user' | 'cloud',
+      library: savedEntry.library === 'cloud' ? 'cloud' : 'user',
       data,
       dualRanges: version.dualRanges,
       sliderModes: version.sliderModes as Record<string, SliderMode> | undefined,
@@ -404,18 +427,19 @@ export default function EarthPage({
     if (scope === 'insects1') setSelectedInsects1Preset(value);
     else setSelectedInsects2Preset(value);
 
-    if (option.library === 'stock' && option.stockIndex != null) {
-      applyInsectsStockPreset(scope, option.stockIndex);
+    const loadPreset = scope === 'insects1' ? loadInsects1Preset : loadInsects2Preset;
+    const entry = option.presetName ? await loadPreset(option.presetName) : null;
+    if (entry) {
+      const version = entry.versions.find(v => v.v === entry.currentVersion)
+        || entry.versions[entry.versions.length - 1];
+      if (!version) return;
+      applyNumericPresetData(scope === 'insects1' ? INSECTS1_PARAM_KEYS : INSECTS2_PARAM_KEYS, version.data);
       return;
     }
 
-    const loadPreset = scope === 'insects1' ? loadInsects1Preset : loadInsects2Preset;
-    const entry = option.presetName ? await loadPreset(option.presetName) : null;
-    if (!entry) return;
-    const version = entry.versions.find(v => v.v === entry.currentVersion)
-      || entry.versions[entry.versions.length - 1];
-    if (!version) return;
-    applyNumericPresetData(scope === 'insects1' ? INSECTS1_PARAM_KEYS : INSECTS2_PARAM_KEYS, version.data);
+    if (option.stockIndex != null) {
+      applyInsectsStockPreset(scope, option.stockIndex);
+    }
   }, [
     applyInsectsStockPreset,
     applyNumericPresetData,
@@ -451,7 +475,10 @@ export default function EarthPage({
     );
     await refreshPresetList();
 
-    const selectedKey = `user:${targetName}`;
+    const matchingStockIndex = INSECT_ENGINES.findIndex(
+      (name) => name.trim().toLowerCase() === targetName.trim().toLowerCase(),
+    );
+    const selectedKey = matchingStockIndex >= 0 ? `stock:${matchingStockIndex}` : `user:${targetName}`;
     if (scope === 'insects1') setSelectedInsects1Preset(selectedKey);
     else setSelectedInsects2Preset(selectedKey);
   }, [

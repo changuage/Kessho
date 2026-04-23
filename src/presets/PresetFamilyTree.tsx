@@ -12,6 +12,7 @@ import { SHARED_PRESET_TEST_MODE } from './sharedMode';
 import { DEFAULT_STATE, migratePreset, type SliderState } from '../ui/state';
 import type { SliderMode } from '../ui/state';
 import { DERIVED_PAD_KEYS } from '../audio/padPresets';
+import { buildPresetVersionMetadata, getPresetVersionSnapshot } from './versionMetadataHelpers';
 
 const MAX_CHILDREN = 5;
 const FAMILY_TREE_SELECTION_STORAGE_PREFIX = 'preset-family-tree:selected:';
@@ -65,6 +66,10 @@ export interface PresetFamilyTreeProps {
   sliderModes?: Record<string, SliderMode>;
   /** Current dual slider ranges for walk/sampleHold params */
   dualSliderRanges?: Record<string, { min: number; max: number }>;
+  /** Optional callback to supply current live metadata when saving a state preset */
+  getSaveMetadata?: () => PresetVersionMetadata | undefined;
+  /** Optional custom state extractor used when saving */
+  customExtract?: (state: SliderState) => Record<string, unknown>;
 }
 
 // ─── Styles ─────────────────────────────────────────────────────────────────
@@ -421,8 +426,14 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
   onLoadSlotB,
   sliderModes,
   dualSliderRanges,
+  getSaveMetadata,
+  customExtract,
 }) => {
-  const { presets, families, save, load, remove, refresh, updateMetadata } = usePresets(level, scope);
+  const presetOptions = useMemo(
+    () => (customExtract ? { customExtract } : undefined),
+    [customExtract],
+  );
+  const { presets, families, save, load, remove, refresh, updateMetadata } = usePresets(level, scope, presetOptions);
   const selectionStorageKey = useMemo(() => getFamilyTreeSelectionStorageKey(level, scope), [level, scope]);
 
   // Optimistic local rating state (keyed by preset name)
@@ -570,6 +581,14 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
     return extractCascade(canonicalState, paramLevel as 1 | 2 | 3 | 4, scope);
   }, [level, scope]);
 
+  const getCurrentSaveMetadata = useCallback((): PresetVersionMetadata | undefined => {
+    if (getSaveMetadata) return getSaveMetadata();
+    return buildPresetVersionMetadata({
+      dualRanges: dualSliderRanges,
+      sliderModes,
+    });
+  }, [getSaveMetadata, dualSliderRanges, sliderModes]);
+
   // Load preset data and call a slot callback (with confirmation)
   const requestLoadToSlot = useCallback((
     name: string,
@@ -601,18 +620,14 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
   // Execute save (overwrite)
   const handleSaveOverwrite = useCallback(async () => {
     if (!saveDialog) return;
-    // Pass current dual ranges + slider modes so version diffs compare ranges (not sampled values)
-    const meta: PresetVersionMetadata = {};
-    if (dualSliderRanges && Object.keys(dualSliderRanges).length > 0) meta.dualRanges = dualSliderRanges;
-    if (sliderModes && Object.keys(sliderModes).length > 0) meta.sliderModes = sliderModes;
-    const saveMeta = Object.keys(meta).length > 0 ? meta : undefined;
+    const saveMeta = getCurrentSaveMetadata();
     await save(saveDialog.originalName, state, undefined, undefined, saveMeta, undefined);
     await refresh();
     // Reload version entry so the version panel updates immediately
     const updated = await load(saveDialog.originalName);
     if (updated) setVersionEntries(prev => ({ ...prev, [saveDialog.originalName]: updated }));
     setSaveDialog(null);
-  }, [saveDialog, save, state, refresh, load, dualSliderRanges, sliderModes]);
+  }, [saveDialog, save, state, refresh, load, getCurrentSaveMetadata]);
 
   // Execute save as
   const handleSaveAs = useCallback(async () => {
@@ -647,11 +662,7 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
     newName: string,
     targetName: string,
   ) => {
-    // Pass current dual ranges + slider modes so version diffs compare ranges
-    const meta: PresetVersionMetadata = {};
-    if (dualSliderRanges && Object.keys(dualSliderRanges).length > 0) meta.dualRanges = dualSliderRanges;
-    if (sliderModes && Object.keys(sliderModes).length > 0) meta.sliderModes = sliderModes;
-    const saveMeta = Object.keys(meta).length > 0 ? meta : undefined;
+    const saveMeta = getCurrentSaveMetadata();
 
     if (dialog.isChild && dialog.parentName) {
       const parentEntry = await load(dialog.parentName);
@@ -677,7 +688,7 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
 
     // Auto-select the new preset in the dropdown
     setSelectedParentName(dialog.isChild && dialog.parentName ? dialog.parentName : targetName);
-  }, [save, load, state, refresh, level, scope, dualSliderRanges, sliderModes]);
+  }, [save, load, state, refresh, level, scope, getCurrentSaveMetadata]);
 
   // Delete preset (with confirmation)
   const requestDelete = useCallback((name: string) => {
@@ -722,10 +733,7 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
       description: childDescription.trim() || undefined,
     };
 
-    const meta: PresetVersionMetadata = {};
-    if (dualSliderRanges && Object.keys(dualSliderRanges).length > 0) meta.dualRanges = dualSliderRanges;
-    if (sliderModes && Object.keys(sliderModes).length > 0) meta.sliderModes = sliderModes;
-    const saveMeta = Object.keys(meta).length > 0 ? meta : undefined;
+    const saveMeta = getCurrentSaveMetadata();
 
     await save(childName, state, undefined, undefined, saveMeta, identity);
     await refresh();
@@ -733,7 +741,7 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
     const updated = await load(childName);
     if (updated) setVersionEntries(prev => ({ ...prev, [childName]: updated }));
     setShowChildDialog(false);
-  }, [childModifier, childDescription, selectedParentName, load, save, state, refresh, level, scope, dualSliderRanges, sliderModes]);
+  }, [childModifier, childDescription, selectedParentName, load, save, state, refresh, level, scope, getCurrentSaveMetadata]);
 
   // Update (resave) — now goes through confirmation
   const handleUpdateChild = useCallback((name: string) => {
@@ -781,10 +789,10 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
       onConfirm: async () => {
         const entry = versionEntries[name] || await load(name);
         if (!entry) return;
-        const data = getVersionData(entry, versionNum);
-        if (!data) return;
-        // Save the old version's data as though it's the current state
-        await save(name, data as unknown as SliderState, undefined, undefined, undefined, undefined);
+        const snapshot = getPresetVersionSnapshot(entry, versionNum);
+        if (!snapshot) return;
+        // Save the selected version's full snapshot and metadata as the new latest version.
+        await save(name, snapshot.data as unknown as SliderState, undefined, undefined, snapshot.metadata, undefined);
         await refresh();
         // Reload the entry for version panel
         const updated = await load(name);

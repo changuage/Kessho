@@ -31,6 +31,7 @@ import { extractParams } from '../../presets/codec';
 import type { PresetEntry } from '../../presets/types';
 import type { UsePresetsOptions } from '../../presets/usePresets';
 import {
+  getFactoryPadPresetIdByName,
   getPadPresetOptions,
   upsertUserPadPreset,
   setUserPadPresets,
@@ -51,6 +52,7 @@ import {
   saveUserLead4opFMPreset,
   setUserLead4opFMPresets,
   upsertUserLead4opFMPreset,
+  type Lead4opFMPreset,
 } from '../../audio/lead4opfm';
 import { audioEngine, type ManualSynthNoteOptions, type ManualSynthSource } from '../../audio/runtime';
 import {
@@ -489,6 +491,37 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     load: loadLeadFmPresetEntry,
     refresh: refreshLeadFmPresets,
   } = usePresets('engine', 'lead4opfm');
+  const leadStockIdByName = useMemo(
+    () => new Map(
+      lead4opPresets.map((preset) => [preset.name.trim().toLowerCase(), preset.id]),
+    ),
+    [lead4opPresets],
+  );
+  const resolveLeadPresetRuntimeId = useCallback((name: string, fallbackId?: string) => {
+    return leadStockIdByName.get(name.trim().toLowerCase()) ?? fallbackId ?? name;
+  }, [leadStockIdByName]);
+  const createRuntimeLeadPreset = useCallback((runtimeId: string, name: string, data: Record<string, unknown>): Lead4opFMPreset | null => {
+    const candidate = typeof data.preset === 'object' && data.preset !== null
+      ? data.preset as Record<string, unknown>
+      : data;
+    if (
+      typeof candidate.id !== 'string'
+      || typeof candidate.name !== 'string'
+      || typeof candidate.algorithm !== 'string'
+      || typeof candidate.xy !== 'object'
+      || candidate.xy === null
+      || typeof candidate.params !== 'object'
+      || candidate.params === null
+    ) {
+      return null;
+    }
+
+    return {
+      ...(candidate as unknown as Lead4opFMPreset),
+      id: runtimeId,
+      name,
+    };
+  }, []);
   const toggleEdit = (section: string) => setEditingSection(prev => prev === section ? null : section);
 
   const Slider = SliderComponent as React.ComponentType<any>;
@@ -857,17 +890,17 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     ) => {
       const runtimePresets = await Promise.all(
         summaries
-          .filter((preset) => preset.library !== 'stock')
           .map(async (preset) => {
             const entry = await loadPreset(preset.name);
             if (!entry) return null;
             const version = entry.versions.find(v => v.v === entry.currentVersion)
               || entry.versions[entry.versions.length - 1];
             if (!version) return null;
+            const stockId = getFactoryPadPresetIdByName(entry.name);
             return {
-              id: entry.id ?? entry.name,
+              id: stockId ?? entry.id ?? entry.name,
               name: entry.name,
-              library: (entry.library ?? 'user') as Exclude<PadPresetOption['library'], 'stock'>,
+              library: entry.library === 'cloud' ? 'cloud' : 'user',
               preset: createRuntimePadPreset(scope, entry.name, version.data),
             };
           }),
@@ -906,15 +939,20 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     const syncLeadRuntimePresets = async () => {
       const runtimePresets = await Promise.all(
         leadFmPresets
-          .filter((preset) => preset.library !== 'stock')
           .map(async (preset) => {
             const entry = await loadLeadFmPresetEntry(preset.name);
             if (!entry) return null;
-            const resolvedPreset = await loadLead4opFMPreset(entry.name);
+            const runtimeId = resolveLeadPresetRuntimeId(entry.name, entry.id);
+            const version = entry.versions.find(v => v.v === entry.currentVersion)
+              || entry.versions[entry.versions.length - 1];
+            if (!version) return null;
+            const resolvedPreset = createRuntimeLeadPreset(runtimeId, entry.name, version.data);
+            if (!resolvedPreset) return null;
+            const runtimeLibrary: 'user' | 'cloud' = entry.library === 'cloud' ? 'cloud' : 'user';
             return {
-              id: entry.name,
+              id: runtimeId,
               name: entry.name,
-              library: (entry.library ?? 'user') as 'user' | 'cloud',
+              library: runtimeLibrary,
               preset: resolvedPreset,
             };
           }),
@@ -933,7 +971,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     return () => {
       cancelled = true;
     };
-  }, [leadFmPresets, loadLeadFmPresetEntry]);
+  }, [createRuntimeLeadPreset, leadFmPresets, loadLeadFmPresetEntry, resolveLeadPresetRuntimeId]);
 
   useEffect(() => {
     setPad1Variation(EMPTY_PAD_VARIATION_SESSION);
@@ -947,20 +985,44 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const pad2PresetOptions = getPadPresetOptions('pad2');
   const pad1OptionById = new Map(pad1PresetOptions.map(option => [option.id, option]));
   const pad2OptionById = new Map(pad2PresetOptions.map(option => [option.id, option]));
-  const leadPresetOptions = [
-    ...lead4opPresets.map((preset) => ({
-      id: preset.id,
-      name: preset.name,
-      library: 'stock' as const,
-    })),
-    ...leadFmPresets
-      .filter((preset) => preset.library !== 'stock')
-      .map((preset) => ({
-        id: preset.name,
+  const leadPresetOptions = (() => {
+    const optionsById = new Map<string, { id: string; name: string; library: 'stock' | 'user' | 'cloud' }>();
+    const optionIdByName = new Map<string, string>();
+
+    const mergeOption = (option: { id: string; name: string; library: 'stock' | 'user' | 'cloud' }) => {
+      const normalizedName = option.name.trim().toLowerCase();
+      const priority = option.library === 'cloud' ? 3 : option.library === 'user' ? 2 : 1;
+      const existingIdByName = optionIdByName.get(normalizedName);
+      if (existingIdByName) {
+        const existing = optionsById.get(existingIdByName);
+        const existingPriority = existing?.library === 'cloud' ? 3 : existing?.library === 'user' ? 2 : 1;
+        if (existing && existingPriority > priority) {
+          return;
+        }
+        optionsById.delete(existingIdByName);
+      }
+      optionsById.set(option.id, option);
+      optionIdByName.set(normalizedName, option.id);
+    };
+
+    for (const preset of lead4opPresets) {
+      mergeOption({
+        id: preset.id,
+        name: preset.name,
+        library: 'stock',
+      });
+    }
+
+    for (const preset of leadFmPresets) {
+      mergeOption({
+        id: resolveLeadPresetRuntimeId(preset.name, preset.id),
         name: preset.name,
         library: preset.library,
-      })),
-  ];
+      });
+    }
+
+    return [...optionsById.values()];
+  })();
   const leadPresetOptionById = new Map(leadPresetOptions.map(option => [option.id, option]));
 
   const renderPadPresetOptions = useCallback((options: PadPresetOption[]) => {
@@ -1023,11 +1085,11 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       || savedEntry.versions[savedEntry.versions.length - 1];
     if (!version) return;
 
-    const savedId = savedEntry.id ?? savedEntry.name;
+    const savedId = getFactoryPadPresetIdByName(savedEntry.name) ?? savedEntry.id ?? savedEntry.name;
     upsertUserPadPreset(scope, {
       id: savedId,
       name: savedEntry.name,
-      library: (savedEntry.library ?? 'user') as Exclude<PadPresetOption['library'], 'stock'>,
+      library: savedEntry.library === 'cloud' ? 'cloud' : 'user',
       preset: createRuntimePadPreset(scope, savedEntry.name, version.data),
     });
 
@@ -1073,23 +1135,24 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       currentPreset,
       currentOption ? 'Updated from lead slot' : 'Saved from lead slot',
     );
+    const runtimeId = resolveLeadPresetRuntimeId(targetName, savedId);
     await refreshLeadFmPresets();
 
     upsertUserLead4opFMPreset({
-      id: savedId,
-      name: savedId,
+      id: runtimeId,
+      name: targetName,
       library: 'user',
       preset: {
         ...currentPreset,
-        id: savedId,
-        name: savedId,
+        id: runtimeId,
+        name: targetName,
       },
     });
 
-    if (String(state[slotKey] ?? '') !== savedId) {
-      onSelectChange(slotKey, savedId as SliderState[typeof slotKey]);
+    if (String(state[slotKey] ?? '') !== runtimeId) {
+      onSelectChange(slotKey, runtimeId as SliderState[typeof slotKey]);
     }
-  }, [leadPresetOptionById, leadPresetOptions, onSelectChange, refreshLeadFmPresets, state]);
+  }, [leadPresetOptionById, leadPresetOptions, onSelectChange, refreshLeadFmPresets, resolveLeadPresetRuntimeId, state]);
   void handleLeadSlotSave;
 
   // ── Euclidean Sequencer Hook (reuses same hook as DrumPage) ──

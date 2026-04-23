@@ -3238,47 +3238,60 @@ export class DrumSynth {
         // Apply step override data from UI sub-lanes into sequencer model
         const ov = this.stepOverrides;
         const dlEnabled = this.subLaneEnabled[laneIndex] ?? {};
-        if (ov.probability[laneIndex] && dlEnabled.expression !== false) {
+        const expressionEnabled = dlEnabled.expression === true && !!ov.expression[laneIndex];
+        const morphEnabled = dlEnabled.morph === true && !!ov.morph[laneIndex];
+        const distanceEnabled = dlEnabled.distance === true && !!ov.distance[laneIndex];
+        const pitchEnabled = dlEnabled.pitch === true && !!ov.pitch[laneIndex];
+
+        if (ov.probability[laneIndex] && expressionEnabled) {
           sequencer.trigger.probability = ov.probability[laneIndex]!;
         } else {
           // Reset to defaults when override is cleared or expression sub-lane disabled
           sequencer.trigger.probability = new Array(lane.steps).fill(1);
         }
-        if (ov.ratchet[laneIndex] && dlEnabled.expression !== false) {
+        if (ov.ratchet[laneIndex] && expressionEnabled) {
           sequencer.trigger.ratchet = ov.ratchet[laneIndex]!;
         } else {
           // Reset to defaults when override is cleared (prevents stale ratchet values)
           sequencer.trigger.ratchet = new Array(lane.steps).fill(1);
         }
-        if (ov.expression[laneIndex]) {
+        if (expressionEnabled) {
           const exprArr = ov.expression[laneIndex]!;
           sequencer.expression.velocities = exprArr;
           sequencer.expression.steps = exprArr.length;
-          sequencer.expression.enabled = dlEnabled.expression !== false;
+          sequencer.expression.enabled = true;
+        } else {
+          sequencer.expression.enabled = false;
         }
         if (ov.expressionDirection[laneIndex]) {
           sequencer.expression.direction = ov.expressionDirection[laneIndex]!;
         }
-        if (ov.morph[laneIndex]) {
+        if (morphEnabled) {
           sequencer.morph.values = ov.morph[laneIndex]!;
           sequencer.morph.steps = ov.morph[laneIndex]!.length;
-          sequencer.morph.enabled = dlEnabled.morph !== false;
+          sequencer.morph.enabled = true;
+        } else {
+          sequencer.morph.enabled = false;
         }
         if (ov.morphDirection[laneIndex]) {
           sequencer.morph.direction = ov.morphDirection[laneIndex]!;
         }
-        if (ov.distance[laneIndex]) {
+        if (distanceEnabled) {
           sequencer.distance.values = ov.distance[laneIndex]!;
           sequencer.distance.steps = ov.distance[laneIndex]!.length;
-          sequencer.distance.enabled = dlEnabled.distance !== false;
+          sequencer.distance.enabled = true;
+        } else {
+          sequencer.distance.enabled = false;
         }
         if (ov.distanceDirection[laneIndex]) {
           sequencer.distance.direction = ov.distanceDirection[laneIndex]!;
         }
-        if (ov.pitch[laneIndex]) {
+        if (pitchEnabled) {
           sequencer.pitch.offsets = ov.pitch[laneIndex]!;
           sequencer.pitch.steps = ov.pitch[laneIndex]!.length;
-          sequencer.pitch.enabled = dlEnabled.pitch !== false;
+          sequencer.pitch.enabled = true;
+        } else {
+          sequencer.pitch.enabled = false;
         }
         if (ov.pitchDirection[laneIndex]) {
           sequencer.pitch.direction = ov.pitchDirection[laneIndex]!;
@@ -3318,7 +3331,7 @@ export class DrumSynth {
             );
             const dlLaneEnabled = this.subLaneEnabled[laneIndex] ?? {};
             const drumEnabledSubs = (['expression', 'morph', 'distance', 'pitch', 'slice', 'reverse'] as const)
-              .filter(sl => dlLaneEnabled[sl] !== false);
+              .filter(sl => dlLaneEnabled[sl] === true);
             const evolved = evolveSequencer(sequencer, bar, {
               effectiveTension: Math.max(0, drumTension),
               scaleIntervals: this.scaleIntervals,

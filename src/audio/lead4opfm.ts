@@ -14,6 +14,7 @@
 
 import { getPresetStore } from '../presets/PresetStore';
 import type { PresetEntry, PresetLibrary } from '../presets/types';
+import { SHARED_PRESET_TEST_MODE } from '../presets/sharedMode';
 
 // ─── Active note tracking for CPU overlay ───
 let activeLeadNoteCount = 0;
@@ -432,7 +433,14 @@ async function loadUserLead4opPresetFromStore(presetId: string): Promise<{ prese
   }
 
   const store = getPresetStore();
-  const entry = await store.load('engine', presetId, USER_LEAD4OP_SCOPE);
+  let entry = await store.load('engine', presetId, USER_LEAD4OP_SCOPE);
+  if (!entry) {
+    const manifest = await loadLead4opFMManifest();
+    const stockMatch = manifest.presets.find((preset) => preset.id === presetId);
+    if (stockMatch) {
+      entry = await store.load('engine', stockMatch.name, USER_LEAD4OP_SCOPE);
+    }
+  }
   if (!entry) return null;
 
   const preset = parseLead4opPresetFromEntry(entry, presetId);
@@ -480,7 +488,7 @@ export async function saveUserLead4opFMPreset(
   let actualName = name;
   const storedPreset = cloneLead4opPreset(preset, name, name);
 
-  if (existing && existing.author === 'user' && existing.library === 'user') {
+  if (existing && (SHARED_PRESET_TEST_MODE || (existing.author === 'user' && existing.library === 'user'))) {
     const maxVersion = Math.max(...existing.versions.map(version => version.v));
     existing.versions.push({
       v: maxVersion + 1,
@@ -490,6 +498,7 @@ export async function saveUserLead4opFMPreset(
     });
     existing.currentVersion = maxVersion + 1;
     existing.updatedAt = now;
+    if (SHARED_PRESET_TEST_MODE) existing.visibility = 'public';
     await store.save(existing);
   } else {
     actualName = existing && existing.author !== 'user' ? `${name} (Custom)` : name;
@@ -500,6 +509,7 @@ export async function saveUserLead4opFMPreset(
       name: actualName,
       author: 'user',
       library: 'user',
+      visibility: SHARED_PRESET_TEST_MODE ? 'public' : 'private',
       familyName: actualName,
       variantName: actualName,
       versions: [{

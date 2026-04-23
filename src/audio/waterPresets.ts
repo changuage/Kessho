@@ -281,7 +281,37 @@ interface RuntimeWaterPresetEntry extends WaterPresetOption {
 
 const USER_WATER_PRESETS = new Map<number, RuntimeWaterPresetEntry>();
 
+function normalizeWaterPresetName(name: string): string {
+  return name.trim().toLowerCase();
+}
+
+function getWaterPresetOptionPriority(option: Pick<WaterPresetOption, 'library'>): number {
+  switch (option.library) {
+    case 'cloud':
+      return 3;
+    case 'user':
+      return 2;
+    case 'stock':
+    default:
+      return 1;
+  }
+}
+
+export function getStockWaterPresetIdByName(name: string): number | null {
+  const normalizedName = normalizeWaterPresetName(name);
+  for (let index = 0; index < WATER_PRESETS.length; index += 1) {
+    if (normalizeWaterPresetName(WATER_PRESETS[index] ?? '') === normalizedName) {
+      return index;
+    }
+  }
+  return null;
+}
+
 function hashRuntimePresetId(sourceId: string): number {
+  const stockMatch = /^stock:(\d+)$/.exec(sourceId);
+  if (stockMatch) {
+    return Number(stockMatch[1]);
+  }
   let hash = 5381;
   for (let index = 0; index < sourceId.length; index += 1) {
     hash = ((hash << 5) + hash) ^ sourceId.charCodeAt(index);
@@ -343,21 +373,47 @@ function getWaterPresetState(presetId: number): WaterPresetState {
 }
 
 export function getWaterPresetOptions(): WaterPresetOption[] {
-  const options: WaterPresetOption[] = WATER_PRESETS.map((name, index) => ({
-    id: index,
-    name,
-    library: 'stock',
-  }));
+  const optionsById = new Map<number, WaterPresetOption>();
+  const optionIdByName = new Map<string, number>();
+
+  const mergeOption = (option: WaterPresetOption) => {
+    const normalizedName = normalizeWaterPresetName(option.name);
+    const existingById = optionsById.get(option.id);
+    if (existingById && getWaterPresetOptionPriority(existingById) >= getWaterPresetOptionPriority(option)) {
+      optionIdByName.set(normalizedName, existingById.id);
+      return;
+    }
+
+    const existingIdByName = optionIdByName.get(normalizedName);
+    if (existingIdByName !== undefined) {
+      const existingByName = optionsById.get(existingIdByName);
+      if (existingByName && getWaterPresetOptionPriority(existingByName) > getWaterPresetOptionPriority(option)) {
+        return;
+      }
+      optionsById.delete(existingIdByName);
+    }
+
+    optionsById.set(option.id, option);
+    optionIdByName.set(normalizedName, option.id);
+  };
+
+  WATER_PRESETS.forEach((name, index) => {
+    mergeOption({
+      id: index,
+      name,
+      library: 'stock',
+    });
+  });
 
   for (const preset of USER_WATER_PRESETS.values()) {
-    options.push({
+    mergeOption({
       id: preset.id,
       name: preset.name,
       library: preset.library,
     });
   }
 
-  return options;
+  return [...optionsById.values()];
 }
 
 export function getWaterPresetDisplayName(presetId: number): string {

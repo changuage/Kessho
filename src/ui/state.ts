@@ -10,6 +10,7 @@
 
 import { SCALE_FAMILIES } from '../audio/scales';
 import type { PitchBindingMode } from '../audio/drumSeqTypes';
+import { hydrateOptimizedStatePresetData } from '../presets/statePresetOptimization';
 
 export type GranularTempoDivision = '1/4' | '1/8' | '1/16' | '1/32' | '1/64' | '1/8T';
 export type IndexedDelayDivisionKey = 'drumDelayNoteL' | 'drumDelayNoteR' | 'granularDelayTime';
@@ -4377,6 +4378,13 @@ export function migratePreset(preset: any): SavedPreset {
       );
   }
 
+  const hydratedState = hydrateOptimizedStatePresetData(state);
+  for (const [key, value] of Object.entries(hydratedState)) {
+    if (!(key in state)) {
+      state[key] = value;
+    }
+  }
+
   // ═══ Evolve configs: migrate intensity → evolution if present ═══
   let drumEvolveConfigs = preset.drumEvolveConfigs as SerializedEvolveConfig[] | undefined;
   let synthEvolveConfigs = preset.synthEvolveConfigs as SerializedEvolveConfig[] | undefined;
@@ -4405,5 +4413,6 @@ export function migratePreset(preset: any): SavedPreset {
     synthEvolveConfigs,
     drumSubLaneStates: preset.drumSubLaneStates,
     synthSubLaneStates: preset.synthSubLaneStates,
+    synthPitchBindingModes: preset.synthPitchBindingModes,
   };
 }

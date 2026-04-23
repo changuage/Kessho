@@ -10,6 +10,7 @@ import { usePresets } from '../../presets/usePresets';
 import { getVersionData } from '../../presets/codec';
 import { SHARED_PRESET_TEST_MODE } from '../../presets/sharedMode';
 import {
+  getFactoryPresetNames,
   upsertUserPreset,
 } from '../../audio/drumPresets';
 import type { PresetEntry } from '../../presets/types';
@@ -288,6 +289,13 @@ const DrumPresetManager: React.FC<DrumPresetManagerProps> = ({
   // Grouped preset lists for dropdown
   const kesshoPresets = useMemo(() => presets.filter(p => p.creator === 'Kessho'), [presets]);
   const userCreatedPresets = useMemo(() => presets.filter(p => p.creator !== 'Kessho'), [presets]);
+  const stockPresetNames = useMemo(() => {
+    const names = new Set<string>([
+      ...getFactoryPresetNames(voice),
+      ...kesshoPresets.map(preset => preset.name),
+    ]);
+    return [...names].sort((left, right) => left.localeCompare(right));
+  }, [kesshoPresets, voice]);
 
   // UI state
   const [saveDialog, setSaveDialog] = useState<{ originalName: string } | null>(null);
@@ -449,10 +457,10 @@ const DrumPresetManager: React.FC<DrumPresetManagerProps> = ({
               title="Select preset"
             >
               <option value="">— Select Preset —</option>
-              {kesshoPresets.length > 0 && (
+              {stockPresetNames.length > 0 && (
                 <optgroup label="Stock">
-                  {kesshoPresets.map(p => (
-                    <option key={`s:${p.name}`} value={p.name}>{p.name}</option>
+                  {stockPresetNames.map(name => (
+                    <option key={`s:${name}`} value={name}>{name}</option>
                   ))}
                 </optgroup>
               )}
@@ -556,10 +564,10 @@ const DrumPresetManager: React.FC<DrumPresetManagerProps> = ({
             title="Select preset"
           >
             <option value="">— Select Preset —</option>
-            {kesshoPresets.length > 0 && (
+            {stockPresetNames.length > 0 && (
               <optgroup label="Stock">
-                {kesshoPresets.map(p => (
-                  <option key={`s:${p.name}`} value={p.name}>{p.name}</option>
+                {stockPresetNames.map(name => (
+                  <option key={`s:${name}`} value={name}>{name}</option>
                 ))}
               </optgroup>
             )}

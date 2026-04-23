@@ -257,7 +257,7 @@
 /* ── Mixer Bus Grid ── */
 .global-root .mixer-bus-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
   padding: 8px 10px;
 }
@@ -270,6 +270,9 @@
   display: flex;
   flex-direction: column;
   gap: 5px;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .global-root .mixer-bus-label {
@@ -288,6 +291,8 @@
   align-items: center;
   gap: 4px;
   margin-bottom: 0 !important;
+  min-width: 0;
+  max-width: 100%;
 }
 .global-root .mixer-bus-group .app-slider-label,
 .global-root .harmony-card .app-slider-label {
@@ -299,6 +304,7 @@
   flex-shrink: 0;
   min-width: 48px;
   white-space: nowrap;
+  max-width: 100%;
 }
 .global-root .mixer-bus-group .app-slider,
 .global-root .harmony-card .app-slider {
@@ -306,16 +312,26 @@
   min-width: 0;
   height: 16px !important;
 }
+.global-root .mixer-bus-group .app-slider-value,
+.global-root .harmony-card .app-slider-value {
+  min-width: 0 !important;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 /* When dual mode is active, stack label above slider track */
 .global-root .mixer-bus-group .app-slider-group.dual-active,
 .global-root .harmony-card .app-slider-group.dual-active {
   flex-direction: column;
   align-items: stretch;
+  width: 100%;
 }
 .global-root .mixer-bus-group .app-slider-group.dual-active > div:last-child,
 .global-root .harmony-card .app-slider-group.dual-active > div:last-child {
   min-height: 20px;
   height: 20px;
+  width: 100%;
+  min-width: 0;
 }
 
 @media (max-width: 600px) {

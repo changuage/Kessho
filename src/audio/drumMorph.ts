@@ -5,7 +5,7 @@
  * Supports automatic morphing with different modes.
  */
 
-import { SliderState } from '../ui/state';
+import type { SliderState } from '../ui/state';
 import { 
   DrumVoiceType, 
   DrumVoicePreset, 
