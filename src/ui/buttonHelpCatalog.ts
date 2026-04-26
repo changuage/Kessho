@@ -343,8 +343,8 @@ export const BUTTON_HELP_CATALOG: Record<string, SliderHelpEntry> = {
   ),
   synthLfoDestSelect: entry(
     'Chooses which pad parameter the low-frequency oscillator moves.',
-    'The LFO is a continuous modulation source, so this menu decides what it animates over time. The pad engine currently applies LFO destinations to Filter A cutoff, Filter B cutoff, amplitude, pitch, and Osc B level. The Pad LFO 1 menus also expose Fold, but that destination is still present only in the UI and is not currently applied in `engine.ts`.',
-    [sy('Pad LFO', 'Dest', ['The Pad LFO 1 destination menus still list Fold, but `engine.ts` does not currently apply LFO-to-fold modulation.'])],
+    'The LFO is a continuous modulation source, so this menu decides what it animates over time. The pad engine applies LFO destinations to Filter A cutoff, Filter B cutoff, amplitude, pitch, Osc B level, and Fold.',
+    [sy('Pad LFO', 'Dest')],
   ),
   synthLfoWaveSelect: entry(
     'Chooses the motion shape used by the low-frequency oscillator.',
@@ -358,8 +358,8 @@ export const BUTTON_HELP_CATALOG: Record<string, SliderHelpEntry> = {
   ),
   synthModEnvTarget: entry(
     'Chooses which parameter the modulation envelope pushes during each note.',
-    'Unlike the continuously cycling LFO, the modulation envelope is a one-shot ADSR contour that runs when a note starts and releases when the note ends. In the current pad engine, that contour can target Filter Cutoff, Pitch, or Osc B Level. Filter and pitch are computed in the derived pad params, while Osc B Level is applied directly to the oscillator-B gain on note trigger. The Fold option is still exposed in the UI but is not currently handled in `engine.ts`.',
-    [sy('Pad Mod Envelope', 'Target', ['The Fold target is still listed in the UI, but the current pad engine only applies modulation-envelope targeting to filter cutoff, pitch, and Osc B level.'])],
+    'Unlike the continuously cycling LFO, the modulation envelope is a one-shot ADSR contour that runs when a note starts and releases when the note ends. In the pad engine, that contour can target Filter Cutoff, Pitch, Osc B Level, or Fold.',
+    [sy('Pad Mod Envelope', 'Target')],
   ),
   synthFilterRoutingMode: entry(
     'Chooses how Filter A and Filter B are arranged in the pad voice path.',

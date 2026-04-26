@@ -8,6 +8,7 @@ import {
   extractPresetVersionMetadata,
   getPresetScope,
   normalizePresetEntry,
+  presetValuesEqual,
 } from './presetUtils';
 import type { PresetEntry, PresetLevel } from './types';
 
@@ -81,6 +82,29 @@ export interface StringWavesOptimizationReport {
   stringWavesVersion: number;
   stringWavesWritten: boolean;
   latestRefCount: number;
+}
+
+export interface StringWavesGraphRepairReport {
+  dryRun: boolean;
+  canWrite: boolean;
+  userId: string | null;
+  baseName: string;
+  variantNames: string[];
+  childPresets: Array<{
+    parentName: string;
+    slot: string;
+    type: PresetLevel;
+    scope: string;
+    name: string;
+    version: number;
+    written: boolean;
+  }>;
+  states: Array<{
+    name: string;
+    version: number;
+    written: boolean;
+    latestRefCount: number;
+  }>;
 }
 
 interface V2ExistingRow {
@@ -254,6 +278,75 @@ async function saveAsNextVersion(
   existing.library = existing.library === 'stock' ? 'cloud' : existing.library;
   await store.save(existing);
   return existing.currentVersion;
+}
+
+async function saveAsNextVersionForGraphRepair(
+  store: SupabasePresetStore,
+  type: PresetLevel,
+  scope: string,
+  name: string,
+  data: Record<string, unknown>,
+  note: string,
+  canWrite: boolean,
+): Promise<{ version: number; written: boolean }> {
+  const timestamp = Date.now();
+  const existing = await store.load(type, name, scope);
+  const nextVersion = existing
+    ? Math.max(0, ...existing.versions.map(version => version.v)) + 1
+    : 1;
+
+  if (!canWrite) {
+    return { version: nextVersion, written: false };
+  }
+
+  if (!existing) {
+    await store.save(makePresetEntry(type, scope, name, data, note, 1, timestamp));
+    return { version: 1, written: true };
+  }
+
+  existing.versions.push({
+    v: nextVersion,
+    note,
+    timestamp,
+    data,
+  });
+  existing.currentVersion = nextVersion;
+  existing.updatedAt = timestamp;
+  existing.visibility = 'public';
+  existing.library = existing.library === 'stock' ? 'cloud' : existing.library;
+  await store.save(existing);
+  return { version: nextVersion, written: true };
+}
+
+async function resaveStateForGraphRepair(
+  store: SupabasePresetStore,
+  entry: PresetEntry,
+  data: Record<string, unknown>,
+  note: string,
+  canWrite: boolean,
+): Promise<{ version: number; written: boolean }> {
+  const nextVersion = Math.max(0, ...entry.versions.map(version => version.v)) + 1;
+  if (!canWrite) {
+    return { version: nextVersion, written: false };
+  }
+
+  const timestamp = Date.now();
+  const currentVersion = entry.versions.find(version => version.v === entry.currentVersion)
+    ?? entry.versions[entry.versions.length - 1];
+  const metadata = currentVersion ? extractPresetVersionMetadata(currentVersion) : null;
+
+  entry.versions.push({
+    v: nextVersion,
+    note,
+    timestamp,
+    data,
+    ...(metadata || {}),
+  });
+  entry.currentVersion = nextVersion;
+  entry.updatedAt = timestamp;
+  entry.visibility = 'public';
+  await store.save(entry);
+  return { version: nextVersion, written: true };
 }
 
 async function countLatestRefsForPreset(
@@ -632,4 +725,126 @@ export async function optimizeStringWavesV2(
   };
   console.info(`[Preset V2 Migration] String Waves optimization ${dryRun ? 'dry run' : 'write run'} complete.`, report);
   return report;
+}
+
+export async function repairStringWavesGraphV2ForClient(
+  client: SupabaseClient,
+  options: Pick<PresetV2MigrationOptions, 'dryRun' | 'confirm'> & {
+    baseName?: string;
+    variantNames?: string[];
+  } = {},
+): Promise<StringWavesGraphRepairReport> {
+  const dryRun = options.dryRun !== false;
+  const canWrite = !dryRun && options.confirm === 'MIGRATE_PRESETS_V2';
+  const baseName = options.baseName ?? 'String Waves';
+  const variantNames = options.variantNames ?? ['String Waves Drums'];
+
+  const store = new SupabasePresetStore(client);
+  const userId = await ensureAnonymousAuth(client, store);
+  await assertV2Schema(client);
+
+  const base = await store.load('state', baseName, 'global');
+  const baseData = base ? getVersionData(base) : null;
+  if (!base || !baseData) {
+    throw new Error(`${baseName} was not found in V2.`);
+  }
+
+  const childPresets: StringWavesGraphRepairReport['childPresets'] = [];
+  for (const spec of getPresetChildSpecs('state', 'global')) {
+    const childData = spec.extract(baseData as never);
+    if (!Object.keys(childData).length) continue;
+
+    const childName = `${baseName} ${spec.slot[0]?.toUpperCase() ?? ''}${spec.slot.slice(1)}`;
+    const repairResult = await saveAsNextVersionForGraphRepair(
+      store,
+      spec.type,
+      spec.scope,
+      childName,
+      childData,
+      `${baseName} graph repair child normalization`,
+      canWrite,
+    );
+
+    childPresets.push({
+      parentName: baseName,
+      slot: spec.slot,
+      type: spec.type,
+      scope: spec.scope,
+      name: childName,
+      version: repairResult.version,
+      written: repairResult.written,
+    });
+  }
+
+  const states: StringWavesGraphRepairReport['states'] = [];
+  const baseRepair = await resaveStateForGraphRepair(
+    store,
+    base,
+    baseData,
+    `${baseName} graph repair normalization`,
+    canWrite,
+  );
+  states.push({
+    name: baseName,
+    version: baseRepair.version,
+    written: baseRepair.written,
+    latestRefCount: canWrite ? await countLatestRefsForPreset(client, 'state', 'global', baseName) : 0,
+  });
+
+  for (const variantName of variantNames) {
+    const variant = await store.load('state', variantName, 'global');
+    const variantData = variant ? getVersionData(variant) : null;
+    if (!variant || !variantData) {
+      states.push({
+        name: variantName,
+        version: 0,
+        written: false,
+        latestRefCount: 0,
+      });
+      continue;
+    }
+
+    const baseSame = presetValuesEqual(baseData, variantData);
+    const variantRepair = await resaveStateForGraphRepair(
+      store,
+      variant,
+      variantData,
+      baseSame
+        ? `${variantName} graph repair normalization`
+        : `${variantName} graph repair normalization; preserve variant data`,
+      canWrite,
+    );
+    states.push({
+      name: variantName,
+      version: variantRepair.version,
+      written: variantRepair.written,
+      latestRefCount: canWrite ? await countLatestRefsForPreset(client, 'state', 'global', variantName) : 0,
+    });
+  }
+
+  const report: StringWavesGraphRepairReport = {
+    dryRun,
+    canWrite,
+    userId,
+    baseName,
+    variantNames,
+    childPresets,
+    states,
+  };
+  console.info(`[Preset V2 Migration] ${baseName} graph repair ${dryRun ? 'dry run' : 'write run'} complete.`, report);
+  return report;
+}
+
+export async function repairStringWavesGraphV2(
+  options: Pick<PresetV2MigrationOptions, 'dryRun' | 'confirm'> & {
+    baseName?: string;
+    variantNames?: string[];
+  } = {},
+): Promise<StringWavesGraphRepairReport> {
+  const client = getSupabase();
+  if (!client) {
+    throw new Error('Supabase is not configured. Check VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.');
+  }
+
+  return repairStringWavesGraphV2ForClient(client, options);
 }

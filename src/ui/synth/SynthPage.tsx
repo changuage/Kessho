@@ -2599,6 +2599,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                         { value: 'amplitude', label: 'Amp' },
                         { value: 'pitch', label: 'Pitch' },
                         { value: 'oscBLevel', label: 'Osc B' },
+                        { value: 'foldAmount', label: 'Fold' },
                       ]}
                       onChange={(v: string) => onSelectChange('padLfo2Dest' as keyof SliderState, v)}
                       {...bindHelp('synthLfoDestSelect')}
@@ -3266,6 +3267,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                         { value: 'amplitude', label: 'Amp' },
                         { value: 'pitch', label: 'Pitch' },
                         { value: 'oscBLevel', label: 'Osc B' },
+                        { value: 'foldAmount', label: 'Fold' },
                       ]}
                       onChange={(v: string) => onSelectChange('pad2Lfo2Dest' as keyof SliderState, v)}
                       {...bindHelp('synthLfoDestSelect')}

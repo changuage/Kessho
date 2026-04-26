@@ -990,6 +990,69 @@ const WALK_ONLY_DUAL_KEYS = new Set<string>([
   'insects2Antiphony', 'insects2ClickRate', 'insects2Motion',
 ]);
 
+const SINGLE_ONLY_SLIDER_KEYS = new Set<string>([
+  'filterCutoffMin',
+  'filterCutoffMax',
+  'pad2FilterCutoffMin',
+  'pad2FilterCutoffMax',
+]);
+
+const PAD_FILTER_CUTOFF_PAIRS = [
+  { minKey: 'filterCutoffMin', maxKey: 'filterCutoffMax' },
+  { minKey: 'pad2FilterCutoffMin', maxKey: 'pad2FilterCutoffMax' },
+] as const;
+
+function clampQuantizedSliderValue(key: keyof SliderState, value: number): number {
+  const info = getParamInfo(key);
+  if (!info) return value;
+  return quantize(key, Math.max(info.min, Math.min(info.max, value)));
+}
+
+function normalizePadFilterCutoffPairs(state: SliderState, changedKey?: keyof SliderState): SliderState {
+  const record = state as unknown as Record<string, SliderState[keyof SliderState] | number>;
+  const changedKeyStr = changedKey as string | undefined;
+
+  for (const pair of PAD_FILTER_CUTOFF_PAIRS) {
+    const minKey = pair.minKey as keyof SliderState;
+    const maxKey = pair.maxKey as keyof SliderState;
+    const minInfo = getParamInfo(minKey);
+    const maxInfo = getParamInfo(maxKey);
+    if (!minInfo || !maxInfo) continue;
+
+    const rawMin = getSliderNumericValue(minKey, state[minKey]);
+    const rawMax = getSliderNumericValue(maxKey, state[maxKey]);
+    if (rawMin === null || rawMax === null) continue;
+
+    const step = Math.max(minInfo.step, maxInfo.step, 1e-6);
+    let min = clampQuantizedSliderValue(minKey, rawMin);
+    let max = clampQuantizedSliderValue(maxKey, rawMax);
+
+    if (min >= max) {
+      if (changedKeyStr === pair.minKey) {
+        max = clampQuantizedSliderValue(maxKey, min + step);
+        if (min >= max) min = clampQuantizedSliderValue(minKey, max - step);
+      } else if (changedKeyStr === pair.maxKey) {
+        min = clampQuantizedSliderValue(minKey, max - step);
+        if (min >= max) max = clampQuantizedSliderValue(maxKey, min + step);
+      } else {
+        const low = Math.min(min, max);
+        const high = Math.max(min, max);
+        min = clampQuantizedSliderValue(minKey, low);
+        max = clampQuantizedSliderValue(maxKey, high);
+        if (min >= max) {
+          max = clampQuantizedSliderValue(maxKey, min + step);
+          if (min >= max) min = clampQuantizedSliderValue(minKey, max - step);
+        }
+      }
+    }
+
+    record[pair.minKey] = getStateValueFromSliderNumber(minKey, min) as SliderState[keyof SliderState];
+    record[pair.maxKey] = getStateValueFromSliderNumber(maxKey, max) as SliderState[keyof SliderState];
+  }
+
+  return state;
+}
+
 const FX_BUS_LABELS = {
   delayA: 'Delay A',
   delayB: 'Delay B',
@@ -1016,6 +1079,7 @@ const FX_ORIGIN_LABELS = {
 
 function normalizeDualSliderMode(key: string, mode?: SliderMode): SliderMode | undefined {
   if (!mode) return mode;
+  if (SINGLE_ONLY_SLIDER_KEYS.has(key)) return undefined;
   return WALK_ONLY_DUAL_KEYS.has(key) && mode === 'sampleHold' ? 'walk' : mode;
 }
 
@@ -1041,7 +1105,7 @@ const Slider: React.FC<SliderProps> = ({
   const announceHelp = () => announceSlider(String(paramKey), { label, page: helpPage });
 
   // If dual mode props are provided, use shared DualSlider
-  if (onCycleMode && onDualRangeChange) {
+  if (onCycleMode && onDualRangeChange && !SINGLE_ONLY_SLIDER_KEYS.has(String(paramKey))) {
     const info = getParamInfo(paramKey);
     if (!info) return null;
     return (
@@ -1356,6 +1420,7 @@ const App: React.FC = () => {
       kesshoPresetV2Migration?: {
         run: (options?: unknown) => Promise<unknown>;
         optimizeStringWaves: (options?: unknown) => Promise<unknown>;
+        repairStringWavesGraph: (options?: unknown) => Promise<unknown>;
         verify: () => Promise<unknown>;
       };
     };
@@ -1384,6 +1449,14 @@ const App: React.FC = () => {
         console.info(`[Preset V2 Migration] String Waves optimization ${report.dryRun ? 'dry run' : 'write run'} complete.`);
         console.table(report.childPresets);
         console.info('[Preset V2 Migration] String Waves latest ref count:', report.latestRefCount);
+        return report;
+      },
+      repairStringWavesGraph: async (options?: unknown) => {
+        const { repairStringWavesGraphV2 } = await import('./presets');
+        const report = await repairStringWavesGraphV2(options as never);
+        console.info(`[Preset V2 Migration] String Waves graph repair ${report.dryRun ? 'dry run' : 'write run'} complete.`);
+        console.table(report.childPresets);
+        console.table(report.states);
         return report;
       },
       verify: async () => {
@@ -2095,6 +2168,24 @@ const App: React.FC = () => {
     if (isJourneyPlaying) return;
     
     const keyStr = key as string;
+    if (SINGLE_ONLY_SLIDER_KEYS.has(keyStr)) {
+      setSliderModes(prev => {
+        if (!(keyStr in prev)) return prev;
+        const next = { ...prev };
+        delete next[keyStr];
+        return next;
+      });
+      setDualSliderRanges(prev => {
+        if (!(key in prev)) return prev;
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+      removeRuntimeWalkPositions([keyStr]);
+      removeRuntimeTriggerPositions([keyStr]);
+      return;
+    }
+
     const isMorphActive = morphPresetA !== null || morphPresetB !== null;
     
     // Check if this is a drum synth param and get its voice/morph key
@@ -2266,9 +2357,10 @@ const App: React.FC = () => {
     // Block changes when journey mode is playing
     if (isJourneyPlaying) return;
     
-    setDualSliderRanges(prev => ({ ...prev, [key]: { min, max } }));
-    
     const keyStr = key as string;
+    if (SINGLE_ONLY_SLIDER_KEYS.has(keyStr)) return;
+
+    setDualSliderRanges(prev => ({ ...prev, [key]: { min, max } }));
     
     // Update morph preset dualRanges at endpoints (Rule 2)
     const isMorphActive = morphPresetA !== null || morphPresetB !== null;
@@ -3514,6 +3606,8 @@ const App: React.FC = () => {
           : (newState.waterMorphB as number);
       }
 
+      newState = normalizePadFilterCutoffPairs(newState, key);
+
       if (preservedEnabledFlags) {
         newState = {
           ...newState,
@@ -3692,7 +3786,7 @@ const App: React.FC = () => {
     onDualRangeChange: (key: keyof SliderState, min: number, max: number) => void;
   } => {
     const keyStr = paramKey as string;
-    const mode: SliderMode = sliderModes[keyStr] ?? 'single';
+    const mode: SliderMode = normalizeDualSliderMode(keyStr, sliderModes[keyStr]) ?? 'single';
     const walkPos = getRuntimeSliderPosition(keyStr, mode);
     const isFlashing = getRuntimeSliderFlashing(keyStr, mode);
 
@@ -3843,7 +3937,7 @@ const App: React.FC = () => {
         newState.leadRandomEnabled = false;
       }
 
-      return newState;
+      return normalizePadFilterCutoffPairs(newState, key);
     });
 
     // Apply granular preset slider modes (outside setState since sliderModes is separate state)

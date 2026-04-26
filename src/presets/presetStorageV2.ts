@@ -8,7 +8,7 @@ import {
 import { extractPresetVersionMetadata, presetValuesEqual } from './presetUtils';
 import { hydrateOptimizedStatePresetData } from './statePresetOptimization';
 import type { PresetEntry, PresetLevel, PresetRef, PresetVersion, PresetVersionMetadata } from './types';
-import type { SliderState } from '../ui/state';
+import { DEFAULT_STATE, type SliderState } from '../ui/state';
 
 export type PresetPayloadKind = 'override' | 'metadata' | 'resolved' | 'patch' | 'refs_override';
 
@@ -310,19 +310,48 @@ export function getPresetChildSpecs(type: PresetLevel, scope?: string): PresetCh
   return [];
 }
 
+function getPresetParamLevel(type: PresetLevel): 1 | 2 | 3 | 4 | null {
+  switch (type) {
+    case 'engine':
+      return 1;
+    case 'kit':
+      return 2;
+    case 'source':
+      return 3;
+    case 'state':
+      return 4;
+    case 'journey':
+      return null;
+  }
+}
+
+function getDefaultPresetData(type: PresetLevel, scope?: string): Record<string, unknown> {
+  const level = getPresetParamLevel(type);
+  if (level === null) return {};
+  if (level === 4) return DEFAULT_STATE as unknown as Record<string, unknown>;
+  if (level === 1) return extractParams(DEFAULT_STATE, level, scope);
+  return extractCascade(DEFAULT_STATE, level, scope);
+}
+
 export function normalizeResolvedVersionData(
   type: PresetLevel,
   scope: string | undefined,
   versionData: Record<string, unknown>,
 ): Record<string, unknown> {
+  const defaultData = getDefaultPresetData(type, scope);
   if (type === 'state') {
     return canonicalizeRecord(
-      hydrateOptimizedStatePresetData(versionData as unknown as Record<string, unknown>) as Record<string, unknown>,
+      {
+        ...defaultData,
+        ...hydrateOptimizedStatePresetData(versionData as unknown as Record<string, unknown>),
+      },
     );
   }
 
-  void scope;
-  return canonicalizeRecord(versionData);
+  return canonicalizeRecord({
+    ...defaultData,
+    ...versionData,
+  });
 }
 
 export function stripReferencedChildData(

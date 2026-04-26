@@ -358,13 +358,13 @@ export interface SliderState {
   padLfo1Rate: number;          // 0.05..20 Hz
   padLfo1Depth: number;         // 0..1
   padLfo1Wave: 'sine' | 'triangle' | 'sawtooth' | 'square' | 'sampleHold' | 'randomSmooth' | 'randomWalk';
-  padLfo1Dest: 'none' | 'filterCutoff' | 'filterBCutoff' | 'amplitude' | 'pitch' | 'oscBLevel';
+  padLfo1Dest: 'none' | 'filterCutoff' | 'filterBCutoff' | 'amplitude' | 'pitch' | 'oscBLevel' | 'foldAmount';
 
   // LFO 2
   padLfo2Rate: number;          // 0.05..20 Hz
   padLfo2Depth: number;         // 0..1
   padLfo2Wave: 'sine' | 'triangle' | 'sawtooth' | 'square' | 'sampleHold' | 'randomSmooth' | 'randomWalk';
-  padLfo2Dest: 'none' | 'filterCutoff' | 'filterBCutoff' | 'amplitude' | 'pitch' | 'oscBLevel';
+  padLfo2Dest: 'none' | 'filterCutoff' | 'filterBCutoff' | 'amplitude' | 'pitch' | 'oscBLevel' | 'foldAmount';
 
   // Mod Envelope
   padModEnvEnabled: boolean;
@@ -373,7 +373,7 @@ export interface SliderState {
   padModEnvSustain: number;     // 0..1
   padModEnvRelease: number;     // 0.01..16s
   padModEnvDepth: number;       // -1..+1
-  padModEnvDest: 'filterCutoff' | 'pitch' | 'oscBLevel';
+  padModEnvDest: 'filterCutoff' | 'pitch' | 'oscBLevel' | 'foldAmount';
 
   // Pad morph auto
   padMorphAuto: boolean;
@@ -438,12 +438,12 @@ export interface SliderState {
   pad2Lfo1Rate: number;
   pad2Lfo1Depth: number;
   pad2Lfo1Wave: 'sine' | 'triangle' | 'sawtooth' | 'square' | 'sampleHold' | 'randomSmooth' | 'randomWalk';
-  pad2Lfo1Dest: 'none' | 'filterCutoff' | 'filterBCutoff' | 'amplitude' | 'pitch' | 'oscBLevel';
+  pad2Lfo1Dest: 'none' | 'filterCutoff' | 'filterBCutoff' | 'amplitude' | 'pitch' | 'oscBLevel' | 'foldAmount';
   // LFO 2
   pad2Lfo2Rate: number;
   pad2Lfo2Depth: number;
   pad2Lfo2Wave: 'sine' | 'triangle' | 'sawtooth' | 'square' | 'sampleHold' | 'randomSmooth' | 'randomWalk';
-  pad2Lfo2Dest: 'none' | 'filterCutoff' | 'filterBCutoff' | 'amplitude' | 'pitch' | 'oscBLevel';
+  pad2Lfo2Dest: 'none' | 'filterCutoff' | 'filterBCutoff' | 'amplitude' | 'pitch' | 'oscBLevel' | 'foldAmount';
   // Mod Envelope
   pad2ModEnvEnabled: boolean;
   pad2ModEnvAttack: number;
@@ -451,7 +451,7 @@ export interface SliderState {
   pad2ModEnvSustain: number;
   pad2ModEnvRelease: number;
   pad2ModEnvDepth: number;
-  pad2ModEnvDest: 'filterCutoff' | 'pitch' | 'oscBLevel';
+  pad2ModEnvDest: 'filterCutoff' | 'pitch' | 'oscBLevel' | 'foldAmount';
   // Presets / Morph
   pad2PresetA: string;
   pad2PresetB: string;

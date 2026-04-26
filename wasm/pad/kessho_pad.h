@@ -105,6 +105,9 @@ void pad_note_on(int voice_idx, float frequency, float velocity);
 /** Release a voice */
 void pad_note_off(int voice_idx);
 
+/** Hard-stop a voice without waiting for release tail */
+void pad_kill_voice(int voice_idx);
+
 /** Assign a voice to pad 1 (pad=0) or pad 2 (pad=1) */
 void pad_set_voice_pad(int voice_idx, int pad);
 

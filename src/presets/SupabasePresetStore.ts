@@ -568,7 +568,12 @@ export class SupabasePresetStore implements IPresetStore {
     data: Record<string, unknown>,
   ): Promise<PresetV2Row | null> {
     const existing = await this.findMatchingPresetV2(type, scope, resolvedHash);
-    if (existing) return existing;
+    if (existing) {
+      if (isInternalDerivedRow(existing) && !(await this.isPresetGraphCompleteV2(existing, data))) {
+        return this.rewriteDerivedChildPresetV2(existing, data);
+      }
+      return existing;
+    }
 
     const now = Date.now();
     const hashName = resolvedHash.slice(0, 12);
@@ -608,6 +613,104 @@ export class SupabasePresetStore implements IPresetStore {
     }
 
     return this.findMatchingPresetV2(type, scope, resolvedHash);
+  }
+
+  private async getLatestRefTargetsV2(row: PresetV2Row): Promise<Map<string, PresetV2Row>> {
+    if (!row.latest_version_id) return new Map();
+
+    const { data: refData, error: refError } = await this.client
+      .from('preset_version_refs_v2')
+      .select('ref_slot,target_preset_id')
+      .eq('version_id', row.latest_version_id);
+
+    if (refError) {
+      if (this.markV2UnavailableIfMissing(refError)) return new Map();
+      throw new Error(`V2 graph ref lookup failed: ${refError.message}`);
+    }
+
+    const refRows = (refData ?? []) as Array<{ ref_slot: string; target_preset_id: string }>;
+    if (!refRows.length) return new Map();
+
+    const targetIds = [...new Set(refRows.map(ref => ref.target_preset_id))];
+    const { data: targetData, error: targetError } = await this.client
+      .from('presets_v2')
+      .select('*')
+      .in('id', targetIds);
+
+    if (targetError) {
+      if (this.markV2UnavailableIfMissing(targetError)) return new Map();
+      throw new Error(`V2 graph target lookup failed: ${targetError.message}`);
+    }
+
+    const targetsById = new Map((targetData ?? []).map(candidate => [candidate.id, candidate as PresetV2Row]));
+    const targetsBySlot = new Map<string, PresetV2Row>();
+    for (const ref of refRows) {
+      const target = targetsById.get(ref.target_preset_id);
+      if (target) targetsBySlot.set(ref.ref_slot, target);
+    }
+    return targetsBySlot;
+  }
+
+  private async isPresetGraphCompleteV2(
+    row: PresetV2Row,
+    data: Record<string, unknown>,
+    depth = 0,
+  ): Promise<boolean> {
+    if (depth > 4) return true;
+
+    const specs = getPresetChildSpecs(row.type, row.scope ?? undefined);
+    const expectedSpecs = specs.filter((spec) => Object.keys(spec.extract(data as unknown as never)).length > 0);
+    if (!expectedSpecs.length) return true;
+
+    const targetsBySlot = await this.getLatestRefTargetsV2(row);
+    for (const spec of expectedSpecs) {
+      const target = targetsBySlot.get(spec.slot);
+      if (!target) return false;
+
+      if (isInternalDerivedRow(target) && getPresetChildSpecs(target.type, target.scope ?? undefined).length > 0) {
+        const childData = spec.extract(data as unknown as never);
+        if (!(await this.isPresetGraphCompleteV2(target, childData, depth + 1))) {
+          return false;
+        }
+      }
+    }
+
+    return true;
+  }
+
+  private async rewriteDerivedChildPresetV2(
+    row: PresetV2Row,
+    data: Record<string, unknown>,
+  ): Promise<PresetV2Row | null> {
+    const nextVersion = row.latest_version_no + 1;
+    const timestamp = Date.now();
+    const entry: PresetEntry = {
+      id: row.id,
+      type: row.type,
+      scope: row.scope ?? undefined,
+      name: row.name,
+      author: row.author,
+      library: row.library,
+      creator: row.creator ?? 'Kessho Auto Child',
+      description: row.description ?? `Hidden derived child preset for ${row.scope ?? row.type}. Reused by content hash.`,
+      visibility: 'private',
+      familyName: row.family_name ?? `__derived__/${row.scope ?? row.type}`,
+      variantName: row.variant_name ?? row.latest_resolved_hash?.slice(0, 12) ?? row.name,
+      variantRank: row.variant_rank ?? undefined,
+      tags: row.tags ?? [INTERNAL_DERIVED_TAG, AUTO_CHILD_TAG],
+      versions: [{
+        v: nextVersion,
+        note: 'Repair hidden derived child graph',
+        timestamp,
+        data,
+      }],
+      currentVersion: nextVersion,
+      createdAt: new Date(row.created_at).getTime(),
+      updatedAt: timestamp,
+    };
+
+    await this.saveV2(entry);
+    return this.findMatchingPresetV2(row.type, row.scope ?? '', row.latest_resolved_hash ?? '');
   }
 
   private async ensurePayloadV2(kind: PresetPayloadKind, payload: unknown): Promise<string | null> {
@@ -1097,6 +1200,9 @@ export class SupabasePresetStore implements IPresetStore {
 
         const childHash = await hashCanonicalJson(childData);
         let target = await this.findMatchingPresetV2(childSpec.type, childSpec.scope, childHash, presetRow.id);
+        if (target && isInternalDerivedRow(target) && !(await this.isPresetGraphCompleteV2(target, childData))) {
+          target = await this.rewriteDerivedChildPresetV2(target, childData);
+        }
         if (!target) {
           target = await this.ensureDerivedChildPresetV2(childSpec.type, childSpec.scope, childHash, childData);
         }

@@ -39,12 +39,15 @@ export { HybridPresetStore } from './HybridPresetStore';
 export { loadFactoryPresets, isFactoryLoaded } from './factoryPresets';
 export {
   optimizeStringWavesV2,
+  repairStringWavesGraphV2,
+  repairStringWavesGraphV2ForClient,
   runPresetV2Migration,
   verifyPresetV2Migration,
 } from './presetV2Migration';
 export type {
   PresetV2MigrationOptions,
   PresetV2MigrationReport,
+  StringWavesGraphRepairReport,
   StringWavesOptimizationReport,
 } from './presetV2Migration';
 export { usePresets } from './usePresets';

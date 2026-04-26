@@ -74,6 +74,17 @@ await window.kesshoPresetV2Migration.optimizeStringWaves({
 
 This creates `String Waves` child source/kit presets from the actual latest state snapshot and appends a new optimized `String Waves` version so the L4 preset can reference those children.
 
+If existing `String Waves` variants were saved before the current recursive L4 -> L3 -> L2 -> L1 graph, repair the graph:
+
+```js
+await window.kesshoPresetV2Migration.repairStringWavesGraph({
+  dryRun: false,
+  confirm: 'MIGRATE_PRESETS_V2',
+})
+```
+
+This re-saves the canonical `String Waves` child presets under the current graph, then re-saves `String Waves` and `String Waves Drums` so unchanged sources share refs again. The V2 save path also normalizes missing default-valued keys before hashing, so older presets that omit newly added default params do not create false derived children.
+
 ## Optional Partial Runs
 
 Seed only stock presets:

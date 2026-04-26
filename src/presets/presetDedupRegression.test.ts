@@ -4,6 +4,7 @@ import { extractCascade, getCascadeKeys } from './codec';
 import {
   getPresetChildSpecs,
   hashCanonicalJson,
+  normalizeResolvedVersionData,
   stripReferencedChildData,
   type PresetChildSpec,
 } from './presetStorageV2';
@@ -191,11 +192,30 @@ async function testIdenticalUnsavedChildrenResolveToSameDerivedName(): Promise<v
   );
 }
 
+async function testMissingDefaultKeysDoNotCreateFalseDifferences(): Promise<void> {
+  const olderState = { ...DEFAULT_STATE };
+  delete (olderState as Partial<SliderState>).lead1PostLPFKeyTracking;
+  delete (olderState as Partial<SliderState>).lead2PostLPFKeyTracking;
+
+  const normalizedOlder = normalizeResolvedVersionData('state', 'global', olderState as unknown as Record<string, unknown>);
+  const normalizedCurrent = normalizeResolvedVersionData('state', 'global', DEFAULT_STATE as unknown as Record<string, unknown>);
+
+  const olderSynthHash = await childHash('state', 'global', 'synth', normalizedOlder as unknown as SliderState);
+  const currentSynthHash = await childHash('state', 'global', 'synth', normalizedCurrent as unknown as SliderState);
+
+  assert.equal(
+    olderSynthHash,
+    currentSynthHash,
+    'missing default-valued keys from older presets should not create a different child hash',
+  );
+}
+
 async function run(): Promise<void> {
   testGraphCoversAllCompositeLevels();
   testCascadeExtractionIsRecursive();
   testOverlapIsStrippedAtEachLevel();
   await testIdenticalUnsavedChildrenResolveToSameDerivedName();
+  await testMissingDefaultKeysDoNotCreateFalseDifferences();
   console.log('preset dedup regression checks passed');
 }
 

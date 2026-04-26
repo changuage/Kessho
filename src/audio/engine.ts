@@ -1210,13 +1210,21 @@ export class AudioEngine {
 
   /** App calls this whenever dualSliderRanges change */
   setDualRanges(ranges: Partial<Record<string, { min: number; max: number }>>) {
-    this.dualRanges = ranges;
+    const normalizedRanges: Partial<Record<string, { min: number; max: number }>> = {};
+    for (const [key, range] of Object.entries(ranges)) {
+      if (!range || !Number.isFinite(range.min) || !Number.isFinite(range.max)) continue;
+      normalizedRanges[key] = {
+        min: Math.min(range.min, range.max),
+        max: Math.max(range.min, range.max),
+      };
+    }
+    this.dualRanges = normalizedRanges;
     for (const key of Object.keys(this.shSampledValues)) {
-      if ((key.startsWith('lead') || key.startsWith('granularLead') || this.isFxOwnershipDrivenKey(key) || this.isPadTriggerDrivenKey(key) || this.isPianoTriggerDrivenKey(key)) && !ranges[key]) {
+      if ((key.startsWith('lead') || key.startsWith('granularLead') || this.isFxOwnershipDrivenKey(key) || this.isPadTriggerDrivenKey(key) || this.isPianoTriggerDrivenKey(key)) && !normalizedRanges[key]) {
         delete this.shSampledValues[key];
       }
     }
-    this.cleanupPadHeldOverrides(ranges);
+    this.cleanupPadHeldOverrides(normalizedRanges);
   }
 
   setRuntimeWalkRanges(ranges: Partial<Record<string, RuntimeWalkRange>>) {
@@ -1655,6 +1663,35 @@ export class AudioEngine {
     this.lastPad2VoiceAssign = isPad2
       ? (this.lastPad2VoiceAssign | bit)
       : (this.lastPad2VoiceAssign & ~bit);
+  }
+
+  private killPadVoiceNow(voiceIndex: number): void {
+    if (voiceIndex < 0 || voiceIndex >= 6) return;
+
+    const noteOffTimerId = this.synthVoiceNoteOffTimers[voiceIndex];
+    if (noteOffTimerId !== null) {
+      clearTimeout(noteOffTimerId);
+      this.synthVoiceNoteOffTimers[voiceIndex] = null;
+    }
+
+    if (this.padWasmReady && this.padWasmNode) {
+      this.padWasmNode.port.postMessage({ type: 'killVoice', voiceIndex });
+    }
+
+    const voice = this.voices[voiceIndex];
+    if (voice && this.ctx) {
+      const now = this.ctx.currentTime;
+      voice.envelope.gain.cancelScheduledValues(now);
+      voice.envelope.gain.setValueAtTime(0, now);
+      voice.active = false;
+    }
+  }
+
+  private clearManualPadAuditionTails(): void {
+    if (this.isRunning) return;
+    for (let voiceIndex = 0; voiceIndex < 6; voiceIndex += 1) {
+      this.killPadVoiceNow(voiceIndex);
+    }
   }
 
   private getManualPadVoicePool(pad: 'pad1' | 'pad2', state: SliderState): number[] {
@@ -4150,6 +4187,7 @@ export class AudioEngine {
             : this.getManualPadTapDuration(noteState, note.source);
           const release = Math.max(0.05, isPad2 ? (noteState.pad2Release ?? 0.6) : (noteState.synthRelease ?? 0.6));
 
+          this.clearManualPadAuditionTails();
           this.setPadVoiceTarget(voiceIndex, isPad2);
           this.triggerSynthVoice(voiceIndex, frequency, velocity, noteDuration, noteState);
 

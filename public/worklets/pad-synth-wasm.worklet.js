@@ -10,6 +10,7 @@
  *   'params'      – per-pad parameter updates { pad, params }
  *   'noteOn'      – { voiceIndex, frequency, velocity }
  *   'noteOff'     – { voiceIndex }
+ *   'killVoice'   – { voiceIndex } hard-stops one stale audition voice
  *   'voicePad'    – { voiceIndex, pad } (0=pad1, 1=pad2)
  *   'enablePerf'  – toggle CPU measurement
  *   'destroy'     – cleanup
@@ -155,7 +156,7 @@ const FILTER_MAP = { lowpass: 0, bandpass: 1, highpass: 2, notch: 3 };
 // LFO waveform string → int
 const LFO_WAVE_MAP = { sine: 0, triangle: 1, sawtooth: 2, square: 3, sampleHold: 4, randomSmooth: 5, randomWalk: 6 };
 // LFO/mod destination string → int
-const DEST_MAP = { none: 0, filterCutoff: 1, filterB: 2, amplitude: 3, pitch: 4, oscBLevel: 5, foldAmount: 6 };
+const DEST_MAP = { none: 0, filterCutoff: 1, filterB: 2, filterBCutoff: 2, amplitude: 3, pitch: 4, oscBLevel: 5, foldAmount: 6 };
 // Filter routing string → int
 const ROUTE_MAP = { series: 0, aOnly: 1, bOnly: 2 };
 // Waveform string → int
@@ -317,6 +318,12 @@ class PadSynthWasmProcessor extends AudioWorkletProcessor {
           if (this.ready && Number.isInteger(data.voiceIndex)) this.wasm.pad_note_off(data.voiceIndex);
           break;
 
+        case 'killVoice':
+          if (this.ready && Number.isInteger(data.voiceIndex) && typeof this.wasm.pad_kill_voice === 'function') {
+            this.wasm.pad_kill_voice(data.voiceIndex);
+          }
+          break;
+
         case 'voicePad':
           if (this.ready && Number.isInteger(data.voiceIndex) && Number.isInteger(data.pad)) {
             this.wasm.pad_set_voice_pad(data.voiceIndex, data.pad);
@@ -383,7 +390,18 @@ class PadSynthWasmProcessor extends AudioWorkletProcessor {
 
   applyParams(data) {
     const w = this.wasm;
-    const p = data.params || data;
+    const p = { ...(data.params || data) };
+
+    const normalizeCutoffPair = (minKey, maxKey) => {
+      if (p[minKey] === undefined || p[maxKey] === undefined) return;
+      const min = this.resolveValue(minKey, p[minKey]);
+      const max = this.resolveValue(maxKey, p[maxKey]);
+      if (!Number.isFinite(min) || !Number.isFinite(max)) return;
+      p[minKey] = Math.min(min, max);
+      p[maxKey] = Math.max(min, max);
+    };
+    normalizeCutoffPair('filterCutoffMin', 'filterCutoffMax');
+    normalizeCutoffPair('pad2FilterCutoffMin', 'pad2FilterCutoffMax');
 
     // Reverb send (global, not per-pad)
     if (p.synthReverbSend !== undefined) w.pad_set_reverb_send(this.resolveValue('synthReverbSend', p.synthReverbSend));

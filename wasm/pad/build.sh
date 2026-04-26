@@ -31,6 +31,7 @@ EXPORTS="[
   '_pad_process_block',
   '_pad_note_on',
   '_pad_note_off',
+  '_pad_kill_voice',
   '_pad_set_voice_pad',
   '_pad_set_osc_a_wave',
   '_pad_set_osc_a_octave',
