@@ -11,6 +11,7 @@ const OSC_WAVES = ['sine', 'triangle', 'sawtooth', 'square'] as const;
 const SUB_WAVES = ['sine', 'triangle'] as const;
 const NOISE_TYPES = ['white', 'pink'] as const;
 const FILTER_TYPES = ['lowpass', 'bandpass', 'highpass', 'notch'] as const;
+const FILTER_SLOPES = [12, 24, 36, 48] as const;
 const FILTER_ROUTINGS = ['series', 'aOnly', 'bOnly'] as const;
 const LFO_WAVES = ['sine', 'triangle', 'sawtooth', 'square', 'sampleHold', 'randomSmooth', 'randomWalk'] as const;
 const LFO_DESTS = ['none', 'filterCutoff', 'filterBCutoff', 'amplitude', 'pitch', 'oscBLevel', 'foldAmount'] as const;
@@ -114,7 +115,7 @@ function mutateOctave(
   return clamp(Math.round(next), min, max);
 }
 
-function pickTargetValue<T extends string>(
+function pickTargetValue<T extends string | number>(
   rng: () => number,
   current: T,
   choices: readonly T[],
@@ -267,6 +268,7 @@ export function createPadRandomGoal(
   setScopedValue(next, scope, 'padSubWave', pickTargetValue(rng, getScopedString(next, scope, 'padSubWave'), SUB_WAVES, walkMode ? 0.08 : 0.22));
   setScopedValue(next, scope, 'padNoiseType', pickTargetValue(rng, getScopedString(next, scope, 'padNoiseType'), NOISE_TYPES, walkMode ? 0.08 : 0.22));
   setScopedValue(next, scope, 'filterType', pickTargetValue(rng, getScopedString(next, scope, 'filterType'), FILTER_TYPES, walkMode ? 0.08 : 0.28));
+  setScopedValue(next, scope, 'filterSlope', pickTargetValue(rng, getScopedNumber(next, scope, 'filterSlope'), FILTER_SLOPES, walkMode ? 0.06 : 0.18));
 
   setScopedValue(
     next,
@@ -307,6 +309,7 @@ export function createPadRandomGoal(
     'presence',
     'padFoldAmount',
     'filterResonance',
+    'filterKeyTracking',
     'padFilterBResonance',
     'padLfo1Depth',
     'padLfo2Depth',

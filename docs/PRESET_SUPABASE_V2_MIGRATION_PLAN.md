@@ -8,11 +8,13 @@ Move Kessho preset storage from the current single-row, inline-`versions` JSON m
 - minimizes duplication across L1, L2, L3, and L4 presets
 - stores version history as lightweight patches instead of rewriting entire rows
 - allows shared testing mode where every authenticated user can see and update the same shared presets
+- creates hidden derived child presets for unsaved lower-level edits so sibling presets can reuse exact hashes without public dropdown clutter
 - preserves the current latest `String Waves` as the canonical state preset during cutover
 
 The companion SQL draft is:
 
 - [preset_storage_v2.sql](/Users/panguroo/Documents/generativemusic/docs/preset_storage_v2.sql:1)
+- [preset_storage_v2_internal_derived.sql](/Users/panguroo/Documents/generativemusic/docs/preset_storage_v2_internal_derived.sql:1) for existing V2 databases
 
 ## Why This Is Better
 
@@ -83,10 +85,15 @@ Explicit child references for that version.
 Examples:
 
 - state preset -> `synth`, `drums`, `granular`, `delay`, `reverb`, `earth`
-- synth source -> `pad1Kit`, `pad2Kit`, `lead1Kit`, `lead2Kit`, `synthEuclidean`
-- granular kit -> `voice1`, `voice2`, `voice3`, `voice4`, `legacy`
+- synth source -> `pad1Kit`, `pad2Kit`, `lead1Kit`, `lead2Kit`, `leadDelay`, shared `euclideanPattern`
+- drums source -> `drumKit`, shared `euclideanPattern`
+- granular source -> `granularKit`
+- delay source -> `delayKit`
+- kit presets -> their owned L1 engines, for example `pad1Kit -> pad1`, `drumKit -> drumSub/drumKick/...`, `granularKit -> granularVoice1/...`, `delayKit -> leadDelay/echoLine/clockedSpace`
 
 Each ref may also carry a small per-child override blob.
+
+If no intentionally saved child preset has the exact content hash, the V2 save path creates a private hidden child named `__derived__/{scope}/{hash12}` and tags it `internal-derived`. These rows are still readable for ref resolution, but the app filters them from preset lists and dropdowns.
 
 ### `preset_payloads_v2`
 
@@ -120,6 +127,8 @@ Store:
 - resolved snapshot hash
 
 Do not inline child engine snapshots unless the child is unsaved or intentionally embedded.
+
+Shared rhythm patterns should live once as L1 `euclideanPattern` presets. Drum and synth Euclidean source data can reference that bank, with only instrument-specific lane, target, velocity, or pitch overrides remaining on the parent.
 
 ### L3 `source`
 

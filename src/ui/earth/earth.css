@@ -129,7 +129,24 @@
 
 /* ── Card Body ── */
 .earth-root .earth-card-body {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 10px;
+  row-gap: 6px;
   padding: 6px 10px 8px;
+}
+
+.earth-root .earth-card-body > .earth-preset-row,
+.earth-root .earth-card-body > .earth-preset-bar,
+.earth-root .earth-card-body > .layer-row,
+.earth-root .earth-card-body > .earth-section-label,
+.earth-root .earth-card-body > .earth-sub-section {
+  grid-column: 1 / -1;
+}
+
+.earth-root .earth-card-body > .earth-slider-row,
+.earth-root .earth-card-body > .param-row {
+  margin-bottom: 0;
 }
 
 .earth-root .earth-preset-row {
@@ -204,6 +221,28 @@
   min-width: 36px;
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+.earth-root .earth-slider-row {
+  width: 100%;
+  margin-bottom: 6px;
+}
+
+.earth-root .earth-slider-row .sl-slider-head {
+  color: var(--text-secondary);
+}
+
+.earth-root .earth-slider-row .sl-slider-label {
+  font-size: var(--font-sm);
+}
+
+.earth-root .earth-slider-row .sl-slider-value {
+  font-size: var(--font-xs);
+  color: var(--accent-primary);
+}
+
+.earth-root .earth-slider-row .sl-slider-rail {
+  width: 100%;
 }
 
 /* ── Earth Dual Slider ── */
@@ -614,7 +653,23 @@
   margin-left: auto;
 }
 .earth-root .earth-sub-body {
-  padding: 0 0 2px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 10px;
+  row-gap: 6px;
+  padding: 2px 0 4px;
+}
+
+.earth-root .earth-sub-body > .earth-slider-row,
+.earth-root .earth-sub-body > .param-row {
+  margin-bottom: 0;
+}
+
+@media (max-width: 640px) {
+  .earth-root .earth-card-body,
+  .earth-root .earth-sub-body {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ── Card Header Status Badge ── */
@@ -657,11 +712,8 @@
 }
 
 .earth-root .earth-active-matrix-note {
-  padding: 6px 10px;
-  border-top: 1px solid rgba(255,255,255,0.05);
-  border-bottom: 1px solid rgba(255,255,255,0.05);
-  background: rgba(0, 0, 0, 0.14);
-  color: var(--text-secondary);
+  margin: 0 0 2px;
+  color: rgba(235, 242, 248, 0.84);
   font-size: var(--font-sm);
   line-height: 1.35;
 }

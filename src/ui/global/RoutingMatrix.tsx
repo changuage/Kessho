@@ -4,9 +4,26 @@ import { useSliderHelp } from '../SliderHelpOverlay';
 import type { SliderPageId } from '../sliderHelpCatalog';
 import type { SliderMode, SliderState } from '../state';
 import { useRuntimeSliderIndicator } from '../runtimeSliderState';
+import {
+  LONG_PRESS_MOVE_TOLERANCE_PX,
+  LONG_PRESS_MS,
+  SliderFamilyNote,
+  TRACK_PAD_PX,
+  clamp01,
+  getDualHandle,
+  normalizeUnitRange,
+  pointerToTrackNorm,
+  quantize01,
+  rangesEqual,
+  releasePointerCaptureSafely,
+  trackLeftCalc,
+  trackWidthCalc,
+  type MatrixCellHandle,
+} from '../sliderSystem';
+import '../sliderSystem/matrixSurface.css';
 
 type ColumnId = 'level' | 'delayA' | 'delayB' | 'granular' | 'reverb';
-type CellHandle = 'single' | 'min' | 'max' | 'both';
+type CellHandle = MatrixCellHandle;
 
 interface RouteControl {
   key: keyof SliderState;
@@ -96,10 +113,6 @@ export interface RoutingMatrixProps {
   showNote?: boolean;
 }
 
-const TRACK_PAD_PX = 6;
-const EDGE_HANDLE_PX = 8;
-const LONG_PRESS_MS = 400;
-const LONG_PRESS_MOVE_TOLERANCE_PX = 8;
 const ROUTING_MATRIX_ACTIVE_FILTER_STORAGE_KEY = 'routing-matrix:show-active-only:v1';
 
 const COLUMNS: Array<{ id: ColumnId; label: string; note?: string }> = [
@@ -290,21 +303,6 @@ const ROWS: MatrixRow[] = [
   },
 ];
 
-function clamp01(value: number): number {
-  return Math.max(0, Math.min(1, value));
-}
-
-function quantize01(value: number): number {
-  return Math.round(clamp01(value) * 100) / 100;
-}
-
-function normalizeRange(range?: DualSliderRange): DualSliderRange | undefined {
-  if (!range) return undefined;
-  const min = quantize01(Math.min(range.min, range.max));
-  const max = quantize01(Math.max(range.min, range.max));
-  return { min, max };
-}
-
 function scaleRangeTowardZero(range: DualSliderRange, delta: number): DualSliderRange {
   const startMin = clamp01(range.min);
   const startMax = clamp01(range.max);
@@ -365,11 +363,6 @@ function columnDragMemoryMatches(memory: ColumnDragMemory, targets: ColumnDragTa
   }
 
   return true;
-}
-
-function rangesEqual(a?: DualSliderRange, b?: DualSliderRange): boolean {
-  if (!a || !b) return false;
-  return a.min === b.min && a.max === b.max;
 }
 
 function cellValue(state: SliderState, route: RouteControl | undefined): number {
@@ -437,32 +430,12 @@ function getColumnTargets(
       key: cell.route.key,
       mode,
       startValue: quantize01(Number(state[cell.route.key] ?? 0) || 0),
-      startRange: mode === 'single' ? undefined : normalizeRange(runtime.dualRange),
+      startRange: mode === 'single' ? undefined : normalizeUnitRange(runtime.dualRange),
       onDualRangeChange: runtime.onDualRangeChange,
     });
   }
 
   return targets;
-}
-
-function pointerToTrackNorm(clientX: number, rect: DOMRect): number {
-  const innerWidth = Math.max(1, rect.width - TRACK_PAD_PX * 2);
-  return clamp01((clientX - rect.left - TRACK_PAD_PX) / innerWidth);
-}
-
-function getDualHandle(norm: number, range: DualSliderRange, rect: DOMRect): CellHandle {
-  const innerWidth = Math.max(1, rect.width - TRACK_PAD_PX * 2);
-  const threshold = Math.min(0.18, EDGE_HANDLE_PX / innerWidth);
-  const bandWidth = range.max - range.min;
-
-  if (bandWidth <= threshold * 2 && norm >= range.min && norm <= range.max) {
-    return 'both';
-  }
-  if (norm < range.min - threshold) return 'min';
-  if (norm <= range.min + threshold) return 'min';
-  if (norm > range.max + threshold) return 'max';
-  if (norm >= range.max - threshold) return 'max';
-  return 'both';
 }
 
 function rangeDisplay(mode: SliderMode, range?: DualSliderRange): string {
@@ -473,14 +446,6 @@ function rangeDisplay(mode: SliderMode, range?: DualSliderRange): string {
 
 function singleDisplay(value: number): string {
   return `${Math.round(value * 100)}%`;
-}
-
-function trackLeftCalc(value: number): string {
-  return `calc(${TRACK_PAD_PX}px + (100% - ${TRACK_PAD_PX * 2}px) * ${clamp01(value)})`;
-}
-
-function trackWidthCalc(value: number): string {
-  return `calc((100% - ${TRACK_PAD_PX * 2}px) * ${clamp01(value)})`;
 }
 
 type RoutingMatrixCellIndicatorLayerProps = {
@@ -535,12 +500,6 @@ const RoutingMatrixCellIndicatorLayer = React.memo(function RoutingMatrixCellInd
     </>
   );
 });
-
-function releaseCapture(target: EventTarget & HTMLElement, pointerId: number): void {
-  if (target.hasPointerCapture(pointerId)) {
-    target.releasePointerCapture(pointerId);
-  }
-}
 
 export default function RoutingMatrix({
   state,
@@ -835,12 +794,12 @@ export default function RoutingMatrix({
         } : undefined}
         onPointerUp={isMobile && canToggle ? (event) => {
           clearLongPress();
-          releaseCapture(event.currentTarget, event.pointerId);
+          releasePointerCaptureSafely(event.currentTarget, event.pointerId);
           resetInteraction();
         } : undefined}
         onPointerCancel={isMobile && canToggle ? (event) => {
           clearLongPress();
-          releaseCapture(event.currentTarget, event.pointerId);
+          releasePointerCaptureSafely(event.currentTarget, event.pointerId);
           resetInteraction();
         } : undefined}
       >
@@ -888,12 +847,12 @@ export default function RoutingMatrix({
         }}
         onPointerUp={(event) => {
           stopDrag(headerId, event.pointerId);
-          releaseCapture(event.currentTarget, event.pointerId);
+          releasePointerCaptureSafely(event.currentTarget, event.pointerId);
           resetInteraction();
         }}
         onPointerCancel={(event) => {
           stopDrag(headerId, event.pointerId);
-          releaseCapture(event.currentTarget, event.pointerId);
+          releasePointerCaptureSafely(event.currentTarget, event.pointerId);
           resetInteraction();
         }}
       >
@@ -910,7 +869,7 @@ export default function RoutingMatrix({
     const offInAll = !showActiveOnly && !rowEnabled;
     const runtime = route ? sliderProps(route.key) : null;
     const mode = getResolvedMode(runtime);
-    const range = mode === 'single' ? undefined : normalizeRange(runtime?.dualRange);
+    const range = mode === 'single' ? undefined : normalizeUnitRange(runtime?.dualRange);
     const fillLeft = range ? trackLeftCalc(range.min) : `${TRACK_PAD_PX}px`;
     const fillWidth = range ? trackWidthCalc(range.max - range.min) : trackWidthCalc(value);
     const readout = cell.kind === 'editable'
@@ -958,7 +917,7 @@ export default function RoutingMatrix({
           const rect = event.currentTarget.getBoundingClientRect();
           const pointerNorm = pointerToTrackNorm(event.clientX, rect);
           const nextMode = getResolvedMode(runtime);
-          const nextRange = nextMode === 'single' ? undefined : normalizeRange(runtime.dualRange);
+          const nextRange = nextMode === 'single' ? undefined : normalizeUnitRange(runtime.dualRange);
           const handle = nextMode === 'single' || !nextRange
             ? 'single'
             : getDualHandle(pointerNorm, nextRange, rect);
@@ -1003,12 +962,12 @@ export default function RoutingMatrix({
         }}
         onPointerUp={(event) => {
           stopDrag(cellId, event.pointerId);
-          releaseCapture(event.currentTarget, event.pointerId);
+          releasePointerCaptureSafely(event.currentTarget, event.pointerId);
           resetInteraction();
         }}
         onPointerCancel={(event) => {
           stopDrag(cellId, event.pointerId);
-          releaseCapture(event.currentTarget, event.pointerId);
+          releasePointerCaptureSafely(event.currentTarget, event.pointerId);
           resetInteraction();
         }}
       >
@@ -1084,9 +1043,9 @@ export default function RoutingMatrix({
   return (
     <div className={`routing-matrix${isMobile ? ' mobile' : ''}`}>
       {showNote && (
-        <div className="routing-matrix-note">
-          Drag cells left or right like miniature sliders. In walk and sample-hold mode, drag the band edges to set the range or drag the band center to slide the whole range. Double-click on desktop or long-press on touch to cycle `single`, `walk`, and `S&amp;H`.
-        </div>
+        <SliderFamilyNote className="routing-matrix-note">
+          Routing cells use the same slider family as the full controls, just condensed into a denser matrix surface.
+        </SliderFamilyNote>
       )}
 
       {isMobile ? (

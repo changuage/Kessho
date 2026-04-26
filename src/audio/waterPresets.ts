@@ -25,9 +25,11 @@ export interface WaterPresetState {
   waterLayerBubbling: number;
   waterLayerSurf: number;
   waterLayerChannels: number;
+  waterHardDropBaseFreq: number;
   waterHardDropRate: number;
   waterHardDropLPF: number;
   waterHardDropTone: number;
+  waterWaterDropBaseFreq: number;
   waterWaterDropRate: number;
   waterWaterDropLPF: number;
   waterBubblingRate: number;
@@ -213,12 +215,12 @@ const PRESET_PARAMS: Record<number, {
 
 /** SliderState keys that waterMorph affects */
 export const WATER_MORPH_PARAM_KEYS = [
-  'waterIntensity', 'waterDistance', 'waterBaseFreq',
+  'waterIntensity', 'waterDistance',
   'waterDropSize', 'waterHardness', 'waterGlassThickness',
   'waterLayerHardDrops', 'waterLayerWaterDrops', 'waterLayerTurbulence',
   'waterLayerBubbling', 'waterLayerSurf', 'waterLayerChannels',
-  'waterHardDropRate', 'waterHardDropLPF', 'waterHardDropTone',
-  'waterWaterDropRate', 'waterWaterDropLPF',
+  'waterHardDropBaseFreq', 'waterHardDropRate', 'waterHardDropLPF', 'waterHardDropTone',
+  'waterWaterDropBaseFreq', 'waterWaterDropRate', 'waterWaterDropLPF',
   'waterBubblingRate', 'waterBubblingLPF',
   'waterSurfDuration', 'waterSurfInterval', 'waterSurfFoam', 'waterSurfFoamBright', 'waterSurfProximity', 'waterSurfDepth',
   'waterSurfBody', 'waterSurfSpray',
@@ -328,6 +330,8 @@ function buildStockWaterPresetState(presetId: number): WaterPresetState {
 
   return {
     waterBaseFreq: baseFreq,
+    waterHardDropBaseFreq: baseFreq,
+    waterWaterDropBaseFreq: baseFreq,
     waterIntensity: params.waterIntensity,
     waterDistance: params.waterDistance,
     waterDropSize: params.waterDropSize,
@@ -493,6 +497,14 @@ export function morphWaterPresets(
 
   const result: WaterPresetState = {
     waterBaseFreq: eLrp(presetA.waterBaseFreq ?? fallback.waterBaseFreq, presetB.waterBaseFreq ?? fallback.waterBaseFreq),
+    waterHardDropBaseFreq: eLrp(
+      presetA.waterHardDropBaseFreq ?? presetA.waterBaseFreq ?? fallback.waterHardDropBaseFreq,
+      presetB.waterHardDropBaseFreq ?? presetB.waterBaseFreq ?? fallback.waterHardDropBaseFreq
+    ),
+    waterWaterDropBaseFreq: eLrp(
+      presetA.waterWaterDropBaseFreq ?? presetA.waterBaseFreq ?? fallback.waterWaterDropBaseFreq,
+      presetB.waterWaterDropBaseFreq ?? presetB.waterBaseFreq ?? fallback.waterWaterDropBaseFreq
+    ),
     waterIntensity: lrp(presetA.waterIntensity ?? fallback.waterIntensity, presetB.waterIntensity ?? fallback.waterIntensity),
     waterDistance: lrp(presetA.waterDistance ?? fallback.waterDistance, presetB.waterDistance ?? fallback.waterDistance),
     waterDropSize: lrp(presetA.waterDropSize ?? fallback.waterDropSize, presetB.waterDropSize ?? fallback.waterDropSize),

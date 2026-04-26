@@ -5,6 +5,10 @@
 
 import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js';
 import { compressVersions, getVersionData } from './codec';
+import {
+  buildDrumEuclideanStateFromPatternData,
+  buildSynthEuclideanStateFromPatternData,
+} from './euclideanPatternBank';
 import type { IPresetStore } from './PresetStore';
 import {
   extractPresetVersionMetadata,
@@ -39,8 +43,11 @@ import type {
 } from './types';
 
 const LEGACY_DELAY_A_KEY_PATTERN = /"leadDelay(?:ReverbSend|Time|Feedback|Mix|Enabled|Spread|Filter|Send)"/;
+const MAX_STORED_VERSIONS_V2 = 5;
 const VERSION_CHECKPOINT_INTERVAL = 8;
 const PATCH_TO_SNAPSHOT_RATIO = 0.65;
+const INTERNAL_DERIVED_TAG = 'internal-derived';
+const AUTO_CHILD_TAG = 'auto-child';
 
 /** Row shape returned from the legacy Supabase `presets` table */
 interface PresetRow {
@@ -222,6 +229,22 @@ function dedupePreferredV2Rows(rows: PresetV2Row[], userId: string | null): Pres
   return Array.from(preferred.values()).sort((left, right) => comparePresetV2Priority(left, right, userId));
 }
 
+function isInternalDerivedTags(tags: string[] | null | undefined): boolean {
+  return Array.isArray(tags) && tags.includes(INTERNAL_DERIVED_TAG);
+}
+
+function isInternalDerivedRow(row: Pick<PresetV2Row, 'name' | 'tags'>): boolean {
+  return row.name.startsWith('__derived__/') || isInternalDerivedTags(row.tags);
+}
+
+function isInternalDerivedEntry(entry: Pick<PresetEntry, 'name' | 'tags'>): boolean {
+  return entry.name.startsWith('__derived__/') || isInternalDerivedTags(entry.tags);
+}
+
+function makeDerivedPresetName(scope: string, resolvedHash: string): string {
+  return `__derived__/${scope}/${resolvedHash.slice(0, 12)}`;
+}
+
 function mergeEntriesByLogicalKey(entries: PresetEntry[]): PresetEntry[] {
   const merged = new Map<string, PresetEntry>();
   for (const entry of entries) {
@@ -256,6 +279,7 @@ export class SupabasePresetStore implements IPresetStore {
   private userId: string | null = null;
   private isAnonymous = false;
   private v2SchemaAvailable: boolean | null = null;
+  private knownPayloadHashesV2 = new Set<string>();
 
   constructor(client: SupabaseClient) {
     this.client = client;
@@ -527,8 +551,63 @@ export class SupabasePresetStore implements IPresetStore {
       throw new Error(`V2 ref lookup failed: ${error.message}`);
     }
 
-    const rows = dedupePreferredV2Rows((data ?? []) as PresetV2Row[], SHARED_PRESET_TEST_MODE ? null : this.userId);
+    const rows = dedupePreferredV2Rows((data ?? []) as PresetV2Row[], SHARED_PRESET_TEST_MODE ? null : this.userId)
+      .sort((left, right) => {
+        const leftDerived = isInternalDerivedRow(left);
+        const rightDerived = isInternalDerivedRow(right);
+        if (leftDerived !== rightDerived) return leftDerived ? 1 : -1;
+        return comparePresetV2Priority(left, right, SHARED_PRESET_TEST_MODE ? null : this.userId);
+      });
     return rows[0] ?? null;
+  }
+
+  private async ensureDerivedChildPresetV2(
+    type: PresetLevel,
+    scope: string,
+    resolvedHash: string,
+    data: Record<string, unknown>,
+  ): Promise<PresetV2Row | null> {
+    const existing = await this.findMatchingPresetV2(type, scope, resolvedHash);
+    if (existing) return existing;
+
+    const now = Date.now();
+    const hashName = resolvedHash.slice(0, 12);
+    const name = makeDerivedPresetName(scope, resolvedHash);
+    const derivedEntry: PresetEntry = {
+      type,
+      scope,
+      name,
+      author: 'cloud',
+      library: 'cloud',
+      creator: 'Kessho Auto Child',
+      description: `Hidden derived child preset for ${scope}. Reused by content hash.`,
+      visibility: 'private',
+      familyName: `__derived__/${scope}`,
+      variantName: hashName,
+      tags: [
+        INTERNAL_DERIVED_TAG,
+        AUTO_CHILD_TAG,
+        `scope:${scope}`,
+        `hash:${hashName}`,
+      ],
+      versions: [{
+        v: 1,
+        note: 'Auto-derived child preset',
+        timestamp: now,
+        data,
+      }],
+      currentVersion: 1,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    try {
+      await this.saveV2(derivedEntry);
+    } catch (error) {
+      if (!isConflictError(error)) throw error;
+    }
+
+    return this.findMatchingPresetV2(type, scope, resolvedHash);
   }
 
   private async ensurePayloadV2(kind: PresetPayloadKind, payload: unknown): Promise<string | null> {
@@ -538,34 +617,54 @@ export class SupabasePresetStore implements IPresetStore {
 
     const normalized = canonicalizeRecord(payload as Record<string, unknown>);
     const hash = await hashCanonicalJson(normalized);
+    if (this.knownPayloadHashesV2.has(hash)) return hash;
 
-    const { data: existing, error: existingError } = await this.client
+    const { error: upsertError } = await this.client
       .from('preset_payloads_v2')
-      .select('hash')
-      .eq('hash', hash)
-      .limit(1);
-
-    if (existingError) {
-      if (this.markV2UnavailableIfMissing(existingError)) return null;
-      throw new Error(`V2 payload lookup failed: ${existingError.message}`);
-    }
-
-    if (existing && existing.length > 0) return hash;
-
-    const { error: insertError } = await this.client
-      .from('preset_payloads_v2')
-      .insert({
+      .upsert({
         hash,
         payload_kind: kind,
         payload: normalized,
+      }, {
+        onConflict: 'hash',
+        ignoreDuplicates: true,
       });
 
-    if (insertError && !isConflictError(insertError)) {
-      if (this.markV2UnavailableIfMissing(insertError)) return null;
-      throw new Error(`V2 payload insert failed: ${insertError.message}`);
+    if (upsertError && !isConflictError(upsertError)) {
+      if (this.markV2UnavailableIfMissing(upsertError)) return null;
+      throw new Error(`V2 payload upsert failed: ${upsertError.message}`);
     }
 
+    this.knownPayloadHashesV2.add(hash);
     return hash;
+  }
+
+  private async pruneStoredVersionsV2(presetId: string): Promise<void> {
+    const { data, error } = await this.client
+      .from('preset_versions_v2')
+      .select('id, version_no')
+      .eq('preset_id', presetId)
+      .order('version_no', { ascending: false });
+
+    if (error) {
+      if (this.markV2UnavailableIfMissing(error)) return;
+      throw new Error(`V2 version prune lookup failed: ${error.message}`);
+    }
+
+    const staleIds = ((data ?? []) as Array<{ id: string; version_no: number }>)
+      .slice(MAX_STORED_VERSIONS_V2)
+      .map(row => row.id);
+
+    if (!staleIds.length) return;
+
+    const { error: deleteError } = await this.client
+      .from('preset_versions_v2')
+      .delete()
+      .in('id', staleIds);
+
+    if (deleteError && !this.markV2UnavailableIfMissing(deleteError)) {
+      throw new Error(`V2 version prune failed: ${deleteError.message}`);
+    }
   }
 
   private async fetchPayloadMapV2(hashes: string[]): Promise<Map<string, unknown>> {
@@ -592,6 +691,8 @@ export class SupabasePresetStore implements IPresetStore {
 
   private async loadResolvedSnapshotByVersionRowV2(
     row: PresetVersionV2Row,
+    parentType: PresetLevel,
+    parentScope: string | null,
     payloadMap: Map<string, unknown>,
     refsByVersionId: Map<string, PresetVersionRefV2Row[]>,
     targetPresetMap: Map<string, PresetV2Row>,
@@ -610,6 +711,13 @@ export class SupabasePresetStore implements IPresetStore {
       const childData = payloadMap.get(targetPreset.latest_resolved_hash);
       if (!isPlainObject(childData)) continue;
       let mergedChild = canonicalizeRecord(childData);
+      if (targetPreset.scope === 'euclideanPattern' && refRow.ref_slot === 'euclideanPattern') {
+        if (parentType === 'source' && parentScope === 'synth') {
+          mergedChild = canonicalizeRecord(buildSynthEuclideanStateFromPatternData(mergedChild));
+        } else if (parentType === 'source' && parentScope === 'drums') {
+          mergedChild = canonicalizeRecord(buildDrumEuclideanStateFromPatternData(mergedChild));
+        }
+      }
       if (refRow.override_hash) {
         const childOverride = payloadMap.get(refRow.override_hash);
         if (isPlainObject(childOverride)) {
@@ -714,6 +822,8 @@ export class SupabasePresetStore implements IPresetStore {
 
       const resolvedData = await this.loadResolvedSnapshotByVersionRowV2(
         versionRow,
+        row.type,
+        row.scope,
         payloadMap,
         refsByVersionId,
         targetPresetMap,
@@ -786,7 +896,8 @@ export class SupabasePresetStore implements IPresetStore {
       return [];
     }
 
-    const rows = dedupePreferredV2Rows((data ?? []) as PresetV2Row[], SHARED_PRESET_TEST_MODE ? null : this.userId);
+    const rows = dedupePreferredV2Rows((data ?? []) as PresetV2Row[], SHARED_PRESET_TEST_MODE ? null : this.userId)
+      .filter(row => !isInternalDerivedRow(row));
     const summaries: PresetSummary[] = rows.map((row) => ({
       id: row.id,
       type: row.type,
@@ -878,6 +989,7 @@ export class SupabasePresetStore implements IPresetStore {
     if (!normalized) throw new Error('Invalid preset entry');
 
     const scope = getPresetScope(normalized, normalized.type);
+    const internalDerived = isInternalDerivedEntry(normalized);
     const identityPayload = {
       owner_key: this.getOwnerKey(),
       owner_user_id: this.userId,
@@ -889,7 +1001,9 @@ export class SupabasePresetStore implements IPresetStore {
       creator: normalized.creator ?? 'Anonymous',
       description: normalized.description ?? null,
       tags: normalized.tags ?? [],
-      visibility: SHARED_PRESET_TEST_MODE
+      visibility: internalDerived
+        ? 'private'
+        : SHARED_PRESET_TEST_MODE
         ? 'public'
         : (this.isAnonymous && !normalized.visibility ? 'public' : (normalized.visibility ?? 'private')),
       family_name: normalized.familyName ?? normalized.name,
@@ -975,7 +1089,6 @@ export class SupabasePresetStore implements IPresetStore {
       const refsToInsert: Array<{
         slot: string;
         target: PresetV2Row;
-        childData: Record<string, unknown>;
       }> = [];
 
       for (const childSpec of childSpecs) {
@@ -983,14 +1096,18 @@ export class SupabasePresetStore implements IPresetStore {
         if (!Object.keys(childData).length) continue;
 
         const childHash = await hashCanonicalJson(childData);
-        const target = await this.findMatchingPresetV2(childSpec.type, childSpec.scope, childHash, presetRow.id);
+        let target = await this.findMatchingPresetV2(childSpec.type, childSpec.scope, childHash, presetRow.id);
+        if (!target) {
+          target = await this.ensureDerivedChildPresetV2(childSpec.type, childSpec.scope, childHash, childData);
+        }
         if (!target) continue;
 
-        childRefData[childSpec.slot] = childData;
+        childRefData[childSpec.slot] = childSpec.strip
+          ? childSpec.strip(resolvedData as unknown as never)
+          : childData;
         refsToInsert.push({
           slot: childSpec.slot,
           target,
-          childData,
         });
       }
 
@@ -1065,6 +1182,8 @@ export class SupabasePresetStore implements IPresetStore {
         }
       }
     }
+
+    await this.pruneStoredVersionsV2(presetRow.id);
   }
 
   async save(entry: PresetEntry): Promise<void> {

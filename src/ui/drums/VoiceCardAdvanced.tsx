@@ -3,15 +3,22 @@ import type { SliderState } from '../state';
 import type { DrumVoiceType } from '../../audio/drumSynth';
 import type { DrumVoiceConfig } from '../../audio/drumVoiceConfig';
 import EnvelopeVisualizer from './EnvelopeVisualizer';
-import { useSliderHelp } from '../SliderHelpOverlay';
 
 interface VoiceCardAdvancedProps {
   voice: DrumVoiceType;
   config: DrumVoiceConfig;
   state: SliderState;
   onParamChange: (key: keyof SliderState, value: SliderState[keyof SliderState]) => void;
+  sliderProps: (paramKey: keyof SliderState) => Record<string, unknown>;
+  SliderComponent: React.ComponentType<Record<string, unknown>>;
   isTriggered?: boolean;
   analyserNode?: AnalyserNode;
+}
+
+function formatAdvancedValue(value: number, unit?: string): string {
+  if (unit === 'Hz' || unit === 'ms') return String(Math.round(value));
+  if (unit === '%') return String(Math.round(value * 100));
+  return value.toFixed(2);
 }
 
 const VoiceCardAdvanced: React.FC<VoiceCardAdvancedProps> = ({
@@ -19,10 +26,12 @@ const VoiceCardAdvanced: React.FC<VoiceCardAdvancedProps> = ({
   config,
   state,
   onParamChange,
+  sliderProps,
+  SliderComponent,
   isTriggered = false,
   analyserNode,
 }) => {
-  const { announceSlider } = useSliderHelp();
+  const Slider = SliderComponent as React.ComponentType<Record<string, unknown>>;
   return (
     <div>
       <EnvelopeVisualizer voice={voice} state={state} analyserNode={analyserNode} isTriggered={isTriggered} />
@@ -53,36 +62,21 @@ const VoiceCardAdvanced: React.FC<VoiceCardAdvancedProps> = ({
                 }
 
                 const numVal = state[paramKey] as number;
-                const formatted = def.unit === 'Hz'
-                  ? `${Math.round(numVal)}`
-                  : def.unit === 'ms'
-                    ? `${Math.round(numVal)}`
-                    : def.unit === '%'
-                      ? `${Math.round(numVal * 100)}%`
-                      : `${numVal.toFixed(2)}`;
 
                 return (
                   <div
                     key={def.key}
-                    className="param-row"
-                    onMouseEnter={() => announceSlider(def.key, { label: def.label })}
-                    onPointerDown={() => announceSlider(def.key, { label: def.label })}
+                    className="param-row param-row--slider"
                   >
-                    <label>{def.label}</label>
-                    <input
-                      type="range"
-                      min={def.min}
-                      max={def.max}
-                      step={def.step}
+                    <Slider
+                      label={def.label}
                       value={numVal}
-                      data-key={def.key}
-                      onChange={(e) => {
-                        announceSlider(def.key, { label: def.label });
-                        onParamChange(paramKey, parseFloat(e.target.value) as SliderState[keyof SliderState]);
-                      }}
-                      onFocus={() => announceSlider(def.key, { label: def.label })}
+                      paramKey={paramKey}
+                      onChange={onParamChange as (key: keyof SliderState, value: number) => void}
+                      format={(value: number) => formatAdvancedValue(value, def.unit)}
+                      unit={def.unit === '%' ? '%' : undefined}
+                      {...sliderProps(paramKey)}
                     />
-                    <span className="val">{formatted}</span>
                   </div>
                 );
               })}

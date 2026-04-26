@@ -2,9 +2,10 @@
 // Phase 1 — One-time migration of hardcoded factory presets into PresetStore.
 //
 // Sources:
-//   Pad:     PAD_PRESETS from padPresets.ts         → 18 L1 engine presets
-//   Drums:   *_PRESETS from drumPresets.ts           → 84 L1 engine presets
+//   Pad:     PAD_PRESETS from padPresets.ts         → 24 L1 engine presets
+//   Drums:   *_PRESETS from drumPresets.ts           → 161 L1 engine presets
 //   Water:   WATER_PRESETS from waterPresets.ts      → 8 L1 engine presets
+//   Euclid:  shared pattern bank                     → 32 L1 engine presets
 //   Reverb:  REVERB_CHARACTER_PRESETS               → 8 L3 source presets
 //   Lead:    Lead4opFM manifest (lazy-fetched)      → loaded on demand, not stored here
 //   Granular: composite granular presets             → deferred; current store cannot round-trip them safely
@@ -14,6 +15,10 @@ import type { PresetEntry } from './types';
 import { getPresetStore } from './PresetStore';
 import { morphWaterPresets, WATER_PRESETS } from '../audio/waterPresets';
 import { SHARED_PRESET_TEST_MODE } from './sharedMode';
+import {
+  buildEuclideanPatternPresetData,
+  EUCLIDEAN_PATTERN_LABELS,
+} from './euclideanPatternBank';
 
 const FACTORY_LOADED_KEY = 'preset:factory-loaded:v10';
 
@@ -64,6 +69,14 @@ function addFactoryEntry(
 /** Check whether factory presets have already been loaded */
 export function isFactoryLoaded(): boolean {
   return readFactoryLoadedFlag();
+}
+
+export interface FactoryPresetV2Phases {
+  l1: PresetEntry[];
+  l2: PresetEntry[];
+  l3: PresetEntry[];
+  l4: PresetEntry[];
+  all: PresetEntry[];
 }
 
 /** Create a factory PresetEntry shell */
@@ -389,188 +402,33 @@ async function loadStateFactory(): Promise<PresetEntry[]> {
   return entries;
 }
 
-// ─── Drum Euclidean presets (L1 drumEuclidean) ──────────────────────────────
+// ─── Shared Euclidean pattern bank (L1 euclideanPattern) ────────────────────
 
-async function loadDrumEuclideanFactory(): Promise<PresetEntry[]> {
+async function loadEuclideanPatternFactory(): Promise<PresetEntry[]> {
   const entries: PresetEntry[] = [];
   try {
     const { DRUM_EUCLID_PRESET_DATA } = await import('../audio/drumSequencer');
-
-    // Human-readable labels for the pattern IDs
-    const LABELS: Record<string, string> = {
-      sparse: 'Sparse', dense: 'Dense', longSparse: 'Long Sparse',
-      poly3v4: 'Poly 3v4', poly4v3: 'Poly 4v3', poly5v4: 'Poly 5v4',
-      lancaran: 'Lancaran', ketawang: 'Ketawang', ladrang: 'Ladrang',
-      gangsaran: 'Gangsaran', kotekan: 'Kotekan', kotekan2: 'Kotekan B',
-      srepegan: 'Srepegan', sampak: 'Sampak', ayak: 'Ayak', bonang: 'Bonang',
-      tresillo: 'Tresillo', cinquillo: 'Cinquillo', rumba: 'Rumba',
-      bossa: 'Bossa Nova', son: 'Son Clave', shiko: 'Shiko',
-      soukous: 'Soukous', gahu: 'Gahu', bembe: 'Bembé',
-      clapping: 'Clapping', clappingB: 'Clapping B',
-      additive7: 'Additive 7', additive11: 'Additive 11', additive13: 'Additive 13',
-      reich18: 'Reich 18', drumming: 'Drumming',
-    };
-
     for (const [id, pattern] of Object.entries(DRUM_EUCLID_PRESET_DATA)) {
-      const label = LABELS[id] ?? id;
-      // Build a full 69-param snapshot: lane 1 uses the pattern, lanes 2-4 disabled
-      const data: Record<string, unknown> = {
-        drumEuclidMasterEnabled: true,
-        drumEuclidBaseBPM: 120,
-        drumEuclidTempo: 120,
-        drumEuclidSwing: 0,
-        drumEuclidDivision: '1/16',
-      };
-
-      // Lane 1: active with the pattern
-      Object.assign(data, {
-        drumEuclid1Enabled: true,
-        drumEuclid1Preset: id,
-        drumEuclid1Steps: pattern.steps,
-        drumEuclid1Hits: pattern.hits,
-        drumEuclid1Rotation: pattern.rotation,
-        drumEuclid1TargetSub: false,
-        drumEuclid1TargetKick: true,
-        drumEuclid1TargetClick: true,
-        drumEuclid1TargetBeepHi: false,
-        drumEuclid1TargetBeepLo: false,
-        drumEuclid1TargetNoise: false,
-        drumEuclid1TargetMembrane: false,
-        drumEuclid1Probability: 1,
-        drumEuclid1VelocityMin: 0.5,
-        drumEuclid1VelocityMax: 1,
-        drumEuclid1Level: 0.8,
-      });
-
-      // Lanes 2-4: disabled with neutral defaults
-      for (const n of [2, 3, 4]) {
-        Object.assign(data, {
-          [`drumEuclid${n}Enabled`]: false,
-          [`drumEuclid${n}Preset`]: 'custom',
-          [`drumEuclid${n}Steps`]: 16,
-          [`drumEuclid${n}Hits`]: 4,
-          [`drumEuclid${n}Rotation`]: 0,
-          [`drumEuclid${n}TargetSub`]: false,
-          [`drumEuclid${n}TargetKick`]: false,
-          [`drumEuclid${n}TargetClick`]: false,
-          [`drumEuclid${n}TargetBeepHi`]: n === 2,
-          [`drumEuclid${n}TargetBeepLo`]: n === 3,
-          [`drumEuclid${n}TargetNoise`]: n === 4,
-          [`drumEuclid${n}TargetMembrane`]: false,
-          [`drumEuclid${n}Probability`]: 1,
-          [`drumEuclid${n}VelocityMin`]: 0.5,
-          [`drumEuclid${n}VelocityMax`]: 1,
-          [`drumEuclid${n}Level`]: 0.7,
-        });
-      }
-
-      entries.push(makeFactory('engine', label, data, {
-        engine: 'drumEuclidean',
-        tags: ['rhythm', 'euclidean'],
+      const label = EUCLIDEAN_PATTERN_LABELS[id] ?? id;
+      entries.push(makeFactory('engine', label, buildEuclideanPatternPresetData(id, pattern), {
+        engine: 'euclideanPattern',
+        tags: ['rhythm', 'euclidean', 'shared-pattern'],
       }));
     }
   } catch (e) {
-    console.warn('Failed to load drum euclidean factory presets:', e);
-  }
-  return entries;
-}
-
-// ─── Synth Euclidean presets (L1 synthEuclidean) ────────────────────────────
-
-async function loadSynthEuclideanFactory(): Promise<PresetEntry[]> {
-  const entries: PresetEntry[] = [];
-  try {
-    const { DRUM_EUCLID_PRESET_DATA } = await import('../audio/drumSequencer');
-
-    // Reuse the same 32 named rhythmic patterns from the drum sequencer.
-    // Synth lanes target lead/pad sources instead of drum voices.
-    const LABELS: Record<string, string> = {
-      sparse: 'Sparse', dense: 'Dense', longSparse: 'Long Sparse',
-      poly3v4: 'Poly 3v4', poly4v3: 'Poly 4v3', poly5v4: 'Poly 5v4',
-      lancaran: 'Lancaran', ketawang: 'Ketawang', ladrang: 'Ladrang',
-      gangsaran: 'Gangsaran', kotekan: 'Kotekan', kotekan2: 'Kotekan B',
-      srepegan: 'Srepegan', sampak: 'Sampak', ayak: 'Ayak', bonang: 'Bonang',
-      tresillo: 'Tresillo', cinquillo: 'Cinquillo', rumba: 'Rumba',
-      bossa: 'Bossa Nova', son: 'Son Clave', shiko: 'Shiko',
-      soukous: 'Soukous', gahu: 'Gahu', bembe: 'Bembé',
-      clapping: 'Clapping', clappingB: 'Clapping B',
-      additive7: 'Additive 7', additive11: 'Additive 11', additive13: 'Additive 13',
-      reich18: 'Reich 18', drumming: 'Drumming',
-    };
-
-    for (const [id, pattern] of Object.entries(DRUM_EUCLID_PRESET_DATA)) {
-      const label = LABELS[id] ?? id;
-      const data: Record<string, unknown> = {
-        synthEuclideanMasterEnabled: true,
-        synthEuclideanTempo: 1,
-        synthEuclidBaseBPM: 120,
-        synthChordSequencerEnabled: false,
-      };
-
-      // Lane 1: active with the pattern, targeting lead
-      Object.assign(data, {
-        synthEuclid1Enabled: true,
-        synthEuclid1Preset: id,
-        synthEuclid1Steps: pattern.steps,
-        synthEuclid1Hits: pattern.hits,
-        synthEuclid1Rotation: pattern.rotation,
-        synthEuclid1NoteMin: 64,
-        synthEuclid1NoteMax: 76,
-        synthEuclid1Level: 0.8,
-        synthEuclid1Probability: 1,
-        synthEuclid1Source: 'lead',
-      });
-
-      // Lanes 2-4: disabled with defaults
-      const LANE_DEFAULTS: Array<{ noteMin: number; noteMax: number; level: number; source: string }> = [
-        { noteMin: 76, noteMax: 88, level: 0.6, source: 'lead' },
-        { noteMin: 52, noteMax: 64, level: 0.9, source: 'lead' },
-        { noteMin: 88, noteMax: 96, level: 0.5, source: 'lead' },
-      ];
-      for (let i = 0; i < 3; i++) {
-        const n = i + 2;
-        const d = LANE_DEFAULTS[i] ?? LANE_DEFAULTS[0]!;
-        Object.assign(data, {
-          [`synthEuclid${n}Enabled`]: false,
-          [`synthEuclid${n}Preset`]: 'custom',
-          [`synthEuclid${n}Steps`]: [8, 16, 16][i],
-          [`synthEuclid${n}Hits`]: [3, 2, 6][i],
-          [`synthEuclid${n}Rotation`]: 0,
-          [`synthEuclid${n}NoteMin`]: d.noteMin,
-          [`synthEuclid${n}NoteMax`]: d.noteMax,
-          [`synthEuclid${n}Level`]: d.level,
-          [`synthEuclid${n}Probability`]: 1,
-          [`synthEuclid${n}Source`]: d.source,
-        });
-      }
-
-      entries.push(makeFactory('engine', label, data, {
-        engine: 'synthEuclidean',
-        tags: ['rhythm', 'euclidean', 'melodic'],
-      }));
-    }
-  } catch (e) {
-    console.warn('Failed to load synth euclidean factory presets:', e);
+    console.warn('Failed to load shared euclidean pattern presets:', e);
   }
   return entries;
 }
 
 // ─── Master loader ──────────────────────────────────────────────────────────
 
-/**
- * Load all factory presets into PresetStore.
- * Idempotent — checks a localStorage flag to avoid re-running.
- * Returns the number of presets loaded.
- */
-export async function loadFactoryPresets(): Promise<number> {
-  if (isFactoryLoaded()) return 0;
-
-  const store = getPresetStore();
+async function loadAllFactoryEntries(): Promise<PresetEntry[]> {
   const all: PresetEntry[] = [];
   const seen = new Set<string>();
 
   // Load all sources in parallel
-  const [pad, drum, reverb, water, delay, drumsSource, synthSource, earth, lfo, granular, drumEuclid, synthEuclid, state] = await Promise.all([
+  const [pad, drum, reverb, water, delay, drumsSource, synthSource, earth, lfo, granular, euclideanPattern, state] = await Promise.all([
     loadPadFactory(),
     loadDrumFactory(),
     loadReverbFactory(),
@@ -581,14 +439,38 @@ export async function loadFactoryPresets(): Promise<number> {
     loadEarthFactory(),
     loadLfoFactory(),
     loadGranularFactory(),
-    loadDrumEuclideanFactory(),
-    loadSynthEuclideanFactory(),
+    loadEuclideanPatternFactory(),
     loadStateFactory(),
   ]);
 
-  for (const entry of [...pad, ...drum, ...reverb, ...water, ...delay, ...drumsSource, ...synthSource, ...earth, ...lfo, ...granular, ...drumEuclid, ...synthEuclid, ...state]) {
+  for (const entry of [...pad, ...drum, ...reverb, ...water, ...delay, ...drumsSource, ...synthSource, ...earth, ...lfo, ...granular, ...euclideanPattern, ...state]) {
     addFactoryEntry(all, seen, entry);
   }
+
+  return all;
+}
+
+export async function loadFactoryPresetV2Phases(): Promise<FactoryPresetV2Phases> {
+  const all = await loadAllFactoryEntries();
+  return {
+    l1: all.filter(entry => entry.type === 'engine'),
+    l2: all.filter(entry => entry.type === 'kit'),
+    l3: all.filter(entry => entry.type === 'source'),
+    l4: all.filter(entry => entry.type === 'state'),
+    all,
+  };
+}
+
+/**
+ * Load all factory presets into PresetStore.
+ * Idempotent — checks a localStorage flag to avoid re-running.
+ * Returns the number of presets loaded.
+ */
+export async function loadFactoryPresets(): Promise<number> {
+  if (isFactoryLoaded()) return 0;
+
+  const store = getPresetStore();
+  const all = await loadAllFactoryEntries();
 
   let savedCount = 0;
 

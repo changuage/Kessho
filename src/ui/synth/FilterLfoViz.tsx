@@ -15,6 +15,7 @@ interface FilterLfoVizProps {
   filterACutoff: number;      // midpoint of min/max (static reference)
   filterARes: number;
   filterAQ: number;
+  filterASlope?: number;
   hardness: number;           // needed for accurate Q calculation
   filterBEnabled: boolean;
   filterBType: string;
@@ -31,6 +32,13 @@ interface FilterLfoVizProps {
   synthDecay: number;
   synthSustain: number;
   synthRelease: number;
+  modEnvEnabled?: boolean;
+  modEnvAttack?: number;
+  modEnvDecay?: number;
+  modEnvSustain?: number;
+  modEnvRelease?: number;
+  modEnvDepth?: number;
+  modEnvDest?: string;
   liveFilterFreq: number;     // real engine filter frequency
   liveLfoValue: number;       // real engine LFO output (-1..+1 after depth)
   isRunning: boolean;
@@ -38,22 +46,38 @@ interface FilterLfoVizProps {
   onFilterMinChange?: (value: number) => void;
   onFilterMaxChange?: (value: number) => void;
   onAdsrChange?: (param: 'synthAttack' | 'synthDecay' | 'synthSustain' | 'synthRelease', value: number) => void;
+  onModEnvChange?: (param: 'attack' | 'decay' | 'sustain' | 'release', value: number) => void;
 }
 
 // Approximate filter magnitude response at a given frequency
 // Uses the same effectiveQ formula as the audio engine
-function filterGain(freq: number, cutoff: number, res: number, q: number, type: string, hardness: number): number {
+function filterGain(freq: number, cutoff: number, res: number, q: number, type: string, hardness: number, slope = 12): number {
   const ratio = freq / Math.max(1, cutoff);
   const resonanceBoost = res * (0.7 + hardness * 0.6);
   const lowCutoffBoost = cutoff < 200 ? (1 - cutoff / 200) * 4 : 0;
   const Q = Math.max(0.5, q + resonanceBoost * 8 + lowCutoffBoost);
   const denom = Math.sqrt((1 - ratio * ratio) ** 2 + (ratio / Q) ** 2);
-  switch (type) {
-    case 'highpass': return (ratio * ratio) / denom;
-    case 'bandpass': return (ratio / Q) / denom;
-    case 'notch': return Math.sqrt((1 - ratio * ratio) ** 2) / denom;
-    default: return 1 / denom; // lowpass
-  }
+  const baseGain = (() => {
+    switch (type) {
+      case 'highpass': return (ratio * ratio) / denom;
+      case 'bandpass': return (ratio / Q) / denom;
+      case 'notch': return Math.sqrt((1 - ratio * ratio) ** 2) / denom;
+      default: return 1 / denom; // lowpass
+    }
+  })();
+  const stages = Math.max(1, Math.min(4, Math.round(slope / 12)));
+  if (stages === 1) return baseGain;
+  const neutralQ = Math.min(Q, 0.707);
+  const neutralDenom = Math.sqrt((1 - ratio * ratio) ** 2 + (ratio / neutralQ) ** 2);
+  const neutralGain = (() => {
+    switch (type) {
+      case 'highpass': return (ratio * ratio) / neutralDenom;
+      case 'bandpass': return (ratio / neutralQ) / neutralDenom;
+      case 'notch': return Math.sqrt((1 - ratio * ratio) ** 2) / neutralDenom;
+      default: return 1 / neutralDenom;
+    }
+  })();
+  return baseGain * Math.pow(neutralGain, stages - 1);
 }
 
 // Compute LFO waveform shape for static preview (when stopped)
@@ -79,6 +103,13 @@ function adsrValue(t: number, a: number, d: number, s: number, r: number, noteLe
   const tInRelease = t - sustainEnd;
   if (tInRelease < r) return s * (1 - tInRelease / Math.max(0.001, r));
   return 0;
+}
+
+function loopingModEnvValue(nowSeconds: number, a: number, d: number, s: number, r: number): number {
+  const noteLen = Math.max(0.5, a + d + 1 + r);
+  const totalTime = noteLen + 0.1;
+  const t = ((nowSeconds % totalTime) + totalTime) % totalTime;
+  return adsrValue(t, a, d, s, r, noteLen);
 }
 
 // Max number of samples in the LFO history ring buffer
@@ -149,15 +180,31 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
       ctx.stroke();
     }
 
-    // Live filter cutoff from engine
-    const liveCutoff = props.liveFilterFreq || props.filterACutoff;
+    const showFilterModEnv = props.isRunning && props.modEnvEnabled && props.modEnvDest === 'filterCutoff' && Math.abs(props.modEnvDepth ?? 0) > 0.0001;
+    const modA = props.modEnvAttack ?? props.synthAttack;
+    const modD = props.modEnvDecay ?? props.synthDecay;
+    const modS = props.modEnvSustain ?? props.synthSustain;
+    const modR = props.modEnvRelease ?? props.synthRelease;
+    const filterEnv = showFilterModEnv
+      ? loopingModEnvValue(performance.now() / 1000, modA, modD, modS, modR) * (props.modEnvDepth ?? 0)
+      : 0;
+
+    // Engine telemetry gives the LFO/base cutoff. The mod envelope is visualized
+    // here so the canvas can move smoothly between engine polling ticks.
+    const liveCutoff = Math.max(
+      20,
+      Math.min(
+        20000,
+        (props.liveFilterFreq || props.filterACutoff) + filterEnv * (props.filterCutoffMax - props.filterCutoffMin) * 0.5,
+      ),
+    );
 
     // Store layout for hit testing
     layoutRef.current = { filterH, envY, envH, w, h };
 
     // ── Filter A response curve ──
     const drawFilterCurve = (
-      type: string, cutoff: number, res: number, q: number,
+      type: string, cutoff: number, res: number, q: number, slope: number,
       color: string, alpha: number, fillAlpha: number, hard: number
     ) => {
       ctx.beginPath();
@@ -166,7 +213,7 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
       ctx.lineWidth = 1.5;
       for (let px = 0; px < w; px++) {
         const freq = 20 * Math.pow(20000 / 20, px / w);
-        const g = filterGain(freq, cutoff, res, q, type, hard);
+        const g = filterGain(freq, cutoff, res, q, type, hard, slope);
         const dB = 20 * Math.log10(Math.max(0.001, Math.min(10, g)));
         const y = filterH * 0.5 - (dB / 40) * filterH * 0.4;
         px === 0 ? ctx.moveTo(px, y) : ctx.lineTo(px, y);
@@ -181,10 +228,10 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
       ctx.globalAlpha = 1;
     };
 
-    drawFilterCurve(props.filterAType, liveCutoff, props.filterARes, props.filterAQ, '#10b981', 0.85, 0.08, props.hardness);
+    drawFilterCurve(props.filterAType, liveCutoff, props.filterARes, props.filterAQ, props.filterASlope ?? 12, '#10b981', 0.85, 0.08, props.hardness);
 
     if (props.filterBEnabled && props.filterRouting !== 'aOnly') {
-      drawFilterCurve(props.filterBType, props.filterBCutoff, props.filterBRes, 1, '#3b82f6', 0.6, 0.05, 0);
+      drawFilterCurve(props.filterBType, props.filterBCutoff, props.filterBRes, 1, 12, '#3b82f6', 0.6, 0.05, 0);
     }
 
     // Live cutoff marker
@@ -291,8 +338,14 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
     ctx.fillStyle = 'rgba(255,255,255,0.15)';
     ctx.fillText('FILTER', 4, 11);
 
-    // ── ADSR Envelope (shape from params — illustrative, not live) ──
-    const { synthAttack: a, synthDecay: d, synthSustain: s, synthRelease: r } = props;
+    // ── Envelope shape. When the mod envelope is active, this section shows
+    // the modulation ADSR; otherwise it shows the pad's amp ADSR.
+    const showModEnv = props.modEnvEnabled && props.modEnvDest !== 'none';
+    const a = showModEnv ? props.modEnvAttack ?? props.synthAttack : props.synthAttack;
+    const d = showModEnv ? props.modEnvDecay ?? props.synthDecay : props.synthDecay;
+    const s = showModEnv ? props.modEnvSustain ?? props.synthSustain : props.synthSustain;
+    const r = showModEnv ? props.modEnvRelease ?? props.synthRelease : props.synthRelease;
+    const envDepth = props.modEnvDepth ?? 0;
     const noteLen = Math.max(0.5, a + d + 1 + r);
     const totalTime = noteLen + 0.1;
 
@@ -304,7 +357,8 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
     for (let px = 0; px < w; px++) {
       const t = (px / w) * totalTime;
       const env = adsrValue(t, a, d, s, r, noteLen);
-      const y = envY + envH - 4 - env * (envH - 8);
+      const displayEnv = showModEnv && envDepth < 0 ? 1 - env : env;
+      const y = envY + envH - 4 - displayEnv * (envH - 8);
       px === 0 ? ctx.moveTo(px, y) : ctx.lineTo(px, y);
     }
     ctx.stroke();
@@ -338,15 +392,33 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
 
     ctx.fillStyle = 'rgba(255,255,255,0.15)';
     ctx.font = '8px monospace';
-    ctx.fillText('ENVELOPE', 4, envY + envH - 3);
+    const envLabel = showModEnv
+      ? props.modEnvDest === 'filterCutoff' ? 'FILTER ENV'
+        : props.modEnvDest === 'pitch' ? 'PITCH ENV'
+          : props.modEnvDest === 'oscBLevel' ? 'OSC B ENV'
+            : 'MOD ENV'
+      : 'AMP ENV';
+    ctx.fillText(envLabel, 4, envY + envH - 3);
+
+    if (showModEnv) {
+      ctx.font = '7px monospace';
+      ctx.fillStyle = 'rgba(245,158,11,0.38)';
+      ctx.textAlign = 'right';
+      const depthLabel = props.modEnvDest === 'filterCutoff'
+        ? `${envDepth >= 0 ? '+' : ''}${Math.round(envDepth * 50)}% range`
+        : `${envDepth >= 0 ? '+' : ''}${envDepth.toFixed(2)}`;
+      ctx.fillText(depthLabel, w - 4, envY + envH - 3);
+      ctx.textAlign = 'start';
+    }
 
     // ADSR drag handles (at the breakpoints A, D, S, R)
-    if (props.onAdsrChange) {
+    if (props.onAdsrChange || props.onModEnvChange) {
       // A handle: top of attack at (ax, envY + 4)
       const aHandleY = envY + 4;
       drawHandle(ax, aHandleY, 'adsrAttack', '#f59e0b');
       // D handle: end of decay at (dx, sustainLineY)
-      const sustainLineY = envY + envH - 4 - s * (envH - 8);
+      const displaySustain = showModEnv && envDepth < 0 ? 1 - s : s;
+      const sustainLineY = envY + envH - 4 - displaySustain * (envH - 8);
       drawHandle(dx, sustainLineY, 'adsrDecay', '#f59e0b');
       // S handle: sustain level (middle of sustain phase)
       const sMidX = (dx + sx) / 2;
@@ -544,8 +616,32 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
   }, [props.isRunning, props.lfoDest, props.liveLfoValue]);
 
   useEffect(() => {
-    requestDraw();
-  }, [requestDraw, canAnimate]);
+    if (!canAnimate) return;
+    const hasAnimatedModEnv = props.isRunning
+      && props.modEnvEnabled
+      && props.modEnvDest === 'filterCutoff'
+      && Math.abs(props.modEnvDepth ?? 0) > 0.0001;
+    if (!hasAnimatedModEnv) {
+      requestDraw();
+      return;
+    }
+
+    let frame = 0;
+    const tick = () => {
+      draw();
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [
+    canAnimate,
+    draw,
+    props.isRunning,
+    props.modEnvDepth,
+    props.modEnvDest,
+    props.modEnvEnabled,
+    requestDraw,
+  ]);
 
   useEffect(() => {
     const handleResize = () => requestDraw();
@@ -571,14 +667,20 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
     if (props.onFilterMaxChange && Math.abs(cx - maxX) < DRAG_HIT_PX && Math.abs(cy - filterHandleY) < DRAG_HIT_PX * 2) return 'filterMax';
 
     // Check ADSR handles
-    if (props.onAdsrChange) {
-      const { synthAttack: a, synthDecay: d, synthSustain: s, synthRelease: r } = props;
+    if (props.onAdsrChange || props.onModEnvChange) {
+      const showModEnv = props.modEnvEnabled && props.modEnvDest !== 'none';
+      const a = showModEnv ? props.modEnvAttack ?? props.synthAttack : props.synthAttack;
+      const d = showModEnv ? props.modEnvDecay ?? props.synthDecay : props.synthDecay;
+      const s = showModEnv ? props.modEnvSustain ?? props.synthSustain : props.synthSustain;
+      const r = showModEnv ? props.modEnvRelease ?? props.synthRelease : props.synthRelease;
+      const envDepth = props.modEnvDepth ?? 0;
       const noteLen = Math.max(0.5, a + d + 1 + r);
       const totalTime = noteLen + 0.1;
       const ax = (a / totalTime) * w;
       const dx = ((a + d) / totalTime) * w;
       const sx = ((noteLen - r) / totalTime) * w;
-      const sustainLineY = envY + envH - 4 - s * (envH - 8);
+      const displaySustain = showModEnv && envDepth < 0 ? 1 - s : s;
+      const sustainLineY = envY + envH - 4 - displaySustain * (envH - 8);
       const aHandleY = envY + 4;
       const sMidX = (dx + sx) / 2;
 
@@ -586,7 +688,7 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
       if (Math.abs(cx - dx) < DRAG_HIT_PX && Math.abs(cy - sustainLineY) < DRAG_HIT_PX) return 'adsrDecay';
       if (Math.abs(cx - sMidX) < DRAG_HIT_PX && cy > envY && cy < envY + envH) return 'adsrSustain';
       // Release handle at far right
-      if (Math.abs(cx - sx) < DRAG_HIT_PX && cy > envY && cy < envY + envH) return 'adsrRelease';
+      if (Math.abs(cx - w) < DRAG_HIT_PX && cy > envY && cy < envY + envH) return 'adsrRelease';
     }
 
     return null;
@@ -620,33 +722,49 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
       }
     } else if (target === 'adsrAttack') {
       // Attack: horizontal drag = attack time
-      const { synthDecay: d, synthSustain: _s, synthRelease: r } = props;
-      const noteLen = Math.max(0.5, props.synthAttack + d + 1 + r);
+      const showModEnv = props.modEnvEnabled && props.modEnvDest !== 'none';
+      const d = showModEnv ? props.modEnvDecay ?? props.synthDecay : props.synthDecay;
+      const r = showModEnv ? props.modEnvRelease ?? props.synthRelease : props.synthRelease;
+      const currentA = showModEnv ? props.modEnvAttack ?? props.synthAttack : props.synthAttack;
+      const noteLen = Math.max(0.5, currentA + d + 1 + r);
       const totalTime = noteLen + 0.1;
       const newA = Math.max(0.01, Math.min(8, (cx / w) * totalTime));
-      props.onAdsrChange?.('synthAttack', parseFloat(newA.toFixed(2)));
+      if (showModEnv && props.onModEnvChange) props.onModEnvChange('attack', parseFloat(newA.toFixed(2)));
+      else props.onAdsrChange?.('synthAttack', parseFloat(newA.toFixed(2)));
     } else if (target === 'adsrDecay') {
       // Decay: horizontal drag from attack end
-      const { synthAttack: a, synthSustain: _s, synthRelease: r } = props;
-      const noteLen = Math.max(0.5, a + props.synthDecay + 1 + r);
+      const showModEnv = props.modEnvEnabled && props.modEnvDest !== 'none';
+      const a = showModEnv ? props.modEnvAttack ?? props.synthAttack : props.synthAttack;
+      const currentD = showModEnv ? props.modEnvDecay ?? props.synthDecay : props.synthDecay;
+      const r = showModEnv ? props.modEnvRelease ?? props.synthRelease : props.synthRelease;
+      const noteLen = Math.max(0.5, a + currentD + 1 + r);
       const totalTime = noteLen + 0.1;
       const tAtX = (cx / w) * totalTime;
       const newD = Math.max(0.01, Math.min(8, tAtX - a));
-      props.onAdsrChange?.('synthDecay', parseFloat(newD.toFixed(2)));
+      if (showModEnv && props.onModEnvChange) props.onModEnvChange('decay', parseFloat(newD.toFixed(2)));
+      else props.onAdsrChange?.('synthDecay', parseFloat(newD.toFixed(2)));
     } else if (target === 'adsrSustain') {
       // Sustain: vertical drag = level
       const relY = (cy - envY - 4) / (envH - 8);
-      const newS = Math.max(0, Math.min(1, 1 - relY));
-      props.onAdsrChange?.('synthSustain', parseFloat(newS.toFixed(2)));
+      const showModEnv = props.modEnvEnabled && props.modEnvDest !== 'none';
+      const envDepth = props.modEnvDepth ?? 0;
+      const rawS = Math.max(0, Math.min(1, 1 - relY));
+      const newS = showModEnv && envDepth < 0 ? 1 - rawS : rawS;
+      if (showModEnv && props.onModEnvChange) props.onModEnvChange('sustain', parseFloat(newS.toFixed(2)));
+      else props.onAdsrChange?.('synthSustain', parseFloat(newS.toFixed(2)));
     } else if (target === 'adsrRelease') {
       // Release: horizontal drag from sustain end
-      const { synthAttack: a, synthDecay: d } = props;
-      const noteLen = Math.max(0.5, a + d + 1 + props.synthRelease);
+      const showModEnv = props.modEnvEnabled && props.modEnvDest !== 'none';
+      const a = showModEnv ? props.modEnvAttack ?? props.synthAttack : props.synthAttack;
+      const d = showModEnv ? props.modEnvDecay ?? props.synthDecay : props.synthDecay;
+      const currentR = showModEnv ? props.modEnvRelease ?? props.synthRelease : props.synthRelease;
+      const noteLen = Math.max(0.5, a + d + 1 + currentR);
       const totalTime = noteLen + 0.1;
       const tAtX = (cx / w) * totalTime;
       // Release extends from sustain end to end. Moving left = longer release
       const newR2 = Math.max(0.01, Math.min(16, totalTime - tAtX));
-      props.onAdsrChange?.('synthRelease', parseFloat(newR2.toFixed(2)));
+      if (showModEnv && props.onModEnvChange) props.onModEnvChange('release', parseFloat(newR2.toFixed(2)));
+      else props.onAdsrChange?.('synthRelease', parseFloat(newR2.toFixed(2)));
     }
   }, [props]);
 

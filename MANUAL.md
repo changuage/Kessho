@@ -207,6 +207,8 @@ Shapes the tonal character of the pad synth.
 | **Filter Mod Speed** | 0-16 phrases | How many phrases per full filter cycle (0=static) |
 | **Filter Resonance** | 0-100% | Peak emphasis at cutoff frequency |
 | **Filter Q** | 0.1-12 | Filter bandwidth/sharpness |
+| **Filter Slope** | 12-48 dB/oct | Stop-band rolloff steepness after the cutoff |
+| **Filter Key Track** | 0-100% | Makes the filter cutoff follow played note pitch |
 | **Warmth** | 0-100% | Low-frequency shelf boost |
 | **Presence** | 0-100% | High-mid emphasis |
 | **Air/Noise** | 0-100% | Breathy noise layer amount |
@@ -284,6 +286,7 @@ The Lead Synth provides two independent melodic voices (**Lead 1** and **Lead 2*
 | **Density** | 0.1-12 | Notes per phrase (sparseness) |
 | **Octave** | -1 to +2 | Base octave offset |
 | **Octave Range** | 1-4 | Octaves spanned by random notes |
+| **Post LPF Key Track** | 0-100% | Makes each lead's post low-pass filter follow note pitch |
 
 #### 4op FM Preset Morph
 

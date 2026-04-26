@@ -149,6 +149,8 @@ void pad_set_filter_cutoff_min(int pad_idx, float hz);
 void pad_set_filter_cutoff_max(int pad_idx, float hz);
 void pad_set_filter_resonance(int pad_idx, float resonance);
 void pad_set_filter_q(int pad_idx, float q);
+void pad_set_filter_slope(int pad_idx, float db_per_oct);
+void pad_set_filter_key_tracking(int pad_idx, float amount);
 
 // Filter B
 void pad_set_filter_b_enabled(int pad_idx, int enabled);

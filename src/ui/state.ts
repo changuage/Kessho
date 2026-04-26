@@ -311,6 +311,8 @@ export interface SliderState {
   filterCutoffMax: number;    // 40..8000 Hz - upper bound of filter sweep
   filterResonance: number;    // 0..1 step 0.01 (resonance peak)
   filterQ: number;            // 0.1..12 step 0.1 (filter bandwidth/angle)
+  filterSlope: number;        // 12..48 dB/oct - stop-band rolloff steepness
+  filterKeyTracking: number;  // 0..1 - cutoff follows played note pitch
   warmth: number;             // 0..1 step 0.01 (low shelf boost)
   presence: number;           // 0..1 step 0.01 (high-mid presence)
   padFoldAmount: number;      // 0..1 wave fold amount
@@ -406,6 +408,8 @@ export interface SliderState {
   pad2FilterCutoffMax: number;
   pad2FilterResonance: number;
   pad2FilterQ: number;
+  pad2FilterSlope: number;
+  pad2FilterKeyTracking: number;
   // Oscillators
   pad2OscAWave: 'sine' | 'triangle' | 'sawtooth' | 'square';
   pad2OscAOctave: number;
@@ -574,6 +578,7 @@ export interface SliderState {
   lead1ReverbSend: number;    // 0..1 step 0.01 - how much lead 1 goes to reverb
   lead1Distance: number;      // 0..1 expressive placement macro
   lead1PostLPF: number;       // 40..8000 Hz post-voice LPF
+  lead1PostLPFKeyTracking: number; // 0..1 - post LPF follows most recent note
   lead1StereoWidth: number;   // 0..1 post-voice stereo width
   lead1DiffuseSend: number;   // 0..1 diffuse room send
 
@@ -596,6 +601,7 @@ export interface SliderState {
   lead2Release: number;        // 0.01..8 seconds
   lead2Distance: number;
   lead2PostLPF: number;       // 40..8000 Hz post-voice LPF
+  lead2PostLPFKeyTracking: number;
   lead2StereoWidth: number;
   lead2DiffuseSend: number;
 
@@ -1011,7 +1017,7 @@ export interface SliderState {
   waterMorph: number;           // 0..1 morph position
   waterIntensity: number;       // 0..1
   waterDistance: number;        // 0..1
-  waterBaseFreq: number;        // 100..8000 Hz
+  waterBaseFreq: number;        // legacy shared base frequency fallback
   waterDropSize: number;        // 0..1
   waterHardness: number;        // 0..1
   waterGlassThickness: number;  // 0..1
@@ -1027,9 +1033,11 @@ export interface SliderState {
   waterLayerSurf: number;       // 0..1
   waterLayerChannels: number;   // 0..1
   // Per-layer event controls for the three discrete water event layers
+  waterHardDropBaseFreq: number;  // 100..8000 Hz hard-drop resonant activity
   waterHardDropRate: number;      // 0..2 source-local event-rate multiplier
   waterHardDropLPF: number;       // 50..16000 Hz resonant LPF cutoff
   waterHardDropTone: number;      // 0..1 tonal -> short rupture morph
+  waterWaterDropBaseFreq: number; // 100..8000 Hz water-drop pitch/brightness
   waterWaterDropRate: number;     // 0..2 source-local event-rate multiplier
   waterWaterDropLPF: number;      // 50..16000 Hz resonant LPF cutoff
   waterBubblingRate: number;      // 0..2 source-local event-rate multiplier
@@ -1336,6 +1344,8 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'filterCutoffMax',
   'filterResonance',
   'filterQ',
+  'filterSlope',
+  'filterKeyTracking',
   'warmth',
   'presence',
   'padFoldAmount',
@@ -1405,6 +1415,8 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'pad2FilterCutoffMax',
   'pad2FilterResonance',
   'pad2FilterQ',
+  'pad2FilterSlope',
+  'pad2FilterKeyTracking',
   'pad2OscAWave',
   'pad2OscAOctave',
   'pad2OscADetune',
@@ -1549,6 +1561,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'lead1ReverbSend',
   'lead1Distance',
   'lead1PostLPF',
+  'lead1PostLPFKeyTracking',
   'lead1StereoWidth',
   'lead1DiffuseSend',
   // Lead 2 morph
@@ -1569,6 +1582,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'lead2Release',
   'lead2Distance',
   'lead2PostLPF',
+  'lead2PostLPFKeyTracking',
   'lead2StereoWidth',
   'lead2DiffuseSend',
   'pianoEnabled',
@@ -1903,8 +1917,8 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'waterReverbSend', 'waterDelayASend', 'waterDelayBSend', 'waterLevel',
   'waterLayerHardDrops', 'waterLayerWaterDrops', 'waterLayerTurbulence',
   'waterLayerBubbling', 'waterLayerSurf', 'waterLayerChannels',
-  'waterHardDropRate', 'waterHardDropLPF', 'waterHardDropTone',
-  'waterWaterDropRate', 'waterWaterDropLPF',
+  'waterHardDropBaseFreq', 'waterHardDropRate', 'waterHardDropLPF', 'waterHardDropTone',
+  'waterWaterDropBaseFreq', 'waterWaterDropRate', 'waterWaterDropLPF',
   'waterBubblingRate', 'waterBubblingLPF',
   'waterSurfDuration', 'waterSurfInterval', 'waterSurfFoam', 'waterSurfFoamBright', 'waterSurfProximity', 'waterSurfDepth',
   'waterSurfBody', 'waterSurfSpray',
@@ -2086,6 +2100,8 @@ export const DEFAULT_STATE: SliderState = {
   filterCutoffMax: 3000,
   filterResonance: 0.2,
   filterQ: 1.0,
+  filterSlope: 12,
+  filterKeyTracking: 0,
   warmth: 0.4,
   presence: 0.3,
   padFoldAmount: 0,
@@ -2157,6 +2173,8 @@ export const DEFAULT_STATE: SliderState = {
   pad2FilterCutoffMax: 3000,
   pad2FilterResonance: 0.2,
   pad2FilterQ: 1.0,
+  pad2FilterSlope: 12,
+  pad2FilterKeyTracking: 0,
   pad2OscAWave: 'sawtooth' as const,
   pad2OscAOctave: 0,
   pad2OscADetune: 0,
@@ -2316,6 +2334,7 @@ export const DEFAULT_STATE: SliderState = {
   lead1ReverbSend: 0.5,
   lead1Distance: 0,
   lead1PostLPF: 18000,
+  lead1PostLPFKeyTracking: 0,
   lead1StereoWidth: 1,
   lead1DiffuseSend: 0,
   // Lead 2 — 4op FM preset morph
@@ -2337,6 +2356,7 @@ export const DEFAULT_STATE: SliderState = {
   lead2Release: 2.0,
   lead2Distance: 0,
   lead2PostLPF: 18000,
+  lead2PostLPFKeyTracking: 0,
   lead2StereoWidth: 1,
   lead2DiffuseSend: 0,
   pianoEnabled: false,
@@ -2753,9 +2773,11 @@ export const DEFAULT_STATE: SliderState = {
   waterLayerBubbling: 0.92,
   waterLayerSurf: 0.0,
   waterLayerChannels: 0.0,
+  waterHardDropBaseFreq: 2300,
   waterHardDropRate: 1.0,
   waterHardDropLPF: 12000,
   waterHardDropTone: 1.0,
+  waterWaterDropBaseFreq: 2300,
   waterWaterDropRate: 1.0,
   waterWaterDropLPF: 16000,
   waterBubblingRate: 1.0,
@@ -3041,6 +3063,8 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   filterCutoffMax: { min: 40, max: 8000, step: 10 },
   filterResonance: { min: 0, max: 1, step: 0.01 },
   filterQ: { min: 0.1, max: 12, step: 0.1 },
+  filterSlope: { min: 12, max: 48, step: 12 },
+  filterKeyTracking: { min: 0, max: 1, step: 0.01 },
   warmth: { min: 0, max: 1, step: 0.01 },
   presence: { min: 0, max: 1, step: 0.01 },
   padFoldAmount: { min: 0, max: 1, step: 0.01 },
@@ -3091,6 +3115,8 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   pad2FilterCutoffMax: { min: 40, max: 8000, step: 10 },
   pad2FilterResonance: { min: 0, max: 1, step: 0.01 },
   pad2FilterQ: { min: 0.1, max: 12, step: 0.1 },
+  pad2FilterSlope: { min: 12, max: 48, step: 12 },
+  pad2FilterKeyTracking: { min: 0, max: 1, step: 0.01 },
   pad2OscAOctave: { min: -2, max: 2, step: 1 },
   pad2OscADetune: { min: -100, max: 100, step: 1 },
   pad2OscALevel: { min: 0, max: 1, step: 0.01 },
@@ -3348,6 +3374,7 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   lead1ReverbSend: { min: 0, max: 1, step: 0.01 },
   lead1Distance: { min: 0, max: 1, step: 0.01 },
   lead1PostLPF: { min: 40, max: 8000, step: 10 },
+  lead1PostLPFKeyTracking: { min: 0, max: 1, step: 0.01 },
   lead1StereoWidth: { min: 0, max: 1, step: 0.01 },
   lead1DiffuseSend: { min: 0, max: 1, step: 0.01 },
   lead2Morph: { min: 0, max: 1, step: 0.01 },
@@ -3361,6 +3388,7 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   lead2Release: { min: 0.01, max: 8, step: 0.01 },
   lead2Distance: { min: 0, max: 1, step: 0.01 },
   lead2PostLPF: { min: 40, max: 8000, step: 10 },
+  lead2PostLPFKeyTracking: { min: 0, max: 1, step: 0.01 },
   lead2StereoWidth: { min: 0, max: 1, step: 0.01 },
   lead2DiffuseSend: { min: 0, max: 1, step: 0.01 },
   pianoLevel: { min: 0, max: 1, step: 0.01 },
@@ -3494,9 +3522,11 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   waterLayerBubbling: { min: 0, max: 1, step: 0.01 },
   waterLayerSurf: { min: 0, max: 1, step: 0.01 },
   waterLayerChannels: { min: 0, max: 1, step: 0.01 },
+  waterHardDropBaseFreq: { min: 100, max: 8000, step: 10 },
   waterHardDropRate: { min: 0, max: 2, step: 0.01 },
   waterHardDropLPF: { min: 50, max: 16000, step: 1 },
   waterHardDropTone: { min: 0, max: 1, step: 0.01 },
+  waterWaterDropBaseFreq: { min: 100, max: 8000, step: 10 },
   waterWaterDropRate: { min: 0, max: 2, step: 0.01 },
   waterWaterDropLPF: { min: 50, max: 16000, step: 1 },
   waterBubblingRate: { min: 0, max: 2, step: 0.01 },

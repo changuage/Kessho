@@ -96,6 +96,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_presets_v2_owner_type_scope_name
 CREATE INDEX IF NOT EXISTS idx_presets_v2_type_scope
   ON presets_v2(type, scope);
 
+CREATE INDEX IF NOT EXISTS idx_presets_v2_type_scope_hash
+  ON presets_v2(type, scope, latest_resolved_hash)
+  WHERE latest_resolved_hash IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_presets_v2_tags_gin
+  ON presets_v2 USING gin(tags);
+
 CREATE INDEX IF NOT EXISTS idx_presets_v2_visibility
   ON presets_v2(visibility)
   WHERE visibility IN ('public', 'featured');
@@ -146,7 +153,8 @@ CREATE INDEX IF NOT EXISTS idx_preset_versions_v2_parent
 -- Explicit child refs per version. This is the graph edge table.
 -- Example slots:
 -- - state preset: synth, drums, granular, reverb, delay, earth
--- - synth source preset: pad1Kit, pad2Kit, lead1Kit, lead2Kit, synthEuclidean
+-- - synth source preset: pad1Kit, pad2Kit, lead1Kit, lead2Kit, euclideanPattern
+-- - drums source preset: drumKit, euclideanPattern
 -- - granular kit preset: voice1, voice2, voice3, voice4, legacy
 CREATE TABLE IF NOT EXISTS preset_version_refs_v2 (
   version_id UUID NOT NULL REFERENCES preset_versions_v2(id) ON DELETE CASCADE,
@@ -261,6 +269,10 @@ CREATE POLICY "presets_v2_read_shared_or_own" ON presets_v2
   FOR SELECT USING (
     visibility IN ('public', 'featured')
     OR auth.uid() = owner_user_id
+    OR (
+      auth.uid() IS NOT NULL
+      AND 'internal-derived' = ANY(tags)
+    )
   );
 
 CREATE POLICY "presets_v2_insert_shared_or_own" ON presets_v2
@@ -353,5 +365,54 @@ CREATE POLICY "preset_payloads_v2_read_testing" ON preset_payloads_v2
 
 CREATE POLICY "preset_payloads_v2_insert_testing" ON preset_payloads_v2
   FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
+
+CREATE OR REPLACE FUNCTION kessho_prune_preset_versions_v2(keep_count INTEGER DEFAULT 5)
+RETURNS INTEGER AS $$
+DECLARE
+  deleted_count INTEGER := 0;
+BEGIN
+  IF keep_count < 1 THEN
+    RAISE EXCEPTION 'keep_count must be >= 1';
+  END IF;
+
+  WITH ranked AS (
+    SELECT
+      id,
+      row_number() OVER (PARTITION BY preset_id ORDER BY version_no DESC) AS version_rank
+    FROM preset_versions_v2
+  )
+  DELETE FROM preset_versions_v2 v
+  USING ranked r
+  WHERE v.id = r.id
+    AND r.version_rank > keep_count;
+
+  GET DIAGNOSTICS deleted_count = ROW_COUNT;
+  RETURN deleted_count;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+CREATE OR REPLACE FUNCTION kessho_prune_internal_derived_v2()
+RETURNS INTEGER AS $$
+DECLARE
+  deleted_count INTEGER := 0;
+  total_deleted INTEGER := 0;
+BEGIN
+  LOOP
+    DELETE FROM presets_v2 p
+    WHERE 'internal-derived' = ANY(p.tags)
+      AND NOT EXISTS (
+        SELECT 1
+        FROM preset_version_refs_v2 r
+        WHERE r.target_preset_id = p.id
+      );
+
+    GET DIAGNOSTICS deleted_count = ROW_COUNT;
+    total_deleted := total_deleted + deleted_count;
+    EXIT WHEN deleted_count = 0;
+  END LOOP;
+
+  RETURN total_deleted;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 COMMIT;

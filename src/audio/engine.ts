@@ -92,6 +92,7 @@ type StereoWidthProcessor = {
 
 type VoiceSpatialChain = {
   postLpf: BiquadFilterNode;
+  postLpfStage2: BiquadFilterNode | null;
   width: StereoWidthProcessor;
   diffuseSend: GainNode;
   output: GainNode;
@@ -373,7 +374,7 @@ const PAD1_TO_PAD2_ENGINE: Record<string, string> = {
   padNoiseType: 'pad2NoiseType', padNoiseLevel: 'pad2NoiseLevel',
   hardness: 'pad2Hardness', warmth: 'pad2Warmth', presence: 'pad2Presence',
   filterType: 'pad2FilterType', filterCutoffMin: 'pad2FilterCutoffMin', filterCutoffMax: 'pad2FilterCutoffMax',
-  filterResonance: 'pad2FilterResonance', filterQ: 'pad2FilterQ',
+  filterResonance: 'pad2FilterResonance', filterQ: 'pad2FilterQ', filterSlope: 'pad2FilterSlope', filterKeyTracking: 'pad2FilterKeyTracking',
   padFilterBEnabled: 'pad2FilterBEnabled', padFilterBType: 'pad2FilterBType', padFilterBCutoff: 'pad2FilterBCutoff',
   padFilterBResonance: 'pad2FilterBResonance', padFilterBQ: 'pad2FilterBQ', padFilterRouting: 'pad2FilterRouting',
   synthAttack: 'pad2Attack', synthDecay: 'pad2Decay', synthSustain: 'pad2Sustain', synthRelease: 'pad2Release',
@@ -775,6 +776,8 @@ export class AudioEngine {
   private pianoReverbSend: GainNode | null = null;
   private lead1SpatialChain: VoiceSpatialChain | null = null;
   private lead2SpatialChain: VoiceSpatialChain | null = null;
+  private lead1PostLpfTrackingFreq = 261.6255653005986;
+  private lead2PostLpfTrackingFreq = 261.6255653005986;
   private pianoSpatialChain: VoiceSpatialChain | null = null;
   private readonly pianoBuffers: { regular: Map<number, AudioBuffer>; short: Map<number, AudioBuffer> } = {
     regular: new Map(),
@@ -943,6 +946,10 @@ export class AudioEngine {
   private currentFilterFreq = 1000;  // Current filter frequency for UI display
   private currentLfoValue = 0;       // Current LFO 1 output (-1..+1 after depth) for UI
   private currentLfo2Value = 0;      // Current LFO 2 output (-1..+1 after depth) for UI
+  private currentPad1FilterFreq = 1000;
+  private currentPad2FilterFreq = 1000;
+  private currentPad1LfoValue = 0;
+  private currentPad2LfoValue = 0;
 
   private onStateChange: ((state: EngineState) => void) | null = null;
   private onLeadExpressionTrigger: ((expression: { vibratoDepth: number; vibratoRate: number; glide: number }) => void) | null = null;
@@ -2580,6 +2587,7 @@ export class AudioEngine {
       initialStereoWidth: number;
       initialDiffuseSend: number;
       dryDestination: AudioNode;
+      postLpfSlope?: 12 | 24;
     },
   ): VoiceSpatialChain {
     this.ensureDiffuseBus(ctx);
@@ -2587,11 +2595,22 @@ export class AudioEngine {
     postLpf.type = 'lowpass';
     postLpf.frequency.value = options.initialPostLpf;
     postLpf.Q.value = 0.7;
+    const postLpfStage2 = options.postLpfSlope === 24 ? ctx.createBiquadFilter() : null;
+    if (postLpfStage2) {
+      postLpfStage2.type = 'lowpass';
+      postLpfStage2.frequency.value = options.initialPostLpf;
+      postLpfStage2.Q.value = 0.7;
+    }
     const width = this.createStereoWidthProcessor(ctx, options.initialStereoWidth);
     const diffuseSend = ctx.createGain();
     diffuseSend.gain.value = options.initialDiffuseSend;
 
-    postLpf.connect(width.input);
+    if (postLpfStage2) {
+      postLpf.connect(postLpfStage2);
+      postLpfStage2.connect(width.input);
+    } else {
+      postLpf.connect(width.input);
+    }
     width.output.connect(options.dryDestination);
     if (this.diffuseInputBus) {
       width.output.connect(diffuseSend);
@@ -2600,6 +2619,7 @@ export class AudioEngine {
 
     return {
       postLpf,
+      postLpfStage2,
       width,
       diffuseSend,
       output: width.output,
@@ -2609,6 +2629,7 @@ export class AudioEngine {
   private disposeVoiceSpatialChain(chain: VoiceSpatialChain | null): void {
     if (!chain) return;
     try { chain.postLpf.disconnect(); } catch { /* ignore stale spatial filter */ }
+    try { chain.postLpfStage2?.disconnect(); } catch { /* ignore stale spatial filter */ }
     try { chain.diffuseSend.disconnect(); } catch { /* ignore stale diffuse send */ }
     this.disposeStereoWidthProcessor(chain.width);
   }
@@ -2628,8 +2649,42 @@ export class AudioEngine {
     const activeWidth = options.active ? options.stereoWidth : 1;
     const activeDiffuse = options.active ? options.diffuseSend : 0;
     chain.postLpf.frequency.setTargetAtTime(options.postLpf, options.now, options.smoothTime);
+    chain.postLpfStage2?.frequency.setTargetAtTime(options.postLpf, options.now, options.smoothTime);
     chain.diffuseSend.gain.setTargetAtTime(activeDiffuse, options.now, options.smoothTime);
     this.setStereoWidthProcessor(chain.width, activeWidth, options.now, options.smoothTime);
+  }
+
+  private applyFilterKeyTracking(baseCutoff: number, noteFreq: number, amount: number): number {
+    const safeCutoff = Number.isFinite(baseCutoff) ? baseCutoff : 18000;
+    const safeAmount = Math.max(0, Math.min(1, Number.isFinite(amount) ? amount : 0));
+    if (safeAmount <= 0.0001) return safeCutoff;
+    const safeFreq = Number.isFinite(noteFreq) && noteFreq > 0 ? noteFreq : 261.6255653005986;
+    const ratio = Math.max(0.125, Math.min(8, safeFreq / 261.6255653005986));
+    return Math.max(20, Math.min(20000, safeCutoff * Math.pow(ratio, safeAmount)));
+  }
+
+  private getLeadPostLpfCutoff(state: SliderState, lead: 'lead1' | 'lead2'): number {
+    const isLead2 = lead === 'lead2';
+    const baseKey = isLead2 ? 'lead2PostLPF' : 'lead1PostLPF';
+    const trackingKey = isLead2 ? 'lead2PostLPFKeyTracking' : 'lead1PostLPFKeyTracking';
+    const noteFreq = isLead2 ? this.lead2PostLpfTrackingFreq : this.lead1PostLpfTrackingFreq;
+    const baseCutoff = applyDistanceValue(baseKey, state, lead);
+    const trackingBase = isLead2 ? state.lead2PostLPFKeyTracking : state.lead1PostLPFKeyTracking;
+    const tracking = this.shv(trackingKey, trackingBase ?? 0);
+    return this.applyFilterKeyTracking(baseCutoff, noteFreq, tracking);
+  }
+
+  private updateLeadPostLpfForNote(lead: 'lead1' | 'lead2', frequency: number): void {
+    if (!this.ctx || !this.sliderState) return;
+    if (lead === 'lead2') {
+      this.lead2PostLpfTrackingFreq = frequency;
+    } else {
+      this.lead1PostLpfTrackingFreq = frequency;
+    }
+    const chain = lead === 'lead2' ? this.lead2SpatialChain : this.lead1SpatialChain;
+    const cutoff = this.getLeadPostLpfCutoff(this.sliderState, lead);
+    chain?.postLpf.frequency.setTargetAtTime(cutoff, this.ctx.currentTime, 0.01);
+    chain?.postLpfStage2?.frequency.setTargetAtTime(cutoff, this.ctx.currentTime, 0.01);
   }
 
   private createEarthTextureRuntime(
@@ -3939,6 +3994,14 @@ export class AudioEngine {
 
   getCurrentLfoValue(): number {
     return this.currentLfoValue;
+  }
+
+  getCurrentPadFilterFreq(pad: 'pad1' | 'pad2' = 'pad1'): number {
+    return pad === 'pad2' ? this.currentPad2FilterFreq : this.currentPad1FilterFreq;
+  }
+
+  getCurrentPadLfoValue(pad: 'pad1' | 'pad2' = 'pad1'): number {
+    return pad === 'pad2' ? this.currentPad2LfoValue : this.currentPad1LfoValue;
   }
 
   getCurrentLfo2Value(): number {
@@ -5678,22 +5741,25 @@ export class AudioEngine {
       dryDestination: this.synthBus!,
     });
     this.lead1SpatialChain = this.createVoiceSpatialChain(ctx, {
-      initialPostLpf: applyDistanceValue('lead1PostLPF', this.sliderState!, 'lead1'),
+      initialPostLpf: this.getLeadPostLpfCutoff(this.sliderState!, 'lead1'),
       initialStereoWidth: applyDistanceValue('lead1StereoWidth', this.sliderState!, 'lead1'),
       initialDiffuseSend: applyDistanceValue('lead1DiffuseSend', this.sliderState!, 'lead1'),
       dryDestination: this.leadVoiceLevel!,
+      postLpfSlope: 24,
     });
     this.lead2SpatialChain = this.createVoiceSpatialChain(ctx, {
-      initialPostLpf: applyDistanceValue('lead2PostLPF', this.sliderState!, 'lead2'),
+      initialPostLpf: this.getLeadPostLpfCutoff(this.sliderState!, 'lead2'),
       initialStereoWidth: applyDistanceValue('lead2StereoWidth', this.sliderState!, 'lead2'),
       initialDiffuseSend: applyDistanceValue('lead2DiffuseSend', this.sliderState!, 'lead2'),
       dryDestination: this.leadVoiceLevel!,
+      postLpfSlope: 24,
     });
     this.pianoSpatialChain = this.createVoiceSpatialChain(ctx, {
       initialPostLpf: applyDistanceValue('pianoPostLPF', this.sliderState!, 'piano'),
       initialStereoWidth: applyDistanceValue('pianoStereoWidth', this.sliderState!, 'piano'),
       initialDiffuseSend: applyDistanceValue('pianoDiffuseSend', this.sliderState!, 'piano'),
       dryDestination: this.masterGain!,
+      postLpfSlope: 24,
     });
 
     // Route voices to pad buses based on pad2VoiceAssign
@@ -7761,11 +7827,12 @@ export class AudioEngine {
         const mAP = mA / mCycle, mDP = (mA + mD) / mCycle;
         let mV = mPh < mAP ? mPh / mAP : mPh < mDP ? 1 - (1 - mS) * ((mPh - mAP) / (mDP - mAP)) : mS;
         mV *= shv('padModEnvDepth', padState.padModEnvDepth ?? 0);
-        if (mDest === 'filterCutoff') modEnvFilterMod = mV * (maxCutoff - minCutoff);
+        if (mDest === 'filterCutoff') modEnvFilterMod = mV * (maxCutoff - minCutoff) * 0.5;
         else modEnvPitchCents = mV * 400;
       }
     }
 
+    const p1FilterCutoffWithoutEnv = fin(Math.max(20, Math.min(20000, cutoff + lfo1FiltMod + lfo2FiltMod)), 1000);
     const p1 = {
       oscAWave, oscBWave, subEnabled, subWave: (padState.padSubWave ?? 'sine') as OscillatorType,
       effectiveALevel: fin(effectiveALevel, 0), effectiveBLevel: fin(effectiveBLevel, 0),
@@ -7791,16 +7858,21 @@ export class AudioEngine {
     };
 
     this.currentFilterFreq = p1.finalCutoff;
+    this.currentPad1FilterFreq = p1FilterCutoffWithoutEnv;
+    this.currentPad1LfoValue = lfoValue;
 
     // ── Build Pad 2 derived param set (only when enabled + voices assigned) ──
     const pad2Assign = state.pad2VoiceAssign ?? 0;
     const pad2On = state.pad2Enabled === true;
     let p2 = p1;
-    if (pad2On && pad2Assign) {
+    let p2l1ValForUi = 0;
+    let p2FilterCutoffForUi = p1FilterCutoffWithoutEnv;
+    if (pad2On) {
       const p2l1Dest = (padState.pad2Lfo1Dest ?? 'none') as string;
       const p2l2Dest = (padState.pad2Lfo2Dest ?? 'none') as string;
       const p2l1Val = this.computeLfoValue(now, shv('pad2Lfo1Rate', padState.pad2Lfo1Rate ?? 0.5), shv('pad2Lfo1Depth', padState.pad2Lfo1Depth ?? 0), padState.pad2Lfo1Wave ?? 'sine', p2l1Dest, this.pad2Lfo1State);
       const p2l2Val = this.computeLfoValue(now, shv('pad2Lfo2Rate', padState.pad2Lfo2Rate ?? 0.5), shv('pad2Lfo2Depth', padState.pad2Lfo2Depth ?? 0), padState.pad2Lfo2Wave ?? 'sine', p2l2Dest, this.pad2Lfo2State);
+      p2l1ValForUi = p2l1Val;
 
       const minC2 = Math.min(shv('pad2FilterCutoffMin', padState.pad2FilterCutoffMin), shv('pad2FilterCutoffMax', padState.pad2FilterCutoffMax));
       const maxC2 = Math.max(shv('pad2FilterCutoffMin', padState.pad2FilterCutoffMin), shv('pad2FilterCutoffMax', padState.pad2FilterCutoffMax));
@@ -7818,13 +7890,15 @@ export class AudioEngine {
           const mCy = mA + mD + 1, mPh = (now % mCy) / mCy, mAP = mA / mCy, mDP = (mA + mD) / mCy;
           let mV = mPh < mAP ? mPh / mAP : mPh < mDP ? 1 - (1 - mS) * ((mPh - mAP) / (mDP - mAP)) : mS;
           mV *= shv('pad2ModEnvDepth', padState.pad2ModEnvDepth ?? 0);
-          if (md === 'filterCutoff') me2FMod = mV * (maxC2 - minC2); else me2PCents = mV * 400;
+          if (md === 'filterCutoff') me2FMod = mV * (maxC2 - minC2) * 0.5; else me2PCents = mV * 400;
         }
       }
 
       const oscMix2 = shv('pad2OscMix', padState.pad2OscMix ?? 0.5);
       const aMx2 = Math.min(1, 2 * (1 - oscMix2)), bMx2 = Math.min(1, 2 * oscMix2);
 
+      const p2FilterCutoffWithoutEnv = fin(Math.max(20, Math.min(20000, cut2 + (p2l1Dest === 'filterCutoff' ? p2l1Val * (maxC2 - minC2) * 0.5 : 0) + (p2l2Dest === 'filterCutoff' ? p2l2Val * (maxC2 - minC2) * 0.5 : 0))), 1000);
+      p2FilterCutoffForUi = p2FilterCutoffWithoutEnv;
       p2 = {
         oscAWave: (padState.pad2OscAWave ?? 'sawtooth') as OscillatorType,
         oscBWave: (padState.pad2OscBWave ?? 'triangle') as OscillatorType,
@@ -7854,6 +7928,8 @@ export class AudioEngine {
         hardness: fin(shv('pad2Hardness', padState.pad2Hardness), 0.5),
       };
     }
+    this.currentPad2FilterFreq = p2FilterCutoffForUi;
+    this.currentPad2LfoValue = p2l1ValForUi;
 
     // ── Re-route voices between pad1Bus/pad2Bus when assignment changes ──
     const effectivePad2Assign = pad2On ? pad2Assign : 0;
@@ -8018,8 +8094,8 @@ export class AudioEngine {
     const pianoReverbLevel = applyDistanceValue('pianoReverbSend', state, 'piano');
     const pad1PostLpf = applyDistanceValue('padPostLPF', state, 'pad1');
     const pad2PostLpf = applyDistanceValue('pad2PostLPF', state, 'pad2');
-    const lead1PostLpf = applyDistanceValue('lead1PostLPF', state, 'lead1');
-    const lead2PostLpf = applyDistanceValue('lead2PostLPF', state, 'lead2');
+    const lead1PostLpf = this.getLeadPostLpfCutoff(state, 'lead1');
+    const lead2PostLpf = this.getLeadPostLpfCutoff(state, 'lead2');
     const pianoPostLpf = applyDistanceValue('pianoPostLPF', state, 'piano');
     const pad1StereoWidth = applyDistanceValue('padStereoWidth', state, 'pad1');
     const pad2StereoWidth = applyDistanceValue('pad2StereoWidth', state, 'pad2');
@@ -8540,7 +8616,8 @@ export class AudioEngine {
       // Water synthesis params with dualRange min/max support
       const wInt = this.dualRanges['waterIntensity'];
       const wDist = this.dualRanges['waterDistance'];
-      const wBf = this.dualRanges['waterBaseFreq'];
+      const wHardBf = this.dualRanges['waterHardDropBaseFreq'] ?? this.dualRanges['waterBaseFreq'];
+      const wWaterBf = this.dualRanges['waterWaterDropBaseFreq'] ?? this.dualRanges['waterBaseFreq'];
       const wDs = this.dualRanges['waterDropSize'];
       const wHd = this.dualRanges['waterHardness'];
       const wGt = this.dualRanges['waterGlassThickness'];
@@ -8549,8 +8626,10 @@ export class AudioEngine {
         intensityMax: wInt ? wInt.max : state.waterIntensity,
         distanceMin: wDist ? wDist.min : state.waterDistance,
         distanceMax: wDist ? wDist.max : state.waterDistance,
-        baseFreqMin: wBf ? wBf.min : state.waterBaseFreq,
-        baseFreqMax: wBf ? wBf.max : state.waterBaseFreq,
+        hardDropBaseFreqMin: wHardBf ? wHardBf.min : (state.waterHardDropBaseFreq ?? state.waterBaseFreq),
+        hardDropBaseFreqMax: wHardBf ? wHardBf.max : (state.waterHardDropBaseFreq ?? state.waterBaseFreq),
+        waterDropBaseFreqMin: wWaterBf ? wWaterBf.min : (state.waterWaterDropBaseFreq ?? state.waterBaseFreq),
+        waterDropBaseFreqMax: wWaterBf ? wWaterBf.max : (state.waterWaterDropBaseFreq ?? state.waterBaseFreq),
         dropSizeMin: wDs ? wDs.min : state.waterDropSize,
         dropSizeMax: wDs ? wDs.max : state.waterDropSize,
         hardnessMin: wHd ? wHd.min : state.waterHardness,
@@ -9044,6 +9123,7 @@ export class AudioEngine {
     } else if (!lead1Playable) {
       return;
     }
+    this.updateLeadPostLpfForNote(useLead2 ? 'lead2' : 'lead1', frequency);
 
     // Compute morphed FM params.
     // Random Walk (when enabled) uses smooth momentum-based motion within min/max.
@@ -9792,10 +9872,11 @@ export class AudioEngine {
         this.lead1LevelGain.gain.value = this.sliderState?.lead1Level ?? 0.8;
       }
       this.lead1SpatialChain = this.createVoiceSpatialChain(ctx, {
-        initialPostLpf: applyDistanceValue('lead1PostLPF', this.sliderState!, 'lead1'),
+        initialPostLpf: this.getLeadPostLpfCutoff(this.sliderState!, 'lead1'),
         initialStereoWidth: applyDistanceValue('lead1StereoWidth', this.sliderState!, 'lead1'),
         initialDiffuseSend: applyDistanceValue('lead1DiffuseSend', this.sliderState!, 'lead1'),
         dryDestination: this.leadVoiceLevel!,
+        postLpfSlope: 24,
       });
       this.lead1Bus.connect(this.lead1LevelGain);
       this.lead1LevelGain.connect(this.lead1SpatialChain!.postLpf);
@@ -9808,10 +9889,11 @@ export class AudioEngine {
         this.lead2LevelGain.gain.value = this.sliderState?.lead2Level ?? 0.6;
       }
       this.lead2SpatialChain = this.createVoiceSpatialChain(ctx, {
-        initialPostLpf: applyDistanceValue('lead2PostLPF', this.sliderState!, 'lead2'),
+        initialPostLpf: this.getLeadPostLpfCutoff(this.sliderState!, 'lead2'),
         initialStereoWidth: applyDistanceValue('lead2StereoWidth', this.sliderState!, 'lead2'),
         initialDiffuseSend: applyDistanceValue('lead2DiffuseSend', this.sliderState!, 'lead2'),
         dryDestination: this.leadVoiceLevel!,
+        postLpfSlope: 24,
       });
       this.lead2Bus.connect(this.lead2LevelGain);
       this.lead2LevelGain.connect(this.lead2SpatialChain!.postLpf);
@@ -9877,6 +9959,7 @@ export class AudioEngine {
         initialStereoWidth: applyDistanceValue('pianoStereoWidth', this.sliderState!, 'piano'),
         initialDiffuseSend: applyDistanceValue('pianoDiffuseSend', this.sliderState!, 'piano'),
         dryDestination: this.masterGain!,
+        postLpfSlope: 24,
       });
       this.pianoBus.connect(this.pianoLevelGain);
       this.pianoLevelGain.connect(this.pianoSpatialChain!.postLpf);

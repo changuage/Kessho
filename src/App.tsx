@@ -19,6 +19,7 @@ import {
   DRUM_MORPH_KEYS,
 } from './ui/state';
 import { DualSlider, DualSliderRange } from './ui/DualSlider';
+import { SliderPrimitive } from './ui/sliderSystem';
 import { audioEngine, preloadAudioEngine } from './audio/runtime';
 import type { EngineState } from './audio/runtime';
 import { isCloudEnabled as isCloudPresetConfigEnabled } from './cloud/config';
@@ -73,8 +74,6 @@ import { CollapsiblePanel } from './ui/CollapsiblePanel';
 import type { StepOverrides, SubLaneKind, SubLaneState, PitchSettings, EvolveConfig } from './ui/sequencer/useEuclideanSequencer';
 import type { PitchBindingMode } from './audio/drumSeqTypes';
 import type { SliderPageId } from './ui/sliderHelpCatalog';
-import { getSliderValueSlotWidthCh } from './ui/sliderValueLayout';
-import { APP_SLIDER_THUMB_SIZE_CSS, getNativeRangeVisualLeft } from './ui/nativeRangeGeometry';
 import { isIOSLikeDevice, isMobileDevice } from './platform';
 import { useVisibleInterval } from './ui/hooks/useVisibleInterval';
 import {
@@ -106,6 +105,7 @@ const GranularPage = React.lazy(() => import('./ui/granular/GranularPage'));
 const DelayPage = React.lazy(() => import('./ui/delay/DelayPage'));
 const RoutingPage = React.lazy(() => import('./ui/routing/RoutingPage'));
 const EarthPage = React.lazy(() => import('./ui/earth/EarthPage'));
+const SliderLabPage = React.lazy(() => import('./ui/sliderLab/SliderLabPage'));
 
 // Note names for display
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -835,14 +835,6 @@ const styles = {
     minWidth: 0,
     gap: '4px',
   } as React.CSSProperties,
-  slider: {
-    width: '100%',
-    height: '6px',
-    borderRadius: '3px',
-    appearance: 'none' as const,
-    background: 'rgba(255, 255, 255, 0.2)',
-    outline: 'none',
-  } as React.CSSProperties,
   select: {
     width: '100%',
     padding: '8px',
@@ -934,7 +926,7 @@ function extractNativeDualRanges(ranges: DualSliderState): Record<string, { min:
   return output;
 }
 
-type AdvancedTab = 'global' | 'synth' | 'drums' | 'reverb' | 'granular' | 'earth' | 'delay' | 'routing';
+type AdvancedTab = 'global' | 'synth' | 'drums' | 'reverb' | 'granular' | 'earth' | 'delay' | 'routing' | 'sliderLab';
 
 const ADVANCED_TAB_SHORTCUTS: Record<string, AdvancedTab> = {
   '1': 'global',
@@ -945,6 +937,7 @@ const ADVANCED_TAB_SHORTCUTS: Record<string, AdvancedTab> = {
   '6': 'delay',
   '7': 'reverb',
   '8': 'routing',
+  '9': 'sliderLab',
 };
 
 function isEditableShortcutTarget(target: EventTarget | null): boolean {
@@ -1072,115 +1065,58 @@ const Slider: React.FC<SliderProps> = ({
         onCycleMode={onCycleMode}
         onDualRangeChange={onDualRangeChange}
         groupStyle={styles.sliderGroup}
-        labelStyle={styles.sliderLabel}
-        sliderStyle={styles.slider}
       />
     );
   }
   
-  // Fallback to simple slider (no dual mode support)
+  // Fallback sliders still use the same primitive; they just do not expose dual-mode editing.
   const info = getParamInfo(paramKey);
   if (!info) return null;
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    announceHelp();
-    if (disabled) return;
-    let newValue = parseFloat(e.target.value);
+  const valueToPercent = (nextValue: number) => {
     if (logarithmic) {
-      // Slider position is 0-1, convert to logarithmic frequency
-      newValue = linearToLog(newValue, info.min, info.max);
+      return logToLinear(Math.max(info.min, Math.min(info.max, nextValue)), info.min, info.max) * 100;
     }
-    onChange(paramKey, quantize(paramKey, newValue));
+    return ((nextValue - info.min) / Math.max(1e-9, info.max - info.min)) * 100;
   };
 
-  // For logarithmic sliders, convert value to 0-1 position
-  const sliderValue = logarithmic 
-    ? logToLinear(Math.max(info.min, Math.min(info.max, value)), info.min, info.max)
-    : value;
-  const sliderMin = logarithmic ? 0 : info.min;
-  const sliderMax = logarithmic ? 1 : info.max;
-  const sliderStep = logarithmic ? 0.001 : info.step;
+  const percentToValue = (percent: number) => {
+    const normalized = Math.max(0, Math.min(100, percent)) / 100;
+    const raw = logarithmic
+      ? linearToLog(normalized, info.min, info.max)
+      : info.min + normalized * (info.max - info.min);
+    return quantize(paramKey, raw);
+  };
 
   const formatDisplayValue = (nextValue: number) =>
     format ? format(nextValue) : info.step < 1 ? nextValue.toFixed(2) : String(Math.round(nextValue));
   const displayValue = formatDisplayValue(value);
-  const valueSlotWidthCh = getSliderValueSlotWidthCh(info, formatDisplayValue, unit);
-
-  // Compute fill percentage for visual track gradient
-  const fillPercent = sliderMax > sliderMin
-    ? ((sliderValue - sliderMin) / (sliderMax - sliderMin)) * 100
-    : 0;
-  const ghostPercent = ghostValue == null
+  const valuePercent = valueToPercent(value);
+  const ghostPercent = ghostValue == null || !Number.isFinite(ghostValue)
     ? null
-    : logarithmic
-      ? logToLinear(Math.max(info.min, Math.min(info.max, ghostValue)), info.min, info.max) * 100
-      : ((Math.max(info.min, Math.min(info.max, ghostValue)) - info.min) / (info.max - info.min)) * 100;
-  const fillStop = getNativeRangeVisualLeft(fillPercent);
-  const ghostLeft = ghostPercent == null || !Number.isFinite(ghostPercent)
-    ? null
-    : getNativeRangeVisualLeft(ghostPercent);
+    : valueToPercent(ghostValue);
 
   return (
-    <div
+    <SliderPrimitive
       className="app-slider-group"
       style={{ ...styles.sliderGroup, opacity: disabled ? 0.58 : 1 }}
-      onMouseEnter={announceHelp}
-      onPointerDown={announceHelp}
-    >
-      <div className="app-slider-label" style={styles.sliderLabel}>
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flexShrink: 1 }}>{label}</span>
-        <span
-          className="app-slider-value"
-          style={{
-            flexShrink: 0,
-            whiteSpace: 'nowrap',
-            display: 'inline-flex',
-            justifyContent: 'flex-end',
-            minWidth: `${valueSlotWidthCh}ch`,
-            textAlign: 'right',
-            fontVariantNumeric: 'tabular-nums',
-          }}
-        >
-          {displayValue}
-          {unit || ''}
-        </span>
-      </div>
-      <div style={{ position: 'relative' }}>
-        <input
-          type="range"
-          min={sliderMin}
-          max={sliderMax}
-          step={sliderStep}
-          value={sliderValue}
-          onChange={handleChange}
-          onFocus={announceHelp}
-          disabled={disabled}
-          className="app-slider"
-          style={{
-            ...styles.slider,
-            ['--app-slider-thumb-size' as string]: APP_SLIDER_THUMB_SIZE_CSS,
-            cursor: disabled ? 'not-allowed' : undefined,
-            background: `linear-gradient(to right, rgba(160,200,220,0.5) 0%, rgba(160,200,220,0.5) ${fillStop}, rgba(255,255,255,0.2) ${fillStop}, rgba(255,255,255,0.2) 100%)`,
-          }}
-        />
-        {ghostLeft !== null && (
-          <div
-            style={{
-              position: 'absolute',
-              left: ghostLeft,
-              top: 'calc(50% + 1px)',
-              width: '2px',
-              height: '16px',
-              transform: 'translate(-50%, -50%)',
-              borderRadius: '999px',
-              background: 'rgba(255, 226, 150, 0.98)',
-              boxShadow: '0 0 8px rgba(255, 214, 120, 0.7)',
-              pointerEvents: 'none',
-            }}
-          />
-        )}
-      </div>
-    </div>
+      label={label}
+      mode="single"
+      value={valuePercent}
+      unit={unit}
+      hero="#a5c4d4"
+      variant="full"
+      density="compact"
+      displayValue={`${displayValue}${unit || ''}`}
+      formatValue={(percent) => formatDisplayValue(percentToValue(percent))}
+      ghostValue={ghostPercent ?? undefined}
+      disabled={disabled}
+      onAnnounce={announceHelp}
+      onValueChange={(nextPercent) => {
+        if (disabled) return;
+        onChange(paramKey, percentToValue(nextPercent));
+      }}
+    />
   );
 };
 
@@ -1413,6 +1349,54 @@ const App: React.FC = () => {
     };
   }, []);
 
+  useEffect(() => {
+    if (!CLOUD_ENABLED || typeof window === 'undefined') return;
+
+    const target = window as typeof window & {
+      kesshoPresetV2Migration?: {
+        run: (options?: unknown) => Promise<unknown>;
+        optimizeStringWaves: (options?: unknown) => Promise<unknown>;
+        verify: () => Promise<unknown>;
+      };
+    };
+
+    target.kesshoPresetV2Migration = {
+      run: async (options?: unknown) => {
+        const { runPresetV2Migration } = await import('./presets');
+        const report = await runPresetV2Migration(options as never);
+        console.info(`[Preset V2 Migration] ${report.dryRun ? 'Dry run' : 'Write run'} complete.`);
+        console.table(report.phases.map((phase) => ({
+          phase: phase.phase,
+          candidates: phase.candidates,
+          [report.dryRun ? 'wouldWrite' : 'inserted']: report.dryRun ? phase.wouldWrite : phase.inserted,
+          skippedExisting: phase.skippedExisting,
+          skippedInvalid: phase.skippedInvalid,
+          errors: phase.errors.length,
+        })));
+        if (report.phases.some((phase) => phase.errors.length > 0)) {
+          console.warn('[Preset V2 Migration] Phase errors:', report.phases);
+        }
+        return report;
+      },
+      optimizeStringWaves: async (options?: unknown) => {
+        const { optimizeStringWavesV2 } = await import('./presets');
+        const report = await optimizeStringWavesV2(options as never);
+        console.info(`[Preset V2 Migration] String Waves optimization ${report.dryRun ? 'dry run' : 'write run'} complete.`);
+        console.table(report.childPresets);
+        console.info('[Preset V2 Migration] String Waves latest ref count:', report.latestRefCount);
+        return report;
+      },
+      verify: async () => {
+        const { verifyPresetV2Migration } = await import('./presets');
+        return verifyPresetV2Migration();
+      },
+    };
+
+    return () => {
+      delete target.kesshoPresetV2Migration;
+    };
+  }, []);
+
   // Seed factory presets into PresetStore on first launch
   useEffect(() => {
     let cancelled = false;
@@ -1641,7 +1625,6 @@ const App: React.FC = () => {
       tab: { padding: '6px 4px', minWidth: '40px', fontSize: '0.58rem', gap: '2px' } as React.CSSProperties,
       tabIcon: { fontSize: '0.9rem' } as React.CSSProperties,
       iconButton: { width: '36px', height: '36px', fontSize: '1.2rem', padding: '4px' } as React.CSSProperties,
-      slider: { height: '20px' } as React.CSSProperties,
       debugPanel: { padding: '10px', fontSize: '0.75rem', wordBreak: 'break-all' as const, overflow: 'hidden' as const } as React.CSSProperties,
       presetList: { padding: '10px', maxHeight: '200px' } as React.CSSProperties,
     };
@@ -2140,12 +2123,13 @@ const App: React.FC = () => {
       : 'single';
 
     if (nextMode === 'single') {
-      // Collapsing to single — use the current walk/trigger position value
+      // Collapsing to single preserves the authored value; runtime dots can be stale at mode boundaries.
       const range = dualSliderRanges[key as keyof SliderState];
-      const walkPos = getRuntimeSliderPosition(keyStr, current) ?? 0.5;
       if (range) {
-        const meanValue = range.min + walkPos * (range.max - range.min);
-        const quantizedValue = quantize(key, meanValue);
+        const currentValue = getSliderNumericValue(key, state[key]);
+        const fallbackValue = range.min + 0.5 * (range.max - range.min);
+        const nextNumericValue = Math.max(range.min, Math.min(range.max, currentValue ?? fallbackValue));
+        const quantizedValue = quantize(key, nextNumericValue);
         const nextValue = getStateValueFromSliderNumber(key, quantizedValue);
         setState(s => ({ ...s, [key]: nextValue }));
       }
@@ -2221,6 +2205,10 @@ const App: React.FC = () => {
           // Initialize random walk for walk mode (not for sampleHold)
           if (nextMode === 'walk') {
             mergeRuntimeWalkPositions({ [keyStr]: 0.5 });
+            removeRuntimeTriggerPositions([keyStr]);
+          } else {
+            removeRuntimeWalkPositions([keyStr]);
+            removeRuntimeTriggerPositions([keyStr]);
           }
 
           // Update morph preset dualRanges at endpoints (Rule 2)
@@ -2251,8 +2239,9 @@ const App: React.FC = () => {
           }
         }
       } else if (current === 'walk' && nextMode === 'sampleHold') {
-        // Switching from walk to sampleHold — stop walk, keep range
+        // Switching from walk to sampleHold — stop live walk and clear stale trigger dots.
         removeRuntimeWalkPositions([keyStr]);
+        removeRuntimeTriggerPositions([keyStr]);
 
         // Update morph preset sliderModes at endpoints (range is unchanged)
         if (isMorphActive) {
@@ -4724,7 +4713,7 @@ const App: React.FC = () => {
       'lead1ReverbSend', 'lead2ReverbSend', 'delayAReverbSend', 'reverbLevel', 'randomness', 'tension',
       'chordRate', 'voicingSpread', 'waveSpread', 'detune', 'synthAttack', 'synthDecay',
       'synthSustain', 'synthRelease', 'synthVoiceMask', 'synthOctave', 'hardness',
-      'filterCutoffMin', 'filterCutoffMax', 'filterResonance', 'filterQ',
+      'filterCutoffMin', 'filterCutoffMax', 'filterResonance', 'filterQ', 'filterSlope', 'filterKeyTracking',
       'warmth', 'presence', 'reverbDecay', 'reverbSize', 'reverbDiffusion',
       'reverbModulation', 'predelay', 'damping', 'width',
       'reverbShimmer', 'reverbShimmerPitch', 'reverbSlowModRate', 'reverbSlowModDepth',
@@ -4732,8 +4721,9 @@ const App: React.FC = () => {
       'grainProbability', 'grainSize',
       'density', 'spray', 'jitter', 'pitchSpread', 'stereoSpread', 'feedback',
       'wetHPF', 'wetLPF', 'leadLevel', 'lead1Level', 'lead2Level', 'lead1Attack', 'lead1Decay', 'lead1Sustain', 'lead1Release',
+      'lead1PostLPF', 'lead1PostLPFKeyTracking', 'lead2PostLPF', 'lead2PostLPFKeyTracking',
       'lead2Attack', 'lead2Decay', 'lead2Sustain', 'lead2Release',
-      'pianoAttack', 'pianoDecay', 'pianoSustain', 'pianoHold', 'pianoRelease',
+      'pianoAttack', 'pianoDecay', 'pianoSustain', 'pianoHold', 'pianoRelease', 'pianoPostLPF',
       'delayATime', 'delayAFeedback',
       'delayAMix', 'lead1Density', 'lead1Octave',
       'lead1OctaveRange',
@@ -4758,7 +4748,7 @@ const App: React.FC = () => {
       // Pad Synth 2
       'pad2Attack', 'pad2Decay', 'pad2Sustain', 'pad2Release', 'pad2Octave',
       'pad2Hardness', 'pad2Warmth', 'pad2Presence', 'pad2OscMix',
-      'pad2FilterCutoffMin', 'pad2FilterCutoffMax', 'pad2FilterResonance', 'pad2FilterQ',
+      'pad2FilterCutoffMin', 'pad2FilterCutoffMax', 'pad2FilterResonance', 'pad2FilterQ', 'pad2FilterSlope', 'pad2FilterKeyTracking',
       'pad2OscAOctave', 'pad2OscADetune', 'pad2OscALevel',
       'pad2OscBOctave', 'pad2OscBDetune', 'pad2OscBLevel',
       'pad2SubOctave', 'pad2SubLevel', 'pad2NoiseLevel',
@@ -6504,6 +6494,18 @@ const App: React.FC = () => {
           <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>▦</span>
           <span>Routing</span>
         </HelpButton>
+        <HelpButton
+          helpKey="tabSliderLab"
+          style={{
+            ...styles.tab,
+            ...(activeTab === 'sliderLab' ? styles.tabActive : {}),
+            ...m?.tab,
+          }}
+          onClick={() => setActiveTab('sliderLab')}
+        >
+          <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>◫</span>
+          <span>Lab</span>
+        </HelpButton>
       </div>
 
       {/* Parameter Grid */}
@@ -6745,11 +6747,18 @@ const App: React.FC = () => {
             getEarthTextureDebugState={getEarthTextureDebugState}
           />
         )}
+
+        {activeTab === 'sliderLab' && (
+          <SliderLabPage
+            isMobile={isMobile}
+          />
+        )}
         </React.Suspense>
       </div>
 
 
       {/* Debug Panel */}
+      {activeTab !== 'sliderLab' && (
       <div className="app-debug-panel" style={{ ...styles.debugPanel, ...m?.debugPanel }}>
         <h3 style={{ ...styles.panelTitle, color: '#a855f7' }}>Debug Info</h3>
         <div style={styles.debugRow}>
@@ -6967,6 +6976,7 @@ const App: React.FC = () => {
           </>
         )}
       </div>
+      )}
 
       {/* Footer with kanji */}
       <div style={{

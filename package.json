@@ -6,6 +6,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "test:preset-metadata": "node scripts/run-preset-metadata-regression.mjs",
+    "test:preset-dedup": "node scripts/run-preset-dedup-regression.mjs",
     "type-check": "tsc --noEmit",
     "preview": "vite preview",
     "check:mac": "bash scripts/check-macos.sh",

@@ -1,24 +1,17 @@
 /**
- * Shared DualSlider Component
+ * Shared DualSlider adapter.
  *
- * Generic 3-mode slider (single / walk / sampleHold) used by both
- * the main App (synth, drum, granular, ocean) and the Earth page
- * (water, ocean-WASM, insects).
- *
- * Consumers provide:
- *  - paramInfo (min/max/step) and quantizeFn instead of a global lookup
- *  - Layout via className props to match either App inline-styles or Earth CSS
+ * This component owns app-specific value mapping, quantization, runtime walk
+ * indicators, and help announcements. The actual visual/control surface is the
+ * unified SliderPrimitive.
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React from 'react';
 import type { SliderMode } from './state';
 import { useSliderHelp } from './SliderHelpOverlay';
 import type { SliderPageId } from './sliderHelpCatalog';
-import { APP_SLIDER_THUMB_SIZE_CSS, getNativeRangeVisualLeft } from './nativeRangeGeometry';
-import { getDualSliderValueSlotWidthCh, getSliderValueSlotWidthCh } from './sliderValueLayout';
 import { useRuntimeSliderIndicator } from './runtimeSliderState';
-
-// ═══ Exported Types ═══
+import { SliderPrimitive, type SliderPrimitiveRange } from './sliderSystem';
 
 export interface DualSliderRange {
   min: number;
@@ -30,78 +23,6 @@ export interface DualSliderParamInfo {
   max: number;
   step: number;
 }
-
-// ═══ Inline styles (shared across all consumers) ═══
-
-const dualStyles = {
-  container: {
-    position: 'relative' as const,
-    width: '100%',
-    flex: 1,
-    minWidth: 0,
-    height: '20px',
-    borderRadius: '3px',
-    background: 'rgba(255, 255, 255, 0.2)',
-    cursor: 'pointer',
-  } as React.CSSProperties,
-  track: {
-    position: 'absolute' as const,
-    height: '100%',
-    borderRadius: '3px',
-  } as React.CSSProperties,
-  thumb: {
-    position: 'absolute' as const,
-    top: '50%',
-    width: '16px',
-    height: '16px',
-    borderRadius: '50%',
-    transform: 'translate(-50%, -50%)',
-    cursor: 'grab',
-    border: '2px solid rgba(255,255,255,0.8)',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
-    zIndex: 2,
-  } as React.CSSProperties,
-  walkIndicator: {
-    position: 'absolute' as const,
-    top: '50%',
-    width: '8px',
-    height: '8px',
-    background: '#fff',
-    borderRadius: '50%',
-    transform: 'translate(-50%, -50%)',
-    boxShadow: '0 0 8px rgba(255,255,255,0.8)',
-    pointerEvents: 'none' as const,
-    zIndex: 1,
-  } as React.CSSProperties,
-  modeIndicator: {
-    fontSize: '0.65rem',
-    marginLeft: '8px',
-  } as React.CSSProperties,
-};
-
-// ═══ Logarithmic helpers ═══
-
-function linearToLog(value: number, min: number, max: number): number {
-  const minLog = Math.log(min);
-  const maxLog = Math.log(max);
-  return Math.exp(minLog + value * (maxLog - minLog));
-}
-
-function logToLinear(value: number, min: number, max: number): number {
-  const minLog = Math.log(min);
-  const maxLog = Math.log(max);
-  return (Math.log(value) - minLog) / (maxLog - minLog);
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
-
-function valuesNearlyEqual(a: number, b: number, tolerance: number): boolean {
-  return Math.abs(a - b) <= tolerance;
-}
-
-// ═══ Component ═══
 
 export interface DualSliderProps<K extends string = string> {
   label: string;
@@ -125,22 +46,37 @@ export interface DualSliderProps<K extends string = string> {
   onCycleMode: (key: K) => void;
   onDualRangeChange: (key: K, min: number, max: number) => void;
 
-  /** CSS class for the outer wrapper (default: 'app-slider-group') */
   groupClassName?: string;
-  /** CSS class for the label row (default: 'app-slider-label') */
-  labelClassName?: string;
-  /** CSS class for the range input in single mode (default: 'app-slider') */
-  sliderClassName?: string;
-
-  /** Inline style overrides for the outer wrapper */
   groupStyle?: React.CSSProperties;
-  /** Inline style overrides for the label row */
-  labelStyle?: React.CSSProperties;
-  /** Inline style overrides for the range input track */
-  sliderStyle?: React.CSSProperties;
-
-  /** Accent color for single-mode fill gradient (default: 'rgba(160,200,220,0.5)') */
   fillColor?: string;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function valuesNearlyEqual(a: number, b: number, tolerance: number): boolean {
+  return Math.abs(a - b) <= tolerance;
+}
+
+function linearToLog(value: number, min: number, max: number): number {
+  const minLog = Math.log(min);
+  const maxLog = Math.log(max);
+  return Math.exp(minLog + value * (maxLog - minLog));
+}
+
+function logToLinear(value: number, min: number, max: number): number {
+  const minLog = Math.log(min);
+  const maxLog = Math.log(max);
+  return (Math.log(value) - minLog) / (maxLog - minLog);
+}
+
+function canUseLog(info: DualSliderParamInfo, logarithmic?: boolean): boolean {
+  return Boolean(logarithmic && info.min > 0 && info.max > 0);
+}
+
+function normalizePercent(value: number): number {
+  return clamp(value, 0, 100);
 }
 
 export function DualSlider<K extends string = string>({
@@ -163,232 +99,69 @@ export function DualSlider<K extends string = string>({
   onCycleMode,
   onDualRangeChange,
   groupClassName = 'app-slider-group',
-  labelClassName = 'app-slider-label',
-  sliderClassName = 'app-slider',
   groupStyle,
-  labelStyle,
-  sliderStyle,
-  fillColor = 'rgba(160,200,220,0.5)',
+  fillColor = '#a5c4d4',
 }: DualSliderProps<K>) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [dragging, setDragging] = useState<'min' | 'max' | null>(null);
   const { announceSlider } = useSliderHelp();
-  const announceHelp = () => announceSlider(String(paramKey), { label, page: helpPage });
-
-  // Long press detection for mobile (cycle slider mode)
-  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const longPressTriggeredRef = useRef(false);
-
-  const handleLongPressStart = (_e: React.TouchEvent) => {
-    if (disabled) return;
-    longPressTriggeredRef.current = false;
-    longPressTimerRef.current = setTimeout(() => {
-      longPressTriggeredRef.current = true;
-      if (navigator.vibrate) navigator.vibrate(50);
-      onCycleMode(paramKey);
-    }, 400);
-  };
-  const handleLongPressEnd = () => {
-    if (longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
-    }
-  };
-  const handleLongPressMove = () => handleLongPressEnd();
-
-  // Position helpers
-  const valueToPercent = (val: number) => {
-    if (logarithmic) {
-      return logToLinear(Math.max(info.min, Math.min(info.max, val)), info.min, info.max) * 100;
-    }
-    return ((val - info.min) / (info.max - info.min)) * 100;
-  };
-
-  const percentToValue = (percent: number) => {
-    const clamped = Math.max(0, Math.min(100, percent));
-    if (logarithmic) {
-      return linearToLog(clamped / 100, info.min, info.max);
-    }
-    return info.min + (clamped / 100) * (info.max - info.min);
-  };
-
-  // Format display value
-  const formatValue = (val: number) => {
-    if (formatProp) return formatProp(val);
-    if (val == null) return '0';
-    return info.step < 1 ? val.toFixed(2) : String(Math.round(val));
-  };
-
-  const handleDoubleClick = () => {
-    if (disabled) return;
-    onCycleMode(paramKey);
-  };
-
-  const singleValueSlotWidthCh = getSliderValueSlotWidthCh(info, formatValue, unit);
-  const dualValueSlotWidthCh = getDualSliderValueSlotWidthCh(info, formatValue, unit);
-
-  const handleDragStart = (thumb: 'min' | 'max') => (e: React.MouseEvent | React.TouchEvent) => {
-    if (disabled) return;
-    e.preventDefault();
-    setDragging(thumb);
-  };
-
+  const runtimeIndicator = useRuntimeSliderIndicator(String(paramKey), mode, walkPosition, isFlashing);
   const isDualMode = mode !== 'single';
-  const modeColor = mode === 'walk' ? '#a5c4d4' : '#D4A520';
-  const modeLabel = mode === 'walk' ? '⟷ walk' : '⟷ S&H';
+
+  const announceHelp = React.useCallback(() => {
+    announceSlider(String(paramKey), { label, page: helpPage });
+  }, [announceSlider, helpPage, label, paramKey]);
+
+  const valueToPercent = React.useCallback((nextValue: number) => {
+    const clamped = clamp(nextValue, info.min, info.max);
+    if (canUseLog(info, logarithmic)) {
+      return normalizePercent(logToLinear(clamped, info.min, info.max) * 100);
+    }
+    return normalizePercent(((clamped - info.min) / Math.max(1e-9, info.max - info.min)) * 100);
+  }, [info, logarithmic]);
+
+  const percentToValue = React.useCallback((percent: number) => {
+    const normalized = normalizePercent(percent) / 100;
+    const raw = canUseLog(info, logarithmic)
+      ? linearToLog(normalized, info.min, info.max)
+      : info.min + normalized * (info.max - info.min);
+    return quantizeFn(paramKey, raw);
+  }, [info, logarithmic, paramKey, quantizeFn]);
+
+  const formatValue = React.useCallback((nextValue: number) => {
+    if (formatProp) return formatProp(nextValue);
+    if (nextValue == null) return '0';
+    return info.step < 1 ? nextValue.toFixed(2) : String(Math.round(nextValue));
+  }, [formatProp, info.step]);
+
+  const formatPercent = React.useCallback((percent: number) => (
+    formatValue(percentToValue(percent))
+  ), [formatValue, percentToValue]);
+
+  const normalizedRange: SliderPrimitiveRange | undefined = React.useMemo(() => {
+    if (!isDualMode) return undefined;
+    const source = dualRange ?? { min: info.min, max: info.max };
+    const min = valueToPercent(Math.min(source.min, source.max));
+    const max = valueToPercent(Math.max(source.min, source.max));
+    return { min, max };
+  }, [dualRange, info.max, info.min, isDualMode, valueToPercent]);
+
+  const valuePercent = valueToPercent(value);
+  const rangeForDisplay = dualRange ?? { min: info.min, max: info.max };
+  const valuePositionInRange = dualRange
+    ? clamp((value - dualRange.min) / Math.max(1e-9, dualRange.max - dualRange.min), 0, 1)
+    : 0.5;
+  const effectiveWalkPosition = runtimeIndicator.walkPosition ?? walkPosition ?? valuePositionInRange;
+  const indicatorValue = normalizedRange
+    ? normalizedRange.min + clamp(effectiveWalkPosition, 0, 1) * (normalizedRange.max - normalizedRange.min)
+    : valuePercent;
+  const currentValue = dualRange
+    ? dualRange.min + clamp(effectiveWalkPosition, 0, 1) * (dualRange.max - dualRange.min)
+    : value;
+
   const previewTolerance = Math.max(info.step * 0.5, (info.max - info.min) * 1e-6);
   const hasGhostShift = ghostValue != null
     && Number.isFinite(ghostValue)
     && !valuesNearlyEqual(clamp(ghostValue, info.min, info.max), clamp(value, info.min, info.max), previewTolerance);
-  const ghostPercent = hasGhostShift ? valueToPercent(clamp(ghostValue as number, info.min, info.max)) : null;
-  const runtimeIndicator = useRuntimeSliderIndicator(String(paramKey), mode, walkPosition, isFlashing);
-  const effectiveWalkPosition = runtimeIndicator.walkPosition ?? walkPosition;
-  const effectiveIsFlashing = runtimeIndicator.isFlashing;
 
-  // Drag handling
-  useEffect(() => {
-    if (!dragging || !isDualMode || !dualRange) return;
-
-    const handleMove = (e: MouseEvent | TouchEvent) => {
-      if (!containerRef.current) return;
-      const rect = containerRef.current.getBoundingClientRect();
-      const clientX = 'touches' in e
-        ? (e.touches.length > 0 ? e.touches[0]!.clientX : rect.left)
-        : e.clientX;
-      const percent = ((clientX - rect.left) / rect.width) * 100;
-      const newValue = quantizeFn(paramKey, percentToValue(percent));
-
-      if (dragging === 'min') {
-        onDualRangeChange(paramKey, Math.min(newValue, dualRange.max), dualRange.max);
-      } else {
-        onDualRangeChange(paramKey, dualRange.min, Math.max(newValue, dualRange.min));
-      }
-    };
-
-    const handleEnd = () => setDragging(null);
-
-    window.addEventListener('mousemove', handleMove);
-    window.addEventListener('mouseup', handleEnd);
-    window.addEventListener('touchmove', handleMove);
-    window.addEventListener('touchend', handleEnd);
-
-    return () => {
-      window.removeEventListener('mousemove', handleMove);
-      window.removeEventListener('mouseup', handleEnd);
-      window.removeEventListener('touchmove', handleMove);
-      window.removeEventListener('touchend', handleEnd);
-    };
-  }, [dragging, isDualMode, dualRange, paramKey, onDualRangeChange, quantizeFn]);
-
-  // ── Single slider mode ──
-  if (!isDualMode) {
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-      announceHelp();
-      if (disabled) return;
-      let newValue = parseFloat(e.target.value);
-      if (logarithmic) {
-        newValue = linearToLog(newValue, info.min, info.max);
-      }
-      onChange(paramKey, quantizeFn(paramKey, newValue));
-    };
-
-    const sliderValue = logarithmic
-      ? logToLinear(Math.max(info.min, Math.min(info.max, value)), info.min, info.max)
-      : value;
-    const sliderMin = logarithmic ? 0 : info.min;
-    const sliderMax = logarithmic ? 1 : info.max;
-    const sliderStep = logarithmic ? 0.001 : info.step;
-
-    const fillPercent = sliderMax > sliderMin
-      ? ((sliderValue - sliderMin) / (sliderMax - sliderMin)) * 100
-      : 0;
-    const fillStop = getNativeRangeVisualLeft(fillPercent);
-    const ghostLeft = ghostPercent == null || !Number.isFinite(ghostPercent)
-      ? null
-      : getNativeRangeVisualLeft(ghostPercent);
-
-    return (
-      <div
-        className={groupClassName}
-        style={{ ...groupStyle, opacity: disabled ? 0.58 : 1 }}
-        onMouseEnter={announceHelp}
-        onPointerDown={announceHelp}
-      >
-        <div className={labelClassName} style={labelStyle}>
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flexShrink: 1 }}>
-            {label}
-          </span>
-          <span
-            className="app-slider-value"
-            style={{
-              flexShrink: 0,
-              whiteSpace: 'nowrap',
-              display: 'inline-flex',
-              justifyContent: 'flex-end',
-              minWidth: `${singleValueSlotWidthCh}ch`,
-              textAlign: 'right',
-              fontVariantNumeric: 'tabular-nums',
-            }}
-          >
-            {formatValue(value)}
-            {unit || ''}
-          </span>
-        </div>
-        <div style={{ position: 'relative' }}>
-          <input
-            type="range"
-            min={sliderMin}
-            max={sliderMax}
-            step={sliderStep}
-            value={sliderValue}
-            onChange={handleChange}
-            onFocus={announceHelp}
-            onDoubleClick={handleDoubleClick}
-            onTouchStart={handleLongPressStart}
-            onTouchEnd={handleLongPressEnd}
-            onTouchMove={handleLongPressMove}
-            disabled={disabled}
-            className={sliderClassName}
-            style={{
-              ...sliderStyle,
-              ['--app-slider-thumb-size' as string]: APP_SLIDER_THUMB_SIZE_CSS,
-              cursor: disabled ? 'not-allowed' : undefined,
-              background: `linear-gradient(to right, ${fillColor} 0%, ${fillColor} ${fillStop}, rgba(255,255,255,0.2) ${fillStop}, rgba(255,255,255,0.2) 100%)`,
-            }}
-            title="Double-click or long-press to cycle mode"
-          />
-          {ghostLeft !== null && (
-            <div
-              style={{
-                position: 'absolute',
-                left: ghostLeft,
-                top: 'calc(50% + 1px)',
-                width: '2px',
-                height: '16px',
-                transform: 'translate(-50%, -50%)',
-                borderRadius: '999px',
-                background: 'rgba(255, 226, 150, 0.98)',
-                boxShadow: '0 0 8px rgba(255, 214, 120, 0.7)',
-                pointerEvents: 'none',
-              }}
-            />
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  // ── Dual slider mode (walk or sampleHold) ──
-  const minPercent = valueToPercent(dualRange?.min ?? info.min);
-  const maxPercent = valueToPercent(dualRange?.max ?? info.max);
-
-  const walkPercent = effectiveWalkPosition !== undefined
-    ? minPercent + (effectiveWalkPosition * (maxPercent - minPercent))
-    : (minPercent + maxPercent) / 2;
-
-  const currentValue = dualRange
-    ? dualRange.min + (effectiveWalkPosition ?? 0.5) * (dualRange.max - dualRange.min)
-    : value;
   const translatedGhostRange = dualRange && hasGhostShift
     ? (() => {
         const clampedGhost = clamp(ghostValue as number, info.min, info.max);
@@ -396,7 +169,7 @@ export function DualSlider<K extends string = string>({
         let shiftedMin: number;
         let shiftedMax: number;
 
-        if (logarithmic && clampedValue > 0) {
+        if (canUseLog(info, logarithmic) && clampedValue > 0) {
           const ratio = clampedGhost / clampedValue;
           shiftedMin = dualRange.min * ratio;
           shiftedMax = dualRange.max * ratio;
@@ -415,169 +188,63 @@ export function DualSlider<K extends string = string>({
           shiftedMax = info.max;
         }
 
-        shiftedMin = clamp(shiftedMin, info.min, info.max);
-        shiftedMax = clamp(shiftedMax, info.min, info.max);
-
-        const quantizedMin = quantizeFn(paramKey, shiftedMin);
-        const quantizedMax = quantizeFn(paramKey, shiftedMax);
+        const quantizedMin = quantizeFn(paramKey, clamp(shiftedMin, info.min, info.max));
+        const quantizedMax = quantizeFn(paramKey, clamp(shiftedMax, info.min, info.max));
         const nextRange = quantizedMin <= quantizedMax
           ? { min: quantizedMin, max: quantizedMax }
           : { min: quantizedMax, max: quantizedMin };
+
         return valuesNearlyEqual(nextRange.min, dualRange.min, previewTolerance)
           && valuesNearlyEqual(nextRange.max, dualRange.max, previewTolerance)
           ? null
-          : nextRange;
+          : {
+              min: valueToPercent(nextRange.min),
+              max: valueToPercent(nextRange.max),
+            };
       })()
     : null;
-  const ghostMinPercent = translatedGhostRange == null
-    ? null
-    : valueToPercent(clamp(translatedGhostRange.min, info.min, info.max));
-  const ghostMaxPercent = translatedGhostRange == null
-    ? null
-    : valueToPercent(clamp(translatedGhostRange.max, info.min, info.max));
+
+  const displayValue = isDualMode
+    ? `${formatValue(rangeForDisplay.min)}-${formatValue(rangeForDisplay.max)}${unit || ''}`
+    : `${formatValue(value)}${unit || ''}`;
 
   return (
-    <div
-      className={`${groupClassName} dual-active`}
-      style={{ ...groupStyle, opacity: disabled ? 0.58 : 1 }}
-      onMouseEnter={announceHelp}
-      onPointerDown={announceHelp}
-    >
-      <div className={labelClassName} style={labelStyle}>
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flexShrink: 1 }}>
-          {label}
-          <span style={{ ...dualStyles.modeIndicator, color: modeColor }}>{modeLabel}</span>
-        </span>
-        <span
-          className="app-slider-value"
-          style={{
-            flexShrink: 0,
-            whiteSpace: 'nowrap',
-            fontSize: '0.7rem',
-            display: 'inline-flex',
-            justifyContent: 'flex-end',
-            minWidth: `${dualValueSlotWidthCh}ch`,
-            textAlign: 'right',
-            fontVariantNumeric: 'tabular-nums',
-          }}
-        >
-          {formatValue(dualRange?.min ?? info.min)}-{formatValue(dualRange?.max ?? info.max)}
-          {unit || ''}
-          <span style={{ color: '#fff', marginLeft: '4px' }}>
-            ({formatValue(currentValue)})
-          </span>
-        </span>
-      </div>
-      <div
-        ref={containerRef}
-        style={dualStyles.container}
-        onMouseEnter={announceHelp}
-        onPointerDown={announceHelp}
-        onDoubleClick={handleDoubleClick}
-        onTouchStart={handleLongPressStart}
-        onTouchEnd={handleLongPressEnd}
-        onTouchMove={handleLongPressMove}
-        aria-disabled={disabled}
-        title="Double-click or long-press to cycle mode"
-      >
-        {/* Range track */}
-        <div
-          style={{
-            ...dualStyles.track,
-            left: `${minPercent}%`,
-            width: `${maxPercent - minPercent}%`,
-            background: mode === 'walk' ? 'rgba(165,196,212,0.3)' : 'rgba(212,165,32,0.3)',
-          }}
-        />
-        {/* Min thumb */}
-        <div
-          style={{
-            ...dualStyles.thumb,
-            left: `${minPercent}%`,
-            background: dragging === 'min' ? '#fff' : modeColor,
-            cursor: disabled ? 'not-allowed' : 'ew-resize',
-          }}
-          onMouseDown={handleDragStart('min')}
-          onTouchStart={handleDragStart('min')}
-        />
-        {/* Max thumb */}
-        <div
-          style={{
-            ...dualStyles.thumb,
-            left: `${maxPercent}%`,
-            background: dragging === 'max' ? '#fff' : modeColor,
-            cursor: disabled ? 'not-allowed' : 'ew-resize',
-          }}
-          onMouseDown={handleDragStart('max')}
-          onTouchStart={handleDragStart('max')}
-        />
-        {/* Walk/trigger indicator */}
-        <div
-          style={{
-            ...dualStyles.walkIndicator,
-            left: `${walkPercent}%`,
-            transition: effectiveIsFlashing ? 'all 0.05s ease-out' : 'all 0.18s ease-in',
-            ...(effectiveIsFlashing ? {
-              width: '14px',
-              height: '14px',
-              background: '#D4A520',
-              boxShadow: '0 0 14px rgba(212,165,32,0.9)',
-            } : {}),
-          }}
-        />
-        {ghostMinPercent !== null && Number.isFinite(ghostMinPercent) && (
-          <div
-            style={{
-              position: 'absolute',
-              left: `${ghostMinPercent}%`,
-              top: 'calc(50% + 1px)',
-              width: '2px',
-              height: '16px',
-              transform: 'translate(-50%, -50%)',
-              borderRadius: '999px',
-              background: 'rgba(255, 226, 150, 0.98)',
-              boxShadow: '0 0 8px rgba(255, 214, 120, 0.7)',
-              pointerEvents: 'none',
-              zIndex: 3,
-            }}
-          />
-        )}
-        {ghostMaxPercent !== null && Number.isFinite(ghostMaxPercent) && (
-          <div
-            style={{
-              position: 'absolute',
-              left: `${ghostMaxPercent}%`,
-              top: 'calc(50% + 1px)',
-              width: '2px',
-              height: '16px',
-              transform: 'translate(-50%, -50%)',
-              borderRadius: '999px',
-              background: 'rgba(255, 226, 150, 0.98)',
-              boxShadow: '0 0 8px rgba(255, 214, 120, 0.7)',
-              pointerEvents: 'none',
-              zIndex: 3,
-            }}
-          />
-        )}
-        {translatedGhostRange == null && ghostPercent !== null && Number.isFinite(ghostPercent) && (
-          <div
-            style={{
-              position: 'absolute',
-              left: `${ghostPercent}%`,
-              top: 'calc(50% + 1px)',
-              width: '2px',
-              height: '16px',
-              transform: 'translate(-50%, -50%)',
-              borderRadius: '999px',
-              background: 'rgba(255, 226, 150, 0.98)',
-              boxShadow: '0 0 8px rgba(255, 214, 120, 0.7)',
-              pointerEvents: 'none',
-              zIndex: 3,
-            }}
-          />
-        )}
-      </div>
-    </div>
+    <SliderPrimitive
+      className={groupClassName}
+      style={{ ...groupStyle, opacity: disabled ? 0.58 : groupStyle?.opacity }}
+      label={label}
+      mode={mode}
+      value={valuePercent}
+      range={normalizedRange}
+      unit={unit}
+      hero={mode === 'sampleHold' ? '#d4a520' : fillColor}
+      variant="full"
+      density="compact"
+      displayValue={displayValue}
+      formatValue={formatPercent}
+      indicatorValue={indicatorValue}
+      isFlashing={runtimeIndicator.isFlashing}
+      ghostValue={!translatedGhostRange && hasGhostShift ? valueToPercent(ghostValue as number) : undefined}
+      ghostRange={translatedGhostRange ?? undefined}
+      disabled={disabled}
+      title={isDualMode
+        ? `${label}: ${displayValue} active ${formatValue(currentValue)}${unit || ''}. Click the mode symbol to cycle.`
+        : `${label}: ${displayValue}. Click the mode symbol to cycle.`}
+      onAnnounce={announceHelp}
+      onModeCycle={() => {
+        if (!disabled) onCycleMode(paramKey);
+      }}
+      onValueChange={(nextPercent) => {
+        if (disabled) return;
+        onChange(paramKey, percentToValue(nextPercent));
+      }}
+      onRangeChange={(nextRange) => {
+        if (disabled) return;
+        const min = percentToValue(Math.min(nextRange.min, nextRange.max));
+        const max = percentToValue(Math.max(nextRange.min, nextRange.max));
+        onDualRangeChange(paramKey, Math.min(min, max), Math.max(min, max));
+      }}
+    />
   );
 }
 

@@ -314,7 +314,8 @@ const ZONE_SPECS: readonly ZoneSpec[] = [
     toggleValue: 0.45,
     sub: true,
     density: (state) => clamp((state.waterIntensity ?? 0) * 0.7 + (state.waterDistance ?? 0) * 0.3, 0, 1),
-    intensity: (state) => clamp((state.waterBaseFreq ?? 0) / 8000, 0, 1),
+    intensity: (state) => clamp((((state.waterHardDropBaseFreq ?? state.waterBaseFreq ?? 0) +
+      (state.waterWaterDropBaseFreq ?? state.waterBaseFreq ?? 0)) * 0.5) / 8000, 0, 1),
   },
   {
     id: 'surf',

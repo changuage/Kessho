@@ -1,0 +1,227 @@
+.slider-family-note {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 9px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.015)),
+    rgba(0, 0, 0, 0.18);
+  color: rgba(235, 242, 248, 0.84);
+  font-size: 0.64rem;
+  line-height: 1.45;
+}
+
+.slider-family-note-copy {
+  color: inherit;
+}
+
+.slider-family-note-gesture {
+  color: rgba(207, 217, 232, 0.68);
+}
+
+.slider-family-note code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9em;
+  color: rgba(245, 249, 255, 0.9);
+}
+
+.global-root .routing-matrix .routing-matrix-cell.editable,
+.earth-root .earth-active-matrix .earth-matrix-cell-slider {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  overflow: hidden;
+  display: block;
+  padding: 5px 6px;
+  text-align: left;
+  font: inherit;
+  touch-action: pan-y;
+  user-select: none;
+}
+
+.global-root .routing-matrix .routing-matrix-cell.editable:hover,
+.earth-root .earth-active-matrix .earth-matrix-cell-slider:hover {
+  background: rgba(255, 255, 255, 0.038);
+}
+
+.global-root .routing-matrix .routing-matrix-cell.editable.dragging,
+.earth-root .earth-active-matrix .earth-matrix-cell-slider.dragging {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--row-accent, #a5c4d4) 16%, transparent);
+}
+
+.global-root .routing-matrix .routing-matrix-cell.level-col,
+.earth-root .earth-active-matrix .earth-matrix-cell.level-col {
+  border-left: 2px solid color-mix(in srgb, var(--row-accent, #a5c4d4) 32%, transparent);
+}
+
+.global-root .routing-matrix .routing-matrix-cell-track,
+.earth-root .earth-active-matrix .earth-matrix-cell-track {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  top: 50%;
+  height: 14px;
+  margin-top: -2px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+  pointer-events: none;
+}
+
+.global-root .routing-matrix .routing-matrix-cell-fill,
+.earth-root .earth-active-matrix .earth-matrix-cell-fill {
+  position: absolute;
+  top: 50%;
+  height: 14px;
+  margin-top: -2px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--row-accent, #a5c4d4) 34%, transparent);
+  pointer-events: none;
+  transition: left 0.12s ease-out, width 0.12s ease-out, opacity 0.12s ease-out, background 0.12s ease-out;
+}
+
+.global-root .routing-matrix .routing-matrix-cell-fill.walk,
+.earth-root .earth-active-matrix .earth-matrix-cell-fill.walk {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--row-accent, #a5c4d4) 22%, transparent),
+    color-mix(in srgb, var(--row-accent, #a5c4d4) 48%, transparent) 40%,
+    color-mix(in srgb, var(--row-accent, #a5c4d4) 28%, transparent) 62%,
+    color-mix(in srgb, var(--row-accent, #a5c4d4) 42%, transparent)
+  );
+}
+
+.global-root .routing-matrix .routing-matrix-cell-fill.sample-hold,
+.earth-root .earth-active-matrix .earth-matrix-cell-fill.sample-hold {
+  background: repeating-linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--row-accent, #a5c4d4) 34%, transparent) 0,
+    color-mix(in srgb, var(--row-accent, #a5c4d4) 34%, transparent) 4px,
+    transparent 4px,
+    transparent 7px
+  );
+}
+
+.global-root .routing-matrix .routing-matrix-cell.dragging .routing-matrix-cell-fill,
+.earth-root .earth-active-matrix .earth-matrix-cell.dragging .earth-matrix-cell-fill {
+  opacity: 0.92;
+}
+
+.global-root .routing-matrix .routing-matrix-cell-indicator,
+.global-root .routing-matrix .routing-matrix-cell-edge,
+.earth-root .earth-active-matrix .earth-matrix-cell-indicator,
+.earth-root .earth-active-matrix .earth-matrix-cell-edge {
+  position: absolute;
+  top: 50%;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.global-root .routing-matrix .routing-matrix-cell-indicator.single,
+.earth-root .earth-active-matrix .earth-matrix-cell-indicator.single {
+  width: 3px;
+  height: 18px;
+  margin-top: -4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--row-accent, #a5c4d4) 92%, white 8%);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--row-accent, #a5c4d4) 28%, transparent);
+  transition: left 0.12s ease-out;
+}
+
+.global-root .routing-matrix .routing-matrix-cell-indicator.walk,
+.earth-root .earth-active-matrix .earth-matrix-cell-indicator.walk {
+  width: 1px;
+  height: 16px;
+  margin-top: -3px;
+  background: color-mix(in srgb, var(--row-accent, #a5c4d4) 88%, white 12%);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--row-accent, #a5c4d4) 25%, transparent);
+}
+
+.global-root .routing-matrix .routing-matrix-cell-indicator.sample-hold,
+.earth-root .earth-active-matrix .earth-matrix-cell-indicator.sample-hold {
+  width: 3px;
+  height: 14px;
+  margin-top: -2px;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--row-accent, #a5c4d4) 88%, white 12%);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--row-accent, #a5c4d4) 20%, transparent);
+}
+
+.global-root .routing-matrix .routing-matrix-cell-indicator.sample-hold.flashing,
+.earth-root .earth-active-matrix .earth-matrix-cell-indicator.sample-hold.flashing {
+  animation: slider-family-sample-hold-flash 0.2s ease-out;
+}
+
+.global-root .routing-matrix .routing-matrix-cell-edge,
+.earth-root .earth-active-matrix .earth-matrix-cell-edge {
+  width: 2px;
+  height: 16px;
+  margin-top: -3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  opacity: 0;
+  transition: opacity 0.12s ease, background 0.12s ease, box-shadow 0.12s ease;
+}
+
+.global-root .routing-matrix .routing-matrix-cell:hover .routing-matrix-cell-edge,
+.earth-root .earth-active-matrix .earth-matrix-cell:hover .earth-matrix-cell-edge {
+  opacity: 0.25;
+}
+
+.global-root .routing-matrix .routing-matrix-cell.dragging .routing-matrix-cell-edge,
+.global-root .routing-matrix .routing-matrix-cell-edge.active,
+.earth-root .earth-active-matrix .earth-matrix-cell.dragging .earth-matrix-cell-edge,
+.earth-root .earth-active-matrix .earth-matrix-cell-edge.active {
+  opacity: 1;
+  background: color-mix(in srgb, var(--row-accent, #a5c4d4) 92%, white 8%);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--row-accent, #a5c4d4) 28%, transparent);
+}
+
+.global-root .routing-matrix .routing-matrix-cell-readout,
+.earth-root .earth-active-matrix .earth-matrix-cell-readout {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  color: rgba(235, 242, 248, 0.92);
+  font-size: 0.54rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  pointer-events: none;
+}
+
+.global-root .routing-matrix .routing-matrix-cell-value,
+.global-root .routing-matrix .routing-matrix-cell-range,
+.earth-root .earth-active-matrix .earth-matrix-cell-value,
+.earth-root .earth-active-matrix .earth-matrix-cell-range,
+.earth-root .earth-active-matrix .earth-matrix-static-text {
+  font-size: 0.69rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.global-root .routing-matrix .routing-matrix-cell-mode,
+.earth-root .earth-active-matrix .earth-matrix-cell-mode {
+  color: rgba(235, 242, 248, 0.62);
+  font-size: 0.54rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+
+@keyframes slider-family-sample-hold-flash {
+  0% {
+    opacity: 1;
+    transform: translateX(-50%) scaleY(1);
+  }
+
+  100% {
+    opacity: 0.7;
+    transform: translateX(-50%) scaleY(1.18);
+  }
+}

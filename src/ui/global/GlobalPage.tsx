@@ -451,7 +451,7 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
                   <Slider label="Randomness" value={state.randomness} paramKey="randomness" onChange={onParamChange} {...sliderProps('randomness')} />
                 </div>
                 <div className="harmony-grid-2">
-                  <Slider label="Walk Speed" value={state.randomWalkSpeed} paramKey="randomWalkSpeed" logarithmic onChange={onParamChange} />
+                  <Slider label="Walk Speed" value={state.randomWalkSpeed} paramKey="randomWalkSpeed" logarithmic onChange={onParamChange} {...sliderProps('randomWalkSpeed')} />
                   <Select
                     label="Walk Mode"
                     value={state.randomWalkMode}

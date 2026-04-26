@@ -22,7 +22,7 @@ export const PAD_PRESET_PARAM_KEYS = [
   // Character
   'hardness', 'warmth', 'presence', 'padFoldAmount', 'padFoldMode', 'detune',
   // Filter A
-  'filterType', 'filterCutoffMin', 'filterCutoffMax', 'filterResonance', 'filterQ',
+  'filterType', 'filterCutoffMin', 'filterCutoffMax', 'filterResonance', 'filterQ', 'filterSlope', 'filterKeyTracking',
   // Filter B
   'padFilterBEnabled', 'padFilterBType', 'padFilterBCutoff', 'padFilterBResonance', 'padFilterBQ', 'padFilterRouting',
   // ADSR
@@ -47,7 +47,7 @@ export const PAD1_TO_PAD2_KEY: Record<string, string> = {
   hardness: 'pad2Hardness', warmth: 'pad2Warmth', presence: 'pad2Presence',
   padFoldAmount: 'pad2FoldAmount', padFoldMode: 'pad2FoldMode',
   filterType: 'pad2FilterType', filterCutoffMin: 'pad2FilterCutoffMin', filterCutoffMax: 'pad2FilterCutoffMax',
-  filterResonance: 'pad2FilterResonance', filterQ: 'pad2FilterQ',
+  filterResonance: 'pad2FilterResonance', filterQ: 'pad2FilterQ', filterSlope: 'pad2FilterSlope', filterKeyTracking: 'pad2FilterKeyTracking',
   padFilterBEnabled: 'pad2FilterBEnabled', padFilterBType: 'pad2FilterBType', padFilterBCutoff: 'pad2FilterBCutoff',
   padFilterBResonance: 'pad2FilterBResonance', padFilterBQ: 'pad2FilterBQ', padFilterRouting: 'pad2FilterRouting',
   synthAttack: 'pad2Attack', synthDecay: 'pad2Decay', synthSustain: 'pad2Sustain', synthRelease: 'pad2Release',
@@ -91,7 +91,7 @@ export const PAD_PRESET_DEFAULT_PARAMS: Record<string, number | string | boolean
   padNoiseType: 'white', padNoiseLevel: 0.15,
   hardness: 0.3, warmth: 0.4, presence: 0.3, padFoldAmount: 0, padFoldMode: 0, detune: 8,
   filterType: 'lowpass', filterCutoffMin: 400, filterCutoffMax: 3000,
-  filterResonance: 0.2, filterQ: 1.0,
+  filterResonance: 0.2, filterQ: 1.0, filterSlope: 12, filterKeyTracking: 0,
   padFilterBEnabled: false, padFilterBType: 'highpass', padFilterBCutoff: 200,
   padFilterBResonance: 0.2, padFilterBQ: 1, padFilterRouting: 'series',
   synthAttack: 6, synthDecay: 1, synthSustain: 0.8, synthRelease: 12,

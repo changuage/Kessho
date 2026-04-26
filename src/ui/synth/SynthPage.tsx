@@ -21,6 +21,7 @@ import { SCALES, normalizeNoteDegreeOffset, scaleDegreeToSemitone } from '../../
 import type { ClockDivision, PitchBindingMode } from '../../audio/drumSeqTypes';
 import type { HarmonyState } from '../../audio/harmony';
 import { useSliderHelp } from '../SliderHelpOverlay';
+import { SliderPrimitive } from '../sliderSystem';
 import { useVisibleInterval } from '../hooks/useVisibleInterval';
 import { useRuntimeValue } from '../runtimeValueState';
 import './synth.css';
@@ -28,6 +29,10 @@ import SynthPresetManager from './SynthPresetManager';
 import { usePresets } from '../../presets/usePresets';
 import { PresetDropdown } from '../../presets/PresetDropdown';
 import { extractParams } from '../../presets/codec';
+import {
+  applyEuclideanPatternToSynthState,
+  extractEuclideanPatternDataFromSynthState,
+} from '../../presets/euclideanPatternBank';
 import type { PresetEntry } from '../../presets/types';
 import type { UsePresetsOptions } from '../../presets/usePresets';
 import {
@@ -284,7 +289,7 @@ const PAD1_TO_PAD2_KEY: Record<string, string> = {
   hardness: 'pad2Hardness', warmth: 'pad2Warmth', presence: 'pad2Presence',
   padFoldAmount: 'pad2FoldAmount', padFoldMode: 'pad2FoldMode',
   filterType: 'pad2FilterType', filterCutoffMin: 'pad2FilterCutoffMin', filterCutoffMax: 'pad2FilterCutoffMax',
-  filterResonance: 'pad2FilterResonance', filterQ: 'pad2FilterQ',
+  filterResonance: 'pad2FilterResonance', filterQ: 'pad2FilterQ', filterSlope: 'pad2FilterSlope', filterKeyTracking: 'pad2FilterKeyTracking',
   padFilterBEnabled: 'pad2FilterBEnabled', padFilterBType: 'pad2FilterBType', padFilterBCutoff: 'pad2FilterBCutoff',
   padFilterBResonance: 'pad2FilterBResonance', padFilterBQ: 'pad2FilterBQ', padFilterRouting: 'pad2FilterRouting',
   synthAttack: 'pad2Attack', synthDecay: 'pad2Decay', synthSustain: 'pad2Sustain', synthRelease: 'pad2Release',
@@ -469,8 +474,12 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const [dragPopup, setDragPopup] = useState<{ x: number; y: number; text: string } | null>(null);
   const [activeKeyboardCodes, setActiveKeyboardCodes] = useState<string[]>([]);
   const [lead4opPresets, setLead4opPresets] = useState<Array<{ id: string; name: string }>>([]);
-  const [liveFilterFreq, setLiveFilterFreq] = useState(1000);
-  const [liveLfoValue, setLiveLfoValue] = useState(0);
+  const [livePadViz, setLivePadViz] = useState({
+    pad1FilterFreq: 1000,
+    pad1LfoValue: 0,
+    pad2FilterFreq: 1000,
+    pad2LfoValue: 0,
+  });
   const [playheads, setPlayheads] = useState<number[]>([0, 0, 0, 0]);
   const [hitCounts, setHitCounts] = useState<number[]>([0, 0, 0, 0]);
   const [evolveFlashing, setEvolveFlashing] = useState<boolean[]>([false, false, false, false]);
@@ -606,8 +615,12 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   }, []);
 
   const updateLiveFilterViz = useCallback(() => {
-    setLiveFilterFreq(audioEngine.getCurrentFilterFreq());
-    setLiveLfoValue(audioEngine.getCurrentLfoValue());
+    setLivePadViz({
+      pad1FilterFreq: audioEngine.getCurrentPadFilterFreq('pad1'),
+      pad1LfoValue: audioEngine.getCurrentPadLfoValue('pad1'),
+      pad2FilterFreq: audioEngine.getCurrentPadFilterFreq('pad2'),
+      pad2LfoValue: audioEngine.getCurrentPadLfoValue('pad2'),
+    });
   }, []);
 
   const livePad1Morph = useRuntimeValue('padMorph', state.padMorph ?? 0) ?? (state.padMorph ?? 0);
@@ -857,11 +870,15 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     handlePadWalkToggle,
   ]);
 
-  // ── Euclidean sequencer preset (L1 synthEuclidean) ──
+  // ── Shared Euclidean pattern bank ──
   const [euclidPresetName, setEuclidPresetName] = useState<string | undefined>();
   const handleEuclidPresetLoad = useCallback((entry: PresetEntry, _data: Record<string, unknown>) => {
     setEuclidPresetName(entry.name);
   }, []);
+  const synthEuclideanPatternOptions = React.useMemo<UsePresetsOptions>(() => ({
+    customExtract: extractEuclideanPatternDataFromSynthState,
+    customApply: applyEuclideanPatternToSynthState,
+  }), []);
 
   // ── Composite extract: L3 synth source includes L1 synthEuclidean + L2 kits ──
   const synthCompositeExtract = React.useMemo<UsePresetsOptions>(() => ({
@@ -2342,6 +2359,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 filterACutoff={state.filterCutoffMin + (state.filterCutoffMax - state.filterCutoffMin) * 0.5}
                 filterARes={state.filterResonance}
                 filterAQ={state.filterQ}
+                filterASlope={state.filterSlope ?? 12}
                 hardness={state.hardness}
                 filterBEnabled={state.padFilterBEnabled ?? false}
                 filterBType={state.padFilterBType ?? 'highpass'}
@@ -2358,12 +2376,28 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 synthDecay={state.synthDecay}
                 synthSustain={state.synthSustain}
                 synthRelease={state.synthRelease}
-                liveFilterFreq={liveFilterFreq}
-                liveLfoValue={liveLfoValue}
+                modEnvEnabled={state.padModEnvEnabled}
+                modEnvAttack={state.padModEnvAttack ?? 0.1}
+                modEnvDecay={state.padModEnvDecay ?? 0.3}
+                modEnvSustain={state.padModEnvSustain ?? 0}
+                modEnvRelease={state.padModEnvRelease ?? 0.5}
+                modEnvDepth={state.padModEnvDepth ?? 0}
+                modEnvDest={state.padModEnvDest ?? 'filterCutoff'}
+                liveFilterFreq={livePadViz.pad1FilterFreq}
+                liveLfoValue={livePadViz.pad1LfoValue}
                 isRunning={isRunning}
                 onFilterMinChange={(v) => onParamChange('filterCutoffMin', v)}
                 onFilterMaxChange={(v) => onParamChange('filterCutoffMax', v)}
                 onAdsrChange={(param, v) => onParamChange(param, v)}
+                onModEnvChange={(param, v) => {
+                  const modEnvMap: Record<typeof param, keyof SliderState> = {
+                    attack: 'padModEnvAttack',
+                    decay: 'padModEnvDecay',
+                    sustain: 'padModEnvSustain',
+                    release: 'padModEnvRelease',
+                  };
+                  onParamChange(modEnvMap[param], v);
+                }}
               />
 
               {/* Drive + Osc Mix — same line */}
@@ -2417,6 +2451,10 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                   <div className="sc-compact-grid-2">
                     <Slider label="Resonance" value={state.filterResonance} paramKey="filterResonance" onChange={onParamChange} {...sliderProps('filterResonance')} />
                     <Slider label="Q" value={state.filterQ} paramKey="filterQ" onChange={onParamChange} {...sliderProps('filterQ')} />
+                  </div>
+                  <div className="sc-compact-grid-2">
+                    <Slider label="Slope" value={state.filterSlope ?? 12} paramKey="filterSlope" unit=" dB/oct" onChange={onParamChange} {...sliderProps('filterSlope')} />
+                    <Slider label="Key Track" value={state.filterKeyTracking ?? 0} paramKey="filterKeyTracking" onChange={onParamChange} {...sliderProps('filterKeyTracking')} />
                   </div>
                 </div>
 
@@ -2950,6 +2988,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 filterACutoff={(state.pad2FilterCutoffMin ?? 400) + ((state.pad2FilterCutoffMax ?? 3000) - (state.pad2FilterCutoffMin ?? 400)) * 0.5}
                 filterARes={state.pad2FilterResonance ?? 0.2}
                 filterAQ={state.pad2FilterQ ?? 1}
+                filterASlope={state.pad2FilterSlope ?? 12}
                 hardness={state.pad2Hardness ?? 0.3}
                 filterBEnabled={state.pad2FilterBEnabled ?? false}
                 filterBType={state.pad2FilterBType ?? 'highpass'}
@@ -2966,8 +3005,15 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 synthDecay={state.pad2Decay ?? 1}
                 synthSustain={state.pad2Sustain ?? 0.8}
                 synthRelease={state.pad2Release ?? 12}
-                liveFilterFreq={liveFilterFreq}
-                liveLfoValue={liveLfoValue}
+                modEnvEnabled={state.pad2ModEnvEnabled}
+                modEnvAttack={state.pad2ModEnvAttack ?? 0.1}
+                modEnvDecay={state.pad2ModEnvDecay ?? 0.3}
+                modEnvSustain={state.pad2ModEnvSustain ?? 0}
+                modEnvRelease={state.pad2ModEnvRelease ?? 0.5}
+                modEnvDepth={state.pad2ModEnvDepth ?? 0}
+                modEnvDest={state.pad2ModEnvDest ?? 'filterCutoff'}
+                liveFilterFreq={livePadViz.pad2FilterFreq}
+                liveLfoValue={livePadViz.pad2LfoValue}
                 isRunning={isRunning}
                 onFilterMinChange={(v) => onParamChange('pad2FilterCutoffMin', v)}
                 onFilterMaxChange={(v) => onParamChange('pad2FilterCutoffMax', v)}
@@ -2977,6 +3023,15 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     synthSustain: 'pad2Sustain', synthRelease: 'pad2Release',
                   };
                   onParamChange((pad2Map[param] || param) as keyof SliderState, v);
+                }}
+                onModEnvChange={(param, v) => {
+                  const modEnvMap: Record<typeof param, keyof SliderState> = {
+                    attack: 'pad2ModEnvAttack',
+                    decay: 'pad2ModEnvDecay',
+                    sustain: 'pad2ModEnvSustain',
+                    release: 'pad2ModEnvRelease',
+                  };
+                  onParamChange(modEnvMap[param], v);
                 }}
               />
 
@@ -3063,6 +3118,10 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                   <div className="sc-compact-grid-2">
                     <Slider label="Resonance" value={state.pad2FilterResonance} paramKey="pad2FilterResonance" onChange={onParamChange} {...sliderProps('pad2FilterResonance')} />
                     <Slider label="Q" value={state.pad2FilterQ} paramKey="pad2FilterQ" onChange={onParamChange} {...sliderProps('pad2FilterQ')} />
+                  </div>
+                  <div className="sc-compact-grid-2">
+                    <Slider label="Slope" value={state.pad2FilterSlope ?? 12} paramKey="pad2FilterSlope" unit=" dB/oct" onChange={onParamChange} {...sliderProps('pad2FilterSlope')} />
+                    <Slider label="Key Track" value={state.pad2FilterKeyTracking ?? 0} paramKey="pad2FilterKeyTracking" onChange={onParamChange} {...sliderProps('pad2FilterKeyTracking')} />
                   </div>
                 </div>
 
@@ -3573,6 +3632,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                   <div className="sc-section-label">Distance</div>
                   <Slider label="Distance" value={state.lead1Distance} paramKey="lead1Distance" ghostValue={getDistanceGhostValue('lead1Distance', liveLead1Distance)} onChange={onParamChange} {...sliderProps('lead1Distance')} />
                   <Slider label="Post LPF" value={state.lead1PostLPF} paramKey="lead1PostLPF" unit=" Hz" logarithmic ghostValue={getPreviewValue(lead1DistancePreview, 'lead1PostLPF')} onChange={onParamChange} {...sliderProps('lead1PostLPF')} />
+                  <Slider label="LPF Key Track" value={state.lead1PostLPFKeyTracking ?? 0} paramKey="lead1PostLPFKeyTracking" onChange={onParamChange} {...sliderProps('lead1PostLPFKeyTracking')} />
                   <Slider label="Stereo Width" value={state.lead1StereoWidth} paramKey="lead1StereoWidth" ghostValue={getPreviewValue(lead1DistancePreview, 'lead1StereoWidth')} onChange={onParamChange} {...sliderProps('lead1StereoWidth')} />
                   <Slider label="Diffuse Send" value={state.lead1DiffuseSend} paramKey="lead1DiffuseSend" ghostValue={getPreviewValue(lead1DistancePreview, 'lead1DiffuseSend')} onChange={onParamChange} {...sliderProps('lead1DiffuseSend')} />
                   <Slider label="Reverb Send" value={state.lead1ReverbSend} paramKey="lead1ReverbSend" ghostValue={getPreviewValue(lead1DistancePreview, 'lead1ReverbSend')} onChange={onParamChange} {...sliderProps('lead1ReverbSend')} />
@@ -3699,6 +3759,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                   <Slider label="Distance" value={state.lead2Distance} paramKey="lead2Distance" ghostValue={getDistanceGhostValue('lead2Distance', liveLead2Distance)} onChange={onParamChange} {...sliderProps('lead2Distance')} />
                   <Slider label="Hold Time" value={state.lead2Hold} paramKey="lead2Hold" unit="s" ghostValue={getPreviewValue(lead2DistancePreview, 'lead2Hold')} onChange={onParamChange} {...sliderProps('lead2Hold')} />
                   <Slider label="Post LPF" value={state.lead2PostLPF} paramKey="lead2PostLPF" unit=" Hz" logarithmic ghostValue={getPreviewValue(lead2DistancePreview, 'lead2PostLPF')} onChange={onParamChange} {...sliderProps('lead2PostLPF')} />
+                  <Slider label="LPF Key Track" value={state.lead2PostLPFKeyTracking ?? 0} paramKey="lead2PostLPFKeyTracking" onChange={onParamChange} {...sliderProps('lead2PostLPFKeyTracking')} />
                   <Slider label="Stereo Width" value={state.lead2StereoWidth} paramKey="lead2StereoWidth" ghostValue={getPreviewValue(lead2DistancePreview, 'lead2StereoWidth')} onChange={onParamChange} {...sliderProps('lead2StereoWidth')} />
                   <Slider label="Diffuse Send" value={state.lead2DiffuseSend} paramKey="lead2DiffuseSend" ghostValue={getPreviewValue(lead2DistancePreview, 'lead2DiffuseSend')} onChange={onParamChange} {...sliderProps('lead2DiffuseSend')} />
                   <Slider label="Reverb Send" value={state.lead2ReverbSend} paramKey="lead2ReverbSend" ghostValue={getPreviewValue(lead2DistancePreview, 'lead2ReverbSend')} onChange={onParamChange} {...sliderProps('lead2ReverbSend')} />
@@ -4000,16 +4061,17 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
             </div>
           )}
 
-          {/* Sequencer Preset (L1 synthEuclidean) */}
+          {/* Shared Euclidean pattern preset */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', marginBottom: 4, borderRadius: 6, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
             <span style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>Pattern</span>
             <PresetDropdown
               level="engine"
-              scope="synthEuclidean"
+              scope="euclideanPattern"
               state={state}
               currentName={euclidPresetName}
               onLoad={handleEuclidPresetLoad}
               onStateChange={onStateChange}
+              presetOptions={synthEuclideanPatternOptions}
               showSaveButton={false}
               compact
             />
@@ -4316,7 +4378,19 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     <button className="seq-evolve-reset" onClick={() => resetEvolveHome?.(seq.activeTab)}>Reset</button>
                     {diceLane && (
                       <span className="seq-dice-group">
-                        <input type="range" className="seq-dice-slider" min={0} max={100} value={Math.round(diceIntensity * 100)} onChange={e => setDiceIntensity(Number(e.target.value) / 100)} title={`Dice intensity: ${Math.round(diceIntensity * 100)}%`} />
+                        <SliderPrimitive
+                          className="seq-dice-slider"
+                          label="Dice"
+                          mode="single"
+                          value={Math.round(diceIntensity * 100)}
+                          hero="#ffa502"
+                          variant="full"
+                          density="compact"
+                          displayValue={`${Math.round(diceIntensity * 100)}%`}
+                          formatValue={(value) => `${Math.round(value)}%`}
+                          onValueChange={(value) => setDiceIntensity(Math.round(value / 5) * 5 / 100)}
+                          title={`Dice intensity: ${Math.round(diceIntensity * 100)}%`}
+                        />
                         <button className="seq-evolve-dice" onClick={() => diceLane(seq.activeTab, diceIntensity)} title="Randomize lane">&#x1F3B2;</button>
                       </span>
                     )}

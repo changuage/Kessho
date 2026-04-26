@@ -237,7 +237,7 @@ public final class KesshoBackgroundAudioPlugin: CAPPlugin, CAPBridgedPlugin {
     private func decodePayload(_ call: CAPPluginCall) throws -> (SliderState, [String: KesshoDualRange]) {
         let decoder = JSONDecoder()
         let stateJson = call.getString("stateJson") ?? "{}"
-        let state = try decoder.decode(SliderState.self, from: Data(stateJson.utf8))
+        let state = try SliderState.decodeStatePayload(from: Data(stateJson.utf8))
 
         guard let dualRangesJson = call.getString("dualRangesJson"), !dualRangesJson.isEmpty else {
             return (state, [:])

@@ -66,6 +66,8 @@ struct PadParams {
     float filter_cutoff_max = 4000;
     float filter_resonance = 0;
     float filter_q = 0.7f;
+    float filter_slope = 12.0f; // dB/oct, implemented as cascaded 12 dB/oct SVF stages
+    float filter_key_tracking = 0.0f; // 0=fixed cutoff, 1=one octave cutoff per octave played
 
     // Filter B
     int   filter_b_enabled = 0;
@@ -187,6 +189,9 @@ struct PadVoice {
 
     // Dual filters
     SVF filter_a;
+    SVF filter_a_slope2;
+    SVF filter_a_slope3;
+    SVF filter_a_slope4;
     SVF filter_b;
 
     // Warmth + presence (biquad)
@@ -216,6 +221,9 @@ struct PadVoice {
         osc_b = {};
         osc_sub = {};
         filter_a.reset();
+        filter_a_slope2.reset();
+        filter_a_slope3.reset();
+        filter_a_slope4.reset();
         filter_b.reset();
         warmth_filter = {};
         presence_filter = {};
@@ -268,6 +276,31 @@ static SVFMode filter_type_to_mode(int type) {
         case PAD_FILTER_NOTCH: return SVF_NOTCH;
         default: return SVF_LOWPASS;
     }
+}
+
+static int slope_to_stage_count(float slope_db_per_oct) {
+    return std::max(1, std::min(4, (int)roundf(slope_db_per_oct / 12.0f)));
+}
+
+static float apply_key_tracking(float cutoff, float base_freq, float amount) {
+    const float safe_amount = std::max(0.0f, std::min(1.0f, amount));
+    if (safe_amount <= 0.0001f) return cutoff;
+    const float ratio = std::max(0.125f, std::min(8.0f, base_freq / 261.625565f));
+    return cutoff * powf(ratio, safe_amount);
+}
+
+static float process_filter_a(PadVoice& v, float input, float cutoff, float q, SVFMode mode, int stage_count) {
+    float out = v.filter_a.process(input, cutoff, q, g_sample_rate, mode);
+    if (stage_count <= 1) return out;
+
+    // Keep the first stage responsible for resonance, then use neutral follow-up
+    // stages for slope so high-Q patches do not multiply into runaway peaks.
+    const float cascade_q = std::min(q, 0.707f);
+    out = v.filter_a_slope2.process(out, cutoff, cascade_q, g_sample_rate, mode);
+    if (stage_count <= 2) return out;
+    out = v.filter_a_slope3.process(out, cutoff, cascade_q, g_sample_rate, mode);
+    if (stage_count <= 3) return out;
+    return v.filter_a_slope4.process(out, cutoff, cascade_q, g_sample_rate, mode);
 }
 
 static void apply_lfo_modulation(float lfo_val, float depth, int dest,
@@ -330,6 +363,7 @@ static void render_voice(PadVoice& v, float* out_l, float* out_r,
 
     SVFMode filt_a_mode = filter_type_to_mode(p.filter_type);
     SVFMode filt_b_mode = filter_type_to_mode(p.filter_b_type);
+    int filter_a_stage_count = slope_to_stage_count(p.filter_slope);
 
     float eff_q = p.filter_q + p.filter_resonance * p.hardness * 5.0f;
 
@@ -402,6 +436,7 @@ static void render_voice(PadVoice& v, float* out_l, float* out_r,
         // Filter A
         float filter_cutoff = p.filter_cutoff_min +
             (p.filter_cutoff_max - p.filter_cutoff_min) * 0.5f * (1.0f + filter_a_mod);
+        filter_cutoff = apply_key_tracking(filter_cutoff, v.base_freq, p.filter_key_tracking);
         filter_cutoff = std::max(20.0f, std::min(18000.0f, filter_cutoff));
 
         // Low-cutoff boost
@@ -416,10 +451,10 @@ static void render_voice(PadVoice& v, float* out_l, float* out_r,
             float fb_cutoff = std::max(20.0f, std::min(18000.0f, p.filter_b_cutoff * (1.0f + filter_b_mod)));
             filtered = v.filter_b.process(sample, fb_cutoff, p.filter_b_q, g_sample_rate, filt_b_mode);
         } else if (p.filter_routing == PAD_ROUTE_A_ONLY || !p.filter_b_enabled) {
-            filtered = v.filter_a.process(sample, filter_cutoff, eff_q, g_sample_rate, filt_a_mode);
+            filtered = process_filter_a(v, sample, filter_cutoff, eff_q, filt_a_mode, filter_a_stage_count);
         } else {
             // Series: A → B
-            filtered = v.filter_a.process(sample, filter_cutoff, eff_q, g_sample_rate, filt_a_mode);
+            filtered = process_filter_a(v, sample, filter_cutoff, eff_q, filt_a_mode, filter_a_stage_count);
             float fb_cutoff = std::max(20.0f, std::min(18000.0f, p.filter_b_cutoff * (1.0f + filter_b_mod)));
             filtered = v.filter_b.process(filtered, fb_cutoff, p.filter_b_q, g_sample_rate, filt_b_mode);
         }
@@ -662,6 +697,8 @@ void pad_set_filter_cutoff_min(int p, float v) { PAD_CHECK(p); g_pads[p].filter_
 void pad_set_filter_cutoff_max(int p, float v) { PAD_CHECK(p); g_pads[p].filter_cutoff_max = v; }
 void pad_set_filter_resonance(int p, float v)  { PAD_CHECK(p); g_pads[p].filter_resonance = v; }
 void pad_set_filter_q(int p, float v)          { PAD_CHECK(p); g_pads[p].filter_q = v; }
+void pad_set_filter_slope(int p, float v)      { PAD_CHECK(p); g_pads[p].filter_slope = std::max(12.0f, std::min(48.0f, v)); }
+void pad_set_filter_key_tracking(int p, float v) { PAD_CHECK(p); g_pads[p].filter_key_tracking = std::max(0.0f, std::min(1.0f, v)); }
 
 void pad_set_filter_b_enabled(int p, int v)    { PAD_CHECK(p); g_pads[p].filter_b_enabled = v; }
 void pad_set_filter_b_type(int p, int v)       { PAD_CHECK(p); g_pads[p].filter_b_type = v; }

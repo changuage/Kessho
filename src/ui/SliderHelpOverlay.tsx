@@ -61,6 +61,8 @@ function formatPage(page?: SliderPageId): string {
       return 'Delay';
     case 'routing':
       return 'Routing';
+    case 'sliderLab':
+      return 'Slider Lab';
     default:
       return 'Control Help';
   }
@@ -157,6 +159,18 @@ export const SliderHelpProvider: React.FC<{
       <SliderHelpContext.Provider value={contextValue}>
         {children}
       </SliderHelpContext.Provider>
+      <button
+        type="button"
+        onClick={toggle}
+        style={{
+          ...styles.toggleButton,
+          ...(visible ? styles.toggleButtonActive : null),
+        }}
+        title="Toggle control help"
+        aria-pressed={visible}
+      >
+        {visible ? 'Hide Help' : 'Show Help'}
+      </button>
       <div
         onClick={handleCornerClick}
         style={styles.cornerTapTarget}
@@ -197,9 +211,33 @@ const styles: Record<string, React.CSSProperties> = {
     zIndex: 99999,
     cursor: 'default',
   },
-  container: {
+  toggleButton: {
     position: 'fixed',
     top: 8,
+    right: 8,
+    zIndex: 100000,
+    minHeight: 28,
+    padding: '0 10px',
+    borderRadius: 999,
+    border: '1px solid rgba(255,255,255,0.12)',
+    background: 'rgba(0,0,0,0.55)',
+    color: '#d7d7d7',
+    fontFamily: "Avenir, 'Avenir Next', -apple-system, BlinkMacSystemFont, sans-serif",
+    fontSize: 11,
+    fontWeight: 600,
+    letterSpacing: '0.04em',
+    cursor: 'pointer',
+    backdropFilter: 'blur(6px)',
+    boxShadow: '0 8px 24px rgba(0,0,0,0.28)',
+  },
+  toggleButtonActive: {
+    background: 'rgba(29, 39, 56, 0.88)',
+    borderColor: 'rgba(165,196,212,0.32)',
+    color: '#eef6ff',
+  },
+  container: {
+    position: 'fixed',
+    top: 42,
     right: 8,
     zIndex: 99998,
     maxWidth: 'min(360px, calc(100vw - 16px))',

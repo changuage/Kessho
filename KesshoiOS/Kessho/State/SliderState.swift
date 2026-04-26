@@ -452,6 +452,289 @@ struct SavedPreset: Codable, Identifiable {
     let dualRanges: [String: DualRange]?
 }
 
+typealias SliderStateJSONRecord = [String: Any]
+
+private enum SliderStatePayloadError: Error {
+    case invalidJSONObject
+}
+
+private enum LeadNamespace: String {
+    case lead1
+    case lead2
+}
+
+private enum PadNamespace: String {
+    case pad1
+    case pad2
+}
+
+private extension SliderState {
+    static func defaultJSONRecord() -> SliderStateJSONRecord {
+        guard let data = try? JSONEncoder().encode(SliderState()),
+              let object = try? JSONSerialization.jsonObject(with: data),
+              let record = object as? SliderStateJSONRecord else {
+            return [:]
+        }
+        return record
+    }
+
+    static func numberValue(_ value: Any?) -> Double? {
+        switch value {
+        case let number as Double:
+            return number
+        case let number as Float:
+            return Double(number)
+        case let number as Int:
+            return Double(number)
+        case let number as NSNumber where !(number is Bool):
+            return number.doubleValue
+        default:
+            return nil
+        }
+    }
+
+    static func boolValue(_ value: Any?) -> Bool? {
+        switch value {
+        case let bool as Bool:
+            return bool
+        case let number as NSNumber where number is Bool:
+            return number.boolValue
+        default:
+            return nil
+        }
+    }
+
+    static func stringValue(_ value: Any?) -> String? {
+        value as? String
+    }
+
+    static func assignNumberIfMissing(
+        _ targetKey: String,
+        from sourceKeys: [String],
+        source: SliderStateJSONRecord,
+        target: inout SliderStateJSONRecord
+    ) {
+        guard source[targetKey] == nil else { return }
+        for key in sourceKeys {
+            guard let value = numberValue(source[key]) else { continue }
+            target[targetKey] = value
+            return
+        }
+    }
+
+    static func assignStringIfMissing(
+        _ targetKey: String,
+        from sourceKeys: [String],
+        source: SliderStateJSONRecord,
+        target: inout SliderStateJSONRecord
+    ) {
+        guard source[targetKey] == nil else { return }
+        for key in sourceKeys {
+            guard let value = stringValue(source[key]) else { continue }
+            target[targetKey] = value
+            return
+        }
+    }
+
+    static func assignBoolIfMissing(
+        _ targetKey: String,
+        from sourceKeys: [String],
+        source: SliderStateJSONRecord,
+        target: inout SliderStateJSONRecord
+    ) {
+        guard source[targetKey] == nil else { return }
+        for key in sourceKeys {
+            guard let value = boolValue(source[key]) else { continue }
+            target[targetKey] = value
+            return
+        }
+    }
+
+    static func assignConstantIfMissing(
+        _ targetKey: String,
+        value: Any,
+        source: SliderStateJSONRecord,
+        target: inout SliderStateJSONRecord
+    ) {
+        guard source[targetKey] == nil else { return }
+        target[targetKey] = value
+    }
+
+    static func normalizedSynthEuclidSource(_ rawValue: String) -> String {
+        switch rawValue {
+        case "lead1", "lead2", "piano":
+            return "lead"
+        default:
+            return rawValue
+        }
+    }
+
+    static func primaryLeadNamespace(in source: SliderStateJSONRecord) -> LeadNamespace? {
+        let lead1Level = numberValue(source["lead1Level"]) ?? numberValue(source["leadLevel"]) ?? 0
+        let lead2Level = numberValue(source["lead2Level"]) ?? 0
+        let lead1Active = (boolValue(source["leadEnabled"]) ?? false) || lead1Level > 0.0001
+        let lead2Active = (boolValue(source["lead2Enabled"]) ?? false) || lead2Level > 0.0001
+
+        if lead2Active && (!lead1Active || lead2Level > lead1Level) {
+            return .lead2
+        }
+        if lead1Active || source["lead1Level"] != nil || source["leadLevel"] != nil {
+            return .lead1
+        }
+        return nil
+    }
+
+    static func primaryPadNamespace(in source: SliderStateJSONRecord) -> PadNamespace? {
+        let pad1Level = numberValue(source["synthLevel"]) ?? 0
+        let pad2Level = numberValue(source["pad2Level"]) ?? 0
+        let pad1Active = (boolValue(source["padEnabled"]) ?? false) || pad1Level > 0.0001
+        let pad2Active = (boolValue(source["pad2Enabled"]) ?? false) || pad2Level > 0.0001
+
+        if pad2Active && (!pad1Active || pad2Level > pad1Level) {
+            return .pad2
+        }
+        if pad1Active || source["synthLevel"] != nil {
+            return .pad1
+        }
+        return nil
+    }
+
+    static func applyLeadCompatibilityMappings(
+        source: SliderStateJSONRecord,
+        target: inout SliderStateJSONRecord
+    ) {
+        assignNumberIfMissing("leadDelayReverbSend", from: ["delayAReverbSend"], source: source, target: &target)
+        assignNumberIfMissing("leadDelayTimeMin", from: ["delayATime", "leadDelayTime"], source: source, target: &target)
+        assignNumberIfMissing("leadDelayTimeMax", from: ["delayATime", "leadDelayTime"], source: source, target: &target)
+        assignNumberIfMissing("leadDelayFeedbackMin", from: ["delayAFeedback", "leadDelayFeedback"], source: source, target: &target)
+        assignNumberIfMissing("leadDelayFeedbackMax", from: ["delayAFeedback", "leadDelayFeedback"], source: source, target: &target)
+        assignNumberIfMissing("leadDelayMixMin", from: ["delayAMix", "leadDelayMix"], source: source, target: &target)
+        assignNumberIfMissing("leadDelayMixMax", from: ["delayAMix", "leadDelayMix"], source: source, target: &target)
+        assignNumberIfMissing("leadVibratoDepthMin", from: ["leadVibratoDepth"], source: source, target: &target)
+        assignNumberIfMissing("leadVibratoDepthMax", from: ["leadVibratoDepth"], source: source, target: &target)
+        assignNumberIfMissing("leadVibratoRateMin", from: ["leadVibratoRate"], source: source, target: &target)
+        assignNumberIfMissing("leadVibratoRateMax", from: ["leadVibratoRate"], source: source, target: &target)
+        assignNumberIfMissing("leadGlideMin", from: ["leadGlide"], source: source, target: &target)
+        assignNumberIfMissing("leadGlideMax", from: ["leadGlide"], source: source, target: &target)
+
+        guard let namespace = primaryLeadNamespace(in: source) else { return }
+
+        let attackKey = namespace == .lead2 ? "lead2Attack" : "lead1Attack"
+        let decayKey = namespace == .lead2 ? "lead2Decay" : "lead1Decay"
+        let sustainKey = namespace == .lead2 ? "lead2Sustain" : "lead1Sustain"
+        let holdKey = namespace == .lead2 ? "lead2Hold" : "lead1Hold"
+        let releaseKey = namespace == .lead2 ? "lead2Release" : "lead1Release"
+        let levelKeys = namespace == .lead2 ? ["lead2Level", "leadLevel"] : ["lead1Level", "leadLevel"]
+        let reverbKeys = namespace == .lead2 ? ["lead2ReverbSend", "leadReverbSend"] : ["lead1ReverbSend", "leadReverbSend"]
+
+        assignConstantIfMissing("leadEnabled", value: true, source: source, target: &target)
+        assignNumberIfMissing("leadLevel", from: levelKeys, source: source, target: &target)
+        assignNumberIfMissing("leadReverbSend", from: reverbKeys, source: source, target: &target)
+        assignNumberIfMissing("leadAttack", from: [attackKey, "leadAttack"], source: source, target: &target)
+        assignNumberIfMissing("leadDecay", from: [decayKey, "leadDecay"], source: source, target: &target)
+        assignNumberIfMissing("leadSustain", from: [sustainKey, "leadSustain"], source: source, target: &target)
+        assignNumberIfMissing("leadHold", from: [holdKey, "leadHold"], source: source, target: &target)
+        assignNumberIfMissing("leadRelease", from: [releaseKey, "leadRelease"], source: source, target: &target)
+        assignNumberIfMissing("leadDensity", from: [namespace == .lead2 ? "lead2Density" : "lead1Density", "leadDensity"], source: source, target: &target)
+        assignNumberIfMissing("leadOctave", from: [namespace == .lead2 ? "lead2Octave" : "lead1Octave", "leadOctave"], source: source, target: &target)
+        assignNumberIfMissing("leadOctaveRange", from: [namespace == .lead2 ? "lead2OctaveRange" : "lead1OctaveRange", "leadOctaveRange"], source: source, target: &target)
+        assignNumberIfMissing("leadTimbreMin", from: ["leadTimbre", "leadTimbreMin"], source: source, target: &target)
+        assignNumberIfMissing("leadTimbreMax", from: ["leadTimbre", "leadTimbreMax"], source: source, target: &target)
+    }
+
+    static func applyPadCompatibilityMappings(
+        source: SliderStateJSONRecord,
+        target: inout SliderStateJSONRecord
+    ) {
+        let primaryPad = primaryPadNamespace(in: source)
+        let synthLevelKeys = primaryPad == .pad2 ? ["pad2Level", "synthLevel"] : ["synthLevel", "pad2Level"]
+        let synthReverbKeys = primaryPad == .pad2 ? ["pad2ReverbSend", "pad1ReverbSend"] : ["pad1ReverbSend", "pad2ReverbSend"]
+
+        assignNumberIfMissing("synthLevel", from: synthLevelKeys, source: source, target: &target)
+        assignNumberIfMissing("synthReverbSend", from: synthReverbKeys, source: source, target: &target)
+
+        guard primaryPad == .pad2 else { return }
+
+        assignNumberIfMissing("synthAttack", from: ["pad2Attack"], source: source, target: &target)
+        assignNumberIfMissing("synthDecay", from: ["pad2Decay"], source: source, target: &target)
+        assignNumberIfMissing("synthSustain", from: ["pad2Sustain"], source: source, target: &target)
+        assignNumberIfMissing("synthRelease", from: ["pad2Release"], source: source, target: &target)
+        assignNumberIfMissing("synthOctave", from: ["pad2Octave"], source: source, target: &target)
+        assignNumberIfMissing("hardness", from: ["pad2Hardness"], source: source, target: &target)
+        assignNumberIfMissing("warmth", from: ["pad2Warmth"], source: source, target: &target)
+        assignNumberIfMissing("presence", from: ["pad2Presence"], source: source, target: &target)
+        assignStringIfMissing("filterType", from: ["pad2FilterType"], source: source, target: &target)
+        assignNumberIfMissing("filterCutoffMin", from: ["pad2FilterCutoffMin"], source: source, target: &target)
+        assignNumberIfMissing("filterCutoffMax", from: ["pad2FilterCutoffMax"], source: source, target: &target)
+        assignNumberIfMissing("filterResonance", from: ["pad2FilterResonance"], source: source, target: &target)
+        assignNumberIfMissing("filterQ", from: ["pad2FilterQ"], source: source, target: &target)
+        assignNumberIfMissing("synthVoiceMask", from: ["pad2VoiceAssign"], source: source, target: &target)
+    }
+
+    static func applyOceanCompatibilityMappings(
+        source: SliderStateJSONRecord,
+        target: inout SliderStateJSONRecord
+    ) {
+        assignBoolIfMissing("oceanWaveSynthEnabled", from: ["waterEnabled"], source: source, target: &target)
+        assignNumberIfMissing("oceanWaveSynthLevel", from: ["waterLevel", "oceanMix"], source: source, target: &target)
+        assignNumberIfMissing("oceanDurationMin", from: ["waterSurfDuration"], source: source, target: &target)
+        assignNumberIfMissing("oceanDurationMax", from: ["waterSurfDuration"], source: source, target: &target)
+        assignNumberIfMissing("oceanIntervalMin", from: ["waterSurfInterval"], source: source, target: &target)
+        assignNumberIfMissing("oceanIntervalMax", from: ["waterSurfInterval"], source: source, target: &target)
+        assignNumberIfMissing("oceanFoamMin", from: ["waterSurfFoam"], source: source, target: &target)
+        assignNumberIfMissing("oceanFoamMax", from: ["waterSurfFoam"], source: source, target: &target)
+        assignNumberIfMissing("oceanDepthMin", from: ["waterSurfDepth"], source: source, target: &target)
+        assignNumberIfMissing("oceanDepthMax", from: ["waterSurfDepth"], source: source, target: &target)
+    }
+
+    static func applyLegacyCompatibilityMappings(
+        source: SliderStateJSONRecord,
+        target: inout SliderStateJSONRecord
+    ) {
+        assignNumberIfMissing("filterCutoffMin", from: ["filterCutoff"], source: source, target: &target)
+        assignNumberIfMissing("filterCutoffMax", from: ["filterCutoff"], source: source, target: &target)
+        assignNumberIfMissing("reverbLevel", from: ["reverbMix"], source: source, target: &target)
+        assignNumberIfMissing("drumEuclidBaseBPM", from: ["sequencerMasterBPM"], source: source, target: &target)
+    }
+
+    static func normalizeSynthEuclidSources(
+        source: SliderStateJSONRecord,
+        target: inout SliderStateJSONRecord
+    ) {
+        for lane in 1...4 {
+            let key = "synthEuclid\(lane)Source"
+            guard let rawValue = stringValue(source[key]) ?? stringValue(target[key]) else { continue }
+            target[key] = normalizedSynthEuclidSource(rawValue)
+        }
+    }
+}
+
+extension SliderState {
+    public static func decodeStatePayload(from data: Data) throws -> SliderState {
+        let object = try JSONSerialization.jsonObject(with: data)
+        guard let record = object as? SliderStateJSONRecord else {
+            throw SliderStatePayloadError.invalidJSONObject
+        }
+        return try decodeStateRecord(record)
+    }
+
+    static func decodeStateRecord(_ source: SliderStateJSONRecord) throws -> SliderState {
+        var normalized = defaultJSONRecord()
+        for (key, value) in source {
+            normalized[key] = value
+        }
+
+        applyLegacyCompatibilityMappings(source: source, target: &normalized)
+        applyPadCompatibilityMappings(source: source, target: &normalized)
+        applyLeadCompatibilityMappings(source: source, target: &normalized)
+        applyOceanCompatibilityMappings(source: source, target: &normalized)
+        normalizeSynthEuclidSources(source: source, target: &normalized)
+
+        let normalizedData = try JSONSerialization.data(withJSONObject: normalized, options: [])
+        return try JSONDecoder().decode(SliderState.self, from: normalizedData)
+    }
+}
+
 // MARK: - Default State
 extension SliderState {
     static let `default` = SliderState()

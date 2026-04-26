@@ -60,7 +60,8 @@ const EARTH_DUAL_KEYS: readonly (keyof SliderState)[] = [
   'earthLevel',
   'waterMorph',
   'waterIntensity', 'waterDistance', 'waterDropSize',
-  'waterHardness', 'waterGlassThickness', 'waterBaseFreq', 'waterReverbSend',
+  'waterHardness', 'waterGlassThickness', 'waterHardDropBaseFreq',
+  'waterWaterDropBaseFreq', 'waterReverbSend',
   'oceanSampleLevel', 'oceanSliceDuration', 'oceanSliceDensity',
   'oceanFilterCutoff', 'oceanFilterResonance',
   'oceanReverbSend', 'oceanDelayASend', 'oceanDelayBSend',
@@ -516,9 +517,7 @@ export default function EarthPage({
         onChange={onParamChange}
         onCycleMode={sp.onCycleMode}
         onDualRangeChange={sp.onDualRangeChange}
-        groupClassName="param-row"
-        labelClassName="param-label"
-        sliderClassName="param-slider"
+        groupClassName="earth-slider-row"
         fillColor={fillColor}
         format={opts?.format}
         logarithmic={opts?.logarithmic}
@@ -628,8 +627,7 @@ export default function EarthPage({
           />
           {anyWalkMode && (
             <WalkSpeedCard
-              state={state}
-              onParamChange={onParamChange}
+              ds={ds}
             />
           )}
         </div>

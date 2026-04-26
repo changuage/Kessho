@@ -29,7 +29,8 @@ void  water_process_block(int block_size);
 void  water_set_preset(int preset);       /* 0=tapDrips 1=stream 2=waterfall 3=rainWindow */
 void  water_set_params(float intensity_min, float intensity_max,
                        float distance_min, float distance_max,
-                       float base_freq_min, float base_freq_max,
+                       float hard_drop_base_freq_min, float hard_drop_base_freq_max,
+                       float water_drop_base_freq_min, float water_drop_base_freq_max,
                        float drop_size_min, float drop_size_max,
                        float hardness_min, float hardness_max,
                        float glass_thickness_min, float glass_thickness_max);

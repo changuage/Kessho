@@ -37,6 +37,16 @@ export { LocalStoragePresetStore, getPresetStore, setPresetStore } from './Prese
 export { SupabasePresetStore } from './SupabasePresetStore';
 export { HybridPresetStore } from './HybridPresetStore';
 export { loadFactoryPresets, isFactoryLoaded } from './factoryPresets';
+export {
+  optimizeStringWavesV2,
+  runPresetV2Migration,
+  verifyPresetV2Migration,
+} from './presetV2Migration';
+export type {
+  PresetV2MigrationOptions,
+  PresetV2MigrationReport,
+  StringWavesOptimizationReport,
+} from './presetV2Migration';
 export { usePresets } from './usePresets';
 export type { UsePresetsOptions } from './usePresets';
 

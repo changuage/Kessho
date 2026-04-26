@@ -102,7 +102,11 @@ npm run dev
 & "C:\Program Files\nodejs\node.exe" "node_modules\vite\bin\vite.js"
 ```
 on mac
+cd /Users/panguroo/Documents/generativemusic
 node node_modules/vite/bin/vite.js
+
+pkill -f "node_modules/vite/bin/vite.js"
+
 
 
 

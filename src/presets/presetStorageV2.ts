@@ -1,4 +1,10 @@
 import { extractCascade, extractParams, getVersionData } from './codec';
+import {
+  buildDrumEuclideanStateFromPatternData,
+  buildSynthEuclideanStateFromPatternData,
+  extractEuclideanPatternDataFromDrumState,
+  extractEuclideanPatternDataFromSynthState,
+} from './euclideanPatternBank';
 import { extractPresetVersionMetadata, presetValuesEqual } from './presetUtils';
 import { hydrateOptimizedStatePresetData } from './statePresetOptimization';
 import type { PresetEntry, PresetLevel, PresetRef, PresetVersion, PresetVersionMetadata } from './types';
@@ -79,6 +85,7 @@ export interface PresetChildSpec {
   type: PresetLevel;
   scope: string;
   extract: (state: SliderState) => Record<string, unknown>;
+  strip?: (state: SliderState) => Record<string, unknown>;
 }
 
 const FLOAT_PRECISION = 1_000_000;
@@ -173,13 +180,22 @@ export function applyRecordPatch(
   return canonicalizeRecord(next);
 }
 
-function extractDelayEchoLinePreset(state: SliderState): Record<string, unknown> {
-  return canonicalizeRecord({
-    ...extractParams(state, 1, 'echoLine'),
-    ...extractParams(state, 1, 'leadDelay'),
-    drumDelayNoteL: state.drumDelayNoteL,
-    drumDelayNoteR: state.drumDelayNoteR,
-  });
+function engineChild(slot: string, scope: string): PresetChildSpec {
+  return {
+    slot,
+    type: 'engine',
+    scope,
+    extract: (state) => canonicalizeRecord(extractParams(state, 1, scope)),
+  };
+}
+
+function kitChild(slot: string, scope: string): PresetChildSpec {
+  return {
+    slot,
+    type: 'kit',
+    scope,
+    extract: (state) => canonicalizeRecord(extractCascade(state, 2, scope)),
+  };
 }
 
 export function getPresetChildSpecs(type: PresetLevel, scope?: string): PresetChildSpec[] {
@@ -196,46 +212,98 @@ export function getPresetChildSpecs(type: PresetLevel, scope?: string): PresetCh
 
   if (type === 'source' && scope === 'synth') {
     return [
-      { slot: 'synthEuclidean', type: 'engine', scope: 'synthEuclidean', extract: (state) => canonicalizeRecord(extractParams(state, 1, 'synthEuclidean')) },
-      { slot: 'leadDelay', type: 'engine', scope: 'leadDelay', extract: (state) => canonicalizeRecord(extractParams(state, 1, 'leadDelay')) },
-      { slot: 'pad1Kit', type: 'kit', scope: 'pad1Kit', extract: (state) => canonicalizeRecord(extractParams(state, 2, 'pad1Kit')) },
-      { slot: 'pad2Kit', type: 'kit', scope: 'pad2Kit', extract: (state) => canonicalizeRecord(extractParams(state, 2, 'pad2Kit')) },
-      { slot: 'lead1Kit', type: 'kit', scope: 'lead1Kit', extract: (state) => canonicalizeRecord(extractParams(state, 2, 'lead1Kit')) },
-      { slot: 'lead2Kit', type: 'kit', scope: 'lead2Kit', extract: (state) => canonicalizeRecord(extractParams(state, 2, 'lead2Kit')) },
+      {
+        slot: 'euclideanPattern',
+        type: 'engine',
+        scope: 'euclideanPattern',
+        extract: (state) => canonicalizeRecord(extractEuclideanPatternDataFromSynthState(state)),
+        strip: (state) => canonicalizeRecord(buildSynthEuclideanStateFromPatternData(extractEuclideanPatternDataFromSynthState(state))),
+      },
+      engineChild('leadDelay', 'leadDelay'),
+      kitChild('pad1Kit', 'pad1Kit'),
+      kitChild('pad2Kit', 'pad2Kit'),
+      kitChild('lead1Kit', 'lead1Kit'),
+      kitChild('lead2Kit', 'lead2Kit'),
     ];
   }
 
   if (type === 'source' && scope === 'drums') {
     return [
-      { slot: 'drumEuclidean', type: 'engine', scope: 'drumEuclidean', extract: (state) => canonicalizeRecord(extractParams(state, 1, 'drumEuclidean')) },
-      { slot: 'drumKit', type: 'kit', scope: 'drumKit', extract: (state) => canonicalizeRecord(extractParams(state, 2, 'drumKit')) },
+      {
+        slot: 'euclideanPattern',
+        type: 'engine',
+        scope: 'euclideanPattern',
+        extract: (state) => canonicalizeRecord(extractEuclideanPatternDataFromDrumState(state)),
+        strip: (state) => canonicalizeRecord(buildDrumEuclideanStateFromPatternData(extractEuclideanPatternDataFromDrumState(state))),
+      },
+      kitChild('drumKit', 'drumKit'),
     ];
   }
 
   if (type === 'source' && scope === 'granular') {
     return [
-      { slot: 'granularVoice1', type: 'engine', scope: 'granularVoice1', extract: (state) => canonicalizeRecord(extractParams(state, 1, 'granularVoice1')) },
-      { slot: 'granularVoice2', type: 'engine', scope: 'granularVoice2', extract: (state) => canonicalizeRecord(extractParams(state, 1, 'granularVoice2')) },
-      { slot: 'granularVoice3', type: 'engine', scope: 'granularVoice3', extract: (state) => canonicalizeRecord(extractParams(state, 1, 'granularVoice3')) },
-      { slot: 'granularVoice4', type: 'engine', scope: 'granularVoice4', extract: (state) => canonicalizeRecord(extractParams(state, 1, 'granularVoice4')) },
-      { slot: 'granularLegacy', type: 'engine', scope: 'granularLegacy', extract: (state) => canonicalizeRecord(extractParams(state, 1, 'granularLegacy')) },
-      { slot: 'granularKit', type: 'kit', scope: 'granularKit', extract: (state) => canonicalizeRecord(extractParams(state, 2, 'granularKit')) },
+      kitChild('granularKit', 'granularKit'),
     ];
   }
 
   if (type === 'source' && scope === 'delay') {
     return [
-      { slot: 'echoLine', type: 'engine', scope: 'echoLine', extract: extractDelayEchoLinePreset },
-      { slot: 'clockedSpace', type: 'engine', scope: 'clockedSpace', extract: (state) => canonicalizeRecord(extractParams(state, 1, 'clockedSpace')) },
-      { slot: 'delayKit', type: 'kit', scope: 'delayKit', extract: (state) => canonicalizeRecord(extractParams(state, 2, 'delayKit')) },
+      kitChild('delayKit', 'delayKit'),
+    ];
+  }
+
+  if (type === 'kit' && scope === 'pad1Kit') {
+    return [engineChild('pad1', 'pad1')];
+  }
+
+  if (type === 'kit' && scope === 'pad2Kit') {
+    return [engineChild('pad2', 'pad2')];
+  }
+
+  if (type === 'kit' && scope === 'lead1Kit') {
+    return [engineChild('lead1', 'lead1')];
+  }
+
+  if (type === 'kit' && scope === 'lead2Kit') {
+    return [engineChild('lead2', 'lead2')];
+  }
+
+  if (type === 'kit' && scope === 'drumKit') {
+    return [
+      engineChild('drumSub', 'drumSub'),
+      engineChild('drumKick', 'drumKick'),
+      engineChild('drumClick', 'drumClick'),
+      engineChild('drumBeepHi', 'drumBeepHi'),
+      engineChild('drumBeepLo', 'drumBeepLo'),
+      engineChild('drumNoise', 'drumNoise'),
+      engineChild('drumMembrane', 'drumMembrane'),
+    ];
+  }
+
+  if (type === 'kit' && scope === 'granularKit') {
+    return [
+      engineChild('granularVoice1', 'granularVoice1'),
+      engineChild('granularVoice2', 'granularVoice2'),
+      engineChild('granularVoice3', 'granularVoice3'),
+      engineChild('granularVoice4', 'granularVoice4'),
+      engineChild('granularLegacy', 'granularLegacy'),
+      engineChild('legacyGranular', 'legacyGranular'),
+    ];
+  }
+
+  if (type === 'kit' && scope === 'delayKit') {
+    return [
+      engineChild('leadDelay', 'leadDelay'),
+      engineChild('echoLine', 'echoLine'),
+      engineChild('clockedSpace', 'clockedSpace'),
     ];
   }
 
   if (type === 'kit' && scope === 'earthKit') {
     return [
-      { slot: 'water', type: 'engine', scope: 'water', extract: (state) => canonicalizeRecord(extractParams(state, 1, 'water')) },
-      { slot: 'insects1', type: 'engine', scope: 'insects1', extract: (state) => canonicalizeRecord(extractParams(state, 1, 'insects1')) },
-      { slot: 'insects2', type: 'engine', scope: 'insects2', extract: (state) => canonicalizeRecord(extractParams(state, 1, 'insects2')) },
+      engineChild('water', 'water'),
+      engineChild('insects1', 'insects1'),
+      engineChild('insects2', 'insects2'),
     ];
   }
 

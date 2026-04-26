@@ -5,6 +5,26 @@ import { QUANTIZATION, type SliderMode, type SliderState } from '../../state';
 import { useAnimationVisibility } from '../../hooks/useAnimationVisibility';
 import { useVisibleInterval } from '../../hooks/useVisibleInterval';
 import { useRuntimeSliderIndicator } from '../../runtimeSliderState';
+import {
+  LONG_PRESS_MOVE_TOLERANCE_PX,
+  LONG_PRESS_MS,
+  SliderFamilyNote,
+  TRACK_PAD_PX,
+  clamp01,
+  getDualHandle,
+  normToValue,
+  normalizeQuantizedRange,
+  pointerToTrackNorm,
+  quantizeValue,
+  releasePointerCaptureSafely,
+  stepDecimals,
+  trackLeftCalc,
+  trackWidthCalc,
+  valueToNorm,
+  type MatrixCellHandle,
+  type QuantizationRange,
+} from '../../sliderSystem';
+import '../../sliderSystem/matrixSurface.css';
 import { INSECT_ENGINES } from '../../../audio/waterPresets';
 import type { EarthTextureDebugState } from '../../../audio/engine';
 import { NatureSliceViz } from './NatureSliceViz';
@@ -17,7 +37,6 @@ type BooleanSliderKey = {
   [K in keyof SliderState]: SliderState[K] extends boolean ? K : never
 }[keyof SliderState];
 
-type QuantizationRange = { min: number; max: number; step: number };
 type PreviewKind =
   | 'master'
   | 'waves'
@@ -32,7 +51,7 @@ type PreviewKind =
   | 'channels'
   | 'turbulence'
   | 'surf';
-type CellHandle = 'single' | 'min' | 'max' | 'both';
+type CellHandle = MatrixCellHandle;
 type SharedColumnId = 'level' | 'space' | 'delayA' | 'delayB' | 'granular';
 
 type SliderRuntime = {
@@ -103,10 +122,6 @@ type ActiveEarthMatrixProps = {
   getEarthTextureDebugState: () => EarthTextureDebugState;
 };
 
-const TRACK_PAD_PX = 6;
-const EDGE_HANDLE_PX = 8;
-const LONG_PRESS_MS = 400;
-const LONG_PRESS_MOVE_TOLERANCE_PX = 8;
 const MOBILE_EARTH_MATRIX_QUERY = '(max-width: 760px)';
 
 const SHARED_COLUMNS: Array<{ id: SharedColumnId; label: string }> = [
@@ -126,10 +141,6 @@ const WATER_LAYER_KEYS: readonly NumericSliderKey[] = [
   'waterLayerTurbulence',
   'waterLayerSurf',
 ] as const;
-
-function clamp01(value: number): number {
-  return Math.max(0, Math.min(1, value));
-}
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
@@ -151,58 +162,6 @@ function sliderCell(control: MatrixControl): SharedCell {
   return { kind: 'slider', control };
 }
 
-function stepDecimals(step: number): number {
-  if (!Number.isFinite(step)) return 0;
-  const text = String(step);
-  const decimalIndex = text.indexOf('.');
-  return decimalIndex === -1 ? 0 : text.length - decimalIndex - 1;
-}
-
-function canUseLog(info: QuantizationRange, logarithmic?: boolean): boolean {
-  return Boolean(logarithmic && info.min > 0 && info.max > 0);
-}
-
-function quantizeValue(value: number, info: QuantizationRange): number {
-  const clamped = clamp(value, info.min, info.max);
-  return info.min + Math.round((clamped - info.min) / info.step) * info.step;
-}
-
-function valueToNorm(value: number, info: QuantizationRange, logarithmic?: boolean): number {
-  const safe = clamp(value, info.min, info.max);
-  if (canUseLog(info, logarithmic)) {
-    const minLog = Math.log(info.min);
-    const maxLog = Math.log(info.max);
-    return clamp01((Math.log(safe) - minLog) / (maxLog - minLog));
-  }
-  return clamp01((safe - info.min) / Math.max(1e-9, info.max - info.min));
-}
-
-function normToValue(norm: number, info: QuantizationRange, logarithmic?: boolean): number {
-  const clampedNorm = clamp01(norm);
-  if (canUseLog(info, logarithmic)) {
-    const minLog = Math.log(info.min);
-    const maxLog = Math.log(info.max);
-    return Math.exp(minLog + clampedNorm * (maxLog - minLog));
-  }
-  return info.min + clampedNorm * (info.max - info.min);
-}
-
-function normalizeRange(
-  range: DualSliderRange | undefined,
-  info: QuantizationRange,
-  logarithmic?: boolean,
-): DualSliderRange | undefined {
-  if (!range) return undefined;
-  const min = quantizeValue(range.min, info);
-  const max = quantizeValue(range.max, info);
-  const normalizedMin = clamp(Math.min(min, max), info.min, info.max);
-  const normalizedMax = clamp(Math.max(min, max), info.min, info.max);
-  if (canUseLog(info, logarithmic) && normalizedMin <= 0) {
-    return { min: info.min, max: normalizedMax };
-  }
-  return { min: normalizedMin, max: normalizedMax };
-}
-
 function formatValue(control: MatrixControl, value: number, info: QuantizationRange): string {
   if (control.format) return control.format(value);
   if (info.min === 0 && info.max === 1) return `${Math.round(clamp01(value) * 100)}%`;
@@ -220,40 +179,6 @@ function rangeReadout(
   if (!range) return formatValue(control, info.min, info);
   const icon = mode === 'walk' ? '↝' : '⊡';
   return `${icon}${formatValue(control, range.min, info)}–${formatValue(control, range.max, info)}`;
-}
-
-function pointerToTrackNorm(clientX: number, rect: DOMRect): number {
-  const innerWidth = Math.max(1, rect.width - TRACK_PAD_PX * 2);
-  return clamp01((clientX - rect.left - TRACK_PAD_PX) / innerWidth);
-}
-
-function getDualHandle(norm: number, range: DualSliderRange, rect: DOMRect): CellHandle {
-  const innerWidth = Math.max(1, rect.width - TRACK_PAD_PX * 2);
-  const threshold = Math.min(0.18, EDGE_HANDLE_PX / innerWidth);
-  const bandWidth = range.max - range.min;
-
-  if (bandWidth <= threshold * 2 && norm >= range.min && norm <= range.max) {
-    return 'both';
-  }
-  if (norm < range.min - threshold) return 'min';
-  if (norm <= range.min + threshold) return 'min';
-  if (norm > range.max + threshold) return 'max';
-  if (norm >= range.max - threshold) return 'max';
-  return 'both';
-}
-
-function trackLeftCalc(norm: number): string {
-  return `calc(${TRACK_PAD_PX}px + (100% - ${TRACK_PAD_PX * 2}px) * ${clamp01(norm)})`;
-}
-
-function trackWidthCalc(norm: number): string {
-  return `calc((100% - ${TRACK_PAD_PX * 2}px) * ${clamp01(norm)})`;
-}
-
-function releaseCapture(target: EventTarget & HTMLElement, pointerId: number): void {
-  if (target.hasPointerCapture(pointerId)) {
-    target.releasePointerCapture(pointerId);
-  }
 }
 
 function channelsMorphLabel(value: number): string {
@@ -847,9 +772,9 @@ export function ActiveEarthMatrix({
   return (
     <section ref={sectionRef} className="mixer-section earth-active-matrix">
       <div className="mixer-section-header">Active Earth Matrix</div>
-      <div className="earth-active-matrix-note">
+      <SliderFamilyNote className="earth-active-matrix-note">
         Choose sources below. Shared routing appears per active family, while the active-source matrix keeps only the engines you have in play.
-      </div>
+      </SliderFamilyNote>
 
       <div className="earth-selector-groups">
         {selectorGroups.map((group) => (
@@ -1358,7 +1283,7 @@ function EarthMatrixSliderCell({
   );
   const value = numeric(state, control.key);
   const range = quantization && mode !== 'single'
-    ? normalizeRange(runtime.dualRange, quantization, control.logarithmic)
+    ? normalizeQuantizedRange(runtime.dualRange, quantization, control.logarithmic)
     : undefined;
   const valueNorm = quantization ? valueToNorm(value, quantization, control.logarithmic) : 0;
   const rangeNorm = quantization && range
@@ -1527,7 +1452,7 @@ function EarthMatrixSliderCell({
         setDragging(false);
         setDragHandle(null);
         longPressConsumedRef.current = false;
-        releaseCapture(event.currentTarget, event.pointerId);
+        releasePointerCaptureSafely(event.currentTarget, event.pointerId);
       }}
       onPointerCancel={(event) => {
         clearLongPress();
@@ -1535,7 +1460,7 @@ function EarthMatrixSliderCell({
         setDragging(false);
         setDragHandle(null);
         longPressConsumedRef.current = false;
-        releaseCapture(event.currentTarget, event.pointerId);
+        releasePointerCaptureSafely(event.currentTarget, event.pointerId);
       }}
     >
       <span className="earth-matrix-cell-track" />

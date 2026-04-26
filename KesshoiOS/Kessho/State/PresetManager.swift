@@ -17,6 +17,8 @@ class PresetManager {
     private let documentsDirectory: URL = {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
     }()
+
+    private let iso8601Formatter = ISO8601DateFormatter()
     
     private let userPresetsFile = "user_presets.json"
     
@@ -69,9 +71,7 @@ class PresetManager {
     func loadPreset(from url: URL) -> SavedPreset? {
         do {
             let data = try Data(contentsOf: url)
-            let decoder = JSONDecoder()
-            let preset = try decoder.decode(SavedPreset.self, from: data)
-            return preset
+            return try decodePreset(from: data, fallbackName: url.deletingPathExtension().lastPathComponent)
         } catch {
             print("Error loading preset from \(url.lastPathComponent): \(error)")
             return nil
@@ -143,8 +143,7 @@ class PresetManager {
     
     /// Import preset from JSON data
     func importPreset(from data: Data) -> SavedPreset? {
-        let decoder = JSONDecoder()
-        return try? decoder.decode(SavedPreset.self, from: data)
+        return try? decodePreset(from: data, fallbackName: "Imported Preset")
     }
     
     /// Import preset from URL (file picker)
@@ -155,5 +154,58 @@ class PresetManager {
         defer { url.stopAccessingSecurityScopedResource() }
         
         return loadPreset(from: url)
+    }
+
+    private func decodePreset(from data: Data, fallbackName: String) throws -> SavedPreset {
+        let object = try JSONSerialization.jsonObject(with: data)
+        guard let record = object as? [String: Any] else {
+            throw CocoaError(.coderReadCorrupt)
+        }
+
+        let name = (record["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let timestamp = (record["timestamp"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let stateRecord = (record["state"] as? [String: Any]) ?? record
+        let state = try SliderState.decodeStateRecord(stateRecord)
+
+        return SavedPreset(
+            name: name?.isEmpty == false ? name! : fallbackName,
+            timestamp: timestamp?.isEmpty == false ? timestamp! : iso8601Formatter.string(from: Date()),
+            state: state,
+            dualRanges: decodeDualRanges(from: record["dualRanges"])
+        )
+    }
+
+    private func decodeDualRanges(from value: Any?) -> [String: DualRange]? {
+        guard let rawRanges = value as? [String: Any] else {
+            return nil
+        }
+
+        var decoded: [String: DualRange] = [:]
+        for (key, rawValue) in rawRanges {
+            guard let rangeRecord = rawValue as? [String: Any],
+                  let min = jsonNumber(rangeRecord["min"]),
+                  let max = jsonNumber(rangeRecord["max"]) else {
+                continue
+            }
+            decoded[key] = DualRange(min: min, max: max)
+        }
+
+        return decoded.isEmpty ? nil : decoded
+    }
+
+    private func jsonNumber(_ value: Any?) -> Double? {
+        switch value {
+        case let number as Double:
+            return number
+        case let number as Float:
+            return Double(number)
+        case let number as Int:
+            return Double(number)
+        case let number as NSNumber where !(number is Bool):
+            return number.doubleValue
+        default:
+            return nil
+        }
     }
 }

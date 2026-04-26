@@ -24,8 +24,13 @@ import SeqMiniOverview from './SeqMiniOverview';
 import SeqLane from './SeqLane';
 import SeqSparkline from './SeqSparkline';
 import { useSliderHelp } from '../SliderHelpOverlay';
+import { SliderPrimitive } from '../sliderSystem';
 import { PresetDropdown } from '../../presets/PresetDropdown';
 import { extractParams } from '../../presets/codec';
+import {
+  applyEuclideanPatternToDrumState,
+  extractEuclideanPatternDataFromDrumState,
+} from '../../presets/euclideanPatternBank';
 import type { PresetEntry } from '../../presets/types';
 import type { UsePresetsOptions } from '../../presets/usePresets';
 
@@ -107,6 +112,7 @@ export interface DrumPageProps {
 }
 
 const DrumPage: React.FC<DrumPageProps> = (props) => {
+  const Slider = props.SliderComponent as React.ComponentType<Record<string, unknown>>;
   const {
     state,
     isMobile,
@@ -138,7 +144,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
   const initialEvolveConfigs = props.initialEvolveConfigs;
   const presetVersion = props.presetVersion;
 
-  const { announceHelp, announceSlider } = useSliderHelp();
+  const { announceHelp } = useSliderHelp();
 
   const [diceIntensity, setDiceIntensity] = useState(0.5);
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -152,24 +158,21 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
   const drumTriggerTimersRef = useRef<Record<string, number | null>>({});
   const evolveFlashTimersRef = useRef<Array<number | null>>([null, null, null, null]);
 
-  const announceDrumLevelHelp = useCallback(() => {
-    announceSlider('drumLevel', { label: 'Level' });
-  }, [announceSlider]);
-
-  const announceDrumReverbHelp = useCallback(() => {
-    announceSlider('drumReverbSend', { label: 'Reverb' });
-  }, [announceSlider]);
   const bindHelp = useCallback((helpKey: string, options: { label?: string } = {}) => ({
     onMouseEnter: () => announceHelp(helpKey, options),
     onPointerDown: () => announceHelp(helpKey, options),
     onFocus: () => announceHelp(helpKey, options),
   }), [announceHelp]);
 
-  // ── Euclidean sequencer preset (L1 drumEuclidean) ──
+  // ── Shared Euclidean pattern bank ──
   const [euclidPresetName, setEuclidPresetName] = useState<string | undefined>();
   const handleEuclidPresetLoad = useCallback((entry: PresetEntry, _data: Record<string, unknown>) => {
     setEuclidPresetName(entry.name);
   }, []);
+  const drumEuclideanPatternOptions = React.useMemo<UsePresetsOptions>(() => ({
+    customExtract: extractEuclideanPatternDataFromDrumState,
+    customApply: applyEuclideanPatternToDrumState,
+  }), []);
 
   // ── Composite extract: L3 drums source includes L1 drumEuclidean + L2 drumKit ──
   const drumsCompositeExtract = React.useMemo<UsePresetsOptions>(() => ({
@@ -682,35 +685,27 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
             >
               {state.drumEnabled ? 'ON' : 'OFF'}
             </button>
-            <div className="master-item">
-              <label>Level</label>
-              <input
-                type="range" min={0} max={1} step={0.01}
+            <div className="master-item master-item--slider">
+              <Slider
+                label="Level"
                 value={state.drumLevel as number}
-                onChange={(e) => {
-                  announceDrumLevelHelp();
-                  onParamChange('drumLevel', parseFloat(e.target.value));
-                }}
-                onMouseEnter={announceDrumLevelHelp}
-                onPointerDown={announceDrumLevelHelp}
-                onFocus={announceDrumLevelHelp}
+                paramKey="drumLevel"
+                onChange={onParamChange}
+                format={(value: number) => String(Math.round(value * 100))}
+                unit="%"
+                {...sliderProps('drumLevel')}
               />
-              <span className="val">{Math.round((state.drumLevel as number) * 100)}%</span>
             </div>
-            <div className="master-item">
-              <label>Reverb</label>
-              <input
-                type="range" min={0} max={1} step={0.01}
+            <div className="master-item master-item--slider">
+              <Slider
+                label="Reverb"
                 value={state.drumReverbSend as number}
-                onChange={(e) => {
-                  announceDrumReverbHelp();
-                  onParamChange('drumReverbSend', parseFloat(e.target.value));
-                }}
-                onMouseEnter={announceDrumReverbHelp}
-                onPointerDown={announceDrumReverbHelp}
-                onFocus={announceDrumReverbHelp}
+                paramKey="drumReverbSend"
+                onChange={onParamChange}
+                format={(value: number) => String(Math.round(value * 100))}
+                unit="%"
+                {...sliderProps('drumReverbSend')}
               />
-              <span className="val">{Math.round((state.drumReverbSend as number) * 100)}%</span>
             </div>
             <button
               className={`master-anim-btn${state.drumMorphSliderAnimate ? ' on' : ''}`}
@@ -798,16 +793,17 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
             </div>
           </div>
 
-          {/* Sequencer Preset (L1 drumEuclidean) */}
+          {/* Shared Euclidean pattern preset */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', marginBottom: 4, borderRadius: 6, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
             <span style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>Pattern</span>
             <PresetDropdown
               level="engine"
-              scope="drumEuclidean"
+              scope="euclideanPattern"
               state={state}
               currentName={euclidPresetName}
               onLoad={handleEuclidPresetLoad}
               onStateChange={onStateChange}
+              presetOptions={drumEuclideanPatternOptions}
               showSaveButton={false}
               compact
             />
@@ -1004,9 +1000,17 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                     <button className="seq-evolve-reset" onClick={() => resetEvolveHome(seq.activeTab)}>Reset</button>
                     {diceLane && (
                       <span className="seq-dice-group">
-                        <input type="range" className="seq-dice-slider" min={0} max={100} step={5}
+                        <SliderPrimitive
+                          className="seq-dice-slider"
+                          label="Dice"
+                          mode="single"
                           value={Math.round(diceIntensity * 100)}
-                          onChange={(e) => setDiceIntensity(Number(e.target.value) / 100)}
+                          hero="#ffa502"
+                          variant="full"
+                          density="compact"
+                          displayValue={`${Math.round(diceIntensity * 100)}%`}
+                          formatValue={(value) => `${Math.round(value)}%`}
+                          onValueChange={(value) => setDiceIntensity(Math.round(value / 5) * 5 / 100)}
                           title={`Dice intensity: ${Math.round(diceIntensity * 100)}%`}
                         />
                         <button className="seq-evolve-dice" onClick={() => diceLane(seq.activeTab, diceIntensity)} title={`Randomize lane (${Math.round(diceIntensity * 100)}%)`}>&#x1F3B2;</button>

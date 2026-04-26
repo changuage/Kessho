@@ -1877,7 +1877,8 @@ struct WaterState {
     float  intensity_range_min, intensity_range_max;
     float  rate_range_min, rate_range_max;
     float  distance_range_min, distance_range_max;
-    float  base_freq_range_min, base_freq_range_max;
+    float  hard_drop_base_freq_range_min, hard_drop_base_freq_range_max;
+    float  water_drop_base_freq_range_min, water_drop_base_freq_range_max;
     float  drop_size_range_min, drop_size_range_max;
     float  hardness_range_min, hardness_range_max;
     float  glass_thickness_range_min, glass_thickness_range_max;
@@ -2131,7 +2132,8 @@ int water_init(float sample_rate) {
     g_water->intensity_range_min = 0.5f;  g_water->intensity_range_max = 0.5f;
     g_water->rate_range_min = 0.5f;       g_water->rate_range_max = 0.5f;
     g_water->distance_range_min = 0.3f;   g_water->distance_range_max = 0.3f;
-    g_water->base_freq_range_min = 2500.0f; g_water->base_freq_range_max = 2500.0f;
+    g_water->hard_drop_base_freq_range_min = 2500.0f; g_water->hard_drop_base_freq_range_max = 2500.0f;
+    g_water->water_drop_base_freq_range_min = 2500.0f; g_water->water_drop_base_freq_range_max = 2500.0f;
     g_water->drop_size_range_min = 0.5f;  g_water->drop_size_range_max = 0.5f;
     g_water->hardness_range_min = 0.5f;   g_water->hardness_range_max = 0.5f;
     g_water->glass_thickness_range_min = 0.5f; g_water->glass_thickness_range_max = 0.5f;
@@ -2275,7 +2277,7 @@ void water_process_block(int block_size) {
                     if (drop_size_var > 1.0f) drop_size_var = 1.0f;
                     float hd_param = rng_range(&s->rng, s->hardness_range_min, s->hardness_range_max);
                     float hardness_var = hd_param * (0.7f + rng_next(&s->rng) * 0.6f);
-                    float bf_param = rng_range(&s->rng, s->base_freq_range_min, s->base_freq_range_max);
+                    float bf_param = rng_range(&s->rng, s->hard_drop_base_freq_range_min, s->hard_drop_base_freq_range_max);
                     // Morph between the older more tonal/decaying hard-drop mapping
                     // and the newer short rupture-biased mapping.
                     float hard_tone = clamp01(s->hard_drop_tone);
@@ -2363,7 +2365,7 @@ void water_process_block(int block_size) {
                 float ds_param = rng_range(&s->rng, s->drop_size_range_min, s->drop_size_range_max);
                 float drop_size = s->drop_size_min +
                     ds_param * (s->drop_size_max - s->drop_size_min);
-                float bf_param = rng_range(&s->rng, s->base_freq_range_min, s->base_freq_range_max);
+                float bf_param = rng_range(&s->rng, s->water_drop_base_freq_range_min, s->water_drop_base_freq_range_max);
                 float soft_freq = bf_param * 0.5f * (0.6f + rng_next(&s->rng) * 0.8f);
                 float soft_drop_size = drop_size + (rng_next(&s->rng) - 0.5f) * 0.3f;
                 water_soft_trigger(&s->soft_drops[idx], soft_freq,
@@ -2758,7 +2760,8 @@ void water_set_preset(int preset) {
 
 void water_set_params(float intensity_min, float intensity_max,
                       float distance_min, float distance_max,
-                      float base_freq_min, float base_freq_max,
+                      float hard_drop_base_freq_min, float hard_drop_base_freq_max,
+                      float water_drop_base_freq_min, float water_drop_base_freq_max,
                       float drop_size_min, float drop_size_max,
                       float hardness_min, float hardness_max,
                       float glass_thickness_min, float glass_thickness_max) {
@@ -2771,8 +2774,10 @@ void water_set_params(float intensity_min, float intensity_max,
     g_water->rate_range_max = 0.5f;
     g_water->distance_range_min = distance_min;
     g_water->distance_range_max = distance_max;
-    g_water->base_freq_range_min = base_freq_min;
-    g_water->base_freq_range_max = base_freq_max;
+    g_water->hard_drop_base_freq_range_min = hard_drop_base_freq_min;
+    g_water->hard_drop_base_freq_range_max = hard_drop_base_freq_max;
+    g_water->water_drop_base_freq_range_min = water_drop_base_freq_min;
+    g_water->water_drop_base_freq_range_max = water_drop_base_freq_max;
     g_water->drop_size_range_min = drop_size_min;
     g_water->drop_size_range_max = drop_size_max;
     g_water->hardness_range_min = hardness_min;
@@ -2784,7 +2789,8 @@ void water_set_params(float intensity_min, float intensity_max,
     g_water->intensity = (intensity_min + intensity_max) * 0.5f;
     g_water->rate = 0.5f;
     g_water->distance = (distance_min + distance_max) * 0.5f;
-    g_water->base_freq = (base_freq_min + base_freq_max) * 0.5f;
+    g_water->base_freq = (hard_drop_base_freq_min + hard_drop_base_freq_max +
+                          water_drop_base_freq_min + water_drop_base_freq_max) * 0.25f;
     g_water->drop_size = (drop_size_min + drop_size_max) * 0.5f;
     g_water->hardness = (hardness_min + hardness_max) * 0.5f;
     g_water->glass_thickness = (glass_thickness_min + glass_thickness_max) * 0.5f;

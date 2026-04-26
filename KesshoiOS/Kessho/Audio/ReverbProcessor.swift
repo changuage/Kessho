@@ -1,5 +1,36 @@
 import AVFoundation
 
+@inline(__always)
+private func writeReverbStereoFrame(
+    _ left: Float,
+    _ right: Float,
+    frame: Int,
+    to buffers: UnsafeMutableAudioBufferListPointer
+) {
+    if buffers.count == 1, let data = buffers[0].mData?.assumingMemoryBound(to: Float.self) {
+        let channelCount = max(Int(buffers[0].mNumberChannels), 1)
+        let baseIndex = frame * channelCount
+        if channelCount >= 2 {
+            data[baseIndex] = left
+            data[baseIndex + 1] = right
+            if channelCount > 2 {
+                let mono = (left + right) * 0.5
+                for channel in 2..<channelCount {
+                    data[baseIndex + channel] = mono
+                }
+            }
+        } else {
+            data[frame] = (left + right) * 0.5
+        }
+        return
+    }
+
+    for (index, buffer) in buffers.enumerated() {
+        guard let data = buffer.mData?.assumingMemoryBound(to: Float.self) else { continue }
+        data[frame] = index == 0 ? left : (index == 1 ? right : (left + right) * 0.5)
+    }
+}
+
 /// Quality modes for reverb processing
 enum ReverbQuality: String, CaseIterable {
     case ultra = "Ultra"        // 32 stages - best sound, most battery
@@ -135,20 +166,53 @@ enum ReverbType: String, CaseIterable {
 /// Algorithmic reverb for the native prototype, loosely aligned with the web flavor.
 /// Features: 8-point FDN, 6 diffuser chains, interpolated delays, smooth modulation
 class ReverbProcessor {
-    let node: AVAudioUnitReverb
-    let effectNode: AVAudioMixerNode
-    
+    private let stateLock = NSLock()
+
+    // `node` is the post-parity return bus that the engine can tap for stems.
+    let node: AVAudioMixerNode
+    let customReturnMixer: AVAudioMixerNode
+    let liteReturnMixer: AVAudioMixerNode
+    let liteNode: AVAudioUnitReverb
+    lazy var customNode: AVAudioSourceNode = { [weak self] in
+        let renderFormat = AVAudioFormat(standardFormatWithSampleRate: Double(self?.sampleRate ?? 44100), channels: 2)!
+        return AVAudioSourceNode(format: renderFormat) { _, _, frameCount, audioBufferList -> OSStatus in
+            let ablPointer = UnsafeMutableAudioBufferListPointer(audioBufferList)
+            guard let self else {
+                for frame in 0..<Int(frameCount) {
+                    writeReverbStereoFrame(0, 0, frame: frame, to: ablPointer)
+                }
+                return noErr
+            }
+
+            self.stateLock.lock()
+            defer { self.stateLock.unlock() }
+
+            let shouldRenderCustom = self.useCustomReverb
+            for frame in 0..<Int(frameCount) {
+                let (inputL, inputR) = self.dequeueInputFrame()
+                if shouldRenderCustom {
+                    let (wetL, wetR) = self.processStereo(left: inputL, right: inputR)
+                    writeReverbStereoFrame(wetL, wetR, frame: frame, to: ablPointer)
+                } else {
+                    writeReverbStereoFrame(0, 0, frame: frame, to: ablPointer)
+                }
+            }
+
+            return noErr
+        }
+    }()
+
     // Sample rate (will be set from audio engine)
     private var sampleRate: Float = 44100
     private var srScale: Float = 1.0  // Scale factor for 48kHz reference
-    
+
     // Quality mode
     private var quality: ReverbQuality = .balanced
     private var useCustomReverb: Bool = true
-    
+
     // Current reverb type
     private var currentType: ReverbType = .cathedral
-    
+
     // Parameters matching web app presets
     private var baseDecay: Float = 0.92   // Preset's base decay (set by setType)
     private var userDecay: Float = 0.9    // User slider decay (0-1)
@@ -160,11 +224,19 @@ class ReverbProcessor {
     private var predelayMs: Float = 20  // in milliseconds
     private var width: Float = 0.8
     private var damping: Float = 0.5
-    
+
+    // Live input ring buffer fed from the shared reverb send mixer.
+    private let inputBufferSize: Int
+    private var inputBufferL: [Float]
+    private var inputBufferR: [Float]
+    private var inputReadIndex: Int = 0
+    private var inputWriteIndex: Int = 0
+    private var bufferedInputFrames: Int = 0
+
     // FDN preset configurations (internal - not to be confused with public ReverbType enum)
     enum FDNPresetConfig {
         case plate, hall, cathedral, darkHall, ambient
-        
+
         var params: (decay: Float, damping: Float, diffusion: Float, size: Float, modDepth: Float) {
             switch self {
             case .plate:     return (0.88, 0.25, 0.8, 0.8, 0.25)
@@ -175,25 +247,25 @@ class ReverbProcessor {
             }
         }
     }
-    
+
     // FDN delay times in ms (matching web app exactly)
     private let FDN_TIMES_MS: [Float] = [37.3, 43.7, 53.1, 61.7, 71.3, 83.9, 97.1, 109.3]
-    
+
     // Diffuser delay times (matching web app exactly)
     private let DIFFUSER_TIMES_BASE: [[Int]] = [
         [89, 127, 179, 233, 307, 401],   // preDiffuserL - 6 stages
         [97, 137, 191, 251, 317, 419],   // preDiffuserR - 6 stages
-        [167, 229, 313, 421],             // midDiffuserL - 4 stages
-        [173, 241, 331, 433],             // midDiffuserR - 4 stages
+        [167, 229, 313, 421],            // midDiffuserL - 4 stages
+        [173, 241, 331, 433],            // midDiffuserR - 4 stages
         [211, 283, 367, 457, 547, 641],  // postDiffuserL - 6 stages
         [223, 293, 379, 467, 557, 653]   // postDiffuserR - 6 stages
     ]
-    
+
     // FDN components
     private var fdnDelays: [SmoothDelay] = []
     private var fdnDelayTimes: [Float] = []
     private var fdnDampers: [OnePole] = []
-    
+
     // 6 Diffuser chains (pre/mid/post for L/R)
     private var preDiffuserL: DiffuserChain!
     private var preDiffuserR: DiffuserChain!
@@ -201,41 +273,49 @@ class ReverbProcessor {
     private var midDiffuserR: DiffuserChain!
     private var postDiffuserL: DiffuserChain!
     private var postDiffuserR: DiffuserChain!
-    
+
     // Predelay buffers
     private var predelayL: SmoothDelay!
     private var predelayR: SmoothDelay!
     private var predelaySamples: Float = 0
-    
+
     // Modulation (4 phases for 8 delays, paired)
     private var modPhases: [Float] = [0, 0.25, 0.5, 0.75]
     private let modRates: [Float] = [0.023, 0.031, 0.041, 0.053]
-    
+
     // DC blockers
     private var dcBlockerL = DCBlocker()
     private var dcBlockerR = DCBlocker()
-    
+
     // Hadamard mixing scale (1/sqrt(8))
     private let mixScale: Float = 0.3535533905932738
-    
+
     // Pre-allocated arrays for audio thread (avoid allocations in processStereo)
     private var reads8: [Float] = [Float](repeating: 0, count: 8)
     private var damped8: [Float] = [Float](repeating: 0, count: 8)
     private var mixed8: [Float] = [Float](repeating: 0, count: 8)
-    
+
     // Block processing optimization
     private var blockCounter: Int = 0
     private let blockSize: Int = 32
     private var currentModValues: [Float] = [0, 0, 0, 0]
-    
+
     init(sampleRate: Float = 44100) {
         self.sampleRate = sampleRate
         self.srScale = sampleRate / 48000
+        self.inputBufferSize = max(Int(sampleRate * 0.5), 4096)
+        self.inputBufferL = [Float](repeating: 0, count: inputBufferSize)
+        self.inputBufferR = [Float](repeating: 0, count: inputBufferSize)
+        self.node = AVAudioMixerNode()
+        self.customReturnMixer = AVAudioMixerNode()
+        self.liteReturnMixer = AVAudioMixerNode()
+        self.liteNode = AVAudioUnitReverb()
+
         let scaledDelayFactor = self.srScale
         let scaledDiffuserTimes = DIFFUSER_TIMES_BASE.map { delayGroup in
             delayGroup.map { Int(Float($0) * scaledDelayFactor) }
         }
-        
+
         // Initialize FDN delays
         for i in 0..<8 {
             let baseTime = FDN_TIMES_MS[i] * scaledDelayFactor
@@ -244,7 +324,7 @@ class ReverbProcessor {
             fdnDelayTimes.append(baseTime * sampleRate / 1000)
             fdnDampers.append(OnePole())
         }
-        
+
         // Initialize diffuser chains with scaled delay times
         preDiffuserL = DiffuserChain(delays: scaledDiffuserTimes[0], feedback: 0.65)
         preDiffuserR = DiffuserChain(delays: scaledDiffuserTimes[1], feedback: 0.65)
@@ -252,22 +332,115 @@ class ReverbProcessor {
         midDiffuserR = DiffuserChain(delays: scaledDiffuserTimes[3], feedback: 0.55)
         postDiffuserL = DiffuserChain(delays: scaledDiffuserTimes[4], feedback: 0.5)
         postDiffuserR = DiffuserChain(delays: scaledDiffuserTimes[5], feedback: 0.5)
-        
+
         // Initialize predelay (max 500ms for ambient music)
         let maxPredelaySamples = Int(0.5 * sampleRate) + 100
         predelayL = SmoothDelay(maxSamples: maxPredelaySamples)
         predelayR = SmoothDelay(maxSamples: maxPredelaySamples)
-        
-        // Create audio nodes
-        node = AVAudioUnitReverb()
-        effectNode = AVAudioMixerNode()
-        
-        // Configure base reverb as fallback
-        node.loadFactoryPreset(.largeHall)
-        node.wetDryMix = wetDryMix
-        
-        // Apply default preset
+
+        // Configure base reverb as fallback.
+        liteNode.loadFactoryPreset(.largeHall)
+        liteNode.wetDryMix = 100
+
+        // Apply default preset and route custom mode live by default.
         applyPreset(.hall)
+        refreshRouting()
+        setWetDryMix(wetDryMix)
+    }
+
+    private func refreshRouting() {
+        customReturnMixer.outputVolume = useCustomReverb ? 1.0 : 0.0
+        liteReturnMixer.outputVolume = useCustomReverb ? 0.0 : 1.0
+        node.outputVolume = min(max(wetDryMix / 100, 0), 1)
+        liteNode.wetDryMix = 100
+        liteNode.bypass = useCustomReverb
+    }
+
+    private func dequeueInputFrame() -> (Float, Float) {
+        guard bufferedInputFrames > 0 else { return (0, 0) }
+
+        let left = inputBufferL[inputReadIndex]
+        let right = inputBufferR[inputReadIndex]
+        inputReadIndex = (inputReadIndex + 1) % inputBufferSize
+        bufferedInputFrames -= 1
+        return (left, right)
+    }
+
+    private func clearInputBuffer() {
+        if !inputBufferL.isEmpty {
+            inputBufferL = [Float](repeating: 0, count: inputBufferSize)
+            inputBufferR = [Float](repeating: 0, count: inputBufferSize)
+        }
+        inputReadIndex = 0
+        inputWriteIndex = 0
+        bufferedInputFrames = 0
+    }
+
+    private func clearDSPState() {
+        predelayL.clear()
+        predelayR.clear()
+        fdnDelays.forEach { $0.clear() }
+        fdnDampers.forEach { $0.clear() }
+        preDiffuserL.clear()
+        preDiffuserR.clear()
+        midDiffuserL.clear()
+        midDiffuserR.clear()
+        postDiffuserL.clear()
+        postDiffuserR.clear()
+        dcBlockerL.clear()
+        dcBlockerR.clear()
+        reads8 = [Float](repeating: 0, count: 8)
+        damped8 = [Float](repeating: 0, count: 8)
+        mixed8 = [Float](repeating: 0, count: 8)
+        blockCounter = 0
+        currentModValues = [0, 0, 0, 0]
+        modPhases = [0, 0.25, 0.5, 0.75]
+    }
+
+    func writeInput(buffer: AVAudioPCMBuffer) {
+        guard useCustomReverb,
+              let channelData = buffer.floatChannelData else { return }
+
+        let frameCount = min(Int(buffer.frameLength), inputBufferSize)
+        guard frameCount > 0 else { return }
+
+        let left = channelData[0]
+        let right = Int(buffer.format.channelCount) > 1 ? channelData[1] : channelData[0]
+
+        stateLock.lock()
+        defer { stateLock.unlock() }
+
+        if frameCount >= inputBufferSize {
+            let startIndex = frameCount - inputBufferSize
+            for frame in 0..<inputBufferSize {
+                inputBufferL[frame] = left[startIndex + frame]
+                inputBufferR[frame] = right[startIndex + frame]
+            }
+            inputReadIndex = 0
+            inputWriteIndex = 0
+            bufferedInputFrames = inputBufferSize
+            return
+        }
+
+        let overflow = max(0, bufferedInputFrames + frameCount - inputBufferSize)
+        if overflow > 0 {
+            inputReadIndex = (inputReadIndex + overflow) % inputBufferSize
+            bufferedInputFrames -= overflow
+        }
+
+        for frame in 0..<frameCount {
+            inputBufferL[inputWriteIndex] = left[frame]
+            inputBufferR[inputWriteIndex] = right[frame]
+            inputWriteIndex = (inputWriteIndex + 1) % inputBufferSize
+        }
+        bufferedInputFrames += frameCount
+    }
+
+    func hardReset() {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        clearInputBuffer()
+        clearDSPState()
     }
     
     /// Apply a reverb preset
@@ -437,6 +610,8 @@ class ReverbProcessor {
     // MARK: - Parameter Setters
     
     func setDecay(_ decay: Float) {
+        stateLock.lock()
+        defer { stateLock.unlock() }
         self.userDecay = min(max(decay, 0), 1)
         updateEffectiveDecay()
     }
@@ -447,37 +622,53 @@ class ReverbProcessor {
     }
     
     func setWetDryMix(_ mix: Float) {
+        stateLock.lock()
+        defer { stateLock.unlock() }
         self.wetDryMix = min(max(mix, 0), 100)
-        node.wetDryMix = wetDryMix
+        refreshRouting()
     }
     
     func setSize(_ size: Float) {
+        stateLock.lock()
+        defer { stateLock.unlock() }
         self.size = min(max(size, 0.5), 2.0)
     }
     
     func setDiffusion(_ diffusion: Float) {
+        stateLock.lock()
+        defer { stateLock.unlock() }
         self.diffusion = min(max(diffusion, 0), 1)
         updateDiffuserFeedback()
     }
     
     func setModulation(_ modulation: Float) {
+        stateLock.lock()
+        defer { stateLock.unlock() }
         self.modulation = min(max(modulation, 0), 1)
     }
     
     func setPredelay(_ predelayMs: Float) {
+        stateLock.lock()
+        defer { stateLock.unlock() }
         self.predelayMs = min(max(predelayMs, 0), 500)
-        self.predelaySamples = predelayMs * sampleRate / 1000
+        self.predelaySamples = self.predelayMs * sampleRate / 1000
     }
     
     func setWidth(_ width: Float) {
+        stateLock.lock()
+        defer { stateLock.unlock() }
         self.width = min(max(width, 0), 1)
     }
     
     func setDamping(_ damping: Float) {
+        stateLock.lock()
+        defer { stateLock.unlock() }
         self.damping = min(max(damping, 0), 1)
     }
     
     func setSampleRate(_ sr: Float) {
+        stateLock.lock()
+        defer { stateLock.unlock() }
         self.sampleRate = sr
         self.srScale = sr / 48000
         // Recalculate predelay
@@ -486,12 +677,16 @@ class ReverbProcessor {
     
     /// Set quality mode (affects CPU usage and sound quality)
     func setQuality(_ quality: ReverbQuality) {
+        stateLock.lock()
+        defer { stateLock.unlock() }
         self.quality = quality
         self.useCustomReverb = (quality != .lite)
-        
-        // Update Apple reverb preset based on current parameters for lite mode
+        refreshRouting()
+
+        // Update Apple reverb preset based on current parameters for lite mode.
         if quality == .lite {
             updateAppleReverbPreset()
+            clearInputBuffer()
         }
     }
     
@@ -508,11 +703,13 @@ class ReverbProcessor {
     /// Update Apple reverb preset based on current type
     private func updateAppleReverbPreset() {
         // Use the direct mapping from ReverbType to Apple factory preset
-        node.loadFactoryPreset(currentType.appleFactoryPreset)
+        liteNode.loadFactoryPreset(currentType.appleFactoryPreset)
     }
     
     /// Set the reverb type (preset)
     func setType(_ type: ReverbType) {
+        stateLock.lock()
+        defer { stateLock.unlock() }
         self.currentType = type
         
         // Apply FDN parameters for web-compatible presets
@@ -553,16 +750,22 @@ class ReverbProcessor {
     func setParameters(decay: Float, mix: Float, size: Float,
                        diffusion: Float, modulation: Float,
                        predelay: Float, width: Float, damping: Float) {
-        setDecay(decay)
-        setWetDryMix(mix)
-        setSize(size)
-        setDiffusion(diffusion)
-        setModulation(modulation)
-        setPredelay(predelay * 1000)  // Convert seconds to ms
-        setWidth(width)
-        setDamping(damping)
-        
-        // Update Apple reverb for lite mode
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        self.userDecay = min(max(decay, 0), 1)
+        updateEffectiveDecay()
+        self.wetDryMix = min(max(mix, 0), 100)
+        self.size = min(max(size, 0.5), 2.0)
+        self.diffusion = min(max(diffusion, 0), 1)
+        self.modulation = min(max(modulation, 0), 1)
+        self.predelayMs = min(max(predelay * 1000, 0), 500)
+        self.predelaySamples = self.predelayMs * sampleRate / 1000
+        self.width = min(max(width, 0), 1)
+        self.damping = min(max(damping, 0), 1)
+        updateDiffuserFeedback()
+        refreshRouting()
+
+        // Update Apple reverb for lite mode.
         if quality == .lite {
             updateAppleReverbPreset()
         }

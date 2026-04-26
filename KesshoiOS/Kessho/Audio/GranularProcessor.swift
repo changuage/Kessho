@@ -504,6 +504,34 @@ class GranularProcessor {
         }
     }
     
+    /// Pre-fill the upcoming live write positions with captured synth audio.
+    /// The render callback advances `inputWriteIndex`, so we only stage samples here.
+    func writeInput(buffer: AVAudioPCMBuffer) {
+        guard let channelData = buffer.floatChannelData else { return }
+
+        let frameCount = min(Int(buffer.frameLength), inputBufferSize)
+        guard frameCount > 0 else { return }
+
+        let left = channelData[0]
+        let right = Int(buffer.format.channelCount) > 1 ? channelData[1] : channelData[0]
+        let sampleRate = Float(buffer.format.sampleRate)
+
+        stateLock.lock()
+        defer { stateLock.unlock() }
+
+        if sampleRate > 0 {
+            self.sampleRate = sampleRate
+            self.invSampleRate = 1.0 / sampleRate
+        }
+
+        let baseIndex = inputWriteIndex
+        for frame in 0..<frameCount {
+            let writeIndex = (baseIndex + frame) % inputBufferSize
+            inputBufferL[writeIndex] = left[frame]
+            inputBufferR[writeIndex] = right[frame]
+        }
+    }
+
     /// Write input samples to buffer (call from audio callback with live audio)
     func writeInput(left: Float, right: Float) {
         stateLock.lock()

@@ -10,6 +10,7 @@ import {
   scaleDegreeToSemitone,
 } from '../../audio/drumSeqTypes';
 import DragNumber from './DragNumber';
+import { SliderPrimitive } from '../sliderSystem';
 
 type LaneKind = 'trigger' | 'pitch' | 'expression' | 'morph' | 'distance' | 'slice' | 'reverse';
 
@@ -55,6 +56,14 @@ const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 function midiToName(midi: number): string {
   if (midi < 0 || midi > 127) return '';
   return (NOTE_NAMES[midi % 12] ?? '') + (Math.floor(midi / 12) - 1);
+}
+
+function midiToPercent(midi: number): number {
+  return ((Math.max(36, Math.min(96, midi)) - 36) / 60) * 100;
+}
+
+function percentToMidi(percent: number): number {
+  return 36 + Math.round((Math.max(0, Math.min(100, percent)) / 100) * 60);
 }
 
 function clampUnit(value: number): number {
@@ -339,23 +348,31 @@ const SeqLane: React.FC<SeqLaneProps> = ({
         <div className="seq-lane-body seq-noterange-body">
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center', padding: '8px 4px' }}>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: '0.65rem', color: '#888', marginBottom: '2px' }}>
-                Low: {midiToName(pitchNoteMin ?? 48)}
-              </div>
-              <input type="range" min={36} max={96} step={1}
-                value={pitchNoteMin ?? 48}
-                onChange={(e) => onChangePitchNoteMin?.(Math.min(parseInt(e.target.value), pitchNoteMax ?? 72))}
-                style={{ width: '100%', cursor: 'pointer' }}
+              <SliderPrimitive
+                className="seq-note-range-slider"
+                label="Low"
+                mode="single"
+                value={midiToPercent(pitchNoteMin ?? 48)}
+                hero={color}
+                variant="full"
+                density="compact"
+                displayValue={midiToName(pitchNoteMin ?? 48)}
+                formatValue={(percent) => midiToName(percentToMidi(percent))}
+                onValueChange={(percent) => onChangePitchNoteMin?.(Math.min(percentToMidi(percent), pitchNoteMax ?? 72))}
               />
             </div>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: '0.65rem', color: '#888', marginBottom: '2px' }}>
-                High: {midiToName(pitchNoteMax ?? 72)}
-              </div>
-              <input type="range" min={36} max={96} step={1}
-                value={pitchNoteMax ?? 72}
-                onChange={(e) => onChangePitchNoteMax?.(Math.max(parseInt(e.target.value), pitchNoteMin ?? 48))}
-                style={{ width: '100%', cursor: 'pointer' }}
+              <SliderPrimitive
+                className="seq-note-range-slider"
+                label="High"
+                mode="single"
+                value={midiToPercent(pitchNoteMax ?? 72)}
+                hero={color}
+                variant="full"
+                density="compact"
+                displayValue={midiToName(pitchNoteMax ?? 72)}
+                formatValue={(percent) => midiToName(percentToMidi(percent))}
+                onValueChange={(percent) => onChangePitchNoteMax?.(Math.max(percentToMidi(percent), pitchNoteMin ?? 48))}
               />
             </div>
           </div>

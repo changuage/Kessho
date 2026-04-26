@@ -57,6 +57,8 @@ EXPORTS="[
   '_pad_set_filter_cutoff_max',
   '_pad_set_filter_resonance',
   '_pad_set_filter_q',
+  '_pad_set_filter_slope',
+  '_pad_set_filter_key_tracking',
   '_pad_set_filter_b_enabled',
   '_pad_set_filter_b_type',
   '_pad_set_filter_b_cutoff',

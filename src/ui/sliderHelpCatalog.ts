@@ -1,8 +1,8 @@
 import { DRUM_VOICES, type DrumParamDef } from '../audio/drumVoiceConfig';
 import type { DrumVoiceType } from '../audio/drumSynth';
 
-export type SliderPageId = 'app' | 'global' | 'synth' | 'drums' | 'reverb' | 'granular' | 'earth' | 'delay' | 'routing';
-export type DualModeSupport = 'full' | 'custom' | 'walk-only' | 'single-only';
+export type SliderPageId = 'app' | 'global' | 'synth' | 'drums' | 'reverb' | 'granular' | 'earth' | 'delay' | 'routing' | 'sliderLab';
+export type DualModeSupport = 'full' | 'walk-only' | 'single-only';
 
 export interface SliderHelpSurface {
   page: SliderPageId;
@@ -27,7 +27,6 @@ export interface SliderAuditSummary {
 type EntryCopy = Pick<SliderHelpEntry, 'short' | 'long'>;
 
 const WALK_ONLY_NOTE = 'App.tsx normalizes sample-and-hold to walk mode for this parameter.';
-const NATIVE_SINGLE_NOTE = 'This surface still uses a native range input instead of the shared DualSlider.';
 const GLOBAL_SINGLE_NOTE = 'This surface intentionally uses the simple shared Slider without dual-range hooks.';
 
 function surface(
@@ -182,6 +181,18 @@ const mixEntries: Record<string, SliderHelpEntry> = {
       rt('Routing Matrix', 'Lead 2 → Reverb'),
     ],
   ),
+  lead1PostLPFKeyTracking: lowHigh(
+    'Sets how much Lead 1 post-filter cutoff follows note pitch.',
+    'keep the post LPF fixed as notes move',
+    'open the post LPF upward for higher notes and lower it for lower notes',
+    [sy('Lead 1 / Distance', 'LPF Key Track')],
+  ),
+  lead2PostLPFKeyTracking: lowHigh(
+    'Sets how much Lead 2 post-filter cutoff follows note pitch.',
+    'keep the post LPF fixed as notes move',
+    'open the post LPF upward for higher notes and lower it for lower notes',
+    [sy('Lead 2 / Distance', 'LPF Key Track')],
+  ),
   lead1DelayASend: lowHigh(
     'Sets Lead 1 trim into shared Delay A.',
     'keep Lead 1 out of the shared single-line bus',
@@ -263,9 +274,7 @@ const mixEntries: Record<string, SliderHelpEntry> = {
     'push the full drum engine forward without changing per-voice balances',
     [
       g('Master Mixer / Drum', 'Level'),
-      dr('Master Strip', 'Level', 'single-only', [
-        'The Drum tab master strip uses a native range input; dual mode is only available from the Global page.',
-      ]),
+      dr('Master Strip', 'Level'),
     ],
   ),
   drumReverbSend: lowHigh(
@@ -275,9 +284,7 @@ const mixEntries: Record<string, SliderHelpEntry> = {
     [
       g('Master Mixer / Drum', 'Reverb'),
       rt('Routing Matrix', 'Drums → Reverb'),
-      dr('Master Strip', 'Reverb', 'single-only', [
-        'The Drum tab master strip uses a native range input; dual mode is only available from the Global page.',
-      ]),
+      dr('Master Strip', 'Reverb'),
     ],
   ),
   granularLevel: lowHigh(
@@ -397,8 +404,8 @@ const globalEntries: Record<string, SliderHelpEntry> = {
     'Sets how fast walk-mode sliders drift inside their range.',
     'Low values make walk-mode parameters glide slowly and feel calmer. High values make them roam faster and change character more often.',
     [
-      g('Scale & Tension', 'Walk Speed', 'single-only', [GLOBAL_SINGLE_NOTE]),
-      ea('Walk Speed', 'Walk Speed', 'single-only', [NATIVE_SINGLE_NOTE]),
+      g('Scale & Tension', 'Walk Speed'),
+      ea('Walk Speed', 'Walk Speed'),
     ],
   ),
   randomWalkMode: entry(
@@ -576,6 +583,20 @@ const padFilterQHelp = lowHigh(
   'keep the filter response wider and gentler',
   'narrow the filter and make its peak feel tighter and more pronounced',
   [sy('Pad 1 / Filter', 'Q')],
+);
+
+const padFilterSlopeHelp = lowHigh(
+  'Sets how steeply the pad filter rolls off beyond the cutoff.',
+  'use the gentlest 12 dB/oct slope',
+  'stack more filter stages for a steeper 48 dB/oct cutoff',
+  [sy('Pad 1 / Filter', 'Slope')],
+);
+
+const padFilterKeyTrackingHelp = lowHigh(
+  'Sets how much the main pad filter cutoff follows played note pitch.',
+  'keep the filter cutoff fixed across the keyboard',
+  'track pitch one octave of cutoff per octave played',
+  [sy('Pad 1 / Filter', 'Key Track')],
 );
 
 const padAttackHelp = entry(
@@ -829,6 +850,8 @@ const synthEntries: Record<string, SliderHelpEntry> = {
   filterCutoffMax: padFilterMaxHelp,
   filterResonance: padFilterResHelp,
   filterQ: padFilterQHelp,
+  filterSlope: padFilterSlopeHelp,
+  filterKeyTracking: padFilterKeyTrackingHelp,
   synthAttack: padAttackHelp,
   synthDecay: padDecayHelp,
   synthSustain: padSustainHelp,
@@ -865,6 +888,8 @@ const synthEntries: Record<string, SliderHelpEntry> = {
   pad2FilterCutoffMax: cloneEntry(padFilterMaxHelp, [sy('Pad 2 / Filter', 'Max')]),
   pad2FilterResonance: cloneEntry(padFilterResHelp, [sy('Pad 2 / Filter', 'Resonance')]),
   pad2FilterQ: cloneEntry(padFilterQHelp, [sy('Pad 2 / Filter', 'Q')]),
+  pad2FilterSlope: cloneEntry(padFilterSlopeHelp, [sy('Pad 2 / Filter', 'Slope')]),
+  pad2FilterKeyTracking: cloneEntry(padFilterKeyTrackingHelp, [sy('Pad 2 / Filter', 'Key Track')]),
   pad2Attack: cloneEntry(padAttackHelp, [sy('Pad 2 / Envelope', 'Attack')]),
   pad2Decay: cloneEntry(padDecayHelp, [sy('Pad 2 / Envelope', 'Decay')]),
   pad2Sustain: cloneEntry(padSustainHelp, [sy('Pad 2 / Envelope', 'Sustain')]),
@@ -1207,9 +1232,19 @@ const earthEntries: Record<string, SliderHelpEntry> = {
     [ea('Water Engine', 'Glass')],
   ),
   waterBaseFreq: entry(
-    'Sets the base resonant frequency of the water engine.',
-    'Low values make the scene feel deeper and darker. High values make it feel smaller and brighter.',
+    'Legacy shared base frequency for older water presets.',
+    'Current water controls split this into separate Hard Drops and Water Drops base frequency sliders.',
     [ea('Water Engine', 'Base Freq')],
+  ),
+  waterHardDropBaseFreq: entry(
+    'Sets the base frequency drive for the Hard Drops engine.',
+    'Low values make hard drops darker and less active. High values push them brighter and more lively.',
+    [ea('Water Engine', 'Hard Drops Engine / Base Freq')],
+  ),
+  waterWaterDropBaseFreq: entry(
+    'Sets the base pitch and brightness for the Water Drops engine.',
+    'Low values make soft drops deeper and rounder. High values make them smaller, higher, and more sparkly.',
+    [ea('Water Engine', 'Water Drops Engine / Base Freq')],
   ),
   waterReverbSend: entry(
     'Sets how much the water engine feeds the shared reverb.',
@@ -1805,10 +1840,8 @@ function buildDrumEntries(): Record<string, SliderHelpEntry> {
     const label = DRUM_VOICES[voice].label;
     entries[key] = entry(
       `Morphs the ${label} voice between preset A and preset B.`,
-      `Low values keep the ${label.toLowerCase()} voice near preset A. High values move it toward preset B, and custom dual modes can randomize that position per hit or over time.`,
-      [dr(drumVoiceSection(voice, 'Morph'), 'Morph', 'custom', [
-        'This surface uses the DrumPage custom morph slider instead of the shared DualSlider.',
-      ])],
+      `Low values keep the ${label.toLowerCase()} voice near preset A. High values move it toward preset B, and shared dual modes can randomize that position per hit or over time.`,
+      [dr(drumVoiceSection(voice, 'Morph'), 'Morph')],
     );
   }
 
@@ -1826,7 +1859,7 @@ function buildDrumEntries(): Record<string, SliderHelpEntry> {
     entries[key] = entry(
       `Sets how much the ${label.toLowerCase()} voice feeds shared Delay A.`,
       `Low values keep the ${label.toLowerCase()} voice dry. High values send more of that voice into the shared drum/lead delay bus.`,
-      [dr(drumVoiceSection(voice, 'Send'), 'Delay Send', 'single-only', [NATIVE_SINGLE_NOTE])],
+      [dr(drumVoiceSection(voice, 'Send'), 'Delay Send')],
     );
   }
 
@@ -1839,13 +1872,10 @@ function buildDrumEntries(): Record<string, SliderHelpEntry> {
       for (const def of defs) {
         if (def.type !== 'range') continue;
         const copy = describeDrumRange(voice, def);
-        const isCustom = sectionName === 'Variation';
         entries[def.key] = entry(
           copy.short,
           copy.long,
-          [dr(drumVoiceSection(voice, sectionName), def.label, isCustom ? 'custom' : 'single-only', isCustom
-            ? ['This surface uses DrumPage custom dual-slider behavior rather than the shared DualSlider.']
-            : [NATIVE_SINGLE_NOTE])],
+          [dr(drumVoiceSection(voice, sectionName), def.label)],
         );
       }
     }
@@ -1878,12 +1908,7 @@ export const SLIDER_AUDIT_SUMMARY: SliderAuditSummary[] = [
   },
   {
     severity: 'limitation',
-    scope: 'Native drum slider surfaces',
-    note: 'Drum master-strip sliders, delay sends, and advanced drum parameter sliders still use native range inputs, so they cannot reuse shared dual-slider behavior yet.',
-  },
-  {
-    severity: 'limitation',
     scope: 'Single-only global/earth utility sliders',
-    note: '`randomWalkSpeed`, `cofDriftRate`, and `cofDriftRange` are still single-only on their current surfaces.',
+    note: '`cofDriftRate` and `cofDriftRange` stay in the shared slider family but remain single-only on their current surfaces.',
   },
 ];

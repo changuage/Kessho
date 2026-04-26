@@ -853,7 +853,9 @@
 }
 .synth-root .seq-evolve-panel .seq-evolve-dice:hover { background: rgba(168,134,0,0.35); }
 .synth-root .seq-evolve-panel .seq-dice-group { display: inline-flex; align-items: center; gap: 3px; }
-.synth-root .seq-evolve-panel .seq-dice-slider { width: 50px; height: 12px; accent-color: #ffd700; cursor: pointer; }
+.synth-root .seq-evolve-panel .seq-dice-slider { width: 58px; min-width: 58px; cursor: pointer; }
+.synth-root .seq-evolve-panel .seq-dice-slider .sl-slider-head { display: none; }
+.synth-root .seq-evolve-panel .seq-dice-slider .sl-slider-rail { height: 12px; }
 
 /* ── Evolution zone slider ── */
 .synth-root .seq-evolve-zone-wrap {
@@ -1705,25 +1707,15 @@
   margin-bottom: 0;
 }
 .synth-root .sc-inline-slider .app-slider-group {
-  display: flex;
-  align-items: center;
-  gap: 4px;
+  width: 100%;
   margin-bottom: 2px;
 }
-.synth-root .sc-inline-slider .app-slider-label {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  margin-bottom: 0;
+.synth-root .sc-inline-slider .app-slider-group .sl-slider-head {
+  gap: 4px;
   font-size: 0.6rem;
-  flex-shrink: 0;
-  min-width: 0;
-  white-space: nowrap;
 }
-.synth-root .sc-inline-slider .app-slider {
-  flex: 1;
-  min-width: 0;
-  height: 14px;
+.synth-root .sc-inline-slider .app-slider-group .sl-slider-rail {
+  width: 100%;
 }
 
 /* ── ADSR compact knobs row ── */

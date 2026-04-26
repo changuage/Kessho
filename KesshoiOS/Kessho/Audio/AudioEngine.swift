@@ -40,6 +40,14 @@ public final class AudioEngine {
     private let leadMixer = AVAudioMixerNode()
     private let oceanMixer = AVAudioMixerNode()
     private let drumMixer = AVAudioMixerNode()
+    private let synthLevelMixer = AVAudioMixerNode()
+    private let granularLevelMixer = AVAudioMixerNode()
+    private let leadLevelMixer = AVAudioMixerNode()
+    private let drumLevelMixer = AVAudioMixerNode()
+    private let synthReverbSendMixer = AVAudioMixerNode()
+    private let granularReverbSendMixer = AVAudioMixerNode()
+    private let leadReverbSendMixer = AVAudioMixerNode()
+    private let drumReverbSendMixer = AVAudioMixerNode()
     private let drumDelaySendMixer = AVAudioMixerNode()  // Delay send from drums
     private let drumDelayMixer = AVAudioMixerNode()      // Delay wet output
     private var drumDelayL: AVAudioUnitDelay?            // Left channel delay
@@ -48,11 +56,6 @@ public final class AudioEngine {
     private let reverbSend = AVAudioMixerNode()
     private let masterMixer = AVAudioMixerNode()
     private let outputBridgeMixer = AVAudioMixerNode()
-    
-    // Granular input tap for live synth processing
-    private var granularInputBuffer: AVAudioPCMBuffer?
-    private var granularInputWriteIndex: Int = 0
-    private var granularSampleBuffer: [Float] = []  // Pre-allocated buffer for audio thread
     
     // MARK: - State
     private(set) var isRunning = false
@@ -105,6 +108,14 @@ public final class AudioEngine {
         engine.attach(leadMixer)
         engine.attach(oceanMixer)
         engine.attach(drumMixer)
+        engine.attach(synthLevelMixer)
+        engine.attach(granularLevelMixer)
+        engine.attach(leadLevelMixer)
+        engine.attach(drumLevelMixer)
+        engine.attach(synthReverbSendMixer)
+        engine.attach(granularReverbSendMixer)
+        engine.attach(leadReverbSendMixer)
+        engine.attach(drumReverbSendMixer)
         engine.attach(drumDelaySendMixer)
         engine.attach(drumDelayMixer)
         engine.attach(dryMixer)
@@ -152,25 +163,45 @@ public final class AudioEngine {
         // Setup drum stereo ping-pong delay
         setupDrumDelay(format: format)
         
-        // Connect dry path
-        engine.connect(synthMixer, to: dryMixer, format: format)
-        engine.connect(granularMixer, to: dryMixer, format: format)
-        engine.connect(leadMixer, to: dryMixer, format: format)
+        // Connect dry path through dedicated level mixers so reverb sends can stay pre-fader.
+        engine.connect(synthMixer, to: synthLevelMixer, format: format)
+        engine.connect(synthLevelMixer, to: dryMixer, format: format)
+        engine.connect(granularMixer, to: granularLevelMixer, format: format)
+        engine.connect(granularLevelMixer, to: dryMixer, format: format)
+        engine.connect(leadMixer, to: leadLevelMixer, format: format)
+        engine.connect(leadLevelMixer, to: dryMixer, format: format)
         engine.connect(oceanMixer, to: dryMixer, format: format)
-        engine.connect(drumMixer, to: dryMixer, format: format)
+        engine.connect(drumMixer, to: drumLevelMixer, format: format)
+        engine.connect(drumLevelMixer, to: dryMixer, format: format)
         engine.connect(drumDelayMixer, to: dryMixer, format: format)  // Delay wet goes to dry path
         
         // Setup reverb
         if let reverb = reverbProcessor {
+            reverb.setSampleRate(Float(format.sampleRate))
+            engine.attach(reverb.customNode)
+            engine.attach(reverb.liteNode)
+            engine.attach(reverb.customReturnMixer)
+            engine.attach(reverb.liteReturnMixer)
             engine.attach(reverb.node)
-            
-            // Send from mixers to reverb
-            engine.connect(synthMixer, to: reverbSend, format: format)
-            engine.connect(granularMixer, to: reverbSend, format: format)
-            engine.connect(leadMixer, to: reverbSend, format: format)
-            engine.connect(drumMixer, to: reverbSend, format: format)
-            engine.connect(reverbSend, to: reverb.node, format: format)
-            
+
+            // Dedicated send taps preserve independent aux levels for each source.
+            engine.connect(synthMixer, to: synthReverbSendMixer, format: format)
+            engine.connect(synthReverbSendMixer, to: reverbSend, format: format)
+            engine.connect(granularMixer, to: granularReverbSendMixer, format: format)
+            engine.connect(granularReverbSendMixer, to: reverbSend, format: format)
+            engine.connect(leadMixer, to: leadReverbSendMixer, format: format)
+            engine.connect(leadReverbSendMixer, to: reverbSend, format: format)
+            engine.connect(drumMixer, to: drumReverbSendMixer, format: format)
+            engine.connect(drumReverbSendMixer, to: reverbSend, format: format)
+
+            // Lite mode stays available through Apple reverb, but custom FDN now has
+            // its own live source node and return bus for parity-oriented presets.
+            engine.connect(reverbSend, to: reverb.liteNode, format: format)
+            engine.connect(reverb.customNode, to: reverb.customReturnMixer, format: format)
+            engine.connect(reverb.customReturnMixer, to: reverb.node, format: format)
+            engine.connect(reverb.liteNode, to: reverb.liteReturnMixer, format: format)
+            engine.connect(reverb.liteReturnMixer, to: reverb.node, format: format)
+
             // Reverb output to master
             engine.connect(reverb.node, to: masterMixer, format: format)
         }
@@ -186,12 +217,15 @@ public final class AudioEngine {
         engine.connect(masterMixer, to: outputBridgeMixer, format: nil)
         engine.connect(outputBridgeMixer, to: outputNode, format: outputFormat)
 
-        installSignalDebugTap(on: leadMixer, label: "lead")
+        #if DEBUG
+        installSignalDebugTap(on: leadLevelMixer, label: "lead")
         installSignalDebugTap(on: masterMixer, label: "master")
         installSignalDebugTap(on: outputBridgeMixer, label: "bridge")
+        #endif
         
         // Setup tap on synth mixer for granular live input
         setupGranularInputTap(format: format)
+        setupReverbInputTap(format: format)
         
         // Prepare engine
         engine.prepare()
@@ -229,45 +263,25 @@ public final class AudioEngine {
     
     /// Install a tap on synth mixer to feed audio to granular processor
     private func setupGranularInputTap(format: AVAudioFormat) {
-        // Create buffer for storing synth audio (4 seconds)
-        let bufferSize = AVAudioFrameCount(format.sampleRate * 4)
-        granularInputBuffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: bufferSize)
-        granularInputBuffer?.frameLength = bufferSize
-        
-        // Pre-allocate sample buffer to avoid allocation on audio thread
-        granularSampleBuffer = [Float](repeating: 0, count: Int(bufferSize))
-        
-        // Install tap to capture synth output
-        synthMixer.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, time in
+        // Match the preferred IO buffer size more closely so granular input stays
+        // phase-aligned with the native render callback instead of arriving in
+        // large snapshots.
+        synthMixer.installTap(onBus: 0, bufferSize: 256, format: format) { [weak self] buffer, _ in
             self?.processGranularInput(buffer: buffer)
+        }
+    }
+
+    /// Feed the parity-oriented custom reverb from the shared aux input bus.
+    private func setupReverbInputTap(format: AVAudioFormat) {
+        reverbSend.removeTap(onBus: 0)
+        reverbSend.installTap(onBus: 0, bufferSize: 256, format: format) { [weak self] buffer, _ in
+            self?.reverbProcessor?.writeInput(buffer: buffer)
         }
     }
     
     /// Process incoming synth audio and send to granular processor
     private func processGranularInput(buffer: AVAudioPCMBuffer) {
-        guard let inputBuffer = granularInputBuffer,
-              let granular = granularProcessor,
-              let inputData = buffer.floatChannelData?[0],
-              let outputData = inputBuffer.floatChannelData?[0] else { return }
-        
-        let frameCount = Int(buffer.frameLength)
-        let bufferCapacity = Int(inputBuffer.frameCapacity)
-        
-        // Copy samples to circular buffer
-        for i in 0..<frameCount {
-            outputData[granularInputWriteIndex] = inputData[i]
-            granularInputWriteIndex = (granularInputWriteIndex + 1) % bufferCapacity
-        }
-        
-        // Periodically update granular processor with new audio
-        // Only update when we've accumulated enough samples
-        if granularInputWriteIndex % 4410 == 0 {  // Every ~100ms
-            // Copy to pre-allocated buffer (avoids allocation on audio thread)
-            for i in 0..<min(bufferCapacity, granularSampleBuffer.count) {
-                granularSampleBuffer[i] = outputData[i]
-            }
-            granular.loadSample(granularSampleBuffer, sampleRate: Float(inputBuffer.format.sampleRate))
-        }
+        granularProcessor?.writeInput(buffer: buffer)
     }
     
     // MARK: - Playback Control
@@ -536,16 +550,21 @@ public final class AudioEngine {
             oceanSamplePlayer?.stopPlayback()
             drumSynth?.stop()
             granularProcessor?.hardReset()
+            reverbProcessor?.hardReset()
             oceanSynth?.hardReset()
             leadSynth?.hardReset()
             for voice in synthVoices {
                 voice.hardReset()
             }
-            synthMixer.outputVolume = 0
-            granularMixer.outputVolume = 0
-            leadMixer.outputVolume = 0
+            synthLevelMixer.outputVolume = 0
+            granularLevelMixer.outputVolume = 0
+            leadLevelMixer.outputVolume = 0
             oceanMixer.outputVolume = 0
-            drumMixer.outputVolume = 0
+            drumLevelMixer.outputVolume = 0
+            synthReverbSendMixer.outputVolume = 0
+            granularReverbSendMixer.outputVolume = 0
+            leadReverbSendMixer.outputVolume = 0
+            drumReverbSendMixer.outputVolume = 0
             drumDelaySendMixer.outputVolume = 0
             drumDelayMixer.outputVolume = 0
             dryMixer.outputVolume = 0
@@ -660,24 +679,24 @@ public final class AudioEngine {
     private func applyParams() {
         // Master volume
         masterMixer.outputVolume = Float(currentParams.masterVolume)
+        dryMixer.outputVolume = 1
+        reverbSend.outputVolume = 1
+        outputBridgeMixer.outputVolume = 1
+        oceanMixer.outputVolume = 1
+        drumDelaySendMixer.outputVolume = 0.5
         
-        // Synth level
-        synthMixer.outputVolume = Float(currentParams.synthLevel)
+        // Source dry levels live on dedicated mixers so reverb sends stay pre-fader.
+        synthLevelMixer.outputVolume = Float(currentParams.synthLevel)
+        granularLevelMixer.outputVolume = Float(currentParams.granularEnabled ? currentParams.granularLevel : 0)
+        leadLevelMixer.outputVolume = Float(currentParams.leadEnabled ? currentParams.leadLevel : 0)
+        drumLevelMixer.outputVolume = Float(currentParams.drumEnabled ? currentParams.drumLevel : 0)
         
-        // Granular level
-        granularMixer.outputVolume = Float(currentParams.granularEnabled ? currentParams.granularLevel : 0)
-        
-        // Lead level
-        leadMixer.outputVolume = Float(currentParams.leadEnabled ? currentParams.leadLevel : 0)
-        
-        // Drum level (uses reverb send internally)
-        drumMixer.outputVolume = Float(currentParams.drumEnabled ? currentParams.drumLevel : 0)
-        
-        // Reverb sends (mute if reverbEnabled is false to save CPU)
-        let reverbMultiplier = currentParams.reverbEnabled ? 1.0 : 0.0
-        _ = Float(currentParams.synthReverbSend * currentParams.reverbLevel * reverbMultiplier)
-        _ = Float(currentParams.granularReverbSend * currentParams.reverbLevel * reverbMultiplier)
-        _ = Float(currentParams.leadReverbSend * currentParams.reverbLevel * reverbMultiplier)
+        // Reverb sends stay independent of dry faders like the web graph.
+        let reverbEnabled = currentParams.reverbEnabled
+        synthReverbSendMixer.outputVolume = reverbEnabled ? Float(currentParams.synthReverbSend) : 0
+        granularReverbSendMixer.outputVolume = (reverbEnabled && currentParams.granularEnabled) ? Float(currentParams.granularReverbSend) : 0
+        leadReverbSendMixer.outputVolume = (reverbEnabled && currentParams.leadEnabled) ? Float(currentParams.leadReverbSend) : 0
+        drumReverbSendMixer.outputVolume = (reverbEnabled && currentParams.drumEnabled) ? Float(currentParams.drumReverbSend) : 0
         
         // Update reverb quality mode
         if let quality = ReverbQuality(rawValue: currentParams.reverbQuality.capitalized) {
@@ -696,7 +715,7 @@ public final class AudioEngine {
         // Update reverb with all parameters
         reverbProcessor?.setParameters(
             decay: Float(currentParams.reverbDecay),
-            mix: Float(currentParams.reverbLevel * 100),
+            mix: reverbEnabled ? Float(currentParams.reverbLevel * 100) : 0,
             size: Float(currentParams.reverbSize),
             diffusion: Float(currentParams.reverbDiffusion),
             modulation: Float(currentParams.reverbModulation),
@@ -704,6 +723,9 @@ public final class AudioEngine {
             width: Float(currentParams.width),
             damping: Float(currentParams.damping)
         )
+        if !reverbEnabled {
+            reverbProcessor?.hardReset()
+        }
         
         // Update granular with all parameters
         granularProcessor?.setDensity(Float(currentParams.density / 100.0))  // Normalize to 0-1
@@ -1410,17 +1432,17 @@ public final class AudioEngine {
     
     /// Get the synth mixer node for stem recording
     func getSynthMixer() -> AVAudioMixerNode {
-        return synthMixer
+        return synthLevelMixer
     }
     
     /// Get the lead mixer node for stem recording
     func getLeadMixer() -> AVAudioMixerNode {
-        return leadMixer
+        return leadLevelMixer
     }
     
     /// Get the drum mixer node for stem recording
     func getDrumMixer() -> AVAudioMixerNode {
-        return drumMixer
+        return drumLevelMixer
     }
     
     /// Get the ocean/waves mixer node for stem recording
@@ -1430,7 +1452,7 @@ public final class AudioEngine {
     
     /// Get the granular mixer node for stem recording
     func getGranularMixer() -> AVAudioMixerNode {
-        return granularMixer
+        return granularLevelMixer
     }
     
     /// Get the reverb send mixer node for stem recording
@@ -1448,11 +1470,11 @@ public final class AudioEngine {
         recorder.configure(
             engine: engine,
             masterMixer: masterMixer,
-            synthMixer: synthMixer,
-            leadMixer: leadMixer,
-            drumMixer: drumMixer,
+            synthMixer: synthLevelMixer,
+            leadMixer: leadLevelMixer,
+            drumMixer: drumLevelMixer,
             oceanMixer: oceanMixer,
-            granularMixer: granularMixer,
+            granularMixer: granularLevelMixer,
             reverbNode: reverbProcessor?.node
         )
     }

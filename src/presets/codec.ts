@@ -79,10 +79,10 @@ export function validateRegistry(stateKeys: string[]): {
   };
 }
 
-// ─── Cascade hierarchy: child scopes for each source ────────────────────────
+// ─── Cascade hierarchy: child scopes for source and kit presets ─────────────
 
-/** Maps an L3 source scope to its child L1+L2 scopes */
-const SOURCE_CHILDREN: Record<string, { level: ParamLevel; scope: string }[]> = {
+/** Maps a composite preset scope to the lower-level scopes it owns. */
+const CASCADE_CHILDREN: Record<string, { level: ParamLevel; scope: string }[]> = {
   synth: [
     { level: 1, scope: 'synthEuclidean' },
     { level: 1, scope: 'leadDelay' },
@@ -96,19 +96,45 @@ const SOURCE_CHILDREN: Record<string, { level: ParamLevel; scope: string }[]> = 
     { level: 2, scope: 'drumKit' },
   ],
   delay: [
-    { level: 1, scope: 'leadDelay' },
-    { level: 1, scope: 'echoLine' },
-    { level: 1, scope: 'clockedSpace' },
     { level: 2, scope: 'delayKit' },
   ],
   reverb: [],
   granular: [
+    { level: 2, scope: 'granularKit' },
+  ],
+  pad1Kit: [
+    { level: 1, scope: 'pad1' },
+  ],
+  pad2Kit: [
+    { level: 1, scope: 'pad2' },
+  ],
+  lead1Kit: [
+    { level: 1, scope: 'lead1' },
+  ],
+  lead2Kit: [
+    { level: 1, scope: 'lead2' },
+  ],
+  drumKit: [
+    { level: 1, scope: 'drumSub' },
+    { level: 1, scope: 'drumKick' },
+    { level: 1, scope: 'drumClick' },
+    { level: 1, scope: 'drumBeepHi' },
+    { level: 1, scope: 'drumBeepLo' },
+    { level: 1, scope: 'drumNoise' },
+    { level: 1, scope: 'drumMembrane' },
+  ],
+  delayKit: [
+    { level: 1, scope: 'leadDelay' },
+    { level: 1, scope: 'echoLine' },
+    { level: 1, scope: 'clockedSpace' },
+  ],
+  granularKit: [
     { level: 1, scope: 'granularVoice1' },
     { level: 1, scope: 'granularVoice2' },
     { level: 1, scope: 'granularVoice3' },
     { level: 1, scope: 'granularVoice4' },
     { level: 1, scope: 'granularLegacy' },
-    { level: 2, scope: 'granularKit' },
+    { level: 1, scope: 'legacyGranular' },
   ],
   earthKit: [
     { level: 1, scope: 'water' },
@@ -122,23 +148,39 @@ const SOURCE_EXTRA_KEYS: Partial<Record<string, string[]>> = {
   delay: ['drumDelayNoteL', 'drumDelayNoteR'],
 };
 
+function collectCascadeKeys(
+  keys: Set<string>,
+  level: ParamLevel,
+  scope: string | undefined,
+  visited: Set<string>,
+): void {
+  const visitKey = `${level}:${scope ?? ''}`;
+  if (visited.has(visitKey)) return;
+  visited.add(visitKey);
+
+  for (const key of getDirectKeys(level, scope)) {
+    keys.add(key);
+  }
+
+  if (scope) {
+    for (const child of CASCADE_CHILDREN[scope] ?? []) {
+      collectCascadeKeys(keys, child.level, child.scope, visited);
+    }
+  }
+
+  for (const key of SOURCE_EXTRA_KEYS[scope ?? ''] ?? []) {
+    keys.add(key);
+  }
+}
+
 /** Get all preset-owned keys for a level+scope, including source/state cascade children. */
 export function getCascadeKeys(level: ParamLevel, scope?: string): string[] {
   if (level === 4) {
     return Object.keys(PARAM_REGISTRY);
   }
 
-  const keys = new Set<string>(getDirectKeys(level, scope));
-  if (scope && SOURCE_CHILDREN[scope]) {
-    for (const child of SOURCE_CHILDREN[scope]) {
-      for (const key of getDirectKeys(child.level, child.scope)) {
-        keys.add(key);
-      }
-    }
-  }
-  for (const key of SOURCE_EXTRA_KEYS[scope ?? ''] ?? []) {
-    keys.add(key);
-  }
+  const keys = new Set<string>();
+  collectCascadeKeys(keys, level, scope, new Set());
   return [...keys];
 }
 
