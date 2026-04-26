@@ -1758,6 +1758,10 @@ export class AudioEngine {
     this.sendLeadFmWasmDelay(state);
   }
 
+  private isAnyPadSourceActive(state: SliderState): boolean {
+    return state.padEnabled !== false || !!state.pad2Enabled || this.euclideanUsesPadSource(state);
+  }
+
   private async prepareManualSynthChain(state: SliderState, source: ManualSynthSource, focusMidi?: number): Promise<void> {
     if (this.ctx?.state === 'closed') {
       this.resetIndependentSynthContextState();
@@ -4359,7 +4363,7 @@ export class AudioEngine {
       // can start them in-place without rebuilding the whole audio graph.
       const shouldLoadSoundscapes = true;
       const shouldLoadGranular = requiredBootCapabilities.granular;
-      const shouldLoadPadWasm = sliderState.padEnabled !== false || !!sliderState.pad2Enabled || this.euclideanUsesPadSource(sliderState);
+      const shouldLoadPadWasm = this.isAnyPadSourceActive(sliderState);
       const shouldLoadLeadFm = lead1RouteActive || lead2RouteActive;
       const shouldLoadDrumWasm = !!sliderState.drumEnabled || !!sliderState.drumEuclidMasterEnabled;
 
@@ -5234,7 +5238,7 @@ export class AudioEngine {
     // (Euclidean synth runs independently of master play, but needs continuous param updates)
     if (!this.ctx || (!this.isRunning && !effectiveState.synthEuclideanMasterEnabled)) return;
 
-    const padActive = effectiveState.padEnabled !== false || this.euclideanUsesPadSource(effectiveState);
+    const padActive = this.isAnyPadSourceActive(effectiveState);
 
     // If pad output just became fully inactive, release all active synth voices immediately.
     // Euclidean synth lanes can keep pad voices active even when the pad engine toggle is off.
@@ -7393,7 +7397,7 @@ export class AudioEngine {
   triggerSynthVoice(voiceIndex: number, frequency: number, velocity: number, noteDuration?: number, padParamsOverride?: SliderState): void {
     if (!this.ctx || !this.sliderState || voiceIndex < 0 || voiceIndex >= 6) return;
     // Euclidean synth lanes can target pad voices even when the pad engine toggle is off.
-    if (this.sliderState.padEnabled === false && !this.euclideanUsesPadSource()) return;
+    if (!this.isAnyPadSourceActive(this.sliderState)) return;
 
     const isPad2Voice = this.sliderState.pad2Enabled && ((this.sliderState.pad2VoiceAssign ?? 0) & (1 << voiceIndex)) !== 0;
     // Don't bake pad level into velocity — WASM C++ applies level to main output only
