@@ -211,6 +211,7 @@ const GranularPage: React.FC<GranularPageProps> = ({
   togglePanel,
   onParamChange,
   onSelectChange,
+  onStateChange,
   sliderProps,
   SliderComponent,
 }) => {
@@ -610,6 +611,7 @@ const GranularPage: React.FC<GranularPageProps> = ({
                 state={state}
                 currentName={scenePresetName}
                 onLoad={handleScenePresetLoad}
+                onStateChange={onStateChange}
                 presetOptions={granularSceneExtract}
                 compact
               />
