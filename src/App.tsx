@@ -4669,6 +4669,87 @@ const App: React.FC = () => {
       totalSteps
     } : undefined;
     
+    // ─── Router-matrix asymmetric morph ────────────────────────────────────
+    // When one preset has an engine OFF and the other has it ON, the engine's
+    // router-matrix values (level + delay/granular/reverb sends) should be
+    // treated as 0 on the OFF side so the engine smoothly fades in/out through
+    // routing. Computed BEFORE dual-range / numeric loops so both honor it.
+    const routerMatrixByEngine: Array<{
+      isOn: (s: SliderState) => boolean;
+      keys: (keyof SliderState)[];
+    }> = [
+      {
+        isOn: (s) => !!s.granularEnabled,
+        keys: [
+          'granularLevel', 'granularReverbSend',
+          'granularDelayASend', 'granularDelayBSend',
+          'delayAGranularSend', 'delayBGranularSend',
+          'granularPad1Send', 'granularPad2Send', 'granularLead1Send', 'granularLead2Send', 'granularPianoSend',
+          'granularDrumSend', 'granularWavesSend', 'granularNatureSend', 'granularWaterSend', 'granularInsectsSend',
+        ],
+      },
+      {
+        isOn: (s) => !!s.leadEnabled,
+        keys: [
+          'leadLevel', 'lead1Level', 'lead2Level',
+          'lead1ReverbSend', 'lead2ReverbSend',
+          'lead1DelayASend', 'lead1DelayBSend', 'lead2DelayASend', 'lead2DelayBSend',
+          'delayAReverbSend', 'delayAMix',
+          'granularLead1Send', 'granularLead2Send',
+        ],
+      },
+      {
+        isOn: (s) => !!s.pianoEnabled,
+        keys: [
+          'pianoLevel', 'pianoReverbSend', 'pianoDelayASend', 'pianoDelayBSend',
+          'granularPianoSend',
+        ],
+      },
+      {
+        isOn: (s) => !!s.drumEnabled,
+        keys: [
+          'drumLevel', 'drumReverbSend', 'drumDelayASend', 'drumDelayBSend',
+          'granularDrumSend',
+        ],
+      },
+      {
+        isOn: (s) => !!s.oceanSampleEnabled,
+        keys: [
+          'oceanSampleLevel', 'oceanReverbSend', 'oceanDelayASend', 'oceanDelayBSend',
+          'granularWavesSend',
+        ],
+      },
+      // "Nature" engine = birds OR birds2 OR frogs. Master nature router values
+      // collapse to 0 only when ALL nature sub-engines are off on that side.
+      {
+        isOn: (s) => !!s.birdsEnabled || !!s.birds2Enabled || !!s.frogsEnabled,
+        keys: [
+          'natureLevel', 'natureReverbSend',
+          'natureDelayASend', 'natureDelayBSend',
+          'granularNatureSend',
+        ],
+      },
+      // Per-sub-engine nature levels follow their own toggles.
+      { isOn: (s) => !!s.birdsEnabled,  keys: ['birdsLevel'] },
+      { isOn: (s) => !!s.birds2Enabled, keys: ['birds2Level'] },
+      { isOn: (s) => !!s.frogsEnabled,  keys: ['frogsLevel'] },
+    ];
+
+    // For router-matrix keys with mismatched engine toggle: record which side is OFF.
+    // 'A' means stateA's engine is off (treat valA / rangeA as 0); 'B' means stateB's.
+    const routerZeroSide = new Map<keyof SliderState, 'A' | 'B'>();
+    for (const entry of routerMatrixByEngine) {
+      const onA = entry.isOn(stateA);
+      const onB = entry.isOn(stateB);
+      if (onA === onB) continue; // both on or both off → handled normally
+      const offSide: 'A' | 'B' = onA ? 'B' : 'A';
+      for (const childKey of entry.keys) {
+        if (!routerZeroSide.has(childKey)) {
+          routerZeroSide.set(childKey, offSide);
+        }
+      }
+    }
+
     // Compute interpolated dual ranges
     const dualRangesA = presetA.dualRanges || {};
     const dualRangesB = presetB.dualRanges || {};
@@ -4685,13 +4766,24 @@ const App: React.FC = () => {
     
     for (const keyStr of allDualKeys) {
       const key = keyStr as keyof SliderState;
-      const rangeA = dualRangesA[keyStr];
-      const rangeB = dualRangesB[keyStr];
+      let rangeA = dualRangesA[keyStr];
+      let rangeB = dualRangesB[keyStr];
       const info = getParamInfo(key);
       const fallbackValue = info ? (info.min + info.max) * 0.5 : 0;
-      const valA = getSliderNumericValue(key, stateA[key]) ?? fallbackValue;
-      const valB = getSliderNumericValue(key, stateB[key]) ?? fallbackValue;
-      
+      let valA = getSliderNumericValue(key, stateA[key]) ?? fallbackValue;
+      let valB = getSliderNumericValue(key, stateB[key]) ?? fallbackValue;
+
+      // Router-matrix asymmetric morph: collapse the OFF side's value AND range
+      // to 0 so engine sends fade in/out through routing instead of jumping.
+      const offSide = routerZeroSide.get(key);
+      if (offSide === 'A') {
+        valA = 0;
+        rangeA = undefined;
+      } else if (offSide === 'B') {
+        valB = 0;
+        rangeB = undefined;
+      }
+
       // Resolve effective mode per preset: explicit mode, or infer 'walk' when
       // a dualRange exists without an explicit sliderMode (same default used by
       // applyDualRangesFromPreset). Without this, a missing mode causes the ||
@@ -4777,8 +4869,16 @@ const App: React.FC = () => {
         'frogsLevel', 'frogsSliceDuration', 'frogsSliceDensity'
       ],
     };
-    
-    // Determine which keys should be snapped (not morphed) based on parent boolean state
+
+    // Router-matrix child keys (per engine toggle) that represent the engine's
+    // contribution into the global mix. The OFF-side substitution is handled
+    // above (see routerMatrixByEngine / routerZeroSide); here we only need to
+    // ensure router keys are excluded from the midpoint-snap behavior so the
+    // asymmetric morph (already baked into stateA/stateB-derived values via
+    // routerZeroSide) reaches the numeric loop unimpeded.
+
+    // Determine which keys should be snapped (not morphed) based on parent boolean state.
+    // Router-matrix keys are excluded here because they get the asymmetric "off=0" morph below.
     const keysToSnap = new Set<keyof SliderState>();
     for (const [parentKey, childKeys] of Object.entries(parentChildMap)) {
       const parentA = stateA[parentKey as keyof SliderState];
@@ -4786,6 +4886,7 @@ const App: React.FC = () => {
       // If either preset has the parent OFF, snap the children instead of morphing
       if (!parentA || !parentB) {
         for (const childKey of childKeys) {
+          if (routerZeroSide.has(childKey)) continue; // router keys morph asymmetrically instead
           keysToSnap.add(childKey);
         }
       }
@@ -4855,8 +4956,18 @@ const App: React.FC = () => {
       const valA = stateA[key];
       const valB = stateB[key];
       if (typeof valA === 'number' && typeof valB === 'number') {
-        // If this key should snap (parent is off), snap at 50% instead of morphing
-        if (keysToSnap.has(key)) {
+        // Router-matrix asymmetric morph: when one preset has the engine OFF and
+        // the other ON, treat the OFF side's router value as 0 so the engine
+        // smoothly fades in/out through the routing matrix.
+        const offSide = routerZeroSide.get(key);
+        if (offSide === 'A') {
+          // A is off → start at 0, morph to B's value
+          (result as Record<string, unknown>)[key] = valB * tNorm;
+        } else if (offSide === 'B') {
+          // B is off → start at A's value, morph to 0
+          (result as Record<string, unknown>)[key] = valA * (1 - tNorm);
+        } else if (keysToSnap.has(key)) {
+          // If this key should snap (parent is off), snap at 50% instead of morphing
           (result as Record<string, unknown>)[key] = tNorm < 0.5 ? valA : valB;
         } else {
           (result as Record<string, unknown>)[key] = valA + (valB - valA) * tNorm;
