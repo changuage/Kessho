@@ -18,6 +18,8 @@ const METADATA_FIELDS = [
   'sliderModes',
   'drumEvolveConfigs',
   'synthEvolveConfigs',
+  'drumStepOverrides',
+  'synthStepOverrides',
   'drumSubLaneStates',
   'synthSubLaneStates',
   'synthPitchBindingModes',

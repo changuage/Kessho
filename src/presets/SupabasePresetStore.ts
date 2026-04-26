@@ -1195,7 +1195,7 @@ export class SupabasePresetStore implements IPresetStore {
       }> = [];
 
       for (const childSpec of childSpecs) {
-        const childData = childSpec.extract(resolvedData as unknown as never);
+        const childData = childSpec.extract(resolvedData as unknown as never, metadata);
         if (!Object.keys(childData).length) continue;
 
         const childHash = await hashCanonicalJson(childData);

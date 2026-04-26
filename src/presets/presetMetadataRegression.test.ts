@@ -38,6 +38,12 @@ function testBuildPresetVersionMetadataIncludesAllSupportedFields(): void {
     },
     drumEvolveConfigs: [{ enabled: true, evolution: 0.5 }] as SavedPreset['drumEvolveConfigs'],
     synthEvolveConfigs: [{ enabled: true, evolution: 0.75 }] as SavedPreset['synthEvolveConfigs'],
+    drumStepOverrides: {
+      triggerToggles: [[{ step: 3, value: true }], [], [], []],
+    },
+    synthStepOverrides: {
+      triggerToggles: [[{ step: 5, value: true }], [], [], []],
+    },
     drumSubLaneStates: [{ trigger: { enabled: true, steps: 8, direction: 'forward' } }] as SavedPreset['drumSubLaneStates'],
     synthSubLaneStates: [{ trigger: { enabled: false, steps: 16, direction: 'reverse' } }] as SavedPreset['synthSubLaneStates'],
     synthPitchBindingModes: [...SYNTH_BINDING_MODES],
@@ -52,6 +58,12 @@ function testBuildPresetVersionMetadataIncludesAllSupportedFields(): void {
     },
     drumEvolveConfigs: [{ enabled: true, evolution: 0.5 }],
     synthEvolveConfigs: [{ enabled: true, evolution: 0.75 }],
+    drumStepOverrides: {
+      triggerToggles: [[{ step: 3, value: true }], [], [], []],
+    },
+    synthStepOverrides: {
+      triggerToggles: [[{ step: 5, value: true }], [], [], []],
+    },
     drumSubLaneStates: [{ trigger: { enabled: true, steps: 8, direction: 'forward' } }],
     synthSubLaneStates: [{ trigger: { enabled: false, steps: 16, direction: 'reverse' } }],
     synthPitchBindingModes: [...SYNTH_BINDING_MODES],

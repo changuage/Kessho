@@ -9,7 +9,7 @@
  */
 
 import { SCALE_FAMILIES } from '../audio/scales';
-import type { PitchBindingMode } from '../audio/drumSeqTypes';
+import type { LaneDirection, PitchBindingMode, TrigCondition } from '../audio/drumSeqTypes';
 import { hydrateOptimizedStatePresetData } from '../presets/statePresetOptimization';
 
 export type GranularTempoDivision = '1/4' | '1/8' | '1/16' | '1/32' | '1/64' | '1/8T';
@@ -179,6 +179,37 @@ export interface SerializedSubLaneState {
   rangeMax?: number;
 }
 
+export interface SerializedStepToggle {
+  step: number;
+  value: boolean;
+}
+
+/**
+ * JSON-safe version of StepOverrides. Runtime StepOverrides contain Maps, so
+ * presets must store trigger toggles as sorted arrays to survive DB/file JSON.
+ */
+export interface SerializedStepOverrides {
+  triggerToggles?: SerializedStepToggle[][];
+  probability?: (number[] | null)[];
+  ratchet?: (number[] | null)[];
+  trigCondition?: (TrigCondition[] | null)[];
+  expression?: (number[] | null)[];
+  pitch?: (number[] | null)[];
+  morph?: (number[] | null)[];
+  distance?: (number[] | null)[];
+  slice?: (number[] | null)[];
+  reverse?: (number[] | null)[];
+  expressionDirection?: (LaneDirection | null)[];
+  morphDirection?: (LaneDirection | null)[];
+  distanceDirection?: (LaneDirection | null)[];
+  pitchDirection?: (LaneDirection | null)[];
+  sliceDirection?: (LaneDirection | null)[];
+  reverseDirection?: (LaneDirection | null)[];
+  expressionRanges?: ({ min: number; max: number } | null)[];
+  morphRanges?: ({ min: number; max: number } | null)[];
+  distanceRanges?: ({ min: number; max: number } | null)[];
+}
+
 /**
  * Saved preset structure
  */
@@ -190,6 +221,8 @@ export interface SavedPreset {
   sliderModes?: Record<string, SliderMode>;  // Mode per parameter key
   drumEvolveConfigs?: SerializedEvolveConfig[];
   synthEvolveConfigs?: SerializedEvolveConfig[];
+  drumStepOverrides?: SerializedStepOverrides;
+  synthStepOverrides?: SerializedStepOverrides;
   drumSubLaneStates?: Record<string, SerializedSubLaneState>[];
   synthSubLaneStates?: Record<string, SerializedSubLaneState>[];
   synthPitchBindingModes?: PitchBindingMode[];
@@ -4441,6 +4474,8 @@ export function migratePreset(preset: any): SavedPreset {
     sliderModes: Object.keys(sliderModes).length > 0 ? sliderModes : undefined,
     drumEvolveConfigs,
     synthEvolveConfigs,
+    drumStepOverrides: preset.drumStepOverrides,
+    synthStepOverrides: preset.synthStepOverrides,
     drumSubLaneStates: preset.drumSubLaneStates,
     synthSubLaneStates: preset.synthSubLaneStates,
     synthPitchBindingModes: preset.synthPitchBindingModes,

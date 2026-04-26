@@ -3,6 +3,7 @@
 
 import type {
   SerializedEvolveConfig,
+  SerializedStepOverrides,
   SerializedSubLaneState,
   SliderMode,
 } from '../ui/state';
@@ -35,6 +36,8 @@ export interface PresetVersionMetadata {
   sliderModes?: Record<string, SliderMode>;
   drumEvolveConfigs?: SerializedEvolveConfig[];
   synthEvolveConfigs?: SerializedEvolveConfig[];
+  drumStepOverrides?: SerializedStepOverrides;
+  synthStepOverrides?: SerializedStepOverrides;
   drumSubLaneStates?: Record<string, SerializedSubLaneState>[];
   synthSubLaneStates?: Record<string, SerializedSubLaneState>[];
   synthPitchBindingModes?: PitchBindingMode[];

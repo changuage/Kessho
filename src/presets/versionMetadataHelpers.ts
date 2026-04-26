@@ -54,6 +54,16 @@ export function buildPresetVersionMetadata(
     hasMetadata = true;
   }
 
+  if (source.drumStepOverrides && Object.keys(source.drumStepOverrides).length > 0) {
+    metadata.drumStepOverrides = cloneJson(source.drumStepOverrides);
+    hasMetadata = true;
+  }
+
+  if (source.synthStepOverrides && Object.keys(source.synthStepOverrides).length > 0) {
+    metadata.synthStepOverrides = cloneJson(source.synthStepOverrides);
+    hasMetadata = true;
+  }
+
   if (source.drumSubLaneStates && source.drumSubLaneStates.length > 0) {
     metadata.drumSubLaneStates = cloneJson(source.drumSubLaneStates);
     hasMetadata = true;

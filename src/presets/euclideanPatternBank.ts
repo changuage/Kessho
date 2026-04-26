@@ -1,4 +1,4 @@
-import { applyParams } from './codec';
+import { applyParams, extractParams } from './codec';
 import type { SliderState } from '../ui/state';
 
 export interface EuclideanPatternDefinition {
@@ -49,6 +49,8 @@ type NormalizedEuclideanPatternData = {
   hits: number;
   rotation: number;
 };
+
+export const EUCLIDEAN_PATTERN_STEP_OVERRIDES_KEY = 'euclideanPatternStepOverrides';
 
 function coerceBoolean(value: unknown, fallback: boolean): boolean {
   if (typeof value === 'boolean') return value;
@@ -131,32 +133,42 @@ export function buildEuclideanPatternPresetData(
 }
 
 export function extractEuclideanPatternDataFromDrumState(state: SliderState): Record<string, unknown> {
-  return buildEuclideanPatternPresetData(
-    state.drumEuclid1Preset ?? 'custom',
-    {
-      steps: state.drumEuclid1Steps ?? 16,
-      hits: state.drumEuclid1Hits ?? 4,
-      rotation: state.drumEuclid1Rotation ?? 0,
-    },
-    state.drumEuclid1Enabled ?? true,
-  );
+  return extractParams(state, 1, 'drumEuclidean');
 }
 
 export function extractEuclideanPatternDataFromSynthState(state: SliderState): Record<string, unknown> {
-  return buildEuclideanPatternPresetData(
-    state.synthEuclid1Preset ?? 'custom',
-    {
-      steps: state.synthEuclid1Steps ?? 16,
-      hits: state.synthEuclid1Hits ?? 4,
-      rotation: state.synthEuclid1Rotation ?? 0,
-    },
-    state.synthEuclid1Enabled ?? true,
-  );
+  return extractParams(state, 1, 'synthEuclidean');
+}
+
+function hasSpecificEuclideanData(data: Record<string, unknown>, prefix: 'drum' | 'synth'): boolean {
+  const masterKey = prefix === 'drum' ? 'drumEuclidMasterEnabled' : 'synthEuclideanMasterEnabled';
+  return masterKey in data || Object.keys(data).some((key) => key.startsWith(`${prefix}Euclid`));
+}
+
+function pickSpecificEuclideanData(data: Record<string, unknown>, prefix: 'drum' | 'synth'): Record<string, unknown> {
+  const picked: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(data)) {
+    const isDrumKey = prefix === 'drum' && key.startsWith('drumEuclid');
+    const isSynthKey = prefix === 'synth' && (
+      key.startsWith('synthEuclid')
+      || key === 'synthEuclideanMasterEnabled'
+      || key === 'synthEuclideanTempo'
+      || key === 'synthChordSequencerEnabled'
+    );
+    if (isDrumKey || isSynthKey || key === EUCLIDEAN_PATTERN_STEP_OVERRIDES_KEY) {
+      picked[key] = value;
+    }
+  }
+  return picked;
 }
 
 export function buildDrumEuclideanStateFromPatternData(
   data: Record<string, unknown>,
 ): Record<string, unknown> {
+  if (hasSpecificEuclideanData(data, 'drum')) {
+    return pickSpecificEuclideanData(data, 'drum');
+  }
+
   const pattern = normalizePatternData(data);
   return {
     drumEuclidMasterEnabled: true,
@@ -196,6 +208,10 @@ export function applyEuclideanPatternToDrumState(
 export function buildSynthEuclideanStateFromPatternData(
   data: Record<string, unknown>,
 ): Record<string, unknown> {
+  if (hasSpecificEuclideanData(data, 'synth')) {
+    return pickSpecificEuclideanData(data, 'synth');
+  }
+
   const pattern = normalizePatternData(data);
   return {
     synthEuclideanMasterEnabled: true,

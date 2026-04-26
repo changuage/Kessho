@@ -8,7 +8,7 @@ import {
   stripReferencedChildData,
   type PresetChildSpec,
 } from './presetStorageV2';
-import type { PresetLevel } from './types';
+import type { PresetLevel, PresetVersionMetadata } from './types';
 import { DEFAULT_STATE, type SliderState } from '../ui/state';
 
 function assertChildScopes(type: PresetLevel, scope: string | undefined, expected: string[]): void {
@@ -36,8 +36,14 @@ function childSpec(type: PresetLevel, scope: string, slot: string): PresetChildS
   return spec;
 }
 
-async function childHash(type: PresetLevel, scope: string, slot: string, state: SliderState): Promise<string> {
-  return hashCanonicalJson(childSpec(type, scope, slot).extract(state));
+async function childHash(
+  type: PresetLevel,
+  scope: string,
+  slot: string,
+  state: SliderState,
+  metadata?: PresetVersionMetadata,
+): Promise<string> {
+  return hashCanonicalJson(childSpec(type, scope, slot).extract(state, metadata));
 }
 
 function bumped<K extends keyof SliderState>(state: SliderState, key: K, amount: number): SliderState {
@@ -142,8 +148,17 @@ function testOverlapIsStrippedAtEachLevel(): void {
   );
   assert.equal('leadEnabled' in synthOverride, true, 'source-owned synth params should remain in L3 override');
   assert.equal('padPresetA' in synthOverride, false, 'L2 pad kit selector should move out of L3 override');
+  assert.equal('synthEuclid2Steps' in synthOverride, false, 'all synth Euclidean lanes should move out of L3 override');
   assert.equal('padOscAWave' in synthOverride, false, 'L1 pad params should move out of L3 override through pad1Kit');
   assert.equal('lead1Attack' in synthOverride, false, 'L1 lead params should move out of L3 override through lead1Kit');
+
+  const drumsData = extractCascade(DEFAULT_STATE, 3, 'drums');
+  const drumsOverride = stripReferencedChildData(
+    drumsData,
+    childRefData(getPresetChildSpecs('source', 'drums'), drumsData),
+  );
+  assert.equal('drumEnabled' in drumsOverride, true, 'source-owned drum params should remain in L3 override');
+  assert.equal('drumEuclid4Hits' in drumsOverride, false, 'all drum Euclidean lanes should move out of L3 override');
 
   const drumKitData = extractCascade(DEFAULT_STATE, 2, 'drumKit');
   const drumKitOverride = stripReferencedChildData(
@@ -161,6 +176,41 @@ function testOverlapIsStrippedAtEachLevel(): void {
   assert.equal('delayBToASend' in delayKitOverride, true, 'L2 delay routing should remain in delayKit override');
   assert.equal('delayAEnabled' in delayKitOverride, false, 'Delay A L1 params should move out of delayKit override');
   assert.equal('delayAPingPong' in delayKitOverride, false, 'Echo Line L1 params should move out of delayKit override');
+}
+
+async function testEuclideanStepOverridesAffectOnlyEuclideanChildHash(): Promise<void> {
+  const metadata: PresetVersionMetadata = {
+    synthStepOverrides: {
+      triggerToggles: [[{ step: 5, value: true }], [], [], []],
+    },
+    drumStepOverrides: {
+      triggerToggles: [[], [{ step: 7, value: true }], [], []],
+    },
+  };
+
+  const synthHash = await childHash('source', 'synth', 'euclideanPattern', DEFAULT_STATE);
+  const synthHashWithOverrides = await childHash('source', 'synth', 'euclideanPattern', DEFAULT_STATE, metadata);
+  const padHash = await childHash('kit', 'pad1Kit', 'pad1', DEFAULT_STATE);
+  const padHashWithOverrides = await childHash('kit', 'pad1Kit', 'pad1', DEFAULT_STATE, metadata);
+
+  assert.notEqual(
+    synthHash,
+    synthHashWithOverrides,
+    'custom synth trigger toggles should create a distinct Euclidean child hash',
+  );
+  assert.equal(
+    padHash,
+    padHashWithOverrides,
+    'sequencer metadata should not affect unrelated L1 child hashes',
+  );
+
+  const drumHash = await childHash('source', 'drums', 'euclideanPattern', DEFAULT_STATE);
+  const drumHashWithOverrides = await childHash('source', 'drums', 'euclideanPattern', DEFAULT_STATE, metadata);
+  assert.notEqual(
+    drumHash,
+    drumHashWithOverrides,
+    'custom drum trigger toggles should create a distinct Euclidean child hash',
+  );
 }
 
 async function testIdenticalUnsavedChildrenResolveToSameDerivedName(): Promise<void> {
@@ -214,6 +264,7 @@ async function run(): Promise<void> {
   testGraphCoversAllCompositeLevels();
   testCascadeExtractionIsRecursive();
   testOverlapIsStrippedAtEachLevel();
+  await testEuclideanStepOverridesAffectOnlyEuclideanChildHash();
   await testIdenticalUnsavedChildrenResolveToSameDerivedName();
   await testMissingDefaultKeysDoNotCreateFalseDifferences();
   console.log('preset dedup regression checks passed');

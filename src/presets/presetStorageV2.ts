@@ -2,6 +2,7 @@ import { extractCascade, extractParams, getVersionData } from './codec';
 import {
   buildDrumEuclideanStateFromPatternData,
   buildSynthEuclideanStateFromPatternData,
+  EUCLIDEAN_PATTERN_STEP_OVERRIDES_KEY,
   extractEuclideanPatternDataFromDrumState,
   extractEuclideanPatternDataFromSynthState,
 } from './euclideanPatternBank';
@@ -84,7 +85,7 @@ export interface PresetChildSpec {
   slot: string;
   type: PresetLevel;
   scope: string;
-  extract: (state: SliderState) => Record<string, unknown>;
+  extract: (state: SliderState, metadata?: PresetVersionMetadata) => Record<string, unknown>;
   strip?: (state: SliderState) => Record<string, unknown>;
 }
 
@@ -198,6 +199,19 @@ function kitChild(slot: string, scope: string): PresetChildSpec {
   };
 }
 
+function withStepOverrides(
+  data: Record<string, unknown>,
+  stepOverrides: unknown,
+): Record<string, unknown> {
+  if (!stepOverrides || typeof stepOverrides !== 'object' || !Object.keys(stepOverrides).length) {
+    return data;
+  }
+  return canonicalizeRecord({
+    ...data,
+    [EUCLIDEAN_PATTERN_STEP_OVERRIDES_KEY]: stepOverrides,
+  });
+}
+
 export function getPresetChildSpecs(type: PresetLevel, scope?: string): PresetChildSpec[] {
   if (type === 'state') {
     return [
@@ -216,7 +230,10 @@ export function getPresetChildSpecs(type: PresetLevel, scope?: string): PresetCh
         slot: 'euclideanPattern',
         type: 'engine',
         scope: 'euclideanPattern',
-        extract: (state) => canonicalizeRecord(extractEuclideanPatternDataFromSynthState(state)),
+        extract: (state, metadata) => withStepOverrides(
+          canonicalizeRecord(extractEuclideanPatternDataFromSynthState(state)),
+          metadata?.synthStepOverrides,
+        ),
         strip: (state) => canonicalizeRecord(buildSynthEuclideanStateFromPatternData(extractEuclideanPatternDataFromSynthState(state))),
       },
       engineChild('leadDelay', 'leadDelay'),
@@ -233,7 +250,10 @@ export function getPresetChildSpecs(type: PresetLevel, scope?: string): PresetCh
         slot: 'euclideanPattern',
         type: 'engine',
         scope: 'euclideanPattern',
-        extract: (state) => canonicalizeRecord(extractEuclideanPatternDataFromDrumState(state)),
+        extract: (state, metadata) => withStepOverrides(
+          canonicalizeRecord(extractEuclideanPatternDataFromDrumState(state)),
+          metadata?.drumStepOverrides,
+        ),
         strip: (state) => canonicalizeRecord(buildDrumEuclideanStateFromPatternData(extractEuclideanPatternDataFromDrumState(state))),
       },
       kitChild('drumKit', 'drumKit'),

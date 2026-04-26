@@ -17,6 +17,7 @@ import {
   getStateValueFromSliderNumber,
   migratePreset,
   DRUM_MORPH_KEYS,
+  type SerializedStepOverrides,
 } from './ui/state';
 import { DualSlider, DualSliderRange } from './ui/DualSlider';
 import { SliderPrimitive } from './ui/sliderSystem';
@@ -72,6 +73,11 @@ import type { PresetEntry } from './presets/types';
 import { buildPresetVersionMetadata } from './presets/versionMetadataHelpers';
 import { CollapsiblePanel } from './ui/CollapsiblePanel';
 import type { StepOverrides, SubLaneKind, SubLaneState, PitchSettings, EvolveConfig } from './ui/sequencer/useEuclideanSequencer';
+import {
+  createEmptyStepOverrides as createSerializedEmptyStepOverrides,
+  deserializeStepOverrides,
+  serializeStepOverrides,
+} from './ui/sequencer/stepOverrideSerialization';
 import type { PitchBindingMode } from './audio/drumSeqTypes';
 import type { SliderPageId } from './ui/sliderHelpCatalog';
 import { isIOSLikeDevice, isMobileDevice } from './platform';
@@ -234,6 +240,8 @@ interface SavedPreset {
   sliderModes?: Record<string, SliderMode>;  // Mode per parameter key
   drumEvolveConfigs?: EvolveConfig[];
   synthEvolveConfigs?: EvolveConfig[];
+  drumStepOverrides?: SerializedStepOverrides;
+  synthStepOverrides?: SerializedStepOverrides;
   drumSubLaneStates?: Record<SubLaneKind, SubLaneState>[];
   synthSubLaneStates?: Record<SubLaneKind, SubLaneState>[];
   synthPitchBindingModes?: PitchBindingMode[];
@@ -475,6 +483,8 @@ const loadPresetsFromFolder = async (): Promise<SavedPreset[]> => {
               sliderModes: data.sliderModes,
               drumEvolveConfigs: data.drumEvolveConfigs,
               synthEvolveConfigs: data.synthEvolveConfigs,
+              drumStepOverrides: data.drumStepOverrides,
+              synthStepOverrides: data.synthStepOverrides,
               drumSubLaneStates: data.drumSubLaneStates,
               synthSubLaneStates: data.synthSubLaneStates,
               synthPitchBindingModes: data.synthPitchBindingModes,
@@ -501,6 +511,8 @@ const loadPresetsFromFolder = async (): Promise<SavedPreset[]> => {
             sliderModes: data.sliderModes,
             drumEvolveConfigs: data.drumEvolveConfigs,
             synthEvolveConfigs: data.synthEvolveConfigs,
+            drumStepOverrides: data.drumStepOverrides,
+            synthStepOverrides: data.synthStepOverrides,
             drumSubLaneStates: data.drumSubLaneStates,
             synthSubLaneStates: data.synthSubLaneStates,
             synthPitchBindingModes: data.synthPitchBindingModes,
@@ -2031,27 +2043,7 @@ const App: React.FC = () => {
   const [drumPresetVersion, setDrumPresetVersion] = useState(0);
   const [synthPresetVersion, setSynthPresetVersion] = useState(0);
 
-  const createEmptyStepOverrides = useCallback((): StepOverrides => ({
-    triggerToggles: Array.from({ length: 4 }, () => new Map<number, boolean>()),
-    probability: Array.from({ length: 4 }, () => null),
-    ratchet: Array.from({ length: 4 }, () => null),
-    trigCondition: Array.from({ length: 4 }, () => null),
-    expression: Array.from({ length: 4 }, () => null),
-    pitch: Array.from({ length: 4 }, () => null),
-    morph: Array.from({ length: 4 }, () => null),
-    distance: Array.from({ length: 4 }, () => null),
-    slice: Array.from({ length: 4 }, () => null),
-    reverse: Array.from({ length: 4 }, () => null),
-    expressionDirection: Array.from({ length: 4 }, () => null),
-    morphDirection: Array.from({ length: 4 }, () => null),
-    distanceDirection: Array.from({ length: 4 }, () => null),
-    pitchDirection: Array.from({ length: 4 }, () => null),
-    sliceDirection: Array.from({ length: 4 }, () => null),
-    reverseDirection: Array.from({ length: 4 }, () => null),
-    expressionRanges: Array.from({ length: 4 }, () => null),
-    morphRanges: Array.from({ length: 4 }, () => null),
-    distanceRanges: Array.from({ length: 4 }, () => null),
-  }), []);
+  const createEmptyStepOverrides = useCallback((): StepOverrides => createSerializedEmptyStepOverrides(), []);
 
   const createDisabledSubLaneFlags = useCallback((): Record<SubLaneKind, boolean>[] => (
     Array.from({ length: 4 }, () => ({
@@ -2098,11 +2090,12 @@ const App: React.FC = () => {
     synthEvolveConfigsRef.current = synthConfigs;
     audioEngine.setSynthEuclidEvolveConfigs(synthConfigs);
 
-    // Presets do not persist per-step sequencer edits, so clear any in-memory leftovers.
-    drumStepOverridesRef.current = undefined;
-    audioEngine.setDrumStepOverrides(createEmptyStepOverrides());
-    synthStepOverridesRef.current = undefined;
-    audioEngine.setSynthStepOverrides(createEmptyStepOverrides());
+    const drumStepOverrides = deserializeStepOverrides(preset.drumStepOverrides) ?? createEmptyStepOverrides();
+    drumStepOverridesRef.current = drumStepOverrides;
+    audioEngine.setDrumStepOverrides(drumStepOverrides);
+    const synthStepOverrides = deserializeStepOverrides(preset.synthStepOverrides) ?? createEmptyStepOverrides();
+    synthStepOverridesRef.current = synthStepOverrides;
+    audioEngine.setSynthStepOverrides(synthStepOverrides);
 
     // Restore sub-lane states (backward-compatible: undefined if preset lacks them)
     drumSubLaneStatesRef.current = preset.drumSubLaneStates;
@@ -2132,6 +2125,8 @@ const App: React.FC = () => {
     sliderModes,
     drumEvolveConfigs: drumEvolveConfigsRef.current,
     synthEvolveConfigs: synthEvolveConfigsRef.current,
+    drumStepOverrides: serializeStepOverrides(drumStepOverridesRef.current),
+    synthStepOverrides: serializeStepOverrides(synthStepOverridesRef.current),
     drumSubLaneStates: drumSubLaneStatesRef.current,
     synthSubLaneStates: synthSubLaneStatesRef.current,
     synthPitchBindingModes: synthPitchBindingModesRef.current,
@@ -2534,6 +2529,8 @@ const App: React.FC = () => {
             sliderModes: wrappedData?.sliderModes,
             drumEvolveConfigs: wrappedData?.drumEvolveConfigs,
             synthEvolveConfigs: wrappedData?.synthEvolveConfigs,
+            drumStepOverrides: wrappedData?.drumStepOverrides,
+            synthStepOverrides: wrappedData?.synthStepOverrides,
             drumSubLaneStates: wrappedData?.drumSubLaneStates,
             synthSubLaneStates: wrappedData?.synthSubLaneStates,
             synthPitchBindingModes: wrappedData?.synthPitchBindingModes,
@@ -4577,6 +4574,8 @@ const App: React.FC = () => {
       sliderModes: Object.keys(modesObj).length > 0 ? modesObj : undefined,
       drumEvolveConfigs: drumEvolveConfigsRef.current,
       synthEvolveConfigs: synthEvolveConfigsRef.current,
+      drumStepOverrides: serializeStepOverrides(drumStepOverridesRef.current),
+      synthStepOverrides: serializeStepOverrides(synthStepOverridesRef.current),
       drumSubLaneStates: drumSubLaneStatesRef.current,
       synthSubLaneStates: synthSubLaneStatesRef.current,
       synthPitchBindingModes: synthPitchBindingModesRef.current,
@@ -5820,6 +5819,8 @@ const App: React.FC = () => {
             sliderModes: result.preset.sliderModes,
             drumEvolveConfigs: result.preset.drumEvolveConfigs,
             synthEvolveConfigs: result.preset.synthEvolveConfigs,
+            drumStepOverrides: result.preset.drumStepOverrides,
+            synthStepOverrides: result.preset.synthStepOverrides,
             drumSubLaneStates: result.preset.drumSubLaneStates,
             synthSubLaneStates: result.preset.synthSubLaneStates,
             synthPitchBindingModes: result.preset.synthPitchBindingModes,
