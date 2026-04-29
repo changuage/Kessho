@@ -25,10 +25,12 @@ import {
   hashCanonicalJson,
   materializePresetVersion,
   normalizeResolvedVersionData,
+  presetVersionStorageSignaturesEqual,
   type PresetPayloadKind,
   type PresetPayloadV2Row,
   type PresetV2Row,
   type PresetVersionRefV2Row,
+  type PresetVersionStorageSignature,
   type PresetVersionV2Row,
   stripReferencedChildData,
   stableStringifyCanonical,
@@ -272,6 +274,29 @@ function isConflictError(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false;
   const record = error as { code?: string; message?: string };
   return record.code === '23505' || record.message?.toLowerCase().includes('duplicate key') === true;
+}
+
+function fixedRefVersionLabel(versionNo: number | null | undefined): string {
+  return versionNo == null ? 'latest' : String(versionNo);
+}
+
+function makeStoredRefKey(ref: PresetVersionRefV2Row): string {
+  const versionLabel = ref.follow_latest ? 'latest' : fixedRefVersionLabel(ref.target_version_no);
+  return [
+    ref.ref_slot,
+    ref.target_preset_id,
+    versionLabel,
+    ref.override_hash ?? '',
+  ].join(':');
+}
+
+function makePendingRefKey(ref: { slot: string; target: PresetV2Row }): string {
+  return [
+    ref.slot,
+    ref.target.id,
+    fixedRefVersionLabel(ref.target.latest_version_no),
+    '',
+  ].join(':');
 }
 
 export class SupabasePresetStore implements IPresetStore {
@@ -742,6 +767,31 @@ export class SupabasePresetStore implements IPresetStore {
     return hash;
   }
 
+  private async hashStorablePayloadV2(payload: unknown): Promise<string | null> {
+    if (payload === undefined || payload === null) return null;
+    if (Array.isArray(payload) && payload.length === 0) return null;
+    if (isPlainObject(payload) && Object.keys(payload).length === 0) return null;
+    return hashCanonicalJson(canonicalizeRecord(payload as Record<string, unknown>));
+  }
+
+  private async fetchVersionRefKeysV2(versionId: string | null | undefined): Promise<string[]> {
+    if (!versionId) return [];
+
+    const { data, error } = await this.client
+      .from('preset_version_refs_v2')
+      .select('*')
+      .eq('version_id', versionId);
+
+    if (error) {
+      if (this.markV2UnavailableIfMissing(error)) return [];
+      throw new Error(`V2 version ref signature lookup failed: ${error.message}`);
+    }
+
+    return ((data ?? []) as PresetVersionRefV2Row[])
+      .map(makeStoredRefKey)
+      .sort();
+  }
+
   private async pruneStoredVersionsV2(presetId: string): Promise<void> {
     const { data, error } = await this.client
       .from('preset_versions_v2')
@@ -1176,6 +1226,7 @@ export class SupabasePresetStore implements IPresetStore {
       ? (await this.fetchPayloadMapV2([previousStoredVersionRow.resolved_hash])).get(previousStoredVersionRow.resolved_hash)
       : null;
     let previousResolvedRecord = isPlainObject(previousResolved) ? canonicalizeRecord(previousResolved) : null;
+    let previousRefKeys = await this.fetchVersionRefKeysV2(previousStoredVersionRow?.id);
 
     const versionsToPersist = normalized.versions
       .filter(version => !storedVersionMap.has(version.v))
@@ -1218,6 +1269,7 @@ export class SupabasePresetStore implements IPresetStore {
       }
 
       const overrideData = stripReferencedChildData(resolvedData, childRefData);
+      const pendingRefKeys = refsToInsert.map(makePendingRefKey).sort();
       const patch = previousResolvedRecord ? computeRecordPatch(previousResolvedRecord, resolvedData) : null;
       const patchBytes = patch ? stableStringifyCanonical(patch).length : 0;
       const snapshotBytes = stableStringifyCanonical(resolvedData).length;
@@ -1229,6 +1281,32 @@ export class SupabasePresetStore implements IPresetStore {
       const storageMode = version.v === 1
         ? 'snapshot'
         : (forceCheckpoint ? 'checkpoint' : 'patch');
+
+      const [nextOverrideHash, nextMetadataHash, nextResolvedHash] = await Promise.all([
+        this.hashStorablePayloadV2(overrideData),
+        metadata ? this.hashStorablePayloadV2(metadata) : Promise.resolve(null),
+        this.hashStorablePayloadV2(resolvedData),
+      ]);
+
+      const previousSignature: PresetVersionStorageSignature | null = previousStoredVersionRow
+        ? {
+            resolvedHash: previousStoredVersionRow.resolved_hash,
+            overrideHash: previousStoredVersionRow.override_hash,
+            metadataHash: previousStoredVersionRow.metadata_hash,
+            refKeys: previousRefKeys,
+          }
+        : null;
+      const nextSignature: PresetVersionStorageSignature = {
+        resolvedHash: nextResolvedHash,
+        overrideHash: nextOverrideHash,
+        metadataHash: nextMetadataHash,
+        refKeys: pendingRefKeys,
+      };
+
+      if (presetVersionStorageSignaturesEqual(previousSignature, nextSignature)) {
+        previousResolvedRecord = resolvedData;
+        continue;
+      }
 
       const [overrideHash, metadataHash, patchHash, resolvedHash] = await Promise.all([
         this.ensurePayloadV2('override', overrideData),
@@ -1267,6 +1345,7 @@ export class SupabasePresetStore implements IPresetStore {
       const versionRow = insertedVersion as PresetVersionV2Row;
       previousStoredVersionRow = versionRow;
       previousResolvedRecord = resolvedData;
+      previousRefKeys = pendingRefKeys;
 
       if (refsToInsert.length > 0) {
         const refRows = refsToInsert.map((refInfo) => ({

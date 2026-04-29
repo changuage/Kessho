@@ -108,6 +108,10 @@ export interface UseEuclideanSequencerOptions {
   initialSubLaneStates?: Record<SubLaneKind, SubLaneState>[];
   /** Initial clock divisions to restore (preset loading) */
   initialClockDivs?: ClockDivision[];
+  /** Initial per-lane swing amounts to restore (preset loading) */
+  initialSwings?: number[];
+  /** Initial per-lane link state to restore (preset loading) */
+  initialLinked?: boolean[];
   /** Initial pitch settings to restore (persisted across tab switches) */
   initialPitchSettings?: PitchSettings[];
   /** Initial evolve configs to restore (persisted across tab switches / preset load) */
@@ -404,6 +408,8 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
     initialStepOverrides,
     initialSubLaneStates,
     initialClockDivs,
+    initialSwings,
+    initialLinked,
     initialPitchSettings,
     initialEvolveConfigs,
   } = opts;
@@ -445,7 +451,7 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
   );
 
   const [linked, setLinked] = useState<boolean[]>(() =>
-    Array.from({ length: laneCount }, () => false)
+    initialLinked ?? Array.from({ length: laneCount }, () => false)
   );
 
   // ── Per-Seq Clock/Swing ──
@@ -455,7 +461,7 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
     )
   );
   const [swings, setSwings] = useState<number[]>(() =>
-    Array.from({ length: laneCount }, () => 0)
+    initialSwings ?? Array.from({ length: laneCount }, () => 0)
   );
 
   // ── Solo tracking (set of soloed lane indices; empty = no solo) ──
@@ -468,9 +474,20 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
       prevResetKey.current = resetKey;
       setStepOverrides(normalizeStepOverrides(initialStepOverrides, laneCount));
       setSubLaneStates(normalizeSubLaneStates(initialSubLaneStates, laneCount));
-      if (initialClockDivs) setClockDivs(initialClockDivs);
-      if (initialPitchSettings) setPitchSettings(initialPitchSettings);
-      if (initialEvolveConfigs) setEvolveConfigs(initialEvolveConfigs);
+      setClockDivs(initialClockDivs ?? Array.from({ length: laneCount }, (_, i) =>
+        i === 0 ? '1/8' as ClockDivision : i === 1 ? '1/16' as ClockDivision : i === 2 ? '1/8T' as ClockDivision : '1/4' as ClockDivision
+      ));
+      setSwings(initialSwings ?? Array.from({ length: laneCount }, () => 0));
+      setLinked(initialLinked ?? Array.from({ length: laneCount }, () => false));
+      setPitchSettings(initialPitchSettings ?? Array.from({ length: laneCount }, () => ({ mode: 'semitones' as PitchMode, root: 60, scale: 'Major' as ScaleName })));
+      setEvolveConfigs(initialEvolveConfigs ?? Array.from({ length: laneCount }, () => ({
+        enabled: false,
+        everyBars: 4,
+        evolution: 0.25,
+        writeOffset: 0 as number | 'auto',
+        mutationMode: 'biased' as const,
+        methods: getDefaultEvolveMethods(prefix),
+      })));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resetKey]);

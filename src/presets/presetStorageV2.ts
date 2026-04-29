@@ -10,6 +10,13 @@ import { extractPresetVersionMetadata, presetValuesEqual } from './presetUtils';
 import { hydrateOptimizedStatePresetData } from './statePresetOptimization';
 import type { PresetEntry, PresetLevel, PresetRef, PresetVersion, PresetVersionMetadata } from './types';
 import { DEFAULT_STATE, type SliderState } from '../ui/state';
+import {
+  DYNAMICS_CHARACTER_PRESET_KEYS,
+  DYNAMICS_DEGRADE_PRESET_KEYS,
+  DYNAMICS_END_CHAIN_PRESET_KEYS,
+  DYNAMICS_SATURATION_PRESET_KEYS,
+  DYNAMICS_SIDECHAIN_PRESET_KEYS,
+} from '../ui/dynamics/dynamicsPresets';
 
 export type PresetPayloadKind = 'override' | 'metadata' | 'resolved' | 'patch' | 'refs_override';
 
@@ -81,6 +88,13 @@ interface RecordPatch {
   unset: string[];
 }
 
+export interface PresetVersionStorageSignature {
+  resolvedHash: string | null;
+  overrideHash: string | null;
+  metadataHash: string | null;
+  refKeys: readonly string[];
+}
+
 export interface PresetChildSpec {
   slot: string;
   type: PresetLevel;
@@ -138,6 +152,20 @@ export async function hashCanonicalJson(value: unknown): Promise<string> {
   return Array.from(new Uint8Array(digest))
     .map((byte) => byte.toString(16).padStart(2, '0'))
     .join('');
+}
+
+export function presetVersionStorageSignaturesEqual(
+  left: PresetVersionStorageSignature | null | undefined,
+  right: PresetVersionStorageSignature | null | undefined,
+): boolean {
+  if (!left || !right) return false;
+  if (left.resolvedHash !== right.resolvedHash) return false;
+  if (left.overrideHash !== right.overrideHash) return false;
+  if (left.metadataHash !== right.metadataHash) return false;
+  if (left.refKeys.length !== right.refKeys.length) return false;
+  const leftRefs = [...left.refKeys].sort();
+  const rightRefs = [...right.refKeys].sort();
+  return leftRefs.every((key, index) => key === rightRefs[index]);
 }
 
 export function computeRecordPatch(
@@ -199,6 +227,21 @@ function kitChild(slot: string, scope: string): PresetChildSpec {
   };
 }
 
+function engineSubsetChild(slot: string, scope: string, keys: readonly (keyof SliderState)[]): PresetChildSpec {
+  return {
+    slot,
+    type: 'engine',
+    scope,
+    extract: (state) => {
+      const data: Record<string, unknown> = {};
+      for (const key of keys) {
+        data[key] = state[key];
+      }
+      return canonicalizeRecord(data);
+    },
+  };
+}
+
 function withStepOverrides(
   data: Record<string, unknown>,
   stepOverrides: unknown,
@@ -220,6 +263,7 @@ export function getPresetChildSpecs(type: PresetLevel, scope?: string): PresetCh
       { slot: 'granular', type: 'source', scope: 'granular', extract: (state) => canonicalizeRecord(extractCascade(state, 3, 'granular')) },
       { slot: 'delay', type: 'source', scope: 'delay', extract: (state) => canonicalizeRecord(extractCascade(state, 3, 'delay')) },
       { slot: 'reverb', type: 'source', scope: 'reverb', extract: (state) => canonicalizeRecord(extractCascade(state, 3, 'reverb')) },
+      { slot: 'dynamics', type: 'source', scope: 'dynamics', extract: (state) => canonicalizeRecord(extractCascade(state, 3, 'dynamics')) },
       { slot: 'earth', type: 'kit', scope: 'earthKit', extract: (state) => canonicalizeRecord(extractCascade(state, 2, 'earthKit')) },
     ];
   }
@@ -269,6 +313,16 @@ export function getPresetChildSpecs(type: PresetLevel, scope?: string): PresetCh
   if (type === 'source' && scope === 'delay') {
     return [
       kitChild('delayKit', 'delayKit'),
+    ];
+  }
+
+  if (type === 'source' && scope === 'dynamics') {
+    return [
+      engineSubsetChild('sidechain', 'dynamicsSidechain', DYNAMICS_SIDECHAIN_PRESET_KEYS),
+      engineSubsetChild('character', 'dynamicsCharacter', DYNAMICS_CHARACTER_PRESET_KEYS),
+      engineSubsetChild('degrade', 'dynamicsDegrade', DYNAMICS_DEGRADE_PRESET_KEYS),
+      engineSubsetChild('saturation', 'dynamicsSaturation', DYNAMICS_SATURATION_PRESET_KEYS),
+      engineSubsetChild('endChain', 'dynamicsEndChain', DYNAMICS_END_CHAIN_PRESET_KEYS),
     ];
   }
 

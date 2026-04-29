@@ -5,6 +5,7 @@ import {
   getPresetChildSpecs,
   hashCanonicalJson,
   normalizeResolvedVersionData,
+  presetVersionStorageSignaturesEqual,
   stripReferencedChildData,
   type PresetChildSpec,
 } from './presetStorageV2';
@@ -60,6 +61,7 @@ function testGraphCoversAllCompositeLevels(): void {
     'source:granular:granular',
     'source:delay:delay',
     'source:reverb:reverb',
+    'source:dynamics:dynamics',
     'kit:earthKit:earth',
   ]);
 
@@ -77,6 +79,13 @@ function testGraphCoversAllCompositeLevels(): void {
   ]);
   assertChildScopes('source', 'granular', ['kit:granularKit:granularKit']);
   assertChildScopes('source', 'delay', ['kit:delayKit:delayKit']);
+  assertChildScopes('source', 'dynamics', [
+    'engine:dynamicsSidechain:sidechain',
+    'engine:dynamicsCharacter:character',
+    'engine:dynamicsDegrade:degrade',
+    'engine:dynamicsSaturation:saturation',
+    'engine:dynamicsEndChain:endChain',
+  ]);
 
   assertChildScopes('kit', 'pad1Kit', ['engine:pad1:pad1']);
   assertChildScopes('kit', 'pad2Kit', ['engine:pad2:pad2']);
@@ -138,6 +147,21 @@ function testCascadeExtractionIsRecursive(): void {
   assert.equal(delayKeys.has('delayAEnabled'), true, 'delay source should include Delay A L1 params through delayKit');
   assert.equal(delayKeys.has('delayAPingPong'), true, 'delay source should include Echo Line L1 params through delayKit');
   assert.equal(delayKeys.has('delayBPattern'), true, 'delay source should include Clocked Space L1 params through delayKit');
+
+  const dynamicsKeys = new Set(getCascadeKeys(3, 'dynamics'));
+  assert.equal(dynamicsKeys.has('dynamicsEnabled'), true, 'dynamics source should include direct L3 page params');
+  assert.equal(dynamicsKeys.has('sidechainAmount'), true, 'dynamics source should include L1 sidechain params');
+  assert.equal(dynamicsKeys.has('characterEnabled'), true, 'dynamics source should include L1 character bypass params');
+  assert.equal(dynamicsKeys.has('characterMode'), true, 'dynamics source should include L1 character params');
+  assert.equal(dynamicsKeys.has('degradeEnabled'), true, 'dynamics source should include L1 degrade bypass params');
+  assert.equal(dynamicsKeys.has('degradeMix'), true, 'dynamics source should include L1 degrade mix params');
+  assert.equal(dynamicsKeys.has('degradeGeneration'), true, 'dynamics source should include L1 degrade generation params');
+  assert.equal(dynamicsKeys.has('degradeAlias'), true, 'dynamics source should include L1 degrade alias params');
+  assert.equal(dynamicsKeys.has('degradeWow'), true, 'dynamics source should include L1 degrade params');
+  assert.equal(dynamicsKeys.has('dynamicsSaturationDrive'), true, 'dynamics source should include L1 saturation params');
+  assert.equal(dynamicsKeys.has('dynamicsSaturationEnabled'), true, 'dynamics source should include L1 saturation bypass params');
+  assert.equal(dynamicsKeys.has('endCompThreshold'), true, 'dynamics source should include L1 end-chain params');
+  assert.equal(dynamicsKeys.has('masterSatDrive'), false, 'dynamics source should not include Delay-owned master saturation params');
 }
 
 function testOverlapIsStrippedAtEachLevel(): void {
@@ -260,6 +284,39 @@ async function testMissingDefaultKeysDoNotCreateFalseDifferences(): Promise<void
   );
 }
 
+function testVersionStorageSignatureTreatsMetadataAndRefsAsContent(): void {
+  const base = {
+    resolvedHash: 'resolved-a',
+    overrideHash: 'override-a',
+    metadataHash: 'metadata-a',
+    refKeys: [
+      'delay:delay-id:5:',
+      'synth:synth-id:3:',
+    ],
+  };
+
+  assert.equal(
+    presetVersionStorageSignaturesEqual(base, { ...base, refKeys: [...base.refKeys] }),
+    true,
+    'identical storage signatures should be treated as no-op versions',
+  );
+  assert.equal(
+    presetVersionStorageSignaturesEqual(base, { ...base, metadataHash: 'metadata-b' }),
+    false,
+    'metadata-only changes should still create a meaningful version',
+  );
+  assert.equal(
+    presetVersionStorageSignaturesEqual(base, { ...base, refKeys: [...base.refKeys].reverse() }),
+    true,
+    'ref signatures should compare as a set so query ordering cannot create false versions',
+  );
+  assert.equal(
+    presetVersionStorageSignaturesEqual(base, { ...base, refKeys: ['delay:delay-id:6:', 'synth:synth-id:3:'] }),
+    false,
+    'child ref target version changes should create a meaningful version',
+  );
+}
+
 async function run(): Promise<void> {
   testGraphCoversAllCompositeLevels();
   testCascadeExtractionIsRecursive();
@@ -267,6 +324,7 @@ async function run(): Promise<void> {
   await testEuclideanStepOverridesAffectOnlyEuclideanChildHash();
   await testIdenticalUnsavedChildrenResolveToSameDerivedName();
   await testMissingDefaultKeysDoNotCreateFalseDifferences();
+  testVersionStorageSignatureTreatsMetadataAndRefsAsContent();
   console.log('preset dedup regression checks passed');
 }
 

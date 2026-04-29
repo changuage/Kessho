@@ -37,6 +37,7 @@ import {
 import type { SynthEvolveConfig, SynthEvolveState, SynthLaneOverrides } from './synthSeqEvolve';
 import { computeGranularMacroModel } from './granularMacroModel';
 import { SharedDelayBusA, SharedDelayBusB, delayNoteToSeconds } from './delayBuses';
+import { resolveDynamicsTargets, type DynamicsRoutingTargets } from './dynamicsModel';
 import { isIOSLikeDevice, isMobileDevice } from '../platform';
 import {
   EarthTexturePlayer,
@@ -96,6 +97,15 @@ type VoiceSpatialChain = {
   width: StereoWidthProcessor;
   diffuseSend: GainNode;
   output: GainNode;
+};
+
+type SidechainTargetKey = 'pad1' | 'pad2' | 'lead1' | 'lead2' | 'piano' | 'granular' | 'delayA' | 'delayB' | 'reverb';
+
+type SidechainTargetNode = {
+  input: GainNode;
+  dry: GainNode;
+  duck: GainNode;
+  duckingUntil: number;
 };
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -450,8 +460,10 @@ const spectralFreezeWorkletUrl = getWorkletUrl('spectral-freeze-wasm.worklet.js'
 const padSynthWasmWorkletUrl = getWorkletUrl('pad-synth-wasm.worklet.js');
 const leadFmWasmWorkletUrl = getWorkletUrl('lead-fm-wasm.worklet.js');
 const drumSynthWasmWorkletUrl = getWorkletUrl('drum-synth-wasm.worklet.js');
+const dynamicsDegradeWorkletUrl = getWorkletUrl('dynamics-degrade.worklet.js');
 const GRANULAR_WORKLET_DISPATCH_INTERVAL_MS = 16;
 const RUNTIME_RANDOM_WALK_INTERVAL_MS = 100;
+const RANDOM_WALK_MAX_CATCHUP_STEPS = 600;
 const PIANO_SAMPLE_CACHE_LIMIT_PER_VARIANT = 24;
 
 /**
@@ -607,6 +619,39 @@ function makeMasterSaturationCurve(mode: 'clean' | 'tape' | 'tube', samples = 81
   return curve;
 }
 
+function makeCharacterSaturationCurve(amount: number, corrosion: number, samples = 8192): Float32Array<ArrayBuffer> {
+  const sat = clampUnitInterval(amount);
+  const rust = clampUnitInterval(corrosion);
+  const drive = 1 + sat * 7 + rust * 5;
+  const fold = rust * 0.34;
+  const crush = rust * 0.16;
+  const curve = new Float32Array(new ArrayBuffer(samples * Float32Array.BYTES_PER_ELEMENT));
+  const half = (samples - 1) / 2;
+  for (let i = 0; i < samples; i++) {
+    const x = (i - half) / half;
+    const shaped = Math.tanh(x * drive);
+    const folded = Math.sin((x + shaped * 0.25) * Math.PI * (1.5 + drive * 0.4));
+    let y = shaped * (1 - fold) + folded * fold;
+    if (crush > 0.001) {
+      const steps = 96 - rust * 72;
+      const quantized = Math.round(y * steps) / steps;
+      y = y * (1 - crush) + quantized * crush;
+    }
+    curve[i] = Math.max(-1, Math.min(1, y));
+  }
+  return curve;
+}
+
+function makeAbsoluteValueCurve(samples = 1024): Float32Array<ArrayBuffer> {
+  const curve = new Float32Array(new ArrayBuffer(samples * Float32Array.BYTES_PER_ELEMENT));
+  const half = (samples - 1) / 2;
+  for (let i = 0; i < samples; i++) {
+    const x = (i - half) / half;
+    curve[i] = Math.abs(x);
+  }
+  return curve;
+}
+
 export class AudioEngine {
   private ctx: AudioContext | null = null;
   private masterGain: GainNode | null = null;
@@ -616,6 +661,61 @@ export class AudioEngine {
   private satPostTone: BiquadFilterNode | null = null;
   private satPostGain: GainNode | null = null;
   private lastMasterSatMode: 'clean' | 'tape' | 'tube' | null = null;
+  private characterInputGain: GainNode | null = null;
+  private characterDryGain: GainNode | null = null;
+  private characterWetGain: GainNode | null = null;
+  private characterDelay: DelayNode | null = null;
+  private characterSpreadDelay: DelayNode | null = null;
+  private characterMainPan: StereoPannerNode | null = null;
+  private characterSpreadPan: StereoPannerNode | null = null;
+  private characterMainDelayGain: GainNode | null = null;
+  private characterSpreadDelayGain: GainNode | null = null;
+  private characterHighpass: BiquadFilterNode | null = null;
+  private characterAllpassA: BiquadFilterNode | null = null;
+  private characterAllpassB: BiquadFilterNode | null = null;
+  private characterHeadBump: BiquadFilterNode | null = null;
+  private characterLowpass: BiquadFilterNode | null = null;
+  private characterLowpassStage2: BiquadFilterNode | null = null;
+  private characterCompressor: DynamicsCompressorNode | null = null;
+  private characterCompressorMakeup: GainNode | null = null;
+  private characterSaturationNode: WaveShaperNode | null = null;
+  private characterDegradeNode: AudioWorkletNode | GainNode | null = null;
+  private characterDropoutGain: GainNode | null = null;
+  private characterNoiseSource: AudioBufferSourceNode | null = null;
+  private characterNoiseGain: GainNode | null = null;
+  private characterJitterDepth: GainNode | null = null;
+  private characterRandomDriftFilter: BiquadFilterNode | null = null;
+  private characterRandomDriftDepth: GainNode | null = null;
+  private characterDropoutFilter: BiquadFilterNode | null = null;
+  private characterDropoutDepth: GainNode | null = null;
+  private characterEnvRectifier: WaveShaperNode | null = null;
+  private characterEnvFilter: BiquadFilterNode | null = null;
+  private characterEnvToLowpass: GainNode | null = null;
+  private characterEnvToWetGain: GainNode | null = null;
+  private characterOutputGain: GainNode | null = null;
+  private characterWowLfo: OscillatorNode | null = null;
+  private characterWowDepth: GainNode | null = null;
+  private characterFlutterLfo: OscillatorNode | null = null;
+  private characterFlutterDepth: GainNode | null = null;
+  private characterRandomHoldSource: ConstantSourceNode | null = null;
+  private characterRandomHoldDepth: GainNode | null = null;
+  private characterSpreadRandomHoldSource: ConstantSourceNode | null = null;
+  private characterSpreadRandomHoldDepth: GainNode | null = null;
+  private characterRandomHoldNextTime = 0;
+  private characterRandomHoldValue = 0;
+  private characterSpreadRandomHoldValue = 0;
+  private lastCharacterCurveKey: string | null = null;
+  private dynamicsDegradeWorkletLoaded = false;
+  private dynamicsDegradeWorkletLoadPromise: Promise<void> | null = null;
+  private characterDegradeNodeMode: 'gain' | 'worklet' | null = null;
+  private dynamicsRoutingKey: string | null = null;
+  private endCompInputGain: GainNode | null = null;
+  private endCompDryGain: GainNode | null = null;
+  private endCompCompressor: DynamicsCompressorNode | null = null;
+  private endCompMakeupGain: GainNode | null = null;
+  private endCompWetGain: GainNode | null = null;
+  private endCompOutputGain: GainNode | null = null;
+  private sidechainTargets: Partial<Record<SidechainTargetKey, SidechainTargetNode>> = {};
   private mediaStreamDest: MediaStreamAudioDestinationNode | null = null;
   private voices: Voice[] = [];
   private voicesStarted = false;
@@ -973,6 +1073,7 @@ export class AudioEngine {
   private leadMorphTimer: number | null = null;
   private autoMorphTimer: number | null = null;
   private runtimeRandomWalkTimer: number | null = null;
+  private runtimeRandomWalkLastUpdateMs = 0;
   private runtimeWalkRanges: Partial<Record<string, RuntimeWalkRange>> = {};
   private runtimeWalkStates = new Map<string, RuntimeWalkState>();
   private runtimeWalkPositions: Record<string, number> = {};
@@ -1091,8 +1192,9 @@ export class AudioEngine {
     granular: { owner: null, strength: 0, expiresAtMs: 0, lastOrigin: null },
     reverb: { owner: null, strength: 0, expiresAtMs: 0, lastOrigin: null },
   };
-  private readonly drumTriggerRouter = (voice: DrumVoiceType, velocity: number) => {
+  private readonly drumTriggerRouter = (voice: DrumVoiceType, velocity: number, time?: number) => {
     this.reportFxOnset('drum', 'drumHit');
+    this.triggerSidechainDuck(voice, velocity, time);
     this.onDrumTrigger?.(voice, velocity);
   };
 
@@ -1873,6 +1975,9 @@ export class AudioEngine {
       this.leadFmWasmReady = false;
     }
 
+    this.disposeCharacterNodes();
+    this.disposeEndCompressorNodes();
+
     const synthNodeKeys = [
       'masterGain',
       'limiter',
@@ -2299,10 +2404,12 @@ export class AudioEngine {
     if (!this.masterGain || !this.reverbInputBus) return;
 
     if (!this.sharedDelayA) {
-      this.sharedDelayA = new SharedDelayBusA(ctx, this.masterGain, this.reverbInputBus);
+      const delayAOutput = this.getSidechainTargetInput(ctx, 'delayA', this.masterGain);
+      this.sharedDelayA = new SharedDelayBusA(ctx, delayAOutput, this.reverbInputBus);
     }
     if (!this.sharedDelayB) {
-      this.sharedDelayB = new SharedDelayBusB(ctx, this.masterGain, this.reverbInputBus);
+      const delayBOutput = this.getSidechainTargetInput(ctx, 'delayB', this.masterGain);
+      this.sharedDelayB = new SharedDelayBusB(ctx, delayBOutput, this.reverbInputBus);
       this.sharedDelayA.connectDelayBInput(this.sharedDelayB.input);
       this.sharedDelayB.connectDelayAInput(this.sharedDelayA.input);
     }
@@ -3031,25 +3138,589 @@ export class AudioEngine {
     }
   }
 
-  private wireMasterOutputChain(ctx: AudioContext): void {
+  private disposeCharacterNodes(): void {
+    try { this.characterWowLfo?.stop(); } catch { /* */ }
+    try { this.characterFlutterLfo?.stop(); } catch { /* */ }
+    try { this.characterRandomHoldSource?.stop(); } catch { /* */ }
+    try { this.characterSpreadRandomHoldSource?.stop(); } catch { /* */ }
+    try { this.characterNoiseSource?.stop(); } catch { /* */ }
+    const nodes: Array<AudioNode | null> = [
+      this.characterInputGain,
+      this.characterDryGain,
+      this.characterWetGain,
+      this.characterDelay,
+      this.characterSpreadDelay,
+      this.characterMainPan,
+      this.characterSpreadPan,
+      this.characterMainDelayGain,
+      this.characterSpreadDelayGain,
+      this.characterHighpass,
+      this.characterAllpassA,
+      this.characterAllpassB,
+      this.characterHeadBump,
+      this.characterLowpass,
+      this.characterLowpassStage2,
+      this.characterCompressor,
+      this.characterCompressorMakeup,
+      this.characterSaturationNode,
+      this.characterDegradeNode,
+      this.characterDropoutGain,
+      this.characterNoiseSource,
+      this.characterNoiseGain,
+      this.characterJitterDepth,
+      this.characterRandomDriftFilter,
+      this.characterRandomDriftDepth,
+      this.characterDropoutFilter,
+      this.characterDropoutDepth,
+      this.characterEnvRectifier,
+      this.characterEnvFilter,
+      this.characterEnvToLowpass,
+      this.characterEnvToWetGain,
+      this.characterOutputGain,
+      this.characterWowLfo,
+      this.characterWowDepth,
+      this.characterFlutterLfo,
+      this.characterFlutterDepth,
+      this.characterRandomHoldSource,
+      this.characterRandomHoldDepth,
+      this.characterSpreadRandomHoldSource,
+      this.characterSpreadRandomHoldDepth,
+    ];
+    for (const node of nodes) {
+      try { node?.disconnect(); } catch { /* */ }
+    }
+    this.characterInputGain = null;
+    this.characterDryGain = null;
+    this.characterWetGain = null;
+    this.characterDelay = null;
+    this.characterSpreadDelay = null;
+    this.characterMainPan = null;
+    this.characterSpreadPan = null;
+    this.characterMainDelayGain = null;
+    this.characterSpreadDelayGain = null;
+    this.characterHighpass = null;
+    this.characterAllpassA = null;
+    this.characterAllpassB = null;
+    this.characterHeadBump = null;
+    this.characterLowpass = null;
+    this.characterLowpassStage2 = null;
+    this.characterCompressor = null;
+    this.characterCompressorMakeup = null;
+    this.characterSaturationNode = null;
+    this.characterDegradeNode = null;
+    this.characterDegradeNodeMode = null;
+    this.characterDropoutGain = null;
+    this.characterNoiseSource = null;
+    this.characterNoiseGain = null;
+    this.characterJitterDepth = null;
+    this.characterRandomDriftFilter = null;
+    this.characterRandomDriftDepth = null;
+    this.characterDropoutFilter = null;
+    this.characterDropoutDepth = null;
+    this.characterEnvRectifier = null;
+    this.characterEnvFilter = null;
+    this.characterEnvToLowpass = null;
+    this.characterEnvToWetGain = null;
+    this.characterOutputGain = null;
+    this.characterWowLfo = null;
+    this.characterWowDepth = null;
+    this.characterFlutterLfo = null;
+    this.characterFlutterDepth = null;
+    this.characterRandomHoldSource = null;
+    this.characterRandomHoldDepth = null;
+    this.characterSpreadRandomHoldSource = null;
+    this.characterSpreadRandomHoldDepth = null;
+    this.characterRandomHoldNextTime = 0;
+    this.characterRandomHoldValue = 0;
+    this.characterSpreadRandomHoldValue = 0;
+    this.lastCharacterCurveKey = null;
+    this.dynamicsRoutingKey = null;
+  }
+
+  private disposeEndCompressorNodes(): void {
+    const nodes: Array<AudioNode | null> = [
+      this.endCompInputGain,
+      this.endCompDryGain,
+      this.endCompCompressor,
+      this.endCompMakeupGain,
+      this.endCompWetGain,
+      this.endCompOutputGain,
+    ];
+    for (const node of nodes) {
+      try { node?.disconnect(); } catch { /* */ }
+    }
+    this.endCompInputGain = null;
+    this.endCompDryGain = null;
+    this.endCompCompressor = null;
+    this.endCompMakeupGain = null;
+    this.endCompWetGain = null;
+    this.endCompOutputGain = null;
+    this.dynamicsRoutingKey = null;
+  }
+
+  private disposeSidechainTargetNodes(): void {
+    for (const target of Object.values(this.sidechainTargets)) {
+      if (!target) continue;
+      try { target.input.disconnect(); } catch { /* */ }
+      try { target.dry.disconnect(); } catch { /* */ }
+      try { target.duck.disconnect(); } catch { /* */ }
+    }
+    this.sidechainTargets = {};
+  }
+
+  private getSidechainTargetInput(ctx: AudioContext, key: SidechainTargetKey, destination: AudioNode): GainNode {
+    let target = this.sidechainTargets[key];
+    if (target && target.input.context !== ctx) {
+      this.disposeSidechainTargetNodes();
+      target = undefined;
+    }
+    if (!target) {
+      target = {
+        input: ctx.createGain(),
+        dry: ctx.createGain(),
+        duck: ctx.createGain(),
+        duckingUntil: 0,
+      };
+      target.input.gain.value = 1;
+      target.dry.gain.value = 1;
+      target.duck.gain.value = 0;
+      target.input.connect(target.dry);
+      target.input.connect(target.duck);
+      this.sidechainTargets[key] = target;
+    }
+    try { target.dry.disconnect(); } catch { /* */ }
+    try { target.duck.disconnect(); } catch { /* */ }
+    target.dry.connect(destination);
+    target.duck.connect(destination);
+    return target.input;
+  }
+
+  private getSidechainTargetAmount(state: SliderState, key: SidechainTargetKey): number {
+    const targetKeyByBus: Record<SidechainTargetKey, keyof SliderState> = {
+      pad1: 'sidechainPad1Target',
+      pad2: 'sidechainPad2Target',
+      lead1: 'sidechainLead1Target',
+      lead2: 'sidechainLead2Target',
+      piano: 'sidechainPianoTarget',
+      granular: 'sidechainGranularTarget',
+      delayA: 'sidechainDelayATarget',
+      delayB: 'sidechainDelayBTarget',
+      reverb: 'sidechainReverbTarget',
+    };
+    if (!state.sidechainEnabled) return 0;
+    const target = clampUnitInterval(state[targetKeyByBus[key]] as number | undefined);
+    const amount = clampUnitInterval(state.sidechainAmount ?? 1);
+    const mix = clampUnitInterval(state.sidechainMix ?? 1);
+    const raw = clampUnitInterval(target * amount * mix);
+    return 1 - (1 - raw) * (1 - raw);
+  }
+
+  private applySidechainTargetGains(state: SliderState, now: number, smoothTime = 0.03): void {
+    for (const [key, target] of Object.entries(this.sidechainTargets) as Array<[SidechainTargetKey, SidechainTargetNode]>) {
+      const amount = this.getSidechainTargetAmount(state, key);
+      target.dry.gain.setTargetAtTime(1 - amount, now, smoothTime);
+      if (amount <= 0.0001) {
+        target.duck.gain.cancelScheduledValues(now);
+        target.duck.gain.setTargetAtTime(0, now, smoothTime);
+        target.duckingUntil = 0;
+        continue;
+      }
+      if (now >= target.duckingUntil) {
+        target.duck.gain.setTargetAtTime(amount, now, smoothTime);
+      }
+    }
+  }
+
+  private triggerSidechainDuck(voice: DrumVoiceType, velocity: number, time?: number): void {
+    const state = this.sliderState;
+    if (!state?.sidechainEnabled || !this.ctx) return;
+
+    const keyA = state.sidechainKeyA ?? 'off';
+    const keyB = state.sidechainKeyB ?? 'off';
+    const weight =
+      (voice === keyA ? clampUnitInterval(state.sidechainKeyAWeight ?? 1) : 0) +
+      (voice === keyB ? clampUnitInterval(state.sidechainKeyBWeight ?? 0.7) : 0);
+    if (weight <= 0.0001) return;
+
+    const targetEntries = Object.entries(this.sidechainTargets) as Array<[SidechainTargetKey, SidechainTargetNode]>;
+    if (targetEntries.length === 0) return;
+    const activeTargets = targetEntries.filter(([key]) => this.getSidechainTargetAmount(state, key) > 0.0001);
+    if (activeTargets.length === 0) return;
+
+    const now = Math.max(this.ctx.currentTime, time ?? this.ctx.currentTime);
+    const attack = Math.max(0.0001, (state.sidechainAttackMs ?? 5) / 1000);
+    const hold = Math.max(0, (state.sidechainHoldMs ?? 20) / 1000);
+    const release = Math.max(0.02, (state.sidechainReleaseMs ?? 180) / 1000);
+    const curve = 0.65 + clampUnitInterval(state.sidechainCurve ?? 0.5) * 0.7;
+    const triggerStrength = Math.pow(clampUnitInterval(velocity * weight), curve);
+    const detectorDb = 20 * Math.log10(Math.max(0.0001, triggerStrength));
+    const thresholdDb = state.sidechainThreshold ?? -24;
+    const ratio = Math.max(1, Math.min(20, state.sidechainRatio ?? 4));
+    const knee = Math.max(0, state.sidechainKnee ?? 6);
+    const overDb = detectorDb - thresholdDb;
+    const kneeOverDb = knee > 0 && overDb > -knee && overDb < knee
+      ? ((overDb + knee) * (overDb + knee)) / (4 * knee)
+      : Math.max(0, overDb);
+    const gainReductionDb = kneeOverDb * (1 - 1 / ratio);
+    const duckFactor = Math.max(0.005, Math.pow(10, -gainReductionDb / 20));
+    const makeup = Math.max(0.25, Math.min(4, state.sidechainMakeup ?? 1));
+
+    for (const [key, target] of activeTargets) {
+      const amount = this.getSidechainTargetAmount(state, key);
+      const restGain = amount;
+      const duckedGain = Math.min(restGain * 1.2, restGain * duckFactor * makeup);
+      const param = target.duck.gain;
+      param.cancelScheduledValues(now);
+      param.setValueAtTime(param.value, now);
+      param.linearRampToValueAtTime(duckedGain, now + attack);
+      param.setTargetAtTime(restGain, now + attack + hold, release / 3);
+      target.duckingUntil = now + attack + hold + release;
+    }
+  }
+
+  private createEndChainCompressor(ctx: AudioContext): DynamicsCompressorNode {
+    const compressor = ctx.createDynamicsCompressor();
+    compressor.threshold.value = -18;
+    compressor.knee.value = 12;
+    compressor.ratio.value = 2;
+    compressor.attack.value = 0.01;
+    compressor.release.value = 0.18;
+    return compressor;
+  }
+
+  private ensureDynamicsDegradeWorkletModule(ctx: AudioContext): void {
+    if (this.dynamicsDegradeWorkletLoaded || this.dynamicsDegradeWorkletLoadPromise) return;
+    this.dynamicsDegradeWorkletLoadPromise = ctx.audioWorklet.addModule(dynamicsDegradeWorkletUrl)
+      .then(() => {
+        this.dynamicsDegradeWorkletLoaded = true;
+        this.dynamicsDegradeWorkletLoadPromise = null;
+        this.dynamicsRoutingKey = null;
+        if (this.sliderState && this.ctx === ctx) {
+          this.wireMasterOutputChain(ctx);
+          this.applyDynamics(this.sliderState, ctx.currentTime);
+        }
+      })
+      .catch((e) => {
+        this.dynamicsDegradeWorkletLoaded = false;
+        this.dynamicsDegradeWorkletLoadPromise = null;
+        console.warn('Dynamics Degrade worklet unavailable, Degrade will use filter/saturation fallback:', e);
+      });
+  }
+
+  private ensureCharacterDegradeNode(ctx: AudioContext, useWorklet: boolean): void {
+    const wantedMode: 'gain' | 'worklet' = useWorklet && this.dynamicsDegradeWorkletLoaded ? 'worklet' : 'gain';
+    if (useWorklet && !this.dynamicsDegradeWorkletLoaded) {
+      this.ensureDynamicsDegradeWorkletModule(ctx);
+    }
+    if (
+      this.characterDegradeNode &&
+      (this.characterDegradeNode.context !== ctx || this.characterDegradeNodeMode !== wantedMode)
+    ) {
+      try { this.characterDegradeNode.disconnect(); } catch { /* */ }
+      this.characterDegradeNode = null;
+      this.characterDegradeNodeMode = null;
+    }
+    if (this.characterDegradeNode) return;
+    if (wantedMode === 'worklet') {
+      try {
+        this.characterDegradeNode = new AudioWorkletNode(ctx, 'dynamics-degrade', {
+          numberOfInputs: 1,
+          numberOfOutputs: 1,
+          outputChannelCount: [2],
+          channelCount: 2,
+          channelCountMode: 'explicit',
+        });
+        this.characterDegradeNodeMode = 'worklet';
+        return;
+      } catch (error) {
+        console.warn('Dynamics Degrade worklet unavailable, using pass-through fallback:', error);
+        this.dynamicsDegradeWorkletLoaded = false;
+      }
+    }
+    this.characterDegradeNode = ctx.createGain();
+    this.characterDegradeNodeMode = 'gain';
+  }
+
+  private ensureDynamicsNodes(ctx: AudioContext, routing: DynamicsRoutingTargets): void {
+    if (this.characterInputGain && this.characterInputGain.context !== ctx) {
+      this.disposeCharacterNodes();
+    }
+    if (!routing.characterPathActive) {
+      this.disposeCharacterNodes();
+    } else if (!this.characterInputGain) {
+      this.characterInputGain = ctx.createGain();
+      this.characterInputGain.gain.value = 1;
+      this.characterDryGain = ctx.createGain();
+      this.characterDryGain.gain.value = 1;
+      this.characterWetGain = ctx.createGain();
+      this.characterWetGain.gain.value = 0;
+      this.characterDelay = ctx.createDelay(0.1);
+      this.characterDelay.delayTime.value = 0.004;
+      this.characterSpreadDelay = ctx.createDelay(0.1);
+      this.characterSpreadDelay.delayTime.value = 0.006;
+      this.characterMainPan = ctx.createStereoPanner();
+      this.characterMainPan.pan.value = 0;
+      this.characterSpreadPan = ctx.createStereoPanner();
+      this.characterSpreadPan.pan.value = 0;
+      this.characterMainDelayGain = ctx.createGain();
+      this.characterMainDelayGain.gain.value = 1;
+      this.characterSpreadDelayGain = ctx.createGain();
+      this.characterSpreadDelayGain.gain.value = 0;
+      this.characterHighpass = ctx.createBiquadFilter();
+      this.characterHighpass.type = 'highpass';
+      this.characterHighpass.frequency.value = 20;
+      this.characterHighpass.Q.value = 0.7;
+      this.characterAllpassA = ctx.createBiquadFilter();
+      this.characterAllpassA.type = 'allpass';
+      this.characterAllpassA.frequency.value = 650;
+      this.characterAllpassA.Q.value = 0.7;
+      this.characterAllpassB = ctx.createBiquadFilter();
+      this.characterAllpassB.type = 'allpass';
+      this.characterAllpassB.frequency.value = 1800;
+      this.characterAllpassB.Q.value = 0.7;
+      this.characterHeadBump = ctx.createBiquadFilter();
+      this.characterHeadBump.type = 'peaking';
+      this.characterHeadBump.frequency.value = 95;
+      this.characterHeadBump.Q.value = 0.85;
+      this.characterHeadBump.gain.value = 0;
+      this.characterLowpass = ctx.createBiquadFilter();
+      this.characterLowpass.type = 'lowpass';
+      this.characterLowpass.frequency.value = 20000;
+      this.characterLowpass.Q.value = 0.7;
+      this.characterLowpassStage2 = ctx.createBiquadFilter();
+      this.characterLowpassStage2.type = 'lowpass';
+      this.characterLowpassStage2.frequency.value = 20000;
+      this.characterLowpassStage2.Q.value = 0.7;
+      this.characterCompressor = ctx.createDynamicsCompressor();
+      this.characterCompressor.threshold.value = -12;
+      this.characterCompressor.knee.value = 18;
+      this.characterCompressor.ratio.value = 1.2;
+      this.characterCompressor.attack.value = 0.012;
+      this.characterCompressor.release.value = 0.18;
+      this.characterCompressorMakeup = ctx.createGain();
+      this.characterCompressorMakeup.gain.value = 1;
+      this.characterSaturationNode = ctx.createWaveShaper();
+      this.characterSaturationNode.curve = makeCharacterSaturationCurve(0, 0);
+      this.characterSaturationNode.oversample = 'none';
+      this.ensureCharacterDegradeNode(ctx, routing.degradeWorkletActive);
+      this.characterDropoutGain = ctx.createGain();
+      this.characterDropoutGain.gain.value = 1;
+      this.characterNoiseGain = ctx.createGain();
+      this.characterNoiseGain.gain.value = 0;
+      this.characterJitterDepth = ctx.createGain();
+      this.characterJitterDepth.gain.value = 0;
+      this.characterRandomDriftFilter = ctx.createBiquadFilter();
+      this.characterRandomDriftFilter.type = 'lowpass';
+      this.characterRandomDriftFilter.frequency.value = 0.18;
+      this.characterRandomDriftFilter.Q.value = 0.7;
+      this.characterRandomDriftDepth = ctx.createGain();
+      this.characterRandomDriftDepth.gain.value = 0;
+      this.characterDropoutFilter = ctx.createBiquadFilter();
+      this.characterDropoutFilter.type = 'lowpass';
+      this.characterDropoutFilter.frequency.value = 3;
+      this.characterDropoutFilter.Q.value = 0.55;
+      this.characterDropoutDepth = ctx.createGain();
+      this.characterDropoutDepth.gain.value = 0;
+      this.characterEnvRectifier = ctx.createWaveShaper();
+      this.characterEnvRectifier.curve = makeAbsoluteValueCurve();
+      this.characterEnvRectifier.oversample = 'none';
+      this.characterEnvFilter = ctx.createBiquadFilter();
+      this.characterEnvFilter.type = 'lowpass';
+      this.characterEnvFilter.frequency.value = 10;
+      this.characterEnvFilter.Q.value = 0.5;
+      this.characterEnvToLowpass = ctx.createGain();
+      this.characterEnvToLowpass.gain.value = 0;
+      this.characterEnvToWetGain = ctx.createGain();
+      this.characterEnvToWetGain.gain.value = 0;
+      this.characterEnvRectifier.connect(this.characterEnvFilter);
+      this.characterEnvFilter.connect(this.characterEnvToLowpass);
+      this.characterEnvToLowpass.connect(this.characterLowpass.frequency);
+      this.characterEnvFilter.connect(this.characterEnvToWetGain);
+      this.characterEnvToWetGain.connect(this.characterWetGain.gain);
+      this.characterOutputGain = ctx.createGain();
+      this.characterOutputGain.gain.value = 1;
+
+      this.characterWowLfo = ctx.createOscillator();
+      this.characterWowLfo.type = 'sine';
+      this.characterWowLfo.frequency.value = 0.18;
+      this.characterWowDepth = ctx.createGain();
+      this.characterWowDepth.gain.value = 0;
+      this.characterWowLfo.connect(this.characterWowDepth);
+      this.characterWowDepth.connect(this.characterDelay.delayTime);
+      this.characterWowDepth.connect(this.characterSpreadDelay.delayTime);
+      this.characterWowLfo.start();
+
+      this.characterFlutterLfo = ctx.createOscillator();
+      this.characterFlutterLfo.type = 'triangle';
+      this.characterFlutterLfo.frequency.value = 6;
+      this.characterFlutterDepth = ctx.createGain();
+      this.characterFlutterDepth.gain.value = 0;
+      this.characterFlutterLfo.connect(this.characterFlutterDepth);
+      this.characterFlutterDepth.connect(this.characterDelay.delayTime);
+      this.characterFlutterDepth.connect(this.characterSpreadDelay.delayTime);
+      this.characterFlutterLfo.start();
+
+      this.characterRandomHoldSource = ctx.createConstantSource();
+      this.characterRandomHoldSource.offset.value = 0;
+      this.characterRandomHoldDepth = ctx.createGain();
+      this.characterRandomHoldDepth.gain.value = 0;
+      this.characterRandomHoldSource.connect(this.characterRandomHoldDepth);
+      this.characterRandomHoldDepth.connect(this.characterDelay.delayTime);
+      this.characterRandomHoldSource.start();
+
+      this.characterSpreadRandomHoldSource = ctx.createConstantSource();
+      this.characterSpreadRandomHoldSource.offset.value = 0;
+      this.characterSpreadRandomHoldDepth = ctx.createGain();
+      this.characterSpreadRandomHoldDepth.gain.value = 0;
+      this.characterSpreadRandomHoldSource.connect(this.characterSpreadRandomHoldDepth);
+      this.characterSpreadRandomHoldDepth.connect(this.characterSpreadDelay.delayTime);
+      this.characterSpreadRandomHoldSource.start();
+
+      this.characterNoiseSource = ctx.createBufferSource();
+      this.characterNoiseSource.buffer = this.createNoiseBuffer(ctx, 2, 'pink');
+      this.characterNoiseSource.loop = true;
+      this.characterNoiseSource.connect(this.characterNoiseGain);
+      this.characterNoiseSource.connect(this.characterJitterDepth);
+      this.characterJitterDepth.connect(this.characterDelay.delayTime);
+      this.characterJitterDepth.connect(this.characterSpreadDelay.delayTime);
+      this.characterNoiseSource.connect(this.characterRandomDriftFilter);
+      this.characterRandomDriftFilter.connect(this.characterRandomDriftDepth);
+      this.characterRandomDriftDepth.connect(this.characterDelay.delayTime);
+      this.characterRandomDriftDepth.connect(this.characterSpreadDelay.delayTime);
+      this.characterNoiseSource.connect(this.characterDropoutFilter);
+      this.characterDropoutFilter.connect(this.characterDropoutDepth);
+      this.characterDropoutDepth.connect(this.characterDropoutGain.gain);
+      this.characterNoiseSource.start();
+    }
+    if (routing.characterPathActive) {
+      this.ensureCharacterDegradeNode(ctx, routing.degradeWorkletActive);
+    }
+
+    if (this.endCompInputGain && this.endCompInputGain.context !== ctx) {
+      this.disposeEndCompressorNodes();
+    }
+    if (!routing.endChainActive) {
+      this.disposeEndCompressorNodes();
+    } else if (!this.endCompInputGain) {
+      this.endCompInputGain = ctx.createGain();
+      this.endCompInputGain.gain.value = 1;
+      this.endCompDryGain = ctx.createGain();
+      this.endCompDryGain.gain.value = 1;
+      this.endCompCompressor = this.createEndChainCompressor(ctx);
+      this.endCompMakeupGain = ctx.createGain();
+      this.endCompMakeupGain.gain.value = 1;
+      this.endCompWetGain = ctx.createGain();
+      this.endCompWetGain.gain.value = 0;
+      this.endCompOutputGain = ctx.createGain();
+      this.endCompOutputGain.gain.value = 1;
+    }
+  }
+
+  private getDynamicsRoutingKey(routing: DynamicsRoutingTargets): string {
+    return `${routing.characterPathActive ? 1 : 0}:${routing.degradeWorkletActive && this.dynamicsDegradeWorkletLoaded ? 1 : 0}:${routing.endChainActive ? 1 : 0}`;
+  }
+
+  private wireMasterOutputChain(ctx: AudioContext, routing?: DynamicsRoutingTargets): void {
     if (!this.masterGain || !this.limiter) return;
+    const resolvedRouting = routing ?? (this.sliderState
+      ? resolveDynamicsTargets(this.sliderState, ctx.sampleRate).routing
+      : { characterPathActive: false, degradeWorkletActive: false, endChainActive: false });
     this.ensureMasterSaturationNodes(ctx);
+    this.ensureDynamicsNodes(ctx, resolvedRouting);
     try { this.masterGain.disconnect(); } catch { /* */ }
+    try { this.characterInputGain?.disconnect(); } catch { /* */ }
+    try { this.characterDryGain?.disconnect(); } catch { /* */ }
+    try { this.characterDelay?.disconnect(); } catch { /* */ }
+    try { this.characterSpreadDelay?.disconnect(); } catch { /* */ }
+    try { this.characterMainPan?.disconnect(); } catch { /* */ }
+    try { this.characterSpreadPan?.disconnect(); } catch { /* */ }
+    try { this.characterMainDelayGain?.disconnect(); } catch { /* */ }
+    try { this.characterSpreadDelayGain?.disconnect(); } catch { /* */ }
+    try { this.characterHighpass?.disconnect(); } catch { /* */ }
+    try { this.characterAllpassA?.disconnect(); } catch { /* */ }
+    try { this.characterAllpassB?.disconnect(); } catch { /* */ }
+    try { this.characterHeadBump?.disconnect(); } catch { /* */ }
+    try { this.characterLowpass?.disconnect(); } catch { /* */ }
+    try { this.characterLowpassStage2?.disconnect(); } catch { /* */ }
+    try { this.characterCompressor?.disconnect(); } catch { /* */ }
+    try { this.characterCompressorMakeup?.disconnect(); } catch { /* */ }
+    try { this.characterSaturationNode?.disconnect(); } catch { /* */ }
+    try { this.characterDegradeNode?.disconnect(); } catch { /* */ }
+    try { this.characterDropoutGain?.disconnect(); } catch { /* */ }
+    try { this.characterWetGain?.disconnect(); } catch { /* */ }
+    try { this.characterNoiseGain?.disconnect(); } catch { /* */ }
+    try { this.characterOutputGain?.disconnect(); } catch { /* */ }
     try { this.satPreGain?.disconnect(); } catch { /* */ }
     try { this.satWaveshaper?.disconnect(); } catch { /* */ }
     try { this.satPostTone?.disconnect(); } catch { /* */ }
     try { this.satPostGain?.disconnect(); } catch { /* */ }
-    this.masterGain.connect(this.satPreGain!);
+    try { this.endCompInputGain?.disconnect(); } catch { /* */ }
+    try { this.endCompDryGain?.disconnect(); } catch { /* */ }
+    try { this.endCompCompressor?.disconnect(); } catch { /* */ }
+    try { this.endCompMakeupGain?.disconnect(); } catch { /* */ }
+    try { this.endCompWetGain?.disconnect(); } catch { /* */ }
+    try { this.endCompOutputGain?.disconnect(); } catch { /* */ }
+    if (resolvedRouting.characterPathActive) {
+      this.masterGain.connect(this.characterInputGain!);
+      this.characterInputGain!.connect(this.characterDryGain!);
+      this.characterDryGain!.connect(this.characterOutputGain!);
+      this.characterInputGain!.connect(this.characterEnvRectifier!);
+      this.characterInputGain!.connect(this.characterDelay!);
+      this.characterInputGain!.connect(this.characterSpreadDelay!);
+      this.characterDelay!.connect(this.characterMainPan!);
+      this.characterMainPan!.connect(this.characterMainDelayGain!);
+      this.characterMainDelayGain!.connect(this.characterDegradeNode!);
+      this.characterSpreadDelay!.connect(this.characterSpreadPan!);
+      this.characterSpreadPan!.connect(this.characterSpreadDelayGain!);
+      this.characterSpreadDelayGain!.connect(this.characterDegradeNode!);
+      this.characterDegradeNode!.connect(this.characterHighpass!);
+      this.characterHighpass!.connect(this.characterAllpassA!);
+      this.characterAllpassA!.connect(this.characterAllpassB!);
+      this.characterAllpassB!.connect(this.characterHeadBump!);
+      this.characterHeadBump!.connect(this.characterLowpass!);
+      this.characterLowpass!.connect(this.characterLowpassStage2!);
+      this.characterLowpassStage2!.connect(this.characterCompressor!);
+      this.characterCompressor!.connect(this.characterCompressorMakeup!);
+      this.characterCompressorMakeup!.connect(this.characterSaturationNode!);
+      this.characterSaturationNode!.connect(this.characterDropoutGain!);
+      this.characterDropoutGain!.connect(this.characterWetGain!);
+      this.characterWetGain!.connect(this.characterOutputGain!);
+      this.characterNoiseGain!.connect(this.characterOutputGain!);
+      this.characterOutputGain!.connect(this.satPreGain!);
+    } else {
+      this.masterGain.connect(this.satPreGain!);
+    }
     this.satPreGain!.connect(this.satWaveshaper!);
     this.satWaveshaper!.connect(this.satPostTone!);
     this.satPostTone!.connect(this.satPostGain!);
-    this.satPostGain!.connect(this.limiter);
+    if (resolvedRouting.endChainActive) {
+      this.satPostGain!.connect(this.endCompInputGain!);
+      this.endCompInputGain!.connect(this.endCompDryGain!);
+      this.endCompDryGain!.connect(this.endCompOutputGain!);
+      this.endCompInputGain!.connect(this.endCompCompressor!);
+      this.endCompCompressor!.connect(this.endCompMakeupGain!);
+      this.endCompMakeupGain!.connect(this.endCompWetGain!);
+      this.endCompWetGain!.connect(this.endCompOutputGain!);
+      this.endCompOutputGain!.connect(this.limiter);
+    } else {
+      this.satPostGain!.connect(this.limiter);
+    }
+    this.dynamicsRoutingKey = this.getDynamicsRoutingKey(resolvedRouting);
   }
 
   private applyMasterSaturation(state: SliderState, now: number): void {
-    const drive = Math.max(0, Math.min(1, state.masterSatDrive ?? 0));
-    const tone = Math.max(0, Math.min(1, state.masterSatTone ?? 0.5));
-    const mode = (state.masterSatMode ?? 'clean') as 'clean' | 'tape' | 'tube';
+    const dynamicsOwnsSaturationBypass = Boolean(state.dynamicsEnabled);
+    const saturationEnabled = dynamicsOwnsSaturationBypass
+      ? Boolean(state.dynamicsSaturationEnabled)
+      : true;
+    const rawDrive = saturationEnabled
+      ? Math.max(0, Math.min(1, dynamicsOwnsSaturationBypass ? (state.dynamicsSaturationDrive ?? 0) : (state.masterSatDrive ?? 0)))
+      : 0;
+    const drive = rawDrive * (dynamicsOwnsSaturationBypass ? 0.75 : 1);
+    const tone = Math.max(0, Math.min(1, dynamicsOwnsSaturationBypass ? (state.dynamicsSaturationTone ?? 0.5) : (state.masterSatTone ?? 0.5)));
+    const mode = (saturationEnabled
+      ? (dynamicsOwnsSaturationBypass ? (state.dynamicsSaturationMode ?? 'clean') : (state.masterSatMode ?? 'clean'))
+      : 'clean') as 'clean' | 'tape' | 'tube';
     const preGainValue = 1 + drive * 3;
     const postCompensation = 1 / (1 + drive * 1.5);
     const tiltDb = (tone - 0.5) * 12;
@@ -3064,6 +3735,188 @@ export class AudioEngine {
     this.satPreGain?.gain.setTargetAtTime(preGainValue, now, 0.05);
     this.satPostGain?.gain.setTargetAtTime(postCompensation, now, 0.05);
     this.satPostTone?.gain.setTargetAtTime(tiltDb, now, 0.05);
+  }
+
+  private updateCharacterRandomHold(now: number, params: {
+    active: boolean;
+    rate: number;
+    damp: number;
+    depth: number;
+    randomDrift: number;
+    shallowFlavor: number;
+    abyssFlavor: number;
+    stereo: number;
+    damage: number;
+    baseDelay: number;
+    spreadBaseDelay: number;
+  }): void {
+    if (
+      !this.characterRandomHoldSource ||
+      !this.characterRandomHoldDepth ||
+      !this.characterSpreadRandomHoldSource ||
+      !this.characterSpreadRandomHoldDepth
+    ) {
+      return;
+    }
+
+    const {
+      active,
+      rate,
+      damp,
+      depth,
+      randomDrift,
+      shallowFlavor,
+      abyssFlavor,
+      stereo,
+      damage,
+      baseDelay,
+      spreadBaseDelay,
+    } = params;
+    const holdAmount = active
+      ? clampUnitInterval(randomDrift + depth * (0.18 + shallowFlavor * 0.16 + abyssFlavor * 0.1) + damage * 0.22)
+      : 0;
+    const mainDepth = Math.min(
+      Math.max(0, baseDelay - 0.001),
+      holdAmount * (0.0004 + depth * (0.0042 + shallowFlavor * 0.0016 + abyssFlavor * 0.0011) + damage * 0.0018),
+    );
+    const spreadDepth = Math.min(
+      Math.max(0, spreadBaseDelay - 0.001),
+      mainDepth * (0.72 + stereo * 0.45 + shallowFlavor * 0.18),
+    );
+
+    this.characterRandomHoldDepth.gain.setTargetAtTime(mainDepth, now, 0.12);
+    this.characterSpreadRandomHoldDepth.gain.setTargetAtTime(spreadDepth, now, 0.12);
+    if (holdAmount <= 0.0001) {
+      this.characterRandomHoldSource.offset.cancelScheduledValues(now);
+      this.characterSpreadRandomHoldSource.offset.cancelScheduledValues(now);
+      this.characterRandomHoldSource.offset.setTargetAtTime(0, now, 0.18);
+      this.characterSpreadRandomHoldSource.offset.setTargetAtTime(0, now, 0.18);
+      this.characterRandomHoldNextTime = 0;
+      this.characterRandomHoldValue = 0;
+      this.characterSpreadRandomHoldValue = 0;
+      return;
+    }
+
+    if (this.characterRandomHoldNextTime > now) return;
+
+    const rng = this.rng ?? Math.random;
+    const nextHoldValue = (previous: number) => {
+      let next = rngFloat(rng, -1, 1);
+      if (Math.abs(next - previous) < 0.24) {
+        next += next >= previous ? 0.34 : -0.34;
+      }
+      return Math.max(-1, Math.min(1, next));
+    };
+    const mainTarget = nextHoldValue(this.characterRandomHoldValue);
+    let spreadTarget = Math.max(
+      -1,
+      Math.min(1, mainTarget * (0.58 + rng() * 0.24) + rngFloat(rng, -0.5, 0.5) * (0.28 + stereo * 0.32)),
+    );
+    if (Math.abs(spreadTarget - this.characterSpreadRandomHoldValue) < 0.18) {
+      spreadTarget = Math.max(-1, Math.min(1, spreadTarget + (spreadTarget >= this.characterSpreadRandomHoldValue ? 0.24 : -0.24)));
+    }
+    const clockHz = 0.12 + rate * 0.9 + shallowFlavor * 0.04 + abyssFlavor * 0.02 + damage * 0.35;
+    const interval = Math.max(0.32, 1 / Math.max(0.08, clockHz));
+    const lag = 0.12 + damp * (1.1 + abyssFlavor * 0.7 + shallowFlavor * 0.35) + (1 - rate) * 0.2;
+    const spreadDelay = Math.min(0.24, interval * (0.05 + rng() * 0.16));
+
+    this.characterRandomHoldSource.offset.setTargetAtTime(mainTarget, now, lag);
+    this.characterSpreadRandomHoldSource.offset.setTargetAtTime(spreadTarget, now + spreadDelay, lag * (0.85 + rng() * 0.3));
+    this.characterRandomHoldValue = mainTarget;
+    this.characterSpreadRandomHoldValue = spreadTarget;
+    this.characterRandomHoldNextTime = now + interval * (0.45 + rng() * 1.25 + Math.abs(mainTarget) * 0.15);
+  }
+
+  private applyDynamics(state: SliderState, now: number): void {
+    const targets = resolveDynamicsTargets(state, this.ctx?.sampleRate ?? 44100);
+    const routingKey = this.getDynamicsRoutingKey(targets.routing);
+    if (this.ctx && routingKey !== this.dynamicsRoutingKey) {
+      this.wireMasterOutputChain(this.ctx, targets.routing);
+    }
+
+    if (targets.routing.characterPathActive) {
+      this.characterDryGain?.gain.setTargetAtTime(targets.dry, now, 0.03);
+      this.characterWetGain?.gain.setTargetAtTime(targets.wet, now, 0.03);
+      this.characterNoiseGain?.gain.setTargetAtTime(targets.noiseGain, now, 0.08);
+      this.characterJitterDepth?.gain.setTargetAtTime(targets.jitterDepth, now, 0.08);
+      this.characterRandomDriftFilter?.frequency.setTargetAtTime(targets.randomDriftFilterHz, now, 0.12);
+      this.characterRandomDriftDepth?.gain.setTargetAtTime(targets.randomDriftDepth, now, 0.12);
+      this.characterDelay?.delayTime.setTargetAtTime(targets.baseDelay, now, 0.08);
+      this.characterSpreadDelay?.delayTime.setTargetAtTime(targets.spreadBaseDelay, now, 0.08);
+      this.updateCharacterRandomHold(now, {
+        active: targets.routing.characterPathActive,
+        rate: targets.rate,
+        damp: targets.damp,
+        depth: targets.depth,
+        randomDrift: targets.randomDrift,
+        shallowFlavor: targets.shallowFlavor,
+        abyssFlavor: targets.abyssFlavor,
+        stereo: targets.stereo,
+        damage: targets.damage,
+        baseDelay: targets.baseDelay,
+        spreadBaseDelay: targets.spreadBaseDelay,
+      });
+      this.characterMainPan?.pan.setTargetAtTime(targets.mainPan, now, 0.08);
+      this.characterSpreadPan?.pan.setTargetAtTime(targets.spreadPan, now, 0.08);
+      this.characterMainDelayGain?.gain.setTargetAtTime(targets.mainDelayGain, now, 0.08);
+      this.characterSpreadDelayGain?.gain.setTargetAtTime(targets.spreadDelayGain, now, 0.08);
+      this.characterWowLfo?.frequency.setTargetAtTime(targets.wowFrequency, now, 0.08);
+      this.characterFlutterLfo?.frequency.setTargetAtTime(targets.flutterFrequency, now, 0.08);
+      this.characterWowDepth?.gain.setTargetAtTime(targets.wowDepth, now, 0.08);
+      this.characterFlutterDepth?.gain.setTargetAtTime(targets.flutterDepth, now, 0.08);
+      this.characterHighpass?.frequency.setTargetAtTime(targets.highpassHz, now, 0.08);
+      this.characterHighpass?.Q.setTargetAtTime(targets.highpassQ, now, 0.08);
+      this.characterAllpassA?.frequency.setTargetAtTime(targets.allpassAFrequency, now, 0.08);
+      this.characterAllpassA?.Q.setTargetAtTime(targets.allpassAQ, now, 0.08);
+      this.characterAllpassB?.frequency.setTargetAtTime(targets.allpassBFrequency, now, 0.08);
+      this.characterAllpassB?.Q.setTargetAtTime(targets.allpassBQ, now, 0.08);
+      this.characterHeadBump?.frequency.setTargetAtTime(targets.headBumpFrequency, now, 0.1);
+      this.characterHeadBump?.Q.setTargetAtTime(targets.headBumpQ, now, 0.1);
+      this.characterHeadBump?.gain.setTargetAtTime(targets.headBumpGain, now, 0.1);
+      this.characterDropoutFilter?.frequency.setTargetAtTime(targets.dropoutFilterHz, now, 0.12);
+      this.characterDropoutDepth?.gain.setTargetAtTime(targets.dropoutDepth, now, 0.12);
+      this.characterDropoutGain?.gain.setTargetAtTime(targets.dropoutGain, now, 0.12);
+      this.characterEnvFilter?.frequency.setTargetAtTime(targets.envFilterHz, now, 0.1);
+      this.characterEnvToLowpass?.gain.setTargetAtTime(targets.envToLowpassGain, now, 0.08);
+      this.characterEnvToWetGain?.gain.setTargetAtTime(targets.envToWetGain, now, 0.08);
+      this.characterLowpass?.frequency.setTargetAtTime(targets.lowpassHz, now, 0.08);
+      this.characterLowpass?.Q.setTargetAtTime(targets.lowpassQ, now, 0.08);
+      this.characterLowpassStage2?.frequency.setTargetAtTime(targets.lowpassStage2Hz, now, 0.08);
+      this.characterLowpassStage2?.Q.setTargetAtTime(targets.lowpassStage2Q, now, 0.08);
+      this.characterCompressor?.threshold.setTargetAtTime(targets.compressorThreshold, now, 0.05);
+      this.characterCompressor?.knee.setTargetAtTime(targets.compressorKnee, now, 0.05);
+      this.characterCompressor?.ratio.setTargetAtTime(targets.compressorRatio, now, 0.05);
+      this.characterCompressor?.attack.setTargetAtTime(targets.compressorAttack, now, 0.05);
+      this.characterCompressor?.release.setTargetAtTime(targets.compressorRelease, now, 0.05);
+      this.characterCompressorMakeup?.gain.setTargetAtTime(targets.compressorMakeup, now, 0.05);
+    }
+
+    const curveKey = `${Math.round(targets.saturation * 100)}:${Math.round(targets.corrosion * 100)}`;
+    if (this.characterSaturationNode && curveKey !== this.lastCharacterCurveKey) {
+      this.characterSaturationNode.curve = makeCharacterSaturationCurve(targets.saturation, targets.corrosion);
+      this.characterSaturationNode.oversample = targets.saturation + targets.corrosion > 0.2 ? '2x' : 'none';
+      this.lastCharacterCurveKey = curveKey;
+    }
+    const degradeParams = 'parameters' in (this.characterDegradeNode ?? {})
+      ? (this.characterDegradeNode as AudioWorkletNode).parameters
+      : null;
+    degradeParams?.get('enabled')?.setTargetAtTime(targets.routing.degradeWorkletActive ? 1 : 0, now, 0.03);
+    degradeParams?.get('mix')?.setTargetAtTime(targets.degradeWetRatio, now, 0.03);
+    degradeParams?.get('alias')?.setTargetAtTime(targets.rawDegradeAlias, now, 0.03);
+    degradeParams?.get('generation')?.setTargetAtTime(targets.rawDegradeGeneration, now, 0.03);
+    degradeParams?.get('corrosion')?.setTargetAtTime(targets.rawCorrosion, now, 0.03);
+    degradeParams?.get('wear')?.setTargetAtTime(targets.rawMediaWear, now, 0.03);
+
+    this.endCompDryGain?.gain.setTargetAtTime(targets.endDry, now, 0.03);
+    this.endCompWetGain?.gain.setTargetAtTime(targets.endWet, now, 0.03);
+    this.endCompMakeupGain?.gain.setTargetAtTime(targets.endMakeup, now, 0.03);
+    if (this.endCompCompressor) {
+      this.endCompCompressor.threshold.setTargetAtTime(targets.endThreshold, now, 0.03);
+      this.endCompCompressor.knee.setTargetAtTime(targets.endKnee, now, 0.03);
+      this.endCompCompressor.ratio.setTargetAtTime(targets.endRatio, now, 0.03);
+      this.endCompCompressor.attack.setTargetAtTime(targets.endAttack, now, 0.03);
+      this.endCompCompressor.release.setTargetAtTime(targets.endRelease, now, 0.03);
+    }
   }
 
   private getSafeDelayCrossFeedLevels(state: SliderState): { aToB: number; bToA: number } {
@@ -4317,6 +5170,9 @@ export class AudioEngine {
         this.satPostGain = null;
       }
       this.lastMasterSatMode = null;
+      this.disposeCharacterNodes();
+      this.disposeEndCompressorNodes();
+      this.disposeSidechainTargetNodes();
       this.reverbNode = null;
       this.reverbOutputGain = null;
       this.sharedDelayA?.dispose();
@@ -4899,6 +5755,9 @@ export class AudioEngine {
     if (this.satPostTone) { try { this.satPostTone.disconnect(); } catch { /* */ } this.satPostTone = null; }
     if (this.satPostGain) { try { this.satPostGain.disconnect(); } catch { /* */ } this.satPostGain = null; }
     this.lastMasterSatMode = null;
+    this.disposeCharacterNodes();
+    this.disposeEndCompressorNodes();
+    this.disposeSidechainTargetNodes();
     this.sharedDelayA?.dispose();
     this.sharedDelayA = null;
     this.sharedDelayB?.dispose();
@@ -5027,6 +5886,9 @@ export class AudioEngine {
     this.disposeTempDrumSynth();
 
     // Close AudioContext — full teardown
+    this.disposeCharacterNodes();
+    this.disposeEndCompressorNodes();
+    this.disposeSidechainTargetNodes();
     this.ctx?.close();
     this.ctx = null;
     this.graphBootstrapped = false;
@@ -5174,6 +6036,9 @@ export class AudioEngine {
         this.satPostTone = null;
         this.satPostGain = null;
         this.lastMasterSatMode = null;
+        this.disposeCharacterNodes();
+        this.disposeEndCompressorNodes();
+        this.disposeSidechainTargetNodes();
         this.reverbNode = null;
         this.reverbOutputGain = null;
         this.reverbPreCompressor = null;
@@ -5774,33 +6639,33 @@ export class AudioEngine {
       initialPostLpf: applyDistanceValue('padPostLPF', this.sliderState!, 'pad1'),
       initialStereoWidth: applyDistanceValue('padStereoWidth', this.sliderState!, 'pad1'),
       initialDiffuseSend: applyDistanceValue('padDiffuseSend', this.sliderState!, 'pad1'),
-      dryDestination: this.synthBus!,
+      dryDestination: this.getSidechainTargetInput(ctx, 'pad1', this.synthBus!),
     });
     this.pad2SpatialChain = this.createVoiceSpatialChain(ctx, {
       initialPostLpf: applyDistanceValue('pad2PostLPF', this.sliderState!, 'pad2'),
       initialStereoWidth: applyDistanceValue('pad2StereoWidth', this.sliderState!, 'pad2'),
       initialDiffuseSend: applyDistanceValue('pad2DiffuseSend', this.sliderState!, 'pad2'),
-      dryDestination: this.synthBus!,
+      dryDestination: this.getSidechainTargetInput(ctx, 'pad2', this.synthBus!),
     });
     this.lead1SpatialChain = this.createVoiceSpatialChain(ctx, {
       initialPostLpf: this.getLeadPostLpfCutoff(this.sliderState!, 'lead1'),
       initialStereoWidth: applyDistanceValue('lead1StereoWidth', this.sliderState!, 'lead1'),
       initialDiffuseSend: applyDistanceValue('lead1DiffuseSend', this.sliderState!, 'lead1'),
-      dryDestination: this.leadVoiceLevel!,
+      dryDestination: this.getSidechainTargetInput(ctx, 'lead1', this.leadVoiceLevel!),
       postLpfSlope: 24,
     });
     this.lead2SpatialChain = this.createVoiceSpatialChain(ctx, {
       initialPostLpf: this.getLeadPostLpfCutoff(this.sliderState!, 'lead2'),
       initialStereoWidth: applyDistanceValue('lead2StereoWidth', this.sliderState!, 'lead2'),
       initialDiffuseSend: applyDistanceValue('lead2DiffuseSend', this.sliderState!, 'lead2'),
-      dryDestination: this.leadVoiceLevel!,
+      dryDestination: this.getSidechainTargetInput(ctx, 'lead2', this.leadVoiceLevel!),
       postLpfSlope: 24,
     });
     this.pianoSpatialChain = this.createVoiceSpatialChain(ctx, {
       initialPostLpf: applyDistanceValue('pianoPostLPF', this.sliderState!, 'piano'),
       initialStereoWidth: applyDistanceValue('pianoStereoWidth', this.sliderState!, 'piano'),
       initialDiffuseSend: applyDistanceValue('pianoDiffuseSend', this.sliderState!, 'piano'),
-      dryDestination: this.masterGain!,
+      dryDestination: this.getSidechainTargetInput(ctx, 'piano', this.masterGain!),
       postLpfSlope: 24,
     });
 
@@ -5906,7 +6771,7 @@ export class AudioEngine {
       // Dry path: node → output LPF → direct gain → master
       this.granularFxNode.connect(this.granularFxOutputLPF!);
       this.granularFxOutputLPF!.connect(this.granularFxDirect);
-      this.granularFxDirect.connect(this.masterGain);
+      this.granularFxDirect.connect(this.getSidechainTargetInput(ctx, 'granular', this.masterGain));
 
       // Shared delay buses — first slice keeps the current lead/granular controls as the frontend.
       this.ensureSharedDelayBuses(ctx);
@@ -5923,7 +6788,7 @@ export class AudioEngine {
     this.synthDirect.connect(this.masterGain);
 
     // Reverb output to master (always connected)
-    this.reverbOutputGain.connect(this.masterGain);
+    this.reverbOutputGain.connect(this.getSidechainTargetInput(ctx, 'reverb', this.masterGain));
 
     // Spectral Freeze routing sets up reverbInputBus → reverbNode → reverbOutputGain
     // (and optionally inserts spectralFreezeNode in pre or post position)
@@ -6377,15 +7242,25 @@ export class AudioEngine {
         v = ls.smoothCurrent; break;
       case 'randomWalk': {
         const rwNow = performance.now();
-        if (rwNow - ls.rwLast >= 100) {
+        const elapsedMs = ls.rwLast > 0 ? Math.max(0, rwNow - ls.rwLast) : 100;
+        if (elapsedMs >= 100) {
           ls.rwLast = rwNow;
+          const stepCount = Math.max(
+            1,
+            Math.min(
+              RANDOM_WALK_MAX_CATCHUP_STEPS,
+              Math.round(elapsedMs / 100) || 1,
+            ),
+          );
           const spd = rate > 0 ? 0.02 * rate : 0;
-          ls.rwVel += (Math.random() - 0.5) * spd * 2;
-          ls.rwVel *= 0.92;
-          const mx = spd * 4;
-          ls.rwVel = Math.max(-mx, Math.min(mx, ls.rwVel));
-          ls.rwPos += ls.rwVel;
-          ls.rwPos = Math.max(0, Math.min(1, ls.rwPos));
+          for (let step = 0; step < stepCount; step += 1) {
+            ls.rwVel += (Math.random() - 0.5) * spd * 2;
+            ls.rwVel *= 0.92;
+            const mx = spd * 4;
+            ls.rwVel = Math.max(-mx, Math.min(mx, ls.rwVel));
+            ls.rwPos += ls.rwVel;
+            ls.rwPos = Math.max(0, Math.min(1, ls.rwPos));
+          }
         }
         v = (ls.rwPos - 0.5) * 2; break;
       }
@@ -6627,15 +7502,35 @@ export class AudioEngine {
       this.runtimeRandomWalkTimer = null;
     }
 
+    this.runtimeRandomWalkLastUpdateMs = performance.now();
     this.runtimeRandomWalkTimer = window.setInterval(() => {
+      const now = performance.now();
       const sourceState = this.sourceSliderState;
-      if (!sourceState) return;
+      if (!sourceState) {
+        this.runtimeRandomWalkLastUpdateMs = now;
+        return;
+      }
 
       const shouldAnimate = this.isRunning || document.visibilityState === 'visible';
-      if (!shouldAnimate) return;
+      if (!shouldAnimate) {
+        this.runtimeRandomWalkLastUpdateMs = now;
+        return;
+      }
+
+      const elapsedMs = Math.max(0, now - this.runtimeRandomWalkLastUpdateMs);
+      this.runtimeRandomWalkLastUpdateMs = now;
 
       const speed = Math.max(0.01, sourceState.randomWalkSpeed ?? 1);
       const globalWalk = sourceState.randomWalkMode === 'globalWalk';
+      const localStepCount = globalWalk
+        ? 1
+        : Math.max(
+          1,
+          Math.min(
+            RANDOM_WALK_MAX_CATCHUP_STEPS,
+            Math.round(elapsedMs / RUNTIME_RANDOM_WALK_INTERVAL_MS) || 1,
+          ),
+        );
       let runtimeChanged = false;
 
       for (const key of Object.keys(this.runtimeWalkRanges)) {
@@ -6647,17 +7542,19 @@ export class AudioEngine {
           nextPosition = sampleGlobalWalkPosition(key, speed, sourceState.seedWindow);
           nextVelocity = 0;
         } else {
-          nextVelocity += (Math.random() - 0.5) * 0.01 * speed;
-          nextVelocity *= 0.98;
-          nextVelocity = Math.max(-0.05 * speed, Math.min(0.05 * speed, nextVelocity));
-          nextPosition += nextVelocity;
+          for (let step = 0; step < localStepCount; step += 1) {
+            nextVelocity += (Math.random() - 0.5) * 0.01 * speed;
+            nextVelocity *= 0.98;
+            nextVelocity = Math.max(-0.05 * speed, Math.min(0.05 * speed, nextVelocity));
+            nextPosition += nextVelocity;
 
-          if (nextPosition < 0) {
-            nextPosition = 0;
-            nextVelocity = Math.abs(nextVelocity);
-          } else if (nextPosition > 1) {
-            nextPosition = 1;
-            nextVelocity = -Math.abs(nextVelocity);
+            if (nextPosition < 0) {
+              nextPosition = 0;
+              nextVelocity = Math.abs(nextVelocity);
+            } else if (nextPosition > 1) {
+              nextPosition = 1;
+              nextVelocity = -Math.abs(nextVelocity);
+            }
           }
         }
 
@@ -6681,6 +7578,7 @@ export class AudioEngine {
       clearInterval(this.runtimeRandomWalkTimer);
       this.runtimeRandomWalkTimer = null;
     }
+    this.runtimeRandomWalkLastUpdateMs = 0;
   }
 
   private syncRuntimeRandomWalk(): void {
@@ -6883,8 +7781,29 @@ export class AudioEngine {
     }
 
     const updateIntervalMs = 100;
+    let lastUpdateMs = performance.now();
     this.leadMorphTimer = window.setInterval(() => {
-      if (!this.sliderState) return;
+      const now = performance.now();
+      if (!this.sliderState) {
+        lastUpdateMs = now;
+        return;
+      }
+
+      const canAnimate = this.isRunning || document.visibilityState === 'visible';
+      if (!canAnimate) {
+        lastUpdateMs = now;
+        return;
+      }
+
+      const elapsedMs = Math.max(0, now - lastUpdateMs);
+      lastUpdateMs = now;
+      const stepCount = Math.max(
+        1,
+        Math.min(
+          RANDOM_WALK_MAX_CATCHUP_STEPS,
+          Math.round(elapsedMs / updateIntervalMs) || 1,
+        ),
+      );
 
       const updateLead = (lead: 1 | 2): number | null => {
         const randomWalkEnabled = lead === 1 ? this.sliderState!.lead1MorphAuto : this.sliderState!.lead2MorphAuto;
@@ -6905,17 +7824,19 @@ export class AudioEngine {
           walkState.initialized = true;
         }
 
-        walkState.velocity += (Math.random() - 0.5) * 0.01 * speedFactor;
-        walkState.velocity *= 0.98;
-        walkState.velocity = Math.max(-0.05 * speedFactor, Math.min(0.05 * speedFactor, walkState.velocity));
-        walkState.position += walkState.velocity;
+        for (let step = 0; step < stepCount; step += 1) {
+          walkState.velocity += (Math.random() - 0.5) * 0.01 * speedFactor;
+          walkState.velocity *= 0.98;
+          walkState.velocity = Math.max(-0.05 * speedFactor, Math.min(0.05 * speedFactor, walkState.velocity));
+          walkState.position += walkState.velocity;
 
-        if (walkState.position < 0) {
-          walkState.position = 0;
-          walkState.velocity = Math.abs(walkState.velocity);
-        } else if (walkState.position > 1) {
-          walkState.position = 1;
-          walkState.velocity = -Math.abs(walkState.velocity);
+          if (walkState.position < 0) {
+            walkState.position = 0;
+            walkState.velocity = Math.abs(walkState.velocity);
+          } else if (walkState.position > 1) {
+            walkState.position = 1;
+            walkState.velocity = -Math.abs(walkState.velocity);
+          }
         }
 
         return walkState.position;
@@ -7787,6 +8708,8 @@ export class AudioEngine {
     // Master volume
     this.masterGain?.gain.setTargetAtTime(fin(state.masterVolume, 0.5), now, smoothTime);
     this.applyMasterSaturation(state, now);
+    this.applyDynamics(state, now);
+    this.applySidechainTargetGains(state, now, smoothTime);
 
     // Voice parameters
     // Filter cutoff modulates between filterCutoffMin and filterCutoffMax
@@ -9917,7 +10840,7 @@ export class AudioEngine {
         initialPostLpf: this.getLeadPostLpfCutoff(this.sliderState!, 'lead1'),
         initialStereoWidth: applyDistanceValue('lead1StereoWidth', this.sliderState!, 'lead1'),
         initialDiffuseSend: applyDistanceValue('lead1DiffuseSend', this.sliderState!, 'lead1'),
-        dryDestination: this.leadVoiceLevel!,
+        dryDestination: this.getSidechainTargetInput(ctx, 'lead1', this.leadVoiceLevel!),
         postLpfSlope: 24,
       });
       this.lead1Bus.connect(this.lead1LevelGain);
@@ -9934,7 +10857,7 @@ export class AudioEngine {
         initialPostLpf: this.getLeadPostLpfCutoff(this.sliderState!, 'lead2'),
         initialStereoWidth: applyDistanceValue('lead2StereoWidth', this.sliderState!, 'lead2'),
         initialDiffuseSend: applyDistanceValue('lead2DiffuseSend', this.sliderState!, 'lead2'),
-        dryDestination: this.leadVoiceLevel!,
+        dryDestination: this.getSidechainTargetInput(ctx, 'lead2', this.leadVoiceLevel!),
         postLpfSlope: 24,
       });
       this.lead2Bus.connect(this.lead2LevelGain);
@@ -10000,7 +10923,7 @@ export class AudioEngine {
         initialPostLpf: applyDistanceValue('pianoPostLPF', this.sliderState!, 'piano'),
         initialStereoWidth: applyDistanceValue('pianoStereoWidth', this.sliderState!, 'piano'),
         initialDiffuseSend: applyDistanceValue('pianoDiffuseSend', this.sliderState!, 'piano'),
-        dryDestination: this.masterGain!,
+        dryDestination: this.getSidechainTargetInput(ctx, 'piano', this.masterGain!),
         postLpfSlope: 24,
       });
       this.pianoBus.connect(this.pianoLevelGain);
@@ -10045,13 +10968,13 @@ export class AudioEngine {
         initialPostLpf: applyDistanceValue('padPostLPF', this.sliderState!, 'pad1'),
         initialStereoWidth: applyDistanceValue('padStereoWidth', this.sliderState!, 'pad1'),
         initialDiffuseSend: applyDistanceValue('padDiffuseSend', this.sliderState!, 'pad1'),
-        dryDestination: this.synthBus!,
+        dryDestination: this.getSidechainTargetInput(ctx, 'pad1', this.synthBus!),
       });
       this.pad2SpatialChain = this.createVoiceSpatialChain(ctx, {
         initialPostLpf: applyDistanceValue('pad2PostLPF', this.sliderState!, 'pad2'),
         initialStereoWidth: applyDistanceValue('pad2StereoWidth', this.sliderState!, 'pad2'),
         initialDiffuseSend: applyDistanceValue('pad2DiffuseSend', this.sliderState!, 'pad2'),
-        dryDestination: this.synthBus!,
+        dryDestination: this.getSidechainTargetInput(ctx, 'pad2', this.synthBus!),
       });
       this.pad1Bus.connect(this.pad1SpatialChain!.postLpf);
       this.pad2Bus.connect(this.pad2SpatialChain!.postLpf);

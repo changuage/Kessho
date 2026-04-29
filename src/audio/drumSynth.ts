@@ -156,7 +156,7 @@ export class DrumSynth {
   private paramSHRanges = new Map<string, { min: number; max: number }>();
   
   // Callback for UI visualization
-  private onDrumTrigger: ((voice: DrumVoiceType, velocity: number) => void) | null = null;
+  private onDrumTrigger: ((voice: DrumVoiceType, velocity: number, time?: number) => void) | null = null;
   
   // Callback for morph trigger visualization (per-trigger random position)
   private onMorphTrigger: ((voice: DrumVoiceType, morphPosition: number) => void) | null = null;
@@ -693,7 +693,7 @@ export class DrumSynth {
     return this.transientNodeGroups.length;
   }
 
-  setDrumTriggerCallback(callback: (voice: DrumVoiceType, velocity: number) => void): void {
+  setDrumTriggerCallback(callback: (voice: DrumVoiceType, velocity: number, time?: number) => void): void {
     this.onDrumTrigger = callback;
   }
   
@@ -1396,7 +1396,7 @@ export class DrumSynth {
     
     // Notify UI
     if (this.onDrumTrigger) {
-      this.onDrumTrigger(voice, velocity);
+      this.onDrumTrigger(voice, velocity, t);
     }
   }
   

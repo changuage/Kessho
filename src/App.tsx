@@ -23,6 +23,7 @@ import { DualSlider, DualSliderRange } from './ui/DualSlider';
 import { SliderPrimitive } from './ui/sliderSystem';
 import { audioEngine, preloadAudioEngine } from './audio/runtime';
 import type { EngineState } from './audio/runtime';
+import { normalizeDynamicsDegradeAliases } from './audio/dynamicsModel';
 import { isCloudEnabled as isCloudPresetConfigEnabled } from './cloud/config';
 import { formatChordDegrees, calculateDriftedRoot } from './audio/harmony';
 import { DrumVoiceType as DrumPresetVoice } from './audio/drumPresets';
@@ -78,7 +79,7 @@ import {
   deserializeStepOverrides,
   serializeStepOverrides,
 } from './ui/sequencer/stepOverrideSerialization';
-import type { PitchBindingMode } from './audio/drumSeqTypes';
+import type { ClockDivision, PitchBindingMode } from './audio/drumSeqTypes';
 import type { SliderPageId } from './ui/sliderHelpCatalog';
 import { isIOSLikeDevice, isMobileDevice } from './platform';
 import { useVisibleInterval } from './ui/hooks/useVisibleInterval';
@@ -109,6 +110,7 @@ const ReverbPage = React.lazy(() => import('./ui/reverb/ReverbPage'));
 const DrumPage = React.lazy(() => import('./ui/drums/DrumPage'));
 const GranularPage = React.lazy(() => import('./ui/granular/GranularPage'));
 const DelayPage = React.lazy(() => import('./ui/delay/DelayPage'));
+const DynamicsPage = React.lazy(() => import('./ui/dynamics/DynamicsPage'));
 const RoutingPage = React.lazy(() => import('./ui/routing/RoutingPage'));
 const EarthPage = React.lazy(() => import('./ui/earth/EarthPage'));
 const SliderLabPage = React.lazy(() => import('./ui/sliderLab/SliderLabPage'));
@@ -242,10 +244,22 @@ interface SavedPreset {
   synthEvolveConfigs?: EvolveConfig[];
   drumStepOverrides?: SerializedStepOverrides;
   synthStepOverrides?: SerializedStepOverrides;
+  drumClockDivs?: ClockDivision[];
+  synthClockDivs?: ClockDivision[];
+  drumSwings?: number[];
+  synthSwings?: number[];
+  drumLinked?: boolean[];
+  synthLinked?: boolean[];
   drumSubLaneStates?: Record<SubLaneKind, SubLaneState>[];
   synthSubLaneStates?: Record<SubLaneKind, SubLaneState>[];
+  synthPitchSettings?: PitchSettings[];
   synthPitchBindingModes?: PitchBindingMode[];
 }
+
+const DEFAULT_EUCLIDEAN_CLOCK_DIVS: ClockDivision[] = ['1/8', '1/16', '1/8T', '1/4'];
+const DEFAULT_EUCLIDEAN_SWINGS = [0, 0, 0, 0];
+const DEFAULT_EUCLIDEAN_LINKED = [false, false, false, false];
+const DEFAULT_SYNTH_PITCH_BINDING_MODES: PitchBindingMode[] = ['polyrhythmic', 'polyrhythmic', 'polyrhythmic', 'polyrhythmic'];
 
 // iOS-only reverb types that won't work on web
 const IOS_ONLY_REVERB_TYPES = new Set([
@@ -401,6 +415,8 @@ const normalizePresetForWeb = (state: SliderState): SliderState => {
     }
   }
 
+  Object.assign(normalized, normalizeDynamicsDegradeAliases(normalized as Record<string, unknown>));
+
   // Defensive sanitization: preserve only valid scalar types and fall back to defaults.
   // Prevents runtime crashes when legacy/cloud presets contain null/invalid values.
   const merged = { ...DEFAULT_STATE, ...normalized } as SliderState;
@@ -485,8 +501,15 @@ const loadPresetsFromFolder = async (): Promise<SavedPreset[]> => {
               synthEvolveConfigs: data.synthEvolveConfigs,
               drumStepOverrides: data.drumStepOverrides,
               synthStepOverrides: data.synthStepOverrides,
+              drumClockDivs: data.drumClockDivs,
+              synthClockDivs: data.synthClockDivs,
+              drumSwings: data.drumSwings,
+              synthSwings: data.synthSwings,
+              drumLinked: data.drumLinked,
+              synthLinked: data.synthLinked,
               drumSubLaneStates: data.drumSubLaneStates,
               synthSubLaneStates: data.synthSubLaneStates,
+              synthPitchSettings: data.synthPitchSettings,
               synthPitchBindingModes: data.synthPitchBindingModes,
             }));
           }
@@ -513,8 +536,15 @@ const loadPresetsFromFolder = async (): Promise<SavedPreset[]> => {
             synthEvolveConfigs: data.synthEvolveConfigs,
             drumStepOverrides: data.drumStepOverrides,
             synthStepOverrides: data.synthStepOverrides,
+            drumClockDivs: data.drumClockDivs,
+            synthClockDivs: data.synthClockDivs,
+            drumSwings: data.drumSwings,
+            synthSwings: data.synthSwings,
+            drumLinked: data.drumLinked,
+            synthLinked: data.synthLinked,
             drumSubLaneStates: data.drumSubLaneStates,
             synthSubLaneStates: data.synthSubLaneStates,
+            synthPitchSettings: data.synthPitchSettings,
             synthPitchBindingModes: data.synthPitchBindingModes,
           }));
         }
@@ -938,7 +968,7 @@ function extractNativeDualRanges(ranges: DualSliderState): Record<string, { min:
   return output;
 }
 
-type AdvancedTab = 'global' | 'synth' | 'drums' | 'reverb' | 'granular' | 'earth' | 'delay' | 'routing' | 'sliderLab';
+type AdvancedTab = 'global' | 'synth' | 'drums' | 'reverb' | 'granular' | 'earth' | 'delay' | 'dynamics' | 'routing' | 'sliderLab';
 
 const ADVANCED_TAB_SHORTCUTS: Record<string, AdvancedTab> = {
   '1': 'global',
@@ -948,8 +978,9 @@ const ADVANCED_TAB_SHORTCUTS: Record<string, AdvancedTab> = {
   '5': 'granular',
   '6': 'delay',
   '7': 'reverb',
-  '8': 'routing',
-  '9': 'sliderLab',
+  '8': 'dynamics',
+  '9': 'routing',
+  '0': 'sliderLab',
 };
 
 function isEditableShortcutTarget(target: EventTarget | null): boolean {
@@ -2022,6 +2053,9 @@ const App: React.FC = () => {
   const drumStepOverridesRef = useRef<StepOverrides | undefined>(undefined);
   const drumSubLaneStatesRef = useRef<Record<SubLaneKind, SubLaneState>[] | undefined>(undefined);
   const drumEvolveConfigsRef = useRef<EvolveConfig[] | undefined>(undefined);
+  const drumClockDivsRef = useRef<ClockDivision[] | undefined>(undefined);
+  const drumSwingsRef = useRef<number[] | undefined>(undefined);
+  const drumLinkedRef = useRef<boolean[] | undefined>(undefined);
   const drumSeqSimpleStateRef = useRef<SeqSimpleState | undefined>(undefined);
 
   // Evolved step overrides pushed from audio engine for visual sync
@@ -2032,6 +2066,9 @@ const App: React.FC = () => {
   const synthViewModeRef = useRef<'simple' | 'detail' | 'overview'>('simple');
   const synthStepOverridesRef = useRef<StepOverrides | undefined>(undefined);
   const synthSubLaneStatesRef = useRef<Record<SubLaneKind, SubLaneState>[] | undefined>(undefined);
+  const synthClockDivsRef = useRef<ClockDivision[] | undefined>(undefined);
+  const synthSwingsRef = useRef<number[] | undefined>(undefined);
+  const synthLinkedRef = useRef<boolean[] | undefined>(undefined);
   const synthPitchSettingsRef = useRef<PitchSettings[] | undefined>(undefined);
   const synthPitchBindingModesRef = useRef<PitchBindingMode[] | undefined>(undefined);
   const synthKeyboardUiStateRef = useRef<SynthKeyboardUiState | undefined>(undefined);
@@ -2090,6 +2127,23 @@ const App: React.FC = () => {
     synthEvolveConfigsRef.current = synthConfigs;
     audioEngine.setSynthEuclidEvolveConfigs(synthConfigs);
 
+    const drumClockDivs = preset.drumClockDivs ?? [...DEFAULT_EUCLIDEAN_CLOCK_DIVS];
+    drumClockDivsRef.current = drumClockDivs;
+    audioEngine.setDrumEuclidClockDivs(drumClockDivs);
+    const synthClockDivs = preset.synthClockDivs ?? [...DEFAULT_EUCLIDEAN_CLOCK_DIVS];
+    synthClockDivsRef.current = synthClockDivs;
+    audioEngine.setSynthEuclidClockDivs(synthClockDivs);
+
+    const drumSwings = preset.drumSwings ?? [...DEFAULT_EUCLIDEAN_SWINGS];
+    drumSwingsRef.current = drumSwings;
+    audioEngine.setDrumEuclidSwings(drumSwings);
+    const synthSwings = preset.synthSwings ?? [...DEFAULT_EUCLIDEAN_SWINGS];
+    synthSwingsRef.current = synthSwings;
+    audioEngine.setSynthEuclidSwings(synthSwings);
+
+    drumLinkedRef.current = preset.drumLinked ?? [...DEFAULT_EUCLIDEAN_LINKED];
+    synthLinkedRef.current = preset.synthLinked ?? [...DEFAULT_EUCLIDEAN_LINKED];
+
     const drumStepOverrides = deserializeStepOverrides(preset.drumStepOverrides) ?? createEmptyStepOverrides();
     drumStepOverridesRef.current = drumStepOverrides;
     audioEngine.setDrumStepOverrides(drumStepOverrides);
@@ -2103,12 +2157,12 @@ const App: React.FC = () => {
     audioEngine.setDrumSubLaneEnabled(mapSubLaneStatesToEnabledFlags(preset.drumSubLaneStates));
     audioEngine.setSynthSubLaneEnabled(mapSubLaneStatesToEnabledFlags(preset.synthSubLaneStates));
 
-    // Pitch settings are UI-only sequencer metadata; reset them to defaults when a preset loads.
-    synthPitchSettingsRef.current = undefined;
-    audioEngine.setSynthPitchSettings(createDefaultSynthPitchSettings());
+    const synthPitchSettings = preset.synthPitchSettings ?? createDefaultSynthPitchSettings();
+    synthPitchSettingsRef.current = synthPitchSettings;
+    audioEngine.setSynthPitchSettings(synthPitchSettings);
 
     synthPitchBindingModesRef.current = preset.synthPitchBindingModes;
-    audioEngine.setSynthPitchBindingModes(preset.synthPitchBindingModes ?? ['polyrhythmic', 'polyrhythmic', 'polyrhythmic', 'polyrhythmic']);
+    audioEngine.setSynthPitchBindingModes(preset.synthPitchBindingModes ?? [...DEFAULT_SYNTH_PITCH_BINDING_MODES]);
 
     // Bump all version counters so mounted pages re-initialize from refs
     setDrumPresetVersion(v => v + 1);
@@ -2127,8 +2181,15 @@ const App: React.FC = () => {
     synthEvolveConfigs: synthEvolveConfigsRef.current,
     drumStepOverrides: serializeStepOverrides(drumStepOverridesRef.current),
     synthStepOverrides: serializeStepOverrides(synthStepOverridesRef.current),
+    drumClockDivs: drumClockDivsRef.current,
+    synthClockDivs: synthClockDivsRef.current,
+    drumSwings: drumSwingsRef.current,
+    synthSwings: synthSwingsRef.current,
+    drumLinked: drumLinkedRef.current,
+    synthLinked: synthLinkedRef.current,
     drumSubLaneStates: drumSubLaneStatesRef.current,
     synthSubLaneStates: synthSubLaneStatesRef.current,
+    synthPitchSettings: synthPitchSettingsRef.current,
     synthPitchBindingModes: synthPitchBindingModesRef.current,
   }), [dualSliderRanges, sliderModes]);
 
@@ -2531,8 +2592,15 @@ const App: React.FC = () => {
             synthEvolveConfigs: wrappedData?.synthEvolveConfigs,
             drumStepOverrides: wrappedData?.drumStepOverrides,
             synthStepOverrides: wrappedData?.synthStepOverrides,
+            drumClockDivs: wrappedData?.drumClockDivs,
+            synthClockDivs: wrappedData?.synthClockDivs,
+            drumSwings: wrappedData?.drumSwings,
+            synthSwings: wrappedData?.synthSwings,
+            drumLinked: wrappedData?.drumLinked,
+            synthLinked: wrappedData?.synthLinked,
             drumSubLaneStates: wrappedData?.drumSubLaneStates,
             synthSubLaneStates: wrappedData?.synthSubLaneStates,
+            synthPitchSettings: wrappedData?.synthPitchSettings,
             synthPitchBindingModes: wrappedData?.synthPitchBindingModes,
           }, { currentState: state, normalize: normalizePresetForWeb });
           setState(result.state);
@@ -4576,8 +4644,15 @@ const App: React.FC = () => {
       synthEvolveConfigs: synthEvolveConfigsRef.current,
       drumStepOverrides: serializeStepOverrides(drumStepOverridesRef.current),
       synthStepOverrides: serializeStepOverrides(synthStepOverridesRef.current),
+      drumClockDivs: drumClockDivsRef.current,
+      synthClockDivs: synthClockDivsRef.current,
+      drumSwings: drumSwingsRef.current,
+      synthSwings: synthSwingsRef.current,
+      drumLinked: drumLinkedRef.current,
+      synthLinked: synthLinkedRef.current,
       drumSubLaneStates: drumSubLaneStatesRef.current,
       synthSubLaneStates: synthSubLaneStatesRef.current,
+      synthPitchSettings: synthPitchSettingsRef.current,
       synthPitchBindingModes: synthPitchBindingModesRef.current,
     };
 
@@ -5932,8 +6007,15 @@ const App: React.FC = () => {
             synthEvolveConfigs: result.preset.synthEvolveConfigs,
             drumStepOverrides: result.preset.drumStepOverrides,
             synthStepOverrides: result.preset.synthStepOverrides,
+            drumClockDivs: result.preset.drumClockDivs,
+            synthClockDivs: result.preset.synthClockDivs,
+            drumSwings: result.preset.drumSwings,
+            synthSwings: result.preset.synthSwings,
+            drumLinked: result.preset.drumLinked,
+            synthLinked: result.preset.synthLinked,
             drumSubLaneStates: result.preset.drumSubLaneStates,
             synthSubLaneStates: result.preset.synthSubLaneStates,
+            synthPitchSettings: result.preset.synthPitchSettings,
             synthPitchBindingModes: result.preset.synthPitchBindingModes,
           };
 
@@ -6689,6 +6771,18 @@ const App: React.FC = () => {
           <span>Reverb</span>
         </HelpButton>
         <HelpButton
+          helpKey="tabDynamics"
+          style={{
+            ...styles.tab,
+            ...(activeTab === 'dynamics' ? styles.tabActive : {}),
+            ...m?.tab,
+          }}
+          onClick={() => setActiveTab('dynamics')}
+        >
+          <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>≋</span>
+          <span>Dynamics</span>
+        </HelpButton>
+        <HelpButton
           helpKey="tabRouting"
           style={{
             ...styles.tab,
@@ -6825,8 +6919,12 @@ const App: React.FC = () => {
                 trigCondition: overrides.trigCondition,
               });
             }}
-            onClockDivsChange={(divs) => audioEngine.setSynthEuclidClockDivs(divs)}
-            onSwingsChange={(swings) => audioEngine.setSynthEuclidSwings(swings)}
+            initialClockDivs={synthClockDivsRef.current}
+            onClockDivsChange={(divs) => { synthClockDivsRef.current = divs; audioEngine.setSynthEuclidClockDivs(divs); }}
+            initialSwings={synthSwingsRef.current}
+            onSwingsChange={(swings) => { synthSwingsRef.current = swings; audioEngine.setSynthEuclidSwings(swings); }}
+            initialLinked={synthLinkedRef.current}
+            onLinkedChange={(linked) => { synthLinkedRef.current = linked; }}
             onEvolveConfigsChange={(configs) => { synthEvolveConfigsRef.current = configs; audioEngine.setSynthEuclidEvolveConfigs(configs); }}
             initialEvolveConfigs={synthEvolveConfigsRef.current}
             presetVersion={synthPresetVersion}
@@ -6890,8 +6988,12 @@ const App: React.FC = () => {
             }}
             initialViewMode={drumViewModeRef.current}
             onViewModeChange={(mode) => { drumViewModeRef.current = mode; }}
-            onClockDivsChange={(divs) => audioEngine.setDrumEuclidClockDivs(divs)}
-            onSwingsChange={(swings) => audioEngine.setDrumEuclidSwings(swings)}
+            initialClockDivs={drumClockDivsRef.current}
+            onClockDivsChange={(divs) => { drumClockDivsRef.current = divs; audioEngine.setDrumEuclidClockDivs(divs); }}
+            initialSwings={drumSwingsRef.current}
+            onSwingsChange={(swings) => { drumSwingsRef.current = swings; audioEngine.setDrumEuclidSwings(swings); }}
+            initialLinked={drumLinkedRef.current}
+            onLinkedChange={(linked) => { drumLinkedRef.current = linked; }}
             initialSeqSimpleState={drumSeqSimpleStateRef.current}
             onSeqSimpleStateChange={(s) => { drumSeqSimpleStateRef.current = s; }}
           />
@@ -6926,6 +7028,19 @@ const App: React.FC = () => {
             sliderModes={sliderModes}
             dualSliderRanges={dualSliderRanges}
             onDualStateChange={applyScopedDualRangesFromPreset}
+          />
+        )}
+
+        {/* === DYNAMICS TAB === */}
+        {activeTab === 'dynamics' && (
+          <DynamicsPage
+            state={state}
+            isMobile={isMobile}
+            onParamChange={handleSliderChange}
+            onSelectChange={handleSelectChange}
+            onStateChange={setState}
+            sliderProps={sliderProps}
+            SliderComponent={Slider as unknown as React.ComponentType<Record<string, unknown>>}
           />
         )}
 

@@ -1,0 +1,7608 @@
+{
+  "name": "DegenerateGain3",
+  "size": 4599,
+  "modules": [
+    {
+      "number": 0,
+      "mod_idx": 45,
+      "type": "Value",
+      "category": "CV",
+      "name": "Wow",
+      "version": 0,
+      "page": 0,
+      "position": 0,
+      "color": "White",
+      "params_count": 1,
+      "params_raw": [
+        26700
+      ],
+      "params_norm": [
+        0.4074
+      ],
+      "options": {
+        "output": "0 to 1"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 1,
+      "mod_idx": 45,
+      "type": "Value",
+      "category": "CV",
+      "name": "Flutter",
+      "version": 0,
+      "page": 0,
+      "position": 1,
+      "color": "Blue",
+      "params_count": 1,
+      "params_raw": [
+        16500
+      ],
+      "params_norm": [
+        0.2518
+      ],
+      "options": {
+        "output": "0 to 1"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 2,
+      "mod_idx": 45,
+      "type": "Value",
+      "category": "CV",
+      "name": "Wet level",
+      "version": 0,
+      "page": 0,
+      "position": 2,
+      "color": "White",
+      "params_count": 1,
+      "params_raw": [
+        65535
+      ],
+      "params_norm": [
+        1.0
+      ],
+      "options": {
+        "output": "0 to 1"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 3,
+      "mod_idx": 45,
+      "type": "Value",
+      "category": "CV",
+      "name": "Gen",
+      "version": 0,
+      "page": 0,
+      "position": 3,
+      "color": "Blue",
+      "params_count": 1,
+      "params_raw": [
+        61335
+      ],
+      "params_norm": [
+        0.9359
+      ],
+      "options": {
+        "output": "0 to 1"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 4,
+      "mod_idx": 45,
+      "type": "Value",
+      "category": "CV",
+      "name": "HP",
+      "version": 0,
+      "page": 0,
+      "position": 4,
+      "color": "White",
+      "params_count": 1,
+      "params_raw": [
+        15900
+      ],
+      "params_norm": [
+        0.2426
+      ],
+      "options": {
+        "output": "0 to 1"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 5,
+      "mod_idx": 45,
+      "type": "Value",
+      "category": "CV",
+      "name": "LP",
+      "version": 0,
+      "page": 0,
+      "position": 5,
+      "color": "Blue",
+      "params_count": 1,
+      "params_raw": [
+        39235
+      ],
+      "params_norm": [
+        0.5987
+      ],
+      "options": {
+        "output": "0 to 1"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 6,
+      "mod_idx": 45,
+      "type": "Value",
+      "category": "CV",
+      "name": "Corrosion",
+      "version": 0,
+      "page": 0,
+      "position": 6,
+      "color": "White",
+      "params_count": 1,
+      "params_raw": [
+        9735
+      ],
+      "params_norm": [
+        0.1485
+      ],
+      "options": {
+        "output": "0 to 1"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 7,
+      "mod_idx": 45,
+      "type": "Value",
+      "category": "CV",
+      "name": "Dry volume",
+      "version": 0,
+      "page": 0,
+      "position": 7,
+      "color": "Magenta",
+      "params_count": 1,
+      "params_raw": [
+        0
+      ],
+      "params_norm": [
+        0.0
+      ],
+      "options": {
+        "output": "0 to 1"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 8,
+      "mod_idx": 15,
+      "type": "Pushbutton",
+      "category": "Interface",
+      "name": "Mod on",
+      "version": 0,
+      "page": 0,
+      "position": 8,
+      "color": "White",
+      "params_count": 0,
+      "params_raw": [],
+      "params_norm": [],
+      "options": {
+        "raw_opt_0": 1
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 9,
+      "mod_idx": 15,
+      "type": "Pushbutton",
+      "category": "Interface",
+      "name": "Mod on",
+      "version": 0,
+      "page": 0,
+      "position": 9,
+      "color": "Blue",
+      "params_count": 0,
+      "params_raw": [],
+      "params_norm": [],
+      "options": {
+        "raw_opt_0": 1
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 10,
+      "mod_idx": 15,
+      "type": "Pushbutton",
+      "category": "Interface",
+      "name": "Mod on",
+      "version": 0,
+      "page": 0,
+      "position": 10,
+      "color": "White",
+      "params_count": 0,
+      "params_raw": [],
+      "params_norm": [],
+      "options": {
+        "raw_opt_0": 1
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 11,
+      "mod_idx": 15,
+      "type": "Pushbutton",
+      "category": "Interface",
+      "name": "Mod on",
+      "version": 0,
+      "page": 0,
+      "position": 11,
+      "color": "Blue",
+      "params_count": 0,
+      "params_raw": [],
+      "params_norm": [],
+      "options": {
+        "raw_opt_0": 1
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 12,
+      "mod_idx": 15,
+      "type": "Pushbutton",
+      "category": "Interface",
+      "name": "Mod on",
+      "version": 0,
+      "page": 0,
+      "position": 12,
+      "color": "White",
+      "params_count": 0,
+      "params_raw": [],
+      "params_norm": [],
+      "options": {
+        "raw_opt_0": 1
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 13,
+      "mod_idx": 15,
+      "type": "Pushbutton",
+      "category": "Interface",
+      "name": "Mod on",
+      "version": 0,
+      "page": 0,
+      "position": 13,
+      "color": "Blue",
+      "params_count": 0,
+      "params_raw": [],
+      "params_norm": [],
+      "options": {
+        "raw_opt_0": 1
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 14,
+      "mod_idx": 15,
+      "type": "Pushbutton",
+      "category": "Interface",
+      "name": "Mod on",
+      "version": 0,
+      "page": 0,
+      "position": 14,
+      "color": "White",
+      "params_count": 0,
+      "params_raw": [],
+      "params_norm": [],
+      "options": {
+        "raw_opt_0": 1
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 15,
+      "mod_idx": 45,
+      "type": "Value",
+      "category": "CV",
+      "name": "Noise level",
+      "version": 0,
+      "page": 0,
+      "position": 15,
+      "color": "Yellow",
+      "params_count": 1,
+      "params_raw": [
+        5700
+      ],
+      "params_norm": [
+        0.087
+      ],
+      "options": {
+        "output": "0 to 1"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 16,
+      "mod_idx": 45,
+      "type": "Value",
+      "category": "CV",
+      "name": "Depth",
+      "version": 0,
+      "page": 0,
+      "position": 16,
+      "color": "White",
+      "params_count": 1,
+      "params_raw": [
+        57890
+      ],
+      "params_norm": [
+        0.8833
+      ],
+      "options": {
+        "output": "-1 to 1"
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 17,
+      "mod_idx": 45,
+      "type": "Value",
+      "category": "CV",
+      "name": "Depth",
+      "version": 0,
+      "page": 0,
+      "position": 17,
+      "color": "Blue",
+      "params_count": 1,
+      "params_raw": [
+        65535
+      ],
+      "params_norm": [
+        1.0
+      ],
+      "options": {
+        "output": "-1 to 1"
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 18,
+      "mod_idx": 45,
+      "type": "Value",
+      "category": "CV",
+      "name": "Depth",
+      "version": 0,
+      "page": 0,
+      "position": 18,
+      "color": "White",
+      "params_count": 1,
+      "params_raw": [
+        15837
+      ],
+      "params_norm": [
+        0.2417
+      ],
+      "options": {
+        "output": "-1 to 1"
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 19,
+      "mod_idx": 45,
+      "type": "Value",
+      "category": "CV",
+      "name": "Depth",
+      "version": 0,
+      "page": 0,
+      "position": 19,
+      "color": "Blue",
+      "params_count": 1,
+      "params_raw": [
+        16872
+      ],
+      "params_norm": [
+        0.2575
+      ],
+      "options": {
+        "output": "-1 to 1"
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 20,
+      "mod_idx": 45,
+      "type": "Value",
+      "category": "CV",
+      "name": "Depth",
+      "version": 0,
+      "page": 0,
+      "position": 20,
+      "color": "White",
+      "params_count": 1,
+      "params_raw": [
+        15000
+      ],
+      "params_norm": [
+        0.2289
+      ],
+      "options": {
+        "output": "-1 to 1"
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 21,
+      "mod_idx": 45,
+      "type": "Value",
+      "category": "CV",
+      "name": "Depth",
+      "version": 0,
+      "page": 0,
+      "position": 21,
+      "color": "Blue",
+      "params_count": 1,
+      "params_raw": [
+        17900
+      ],
+      "params_norm": [
+        0.2731
+      ],
+      "options": {
+        "output": "-1 to 1"
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 22,
+      "mod_idx": 45,
+      "type": "Value",
+      "category": "CV",
+      "name": "Depth",
+      "version": 0,
+      "page": 0,
+      "position": 22,
+      "color": "White",
+      "params_count": 1,
+      "params_raw": [
+        50135
+      ],
+      "params_norm": [
+        0.765
+      ],
+      "options": {
+        "output": "-1 to 1"
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 23,
+      "mod_idx": 15,
+      "type": "Pushbutton",
+      "category": "Interface",
+      "name": "Pink or white",
+      "version": 0,
+      "page": 0,
+      "position": 23,
+      "color": "Yellow",
+      "params_count": 0,
+      "params_raw": [],
+      "params_norm": [],
+      "options": {
+        "raw_opt_0": 1
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 24,
+      "mod_idx": 56,
+      "type": "UI Button",
+      "category": "Interface",
+      "name": "Input",
+      "version": 0,
+      "page": 0,
+      "position": 24,
+      "color": "Green",
+      "params_count": 1,
+      "params_raw": [
+        13270
+      ],
+      "params_norm": [
+        0.2025
+      ],
+      "options": {
+        "raw_opt_0": 1,
+        "raw_opt_1": 1
+      },
+      "options_raw": [
+        1,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 25,
+      "mod_idx": 56,
+      "type": "UI Button",
+      "category": "Interface",
+      "name": "Input",
+      "version": 0,
+      "page": 0,
+      "position": 25,
+      "color": "Green",
+      "params_count": 1,
+      "params_raw": [
+        13270
+      ],
+      "params_norm": [
+        0.2025
+      ],
+      "options": {
+        "raw_opt_0": 1,
+        "raw_opt_1": 1
+      },
+      "options_raw": [
+        1,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 26,
+      "mod_idx": 56,
+      "type": "UI Button",
+      "category": "Interface",
+      "name": "Input",
+      "version": 0,
+      "page": 0,
+      "position": 26,
+      "color": "Green",
+      "params_count": 1,
+      "params_raw": [
+        13274
+      ],
+      "params_norm": [
+        0.2025
+      ],
+      "options": {
+        "raw_opt_0": 1,
+        "raw_opt_1": 1
+      },
+      "options_raw": [
+        1,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 27,
+      "mod_idx": 56,
+      "type": "UI Button",
+      "category": "Interface",
+      "name": "Input",
+      "version": 0,
+      "page": 0,
+      "position": 27,
+      "color": "Green",
+      "params_count": 1,
+      "params_raw": [
+        13280
+      ],
+      "params_norm": [
+        0.2026
+      ],
+      "options": {
+        "raw_opt_0": 1,
+        "raw_opt_1": 1
+      },
+      "options_raw": [
+        1,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 28,
+      "mod_idx": 56,
+      "type": "UI Button",
+      "category": "Interface",
+      "name": "Input",
+      "version": 0,
+      "page": 0,
+      "position": 28,
+      "color": "Green",
+      "params_count": 1,
+      "params_raw": [
+        13274
+      ],
+      "params_norm": [
+        0.2025
+      ],
+      "options": {
+        "raw_opt_0": 1,
+        "raw_opt_1": 1
+      },
+      "options_raw": [
+        1,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 29,
+      "mod_idx": 56,
+      "type": "UI Button",
+      "category": "Interface",
+      "name": "Input",
+      "version": 0,
+      "page": 0,
+      "position": 29,
+      "color": "Green",
+      "params_count": 1,
+      "params_raw": [
+        13274
+      ],
+      "params_norm": [
+        0.2025
+      ],
+      "options": {
+        "raw_opt_0": 1,
+        "raw_opt_1": 1
+      },
+      "options_raw": [
+        1,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 30,
+      "mod_idx": 56,
+      "type": "UI Button",
+      "category": "Interface",
+      "name": "Input",
+      "version": 0,
+      "page": 0,
+      "position": 30,
+      "color": "Green",
+      "params_count": 1,
+      "params_raw": [
+        13270
+      ],
+      "params_norm": [
+        0.2025
+      ],
+      "options": {
+        "raw_opt_0": 1,
+        "raw_opt_1": 1
+      },
+      "options_raw": [
+        1,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 31,
+      "mod_idx": 56,
+      "type": "UI Button",
+      "category": "Interface",
+      "name": "Input",
+      "version": 0,
+      "page": 0,
+      "position": 31,
+      "color": "Yellow",
+      "params_count": 1,
+      "params_raw": [
+        13270
+      ],
+      "params_norm": [
+        0.2025
+      ],
+      "options": {
+        "raw_opt_0": 1,
+        "raw_opt_1": 1
+      },
+      "options_raw": [
+        1,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 32,
+      "mod_idx": 45,
+      "type": "Value",
+      "category": "CV",
+      "name": "Looped env rate",
+      "version": 0,
+      "page": 0,
+      "position": 32,
+      "color": "Green",
+      "params_count": 1,
+      "params_raw": [
+        26400
+      ],
+      "params_norm": [
+        0.4028
+      ],
+      "options": {
+        "output": "-1 to 1"
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 33,
+      "mod_idx": 45,
+      "type": "Value",
+      "category": "CV",
+      "name": "Looped env shap",
+      "version": 0,
+      "page": 0,
+      "position": 33,
+      "color": "Green",
+      "params_count": 1,
+      "params_raw": [
+        33300
+      ],
+      "params_norm": [
+        0.5081
+      ],
+      "options": {
+        "output": "0 to 1"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 34,
+      "mod_idx": 45,
+      "type": "Value",
+      "category": "CV",
+      "name": "Sqr-rndm speed",
+      "version": 0,
+      "page": 0,
+      "position": 34,
+      "color": "Aqua",
+      "params_count": 1,
+      "params_raw": [
+        36700
+      ],
+      "params_norm": [
+        0.56
+      ],
+      "options": {
+        "output": "0 to 1"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 35,
+      "mod_idx": 45,
+      "type": "Value",
+      "category": "CV",
+      "name": "Rndm mod filt",
+      "version": 0,
+      "page": 0,
+      "position": 35,
+      "color": "Blue",
+      "params_count": 1,
+      "params_raw": [
+        30300
+      ],
+      "params_norm": [
+        0.4623
+      ],
+      "options": {
+        "output": "0 to 1"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 36,
+      "mod_idx": 45,
+      "type": "Value",
+      "category": "CV",
+      "name": "Env fllwr filt",
+      "version": 0,
+      "page": 0,
+      "position": 36,
+      "color": "Red",
+      "params_count": 1,
+      "params_raw": [
+        35100
+      ],
+      "params_norm": [
+        0.5356
+      ],
+      "options": {
+        "output": "0 to 1"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 37,
+      "mod_idx": 45,
+      "type": "Value",
+      "category": "CV",
+      "name": "Ramp time",
+      "version": 0,
+      "page": 0,
+      "position": 37,
+      "color": "White",
+      "params_count": 1,
+      "params_raw": [
+        0
+      ],
+      "params_norm": [
+        0.0
+      ],
+      "options": {
+        "output": "0 to 1"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 38,
+      "mod_idx": 15,
+      "type": "Pushbutton",
+      "category": "Interface",
+      "name": "Noise flutter",
+      "version": 0,
+      "page": 0,
+      "position": 38,
+      "color": "Blue",
+      "params_count": 0,
+      "params_raw": [],
+      "params_norm": [],
+      "options": {
+        "raw_opt_0": 1
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 39,
+      "mod_idx": 45,
+      "type": "Value",
+      "category": "CV",
+      "name": "Resonance",
+      "version": 0,
+      "page": 0,
+      "position": 39,
+      "color": "Red",
+      "params_count": 1,
+      "params_raw": [
+        33000
+      ],
+      "params_norm": [
+        0.5035
+      ],
+      "options": {
+        "output": "0 to 1"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 40,
+      "mod_idx": 1,
+      "type": "Audio Input",
+      "category": "Interface",
+      "name": "",
+      "version": 0,
+      "page": 1,
+      "position": 0,
+      "color": "Yellow",
+      "params_count": 0,
+      "params_raw": [],
+      "params_norm": [],
+      "options": {
+        "channels": "stereo"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 41,
+      "mod_idx": 2,
+      "type": "Audio Output",
+      "category": "Interface",
+      "name": "",
+      "version": 0,
+      "page": 1,
+      "position": 5,
+      "color": "Yellow",
+      "params_count": 1,
+      "params_raw": [
+        54615
+      ],
+      "params_norm": [
+        0.8334
+      ],
+      "options": {
+        "gain_control": "on",
+        "channels": "stereo"
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 42,
+      "mod_idx": 53,
+      "type": "Stereo Spread",
+      "category": "Audio",
+      "name": "",
+      "version": 0,
+      "page": 1,
+      "position": 8,
+      "color": "Aqua",
+      "params_count": 1,
+      "params_raw": [
+        28800
+      ],
+      "params_norm": [
+        0.4395
+      ],
+      "options": {
+        "raw_opt_0": 1
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 43,
+      "mod_idx": 53,
+      "type": "Stereo Spread",
+      "category": "Audio",
+      "name": "",
+      "version": 0,
+      "page": 1,
+      "position": 12,
+      "color": "Magenta",
+      "params_count": 1,
+      "params_raw": [
+        28800
+      ],
+      "params_norm": [
+        0.4395
+      ],
+      "options": {
+        "raw_opt_0": 1
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 44,
+      "mod_idx": 3,
+      "type": "Aliaser",
+      "category": "Audio",
+      "name": "",
+      "version": 0,
+      "page": 2,
+      "position": 0,
+      "color": "Blue",
+      "params_count": 1,
+      "params_raw": [
+        16320
+      ],
+      "params_norm": [
+        0.249
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 45,
+      "mod_idx": 3,
+      "type": "Aliaser",
+      "category": "Audio",
+      "name": "",
+      "version": 0,
+      "page": 2,
+      "position": 4,
+      "color": "Green",
+      "params_count": 1,
+      "params_raw": [
+        16320
+      ],
+      "params_norm": [
+        0.249
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 46,
+      "mod_idx": 7,
+      "type": "VCA",
+      "category": "Audio",
+      "name": "",
+      "version": 0,
+      "page": 2,
+      "position": 8,
+      "color": "White",
+      "params_count": 1,
+      "params_raw": [
+        0
+      ],
+      "params_norm": [
+        0.0
+      ],
+      "options": {
+        "channels": "stereo"
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 47,
+      "mod_idx": 0,
+      "type": "SV Filter",
+      "category": "Audio",
+      "name": "",
+      "version": 0,
+      "page": 2,
+      "position": 16,
+      "color": "White",
+      "params_count": 2,
+      "params_raw": [
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0
+      ],
+      "options": {
+        "lowpass_output": "off",
+        "hipass_output": "on",
+        "bandpass_output": "off",
+        "freq_change": "instant"
+      },
+      "options_raw": [
+        1,
+        1,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 48,
+      "mod_idx": 0,
+      "type": "SV Filter",
+      "category": "Audio",
+      "name": "",
+      "version": 0,
+      "page": 2,
+      "position": 20,
+      "color": "Blue",
+      "params_count": 2,
+      "params_raw": [
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0
+      ],
+      "options": {
+        "lowpass_output": "off",
+        "hipass_output": "on",
+        "bandpass_output": "off",
+        "freq_change": "instant"
+      },
+      "options_raw": [
+        1,
+        1,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 49,
+      "mod_idx": 0,
+      "type": "SV Filter",
+      "category": "Audio",
+      "name": "",
+      "version": 0,
+      "page": 2,
+      "position": 24,
+      "color": "Magenta",
+      "params_count": 2,
+      "params_raw": [
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0
+      ],
+      "options": {
+        "lowpass_output": "on",
+        "hipass_output": "off",
+        "bandpass_output": "off",
+        "freq_change": "instant"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 50,
+      "mod_idx": 0,
+      "type": "SV Filter",
+      "category": "Audio",
+      "name": "",
+      "version": 0,
+      "page": 2,
+      "position": 28,
+      "color": "White",
+      "params_count": 2,
+      "params_raw": [
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0
+      ],
+      "options": {
+        "lowpass_output": "on",
+        "hipass_output": "off",
+        "bandpass_output": "off",
+        "freq_change": "instant"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 51,
+      "mod_idx": 38,
+      "type": "Noise",
+      "category": "Audio",
+      "name": "",
+      "version": 0,
+      "page": 3,
+      "position": 0,
+      "color": "Aqua",
+      "params_count": 0,
+      "params_raw": [],
+      "params_norm": [],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 52,
+      "mod_idx": 51,
+      "type": "CV Rectify",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 3,
+      "position": 1,
+      "color": "Red",
+      "params_count": 1,
+      "params_raw": [
+        0
+      ],
+      "params_norm": [
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 53,
+      "mod_idx": 7,
+      "type": "VCA",
+      "category": "Audio",
+      "name": "",
+      "version": 0,
+      "page": 3,
+      "position": 5,
+      "color": "Blue",
+      "params_count": 1,
+      "params_raw": [
+        0
+      ],
+      "params_norm": [
+        0.0
+      ],
+      "options": {
+        "channels": "1in->1out"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 54,
+      "mod_idx": 22,
+      "type": "Multiplier",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 3,
+      "position": 8,
+      "color": "White",
+      "params_count": 4,
+      "params_raw": [
+        32760,
+        33640,
+        0,
+        0
+      ],
+      "params_norm": [
+        0.4999,
+        0.5133,
+        0.0,
+        0.0
+      ],
+      "options": {
+        "raw_opt_0": 2
+      },
+      "options_raw": [
+        2,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 55,
+      "mod_idx": 10,
+      "type": "Sample and Hold",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 3,
+      "position": 13,
+      "color": "Green",
+      "params_count": 2,
+      "params_raw": [
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 56,
+      "mod_idx": 12,
+      "type": "Env Follower",
+      "category": "Analysis",
+      "name": "",
+      "version": 0,
+      "page": 3,
+      "position": 16,
+      "color": "Red",
+      "params_count": 0,
+      "params_raw": [],
+      "params_norm": [],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 57,
+      "mod_idx": 48,
+      "type": "CV Filter",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 3,
+      "position": 18,
+      "color": "Yellow",
+      "params_count": 3,
+      "params_raw": [
+        0,
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "options": {
+        "control": "separate"
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 58,
+      "mod_idx": 31,
+      "type": "In Switch",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 3,
+      "position": 24,
+      "color": "Red",
+      "params_count": 7,
+      "params_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "options": {
+        "raw_opt_0": 5
+      },
+      "options_raw": [
+        5,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 59,
+      "mod_idx": 50,
+      "type": "Comparator",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 3,
+      "position": 34,
+      "color": "Yellow",
+      "params_count": 2,
+      "params_raw": [
+        55960,
+        0
+      ],
+      "params_norm": [
+        0.8539,
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 60,
+      "mod_idx": 22,
+      "type": "Multiplier",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 3,
+      "position": 37,
+      "color": "Red",
+      "params_count": 2,
+      "params_raw": [
+        13106,
+        0
+      ],
+      "params_norm": [
+        0.2,
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 61,
+      "mod_idx": 39,
+      "type": "Random",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 4,
+      "position": 0,
+      "color": "Green",
+      "params_count": 1,
+      "params_raw": [
+        0
+      ],
+      "params_norm": [
+        0.0
+      ],
+      "options": {
+        "raw_opt_0": 1,
+        "raw_opt_1": 1
+      },
+      "options_raw": [
+        1,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 62,
+      "mod_idx": 5,
+      "type": "LFO",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 4,
+      "position": 2,
+      "color": "Red",
+      "params_count": 1,
+      "params_raw": [
+        4520
+      ],
+      "params_norm": [
+        0.069
+      ],
+      "options": {
+        "waveform": "random",
+        "swing_control": "off",
+        "output": "-1 to 1",
+        "input": "cv",
+        "phase_input": "off",
+        "phase_reset": "off"
+      },
+      "options_raw": [
+        5,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 63,
+      "mod_idx": 5,
+      "type": "LFO",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 4,
+      "position": 8,
+      "color": "Blue",
+      "params_count": 1,
+      "params_raw": [
+        4520
+      ],
+      "params_norm": [
+        0.069
+      ],
+      "options": {
+        "waveform": "sine",
+        "swing_control": "off",
+        "output": "0 to 1",
+        "input": "cv",
+        "phase_input": "off",
+        "phase_reset": "off"
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 64,
+      "mod_idx": 22,
+      "type": "Multiplier",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 4,
+      "position": 11,
+      "color": "Magenta",
+      "params_count": 3,
+      "params_raw": [
+        0,
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "options": {
+        "raw_opt_0": 1
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 65,
+      "mod_idx": 22,
+      "type": "Multiplier",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 4,
+      "position": 20,
+      "color": "Aqua",
+      "params_count": 2,
+      "params_raw": [
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 66,
+      "mod_idx": 39,
+      "type": "Random",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 4,
+      "position": 24,
+      "color": "White",
+      "params_count": 1,
+      "params_raw": [
+        0
+      ],
+      "params_norm": [
+        0.0
+      ],
+      "options": {
+        "raw_opt_1": 1
+      },
+      "options_raw": [
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 67,
+      "mod_idx": 22,
+      "type": "Multiplier",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 4,
+      "position": 26,
+      "color": "Blue",
+      "params_count": 2,
+      "params_raw": [
+        0,
+        9830
+      ],
+      "params_norm": [
+        0.0,
+        0.15
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 68,
+      "mod_idx": 45,
+      "type": "Value",
+      "category": "CV",
+      "name": "Wow",
+      "version": 0,
+      "page": 4,
+      "position": 34,
+      "color": "Green",
+      "params_count": 1,
+      "params_raw": [
+        0
+      ],
+      "params_norm": [
+        0.0
+      ],
+      "options": {
+        "output": "0 to 1"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 69,
+      "mod_idx": 31,
+      "type": "In Switch",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 4,
+      "position": 36,
+      "color": "Blue",
+      "params_count": 3,
+      "params_raw": [
+        0,
+        0,
+        32760
+      ],
+      "params_norm": [
+        0.0,
+        0.0,
+        0.4999
+      ],
+      "options": {
+        "raw_opt_0": 1
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 70,
+      "mod_idx": 39,
+      "type": "Random",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 5,
+      "position": 0,
+      "color": "Green",
+      "params_count": 0,
+      "params_raw": [],
+      "params_norm": [],
+      "options": {
+        "raw_opt_0": 1
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 71,
+      "mod_idx": 31,
+      "type": "In Switch",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 5,
+      "position": 1,
+      "color": "Green",
+      "params_count": 3,
+      "params_raw": [
+        0,
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "options": {
+        "raw_opt_0": 1
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 72,
+      "mod_idx": 5,
+      "type": "LFO",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 5,
+      "position": 16,
+      "color": "Magenta",
+      "params_count": 2,
+      "params_raw": [
+        42735,
+        23608
+      ],
+      "params_norm": [
+        0.6521,
+        0.3602
+      ],
+      "options": {
+        "waveform": "triangle",
+        "swing_control": "on",
+        "output": "-1 to 1",
+        "input": "cv",
+        "phase_input": "off",
+        "phase_reset": "off"
+      },
+      "options_raw": [
+        2,
+        1,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 73,
+      "mod_idx": 22,
+      "type": "Multiplier",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 5,
+      "position": 19,
+      "color": "Red",
+      "params_count": 3,
+      "params_raw": [
+        0,
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "options": {
+        "raw_opt_0": 1
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 74,
+      "mod_idx": 39,
+      "type": "Random",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 5,
+      "position": 37,
+      "color": "Yellow",
+      "params_count": 1,
+      "params_raw": [
+        0
+      ],
+      "params_norm": [
+        0.0
+      ],
+      "options": {
+        "raw_opt_1": 1
+      },
+      "options_raw": [
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 75,
+      "mod_idx": 10,
+      "type": "Sample and Hold",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 6,
+      "position": 8,
+      "color": "Magenta",
+      "params_count": 2,
+      "params_raw": [
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 76,
+      "mod_idx": 85,
+      "type": "Tap to CV",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 6,
+      "position": 11,
+      "color": "Red",
+      "params_count": 1,
+      "params_raw": [
+        0
+      ],
+      "params_norm": [
+        0.0
+      ],
+      "options": {
+        "raw_opt_1": 1
+      },
+      "options_raw": [
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 77,
+      "mod_idx": 50,
+      "type": "Comparator",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 6,
+      "position": 16,
+      "color": "Magenta",
+      "params_count": 2,
+      "params_raw": [
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 78,
+      "mod_idx": 22,
+      "type": "Multiplier",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 6,
+      "position": 19,
+      "color": "Red",
+      "params_count": 2,
+      "params_raw": [
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 79,
+      "mod_idx": 50,
+      "type": "Comparator",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 6,
+      "position": 24,
+      "color": "Red",
+      "params_count": 2,
+      "params_raw": [
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 80,
+      "mod_idx": 31,
+      "type": "In Switch",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 6,
+      "position": 27,
+      "color": "Yellow",
+      "params_count": 3,
+      "params_raw": [
+        0,
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "options": {
+        "raw_opt_0": 1
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 81,
+      "mod_idx": 44,
+      "type": "Stompswitch",
+      "category": "Interface",
+      "name": "",
+      "version": 0,
+      "page": 6,
+      "position": 32,
+      "color": "Red",
+      "params_count": 0,
+      "params_raw": [],
+      "params_norm": [],
+      "options": {
+        "stompswitch": "left",
+        "action": "momentary",
+        "normally": "zero"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 82,
+      "mod_idx": 5,
+      "type": "LFO",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 6,
+      "position": 33,
+      "color": "Green",
+      "params_count": 1,
+      "params_raw": [
+        0
+      ],
+      "params_norm": [
+        0.0
+      ],
+      "options": {
+        "waveform": "square",
+        "swing_control": "off",
+        "output": "0 to 1",
+        "input": "cv",
+        "phase_input": "off",
+        "phase_reset": "off"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 83,
+      "mod_idx": 39,
+      "type": "Random",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 6,
+      "position": 35,
+      "color": "Aqua",
+      "params_count": 1,
+      "params_raw": [
+        0
+      ],
+      "params_norm": [
+        0.0
+      ],
+      "options": {
+        "raw_opt_1": 1
+      },
+      "options_raw": [
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 84,
+      "mod_idx": 48,
+      "type": "CV Filter",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 6,
+      "position": 37,
+      "color": "Yellow",
+      "params_count": 2,
+      "params_raw": [
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0
+      ],
+      "options": {
+        "control": "linked"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 85,
+      "mod_idx": 22,
+      "type": "Multiplier",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 7,
+      "position": 4,
+      "color": "Aqua",
+      "params_count": 2,
+      "params_raw": [
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 86,
+      "mod_idx": 10,
+      "type": "Sample and Hold",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 7,
+      "position": 8,
+      "color": "Aqua",
+      "params_count": 2,
+      "params_raw": [
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 87,
+      "mod_idx": 85,
+      "type": "Tap to CV",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 7,
+      "position": 11,
+      "color": "Red",
+      "params_count": 3,
+      "params_raw": [
+        0,
+        34060,
+        65535
+      ],
+      "params_norm": [
+        0.0,
+        0.5197,
+        1.0
+      ],
+      "options": {
+        "raw_opt_0": 1
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 88,
+      "mod_idx": 50,
+      "type": "Comparator",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 7,
+      "position": 16,
+      "color": "Blue",
+      "params_count": 2,
+      "params_raw": [
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 89,
+      "mod_idx": 22,
+      "type": "Multiplier",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 7,
+      "position": 19,
+      "color": "Magenta",
+      "params_count": 2,
+      "params_raw": [
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 90,
+      "mod_idx": 50,
+      "type": "Comparator",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 7,
+      "position": 24,
+      "color": "Blue",
+      "params_count": 2,
+      "params_raw": [
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 91,
+      "mod_idx": 31,
+      "type": "In Switch",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 7,
+      "position": 27,
+      "color": "White",
+      "params_count": 3,
+      "params_raw": [
+        0,
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "options": {
+        "raw_opt_0": 1
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 92,
+      "mod_idx": 22,
+      "type": "Multiplier",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 8,
+      "position": 0,
+      "color": "Red",
+      "params_count": 2,
+      "params_raw": [
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 93,
+      "mod_idx": 22,
+      "type": "Multiplier",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 8,
+      "position": 4,
+      "color": "Red",
+      "params_count": 2,
+      "params_raw": [
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 94,
+      "mod_idx": 17,
+      "type": "CV Invert",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 8,
+      "position": 10,
+      "color": "Yellow",
+      "params_count": 1,
+      "params_raw": [
+        0
+      ],
+      "params_norm": [
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 95,
+      "mod_idx": 45,
+      "type": "Value",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 8,
+      "position": 12,
+      "color": "Green",
+      "params_count": 1,
+      "params_raw": [
+        65535
+      ],
+      "params_norm": [
+        1.0
+      ],
+      "options": {
+        "output": "0 to 1"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 96,
+      "mod_idx": 6,
+      "type": "ADSR",
+      "category": "CV",
+      "name": "",
+      "version": 1,
+      "page": 8,
+      "position": 16,
+      "color": "Green",
+      "params_count": 3,
+      "params_raw": [
+        0,
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "options": {
+        "retrigger_input": "off",
+        "initial_delay": "off",
+        "hold_attack_decay": "off",
+        "str": "off",
+        "immediate_release": "off",
+        "hold_sustain_release": "off",
+        "time_scale": "linear"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        1,
+        1,
+        0,
+        1,
+        0
+      ]
+    },
+    {
+      "number": 97,
+      "mod_idx": 50,
+      "type": "Comparator",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 8,
+      "position": 20,
+      "color": "Aqua",
+      "params_count": 2,
+      "params_raw": [
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 98,
+      "mod_idx": 22,
+      "type": "Multiplier",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 8,
+      "position": 27,
+      "color": "Red",
+      "params_count": 2,
+      "params_raw": [
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 99,
+      "mod_idx": 51,
+      "type": "CV Rectify",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 8,
+      "position": 33,
+      "color": "Green",
+      "params_count": 1,
+      "params_raw": [
+        0
+      ],
+      "params_norm": [
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 100,
+      "mod_idx": 50,
+      "type": "Comparator",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 8,
+      "position": 37,
+      "color": "Aqua",
+      "params_count": 2,
+      "params_raw": [
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 101,
+      "mod_idx": 54,
+      "type": "Cport Exp/CV In",
+      "category": "Interface",
+      "name": "",
+      "version": 0,
+      "page": 9,
+      "position": 0,
+      "color": "Red",
+      "params_count": 0,
+      "params_raw": [],
+      "params_norm": [],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 102,
+      "mod_idx": 44,
+      "type": "Stompswitch",
+      "category": "Interface",
+      "name": "",
+      "version": 0,
+      "page": 9,
+      "position": 16,
+      "color": "Red",
+      "params_count": 0,
+      "params_raw": [],
+      "params_norm": [],
+      "options": {
+        "stompswitch": "right",
+        "action": "momentary",
+        "normally": "zero"
+      },
+      "options_raw": [
+        2,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 103,
+      "mod_idx": 6,
+      "type": "ADSR",
+      "category": "CV",
+      "name": "",
+      "version": 1,
+      "page": 9,
+      "position": 17,
+      "color": "Yellow",
+      "params_count": 5,
+      "params_raw": [
+        0,
+        0,
+        0,
+        65535,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0
+      ],
+      "options": {
+        "retrigger_input": "off",
+        "initial_delay": "off",
+        "hold_attack_decay": "off",
+        "str": "on",
+        "immediate_release": "on",
+        "hold_sustain_release": "off",
+        "time_scale": "linear"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0
+      ]
+    },
+    {
+      "number": 104,
+      "mod_idx": 39,
+      "type": "Random",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 9,
+      "position": 32,
+      "color": "Green",
+      "params_count": 0,
+      "params_raw": [],
+      "params_norm": [],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 105,
+      "mod_idx": 17,
+      "type": "CV Invert",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 10,
+      "position": 8,
+      "color": "White",
+      "params_count": 1,
+      "params_raw": [
+        0
+      ],
+      "params_norm": [
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 106,
+      "mod_idx": 45,
+      "type": "Value",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 10,
+      "position": 10,
+      "color": "Blue",
+      "params_count": 1,
+      "params_raw": [
+        65534
+      ],
+      "params_norm": [
+        1.0
+      ],
+      "options": {
+        "output": "0 to 1"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 107,
+      "mod_idx": 31,
+      "type": "In Switch",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 10,
+      "position": 16,
+      "color": "Green",
+      "params_count": 3,
+      "params_raw": [
+        0,
+        0,
+        32770
+      ],
+      "params_norm": [
+        0.0,
+        0.0,
+        0.5
+      ],
+      "options": {
+        "raw_opt_0": 1
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 108,
+      "mod_idx": 22,
+      "type": "Multiplier",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 10,
+      "position": 24,
+      "color": "Aqua",
+      "params_count": 4,
+      "params_raw": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "options": {
+        "raw_opt_0": 2
+      },
+      "options_raw": [
+        2,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 109,
+      "mod_idx": 17,
+      "type": "CV Invert",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 11,
+      "position": 8,
+      "color": "White",
+      "params_count": 1,
+      "params_raw": [
+        0
+      ],
+      "params_norm": [
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 110,
+      "mod_idx": 45,
+      "type": "Value",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 11,
+      "position": 10,
+      "color": "Blue",
+      "params_count": 1,
+      "params_raw": [
+        65534
+      ],
+      "params_norm": [
+        1.0
+      ],
+      "options": {
+        "output": "0 to 1"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 111,
+      "mod_idx": 31,
+      "type": "In Switch",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 11,
+      "position": 16,
+      "color": "Green",
+      "params_count": 3,
+      "params_raw": [
+        0,
+        0,
+        32770
+      ],
+      "params_norm": [
+        0.0,
+        0.0,
+        0.5
+      ],
+      "options": {
+        "raw_opt_0": 1
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 112,
+      "mod_idx": 22,
+      "type": "Multiplier",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 11,
+      "position": 24,
+      "color": "Aqua",
+      "params_count": 4,
+      "params_raw": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "options": {
+        "raw_opt_0": 2
+      },
+      "options_raw": [
+        2,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 113,
+      "mod_idx": 17,
+      "type": "CV Invert",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 12,
+      "position": 8,
+      "color": "White",
+      "params_count": 1,
+      "params_raw": [
+        0
+      ],
+      "params_norm": [
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 114,
+      "mod_idx": 45,
+      "type": "Value",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 12,
+      "position": 10,
+      "color": "Blue",
+      "params_count": 1,
+      "params_raw": [
+        65534
+      ],
+      "params_norm": [
+        1.0
+      ],
+      "options": {
+        "output": "0 to 1"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 115,
+      "mod_idx": 31,
+      "type": "In Switch",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 12,
+      "position": 16,
+      "color": "Green",
+      "params_count": 3,
+      "params_raw": [
+        0,
+        0,
+        32770
+      ],
+      "params_norm": [
+        0.0,
+        0.0,
+        0.5
+      ],
+      "options": {
+        "raw_opt_0": 1
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 116,
+      "mod_idx": 22,
+      "type": "Multiplier",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 12,
+      "position": 24,
+      "color": "Aqua",
+      "params_count": 4,
+      "params_raw": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "options": {
+        "raw_opt_0": 2
+      },
+      "options_raw": [
+        2,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 117,
+      "mod_idx": 17,
+      "type": "CV Invert",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 13,
+      "position": 8,
+      "color": "White",
+      "params_count": 1,
+      "params_raw": [
+        0
+      ],
+      "params_norm": [
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 118,
+      "mod_idx": 45,
+      "type": "Value",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 13,
+      "position": 10,
+      "color": "Blue",
+      "params_count": 1,
+      "params_raw": [
+        65534
+      ],
+      "params_norm": [
+        1.0
+      ],
+      "options": {
+        "output": "0 to 1"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 119,
+      "mod_idx": 31,
+      "type": "In Switch",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 13,
+      "position": 16,
+      "color": "Green",
+      "params_count": 3,
+      "params_raw": [
+        0,
+        0,
+        32770
+      ],
+      "params_norm": [
+        0.0,
+        0.0,
+        0.5
+      ],
+      "options": {
+        "raw_opt_0": 1
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 120,
+      "mod_idx": 22,
+      "type": "Multiplier",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 13,
+      "position": 24,
+      "color": "Aqua",
+      "params_count": 4,
+      "params_raw": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "options": {
+        "raw_opt_0": 2
+      },
+      "options_raw": [
+        2,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 121,
+      "mod_idx": 17,
+      "type": "CV Invert",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 14,
+      "position": 8,
+      "color": "White",
+      "params_count": 1,
+      "params_raw": [
+        0
+      ],
+      "params_norm": [
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 122,
+      "mod_idx": 45,
+      "type": "Value",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 14,
+      "position": 10,
+      "color": "Blue",
+      "params_count": 1,
+      "params_raw": [
+        65534
+      ],
+      "params_norm": [
+        1.0
+      ],
+      "options": {
+        "output": "0 to 1"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 123,
+      "mod_idx": 31,
+      "type": "In Switch",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 14,
+      "position": 16,
+      "color": "Green",
+      "params_count": 3,
+      "params_raw": [
+        0,
+        0,
+        32770
+      ],
+      "params_norm": [
+        0.0,
+        0.0,
+        0.5
+      ],
+      "options": {
+        "raw_opt_0": 1
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 124,
+      "mod_idx": 22,
+      "type": "Multiplier",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 14,
+      "position": 24,
+      "color": "Aqua",
+      "params_count": 4,
+      "params_raw": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "options": {
+        "raw_opt_0": 2
+      },
+      "options_raw": [
+        2,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 125,
+      "mod_idx": 17,
+      "type": "CV Invert",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 15,
+      "position": 8,
+      "color": "White",
+      "params_count": 1,
+      "params_raw": [
+        0
+      ],
+      "params_norm": [
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 126,
+      "mod_idx": 45,
+      "type": "Value",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 15,
+      "position": 10,
+      "color": "Blue",
+      "params_count": 1,
+      "params_raw": [
+        65534
+      ],
+      "params_norm": [
+        1.0
+      ],
+      "options": {
+        "output": "0 to 1"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 127,
+      "mod_idx": 31,
+      "type": "In Switch",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 15,
+      "position": 16,
+      "color": "Green",
+      "params_count": 3,
+      "params_raw": [
+        0,
+        0,
+        32770
+      ],
+      "params_norm": [
+        0.0,
+        0.0,
+        0.5
+      ],
+      "options": {
+        "raw_opt_0": 1
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 128,
+      "mod_idx": 22,
+      "type": "Multiplier",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 15,
+      "position": 24,
+      "color": "Aqua",
+      "params_count": 4,
+      "params_raw": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "options": {
+        "raw_opt_0": 2
+      },
+      "options_raw": [
+        2,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 129,
+      "mod_idx": 39,
+      "type": "Random",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 16,
+      "position": 0,
+      "color": "Blue",
+      "params_count": 0,
+      "params_raw": [],
+      "params_norm": [],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 130,
+      "mod_idx": 48,
+      "type": "CV Filter",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 16,
+      "position": 1,
+      "color": "Blue",
+      "params_count": 2,
+      "params_raw": [
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0
+      ],
+      "options": {
+        "control": "linked"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 131,
+      "mod_idx": 17,
+      "type": "CV Invert",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 16,
+      "position": 4,
+      "color": "Red",
+      "params_count": 1,
+      "params_raw": [
+        0
+      ],
+      "params_norm": [
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 132,
+      "mod_idx": 22,
+      "type": "Multiplier",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 16,
+      "position": 8,
+      "color": "Magenta",
+      "params_count": 2,
+      "params_raw": [
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 133,
+      "mod_idx": 17,
+      "type": "CV Invert",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 16,
+      "position": 16,
+      "color": "Red",
+      "params_count": 1,
+      "params_raw": [
+        0
+      ],
+      "params_norm": [
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 134,
+      "mod_idx": 45,
+      "type": "Value",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 16,
+      "position": 18,
+      "color": "Red",
+      "params_count": 1,
+      "params_raw": [
+        65535
+      ],
+      "params_norm": [
+        1.0
+      ],
+      "options": {
+        "output": "0 to 1"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 135,
+      "mod_idx": 31,
+      "type": "In Switch",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 16,
+      "position": 20,
+      "color": "White",
+      "params_count": 3,
+      "params_raw": [
+        0,
+        0,
+        32770
+      ],
+      "params_norm": [
+        0.0,
+        0.0,
+        0.5
+      ],
+      "options": {
+        "raw_opt_0": 1
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 136,
+      "mod_idx": 22,
+      "type": "Multiplier",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 16,
+      "position": 24,
+      "color": "Red",
+      "params_count": 4,
+      "params_raw": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "options": {
+        "raw_opt_0": 2
+      },
+      "options_raw": [
+        2,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 137,
+      "mod_idx": 31,
+      "type": "In Switch",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 17,
+      "position": 0,
+      "color": "Red",
+      "params_count": 7,
+      "params_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "options": {
+        "raw_opt_0": 5
+      },
+      "options_raw": [
+        5,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 138,
+      "mod_idx": 10,
+      "type": "Sample and Hold",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 17,
+      "position": 8,
+      "color": "Red",
+      "params_count": 2,
+      "params_raw": [
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 139,
+      "mod_idx": 50,
+      "type": "Comparator",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 17,
+      "position": 11,
+      "color": "Green",
+      "params_count": 2,
+      "params_raw": [
+        53800,
+        0
+      ],
+      "params_norm": [
+        0.8209,
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 140,
+      "mod_idx": 22,
+      "type": "Multiplier",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 17,
+      "position": 16,
+      "color": "Yellow",
+      "params_count": 2,
+      "params_raw": [
+        13106,
+        0
+      ],
+      "params_norm": [
+        0.2,
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 141,
+      "mod_idx": 31,
+      "type": "In Switch",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 18,
+      "position": 0,
+      "color": "Red",
+      "params_count": 7,
+      "params_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "options": {
+        "raw_opt_0": 5
+      },
+      "options_raw": [
+        5,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 142,
+      "mod_idx": 10,
+      "type": "Sample and Hold",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 18,
+      "position": 8,
+      "color": "Red",
+      "params_count": 2,
+      "params_raw": [
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 143,
+      "mod_idx": 50,
+      "type": "Comparator",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 18,
+      "position": 11,
+      "color": "Green",
+      "params_count": 2,
+      "params_raw": [
+        53800,
+        0
+      ],
+      "params_norm": [
+        0.8209,
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 144,
+      "mod_idx": 22,
+      "type": "Multiplier",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 18,
+      "position": 16,
+      "color": "Yellow",
+      "params_count": 2,
+      "params_raw": [
+        13106,
+        0
+      ],
+      "params_norm": [
+        0.2,
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 145,
+      "mod_idx": 31,
+      "type": "In Switch",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 19,
+      "position": 0,
+      "color": "Red",
+      "params_count": 7,
+      "params_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "options": {
+        "raw_opt_0": 5
+      },
+      "options_raw": [
+        5,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 146,
+      "mod_idx": 10,
+      "type": "Sample and Hold",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 19,
+      "position": 8,
+      "color": "Red",
+      "params_count": 2,
+      "params_raw": [
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 147,
+      "mod_idx": 50,
+      "type": "Comparator",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 19,
+      "position": 11,
+      "color": "Green",
+      "params_count": 2,
+      "params_raw": [
+        53800,
+        0
+      ],
+      "params_norm": [
+        0.8209,
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 148,
+      "mod_idx": 22,
+      "type": "Multiplier",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 19,
+      "position": 16,
+      "color": "Yellow",
+      "params_count": 2,
+      "params_raw": [
+        13104,
+        0
+      ],
+      "params_norm": [
+        0.2,
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 149,
+      "mod_idx": 31,
+      "type": "In Switch",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 20,
+      "position": 0,
+      "color": "Red",
+      "params_count": 7,
+      "params_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "options": {
+        "raw_opt_0": 5
+      },
+      "options_raw": [
+        5,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 150,
+      "mod_idx": 10,
+      "type": "Sample and Hold",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 20,
+      "position": 8,
+      "color": "Red",
+      "params_count": 2,
+      "params_raw": [
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 151,
+      "mod_idx": 50,
+      "type": "Comparator",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 20,
+      "position": 11,
+      "color": "Green",
+      "params_count": 2,
+      "params_raw": [
+        53800,
+        0
+      ],
+      "params_norm": [
+        0.8209,
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 152,
+      "mod_idx": 22,
+      "type": "Multiplier",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 20,
+      "position": 16,
+      "color": "Yellow",
+      "params_count": 2,
+      "params_raw": [
+        13104,
+        0
+      ],
+      "params_norm": [
+        0.2,
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 153,
+      "mod_idx": 31,
+      "type": "In Switch",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 21,
+      "position": 0,
+      "color": "Red",
+      "params_count": 7,
+      "params_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "options": {
+        "raw_opt_0": 5
+      },
+      "options_raw": [
+        5,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 154,
+      "mod_idx": 10,
+      "type": "Sample and Hold",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 21,
+      "position": 8,
+      "color": "Red",
+      "params_count": 2,
+      "params_raw": [
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 155,
+      "mod_idx": 50,
+      "type": "Comparator",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 21,
+      "position": 11,
+      "color": "Green",
+      "params_count": 2,
+      "params_raw": [
+        53800,
+        0
+      ],
+      "params_norm": [
+        0.8209,
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 156,
+      "mod_idx": 22,
+      "type": "Multiplier",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 21,
+      "position": 16,
+      "color": "Yellow",
+      "params_count": 2,
+      "params_raw": [
+        13104,
+        0
+      ],
+      "params_norm": [
+        0.2,
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 157,
+      "mod_idx": 31,
+      "type": "In Switch",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 22,
+      "position": 0,
+      "color": "Red",
+      "params_count": 7,
+      "params_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "options": {
+        "raw_opt_0": 5
+      },
+      "options_raw": [
+        5,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 158,
+      "mod_idx": 10,
+      "type": "Sample and Hold",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 22,
+      "position": 8,
+      "color": "Red",
+      "params_count": 2,
+      "params_raw": [
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 159,
+      "mod_idx": 50,
+      "type": "Comparator",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 22,
+      "position": 11,
+      "color": "Green",
+      "params_count": 2,
+      "params_raw": [
+        53800,
+        0
+      ],
+      "params_norm": [
+        0.8209,
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 160,
+      "mod_idx": 22,
+      "type": "Multiplier",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 22,
+      "position": 16,
+      "color": "Yellow",
+      "params_count": 2,
+      "params_raw": [
+        13104,
+        0
+      ],
+      "params_norm": [
+        0.2,
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 161,
+      "mod_idx": 31,
+      "type": "In Switch",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 23,
+      "position": 0,
+      "color": "Red",
+      "params_count": 7,
+      "params_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "options": {
+        "raw_opt_0": 5
+      },
+      "options_raw": [
+        5,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 162,
+      "mod_idx": 10,
+      "type": "Sample and Hold",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 23,
+      "position": 8,
+      "color": "Red",
+      "params_count": 2,
+      "params_raw": [
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 163,
+      "mod_idx": 50,
+      "type": "Comparator",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 23,
+      "position": 11,
+      "color": "Green",
+      "params_count": 2,
+      "params_raw": [
+        53800,
+        0
+      ],
+      "params_norm": [
+        0.8209,
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 164,
+      "mod_idx": 22,
+      "type": "Multiplier",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 23,
+      "position": 16,
+      "color": "Yellow",
+      "params_count": 2,
+      "params_raw": [
+        13110,
+        0
+      ],
+      "params_norm": [
+        0.2,
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 165,
+      "mod_idx": 7,
+      "type": "VCA",
+      "category": "Audio",
+      "name": "",
+      "version": 0,
+      "page": 24,
+      "position": 0,
+      "color": "Magenta",
+      "params_count": 1,
+      "params_raw": [
+        0
+      ],
+      "params_norm": [
+        0.0
+      ],
+      "options": {
+        "channels": "stereo"
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "source": "0.cv_output",
+      "destination": "68.value",
+      "strength": 100,
+      "source_mod": 0,
+      "dest_mod": 68
+    },
+    {
+      "source": "0.cv_output",
+      "destination": "69.block_16",
+      "strength": 100,
+      "source_mod": 0,
+      "dest_mod": 69
+    },
+    {
+      "source": "0.cv_output",
+      "destination": "105.block_0",
+      "strength": 100,
+      "source_mod": 0,
+      "dest_mod": 105
+    },
+    {
+      "source": "0.cv_output",
+      "destination": "107.block_0",
+      "strength": 100,
+      "source_mod": 0,
+      "dest_mod": 107
+    },
+    {
+      "source": "1.cv_output",
+      "destination": "72.cv_control",
+      "strength": 90,
+      "source_mod": 1,
+      "dest_mod": 72
+    },
+    {
+      "source": "1.cv_output",
+      "destination": "73.block_2",
+      "strength": 100,
+      "source_mod": 1,
+      "dest_mod": 73
+    },
+    {
+      "source": "1.cv_output",
+      "destination": "109.block_0",
+      "strength": 100,
+      "source_mod": 1,
+      "dest_mod": 109
+    },
+    {
+      "source": "1.cv_output",
+      "destination": "111.block_0",
+      "strength": 100,
+      "source_mod": 1,
+      "dest_mod": 111
+    },
+    {
+      "source": "2.cv_output",
+      "destination": "46.level_control",
+      "strength": 100,
+      "source_mod": 2,
+      "dest_mod": 46
+    },
+    {
+      "source": "2.cv_output",
+      "destination": "113.block_0",
+      "strength": 100,
+      "source_mod": 2,
+      "dest_mod": 113
+    },
+    {
+      "source": "2.cv_output",
+      "destination": "115.block_0",
+      "strength": 100,
+      "source_mod": 2,
+      "dest_mod": 115
+    },
+    {
+      "source": "3.cv_output",
+      "destination": "44.block_1",
+      "strength": 97,
+      "source_mod": 3,
+      "dest_mod": 44
+    },
+    {
+      "source": "3.cv_output",
+      "destination": "45.block_1",
+      "strength": 97,
+      "source_mod": 3,
+      "dest_mod": 45
+    },
+    {
+      "source": "3.cv_output",
+      "destination": "117.block_0",
+      "strength": 100,
+      "source_mod": 3,
+      "dest_mod": 117
+    },
+    {
+      "source": "3.cv_output",
+      "destination": "119.block_0",
+      "strength": 100,
+      "source_mod": 3,
+      "dest_mod": 119
+    },
+    {
+      "source": "4.cv_output",
+      "destination": "47.frequency",
+      "strength": 100,
+      "source_mod": 4,
+      "dest_mod": 47
+    },
+    {
+      "source": "4.cv_output",
+      "destination": "48.frequency",
+      "strength": 100,
+      "source_mod": 4,
+      "dest_mod": 48
+    },
+    {
+      "source": "4.cv_output",
+      "destination": "121.block_0",
+      "strength": 100,
+      "source_mod": 4,
+      "dest_mod": 121
+    },
+    {
+      "source": "4.cv_output",
+      "destination": "123.block_0",
+      "strength": 100,
+      "source_mod": 4,
+      "dest_mod": 123
+    },
+    {
+      "source": "5.cv_output",
+      "destination": "49.frequency",
+      "strength": 100,
+      "source_mod": 5,
+      "dest_mod": 49
+    },
+    {
+      "source": "5.cv_output",
+      "destination": "50.frequency",
+      "strength": 100,
+      "source_mod": 5,
+      "dest_mod": 50
+    },
+    {
+      "source": "5.cv_output",
+      "destination": "125.block_0",
+      "strength": 100,
+      "source_mod": 5,
+      "dest_mod": 125
+    },
+    {
+      "source": "5.cv_output",
+      "destination": "127.block_0",
+      "strength": 100,
+      "source_mod": 5,
+      "dest_mod": 127
+    },
+    {
+      "source": "6.cv_output",
+      "destination": "130.time_constant",
+      "strength": 90,
+      "source_mod": 6,
+      "dest_mod": 130
+    },
+    {
+      "source": "6.cv_output",
+      "destination": "132.block_1",
+      "strength": 100,
+      "source_mod": 6,
+      "dest_mod": 132
+    },
+    {
+      "source": "6.cv_output",
+      "destination": "133.block_0",
+      "strength": 100,
+      "source_mod": 6,
+      "dest_mod": 133
+    },
+    {
+      "source": "6.cv_output",
+      "destination": "135.block_0",
+      "strength": 100,
+      "source_mod": 6,
+      "dest_mod": 135
+    },
+    {
+      "source": "7.cv_output",
+      "destination": "165.level_control",
+      "strength": 100,
+      "source_mod": 7,
+      "dest_mod": 165
+    },
+    {
+      "source": "8.block_1",
+      "destination": "108.block_3",
+      "strength": 100,
+      "source_mod": 8,
+      "dest_mod": 108
+    },
+    {
+      "source": "9.block_1",
+      "destination": "112.block_3",
+      "strength": 100,
+      "source_mod": 9,
+      "dest_mod": 112
+    },
+    {
+      "source": "10.block_1",
+      "destination": "116.block_3",
+      "strength": 100,
+      "source_mod": 10,
+      "dest_mod": 116
+    },
+    {
+      "source": "11.block_1",
+      "destination": "120.block_3",
+      "strength": 100,
+      "source_mod": 11,
+      "dest_mod": 120
+    },
+    {
+      "source": "12.block_1",
+      "destination": "124.block_3",
+      "strength": 100,
+      "source_mod": 12,
+      "dest_mod": 124
+    },
+    {
+      "source": "13.block_1",
+      "destination": "128.block_3",
+      "strength": 100,
+      "source_mod": 13,
+      "dest_mod": 128
+    },
+    {
+      "source": "14.block_1",
+      "destination": "136.block_3",
+      "strength": 100,
+      "source_mod": 14,
+      "dest_mod": 136
+    },
+    {
+      "source": "15.cv_output",
+      "destination": "54.block_2",
+      "strength": 74,
+      "source_mod": 15,
+      "dest_mod": 54
+    },
+    {
+      "source": "16.cv_output",
+      "destination": "65.block_1",
+      "strength": 100,
+      "source_mod": 16,
+      "dest_mod": 65
+    },
+    {
+      "source": "16.cv_output",
+      "destination": "107.block_16",
+      "strength": 100,
+      "source_mod": 16,
+      "dest_mod": 107
+    },
+    {
+      "source": "16.cv_output",
+      "destination": "108.block_1",
+      "strength": 100,
+      "source_mod": 16,
+      "dest_mod": 108
+    },
+    {
+      "source": "17.cv_output",
+      "destination": "111.block_16",
+      "strength": 100,
+      "source_mod": 17,
+      "dest_mod": 111
+    },
+    {
+      "source": "17.cv_output",
+      "destination": "112.block_1",
+      "strength": 100,
+      "source_mod": 17,
+      "dest_mod": 112
+    },
+    {
+      "source": "18.cv_output",
+      "destination": "115.block_16",
+      "strength": 100,
+      "source_mod": 18,
+      "dest_mod": 115
+    },
+    {
+      "source": "18.cv_output",
+      "destination": "116.block_1",
+      "strength": 100,
+      "source_mod": 18,
+      "dest_mod": 116
+    },
+    {
+      "source": "19.cv_output",
+      "destination": "119.block_16",
+      "strength": 100,
+      "source_mod": 19,
+      "dest_mod": 119
+    },
+    {
+      "source": "19.cv_output",
+      "destination": "120.block_1",
+      "strength": 100,
+      "source_mod": 19,
+      "dest_mod": 120
+    },
+    {
+      "source": "20.cv_output",
+      "destination": "123.block_16",
+      "strength": 100,
+      "source_mod": 20,
+      "dest_mod": 123
+    },
+    {
+      "source": "20.cv_output",
+      "destination": "124.block_1",
+      "strength": 100,
+      "source_mod": 20,
+      "dest_mod": 124
+    },
+    {
+      "source": "21.cv_output",
+      "destination": "127.block_16",
+      "strength": 100,
+      "source_mod": 21,
+      "dest_mod": 127
+    },
+    {
+      "source": "21.cv_output",
+      "destination": "128.block_1",
+      "strength": 100,
+      "source_mod": 21,
+      "dest_mod": 128
+    },
+    {
+      "source": "22.cv_output",
+      "destination": "135.block_16",
+      "strength": 100,
+      "source_mod": 22,
+      "dest_mod": 135
+    },
+    {
+      "source": "22.cv_output",
+      "destination": "136.block_1",
+      "strength": 100,
+      "source_mod": 22,
+      "dest_mod": 136
+    },
+    {
+      "source": "23.block_1",
+      "destination": "54.block_0",
+      "strength": 100,
+      "source_mod": 23,
+      "dest_mod": 54
+    },
+    {
+      "source": "23.block_1",
+      "destination": "54.block_1",
+      "strength": 100,
+      "source_mod": 23,
+      "dest_mod": 54
+    },
+    {
+      "source": "24.block_1",
+      "destination": "138.block_1",
+      "strength": 100,
+      "source_mod": 24,
+      "dest_mod": 138
+    },
+    {
+      "source": "25.block_1",
+      "destination": "142.block_1",
+      "strength": 100,
+      "source_mod": 25,
+      "dest_mod": 142
+    },
+    {
+      "source": "26.block_1",
+      "destination": "146.block_1",
+      "strength": 100,
+      "source_mod": 26,
+      "dest_mod": 146
+    },
+    {
+      "source": "27.block_1",
+      "destination": "150.block_1",
+      "strength": 100,
+      "source_mod": 27,
+      "dest_mod": 150
+    },
+    {
+      "source": "28.block_1",
+      "destination": "154.block_1",
+      "strength": 100,
+      "source_mod": 28,
+      "dest_mod": 154
+    },
+    {
+      "source": "29.block_1",
+      "destination": "158.block_1",
+      "strength": 100,
+      "source_mod": 29,
+      "dest_mod": 158
+    },
+    {
+      "source": "30.block_1",
+      "destination": "162.block_1",
+      "strength": 100,
+      "source_mod": 30,
+      "dest_mod": 162
+    },
+    {
+      "source": "31.block_1",
+      "destination": "55.block_1",
+      "strength": 100,
+      "source_mod": 31,
+      "dest_mod": 55
+    },
+    {
+      "source": "32.cv_output",
+      "destination": "86.block_0",
+      "strength": 100,
+      "source_mod": 32,
+      "dest_mod": 86
+    },
+    {
+      "source": "32.cv_output",
+      "destination": "88.block_1",
+      "strength": 100,
+      "source_mod": 32,
+      "dest_mod": 88
+    },
+    {
+      "source": "32.cv_output",
+      "destination": "90.block_0",
+      "strength": 100,
+      "source_mod": 32,
+      "dest_mod": 90
+    },
+    {
+      "source": "32.cv_output",
+      "destination": "99.block_0",
+      "strength": 100,
+      "source_mod": 32,
+      "dest_mod": 99
+    },
+    {
+      "source": "32.cv_output",
+      "destination": "100.block_0",
+      "strength": 100,
+      "source_mod": 32,
+      "dest_mod": 100
+    },
+    {
+      "source": "33.cv_output",
+      "destination": "92.block_1",
+      "strength": 100,
+      "source_mod": 33,
+      "dest_mod": 92
+    },
+    {
+      "source": "33.cv_output",
+      "destination": "94.block_0",
+      "strength": 100,
+      "source_mod": 33,
+      "dest_mod": 94
+    },
+    {
+      "source": "34.cv_output",
+      "destination": "75.block_0",
+      "strength": 100,
+      "source_mod": 34,
+      "dest_mod": 75
+    },
+    {
+      "source": "34.cv_output",
+      "destination": "77.block_0",
+      "strength": 100,
+      "source_mod": 34,
+      "dest_mod": 77
+    },
+    {
+      "source": "34.cv_output",
+      "destination": "79.block_1",
+      "strength": 100,
+      "source_mod": 34,
+      "dest_mod": 79
+    },
+    {
+      "source": "34.cv_output",
+      "destination": "80.block_0",
+      "strength": 100,
+      "source_mod": 34,
+      "dest_mod": 80
+    },
+    {
+      "source": "35.cv_output",
+      "destination": "84.time_constant",
+      "strength": 97,
+      "source_mod": 35,
+      "dest_mod": 84
+    },
+    {
+      "source": "36.cv_output",
+      "destination": "57.rise_constant",
+      "strength": 96,
+      "source_mod": 36,
+      "dest_mod": 57
+    },
+    {
+      "source": "36.cv_output",
+      "destination": "57.fall_constant",
+      "strength": 96,
+      "source_mod": 36,
+      "dest_mod": 57
+    },
+    {
+      "source": "37.cv_output",
+      "destination": "103.attack",
+      "strength": 80,
+      "source_mod": 37,
+      "dest_mod": 103
+    },
+    {
+      "source": "37.cv_output",
+      "destination": "103.release",
+      "strength": 80,
+      "source_mod": 37,
+      "dest_mod": 103
+    },
+    {
+      "source": "38.block_1",
+      "destination": "71.block_16",
+      "strength": 100,
+      "source_mod": 38,
+      "dest_mod": 71
+    },
+    {
+      "source": "38.block_1",
+      "destination": "73.block_1",
+      "strength": 100,
+      "source_mod": 38,
+      "dest_mod": 73
+    },
+    {
+      "source": "39.cv_output",
+      "destination": "47.resonance",
+      "strength": 85,
+      "source_mod": 39,
+      "dest_mod": 47
+    },
+    {
+      "source": "39.cv_output",
+      "destination": "48.resonance",
+      "strength": 85,
+      "source_mod": 39,
+      "dest_mod": 48
+    },
+    {
+      "source": "39.cv_output",
+      "destination": "49.resonance",
+      "strength": 85,
+      "source_mod": 39,
+      "dest_mod": 49
+    },
+    {
+      "source": "39.cv_output",
+      "destination": "50.resonance",
+      "strength": 85,
+      "source_mod": 39,
+      "dest_mod": 50
+    },
+    {
+      "source": "40.output_L",
+      "destination": "42.block_0",
+      "strength": 100,
+      "source_mod": 40,
+      "dest_mod": 42
+    },
+    {
+      "source": "40.output_L",
+      "destination": "56.block_0",
+      "strength": 100,
+      "source_mod": 40,
+      "dest_mod": 56
+    },
+    {
+      "source": "40.output_L",
+      "destination": "165.audio_in_1",
+      "strength": 100,
+      "source_mod": 40,
+      "dest_mod": 165
+    },
+    {
+      "source": "40.output_R",
+      "destination": "43.block_0",
+      "strength": 100,
+      "source_mod": 40,
+      "dest_mod": 43
+    },
+    {
+      "source": "40.output_R",
+      "destination": "165.audio_in_2",
+      "strength": 100,
+      "source_mod": 40,
+      "dest_mod": 165
+    },
+    {
+      "source": "42.block_5",
+      "destination": "44.block_0",
+      "strength": 100,
+      "source_mod": 42,
+      "dest_mod": 44
+    },
+    {
+      "source": "43.block_5",
+      "destination": "45.block_0",
+      "strength": 100,
+      "source_mod": 43,
+      "dest_mod": 45
+    },
+    {
+      "source": "44.block_2",
+      "destination": "46.audio_in_1",
+      "strength": 100,
+      "source_mod": 44,
+      "dest_mod": 46
+    },
+    {
+      "source": "45.block_2",
+      "destination": "46.audio_in_2",
+      "strength": 100,
+      "source_mod": 45,
+      "dest_mod": 46
+    },
+    {
+      "source": "46.audio_out_1",
+      "destination": "47.audio_in",
+      "strength": 103,
+      "source_mod": 46,
+      "dest_mod": 47
+    },
+    {
+      "source": "46.audio_out_2",
+      "destination": "48.audio_in",
+      "strength": 103,
+      "source_mod": 46,
+      "dest_mod": 48
+    },
+    {
+      "source": "47.hipass_out",
+      "destination": "49.audio_in",
+      "strength": 100,
+      "source_mod": 47,
+      "dest_mod": 49
+    },
+    {
+      "source": "48.hipass_out",
+      "destination": "50.audio_in",
+      "strength": 100,
+      "source_mod": 48,
+      "dest_mod": 50
+    },
+    {
+      "source": "49.lowpass_out",
+      "destination": "41.input_L",
+      "strength": 100,
+      "source_mod": 49,
+      "dest_mod": 41
+    },
+    {
+      "source": "50.lowpass_out",
+      "destination": "41.input_R",
+      "strength": 100,
+      "source_mod": 50,
+      "dest_mod": 41
+    },
+    {
+      "source": "51.audio_out",
+      "destination": "53.audio_in_1",
+      "strength": 100,
+      "source_mod": 51,
+      "dest_mod": 53
+    },
+    {
+      "source": "52.block_1",
+      "destination": "54.block_0",
+      "strength": 93,
+      "source_mod": 52,
+      "dest_mod": 54
+    },
+    {
+      "source": "53.audio_out_1",
+      "destination": "42.block_0",
+      "strength": 100,
+      "source_mod": 53,
+      "dest_mod": 42
+    },
+    {
+      "source": "53.audio_out_1",
+      "destination": "43.block_0",
+      "strength": 100,
+      "source_mod": 53,
+      "dest_mod": 43
+    },
+    {
+      "source": "54.block_8",
+      "destination": "53.level_control",
+      "strength": 100,
+      "source_mod": 54,
+      "dest_mod": 53
+    },
+    {
+      "source": "55.block_2",
+      "destination": "31.block_0",
+      "strength": 93,
+      "source_mod": 55,
+      "dest_mod": 31
+    },
+    {
+      "source": "55.block_2",
+      "destination": "58.block_16",
+      "strength": 100,
+      "source_mod": 55,
+      "dest_mod": 58
+    },
+    {
+      "source": "55.block_2",
+      "destination": "59.block_1",
+      "strength": 100,
+      "source_mod": 55,
+      "dest_mod": 59
+    },
+    {
+      "source": "55.block_2",
+      "destination": "60.block_0",
+      "strength": 100,
+      "source_mod": 55,
+      "dest_mod": 60
+    },
+    {
+      "source": "56.block_3",
+      "destination": "57.cv_input",
+      "strength": 100,
+      "source_mod": 56,
+      "dest_mod": 57
+    },
+    {
+      "source": "57.cv_output",
+      "destination": "58.block_4",
+      "strength": 104,
+      "source_mod": 57,
+      "dest_mod": 58
+    },
+    {
+      "source": "57.cv_output",
+      "destination": "137.block_4",
+      "strength": 104,
+      "source_mod": 57,
+      "dest_mod": 137
+    },
+    {
+      "source": "57.cv_output",
+      "destination": "141.block_4",
+      "strength": 104,
+      "source_mod": 57,
+      "dest_mod": 141
+    },
+    {
+      "source": "57.cv_output",
+      "destination": "145.block_4",
+      "strength": 104,
+      "source_mod": 57,
+      "dest_mod": 145
+    },
+    {
+      "source": "57.cv_output",
+      "destination": "149.block_4",
+      "strength": 104,
+      "source_mod": 57,
+      "dest_mod": 149
+    },
+    {
+      "source": "57.cv_output",
+      "destination": "153.block_4",
+      "strength": 104,
+      "source_mod": 57,
+      "dest_mod": 153
+    },
+    {
+      "source": "57.cv_output",
+      "destination": "157.block_4",
+      "strength": 104,
+      "source_mod": 57,
+      "dest_mod": 157
+    },
+    {
+      "source": "57.cv_output",
+      "destination": "161.block_4",
+      "strength": 104,
+      "source_mod": 57,
+      "dest_mod": 161
+    },
+    {
+      "source": "58.block_17",
+      "destination": "31.block_0",
+      "strength": 69,
+      "source_mod": 58,
+      "dest_mod": 31
+    },
+    {
+      "source": "58.block_17",
+      "destination": "54.block_3",
+      "strength": 100,
+      "source_mod": 58,
+      "dest_mod": 54
+    },
+    {
+      "source": "59.block_2",
+      "destination": "60.block_1",
+      "strength": 100,
+      "source_mod": 59,
+      "dest_mod": 60
+    },
+    {
+      "source": "60.block_8",
+      "destination": "55.block_0",
+      "strength": 100,
+      "source_mod": 60,
+      "dest_mod": 55
+    },
+    {
+      "source": "61.block_1",
+      "destination": "64.block_2",
+      "strength": 97,
+      "source_mod": 61,
+      "dest_mod": 64
+    },
+    {
+      "source": "62.output",
+      "destination": "67.block_0",
+      "strength": 100,
+      "source_mod": 62,
+      "dest_mod": 67
+    },
+    {
+      "source": "63.output",
+      "destination": "61.block_0",
+      "strength": 100,
+      "source_mod": 63,
+      "dest_mod": 61
+    },
+    {
+      "source": "63.output",
+      "destination": "64.block_1",
+      "strength": 100,
+      "source_mod": 63,
+      "dest_mod": 64
+    },
+    {
+      "source": "63.output",
+      "destination": "66.block_0",
+      "strength": 100,
+      "source_mod": 63,
+      "dest_mod": 66
+    },
+    {
+      "source": "64.block_8",
+      "destination": "69.block_1",
+      "strength": 94,
+      "source_mod": 64,
+      "dest_mod": 69
+    },
+    {
+      "source": "65.block_8",
+      "destination": "69.block_0",
+      "strength": 96,
+      "source_mod": 65,
+      "dest_mod": 69
+    },
+    {
+      "source": "66.block_1",
+      "destination": "64.block_0",
+      "strength": 100,
+      "source_mod": 66,
+      "dest_mod": 64
+    },
+    {
+      "source": "67.block_8",
+      "destination": "63.cv_control",
+      "strength": 80,
+      "source_mod": 67,
+      "dest_mod": 63
+    },
+    {
+      "source": "68.cv_output",
+      "destination": "62.cv_control",
+      "strength": 89,
+      "source_mod": 68,
+      "dest_mod": 62
+    },
+    {
+      "source": "68.cv_output",
+      "destination": "63.cv_control",
+      "strength": 89,
+      "source_mod": 68,
+      "dest_mod": 63
+    },
+    {
+      "source": "68.cv_output",
+      "destination": "67.block_1",
+      "strength": 92,
+      "source_mod": 68,
+      "dest_mod": 67
+    },
+    {
+      "source": "69.block_17",
+      "destination": "42.block_3",
+      "strength": 100,
+      "source_mod": 69,
+      "dest_mod": 42
+    },
+    {
+      "source": "69.block_17",
+      "destination": "43.block_3",
+      "strength": 100,
+      "source_mod": 69,
+      "dest_mod": 43
+    },
+    {
+      "source": "70.block_1",
+      "destination": "71.block_1",
+      "strength": 94,
+      "source_mod": 70,
+      "dest_mod": 71
+    },
+    {
+      "source": "71.block_17",
+      "destination": "52.block_0",
+      "strength": 100,
+      "source_mod": 71,
+      "dest_mod": 52
+    },
+    {
+      "source": "71.block_17",
+      "destination": "73.block_0",
+      "strength": 100,
+      "source_mod": 71,
+      "dest_mod": 73
+    },
+    {
+      "source": "72.output",
+      "destination": "71.block_0",
+      "strength": 94,
+      "source_mod": 72,
+      "dest_mod": 71
+    },
+    {
+      "source": "72.output",
+      "destination": "74.block_0",
+      "strength": 100,
+      "source_mod": 72,
+      "dest_mod": 74
+    },
+    {
+      "source": "73.block_8",
+      "destination": "42.block_3",
+      "strength": 100,
+      "source_mod": 73,
+      "dest_mod": 42
+    },
+    {
+      "source": "73.block_8",
+      "destination": "43.block_3",
+      "strength": 100,
+      "source_mod": 73,
+      "dest_mod": 43
+    },
+    {
+      "source": "74.block_1",
+      "destination": "73.block_1",
+      "strength": 100,
+      "source_mod": 74,
+      "dest_mod": 73
+    },
+    {
+      "source": "75.block_2",
+      "destination": "77.block_1",
+      "strength": 100,
+      "source_mod": 75,
+      "dest_mod": 77
+    },
+    {
+      "source": "75.block_2",
+      "destination": "79.block_0",
+      "strength": 100,
+      "source_mod": 75,
+      "dest_mod": 79
+    },
+    {
+      "source": "76.block_3",
+      "destination": "80.block_1",
+      "strength": 100,
+      "source_mod": 76,
+      "dest_mod": 80
+    },
+    {
+      "source": "77.block_2",
+      "destination": "78.block_0",
+      "strength": 100,
+      "source_mod": 77,
+      "dest_mod": 78
+    },
+    {
+      "source": "78.block_8",
+      "destination": "80.block_16",
+      "strength": 100,
+      "source_mod": 78,
+      "dest_mod": 80
+    },
+    {
+      "source": "79.block_2",
+      "destination": "78.block_1",
+      "strength": 100,
+      "source_mod": 79,
+      "dest_mod": 78
+    },
+    {
+      "source": "80.block_17",
+      "destination": "82.cv_control",
+      "strength": 100,
+      "source_mod": 80,
+      "dest_mod": 82
+    },
+    {
+      "source": "81.cv_output",
+      "destination": "75.block_1",
+      "strength": 100,
+      "source_mod": 81,
+      "dest_mod": 75
+    },
+    {
+      "source": "81.cv_output",
+      "destination": "76.block_0",
+      "strength": 100,
+      "source_mod": 81,
+      "dest_mod": 76
+    },
+    {
+      "source": "81.cv_output",
+      "destination": "86.block_1",
+      "strength": 100,
+      "source_mod": 81,
+      "dest_mod": 86
+    },
+    {
+      "source": "81.cv_output",
+      "destination": "87.block_0",
+      "strength": 100,
+      "source_mod": 81,
+      "dest_mod": 87
+    },
+    {
+      "source": "82.output",
+      "destination": "58.block_1",
+      "strength": 100,
+      "source_mod": 82,
+      "dest_mod": 58
+    },
+    {
+      "source": "82.output",
+      "destination": "83.block_0",
+      "strength": 100,
+      "source_mod": 82,
+      "dest_mod": 83
+    },
+    {
+      "source": "82.output",
+      "destination": "137.block_1",
+      "strength": 100,
+      "source_mod": 82,
+      "dest_mod": 137
+    },
+    {
+      "source": "82.output",
+      "destination": "141.block_1",
+      "strength": 100,
+      "source_mod": 82,
+      "dest_mod": 141
+    },
+    {
+      "source": "82.output",
+      "destination": "145.block_1",
+      "strength": 100,
+      "source_mod": 82,
+      "dest_mod": 145
+    },
+    {
+      "source": "82.output",
+      "destination": "149.block_1",
+      "strength": 100,
+      "source_mod": 82,
+      "dest_mod": 149
+    },
+    {
+      "source": "82.output",
+      "destination": "153.block_1",
+      "strength": 100,
+      "source_mod": 82,
+      "dest_mod": 153
+    },
+    {
+      "source": "82.output",
+      "destination": "157.block_1",
+      "strength": 100,
+      "source_mod": 82,
+      "dest_mod": 157
+    },
+    {
+      "source": "82.output",
+      "destination": "161.block_1",
+      "strength": 100,
+      "source_mod": 82,
+      "dest_mod": 161
+    },
+    {
+      "source": "83.block_1",
+      "destination": "84.cv_input",
+      "strength": 100,
+      "source_mod": 83,
+      "dest_mod": 84
+    },
+    {
+      "source": "84.cv_output",
+      "destination": "58.block_2",
+      "strength": 100,
+      "source_mod": 84,
+      "dest_mod": 58
+    },
+    {
+      "source": "84.cv_output",
+      "destination": "137.block_2",
+      "strength": 100,
+      "source_mod": 84,
+      "dest_mod": 137
+    },
+    {
+      "source": "84.cv_output",
+      "destination": "141.block_2",
+      "strength": 100,
+      "source_mod": 84,
+      "dest_mod": 141
+    },
+    {
+      "source": "84.cv_output",
+      "destination": "145.block_2",
+      "strength": 100,
+      "source_mod": 84,
+      "dest_mod": 145
+    },
+    {
+      "source": "84.cv_output",
+      "destination": "149.block_2",
+      "strength": 100,
+      "source_mod": 84,
+      "dest_mod": 149
+    },
+    {
+      "source": "84.cv_output",
+      "destination": "153.block_2",
+      "strength": 100,
+      "source_mod": 84,
+      "dest_mod": 153
+    },
+    {
+      "source": "84.cv_output",
+      "destination": "157.block_2",
+      "strength": 100,
+      "source_mod": 84,
+      "dest_mod": 157
+    },
+    {
+      "source": "84.cv_output",
+      "destination": "161.block_2",
+      "strength": 100,
+      "source_mod": 84,
+      "dest_mod": 161
+    },
+    {
+      "source": "85.block_8",
+      "destination": "91.block_0",
+      "strength": 88,
+      "source_mod": 85,
+      "dest_mod": 91
+    },
+    {
+      "source": "86.block_2",
+      "destination": "88.block_0",
+      "strength": 100,
+      "source_mod": 86,
+      "dest_mod": 88
+    },
+    {
+      "source": "86.block_2",
+      "destination": "90.block_1",
+      "strength": 100,
+      "source_mod": 86,
+      "dest_mod": 90
+    },
+    {
+      "source": "87.block_3",
+      "destination": "91.block_1",
+      "strength": 100,
+      "source_mod": 87,
+      "dest_mod": 91
+    },
+    {
+      "source": "88.block_2",
+      "destination": "89.block_0",
+      "strength": 100,
+      "source_mod": 88,
+      "dest_mod": 89
+    },
+    {
+      "source": "89.block_8",
+      "destination": "91.block_16",
+      "strength": 100,
+      "source_mod": 89,
+      "dest_mod": 91
+    },
+    {
+      "source": "90.block_2",
+      "destination": "89.block_1",
+      "strength": 100,
+      "source_mod": 90,
+      "dest_mod": 89
+    },
+    {
+      "source": "91.block_17",
+      "destination": "92.block_0",
+      "strength": 100,
+      "source_mod": 91,
+      "dest_mod": 92
+    },
+    {
+      "source": "91.block_17",
+      "destination": "93.block_0",
+      "strength": 100,
+      "source_mod": 91,
+      "dest_mod": 93
+    },
+    {
+      "source": "92.block_8",
+      "destination": "96.attack",
+      "strength": 100,
+      "source_mod": 92,
+      "dest_mod": 96
+    },
+    {
+      "source": "93.block_8",
+      "destination": "96.decay",
+      "strength": 100,
+      "source_mod": 93,
+      "dest_mod": 96
+    },
+    {
+      "source": "94.block_1",
+      "destination": "95.value",
+      "strength": 100,
+      "source_mod": 94,
+      "dest_mod": 95
+    },
+    {
+      "source": "95.cv_output",
+      "destination": "93.block_1",
+      "strength": 100,
+      "source_mod": 95,
+      "dest_mod": 93
+    },
+    {
+      "source": "96.cv_output",
+      "destination": "97.block_1",
+      "strength": 100,
+      "source_mod": 96,
+      "dest_mod": 97
+    },
+    {
+      "source": "96.cv_output",
+      "destination": "98.block_0",
+      "strength": 100,
+      "source_mod": 96,
+      "dest_mod": 98
+    },
+    {
+      "source": "96.cv_output",
+      "destination": "98.block_1",
+      "strength": 100,
+      "source_mod": 96,
+      "dest_mod": 98
+    },
+    {
+      "source": "97.block_2",
+      "destination": "96.cv_input",
+      "strength": 100,
+      "source_mod": 97,
+      "dest_mod": 96
+    },
+    {
+      "source": "98.block_8",
+      "destination": "58.block_0",
+      "strength": 100,
+      "source_mod": 98,
+      "dest_mod": 58
+    },
+    {
+      "source": "98.block_8",
+      "destination": "137.block_0",
+      "strength": 100,
+      "source_mod": 98,
+      "dest_mod": 137
+    },
+    {
+      "source": "98.block_8",
+      "destination": "141.block_0",
+      "strength": 100,
+      "source_mod": 98,
+      "dest_mod": 141
+    },
+    {
+      "source": "98.block_8",
+      "destination": "145.block_0",
+      "strength": 100,
+      "source_mod": 98,
+      "dest_mod": 145
+    },
+    {
+      "source": "98.block_8",
+      "destination": "149.block_0",
+      "strength": 100,
+      "source_mod": 98,
+      "dest_mod": 149
+    },
+    {
+      "source": "98.block_8",
+      "destination": "153.block_0",
+      "strength": 100,
+      "source_mod": 98,
+      "dest_mod": 153
+    },
+    {
+      "source": "98.block_8",
+      "destination": "157.block_0",
+      "strength": 100,
+      "source_mod": 98,
+      "dest_mod": 157
+    },
+    {
+      "source": "98.block_8",
+      "destination": "161.block_0",
+      "strength": 100,
+      "source_mod": 98,
+      "dest_mod": 161
+    },
+    {
+      "source": "99.block_1",
+      "destination": "85.block_0",
+      "strength": 100,
+      "source_mod": 99,
+      "dest_mod": 85
+    },
+    {
+      "source": "99.block_1",
+      "destination": "85.block_1",
+      "strength": 100,
+      "source_mod": 99,
+      "dest_mod": 85
+    },
+    {
+      "source": "100.block_2",
+      "destination": "98.block_1",
+      "strength": 100,
+      "source_mod": 100,
+      "dest_mod": 98
+    },
+    {
+      "source": "101.block_0",
+      "destination": "58.block_5",
+      "strength": 100,
+      "source_mod": 101,
+      "dest_mod": 58
+    },
+    {
+      "source": "101.block_0",
+      "destination": "137.block_5",
+      "strength": 100,
+      "source_mod": 101,
+      "dest_mod": 137
+    },
+    {
+      "source": "101.block_0",
+      "destination": "141.block_5",
+      "strength": 100,
+      "source_mod": 101,
+      "dest_mod": 141
+    },
+    {
+      "source": "101.block_0",
+      "destination": "145.block_5",
+      "strength": 100,
+      "source_mod": 101,
+      "dest_mod": 145
+    },
+    {
+      "source": "101.block_0",
+      "destination": "149.block_5",
+      "strength": 100,
+      "source_mod": 101,
+      "dest_mod": 149
+    },
+    {
+      "source": "101.block_0",
+      "destination": "153.block_5",
+      "strength": 100,
+      "source_mod": 101,
+      "dest_mod": 153
+    },
+    {
+      "source": "101.block_0",
+      "destination": "157.block_5",
+      "strength": 100,
+      "source_mod": 101,
+      "dest_mod": 157
+    },
+    {
+      "source": "101.block_0",
+      "destination": "161.block_5",
+      "strength": 100,
+      "source_mod": 101,
+      "dest_mod": 161
+    },
+    {
+      "source": "102.cv_output",
+      "destination": "103.cv_input",
+      "strength": 100,
+      "source_mod": 102,
+      "dest_mod": 103
+    },
+    {
+      "source": "103.cv_output",
+      "destination": "58.block_5",
+      "strength": 100,
+      "source_mod": 103,
+      "dest_mod": 58
+    },
+    {
+      "source": "103.cv_output",
+      "destination": "137.block_5",
+      "strength": 100,
+      "source_mod": 103,
+      "dest_mod": 137
+    },
+    {
+      "source": "103.cv_output",
+      "destination": "141.block_5",
+      "strength": 100,
+      "source_mod": 103,
+      "dest_mod": 141
+    },
+    {
+      "source": "103.cv_output",
+      "destination": "145.block_5",
+      "strength": 100,
+      "source_mod": 103,
+      "dest_mod": 145
+    },
+    {
+      "source": "103.cv_output",
+      "destination": "149.block_5",
+      "strength": 100,
+      "source_mod": 103,
+      "dest_mod": 149
+    },
+    {
+      "source": "103.cv_output",
+      "destination": "153.block_5",
+      "strength": 100,
+      "source_mod": 103,
+      "dest_mod": 153
+    },
+    {
+      "source": "103.cv_output",
+      "destination": "157.block_5",
+      "strength": 100,
+      "source_mod": 103,
+      "dest_mod": 157
+    },
+    {
+      "source": "103.cv_output",
+      "destination": "161.block_5",
+      "strength": 100,
+      "source_mod": 103,
+      "dest_mod": 161
+    },
+    {
+      "source": "104.block_1",
+      "destination": "58.block_3",
+      "strength": 100,
+      "source_mod": 104,
+      "dest_mod": 58
+    },
+    {
+      "source": "104.block_1",
+      "destination": "137.block_3",
+      "strength": 100,
+      "source_mod": 104,
+      "dest_mod": 137
+    },
+    {
+      "source": "104.block_1",
+      "destination": "141.block_3",
+      "strength": 100,
+      "source_mod": 104,
+      "dest_mod": 141
+    },
+    {
+      "source": "104.block_1",
+      "destination": "145.block_3",
+      "strength": 100,
+      "source_mod": 104,
+      "dest_mod": 145
+    },
+    {
+      "source": "104.block_1",
+      "destination": "149.block_3",
+      "strength": 100,
+      "source_mod": 104,
+      "dest_mod": 149
+    },
+    {
+      "source": "104.block_1",
+      "destination": "153.block_3",
+      "strength": 100,
+      "source_mod": 104,
+      "dest_mod": 153
+    },
+    {
+      "source": "104.block_1",
+      "destination": "157.block_3",
+      "strength": 100,
+      "source_mod": 104,
+      "dest_mod": 157
+    },
+    {
+      "source": "104.block_1",
+      "destination": "161.block_3",
+      "strength": 100,
+      "source_mod": 104,
+      "dest_mod": 161
+    },
+    {
+      "source": "105.block_1",
+      "destination": "106.value",
+      "strength": 100,
+      "source_mod": 105,
+      "dest_mod": 106
+    },
+    {
+      "source": "106.cv_output",
+      "destination": "107.block_1",
+      "strength": 100,
+      "source_mod": 106,
+      "dest_mod": 107
+    },
+    {
+      "source": "107.block_17",
+      "destination": "108.block_0",
+      "strength": 100,
+      "source_mod": 107,
+      "dest_mod": 108
+    },
+    {
+      "source": "108.block_8",
+      "destination": "68.value",
+      "strength": 100,
+      "source_mod": 108,
+      "dest_mod": 68
+    },
+    {
+      "source": "109.block_1",
+      "destination": "110.value",
+      "strength": 100,
+      "source_mod": 109,
+      "dest_mod": 110
+    },
+    {
+      "source": "110.cv_output",
+      "destination": "111.block_1",
+      "strength": 100,
+      "source_mod": 110,
+      "dest_mod": 111
+    },
+    {
+      "source": "111.block_17",
+      "destination": "112.block_0",
+      "strength": 100,
+      "source_mod": 111,
+      "dest_mod": 112
+    },
+    {
+      "source": "112.block_8",
+      "destination": "72.cv_control",
+      "strength": 90,
+      "source_mod": 112,
+      "dest_mod": 72
+    },
+    {
+      "source": "112.block_8",
+      "destination": "73.block_2",
+      "strength": 100,
+      "source_mod": 112,
+      "dest_mod": 73
+    },
+    {
+      "source": "113.block_1",
+      "destination": "114.value",
+      "strength": 100,
+      "source_mod": 113,
+      "dest_mod": 114
+    },
+    {
+      "source": "114.cv_output",
+      "destination": "115.block_1",
+      "strength": 100,
+      "source_mod": 114,
+      "dest_mod": 115
+    },
+    {
+      "source": "115.block_17",
+      "destination": "116.block_0",
+      "strength": 100,
+      "source_mod": 115,
+      "dest_mod": 116
+    },
+    {
+      "source": "116.block_8",
+      "destination": "46.level_control",
+      "strength": 100,
+      "source_mod": 116,
+      "dest_mod": 46
+    },
+    {
+      "source": "117.block_1",
+      "destination": "118.value",
+      "strength": 100,
+      "source_mod": 117,
+      "dest_mod": 118
+    },
+    {
+      "source": "118.cv_output",
+      "destination": "119.block_1",
+      "strength": 100,
+      "source_mod": 118,
+      "dest_mod": 119
+    },
+    {
+      "source": "119.block_17",
+      "destination": "120.block_0",
+      "strength": 100,
+      "source_mod": 119,
+      "dest_mod": 120
+    },
+    {
+      "source": "120.block_8",
+      "destination": "44.block_1",
+      "strength": 100,
+      "source_mod": 120,
+      "dest_mod": 44
+    },
+    {
+      "source": "120.block_8",
+      "destination": "45.block_1",
+      "strength": 100,
+      "source_mod": 120,
+      "dest_mod": 45
+    },
+    {
+      "source": "121.block_1",
+      "destination": "122.value",
+      "strength": 100,
+      "source_mod": 121,
+      "dest_mod": 122
+    },
+    {
+      "source": "122.cv_output",
+      "destination": "123.block_1",
+      "strength": 100,
+      "source_mod": 122,
+      "dest_mod": 123
+    },
+    {
+      "source": "123.block_17",
+      "destination": "124.block_0",
+      "strength": 100,
+      "source_mod": 123,
+      "dest_mod": 124
+    },
+    {
+      "source": "124.block_8",
+      "destination": "47.frequency",
+      "strength": 100,
+      "source_mod": 124,
+      "dest_mod": 47
+    },
+    {
+      "source": "124.block_8",
+      "destination": "48.frequency",
+      "strength": 100,
+      "source_mod": 124,
+      "dest_mod": 48
+    },
+    {
+      "source": "125.block_1",
+      "destination": "126.value",
+      "strength": 100,
+      "source_mod": 125,
+      "dest_mod": 126
+    },
+    {
+      "source": "126.cv_output",
+      "destination": "127.block_1",
+      "strength": 100,
+      "source_mod": 126,
+      "dest_mod": 127
+    },
+    {
+      "source": "127.block_17",
+      "destination": "128.block_0",
+      "strength": 100,
+      "source_mod": 127,
+      "dest_mod": 128
+    },
+    {
+      "source": "128.block_8",
+      "destination": "49.frequency",
+      "strength": 100,
+      "source_mod": 128,
+      "dest_mod": 49
+    },
+    {
+      "source": "128.block_8",
+      "destination": "50.frequency",
+      "strength": 100,
+      "source_mod": 128,
+      "dest_mod": 50
+    },
+    {
+      "source": "129.block_1",
+      "destination": "54.block_1",
+      "strength": 100,
+      "source_mod": 129,
+      "dest_mod": 54
+    },
+    {
+      "source": "129.block_1",
+      "destination": "130.cv_input",
+      "strength": 100,
+      "source_mod": 129,
+      "dest_mod": 130
+    },
+    {
+      "source": "130.cv_output",
+      "destination": "131.block_0",
+      "strength": 100,
+      "source_mod": 130,
+      "dest_mod": 131
+    },
+    {
+      "source": "131.block_1",
+      "destination": "132.block_0",
+      "strength": 100,
+      "source_mod": 131,
+      "dest_mod": 132
+    },
+    {
+      "source": "132.block_8",
+      "destination": "46.level_control",
+      "strength": 106,
+      "source_mod": 132,
+      "dest_mod": 46
+    },
+    {
+      "source": "133.block_1",
+      "destination": "134.value",
+      "strength": 100,
+      "source_mod": 133,
+      "dest_mod": 134
+    },
+    {
+      "source": "134.cv_output",
+      "destination": "135.block_1",
+      "strength": 100,
+      "source_mod": 134,
+      "dest_mod": 135
+    },
+    {
+      "source": "135.block_17",
+      "destination": "136.block_2",
+      "strength": 100,
+      "source_mod": 135,
+      "dest_mod": 136
+    },
+    {
+      "source": "136.block_8",
+      "destination": "132.block_1",
+      "strength": 100,
+      "source_mod": 136,
+      "dest_mod": 132
+    },
+    {
+      "source": "137.block_17",
+      "destination": "24.block_0",
+      "strength": 69,
+      "source_mod": 137,
+      "dest_mod": 24
+    },
+    {
+      "source": "137.block_17",
+      "destination": "65.block_0",
+      "strength": 100,
+      "source_mod": 137,
+      "dest_mod": 65
+    },
+    {
+      "source": "137.block_17",
+      "destination": "108.block_2",
+      "strength": 100,
+      "source_mod": 137,
+      "dest_mod": 108
+    },
+    {
+      "source": "138.block_2",
+      "destination": "24.block_0",
+      "strength": 93,
+      "source_mod": 138,
+      "dest_mod": 24
+    },
+    {
+      "source": "138.block_2",
+      "destination": "137.block_16",
+      "strength": 100,
+      "source_mod": 138,
+      "dest_mod": 137
+    },
+    {
+      "source": "138.block_2",
+      "destination": "139.block_1",
+      "strength": 100,
+      "source_mod": 138,
+      "dest_mod": 139
+    },
+    {
+      "source": "138.block_2",
+      "destination": "140.block_0",
+      "strength": 100,
+      "source_mod": 138,
+      "dest_mod": 140
+    },
+    {
+      "source": "139.block_2",
+      "destination": "140.block_1",
+      "strength": 100,
+      "source_mod": 139,
+      "dest_mod": 140
+    },
+    {
+      "source": "140.block_8",
+      "destination": "138.block_0",
+      "strength": 100,
+      "source_mod": 140,
+      "dest_mod": 138
+    },
+    {
+      "source": "141.block_17",
+      "destination": "25.block_0",
+      "strength": 69,
+      "source_mod": 141,
+      "dest_mod": 25
+    },
+    {
+      "source": "141.block_17",
+      "destination": "112.block_2",
+      "strength": 100,
+      "source_mod": 141,
+      "dest_mod": 112
+    },
+    {
+      "source": "142.block_2",
+      "destination": "25.block_0",
+      "strength": 93,
+      "source_mod": 142,
+      "dest_mod": 25
+    },
+    {
+      "source": "142.block_2",
+      "destination": "141.block_16",
+      "strength": 100,
+      "source_mod": 142,
+      "dest_mod": 141
+    },
+    {
+      "source": "142.block_2",
+      "destination": "143.block_1",
+      "strength": 100,
+      "source_mod": 142,
+      "dest_mod": 143
+    },
+    {
+      "source": "142.block_2",
+      "destination": "144.block_0",
+      "strength": 100,
+      "source_mod": 142,
+      "dest_mod": 144
+    },
+    {
+      "source": "143.block_2",
+      "destination": "144.block_1",
+      "strength": 100,
+      "source_mod": 143,
+      "dest_mod": 144
+    },
+    {
+      "source": "144.block_8",
+      "destination": "142.block_0",
+      "strength": 100,
+      "source_mod": 144,
+      "dest_mod": 142
+    },
+    {
+      "source": "145.block_17",
+      "destination": "26.block_0",
+      "strength": 69,
+      "source_mod": 145,
+      "dest_mod": 26
+    },
+    {
+      "source": "145.block_17",
+      "destination": "116.block_2",
+      "strength": 100,
+      "source_mod": 145,
+      "dest_mod": 116
+    },
+    {
+      "source": "146.block_2",
+      "destination": "26.block_0",
+      "strength": 93,
+      "source_mod": 146,
+      "dest_mod": 26
+    },
+    {
+      "source": "146.block_2",
+      "destination": "145.block_16",
+      "strength": 100,
+      "source_mod": 146,
+      "dest_mod": 145
+    },
+    {
+      "source": "146.block_2",
+      "destination": "147.block_1",
+      "strength": 100,
+      "source_mod": 146,
+      "dest_mod": 147
+    },
+    {
+      "source": "146.block_2",
+      "destination": "148.block_0",
+      "strength": 100,
+      "source_mod": 146,
+      "dest_mod": 148
+    },
+    {
+      "source": "147.block_2",
+      "destination": "148.block_1",
+      "strength": 100,
+      "source_mod": 147,
+      "dest_mod": 148
+    },
+    {
+      "source": "148.block_8",
+      "destination": "146.block_0",
+      "strength": 100,
+      "source_mod": 148,
+      "dest_mod": 146
+    },
+    {
+      "source": "149.block_17",
+      "destination": "27.block_0",
+      "strength": 69,
+      "source_mod": 149,
+      "dest_mod": 27
+    },
+    {
+      "source": "149.block_17",
+      "destination": "120.block_2",
+      "strength": 100,
+      "source_mod": 149,
+      "dest_mod": 120
+    },
+    {
+      "source": "150.block_2",
+      "destination": "27.block_0",
+      "strength": 93,
+      "source_mod": 150,
+      "dest_mod": 27
+    },
+    {
+      "source": "150.block_2",
+      "destination": "149.block_16",
+      "strength": 100,
+      "source_mod": 150,
+      "dest_mod": 149
+    },
+    {
+      "source": "150.block_2",
+      "destination": "151.block_1",
+      "strength": 100,
+      "source_mod": 150,
+      "dest_mod": 151
+    },
+    {
+      "source": "150.block_2",
+      "destination": "152.block_0",
+      "strength": 100,
+      "source_mod": 150,
+      "dest_mod": 152
+    },
+    {
+      "source": "151.block_2",
+      "destination": "152.block_1",
+      "strength": 100,
+      "source_mod": 151,
+      "dest_mod": 152
+    },
+    {
+      "source": "152.block_8",
+      "destination": "150.block_0",
+      "strength": 100,
+      "source_mod": 152,
+      "dest_mod": 150
+    },
+    {
+      "source": "153.block_17",
+      "destination": "28.block_0",
+      "strength": 69,
+      "source_mod": 153,
+      "dest_mod": 28
+    },
+    {
+      "source": "153.block_17",
+      "destination": "124.block_2",
+      "strength": 100,
+      "source_mod": 153,
+      "dest_mod": 124
+    },
+    {
+      "source": "154.block_2",
+      "destination": "28.block_0",
+      "strength": 93,
+      "source_mod": 154,
+      "dest_mod": 28
+    },
+    {
+      "source": "154.block_2",
+      "destination": "153.block_16",
+      "strength": 100,
+      "source_mod": 154,
+      "dest_mod": 153
+    },
+    {
+      "source": "154.block_2",
+      "destination": "155.block_1",
+      "strength": 100,
+      "source_mod": 154,
+      "dest_mod": 155
+    },
+    {
+      "source": "154.block_2",
+      "destination": "156.block_0",
+      "strength": 100,
+      "source_mod": 154,
+      "dest_mod": 156
+    },
+    {
+      "source": "155.block_2",
+      "destination": "156.block_1",
+      "strength": 100,
+      "source_mod": 155,
+      "dest_mod": 156
+    },
+    {
+      "source": "156.block_8",
+      "destination": "154.block_0",
+      "strength": 100,
+      "source_mod": 156,
+      "dest_mod": 154
+    },
+    {
+      "source": "157.block_17",
+      "destination": "29.block_0",
+      "strength": 69,
+      "source_mod": 157,
+      "dest_mod": 29
+    },
+    {
+      "source": "157.block_17",
+      "destination": "128.block_2",
+      "strength": 100,
+      "source_mod": 157,
+      "dest_mod": 128
+    },
+    {
+      "source": "158.block_2",
+      "destination": "29.block_0",
+      "strength": 93,
+      "source_mod": 158,
+      "dest_mod": 29
+    },
+    {
+      "source": "158.block_2",
+      "destination": "157.block_16",
+      "strength": 100,
+      "source_mod": 158,
+      "dest_mod": 157
+    },
+    {
+      "source": "158.block_2",
+      "destination": "159.block_1",
+      "strength": 100,
+      "source_mod": 158,
+      "dest_mod": 159
+    },
+    {
+      "source": "158.block_2",
+      "destination": "160.block_0",
+      "strength": 100,
+      "source_mod": 158,
+      "dest_mod": 160
+    },
+    {
+      "source": "159.block_2",
+      "destination": "160.block_1",
+      "strength": 100,
+      "source_mod": 159,
+      "dest_mod": 160
+    },
+    {
+      "source": "160.block_8",
+      "destination": "158.block_0",
+      "strength": 100,
+      "source_mod": 160,
+      "dest_mod": 158
+    },
+    {
+      "source": "161.block_17",
+      "destination": "30.block_0",
+      "strength": 69,
+      "source_mod": 161,
+      "dest_mod": 30
+    },
+    {
+      "source": "161.block_17",
+      "destination": "136.block_0",
+      "strength": 100,
+      "source_mod": 161,
+      "dest_mod": 136
+    },
+    {
+      "source": "162.block_2",
+      "destination": "30.block_0",
+      "strength": 93,
+      "source_mod": 162,
+      "dest_mod": 30
+    },
+    {
+      "source": "162.block_2",
+      "destination": "161.block_16",
+      "strength": 100,
+      "source_mod": 162,
+      "dest_mod": 161
+    },
+    {
+      "source": "162.block_2",
+      "destination": "163.block_1",
+      "strength": 100,
+      "source_mod": 162,
+      "dest_mod": 163
+    },
+    {
+      "source": "162.block_2",
+      "destination": "164.block_0",
+      "strength": 100,
+      "source_mod": 162,
+      "dest_mod": 164
+    },
+    {
+      "source": "163.block_2",
+      "destination": "164.block_1",
+      "strength": 100,
+      "source_mod": 163,
+      "dest_mod": 164
+    },
+    {
+      "source": "164.block_8",
+      "destination": "162.block_0",
+      "strength": 100,
+      "source_mod": 164,
+      "dest_mod": 162
+    },
+    {
+      "source": "165.audio_out_1",
+      "destination": "41.input_L",
+      "strength": 100,
+      "source_mod": 165,
+      "dest_mod": 41
+    },
+    {
+      "source": "165.audio_out_2",
+      "destination": "41.input_R",
+      "strength": 100,
+      "source_mod": 165,
+      "dest_mod": 41
+    }
+  ],
+  "pages": [
+    "ctrl-effect",
+    "delays",
+    "filters",
+    "noise env fllwr",
+    "wow",
+    "flutter",
+    "sqr rndm mod",
+    "looped env",
+    "looped env",
+    "exp ramp noise",
+    "Bipolar depth",
+    "Bipolar depth",
+    "Bipolar depth",
+    "Bipolar depth",
+    "Bipolar depth",
+    "Bipolar depth",
+    "corrosion",
+    "input select",
+    "input select",
+    "input select",
+    "input select",
+    "input select",
+    "input select",
+    "input select",
+    "dry level",
+    ""
+  ],
+  "meta": {
+    "n_modules": 166,
+    "n_connections": 320,
+    "n_pages": 26,
+    "cpu": 32.6
+  }
+}

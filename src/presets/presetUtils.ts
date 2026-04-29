@@ -20,8 +20,15 @@ const METADATA_FIELDS = [
   'synthEvolveConfigs',
   'drumStepOverrides',
   'synthStepOverrides',
+  'drumClockDivs',
+  'synthClockDivs',
+  'drumSwings',
+  'synthSwings',
+  'drumLinked',
+  'synthLinked',
   'drumSubLaneStates',
   'synthSubLaneStates',
+  'synthPitchSettings',
   'synthPitchBindingModes',
 ] as const;
 

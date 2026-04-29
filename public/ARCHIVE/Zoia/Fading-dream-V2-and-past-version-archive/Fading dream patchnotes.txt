@@ -1,0 +1,106 @@
+Fading dream V2 -- a(n even more) lo-fi smeared delay/reverb/beautiful mess
+
+Like a half-remembered dream, or a memory of a childhood VHS, Fading Dream brims with nostalgia of an era that may never have existed.  Was it real?  Or did I just dream it?
+
+Digital delays get washed out and smeared, pulled apart and reconfigured as washes of hazy reverb, or strange vistas in between the two, when the diffusion feels half done, and the delays chime out into a cluster of sympathetic echoes.
+
+
+====================== V2 patch notes =========================
+
+Fading dream V2
+
+The basic architecture of the patch remains unchanged:  a lo-fi series/parallel delay/reverb.  In essence, each side can be configured independently (enabled by the left stompswitch "Independent Sides," it has been rebranded), or they can function as a stereo pair.  The left side can also be fed into the right side, via the "Delay 1 mix" control, for a variety of series and parallel amalgamations.  The delays could also be smeared out, via diffusers, to create a super-modulated reverb.
+
+There have been a number of new improvements and features:
+
+- The delay lines are now linear, so changing the delay time should more accurately reflect the length of said delay (up to 2seconds).
+
+- Mix has been replaced with separate dry and wet level controls
+
+- The bitcrusher control range has been reconfigured to be more useful.  At its top settings it can still introduce a fair amount of gain to the circuit (which can be compensated with the wet level control), but it shouldn't be as ear-splitting as before.
+
+- The envelope section has been reworked a little.  The right stompswitch no longer turns it on and off, only the buttons on the control page.  A new envelope option has been added:  input envelope.  This applies an envelope to the signal entering the delay, allowing you to shape how much attack transient makes it to the delay circuit.
+
+- And since I had a free stompswitch, I added (sigh) a tap tempo option, although I should note that taps may be slightly off, due to the extensive signal path and the diffusers in particular adding their own delays to the path.  Adjusting the time control will return the patch to manual control.  The tap tempo only affects both sides when they are linked; if the right side is independent, its time will be controlled by its time control only.
+
+- A slew of global "character" controls have been added:  
+
+Tone (the low-pass filter of the previous iteration was fixed; tone gives a broad array of more useful positions; as the cutoff decreases, resonance increases a little)
+
+Tape age (as used in other patches of mine, this effectively FM's the delay line with a random module, producing distortion and interesting sidebands; unlike some other applications, as the "Tape age" is increased, the FM blends with a stereo sine wave modulation, which at 1.000 is pure, and from .7000-.9000 produces a sort of "dirty sine")
+
+Corrosion (as used in other patches of mine, this effectively AM's the output VCA with a random moule, producing distortion and interesting sidebands, albeit slightly different from the tape age; above ~.7000, the audio will periodically drop out)
+
+Envelope mod (this is a bipolar control.  Positive values will apply envelope follower to the delay line; negative values will apply the ASR envelope used for the wet/dry/input envelopes to the delay line; add a little to produce a bouncy, lo-fi tape modulation, add a lot for a more... extreme version that often sounds a little wacky but hey)
+
+Regen suppression (use the envelope follower to suppress the feedback of the delay; interdependent with the feedback settings)
+
+And... that's it.  This revision took a lot of time and swearing (if you've ever looked over the original Fading Dream diagram I posted on Reddit years ago, this patch has a lot of weird signal paths).  But I think it's a pretty good'un.
+
+================ Original patch notes continue below ==============
+
+
+Fading Dream uses diffusers and some filtering to turn delays into reverb and back.  With a stereo parallel/mono series configuration, which can be blended between the two, a wide variety of sounds can be created.  The two delays at the heart of Fading Dream can be run from a master set of controls to allow for easy stereo configuration, or independently configured, to allow new combinations of the sounds.  
+
+Additionally, bit crushers follow both delays, allowing for everything from light background noise and fidelity reduction, just like on that worn-out cassette, to angry distortion and washed-out mayhem.  An envelope mode allows for faux-reverse/gated reverb sounds and fades into a cavernous ambiance.
+
+Controls:
+
+Footswitches:
+
+Left, latching:  connects and disconnects the right delay's controls from the master.
+
+Middle, latching:  with a slight fade, maxes out diffusion, allowing you to go from delay to reverb with a press of a button.
+
+Right, latching:  envelope mode, which allows you to fade your sound in.  (You can also use this as a stereo swell patch if you turn the mix to 100% dry.)
+
+Front panel:
+
+[SM1]...[MOI]....[FreeI].........[SM2]
+[DT1]...[D1M]....................[DT2]
+[FB1]...[D1A].....[WDM]..........[FB2]
+[MR1].......[EA].......[EMI][D2A][MR2]
+[BC1]...........[ER].............[BC2]
+
+SM1, SM2 -- smear/diffusion.  At 0, you have pretty normal delays.  At 1, you have diffused, smeared reverb.  In between, a bunch of interesting things happen, sometimes resembling a multi-tap delay, sometimes rounded off delay.  Some filtering also comes with this control, and you may hear the sound change if you use the 'max out' footswitch.
+
+DT1, DT2 -- delay time, capped at 2 seconds.  Because of how the delay lines scale, the most delay-like effects begin at .750 onward, but shorter delay times can be cool, especially when diffused.  I considered a longer delay line, but above 2 seconds, the smeared effect becomes strained.
+
+FB1, FB2 -- feedback.  Also, sort of, reverb decay.  And things in between.  Above .9, it can get very long into infinite repeats and infinite reverb at 1.
+
+MR1, MR2 -- diffuser modulation.  Diffuser modulation is... interesting.  Subtle and strangely musical but also sort of mechanical.  Increasing the rate will make it more pronounced.  A lot of the lo-fi, VHS magic lives here.
+
+BC1, BC2 -- bitcrusher at the end of each delay line.  Above .8, it can get very, very intense and loud.  Between .55 and .65 it can add a nice sort of noisiness to the sound.
+
+MOI -- max out indicator.  Comes on when the middle footswitch is latched.
+
+FreeI -- indicator that lights up when the left footswitch is latched, freeing the right delay's controls (SM2, etc.) from the master controls (SM1, etc.).
+
+D1M -- delay 1 mix.  Delay one can be fed into delay 2, for a series configuration.  As the mix moves from 0 to 1, more and more of delay 1 is fed into delay 2 while more and more of delay 2 is outputted to the left channel.  In between, there is a mixture of series and parallel configuration.
+
+D1A -- pixel indicator for delay one's audio.  Useful if in envelope mode and want to have an idea of whether or not there is sound still making its way through the feedback path.
+
+WDM -- wet/dry mix.
+
+EA -- envelope attack.  Sets the envelope's attack.
+
+EMI -- pixel that lights up if the right footswitch is latched, indicating envelope mode.
+
+D2A -- pixel indicator for delay two's audio.
+
+ER -- envelope release.  I don't really use this, but you might want to adjust it if you don't like the envelope cutting off abruptly.
+
+Sound clip:
+
+0:00-0:47--I begin with a slightly smeared delay, then I max out the diffusion, then I return it to smeared delay.
+0:47-1:40--Begins with the envelope mode on.  This uses a series configuration, with the bit crusher following delay 1 quite high before it is diffused through delay 2, giving a noisy wash.
+1:40-2:07--Some series/parallel stuff.  Delay 1 is a clean delay.  Delay 2, which some of delay 1 is fed into, is smeared out.
+2:07-2:40--More series/parallel.  Both delays are fairly unsmeared, there is some bit crushing acting to give a lo-fi background noise.  Delay 1 is longer, with low feedback, delay 2 is shorter, with more feedback.  Also some diffuser modulation, which gives it a sort of... broken sound.
+2:40-3:10--I sort of forgot what I was doing in this clip.  I think it's mostly parallel with delay 1 set to cleanish repeats and delay 2 washed out entirely.
+3:10-5:44--I bet you were thinking, sure, but I'm positive it sounds terrible on synth.  Au contraire!  
+
+This is the Bass Station 2, an underrated synth, but one that definitely sounds crazy alive when you give it some good delay/reverb to pass through.  
+
+I play around with linking and unlinking the controls (it sounds massive in stereo for a couple of seconds).  The delay lines snapping back and forth isn't the greatest sound, but such is life.
+
+Then I use an arpeggio to give me some leeway to mess around hands-free.  I don't really remember what I did, but it sounds pretty good!  Then I rinse with bit crushing.  And end with some envelope mode to show what it sounds like when the envelope fades into a noisy mess.

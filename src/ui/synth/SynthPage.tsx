@@ -379,8 +379,12 @@ export interface SynthPageProps {
   evolvedOverrides?: { laneIndex: number; version: number; data: Partial<StepOverrides> };
   /** Called when per-lane clock divisions change */
   onClockDivsChange?: (divs: ClockDivision[]) => void;
+  initialClockDivs?: ClockDivision[];
   /** Called when per-lane swing amounts change */
   onSwingsChange?: (swings: number[]) => void;
+  initialSwings?: number[];
+  onLinkedChange?: (linked: boolean[]) => void;
+  initialLinked?: boolean[];
   /** Initial pitch settings to restore across tab switches */
   initialPitchSettings?: PitchSettings[];
   /** Called when pitch settings change, so parent can persist across tab switches */
@@ -425,7 +429,11 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     resetEvolveHome,
     diceLane,
     onClockDivsChange,
+    initialClockDivs,
     onSwingsChange,
+    initialSwings,
+    onLinkedChange,
+    initialLinked,
     initialPitchSettings,
     onPitchSettingsChange,
     initialPitchBindingModes,
@@ -1186,6 +1194,9 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     initialViewMode,
     initialStepOverrides,
     initialSubLaneStates,
+    initialClockDivs,
+    initialSwings,
+    initialLinked,
     initialPitchSettings,
     initialEvolveConfigs,
     resetKey: presetVersion,
@@ -1398,6 +1409,14 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       onSwingsChange?.(seq.swings);
     }
   }, [seq.swings, onSwingsChange]);
+
+  const linkedRef = useRef(seq.linked);
+  useEffect(() => {
+    if (linkedRef.current !== seq.linked) {
+      linkedRef.current = seq.linked;
+      onLinkedChange?.(seq.linked);
+    }
+  }, [seq.linked, onLinkedChange]);
 
   const activeSeq = seq.activeSeq;
 
@@ -2268,8 +2287,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     <div className="synth-root">
       <div className="container">
         {/* ═══ Synth Source Preset (L3) ═══ */}
-        <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '6px 10px', marginBottom: 4, borderRadius: 8, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>
-          <span style={{ fontSize: 12, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>Synth Source</span>
+        <div className="synth-source-preset-bar">
+          <span className="synth-source-preset-label">Synth Source</span>
           <PresetDropdown
             level="source"
             scope="synth"

@@ -103,6 +103,8 @@ export function SliderPrimitive({
   const dragRangeRef = React.useRef<SliderPrimitiveRange | null>(null);
   const dragIndicatorRef = React.useRef<number | null>(null);
   const dragThumbPxRef = React.useRef<number | null>(null);
+  const lastEmittedValueRef = React.useRef<number | null>(null);
+  const lastEmittedRangeRef = React.useRef<SliderPrimitiveRange | null>(null);
   const usesControlledValue = typeof onValueChange === 'function';
   const usesControlledRange = typeof onRangeChange === 'function' && !!range;
 
@@ -127,11 +129,26 @@ export function SliderPrimitive({
   const visualIndicatorPct = clamp(dragging && dragIndicatorRef.current != null ? dragIndicatorRef.current : indicatorPct, 0, 100);
   const isDirect = stylingModel === 'tapeHeroBold';
   const showsModeControl = typeof onModeCycle === 'function';
+  const emitValueChange = React.useCallback((nextValue: number) => {
+    if (!onValueChange) return;
+    if (lastEmittedValueRef.current === nextValue) return;
+    lastEmittedValueRef.current = nextValue;
+    onValueChange(nextValue);
+  }, [onValueChange]);
+  const emitRangeChange = React.useCallback((nextRange: SliderPrimitiveRange) => {
+    if (!onRangeChange) return;
+    const last = lastEmittedRangeRef.current;
+    if (last && last.min === nextRange.min && last.max === nextRange.max) return;
+    lastEmittedRangeRef.current = nextRange;
+    onRangeChange(nextRange);
+  }, [onRangeChange]);
 
   const beginDrag = (event: React.PointerEvent<HTMLDivElement>) => {
     if (!railRef.current || disabled) return;
     event.preventDefault();
     onAnnounce?.();
+    lastEmittedValueRef.current = null;
+    lastEmittedRangeRef.current = null;
 
     const rect = railRef.current.getBoundingClientRect();
     const startX = event.clientX - rect.left;
@@ -143,6 +160,7 @@ export function SliderPrimitive({
       dragIndicatorRef.current = pointerValue;
       dragThumbPxRef.current = (pointerValue / 100) * rect.width;
       setDragging(true);
+      emitValueChange(pointerValue);
 
       if (isDirect) {
         const onMove = (moveEvent: PointerEvent) => {
@@ -158,6 +176,7 @@ export function SliderPrimitive({
             fillRef.current.style.width = `${nextValue}%`;
             fillRef.current.style.opacity = String(0.15 + (nextValue / 100) * 0.85);
           }
+          emitValueChange(nextValue);
           (onMove as typeof onMove & { lastValue?: number }).lastValue = nextValue;
         };
 
@@ -171,7 +190,8 @@ export function SliderPrimitive({
             thumbRef.current.style.transform = '';
             thumbRef.current.style.left = '';
           }
-          onValueChange?.(lastValue);
+          emitValueChange(lastValue);
+          lastEmittedValueRef.current = null;
           setDragging(false);
           window.removeEventListener('pointermove', onMove);
           window.removeEventListener('pointerup', onEnd);
@@ -190,13 +210,15 @@ export function SliderPrimitive({
         dragIndicatorRef.current = nextValue;
         dragThumbPxRef.current = (nextValue / 100) * rect.width;
         lastValue = nextValue;
+        emitValueChange(nextValue);
       };
 
       const onEnd = () => {
         dragValueRef.current = null;
         dragIndicatorRef.current = null;
         dragThumbPxRef.current = null;
-        onValueChange?.(lastValue);
+        emitValueChange(lastValue);
+        lastEmittedValueRef.current = null;
         setDragging(false);
         window.removeEventListener('pointermove', onMove);
         window.removeEventListener('pointerup', onEnd);
@@ -229,6 +251,7 @@ export function SliderPrimitive({
       startRange.max,
     );
     dragThumbPxRef.current = (dragIndicatorRef.current / 100) * rect.width;
+    emitRangeChange(startRange);
 
     const getNextRange = (moveEvent: PointerEvent) => {
       const delta = ((moveEvent.clientX - rect.left - startX) / rect.width) * 100;
@@ -283,6 +306,7 @@ export function SliderPrimitive({
         }
         if (edgeMinRef.current) edgeMinRef.current.style.left = `${nextRange.min}%`;
         if (edgeMaxRef.current) edgeMaxRef.current.style.left = `${nextRange.max}%`;
+        emitRangeChange(nextRange);
         (onMove as typeof onMove & { lastRange?: SliderPrimitiveRange }).lastRange = nextRange;
       };
 
@@ -296,7 +320,8 @@ export function SliderPrimitive({
           thumbRef.current.style.transform = '';
           thumbRef.current.style.left = '';
         }
-        onRangeChange?.(lastRange);
+        emitRangeChange(lastRange);
+        lastEmittedRangeRef.current = null;
         setDragging(false);
         setActiveHandle(null);
         window.removeEventListener('pointermove', onMove);
@@ -316,13 +341,15 @@ export function SliderPrimitive({
       dragIndicatorRef.current = getNextIndicator(nextRange);
       dragThumbPxRef.current = (dragIndicatorRef.current / 100) * rect.width;
       lastRange = nextRange;
+      emitRangeChange(nextRange);
     };
 
     const onEnd = () => {
       dragRangeRef.current = null;
       dragIndicatorRef.current = null;
       dragThumbPxRef.current = null;
-      onRangeChange?.(lastRange);
+      emitRangeChange(lastRange);
+      lastEmittedRangeRef.current = null;
       setDragging(false);
       setActiveHandle(null);
       window.removeEventListener('pointermove', onMove);

@@ -84,11 +84,12 @@ Explicit child references for that version.
 
 Examples:
 
-- state preset -> `synth`, `drums`, `granular`, `delay`, `reverb`, `earth`
+- state preset -> `synth`, `drums`, `granular`, `delay`, `reverb`, `dynamics`, `earth`
 - synth source -> `pad1Kit`, `pad2Kit`, `lead1Kit`, `lead2Kit`, `leadDelay`, shared `euclideanPattern`
 - drums source -> `drumKit`, shared `euclideanPattern`
 - granular source -> `granularKit`
 - delay source -> `delayKit`
+- dynamics source -> L1 engines `sidechain`, `character`, `degrade`, `endChain`
 - kit presets -> their owned L1 engines, for example `pad1Kit -> pad1`, `drumKit -> drumSub/drumKick/...`, `granularKit -> granularVoice1/...`, `delayKit -> leadDelay/echoLine/clockedSpace`
 
 Each ref may also carry a small per-child override blob.

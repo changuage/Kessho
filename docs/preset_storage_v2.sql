@@ -152,9 +152,10 @@ CREATE INDEX IF NOT EXISTS idx_preset_versions_v2_parent
 
 -- Explicit child refs per version. This is the graph edge table.
 -- Example slots:
--- - state preset: synth, drums, granular, reverb, delay, earth
+-- - state preset: synth, drums, granular, reverb, delay, dynamics, earth
 -- - synth source preset: pad1Kit, pad2Kit, lead1Kit, lead2Kit, euclideanPattern
 -- - drums source preset: drumKit, euclideanPattern
+-- - dynamics source preset: L1 sidechain, character, degrade, endChain engines
 -- - granular kit preset: voice1, voice2, voice3, voice4, legacy
 CREATE TABLE IF NOT EXISTS preset_version_refs_v2 (
   version_id UUID NOT NULL REFERENCES preset_versions_v2(id) ON DELETE CASCADE,

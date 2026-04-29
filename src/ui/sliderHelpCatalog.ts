@@ -1,7 +1,7 @@
 import { DRUM_VOICES, type DrumParamDef } from '../audio/drumVoiceConfig';
 import type { DrumVoiceType } from '../audio/drumSynth';
 
-export type SliderPageId = 'app' | 'global' | 'synth' | 'drums' | 'reverb' | 'granular' | 'earth' | 'delay' | 'routing' | 'sliderLab';
+export type SliderPageId = 'app' | 'global' | 'synth' | 'drums' | 'reverb' | 'granular' | 'earth' | 'delay' | 'dynamics' | 'routing' | 'sliderLab';
 export type DualModeSupport = 'full' | 'walk-only' | 'single-only';
 
 export interface SliderHelpSurface {
@@ -53,6 +53,8 @@ const ea = (section: string, label: string, dualMode: DualModeSupport = 'full', 
   surface('earth', section, label, dualMode, audit);
 const dy = (section: string, label: string, dualMode: DualModeSupport = 'full', audit: string[] = []) =>
   surface('delay', section, label, dualMode, audit);
+const dn = (section: string, label: string, dualMode: DualModeSupport = 'full', audit: string[] = []) =>
+  surface('dynamics', section, label, dualMode, audit);
 const rt = (section: string, label: string, dualMode: DualModeSupport = 'full', audit: string[] = []) =>
   surface('routing', section, label, dualMode, audit);
 
@@ -1332,6 +1334,69 @@ Object.assign(earthEntries, {
   insDelayBSend: entry('Sets how much the combined insects bus feeds shared Delay B.', 'Low values keep insects out of the multitap bus. High values let more chirps and textures feed Delay B.', [rt('Routing Matrix', 'Insects → Delay B')]),
 });
 
+const dynamicsEntries: Record<string, SliderHelpEntry> = {
+  tabDynamics: entry('Opens the Dynamics page.', 'Dynamics gathers sidechain ducking, character movement, degrade controls, and final bus compression in one page.', [dn('Navigation', 'Dynamics Tab', 'single-only', [GLOBAL_SINGLE_NOTE])]),
+  sidechainEnabled: entry('Enables trigger-derived ducking.', 'Sidechain listens to the selected drum voices and ducks the selected dry, delay, granular, and reverb target branches.', [dn('Sidechain', 'Sidechain', 'single-only', [GLOBAL_SINGLE_NOTE])]),
+  sidechainKeyAWeight: lowHigh('Weights the first drum key.', 'make Key A a gentle helper trigger', 'make Key A dominate the duck envelope', [dn('Sidechain', 'Key A Weight')]),
+  sidechainKeyBWeight: lowHigh('Weights the second drum key.', 'keep Key B subtle', 'let Key B trigger a full duck alongside Key A', [dn('Sidechain', 'Key B Weight')]),
+  sidechainAmount: lowHigh('Sets global duck depth.', 'keep target routing mostly dry', 'send more of each target through the ducked branch', [dn('Sidechain', 'Amount')]),
+  sidechainMix: lowHigh('Blends sidechain targeting.', 'leave more of each target unaffected', 'use the full per-target duck amount', [dn('Sidechain', 'Mix')]),
+  sidechainThreshold: lowHigh('Sets trigger sensitivity.', 'require stronger key hits', 'let more key hits produce ducking', [dn('Sidechain', 'Threshold')]),
+  sidechainRatio: lowHigh('Sets duck intensity curve.', 'make a shallow level move', 'make key hits push targets down harder', [dn('Sidechain', 'Ratio')]),
+  sidechainKnee: lowHigh('Softens the duck onset.', 'make the duck more immediate', 'make the duck onset rounder', [dn('Sidechain', 'Knee')]),
+  sidechainCurve: lowHigh('Shapes trigger response.', 'make velocity response gentler', 'make stronger hits pull farther ahead', [dn('Sidechain', 'Curve')]),
+  sidechainAttackMs: lowHigh('Sets duck attack time.', 'grab targets quickly', 'let the transient edge through', [dn('Sidechain', 'Attack')]),
+  sidechainHoldMs: lowHigh('Holds the duck before release.', 'bounce back immediately', 'stay tucked for more of the beat', [dn('Sidechain', 'Hold')]),
+  sidechainReleaseMs: lowHigh('Sets duck recovery time.', 'pump back quickly', 'recover in a slower swell', [dn('Sidechain', 'Release')]),
+  sidechainMakeup: lowHigh('Offsets ducked branch level.', 'keep the duck deeper', 'recover more level inside the ducked branch', [dn('Sidechain', 'Makeup')]),
+  sidechainDetectorHp: lowHigh('Reserved detector high-pass.', 'leave the trigger shape broad', 'prepare a brighter detector response for future audio-follow mode', [dn('Sidechain', 'Detector HPF')]),
+  sidechainDetectorLp: lowHigh('Reserved detector low-pass.', 'prepare a darker detector response for future audio-follow mode', 'leave the trigger shape broad', [dn('Sidechain', 'Detector LPF')]),
+  sidechainPad1Target: lowHigh('Sets Pad 1 duck amount.', 'leave Pad 1 dry', 'duck Pad 1 strongly from the selected keys', [dn('Sidechain', 'Pad 1 Target')]),
+  sidechainPad2Target: lowHigh('Sets Pad 2 duck amount.', 'leave Pad 2 dry', 'duck Pad 2 strongly from the selected keys', [dn('Sidechain', 'Pad 2 Target')]),
+  sidechainLead1Target: lowHigh('Sets Lead 1 duck amount.', 'leave Lead 1 dry', 'duck Lead 1 strongly from the selected keys', [dn('Sidechain', 'Lead 1 Target')]),
+  sidechainLead2Target: lowHigh('Sets Lead 2 duck amount.', 'leave Lead 2 dry', 'duck Lead 2 strongly from the selected keys', [dn('Sidechain', 'Lead 2 Target')]),
+  sidechainPianoTarget: lowHigh('Sets piano duck amount.', 'leave piano dry', 'duck piano strongly from the selected keys', [dn('Sidechain', 'Piano Target')]),
+  sidechainGranularTarget: lowHigh('Sets granular-return duck amount.', 'leave granular return dry', 'duck granular return strongly from the selected keys', [dn('Sidechain', 'Granular Target')]),
+  sidechainDelayATarget: lowHigh('Sets Delay A duck amount.', 'leave Delay A return dry', 'duck Delay A strongly from the selected keys', [dn('Sidechain', 'Delay A Target')]),
+  sidechainDelayBTarget: lowHigh('Sets Delay B duck amount.', 'leave Delay B return dry', 'duck Delay B strongly from the selected keys', [dn('Sidechain', 'Delay B Target')]),
+  sidechainReverbTarget: lowHigh('Sets reverb-return duck amount.', 'leave the reverb return open', 'duck the reverb return strongly from the selected keys', [dn('Sidechain', 'Reverb Target')]),
+  endCompEnabled: entry('Enables final bus compression.', 'End Chain inserts a native compressor before the existing safety limiter, with dry/wet mix and makeup gain.', [dn('End Chain', 'End Chain', 'single-only', [GLOBAL_SINGLE_NOTE])]),
+  endCompThreshold: lowHigh('Sets end-chain threshold.', 'compress only louder peaks', 'pull more of the full mix into compression', [dn('End Chain', 'Threshold')]),
+  endCompKnee: lowHigh('Sets end-chain knee.', 'make compression more exact', 'make compression enter more gradually', [dn('End Chain', 'Knee')]),
+  endCompRatio: lowHigh('Sets end-chain ratio.', 'use gentle glue', 'use stronger leveling', [dn('End Chain', 'Ratio')]),
+  endCompAttackMs: lowHigh('Sets end-chain attack.', 'catch peaks quickly', 'preserve more transient edge', [dn('End Chain', 'Attack')]),
+  endCompReleaseMs: lowHigh('Sets end-chain release.', 'recover quickly', 'recover more slowly and smoothly', [dn('End Chain', 'Release')]),
+  endCompMakeup: lowHigh('Sets end-chain makeup.', 'keep compressed output lower', 'raise the compressed branch', [dn('End Chain', 'Makeup')]),
+  endCompMix: lowHigh('Blends end-chain compression.', 'favor dry bus tone', 'favor compressed bus tone', [dn('End Chain', 'Mix')]),
+  characterEnabled: entry('Enables character movement.', 'Character can be bypassed from the section header without losing the selected movement mode or control values.', [dn('Character', 'FX', 'single-only', [GLOBAL_SINGLE_NOTE])]),
+  characterMix: lowHigh('Blends character processing.', 'keep the clean bus forward', 'lean into the character path', [dn('Character', 'Mix')]),
+  characterAge: lowHigh('Ages the character path.', 'keep movement and loss subtle', 'add older, less stable behavior', [dn('Character', 'Age')]),
+  characterDepth: lowHigh('Sets character modulation depth.', 'make movement shallow', 'make warble and filtering move farther', [dn('Character', 'Depth')]),
+  characterRate: lowHigh('Sets character modulation rate.', 'move slowly', 'move faster', [dn('Character', 'Rate')]),
+  characterDamp: lowHigh('Damps the character path.', 'keep brighter motion', 'round off more high-frequency motion', [dn('Character', 'Damp')]),
+  characterEnvFollow: lowHigh('Sets envelope-reactive movement.', 'keep the character filter steadier', 'let transients open the watery lowpass path', [dn('Character', 'Env Follow')]),
+  characterStereo: lowHigh('Sets stereo movement spread.', 'keep the character path centered', 'add dual-delay width and side-to-side drift', [dn('Character', 'Stereo')]),
+  characterResonance: lowHigh('Sets character filter resonance.', 'keep filtering smooth', 'add more resonant color', [dn('Character', 'Resonance')]),
+  degradeEnabled: entry('Enables media degradation.', 'Degrade can be bypassed from the section header without losing wear, tone, saturation, or tape settings.', [dn('Degrade', 'FX', 'single-only', [GLOBAL_SINGLE_NOTE])]),
+  degradeMix: lowHigh('Blends the Degrade wet path.', 'keep the damaged path tucked away', 'bring the tape/lo-fi path forward', [dn('Degrade', 'Mix')]),
+  degradeAge: lowHigh('Sets media wear.', 'keep the transport newer and cleaner', 'make pitch, bandwidth, noise, and corrosion feel older', [dn('Degrade', 'Wear')]),
+  degradeGeneration: lowHigh('Adds copied-media loss.', 'keep the copy cleaner and closer to first generation', 'darken and smear the signal like repeated copies', [dn('Degrade', 'Generation')]),
+  degradeAlias: lowHigh('Adds sample-rate and bit-depth damage.', 'keep the degraded path smoother', 'add stepped, aliased digital grit', [dn('Degrade', 'Alias')]),
+  degradeWow: lowHigh('Sets slow pitch drift.', 'keep pitch steadier', 'add wider slow warble', [dn('Degrade', 'Wow')]),
+  degradeFlutter: lowHigh('Sets fast pitch flutter.', 'keep pitch steadier', 'add faster tape-like flutter', [dn('Degrade', 'Flutter')]),
+  degradeDrift: lowHigh('Sets long movement drift.', 'keep material centered', 'add slower wandering instability', [dn('Degrade', 'Drift')]),
+  degradeNoise: lowHigh('Sets media noise.', 'keep the floor cleaner', 'add more hiss and grain', [dn('Degrade', 'Noise')]),
+  degradeHp: lowHigh('Sets Degrade high-pass.', 'keep more low body', 'thin the low end more', [dn('Degrade', 'HP')]),
+  degradeLp: lowHigh('Sets Degrade low-pass.', 'darken the path', 'keep more top end', [dn('Degrade', 'LP')]),
+  degradeTone: lowHigh('Tilts Degrade tone.', 'favor a darker worn edge', 'favor brighter presence', [dn('Degrade', 'Tone')]),
+  degradeSaturation: lowHigh('Sets Degrade-path clipping.', 'keep the damaged path cleaner', 'add more internal soft clipping', [dn('Degrade', 'Clip')]),
+  degradeCorrosion: lowHigh('Sets degraded edge.', 'keep distortion smoother', 'add more broken alias-like edge', [dn('Degrade', 'Corrosion')]),
+  dynamicsSaturationDrive: lowHigh('Sets Dynamics master saturation drive.', 'leave the bus cleaner', 'push harder into the selected saturation color', [dn('Saturation', 'Drive')]),
+  dynamicsSaturationTone: lowHigh('Sets Dynamics saturation tone.', 'tilt the saturated bus darker', 'tilt the saturated bus brighter', [dn('Saturation', 'Tone')]),
+  masterSatDrive: lowHigh('Sets Delay-page master saturation drive.', 'keep the master saturation clean', 'push harder into the selected saturation shape', [dn('Delay', 'Drive')]),
+  masterSatTone: lowHigh('Sets Delay-page master saturation tone.', 'tilt the saturated path darker', 'tilt the saturated path brighter', [dn('Delay', 'Sat Tone')]),
+};
+
 const granularVoiceBase = {
   Slice: entry('Chooses which slice of the shared buffer this voice reads from.', 'Low values keep the voice anchored to earlier slices. High values move it to later slices and therefore different source material.', []),
   Speed: entry('Sets this granular voice playback speed.', 'Low values slow the voice down and stretch it. High values make it move faster through the buffer.', []),
@@ -1892,6 +1957,7 @@ export const SLIDER_HELP_CATALOG: Record<string, SliderHelpEntry> = {
   ...granularEntries,
   ...granularVoiceEntries,
   ...earthEntries,
+  ...dynamicsEntries,
   ...buildDrumEntries(),
 };
 

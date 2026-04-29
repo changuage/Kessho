@@ -1,0 +1,1496 @@
+{
+  "name": "Abyss Water",
+  "size": 870,
+  "modules": [
+    {
+      "number": 0,
+      "mod_idx": 45,
+      "type": "Value",
+      "category": "CV",
+      "name": "rate",
+      "version": 0,
+      "page": 0,
+      "position": 0,
+      "color": "Red",
+      "params_count": 1,
+      "params_raw": [
+        30583
+      ],
+      "params_norm": [
+        0.4667
+      ],
+      "options": {
+        "output": "0 to 1"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 1,
+      "mod_idx": 81,
+      "type": "Pixel",
+      "category": "Interface",
+      "name": "",
+      "version": 0,
+      "page": 0,
+      "position": 1,
+      "color": "Magenta",
+      "params_count": 1,
+      "params_raw": [
+        0
+      ],
+      "params_norm": [
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 2,
+      "mod_idx": 45,
+      "type": "Value",
+      "category": "CV",
+      "name": "lpg",
+      "version": 0,
+      "page": 0,
+      "position": 3,
+      "color": "Magenta",
+      "params_count": 1,
+      "params_raw": [
+        54613
+      ],
+      "params_norm": [
+        0.8333
+      ],
+      "options": {
+        "output": "0 to 1"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 3,
+      "mod_idx": 81,
+      "type": "Pixel",
+      "category": "Interface",
+      "name": "",
+      "version": 0,
+      "page": 0,
+      "position": 4,
+      "color": "Magenta",
+      "params_count": 1,
+      "params_raw": [
+        0
+      ],
+      "params_norm": [
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 4,
+      "mod_idx": 45,
+      "type": "Value",
+      "category": "CV",
+      "name": "resonance",
+      "version": 0,
+      "page": 0,
+      "position": 6,
+      "color": "Red",
+      "params_count": 1,
+      "params_raw": [
+        31129
+      ],
+      "params_norm": [
+        0.475
+      ],
+      "options": {
+        "output": "0 to 1"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 5,
+      "mod_idx": 81,
+      "type": "Pixel",
+      "category": "Interface",
+      "name": "",
+      "version": 0,
+      "page": 0,
+      "position": 7,
+      "color": "Magenta",
+      "params_count": 1,
+      "params_raw": [
+        0
+      ],
+      "params_norm": [
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 6,
+      "mod_idx": 45,
+      "type": "Value",
+      "category": "CV",
+      "name": "damp",
+      "version": 0,
+      "page": 0,
+      "position": 16,
+      "color": "Yellow",
+      "params_count": 1,
+      "params_raw": [
+        21845
+      ],
+      "params_norm": [
+        0.3333
+      ],
+      "options": {
+        "output": "0 to 1"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 7,
+      "mod_idx": 81,
+      "type": "Pixel",
+      "category": "Interface",
+      "name": "",
+      "version": 0,
+      "page": 0,
+      "position": 17,
+      "color": "Magenta",
+      "params_count": 1,
+      "params_raw": [
+        0
+      ],
+      "params_norm": [
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 8,
+      "mod_idx": 45,
+      "type": "Value",
+      "category": "CV",
+      "name": "mix",
+      "version": 0,
+      "page": 0,
+      "position": 19,
+      "color": "White",
+      "params_count": 1,
+      "params_raw": [
+        65535
+      ],
+      "params_norm": [
+        1.0
+      ],
+      "options": {
+        "output": "0 to 1"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 9,
+      "mod_idx": 81,
+      "type": "Pixel",
+      "category": "Interface",
+      "name": "",
+      "version": 0,
+      "page": 0,
+      "position": 20,
+      "color": "Magenta",
+      "params_count": 1,
+      "params_raw": [
+        0
+      ],
+      "params_norm": [
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 10,
+      "mod_idx": 45,
+      "type": "Value",
+      "category": "CV",
+      "name": "freq bias",
+      "version": 0,
+      "page": 0,
+      "position": 22,
+      "color": "Green",
+      "params_count": 1,
+      "params_raw": [
+        65535
+      ],
+      "params_norm": [
+        1.0
+      ],
+      "options": {
+        "output": "0 to 1"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 11,
+      "mod_idx": 81,
+      "type": "Pixel",
+      "category": "Interface",
+      "name": "",
+      "version": 0,
+      "page": 0,
+      "position": 23,
+      "color": "Magenta",
+      "params_count": 1,
+      "params_raw": [
+        0
+      ],
+      "params_norm": [
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 12,
+      "mod_idx": 45,
+      "type": "Value",
+      "category": "CV",
+      "name": "depth",
+      "version": 0,
+      "page": 0,
+      "position": 32,
+      "color": "Aqua",
+      "params_count": 1,
+      "params_raw": [
+        21845
+      ],
+      "params_norm": [
+        0.3333
+      ],
+      "options": {
+        "output": "0 to 1"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 13,
+      "mod_idx": 81,
+      "type": "Pixel",
+      "category": "Interface",
+      "name": "",
+      "version": 0,
+      "page": 0,
+      "position": 33,
+      "color": "Magenta",
+      "params_count": 1,
+      "params_raw": [
+        0
+      ],
+      "params_norm": [
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 14,
+      "mod_idx": 45,
+      "type": "Value",
+      "category": "CV",
+      "name": "volume",
+      "version": 0,
+      "page": 0,
+      "position": 35,
+      "color": "Blue",
+      "params_count": 1,
+      "params_raw": [
+        52974
+      ],
+      "params_norm": [
+        0.8083
+      ],
+      "options": {
+        "output": "0 to 1"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 15,
+      "mod_idx": 81,
+      "type": "Pixel",
+      "category": "Interface",
+      "name": "",
+      "version": 0,
+      "page": 0,
+      "position": 36,
+      "color": "Magenta",
+      "params_count": 1,
+      "params_raw": [
+        0
+      ],
+      "params_norm": [
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 16,
+      "mod_idx": 5,
+      "type": "LFO",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 1,
+      "position": 0,
+      "color": "Red",
+      "params_count": 1,
+      "params_raw": [
+        0
+      ],
+      "params_norm": [
+        0.0
+      ],
+      "options": {
+        "waveform": "square",
+        "swing_control": "off",
+        "output": "0 to 1",
+        "input": "cv",
+        "phase_input": "off",
+        "phase_reset": "off"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 17,
+      "mod_idx": 46,
+      "type": "CV Delay",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 1,
+      "position": 2,
+      "color": "Yellow",
+      "params_count": 2,
+      "params_raw": [
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 18,
+      "mod_idx": 39,
+      "type": "Random",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 1,
+      "position": 10,
+      "color": "Red",
+      "params_count": 1,
+      "params_raw": [
+        0
+      ],
+      "params_norm": [
+        0.0
+      ],
+      "options": {
+        "raw_opt_1": 1
+      },
+      "options_raw": [
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 19,
+      "mod_idx": 39,
+      "type": "Random",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 1,
+      "position": 12,
+      "color": "Aqua",
+      "params_count": 1,
+      "params_raw": [
+        0
+      ],
+      "params_norm": [
+        0.0
+      ],
+      "options": {
+        "raw_opt_1": 1
+      },
+      "options_raw": [
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 20,
+      "mod_idx": 48,
+      "type": "CV Filter",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 1,
+      "position": 16,
+      "color": "Magenta",
+      "params_count": 2,
+      "params_raw": [
+        0,
+        29840
+      ],
+      "params_norm": [
+        0.0,
+        0.4553
+      ],
+      "options": {
+        "control": "linked"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 21,
+      "mod_idx": 22,
+      "type": "Multiplier",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 1,
+      "position": 19,
+      "color": "Magenta",
+      "params_count": 2,
+      "params_raw": [
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 22,
+      "mod_idx": 12,
+      "type": "Env Follower",
+      "category": "Analysis",
+      "name": "",
+      "version": 0,
+      "page": 1,
+      "position": 24,
+      "color": "Blue",
+      "params_count": 2,
+      "params_raw": [
+        30641,
+        8087
+      ],
+      "params_norm": [
+        0.4676,
+        0.1234
+      ],
+      "options": {
+        "raw_opt_0": 1
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 23,
+      "mod_idx": 48,
+      "type": "CV Filter",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 1,
+      "position": 28,
+      "color": "White",
+      "params_count": 3,
+      "params_raw": [
+        0,
+        0,
+        26440
+      ],
+      "params_norm": [
+        0.0,
+        0.0,
+        0.4034
+      ],
+      "options": {
+        "control": "separate"
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 24,
+      "mod_idx": 22,
+      "type": "Multiplier",
+      "category": "CV",
+      "name": "",
+      "version": 0,
+      "page": 1,
+      "position": 32,
+      "color": "Magenta",
+      "params_count": 2,
+      "params_raw": [
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0
+      ],
+      "options": {},
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 25,
+      "mod_idx": 1,
+      "type": "Audio Input",
+      "category": "Interface",
+      "name": "",
+      "version": 0,
+      "page": 2,
+      "position": 0,
+      "color": "White",
+      "params_count": 0,
+      "params_raw": [],
+      "params_norm": [],
+      "options": {
+        "channels": "stereo"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 26,
+      "mod_idx": 2,
+      "type": "Audio Output",
+      "category": "Interface",
+      "name": "",
+      "version": 0,
+      "page": 2,
+      "position": 5,
+      "color": "Aqua",
+      "params_count": 1,
+      "params_raw": [
+        48062
+      ],
+      "params_norm": [
+        0.7334
+      ],
+      "options": {
+        "gain_control": "on",
+        "channels": "stereo"
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 27,
+      "mod_idx": 53,
+      "type": "Stereo Spread",
+      "category": "Audio",
+      "name": "",
+      "version": 0,
+      "page": 2,
+      "position": 8,
+      "color": "Red",
+      "params_count": 1,
+      "params_raw": [
+        0
+      ],
+      "params_norm": [
+        0.0
+      ],
+      "options": {
+        "raw_opt_0": 1
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 28,
+      "mod_idx": 53,
+      "type": "Stereo Spread",
+      "category": "Audio",
+      "name": "",
+      "version": 0,
+      "page": 2,
+      "position": 12,
+      "color": "Red",
+      "params_count": 1,
+      "params_raw": [
+        0
+      ],
+      "params_norm": [
+        0.0
+      ],
+      "options": {
+        "raw_opt_0": 1
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 29,
+      "mod_idx": 24,
+      "type": "Multi Filter",
+      "category": "Audio",
+      "name": "",
+      "version": 0,
+      "page": 2,
+      "position": 16,
+      "color": "Green",
+      "params_count": 2,
+      "params_raw": [
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0
+      ],
+      "options": {
+        "filter_shape": "lowpass"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 30,
+      "mod_idx": 24,
+      "type": "Multi Filter",
+      "category": "Audio",
+      "name": "",
+      "version": 0,
+      "page": 2,
+      "position": 20,
+      "color": "Blue",
+      "params_count": 2,
+      "params_raw": [
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0
+      ],
+      "options": {
+        "filter_shape": "lowpass"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 31,
+      "mod_idx": 24,
+      "type": "Multi Filter",
+      "category": "Audio",
+      "name": "",
+      "version": 0,
+      "page": 2,
+      "position": 24,
+      "color": "Green",
+      "params_count": 2,
+      "params_raw": [
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0
+      ],
+      "options": {
+        "filter_shape": "lowpass"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 32,
+      "mod_idx": 24,
+      "type": "Multi Filter",
+      "category": "Audio",
+      "name": "",
+      "version": 0,
+      "page": 2,
+      "position": 28,
+      "color": "Blue",
+      "params_count": 2,
+      "params_raw": [
+        0,
+        0
+      ],
+      "params_norm": [
+        0.0,
+        0.0
+      ],
+      "options": {
+        "filter_shape": "lowpass"
+      },
+      "options_raw": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 33,
+      "mod_idx": 64,
+      "type": "Audio Balance",
+      "category": "Audio",
+      "name": "",
+      "version": 0,
+      "page": 2,
+      "position": 32,
+      "color": "Red",
+      "params_count": 1,
+      "params_raw": [
+        0
+      ],
+      "params_norm": [
+        0.0
+      ],
+      "options": {
+        "stereo": "stereo"
+      },
+      "options_raw": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 34,
+      "mod_idx": 11,
+      "type": "OD & Distortion",
+      "category": "Effect",
+      "name": "",
+      "version": 0,
+      "page": 3,
+      "position": 0,
+      "color": "Aqua",
+      "params_count": 2,
+      "params_raw": [
+        6135,
+        53669
+      ],
+      "params_norm": [
+        0.0936,
+        0.8189
+      ],
+      "options": {
+        "raw_opt_0": 3
+      },
+      "options_raw": [
+        3,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 35,
+      "mod_idx": 11,
+      "type": "OD & Distortion",
+      "category": "Effect",
+      "name": "",
+      "version": 0,
+      "page": 3,
+      "position": 4,
+      "color": "Aqua",
+      "params_count": 2,
+      "params_raw": [
+        6135,
+        53669
+      ],
+      "params_norm": [
+        0.0936,
+        0.8189
+      ],
+      "options": {
+        "raw_opt_0": 3
+      },
+      "options_raw": [
+        3,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "number": 36,
+      "mod_idx": 23,
+      "type": "Compressor",
+      "category": "Effect",
+      "name": "",
+      "version": 0,
+      "page": 3,
+      "position": 8,
+      "color": "Yellow",
+      "params_count": 4,
+      "params_raw": [
+        36888,
+        32768,
+        32564,
+        7000
+      ],
+      "params_norm": [
+        0.5629,
+        0.5,
+        0.4969,
+        0.1068
+      ],
+      "options": {
+        "raw_opt_0": 1,
+        "raw_opt_1": 1,
+        "raw_opt_2": 1,
+        "raw_opt_3": 1
+      },
+      "options_raw": [
+        1,
+        1,
+        1,
+        1,
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "source": "0.cv_output",
+      "destination": "16.cv_control",
+      "strength": 100,
+      "source_mod": 0,
+      "dest_mod": 16
+    },
+    {
+      "source": "2.cv_output",
+      "destination": "24.block_1",
+      "strength": 100,
+      "source_mod": 2,
+      "dest_mod": 24
+    },
+    {
+      "source": "4.cv_output",
+      "destination": "29.q",
+      "strength": 90,
+      "source_mod": 4,
+      "dest_mod": 29
+    },
+    {
+      "source": "4.cv_output",
+      "destination": "30.q",
+      "strength": 90,
+      "source_mod": 4,
+      "dest_mod": 30
+    },
+    {
+      "source": "4.cv_output",
+      "destination": "31.q",
+      "strength": 90,
+      "source_mod": 4,
+      "dest_mod": 31
+    },
+    {
+      "source": "4.cv_output",
+      "destination": "32.q",
+      "strength": 90,
+      "source_mod": 4,
+      "dest_mod": 32
+    },
+    {
+      "source": "6.cv_output",
+      "destination": "20.time_constant",
+      "strength": 88,
+      "source_mod": 6,
+      "dest_mod": 20
+    },
+    {
+      "source": "8.cv_output",
+      "destination": "33.mix",
+      "strength": 100,
+      "source_mod": 8,
+      "dest_mod": 33
+    },
+    {
+      "source": "10.cv_output",
+      "destination": "29.frequency",
+      "strength": 88,
+      "source_mod": 10,
+      "dest_mod": 29
+    },
+    {
+      "source": "10.cv_output",
+      "destination": "30.frequency",
+      "strength": 88,
+      "source_mod": 10,
+      "dest_mod": 30
+    },
+    {
+      "source": "10.cv_output",
+      "destination": "31.frequency",
+      "strength": 88,
+      "source_mod": 10,
+      "dest_mod": 31
+    },
+    {
+      "source": "10.cv_output",
+      "destination": "32.frequency",
+      "strength": 88,
+      "source_mod": 10,
+      "dest_mod": 32
+    },
+    {
+      "source": "12.cv_output",
+      "destination": "21.block_1",
+      "strength": 100,
+      "source_mod": 12,
+      "dest_mod": 21
+    },
+    {
+      "source": "14.cv_output",
+      "destination": "26.gain",
+      "strength": 86,
+      "source_mod": 14,
+      "dest_mod": 26
+    },
+    {
+      "source": "16.output",
+      "destination": "17.block_0",
+      "strength": 100,
+      "source_mod": 16,
+      "dest_mod": 17
+    },
+    {
+      "source": "16.output",
+      "destination": "18.block_0",
+      "strength": 100,
+      "source_mod": 16,
+      "dest_mod": 18
+    },
+    {
+      "source": "17.block_2",
+      "destination": "19.block_0",
+      "strength": 100,
+      "source_mod": 17,
+      "dest_mod": 19
+    },
+    {
+      "source": "18.block_1",
+      "destination": "17.block_1",
+      "strength": 87,
+      "source_mod": 18,
+      "dest_mod": 17
+    },
+    {
+      "source": "19.block_1",
+      "destination": "20.cv_input",
+      "strength": 100,
+      "source_mod": 19,
+      "dest_mod": 20
+    },
+    {
+      "source": "20.cv_output",
+      "destination": "21.block_0",
+      "strength": 100,
+      "source_mod": 20,
+      "dest_mod": 21
+    },
+    {
+      "source": "21.block_8",
+      "destination": "27.block_3",
+      "strength": 100,
+      "source_mod": 21,
+      "dest_mod": 27
+    },
+    {
+      "source": "21.block_8",
+      "destination": "28.block_3",
+      "strength": 100,
+      "source_mod": 21,
+      "dest_mod": 28
+    },
+    {
+      "source": "22.block_3",
+      "destination": "23.cv_input",
+      "strength": 103,
+      "source_mod": 22,
+      "dest_mod": 23
+    },
+    {
+      "source": "23.cv_output",
+      "destination": "24.block_0",
+      "strength": 100,
+      "source_mod": 23,
+      "dest_mod": 24
+    },
+    {
+      "source": "24.block_8",
+      "destination": "29.frequency",
+      "strength": 100,
+      "source_mod": 24,
+      "dest_mod": 29
+    },
+    {
+      "source": "24.block_8",
+      "destination": "30.frequency",
+      "strength": 100,
+      "source_mod": 24,
+      "dest_mod": 30
+    },
+    {
+      "source": "24.block_8",
+      "destination": "31.frequency",
+      "strength": 100,
+      "source_mod": 24,
+      "dest_mod": 31
+    },
+    {
+      "source": "24.block_8",
+      "destination": "32.frequency",
+      "strength": 100,
+      "source_mod": 24,
+      "dest_mod": 32
+    },
+    {
+      "source": "25.output_L",
+      "destination": "22.block_0",
+      "strength": 100,
+      "source_mod": 25,
+      "dest_mod": 22
+    },
+    {
+      "source": "25.output_L",
+      "destination": "27.block_0",
+      "strength": 100,
+      "source_mod": 25,
+      "dest_mod": 27
+    },
+    {
+      "source": "25.output_R",
+      "destination": "28.block_0",
+      "strength": 100,
+      "source_mod": 25,
+      "dest_mod": 28
+    },
+    {
+      "source": "27.block_4",
+      "destination": "33.audio_in_1_L",
+      "strength": 100,
+      "source_mod": 27,
+      "dest_mod": 33
+    },
+    {
+      "source": "27.block_5",
+      "destination": "29.audio_in",
+      "strength": 100,
+      "source_mod": 27,
+      "dest_mod": 29
+    },
+    {
+      "source": "28.block_4",
+      "destination": "33.audio_in_1_R",
+      "strength": 100,
+      "source_mod": 28,
+      "dest_mod": 33
+    },
+    {
+      "source": "28.block_5",
+      "destination": "31.audio_in",
+      "strength": 100,
+      "source_mod": 28,
+      "dest_mod": 31
+    },
+    {
+      "source": "29.audio_out",
+      "destination": "30.audio_in",
+      "strength": 100,
+      "source_mod": 29,
+      "dest_mod": 30
+    },
+    {
+      "source": "30.audio_out",
+      "destination": "33.audio_in_2_L",
+      "strength": 100,
+      "source_mod": 30,
+      "dest_mod": 33
+    },
+    {
+      "source": "31.audio_out",
+      "destination": "32.audio_in",
+      "strength": 100,
+      "source_mod": 31,
+      "dest_mod": 32
+    },
+    {
+      "source": "32.audio_out",
+      "destination": "33.audio_in_2_R",
+      "strength": 100,
+      "source_mod": 32,
+      "dest_mod": 33
+    },
+    {
+      "source": "33.audio_out_L",
+      "destination": "36.block_0",
+      "strength": 100,
+      "source_mod": 33,
+      "dest_mod": 36
+    },
+    {
+      "source": "33.audio_out_R",
+      "destination": "36.block_1",
+      "strength": 100,
+      "source_mod": 33,
+      "dest_mod": 36
+    },
+    {
+      "source": "34.block_2",
+      "destination": "26.input_L",
+      "strength": 100,
+      "source_mod": 34,
+      "dest_mod": 26
+    },
+    {
+      "source": "35.block_2",
+      "destination": "26.input_R",
+      "strength": 100,
+      "source_mod": 35,
+      "dest_mod": 26
+    },
+    {
+      "source": "36.block_6",
+      "destination": "34.block_0",
+      "strength": 100,
+      "source_mod": 36,
+      "dest_mod": 34
+    },
+    {
+      "source": "36.block_7",
+      "destination": "35.block_0",
+      "strength": 100,
+      "source_mod": 36,
+      "dest_mod": 35
+    }
+  ],
+  "pages": [
+    "",
+    "",
+    ""
+  ],
+  "meta": {
+    "n_modules": 37,
+    "n_connections": 45,
+    "n_pages": 3,
+    "cpu": 45.5
+  }
+}

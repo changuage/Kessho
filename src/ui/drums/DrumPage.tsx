@@ -103,8 +103,12 @@ export interface DrumPageProps {
   evolvedOverrides?: { laneIndex: number; version: number; data: Partial<StepOverrides> };
   /** Called when per-lane clock divisions change */
   onClockDivsChange?: (divs: ClockDivision[]) => void;
+  initialClockDivs?: ClockDivision[];
   /** Called when per-lane swing amounts change */
   onSwingsChange?: (swings: number[]) => void;
+  initialSwings?: number[];
+  onLinkedChange?: (linked: boolean[]) => void;
+  initialLinked?: boolean[];
   /** Initial simple sequencer state to restore across tab switches */
   initialSeqSimpleState?: SeqSimpleState;
   /** Called when simple sequencer state changes */
@@ -137,7 +141,11 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     initialViewMode,
     onViewModeChange,
     onClockDivsChange,
+    initialClockDivs,
     onSwingsChange,
+    initialSwings,
+    onLinkedChange,
+    initialLinked,
   } = props;
   const onStateChange = props.onStateChange;
   const evolvedOverrides = props.evolvedOverrides;
@@ -199,6 +207,9 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     initialViewMode,
     initialStepOverrides,
     initialSubLaneStates,
+    initialClockDivs,
+    initialSwings,
+    initialLinked,
     initialEvolveConfigs,
     resetKey: presetVersion,
   });
@@ -383,6 +394,14 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
       onSwingsChange?.(seq.swings);
     }
   }, [seq.swings, onSwingsChange]);
+
+  const linkedRef = useRef(seq.linked);
+  useEffect(() => {
+    if (linkedRef.current !== seq.linked) {
+      linkedRef.current = seq.linked;
+      onLinkedChange?.(seq.linked);
+    }
+  }, [seq.linked, onLinkedChange]);
 
   const activeSeq = seq.activeSeq;
   const activeKeyboardLane = getDrumKeyboardLane(seq.openLane);
@@ -660,8 +679,8 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     <div className="drum-root">
       <div className="container">
         {/* ═══ Drums Source Preset (L3) ═══ */}
-        <div className="drums-source-preset-bar" style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '6px 10px', marginBottom: 4, borderRadius: 8, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>
-          <span style={{ fontSize: 12, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>Drums Source</span>
+        <div className="drums-source-preset-bar">
+          <span className="drums-source-preset-label">Drums Source</span>
           <PresetDropdown
             level="source"
             scope="drums"
@@ -794,8 +813,8 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
           </div>
 
           {/* Shared Euclidean pattern preset */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', marginBottom: 4, borderRadius: 6, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-            <span style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>Pattern</span>
+          <div className="drums-pattern-preset-bar">
+            <span className="drums-pattern-preset-label">Pattern</span>
             <PresetDropdown
               level="engine"
               scope="euclideanPattern"

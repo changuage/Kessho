@@ -64,6 +64,36 @@ export function buildPresetVersionMetadata(
     hasMetadata = true;
   }
 
+  if (source.drumClockDivs && source.drumClockDivs.length > 0) {
+    metadata.drumClockDivs = cloneJson(source.drumClockDivs);
+    hasMetadata = true;
+  }
+
+  if (source.synthClockDivs && source.synthClockDivs.length > 0) {
+    metadata.synthClockDivs = cloneJson(source.synthClockDivs);
+    hasMetadata = true;
+  }
+
+  if (source.drumSwings && source.drumSwings.length > 0) {
+    metadata.drumSwings = cloneJson(source.drumSwings);
+    hasMetadata = true;
+  }
+
+  if (source.synthSwings && source.synthSwings.length > 0) {
+    metadata.synthSwings = cloneJson(source.synthSwings);
+    hasMetadata = true;
+  }
+
+  if (source.drumLinked && source.drumLinked.length > 0) {
+    metadata.drumLinked = cloneJson(source.drumLinked);
+    hasMetadata = true;
+  }
+
+  if (source.synthLinked && source.synthLinked.length > 0) {
+    metadata.synthLinked = cloneJson(source.synthLinked);
+    hasMetadata = true;
+  }
+
   if (source.drumSubLaneStates && source.drumSubLaneStates.length > 0) {
     metadata.drumSubLaneStates = cloneJson(source.drumSubLaneStates);
     hasMetadata = true;
@@ -71,6 +101,11 @@ export function buildPresetVersionMetadata(
 
   if (source.synthSubLaneStates && source.synthSubLaneStates.length > 0) {
     metadata.synthSubLaneStates = cloneJson(source.synthSubLaneStates);
+    hasMetadata = true;
+  }
+
+  if (source.synthPitchSettings && source.synthPitchSettings.length > 0) {
+    metadata.synthPitchSettings = cloneJson(source.synthPitchSettings);
     hasMetadata = true;
   }
 

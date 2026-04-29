@@ -1988,3 +1988,102 @@
   .synth-root .seq-ov-controls .seq-drag-num-label { font-size: 0.45rem; }
   .synth-root .seq-pitch-controls select { font-size: 0.6rem; padding: 2px 4px; max-width: 80px; min-height: 28px; }
 }
+
+/* Unified surface pass: match Granular/Reverb section-card aesthetics. */
+.synth-root .synth-source-preset-bar,
+.synth-root .seq-transport,
+.synth-root .synth-keyboard-panel,
+.synth-root .synth-simple-section {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
+}
+
+.synth-root .synth-source-preset-bar {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+}
+
+.synth-root .synth-source-preset-label {
+  color: var(--text-secondary);
+  font-size: var(--font-xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.synth-root .seq-transport {
+  border-radius: var(--radius-md);
+}
+
+.synth-root .synth-card {
+  background: var(--bg-surface);
+  border: 1px solid color-mix(in srgb, var(--sc, var(--accent-primary)) 16%, rgba(255,255,255,0.08));
+  border-left: 1px solid color-mix(in srgb, var(--sc, var(--accent-primary)) 16%, rgba(255,255,255,0.08));
+  border-radius: var(--radius-md);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
+  margin-bottom: 8px;
+}
+
+.synth-root .synth-card.editing {
+  border-color: color-mix(in srgb, var(--sc, var(--accent-primary)) 26%, rgba(255,255,255,0.1));
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.02),
+    0 0 0 1px color-mix(in srgb, var(--sc, var(--accent-primary)) 8%, transparent);
+}
+
+.synth-root .synth-card-header {
+  padding: 9px 12px 8px;
+  background: rgba(255,255,255,0.035);
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.synth-root .synth-card-header:hover {
+  background: rgba(255,255,255,0.055);
+}
+
+.synth-root .sc-name {
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  letter-spacing: 0.3px;
+}
+
+.synth-root .synth-card-simple,
+.synth-root .synth-card-tier2,
+.synth-root .synth-card-advanced {
+  background: transparent;
+}
+
+.synth-root .synth-card-simple,
+.synth-root .synth-card-advanced {
+  padding: 10px 12px 12px;
+}
+
+.synth-root .synth-card-tier2 {
+  padding: 8px 12px 12px;
+  border-top-color: rgba(255,255,255,0.08);
+}
+
+.synth-root .synth-card-advanced {
+  border-top-color: rgba(255,255,255,0.08);
+}
+
+.synth-root .sc-advanced-section {
+  background: rgba(255,255,255,0.025);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: var(--radius-md);
+}
+
+.synth-root .sc-enable-btn,
+.synth-root .sc-edit-btn,
+.synth-root .sc-tier-btn,
+.synth-root .sc-toggle-btn,
+.synth-root .synth-keyboard-toggle {
+  border-radius: var(--radius-sm);
+}

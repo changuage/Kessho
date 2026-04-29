@@ -1,0 +1,165 @@
+Is it indistinguishable from a CBA Generation Loss? Nope. But it will certainly get you in the territory of the rather famous, limited run collaboration between Cooper FX and Chase Bliss, which is now seeing exorbitant second-hand prices. And it’s in stereo.
+
+=== Degenerate Gain V3.1 patch notes ===
+
+Optimized for ZOIA.
+
+The Degenerate Gain V3 I used for the Zebu factory patches allowed for an interesting routing option:  any of the CV inputs could be directed to any of the controls via a modulation bus.
+
+I wanted to recreate that option for ZOIA, which meant creating modulation options within the patch.
+
+So, V3.1 has the following modulation options (selected by UI button below the depth control for each parameter; the modulation routings are saved with the patch):
+
+- Tap-tempo looped envelope (lime).  The tap-tempo can be defeated by using an internal rate control (on the bottom row).  Shape can be set from sawtooth to triangle to ramp and points inbetween.  Setting the rate to a negative amount will multiply the shape, producing exponentially curved variations.
+
+- Tap-tempo controlled square LFO (aqua).  The tap tempo can be defeated by using the internal rate control (on the bottom row).
+
+- Clocked random (clocked by the square wave LFO) (blue).  A filter control on the bottom row allows the random values to be smoothed.
+
+- Digital noise (purple).
+
+- Envelope follower (pink).  The envelope follower has a filter control on the bottom row that allows it to be shaped, adding attack and release.
+
+- Ramp/expression pedal (white).  Using the right stompswitch, you can manually ramp a parameter.  There is a rate control for the ramp on the bottom row, so you can control how quickly the ramping occurs.  By default, the ramp is set to momentary, but the stompswitch that controls this is on page 9.
+
+There are also other changes:
+
+- The flutter control has been entirely reworked.  The general idea of a near-audio rate vibrato is still intact, but the control now goes from slower to faster vibrato as the flutter control is increased, as well as the intensity (depth) of the vibrato.  A setting of ~.5000 places the flutter at the original setting used in previous iterations of the patch.
+
+- The flutter vibrato can be replaced with a noise flutter (this is similar to the "Tape age" control I have included on some other patches).  There is a pushbutton to effect this change on the bottom row.
+
+- The resonance for the filters has been moved to the control page.  A setting of ~.5000 sets the resonance at the original setting used in previous iterations of the patch.
+
+- The wet level has been given a +3dB boost, as so many of the controls have an effect on overall gain.
+
+- When set to 0.0000, the Wow vibrato will be replaced with the modulation source routed to it, allowing for things like triangle wave modulation (more like a traditional vibrato), a different approach to random modulation (via the clocked random source), or enveloped vibrato (using the envelope follower), etc..
+
+- Various minor internal changes.
+
+=== Original patch notes continued below ===
+
+Some definite differences:
+
+— Flutter at low levels I think sounds pretty close, but it doesn’t have the “timbral changes” of its inspiration at high levels. This may be a product of the use of stereo spreads in lieu of actual delay lines (I made use of the linearly modulated delay line I had at hand); if a subsequent firmware makes linearly modulated delay lines available, I would be enthusiastic to take another stab at this. For now, though, I think it is what it is.
+
+— Likewise, with Wow, any “random” modulation is complex and difficult to emulate exactly, and once again, I felt some limitation from my options for delay lines. I think I may have overshot the speed at the highest settings.
+
+— Instead of a three-way toggle for dry level, it’s a simple control. This was a CPU casualty that I was happy to make. None would be a value of 0, “some” a value of .5, and unity is at 1.
+
+— Noise is simply white noise. Another CPU casualty. My original concept passed the white noise through a dedicated flutter signal path, and the difference was real but also quite subtle. You can still pass white noise through the flutter used in the rest of the signal path, if that control is active.
+
+On the other hand:
+
+— Wet level is modulatable, which allows for some interesting tremolo and tremo-chorus effects when combined with the dry signal.
+
+— Although perhaps every bit as arcane as CBA’s dipswitches can be (see the note on “Modulation and depth”), the depth control for every modulatable parameter allows you to tailor your sound much more particularly.
+
+Let me know what you think; this isn’t a “work-in-progress” patch, but I have a feeling I may revise it at some future point, especially if certain proposals are implemented (c’mon linearly modulated delay lines!), so constructive feedback is welcome.
+
+Audio is stereo throughout.
+
+A special thanks to my patrons on Patreon for their support: Rob Flax, Stepan Grammatik, brockstar, Mats Unnerholm, D Sing, Will Scott, drew batchelor, Miguel, Steve Bragg, Joab Eastley, Tomi Kokki, Mitch Lantz, Ben Norland, Daniel Morris, Roman Jakobej, Mark Crosbie, Steve Codling, and Timothy Cleary!
+
+If you would like to support my work on ZOIA, please visit patreon.com/chmjacques
+
+Controls:
+
+Stompswitches:
+
+Left, latching — bypasses the filter stage; when the red light nearest the left stompswitch is bright, the filters are bypassed
+
+Middle, latching — bypasses either the gen stage or maxes out the wow and flutter; there is a pushbutton–Gen or Wow-Flut–beside the stompswitch that lets you choose which you would prefer to do
+
+Right, momentary — when the pushbutton–Bounce or Ramp–beside it is set to ramp (the on position, or latched position), this footswitch can be used to ramp parameters to their depth setting
+
+** Note: All of the behaviors of the stompswitches can easily be changed by editing the stompswitch modules. If you want to ramp and hold, for instance, the stompswitch should be set to latching, instead of momentary.
+
+Front panel:
+
+All the major parameters are set up in such a manner that:
+
+Along a center line (second row of the grid), the parameter can be adjusted. The depth of that parameter, which is bipolar (positive or negative) is directly above (white parameters) or below (blue parameters). Adjacent to this (up and to the right for white parameters, down and to the left for blue parameters) is a pushbutton that enables and disables modulation of the parameter.
+
+Modulation and depth:
+
+So, if you wanted to bounce a parameter from its lowest setting to its highest setting, you would set the parameter to 0 and the depth to 1. If you wanted to bounce from the highest setting to the lowest setting, you would set the parameter to 1 and the depth to 0. If you want to modulate between any two settings, the parameter value will set the low point when modulation depth is positive, and the high point when modulation is negative. The depth is regulated so that it never exceeds 0 or 1; if you have the parameter set to .5 and the depth set to -.5, it will not modulate between .5 and 0, but rather .5 and .25 (.5 of .5).
+
+Wow — random pitch modulation; as the control is increased, the modulation becomes deeper and its speed less stable
+
+Flutter — introduces a high-speed pitch modulation that has an effect much like degradation of tape
+
+Wet level — controls the wet level of the patch; can be pushed up to +9 dB; very interactive with gen, HP, and LP
+
+Gen — controls an aliaser which reduces the sampling frequency; at its lowest settings it crushes the signal to smithereens; at higher settings it can add a bit of lo-fi character to a sound
+
+HP — high-pass filter; as it is increased, more low frequencies are attenuated and cut off; slightly resonant
+
+LP — low-pass filter; as it is increased, more high frequencies are allowed to pass; slightly resonant
+
+Dry level — at 1, the dry level is at unity gain
+
+Noise (UI button) — green = no noise, yellow = some noise, white = lots of white noise
+
+Mod rate — determines the rate of bouncing modulation or the attack speed of ramping modulation
+
+Mod shape (pushbutton) — dim = square; lit up = triangle.
+
+A pixel will flash with the modulation, or grow brighter as the ramping footswitch is engaged.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Please read this entire post before commenting/contributing:
+
+We get a lot of questions like "What patch would you recommend for...." or "I am looking for a patch that...."
+
+While I encourage everyone to use Patchstorage, sometimes you can get lost in all of the options and it can take a while to search for what you're looking for.
+
+The purpose of this post is to create a collection of community recommended patches for people who are new to ZOIA (or for any community member who may be looking for new patch to try).
+
+There are comments that describe specific categories (e.g. "Delay:").  Reply to the category comment with your recommendation.
+
+Recommendations must include a brief explanation of what you like about the patch or how you use it; basically, what led you to recommend it (some prompts, "I like using this patch to create..." or "This patch does [X sound] really well..." or "I would recommend this patch if you are looking for...").
+
+Recommendations must also include a Patchstorage link.
+
+Comments without an explanation and a link will be removed.
+
+When making a recommendation, read the entire category thread.  Do not post patches that have already been posted in that category.  Duplicate recommendations will be removed (please, remember, the purpose of this post is to make patch recommendations more accessible and consolidated; duplicate posting defeats this purpose).
+
+If you think a patch fits more than one category, you may recommend it in more than one category, but make sure that your explanation pertains to each category or is modified to the appropriate category.  If you are not sure where to recommend a patch, try for what you think is the best fit.  (There is also an "Other" category for the truly uncategorizable; please, if posting to this category, try to descriptive in your explanation of the patch.)
+
+Do not comment outside of recommendations; if you want to discuss specific patches, please start a new post.  
+
+If you want to show agreement with a recommendation, like that recommendation.  (Although I also encourage you to like recommended patches on Patchstorage as well.)
+
+Delay:
+Reverb:
+Looper, functional:
+Looper, ambient/experimental:
+Gain/distortion:
+Chorus:
+Phaser:
+Vibrato:
+Tremolo:
+Flanger:
+Granular:
+Filter (wah, envelope filter, etc.):
+Multi-effect:
+Synth, MIDI-controlled:
+Synth, generative:
+Synth, sequenced:
+Synth, pitch-tracked:
+Utility:
+Other:

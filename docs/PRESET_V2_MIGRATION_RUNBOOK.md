@@ -170,7 +170,7 @@ select public.kessho_prune_internal_derived_v2() as deleted_internal_children;
 
 Future V2 saves create hidden private child presets automatically when a child payload has no exact saved preset. Those rows are named `__derived__/{scope}/{hash12}`, tagged `internal-derived`, excluded from dropdowns, and reused by content hash across sibling L4/L3/L2 presets.
 
-The child graph is recursive: L4 state presets split into L3/L2 children, L3 source presets split into L2 kits and direct L1 engines, and L2 kits split into their owned L1 engines. That covers pad, lead, drum voice, granular voice, delay, water, and insect engine scopes.
+The child graph is recursive: L4 state presets split into L3/L2 children, L3 source presets split into L2 kits and L1 engines, and L2 kits split into their owned L1 engines. That covers pad, lead, drum voice, granular voice, delay, dynamics sidechain/character/degrade/end-chain engines, water, and insect engine scopes.
 
 Synth and drum source presets can both reference the shared `euclideanPattern` bank when lane-one pattern data matches a seeded pattern. The parent source keeps any drum-specific or synth-specific edits that the shared pattern cannot reconstruct.
 

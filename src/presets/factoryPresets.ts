@@ -20,7 +20,7 @@ import {
   EUCLIDEAN_PATTERN_LABELS,
 } from './euclideanPatternBank';
 
-const FACTORY_LOADED_KEY = 'preset:factory-loaded:v10';
+const FACTORY_LOADED_KEY = 'preset:factory-loaded:v21';
 
 function canUseLocalStorage(): boolean {
   try {
@@ -117,6 +117,22 @@ function getLatestVersionData(entry: PresetEntry): Record<string, unknown> | nul
   const version = current || entry.versions[entry.versions.length - 1];
   if (!version || !version.data || typeof version.data !== 'object') return null;
   return version.data;
+}
+
+function isDynamicsFactoryScope(entry: PresetEntry): boolean {
+  const scope = entry.scope ?? entry.engine ?? entry.source;
+  return scope === 'dynamicsSidechain' ||
+    scope === 'dynamicsCharacter' ||
+    scope === 'dynamicsDegrade' ||
+    scope === 'dynamicsSaturation' ||
+    scope === 'dynamicsEndChain' ||
+    scope === 'dynamics';
+}
+
+function shouldRefreshBundledFactoryEntry(existing: PresetEntry, next: PresetEntry): boolean {
+  return isDynamicsFactoryScope(next) &&
+    existing.library === 'stock' &&
+    existing.author === 'factory';
 }
 
 // ─── Pad factory presets ────────────────────────────────────────────────────
@@ -235,6 +251,62 @@ async function loadDelayFactory(): Promise<PresetEntry[]> {
     }
   } catch (e) {
     console.warn('Failed to load delay factory presets:', e);
+  }
+  return entries;
+}
+
+// ─── Dynamics presets (L1 engines + L3 full page) ─────────────────────────
+
+async function loadDynamicsFactory(): Promise<PresetEntry[]> {
+  const entries: PresetEntry[] = [];
+  try {
+    const {
+      DYNAMICS_CHARACTER_PRESETS,
+      DYNAMICS_DEGRADE_PRESETS,
+      DYNAMICS_END_CHAIN_PRESETS,
+      DYNAMICS_SATURATION_PRESETS,
+      DYNAMICS_SIDECHAIN_PRESETS,
+      DYNAMICS_SOURCE_PRESETS,
+    } = await import('../ui/dynamics/dynamicsPresets');
+
+    for (const [, preset] of Object.entries(DYNAMICS_SIDECHAIN_PRESETS)) {
+      entries.push(makeFactory('engine', preset.name, preset.params, {
+        engine: 'dynamicsSidechain',
+        tags: preset.tags,
+      }));
+    }
+    for (const [, preset] of Object.entries(DYNAMICS_CHARACTER_PRESETS)) {
+      entries.push(makeFactory('engine', preset.name, preset.params, {
+        engine: 'dynamicsCharacter',
+        tags: preset.tags,
+      }));
+    }
+    for (const [, preset] of Object.entries(DYNAMICS_DEGRADE_PRESETS)) {
+      entries.push(makeFactory('engine', preset.name, preset.params, {
+        engine: 'dynamicsDegrade',
+        tags: preset.tags,
+      }));
+    }
+    for (const [, preset] of Object.entries(DYNAMICS_SATURATION_PRESETS)) {
+      entries.push(makeFactory('engine', preset.name, preset.params, {
+        engine: 'dynamicsSaturation',
+        tags: preset.tags,
+      }));
+    }
+    for (const [, preset] of Object.entries(DYNAMICS_END_CHAIN_PRESETS)) {
+      entries.push(makeFactory('engine', preset.name, preset.params, {
+        engine: 'dynamicsEndChain',
+        tags: preset.tags,
+      }));
+    }
+    for (const [, preset] of Object.entries(DYNAMICS_SOURCE_PRESETS)) {
+      entries.push(makeFactory('source', preset.name, preset.params, {
+        source: 'dynamics',
+        tags: preset.tags,
+      }));
+    }
+  } catch (e) {
+    console.warn('Failed to load dynamics factory presets:', e);
   }
   return entries;
 }
@@ -428,12 +500,13 @@ async function loadAllFactoryEntries(): Promise<PresetEntry[]> {
   const seen = new Set<string>();
 
   // Load all sources in parallel
-  const [pad, drum, reverb, water, delay, drumsSource, synthSource, earth, lfo, granular, euclideanPattern, state] = await Promise.all([
+  const [pad, drum, reverb, water, delay, dynamics, drumsSource, synthSource, earth, lfo, granular, euclideanPattern, state] = await Promise.all([
     loadPadFactory(),
     loadDrumFactory(),
     loadReverbFactory(),
     loadWaterFactory(),
     loadDelayFactory(),
+    loadDynamicsFactory(),
     loadDrumsSourceFactory(),
     loadSynthSourceFactory(),
     loadEarthFactory(),
@@ -443,7 +516,7 @@ async function loadAllFactoryEntries(): Promise<PresetEntry[]> {
     loadStateFactory(),
   ]);
 
-  for (const entry of [...pad, ...drum, ...reverb, ...water, ...delay, ...drumsSource, ...synthSource, ...earth, ...lfo, ...granular, ...euclideanPattern, ...state]) {
+  for (const entry of [...pad, ...drum, ...reverb, ...water, ...delay, ...dynamics, ...drumsSource, ...synthSource, ...earth, ...lfo, ...granular, ...euclideanPattern, ...state]) {
     addFactoryEntry(all, seen, entry);
   }
 
@@ -478,9 +551,14 @@ export async function loadFactoryPresets(): Promise<number> {
   // In shared testing mode, only seed missing entries so we never overwrite
   // newer shared presets with an older bundled factory snapshot.
   for (const entry of all) {
-    if (SHARED_PRESET_TEST_MODE) {
-      const scope = entry.scope ?? entry.engine ?? entry.source;
-      if (await store.exists(entry.type, entry.name, scope)) {
+    const scope = entry.scope ?? entry.engine ?? entry.source;
+    if (SHARED_PRESET_TEST_MODE || entry.library === 'stock') {
+      const existing = await store.load(entry.type, entry.name, scope);
+      if (existing) {
+        if (!SHARED_PRESET_TEST_MODE && shouldRefreshBundledFactoryEntry(existing, entry)) {
+          await store.save(entry);
+          savedCount += 1;
+        }
         continue;
       }
     }

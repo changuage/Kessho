@@ -412,3 +412,74 @@
     flex: 1 1 100%;
   }
 }
+
+/* Unified surface pass: match Granular/Reverb section-card aesthetics. */
+.delay-root .delay-source-preset-bar,
+.delay-root .delay-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
+}
+
+.delay-root .delay-source-preset-bar {
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+}
+
+.delay-root .delay-source-preset-label {
+  color: var(--text-secondary);
+  font-size: var(--font-xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.delay-root .delay-card {
+  border-color: color-mix(in srgb, var(--sc, var(--accent-primary)) 16%, rgba(255,255,255,0.08));
+  border-left: 1px solid color-mix(in srgb, var(--sc, var(--accent-primary)) 16%, rgba(255,255,255,0.08));
+  margin-bottom: 8px;
+}
+
+.delay-root .delay-card.expanded {
+  border-color: color-mix(in srgb, var(--sc, var(--accent-primary)) 26%, rgba(255,255,255,0.1));
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.02),
+    0 0 0 1px color-mix(in srgb, var(--sc, var(--accent-primary)) 8%, transparent);
+}
+
+.delay-root .delay-card-header {
+  padding: 9px 12px 8px;
+  background: rgba(255,255,255,0.035);
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.delay-root .delay-card-header:hover {
+  background: rgba(255,255,255,0.055);
+}
+
+.delay-root .delay-card-title {
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  letter-spacing: 0.3px;
+}
+
+.delay-root .delay-card-subtitle {
+  color: var(--text-dim);
+}
+
+.delay-root .delay-card-body {
+  padding: 10px 12px 12px;
+  gap: 10px;
+}
+
+.delay-root .delay-card-body-inner {
+  background: transparent;
+  border-top-color: rgba(255,255,255,0.08);
+}
+
+.delay-root .delay-rhythm-map,
+.delay-root .delay-scope,
+.delay-root .delay-algorithm-card {
+  border-color: rgba(255,255,255,0.08);
+}

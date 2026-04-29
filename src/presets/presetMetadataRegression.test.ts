@@ -2,6 +2,12 @@ import assert from 'node:assert/strict';
 
 import { createLegacyStatePresetEntry } from './fileIO';
 import {
+  hashCanonicalJson,
+  materializePresetVersion,
+  normalizeResolvedVersionData,
+  type PresetVersionV2Row,
+} from './presetStorageV2';
+import {
   buildDerivedStatePresetData,
   extractOptimizedStatePresetData,
 } from './statePresetOptimization';
@@ -44,8 +50,20 @@ function testBuildPresetVersionMetadataIncludesAllSupportedFields(): void {
     synthStepOverrides: {
       triggerToggles: [[{ step: 5, value: true }], [], [], []],
     },
+    drumClockDivs: ['1/8', '1/16', '1/8T', '1/4'],
+    synthClockDivs: ['1/4', '1/8', '1/16', '1/32'],
+    drumSwings: [0, 0.1, 0.2, 0.3],
+    synthSwings: [0.05, 0, 0.15, 0],
+    drumLinked: [false, true, false, true],
+    synthLinked: [true, false, false, true],
     drumSubLaneStates: [{ trigger: { enabled: true, steps: 8, direction: 'forward' } }] as SavedPreset['drumSubLaneStates'],
     synthSubLaneStates: [{ trigger: { enabled: false, steps: 16, direction: 'reverse' } }] as SavedPreset['synthSubLaneStates'],
+    synthPitchSettings: [
+      { mode: 'notes', root: 62, scale: 'Dorian' },
+      { mode: 'semitones', root: 60, scale: 'Major' },
+      { mode: 'noteRange', root: 60, scale: 'Major' },
+      { mode: 'notes', root: 57, scale: 'Minor' },
+    ],
     synthPitchBindingModes: [...SYNTH_BINDING_MODES],
   });
 
@@ -64,8 +82,20 @@ function testBuildPresetVersionMetadataIncludesAllSupportedFields(): void {
     synthStepOverrides: {
       triggerToggles: [[{ step: 5, value: true }], [], [], []],
     },
+    drumClockDivs: ['1/8', '1/16', '1/8T', '1/4'],
+    synthClockDivs: ['1/4', '1/8', '1/16', '1/32'],
+    drumSwings: [0, 0.1, 0.2, 0.3],
+    synthSwings: [0.05, 0, 0.15, 0],
+    drumLinked: [false, true, false, true],
+    synthLinked: [true, false, false, true],
     drumSubLaneStates: [{ trigger: { enabled: true, steps: 8, direction: 'forward' } }],
     synthSubLaneStates: [{ trigger: { enabled: false, steps: 16, direction: 'reverse' } }],
+    synthPitchSettings: [
+      { mode: 'notes', root: 62, scale: 'Dorian' },
+      { mode: 'semitones', root: 60, scale: 'Major' },
+      { mode: 'noteRange', root: 60, scale: 'Major' },
+      { mode: 'notes', root: 57, scale: 'Minor' },
+    ],
     synthPitchBindingModes: [...SYNTH_BINDING_MODES],
   });
 }
@@ -171,13 +201,107 @@ function testOptimizedStatePresetRoundTripKeepsOnlyOverrides(): void {
   assert.equal(roundTrip.state.granularV1Mode, overriddenState.granularV1Mode);
 }
 
-function run(): void {
+function testMaterializedV2VersionPreservesAncillaryMetadata(): void {
+  const metadata = buildPresetVersionMetadata({
+    drumClockDivs: ['1/8', '1/16', '1/4', '1/32T'],
+    synthClockDivs: ['1/4', '1/8', '1/16', '1/32'],
+    drumSwings: [0, 0.1, 0.2, 0.3],
+    synthSwings: [0.05, 0.1, 0, 0.25],
+    drumLinked: [true, false, true, false],
+    synthLinked: [false, true, false, true],
+    drumEvolveConfigs: [{ enabled: true, evolution: 0.4 }] as SavedPreset['drumEvolveConfigs'],
+    synthEvolveConfigs: [{ enabled: true, evolution: 0.8 }] as SavedPreset['synthEvolveConfigs'],
+    drumStepOverrides: {
+      triggerToggles: [[{ step: 9, value: true }], [], [], []],
+    },
+    synthPitchSettings: [
+      { mode: 'notes', root: 64, scale: 'Lydian' },
+      { mode: 'semitones', root: 60, scale: 'Major' },
+      { mode: 'noteRange', root: 60, scale: 'Major' },
+      { mode: 'notes', root: 55, scale: 'Minor' },
+    ],
+    synthPitchBindingModes: [...SYNTH_BINDING_MODES],
+  });
+  assert.ok(metadata, 'test metadata should not be empty');
+
+  const row: PresetVersionV2Row = {
+    id: 'version-id',
+    preset_id: 'preset-id',
+    version_no: 7,
+    created_by: null,
+    parent_version_id: 'parent-version-id',
+    storage_mode: 'checkpoint',
+    note: 'round trip',
+    override_hash: 'override',
+    metadata_hash: 'metadata',
+    patch_from_prev_hash: null,
+    resolved_hash: 'resolved',
+    is_checkpoint: true,
+    created_at: '2026-04-28T00:00:00.000Z',
+  };
+
+  const version = materializePresetVersion(row, { masterVolume: 0.42 }, metadata);
+
+  assert.deepStrictEqual(version.drumClockDivs, metadata.drumClockDivs);
+  assert.deepStrictEqual(version.synthClockDivs, metadata.synthClockDivs);
+  assert.deepStrictEqual(version.drumSwings, metadata.drumSwings);
+  assert.deepStrictEqual(version.synthSwings, metadata.synthSwings);
+  assert.deepStrictEqual(version.drumLinked, metadata.drumLinked);
+  assert.deepStrictEqual(version.synthLinked, metadata.synthLinked);
+  assert.deepStrictEqual(version.drumEvolveConfigs, metadata.drumEvolveConfigs);
+  assert.deepStrictEqual(version.synthEvolveConfigs, metadata.synthEvolveConfigs);
+  assert.deepStrictEqual(version.drumStepOverrides, metadata.drumStepOverrides);
+  assert.deepStrictEqual(version.synthPitchSettings, metadata.synthPitchSettings);
+  assert.deepStrictEqual(version.synthPitchBindingModes, metadata.synthPitchBindingModes);
+}
+
+async function testMetadataOnlyChangeKeepsResolvedHashShared(): Promise<void> {
+  const baseResolved = normalizeResolvedVersionData('state', 'global', {
+    ...DEFAULT_STATE,
+    drumDelayNoteL: '1/4',
+  } as unknown as Record<string, unknown>);
+  const delayRangeResolved = normalizeResolvedVersionData('state', 'global', {
+    ...DEFAULT_STATE,
+    drumDelayNoteL: '1/4',
+  } as unknown as Record<string, unknown>);
+  const baseMetadata = buildPresetVersionMetadata({
+    sliderModes: { drumDelayNoteL: 'walk' },
+    dualRanges: { drumDelayNoteL: { min: 0.8, max: 5 } },
+    drumClockDivs: ['1/8', '1/16', '1/4', '1/32T'],
+    synthClockDivs: ['1/4', '1/8', '1/16', '1/32'],
+    drumLinked: [true, false, true, false],
+    synthLinked: [false, true, false, true],
+    drumEvolveConfigs: [{ enabled: true, evolution: 0.4 }] as SavedPreset['drumEvolveConfigs'],
+  });
+  const delayRangeMetadata = buildPresetVersionMetadata({
+    ...baseMetadata,
+    dualRanges: { drumDelayNoteL: { min: 7, max: 11 } },
+  });
+
+  assert.ok(baseMetadata, 'base metadata should not be empty');
+  assert.ok(delayRangeMetadata, 'changed metadata should not be empty');
+
+  assert.equal(
+    await hashCanonicalJson(baseResolved),
+    await hashCanonicalJson(delayRangeResolved),
+    'resolved state hash should remain stable when only metadata changes',
+  );
+  assert.notEqual(
+    await hashCanonicalJson(baseMetadata),
+    await hashCanonicalJson(delayRangeMetadata),
+    'metadata hash should change for dual-range delay edits even when the resolved slider value is unchanged',
+  );
+}
+
+async function run(): Promise<void> {
   testMigratePresetPreservesSynthPitchBindingModes();
   testBuildPresetVersionMetadataIncludesAllSupportedFields();
   testGetPresetVersionSnapshotReturnsSelectedVersionMetadata();
   testLegacyImportPreservesSynthPitchBindingModes();
   testOptimizedStatePresetRoundTripKeepsOnlyOverrides();
+  testMaterializedV2VersionPreservesAncillaryMetadata();
+  await testMetadataOnlyChangeKeepsResolvedHashShared();
   console.log('preset metadata regression checks passed');
 }
 
-run();
+await run();

@@ -241,6 +241,93 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   granularOutputLPF:       { level: 3, scope: 'granular' },
   granularChordBias:       { level: 3, scope: 'granular' },
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // L3: Dynamics Source (full page)
+  // ═══════════════════════════════════════════════════════════════════════
+  dynamicsEnabled:        { level: 3, scope: 'dynamics' },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // L1: Dynamics Saturation Engine
+  // ═══════════════════════════════════════════════════════════════════════
+  dynamicsSaturationEnabled: { level: 1, scope: 'dynamicsSaturation' },
+  dynamicsSaturationMode:    { level: 1, scope: 'dynamicsSaturation' },
+  dynamicsSaturationDrive:   { level: 1, scope: 'dynamicsSaturation' },
+  dynamicsSaturationTone:    { level: 1, scope: 'dynamicsSaturation' },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // L1: Dynamics Sidechain Engine
+  // ═══════════════════════════════════════════════════════════════════════
+  sidechainEnabled:       { level: 1, scope: 'dynamicsSidechain' },
+  sidechainKeyA:          { level: 1, scope: 'dynamicsSidechain' },
+  sidechainKeyB:          { level: 1, scope: 'dynamicsSidechain' },
+  sidechainKeyAWeight:    { level: 1, scope: 'dynamicsSidechain' },
+  sidechainKeyBWeight:    { level: 1, scope: 'dynamicsSidechain' },
+  sidechainAmount:        { level: 1, scope: 'dynamicsSidechain' },
+  sidechainThreshold:     { level: 1, scope: 'dynamicsSidechain' },
+  sidechainRatio:         { level: 1, scope: 'dynamicsSidechain' },
+  sidechainKnee:          { level: 1, scope: 'dynamicsSidechain' },
+  sidechainAttackMs:      { level: 1, scope: 'dynamicsSidechain' },
+  sidechainHoldMs:        { level: 1, scope: 'dynamicsSidechain' },
+  sidechainReleaseMs:     { level: 1, scope: 'dynamicsSidechain' },
+  sidechainMakeup:        { level: 1, scope: 'dynamicsSidechain' },
+  sidechainMix:           { level: 1, scope: 'dynamicsSidechain' },
+  sidechainCurve:         { level: 1, scope: 'dynamicsSidechain' },
+  sidechainDetectorHp:    { level: 1, scope: 'dynamicsSidechain' },
+  sidechainDetectorLp:    { level: 1, scope: 'dynamicsSidechain' },
+  sidechainPad1Target:    { level: 1, scope: 'dynamicsSidechain' },
+  sidechainPad2Target:    { level: 1, scope: 'dynamicsSidechain' },
+  sidechainLead1Target:   { level: 1, scope: 'dynamicsSidechain' },
+  sidechainLead2Target:   { level: 1, scope: 'dynamicsSidechain' },
+  sidechainPianoTarget:   { level: 1, scope: 'dynamicsSidechain' },
+  sidechainGranularTarget:{ level: 1, scope: 'dynamicsSidechain' },
+  sidechainDelayATarget:  { level: 1, scope: 'dynamicsSidechain' },
+  sidechainDelayBTarget:  { level: 1, scope: 'dynamicsSidechain' },
+  sidechainReverbTarget:  { level: 1, scope: 'dynamicsSidechain' },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // L1: Dynamics Character Engine
+  // ═══════════════════════════════════════════════════════════════════════
+  characterEnabled:       { level: 1, scope: 'dynamicsCharacter' },
+  characterMode:          { level: 1, scope: 'dynamicsCharacter' },
+  characterMix:           { level: 1, scope: 'dynamicsCharacter' },
+  characterAge:           { level: 1, scope: 'dynamicsCharacter' },
+  characterResonance:     { level: 1, scope: 'dynamicsCharacter' },
+  characterStereo:        { level: 1, scope: 'dynamicsCharacter' },
+  characterEnvFollow:     { level: 1, scope: 'dynamicsCharacter' },
+  characterDepth:         { level: 1, scope: 'dynamicsCharacter' },
+  characterRate:          { level: 1, scope: 'dynamicsCharacter' },
+  characterDamp:          { level: 1, scope: 'dynamicsCharacter' },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // L1: Dynamics Degrade Engine
+  // ═══════════════════════════════════════════════════════════════════════
+  degradeEnabled:        { level: 1, scope: 'dynamicsDegrade' },
+  degradeMix:            { level: 1, scope: 'dynamicsDegrade' },
+  degradeAge:            { level: 1, scope: 'dynamicsDegrade' },
+  degradeGeneration:     { level: 1, scope: 'dynamicsDegrade' },
+  degradeAlias:          { level: 1, scope: 'dynamicsDegrade' },
+  degradeWow:            { level: 1, scope: 'dynamicsDegrade' },
+  degradeFlutter:        { level: 1, scope: 'dynamicsDegrade' },
+  degradeDrift:          { level: 1, scope: 'dynamicsDegrade' },
+  degradeTone:           { level: 1, scope: 'dynamicsDegrade' },
+  degradeHp:             { level: 1, scope: 'dynamicsDegrade' },
+  degradeLp:             { level: 1, scope: 'dynamicsDegrade' },
+  degradeNoise:          { level: 1, scope: 'dynamicsDegrade' },
+  degradeSaturation:     { level: 1, scope: 'dynamicsDegrade' },
+  degradeCorrosion:      { level: 1, scope: 'dynamicsDegrade' },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // L1: Dynamics End Chain Engine
+  // ═══════════════════════════════════════════════════════════════════════
+  endCompEnabled:         { level: 1, scope: 'dynamicsEndChain' },
+  endCompThreshold:       { level: 1, scope: 'dynamicsEndChain' },
+  endCompKnee:            { level: 1, scope: 'dynamicsEndChain' },
+  endCompRatio:           { level: 1, scope: 'dynamicsEndChain' },
+  endCompAttackMs:        { level: 1, scope: 'dynamicsEndChain' },
+  endCompReleaseMs:       { level: 1, scope: 'dynamicsEndChain' },
+  endCompMakeup:          { level: 1, scope: 'dynamicsEndChain' },
+  endCompMix:             { level: 1, scope: 'dynamicsEndChain' },
+
 
   // ═══════════════════════════════════════════════════════════════════════
   // L2: Pad 1 Kit Preset
@@ -1070,7 +1157,7 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
 // Runtime assertion — catches accidental registry drift.
 if (typeof globalThis !== 'undefined') {
   const count = Object.keys(PARAM_REGISTRY).length;
-  if (count !== 865) {
-    console.error(`PARAM_REGISTRY has ${count} entries, expected 865`);
+  if (count !== 942) {
+    console.error(`PARAM_REGISTRY has ${count} entries, expected 942`);
   }
 }

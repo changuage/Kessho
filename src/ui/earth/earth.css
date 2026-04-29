@@ -2262,3 +2262,93 @@
 }
 
 
+/* Unified surface pass: match Granular/Reverb section-card aesthetics. */
+.earth-root .earth-kit-preset-bar,
+.earth-root .earth-card,
+.earth-root .mixer-section,
+.earth-root .transport-bar,
+.earth-root .stats-bar,
+.earth-root .earth-scene-container {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
+}
+
+.earth-root .earth-kit-preset-bar {
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+}
+
+.earth-root .earth-kit-label {
+  color: var(--text-secondary);
+  font-size: var(--font-xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.earth-root .earth-card,
+.earth-root .mixer-section,
+.earth-root .earth-scene-container {
+  border-color: color-mix(in srgb, var(--sc, var(--accent-primary)) 16%, rgba(255,255,255,0.08));
+  border-left: 1px solid color-mix(in srgb, var(--sc, var(--accent-primary)) 16%, rgba(255,255,255,0.08));
+  margin-bottom: 8px;
+}
+
+.earth-root .mixer-section,
+.earth-root .earth-scene-container {
+  --sc: var(--accent-primary);
+}
+
+.earth-root .earth-active-matrix {
+  border-left-color: color-mix(in srgb, rgba(183, 211, 163, 0.7) 22%, rgba(255,255,255,0.08));
+}
+
+.earth-root .earth-card.expanded {
+  border-color: color-mix(in srgb, var(--sc, var(--accent-primary)) 26%, rgba(255,255,255,0.1));
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.02),
+    0 0 0 1px color-mix(in srgb, var(--sc, var(--accent-primary)) 8%, transparent);
+}
+
+.earth-root .earth-card-header,
+.earth-root .mixer-section-header,
+.earth-root .earth-scene-header {
+  padding: 9px 12px 8px;
+  background: rgba(255,255,255,0.035);
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.earth-root .earth-card-header.clickable:hover {
+  background: rgba(255,255,255,0.055);
+}
+
+.earth-root .ec-name,
+.earth-root .mixer-section-header,
+.earth-root .earth-scene-title {
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  letter-spacing: 0.3px;
+}
+
+.earth-root .earth-card-body,
+.earth-root .mixer-section-body {
+  padding: 10px 12px 12px;
+}
+
+.earth-root .earth-sub-section,
+.earth-root .section-divider {
+  border-color: rgba(255,255,255,0.08);
+}
+
+.earth-root .earth-matrix-corner,
+.earth-root .earth-matrix-header,
+.earth-root .earth-matrix-rowlabel,
+.earth-root .earth-matrix-preview-cell,
+.earth-root .earth-matrix-cell,
+.earth-root .earth-selector-chip,
+.earth-root .earth-matrix-mobile-picker-button {
+  border-color: rgba(255,255,255,0.08);
+}
+

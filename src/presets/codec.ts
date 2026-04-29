@@ -6,6 +6,7 @@ export type { ParamLevel } from './ParamRegistry';
 import type { PresetEntry } from './types';
 import type { SliderState } from '../ui/state';
 import { presetValuesEqual } from './presetUtils';
+import { normalizeDynamicsDegradeAliases } from '../audio/dynamicsModel';
 
 function getDirectKeys(level: ParamLevel, scope?: string): string[] {
   if (level === 4) {
@@ -39,9 +40,10 @@ export function applyParams(
   scope?: string,
 ): SliderState {
   const merged: Record<string, unknown> = { ...state };
+  const normalizedData = normalizeDynamicsDegradeAliases(presetData);
   for (const [key, info] of Object.entries(PARAM_REGISTRY)) {
     if (info.level === level && (!scope || info.scope === scope)) {
-      if (key in presetData) merged[key] = presetData[key];
+      if (key in normalizedData) merged[key] = normalizedData[key];
     }
   }
   return merged as unknown as SliderState;
@@ -71,7 +73,19 @@ export function validateRegistry(stateKeys: string[]): {
   const registryKeys = new Set(Object.keys(PARAM_REGISTRY));
   const stateSet = new Set(stateKeys);
   // Known intentionally-dropped keys (not in registry, not a bug)
-  const dropped = new Set(['leadTimbre', 'granularPreset']);
+  const dropped = new Set([
+    'leadTimbre',
+    'granularPreset',
+    'characterWow',
+    'characterFlutter',
+    'characterDrift',
+    'characterTone',
+    'characterHp',
+    'characterLp',
+    'characterNoise',
+    'characterSaturation',
+    'characterCorrosion',
+  ]);
 
   return {
     missing: [...registryKeys].filter(k => !stateSet.has(k)),
@@ -101,6 +115,13 @@ const CASCADE_CHILDREN: Record<string, { level: ParamLevel; scope: string }[]> =
   reverb: [],
   granular: [
     { level: 2, scope: 'granularKit' },
+  ],
+  dynamics: [
+    { level: 1, scope: 'dynamicsSidechain' },
+    { level: 1, scope: 'dynamicsCharacter' },
+    { level: 1, scope: 'dynamicsDegrade' },
+    { level: 1, scope: 'dynamicsSaturation' },
+    { level: 1, scope: 'dynamicsEndChain' },
   ],
   pad1Kit: [
     { level: 1, scope: 'pad1' },
@@ -211,9 +232,10 @@ export function applyCascade(
   scope?: string,
 ): SliderState {
   const merged: Record<string, unknown> = { ...state };
+  const normalizedData = normalizeDynamicsDegradeAliases(presetData);
   for (const key of getCascadeKeys(level, scope)) {
-    if (key in presetData) {
-      merged[key] = presetData[key];
+    if (key in normalizedData) {
+      merged[key] = normalizedData[key];
     }
   }
   return merged as unknown as SliderState;

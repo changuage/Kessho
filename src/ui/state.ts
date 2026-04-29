@@ -9,7 +9,7 @@
  */
 
 import { SCALE_FAMILIES } from '../audio/scales';
-import type { LaneDirection, PitchBindingMode, TrigCondition } from '../audio/drumSeqTypes';
+import type { ClockDivision, LaneDirection, PitchBindingMode, PitchMode, ScaleName, TrigCondition } from '../audio/drumSeqTypes';
 import { hydrateOptimizedStatePresetData } from '../presets/statePresetOptimization';
 
 export type GranularTempoDivision = '1/4' | '1/8' | '1/16' | '1/32' | '1/64' | '1/8T';
@@ -210,6 +210,12 @@ export interface SerializedStepOverrides {
   distanceRanges?: ({ min: number; max: number } | null)[];
 }
 
+export interface SerializedPitchSettings {
+  mode: PitchMode;
+  root: number;
+  scale: ScaleName;
+}
+
 /**
  * Saved preset structure
  */
@@ -223,8 +229,15 @@ export interface SavedPreset {
   synthEvolveConfigs?: SerializedEvolveConfig[];
   drumStepOverrides?: SerializedStepOverrides;
   synthStepOverrides?: SerializedStepOverrides;
+  drumClockDivs?: ClockDivision[];
+  synthClockDivs?: ClockDivision[];
+  drumSwings?: number[];
+  synthSwings?: number[];
+  drumLinked?: boolean[];
+  synthLinked?: boolean[];
   drumSubLaneStates?: Record<string, SerializedSubLaneState>[];
   synthSubLaneStates?: Record<string, SerializedSubLaneState>[];
+  synthPitchSettings?: SerializedPitchSettings[];
   synthPitchBindingModes?: PitchBindingMode[];
 }
 
@@ -270,6 +283,78 @@ export interface SliderState {
   masterSatDrive: number;     // 0..1 input drive into master saturation
   masterSatMode: 'clean' | 'tape' | 'tube'; // master saturation character
   masterSatTone: number;      // 0..1 post-saturation tone tilt
+  dynamicsEnabled: boolean;    // master enable for Dynamics page processing
+  dynamicsSaturationEnabled: boolean; // dynamics-page master saturation on/off
+  dynamicsSaturationMode: 'clean' | 'tape' | 'tube';
+  dynamicsSaturationDrive: number;
+  dynamicsSaturationTone: number;
+  sidechainEnabled: boolean;   // trigger-derived ducking for selected target sources
+  sidechainKeyA: 'off' | 'sub' | 'kick' | 'click' | 'beepHi' | 'beepLo' | 'noise' | 'membrane';
+  sidechainKeyB: 'off' | 'sub' | 'kick' | 'click' | 'beepHi' | 'beepLo' | 'noise' | 'membrane';
+  sidechainKeyAWeight: number;
+  sidechainKeyBWeight: number;
+  sidechainAmount: number;
+  sidechainThreshold: number;
+  sidechainRatio: number;
+  sidechainKnee: number;
+  sidechainAttackMs: number;
+  sidechainHoldMs: number;
+  sidechainReleaseMs: number;
+  sidechainMakeup: number;
+  sidechainMix: number;
+  sidechainCurve: number;
+  sidechainDetectorHp: number;
+  sidechainDetectorLp: number;
+  sidechainPad1Target: number;
+  sidechainPad2Target: number;
+  sidechainLead1Target: number;
+  sidechainLead2Target: number;
+  sidechainPianoTarget: number;
+  sidechainGranularTarget: number;
+  sidechainDelayATarget: number;
+  sidechainDelayBTarget: number;
+  sidechainReverbTarget: number;
+  characterEnabled: boolean;
+  characterMode: 'clean' | 'abyssWater' | 'shallowWater';
+  characterMix: number;
+  characterAge: number;
+  degradeEnabled: boolean;
+  degradeMix: number;
+  degradeAge: number;
+  degradeGeneration: number;
+  degradeAlias: number;
+  degradeWow: number;
+  degradeFlutter: number;
+  degradeDrift: number;
+  degradeTone: number;
+  degradeHp: number;
+  degradeLp: number;
+  characterResonance: number;
+  degradeNoise: number;
+  degradeSaturation: number;
+  degradeCorrosion: number;
+  characterWow: number;
+  characterFlutter: number;
+  characterDrift: number;
+  characterTone: number;
+  characterHp: number;
+  characterLp: number;
+  characterNoise: number;
+  characterSaturation: number;
+  characterCorrosion: number;
+  characterStereo: number;
+  characterEnvFollow: number;
+  characterDepth: number;
+  characterRate: number;
+  characterDamp: number;
+  endCompEnabled: boolean;
+  endCompThreshold: number;
+  endCompKnee: number;
+  endCompRatio: number;
+  endCompAttackMs: number;
+  endCompReleaseMs: number;
+  endCompMakeup: number;
+  endCompMix: number;
 
   // Global
   seedWindow: 'hour' | 'day';
@@ -1333,6 +1418,69 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'masterSatDrive',
   'masterSatMode',
   'masterSatTone',
+  'dynamicsEnabled',
+  'dynamicsSaturationEnabled',
+  'dynamicsSaturationMode',
+  'dynamicsSaturationDrive',
+  'dynamicsSaturationTone',
+  'sidechainEnabled',
+  'sidechainKeyA',
+  'sidechainKeyB',
+  'sidechainKeyAWeight',
+  'sidechainKeyBWeight',
+  'sidechainAmount',
+  'sidechainThreshold',
+  'sidechainRatio',
+  'sidechainKnee',
+  'sidechainAttackMs',
+  'sidechainHoldMs',
+  'sidechainReleaseMs',
+  'sidechainMakeup',
+  'sidechainMix',
+  'sidechainCurve',
+  'sidechainDetectorHp',
+  'sidechainDetectorLp',
+  'sidechainPad1Target',
+  'sidechainPad2Target',
+  'sidechainLead1Target',
+  'sidechainLead2Target',
+  'sidechainPianoTarget',
+  'sidechainGranularTarget',
+  'sidechainDelayATarget',
+  'sidechainDelayBTarget',
+  'sidechainReverbTarget',
+  'characterEnabled',
+  'characterMode',
+  'characterMix',
+  'characterAge',
+  'degradeEnabled',
+  'degradeMix',
+  'degradeAge',
+  'degradeGeneration',
+  'degradeAlias',
+  'degradeWow',
+  'degradeFlutter',
+  'degradeDrift',
+  'degradeTone',
+  'degradeHp',
+  'degradeLp',
+  'characterResonance',
+  'degradeNoise',
+  'degradeSaturation',
+  'degradeCorrosion',
+  'characterStereo',
+  'characterEnvFollow',
+  'characterDepth',
+  'characterRate',
+  'characterDamp',
+  'endCompEnabled',
+  'endCompThreshold',
+  'endCompKnee',
+  'endCompRatio',
+  'endCompAttackMs',
+  'endCompReleaseMs',
+  'endCompMakeup',
+  'endCompMix',
   'seedWindow',
   'randomness',
   'randomWalkSpeed',
@@ -2061,6 +2209,78 @@ export const DEFAULT_STATE: SliderState = {
   masterSatDrive: 0,
   masterSatMode: 'clean' as const,
   masterSatTone: 0.5,
+  dynamicsEnabled: false,
+  dynamicsSaturationEnabled: false,
+  dynamicsSaturationMode: 'clean' as const,
+  dynamicsSaturationDrive: 0,
+  dynamicsSaturationTone: 0.5,
+  sidechainEnabled: false,
+  sidechainKeyA: 'kick' as const,
+  sidechainKeyB: 'off' as const,
+  sidechainKeyAWeight: 1,
+  sidechainKeyBWeight: 0.7,
+  sidechainAmount: 0.5,
+  sidechainThreshold: -24,
+  sidechainRatio: 4,
+  sidechainKnee: 6,
+  sidechainAttackMs: 5,
+  sidechainHoldMs: 20,
+  sidechainReleaseMs: 180,
+  sidechainMakeup: 1,
+  sidechainMix: 1,
+  sidechainCurve: 0.5,
+  sidechainDetectorHp: 0,
+  sidechainDetectorLp: 1,
+  sidechainPad1Target: 0,
+  sidechainPad2Target: 0,
+  sidechainLead1Target: 0,
+  sidechainLead2Target: 0,
+  sidechainPianoTarget: 0,
+  sidechainGranularTarget: 0,
+  sidechainDelayATarget: 0,
+  sidechainDelayBTarget: 0,
+  sidechainReverbTarget: 0,
+  characterEnabled: false,
+  characterMode: 'clean' as const,
+  characterMix: 0,
+  characterAge: 0,
+  degradeEnabled: false,
+  degradeMix: 0,
+  degradeAge: 0,
+  degradeGeneration: 0,
+  degradeAlias: 0,
+  degradeWow: 0,
+  degradeFlutter: 0,
+  degradeDrift: 0,
+  degradeTone: 0.5,
+  degradeHp: 0,
+  degradeLp: 1,
+  characterResonance: 0.2,
+  degradeNoise: 0,
+  degradeSaturation: 0,
+  degradeCorrosion: 0,
+  characterWow: 0,
+  characterFlutter: 0,
+  characterDrift: 0,
+  characterTone: 0.5,
+  characterHp: 0,
+  characterLp: 1,
+  characterNoise: 0,
+  characterSaturation: 0,
+  characterCorrosion: 0,
+  characterStereo: 0.5,
+  characterEnvFollow: 0,
+  characterDepth: 0,
+  characterRate: 0.3,
+  characterDamp: 0.5,
+  endCompEnabled: false,
+  endCompThreshold: -18,
+  endCompKnee: 12,
+  endCompRatio: 2,
+  endCompAttackMs: 10,
+  endCompReleaseMs: 180,
+  endCompMakeup: 1,
+  endCompMix: 1,
 
   // Global
   seedWindow: 'hour',
@@ -3078,6 +3298,59 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   drumDelayBSend: { min: 0, max: 1, step: 0.01 },
   masterSatDrive: { min: 0, max: 1, step: 0.01 },
   masterSatTone: { min: 0, max: 1, step: 0.01 },
+  dynamicsSaturationDrive: { min: 0, max: 1, step: 0.01 },
+  dynamicsSaturationTone: { min: 0, max: 1, step: 0.01 },
+  sidechainKeyAWeight: { min: 0, max: 1, step: 0.01 },
+  sidechainKeyBWeight: { min: 0, max: 1, step: 0.01 },
+  sidechainAmount: { min: 0, max: 1, step: 0.01 },
+  sidechainThreshold: { min: -60, max: 0, step: 1 },
+  sidechainRatio: { min: 1, max: 20, step: 0.1 },
+  sidechainKnee: { min: 0, max: 40, step: 1 },
+  sidechainAttackMs: { min: 0.1, max: 100, step: 0.1 },
+  sidechainHoldMs: { min: 0, max: 250, step: 1 },
+  sidechainReleaseMs: { min: 20, max: 1500, step: 5 },
+  sidechainMakeup: { min: 0.25, max: 4, step: 0.05 },
+  sidechainMix: { min: 0, max: 1, step: 0.01 },
+  sidechainCurve: { min: 0, max: 1, step: 0.01 },
+  sidechainDetectorHp: { min: 0, max: 1, step: 0.01 },
+  sidechainDetectorLp: { min: 0, max: 1, step: 0.01 },
+  sidechainPad1Target: { min: 0, max: 1, step: 0.01 },
+  sidechainPad2Target: { min: 0, max: 1, step: 0.01 },
+  sidechainLead1Target: { min: 0, max: 1, step: 0.01 },
+  sidechainLead2Target: { min: 0, max: 1, step: 0.01 },
+  sidechainPianoTarget: { min: 0, max: 1, step: 0.01 },
+  sidechainGranularTarget: { min: 0, max: 1, step: 0.01 },
+  sidechainDelayATarget: { min: 0, max: 1, step: 0.01 },
+  sidechainDelayBTarget: { min: 0, max: 1, step: 0.01 },
+  sidechainReverbTarget: { min: 0, max: 1, step: 0.01 },
+  characterMix: { min: 0, max: 1, step: 0.01 },
+  characterAge: { min: 0, max: 1, step: 0.01 },
+  degradeMix: { min: 0, max: 1, step: 0.01 },
+  degradeAge: { min: 0, max: 1, step: 0.01 },
+  degradeGeneration: { min: 0, max: 1, step: 0.01 },
+  degradeAlias: { min: 0, max: 1, step: 0.01 },
+  degradeWow: { min: 0, max: 1, step: 0.01 },
+  degradeFlutter: { min: 0, max: 1, step: 0.01 },
+  degradeDrift: { min: 0, max: 1, step: 0.01 },
+  degradeTone: { min: 0, max: 1, step: 0.01 },
+  degradeHp: { min: 0, max: 1, step: 0.01 },
+  degradeLp: { min: 0, max: 1, step: 0.01 },
+  characterResonance: { min: 0, max: 1, step: 0.01 },
+  degradeNoise: { min: 0, max: 1, step: 0.01 },
+  degradeSaturation: { min: 0, max: 1, step: 0.01 },
+  degradeCorrosion: { min: 0, max: 1, step: 0.01 },
+  characterStereo: { min: 0, max: 1, step: 0.01 },
+  characterEnvFollow: { min: 0, max: 1, step: 0.01 },
+  characterDepth: { min: 0, max: 1, step: 0.01 },
+  characterRate: { min: 0, max: 1, step: 0.01 },
+  characterDamp: { min: 0, max: 1, step: 0.01 },
+  endCompThreshold: { min: -60, max: 0, step: 1 },
+  endCompKnee: { min: 0, max: 40, step: 1 },
+  endCompRatio: { min: 1, max: 20, step: 0.1 },
+  endCompAttackMs: { min: 0.1, max: 100, step: 0.1 },
+  endCompReleaseMs: { min: 20, max: 1500, step: 5 },
+  endCompMakeup: { min: 0.25, max: 4, step: 0.05 },
+  endCompMix: { min: 0, max: 1, step: 0.01 },
   randomness: { min: 0, max: 1, step: 0.01 },
   tension: { min: 0, max: 1, step: 0.01 },
   chordRate: { min: 8, max: 64, step: 1 },
@@ -3766,6 +4039,15 @@ const LEGACY_STATE_KEY_ALIASES = {
   leadDelaySpread: 'delayASpread',
   leadDelayFilter: 'delayAFilter',
   leadDelaySend: 'delayASend',
+  characterWow: 'degradeWow',
+  characterFlutter: 'degradeFlutter',
+  characterDrift: 'degradeDrift',
+  characterTone: 'degradeTone',
+  characterHp: 'degradeHp',
+  characterLp: 'degradeLp',
+  characterNoise: 'degradeNoise',
+  characterSaturation: 'degradeSaturation',
+  characterCorrosion: 'degradeCorrosion',
 } as const satisfies Record<string, keyof SliderState>;
 
 const LEGACY_STATE_KEY_FALLBACKS = Object.fromEntries(
@@ -3977,6 +4259,34 @@ export function decodeStateFromUrl(search: string): SliderState | null {
           ['clean', 'tape', 'tube'].includes(value)
         ) {
           state.masterSatMode = value as SliderState['masterSatMode'];
+        } else if (key === 'dynamicsEnabled') {
+          state.dynamicsEnabled = value === 'true';
+        } else if (key === 'dynamicsSaturationEnabled') {
+          state.dynamicsSaturationEnabled = value === 'true';
+        } else if (
+          key === 'dynamicsSaturationMode' &&
+          ['clean', 'tape', 'tube'].includes(value)
+        ) {
+          state.dynamicsSaturationMode = value as SliderState['dynamicsSaturationMode'];
+        } else if (key === 'sidechainEnabled') {
+          state.sidechainEnabled = value === 'true';
+        } else if (key === 'characterEnabled') {
+          state.characterEnabled = value === 'true';
+        } else if (key === 'degradeEnabled') {
+          state.degradeEnabled = value === 'true';
+        } else if (
+          (key === 'sidechainKeyA' || key === 'sidechainKeyB') &&
+          ['off', 'sub', 'kick', 'click', 'beepHi', 'beepLo', 'noise', 'membrane'].includes(value)
+        ) {
+          (state as Record<string, unknown>)[key] = value;
+        } else if (key === 'characterMode') {
+          if (['clean', 'abyssWater', 'shallowWater'].includes(value)) {
+            state.characterMode = value as SliderState['characterMode'];
+          } else if (['degenerateGain', 'generationLoss', 'wornVhs'].includes(value)) {
+            state.characterMode = 'clean';
+          }
+        } else if (key === 'endCompEnabled') {
+          state.endCompEnabled = value === 'true';
         } else if (
           key === 'granularShape' &&
           ['triangle', 'sawUp', 'sawDown', 'square'].includes(value)
@@ -4476,8 +4786,15 @@ export function migratePreset(preset: any): SavedPreset {
     synthEvolveConfigs,
     drumStepOverrides: preset.drumStepOverrides,
     synthStepOverrides: preset.synthStepOverrides,
+    drumClockDivs: preset.drumClockDivs,
+    synthClockDivs: preset.synthClockDivs,
+    drumSwings: preset.drumSwings,
+    synthSwings: preset.synthSwings,
+    drumLinked: preset.drumLinked,
+    synthLinked: preset.synthLinked,
     drumSubLaneStates: preset.drumSubLaneStates,
     synthSubLaneStates: preset.synthSubLaneStates,
+    synthPitchSettings: preset.synthPitchSettings,
     synthPitchBindingModes: preset.synthPitchBindingModes,
   };
 }

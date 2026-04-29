@@ -1853,3 +1853,94 @@
 .drum-root .spark-selected-step {
   pointer-events: none;
 }
+
+/* Unified surface pass: match Granular/Reverb section-card aesthetics. */
+.drum-root .drums-source-preset-bar,
+.drum-root .drums-pattern-preset-bar,
+.drum-root .master-strip,
+.drum-root .seq-transport {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
+}
+
+.drum-root .drums-source-preset-bar,
+.drum-root .drums-pattern-preset-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.drum-root .drums-source-preset-bar {
+  width: 100%;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+}
+
+.drum-root .drums-pattern-preset-bar {
+  padding: 8px 12px;
+  margin-bottom: 8px;
+}
+
+.drum-root .drums-source-preset-label,
+.drum-root .drums-pattern-preset-label {
+  color: var(--text-secondary);
+  font-size: var(--font-xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.drum-root .master-strip,
+.drum-root .seq-transport {
+  padding: 8px 12px;
+}
+
+.drum-root .voice-cards {
+  gap: 8px;
+}
+
+.drum-root .voice-card {
+  background: var(--bg-surface);
+  border: 1px solid color-mix(in srgb, var(--vc, var(--accent-primary)) 16%, rgba(255,255,255,0.08));
+  border-left: 1px solid color-mix(in srgb, var(--vc, var(--accent-primary)) 16%, rgba(255,255,255,0.08));
+  border-radius: var(--radius-md);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
+}
+
+.drum-root .voice-card.editing {
+  border-color: color-mix(in srgb, var(--vc, var(--accent-primary)) 28%, rgba(255,255,255,0.1));
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.02),
+    0 0 0 1px color-mix(in srgb, var(--vc, var(--accent-primary)) 8%, transparent);
+}
+
+.drum-root .vc-sidebar {
+  background: rgba(255,255,255,0.035);
+  border-right: 1px solid rgba(255,255,255,0.08);
+}
+
+.drum-root .vc-sidebar:hover {
+  background: rgba(255,255,255,0.055);
+}
+
+.drum-root .voice-card-advanced {
+  padding: 8px 10px 10px;
+  border-top-color: rgba(255,255,255,0.08);
+  background: transparent;
+}
+
+.drum-root .delay-section,
+.drum-root .seq-body,
+.drum-root .seq-lane,
+.drum-root .seq-spark-strip,
+.drum-root .seq-spark-body,
+.drum-root .seq-evolve-panel {
+  border-color: rgba(255,255,255,0.08);
+}
+
+.drum-root .section-header {
+  border-bottom-color: rgba(255,255,255,0.08);
+}

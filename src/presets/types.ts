@@ -2,11 +2,13 @@
 // Phase 0 — Foundation types for the Kessho 5-level preset hierarchy.
 
 import type {
+  SerializedPitchSettings,
   SerializedEvolveConfig,
   SerializedStepOverrides,
   SerializedSubLaneState,
   SliderMode,
 } from '../ui/state';
+import type { ClockDivision } from '../audio/drumSeqTypes';
 import type { PitchBindingMode } from '../audio/drumSeqTypes';
 
 export type PresetLevel = 'engine' | 'kit' | 'source' | 'state' | 'journey';
@@ -38,8 +40,15 @@ export interface PresetVersionMetadata {
   synthEvolveConfigs?: SerializedEvolveConfig[];
   drumStepOverrides?: SerializedStepOverrides;
   synthStepOverrides?: SerializedStepOverrides;
+  drumClockDivs?: ClockDivision[];
+  synthClockDivs?: ClockDivision[];
+  drumSwings?: number[];
+  synthSwings?: number[];
+  drumLinked?: boolean[];
+  synthLinked?: boolean[];
   drumSubLaneStates?: Record<string, SerializedSubLaneState>[];
   synthSubLaneStates?: Record<string, SerializedSubLaneState>[];
+  synthPitchSettings?: SerializedPitchSettings[];
   synthPitchBindingModes?: PitchBindingMode[];
   refs?: Record<string, PresetRef>;
 }
