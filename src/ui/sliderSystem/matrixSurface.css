@@ -39,6 +39,9 @@
   font: inherit;
   touch-action: pan-y;
   user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .global-root .routing-matrix .routing-matrix-cell.editable:hover,

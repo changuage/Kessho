@@ -20,7 +20,7 @@ import {
   EUCLIDEAN_PATTERN_LABELS,
 } from './euclideanPatternBank';
 
-const FACTORY_LOADED_KEY = 'preset:factory-loaded:v21';
+const FACTORY_LOADED_KEY = 'preset:factory-loaded:v23';
 
 function canUseLocalStorage(): boolean {
   try {

@@ -378,6 +378,76 @@
   min-width: 0;
 }
 
+.dynamics-mod-panel {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.dynamics-advanced-toggle {
+  width: 100%;
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 8px;
+  border: 1px solid rgba(139, 92, 246, 0.22);
+  border-radius: var(--radius-sm);
+  background: rgba(139, 92, 246, 0.08);
+  color: var(--text-primary);
+  font-size: var(--font-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+.dynamics-advanced-toggle:hover {
+  background: rgba(139, 92, 246, 0.14);
+  border-color: rgba(139, 92, 246, 0.36);
+}
+
+.dynamics-mod-scroll {
+  overflow-x: auto;
+  padding-top: 8px;
+}
+
+.dynamics-mod-matrix {
+  display: grid;
+  grid-template-columns: minmax(58px, 0.7fr) repeat(6, minmax(82px, 1fr));
+  gap: 4px 6px;
+  min-width: 680px;
+  align-items: stretch;
+}
+
+.dynamics-mod-corner,
+.dynamics-mod-header,
+.dynamics-mod-source {
+  display: flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 2px 4px;
+  color: var(--text-dim);
+  font-size: var(--font-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.dynamics-mod-header {
+  justify-content: center;
+  color: var(--text-secondary);
+}
+
+.dynamics-mod-source {
+  color: var(--text-secondary);
+}
+
+.dynamics-mod-cell {
+  min-width: 0;
+}
+
 @media (max-width: 560px) {
   .dynamics-grid-2 {
     grid-template-columns: 1fr;

@@ -7,6 +7,7 @@ export const TRACK_PAD_PX = 6;
 export const EDGE_HANDLE_PX = 8;
 export const LONG_PRESS_MS = 400;
 export const LONG_PRESS_MOVE_TOLERANCE_PX = 8;
+export const TOUCH_DRAG_INTENT_PX = 10;
 
 export function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value));
@@ -55,6 +56,25 @@ export function releasePointerCaptureSafely(target: EventTarget & HTMLElement, p
   if (target.hasPointerCapture(pointerId)) {
     target.releasePointerCapture(pointerId);
   }
+}
+
+export function getTouchGestureIntent(
+  startX: number,
+  startY: number,
+  clientX: number,
+  clientY: number,
+): 'pending' | 'drag' | 'scroll' {
+  const dx = Math.abs(clientX - startX);
+  const dy = Math.abs(clientY - startY);
+  if (dx < TOUCH_DRAG_INTENT_PX && dy < LONG_PRESS_MOVE_TOLERANCE_PX) return 'pending';
+  if (dy >= LONG_PRESS_MOVE_TOLERANCE_PX && dy >= dx) return 'scroll';
+  if (dx >= TOUCH_DRAG_INTENT_PX && dx > dy) return 'drag';
+  return 'pending';
+}
+
+export function setSliderTouchSelectionLock(enabled: boolean): void {
+  if (typeof document === 'undefined') return;
+  document.documentElement.classList.toggle('sl-slider-touch-lock', enabled);
 }
 
 export function rangesEqual(a?: DualSliderRange, b?: DualSliderRange): boolean {

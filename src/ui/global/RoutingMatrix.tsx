@@ -11,11 +11,13 @@ import {
   TRACK_PAD_PX,
   clamp01,
   getDualHandle,
+  getTouchGestureIntent,
   normalizeUnitRange,
   pointerToTrackNorm,
   quantize01,
   rangesEqual,
   releasePointerCaptureSafely,
+  setSliderTouchSelectionLock,
   trackLeftCalc,
   trackWidthCalc,
   type MatrixCellHandle,
@@ -86,6 +88,20 @@ interface CellDragState {
   onDualRangeChange: (key: keyof SliderState, min: number, max: number) => void;
   lastValue?: number;
   lastRange?: DualSliderRange;
+}
+
+interface PendingCellTouchState {
+  pointerId: number;
+  dragId: string;
+  startX: number;
+  startY: number;
+  key: keyof SliderState;
+  mode: SliderMode;
+  handle: CellHandle;
+  startValue: number;
+  startRange?: DualSliderRange;
+  startPointerNorm: number;
+  onDualRangeChange: (key: keyof SliderState, min: number, max: number) => void;
 }
 
 interface ColumnDragState {
@@ -523,6 +539,7 @@ export default function RoutingMatrix({
     }
   });
   const dragStateRef = React.useRef<DragState | null>(null);
+  const pendingCellTouchRef = React.useRef<PendingCellTouchState | null>(null);
   const columnDragMemoryRef = React.useRef<Partial<Record<ColumnId, ColumnDragMemory>>>({});
   const longPressTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressMetaRef = React.useRef<{
@@ -576,7 +593,11 @@ export default function RoutingMatrix({
     longPressActionRef.current = null;
   }, []);
 
-  React.useEffect(() => () => clearLongPress(), [clearLongPress]);
+  React.useEffect(() => () => {
+    clearLongPress();
+    pendingCellTouchRef.current = null;
+    setSliderTouchSelectionLock(false);
+  }, [clearLongPress]);
 
   const stopDrag = React.useCallback((dragId: string, pointerId: number) => {
     const drag = dragStateRef.current;
@@ -594,9 +615,11 @@ export default function RoutingMatrix({
 
   const resetInteraction = React.useCallback(() => {
     clearLongPress();
+    pendingCellTouchRef.current = null;
     dragStateRef.current = null;
     setDraggingId(null);
     longPressConsumedRef.current = false;
+    setSliderTouchSelectionLock(false);
   }, [clearLongPress]);
 
   const startColumnDrag = React.useCallback((
@@ -682,11 +705,13 @@ export default function RoutingMatrix({
   ) => {
     clearLongPress();
     longPressConsumedRef.current = false;
+    setSliderTouchSelectionLock(true);
     longPressMetaRef.current = { pointerId, startX, startY };
     longPressActionRef.current = action;
     longPressTimerRef.current = setTimeout(() => {
       longPressTimerRef.current = null;
       longPressConsumedRef.current = true;
+      pendingCellTouchRef.current = null;
       dragStateRef.current = null;
       setDraggingId(null);
       longPressActionRef.current?.();
@@ -907,6 +932,7 @@ export default function RoutingMatrix({
           if (!route || !runtime) return;
           announceSlider(String(route.key), { page: helpPage });
           clearLongPress();
+          pendingCellTouchRef.current = null;
 
           const now = Date.now();
           const guard = dblClickGuardRef.current;
@@ -922,15 +948,26 @@ export default function RoutingMatrix({
             ? 'single'
             : getDualHandle(pointerNorm, nextRange, rect);
 
-          if (handle === 'single') {
-            const next = quantize01(pointerNorm);
-            onParamChange(route.key, next);
-          } else if (handle === 'min' && nextRange) {
-            const min = quantize01(Math.min(pointerNorm, nextRange.max));
-            runtime.onDualRangeChange(route.key, min, nextRange.max);
-          } else if (handle === 'max' && nextRange) {
-            const max = quantize01(Math.max(pointerNorm, nextRange.min));
-            runtime.onDualRangeChange(route.key, nextRange.min, max);
+          if (event.pointerType === 'touch') {
+            pendingCellTouchRef.current = {
+              pointerId: event.pointerId,
+              dragId: cellId,
+              startX: event.clientX,
+              startY: event.clientY,
+              key: route.key,
+              mode: nextMode,
+              handle,
+              startValue: value,
+              startRange: nextRange,
+              startPointerNorm: pointerNorm,
+              onDualRangeChange: runtime.onDualRangeChange,
+            };
+            setSliderTouchSelectionLock(true);
+            event.currentTarget.setPointerCapture(event.pointerId);
+            scheduleLongPress(event.pointerId, event.clientX, event.clientY, () => {
+              runtime.onCycleMode(route.key);
+            });
+            return;
           }
 
           startCellDrag(
@@ -944,23 +981,79 @@ export default function RoutingMatrix({
             pointerNorm,
             runtime.onDualRangeChange,
           );
+          applyCellDrag(pointerNorm);
           event.currentTarget.setPointerCapture(event.pointerId);
-
-          if (event.pointerType === 'touch') {
-            scheduleLongPress(event.pointerId, event.clientX, event.clientY, () => {
-              runtime.onCycleMode(route.key);
-            });
-          }
         }}
         onPointerMove={(event) => {
+          const pendingTouch = pendingCellTouchRef.current;
+          if (pendingTouch?.pointerId === event.pointerId && pendingTouch.dragId === cellId) {
+            maybeCancelLongPress(event.pointerId, event.clientX, event.clientY);
+            if (longPressConsumedRef.current) return;
+
+            const intent = getTouchGestureIntent(
+              pendingTouch.startX,
+              pendingTouch.startY,
+              event.clientX,
+              event.clientY,
+            );
+            if (intent === 'pending') return;
+
+            clearLongPress();
+            pendingCellTouchRef.current = null;
+
+            if (intent === 'scroll') {
+              setSliderTouchSelectionLock(false);
+              releasePointerCaptureSafely(event.currentTarget, event.pointerId);
+              return;
+            }
+
+            event.preventDefault();
+            startCellDrag(
+              pendingTouch.dragId,
+              event.pointerId,
+              pendingTouch.key,
+              pendingTouch.mode,
+              pendingTouch.handle,
+              pendingTouch.startValue,
+              pendingTouch.startRange,
+              pendingTouch.startPointerNorm,
+              pendingTouch.onDualRangeChange,
+            );
+            applyCellDrag(pointerToTrackNorm(event.clientX, event.currentTarget.getBoundingClientRect()));
+            return;
+          }
+
           maybeCancelLongPress(event.pointerId, event.clientX, event.clientY);
           if (longPressConsumedRef.current) return;
 
           const drag = dragStateRef.current;
           if (!drag || drag.kind !== 'cell' || drag.dragId !== cellId || drag.pointerId !== event.pointerId) return;
+          if (event.pointerType === 'touch') event.preventDefault();
           applyCellDrag(pointerToTrackNorm(event.clientX, event.currentTarget.getBoundingClientRect()));
         }}
         onPointerUp={(event) => {
+          const pendingTouch = pendingCellTouchRef.current;
+          if (pendingTouch?.pointerId === event.pointerId && pendingTouch.dragId === cellId) {
+            if (!longPressConsumedRef.current) {
+              startCellDrag(
+                pendingTouch.dragId,
+                event.pointerId,
+                pendingTouch.key,
+                pendingTouch.mode,
+                pendingTouch.handle,
+                pendingTouch.startValue,
+                pendingTouch.startRange,
+                pendingTouch.startPointerNorm,
+                pendingTouch.onDualRangeChange,
+              );
+              applyCellDrag(pendingTouch.startPointerNorm);
+              stopDrag(cellId, event.pointerId);
+            }
+            releasePointerCaptureSafely(event.currentTarget, event.pointerId);
+            resetInteraction();
+            return;
+          }
+
           stopDrag(cellId, event.pointerId);
           releasePointerCaptureSafely(event.currentTarget, event.pointerId);
           resetInteraction();

@@ -6,6 +6,9 @@
   flex-direction: column;
   gap: 4px;
   min-width: 0;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 .sl-slider--disabled {
@@ -116,10 +119,18 @@
   position: relative;
   height: 18px;
   cursor: pointer;
-  touch-action: none;
+  touch-action: pan-y;
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html.sl-slider-touch-lock,
+html.sl-slider-touch-lock * {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  -webkit-touch-callout: none !important;
 }
 
 .sl-slider-track,

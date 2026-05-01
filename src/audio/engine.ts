@@ -691,6 +691,7 @@ export class AudioEngine {
   private characterEnvRectifier: WaveShaperNode | null = null;
   private characterEnvFilter: BiquadFilterNode | null = null;
   private characterEnvToLowpass: GainNode | null = null;
+  private characterEnvToResonance: GainNode | null = null;
   private characterEnvToWetGain: GainNode | null = null;
   private characterOutputGain: GainNode | null = null;
   private characterWowLfo: OscillatorNode | null = null;
@@ -699,8 +700,10 @@ export class AudioEngine {
   private characterFlutterDepth: GainNode | null = null;
   private characterRandomHoldSource: ConstantSourceNode | null = null;
   private characterRandomHoldDepth: GainNode | null = null;
+  private characterRandomHoldFilterDepth: GainNode | null = null;
   private characterSpreadRandomHoldSource: ConstantSourceNode | null = null;
   private characterSpreadRandomHoldDepth: GainNode | null = null;
+  private characterSpreadRandomHoldFilterDepth: GainNode | null = null;
   private characterRandomHoldNextTime = 0;
   private characterRandomHoldValue = 0;
   private characterSpreadRandomHoldValue = 0;
@@ -3175,6 +3178,7 @@ export class AudioEngine {
       this.characterEnvRectifier,
       this.characterEnvFilter,
       this.characterEnvToLowpass,
+      this.characterEnvToResonance,
       this.characterEnvToWetGain,
       this.characterOutputGain,
       this.characterWowLfo,
@@ -3183,8 +3187,10 @@ export class AudioEngine {
       this.characterFlutterDepth,
       this.characterRandomHoldSource,
       this.characterRandomHoldDepth,
+      this.characterRandomHoldFilterDepth,
       this.characterSpreadRandomHoldSource,
       this.characterSpreadRandomHoldDepth,
+      this.characterSpreadRandomHoldFilterDepth,
     ];
     for (const node of nodes) {
       try { node?.disconnect(); } catch { /* */ }
@@ -3220,6 +3226,7 @@ export class AudioEngine {
     this.characterEnvRectifier = null;
     this.characterEnvFilter = null;
     this.characterEnvToLowpass = null;
+    this.characterEnvToResonance = null;
     this.characterEnvToWetGain = null;
     this.characterOutputGain = null;
     this.characterWowLfo = null;
@@ -3228,8 +3235,10 @@ export class AudioEngine {
     this.characterFlutterDepth = null;
     this.characterRandomHoldSource = null;
     this.characterRandomHoldDepth = null;
+    this.characterRandomHoldFilterDepth = null;
     this.characterSpreadRandomHoldSource = null;
     this.characterSpreadRandomHoldDepth = null;
+    this.characterSpreadRandomHoldFilterDepth = null;
     this.characterRandomHoldNextTime = 0;
     this.characterRandomHoldValue = 0;
     this.characterSpreadRandomHoldValue = 0;
@@ -3530,11 +3539,16 @@ export class AudioEngine {
       this.characterEnvFilter.Q.value = 0.5;
       this.characterEnvToLowpass = ctx.createGain();
       this.characterEnvToLowpass.gain.value = 0;
+      this.characterEnvToResonance = ctx.createGain();
+      this.characterEnvToResonance.gain.value = 0;
       this.characterEnvToWetGain = ctx.createGain();
       this.characterEnvToWetGain.gain.value = 0;
       this.characterEnvRectifier.connect(this.characterEnvFilter);
       this.characterEnvFilter.connect(this.characterEnvToLowpass);
       this.characterEnvToLowpass.connect(this.characterLowpass.frequency);
+      this.characterEnvFilter.connect(this.characterEnvToResonance);
+      this.characterEnvToResonance.connect(this.characterLowpass.Q);
+      this.characterEnvToResonance.connect(this.characterLowpassStage2.Q);
       this.characterEnvFilter.connect(this.characterEnvToWetGain);
       this.characterEnvToWetGain.connect(this.characterWetGain.gain);
       this.characterOutputGain = ctx.createGain();
@@ -3564,16 +3578,24 @@ export class AudioEngine {
       this.characterRandomHoldSource.offset.value = 0;
       this.characterRandomHoldDepth = ctx.createGain();
       this.characterRandomHoldDepth.gain.value = 0;
+      this.characterRandomHoldFilterDepth = ctx.createGain();
+      this.characterRandomHoldFilterDepth.gain.value = 0;
       this.characterRandomHoldSource.connect(this.characterRandomHoldDepth);
       this.characterRandomHoldDepth.connect(this.characterDelay.delayTime);
+      this.characterRandomHoldSource.connect(this.characterRandomHoldFilterDepth);
+      this.characterRandomHoldFilterDepth.connect(this.characterLowpass.frequency);
       this.characterRandomHoldSource.start();
 
       this.characterSpreadRandomHoldSource = ctx.createConstantSource();
       this.characterSpreadRandomHoldSource.offset.value = 0;
       this.characterSpreadRandomHoldDepth = ctx.createGain();
       this.characterSpreadRandomHoldDepth.gain.value = 0;
+      this.characterSpreadRandomHoldFilterDepth = ctx.createGain();
+      this.characterSpreadRandomHoldFilterDepth.gain.value = 0;
       this.characterSpreadRandomHoldSource.connect(this.characterSpreadRandomHoldDepth);
       this.characterSpreadRandomHoldDepth.connect(this.characterSpreadDelay.delayTime);
+      this.characterSpreadRandomHoldSource.connect(this.characterSpreadRandomHoldFilterDepth);
+      this.characterSpreadRandomHoldFilterDepth.connect(this.characterLowpassStage2.frequency);
       this.characterSpreadRandomHoldSource.start();
 
       this.characterNoiseSource = ctx.createBufferSource();
@@ -3587,6 +3609,7 @@ export class AudioEngine {
       this.characterRandomDriftFilter.connect(this.characterRandomDriftDepth);
       this.characterRandomDriftDepth.connect(this.characterDelay.delayTime);
       this.characterRandomDriftDepth.connect(this.characterSpreadDelay.delayTime);
+      this.characterRandomDriftDepth.connect(this.characterFlutterDepth.gain);
       this.characterNoiseSource.connect(this.characterDropoutFilter);
       this.characterDropoutFilter.connect(this.characterDropoutDepth);
       this.characterDropoutDepth.connect(this.characterDropoutGain.gain);
@@ -3617,14 +3640,14 @@ export class AudioEngine {
   }
 
   private getDynamicsRoutingKey(routing: DynamicsRoutingTargets): string {
-    return `${routing.characterPathActive ? 1 : 0}:${routing.degradeWorkletActive && this.dynamicsDegradeWorkletLoaded ? 1 : 0}:${routing.endChainActive ? 1 : 0}`;
+    return `${routing.characterPathActive ? 1 : 0}:${routing.degradeWorkletActive && this.dynamicsDegradeWorkletLoaded ? 1 : 0}:${routing.allpassStackActive ? 1 : 0}:${routing.endChainActive ? 1 : 0}`;
   }
 
   private wireMasterOutputChain(ctx: AudioContext, routing?: DynamicsRoutingTargets): void {
     if (!this.masterGain || !this.limiter) return;
     const resolvedRouting = routing ?? (this.sliderState
       ? resolveDynamicsTargets(this.sliderState, ctx.sampleRate).routing
-      : { characterPathActive: false, degradeWorkletActive: false, endChainActive: false });
+      : { characterPathActive: false, degradeWorkletActive: false, allpassStackActive: false, endChainActive: false });
     this.ensureMasterSaturationNodes(ctx);
     this.ensureDynamicsNodes(ctx, resolvedRouting);
     try { this.masterGain.disconnect(); } catch { /* */ }
@@ -3674,9 +3697,13 @@ export class AudioEngine {
       this.characterSpreadPan!.connect(this.characterSpreadDelayGain!);
       this.characterSpreadDelayGain!.connect(this.characterDegradeNode!);
       this.characterDegradeNode!.connect(this.characterHighpass!);
-      this.characterHighpass!.connect(this.characterAllpassA!);
-      this.characterAllpassA!.connect(this.characterAllpassB!);
-      this.characterAllpassB!.connect(this.characterHeadBump!);
+      if (resolvedRouting.allpassStackActive) {
+        this.characterHighpass!.connect(this.characterAllpassA!);
+        this.characterAllpassA!.connect(this.characterAllpassB!);
+        this.characterAllpassB!.connect(this.characterHeadBump!);
+      } else {
+        this.characterHighpass!.connect(this.characterHeadBump!);
+      }
       this.characterHeadBump!.connect(this.characterLowpass!);
       this.characterLowpass!.connect(this.characterLowpassStage2!);
       this.characterLowpassStage2!.connect(this.characterCompressor!);
@@ -3740,9 +3767,14 @@ export class AudioEngine {
   private updateCharacterRandomHold(now: number, params: {
     active: boolean;
     rate: number;
-    damp: number;
     depth: number;
     randomDrift: number;
+    randomHoldRateHz: number;
+    randomHoldLag: number;
+    randomDelayDepth: number;
+    randomSpreadDelayDepth: number;
+    randomFilterDepth: number;
+    randomSpreadFilterDepth: number;
     shallowFlavor: number;
     abyssFlavor: number;
     stereo: number;
@@ -3753,8 +3785,10 @@ export class AudioEngine {
     if (
       !this.characterRandomHoldSource ||
       !this.characterRandomHoldDepth ||
+      !this.characterRandomHoldFilterDepth ||
       !this.characterSpreadRandomHoldSource ||
-      !this.characterSpreadRandomHoldDepth
+      !this.characterSpreadRandomHoldDepth ||
+      !this.characterSpreadRandomHoldFilterDepth
     ) {
       return;
     }
@@ -3762,9 +3796,14 @@ export class AudioEngine {
     const {
       active,
       rate,
-      damp,
       depth,
       randomDrift,
+      randomHoldRateHz,
+      randomHoldLag,
+      randomDelayDepth,
+      randomSpreadDelayDepth,
+      randomFilterDepth,
+      randomSpreadFilterDepth,
       shallowFlavor,
       abyssFlavor,
       stereo,
@@ -3775,17 +3814,15 @@ export class AudioEngine {
     const holdAmount = active
       ? clampUnitInterval(randomDrift + depth * (0.18 + shallowFlavor * 0.16 + abyssFlavor * 0.1) + damage * 0.22)
       : 0;
-    const mainDepth = Math.min(
-      Math.max(0, baseDelay - 0.001),
-      holdAmount * (0.0004 + depth * (0.0042 + shallowFlavor * 0.0016 + abyssFlavor * 0.0011) + damage * 0.0018),
-    );
-    const spreadDepth = Math.min(
-      Math.max(0, spreadBaseDelay - 0.001),
-      mainDepth * (0.72 + stereo * 0.45 + shallowFlavor * 0.18),
-    );
+    const mainDepth = Math.min(Math.max(0, baseDelay - 0.0002), holdAmount * randomDelayDepth);
+    const spreadDepth = Math.min(Math.max(0, spreadBaseDelay - 0.0002), holdAmount * randomSpreadDelayDepth);
+    const filterDepth = holdAmount * randomFilterDepth;
+    const spreadFilterDepth = holdAmount * randomSpreadFilterDepth;
 
     this.characterRandomHoldDepth.gain.setTargetAtTime(mainDepth, now, 0.12);
     this.characterSpreadRandomHoldDepth.gain.setTargetAtTime(spreadDepth, now, 0.12);
+    this.characterRandomHoldFilterDepth.gain.setTargetAtTime(filterDepth, now, 0.12);
+    this.characterSpreadRandomHoldFilterDepth.gain.setTargetAtTime(spreadFilterDepth, now, 0.12);
     if (holdAmount <= 0.0001) {
       this.characterRandomHoldSource.offset.cancelScheduledValues(now);
       this.characterSpreadRandomHoldSource.offset.cancelScheduledValues(now);
@@ -3815,9 +3852,9 @@ export class AudioEngine {
     if (Math.abs(spreadTarget - this.characterSpreadRandomHoldValue) < 0.18) {
       spreadTarget = Math.max(-1, Math.min(1, spreadTarget + (spreadTarget >= this.characterSpreadRandomHoldValue ? 0.24 : -0.24)));
     }
-    const clockHz = 0.12 + rate * 0.9 + shallowFlavor * 0.04 + abyssFlavor * 0.02 + damage * 0.35;
+    const clockHz = randomHoldRateHz + damage * 0.15;
     const interval = Math.max(0.32, 1 / Math.max(0.08, clockHz));
-    const lag = 0.12 + damp * (1.1 + abyssFlavor * 0.7 + shallowFlavor * 0.35) + (1 - rate) * 0.2;
+    const lag = randomHoldLag + (1 - rate) * 0.08;
     const spreadDelay = Math.min(0.24, interval * (0.05 + rng() * 0.16));
 
     this.characterRandomHoldSource.offset.setTargetAtTime(mainTarget, now, lag);
@@ -3840,15 +3877,19 @@ export class AudioEngine {
       this.characterNoiseGain?.gain.setTargetAtTime(targets.noiseGain, now, 0.08);
       this.characterJitterDepth?.gain.setTargetAtTime(targets.jitterDepth, now, 0.08);
       this.characterRandomDriftFilter?.frequency.setTargetAtTime(targets.randomDriftFilterHz, now, 0.12);
-      this.characterRandomDriftDepth?.gain.setTargetAtTime(targets.randomDriftDepth, now, 0.12);
       this.characterDelay?.delayTime.setTargetAtTime(targets.baseDelay, now, 0.08);
       this.characterSpreadDelay?.delayTime.setTargetAtTime(targets.spreadBaseDelay, now, 0.08);
       this.updateCharacterRandomHold(now, {
         active: targets.routing.characterPathActive,
         rate: targets.rate,
-        damp: targets.damp,
         depth: targets.depth,
         randomDrift: targets.randomDrift,
+        randomHoldRateHz: targets.randomHoldRateHz,
+        randomHoldLag: targets.randomHoldLag,
+        randomDelayDepth: targets.randomDelayDepth,
+        randomSpreadDelayDepth: targets.randomSpreadDelayDepth,
+        randomFilterDepth: targets.randomFilterDepth,
+        randomSpreadFilterDepth: targets.randomSpreadFilterDepth,
         shallowFlavor: targets.shallowFlavor,
         abyssFlavor: targets.abyssFlavor,
         stereo: targets.stereo,
@@ -3864,6 +3905,7 @@ export class AudioEngine {
       this.characterFlutterLfo?.frequency.setTargetAtTime(targets.flutterFrequency, now, 0.08);
       this.characterWowDepth?.gain.setTargetAtTime(targets.wowDepth, now, 0.08);
       this.characterFlutterDepth?.gain.setTargetAtTime(targets.flutterDepth, now, 0.08);
+      this.characterRandomDriftDepth?.gain.setTargetAtTime(targets.randomDriftDepth + targets.flutterRandomDepth, now, 0.12);
       this.characterHighpass?.frequency.setTargetAtTime(targets.highpassHz, now, 0.08);
       this.characterHighpass?.Q.setTargetAtTime(targets.highpassQ, now, 0.08);
       this.characterAllpassA?.frequency.setTargetAtTime(targets.allpassAFrequency, now, 0.08);
@@ -3878,6 +3920,7 @@ export class AudioEngine {
       this.characterDropoutGain?.gain.setTargetAtTime(targets.dropoutGain, now, 0.12);
       this.characterEnvFilter?.frequency.setTargetAtTime(targets.envFilterHz, now, 0.1);
       this.characterEnvToLowpass?.gain.setTargetAtTime(targets.envToLowpassGain, now, 0.08);
+      this.characterEnvToResonance?.gain.setTargetAtTime(targets.envToResonanceGain, now, 0.08);
       this.characterEnvToWetGain?.gain.setTargetAtTime(targets.envToWetGain, now, 0.08);
       this.characterLowpass?.frequency.setTargetAtTime(targets.lowpassHz, now, 0.08);
       this.characterLowpass?.Q.setTargetAtTime(targets.lowpassQ, now, 0.08);
@@ -3902,7 +3945,7 @@ export class AudioEngine {
       : null;
     degradeParams?.get('enabled')?.setTargetAtTime(targets.routing.degradeWorkletActive ? 1 : 0, now, 0.03);
     degradeParams?.get('mix')?.setTargetAtTime(targets.degradeWetRatio, now, 0.03);
-    degradeParams?.get('alias')?.setTargetAtTime(targets.rawDegradeAlias, now, 0.03);
+    degradeParams?.get('alias')?.setTargetAtTime(targets.workletAlias, now, 0.03);
     degradeParams?.get('generation')?.setTargetAtTime(targets.rawDegradeGeneration, now, 0.03);
     degradeParams?.get('corrosion')?.setTargetAtTime(targets.rawCorrosion, now, 0.03);
     degradeParams?.get('wear')?.setTargetAtTime(targets.rawMediaWear, now, 0.03);
@@ -5224,10 +5267,10 @@ export class AudioEngine {
         this.isStarting = false;
         throw new Error('Web Audio API not supported in this browser');
       }
-      // Use 'playback' latency hint on iOS to request larger audio buffers —
-      // reduces underruns especially with USB audio interfaces.
-      const isIOSDevice = isIOSLikeDevice();
-      this.ctx = new AudioContextClass(isIOSDevice ? { latencyHint: 'playback' } : undefined);
+      // Use 'playback' latency hint on mobile to request larger audio buffers.
+      // It trades a little immediacy for fewer underruns/dropouts on constrained devices.
+      const prefersStableMobileBuffers = isMobileDevice();
+      this.ctx = new AudioContextClass(prefersStableMobileBuffers ? { latencyHint: 'playback' } : undefined);
       console.log('AudioContext created, state:', this.ctx.state, 'sampleRate:', this.ctx.sampleRate, 'baseLatency:', (this.ctx as any).baseLatency);
       this.attachAudioContextMonitoring();
     }

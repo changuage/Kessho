@@ -10,6 +10,7 @@ import {
   SliderState,
   SliderMode,
   DEFAULT_STATE,
+  MOBILE_STATE,
   quantize,
   decodeStateFromUrl,
   getParamInfo,
@@ -1604,7 +1605,8 @@ const App: React.FC = () => {
   // Load initial state from URL or defaults
   const [state, setState] = useState<SliderState>(() => {
     const urlState = decodeStateFromUrl(window.location.search);
-    return normalizePresetForWeb(urlState || DEFAULT_STATE);
+    const mobileDefaultState = isMobileDevice() || window.innerWidth < 768;
+    return normalizePresetForWeb(urlState || (mobileDefaultState ? MOBILE_STATE : DEFAULT_STATE));
   });
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -5553,6 +5555,7 @@ const App: React.FC = () => {
   }, []);
 
   const handleLoadMorphA = useCallback((entry: PresetEntry, data: Record<string, unknown>) => {
+    hasLoadedPresetRef.current = true;
     const preset = presetEntryToSavedPreset(entry, data);
     setMorphSlotAName(entry.name);
     if (!morphPresetB) {
@@ -5577,6 +5580,7 @@ const App: React.FC = () => {
   }, [presetEntryToSavedPreset, morphPresetB, morphPosition, state, sliderModes, dualSliderRanges, applyDualRangesFromPreset, restoreEvolveConfigs]);
 
   const handleLoadMorphB = useCallback((entry: PresetEntry, data: Record<string, unknown>) => {
+    hasLoadedPresetRef.current = true;
     const preset = presetEntryToSavedPreset(entry, data);
     setMorphSlotBName(entry.name);
     if (!morphPresetA) {

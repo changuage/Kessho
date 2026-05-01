@@ -7,6 +7,8 @@ import type { PresetEntry } from '../../presets/types';
 import type { UsePresetsOptions } from '../../presets/usePresets';
 import { normalizeDynamicsDegradeAliases } from '../../audio/dynamicsModel';
 import {
+  DEGRADE_MOD_SOURCES,
+  DEGRADE_MOD_TARGETS,
   DYNAMICS_CHARACTER_PRESET_KEYS,
   DYNAMICS_DEGRADE_PRESET_KEYS,
   DYNAMICS_END_CHAIN_PRESET_KEYS,
@@ -102,6 +104,7 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
   const [characterPresetName, setCharacterPresetName] = useState<string | undefined>();
   const [degradePresetName, setDegradePresetName] = useState<string | undefined>();
   const [saturationPresetName, setSaturationPresetName] = useState<string | undefined>();
+  const [degradeMatrixOpen, setDegradeMatrixOpen] = useState(false);
 
   const bindSliderHelp = useCallback((paramKey: keyof SliderState, label: string, page: SliderPageId = 'dynamics') => ({
     onMouseEnter: () => announceSlider(String(paramKey), { label, page }),
@@ -471,6 +474,48 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
                   <Slider label="Tone" value={state.degradeTone} paramKey="degradeTone" onChange={onParamChange} helpPage="dynamics" {...sliderProps('degradeTone')} />
                   <Slider label="Clip" value={state.degradeSaturation} paramKey="degradeSaturation" onChange={onParamChange} helpPage="dynamics" {...sliderProps('degradeSaturation')} />
                   <Slider label="Corrosion" value={state.degradeCorrosion} paramKey="degradeCorrosion" onChange={onParamChange} helpPage="dynamics" {...sliderProps('degradeCorrosion')} />
+                </div>
+                <div className="dynamics-mod-panel">
+                  <button
+                    className="dynamics-advanced-toggle"
+                    type="button"
+                    aria-expanded={degradeMatrixOpen}
+                    onClick={() => setDegradeMatrixOpen((open) => !open)}
+                    {...bindHelp('degradeModMatrix', { label: 'Mod Matrix', page: 'dynamics' })}
+                  >
+                    <span>Mod Matrix</span>
+                    <span>{degradeMatrixOpen ? 'Hide' : 'Show'}</span>
+                  </button>
+                  {degradeMatrixOpen && (
+                    <div className="dynamics-mod-scroll">
+                      <div className="dynamics-mod-matrix">
+                        <div className="dynamics-mod-corner">Source</div>
+                        {DEGRADE_MOD_TARGETS.map((target) => (
+                          <div key={target.id} className="dynamics-mod-header">{target.label}</div>
+                        ))}
+                        {DEGRADE_MOD_SOURCES.map((source) => (
+                          <React.Fragment key={source.id}>
+                            <div className="dynamics-mod-source">{source.label}</div>
+                            {DEGRADE_MOD_TARGETS.map((target) => {
+                              const key = source.keys[target.id];
+                              return (
+                                <div key={key} className="dynamics-mod-cell">
+                                  <Slider
+                                    label={`${source.label} ${target.label}`}
+                                    value={Number(state[key] ?? 0)}
+                                    paramKey={key}
+                                    onChange={onParamChange}
+                                    helpPage="dynamics"
+                                    {...sliderProps(key)}
+                                  />
+                                </div>
+                              );
+                            })}
+                          </React.Fragment>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </section>

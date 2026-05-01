@@ -333,6 +333,36 @@ export interface SliderState {
   degradeNoise: number;
   degradeSaturation: number;
   degradeCorrosion: number;
+  degradeModSlowWow: number;
+  degradeModSlowFlutter: number;
+  degradeModSlowLp: number;
+  degradeModSlowWet: number;
+  degradeModSlowDropout: number;
+  degradeModSlowAlias: number;
+  degradeModFlutterWow: number;
+  degradeModFlutterFlutter: number;
+  degradeModFlutterLp: number;
+  degradeModFlutterWet: number;
+  degradeModFlutterDropout: number;
+  degradeModFlutterAlias: number;
+  degradeModRandomWow: number;
+  degradeModRandomFlutter: number;
+  degradeModRandomLp: number;
+  degradeModRandomWet: number;
+  degradeModRandomDropout: number;
+  degradeModRandomAlias: number;
+  degradeModEnvWow: number;
+  degradeModEnvFlutter: number;
+  degradeModEnvLp: number;
+  degradeModEnvWet: number;
+  degradeModEnvDropout: number;
+  degradeModEnvAlias: number;
+  degradeModNoiseWow: number;
+  degradeModNoiseFlutter: number;
+  degradeModNoiseLp: number;
+  degradeModNoiseWet: number;
+  degradeModNoiseDropout: number;
+  degradeModNoiseAlias: number;
   characterWow: number;
   characterFlutter: number;
   characterDrift: number;
@@ -1468,6 +1498,36 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'degradeNoise',
   'degradeSaturation',
   'degradeCorrosion',
+  'degradeModSlowWow',
+  'degradeModSlowFlutter',
+  'degradeModSlowLp',
+  'degradeModSlowWet',
+  'degradeModSlowDropout',
+  'degradeModSlowAlias',
+  'degradeModFlutterWow',
+  'degradeModFlutterFlutter',
+  'degradeModFlutterLp',
+  'degradeModFlutterWet',
+  'degradeModFlutterDropout',
+  'degradeModFlutterAlias',
+  'degradeModRandomWow',
+  'degradeModRandomFlutter',
+  'degradeModRandomLp',
+  'degradeModRandomWet',
+  'degradeModRandomDropout',
+  'degradeModRandomAlias',
+  'degradeModEnvWow',
+  'degradeModEnvFlutter',
+  'degradeModEnvLp',
+  'degradeModEnvWet',
+  'degradeModEnvDropout',
+  'degradeModEnvAlias',
+  'degradeModNoiseWow',
+  'degradeModNoiseFlutter',
+  'degradeModNoiseLp',
+  'degradeModNoiseWet',
+  'degradeModNoiseDropout',
+  'degradeModNoiseAlias',
   'characterStereo',
   'characterEnvFollow',
   'characterDepth',
@@ -2259,6 +2319,36 @@ export const DEFAULT_STATE: SliderState = {
   degradeNoise: 0,
   degradeSaturation: 0,
   degradeCorrosion: 0,
+  degradeModSlowWow: 0.18,
+  degradeModSlowFlutter: 0.02,
+  degradeModSlowLp: 0.12,
+  degradeModSlowWet: 0.03,
+  degradeModSlowDropout: 0.04,
+  degradeModSlowAlias: 0,
+  degradeModFlutterWow: 0,
+  degradeModFlutterFlutter: 0.12,
+  degradeModFlutterLp: 0.02,
+  degradeModFlutterWet: 0,
+  degradeModFlutterDropout: 0.02,
+  degradeModFlutterAlias: 0,
+  degradeModRandomWow: 0.04,
+  degradeModRandomFlutter: 0.03,
+  degradeModRandomLp: 0.14,
+  degradeModRandomWet: 0.02,
+  degradeModRandomDropout: 0.1,
+  degradeModRandomAlias: 0.02,
+  degradeModEnvWow: 0,
+  degradeModEnvFlutter: 0,
+  degradeModEnvLp: 0.08,
+  degradeModEnvWet: 0.04,
+  degradeModEnvDropout: 0,
+  degradeModEnvAlias: 0,
+  degradeModNoiseWow: 0,
+  degradeModNoiseFlutter: 0.06,
+  degradeModNoiseLp: 0.02,
+  degradeModNoiseWet: 0,
+  degradeModNoiseDropout: 0.06,
+  degradeModNoiseAlias: 0.02,
   characterWow: 0,
   characterFlutter: 0,
   characterDrift: 0,
@@ -3339,6 +3429,36 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   degradeNoise: { min: 0, max: 1, step: 0.01 },
   degradeSaturation: { min: 0, max: 1, step: 0.01 },
   degradeCorrosion: { min: 0, max: 1, step: 0.01 },
+  degradeModSlowWow: { min: 0, max: 1, step: 0.01 },
+  degradeModSlowFlutter: { min: 0, max: 1, step: 0.01 },
+  degradeModSlowLp: { min: 0, max: 1, step: 0.01 },
+  degradeModSlowWet: { min: 0, max: 1, step: 0.01 },
+  degradeModSlowDropout: { min: 0, max: 1, step: 0.01 },
+  degradeModSlowAlias: { min: 0, max: 1, step: 0.01 },
+  degradeModFlutterWow: { min: 0, max: 1, step: 0.01 },
+  degradeModFlutterFlutter: { min: 0, max: 1, step: 0.01 },
+  degradeModFlutterLp: { min: 0, max: 1, step: 0.01 },
+  degradeModFlutterWet: { min: 0, max: 1, step: 0.01 },
+  degradeModFlutterDropout: { min: 0, max: 1, step: 0.01 },
+  degradeModFlutterAlias: { min: 0, max: 1, step: 0.01 },
+  degradeModRandomWow: { min: 0, max: 1, step: 0.01 },
+  degradeModRandomFlutter: { min: 0, max: 1, step: 0.01 },
+  degradeModRandomLp: { min: 0, max: 1, step: 0.01 },
+  degradeModRandomWet: { min: 0, max: 1, step: 0.01 },
+  degradeModRandomDropout: { min: 0, max: 1, step: 0.01 },
+  degradeModRandomAlias: { min: 0, max: 1, step: 0.01 },
+  degradeModEnvWow: { min: 0, max: 1, step: 0.01 },
+  degradeModEnvFlutter: { min: 0, max: 1, step: 0.01 },
+  degradeModEnvLp: { min: 0, max: 1, step: 0.01 },
+  degradeModEnvWet: { min: 0, max: 1, step: 0.01 },
+  degradeModEnvDropout: { min: 0, max: 1, step: 0.01 },
+  degradeModEnvAlias: { min: 0, max: 1, step: 0.01 },
+  degradeModNoiseWow: { min: 0, max: 1, step: 0.01 },
+  degradeModNoiseFlutter: { min: 0, max: 1, step: 0.01 },
+  degradeModNoiseLp: { min: 0, max: 1, step: 0.01 },
+  degradeModNoiseWet: { min: 0, max: 1, step: 0.01 },
+  degradeModNoiseDropout: { min: 0, max: 1, step: 0.01 },
+  degradeModNoiseAlias: { min: 0, max: 1, step: 0.01 },
   characterStereo: { min: 0, max: 1, step: 0.01 },
   characterEnvFollow: { min: 0, max: 1, step: 0.01 },
   characterDepth: { min: 0, max: 1, step: 0.01 },

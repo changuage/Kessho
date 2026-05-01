@@ -105,6 +105,13 @@ export function DualSlider<K extends string = string>({
   const { announceSlider } = useSliderHelp();
   const runtimeIndicator = useRuntimeSliderIndicator(String(paramKey), mode, walkPosition, isFlashing);
   const isDualMode = mode !== 'single';
+  const lastSubmittedValueRef = React.useRef<number | null>(null);
+  const lastSubmittedRangeRef = React.useRef<DualSliderRange | null>(null);
+
+  React.useEffect(() => {
+    lastSubmittedValueRef.current = null;
+    lastSubmittedRangeRef.current = null;
+  }, [dualRange, mode, paramKey, value]);
 
   const announceHelp = React.useCallback(() => {
     announceSlider(String(paramKey), { label, page: helpPage });
@@ -236,13 +243,20 @@ export function DualSlider<K extends string = string>({
       }}
       onValueChange={(nextPercent) => {
         if (disabled) return;
-        onChange(paramKey, percentToValue(nextPercent));
+        const nextValue = percentToValue(nextPercent);
+        if (lastSubmittedValueRef.current === nextValue) return;
+        lastSubmittedValueRef.current = nextValue;
+        onChange(paramKey, nextValue);
       }}
       onRangeChange={(nextRange) => {
         if (disabled) return;
         const min = percentToValue(Math.min(nextRange.min, nextRange.max));
         const max = percentToValue(Math.max(nextRange.min, nextRange.max));
-        onDualRangeChange(paramKey, Math.min(min, max), Math.max(min, max));
+        const submittedRange = { min: Math.min(min, max), max: Math.max(min, max) };
+        const lastRange = lastSubmittedRangeRef.current;
+        if (lastRange?.min === submittedRange.min && lastRange.max === submittedRange.max) return;
+        lastSubmittedRangeRef.current = submittedRange;
+        onDualRangeChange(paramKey, submittedRange.min, submittedRange.max);
       }}
     />
   );

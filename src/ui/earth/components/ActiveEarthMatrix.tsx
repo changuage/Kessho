@@ -12,11 +12,13 @@ import {
   TRACK_PAD_PX,
   clamp01,
   getDualHandle,
+  getTouchGestureIntent,
   normToValue,
   normalizeQuantizedRange,
   pointerToTrackNorm,
   quantizeValue,
   releasePointerCaptureSafely,
+  setSliderTouchSelectionLock,
   stepDecimals,
   trackLeftCalc,
   trackWidthCalc,
@@ -1312,6 +1314,15 @@ function EarthMatrixSliderCell({
     startRange?: DualSliderRange;
     startRangeNorm?: DualSliderRange;
   } | null>(null);
+  const pendingTouchRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    pointerNorm: number;
+    handle: CellHandle;
+    startRange?: DualSliderRange;
+    startRangeNorm?: DualSliderRange;
+  } | null>(null);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressMetaRef = useRef<{ pointerId: number; startX: number; startY: number } | null>(null);
   const longPressConsumedRef = useRef(false);
@@ -1325,7 +1336,11 @@ function EarthMatrixSliderCell({
     longPressMetaRef.current = null;
   }, []);
 
-  useEffect(() => () => clearLongPress(), [clearLongPress]);
+  useEffect(() => () => {
+    clearLongPress();
+    pendingTouchRef.current = null;
+    setSliderTouchSelectionLock(false);
+  }, [clearLongPress]);
 
   const announce = useCallback(() => {
     announceSlider(String(control.key), { label: control.label, page: 'earth' });
@@ -1368,10 +1383,12 @@ function EarthMatrixSliderCell({
   const scheduleLongPress = useCallback((pointerId: number, startX: number, startY: number) => {
     clearLongPress();
     longPressConsumedRef.current = false;
+    setSliderTouchSelectionLock(true);
     longPressMetaRef.current = { pointerId, startX, startY };
     longPressTimerRef.current = setTimeout(() => {
       longPressTimerRef.current = null;
       longPressConsumedRef.current = true;
+      pendingTouchRef.current = null;
       dragRef.current = null;
       setDragging(false);
       setDragHandle(null);
@@ -1411,6 +1428,7 @@ function EarthMatrixSliderCell({
       onPointerDown={(event) => {
         announce();
         clearLongPress();
+        pendingTouchRef.current = null;
 
         const now = Date.now();
         const guard = dblClickGuardRef.current;
@@ -1424,6 +1442,22 @@ function EarthMatrixSliderCell({
           ? 'single'
           : getDualHandle(pointerNorm, rangeNorm, rect);
 
+        if (event.pointerType === 'touch') {
+          pendingTouchRef.current = {
+            pointerId: event.pointerId,
+            startX: event.clientX,
+            startY: event.clientY,
+            pointerNorm,
+            handle: nextHandle,
+            startRange: range,
+            startRangeNorm: rangeNorm,
+          };
+          setSliderTouchSelectionLock(true);
+          event.currentTarget.setPointerCapture(event.pointerId);
+          scheduleLongPress(event.pointerId, event.clientX, event.clientY);
+          return;
+        }
+
         dragRef.current = {
           pointerId: event.pointerId,
           handle: nextHandle,
@@ -1435,31 +1469,91 @@ function EarthMatrixSliderCell({
         setDragging(true);
         applyValueAtNorm(pointerNorm);
         event.currentTarget.setPointerCapture(event.pointerId);
-
-        if (event.pointerType === 'touch') {
-          scheduleLongPress(event.pointerId, event.clientX, event.clientY);
-        }
       }}
       onPointerMove={(event) => {
+        const pendingTouch = pendingTouchRef.current;
+        if (pendingTouch?.pointerId === event.pointerId) {
+          maybeCancelLongPress(event.pointerId, event.clientX, event.clientY);
+          if (longPressConsumedRef.current) return;
+
+          const intent = getTouchGestureIntent(
+            pendingTouch.startX,
+            pendingTouch.startY,
+            event.clientX,
+            event.clientY,
+          );
+          if (intent === 'pending') return;
+
+          clearLongPress();
+          pendingTouchRef.current = null;
+
+          if (intent === 'scroll') {
+            setSliderTouchSelectionLock(false);
+            releasePointerCaptureSafely(event.currentTarget, event.pointerId);
+            return;
+          }
+
+          event.preventDefault();
+          dragRef.current = {
+            pointerId: event.pointerId,
+            handle: pendingTouch.handle,
+            startPointerNorm: pendingTouch.pointerNorm,
+            startRange: pendingTouch.startRange,
+            startRangeNorm: pendingTouch.startRangeNorm,
+          };
+          setDragHandle(pendingTouch.handle);
+          setDragging(true);
+          applyValueAtNorm(pointerToTrackNorm(event.clientX, event.currentTarget.getBoundingClientRect()));
+          return;
+        }
+
         maybeCancelLongPress(event.pointerId, event.clientX, event.clientY);
         if (longPressConsumedRef.current) return;
         if (!dragRef.current || dragRef.current.pointerId !== event.pointerId) return;
+        if (event.pointerType === 'touch') event.preventDefault();
         applyValueAtNorm(pointerToTrackNorm(event.clientX, event.currentTarget.getBoundingClientRect()));
       }}
       onPointerUp={(event) => {
+        const pendingTouch = pendingTouchRef.current;
+        if (pendingTouch?.pointerId === event.pointerId) {
+          const shouldTap = !longPressConsumedRef.current;
+          clearLongPress();
+          pendingTouchRef.current = null;
+          if (shouldTap) {
+            dragRef.current = {
+              pointerId: event.pointerId,
+              handle: pendingTouch.handle,
+              startPointerNorm: pendingTouch.pointerNorm,
+              startRange: pendingTouch.startRange,
+              startRangeNorm: pendingTouch.startRangeNorm,
+            };
+            applyValueAtNorm(pendingTouch.pointerNorm);
+          }
+          dragRef.current = null;
+          setDragging(false);
+          setDragHandle(null);
+          longPressConsumedRef.current = false;
+          setSliderTouchSelectionLock(false);
+          releasePointerCaptureSafely(event.currentTarget, event.pointerId);
+          return;
+        }
+
         clearLongPress();
         dragRef.current = null;
         setDragging(false);
         setDragHandle(null);
         longPressConsumedRef.current = false;
+        setSliderTouchSelectionLock(false);
         releasePointerCaptureSafely(event.currentTarget, event.pointerId);
       }}
       onPointerCancel={(event) => {
         clearLongPress();
+        pendingTouchRef.current = null;
         dragRef.current = null;
         setDragging(false);
         setDragHandle(null);
         longPressConsumedRef.current = false;
+        setSliderTouchSelectionLock(false);
         releasePointerCaptureSafely(event.currentTarget, event.pointerId);
       }}
     >

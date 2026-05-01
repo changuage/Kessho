@@ -7,6 +7,12 @@ import type {
   SliderStylingModel,
   SliderVariant,
 } from './types';
+import {
+  LONG_PRESS_MS,
+  getTouchGestureIntent,
+  releasePointerCaptureSafely,
+  setSliderTouchSelectionLock,
+} from './matrixMath';
 import './sliderPrimitive.css';
 
 const MODE_LABEL: Record<SliderMode, string> = {
@@ -105,6 +111,7 @@ export function SliderPrimitive({
   const dragThumbPxRef = React.useRef<number | null>(null);
   const lastEmittedValueRef = React.useRef<number | null>(null);
   const lastEmittedRangeRef = React.useRef<SliderPrimitiveRange | null>(null);
+  const pendingTouchCleanupRef = React.useRef<(() => void) | null>(null);
   const usesControlledValue = typeof onValueChange === 'function';
   const usesControlledRange = typeof onRangeChange === 'function' && !!range;
 
@@ -119,6 +126,12 @@ export function SliderPrimitive({
       setLiveRange(range);
     }
   }, [range, usesControlledRange]);
+
+  React.useEffect(() => () => {
+    pendingTouchCleanupRef.current?.();
+    setSliderTouchSelectionLock(false);
+  }, []);
+
   const currentValue = usesControlledValue ? value : liveValue;
   const currentRange = usesControlledRange && range ? range : liveRange;
   const visualValue = dragging && dragValueRef.current != null ? dragValueRef.current : currentValue;
@@ -143,31 +156,90 @@ export function SliderPrimitive({
     onRangeChange(nextRange);
   }, [onRangeChange]);
 
-  const beginDrag = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (!railRef.current || disabled) return;
-    event.preventDefault();
-    onAnnounce?.();
+  const percentFromClientX = (clientX: number, rect: DOMRect) => (
+    clamp(((clientX - rect.left) / Math.max(1, rect.width)) * 100, 0, 100)
+  );
+
+  const getRangeTarget = (clientX: number, rect: DOMRect): 'min' | 'max' | 'band' => {
+    const startX = clientX - rect.left;
+    const minX = (currentRange.min / 100) * rect.width;
+    const maxX = (currentRange.max / 100) * rect.width;
+    const grab = density === 'comfortable' ? 22 : 14;
+    return Math.abs(startX - minX) <= grab ? 'min'
+      : Math.abs(startX - maxX) <= grab ? 'max'
+        : startX > minX && startX < maxX ? 'band'
+          : startX < minX ? 'min' : 'max';
+  };
+
+  const commitTapValue = (clientX: number, rect: DOMRect) => {
     lastEmittedValueRef.current = null;
     lastEmittedRangeRef.current = null;
 
-    const rect = railRef.current.getBoundingClientRect();
-    const startX = event.clientX - rect.left;
-    const pointerValue = clamp((startX / rect.width) * 100, 0, 100);
+    if (mode === 'single') {
+      const nextValue = percentFromClientX(clientX, rect);
+      setLiveValue(nextValue);
+      emitValueChange(nextValue);
+      lastEmittedValueRef.current = null;
+      return;
+    }
+
+    const target = getRangeTarget(clientX, rect);
+    if (target === 'band') return;
+
+    const pointerValue = percentFromClientX(clientX, rect);
+    const nextRange = target === 'min'
+      ? { min: Math.min(pointerValue, currentRange.max - 4), max: currentRange.max }
+      : { min: currentRange.min, max: Math.max(pointerValue, currentRange.min + 4) };
+    setLiveRange(nextRange);
+    emitRangeChange(nextRange);
+    lastEmittedRangeRef.current = null;
+  };
+
+  const beginCommittedDrag = ({
+    currentTarget,
+    pointerId,
+    pointerType,
+    startClientX,
+    initialClientX,
+    rect,
+  }: {
+    currentTarget: HTMLDivElement;
+    pointerId: number;
+    pointerType: string;
+    startClientX: number;
+    initialClientX: number;
+    rect: DOMRect;
+  }) => {
+    const isTouch = pointerType === 'touch';
+    if (isTouch) setSliderTouchSelectionLock(true);
+    try {
+      currentTarget.setPointerCapture(pointerId);
+    } catch {
+      // Some browsers decline capture if the pointer is already cancelled.
+    }
+
+    const cleanupCommittedDrag = (
+      onMove: (moveEvent: PointerEvent) => void,
+      onEnd: (endEvent: PointerEvent) => void,
+    ) => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onEnd);
+      window.removeEventListener('pointercancel', onEnd);
+      releasePointerCaptureSafely(currentTarget, pointerId);
+      if (isTouch) setSliderTouchSelectionLock(false);
+    };
 
     if (mode === 'single') {
-      setLiveValue(pointerValue);
-      dragValueRef.current = pointerValue;
-      dragIndicatorRef.current = pointerValue;
-      dragThumbPxRef.current = (pointerValue / 100) * rect.width;
-      setDragging(true);
-      emitValueChange(pointerValue);
+      let lastValue = percentFromClientX(initialClientX, rect);
 
-      if (isDirect) {
-        const onMove = (moveEvent: PointerEvent) => {
-          const nextValue = clamp(((moveEvent.clientX - rect.left) / rect.width) * 100, 0, 100);
-          dragValueRef.current = nextValue;
-          dragIndicatorRef.current = nextValue;
-          dragThumbPxRef.current = (nextValue / 100) * rect.width;
+      const applySingleValue = (clientX: number) => {
+        const nextValue = percentFromClientX(clientX, rect);
+        dragValueRef.current = nextValue;
+        dragIndicatorRef.current = nextValue;
+        dragThumbPxRef.current = (nextValue / 100) * rect.width;
+        lastValue = nextValue;
+
+        if (isDirect) {
           if (thumbRef.current) {
             thumbRef.current.style.transform = `translateX(${dragThumbPxRef.current}px) translateY(-50%)`;
             thumbRef.current.style.left = '0';
@@ -176,73 +248,54 @@ export function SliderPrimitive({
             fillRef.current.style.width = `${nextValue}%`;
             fillRef.current.style.opacity = String(0.15 + (nextValue / 100) * 0.85);
           }
-          emitValueChange(nextValue);
-          (onMove as typeof onMove & { lastValue?: number }).lastValue = nextValue;
-        };
+        } else {
+          setLiveValue(nextValue);
+        }
 
-        const onEnd = () => {
-          const lastValue = (onMove as typeof onMove & { lastValue?: number }).lastValue ?? pointerValue;
-          setLiveValue(lastValue);
-          dragValueRef.current = null;
-          dragIndicatorRef.current = null;
-          dragThumbPxRef.current = null;
-          if (thumbRef.current) {
-            thumbRef.current.style.transform = '';
-            thumbRef.current.style.left = '';
-          }
-          emitValueChange(lastValue);
-          lastEmittedValueRef.current = null;
-          setDragging(false);
-          window.removeEventListener('pointermove', onMove);
-          window.removeEventListener('pointerup', onEnd);
-        };
-
-        window.addEventListener('pointermove', onMove);
-        window.addEventListener('pointerup', onEnd);
-        return;
-      }
-
-      let lastValue = pointerValue;
-      const onMove = (moveEvent: PointerEvent) => {
-        const nextValue = clamp(((moveEvent.clientX - rect.left) / rect.width) * 100, 0, 100);
-        setLiveValue(nextValue);
-        dragValueRef.current = nextValue;
-        dragIndicatorRef.current = nextValue;
-        dragThumbPxRef.current = (nextValue / 100) * rect.width;
-        lastValue = nextValue;
         emitValueChange(nextValue);
       };
 
-      const onEnd = () => {
+      setLiveValue(lastValue);
+      setDragging(true);
+      applySingleValue(initialClientX);
+
+      const onMove = (moveEvent: PointerEvent) => {
+        if (moveEvent.pointerId !== pointerId) return;
+        if (isTouch) moveEvent.preventDefault();
+        applySingleValue(moveEvent.clientX);
+      };
+
+      const onEnd = (endEvent: PointerEvent) => {
+        if (endEvent.pointerId !== pointerId) return;
+        setLiveValue(lastValue);
         dragValueRef.current = null;
         dragIndicatorRef.current = null;
         dragThumbPxRef.current = null;
+        if (thumbRef.current) {
+          thumbRef.current.style.transform = '';
+          thumbRef.current.style.left = '';
+        }
         emitValueChange(lastValue);
         lastEmittedValueRef.current = null;
         setDragging(false);
-        window.removeEventListener('pointermove', onMove);
-        window.removeEventListener('pointerup', onEnd);
+        cleanupCommittedDrag(onMove, onEnd);
       };
 
       window.addEventListener('pointermove', onMove);
       window.addEventListener('pointerup', onEnd);
+      window.addEventListener('pointercancel', onEnd);
       return;
     }
 
-    const minX = (currentRange.min / 100) * rect.width;
-    const maxX = (currentRange.max / 100) * rect.width;
-    const grab = density === 'comfortable' ? 22 : 14;
+    const startX = startClientX - rect.left;
+    const target = getRangeTarget(startClientX, rect);
     const currentSpan = Math.max(1e-6, currentRange.max - currentRange.min);
     const indicatorRatio = clamp((indicatorPct - currentRange.min) / currentSpan, 0, 1);
-    const target: 'min' | 'max' | 'band' =
-      Math.abs(startX - minX) <= grab ? 'min'
-        : Math.abs(startX - maxX) <= grab ? 'max'
-          : startX > minX && startX < maxX ? 'band'
-            : startX < minX ? 'min' : 'max';
+    const startRange = { ...currentRange };
+    let lastRange = startRange;
 
     setDragging(true);
     setActiveHandle(target);
-    const startRange = { ...currentRange };
     setLiveRange(startRange);
     dragRangeRef.current = startRange;
     dragIndicatorRef.current = clamp(
@@ -253,8 +306,8 @@ export function SliderPrimitive({
     dragThumbPxRef.current = (dragIndicatorRef.current / 100) * rect.width;
     emitRangeChange(startRange);
 
-    const getNextRange = (moveEvent: PointerEvent) => {
-      const delta = ((moveEvent.clientX - rect.left - startX) / rect.width) * 100;
+    const getNextRange = (clientX: number) => {
+      const delta = ((clientX - rect.left - startX) / Math.max(1, rect.width)) * 100;
       if (target === 'band') {
         const span = startRange.max - startRange.min;
         let nextMin = startRange.min + delta;
@@ -274,12 +327,9 @@ export function SliderPrimitive({
       }
 
       const raw = clamp(target === 'min' ? startRange.min + delta : startRange.max + delta, 0, 100);
-      const previousRange = target === 'min'
-        ? startRange
-        : startRange;
       return target === 'min'
-        ? { min: Math.min(raw, previousRange.max - 4), max: previousRange.max }
-        : { min: previousRange.min, max: Math.max(raw, previousRange.min + 4) };
+        ? { min: Math.min(raw, startRange.max - 4), max: startRange.max }
+        : { min: startRange.min, max: Math.max(raw, startRange.min + 4) };
     };
 
     const getNextIndicator = (nextRange: SliderPrimitiveRange) => clamp(
@@ -288,13 +338,15 @@ export function SliderPrimitive({
       nextRange.max,
     );
 
-    if (isDirect) {
-      const onMove = (moveEvent: PointerEvent) => {
-        const nextRange = getNextRange(moveEvent);
-        const nextIndicatorPct = getNextIndicator(nextRange);
-        dragRangeRef.current = nextRange;
-        dragIndicatorRef.current = nextIndicatorPct;
-        dragThumbPxRef.current = (nextIndicatorPct / 100) * rect.width;
+    const applyRange = (clientX: number) => {
+      const nextRange = getNextRange(clientX);
+      const nextIndicatorPct = getNextIndicator(nextRange);
+      dragRangeRef.current = nextRange;
+      dragIndicatorRef.current = nextIndicatorPct;
+      dragThumbPxRef.current = (nextIndicatorPct / 100) * rect.width;
+      lastRange = nextRange;
+
+      if (isDirect) {
         if (fillRef.current) {
           fillRef.current.style.left = `${nextRange.min}%`;
           fillRef.current.style.width = `${nextRange.max - nextRange.min}%`;
@@ -306,58 +358,147 @@ export function SliderPrimitive({
         }
         if (edgeMinRef.current) edgeMinRef.current.style.left = `${nextRange.min}%`;
         if (edgeMaxRef.current) edgeMaxRef.current.style.left = `${nextRange.max}%`;
-        emitRangeChange(nextRange);
-        (onMove as typeof onMove & { lastRange?: SliderPrimitiveRange }).lastRange = nextRange;
-      };
+      } else {
+        setLiveRange(nextRange);
+      }
 
-      const onEnd = () => {
-        const lastRange = (onMove as typeof onMove & { lastRange?: SliderPrimitiveRange }).lastRange ?? startRange;
-        setLiveRange(lastRange);
-        dragRangeRef.current = null;
-        dragIndicatorRef.current = null;
-        dragThumbPxRef.current = null;
-        if (thumbRef.current) {
-          thumbRef.current.style.transform = '';
-          thumbRef.current.style.left = '';
-        }
-        emitRangeChange(lastRange);
-        lastEmittedRangeRef.current = null;
-        setDragging(false);
-        setActiveHandle(null);
-        window.removeEventListener('pointermove', onMove);
-        window.removeEventListener('pointerup', onEnd);
-      };
-
-      window.addEventListener('pointermove', onMove);
-      window.addEventListener('pointerup', onEnd);
-      return;
-    }
-
-    let lastRange = startRange;
-    const onMove = (moveEvent: PointerEvent) => {
-      const nextRange = getNextRange(moveEvent);
-      setLiveRange(nextRange);
-      dragRangeRef.current = nextRange;
-      dragIndicatorRef.current = getNextIndicator(nextRange);
-      dragThumbPxRef.current = (dragIndicatorRef.current / 100) * rect.width;
-      lastRange = nextRange;
       emitRangeChange(nextRange);
     };
 
-    const onEnd = () => {
+    if (initialClientX !== startClientX) {
+      applyRange(initialClientX);
+    }
+
+    const onMove = (moveEvent: PointerEvent) => {
+      if (moveEvent.pointerId !== pointerId) return;
+      if (isTouch) moveEvent.preventDefault();
+      applyRange(moveEvent.clientX);
+    };
+
+    const onEnd = (endEvent: PointerEvent) => {
+      if (endEvent.pointerId !== pointerId) return;
+      setLiveRange(lastRange);
       dragRangeRef.current = null;
       dragIndicatorRef.current = null;
       dragThumbPxRef.current = null;
+      if (thumbRef.current) {
+        thumbRef.current.style.transform = '';
+        thumbRef.current.style.left = '';
+      }
       emitRangeChange(lastRange);
       lastEmittedRangeRef.current = null;
       setDragging(false);
       setActiveHandle(null);
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onEnd);
+      cleanupCommittedDrag(onMove, onEnd);
     };
 
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onEnd);
+    window.addEventListener('pointercancel', onEnd);
+  };
+
+  const beginDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!railRef.current || disabled) return;
+    onAnnounce?.();
+    pendingTouchCleanupRef.current?.();
+    lastEmittedValueRef.current = null;
+    lastEmittedRangeRef.current = null;
+
+    const currentTarget = event.currentTarget;
+    const rect = railRef.current.getBoundingClientRect();
+
+    if (event.pointerType !== 'touch') {
+      event.preventDefault();
+      beginCommittedDrag({
+        currentTarget,
+        pointerId: event.pointerId,
+        pointerType: event.pointerType,
+        startClientX: event.clientX,
+        initialClientX: event.clientX,
+        rect,
+      });
+      return;
+    }
+
+    const startX = event.clientX;
+    const startY = event.clientY;
+    let longPressTimer: ReturnType<typeof setTimeout> | null = null;
+    let longPressConsumed = false;
+    let cancelledForScroll = false;
+
+    setSliderTouchSelectionLock(true);
+
+    const clearLongPressTimer = () => {
+      if (longPressTimer) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+      }
+    };
+
+    const cleanupPendingTouch = () => {
+      clearLongPressTimer();
+      window.removeEventListener('pointermove', onPendingMove);
+      window.removeEventListener('pointerup', onPendingEnd);
+      window.removeEventListener('pointercancel', onPendingEnd);
+      releasePointerCaptureSafely(currentTarget, event.pointerId);
+      setSliderTouchSelectionLock(false);
+      if (pendingTouchCleanupRef.current === cleanupPendingTouch) {
+        pendingTouchCleanupRef.current = null;
+      }
+    };
+
+    const onPendingMove = (moveEvent: PointerEvent) => {
+      if (moveEvent.pointerId !== event.pointerId || longPressConsumed) return;
+      const intent = getTouchGestureIntent(startX, startY, moveEvent.clientX, moveEvent.clientY);
+      if (intent === 'pending') return;
+
+      clearLongPressTimer();
+      if (intent === 'scroll') {
+        cancelledForScroll = true;
+        cleanupPendingTouch();
+        return;
+      }
+
+      moveEvent.preventDefault();
+      cleanupPendingTouch();
+      beginCommittedDrag({
+        currentTarget,
+        pointerId: event.pointerId,
+        pointerType: event.pointerType,
+        startClientX: startX,
+        initialClientX: moveEvent.clientX,
+        rect,
+      });
+    };
+
+    const onPendingEnd = (endEvent: PointerEvent) => {
+      if (endEvent.pointerId !== event.pointerId) return;
+      const shouldTap = !longPressConsumed && !cancelledForScroll;
+      cleanupPendingTouch();
+      if (shouldTap) {
+        commitTapValue(startX, rect);
+      }
+      longPressConsumed = false;
+    };
+
+    if (onModeCycle) {
+      longPressTimer = setTimeout(() => {
+        longPressTimer = null;
+        longPressConsumed = true;
+        if (!disabled) onModeCycle();
+        if (navigator.vibrate) navigator.vibrate(50);
+      }, LONG_PRESS_MS);
+    }
+
+    pendingTouchCleanupRef.current = cleanupPendingTouch;
+    try {
+      currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // Capture can fail if the browser has already handed the touch to scroll.
+    }
+    window.addEventListener('pointermove', onPendingMove, { passive: false });
+    window.addEventListener('pointerup', onPendingEnd);
+    window.addEventListener('pointercancel', onPendingEnd);
   };
 
   const valueText = displayValue ?? (mode === 'single'
