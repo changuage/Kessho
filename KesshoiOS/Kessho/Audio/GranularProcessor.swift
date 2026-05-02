@@ -548,6 +548,29 @@ class GranularProcessor {
         }
     }
 
+    /// Add auxiliary capture sources, such as shared delay returns, into the
+    /// same upcoming live input window without replacing the primary pad input.
+    func mixInput(buffer: AVAudioPCMBuffer, gain: Float) {
+        guard gain > 0.0001, let channelData = buffer.floatChannelData else { return }
+
+        let frameCount = min(Int(buffer.frameLength), inputBufferSize)
+        guard frameCount > 0 else { return }
+
+        let left = channelData[0]
+        let right = Int(buffer.format.channelCount) > 1 ? channelData[1] : channelData[0]
+        let safeGain = min(max(gain, 0), 1.5)
+
+        stateLock.lock()
+        defer { stateLock.unlock() }
+
+        let baseIndex = inputWriteIndex
+        for frame in 0..<frameCount {
+            let writeIndex = (baseIndex + frame) % inputBufferSize
+            inputBufferL[writeIndex] = min(max(inputBufferL[writeIndex] + left[frame] * safeGain, -2), 2)
+            inputBufferR[writeIndex] = min(max(inputBufferR[writeIndex] + right[frame] * safeGain, -2), 2)
+        }
+    }
+
     /// Write input samples to buffer (call from audio callback with live audio)
     func writeInput(left: Float, right: Float) {
         stateLock.lock()

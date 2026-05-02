@@ -100,12 +100,33 @@ struct SliderControlsView: View {
                         range: 0...1,
                         icon: "music.note"
                     )
-                    
+
+                    ParameterSlider(
+                        label: "Lead 2",
+                        value: $appState.state.lead2Level,
+                        range: 0...1,
+                        icon: "music.note.list"
+                    )
+
+                    ParameterSlider(
+                        label: "Piano",
+                        value: $appState.state.pianoLevel,
+                        range: 0...1,
+                        icon: "pianokeys"
+                    )
+
                     ParameterSlider(
                         label: "Ocean",
                         value: $appState.state.oceanSampleLevel,
                         range: 0...1,
                         icon: "water.waves"
+                    )
+
+                    ParameterSlider(
+                        label: "Earth",
+                        value: $appState.state.earthLevel,
+                        range: 0...1,
+                        icon: "leaf"
                     )
                     
                     ParameterSlider(
@@ -574,7 +595,111 @@ struct SliderControlsView: View {
                         range: 0...1,
                         icon: "arrow.left.and.right"
                     )
-                    
+
+                    ParameterSlider(
+                        label: "Cross Feed",
+                        key: "reverbCrossFeed",
+                        value: $appState.state.reverbCrossFeed,
+                        range: 0...1,
+                        icon: "arrow.left.arrow.right"
+                    )
+
+                    ParameterSlider(
+                        label: "Shimmer",
+                        value: $appState.state.reverbShimmer,
+                        range: 0...1,
+                        icon: "sparkles"
+                    )
+
+                    ParameterSlider(
+                        label: "Shimmer Pitch",
+                        value: $appState.state.reverbShimmerPitch,
+                        range: -24...24,
+                        unit: "st",
+                        icon: "arrow.up.arrow.down"
+                    )
+
+                    ParameterSlider(
+                        label: "Shimmer Feedback",
+                        value: $appState.state.reverbShimmerFeedback,
+                        range: 0...1,
+                        icon: "arrow.triangle.2.circlepath"
+                    )
+
+                    ParameterSlider(
+                        label: "Warp",
+                        value: $appState.state.reverbWarp,
+                        range: 0...1,
+                        icon: "scribble.variable"
+                    )
+
+                    ParameterSlider(
+                        label: "Transient Smooth",
+                        value: $appState.state.reverbTransientSmooth,
+                        range: 0...1,
+                        icon: "waveform.path.ecg"
+                    )
+
+                    Divider().background(Color.white.opacity(0.2))
+
+                    Toggle("Spectral Freeze", isOn: $appState.state.spectralFreezeEnabled)
+                        .foregroundColor(.white)
+                    Toggle("Freeze Active", isOn: $appState.state.spectralFreezeActive)
+                        .foregroundColor(.white)
+                    Toggle("Slushy", isOn: $appState.state.spectralFreezeSlushy)
+                        .foregroundColor(.white)
+
+                    HStack {
+                        Image(systemName: "arrow.triangle.branch")
+                            .foregroundColor(.white.opacity(0.5))
+                            .frame(width: 20)
+                        Text("Freeze Routing")
+                            .foregroundColor(.white.opacity(0.8))
+                        Spacer()
+                        Picker("Freeze Routing", selection: $appState.state.spectralFreezeRouting) {
+                            Text("Pre").tag("pre")
+                            Text("Post").tag("post")
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(width: 140)
+                    }
+
+                    ParameterSlider(
+                        label: "Freeze Speed",
+                        value: $appState.state.spectralFreezeSpeed,
+                        range: 0...1,
+                        icon: "speedometer"
+                    )
+
+                    ParameterSlider(
+                        label: "Freeze Mix",
+                        value: $appState.state.spectralFreezeMix,
+                        range: 0...1,
+                        icon: "slider.horizontal.3"
+                    )
+
+                    ParameterSlider(
+                        label: "Freeze Decay",
+                        value: $appState.state.spectralFreezeDecay,
+                        range: 0...1,
+                        icon: "snowflake"
+                    )
+
+                    ParameterSlider(
+                        label: "Phase Jitter",
+                        value: $appState.state.spectralFreezePhaseJitter,
+                        range: 0...1,
+                        icon: "shuffle"
+                    )
+
+                    ParameterSlider(
+                        label: "Freeze Verb Xfade",
+                        key: "spectralFreezeReverbCrossfade",
+                        value: $appState.state.spectralFreezeReverbCrossfade,
+                        range: 0...1,
+                        icon: "circle.lefthalf.filled"
+                    )
+
                     Divider().background(Color.white.opacity(0.2))
                     
                     Text("Send Levels")
@@ -601,13 +726,41 @@ struct SliderControlsView: View {
                         range: 0...1,
                         icon: "arrow.right.to.line"
                     )
-                    
+
+                    ParameterSlider(
+                        label: "Lead 2 Send",
+                        value: $appState.state.lead2ReverbSend,
+                        range: 0...1,
+                        icon: "arrow.right.to.line"
+                    )
+
+                    ParameterSlider(
+                        label: "Piano Send",
+                        value: $appState.state.pianoReverbSend,
+                        range: 0...1,
+                        icon: "arrow.right.to.line"
+                    )
+
                     ParameterSlider(
                         label: "Lead Delay Send",
                         value: $appState.state.leadDelayReverbSend,
                         range: 0...1,
                         icon: "arrow.right.to.line"
 	                    )
+
+                    ParameterSlider(
+                        label: "Delay A Send",
+                        value: $appState.state.delayAReverbSend,
+                        range: 0...1,
+                        icon: "arrow.right.to.line"
+                    )
+
+                    ParameterSlider(
+                        label: "Nature Send",
+                        value: $appState.state.natureReverbSend,
+                        range: 0...1,
+                        icon: "arrow.right.to.line"
+                    )
 	                }
 
 	                // MARK: - Dynamics Character Section
@@ -1201,7 +1354,403 @@ struct SliderControlsView: View {
                         color: .purple
                     )
                 }
-                
+
+                CollapsibleSection(title: "Lead 2 & Piano", icon: "pianokeys", expanded: $expandedSections) {
+                    Toggle("Lead 2 Enabled", isOn: $appState.state.lead2Enabled)
+                        .foregroundColor(.white)
+
+                    ParameterSlider(
+                        label: "Lead 2 Morph",
+                        value: $appState.state.lead2Morph,
+                        range: 0...1,
+                        icon: "arrow.left.and.right"
+                    )
+
+                    ParameterSlider(
+                        label: "Lead 2 Density",
+                        value: $appState.state.lead2Density,
+                        range: 0.1...12,
+                        unit: "/phrase",
+                        icon: "square.grid.2x2"
+                    )
+
+                    ParameterSlider(
+                        label: "Lead 2 Attack",
+                        value: $appState.state.lead2Attack,
+                        range: 0.001...2,
+                        unit: "s",
+                        icon: "arrow.up.right"
+                    )
+
+                    ParameterSlider(
+                        label: "Lead 2 Release",
+                        value: $appState.state.lead2Release,
+                        range: 0.01...8,
+                        unit: "s",
+                        icon: "arrow.down.right.and.arrow.up.left"
+                    )
+
+                    Toggle("Piano Enabled", isOn: $appState.state.pianoEnabled)
+                        .foregroundColor(.white)
+
+                    ParameterSlider(
+                        label: "Piano Attack",
+                        value: $appState.state.pianoAttack,
+                        range: 0.001...2,
+                        unit: "s",
+                        icon: "arrow.up.right"
+                    )
+
+                    ParameterSlider(
+                        label: "Piano Release",
+                        value: $appState.state.pianoRelease,
+                        range: 0.01...8,
+                        unit: "s",
+                        icon: "arrow.down.right.and.arrow.up.left"
+                    )
+
+                    ParameterSlider(
+                        label: "Piano LPF",
+                        value: $appState.state.pianoPostLPF,
+                        range: 40...18000,
+                        unit: "Hz",
+                        icon: "line.diagonal",
+                        logarithmic: true
+                    )
+                }
+
+                CollapsibleSection(title: "Shared Delay", icon: "arrow.triangle.2.circlepath", expanded: $expandedSections) {
+                    Toggle("Delay A", isOn: $appState.state.delayAEnabled)
+                        .foregroundColor(.white)
+
+                    Toggle("Delay A Ping-Pong", isOn: $appState.state.delayAPingPong)
+                        .foregroundColor(.white)
+
+                    ParameterSlider(
+                        label: "Delay A Time",
+                        key: "delayATime",
+                        value: $appState.state.delayATime,
+                        range: 1...2000,
+                        unit: "ms",
+                        icon: "clock"
+                    )
+
+                    ParameterSlider(
+                        label: "Delay A Feedback",
+                        key: "delayAFeedback",
+                        value: $appState.state.delayAFeedback,
+                        range: 0...0.95,
+                        icon: "arrow.triangle.2.circlepath"
+                    )
+
+                    ParameterSlider(
+                        label: "Delay A Mix",
+                        key: "delayAMix",
+                        value: $appState.state.delayAMix,
+                        range: 0...1,
+                        icon: "slider.horizontal.3"
+                    )
+
+                    ParameterSlider(
+                        label: "Delay A Spread",
+                        key: "delayASpread",
+                        value: $appState.state.delayASpread,
+                        range: 0...4,
+                        icon: "arrow.left.and.right"
+                    )
+
+                    ParameterSlider(
+                        label: "Delay A Width",
+                        key: "delayAWidth",
+                        value: $appState.state.delayAWidth,
+                        range: 0...1,
+                        icon: "speaker.wave.2"
+                    )
+
+                    ParameterSlider(
+                        label: "Delay A Filter",
+                        key: "delayAFilter",
+                        value: $appState.state.delayAFilter,
+                        range: 80...20000,
+                        unit: "Hz",
+                        icon: "line.diagonal",
+                        logarithmic: true
+                    )
+
+                    HStack {
+                        Image(systemName: "line.3.horizontal.decrease")
+                            .foregroundColor(.white.opacity(0.5))
+                            .frame(width: 20)
+                        Text("Delay A Filter Type")
+                            .foregroundColor(.white.opacity(0.8))
+                        Spacer()
+                        Picker("Delay A Filter Type", selection: $appState.state.delayAFilterType) {
+                            Text("Lowpass").tag("lowpass")
+                            Text("Highpass").tag("highpass")
+                            Text("Bandpass").tag("bandpass")
+                        }
+                        .pickerStyle(.menu)
+                        .accentColor(.cyan)
+                    }
+
+                    ParameterSlider(
+                        label: "Delay A Send",
+                        key: "delayASend",
+                        value: $appState.state.delayASend,
+                        range: 0...1,
+                        icon: "arrow.right.to.line"
+                    )
+
+                    ParameterSlider(
+                        label: "Delay A to B",
+                        key: "delayAToBSend",
+                        value: $appState.state.delayAToBSend,
+                        range: 0...1,
+                        icon: "arrow.turn.down.right"
+                    )
+
+                    ParameterSlider(
+                        label: "Delay A Mod Rate",
+                        key: "delayAModRate",
+                        value: $appState.state.delayAModRate,
+                        range: 0...10,
+                        unit: "Hz",
+                        icon: "waveform.path"
+                    )
+
+                    ParameterSlider(
+                        label: "Delay A Mod Depth",
+                        key: "delayAModDepth",
+                        value: $appState.state.delayAModDepth,
+                        range: 0...1,
+                        icon: "waveform.path.ecg"
+                    )
+
+                    ParameterSlider(
+                        label: "Delay A Duck",
+                        key: "delayADuck",
+                        value: $appState.state.delayADuck,
+                        range: 0...1,
+                        icon: "arrow.down.to.line"
+                    )
+
+                    ParameterSlider(
+                        label: "Delay A Cross Filter",
+                        key: "delayACrossFeedFilter",
+                        value: $appState.state.delayACrossFeedFilter,
+                        range: 0...1,
+                        icon: "line.diagonal"
+                    )
+
+                    Toggle("Granular Delay B", isOn: $appState.state.granularDelayEnabled)
+                        .foregroundColor(.white)
+
+                    HStack {
+                        Image(systemName: "point.3.connected.trianglepath.dotted")
+                            .foregroundColor(.white.opacity(0.5))
+                            .frame(width: 20)
+                        Text("Delay B Pattern")
+                            .foregroundColor(.white.opacity(0.8))
+                        Spacer()
+                        Picker("Delay B Pattern", selection: $appState.state.delayBPattern) {
+                            Text("Cascade").tag("cascade")
+                            Text("Scatter").tag("scatter")
+                            Text("Bloom").tag("bloom")
+                        }
+                        .pickerStyle(.menu)
+                        .accentColor(.cyan)
+                    }
+
+                    HStack {
+                        Image(systemName: "scribble.variable")
+                            .foregroundColor(.white.opacity(0.5))
+                            .frame(width: 20)
+                        Text("Delay B Warp")
+                            .foregroundColor(.white.opacity(0.8))
+                        Spacer()
+                        Picker("Delay B Warp", selection: $appState.state.delayBWarp) {
+                            Text("Clean").tag("clean")
+                            Text("Tape").tag("tape")
+                            Text("Diffuse").tag("diffuse")
+                            Text("Pitch").tag("pitch")
+                        }
+                        .pickerStyle(.menu)
+                        .accentColor(.cyan)
+                    }
+
+                    ParameterSlider(
+                        label: "Delay B Warp",
+                        key: "delayBWarpIntensity",
+                        value: $appState.state.delayBWarpIntensity,
+                        range: 0...1,
+                        icon: "scribble.variable"
+                    )
+
+                    ParameterSlider(
+                        label: "Delay B Spread",
+                        key: "delayBSpread",
+                        value: $appState.state.delayBSpread,
+                        range: 0...1,
+                        icon: "arrow.left.and.right"
+                    )
+
+                    ParameterSlider(
+                        label: "Delay B to A",
+                        key: "delayBToASend",
+                        value: $appState.state.delayBToASend,
+                        range: 0...1,
+                        icon: "arrow.turn.up.left"
+                    )
+
+                    ParameterSlider(
+                        label: "Delay A Granular",
+                        key: "delayAGranularSend",
+                        value: $appState.state.delayAGranularSend,
+                        range: 0...1,
+                        icon: "sparkles"
+                    )
+
+                    ParameterSlider(
+                        label: "Delay B Granular",
+                        key: "delayBGranularSend",
+                        value: $appState.state.delayBGranularSend,
+                        range: 0...1,
+                        icon: "sparkles"
+                    )
+
+                    ParameterSlider(
+                        label: "Delay B Activity",
+                        key: "granularDelayActivity",
+                        value: $appState.state.granularDelayActivity,
+                        range: 0...1,
+                        icon: "speedometer"
+                    )
+
+                    ParameterSlider(
+                        label: "Delay B Repeats",
+                        key: "granularDelayRepeats",
+                        value: $appState.state.granularDelayRepeats,
+                        range: 0...0.95,
+                        icon: "repeat"
+                    )
+
+                    ParameterSlider(
+                        label: "Delay B Filter",
+                        key: "granularDelayFilter",
+                        value: $appState.state.granularDelayFilter,
+                        range: 0...1,
+                        icon: "line.diagonal"
+                    )
+
+                    ParameterSlider(
+                        label: "Delay B Vibrato",
+                        key: "granularDelayVibrato",
+                        value: $appState.state.granularDelayVibrato,
+                        range: 0...1,
+                        icon: "waveform.path"
+                    )
+
+                    ParameterSlider(
+                        label: "Delay B Mix",
+                        key: "granularDelayMix",
+                        value: $appState.state.granularDelayMix,
+                        range: 0...1,
+                        icon: "slider.horizontal.3"
+                    )
+
+                    ParameterSlider(
+                        label: "Delay B Verb Send",
+                        key: "granularDelayReverbSend",
+                        value: $appState.state.granularDelayReverbSend,
+                        range: 0...1,
+                        icon: "arrow.right.to.line"
+                    )
+
+                    Divider().background(Color.white.opacity(0.2))
+
+                    Text("Source Delay Sends")
+                        .font(.subheadline)
+                        .foregroundColor(.white.opacity(0.6))
+
+                    DelaySendPairControl(
+                        label: "Pad 1",
+                        delayASend: $appState.state.pad1DelayASend,
+                        delayBSend: $appState.state.pad1DelayBSend
+                    )
+
+                    DelaySendPairControl(
+                        label: "Pad 2",
+                        delayASend: $appState.state.pad2DelayASend,
+                        delayBSend: $appState.state.pad2DelayBSend
+                    )
+
+                    DelaySendPairControl(
+                        label: "Lead 1",
+                        delayASend: $appState.state.lead1DelayASend,
+                        delayBSend: $appState.state.lead1DelayBSend
+                    )
+
+                    DelaySendPairControl(
+                        label: "Lead 2",
+                        delayASend: $appState.state.lead2DelayASend,
+                        delayBSend: $appState.state.lead2DelayBSend
+                    )
+
+                    DelaySendPairControl(
+                        label: "Piano",
+                        delayASend: $appState.state.pianoDelayASend,
+                        delayBSend: $appState.state.pianoDelayBSend
+                    )
+
+                    DelaySendPairControl(
+                        label: "Drums",
+                        delayASend: $appState.state.drumDelayASend,
+                        delayBSend: $appState.state.drumDelayBSend
+                    )
+
+                    DelaySendPairControl(
+                        label: "Ocean",
+                        delayASend: $appState.state.oceanDelayASend,
+                        delayBSend: $appState.state.oceanDelayBSend
+                    )
+
+                    DelaySendPairControl(
+                        label: "Nature",
+                        delayASend: $appState.state.natureDelayASend,
+                        delayBSend: $appState.state.natureDelayBSend
+                    )
+
+                    DelaySendPairControl(
+                        label: "Water",
+                        delayASend: $appState.state.waterDelayASend,
+                        delayBSend: $appState.state.waterDelayBSend
+                    )
+
+                    DelaySendPairControl(
+                        label: "Birds",
+                        delayASend: $appState.state.birdsDelayASend,
+                        delayBSend: $appState.state.birdsDelayBSend
+                    )
+
+                    DelaySendPairControl(
+                        label: "Birds 2",
+                        delayASend: $appState.state.birds2DelayASend,
+                        delayBSend: $appState.state.birds2DelayBSend
+                    )
+
+                    DelaySendPairControl(
+                        label: "Frogs",
+                        delayASend: $appState.state.frogsDelayASend,
+                        delayBSend: $appState.state.frogsDelayBSend
+                    )
+
+                    DelaySendPairControl(
+                        label: "Insects",
+                        delayASend: $appState.state.insDelayASend,
+                        delayBSend: $appState.state.insDelayBSend
+                    )
+                }
+
                 // MARK: - Euclidean Sequencer Section
                 CollapsibleSection(title: "Euclidean Sequencer", icon: "circle.hexagongrid.fill", expanded: $expandedSections) {
                     Toggle("Master Enable", isOn: $appState.state.synthEuclideanMasterEnabled)
@@ -1394,6 +1943,77 @@ struct SliderControlsView: View {
                         range: 0...1,
                         icon: "arrow.down.to.line",
                         color: .blue
+                    )
+                }
+
+                CollapsibleSection(title: "Earth Textures", icon: "leaf", expanded: $expandedSections) {
+                    Toggle("Birds", isOn: $appState.state.birdsEnabled)
+                        .foregroundColor(.white)
+                    Toggle("Birds 2", isOn: $appState.state.birds2Enabled)
+                        .foregroundColor(.white)
+                    Toggle("Frogs", isOn: $appState.state.frogsEnabled)
+                        .foregroundColor(.white)
+                    Toggle("Water", isOn: $appState.state.waterEnabled)
+                        .foregroundColor(.white)
+                    Toggle("Insects", isOn: $appState.state.insectsEnabled)
+                        .foregroundColor(.white)
+                    Toggle("Insects 2", isOn: $appState.state.insects2Enabled)
+                        .foregroundColor(.white)
+
+                    ParameterSlider(
+                        label: "Nature Level",
+                        value: $appState.state.natureLevel,
+                        range: 0...1,
+                        icon: "speaker.wave.2"
+                    )
+
+                    ParameterSlider(
+                        label: "Water Level",
+                        value: $appState.state.waterLevel,
+                        range: 0...1,
+                        icon: "water.waves"
+                    )
+
+                    ParameterSlider(
+                        label: "Water Intensity",
+                        value: $appState.state.waterIntensity,
+                        range: 0...1,
+                        icon: "drop"
+                    )
+
+                    ParameterSlider(
+                        label: "Drops",
+                        value: $appState.state.waterLayerWaterDrops,
+                        range: 0...1,
+                        icon: "drop.fill"
+                    )
+
+                    ParameterSlider(
+                        label: "Bubbles",
+                        value: $appState.state.waterLayerBubbling,
+                        range: 0...1,
+                        icon: "bubble.left.and.bubble.right"
+                    )
+
+                    ParameterSlider(
+                        label: "Surf",
+                        value: $appState.state.waterLayerSurf,
+                        range: 0...1,
+                        icon: "water.waves"
+                    )
+
+                    ParameterSlider(
+                        label: "Insects Level",
+                        value: $appState.state.insectsSharedLevel,
+                        range: 0...1,
+                        icon: "waveform"
+                    )
+
+                    ParameterSlider(
+                        label: "Insects Density",
+                        value: $appState.state.insectsDensity,
+                        range: 0...1,
+                        icon: "circle.grid.cross"
                     )
                 }
                 } // End FX Tab
@@ -2431,6 +3051,8 @@ struct EuclideanLaneView: View {
     
     private let sources = [
         ("lead", "Lead"),
+        ("lead2", "Lead 2"),
+        ("piano", "Piano"),
         ("synth1", "Synth 1"),
         ("synth2", "Synth 2"),
         ("synth3", "Synth 3"),
@@ -3391,6 +4013,36 @@ struct VoiceToggle: View {
                 .padding(.vertical, 4)
                 .background(isOn ? Color.cyan : Color.white.opacity(0.1))
                 .cornerRadius(4)
+        }
+    }
+}
+
+// MARK: - Delay Send Pair
+struct DelaySendPairControl: View {
+    let label: String
+    @Binding var delayASend: Double
+    @Binding var delayBSend: Double
+
+    var body: some View {
+        VStack(spacing: 8) {
+            Text(label)
+                .font(.caption)
+                .foregroundColor(.white.opacity(0.55))
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            ParameterSlider(
+                label: "\(label) A",
+                value: $delayASend,
+                range: 0...1,
+                icon: "a.circle"
+            )
+
+            ParameterSlider(
+                label: "\(label) B",
+                value: $delayBSend,
+                range: 0...1,
+                icon: "b.circle"
+            )
         }
     }
 }

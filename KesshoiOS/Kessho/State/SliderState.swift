@@ -11,8 +11,26 @@ public struct SliderState: Codable, Equatable {
     var synthReverbSend: Double = 0.7
     var granularReverbSend: Double = 0.8
     var leadReverbSend: Double = 0.5
+    var lead2Level: Double = 0.6
+    var lead2ReverbSend: Double = 0.5
+    var pianoLevel: Double = 0.75
+    var pianoReverbSend: Double = 0.35
     var leadDelayReverbSend: Double = 0.4
+    var delayAReverbSend: Double = 0.4
     var reverbLevel: Double = 1.0
+    var earthLevel: Double = 1.0
+    var pad1DelayASend: Double = 0
+    var pad1DelayBSend: Double = 0
+    var pad2DelayASend: Double = 0
+    var pad2DelayBSend: Double = 0
+    var lead1DelayASend: Double = 1
+    var lead1DelayBSend: Double = 0
+    var lead2DelayASend: Double = 1
+    var lead2DelayBSend: Double = 0
+    var pianoDelayASend: Double = 0
+    var pianoDelayBSend: Double = 0
+    var drumDelayASend: Double = 1
+    var drumDelayBSend: Double = 0
     
     // Seed
     var seedWindow: String = "hour"  // "hour", "day" (matching web app)
@@ -68,6 +86,23 @@ public struct SliderState: Codable, Equatable {
     var predelay: Double = 60
     var damping: Double = 0.2
     var width: Double = 0.85
+    var reverbShimmer: Double = 0
+    var reverbShimmerPitch: Double = 12
+    var reverbShimmerFeedback: Double = 0
+    var reverbWarp: Double = 0
+    var reverbCrossFeed: Double = 0
+    var reverbTransientSmooth: Double = 0
+
+    // Spectral Freeze
+    var spectralFreezeEnabled: Bool = false
+    var spectralFreezeActive: Bool = false
+    var spectralFreezeSlushy: Bool = false
+    var spectralFreezeSpeed: Double = 0.3
+    var spectralFreezeMix: Double = 1.0
+    var spectralFreezeDecay: Double = 1.0
+    var spectralFreezePhaseJitter: Double = 0
+    var spectralFreezeRouting: String = "pre"
+    var spectralFreezeReverbCrossfade: Double = 1.0
 
     // Dynamics Character (shared C++ core with web/WASM)
     var dynamicsEnabled: Bool = false
@@ -179,6 +214,74 @@ public struct SliderState: Codable, Equatable {
     var leadVibratoRateMax: Double = 0
     var leadGlideMin: Double = 0         // 0-1, portamento speed (min=max for single mode)
     var leadGlideMax: Double = 0
+
+    // Lead 2 mirrors the web app's second FM lead, rendered as a separate native voice.
+    var lead2Enabled: Bool = false
+    var lead2PresetC: String = "soft_rhodes"
+    var lead2PresetD: String = "gamelan"
+    var lead2Morph: Double = 0
+    var lead2MorphAuto: Bool = false
+    var lead2MorphSpeed: Double = 8
+    var lead2MorphMode: String = "pingpong"
+    var lead2AlgorithmMode: String = "snap"
+    var lead2UseCustomAdsr: Bool = false
+    var lead2Attack: Double = 0.01
+    var lead2Decay: Double = 0.8
+    var lead2Sustain: Double = 0.3
+    var lead2Hold: Double = 0.5
+    var lead2Release: Double = 2.0
+    var lead2Distance: Double = 0
+    var lead2PostLPF: Double = 18000
+    var lead2PostLPFKeyTracking: Double = 0
+    var lead2StereoWidth: Double = 1
+    var lead2DiffuseSend: Double = 0
+    var lead2Density: Double = 0.5
+    var lead2Octave: Int = 1
+    var lead2OctaveRange: Int = 2
+
+    // Piano source
+    var pianoEnabled: Bool = false
+    var pianoAttack: Double = 0.005
+    var pianoDecay: Double = 0.65
+    var pianoSustain: Double = 0.72
+    var pianoHold: Double = 0.2
+    var pianoRelease: Double = 1.4
+    var pianoDistance: Double = 0
+    var pianoPostLPF: Double = 16000
+    var pianoStereoWidth: Double = 0.85
+    var pianoDiffuseSend: Double = 0
+
+    // Shared web-style Delay A / Delay B buses.
+    var delayAEnabled: Bool = true
+    var delayATime: Double = 375
+    var delayAFeedback: Double = 0.4
+    var delayAMix: Double = 0.35
+    var delayASpread: Double = 1.5
+    var delayAFilter: Double = 2000
+    var delayASend: Double = 0.5
+    var delayAToBSend: Double = 0
+    var delayAGranularSend: Double = 0
+    var delayBGranularSend: Double = 0
+    var delayAPingPong: Bool = false
+    var delayAModRate: Double = 0
+    var delayAModDepth: Double = 0
+    var delayADuck: Double = 0
+    var delayAFilterType: String = "lowpass"
+    var delayAWidth: Double = 0.5
+    var delayBPattern: String = "cascade"
+    var delayBWarp: String = "clean"
+    var delayBWarpIntensity: Double = 0.5
+    var delayBSpread: Double = 0.5
+    var delayBToASend: Double = 0
+    var delayACrossFeedFilter: Double = 1
+    var granularDelayEnabled: Bool = false
+    var granularDelayActivity: Double = 0.3
+    var granularDelayRepeats: Double = 0.3
+    var granularDelayTime: String = "1/4"
+    var granularDelayFilter: Double = 0.5
+    var granularDelayVibrato: Double = 0
+    var granularDelayMix: Double = 1.0
+    var granularDelayReverbSend: Double = 0.4
     
     // Euclidean Rhythms
     var synthEuclideanMasterEnabled: Bool = false
@@ -222,7 +325,7 @@ public struct SliderState: Codable, Equatable {
     
     // Euclidean Probability & Source (per lane)
     var synthEuclid1Probability: Double = 1.0
-    var synthEuclid1Source: String = "lead"  // "lead", "synth1"..."synth6"
+    var synthEuclid1Source: String = "lead"  // "lead", "lead1", "lead2", "piano", "synth1"..."synth6"
     var synthEuclid2Probability: Double = 1.0
     var synthEuclid2Source: String = "lead"
     var synthEuclid3Probability: Double = 1.0
@@ -470,6 +573,10 @@ public struct SliderState: Codable, Equatable {
     var oceanSampleEnabled: Bool = false
     var oceanSampleLevel: Double = 0.5
     var oceanReverbSend: Double = 0.2
+    var oceanDelayASend: Double = 0
+    var oceanDelayBSend: Double = 0
+    var oceanSliceDuration: Double = 22
+    var oceanSliceDensity: Double = 0.38
     var oceanWaveSynthEnabled: Bool = false
     var oceanWaveSynthLevel: Double = 0.4
     var oceanFilterType: String = "lowpass"
@@ -483,6 +590,117 @@ public struct SliderState: Codable, Equatable {
     var oceanFoamMax: Double = 0.5
     var oceanDepthMin: Double = 0.3
     var oceanDepthMax: Double = 0.7
+
+    // Lightweight native Earth approximations for web soundscape fields.
+    var birdsEnabled: Bool = false
+    var birdsLevel: Double = 0.6
+    var birdsReverbSend: Double = 0.15
+    var birdsDelayASend: Double = 0
+    var birdsDelayBSend: Double = 0
+    var birdsSliceDuration: Double = 20
+    var birdsSliceDensity: Double = 0.45
+    var birds2Enabled: Bool = false
+    var birds2Level: Double = 0.52
+    var birds2ReverbSend: Double = 0.16
+    var birds2DelayASend: Double = 0
+    var birds2DelayBSend: Double = 0
+    var birds2SliceDuration: Double = 20
+    var birds2SliceDensity: Double = 0.48
+    var frogsEnabled: Bool = false
+    var frogsLevel: Double = 0.5
+    var frogsReverbSend: Double = 0.2
+    var frogsDelayASend: Double = 0
+    var frogsDelayBSend: Double = 0
+    var frogsSliceDuration: Double = 18
+    var frogsSliceDensity: Double = 0.52
+    var natureLevel: Double = 1.0
+    var natureReverbSend: Double = 0.18
+    var natureDelayASend: Double = 0
+    var natureDelayBSend: Double = 0
+
+    var waterEnabled: Bool = false
+    var waterPreset: Int = 1
+    var waterMorphA: Int = 0
+    var waterMorphB: Int = 2
+    var waterMorph: Double = 0
+    var waterIntensity: Double = 0.7
+    var waterDistance: Double = 0.3
+    var waterBaseFreq: Double = 2300
+    var waterDropSize: Double = 0.5
+    var waterHardness: Double = 0.5
+    var waterGlassThickness: Double = 0.5
+    var waterReverbSend: Double = 0.3
+    var waterDelayASend: Double = 0
+    var waterDelayBSend: Double = 0
+    var waterLevel: Double = 0.8
+    var waterLayerHardDrops: Double = 0.08
+    var waterLayerWaterDrops: Double = 0.82
+    var waterLayerTurbulence: Double = 0.56
+    var waterLayerBubbling: Double = 0.92
+    var waterLayerSurf: Double = 0
+    var waterLayerChannels: Double = 0
+    var waterHardDropBaseFreq: Double = 2300
+    var waterHardDropRate: Double = 1.0
+    var waterHardDropLPF: Double = 12000
+    var waterHardDropTone: Double = 1.0
+    var waterWaterDropBaseFreq: Double = 2300
+    var waterWaterDropRate: Double = 1.0
+    var waterWaterDropLPF: Double = 16000
+    var waterBubblingRate: Double = 1.0
+    var waterBubblingLPF: Double = 1500
+    var waterSurfDuration: Double = 8.0
+    var waterSurfInterval: Double = 9.5
+    var waterSurfFoam: Double = 0.35
+    var waterSurfFoamBright: Double = 0.4
+    var waterSurfProximity: Double = 0.7
+    var waterSurfDepth: Double = 0.5
+    var waterSurfBody: Double = 300
+    var waterSurfSpray: Double = 4000
+    var waterDensityHardSend: Double = 0.28
+    var waterDensityWaterSend: Double = 0.46
+    var waterDensityBubbleSend: Double = 0.62
+    var waterDensityFeedback: Double = 0.74
+    var waterDensityTone: Double = 900
+    var waterDensityRing: Double = 1.0
+    var waterDensityWet: Double = 0.48
+    var waterChannelsMorph: Double = 0
+    var waterChannelsSpeed: Double = 0.5
+
+    var insectsEnabled: Bool = false
+    var insectsEngine: Int = 0
+    var insectsDensity: Double = 0.5
+    var insectsTemperature: Double = 0.5
+    var insectsDistance: Double = 0.3
+    var insectsProximity: Double = 0.5
+    var insectsAntiphony: Double = 0.3
+    var insectsClickRate: Double = 0.3
+    var insectsMotion: Double = 0.5
+    var insectsLevel: Double = 0.7
+    var insectsSharedLevel: Double = 1.0
+    var insectsReverbSend: Double = 0.15
+    var insDelayASend: Double = 0
+    var insDelayBSend: Double = 0
+    var insects2Enabled: Bool = false
+    var insects2Engine: Int = 1
+    var insects2Density: Double = 0.5
+    var insects2Temperature: Double = 0.5
+    var insects2Distance: Double = 0.3
+    var insects2Proximity: Double = 0.5
+    var insects2Antiphony: Double = 0.3
+    var insects2ClickRate: Double = 0.3
+    var insects2Motion: Double = 0.5
+    var insects2Level: Double = 0.5
+
+    var granularPad1Send: Double = 1.0
+    var granularPad2Send: Double = 0
+    var granularLead1Send: Double = 0
+    var granularLead2Send: Double = 0
+    var granularPianoSend: Double = 0
+    var granularDrumSend: Double = 0
+    var granularWavesSend: Double = 0
+    var granularNatureSend: Double = 0
+    var granularWaterSend: Double = 0
+    var granularInsectsSend: Double = 0
     
     // Random Walk
     var randomWalkSpeed: Double = 1.0
@@ -632,8 +850,10 @@ private extension SliderState {
 
     static func normalizedSynthEuclidSource(_ rawValue: String) -> String {
         switch rawValue {
-        case "lead1", "lead2", "piano":
+        case "lead1":
             return "lead"
+        case "lead", "lead2", "piano":
+            return rawValue
         default:
             return rawValue
         }
@@ -673,6 +893,7 @@ private extension SliderState {
         source: SliderStateJSONRecord,
         target: inout SliderStateJSONRecord
     ) {
+        assignNumberIfMissing("delayAReverbSend", from: ["delayAReverbSend", "leadDelayReverbSend"], source: source, target: &target)
         assignNumberIfMissing("leadDelayReverbSend", from: ["delayAReverbSend"], source: source, target: &target)
         assignNumberIfMissing("leadDelayTimeMin", from: ["delayATime", "leadDelayTime"], source: source, target: &target)
         assignNumberIfMissing("leadDelayTimeMax", from: ["delayATime", "leadDelayTime"], source: source, target: &target)
@@ -680,12 +901,44 @@ private extension SliderState {
         assignNumberIfMissing("leadDelayFeedbackMax", from: ["delayAFeedback", "leadDelayFeedback"], source: source, target: &target)
         assignNumberIfMissing("leadDelayMixMin", from: ["delayAMix", "leadDelayMix"], source: source, target: &target)
         assignNumberIfMissing("leadDelayMixMax", from: ["delayAMix", "leadDelayMix"], source: source, target: &target)
+        assignNumberIfMissing("delayATime", from: ["delayATime", "leadDelayTime"], source: source, target: &target)
+        assignNumberIfMissing("delayAFeedback", from: ["delayAFeedback", "leadDelayFeedback"], source: source, target: &target)
+        assignNumberIfMissing("delayAMix", from: ["delayAMix", "leadDelayMix"], source: source, target: &target)
         assignNumberIfMissing("leadVibratoDepthMin", from: ["leadVibratoDepth"], source: source, target: &target)
         assignNumberIfMissing("leadVibratoDepthMax", from: ["leadVibratoDepth"], source: source, target: &target)
         assignNumberIfMissing("leadVibratoRateMin", from: ["leadVibratoRate"], source: source, target: &target)
         assignNumberIfMissing("leadVibratoRateMax", from: ["leadVibratoRate"], source: source, target: &target)
         assignNumberIfMissing("leadGlideMin", from: ["leadGlide"], source: source, target: &target)
         assignNumberIfMissing("leadGlideMax", from: ["leadGlide"], source: source, target: &target)
+
+        assignBoolIfMissing("lead2Enabled", from: ["lead2Enabled"], source: source, target: &target)
+        assignNumberIfMissing("lead2Level", from: ["lead2Level"], source: source, target: &target)
+        assignNumberIfMissing("lead2ReverbSend", from: ["lead2ReverbSend"], source: source, target: &target)
+        assignNumberIfMissing("lead2DelayASend", from: ["lead2DelayASend"], source: source, target: &target)
+        assignNumberIfMissing("lead2DelayBSend", from: ["lead2DelayBSend"], source: source, target: &target)
+        assignNumberIfMissing("lead2Attack", from: ["lead2Attack"], source: source, target: &target)
+        assignNumberIfMissing("lead2Decay", from: ["lead2Decay"], source: source, target: &target)
+        assignNumberIfMissing("lead2Sustain", from: ["lead2Sustain"], source: source, target: &target)
+        assignNumberIfMissing("lead2Hold", from: ["lead2Hold"], source: source, target: &target)
+        assignNumberIfMissing("lead2Release", from: ["lead2Release"], source: source, target: &target)
+        assignNumberIfMissing("lead2Density", from: ["lead2Density", "lead1Density", "leadDensity"], source: source, target: &target)
+        assignNumberIfMissing("lead2Octave", from: ["lead2Octave", "lead1Octave", "leadOctave"], source: source, target: &target)
+        assignNumberIfMissing("lead2OctaveRange", from: ["lead2OctaveRange", "lead1OctaveRange", "leadOctaveRange"], source: source, target: &target)
+        assignStringIfMissing("lead2PresetC", from: ["lead2PresetC"], source: source, target: &target)
+        assignStringIfMissing("lead2PresetD", from: ["lead2PresetD"], source: source, target: &target)
+        assignNumberIfMissing("lead2Morph", from: ["lead2Morph"], source: source, target: &target)
+        assignBoolIfMissing("pianoEnabled", from: ["pianoEnabled"], source: source, target: &target)
+        assignNumberIfMissing("pianoLevel", from: ["pianoLevel"], source: source, target: &target)
+        assignNumberIfMissing("pianoReverbSend", from: ["pianoReverbSend"], source: source, target: &target)
+        assignNumberIfMissing("pianoDelayASend", from: ["pianoDelayASend"], source: source, target: &target)
+        assignNumberIfMissing("pianoDelayBSend", from: ["pianoDelayBSend"], source: source, target: &target)
+        assignNumberIfMissing("pianoAttack", from: ["pianoAttack"], source: source, target: &target)
+        assignNumberIfMissing("pianoDecay", from: ["pianoDecay"], source: source, target: &target)
+        assignNumberIfMissing("pianoSustain", from: ["pianoSustain"], source: source, target: &target)
+        assignNumberIfMissing("pianoHold", from: ["pianoHold"], source: source, target: &target)
+        assignNumberIfMissing("pianoRelease", from: ["pianoRelease"], source: source, target: &target)
+        assignNumberIfMissing("pianoPostLPF", from: ["pianoPostLPF"], source: source, target: &target)
+        assignNumberIfMissing("pianoStereoWidth", from: ["pianoStereoWidth"], source: source, target: &target)
 
         guard let namespace = primaryLeadNamespace(in: source) else { return }
 
@@ -745,7 +998,10 @@ private extension SliderState {
         source: SliderStateJSONRecord,
         target: inout SliderStateJSONRecord
     ) {
-        assignNumberIfMissing("oceanReverbSend", from: ["waterReverbSend"], source: source, target: &target)
+        assignNumberIfMissing("earthLevel", from: ["earthLevel"], source: source, target: &target)
+        assignNumberIfMissing("oceanReverbSend", from: ["oceanReverbSend", "waterReverbSend"], source: source, target: &target)
+        assignNumberIfMissing("oceanDelayASend", from: ["oceanDelayASend"], source: source, target: &target)
+        assignNumberIfMissing("oceanDelayBSend", from: ["oceanDelayBSend"], source: source, target: &target)
         assignBoolIfMissing("oceanWaveSynthEnabled", from: ["waterEnabled"], source: source, target: &target)
         assignNumberIfMissing("oceanWaveSynthLevel", from: ["waterLevel", "oceanMix"], source: source, target: &target)
         assignNumberIfMissing("oceanDurationMin", from: ["waterSurfDuration"], source: source, target: &target)
@@ -756,6 +1012,35 @@ private extension SliderState {
         assignNumberIfMissing("oceanFoamMax", from: ["waterSurfFoam"], source: source, target: &target)
         assignNumberIfMissing("oceanDepthMin", from: ["waterSurfDepth"], source: source, target: &target)
         assignNumberIfMissing("oceanDepthMax", from: ["waterSurfDepth"], source: source, target: &target)
+        assignBoolIfMissing("waterEnabled", from: ["waterEnabled"], source: source, target: &target)
+        assignNumberIfMissing("waterLevel", from: ["waterLevel"], source: source, target: &target)
+        assignNumberIfMissing("waterReverbSend", from: ["waterReverbSend"], source: source, target: &target)
+        assignNumberIfMissing("waterDelayASend", from: ["waterDelayASend"], source: source, target: &target)
+        assignNumberIfMissing("waterDelayBSend", from: ["waterDelayBSend"], source: source, target: &target)
+        assignNumberIfMissing("waterIntensity", from: ["waterIntensity"], source: source, target: &target)
+        assignNumberIfMissing("waterLayerHardDrops", from: ["waterLayerHardDrops"], source: source, target: &target)
+        assignNumberIfMissing("waterLayerWaterDrops", from: ["waterLayerWaterDrops"], source: source, target: &target)
+        assignNumberIfMissing("waterLayerTurbulence", from: ["waterLayerTurbulence"], source: source, target: &target)
+        assignNumberIfMissing("waterLayerBubbling", from: ["waterLayerBubbling"], source: source, target: &target)
+        assignNumberIfMissing("waterLayerSurf", from: ["waterLayerSurf"], source: source, target: &target)
+        assignBoolIfMissing("birdsEnabled", from: ["birdsEnabled"], source: source, target: &target)
+        assignBoolIfMissing("birds2Enabled", from: ["birds2Enabled"], source: source, target: &target)
+        assignBoolIfMissing("frogsEnabled", from: ["frogsEnabled"], source: source, target: &target)
+        assignNumberIfMissing("birdsLevel", from: ["birdsLevel"], source: source, target: &target)
+        assignNumberIfMissing("birds2Level", from: ["birds2Level"], source: source, target: &target)
+        assignNumberIfMissing("frogsLevel", from: ["frogsLevel"], source: source, target: &target)
+        assignNumberIfMissing("natureLevel", from: ["natureLevel"], source: source, target: &target)
+        assignNumberIfMissing("natureReverbSend", from: ["natureReverbSend"], source: source, target: &target)
+        assignNumberIfMissing("natureDelayASend", from: ["natureDelayASend"], source: source, target: &target)
+        assignNumberIfMissing("natureDelayBSend", from: ["natureDelayBSend"], source: source, target: &target)
+        assignBoolIfMissing("insectsEnabled", from: ["insectsEnabled"], source: source, target: &target)
+        assignBoolIfMissing("insects2Enabled", from: ["insects2Enabled"], source: source, target: &target)
+        assignNumberIfMissing("insectsLevel", from: ["insectsLevel"], source: source, target: &target)
+        assignNumberIfMissing("insects2Level", from: ["insects2Level"], source: source, target: &target)
+        assignNumberIfMissing("insectsSharedLevel", from: ["insectsSharedLevel"], source: source, target: &target)
+        assignNumberIfMissing("insectsDensity", from: ["insectsDensity"], source: source, target: &target)
+        assignNumberIfMissing("insects2Density", from: ["insects2Density"], source: source, target: &target)
+        assignNumberIfMissing("insectsReverbSend", from: ["insectsReverbSend"], source: source, target: &target)
     }
 
     static func applyLegacyCompatibilityMappings(

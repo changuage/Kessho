@@ -224,6 +224,16 @@ class ReverbProcessor {
     private var predelayMs: Float = 20  // in milliseconds
     private var width: Float = 0.8
     private var damping: Float = 0.5
+    private var shimmer: Float = 0
+    private var shimmerPitch: Float = 12
+    private var shimmerFeedback: Float = 0
+    private var warp: Float = 0
+    private var crossFeed: Float = 0
+    private var transientSmooth: Float = 0
+    private var shimmerStateL: Float = 0
+    private var shimmerStateR: Float = 0
+    private var smoothStateL: Float = 0
+    private var smoothStateR: Float = 0
 
     // Live input ring buffer fed from the shared reverb send mixer.
     private let inputBufferSize: Int
@@ -389,6 +399,10 @@ class ReverbProcessor {
         postDiffuserR.clear()
         dcBlockerL.clear()
         dcBlockerR.clear()
+        shimmerStateL = 0
+        shimmerStateR = 0
+        smoothStateL = 0
+        smoothStateR = 0
         for index in 0..<8 {
             reads8[index] = 0
             damped8[index] = 0
@@ -548,7 +562,38 @@ class ReverbProcessor {
         // Soft clip to prevent harshness
         rawL = softClip(rawL)
         rawR = softClip(rawR)
-        
+
+        if shimmer > 0.0001 {
+            let pitchGain = max(0.25, min(4.0, pow(2, shimmerPitch / 24)))
+            let shimmerCoeff = min(0.98, 0.35 + shimmerFeedback * 0.55)
+            shimmerStateL = shimmerStateL * shimmerCoeff + rawR * (1 - shimmerCoeff) * pitchGain
+            shimmerStateR = shimmerStateR * shimmerCoeff + rawL * (1 - shimmerCoeff) * pitchGain
+            rawL += shimmerStateL * shimmer * 0.38
+            rawR += shimmerStateR * shimmer * 0.38
+        }
+
+        if warp > 0.0001 {
+            let warpAmount = min(max(warp, 0), 1)
+            rawL = rawL * (1 - warpAmount) + sin(rawL * .pi) * warpAmount
+            rawR = rawR * (1 - warpAmount) + sin(rawR * .pi) * warpAmount
+        }
+
+        if crossFeed > 0.0001 {
+            let feed = min(max(crossFeed, 0), 1) * 0.5
+            let left = rawL
+            let right = rawR
+            rawL = left * (1 - feed) + right * feed
+            rawR = right * (1 - feed) + left * feed
+        }
+
+        if transientSmooth > 0.0001 {
+            let coeff = min(max(transientSmooth, 0), 0.98)
+            smoothStateL += (rawL - smoothStateL) * (1 - coeff)
+            smoothStateR += (rawR - smoothStateR) * (1 - coeff)
+            rawL = smoothStateL
+            rawR = smoothStateR
+        }
+
         // DC blocking (essential for long reverb tails)
         rawL = dcBlockerL.process(rawL)
         rawR = dcBlockerR.process(rawR)
@@ -753,7 +798,10 @@ class ReverbProcessor {
     /// Set all parameters at once
     func setParameters(decay: Float, mix: Float, size: Float,
                        diffusion: Float, modulation: Float,
-                       predelay: Float, width: Float, damping: Float) {
+                       predelay: Float, width: Float, damping: Float,
+                       shimmer: Float = 0, shimmerPitch: Float = 12,
+                       shimmerFeedback: Float = 0, warp: Float = 0,
+                       crossFeed: Float = 0, transientSmooth: Float = 0) {
         stateLock.lock()
         defer { stateLock.unlock() }
         self.userDecay = min(max(decay, 0), 1)
@@ -766,6 +814,12 @@ class ReverbProcessor {
         self.predelaySamples = self.predelayMs * sampleRate / 1000
         self.width = min(max(width, 0), 1)
         self.damping = min(max(damping, 0), 1)
+        self.shimmer = min(max(shimmer, 0), 1)
+        self.shimmerPitch = min(max(shimmerPitch, -24), 24)
+        self.shimmerFeedback = min(max(shimmerFeedback, 0), 1)
+        self.warp = min(max(warp, 0), 1)
+        self.crossFeed = min(max(crossFeed, 0), 1)
+        self.transientSmooth = min(max(transientSmooth, 0), 1)
         updateDiffuserFeedback()
         refreshRouting()
 

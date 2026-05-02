@@ -240,6 +240,10 @@ class DrumSynth {
             var beepLoBody: Float = 0.3       // resonance
             var beepLoPluck: Float = 0        // Karplus-Strong amount
             var beepLoPluckDamp: Float = 0.5  // pluck damping
+            var beepLoEnvelopeCoeff: Float = -1 / (0.1 * 0.3)
+            var beepLoPitchEnvCoeff: Float = -1 / (0.05 * 0.3)
+            var beepLoPitchDelta: Float = 0
+            var beepLoPluckDampGain: Float = 0.85
             
             // Noise
             var noiseFilterFreq: Float = 8000
@@ -261,6 +265,7 @@ class DrumSynth {
         self.invSampleRate = 1.0 / self.sampleRate
         self.noiseBufferSize = Int(self.sampleRate)
         self.delayBufferSize = max(1, Int(self.sampleRate * 0.1))
+        self.activeVoices.reserveCapacity(maxActiveVoices)
         // Pre-generate noise buffer
         noiseBuffer = [Float](repeating: 0, count: noiseBufferSize)
         for i in 0..<noiseBufferSize {
@@ -558,15 +563,14 @@ class DrumSynth {
         if voice.time < attack {
             voice.envelope = attack > 0 ? voice.time / attack : 1.0
         } else {
-            voice.envelope = exp(-(voice.time - attack) / (decay * 0.3))
+            voice.envelope = exp((voice.time - attack) * p.beepLoEnvelopeCoeff)
         }
-        
+
         // Pitch envelope (negative = pitch rises, like a droplet)
         var freq = p.beepLoFreq
-        if abs(p.beepLoPitchEnv) > 0.1 {
-            let pitchMult = pow(2, p.beepLoPitchEnv / 12)
-            let pitchEnvVal = exp(-voice.time / (p.beepLoPitchDecay * 0.3))
-            freq = p.beepLoFreq + (p.beepLoFreq * (pitchMult - 1)) * pitchEnvVal
+        if abs(p.beepLoPitchDelta) > 0.01 {
+            let pitchEnvVal = exp(voice.time * p.beepLoPitchEnvCoeff)
+            freq = p.beepLoFreq + p.beepLoPitchDelta * pitchEnvVal
         }
         
         voice.phase += freq * invSampleRate
@@ -591,17 +595,12 @@ class DrumSynth {
             osc += voice.filterState2 * 0.3
         }
         
-        // Karplus-Strong pluck simulation (simplified)
-        if p.beepLoPluck > 0.1 && voice.pluckBuffer.isEmpty {
-            // Initialize pluck buffer on first sample
-            let bufferSize = Int(sampleRate / freq)
-            voice.pluckBuffer = (0..<bufferSize).map { _ in Float.random(in: -1...1) }
-        }
+        // Karplus-Strong pluck simulation (buffer is prepared at trigger time).
         if p.beepLoPluck > 0.1 && !voice.pluckBuffer.isEmpty {
             let bufSize = voice.pluckBuffer.count
             let idx = voice.pluckIndex % bufSize
             let nextIdx = (idx + 1) % bufSize
-            let pluckSample = (voice.pluckBuffer[idx] + voice.pluckBuffer[nextIdx]) * 0.5 * (1 - p.beepLoPluckDamp * 0.3)
+            let pluckSample = (voice.pluckBuffer[idx] + voice.pluckBuffer[nextIdx]) * 0.5 * p.beepLoPluckDampGain
             voice.pluckBuffer[idx] = pluckSample
             voice.pluckIndex += 1
             osc = osc * (1 - p.beepLoPluck) + pluckSample * p.beepLoPluck
@@ -799,6 +798,11 @@ class DrumSynth {
             voiceParams.beepLoBody = Float(morphedParams["drumBeepLoBody"] as? Double ?? params.drumBeepLoBody)
             voiceParams.beepLoPluck = Float(morphedParams["drumBeepLoPluck"] as? Double ?? params.drumBeepLoPluck)
             voiceParams.beepLoPluckDamp = Float(morphedParams["drumBeepLoPluckDamp"] as? Double ?? params.drumBeepLoPluckDamp)
+            voiceParams.beepLoEnvelopeCoeff = -1 / max(voiceParams.beepLoDecay * 0.3, 0.0001)
+            voiceParams.beepLoPitchEnvCoeff = -1 / max(voiceParams.beepLoPitchDecay * 0.3, 0.0001)
+            let pitchMult = pow(2, voiceParams.beepLoPitchEnv / 12)
+            voiceParams.beepLoPitchDelta = voiceParams.beepLoFreq * (pitchMult - 1)
+            voiceParams.beepLoPluckDampGain = 1 - voiceParams.beepLoPluckDamp * 0.3
             level = Float(morphedParams["drumBeepLoLevel"] as? Double ?? params.drumBeepLoLevel)
             delaySend = Float(params.drumBeepLoDelaySend)
             
@@ -821,12 +825,23 @@ class DrumSynth {
         // Store delay send level for this voice
         delaySendLevels[type] = delaySend
         
+        var pluckBuffer: [Float] = []
+        if type == .beepLo && voiceParams.beepLoPluck > 0.1 {
+            let bufferSize = max(1, Int(sampleRate / max(voiceParams.beepLoFreq, 1)))
+            pluckBuffer = [Float](repeating: 0, count: bufferSize)
+            let startIndex = Int.random(in: 0..<noiseBufferSize)
+            for index in 0..<bufferSize {
+                pluckBuffer[index] = noiseBuffer[(startIndex + index) % noiseBufferSize]
+            }
+        }
+
         let voice = ActiveVoice(
             type: type,
             velocity: velocity,
             level: level,
             params: voiceParams,
             noiseIndex: Int.random(in: 0..<noiseBufferSize),
+            pluckBuffer: pluckBuffer,
             delaySend: delaySend
         )
         

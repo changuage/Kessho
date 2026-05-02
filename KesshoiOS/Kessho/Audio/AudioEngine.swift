@@ -20,9 +20,17 @@ public final class AudioEngine {
     private var granularProcessor: GranularProcessor?
     private var reverbProcessor: ReverbProcessor?
     private var dynamicsCharacterProcessor: DynamicsCharacterProcessor?
+    private var spectralFreezeProcessor: SpectralFreezeProcessor?
+    private var delayAProcessor: SharedDelayProcessor?
+    private var delayBProcessor: SharedDelayProcessor?
+    private var delayAInputSink: AVAudioSinkNode?
+    private var delayBInputSink: AVAudioSinkNode?
     private var leadSynth: LeadSynth?
+    private var lead2Synth: LeadSynth?
+    private var pianoSynth: PianoSynth?
     private var oceanSynth: OceanSynth?
     private var oceanSamplePlayer: OceanSamplePlayer?
+    private var natureTextureSynth: NatureTextureSynth?
     private var drumSynth: DrumSynth?
     
     // Euclidean sequencer for lead
@@ -39,17 +47,48 @@ public final class AudioEngine {
     private let synthMixer = AVAudioMixerNode()
     private let granularMixer = AVAudioMixerNode()
     private let leadMixer = AVAudioMixerNode()
+    private let lead2Mixer = AVAudioMixerNode()
+    private let pianoMixer = AVAudioMixerNode()
     private let oceanMixer = AVAudioMixerNode()
+    private let natureMixer = AVAudioMixerNode()
     private let drumMixer = AVAudioMixerNode()
     private let synthLevelMixer = AVAudioMixerNode()
     private let granularLevelMixer = AVAudioMixerNode()
     private let leadLevelMixer = AVAudioMixerNode()
+    private let lead2LevelMixer = AVAudioMixerNode()
+    private let pianoLevelMixer = AVAudioMixerNode()
+    private let natureLevelMixer = AVAudioMixerNode()
     private let drumLevelMixer = AVAudioMixerNode()
     private let synthReverbSendMixer = AVAudioMixerNode()
     private let granularReverbSendMixer = AVAudioMixerNode()
     private let leadReverbSendMixer = AVAudioMixerNode()
+    private let lead2ReverbSendMixer = AVAudioMixerNode()
+    private let pianoReverbSendMixer = AVAudioMixerNode()
+    private let natureReverbSendMixer = AVAudioMixerNode()
     private let drumReverbSendMixer = AVAudioMixerNode()
     private let oceanReverbSendMixer = AVAudioMixerNode()
+    private let synthDelayASendMixer = AVAudioMixerNode()
+    private let leadDelayASendMixer = AVAudioMixerNode()
+    private let lead2DelayASendMixer = AVAudioMixerNode()
+    private let pianoDelayASendMixer = AVAudioMixerNode()
+    private let drumDelayASendMixer = AVAudioMixerNode()
+    private let oceanDelayASendMixer = AVAudioMixerNode()
+    private let natureDelayASendMixer = AVAudioMixerNode()
+    private let synthDelayBSendMixer = AVAudioMixerNode()
+    private let leadDelayBSendMixer = AVAudioMixerNode()
+    private let lead2DelayBSendMixer = AVAudioMixerNode()
+    private let pianoDelayBSendMixer = AVAudioMixerNode()
+    private let drumDelayBSendMixer = AVAudioMixerNode()
+    private let oceanDelayBSendMixer = AVAudioMixerNode()
+    private let natureDelayBSendMixer = AVAudioMixerNode()
+    private let delayAInputMixer = AVAudioMixerNode()
+    private let delayBInputMixer = AVAudioMixerNode()
+    private let delayAMixer = AVAudioMixerNode()
+    private let delayBMixer = AVAudioMixerNode()
+    private let delayAReverbSendMixer = AVAudioMixerNode()
+    private let delayBReverbSendMixer = AVAudioMixerNode()
+    private let delayAToBSendMixer = AVAudioMixerNode()
+    private let delayBToASendMixer = AVAudioMixerNode()
     private let drumDelaySendMixer = AVAudioMixerNode()  // Delay send from drums
     private let drumDelayMixer = AVAudioMixerNode()      // Delay wet output
     private var drumDelayL: AVAudioUnitDelay?            // Left channel delay
@@ -58,6 +97,7 @@ public final class AudioEngine {
     private let reverbSend = AVAudioMixerNode()
     private let masterMixer = AVAudioMixerNode()
     private let dynamicsBypassMixer = AVAudioMixerNode()
+    private let spectralFreezeReturnMixer = AVAudioMixerNode()
     private let outputBridgeMixer = AVAudioMixerNode()
     
     // MARK: - State
@@ -114,23 +154,55 @@ public final class AudioEngine {
         engine.attach(synthMixer)
         engine.attach(granularMixer)
         engine.attach(leadMixer)
+        engine.attach(lead2Mixer)
+        engine.attach(pianoMixer)
         engine.attach(oceanMixer)
+        engine.attach(natureMixer)
         engine.attach(drumMixer)
         engine.attach(synthLevelMixer)
         engine.attach(granularLevelMixer)
         engine.attach(leadLevelMixer)
+        engine.attach(lead2LevelMixer)
+        engine.attach(pianoLevelMixer)
+        engine.attach(natureLevelMixer)
         engine.attach(drumLevelMixer)
         engine.attach(synthReverbSendMixer)
         engine.attach(granularReverbSendMixer)
         engine.attach(leadReverbSendMixer)
+        engine.attach(lead2ReverbSendMixer)
+        engine.attach(pianoReverbSendMixer)
+        engine.attach(natureReverbSendMixer)
         engine.attach(drumReverbSendMixer)
         engine.attach(oceanReverbSendMixer)
+        engine.attach(synthDelayASendMixer)
+        engine.attach(leadDelayASendMixer)
+        engine.attach(lead2DelayASendMixer)
+        engine.attach(pianoDelayASendMixer)
+        engine.attach(drumDelayASendMixer)
+        engine.attach(oceanDelayASendMixer)
+        engine.attach(natureDelayASendMixer)
+        engine.attach(synthDelayBSendMixer)
+        engine.attach(leadDelayBSendMixer)
+        engine.attach(lead2DelayBSendMixer)
+        engine.attach(pianoDelayBSendMixer)
+        engine.attach(drumDelayBSendMixer)
+        engine.attach(oceanDelayBSendMixer)
+        engine.attach(natureDelayBSendMixer)
+        engine.attach(delayAInputMixer)
+        engine.attach(delayBInputMixer)
+        engine.attach(delayAMixer)
+        engine.attach(delayBMixer)
+        engine.attach(delayAReverbSendMixer)
+        engine.attach(delayBReverbSendMixer)
+        engine.attach(delayAToBSendMixer)
+        engine.attach(delayBToASendMixer)
         engine.attach(drumDelaySendMixer)
         engine.attach(drumDelayMixer)
         engine.attach(dryMixer)
         engine.attach(reverbSend)
         engine.attach(masterMixer)
         engine.attach(dynamicsBypassMixer)
+        engine.attach(spectralFreezeReturnMixer)
         engine.attach(outputBridgeMixer)
 
         // Create synth voices
@@ -150,8 +222,14 @@ public final class AudioEngine {
 
         reverbProcessor = ReverbProcessor(sampleRate: Float(renderSampleRate))
         dynamicsCharacterProcessor = DynamicsCharacterProcessor(sampleRate: Float(renderSampleRate))
+        spectralFreezeProcessor = SpectralFreezeProcessor(sampleRate: Float(renderSampleRate))
+        delayAProcessor = SharedDelayProcessor(sampleRate: Float(renderSampleRate))
+        delayBProcessor = SharedDelayProcessor(sampleRate: Float(renderSampleRate))
         leadSynth = LeadSynth(sampleRate: Float(renderSampleRate))
+        lead2Synth = LeadSynth(sampleRate: Float(renderSampleRate))
+        pianoSynth = PianoSynth(sampleRate: Float(renderSampleRate))
         oceanSynth = OceanSynth(sampleRate: Float(renderSampleRate))
+        natureTextureSynth = NatureTextureSynth(sampleRate: Float(renderSampleRate))
         
         // Create Euclidean sequencer for lead
         euclideanSequencer = EuclideanSequencer()
@@ -161,10 +239,25 @@ public final class AudioEngine {
             engine.connect(lead.node, to: leadMixer, format: format)
         }
 
+        if let lead2 = lead2Synth {
+            engine.attach(lead2.node)
+            engine.connect(lead2.node, to: lead2Mixer, format: format)
+        }
+
+        if let piano = pianoSynth {
+            engine.attach(piano.node)
+            engine.connect(piano.node, to: pianoMixer, format: format)
+        }
+
         // Connect ocean synth after its destination mixer is attached
         if let ocean = oceanSynth {
             engine.attach(ocean.node)
             engine.connect(ocean.node, to: oceanMixer, format: format)
+        }
+
+        if let nature = natureTextureSynth {
+            engine.attach(nature.node)
+            engine.connect(nature.node, to: natureMixer, format: format)
         }
 
         // Create ocean sample player and connect to ocean mixer
@@ -173,6 +266,7 @@ public final class AudioEngine {
 
         // Setup drum stereo ping-pong delay
         setupDrumDelay(format: format)
+        setupSharedDelayBuses(format: format)
         
         // Connect dry path through dedicated level mixers so reverb sends can stay pre-fader.
         engine.connect(synthMixer, to: synthLevelMixer, format: format)
@@ -181,7 +275,13 @@ public final class AudioEngine {
         engine.connect(granularLevelMixer, to: dryMixer, format: format)
         engine.connect(leadMixer, to: leadLevelMixer, format: format)
         engine.connect(leadLevelMixer, to: dryMixer, format: format)
+        engine.connect(lead2Mixer, to: lead2LevelMixer, format: format)
+        engine.connect(lead2LevelMixer, to: dryMixer, format: format)
+        engine.connect(pianoMixer, to: pianoLevelMixer, format: format)
+        engine.connect(pianoLevelMixer, to: dryMixer, format: format)
         engine.connect(oceanMixer, to: dryMixer, format: format)
+        engine.connect(natureMixer, to: natureLevelMixer, format: format)
+        engine.connect(natureLevelMixer, to: dryMixer, format: format)
         engine.connect(drumMixer, to: drumLevelMixer, format: format)
         engine.connect(drumLevelMixer, to: dryMixer, format: format)
         engine.connect(drumDelayMixer, to: dryMixer, format: format)  // Delay wet goes to dry path
@@ -202,10 +302,20 @@ public final class AudioEngine {
             engine.connect(granularReverbSendMixer, to: reverbSend, format: format)
             engine.connect(leadMixer, to: leadReverbSendMixer, format: format)
             engine.connect(leadReverbSendMixer, to: reverbSend, format: format)
+            engine.connect(lead2Mixer, to: lead2ReverbSendMixer, format: format)
+            engine.connect(lead2ReverbSendMixer, to: reverbSend, format: format)
+            engine.connect(pianoMixer, to: pianoReverbSendMixer, format: format)
+            engine.connect(pianoReverbSendMixer, to: reverbSend, format: format)
             engine.connect(drumMixer, to: drumReverbSendMixer, format: format)
             engine.connect(drumReverbSendMixer, to: reverbSend, format: format)
             engine.connect(oceanMixer, to: oceanReverbSendMixer, format: format)
             engine.connect(oceanReverbSendMixer, to: reverbSend, format: format)
+            engine.connect(natureMixer, to: natureReverbSendMixer, format: format)
+            engine.connect(natureReverbSendMixer, to: reverbSend, format: format)
+            engine.connect(delayAMixer, to: delayAReverbSendMixer, format: format)
+            engine.connect(delayAReverbSendMixer, to: reverbSend, format: format)
+            engine.connect(delayBMixer, to: delayBReverbSendMixer, format: format)
+            engine.connect(delayBReverbSendMixer, to: reverbSend, format: format)
 
             // Lite mode stays available through Apple reverb, but custom FDN now has
             // its own live source node and return bus for parity-oriented presets.
@@ -229,6 +339,11 @@ public final class AudioEngine {
         if let character = dynamicsCharacterProcessor {
             engine.attach(character.node)
             engine.connect(character.node, to: outputBridgeMixer, format: format)
+        }
+        if let freeze = spectralFreezeProcessor {
+            engine.attach(freeze.node)
+            engine.connect(freeze.node, to: spectralFreezeReturnMixer, format: format)
+            engine.connect(spectralFreezeReturnMixer, to: outputBridgeMixer, format: format)
         }
         engine.connect(masterMixer, to: dynamicsBypassMixer, format: format)
         engine.connect(dynamicsBypassMixer, to: outputBridgeMixer, format: format)
@@ -300,11 +415,17 @@ public final class AudioEngine {
     private func setupDynamicsCharacterInputTap(format: AVAudioFormat) {
         masterMixer.removeTap(onBus: 0)
         masterMixer.installTap(onBus: 0, bufferSize: 128, format: format) { [weak self] buffer, _ in
-            guard let self,
-                  self.currentParams.dynamicsEnabled,
-                  self.currentParams.characterEnabled || self.currentParams.degradeEnabled || self.currentParams.endCompEnabled
-            else { return }
-            self.dynamicsCharacterProcessor?.writeInput(buffer: buffer)
+            guard let self else { return }
+            let dynamicsActive = self.currentParams.dynamicsEnabled &&
+                (self.currentParams.characterEnabled || self.currentParams.degradeEnabled || self.currentParams.endCompEnabled)
+            let freezeActive = self.currentParams.spectralFreezeEnabled
+            guard dynamicsActive || freezeActive else { return }
+            if dynamicsActive {
+                self.dynamicsCharacterProcessor?.writeInput(buffer: buffer)
+            }
+            if freezeActive {
+                self.spectralFreezeProcessor?.writeInput(buffer: buffer)
+            }
         }
     }
 
@@ -356,8 +477,9 @@ public final class AudioEngine {
             }
             if currentParams.synthEuclideanMasterEnabled {
                 scheduleEuclideanPhrase()
-            } else if currentParams.leadEnabled {
+            } else if currentParams.leadEnabled || currentParams.lead2Enabled || currentParams.pianoEnabled {
                 triggerImmediateLeadNote()
+                triggerImmediateSecondaryNotes()
                 scheduleRandomLeadPhrase()
             }
 
@@ -408,6 +530,33 @@ public final class AudioEngine {
         leadSynth?.playNote(midiNote: midiNote, velocity: 0.72)
 
         print("AudioEngine immediate lead note:", midiNote)
+    }
+
+    private func triggerImmediateSecondaryNotes() {
+        guard !currentParams.synthEuclideanMasterEnabled,
+              let harmony = harmonyState else { return }
+
+        let scaleNotes = getScaleNotesInRange(
+            scale: harmony.scaleFamily,
+            lowMidi: 48,
+            highMidi: 96,
+            rootNote: cofState.effectiveRoot
+        )
+        guard !scaleNotes.isEmpty else { return }
+
+        if currentParams.lead2Enabled {
+            let note = scaleNotes[min(scaleNotes.count - 1, max(0, scaleNotes.count / 2 + 4))]
+            let rng = createRng("\(currentBucket)|\(currentSeed)|lead2|immediate")
+            lead2Synth?.randomizeTimbre(rng)
+            lead2Synth?.randomizeExpression(rng)
+            lead2Synth?.randomizeDelay(rng)
+            lead2Synth?.playNote(midiNote: note, velocity: 0.62)
+        }
+
+        if currentParams.pianoEnabled {
+            let note = scaleNotes[min(scaleNotes.count - 1, max(0, scaleNotes.count / 2 - 2))]
+            pianoSynth?.playNote(midiNote: note, velocity: 0.58)
+        }
     }
     
     /// Create DrumSynth after harmony is initialized (provides RNG)
@@ -477,6 +626,14 @@ public final class AudioEngine {
         let beats = noteDivisions[note] ?? 0.5  // Default to 1/8
         return (60.0 / bpm) * beats
     }
+
+    private func logFrequencyUnit(_ hz: Double, minHz: Double, maxHz: Double) -> Float {
+        let safeMin = max(1, minHz)
+        let safeMax = max(safeMin + 1, maxHz)
+        let clamped = min(max(hz, safeMin), safeMax)
+        let unit = (log(clamped) - log(safeMin)) / (log(safeMax) - log(safeMin))
+        return Float(min(max(unit, 0), 1))
+    }
     
     /// Setup stereo ping-pong delay for drum synth
     private func setupDrumDelay(format: AVAudioFormat) {
@@ -524,7 +681,108 @@ public final class AudioEngine {
         drumDelayMixer.outputVolume = currentParams.drumDelayEnabled ? Float(currentParams.drumDelayMix) : 0
         drumDelaySendMixer.outputVolume = 0.5  // Moderate send level
     }
-    
+
+    private func setupSharedDelayBuses(format: AVAudioFormat) {
+        guard let delayA = delayAProcessor, let delayB = delayBProcessor else { return }
+
+        delayAInputSink = AVAudioSinkNode { [weak self] _, frameCount, audioBufferList -> OSStatus in
+            self?.delayAProcessor?.writeInput(
+                audioBufferList: audioBufferList,
+                frameCount: Int(frameCount),
+                sampleRate: Float(format.sampleRate)
+            )
+            return noErr
+        }
+        delayBInputSink = AVAudioSinkNode { [weak self] _, frameCount, audioBufferList -> OSStatus in
+            self?.delayBProcessor?.writeInput(
+                audioBufferList: audioBufferList,
+                frameCount: Int(frameCount),
+                sampleRate: Float(format.sampleRate)
+            )
+            return noErr
+        }
+
+        if let delayAInputSink {
+            engine.attach(delayAInputSink)
+        }
+        if let delayBInputSink {
+            engine.attach(delayBInputSink)
+        }
+        engine.attach(delayA.node)
+        engine.attach(delayB.node)
+
+        engine.connect(synthMixer, to: synthDelayASendMixer, format: format)
+        engine.connect(synthDelayASendMixer, to: delayAInputMixer, format: format)
+        engine.connect(leadMixer, to: leadDelayASendMixer, format: format)
+        engine.connect(leadDelayASendMixer, to: delayAInputMixer, format: format)
+        engine.connect(lead2Mixer, to: lead2DelayASendMixer, format: format)
+        engine.connect(lead2DelayASendMixer, to: delayAInputMixer, format: format)
+        engine.connect(pianoMixer, to: pianoDelayASendMixer, format: format)
+        engine.connect(pianoDelayASendMixer, to: delayAInputMixer, format: format)
+        engine.connect(drumMixer, to: drumDelayASendMixer, format: format)
+        engine.connect(drumDelayASendMixer, to: delayAInputMixer, format: format)
+        engine.connect(oceanMixer, to: oceanDelayASendMixer, format: format)
+        engine.connect(oceanDelayASendMixer, to: delayAInputMixer, format: format)
+        engine.connect(natureMixer, to: natureDelayASendMixer, format: format)
+        engine.connect(natureDelayASendMixer, to: delayAInputMixer, format: format)
+
+        engine.connect(synthMixer, to: synthDelayBSendMixer, format: format)
+        engine.connect(synthDelayBSendMixer, to: delayBInputMixer, format: format)
+        engine.connect(leadMixer, to: leadDelayBSendMixer, format: format)
+        engine.connect(leadDelayBSendMixer, to: delayBInputMixer, format: format)
+        engine.connect(lead2Mixer, to: lead2DelayBSendMixer, format: format)
+        engine.connect(lead2DelayBSendMixer, to: delayBInputMixer, format: format)
+        engine.connect(pianoMixer, to: pianoDelayBSendMixer, format: format)
+        engine.connect(pianoDelayBSendMixer, to: delayBInputMixer, format: format)
+        engine.connect(drumMixer, to: drumDelayBSendMixer, format: format)
+        engine.connect(drumDelayBSendMixer, to: delayBInputMixer, format: format)
+        engine.connect(oceanMixer, to: oceanDelayBSendMixer, format: format)
+        engine.connect(oceanDelayBSendMixer, to: delayBInputMixer, format: format)
+        engine.connect(natureMixer, to: natureDelayBSendMixer, format: format)
+        engine.connect(natureDelayBSendMixer, to: delayBInputMixer, format: format)
+
+        engine.connect(delayA.node, to: delayAMixer, format: format)
+        engine.connect(delayAMixer, to: dryMixer, format: format)
+        engine.connect(delayB.node, to: delayBMixer, format: format)
+        engine.connect(delayBMixer, to: dryMixer, format: format)
+        engine.connect(delayAMixer, to: delayAToBSendMixer, format: format)
+        engine.connect(delayAToBSendMixer, to: delayBInputMixer, format: format)
+        engine.connect(delayBMixer, to: delayBToASendMixer, format: format)
+        engine.connect(delayBToASendMixer, to: delayAInputMixer, format: format)
+        if let delayAInputSink {
+            engine.connect(delayAInputMixer, to: delayAInputSink, format: format)
+        }
+        if let delayBInputSink {
+            engine.connect(delayBInputMixer, to: delayBInputSink, format: format)
+        }
+
+        delayAMixer.outputVolume = 0
+        delayBMixer.outputVolume = 0
+        delayAToBSendMixer.outputVolume = 0
+        delayBToASendMixer.outputVolume = 0
+        setupSharedDelayGranularTaps(format: format)
+    }
+
+    private func setupSharedDelayGranularTaps(format: AVAudioFormat) {
+        delayAMixer.removeTap(onBus: 0)
+        delayAMixer.installTap(onBus: 0, bufferSize: 256, format: format) { [weak self] buffer, _ in
+            guard let self, self.currentParams.granularEnabled else { return }
+            let gain = Float(self.currentParams.delayAGranularSend)
+            if gain > 0.0001 {
+                self.granularProcessor?.mixInput(buffer: buffer, gain: gain)
+            }
+        }
+
+        delayBMixer.removeTap(onBus: 0)
+        delayBMixer.installTap(onBus: 0, bufferSize: 256, format: format) { [weak self] buffer, _ in
+            guard let self, self.currentParams.granularEnabled else { return }
+            let gain = Float(self.currentParams.delayBGranularSend)
+            if gain > 0.0001 {
+                self.granularProcessor?.mixInput(buffer: buffer, gain: gain)
+            }
+        }
+    }
+
     /// Update drum delay parameters
     private func updateDrumDelay() {
         let bpm = currentParams.drumEuclidBaseBPM
@@ -543,6 +801,101 @@ public final class AudioEngine {
         
         // Update mix level
         drumDelayMixer.outputVolume = currentParams.drumDelayEnabled ? Float(currentParams.drumDelayMix) : 0
+    }
+
+    private func updateSharedDelayBuses() {
+        let delayAMasterSend = max(0, min(1.5, currentParams.delayASend))
+        let natureDelayASend = max(
+            currentParams.natureDelayASend,
+            currentParams.birdsDelayASend,
+            currentParams.birds2DelayASend,
+            currentParams.frogsDelayASend,
+            currentParams.waterDelayASend,
+            currentParams.insDelayASend
+        )
+        let natureDelayBSend = max(
+            currentParams.natureDelayBSend,
+            currentParams.birdsDelayBSend,
+            currentParams.birds2DelayBSend,
+            currentParams.frogsDelayBSend,
+            currentParams.waterDelayBSend,
+            currentParams.insDelayBSend
+        )
+        let delayAActive = currentParams.delayAEnabled && (
+            currentParams.pad1DelayASend > 0.0001 ||
+            currentParams.lead1DelayASend > 0.0001 ||
+            currentParams.lead2DelayASend > 0.0001 ||
+            currentParams.pianoDelayASend > 0.0001 ||
+            currentParams.drumDelayASend > 0.0001 ||
+            currentParams.oceanDelayASend > 0.0001 ||
+            natureDelayASend > 0.0001 ||
+            currentParams.delayBToASend > 0.0001
+        )
+        let delayBActive = currentParams.granularDelayEnabled && currentParams.granularDelayActivity > 0.0001 && (
+            currentParams.pad1DelayBSend > 0.0001 ||
+            currentParams.lead1DelayBSend > 0.0001 ||
+            currentParams.lead2DelayBSend > 0.0001 ||
+            currentParams.pianoDelayBSend > 0.0001 ||
+            currentParams.drumDelayBSend > 0.0001 ||
+            currentParams.oceanDelayBSend > 0.0001 ||
+            natureDelayBSend > 0.0001 ||
+            currentParams.delayAToBSend > 0.0001
+        )
+
+        synthDelayASendMixer.outputVolume = Float(currentParams.pad1DelayASend * delayAMasterSend)
+        leadDelayASendMixer.outputVolume = Float(currentParams.lead1DelayASend * delayAMasterSend)
+        lead2DelayASendMixer.outputVolume = Float(currentParams.lead2DelayASend * delayAMasterSend)
+        pianoDelayASendMixer.outputVolume = Float(currentParams.pianoDelayASend * delayAMasterSend)
+        drumDelayASendMixer.outputVolume = Float(currentParams.drumDelayASend * delayAMasterSend)
+        oceanDelayASendMixer.outputVolume = Float(currentParams.oceanDelayASend * delayAMasterSend)
+        natureDelayASendMixer.outputVolume = Float(natureDelayASend * delayAMasterSend)
+
+        synthDelayBSendMixer.outputVolume = Float(currentParams.pad1DelayBSend)
+        leadDelayBSendMixer.outputVolume = Float(currentParams.lead1DelayBSend)
+        lead2DelayBSendMixer.outputVolume = Float(currentParams.lead2DelayBSend)
+        pianoDelayBSendMixer.outputVolume = Float(currentParams.pianoDelayBSend)
+        drumDelayBSendMixer.outputVolume = Float(currentParams.drumDelayBSend)
+        oceanDelayBSendMixer.outputVolume = Float(currentParams.oceanDelayBSend)
+        natureDelayBSendMixer.outputVolume = Float(natureDelayBSend)
+
+        let delayACrossFeed = max(0, min(1, (1 - currentParams.delayACrossFeedFilter) * 0.7))
+        delayAProcessor?.setParameters(
+            enabled: delayAActive,
+            timeMs: Float(currentParams.delayATime),
+            feedback: Float(currentParams.delayAFeedback),
+            mix: 1,
+            spread: Float(currentParams.delayASpread),
+            width: Float(currentParams.delayAWidth * 2),
+            cutoff: Float(currentParams.delayAFilter),
+            pingPong: currentParams.delayAPingPong,
+            modRate: Float(currentParams.delayAModRate),
+            modDepth: Float(currentParams.delayAModDepth),
+            duck: Float(currentParams.delayADuck),
+            crossFeed: Float(delayACrossFeed),
+            wetOnly: true
+        )
+        delayAMixer.outputVolume = delayAActive ? Float(currentParams.delayAMix) : 0
+
+        let delayBTimeMs = Float(noteToSeconds(currentParams.granularDelayTime, bpm: currentParams.drumEuclidBaseBPM) * 1000)
+        let delayBWarpAmount = currentParams.delayBWarp == "clean" ? 0 : currentParams.delayBWarpIntensity
+        delayBProcessor?.setParameters(
+            enabled: delayBActive,
+            timeMs: delayBTimeMs,
+            feedback: Float(currentParams.granularDelayRepeats),
+            mix: 1,
+            spread: Float((currentParams.delayBSpread - 0.5) * 2),
+            width: Float(0.6 + currentParams.delayBSpread * 1.4),
+            cutoff: Float(350 + pow(max(currentParams.granularDelayFilter, 0.01), 1.8) * 12_000),
+            pingPong: currentParams.delayBPattern == "pingpong" || currentParams.delayBPattern == "cascade",
+            modRate: Float(currentParams.granularDelayVibrato * 8 + delayBWarpAmount * 2),
+            modDepth: Float(max(currentParams.granularDelayVibrato, delayBWarpAmount * 0.45)),
+            duck: Float(delayBWarpAmount * 0.35),
+            crossFeed: Float(min(max(currentParams.delayBToASend, 0), 1) * 0.5),
+            wetOnly: true
+        )
+        delayBMixer.outputVolume = delayBActive ? Float(currentParams.granularDelayMix * currentParams.granularDelayActivity) : 0
+        delayAToBSendMixer.outputVolume = (delayAActive && currentParams.granularDelayEnabled) ? Float(currentParams.delayAToBSend) : 0
+        delayBToASendMixer.outputVolume = (delayBActive && currentParams.delayAEnabled) ? Float(currentParams.delayBToASend) : 0
     }
 
     public func stop(fadeOut: Bool = true) {
@@ -581,27 +934,46 @@ public final class AudioEngine {
             granularProcessor?.hardReset()
             reverbProcessor?.hardReset()
             dynamicsCharacterProcessor?.hardReset()
+            spectralFreezeProcessor?.hardReset()
+            delayAProcessor?.reset(sampleRate: Float(renderSampleRate))
+            delayBProcessor?.reset(sampleRate: Float(renderSampleRate))
             oceanSynth?.hardReset()
             leadSynth?.hardReset()
+            lead2Synth?.hardReset()
+            pianoSynth?.hardReset()
+            natureTextureSynth?.hardReset()
             for voice in synthVoices {
                 voice.hardReset()
             }
             synthLevelMixer.outputVolume = 0
             granularLevelMixer.outputVolume = 0
             leadLevelMixer.outputVolume = 0
+            lead2LevelMixer.outputVolume = 0
+            pianoLevelMixer.outputVolume = 0
+            natureLevelMixer.outputVolume = 0
             oceanMixer.outputVolume = 0
             drumLevelMixer.outputVolume = 0
             synthReverbSendMixer.outputVolume = 0
             granularReverbSendMixer.outputVolume = 0
             leadReverbSendMixer.outputVolume = 0
+            lead2ReverbSendMixer.outputVolume = 0
+            pianoReverbSendMixer.outputVolume = 0
+            natureReverbSendMixer.outputVolume = 0
             drumReverbSendMixer.outputVolume = 0
             oceanReverbSendMixer.outputVolume = 0
+            delayAMixer.outputVolume = 0
+            delayBMixer.outputVolume = 0
+            delayAReverbSendMixer.outputVolume = 0
+            delayBReverbSendMixer.outputVolume = 0
+            delayAToBSendMixer.outputVolume = 0
+            delayBToASendMixer.outputVolume = 0
             drumDelaySendMixer.outputVolume = 0
             drumDelayMixer.outputVolume = 0
             dryMixer.outputVolume = 0
             reverbSend.outputVolume = 0
             masterMixer.outputVolume = 0
             dynamicsBypassMixer.outputVolume = 0
+            spectralFreezeReturnMixer.outputVolume = 0
             outputBridgeMixer.outputVolume = 0
             engine.pause()
             engine.stop()
@@ -621,6 +993,8 @@ public final class AudioEngine {
             voice.releaseNote()
         }
         leadSynth?.releaseNote()
+        lead2Synth?.releaseNote()
+        pianoSynth?.releaseNote()
 
         audioSchedulingQueue.asyncAfter(deadline: .now() + 1.0) { [weak self] in
             self?.engine.stop()
@@ -715,14 +1089,27 @@ public final class AudioEngine {
         reverbSend.outputVolume = 1
         outputBridgeMixer.outputVolume = 1
         dynamicsCharacterProcessor?.setParameters(from: currentParams)
-        dynamicsBypassMixer.outputVolume = (dynamicsCharacterProcessor?.isAudible ?? false) ? 0 : 1
+        spectralFreezeProcessor?.setParameters(from: currentParams)
+        let dynamicsAudible = dynamicsCharacterProcessor?.isAudible ?? false
+        let freezeAudible = spectralFreezeProcessor?.isAudible ?? false
+        dynamicsBypassMixer.outputVolume = (dynamicsAudible || freezeAudible) ? 0 : 1
+        spectralFreezeReturnMixer.outputVolume = freezeAudible ? 1 : 0
         oceanMixer.outputVolume = 1
         drumDelaySendMixer.outputVolume = 0.5
+        let earthTextureActive = currentParams.birdsEnabled ||
+            currentParams.birds2Enabled ||
+            currentParams.frogsEnabled ||
+            currentParams.waterEnabled ||
+            currentParams.insectsEnabled ||
+            currentParams.insects2Enabled
 
         // Source dry levels live on dedicated mixers so reverb sends stay pre-fader.
         synthLevelMixer.outputVolume = Float(currentParams.synthLevel)
         granularLevelMixer.outputVolume = Float(currentParams.granularEnabled ? currentParams.granularLevel : 0)
         leadLevelMixer.outputVolume = Float(currentParams.leadEnabled ? currentParams.leadLevel : 0)
+        lead2LevelMixer.outputVolume = Float(currentParams.lead2Enabled ? currentParams.lead2Level : 0)
+        pianoLevelMixer.outputVolume = Float(currentParams.pianoEnabled ? currentParams.pianoLevel : 0)
+        natureLevelMixer.outputVolume = Float(earthTextureActive ? currentParams.earthLevel : 0)
         drumLevelMixer.outputVolume = Float(currentParams.drumEnabled ? currentParams.drumLevel : 0)
 
         // Reverb sends stay independent of dry faders like the web graph.
@@ -730,9 +1117,22 @@ public final class AudioEngine {
         synthReverbSendMixer.outputVolume = reverbEnabled ? Float(currentParams.synthReverbSend) : 0
         granularReverbSendMixer.outputVolume = (reverbEnabled && currentParams.granularEnabled) ? Float(currentParams.granularReverbSend) : 0
         leadReverbSendMixer.outputVolume = (reverbEnabled && currentParams.leadEnabled) ? Float(currentParams.leadReverbSend) : 0
+        lead2ReverbSendMixer.outputVolume = (reverbEnabled && currentParams.lead2Enabled) ? Float(min(1, max(currentParams.lead2ReverbSend, currentParams.lead2DiffuseSend))) : 0
+        pianoReverbSendMixer.outputVolume = (reverbEnabled && currentParams.pianoEnabled) ? Float(currentParams.pianoReverbSend) : 0
         drumReverbSendMixer.outputVolume = (reverbEnabled && currentParams.drumEnabled) ? Float(currentParams.drumReverbSend) : 0
         let oceanActive = currentParams.oceanSampleEnabled || currentParams.oceanWaveSynthEnabled
         oceanReverbSendMixer.outputVolume = (reverbEnabled && oceanActive) ? Float(currentParams.oceanReverbSend) : 0
+        let natureSend = max(
+            currentParams.natureReverbSend,
+            currentParams.birdsReverbSend,
+            currentParams.birds2ReverbSend,
+            currentParams.frogsReverbSend,
+            currentParams.waterReverbSend,
+            currentParams.insectsReverbSend
+        )
+        natureReverbSendMixer.outputVolume = (reverbEnabled && earthTextureActive) ? Float(natureSend) : 0
+        delayAReverbSendMixer.outputVolume = reverbEnabled ? Float(currentParams.delayAReverbSend) : 0
+        delayBReverbSendMixer.outputVolume = reverbEnabled ? Float(currentParams.granularDelayReverbSend) : 0
 
         // Update reverb quality mode
         if let quality = ReverbQuality(rawValue: currentParams.reverbQuality.capitalized) {
@@ -757,7 +1157,13 @@ public final class AudioEngine {
             modulation: Float(currentParams.reverbModulation),
             predelay: Float(currentParams.predelay / 1000.0),  // Convert ms to seconds
             width: Float(currentParams.width),
-            damping: Float(currentParams.damping)
+            damping: Float(currentParams.damping),
+            shimmer: Float(currentParams.reverbShimmer),
+            shimmerPitch: Float(currentParams.reverbShimmerPitch),
+            shimmerFeedback: Float(currentParams.reverbShimmerFeedback),
+            warp: Float(currentParams.reverbWarp),
+            crossFeed: Float(currentParams.reverbCrossFeed),
+            transientSmooth: Float(currentParams.reverbTransientSmooth)
         )
         if !reverbEnabled && lastAppliedReverbEnabled {
             reverbProcessor?.hardReset()
@@ -854,6 +1260,53 @@ public final class AudioEngine {
         )
         // Note: leadOctave/leadOctaveRange are used directly in scheduleLeadMelodyPhrase()
         // to calculate note range, not passed to the synth
+
+        lead2Synth?.setEnabled(currentParams.lead2Enabled)
+        lead2Synth?.setADSR(
+            attack: Float(currentParams.lead2Attack),
+            decay: Float(currentParams.lead2Decay),
+            sustain: Float(currentParams.lead2Sustain),
+            hold: Float(currentParams.lead2Hold),
+            release: Float(currentParams.lead2Release)
+        )
+        let lead2Morph = min(max(currentParams.lead2Morph, 0), 1)
+        lead2Synth?.setTimbreRange(
+            min: Float(max(0, min(1, lead2Morph * 0.6))),
+            max: Float(max(0.05, min(1, 0.35 + lead2Morph * 0.65)))
+        )
+        lead2Synth?.setDelayRange(
+            timeMin: Float(currentParams.delayATime / 1000.0),
+            timeMax: Float(currentParams.delayATime / 1000.0),
+            feedbackMin: Float(currentParams.delayAFeedback),
+            feedbackMax: Float(currentParams.delayAFeedback),
+            mixMin: Float(currentParams.delayAMix * 0.65),
+            mixMax: Float(currentParams.delayAMix * 0.65)
+        )
+        lead2Synth?.setGlideRange(min: Float(currentParams.leadGlideMin), max: Float(currentParams.leadGlideMax))
+        lead2Synth?.setVibratoRange(
+            depthMin: Float(currentParams.leadVibratoDepthMin * 0.5),
+            depthMax: Float(currentParams.leadVibratoDepthMax * 0.5),
+            rateMin: Float(2 + currentParams.leadVibratoRateMin * 6),
+            rateMax: Float(2 + currentParams.leadVibratoRateMax * 6)
+        )
+        lead2Synth?.setPostProcessing(
+            postLPFHz: Float(currentParams.lead2PostLPF),
+            stereoWidth: Float(currentParams.lead2StereoWidth),
+            distance: Float(currentParams.lead2Distance)
+        )
+
+        pianoSynth?.setEnabled(currentParams.pianoEnabled)
+        pianoSynth?.setADSR(
+            attack: Float(currentParams.pianoAttack),
+            decay: Float(currentParams.pianoDecay),
+            sustain: Float(currentParams.pianoSustain),
+            hold: Float(currentParams.pianoHold),
+            release: Float(currentParams.pianoRelease)
+        )
+        pianoSynth?.setLevel(1)
+        pianoSynth?.setPostLPF(logFrequencyUnit(currentParams.pianoPostLPF, minHz: 40, maxHz: 18_000))
+        pianoSynth?.setStereoWidth(Float(currentParams.pianoStereoWidth))
+        pianoSynth?.setSendGains(reverb: Float(currentParams.pianoReverbSend), diffuse: Float(currentParams.pianoDiffuseSend))
         
         // Update Euclidean sequencer
         updateEuclideanSequencer()
@@ -886,12 +1339,87 @@ public final class AudioEngine {
             cutoff: Float(currentParams.oceanFilterCutoff),
             resonance: Float(currentParams.oceanFilterResonance)
         )
-        
+
+        natureTextureSynth?.setEnabled(earthTextureActive)
+        natureTextureSynth?.setSeed(UInt32(truncatingIfNeeded: currentSeed))
+        natureTextureSynth?.setMasterLevel(Float(currentParams.earthLevel))
+        natureTextureSynth?.setLayerControls(
+            .birds,
+            enabled: currentParams.birdsEnabled || currentParams.birds2Enabled,
+            level: Float(max(currentParams.birdsLevel, currentParams.birds2Level) * currentParams.natureLevel),
+            density: Float(max(currentParams.birdsSliceDensity, currentParams.birds2SliceDensity)),
+            tone: 0.62,
+            tonalDensity: Float(max(currentParams.birdsSliceDensity, currentParams.birds2SliceDensity))
+        )
+        natureTextureSynth?.setLayerControls(
+            .frogs,
+            enabled: currentParams.frogsEnabled,
+            level: Float(currentParams.frogsLevel * currentParams.natureLevel),
+            density: Float(currentParams.frogsSliceDensity),
+            tone: 0.38,
+            tonalDensity: Float(currentParams.frogsSliceDensity)
+        )
+        natureTextureSynth?.setLayerControls(
+            .insects1,
+            enabled: currentParams.insectsEnabled,
+            level: Float(currentParams.insectsLevel * currentParams.insectsSharedLevel),
+            density: Float(currentParams.insectsDensity),
+            tone: Float(0.25 + currentParams.insectsTemperature * 0.65),
+            insectProximity: Float(currentParams.insectsProximity),
+            insectClickRate: Float(currentParams.insectsClickRate),
+            insectMotion: Float(currentParams.insectsMotion),
+            insectAntiphony: Float(currentParams.insectsAntiphony)
+        )
+        natureTextureSynth?.setLayerControls(
+            .insects2,
+            enabled: currentParams.insects2Enabled,
+            level: Float(currentParams.insects2Level * currentParams.insectsSharedLevel),
+            density: Float(currentParams.insects2Density),
+            tone: Float(0.25 + currentParams.insects2Temperature * 0.65),
+            insectProximity: Float(currentParams.insects2Proximity),
+            insectClickRate: Float(currentParams.insects2ClickRate),
+            insectMotion: Float(currentParams.insects2Motion),
+            insectAntiphony: Float(currentParams.insects2Antiphony)
+        )
+        natureTextureSynth?.setLayerControls(
+            .waterDrops,
+            enabled: currentParams.waterEnabled && (currentParams.waterLayerHardDrops > 0.001 || currentParams.waterLayerWaterDrops > 0.001),
+            level: Float(currentParams.waterLevel * max(currentParams.waterLayerHardDrops, currentParams.waterLayerWaterDrops)),
+            density: Float(min(1, currentParams.waterIntensity * max(currentParams.waterHardDropRate, currentParams.waterWaterDropRate))),
+            tone: max(Float(currentParams.waterHardDropTone), logFrequencyUnit(max(currentParams.waterHardDropBaseFreq, currentParams.waterWaterDropBaseFreq), minHz: 100, maxHz: 8_000)),
+            waterTurbulence: Float(currentParams.waterLayerTurbulence),
+            waterLowPass: logFrequencyUnit(min(currentParams.waterHardDropLPF, currentParams.waterWaterDropLPF), minHz: 200, maxHz: 18_000),
+            waterHardDrop: Float(max(currentParams.waterHardness, currentParams.waterLayerHardDrops))
+        )
+        natureTextureSynth?.setLayerControls(
+            .bubbles,
+            enabled: currentParams.waterEnabled && currentParams.waterLayerBubbling > 0.001,
+            level: Float(currentParams.waterLevel * currentParams.waterLayerBubbling),
+            density: Float(min(1, currentParams.waterIntensity * currentParams.waterBubblingRate)),
+            tone: Float(logFrequencyUnit(currentParams.waterBubblingLPF, minHz: 50, maxHz: 8_000)),
+            waterTurbulence: Float(currentParams.waterLayerTurbulence),
+            waterLowPass: logFrequencyUnit(currentParams.waterBubblingLPF, minHz: 50, maxHz: 8_000)
+        )
+        natureTextureSynth?.setLayerControls(
+            .surf,
+            enabled: currentParams.waterEnabled && currentParams.waterLayerSurf > 0.001,
+            level: Float(currentParams.waterLevel * currentParams.waterLayerSurf),
+            density: Float(max(currentParams.waterSurfFoam, currentParams.waterSurfDepth)),
+            tone: Float(logFrequencyUnit(currentParams.waterSurfSpray, minHz: 200, maxHz: 8_000)),
+            waterTurbulence: Float(currentParams.waterLayerTurbulence),
+            surfFoamBright: Float(currentParams.waterSurfFoamBright),
+            surfProximity: Float(currentParams.waterSurfProximity),
+            surfDepth: Float(currentParams.waterSurfDepth),
+            surfBody: logFrequencyUnit(currentParams.waterSurfBody, minHz: 40, maxHz: 1_200),
+            surfSpray: logFrequencyUnit(currentParams.waterSurfSpray, minHz: 200, maxHz: 8_000)
+        )
+
         // Update drum synth
         drumSynth?.updateParams(currentParams)
-        
+
         // Update drum delay
         updateDrumDelay()
+        updateSharedDelayBuses()
     }
     
     /// Update Euclidean sequencer lanes from current parameters
@@ -1014,10 +1542,10 @@ public final class AudioEngine {
         )
         
         // Pre-schedule notes for this phrase (matching web's precise scheduling)
-        if currentParams.leadEnabled || euclideanSynthLanesEnabled {
+        if currentParams.leadEnabled || currentParams.lead2Enabled || currentParams.pianoEnabled || euclideanSynthLanesEnabled {
             if currentParams.synthEuclideanMasterEnabled {
                 scheduleEuclideanPhrase()
-            } else if currentParams.leadEnabled {
+            } else {
                 scheduleRandomLeadPhrase()
             }
         }
@@ -1063,58 +1591,76 @@ public final class AudioEngine {
         }
         scheduledLeadNotes.removeAll()
         
-        guard currentParams.leadEnabled,
-              !currentParams.synthEuclideanMasterEnabled,
+        guard !currentParams.synthEuclideanMasterEnabled,
               let harmony = harmonyState else { return }
-        
-        let phraseDuration = PHRASE_LENGTH  // 16 seconds in ms
-        let density = currentParams.leadDensity
-        let scale = harmony.scaleFamily
-        let effectiveRoot = cofState.effectiveRoot
-        
-        // Create deterministic RNG for this phrase
+
+        appendRandomMelodyPhrase(
+            source: "lead",
+            enabled: currentParams.leadEnabled,
+            density: currentParams.leadDensity,
+            octave: currentParams.leadOctave,
+            octaveRange: currentParams.leadOctaveRange,
+            harmony: harmony,
+            velocityScale: 1.0
+        )
+        appendRandomMelodyPhrase(
+            source: "lead2",
+            enabled: currentParams.lead2Enabled,
+            density: currentParams.lead2Density,
+            octave: currentParams.lead2Octave,
+            octaveRange: currentParams.lead2OctaveRange,
+            harmony: harmony,
+            velocityScale: 0.9
+        )
+        appendRandomMelodyPhrase(
+            source: "piano",
+            enabled: currentParams.pianoEnabled,
+            density: max(0.15, currentParams.leadDensity * 0.7),
+            octave: 0,
+            octaveRange: 3,
+            harmony: harmony,
+            velocityScale: 0.85
+        )
+    }
+
+    private func appendRandomMelodyPhrase(
+        source: String,
+        enabled: Bool,
+        density: Double,
+        octave: Int,
+        octaveRange: Int,
+        harmony: HarmonyState,
+        velocityScale: Float
+    ) {
+        guard enabled else { return }
+
+        let phraseDuration = PHRASE_LENGTH
         let phraseIndex = getCurrentPhraseIndex()
-        let rng = createRng("\(currentBucket)|\(currentSeed)|lead|\(phraseIndex)")
-        
-        // Calculate number of notes this phrase (matching web: density * 3 + random 0-2)
+        let rng = createRng("\(currentBucket)|\(currentSeed)|\(source)|\(phraseIndex)")
         let notesThisPhrase = max(1, Int(density * 3 + rng() * 2))
-        
-        // Get note range based on octave settings
-        let baseOctaveOffset = currentParams.leadOctave
-        let octaveRange = currentParams.leadOctaveRange
-        let baseLow = 64 + (baseOctaveOffset * 12)
-        let baseHigh = baseLow + (octaveRange * 12)
-        
-        // Get scale notes in range
+        let baseLow = 64 + (octave * 12)
+        let baseHigh = baseLow + (max(1, octaveRange) * 12)
         let scaleNotes = getScaleNotesInRange(
-            scale: scale,
+            scale: harmony.scaleFamily,
             lowMidi: max(24, baseLow),
             highMidi: min(108, baseHigh),
-            rootNote: effectiveRoot
+            rootNote: cofState.effectiveRoot
         )
-        
+
         guard !scaleNotes.isEmpty else { return }
-        
-        // Schedule notes at random times within the phrase
+
         for noteIndex in 0..<notesThisPhrase {
             let timing = rng() * phraseDuration
-            let velocity = Float(rng() * 0.4 + 0.3)
-            
-            // Pick a note from scale using seeded RNG (not .randomElement())
+            let velocity = Float(rng() * 0.4 + 0.3) * velocityScale
             let noteIdx = Int(rng() * Double(scaleNotes.count)) % scaleNotes.count
             let note = scaleNotes[noteIdx]
-            
-            // Create per-note RNG for timbre/expression/delay randomization
-            let noteRng = createRng("\(currentBucket)|\(currentSeed)|lead|\(phraseIndex)|\(noteIndex)")
-            
+            let noteRng = createRng("\(currentBucket)|\(currentSeed)|\(source)|\(phraseIndex)|\(noteIndex)")
+
             let workItem = DispatchWorkItem { [weak self] in
                 guard let self = self, self.isRunning else { return }
-                self.leadSynth?.randomizeTimbre(noteRng)
-                self.leadSynth?.randomizeExpression(noteRng)
-                self.leadSynth?.randomizeDelay(noteRng)
-                self.leadSynth?.playNote(midiNote: note, velocity: velocity)
+                self.playMelodicSource(source, midiNote: note, velocity: velocity, rng: noteRng)
             }
-            
+
             scheduledLeadNotes.append(workItem)
             audioSchedulingQueue.asyncAfter(deadline: .now() + timing, execute: workItem)
         }
@@ -1146,8 +1692,8 @@ public final class AudioEngine {
             (currentParams.synthEuclid3Enabled && currentParams.synthEuclid3Source != "lead") ||
             (currentParams.synthEuclid4Enabled && currentParams.synthEuclid4Source != "lead")
         
-        // Only proceed if lead is enabled OR synth lanes are active
-        guard currentParams.leadEnabled || euclideanSynthLanesEnabled else { return }
+        // Only proceed if any melodic source is enabled OR synth lanes are active
+        guard currentParams.leadEnabled || currentParams.lead2Enabled || currentParams.pianoEnabled || euclideanSynthLanesEnabled else { return }
         
         let phraseDuration = PHRASE_LENGTH  // 16 seconds
         let tempo = currentParams.synthEuclideanTempo
@@ -1246,12 +1792,14 @@ public final class AudioEngine {
             }
         }
         
-        // Check if any enabled lane uses "lead" as source
-        let anyLaneUsesLead = lanes.contains { $0.enabled && $0.source == "lead" }
-        
-        // If no lanes use lead AND lead is enabled, add random lead notes as well
+        // Check if any enabled lane already uses one of the melodic sources.
+        let anyLaneUsesMelodicSource = lanes.contains {
+            $0.enabled && ($0.source == "lead" || $0.source == "lead1" || $0.source == "lead2" || $0.source == "piano")
+        }
+
+        // If no lanes use melodic sources, add random free notes as well.
         // (matching web app behavior)
-        if !anyLaneUsesLead && currentParams.leadEnabled {
+        if !anyLaneUsesMelodicSource && (currentParams.leadEnabled || currentParams.lead2Enabled || currentParams.pianoEnabled) {
             let density = currentParams.leadDensity
             let baseOctaveOffset = currentParams.leadOctave
             let octaveRange = currentParams.leadOctaveRange
@@ -1270,7 +1818,7 @@ public final class AudioEngine {
                     noteMax: baseHigh,
                     level: 1.0,
                     probability: 1.0,
-                    source: "lead"
+                    source: currentParams.leadEnabled ? "lead" : (currentParams.lead2Enabled ? "lead2" : "piano")
                 ))
             }
         }
@@ -1320,11 +1868,8 @@ public final class AudioEngine {
                 guard let self = self, self.isRunning else { return }
                 
                 // Route to appropriate sound source
-                if noteSource == "lead" {
-                    self.leadSynth?.randomizeTimbre(noteRng)
-                    self.leadSynth?.randomizeExpression(noteRng)
-                    self.leadSynth?.randomizeDelay(noteRng)
-                    self.leadSynth?.playNote(midiNote: midiNote, velocity: noteLevel)
+                if noteSource == "lead" || noteSource == "lead1" || noteSource == "lead2" || noteSource == "piano" {
+                    self.playMelodicSource(noteSource, midiNote: midiNote, velocity: noteLevel, rng: noteRng)
                 } else if noteSource.hasPrefix("synth") {
                     // Parse synth voice index from source (e.g., "synth1" -> 0)
                     if let voiceNumber = Int(noteSource.replacingOccurrences(of: "synth", with: "")) {
@@ -1437,6 +1982,31 @@ public final class AudioEngine {
         // Schedule release after duration
         audioSchedulingQueue.asyncAfter(deadline: .now() + noteDuration) { [weak voice] in
             voice?.releaseNote()
+        }
+    }
+
+    private func playMelodicSource(_ source: String, midiNote: Int, velocity: Float, rng: @escaping () -> Double) {
+        switch source {
+        case "lead", "lead1":
+            guard currentParams.leadEnabled else { return }
+            leadSynth?.randomizeTimbre(rng)
+            leadSynth?.randomizeExpression(rng)
+            leadSynth?.randomizeDelay(rng)
+            leadSynth?.playNote(midiNote: midiNote, velocity: velocity)
+
+        case "lead2":
+            guard currentParams.lead2Enabled else { return }
+            lead2Synth?.randomizeTimbre(rng)
+            lead2Synth?.randomizeExpression(rng)
+            lead2Synth?.randomizeDelay(rng)
+            lead2Synth?.playNote(midiNote: midiNote, velocity: velocity)
+
+        case "piano":
+            guard currentParams.pianoEnabled else { return }
+            pianoSynth?.playNote(midiNote: midiNote, velocity: velocity)
+
+        default:
+            break
         }
     }
     

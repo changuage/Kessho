@@ -57,6 +57,8 @@ class SynthVoice {
     private var frequency: Float = 440
     private var targetFrequency: Float = 440
     private var detune: Float = 15  // cents for osc2/osc3
+    private var detuneDownMultiplier: Float = 1
+    private var detuneUpMultiplier: Float = 1
     private var velocity: Float = 0
     
     // Envelope state
@@ -66,6 +68,9 @@ class SynthVoice {
     private var decay: Float = 0.5
     private var sustain: Float = 0.6
     private var release: Float = 1.0
+    private var attackCoeff: Float = 0
+    private var decayCoeff: Float = 0
+    private var releaseCoeff: Float = 0
     
     // Filter state (SVF with type selection)
     private var filterCutoff: Float = 2000
@@ -84,6 +89,8 @@ class SynthVoice {
     
     // Saturation (tanh waveshaper matching web app)
     private var hardness: Float = 0.3
+    private var saturationDrive: Float = 1.9
+    private var saturationNormalizer: Float = tanh(1.9)
     
     // Brightness mode (controls oscillator mix)
     private var oscBrightness: Int = 2  // 0=sine, 1=triangle, 2=saw+tri, 3=sawtooth
@@ -92,6 +99,10 @@ class SynthVoice {
     private var warmth: Float = 0.4      // Low shelf boost at 250Hz
     private var presence: Float = 0.3    // Peaking EQ at 3kHz
     private var airNoise: Float = 0.15   // Breath/air noise
+    private var warmthAlpha: Float = 0
+    private var warmthBoostLinear: Float = 0
+    private var presenceAlpha: Float = 0
+    private var presenceBoostLinear: Float = 0
     
     // Filter states for EQ
     private var warmthState: Float = 0
@@ -100,6 +111,7 @@ class SynthVoice {
     
     // Octave shift
     private var octaveShift: Int = 0
+    private var octaveMultiplier: Float = 1
     
     // Inline LCG for noise generation (avoids Float.random() on audio thread)
     private var noiseSeed: UInt32 = 12345
@@ -119,21 +131,25 @@ class SynthVoice {
         self.invSampleRate = 1.0 / self.sampleRate
         // Set initial oscillator gains for oscBrightness=2
         updateOscillatorGains()
-        
+        updateDetuneMultipliers()
+        updateEnvelopeCoefficients()
+        updateSaturationCache()
+        updateToneShapingCache()
+
     }
     
     private func generateSample() -> Float {
         // Skip if voice is disabled
         guard isEnabled else { return 0 }
-        
+
         // Frequency glide with octave shift
-        let shiftedFreq = targetFrequency * pow(2.0, Float(octaveShift))
+        let shiftedFreq = targetFrequency * octaveMultiplier
         frequency += (shiftedFreq - frequency) * 0.001
-        
+
         // Calculate detuned frequencies (matching web app: osc2 down, osc3 up)
         let freq1 = frequency                                      // sine - base
-        let freq2 = frequency * pow(2.0, -detune / 1200.0)         // triangle - detuned down
-        let freq3 = frequency * pow(2.0, detune / 1200.0)          // saw - detuned up
+        let freq2 = frequency * detuneDownMultiplier               // triangle - detuned down
+        let freq3 = frequency * detuneUpMultiplier                 // saw - detuned up
         let freq4 = frequency                                      // saw - base
         
         // Generate 4 oscillators
@@ -188,27 +204,12 @@ class SynthVoice {
     private func applySaturation(_ input: Float) -> Float {
         guard hardness > 0.01 else { return input }
         
-        let drive = 1.0 + hardness * 3.0
-        // Soft clip: tanh(x * drive) / tanh(drive)
-        let tanhDrive = tanh(drive)
-        guard tanhDrive > 0.001 else { return input }
-        
-        return tanh(input * drive) / tanhDrive
+        guard saturationNormalizer > 0.001 else { return input }
+
+        return tanh(input * saturationDrive) / saturationNormalizer
     }
-    
+
     private func updateEnvelope() {
-        // Time constants for exponential approach (matching web's setTargetAtTime)
-        // setTargetAtTime reaches 63.2% of target after timeConstant
-        // Using attack/3 as timeConstant like web app
-        let attackTimeConstant = attack / 3
-        let decayTimeConstant = decay / 3
-        let releaseTimeConstant = release / 4  // release / 4 from web app
-        
-        // Exponential coefficients (1 - e^(-1/(timeConstant * sampleRate)))
-        let attackCoeff = 1.0 - exp(-invSampleRate / attackTimeConstant)
-        let decayCoeff = 1.0 - exp(-invSampleRate / decayTimeConstant)
-        let releaseCoeff = 1.0 - exp(-invSampleRate / releaseTimeConstant)
-        
         switch envelopeStage {
         case .off:
             envelope = 0
@@ -284,37 +285,28 @@ class SynthVoice {
     private func applyWarmth(_ input: Float) -> Float {
         // Low shelf filter at 250Hz (matching web app)
         guard warmth > 0.01 else { return input }
-        
-        let cutoff: Float = 250
-        let alpha = cutoff / sampleRate
-        warmthState += alpha * (input - warmthState)
-        
-        // Boost lows based on warmth (0-8dB range like web app)
-        let boostDb = warmth * 8.0
-        let boostLinear = pow(10.0, boostDb / 20.0) - 1.0
-        let lowBoost = warmthState * boostLinear
+
+        warmthState += warmthAlpha * (input - warmthState)
+
+        let lowBoost = warmthState * warmthBoostLinear
         return input + lowBoost
     }
     
     private func applyPresence(_ input: Float) -> Float {
         // Peaking EQ at 3kHz with Q=0.8 (matching web app)
         guard presence > 0.01 else { return input }
-        
-        let cutoff: Float = 3000
+
         let q: Float = 0.8
-        let alpha = cutoff / sampleRate
-        
+
         // Two-pole bandpass extraction
-        presenceState += alpha * (input - presenceState)
-        presenceBandState += alpha * q * (presenceState - presenceBandState)
+        presenceState += presenceAlpha * (input - presenceState)
+        presenceBandState += presenceAlpha * q * (presenceState - presenceBandState)
         
         // The bandpass output
         let bandpass = presenceState - presenceBandState
         
         // Boost/cut (±6dB range like web app)
-        let boostDb = (presence - 0.5) * 12.0  // -6 to +6 dB
-        let boostLinear = pow(10.0, boostDb / 20.0) - 1.0
-        return input + bandpass * boostLinear
+        return input + bandpass * presenceBoostLinear
     }
     
     /// Update oscillator gains based on oscBrightness (matching web app exactly)
@@ -347,6 +339,34 @@ class SynthVoice {
             osc4Gain = 0.3
         }
     }
+
+    private func updateDetuneMultipliers() {
+        detuneDownMultiplier = pow(2.0, -detune / 1200.0)
+        detuneUpMultiplier = pow(2.0, detune / 1200.0)
+    }
+
+    private func updateEnvelopeCoefficients() {
+        // Matches web setTargetAtTime-style constants while avoiding exp() in render.
+        let attackTimeConstant = attack / 3
+        let decayTimeConstant = decay / 3
+        let releaseTimeConstant = release / 4
+
+        attackCoeff = 1.0 - exp(-invSampleRate / attackTimeConstant)
+        decayCoeff = 1.0 - exp(-invSampleRate / decayTimeConstant)
+        releaseCoeff = 1.0 - exp(-invSampleRate / releaseTimeConstant)
+    }
+
+    private func updateSaturationCache() {
+        saturationDrive = 1.0 + hardness * 3.0
+        saturationNormalizer = tanh(saturationDrive)
+    }
+
+    private func updateToneShapingCache() {
+        warmthAlpha = 250 * invSampleRate
+        warmthBoostLinear = pow(10.0, (warmth * 8.0) / 20.0) - 1.0
+        presenceAlpha = 3000 * invSampleRate
+        presenceBoostLinear = pow(10.0, ((presence - 0.5) * 12.0) / 20.0) - 1.0
+    }
     
     // MARK: - Public Interface
     
@@ -365,6 +385,7 @@ class SynthVoice {
         self.decay = max(0.01, decay)
         self.sustain = sustain
         self.release = max(0.01, release)
+        updateEnvelopeCoefficients()
     }
     
     func setFilterCutoff(_ cutoff: Float) {
@@ -393,6 +414,7 @@ class SynthVoice {
     
     func setHardness(_ hardness: Float) {
         self.hardness = min(max(hardness, 0), 1)
+        updateSaturationCache()
     }
     
     func setOscBrightness(_ brightness: Int) {
@@ -402,16 +424,19 @@ class SynthVoice {
     
     func setDetune(_ cents: Float) {
         self.detune = min(max(cents, 0), 100)
+        updateDetuneMultipliers()
     }
-    
+
     func setToneShaping(warmth: Float, presence: Float, airNoise: Float) {
         self.warmth = min(max(warmth, 0), 1)
         self.presence = min(max(presence, 0), 1)
         self.airNoise = min(max(airNoise, 0), 1)
+        updateToneShapingCache()
     }
-    
+
     func setOctaveShift(_ octave: Int) {
         self.octaveShift = min(max(octave, -2), 2)
+        octaveMultiplier = pow(2.0, Float(octaveShift))
     }
 
     func hardReset() {

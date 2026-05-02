@@ -136,7 +136,14 @@ class LeadSynth {
     private var delayMixMin: Float = 0.25
     private var delayMixMax: Float = 0.45
     private let maxDelayTime: Float = 2.0    // 2 seconds max (matches web app)
-    
+
+    // Output shaping used by Lead 2 parity controls.
+    private var postLPFHz: Float = 20_000
+    private var stereoWidth: Float = 1
+    private var distance: Float = 0
+    private var postFilterL: Float = 0
+    private var postFilterR: Float = 0
+
     private let sampleRate: Float
     private let invSampleRate: Float  // Pre-computed to avoid division per sample
     
@@ -232,8 +239,26 @@ class LeadSynth {
         
         let left = drySample * (1 - delayMix) + delayL * delayMix
         let right = drySample * (1 - delayMix) + delayR * delayMix
-        
-        return (left, right)
+
+        return applyPostProcessing(left: left, right: right)
+    }
+
+    private func applyPostProcessing(left: Float, right: Float) -> (Float, Float) {
+        let safeWidth = Swift.min(Swift.max(stereoWidth, 0), 2)
+        let safeDistance = Swift.min(Swift.max(distance, 0), 1)
+        let mid = (left + right) * 0.5
+        var shapedL = mid + (left - mid) * safeWidth
+        var shapedR = mid + (right - mid) * safeWidth
+
+        let cutoff = Swift.min(Swift.max(postLPFHz * (1 - safeDistance * 0.35), 80), sampleRate * 0.45)
+        let alpha = Swift.min(Swift.max(2 * Float.pi * cutoff * invSampleRate, 0.002), 0.94)
+        postFilterL += (shapedL - postFilterL) * alpha
+        postFilterR += (shapedR - postFilterR) * alpha
+
+        let distanceGain = 1 - safeDistance * 0.35
+        shapedL = postFilterL * distanceGain
+        shapedR = postFilterR * distanceGain
+        return (shapedL, shapedR)
     }
     
     private func processPingPongDelay(_ input: Float) -> (Float, Float) {
@@ -365,6 +390,12 @@ class LeadSynth {
         self.hold = hold
         self.release = release
     }
+
+    func setPostProcessing(postLPFHz: Float, stereoWidth: Float, distance: Float) {
+        self.postLPFHz = Swift.min(Swift.max(postLPFHz, 80), sampleRate * 0.45)
+        self.stereoWidth = Swift.min(Swift.max(stereoWidth, 0), 2)
+        self.distance = Swift.min(Swift.max(distance, 0), 1)
+    }
     
     /// Randomize timbre within range for each note (deterministic with seeded RNG)
     func randomizeTimbre(_ rng: () -> Double) {
@@ -423,6 +454,8 @@ class LeadSynth {
         mod3Phase = 0
         mod4Phase = 0
         vibratoPhase = 0
+        postFilterL = 0
+        postFilterR = 0
         clearDelay()
     }
 }
