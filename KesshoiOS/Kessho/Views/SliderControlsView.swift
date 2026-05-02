@@ -1300,7 +1300,14 @@ struct SliderControlsView: View {
                         range: 0...1,
                         icon: "speaker.wave.2"
                     )
-                    
+
+                    ParameterSlider(
+                        label: "Reverb Send",
+                        value: $appState.state.oceanReverbSend,
+                        range: 0...1,
+                        icon: "dot.radiowaves.left.and.right"
+                    )
+
                     Divider().background(Color.white.opacity(0.2))
                     
                     Text("Filter")

@@ -113,6 +113,8 @@ class GranularProcessor {
     // Wet signal filters (stereo)
     private var wetHPFFreq: Float = 20        // High-pass filter on wet
     private var wetLPFFreq: Float = 20000     // Low-pass filter on wet
+    private var wetHPFAlpha: Float = 0
+    private var wetLPFAlpha: Float = 0
     
     // Sample buffer (for loading external samples)
     private var sampleRate: Float
@@ -132,6 +134,7 @@ class GranularProcessor {
     // Active grains
     private var grains: [Grain] = []
     private var maxGrains: Int = 64
+    private var activeGrainCount: Int = 0
     
     // Timing
     private var samplesSinceLastGrain: Int = 0
@@ -161,7 +164,7 @@ class GranularProcessor {
         inputBufferL = [Float](repeating: 0, count: inputBufferSize)
         inputBufferR = [Float](repeating: 0, count: inputBufferSize)
         randomSequence = [Float](repeating: 0.5, count: randomSequenceCapacity)
-        
+
         // Pre-allocate grain pool (matching web app pattern - avoids allocation on audio thread)
         grains = (0..<128).map { _ in
             Grain(position: 0, startSample: 0, length: 0, playbackRate: 1.0,
@@ -169,6 +172,7 @@ class GranularProcessor {
         }
         
         // Generate initial noise buffer for texture
+        updateWetFilterCoefficients()
         generateNoiseBuffer()
     }
     
@@ -207,23 +211,16 @@ class GranularProcessor {
     }
     
     private func generateStereoSample() -> (Float, Float) {
-        // Count active grains (using pointer access to avoid struct copying)
-        var activeCount = 0
-        grains.withUnsafeBufferPointer { buffer in
-            for i in 0..<buffer.count {
-                if buffer[i].active { activeCount += 1 }
-            }
-        }
-        
         // Check if we should spawn a new grain
         samplesSinceLastGrain += 1
-        if samplesSinceLastGrain >= samplesPerGrain && activeCount < maxGrains {
+        if samplesSinceLastGrain >= samplesPerGrain && activeGrainCount < maxGrains {
             spawnGrain()
             samplesSinceLastGrain = 0
         }
         
         var wetL: Float = 0
         var wetR: Float = 0
+        var deactivatedGrains = 0
         
         // Process active grains (pool-based with direct pointer access to avoid struct copying)
         grains.withUnsafeMutableBufferPointer { buffer in
@@ -232,8 +229,8 @@ class GranularProcessor {
                 
                 // Read from buffer with pitch shift (matching web: position + startSample * playbackRate)
                 let readPos = Float(buffer[i].position) + Float(buffer[i].startSample) * buffer[i].playbackRate
-                let sampleL = readInputBuffer(channel: 0, position: readPos)
-                let sampleR = readInputBuffer(channel: 1, position: readPos)
+                let sampleL = readInputBufferL(position: readPos)
+                let sampleR = readInputBufferR(position: readPos)
                 
                 // Apply envelope using Hann window lookup table (matching web app)
                 let phase = Float(buffer[i].startSample) / Float(buffer[i].length)
@@ -250,8 +247,12 @@ class GranularProcessor {
                 // Deactivate finished grains (no array removal - just mark inactive)
                 if buffer[i].startSample >= buffer[i].length {
                     buffer[i].active = false
+                    deactivatedGrains += 1
                 }
             }
+        }
+        if deactivatedGrains > 0 {
+            activeGrainCount = max(0, activeGrainCount - deactivatedGrains)
         }
         
         // Apply wet filters in stereo
@@ -280,38 +281,44 @@ class GranularProcessor {
     
     private func applyWetFiltersL(_ input: Float) -> Float {
         // High-pass filter (first-order)
-        let hpfAlpha = 1.0 - exp(-2.0 * .pi * wetHPFFreq / sampleRate)
-        hpfStateL += hpfAlpha * (input - hpfStateL)
+        hpfStateL += wetHPFAlpha * (input - hpfStateL)
         let highPassed = input - hpfStateL
-        
-        // Low-pass filter (first-order)  
-        let lpfAlpha = 1.0 - exp(-2.0 * .pi * wetLPFFreq / sampleRate)
-        lpfStateL += lpfAlpha * (highPassed - lpfStateL)
-        
+
+        // Low-pass filter (first-order)
+        lpfStateL += wetLPFAlpha * (highPassed - lpfStateL)
+
         return lpfStateL
     }
-    
+
     private func applyWetFiltersR(_ input: Float) -> Float {
         // High-pass filter (first-order)
-        let hpfAlpha = 1.0 - exp(-2.0 * .pi * wetHPFFreq / sampleRate)
-        hpfStateR += hpfAlpha * (input - hpfStateR)
+        hpfStateR += wetHPFAlpha * (input - hpfStateR)
         let highPassed = input - hpfStateR
-        
-        // Low-pass filter (first-order)  
-        let lpfAlpha = 1.0 - exp(-2.0 * .pi * wetLPFFreq / sampleRate)
-        lpfStateR += lpfAlpha * (highPassed - lpfStateR)
-        
+
+        // Low-pass filter (first-order)
+        lpfStateR += wetLPFAlpha * (highPassed - lpfStateR)
+
         return lpfStateR
+    }
+
+    private func updateWetFilterCoefficients() {
+        wetHPFAlpha = 1.0 - exp(-2.0 * .pi * wetHPFFreq / sampleRate)
+        wetLPFAlpha = 1.0 - exp(-2.0 * .pi * wetLPFFreq / sampleRate)
     }
     
     /// Linear interpolation for buffer read (matching web app's readBuffer)
-    private func readInputBuffer(channel: Int, position: Float) -> Float {
-        let buffer = channel == 0 ? inputBufferL : inputBufferR
-        guard !buffer.isEmpty else { return 0 }
+    private func readInputBufferL(position: Float) -> Float {
         let pos = ((Int(position) % inputBufferSize) + inputBufferSize) % inputBufferSize
         let frac = position - Float(Int(position))
         let next = (pos + 1) % inputBufferSize
-        return buffer[pos] * (1 - frac) + buffer[next] * frac
+        return inputBufferL[pos] * (1 - frac) + inputBufferL[next] * frac
+    }
+
+    private func readInputBufferR(position: Float) -> Float {
+        let pos = ((Int(position) % inputBufferSize) + inputBufferSize) % inputBufferSize
+        let frac = position - Float(Int(position))
+        let next = (pos + 1) % inputBufferSize
+        return inputBufferR[pos] * (1 - frac) + inputBufferR[next] * frac
     }
     
     private func spawnGrain() {
@@ -371,6 +378,7 @@ class GranularProcessor {
             panR: panR,
             active: true
         )
+        activeGrainCount += 1
     }
     
     // MARK: - Public Interface
@@ -398,6 +406,7 @@ class GranularProcessor {
                 activeCount += 1
                 if activeCount > maxGrains {
                     grains[i].active = false
+                    activeGrainCount = max(0, activeGrainCount - 1)
                 }
             }
         }
@@ -435,6 +444,7 @@ class GranularProcessor {
     func setWetFilters(hpf: Float, lpf: Float) {
         self.wetHPFFreq = max(20, min(hpf, 20000))
         self.wetLPFFreq = max(20, min(lpf, 20000))
+        updateWetFilterCoefficients()
     }
     
     /// Set pre-seeded random sequence for deterministic granular synthesis (matching web app)
@@ -464,6 +474,7 @@ class GranularProcessor {
 
         self.sampleRate = sampleRate
         self.invSampleRate = 1.0 / sampleRate
+        updateWetFilterCoefficients()
         // Copy samples to input buffers (mono to stereo)
         let copyLength = min(samples.count, inputBufferSize)
         for i in 0..<copyLength {
@@ -501,12 +512,13 @@ class GranularProcessor {
         inputWriteIndex = 0
         samplesSinceLastGrain = 0
         randomIndex = 0
+        activeGrainCount = 0
         for i in 0..<grains.count {
             grains[i].active = false
             grains[i].startSample = 0
         }
     }
-    
+
     /// Pre-fill the upcoming live write positions with captured synth audio.
     /// The render callback advances `inputWriteIndex`, so we only stage samples here.
     func writeInput(buffer: AVAudioPCMBuffer) {
@@ -525,6 +537,7 @@ class GranularProcessor {
         if sampleRate > 0 {
             self.sampleRate = sampleRate
             self.invSampleRate = 1.0 / sampleRate
+            updateWetFilterCoefficients()
         }
 
         let baseIndex = inputWriteIndex

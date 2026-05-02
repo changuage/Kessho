@@ -49,6 +49,7 @@ public final class AudioEngine {
     private let granularReverbSendMixer = AVAudioMixerNode()
     private let leadReverbSendMixer = AVAudioMixerNode()
     private let drumReverbSendMixer = AVAudioMixerNode()
+    private let oceanReverbSendMixer = AVAudioMixerNode()
     private let drumDelaySendMixer = AVAudioMixerNode()  // Delay send from drums
     private let drumDelayMixer = AVAudioMixerNode()      // Delay wet output
     private var drumDelayL: AVAudioUnitDelay?            // Left channel delay
@@ -67,6 +68,7 @@ public final class AudioEngine {
     private var cofState = CircleOfFifthsState()
     private var currentBucket: String = ""
     private var currentSeed: Int = 0
+    private var lastAppliedReverbEnabled: Bool = SliderState.default.reverbEnabled
     
     // Scheduling
     private var phraseTimer: Timer?
@@ -122,6 +124,7 @@ public final class AudioEngine {
         engine.attach(granularReverbSendMixer)
         engine.attach(leadReverbSendMixer)
         engine.attach(drumReverbSendMixer)
+        engine.attach(oceanReverbSendMixer)
         engine.attach(drumDelaySendMixer)
         engine.attach(drumDelayMixer)
         engine.attach(dryMixer)
@@ -201,6 +204,8 @@ public final class AudioEngine {
             engine.connect(leadReverbSendMixer, to: reverbSend, format: format)
             engine.connect(drumMixer, to: drumReverbSendMixer, format: format)
             engine.connect(drumReverbSendMixer, to: reverbSend, format: format)
+            engine.connect(oceanMixer, to: oceanReverbSendMixer, format: format)
+            engine.connect(oceanReverbSendMixer, to: reverbSend, format: format)
 
             // Lite mode stays available through Apple reverb, but custom FDN now has
             // its own live source node and return bus for parity-oriented presets.
@@ -278,7 +283,8 @@ public final class AudioEngine {
         // phase-aligned with the native render callback instead of arriving in
         // large snapshots.
         synthMixer.installTap(onBus: 0, bufferSize: 256, format: format) { [weak self] buffer, _ in
-            self?.processGranularInput(buffer: buffer)
+            guard let self, self.currentParams.granularEnabled else { return }
+            self.processGranularInput(buffer: buffer)
         }
     }
 
@@ -286,14 +292,19 @@ public final class AudioEngine {
     private func setupReverbInputTap(format: AVAudioFormat) {
         reverbSend.removeTap(onBus: 0)
         reverbSend.installTap(onBus: 0, bufferSize: 256, format: format) { [weak self] buffer, _ in
-            self?.reverbProcessor?.writeInput(buffer: buffer)
+            guard let self, self.currentParams.reverbEnabled else { return }
+            self.reverbProcessor?.writeInput(buffer: buffer)
         }
     }
 
     private func setupDynamicsCharacterInputTap(format: AVAudioFormat) {
         masterMixer.removeTap(onBus: 0)
         masterMixer.installTap(onBus: 0, bufferSize: 128, format: format) { [weak self] buffer, _ in
-            self?.dynamicsCharacterProcessor?.writeInput(buffer: buffer)
+            guard let self,
+                  self.currentParams.dynamicsEnabled,
+                  self.currentParams.characterEnabled || self.currentParams.degradeEnabled || self.currentParams.endCompEnabled
+            else { return }
+            self.dynamicsCharacterProcessor?.writeInput(buffer: buffer)
         }
     }
 
@@ -584,6 +595,7 @@ public final class AudioEngine {
             granularReverbSendMixer.outputVolume = 0
             leadReverbSendMixer.outputVolume = 0
             drumReverbSendMixer.outputVolume = 0
+            oceanReverbSendMixer.outputVolume = 0
             drumDelaySendMixer.outputVolume = 0
             drumDelayMixer.outputVolume = 0
             dryMixer.outputVolume = 0
@@ -719,6 +731,8 @@ public final class AudioEngine {
         granularReverbSendMixer.outputVolume = (reverbEnabled && currentParams.granularEnabled) ? Float(currentParams.granularReverbSend) : 0
         leadReverbSendMixer.outputVolume = (reverbEnabled && currentParams.leadEnabled) ? Float(currentParams.leadReverbSend) : 0
         drumReverbSendMixer.outputVolume = (reverbEnabled && currentParams.drumEnabled) ? Float(currentParams.drumReverbSend) : 0
+        let oceanActive = currentParams.oceanSampleEnabled || currentParams.oceanWaveSynthEnabled
+        oceanReverbSendMixer.outputVolume = (reverbEnabled && oceanActive) ? Float(currentParams.oceanReverbSend) : 0
 
         // Update reverb quality mode
         if let quality = ReverbQuality(rawValue: currentParams.reverbQuality.capitalized) {
@@ -745,9 +759,10 @@ public final class AudioEngine {
             width: Float(currentParams.width),
             damping: Float(currentParams.damping)
         )
-        if !reverbEnabled {
+        if !reverbEnabled && lastAppliedReverbEnabled {
             reverbProcessor?.hardReset()
         }
+        lastAppliedReverbEnabled = reverbEnabled
         
         // Update granular with all parameters
         granularProcessor?.setDensity(Float(currentParams.density / 100.0))  // Normalize to 0-1

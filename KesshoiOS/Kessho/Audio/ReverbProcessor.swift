@@ -53,7 +53,7 @@ enum ReverbType: String, CaseIterable {
     case hall = "hall"
     case cathedral = "cathedral"
     case darkHall = "darkHall"
-    
+
     // Native Apple factory presets
     case smallRoom = "smallRoom"
     case mediumRoom = "mediumRoom"
@@ -102,7 +102,7 @@ enum ReverbType: String, CaseIterable {
     static var webAppPresets: [ReverbType] {
         [.plate, .hall, .cathedral, .darkHall]
     }
-    
+
     /// Native-only presets
     static var iOSOnlyPresets: [ReverbType] {
         [.smallRoom, .mediumRoom, .largeRoom, .mediumHall, .largeHall,
@@ -367,9 +367,9 @@ class ReverbProcessor {
     }
 
     private func clearInputBuffer() {
-        if !inputBufferL.isEmpty {
-            inputBufferL = [Float](repeating: 0, count: inputBufferSize)
-            inputBufferR = [Float](repeating: 0, count: inputBufferSize)
+        for index in 0..<inputBufferSize {
+            inputBufferL[index] = 0
+            inputBufferR[index] = 0
         }
         inputReadIndex = 0
         inputWriteIndex = 0
@@ -389,11 +389,15 @@ class ReverbProcessor {
         postDiffuserR.clear()
         dcBlockerL.clear()
         dcBlockerR.clear()
-        reads8 = [Float](repeating: 0, count: 8)
-        damped8 = [Float](repeating: 0, count: 8)
-        mixed8 = [Float](repeating: 0, count: 8)
+        for index in 0..<8 {
+            reads8[index] = 0
+            damped8[index] = 0
+            mixed8[index] = 0
+        }
         blockCounter = 0
-        currentModValues = [0, 0, 0, 0]
+        for index in 0..<4 {
+            currentModValues[index] = 0
+        }
         modPhases = [0, 0.25, 0.5, 0.75]
     }
 
@@ -627,45 +631,45 @@ class ReverbProcessor {
         self.wetDryMix = min(max(mix, 0), 100)
         refreshRouting()
     }
-    
+
     func setSize(_ size: Float) {
         stateLock.lock()
         defer { stateLock.unlock() }
         self.size = min(max(size, 0.5), 2.0)
     }
-    
+
     func setDiffusion(_ diffusion: Float) {
         stateLock.lock()
         defer { stateLock.unlock() }
         self.diffusion = min(max(diffusion, 0), 1)
         updateDiffuserFeedback()
     }
-    
+
     func setModulation(_ modulation: Float) {
         stateLock.lock()
         defer { stateLock.unlock() }
         self.modulation = min(max(modulation, 0), 1)
     }
-    
+
     func setPredelay(_ predelayMs: Float) {
         stateLock.lock()
         defer { stateLock.unlock() }
         self.predelayMs = min(max(predelayMs, 0), 500)
         self.predelaySamples = self.predelayMs * sampleRate / 1000
     }
-    
+
     func setWidth(_ width: Float) {
         stateLock.lock()
         defer { stateLock.unlock() }
         self.width = min(max(width, 0), 1)
     }
-    
+
     func setDamping(_ damping: Float) {
         stateLock.lock()
         defer { stateLock.unlock() }
         self.damping = min(max(damping, 0), 1)
     }
-    
+
     func setSampleRate(_ sr: Float) {
         stateLock.lock()
         defer { stateLock.unlock() }
@@ -705,13 +709,13 @@ class ReverbProcessor {
         // Use the direct mapping from ReverbType to Apple factory preset
         liteNode.loadFactoryPreset(currentType.appleFactoryPreset)
     }
-    
+
     /// Set the reverb type (preset)
     func setType(_ type: ReverbType) {
         stateLock.lock()
         defer { stateLock.unlock() }
         self.currentType = type
-        
+
         // Apply FDN parameters for web-compatible presets
         if let params = type.fdnParams {
             self.baseDecay = params.decay  // Store preset's decay as baseDecay
@@ -811,7 +815,9 @@ class SmoothDelay {
     }
     
     func clear() {
-        buffer = [Float](repeating: 0, count: size)
+        for index in 0..<size {
+            buffer[index] = 0
+        }
         writeIndex = 0
     }
 }

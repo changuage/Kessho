@@ -18,7 +18,7 @@ private let MACRO_SLIDERS: [MacroSlider] = [
     MacroSlider(key: \.granularLevel, reverbSendKey: \.granularReverbSend, label: "Granular", color: Color(red: 123/255, green: 154/255, blue: 109/255), min: 0, max: 4), // #7B9A6D sage
     MacroSlider(key: \.leadLevel, reverbSendKey: \.leadReverbSend, label: "Lead", color: Color(red: 212/255, green: 165/255, blue: 32/255), min: 0, max: 1),       // #D4A520 gold
     MacroSlider(key: \.drumLevel, reverbSendKey: \.drumReverbSend, label: "Drum", color: Color(red: 139/255, green: 92/255, blue: 246/255), min: 0, max: 1),       // #8B5CF6 purple
-    MacroSlider(key: \.oceanSampleLevel, reverbSendKey: \.oceanFilterCutoff, label: "Wave", color: Color(red: 90/255, green: 123/255, blue: 138/255), min: 0, max: 1), // #5A7B8A slate
+    MacroSlider(key: \.oceanSampleLevel, reverbSendKey: \.oceanReverbSend, label: "Wave", color: Color(red: 90/255, green: 123/255, blue: 138/255), min: 0, max: 1), // #5A7B8A slate
 ]
 
 /// Logarithmic curve for slider position (matches web LOG_CURVE = 2.5)
@@ -44,13 +44,7 @@ private func getWidthValue(for slider: MacroSlider, state: SliderState) -> Doubl
     guard let sendKey = slider.reverbSendKey else { return 0.3 }
     let sendValue = state[keyPath: sendKey]
     
-    // Normalize: oceanFilterCutoff is 40-12000 Hz, others are 0-1
-    let normalized: Double
-    if sendKey == \SliderState.oceanFilterCutoff {
-        normalized = Swift.max(0, Swift.min(1, (sendValue - 40) / (12000 - 40)))
-    } else {
-        normalized = Swift.max(0, Swift.min(1, sendValue))
-    }
+    let normalized = Swift.max(0, Swift.min(1, sendValue))
     
     // Apply exponential curve: drum gets 0.1, others get 0.5
     let exponent: Double = sendKey == \SliderState.drumReverbSend ? 0.1 : 0.5
@@ -74,10 +68,6 @@ struct SnowflakeView: View {
     // Special drag states for center hexagon (tension) and outer ring (master volume)
     @State private var draggingCenter: Bool = false
     @State private var draggingRing: Bool = false
-    
-    // Animation
-    @State private var pulsePhase: Double = 0
-    private let timer = Timer.publish(every: 0.05, on: .main, in: .common).autoconnect()
     
     var body: some View {
         GeometryReader { geometry in
@@ -202,12 +192,12 @@ struct SnowflakeView: View {
                     let interactionBaseRadius: CGFloat = 35 * scaleFactor
                     let interactionMaxLength: CGFloat = 160 * scaleFactor
                     let armLength = interactionBaseRadius + position * interactionMaxLength
-                    
+
                     let handlePos = CGPoint(
                         x: center.x + CGFloat(Darwin.cos(angle.radians)) * armLength,
                         y: center.y + CGFloat(Darwin.sin(angle.radians)) * armLength
                     )
-                    
+
                     let lineStart = CGPoint(
                         x: center.x + CGFloat(Darwin.cos(angle.radians)) * interactionBaseRadius,
                         y: center.y + CGFloat(Darwin.sin(angle.radians)) * interactionBaseRadius
@@ -238,12 +228,7 @@ struct SnowflakeView: View {
                                     dragStartPoint = gestureValue.startLocation
                                     if let sendKey = slider.reverbSendKey {
                                         let sendValue = appState.state[keyPath: sendKey]
-                                        // Normalize: oceanFilterCutoff is 40-12000 Hz
-                                        if sendKey == \SliderState.oceanFilterCutoff {
-                                            dragStartValue = (sendValue - 40) / (12000 - 40)
-                                        } else {
-                                            dragStartValue = sendValue
-                                        }
+                                        dragStartValue = sendValue
                                     }
                                 }
                                 
@@ -261,12 +246,7 @@ struct SnowflakeView: View {
                                 
                                 // Update the appropriate parameter
                                 if let sendKey = slider.reverbSendKey {
-                                    if sendKey == \SliderState.oceanFilterCutoff {
-                                        let hzValue = 40 + normalizedValue * (12000 - 40)
-                                        appState.state[keyPath: sendKey] = hzValue
-                                    } else {
-                                        appState.state[keyPath: sendKey] = normalizedValue
-                                    }
+                                    appState.state[keyPath: sendKey] = normalizedValue
                                 }
                             }
                             .onEnded { _ in
@@ -313,9 +293,7 @@ struct SnowflakeView: View {
                     if isWidthActive, let sendKey = slider.reverbSendKey {
                         let sendValue = appState.state[keyPath: sendKey]
                         let labelText: String = {
-                            if sendKey == \SliderState.oceanFilterCutoff {
-                                return "Filter: \(Int(sendValue / 1000))kHz"
-                            } else if sendKey == \SliderState.reverbDecay {
+                            if sendKey == \SliderState.reverbDecay {
                                 return "Decay: \(Int(sendValue * 100))%"
                             } else {
                                 return "Verb: \(Int(sendValue * 100))%"
@@ -375,12 +353,6 @@ struct SnowflakeView: View {
                 }
             }
         }
-        .onReceive(timer) { _ in
-            if appState.isPlaying {
-                pulsePhase += 0.02
-                if pulsePhase > .pi * 2 { pulsePhase -= .pi * 2 }
-            }
-        }
     }
     
     /// Draw recursive branch with width-based complexity (matches web drawArm)
@@ -397,7 +369,7 @@ struct SnowflakeView: View {
         highlightColor: Color? = nil
     ) {
         guard depth > 0 && length > 5 else { return }
-        
+
         let endPoint = CGPoint(
             x: origin.x + CGFloat(Darwin.cos(angle)) * length,
             y: origin.y + CGFloat(Darwin.sin(angle)) * length

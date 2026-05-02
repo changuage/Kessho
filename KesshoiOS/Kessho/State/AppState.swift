@@ -665,6 +665,7 @@ class AppState: ObservableObject {
             state.leadDelayMixMin = value
             state.leadDelayMixMax = value
         case "oceanSampleLevel": state.oceanSampleLevel = value
+        case "oceanReverbSend", "waterReverbSend": state.oceanReverbSend = value
         case "oceanSynthLevel", "oceanWaveSynthLevel": state.oceanWaveSynthLevel = value
         case "oceanFilterCutoff": state.oceanFilterCutoff = value
         case "oceanFilterResonance": state.oceanFilterResonance = value
@@ -1243,6 +1244,7 @@ class AppState: ObservableObject {
         
         // === Ocean ===
         result.oceanSampleLevel = lerp(a.oceanSampleLevel, b.oceanSampleLevel, t)
+        result.oceanReverbSend = lerp(a.oceanReverbSend, b.oceanReverbSend, t)
         result.oceanWaveSynthLevel = lerp(a.oceanWaveSynthLevel, b.oceanWaveSynthLevel, t)
         result.oceanFilterCutoff = lerp(a.oceanFilterCutoff, b.oceanFilterCutoff, t)
         result.oceanFilterResonance = lerp(a.oceanFilterResonance, b.oceanFilterResonance, t)

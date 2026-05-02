@@ -469,6 +469,7 @@ public struct SliderState: Codable, Equatable {
     // Ocean
     var oceanSampleEnabled: Bool = false
     var oceanSampleLevel: Double = 0.5
+    var oceanReverbSend: Double = 0.2
     var oceanWaveSynthEnabled: Bool = false
     var oceanWaveSynthLevel: Double = 0.4
     var oceanFilterType: String = "lowpass"
@@ -744,6 +745,7 @@ private extension SliderState {
         source: SliderStateJSONRecord,
         target: inout SliderStateJSONRecord
     ) {
+        assignNumberIfMissing("oceanReverbSend", from: ["waterReverbSend"], source: source, target: &target)
         assignBoolIfMissing("oceanWaveSynthEnabled", from: ["waterEnabled"], source: source, target: &target)
         assignNumberIfMissing("oceanWaveSynthLevel", from: ["waterLevel", "oceanMix"], source: source, target: &target)
         assignNumberIfMissing("oceanDurationMin", from: ["waterSurfDuration"], source: source, target: &target)
