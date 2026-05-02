@@ -35,7 +35,7 @@ private func writeOceanStereoFrame(
 /// Two independent wave generators that can overlap, with foam and rumble layers
 class OceanSynth {
     lazy var node: AVAudioSourceNode = { [weak self] in
-        let renderFormat = AVAudioFormat(standardFormatWithSampleRate: 44_100, channels: 2)!
+        let renderFormat = AVAudioFormat(standardFormatWithSampleRate: Double(self?.sampleRate ?? 44_100), channels: 2)!
         return AVAudioSourceNode(format: renderFormat) { _, _, frameCount, audioBufferList -> OSStatus in
             let ablPointer = UnsafeMutableAudioBufferListPointer(audioBufferList)
             guard let self = self, self.enabled else {
@@ -100,9 +100,10 @@ class OceanSynth {
     private var rumbleLpfL: Float = 0
     private var rumbleLpfR: Float = 0
     
-    private let sampleRate: Float = 44100
-    
-    init() {
+    private let sampleRate: Float
+
+    init(sampleRate: Float = 44_100) {
+        self.sampleRate = max(sampleRate, 1_000)
         // Initialize generators with phase offsets
         gen1 = WaveGenerator()
         gen1.timeSinceLastWave = Int(sampleRate * 8 * 0)  // Start immediately

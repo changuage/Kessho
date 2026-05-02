@@ -385,9 +385,16 @@ export const DEFAULT_GAMELAN: Lead4opFMPreset = {
 // ─── Preset Cache & Loader ───
 
 const presetCache: Map<string, Lead4opFMPreset> = new Map();
-let manifestCache: Lead4opFMManifest | null = null;
 const USER_LEAD4OP_SCOPE = 'lead4opfm';
-const USER_LEAD4OP_PRESETS = new Map<string, { preset: Lead4opFMPreset; library: Exclude<PresetLibrary, 'stock'> }>();
+const USER_LEAD4OP_PRESETS = new Map<string, { preset: Lead4opFMPreset; library: PresetLibrary }>();
+const FALLBACK_LEAD4OP_MANIFEST: Lead4opFMManifest = {
+  engine: 'Lead4opFM',
+  version: 1,
+  presets: [
+    { id: 'soft_rhodes', name: 'Soft Rhodes', file: '', algorithm: 'parallel' },
+    { id: 'gamelan', name: 'Gamelan', file: '', algorithm: 'cross' },
+  ],
+};
 
 function cloneLead4opPreset(preset: Lead4opFMPreset, id = preset.id, name = preset.name): Lead4opFMPreset {
   return JSON.parse(JSON.stringify({
@@ -404,26 +411,87 @@ function isLead4opFMPresetCandidate(value: unknown): value is Lead4opFMPreset {
     && typeof candidate.name === 'string'
     && typeof candidate.algorithm === 'string'
     && !!candidate.xy
-    && !!candidate.params;
+    && typeof candidate.xy === 'object'
+    && !!candidate.params
+    && typeof candidate.params === 'object';
 }
 
-function parseLead4opPresetFromEntry(entry: PresetEntry, lookupName: string): Lead4opFMPreset | null {
+function normalizeLeadPresetLookup(value: string): string {
+  return value.trim().toLowerCase().replace(/[\s-]+/g, '_');
+}
+
+function getLead4opPresetCandidateFromEntry(entry: PresetEntry): Lead4opFMPreset | null {
   const version = entry.versions.find(v => v.v === entry.currentVersion)
     || entry.versions[entry.versions.length - 1];
   if (!version) return null;
 
   const data = version.data as Record<string, unknown>;
-  const rawPreset = isLead4opFMPresetCandidate(version.data)
+  return isLead4opFMPresetCandidate(version.data)
     ? version.data
     : isLead4opFMPresetCandidate(data.preset)
       ? data.preset
       : null;
+}
+
+function parseLead4opPresetFromEntry(entry: PresetEntry, lookupName: string): Lead4opFMPreset | null {
+  const rawPreset = getLead4opPresetCandidateFromEntry(entry);
   if (!rawPreset) return null;
 
   return cloneLead4opPreset(rawPreset, lookupName, entry.name);
 }
 
-async function loadUserLead4opPresetFromStore(presetId: string): Promise<{ preset: Lead4opFMPreset; library: Exclude<PresetLibrary, 'stock'> } | null> {
+function leadEntryMatchesLookup(entry: PresetEntry, presetId: string): boolean {
+  const rawPreset = getLead4opPresetCandidateFromEntry(entry);
+  const lookup = normalizeLeadPresetLookup(presetId);
+  return [
+    rawPreset?.id,
+    rawPreset?.name,
+    entry.name,
+    entry.id,
+  ]
+    .filter((value): value is string => typeof value === 'string' && value.length > 0)
+    .some(value => normalizeLeadPresetLookup(value) === lookup);
+}
+
+async function loadLead4opPresetEntryFromStore(presetId: string): Promise<PresetEntry | null> {
+  const store = getPresetStore();
+  const direct = await store.load('engine', presetId, USER_LEAD4OP_SCOPE);
+  if (direct && getLead4opPresetCandidateFromEntry(direct)) return direct;
+
+  const summaries = await store.list('engine', USER_LEAD4OP_SCOPE);
+  for (const summary of summaries) {
+    const entry = await store.load('engine', summary.name, USER_LEAD4OP_SCOPE);
+    if (entry && leadEntryMatchesLookup(entry, presetId)) return entry;
+  }
+
+  return null;
+}
+
+async function listLead4opStorePresets(): Promise<{ id: string; name: string }[]> {
+  const store = getPresetStore();
+  const summaries = await store.list('engine', USER_LEAD4OP_SCOPE);
+  const presets: { id: string; name: string }[] = [];
+  const seen = new Set<string>();
+
+  for (const summary of summaries) {
+    const entry = await store.load('engine', summary.name, USER_LEAD4OP_SCOPE);
+    if (!entry) continue;
+
+    const rawPreset = getLead4opPresetCandidateFromEntry(entry);
+    if (!rawPreset) continue;
+
+    const id = entry.name || rawPreset.name || normalizeLeadPresetLookup(summary.name);
+    const key = normalizeLeadPresetLookup(id);
+    if (seen.has(key)) continue;
+
+    seen.add(key);
+    presets.push({ id, name: entry.name });
+  }
+
+  return presets;
+}
+
+async function loadUserLead4opPresetFromStore(presetId: string): Promise<{ preset: Lead4opFMPreset; library: PresetLibrary } | null> {
   const runtime = USER_LEAD4OP_PRESETS.get(presetId);
   if (runtime) {
     return {
@@ -432,28 +500,20 @@ async function loadUserLead4opPresetFromStore(presetId: string): Promise<{ prese
     };
   }
 
-  const store = getPresetStore();
-  let entry = await store.load('engine', presetId, USER_LEAD4OP_SCOPE);
-  if (!entry) {
-    const manifest = await loadLead4opFMManifest();
-    const stockMatch = manifest.presets.find((preset) => preset.id === presetId);
-    if (stockMatch) {
-      entry = await store.load('engine', stockMatch.name, USER_LEAD4OP_SCOPE);
-    }
-  }
+  const entry = await loadLead4opPresetEntryFromStore(presetId);
   if (!entry) return null;
 
   const preset = parseLead4opPresetFromEntry(entry, presetId);
   if (!preset) return null;
 
-  const library = (entry.library ?? 'user') as Exclude<PresetLibrary, 'stock'>;
+  const library = entry.library ?? 'user';
   USER_LEAD4OP_PRESETS.set(presetId, { preset, library });
   presetCache.set(presetId, preset);
   return { preset: cloneLead4opPreset(preset, presetId, preset.name), library };
 }
 
 export function setUserLead4opFMPresets(
-  presets: Array<{ id: string; name: string; library: Exclude<PresetLibrary, 'stock'>; preset: Lead4opFMPreset }>,
+  presets: Array<{ id: string; name: string; library: PresetLibrary; preset: Lead4opFMPreset }>,
 ): void {
   USER_LEAD4OP_PRESETS.clear();
   for (const preset of presets) {
@@ -467,7 +527,7 @@ export function setUserLead4opFMPresets(
 }
 
 export function upsertUserLead4opFMPreset(
-  preset: { id: string; name: string; library: Exclude<PresetLibrary, 'stock'>; preset: Lead4opFMPreset },
+  preset: { id: string; name: string; library: PresetLibrary; preset: Lead4opFMPreset },
 ): void {
   const cloned = cloneLead4opPreset(preset.preset, preset.id, preset.name);
   USER_LEAD4OP_PRESETS.set(preset.id, {
@@ -534,34 +594,68 @@ export async function saveUserLead4opFMPreset(
   return actualName;
 }
 
+export async function overwriteLead4opFMPreset(
+  name: string,
+  preset: Lead4opFMPreset,
+  note = 'Updated from lead editor',
+): Promise<string> {
+  const existing = await loadLead4opPresetEntryFromStore(name);
+  if (!existing) {
+    return saveUserLead4opFMPreset(name, preset, note);
+  }
+  if (existing.author === 'factory' || existing.library === 'stock') {
+    throw new Error(`Cannot overwrite stock Lead4opFM preset: ${name}`);
+  }
+
+  const now = Date.now();
+  const targetName = existing.name || name;
+  const storedPreset = cloneLead4opPreset(preset, targetName, targetName);
+  const maxVersion = existing.versions.length
+    ? Math.max(...existing.versions.map(version => version.v))
+    : 0;
+
+  existing.versions.push({
+    v: maxVersion + 1,
+    note,
+    timestamp: now,
+    data: storedPreset as unknown as Record<string, unknown>,
+  });
+  existing.currentVersion = maxVersion + 1;
+  existing.updatedAt = now;
+  if (SHARED_PRESET_TEST_MODE) existing.visibility = 'public';
+  await getPresetStore().save(existing);
+
+  const library = existing.library ?? (existing.author === 'cloud' ? 'cloud' : 'user');
+  USER_LEAD4OP_PRESETS.set(targetName, {
+    preset: storedPreset,
+    library,
+  });
+  presetCache.set(targetName, storedPreset);
+  return targetName;
+}
+
 /**
- * Load the Lead4opFM preset manifest (cached after first fetch)
+ * Load the minimal emergency Lead4opFM manifest.
+ * The editable preset library lives in Supabase under engine:lead4opfm.
  */
 export async function loadLead4opFMManifest(): Promise<Lead4opFMManifest> {
-  if (manifestCache) return manifestCache;
-  try {
-    const resp = await fetch('/presets/Lead4opFM/manifest.json');
-    const data = await resp.json();
-    manifestCache = data as Lead4opFMManifest;
-    return manifestCache;
-  } catch (e) {
-    console.warn('Failed to load Lead4opFM manifest:', e);
-    // Return minimal manifest with embedded defaults
-    return {
-      engine: 'Lead4opFM',
-      version: 1,
-      presets: [
-        { id: 'soft_rhodes', name: 'Soft Rhodes', file: 'soft_rhodes.json', algorithm: 'parallel' },
-        { id: 'gamelan', name: 'Gamelan', file: 'gamelan.json', algorithm: 'cross' },
-      ],
-    };
-  }
+  return FALLBACK_LEAD4OP_MANIFEST;
 }
 
 /**
  * Load a preset by ID (cached after first fetch). Falls back to embedded defaults.
  */
 export async function loadLead4opFMPreset(presetId: string): Promise<Lead4opFMPreset> {
+  const stockLookup = normalizeLeadPresetLookup(presetId);
+  if (stockLookup === 'soft_rhodes') {
+    presetCache.set('soft_rhodes', DEFAULT_SOFT_RHODES);
+    return DEFAULT_SOFT_RHODES;
+  }
+  if (stockLookup === 'gamelan') {
+    presetCache.set('gamelan', DEFAULT_GAMELAN);
+    return DEFAULT_GAMELAN;
+  }
+
   // Check cache
   const cached = presetCache.get(presetId);
   if (cached) return cached;
@@ -571,40 +665,33 @@ export async function loadLead4opFMPreset(presetId: string): Promise<Lead4opFMPr
     return userPreset.preset;
   }
 
-  // Embedded fallbacks
-  if (presetId === 'soft_rhodes') {
-    presetCache.set(presetId, DEFAULT_SOFT_RHODES);
-    return DEFAULT_SOFT_RHODES;
-  }
-  if (presetId === 'gamelan') {
-    presetCache.set(presetId, DEFAULT_GAMELAN);
-    return DEFAULT_GAMELAN;
-  }
-
-  // Fetch from manifest
-  try {
-    const manifest = await loadLead4opFMManifest();
-    const entry = manifest.presets.find(p => p.id === presetId);
-    if (!entry) {
-      console.warn(`Lead4opFM preset not found: ${presetId}, falling back to soft_rhodes`);
-      return DEFAULT_SOFT_RHODES;
-    }
-    const resp = await fetch(`/presets/Lead4opFM/${entry.file}`);
-    const data = await resp.json() as Lead4opFMPreset;
-    presetCache.set(presetId, data);
-    return data;
-  } catch (e) {
-    console.warn(`Failed to load Lead4opFM preset ${presetId}:`, e);
-    return DEFAULT_SOFT_RHODES;
-  }
+  console.warn(`Lead4opFM preset not found in cloud: ${presetId}, falling back to soft_rhodes`);
+  return DEFAULT_SOFT_RHODES;
 }
 
 /**
- * Get all available preset IDs and names from manifest
+ * Get all available preset IDs and names from the cloud preset store.
  */
 export async function getLead4opFMPresetList(): Promise<{ id: string; name: string }[]> {
-  const manifest = await loadLead4opFMManifest();
-  return manifest.presets.map(p => ({ id: p.id, name: p.name }));
+  const presets = [...FALLBACK_LEAD4OP_MANIFEST.presets.map(p => ({ id: p.id, name: p.name }))];
+  const seenIds = new Set(presets.map(p => normalizeLeadPresetLookup(p.id)));
+  const seenNames = new Set(presets.map(p => normalizeLeadPresetLookup(p.name)));
+
+  try {
+    const cloudPresets = await listLead4opStorePresets();
+    for (const preset of cloudPresets) {
+      const idKey = normalizeLeadPresetLookup(preset.id);
+      const nameKey = normalizeLeadPresetLookup(preset.name);
+      if (seenIds.has(idKey) || seenNames.has(nameKey)) continue;
+      seenIds.add(idKey);
+      seenNames.add(nameKey);
+      presets.push(preset);
+    }
+  } catch (error) {
+    console.warn('Failed to list cloud Lead4opFM presets:', error);
+  }
+
+  return presets;
 }
 
 /**

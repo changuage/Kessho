@@ -94,6 +94,11 @@ export type DynamicsTargets = {
   compressorMakeup: number;
   saturation: number;
   corrosion: number;
+  masterSatActive: boolean;
+  masterSatMode: number;
+  masterSatDrive: number;
+  masterSatTone: number;
+  masterSatBias: number;
   endDry: number;
   endWet: number;
   endMakeup: number;
@@ -102,6 +107,10 @@ export type DynamicsTargets = {
   endRatio: number;
   endAttack: number;
   endRelease: number;
+  endDetectorHpHz: number;
+  endDetectorTilt: number;
+  endAutoMakeup: number;
+  endProgramRelease: number;
 };
 
 export const DYNAMICS_DEGRADE_LEGACY_KEY_MAP = {
@@ -364,10 +373,22 @@ export function resolveDynamicsTargets(state: SliderState, sampleRate = 44100): 
   );
   const endEnabled = Boolean(state.dynamicsEnabled && state.endCompEnabled);
   const endWet = endEnabled ? clampUnitInterval(state.endCompMix ?? 1) : 0;
+  const masterSatActive = Boolean(state.dynamicsEnabled && state.dynamicsSaturationEnabled);
+  const masterSatDrive = masterSatActive ? clampUnitInterval(state.dynamicsSaturationDrive ?? 0) : 0;
+  const masterSatTone = clampUnitInterval(state.dynamicsSaturationTone ?? 0.5);
+  const masterSatBias = clampUnitInterval(state.dynamicsSaturationBias ?? 0.5);
+  const masterSatModeMap = {
+    clean: 0,
+    tape: 1,
+    tube: 2,
+    diode: 3,
+    fold: 4,
+  } satisfies Record<SliderState['dynamicsSaturationMode'], number>;
+  const masterSatMode = masterSatModeMap[state.dynamicsSaturationMode ?? 'clean'] ?? 0;
 
   return {
     routing: {
-      characterPathActive: wet > 0.0001,
+      characterPathActive: wet > 0.0001 || masterSatDrive > 0.0001 || (endEnabled && endWet > 0.0001),
       degradeWorkletActive: degradeEnabled && degradeWetRatio > 0.0001,
       allpassStackActive: wet > 0.0001 && mode === 'shallowWater',
       endChainActive: endEnabled && endWet > 0.0001,
@@ -444,6 +465,11 @@ export function resolveDynamicsTargets(state: SliderState, sampleRate = 44100): 
     compressorMakeup: 1 + characterMix * (shallowFlavor * 0.05 + abyssFlavor * 0.16),
     saturation,
     corrosion,
+    masterSatActive,
+    masterSatMode,
+    masterSatDrive,
+    masterSatTone,
+    masterSatBias,
     endDry: endEnabled ? 1 - endWet : 1,
     endWet,
     endMakeup: endEnabled ? Math.max(0.05, Math.min(8, state.endCompMakeup ?? 1)) : 1,
@@ -452,5 +478,9 @@ export function resolveDynamicsTargets(state: SliderState, sampleRate = 44100): 
     endRatio: Math.max(1, state.endCompRatio ?? 2),
     endAttack: Math.max(0.0001, (state.endCompAttackMs ?? 10) / 1000),
     endRelease: Math.max(0.02, (state.endCompReleaseMs ?? 180) / 1000),
+    endDetectorHpHz: mapUnitToLogFrequency(state.endCompDetectorHp ?? 0.25, 20, 360),
+    endDetectorTilt: clampUnitInterval(state.endCompDetectorTilt ?? 0.5),
+    endAutoMakeup: clampUnitInterval(state.endCompAutoMakeup ?? 0),
+    endProgramRelease: clampUnitInterval(state.endCompProgramRelease ?? 0),
   };
 }

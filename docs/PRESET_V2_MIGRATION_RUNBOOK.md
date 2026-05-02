@@ -85,6 +85,23 @@ await window.kesshoPresetV2Migration.repairStringWavesGraph({
 
 This re-saves the canonical `String Waves` child presets under the current graph, then re-saves `String Waves` and `String Waves Drums` so unchanged sources share refs again. The V2 save path also normalizes missing default-valued keys before hashing, so older presets that omit newly added default params do not create false derived children.
 
+If source/kit presets were saved before newer L1 engines existed, repair those child graphs too:
+
+```js
+await window.kesshoPresetV2Migration.repairChildGraphs({
+  dryRun: false,
+  confirm: 'MIGRATE_PRESETS_V2',
+})
+```
+
+This appends normalized cloud versions for delay, dynamics, granular, and earth composite presets whose latest version is missing child refs. It is also available headlessly:
+
+```bash
+npm run repair:preset-child-graphs -- --write
+```
+
+Omit `--write` for a dry run.
+
 ## Optional Partial Runs
 
 Seed only stock presets:

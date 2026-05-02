@@ -1,19 +1,17 @@
 # Presets
 
-This folder contains saved presets for the Generative Music application.
+This folder is retained for migration notes and legacy import support.
+Shared testing presets now live in the Supabase V2 preset tables, which are the source of truth.
 
 ## How to Use
 
 ### Saving a Preset
 1. Adjust the sliders to your desired settings
-2. Click the **💾 Save Preset** button
-3. Enter a name for your preset
-4. The preset will be downloaded as a JSON file
+2. Save from the in-app preset controls
+3. In shared testing mode, the preset is written to Supabase
 
 ### Loading a Preset
-1. Click the **📂 Load Preset** button
-2. Select a preset JSON file from your computer
-3. All slider positions will be restored to the saved state
+Use the in-app preset controls to load from the shared Supabase library.
 
 ## Preset Format
 
@@ -33,6 +31,5 @@ Presets are saved as JSON files with the following structure:
 
 ## Tips
 
-- You can manually save presets to this folder for organization
-- Share preset files with others to share your sound configurations
-- The preset files are human-readable JSON, so you can edit them manually if needed
+- Keep ad hoc preset exports outside this folder unless you are preparing a migration.
+- Use Supabase for presets that should be visible to testers.

@@ -45,7 +45,7 @@ export interface DelayPageProps {
   isMobile: boolean;
   onParamChange: (key: keyof SliderState, value: number) => void;
   onSelectChange: (key: keyof SliderState, value: SliderState[keyof SliderState]) => void;
-  onStateChange?: (newState: SliderState) => void;
+  onStateChange?: React.Dispatch<React.SetStateAction<SliderState>>;
   sliderProps: (paramKey: keyof SliderState) => Record<string, unknown>;
   SliderComponent: React.ComponentType<Record<string, unknown>>;
   sliderModes?: Record<string, SliderMode>;

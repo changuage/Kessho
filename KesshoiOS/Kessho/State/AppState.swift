@@ -89,9 +89,9 @@ class AppState: ObservableObject {
     // MARK: - MIDI
     let midiManager = MIDIManager(autoStart: false)
     let midiMapStore = MidiMapStore()
-    
+
     private var cancellables = Set<AnyCancellable>()
-    
+
     init() {
         setupServices()
         setupBindings()
@@ -620,6 +620,17 @@ class AppState: ObservableObject {
         case "reverbPredelay", "predelay": state.predelay = value
         case "reverbDamping", "damping": state.damping = value
         case "reverbWidth", "width": state.width = value
+        case "endCompThreshold": state.endCompThreshold = value
+        case "endCompKnee": state.endCompKnee = value
+        case "endCompRatio": state.endCompRatio = value
+        case "endCompAttackMs": state.endCompAttackMs = value
+        case "endCompReleaseMs": state.endCompReleaseMs = value
+        case "endCompMakeup": state.endCompMakeup = value
+        case "endCompMix": state.endCompMix = value
+        case "endCompDetectorHp": state.endCompDetectorHp = value
+        case "endCompDetectorTilt": state.endCompDetectorTilt = value
+        case "endCompAutoMakeup": state.endCompAutoMakeup = value
+        case "endCompProgramRelease": state.endCompProgramRelease = value
         case "granularProbability", "grainProbability": state.grainProbability = value
         case "granularSizeMin", "grainSizeMin": state.grainSizeMin = value
         case "granularSizeMax", "grainSizeMax": state.grainSizeMax = value
@@ -821,9 +832,9 @@ class AppState: ObservableObject {
             return false
         }
     }
-    
+
     // MARK: - Playback Control
-    
+
     func start() {
         do {
             if !audioSessionManager.isConfigured {
@@ -842,7 +853,7 @@ class AppState: ObservableObject {
         isPlaying = true
         updateNowPlayingInfo()
     }
-    
+
     func stop() {
         audioEngine.stop()
         isPlaying = false
@@ -1120,7 +1131,41 @@ class AppState: ObservableObject {
         result.predelay = lerp(a.predelay, b.predelay, t)
         result.damping = lerp(a.damping, b.damping, t)
         result.width = lerp(a.width, b.width, t)
-        
+
+        // === Dynamics Character ===
+        result.characterMix = lerp(a.characterMix, b.characterMix, t)
+        result.characterAge = lerp(a.characterAge, b.characterAge, t)
+        result.characterDepth = lerp(a.characterDepth, b.characterDepth, t)
+        result.characterRate = lerp(a.characterRate, b.characterRate, t)
+        result.characterDamp = lerp(a.characterDamp, b.characterDamp, t)
+        result.characterEnvFollow = lerp(a.characterEnvFollow, b.characterEnvFollow, t)
+        result.characterStereo = lerp(a.characterStereo, b.characterStereo, t)
+        result.characterResonance = lerp(a.characterResonance, b.characterResonance, t)
+        result.degradeMix = lerp(a.degradeMix, b.degradeMix, t)
+        result.degradeAge = lerp(a.degradeAge, b.degradeAge, t)
+        result.degradeGeneration = lerp(a.degradeGeneration, b.degradeGeneration, t)
+        result.degradeAlias = lerp(a.degradeAlias, b.degradeAlias, t)
+        result.degradeWow = lerp(a.degradeWow, b.degradeWow, t)
+        result.degradeFlutter = lerp(a.degradeFlutter, b.degradeFlutter, t)
+        result.degradeDrift = lerp(a.degradeDrift, b.degradeDrift, t)
+        result.degradeTone = lerp(a.degradeTone, b.degradeTone, t)
+        result.degradeHp = lerp(a.degradeHp, b.degradeHp, t)
+        result.degradeLp = lerp(a.degradeLp, b.degradeLp, t)
+        result.degradeNoise = lerp(a.degradeNoise, b.degradeNoise, t)
+        result.degradeSaturation = lerp(a.degradeSaturation, b.degradeSaturation, t)
+        result.degradeCorrosion = lerp(a.degradeCorrosion, b.degradeCorrosion, t)
+        result.endCompThreshold = lerp(a.endCompThreshold, b.endCompThreshold, t)
+        result.endCompKnee = lerp(a.endCompKnee, b.endCompKnee, t)
+        result.endCompRatio = lerp(a.endCompRatio, b.endCompRatio, t)
+        result.endCompAttackMs = lerp(a.endCompAttackMs, b.endCompAttackMs, t)
+        result.endCompReleaseMs = lerp(a.endCompReleaseMs, b.endCompReleaseMs, t)
+        result.endCompMakeup = lerp(a.endCompMakeup, b.endCompMakeup, t)
+        result.endCompMix = lerp(a.endCompMix, b.endCompMix, t)
+        result.endCompDetectorHp = lerp(a.endCompDetectorHp, b.endCompDetectorHp, t)
+        result.endCompDetectorTilt = lerp(a.endCompDetectorTilt, b.endCompDetectorTilt, t)
+        result.endCompAutoMakeup = lerp(a.endCompAutoMakeup, b.endCompAutoMakeup, t)
+        result.endCompProgramRelease = lerp(a.endCompProgramRelease, b.endCompProgramRelease, t)
+
         // === Granular ===
         result.maxGrains = lerp(a.maxGrains, b.maxGrains, t)
         result.grainProbability = lerp(a.grainProbability, b.grainProbability, t)
@@ -1339,6 +1384,12 @@ class AppState: ObservableObject {
             result.reverbEngine = b.reverbEngine
             result.reverbType = b.reverbType
             // reverbQuality excluded - preserved from current state in setMorphPosition
+            // Dynamics Character
+            result.dynamicsEnabled = b.dynamicsEnabled
+            result.characterEnabled = b.characterEnabled
+            result.characterMode = b.characterMode
+            result.degradeEnabled = b.degradeEnabled
+            result.endCompEnabled = b.endCompEnabled
             // Granular
             result.granularEnabled = b.granularEnabled
             result.grainPitchMode = b.grainPitchMode

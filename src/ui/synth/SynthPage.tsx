@@ -54,6 +54,7 @@ import {
 import {
   getLead4opFMPresetList,
   loadLead4opFMPreset,
+  overwriteLead4opFMPreset,
   saveUserLead4opFMPreset,
   setUserLead4opFMPresets,
   upsertUserLead4opFMPreset,
@@ -71,6 +72,10 @@ import FilterLfoViz from './FilterLfoViz';
 import WaveFoldViz from './WaveFoldViz';
 import LeadAdsrViz from './LeadAdsrViz';
 import { LFO_PRESETS, LFO_PRESET_CATEGORIES } from './lfoPresets';
+import {
+  Lead4opFMEditorOverlay,
+  type Lead4opFMEditorApplyRequest,
+} from './Lead4opFMEditorOverlay';
 
 const OV_PROB_DRAG_PX = 80;
 
@@ -173,6 +178,29 @@ type KeyboardInputMode = 'play' | 'sequence';
 type KeyboardHarmonyStatus = 'root' | 'chord' | 'scale' | 'outside';
 type KeyboardSequenceCursorTarget = 'trigger' | 'pitch';
 type SynthKeyboardEditLane = 'trigger' | 'pitch' | 'expression' | 'morph' | 'distance';
+type LeadPresetSlotKey = 'lead1PresetA' | 'lead1PresetB' | 'lead2PresetC' | 'lead2PresetD';
+type LeadPresetOption = {
+  id: string;
+  name: string;
+  library: 'stock' | 'user' | 'cloud';
+  runtime?: boolean;
+  slotKey?: LeadPresetSlotKey;
+  sourceName?: string;
+  sourceLibrary?: 'stock' | 'user' | 'cloud';
+};
+
+interface LeadEditorSlotChoice {
+  slotKey: LeadPresetSlotKey;
+  slotLabel: string;
+  accentColor: string;
+}
+
+interface LeadEditorSession {
+  sourceLabel: string;
+  slotKey: LeadPresetSlotKey;
+  slots: LeadEditorSlotChoice[];
+}
+
 export interface SynthKeyboardUiState {
   open: boolean;
   inputMode: KeyboardInputMode;
@@ -341,7 +369,7 @@ export interface SynthPageProps {
   expandedPanels: Set<string>;
   onParamChange: (key: keyof SliderState, value: number) => void;
   onSelectChange: (key: keyof SliderState, value: SliderState[keyof SliderState]) => void;
-  onStateChange?: (newState: SliderState) => void;
+  onStateChange?: React.Dispatch<React.SetStateAction<SliderState>>;
   togglePanel: (id: string) => void;
   sliderProps: (paramKey: keyof SliderState) => Record<string, unknown>;
   SliderComponent: React.ComponentType<Record<string, unknown>>;
@@ -482,6 +510,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const [dragPopup, setDragPopup] = useState<{ x: number; y: number; text: string } | null>(null);
   const [activeKeyboardCodes, setActiveKeyboardCodes] = useState<string[]>([]);
   const [lead4opPresets, setLead4opPresets] = useState<Array<{ id: string; name: string }>>([]);
+  const [leadEditorSlot, setLeadEditorSlot] = useState<LeadEditorSession | null>(null);
+  const [leadEditorRuntimeOptions, setLeadEditorRuntimeOptions] = useState<LeadPresetOption[]>([]);
   const [livePadViz, setLivePadViz] = useState({
     pad1FilterFreq: 1000,
     pad1LfoValue: 0,
@@ -1010,11 +1040,16 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const pad2PresetOptions = getPadPresetOptions('pad2');
   const pad1OptionById = new Map(pad1PresetOptions.map(option => [option.id, option]));
   const pad2OptionById = new Map(pad2PresetOptions.map(option => [option.id, option]));
-  const leadPresetOptions = (() => {
-    const optionsById = new Map<string, { id: string; name: string; library: 'stock' | 'user' | 'cloud' }>();
+  const leadPresetOptions: LeadPresetOption[] = (() => {
+    const optionsById = new Map<string, LeadPresetOption>();
     const optionIdByName = new Map<string, string>();
 
-    const mergeOption = (option: { id: string; name: string; library: 'stock' | 'user' | 'cloud' }) => {
+    const mergeOption = (option: LeadPresetOption) => {
+      if (option.runtime) {
+        optionsById.set(option.id, option);
+        return;
+      }
+
       const normalizedName = option.name.trim().toLowerCase();
       const priority = option.library === 'cloud' ? 3 : option.library === 'user' ? 2 : 1;
       const existingIdByName = optionIdByName.get(normalizedName);
@@ -1043,12 +1078,153 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
         id: resolveLeadPresetRuntimeId(preset.name, preset.id),
         name: preset.name,
         library: preset.library,
+        sourceName: preset.name,
+        sourceLibrary: preset.library,
       });
+    }
+
+    for (const preset of leadEditorRuntimeOptions) {
+      mergeOption(preset);
     }
 
     return [...optionsById.values()];
   })();
   const leadPresetOptionById = new Map(leadPresetOptions.map(option => [option.id, option]));
+  const activeLeadEditorSlot = leadEditorSlot
+    ? leadEditorSlot.slots.find(slot => slot.slotKey === leadEditorSlot.slotKey) ?? leadEditorSlot.slots[0]
+    : undefined;
+  const activeLeadEditorPresetId = activeLeadEditorSlot ? String(state[activeLeadEditorSlot.slotKey] ?? '').trim() : '';
+  const activeLeadEditorOption = activeLeadEditorPresetId ? leadPresetOptionById.get(activeLeadEditorPresetId) : undefined;
+  const activeLeadEditorSourceLibrary = activeLeadEditorOption?.sourceLibrary ?? activeLeadEditorOption?.library;
+  const activeLeadEditorCanOverwrite = activeLeadEditorSourceLibrary === 'cloud' || activeLeadEditorSourceLibrary === 'user';
+  const activeLeadEditorOverwriteLabel = activeLeadEditorSourceLibrary === 'cloud' ? 'Overwrite cloud' : 'Overwrite saved';
+
+  const openLeadPresetEditor = useCallback((
+    sourceLabel: string,
+    slots: LeadEditorSlotChoice[],
+    initialSlotKey: LeadPresetSlotKey,
+  ) => {
+    setLeadEditorSlot({
+      sourceLabel,
+      slotKey: initialSlotKey,
+      slots,
+    });
+  }, []);
+
+  const handleLeadEditorApply = useCallback(async (request: Lead4opFMEditorApplyRequest) => {
+    if (!leadEditorSlot) return;
+    const activeSlot = leadEditorSlot.slots.find(slot => slot.slotKey === leadEditorSlot.slotKey) ?? leadEditorSlot.slots[0];
+    if (!activeSlot) return;
+
+    const currentId = String(state[activeSlot.slotKey] ?? '').trim();
+    const currentOption = leadPresetOptionById.get(currentId);
+    const sourceName = currentOption?.sourceName || currentOption?.name || request.sourceName || request.name.trim() || 'Lead Preset';
+    const sourceLibrary = currentOption?.sourceLibrary ?? currentOption?.library;
+    const displayName = currentOption?.name || sourceName;
+    const runtimeLibrary: 'user' | 'cloud' = sourceLibrary === 'cloud' ? 'cloud' : 'user';
+
+    if (request.mode === 'slot') {
+      const runtimeId = `__lead4opfm_editor:${activeSlot.slotKey}:${Date.now().toString(36)}`;
+      const runtimePreset: Lead4opFMPreset = {
+        ...request.preset,
+        id: runtimeId,
+        name: displayName,
+      };
+
+      upsertUserLead4opFMPreset({
+        id: runtimeId,
+        name: displayName,
+        library: runtimeLibrary,
+        preset: runtimePreset,
+      });
+      setLeadEditorRuntimeOptions((previous) => [
+        ...previous.filter(option => option.slotKey !== activeSlot.slotKey),
+        {
+          id: runtimeId,
+          name: displayName,
+          library: runtimeLibrary,
+          runtime: true,
+          slotKey: activeSlot.slotKey,
+          sourceName,
+          sourceLibrary,
+        },
+      ]);
+
+      onSelectChange(activeSlot.slotKey, runtimeId as SliderState[typeof activeSlot.slotKey]);
+      return;
+    }
+
+    if (request.mode === 'overwrite') {
+      if (sourceLibrary !== 'cloud' && sourceLibrary !== 'user') {
+        throw new Error('Only saved Lead4opFM presets can be overwritten');
+      }
+
+      const overwritePreset: Lead4opFMPreset = {
+        ...request.preset,
+        id: sourceName,
+        name: sourceName,
+      };
+      const savedName = await overwriteLead4opFMPreset(sourceName, overwritePreset, 'Updated from lead editor');
+      await refreshLeadFmPresets();
+
+      const runtimeId = `__lead4opfm_editor:${activeSlot.slotKey}:overwrite:${Date.now().toString(36)}`;
+      const runtimePreset: Lead4opFMPreset = {
+        ...overwritePreset,
+        id: runtimeId,
+        name: savedName,
+      };
+
+      upsertUserLead4opFMPreset({
+        id: runtimeId,
+        name: savedName,
+        library: runtimeLibrary,
+        preset: runtimePreset,
+      });
+      setLeadEditorRuntimeOptions((previous) => [
+        ...previous.filter(option => option.slotKey !== activeSlot.slotKey),
+        {
+          id: runtimeId,
+          name: savedName,
+          library: runtimeLibrary,
+          runtime: true,
+          slotKey: activeSlot.slotKey,
+          sourceName: savedName,
+          sourceLibrary,
+        },
+      ]);
+
+      onSelectChange(activeSlot.slotKey, runtimeId as SliderState[typeof activeSlot.slotKey]);
+      return;
+    }
+
+    const targetName = request.name.trim() || displayName;
+    const presetToSave: Lead4opFMPreset = {
+      ...request.preset,
+      id: targetName,
+      name: targetName,
+    };
+    const savedId = await saveUserLead4opFMPreset(targetName, presetToSave, 'Saved from lead editor copy');
+    await refreshLeadFmPresets();
+
+    upsertUserLead4opFMPreset({
+      id: savedId,
+      name: savedId,
+      library: 'user',
+      preset: {
+        ...presetToSave,
+        id: savedId,
+        name: savedId,
+      },
+    });
+
+    onSelectChange(activeSlot.slotKey, savedId as SliderState[typeof activeSlot.slotKey]);
+  }, [
+    leadEditorSlot,
+    leadPresetOptionById,
+    onSelectChange,
+    refreshLeadFmPresets,
+    state,
+  ]);
 
   const renderPadPresetOptions = useCallback((options: PadPresetOption[]) => {
     const sorted = [...options].sort((left, right) => left.name.localeCompare(right.name));
@@ -1062,13 +1238,13 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     );
   }, []);
 
-  const renderLeadPresetOptions = useCallback((options: Array<{ id: string; name: string; library: 'stock' | 'user' | 'cloud' }>) => {
+  const renderLeadPresetOptions = useCallback((options: LeadPresetOption[]) => {
     const sorted = [...options].sort((left, right) => left.name.localeCompare(right.name));
 
     return (
       <>
         {sorted.map((option) => (
-          <option key={`${option.library}:${option.id}`} value={option.id}>{option.name}</option>
+          <option key={`${option.library}:${option.id}`} value={option.id} hidden={option.runtime}>{option.name}</option>
         ))}
       </>
     );
@@ -3565,6 +3741,16 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 {state.leadEnabled ? 'ON' : 'OFF'}
               </button>
               <button
+                className="sc-preset-editor-btn"
+                type="button"
+                onClick={() => openLeadPresetEditor('Lead 1', [
+                  { slotKey: 'lead1PresetA', slotLabel: 'Slot A', accentColor: '#f59e0b' },
+                  { slotKey: 'lead1PresetB', slotLabel: 'Slot B', accentColor: '#8b5cf6' },
+                ], 'lead1PresetA')}
+              >
+                Edit preset
+              </button>
+              <button
                 className={`sc-edit-btn${editingSection === 'lead1' ? ' active' : ''}`}
                 onClick={() => toggleEdit('lead1')}
                 title={editingSection === 'lead1' ? 'Close advanced' : 'Advanced parameters'}
@@ -3692,6 +3878,16 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 {state.lead2Enabled ? 'ON' : 'OFF'}
               </button>
               <button
+                className="sc-preset-editor-btn"
+                type="button"
+                onClick={() => openLeadPresetEditor('Lead 2', [
+                  { slotKey: 'lead2PresetC', slotLabel: 'Slot C', accentColor: '#06b6d4' },
+                  { slotKey: 'lead2PresetD', slotLabel: 'Slot D', accentColor: '#a78bfa' },
+                ], 'lead2PresetC')}
+              >
+                Edit preset
+              </button>
+              <button
                 className={`sc-edit-btn${editingSection === 'lead2' ? ' active' : ''}`}
                 onClick={() => toggleEdit('lead2')}
                 title={editingSection === 'lead2' ? 'Close advanced' : 'Advanced parameters'}
@@ -3717,7 +3913,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     </select>
                   </div>
                   <div className="sc-morph-slider">
-                  <Slider label="" value={lead2MorphValue} paramKey="lead2Morph" onChange={onParamChange} {...sliderProps('lead2Morph')} />
+                    <Slider label="" value={lead2MorphValue} paramKey="lead2Morph" onChange={onParamChange} {...sliderProps('lead2Morph')} />
                   </div>
                   <div className="sc-preset-slot">
                     <select
@@ -4908,6 +5104,31 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
           )}
         </div>
       </div>
+      {leadEditorSlot && (
+        <Lead4opFMEditorOverlay
+          open
+          presetId={activeLeadEditorPresetId}
+          slotLabel={activeLeadEditorSlot?.slotLabel ?? ''}
+          sourceLabel={leadEditorSlot.sourceLabel}
+          accentColor={activeLeadEditorSlot?.accentColor ?? '#f59e0b'}
+          library={activeLeadEditorSourceLibrary ?? activeLeadEditorOption?.library}
+          canOverwrite={activeLeadEditorCanOverwrite}
+          overwriteLabel={activeLeadEditorOverwriteLabel}
+          slotOptions={leadEditorSlot.slots.map(slot => ({
+            key: slot.slotKey,
+            label: slot.slotLabel,
+            accentColor: slot.accentColor,
+          }))}
+          activeSlotKey={activeLeadEditorSlot?.slotKey}
+          onSlotChange={(slotKey) => {
+            setLeadEditorSlot((previous) => previous
+              ? { ...previous, slotKey: slotKey as LeadPresetSlotKey }
+              : previous);
+          }}
+          onClose={() => setLeadEditorSlot(null)}
+          onApply={handleLeadEditorApply}
+        />
+      )}
     </div>
   );
 };

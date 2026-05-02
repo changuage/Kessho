@@ -1368,6 +1368,10 @@ const dynamicsEntries: Record<string, SliderHelpEntry> = {
   endCompReleaseMs: lowHigh('Sets end-chain release.', 'recover quickly', 'recover more slowly and smoothly', [dn('End Chain', 'Release')]),
   endCompMakeup: lowHigh('Sets end-chain makeup.', 'keep compressed output lower', 'raise the compressed branch', [dn('End Chain', 'Makeup')]),
   endCompMix: lowHigh('Blends end-chain compression.', 'favor dry bus tone', 'favor compressed bus tone', [dn('End Chain', 'Mix')]),
+  endCompDetectorHp: lowHigh('High-passes the end-chain detector.', 'let bass trigger more compression', 'keep subs from pulling the bus down', [dn('End Chain', 'Detector HP')]),
+  endCompDetectorTilt: lowHigh('Tilts the end-chain detector toward filtered signal.', 'track the full mix more evenly', 'favor mid/high motion over sub weight', [dn('End Chain', 'SC Tilt')]),
+  endCompAutoMakeup: lowHigh('Adds automatic compressor makeup.', 'use mostly manual makeup', 'loudness-match more strongly after gain reduction', [dn('End Chain', 'Auto Makeup')]),
+  endCompProgramRelease: lowHigh('Makes release respond to gain reduction depth.', 'use steadier release timing', 'recover fast from small dips and slower from deeper gain reduction', [dn('End Chain', 'Program Rel')]),
   characterEnabled: entry('Enables character movement.', 'Character can be bypassed from the section header without losing the selected movement mode or control values.', [dn('Character', 'FX', 'single-only', [GLOBAL_SINGLE_NOTE])]),
   characterMix: lowHigh('Blends character processing.', 'keep the clean bus forward', 'lean into the character path', [dn('Character', 'Mix')]),
   characterAge: lowHigh('Ages the character path.', 'keep movement and loss subtle', 'add older, less stable behavior', [dn('Character', 'Age')]),
@@ -1393,6 +1397,7 @@ const dynamicsEntries: Record<string, SliderHelpEntry> = {
   degradeCorrosion: lowHigh('Sets degraded edge.', 'keep distortion smoother', 'add more broken alias-like edge', [dn('Degrade', 'Corrosion')]),
   dynamicsSaturationDrive: lowHigh('Sets Dynamics master saturation drive.', 'leave the bus cleaner', 'push harder into the selected saturation color', [dn('Saturation', 'Drive')]),
   dynamicsSaturationTone: lowHigh('Sets Dynamics saturation tone.', 'tilt the saturated bus darker', 'tilt the saturated bus brighter', [dn('Saturation', 'Tone')]),
+  dynamicsSaturationBias: lowHigh('Sets Dynamics saturation bias.', 'keep clipping more symmetrical', 'lean into asymmetrical even-harmonic color', [dn('Saturation', 'Bias')]),
   masterSatDrive: lowHigh('Sets Delay-page master saturation drive.', 'keep the master saturation clean', 'push harder into the selected saturation shape', [dn('Delay', 'Drive')]),
   masterSatTone: lowHigh('Sets Delay-page master saturation tone.', 'tilt the saturated path darker', 'tilt the saturated path brighter', [dn('Delay', 'Sat Tone')]),
 };

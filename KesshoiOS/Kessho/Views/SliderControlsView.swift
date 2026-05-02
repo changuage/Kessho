@@ -435,7 +435,7 @@ struct SliderControlsView: View {
                 // MARK: - FX TAB
                 if activeTab == .fx {
                 // MARK: - Reverb Section
-                CollapsibleSection(title: "Reverb", icon: "waveform.path.ecg.rectangle", expanded: $expandedSections) {
+	                CollapsibleSection(title: "Reverb", icon: "waveform.path.ecg.rectangle", expanded: $expandedSections) {
                     // Reverb Enable toggle
                     HStack {
                         Image(systemName: appState.state.reverbEnabled ? "power.circle.fill" : "power.circle")
@@ -607,10 +607,287 @@ struct SliderControlsView: View {
                         value: $appState.state.leadDelayReverbSend,
                         range: 0...1,
                         icon: "arrow.right.to.line"
-                    )
-                }
-                
-                // MARK: - Granular Section
+	                    )
+	                }
+
+	                // MARK: - Dynamics Character Section
+	                CollapsibleSection(title: "Dynamics Character", icon: "dial.high", expanded: $expandedSections) {
+	                    Toggle("Dynamics", isOn: $appState.state.dynamicsEnabled)
+	                        .foregroundColor(.white)
+	                    Toggle("Character", isOn: $appState.state.characterEnabled)
+	                        .foregroundColor(.white)
+
+	                    HStack {
+	                        Image(systemName: "water.waves")
+	                            .foregroundColor(.white.opacity(0.5))
+	                            .frame(width: 20)
+	                        Text("Mode")
+	                            .foregroundColor(.white.opacity(0.8))
+	                        Spacer()
+	                        Picker("Mode", selection: $appState.state.characterMode) {
+	                            Text("Clean").tag("clean")
+	                            Text("Shallow").tag("shallowWater")
+	                            Text("Abyss").tag("abyssWater")
+	                        }
+	                        .pickerStyle(.segmented)
+	                        .frame(width: 220)
+	                    }
+
+	                    ParameterSlider(
+	                        label: "Mix",
+	                        value: $appState.state.characterMix,
+	                        range: 0...1,
+	                        icon: "circle.lefthalf.filled"
+	                    )
+
+	                    ParameterSlider(
+	                        label: "Age",
+	                        value: $appState.state.characterAge,
+	                        range: 0...1,
+	                        icon: "clock.arrow.circlepath"
+	                    )
+
+	                    ParameterSlider(
+	                        label: "Depth",
+	                        value: $appState.state.characterDepth,
+	                        range: 0...1,
+	                        icon: "water.waves.and.arrow.down"
+	                    )
+
+	                    ParameterSlider(
+	                        label: "Rate",
+	                        value: $appState.state.characterRate,
+	                        range: 0...1,
+	                        icon: "speedometer"
+	                    )
+
+	                    ParameterSlider(
+	                        label: "Damp",
+	                        value: $appState.state.characterDamp,
+	                        range: 0...1,
+	                        icon: "line.3.horizontal.decrease"
+	                    )
+
+	                    ParameterSlider(
+	                        label: "Env Follow",
+	                        value: $appState.state.characterEnvFollow,
+	                        range: 0...1,
+	                        icon: "waveform.path"
+	                    )
+
+	                    ParameterSlider(
+	                        label: "Stereo",
+	                        value: $appState.state.characterStereo,
+	                        range: 0...1,
+	                        icon: "speaker.wave.2"
+	                    )
+
+	                    ParameterSlider(
+	                        label: "Resonance",
+	                        value: $appState.state.characterResonance,
+	                        range: 0...1,
+	                        icon: "waveform.badge.magnifyingglass"
+	                    )
+	                }
+
+	                // MARK: - Dynamics Degrade Section
+	                CollapsibleSection(title: "Dynamics Degrade", icon: "waveform.path.ecg.rectangle", expanded: $expandedSections) {
+	                    Toggle("Degrade", isOn: $appState.state.degradeEnabled)
+	                        .foregroundColor(.white)
+
+	                    ParameterSlider(
+	                        label: "Mix",
+	                        value: $appState.state.degradeMix,
+	                        range: 0...1,
+	                        icon: "circle.lefthalf.filled"
+	                    )
+
+	                    ParameterSlider(
+	                        label: "Age",
+	                        value: $appState.state.degradeAge,
+	                        range: 0...1,
+	                        icon: "clock.arrow.circlepath"
+	                    )
+
+	                    ParameterSlider(
+	                        label: "Generation",
+	                        value: $appState.state.degradeGeneration,
+	                        range: 0...1,
+	                        icon: "square.stack.3d.down.right"
+	                    )
+
+	                    ParameterSlider(
+	                        label: "Alias",
+	                        value: $appState.state.degradeAlias,
+	                        range: 0...1,
+	                        icon: "waveform.path.badge.minus"
+	                    )
+
+	                    ParameterSlider(
+	                        label: "Wow",
+	                        value: $appState.state.degradeWow,
+	                        range: 0...1,
+	                        icon: "waveform.path"
+	                    )
+
+	                    ParameterSlider(
+	                        label: "Flutter",
+	                        value: $appState.state.degradeFlutter,
+	                        range: 0...1,
+	                        icon: "speedometer"
+	                    )
+
+	                    ParameterSlider(
+	                        label: "Drift",
+	                        value: $appState.state.degradeDrift,
+	                        range: 0...1,
+	                        icon: "arrow.triangle.2.circlepath"
+	                    )
+
+	                    ParameterSlider(
+	                        label: "Tone",
+	                        value: $appState.state.degradeTone,
+	                        range: 0...1,
+	                        icon: "slider.horizontal.3"
+	                    )
+
+	                    ParameterSlider(
+	                        label: "HP",
+	                        value: $appState.state.degradeHp,
+	                        range: 0...1,
+	                        icon: "arrow.up.right"
+	                    )
+
+	                    ParameterSlider(
+	                        label: "LP",
+	                        value: $appState.state.degradeLp,
+	                        range: 0...1,
+	                        icon: "arrow.down.right"
+	                    )
+
+	                    ParameterSlider(
+	                        label: "Noise",
+	                        value: $appState.state.degradeNoise,
+	                        range: 0...1,
+	                        icon: "sparkles"
+	                    )
+
+	                    ParameterSlider(
+	                        label: "Clip",
+	                        value: $appState.state.degradeSaturation,
+	                        range: 0...1,
+	                        icon: "waveform"
+	                    )
+
+	                    ParameterSlider(
+	                        label: "Corrosion",
+	                        value: $appState.state.degradeCorrosion,
+	                        range: 0...1,
+	                        icon: "bolt.trianglebadge.exclamationmark"
+	                    )
+	                }
+
+	                // MARK: - Dynamics End Chain Section
+	                CollapsibleSection(title: "End Chain Compression", icon: "waveform.path.ecg.rectangle", expanded: $expandedSections) {
+	                    Toggle("End Chain", isOn: $appState.state.endCompEnabled)
+	                        .foregroundColor(.white)
+
+	                    ParameterSlider(
+	                        label: "Threshold",
+	                        key: "endCompThreshold",
+	                        value: $appState.state.endCompThreshold,
+	                        range: -48...0,
+	                        unit: "dB",
+	                        icon: "gauge"
+	                    )
+
+	                    ParameterSlider(
+	                        label: "Knee",
+	                        key: "endCompKnee",
+	                        value: $appState.state.endCompKnee,
+	                        range: 0...30,
+	                        unit: "dB",
+	                        icon: "slider.horizontal.3"
+	                    )
+
+	                    ParameterSlider(
+	                        label: "Ratio",
+	                        key: "endCompRatio",
+	                        value: $appState.state.endCompRatio,
+	                        range: 1...12,
+	                        icon: "divide"
+	                    )
+
+	                    ParameterSlider(
+	                        label: "Attack",
+	                        key: "endCompAttackMs",
+	                        value: $appState.state.endCompAttackMs,
+	                        range: 0.1...80,
+	                        unit: "ms",
+	                        icon: "arrow.up.right",
+	                        logarithmic: true
+	                    )
+
+	                    ParameterSlider(
+	                        label: "Release",
+	                        key: "endCompReleaseMs",
+	                        value: $appState.state.endCompReleaseMs,
+	                        range: 20...800,
+	                        unit: "ms",
+	                        icon: "arrow.down.right",
+	                        logarithmic: true
+	                    )
+
+	                    ParameterSlider(
+	                        label: "Makeup",
+	                        key: "endCompMakeup",
+	                        value: $appState.state.endCompMakeup,
+	                        range: 0.05...4,
+	                        icon: "speaker.plus"
+	                    )
+
+	                    ParameterSlider(
+	                        label: "Mix",
+	                        key: "endCompMix",
+	                        value: $appState.state.endCompMix,
+	                        range: 0...1,
+	                        icon: "circle.lefthalf.filled"
+	                    )
+
+	                    ParameterSlider(
+	                        label: "Detector HP",
+	                        key: "endCompDetectorHp",
+	                        value: $appState.state.endCompDetectorHp,
+	                        range: 0...1,
+	                        icon: "line.diagonal"
+	                    )
+
+	                    ParameterSlider(
+	                        label: "Detector Tilt",
+	                        key: "endCompDetectorTilt",
+	                        value: $appState.state.endCompDetectorTilt,
+	                        range: 0...1,
+	                        icon: "line.3.horizontal.decrease"
+	                    )
+
+	                    ParameterSlider(
+	                        label: "Auto Makeup",
+	                        key: "endCompAutoMakeup",
+	                        value: $appState.state.endCompAutoMakeup,
+	                        range: 0...1,
+	                        icon: "wand.and.stars"
+	                    )
+
+	                    ParameterSlider(
+	                        label: "Program Release",
+	                        key: "endCompProgramRelease",
+	                        value: $appState.state.endCompProgramRelease,
+	                        range: 0...1,
+	                        icon: "waveform.path.ecg"
+	                    )
+	                }
+
+	                // MARK: - Granular Section
                 CollapsibleSection(title: "Granular", icon: "sparkles", expanded: $expandedSections) {
                     Toggle("Enabled", isOn: $appState.state.granularEnabled)
                         .foregroundColor(.white)
@@ -1291,7 +1568,7 @@ struct SliderControlsView: View {
                             icon: "arrow.down.right",
                             logarithmic: true
                         )
-                        
+
                         ParameterSlider(
                             label: "HP Filter",
                             value: $appState.state.drumClickFilter,
@@ -2394,7 +2671,7 @@ struct EuclideanPatternView: View {
     let hits: Int
     let rotation: Int
     var color: Color = .cyan
-    
+
     var pattern: [Bool] {
         Self.generatePattern(steps: steps, hits: hits, rotation: rotation)
     }
@@ -3332,6 +3609,16 @@ struct ParameterSlider: View {
 
 // MARK: - Convenience init without paramKey (uses label as key)
 extension ParameterSlider {
+    init(label: String, key: String, value: Binding<Double>, range: ClosedRange<Double>, unit: String = "", icon: String = "slider.horizontal.3", logarithmic: Bool = false) {
+        self.label = label
+        self.paramKey = key
+        self._value = value
+        self.range = range
+        self.unit = unit
+        self.icon = icon
+        self.logarithmic = logarithmic
+    }
+
     init(label: String, value: Binding<Double>, range: ClosedRange<Double>, unit: String = "", icon: String = "slider.horizontal.3") {
         self.label = label
         self.paramKey = label.lowercased().replacingOccurrences(of: " ", with: "")

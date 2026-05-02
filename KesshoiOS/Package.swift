@@ -8,11 +8,24 @@ let package = Package(
         .library(
             name: "KesshoNativeCore",
             targets: ["KesshoNativeCore"]
+        ),
+        .library(
+            name: "KesshoDSP",
+            targets: ["KesshoDSP"]
         )
     ],
     targets: [
         .target(
+            name: "KesshoDSP",
+            path: "NativeDSP",
+            sources: [
+                "kessho_dynamics_character_unified.cpp",
+            ],
+            publicHeadersPath: "include"
+        ),
+        .target(
             name: "KesshoNativeCore",
+            dependencies: ["KesshoDSP"],
             path: "Kessho",
             exclude: [
                 "Assets.xcassets",
@@ -21,6 +34,8 @@ let package = Package(
                 "KesshoApp.swift",
                 "MIDI",
                 "Presets",
+                "State/AppState.swift",
+                "State/PresetManager.swift",
                 "Views",
             ],
             sources: [
@@ -30,5 +45,6 @@ let package = Package(
                 "State/SliderState.swift",
             ]
         )
-    ]
+    ],
+    cxxLanguageStandard: .cxx17
 )

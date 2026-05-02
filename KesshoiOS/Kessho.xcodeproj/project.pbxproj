@@ -21,9 +21,12 @@
 		A1000015 /* OceanSynth.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000015; };
 		A1000060 /* AudioRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000060; };
 		A1000061 /* DrumMorph.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000061; };
-		A1000062 /* DrumSynth.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000062; };
-		A1000063 /* OceanSamplePlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000063; };
-		A1000073 /* DrumPresetModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000073; };
+			A1000062 /* DrumSynth.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000062; };
+			A1000063 /* OceanSamplePlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000063; };
+			A1000073 /* DrumPresetModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000073; };
+			A1000074 /* DynamicsCharacterNativeDSP.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000074; };
+			A1000075 /* DynamicsCharacterProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000075; };
+			A1000081 /* kessho_dynamics_character_unified.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B1000081; };
 		
 		/* Harmony */
 		A1000020 /* Scales.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000020; };
@@ -63,9 +66,10 @@
 		/* App */
 		C1000000 /* Kessho.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Kessho.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B1000001 /* KesshoApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KesshoApp.swift; sourceTree = "<group>"; };
-		B1000002 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
-		B1000003 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		B1000004 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+			B1000002 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+			B1000003 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+			B1000004 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+			B1000005 /* Kessho-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Kessho-Bridging-Header.h"; sourceTree = "<group>"; };
 		
 		/* Audio */
 		B1000010 /* AudioEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioEngine.swift; sourceTree = "<group>"; };
@@ -76,9 +80,12 @@
 		B1000015 /* OceanSynth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OceanSynth.swift; sourceTree = "<group>"; };
 		B1000060 /* AudioRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioRecorder.swift; sourceTree = "<group>"; };
 		B1000061 /* DrumMorph.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrumMorph.swift; sourceTree = "<group>"; };
-		B1000062 /* DrumSynth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrumSynth.swift; sourceTree = "<group>"; };
-		B1000063 /* OceanSamplePlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OceanSamplePlayer.swift; sourceTree = "<group>"; };
-		B1000073 /* DrumPresetModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrumPresetModels.swift; sourceTree = "<group>"; };
+			B1000062 /* DrumSynth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrumSynth.swift; sourceTree = "<group>"; };
+			B1000063 /* OceanSamplePlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OceanSamplePlayer.swift; sourceTree = "<group>"; };
+			B1000073 /* DrumPresetModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrumPresetModels.swift; sourceTree = "<group>"; };
+			B1000074 /* DynamicsCharacterNativeDSP.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamicsCharacterNativeDSP.swift; sourceTree = "<group>"; };
+			B1000075 /* DynamicsCharacterProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamicsCharacterProcessor.swift; sourceTree = "<group>"; };
+			B1000081 /* kessho_dynamics_character_unified.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = kessho_dynamics_character_unified.cpp; sourceTree = "<group>"; };
 		
 		/* Harmony */
 		B1000020 /* Scales.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Scales.swift; sourceTree = "<group>"; };
@@ -127,10 +134,11 @@
 /* Begin PBXGroup section */
 		E1000000 = {
 			isa = PBXGroup;
-			children = (
-				E1000001 /* Kessho */,
-				E1000099 /* Products */,
-			);
+				children = (
+					E1000001 /* Kessho */,
+					E1000070 /* NativeDSP */,
+					E1000099 /* Products */,
+				);
 			sourceTree = "<group>";
 		};
 		E1000099 /* Products */ = {
@@ -145,9 +153,10 @@
 			isa = PBXGroup;
 			children = (
 				B1000001 /* KesshoApp.swift */,
-				B1000002 /* ContentView.swift */,
-				B1000004 /* Info.plist */,
-				B1000003 /* Assets.xcassets */,
+					B1000002 /* ContentView.swift */,
+					B1000004 /* Info.plist */,
+					B1000005 /* Kessho-Bridging-Header.h */,
+					B1000003 /* Assets.xcassets */,
 				E1000010 /* Audio */,
 				E1000020 /* Harmony */,
 				E1000030 /* State */,
@@ -170,10 +179,12 @@
 				B1000015 /* OceanSynth.swift */,
 				B1000060 /* AudioRecorder.swift */,
 				B1000073 /* DrumPresetModels.swift */,
-				B1000061 /* DrumMorph.swift */,
-				B1000062 /* DrumSynth.swift */,
-				B1000063 /* OceanSamplePlayer.swift */,
-			);
+					B1000061 /* DrumMorph.swift */,
+					B1000062 /* DrumSynth.swift */,
+					B1000063 /* OceanSamplePlayer.swift */,
+					B1000074 /* DynamicsCharacterNativeDSP.swift */,
+					B1000075 /* DynamicsCharacterProcessor.swift */,
+				);
 			path = Audio;
 			sourceTree = "<group>";
 		};
@@ -219,7 +230,7 @@
 			path = MIDI;
 			sourceTree = "<group>";
 		};
-		E1000040 /* Views */ = {
+			E1000040 /* Views */ = {
 			isa = PBXGroup;
 			children = (
 				B1000040 /* MainView.swift */,
@@ -230,9 +241,17 @@
 				B1000066 /* SliderControlsView.swift */,
 			);
 			path = Views;
-			sourceTree = "<group>";
-		};
-/* End PBXGroup section */
+				sourceTree = "<group>";
+			};
+			E1000070 /* NativeDSP */ = {
+				isa = PBXGroup;
+				children = (
+					B1000081 /* kessho_dynamics_character_unified.cpp */,
+				);
+				path = NativeDSP;
+				sourceTree = "<group>";
+			};
+	/* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
 		F1000000 /* Kessho */ = {
@@ -312,10 +331,13 @@
 				A1000015 /* OceanSynth.swift in Sources */,
 				A1000060 /* AudioRecorder.swift in Sources */,
 				A1000073 /* DrumPresetModels.swift in Sources */,
-				A1000061 /* DrumMorph.swift in Sources */,
-				A1000062 /* DrumSynth.swift in Sources */,
-				A1000063 /* OceanSamplePlayer.swift in Sources */,
-				A1000020 /* Scales.swift in Sources */,
+					A1000061 /* DrumMorph.swift in Sources */,
+					A1000062 /* DrumSynth.swift in Sources */,
+					A1000063 /* OceanSamplePlayer.swift in Sources */,
+					A1000074 /* DynamicsCharacterNativeDSP.swift in Sources */,
+					A1000075 /* DynamicsCharacterProcessor.swift in Sources */,
+					A1000081 /* kessho_dynamics_character_unified.cpp in Sources */,
+					A1000020 /* Scales.swift in Sources */,
 				A1000021 /* Harmony.swift in Sources */,
 				A1000022 /* CircleOfFifths.swift in Sources */,
 				A1000023 /* RNG.swift in Sources */,
@@ -482,9 +504,10 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.kessho.generativemusic;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_EMIT_LOC_STRINGS = YES;
+					PRODUCT_BUNDLE_IDENTIFIER = com.kessho.generativemusic;
+					PRODUCT_NAME = "$(TARGET_NAME)";
+					SWIFT_OBJC_BRIDGING_HEADER = "Kessho/Kessho-Bridging-Header.h";
+					SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -512,9 +535,10 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.kessho.generativemusic;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_EMIT_LOC_STRINGS = YES;
+					PRODUCT_BUNDLE_IDENTIFIER = com.kessho.generativemusic;
+					PRODUCT_NAME = "$(TARGET_NAME)";
+					SWIFT_OBJC_BRIDGING_HEADER = "Kessho/Kessho-Bridging-Header.h";
+					SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};

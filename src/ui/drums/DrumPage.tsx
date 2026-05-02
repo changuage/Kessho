@@ -70,7 +70,7 @@ export interface DrumPageProps {
   expandedPanels: Set<string>;
   onParamChange: (key: keyof SliderState, value: number) => void;
   onSelectChange: (key: keyof SliderState, value: SliderState[keyof SliderState]) => void;
-  onStateChange?: (newState: SliderState) => void;
+  onStateChange?: React.Dispatch<React.SetStateAction<SliderState>>;
   togglePanel: (id: string) => void;
   sliderProps: (paramKey: keyof SliderState) => Record<string, unknown>;
   triggerVoice: (voice: DrumVoiceType) => void;

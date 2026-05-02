@@ -42,6 +42,7 @@ class DrumSynthWasmProcessor extends AudioWorkletProcessor {
     this.perfReportInterval = Math.floor(sampleRate * 0.5);
 
     // Active count reporting
+    this.activeCountEnabled = false;
     this.activeCountSamples = 0;
     this.activeCountInterval = Math.floor(sampleRate * 0.2); // ~5 Hz
 
@@ -134,6 +135,11 @@ class DrumSynthWasmProcessor extends AudioWorkletProcessor {
         this.perfBlockCount = 0;
         this.perfCount = 0;
         this.perfSamplesSinceReport = 0;
+        break;
+
+      case 'enableActiveCount':
+        this.activeCountEnabled = !!data.enabled;
+        this.activeCountSamples = 0;
         break;
 
       case 'destroy':
@@ -267,14 +273,15 @@ class DrumSynthWasmProcessor extends AudioWorkletProcessor {
       }
     }
 
-    // Active count reporting
-    this.activeCountSamples += blockSize;
-    if (this.activeCountSamples >= this.activeCountInterval) {
-      this.port.postMessage({
-        type: 'activeCount',
-        count: this.wasm.drum_get_active_count(),
-      });
-      this.activeCountSamples = 0;
+    if (this.activeCountEnabled) {
+      this.activeCountSamples += blockSize;
+      if (this.activeCountSamples >= this.activeCountInterval) {
+        this.port.postMessage({
+          type: 'activeCount',
+          count: this.wasm.drum_get_active_count(),
+        });
+        this.activeCountSamples = 0;
+      }
     }
 
     // Perf reporting

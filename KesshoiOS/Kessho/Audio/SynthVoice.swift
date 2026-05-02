@@ -26,7 +26,7 @@ private func writeSynthVoiceFrame(
 /// This native implementation follows the same broad sound design as the web synth.
 class SynthVoice {
     lazy var node: AVAudioSourceNode = { [weak self] in
-        let renderFormat = AVAudioFormat(standardFormatWithSampleRate: 44_100, channels: 2)!
+        let renderFormat = AVAudioFormat(standardFormatWithSampleRate: Double(self?.sampleRate ?? 44_100), channels: 2)!
         return AVAudioSourceNode(format: renderFormat) { _, _, frameCount, audioBufferList -> OSStatus in
             guard let self = self else { return noErr }
 
@@ -107,14 +107,16 @@ class SynthVoice {
     // Voice enabled (for voice mask)
     var isEnabled: Bool = true
     
-    private let sampleRate: Float = 44100
-    private let invSampleRate: Float = 1.0 / 44100  // Pre-computed to avoid division per sample
+    private let sampleRate: Float
+    private let invSampleRate: Float  // Pre-computed to avoid division per sample
     
     enum EnvelopeStage {
         case off, attack, decay, sustain, release
     }
     
-    init() {
+    init(sampleRate: Float = 44_100) {
+        self.sampleRate = max(sampleRate, 1_000)
+        self.invSampleRate = 1.0 / self.sampleRate
         // Set initial oscillator gains for oscBrightness=2
         updateOscillatorGains()
         

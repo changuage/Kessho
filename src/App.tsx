@@ -1464,6 +1464,7 @@ const App: React.FC = () => {
       kesshoPresetV2Migration?: {
         run: (options?: unknown) => Promise<unknown>;
         optimizeStringWaves: (options?: unknown) => Promise<unknown>;
+        repairChildGraphs: (options?: unknown) => Promise<unknown>;
         repairStringWavesGraph: (options?: unknown) => Promise<unknown>;
         verify: () => Promise<unknown>;
       };
@@ -1495,6 +1496,14 @@ const App: React.FC = () => {
         console.info('[Preset V2 Migration] String Waves latest ref count:', report.latestRefCount);
         return report;
       },
+      repairChildGraphs: async (options?: unknown) => {
+        const { repairPresetChildGraphsV2 } = await import('./presets');
+        const report = await repairPresetChildGraphsV2(options as never);
+        console.info(`[Preset V2 Migration] Child graph repair ${report.dryRun ? 'dry run' : 'write run'} complete.`);
+        console.table(report.rows);
+        if (report.errors.length) console.warn('[Preset V2 Migration] Child graph repair errors:', report.errors);
+        return report;
+      },
       repairStringWavesGraph: async (options?: unknown) => {
         const { repairStringWavesGraphV2 } = await import('./presets');
         const report = await repairStringWavesGraphV2(options as never);
@@ -1521,6 +1530,10 @@ const App: React.FC = () => {
     void (async () => {
       if (SHARED_PRESET_TEST_MODE && CLOUD_ENABLED) {
         await cloudPresetStoreReadyPromiseRef.current;
+        if (!cancelled) {
+          console.log('Skipping bundled factory preset seeding; shared cloud presets are the source of truth.');
+        }
+        return;
       }
       if (cancelled) return;
 
@@ -4827,6 +4840,29 @@ const App: React.FC = () => {
       }
     }
 
+    // Dynamics asymmetric morph:
+    // When one side has a Dynamics module effectively OFF (master off or module off)
+    // and the other has it ON, fade the module's audible carrier from/to zero.
+    // Saturation has no wet mix, so its drive is the fade carrier.
+    const dynamicsFadeByModule: Array<{
+      isOn: (s: SliderState) => boolean;
+      fadeKey: keyof SliderState;
+    }> = [
+      { isOn: (s) => Boolean(s.dynamicsEnabled && s.sidechainEnabled), fadeKey: 'sidechainMix' },
+      { isOn: (s) => Boolean(s.dynamicsEnabled && s.characterEnabled), fadeKey: 'characterMix' },
+      { isOn: (s) => Boolean(s.dynamicsEnabled && s.degradeEnabled), fadeKey: 'degradeMix' },
+      { isOn: (s) => Boolean(s.dynamicsEnabled && s.dynamicsSaturationEnabled), fadeKey: 'dynamicsSaturationDrive' },
+      { isOn: (s) => Boolean(s.dynamicsEnabled && s.endCompEnabled), fadeKey: 'endCompMix' },
+    ];
+
+    const dynamicsZeroSide = new Map<keyof SliderState, 'A' | 'B'>();
+    for (const entry of dynamicsFadeByModule) {
+      const onA = entry.isOn(stateA);
+      const onB = entry.isOn(stateB);
+      if (onA === onB) continue;
+      dynamicsZeroSide.set(entry.fadeKey, onA ? 'B' : 'A');
+    }
+
     // Compute interpolated dual ranges
     const dualRangesA = presetA.dualRanges || {};
     const dualRangesB = presetB.dualRanges || {};
@@ -4850,9 +4886,9 @@ const App: React.FC = () => {
       let valA = getSliderNumericValue(key, stateA[key]) ?? fallbackValue;
       let valB = getSliderNumericValue(key, stateB[key]) ?? fallbackValue;
 
-      // Router-matrix asymmetric morph: collapse the OFF side's value AND range
-      // to 0 so engine sends fade in/out through routing instead of jumping.
-      const offSide = routerZeroSide.get(key);
+      // Asymmetric morph: collapse the OFF side's value AND range to 0 so
+      // engine sends / Dynamics carriers fade in/out instead of jumping.
+      const offSide = routerZeroSide.get(key) ?? dynamicsZeroSide.get(key);
       if (offSide === 'A') {
         valA = 0;
         rangeA = undefined;
@@ -5000,6 +5036,33 @@ const App: React.FC = () => {
       'lead1OctaveRange',
       'leadVibratoDepth', 'leadVibratoRate',
       'leadGlide', 'synthEuclideanTempo',
+      // Dynamics page
+      'dynamicsSaturationDrive', 'dynamicsSaturationTone', 'dynamicsSaturationBias',
+      'sidechainKeyAWeight', 'sidechainKeyBWeight', 'sidechainAmount', 'sidechainThreshold',
+      'sidechainRatio', 'sidechainKnee', 'sidechainAttackMs', 'sidechainHoldMs',
+      'sidechainReleaseMs', 'sidechainMakeup', 'sidechainMix', 'sidechainCurve',
+      'sidechainDetectorHp', 'sidechainDetectorLp',
+      'sidechainPad1Target', 'sidechainPad2Target', 'sidechainLead1Target',
+      'sidechainLead2Target', 'sidechainPianoTarget', 'sidechainGranularTarget',
+      'sidechainDelayATarget', 'sidechainDelayBTarget', 'sidechainReverbTarget',
+      'characterMix', 'characterAge', 'characterDepth', 'characterRate', 'characterDamp',
+      'characterEnvFollow', 'characterStereo', 'characterResonance',
+      'degradeMix', 'degradeAge', 'degradeGeneration', 'degradeAlias', 'degradeWow',
+      'degradeFlutter', 'degradeDrift', 'degradeNoise', 'degradeHp', 'degradeLp',
+      'degradeTone', 'degradeSaturation', 'degradeCorrosion',
+      'degradeModSlowWow', 'degradeModSlowFlutter', 'degradeModSlowLp',
+      'degradeModSlowWet', 'degradeModSlowDropout', 'degradeModSlowAlias',
+      'degradeModFlutterWow', 'degradeModFlutterFlutter', 'degradeModFlutterLp',
+      'degradeModFlutterWet', 'degradeModFlutterDropout', 'degradeModFlutterAlias',
+      'degradeModRandomWow', 'degradeModRandomFlutter', 'degradeModRandomLp',
+      'degradeModRandomWet', 'degradeModRandomDropout', 'degradeModRandomAlias',
+      'degradeModEnvWow', 'degradeModEnvFlutter', 'degradeModEnvLp',
+      'degradeModEnvWet', 'degradeModEnvDropout', 'degradeModEnvAlias',
+      'degradeModNoiseWow', 'degradeModNoiseFlutter', 'degradeModNoiseLp',
+      'degradeModNoiseWet', 'degradeModNoiseDropout', 'degradeModNoiseAlias',
+      'endCompThreshold', 'endCompKnee', 'endCompRatio', 'endCompAttackMs',
+      'endCompReleaseMs', 'endCompMakeup', 'endCompMix',
+      'endCompDetectorHp', 'endCompDetectorTilt', 'endCompAutoMakeup', 'endCompProgramRelease',
       'oceanSampleLevel', 'oceanFilterCutoff', 'oceanFilterResonance', 'oceanSliceDuration', 'oceanSliceDensity',
       'birdsLevel', 'birdsSliceDuration', 'birdsSliceDensity',
       'birds2Level', 'birds2SliceDuration', 'birds2SliceDensity',
@@ -5033,10 +5096,9 @@ const App: React.FC = () => {
       const valA = stateA[key];
       const valB = stateB[key];
       if (typeof valA === 'number' && typeof valB === 'number') {
-        // Router-matrix asymmetric morph: when one preset has the engine OFF and
-        // the other ON, treat the OFF side's router value as 0 so the engine
-        // smoothly fades in/out through the routing matrix.
-        const offSide = routerZeroSide.get(key);
+        // Asymmetric morph: when one preset has the source/module OFF and the
+        // other ON, treat the OFF side's audible carrier as 0.
+        const offSide = routerZeroSide.get(key) ?? dynamicsZeroSide.get(key);
         if (offSide === 'A') {
           // A is off → start at 0, morph to B's value
           (result as Record<string, unknown>)[key] = valB * tNorm;
@@ -5056,6 +5118,8 @@ const App: React.FC = () => {
     // Note: reverbQuality is excluded - it's a user preference, not a musical parameter
     const discreteKeys: (keyof SliderState)[] = [
       'seedWindow', 'filterType', 'reverbEngine', 'reverbType', 'grainPitchMode', 'cofDriftDirection',
+      // Dynamics discrete choices
+      'characterMode', 'dynamicsSaturationMode', 'sidechainKeyA', 'sidechainKeyB',
       // Drum preset names and discrete settings should snap at 50%
       'drumSubPresetA', 'drumSubPresetB', 'drumKickPresetA', 'drumKickPresetB',
       'drumClickPresetA', 'drumClickPresetB', 'drumBeepHiPresetA', 'drumBeepHiPresetB',
@@ -5109,6 +5173,33 @@ const App: React.FC = () => {
       } else {
         // A on, B off: stay ON until we arrive at B (t === 100)
         (result as Record<string, unknown>)[key] = !atEndpointB;
+      }
+    }
+
+    const dynamicsToggleKeys: Array<{
+      key: keyof SliderState;
+      isOn: (s: SliderState) => boolean;
+    }> = [
+      { key: 'dynamicsEnabled', isOn: (s) => Boolean(s.dynamicsEnabled) },
+      { key: 'sidechainEnabled', isOn: (s) => Boolean(s.dynamicsEnabled && s.sidechainEnabled) },
+      { key: 'characterEnabled', isOn: (s) => Boolean(s.dynamicsEnabled && s.characterEnabled) },
+      { key: 'degradeEnabled', isOn: (s) => Boolean(s.dynamicsEnabled && s.degradeEnabled) },
+      { key: 'dynamicsSaturationEnabled', isOn: (s) => Boolean(s.dynamicsEnabled && s.dynamicsSaturationEnabled) },
+      { key: 'endCompEnabled', isOn: (s) => Boolean(s.dynamicsEnabled && s.endCompEnabled) },
+    ];
+    for (const entry of dynamicsToggleKeys) {
+      const onA = entry.isOn(stateA);
+      const onB = entry.isOn(stateB);
+      const rawA = Boolean(stateA[entry.key]);
+      const rawB = Boolean(stateB[entry.key]);
+      if (onA && onB) {
+        (result as Record<string, unknown>)[entry.key] = true;
+      } else if (!onA && !onB) {
+        (result as Record<string, unknown>)[entry.key] = tNorm < 0.5 ? rawA : rawB;
+      } else if (!onA && onB) {
+        (result as Record<string, unknown>)[entry.key] = atEndpointA ? rawA : true;
+      } else {
+        (result as Record<string, unknown>)[entry.key] = atEndpointB ? rawB : true;
       }
     }
     

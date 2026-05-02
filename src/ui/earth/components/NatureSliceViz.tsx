@@ -3,6 +3,7 @@ import type {
   EarthTexturePlayerDebugSnapshot,
   EarthTextureSliceDebug,
 } from '../../../audio/earthTexturePlayer';
+import { getCappedCanvasDpr } from '../../hooks/useAnimationVisibility';
 
 type NatureSliceVizProps = {
   snapshot: EarthTexturePlayerDebugSnapshot | null | undefined;
@@ -105,12 +106,14 @@ export function NatureSliceViz({ snapshot, accent, label = 'Texture' }: NatureSl
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = getCappedCanvasDpr();
     const rect = canvas.getBoundingClientRect();
     const width = rect.width;
     const height = rect.height;
-    canvas.width = Math.max(1, Math.round(width * dpr));
-    canvas.height = Math.max(1, Math.round(height * dpr));
+    const targetWidth = Math.max(1, Math.round(width * dpr));
+    const targetHeight = Math.max(1, Math.round(height * dpr));
+    if (canvas.width !== targetWidth) canvas.width = targetWidth;
+    if (canvas.height !== targetHeight) canvas.height = targetHeight;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
 

@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { getSupabase } from '../cloud/supabase';
 import { getVersionData } from './codec';
 import { loadFactoryPresetV2Phases } from './factoryPresets';
-import { getPresetChildSpecs } from './presetStorageV2';
+import { getPresetChildSpecs, normalizeResolvedVersionData } from './presetStorageV2';
 import { SupabasePresetStore } from './SupabasePresetStore';
 import {
   extractPresetVersionMetadata,
@@ -107,12 +107,59 @@ export interface StringWavesGraphRepairReport {
   }>;
 }
 
+export interface PresetChildGraphRepairScope {
+  type: Extract<PresetLevel, 'source' | 'kit'>;
+  scope: string;
+}
+
+export interface PresetChildGraphRepairReport {
+  dryRun: boolean;
+  canWrite: boolean;
+  userId: string | null;
+  scopes: PresetChildGraphRepairScope[];
+  candidates: number;
+  repaired: number;
+  skippedComplete: number;
+  rows: Array<{
+    type: PresetLevel;
+    scope: string;
+    name: string;
+    fromVersion: number;
+    toVersion: number;
+    expectedSlots: string[];
+    beforeRefSlots: string[];
+    afterRefSlots: string[];
+    missingSlots: string[];
+    written: boolean;
+  }>;
+  errors: Array<{ type: PresetLevel; scope: string; name: string; message: string }>;
+}
+
 interface V2ExistingRow {
   type: string;
   scope: string | null;
   name: string;
   latest_version_no: number;
 }
+
+interface V2GraphRepairRow {
+  id: string;
+  type: PresetLevel;
+  scope: string | null;
+  name: string;
+  latest_version_no: number;
+  latest_version_id: string | null;
+  archived: boolean;
+}
+
+const DEFAULT_CHILD_GRAPH_REPAIR_SCOPES: PresetChildGraphRepairScope[] = [
+  { type: 'source', scope: 'delay' },
+  { type: 'kit', scope: 'delayKit' },
+  { type: 'source', scope: 'dynamics' },
+  { type: 'source', scope: 'granular' },
+  { type: 'kit', scope: 'granularKit' },
+  { type: 'kit', scope: 'earthKit' },
+];
 
 function createPhaseReport(phase: MigrationPhase, candidates: number): MigrationPhaseReport {
   return {
@@ -349,6 +396,38 @@ async function resaveStateForGraphRepair(
   return { version: nextVersion, written: true };
 }
 
+async function resavePresetForGraphRepair(
+  store: SupabasePresetStore,
+  entry: PresetEntry,
+  data: Record<string, unknown>,
+  note: string,
+  canWrite: boolean,
+): Promise<{ version: number; written: boolean }> {
+  const nextVersion = Math.max(0, ...entry.versions.map(version => version.v)) + 1;
+  if (!canWrite) {
+    return { version: nextVersion, written: false };
+  }
+
+  const timestamp = Date.now();
+  const currentVersion = entry.versions.find(version => version.v === entry.currentVersion)
+    ?? entry.versions[entry.versions.length - 1];
+  const metadata = currentVersion ? extractPresetVersionMetadata(currentVersion) : null;
+
+  entry.versions.push({
+    v: nextVersion,
+    note,
+    timestamp,
+    data,
+    ...(metadata || {}),
+  });
+  entry.currentVersion = nextVersion;
+  entry.updatedAt = timestamp;
+  entry.visibility = 'public';
+  if (entry.library !== 'stock') entry.library = 'cloud';
+  await store.save(entry);
+  return { version: nextVersion, written: true };
+}
+
 async function countLatestRefsForPreset(
   client: SupabaseClient,
   type: PresetLevel,
@@ -381,6 +460,55 @@ async function countLatestRefsForPreset(
   }
 
   return count ?? 0;
+}
+
+async function fetchLatestRefSlotsForVersion(
+  client: SupabaseClient,
+  versionId: string | null | undefined,
+): Promise<string[]> {
+  if (!versionId) return [];
+
+  const { data, error } = await client
+    .from('preset_version_refs_v2')
+    .select('ref_slot')
+    .eq('version_id', versionId);
+
+  if (error) {
+    throw new Error(`Latest ref-slot lookup failed: ${error.message}`);
+  }
+
+  return [...new Set(((data ?? []) as Array<{ ref_slot: string }>).map(row => row.ref_slot))].sort();
+}
+
+async function fetchChildGraphRepairRows(
+  client: SupabaseClient,
+  scopes: PresetChildGraphRepairScope[],
+): Promise<V2GraphRepairRow[]> {
+  const rows: V2GraphRepairRow[] = [];
+  const pageSize = 1000;
+
+  for (const repairScope of scopes) {
+    for (let from = 0; ; from += pageSize) {
+      const to = from + pageSize - 1;
+      const { data, error } = await client
+        .from('presets_v2')
+        .select('id,type,scope,name,latest_version_no,latest_version_id,archived')
+        .eq('type', repairScope.type)
+        .eq('scope', repairScope.scope)
+        .eq('archived', false)
+        .range(from, to);
+
+      if (error) {
+        throw new Error(`Child graph repair row lookup failed: ${error.message}`);
+      }
+
+      const page = (data ?? []) as V2GraphRepairRow[];
+      rows.push(...page.filter(row => row.latest_version_no > 0));
+      if (page.length < pageSize) break;
+    }
+  }
+
+  return rows;
 }
 
 async function ensureAnonymousAuth(client: SupabaseClient, store: SupabasePresetStore): Promise<string | null> {
@@ -725,6 +853,148 @@ export async function optimizeStringWavesV2(
   };
   console.info(`[Preset V2 Migration] String Waves optimization ${dryRun ? 'dry run' : 'write run'} complete.`, report);
   return report;
+}
+
+export async function repairPresetChildGraphsV2ForClient(
+  client: SupabaseClient,
+  options: Pick<PresetV2MigrationOptions, 'dryRun' | 'confirm'> & {
+    scopes?: PresetChildGraphRepairScope[];
+  } = {},
+): Promise<PresetChildGraphRepairReport> {
+  const dryRun = options.dryRun !== false;
+  const canWrite = !dryRun && options.confirm === 'MIGRATE_PRESETS_V2';
+  const scopes = options.scopes?.length ? options.scopes : DEFAULT_CHILD_GRAPH_REPAIR_SCOPES;
+
+  const store = new SupabasePresetStore(client);
+  const userId = await ensureAnonymousAuth(client, store);
+  await assertV2Schema(client);
+
+  const rows = await fetchChildGraphRepairRows(client, scopes);
+  const report: PresetChildGraphRepairReport = {
+    dryRun,
+    canWrite,
+    userId,
+    scopes,
+    candidates: rows.length,
+    repaired: 0,
+    skippedComplete: 0,
+    rows: [],
+    errors: [],
+  };
+
+  for (const row of rows) {
+    const scope = row.scope ?? undefined;
+    if (!scope) {
+      report.skippedComplete += 1;
+      continue;
+    }
+
+    try {
+      const entry = await store.load(row.type, row.name, scope);
+      const currentData = entry ? getVersionData(entry) : null;
+      if (!entry || !currentData) {
+        throw new Error('preset could not be materialized from V2');
+      }
+
+      const currentVersion = entry.versions.find(version => version.v === entry.currentVersion)
+        ?? entry.versions[entry.versions.length - 1];
+      const metadata = currentVersion ? extractPresetVersionMetadata(currentVersion) : undefined;
+      const normalizedData = normalizeResolvedVersionData(row.type, scope, currentData);
+      const childSpecs = getPresetChildSpecs(row.type, scope);
+      const expectedSlots = childSpecs
+        .filter(spec => Object.keys(spec.extract(normalizedData as unknown as never, metadata)).length > 0)
+        .map(spec => spec.slot)
+        .sort();
+
+      if (!expectedSlots.length) {
+        report.skippedComplete += 1;
+        continue;
+      }
+
+      const beforeRefSlots = await fetchLatestRefSlotsForVersion(client, row.latest_version_id);
+      const missingSlots = expectedSlots.filter(slot => !beforeRefSlots.includes(slot));
+      if (!missingSlots.length) {
+        report.skippedComplete += 1;
+        continue;
+      }
+
+      const repair = await resavePresetForGraphRepair(
+        store,
+        entry,
+        normalizedData,
+        `child graph repair: ${missingSlots.join(', ')}`,
+        canWrite,
+      );
+      const afterRefSlots = canWrite
+        ? await countLatestRefSlotsForPreset(client, row.type, scope, row.name)
+        : beforeRefSlots;
+
+      report.rows.push({
+        type: row.type,
+        scope,
+        name: row.name,
+        fromVersion: row.latest_version_no,
+        toVersion: repair.version,
+        expectedSlots,
+        beforeRefSlots,
+        afterRefSlots,
+        missingSlots,
+        written: repair.written,
+      });
+      report.repaired += repair.written ? 1 : 0;
+    } catch (error) {
+      report.errors.push({
+        type: row.type,
+        scope,
+        name: row.name,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  console.info(`[Preset V2 Migration] Child graph repair ${dryRun ? 'dry run' : 'write run'} complete.`, {
+    candidates: report.candidates,
+    repaired: report.repaired,
+    skippedComplete: report.skippedComplete,
+    errors: report.errors.length,
+  });
+  return report;
+}
+
+async function countLatestRefSlotsForPreset(
+  client: SupabaseClient,
+  type: PresetLevel,
+  scope: string,
+  name: string,
+): Promise<string[]> {
+  const { data: presetRows, error: presetError } = await client
+    .from('presets_v2')
+    .select('latest_version_id')
+    .eq('type', type)
+    .eq('scope', scope)
+    .eq('name', name)
+    .order('updated_at', { ascending: false })
+    .limit(1);
+
+  if (presetError) {
+    throw new Error(`Latest ref-slot preset lookup failed: ${presetError.message}`);
+  }
+
+  const latestVersionId = (presetRows?.[0] as { latest_version_id?: string | null } | undefined)?.latest_version_id;
+  return fetchLatestRefSlotsForVersion(client, latestVersionId);
+}
+
+export async function repairPresetChildGraphsV2(
+  options: Pick<PresetV2MigrationOptions, 'dryRun' | 'confirm'> & {
+    scopes?: PresetChildGraphRepairScope[];
+  } = {},
+): Promise<PresetChildGraphRepairReport> {
+  const client = getSupabase();
+  if (!client) {
+    throw new Error('Supabase is not configured. Check VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.');
+  }
+
+  return repairPresetChildGraphsV2ForClient(client, options);
 }
 
 export async function repairStringWavesGraphV2ForClient(

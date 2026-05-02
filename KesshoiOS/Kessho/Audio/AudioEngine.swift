@@ -19,6 +19,7 @@ public final class AudioEngine {
     private var synthVoices: [SynthVoice] = []
     private var granularProcessor: GranularProcessor?
     private var reverbProcessor: ReverbProcessor?
+    private var dynamicsCharacterProcessor: DynamicsCharacterProcessor?
     private var leadSynth: LeadSynth?
     private var oceanSynth: OceanSynth?
     private var oceanSamplePlayer: OceanSamplePlayer?
@@ -55,11 +56,13 @@ public final class AudioEngine {
     private let dryMixer = AVAudioMixerNode()
     private let reverbSend = AVAudioMixerNode()
     private let masterMixer = AVAudioMixerNode()
+    private let dynamicsBypassMixer = AVAudioMixerNode()
     private let outputBridgeMixer = AVAudioMixerNode()
     
     // MARK: - State
     private(set) var isRunning = false
     private var currentParams: SliderState = .default
+    private var renderSampleRate: Double = 44_100
     private var harmonyState: HarmonyState?
     private var cofState = CircleOfFifthsState()
     private var currentBucket: String = ""
@@ -93,13 +96,16 @@ public final class AudioEngine {
     private var signalDebugPeaks: [String: Float] = [:]
     
     // MARK: - Initialization
-    
+
     public init() {
         setupAudioGraph()
     }
     
     private func setupAudioGraph() {
-        let format = AVAudioFormat(standardFormatWithSampleRate: 44100, channels: 2)!
+        let outputNode = engine.outputNode
+        let outputFormat = outputNode.inputFormat(forBus: 0)
+        renderSampleRate = outputFormat.sampleRate > 1_000 ? outputFormat.sampleRate : 44_100
+        let format = AVAudioFormat(standardFormatWithSampleRate: renderSampleRate, channels: 2)!
 
         // AVAudioEngine requires both ends of a connection to be attached first.
         // Attach the shared routing mixers up front before connecting any sources.
@@ -121,26 +127,28 @@ public final class AudioEngine {
         engine.attach(dryMixer)
         engine.attach(reverbSend)
         engine.attach(masterMixer)
+        engine.attach(dynamicsBypassMixer)
         engine.attach(outputBridgeMixer)
-        
+
         // Create synth voices
         for _ in 0..<VOICE_COUNT {
-            let voice = SynthVoice()
+            let voice = SynthVoice(sampleRate: Float(renderSampleRate))
             synthVoices.append(voice)
             engine.attach(voice.node)
             engine.connect(voice.node, to: synthMixer, format: format)
         }
-        
+
         // Create processors
-        granularProcessor = GranularProcessor()
+        granularProcessor = GranularProcessor(sampleRate: Float(renderSampleRate))
         if let granular = granularProcessor {
             engine.attach(granular.node)
             engine.connect(granular.node, to: granularMixer, format: format)
         }
-        
-        reverbProcessor = ReverbProcessor()
-        leadSynth = LeadSynth()
-        oceanSynth = OceanSynth()
+
+        reverbProcessor = ReverbProcessor(sampleRate: Float(renderSampleRate))
+        dynamicsCharacterProcessor = DynamicsCharacterProcessor(sampleRate: Float(renderSampleRate))
+        leadSynth = LeadSynth(sampleRate: Float(renderSampleRate))
+        oceanSynth = OceanSynth(sampleRate: Float(renderSampleRate))
         
         // Create Euclidean sequencer for lead
         euclideanSequencer = EuclideanSequencer()
@@ -149,17 +157,17 @@ public final class AudioEngine {
             engine.attach(lead.node)
             engine.connect(lead.node, to: leadMixer, format: format)
         }
-        
+
         // Connect ocean synth after its destination mixer is attached
         if let ocean = oceanSynth {
             engine.attach(ocean.node)
             engine.connect(ocean.node, to: oceanMixer, format: format)
         }
-        
+
         // Create ocean sample player and connect to ocean mixer
         oceanSamplePlayer = OceanSamplePlayer()
         oceanSamplePlayer?.setupConnections(engine: engine, outputMixer: oceanMixer)
-        
+
         // Setup drum stereo ping-pong delay
         setupDrumDelay(format: format)
         
@@ -174,7 +182,7 @@ public final class AudioEngine {
         engine.connect(drumMixer, to: drumLevelMixer, format: format)
         engine.connect(drumLevelMixer, to: dryMixer, format: format)
         engine.connect(drumDelayMixer, to: dryMixer, format: format)  // Delay wet goes to dry path
-        
+
         // Setup reverb
         if let reverb = reverbProcessor {
             reverb.setSampleRate(Float(format.sampleRate))
@@ -208,24 +216,27 @@ public final class AudioEngine {
         
         // Dry to master
         engine.connect(dryMixer, to: masterMixer, format: format)
-        
+
         // Use an explicit final bridge into the hardware output instead of
         // relying on AVAudioEngine's implicit main-mixer handoff.
-        let outputNode = engine.outputNode
-        let outputFormat = outputNode.inputFormat(forBus: 0)
         outputBridgeMixer.outputVolume = 1.0
-        engine.connect(masterMixer, to: outputBridgeMixer, format: nil)
+        dynamicsBypassMixer.outputVolume = 1.0
+        if let character = dynamicsCharacterProcessor {
+            engine.attach(character.node)
+            engine.connect(character.node, to: outputBridgeMixer, format: format)
+        }
+        engine.connect(masterMixer, to: dynamicsBypassMixer, format: format)
+        engine.connect(dynamicsBypassMixer, to: outputBridgeMixer, format: format)
         engine.connect(outputBridgeMixer, to: outputNode, format: outputFormat)
 
         #if DEBUG
         installSignalDebugTap(on: leadLevelMixer, label: "lead")
-        installSignalDebugTap(on: masterMixer, label: "master")
-        installSignalDebugTap(on: outputBridgeMixer, label: "bridge")
         #endif
-        
+
         // Setup tap on synth mixer for granular live input
         setupGranularInputTap(format: format)
         setupReverbInputTap(format: format)
+        setupDynamicsCharacterInputTap(format: format)
         
         // Prepare engine
         engine.prepare()
@@ -278,7 +289,14 @@ public final class AudioEngine {
             self?.reverbProcessor?.writeInput(buffer: buffer)
         }
     }
-    
+
+    private func setupDynamicsCharacterInputTap(format: AVAudioFormat) {
+        masterMixer.removeTap(onBus: 0)
+        masterMixer.installTap(onBus: 0, bufferSize: 128, format: format) { [weak self] buffer, _ in
+            self?.dynamicsCharacterProcessor?.writeInput(buffer: buffer)
+        }
+    }
+
     /// Process incoming synth audio and send to granular processor
     private func processGranularInput(buffer: AVAudioPCMBuffer) {
         granularProcessor?.writeInput(buffer: buffer)
@@ -288,7 +306,7 @@ public final class AudioEngine {
     
     public func start(with params: SliderState) {
         guard !isRunning else { return }
-        
+
         currentParams = params
         print(
             "AudioEngine start state:",
@@ -384,7 +402,7 @@ public final class AudioEngine {
     /// Create DrumSynth after harmony is initialized (provides RNG)
     /// This must be called AFTER initializeHarmony() - critical learning from web implementation!
     private func createDrumSynth() {
-        let format = AVAudioFormat(standardFormatWithSampleRate: 44100, channels: 2)!
+        let format = AVAudioFormat(standardFormatWithSampleRate: renderSampleRate, channels: 2)!
 
         // Set up seeded RNG for deterministic randomness
         let rng = createRng("\(currentBucket)|\(currentSeed)|drum")
@@ -402,7 +420,7 @@ public final class AudioEngine {
             return
         }
 
-        let newDrumSynth = DrumSynth()
+        let newDrumSynth = DrumSynth(sampleRate: Float(renderSampleRate))
         drumSynth = newDrumSynth
         newDrumSynth.setRng(rng)
 
@@ -415,13 +433,13 @@ public final class AudioEngine {
         newDrumSynth.onMorphTrigger = { [weak self] voiceType, morphValue in
             self?.onDrumMorphTrigger?(voiceType, Float(morphValue))
         }
-        
+
         // Attach and connect to drum mixer
         engine.attach(newDrumSynth.node)
         engine.connect(newDrumSynth.node, to: drumMixer, format: format)
         // Also connect to delay send
         engine.connect(newDrumSynth.node, to: drumDelaySendMixer, format: format)
-        
+
         // Set initial parameters
         newDrumSynth.updateParams(currentParams)
     }
@@ -551,6 +569,7 @@ public final class AudioEngine {
             drumSynth?.stop()
             granularProcessor?.hardReset()
             reverbProcessor?.hardReset()
+            dynamicsCharacterProcessor?.hardReset()
             oceanSynth?.hardReset()
             leadSynth?.hardReset()
             for voice in synthVoices {
@@ -570,6 +589,7 @@ public final class AudioEngine {
             dryMixer.outputVolume = 0
             reverbSend.outputVolume = 0
             masterMixer.outputVolume = 0
+            dynamicsBypassMixer.outputVolume = 0
             outputBridgeMixer.outputVolume = 0
             engine.pause()
             engine.stop()
@@ -580,22 +600,22 @@ public final class AudioEngine {
 
         // Stop ocean sample
         oceanSamplePlayer?.stopPlayback()
-        
+
         // Stop drum synth
         drumSynth?.stop()
-        
+
         // Fade out voices
         for voice in synthVoices {
             voice.releaseNote()
         }
         leadSynth?.releaseNote()
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+        audioSchedulingQueue.asyncAfter(deadline: .now() + 1.0) { [weak self] in
             self?.engine.stop()
             self?.isRunning = false
         }
     }
-    
+
     public func updateParams(_ params: SliderState) {
         currentParams = params
         
@@ -682,22 +702,24 @@ public final class AudioEngine {
         dryMixer.outputVolume = 1
         reverbSend.outputVolume = 1
         outputBridgeMixer.outputVolume = 1
+        dynamicsCharacterProcessor?.setParameters(from: currentParams)
+        dynamicsBypassMixer.outputVolume = (dynamicsCharacterProcessor?.isAudible ?? false) ? 0 : 1
         oceanMixer.outputVolume = 1
         drumDelaySendMixer.outputVolume = 0.5
-        
+
         // Source dry levels live on dedicated mixers so reverb sends stay pre-fader.
         synthLevelMixer.outputVolume = Float(currentParams.synthLevel)
         granularLevelMixer.outputVolume = Float(currentParams.granularEnabled ? currentParams.granularLevel : 0)
         leadLevelMixer.outputVolume = Float(currentParams.leadEnabled ? currentParams.leadLevel : 0)
         drumLevelMixer.outputVolume = Float(currentParams.drumEnabled ? currentParams.drumLevel : 0)
-        
+
         // Reverb sends stay independent of dry faders like the web graph.
         let reverbEnabled = currentParams.reverbEnabled
         synthReverbSendMixer.outputVolume = reverbEnabled ? Float(currentParams.synthReverbSend) : 0
         granularReverbSendMixer.outputVolume = (reverbEnabled && currentParams.granularEnabled) ? Float(currentParams.granularReverbSend) : 0
         leadReverbSendMixer.outputVolume = (reverbEnabled && currentParams.leadEnabled) ? Float(currentParams.leadReverbSend) : 0
         drumReverbSendMixer.outputVolume = (reverbEnabled && currentParams.drumEnabled) ? Float(currentParams.drumReverbSend) : 0
-        
+
         // Update reverb quality mode
         if let quality = ReverbQuality(rawValue: currentParams.reverbQuality.capitalized) {
             reverbProcessor?.setQuality(quality)
@@ -1079,7 +1101,7 @@ public final class AudioEngine {
             }
             
             scheduledLeadNotes.append(workItem)
-            DispatchQueue.main.asyncAfter(deadline: .now() + timing, execute: workItem)
+            audioSchedulingQueue.asyncAfter(deadline: .now() + timing, execute: workItem)
         }
     }
     
@@ -1298,7 +1320,7 @@ public final class AudioEngine {
             }
             
             scheduledEuclideanNotes.append(workItem)
-            DispatchQueue.main.asyncAfter(deadline: .now() + note.timing, execute: workItem)
+            audioSchedulingQueue.asyncAfter(deadline: .now() + note.timing, execute: workItem)
         }
     }
     
@@ -1398,7 +1420,7 @@ public final class AudioEngine {
         voice.trigger(frequency: frequency, velocity: velocity)
         
         // Schedule release after duration
-        DispatchQueue.main.asyncAfter(deadline: .now() + noteDuration) { [weak voice] in
+        audioSchedulingQueue.asyncAfter(deadline: .now() + noteDuration) { [weak voice] in
             voice?.releaseNote()
         }
     }
@@ -1427,19 +1449,19 @@ public final class AudioEngine {
     
     /// Get the master mixer node for main recording
     func getMasterMixer() -> AVAudioMixerNode {
-        return masterMixer
+        return outputBridgeMixer
     }
     
     /// Get the synth mixer node for stem recording
     func getSynthMixer() -> AVAudioMixerNode {
         return synthLevelMixer
     }
-    
+
     /// Get the lead mixer node for stem recording
     func getLeadMixer() -> AVAudioMixerNode {
         return leadLevelMixer
     }
-    
+
     /// Get the drum mixer node for stem recording
     func getDrumMixer() -> AVAudioMixerNode {
         return drumLevelMixer
@@ -1469,7 +1491,7 @@ public final class AudioEngine {
     func configureRecorder(_ recorder: AudioRecorder) {
         recorder.configure(
             engine: engine,
-            masterMixer: masterMixer,
+            masterMixer: outputBridgeMixer,
             synthMixer: synthLevelMixer,
             leadMixer: leadLevelMixer,
             drumMixer: drumLevelMixer,

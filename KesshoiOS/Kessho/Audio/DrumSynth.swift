@@ -50,7 +50,7 @@ enum DrumVoiceType: String, CaseIterable {
 /// - Mathematical precision with probability-based triggering
 class DrumSynth {
     lazy var node: AVAudioSourceNode = { [weak self] in
-        let renderFormat = AVAudioFormat(standardFormatWithSampleRate: 44_100, channels: 2)!
+        let renderFormat = AVAudioFormat(standardFormatWithSampleRate: Double(self?.sampleRate ?? 44_100), channels: 2)!
         return AVAudioSourceNode(format: renderFormat) { _, _, frameCount, audioBufferList -> OSStatus in
             let ablPointer = UnsafeMutableAudioBufferListPointer(audioBufferList)
             guard let self = self, self.enabled else {
@@ -60,8 +60,11 @@ class DrumSynth {
                 return noErr
             }
 
+            self.voiceLock.lock()
+            defer { self.voiceLock.unlock() }
+
             for frame in 0..<Int(frameCount) {
-                let (mainSample, _) = self.generateSampleWithDelay()
+                let (mainSample, _) = self.generateSampleWithDelayLocked()
                 let output = mainSample * self.masterLevel
                 writeDrumStereoFrame(output, output, frame: frame, to: ablPointer)
             }
@@ -78,7 +81,7 @@ class DrumSynth {
     
     // Noise buffer for click and noise voices
     private var noiseBuffer: [Float] = []
-    private let noiseBufferSize = 44100  // 1 second at 44.1kHz
+    private let noiseBufferSize: Int  // 1 second at render sample rate
     
     // Active voice state for per-sample processing
     private var activeVoices: [ActiveVoice] = []
@@ -89,8 +92,8 @@ class DrumSynth {
     private var rngFn: (() -> Double)?
     
     // Sample rate
-    private let sampleRate: Float = 44100
-    private let invSampleRate: Float = 1.0 / 44100
+    private let sampleRate: Float
+    private let invSampleRate: Float
     
     // Callback for UI visualization
     var onDrumTrigger: ((DrumVoiceType, Float) -> Void)?
@@ -114,7 +117,7 @@ class DrumSynth {
     // Separate delay output buffer for stereo ping-pong delay
     private var delayOutputBuffer: [Float] = []
     private var delayBufferWriteIndex: Int = 0
-    private let delayBufferSize = 4410  // ~100ms at 44.1kHz
+    private let delayBufferSize: Int  // ~100ms at render sample rate
     
     // Euclidean scheduling
     private var euclidCurrentStep: [Int] = [0, 0, 0, 0]
@@ -253,7 +256,11 @@ class DrumSynth {
         }
     }
     
-    init() {
+    init(sampleRate: Float = 44_100) {
+        self.sampleRate = max(sampleRate, 1_000)
+        self.invSampleRate = 1.0 / self.sampleRate
+        self.noiseBufferSize = Int(self.sampleRate)
+        self.delayBufferSize = max(1, Int(self.sampleRate * 0.1))
         // Pre-generate noise buffer
         noiseBuffer = [Float](repeating: 0, count: noiseBufferSize)
         for i in 0..<noiseBufferSize {
@@ -276,26 +283,27 @@ class DrumSynth {
     
     /// Generate one audio sample by summing all active voices
     /// Returns (mainOutput, delayOutput) for routing to delay send
-    private func generateSampleWithDelay() -> (main: Float, delay: Float) {
-        voiceLock.lock()
-        defer { voiceLock.unlock() }
-        
+    private func generateSampleWithDelayLocked() -> (main: Float, delay: Float) {
         var output: Float = 0
         var delayOutput: Float = 0
-        var newActiveVoices: [ActiveVoice] = []
-        
-        for var voice in activeVoices {
+        var writeIndex = 0
+
+        for readIndex in activeVoices.indices {
+            var voice = activeVoices[readIndex]
             let (sample, finished) = processVoice(&voice)
             if !finished {
-                newActiveVoices.append(voice)
+                activeVoices[writeIndex] = voice
+                writeIndex += 1
             }
             output += sample
             // Route sample to delay based on per-voice send level
             delayOutput += sample * voice.delaySend
         }
-        
-        activeVoices = newActiveVoices
-        
+
+        if writeIndex < activeVoices.count {
+            activeVoices.removeSubrange(writeIndex..<activeVoices.count)
+        }
+
         // Soft clip both outputs
         return (tanh(output), tanh(delayOutput))
     }

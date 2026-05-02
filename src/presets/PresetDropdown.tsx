@@ -2,7 +2,7 @@
 // Phase 3 + 8 + 9 — Reusable preset dropdown with save/export/import/versioning/dirty flag.
 // Matches existing app styling (native <select>, dark theme, CSS custom properties).
 
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import type { PresetLevel, PresetEntry, PresetSummary } from './types';
 import { usePresets } from './usePresets';
 import { exportPresetToFile, importPresetFromFile } from './fileIO';
@@ -26,7 +26,7 @@ export interface PresetDropdownProps {
   /** Called when a preset is loaded */
   onLoad: (entry: PresetEntry, data: Record<string, unknown>) => void;
   /** Called when state is updated after applying preset */
-  onStateChange?: (newState: SliderState) => void;
+  onStateChange?: React.Dispatch<React.SetStateAction<SliderState>>;
   /** Optional: accent color for focus ring */
   accentColor?: string;
   /** Optional: additional CSS class */
@@ -175,6 +175,7 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
   const [selectedName, setSelectedName] = useState(currentName || '');
   const [loadedEntry, setLoadedEntry] = useState<PresetEntry | null>(null);
   const [loadedData, setLoadedData] = useState<Record<string, unknown> | null>(null);
+  const loadRequestIdRef = useRef(0);
   const dedupedPresets = useMemo(() => dedupePresetSummaries(presets), [presets]);
   const sortedPresets = useMemo(
     () => [...dedupedPresets].sort((left, right) => left.name.localeCompare(right.name)),
@@ -191,6 +192,10 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
     const canonicalState = apply(DEFAULT_STATE, data);
     return extract(canonicalState);
   }, [apply, extract]);
+
+  const applyLoadedData = useCallback((data: Record<string, unknown>) => {
+    onStateChange?.((currentState) => apply(currentState, data));
+  }, [apply, onStateChange]);
 
   // Dirty detection: compare current state params against last loaded version
   const isDirty = useMemo(() => {
@@ -246,14 +251,17 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
   const handleSelect = useCallback(async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const name = e.target.value;
     if (!name) return;
+    const requestId = ++loadRequestIdRef.current;
     setSelectedName(name);
     const entry = await load(name);
+    if (requestId !== loadRequestIdRef.current) return;
     if (!entry) return;
     const version = getSelectedVersion(entry);
     if (!version) return;
 
     // Get latest version data (reconstituted from delta if compressed)
     const versionData = getVersionData(entry);
+    if (requestId !== loadRequestIdRef.current) return;
     if (!versionData) return;
 
     setLoadedEntry(entry);
@@ -261,16 +269,13 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
     onLoad(entry, versionData);
 
     // Apply params to state and notify
-    if (onStateChange) {
-      const newState = apply(state, versionData);
-      onStateChange(newState);
-    }
+    applyLoadedData(versionData);
     onDualStateChange?.(
       Object.keys(versionData),
       version.dualRanges,
       version.sliderModes as Record<string, SliderMode> | undefined,
     );
-  }, [load, getSelectedVersion, apply, state, onLoad, onStateChange, onDualStateChange, canonicalizeLoadedData]);
+  }, [load, getSelectedVersion, onLoad, onDualStateChange, canonicalizeLoadedData, applyLoadedData]);
 
   // Open save dialog
   const handleSaveClick = useCallback(() => {
@@ -332,6 +337,7 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
 
   // Import preset from file
   const handleImport = useCallback(async () => {
+    const requestId = ++loadRequestIdRef.current;
     const entry = await importPresetFromFile();
     if (!entry) return;
 
@@ -352,25 +358,24 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
 
     // Load it
     const savedEntry = await load(entry.name);
+    if (requestId !== loadRequestIdRef.current) return;
     const selectedEntry = savedEntry ?? entry;
     const selectedVersion = getSelectedVersion(selectedEntry);
     if (!selectedVersion) return;
     const versionData = getVersionData(selectedEntry);
+    if (requestId !== loadRequestIdRef.current) return;
     if (!versionData) return;
     setSelectedName(entry.name);
     setLoadedEntry(selectedEntry);
     setLoadedData(canonicalizeLoadedData(versionData));
     onLoad(selectedEntry, versionData);
-    if (onStateChange) {
-      const newState = apply(state, versionData);
-      onStateChange(newState);
-    }
+    applyLoadedData(versionData);
     onDualStateChange?.(
       Object.keys(versionData),
       selectedVersion.dualRanges,
       selectedVersion.sliderModes as Record<string, SliderMode> | undefined,
     );
-  }, [refresh, load, getSelectedVersion, apply, state, onLoad, onStateChange, onDualStateChange, canonicalizeLoadedData]);
+  }, [refresh, load, getSelectedVersion, onLoad, onDualStateChange, canonicalizeLoadedData, applyLoadedData]);
 
   // Delete selected preset
   const handleDelete = useCallback(async () => {

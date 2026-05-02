@@ -216,11 +216,13 @@ class PadSynthWasmProcessor extends AudioWorkletProcessor {
     this.perfSamplesSinceReport = 0;
     this.perfReportInterval = Math.floor(sampleRate * 0.5);
 
+    this.activeCountEnabled = false;
     this.activeCountSamples = 0;
     this.activeCountInterval = Math.floor(sampleRate * 0.2);
 
     this.pendingParams = [];
     this.pendingNotes = [];
+    this.pendingVoicePads = new Map();
     this.lastNonFiniteReportTime = 0;
 
     this.port.onmessage = (event) => this.handleMessage(event.data);
@@ -278,6 +280,10 @@ class PadSynthWasmProcessor extends AudioWorkletProcessor {
 
       for (const p of this.pendingParams) this.applyParams(p);
       this.pendingParams = [];
+      for (const [voiceIndex, pad] of this.pendingVoicePads) {
+        this.wasm.pad_set_voice_pad(voiceIndex, pad);
+      }
+      this.pendingVoicePads.clear();
       for (const n of this.pendingNotes) {
         this.wasm.pad_note_on(n.voiceIndex, n.frequency, n.velocity);
       }
@@ -309,24 +315,34 @@ class PadSynthWasmProcessor extends AudioWorkletProcessor {
           if (this.ready) {
             this.wasm.pad_note_on(voiceIndex, frequency, velocity);
           } else {
+            this.pendingNotes = this.pendingNotes.filter((note) => note.voiceIndex !== voiceIndex);
             this.pendingNotes.push({ ...data, voiceIndex, frequency, velocity });
           }
           break;
         }
 
         case 'noteOff':
-          if (this.ready && Number.isInteger(data.voiceIndex)) this.wasm.pad_note_off(data.voiceIndex);
+          if (Number.isInteger(data.voiceIndex)) {
+            if (this.ready) this.wasm.pad_note_off(data.voiceIndex);
+            else this.pendingNotes = this.pendingNotes.filter((note) => note.voiceIndex !== data.voiceIndex);
+          }
           break;
 
         case 'killVoice':
-          if (this.ready && Number.isInteger(data.voiceIndex) && typeof this.wasm.pad_kill_voice === 'function') {
-            this.wasm.pad_kill_voice(data.voiceIndex);
+          if (Number.isInteger(data.voiceIndex)) {
+            if (this.ready && typeof this.wasm.pad_kill_voice === 'function') {
+              this.wasm.pad_kill_voice(data.voiceIndex);
+            } else {
+              this.pendingNotes = this.pendingNotes.filter((note) => note.voiceIndex !== data.voiceIndex);
+              this.pendingVoicePads.delete(data.voiceIndex);
+            }
           }
           break;
 
         case 'voicePad':
-          if (this.ready && Number.isInteger(data.voiceIndex) && Number.isInteger(data.pad)) {
-            this.wasm.pad_set_voice_pad(data.voiceIndex, data.pad);
+          if (Number.isInteger(data.voiceIndex) && Number.isInteger(data.pad)) {
+            if (this.ready) this.wasm.pad_set_voice_pad(data.voiceIndex, data.pad);
+            else this.pendingVoicePads.set(data.voiceIndex, data.pad);
           }
           break;
 
@@ -345,12 +361,20 @@ class PadSynthWasmProcessor extends AudioWorkletProcessor {
           this.perfSamplesSinceReport = 0;
           break;
 
+        case 'enableActiveCount':
+          this.activeCountEnabled = !!data.enabled;
+          this.activeCountSamples = 0;
+          break;
+
         case 'destroy':
           if (this.wasm && this.ready) {
             try { this.wasm.pad_destroy(); } catch (e) { /* */ }
           }
           this.ready = false;
           this.wasm = null;
+          this.pendingParams = [];
+          this.pendingNotes = [];
+          this.pendingVoicePads.clear();
           break;
       }
     } catch (error) {
@@ -514,14 +538,15 @@ class PadSynthWasmProcessor extends AudioWorkletProcessor {
         }
       }
 
-      // Active count reporting
-      this.activeCountSamples += blockSize;
-      if (this.activeCountSamples >= this.activeCountInterval) {
-        this.port.postMessage({
-          type: 'activeCount',
-          count: this.wasm.pad_get_active_count(),
-        });
-        this.activeCountSamples = 0;
+      if (this.activeCountEnabled) {
+        this.activeCountSamples += blockSize;
+        if (this.activeCountSamples >= this.activeCountInterval) {
+          this.port.postMessage({
+            type: 'activeCount',
+            count: this.wasm.pad_get_active_count(),
+          });
+          this.activeCountSamples = 0;
+        }
       }
 
       // Perf reporting

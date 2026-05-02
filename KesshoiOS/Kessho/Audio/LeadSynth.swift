@@ -60,7 +60,7 @@ private func fastSin(_ phase: Float) -> Float {
 /// The native implementation aims for a similar musical role to the web lead voice.
 class LeadSynth {
     lazy var node: AVAudioSourceNode = { [weak self] in
-        let renderFormat = AVAudioFormat(standardFormatWithSampleRate: 44_100, channels: 2)!
+        let renderFormat = AVAudioFormat(standardFormatWithSampleRate: Double(self?.sampleRate ?? 44_100), channels: 2)!
         return AVAudioSourceNode(format: renderFormat) { _, _, frameCount, audioBufferList -> OSStatus in
             let ablPointer = UnsafeMutableAudioBufferListPointer(audioBufferList)
             guard let self = self, self.enabled else {
@@ -137,16 +137,18 @@ class LeadSynth {
     private var delayMixMax: Float = 0.45
     private let maxDelayTime: Float = 2.0    // 2 seconds max (matches web app)
     
-    private let sampleRate: Float = 44100
-    private let invSampleRate: Float = 1.0 / 44100  // Pre-computed to avoid division per sample
+    private let sampleRate: Float
+    private let invSampleRate: Float  // Pre-computed to avoid division per sample
     
     enum EnvelopeStage {
         case off, attack, decay, sustain, release
     }
     
-    init() {
+    init(sampleRate: Float = 44_100) {
+        self.sampleRate = max(sampleRate, 1_000)
+        self.invSampleRate = 1.0 / self.sampleRate
         // Initialize stereo delay buffers
-        let bufferSize = Int(44100 * maxDelayTime)
+        let bufferSize = Int(self.sampleRate * maxDelayTime)
         delayBufferL = [Float](repeating: 0, count: bufferSize)
         delayBufferR = [Float](repeating: 0, count: bufferSize)
         

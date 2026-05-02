@@ -200,6 +200,56 @@ function testOverlapIsStrippedAtEachLevel(): void {
   assert.equal('delayBToASend' in delayKitOverride, true, 'L2 delay routing should remain in delayKit override');
   assert.equal('delayAEnabled' in delayKitOverride, false, 'Delay A L1 params should move out of delayKit override');
   assert.equal('delayAPingPong' in delayKitOverride, false, 'Echo Line L1 params should move out of delayKit override');
+
+  const delayData = extractCascade(DEFAULT_STATE, 3, 'delay');
+  const delayOverride = stripReferencedChildData(
+    delayData,
+    childRefData(getPresetChildSpecs('source', 'delay'), delayData),
+  );
+  assert.equal('granularSpaceMode' in delayOverride, true, 'source-owned delay params should remain in L3 override');
+  assert.equal('delayBToASend' in delayOverride, false, 'L2 delay kit params should move out of delay source override');
+  assert.equal('delayBPattern' in delayOverride, false, 'Clocked Space L1 params should move out of delay source override');
+
+  const dynamicsData = extractCascade(DEFAULT_STATE, 3, 'dynamics');
+  const dynamicsOverride = stripReferencedChildData(
+    dynamicsData,
+    childRefData(getPresetChildSpecs('source', 'dynamics'), dynamicsData),
+  );
+  assert.equal('dynamicsEnabled' in dynamicsOverride, true, 'source-owned dynamics params should remain in L3 override');
+  assert.equal('sidechainAmount' in dynamicsOverride, false, 'Sidechain L1 params should move out of dynamics source override');
+  assert.equal('characterMode' in dynamicsOverride, false, 'Character L1 params should move out of dynamics source override');
+  assert.equal('degradeMix' in dynamicsOverride, false, 'Degrade L1 params should move out of dynamics source override');
+  assert.equal('dynamicsSaturationDrive' in dynamicsOverride, false, 'Saturation L1 params should move out of dynamics source override');
+  assert.equal('endCompThreshold' in dynamicsOverride, false, 'End-chain L1 params should move out of dynamics source override');
+
+  const granularData = extractCascade(DEFAULT_STATE, 3, 'granular');
+  const granularOverride = stripReferencedChildData(
+    granularData,
+    childRefData(getPresetChildSpecs('source', 'granular'), granularData),
+  );
+  assert.equal('granularEnabled' in granularOverride, true, 'source-owned granular params should remain in L3 override');
+  assert.equal('granularV1Enabled' in granularOverride, false, 'L2 granular kit params should move out of granular source override');
+  assert.equal('granularV1Mode' in granularOverride, false, 'Granular voice L1 params should move out of granular source override');
+  assert.equal('granularLegacyJitter' in granularOverride, false, 'Granular legacy L1 params should move out of granular source override');
+
+  const granularKitData = extractCascade(DEFAULT_STATE, 2, 'granularKit');
+  const granularKitOverride = stripReferencedChildData(
+    granularKitData,
+    childRefData(getPresetChildSpecs('kit', 'granularKit'), granularKitData),
+  );
+  assert.equal('granularMacroActivity' in granularKitOverride, true, 'L2 granular macros should remain in granularKit override');
+  assert.equal('granularV4Mode' in granularKitOverride, false, 'Granular voice 4 L1 params should move out of granularKit override');
+  assert.equal('density' in granularKitOverride, false, 'Legacy Granular L1 params should move out of granularKit override');
+
+  const earthKitData = extractCascade(DEFAULT_STATE, 2, 'earthKit');
+  const earthKitOverride = stripReferencedChildData(
+    earthKitData,
+    childRefData(getPresetChildSpecs('kit', 'earthKit'), earthKitData),
+  );
+  assert.equal('waterEnabled' in earthKitOverride, true, 'L2 earth kit toggles should remain in earthKit override');
+  assert.equal('waterMorph' in earthKitOverride, false, 'Water L1 params should move out of earthKit override');
+  assert.equal('insectsDensity' in earthKitOverride, false, 'Insects 1 L1 params should move out of earthKit override');
+  assert.equal('insects2Density' in earthKitOverride, false, 'Insects 2 L1 params should move out of earthKit override');
 }
 
 async function testEuclideanStepOverridesAffectOnlyEuclideanChildHash(): Promise<void> {

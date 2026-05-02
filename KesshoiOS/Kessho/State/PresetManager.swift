@@ -13,13 +13,13 @@ class PresetManager {
         "ZoneOutTest",
         "ZoneOutTest2"
     ]
-    
+
     private let documentsDirectory: URL = {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
     }()
 
     private let iso8601Formatter = ISO8601DateFormatter()
-    
+
     private let userPresetsFile = "user_presets.json"
     
     // MARK: - Bundled Presets
@@ -56,7 +56,7 @@ class PresetManager {
     /// Fallback: Load presets individually by known names
     private func loadFallbackBundledPresets() -> [SavedPreset] {
         var presets: [SavedPreset] = []
-        
+
         for name in Self.bundledPresetNames {
             if let url = Bundle.main.url(forResource: name, withExtension: "json"),
                let preset = loadPreset(from: url) {
@@ -83,15 +83,14 @@ class PresetManager {
     /// Load user-saved presets from documents directory
     func loadUserPresets() -> [SavedPreset] {
         let fileURL = documentsDirectory.appendingPathComponent(userPresetsFile)
-        
+
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
             return []
         }
-        
+
         do {
             let data = try Data(contentsOf: fileURL)
-            let decoder = JSONDecoder()
-            return try decoder.decode([SavedPreset].self, from: data)
+            return try decodePresetArray(from: data, fallbackNamePrefix: "User Preset")
         } catch {
             print("Error loading user presets: \(error)")
             return []
@@ -152,7 +151,7 @@ class PresetManager {
             return nil
         }
         defer { url.stopAccessingSecurityScopedResource() }
-        
+
         return loadPreset(from: url)
     }
 
@@ -174,6 +173,21 @@ class PresetManager {
             state: state,
             dualRanges: decodeDualRanges(from: record["dualRanges"])
         )
+    }
+
+    private func decodePresetArray(from data: Data, fallbackNamePrefix: String) throws -> [SavedPreset] {
+        let object = try JSONSerialization.jsonObject(with: data)
+        guard let records = object as? [[String: Any]] else {
+            throw CocoaError(.coderReadCorrupt)
+        }
+
+        return try records.enumerated().map { index, record in
+            let recordData = try JSONSerialization.data(withJSONObject: record, options: [])
+            return try decodePreset(
+                from: recordData,
+                fallbackName: "\(fallbackNamePrefix) \(index + 1)"
+            )
+        }
     }
 
     private func decodeDualRanges(from value: Any?) -> [String: DualRange]? {

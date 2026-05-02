@@ -1,4 +1,4 @@
-const clamp01 = (value) => Math.min(1, Math.max(0, Number.isFinite(value) ? value : 0));
+const MAX_BLOCK_SIZE = 128;
 
 class DynamicsDegradeProcessor extends AudioWorkletProcessor {
   static get parameterDescriptors() {
@@ -12,74 +12,115 @@ class DynamicsDegradeProcessor extends AudioWorkletProcessor {
     ];
   }
 
-  constructor() {
+  constructor(options) {
     super();
-    this.held = [];
-    this.phase = [];
-    this.lowpass = [];
+    this.wasm = null;
+    this.heap = new Float32Array(0);
+    this.inputPtr = 0;
+    this.outputPtr = 0;
+    this.ready = false;
+    this.initWasm(options?.processorOptions?.wasmBinary).catch((error) => {
+      console.warn('[DynamicsDegrade-WASM] Init failed, using pass-through:', error);
+    });
+  }
+
+  async initWasm(wasmBinary) {
+    if (!wasmBinary) throw new Error('Missing kessho_dynamics_degrade.wasm binary');
+
+    const module = await WebAssembly.compile(wasmBinary);
+    const instance = await WebAssembly.instantiate(module, {
+      wasi_snapshot_preview1: {
+        fd_write: () => 0,
+        fd_seek: () => 0,
+        fd_close: () => 0,
+        proc_exit: () => {},
+        environ_get: () => 0,
+        environ_sizes_get: () => 0,
+        clock_time_get: () => 0,
+      },
+      env: {
+        emscripten_notify_memory_growth: () => {},
+      },
+    });
+
+    const exports = instance.exports;
+    const result = exports.dynamics_degrade_init(sampleRate);
+    if (result !== 0) throw new Error(`C++ init returned ${result}`);
+
+    this.wasm = exports;
+    this.inputPtr = exports.dynamics_degrade_get_input_ptr();
+    this.outputPtr = exports.dynamics_degrade_get_output_ptr();
+    this.ready = true;
+    this.port.postMessage({ type: 'wasmReady' });
+  }
+
+  getHeapF32() {
+    const buffer = this.wasm.memory.buffer;
+    if (this.heap.buffer !== buffer) {
+      this.heap = new Float32Array(buffer);
+    }
+    return this.heap;
+  }
+
+  passThrough(inputs, outputs) {
+    const input = inputs[0];
+    const output = outputs[0];
+    if (!output || output.length === 0) return;
+
+    for (let channel = 0; channel < output.length; channel++) {
+      const source = input?.[channel] ?? input?.[0];
+      if (source) output[channel].set(source);
+      else output[channel].fill(0);
+    }
   }
 
   process(inputs, outputs, parameters) {
-    const input = inputs[0];
     const output = outputs[0];
     if (!output || output.length === 0) return true;
 
-    const enabled = (parameters.enabled?.[0] ?? 0) > 0.5;
-    const mix = clamp01(parameters.mix?.[0] ?? 0);
-    const alias = clamp01(parameters.alias?.[0] ?? 0);
-    const generation = clamp01(parameters.generation?.[0] ?? 0);
-    const corrosion = clamp01(parameters.corrosion?.[0] ?? 0);
-    const wear = clamp01(parameters.wear?.[0] ?? 0);
-
-    if (!input || input.length === 0 || !enabled || mix <= 0.0001) {
-      for (let channel = 0; channel < output.length; channel++) {
-        const source = input?.[channel] ?? input?.[0];
-        if (source) output[channel].set(source);
-        else output[channel].fill(0);
-      }
+    if (!this.ready || !this.wasm) {
+      this.passThrough(inputs, outputs);
       return true;
     }
 
-    const aliasFocus = Math.pow(alias, 1.35);
-    const destructive = clamp01(aliasFocus * (0.6 + corrosion * 0.55));
-    const damage = clamp01(aliasFocus * 0.34 + generation * 0.2 + corrosion * 0.14);
-    const rateRatio = Math.max(0.2, 1 / (1 + aliasFocus * 3.2 + generation * 0.7 + corrosion * 0.55));
-    const bitDepth = Math.max(9, 16 - aliasFocus * 3.2 - generation * 1.1 - corrosion * 1.1);
-    const quantSteps = Math.max(8, Math.pow(2, bitDepth));
-    const cutoffHz = Math.max(1500, sampleRate * 0.45 * (1 - wear * 0.46 - generation * 0.24 - corrosion * 0.1));
-    const alpha = Math.min(1, 1 - Math.exp((-2 * Math.PI * cutoffHz) / sampleRate));
-    const fold = 1 + corrosion * 0.58 + generation * 0.2 + destructive * 0.34;
+    const input = inputs[0];
+    const frameCount = output[0]?.length || 128;
+    const heap = this.getHeapF32();
+    const inOffset = this.inputPtr >> 2;
+    const outOffset = this.outputPtr >> 2;
+    const inL = input?.[0];
+    const inR = input?.[1] ?? inL;
 
-    for (let channel = 0; channel < output.length; channel++) {
-      const source = input[channel] ?? input[0];
-      const dest = output[channel];
-      if (!source) {
-        dest.fill(0);
-        continue;
-      }
+    this.wasm.dynamics_degrade_set_params(
+      (parameters.enabled?.[0] ?? 0) > 0.5 ? 1 : 0,
+      parameters.mix?.[0] ?? 0,
+      parameters.alias?.[0] ?? 0,
+      parameters.generation?.[0] ?? 0,
+      parameters.corrosion?.[0] ?? 0,
+      parameters.wear?.[0] ?? 0,
+    );
 
-      let held = this.held[channel] ?? 0;
-      let phase = this.phase[channel] ?? 1;
-      let lp = this.lowpass[channel] ?? 0;
-
-      for (let i = 0; i < dest.length; i++) {
-        const dry = source[i] || 0;
-        phase += rateRatio;
-        if (phase >= 1) {
-          phase -= Math.floor(phase);
-          held = dry;
+    const outL = output[0];
+    const outR = output[1] ?? outL;
+    for (let offset = 0; offset < frameCount; offset += MAX_BLOCK_SIZE) {
+      const blockSize = Math.min(MAX_BLOCK_SIZE, frameCount - offset);
+      if (inL) {
+        for (let i = 0; i < blockSize; i++) {
+          const srcIndex = offset + i;
+          heap[inOffset + i * 2] = inL[srcIndex] || 0;
+          heap[inOffset + i * 2 + 1] = inR ? (inR[srcIndex] || 0) : (inL[srcIndex] || 0);
         }
-
-        let wet = Math.round(held * quantSteps) / quantSteps;
-        wet = Math.tanh(wet * fold) / Math.tanh(fold);
-        lp += (wet - lp) * alpha;
-        wet = lp + (wet - lp) * (0.08 + damage * 0.18 + destructive * 0.18);
-        dest[i] = dry + (wet - dry) * mix;
+      } else {
+        heap.fill(0, inOffset, inOffset + blockSize * 2);
       }
 
-      this.held[channel] = held;
-      this.phase[channel] = phase;
-      this.lowpass[channel] = lp;
+      this.wasm.dynamics_degrade_process_block(blockSize);
+
+      for (let i = 0; i < blockSize; i++) {
+        const dstIndex = offset + i;
+        outL[dstIndex] = heap[outOffset + i * 2];
+        if (outR !== outL) outR[dstIndex] = heap[outOffset + i * 2 + 1];
+      }
     }
 
     return true;

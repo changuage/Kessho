@@ -253,6 +253,7 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   dynamicsSaturationMode:    { level: 1, scope: 'dynamicsSaturation' },
   dynamicsSaturationDrive:   { level: 1, scope: 'dynamicsSaturation' },
   dynamicsSaturationTone:    { level: 1, scope: 'dynamicsSaturation' },
+  dynamicsSaturationBias:    { level: 1, scope: 'dynamicsSaturation' },
 
   // ═══════════════════════════════════════════════════════════════════════
   // L1: Dynamics Sidechain Engine
@@ -357,6 +358,10 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   endCompReleaseMs:       { level: 1, scope: 'dynamicsEndChain' },
   endCompMakeup:          { level: 1, scope: 'dynamicsEndChain' },
   endCompMix:             { level: 1, scope: 'dynamicsEndChain' },
+  endCompDetectorHp:      { level: 1, scope: 'dynamicsEndChain' },
+  endCompDetectorTilt:    { level: 1, scope: 'dynamicsEndChain' },
+  endCompAutoMakeup:      { level: 1, scope: 'dynamicsEndChain' },
+  endCompProgramRelease:  { level: 1, scope: 'dynamicsEndChain' },
 
 
   // ═══════════════════════════════════════════════════════════════════════

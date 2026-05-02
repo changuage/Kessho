@@ -285,9 +285,10 @@ export interface SliderState {
   masterSatTone: number;      // 0..1 post-saturation tone tilt
   dynamicsEnabled: boolean;    // master enable for Dynamics page processing
   dynamicsSaturationEnabled: boolean; // dynamics-page master saturation on/off
-  dynamicsSaturationMode: 'clean' | 'tape' | 'tube';
+  dynamicsSaturationMode: 'clean' | 'tape' | 'tube' | 'diode' | 'fold';
   dynamicsSaturationDrive: number;
   dynamicsSaturationTone: number;
+  dynamicsSaturationBias: number;
   sidechainEnabled: boolean;   // trigger-derived ducking for selected target sources
   sidechainKeyA: 'off' | 'sub' | 'kick' | 'click' | 'beepHi' | 'beepLo' | 'noise' | 'membrane';
   sidechainKeyB: 'off' | 'sub' | 'kick' | 'click' | 'beepHi' | 'beepLo' | 'noise' | 'membrane';
@@ -385,6 +386,10 @@ export interface SliderState {
   endCompReleaseMs: number;
   endCompMakeup: number;
   endCompMix: number;
+  endCompDetectorHp: number;
+  endCompDetectorTilt: number;
+  endCompAutoMakeup: number;
+  endCompProgramRelease: number;
 
   // Global
   seedWindow: 'hour' | 'day';
@@ -1453,6 +1458,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'dynamicsSaturationMode',
   'dynamicsSaturationDrive',
   'dynamicsSaturationTone',
+  'dynamicsSaturationBias',
   'sidechainEnabled',
   'sidechainKeyA',
   'sidechainKeyB',
@@ -1541,6 +1547,10 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'endCompReleaseMs',
   'endCompMakeup',
   'endCompMix',
+  'endCompDetectorHp',
+  'endCompDetectorTilt',
+  'endCompAutoMakeup',
+  'endCompProgramRelease',
   'seedWindow',
   'randomness',
   'randomWalkSpeed',
@@ -2274,6 +2284,7 @@ export const DEFAULT_STATE: SliderState = {
   dynamicsSaturationMode: 'clean' as const,
   dynamicsSaturationDrive: 0,
   dynamicsSaturationTone: 0.5,
+  dynamicsSaturationBias: 0.5,
   sidechainEnabled: false,
   sidechainKeyA: 'kick' as const,
   sidechainKeyB: 'off' as const,
@@ -2371,6 +2382,10 @@ export const DEFAULT_STATE: SliderState = {
   endCompReleaseMs: 180,
   endCompMakeup: 1,
   endCompMix: 1,
+  endCompDetectorHp: 0.25,
+  endCompDetectorTilt: 0.5,
+  endCompAutoMakeup: 0.7,
+  endCompProgramRelease: 0.65,
 
   // Global
   seedWindow: 'hour',
@@ -3390,6 +3405,7 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   masterSatTone: { min: 0, max: 1, step: 0.01 },
   dynamicsSaturationDrive: { min: 0, max: 1, step: 0.01 },
   dynamicsSaturationTone: { min: 0, max: 1, step: 0.01 },
+  dynamicsSaturationBias: { min: 0, max: 1, step: 0.01 },
   sidechainKeyAWeight: { min: 0, max: 1, step: 0.01 },
   sidechainKeyBWeight: { min: 0, max: 1, step: 0.01 },
   sidechainAmount: { min: 0, max: 1, step: 0.01 },
@@ -3471,6 +3487,10 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   endCompReleaseMs: { min: 20, max: 1500, step: 5 },
   endCompMakeup: { min: 0.25, max: 4, step: 0.05 },
   endCompMix: { min: 0, max: 1, step: 0.01 },
+  endCompDetectorHp: { min: 0, max: 1, step: 0.01 },
+  endCompDetectorTilt: { min: 0, max: 1, step: 0.01 },
+  endCompAutoMakeup: { min: 0, max: 1, step: 0.01 },
+  endCompProgramRelease: { min: 0, max: 1, step: 0.01 },
   randomness: { min: 0, max: 1, step: 0.01 },
   tension: { min: 0, max: 1, step: 0.01 },
   chordRate: { min: 8, max: 64, step: 1 },
@@ -4385,7 +4405,7 @@ export function decodeStateFromUrl(search: string): SliderState | null {
           state.dynamicsSaturationEnabled = value === 'true';
         } else if (
           key === 'dynamicsSaturationMode' &&
-          ['clean', 'tape', 'tube'].includes(value)
+          ['clean', 'tape', 'tube', 'diode', 'fold'].includes(value)
         ) {
           state.dynamicsSaturationMode = value as SliderState['dynamicsSaturationMode'];
         } else if (key === 'sidechainEnabled') {

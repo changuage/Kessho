@@ -1,6 +1,7 @@
 // src/presets/HybridPresetStore.ts
 // Combines local stock presets with cloud-backed user presets.
-// - stock/factory presets stay local-only
+// - in shared mode, Supabase is authoritative for every preset, including stock
+// - outside shared mode, stock/factory presets stay local-only
 // - non-stock presets use cloud as the source of truth when cloud is available
 // - list() merges local stock with cloud presets, deduplicating by name
 // - load() prefers cloud, then falls back to local stock

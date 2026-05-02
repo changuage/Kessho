@@ -36,10 +36,11 @@ final class MIDIManager: ObservableObject {
     private var sourceRefsByID: [Int32: MIDIEndpointRef] = [:]
     private var endpointNamesByID: [Int32: String] = [:]
 
-    private let callbackRefCon: UnsafeMutableRawPointer
+    private var callbackRefCon: UnsafeMutableRawPointer {
+        UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
+    }
 
     init(autoStart: Bool = true) {
-        callbackRefCon = UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
         if autoStart {
             try? start()
         }

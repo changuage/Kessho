@@ -68,7 +68,76 @@ public struct SliderState: Codable, Equatable {
     var predelay: Double = 60
     var damping: Double = 0.2
     var width: Double = 0.85
-    
+
+    // Dynamics Character (shared C++ core with web/WASM)
+    var dynamicsEnabled: Bool = false
+    var characterEnabled: Bool = false
+    var characterMode: String = "shallowWater"  // clean, shallowWater, abyssWater
+    var characterMix: Double = 0.35
+    var characterAge: Double = 0.16
+    var characterDepth: Double = 0.72
+    var characterRate: Double = 0.12
+    var characterDamp: Double = 0.6
+    var characterEnvFollow: Double = 0.12
+    var characterStereo: Double = 0.72
+    var characterResonance: Double = 0.28
+    var degradeEnabled: Bool = false
+    var degradeMix: Double = 0
+    var degradeAge: Double = 0
+    var degradeGeneration: Double = 0
+    var degradeAlias: Double = 0
+    var degradeWow: Double = 0
+    var degradeFlutter: Double = 0
+    var degradeDrift: Double = 0
+    var degradeTone: Double = 0.5
+    var degradeHp: Double = 0
+    var degradeLp: Double = 1
+    var degradeNoise: Double = 0
+    var degradeSaturation: Double = 0
+    var degradeCorrosion: Double = 0
+    var degradeModSlowWow: Double = 0.18
+    var degradeModSlowFlutter: Double = 0.02
+    var degradeModSlowLp: Double = 0.12
+    var degradeModSlowWet: Double = 0.03
+    var degradeModSlowDropout: Double = 0.04
+    var degradeModSlowAlias: Double = 0
+    var degradeModFlutterWow: Double = 0
+    var degradeModFlutterFlutter: Double = 0.12
+    var degradeModFlutterLp: Double = 0.02
+    var degradeModFlutterWet: Double = 0
+    var degradeModFlutterDropout: Double = 0.02
+    var degradeModFlutterAlias: Double = 0
+    var degradeModRandomWow: Double = 0.04
+    var degradeModRandomFlutter: Double = 0.03
+    var degradeModRandomLp: Double = 0.14
+    var degradeModRandomWet: Double = 0.02
+    var degradeModRandomDropout: Double = 0.1
+    var degradeModRandomAlias: Double = 0.02
+    var degradeModEnvWow: Double = 0
+    var degradeModEnvFlutter: Double = 0
+    var degradeModEnvLp: Double = 0.08
+    var degradeModEnvWet: Double = 0.04
+    var degradeModEnvDropout: Double = 0
+    var degradeModEnvAlias: Double = 0
+    var degradeModNoiseWow: Double = 0
+    var degradeModNoiseFlutter: Double = 0.06
+    var degradeModNoiseLp: Double = 0.02
+    var degradeModNoiseWet: Double = 0
+    var degradeModNoiseDropout: Double = 0.06
+    var degradeModNoiseAlias: Double = 0.02
+    var endCompEnabled: Bool = false
+    var endCompThreshold: Double = -18
+    var endCompKnee: Double = 12
+    var endCompRatio: Double = 2
+    var endCompAttackMs: Double = 10
+    var endCompReleaseMs: Double = 180
+    var endCompMakeup: Double = 1
+    var endCompMix: Double = 1
+    var endCompDetectorHp: Double = 0.25
+    var endCompDetectorTilt: Double = 0.5
+    var endCompAutoMakeup: Double = 0.7
+    var endCompProgramRelease: Double = 0.65
+
     // Granular
     var granularEnabled: Bool = true
     var maxGrains: Double = 64
@@ -695,6 +764,15 @@ private extension SliderState {
         assignNumberIfMissing("filterCutoffMax", from: ["filterCutoff"], source: source, target: &target)
         assignNumberIfMissing("reverbLevel", from: ["reverbMix"], source: source, target: &target)
         assignNumberIfMissing("drumEuclidBaseBPM", from: ["sequencerMasterBPM"], source: source, target: &target)
+        assignNumberIfMissing("degradeWow", from: ["characterWow"], source: source, target: &target)
+        assignNumberIfMissing("degradeFlutter", from: ["characterFlutter"], source: source, target: &target)
+        assignNumberIfMissing("degradeDrift", from: ["characterDrift"], source: source, target: &target)
+        assignNumberIfMissing("degradeTone", from: ["characterTone"], source: source, target: &target)
+        assignNumberIfMissing("degradeHp", from: ["characterHp"], source: source, target: &target)
+        assignNumberIfMissing("degradeLp", from: ["characterLp"], source: source, target: &target)
+        assignNumberIfMissing("degradeNoise", from: ["characterNoise"], source: source, target: &target)
+        assignNumberIfMissing("degradeSaturation", from: ["characterSaturation"], source: source, target: &target)
+        assignNumberIfMissing("degradeCorrosion", from: ["characterCorrosion"], source: source, target: &target)
     }
 
     static func normalizeSynthEuclidSources(

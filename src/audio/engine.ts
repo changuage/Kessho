@@ -37,7 +37,7 @@ import {
 import type { SynthEvolveConfig, SynthEvolveState, SynthLaneOverrides } from './synthSeqEvolve';
 import { computeGranularMacroModel } from './granularMacroModel';
 import { SharedDelayBusA, SharedDelayBusB, delayNoteToSeconds } from './delayBuses';
-import { resolveDynamicsTargets, type DynamicsRoutingTargets } from './dynamicsModel';
+import { resolveDynamicsTargets, type DynamicsRoutingTargets, type DynamicsTargets } from './dynamicsModel';
 import { isIOSLikeDevice, isMobileDevice } from '../platform';
 import {
   EarthTexturePlayer,
@@ -266,6 +266,7 @@ export type FxOwnershipDebugState = Record<
 >;
 
 const SYNTH_LANE_INDICES = [0, 1, 2, 3] as const;
+const PAD_VOICE_COUNT = 6;
 
 /**
  * Pick a note from availableNotes, weighted toward chord tones.
@@ -460,7 +461,8 @@ const spectralFreezeWorkletUrl = getWorkletUrl('spectral-freeze-wasm.worklet.js'
 const padSynthWasmWorkletUrl = getWorkletUrl('pad-synth-wasm.worklet.js');
 const leadFmWasmWorkletUrl = getWorkletUrl('lead-fm-wasm.worklet.js');
 const drumSynthWasmWorkletUrl = getWorkletUrl('drum-synth-wasm.worklet.js');
-const dynamicsDegradeWorkletUrl = getWorkletUrl('dynamics-degrade.worklet.js');
+const dynamicsCharacterWorkletUrl = getWorkletUrl('dynamics-character.worklet.js');
+const dynamicsCharacterWasmUrl = getWorkletUrl('kessho_dynamics_character.wasm');
 const GRANULAR_WORKLET_DISPATCH_INTERVAL_MS = 16;
 const RUNTIME_RANDOM_WALK_INTERVAL_MS = 100;
 const RANDOM_WALK_MAX_CATCHUP_STEPS = 600;
@@ -598,7 +600,7 @@ function alignSequencerTime(now: number, stepDuration: number): number {
   return Math.ceil(now / stepDuration) * stepDuration;
 }
 
-function makeMasterSaturationCurve(mode: 'clean' | 'tape' | 'tube', samples = 8192): Float32Array<ArrayBuffer> {
+function makeMasterSaturationCurve(mode: SliderState['dynamicsSaturationMode'] | SliderState['masterSatMode'], samples = 8192): Float32Array<ArrayBuffer> {
   const curve = new Float32Array(new ArrayBuffer(samples * Float32Array.BYTES_PER_ELEMENT));
   const half = (samples - 1) / 2;
   for (let i = 0; i < samples; i++) {
@@ -610,44 +612,17 @@ function makeMasterSaturationCurve(mode: 'clean' | 'tape' | 'tube', samples = 81
       case 'tube':
         curve[i] = x / (1 + Math.abs(x));
         break;
+      case 'diode':
+        curve[i] = x >= 0 ? Math.tanh(x * 1.35) : -Math.tanh(-x * 0.82);
+        break;
+      case 'fold':
+        curve[i] = Math.tanh(x) * 0.72 + Math.sin(x * Math.PI * 0.82) * 0.22;
+        break;
       case 'clean':
       default:
-        curve[i] = x;
+        curve[i] = Math.tanh(x * 1.05);
         break;
     }
-  }
-  return curve;
-}
-
-function makeCharacterSaturationCurve(amount: number, corrosion: number, samples = 8192): Float32Array<ArrayBuffer> {
-  const sat = clampUnitInterval(amount);
-  const rust = clampUnitInterval(corrosion);
-  const drive = 1 + sat * 7 + rust * 5;
-  const fold = rust * 0.34;
-  const crush = rust * 0.16;
-  const curve = new Float32Array(new ArrayBuffer(samples * Float32Array.BYTES_PER_ELEMENT));
-  const half = (samples - 1) / 2;
-  for (let i = 0; i < samples; i++) {
-    const x = (i - half) / half;
-    const shaped = Math.tanh(x * drive);
-    const folded = Math.sin((x + shaped * 0.25) * Math.PI * (1.5 + drive * 0.4));
-    let y = shaped * (1 - fold) + folded * fold;
-    if (crush > 0.001) {
-      const steps = 96 - rust * 72;
-      const quantized = Math.round(y * steps) / steps;
-      y = y * (1 - crush) + quantized * crush;
-    }
-    curve[i] = Math.max(-1, Math.min(1, y));
-  }
-  return curve;
-}
-
-function makeAbsoluteValueCurve(samples = 1024): Float32Array<ArrayBuffer> {
-  const curve = new Float32Array(new ArrayBuffer(samples * Float32Array.BYTES_PER_ELEMENT));
-  const half = (samples - 1) / 2;
-  for (let i = 0; i < samples; i++) {
-    const x = (i - half) / half;
-    curve[i] = Math.abs(x);
   }
   return curve;
 }
@@ -660,57 +635,16 @@ export class AudioEngine {
   private satWaveshaper: WaveShaperNode | null = null;
   private satPostTone: BiquadFilterNode | null = null;
   private satPostGain: GainNode | null = null;
-  private lastMasterSatMode: 'clean' | 'tape' | 'tube' | null = null;
+  private lastMasterSatMode: SliderState['dynamicsSaturationMode'] | SliderState['masterSatMode'] | null = null;
   private characterInputGain: GainNode | null = null;
-  private characterDryGain: GainNode | null = null;
-  private characterWetGain: GainNode | null = null;
-  private characterDelay: DelayNode | null = null;
-  private characterSpreadDelay: DelayNode | null = null;
-  private characterMainPan: StereoPannerNode | null = null;
-  private characterSpreadPan: StereoPannerNode | null = null;
-  private characterMainDelayGain: GainNode | null = null;
-  private characterSpreadDelayGain: GainNode | null = null;
-  private characterHighpass: BiquadFilterNode | null = null;
-  private characterAllpassA: BiquadFilterNode | null = null;
-  private characterAllpassB: BiquadFilterNode | null = null;
-  private characterHeadBump: BiquadFilterNode | null = null;
-  private characterLowpass: BiquadFilterNode | null = null;
-  private characterLowpassStage2: BiquadFilterNode | null = null;
-  private characterCompressor: DynamicsCompressorNode | null = null;
-  private characterCompressorMakeup: GainNode | null = null;
-  private characterSaturationNode: WaveShaperNode | null = null;
-  private characterDegradeNode: AudioWorkletNode | GainNode | null = null;
-  private characterDropoutGain: GainNode | null = null;
-  private characterNoiseSource: AudioBufferSourceNode | null = null;
-  private characterNoiseGain: GainNode | null = null;
-  private characterJitterDepth: GainNode | null = null;
-  private characterRandomDriftFilter: BiquadFilterNode | null = null;
-  private characterRandomDriftDepth: GainNode | null = null;
-  private characterDropoutFilter: BiquadFilterNode | null = null;
-  private characterDropoutDepth: GainNode | null = null;
-  private characterEnvRectifier: WaveShaperNode | null = null;
-  private characterEnvFilter: BiquadFilterNode | null = null;
-  private characterEnvToLowpass: GainNode | null = null;
-  private characterEnvToResonance: GainNode | null = null;
-  private characterEnvToWetGain: GainNode | null = null;
+  private characterProcessorNode: AudioWorkletNode | GainNode | null = null;
+  private characterProcessorNodeMode: 'gain' | 'worklet' | null = null;
   private characterOutputGain: GainNode | null = null;
-  private characterWowLfo: OscillatorNode | null = null;
-  private characterWowDepth: GainNode | null = null;
-  private characterFlutterLfo: OscillatorNode | null = null;
-  private characterFlutterDepth: GainNode | null = null;
-  private characterRandomHoldSource: ConstantSourceNode | null = null;
-  private characterRandomHoldDepth: GainNode | null = null;
-  private characterRandomHoldFilterDepth: GainNode | null = null;
-  private characterSpreadRandomHoldSource: ConstantSourceNode | null = null;
-  private characterSpreadRandomHoldDepth: GainNode | null = null;
-  private characterSpreadRandomHoldFilterDepth: GainNode | null = null;
-  private characterRandomHoldNextTime = 0;
-  private characterRandomHoldValue = 0;
-  private characterSpreadRandomHoldValue = 0;
-  private lastCharacterCurveKey: string | null = null;
-  private dynamicsDegradeWorkletLoaded = false;
-  private dynamicsDegradeWorkletLoadPromise: Promise<void> | null = null;
-  private characterDegradeNodeMode: 'gain' | 'worklet' | null = null;
+  private dynamicsCharacterWorkletLoaded = false;
+  private dynamicsCharacterWorkletLoadPromise: Promise<void> | null = null;
+  private dynamicsCharacterWorkletLoadContext: AudioContext | null = null;
+  private dynamicsCharacterWorkletContext: AudioContext | null = null;
+  private wasmDynamicsCharacterBinary: ArrayBuffer | null = null;
   private dynamicsRoutingKey: string | null = null;
   private endCompInputGain: GainNode | null = null;
   private endCompDryGain: GainNode | null = null;
@@ -721,7 +655,6 @@ export class AudioEngine {
   private sidechainTargets: Partial<Record<SidechainTargetKey, SidechainTargetNode>> = {};
   private mediaStreamDest: MediaStreamAudioDestinationNode | null = null;
   private voices: Voice[] = [];
-  private voicesStarted = false;
   private reverbNode: AudioWorkletNode | null = null;
   private reverbOutputGain: GainNode | null = null;
   private reverbPreCompressor: DynamicsCompressorNode | null = null;
@@ -832,8 +765,9 @@ export class AudioEngine {
   // Pad Synth (WASM — replaces Web Audio oscillator voices)
   private wasmPadBinary: ArrayBuffer | null = null;
   private padWasmNode: AudioWorkletNode | null = null;
-  private padWasmReady = false;
   private padWasmModuleContext: AudioContext | null = null;
+  private padWasmInitPromise: Promise<void> | null = null;
+  private padWasmUnavailableWarned = false;
 
   // Lead FM Synth (WASM — replaces per-note playLead4opFMNote)
   private wasmLeadFmBinary: ArrayBuffer | null = null;
@@ -847,6 +781,7 @@ export class AudioEngine {
 
   // Granular FX (unified granular engine — WASM only)
   private wasmGranularBinary: ArrayBuffer | null = null;
+  private granularFxModuleContext: AudioContext | null = null;
   private granularFxNode: AudioWorkletNode | null = null;
   private granularFxInputGain: GainNode | null = null;
   private granularFxReverbSend: GainNode | null = null;
@@ -1741,7 +1676,7 @@ export class AudioEngine {
   }
 
   private setPadVoiceTarget(voiceIndex: number, isPad2: boolean): void {
-    if (voiceIndex < 0 || voiceIndex >= 6) return;
+    if (voiceIndex < 0 || voiceIndex >= PAD_VOICE_COUNT) return;
     const bit = 1 << voiceIndex;
     const wasPad2 = (this.lastPad2VoiceAssign & bit) !== 0;
     if (wasPad2 === isPad2) return;
@@ -1761,7 +1696,7 @@ export class AudioEngine {
       }
     }
 
-    if (this.padWasmReady && this.padWasmNode) {
+    if (this.padWasmNode) {
       this.padWasmNode.port.postMessage({ type: 'voicePad', voiceIndex, pad: isPad2 ? 1 : 0 });
     }
 
@@ -1771,7 +1706,7 @@ export class AudioEngine {
   }
 
   private killPadVoiceNow(voiceIndex: number): void {
-    if (voiceIndex < 0 || voiceIndex >= 6) return;
+    if (voiceIndex < 0 || voiceIndex >= PAD_VOICE_COUNT) return;
 
     const noteOffTimerId = this.synthVoiceNoteOffTimers[voiceIndex];
     if (noteOffTimerId !== null) {
@@ -1779,7 +1714,7 @@ export class AudioEngine {
       this.synthVoiceNoteOffTimers[voiceIndex] = null;
     }
 
-    if (this.padWasmReady && this.padWasmNode) {
+    if (this.padWasmNode) {
       this.padWasmNode.port.postMessage({ type: 'killVoice', voiceIndex });
     }
 
@@ -1794,15 +1729,33 @@ export class AudioEngine {
 
   private clearManualPadAuditionTails(): void {
     if (this.isRunning) return;
-    for (let voiceIndex = 0; voiceIndex < 6; voiceIndex += 1) {
+    for (let voiceIndex = 0; voiceIndex < PAD_VOICE_COUNT; voiceIndex += 1) {
       this.killPadVoiceNow(voiceIndex);
+    }
+  }
+
+  private warnPadWasmUnavailable(context: string): void {
+    if (this.padWasmUnavailableWarned) return;
+    this.padWasmUnavailableWarned = true;
+    console.warn(`[PadSynth-WASM] ${context}: Pad WASM is unavailable; JS fallback is disabled.`);
+  }
+
+  private postPadWasmNoteOff(voiceIndex: number): void {
+    if (!this.padWasmNode) return;
+    this.padWasmNode.port.postMessage({ type: 'noteOff', voiceIndex });
+  }
+
+  private postPadWasmAllNotesOff(): void {
+    if (!this.padWasmNode) return;
+    for (let voiceIndex = 0; voiceIndex < PAD_VOICE_COUNT; voiceIndex += 1) {
+      this.postPadWasmNoteOff(voiceIndex);
     }
   }
 
   private getManualPadVoicePool(pad: 'pad1' | 'pad2', state: SliderState): number[] {
     const mask = Math.max(1, (state.synthVoiceMask ?? 63) & 63);
     const assign = (state.pad2VoiceAssign ?? 0) & 63;
-    const enabledVoices = Array.from({ length: 6 }, (_, voiceIndex) => voiceIndex)
+    const enabledVoices = Array.from({ length: PAD_VOICE_COUNT }, (_, voiceIndex) => voiceIndex)
       .filter((voiceIndex) => (mask & (1 << voiceIndex)) !== 0);
 
     if (enabledVoices.length === 0) return [0];
@@ -1966,7 +1919,7 @@ export class AudioEngine {
       try { this.padWasmNode.port.close(); } catch { /* */ }
       try { this.padWasmNode.disconnect(); } catch { /* */ }
       this.padWasmNode = null;
-      this.padWasmReady = false;
+      this.padWasmInitPromise = null;
     }
 
     if (this.leadFmWasmNode) {
@@ -2064,7 +2017,6 @@ export class AudioEngine {
     this.lastMasterSatMode = null;
     this.lastPad2VoiceAssign = 0;
     this.voices = [];
-    this.voicesStarted = false;
     this.resetBootCapabilities();
     this.resetWorkletParamCaches();
   }
@@ -3142,107 +3094,24 @@ export class AudioEngine {
   }
 
   private disposeCharacterNodes(): void {
-    try { this.characterWowLfo?.stop(); } catch { /* */ }
-    try { this.characterFlutterLfo?.stop(); } catch { /* */ }
-    try { this.characterRandomHoldSource?.stop(); } catch { /* */ }
-    try { this.characterSpreadRandomHoldSource?.stop(); } catch { /* */ }
-    try { this.characterNoiseSource?.stop(); } catch { /* */ }
+    try {
+      if (this.characterProcessorNode instanceof AudioWorkletNode) {
+        this.characterProcessorNode.port.postMessage({ type: 'destroy' });
+        this.characterProcessorNode.port.close();
+      }
+    } catch { /* */ }
     const nodes: Array<AudioNode | null> = [
       this.characterInputGain,
-      this.characterDryGain,
-      this.characterWetGain,
-      this.characterDelay,
-      this.characterSpreadDelay,
-      this.characterMainPan,
-      this.characterSpreadPan,
-      this.characterMainDelayGain,
-      this.characterSpreadDelayGain,
-      this.characterHighpass,
-      this.characterAllpassA,
-      this.characterAllpassB,
-      this.characterHeadBump,
-      this.characterLowpass,
-      this.characterLowpassStage2,
-      this.characterCompressor,
-      this.characterCompressorMakeup,
-      this.characterSaturationNode,
-      this.characterDegradeNode,
-      this.characterDropoutGain,
-      this.characterNoiseSource,
-      this.characterNoiseGain,
-      this.characterJitterDepth,
-      this.characterRandomDriftFilter,
-      this.characterRandomDriftDepth,
-      this.characterDropoutFilter,
-      this.characterDropoutDepth,
-      this.characterEnvRectifier,
-      this.characterEnvFilter,
-      this.characterEnvToLowpass,
-      this.characterEnvToResonance,
-      this.characterEnvToWetGain,
+      this.characterProcessorNode,
       this.characterOutputGain,
-      this.characterWowLfo,
-      this.characterWowDepth,
-      this.characterFlutterLfo,
-      this.characterFlutterDepth,
-      this.characterRandomHoldSource,
-      this.characterRandomHoldDepth,
-      this.characterRandomHoldFilterDepth,
-      this.characterSpreadRandomHoldSource,
-      this.characterSpreadRandomHoldDepth,
-      this.characterSpreadRandomHoldFilterDepth,
     ];
     for (const node of nodes) {
       try { node?.disconnect(); } catch { /* */ }
     }
     this.characterInputGain = null;
-    this.characterDryGain = null;
-    this.characterWetGain = null;
-    this.characterDelay = null;
-    this.characterSpreadDelay = null;
-    this.characterMainPan = null;
-    this.characterSpreadPan = null;
-    this.characterMainDelayGain = null;
-    this.characterSpreadDelayGain = null;
-    this.characterHighpass = null;
-    this.characterAllpassA = null;
-    this.characterAllpassB = null;
-    this.characterHeadBump = null;
-    this.characterLowpass = null;
-    this.characterLowpassStage2 = null;
-    this.characterCompressor = null;
-    this.characterCompressorMakeup = null;
-    this.characterSaturationNode = null;
-    this.characterDegradeNode = null;
-    this.characterDegradeNodeMode = null;
-    this.characterDropoutGain = null;
-    this.characterNoiseSource = null;
-    this.characterNoiseGain = null;
-    this.characterJitterDepth = null;
-    this.characterRandomDriftFilter = null;
-    this.characterRandomDriftDepth = null;
-    this.characterDropoutFilter = null;
-    this.characterDropoutDepth = null;
-    this.characterEnvRectifier = null;
-    this.characterEnvFilter = null;
-    this.characterEnvToLowpass = null;
-    this.characterEnvToResonance = null;
-    this.characterEnvToWetGain = null;
+    this.characterProcessorNode = null;
+    this.characterProcessorNodeMode = null;
     this.characterOutputGain = null;
-    this.characterWowLfo = null;
-    this.characterWowDepth = null;
-    this.characterFlutterLfo = null;
-    this.characterFlutterDepth = null;
-    this.characterRandomHoldSource = null;
-    this.characterRandomHoldDepth = null;
-    this.characterRandomHoldFilterDepth = null;
-    this.characterSpreadRandomHoldSource = null;
-    this.characterSpreadRandomHoldDepth = null;
-    this.characterSpreadRandomHoldFilterDepth = null;
-    this.characterRandomHoldNextTime = 0;
-    this.characterRandomHoldValue = 0;
-    this.characterSpreadRandomHoldValue = 0;
-    this.lastCharacterCurveKey = null;
     this.dynamicsRoutingKey = null;
   }
 
@@ -3397,57 +3266,89 @@ export class AudioEngine {
     return compressor;
   }
 
-  private ensureDynamicsDegradeWorkletModule(ctx: AudioContext): void {
-    if (this.dynamicsDegradeWorkletLoaded || this.dynamicsDegradeWorkletLoadPromise) return;
-    this.dynamicsDegradeWorkletLoadPromise = ctx.audioWorklet.addModule(dynamicsDegradeWorkletUrl)
-      .then(() => {
-        this.dynamicsDegradeWorkletLoaded = true;
-        this.dynamicsDegradeWorkletLoadPromise = null;
+  private ensureDynamicsCharacterWorkletModule(ctx: AudioContext): void {
+    if (this.dynamicsCharacterWorkletLoaded && this.dynamicsCharacterWorkletContext === ctx) return;
+    if (this.dynamicsCharacterWorkletLoadPromise && this.dynamicsCharacterWorkletLoadContext === ctx) return;
+    if (this.dynamicsCharacterWorkletContext !== ctx) {
+      this.dynamicsCharacterWorkletLoaded = false;
+      this.wasmDynamicsCharacterBinary = null;
+    }
+    this.dynamicsCharacterWorkletLoadContext = ctx;
+    this.dynamicsCharacterWorkletLoadPromise = Promise.all([
+      fetch(dynamicsCharacterWasmUrl).then((response) => {
+        if (!response.ok) throw new Error(`Dynamics Character WASM fetch failed: ${response.status}`);
+        return response.arrayBuffer();
+      }),
+      ctx.audioWorklet.addModule(dynamicsCharacterWorkletUrl),
+    ])
+      .then(([binary]) => {
+        if (this.dynamicsCharacterWorkletLoadContext !== ctx || this.ctx !== ctx) return;
+        this.wasmDynamicsCharacterBinary = binary;
+        this.dynamicsCharacterWorkletLoaded = true;
+        this.dynamicsCharacterWorkletContext = ctx;
+        this.dynamicsCharacterWorkletLoadContext = null;
+        this.dynamicsCharacterWorkletLoadPromise = null;
         this.dynamicsRoutingKey = null;
         if (this.sliderState && this.ctx === ctx) {
           this.wireMasterOutputChain(ctx);
+          this.applyMasterSaturation(this.sliderState, ctx.currentTime);
           this.applyDynamics(this.sliderState, ctx.currentTime);
         }
       })
       .catch((e) => {
-        this.dynamicsDegradeWorkletLoaded = false;
-        this.dynamicsDegradeWorkletLoadPromise = null;
-        console.warn('Dynamics Degrade worklet unavailable, Degrade will use filter/saturation fallback:', e);
+        if (this.dynamicsCharacterWorkletLoadContext !== ctx) return;
+        this.dynamicsCharacterWorkletLoaded = false;
+        this.dynamicsCharacterWorkletContext = null;
+        this.dynamicsCharacterWorkletLoadContext = null;
+        this.dynamicsCharacterWorkletLoadPromise = null;
+        this.wasmDynamicsCharacterBinary = null;
+        console.warn('Dynamics Character worklet unavailable, Character will use pass-through fallback:', e);
       });
   }
 
-  private ensureCharacterDegradeNode(ctx: AudioContext, useWorklet: boolean): void {
-    const wantedMode: 'gain' | 'worklet' = useWorklet && this.dynamicsDegradeWorkletLoaded ? 'worklet' : 'gain';
-    if (useWorklet && !this.dynamicsDegradeWorkletLoaded) {
-      this.ensureDynamicsDegradeWorkletModule(ctx);
+  private ensureCharacterProcessorNode(ctx: AudioContext, useWorklet: boolean): void {
+    const workletReady = this.dynamicsCharacterWorkletLoaded && this.dynamicsCharacterWorkletContext === ctx;
+    const wantedMode: 'gain' | 'worklet' = useWorklet && workletReady ? 'worklet' : 'gain';
+    if (useWorklet && !workletReady) {
+      this.ensureDynamicsCharacterWorkletModule(ctx);
     }
     if (
-      this.characterDegradeNode &&
-      (this.characterDegradeNode.context !== ctx || this.characterDegradeNodeMode !== wantedMode)
+      this.characterProcessorNode &&
+      (this.characterProcessorNode.context !== ctx || this.characterProcessorNodeMode !== wantedMode)
     ) {
-      try { this.characterDegradeNode.disconnect(); } catch { /* */ }
-      this.characterDegradeNode = null;
-      this.characterDegradeNodeMode = null;
+      try {
+        if (this.characterProcessorNode instanceof AudioWorkletNode) {
+          this.characterProcessorNode.port.postMessage({ type: 'destroy' });
+          this.characterProcessorNode.port.close();
+        }
+      } catch { /* */ }
+      try { this.characterProcessorNode.disconnect(); } catch { /* */ }
+      this.characterProcessorNode = null;
+      this.characterProcessorNodeMode = null;
     }
-    if (this.characterDegradeNode) return;
+    if (this.characterProcessorNode) return;
     if (wantedMode === 'worklet') {
       try {
-        this.characterDegradeNode = new AudioWorkletNode(ctx, 'dynamics-degrade', {
+        this.characterProcessorNode = new AudioWorkletNode(ctx, 'dynamics-character', {
           numberOfInputs: 1,
           numberOfOutputs: 1,
           outputChannelCount: [2],
           channelCount: 2,
           channelCountMode: 'explicit',
+          processorOptions: {
+            wasmBinary: this.wasmDynamicsCharacterBinary,
+          },
         });
-        this.characterDegradeNodeMode = 'worklet';
+        this.characterProcessorNodeMode = 'worklet';
         return;
       } catch (error) {
-        console.warn('Dynamics Degrade worklet unavailable, using pass-through fallback:', error);
-        this.dynamicsDegradeWorkletLoaded = false;
+        console.warn('Dynamics Character worklet unavailable, using pass-through fallback:', error);
+        this.dynamicsCharacterWorkletLoaded = false;
+        this.dynamicsCharacterWorkletContext = null;
       }
     }
-    this.characterDegradeNode = ctx.createGain();
-    this.characterDegradeNodeMode = 'gain';
+    this.characterProcessorNode = ctx.createGain();
+    this.characterProcessorNodeMode = 'gain';
   }
 
   private ensureDynamicsNodes(ctx: AudioContext, routing: DynamicsRoutingTargets): void {
@@ -3459,164 +3360,12 @@ export class AudioEngine {
     } else if (!this.characterInputGain) {
       this.characterInputGain = ctx.createGain();
       this.characterInputGain.gain.value = 1;
-      this.characterDryGain = ctx.createGain();
-      this.characterDryGain.gain.value = 1;
-      this.characterWetGain = ctx.createGain();
-      this.characterWetGain.gain.value = 0;
-      this.characterDelay = ctx.createDelay(0.1);
-      this.characterDelay.delayTime.value = 0.004;
-      this.characterSpreadDelay = ctx.createDelay(0.1);
-      this.characterSpreadDelay.delayTime.value = 0.006;
-      this.characterMainPan = ctx.createStereoPanner();
-      this.characterMainPan.pan.value = 0;
-      this.characterSpreadPan = ctx.createStereoPanner();
-      this.characterSpreadPan.pan.value = 0;
-      this.characterMainDelayGain = ctx.createGain();
-      this.characterMainDelayGain.gain.value = 1;
-      this.characterSpreadDelayGain = ctx.createGain();
-      this.characterSpreadDelayGain.gain.value = 0;
-      this.characterHighpass = ctx.createBiquadFilter();
-      this.characterHighpass.type = 'highpass';
-      this.characterHighpass.frequency.value = 20;
-      this.characterHighpass.Q.value = 0.7;
-      this.characterAllpassA = ctx.createBiquadFilter();
-      this.characterAllpassA.type = 'allpass';
-      this.characterAllpassA.frequency.value = 650;
-      this.characterAllpassA.Q.value = 0.7;
-      this.characterAllpassB = ctx.createBiquadFilter();
-      this.characterAllpassB.type = 'allpass';
-      this.characterAllpassB.frequency.value = 1800;
-      this.characterAllpassB.Q.value = 0.7;
-      this.characterHeadBump = ctx.createBiquadFilter();
-      this.characterHeadBump.type = 'peaking';
-      this.characterHeadBump.frequency.value = 95;
-      this.characterHeadBump.Q.value = 0.85;
-      this.characterHeadBump.gain.value = 0;
-      this.characterLowpass = ctx.createBiquadFilter();
-      this.characterLowpass.type = 'lowpass';
-      this.characterLowpass.frequency.value = 20000;
-      this.characterLowpass.Q.value = 0.7;
-      this.characterLowpassStage2 = ctx.createBiquadFilter();
-      this.characterLowpassStage2.type = 'lowpass';
-      this.characterLowpassStage2.frequency.value = 20000;
-      this.characterLowpassStage2.Q.value = 0.7;
-      this.characterCompressor = ctx.createDynamicsCompressor();
-      this.characterCompressor.threshold.value = -12;
-      this.characterCompressor.knee.value = 18;
-      this.characterCompressor.ratio.value = 1.2;
-      this.characterCompressor.attack.value = 0.012;
-      this.characterCompressor.release.value = 0.18;
-      this.characterCompressorMakeup = ctx.createGain();
-      this.characterCompressorMakeup.gain.value = 1;
-      this.characterSaturationNode = ctx.createWaveShaper();
-      this.characterSaturationNode.curve = makeCharacterSaturationCurve(0, 0);
-      this.characterSaturationNode.oversample = 'none';
-      this.ensureCharacterDegradeNode(ctx, routing.degradeWorkletActive);
-      this.characterDropoutGain = ctx.createGain();
-      this.characterDropoutGain.gain.value = 1;
-      this.characterNoiseGain = ctx.createGain();
-      this.characterNoiseGain.gain.value = 0;
-      this.characterJitterDepth = ctx.createGain();
-      this.characterJitterDepth.gain.value = 0;
-      this.characterRandomDriftFilter = ctx.createBiquadFilter();
-      this.characterRandomDriftFilter.type = 'lowpass';
-      this.characterRandomDriftFilter.frequency.value = 0.18;
-      this.characterRandomDriftFilter.Q.value = 0.7;
-      this.characterRandomDriftDepth = ctx.createGain();
-      this.characterRandomDriftDepth.gain.value = 0;
-      this.characterDropoutFilter = ctx.createBiquadFilter();
-      this.characterDropoutFilter.type = 'lowpass';
-      this.characterDropoutFilter.frequency.value = 3;
-      this.characterDropoutFilter.Q.value = 0.55;
-      this.characterDropoutDepth = ctx.createGain();
-      this.characterDropoutDepth.gain.value = 0;
-      this.characterEnvRectifier = ctx.createWaveShaper();
-      this.characterEnvRectifier.curve = makeAbsoluteValueCurve();
-      this.characterEnvRectifier.oversample = 'none';
-      this.characterEnvFilter = ctx.createBiquadFilter();
-      this.characterEnvFilter.type = 'lowpass';
-      this.characterEnvFilter.frequency.value = 10;
-      this.characterEnvFilter.Q.value = 0.5;
-      this.characterEnvToLowpass = ctx.createGain();
-      this.characterEnvToLowpass.gain.value = 0;
-      this.characterEnvToResonance = ctx.createGain();
-      this.characterEnvToResonance.gain.value = 0;
-      this.characterEnvToWetGain = ctx.createGain();
-      this.characterEnvToWetGain.gain.value = 0;
-      this.characterEnvRectifier.connect(this.characterEnvFilter);
-      this.characterEnvFilter.connect(this.characterEnvToLowpass);
-      this.characterEnvToLowpass.connect(this.characterLowpass.frequency);
-      this.characterEnvFilter.connect(this.characterEnvToResonance);
-      this.characterEnvToResonance.connect(this.characterLowpass.Q);
-      this.characterEnvToResonance.connect(this.characterLowpassStage2.Q);
-      this.characterEnvFilter.connect(this.characterEnvToWetGain);
-      this.characterEnvToWetGain.connect(this.characterWetGain.gain);
+      this.ensureCharacterProcessorNode(ctx, routing.characterPathActive);
       this.characterOutputGain = ctx.createGain();
       this.characterOutputGain.gain.value = 1;
-
-      this.characterWowLfo = ctx.createOscillator();
-      this.characterWowLfo.type = 'sine';
-      this.characterWowLfo.frequency.value = 0.18;
-      this.characterWowDepth = ctx.createGain();
-      this.characterWowDepth.gain.value = 0;
-      this.characterWowLfo.connect(this.characterWowDepth);
-      this.characterWowDepth.connect(this.characterDelay.delayTime);
-      this.characterWowDepth.connect(this.characterSpreadDelay.delayTime);
-      this.characterWowLfo.start();
-
-      this.characterFlutterLfo = ctx.createOscillator();
-      this.characterFlutterLfo.type = 'triangle';
-      this.characterFlutterLfo.frequency.value = 6;
-      this.characterFlutterDepth = ctx.createGain();
-      this.characterFlutterDepth.gain.value = 0;
-      this.characterFlutterLfo.connect(this.characterFlutterDepth);
-      this.characterFlutterDepth.connect(this.characterDelay.delayTime);
-      this.characterFlutterDepth.connect(this.characterSpreadDelay.delayTime);
-      this.characterFlutterLfo.start();
-
-      this.characterRandomHoldSource = ctx.createConstantSource();
-      this.characterRandomHoldSource.offset.value = 0;
-      this.characterRandomHoldDepth = ctx.createGain();
-      this.characterRandomHoldDepth.gain.value = 0;
-      this.characterRandomHoldFilterDepth = ctx.createGain();
-      this.characterRandomHoldFilterDepth.gain.value = 0;
-      this.characterRandomHoldSource.connect(this.characterRandomHoldDepth);
-      this.characterRandomHoldDepth.connect(this.characterDelay.delayTime);
-      this.characterRandomHoldSource.connect(this.characterRandomHoldFilterDepth);
-      this.characterRandomHoldFilterDepth.connect(this.characterLowpass.frequency);
-      this.characterRandomHoldSource.start();
-
-      this.characterSpreadRandomHoldSource = ctx.createConstantSource();
-      this.characterSpreadRandomHoldSource.offset.value = 0;
-      this.characterSpreadRandomHoldDepth = ctx.createGain();
-      this.characterSpreadRandomHoldDepth.gain.value = 0;
-      this.characterSpreadRandomHoldFilterDepth = ctx.createGain();
-      this.characterSpreadRandomHoldFilterDepth.gain.value = 0;
-      this.characterSpreadRandomHoldSource.connect(this.characterSpreadRandomHoldDepth);
-      this.characterSpreadRandomHoldDepth.connect(this.characterSpreadDelay.delayTime);
-      this.characterSpreadRandomHoldSource.connect(this.characterSpreadRandomHoldFilterDepth);
-      this.characterSpreadRandomHoldFilterDepth.connect(this.characterLowpassStage2.frequency);
-      this.characterSpreadRandomHoldSource.start();
-
-      this.characterNoiseSource = ctx.createBufferSource();
-      this.characterNoiseSource.buffer = this.createNoiseBuffer(ctx, 2, 'pink');
-      this.characterNoiseSource.loop = true;
-      this.characterNoiseSource.connect(this.characterNoiseGain);
-      this.characterNoiseSource.connect(this.characterJitterDepth);
-      this.characterJitterDepth.connect(this.characterDelay.delayTime);
-      this.characterJitterDepth.connect(this.characterSpreadDelay.delayTime);
-      this.characterNoiseSource.connect(this.characterRandomDriftFilter);
-      this.characterRandomDriftFilter.connect(this.characterRandomDriftDepth);
-      this.characterRandomDriftDepth.connect(this.characterDelay.delayTime);
-      this.characterRandomDriftDepth.connect(this.characterSpreadDelay.delayTime);
-      this.characterRandomDriftDepth.connect(this.characterFlutterDepth.gain);
-      this.characterNoiseSource.connect(this.characterDropoutFilter);
-      this.characterDropoutFilter.connect(this.characterDropoutDepth);
-      this.characterDropoutDepth.connect(this.characterDropoutGain.gain);
-      this.characterNoiseSource.start();
     }
     if (routing.characterPathActive) {
-      this.ensureCharacterDegradeNode(ctx, routing.degradeWorkletActive);
+      this.ensureCharacterProcessorNode(ctx, routing.characterPathActive);
     }
 
     if (this.endCompInputGain && this.endCompInputGain.context !== ctx) {
@@ -3640,7 +3389,10 @@ export class AudioEngine {
   }
 
   private getDynamicsRoutingKey(routing: DynamicsRoutingTargets): string {
-    return `${routing.characterPathActive ? 1 : 0}:${routing.degradeWorkletActive && this.dynamicsDegradeWorkletLoaded ? 1 : 0}:${routing.allpassStackActive ? 1 : 0}:${routing.endChainActive ? 1 : 0}`;
+    const characterWasmReady = this.ctx
+      ? this.dynamicsCharacterWorkletLoaded && this.dynamicsCharacterWorkletContext === this.ctx
+      : false;
+    return `${routing.characterPathActive ? 1 : 0}:${routing.characterPathActive && characterWasmReady ? 1 : 0}:${routing.endChainActive ? 1 : 0}`;
   }
 
   private wireMasterOutputChain(ctx: AudioContext, routing?: DynamicsRoutingTargets): void {
@@ -3652,26 +3404,7 @@ export class AudioEngine {
     this.ensureDynamicsNodes(ctx, resolvedRouting);
     try { this.masterGain.disconnect(); } catch { /* */ }
     try { this.characterInputGain?.disconnect(); } catch { /* */ }
-    try { this.characterDryGain?.disconnect(); } catch { /* */ }
-    try { this.characterDelay?.disconnect(); } catch { /* */ }
-    try { this.characterSpreadDelay?.disconnect(); } catch { /* */ }
-    try { this.characterMainPan?.disconnect(); } catch { /* */ }
-    try { this.characterSpreadPan?.disconnect(); } catch { /* */ }
-    try { this.characterMainDelayGain?.disconnect(); } catch { /* */ }
-    try { this.characterSpreadDelayGain?.disconnect(); } catch { /* */ }
-    try { this.characterHighpass?.disconnect(); } catch { /* */ }
-    try { this.characterAllpassA?.disconnect(); } catch { /* */ }
-    try { this.characterAllpassB?.disconnect(); } catch { /* */ }
-    try { this.characterHeadBump?.disconnect(); } catch { /* */ }
-    try { this.characterLowpass?.disconnect(); } catch { /* */ }
-    try { this.characterLowpassStage2?.disconnect(); } catch { /* */ }
-    try { this.characterCompressor?.disconnect(); } catch { /* */ }
-    try { this.characterCompressorMakeup?.disconnect(); } catch { /* */ }
-    try { this.characterSaturationNode?.disconnect(); } catch { /* */ }
-    try { this.characterDegradeNode?.disconnect(); } catch { /* */ }
-    try { this.characterDropoutGain?.disconnect(); } catch { /* */ }
-    try { this.characterWetGain?.disconnect(); } catch { /* */ }
-    try { this.characterNoiseGain?.disconnect(); } catch { /* */ }
+    try { this.characterProcessorNode?.disconnect(); } catch { /* */ }
     try { this.characterOutputGain?.disconnect(); } catch { /* */ }
     try { this.satPreGain?.disconnect(); } catch { /* */ }
     try { this.satWaveshaper?.disconnect(); } catch { /* */ }
@@ -3685,34 +3418,8 @@ export class AudioEngine {
     try { this.endCompOutputGain?.disconnect(); } catch { /* */ }
     if (resolvedRouting.characterPathActive) {
       this.masterGain.connect(this.characterInputGain!);
-      this.characterInputGain!.connect(this.characterDryGain!);
-      this.characterDryGain!.connect(this.characterOutputGain!);
-      this.characterInputGain!.connect(this.characterEnvRectifier!);
-      this.characterInputGain!.connect(this.characterDelay!);
-      this.characterInputGain!.connect(this.characterSpreadDelay!);
-      this.characterDelay!.connect(this.characterMainPan!);
-      this.characterMainPan!.connect(this.characterMainDelayGain!);
-      this.characterMainDelayGain!.connect(this.characterDegradeNode!);
-      this.characterSpreadDelay!.connect(this.characterSpreadPan!);
-      this.characterSpreadPan!.connect(this.characterSpreadDelayGain!);
-      this.characterSpreadDelayGain!.connect(this.characterDegradeNode!);
-      this.characterDegradeNode!.connect(this.characterHighpass!);
-      if (resolvedRouting.allpassStackActive) {
-        this.characterHighpass!.connect(this.characterAllpassA!);
-        this.characterAllpassA!.connect(this.characterAllpassB!);
-        this.characterAllpassB!.connect(this.characterHeadBump!);
-      } else {
-        this.characterHighpass!.connect(this.characterHeadBump!);
-      }
-      this.characterHeadBump!.connect(this.characterLowpass!);
-      this.characterLowpass!.connect(this.characterLowpassStage2!);
-      this.characterLowpassStage2!.connect(this.characterCompressor!);
-      this.characterCompressor!.connect(this.characterCompressorMakeup!);
-      this.characterCompressorMakeup!.connect(this.characterSaturationNode!);
-      this.characterSaturationNode!.connect(this.characterDropoutGain!);
-      this.characterDropoutGain!.connect(this.characterWetGain!);
-      this.characterWetGain!.connect(this.characterOutputGain!);
-      this.characterNoiseGain!.connect(this.characterOutputGain!);
+      this.characterInputGain!.connect(this.characterProcessorNode!);
+      this.characterProcessorNode!.connect(this.characterOutputGain!);
       this.characterOutputGain!.connect(this.satPreGain!);
     } else {
       this.masterGain.connect(this.satPreGain!);
@@ -3740,14 +3447,19 @@ export class AudioEngine {
     const saturationEnabled = dynamicsOwnsSaturationBypass
       ? Boolean(state.dynamicsSaturationEnabled)
       : true;
+    const saturationHandledByWorklet = Boolean(
+      dynamicsOwnsSaturationBypass &&
+      saturationEnabled &&
+      this.characterProcessorNodeMode === 'worklet',
+    );
     const rawDrive = saturationEnabled
-      ? Math.max(0, Math.min(1, dynamicsOwnsSaturationBypass ? (state.dynamicsSaturationDrive ?? 0) : (state.masterSatDrive ?? 0)))
+      ? Math.max(0, Math.min(1, saturationHandledByWorklet ? 0 : dynamicsOwnsSaturationBypass ? (state.dynamicsSaturationDrive ?? 0) : (state.masterSatDrive ?? 0)))
       : 0;
     const drive = rawDrive * (dynamicsOwnsSaturationBypass ? 0.75 : 1);
     const tone = Math.max(0, Math.min(1, dynamicsOwnsSaturationBypass ? (state.dynamicsSaturationTone ?? 0.5) : (state.masterSatTone ?? 0.5)));
     const mode = (saturationEnabled
       ? (dynamicsOwnsSaturationBypass ? (state.dynamicsSaturationMode ?? 'clean') : (state.masterSatMode ?? 'clean'))
-      : 'clean') as 'clean' | 'tape' | 'tube';
+      : 'clean') as SliderState['dynamicsSaturationMode'] | SliderState['masterSatMode'];
     const preGainValue = 1 + drive * 3;
     const postCompensation = 1 / (1 + drive * 1.5);
     const tiltDb = (tone - 0.5) * 12;
@@ -3764,104 +3476,98 @@ export class AudioEngine {
     this.satPostTone?.gain.setTargetAtTime(tiltDb, now, 0.05);
   }
 
-  private updateCharacterRandomHold(now: number, params: {
-    active: boolean;
-    rate: number;
-    depth: number;
-    randomDrift: number;
-    randomHoldRateHz: number;
-    randomHoldLag: number;
-    randomDelayDepth: number;
-    randomSpreadDelayDepth: number;
-    randomFilterDepth: number;
-    randomSpreadFilterDepth: number;
-    shallowFlavor: number;
-    abyssFlavor: number;
-    stereo: number;
-    damage: number;
-    baseDelay: number;
-    spreadBaseDelay: number;
-  }): void {
-    if (
-      !this.characterRandomHoldSource ||
-      !this.characterRandomHoldDepth ||
-      !this.characterRandomHoldFilterDepth ||
-      !this.characterSpreadRandomHoldSource ||
-      !this.characterSpreadRandomHoldDepth ||
-      !this.characterSpreadRandomHoldFilterDepth
-    ) {
-      return;
-    }
-
-    const {
-      active,
-      rate,
-      depth,
-      randomDrift,
-      randomHoldRateHz,
-      randomHoldLag,
-      randomDelayDepth,
-      randomSpreadDelayDepth,
-      randomFilterDepth,
-      randomSpreadFilterDepth,
-      shallowFlavor,
-      abyssFlavor,
-      stereo,
-      damage,
-      baseDelay,
-      spreadBaseDelay,
-    } = params;
-    const holdAmount = active
-      ? clampUnitInterval(randomDrift + depth * (0.18 + shallowFlavor * 0.16 + abyssFlavor * 0.1) + damage * 0.22)
-      : 0;
-    const mainDepth = Math.min(Math.max(0, baseDelay - 0.0002), holdAmount * randomDelayDepth);
-    const spreadDepth = Math.min(Math.max(0, spreadBaseDelay - 0.0002), holdAmount * randomSpreadDelayDepth);
-    const filterDepth = holdAmount * randomFilterDepth;
-    const spreadFilterDepth = holdAmount * randomSpreadFilterDepth;
-
-    this.characterRandomHoldDepth.gain.setTargetAtTime(mainDepth, now, 0.12);
-    this.characterSpreadRandomHoldDepth.gain.setTargetAtTime(spreadDepth, now, 0.12);
-    this.characterRandomHoldFilterDepth.gain.setTargetAtTime(filterDepth, now, 0.12);
-    this.characterSpreadRandomHoldFilterDepth.gain.setTargetAtTime(spreadFilterDepth, now, 0.12);
-    if (holdAmount <= 0.0001) {
-      this.characterRandomHoldSource.offset.cancelScheduledValues(now);
-      this.characterSpreadRandomHoldSource.offset.cancelScheduledValues(now);
-      this.characterRandomHoldSource.offset.setTargetAtTime(0, now, 0.18);
-      this.characterSpreadRandomHoldSource.offset.setTargetAtTime(0, now, 0.18);
-      this.characterRandomHoldNextTime = 0;
-      this.characterRandomHoldValue = 0;
-      this.characterSpreadRandomHoldValue = 0;
-      return;
-    }
-
-    if (this.characterRandomHoldNextTime > now) return;
-
-    const rng = this.rng ?? Math.random;
-    const nextHoldValue = (previous: number) => {
-      let next = rngFloat(rng, -1, 1);
-      if (Math.abs(next - previous) < 0.24) {
-        next += next >= previous ? 0.34 : -0.34;
-      }
-      return Math.max(-1, Math.min(1, next));
+  private sendCharacterProcessorParams(targets: DynamicsTargets): void {
+    if (!(this.characterProcessorNode instanceof AudioWorkletNode)) return;
+    const params = {
+      active: targets.routing.characterPathActive ? 1 : 0,
+      allpassActive: targets.routing.allpassStackActive ? 1 : 0,
+      dry: targets.dry,
+      wet: targets.wet,
+      degradeMix: targets.degradeWetRatio,
+      workletAlias: targets.workletAlias,
+      rawDegradeGeneration: targets.rawDegradeGeneration,
+      rawCorrosion: targets.rawCorrosion,
+      rawMediaWear: targets.rawMediaWear,
+      noiseGain: targets.noiseGain,
+      jitterDepth: targets.jitterDepth,
+      randomDriftFilterHz: targets.randomDriftFilterHz,
+      randomDriftDepth: targets.randomDriftDepth,
+      baseDelay: targets.baseDelay,
+      spreadBaseDelay: targets.spreadBaseDelay,
+      randomDrift: targets.randomDrift,
+      randomHoldRateHz: targets.randomHoldRateHz,
+      randomHoldLag: targets.randomHoldLag,
+      randomDelayDepth: targets.randomDelayDepth,
+      randomSpreadDelayDepth: targets.randomSpreadDelayDepth,
+      randomFilterDepth: targets.randomFilterDepth,
+      randomSpreadFilterDepth: targets.randomSpreadFilterDepth,
+      depth: targets.depth,
+      rate: targets.rate,
+      shallowFlavor: targets.shallowFlavor,
+      abyssFlavor: targets.abyssFlavor,
+      stereo: targets.stereo,
+      damage: targets.damage,
+      mainPan: targets.mainPan,
+      spreadPan: targets.spreadPan,
+      mainDelayGain: targets.mainDelayGain,
+      spreadDelayGain: targets.spreadDelayGain,
+      wowFrequency: targets.wowFrequency,
+      flutterFrequency: targets.flutterFrequency,
+      flutterRandomDepth: targets.flutterRandomDepth,
+      wowDepth: targets.wowDepth,
+      flutterDepth: targets.flutterDepth,
+      highpassHz: targets.highpassHz,
+      highpassQ: targets.highpassQ,
+      allpassAFrequency: targets.allpassAFrequency,
+      allpassAQ: targets.allpassAQ,
+      allpassBFrequency: targets.allpassBFrequency,
+      allpassBQ: targets.allpassBQ,
+      headBumpFrequency: targets.headBumpFrequency,
+      headBumpQ: targets.headBumpQ,
+      headBumpGain: targets.headBumpGain,
+      dropoutFilterHz: targets.dropoutFilterHz,
+      dropoutDepth: targets.dropoutDepth,
+      dropoutGain: targets.dropoutGain,
+      envFilterHz: targets.envFilterHz,
+      envToLowpassGain: targets.envToLowpassGain,
+      envToResonanceGain: targets.envToResonanceGain,
+      envToWetGain: targets.envToWetGain,
+      lowpassHz: targets.lowpassHz,
+      lowpassQ: targets.lowpassQ,
+      lowpassStage2Hz: targets.lowpassStage2Hz,
+      lowpassStage2Q: targets.lowpassStage2Q,
+      compressorThreshold: targets.compressorThreshold,
+      compressorKnee: targets.compressorKnee,
+      compressorRatio: targets.compressorRatio,
+      compressorAttack: targets.compressorAttack,
+      compressorRelease: targets.compressorRelease,
+      compressorMakeup: targets.compressorMakeup,
+      saturation: targets.saturation,
+      corrosion: targets.corrosion,
+      masterSatActive: targets.masterSatActive ? 1 : 0,
+      masterSatMode: targets.masterSatMode,
+      masterSatDrive: targets.masterSatDrive,
+      masterSatTone: targets.masterSatTone,
+      masterSatBias: targets.masterSatBias,
+      endCompActive: targets.routing.endChainActive ? 1 : 0,
+      endCompThreshold: targets.endThreshold,
+      endCompKnee: targets.endKnee,
+      endCompRatio: targets.endRatio,
+      endCompAttack: targets.endAttack,
+      endCompRelease: targets.endRelease,
+      endCompMakeup: targets.endMakeup,
+      endCompMix: targets.endWet,
+      endCompDetectorHpHz: targets.endDetectorHpHz,
+      endCompDetectorTilt: targets.endDetectorTilt,
+      endCompAutoMakeup: targets.endAutoMakeup,
+      endCompProgramRelease: targets.endProgramRelease,
     };
-    const mainTarget = nextHoldValue(this.characterRandomHoldValue);
-    let spreadTarget = Math.max(
-      -1,
-      Math.min(1, mainTarget * (0.58 + rng() * 0.24) + rngFloat(rng, -0.5, 0.5) * (0.28 + stereo * 0.32)),
+    this.postCachedWorkletMessage(
+      'dynamics:character',
+      this.characterProcessorNode,
+      { type: 'params', params },
+      params
     );
-    if (Math.abs(spreadTarget - this.characterSpreadRandomHoldValue) < 0.18) {
-      spreadTarget = Math.max(-1, Math.min(1, spreadTarget + (spreadTarget >= this.characterSpreadRandomHoldValue ? 0.24 : -0.24)));
-    }
-    const clockHz = randomHoldRateHz + damage * 0.15;
-    const interval = Math.max(0.32, 1 / Math.max(0.08, clockHz));
-    const lag = randomHoldLag + (1 - rate) * 0.08;
-    const spreadDelay = Math.min(0.24, interval * (0.05 + rng() * 0.16));
-
-    this.characterRandomHoldSource.offset.setTargetAtTime(mainTarget, now, lag);
-    this.characterSpreadRandomHoldSource.offset.setTargetAtTime(spreadTarget, now + spreadDelay, lag * (0.85 + rng() * 0.3));
-    this.characterRandomHoldValue = mainTarget;
-    this.characterSpreadRandomHoldValue = spreadTarget;
-    this.characterRandomHoldNextTime = now + interval * (0.45 + rng() * 1.25 + Math.abs(mainTarget) * 0.15);
   }
 
   private applyDynamics(state: SliderState, now: number): void {
@@ -3872,87 +3578,13 @@ export class AudioEngine {
     }
 
     if (targets.routing.characterPathActive) {
-      this.characterDryGain?.gain.setTargetAtTime(targets.dry, now, 0.03);
-      this.characterWetGain?.gain.setTargetAtTime(targets.wet, now, 0.03);
-      this.characterNoiseGain?.gain.setTargetAtTime(targets.noiseGain, now, 0.08);
-      this.characterJitterDepth?.gain.setTargetAtTime(targets.jitterDepth, now, 0.08);
-      this.characterRandomDriftFilter?.frequency.setTargetAtTime(targets.randomDriftFilterHz, now, 0.12);
-      this.characterDelay?.delayTime.setTargetAtTime(targets.baseDelay, now, 0.08);
-      this.characterSpreadDelay?.delayTime.setTargetAtTime(targets.spreadBaseDelay, now, 0.08);
-      this.updateCharacterRandomHold(now, {
-        active: targets.routing.characterPathActive,
-        rate: targets.rate,
-        depth: targets.depth,
-        randomDrift: targets.randomDrift,
-        randomHoldRateHz: targets.randomHoldRateHz,
-        randomHoldLag: targets.randomHoldLag,
-        randomDelayDepth: targets.randomDelayDepth,
-        randomSpreadDelayDepth: targets.randomSpreadDelayDepth,
-        randomFilterDepth: targets.randomFilterDepth,
-        randomSpreadFilterDepth: targets.randomSpreadFilterDepth,
-        shallowFlavor: targets.shallowFlavor,
-        abyssFlavor: targets.abyssFlavor,
-        stereo: targets.stereo,
-        damage: targets.damage,
-        baseDelay: targets.baseDelay,
-        spreadBaseDelay: targets.spreadBaseDelay,
-      });
-      this.characterMainPan?.pan.setTargetAtTime(targets.mainPan, now, 0.08);
-      this.characterSpreadPan?.pan.setTargetAtTime(targets.spreadPan, now, 0.08);
-      this.characterMainDelayGain?.gain.setTargetAtTime(targets.mainDelayGain, now, 0.08);
-      this.characterSpreadDelayGain?.gain.setTargetAtTime(targets.spreadDelayGain, now, 0.08);
-      this.characterWowLfo?.frequency.setTargetAtTime(targets.wowFrequency, now, 0.08);
-      this.characterFlutterLfo?.frequency.setTargetAtTime(targets.flutterFrequency, now, 0.08);
-      this.characterWowDepth?.gain.setTargetAtTime(targets.wowDepth, now, 0.08);
-      this.characterFlutterDepth?.gain.setTargetAtTime(targets.flutterDepth, now, 0.08);
-      this.characterRandomDriftDepth?.gain.setTargetAtTime(targets.randomDriftDepth + targets.flutterRandomDepth, now, 0.12);
-      this.characterHighpass?.frequency.setTargetAtTime(targets.highpassHz, now, 0.08);
-      this.characterHighpass?.Q.setTargetAtTime(targets.highpassQ, now, 0.08);
-      this.characterAllpassA?.frequency.setTargetAtTime(targets.allpassAFrequency, now, 0.08);
-      this.characterAllpassA?.Q.setTargetAtTime(targets.allpassAQ, now, 0.08);
-      this.characterAllpassB?.frequency.setTargetAtTime(targets.allpassBFrequency, now, 0.08);
-      this.characterAllpassB?.Q.setTargetAtTime(targets.allpassBQ, now, 0.08);
-      this.characterHeadBump?.frequency.setTargetAtTime(targets.headBumpFrequency, now, 0.1);
-      this.characterHeadBump?.Q.setTargetAtTime(targets.headBumpQ, now, 0.1);
-      this.characterHeadBump?.gain.setTargetAtTime(targets.headBumpGain, now, 0.1);
-      this.characterDropoutFilter?.frequency.setTargetAtTime(targets.dropoutFilterHz, now, 0.12);
-      this.characterDropoutDepth?.gain.setTargetAtTime(targets.dropoutDepth, now, 0.12);
-      this.characterDropoutGain?.gain.setTargetAtTime(targets.dropoutGain, now, 0.12);
-      this.characterEnvFilter?.frequency.setTargetAtTime(targets.envFilterHz, now, 0.1);
-      this.characterEnvToLowpass?.gain.setTargetAtTime(targets.envToLowpassGain, now, 0.08);
-      this.characterEnvToResonance?.gain.setTargetAtTime(targets.envToResonanceGain, now, 0.08);
-      this.characterEnvToWetGain?.gain.setTargetAtTime(targets.envToWetGain, now, 0.08);
-      this.characterLowpass?.frequency.setTargetAtTime(targets.lowpassHz, now, 0.08);
-      this.characterLowpass?.Q.setTargetAtTime(targets.lowpassQ, now, 0.08);
-      this.characterLowpassStage2?.frequency.setTargetAtTime(targets.lowpassStage2Hz, now, 0.08);
-      this.characterLowpassStage2?.Q.setTargetAtTime(targets.lowpassStage2Q, now, 0.08);
-      this.characterCompressor?.threshold.setTargetAtTime(targets.compressorThreshold, now, 0.05);
-      this.characterCompressor?.knee.setTargetAtTime(targets.compressorKnee, now, 0.05);
-      this.characterCompressor?.ratio.setTargetAtTime(targets.compressorRatio, now, 0.05);
-      this.characterCompressor?.attack.setTargetAtTime(targets.compressorAttack, now, 0.05);
-      this.characterCompressor?.release.setTargetAtTime(targets.compressorRelease, now, 0.05);
-      this.characterCompressorMakeup?.gain.setTargetAtTime(targets.compressorMakeup, now, 0.05);
+      this.sendCharacterProcessorParams(targets);
     }
 
-    const curveKey = `${Math.round(targets.saturation * 100)}:${Math.round(targets.corrosion * 100)}`;
-    if (this.characterSaturationNode && curveKey !== this.lastCharacterCurveKey) {
-      this.characterSaturationNode.curve = makeCharacterSaturationCurve(targets.saturation, targets.corrosion);
-      this.characterSaturationNode.oversample = targets.saturation + targets.corrosion > 0.2 ? '2x' : 'none';
-      this.lastCharacterCurveKey = curveKey;
-    }
-    const degradeParams = 'parameters' in (this.characterDegradeNode ?? {})
-      ? (this.characterDegradeNode as AudioWorkletNode).parameters
-      : null;
-    degradeParams?.get('enabled')?.setTargetAtTime(targets.routing.degradeWorkletActive ? 1 : 0, now, 0.03);
-    degradeParams?.get('mix')?.setTargetAtTime(targets.degradeWetRatio, now, 0.03);
-    degradeParams?.get('alias')?.setTargetAtTime(targets.workletAlias, now, 0.03);
-    degradeParams?.get('generation')?.setTargetAtTime(targets.rawDegradeGeneration, now, 0.03);
-    degradeParams?.get('corrosion')?.setTargetAtTime(targets.rawCorrosion, now, 0.03);
-    degradeParams?.get('wear')?.setTargetAtTime(targets.rawMediaWear, now, 0.03);
-
-    this.endCompDryGain?.gain.setTargetAtTime(targets.endDry, now, 0.03);
-    this.endCompWetGain?.gain.setTargetAtTime(targets.endWet, now, 0.03);
-    this.endCompMakeupGain?.gain.setTargetAtTime(targets.endMakeup, now, 0.03);
+    const endHandledByWorklet = Boolean(targets.routing.endChainActive && this.characterProcessorNodeMode === 'worklet');
+    this.endCompDryGain?.gain.setTargetAtTime(endHandledByWorklet ? 1 : targets.endDry, now, 0.03);
+    this.endCompWetGain?.gain.setTargetAtTime(endHandledByWorklet ? 0 : targets.endWet, now, 0.03);
+    this.endCompMakeupGain?.gain.setTargetAtTime(endHandledByWorklet ? 1 : targets.endMakeup, now, 0.03);
     if (this.endCompCompressor) {
       this.endCompCompressor.threshold.setTargetAtTime(targets.endThreshold, now, 0.03);
       this.endCompCompressor.knee.setTargetAtTime(targets.endKnee, now, 0.03);
@@ -5181,7 +4813,7 @@ export class AudioEngine {
 
     // If a drum-only context exists from independent drum mode, tear it down.
     // We need a fresh context for the full audio graph (worklets can't be re-added).
-    if (this.ctx && !this.graphBootstrapped) {
+      if (this.ctx && !this.graphBootstrapped) {
       if (this.drumSynth) {
         this.drumSynth.dispose();
         this.drumSynth = null;
@@ -5239,6 +4871,7 @@ export class AudioEngine {
       this.drumDelayBSend = null;
       this.granularDelayASend = null;
       this.sharedGranularDelayBSend = null;
+      this.granularFxModuleContext = null;
       // Null pad synth chain
       this.synthBus = null;
       this.dryBus = null;
@@ -5246,7 +4879,7 @@ export class AudioEngine {
       this.pad2ReverbSend = null;
       this.synthDirect = null;
       this.padWasmNode = null;
-      this.padWasmReady = false;
+      this.padWasmInitPromise = null;
       this.oceanDelayASend = null;
       this.oceanDelayBSend = null;
       this.waterDelayASend = null;
@@ -5254,7 +4887,6 @@ export class AudioEngine {
       this.insectsDelayASend = null;
       this.insectsDelayBSend = null;
       this.voices = [];
-      this.voicesStarted = false;
       this.resetIndependentSynthContextState();
       this.resetBootCapabilities();
       this.resetWorkletParamCaches();
@@ -5362,8 +4994,10 @@ export class AudioEngine {
             this.ctx!.audioWorklet.addModule(granularFxWasmWorkletUrl),
           ]);
           this.wasmGranularBinary = binary;
+          this.granularFxModuleContext = this.ctx;
           console.log('Granular FX WASM worklet loaded (%d KB)', Math.round(binary.byteLength / 1024));
         } catch (e) {
+          this.granularFxModuleContext = null;
           console.error('Failed to load WASM granular:', e);
           console.warn('Granular FX will be unavailable — WASM binary could not be loaded');
         }
@@ -5420,7 +5054,7 @@ export class AudioEngine {
         reverb: shouldLoadReverb,
         spectralFreeze: shouldLoadSpectralFreeze,
         soundscapes: true,
-        granular: shouldLoadGranular,
+        granular: !!this.wasmGranularBinary && this.granularFxModuleContext === this.ctx,
       };
 
       // Create audio graph
@@ -5448,8 +5082,7 @@ export class AudioEngine {
       this.wireDrumSynthCallbacks();
     }
 
-    // Start voices
-    this.startVoices();
+    // Pad audio is WASM-only; do not start legacy JS oscillator voices.
 
     // Start phrase scheduling
     this.schedulePhraseUpdates();
@@ -5638,7 +5271,6 @@ export class AudioEngine {
       }
     }
     this.voices = [];
-    this.voicesStarted = false;
 
     this.oceanTexturePlayer?.dispose();
     this.oceanTexturePlayer = null;
@@ -5767,7 +5399,7 @@ export class AudioEngine {
       try { this.padWasmNode.port.close(); } catch { /* */ }
       try { this.padWasmNode.disconnect(); } catch { /* */ }
       this.padWasmNode = null;
-      this.padWasmReady = false;
+      this.padWasmInitPromise = null;
     }
 
     // Tear down lead FM WASM worklet
@@ -6128,9 +5760,8 @@ export class AudioEngine {
         this.birds2Texture = null;
         this.frogsTexture = null;
         this.padWasmNode = null;
-        this.padWasmReady = false;
+        this.padWasmInitPromise = null;
         this.voices = [];
-        this.voicesStarted = false;
         this.resetIndependentSynthContextState();
       }
     }
@@ -6185,30 +5816,29 @@ export class AudioEngine {
     if (!this.ctx || (!this.isRunning && !effectiveState.synthEuclideanMasterEnabled)) return;
 
     const padActive = this.isAnyPadSourceActive(effectiveState);
+    if (padActive && !this.padWasmNode) {
+      void this.ensurePadWasmForIndependentSynth();
+    }
 
     // If pad output just became fully inactive, release all active synth voices immediately.
     // Euclidean synth lanes can keep pad voices active even when the pad engine toggle is off.
-    if (!padActive && this._lastPadEnabled !== false && this.voices.length > 0) {
+    if (!padActive && this._lastPadEnabled !== false) {
       const now = this.ctx.currentTime;
       const release = Math.max(0.001, effectiveState.synthRelease || 1.0);
-      this.voices.forEach((voice, i) => {
+      this.voices.forEach((voice) => {
         if (voice.active) {
           voice.envelope.gain.cancelScheduledValues(now);
           voice.envelope.gain.setTargetAtTime(0, now, release / 4);
           voice.active = false;
         }
-        // Always send WASM noteOff — Euclidean-owned voices may be active in WASM
-        // even when JS voice.active is false
-        if (this.padWasmReady && this.padWasmNode) {
-          this.padWasmNode.port.postMessage({ type: 'noteOff', voiceIndex: i });
-        }
       });
+      this.postPadWasmAllNotesOff();
     }
     this._lastPadEnabled = padActive;
 
     // If synth chord sequencer was just disabled, silence all synth voices
     // BUT only if no Euclidean lanes are using synth sources
-    if (effectiveState.synthChordSequencerEnabled === false && this.voices.length > 0) {
+    if (effectiveState.synthChordSequencerEnabled === false) {
       const isLeadSrc = (s: string) => this.isNonPadMelodicSource(s);
       const euclideanUsesSynth = [
         effectiveState.synthEuclid1Enabled && !isLeadSrc(effectiveState.synthEuclid1Source),
@@ -6220,16 +5850,14 @@ export class AudioEngine {
       if (!euclideanUsesSynth) {
         const now = this.ctx.currentTime;
         const release = Math.max(0.001, effectiveState.synthRelease || 1.0);
-        this.voices.forEach((voice, i) => {
+        this.voices.forEach((voice) => {
           if (voice.active) {
             voice.envelope.gain.cancelScheduledValues(now);
             voice.envelope.gain.setTargetAtTime(0, now, release / 4);
             voice.active = false;
-            if (this.padWasmReady && this.padWasmNode) {
-              this.padWasmNode.port.postMessage({ type: 'noteOff', voiceIndex: i });
-            }
           }
         });
+        this.postPadWasmAllNotesOff();
       }
     }
 
@@ -6534,7 +6162,9 @@ export class AudioEngine {
     });
 
     // Granular FX (unified granular engine)
-    try {
+    const canCreateGranularFx = !!this.wasmGranularBinary && this.granularFxModuleContext === ctx;
+    if (canCreateGranularFx) {
+      try {
       this.granularFxNode = new AudioWorkletNode(ctx, 'granular-fx-wasm', {
         numberOfInputs: 1,
         numberOfOutputs: 1,
@@ -6635,12 +6265,15 @@ export class AudioEngine {
 
       // Note: randomSequence is sent later via sendGranularRandomSequence()
       // (rng is not yet initialized at this point)
-    } catch (e) {
-      console.warn('Granular FX worklet not available:', e);
+      } catch (e) {
+        console.warn('Granular FX worklet not available:', e);
+      }
+    } else if (this.sliderState && this.getRequiredBootCapabilities(this.sliderState).granular) {
+      console.warn('Granular FX skipped because its WASM worklet was not loaded');
     }
 
-    // Create voices
-    await this.createVoices();
+    // Pad audio is WASM-only. Legacy JS oscillator voices stay dormant so WASM
+    // init/routing mistakes are audible instead of being hidden by a fallback.
 
     // Create pad split buses (post-fader for main mix, pre-fader for granular)
     this.pad1Bus = ctx.createGain();
@@ -7007,238 +6640,6 @@ export class AudioEngine {
     this.graphBootstrapped = true;
   }
 
-  private async createVoices(): Promise<void> {
-    if (!this.ctx) return;
-
-    const ctx = this.ctx;
-
-    // Clear any existing voices first (in case of restart)
-    for (const voice of this.voices) {
-      try {
-        voice.osc1.stop();
-        voice.osc2.stop();
-        voice.osc3.stop();
-        voice.osc4.stop();
-        voice.noise?.stop();
-      } catch {
-        // Already stopped or never started
-      }
-    }
-    this.voices = [];
-
-    // Create saturation curve
-    const saturationCurve = this.createSaturationCurve(this.sliderState?.hardness ?? 0.3);
-
-    // Read new pad params for oscillator waveforms (fall back to legacy mapping)
-    const s = this.sliderState;
-    const oscAWave = (s?.padOscAWave ?? 'sawtooth') as OscillatorType;
-    const oscBWave = (s?.padOscBWave ?? 'triangle') as OscillatorType;
-    const subWave = (s?.padSubWave ?? 'sine') as OscillatorType;
-    const subEnabled = s?.padSubEnabled ?? false;
-    const oscALevel = s?.padOscALevel ?? 0.6;
-    const oscBLevel = s?.padOscBLevel ?? 0.4;
-    const subLevel = s?.padSubLevel ?? 0.3;
-
-    // Osc Mix crossfade: 0=A only, 0.5=both full, 1=B only
-    const oscMix = s?.padOscMix ?? 0.5;
-    const aMix = Math.min(1, 2 * (1 - oscMix));
-    const bMix = Math.min(1, 2 * oscMix);
-    const effectiveALevel = oscALevel * aMix;
-    const effectiveBLevel = oscBLevel * bMix;
-
-    for (let i = 0; i < 6; i++) {
-      // Oscillators - waveforms from preset params
-      const osc1 = ctx.createOscillator();
-      osc1.type = oscAWave;
-
-      const osc2 = ctx.createOscillator();
-      osc2.type = oscAWave;
-
-      const osc3 = ctx.createOscillator();
-      osc3.type = oscBWave;
-
-      const osc4 = ctx.createOscillator();
-      osc4.type = subEnabled ? subWave : oscBWave;
-
-      // Per-oscillator gain nodes for mixing
-      const osc1Gain = ctx.createGain();
-      osc1Gain.gain.value = effectiveALevel;
-
-      const osc2Gain = ctx.createGain();
-      osc2Gain.gain.value = effectiveALevel * 0.8;
-
-      const osc3Gain = ctx.createGain();
-      osc3Gain.gain.value = effectiveBLevel;
-
-      const osc4Gain = ctx.createGain();
-      osc4Gain.gain.value = subEnabled ? subLevel : effectiveBLevel * 0.8;
-
-      // Noise
-      const noiseType = (s?.padNoiseType ?? 'white') as 'white' | 'pink';
-      const noiseBuffer = this.createNoiseBuffer(ctx, 2, noiseType);
-      const noise = ctx.createBufferSource();
-      noise.buffer = noiseBuffer;
-      noise.loop = true;
-
-      const noiseLevel = s?.padNoiseLevel ?? 0.15;
-      const noiseGain = ctx.createGain();
-      noiseGain.gain.value = noiseLevel * 0.1;
-
-      // Filter A
-      const filter = ctx.createBiquadFilter();
-      filter.type = 'lowpass';
-      filter.frequency.value = 2000;
-      filter.Q.value = 1;
-
-      // Filter B (transparent when disabled: lowpass at 20kHz)
-      const filterB = ctx.createBiquadFilter();
-      const fbEnabled = s?.padFilterBEnabled ?? false;
-      if (fbEnabled) {
-        filterB.type = (s?.padFilterBType ?? 'highpass') as BiquadFilterType;
-        filterB.frequency.value = s?.padFilterBCutoff ?? 200;
-        filterB.Q.value = s?.padFilterBQ ?? 1;
-      } else {
-        filterB.type = 'lowpass';
-        filterB.frequency.value = 20000;
-        filterB.Q.value = 0.1;
-      }
-
-      // Warmth filter (low shelf - boosts lows for warmth)
-      const warmthFilter = ctx.createBiquadFilter();
-      warmthFilter.type = 'lowshelf';
-      warmthFilter.frequency.value = 250;
-      warmthFilter.gain.value = 0;
-
-      // Presence filter (peaking EQ - controls mid-high presence without harshness)
-      const presenceFilter = ctx.createBiquadFilter();
-      presenceFilter.type = 'peaking';
-      presenceFilter.frequency.value = 3000;
-      presenceFilter.Q.value = 0.8;
-      presenceFilter.gain.value = 0;
-
-      // Saturation
-      const saturation = ctx.createWaveShaper();
-      saturation.curve = saturationCurve;
-      saturation.oversample = '2x';
-
-      // Voice gain
-      const gain = ctx.createGain();
-      gain.gain.value = 0.15;
-
-      // Mod envelope gain (used for amplitude modulation via mod envelope)
-      const modEnvGain = ctx.createGain();
-      modEnvGain.gain.value = 1.0; // unity = no modulation
-
-      // Envelope gain
-      const envelope = ctx.createGain();
-      envelope.gain.value = 0;
-
-      // Mixer gain (per-voice level: pad 1 vs pad 2)
-      const mixerGain = ctx.createGain();
-      mixerGain.gain.value = (s?.synthLevel ?? 0.6) * ENGINE_TRIMS.pad;
-
-      // Connect voice chain: oscs -> oscGains -> filterA -> filterB -> warmth -> presence -> saturation -> gain -> modEnvGain -> envelope -> mixerGain
-      osc1.connect(osc1Gain);
-      osc2.connect(osc2Gain);
-      osc3.connect(osc3Gain);
-      osc4.connect(osc4Gain);
-      
-      osc1Gain.connect(filter);
-      osc2Gain.connect(filter);
-      osc3Gain.connect(filter);
-      osc4Gain.connect(filter);
-      
-      noise.connect(noiseGain);
-      noiseGain.connect(filter);
-
-      filter.connect(filterB);
-      filterB.connect(warmthFilter);
-      warmthFilter.connect(presenceFilter);
-      presenceFilter.connect(saturation);
-      saturation.connect(gain);
-      gain.connect(modEnvGain);
-      modEnvGain.connect(envelope);
-      envelope.connect(mixerGain);
-
-      this.voices.push({
-        osc1,
-        osc2,
-        osc3,
-        osc4,
-        osc1Gain,
-        osc2Gain,
-        osc3Gain,
-        osc4Gain,
-        noise,
-        noiseGain,
-        filter,
-        filterB,
-        warmthFilter,
-        presenceFilter,
-        gain,
-        saturation,
-        modEnvGain,
-        envelope,
-        mixerGain,
-        active: false,
-        targetFreq: 0,
-      });
-    }
-  }
-
-  private createNoiseBuffer(ctx: AudioContext, duration: number, type: 'white' | 'pink' = 'white'): AudioBuffer {
-    const sampleRate = ctx.sampleRate;
-    const length = sampleRate * duration;
-    const buffer = ctx.createBuffer(2, length, sampleRate);
-
-    // Use deterministic noise if we have RNG, otherwise use Math.random
-    const rng = this.rng || Math.random;
-
-    // Crossfade length for seamless looping (50ms)
-    const fadeLength = Math.floor(sampleRate * 0.05);
-
-    for (let channel = 0; channel < 2; channel++) {
-      const data = buffer.getChannelData(channel);
-      
-      if (type === 'pink') {
-        // Pink noise using Paul Kellet's refined method (3dB/octave rolloff)
-        let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
-        for (let i = 0; i < length; i++) {
-          const white = rng() * 2 - 1;
-          b0 = 0.99886 * b0 + white * 0.0555179;
-          b1 = 0.99332 * b1 + white * 0.0750759;
-          b2 = 0.96900 * b2 + white * 0.1538520;
-          b3 = 0.86650 * b3 + white * 0.3104856;
-          b4 = 0.55000 * b4 + white * 0.5329522;
-          b5 = -0.7616 * b5 - white * 0.0168980;
-          data[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362) * 0.11;
-          b6 = white * 0.115926;
-        }
-      } else {
-        // White noise
-        for (let i = 0; i < length; i++) {
-          data[i] = rng() * 2 - 1;
-        }
-      }
-      
-      // Crossfade the end into the beginning for seamless loop
-      for (let i = 0; i < fadeLength; i++) {
-        const fadeOut = 1 - (i / fadeLength);  // 1 -> 0
-        const fadeIn = i / fadeLength;          // 0 -> 1
-        
-        // Blend end samples with beginning samples
-        const endIndex = length - fadeLength + i;
-        const startIndex = i;
-        
-        // Mix: end fades out, start fades in
-        const blended = (data[endIndex] ?? 0) * fadeOut + (data[startIndex] ?? 0) * fadeIn;
-        data[endIndex] = blended;
-      }
-    }
-
-    return buffer;
-  }
-
   private createSaturationCurve(hardness: number): Float32Array<ArrayBuffer> {
     const samples = 256;
     const buffer = new ArrayBuffer(samples * 4);
@@ -7311,25 +6712,6 @@ export class AudioEngine {
         v = Math.sin(phase * Math.PI * 2);
     }
     return v * depth;
-  }
-
-  private startVoices(): void {
-    if (!this.ctx) return;
-    if (this.voicesStarted) return;
-
-    for (const voice of this.voices) {
-      try {
-        voice.osc1.start();
-        voice.osc2.start();
-        voice.osc3.start();
-        voice.osc4.start();
-        voice.noise?.start();
-      } catch (e) {
-        // Already started - this is OK if restarting
-        console.warn('Voice already started, skipping');
-      }
-    }
-    this.voicesStarted = true;
   }
 
   private initializeHarmony(): void {
@@ -8014,10 +7396,15 @@ export class AudioEngine {
     this.notifyStateChange();
   }
 
-  private applyChord(frequencies: number[], crossfade = false): void {
+  private applyChord(frequencies: number[], _crossfade = false): void {
     if (!this.ctx || !this.sliderState || !this.rng) return;
 
     const state = this.buildPadTriggerState('pad1', this.sliderState) ?? this.getEffectivePadState(this.sliderState);
+    if (!this.padWasmNode) {
+      this.warnPadWasmUnavailable('applyChord');
+      return;
+    }
+    this.sendPadWasmParams(state);
 
     // Build set of voice indices owned by active Euclidean synth lanes
     // so we don't overwrite their notes/envelopes
@@ -8029,14 +7416,11 @@ export class AudioEngine {
         const source = sources[li];
         if (enables[li] && source?.startsWith('synth')) {
           const vi = parseInt(source.replace('synth', ''), 10) - 1;
-          if (vi >= 0 && vi < 6) euclidOwnedVoices.add(vi);
+          if (vi >= 0 && vi < PAD_VOICE_COUNT) euclidOwnedVoices.add(vi);
         }
       }
     }
 
-    const ctx = this.ctx;
-    const now = ctx.currentTime;
-    const detune = state.detune;
     const waveSpread = state.waveSpread * state.chordRate; // Fraction of chordRate → seconds
     const rng = this.rng; // Capture for use in loop
     const pad2Assign = (state.pad2Enabled && state.pad2VoiceAssign) ? state.pad2VoiceAssign : 0;
@@ -8047,22 +7431,9 @@ export class AudioEngine {
     // Apply octave shift to all frequencies
     frequencies = frequencies.map(f => f * octaveMultiplier);
 
-    // Per-oscillator octave offsets and Sub settings (Phase 2)
-    const oscAOctave = state.padOscAOctave ?? 0;
-    const oscBOctave = state.padOscBOctave ?? 0;
-    const subOctave = state.padSubOctave ?? -1;
-    const subEnabled = state.padSubEnabled ?? false;
-    const useNewOsc = state.padOscAWave !== undefined;
-
-    // Get ADSR from synth settings (clamp to ≥0.001 for setTargetAtTime safety)
-    const attack = Math.max(0.001, state.synthAttack);
-    const decay = Math.max(0.001, state.synthDecay);
-    const sustain = state.synthSustain;
-    const release = Math.max(0.001, state.synthRelease);
-
     // Filter frequencies based on voice mask - only include notes for enabled voices
     const enabledFrequencies: number[] = [];
-    for (let i = 0; i < Math.min(6, frequencies.length); i++) {
+    for (let i = 0; i < Math.min(PAD_VOICE_COUNT, frequencies.length); i++) {
       if (voiceMask & (1 << i)) {
         enabledFrequencies.push(frequencies[i] ?? frequencies[0] ?? 440);
       }
@@ -8072,42 +7443,23 @@ export class AudioEngine {
       enabledFrequencies.push(frequencies[0] ?? 440);
     }
 
-    // Generate random stagger offsets for each voice using the RNG for determinism
-    const voiceOffsets: number[] = [];
-    this.voices.forEach((_voice) => {
-      // Use RNG to get a random offset between 0 and waveSpread
-      voiceOffsets.push(rng() * waveSpread);
-    });
+    // Generate random stagger offsets for each WASM voice using the RNG for determinism.
+    const voiceOffsets = Array.from({ length: PAD_VOICE_COUNT }, () => rng() * waveSpread);
     // Sort offsets so voices come in at staggered but consistent intervals
     voiceOffsets.sort((a, b) => a - b);
 
     let padChordTriggered = false;
-    this.voices.forEach((voice, i) => {
+    for (let i = 0; i < PAD_VOICE_COUNT; i += 1) {
       // Skip voices owned by Euclidean synth lanes — scheduler drives them
-      // Also silence the JS oscillator so it doesn't conflict with WASM output
       if (euclidOwnedVoices.has(i)) {
-        if (voice.active) {
-          voice.envelope.gain.cancelScheduledValues(now);
-          voice.envelope.gain.setTargetAtTime(0, now, 0.02);
-          voice.active = false;
-        }
-        return;
+        continue;
       }
 
       const isVoiceEnabled = (voiceMask & (1 << i)) !== 0;
       
       if (!isVoiceEnabled) {
-        // Silence this voice
-        if (voice.active) {
-          const startTime = now;
-          voice.envelope.gain.cancelScheduledValues(startTime);
-          voice.envelope.gain.setTargetAtTime(0, startTime, release / 4);
-          voice.active = false;
-          if (this.padWasmReady && this.padWasmNode) {
-            this.padWasmNode.port.postMessage({ type: 'noteOff', voiceIndex: i });
-          }
-        }
-        return;
+        this.postPadWasmNoteOff(i);
+        continue;
       }
       
       // Map enabled voice index to the filtered frequency list
@@ -8118,62 +7470,19 @@ export class AudioEngine {
       const freq = enabledFrequencies[enabledIndex % enabledFrequencies.length] ?? frequencies[0] ?? 440;
       const voiceDelay = voiceOffsets[i] ?? 0; // Staggered entry time for this voice
 
-      // Calculate frequency values with per-oscillator octave offsets
-      const detuneOsc2 = useNewOsc ? -(state.padOscADetune ?? detune) : -detune;
-      const detuneOsc3 = useNewOsc ? (state.padOscBDetune ?? detune) : detune;
-      const freqOscA = useNewOsc ? freq * Math.pow(2, oscAOctave) : freq;
-      const freqOscB = useNewOsc ? freq * Math.pow(2, oscBOctave) : freq;
-      const freq1 = freqOscA;                                          // OscA - base
-      const freq2 = freqOscA * Math.pow(2, detuneOsc2 / 1200);        // OscA - detuned
-      const freq3 = freqOscB * Math.pow(2, detuneOsc3 / 1200);        // OscB - detuned
-      const freq4 = useNewOsc
-        ? (subEnabled ? freq * Math.pow(2, subOctave) : freqOscB)     // Sub at sub octave, or OscB copy
-        : freq;                                                        // Legacy: base freq
-
-      if (crossfade && voice.active) {
-        padChordTriggered = true;
-        // ADSR crossfade - old notes release while new attack
-        const startTime = now + voiceDelay;
-        
-        // Cancel any scheduled values and start release on old note
-        // Keep the old frequency during release!
-        voice.envelope.gain.cancelScheduledValues(startTime);
-        voice.envelope.gain.setTargetAtTime(0, startTime, release / 4);
-        
-        // After release completes, change frequency and start new attack
-        // Wait for ~3 time constants (95% of release) before changing pitch
-        const pitchChangeTime = startTime + release * 0.5;
-        
-        // Change frequencies at the same time as new attack starts
-        voice.osc1.frequency.setValueAtTime(freq1, pitchChangeTime);
-        voice.osc2.frequency.setValueAtTime(freq2, pitchChangeTime);
-        voice.osc3.frequency.setValueAtTime(freq3, pitchChangeTime);
-        voice.osc4.frequency.setValueAtTime(freq4, pitchChangeTime);
-        
-        // Start new attack from near-zero
-        voice.envelope.gain.setTargetAtTime(1.0, pitchChangeTime, attack / 3);
-        voice.envelope.gain.setTargetAtTime(sustain, pitchChangeTime + attack, decay / 3);
-      } else {
-        padChordTriggered = true;
-        // Simple ADSR attack - fresh start
-        const startTime = now + voiceDelay;
-        
-        // Set frequencies immediately for this voice
-        voice.osc1.frequency.setValueAtTime(freq1, startTime);
-        voice.osc2.frequency.setValueAtTime(freq2, startTime);
-        voice.osc3.frequency.setValueAtTime(freq3, startTime);
-        voice.osc4.frequency.setValueAtTime(freq4, startTime);
-        
-        // Start envelope from 0 with full attack time
-        voice.envelope.gain.cancelScheduledValues(startTime);
-        voice.envelope.gain.setValueAtTime(0, startTime);
-        voice.envelope.gain.setTargetAtTime(1.0, startTime, attack / 3);
-        voice.envelope.gain.setTargetAtTime(sustain, startTime + attack, decay / 3);
-      }
-
-      voice.targetFreq = freq;
-      voice.active = true;
-    });
+      padChordTriggered = true;
+      const trigger = () => {
+        this.padWasmNode?.port.postMessage({
+          type: 'noteOn',
+          voiceIndex: i,
+          frequency: freq,
+          velocity: 1,
+        });
+      };
+      const delayMs = Math.max(0, voiceDelay * 1000);
+      if (delayMs > 1) window.setTimeout(trigger, delayMs);
+      else trigger();
+    }
 
     if (padChordTriggered) {
       this.reportFxOnset('pad1', 'padChord');
@@ -8192,19 +7501,17 @@ export class AudioEngine {
       numberOfOutputs: 6,
       outputChannelCount: [2, 2, 2, 2, 2, 2],
     });
-    this.padWasmReady = false;
     this.padWasmNode.onprocessorerror = () => {
       console.error('[PadSynth-WASM] processorerror fired');
-      this.padWasmReady = false;
     };
     this.padWasmNode.port.onmessage = (e) => {
       if (e.data.type === 'wasmReady') {
-        this.padWasmReady = true;
+        this.padWasmUnavailableWarned = false;
         if (this.sliderState) {
           this.sendPadWasmParams(this.sliderState);
           const pad2Assign = (this.sliderState.pad2Enabled && this.sliderState.pad2VoiceAssign)
             ? this.sliderState.pad2VoiceAssign : 0;
-          for (let i = 0; i < this.voices.length; i++) {
+          for (let i = 0; i < PAD_VOICE_COUNT; i++) {
             const isPad2 = (pad2Assign & (1 << i)) !== 0;
             this.padWasmNode?.port.postMessage({ type: 'voicePad', voiceIndex: i, pad: isPad2 ? 1 : 0 });
           }
@@ -8222,7 +7529,7 @@ export class AudioEngine {
 
   /** Forward pad synth params to WASM worklet. The worklet handles pad1/pad2 key extraction. */
   private sendPadWasmParams(s: SliderState): void {
-    if (!this.padWasmNode || !this.padWasmReady) return;
+    if (!this.padWasmNode) return;
     this.postCachedWorkletMessage(
       'pad:params',
       this.padWasmNode,
@@ -8247,56 +7554,65 @@ export class AudioEngine {
 
   /** Ensure pad WASM exists when synth Euclid runs without full engine start(). */
   private async ensurePadWasmForIndependentSynth(): Promise<void> {
-    if (!this.ctx || this.padWasmNode || !this.synthBus) return;
+    const ctx = this.ctx;
+    if (!ctx || this.padWasmNode || !this.synthBus) return;
+    if (this.padWasmInitPromise) return this.padWasmInitPromise;
 
-    try {
-      if (this.padWasmModuleContext !== this.ctx) {
-        await this.ctx.audioWorklet.addModule(padSynthWasmWorkletUrl);
-        this.padWasmModuleContext = this.ctx;
-      }
+    this.padWasmInitPromise = (async () => {
+      try {
+        if (this.padWasmModuleContext !== ctx) {
+          await ctx.audioWorklet.addModule(padSynthWasmWorkletUrl);
+          this.padWasmModuleContext = ctx;
+        }
 
-      if (!this.wasmPadBinary) {
-        const padWasmUrl = getWorkletUrl('kessho_pad.wasm');
-        const padResp = await fetch(padWasmUrl);
-        if (!padResp.ok) throw new Error(`Pad WASM fetch failed: ${padResp.status}`);
-        this.wasmPadBinary = await padResp.arrayBuffer();
-      }
+        if (!this.wasmPadBinary) {
+          const padWasmUrl = getWorkletUrl('kessho_pad.wasm');
+          const padResp = await fetch(padWasmUrl);
+          if (!padResp.ok) throw new Error(`Pad WASM fetch failed: ${padResp.status}`);
+          this.wasmPadBinary = await padResp.arrayBuffer();
+        }
 
-      this.createPadWasmNode(this.ctx);
+        this.createPadWasmNode(ctx);
 
-      if (this.pad1Bus) {
-        this.padWasmNode!.connect(this.pad1Bus, 4);
+        if (this.pad1Bus) {
+          this.padWasmNode!.connect(this.pad1Bus, 4);
+        }
+        if (this.pad2Bus) {
+          this.padWasmNode!.connect(this.pad2Bus, 5);
+        }
+        if (this.pad1ReverbSend) {
+          this.padWasmNode!.connect(this.pad1ReverbSend, 2);
+        }
+        if (this.pad2ReverbSend) {
+          this.padWasmNode!.connect(this.pad2ReverbSend, 3);
+        }
+        if (this.granularPad1Send) {
+          this.padWasmNode!.connect(this.granularPad1Send, 2);
+        }
+        if (this.granularPad2Send) {
+          this.padWasmNode!.connect(this.granularPad2Send, 3);
+        }
+        if (this.pad1DelayASend) {
+          this.padWasmNode!.connect(this.pad1DelayASend, 2);
+        }
+        if (this.pad2DelayASend) {
+          this.padWasmNode!.connect(this.pad2DelayASend, 3);
+        }
+        if (this.pad1DelayBSend) {
+          this.padWasmNode!.connect(this.pad1DelayBSend, 2);
+        }
+        if (this.pad2DelayBSend) {
+          this.padWasmNode!.connect(this.pad2DelayBSend, 3);
+        }
+      } catch (e) {
+        console.warn('Independent pad WASM init failed; JS fallback is disabled:', e);
+        this.warnPadWasmUnavailable('ensurePadWasmForIndependentSynth');
+      } finally {
+        this.padWasmInitPromise = null;
       }
-      if (this.pad2Bus) {
-        this.padWasmNode!.connect(this.pad2Bus, 5);
-      }
-      if (this.pad1ReverbSend) {
-        this.padWasmNode!.connect(this.pad1ReverbSend, 2);
-      }
-      if (this.pad2ReverbSend) {
-        this.padWasmNode!.connect(this.pad2ReverbSend, 3);
-      }
-      if (this.granularPad1Send) {
-        this.padWasmNode!.connect(this.granularPad1Send, 2);
-      }
-      if (this.granularPad2Send) {
-        this.padWasmNode!.connect(this.granularPad2Send, 3);
-      }
-      if (this.pad1DelayASend) {
-        this.padWasmNode!.connect(this.pad1DelayASend, 2);
-      }
-      if (this.pad2DelayASend) {
-        this.padWasmNode!.connect(this.pad2DelayASend, 3);
-      }
-      if (this.pad1DelayBSend) {
-        this.padWasmNode!.connect(this.pad1DelayBSend, 2);
-      }
-      if (this.pad2DelayBSend) {
-        this.padWasmNode!.connect(this.pad2DelayBSend, 3);
-      }
-    } catch (e) {
-      console.warn('Independent pad WASM init failed; using JS fallback voices:', e);
-    }
+    })();
+
+    return this.padWasmInitPromise;
   }
 
   /** Voice type name prefixes for drum slider state extraction. */
@@ -8397,193 +7713,46 @@ export class AudioEngine {
    * @param noteDuration Optional duration in seconds; if provided, schedules release after this time
    */
   triggerSynthVoice(voiceIndex: number, frequency: number, velocity: number, noteDuration?: number, padParamsOverride?: SliderState): void {
-    if (!this.ctx || !this.sliderState || voiceIndex < 0 || voiceIndex >= 6) return;
+    if (!this.ctx || !this.sliderState || voiceIndex < 0 || voiceIndex >= PAD_VOICE_COUNT) return;
     // Euclidean synth lanes can target pad voices even when the pad engine toggle is off.
     if (!this.isAnyPadSourceActive(this.sliderState)) return;
 
     const isPad2Voice = this.sliderState.pad2Enabled && ((this.sliderState.pad2VoiceAssign ?? 0) & (1 << voiceIndex)) !== 0;
     // Don't bake pad level into velocity — WASM C++ applies level to main output only
     // (reverb and granular pre-fader outputs are independent of pad level).
-    // JS voices use mixerGain for level, which is set in applyParams.
     const clampedVelocity = Math.max(0, Math.min(1, velocity));
     if (clampedVelocity < 0.001) return;
     this.reportFxOnset(isPad2Voice ? 'pad2' : 'pad1', 'padEuclid');
 
-    // WASM path: send noteOn to pad worklet and skip JS oscillator manipulation
-    if (this.padWasmReady && this.padWasmNode) {
-      if (padParamsOverride) {
-        this.sendPadWasmParams(padParamsOverride);
-      }
-      // Silence the JS oscillator voice to prevent dual output through synthBus
-      if (voiceIndex < this.voices.length) {
-        const jsVoice = this.voices[voiceIndex];
-        if (jsVoice?.active) {
-          const now = this.ctx.currentTime;
-          jsVoice.envelope.gain.cancelScheduledValues(now);
-          jsVoice.envelope.gain.setTargetAtTime(0, now, 0.02);
-          jsVoice.active = false;
-        }
-      }
-      // Increment generation counter — stale noteOff timers with old gen won't fire
-      const gen = (this.synthVoiceNoteGen[voiceIndex] ?? 0) + 1;
-      this.synthVoiceNoteGen[voiceIndex] = gen;
-      this.padWasmNode.port.postMessage({
-        type: 'noteOn', voiceIndex, frequency, velocity: clampedVelocity,
-      });
-      // Schedule noteOff if duration is specified (only fires if gen still matches)
-      if (noteDuration !== undefined) {
-        const existingTimer = this.synthVoiceNoteOffTimers[voiceIndex];
-        if (existingTimer !== null) {
-          clearTimeout(existingTimer);
-        }
-        const noteOffTimerId = window.setTimeout(() => {
-          this.synthVoiceNoteOffTimers[voiceIndex] = null;
-          if (this.synthVoiceNoteGen[voiceIndex] === gen) {
-            this.padWasmNode?.port.postMessage({ type: 'noteOff', voiceIndex });
-          }
-        }, noteDuration * 1000);
-        this.synthVoiceNoteOffTimers[voiceIndex] = noteOffTimerId;
-      }
+    if (!this.padWasmNode) {
+      this.warnPadWasmUnavailable('triggerSynthVoice');
       return;
     }
 
-    // JS fallback path — needs voices to exist
-    if (voiceIndex >= this.voices.length) return;
-
-    const ctx = this.ctx;
-    const now = ctx.currentTime;
-    const voice = this.voices[voiceIndex];
-    
-    if (!voice) return;
-    
-    const state = padParamsOverride ?? this.sliderState;
-    const detune = state.detune;
-
-    // Get ADSR from correct pad (scaled by ratchet factor for tighter envelope)
-    // Clamp to ≥0.001 to prevent setTargetAtTime RangeError (timeConstant must be >0)
-    const rf = this.synthRatchetFactor;
-    const attack = Math.max(0.001, (isPad2Voice ? state.pad2Attack : state.synthAttack) * rf);
-    const decay = Math.max(0.001, (isPad2Voice ? state.pad2Decay : state.synthDecay) * rf);
-    const peakLevel = clampedVelocity;  // velocity scales the entire envelope amplitude
-    const sustain = (isPad2Voice ? state.pad2Sustain : state.synthSustain) * clampedVelocity;
-    const release = Math.max(0.001, (isPad2Voice ? state.pad2Release : state.synthRelease) * rf);
-
-    // Apply global octave shift (from correct pad)
-    const octaveShift = (isPad2Voice ? state.pad2Octave : state.synthOctave) || 0;
-    const octaveMultiplier = Math.pow(2, octaveShift);
-    const baseFreq = frequency * octaveMultiplier;
-
-    // Per-oscillator octave offsets
-    const oscAOctave = isPad2Voice ? (state.pad2OscAOctave ?? 0) : (state.padOscAOctave ?? 0);
-    const oscBOctave = isPad2Voice ? (state.pad2OscBOctave ?? 0) : (state.padOscBOctave ?? 0);
-    const subOctave = isPad2Voice ? (state.pad2SubOctave ?? -1) : (state.padSubOctave ?? -1);
-    const subEnabled = isPad2Voice ? (state.pad2SubEnabled ?? false) : (state.padSubEnabled ?? false);
-
-    const freqOscA = baseFreq * Math.pow(2, oscAOctave);
-    const freqOscB = baseFreq * Math.pow(2, oscBOctave);
-
-    // Calculate frequency values for 4 oscillators
-    const detuneOsc2 = -(isPad2Voice ? (state.pad2OscADetune ?? detune) : (state.padOscADetune ?? detune));
-    const detuneOsc3 = isPad2Voice ? (state.pad2OscBDetune ?? detune) : (state.padOscBDetune ?? detune);
-    const freq1 = freqOscA;                                          // OscA - base
-    const freq2 = freqOscA * Math.pow(2, detuneOsc2 / 1200);       // OscA - detuned
-    const freq3 = freqOscB * Math.pow(2, detuneOsc3 / 1200);       // OscB - detuned
-    const freq4 = subEnabled
-      ? baseFreq * Math.pow(2, subOctave)                           // Sub osc at sub octave
-      : freqOscB;                                                    // OscB detuned copy
-
-    // If voice is active, crossfade; otherwise fresh attack
-    // For ratchet retriggers (synthRatchetFactor < 1), force hard re-attack for distinct hits
-    if (voice.active && this.synthRatchetFactor >= 1) {
-      // Crossfade - release old note, attack new
-      voice.envelope.gain.cancelScheduledValues(now);
-      voice.envelope.gain.setTargetAtTime(0, now, release / 4);
-      
-      const pitchChangeTime = now + release * 0.5;
-      
-      voice.osc1.frequency.setValueAtTime(freq1, pitchChangeTime);
-      voice.osc2.frequency.setValueAtTime(freq2, pitchChangeTime);
-      voice.osc3.frequency.setValueAtTime(freq3, pitchChangeTime);
-      voice.osc4.frequency.setValueAtTime(freq4, pitchChangeTime);
-      
-      voice.envelope.gain.setTargetAtTime(peakLevel, pitchChangeTime, attack / 3);
-      voice.envelope.gain.setTargetAtTime(sustain, pitchChangeTime + attack, decay / 3);
-      
-      // Schedule release if duration is specified (Euclidean sequencer notes)
-      if (noteDuration !== undefined) {
-        const releaseTime = now + noteDuration;
-        voice.envelope.gain.setTargetAtTime(0, releaseTime, release / 3);
-        const relTimerId = window.setTimeout(() => {
-          voice.active = false;
-          this.voiceReleaseTimers.delete(relTimerId);
-        }, (noteDuration + release) * 1000);
-        this.voiceReleaseTimers.add(relTimerId);
-      }
-    } else {
-      // Fresh attack
-      voice.osc1.frequency.setValueAtTime(freq1, now);
-      voice.osc2.frequency.setValueAtTime(freq2, now);
-      voice.osc3.frequency.setValueAtTime(freq3, now);
-      voice.osc4.frequency.setValueAtTime(freq4, now);
-      
-      voice.envelope.gain.cancelScheduledValues(now);
-      voice.envelope.gain.setValueAtTime(0, now);
-      voice.envelope.gain.setTargetAtTime(peakLevel, now, attack / 3);
-      voice.envelope.gain.setTargetAtTime(sustain, now + attack, decay / 3);
-      
-      // Schedule release if duration is specified (Euclidean sequencer notes)
-      if (noteDuration !== undefined) {
-        const releaseTime = now + noteDuration;
-        voice.envelope.gain.setTargetAtTime(0, releaseTime, release / 3);
-        // Mark voice inactive after release completes
-        const relTimerId = window.setTimeout(() => {
-          voice.active = false;
-          this.voiceReleaseTimers.delete(relTimerId);
-        }, (noteDuration + release) * 1000);
-        this.voiceReleaseTimers.add(relTimerId);
-      }
+    if (padParamsOverride) {
+      this.sendPadWasmParams(padParamsOverride);
     }
-
-    // ── Mod Envelope (Phase 2) — per-pad params ──
-    const modEnvEnabled = isPad2Voice ? (state.pad2ModEnvEnabled ?? false) : (state.padModEnvEnabled ?? false);
-    const modEnvDest = isPad2Voice ? (state.pad2ModEnvDest ?? 'filterCutoff') : (state.padModEnvDest ?? 'filterCutoff');
-    if (modEnvEnabled && modEnvDest === 'oscBLevel') {
-      const modAttack = Math.max(0.001, isPad2Voice ? (state.pad2ModEnvAttack ?? 0.1) : (state.padModEnvAttack ?? 0.1));
-      const modDecay = Math.max(0.001, isPad2Voice ? (state.pad2ModEnvDecay ?? 0.3) : (state.padModEnvDecay ?? 0.3));
-      const modSustain = isPad2Voice ? (state.pad2ModEnvSustain ?? 0) : (state.padModEnvSustain ?? 0);
-      const modRelease = Math.max(0.001, isPad2Voice ? (state.pad2ModEnvRelease ?? 0.5) : (state.padModEnvRelease ?? 0.5));
-      const modDepth = isPad2Voice ? (state.pad2ModEnvDepth ?? 0) : (state.padModEnvDepth ?? 0);
-      const rawBaseLevel = isPad2Voice ? (state.pad2OscBLevel ?? 0.4) : (state.padOscBLevel ?? 0.4);
-      const mix = isPad2Voice ? (state.pad2OscMix ?? 0.5) : (state.padOscMix ?? 0.5);
-      const bMixMod = Math.min(1, 2 * mix);
-      const baseLevel = rawBaseLevel * bMixMod;
-      
-      voice.modEnvGain.gain.cancelScheduledValues(now);
-      voice.modEnvGain.gain.setValueAtTime(1.0, now); // keep amplitude modEnvGain at unity for oscBLevel mode
-      
-      // Apply mod env to osc3Gain (OscB main)
-      const peakLevel = Math.max(0, Math.min(1, baseLevel + modDepth));
-      const sustainLevel = baseLevel + modDepth * modSustain;
-      voice.osc3Gain.gain.cancelScheduledValues(now);
-      voice.osc3Gain.gain.setValueAtTime(baseLevel, now);
-      voice.osc3Gain.gain.setTargetAtTime(peakLevel, now, modAttack / 3);
-      voice.osc3Gain.gain.setTargetAtTime(Math.max(0, sustainLevel), now + modAttack, modDecay / 3);
-      
-      if (noteDuration !== undefined) {
-        voice.osc3Gain.gain.setTargetAtTime(baseLevel, now + noteDuration, modRelease / 3);
+    const gen = (this.synthVoiceNoteGen[voiceIndex] ?? 0) + 1;
+    this.synthVoiceNoteGen[voiceIndex] = gen;
+    this.padWasmNode.port.postMessage({
+      type: 'noteOn',
+      voiceIndex,
+      frequency,
+      velocity: clampedVelocity,
+    });
+    if (noteDuration !== undefined) {
+      const existingTimer = this.synthVoiceNoteOffTimers[voiceIndex];
+      if (existingTimer !== null) {
+        clearTimeout(existingTimer);
       }
-    } else if (modEnvEnabled && modEnvDest === 'filterCutoff') {
-      // Mod envelope → filter cutoff is handled in applyParams via time-based envelope simulation
-      voice.modEnvGain.gain.setValueAtTime(1.0, now);
-    } else if (modEnvEnabled && modEnvDest === 'pitch') {
-      // Mod envelope → pitch: handled via frequency modulation in applyParams
-      voice.modEnvGain.gain.setValueAtTime(1.0, now);
-    } else {
-      voice.modEnvGain.gain.setValueAtTime(1.0, now);
+      const noteOffTimerId = window.setTimeout(() => {
+        this.synthVoiceNoteOffTimers[voiceIndex] = null;
+        if (this.synthVoiceNoteGen[voiceIndex] === gen) {
+          this.postPadWasmNoteOff(voiceIndex);
+        }
+      }, noteDuration * 1000);
+      this.synthVoiceNoteOffTimers[voiceIndex] = noteOffTimerId;
     }
-
-    voice.targetFreq = baseFreq;
-    voice.active = true;
   }
 
   // Current spectral freeze routing mode (to detect changes)
@@ -8946,6 +8115,13 @@ export class AudioEngine {
       const pad2Bus = this.pad2Bus;
       const pad1PreFaderBus = this.pad1PreFaderBus;
       const pad2PreFaderBus = this.pad2PreFaderBus;
+      for (let i = 0; i < PAD_VOICE_COUNT; i += 1) {
+        const wasPad2 = (this.lastPad2VoiceAssign & (1 << i)) !== 0;
+        const isPad2 = (effectivePad2Assign & (1 << i)) !== 0;
+        if (wasPad2 !== isPad2) {
+          this.padWasmNode?.port.postMessage({ type: 'voicePad', voiceIndex: i, pad: isPad2 ? 1 : 0 });
+        }
+      }
       this.voices.forEach((voice, i) => {
         const wasPad2 = (this.lastPad2VoiceAssign & (1 << i)) !== 0;
         const isPad2 = (effectivePad2Assign & (1 << i)) !== 0;
@@ -8957,10 +8133,6 @@ export class AudioEngine {
           if (pad1PreFaderBus && pad2PreFaderBus) {
             try { voice.envelope.disconnect(wasPad2 ? pad2PreFaderBus : pad1PreFaderBus); } catch (_e) { /* ignore */ }
             voice.envelope.connect(isPad2 ? pad2PreFaderBus : pad1PreFaderBus);
-          }
-          // Forward voice-pad assignment to WASM pad worklet
-          if (this.padWasmReady && this.padWasmNode) {
-            this.padWasmNode.port.postMessage({ type: 'voicePad', voiceIndex: i, pad: isPad2 ? 1 : 0 });
           }
         }
       });
@@ -9063,22 +8235,24 @@ export class AudioEngine {
       voice.mixerGain.gain.setTargetAtTime((voiceLevel ?? 0.6) * ENGINE_TRIMS.pad, now, smoothTime);
     });
 
-    // ── Saturation curves (per-pad, only on change) ──
-    const pad1Hardness = shv('hardness', padState.hardness);
-    if (pad1Hardness !== this.lastHardness) {
-      this.lastHardness = pad1Hardness;
-      const curve1 = this.createSaturationCurve(pad1Hardness);
-      this.voices.forEach((voice, i) => {
-        if (!(pad2On && (pad2Assign & (1 << i)))) voice.saturation.curve = curve1;
-      });
-    }
-    const pad2Hardness = shv('pad2Hardness', padState.pad2Hardness);
-    if (pad2On && pad2Hardness !== this.pad2LastHardness) {
-      this.pad2LastHardness = pad2Hardness;
-      const curve2 = this.createSaturationCurve(pad2Hardness);
-      this.voices.forEach((voice, i) => {
-        if (pad2Assign & (1 << i)) voice.saturation.curve = curve2;
-      });
+    // ── Legacy JS saturation curves (only if the dormant fallback graph exists) ──
+    if (this.voices.length > 0) {
+      const pad1Hardness = shv('hardness', padState.hardness);
+      if (pad1Hardness !== this.lastHardness) {
+        this.lastHardness = pad1Hardness;
+        const curve1 = this.createSaturationCurve(pad1Hardness);
+        this.voices.forEach((voice, i) => {
+          if (!(pad2On && (pad2Assign & (1 << i)))) voice.saturation.curve = curve1;
+        });
+      }
+      const pad2Hardness = shv('pad2Hardness', padState.pad2Hardness);
+      if (pad2On && pad2Hardness !== this.pad2LastHardness) {
+        this.pad2LastHardness = pad2Hardness;
+        const curve2 = this.createSaturationCurve(pad2Hardness);
+        this.voices.forEach((voice, i) => {
+          if (pad2Assign & (1 << i)) voice.saturation.curve = curve2;
+        });
+      }
     }
 
     // Forward pad params to WASM worklet (if active)
@@ -11043,38 +10217,7 @@ export class AudioEngine {
       this.synthDirect.connect(this.masterGain);
     }
 
-    // Create pad voices if not exists
-    // createVoices() is async in signature but has no real awaits — runs synchronously.
-    // Start voices and connect buses inline to prevent race with scheduler.
-    if (this.voices.length === 0 && this.ctx && this.synthBus) {
-      void this.createVoices().then(() => {
-        // Start oscillators so they can produce sound
-        this.startVoices();
-        // Connect voices to pad1Bus/pad2Bus based on pad2VoiceAssign
-        const pad2a = this.sliderState?.pad2Enabled
-          ? (this.sliderState?.pad2VoiceAssign ?? 0)
-          : 0;
-        this.lastPad2VoiceAssign = pad2a;
-        if (this.pad1Bus && this.pad2Bus) {
-          const pad1Bus = this.pad1Bus;
-          const pad2Bus = this.pad2Bus;
-          const pad1PreFaderBus = this.pad1PreFaderBus;
-          const pad2PreFaderBus = this.pad2PreFaderBus;
-          this.voices.forEach((voice, i) => {
-            const isPad2 = (pad2a & (1 << i)) !== 0;
-            voice.mixerGain.connect(isPad2 ? pad2Bus : pad1Bus);
-            // Pre-fader connection for granular
-            if (pad1PreFaderBus && pad2PreFaderBus) {
-              voice.envelope.connect(isPad2 ? pad2PreFaderBus : pad1PreFaderBus);
-            }
-          });
-        } else if (this.synthBus) {
-          for (const voice of this.voices) {
-            voice.mixerGain.connect(this.synthBus);
-          }
-        }
-      });
-    }
+    // Pad note generation is WASM-only; keep the legacy JS voice graph uncreated.
   }
 
   /**
@@ -11554,21 +10697,17 @@ export class AudioEngine {
     this.synthVoiceNoteGen = this.synthVoiceNoteGen.map(gen => gen + 1) as Hex<number>;
 
     // Release all active synth voices so they don't drone after sequencer stops
-    if (this.ctx && this.voices.length > 0) {
+    if (this.ctx) {
       const now = this.ctx.currentTime;
       const release = Math.max(0.001, this.sliderState?.synthRelease ?? 1.0);
-      this.voices.forEach((voice, i) => {
+      this.voices.forEach((voice) => {
         if (voice.active) {
           voice.envelope.gain.cancelScheduledValues(now);
           voice.envelope.gain.setTargetAtTime(0, now, release / 4);
           voice.active = false;
         }
-        // Always send WASM noteOff — Euclidean-owned voices may be active in WASM
-        // even when JS voice.active is false
-        if (this.padWasmReady && this.padWasmNode) {
-          this.padWasmNode.port.postMessage({ type: 'noteOff', voiceIndex: i });
-        }
       });
+      this.postPadWasmAllNotesOff();
     }
 
     // Also tell WASM lead FM to release all notes

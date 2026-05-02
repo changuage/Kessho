@@ -44,60 +44,37 @@
 .dynamics-container {
   max-width: 1200px;
   margin: 0 auto;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(270px, 1fr) minmax(340px, 1.25fr) minmax(270px, 1fr);
   gap: 10px;
   align-items: flex-start;
-  flex-wrap: wrap;
 }
 
-.dynamics-left {
-  flex: 0 0 460px;
+.dynamics-column {
   min-width: 0;
-  max-width: 100%;
-}
-
-.dynamics-right {
-  flex: 1;
-  min-width: 320px;
-  max-width: 100%;
-}
-
-.dynamics-right-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  align-items: start;
 }
 
 .dynamics-root.mobile .dynamics-container {
+  display: flex;
   flex-direction: column;
 }
 
-.dynamics-root.mobile .dynamics-left,
-.dynamics-root.mobile .dynamics-right {
+.dynamics-root.mobile .dynamics-column {
   flex: 1 1 100%;
   width: 100%;
   min-width: 0;
 }
 
-.dynamics-root.mobile .dynamics-right-grid {
-  grid-template-columns: 1fr;
-}
-
 @media (max-width: 900px) {
   .dynamics-container {
+    display: flex;
     flex-direction: column;
   }
 
-  .dynamics-left,
-  .dynamics-right {
+  .dynamics-column {
     flex: 1 1 100%;
     width: 100%;
     min-width: 0;
-  }
-
-  .dynamics-right-grid {
-    grid-template-columns: 1fr;
   }
 }
 

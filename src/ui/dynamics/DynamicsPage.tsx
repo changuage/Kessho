@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import type { SliderState } from '../state';
+import { DEFAULT_STATE, type SliderState } from '../state';
 import type { SliderPageId } from '../sliderHelpCatalog';
 import { useSliderHelp } from '../SliderHelpOverlay';
 import { PresetDropdown } from '../../presets/PresetDropdown';
@@ -38,6 +38,8 @@ const SAT_MODE_OPTIONS: Array<{ value: SliderState['dynamicsSaturationMode']; la
   { value: 'clean', label: 'Clean' },
   { value: 'tape', label: 'Tape' },
   { value: 'tube', label: 'Tube' },
+  { value: 'diode', label: 'Diode' },
+  { value: 'fold', label: 'Fold' },
 ];
 
 const TARGET_CONTROLS: Array<{ key: keyof SliderState; label: string }> = [
@@ -67,9 +69,13 @@ function makeSubsetPresetOptions(
     customApply: (snapshot, data) => {
       const next = { ...snapshot } as Record<string, unknown>;
       const normalizedData = normalizeDynamicsDegradeAliases(data);
+      const defaultState = DEFAULT_STATE as unknown as Record<string, unknown>;
       if (options.forceDynamicsEnabled) next.dynamicsEnabled = true;
       for (const key of keys) {
-        if (key in normalizedData) next[key] = normalizedData[key as string];
+        const normalizedKey = key as string;
+        next[normalizedKey] = normalizedKey in normalizedData
+          ? normalizedData[normalizedKey]
+          : defaultState[normalizedKey];
       }
       return next as unknown as SliderState;
     },
@@ -81,7 +87,7 @@ export interface DynamicsPageProps {
   isMobile: boolean;
   onParamChange: (key: keyof SliderState, value: number) => void;
   onSelectChange: (key: keyof SliderState, value: SliderState[keyof SliderState]) => void;
-  onStateChange?: (newState: SliderState) => void;
+  onStateChange?: React.Dispatch<React.SetStateAction<SliderState>>;
   sliderProps: (paramKey: keyof SliderState) => Record<string, unknown>;
   SliderComponent: React.ComponentType<Record<string, unknown>>;
 }
@@ -152,17 +158,17 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
 
   const setModuleEnabled = useCallback((key: 'sidechainEnabled' | 'characterEnabled' | 'degradeEnabled' | 'dynamicsSaturationEnabled' | 'endCompEnabled', enabled: boolean) => {
     if (onStateChange) {
-      onStateChange({ ...state, dynamicsEnabled: true, [key]: enabled });
+      onStateChange((currentState) => ({ ...currentState, dynamicsEnabled: true, [key]: enabled }));
       return;
     }
     onSelectChange('dynamicsEnabled', true);
     onSelectChange(key, enabled);
-  }, [onSelectChange, onStateChange, state]);
+  }, [onSelectChange, onStateChange]);
 
   return (
     <div className={`dynamics-root${isMobile ? ' mobile' : ''}`}>
       <div className="dynamics-container">
-        <div className="dynamics-left">
+        <div className="dynamics-column dynamics-left">
           <div className="dynamics-global-bar">
             <span className="dynamics-title">⊞ Dynamics FX</span>
           </div>
@@ -194,243 +200,66 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
             </div>
           </section>
 
-          <section className="dynamics-section-card dynamics-sidechain-card">
+          <section className="dynamics-section-card dynamics-character-card">
             <div className="dynamics-section-head">
               <div className="dynamics-section-label">
-                <span className="dynamics-section-title">Sidechain</span>
+                <span className="dynamics-section-title">Character</span>
                 <button
-                  className={`dynamics-fx-toggle${state.sidechainEnabled ? ' on cyan' : ''}`}
+                  className={`dynamics-fx-toggle${state.characterEnabled ? ' on green' : ''}`}
                   type="button"
-                  aria-pressed={state.sidechainEnabled}
-                  onClick={() => setModuleEnabled('sidechainEnabled', !state.sidechainEnabled)}
-                  {...bindHelp('sidechainEnabled', { label: 'Sidechain FX', page: 'dynamics' })}
+                  aria-pressed={state.characterEnabled}
+                  onClick={() => setModuleEnabled('characterEnabled', !state.characterEnabled)}
+                  {...bindHelp('characterEnabled', { label: 'Character FX', page: 'dynamics' })}
                 >
-                  {state.sidechainEnabled ? 'FX On' : 'FX Off'}
+                  {state.characterEnabled ? 'FX On' : 'FX Off'}
                 </button>
               </div>
-              <span className="dynamics-section-note">{activeTargets} targets</span>
+              <span className="dynamics-section-note">{state.characterEnabled ? activeCharacter : 'Off'}</span>
             </div>
+            {state.characterEnabled && (
             <div className="dynamics-section-body">
               <div className="dynamics-module-preset-row">
                 <PresetDropdown
                   className="dynamics-preset-toolbar"
                   level="engine"
-                  scope="dynamicsSidechain"
+                  scope="dynamicsCharacter"
                   state={state}
-                  currentName={sidechainPresetName}
-                  onLoad={handleSidechainPresetLoad}
+                  currentName={characterPresetName}
+                  onLoad={handleCharacterPresetLoad}
                   onStateChange={onStateChange}
-                  presetOptions={sidechainPresetOptions}
+                  presetOptions={characterPresetOptions}
                   compact
                 />
               </div>
-              <div className="dynamics-chip-row">
-                <div className="dynamics-select-wrap">
-                  <span className="dynamics-chip-label">Key A</span>
-                  <select
-                    value={state.sidechainKeyA}
-                    onChange={(event) => onSelectChange('sidechainKeyA', event.target.value as SliderState['sidechainKeyA'])}
+              <div className="dynamics-mode-row">
+                {CHARACTER_MODE_OPTIONS.map((mode) => (
+                  <button
+                    key={mode.value}
+                    className={`dynamics-mode-btn${state.characterMode === mode.value ? ' active' : ''}`}
+                    onClick={() => onSelectChange('characterMode', mode.value)}
+                    {...bindHelp(`characterMode_${mode.value}`, { label: mode.label, page: 'dynamics' })}
                   >
-                    {DRUM_KEY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                  </select>
-                </div>
-                <div className="dynamics-select-wrap">
-                  <span className="dynamics-chip-label">Key B</span>
-                  <select
-                    value={state.sidechainKeyB}
-                    onChange={(event) => onSelectChange('sidechainKeyB', event.target.value as SliderState['sidechainKeyB'])}
-                  >
-                    {DRUM_KEY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                  </select>
-                </div>
-              </div>
-
-              <div className="dynamics-grid-2">
-                <Slider label="Key A Weight" value={state.sidechainKeyAWeight} paramKey="sidechainKeyAWeight" onChange={onParamChange} helpPage="dynamics" {...sliderProps('sidechainKeyAWeight')} {...bindSliderHelp('sidechainKeyAWeight', 'Key A Weight')} />
-                <Slider label="Key B Weight" value={state.sidechainKeyBWeight} paramKey="sidechainKeyBWeight" onChange={onParamChange} helpPage="dynamics" {...sliderProps('sidechainKeyBWeight')} {...bindSliderHelp('sidechainKeyBWeight', 'Key B Weight')} />
-                <Slider label="Amount" value={state.sidechainAmount} paramKey="sidechainAmount" onChange={onParamChange} helpPage="dynamics" {...sliderProps('sidechainAmount')} {...bindSliderHelp('sidechainAmount', 'Amount')} />
-                <Slider label="Mix" value={state.sidechainMix} paramKey="sidechainMix" onChange={onParamChange} helpPage="dynamics" {...sliderProps('sidechainMix')} {...bindSliderHelp('sidechainMix', 'Mix')} />
-              </div>
-
-              <div className="dynamics-subsection">Shape</div>
-              <div className="dynamics-grid-2">
-                <Slider label="Threshold" value={state.sidechainThreshold} paramKey="sidechainThreshold" unit=" dB" onChange={onParamChange} helpPage="dynamics" {...sliderProps('sidechainThreshold')} />
-                <Slider label="Ratio" value={state.sidechainRatio} paramKey="sidechainRatio" onChange={onParamChange} helpPage="dynamics" {...sliderProps('sidechainRatio')} />
-                <Slider label="Knee" value={state.sidechainKnee} paramKey="sidechainKnee" unit=" dB" onChange={onParamChange} helpPage="dynamics" {...sliderProps('sidechainKnee')} />
-                <Slider label="Curve" value={state.sidechainCurve} paramKey="sidechainCurve" onChange={onParamChange} helpPage="dynamics" {...sliderProps('sidechainCurve')} />
-                <Slider label="Attack" value={state.sidechainAttackMs} paramKey="sidechainAttackMs" unit=" ms" onChange={onParamChange} helpPage="dynamics" {...sliderProps('sidechainAttackMs')} />
-                <Slider label="Hold" value={state.sidechainHoldMs} paramKey="sidechainHoldMs" unit=" ms" onChange={onParamChange} helpPage="dynamics" {...sliderProps('sidechainHoldMs')} />
-                <Slider label="Release" value={state.sidechainReleaseMs} paramKey="sidechainReleaseMs" unit=" ms" onChange={onParamChange} helpPage="dynamics" {...sliderProps('sidechainReleaseMs')} />
-                <Slider label="Makeup" value={state.sidechainMakeup} paramKey="sidechainMakeup" onChange={onParamChange} helpPage="dynamics" {...sliderProps('sidechainMakeup')} />
-              </div>
-
-              <div className="dynamics-subsection">Targets</div>
-              <div className="dynamics-grid-2">
-                {TARGET_CONTROLS.map(({ key, label }) => (
-                  <Slider
-                    key={String(key)}
-                    label={label}
-                    value={Number(state[key] ?? 0)}
-                    paramKey={key}
-                    onChange={onParamChange}
-                    helpPage="dynamics"
-                    {...sliderProps(key)}
-                  />
+                    {mode.label}
+                  </button>
                 ))}
               </div>
-            </div>
-          </section>
-
-          <section className="dynamics-section-card dynamics-end-card">
-            <div className="dynamics-section-head">
-              <div className="dynamics-section-label">
-                <span className="dynamics-section-title">End Chain</span>
-                <button
-                  className={`dynamics-fx-toggle${state.endCompEnabled ? ' on amber' : ''}`}
-                  type="button"
-                  aria-pressed={state.endCompEnabled}
-                  onClick={() => setModuleEnabled('endCompEnabled', !state.endCompEnabled)}
-                  {...bindHelp('endCompEnabled', { label: 'End Chain FX', page: 'dynamics' })}
-                >
-                  {state.endCompEnabled ? 'FX On' : 'FX Off'}
-                </button>
-              </div>
-              <span className="dynamics-section-note">Glue</span>
-            </div>
-            <div className="dynamics-section-body">
-              <div className="dynamics-module-preset-row">
-                <PresetDropdown
-                  className="dynamics-preset-toolbar"
-                  level="engine"
-                  scope="dynamicsEndChain"
-                  state={state}
-                  currentName={endChainPresetName}
-                  onLoad={handleEndChainPresetLoad}
-                  onStateChange={onStateChange}
-                  presetOptions={endChainPresetOptions}
-                  compact
-                />
-              </div>
               <div className="dynamics-grid-2">
-                <Slider label="Threshold" value={state.endCompThreshold} paramKey="endCompThreshold" unit=" dB" onChange={onParamChange} helpPage="dynamics" {...sliderProps('endCompThreshold')} />
-                <Slider label="Knee" value={state.endCompKnee} paramKey="endCompKnee" unit=" dB" onChange={onParamChange} helpPage="dynamics" {...sliderProps('endCompKnee')} />
-                <Slider label="Ratio" value={state.endCompRatio} paramKey="endCompRatio" onChange={onParamChange} helpPage="dynamics" {...sliderProps('endCompRatio')} />
-                <Slider label="Attack" value={state.endCompAttackMs} paramKey="endCompAttackMs" unit=" ms" onChange={onParamChange} helpPage="dynamics" {...sliderProps('endCompAttackMs')} />
-                <Slider label="Release" value={state.endCompReleaseMs} paramKey="endCompReleaseMs" unit=" ms" onChange={onParamChange} helpPage="dynamics" {...sliderProps('endCompReleaseMs')} />
-                <Slider label="Makeup" value={state.endCompMakeup} paramKey="endCompMakeup" onChange={onParamChange} helpPage="dynamics" {...sliderProps('endCompMakeup')} />
-                <Slider label="Mix" value={state.endCompMix} paramKey="endCompMix" onChange={onParamChange} helpPage="dynamics" {...sliderProps('endCompMix')} />
+                <Slider label="Mix" value={state.characterMix} paramKey="characterMix" onChange={onParamChange} helpPage="dynamics" {...sliderProps('characterMix')} />
+                <Slider label="Age" value={state.characterAge} paramKey="characterAge" onChange={onParamChange} helpPage="dynamics" {...sliderProps('characterAge')} />
+                <Slider label="Depth" value={state.characterDepth} paramKey="characterDepth" onChange={onParamChange} helpPage="dynamics" {...sliderProps('characterDepth')} />
+                <Slider label="Rate" value={state.characterRate} paramKey="characterRate" onChange={onParamChange} helpPage="dynamics" {...sliderProps('characterRate')} />
+                <Slider label="Damp" value={state.characterDamp} paramKey="characterDamp" onChange={onParamChange} helpPage="dynamics" {...sliderProps('characterDamp')} />
+                <Slider label="Env Follow" value={state.characterEnvFollow} paramKey="characterEnvFollow" onChange={onParamChange} helpPage="dynamics" {...sliderProps('characterEnvFollow')} />
+                <Slider label="Stereo" value={state.characterStereo} paramKey="characterStereo" onChange={onParamChange} helpPage="dynamics" {...sliderProps('characterStereo')} />
+                <Slider label="Resonance" value={state.characterResonance} paramKey="characterResonance" onChange={onParamChange} helpPage="dynamics" {...sliderProps('characterResonance')} />
               </div>
             </div>
+            )}
           </section>
         </div>
 
-        <div className="dynamics-right">
-          <div className="dynamics-right-grid">
-            <section className="dynamics-section-card dynamics-character-card">
-              <div className="dynamics-section-head">
-                <div className="dynamics-section-label">
-                  <span className="dynamics-section-title">Character</span>
-                  <button
-                    className={`dynamics-fx-toggle${state.characterEnabled ? ' on green' : ''}`}
-                    type="button"
-                    aria-pressed={state.characterEnabled}
-                    onClick={() => setModuleEnabled('characterEnabled', !state.characterEnabled)}
-                    {...bindHelp('characterEnabled', { label: 'Character FX', page: 'dynamics' })}
-                  >
-                    {state.characterEnabled ? 'FX On' : 'FX Off'}
-                  </button>
-                </div>
-                <span className="dynamics-section-note">{activeCharacter}</span>
-              </div>
-              <div className="dynamics-section-body">
-                <div className="dynamics-module-preset-row">
-                  <PresetDropdown
-                    className="dynamics-preset-toolbar"
-                    level="engine"
-                    scope="dynamicsCharacter"
-                    state={state}
-                    currentName={characterPresetName}
-                    onLoad={handleCharacterPresetLoad}
-                    onStateChange={onStateChange}
-                    presetOptions={characterPresetOptions}
-                    compact
-                  />
-                </div>
-                <div className="dynamics-mode-row">
-                  {CHARACTER_MODE_OPTIONS.map((mode) => (
-                    <button
-                      key={mode.value}
-                      className={`dynamics-mode-btn${state.characterMode === mode.value ? ' active' : ''}`}
-                      onClick={() => onSelectChange('characterMode', mode.value)}
-                      {...bindHelp(`characterMode_${mode.value}`, { label: mode.label, page: 'dynamics' })}
-                    >
-                      {mode.label}
-                    </button>
-                  ))}
-                </div>
-                <div className="dynamics-grid-2">
-                  <Slider label="Mix" value={state.characterMix} paramKey="characterMix" onChange={onParamChange} helpPage="dynamics" {...sliderProps('characterMix')} />
-                  <Slider label="Age" value={state.characterAge} paramKey="characterAge" onChange={onParamChange} helpPage="dynamics" {...sliderProps('characterAge')} />
-                  <Slider label="Depth" value={state.characterDepth} paramKey="characterDepth" onChange={onParamChange} helpPage="dynamics" {...sliderProps('characterDepth')} />
-                  <Slider label="Rate" value={state.characterRate} paramKey="characterRate" onChange={onParamChange} helpPage="dynamics" {...sliderProps('characterRate')} />
-                  <Slider label="Damp" value={state.characterDamp} paramKey="characterDamp" onChange={onParamChange} helpPage="dynamics" {...sliderProps('characterDamp')} />
-                  <Slider label="Env Follow" value={state.characterEnvFollow} paramKey="characterEnvFollow" onChange={onParamChange} helpPage="dynamics" {...sliderProps('characterEnvFollow')} />
-                  <Slider label="Stereo" value={state.characterStereo} paramKey="characterStereo" onChange={onParamChange} helpPage="dynamics" {...sliderProps('characterStereo')} />
-                  <Slider label="Resonance" value={state.characterResonance} paramKey="characterResonance" onChange={onParamChange} helpPage="dynamics" {...sliderProps('characterResonance')} />
-                </div>
-              </div>
-            </section>
-
-            <section className="dynamics-section-card dynamics-saturation-card">
-              <div className="dynamics-section-head">
-                <div className="dynamics-section-label">
-                  <span className="dynamics-section-title">Saturation</span>
-                  <button
-                    className={`dynamics-fx-toggle${state.dynamicsSaturationEnabled ? ' on amber' : ''}`}
-                    type="button"
-                    aria-pressed={state.dynamicsSaturationEnabled}
-                    onClick={() => setModuleEnabled('dynamicsSaturationEnabled', !state.dynamicsSaturationEnabled)}
-                    {...bindHelp('dynamicsSaturationEnabled', { label: 'Saturation FX', page: 'dynamics' })}
-                  >
-                    {state.dynamicsSaturationEnabled ? 'FX On' : 'FX Off'}
-                  </button>
-                </div>
-                <span className="dynamics-section-note">{state.dynamicsSaturationMode}</span>
-              </div>
-              <div className="dynamics-section-body">
-                <div className="dynamics-module-preset-row">
-                  <PresetDropdown
-                    className="dynamics-preset-toolbar"
-                    level="engine"
-                    scope="dynamicsSaturation"
-                    state={state}
-                    currentName={saturationPresetName}
-                    onLoad={handleSaturationPresetLoad}
-                    onStateChange={onStateChange}
-                    presetOptions={saturationPresetOptions}
-                    compact
-                  />
-                </div>
-                <div className="dynamics-mode-row">
-                  {SAT_MODE_OPTIONS.map((mode) => (
-                    <button
-                      key={mode.value}
-                      className={`dynamics-mode-btn${state.dynamicsSaturationMode === mode.value ? ' active' : ''}`}
-                      onClick={() => onSelectChange('dynamicsSaturationMode', mode.value)}
-                      {...bindHelp(`dynamicsSaturationMode_${mode.value}`, { label: mode.label, page: 'dynamics' })}
-                    >
-                      {mode.label}
-                    </button>
-                  ))}
-                </div>
-                <div className="dynamics-grid-2">
-                  <Slider label="Drive" value={state.dynamicsSaturationDrive} paramKey="dynamicsSaturationDrive" onChange={onParamChange} helpPage="dynamics" {...sliderProps('dynamicsSaturationDrive')} />
-                  <Slider label="Tone" value={state.dynamicsSaturationTone} paramKey="dynamicsSaturationTone" onChange={onParamChange} helpPage="dynamics" {...sliderProps('dynamicsSaturationTone')} />
-                </div>
-              </div>
-            </section>
-
-            <section className="dynamics-section-card dynamics-degrade-card">
+        <div className="dynamics-column dynamics-middle">
+          <section className="dynamics-section-card dynamics-degrade-card">
               <div className="dynamics-section-head">
                 <div className="dynamics-section-label">
                   <span className="dynamics-section-title">Degrade</span>
@@ -444,8 +273,9 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
                     {state.degradeEnabled ? 'FX On' : 'FX Off'}
                   </button>
                 </div>
-                <span className="dynamics-section-note">Media</span>
+                <span className="dynamics-section-note">{state.degradeEnabled ? 'Media' : 'Off'}</span>
               </div>
+              {state.degradeEnabled && (
               <div className="dynamics-section-body">
                 <div className="dynamics-module-preset-row">
                   <PresetDropdown
@@ -518,8 +348,199 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
                   )}
                 </div>
               </div>
+              )}
             </section>
-          </div>
+        </div>
+
+        <div className="dynamics-column dynamics-right">
+          <section className="dynamics-section-card dynamics-saturation-card">
+            <div className="dynamics-section-head">
+              <div className="dynamics-section-label">
+                <span className="dynamics-section-title">Saturation</span>
+                <button
+                  className={`dynamics-fx-toggle${state.dynamicsSaturationEnabled ? ' on amber' : ''}`}
+                  type="button"
+                  aria-pressed={state.dynamicsSaturationEnabled}
+                  onClick={() => setModuleEnabled('dynamicsSaturationEnabled', !state.dynamicsSaturationEnabled)}
+                  {...bindHelp('dynamicsSaturationEnabled', { label: 'Saturation FX', page: 'dynamics' })}
+                >
+                  {state.dynamicsSaturationEnabled ? 'FX On' : 'FX Off'}
+                </button>
+              </div>
+              <span className="dynamics-section-note">{state.dynamicsSaturationEnabled ? state.dynamicsSaturationMode : 'Off'}</span>
+            </div>
+            {state.dynamicsSaturationEnabled && (
+            <div className="dynamics-section-body">
+              <div className="dynamics-module-preset-row">
+                <PresetDropdown
+                  className="dynamics-preset-toolbar"
+                  level="engine"
+                  scope="dynamicsSaturation"
+                  state={state}
+                  currentName={saturationPresetName}
+                  onLoad={handleSaturationPresetLoad}
+                  onStateChange={onStateChange}
+                  presetOptions={saturationPresetOptions}
+                  compact
+                />
+              </div>
+              <div className="dynamics-mode-row">
+                {SAT_MODE_OPTIONS.map((mode) => (
+                  <button
+                    key={mode.value}
+                    className={`dynamics-mode-btn${state.dynamicsSaturationMode === mode.value ? ' active' : ''}`}
+                    onClick={() => onSelectChange('dynamicsSaturationMode', mode.value)}
+                    {...bindHelp(`dynamicsSaturationMode_${mode.value}`, { label: mode.label, page: 'dynamics' })}
+                  >
+                    {mode.label}
+                  </button>
+                ))}
+              </div>
+              <div className="dynamics-grid-2">
+                <Slider label="Drive" value={state.dynamicsSaturationDrive} paramKey="dynamicsSaturationDrive" onChange={onParamChange} helpPage="dynamics" {...sliderProps('dynamicsSaturationDrive')} />
+                <Slider label="Tone" value={state.dynamicsSaturationTone} paramKey="dynamicsSaturationTone" onChange={onParamChange} helpPage="dynamics" {...sliderProps('dynamicsSaturationTone')} />
+                <Slider label="Bias" value={state.dynamicsSaturationBias} paramKey="dynamicsSaturationBias" onChange={onParamChange} helpPage="dynamics" {...sliderProps('dynamicsSaturationBias')} />
+              </div>
+            </div>
+            )}
+          </section>
+
+          <section className="dynamics-section-card dynamics-end-card">
+            <div className="dynamics-section-head">
+              <div className="dynamics-section-label">
+                <span className="dynamics-section-title">End Chain Compression</span>
+                <button
+                  className={`dynamics-fx-toggle${state.endCompEnabled ? ' on amber' : ''}`}
+                  type="button"
+                  aria-pressed={state.endCompEnabled}
+                  onClick={() => setModuleEnabled('endCompEnabled', !state.endCompEnabled)}
+                  {...bindHelp('endCompEnabled', { label: 'End Chain FX', page: 'dynamics' })}
+                >
+                  {state.endCompEnabled ? 'FX On' : 'FX Off'}
+                </button>
+              </div>
+              <span className="dynamics-section-note">{state.endCompEnabled ? 'Glue' : 'Off'}</span>
+            </div>
+            {state.endCompEnabled && (
+            <div className="dynamics-section-body">
+              <div className="dynamics-module-preset-row">
+                <PresetDropdown
+                  className="dynamics-preset-toolbar"
+                  level="engine"
+                  scope="dynamicsEndChain"
+                  state={state}
+                  currentName={endChainPresetName}
+                  onLoad={handleEndChainPresetLoad}
+                  onStateChange={onStateChange}
+                  presetOptions={endChainPresetOptions}
+                  compact
+                />
+              </div>
+              <div className="dynamics-grid-2">
+                <Slider label="Threshold" value={state.endCompThreshold} paramKey="endCompThreshold" unit=" dB" onChange={onParamChange} helpPage="dynamics" {...sliderProps('endCompThreshold')} />
+                <Slider label="Knee" value={state.endCompKnee} paramKey="endCompKnee" unit=" dB" onChange={onParamChange} helpPage="dynamics" {...sliderProps('endCompKnee')} />
+                <Slider label="Ratio" value={state.endCompRatio} paramKey="endCompRatio" onChange={onParamChange} helpPage="dynamics" {...sliderProps('endCompRatio')} />
+                <Slider label="Attack" value={state.endCompAttackMs} paramKey="endCompAttackMs" unit=" ms" onChange={onParamChange} helpPage="dynamics" {...sliderProps('endCompAttackMs')} />
+                <Slider label="Release" value={state.endCompReleaseMs} paramKey="endCompReleaseMs" unit=" ms" onChange={onParamChange} helpPage="dynamics" {...sliderProps('endCompReleaseMs')} />
+                <Slider label="Makeup" value={state.endCompMakeup} paramKey="endCompMakeup" onChange={onParamChange} helpPage="dynamics" {...sliderProps('endCompMakeup')} />
+                <Slider label="Mix" value={state.endCompMix} paramKey="endCompMix" onChange={onParamChange} helpPage="dynamics" {...sliderProps('endCompMix')} />
+                <Slider label="Detector HP" value={state.endCompDetectorHp} paramKey="endCompDetectorHp" onChange={onParamChange} helpPage="dynamics" {...sliderProps('endCompDetectorHp')} />
+                <Slider label="SC Tilt" value={state.endCompDetectorTilt} paramKey="endCompDetectorTilt" onChange={onParamChange} helpPage="dynamics" {...sliderProps('endCompDetectorTilt')} />
+                <Slider label="Auto Makeup" value={state.endCompAutoMakeup} paramKey="endCompAutoMakeup" onChange={onParamChange} helpPage="dynamics" {...sliderProps('endCompAutoMakeup')} />
+                <Slider label="Program Rel" value={state.endCompProgramRelease} paramKey="endCompProgramRelease" onChange={onParamChange} helpPage="dynamics" {...sliderProps('endCompProgramRelease')} />
+              </div>
+            </div>
+            )}
+          </section>
+
+          <section className="dynamics-section-card dynamics-sidechain-card">
+            <div className="dynamics-section-head">
+              <div className="dynamics-section-label">
+                <span className="dynamics-section-title">Sidechain</span>
+                <button
+                  className={`dynamics-fx-toggle${state.sidechainEnabled ? ' on cyan' : ''}`}
+                  type="button"
+                  aria-pressed={state.sidechainEnabled}
+                  onClick={() => setModuleEnabled('sidechainEnabled', !state.sidechainEnabled)}
+                  {...bindHelp('sidechainEnabled', { label: 'Sidechain FX', page: 'dynamics' })}
+                >
+                  {state.sidechainEnabled ? 'FX On' : 'FX Off'}
+                </button>
+              </div>
+              <span className="dynamics-section-note">{state.sidechainEnabled ? `${activeTargets} targets` : 'Off'}</span>
+            </div>
+            {state.sidechainEnabled && (
+            <div className="dynamics-section-body">
+              <div className="dynamics-module-preset-row">
+                <PresetDropdown
+                  className="dynamics-preset-toolbar"
+                  level="engine"
+                  scope="dynamicsSidechain"
+                  state={state}
+                  currentName={sidechainPresetName}
+                  onLoad={handleSidechainPresetLoad}
+                  onStateChange={onStateChange}
+                  presetOptions={sidechainPresetOptions}
+                  compact
+                />
+              </div>
+              <div className="dynamics-chip-row">
+                <div className="dynamics-select-wrap">
+                  <span className="dynamics-chip-label">Key A</span>
+                  <select
+                    value={state.sidechainKeyA}
+                    onChange={(event) => onSelectChange('sidechainKeyA', event.target.value as SliderState['sidechainKeyA'])}
+                  >
+                    {DRUM_KEY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                </div>
+                <div className="dynamics-select-wrap">
+                  <span className="dynamics-chip-label">Key B</span>
+                  <select
+                    value={state.sidechainKeyB}
+                    onChange={(event) => onSelectChange('sidechainKeyB', event.target.value as SliderState['sidechainKeyB'])}
+                  >
+                    {DRUM_KEY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div className="dynamics-grid-2">
+                <Slider label="Key A Weight" value={state.sidechainKeyAWeight} paramKey="sidechainKeyAWeight" onChange={onParamChange} helpPage="dynamics" {...sliderProps('sidechainKeyAWeight')} {...bindSliderHelp('sidechainKeyAWeight', 'Key A Weight')} />
+                <Slider label="Key B Weight" value={state.sidechainKeyBWeight} paramKey="sidechainKeyBWeight" onChange={onParamChange} helpPage="dynamics" {...sliderProps('sidechainKeyBWeight')} {...bindSliderHelp('sidechainKeyBWeight', 'Key B Weight')} />
+                <Slider label="Amount" value={state.sidechainAmount} paramKey="sidechainAmount" onChange={onParamChange} helpPage="dynamics" {...sliderProps('sidechainAmount')} {...bindSliderHelp('sidechainAmount', 'Amount')} />
+                <Slider label="Mix" value={state.sidechainMix} paramKey="sidechainMix" onChange={onParamChange} helpPage="dynamics" {...sliderProps('sidechainMix')} {...bindSliderHelp('sidechainMix', 'Mix')} />
+              </div>
+
+              <div className="dynamics-subsection">Shape</div>
+              <div className="dynamics-grid-2">
+                <Slider label="Threshold" value={state.sidechainThreshold} paramKey="sidechainThreshold" unit=" dB" onChange={onParamChange} helpPage="dynamics" {...sliderProps('sidechainThreshold')} />
+                <Slider label="Ratio" value={state.sidechainRatio} paramKey="sidechainRatio" onChange={onParamChange} helpPage="dynamics" {...sliderProps('sidechainRatio')} />
+                <Slider label="Knee" value={state.sidechainKnee} paramKey="sidechainKnee" unit=" dB" onChange={onParamChange} helpPage="dynamics" {...sliderProps('sidechainKnee')} />
+                <Slider label="Curve" value={state.sidechainCurve} paramKey="sidechainCurve" onChange={onParamChange} helpPage="dynamics" {...sliderProps('sidechainCurve')} />
+                <Slider label="Attack" value={state.sidechainAttackMs} paramKey="sidechainAttackMs" unit=" ms" onChange={onParamChange} helpPage="dynamics" {...sliderProps('sidechainAttackMs')} />
+                <Slider label="Hold" value={state.sidechainHoldMs} paramKey="sidechainHoldMs" unit=" ms" onChange={onParamChange} helpPage="dynamics" {...sliderProps('sidechainHoldMs')} />
+                <Slider label="Release" value={state.sidechainReleaseMs} paramKey="sidechainReleaseMs" unit=" ms" onChange={onParamChange} helpPage="dynamics" {...sliderProps('sidechainReleaseMs')} />
+                <Slider label="Makeup" value={state.sidechainMakeup} paramKey="sidechainMakeup" onChange={onParamChange} helpPage="dynamics" {...sliderProps('sidechainMakeup')} />
+              </div>
+
+              <div className="dynamics-subsection">Targets</div>
+              <div className="dynamics-grid-2">
+                {TARGET_CONTROLS.map(({ key, label }) => (
+                  <Slider
+                    key={String(key)}
+                    label={label}
+                    value={Number(state[key] ?? 0)}
+                    paramKey={key}
+                    onChange={onParamChange}
+                    helpPage="dynamics"
+                    {...sliderProps(key)}
+                  />
+                ))}
+              </div>
+            </div>
+            )}
+          </section>
         </div>
       </div>
     </div>

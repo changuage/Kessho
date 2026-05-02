@@ -1385,19 +1385,13 @@
       drawSpectrum();
     }
 
-    // ===== PRESETS FROM JSON FILES =====
+    // ===== PRESETS =====
     let presetManifest = [];
 
     async function loadPresetsFromManifest() {
-      try {
-        const resp = await fetch('presets/Lead4opFM/manifest.json');
-        const data = await resp.json();
-        presetManifest = data.presets || [];
-        buildPresetButtons();
-      } catch (e) {
-        console.warn('Could not load manifest:', e);
-        document.getElementById('status').textContent = 'Failed to load presets manifest';
-      }
+      presetManifest = [];
+      buildPresetButtons();
+      document.getElementById('status').textContent = 'Lead4opFM presets now live in the Supabase cloud library';
     }
 
     function buildPresetButtons() {
@@ -1414,30 +1408,8 @@
     }
 
     async function loadPresetById(id, file) {
-      try {
-        const resp = await fetch(`presets/Lead4opFM/${file}`);
-        const data = await resp.json();
-        currentPresetData = data;
-        currentPresetId = id;
-        applyPresetToSliders(data);
-        originalPresetSnapshot = captureSliders();
-        slotA = captureSliders();
-        slotB = captureSliders();
-        abSlot = 'a';
-        updateABButtons();
-
-        document.querySelectorAll('.preset-btn').forEach(b => {
-          b.classList.toggle('active', b.dataset.id === id);
-        });
-
-        document.getElementById('preset-name').value = data.name || id;
-        document.getElementById('algorithm-select').value = data.algorithm || 'parallel';
-        fmAlgorithm = data.algorithm || 'parallel';
-        setStatusText(`Loaded: ${data.name}`);
-      } catch (e) {
-        console.warn('Failed to load preset:', e);
-        setStatusText('Failed to load preset');
-      }
+      console.warn(`Local Lead4opFM preset files were removed after cloud migration: ${file || id}`);
+      setStatusText('Open the main app to load cloud Lead4opFM presets');
     }
 
     function applyPresetToSliders(p) {

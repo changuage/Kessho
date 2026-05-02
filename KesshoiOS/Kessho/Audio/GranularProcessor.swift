@@ -76,7 +76,7 @@ class GranularProcessor {
     private let stateLock = NSLock()
     private let randomSequenceCapacity = 10_000
     lazy var node: AVAudioSourceNode = { [weak self] in
-        let renderFormat = AVAudioFormat(standardFormatWithSampleRate: 44_100, channels: 2)!
+        let renderFormat = AVAudioFormat(standardFormatWithSampleRate: Double(self?.sampleRate ?? 44_100), channels: 2)!
         return AVAudioSourceNode(format: renderFormat) { _, _, frameCount, audioBufferList -> OSStatus in
             guard let self = self else { return noErr }
 
@@ -115,14 +115,14 @@ class GranularProcessor {
     private var wetLPFFreq: Float = 20000     // Low-pass filter on wet
     
     // Sample buffer (for loading external samples)
-    private var sampleRate: Float = 44100
-    private var invSampleRate: Float = 1.0 / 44100  // Pre-computed to avoid division per sample
+    private var sampleRate: Float
+    private var invSampleRate: Float  // Pre-computed to avoid division per sample
     
     // Circular buffer for input (stereo) - feedback writes back to same buffer like web app
     private var inputBufferL: [Float] = []
     private var inputBufferR: [Float] = []
     private var inputWriteIndex: Int = 0
-    private let inputBufferSize: Int = 44100 * 4  // 4 seconds matching sampleBuffer
+    private let inputBufferSize: Int  // 4 seconds matching sampleBuffer
     
     // Pre-seeded random sequence (matching web app for determinism)
     private var randomSequence: [Float] = []
@@ -154,7 +154,10 @@ class GranularProcessor {
         var active: Bool         // Whether this grain slot is in use (for pool-based allocation)
     }
     
-    init() {
+    init(sampleRate: Float = 44_100) {
+        self.sampleRate = max(sampleRate, 1_000)
+        self.invSampleRate = 1.0 / self.sampleRate
+        self.inputBufferSize = Int(self.sampleRate * 4)
         inputBufferL = [Float](repeating: 0, count: inputBufferSize)
         inputBufferR = [Float](repeating: 0, count: inputBufferSize)
         randomSequence = [Float](repeating: 0.5, count: randomSequenceCapacity)

@@ -12,15 +12,18 @@
 //   LFO:     UI helper presets                      → deferred; no matching ParamRegistry scope
 
 import type { PresetEntry } from './types';
+import { getVersionData } from './codec';
 import { getPresetStore } from './PresetStore';
 import { morphWaterPresets, WATER_PRESETS } from '../audio/waterPresets';
 import { SHARED_PRESET_TEST_MODE } from './sharedMode';
+import { normalizeResolvedVersionData } from './presetStorageV2';
+import { getPresetScope, presetValuesEqual } from './presetUtils';
 import {
   buildEuclideanPatternPresetData,
   EUCLIDEAN_PATTERN_LABELS,
 } from './euclideanPatternBank';
 
-const FACTORY_LOADED_KEY = 'preset:factory-loaded:v23';
+const FACTORY_LOADED_KEY = 'preset:factory-loaded:v24';
 
 function canUseLocalStorage(): boolean {
   try {
@@ -68,6 +71,9 @@ function addFactoryEntry(
 
 /** Check whether factory presets have already been loaded */
 export function isFactoryLoaded(): boolean {
+  // In shared cloud mode, Supabase is the source of truth. Do not let a local
+  // browser flag suppress seeding/checking newly added factory presets.
+  if (SHARED_PRESET_TEST_MODE) return false;
   return readFactoryLoadedFlag();
 }
 
@@ -130,9 +136,49 @@ function isDynamicsFactoryScope(entry: PresetEntry): boolean {
 }
 
 function shouldRefreshBundledFactoryEntry(existing: PresetEntry, next: PresetEntry): boolean {
-  return isDynamicsFactoryScope(next) &&
+  return (SHARED_PRESET_TEST_MODE || isDynamicsFactoryScope(next)) &&
     existing.library === 'stock' &&
     existing.author === 'factory';
+}
+
+function shouldAppendBundledFactoryVersion(existing: PresetEntry, next: PresetEntry): boolean {
+  if (!SHARED_PRESET_TEST_MODE && !isDynamicsFactoryScope(next)) return false;
+  if (existing.library !== 'stock' || existing.author !== 'factory') return false;
+
+  const existingData = getVersionData(existing);
+  const nextData = getLatestVersionData(next);
+  if (!existingData || !nextData) return false;
+
+  const existingScope = getPresetScope(existing, existing.type);
+  const nextScope = getPresetScope(next, next.type);
+  const normalizedExisting = normalizeResolvedVersionData(existing.type, existingScope, existingData);
+  const normalizedNext = normalizeResolvedVersionData(next.type, nextScope, nextData);
+  return !presetValuesEqual(normalizedExisting, normalizedNext);
+}
+
+async function appendBundledFactoryVersion(existing: PresetEntry, next: PresetEntry): Promise<PresetEntry | null> {
+  const data = getLatestVersionData(next);
+  if (!data) return null;
+
+  const timestamp = Date.now();
+  const nextVersion = Math.max(0, ...existing.versions.map(version => version.v)) + 1;
+  return {
+    ...existing,
+    library: 'stock',
+    author: 'factory',
+    visibility: 'featured',
+    versions: [
+      ...existing.versions,
+      {
+        v: nextVersion,
+        note: 'factory preset cloud refresh',
+        timestamp,
+        data,
+      },
+    ],
+    currentVersion: nextVersion,
+    updatedAt: timestamp,
+  };
 }
 
 // ─── Pad factory presets ────────────────────────────────────────────────────
@@ -548,16 +594,21 @@ export async function loadFactoryPresets(): Promise<number> {
   let savedCount = 0;
 
   // Save all to store.
-  // In shared testing mode, only seed missing entries so we never overwrite
-  // newer shared presets with an older bundled factory snapshot.
+  // In shared testing mode, seed missing entries and refresh bundled stock
+  // dynamics presets; never overwrite user/cloud presets with the same name.
   for (const entry of all) {
     const scope = entry.scope ?? entry.engine ?? entry.source;
     if (SHARED_PRESET_TEST_MODE || entry.library === 'stock') {
       const existing = await store.load(entry.type, entry.name, scope);
       if (existing) {
-        if (!SHARED_PRESET_TEST_MODE && shouldRefreshBundledFactoryEntry(existing, entry)) {
-          await store.save(entry);
-          savedCount += 1;
+        if (shouldRefreshBundledFactoryEntry(existing, entry)) {
+          const refreshed = shouldAppendBundledFactoryVersion(existing, entry)
+            ? await appendBundledFactoryVersion(existing, entry)
+            : null;
+          if (refreshed) {
+            await store.save(refreshed);
+            savedCount += 1;
+          }
         }
         continue;
       }
