@@ -1,7 +1,7 @@
 import { DRUM_VOICES, type DrumParamDef } from '../audio/drumVoiceConfig';
 import type { DrumVoiceType } from '../audio/drumSynth';
 
-export type SliderPageId = 'app' | 'global' | 'synth' | 'drums' | 'reverb' | 'granular' | 'earth' | 'delay' | 'dynamics' | 'routing' | 'sliderLab';
+export type SliderPageId = 'app' | 'global' | 'synth' | 'drums' | 'reverb' | 'granular' | 'earth' | 'delay' | 'dynamics' | 'routing';
 export type DualModeSupport = 'full' | 'walk-only' | 'single-only';
 
 export interface SliderHelpSurface {

@@ -114,7 +114,6 @@ const DelayPage = React.lazy(() => import('./ui/delay/DelayPage'));
 const DynamicsPage = React.lazy(() => import('./ui/dynamics/DynamicsPage'));
 const RoutingPage = React.lazy(() => import('./ui/routing/RoutingPage'));
 const EarthPage = React.lazy(() => import('./ui/earth/EarthPage'));
-const SliderLabPage = React.lazy(() => import('./ui/sliderLab/SliderLabPage'));
 
 // Note names for display
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -969,7 +968,7 @@ function extractNativeDualRanges(ranges: DualSliderState): Record<string, { min:
   return output;
 }
 
-type AdvancedTab = 'global' | 'synth' | 'drums' | 'reverb' | 'granular' | 'earth' | 'delay' | 'dynamics' | 'routing' | 'sliderLab';
+type AdvancedTab = 'global' | 'synth' | 'drums' | 'reverb' | 'granular' | 'earth' | 'delay' | 'dynamics' | 'routing';
 
 const ADVANCED_TAB_SHORTCUTS: Record<string, AdvancedTab> = {
   '1': 'global',
@@ -981,7 +980,6 @@ const ADVANCED_TAB_SHORTCUTS: Record<string, AdvancedTab> = {
   '7': 'reverb',
   '8': 'dynamics',
   '9': 'routing',
-  '0': 'sliderLab',
 };
 
 function isEditableShortcutTarget(target: EventTarget | null): boolean {
@@ -6889,18 +6887,6 @@ const App: React.FC = () => {
           <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>▦</span>
           <span>Routing</span>
         </HelpButton>
-        <HelpButton
-          helpKey="tabSliderLab"
-          style={{
-            ...styles.tab,
-            ...(activeTab === 'sliderLab' ? styles.tabActive : {}),
-            ...m?.tab,
-          }}
-          onClick={() => setActiveTab('sliderLab')}
-        >
-          <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>◫</span>
-          <span>Lab</span>
-        </HelpButton>
       </div>
 
       {/* Parameter Grid */}
@@ -7164,17 +7150,11 @@ const App: React.FC = () => {
           />
         )}
 
-        {activeTab === 'sliderLab' && (
-          <SliderLabPage
-            isMobile={isMobile}
-          />
-        )}
         </React.Suspense>
       </div>
 
 
       {/* Debug Panel */}
-      {activeTab !== 'sliderLab' && (
       <div className="app-debug-panel" style={{ ...styles.debugPanel, ...m?.debugPanel }}>
         <h3 style={{ ...styles.panelTitle, color: '#a855f7' }}>Debug Info</h3>
         <div style={styles.debugRow}>
@@ -7392,7 +7372,6 @@ const App: React.FC = () => {
           </>
         )}
       </div>
-      )}
 
       {/* Footer with kanji */}
       <div style={{

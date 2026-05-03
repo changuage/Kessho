@@ -61,8 +61,6 @@ function formatPage(page?: SliderPageId): string {
       return 'Delay';
     case 'routing':
       return 'Routing';
-    case 'sliderLab':
-      return 'Slider Lab';
     default:
       return 'Control Help';
   }
