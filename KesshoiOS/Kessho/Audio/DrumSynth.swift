@@ -53,15 +53,27 @@ class DrumSynth {
         let renderFormat = AVAudioFormat(standardFormatWithSampleRate: Double(self?.sampleRate ?? 44_100), channels: 2)!
         return AVAudioSourceNode(format: renderFormat) { _, _, frameCount, audioBufferList -> OSStatus in
             let ablPointer = UnsafeMutableAudioBufferListPointer(audioBufferList)
-            guard let self = self, self.enabled else {
+            guard let self else {
                 for frame in 0..<Int(frameCount) {
                     writeDrumStereoFrame(0, 0, frame: frame, to: ablPointer)
                 }
                 return noErr
             }
 
-            self.voiceLock.lock()
+            guard self.voiceLock.try() else {
+                for frame in 0..<Int(frameCount) {
+                    writeDrumStereoFrame(0, 0, frame: frame, to: ablPointer)
+                }
+                return noErr
+            }
             defer { self.voiceLock.unlock() }
+
+            guard self.enabled else {
+                for frame in 0..<Int(frameCount) {
+                    writeDrumStereoFrame(0, 0, frame: frame, to: ablPointer)
+                }
+                return noErr
+            }
 
             for frame in 0..<Int(frameCount) {
                 let (mainSample, _) = self.generateSampleWithDelayLocked()
@@ -87,6 +99,7 @@ class DrumSynth {
     private var activeVoices: [ActiveVoice] = []
     private let maxActiveVoices = 32
     private let voiceLock = NSLock()
+    private let schedulerQueue = DispatchQueue(label: "com.kessho.drumsynth.scheduler", qos: .userInitiated)
     
     // RNG for deterministic randomness
     private var rngFn: (() -> Double)?
@@ -122,10 +135,10 @@ class DrumSynth {
     // Euclidean scheduling
     private var euclidCurrentStep: [Int] = [0, 0, 0, 0]
     private var lastScheduleTime: TimeInterval = 0
-    private var euclidScheduleTimer: Timer?
-    
+    private var euclidScheduleTimer: DispatchSourceTimer?
+
     // Random scheduling
-    private var randomScheduleTimer: Timer?
+    private var randomScheduleTimer: DispatchSourceTimer?
     private var lastRandomTimes: [DrumVoiceType: TimeInterval] = [
         .sub: 0, .kick: 0, .click: 0, .beepHi: 0, .beepLo: 0, .noise: 0
     ]
@@ -276,6 +289,8 @@ class DrumSynth {
     
     /// Set seeded RNG for deterministic randomness
     func setRng(_ rng: @escaping () -> Double) {
+        voiceLock.lock()
+        defer { voiceLock.unlock() }
         self.rngFn = rng
     }
     
@@ -854,21 +869,25 @@ class DrumSynth {
     }
     
     // MARK: - Parameter Updates
-    
+
     func updateParams(_ params: SliderState) {
-        self.params = params
-        self.enabled = params.drumEnabled
-        self.masterLevel = Float(params.drumLevel)
-        self.reverbSendLevel = Float(params.drumReverbSend)
-        
-        // Update per-voice delay send levels
-        delaySendLevels[.sub] = Float(params.drumSubDelaySend)
-        delaySendLevels[.kick] = Float(params.drumKickDelaySend)
-        delaySendLevels[.click] = Float(params.drumClickDelaySend)
-        delaySendLevels[.beepHi] = Float(params.drumBeepHiDelaySend)
-        delaySendLevels[.beepLo] = Float(params.drumBeepLoDelaySend)
-        delaySendLevels[.noise] = Float(params.drumNoiseDelaySend)
-        
+        do {
+            voiceLock.lock()
+            defer { voiceLock.unlock() }
+            self.params = params
+            self.enabled = params.drumEnabled
+            self.masterLevel = Float(params.drumLevel)
+            self.reverbSendLevel = Float(params.drumReverbSend)
+
+            // Update per-voice delay send levels
+            delaySendLevels[.sub] = Float(params.drumSubDelaySend)
+            delaySendLevels[.kick] = Float(params.drumKickDelaySend)
+            delaySendLevels[.click] = Float(params.drumClickDelaySend)
+            delaySendLevels[.beepHi] = Float(params.drumBeepHiDelaySend)
+            delaySendLevels[.beepLo] = Float(params.drumBeepLoDelaySend)
+            delaySendLevels[.noise] = Float(params.drumNoiseDelaySend)
+        }
+
         // Start/stop schedulers based on enabled state
         if params.drumEnabled {
             if params.drumRandomEnabled && randomScheduleTimer == nil {
@@ -911,27 +930,37 @@ class DrumSynth {
             }
         }
         delayBufferWriteIndex = 0
-        euclidCurrentStep = [0, 0, 0, 0]
-    }
-    
-    // MARK: - Random Scheduler
-    
-    private func startRandomScheduler() {
-        guard randomScheduleTimer == nil else { return }
-        
-        randomScheduleTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
-            self?.scheduleRandomTriggers()
+        schedulerQueue.sync {
+            euclidCurrentStep = [0, 0, 0, 0]
+            lastScheduleTime = 0
         }
     }
-    
+
+    // MARK: - Random Scheduler
+
+    private func startRandomScheduler() {
+        guard randomScheduleTimer == nil else { return }
+
+        let timer = DispatchSource.makeTimerSource(queue: schedulerQueue)
+        timer.schedule(deadline: .now() + 0.05, repeating: 0.05, leeway: .milliseconds(10))
+        timer.setEventHandler { [weak self] in
+            self?.scheduleRandomTriggers()
+        }
+        randomScheduleTimer = timer
+        timer.resume()
+    }
+
     private func stopRandomScheduler() {
-        randomScheduleTimer?.invalidate()
+        randomScheduleTimer?.setEventHandler {}
+        randomScheduleTimer?.cancel()
         randomScheduleTimer = nil
     }
-    
+
     private func scheduleRandomTriggers() {
-        guard enabled, params.drumRandomEnabled else { return }
-        
+        let snapshot = schedulerSnapshot()
+        let params = snapshot.params
+        guard snapshot.enabled, params.drumRandomEnabled else { return }
+
         let now = Date().timeIntervalSince1970
         let density = params.drumRandomDensity
         let minInterval = params.drumRandomMinInterval / 1000
@@ -949,36 +978,45 @@ class DrumSynth {
             let effectiveProb = v.prob * density
             let lastTime = lastRandomTimes[v.type] ?? 0
             let timeSinceLast = now - lastTime
-            
-            if timeSinceLast >= minInterval && Double(rng()) < effectiveProb {
-                let velocity = 0.5 + Float(rng()) * 0.5
+
+            if timeSinceLast >= minInterval && Double(randomUnit(snapshot.rng)) < effectiveProb {
+                let velocity = 0.5 + randomUnit(snapshot.rng) * 0.5
                 triggerVoice(v.type, velocity: velocity)
                 lastRandomTimes[v.type] = now
             }
         }
     }
-    
+
     // MARK: - Euclidean Scheduler
-    
+
     private func startEuclidScheduler() {
         guard euclidScheduleTimer == nil else { return }
-        
-        euclidCurrentStep = [0, 0, 0, 0]
-        lastScheduleTime = Date().timeIntervalSince1970
-        
-        euclidScheduleTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+
+        schedulerQueue.sync {
+            euclidCurrentStep = [0, 0, 0, 0]
+            lastScheduleTime = Date().timeIntervalSince1970
+        }
+
+        let timer = DispatchSource.makeTimerSource(queue: schedulerQueue)
+        timer.schedule(deadline: .now() + 0.05, repeating: 0.05, leeway: .milliseconds(10))
+        timer.setEventHandler { [weak self] in
             self?.scheduleEuclideanTriggers()
         }
+        euclidScheduleTimer = timer
+        timer.resume()
     }
-    
+
     private func stopEuclidScheduler() {
-        euclidScheduleTimer?.invalidate()
+        euclidScheduleTimer?.setEventHandler {}
+        euclidScheduleTimer?.cancel()
         euclidScheduleTimer = nil
     }
-    
+
     private func scheduleEuclideanTriggers() {
-        guard enabled, params.drumEuclidMasterEnabled else { return }
-        
+        let snapshot = schedulerSnapshot()
+        let params = snapshot.params
+        guard snapshot.enabled, params.drumEuclidMasterEnabled else { return }
+
         let now = Date().timeIntervalSince1970
         let baseBPM = params.drumEuclidBaseBPM
         let tempo = params.drumEuclidTempo
@@ -991,10 +1029,10 @@ class DrumSynth {
         
         // Get lane configurations
         let lanes = [
-            getLaneConfig(1),
-            getLaneConfig(2),
-            getLaneConfig(3),
-            getLaneConfig(4)
+            getLaneConfig(1, params: params),
+            getLaneConfig(2, params: params),
+            getLaneConfig(3, params: params),
+            getLaneConfig(4, params: params)
         ]
         
         // Schedule while we're behind
@@ -1025,12 +1063,12 @@ class DrumSynth {
                     
                     if pattern[currentStep] {
                         // Probability check
-                        if Double(rng()) <= lane.probability {
+                        if Double(randomUnit(snapshot.rng)) <= lane.probability {
                             let velocity = Float(
-                                lane.velocityMin + (Double(rng()) * (lane.velocityMax - lane.velocityMin))
+                                lane.velocityMin + (Double(randomUnit(snapshot.rng)) * (lane.velocityMax - lane.velocityMin))
                             )
                             // Pick random voice from enabled voices
-                            let selectedVoice = voices[Int(rng() * Float(voices.count)) % voices.count]
+                            let selectedVoice = voices[Int(randomUnit(snapshot.rng) * Float(voices.count)) % voices.count]
                             triggerVoice(selectedVoice, velocity: velocity * Float(lane.level))
                         }
                     }
@@ -1054,8 +1092,27 @@ class DrumSynth {
         var velocityMax: Double
         var level: Double
     }
-    
-    private func getLaneConfig(_ lane: Int) -> LaneConfig {
+
+    private struct SchedulerSnapshot {
+        let enabled: Bool
+        let params: SliderState
+        let rng: (() -> Double)?
+    }
+
+    private func schedulerSnapshot() -> SchedulerSnapshot {
+        voiceLock.lock()
+        defer { voiceLock.unlock() }
+        return SchedulerSnapshot(enabled: enabled, params: params, rng: rngFn)
+    }
+
+    private func randomUnit(_ rng: (() -> Double)?) -> Float {
+        if let rng {
+            return Float(rng())
+        }
+        return Float.random(in: 0...1)
+    }
+
+    private func getLaneConfig(_ lane: Int, params: SliderState) -> LaneConfig {
         var config = LaneConfig(
             enabled: false,
             steps: 16,

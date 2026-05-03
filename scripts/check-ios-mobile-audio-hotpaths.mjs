@@ -58,6 +58,29 @@ for (const file of [
   assertSourceNodeUsesTryLock(file);
 }
 
+const drumSynth = read('KesshoiOS/Kessho/Audio/DrumSynth.swift');
+const drumNodeStart = drumSynth.indexOf('lazy var node: AVAudioSourceNode');
+const drumNodeEnd = drumSynth.indexOf('// Parameters');
+const drumSourceNode = drumSynth.slice(drumNodeStart, drumNodeEnd);
+assert(
+  drumSourceNode.includes('voiceLock.try()'),
+  'DrumSynth render callback must use voiceLock.try() instead of blocking'
+);
+assert(
+  !drumSourceNode.includes('voiceLock.lock()'),
+  'DrumSynth render callback must not block on voiceLock.lock()'
+);
+assert(
+  drumSynth.includes('DispatchSourceTimer') &&
+    drumSynth.includes('DispatchSource.makeTimerSource(queue: schedulerQueue)') &&
+    drumSynth.includes('schedulerSnapshot()'),
+  'DrumSynth schedulers must use DispatchSourceTimer with a locked state snapshot'
+);
+assert(
+  !drumSynth.includes('scheduledTimer') && !/:\s*Timer\??/.test(drumSynth),
+  'DrumSynth must not use Foundation Timer for playback scheduling'
+);
+
 const audioEngine = read('KesshoiOS/Kessho/Audio/AudioEngine.swift');
 const setupStart = audioEngine.indexOf('private func setupAudioGraph()');
 const setupEnd = audioEngine.indexOf('private func installSignalDebugTap');
@@ -80,6 +103,24 @@ assert(
   audioEngine.includes('MobilePerformanceProfile') &&
     audioEngine.includes('ProcessInfo.processInfo.thermalState'),
   'AudioEngine must keep the mobile thermal/performance governor wired in'
+);
+const profileStart = audioEngine.indexOf('private func mobilePerformanceProfile(for params: SliderState)');
+const profileEnd = audioEngine.indexOf('private func requestedReverbQuality');
+const profileBody = audioEngine.slice(profileStart, profileEnd);
+assert(
+  profileBody.includes('var activeSources = 0') &&
+    !profileBody.includes('let activeSources = [') &&
+    !profileBody.includes('].filter'),
+  'AudioEngine mobile performance profile must count active sources without temporary array allocation'
+);
+const euclideanPhraseStart = audioEngine.indexOf('private func scheduleEuclideanPhrase()');
+const euclideanPhraseEnd = audioEngine.indexOf('private func startFilterModulation');
+const euclideanPhraseBody = audioEngine.slice(euclideanPhraseStart, euclideanPhraseEnd);
+assert(
+  euclideanPhraseBody.includes('NoteRangeKey') &&
+    euclideanPhraseBody.includes('noteRangeCache') &&
+    euclideanPhraseBody.includes('if let cachedNotes = noteRangeCache[noteRangeKey]'),
+  'AudioEngine Euclidean phrase scheduling must cache scale-note ranges per phrase'
 );
 
 const appState = read('KesshoiOS/Kessho/State/AppState.swift');

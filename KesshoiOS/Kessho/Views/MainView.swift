@@ -2,11 +2,17 @@ import SwiftUI
 
 /// Main view with snowflake visualization and controls
 struct MainView: View {
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @EnvironmentObject var appState: AppState
     @State private var showingPresets = false
     @State private var showingSettings = false
     @State private var showingRecording = false
     @State private var selectedTab = 0
+    @State private var selectedVisualization = 0
+
+    private var usesWideLayout: Bool {
+        horizontalSizeClass == .regular
+    }
     
     var body: some View {
         ZStack {
@@ -56,24 +62,17 @@ struct MainView: View {
                 .padding()
                 
                 // Main content area
-                TabView(selection: $selectedTab) {
-                    // Snowflake visualization
-                    SnowflakeView()
-                        .tag(0)
-                    
-                    // Circle of Fifths
-                    CircleOfFifthsView()
-                        .tag(1)
-                    
-                    // Sliders
-                    SliderControlsView()
-                        .tag(2)
+                if usesWideLayout {
+                    wideContent
+                } else {
+                    compactContent
                 }
-                .tabViewStyle(.page(indexDisplayMode: .always))
-                
+
                 // Transport controls
                 TransportBar()
-                    .padding()
+                    .frame(maxWidth: usesWideLayout ? 900 : .infinity)
+                    .padding(.horizontal, usesWideLayout ? 24 : 16)
+                    .padding(.vertical, 16)
             }
         }
         .sheet(isPresented: $showingPresets) {
@@ -85,6 +84,53 @@ struct MainView: View {
         .sheet(isPresented: $showingRecording) {
             RecordingView()
         }
+    }
+
+    private var compactContent: some View {
+        TabView(selection: $selectedTab) {
+            SnowflakeView()
+                .tag(0)
+
+            CircleOfFifthsView()
+                .tag(1)
+
+            SliderControlsView()
+                .tag(2)
+        }
+        .tabViewStyle(.page(indexDisplayMode: .always))
+    }
+
+    private var wideContent: some View {
+        HStack(spacing: 0) {
+            VStack(spacing: 12) {
+                Picker("Visualization", selection: $selectedVisualization) {
+                    Image(systemName: "snowflake").tag(0)
+                    Image(systemName: "circle.hexagongrid.circle").tag(1)
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 260)
+                .padding(.top, 8)
+
+                ZStack {
+                    if selectedVisualization == 0 {
+                        SnowflakeView()
+                    } else {
+                        CircleOfFifthsView()
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
+            .layoutPriority(1)
+
+            Divider()
+                .background(Color.white.opacity(0.12))
+                .padding(.vertical, 12)
+
+            SliderControlsView()
+                .frame(minWidth: 390, idealWidth: 460, maxWidth: 540, maxHeight: .infinity)
+        }
+        .padding(.horizontal, 16)
     }
 }
 

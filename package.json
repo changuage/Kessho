@@ -9,6 +9,7 @@
     "test:preset-dedup": "node scripts/run-preset-dedup-regression.mjs",
     "test:dynamics-character": "node scripts/check-dynamics-character-wasm.mjs",
     "test:ios-mobile-hotpaths": "node scripts/check-ios-mobile-audio-hotpaths.mjs",
+    "test:ios-universal-layout": "node scripts/check-ios-universal-layout.mjs",
     "audit:preset-v2": "node scripts/audit-supabase-presets-v2.mjs",
     "repair:preset-child-graphs": "node scripts/repair-new-engine-cloud-presets.mjs",
     "type-check": "tsc --noEmit",

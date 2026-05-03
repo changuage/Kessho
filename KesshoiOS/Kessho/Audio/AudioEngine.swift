@@ -1253,22 +1253,23 @@ public final class AudioEngine {
     }
 
     private func mobilePerformanceProfile(for params: SliderState) -> MobilePerformanceProfile {
-        let activeSources = [
-            params.synthLevel > 0.0001,
-            params.granularEnabled && params.granularLevel > 0.0001,
-            params.leadEnabled && params.leadLevel > 0.0001,
-            params.lead2Enabled && params.lead2Level > 0.0001,
-            params.pianoEnabled && params.pianoLevel > 0.0001,
-            params.drumEnabled && params.drumLevel > 0.0001,
-            params.oceanSampleEnabled || params.oceanWaveSynthEnabled,
-            params.birdsEnabled || params.birds2Enabled || params.frogsEnabled || params.waterEnabled ||
-                params.insectsEnabled || params.insects2Enabled,
-            params.reverbEnabled,
-            params.delayAEnabled,
-            params.granularDelayEnabled,
-            params.dynamicsEnabled,
-            params.spectralFreezeEnabled
-        ].filter { $0 }.count
+        var activeSources = 0
+        if params.synthLevel > 0.0001 { activeSources += 1 }
+        if params.granularEnabled && params.granularLevel > 0.0001 { activeSources += 1 }
+        if params.leadEnabled && params.leadLevel > 0.0001 { activeSources += 1 }
+        if params.lead2Enabled && params.lead2Level > 0.0001 { activeSources += 1 }
+        if params.pianoEnabled && params.pianoLevel > 0.0001 { activeSources += 1 }
+        if params.drumEnabled && params.drumLevel > 0.0001 { activeSources += 1 }
+        if params.oceanSampleEnabled || params.oceanWaveSynthEnabled { activeSources += 1 }
+        if params.birdsEnabled || params.birds2Enabled || params.frogsEnabled || params.waterEnabled ||
+            params.insectsEnabled || params.insects2Enabled {
+            activeSources += 1
+        }
+        if params.reverbEnabled { activeSources += 1 }
+        if params.delayAEnabled { activeSources += 1 }
+        if params.granularDelayEnabled { activeSources += 1 }
+        if params.dynamicsEnabled { activeSources += 1 }
+        if params.spectralFreezeEnabled { activeSources += 1 }
 
         switch ProcessInfo.processInfo.thermalState {
         case .critical, .serious:
@@ -1936,6 +1937,10 @@ public final class AudioEngine {
             let probability: Double
             let source: String
         }
+        struct NoteRangeKey: Hashable {
+            let min: Int
+            let max: Int
+        }
         var scheduledNotes: [ScheduledNote] = []
         
         // Process each lane (matching web exactly)
@@ -2055,7 +2060,8 @@ public final class AudioEngine {
         
         // Get scale notes for quantization
         let scaleNotes = getScaleNotesInRange(scale: scale, lowMidi: 24, highMidi: 108, rootNote: effectiveRoot)
-        
+        var noteRangeCache: [NoteRangeKey: [Int]] = [:]
+
         // Get phrase index for deterministic RNG
         let phraseIndex = getCurrentPhraseIndex()
         
@@ -2068,9 +2074,17 @@ public final class AudioEngine {
             if noteRng() > note.probability {
                 continue
             }
-            
+
             // Pick note from scale in range using seeded RNG (not .randomElement())
-            let availableNotes = scaleNotes.filter { $0 >= note.noteMin && $0 <= note.noteMax }
+            let noteRangeKey = NoteRangeKey(min: note.noteMin, max: note.noteMax)
+            let availableNotes: [Int]
+            if let cachedNotes = noteRangeCache[noteRangeKey] {
+                availableNotes = cachedNotes
+            } else {
+                let filteredNotes = scaleNotes.filter { $0 >= note.noteMin && $0 <= note.noteMax }
+                noteRangeCache[noteRangeKey] = filteredNotes
+                availableNotes = filteredNotes
+            }
             let midiNote: Int
             if !availableNotes.isEmpty {
                 let idx = Int(noteRng() * Double(availableNotes.count)) % availableNotes.count
