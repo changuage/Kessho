@@ -452,8 +452,12 @@
   display: flex;
   gap: 6px;
   overflow-x: auto;
-  padding-bottom: 2px;
+  width: 100%;
+  max-width: 100%;
+  padding: 0 8px 4px;
+  scroll-padding-inline: 8px;
   scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
 }
 
 .routing-root .routing-matrix-mobile-picker-button {
@@ -472,6 +476,7 @@
   font-weight: 700;
   letter-spacing: 0.02em;
   white-space: nowrap;
+  scroll-snap-align: start;
 }
 
 .routing-root .routing-matrix-mobile-picker-button.active {
@@ -506,7 +511,7 @@
 }
 
 .routing-root.mobile .routing-matrix-mobile-picker {
-  padding-bottom: 2px;
+  padding: 0 8px 4px;
 }
 
 .routing-root.mobile .routing-matrix-mobile-picker::-webkit-scrollbar {
@@ -538,6 +543,17 @@
 }
 
 @media (max-width: 480px) {
+  .routing-root .routing-matrix-mobile-picker {
+    gap: 5px;
+    padding-inline: 6px;
+    scroll-padding-inline: 6px;
+  }
+
+  .routing-root .routing-matrix-mobile-picker-button {
+    min-width: 78px;
+    padding: 0 9px;
+  }
+
   .routing-root .routing-matrix-mobile-head,
   .routing-root .routing-matrix-mobile-row {
     grid-template-columns: 1fr;

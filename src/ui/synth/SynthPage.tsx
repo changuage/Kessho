@@ -28,12 +28,13 @@ import './synth.css';
 import SynthPresetManager from './SynthPresetManager';
 import { usePresets } from '../../presets/usePresets';
 import { PresetDropdown } from '../../presets/PresetDropdown';
+import { PresetRatingStars } from '../../presets/PresetRatingStars';
 import { extractParams } from '../../presets/codec';
 import {
   applyEuclideanPatternToSynthState,
   extractEuclideanPatternDataFromSynthState,
 } from '../../presets/euclideanPatternBank';
-import type { PresetEntry } from '../../presets/types';
+import type { PresetEntry, PresetSummary } from '../../presets/types';
 import type { UsePresetsOptions } from '../../presets/usePresets';
 import {
   getFactoryPadPresetIdByName,
@@ -512,6 +513,9 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const [lead4opPresets, setLead4opPresets] = useState<Array<{ id: string; name: string }>>([]);
   const [leadEditorSlot, setLeadEditorSlot] = useState<LeadEditorSession | null>(null);
   const [leadEditorRuntimeOptions, setLeadEditorRuntimeOptions] = useState<LeadPresetOption[]>([]);
+  const [lead1LoaderPresetId, setLead1LoaderPresetId] = useState(() => String(state.lead1PresetA ?? ''));
+  const [lead2LoaderPresetId, setLead2LoaderPresetId] = useState(() => String(state.lead2PresetC ?? ''));
+  const [leadLocalRatings, setLeadLocalRatings] = useState<Record<string, number>>({});
   const [livePadViz, setLivePadViz] = useState({
     pad1FilterFreq: 1000,
     pad1LfoValue: 0,
@@ -537,6 +541,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     presets: leadFmPresets,
     load: loadLeadFmPresetEntry,
     refresh: refreshLeadFmPresets,
+    updateMetadata: updateLeadFmPresetMetadata,
   } = usePresets('engine', 'lead4opfm');
   const leadStockIdByName = useMemo(
     () => new Map(
@@ -600,6 +605,14 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       ]);
     });
   }, []);
+
+  useEffect(() => {
+    setLead1LoaderPresetId(String(state.lead1PresetA ?? ''));
+  }, [state.lead1PresetA]);
+
+  useEffect(() => {
+    setLead2LoaderPresetId(String(state.lead2PresetC ?? ''));
+  }, [state.lead2PresetC]);
 
   useEffect(() => {
     let rafId: number | null = null;
@@ -1040,7 +1053,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const pad2PresetOptions = getPadPresetOptions('pad2');
   const pad1OptionById = new Map(pad1PresetOptions.map(option => [option.id, option]));
   const pad2OptionById = new Map(pad2PresetOptions.map(option => [option.id, option]));
-  const leadPresetOptions: LeadPresetOption[] = (() => {
+  const leadPresetOptions = useMemo<LeadPresetOption[]>(() => {
     const optionsById = new Map<string, LeadPresetOption>();
     const optionIdByName = new Map<string, string>();
 
@@ -1088,8 +1101,99 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     }
 
     return [...optionsById.values()];
-  })();
-  const leadPresetOptionById = new Map(leadPresetOptions.map(option => [option.id, option]));
+  }, [lead4opPresets, leadEditorRuntimeOptions, leadFmPresets, resolveLeadPresetRuntimeId]);
+  const leadPresetOptionById = useMemo(
+    () => new Map(leadPresetOptions.map(option => [option.id, option])),
+    [leadPresetOptions],
+  );
+  const findLeadPresetOption = useCallback((value: string): LeadPresetOption | undefined => {
+    const direct = leadPresetOptionById.get(value);
+    if (direct) return direct;
+    const normalizedValue = value.trim().toLowerCase().replace(/[_-]+/g, ' ');
+    return leadPresetOptions.find((option) => (
+      option.id.trim().toLowerCase().replace(/[_-]+/g, ' ') === normalizedValue
+      || option.name.trim().toLowerCase().replace(/[_-]+/g, ' ') === normalizedValue
+      || (option.sourceName ?? '').trim().toLowerCase().replace(/[_-]+/g, ' ') === normalizedValue
+    ));
+  }, [leadPresetOptionById, leadPresetOptions]);
+  const findLeadPresetSummary = useCallback((option: LeadPresetOption | undefined): PresetSummary | undefined => {
+    if (!option) return undefined;
+    const optionName = (option.sourceName ?? option.name).trim().toLowerCase();
+    const optionId = option.id.trim().toLowerCase();
+    return leadFmPresets.find((preset) => (
+      preset.name.trim().toLowerCase() === optionName
+      || preset.name.trim().toLowerCase() === optionId
+      || (preset.id ?? '').trim().toLowerCase() === optionId
+    ));
+  }, [leadFmPresets]);
+
+  const handleLeadPresetRate = useCallback(async (option: LeadPresetOption, rating: number) => {
+    const summary = findLeadPresetSummary(option);
+    const ratingKey = summary?.name ?? option.sourceName ?? option.name;
+    try {
+      let targetName = summary?.name ?? option.sourceName;
+      if (!targetName) {
+        const runtimePreset = await loadLead4opFMPreset(option.id);
+        targetName = await saveUserLead4opFMPreset(option.name, runtimePreset, 'Seeded from lead preset for rating');
+        await refreshLeadFmPresets();
+      }
+
+      await updateLeadFmPresetMetadata(targetName, { rating });
+      setLeadLocalRatings(prev => ({ ...prev, [ratingKey]: rating }));
+    } catch (ratingError) {
+      console.warn('Failed to update lead preset rating:', ratingError);
+    }
+  }, [findLeadPresetSummary, refreshLeadFmPresets, updateLeadFmPresetMetadata]);
+
+  const renderLeadPresetLoader = ({
+    selectedPresetId,
+    onSelectedPresetIdChange,
+    slots,
+    color,
+  }: {
+    selectedPresetId: string;
+    onSelectedPresetIdChange: (value: string) => void;
+    slots: LeadEditorSlotChoice[];
+    color: string;
+  }) => {
+    const selectedOption = findLeadPresetOption(selectedPresetId);
+    const resolvedPresetId = selectedOption?.id ?? selectedPresetId;
+    const selectedSummary = findLeadPresetSummary(selectedOption);
+    const ratingKey = selectedSummary?.name ?? selectedOption?.sourceName ?? selectedOption?.name ?? selectedPresetId;
+
+    return (
+      <div className="sc-preset-loader">
+        <select
+          value={resolvedPresetId}
+          onChange={(e) => onSelectedPresetIdChange(e.target.value)}
+          className="sc-preset-loader-select"
+          title="Select preset"
+        >
+          {renderLeadPresetOptions(leadPresetOptions)}
+        </select>
+        {selectedOption && (
+          <PresetRatingStars
+            value={leadLocalRatings[ratingKey] ?? selectedSummary?.rating ?? 0}
+            onChange={(rating) => { void handleLeadPresetRate(selectedOption, rating); }}
+            color={color}
+            size="0.6rem"
+          />
+        )}
+        {slots.map((slot) => (
+          <button
+            key={slot.slotKey}
+            className="sc-preset-loader-slot"
+            type="button"
+            style={{ '--slot-color': slot.accentColor } as React.CSSProperties}
+            onClick={() => onSelectChange(slot.slotKey, resolvedPresetId as SliderState[typeof slot.slotKey])}
+            title={`Load into ${slot.slotLabel}`}
+          >
+            {slot.slotLabel.replace('Slot ', '')}
+          </button>
+        ))}
+      </div>
+    );
+  };
   const activeLeadEditorSlot = leadEditorSlot
     ? leadEditorSlot.slots.find(slot => slot.slotKey === leadEditorSlot.slotKey) ?? leadEditorSlot.slots[0]
     : undefined;
@@ -1353,7 +1457,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     if (String(state[slotKey] ?? '') !== runtimeId) {
       onSelectChange(slotKey, runtimeId as SliderState[typeof slotKey]);
     }
-  }, [leadPresetOptionById, leadPresetOptions, onSelectChange, refreshLeadFmPresets, resolveLeadPresetRuntimeId, state]);
+  }, [leadPresetOptionById, onSelectChange, refreshLeadFmPresets, resolveLeadPresetRuntimeId, state]);
   void handleLeadSlotSave;
 
   // ── Euclidean Sequencer Hook (reuses same hook as DrumPage) ──
@@ -3761,6 +3865,15 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
             </div>
 
             <div className="synth-card-simple">
+              {renderLeadPresetLoader({
+                selectedPresetId: lead1LoaderPresetId,
+                onSelectedPresetIdChange: setLead1LoaderPresetId,
+                slots: [
+                  { slotKey: 'lead1PresetA', slotLabel: 'Slot A', accentColor: '#f59e0b' },
+                  { slotKey: 'lead1PresetB', slotLabel: 'Slot B', accentColor: '#8b5cf6' },
+                ],
+                color: '#f59e0b',
+              })}
               {/* Preset A / Morph / B — single row */}
               <div className="sc-morph-row">
                 <span className="sc-morph-tag" style={{ color: '#f59e0b' }}>A</span>
@@ -3899,6 +4012,15 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
 
             {state.lead2Enabled && (
               <div className="synth-card-simple">
+                {renderLeadPresetLoader({
+                  selectedPresetId: lead2LoaderPresetId,
+                  onSelectedPresetIdChange: setLead2LoaderPresetId,
+                  slots: [
+                    { slotKey: 'lead2PresetC', slotLabel: 'Slot C', accentColor: '#06b6d4' },
+                    { slotKey: 'lead2PresetD', slotLabel: 'Slot D', accentColor: '#a78bfa' },
+                  ],
+                  color: '#06b6d4',
+                })}
                 {/* Preset C / Morph / D — single row */}
                 <div className="sc-morph-row">
                   <span className="sc-morph-tag" style={{ color: '#06b6d4' }}>C</span>

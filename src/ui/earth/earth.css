@@ -834,9 +834,13 @@
 .earth-root .earth-matrix-mobile-picker {
   display: flex;
   gap: 6px;
-  padding: 0 10px 2px;
+  width: 100%;
+  max-width: 100%;
+  padding: 0 10px 4px;
   overflow-x: auto;
+  scroll-padding-inline: 10px;
   scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
 }
 
 .earth-root .earth-matrix-mobile-picker::-webkit-scrollbar {
@@ -859,6 +863,7 @@
   font-weight: 700;
   letter-spacing: 0.02em;
   white-space: nowrap;
+  scroll-snap-align: start;
 }
 
 .earth-root .earth-matrix-mobile-picker-button.active {
@@ -1519,6 +1524,17 @@
 }
 
 @media (max-width: 420px) {
+  .earth-root .earth-matrix-mobile-picker {
+    gap: 5px;
+    padding-inline: 8px;
+    scroll-padding-inline: 8px;
+  }
+
+  .earth-root .earth-matrix-mobile-picker-button {
+    min-width: 78px;
+    padding: 0 9px;
+  }
+
   .earth-root .earth-matrix-mobile-preview-row {
     grid-template-columns: 1fr;
   }

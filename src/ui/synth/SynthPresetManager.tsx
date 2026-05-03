@@ -6,6 +6,7 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import type { SliderState } from '../state';
 import { usePresets } from '../../presets/usePresets';
+import { PresetRatingStars } from '../../presets/PresetRatingStars';
 import { getVersionData } from '../../presets/codec';
 import { SHARED_PRESET_TEST_MODE } from '../../presets/sharedMode';
 import {
@@ -16,6 +17,7 @@ import {
   type PadPreset,
 } from '../../audio/padPresets';
 import type { PresetEntry } from '../../presets/types';
+import { canRatePadPreset, findPadPresetSummary, ratePadPreset } from './padPresetRating';
 
 const humanize = (key: string) =>
   key.replace(/([A-Z])/g, ' $1').replace(/^./, c => c.toUpperCase()).trim();
@@ -119,14 +121,6 @@ const s: Record<string, React.CSSProperties> = {
     fontWeight: 600,
     fontSize: '0.8rem',
     color: '#a5c4d4',
-  },
-  starRow: {
-    display: 'flex',
-    gap: 1,
-    cursor: 'pointer',
-    fontSize: '0.6rem',
-    lineHeight: 1,
-    flexShrink: 0,
   },
   versionBadge: {
     fontSize: '0.6rem',
@@ -298,19 +292,6 @@ const s: Record<string, React.CSSProperties> = {
   },
 };
 
-/* ── Rating Stars ── */
-const RatingStars: React.FC<{ value: number; onChange: (r: number) => void; color?: string }> = ({ value, onChange, color = '#d4a55a' }) => (
-  <span style={s.starRow}>
-    {[1, 2, 3, 4, 5].map(n => (
-      <span
-        key={n}
-        onClick={(e) => { e.stopPropagation(); onChange(value === n ? 0 : n); }}
-        style={{ color: n <= value ? color : '#444' }}
-      >★</span>
-    ))}
-  </span>
-);
-
 const SynthPresetManager: React.FC<SynthPresetManagerProps> = ({
   engineScope,
   slotAKey,
@@ -334,9 +315,8 @@ const SynthPresetManager: React.FC<SynthPresetManagerProps> = ({
     [presetOptions, selectedPresetId],
   );
   const selectedEntryName = selectedOption?.name ?? selectedPresetId;
-  const selectedSummary = presets.find(
-    preset => preset.id === selectedPresetId || preset.name === selectedEntryName || preset.name === selectedPresetId,
-  );
+  const selectedSummary = findPadPresetSummary(presets, selectedOption);
+  const selectedRatingKey = selectedSummary?.name ?? selectedOption?.name ?? selectedEntryName;
 
   const sortedPresetOptions = useMemo(
     () => [...presetOptions].sort((left, right) => left.name.localeCompare(right.name)),
@@ -349,6 +329,7 @@ const SynthPresetManager: React.FC<SynthPresetManagerProps> = ({
   const [confirm, setConfirm] = useState<{ message: string; onConfirm: () => void } | null>(null);
   const [versionEntry, setVersionEntry] = useState<PresetEntry | null>(null);
   const [showVersions, setShowVersions] = useState(false);
+  const [localRatings, setLocalRatings] = useState<Record<string, number>>({});
 
   // Auto-select slot A preset on scope change
   useEffect(() => {
@@ -495,9 +476,22 @@ const SynthPresetManager: React.FC<SynthPresetManagerProps> = ({
 
   /* ── Rate ── */
   const handleRate = useCallback(async (rating: number) => {
-    if (!selectedEntryName) return;
-    await updateMetadata(selectedEntryName, { rating: rating || undefined });
-  }, [selectedEntryName, updateMetadata]);
+    if (!selectedOption) return;
+    const ratingKey = selectedSummary?.name ?? selectedOption.name;
+    try {
+      await ratePadPreset({
+        scope: engineScope,
+        option: selectedOption,
+        rating,
+        presets,
+        save,
+        updateMetadata,
+      });
+      setLocalRatings(prev => ({ ...prev, [ratingKey]: rating }));
+    } catch (ratingError) {
+      console.warn('Failed to update pad preset rating:', ratingError);
+    }
+  }, [engineScope, presets, save, selectedOption, selectedSummary?.name, updateMetadata]);
 
   /* ── Delete ── */
   const handleDelete = useCallback(() => {
@@ -535,11 +529,12 @@ const SynthPresetManager: React.FC<SynthPresetManagerProps> = ({
                 <option key={`${option.library}:${option.id}`} value={option.id}>{option.name}</option>
               ))}
             </select>
-            {selectedSummary && (
-              <RatingStars
-                value={selectedSummary.rating ?? 0}
+            {selectedOption && canRatePadPreset(engineScope, selectedOption, presets) && (
+              <PresetRatingStars
+                value={localRatings[selectedRatingKey] ?? selectedSummary?.rating ?? 0}
                 onChange={(r) => { void handleRate(r); }}
                 color={color}
+                size="0.6rem"
               />
             )}
             {selectedSummary && selectedSummary.versionCount > 1 && (

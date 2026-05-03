@@ -7,6 +7,7 @@ import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import type { SliderState } from '../state';
 import type { DrumVoiceType } from '../../audio/drumSynth';
 import { usePresets } from '../../presets/usePresets';
+import { PresetRatingStars } from '../../presets/PresetRatingStars';
 import { getVersionData } from '../../presets/codec';
 import { SHARED_PRESET_TEST_MODE } from '../../presets/sharedMode';
 import {
@@ -14,6 +15,7 @@ import {
   upsertUserPreset,
 } from '../../audio/drumPresets';
 import type { PresetEntry } from '../../presets/types';
+import { canRateDrumPreset, rateDrumPreset } from './drumPresetRating';
 
 const DRUM_ENGINE_SCOPES: Record<DrumVoiceType, string> = {
   sub: 'drumSub',
@@ -105,14 +107,6 @@ const s: Record<string, React.CSSProperties> = {
     fontWeight: 600,
     fontSize: '0.8rem',
     color: '#a5c4d4',
-  },
-  starRow: {
-    display: 'flex',
-    gap: 1,
-    cursor: 'pointer',
-    fontSize: '0.6rem',
-    lineHeight: 1,
-    flexShrink: 0,
   },
   versionBadge: {
     fontSize: '0.6rem',
@@ -257,19 +251,6 @@ const s: Record<string, React.CSSProperties> = {
   },
 };
 
-/* ── Rating Stars ── */
-const RatingStars: React.FC<{ value: number; onChange: (r: number) => void; color?: string }> = ({ value, onChange, color = '#d4a55a' }) => (
-  <span style={s.starRow}>
-    {[1, 2, 3, 4, 5].map(n => (
-      <span
-        key={n}
-        onClick={(e) => { e.stopPropagation(); onChange(value === n ? 0 : n); }}
-        style={{ color: n <= value ? color : '#444' }}
-      >★</span>
-    ))}
-  </span>
-);
-
 const DrumPresetManager: React.FC<DrumPresetManagerProps> = ({
   voice,
   state,
@@ -303,6 +284,7 @@ const DrumPresetManager: React.FC<DrumPresetManagerProps> = ({
   const [confirm, setConfirm] = useState<{ message: string; onConfirm: () => void } | null>(null);
   const [versionEntry, setVersionEntry] = useState<PresetEntry | null>(null);
   const [showVersions, setShowVersions] = useState(false);
+  const [localRatings, setLocalRatings] = useState<Record<string, number>>({});
 
   // Auto-select preset A on voice change
   useEffect(() => {
@@ -420,8 +402,20 @@ const DrumPresetManager: React.FC<DrumPresetManagerProps> = ({
   /* ── Rate ── */
   const handleRate = useCallback(async (rating: number) => {
     if (!selectedPresetName) return;
-    await updateMetadata(selectedPresetName, { rating: rating || undefined });
-  }, [selectedPresetName, updateMetadata]);
+    try {
+      await rateDrumPreset({
+        voice,
+        name: selectedPresetName,
+        rating,
+        presets,
+        save,
+        updateMetadata,
+      });
+      setLocalRatings(prev => ({ ...prev, [selectedPresetName]: rating }));
+    } catch (ratingError) {
+      console.warn('Failed to update drum preset rating:', ratingError);
+    }
+  }, [selectedPresetName, voice, presets, save, updateMetadata]);
 
   /* ── Delete ── */
   const handleDelete = useCallback(() => {
@@ -472,11 +466,12 @@ const DrumPresetManager: React.FC<DrumPresetManagerProps> = ({
                 </optgroup>
               )}
             </select>
-            {selectedSummary && (
-              <RatingStars
-                value={selectedSummary.rating ?? 0}
+            {(selectedSummary || canRateDrumPreset(voice, selectedPresetName, presets)) && (
+              <PresetRatingStars
+                value={localRatings[selectedPresetName] ?? selectedSummary?.rating ?? 0}
                 onChange={(r) => { void handleRate(r); }}
                 color={color}
+                size="0.6rem"
               />
             )}
             {selectedSummary && selectedSummary.versionCount > 1 && (

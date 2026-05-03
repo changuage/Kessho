@@ -9,6 +9,7 @@ import { getVersionData } from './codec';
 import { extractCascade, getCascadeKeys } from './codec';
 import { presetValuesEqual } from './presetUtils';
 import { SHARED_PRESET_TEST_MODE } from './sharedMode';
+import { PresetRatingStars } from './PresetRatingStars';
 import { DEFAULT_STATE, migratePreset, type SliderState } from '../ui/state';
 import type { SliderMode } from '../ui/state';
 import { DERIVED_PAD_KEYS } from '../audio/padPresets';
@@ -16,19 +17,6 @@ import { buildPresetVersionMetadata, getPresetVersionSnapshot } from './versionM
 
 const MAX_CHILDREN = 5;
 const FAMILY_TREE_SELECTION_STORAGE_PREFIX = 'preset-family-tree:selected:';
-
-/* ── Rating Stars ── */
-const RatingStars: React.FC<{ value: number; onChange: (r: number) => void; size?: string }> = ({ value, onChange, size = '0.75rem' }) => (
-  <span style={{ display: 'inline-flex', gap: 1, cursor: 'pointer', lineHeight: 1 }}>
-    {[1, 2, 3, 4, 5].map(n => (
-      <span
-        key={n}
-        onClick={(e) => { e.stopPropagation(); onChange(value === n ? 0 : n); }}
-        style={{ color: n <= value ? '#d4a55a' : '#444', fontSize: size, userSelect: 'none' }}
-      >★</span>
-    ))}
-  </span>
-);
 
 function getFamilyTreeSelectionStorageKey(level: PresetLevel, scope?: string): string {
   return `${FAMILY_TREE_SELECTION_STORAGE_PREFIX}${level}:${scope ?? 'global'}`;
@@ -439,8 +427,12 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
   // Optimistic local rating state (keyed by preset name)
   const [localRatings, setLocalRatings] = useState<Record<string, number>>({});
   const handleRate = useCallback(async (name: string, r: number) => {
-    setLocalRatings(prev => ({ ...prev, [name]: r }));
-    await updateMetadata(name, { rating: r || undefined });
+    try {
+      await updateMetadata(name, { rating: r });
+      setLocalRatings(prev => ({ ...prev, [name]: r }));
+    } catch (ratingError) {
+      console.warn('Failed to update preset rating:', ratingError);
+    }
   }, [updateMetadata]);
 
   // Selected parent preset (for viewing the tree — does NOT auto-load)
@@ -1098,9 +1090,10 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
               <span style={treeStyles.parentName}>
                 {selectedParentName}
               </span>
-              <RatingStars
+              <PresetRatingStars
                 value={localRatings[selectedParentName] ?? presets.find(p => p.name === selectedParentName)?.rating ?? 0}
                 onChange={(r) => { void handleRate(selectedParentName, r); }}
+                size="0.72rem"
               />
               <button
                 style={{ ...treeStyles.slotBtn, ...treeStyles.slotA }}
@@ -1161,6 +1154,11 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
                       </span>
                     )}
                   </span>
+                  <PresetRatingStars
+                    value={localRatings[child.name] ?? child.rating ?? 0}
+                    onChange={(r) => { void handleRate(child.name, r); }}
+                    size="0.62rem"
+                  />
                   <button
                     style={{ ...treeStyles.slotBtn, ...treeStyles.slotA }}
                     onClick={() => requestLoadToSlot(child.name, 'A', onLoadSlotA)}

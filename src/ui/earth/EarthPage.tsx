@@ -24,6 +24,7 @@ import {
   WATER_PRESETS,
   getStockWaterPresetIdByName,
   getWaterPresetOptions,
+  morphWaterPresets,
   setUserWaterPresets,
   upsertUserWaterPreset,
 } from '../../audio/waterPresets';
@@ -136,25 +137,31 @@ export default function EarthPage({
   isRunning: _isRunning,
   getEarthTextureDebugState,
 }: EarthPageProps) {
+  const [selectedWaterPreset, setSelectedWaterPreset] = useState(() => String(state.waterPreset));
   const [selectedInsects1Preset, setSelectedInsects1Preset] = useState(() => `stock:${state.insectsEngine}`);
   const [selectedInsects2Preset, setSelectedInsects2Preset] = useState(() => `stock:${state.insects2Engine}`);
+  const [waterLocalRatings, setWaterLocalRatings] = useState<Record<string, number>>({});
+  const [insectsLocalRatings, setInsectsLocalRatings] = useState<Record<string, number>>({});
   const {
     presets: waterEnginePresets,
     save: saveWaterPreset,
     load: loadWaterPreset,
     refresh: refreshWaterPresets,
+    updateMetadata: updateWaterPresetMetadata,
   } = usePresets('engine', 'water');
   const {
     presets: insects1EnginePresets,
     save: saveInsects1Preset,
     load: loadInsects1Preset,
     refresh: refreshInsects1Presets,
+    updateMetadata: updateInsects1PresetMetadata,
   } = usePresets('engine', 'insects1');
   const {
     presets: insects2EnginePresets,
     save: saveInsects2Preset,
     load: loadInsects2Preset,
     refresh: refreshInsects2Presets,
+    updateMetadata: updateInsects2PresetMetadata,
   } = usePresets('engine', 'insects2');
 
   const anyWalkMode = useMemo(
@@ -195,6 +202,10 @@ export default function EarthPage({
     state.waterLayerTurbulence,
     state.waterLayerWaterDrops,
   ]);
+
+  useEffect(() => {
+    setSelectedWaterPreset(String(state.waterPreset));
+  }, [state.waterPreset]);
 
   useEffect(() => {
     setSelectedInsects1Preset(prev => (prev.startsWith('stock:') ? `stock:${state.insectsEngine}` : prev));
@@ -253,12 +264,24 @@ export default function EarthPage({
   }, [loadWaterPreset, waterEnginePresets]);
 
   const waterPresetOptions = useMemo<EarthPresetOption[]>(
-    () => getWaterPresetOptions().map((option) => ({
-      value: String(option.id),
-      label: option.name,
-      library: option.library,
-    })),
-    [waterEnginePresets],
+    () => {
+      const presetsByName = new Map(
+        waterEnginePresets.map((preset) => [preset.name.trim().toLowerCase(), preset]),
+      );
+      return getWaterPresetOptions().map((option) => {
+        const preset = presetsByName.get(option.name.trim().toLowerCase());
+        const stockIndex = getStockWaterPresetIdByName(option.name);
+        return {
+          value: String(option.id),
+          label: option.name,
+          library: preset?.library ?? option.library,
+          stockIndex: stockIndex ?? undefined,
+          presetName: preset?.name,
+          rating: waterLocalRatings[String(option.id)] ?? preset?.rating,
+        };
+      });
+    },
+    [waterEnginePresets, waterLocalRatings],
   );
 
   const insects1PresetOptions = useMemo<EarthPresetOption[]>(() => {
@@ -274,6 +297,7 @@ export default function EarthPage({
         library: preset?.library ?? 'stock',
         stockIndex: index,
         presetName: preset?.name,
+        rating: insectsLocalRatings[`insects1:stock:${index}`] ?? preset?.rating,
       };
     });
     const custom = insects1EnginePresets
@@ -283,9 +307,10 @@ export default function EarthPage({
         label: preset.name,
         library: preset.library,
         presetName: preset.name,
+        rating: insectsLocalRatings[`insects1:${preset.library}:${preset.name}`] ?? preset.rating,
       }));
     return [...stock, ...custom];
-  }, [insects1EnginePresets]);
+  }, [insects1EnginePresets, insectsLocalRatings]);
 
   const insects2PresetOptions = useMemo<EarthPresetOption[]>(() => {
     const stockNames = new Set(INSECT_ENGINES.map((name) => name.trim().toLowerCase()));
@@ -300,6 +325,7 @@ export default function EarthPage({
         library: preset?.library ?? 'stock',
         stockIndex: index,
         presetName: preset?.name,
+        rating: insectsLocalRatings[`insects2:stock:${index}`] ?? preset?.rating,
       };
     });
     const custom = insects2EnginePresets
@@ -309,9 +335,103 @@ export default function EarthPage({
         label: preset.name,
         library: preset.library,
         presetName: preset.name,
+        rating: insectsLocalRatings[`insects2:${preset.library}:${preset.name}`] ?? preset.rating,
       }));
     return [...stock, ...custom];
-  }, [insects2EnginePresets]);
+  }, [insects2EnginePresets, insectsLocalRatings]);
+
+  const handleWaterPresetRate = useCallback(async (option: EarthPresetOption, rating: number) => {
+    try {
+      let targetName = option.presetName;
+      if (!targetName && option.stockIndex != null) {
+        targetName = option.label;
+        const presetData = morphWaterPresets(option.stockIndex, option.stockIndex, 0);
+        await saveWaterPreset(
+          targetName,
+          {
+            ...state,
+            ...presetData,
+            waterPreset: option.stockIndex,
+            waterMorphA: option.stockIndex,
+            waterMorphB: option.stockIndex,
+            waterMorph: 0,
+          },
+          'Seeded from water preset for rating',
+          ['water', 'nature'],
+          undefined,
+          { creator: 'Kessho' },
+        );
+        await refreshWaterPresets();
+      }
+
+      if (!targetName) return;
+      await updateWaterPresetMetadata(targetName, { rating });
+      setWaterLocalRatings(prev => ({ ...prev, [option.value]: rating }));
+    } catch (ratingError) {
+      console.warn('Failed to update water preset rating:', ratingError);
+    }
+  }, [morphWaterPresets, refreshWaterPresets, saveWaterPreset, state, updateWaterPresetMetadata]);
+
+  const handleInsectsPresetRate = useCallback(async (scope: 'insects1' | 'insects2', option: EarthPresetOption, rating: number) => {
+    try {
+      const updatePresetMetadata = scope === 'insects1' ? updateInsects1PresetMetadata : updateInsects2PresetMetadata;
+      let targetName = option.presetName;
+
+      if (!targetName && option.stockIndex != null) {
+        targetName = option.label;
+        const defaults = INSECT_ENGINE_DEFAULTS[option.stockIndex];
+        if (!defaults) return;
+        const savePreset = scope === 'insects1' ? saveInsects1Preset : saveInsects2Preset;
+        const refreshPresetList = scope === 'insects1' ? refreshInsects1Presets : refreshInsects2Presets;
+        const seedState = scope === 'insects1'
+          ? {
+              ...state,
+              insectsEngine: option.stockIndex,
+              insectsDensity: defaults.density,
+              insectsTemperature: defaults.temperature,
+              insectsDistance: defaults.distance,
+              insectsProximity: defaults.proximity,
+              insectsAntiphony: defaults.antiphony,
+              insectsClickRate: defaults.clickRate,
+              insectsMotion: defaults.motion,
+            }
+          : {
+              ...state,
+              insects2Engine: option.stockIndex,
+              insects2Density: defaults.density,
+              insects2Temperature: defaults.temperature,
+              insects2Distance: defaults.distance,
+              insects2Proximity: defaults.proximity,
+              insects2Antiphony: defaults.antiphony,
+              insects2ClickRate: defaults.clickRate,
+              insects2Motion: defaults.motion,
+            };
+        await savePreset(
+          targetName,
+          seedState,
+          'Seeded from insects preset for rating',
+          ['insects', 'nature'],
+          undefined,
+          { creator: 'Kessho' },
+        );
+        await refreshPresetList();
+      }
+
+      if (!targetName) return;
+      await updatePresetMetadata(targetName, { rating });
+      setInsectsLocalRatings(prev => ({ ...prev, [`${scope}:${option.value}`]: rating }));
+    } catch (ratingError) {
+      console.warn('Failed to update insects preset rating:', ratingError);
+    }
+  }, [
+    refreshInsects1Presets,
+    refreshInsects2Presets,
+    saveInsects1Preset,
+    saveInsects2Preset,
+    state,
+    updateInsects1PresetMetadata,
+    updateInsects2PresetMetadata,
+  ]);
 
   const applyNumericPresetData = useCallback((
     keys: readonly (keyof SliderState)[],
@@ -341,16 +461,29 @@ export default function EarthPage({
     };
   }, [sliderProps]);
 
-  const handleWaterSlotSave = useCallback(async (slotKey: 'waterMorphA' | 'waterMorphB') => {
-    const currentId = Number(state[slotKey] ?? 0);
-    const currentOption = getWaterPresetOptions().find((option) => option.id === currentId);
-    const defaultName = currentOption?.name || WATER_PRESETS[currentId] || 'Water Preset';
+  const handleWaterPresetLoad = useCallback((value: string) => {
+    const option = waterPresetOptions.find((entry) => entry.value === value);
+    if (!option) return;
+    const presetId = Number(option.value);
+    if (!Number.isFinite(presetId)) return;
+
+    setSelectedWaterPreset(option.value);
+    onSelectChange('waterMorphA', presetId as SliderState['waterMorphA']);
+    onSelectChange('waterMorphB', presetId as SliderState['waterMorphB']);
+    onParamChange('waterMorph', 0);
+    onSelectChange('waterPreset', presetId as SliderState['waterPreset']);
+  }, [onParamChange, onSelectChange, waterPresetOptions]);
+
+  const handleWaterPresetSave = useCallback(async () => {
+    const currentId = Number(selectedWaterPreset);
+    const currentOption = waterPresetOptions.find((option) => option.value === selectedWaterPreset);
+    const defaultName = currentOption?.label || WATER_PRESETS[currentId] || 'Water Preset';
 
     let targetName = defaultName;
     if (!currentOption) {
       if (typeof window === 'undefined' || typeof window.prompt !== 'function') return;
       const requestedName = window.prompt(
-        `Name this ${slotKey === 'waterMorphA' ? 'Water slot A' : 'Water slot B'} preset`,
+        'Name this Water preset',
         defaultName,
       );
       if (!requestedName?.trim()) return;
@@ -361,7 +494,7 @@ export default function EarthPage({
     await saveWaterPreset(
       targetName,
       state,
-      currentOption ? 'Updated from water slot' : 'Saved from water slot',
+      currentOption ? 'Updated from water preset loader' : 'Saved from water preset loader',
       undefined,
       metadata,
     );
@@ -391,10 +524,16 @@ export default function EarthPage({
       sliderModes: version.sliderModes as Record<string, SliderMode> | undefined,
     });
 
-    if (Number(state[slotKey] ?? 0) !== savedId) {
-      onSelectChange(slotKey, savedId as SliderState[typeof slotKey]);
-    }
-  }, [collectWaterPresetMetadata, loadWaterPreset, onSelectChange, refreshWaterPresets, saveWaterPreset, state]);
+    setSelectedWaterPreset(String(savedId));
+  }, [
+    collectWaterPresetMetadata,
+    loadWaterPreset,
+    refreshWaterPresets,
+    saveWaterPreset,
+    selectedWaterPreset,
+    state,
+    waterPresetOptions,
+  ]);
 
   const applyInsectsStockPreset = useCallback((scope: 'insects1' | 'insects2', stockIndex: number) => {
     const defaults = INSECT_ENGINE_DEFAULTS[stockIndex];
@@ -545,9 +684,12 @@ export default function EarthPage({
             state={state}
             ds={ds}
             waterPresetOptions={waterPresetOptions}
+            selectedWaterPreset={selectedWaterPreset}
             expandedCards={expandedCards}
             onSelectChange={onSelectChange}
-            onWaterSlotSave={(slotKey) => { void handleWaterSlotSave(slotKey); }}
+            onWaterPresetLoad={handleWaterPresetLoad}
+            onWaterPresetSave={() => { void handleWaterPresetSave(); }}
+            onWaterPresetRate={(option, rating) => { void handleWaterPresetRate(option, rating); }}
             enabled={state.waterEnabled}
           />
           <OceanCard
@@ -608,6 +750,7 @@ export default function EarthPage({
             expandedCards={expandedCards}
             onPresetLoad={(scope, value) => { void handleInsectsPresetLoad(scope, value); }}
             onPresetSave={(scope) => { void handleInsectsPresetSave(scope); }}
+            onPresetRate={handleInsectsPresetRate}
             ds={ds}
             enabled={expandedCards.has('insects1')}
             engineName={INSECT_ENGINES[state.insectsEngine] ?? ''}
@@ -621,6 +764,7 @@ export default function EarthPage({
             expandedCards={expandedCards}
             onPresetLoad={(scope, value) => { void handleInsectsPresetLoad(scope, value); }}
             onPresetSave={(scope) => { void handleInsectsPresetSave(scope); }}
+            onPresetRate={handleInsectsPresetRate}
             ds={ds}
             enabled={expandedCards.has('insects2')}
             engineName={INSECT_ENGINES[state.insects2Engine] ?? ''}

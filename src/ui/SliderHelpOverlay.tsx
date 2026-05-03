@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   SLIDER_HELP_CATALOG,
   type SliderHelpEntry,
@@ -20,6 +20,7 @@ type SliderHelpContextValue = {
   announceHelp: (paramKey: string, options?: SliderHelpAnnounceOptions) => void;
   announceSlider: (paramKey: string, options?: SliderHelpAnnounceOptions) => void;
 };
+type HelpViewport = 'desktop' | 'mobile' | 'tiny';
 
 const noopAnnounce = (_paramKey: string, _options?: SliderHelpAnnounceOptions) => {};
 const HELP_CATALOG: Record<string, SliderHelpEntry> = {
@@ -32,6 +33,31 @@ const SliderHelpContext = createContext<SliderHelpContextValue>({
   announceHelp: noopAnnounce,
   announceSlider: noopAnnounce,
 });
+
+function getHelpViewport(): HelpViewport {
+  if (typeof window === 'undefined') return 'desktop';
+  if (window.matchMedia('(max-width: 420px)').matches) return 'tiny';
+  if (window.matchMedia('(max-width: 600px)').matches) return 'mobile';
+  return 'desktop';
+}
+
+function listenToMediaQuery(query: MediaQueryList, callback: () => void): () => void {
+  const modernQuery = query as MediaQueryList & {
+    addEventListener?: (type: 'change', listener: () => void) => void;
+    removeEventListener?: (type: 'change', listener: () => void) => void;
+  };
+  if (typeof modernQuery.addEventListener === 'function') {
+    query.addEventListener('change', callback);
+    return () => query.removeEventListener('change', callback);
+  }
+
+  const legacyQuery = query as MediaQueryList & {
+    addListener?: (listener: () => void) => void;
+    removeListener?: (listener: () => void) => void;
+  };
+  legacyQuery.addListener?.(callback);
+  return () => legacyQuery.removeListener?.(callback);
+}
 
 export function useSliderHelp(): SliderHelpContextValue {
   return useContext(SliderHelpContext);
@@ -99,7 +125,29 @@ export const SliderHelpProvider: React.FC<{
 }> = ({ activePage, children }) => {
   const [visible, setVisible] = useState(false);
   const [target, setTarget] = useState<SliderHelpTarget | null>(null);
+  const [helpViewport, setHelpViewport] = useState<HelpViewport>(() => getHelpViewport());
   const tapRef = useRef<number[]>([]);
+  const isMobileHelp = helpViewport !== 'desktop';
+  const isTinyHelp = helpViewport === 'tiny';
+
+  useEffect(() => {
+    const tinyQuery = window.matchMedia('(max-width: 420px)');
+    const mobileQuery = window.matchMedia('(max-width: 600px)');
+    const updateViewport = () => {
+      setHelpViewport((previous) => {
+        const next = getHelpViewport();
+        return previous === next ? previous : next;
+      });
+    };
+
+    updateViewport();
+    const stopTinyListener = listenToMediaQuery(tinyQuery, updateViewport);
+    const stopMobileListener = listenToMediaQuery(mobileQuery, updateViewport);
+    return () => {
+      stopTinyListener();
+      stopMobileListener();
+    };
+  }, []);
 
   const toggle = useCallback(() => {
     setVisible((prev) => !prev);
@@ -162,12 +210,15 @@ export const SliderHelpProvider: React.FC<{
         onClick={toggle}
         style={{
           ...styles.toggleButton,
+          ...(isMobileHelp ? styles.toggleButtonMobile : null),
+          ...(isTinyHelp ? styles.toggleButtonTiny : null),
           ...(visible ? styles.toggleButtonActive : null),
         }}
         title="Toggle control help"
+        aria-label={visible ? 'Hide control help' : 'Show control help'}
         aria-pressed={visible}
       >
-        {visible ? 'Hide Help' : 'Show Help'}
+        {isTinyHelp ? (visible ? '×' : '?') : (visible ? 'Hide Help' : 'Show Help')}
       </button>
       <div
         onClick={handleCornerClick}
@@ -175,7 +226,12 @@ export const SliderHelpProvider: React.FC<{
         title="Triple-click to toggle control help"
       />
       {visible && (
-        <div style={styles.container}>
+        <div
+          style={{
+            ...styles.container,
+            ...(isMobileHelp ? styles.containerMobile : null),
+          }}
+        >
           <div style={styles.kicker}>
             <span>{pageLabel}</span>
             {section && <span style={styles.section}>{section}</span>}
@@ -228,6 +284,23 @@ const styles: Record<string, React.CSSProperties> = {
     backdropFilter: 'blur(6px)',
     boxShadow: '0 8px 24px rgba(0,0,0,0.28)',
   },
+  toggleButtonMobile: {
+    top: 'auto',
+    right: 'calc(env(safe-area-inset-right) + 10px)',
+    bottom: 'calc(env(safe-area-inset-bottom) + 10px)',
+    minHeight: 34,
+    padding: '0 9px',
+    fontSize: 10,
+  },
+  toggleButtonTiny: {
+    width: 36,
+    minWidth: 36,
+    minHeight: 36,
+    padding: 0,
+    borderRadius: 999,
+    fontSize: 17,
+    lineHeight: 1,
+  },
   toggleButtonActive: {
     background: 'rgba(29, 39, 56, 0.88)',
     borderColor: 'rgba(165,196,212,0.32)',
@@ -250,6 +323,18 @@ const styles: Record<string, React.CSSProperties> = {
     pointerEvents: 'none',
     backdropFilter: 'blur(6px)',
     boxShadow: '0 10px 30px rgba(0,0,0,0.35)',
+  },
+  containerMobile: {
+    top: 'auto',
+    right: 'calc(env(safe-area-inset-right) + 8px)',
+    bottom: 'calc(env(safe-area-inset-bottom) + 54px)',
+    maxWidth: 'min(340px, calc(100vw - 16px))',
+    maxHeight: 'min(46vh, 320px)',
+    overflow: 'auto',
+    pointerEvents: 'auto',
+    overscrollBehavior: 'contain',
+    touchAction: 'pan-y',
+    WebkitOverflowScrolling: 'touch',
   },
   kicker: {
     display: 'flex',

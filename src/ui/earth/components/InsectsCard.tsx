@@ -1,3 +1,4 @@
+import { PresetRatingStars } from '../../../presets/PresetRatingStars';
 import type { SliderState } from '../../state';
 import {
   EarthCard,
@@ -18,6 +19,7 @@ type InsectsCardProps = {
   onToggleCard?: (id: string) => void;
   onPresetLoad: (scope: InsectsScope, value: string) => void;
   onPresetSave: (scope: InsectsScope) => void;
+  onPresetRate?: (scope: InsectsScope, option: EarthPresetOption, rating: number) => void;
   ds: EarthDualSliderRenderer;
   enabled?: boolean;
   engineName?: string;
@@ -33,11 +35,13 @@ export function InsectsCard({
   onToggleCard,
   onPresetLoad,
   onPresetSave,
+  onPresetRate,
   ds,
   enabled,
   engineName,
 }: InsectsCardProps) {
   const prefix = scope === 'insects1' ? 'insects' : 'insects2';
+  const selectedOption = presetOptions.find(option => option.value === selectedPreset);
 
   return (
     <EarthCard
@@ -57,6 +61,14 @@ export function InsectsCard({
         >
           <EarthPresetOptions options={presetOptions} />
         </select>
+        {selectedOption && onPresetRate && (
+          <PresetRatingStars
+            value={selectedOption.rating ?? 0}
+            onChange={(rating) => onPresetRate(scope, selectedOption, rating)}
+            color={accent}
+            size="0.55rem"
+          />
+        )}
         <button
           type="button"
           className="earth-preset-save"

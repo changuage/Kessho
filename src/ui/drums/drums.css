@@ -1944,3 +1944,96 @@
 .drum-root .section-header {
   border-bottom-color: rgba(255,255,255,0.08);
 }
+
+/* Final narrow-width polish for dense drum cards and sequencer controls. */
+@media (max-width: 420px) {
+  .drum-root .drums-source-preset-bar,
+  .drum-root .drums-pattern-preset-bar,
+  .drum-root .master-strip,
+  .drum-root .seq-transport {
+    padding: 8px 9px;
+  }
+
+  .drum-root .drums-source-preset-label,
+  .drum-root .drums-pattern-preset-label,
+  .drum-root .vc-name,
+  .drum-root .seq-lane-title,
+  .drum-root .seq-spark-title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .drum-root .vc-sidebar {
+    min-width: 34px;
+    padding-inline: 3px;
+  }
+
+  .drum-root .vc-sliders,
+  .drum-root .voice-card-advanced {
+    padding: 7px 8px;
+  }
+
+  .drum-root .vc-morph-row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 4px 5px;
+    align-items: center;
+  }
+
+  .drum-root .vc-morph-row .morph-label:nth-child(1) {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .drum-root .vc-morph-row .morph-slot-wrap:nth-child(2) {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .drum-root .vc-morph-row .vc-morph-slider {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    min-width: 0;
+  }
+
+  .drum-root .vc-morph-row .morph-slot-wrap:nth-child(4) {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .drum-root .vc-morph-row .morph-label:nth-child(5) {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .drum-root .morph-slot-wrap {
+    flex: initial;
+    gap: 3px;
+  }
+
+  .drum-root .vc-morph-row select {
+    min-height: 28px;
+  }
+
+  .drum-root .vc-macros {
+    gap: 6px;
+  }
+
+  .drum-root .seq-body,
+  .drum-root .seq-lane-body,
+  .drum-root .seq-spark-body {
+    padding: 7px;
+  }
+
+  .drum-root .seq-sources,
+  .drum-root .seq-per-controls,
+  .drum-root .seq-lane-controls,
+  .drum-root .seq-spark-header {
+    gap: 4px;
+  }
+
+  .drum-root .seq-step-cell {
+    min-height: 23px;
+  }
+}

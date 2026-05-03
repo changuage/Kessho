@@ -2,11 +2,14 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
 } from 'react';
 import {
   loadLead4opFMPreset,
+  morphPresets,
+  playLead4opFMNote,
   type Lead4opFMAlgorithm,
   type Lead4opFMModulator,
   type Lead4opFMParams,
@@ -16,7 +19,9 @@ import { SliderPrimitive } from '../sliderSystem';
 
 type LeadPresetLibrary = 'stock' | 'user' | 'cloud';
 type ApplyMode = 'slot' | 'copy' | 'overwrite';
-type EditorTab = 'tone' | 'operators' | 'envelope' | 'filter' | 'transient' | 'output';
+type EditorTab = 'shape' | 'tone' | 'operators';
+type AuditionMode = 'pre' | 'post';
+type SequencePattern = 'ascending' | 'descending' | 'updown' | 'chord';
 type OperatorKey = 'mod1' | 'mod2' | 'mod3' | 'mod4';
 type OperatorField = keyof Lead4opFMModulator;
 type FilterType = NonNullable<Lead4opFMParams['filter']['type']>;
@@ -59,12 +64,17 @@ interface NumberControlProps {
 }
 
 const EDITOR_TABS: Array<{ id: EditorTab; label: string }> = [
-  { id: 'tone', label: 'Tone' },
+  { id: 'shape', label: 'Shape' },
+  { id: 'tone', label: 'Tone / Filter' },
   { id: 'operators', label: 'Operators' },
-  { id: 'envelope', label: 'Envelope' },
-  { id: 'filter', label: 'Filter' },
-  { id: 'transient', label: 'Transient' },
-  { id: 'output', label: 'Output' },
+];
+
+const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+const SEQUENCE_PATTERNS: Array<{ id: SequencePattern; label: string }> = [
+  { id: 'ascending', label: 'Asc' },
+  { id: 'descending', label: 'Desc' },
+  { id: 'updown', label: 'Up/Down' },
+  { id: 'chord', label: 'Chord' },
 ];
 
 const OPERATOR_KEYS: OperatorKey[] = ['mod1', 'mod2', 'mod3', 'mod4'];
@@ -184,6 +194,24 @@ function percentToControlValue(percent: number, min: number, max: number, step: 
     ? Math.exp(Math.log(min) + normalized * (Math.log(max) - Math.log(min)))
     : min + normalized * (max - min);
   return quantizeControlValue(raw, min, max, step);
+}
+
+function midiToFrequency(midiNote: number): number {
+  return 440 * Math.pow(2, (midiNote - 69) / 12);
+}
+
+function generateSequencePattern(pattern: SequencePattern, octave = 4): Array<{ note: number; octave: number }> {
+  const offsetsByPattern: Record<SequencePattern, number[]> = {
+    ascending: [0, 2, 4, 5, 7, 9, 11, 12],
+    descending: [12, 11, 9, 7, 5, 4, 2, 0],
+    updown: [0, 2, 4, 7, 12, 7, 4, 2],
+    chord: [0, 4, 7, 12, 7, 4, 0, 12],
+  };
+
+  return offsetsByPattern[pattern].map((offset) => ({
+    note: offset % 12,
+    octave: octave + Math.floor(offset / 12),
+  }));
 }
 
 function normalizeOperator(operator: Lead4opFMModulator | undefined, index: number): Lead4opFMModulator {
@@ -310,13 +338,64 @@ export function Lead4opFMEditorOverlay({
   onClose,
   onApply,
 }: Lead4opFMEditorOverlayProps) {
-  const [activeTab, setActiveTab] = useState<EditorTab>('tone');
+  const [activeTab, setActiveTab] = useState<EditorTab>('shape');
+  const [auditionMode, setAuditionMode] = useState<AuditionMode>('post');
+  const [sequencePattern, setSequencePattern] = useState<SequencePattern>('ascending');
+  const [sequenceBpm, setSequenceBpm] = useState(100);
+  const [sequencePlaying, setSequencePlaying] = useState(false);
+  const [sequenceStep, setSequenceStep] = useState(-1);
+  const [mutedSequenceSteps, setMutedSequenceSteps] = useState<Set<number>>(() => new Set());
   const [draft, setDraft] = useState<Lead4opFMPreset | null>(null);
   const [original, setOriginal] = useState<Lead4opFMPreset | null>(null);
   const [nameDraft, setNameDraft] = useState('');
   const [loading, setLoading] = useState(false);
   const [savingMode, setSavingMode] = useState<ApplyMode | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const auditionGainRef = useRef<GainNode | null>(null);
+  const sequenceIndexRef = useRef(0);
+  const openRef = useRef(open);
+  const draftRef = useRef<Lead4opFMPreset | null>(null);
+  const originalRef = useRef<Lead4opFMPreset | null>(null);
+  const auditionModeRef = useRef<AuditionMode>(auditionMode);
+  const mutedSequenceStepsRef = useRef<Set<number>>(mutedSequenceSteps);
+
+  const sequenceNotes = useMemo(() => generateSequencePattern(sequencePattern, 4), [sequencePattern]);
+
+  const closeAuditionContext = useCallback(() => {
+    const audioContext = audioContextRef.current;
+    audioContextRef.current = null;
+    auditionGainRef.current = null;
+    if (audioContext && audioContext.state !== 'closed') {
+      void audioContext.close().catch(() => undefined);
+    }
+  }, []);
+
+  useEffect(() => {
+    openRef.current = open;
+    if (!open) {
+      setSequencePlaying(false);
+      setSequenceStep(-1);
+      sequenceIndexRef.current = 0;
+      closeAuditionContext();
+    }
+  }, [closeAuditionContext, open]);
+
+  useEffect(() => {
+    draftRef.current = draft;
+  }, [draft]);
+
+  useEffect(() => {
+    originalRef.current = original;
+  }, [original]);
+
+  useEffect(() => {
+    auditionModeRef.current = auditionMode;
+  }, [auditionMode]);
+
+  useEffect(() => {
+    mutedSequenceStepsRef.current = mutedSequenceSteps;
+  }, [mutedSequenceSteps]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -341,7 +420,11 @@ export function Lead4opFMEditorOverlay({
     let cancelled = false;
     setLoading(true);
     setError(null);
-    setActiveTab('tone');
+    setActiveTab('shape');
+    setAuditionMode('post');
+    setSequencePlaying(false);
+    setSequenceStep(-1);
+    sequenceIndexRef.current = 0;
 
     loadLead4opFMPreset(presetId)
       .then((preset) => {
@@ -369,11 +452,112 @@ export function Lead4opFMEditorOverlay({
     };
   }, [open, presetId]);
 
+  useEffect(() => {
+    setMutedSequenceSteps(new Set());
+    setSequenceStep(-1);
+    sequenceIndexRef.current = 0;
+  }, [sequencePattern]);
+
+  useEffect(() => () => {
+    closeAuditionContext();
+  }, [closeAuditionContext]);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden) return;
+      setSequencePlaying(false);
+      setSequenceStep(-1);
+      sequenceIndexRef.current = 0;
+      closeAuditionContext();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [closeAuditionContext]);
+
   const isDirty = useMemo(() => {
     if (!draft || !original) return false;
     return nameDraft.trim() !== original.name
       || JSON.stringify(draft) !== JSON.stringify(original);
   }, [draft, nameDraft, original]);
+
+  const getAuditionPreset = useCallback(() => (
+    auditionModeRef.current === 'pre' ? originalRef.current : draftRef.current
+  ), []);
+
+  const ensureAuditionContext = useCallback(async () => {
+    const AudioContextCtor = window.AudioContext
+      ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextCtor) throw new Error('AudioContext unavailable');
+
+    if (!audioContextRef.current) {
+      audioContextRef.current = new AudioContextCtor();
+    }
+    const audioContext = audioContextRef.current;
+    if (audioContext.state === 'suspended') await audioContext.resume();
+
+    if (!auditionGainRef.current) {
+      const gain = audioContext.createGain();
+      gain.gain.value = 0.68;
+      gain.connect(audioContext.destination);
+      auditionGainRef.current = gain;
+    }
+
+    return {
+      audioContext,
+      gain: auditionGainRef.current,
+    };
+  }, []);
+
+  const playAuditionFrequency = useCallback(async (frequency: number, velocity = 0.75) => {
+    const preset = getAuditionPreset();
+    if (!preset || !openRef.current) return;
+
+    try {
+      const { audioContext, gain } = await ensureAuditionContext();
+      if (!openRef.current || audioContext.state === 'closed') return;
+      const morphed = morphPresets(preset, preset, 0, 'presetA');
+      playLead4opFMNote(audioContext, gain, frequency, velocity, morphed, 0.36);
+    } catch (auditionError) {
+      console.warn('Failed to play Lead4opFM audition note:', auditionError);
+      setError('Audition failed');
+    }
+  }, [ensureAuditionContext, getAuditionPreset]);
+
+  const playAuditionNote = useCallback((note: number, octave: number, velocity = 0.75) => {
+    void playAuditionFrequency(midiToFrequency((octave + 1) * 12 + note), velocity);
+  }, [playAuditionFrequency]);
+
+  const toggleSequenceStep = useCallback((stepIndex: number) => {
+    setMutedSequenceSteps((previous) => {
+      const next = new Set(previous);
+      if (next.has(stepIndex)) next.delete(stepIndex);
+      else next.add(stepIndex);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!open || !sequencePlaying) {
+      setSequenceStep(-1);
+      return undefined;
+    }
+
+    const tick = () => {
+      const stepIndex = sequenceIndexRef.current % sequenceNotes.length;
+      const note = sequenceNotes[stepIndex];
+      setSequenceStep(stepIndex);
+      if (note && !mutedSequenceStepsRef.current.has(stepIndex)) {
+        playAuditionNote(note.note, note.octave, 0.72);
+      }
+      sequenceIndexRef.current = (stepIndex + 1) % sequenceNotes.length;
+    };
+
+    sequenceIndexRef.current = 0;
+    tick();
+    const intervalId = window.setInterval(tick, Math.max(90, 60000 / sequenceBpm));
+    return () => window.clearInterval(intervalId);
+  }, [open, playAuditionNote, sequenceBpm, sequenceNotes, sequencePlaying]);
 
   const updateDraft = useCallback((updater: (preset: Lead4opFMPreset) => Lead4opFMPreset) => {
     setDraft((previous) => {
@@ -575,6 +759,81 @@ export function Lead4opFMEditorOverlay({
           </div>
         </header>
 
+        <section className="lead-editor-audition" aria-label="Lead preset audition">
+          <div className="lead-editor-compare">
+            {(['pre', 'post'] as AuditionMode[]).map((mode) => (
+              <button
+                key={mode}
+                className={`lead-editor-compare-btn${auditionMode === mode ? ' active' : ''}`}
+                type="button"
+                onClick={() => setAuditionMode(mode)}
+                disabled={loading || !draft || !original}
+              >
+                {mode === 'pre' ? 'Pre' : 'Post'}
+              </button>
+            ))}
+          </div>
+          <div className="lead-editor-seq-main">
+            <button
+              className="lead-editor-plain-btn"
+              type="button"
+              onClick={() => playAuditionNote(0, 4, 0.8)}
+              disabled={loading || !draft}
+            >
+              Play note
+            </button>
+            <button
+              className={`lead-editor-plain-btn${sequencePlaying ? ' active' : ''}`}
+              type="button"
+              onClick={() => setSequencePlaying((playing) => !playing)}
+              disabled={loading || !draft}
+            >
+              {sequencePlaying ? 'Stop seq' : 'Play seq'}
+            </button>
+            <label className="lead-editor-seq-bpm">
+              <span>BPM</span>
+              <input
+                type="range"
+                min={60}
+                max={180}
+                step={1}
+                value={sequenceBpm}
+                onChange={(event) => setSequenceBpm(Number(event.currentTarget.value))}
+              />
+              <strong>{sequenceBpm}</strong>
+            </label>
+          </div>
+          <div className="lead-editor-seq-patterns">
+            {SEQUENCE_PATTERNS.map((pattern) => (
+              <button
+                key={pattern.id}
+                className={`lead-editor-seq-pattern${sequencePattern === pattern.id ? ' active' : ''}`}
+                type="button"
+                onClick={() => setSequencePattern(pattern.id)}
+              >
+                {pattern.label}
+              </button>
+            ))}
+          </div>
+          <div className="lead-editor-seq-grid">
+            {sequenceNotes.map((note, index) => {
+              const muted = mutedSequenceSteps.has(index);
+              return (
+                <button
+                  key={`${sequencePattern}:${index}`}
+                  className={`lead-editor-seq-step${muted ? '' : ' active'}${sequenceStep === index ? ' current' : ''}`}
+                  type="button"
+                  onClick={() => toggleSequenceStep(index)}
+                  title={muted ? 'Muted step' : 'Active step'}
+                >
+                  <span>{NOTE_NAMES[note.note]}</span>
+                  <small>{note.octave}</small>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
         <nav className="lead-editor-tabs" aria-label="Lead4opFM parameter sections">
           {EDITOR_TABS.map((tab) => (
             <button
@@ -591,6 +850,49 @@ export function Lead4opFMEditorOverlay({
         <div className="lead-editor-body">
           {loading && <div className="lead-editor-empty">Loading preset</div>}
           {!loading && !draft && <div className="lead-editor-empty">{error ?? 'Preset unavailable'}</div>}
+
+          {draft && activeTab === 'shape' && (
+            <div className="lead-editor-section">
+              <div className="lead-editor-subsection">
+                <div className="lead-editor-section-head">
+                  <span>Transient</span>
+                  <select value={draft.params.transient.type} onChange={(event) => updateTransient('type', event.currentTarget.value as TransientType)}>
+                    {TRANSIENT_TYPES.map((type) => (
+                      <option key={type} value={type}>{type}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="lead-editor-control-grid">
+                  <NumberControl label="Click" value={draft.params.transient.click} min={0} max={1} step={0.01} onChange={(value) => updateTransient('click', value)} />
+                  <NumberControl label="Noise" value={draft.params.transient.noise} min={0} max={1} step={0.01} onChange={(value) => updateTransient('noise', value)} />
+                  <NumberControl label="Duration" value={draft.params.transient.duration} min={1} max={200} step={1} unit="ms" onChange={(value) => updateTransient('duration', value)} />
+                  <NumberControl label="Decay" value={draft.params.transient.decay} min={1} max={300} step={1} onChange={(value) => updateTransient('decay', value)} />
+                  <NumberControl label="Filter" value={draft.params.transient.filter} min={100} max={12000} step={10} unit="Hz" logarithmic onChange={(value) => updateTransient('filter', value)} />
+                </div>
+              </div>
+
+              <div className="lead-editor-subsection">
+                <div className="lead-editor-subsection-title">Envelope</div>
+                <div className="lead-editor-control-grid">
+                  <NumberControl label="Attack" value={draft.params.envelope.attack} min={0.001} max={2} step={0.001} unit="s" onChange={(value) => updateEnvelope('attack', value)} />
+                  <NumberControl label="Decay" value={draft.params.envelope.decay} min={0.01} max={4} step={0.01} unit="s" onChange={(value) => updateEnvelope('decay', value)} />
+                  <NumberControl label="Sustain" value={draft.params.envelope.sustain} min={0} max={1} step={0.01} onChange={(value) => updateEnvelope('sustain', value)} />
+                  <NumberControl label="Release" value={draft.params.envelope.release} min={0.01} max={8} step={0.01} unit="s" onChange={(value) => updateEnvelope('release', value)} />
+                </div>
+              </div>
+
+              <div className="lead-editor-subsection">
+                <div className="lead-editor-subsection-title">Output</div>
+                <div className="lead-editor-control-grid">
+                  <NumberControl label="Gain" value={draft.params.gain} min={0} max={1.5} step={0.01} onChange={(value) => updateParam('gain', value)} />
+                  <NumberControl label="X level" value={draft.xy.xLevel} min={0} max={1.5} step={0.01} onChange={(value) => updateXY('xLevel', value)} />
+                  <NumberControl label="Y level" value={draft.xy.yLevel} min={0} max={1.5} step={0.01} onChange={(value) => updateXY('yLevel', value)} />
+                  <NumberControl label="X pan" value={draft.xy.xPan} min={-1} max={1} step={0.01} onChange={(value) => updateXY('xPan', value)} />
+                  <NumberControl label="Y pan" value={draft.xy.yPan} min={-1} max={1} step={0.01} onChange={(value) => updateXY('yPan', value)} />
+                </div>
+              </div>
+            </div>
+          )}
 
           {draft && activeTab === 'tone' && (
             <div className="lead-editor-section">
@@ -613,7 +915,6 @@ export function Lead4opFMEditorOverlay({
                 <NumberControl label="Beat detune" value={draft.params.beatDetune} min={-50} max={50} step={1} unit="ct" onChange={(value) => updateParam('beatDetune', value)} />
                 <NumberControl label="Carrier 2 mix" value={draft.params.carrier2Mix} min={0} max={1} step={0.01} onChange={(value) => updateParam('carrier2Mix', value)} />
                 <NumberControl label="Drive" value={draft.params.drive ?? 0} min={0} max={1} step={0.01} onChange={(value) => updateParam('drive', value)} />
-                <NumberControl label="Output gain" value={draft.params.gain} min={0} max={1.5} step={0.01} onChange={(value) => updateParam('gain', value)} />
                 <NumberControl label="Unison voices" value={draft.params.unisonVoices ?? 1} min={1} max={4} step={1} onChange={(value) => updateParam('unisonVoices', Math.round(value))} />
                 <NumberControl label="Unison detune" value={draft.params.unisonDetune ?? 0} min={0} max={50} step={1} unit="ct" onChange={(value) => updateParam('unisonDetune', value)} />
               </div>
@@ -631,6 +932,26 @@ export function Lead4opFMEditorOverlay({
                       ))}
                     </select>
                   </label>
+                </div>
+              </div>
+
+              <div className="lead-editor-subsection">
+                <div className="lead-editor-section-head">
+                  <span>Filter</span>
+                  <select value={draft.params.filter.type ?? 'lowpass'} onChange={(event) => updateFilter('type', event.currentTarget.value as FilterType)}>
+                    {FILTER_TYPES.map((filterType) => (
+                      <option key={filterType} value={filterType}>{filterType}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="lead-editor-control-grid">
+                  <NumberControl label="Frequency" value={draft.params.filter.freq} min={20} max={20000} step={10} unit="Hz" logarithmic onChange={(value) => updateFilter('freq', value)} />
+                  <NumberControl label="Q" value={draft.params.filter.q} min={0.1} max={12} step={0.01} onChange={(value) => updateFilter('q', value)} />
+                  <NumberControl label="Env attack" value={draft.params.filter.envAttack ?? 0} min={0} max={2} step={0.001} unit="s" onChange={(value) => updateFilter('envAttack', value)} />
+                  <NumberControl label="Env decay" value={draft.params.filter.envDecay ?? 0} min={0} max={4} step={0.01} unit="s" onChange={(value) => updateFilter('envDecay', value)} />
+                  <NumberControl label="Env sustain" value={draft.params.filter.envSustain ?? 1} min={0} max={1} step={0.01} onChange={(value) => updateFilter('envSustain', value)} />
+                  <NumberControl label="Env release" value={draft.params.filter.envRelease ?? 0} min={0} max={4} step={0.01} unit="s" onChange={(value) => updateFilter('envRelease', value)} />
+                  <NumberControl label="Env depth" value={draft.params.filter.envDepth ?? 0} min={-8000} max={8000} step={10} unit="Hz" onChange={(value) => updateFilter('envDepth', value)} />
                 </div>
               </div>
             </div>
@@ -692,69 +1013,6 @@ export function Lead4opFMEditorOverlay({
             </div>
           )}
 
-          {draft && activeTab === 'envelope' && (
-            <div className="lead-editor-section">
-              <div className="lead-editor-control-grid">
-                <NumberControl label="Attack" value={draft.params.envelope.attack} min={0.001} max={2} step={0.001} unit="s" onChange={(value) => updateEnvelope('attack', value)} />
-                <NumberControl label="Decay" value={draft.params.envelope.decay} min={0.01} max={4} step={0.01} unit="s" onChange={(value) => updateEnvelope('decay', value)} />
-                <NumberControl label="Sustain" value={draft.params.envelope.sustain} min={0} max={1} step={0.01} onChange={(value) => updateEnvelope('sustain', value)} />
-                <NumberControl label="Release" value={draft.params.envelope.release} min={0.01} max={8} step={0.01} unit="s" onChange={(value) => updateEnvelope('release', value)} />
-              </div>
-            </div>
-          )}
-
-          {draft && activeTab === 'filter' && (
-            <div className="lead-editor-section">
-              <div className="lead-editor-section-head">
-                <span>Filter</span>
-                <select value={draft.params.filter.type ?? 'lowpass'} onChange={(event) => updateFilter('type', event.currentTarget.value as FilterType)}>
-                  {FILTER_TYPES.map((filterType) => (
-                    <option key={filterType} value={filterType}>{filterType}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="lead-editor-control-grid">
-                <NumberControl label="Frequency" value={draft.params.filter.freq} min={20} max={20000} step={10} unit="Hz" logarithmic onChange={(value) => updateFilter('freq', value)} />
-                <NumberControl label="Q" value={draft.params.filter.q} min={0.1} max={12} step={0.01} onChange={(value) => updateFilter('q', value)} />
-                <NumberControl label="Env attack" value={draft.params.filter.envAttack ?? 0} min={0} max={2} step={0.001} unit="s" onChange={(value) => updateFilter('envAttack', value)} />
-                <NumberControl label="Env decay" value={draft.params.filter.envDecay ?? 0} min={0} max={4} step={0.01} unit="s" onChange={(value) => updateFilter('envDecay', value)} />
-                <NumberControl label="Env sustain" value={draft.params.filter.envSustain ?? 1} min={0} max={1} step={0.01} onChange={(value) => updateFilter('envSustain', value)} />
-                <NumberControl label="Env release" value={draft.params.filter.envRelease ?? 0} min={0} max={4} step={0.01} unit="s" onChange={(value) => updateFilter('envRelease', value)} />
-                <NumberControl label="Env depth" value={draft.params.filter.envDepth ?? 0} min={-8000} max={8000} step={10} unit="Hz" onChange={(value) => updateFilter('envDepth', value)} />
-              </div>
-            </div>
-          )}
-
-          {draft && activeTab === 'transient' && (
-            <div className="lead-editor-section">
-              <div className="lead-editor-section-head">
-                <span>Transient</span>
-                <select value={draft.params.transient.type} onChange={(event) => updateTransient('type', event.currentTarget.value as TransientType)}>
-                  {TRANSIENT_TYPES.map((type) => (
-                    <option key={type} value={type}>{type}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="lead-editor-control-grid">
-                <NumberControl label="Click" value={draft.params.transient.click} min={0} max={1} step={0.01} onChange={(value) => updateTransient('click', value)} />
-                <NumberControl label="Noise" value={draft.params.transient.noise} min={0} max={1} step={0.01} onChange={(value) => updateTransient('noise', value)} />
-                <NumberControl label="Duration" value={draft.params.transient.duration} min={1} max={200} step={1} unit="ms" onChange={(value) => updateTransient('duration', value)} />
-                <NumberControl label="Decay" value={draft.params.transient.decay} min={1} max={300} step={1} onChange={(value) => updateTransient('decay', value)} />
-                <NumberControl label="Filter" value={draft.params.transient.filter} min={100} max={12000} step={10} unit="Hz" logarithmic onChange={(value) => updateTransient('filter', value)} />
-              </div>
-            </div>
-          )}
-
-          {draft && activeTab === 'output' && (
-            <div className="lead-editor-section">
-              <div className="lead-editor-control-grid">
-                <NumberControl label="X level" value={draft.xy.xLevel} min={0} max={1.5} step={0.01} onChange={(value) => updateXY('xLevel', value)} />
-                <NumberControl label="Y level" value={draft.xy.yLevel} min={0} max={1.5} step={0.01} onChange={(value) => updateXY('yLevel', value)} />
-                <NumberControl label="X pan" value={draft.xy.xPan} min={-1} max={1} step={0.01} onChange={(value) => updateXY('xPan', value)} />
-                <NumberControl label="Y pan" value={draft.xy.yPan} min={-1} max={1} step={0.01} onChange={(value) => updateXY('yPan', value)} />
-              </div>
-            </div>
-          )}
         </div>
 
         <footer className="lead-editor-footer">

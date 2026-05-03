@@ -20,6 +20,7 @@ export type EarthPresetOption = {
   library: 'stock' | 'user' | 'cloud';
   stockIndex?: number;
   presetName?: string;
+  rating?: number;
 };
 
 type EarthCardProps = {

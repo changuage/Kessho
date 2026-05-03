@@ -63,6 +63,8 @@ export { exportPresetToFile, importPresetFromFile, quickExport } from './fileIO'
 // Phase 3: PresetDropdown component
 export { PresetDropdown } from './PresetDropdown';
 export type { PresetDropdownProps } from './PresetDropdown';
+export { PresetRatingStars } from './PresetRatingStars';
+export type { PresetRatingStarsProps } from './PresetRatingStars';
 
 // Family tree visualizer
 export { PresetFamilyTree } from './PresetFamilyTree';

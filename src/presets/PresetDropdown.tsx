@@ -11,6 +11,7 @@ import { extractPresetVersionMetadata, isPresetCompatibleWithSlot, presetValuesE
 import { getPresetDisplayLabel } from './catalog';
 import { getVersionData } from './codec';
 import { SHARED_PRESET_TEST_MODE } from './sharedMode';
+import { PresetRatingStars } from './PresetRatingStars';
 import { DEFAULT_STATE, type SliderMode, type SliderState } from '../ui/state';
 import type { UsePresetsOptions } from './usePresets';
 
@@ -167,7 +168,7 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
   dualSliderRanges,
   onDualStateChange,
 }) => {
-  const { presets, save, load, remove, refresh, extract, apply } = usePresets(level, scope, presetOptions);
+  const { presets, save, load, remove, refresh, extract, apply, updateMetadata } = usePresets(level, scope, presetOptions);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [saveName, setSaveName] = useState('');
   const [saveNote, setSaveNote] = useState('');
@@ -175,6 +176,7 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
   const [selectedName, setSelectedName] = useState(currentName || '');
   const [loadedEntry, setLoadedEntry] = useState<PresetEntry | null>(null);
   const [loadedData, setLoadedData] = useState<Record<string, unknown> | null>(null);
+  const [localRatings, setLocalRatings] = useState<Record<string, number>>({});
   const loadRequestIdRef = useRef(0);
   const dedupedPresets = useMemo(() => dedupePresetSummaries(presets), [presets]);
   const sortedPresets = useMemo(
@@ -402,6 +404,15 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
     setLoadedEntry(entry);
   }, [selectedName, load, refresh]);
 
+  const handleRate = useCallback(async (name: string, rating: number) => {
+    try {
+      await updateMetadata(name, { rating });
+      setLocalRatings(prev => ({ ...prev, [name]: rating }));
+    } catch (ratingError) {
+      console.warn('Failed to update preset rating:', ratingError);
+    }
+  }, [updateMetadata]);
+
   const selectBorderColor = isDirty
     ? '#c9913666'
     : accentColor
@@ -442,6 +453,15 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
             </option>
           ))}
         </select>
+
+        {selectedPresetSummary && (
+          <PresetRatingStars
+            value={localRatings[selectedPresetSummary.name] ?? selectedPresetSummary.rating ?? 0}
+            onChange={(rating) => { void handleRate(selectedPresetSummary.name, rating); }}
+            color={accentColor}
+            size={compact ? '0.62rem' : '0.68rem'}
+          />
+        )}
 
         {showSaveButton && (
           <button

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { PresetRatingStars } from '../../../presets/PresetRatingStars';
 import type { SliderState } from '../../state';
 import {
   EarthCard,
@@ -11,10 +12,13 @@ type WaterCardProps = {
   state: SliderState;
   ds: EarthDualSliderRenderer;
   waterPresetOptions: EarthPresetOption[];
+  selectedWaterPreset: string;
   expandedCards: Set<string>;
   onToggleCard?: (id: string) => void;
   onSelectChange: <K extends keyof SliderState>(key: K, value: SliderState[K]) => void;
-  onWaterSlotSave: (slotKey: 'waterMorphA' | 'waterMorphB') => void;
+  onWaterPresetLoad: (value: string) => void;
+  onWaterPresetSave: () => void;
+  onWaterPresetRate?: (option: EarthPresetOption, rating: number) => void;
   enabled?: boolean;
 };
 
@@ -59,10 +63,13 @@ export function WaterCard({
   state,
   ds,
   waterPresetOptions,
+  selectedWaterPreset,
   expandedCards,
   onToggleCard,
   onSelectChange,
-  onWaterSlotSave,
+  onWaterPresetLoad,
+  onWaterPresetSave,
+  onWaterPresetRate,
   enabled,
 }: WaterCardProps) {
   const hardDropsOpen = Number(state.waterLayerHardDrops) > 0.01;
@@ -72,6 +79,7 @@ export function WaterCard({
   const surfOpen = Number(state.waterLayerSurf) > 0.01;
   const channelsOpen = Number(state.waterLayerChannels) > 0.01;
   const anyWaterOpen = hardDropsOpen || waterDropsOpen || bubblingOpen || turbulenceOpen || surfOpen || channelsOpen;
+  const selectedOption = waterPresetOptions.find(item => item.value === selectedWaterPreset);
 
   return (
     <EarthCard
@@ -82,6 +90,32 @@ export function WaterCard({
       onToggleCard={onToggleCard}
       enabled={enabled}
     >
+      <div className="earth-preset-bar">
+        <select
+          className="earth-select earth-preset-select"
+          value={selectedWaterPreset}
+          onChange={(e) => onWaterPresetLoad(e.target.value)}
+        >
+          <EarthPresetOptions options={waterPresetOptions} />
+        </select>
+        {selectedOption && onWaterPresetRate && (
+          <PresetRatingStars
+            value={selectedOption.rating ?? 0}
+            onChange={(rating) => onWaterPresetRate(selectedOption, rating)}
+            color="#4a9eff"
+            size="0.55rem"
+          />
+        )}
+        <button
+          type="button"
+          className="earth-preset-save"
+          onClick={onWaterPresetSave}
+          title="Save the current Water engine state as an L1 preset"
+        >
+          Save
+        </button>
+      </div>
+
       <div className="earth-preset-row">
         <div className="earth-preset-slot">
           <select
@@ -93,14 +127,6 @@ export function WaterCard({
           >
             <EarthPresetOptions options={waterPresetOptions} />
           </select>
-          <button
-            type="button"
-            className="earth-preset-save"
-            onClick={() => onWaterSlotSave('waterMorphA')}
-            title="Save the current Water state into slot A's L1 preset"
-          >
-            Save
-          </button>
         </div>
 
         <div style={{ flex: 1 }}>
@@ -117,14 +143,6 @@ export function WaterCard({
           >
             <EarthPresetOptions options={waterPresetOptions} />
           </select>
-          <button
-            type="button"
-            className="earth-preset-save"
-            onClick={() => onWaterSlotSave('waterMorphB')}
-            title="Save the current Water state into slot B's L1 preset"
-          >
-            Save
-          </button>
         </div>
       </div>
 

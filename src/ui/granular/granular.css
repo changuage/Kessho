@@ -1705,3 +1705,98 @@
 .granular-root .granular-ov-voice {
   font-size: 0.6rem; font-weight: 700; margin-left: 4px;
 }
+
+/* Final narrow-width polish for dense granular controls. */
+@media (max-width: 420px) {
+  .granular-root .granular-global-bar,
+  .granular-root .granular-global-sliders,
+  .granular-root .granular-sequencer-body,
+  .granular-root .granular-macro-card .section-body,
+  .granular-root .granular-routing-card .section-body,
+  .granular-root .granular-sequencer-card .section-body,
+  .granular-root .granular-preset-body,
+  .granular-root .seq-transport {
+    padding: 8px 9px;
+  }
+
+  .granular-root .granular-section-head,
+  .granular-root .granular-voice-header,
+  .granular-root .section-header {
+    padding-inline: 9px;
+  }
+
+  .granular-root .granular-section-head {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .granular-root .granular-section-note,
+  .granular-root .granular-inline-note,
+  .granular-root .granular-space-prototype-note,
+  .granular-root .granular-macro-note,
+  .granular-root .granular-seq-placeholder-sub,
+  .granular-root .seq-step-hint {
+    color: rgba(215, 224, 238, 0.68);
+  }
+
+  .granular-root .granular-section-note,
+  .granular-root .granular-inline-note {
+    text-align: left;
+    white-space: normal;
+  }
+
+  .granular-root .granular-preset-description {
+    font-size: 0.76rem;
+  }
+
+  .granular-root .granular-input-sources-grid,
+  .granular-root .granular-grid-2,
+  .granular-root .granular-grid-3,
+  .granular-root .granular-grid-4,
+  .granular-root .granular-voice-card .granular-grid-4 {
+    gap: 5px 7px;
+  }
+
+  .granular-root .granular-voice-body,
+  .granular-root .seq-body,
+  .granular-root .seq-lane-body,
+  .granular-root .seq-spark-body {
+    padding: 7px;
+  }
+
+  .granular-root .granular-voice-name,
+  .granular-root .granular-voice-summary,
+  .granular-root .seq-lane-title,
+  .granular-root .seq-spark-title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .granular-root .seq-sources,
+  .granular-root .seq-per-controls,
+  .granular-root .seq-lane-controls,
+  .granular-root .seq-spark-header {
+    gap: 4px;
+  }
+
+  .granular-root .seq-step-grid {
+    grid-template-columns: repeat(8, 1fr) !important;
+    gap: 3px;
+  }
+
+  .granular-root .seq-step-cell {
+    min-height: 23px;
+    border-width: 1.5px;
+  }
+
+  .granular-root .seq-pitch-bar-wrap,
+  .granular-root .seq-morph-bar-wrap {
+    height: 36px;
+  }
+
+  .granular-root .seq-vel-bar-wrap {
+    height: 30px;
+  }
+}
