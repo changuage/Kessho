@@ -91,6 +91,11 @@ class AppState: ObservableObject {
     let midiMapStore = MidiMapStore()
 
     private var cancellables = Set<AnyCancellable>()
+    private let audioUpdateInterval: TimeInterval = 1.0 / 45.0
+    private var pendingAudioState: SliderState?
+    private var audioUpdateScheduled = false
+    private var audioUpdateGeneration = 0
+    private var lastAudioUpdateTime: TimeInterval = 0
 
     init() {
         setupServices()
@@ -166,7 +171,7 @@ class AppState: ObservableObject {
         $state
             .dropFirst()
             .sink { [weak self] newState in
-                self?.audioEngine.updateParams(newState)
+                self?.scheduleAudioEngineUpdate(newState)
             }
             .store(in: &cancellables)
         
@@ -186,6 +191,39 @@ class AppState: ObservableObject {
                 }
             }
         }
+    }
+
+    private func scheduleAudioEngineUpdate(_ newState: SliderState) {
+        guard isPlaying else {
+            pendingAudioState = nil
+            return
+        }
+
+        pendingAudioState = newState
+        guard !audioUpdateScheduled else { return }
+
+        audioUpdateScheduled = true
+        let generation = audioUpdateGeneration
+        let now = Date().timeIntervalSinceReferenceDate
+        let delay = max(0, lastAudioUpdateTime + audioUpdateInterval - now)
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self,
+                  self.audioUpdateScheduled,
+                  self.audioUpdateGeneration == generation else { return }
+
+            self.audioUpdateScheduled = false
+            guard let state = self.pendingAudioState else { return }
+            self.pendingAudioState = nil
+            self.lastAudioUpdateTime = Date().timeIntervalSinceReferenceDate
+            self.audioEngine.updateParams(state)
+        }
+    }
+
+    private func cancelPendingAudioEngineUpdate() {
+        audioUpdateGeneration += 1
+        audioUpdateScheduled = false
+        pendingAudioState = nil
     }
 
     private func updateNowPlayingInfo() {
@@ -938,6 +976,7 @@ class AppState: ObservableObject {
     // MARK: - Playback Control
 
     func start() {
+        cancelPendingAudioEngineUpdate()
         do {
             if !audioSessionManager.isConfigured {
                 try audioSessionManager.configureForPlayback(
@@ -957,6 +996,7 @@ class AppState: ObservableObject {
     }
 
     func stop() {
+        cancelPendingAudioEngineUpdate()
         audioEngine.stop()
         isPlaying = false
         shouldResumeAfterInterruption = false
@@ -1837,7 +1877,6 @@ class AppState: ObservableObject {
         guard let presetA = morphPresetA, let presetB = morphPresetB else { return }
         let morphedState = lerpPresets(presetA.state, presetB.state, t: morphPosition / 100.0)
         state = morphedState
-        audioEngine.updateParams(state)
     }
     
     /// Toggle auto-morph on/off

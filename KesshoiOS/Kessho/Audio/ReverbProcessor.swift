@@ -184,7 +184,12 @@ class ReverbProcessor {
                 return noErr
             }
 
-            self.stateLock.lock()
+            guard self.stateLock.try() else {
+                for frame in 0..<Int(frameCount) {
+                    writeReverbStereoFrame(0, 0, frame: frame, to: ablPointer)
+                }
+                return noErr
+            }
             defer { self.stateLock.unlock() }
 
             let shouldRenderCustom = self.useCustomReverb
@@ -425,7 +430,7 @@ class ReverbProcessor {
         let left = channelData[0]
         let right = Int(buffer.format.channelCount) > 1 ? channelData[1] : channelData[0]
 
-        stateLock.lock()
+        guard stateLock.try() else { return }
         defer { stateLock.unlock() }
 
         if frameCount >= inputBufferSize {

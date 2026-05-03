@@ -2,6 +2,70 @@ import AVFoundation
 import Foundation
 import Combine
 
+private struct MobilePerformanceProfile {
+    let granularDensityScale: Double
+    let granularProbabilityScale: Double
+    let granularMaxGrains: Int
+    let reverbQualityCeiling: ReverbQuality
+    let reverbSendScale: Double
+    let reverbModulationScale: Double
+    let reverbShimmerScale: Double
+    let delaySendScale: Double
+    let delayFeedbackScale: Double
+    let delayModulationScale: Double
+    let natureDensityScale: Double
+    let natureLevelScale: Double
+    let freezeMixScale: Double
+
+    static let nominal = MobilePerformanceProfile(
+        granularDensityScale: 1,
+        granularProbabilityScale: 1,
+        granularMaxGrains: 96,
+        reverbQualityCeiling: .ultra,
+        reverbSendScale: 1,
+        reverbModulationScale: 1,
+        reverbShimmerScale: 1,
+        delaySendScale: 1,
+        delayFeedbackScale: 1,
+        delayModulationScale: 1,
+        natureDensityScale: 1,
+        natureLevelScale: 1,
+        freezeMixScale: 1
+    )
+
+    static let balanced = MobilePerformanceProfile(
+        granularDensityScale: 0.78,
+        granularProbabilityScale: 0.9,
+        granularMaxGrains: 56,
+        reverbQualityCeiling: .balanced,
+        reverbSendScale: 0.92,
+        reverbModulationScale: 0.85,
+        reverbShimmerScale: 0.65,
+        delaySendScale: 0.9,
+        delayFeedbackScale: 0.9,
+        delayModulationScale: 0.75,
+        natureDensityScale: 0.82,
+        natureLevelScale: 0.95,
+        freezeMixScale: 0.85
+    )
+
+    static let pressure = MobilePerformanceProfile(
+        granularDensityScale: 0.55,
+        granularProbabilityScale: 0.72,
+        granularMaxGrains: 32,
+        reverbQualityCeiling: .lite,
+        reverbSendScale: 0.72,
+        reverbModulationScale: 0.5,
+        reverbShimmerScale: 0.25,
+        delaySendScale: 0.68,
+        delayFeedbackScale: 0.72,
+        delayModulationScale: 0.35,
+        natureDensityScale: 0.55,
+        natureLevelScale: 0.85,
+        freezeMixScale: 0.55
+    )
+}
+
 /// Engine state update callback data
 struct EngineStateUpdate {
     var cofCurrentStep: Int
@@ -109,6 +173,13 @@ public final class AudioEngine {
     private var currentBucket: String = ""
     private var currentSeed: Int = 0
     private var lastAppliedReverbEnabled: Bool = SliderState.default.reverbEnabled
+    private var graphRenderFormat: AVAudioFormat?
+    private var granularInputTapInstalled = false
+    private var reverbInputTapInstalled = false
+    private var dynamicsInputTapInstalled = false
+    private var delayAGranularTapInstalled = false
+    private var delayBGranularTapInstalled = false
+    private var lastEffectiveReverbQuality: ReverbQuality = .balanced
     
     // Scheduling
     private var phraseTimer: Timer?
@@ -148,6 +219,7 @@ public final class AudioEngine {
         let outputFormat = outputNode.inputFormat(forBus: 0)
         renderSampleRate = outputFormat.sampleRate > 1_000 ? outputFormat.sampleRate : 44_100
         let format = AVAudioFormat(standardFormatWithSampleRate: renderSampleRate, channels: 2)!
+        graphRenderFormat = format
 
         // AVAudioEngine requires both ends of a connection to be attached first.
         // Attach the shared routing mixers up front before connecting any sources.
@@ -353,11 +425,6 @@ public final class AudioEngine {
         installSignalDebugTap(on: leadLevelMixer, label: "lead")
         #endif
 
-        // Setup tap on synth mixer for granular live input
-        setupGranularInputTap(format: format)
-        setupReverbInputTap(format: format)
-        setupDynamicsCharacterInputTap(format: format)
-        
         // Prepare engine
         engine.prepare()
     }
@@ -394,25 +461,31 @@ public final class AudioEngine {
     
     /// Install a tap on synth mixer to feed audio to granular processor
     private func setupGranularInputTap(format: AVAudioFormat) {
+        guard !granularInputTapInstalled else { return }
         // Match the preferred IO buffer size more closely so granular input stays
         // phase-aligned with the native render callback instead of arriving in
         // large snapshots.
+        synthMixer.removeTap(onBus: 0)
         synthMixer.installTap(onBus: 0, bufferSize: 256, format: format) { [weak self] buffer, _ in
             guard let self, self.currentParams.granularEnabled else { return }
             self.processGranularInput(buffer: buffer)
         }
+        granularInputTapInstalled = true
     }
 
     /// Feed the parity-oriented custom reverb from the shared aux input bus.
     private func setupReverbInputTap(format: AVAudioFormat) {
+        guard !reverbInputTapInstalled else { return }
         reverbSend.removeTap(onBus: 0)
         reverbSend.installTap(onBus: 0, bufferSize: 256, format: format) { [weak self] buffer, _ in
             guard let self, self.currentParams.reverbEnabled else { return }
             self.reverbProcessor?.writeInput(buffer: buffer)
         }
+        reverbInputTapInstalled = true
     }
 
     private func setupDynamicsCharacterInputTap(format: AVAudioFormat) {
+        guard !dynamicsInputTapInstalled else { return }
         masterMixer.removeTap(onBus: 0)
         masterMixer.installTap(onBus: 0, bufferSize: 128, format: format) { [weak self] buffer, _ in
             guard let self else { return }
@@ -426,6 +499,79 @@ public final class AudioEngine {
             if freezeActive {
                 self.spectralFreezeProcessor?.writeInput(buffer: buffer)
             }
+        }
+        dynamicsInputTapInstalled = true
+    }
+
+    private func updateConditionalInputTaps() {
+        guard let format = graphRenderFormat else { return }
+
+        let granularNeedsInput = currentParams.granularEnabled &&
+            currentParams.granularLevel > 0.0001 &&
+            currentParams.synthLevel > 0.0001
+        if granularNeedsInput {
+            setupGranularInputTap(format: format)
+        } else if granularInputTapInstalled {
+            synthMixer.removeTap(onBus: 0)
+            granularInputTapInstalled = false
+        }
+
+        let reverbNeedsCustomInput = currentParams.reverbEnabled &&
+            lastEffectiveReverbQuality != .lite &&
+            anyReverbSendAudible()
+        if reverbNeedsCustomInput {
+            setupReverbInputTap(format: format)
+        } else if reverbInputTapInstalled {
+            reverbSend.removeTap(onBus: 0)
+            reverbInputTapInstalled = false
+        }
+
+        let dynamicsActive = currentParams.dynamicsEnabled &&
+            (currentParams.characterEnabled || currentParams.degradeEnabled || currentParams.endCompEnabled)
+        let freezeActive = currentParams.spectralFreezeEnabled
+        if dynamicsActive || freezeActive {
+            setupDynamicsCharacterInputTap(format: format)
+        } else if dynamicsInputTapInstalled {
+            masterMixer.removeTap(onBus: 0)
+            dynamicsInputTapInstalled = false
+        }
+
+        setupSharedDelayGranularTaps(format: format)
+    }
+
+    private func anyReverbSendAudible() -> Bool {
+        synthReverbSendMixer.outputVolume > 0.0001 ||
+            granularReverbSendMixer.outputVolume > 0.0001 ||
+            leadReverbSendMixer.outputVolume > 0.0001 ||
+            lead2ReverbSendMixer.outputVolume > 0.0001 ||
+            pianoReverbSendMixer.outputVolume > 0.0001 ||
+            drumReverbSendMixer.outputVolume > 0.0001 ||
+            oceanReverbSendMixer.outputVolume > 0.0001 ||
+            natureReverbSendMixer.outputVolume > 0.0001 ||
+            delayAReverbSendMixer.outputVolume > 0.0001 ||
+            delayBReverbSendMixer.outputVolume > 0.0001
+    }
+
+    private func removeConditionalInputTaps() {
+        if granularInputTapInstalled {
+            synthMixer.removeTap(onBus: 0)
+            granularInputTapInstalled = false
+        }
+        if reverbInputTapInstalled {
+            reverbSend.removeTap(onBus: 0)
+            reverbInputTapInstalled = false
+        }
+        if dynamicsInputTapInstalled {
+            masterMixer.removeTap(onBus: 0)
+            dynamicsInputTapInstalled = false
+        }
+        if delayAGranularTapInstalled {
+            delayAMixer.removeTap(onBus: 0)
+            delayAGranularTapInstalled = false
+        }
+        if delayBGranularTapInstalled {
+            delayBMixer.removeTap(onBus: 0)
+            delayBGranularTapInstalled = false
         }
     }
 
@@ -760,26 +906,47 @@ public final class AudioEngine {
         delayBMixer.outputVolume = 0
         delayAToBSendMixer.outputVolume = 0
         delayBToASendMixer.outputVolume = 0
-        setupSharedDelayGranularTaps(format: format)
     }
 
     private func setupSharedDelayGranularTaps(format: AVAudioFormat) {
-        delayAMixer.removeTap(onBus: 0)
-        delayAMixer.installTap(onBus: 0, bufferSize: 256, format: format) { [weak self] buffer, _ in
-            guard let self, self.currentParams.granularEnabled else { return }
-            let gain = Float(self.currentParams.delayAGranularSend)
-            if gain > 0.0001 {
-                self.granularProcessor?.mixInput(buffer: buffer, gain: gain)
+        let needsDelayA = currentParams.granularEnabled &&
+            delayAMixer.outputVolume > 0.0001 &&
+            currentParams.delayAGranularSend > 0.0001
+        if needsDelayA {
+            if !delayAGranularTapInstalled {
+                delayAMixer.removeTap(onBus: 0)
+                delayAMixer.installTap(onBus: 0, bufferSize: 256, format: format) { [weak self] buffer, _ in
+                    guard let self, self.currentParams.granularEnabled else { return }
+                    let gain = Float(self.currentParams.delayAGranularSend)
+                    if gain > 0.0001 {
+                        self.granularProcessor?.mixInput(buffer: buffer, gain: gain)
+                    }
+                }
+                delayAGranularTapInstalled = true
             }
+        } else if delayAGranularTapInstalled {
+            delayAMixer.removeTap(onBus: 0)
+            delayAGranularTapInstalled = false
         }
 
-        delayBMixer.removeTap(onBus: 0)
-        delayBMixer.installTap(onBus: 0, bufferSize: 256, format: format) { [weak self] buffer, _ in
-            guard let self, self.currentParams.granularEnabled else { return }
-            let gain = Float(self.currentParams.delayBGranularSend)
-            if gain > 0.0001 {
-                self.granularProcessor?.mixInput(buffer: buffer, gain: gain)
+        let needsDelayB = currentParams.granularEnabled &&
+            delayBMixer.outputVolume > 0.0001 &&
+            currentParams.delayBGranularSend > 0.0001
+        if needsDelayB {
+            if !delayBGranularTapInstalled {
+                delayBMixer.removeTap(onBus: 0)
+                delayBMixer.installTap(onBus: 0, bufferSize: 256, format: format) { [weak self] buffer, _ in
+                    guard let self, self.currentParams.granularEnabled else { return }
+                    let gain = Float(self.currentParams.delayBGranularSend)
+                    if gain > 0.0001 {
+                        self.granularProcessor?.mixInput(buffer: buffer, gain: gain)
+                    }
+                }
+                delayBGranularTapInstalled = true
             }
+        } else if delayBGranularTapInstalled {
+            delayBMixer.removeTap(onBus: 0)
+            delayBGranularTapInstalled = false
         }
     }
 
@@ -804,6 +971,8 @@ public final class AudioEngine {
     }
 
     private func updateSharedDelayBuses() {
+        let mobileProfile = mobilePerformanceProfile(for: currentParams)
+        let delaySendScale = mobileProfile.delaySendScale
         let delayAMasterSend = max(0, min(1.5, currentParams.delayASend))
         let natureDelayASend = max(
             currentParams.natureDelayASend,
@@ -842,60 +1011,60 @@ public final class AudioEngine {
             currentParams.delayAToBSend > 0.0001
         )
 
-        synthDelayASendMixer.outputVolume = Float(currentParams.pad1DelayASend * delayAMasterSend)
-        leadDelayASendMixer.outputVolume = Float(currentParams.lead1DelayASend * delayAMasterSend)
-        lead2DelayASendMixer.outputVolume = Float(currentParams.lead2DelayASend * delayAMasterSend)
-        pianoDelayASendMixer.outputVolume = Float(currentParams.pianoDelayASend * delayAMasterSend)
-        drumDelayASendMixer.outputVolume = Float(currentParams.drumDelayASend * delayAMasterSend)
-        oceanDelayASendMixer.outputVolume = Float(currentParams.oceanDelayASend * delayAMasterSend)
-        natureDelayASendMixer.outputVolume = Float(natureDelayASend * delayAMasterSend)
+        synthDelayASendMixer.outputVolume = Float(currentParams.pad1DelayASend * delayAMasterSend * delaySendScale)
+        leadDelayASendMixer.outputVolume = Float(currentParams.lead1DelayASend * delayAMasterSend * delaySendScale)
+        lead2DelayASendMixer.outputVolume = Float(currentParams.lead2DelayASend * delayAMasterSend * delaySendScale)
+        pianoDelayASendMixer.outputVolume = Float(currentParams.pianoDelayASend * delayAMasterSend * delaySendScale)
+        drumDelayASendMixer.outputVolume = Float(currentParams.drumDelayASend * delayAMasterSend * delaySendScale)
+        oceanDelayASendMixer.outputVolume = Float(currentParams.oceanDelayASend * delayAMasterSend * delaySendScale)
+        natureDelayASendMixer.outputVolume = Float(natureDelayASend * delayAMasterSend * delaySendScale)
 
-        synthDelayBSendMixer.outputVolume = Float(currentParams.pad1DelayBSend)
-        leadDelayBSendMixer.outputVolume = Float(currentParams.lead1DelayBSend)
-        lead2DelayBSendMixer.outputVolume = Float(currentParams.lead2DelayBSend)
-        pianoDelayBSendMixer.outputVolume = Float(currentParams.pianoDelayBSend)
-        drumDelayBSendMixer.outputVolume = Float(currentParams.drumDelayBSend)
-        oceanDelayBSendMixer.outputVolume = Float(currentParams.oceanDelayBSend)
-        natureDelayBSendMixer.outputVolume = Float(natureDelayBSend)
+        synthDelayBSendMixer.outputVolume = Float(currentParams.pad1DelayBSend * delaySendScale)
+        leadDelayBSendMixer.outputVolume = Float(currentParams.lead1DelayBSend * delaySendScale)
+        lead2DelayBSendMixer.outputVolume = Float(currentParams.lead2DelayBSend * delaySendScale)
+        pianoDelayBSendMixer.outputVolume = Float(currentParams.pianoDelayBSend * delaySendScale)
+        drumDelayBSendMixer.outputVolume = Float(currentParams.drumDelayBSend * delaySendScale)
+        oceanDelayBSendMixer.outputVolume = Float(currentParams.oceanDelayBSend * delaySendScale)
+        natureDelayBSendMixer.outputVolume = Float(natureDelayBSend * delaySendScale)
 
         let delayACrossFeed = max(0, min(1, (1 - currentParams.delayACrossFeedFilter) * 0.7))
         delayAProcessor?.setParameters(
             enabled: delayAActive,
             timeMs: Float(currentParams.delayATime),
-            feedback: Float(currentParams.delayAFeedback),
+            feedback: Float(currentParams.delayAFeedback * mobileProfile.delayFeedbackScale),
             mix: 1,
             spread: Float(currentParams.delayASpread),
             width: Float(currentParams.delayAWidth * 2),
             cutoff: Float(currentParams.delayAFilter),
             pingPong: currentParams.delayAPingPong,
-            modRate: Float(currentParams.delayAModRate),
-            modDepth: Float(currentParams.delayAModDepth),
+            modRate: Float(currentParams.delayAModRate * mobileProfile.delayModulationScale),
+            modDepth: Float(currentParams.delayAModDepth * mobileProfile.delayModulationScale),
             duck: Float(currentParams.delayADuck),
             crossFeed: Float(delayACrossFeed),
             wetOnly: true
         )
-        delayAMixer.outputVolume = delayAActive ? Float(currentParams.delayAMix) : 0
+        delayAMixer.outputVolume = delayAActive ? Float(currentParams.delayAMix * delaySendScale) : 0
 
         let delayBTimeMs = Float(noteToSeconds(currentParams.granularDelayTime, bpm: currentParams.drumEuclidBaseBPM) * 1000)
         let delayBWarpAmount = currentParams.delayBWarp == "clean" ? 0 : currentParams.delayBWarpIntensity
         delayBProcessor?.setParameters(
             enabled: delayBActive,
             timeMs: delayBTimeMs,
-            feedback: Float(currentParams.granularDelayRepeats),
+            feedback: Float(currentParams.granularDelayRepeats * mobileProfile.delayFeedbackScale),
             mix: 1,
             spread: Float((currentParams.delayBSpread - 0.5) * 2),
             width: Float(0.6 + currentParams.delayBSpread * 1.4),
             cutoff: Float(350 + pow(max(currentParams.granularDelayFilter, 0.01), 1.8) * 12_000),
             pingPong: currentParams.delayBPattern == "pingpong" || currentParams.delayBPattern == "cascade",
-            modRate: Float(currentParams.granularDelayVibrato * 8 + delayBWarpAmount * 2),
-            modDepth: Float(max(currentParams.granularDelayVibrato, delayBWarpAmount * 0.45)),
+            modRate: Float((currentParams.granularDelayVibrato * 8 + delayBWarpAmount * 2) * mobileProfile.delayModulationScale),
+            modDepth: Float(max(currentParams.granularDelayVibrato, delayBWarpAmount * 0.45) * mobileProfile.delayModulationScale),
             duck: Float(delayBWarpAmount * 0.35),
             crossFeed: Float(min(max(currentParams.delayBToASend, 0), 1) * 0.5),
             wetOnly: true
         )
-        delayBMixer.outputVolume = delayBActive ? Float(currentParams.granularDelayMix * currentParams.granularDelayActivity) : 0
-        delayAToBSendMixer.outputVolume = (delayAActive && currentParams.granularDelayEnabled) ? Float(currentParams.delayAToBSend) : 0
-        delayBToASendMixer.outputVolume = (delayBActive && currentParams.delayAEnabled) ? Float(currentParams.delayBToASend) : 0
+        delayBMixer.outputVolume = delayBActive ? Float(currentParams.granularDelayMix * currentParams.granularDelayActivity * delaySendScale) : 0
+        delayAToBSendMixer.outputVolume = (delayAActive && currentParams.granularDelayEnabled) ? Float(currentParams.delayAToBSend * delaySendScale) : 0
+        delayBToASendMixer.outputVolume = (delayBActive && currentParams.delayAEnabled) ? Float(currentParams.delayBToASend * delaySendScale) : 0
     }
 
     public func stop(fadeOut: Bool = true) {
@@ -927,7 +1096,8 @@ public final class AudioEngine {
             item.cancel()
         }
         scheduledLeadNotes.removeAll()
-        
+        removeConditionalInputTaps()
+
         if !fadeOut {
             oceanSamplePlayer?.stopPlayback()
             drumSynth?.stop()
@@ -1081,15 +1251,72 @@ public final class AudioEngine {
         
         notifyStateChange()
     }
-    
+
+    private func mobilePerformanceProfile(for params: SliderState) -> MobilePerformanceProfile {
+        let activeSources = [
+            params.synthLevel > 0.0001,
+            params.granularEnabled && params.granularLevel > 0.0001,
+            params.leadEnabled && params.leadLevel > 0.0001,
+            params.lead2Enabled && params.lead2Level > 0.0001,
+            params.pianoEnabled && params.pianoLevel > 0.0001,
+            params.drumEnabled && params.drumLevel > 0.0001,
+            params.oceanSampleEnabled || params.oceanWaveSynthEnabled,
+            params.birdsEnabled || params.birds2Enabled || params.frogsEnabled || params.waterEnabled ||
+                params.insectsEnabled || params.insects2Enabled,
+            params.reverbEnabled,
+            params.delayAEnabled,
+            params.granularDelayEnabled,
+            params.dynamicsEnabled,
+            params.spectralFreezeEnabled
+        ].filter { $0 }.count
+
+        switch ProcessInfo.processInfo.thermalState {
+        case .critical, .serious:
+            return .pressure
+        case .fair:
+            return activeSources >= 8 ? .pressure : .balanced
+        case .nominal:
+            return activeSources >= 10 ? .balanced : .nominal
+        @unknown default:
+            return activeSources >= 8 ? .balanced : .nominal
+        }
+    }
+
+    private func requestedReverbQuality(from rawValue: String) -> ReverbQuality {
+        switch rawValue.lowercased() {
+        case "ultra":
+            return .ultra
+        case "lite":
+            return .lite
+        default:
+            return .balanced
+        }
+    }
+
+    private func capReverbQuality(_ requested: ReverbQuality, ceiling: ReverbQuality) -> ReverbQuality {
+        func rank(_ quality: ReverbQuality) -> Int {
+            switch quality {
+            case .lite: return 0
+            case .balanced: return 1
+            case .ultra: return 2
+            }
+        }
+
+        return rank(requested) <= rank(ceiling) ? requested : ceiling
+    }
+
     private func applyParams() {
+        let mobileProfile = mobilePerformanceProfile(for: currentParams)
+        var fxParams = currentParams
+        fxParams.spectralFreezeMix *= mobileProfile.freezeMixScale
+
         // Master volume
         masterMixer.outputVolume = Float(currentParams.masterVolume)
         dryMixer.outputVolume = 1
         reverbSend.outputVolume = 1
         outputBridgeMixer.outputVolume = 1
-        dynamicsCharacterProcessor?.setParameters(from: currentParams)
-        spectralFreezeProcessor?.setParameters(from: currentParams)
+        dynamicsCharacterProcessor?.setParameters(from: fxParams)
+        spectralFreezeProcessor?.setParameters(from: fxParams)
         let dynamicsAudible = dynamicsCharacterProcessor?.isAudible ?? false
         let freezeAudible = spectralFreezeProcessor?.isAudible ?? false
         dynamicsBypassMixer.outputVolume = (dynamicsAudible || freezeAudible) ? 0 : 1
@@ -1109,19 +1336,20 @@ public final class AudioEngine {
         leadLevelMixer.outputVolume = Float(currentParams.leadEnabled ? currentParams.leadLevel : 0)
         lead2LevelMixer.outputVolume = Float(currentParams.lead2Enabled ? currentParams.lead2Level : 0)
         pianoLevelMixer.outputVolume = Float(currentParams.pianoEnabled ? currentParams.pianoLevel : 0)
-        natureLevelMixer.outputVolume = Float(earthTextureActive ? currentParams.earthLevel : 0)
+        natureLevelMixer.outputVolume = Float(earthTextureActive ? currentParams.earthLevel * mobileProfile.natureLevelScale : 0)
         drumLevelMixer.outputVolume = Float(currentParams.drumEnabled ? currentParams.drumLevel : 0)
 
         // Reverb sends stay independent of dry faders like the web graph.
         let reverbEnabled = currentParams.reverbEnabled
-        synthReverbSendMixer.outputVolume = reverbEnabled ? Float(currentParams.synthReverbSend) : 0
-        granularReverbSendMixer.outputVolume = (reverbEnabled && currentParams.granularEnabled) ? Float(currentParams.granularReverbSend) : 0
-        leadReverbSendMixer.outputVolume = (reverbEnabled && currentParams.leadEnabled) ? Float(currentParams.leadReverbSend) : 0
-        lead2ReverbSendMixer.outputVolume = (reverbEnabled && currentParams.lead2Enabled) ? Float(min(1, max(currentParams.lead2ReverbSend, currentParams.lead2DiffuseSend))) : 0
-        pianoReverbSendMixer.outputVolume = (reverbEnabled && currentParams.pianoEnabled) ? Float(currentParams.pianoReverbSend) : 0
-        drumReverbSendMixer.outputVolume = (reverbEnabled && currentParams.drumEnabled) ? Float(currentParams.drumReverbSend) : 0
+        let reverbSendScale = mobileProfile.reverbSendScale
+        synthReverbSendMixer.outputVolume = reverbEnabled ? Float(currentParams.synthReverbSend * reverbSendScale) : 0
+        granularReverbSendMixer.outputVolume = (reverbEnabled && currentParams.granularEnabled) ? Float(currentParams.granularReverbSend * reverbSendScale) : 0
+        leadReverbSendMixer.outputVolume = (reverbEnabled && currentParams.leadEnabled) ? Float(currentParams.leadReverbSend * reverbSendScale) : 0
+        lead2ReverbSendMixer.outputVolume = (reverbEnabled && currentParams.lead2Enabled) ? Float(min(1, max(currentParams.lead2ReverbSend, currentParams.lead2DiffuseSend)) * reverbSendScale) : 0
+        pianoReverbSendMixer.outputVolume = (reverbEnabled && currentParams.pianoEnabled) ? Float(currentParams.pianoReverbSend * reverbSendScale) : 0
+        drumReverbSendMixer.outputVolume = (reverbEnabled && currentParams.drumEnabled) ? Float(currentParams.drumReverbSend * reverbSendScale) : 0
         let oceanActive = currentParams.oceanSampleEnabled || currentParams.oceanWaveSynthEnabled
-        oceanReverbSendMixer.outputVolume = (reverbEnabled && oceanActive) ? Float(currentParams.oceanReverbSend) : 0
+        oceanReverbSendMixer.outputVolume = (reverbEnabled && oceanActive) ? Float(currentParams.oceanReverbSend * reverbSendScale) : 0
         let natureSend = max(
             currentParams.natureReverbSend,
             currentParams.birdsReverbSend,
@@ -1130,20 +1358,17 @@ public final class AudioEngine {
             currentParams.waterReverbSend,
             currentParams.insectsReverbSend
         )
-        natureReverbSendMixer.outputVolume = (reverbEnabled && earthTextureActive) ? Float(natureSend) : 0
-        delayAReverbSendMixer.outputVolume = reverbEnabled ? Float(currentParams.delayAReverbSend) : 0
-        delayBReverbSendMixer.outputVolume = reverbEnabled ? Float(currentParams.granularDelayReverbSend) : 0
+        natureReverbSendMixer.outputVolume = (reverbEnabled && earthTextureActive) ? Float(natureSend * reverbSendScale) : 0
+        delayAReverbSendMixer.outputVolume = reverbEnabled ? Float(currentParams.delayAReverbSend * reverbSendScale) : 0
+        delayBReverbSendMixer.outputVolume = reverbEnabled ? Float(currentParams.granularDelayReverbSend * reverbSendScale) : 0
 
-        // Update reverb quality mode
-        if let quality = ReverbQuality(rawValue: currentParams.reverbQuality.capitalized) {
-            reverbProcessor?.setQuality(quality)
-        } else if currentParams.reverbQuality == "ultra" {
-            reverbProcessor?.setQuality(.ultra)
-        } else if currentParams.reverbQuality == "balanced" {
-            reverbProcessor?.setQuality(.balanced)
-        } else if currentParams.reverbQuality == "lite" {
-            reverbProcessor?.setQuality(.lite)
-        }
+        let requestedQuality = requestedReverbQuality(from: currentParams.reverbQuality)
+        let effectiveQuality = capReverbQuality(
+            requestedQuality,
+            ceiling: mobileProfile.reverbQualityCeiling
+        )
+        lastEffectiveReverbQuality = effectiveQuality
+        reverbProcessor?.setQuality(effectiveQuality)
         
         // Update reverb type (preset)
         reverbProcessor?.setType(currentParams.reverbType)
@@ -1154,13 +1379,13 @@ public final class AudioEngine {
             mix: reverbEnabled ? Float(currentParams.reverbLevel * 100) : 0,
             size: Float(currentParams.reverbSize),
             diffusion: Float(currentParams.reverbDiffusion),
-            modulation: Float(currentParams.reverbModulation),
+            modulation: Float(currentParams.reverbModulation * mobileProfile.reverbModulationScale),
             predelay: Float(currentParams.predelay / 1000.0),  // Convert ms to seconds
             width: Float(currentParams.width),
             damping: Float(currentParams.damping),
-            shimmer: Float(currentParams.reverbShimmer),
+            shimmer: Float(currentParams.reverbShimmer * mobileProfile.reverbShimmerScale),
             shimmerPitch: Float(currentParams.reverbShimmerPitch),
-            shimmerFeedback: Float(currentParams.reverbShimmerFeedback),
+            shimmerFeedback: Float(currentParams.reverbShimmerFeedback * mobileProfile.reverbShimmerScale),
             warp: Float(currentParams.reverbWarp),
             crossFeed: Float(currentParams.reverbCrossFeed),
             transientSmooth: Float(currentParams.reverbTransientSmooth)
@@ -1169,19 +1394,19 @@ public final class AudioEngine {
             reverbProcessor?.hardReset()
         }
         lastAppliedReverbEnabled = reverbEnabled
-        
+
         // Update granular with all parameters
-        granularProcessor?.setDensity(Float(currentParams.density / 100.0))  // Normalize to 0-1
+        granularProcessor?.setDensity(Float((currentParams.density / 100.0) * mobileProfile.granularDensityScale))
         granularProcessor?.setGrainSize(
             min: Float(currentParams.grainSizeMin / 1000.0),  // Convert ms to seconds
             max: Float(currentParams.grainSizeMax / 1000.0)
         )
-        granularProcessor?.setMaxGrains(Int(currentParams.maxGrains))
+        granularProcessor?.setMaxGrains(min(Int(currentParams.maxGrains), mobileProfile.granularMaxGrains))
         granularProcessor?.setSpray(Float(currentParams.spray / 1000.0))  // Convert ms to seconds
         granularProcessor?.setJitter(Float(currentParams.jitter / 100.0))  // Normalize
         granularProcessor?.setFeedback(Float(currentParams.feedback))
         granularProcessor?.setPitchMode(currentParams.grainPitchMode == "harmonic" ? 1 : 0)
-        granularProcessor?.setProbability(Float(currentParams.grainProbability))
+        granularProcessor?.setProbability(Float(currentParams.grainProbability * mobileProfile.granularProbabilityScale))
         granularProcessor?.setStereoSpread(Float(currentParams.stereoSpread))
         granularProcessor?.setPitchSpread(Float(currentParams.pitchSpread))
         granularProcessor?.setWetFilters(
@@ -1343,27 +1568,28 @@ public final class AudioEngine {
         natureTextureSynth?.setEnabled(earthTextureActive)
         natureTextureSynth?.setSeed(UInt32(truncatingIfNeeded: currentSeed))
         natureTextureSynth?.setMasterLevel(Float(currentParams.earthLevel))
+        let natureDensityScale = mobileProfile.natureDensityScale
         natureTextureSynth?.setLayerControls(
             .birds,
             enabled: currentParams.birdsEnabled || currentParams.birds2Enabled,
             level: Float(max(currentParams.birdsLevel, currentParams.birds2Level) * currentParams.natureLevel),
-            density: Float(max(currentParams.birdsSliceDensity, currentParams.birds2SliceDensity)),
+            density: Float(max(currentParams.birdsSliceDensity, currentParams.birds2SliceDensity) * natureDensityScale),
             tone: 0.62,
-            tonalDensity: Float(max(currentParams.birdsSliceDensity, currentParams.birds2SliceDensity))
+            tonalDensity: Float(max(currentParams.birdsSliceDensity, currentParams.birds2SliceDensity) * natureDensityScale)
         )
         natureTextureSynth?.setLayerControls(
             .frogs,
             enabled: currentParams.frogsEnabled,
             level: Float(currentParams.frogsLevel * currentParams.natureLevel),
-            density: Float(currentParams.frogsSliceDensity),
+            density: Float(currentParams.frogsSliceDensity * natureDensityScale),
             tone: 0.38,
-            tonalDensity: Float(currentParams.frogsSliceDensity)
+            tonalDensity: Float(currentParams.frogsSliceDensity * natureDensityScale)
         )
         natureTextureSynth?.setLayerControls(
             .insects1,
             enabled: currentParams.insectsEnabled,
             level: Float(currentParams.insectsLevel * currentParams.insectsSharedLevel),
-            density: Float(currentParams.insectsDensity),
+            density: Float(currentParams.insectsDensity * natureDensityScale),
             tone: Float(0.25 + currentParams.insectsTemperature * 0.65),
             insectProximity: Float(currentParams.insectsProximity),
             insectClickRate: Float(currentParams.insectsClickRate),
@@ -1374,7 +1600,7 @@ public final class AudioEngine {
             .insects2,
             enabled: currentParams.insects2Enabled,
             level: Float(currentParams.insects2Level * currentParams.insectsSharedLevel),
-            density: Float(currentParams.insects2Density),
+            density: Float(currentParams.insects2Density * natureDensityScale),
             tone: Float(0.25 + currentParams.insects2Temperature * 0.65),
             insectProximity: Float(currentParams.insects2Proximity),
             insectClickRate: Float(currentParams.insects2ClickRate),
@@ -1385,7 +1611,7 @@ public final class AudioEngine {
             .waterDrops,
             enabled: currentParams.waterEnabled && (currentParams.waterLayerHardDrops > 0.001 || currentParams.waterLayerWaterDrops > 0.001),
             level: Float(currentParams.waterLevel * max(currentParams.waterLayerHardDrops, currentParams.waterLayerWaterDrops)),
-            density: Float(min(1, currentParams.waterIntensity * max(currentParams.waterHardDropRate, currentParams.waterWaterDropRate))),
+            density: Float(min(1, currentParams.waterIntensity * max(currentParams.waterHardDropRate, currentParams.waterWaterDropRate) * natureDensityScale)),
             tone: max(Float(currentParams.waterHardDropTone), logFrequencyUnit(max(currentParams.waterHardDropBaseFreq, currentParams.waterWaterDropBaseFreq), minHz: 100, maxHz: 8_000)),
             waterTurbulence: Float(currentParams.waterLayerTurbulence),
             waterLowPass: logFrequencyUnit(min(currentParams.waterHardDropLPF, currentParams.waterWaterDropLPF), minHz: 200, maxHz: 18_000),
@@ -1395,7 +1621,7 @@ public final class AudioEngine {
             .bubbles,
             enabled: currentParams.waterEnabled && currentParams.waterLayerBubbling > 0.001,
             level: Float(currentParams.waterLevel * currentParams.waterLayerBubbling),
-            density: Float(min(1, currentParams.waterIntensity * currentParams.waterBubblingRate)),
+            density: Float(min(1, currentParams.waterIntensity * currentParams.waterBubblingRate * natureDensityScale)),
             tone: Float(logFrequencyUnit(currentParams.waterBubblingLPF, minHz: 50, maxHz: 8_000)),
             waterTurbulence: Float(currentParams.waterLayerTurbulence),
             waterLowPass: logFrequencyUnit(currentParams.waterBubblingLPF, minHz: 50, maxHz: 8_000)
@@ -1404,7 +1630,7 @@ public final class AudioEngine {
             .surf,
             enabled: currentParams.waterEnabled && currentParams.waterLayerSurf > 0.001,
             level: Float(currentParams.waterLevel * currentParams.waterLayerSurf),
-            density: Float(max(currentParams.waterSurfFoam, currentParams.waterSurfDepth)),
+            density: Float(max(currentParams.waterSurfFoam, currentParams.waterSurfDepth) * natureDensityScale),
             tone: Float(logFrequencyUnit(currentParams.waterSurfSpray, minHz: 200, maxHz: 8_000)),
             waterTurbulence: Float(currentParams.waterLayerTurbulence),
             surfFoamBright: Float(currentParams.waterSurfFoamBright),
@@ -1420,6 +1646,7 @@ public final class AudioEngine {
         // Update drum delay
         updateDrumDelay()
         updateSharedDelayBuses()
+        updateConditionalInputTaps()
     }
     
     /// Update Euclidean sequencer lanes from current parameters

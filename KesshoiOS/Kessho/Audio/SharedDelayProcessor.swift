@@ -166,7 +166,7 @@ final class SharedDelayProcessor {
 
     func writeInput(buffer: AVAudioPCMBuffer) {
         guard let channelData = buffer.floatChannelData else { return }
-        stateLock.lock()
+        guard stateLock.try() else { return }
         defer { stateLock.unlock() }
 
         let incomingSampleRate = Float(buffer.format.sampleRate)
@@ -198,7 +198,7 @@ final class SharedDelayProcessor {
         frameCount: Int,
         sampleRate incomingSampleRate: Float
     ) {
-        stateLock.lock()
+        guard stateLock.try() else { return }
         defer { stateLock.unlock() }
 
         if incomingSampleRate > 1_000 && abs(incomingSampleRate - sampleRate) > 1 {
@@ -238,7 +238,12 @@ final class SharedDelayProcessor {
     }
 
     private func render(frameCount: Int, to buffers: UnsafeMutableAudioBufferListPointer) {
-        stateLock.lock()
+        guard stateLock.try() else {
+            for frame in 0..<frameCount {
+                writeSharedDelayStereoFrame(0, 0, frame: frame, to: buffers)
+            }
+            return
+        }
         defer { stateLock.unlock() }
 
         guard enabled else {

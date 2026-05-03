@@ -82,7 +82,12 @@ class GranularProcessor {
 
             let ablPointer = UnsafeMutableAudioBufferListPointer(audioBufferList)
 
-            self.stateLock.lock()
+            guard self.stateLock.try() else {
+                for frame in 0..<Int(frameCount) {
+                    writeGranularStereoFrame(0, 0, frame: frame, to: ablPointer)
+                }
+                return noErr
+            }
             defer { self.stateLock.unlock() }
 
             for frame in 0..<Int(frameCount) {
@@ -531,7 +536,7 @@ class GranularProcessor {
         let right = Int(buffer.format.channelCount) > 1 ? channelData[1] : channelData[0]
         let sampleRate = Float(buffer.format.sampleRate)
 
-        stateLock.lock()
+        guard stateLock.try() else { return }
         defer { stateLock.unlock() }
 
         if sampleRate > 0 {
@@ -560,7 +565,7 @@ class GranularProcessor {
         let right = Int(buffer.format.channelCount) > 1 ? channelData[1] : channelData[0]
         let safeGain = min(max(gain, 0), 1.5)
 
-        stateLock.lock()
+        guard stateLock.try() else { return }
         defer { stateLock.unlock() }
 
         let baseIndex = inputWriteIndex
@@ -573,7 +578,7 @@ class GranularProcessor {
 
     /// Write input samples to buffer (call from audio callback with live audio)
     func writeInput(left: Float, right: Float) {
-        stateLock.lock()
+        guard stateLock.try() else { return }
         defer { stateLock.unlock() }
 
         inputBufferL[inputWriteIndex] = left

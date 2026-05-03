@@ -152,6 +152,7 @@ final class DynamicsCharacterProcessor {
     private var outputEnabled = false
     private var inputCaptureEnabled = false
     private var currentParams = [Float](repeating: 0, count: paramCount)
+    private var pendingParams = [Float](repeating: 0, count: paramCount)
 
     init(sampleRate: Float = 44_100) {
         self.sampleRate = sampleRate
@@ -177,19 +178,20 @@ final class DynamicsCharacterProcessor {
     }
 
     func setParameters(from state: SliderState) {
-        let params = Self.makeParams(from: state, sampleRate: sampleRate)
-        let shouldEnable = params[ParamIndex.active.rawValue] > 0.5
+        Self.fillParams(from: state, sampleRate: sampleRate, into: &pendingParams)
+        let shouldEnable = pendingParams[ParamIndex.active.rawValue] > 0.5
 
         stateLock.lock()
         defer { stateLock.unlock() }
 
         outputEnabled = shouldEnable
         inputCaptureEnabled = shouldEnable
-        currentParams = params
 
         guard let paramsPtr = dsp.paramsPointer() else { return }
         for index in 0..<Self.paramCount {
-            paramsPtr[index] = params[index]
+            let value = pendingParams[index]
+            currentParams[index] = value
+            paramsPtr[index] = value
         }
         dsp.commitParams()
     }
@@ -197,7 +199,7 @@ final class DynamicsCharacterProcessor {
     func writeInput(buffer: AVAudioPCMBuffer) {
         guard let channelData = buffer.floatChannelData else { return }
 
-        stateLock.lock()
+        guard stateLock.try() else { return }
         defer { stateLock.unlock() }
 
         guard inputCaptureEnabled else { return }
@@ -248,7 +250,12 @@ final class DynamicsCharacterProcessor {
     }
 
     private func render(frameCount: Int, to buffers: UnsafeMutableAudioBufferListPointer) {
-        stateLock.lock()
+        guard stateLock.try() else {
+            for frame in 0..<frameCount {
+                writeDynamicsCharacterStereoFrame(0, 0, frame: frame, to: buffers)
+            }
+            return
+        }
         defer { stateLock.unlock() }
 
         guard outputEnabled,
@@ -303,7 +310,15 @@ final class DynamicsCharacterProcessor {
         bufferedInputFrames = 0
     }
 
-    private static func makeParams(from state: SliderState, sampleRate: Float) -> [Float] {
+    private static func fillParams(from state: SliderState, sampleRate: Float, into params: inout [Float]) {
+        if params.count != paramCount {
+            params = [Float](repeating: 0, count: paramCount)
+        } else {
+            for index in 0..<paramCount {
+                params[index] = 0
+            }
+        }
+
         let characterEnabled = state.dynamicsEnabled && state.characterEnabled
         let degradeEnabled = state.dynamicsEnabled && state.degradeEnabled
         let rawMode = state.characterMode
@@ -480,7 +495,6 @@ final class DynamicsCharacterProcessor {
         let endAutoMakeup = clamp01(state.endCompAutoMakeup)
         let endProgramRelease = clamp01(state.endCompProgramRelease)
 
-        var params = [Float](repeating: 0, count: paramCount)
         func set(_ index: ParamIndex, _ value: Double) {
             params[index.rawValue] = Float(value.isFinite ? value : 0)
         }
@@ -568,7 +582,6 @@ final class DynamicsCharacterProcessor {
         set(.endCompAutoMakeup, endAutoMakeup)
         set(.endCompProgramRelease, endProgramRelease)
 
-        return params
     }
 
     private static func characterDefaults(for mode: String) -> (

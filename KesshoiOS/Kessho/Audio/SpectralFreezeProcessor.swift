@@ -163,7 +163,7 @@ final class SpectralFreezeProcessor {
 
     func writeInput(buffer: AVAudioPCMBuffer) {
         guard let channelData = buffer.floatChannelData else { return }
-        stateLock.lock()
+        guard stateLock.try() else { return }
         defer { stateLock.unlock() }
         guard inputCaptureEnabled else { return }
 
@@ -191,7 +191,12 @@ final class SpectralFreezeProcessor {
     }
 
     private func render(frameCount: Int, to buffers: UnsafeMutableAudioBufferListPointer) {
-        stateLock.lock()
+        guard stateLock.try() else {
+            for frame in 0..<frameCount {
+                writeSpectralFreezeStereoFrame(0, 0, frame: frame, to: buffers)
+            }
+            return
+        }
         defer { stateLock.unlock() }
 
         guard enabled else {
