@@ -342,6 +342,7 @@ final class DynamicsCharacterProcessor {
         let baseDegradeWow = degradeEnabled ? clamp01(state.degradeWow) : 0
         let baseDegradeFlutter = degradeEnabled ? clamp01(state.degradeFlutter) : 0
         let baseDegradeDrift = degradeEnabled ? clamp01(state.degradeDrift) : 0
+        let degradeWobbleSpeed = degradeEnabled ? clamp01(state.degradeWobbleSpeed) : 0.35
         let degradeAge = rawDegradeAge * degradeInfluence
         let degradeGeneration = rawDegradeGeneration * degradeInfluence
         let degradeAlias = rawDegradeAlias * degradeInfluence
@@ -402,13 +403,18 @@ final class DynamicsCharacterProcessor {
         let rawDrift = baseDegradeDrift * degradeInfluence
         let modeWow = depth * (0.08 + contribution.sineWow * 0.5)
         let modeFlutter = depth * (0.02 + contribution.flutterJitter * 0.12)
-        let wowDamage = contribution.materialWear * 0.025 + contribution.aliasDamage * 0.018
         let flutterDamage = contribution.materialWear * 0.014 + contribution.aliasDamage * (0.018 + contribution.crossPatch * 0.074)
         let cyclicModeScale = modeActive ? 0.38 + degradeMix * 0.12 : 1
-        let cyclicWow = clamp01(rawWow + modeWow * cyclicModeScale + wowDamage)
+        let cyclicWow = clamp01(rawWow + modeWow * cyclicModeScale)
         let flutter = clamp01(rawFlutter + modeFlutter + flutterDamage)
-        let cyclicFlutter = clamp01(rawFlutter + modeFlutter * (modeActive ? 0.55 + degradeMix * 0.1 : 1) + flutterDamage)
+        let cyclicFlutter = clamp01(rawFlutter + modeFlutter * (modeActive ? 0.55 + degradeMix * 0.1 : 1))
         let drift = clamp01(rawDrift + depth * (0.06 + contribution.smoothDrift * 0.32) + contribution.materialWear * 0.22 + contribution.crossPatch * 0.12 + modWow * 0.06)
+        let tapeWanderDepth = degradeEnabled
+            ? rawDrift * 0.00165 + contribution.materialWear * 0.00082 + contribution.aliasDamage * 0.0002 + modWow * 0.00062
+            : 0
+        let tapeFlutterDepth = degradeEnabled
+            ? rawFlutter * 0.00022 + contribution.materialWear * 0.00009 + contribution.aliasDamage * 0.0001 + modFlutter * 0.0002
+            : 0
         let corrosion = clamp01(rawCorrosion * degradeInfluence * 0.72 + damage * 0.09 + degradeGeneration * 0.035)
         let degradeHp = (degradeEnabled ? clamp01(state.degradeHp) : 0) * degradeInfluence
         let degradeLp = 1 - (1 - (degradeEnabled ? clamp01(state.degradeLp) : 1)) * degradeInfluence
@@ -435,32 +441,42 @@ final class DynamicsCharacterProcessor {
             modFlutter * 0.24
         )
 
-        let randomHoldRateHz: Double
+        let characterHoldRateHz: Double
         if mode == "shallowWater" {
-            randomHoldRateHz = 0.08 + rate * 1.05 + depth * 0.18
+            characterHoldRateHz = 0.08 + rate * 1.05 + depth * 0.18
         } else if mode == "abyssWater" {
-            randomHoldRateHz = 0.045 + rate * 0.42 + envFollow * 0.04
+            characterHoldRateHz = 0.045 + rate * 0.42 + envFollow * 0.04
         } else {
-            randomHoldRateHz = 0.025 + rate * 0.14
+            characterHoldRateHz = 0.025 + rate * 0.14
         }
+        let degradeMotionWeight = degradeEnabled ? clamp01(degradeWetRatio * (0.65 + degradeInfluence * 0.35)) : 0
+        let degradeHoldRateHz = 0.018 + degradeWobbleSpeed * 0.52 + rawDrift * 0.08 + contribution.materialWear * 0.05
+        let randomHoldRateHz = characterHoldRateHz + (degradeHoldRateHz - characterHoldRateHz) * degradeMotionWeight
 
-        let randomHoldLag: Double
+        let characterHoldLag: Double
         if mode == "shallowWater" {
-            randomHoldLag = 0.18 + damp * 1.15
+            characterHoldLag = 0.18 + damp * 1.15
         } else if mode == "abyssWater" {
-            randomHoldLag = 0.42 + damp * 1.8
+            characterHoldLag = 0.42 + damp * 1.8
         } else {
-            randomHoldLag = 0.75 + damp * 2.1
+            characterHoldLag = 0.75 + damp * 2.1
         }
+        let degradeHoldLag = max(0.22, 1.42 - degradeWobbleSpeed * 1.08 + rawMediaWear * (0.24 + (1 - degradeWobbleSpeed) * 0.18))
+        let randomHoldLag = characterHoldLag + (degradeHoldLag - characterHoldLag) * degradeMotionWeight
 
+        let cleanCombTame = cleanFlavor * clamp01(degradeMix * (0.85 + contribution.materialWear * 0.35 + contribution.aliasDamage * 0.18))
+        let cleanBaseDelay = 0.00035 + age * 0.0012 + drift * 0.0006
+        let cleanTamedBaseDelay = 0.00014 + age * 0.00045 + drift * 0.00024
         let baseDelay = cleanFlavor > 0
-            ? 0.00035 + age * 0.0012 + drift * 0.0006
+            ? cleanBaseDelay + (cleanTamedBaseDelay - cleanBaseDelay) * cleanCombTame
             : 0.0025 + shallowFlavor * 0.0038 + abyssFlavor * 0.0012 + age * 0.009 + drift * 0.004 + contribution.bbdColor * 0.0018
+        let cleanSpreadDelay = min(0.012, baseDelay + stereo * (0.0012 + depth * 0.0012) + drift * 0.0004)
+        let cleanTamedSpreadDelay = min(0.006, baseDelay + stereo * (0.00055 + depth * 0.00065) + drift * 0.00016)
         let spreadBaseDelay = cleanFlavor > 0
-            ? min(0.012, baseDelay + stereo * (0.0012 + depth * 0.0012) + drift * 0.0004)
+            ? cleanSpreadDelay + (cleanTamedSpreadDelay - cleanSpreadDelay) * cleanCombTame
             : min(0.095, baseDelay + 0.0012 + stereo * (0.006 + shallowFlavor * 0.006) + drift * 0.0015)
         let randomDelayDepth = cleanFlavor > 0
-            ? randomDrift * (0.00005 + depth * 0.00024 + modFlutter * 0.00018)
+            ? randomDrift * (0.000035 + depth * 0.00016 + modFlutter * 0.00014 + contribution.materialWear * 0.00018 + contribution.aliasDamage * 0.00008)
             : shallowFlavor > 0
                 ? randomDrift * (0.00028 + depth * 0.0056 + contribution.bbdColor * 0.0014)
                 : randomDrift * (0.00005 + depth * 0.00045)
@@ -481,6 +497,9 @@ final class DynamicsCharacterProcessor {
             (1 - contribution.bbdColor * 0.18) *
             (1 - modLp * 0.08)
         )
+        let characterWowFrequency = 0.03 + rate * 0.45 + drift * 0.18
+        let degradeWowFrequency = 0.018 + degradeWobbleSpeed * 0.36 + drift * 0.12 + contribution.materialWear * 0.05 + modWow * 0.04
+        let wowFrequency = characterWowFrequency + (degradeWowFrequency - characterWowFrequency) * degradeMotionWeight
         let endEnabled = state.dynamicsEnabled && state.endCompEnabled
         let endWet = endEnabled ? clamp01(state.endCompMix) : 0
         let endActive = endWet > 0.0001
@@ -511,7 +530,7 @@ final class DynamicsCharacterProcessor {
         set(.noiseGain, min(0.018, wet * noise * (0.006 + age * 0.014 + corrosion * 0.012)))
         set(.jitterDepth, degradeMix * (0.000014 + contribution.flutterJitter * 0.00008 + corrosion * 0.00006 + contribution.materialWear * 0.00005 + clamp01(contribution.aliasDamage * 0.46 + contribution.crossPatch * 0.4) * 0.00004 + modFlutter * 0.00011))
         set(.randomDriftFilterHz, randomHoldRateHz * (0.55 + damp * 0.35))
-        set(.randomDriftDepth, randomDrift * (0.00014 + drift * 0.0012 + contribution.materialWear * 0.0007 + contribution.crossPatch * 0.0009))
+        set(.randomDriftDepth, randomDrift * (0.00012 + drift * 0.00175 + contribution.materialWear * 0.00165 + contribution.aliasDamage * 0.0005 + contribution.crossPatch * 0.0009 + modWow * 0.00072))
         set(.baseDelay, baseDelay)
         set(.spreadBaseDelay, spreadBaseDelay)
         set(.randomDrift, randomDrift)
@@ -529,13 +548,13 @@ final class DynamicsCharacterProcessor {
         set(.damage, damage)
         set(.mainPan, -stereo * (0.25 + shallowFlavor * 0.18))
         set(.spreadPan, stereo * (0.58 + shallowFlavor * 0.24))
-        set(.mainDelayGain, 1 - stereo * (0.14 + shallowFlavor * 0.12))
-        set(.spreadDelayGain, stereo * (cleanFlavor > 0 ? 0.05 + depth * 0.12 : 0.16 + depth * (0.4 + shallowFlavor * 0.18)))
-        set(.wowFrequency, 0.03 + rate * 0.45 + drift * 0.18 + contribution.materialWear * 0.08)
+        set(.mainDelayGain, (1 - stereo * (0.14 + shallowFlavor * 0.12)) * (1 - cleanCombTame * 0.08))
+        set(.spreadDelayGain, stereo * (cleanFlavor > 0 ? (0.05 + depth * 0.12) * (1 - cleanCombTame * 0.34) : 0.16 + depth * (0.4 + shallowFlavor * 0.18)))
+        set(.wowFrequency, wowFrequency)
         set(.flutterFrequency, 2.2 + rate * (5.4 + shallowFlavor * 3.2 + abyssFlavor * 1.2) + flutter * (4.2 + corrosion * 2.8))
         set(.flutterRandomDepth, degradeMix * clamp01(0.2 + modFlutter * 1.8 + contribution.flutterJitter * 0.5 + corrosion * 0.25) * (0.00004 + flutter * 0.00082 + modFlutter * 0.00048))
-        set(.wowDepth, (0.00016 + cyclicWow * 0.0062 + drift * 0.0022 + age * 0.0009) * (0.38 + depth * (0.78 + shallowFlavor * 0.18 + abyssFlavor * 0.06) + contribution.crossPatch * 0.34))
-        set(.flutterDepth, (0.000006 + cyclicFlutter * 0.00072 + corrosion * 0.00012) * (0.24 + depth * (0.34 + shallowFlavor * 0.1) + contribution.crossPatch * 0.44))
+        set(.wowDepth, (cyclicWow * 0.0062 + tapeWanderDepth) * (0.38 + depth * (0.78 + shallowFlavor * 0.18 + abyssFlavor * 0.06) + contribution.crossPatch * 0.34))
+        set(.flutterDepth, (cyclicFlutter * 0.00072 + tapeFlutterDepth) * (0.24 + depth * (0.34 + shallowFlavor * 0.1) + contribution.crossPatch * 0.44))
         set(.highpassHz, mapUnitToLogFrequency(hp, minHz: 20, maxHz: 2400))
         set(.highpassQ, 0.7 + resonance * 1.5)
         set(.allpassAFrequency, 260 + shallowFlavor * 520 + depth * 380 + age * 240)

@@ -298,6 +298,7 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
                   <Slider label="Wow" value={state.degradeWow} paramKey="degradeWow" onChange={onParamChange} helpPage="dynamics" {...sliderProps('degradeWow')} />
                   <Slider label="Flutter" value={state.degradeFlutter} paramKey="degradeFlutter" onChange={onParamChange} helpPage="dynamics" {...sliderProps('degradeFlutter')} />
                   <Slider label="Drift" value={state.degradeDrift} paramKey="degradeDrift" onChange={onParamChange} helpPage="dynamics" {...sliderProps('degradeDrift')} />
+                  <Slider label="Wobble Speed" value={state.degradeWobbleSpeed} paramKey="degradeWobbleSpeed" onChange={onParamChange} helpPage="dynamics" {...sliderProps('degradeWobbleSpeed')} />
                   <Slider label="Noise" value={state.degradeNoise} paramKey="degradeNoise" onChange={onParamChange} helpPage="dynamics" {...sliderProps('degradeNoise')} />
                   <Slider label="HP" value={state.degradeHp} paramKey="degradeHp" onChange={onParamChange} helpPage="dynamics" {...sliderProps('degradeHp')} />
                   <Slider label="LP" value={state.degradeLp} paramKey="degradeLp" onChange={onParamChange} helpPage="dynamics" {...sliderProps('degradeLp')} />

@@ -327,6 +327,7 @@ export interface SliderState {
   degradeWow: number;
   degradeFlutter: number;
   degradeDrift: number;
+  degradeWobbleSpeed: number;
   degradeTone: number;
   degradeHp: number;
   degradeLp: number;
@@ -1497,6 +1498,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'degradeWow',
   'degradeFlutter',
   'degradeDrift',
+  'degradeWobbleSpeed',
   'degradeTone',
   'degradeHp',
   'degradeLp',
@@ -2323,6 +2325,7 @@ export const DEFAULT_STATE: SliderState = {
   degradeWow: 0,
   degradeFlutter: 0,
   degradeDrift: 0,
+  degradeWobbleSpeed: 0.35,
   degradeTone: 0.5,
   degradeHp: 0,
   degradeLp: 1,
@@ -3438,6 +3441,7 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   degradeWow: { min: 0, max: 1, step: 0.01 },
   degradeFlutter: { min: 0, max: 1, step: 0.01 },
   degradeDrift: { min: 0, max: 1, step: 0.01 },
+  degradeWobbleSpeed: { min: 0, max: 1, step: 0.01 },
   degradeTone: { min: 0, max: 1, step: 0.01 },
   degradeHp: { min: 0, max: 1, step: 0.01 },
   degradeLp: { min: 0, max: 1, step: 0.01 },

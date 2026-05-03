@@ -104,6 +104,10 @@ assert(
     audioEngine.includes('ProcessInfo.processInfo.thermalState'),
   'AudioEngine must keep the mobile thermal/performance governor wired in'
 );
+assert(
+  !audioEngine.includes('Timer.scheduledTimer') && !/:\s*Timer\??/.test(audioEngine),
+  'AudioEngine scheduling must not keep Foundation Timer playback paths'
+);
 const profileStart = audioEngine.indexOf('private func mobilePerformanceProfile(for params: SliderState)');
 const profileEnd = audioEngine.indexOf('private func requestedReverbQuality');
 const profileBody = audioEngine.slice(profileStart, profileEnd);
@@ -128,6 +132,15 @@ const updateParamCalls = [...appState.matchAll(/audioEngine\.updateParams\(/g)].
 assert(
   updateParamCalls === 1 && appState.includes('scheduleAudioEngineUpdate'),
   'AppState should coalesce state changes before calling audioEngine.updateParams'
+);
+assert(
+  appState.includes('DispatchSourceTimer') &&
+    appState.includes('updateRandomWalkTimer()') &&
+    appState.includes('leeway: .milliseconds(40)') &&
+    appState.includes('leeway: .milliseconds(250)') &&
+    !appState.includes('Timer.scheduledTimer') &&
+    !/:\s*Timer\??/.test(appState),
+  'AppState timers must use DispatchSourceTimer with leeway and sleep when no random-walk ranges are active'
 );
 
 const dynamics = read('KesshoiOS/Kessho/Audio/DynamicsCharacterProcessor.swift');

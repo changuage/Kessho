@@ -1389,6 +1389,7 @@ const dynamicsEntries: Record<string, SliderHelpEntry> = {
   degradeWow: lowHigh('Sets slow pitch drift.', 'keep pitch steadier', 'add wider slow warble', [dn('Degrade', 'Wow')]),
   degradeFlutter: lowHigh('Sets fast pitch flutter.', 'keep pitch steadier', 'add faster tape-like flutter', [dn('Degrade', 'Flutter')]),
   degradeDrift: lowHigh('Sets long movement drift.', 'keep material centered', 'add slower wandering instability', [dn('Degrade', 'Drift')]),
+  degradeWobbleSpeed: lowHigh('Sets tape wobble speed.', 'make wow wander more slowly', 'make tape bends move faster', [dn('Degrade', 'Wobble Speed')]),
   degradeNoise: lowHigh('Sets media noise.', 'keep the floor cleaner', 'add more hiss and grain', [dn('Degrade', 'Noise')]),
   degradeHp: lowHigh('Sets Degrade high-pass.', 'keep more low body', 'thin the low end more', [dn('Degrade', 'HP')]),
   degradeLp: lowHigh('Sets Degrade low-pass.', 'darken the path', 'keep more top end', [dn('Degrade', 'LP')]),

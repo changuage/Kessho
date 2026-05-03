@@ -99,7 +99,6 @@ public final class AudioEngine {
     
     // Euclidean sequencer for lead
     private var euclideanSequencer: EuclideanSequencer?
-    private var euclideanTimer: Timer?
     
     // Pre-scheduled Euclidean notes (matching web's precise scheduling)
     private var scheduledEuclideanNotes: [DispatchWorkItem] = []
@@ -180,10 +179,6 @@ public final class AudioEngine {
     private var delayAGranularTapInstalled = false
     private var delayBGranularTapInstalled = false
     private var lastEffectiveReverbQuality: ReverbQuality = .balanced
-    
-    // Scheduling
-    private var phraseTimer: Timer?
-    private var noteTimer: Timer?
     
     // Dedicated queue for audio scheduling (avoids main thread jitter)
     private let audioSchedulingQueue = DispatchQueue(label: "com.kessho.audioScheduling", qos: .userInteractive)
@@ -1069,14 +1064,6 @@ public final class AudioEngine {
 
     public func stop(fadeOut: Bool = true) {
         guard isRunning else { return }
-        
-        // Cancel old Timer-based timers (if any)
-        phraseTimer?.invalidate()
-        noteTimer?.invalidate()
-        euclideanTimer?.invalidate()
-        phraseTimer = nil
-        noteTimer = nil
-        euclideanTimer = nil
         
         // Cancel DispatchSource timers
         phraseTimerSource?.cancel()

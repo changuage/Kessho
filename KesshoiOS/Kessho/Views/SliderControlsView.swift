@@ -890,15 +890,22 @@ struct SliderControlsView: View {
 	                        icon: "speedometer"
 	                    )
 
-	                    ParameterSlider(
-	                        label: "Drift",
-	                        value: $appState.state.degradeDrift,
-	                        range: 0...1,
-	                        icon: "arrow.triangle.2.circlepath"
-	                    )
+                    ParameterSlider(
+                        label: "Drift",
+                        value: $appState.state.degradeDrift,
+                        range: 0...1,
+                        icon: "arrow.triangle.2.circlepath"
+                    )
 
-	                    ParameterSlider(
-	                        label: "Tone",
+                    ParameterSlider(
+                        label: "Wobble Speed",
+                        value: $appState.state.degradeWobbleSpeed,
+                        range: 0...1,
+                        icon: "metronome"
+                    )
+
+                    ParameterSlider(
+                        label: "Tone",
 	                        value: $appState.state.degradeTone,
 	                        range: 0...1,
 	                        icon: "slider.horizontal.3"

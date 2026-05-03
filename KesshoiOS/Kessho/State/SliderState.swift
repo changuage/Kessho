@@ -124,6 +124,7 @@ public struct SliderState: Codable, Equatable {
     var degradeWow: Double = 0
     var degradeFlutter: Double = 0
     var degradeDrift: Double = 0
+    var degradeWobbleSpeed: Double = 0.35
     var degradeTone: Double = 0.5
     var degradeHp: Double = 0
     var degradeLp: Double = 1

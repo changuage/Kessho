@@ -310,6 +310,7 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   degradeWow:            { level: 1, scope: 'dynamicsDegrade' },
   degradeFlutter:        { level: 1, scope: 'dynamicsDegrade' },
   degradeDrift:          { level: 1, scope: 'dynamicsDegrade' },
+  degradeWobbleSpeed:    { level: 1, scope: 'dynamicsDegrade' },
   degradeTone:           { level: 1, scope: 'dynamicsDegrade' },
   degradeHp:             { level: 1, scope: 'dynamicsDegrade' },
   degradeLp:             { level: 1, scope: 'dynamicsDegrade' },

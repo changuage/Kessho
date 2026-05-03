@@ -220,6 +220,8 @@ struct DynamicsCharacterState {
     float noise_lp_l = 0.0f;
     float noise_lp_r = 0.0f;
     float drift_noise = 0.0f;
+    float wow_wander = 0.0f;
+    float wow_wander_slow = 0.0f;
     float dropout_noise = 0.0f;
 
     float hold_main = 0.0f;
@@ -623,6 +625,20 @@ void dynamics_character_process_block(int block_size) {
     const float hold_coeff = smooth_coeff(std::fmax(0.02f, p[P_RANDOM_HOLD_LAG] + (1.0f - p[P_RATE]) * 0.08f), g.sample_rate);
     const float env_coeff = one_pole_coeff(p[P_ENV_FILTER_HZ], g.sample_rate);
     const float drift_coeff = one_pole_coeff(p[P_RANDOM_DRIFT_FILTER_HZ], g.sample_rate);
+    const float tape_wow_blend = clamp01(
+        p[P_DEGRADE_MIX] * 1.25f +
+        p[P_DEGRADE_WEAR] * 0.18f +
+        p[P_DEGRADE_GENERATION] * 0.08f +
+        p[P_DEGRADE_CORROSION] * 0.08f
+    );
+    const float wow_wander_coeff = one_pole_coeff(
+        0.03f + p[P_WOW_FREQ] * 0.45f + p[P_RANDOM_DRIFT_FILTER_HZ] * 0.18f,
+        g.sample_rate
+    );
+    const float wow_wander_slow_coeff = one_pole_coeff(
+        0.008f + p[P_WOW_FREQ] * 0.11f + p[P_RANDOM_DRIFT_FILTER_HZ] * 0.035f,
+        g.sample_rate
+    );
     const float dropout_coeff = one_pole_coeff(p[P_DROPOUT_FILTER_HZ], g.sample_rate);
     const float comp_attack_coeff = smooth_coeff(p[P_COMP_ATTACK], g.sample_rate);
     const float comp_release_coeff = smooth_coeff(p[P_COMP_RELEASE], g.sample_rate);
@@ -647,14 +663,35 @@ void dynamics_character_process_block(int block_size) {
         g.noise_lp_l += (white_l - g.noise_lp_l) * 0.035f;
         g.noise_lp_r += (white_r - g.noise_lp_r) * 0.035f;
         g.drift_noise += (white_l - g.drift_noise) * drift_coeff;
+        g.wow_wander += (white_l - g.wow_wander) * wow_wander_coeff;
+        g.wow_wander_slow += (white_r - g.wow_wander_slow) * wow_wander_slow_coeff;
         g.dropout_noise += (white_r - g.dropout_noise) * dropout_coeff;
 
         g.wow_phase += p[P_WOW_FREQ] / g.sample_rate;
         if (g.wow_phase >= 1.0f) g.wow_phase -= 1.0f;
         g.flutter_phase += p[P_FLUTTER_FREQ] / g.sample_rate;
         if (g.flutter_phase >= 1.0f) g.flutter_phase -= 1.0f;
-        const float wow = std::sin(2.0f * static_cast<float>(M_PI) * g.wow_phase);
-        const float flutter = 4.0f * std::fabs(g.flutter_phase - 0.5f) - 1.0f;
+        const float cyclic_wow = std::sin(2.0f * static_cast<float>(M_PI) * g.wow_phase);
+        const float tape_wow = clampf(
+            g.wow_wander * 0.58f +
+            g.wow_wander_slow * 0.42f +
+            g.hold_main * 0.16f,
+            -1.0f,
+            1.0f
+        );
+        const float unstable_cyclic_wow = cyclic_wow * clampf(0.62f + g.wow_wander_slow * 0.16f, 0.42f, 0.82f);
+        const float wow_blend = clamp01(tape_wow_blend * 0.9f + p[P_DEGRADE_MIX] * 0.12f);
+        const float wow = unstable_cyclic_wow * (1.0f - wow_blend) + tape_wow * wow_blend;
+        const float cyclic_flutter = 4.0f * std::fabs(g.flutter_phase - 0.5f) - 1.0f;
+        const float tape_flutter = clampf(
+            cyclic_flutter * 0.28f +
+            g.drift_noise * 0.46f +
+            g.wow_wander * 0.26f,
+            -1.0f,
+            1.0f
+        );
+        const float flutter_blend = tape_wow_blend * 0.78f;
+        const float flutter = cyclic_flutter * (1.0f - flutter_blend) + tape_flutter * flutter_blend;
         const float flutter_random = g.drift_noise * p[P_FLUTTER_RANDOM_DEPTH];
         const float jitter = white_l * p[P_JITTER_DEPTH];
 

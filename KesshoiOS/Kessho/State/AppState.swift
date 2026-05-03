@@ -52,7 +52,7 @@ class AppState: ObservableObject {
     @Published var midiErrorMessage: String?
     
     // Auto-morph timer
-    private var autoMorphTimer: Timer?
+    private var autoMorphTimer: DispatchSourceTimer?
     private var autoMorphCurrentPhase: AutoMorphPhase = .playingA
     private var phrasesInCurrentPhase: Int = 0
     
@@ -64,7 +64,7 @@ class AppState: ObservableObject {
     }
     
     // Random walk timer for dual sliders
-    private var randomWalkTimer: Timer?
+    private var randomWalkTimer: DispatchSourceTimer?
     
     // Track last state for detecting changes at morph endpoints
     private var lastStateSnapshot: SliderState?
@@ -103,7 +103,13 @@ class AppState: ObservableObject {
         setupRecorder()
         loadPresets()
         setupMIDI()
-        startRandomWalkTimer()
+    }
+
+    deinit {
+        randomWalkTimer?.setEventHandler {}
+        randomWalkTimer?.cancel()
+        autoMorphTimer?.setEventHandler {}
+        autoMorphTimer?.cancel()
     }
 
     private func setupServices() {
@@ -293,11 +299,35 @@ class AppState: ObservableObject {
     
     /// Start the random walk timer that animates dual slider values
     private func startRandomWalkTimer() {
-        randomWalkTimer?.invalidate()
-        randomWalkTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+        guard randomWalkTimer == nil else { return }
+
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(deadline: .now() + 0.1, repeating: 0.1, leeway: .milliseconds(40))
+        timer.setEventHandler { [weak self] in
             Task { @MainActor in
-                self?.tickRandomWalk()
+                guard let self else { return }
+                guard !self.dualRanges.isEmpty else {
+                    self.stopRandomWalkTimer()
+                    return
+                }
+                self.tickRandomWalk()
             }
+        }
+        randomWalkTimer = timer
+        timer.resume()
+    }
+
+    private func stopRandomWalkTimer() {
+        randomWalkTimer?.setEventHandler {}
+        randomWalkTimer?.cancel()
+        randomWalkTimer = nil
+    }
+
+    private func updateRandomWalkTimer() {
+        if dualRanges.isEmpty {
+            stopRandomWalkTimer()
+        } else {
+            startRandomWalkTimer()
         }
     }
     
@@ -338,6 +368,7 @@ class AppState: ObservableObject {
         dualRanges[key] = DualRange(min: min, max: max)
         randomWalkValues[key] = currentValue
         walkPhases[key] = 0
+        updateRandomWalkTimer()
         
         // Check if this is a drum parameter
         if getDrumVoice(for: key) != nil {
@@ -358,6 +389,7 @@ class AppState: ObservableObject {
         dualRanges.removeValue(forKey: key)
         randomWalkValues.removeValue(forKey: key)
         walkPhases.removeValue(forKey: key)
+        updateRandomWalkTimer()
         
         // Check if this is a drum parameter
         if getDrumVoice(for: key) != nil {
@@ -385,6 +417,7 @@ class AppState: ObservableObject {
     /// Update dual range min/max
     func updateDualRange(for key: String, min: Double, max: Double) {
         dualRanges[key] = DualRange(min: min, max: max)
+        updateRandomWalkTimer()
         
         // Check if this is a drum parameter
         if getDrumVoice(for: key) != nil {
@@ -595,6 +628,7 @@ class AppState: ObservableObject {
         dualRanges = dualRanges.filter { key, _ in
             !(key.hasPrefix(prefix) && !key.contains("Morph") && !key.contains("Preset"))
         }
+        updateRandomWalkTimer()
     }
     
     /// Handle dual slider changes for drum morph
@@ -1118,6 +1152,7 @@ class AppState: ObservableObject {
             for (key, range) in dualRanges {
                 randomWalkValues[key] = (range.min + range.max) / 2
             }
+            updateRandomWalkTimer()
         }
         // If at endpoint B or mid-morph, just update morphPresetA
         // The setMorphPosition will recalculate if user moves the slider
@@ -1317,6 +1352,7 @@ class AppState: ObservableObject {
         result.degradeWow = lerp(a.degradeWow, b.degradeWow, t)
         result.degradeFlutter = lerp(a.degradeFlutter, b.degradeFlutter, t)
         result.degradeDrift = lerp(a.degradeDrift, b.degradeDrift, t)
+        result.degradeWobbleSpeed = lerp(a.degradeWobbleSpeed, b.degradeWobbleSpeed, t)
         result.degradeTone = lerp(a.degradeTone, b.degradeTone, t)
         result.degradeHp = lerp(a.degradeHp, b.degradeHp, t)
         result.degradeLp = lerp(a.degradeLp, b.degradeLp, t)
@@ -1795,18 +1831,24 @@ class AppState: ObservableObject {
         }
         
         // Start timer - tick every phrase (PHRASE_LENGTH seconds)
-        autoMorphTimer?.invalidate()
-        autoMorphTimer = Timer.scheduledTimer(withTimeInterval: PHRASE_LENGTH, repeats: true) { [weak self] _ in
+        autoMorphTimer?.setEventHandler {}
+        autoMorphTimer?.cancel()
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(deadline: .now() + PHRASE_LENGTH, repeating: PHRASE_LENGTH, leeway: .milliseconds(250))
+        timer.setEventHandler { [weak self] in
             Task { @MainActor in
                 self?.tickAutoMorphPhrase()
             }
         }
+        autoMorphTimer = timer
+        timer.resume()
     }
     
     /// Stop automatic morphing
     func stopAutoMorph() {
         autoMorphEnabled = false
-        autoMorphTimer?.invalidate()
+        autoMorphTimer?.setEventHandler {}
+        autoMorphTimer?.cancel()
         autoMorphTimer = nil
         morphPhase = ""
     }
