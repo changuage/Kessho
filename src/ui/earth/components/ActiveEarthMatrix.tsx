@@ -8,7 +8,6 @@ import { useRuntimeSliderIndicator } from '../../runtimeSliderState';
 import {
   LONG_PRESS_MOVE_TOLERANCE_PX,
   LONG_PRESS_MS,
-  SliderFamilyNote,
   TRACK_PAD_PX,
   clamp01,
   getDualHandle,
@@ -29,6 +28,7 @@ import {
 import '../../sliderSystem/matrixSurface.css';
 import { INSECT_ENGINES } from '../../../audio/waterPresets';
 import type { EarthTextureDebugState } from '../../../audio/engine';
+import { EARTH_ENGINE_COLORS, SOURCE_COLORS } from '../../../designSystem/colors';
 import { NatureSliceViz } from './NatureSliceViz';
 
 type NumericSliderKey = {
@@ -125,6 +125,7 @@ type ActiveEarthMatrixProps = {
 };
 
 const MOBILE_EARTH_MATRIX_QUERY = '(max-width: 760px)';
+const ACTIVE_EARTH_MATRIX_HELP_KEY = 'activeEarthMatrix';
 
 const SHARED_COLUMNS: Array<{ id: SharedColumnId; label: string }> = [
   { id: 'level', label: 'Level' },
@@ -143,6 +144,8 @@ const WATER_LAYER_KEYS: readonly NumericSliderKey[] = [
   'waterLayerTurbulence',
   'waterLayerSurf',
 ] as const;
+
+const routeAccent = (color: string, amount = 40): string => `color-mix(in srgb, ${color} ${amount}%, transparent)`;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
@@ -259,9 +262,13 @@ export function ActiveEarthMatrix({
   sliderProps,
   getEarthTextureDebugState,
 }: ActiveEarthMatrixProps) {
+  const { announceHelp } = useSliderHelp();
   const anyWaterChildActive = WATER_LAYER_KEYS.some((key) => numeric(state, key) > 0.01);
   const anyNatureChildActive = state.birdsEnabled || state.birds2Enabled || state.frogsEnabled;
   const anyInsectChildActive = state.insectsEnabled || state.insects2Enabled;
+  const announceMatrixHelp = useCallback(() => {
+    announceHelp(ACTIVE_EARTH_MATRIX_HELP_KEY, { page: 'earth', label: 'Active Earth Matrix' });
+  }, [announceHelp]);
 
   const ensureAudibleLevel = useCallback((key: NumericSliderKey, fallback: number) => {
     if (numeric(state, key) <= 0.01) {
@@ -324,7 +331,7 @@ export function ActiveEarthMatrix({
         {
           id: 'waves',
           label: 'Waves',
-          accent: '#78d8f6',
+          accent: EARTH_ENGINE_COLORS.waves,
           active: Boolean(state.oceanSampleEnabled),
           onToggle: toggleWaves,
         },
@@ -336,42 +343,42 @@ export function ActiveEarthMatrix({
         {
           id: 'water-hard',
           label: 'Hard Drops',
-          accent: '#74bfff',
+          accent: EARTH_ENGINE_COLORS.waterHardDrops,
           active: numeric(state, 'waterLayerHardDrops') > 0.01,
           onToggle: () => toggleWaterChild('waterLayerHardDrops'),
         },
         {
           id: 'water-drops',
           label: 'Water Drops',
-          accent: '#83c7ff',
+          accent: EARTH_ENGINE_COLORS.waterDrops,
           active: numeric(state, 'waterLayerWaterDrops') > 0.01,
           onToggle: () => toggleWaterChild('waterLayerWaterDrops'),
         },
         {
           id: 'water-bubbling',
           label: 'Bubbling',
-          accent: '#7fd4f8',
+          accent: EARTH_ENGINE_COLORS.waterBubbling,
           active: numeric(state, 'waterLayerBubbling') > 0.01,
           onToggle: () => toggleWaterChild('waterLayerBubbling'),
         },
         {
           id: 'water-channels',
           label: 'Channels',
-          accent: '#62c3ff',
+          accent: EARTH_ENGINE_COLORS.waterChannels,
           active: numeric(state, 'waterLayerChannels') > 0.01,
           onToggle: () => toggleWaterChild('waterLayerChannels'),
         },
         {
           id: 'water-turbulence',
           label: 'Turbulence',
-          accent: '#5aa9e8',
+          accent: EARTH_ENGINE_COLORS.waterTurbulence,
           active: numeric(state, 'waterLayerTurbulence') > 0.01,
           onToggle: () => toggleWaterChild('waterLayerTurbulence'),
         },
         {
           id: 'water-surf',
           label: 'Surf',
-          accent: '#67d7f5',
+          accent: EARTH_ENGINE_COLORS.waterSurf,
           active: numeric(state, 'waterLayerSurf') > 0.01,
           onToggle: () => toggleWaterChild('waterLayerSurf'),
         },
@@ -383,7 +390,7 @@ export function ActiveEarthMatrix({
         {
           id: 'birds',
           label: 'Birds Alps',
-          accent: '#a5c4d4',
+          accent: EARTH_ENGINE_COLORS.birds,
           active: Boolean(state.birdsEnabled),
           onToggle: () => {
             if (!state.birdsEnabled) ensureAudibleLevel('natureLevel', 0.7);
@@ -393,7 +400,7 @@ export function ActiveEarthMatrix({
         {
           id: 'birds2',
           label: 'Birds Fujian',
-          accent: '#8ec5d4',
+          accent: EARTH_ENGINE_COLORS.birds2,
           active: Boolean(state.birds2Enabled),
           onToggle: () => {
             if (!state.birds2Enabled) ensureAudibleLevel('natureLevel', 0.7);
@@ -403,7 +410,7 @@ export function ActiveEarthMatrix({
         {
           id: 'frogs',
           label: 'Frogs',
-          accent: '#b4b450',
+          accent: EARTH_ENGINE_COLORS.frogs,
           active: Boolean(state.frogsEnabled),
           onToggle: () => {
             if (!state.frogsEnabled) ensureAudibleLevel('natureLevel', 0.7);
@@ -418,14 +425,14 @@ export function ActiveEarthMatrix({
         {
           id: 'insects1',
           label: 'Insects 1',
-          accent: '#78d98d',
+          accent: EARTH_ENGINE_COLORS.insects,
           active: Boolean(state.insectsEnabled),
           onToggle: () => toggleBooleanChild('insectsEnabled', 'insectsLevel', 0.5),
         },
         {
           id: 'insects2',
           label: 'Insects 2',
-          accent: '#4bcf73',
+          accent: EARTH_ENGINE_COLORS.insects2,
           active: Boolean(state.insects2Enabled),
           onToggle: () => toggleBooleanChild('insects2Enabled', 'insects2Level', 0.5),
         },
@@ -441,15 +448,15 @@ export function ActiveEarthMatrix({
         id: 'shared-waves',
         label: 'Waves',
         detail: 'shared routing',
-        accent: '#78d8f6',
+        accent: EARTH_ENGINE_COLORS.waves,
         toggle: () => onSelectChange('oceanSampleEnabled', false),
         toggleTitle: 'Disable Waves',
         cells: {
-          level: sliderCell({ key: 'oceanSampleLevel', label: 'Waves Level', accent: 'rgba(120,216,246,0.44)' }),
-          space: sliderCell({ key: 'oceanReverbSend', label: 'Waves Reverb', accent: 'rgba(163,110,255,0.38)' }),
-          delayA: sliderCell({ key: 'oceanDelayASend', label: 'Waves Delay A', accent: 'rgba(181,132,255,0.34)' }),
-          delayB: sliderCell({ key: 'oceanDelayBSend', label: 'Waves Delay B', accent: 'rgba(181,132,255,0.30)' }),
-          granular: sliderCell({ key: 'granularWavesSend', label: 'Waves Granular', accent: 'rgba(111,130,255,0.34)' }),
+          level: sliderCell({ key: 'oceanSampleLevel', label: 'Waves Level', accent: routeAccent(EARTH_ENGINE_COLORS.waves, 44) }),
+          space: sliderCell({ key: 'oceanReverbSend', label: 'Waves Reverb', accent: routeAccent(SOURCE_COLORS.reverb, 38) }),
+          delayA: sliderCell({ key: 'oceanDelayASend', label: 'Waves Delay A', accent: routeAccent(SOURCE_COLORS.delayA, 34) }),
+          delayB: sliderCell({ key: 'oceanDelayBSend', label: 'Waves Delay B', accent: routeAccent(SOURCE_COLORS.delayB, 30) }),
+          granular: sliderCell({ key: 'granularWavesSend', label: 'Waves Granular', accent: routeAccent(SOURCE_COLORS.granular, 34) }),
         },
       });
     }
@@ -459,15 +466,15 @@ export function ActiveEarthMatrix({
         id: 'shared-water',
         label: 'Water',
         detail: 'shared routing',
-        accent: '#62b5ff',
+        accent: EARTH_ENGINE_COLORS.water,
         toggle: disableWaterFamily,
         toggleTitle: 'Disable Water layers',
         cells: {
-          level: sliderCell({ key: 'waterLevel', label: 'Water Level', accent: 'rgba(98,181,255,0.42)' }),
-          space: sliderCell({ key: 'waterReverbSend', label: 'Water Reverb', accent: 'rgba(163,110,255,0.38)' }),
-          delayA: sliderCell({ key: 'waterDelayASend', label: 'Water Delay A', accent: 'rgba(181,132,255,0.34)' }),
-          delayB: sliderCell({ key: 'waterDelayBSend', label: 'Water Delay B', accent: 'rgba(181,132,255,0.30)' }),
-          granular: sliderCell({ key: 'granularWaterSend', label: 'Water Granular', accent: 'rgba(111,130,255,0.34)' }),
+          level: sliderCell({ key: 'waterLevel', label: 'Water Level', accent: routeAccent(EARTH_ENGINE_COLORS.water, 42) }),
+          space: sliderCell({ key: 'waterReverbSend', label: 'Water Reverb', accent: routeAccent(SOURCE_COLORS.reverb, 38) }),
+          delayA: sliderCell({ key: 'waterDelayASend', label: 'Water Delay A', accent: routeAccent(SOURCE_COLORS.delayA, 34) }),
+          delayB: sliderCell({ key: 'waterDelayBSend', label: 'Water Delay B', accent: routeAccent(SOURCE_COLORS.delayB, 30) }),
+          granular: sliderCell({ key: 'granularWaterSend', label: 'Water Granular', accent: routeAccent(SOURCE_COLORS.granular, 34) }),
         },
       });
     }
@@ -477,15 +484,15 @@ export function ActiveEarthMatrix({
         id: 'shared-nature',
         label: 'Nature',
         detail: 'shared routing',
-        accent: '#b7d3a3',
+        accent: EARTH_ENGINE_COLORS.nature,
         toggle: disableNatureFamily,
         toggleTitle: 'Disable Nature sources',
         cells: {
-          level: sliderCell({ key: 'natureLevel', label: 'Nature Level', accent: 'rgba(183,211,163,0.40)' }),
-          space: sliderCell({ key: 'natureReverbSend', label: 'Nature Reverb', accent: 'rgba(163,110,255,0.38)' }),
-          delayA: sliderCell({ key: 'natureDelayASend', label: 'Nature Delay A', accent: 'rgba(181,132,255,0.34)' }),
-          delayB: sliderCell({ key: 'natureDelayBSend', label: 'Nature Delay B', accent: 'rgba(181,132,255,0.30)' }),
-          granular: sliderCell({ key: 'granularNatureSend', label: 'Nature Granular', accent: 'rgba(111,130,255,0.34)' }),
+          level: sliderCell({ key: 'natureLevel', label: 'Nature Level', accent: routeAccent(EARTH_ENGINE_COLORS.nature, 40) }),
+          space: sliderCell({ key: 'natureReverbSend', label: 'Nature Reverb', accent: routeAccent(SOURCE_COLORS.reverb, 38) }),
+          delayA: sliderCell({ key: 'natureDelayASend', label: 'Nature Delay A', accent: routeAccent(SOURCE_COLORS.delayA, 34) }),
+          delayB: sliderCell({ key: 'natureDelayBSend', label: 'Nature Delay B', accent: routeAccent(SOURCE_COLORS.delayB, 30) }),
+          granular: sliderCell({ key: 'granularNatureSend', label: 'Nature Granular', accent: routeAccent(SOURCE_COLORS.granular, 34) }),
         },
       });
     }
@@ -495,15 +502,15 @@ export function ActiveEarthMatrix({
         id: 'shared-insects',
         label: 'Insects',
         detail: 'shared routing',
-        accent: '#78d98d',
+        accent: EARTH_ENGINE_COLORS.insects,
         toggle: disableInsectsFamily,
         toggleTitle: 'Disable Insect layers',
         cells: {
-          level: sliderCell({ key: 'insectsSharedLevel', label: 'Insects Level', accent: 'rgba(120,217,141,0.40)' }),
-          space: sliderCell({ key: 'insectsReverbSend', label: 'Insects Reverb', accent: 'rgba(163,110,255,0.38)' }),
-          delayA: sliderCell({ key: 'insDelayASend', label: 'Insects Delay A', accent: 'rgba(181,132,255,0.34)' }),
-          delayB: sliderCell({ key: 'insDelayBSend', label: 'Insects Delay B', accent: 'rgba(181,132,255,0.30)' }),
-          granular: sliderCell({ key: 'granularInsectsSend', label: 'Insects Granular', accent: 'rgba(111,130,255,0.34)' }),
+          level: sliderCell({ key: 'insectsSharedLevel', label: 'Insects Level', accent: routeAccent(EARTH_ENGINE_COLORS.insects, 40) }),
+          space: sliderCell({ key: 'insectsReverbSend', label: 'Insects Reverb', accent: routeAccent(SOURCE_COLORS.reverb, 38) }),
+          delayA: sliderCell({ key: 'insDelayASend', label: 'Insects Delay A', accent: routeAccent(SOURCE_COLORS.delayA, 34) }),
+          delayB: sliderCell({ key: 'insDelayBSend', label: 'Insects Delay B', accent: routeAccent(SOURCE_COLORS.delayB, 30) }),
+          granular: sliderCell({ key: 'granularInsectsSend', label: 'Insects Granular', accent: routeAccent(SOURCE_COLORS.granular, 34) }),
         },
       });
     }
@@ -519,13 +526,13 @@ export function ActiveEarthMatrix({
         id: 'child-waves',
         label: 'Waves',
         family: 'Waves',
-        accent: '#78d8f6',
+        accent: EARTH_ENGINE_COLORS.waves,
         preview: 'waves',
         density: numeric(state, 'oceanSliceDensity'),
         intensity: numeric(state, 'oceanSampleLevel'),
         toggle: () => onSelectChange('oceanSampleEnabled', false),
         toggleTitle: 'Disable Waves',
-        level: { key: 'oceanSampleLevel', label: 'Waves Level', accent: 'rgba(120,216,246,0.44)' },
+        level: { key: 'oceanSampleLevel', label: 'Waves Level', accent: routeAccent(EARTH_ENGINE_COLORS.waves, 44) },
         textureDebugKey: 'waves',
       });
     }
@@ -536,13 +543,13 @@ export function ActiveEarthMatrix({
         label: 'Hard Drops',
         family: 'Water',
         info: `Tone ${Math.round(numeric(state, 'waterHardDropTone') * 100)} • Rate ${numeric(state, 'waterHardDropRate').toFixed(2)}`,
-        accent: '#74bfff',
+        accent: EARTH_ENGINE_COLORS.waterHardDrops,
         preview: 'hardDrops',
         density: clamp01(numeric(state, 'waterHardDropRate') * 0.5),
         intensity: numeric(state, 'waterLayerHardDrops'),
         toggle: () => toggleWaterChild('waterLayerHardDrops'),
         toggleTitle: 'Disable Hard Drops',
-        level: { key: 'waterLayerHardDrops', label: 'Hard Drops Level', accent: 'rgba(116,191,255,0.38)' },
+        level: { key: 'waterLayerHardDrops', label: 'Hard Drops Level', accent: routeAccent(EARTH_ENGINE_COLORS.waterHardDrops, 38) },
       });
     }
 
@@ -552,13 +559,13 @@ export function ActiveEarthMatrix({
         label: 'Water Drops',
         family: 'Water',
         info: `Surface ripples • Rate ${numeric(state, 'waterWaterDropRate').toFixed(2)}`,
-        accent: '#83c7ff',
+        accent: EARTH_ENGINE_COLORS.waterDrops,
         preview: 'waterDrops',
         density: clamp01(numeric(state, 'waterWaterDropRate') * 0.4),
         intensity: numeric(state, 'waterLayerWaterDrops'),
         toggle: () => toggleWaterChild('waterLayerWaterDrops'),
         toggleTitle: 'Disable Water Drops',
-        level: { key: 'waterLayerWaterDrops', label: 'Water Drops Level', accent: 'rgba(131,199,255,0.38)' },
+        level: { key: 'waterLayerWaterDrops', label: 'Water Drops Level', accent: routeAccent(EARTH_ENGINE_COLORS.waterDrops, 38) },
       });
     }
 
@@ -568,13 +575,13 @@ export function ActiveEarthMatrix({
         label: 'Bubbling',
         family: 'Water',
         info: `Air pockets • Rate ${numeric(state, 'waterBubblingRate').toFixed(2)}`,
-        accent: '#7fd4f8',
+        accent: EARTH_ENGINE_COLORS.waterBubbling,
         preview: 'bubbling',
         density: clamp01(numeric(state, 'waterBubblingRate') * 0.33),
         intensity: numeric(state, 'waterLayerBubbling'),
         toggle: () => toggleWaterChild('waterLayerBubbling'),
         toggleTitle: 'Disable Bubbling',
-        level: { key: 'waterLayerBubbling', label: 'Bubbling Level', accent: 'rgba(127,212,248,0.38)' },
+        level: { key: 'waterLayerBubbling', label: 'Bubbling Level', accent: routeAccent(EARTH_ENGINE_COLORS.waterBubbling, 38) },
       });
     }
 
@@ -584,13 +591,13 @@ export function ActiveEarthMatrix({
         label: 'Channels',
         family: 'Water',
         info: `${channelsMorphLabel(numeric(state, 'waterChannelsMorph'))} • Speed ${numeric(state, 'waterChannelsSpeed').toFixed(2)}`,
-        accent: '#62c3ff',
+        accent: EARTH_ENGINE_COLORS.waterChannels,
         preview: 'channels',
         density: numeric(state, 'waterChannelsSpeed'),
         intensity: numeric(state, 'waterLayerChannels'),
         toggle: () => toggleWaterChild('waterLayerChannels'),
         toggleTitle: 'Disable Channels',
-        level: { key: 'waterLayerChannels', label: 'Channels Level', accent: 'rgba(98,195,255,0.38)' },
+        level: { key: 'waterLayerChannels', label: 'Channels Level', accent: routeAccent(EARTH_ENGINE_COLORS.waterChannels, 38) },
       });
     }
 
@@ -600,13 +607,13 @@ export function ActiveEarthMatrix({
         label: 'Turbulence',
         family: 'Water',
         info: `Body motion • Intensity ${Math.round(numeric(state, 'waterIntensity') * 100)}%`,
-        accent: '#5aa9e8',
+        accent: EARTH_ENGINE_COLORS.waterTurbulence,
         preview: 'turbulence',
         density: numeric(state, 'waterIntensity'),
         intensity: numeric(state, 'waterLayerTurbulence'),
         toggle: () => toggleWaterChild('waterLayerTurbulence'),
         toggleTitle: 'Disable Turbulence',
-        level: { key: 'waterLayerTurbulence', label: 'Turbulence Level', accent: 'rgba(90,169,232,0.38)' },
+        level: { key: 'waterLayerTurbulence', label: 'Turbulence Level', accent: routeAccent(EARTH_ENGINE_COLORS.waterTurbulence, 38) },
       });
     }
 
@@ -616,13 +623,13 @@ export function ActiveEarthMatrix({
         label: 'Surf',
         family: 'Water',
         info: `Foam ${Math.round(numeric(state, 'waterSurfFoam') * 100)} • Depth ${Math.round(numeric(state, 'waterSurfDepth') * 100)}%`,
-        accent: '#67d7f5',
+        accent: EARTH_ENGINE_COLORS.waterSurf,
         preview: 'surf',
         density: numeric(state, 'waterSurfFoam'),
         intensity: numeric(state, 'waterLayerSurf'),
         toggle: () => toggleWaterChild('waterLayerSurf'),
         toggleTitle: 'Disable Surf',
-        level: { key: 'waterLayerSurf', label: 'Surf Level', accent: 'rgba(103,215,245,0.38)' },
+        level: { key: 'waterLayerSurf', label: 'Surf Level', accent: routeAccent(EARTH_ENGINE_COLORS.waterSurf, 38) },
       });
     }
 
@@ -631,13 +638,13 @@ export function ActiveEarthMatrix({
         id: 'child-birds',
         label: 'Birds Alps',
         family: 'Nature',
-        accent: '#a5c4d4',
+        accent: EARTH_ENGINE_COLORS.birds,
         preview: 'birds',
         density: numeric(state, 'birdsSliceDensity'),
         intensity: numeric(state, 'birdsLevel') * numeric(state, 'natureLevel'),
         toggle: () => onSelectChange('birdsEnabled', false),
         toggleTitle: 'Disable Birds Alps',
-        level: { key: 'birdsLevel', label: 'Birds Alps Level', accent: 'rgba(165,196,212,0.38)' },
+        level: { key: 'birdsLevel', label: 'Birds Alps Level', accent: routeAccent(EARTH_ENGINE_COLORS.birds, 38) },
         textureDebugKey: 'birds',
       });
     }
@@ -647,13 +654,13 @@ export function ActiveEarthMatrix({
         id: 'child-birds2',
         label: 'Birds Fujian',
         family: 'Nature',
-        accent: '#8ec5d4',
+        accent: EARTH_ENGINE_COLORS.birds2,
         preview: 'birds',
         density: numeric(state, 'birds2SliceDensity'),
         intensity: numeric(state, 'birds2Level') * numeric(state, 'natureLevel'),
         toggle: () => onSelectChange('birds2Enabled', false),
         toggleTitle: 'Disable Birds Fujian',
-        level: { key: 'birds2Level', label: 'Birds Fujian Level', accent: 'rgba(142,197,212,0.38)' },
+        level: { key: 'birds2Level', label: 'Birds Fujian Level', accent: routeAccent(EARTH_ENGINE_COLORS.birds2, 38) },
         textureDebugKey: 'birds2',
       });
     }
@@ -663,13 +670,13 @@ export function ActiveEarthMatrix({
         id: 'child-frogs',
         label: 'Frogs',
         family: 'Nature',
-        accent: '#b4b450',
+        accent: EARTH_ENGINE_COLORS.frogs,
         preview: 'frogs',
         density: numeric(state, 'frogsSliceDensity'),
         intensity: numeric(state, 'frogsLevel') * numeric(state, 'natureLevel'),
         toggle: () => onSelectChange('frogsEnabled', false),
         toggleTitle: 'Disable Frogs',
-        level: { key: 'frogsLevel', label: 'Frogs Level', accent: 'rgba(180,180,80,0.38)' },
+        level: { key: 'frogsLevel', label: 'Frogs Level', accent: routeAccent(EARTH_ENGINE_COLORS.frogs, 38) },
         textureDebugKey: 'frogs',
       });
     }
@@ -680,13 +687,13 @@ export function ActiveEarthMatrix({
         label: 'Insects 1',
         family: 'Insects',
         info: INSECT_ENGINES[state.insectsEngine] ?? 'Layer 1 engine',
-        accent: '#78d98d',
+        accent: EARTH_ENGINE_COLORS.insects,
         preview: 'insects',
         density: numeric(state, 'insectsDensity'),
         intensity: numeric(state, 'insectsLevel'),
         toggle: () => onSelectChange('insectsEnabled', false),
         toggleTitle: 'Disable Insects 1',
-        level: { key: 'insectsLevel', label: 'Insects 1 Level', accent: 'rgba(120,217,141,0.38)' },
+        level: { key: 'insectsLevel', label: 'Insects 1 Level', accent: routeAccent(EARTH_ENGINE_COLORS.insects, 38) },
       });
     }
 
@@ -696,13 +703,13 @@ export function ActiveEarthMatrix({
         label: 'Insects 2',
         family: 'Insects',
         info: INSECT_ENGINES[state.insects2Engine] ?? 'Layer 2 engine',
-        accent: '#4bcf73',
+        accent: EARTH_ENGINE_COLORS.insects2,
         preview: 'insects',
         density: numeric(state, 'insects2Density'),
         intensity: numeric(state, 'insects2Level'),
         toggle: () => onSelectChange('insects2Enabled', false),
         toggleTitle: 'Disable Insects 2',
-        level: { key: 'insects2Level', label: 'Insects 2 Level', accent: 'rgba(75,207,115,0.38)' },
+        level: { key: 'insects2Level', label: 'Insects 2 Level', accent: routeAccent(EARTH_ENGINE_COLORS.insects2, 38) },
       });
     }
 
@@ -773,10 +780,7 @@ export function ActiveEarthMatrix({
 
   return (
     <section ref={sectionRef} className="mixer-section earth-active-matrix">
-      <div className="mixer-section-header">Active Earth Matrix</div>
-      <SliderFamilyNote className="earth-active-matrix-note">
-        Choose sources below. Shared routing appears per active family, while the active-source matrix keeps only the engines you have in play.
-      </SliderFamilyNote>
+      <div className="mixer-section-header" onMouseEnter={announceMatrixHelp}>Active Earth Matrix</div>
 
       <div className="earth-selector-groups">
         {selectorGroups.map((group) => (

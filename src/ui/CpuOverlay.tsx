@@ -11,30 +11,33 @@ type PerfMetrics = {
   avgPercent: number;
   peakPercent: number;
   missPercent: number | null;
+  scope?: 'worklet' | 'source';
 };
 
 const WORKLET_LABELS: Record<string, string> = {
   // WASM engines
   'reverb-wasm': 'Reverb',
+  'dynamics-character': 'Dynamics',
   'lead-fm-wasm': 'Lead FM',
   'pad-wasm': 'Pad',
   'drum-wasm': 'Drums',
   'granular-fx-wasm': 'Granular',
   'spectral-freeze-wasm': 'Freeze',
-  // Soundscapes sub-engines
+  'soundscapes-wasm': 'Earth DSP',
+  // Soundscapes sub-engines/source detail
   'water': 'Water',
-  'insects': 'Insects',
-  'ocean': 'Ocean',
+  'insects-1': 'Insects 1',
+  'insects-2': 'Insects 2',
 };
 
 /** Preferred display order */
 const DISPLAY_ORDER = [
   // FX group
-  'reverb-wasm', 'spectral-freeze-wasm', 'granular-fx-wasm',
+  'reverb-wasm', 'spectral-freeze-wasm', 'granular-fx-wasm', 'dynamics-character',
   // Instrument group
   'lead-fm-wasm', 'pad-wasm', 'drum-wasm',
   // Soundscapes group
-  'insects', 'water', 'ocean',
+  'soundscapes-wasm', 'water', 'insects-1', 'insects-2',
 ];
 
 function cpuColor(pct: number): string {
@@ -115,7 +118,9 @@ export const CpuOverlay: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKey);
   }, [toggle]);
 
-  const headerPeak = Object.values(displayPerfData).reduce((maxPeak, entry) => Math.max(maxPeak, entry.peakPercent), 0);
+  const primaryMetrics = Object.values(displayPerfData).filter((entry) => entry.scope !== 'source');
+  const headerAvg = primaryMetrics.reduce((sum, entry) => sum + entry.avgPercent, 0);
+  const headerPeak = primaryMetrics.reduce((maxPeak, entry) => Math.max(maxPeak, entry.peakPercent), 0);
   const hasData = Object.keys(displayPerfData).length > 0;
 
   // Any unknown keys not in display order
@@ -163,7 +168,9 @@ export const CpuOverlay: React.FC = () => {
         <div style={styles.container}>
           <div style={styles.header}>
             <span>CPU</span>
-            <span style={{ ...styles.headerMetric, color: cpuColor(headerPeak) }}>peak {headerPeak.toFixed(1)}%</span>
+            <span style={{ ...styles.headerMetric, color: cpuColor(headerAvg) }}>
+              avg {headerAvg.toFixed(1)}% / peak {headerPeak.toFixed(1)}%
+            </span>
           </div>
           <div style={styles.columns}>
             <span style={styles.label}>Engine</span>
@@ -200,7 +207,7 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#ccc',
     zIndex: 99998,
     pointerEvents: 'none',
-    minWidth: 120,
+    minWidth: 270,
     backdropFilter: 'blur(4px)',
   },
   header: {

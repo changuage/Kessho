@@ -1,0 +1,1988 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Delay and Reverb Visualizer Options</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #111216;
+      --surface: #171a20;
+      --surface-2: #20252d;
+      --ink: #eef3f7;
+      --muted: #9aa5b1;
+      --dim: #6f7884;
+      --line: rgba(255, 255, 255, 0.11);
+      --line-strong: rgba(255, 255, 255, 0.2);
+      --cyan: #4cc9d8;
+      --blue: #78a6ff;
+      --green: #35d08d;
+      --amber: #f2b84b;
+      --orange: #ff8b5f;
+      --rose: #ff7195;
+      --violet: #a98cff;
+      --radius: 8px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      background: var(--bg);
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent 360px),
+        linear-gradient(135deg, #131417 0%, #17151b 48%, #101618 100%);
+      color: var(--ink);
+      font-family: var(--sans);
+      letter-spacing: 0;
+    }
+
+    button,
+    input {
+      font: inherit;
+    }
+
+    .page {
+      width: min(1480px, 100%);
+      margin: 0 auto;
+      padding: 18px clamp(14px, 3vw, 30px) 42px;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: grid;
+      grid-template-columns: minmax(240px, 1fr) minmax(300px, 560px);
+      gap: 18px;
+      align-items: center;
+      padding: 12px 0 14px;
+      background: linear-gradient(180deg, rgba(17, 18, 22, 0.98), rgba(17, 18, 22, 0.88));
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(1.22rem, 2.25vw, 1.9rem);
+      line-height: 1.05;
+      font-weight: 780;
+      letter-spacing: 0;
+    }
+
+    .subtitle {
+      max-width: 900px;
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 0.84rem;
+      line-height: 1.4;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .control {
+      min-width: 0;
+      padding: 7px 8px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, 0.045);
+    }
+
+    .control label {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 5px;
+      color: var(--muted);
+      font-size: 0.62rem;
+      font-weight: 780;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .control output {
+      color: var(--ink);
+      font-family: var(--mono);
+      font-size: 0.62rem;
+      white-space: nowrap;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--cyan);
+    }
+
+    .decision-strip {
+      display: grid;
+      grid-template-columns: minmax(220px, 0.82fr) minmax(0, 1.18fr);
+      gap: 12px;
+      margin: 16px 0;
+      align-items: stretch;
+    }
+
+    .decision-box,
+    .legend-box {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, 0.045);
+      padding: 13px;
+    }
+
+    .decision-kicker {
+      color: var(--dim);
+      font-size: 0.66rem;
+      font-weight: 780;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .decision-choice {
+      margin-top: 6px;
+      font-size: 1.05rem;
+      font-weight: 780;
+    }
+
+    .decision-note {
+      margin-top: 7px;
+      color: var(--muted);
+      font-size: 0.78rem;
+      line-height: 1.45;
+    }
+
+    .legend-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+      height: 100%;
+    }
+
+    .legend-item {
+      min-width: 0;
+      padding: 8px;
+      border-left: 3px solid var(--c);
+      background: rgba(255, 255, 255, 0.035);
+      border-radius: 6px;
+    }
+
+    .legend-label {
+      color: var(--ink);
+      font-size: 0.76rem;
+      font-weight: 760;
+    }
+
+    .legend-copy {
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 0.7rem;
+      line-height: 1.35;
+    }
+
+    .section-title {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      margin: 18px 0 10px;
+    }
+
+    .section-title h2 {
+      font-size: 0.98rem;
+    }
+
+    .section-note {
+      color: var(--dim);
+      font-size: 0.72rem;
+      line-height: 1.35;
+      text-align: right;
+    }
+
+    .info-board {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+
+    .info-card {
+      position: relative;
+      min-width: 0;
+      padding: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.09);
+      border-top: 3px solid var(--c);
+      border-radius: var(--radius);
+      background:
+        linear-gradient(180deg, color-mix(in srgb, var(--c) 9%, transparent), transparent 58%),
+        rgba(255, 255, 255, 0.035);
+      overflow: hidden;
+    }
+
+    .info-card-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: baseline;
+      margin-bottom: 9px;
+    }
+
+    .info-kicker {
+      color: color-mix(in srgb, var(--c) 75%, white);
+      font-size: 0.64rem;
+      font-weight: 820;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .info-readout {
+      color: var(--ink);
+      font-family: var(--mono);
+      font-size: 0.66rem;
+      white-space: nowrap;
+    }
+
+    .info-title {
+      color: var(--ink);
+      font-size: 0.84rem;
+      font-weight: 780;
+      line-height: 1.16;
+    }
+
+    .info-copy {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 0.72rem;
+      line-height: 1.4;
+    }
+
+    .info-metrics {
+      display: grid;
+      gap: 6px;
+      margin-top: 10px;
+    }
+
+    .info-metric {
+      display: grid;
+      grid-template-columns: 76px 1fr auto;
+      gap: 7px;
+      align-items: center;
+      color: var(--muted);
+      font-size: 0.66rem;
+    }
+
+    .info-metric span:last-child {
+      color: var(--ink);
+      font-family: var(--mono);
+      font-size: 0.62rem;
+    }
+
+    .map-strip {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .map-card {
+      min-width: 0;
+      padding: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.085);
+      border-radius: var(--radius);
+      background: color-mix(in srgb, var(--surface-2) 72%, transparent);
+    }
+
+    .map-title {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      color: var(--ink);
+      font-size: 0.78rem;
+      font-weight: 790;
+    }
+
+    .map-title span:last-child {
+      color: var(--dim);
+      font-family: var(--mono);
+      font-size: 0.64rem;
+      font-weight: 720;
+    }
+
+    .map-copy {
+      margin-top: 7px;
+      color: var(--muted);
+      font-size: 0.72rem;
+      line-height: 1.38;
+    }
+
+    .coverage-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 7px;
+    }
+
+    .coverage-card {
+      min-width: 0;
+      padding: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.085);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.028);
+    }
+
+    .coverage-card strong {
+      display: block;
+      color: var(--ink);
+      font-size: 0.68rem;
+      line-height: 1.15;
+      margin-bottom: 4px;
+    }
+
+    .coverage-card span {
+      display: block;
+      color: var(--muted);
+      font-size: 0.68rem;
+      line-height: 1.32;
+    }
+
+    .analyser-plan {
+      display: grid;
+      grid-template-columns: minmax(0, 1.1fr) minmax(310px, 0.9fr);
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .analyser-card {
+      min-width: 0;
+      padding: 13px;
+      border: 1px solid rgba(255, 255, 255, 0.09);
+      border-radius: var(--radius);
+      background:
+        linear-gradient(135deg, rgba(76, 201, 216, 0.08), rgba(169, 140, 255, 0.055)),
+        rgba(255, 255, 255, 0.035);
+    }
+
+    .analyser-card h3 {
+      margin: 0;
+      color: var(--ink);
+      font-size: 0.88rem;
+      line-height: 1.1;
+      font-weight: 800;
+    }
+
+    .analyser-copy {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 0.76rem;
+      line-height: 1.42;
+    }
+
+    .signal-stack {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .signal-card {
+      min-width: 0;
+      padding: 9px;
+      border: 1px solid color-mix(in srgb, var(--c) 34%, transparent);
+      border-radius: 6px;
+      background: color-mix(in srgb, var(--c) 9%, transparent);
+    }
+
+    .signal-card strong {
+      display: block;
+      color: var(--ink);
+      font-size: 0.72rem;
+      line-height: 1.15;
+      margin-bottom: 5px;
+    }
+
+    .signal-card span {
+      display: block;
+      color: var(--muted);
+      font-size: 0.68rem;
+      line-height: 1.34;
+    }
+
+    .gate-table {
+      display: grid;
+      gap: 7px;
+      margin-top: 11px;
+    }
+
+    .gate-row {
+      display: grid;
+      grid-template-columns: 88px 1fr auto;
+      gap: 8px;
+      align-items: center;
+      padding: 7px 8px;
+      border: 1px solid rgba(255, 255, 255, 0.075);
+      border-radius: 6px;
+      background: rgba(0, 0, 0, 0.12);
+      color: var(--muted);
+      font-size: 0.68rem;
+      line-height: 1.25;
+    }
+
+    .gate-row strong {
+      color: var(--ink);
+      font-size: 0.68rem;
+    }
+
+    .gate-row span:last-child {
+      color: var(--ink);
+      font-family: var(--mono);
+      font-size: 0.62rem;
+      white-space: nowrap;
+    }
+
+    .option {
+      margin-top: 14px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: color-mix(in srgb, var(--surface) 88%, black);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+      overflow: hidden;
+    }
+
+    .option.selected {
+      border-color: color-mix(in srgb, var(--green) 70%, white 10%);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.045),
+        0 0 0 1px rgba(53, 208, 141, 0.18);
+    }
+
+    .option-head {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      padding: 13px 14px 12px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.025);
+    }
+
+    .option-title-row {
+      display: flex;
+      align-items: baseline;
+      gap: 9px;
+      min-width: 0;
+      flex-wrap: wrap;
+    }
+
+    .option-num {
+      color: var(--dim);
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      font-weight: 800;
+    }
+
+    h2 {
+      margin: 0;
+      font-size: 1rem;
+      line-height: 1.1;
+      font-weight: 790;
+      letter-spacing: 0;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      min-height: 22px;
+      padding: 2px 7px;
+      border: 1px solid color-mix(in srgb, var(--tag-color) 42%, transparent);
+      border-radius: 999px;
+      color: color-mix(in srgb, var(--tag-color) 78%, white);
+      background: color-mix(in srgb, var(--tag-color) 12%, transparent);
+      font-size: 0.65rem;
+      font-weight: 760;
+      white-space: nowrap;
+    }
+
+    .option-summary {
+      margin-top: 7px;
+      color: var(--muted);
+      font-size: 0.8rem;
+      line-height: 1.4;
+    }
+
+    .choose-btn {
+      appearance: none;
+      min-width: 112px;
+      min-height: 34px;
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, 0.055);
+      color: var(--ink);
+      font-weight: 780;
+      cursor: pointer;
+    }
+
+    .choose-btn:hover,
+    .choose-btn:focus-visible {
+      background: rgba(255, 255, 255, 0.09);
+      outline: none;
+      border-color: rgba(255, 255, 255, 0.32);
+    }
+
+    .option.selected .choose-btn {
+      border-color: rgba(53, 208, 141, 0.54);
+      background: rgba(53, 208, 141, 0.15);
+      color: #cbffe7;
+    }
+
+    .option-body {
+      display: grid;
+      grid-template-columns: minmax(0, 1.45fr) minmax(290px, 0.75fr);
+      gap: 14px;
+      padding: 14px;
+    }
+
+    .mockups {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .mockup {
+      min-width: 0;
+      border: 1px solid rgba(255, 255, 255, 0.085);
+      border-radius: var(--radius);
+      background: #12161b;
+      overflow: hidden;
+    }
+
+    .mockup-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      height: 34px;
+      padding: 0 9px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.075);
+      color: var(--muted);
+      font-size: 0.68rem;
+      font-weight: 780;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .mockup-pill {
+      color: var(--ink);
+      font-family: var(--mono);
+      font-size: 0.62rem;
+      font-weight: 700;
+      text-transform: none;
+      letter-spacing: 0;
+    }
+
+    .viz-surface {
+      position: relative;
+      height: 194px;
+      padding: 9px;
+      overflow: hidden;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .meter-stack {
+      display: grid;
+      grid-template-rows: repeat(4, 1fr);
+      gap: 8px;
+      height: 100%;
+    }
+
+    .meter-row {
+      display: grid;
+      grid-template-columns: 76px 1fr 42px;
+      align-items: center;
+      gap: 8px;
+      min-height: 0;
+      font-size: 0.7rem;
+      color: var(--muted);
+    }
+
+    .meter-row strong {
+      color: var(--ink);
+      font-size: 0.7rem;
+    }
+
+    .meter-track {
+      position: relative;
+      height: 10px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .meter-fill {
+      width: calc(var(--v) * 1%);
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--c), color-mix(in srgb, var(--c) 55%, white));
+    }
+
+    .tap-grid {
+      display: grid;
+      grid-template-columns: repeat(8, 1fr);
+      gap: 5px;
+      align-items: end;
+      height: calc(100% - 42px);
+      padding-top: 8px;
+    }
+
+    .tap {
+      min-width: 0;
+      height: calc(14px + var(--v) * 1.2px);
+      border-radius: 5px 5px 2px 2px;
+      background: color-mix(in srgb, var(--c) calc(32% + var(--v) * 0.45%), transparent);
+      border: 1px solid color-mix(in srgb, var(--c) 52%, transparent);
+    }
+
+    .mini-note {
+      position: absolute;
+      left: 9px;
+      right: 9px;
+      bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      color: var(--dim);
+      font-family: var(--mono);
+      font-size: 0.63rem;
+    }
+
+    .flow-map {
+      position: relative;
+      height: 100%;
+    }
+
+    .node {
+      position: absolute;
+      display: grid;
+      place-items: center;
+      width: 72px;
+      height: 34px;
+      border: 1px solid color-mix(in srgb, var(--c) 48%, transparent);
+      border-radius: var(--radius);
+      background: color-mix(in srgb, var(--c) 14%, #101418);
+      color: var(--ink);
+      font-size: 0.68rem;
+      font-weight: 780;
+    }
+
+    .wire {
+      position: absolute;
+      height: max(2px, calc(var(--w) * 1px));
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--c) 70%, transparent);
+      transform-origin: left center;
+      opacity: calc(0.26 + var(--w) * 0.065);
+    }
+
+    .live-bars {
+      display: grid;
+      grid-template-columns: repeat(32, 1fr);
+      align-items: center;
+      gap: 2px;
+      height: 100%;
+    }
+
+    .live-bar {
+      height: calc(12px + var(--v) * 1.42px);
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--c) calc(26% + var(--v) * 0.5%), transparent);
+    }
+
+    .hybrid-shell {
+      display: grid;
+      grid-template-rows: 1fr 36px;
+      gap: 8px;
+      height: 100%;
+    }
+
+    .hybrid-cpu-row {
+      display: grid;
+      grid-template-columns: 46px 1fr 44px;
+      gap: 7px;
+      align-items: center;
+      color: var(--muted);
+      font-size: 0.64rem;
+      font-weight: 760;
+    }
+
+    .cpu-track {
+      height: 10px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.09);
+      overflow: hidden;
+    }
+
+    .cpu-fill {
+      width: calc(var(--cpu) * 1%);
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--green), var(--amber), var(--orange));
+    }
+
+    .notes {
+      min-width: 0;
+      display: grid;
+      gap: 10px;
+      align-content: start;
+    }
+
+    .score-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 7px;
+    }
+
+    .score {
+      min-width: 0;
+      padding: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.085);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.035);
+    }
+
+    .score-value {
+      color: var(--ink);
+      font-family: var(--mono);
+      font-size: 1rem;
+      font-weight: 800;
+    }
+
+    .score-label {
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 0.63rem;
+      font-weight: 780;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .detail-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 9px;
+    }
+
+    .detail h3,
+    .cpu-panel h3 {
+      margin: 0 0 7px;
+      color: var(--ink);
+      font-size: 0.78rem;
+      line-height: 1.1;
+      font-weight: 780;
+      letter-spacing: 0;
+    }
+
+    .detail ul {
+      margin: 0;
+      padding-left: 16px;
+      color: var(--muted);
+      font-size: 0.72rem;
+      line-height: 1.38;
+    }
+
+    .detail li + li {
+      margin-top: 5px;
+    }
+
+    .cpu-panel {
+      padding: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.085);
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, 0.032);
+    }
+
+    .cpu-ledger {
+      display: grid;
+      gap: 6px;
+    }
+
+    .cpu-row {
+      display: grid;
+      grid-template-columns: 104px 1fr 54px;
+      gap: 8px;
+      align-items: center;
+      color: var(--muted);
+      font-size: 0.68rem;
+    }
+
+    .cpu-row span:last-child {
+      color: var(--ink);
+      font-family: var(--mono);
+      text-align: right;
+    }
+
+    .recommendation {
+      margin-top: 16px;
+      padding: 14px;
+      border: 1px solid rgba(53, 208, 141, 0.25);
+      border-radius: var(--radius);
+      background: rgba(53, 208, 141, 0.055);
+      color: var(--muted);
+      font-size: 0.82rem;
+      line-height: 1.45;
+    }
+
+    .recommendation strong {
+      color: #d7ffe9;
+    }
+
+    @media (max-width: 1160px) {
+      .topbar,
+      .decision-strip,
+      .option-body,
+      .analyser-plan {
+        grid-template-columns: 1fr;
+      }
+
+      .info-board,
+      .map-strip {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .controls {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 860px) {
+      .mockups,
+      .legend-grid,
+      .info-board,
+      .map-strip,
+      .signal-stack {
+        grid-template-columns: 1fr;
+      }
+
+      .mockup .viz-surface {
+        height: 178px;
+      }
+
+      .option-head {
+        grid-template-columns: 1fr;
+      }
+
+      .choose-btn {
+        width: 100%;
+      }
+    }
+
+    @media (max-width: 560px) {
+      .page {
+        padding-inline: 12px;
+      }
+
+      .controls,
+      .score-grid,
+      .detail-grid,
+      .coverage-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .cpu-row {
+        grid-template-columns: 88px 1fr 48px;
+      }
+
+      .gate-row {
+        grid-template-columns: 76px 1fr;
+      }
+
+      .gate-row span:last-child {
+        grid-column: 2;
+        text-align: left;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="topbar">
+      <div>
+        <h1>Delay A, Delay B, and Reverb visualizer options</h1>
+        <div class="subtitle">
+          Five implementation directions focused on readable parameter feedback, fast reaction to controls, and useful CPU visibility. Move the controls to see how each concept responds.
+        </div>
+      </div>
+      <div class="controls" aria-label="Prototype parameters">
+        <div class="control">
+          <label for="feedback">A feedback <output id="feedbackOut">62%</output></label>
+          <input id="feedback" type="range" min="5" max="95" value="62" />
+        </div>
+        <div class="control">
+          <label for="activity">B activity <output id="activityOut">70%</output></label>
+          <input id="activity" type="range" min="0" max="100" value="70" />
+        </div>
+        <div class="control">
+          <label for="decay">Reverb decay <output id="decayOut">78%</output></label>
+          <input id="decay" type="range" min="10" max="98" value="78" />
+        </div>
+        <div class="control">
+          <label for="budget">CPU budget <output id="budgetOut">balanced</output></label>
+          <input id="budget" type="range" min="0" max="2" step="1" value="1" />
+        </div>
+      </div>
+    </header>
+
+    <section class="decision-strip" aria-label="Decision summary">
+      <div class="decision-box">
+        <div class="decision-kicker">Current choice</div>
+        <div id="choiceText" class="decision-choice">Option 5: CPU-aware hybrid</div>
+        <div id="choiceNote" class="decision-note">
+          Best default if we want the page to feel alive while staying mobile-safe.
+        </div>
+      </div>
+      <div class="legend-box">
+        <div class="legend-grid">
+          <div class="legend-item" style="--c: var(--blue)">
+            <div class="legend-label">Delay A</div>
+            <div class="legend-copy">Echo timing, L/R repeat density, feedback decay, ping-pong width.</div>
+          </div>
+          <div class="legend-item" style="--c: var(--cyan)">
+            <div class="legend-label">Delay B</div>
+            <div class="legend-copy">Clocked taps, activity, spread, pattern shape, warp character.</div>
+          </div>
+          <div class="legend-item" style="--c: var(--violet)">
+            <div class="legend-label">Reverb</div>
+            <div class="legend-copy">Predelay, early reflections, tail length, width, shimmer, freeze.</div>
+          </div>
+          <div class="legend-item" style="--c: var(--green)">
+            <div class="legend-label">CPU</div>
+            <div class="legend-copy">Visual render cost plus existing worklet CPU signals from the overlay.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="section-title">
+      <h2>What the visualizer should teach at a glance</h2>
+      <div class="section-note">Each card below maps a musical question to a visual answer.</div>
+    </div>
+
+    <section class="info-board" aria-label="Visualizer information goals">
+      <article class="info-card" style="--c: var(--blue)">
+        <div class="info-card-head">
+          <div class="info-kicker">Delay A</div>
+          <div class="info-readout" data-a-readout>medium tail</div>
+        </div>
+        <div class="info-title">Echo line clarity</div>
+        <div class="info-copy">
+          Show left and right divisions, ping-pong alternation, repeat decay, width, and whether feedback is building into a wash.
+        </div>
+        <div class="info-metrics">
+          <div class="info-metric"><span>Repeats</span><div class="meter-track"><div class="meter-fill" data-info-meter="aRepeats" style="--c: var(--blue); --v: 62"></div></div><span data-a-repeat-count>7 hits</span></div>
+          <div class="info-metric"><span>Risk</span><div class="meter-track"><div class="meter-fill" data-info-meter="aRisk" style="--c: var(--amber); --v: 62"></div></div><span data-a-risk>stable</span></div>
+        </div>
+      </article>
+
+      <article class="info-card" style="--c: var(--cyan)">
+        <div class="info-card-head">
+          <div class="info-kicker">Delay B</div>
+          <div class="info-readout" data-b-readout>6 active taps</div>
+        </div>
+        <div class="info-title">Clocked-space density</div>
+        <div class="info-copy">
+          Show active taps, pattern spacing, stereo spread, warp mode, and the moments where granular delay starts feeling like a texture.
+        </div>
+        <div class="info-metrics">
+          <div class="info-metric"><span>Taps</span><div class="meter-track"><div class="meter-fill" data-info-meter="bTaps" style="--c: var(--cyan); --v: 70"></div></div><span data-b-tap-count>6 of 8</span></div>
+          <div class="info-metric"><span>Texture</span><div class="meter-track"><div class="meter-fill" data-info-meter="bTexture" style="--c: var(--violet); --v: 70"></div></div><span data-b-texture>animated</span></div>
+        </div>
+      </article>
+
+      <article class="info-card" style="--c: var(--violet)">
+        <div class="info-card-head">
+          <div class="info-kicker">Reverb</div>
+          <div class="info-readout" data-r-readout>long tail</div>
+        </div>
+        <div class="info-title">Space shape and tail health</div>
+        <div class="info-copy">
+          Show predelay, early reflections, diffusion, stereo width, damping, shimmer, freeze state, and how much of the timeline the tail occupies.
+        </div>
+        <div class="info-metrics">
+          <div class="info-metric"><span>Tail</span><div class="meter-track"><div class="meter-fill" data-info-meter="rTail" style="--c: var(--violet); --v: 78"></div></div><span data-r-tail-seconds>7.1s</span></div>
+          <div class="info-metric"><span>Bloom</span><div class="meter-track"><div class="meter-fill" data-info-meter="rBloom" style="--c: var(--rose); --v: 78"></div></div><span data-r-bloom>wide</span></div>
+        </div>
+      </article>
+
+      <article class="info-card" style="--c: var(--green)">
+        <div class="info-card-head">
+          <div class="info-kicker">CPU</div>
+          <div class="info-readout" data-cpu-readout>balanced</div>
+        </div>
+        <div class="info-title">Performance without guesswork</div>
+        <div class="info-copy">
+          Surface visual render cost separately from engine CPU, then dim, throttle, or collapse views before the audio thread feels stressed.
+        </div>
+        <div class="info-metrics">
+          <div class="info-metric"><span>Render</span><div class="meter-track"><div class="meter-fill" data-info-meter="renderLoad" style="--c: var(--green); --v: 28"></div></div><span data-render-label>safe</span></div>
+          <div class="info-metric"><span>Mode</span><div class="meter-track"><div class="meter-fill" data-info-meter="modeLoad" style="--c: var(--amber); --v: 50"></div></div><span data-mode-label>30 fps</span></div>
+        </div>
+      </article>
+    </section>
+
+    <div class="map-strip" aria-label="Design translation guide">
+      <article class="map-card">
+        <div class="map-title"><span>Readable first</span><span>labels</span></div>
+        <div class="map-copy">
+          The visualizer should name what the user is seeing: hit count, active taps, tail seconds, freeze state, and CPU mode. Motion supports the labels rather than replacing them.
+        </div>
+      </article>
+      <article class="map-card">
+        <div class="map-title"><span>Reactive second</span><span>motion</span></div>
+        <div class="map-copy">
+          Slider movement should update geometry immediately. Audio-reactive scopes can be optional because they look alive but explain less when the user is editing parameters.
+        </div>
+      </article>
+      <article class="map-card">
+        <div class="map-title"><span>Adaptive always</span><span>CPU</span></div>
+        <div class="map-copy">
+          Battery mode can use static meters, balanced mode can animate timelines, and rich mode can add analysers. The page should say when it has stepped down.
+        </div>
+      </article>
+    </div>
+
+    <div class="section-title">
+      <h2>Live return analyser layer</h2>
+      <div class="section-note">Optional audio-reactive overlays for returns when CPU headroom is available.</div>
+    </div>
+
+    <section class="analyser-plan" aria-label="Live return analyser implementation plan">
+      <article class="analyser-card">
+        <h3>Yes: tap the returns, not the controls</h3>
+        <div class="analyser-copy">
+          The parameter visualizer explains what should happen. A live analyser layer would confirm what is actually audible on each return. The clean implementation is to create UI-only AnalyserNodes after the Delay A return gain, Delay B return gain, and Reverb output gain. These analysers do not alter audio routing; they only read a copy of the signal.
+        </div>
+        <div class="signal-stack">
+          <div class="signal-card" style="--c: var(--blue)">
+            <strong>Delay A return</strong>
+            <span>Shows echo energy, feedback build-up, ducking recovery, and whether ping-pong repeats are audible.</span>
+          </div>
+          <div class="signal-card" style="--c: var(--cyan)">
+            <strong>Delay B return</strong>
+            <span>Shows clocked tap bursts, granular-delay texture, warp energy, and return level after activity/repeats.</span>
+          </div>
+          <div class="signal-card" style="--c: var(--violet)">
+            <strong>Reverb return</strong>
+            <span>Shows tail bloom, shimmer/freeze sustain, dense wash, and whether the reverb is masking the delays.</span>
+          </div>
+        </div>
+      </article>
+
+      <article class="analyser-card">
+        <h3>CPU and mobile rules</h3>
+        <div class="analyser-copy">
+          This should be an enhancement layer, not the base visualizer. Desktop can enable it automatically when CPU is healthy. Mobile should show an explicit opt-in button and remember the choice only for the current session.
+        </div>
+        <div class="gate-table">
+          <div class="gate-row"><strong>Battery</strong><span>Use semantic meters and parameter timelines only.</span><span>0 analyser</span></div>
+          <div class="gate-row"><strong>Balanced</strong><span>Enable low-rate return energy bars if worklet peak is calm.</span><span>15 fps</span></div>
+          <div class="gate-row"><strong>Rich</strong><span>Add waveform/spectrum overlays for Delay A, Delay B, and Reverb.</span><span>30 fps</span></div>
+          <div class="gate-row"><strong>Mobile</strong><span>Keep disabled until the user taps Enable live returns.</span><span>opt in</span></div>
+        </div>
+      </article>
+    </section>
+
+    <section class="option selected" id="option-5" data-option="5" data-title="Option 5: CPU-aware hybrid" data-note="Best default if we want the page to feel alive while staying mobile-safe.">
+      <div class="option-head">
+        <div>
+          <div class="option-title-row">
+            <span class="option-num">05</span>
+            <h2>CPU-aware hybrid</h2>
+            <span class="tag" style="--tag-color: var(--green)">Recommended</span>
+            <span class="tag" style="--tag-color: var(--cyan)">Adaptive</span>
+          </div>
+          <div class="option-summary">
+            A default timeline view with a quiet live-return background layer. It automatically drops analyser overlays, lowers frame rate, or swaps to meter mode on mobile, hidden tabs, or high worklet load.
+          </div>
+        </div>
+        <button class="choose-btn" type="button" data-choose="5">Chosen</button>
+      </div>
+      <div class="option-body">
+        <div class="mockups">
+          <div class="mockup">
+            <div class="mockup-head"><span>Delay A</span><span class="mockup-pill" data-a-pill></span></div>
+            <div class="viz-surface">
+              <div class="hybrid-shell">
+                <canvas data-viz="hybrid-a"></canvas>
+                <div class="hybrid-cpu-row"><span>visual</span><div class="cpu-track"><div class="cpu-fill" data-cpu-bar="5a"></div></div><span data-cpu-text="5a"></span></div>
+              </div>
+            </div>
+          </div>
+          <div class="mockup">
+            <div class="mockup-head"><span>Delay B</span><span class="mockup-pill" data-b-pill></span></div>
+            <div class="viz-surface">
+              <div class="hybrid-shell">
+                <canvas data-viz="hybrid-b"></canvas>
+                <div class="hybrid-cpu-row"><span>visual</span><div class="cpu-track"><div class="cpu-fill" data-cpu-bar="5b"></div></div><span data-cpu-text="5b"></span></div>
+              </div>
+            </div>
+          </div>
+          <div class="mockup">
+            <div class="mockup-head"><span>Reverb</span><span class="mockup-pill" data-r-pill></span></div>
+            <div class="viz-surface">
+              <div class="hybrid-shell">
+                <canvas data-viz="hybrid-r"></canvas>
+                <div class="hybrid-cpu-row"><span>visual</span><div class="cpu-track"><div class="cpu-fill" data-cpu-bar="5r"></div></div><span data-cpu-text="5r"></span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="notes">
+          <div class="score-grid">
+            <div class="score"><div class="score-value">9/10</div><div class="score-label">Readability</div></div>
+            <div class="score"><div class="score-value">8/10</div><div class="score-label">Reactivity</div></div>
+            <div class="score"><div class="score-value">low-med</div><div class="score-label">CPU</div></div>
+          </div>
+          <div class="coverage-grid">
+            <div class="coverage-card"><strong>Delay A value</strong><span>Timeline bars show repeat timing up front; the live return background confirms whether repeats are actually audible.</span></div>
+            <div class="coverage-card"><strong>Delay B value</strong><span>Tap density stays readable while the background shows granular/clocked return energy moving underneath.</span></div>
+            <div class="coverage-card"><strong>Reverb value</strong><span>Tail shape remains the main read; the background shows live bloom, freeze sustain, and shimmer density.</span></div>
+            <div class="coverage-card"><strong>CPU value</strong><span>The visualizer can explain when live-return backgrounds are rich, low-rate, paused, or mobile opt-in.</span></div>
+          </div>
+          <div class="detail-grid">
+            <div class="detail">
+              <h3>Pros</h3>
+              <ul>
+                <li>Best balance between useful motion and readable labels.</li>
+                <li>CPU state becomes part of the visualizer, not a hidden dev overlay.</li>
+                <li>Can reuse the existing Delay rhythm map, Reverb envelope, and optional return analysers as the rich tier.</li>
+              </ul>
+            </div>
+            <div class="detail">
+              <h3>Cons</h3>
+              <ul>
+                <li>More implementation logic because quality tiers need clean rules.</li>
+                <li>Needs design polish so mode switching feels intentional.</li>
+                <li>Requires a small render-cost telemetry loop per visualizer.</li>
+              </ul>
+            </div>
+          </div>
+          <div class="cpu-panel">
+            <h3>CPU plan</h3>
+            <div class="cpu-ledger">
+              <div class="cpu-row"><span>Default</span><div class="cpu-track"><div class="cpu-fill" data-cpu-bar="5default"></div></div><span data-cpu-text="5default"></span></div>
+              <div class="cpu-row"><span>High load</span><div class="cpu-track"><div class="cpu-fill" data-cpu-bar="5load"></div></div><span data-cpu-text="5load"></span></div>
+              <div class="cpu-row"><span>Mobile</span><div class="cpu-track"><div class="cpu-fill" data-cpu-bar="5mobile"></div></div><span data-cpu-text="5mobile"></span></div>
+              <div class="cpu-row"><span>Live returns</span><div class="cpu-track"><div class="cpu-fill" data-cpu-bar="5live"></div></div><span data-cpu-text="5live"></span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="option" id="option-1" data-option="1" data-title="Option 1: Readable meter grid" data-note="Best if the priority is fast scanning and almost no visual overhead.">
+      <div class="option-head">
+        <div>
+          <div class="option-title-row">
+            <span class="option-num">01</span>
+            <h2>Readable meter grid</h2>
+            <span class="tag" style="--tag-color: var(--green)">Lowest CPU</span>
+            <span class="tag" style="--tag-color: var(--blue)">Most legible</span>
+          </div>
+          <div class="option-summary">
+            A compact parameter dashboard: bars, badges, and tiny tap meters update immediately when controls move. Motion is minimal and mostly CSS.
+          </div>
+        </div>
+        <button class="choose-btn" type="button" data-choose="1">Choose</button>
+      </div>
+      <div class="option-body">
+        <div class="mockups">
+          <div class="mockup">
+            <div class="mockup-head"><span>Delay A</span><span class="mockup-pill" data-a-pill></span></div>
+            <div class="viz-surface">
+              <div class="meter-stack">
+                <div class="meter-row"><strong>Time L</strong><div class="meter-track"><div class="meter-fill" style="--c: var(--blue); --v: 42"></div></div><span>1/4</span></div>
+                <div class="meter-row"><strong>Time R</strong><div class="meter-track"><div class="meter-fill" style="--c: var(--blue); --v: 58"></div></div><span>3/8</span></div>
+                <div class="meter-row"><strong>Feedback</strong><div class="meter-track"><div class="meter-fill" data-meter="feedback" style="--c: var(--amber); --v: 62"></div></div><span data-feedback-short>62%</span></div>
+                <div class="meter-row"><strong>Width</strong><div class="meter-track"><div class="meter-fill" style="--c: var(--rose); --v: 74"></div></div><span>wide</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="mockup">
+            <div class="mockup-head"><span>Delay B</span><span class="mockup-pill" data-b-pill></span></div>
+            <div class="viz-surface">
+              <div class="tap-grid" data-tap-grid="meter"></div>
+              <div class="mini-note"><span>cascade</span><span>warp: grain</span><span>spread 64%</span></div>
+            </div>
+          </div>
+          <div class="mockup">
+            <div class="mockup-head"><span>Reverb</span><span class="mockup-pill" data-r-pill></span></div>
+            <div class="viz-surface">
+              <div class="meter-stack">
+                <div class="meter-row"><strong>Predelay</strong><div class="meter-track"><div class="meter-fill" style="--c: var(--cyan); --v: 24"></div></div><span>60ms</span></div>
+                <div class="meter-row"><strong>Decay</strong><div class="meter-track"><div class="meter-fill" data-meter="decay" style="--c: var(--violet); --v: 78"></div></div><span data-decay-short>78%</span></div>
+                <div class="meter-row"><strong>Diffusion</strong><div class="meter-track"><div class="meter-fill" style="--c: var(--green); --v: 86"></div></div><span>soft</span></div>
+                <div class="meter-row"><strong>Shimmer</strong><div class="meter-track"><div class="meter-fill" style="--c: var(--rose); --v: 38"></div></div><span>12st</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="notes">
+          <div class="score-grid">
+            <div class="score"><div class="score-value">10/10</div><div class="score-label">Readability</div></div>
+            <div class="score"><div class="score-value">6/10</div><div class="score-label">Reactivity</div></div>
+            <div class="score"><div class="score-value">very low</div><div class="score-label">CPU</div></div>
+          </div>
+          <div class="coverage-grid">
+            <div class="coverage-card"><strong>Delay A value</strong><span>Best for exact readouts: left/right division, feedback percent, width, and expected repeat count.</span></div>
+            <div class="coverage-card"><strong>Delay B value</strong><span>Shows which taps are active and how much activity is driving the granular delay bed.</span></div>
+            <div class="coverage-card"><strong>Reverb value</strong><span>Great for tail seconds, predelay, diffusion, damping, and shimmer values as clear meters.</span></div>
+            <div class="coverage-card"><strong>CPU value</strong><span>Cheapest option because it redraws only when parameters change.</span></div>
+          </div>
+          <div class="detail-grid">
+            <div class="detail">
+              <h3>Pros</h3>
+              <ul>
+                <li>Hard to misread on small screens.</li>
+                <li>Can update only on parameter changes, so idle CPU is near zero.</li>
+                <li>Pairs naturally with the existing CPU overlay labels.</li>
+              </ul>
+            </div>
+            <div class="detail">
+              <h3>Cons</h3>
+              <ul>
+                <li>Does not feel very musical or audio-reactive.</li>
+                <li>Delay B pattern relationships are less obvious than in a timeline.</li>
+                <li>Reverb tail shape becomes descriptive rather than visual.</li>
+              </ul>
+            </div>
+          </div>
+          <div class="cpu-panel">
+            <h3>CPU plan</h3>
+            <div class="cpu-ledger">
+              <div class="cpu-row"><span>DOM updates</span><div class="cpu-track"><div class="cpu-fill" data-cpu-bar="1dom"></div></div><span data-cpu-text="1dom"></span></div>
+              <div class="cpu-row"><span>Animation</span><div class="cpu-track"><div class="cpu-fill" data-cpu-bar="1anim"></div></div><span data-cpu-text="1anim"></span></div>
+              <div class="cpu-row"><span>Mobile</span><div class="cpu-track"><div class="cpu-fill" data-cpu-bar="1mobile"></div></div><span data-cpu-text="1mobile"></span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="option" id="option-2" data-option="2" data-title="Option 2: Twin timeline plus tail ledger" data-note="Best if you want parameter changes to be visible as rhythm and space, not just numbers.">
+      <div class="option-head">
+        <div>
+          <div class="option-title-row">
+            <span class="option-num">02</span>
+            <h2>Twin timeline plus tail ledger</h2>
+            <span class="tag" style="--tag-color: var(--cyan)">Best parameter reactivity</span>
+            <span class="tag" style="--tag-color: var(--amber)">Medium CPU</span>
+          </div>
+          <div class="option-summary">
+            Delay A repeats, Delay B taps, and Reverb tail all share a time axis. The user sees where echoes land, how dense B gets, and how long the reverb tail covers the mix.
+          </div>
+        </div>
+        <button class="choose-btn" type="button" data-choose="2">Choose</button>
+      </div>
+      <div class="option-body">
+        <div class="mockups">
+          <div class="mockup">
+            <div class="mockup-head"><span>Delay A</span><span class="mockup-pill" data-a-pill></span></div>
+            <div class="viz-surface"><canvas data-viz="timeline-a"></canvas></div>
+          </div>
+          <div class="mockup">
+            <div class="mockup-head"><span>Delay B</span><span class="mockup-pill" data-b-pill></span></div>
+            <div class="viz-surface"><canvas data-viz="timeline-b"></canvas></div>
+          </div>
+          <div class="mockup">
+            <div class="mockup-head"><span>Reverb</span><span class="mockup-pill" data-r-pill></span></div>
+            <div class="viz-surface"><canvas data-viz="timeline-r"></canvas></div>
+          </div>
+        </div>
+        <div class="notes">
+          <div class="score-grid">
+            <div class="score"><div class="score-value">8/10</div><div class="score-label">Readability</div></div>
+            <div class="score"><div class="score-value">9/10</div><div class="score-label">Reactivity</div></div>
+            <div class="score"><div class="score-value">medium</div><div class="score-label">CPU</div></div>
+          </div>
+          <div class="coverage-grid">
+            <div class="coverage-card"><strong>Delay A value</strong><span>Repeat columns make feedback decay, stereo offsets, and ping-pong direction instantly spatial.</span></div>
+            <div class="coverage-card"><strong>Delay B value</strong><span>Pattern timing becomes visible as tap placement, height, pan, and warp color.</span></div>
+            <div class="coverage-card"><strong>Reverb value</strong><span>The tail can share the same time axis so the user sees how long the space covers each phrase.</span></div>
+            <div class="coverage-card"><strong>CPU value</strong><span>Medium cost, but easy to throttle because all drawing happens in known canvas loops.</span></div>
+          </div>
+          <div class="detail-grid">
+            <div class="detail">
+              <h3>Pros</h3>
+              <ul>
+                <li>Best at explaining timing and decay relationships.</li>
+                <li>Can make cross-feed A to B visible as bridge lines.</li>
+                <li>Works well with current canvas visualizer code.</li>
+              </ul>
+            </div>
+            <div class="detail">
+              <h3>Cons</h3>
+              <ul>
+                <li>More dense than meters on phone screens.</li>
+                <li>Labels need careful spacing so bars do not become visual noise.</li>
+                <li>Continuous animation should be capped to 15 to 30 fps.</li>
+              </ul>
+            </div>
+          </div>
+          <div class="cpu-panel">
+            <h3>CPU plan</h3>
+            <div class="cpu-ledger">
+              <div class="cpu-row"><span>Canvas</span><div class="cpu-track"><div class="cpu-fill" data-cpu-bar="2canvas"></div></div><span data-cpu-text="2canvas"></span></div>
+              <div class="cpu-row"><span>Labels</span><div class="cpu-track"><div class="cpu-fill" data-cpu-bar="2labels"></div></div><span data-cpu-text="2labels"></span></div>
+              <div class="cpu-row"><span>Throttle</span><div class="cpu-track"><div class="cpu-fill" data-cpu-bar="2throttle"></div></div><span data-cpu-text="2throttle"></span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="option" id="option-3" data-option="3" data-title="Option 3: Routing flow map" data-note="Best if the visualizer should answer what is feeding what before it answers exact timing.">
+      <div class="option-head">
+        <div>
+          <div class="option-title-row">
+            <span class="option-num">03</span>
+            <h2>Routing flow map</h2>
+            <span class="tag" style="--tag-color: var(--rose)">Most informative routing</span>
+            <span class="tag" style="--tag-color: var(--green)">Low CPU</span>
+          </div>
+          <div class="option-summary">
+            A signal-flow view for sources, sends, cross-feeds, Delay A, Delay B, and Reverb. Line thickness reacts to sends and CPU badges show which engines are doing work.
+          </div>
+        </div>
+        <button class="choose-btn" type="button" data-choose="3">Choose</button>
+      </div>
+      <div class="option-body">
+        <div class="mockups">
+          <div class="mockup">
+            <div class="mockup-head"><span>Delay A</span><span class="mockup-pill" data-a-pill></span></div>
+            <div class="viz-surface"><div class="flow-map" data-flow="a"></div></div>
+          </div>
+          <div class="mockup">
+            <div class="mockup-head"><span>Delay B</span><span class="mockup-pill" data-b-pill></span></div>
+            <div class="viz-surface"><div class="flow-map" data-flow="b"></div></div>
+          </div>
+          <div class="mockup">
+            <div class="mockup-head"><span>Reverb</span><span class="mockup-pill" data-r-pill></span></div>
+            <div class="viz-surface"><div class="flow-map" data-flow="r"></div></div>
+          </div>
+        </div>
+        <div class="notes">
+          <div class="score-grid">
+            <div class="score"><div class="score-value">8/10</div><div class="score-label">Readability</div></div>
+            <div class="score"><div class="score-value">7/10</div><div class="score-label">Reactivity</div></div>
+            <div class="score"><div class="score-value">low</div><div class="score-label">CPU</div></div>
+          </div>
+          <div class="coverage-grid">
+            <div class="coverage-card"><strong>Delay A value</strong><span>Makes incoming sends and A return level visible, especially when echo is fed by drums or pads.</span></div>
+            <div class="coverage-card"><strong>Delay B value</strong><span>Clarifies A-to-B, granular return, and Delay B-to-Reverb relationships.</span></div>
+            <div class="coverage-card"><strong>Reverb value</strong><span>Shows which returns are feeding the space before asking the user to interpret a tail shape.</span></div>
+            <div class="coverage-card"><strong>CPU value</strong><span>Good place to attach live Reverb, Freeze, Granular, and Earth DSP badges.</span></div>
+          </div>
+          <div class="detail-grid">
+            <div class="detail">
+              <h3>Pros</h3>
+              <ul>
+                <li>Explains why a visualizer is active by showing active feeds.</li>
+                <li>Great home for CPU badges: Reverb, Freeze, Granular, Earth DSP.</li>
+                <li>Mostly CSS/SVG-like layout, so it can be cheap.</li>
+              </ul>
+            </div>
+            <div class="detail">
+              <h3>Cons</h3>
+              <ul>
+                <li>Timing detail is secondary.</li>
+                <li>Can become busy if all sources feed both delays.</li>
+                <li>Needs compact aggregation rules for mobile.</li>
+              </ul>
+            </div>
+          </div>
+          <div class="cpu-panel">
+            <h3>CPU plan</h3>
+            <div class="cpu-ledger">
+              <div class="cpu-row"><span>Layout</span><div class="cpu-track"><div class="cpu-fill" data-cpu-bar="3layout"></div></div><span data-cpu-text="3layout"></span></div>
+              <div class="cpu-row"><span>Updates</span><div class="cpu-track"><div class="cpu-fill" data-cpu-bar="3updates"></div></div><span data-cpu-text="3updates"></span></div>
+              <div class="cpu-row"><span>Telemetry</span><div class="cpu-track"><div class="cpu-fill" data-cpu-bar="3telemetry"></div></div><span data-cpu-text="3telemetry"></span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="option" id="option-4" data-option="4" data-title="Option 4: Live scope stack" data-note="Best if you want the display to feel closest to the audio output, with the highest CPU tradeoff.">
+      <div class="option-head">
+        <div>
+          <div class="option-title-row">
+            <span class="option-num">04</span>
+            <h2>Live scope stack</h2>
+            <span class="tag" style="--tag-color: var(--rose)">Most audio-reactive</span>
+            <span class="tag" style="--tag-color: var(--orange)">Highest CPU</span>
+          </div>
+          <div class="option-summary">
+            Audio analyser views for Delay A return, Delay B return, and Reverb return. It reacts to the real signal rather than only state parameters.
+          </div>
+        </div>
+        <button class="choose-btn" type="button" data-choose="4">Choose</button>
+      </div>
+      <div class="option-body">
+        <div class="mockups">
+          <div class="mockup">
+            <div class="mockup-head"><span>Delay A</span><span class="mockup-pill" data-a-pill></span></div>
+            <div class="viz-surface"><div class="live-bars" data-live="a"></div></div>
+          </div>
+          <div class="mockup">
+            <div class="mockup-head"><span>Delay B</span><span class="mockup-pill" data-b-pill></span></div>
+            <div class="viz-surface"><div class="live-bars" data-live="b"></div></div>
+          </div>
+          <div class="mockup">
+            <div class="mockup-head"><span>Reverb</span><span class="mockup-pill" data-r-pill></span></div>
+            <div class="viz-surface"><div class="live-bars" data-live="r"></div></div>
+          </div>
+        </div>
+        <div class="notes">
+          <div class="score-grid">
+            <div class="score"><div class="score-value">6/10</div><div class="score-label">Readability</div></div>
+            <div class="score"><div class="score-value">10/10</div><div class="score-label">Reactivity</div></div>
+            <div class="score"><div class="score-value">high</div><div class="score-label">CPU</div></div>
+          </div>
+          <div class="coverage-grid">
+            <div class="coverage-card"><strong>Delay A value</strong><span>Confirms whether repeats are audible, building, or disappearing in the mix.</span></div>
+            <div class="coverage-card"><strong>Delay B value</strong><span>Shows real granular-delay energy instead of only the configured tap pattern.</span></div>
+            <div class="coverage-card"><strong>Reverb value</strong><span>Excellent for seeing freeze, shimmer bloom, dense tails, and return overload.</span></div>
+            <div class="coverage-card"><strong>CPU value</strong><span>Needs the strongest guardrails because analysers plus animation add steady visual work.</span></div>
+          </div>
+          <div class="detail-grid">
+            <div class="detail">
+              <h3>Pros</h3>
+              <ul>
+                <li>Feels alive because it follows real audio levels.</li>
+                <li>Useful for debugging silent sends and overloaded returns.</li>
+                <li>Can reveal freeze, shimmer, and feedback build-up clearly.</li>
+              </ul>
+            </div>
+            <div class="detail">
+              <h3>Cons</h3>
+              <ul>
+                <li>Least readable for exact parameter values.</li>
+                <li>Requires analyser nodes and a careful frame cap.</li>
+                <li>On mobile it should be opt-in, not the default.</li>
+              </ul>
+            </div>
+          </div>
+          <div class="cpu-panel">
+            <h3>CPU plan</h3>
+            <div class="cpu-ledger">
+              <div class="cpu-row"><span>Analysers</span><div class="cpu-track"><div class="cpu-fill" data-cpu-bar="4analysers"></div></div><span data-cpu-text="4analysers"></span></div>
+              <div class="cpu-row"><span>Animation</span><div class="cpu-track"><div class="cpu-fill" data-cpu-bar="4anim"></div></div><span data-cpu-text="4anim"></span></div>
+              <div class="cpu-row"><span>Fallback</span><div class="cpu-track"><div class="cpu-fill" data-cpu-bar="4fallback"></div></div><span data-cpu-text="4fallback"></span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="section-title">
+      <h2>Recommended rollout if you choose the hybrid</h2>
+      <div class="section-note">A practical path from informative to alive without overloading the app.</div>
+    </div>
+
+    <section class="map-strip" aria-label="Recommended implementation rollout">
+      <article class="map-card">
+        <div class="map-title"><span>Phase 1: semantic meters</span><span>safe</span></div>
+        <div class="map-copy">
+          Add labeled readouts for repeat count, active taps, tail seconds, freeze state, and visual CPU mode. This makes the page useful even before advanced animation.
+        </div>
+      </article>
+      <article class="map-card">
+        <div class="map-title"><span>Phase 2: shared timeline</span><span>expressive</span></div>
+        <div class="map-copy">
+          Turn Delay A, Delay B, and Reverb into a common time-view: repeat bars above, clocked taps below, reverb tail behind them as a transparent region.
+        </div>
+      </article>
+      <article class="map-card">
+        <div class="map-title"><span>Phase 3: live layer</span><span>optional</span></div>
+        <div class="map-copy">
+          Add analyser overlays for Delay A return, Delay B return, and Reverb return only when CPU allows. Keep battery mode static and mobile opt-in.
+        </div>
+      </article>
+    </section>
+
+    <div class="recommendation">
+      <strong>My pick:</strong> Option 5. It lets Delay A and B stay readable as parameter timelines, lets Reverb remain a tail map, and gives us a clear CPU story: rich mode when the app is healthy, meter mode when it is not, and live return analysers only when CPU allows or the user explicitly opts in on mobile.
+    </div>
+  </main>
+
+  <script>
+    const state = {
+      feedback: 62,
+      activity: 70,
+      decay: 78,
+      budget: 1,
+      t: 0,
+    };
+
+    const budgetNames = ["battery", "balanced", "rich"];
+    const qs = (sel, root = document) => root.querySelector(sel);
+    const qsa = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+    const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+    const lerp = (a, b, t) => a + (b - a) * t;
+
+    const params = {
+      feedback: qs("#feedback"),
+      activity: qs("#activity"),
+      decay: qs("#decay"),
+      budget: qs("#budget"),
+    };
+
+    function pct(value) {
+      return `${Math.round(value)}%`;
+    }
+
+    function setCpu(key, value) {
+      const bar = qs(`[data-cpu-bar="${key}"]`);
+      const text = qs(`[data-cpu-text="${key}"]`);
+      if (!bar || !text) return;
+      const rounded = Math.max(0.1, value).toFixed(1);
+      bar.style.setProperty("--cpu", clamp(value * 12, 3, 100));
+      text.textContent = `${rounded}%`;
+    }
+
+    function updateText() {
+      qs("#feedbackOut").textContent = pct(state.feedback);
+      qs("#activityOut").textContent = pct(state.activity);
+      qs("#decayOut").textContent = pct(state.decay);
+      qs("#budgetOut").textContent = budgetNames[state.budget];
+      qsa("[data-a-pill]").forEach((el) => { el.textContent = `fb ${pct(state.feedback)}`; });
+      qsa("[data-b-pill]").forEach((el) => { el.textContent = `act ${pct(state.activity)}`; });
+      qsa("[data-r-pill]").forEach((el) => { el.textContent = `tail ${pct(state.decay)}`; });
+      qsa("[data-feedback-short]").forEach((el) => { el.textContent = pct(state.feedback); });
+      qsa("[data-decay-short]").forEach((el) => { el.textContent = pct(state.decay); });
+      qsa('[data-meter="feedback"]').forEach((el) => el.style.setProperty("--v", state.feedback));
+      qsa('[data-meter="decay"]').forEach((el) => el.style.setProperty("--v", state.decay));
+
+      const repeatCount = Math.round(2 + state.feedback / 10);
+      const activeTaps = clamp(Math.ceil(state.activity / 12.5), 1, 8);
+      const tailSeconds = (1.1 + (state.decay / 100) * 8.1).toFixed(1);
+      const renderLoad = clamp(16 + state.budget * 22 + state.activity * 0.18 + state.decay * 0.16, 12, 92);
+      const modeLabels = ["static", "30 fps", "rich"];
+
+      qs("[data-a-readout]").textContent = state.feedback < 36 ? "short echoes" : state.feedback < 72 ? "medium tail" : "feedback bloom";
+      qs("[data-a-repeat-count]").textContent = `${repeatCount} hits`;
+      qs("[data-a-risk]").textContent = state.feedback > 82 ? "watch" : state.feedback > 66 ? "dense" : "stable";
+      qs('[data-info-meter="aRepeats"]').style.setProperty("--v", state.feedback);
+      qs('[data-info-meter="aRisk"]').style.setProperty("--v", state.feedback);
+
+      qs("[data-b-readout]").textContent = `${activeTaps} active taps`;
+      qs("[data-b-tap-count]").textContent = `${activeTaps} of 8`;
+      qs("[data-b-texture]").textContent = state.activity > 76 ? "textural" : state.activity > 42 ? "animated" : "sparse";
+      qs('[data-info-meter="bTaps"]').style.setProperty("--v", state.activity);
+      qs('[data-info-meter="bTexture"]').style.setProperty("--v", state.activity);
+
+      qs("[data-r-readout]").textContent = state.decay < 40 ? "short room" : state.decay < 74 ? "open hall" : "long tail";
+      qs("[data-r-tail-seconds]").textContent = `${tailSeconds}s`;
+      qs("[data-r-bloom]").textContent = state.decay > 82 ? "huge" : state.decay > 54 ? "wide" : "tight";
+      qs('[data-info-meter="rTail"]').style.setProperty("--v", state.decay);
+      qs('[data-info-meter="rBloom"]').style.setProperty("--v", state.decay);
+
+      qs("[data-cpu-readout]").textContent = budgetNames[state.budget];
+      qs("[data-render-label]").textContent = renderLoad > 76 ? "heavy" : renderLoad > 48 ? "watch" : "safe";
+      qs("[data-mode-label]").textContent = modeLabels[state.budget];
+      qs('[data-info-meter="renderLoad"]').style.setProperty("--v", renderLoad);
+      qs('[data-info-meter="modeLoad"]').style.setProperty("--v", 22 + state.budget * 34);
+    }
+
+    function updateCpu() {
+      const budgetLift = [0.72, 1, 1.28][state.budget];
+      const activity = state.activity / 100;
+      const decay = state.decay / 100;
+      const feedback = state.feedback / 100;
+
+      setCpu("5a", (0.45 + feedback * 0.55) * budgetLift);
+      setCpu("5b", (0.5 + activity * 0.7) * budgetLift);
+      setCpu("5r", (0.55 + decay * 0.65) * budgetLift);
+      setCpu("5default", (0.9 + activity * 0.45 + decay * 0.35) * budgetLift);
+      setCpu("5load", 0.35 + activity * 0.15);
+      setCpu("5mobile", 0.22 + activity * 0.12);
+      setCpu("5live", (state.budget === 0 ? 0.18 : 0.7 + (activity + decay + feedback) * 0.28) * budgetLift);
+
+      setCpu("1dom", 0.12 + (activity + decay + feedback) * 0.05);
+      setCpu("1anim", state.budget === 0 ? 0.05 : 0.16);
+      setCpu("1mobile", 0.08);
+
+      setCpu("2canvas", (0.78 + feedback * 0.42 + activity * 0.38 + decay * 0.32) * budgetLift);
+      setCpu("2labels", 0.18 + activity * 0.08);
+      setCpu("2throttle", state.budget === 0 ? 0.38 : state.budget === 1 ? 0.75 : 1.1);
+
+      setCpu("3layout", 0.18 + activity * 0.1);
+      setCpu("3updates", 0.22 + (activity + feedback) * 0.12);
+      setCpu("3telemetry", 0.28);
+
+      setCpu("4analysers", (1.4 + activity * 0.7 + decay * 0.55) * budgetLift);
+      setCpu("4anim", (1.1 + feedback * 0.65) * budgetLift);
+      setCpu("4fallback", state.budget === 0 ? 0.35 : 0.8);
+    }
+
+    function setupTapGrids() {
+      qsa("[data-tap-grid]").forEach((grid) => {
+        grid.innerHTML = "";
+        for (let i = 0; i < 8; i += 1) {
+          const tap = document.createElement("div");
+          tap.className = "tap";
+          tap.style.setProperty("--c", "var(--cyan)");
+          grid.appendChild(tap);
+        }
+      });
+    }
+
+    function updateTapGrids() {
+      const gains = [1, 0.85, 0.72, 0.6, 0.48, 0.36, 0.28, 0.2];
+      qsa(".tap").forEach((tap, i) => {
+        const lane = i % 8;
+        const threshold = lane * 10;
+        const active = clamp((state.activity - threshold) / 35, 0, 1);
+        tap.style.setProperty("--v", Math.round(active * gains[lane] * 88));
+        tap.style.setProperty("--c", lane > 4 ? "var(--violet)" : "var(--cyan)");
+      });
+    }
+
+    function setupLiveBars() {
+      qsa("[data-live]").forEach((grid) => {
+        grid.innerHTML = "";
+        for (let i = 0; i < 32; i += 1) {
+          const bar = document.createElement("div");
+          bar.className = "live-bar";
+          bar.style.setProperty("--c", grid.dataset.live === "r" ? "var(--violet)" : grid.dataset.live === "b" ? "var(--cyan)" : "var(--blue)");
+          grid.appendChild(bar);
+        }
+      });
+    }
+
+    function updateLiveBars() {
+      qsa("[data-live]").forEach((grid) => {
+        const type = grid.dataset.live;
+        const power = type === "a" ? state.feedback / 100 : type === "b" ? state.activity / 100 : state.decay / 100;
+        qsa(".live-bar", grid).forEach((bar, i) => {
+          const wave = Math.sin(state.t * (type === "r" ? 1.1 : 2.2) + i * 0.55);
+          const slow = Math.sin(state.t * 0.55 + i * 0.18);
+          const value = clamp((0.3 + wave * 0.28 + slow * 0.2) * power + 0.12, 0, 1);
+          bar.style.setProperty("--v", Math.round(value * 78));
+        });
+      });
+    }
+
+    function placeNode(root, text, x, y, color) {
+      const node = document.createElement("div");
+      node.className = "node";
+      node.textContent = text;
+      node.style.left = `${x}%`;
+      node.style.top = `${y}%`;
+      node.style.setProperty("--c", color);
+      root.appendChild(node);
+    }
+
+    function placeWire(root, x, y, length, deg, width, color) {
+      const wire = document.createElement("div");
+      wire.className = "wire";
+      wire.style.left = `${x}%`;
+      wire.style.top = `${y}%`;
+      wire.style.width = `${length}%`;
+      wire.style.transform = `rotate(${deg}deg)`;
+      wire.style.setProperty("--w", width);
+      wire.style.setProperty("--c", color);
+      root.appendChild(wire);
+    }
+
+    function buildFlowMaps() {
+      qsa("[data-flow]").forEach((root) => {
+        root.innerHTML = "";
+        const type = root.dataset.flow;
+        if (type === "a") {
+          placeNode(root, "Pads", 5, 10, "var(--blue)");
+          placeNode(root, "Drums", 5, 62, "var(--amber)");
+          placeNode(root, "Delay A", 50, 35, "var(--blue)");
+          placeNode(root, "Mix", 76, 35, "var(--green)");
+        } else if (type === "b") {
+          placeNode(root, "Granular", 4, 12, "var(--cyan)");
+          placeNode(root, "A send", 4, 63, "var(--rose)");
+          placeNode(root, "Delay B", 50, 36, "var(--cyan)");
+          placeNode(root, "Reverb", 76, 36, "var(--violet)");
+        } else {
+          placeNode(root, "A return", 4, 12, "var(--blue)");
+          placeNode(root, "B return", 4, 63, "var(--cyan)");
+          placeNode(root, "Reverb", 50, 36, "var(--violet)");
+          placeNode(root, "Master", 76, 36, "var(--green)");
+        }
+      });
+    }
+
+    function updateFlowMaps() {
+      qsa("[data-flow]").forEach((root) => {
+        const type = root.dataset.flow;
+        qsa(".wire", root).forEach((wire) => wire.remove());
+        if (type === "a") {
+          placeWire(root, 24, 21, 30, 20, 2 + state.feedback / 16, "var(--blue)");
+          placeWire(root, 24, 72, 30, -22, 2 + state.activity / 22, "var(--amber)");
+          placeWire(root, 69, 45, 17, 0, 5 + state.feedback / 14, "var(--green)");
+        } else if (type === "b") {
+          placeWire(root, 24, 23, 31, 19, 2 + state.activity / 13, "var(--cyan)");
+          placeWire(root, 24, 73, 31, -21, 2 + state.feedback / 18, "var(--rose)");
+          placeWire(root, 69, 46, 17, 0, 4 + state.activity / 16, "var(--violet)");
+        } else {
+          placeWire(root, 24, 24, 31, 19, 2 + state.feedback / 18, "var(--blue)");
+          placeWire(root, 24, 73, 31, -21, 2 + state.activity / 18, "var(--cyan)");
+          placeWire(root, 69, 46, 17, 0, 4 + state.decay / 14, "var(--green)");
+        }
+      });
+    }
+
+    function resizeCanvas(canvas) {
+      const rect = canvas.getBoundingClientRect();
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const width = Math.max(1, Math.round(rect.width * dpr));
+      const height = Math.max(1, Math.round(rect.height * dpr));
+      if (canvas.width !== width || canvas.height !== height) {
+        canvas.width = width;
+        canvas.height = height;
+      }
+      const ctx = canvas.getContext("2d");
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      return { ctx, w: rect.width, h: rect.height };
+    }
+
+    function lineGrid(ctx, w, h) {
+      ctx.strokeStyle = "rgba(255,255,255,0.055)";
+      ctx.lineWidth = 1;
+      for (let i = 1; i < 4; i += 1) {
+        const x = (w * i) / 4;
+        ctx.beginPath();
+        ctx.moveTo(x, 8);
+        ctx.lineTo(x, h - 8);
+        ctx.stroke();
+      }
+      ctx.strokeStyle = "rgba(255,255,255,0.06)";
+      ctx.beginPath();
+      ctx.moveTo(8, h - 24);
+      ctx.lineTo(w - 8, h - 24);
+      ctx.stroke();
+    }
+
+    function drawReturnBackground(ctx, w, h, mode) {
+      const strength = mode === "a" ? state.feedback / 100 : mode === "b" ? state.activity / 100 : state.decay / 100;
+      const color = mode === "a" ? "120,166,255" : mode === "b" ? "76,201,216" : "169,140,255";
+      const label = mode === "a" ? "live Delay A return" : mode === "b" ? "live Delay B return" : "live Reverb return";
+      const centerY = h * 0.5;
+      const bars = mode === "r" ? 26 : 30;
+      const barW = w / bars;
+
+      const gradient = ctx.createLinearGradient(0, 0, 0, h);
+      gradient.addColorStop(0, `rgba(${color}, ${0.12 + strength * 0.1})`);
+      gradient.addColorStop(0.55, `rgba(${color}, ${0.035 + strength * 0.05})`);
+      gradient.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, w, h);
+
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      for (let i = 0; i < bars; i += 1) {
+        const phase = state.t * (mode === "r" ? 0.82 : mode === "b" ? 1.45 : 1.08) + i * (mode === "r" ? 0.28 : 0.48);
+        const wave = Math.sin(phase) * 0.5 + Math.sin(phase * 0.43 + i * 0.17) * 0.5;
+        const gate = mode === "b" ? clamp((state.activity - i * 2.1) / 62, 0.14, 1) : 1;
+        const amp = clamp((0.18 + Math.abs(wave) * 0.72) * strength * gate, 0.04, 1);
+        const barH = amp * (mode === "r" ? h * 0.68 : h * 0.48);
+        const x = i * barW + 1;
+        const y = centerY - barH * 0.5 + Math.sin(phase * 0.7) * h * 0.035;
+        ctx.fillStyle = `rgba(${color}, ${0.05 + amp * 0.18})`;
+        ctx.fillRect(x, y, Math.max(1, barW - 2), barH);
+      }
+
+      ctx.beginPath();
+      for (let i = 0; i <= 92; i += 1) {
+        const x = (i / 92) * w;
+        const wave = Math.sin(state.t * 1.2 + i * 0.22) * Math.sin(state.t * 0.41 + i * 0.08);
+        const y = centerY + wave * strength * h * (mode === "r" ? 0.22 : 0.15);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.strokeStyle = `rgba(${color}, ${0.18 + strength * 0.28})`;
+      ctx.lineWidth = 1.3;
+      ctx.stroke();
+      ctx.restore();
+
+      ctx.fillStyle = `rgba(${color}, 0.62)`;
+      ctx.font = "10px ui-monospace, monospace";
+      ctx.textAlign = "right";
+      ctx.fillText(label, w - 10, 17);
+    }
+
+    function drawDelayTimeline(ctx, w, h, color, mode, liveBackground = false) {
+      const feedback = state.feedback / 100;
+      const activity = state.activity / 100;
+      const base = mode === "a" ? feedback : activity;
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = "#101419";
+      ctx.fillRect(0, 0, w, h);
+      if (liveBackground) drawReturnBackground(ctx, w, h, mode);
+      lineGrid(ctx, w, h);
+
+      const count = mode === "a" ? 9 : 8;
+      for (let i = 0; i < count; i += 1) {
+        const x = 18 + ((w - 36) * (i + 0.55)) / count;
+        const decay = mode === "a" ? Math.pow(feedback, i * 0.72) : clamp((activity - i * 0.085) * 1.45, 0, 1);
+        const y = h * (0.48 + Math.sin(i * 1.7) * 0.18);
+        const bh = 18 + decay * (h * 0.48);
+        ctx.fillStyle = color.replace("ALPHA", 0.18 + decay * 0.65);
+        ctx.fillRect(x - 3, y - bh / 2, 6 + base * 6, bh);
+        ctx.fillStyle = "rgba(238,243,247,0.72)";
+        ctx.font = "10px ui-monospace, monospace";
+        ctx.textAlign = "center";
+        ctx.fillText(mode === "a" ? `${i + 1}` : `t${i + 1}`, x, h - 9);
+      }
+
+      const playX = 12 + ((state.t * (mode === "a" ? 0.28 : 0.42)) % 1) * (w - 24);
+      ctx.strokeStyle = "rgba(255,255,255,0.45)";
+      ctx.beginPath();
+      ctx.moveTo(playX, 8);
+      ctx.lineTo(playX, h - 12);
+      ctx.stroke();
+
+      ctx.fillStyle = "rgba(255,255,255,0.55)";
+      ctx.font = "11px system-ui, sans-serif";
+      ctx.textAlign = "left";
+      ctx.fillText(mode === "a" ? "L/R repeats" : "clocked taps", 10, 17);
+    }
+
+    function drawReverb(ctx, w, h, compact = false, liveBackground = false) {
+      const decay = state.decay / 100;
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = "#101419";
+      ctx.fillRect(0, 0, w, h);
+      if (liveBackground) drawReturnBackground(ctx, w, h, "r");
+      lineGrid(ctx, w, h);
+
+      const pad = 14;
+      const baseY = h - 28;
+      const plotW = w - pad * 2;
+      const plotH = h - 48;
+      const predelay = lerp(18, 48, (100 - state.decay) / 100);
+      const rate = lerp(5.4, 0.62, decay);
+
+      ctx.beginPath();
+      ctx.moveTo(pad + predelay, baseY);
+      for (let i = 0; i <= 72; i += 1) {
+        const xNorm = i / 72;
+        const env = Math.exp(-xNorm * rate) * (0.86 + Math.sin(xNorm * 10 + state.t) * 0.04);
+        const x = pad + predelay + xNorm * (plotW - predelay);
+        const y = baseY - env * plotH;
+        ctx.lineTo(x, y);
+      }
+      ctx.lineTo(pad + plotW, baseY);
+      ctx.closePath();
+      const gradient = ctx.createLinearGradient(0, 12, 0, baseY);
+      gradient.addColorStop(0, "rgba(169,140,255,0.52)");
+      gradient.addColorStop(1, "rgba(169,140,255,0.06)");
+      ctx.fillStyle = gradient;
+      ctx.fill();
+      ctx.strokeStyle = "rgba(197,181,255,0.78)";
+      ctx.stroke();
+
+      ctx.fillStyle = "rgba(76,201,216,0.42)";
+      const erCount = compact ? 3 : 6;
+      for (let i = 0; i < erCount; i += 1) {
+        const x = pad + 10 + i * 9;
+        const hgt = 12 + i * 5;
+        ctx.fillRect(x, baseY - hgt, 3, hgt);
+      }
+
+      ctx.fillStyle = "rgba(255,255,255,0.55)";
+      ctx.font = "11px system-ui, sans-serif";
+      ctx.textAlign = "left";
+      ctx.fillText(compact ? "adaptive tail" : "predelay + tail + ER", 10, 17);
+    }
+
+    function drawCanvases() {
+      qsa("canvas[data-viz]").forEach((canvas) => {
+        const { ctx, w, h } = resizeCanvas(canvas);
+        const type = canvas.dataset.viz;
+        const liveBackground = type.startsWith("hybrid");
+        if (type.endsWith("-a")) {
+          drawDelayTimeline(ctx, w, h, "rgba(120,166,255,ALPHA)", "a", liveBackground);
+        } else if (type.endsWith("-b")) {
+          drawDelayTimeline(ctx, w, h, "rgba(76,201,216,ALPHA)", "b", liveBackground);
+        } else if (type.endsWith("-r")) {
+          drawReverb(ctx, w, h, type.startsWith("hybrid"), liveBackground);
+        }
+      });
+    }
+
+    function applySelection(optionId) {
+      qsa(".option").forEach((option) => {
+        const selected = option.dataset.option === optionId;
+        option.classList.toggle("selected", selected);
+        const btn = qs("[data-choose]", option);
+        if (btn) btn.textContent = selected ? "Chosen" : "Choose";
+        if (selected) {
+          qs("#choiceText").textContent = option.dataset.title;
+          qs("#choiceNote").textContent = option.dataset.note;
+          localStorage.setItem("delayReverbVisualizerChoice", optionId);
+        }
+      });
+    }
+
+    function syncAll() {
+      updateText();
+      updateTapGrids();
+      updateFlowMaps();
+      updateLiveBars();
+      updateCpu();
+      drawCanvases();
+    }
+
+    Object.entries(params).forEach(([key, input]) => {
+      input.addEventListener("input", () => {
+        state[key] = Number(input.value);
+        syncAll();
+      });
+    });
+
+    qsa("[data-choose]").forEach((btn) => {
+      btn.addEventListener("click", () => applySelection(btn.dataset.choose));
+    });
+
+    setupTapGrids();
+    setupLiveBars();
+    buildFlowMaps();
+    applySelection(localStorage.getItem("delayReverbVisualizerChoice") || "5");
+    syncAll();
+
+    let last = performance.now();
+    function frame(now) {
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+      state.t += dt;
+      updateLiveBars();
+      drawCanvases();
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+
+    window.addEventListener("resize", drawCanvases);
+  </script>
+</body>
+</html>

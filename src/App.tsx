@@ -65,6 +65,7 @@ import { CpuOverlay } from './ui/CpuOverlay';
 import { SliderHelpProvider, useSliderHelp } from './ui/SliderHelpOverlay';
 import { CircleOfFifths, getMorphedRootNote } from './ui/CircleOfFifths';
 import { useJourney } from './ui/journeyState';
+import { SOURCE_COLORS } from './designSystem/colors';
 import type { SeqSimpleState } from './ui/drums/SeqSimple';
 import { getVersionData } from './presets/codec';
 import type { IPresetStore } from './presets/PresetStore';
@@ -273,7 +274,7 @@ const IOS_ONLY_REVERB_TYPES = new Set([
 // Values are computed so valueToSliderPosition(v, min, max) ≈ 0.75 for each arm.
 const SNOWFLAKE_WELCOME_STATE: SliderState = {
   ...DEFAULT_STATE,
-  masterVolume: 0.75,
+  masterVolume: 0.85,
   tension: 0.15,
   // Arm lengths (level keys) — 75% on log curve ≈ 0.487 of linear range
   reverbLevel: 0.97,       // max 2
@@ -913,9 +914,10 @@ const styles = {
     minWidth: '60px',
   } as React.CSSProperties,
   tabActive: {
-    background: 'rgba(168, 85, 247, 0.2)',
-    color: '#a855f7',
-    border: '1px solid rgba(168, 85, 247, 0.4)',
+    background: 'rgba(247, 250, 252, 0.09)',
+    color: '#F7FAFC',
+    border: '1px solid rgba(247, 250, 252, 0.24)',
+    boxShadow: '0 0 14px rgba(247, 250, 252, 0.08)',
   } as React.CSSProperties,
   tabIcon: {
     fontSize: '1.2rem',
@@ -969,6 +971,25 @@ function extractNativeDualRanges(ranges: DualSliderState): Record<string, { min:
 }
 
 type AdvancedTab = 'global' | 'synth' | 'drums' | 'reverb' | 'granular' | 'earth' | 'delay' | 'dynamics' | 'routing';
+
+const ADVANCED_TAB_COLORS: Record<AdvancedTab, string> = {
+  global: SOURCE_COLORS.global,
+  synth: SOURCE_COLORS.synth,
+  drums: SOURCE_COLORS.drums,
+  reverb: SOURCE_COLORS.reverb,
+  granular: SOURCE_COLORS.granular,
+  earth: SOURCE_COLORS.earth,
+  delay: SOURCE_COLORS.delayA,
+  dynamics: SOURCE_COLORS.dynamics,
+  routing: SOURCE_COLORS.routing,
+};
+
+const getAdvancedTabActiveStyle = (accent: string): React.CSSProperties => ({
+  background: `color-mix(in srgb, ${accent} 15%, transparent)`,
+  color: `color-mix(in srgb, ${accent} 88%, white 12%)`,
+  border: `1px solid color-mix(in srgb, ${accent} 34%, rgba(255, 255, 255, 0.08))`,
+  boxShadow: `0 0 14px color-mix(in srgb, ${accent} 18%, transparent)`,
+});
 
 const ADVANCED_TAB_SHORTCUTS: Record<string, AdvancedTab> = {
   '1': 'global',
@@ -1332,7 +1353,7 @@ const App: React.FC = () => {
   // Splash gradient colors - procedurally generated from app's color palette
   const [splashGradient] = useState(() => {
     // App color palette (from SnowflakeUI prongs):
-    // #E8DCC4 warm cream, #C4724E muted orange, #7B9A6D sage green
+    // #F7FAFC text white, #C4724E muted orange, #7B9A6D sage green
     // #D4A520 mustard gold, #8B5CF6 purple, #5A7B8A slate blue
     // #3C7181 teal, #C1930A gold accent
     const palettes = [
@@ -1797,6 +1818,11 @@ const App: React.FC = () => {
   }, []);
 
   const [activeTab, setActiveTab] = useState<AdvancedTab>('global');
+  const activePageAccent = ADVANCED_TAB_COLORS[activeTab];
+  const activeTabStyle = useMemo(() => getAdvancedTabActiveStyle(activePageAccent), [activePageAccent]);
+  const activePageAccentStyle = useMemo(() => ({
+    '--page-accent': activePageAccent,
+  } as React.CSSProperties), [activePageAccent]);
 
   const openAdvancedTab = useCallback((tab: AdvancedTab) => {
     if (uiMode === 'snowflake' && !snowflakeActivated) {
@@ -6643,7 +6669,7 @@ const App: React.FC = () => {
   // Render advanced UI
   return (
     <SliderHelpProvider activePage={activeTab}>
-      <div className="app-container" style={{ ...styles.container, ...m?.container }}>
+      <div className="app-container" style={{ ...activePageAccentStyle, ...styles.container, ...m?.container }}>
         <CpuOverlay />
         {/* Controls - centered */}
         <div className="app-controls" style={{ ...styles.controls, paddingTop: '12px', ...m?.controls }}>
@@ -6806,7 +6832,7 @@ const App: React.FC = () => {
           helpKey="tabGlobal"
           style={{
             ...styles.tab,
-            ...(activeTab === 'global' ? styles.tabActive : {}),
+            ...(activeTab === 'global' ? activeTabStyle : {}),
             ...m?.tab,
           }}
           onClick={() => setActiveTab('global')}
@@ -6818,7 +6844,7 @@ const App: React.FC = () => {
           helpKey="tabSynth"
           style={{
             ...styles.tab,
-            ...(activeTab === 'synth' ? styles.tabActive : {}),
+            ...(activeTab === 'synth' ? activeTabStyle : {}),
             ...m?.tab,
           }}
           onClick={() => setActiveTab('synth')}
@@ -6830,7 +6856,7 @@ const App: React.FC = () => {
           helpKey="tabDrums"
           style={{
             ...styles.tab,
-            ...(activeTab === 'drums' ? styles.tabActive : {}),
+            ...(activeTab === 'drums' ? activeTabStyle : {}),
             ...m?.tab,
           }}
           onClick={() => setActiveTab('drums')}
@@ -6842,7 +6868,7 @@ const App: React.FC = () => {
           helpKey="tabEarth"
           style={{
             ...styles.tab,
-            ...(activeTab === 'earth' ? styles.tabActive : {}),
+            ...(activeTab === 'earth' ? activeTabStyle : {}),
             ...m?.tab,
           }}
           onClick={() => setActiveTab('earth')}
@@ -6854,7 +6880,7 @@ const App: React.FC = () => {
           helpKey="tabGranular"
           style={{
             ...styles.tab,
-            ...(activeTab === 'granular' ? styles.tabActive : {}),
+            ...(activeTab === 'granular' ? activeTabStyle : {}),
             ...m?.tab,
           }}
           onClick={() => setActiveTab('granular')}
@@ -6866,7 +6892,7 @@ const App: React.FC = () => {
           helpKey="tabDelay"
           style={{
             ...styles.tab,
-            ...(activeTab === 'delay' ? styles.tabActive : {}),
+            ...(activeTab === 'delay' ? activeTabStyle : {}),
             ...m?.tab,
           }}
           onClick={() => setActiveTab('delay')}
@@ -6878,7 +6904,7 @@ const App: React.FC = () => {
           helpKey="tabReverb"
           style={{
             ...styles.tab,
-            ...(activeTab === 'reverb' ? styles.tabActive : {}),
+            ...(activeTab === 'reverb' ? activeTabStyle : {}),
             ...m?.tab,
           }}
           onClick={() => setActiveTab('reverb')}
@@ -6890,7 +6916,7 @@ const App: React.FC = () => {
           helpKey="tabDynamics"
           style={{
             ...styles.tab,
-            ...(activeTab === 'dynamics' ? styles.tabActive : {}),
+            ...(activeTab === 'dynamics' ? activeTabStyle : {}),
             ...m?.tab,
           }}
           onClick={() => setActiveTab('dynamics')}
@@ -6902,7 +6928,7 @@ const App: React.FC = () => {
           helpKey="tabRouting"
           style={{
             ...styles.tab,
-            ...(activeTab === 'routing' ? styles.tabActive : {}),
+            ...(activeTab === 'routing' ? activeTabStyle : {}),
             ...m?.tab,
           }}
           onClick={() => setActiveTab('routing')}
@@ -7145,6 +7171,8 @@ const App: React.FC = () => {
             onStateChange={setState}
             sliderProps={sliderProps}
             SliderComponent={Slider as unknown as React.ComponentType<Record<string, unknown>>}
+            getDynamicsAnalyser={(key) => audioEngine.getDynamicsAnalyser(key)}
+            getDynamicsTelemetry={() => audioEngine.getDynamicsVisualTelemetry()}
           />
         )}
 

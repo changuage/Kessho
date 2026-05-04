@@ -402,6 +402,7 @@ const DrumPresetManager: React.FC<DrumPresetManagerProps> = ({
   /* ── Rate ── */
   const handleRate = useCallback(async (rating: number) => {
     if (!selectedPresetName) return;
+    setLocalRatings(prev => ({ ...prev, [selectedPresetName]: rating }));
     try {
       await rateDrumPreset({
         voice,
@@ -411,7 +412,6 @@ const DrumPresetManager: React.FC<DrumPresetManagerProps> = ({
         save,
         updateMetadata,
       });
-      setLocalRatings(prev => ({ ...prev, [selectedPresetName]: rating }));
     } catch (ratingError) {
       console.warn('Failed to update drum preset rating:', ratingError);
     }

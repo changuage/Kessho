@@ -7,6 +7,7 @@ extern "C" {
 
 #define KESSHO_DYNAMICS_CHARACTER_MAX_BLOCK_SIZE 128
 #define KESSHO_DYNAMICS_CHARACTER_PARAM_COUNT 82
+#define KESSHO_DYNAMICS_CHARACTER_TELEMETRY_COUNT 10
 
 int dynamics_character_init(float sample_rate);
 void dynamics_character_destroy(void);
@@ -14,6 +15,7 @@ void dynamics_character_destroy(void);
 float* dynamics_character_get_input_ptr(void);
 float* dynamics_character_get_output_ptr(void);
 float* dynamics_character_get_params_ptr(void);
+float* dynamics_character_get_telemetry_ptr(void);
 
 void dynamics_character_commit_params(void);
 void dynamics_character_process_block(int block_size);

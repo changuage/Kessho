@@ -101,9 +101,11 @@ const DelayRhythmMap: React.FC<DelayRhythmMapProps> = (props) => {
     const rect = canvas.getBoundingClientRect();
     const w = rect.width;
     const h = rect.height;
-    if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
-      canvas.width = w * dpr;
-      canvas.height = h * dpr;
+    const backingWidth = Math.round(w * dpr);
+    const backingHeight = Math.round(h * dpr);
+    if (canvas.width !== backingWidth || canvas.height !== backingHeight) {
+      canvas.width = backingWidth;
+      canvas.height = backingHeight;
     }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);

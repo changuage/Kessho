@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { DEFAULT_STATE, type SliderState } from '../state';
+import type { DynamicsAnalyserKey, DynamicsVisualTelemetrySnapshot } from '../../audio/engine';
 import type { SliderPageId } from '../sliderHelpCatalog';
 import { useSliderHelp } from '../SliderHelpOverlay';
 import { PresetDropdown } from '../../presets/PresetDropdown';
@@ -15,6 +16,13 @@ import {
   DYNAMICS_SATURATION_PRESET_KEYS,
   DYNAMICS_SIDECHAIN_PRESET_KEYS,
 } from './dynamicsPresets';
+import {
+  DynamicsCharacterVisualizer,
+  DynamicsCompressorVisualizer,
+  DynamicsDegradeVisualizer,
+  DynamicsSaturationVisualizer,
+  DynamicsSidechainVisualizer,
+} from './DynamicsVisualizers';
 import './dynamics.css';
 
 const DRUM_KEY_OPTIONS: Array<{ value: SliderState['sidechainKeyA']; label: string }> = [
@@ -90,6 +98,8 @@ export interface DynamicsPageProps {
   onStateChange?: React.Dispatch<React.SetStateAction<SliderState>>;
   sliderProps: (paramKey: keyof SliderState) => Record<string, unknown>;
   SliderComponent: React.ComponentType<Record<string, unknown>>;
+  getDynamicsAnalyser?: (key: DynamicsAnalyserKey) => AnalyserNode | null;
+  getDynamicsTelemetry?: () => DynamicsVisualTelemetrySnapshot;
 }
 
 const DynamicsPage: React.FC<DynamicsPageProps> = ({
@@ -100,6 +110,8 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
   onStateChange,
   sliderProps,
   SliderComponent,
+  getDynamicsAnalyser,
+  getDynamicsTelemetry,
 }) => {
   const Slider = SliderComponent as React.ComponentType<any>;
   const { announceHelp, announceSlider } = useSliderHelp();
@@ -169,8 +181,8 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
     <div className={`dynamics-root${isMobile ? ' mobile' : ''}`}>
       <div className="dynamics-container">
         <div className="dynamics-column dynamics-left">
-          <div className="dynamics-global-bar">
-            <span className="dynamics-title">⊞ Dynamics FX</span>
+          <div className="dynamics-global-bar fx-page-header">
+            <span className="dynamics-title fx-page-title">⊞ Dynamics FX</span>
           </div>
 
           <section className="dynamics-section-card dynamics-preset-card">
@@ -243,6 +255,14 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
                   </button>
                 ))}
               </div>
+              <div {...bindHelp('characterVisualizer', { label: 'Visualizer', page: 'dynamics' })}>
+                <DynamicsCharacterVisualizer
+                  state={state}
+                  onParamChange={onParamChange}
+                  getDynamicsAnalyser={getDynamicsAnalyser}
+                  getDynamicsTelemetry={getDynamicsTelemetry}
+                />
+              </div>
               <div className="dynamics-grid-2">
                 <Slider label="Mix" value={state.characterMix} paramKey="characterMix" onChange={onParamChange} helpPage="dynamics" {...sliderProps('characterMix')} />
                 <Slider label="Age" value={state.characterAge} paramKey="characterAge" onChange={onParamChange} helpPage="dynamics" {...sliderProps('characterAge')} />
@@ -290,6 +310,11 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
                     compact
                   />
                 </div>
+                <DynamicsDegradeVisualizer
+                  state={state}
+                  getDynamicsAnalyser={getDynamicsAnalyser}
+                  getDynamicsTelemetry={getDynamicsTelemetry}
+                />
                 <div className="dynamics-grid-2">
                   <Slider label="Mix" value={state.degradeMix} paramKey="degradeMix" onChange={onParamChange} helpPage="dynamics" {...sliderProps('degradeMix')} />
                   <Slider label="Wear" value={state.degradeAge} paramKey="degradeAge" onChange={onParamChange} helpPage="dynamics" {...sliderProps('degradeAge')} />
@@ -397,6 +422,13 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
                   </button>
                 ))}
               </div>
+              <div {...bindHelp('dynamicsSaturationVisualizer', { label: 'Visualizer', page: 'dynamics' })}>
+                <DynamicsSaturationVisualizer
+                  state={state}
+                  getDynamicsAnalyser={getDynamicsAnalyser}
+                  getDynamicsTelemetry={getDynamicsTelemetry}
+                />
+              </div>
               <div className="dynamics-grid-2">
                 <Slider label="Drive" value={state.dynamicsSaturationDrive} paramKey="dynamicsSaturationDrive" onChange={onParamChange} helpPage="dynamics" {...sliderProps('dynamicsSaturationDrive')} />
                 <Slider label="Tone" value={state.dynamicsSaturationTone} paramKey="dynamicsSaturationTone" onChange={onParamChange} helpPage="dynamics" {...sliderProps('dynamicsSaturationTone')} />
@@ -435,6 +467,13 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
                   onStateChange={onStateChange}
                   presetOptions={endChainPresetOptions}
                   compact
+                />
+              </div>
+              <div {...bindHelp('endChainCompressionVisualizer', { label: 'Visualizer', page: 'dynamics' })}>
+                <DynamicsCompressorVisualizer
+                  state={state}
+                  getDynamicsAnalyser={getDynamicsAnalyser}
+                  getDynamicsTelemetry={getDynamicsTelemetry}
                 />
               </div>
               <div className="dynamics-grid-2">
@@ -504,6 +543,15 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
                     {DRUM_KEY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                   </select>
                 </div>
+              </div>
+
+              <div {...bindHelp('sidechainVisualizer', { label: 'Visualizer', page: 'dynamics' })}>
+                <DynamicsSidechainVisualizer
+                  state={state}
+                  onParamChange={onParamChange}
+                  getDynamicsAnalyser={getDynamicsAnalyser}
+                  getDynamicsTelemetry={getDynamicsTelemetry}
+                />
               </div>
 
               <div className="dynamics-grid-2">

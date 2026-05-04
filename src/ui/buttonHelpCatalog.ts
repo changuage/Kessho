@@ -8,6 +8,7 @@ const app = (section: string, label: string, audit: string[] = []) => surface('a
 const sy = (section: string, label: string, audit: string[] = []) => surface('synth', section, label, audit);
 const dr = (section: string, label: string, audit: string[] = []) => surface('drums', section, label, audit);
 const gr = (section: string, label: string, audit: string[] = []) => surface('granular', section, label, audit);
+const ea = (section: string, label: string, audit: string[] = []) => surface('earth', section, label, audit);
 const dy = (section: string, label: string, audit: string[] = []) => surface('delay', section, label, audit);
 
 function entry(short: string, long: string, surfaces: SliderHelpSurface[]): SliderHelpEntry {
@@ -89,6 +90,11 @@ export const BUTTON_HELP_CATALOG: Record<string, SliderHelpEntry> = {
     'Shows the Earth page in the advanced editor.',
     'This switches the visible editor to the Earth tab for waves, water, and insect controls. It is only a page change, not an audio-state toggle.',
     [app('Tab Bar', 'Earth')],
+  ),
+  activeEarthMatrix: entry(
+    'Shows only the Earth sources that are active right now.',
+    'Choose sources in the selector rows. Shared routing appears per active family, while the active-source matrix keeps only the engines you have in play.',
+    [ea('Active Earth Matrix', 'Active Earth Matrix')],
   ),
   tabGranular: entry(
     'Shows the Granular page in the advanced editor.',

@@ -168,6 +168,7 @@ enum ReverbType: String, CaseIterable {
 class ReverbProcessor {
     private let stateLock = NSLock()
     private let inputLock = NSLock()
+    private let nativeDSP = ReverbNativeDSP.shared
 
     // `node` is the post-parity return bus that the engine can tap for stems.
     let node: AVAudioMixerNode
@@ -195,13 +196,20 @@ class ReverbProcessor {
 
             let shouldRenderCustom = self.useCustomReverb
             self.dequeueInputBlock(frameCount: Int(frameCount))
-            for frame in 0..<Int(frameCount) {
-                let inputL = frame < self.renderInputL.count ? self.renderInputL[frame] : 0
-                let inputR = frame < self.renderInputR.count ? self.renderInputR[frame] : 0
-                if shouldRenderCustom {
+
+            if shouldRenderCustom {
+                if self.renderNativeDSPBlock(frameCount: Int(frameCount), to: ablPointer) {
+                    return noErr
+                }
+
+                for frame in 0..<Int(frameCount) {
+                    let inputL = frame < self.renderInputL.count ? self.renderInputL[frame] : 0
+                    let inputR = frame < self.renderInputR.count ? self.renderInputR[frame] : 0
                     let (wetL, wetR) = self.processStereo(left: inputL, right: inputR)
                     writeReverbStereoFrame(wetL, wetR, frame: frame, to: ablPointer)
-                } else {
+                }
+            } else {
+                for frame in 0..<Int(frameCount) {
                     writeReverbStereoFrame(0, 0, frame: frame, to: ablPointer)
                 }
             }
@@ -213,6 +221,7 @@ class ReverbProcessor {
     // Sample rate (will be set from audio engine)
     private var sampleRate: Float = 44100
     private var srScale: Float = 1.0  // Scale factor for 48kHz reference
+    private var nativeDSPReady = false
 
     // Quality mode
     private var quality: ReverbQuality = .balanced
@@ -333,6 +342,7 @@ class ReverbProcessor {
         self.customReturnMixer = AVAudioMixerNode()
         self.liteReturnMixer = AVAudioMixerNode()
         self.liteNode = AVAudioUnitReverb()
+        self.nativeDSPReady = nativeDSP.initialize(sampleRate: sampleRate)
 
         let scaledDelayFactor = self.srScale
         let scaledDiffuserTimes = DIFFUSER_TIMES_BASE.map { delayGroup in
@@ -367,6 +377,7 @@ class ReverbProcessor {
 
         // Apply default preset and route custom mode live by default.
         applyPreset(.hall)
+        applyNativeDSPSettingsUnlocked()
         refreshRouting()
         setWetDryMix(wetDryMix)
     }
@@ -377,6 +388,95 @@ class ReverbProcessor {
         node.outputVolume = min(max(wetDryMix / 100, 0), 1)
         liteNode.wetDryMix = 100
         liteNode.bypass = useCustomReverb
+    }
+
+    private func renderNativeDSPBlock(
+        frameCount: Int,
+        to buffers: UnsafeMutableAudioBufferListPointer
+    ) -> Bool {
+        guard nativeDSPReady,
+              let inputPtr = nativeDSP.inputPointer(),
+              let outputPtr = nativeDSP.outputPointer() else {
+            return false
+        }
+
+        var processedFrames = 0
+        while processedFrames < frameCount {
+            let chunkSize = min(ReverbNativeDSP.maxBlockSize, frameCount - processedFrames)
+
+            for frameOffset in 0..<chunkSize {
+                let frame = processedFrames + frameOffset
+                inputPtr[frameOffset * 2] = frame < renderInputL.count ? renderInputL[frame] : 0
+                inputPtr[frameOffset * 2 + 1] = frame < renderInputR.count ? renderInputR[frame] : 0
+            }
+
+            nativeDSP.process(blockSize: Int32(chunkSize))
+
+            for frameOffset in 0..<chunkSize {
+                writeReverbStereoFrame(
+                    outputPtr[frameOffset * 2],
+                    outputPtr[frameOffset * 2 + 1],
+                    frame: processedFrames + frameOffset,
+                    to: buffers
+                )
+            }
+
+            processedFrames += chunkSize
+        }
+
+        return true
+    }
+
+    private func nativeType(for type: ReverbType) -> ReverbNativeType {
+        switch type {
+        case .plate, .smallRoom, .mediumRoom:
+            return .plate
+        case .hall, .largeRoom, .mediumHall, .largeHall, .mediumChamber, .largeRoom2, .mediumHall2:
+            return .hall
+        case .cathedral, .largeChamber, .largeHall2:
+            return .cathedral
+        case .darkHall, .mediumHall3:
+            return .darkHall
+        }
+    }
+
+    private func nativeQuality(for quality: ReverbQuality) -> ReverbNativeQuality {
+        switch quality {
+        case .ultra:
+            return .ultra
+        case .balanced:
+            return .balanced
+        case .lite:
+            return .lite
+        }
+    }
+
+    private func applyNativeDSPSettingsUnlocked() {
+        guard nativeDSPReady else { return }
+        nativeDSP.setType(nativeType(for: currentType))
+        nativeDSP.setQuality(nativeQuality(for: quality))
+        nativeDSP.setParameters(
+            decay: userDecay,
+            size: size,
+            damping: damping,
+            diffusion: diffusion,
+            modulation: modulation,
+            predelaySeconds: predelayMs / 1000,
+            width: width
+        )
+        nativeDSP.setExtendedParameters(
+            shimmer: shimmer,
+            shimmerPitch: shimmerPitch,
+            shimmerFeedback: shimmerFeedback,
+            warp: warp,
+            crossFeed: crossFeed,
+            transientSmooth: transientSmooth
+        )
+    }
+
+    private func resetNativeDSPUnlocked() {
+        nativeDSPReady = nativeDSP.reset(sampleRate: sampleRate)
+        applyNativeDSPSettingsUnlocked()
     }
 
     private func dequeueInputFrameUnlocked() -> (Float, Float) {
@@ -442,6 +542,7 @@ class ReverbProcessor {
         shimmerStateR = 0
         smoothStateL = 0
         smoothStateR = 0
+        resetNativeDSPUnlocked()
         for index in 0..<8 {
             reads8[index] = 0
             damped8[index] = 0
@@ -510,6 +611,7 @@ class ReverbProcessor {
         self.modulation = p.modDepth
         updateEffectiveDecay()  // Recalculate effective decay
         updateDiffuserFeedback()
+        applyNativeDSPSettingsUnlocked()
     }
     
     /// Process a stereo sample through the FDN reverb
@@ -702,6 +804,7 @@ class ReverbProcessor {
         defer { stateLock.unlock() }
         self.userDecay = min(max(decay, 0), 1)
         updateEffectiveDecay()
+        applyNativeDSPSettingsUnlocked()
     }
     
     /// Calculate effective decay using web formula: baseDecay + (1 - baseDecay) * userDecay * 0.9
@@ -720,6 +823,7 @@ class ReverbProcessor {
         stateLock.lock()
         defer { stateLock.unlock() }
         self.size = min(max(size, 0.5), 2.0)
+        applyNativeDSPSettingsUnlocked()
     }
 
     func setDiffusion(_ diffusion: Float) {
@@ -727,12 +831,14 @@ class ReverbProcessor {
         defer { stateLock.unlock() }
         self.diffusion = min(max(diffusion, 0), 1)
         updateDiffuserFeedback()
+        applyNativeDSPSettingsUnlocked()
     }
 
     func setModulation(_ modulation: Float) {
         stateLock.lock()
         defer { stateLock.unlock() }
         self.modulation = min(max(modulation, 0), 1)
+        applyNativeDSPSettingsUnlocked()
     }
 
     func setPredelay(_ predelayMs: Float) {
@@ -740,18 +846,21 @@ class ReverbProcessor {
         defer { stateLock.unlock() }
         self.predelayMs = min(max(predelayMs, 0), 500)
         self.predelaySamples = self.predelayMs * sampleRate / 1000
+        applyNativeDSPSettingsUnlocked()
     }
 
     func setWidth(_ width: Float) {
         stateLock.lock()
         defer { stateLock.unlock() }
         self.width = min(max(width, 0), 1)
+        applyNativeDSPSettingsUnlocked()
     }
 
     func setDamping(_ damping: Float) {
         stateLock.lock()
         defer { stateLock.unlock() }
         self.damping = min(max(damping, 0), 1)
+        applyNativeDSPSettingsUnlocked()
     }
 
     func setSampleRate(_ sr: Float) {
@@ -761,6 +870,7 @@ class ReverbProcessor {
         self.srScale = sr / 48000
         // Recalculate predelay
         self.predelaySamples = predelayMs * sampleRate / 1000
+        resetNativeDSPUnlocked()
     }
     
     /// Set quality mode (affects CPU usage and sound quality)
@@ -769,6 +879,7 @@ class ReverbProcessor {
         defer { stateLock.unlock() }
         self.quality = quality
         self.useCustomReverb = (quality != .lite)
+        applyNativeDSPSettingsUnlocked()
         refreshRouting()
 
         // Update Apple reverb preset based on current parameters for lite mode.
@@ -810,7 +921,8 @@ class ReverbProcessor {
             updateEffectiveDecay()  // Recalculate effective decay
             updateDiffuserFeedback()
         }
-        
+        applyNativeDSPSettingsUnlocked()
+
         // Update Apple reverb for lite mode
         if quality == .lite {
             updateAppleReverbPreset()
@@ -860,6 +972,7 @@ class ReverbProcessor {
         self.crossFeed = min(max(crossFeed, 0), 1)
         self.transientSmooth = min(max(transientSmooth, 0), 1)
         updateDiffuserFeedback()
+        applyNativeDSPSettingsUnlocked()
         refreshRouting()
 
         // Update Apple reverb for lite mode.

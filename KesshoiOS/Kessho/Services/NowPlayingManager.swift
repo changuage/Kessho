@@ -1,4 +1,6 @@
 import Foundation
+
+#if os(iOS)
 import MediaPlayer
 
 /// Owns lock-screen metadata and remote command center integration.
@@ -129,3 +131,45 @@ private final class RemoteCommandTarget: NSObject {
         return .success
     }
 }
+
+#else
+
+/// macOS no-op implementation matching the iOS Now Playing service API.
+public final class NowPlayingManager {
+    public static let shared = NowPlayingManager()
+
+    private init() {}
+
+    public func updateNowPlayingInfo(
+        title: String,
+        artist: String = "Kessho",
+        album: String = "Generative Ambient",
+        isLiveStream: Bool = true,
+        isPlaying: Bool = false,
+        elapsedTime: TimeInterval = 0
+    ) {
+        NotificationCenter.default.post(name: AudioServiceNotification.nowPlayingChanged, object: self)
+    }
+
+    public func setPlaybackState(isPlaying: Bool) {
+        NotificationCenter.default.post(name: AudioServiceNotification.nowPlayingChanged, object: self)
+    }
+
+    public func clearNowPlayingInfo() {
+        NotificationCenter.default.post(name: AudioServiceNotification.nowPlayingChanged, object: self)
+    }
+
+    public func configureRemoteCommands(
+        onPlay: @escaping () -> Void,
+        onPause: @escaping () -> Void,
+        onTogglePlayPause: @escaping () -> Void
+    ) {}
+
+    public func resetRemoteCommands() {}
+
+    public var hasConfiguredRemoteCommands: Bool {
+        false
+    }
+}
+
+#endif

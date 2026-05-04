@@ -1,4 +1,5 @@
 import type { DrumVoiceType } from './drumSynth';
+import { DRUM_ENGINE_COLORS } from '../designSystem/colors';
 
 export type DrumParamType = 'range' | 'select';
 
@@ -26,7 +27,7 @@ export const DRUM_VOICES: Record<DrumVoiceType, DrumVoiceConfig> = {
   sub: {
     label: 'Sub',
     icon: '◉\uFE0E',
-    color: '#ef4444',
+    color: DRUM_ENGINE_COLORS.sub,
     sections: {
       Tone: [
         { key: 'drumSubFreq', label: 'Frequency', type: 'range', min: 20, max: 100, step: 1, unit: 'Hz', def: 50 },
@@ -53,7 +54,7 @@ export const DRUM_VOICES: Record<DrumVoiceType, DrumVoiceConfig> = {
   kick: {
     label: 'Kick',
     icon: '⬤\uFE0E',
-    color: '#f97316',
+    color: DRUM_ENGINE_COLORS.kick,
     sections: {
       Tone: [
         { key: 'drumKickFreq', label: 'Frequency', type: 'range', min: 30, max: 120, step: 1, unit: 'Hz', def: 55 },
@@ -81,7 +82,7 @@ export const DRUM_VOICES: Record<DrumVoiceType, DrumVoiceConfig> = {
   click: {
     label: 'Click',
     icon: '▫\uFE0E',
-    color: '#eab308',
+    color: DRUM_ENGINE_COLORS.click,
     sections: {
       Tone: [
         { key: 'drumClickPitch', label: 'Pitch', type: 'range', min: 500, max: 15000, step: 10, unit: 'Hz', def: 2000 },
@@ -111,7 +112,7 @@ export const DRUM_VOICES: Record<DrumVoiceType, DrumVoiceConfig> = {
   beepHi: {
     label: 'Metal',
     icon: '⊡\uFE0E',
-    color: '#22c55e',
+    color: DRUM_ENGINE_COLORS.beepHi,
     sections: {
       Tone: [
         { key: 'drumBeepHiFreq', label: 'Frequency', type: 'range', min: 200, max: 12000, step: 10, unit: 'Hz', def: 4000 },
@@ -148,7 +149,7 @@ export const DRUM_VOICES: Record<DrumVoiceType, DrumVoiceConfig> = {
   beepLo: {
     label: 'Pluck',
     icon: '⋰\uFE0E',
-    color: '#06b6d4',
+    color: DRUM_ENGINE_COLORS.beepLo,
     sections: {
       Tone: [
         { key: 'drumBeepLoFreq', label: 'Frequency', type: 'range', min: 40, max: 800, step: 1, unit: 'Hz', def: 400 },
@@ -186,7 +187,7 @@ export const DRUM_VOICES: Record<DrumVoiceType, DrumVoiceConfig> = {
   noise: {
     label: 'Noise',
     icon: '≋\uFE0E',
-    color: '#8b5cf6',
+    color: DRUM_ENGINE_COLORS.noise,
     sections: {
       Filter: [
         { key: 'drumNoiseFilterFreq', label: 'Frequency', type: 'range', min: 100, max: 20000, step: 10, unit: 'Hz', def: 8000 },
@@ -224,7 +225,7 @@ export const DRUM_VOICES: Record<DrumVoiceType, DrumVoiceConfig> = {
   membrane: {
     label: 'Membrane',
     icon: '※\uFE0E',
-    color: '#e11d48',
+    color: DRUM_ENGINE_COLORS.membrane,
     sections: {
       Exciter: [
         { key: 'drumMembraneExciter', label: 'Type', type: 'select', options: ['impulse', 'noise', 'stick', 'brush', 'mallet'], def: 'impulse' },

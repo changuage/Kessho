@@ -65,8 +65,8 @@ export const PresetRatingStars = React.memo(function PresetRatingStars({
           style={{
             width: hitSize,
             height: hitSize,
-            minWidth: '24px',
-            minHeight: '24px',
+            minWidth: hitSize,
+            minHeight: hitSize,
             padding: 0,
             border: 0,
             background: 'none',

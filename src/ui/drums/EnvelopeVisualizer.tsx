@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useCallback } from 'react';
 import type { DrumVoiceType } from '../../audio/drumSynth';
 import type { SliderState } from '../state';
 import { getCappedCanvasDpr, useAnimationVisibility } from '../hooks/useAnimationVisibility';
+import { DRUM_ENGINE_COLORS } from '../../designSystem/colors';
 
 interface EnvelopeVisualizerProps {
   voice: DrumVoiceType;
@@ -25,13 +26,13 @@ const VOICE_FREQ_CEILING: Record<DrumVoiceType, number> = {
 };
 
 const VOICE_COLORS: Record<DrumVoiceType, string> = {
-  sub: '#22c55e',
-  kick: '#ef4444',
-  click: '#eab308',
-  beepHi: '#3b82f6',
-  beepLo: '#f97316',
-  noise: '#a5c4d4',
-  membrane: '#a855f7',
+  sub: DRUM_ENGINE_COLORS.sub,
+  kick: DRUM_ENGINE_COLORS.kick,
+  click: DRUM_ENGINE_COLORS.click,
+  beepHi: DRUM_ENGINE_COLORS.beepHi,
+  beepLo: DRUM_ENGINE_COLORS.beepLo,
+  noise: DRUM_ENGINE_COLORS.noise,
+  membrane: DRUM_ENGINE_COLORS.membrane,
 };
 
 interface SpectState {

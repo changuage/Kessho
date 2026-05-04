@@ -1,0 +1,1834 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dynamics Visualizer Lab</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #111216;
+      --surface: #171a20;
+      --surface-2: #1e232b;
+      --line: rgba(255, 255, 255, 0.1);
+      --line-strong: rgba(255, 255, 255, 0.18);
+      --text: #eef2f5;
+      --muted: #98a2ae;
+      --dim: #68717d;
+      --cyan: #41c7d7;
+      --green: #35d08d;
+      --purple: #9f7bff;
+      --amber: #f1b84b;
+      --orange: #f5794d;
+      --rose: #ff6f91;
+      --blue: #74a7ff;
+      --radius: 8px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+      background: var(--bg);
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 320px),
+        radial-gradient(circle at 12% 0%, rgba(65, 199, 215, 0.1), transparent 34rem),
+        radial-gradient(circle at 88% 18%, rgba(245, 121, 77, 0.08), transparent 30rem),
+        var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      letter-spacing: 0;
+    }
+
+    button,
+    input {
+      font: inherit;
+    }
+
+    .page {
+      width: min(1440px, 100%);
+      margin: 0 auto;
+      padding: 18px clamp(14px, 3vw, 28px) 38px;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      display: grid;
+      grid-template-columns: minmax(230px, 1fr) auto;
+      gap: 14px;
+      align-items: center;
+      padding: 12px 0 14px;
+      background: linear-gradient(180deg, rgba(17, 18, 22, 0.98), rgba(17, 18, 22, 0.86));
+      backdrop-filter: blur(16px);
+    }
+
+    .title-wrap {
+      min-width: 0;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(1.15rem, 2.2vw, 1.75rem);
+      line-height: 1.05;
+      font-weight: 760;
+      letter-spacing: 0;
+    }
+
+    .subtitle {
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 0.82rem;
+      line-height: 1.35;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(118px, 1fr));
+      gap: 8px;
+      min-width: min(470px, 100%);
+    }
+
+    .control {
+      min-width: 0;
+      padding: 7px 8px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, 0.045);
+    }
+
+    .control label {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 4px;
+      color: var(--muted);
+      font-size: 0.64rem;
+      font-weight: 760;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .control output {
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 0.64rem;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--cyan);
+    }
+
+    .nav {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin: 3px 0 16px;
+    }
+
+    .nav a {
+      display: inline-flex;
+      align-items: center;
+      min-height: 30px;
+      padding: 4px 10px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.74rem;
+      font-weight: 720;
+    }
+
+    .nav a:hover {
+      color: var(--text);
+      border-color: var(--line-strong);
+      background: rgba(255, 255, 255, 0.07);
+    }
+
+    .module-section {
+      margin-top: 18px;
+      padding-top: 10px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      scroll-margin-top: 280px;
+    }
+
+    .section-head {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 14px;
+      margin-bottom: 10px;
+    }
+
+    h2 {
+      margin: 0;
+      font-size: 0.96rem;
+      line-height: 1;
+      font-weight: 780;
+      letter-spacing: 0;
+    }
+
+    .section-note {
+      color: var(--dim);
+      font-size: 0.72rem;
+      line-height: 1.35;
+      text-align: right;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .grid.compressor-grid {
+      grid-template-columns: minmax(0, 1.55fr) minmax(280px, 0.85fr);
+    }
+
+    .grid.combo-grid {
+      grid-template-columns: minmax(0, 1.55fr) minmax(280px, 0.85fr);
+    }
+
+    .viz-card.featured {
+      min-height: 100%;
+    }
+
+    .viz-card {
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: color-mix(in srgb, var(--surface) 88%, black);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+      overflow: hidden;
+    }
+
+    .viz-card-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 9px 10px 7px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.075);
+      background: rgba(255, 255, 255, 0.028);
+    }
+
+    .viz-title {
+      min-width: 0;
+      font-size: 0.8rem;
+      font-weight: 760;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .tag {
+      flex: 0 0 auto;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 0.58rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .canvas-wrap {
+      height: 214px;
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent),
+        #11151b;
+    }
+
+    .canvas-wrap.combined {
+      height: 292px;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    canvas[data-viz="char-combo"] {
+      touch-action: none;
+    }
+
+    canvas[data-viz="sc-detector"] {
+      touch-action: none;
+    }
+
+    .meta-row {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 1px;
+      border-top: 1px solid rgba(255, 255, 255, 0.075);
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .meta {
+      min-width: 0;
+      padding: 7px 8px;
+      background: rgba(0, 0, 0, 0.16);
+    }
+
+    .meta b,
+    .meta span {
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .meta b {
+      color: var(--text);
+      font-size: 0.67rem;
+      font-weight: 780;
+    }
+
+    .meta span {
+      margin-top: 2px;
+      color: var(--dim);
+      font-size: 0.59rem;
+      font-weight: 660;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .viz-copy {
+      min-height: 74px;
+      padding: 9px 10px 10px;
+      border-top: 1px solid rgba(255, 255, 255, 0.075);
+      color: var(--muted);
+      font-size: 0.71rem;
+      line-height: 1.38;
+      background: rgba(0, 0, 0, 0.1);
+    }
+
+    .viz-copy strong {
+      color: var(--text);
+      font-weight: 760;
+    }
+
+    .accent-overview { border-color: rgba(65, 199, 215, 0.26); }
+    .accent-compressor { border-color: rgba(241, 184, 75, 0.28); }
+    .accent-saturation { border-color: rgba(245, 121, 77, 0.28); }
+    .accent-degrade { border-color: rgba(159, 123, 255, 0.28); }
+    .accent-character { border-color: rgba(53, 208, 141, 0.26); }
+    .accent-sidechain { border-color: rgba(116, 167, 255, 0.28); }
+
+    @media (max-width: 1080px) {
+      .topbar {
+        grid-template-columns: 1fr;
+      }
+
+      .controls {
+        min-width: 0;
+      }
+
+      .grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 680px) {
+      .page {
+        padding-inline: 10px;
+      }
+
+      .controls,
+      .grid.compressor-grid,
+      .grid.combo-grid,
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      .section-head {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .section-note {
+        text-align: left;
+      }
+
+      .canvas-wrap {
+        height: 196px;
+      }
+    }
+
+    @media (max-width: 680px) and (min-width: 520px) {
+      .grid.sidechain-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .grid.sidechain-grid .canvas-wrap.combined {
+        height: 260px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="topbar">
+      <div class="title-wrap">
+        <h1>Dynamics Visualizer Lab</h1>
+        <div class="subtitle">Animated prototype options for Character, Degrade, Saturation, Compression, and Sidechain.</div>
+      </div>
+      <div class="controls" aria-label="Mock telemetry controls">
+        <div class="control">
+          <label for="motion">Motion <output id="motionOut">72</output></label>
+          <input id="motion" type="range" min="0" max="100" value="72" />
+        </div>
+        <div class="control">
+          <label for="signal">Signal <output id="signalOut">66</output></label>
+          <input id="signal" type="range" min="0" max="100" value="66" />
+        </div>
+        <div class="control">
+          <label for="damage">Damage <output id="damageOut">54</output></label>
+          <input id="damage" type="range" min="0" max="100" value="54" />
+        </div>
+      </div>
+    </header>
+
+    <nav class="nav" aria-label="Visualizer groups">
+      <a href="#compressor">Compressor</a>
+      <a href="#saturation">Saturation</a>
+      <a href="#degrade">Degrade</a>
+      <a href="#character">Character</a>
+      <a href="#sidechain">Sidechain</a>
+    </nav>
+
+    <section id="compressor" class="module-section">
+      <div class="section-head">
+        <h2>Compressor</h2>
+        <div class="section-note">One combined candidate: threshold/GR on the left, reduction timeline and meters on the right.</div>
+      </div>
+      <div class="grid compressor-grid">
+        <article class="viz-card accent-compressor featured">
+          <div class="viz-card-head"><div class="viz-title">A. Combined Compressor Panel</div><div class="tag">Recommended</div></div>
+          <div class="canvas-wrap combined"><canvas data-viz="comp-combined"></canvas></div>
+          <div class="meta-row"><div class="meta"><b>Best for</b><span>Main dynamics card</span></div><div class="meta"><b>Reads</b><span>Threshold + GR</span></div><div class="meta"><b>CPU</b><span>Low</span></div></div>
+          <div class="viz-copy"><strong>What it tells you:</strong> the left half shows the compression curve, threshold line, live input dot, and gain reduction. The right half shows the reduction envelope over time, plus compact input/output/GR meters from option C.</div>
+        </article>
+        <article class="viz-card accent-compressor">
+          <div class="viz-card-head"><div class="viz-title">B. Meter Bridge Only</div><div class="tag">Small fallback</div></div>
+          <div class="canvas-wrap"><canvas data-viz="comp-bridge"></canvas></div>
+          <div class="meta-row"><div class="meta"><b>Best for</b><span>Live mix</span></div><div class="meta"><b>Reads</b><span>I/O + GR</span></div><div class="meta"><b>CPU</b><span>Low</span></div></div>
+          <div class="viz-copy"><strong>Use this when space is tight.</strong> It loses threshold/knee context, but it is very readable as a tiny always-on compression status widget.</div>
+        </article>
+      </div>
+    </section>
+
+    <section id="saturation" class="module-section">
+      <div class="section-head">
+        <h2>Saturation</h2>
+        <div class="section-note">Combined candidate: curve and embedded harmonic color on the left, waveform result on the right.</div>
+      </div>
+      <div class="grid combo-grid">
+        <article class="viz-card accent-saturation featured">
+          <div class="viz-card-head"><div class="viz-title">A. Combined Saturation Panel</div><div class="tag">Recommended</div></div>
+          <div class="canvas-wrap combined"><canvas data-viz="sat-combined"></canvas></div>
+          <div class="meta-row"><div class="meta"><b>Best for</b><span>Main sat card</span></div><div class="meta"><b>Reads</b><span>Curve + waveform</span></div><div class="meta"><b>CPU</b><span>Low</span></div></div>
+          <div class="viz-copy"><strong>What it tells you:</strong> the curve explains Drive/Bias and the embedded H2/H3/H5/HF bars show harmonic color inside the same plot. The right half shows the audible waveform result.</div>
+        </article>
+        <article class="viz-card accent-saturation">
+          <div class="viz-card-head"><div class="viz-title">B. Symmetry Meter</div><div class="tag">Secondary</div></div>
+          <div class="canvas-wrap"><canvas data-viz="sat-symmetry"></canvas></div>
+          <div class="meta-row"><div class="meta"><b>Best for</b><span>Bias</span></div><div class="meta"><b>Reads</b><span>Even/odd</span></div><div class="meta"><b>CPU</b><span>Low</span></div></div>
+          <div class="viz-copy"><strong>Best as a secondary diagnostic.</strong> Bias and asymmetry are very clear here, but it is narrower than A because it explains color balance more than total saturation behavior.</div>
+        </article>
+      </div>
+    </section>
+
+    <section id="degrade" class="module-section">
+      <div class="section-head">
+        <h2>Degrade</h2>
+        <div class="section-note">Media wear, wobble, aliasing, corrosion, dropout, and tone loss.</div>
+      </div>
+      <div class="grid">
+        <article class="viz-card accent-degrade">
+          <div class="viz-card-head"><div class="viz-title">A. Damage Map</div><div class="tag">Informative</div></div>
+          <div class="canvas-wrap"><canvas data-viz="deg-damage"></canvas></div>
+          <div class="meta-row"><div class="meta"><b>Best for</b><span>Main card</span></div><div class="meta"><b>Reads</b><span>Most data</span></div><div class="meta"><b>CPU</b><span>Medium</span></div></div>
+          <div class="viz-copy"><strong>Best Degrade default.</strong> In this prototype the rows are setting-derived estimates, not live audio telemetry. In production, wear/generation/alias/wow/flutter can be exact resolved target values; dropout/tone/noise can become live if the worklet reports them.</div>
+        </article>
+        <article class="viz-card accent-degrade">
+          <div class="viz-card-head"><div class="viz-title">B. Tape Motion Spectral</div><div class="tag">Aesthetic</div></div>
+          <div class="canvas-wrap"><canvas data-viz="deg-tape"></canvas></div>
+          <div class="meta-row"><div class="meta"><b>Best for</b><span>Feel</span></div><div class="meta"><b>Reads</b><span>Wobble</span></div><div class="meta"><b>CPU</b><span>Medium</span></div></div>
+          <div class="viz-copy"><strong>Best if Degrade should feel physical.</strong> The spectral wash shows tone loss and noise, while the green/amber traces separate slow wow from fast flutter. Pretty, but less exact than A.</div>
+        </article>
+        <article class="viz-card accent-degrade">
+          <div class="viz-card-head"><div class="viz-title">C. Mod Matrix Constellation</div><div class="tag">Patch</div></div>
+          <div class="canvas-wrap"><canvas data-viz="deg-matrix"></canvas></div>
+          <div class="meta-row"><div class="meta"><b>Best for</b><span>Advanced</span></div><div class="meta"><b>Reads</b><span>Routes</span></div><div class="meta"><b>CPU</b><span>Medium</span></div></div>
+          <div class="viz-copy"><strong>Best for advanced users.</strong> This explains modulation routing: which source is pushing wow, flutter, low-pass, wet, dropout, or alias. Great for editing the matrix, too busy for the main collapsed card.</div>
+        </article>
+      </div>
+    </section>
+
+    <section id="character" class="module-section">
+      <div class="section-head">
+        <h2>Character</h2>
+        <div class="section-note">Combined candidate: live stereo ripple on the left, editable mode fingerprint on the right.</div>
+      </div>
+      <div class="grid combo-grid">
+        <article class="viz-card accent-character featured">
+          <div class="viz-card-head"><div class="viz-title">A. Ripple + Editable Fingerprint</div><div class="tag">Drag points</div></div>
+          <div class="canvas-wrap combined"><canvas data-viz="char-combo"></canvas></div>
+          <div class="meta-row"><div class="meta"><b>Best for</b><span>Main character card</span></div><div class="meta"><b>Reads</b><span>Motion + preset</span></div><div class="meta"><b>CPU</b><span>Low</span></div></div>
+          <div class="viz-copy"><strong>Try dragging the green fingerprint handles.</strong> Left side stays a live motion readout; right side becomes an editable profile for mix, age, depth, rate, damp, env, stereo, and resonance.</div>
+        </article>
+        <article class="viz-card accent-character">
+          <div class="viz-card-head"><div class="viz-title">B. Motion Field</div><div class="tag">Expressive</div></div>
+          <div class="canvas-wrap"><canvas data-viz="char-field"></canvas></div>
+          <div class="meta-row"><div class="meta"><b>Best for</b><span>Mode feel</span></div><div class="meta"><b>Reads</b><span>Depth</span></div><div class="meta"><b>CPU</b><span>Medium</span></div></div>
+          <div class="viz-copy"><strong>Best for identity.</strong> The rippling field makes Abyss/Shallow/Clean feel different. It is beautiful, but the combined panel is clearer for regular editing.</div>
+        </article>
+      </div>
+    </section>
+
+    <section id="sidechain" class="module-section">
+      <div class="section-head">
+        <h2>Sidechain</h2>
+        <div class="section-note">Side-by-side A and C: ducking timeline plus editable detector shape.</div>
+      </div>
+      <div class="grid combo-grid sidechain-grid">
+        <article class="viz-card accent-sidechain">
+          <div class="viz-card-head"><div class="viz-title">A. Ducking Timeline</div><div class="tag">Musical</div></div>
+          <div class="canvas-wrap combined"><canvas data-viz="sc-timeline"></canvas></div>
+          <div class="meta-row"><div class="meta"><b>Best for</b><span>Groove</span></div><div class="meta"><b>Reads</b><span>Envelope</span></div><div class="meta"><b>CPU</b><span>Low</span></div></div>
+          <div class="viz-copy"><strong>What it tells you:</strong> detector pulses, ducking depth, and release feel over time. It reacts to the editable detector shape beside it.</div>
+        </article>
+        <article class="viz-card accent-sidechain">
+          <div class="viz-card-head"><div class="viz-title">C. Editable Detector Shape</div><div class="tag">Drag handles</div></div>
+          <div class="canvas-wrap combined"><canvas data-viz="sc-detector"></canvas></div>
+          <div class="meta-row"><div class="meta"><b>Best for</b><span>Shape</span></div><div class="meta"><b>Reads</b><span>A/H/R</span></div><div class="meta"><b>CPU</b><span>Low</span></div></div>
+          <div class="viz-copy"><strong>Try dragging the line and handles.</strong> Move the threshold line vertically, and drag A/H/R horizontally to edit attack, hold, and release timing.</div>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const state = {
+      motion: 0.72,
+      signal: 0.66,
+      damage: 0.54,
+      history: {
+        input: new Array(180).fill(0),
+        output: new Array(180).fill(0),
+        gr: new Array(180).fill(0),
+        duck: new Array(180).fill(0),
+        env: new Array(180).fill(0),
+        alias: new Array(120).fill(0),
+      },
+      lastBucket: -1,
+      seed: 11,
+      characterProfile: [0.66, 0.24, 0.72, 0.53, 0.62, 0.38, 0.74, 0.55],
+      dragFingerprint: null,
+      fingerprintLayout: null,
+      sidechainSettings: { threshold: 0.44, attack: 0.12, hold: 0.28, release: 0.55 },
+      dragSidechainControl: null,
+      sidechainLayout: null,
+    };
+
+    const CHARACTER_LABELS = ["mix", "age", "depth", "rate", "damp", "env", "stereo", "res"];
+
+    const controls = [
+      ["motion", "motionOut"],
+      ["signal", "signalOut"],
+      ["damage", "damageOut"],
+    ];
+
+    controls.forEach(([id, outId]) => {
+      const el = document.getElementById(id);
+      const out = document.getElementById(outId);
+      el.addEventListener("input", () => {
+        const value = Number(el.value);
+        out.textContent = value;
+        state[id] = value / 100;
+      });
+    });
+
+    const canvases = Array.from(document.querySelectorAll("canvas[data-viz]"));
+    const TAU = Math.PI * 2;
+
+    function clamp(v, lo = 0, hi = 1) {
+      return Math.max(lo, Math.min(hi, v));
+    }
+
+    function lerp(a, b, t) {
+      return a + (b - a) * t;
+    }
+
+    function pulse(x, center, width) {
+      const d = Math.abs((((x - center + 0.5) % 1) + 1) % 1 - 0.5);
+      return Math.exp(-(d * d) / Math.max(0.0001, width * width));
+    }
+
+    function rng(n) {
+      const x = Math.sin(n * 127.1 + state.seed * 311.7) * 43758.5453;
+      return x - Math.floor(x);
+    }
+
+    function canvasPoint(event, canvas) {
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top,
+      };
+    }
+
+    function hitFingerprintHandle(point) {
+      const layout = state.fingerprintLayout;
+      if (!layout) return -1;
+      for (let i = 0; i < layout.handles.length; i++) {
+        const handle = layout.handles[i];
+        const dx = point.x - handle.x;
+        const dy = point.y - handle.y;
+        if (Math.sqrt(dx * dx + dy * dy) <= 13) return i;
+      }
+      return -1;
+    }
+
+    function updateFingerprintFromPoint(index, point) {
+      const layout = state.fingerprintLayout;
+      if (!layout || index < 0) return;
+      const angle = -Math.PI / 2 + (index / CHARACTER_LABELS.length) * TAU;
+      const dx = point.x - layout.cx;
+      const dy = point.y - layout.cy;
+      const projected = (dx * Math.cos(angle) + dy * Math.sin(angle)) / layout.r;
+      state.characterProfile[index] = clamp(projected);
+    }
+
+    function hitSidechainControl(point) {
+      const layout = state.sidechainLayout;
+      if (!layout) return null;
+      const thresholdDistance = Math.abs(point.y - layout.thresholdY);
+      if (
+        thresholdDistance <= 10 &&
+        point.x >= layout.x &&
+        point.x <= layout.x + layout.w
+      ) {
+        return "threshold";
+      }
+      for (const handle of layout.handles) {
+        const dx = point.x - handle.x;
+        const dy = point.y - handle.y;
+        if (Math.sqrt(dx * dx + dy * dy) <= 15) return handle.key;
+      }
+      return null;
+    }
+
+    function updateSidechainFromPoint(key, point) {
+      const layout = state.sidechainLayout;
+      if (!layout || !key) return;
+      const settings = state.sidechainSettings;
+      if (key === "threshold") {
+        settings.threshold = clamp(1 - (point.y - layout.y) / layout.h, 0.08, 0.92);
+        return;
+      }
+      const nx = clamp((point.x - layout.x) / layout.w, 0.02, 0.98);
+      if (key === "attack") {
+        settings.attack = clamp(nx, 0.03, Math.max(0.04, 0.96 - settings.hold - settings.release));
+      } else if (key === "hold") {
+        settings.hold = clamp(nx - settings.attack, 0.04, Math.max(0.05, 0.96 - settings.attack - settings.release));
+      } else if (key === "release") {
+        settings.release = clamp(nx - settings.attack - settings.hold, 0.08, Math.max(0.1, 0.98 - settings.attack - settings.hold));
+      }
+    }
+
+    function css(name) {
+      return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    }
+
+    const C = {
+      bg: "#11151b",
+      panel: "#171b22",
+      line: "rgba(255,255,255,0.11)",
+      line2: "rgba(255,255,255,0.2)",
+      text: css("--text"),
+      muted: css("--muted"),
+      dim: css("--dim"),
+      cyan: css("--cyan"),
+      green: css("--green"),
+      purple: css("--purple"),
+      amber: css("--amber"),
+      orange: css("--orange"),
+      rose: css("--rose"),
+      blue: css("--blue"),
+    };
+
+    function resize(canvas) {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const rect = canvas.getBoundingClientRect();
+      const w = Math.max(1, Math.round(rect.width * dpr));
+      const h = Math.max(1, Math.round(rect.height * dpr));
+      if (canvas.width !== w || canvas.height !== h) {
+        canvas.width = w;
+        canvas.height = h;
+      }
+      const ctx = canvas.getContext("2d");
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      return { ctx, w: rect.width, h: rect.height };
+    }
+
+    function clear(ctx, w, h) {
+      ctx.fillStyle = C.bg;
+      ctx.fillRect(0, 0, w, h);
+      const grad = ctx.createLinearGradient(0, 0, 0, h);
+      grad.addColorStop(0, "rgba(255,255,255,0.035)");
+      grad.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, w, h);
+    }
+
+    function rounded(ctx, x, y, w, h, r = 7) {
+      const rr = Math.min(r, w / 2, h / 2);
+      ctx.beginPath();
+      ctx.moveTo(x + rr, y);
+      ctx.arcTo(x + w, y, x + w, y + h, rr);
+      ctx.arcTo(x + w, y + h, x, y + h, rr);
+      ctx.arcTo(x, y + h, x, y, rr);
+      ctx.arcTo(x, y, x + w, y, rr);
+      ctx.closePath();
+    }
+
+    function grid(ctx, x, y, w, h, cols = 4, rows = 4) {
+      ctx.save();
+      ctx.strokeStyle = "rgba(255,255,255,0.055)";
+      ctx.lineWidth = 1;
+      for (let i = 1; i < cols; i++) {
+        const xx = x + (w * i) / cols;
+        ctx.beginPath();
+        ctx.moveTo(xx, y);
+        ctx.lineTo(xx, y + h);
+        ctx.stroke();
+      }
+      for (let i = 1; i < rows; i++) {
+        const yy = y + (h * i) / rows;
+        ctx.beginPath();
+        ctx.moveTo(x, yy);
+        ctx.lineTo(x + w, yy);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function text(ctx, value, x, y, options = {}) {
+      ctx.save();
+      ctx.fillStyle = options.color || C.muted;
+      ctx.font = `${options.weight || 700} ${options.size || 10}px ${options.mono ? "ui-monospace, monospace" : "system-ui, sans-serif"}`;
+      ctx.textAlign = options.align || "left";
+      ctx.textBaseline = options.base || "top";
+      ctx.fillText(value, x, y);
+      ctx.restore();
+    }
+
+    function linePath(ctx, points, color, width = 1.5, fill = null) {
+      if (!points.length) return;
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(points[0].x, points[0].y);
+      for (let i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y);
+      if (fill) {
+        ctx.lineTo(points[points.length - 1].x, fill.y);
+        ctx.lineTo(points[0].x, fill.y);
+        ctx.closePath();
+        ctx.fillStyle = fill.color;
+        ctx.fill();
+      }
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.lineJoin = "round";
+      ctx.lineCap = "round";
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function bar(ctx, x, y, w, h, value, color, vertical = false) {
+      ctx.save();
+      rounded(ctx, x, y, w, h, 4);
+      ctx.fillStyle = "rgba(255,255,255,0.055)";
+      ctx.fill();
+      const v = clamp(value);
+      if (vertical) {
+        rounded(ctx, x, y + h * (1 - v), w, h * v, 4);
+      } else {
+        rounded(ctx, x, y, w * v, h, 4);
+      }
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function telemetry(t) {
+      const motion = state.motion;
+      const signal = state.signal;
+      const damage = state.damage;
+      const beat = (t * (0.45 + motion * 0.8)) % 1;
+      const kick = pulse(beat, 0.04, 0.055);
+      const ghost = pulse(beat, 0.54, 0.085) * 0.45;
+      const input = clamp(0.18 + signal * 0.52 + kick * 0.34 + ghost + Math.sin(t * 1.7) * 0.08);
+      const gr = clamp((input - 0.55) * 1.75 + signal * 0.18);
+      const sc = state.sidechainSettings;
+      const duck = clamp((kick * (0.55 + signal * 0.35) + ghost * 0.55) * (0.48 + sc.threshold * 0.72));
+      const env = clamp(duck * (0.58 + sc.hold * 0.52) + Math.sin(t * (2.2 + sc.release * 2.4)) * 0.05 + signal * 0.16);
+      const sat = clamp(signal * 0.45 + damage * 0.35 + input * 0.28);
+      const alias = clamp(damage * 0.7 + Math.max(0, Math.sin(t * 13.1)) * motion * damage * 0.28);
+      const wear = clamp(damage * 0.82 + signal * 0.1);
+      const flutter = clamp(motion * 0.72 + damage * 0.18 + Math.sin(t * 8.2) * 0.08);
+      const wow = clamp(motion * 0.52 + damage * 0.24 + Math.sin(t * 1.4) * 0.16);
+      const out = clamp(input * (1 - gr * 0.26) + sat * 0.08 - duck * 0.14);
+      return {
+        t, beat, motion, signal, damage, input, output: out, gr, duck, env,
+        sat, alias, wear, flutter, wow,
+        stereo: clamp(0.35 + motion * 0.46 + Math.sin(t * 0.9) * 0.07),
+        resonance: clamp(0.25 + damage * 0.32 + signal * 0.16),
+        damp: clamp(0.74 - motion * 0.28 + damage * 0.18),
+        threshold: lerp(-28, -10, 1 - signal),
+        ratio: lerp(1.4, 8, signal),
+      };
+    }
+
+    function pushHistory(m) {
+      const bucket = Math.floor(m.t * 30);
+      if (bucket === state.lastBucket) return;
+      state.lastBucket = bucket;
+      for (const [key, value] of Object.entries({
+        input: m.input,
+        output: m.output,
+        gr: m.gr,
+        duck: m.duck,
+        env: m.env,
+        alias: m.alias,
+      })) {
+        const arr = state.history[key];
+        arr.push(value);
+        arr.shift();
+      }
+    }
+
+    function drawOverviewRail(ctx, w, h, m) {
+      const mods = [
+        ["IN", m.input, C.cyan],
+        ["SC", m.duck, C.blue],
+        ["CHAR", m.motion, C.green],
+        ["DEG", m.wear, C.purple],
+        ["SAT", m.sat, C.orange],
+        ["COMP", m.gr, C.amber],
+        ["OUT", m.output, C.cyan],
+      ];
+      const pad = 16;
+      const y = h * 0.48;
+      const gap = 8;
+      const boxW = (w - pad * 2 - gap * (mods.length - 1)) / mods.length;
+      ctx.strokeStyle = "rgba(255,255,255,0.12)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(pad, y);
+      ctx.lineTo(w - pad, y);
+      ctx.stroke();
+      for (let p = 0; p < 5; p++) {
+        const x = pad + ((m.beat + p / 5) % 1) * (w - pad * 2);
+        ctx.fillStyle = `rgba(65,199,215,${0.12 + m.input * 0.25})`;
+        ctx.beginPath();
+        ctx.arc(x, y, 3 + m.input * 5, 0, TAU);
+        ctx.fill();
+      }
+      mods.forEach(([label, value, color], i) => {
+        const x = pad + i * (boxW + gap);
+        const bh = 54 + value * 34;
+        rounded(ctx, x, y - bh / 2, boxW, bh, 7);
+        ctx.fillStyle = "rgba(255,255,255,0.055)";
+        ctx.fill();
+        ctx.strokeStyle = color;
+        ctx.globalAlpha = 0.35 + value * 0.65;
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+        text(ctx, label, x + boxW / 2, y - 8, { align: "center", color: C.text, size: Math.min(10, boxW * 0.22), weight: 780 });
+        bar(ctx, x + 8, y + bh / 2 - 12, boxW - 16, 4, value, color);
+      });
+      text(ctx, `wet ${Math.round((m.sat + m.wear + m.motion) * 33)}%`, pad, 14, { color: C.muted, mono: true });
+      text(ctx, `GR ${Math.round(m.gr * 18)}dB`, w - pad, 14, { color: C.amber, mono: true, align: "right" });
+    }
+
+    function drawOverviewLedger(ctx, w, h, m) {
+      const rows = [
+        ["Input", m.input, C.cyan, "+0.0"],
+        ["Sidechain", m.duck, C.blue, `-${Math.round(m.duck * 10)}dB`],
+        ["Character", m.motion, C.green, `${Math.round(m.stereo * 100)}W`],
+        ["Degrade", m.wear, C.purple, `${Math.round(m.alias * 100)}A`],
+        ["Saturation", m.sat, C.orange, `${Math.round(m.sat * 100)}D`],
+        ["Compression", m.gr, C.amber, `-${Math.round(m.gr * 18)}dB`],
+      ];
+      const pad = 14;
+      const rowH = (h - pad * 2) / rows.length;
+      rows.forEach(([label, value, color, stat], i) => {
+        const y = pad + i * rowH;
+        ctx.fillStyle = i % 2 ? "rgba(255,255,255,0.025)" : "rgba(255,255,255,0.045)";
+        ctx.fillRect(pad, y, w - pad * 2, rowH - 2);
+        text(ctx, label, pad + 8, y + rowH / 2, { base: "middle", color: C.text, size: 10 });
+        bar(ctx, pad + 84, y + rowH / 2 - 4, w - pad * 2 - 148, 8, value, color);
+        text(ctx, stat, w - pad - 9, y + rowH / 2, { base: "middle", align: "right", color, mono: true, size: 10 });
+      });
+    }
+
+    function drawOverviewFlow(ctx, w, h, m) {
+      const cx = w / 2;
+      const cy = h / 2;
+      const radius = Math.min(w, h) * 0.32;
+      const nodes = [
+        ["SC", C.blue, m.duck],
+        ["CHAR", C.green, m.motion],
+        ["DEG", C.purple, m.wear],
+        ["SAT", C.orange, m.sat],
+        ["COMP", C.amber, m.gr],
+        ["OUT", C.cyan, m.output],
+      ];
+      ctx.save();
+      for (let ring = 0; ring < 4; ring++) {
+        ctx.strokeStyle = `rgba(255,255,255,${0.035 + ring * 0.012})`;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius * (0.55 + ring * 0.22), 0, TAU);
+        ctx.stroke();
+      }
+      nodes.forEach((node, i) => {
+        const a = -Math.PI / 2 + (i / nodes.length) * TAU;
+        const nextA = -Math.PI / 2 + (((i + 1) % nodes.length) / nodes.length) * TAU;
+        const x = cx + Math.cos(a) * radius;
+        const y = cy + Math.sin(a) * radius;
+        const nx = cx + Math.cos(nextA) * radius;
+        const ny = cy + Math.sin(nextA) * radius;
+        const value = node[2];
+        ctx.strokeStyle = node[1];
+        ctx.globalAlpha = 0.15 + value * 0.55;
+        ctx.lineWidth = 2 + value * 4;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.quadraticCurveTo(cx, cy, nx, ny);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      });
+      nodes.forEach((node, i) => {
+        const a = -Math.PI / 2 + (i / nodes.length) * TAU;
+        const value = node[2];
+        const x = cx + Math.cos(a) * radius;
+        const y = cy + Math.sin(a) * radius;
+        ctx.fillStyle = "rgba(17,21,27,0.9)";
+        ctx.strokeStyle = node[1];
+        ctx.lineWidth = 1 + value * 2;
+        ctx.beginPath();
+        ctx.arc(x, y, 16 + value * 8, 0, TAU);
+        ctx.fill();
+        ctx.stroke();
+        text(ctx, node[0], x, y, { align: "center", base: "middle", color: C.text, size: 9 });
+      });
+      text(ctx, "DYNAMICS", cx, cy - 6, { align: "center", base: "middle", color: C.text, size: 12, weight: 800 });
+      text(ctx, `${Math.round(m.input * 100)} IN / ${Math.round(m.output * 100)} OUT`, cx, cy + 10, { align: "center", base: "middle", color: C.muted, mono: true, size: 9 });
+      ctx.restore();
+    }
+
+    function compMap(input, m) {
+      const threshold = 0.48 + (1 - m.signal) * 0.18;
+      const knee = 0.08 + m.motion * 0.08;
+      const ratio = lerp(1.4, 6.5, m.signal);
+      if (input < threshold - knee) return input;
+      const over = Math.max(0, input - threshold);
+      return threshold + over / ratio;
+    }
+
+    function drawMiniMeter(ctx, x, y, w, h, label, value, color, vertical = false) {
+      bar(ctx, x, y, w, h, value, color, vertical);
+      text(ctx, label, x + w / 2, y + h + 7, { align: "center", color: C.muted, mono: true, size: 8 });
+      const stat = label === "GR" ? `-${Math.round(value * 18)}` : `${Math.round(value * 100)}`;
+      text(ctx, stat, x + w / 2, y - 13, { align: "center", color, mono: true, size: 9 });
+    }
+
+    function drawCompCombined(ctx, w, h, m) {
+      const pad = 16;
+      const split = w < 560 ? 0.5 : 0.48;
+      const leftW = (w - pad * 3) * split;
+      const rightX = pad * 2 + leftW;
+      const rightW = w - rightX - pad;
+      const plotTop = 30;
+      const leftSize = Math.min(leftW - 36, h - 70);
+      const leftX = pad;
+      const leftY = plotTop;
+      const threshold = 0.48 + (1 - m.signal) * 0.18;
+
+      text(ctx, "threshold / transfer / live GR", leftX, 10, { color: C.amber, mono: true, size: 10 });
+      grid(ctx, leftX, leftY, leftSize, leftSize, 4, 4);
+
+      ctx.strokeStyle = "rgba(255,255,255,0.16)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(leftX, leftY + leftSize);
+      ctx.lineTo(leftX + leftSize, leftY);
+      ctx.stroke();
+
+      const threshX = leftX + threshold * leftSize;
+      ctx.strokeStyle = "rgba(241,184,75,0.52)";
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(threshX, leftY);
+      ctx.lineTo(threshX, leftY + leftSize);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      text(ctx, "TH", threshX, leftY + leftSize + 8, { align: "center", color: C.amber, mono: true, size: 8 });
+
+      const curve = [];
+      for (let i = 0; i <= 96; i++) {
+        const nx = i / 96;
+        curve.push({ x: leftX + nx * leftSize, y: leftY + leftSize - compMap(nx, m) * leftSize });
+      }
+      linePath(ctx, curve, C.amber, 2.4);
+
+      const dotX = leftX + m.input * leftSize;
+      const dotY = leftY + leftSize - compMap(m.input, m) * leftSize;
+      ctx.fillStyle = C.cyan;
+      ctx.beginPath();
+      ctx.arc(dotX, dotY, 5 + m.input * 3, 0, TAU);
+      ctx.fill();
+      text(ctx, "input", dotX + 8, dotY - 8, { color: C.cyan, mono: true, size: 8 });
+
+      const grX = leftX + leftSize + 17;
+      drawMiniMeter(ctx, grX, leftY, 16, leftSize, "GR", m.gr, C.amber, true);
+
+      text(ctx, "reduction timeline", rightX, 10, { color: C.amber, mono: true, size: 10 });
+      const timelineH = Math.max(92, h * 0.48);
+      grid(ctx, rightX, plotTop, rightW, timelineH, 6, 4);
+      const inputPts = [];
+      const outPts = [];
+      const grPts = [];
+      state.history.input.forEach((value, i, arr) => {
+        const x = rightX + (i / (arr.length - 1)) * rightW;
+        inputPts.push({ x, y: plotTop + timelineH - value * timelineH * 0.82 });
+        outPts.push({ x, y: plotTop + timelineH - state.history.output[i] * timelineH * 0.82 });
+        grPts.push({ x, y: plotTop + state.history.gr[i] * timelineH * 0.72 });
+      });
+      linePath(ctx, inputPts, "rgba(65,199,215,0.44)", 1.1);
+      linePath(ctx, outPts, "rgba(53,208,141,0.58)", 1.5);
+      linePath(ctx, grPts, C.amber, 2.2, { y: plotTop, color: "rgba(241,184,75,0.12)" });
+      text(ctx, "in", rightX + 5, plotTop + 5, { color: C.cyan, mono: true, size: 8 });
+      text(ctx, "out", rightX + 25, plotTop + 5, { color: C.green, mono: true, size: 8 });
+      text(ctx, "reduction", rightX + rightW - 5, plotTop + 5, { align: "right", color: C.amber, mono: true, size: 8 });
+
+      const meterTop = plotTop + timelineH + 34;
+      const meterH = Math.max(38, h - meterTop - 26);
+      const labels = [
+        ["IN", m.input, C.cyan],
+        ["OUT", m.output, C.green],
+        ["GR", m.gr, C.amber],
+      ];
+      const meterW = Math.min(34, (rightW - 36) / labels.length);
+      const gap = (rightW - meterW * labels.length) / Math.max(1, labels.length - 1);
+      labels.forEach(([label, value, color], i) => {
+        drawMiniMeter(ctx, rightX + i * (meterW + gap), meterTop, meterW, meterH, label, value, color, true);
+      });
+
+      const thresholdDb = Math.round(m.threshold);
+      text(ctx, `${thresholdDb}dB threshold`, leftX, h - 18, { color: C.muted, mono: true, size: 9 });
+      text(ctx, `${m.ratio.toFixed(1)}:1 ratio`, leftX + 112, h - 18, { color: C.muted, mono: true, size: 9 });
+    }
+
+    function drawCompTransfer(ctx, w, h, m) {
+      const pad = 18;
+      const x = pad;
+      const y = 18;
+      const size = Math.min(w - 84, h - 36);
+      grid(ctx, x, y, size, size, 4, 4);
+      ctx.strokeStyle = "rgba(255,255,255,0.18)";
+      ctx.beginPath();
+      ctx.moveTo(x, y + size);
+      ctx.lineTo(x + size, y);
+      ctx.stroke();
+      const pts = [];
+      for (let i = 0; i <= 96; i++) {
+        const nx = i / 96;
+        pts.push({ x: x + nx * size, y: y + size - compMap(nx, m) * size });
+      }
+      linePath(ctx, pts, C.amber, 2.5);
+      const dotX = x + m.input * size;
+      const dotY = y + size - compMap(m.input, m) * size;
+      ctx.fillStyle = C.cyan;
+      ctx.beginPath();
+      ctx.arc(dotX, dotY, 5 + m.input * 3, 0, TAU);
+      ctx.fill();
+      const grH = size;
+      bar(ctx, x + size + 20, y, 18, grH, m.gr, C.amber, true);
+      text(ctx, "GR", x + size + 29, y + grH + 7, { align: "center", color: C.muted, size: 9 });
+      text(ctx, `${Math.round(m.gr * 18)}dB`, x + size + 29, y - 11, { align: "center", color: C.amber, mono: true, size: 10 });
+      text(ctx, "threshold", x, y + size + 8, { color: C.dim, size: 9 });
+    }
+
+    function drawCompEnvelope(ctx, w, h, m) {
+      const pad = 14;
+      const top = 20;
+      const hh = h - 42;
+      grid(ctx, pad, top, w - pad * 2, hh, 6, 4);
+      const inputPts = [];
+      const grPts = [];
+      const outPts = [];
+      state.history.input.forEach((v, i, arr) => {
+        const xx = pad + (i / (arr.length - 1)) * (w - pad * 2);
+        inputPts.push({ x: xx, y: top + hh - v * hh });
+        outPts.push({ x: xx, y: top + hh - state.history.output[i] * hh });
+        grPts.push({ x: xx, y: top + state.history.gr[i] * hh * 0.68 });
+      });
+      linePath(ctx, inputPts, "rgba(65,199,215,0.58)", 1.4);
+      linePath(ctx, outPts, "rgba(53,208,141,0.72)", 2);
+      linePath(ctx, grPts, C.amber, 2.2, { y: top, color: "rgba(241,184,75,0.1)" });
+      text(ctx, "input", pad, 8, { color: C.cyan, mono: true });
+      text(ctx, "output", pad + 48, 8, { color: C.green, mono: true });
+      text(ctx, "gain reduction", w - pad, 8, { color: C.amber, mono: true, align: "right" });
+    }
+
+    function drawCompBridge(ctx, w, h, m) {
+      const labels = ["IN L", "IN R", "GR", "OUT L", "OUT R"];
+      const values = [m.input, m.input * 0.94, m.gr, m.output, m.output * 0.96];
+      const colors = [C.cyan, C.cyan, C.amber, C.green, C.green];
+      const pad = 18;
+      const meterW = Math.min(34, (w - pad * 2) / labels.length - 8);
+      const gap = (w - pad * 2 - meterW * labels.length) / Math.max(1, labels.length - 1);
+      labels.forEach((label, i) => {
+        const x = pad + i * (meterW + gap);
+        const y = 26;
+        bar(ctx, x, y, meterW, h - 58, values[i], colors[i], true);
+        for (let t = 0; t < 5; t++) {
+          const yy = y + (h - 58) * t / 4;
+          ctx.strokeStyle = "rgba(0,0,0,0.28)";
+          ctx.beginPath();
+          ctx.moveTo(x, yy);
+          ctx.lineTo(x + meterW, yy);
+          ctx.stroke();
+        }
+        text(ctx, label, x + meterW / 2, h - 24, { align: "center", color: C.muted, mono: true, size: 9 });
+        const stat = i === 2 ? `-${Math.round(values[i] * 18)}` : `${Math.round(values[i] * 100)}`;
+        text(ctx, stat, x + meterW / 2, 10, { align: "center", color: colors[i], mono: true, size: 10 });
+      });
+    }
+
+    function shapeSat(x, m, mode = "tape") {
+      const drive = lerp(1, 6, m.sat);
+      const bias = (m.damage - 0.5) * 0.52;
+      let y = x * drive + bias;
+      if (mode === "fold") {
+        y = Math.sin(y * 1.7);
+      } else if (mode === "diode") {
+        y = y > 0 ? Math.tanh(y * 1.45) : Math.tanh(y * 0.62);
+      } else if (mode === "tube") {
+        y = Math.tanh(y) * 0.9 + Math.tanh(y * 2.2) * 0.1;
+      } else {
+        y = Math.atan(y) / Math.atan(drive);
+      }
+      return clamp(y, -1, 1);
+    }
+
+    function drawSatCurve(ctx, w, h, m) {
+      const pad = 17;
+      const size = Math.min(w * 0.55, h - 34);
+      const x = pad;
+      const y = 17;
+      grid(ctx, x, y, size, size, 4, 4);
+      ctx.strokeStyle = "rgba(255,255,255,0.16)";
+      ctx.beginPath();
+      ctx.moveTo(x, y + size);
+      ctx.lineTo(x + size, y);
+      ctx.stroke();
+      const pts = [];
+      for (let i = 0; i <= 100; i++) {
+        const nx = i / 100;
+        const xx = nx * 2 - 1;
+        const yy = shapeSat(xx, m, m.damage > 0.72 ? "fold" : m.signal > 0.64 ? "tube" : "tape");
+        pts.push({ x: x + nx * size, y: y + size / 2 - yy * size * 0.46 });
+      }
+      linePath(ctx, pts, C.orange, 2.6);
+      const bars = [
+        ["H2", clamp(m.damage * 0.62 + m.sat * 0.2), C.amber],
+        ["H3", clamp(m.sat * 0.74), C.orange],
+        ["H5", clamp(m.sat * m.damage), C.rose],
+        ["HF", clamp(m.alias * 0.85), C.purple],
+      ];
+      const bx = x + size + 22;
+      bars.forEach((b, i) => {
+        const yy = y + 6 + i * 30;
+        text(ctx, b[0], bx, yy + 1, { color: C.muted, mono: true, size: 9 });
+        bar(ctx, bx + 26, yy, w - bx - 42, 11, b[1], b[2]);
+      });
+      text(ctx, "curve", x, y + size + 8, { color: C.dim, size: 9 });
+    }
+
+    function drawSatWave(ctx, w, h, m) {
+      const pad = 14;
+      const mid = h * 0.5;
+      grid(ctx, pad, 18, w - pad * 2, h - 40, 6, 4);
+      const raw = [];
+      const shaped = [];
+      for (let i = 0; i <= 180; i++) {
+        const nx = i / 180;
+        const phase = nx * TAU * 2.2 + m.t * (1.4 + m.motion);
+        const sample = Math.sin(phase) * (0.65 + m.signal * 0.35);
+        raw.push({ x: pad + nx * (w - pad * 2), y: mid - sample * h * 0.22 });
+        shaped.push({ x: pad + nx * (w - pad * 2), y: mid - shapeSat(sample, m, "fold") * h * 0.31 });
+      }
+      linePath(ctx, raw, "rgba(255,255,255,0.22)", 1.2);
+      linePath(ctx, shaped, C.orange, 2.4);
+      const clip = clamp(m.sat * 0.9 + m.damage * 0.2);
+      text(ctx, "clean", pad, 8, { color: C.dim, mono: true });
+      text(ctx, "shaped", pad + 48, 8, { color: C.orange, mono: true });
+      bar(ctx, w - 78, 12, 62, 7, clip, C.rose);
+      text(ctx, "clip", w - 78, 24, { color: C.dim, mono: true, size: 9 });
+    }
+
+    function drawSatCombined(ctx, w, h, m) {
+      const pad = 16;
+      const leftW = (w - pad * 3) * 0.48;
+      const rightX = pad * 2 + leftW;
+      const rightW = w - rightX - pad;
+      const top = 32;
+      const plotH = h - 68;
+      const curveSize = Math.min(leftW, plotH);
+      const curveX = pad;
+      const curveY = top;
+      const mode = m.damage > 0.72 ? "fold" : m.signal > 0.64 ? "tube" : "tape";
+
+      text(ctx, "curve + embedded harmonics", curveX, 11, { color: C.orange, mono: true, size: 10 });
+      grid(ctx, curveX, curveY, curveSize, curveSize, 4, 4);
+      ctx.strokeStyle = "rgba(255,255,255,0.16)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(curveX, curveY + curveSize);
+      ctx.lineTo(curveX + curveSize, curveY);
+      ctx.stroke();
+
+      const bars = [
+        ["H2", clamp(m.damage * 0.62 + m.sat * 0.2), C.amber],
+        ["H3", clamp(m.sat * 0.74), C.orange],
+        ["H5", clamp(m.sat * m.damage), C.rose],
+        ["HF", clamp(m.alias * 0.85), C.purple],
+      ];
+      const harmonicY = curveY + curveSize - 44;
+      const harmonicH = 32;
+      ctx.fillStyle = "rgba(0,0,0,0.22)";
+      ctx.fillRect(curveX + 7, harmonicY - 4, curveSize - 14, harmonicH + 11);
+      bars.forEach((item, i) => {
+        const slotW = (curveSize - 28) / bars.length;
+        const x = curveX + 14 + i * slotW + slotW * 0.18;
+        const barH = item[1] * harmonicH;
+        rounded(ctx, x, harmonicY + harmonicH - barH, slotW * 0.52, barH, 3);
+        ctx.fillStyle = item[2];
+        ctx.globalAlpha = 0.42 + item[1] * 0.5;
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        text(ctx, item[0], x + slotW * 0.26, harmonicY + harmonicH + 3, { align: "center", color: C.muted, mono: true, size: 7 });
+      });
+
+      const pts = [];
+      for (let i = 0; i <= 110; i++) {
+        const nx = i / 110;
+        const xx = nx * 2 - 1;
+        const yy = shapeSat(xx, m, mode);
+        pts.push({ x: curveX + nx * curveSize, y: curveY + curveSize / 2 - yy * curveSize * 0.46 });
+      }
+      linePath(ctx, pts, C.orange, 2.6);
+      text(ctx, mode, curveX + curveSize, curveY + curveSize + 9, { align: "right", color: C.orange, mono: true, size: 9 });
+
+      text(ctx, "waveform result", rightX, 11, { color: C.orange, mono: true, size: 10 });
+      const waveY = top;
+      const waveH = plotH;
+      grid(ctx, rightX, waveY, rightW, waveH, 6, 4);
+      const raw = [];
+      const shaped = [];
+      for (let i = 0; i <= 190; i++) {
+        const nx = i / 190;
+        const phase = nx * TAU * 2.25 + m.t * (1.35 + m.motion);
+        const sample = Math.sin(phase) * (0.65 + m.signal * 0.35);
+        raw.push({ x: rightX + nx * rightW, y: waveY + waveH / 2 - sample * waveH * 0.21 });
+        shaped.push({ x: rightX + nx * rightW, y: waveY + waveH / 2 - shapeSat(sample, m, mode) * waveH * 0.32 });
+      }
+      linePath(ctx, raw, "rgba(255,255,255,0.2)", 1.1);
+      linePath(ctx, shaped, C.orange, 2.2);
+      text(ctx, "clean", rightX + 6, waveY + 7, { color: C.dim, mono: true, size: 8 });
+      text(ctx, "shaped", rightX + 48, waveY + 7, { color: C.orange, mono: true, size: 8 });
+      const clip = clamp(m.sat * 0.9 + m.damage * 0.2);
+      bar(ctx, rightX + rightW - 74, waveY + 8, 58, 7, clip, C.rose);
+      text(ctx, "clip", rightX + rightW - 74, waveY + 20, { color: C.dim, mono: true, size: 8 });
+      text(ctx, `drive ${Math.round(m.sat * 100)}%`, rightX, h - 18, { color: C.muted, mono: true, size: 9 });
+      text(ctx, `bias ${Math.round((m.damage - 0.5) * 100)}`, rightX + 88, h - 18, { color: C.muted, mono: true, size: 9 });
+    }
+
+    function drawSatSymmetry(ctx, w, h, m) {
+      const cx = w / 2;
+      const cy = h / 2;
+      const r = Math.min(w, h) * 0.28;
+      const even = clamp(m.damage * 0.72 + Math.abs(m.damage - 0.5) * 0.55);
+      const odd = clamp(m.sat * 0.9);
+      const hf = clamp(m.alias * 0.78);
+      [["EVEN", even, C.amber, -1], ["ODD", odd, C.orange, 1]].forEach(([label, value, color, side]) => {
+        ctx.beginPath();
+        ctx.arc(cx + side * r * 0.72, cy, r * (0.55 + value * 0.55), 0, TAU);
+        ctx.fillStyle = `${color}24`;
+        ctx.fill();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.5 + value * 2;
+        ctx.stroke();
+        text(ctx, label, cx + side * r * 0.72, cy - 7, { align: "center", base: "middle", color: C.text, size: 11 });
+        text(ctx, `${Math.round(value * 100)}%`, cx + side * r * 0.72, cy + 11, { align: "center", base: "middle", color, mono: true, size: 10 });
+      });
+      const needle = (m.damage - 0.5) * 1.2;
+      ctx.strokeStyle = C.rose;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(cx, h - 38);
+      ctx.lineTo(cx + needle * (w * 0.33), h - 38);
+      ctx.stroke();
+      text(ctx, "BIAS", cx, h - 24, { align: "center", color: C.dim, mono: true });
+      bar(ctx, 20, 18, w - 40, 7, hf, C.purple);
+      text(ctx, "alias glare", 20, 30, { color: C.dim, mono: true, size: 9 });
+    }
+
+    function drawDegradeDamage(ctx, w, h, m) {
+      const pad = 14;
+      const rows = [
+        ["wear", m.wear, C.purple],
+        ["generation", m.damage, C.blue],
+        ["alias", m.alias, C.rose],
+        ["wow", m.wow, C.green],
+        ["flutter", m.flutter, C.amber],
+        ["dropout", m.duck * m.damage, C.orange],
+      ];
+      rows.forEach((row, i) => {
+        const y = 18 + i * 25;
+        text(ctx, row[0], pad, y + 2, { color: C.muted, mono: true, size: 9 });
+        const x = pad + 72;
+        const ww = w - x - pad;
+        for (let j = 0; j < 46; j++) {
+          const n = rng(j * 13 + i * 97);
+          const live = clamp(row[1] * (0.65 + n * 0.7) + Math.sin(m.t * (0.8 + i) + j * 0.42) * 0.06);
+          ctx.fillStyle = live > j / 46 ? row[2] : "rgba(255,255,255,0.055)";
+          ctx.globalAlpha = live > j / 46 ? 0.35 + live * 0.55 : 1;
+          ctx.fillRect(x + (j / 46) * ww, y, Math.max(2, ww / 58), 12);
+        }
+        ctx.globalAlpha = 1;
+      });
+      const toneX = pad;
+      const toneY = h - 35;
+      const grad = ctx.createLinearGradient(toneX, 0, w - pad, 0);
+      grad.addColorStop(0, "rgba(65,199,215,0.45)");
+      grad.addColorStop(0.45, "rgba(53,208,141,0.5)");
+      grad.addColorStop(1, `rgba(255,111,145,${0.16 + m.alias * 0.6})`);
+      rounded(ctx, toneX, toneY, w - pad * 2, 10, 4);
+      ctx.fillStyle = grad;
+      ctx.fill();
+      text(ctx, "tone loss / corrosion", pad, h - 20, { color: C.dim, mono: true, size: 9 });
+    }
+
+    function drawDegradeTape(ctx, w, h, m) {
+      const pad = 14;
+      const plotH = h - 42;
+      grid(ctx, pad, 18, w - pad * 2, plotH, 6, 4);
+      for (let band = 0; band < 34; band++) {
+        const x = pad + (band / 34) * (w - pad * 2);
+        const bandW = (w - pad * 2) / 34 + 1;
+        const amp = clamp(Math.sin(band * 0.43 + m.t * 1.2) * 0.5 + 0.5);
+        const bright = clamp((1 - band / 42) * (0.35 + m.signal * 0.6) - m.damage * band / 68 + amp * 0.18);
+        ctx.fillStyle = `rgba(${100 + band * 3}, ${120 + bright * 100}, ${210 - band * 2}, ${0.08 + bright * 0.34})`;
+        ctx.fillRect(x, 18, bandW, plotH);
+      }
+      const wowPts = [];
+      const flutterPts = [];
+      for (let i = 0; i <= 180; i++) {
+        const nx = i / 180;
+        const baseX = pad + nx * (w - pad * 2);
+        const wave = Math.sin(nx * TAU * 2 + m.t * (0.8 + m.motion)) * m.wow * 22;
+        wowPts.push({ x: baseX, y: h * 0.5 + wave });
+        flutterPts.push({ x: baseX, y: h * 0.5 + Math.sin(nx * TAU * 19 + m.t * 8) * m.flutter * 7 });
+      }
+      linePath(ctx, wowPts, C.green, 2.6);
+      linePath(ctx, flutterPts, C.amber, 1.5);
+      for (let i = 0; i < 20; i++) {
+        const n = rng(i + Math.floor(m.t * 5));
+        if (n > m.damage * 0.75) continue;
+        const x = pad + rng(i * 8) * (w - pad * 2);
+        ctx.fillStyle = "rgba(255,111,145,0.55)";
+        ctx.fillRect(x, 20 + rng(i * 3) * plotH, 1 + rng(i * 9) * 8, 1);
+      }
+      text(ctx, "wow", pad, 8, { color: C.green, mono: true });
+      text(ctx, "flutter", pad + 38, 8, { color: C.amber, mono: true });
+    }
+
+    function drawDegradeMatrix(ctx, w, h, m) {
+      const sources = ["slow", "flut", "rnd", "env", "noise"];
+      const targets = ["wow", "flut", "lp", "wet", "drop", "alias"];
+      const pad = 26;
+      const left = 52;
+      const top = 28;
+      const cw = (w - left - pad) / targets.length;
+      const ch = (h - top - 22) / sources.length;
+      targets.forEach((target, i) => text(ctx, target, left + i * cw + cw / 2, 10, { align: "center", color: C.dim, mono: true, size: 9 }));
+      sources.forEach((source, y) => {
+        text(ctx, source, 12, top + y * ch + ch / 2, { base: "middle", color: C.muted, mono: true, size: 9 });
+        targets.forEach((target, xIdx) => {
+          const base = clamp((rng(xIdx * 44 + y * 77) * 0.8 + m.damage * 0.45 + (source === "env" ? m.env * 0.3 : 0)) * (target === "alias" ? m.alias + 0.2 : 1));
+          const x = left + xIdx * cw + cw / 2;
+          const yy = top + y * ch + ch / 2;
+          ctx.fillStyle = "rgba(255,255,255,0.05)";
+          ctx.beginPath();
+          ctx.arc(x, yy, 9, 0, TAU);
+          ctx.fill();
+          ctx.fillStyle = base > 0.5 ? C.purple : C.blue;
+          ctx.globalAlpha = 0.2 + base * 0.7;
+          ctx.beginPath();
+          ctx.arc(x, yy, 3 + base * 9, 0, TAU);
+          ctx.fill();
+          ctx.globalAlpha = 1;
+          if (base > 0.48) {
+            ctx.strokeStyle = `rgba(159,123,255,${0.15 + base * 0.24})`;
+            ctx.beginPath();
+            ctx.moveTo(12 + 30, top + y * ch + ch / 2);
+            ctx.lineTo(x, yy);
+            ctx.stroke();
+          }
+        });
+      });
+    }
+
+    function drawCharField(ctx, w, h, m) {
+      const cx = w / 2;
+      const cy = h / 2;
+      const count = 9;
+      for (let ring = count; ring > 0; ring--) {
+        const r = (Math.min(w, h) * 0.055) * ring * (0.8 + m.motion * 0.35);
+        const phase = m.t * (0.45 + m.motion) + ring * 0.55;
+        ctx.beginPath();
+        for (let i = 0; i <= 180; i++) {
+          const a = (i / 180) * TAU;
+          const wob = Math.sin(a * 3 + phase) * m.resonance * 8 + Math.sin(a * 7 - phase * 0.6) * m.env * 4;
+          const spread = Math.cos(a) * r * m.stereo * 0.28;
+          const x = cx + Math.cos(a) * (r + wob) + spread;
+          const y = cy + Math.sin(a) * (r + wob) * (0.78 + m.damp * 0.18);
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.closePath();
+        ctx.strokeStyle = `rgba(53,208,141,${0.06 + (count - ring) * 0.024})`;
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+      }
+      text(ctx, "depth", 15, 12, { color: C.green, mono: true });
+      bar(ctx, 60, 13, w - 78, 7, m.motion, C.green);
+      text(ctx, "env", 15, 30, { color: C.blue, mono: true });
+      bar(ctx, 60, 31, w - 78, 7, m.env, C.blue);
+    }
+
+    function drawRipplePanel(ctx, x, y, w, h, m) {
+      const mid = y + h / 2;
+      grid(ctx, x, y, w, h, 6, 4);
+      ["L", "R"].forEach((side, s) => {
+        const pts = [];
+        for (let i = 0; i <= 160; i++) {
+          const nx = i / 160;
+          const amp = (0.18 + m.motion * 0.26) * (s ? 0.9 + m.stereo * 0.3 : 1.05 - m.stereo * 0.12);
+          const phase = m.t * (1 + m.motion) + nx * TAU * (2.2 + m.resonance * 2) + s * 0.9;
+          pts.push({ x: x + nx * w, y: mid + (s ? 1 : -1) * 24 + Math.sin(phase) * amp * h * 0.43 });
+        }
+        linePath(ctx, pts, s ? C.green : C.cyan, 2);
+        text(ctx, side, x + 4, mid + (s ? 18 : -35), { color: s ? C.green : C.cyan, mono: true });
+      });
+      bar(ctx, x, y + h + 13, w, 6, m.stereo, C.green);
+      text(ctx, "stereo spread", x, y + h + 24, { color: C.dim, mono: true, size: 8 });
+    }
+
+    function drawFingerprintPanel(ctx, x, y, w, h, m, editable) {
+      const cx = x + w / 2;
+      const cy = y + h / 2 + 6;
+      const r = Math.min(w, h) * 0.32;
+      const liveValues = [m.signal, m.damage * 0.44, m.motion, m.motion * 0.74, m.damp, m.env, m.stereo, m.resonance];
+      const values = state.characterProfile;
+      ctx.strokeStyle = "rgba(255,255,255,0.08)";
+      for (let ring = 1; ring <= 4; ring++) {
+        ctx.beginPath();
+        for (let i = 0; i < CHARACTER_LABELS.length; i++) {
+          const a = -Math.PI / 2 + (i / CHARACTER_LABELS.length) * TAU;
+          const rr = r * ring / 4;
+          const px = cx + Math.cos(a) * rr;
+          const py = cy + Math.sin(a) * rr;
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.stroke();
+      }
+
+      const livePts = CHARACTER_LABELS.map((_, i) => {
+        const a = -Math.PI / 2 + (i / CHARACTER_LABELS.length) * TAU;
+        return { x: cx + Math.cos(a) * r * liveValues[i], y: cy + Math.sin(a) * r * liveValues[i] };
+      });
+      ctx.beginPath();
+      livePts.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y));
+      ctx.closePath();
+      ctx.strokeStyle = "rgba(116,167,255,0.35)";
+      ctx.lineWidth = 1.2;
+      ctx.setLineDash([4, 3]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      const pts = CHARACTER_LABELS.map((_, i) => {
+        const a = -Math.PI / 2 + (i / CHARACTER_LABELS.length) * TAU;
+        return { x: cx + Math.cos(a) * r * values[i], y: cy + Math.sin(a) * r * values[i] };
+      });
+      ctx.beginPath();
+      pts.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y));
+      ctx.closePath();
+      ctx.fillStyle = "rgba(53,208,141,0.17)";
+      ctx.fill();
+      ctx.strokeStyle = C.green;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      const handles = [];
+      CHARACTER_LABELS.forEach((label, i) => {
+        const a = -Math.PI / 2 + (i / CHARACTER_LABELS.length) * TAU;
+        const hx = cx + Math.cos(a) * r * values[i];
+        const hy = cy + Math.sin(a) * r * values[i];
+        handles.push({ x: hx, y: hy });
+        ctx.strokeStyle = "rgba(53,208,141,0.38)";
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+        ctx.stroke();
+        text(ctx, label, cx + Math.cos(a) * (r + 16), cy + Math.sin(a) * (r + 16), { align: "center", base: "middle", color: C.muted, mono: true, size: 8 });
+        ctx.beginPath();
+        ctx.arc(hx, hy, state.dragFingerprint === i ? 6.5 : 5, 0, TAU);
+        ctx.fillStyle = state.dragFingerprint === i ? C.amber : C.green;
+        ctx.fill();
+        ctx.strokeStyle = "rgba(0,0,0,0.45)";
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      });
+
+      if (editable) {
+        state.fingerprintLayout = { cx, cy, r, handles };
+        text(ctx, "solid: editable", x, y - 17, { color: C.green, mono: true, size: 8 });
+        text(ctx, "dash: live", x + 86, y - 17, { color: C.blue, mono: true, size: 8 });
+      }
+    }
+
+    function drawCharCombined(ctx, w, h, m) {
+      const pad = 16;
+      const top = 36;
+      const panelH = h - 78;
+      const leftW = (w - pad * 3) * 0.52;
+      const rightX = pad * 2 + leftW;
+      const rightW = w - rightX - pad;
+      text(ctx, "live stereo ripple", pad, 12, { color: C.green, mono: true, size: 10 });
+      drawRipplePanel(ctx, pad, top, leftW, panelH - 22, m);
+      text(ctx, "editable mode fingerprint", rightX, 12, { color: C.green, mono: true, size: 10 });
+      drawFingerprintPanel(ctx, rightX, top, rightW, panelH, m, true);
+      const active = state.dragFingerprint;
+      if (active !== null && active !== undefined) {
+        text(ctx, `${CHARACTER_LABELS[active]} ${Math.round(state.characterProfile[active] * 100)}%`, rightX, h - 18, { color: C.amber, mono: true, size: 9 });
+      } else {
+        text(ctx, "drag any green handle", rightX, h - 18, { color: C.muted, mono: true, size: 9 });
+      }
+    }
+
+    function drawCharRipple(ctx, w, h, m) {
+      const pad = 14;
+      const mid = h / 2;
+      grid(ctx, pad, 18, w - pad * 2, h - 40, 6, 4);
+      ["L", "R"].forEach((side, s) => {
+        const pts = [];
+        for (let i = 0; i <= 160; i++) {
+          const nx = i / 160;
+          const amp = (0.18 + m.motion * 0.26) * (s ? 0.9 + m.stereo * 0.3 : 1.05 - m.stereo * 0.12);
+          const phase = m.t * (1 + m.motion) + nx * TAU * (2.2 + m.resonance * 2) + s * 0.9;
+          pts.push({ x: pad + nx * (w - pad * 2), y: mid + (s ? 1 : -1) * 24 + Math.sin(phase) * amp * h * 0.45 });
+        }
+        linePath(ctx, pts, s ? C.green : C.cyan, 2);
+        text(ctx, side, pad + 2, mid + (s ? 18 : -35), { color: s ? C.green : C.cyan, mono: true });
+      });
+      bar(ctx, 20, h - 19, w - 40, 6, m.stereo, C.green);
+      text(ctx, "stereo spread", 20, h - 34, { color: C.dim, mono: true, size: 9 });
+    }
+
+    function drawCharFingerprint(ctx, w, h, m) {
+      const labels = ["mix", "age", "depth", "rate", "damp", "env", "stereo", "res"];
+      const values = [m.signal, m.damage * 0.44, m.motion, m.motion * 0.74, m.damp, m.env, m.stereo, m.resonance];
+      const cx = w / 2;
+      const cy = h / 2 + 8;
+      const r = Math.min(w, h) * 0.32;
+      ctx.strokeStyle = "rgba(255,255,255,0.08)";
+      for (let ring = 1; ring <= 4; ring++) {
+        ctx.beginPath();
+        for (let i = 0; i < labels.length; i++) {
+          const a = -Math.PI / 2 + (i / labels.length) * TAU;
+          const rr = r * ring / 4;
+          const x = cx + Math.cos(a) * rr;
+          const y = cy + Math.sin(a) * rr;
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.closePath();
+        ctx.stroke();
+      }
+      const pts = labels.map((_, i) => {
+        const a = -Math.PI / 2 + (i / labels.length) * TAU;
+        return { x: cx + Math.cos(a) * r * values[i], y: cy + Math.sin(a) * r * values[i] };
+      });
+      ctx.beginPath();
+      pts.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y));
+      ctx.closePath();
+      ctx.fillStyle = "rgba(53,208,141,0.16)";
+      ctx.fill();
+      ctx.strokeStyle = C.green;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      labels.forEach((label, i) => {
+        const a = -Math.PI / 2 + (i / labels.length) * TAU;
+        text(ctx, label, cx + Math.cos(a) * (r + 16), cy + Math.sin(a) * (r + 16), { align: "center", base: "middle", color: C.muted, mono: true, size: 8 });
+      });
+    }
+
+    function drawScTimeline(ctx, w, h, m) {
+      const pad = 14;
+      const top = 20;
+      const hh = h - 44;
+      grid(ctx, pad, top, w - pad * 2, hh, 8, 4);
+      const duckPts = [];
+      const envPts = [];
+      state.history.duck.forEach((v, i, arr) => {
+        const x = pad + (i / (arr.length - 1)) * (w - pad * 2);
+        duckPts.push({ x, y: top + hh - v * hh * 0.78 });
+        envPts.push({ x, y: top + hh - state.history.env[i] * hh * 0.62 });
+      });
+      linePath(ctx, envPts, C.blue, 1.6, { y: top + hh, color: "rgba(116,167,255,0.08)" });
+      linePath(ctx, duckPts, C.rose, 2.3);
+      for (let i = 0; i < 8; i++) {
+        const x = pad + ((i + 0.05 - m.beat) / 8) * (w - pad * 2);
+        if (x < pad || x > w - pad) continue;
+        ctx.strokeStyle = C.amber;
+        ctx.globalAlpha = 0.2 + m.duck * 0.6;
+        ctx.beginPath();
+        ctx.moveTo(x, top);
+        ctx.lineTo(x, top + hh);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+      text(ctx, "detector", pad, 8, { color: C.blue, mono: true });
+      text(ctx, "ducking", pad + 64, 8, { color: C.rose, mono: true });
+    }
+
+    function drawScTargets(ctx, w, h, m) {
+      const labels = ["Pad 1", "Pad 2", "Lead 1", "Lead 2", "Piano", "Gran", "Dly A", "Dly B", "Verb"];
+      const pad = 14;
+      const cols = 3;
+      const cellW = (w - pad * 2 - 8 * (cols - 1)) / cols;
+      const cellH = (h - 36) / 3;
+      labels.forEach((label, i) => {
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        const x = pad + col * (cellW + 8);
+        const y = 18 + row * cellH;
+        const value = clamp((rng(i * 31) * 0.62 + m.signal * 0.24 + m.duck * 0.3) * (i > 5 ? 0.72 + m.motion * 0.3 : 1));
+        rounded(ctx, x, y, cellW, cellH - 7, 6);
+        ctx.fillStyle = `rgba(116,167,255,${0.06 + value * 0.26})`;
+        ctx.fill();
+        ctx.strokeStyle = `rgba(116,167,255,${0.15 + value * 0.38})`;
+        ctx.stroke();
+        text(ctx, label, x + 8, y + 8, { color: C.text, size: 10 });
+        bar(ctx, x + 8, y + cellH - 20, cellW - 16, 5, value, C.blue);
+        text(ctx, `-${Math.round(value * m.duck * 13)}dB`, x + cellW - 8, y + 8, { align: "right", color: C.blue, mono: true, size: 9 });
+      });
+    }
+
+    function drawScDetector(ctx, w, h, m) {
+      state.sidechainLayout = null;
+      const pad = 18;
+      const plotW = w - pad * 2;
+      const plotH = h - 70;
+      const top = 34;
+      const settings = state.sidechainSettings;
+      grid(ctx, pad, top, plotW, plotH, 5, 4);
+      const attack = settings.attack;
+      const hold = settings.hold;
+      const release = settings.release;
+      const thresholdY = top + plotH * (1 - settings.threshold);
+      const envelopeHeight = plotH * (0.35 + settings.threshold * 0.54);
+      const pts = [];
+      for (let i = 0; i <= 120; i++) {
+        const nx = i / 120;
+        let v;
+        if (nx < attack) v = nx / attack;
+        else if (nx < attack + hold) v = 1;
+        else v = Math.exp(-(nx - attack - hold) / release);
+        pts.push({ x: pad + nx * plotW, y: top + plotH - v * envelopeHeight });
+      }
+      linePath(ctx, pts, C.blue, 2.5, { y: top + plotH, color: "rgba(116,167,255,0.1)" });
+      const releaseEnd = clamp(attack + hold + release);
+      const marks = [
+        ["A", attack, "attack"],
+        ["H", attack + hold, "hold"],
+        ["R", releaseEnd, "release"],
+      ];
+      const handles = [];
+      marks.forEach(([label, nx, key]) => {
+        const x = pad + nx * plotW;
+        ctx.strokeStyle = "rgba(255,255,255,0.18)";
+        ctx.beginPath();
+        ctx.moveTo(x, top);
+        ctx.lineTo(x, top + plotH);
+        ctx.stroke();
+        const curvePoint = pts[Math.min(pts.length - 1, Math.max(0, Math.round(nx * 120)))] ?? { x, y: top + plotH };
+        ctx.beginPath();
+        ctx.arc(x, curvePoint.y, state.dragSidechainControl === key ? 7 : 5, 0, TAU);
+        ctx.fillStyle = state.dragSidechainControl === key ? C.amber : C.blue;
+        ctx.fill();
+        handles.push({ key, x, y: curvePoint.y });
+        text(ctx, label, x, h - 23, { align: "center", color: C.muted, mono: true });
+      });
+      text(ctx, "editable detector shape", pad, 10, { color: C.blue, mono: true });
+      ctx.strokeStyle = C.amber;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(pad, thresholdY);
+      ctx.lineTo(w - pad, thresholdY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.arc(w - pad - 10, thresholdY, state.dragSidechainControl === "threshold" ? 7 : 5, 0, TAU);
+      ctx.fillStyle = state.dragSidechainControl === "threshold" ? C.amber : C.amber;
+      ctx.fill();
+      text(ctx, "threshold", pad, thresholdY - 14, { color: C.amber, mono: true, size: 8 });
+      text(ctx, `${Math.round(settings.threshold * 100)}%`, w - pad, thresholdY - 14, { align: "right", color: C.amber, mono: true, size: 8 });
+      text(ctx, `A ${Math.round(attack * 100)}  H ${Math.round(hold * 100)}  R ${Math.round(release * 100)}`, pad, h - 12, { color: C.dim, mono: true, size: 8 });
+      state.sidechainLayout = {
+        x: pad,
+        y: top,
+        w: plotW,
+        h: plotH,
+        thresholdY,
+        handles,
+      };
+    }
+
+    const drawers = {
+      "overview-rail": drawOverviewRail,
+      "overview-ledger": drawOverviewLedger,
+      "overview-flow": drawOverviewFlow,
+      "comp-combined": drawCompCombined,
+      "comp-transfer": drawCompTransfer,
+      "comp-envelope": drawCompEnvelope,
+      "comp-bridge": drawCompBridge,
+      "sat-combined": drawSatCombined,
+      "sat-curve": drawSatCurve,
+      "sat-wave": drawSatWave,
+      "sat-symmetry": drawSatSymmetry,
+      "deg-damage": drawDegradeDamage,
+      "deg-tape": drawDegradeTape,
+      "deg-matrix": drawDegradeMatrix,
+      "char-combo": drawCharCombined,
+      "char-field": drawCharField,
+      "char-ripple": drawCharRipple,
+      "char-fingerprint": drawCharFingerprint,
+      "sc-timeline": drawScTimeline,
+      "sc-targets": drawScTargets,
+      "sc-detector": drawScDetector,
+    };
+
+    canvases.forEach((canvas) => {
+      if (canvas.dataset.viz !== "char-combo") return;
+      canvas.addEventListener("pointerdown", (event) => {
+        const point = canvasPoint(event, canvas);
+        const hit = hitFingerprintHandle(point);
+        if (hit < 0) return;
+        event.preventDefault();
+        state.dragFingerprint = hit;
+        canvas.setPointerCapture(event.pointerId);
+        updateFingerprintFromPoint(hit, point);
+      });
+      canvas.addEventListener("pointermove", (event) => {
+        const point = canvasPoint(event, canvas);
+        if (state.dragFingerprint !== null) {
+          event.preventDefault();
+          updateFingerprintFromPoint(state.dragFingerprint, point);
+          return;
+        }
+        canvas.style.cursor = hitFingerprintHandle(point) >= 0 ? "grab" : "default";
+      });
+      const release = (event) => {
+        if (state.dragFingerprint === null) return;
+        event.preventDefault();
+        state.dragFingerprint = null;
+        try { canvas.releasePointerCapture(event.pointerId); } catch {}
+      };
+      canvas.addEventListener("pointerup", release);
+      canvas.addEventListener("pointercancel", release);
+      canvas.addEventListener("pointerleave", () => {
+        if (state.dragFingerprint === null) canvas.style.cursor = "default";
+      });
+    });
+
+    canvases.forEach((canvas) => {
+      if (canvas.dataset.viz !== "sc-detector") return;
+      canvas.addEventListener("pointerdown", (event) => {
+        const point = canvasPoint(event, canvas);
+        const hit = hitSidechainControl(point);
+        if (!hit) return;
+        event.preventDefault();
+        state.dragSidechainControl = hit;
+        canvas.setPointerCapture(event.pointerId);
+        updateSidechainFromPoint(hit, point);
+      });
+      canvas.addEventListener("pointermove", (event) => {
+        const point = canvasPoint(event, canvas);
+        if (state.dragSidechainControl) {
+          event.preventDefault();
+          updateSidechainFromPoint(state.dragSidechainControl, point);
+          return;
+        }
+        canvas.style.cursor = hitSidechainControl(point) ? "grab" : "default";
+      });
+      const release = (event) => {
+        if (!state.dragSidechainControl) return;
+        event.preventDefault();
+        state.dragSidechainControl = null;
+        try { canvas.releasePointerCapture(event.pointerId); } catch {}
+      };
+      canvas.addEventListener("pointerup", release);
+      canvas.addEventListener("pointercancel", release);
+      canvas.addEventListener("pointerleave", () => {
+        if (!state.dragSidechainControl) canvas.style.cursor = "default";
+      });
+    });
+
+    function frame(now) {
+      const t = now / 1000;
+      const m = telemetry(t);
+      pushHistory(m);
+      for (const canvas of canvases) {
+        const { ctx, w, h } = resize(canvas);
+        clear(ctx, w, h);
+        const drawer = drawers[canvas.dataset.viz];
+        if (drawer) drawer(ctx, w, h, m);
+      }
+      requestAnimationFrame(frame);
+    }
+
+    requestAnimationFrame(frame);
+  </script>
+</body>
+</html>

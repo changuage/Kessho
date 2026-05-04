@@ -16,7 +16,8 @@ type WaterCardProps = {
   expandedCards: Set<string>;
   onToggleCard?: (id: string) => void;
   onSelectChange: <K extends keyof SliderState>(key: K, value: SliderState[K]) => void;
-  onWaterPresetLoad: (value: string) => void;
+  onWaterPresetSelect: (value: string) => void;
+  onWaterPresetLoadToSlot: (value: string, slot: 'A' | 'B') => void;
   onWaterPresetSave: () => void;
   onWaterPresetRate?: (option: EarthPresetOption, rating: number) => void;
   enabled?: boolean;
@@ -27,6 +28,14 @@ const WATER_DETAIL_BLUE = 'rgba(96,165,250,0.5)';
 const SURF_CYAN = 'rgba(0,180,216,0.5)';
 const CHANNEL_TEAL = 'rgba(0,150,136,0.5)';
 const REVERB_VIOLET = 'rgba(139,92,246,0.5)';
+const WATER_SUB_ENGINE_LEVEL_KEYS = [
+  'waterLayerHardDrops',
+  'waterLayerWaterDrops',
+  'waterLayerBubbling',
+  'waterLayerTurbulence',
+  'waterLayerSurf',
+  'waterLayerChannels',
+] as const satisfies readonly (keyof SliderState)[];
 
 function SubSection({
   title,
@@ -67,7 +76,8 @@ export function WaterCard({
   expandedCards,
   onToggleCard,
   onSelectChange,
-  onWaterPresetLoad,
+  onWaterPresetSelect,
+  onWaterPresetLoadToSlot,
   onWaterPresetSave,
   onWaterPresetRate,
   enabled,
@@ -80,6 +90,14 @@ export function WaterCard({
   const channelsOpen = Number(state.waterLayerChannels) > 0.01;
   const anyWaterOpen = hardDropsOpen || waterDropsOpen || bubblingOpen || turbulenceOpen || surfOpen || channelsOpen;
   const selectedOption = waterPresetOptions.find(item => item.value === selectedWaterPreset);
+  const handleToggleWaterEnabled = () => {
+    const nextEnabled = !state.waterEnabled;
+    onSelectChange('waterEnabled', nextEnabled);
+
+    if (!nextEnabled) {
+      WATER_SUB_ENGINE_LEVEL_KEYS.forEach((key) => onSelectChange(key, 0));
+    }
+  };
 
   return (
     <EarthCard
@@ -89,12 +107,15 @@ export function WaterCard({
       expandedCards={expandedCards}
       onToggleCard={onToggleCard}
       enabled={enabled}
+      onToggleEnabled={handleToggleWaterEnabled}
+      enableTitle={state.waterEnabled ? 'Disable Water' : 'Enable Water'}
     >
-      <div className="earth-preset-bar">
+      <div className="sc-preset-loader earth-water-loader">
         <select
-          className="earth-select earth-preset-select"
+          className="sc-preset-loader-select"
           value={selectedWaterPreset}
-          onChange={(e) => onWaterPresetLoad(e.target.value)}
+          onChange={(e) => onWaterPresetSelect(e.target.value)}
+          title="Select Water preset"
         >
           <EarthPresetOptions options={waterPresetOptions} />
         </select>
@@ -108,18 +129,37 @@ export function WaterCard({
         )}
         <button
           type="button"
-          className="earth-preset-save"
+          className="sc-preset-loader-slot"
+          style={{ '--slot-color': '#4a9eff' } as React.CSSProperties}
+          onClick={() => onWaterPresetLoadToSlot(selectedWaterPreset, 'A')}
+          title="Load into Slot A"
+        >
+          A
+        </button>
+        <button
+          type="button"
+          className="sc-preset-loader-slot"
+          style={{ '--slot-color': '#8b5cf6' } as React.CSSProperties}
+          onClick={() => onWaterPresetLoadToSlot(selectedWaterPreset, 'B')}
+          title="Load into Slot B"
+        >
+          B
+        </button>
+        <button
+          type="button"
+          className="sc-preset-loader-save"
           onClick={onWaterPresetSave}
           title="Save the current Water engine state as an L1 preset"
         >
-          Save
+          💾
         </button>
       </div>
 
-      <div className="earth-preset-row">
-        <div className="earth-preset-slot">
+      <div className="sc-morph-row earth-water-morph-row">
+        <span className="sc-morph-tag" style={{ color: '#4a9eff' }}>A</span>
+        <div className="sc-preset-slot">
           <select
-            className="earth-select earth-preset-select"
+            className="sc-preset-select"
             value={String(state.waterMorphA)}
             onChange={e =>
               onSelectChange('waterMorphA', Number(e.target.value) as SliderState['waterMorphA'])
@@ -129,13 +169,13 @@ export function WaterCard({
           </select>
         </div>
 
-        <div style={{ flex: 1 }}>
+        <div className="sc-morph-slider">
           {ds('waterMorph', 'Morph', 'rgba(74,158,255,0.5)')}
         </div>
 
-        <div className="earth-preset-slot">
+        <div className="sc-preset-slot">
           <select
-            className="earth-select earth-preset-select"
+            className="sc-preset-select"
             value={String(state.waterMorphB)}
             onChange={e =>
               onSelectChange('waterMorphB', Number(e.target.value) as SliderState['waterMorphB'])
@@ -144,6 +184,7 @@ export function WaterCard({
             <EarthPresetOptions options={waterPresetOptions} />
           </select>
         </div>
+        <span className="sc-morph-tag" style={{ color: '#8b5cf6' }}>B</span>
       </div>
 
       <SubSection title="Shared Water Body" count={3} defaultOpen syncOpen={anyWaterOpen}>

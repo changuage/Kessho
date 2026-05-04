@@ -6,33 +6,12 @@
 
 /* ══ Design Tokens ══ */
 .reverb-root {
-  --bg-base: #1a1a2e;
-  --bg-input: rgba(0, 0, 0, 0.3);
-  --bg-surface: rgba(15, 25, 40, 0.95);
-  --bg-elevated: rgba(255,255,255,0.05);
-  --bg-control: rgba(255,255,255,0.08);
-  --bg-control-hover: rgba(255,255,255,0.15);
-  --border-subtle: rgba(255, 255, 255, 0.1);
-  --border-medium: rgba(255, 255, 255, 0.2);
-  --border-accent: rgba(100, 150, 200, 0.3);
-  --text-primary: #e0e0e0;
-  --text-secondary: #9ca3af;
-  --text-muted: #666;
-  --text-dim: #555;
-  --accent-primary: #a5c4d4;
+  /* Engine-specific accents (beyond design system) */
   --accent-reverb: #8b5cf6;
   --accent-mod: #f59e0b;
-  --accent-green: #10b981;
   --accent-blue: #3b82f6;
   --accent-pink: #f472b6;
   --accent-teal: #06b6d4;
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --font-xs: 0.55rem;
-  --font-sm: 0.65rem;
-  --font-md: 0.75rem;
-  --font-lg: 0.85rem;
 }
 
 .reverb-root * { box-sizing: border-box; }
@@ -95,6 +74,13 @@
   color: #60a5fa;
   animation: reverb-freeze-pulse 2s infinite ease-in-out;
 }
+
+#root .reverb-root .reverb-freeze-btn::before,
+#root .reverb-root .reverb-mode-btn-freeze::before {
+  content: none;
+  display: none;
+}
+
 @keyframes reverb-freeze-pulse {
   0%, 100% { box-shadow: 0 0 4px rgba(59,130,246,0.2); }
   50%      { box-shadow: 0 0 10px rgba(59,130,246,0.5); }
@@ -105,7 +91,7 @@
   max-width: 1200px;
   margin: 0 auto;
   display: flex;
-  gap: 10px;
+  gap: var(--k-gap-container, 10px);
   align-items: flex-start;
   flex-wrap: wrap;
 }

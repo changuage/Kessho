@@ -378,6 +378,43 @@ const mixEntries: Record<string, SliderHelpEntry> = {
   ),
 };
 
+const routingEntries: Record<string, SliderHelpEntry> = {
+  routingMatrixOverview: entry(
+    'Shows source levels and FX sends in one dense grid.',
+    'Rows are sound sources and return buses. Columns are Level, Delay A, Delay B, Granular, and Reverb. Drag a cell to trim one route. In walk or sample-and-hold, drag the band edges to resize the range or drag the band body to move the whole range. Double-click on desktop or long-press on touch to cycle modes. Drag a column header left or right to trim every editable route in that destination column. Use Source all/on to switch between every source and only active sources.',
+    [
+      rt('FX Routing Matrix', 'FX Routing Matrix', 'full', [
+        'Routing uses the neutral MatrixSurface baseline: row/source dots carry identity, while destination columns and cells stay visually neutral.',
+      ]),
+    ],
+  ),
+  routingMatrixLevelColumn: entry(
+    'Trims the dry or return level for each row.',
+    'The Level column controls how much of each source or return bus reaches the main mix. Drag one cell to adjust a single row, or drag the Level header to scale every editable level in the visible matrix together.',
+    [rt('FX Routing Matrix', 'Level Column')],
+  ),
+  routingMatrixDelayAColumn: entry(
+    'Sends rows into the shared Delay A bus.',
+    'Delay A is the shared single-line delay destination. Drag one cell to set how much that source feeds Delay A, or drag the Delay A header to trim all editable Delay A sends together.',
+    [rt('FX Routing Matrix', 'Delay A Column')],
+  ),
+  routingMatrixDelayBColumn: entry(
+    'Sends rows into the shared Delay B bus.',
+    'Delay B is the shared clocked/multitap delay destination. Drag one cell to set how much that source feeds Delay B, or drag the Delay B header to trim all editable Delay B sends together.',
+    [rt('FX Routing Matrix', 'Delay B Column')],
+  ),
+  routingMatrixGranularColumn: entry(
+    'Sends rows into the shared Granular processor.',
+    'The Granular column controls the feed into the granular bus. Drag one cell to adjust one source-to-granular send, or drag the Granular header to trim every editable granular feed together.',
+    [rt('FX Routing Matrix', 'Granular Column')],
+  ),
+  routingMatrixReverbColumn: entry(
+    'Sends rows into the shared Reverb return.',
+    'The Reverb column controls how much each source feeds the shared reverb tail. Drag one cell for a single source, or drag the Reverb header to trim every editable reverb send together.',
+    [rt('FX Routing Matrix', 'Reverb Column')],
+  ),
+};
+
 const globalEntries: Record<string, SliderHelpEntry> = {
   tension: lowHigh(
     'Sets the harmonic tension target for the whole piece.',
@@ -1337,6 +1374,7 @@ Object.assign(earthEntries, {
 const dynamicsEntries: Record<string, SliderHelpEntry> = {
   tabDynamics: entry('Opens the Dynamics page.', 'Dynamics gathers sidechain ducking, character movement, degrade controls, and final bus compression in one page.', [dn('Navigation', 'Dynamics Tab', 'single-only', [GLOBAL_SINGLE_NOTE])]),
   sidechainEnabled: entry('Enables trigger-derived ducking.', 'Sidechain listens to the selected drum voices and ducks the selected dry, delay, granular, and reverb target branches.', [dn('Sidechain', 'Sidechain', 'single-only', [GLOBAL_SINGLE_NOTE])]),
+  sidechainVisualizer: entry('Shows the live sidechain shape.', 'The left side shows recent ducking events over time; the right side shows the editable detector curve plus attack, hold, and release timing handles.', [dn('Sidechain', 'Visualizer', 'single-only', [GLOBAL_SINGLE_NOTE])]),
   sidechainKeyAWeight: lowHigh('Weights the first drum key.', 'make Key A a gentle helper trigger', 'make Key A dominate the duck envelope', [dn('Sidechain', 'Key A Weight')]),
   sidechainKeyBWeight: lowHigh('Weights the second drum key.', 'keep Key B subtle', 'let Key B trigger a full duck alongside Key A', [dn('Sidechain', 'Key B Weight')]),
   sidechainAmount: lowHigh('Sets global duck depth.', 'keep target routing mostly dry', 'send more of each target through the ducked branch', [dn('Sidechain', 'Amount')]),
@@ -1361,6 +1399,7 @@ const dynamicsEntries: Record<string, SliderHelpEntry> = {
   sidechainDelayBTarget: lowHigh('Sets Delay B duck amount.', 'leave Delay B return dry', 'duck Delay B strongly from the selected keys', [dn('Sidechain', 'Delay B Target')]),
   sidechainReverbTarget: lowHigh('Sets reverb-return duck amount.', 'leave the reverb return open', 'duck the reverb return strongly from the selected keys', [dn('Sidechain', 'Reverb Target')]),
   endCompEnabled: entry('Enables final bus compression.', 'End Chain inserts a native compressor before the existing safety limiter, with dry/wet mix and makeup gain.', [dn('End Chain', 'End Chain', 'single-only', [GLOBAL_SINGLE_NOTE])]),
+  endChainCompressionVisualizer: entry('Shows final bus compression.', 'The left side shows the transfer curve and live input/output point; the right side shows gain-reduction history with compact input, reduction, and output meters.', [dn('End Chain', 'Visualizer', 'single-only', [GLOBAL_SINGLE_NOTE])]),
   endCompThreshold: lowHigh('Sets end-chain threshold.', 'compress only louder peaks', 'pull more of the full mix into compression', [dn('End Chain', 'Threshold')]),
   endCompKnee: lowHigh('Sets end-chain knee.', 'make compression more exact', 'make compression enter more gradually', [dn('End Chain', 'Knee')]),
   endCompRatio: lowHigh('Sets end-chain ratio.', 'use gentle glue', 'use stronger leveling', [dn('End Chain', 'Ratio')]),
@@ -1373,6 +1412,7 @@ const dynamicsEntries: Record<string, SliderHelpEntry> = {
   endCompAutoMakeup: lowHigh('Adds automatic compressor makeup.', 'use mostly manual makeup', 'loudness-match more strongly after gain reduction', [dn('End Chain', 'Auto Makeup')]),
   endCompProgramRelease: lowHigh('Makes release respond to gain reduction depth.', 'use steadier release timing', 'recover fast from small dips and slower from deeper gain reduction', [dn('End Chain', 'Program Rel')]),
   characterEnabled: entry('Enables character movement.', 'Character can be bypassed from the section header without losing the selected movement mode or control values.', [dn('Character', 'FX', 'single-only', [GLOBAL_SINGLE_NOTE])]),
+  characterVisualizer: entry('Shows the live character shape.', 'The left side compares incoming and character-processed motion; the right side is the editable fingerprint for mix, age, depth, rate, damping, envelope follow, stereo spread, and resonance.', [dn('Character', 'Visualizer', 'single-only', [GLOBAL_SINGLE_NOTE])]),
   characterMix: lowHigh('Blends character processing.', 'keep the clean bus forward', 'lean into the character path', [dn('Character', 'Mix')]),
   characterAge: lowHigh('Ages the character path.', 'keep movement and loss subtle', 'add older, less stable behavior', [dn('Character', 'Age')]),
   characterDepth: lowHigh('Sets character modulation depth.', 'make movement shallow', 'make warble and filtering move farther', [dn('Character', 'Depth')]),
@@ -1396,6 +1436,7 @@ const dynamicsEntries: Record<string, SliderHelpEntry> = {
   degradeTone: lowHigh('Tilts Degrade tone.', 'favor a darker worn edge', 'favor brighter presence', [dn('Degrade', 'Tone')]),
   degradeSaturation: lowHigh('Sets Degrade-path clipping.', 'keep the damaged path cleaner', 'add more internal soft clipping', [dn('Degrade', 'Clip')]),
   degradeCorrosion: lowHigh('Sets degraded edge.', 'keep distortion smoother', 'add more broken alias-like edge', [dn('Degrade', 'Corrosion')]),
+  dynamicsSaturationVisualizer: entry('Shows the saturation shape.', 'The curve shows how the selected saturation mode bends the bus, while the bars show the harmonic balance and the top meter shows how symmetrical or biased the clipping is.', [dn('Saturation', 'Visualizer', 'single-only', [GLOBAL_SINGLE_NOTE])]),
   dynamicsSaturationDrive: lowHigh('Sets Dynamics master saturation drive.', 'leave the bus cleaner', 'push harder into the selected saturation color', [dn('Saturation', 'Drive')]),
   dynamicsSaturationTone: lowHigh('Sets Dynamics saturation tone.', 'tilt the saturated bus darker', 'tilt the saturated bus brighter', [dn('Saturation', 'Tone')]),
   dynamicsSaturationBias: lowHigh('Sets Dynamics saturation bias.', 'keep clipping more symmetrical', 'lean into asymmetrical even-harmonic color', [dn('Saturation', 'Bias')]),
@@ -1957,6 +1998,7 @@ function buildDrumEntries(): Record<string, SliderHelpEntry> {
 
 export const SLIDER_HELP_CATALOG: Record<string, SliderHelpEntry> = {
   ...mixEntries,
+  ...routingEntries,
   ...globalEntries,
   ...synthEntries,
   ...reverbEntries,

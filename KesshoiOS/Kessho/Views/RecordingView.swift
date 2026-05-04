@@ -30,7 +30,7 @@ struct RecordingView: View {
             }
             .background(Color(red: 0.08, green: 0.08, blue: 0.12))
             .navigationTitle("Recording")
-            .navigationBarTitleDisplayMode(.inline)
+            .kesshoInlineNavigationTitle()
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
@@ -473,16 +473,40 @@ struct RecordingRow: View {
     }
 }
 
+#if os(iOS)
 /// Share sheet for iOS
 struct ShareSheet: UIViewControllerRepresentable {
     let activityItems: [Any]
-    
+
     func makeUIViewController(context: Context) -> UIActivityViewController {
         UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
     }
-    
+
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
+#else
+/// Lightweight macOS fallback for the recording share sheet.
+struct ShareSheet: View {
+    let activityItems: [Any]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Recording saved")
+                .font(.headline)
+
+            ForEach(Array(activityItems.enumerated()), id: \.offset) { _, item in
+                if let url = item as? URL {
+                    Text(url.path)
+                        .font(.caption)
+                        .textSelection(.enabled)
+                }
+            }
+        }
+        .padding()
+        .frame(minWidth: 360)
+    }
+}
+#endif
 
 #Preview {
     RecordingView()

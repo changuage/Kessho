@@ -1,27 +1,12 @@
 /* Dynamics Page — matches Granular/Reverb section-card pattern */
 
 .dynamics-root {
-  --bg-base: #1a1a2e;
-  --bg-input: rgba(0, 0, 0, 0.3);
-  --bg-surface: rgba(15, 25, 40, 0.95);
-  --bg-control: rgba(255, 255, 255, 0.08);
-  --bg-control-hover: rgba(255, 255, 255, 0.15);
-  --border-subtle: rgba(255, 255, 255, 0.1);
-  --border-medium: rgba(255, 255, 255, 0.2);
-  --text-primary: #e0e0e0;
-  --text-secondary: #9ca3af;
-  --text-muted: #666;
-  --text-dim: #555;
+  /* Engine-specific accents (beyond design system) */
   --accent-dynamics: #06b6d4;
   --accent-character: #10b981;
   --accent-degrade: #8b5cf6;
   --accent-saturation: #eab308;
   --accent-end: #f59e0b;
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --font-xs: 0.55rem;
-  --font-sm: 0.65rem;
-  --font-md: 0.75rem;
 
   color: var(--text-primary);
   max-width: 100%;
@@ -46,7 +31,7 @@
   margin: 0 auto;
   display: grid;
   grid-template-columns: minmax(270px, 1fr) minmax(340px, 1.25fr) minmax(270px, 1fr);
-  gap: 10px;
+  gap: var(--k-gap-container, 10px);
   align-items: flex-start;
 }
 
@@ -345,6 +330,49 @@
   border-color: var(--accent-degrade);
 }
 
+.dynamics-viz-frame {
+  width: 100%;
+  height: 156px;
+  margin: 8px 0 10px;
+  overflow: hidden;
+  position: relative;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: #0e1420;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.035),
+    0 8px 18px rgba(0, 0, 0, 0.16);
+}
+
+.dynamics-viz-frame canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.dynamics-viz-frame-interactive canvas {
+  cursor: grab;
+  touch-action: none;
+}
+
+.dynamics-viz-frame-interactive canvas:active {
+  cursor: grabbing;
+}
+
+.dynamics-viz-character {
+  height: 172px;
+}
+
+.dynamics-viz-degrade {
+  height: 224px;
+}
+
+.dynamics-viz-saturation,
+.dynamics-viz-compressor,
+.dynamics-viz-sidechain {
+  height: 166px;
+}
+
 .dynamics-grid-2 {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -428,6 +456,14 @@
 @media (max-width: 560px) {
   .dynamics-grid-2 {
     grid-template-columns: 1fr;
+  }
+
+  .dynamics-viz-frame {
+    height: 168px;
+  }
+
+  .dynamics-viz-degrade {
+    height: 246px;
   }
 
   .dynamics-select-wrap {

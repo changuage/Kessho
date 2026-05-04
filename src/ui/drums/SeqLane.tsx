@@ -11,6 +11,7 @@ import {
 } from '../../audio/drumSeqTypes';
 import DragNumber from './DragNumber';
 import { SliderPrimitive } from '../sliderSystem';
+import { SEQUENCER_SUB_LANE_COLORS } from '../../designSystem/colors';
 
 type LaneKind = 'trigger' | 'pitch' | 'expression' | 'morph' | 'distance' | 'slice' | 'reverse';
 
@@ -23,6 +24,16 @@ const DIRECTION_LABELS: Record<LaneDirection, string> = {
 const PROB_DRAG_RANGE_PX = 80; // vertical pixel range for full 0–100% drag
 const SEQ_BIPOLAR_DRAG_DISTANCE_FACTOR = 3.6;
 const SEQ_SUBSEQ_DRAG_DISTANCE_FACTOR = 1.8;
+
+const FALLBACK_LANE_COLORS: Record<LaneKind, string> = {
+  trigger: SEQUENCER_SUB_LANE_COLORS.pitch,
+  pitch: SEQUENCER_SUB_LANE_COLORS.pitch,
+  expression: SEQUENCER_SUB_LANE_COLORS.expression,
+  morph: SEQUENCER_SUB_LANE_COLORS.morph,
+  distance: SEQUENCER_SUB_LANE_COLORS.distance,
+  slice: SEQUENCER_SUB_LANE_COLORS.slice,
+  reverse: SEQUENCER_SUB_LANE_COLORS.reverse,
+};
 
 function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
   const normalized = hex.trim().replace('#', '');
@@ -190,7 +201,8 @@ const SeqLane: React.FC<SeqLaneProps> = ({
   onChangePitchNoteMax,
   hidePitchNoteRange = false,
 }) => {
-  const cursorMarkerStyle = getCursorMarkerStyle(color);
+  const laneAccent = color || FALLBACK_LANE_COLORS[lane];
+  const cursorMarkerStyle = getCursorMarkerStyle(laneAccent);
   const laneSteps = lane === 'trigger'
     ? sequencer.trigger.steps
     : lane === 'pitch'
@@ -243,9 +255,10 @@ const SeqLane: React.FC<SeqLaneProps> = ({
   const normalizedRangeMax = clampUnit(rangeMax ?? (lane === 'expression' ? 1 : lane === 'distance' ? 1 : 0.75));
   const rangeLow = Math.min(normalizedRangeMin, normalizedRangeMax);
   const rangeHigh = Math.max(normalizedRangeMin, normalizedRangeMax);
+  const laneAccentStyle = { '--lane-color': laneAccent } as React.CSSProperties;
 
   return (
-    <div className={`seq-lane ${laneClassMap[lane]}${!enabled ? ' disabled' : ''}`}>
+    <div className={`seq-lane ${laneClassMap[lane]}${!enabled ? ' disabled' : ''}`} style={laneAccentStyle}>
       {/* Lane header with controls — hidden for trigger (DrumPage has its own) */}
       {lane !== 'trigger' && (
       <div className="seq-lane-header">
@@ -542,7 +555,7 @@ const SeqLane: React.FC<SeqLaneProps> = ({
 
               return (
                 <div key={step} className="seq-step">
-                  <span className="seq-step-num" style={{ color: '#ff6b81' }}>{isBeatHead ? step + 1 : ''}</span>
+                  <span className="seq-step-num" style={{ color: laneAccent }}>{isBeatHead ? step + 1 : ''}</span>
                   <div
                     className={`seq-pitch-bar-wrap${isPlayhead ? ' playing' : ''}${isSelected ? ' selected' : ''}${!inRange ? ' inactive' : ''}`}
                     style={{ touchAction: 'none' } as React.CSSProperties}
@@ -603,7 +616,7 @@ const SeqLane: React.FC<SeqLaneProps> = ({
 
               return (
                 <div key={step} className="seq-step">
-                  <span className="seq-step-num" style={{ color: '#ffa502' }}>{isBeatHead ? step + 1 : ''}</span>
+                  <span className="seq-step-num" style={{ color: laneAccent }}>{isBeatHead ? step + 1 : ''}</span>
                   <div
                     className={`seq-vel-bar-wrap${isPlayhead ? ' playing' : ''}${isSelected ? ' selected' : ''}${!inRange ? ' inactive' : ''}`}
                     style={{ touchAction: 'none' } as React.CSSProperties}
@@ -645,7 +658,8 @@ const SeqLane: React.FC<SeqLaneProps> = ({
                       className="seq-vel-bar"
                       style={{
                         height: `${vel * 100}%`,
-                        background: `rgba(255,165,2,${alpha})`,
+                        background: laneAccent,
+                        opacity: Number(alpha),
                         filter: `brightness(${bright})`,
                       }}
                     />
@@ -689,7 +703,7 @@ const SeqLane: React.FC<SeqLaneProps> = ({
 
               return (
                 <div key={step} className="seq-step">
-                  <span className="seq-step-num" style={{ color: '#c084fc' }}>{isBeatHead ? step + 1 : ''}</span>
+                  <span className="seq-step-num" style={{ color: laneAccent }}>{isBeatHead ? step + 1 : ''}</span>
                   <div
                     className={`seq-morph-bar-wrap${isPlayhead ? ' playing' : ''}${isSelected ? ' selected' : ''}${!inRange ? ' inactive' : ''}`}
                     style={{ touchAction: 'none' } as React.CSSProperties}
@@ -747,7 +761,7 @@ const SeqLane: React.FC<SeqLaneProps> = ({
 
               return (
                 <div key={step} className="seq-step">
-                  <span className="seq-step-num" style={{ color: '#06b6d4' }}>{isBeatHead ? step + 1 : ''}</span>
+                  <span className="seq-step-num" style={{ color: laneAccent }}>{isBeatHead ? step + 1 : ''}</span>
                   <div
                     className={`seq-vel-bar-wrap${isPlayhead ? ' playing' : ''}${!inRange ? ' inactive' : ''}`}
                     style={{ touchAction: 'none' } as React.CSSProperties}
@@ -779,7 +793,8 @@ const SeqLane: React.FC<SeqLaneProps> = ({
                       className="seq-vel-bar"
                       style={{
                         height: `${pct}%`,
-                        background: `rgba(6,182,212,${(0.25 + (sliceVal / 15) * 0.75).toFixed(3)})`,
+                        background: laneAccent,
+                        opacity: 0.25 + (sliceVal / 15) * 0.75,
                       }}
                     />
                     <div className="seq-vel-label">S{sliceVal}</div>
@@ -794,11 +809,11 @@ const SeqLane: React.FC<SeqLaneProps> = ({
 
               return (
                 <div key={step} className="seq-step">
-                  <span className="seq-step-num" style={{ color: '#f472b6' }}>{isBeatHead ? step + 1 : ''}</span>
+                  <span className="seq-step-num" style={{ color: laneAccent }}>{isBeatHead ? step + 1 : ''}</span>
                   <button
                     type="button"
                     className={`seq-step-cell${isReversed ? ' active' : ''}${isPlayhead ? ' playing' : ''}${!inRange ? ' inactive' : ''}`}
-                    style={{ '--sc': '#f472b6', touchAction: 'none', fontSize: '0.65rem' } as React.CSSProperties}
+                    style={{ '--sc': laneAccent, touchAction: 'none', fontSize: '0.65rem' } as React.CSSProperties}
                     onClick={() => inRange ? onChangeValue?.(step, isReversed ? 0 : 1) : undefined}
                   >
                     {isReversed ? '\u25c0' : '\u25b6'}
@@ -816,7 +831,7 @@ const SeqLane: React.FC<SeqLaneProps> = ({
 
               return (
                 <div key={step} className="seq-step">
-                  <span className="seq-step-num" style={{ color: '#2dd4bf' }}>{isBeatHead ? step + 1 : ''}</span>
+                  <span className="seq-step-num" style={{ color: laneAccent }}>{isBeatHead ? step + 1 : ''}</span>
                   <div
                     className={`seq-vel-bar-wrap${isPlayhead ? ' playing' : ''}${isSelected ? ' selected' : ''}${!inRange ? ' inactive' : ''}`}
                     style={{ touchAction: 'none' } as React.CSSProperties}
@@ -858,7 +873,8 @@ const SeqLane: React.FC<SeqLaneProps> = ({
                       className="seq-vel-bar"
                       style={{
                         height: `${val * 100}%`,
-                        background: `rgba(45,212,191,${alpha})`,
+                        background: laneAccent,
+                        opacity: Number(alpha),
                         filter: `brightness(${bright})`,
                       }}
                     />

@@ -5,7 +5,7 @@ import Foundation
 /// until a dedicated migration/parity layer is introduced.
 public struct SliderState: Codable, Equatable {
     // Master
-    var masterVolume: Double = 0.7
+    var masterVolume: Double = 0.85
     var synthLevel: Double = 0.6
     var granularLevel: Double = 0.4
     var synthReverbSend: Double = 0.7

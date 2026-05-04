@@ -6,29 +6,8 @@
 
 /* ══ Design Tokens ══ */
 .global-root {
-  --bg-base: #1a1a2e;
-  --bg-input: rgba(0, 0, 0, 0.3);
-  --bg-surface: rgba(15, 25, 40, 0.95);
-  --bg-elevated: rgba(255,255,255,0.05);
-  --bg-control: rgba(255,255,255,0.08);
-  --bg-control-hover: rgba(255,255,255,0.15);
-  --border-subtle: rgba(255, 255, 255, 0.1);
-  --border-medium: rgba(255, 255, 255, 0.2);
-  --border-accent: rgba(100, 150, 200, 0.3);
-  --text-primary: #e0e0e0;
-  --text-secondary: #9ca3af;
-  --text-muted: #666;
-  --text-dim: #555;
-  --accent-primary: #a5c4d4;
+  /* Engine-specific accents (beyond design system) */
   --accent-harmony: #818cf8;
-  --accent-green: #2ecc71;
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --font-xs: 0.65rem;
-  --font-sm: 0.7rem;
-  --font-md: 0.75rem;
-  --font-lg: 0.85rem;
 }
 
 .global-root * { box-sizing: border-box; }
@@ -39,7 +18,7 @@
   max-width: 1200px;
   margin: 0 auto;
   display: flex;
-  gap: 12px;
+  gap: var(--k-gap-container, 10px);
   align-items: flex-start;
   flex-wrap: wrap;
 }

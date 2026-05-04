@@ -108,6 +108,49 @@ type SidechainTargetNode = {
   duckingUntil: number;
 };
 
+export type DynamicsAnalyserKey =
+  | 'input'
+  | 'postCharacter'
+  | 'preSaturation'
+  | 'postSaturation'
+  | 'endInput'
+  | 'endOutput';
+
+export type DynamicsWorkletVisualTelemetry = {
+  inputPeak: number;
+  outputPeak: number;
+  wetPeak: number;
+  characterEnv: number;
+  characterReductionDb: number;
+  dropoutGain: number;
+  endInputPeak: number;
+  endOutputPeak: number;
+  endReductionDb: number;
+  endDetectorDb: number;
+  timestamp: number;
+};
+
+export type DynamicsSidechainVisualEvent = {
+  id: number;
+  time: number;
+  voice: DrumVoiceType;
+  attack: number;
+  hold: number;
+  release: number;
+  amount: number;
+  keyStrength: number;
+  targetStrength: number;
+  reductionDb: number;
+};
+
+export type DynamicsVisualTelemetrySnapshot = {
+  contextTime: number;
+  endCompHandledByWorklet: boolean;
+  endCompReductionDb: number;
+  worklet: DynamicsWorkletVisualTelemetry | null;
+  sidechainEvents: DynamicsSidechainVisualEvent[];
+};
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
@@ -163,6 +206,7 @@ type PerfMetrics = {
   avgPercent: number;
   peakPercent: number;
   missPercent: number | null;
+  scope?: 'worklet' | 'source';
 };
 
 type EarthTextureRuntime = {
@@ -483,6 +527,9 @@ const ENGINE_TRIMS = {
   earth:    1.0,   // earth bus (water + insects + waves) — unity
 };
 
+const DEFAULT_MASTER_VOLUME = 0.85;
+const MASTER_OUTPUT_TRIM = 1.18;
+
 const FX_OWNERSHIP_WINDOW_MS = 140;
 const FX_OWNERSHIP_STEAL_MARGIN = 0.05;
 const FX_OWNERSHIP_STEAL_RATIO = 1.15;
@@ -600,12 +647,17 @@ function alignSequencerTime(now: number, stepDuration: number): number {
   return Math.ceil(now / stepDuration) * stepDuration;
 }
 
-function makeMasterSaturationCurve(mode: SliderState['dynamicsSaturationMode'] | SliderState['masterSatMode'], samples = 8192): Float32Array<ArrayBuffer> {
+type MasterSaturationCurveMode = SliderState['dynamicsSaturationMode'] | SliderState['masterSatMode'] | 'linear';
+
+function makeMasterSaturationCurve(mode: MasterSaturationCurveMode, samples = 8192): Float32Array<ArrayBuffer> {
   const curve = new Float32Array(new ArrayBuffer(samples * Float32Array.BYTES_PER_ELEMENT));
   const half = (samples - 1) / 2;
   for (let i = 0; i < samples; i++) {
     const x = (i - half) / half;
     switch (mode) {
+      case 'linear':
+        curve[i] = x;
+        break;
       case 'tape':
         curve[i] = Math.tanh(x * 1.5) * 0.9 + x * 0.1;
         break;
@@ -635,7 +687,7 @@ export class AudioEngine {
   private satWaveshaper: WaveShaperNode | null = null;
   private satPostTone: BiquadFilterNode | null = null;
   private satPostGain: GainNode | null = null;
-  private lastMasterSatMode: SliderState['dynamicsSaturationMode'] | SliderState['masterSatMode'] | null = null;
+  private lastMasterSatMode: MasterSaturationCurveMode | null = null;
   private characterInputGain: GainNode | null = null;
   private characterProcessorNode: AudioWorkletNode | GainNode | null = null;
   private characterProcessorNodeMode: 'gain' | 'worklet' | null = null;
@@ -653,6 +705,10 @@ export class AudioEngine {
   private endCompWetGain: GainNode | null = null;
   private endCompOutputGain: GainNode | null = null;
   private sidechainTargets: Partial<Record<SidechainTargetKey, SidechainTargetNode>> = {};
+  private dynamicsAnalysers: Partial<Record<DynamicsAnalyserKey, AnalyserNode>> = {};
+  private dynamicsWorkletTelemetry: DynamicsWorkletVisualTelemetry | null = null;
+  private sidechainVisualEvents: DynamicsSidechainVisualEvent[] = [];
+  private sidechainVisualEventId = 1;
   private mediaStreamDest: MediaStreamAudioDestinationNode | null = null;
   private voices: Voice[] = [];
   private reverbNode: AudioWorkletNode | null = null;
@@ -3068,9 +3124,9 @@ export class AudioEngine {
     }
     if (!this.satWaveshaper) {
       this.satWaveshaper = ctx.createWaveShaper();
-      this.satWaveshaper.curve = makeMasterSaturationCurve('clean');
+      this.satWaveshaper.curve = makeMasterSaturationCurve('linear');
       this.satWaveshaper.oversample = 'none';
-      this.lastMasterSatMode = 'clean';
+      this.lastMasterSatMode = 'linear';
     }
     if (this.satPostTone && this.satPostTone.context !== ctx) {
       try { this.satPostTone.disconnect(); } catch { /* */ }
@@ -3112,6 +3168,7 @@ export class AudioEngine {
     this.characterProcessorNode = null;
     this.characterProcessorNodeMode = null;
     this.characterOutputGain = null;
+    this.dynamicsWorkletTelemetry = null;
     this.dynamicsRoutingKey = null;
   }
 
@@ -3144,6 +3201,7 @@ export class AudioEngine {
       try { target.duck.disconnect(); } catch { /* */ }
     }
     this.sidechainTargets = {};
+    this.sidechainVisualEvents = [];
   }
 
   private getSidechainTargetInput(ctx: AudioContext, key: SidechainTargetKey, destination: AudioNode): GainNode {
@@ -3242,17 +3300,39 @@ export class AudioEngine {
     const gainReductionDb = kneeOverDb * (1 - 1 / ratio);
     const duckFactor = Math.max(0.005, Math.pow(10, -gainReductionDb / 20));
     const makeup = Math.max(0.25, Math.min(4, state.sidechainMakeup ?? 1));
+    let visualTargetStrength = 0;
+    let visualDuckAmount = 0;
+    let visualReductionDb = 0;
 
     for (const [key, target] of activeTargets) {
       const amount = this.getSidechainTargetAmount(state, key);
       const restGain = amount;
       const duckedGain = Math.min(restGain * 1.2, restGain * duckFactor * makeup);
+      const totalDuckedGain = clampUnitInterval((1 - amount) + duckedGain);
+      visualTargetStrength = Math.max(visualTargetStrength, amount);
+      visualDuckAmount = Math.max(visualDuckAmount, 1 - totalDuckedGain);
+      visualReductionDb = Math.max(visualReductionDb, -20 * Math.log10(Math.max(0.0001, totalDuckedGain)));
       const param = target.duck.gain;
       param.cancelScheduledValues(now);
       param.setValueAtTime(param.value, now);
       param.linearRampToValueAtTime(duckedGain, now + attack);
       param.setTargetAtTime(restGain, now + attack + hold, release / 3);
       target.duckingUntil = now + attack + hold + release;
+    }
+    if (visualTargetStrength > 0.0001) {
+      this.sidechainVisualEvents.push({
+        id: this.sidechainVisualEventId++,
+        time: now,
+        voice,
+        attack,
+        hold,
+        release,
+        amount: clampUnitInterval(visualDuckAmount),
+        keyStrength: triggerStrength,
+        targetStrength: visualTargetStrength,
+        reductionDb: visualReductionDb,
+      });
+      this.pruneSidechainVisualEvents(now);
     }
   }
 
@@ -3264,6 +3344,49 @@ export class AudioEngine {
     compressor.attack.value = 0.01;
     compressor.release.value = 0.18;
     return compressor;
+  }
+
+  private getOrCreateDynamicsAnalyser(ctx: AudioContext, key: DynamicsAnalyserKey): AnalyserNode {
+    const existing = this.dynamicsAnalysers[key];
+    if (existing && existing.context === ctx) return existing;
+    try { existing?.disconnect(); } catch { /* noop */ }
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 512;
+    analyser.smoothingTimeConstant = 0.5;
+    this.dynamicsAnalysers[key] = analyser;
+    return analyser;
+  }
+
+  private connectDynamicsAnalyserTap(key: DynamicsAnalyserKey, source: AudioNode | null | undefined): void {
+    if (!this.ctx || !source) return;
+    const analyser = this.getOrCreateDynamicsAnalyser(this.ctx, key);
+    try {
+      source.connect(analyser);
+    } catch { /* duplicate or incompatible tap; audio path remains authoritative */ }
+  }
+
+  private connectDynamicsAnalyserTaps(routing: DynamicsRoutingTargets): void {
+    this.connectDynamicsAnalyserTap('input', this.masterGain);
+    this.connectDynamicsAnalyserTap(
+      'postCharacter',
+      routing.characterPathActive ? this.characterOutputGain : this.masterGain,
+    );
+    this.connectDynamicsAnalyserTap('preSaturation', this.satPreGain);
+    this.connectDynamicsAnalyserTap('postSaturation', this.satPostGain);
+    if (routing.endChainActive) {
+      this.connectDynamicsAnalyserTap('endInput', this.endCompInputGain);
+      this.connectDynamicsAnalyserTap('endOutput', this.endCompOutputGain);
+    }
+  }
+
+  private pruneSidechainVisualEvents(now: number): void {
+    const keepAfter = now - 8;
+    if (this.sidechainVisualEvents.length > 80) {
+      this.sidechainVisualEvents = this.sidechainVisualEvents.slice(-80);
+    }
+    if (this.sidechainVisualEvents.length > 0 && this.sidechainVisualEvents[0]!.time < keepAfter) {
+      this.sidechainVisualEvents = this.sidechainVisualEvents.filter((event) => event.time >= keepAfter);
+    }
   }
 
   private ensureDynamicsCharacterWorkletModule(ctx: AudioContext): void {
@@ -3339,6 +3462,31 @@ export class AudioEngine {
             wasmBinary: this.wasmDynamicsCharacterBinary,
           },
         });
+        this.characterProcessorNode.port.onmessage = (event) => {
+          if (event.data?.type === 'perf') {
+            this.handlePerfMessage(event.data);
+          } else if (event.data?.type === 'dynamicsTelemetry') {
+            const now = this.ctx?.currentTime ?? 0;
+            this.dynamicsWorkletTelemetry = {
+              inputPeak: Math.max(0, Number(event.data.inputPeak) || 0),
+              outputPeak: Math.max(0, Number(event.data.outputPeak) || 0),
+              wetPeak: Math.max(0, Number(event.data.wetPeak) || 0),
+              characterEnv: Math.max(0, Number(event.data.characterEnv) || 0),
+              characterReductionDb: Math.max(0, Number(event.data.characterReductionDb) || 0),
+              dropoutGain: Math.max(0, Number(event.data.dropoutGain) || 0),
+              endInputPeak: Math.max(0, Number(event.data.endInputPeak) || 0),
+              endOutputPeak: Math.max(0, Number(event.data.endOutputPeak) || 0),
+              endReductionDb: Math.max(0, Number(event.data.endReductionDb) || 0),
+              endDetectorDb: Number.isFinite(Number(event.data.endDetectorDb)) ? Number(event.data.endDetectorDb) : -90,
+              timestamp: now,
+            };
+          } else if (event.data?.type === 'wasmReady') {
+            console.log('Dynamics Character WASM engine initialized');
+          }
+        };
+        if (this.perfMonitorEnabled) {
+          this.characterProcessorNode.port.postMessage({ type: 'enablePerf', enabled: true });
+        }
         this.characterProcessorNodeMode = 'worklet';
         return;
       } catch (error) {
@@ -3439,6 +3587,7 @@ export class AudioEngine {
     } else {
       this.satPostGain!.connect(this.limiter);
     }
+    this.connectDynamicsAnalyserTaps(resolvedRouting);
     this.dynamicsRoutingKey = this.getDynamicsRoutingKey(resolvedRouting);
   }
 
@@ -3462,11 +3611,13 @@ export class AudioEngine {
       : 'clean') as SliderState['dynamicsSaturationMode'] | SliderState['masterSatMode'];
     const preGainValue = 1 + drive * 3;
     const postCompensation = 1 / (1 + drive * 1.5);
-    const tiltDb = (tone - 0.5) * 12;
+    const effectiveTone = rawDrive > 0.0001 ? tone : 0.5;
+    const curveMode: MasterSaturationCurveMode = drive > 0.0001 ? mode : 'linear';
+    const tiltDb = (effectiveTone - 0.5) * 12;
 
-    if (this.satWaveshaper && mode !== this.lastMasterSatMode) {
-      this.satWaveshaper.curve = makeMasterSaturationCurve(mode);
-      this.lastMasterSatMode = mode;
+    if (this.satWaveshaper && curveMode !== this.lastMasterSatMode) {
+      this.satWaveshaper.curve = makeMasterSaturationCurve(curveMode);
+      this.lastMasterSatMode = curveMode;
     }
     if (this.satWaveshaper) {
       this.satWaveshaper.oversample = drive > 0.1 ? '2x' : 'none';
@@ -3855,38 +4006,85 @@ export class AudioEngine {
     if (this.leadFmWasmNode) this.leadFmWasmNode.port.postMessage(msg);
     if (this.drumWasmNode) this.drumWasmNode.port.postMessage(msg);
     if (this.spectralFreezeNode) this.spectralFreezeNode.port.postMessage(msg);
+    if (this.characterProcessorNode instanceof AudioWorkletNode) this.characterProcessorNode.port.postMessage(msg);
   }
 
   setPerfUpdateCallback(callback: ((data: Record<string, PerfMetrics>) => void) | null) {
     this.onPerfUpdate = callback;
   }
 
+  private roundPerfPercent(value: number): number {
+    return Math.round(value * 10) / 10;
+  }
+
+  private setPerfMetric(
+    key: string,
+    avgPercent: number,
+    peakPercent = avgPercent,
+    missPercent: number | null = 0,
+    scope: PerfMetrics['scope'] = 'worklet',
+  ): void {
+    if (!Number.isFinite(avgPercent)) return;
+    const safePeak = Number.isFinite(peakPercent) ? peakPercent : avgPercent;
+    this.perfData[key] = {
+      avgPercent: this.roundPerfPercent(avgPercent),
+      peakPercent: this.roundPerfPercent(safePeak),
+      missPercent: missPercent === null
+        ? null
+        : this.roundPerfPercent(Number.isFinite(missPercent) ? missPercent : 0),
+      scope,
+    };
+  }
+
   /** Handle incoming perf message from any worklet */
   private handlePerfMessage(data: Record<string, unknown>) {
     // Standard format: { name: string, cpuPercent: number }
     if (typeof data.name === 'string' && typeof data.cpuPercent === 'number') {
-      this.perfData[data.name] = {
-        avgPercent: Math.round(data.cpuPercent * 10) / 10,
-        peakPercent: Math.round((((data.peakPercent as number) ?? data.cpuPercent) as number) * 10) / 10,
-        missPercent: typeof data.missPercent === 'number'
-          ? Math.round(data.missPercent * 10) / 10
-          : 0,
-      };
+      this.setPerfMetric(
+        data.name,
+        data.cpuPercent,
+        typeof data.peakPercent === 'number' ? data.peakPercent : data.cpuPercent,
+        typeof data.missPercent === 'number' ? data.missPercent : 0,
+      );
     }
-    // Soundscapes format: { avgMs, budgetMs, waterMs, insectsMs, fireMs }
-    if (typeof data.budgetMs === 'number' && typeof data.waterMs === 'number') {
+    // Soundscapes format: total worklet timing plus per-source timing details.
+    if (typeof data.budgetMs === 'number') {
       const budget = data.budgetMs as number;
       if (budget > 0) {
-        this.perfData['water'] = {
-          avgPercent: Math.round(((data.waterMs as number) / budget) * 1000) / 10,
-          peakPercent: Math.round(((((data.waterPeakMs as number) ?? data.waterMs) as number) / budget) * 1000) / 10,
-          missPercent: null,
+        if (typeof data.avgMs === 'number') {
+          this.setPerfMetric(
+            'soundscapes-wasm',
+            (data.avgMs / budget) * 100,
+            typeof data.peakMs === 'number' ? (data.peakMs / budget) * 100 : (data.avgMs / budget) * 100,
+            typeof data.missPercent === 'number' ? data.missPercent : 0,
+          );
+        }
+
+        const setSourceMetric = (key: string, avgMsKey: string, peakMsKey: string): boolean => {
+          const avgMs = data[avgMsKey];
+          if (typeof avgMs !== 'number') return false;
+          const peakMs = data[peakMsKey];
+          this.setPerfMetric(
+            key,
+            (avgMs / budget) * 100,
+            typeof peakMs === 'number' ? (peakMs / budget) * 100 : (avgMs / budget) * 100,
+            null,
+            'source',
+          );
+          return true;
         };
-        this.perfData['insects'] = {
-          avgPercent: Math.round((((data.insectsMs as number) || 0) / budget) * 1000) / 10,
-          peakPercent: Math.round((((((data.insectsPeakMs as number) ?? data.insectsMs) as number) || 0) / budget) * 1000) / 10,
-          missPercent: null,
-        };
+
+        setSourceMetric('water', 'waterMs', 'waterPeakMs');
+        const hasInsects1 = setSourceMetric('insects-1', 'insects1Ms', 'insects1PeakMs');
+        const hasInsects2 = setSourceMetric('insects-2', 'insects2Ms', 'insects2PeakMs');
+        const hasSplitInsects = hasInsects1 || hasInsects2;
+        if (hasSplitInsects) {
+          delete this.perfData['insects'];
+        } else {
+          setSourceMetric('insects', 'insectsMs', 'insectsPeakMs');
+          delete this.perfData['insects-1'];
+          delete this.perfData['insects-2'];
+        }
         delete this.perfData['ocean'];
       }
     }
@@ -4467,7 +4665,7 @@ export class AudioEngine {
       // Need a master gain for drums
       if (!this.masterGain) {
         this.masterGain = this.ctx.createGain();
-        this.masterGain.gain.value = sliderState.masterVolume ?? 0.7;
+        this.masterGain.gain.value = (sliderState.masterVolume ?? DEFAULT_MASTER_VOLUME) * MASTER_OUTPUT_TRIM;
         this.limiter = this.createMasterLimiter(this.ctx);
         this.wireMasterOutputChain(this.ctx);
         this.limiter.connect(this.ctx.destination);
@@ -5888,7 +6086,7 @@ export class AudioEngine {
 
     // Master chain
     this.masterGain = ctx.createGain();
-    this.masterGain.gain.value = this.sliderState?.masterVolume ?? 0.7;
+    this.masterGain.gain.value = (this.sliderState?.masterVolume ?? DEFAULT_MASTER_VOLUME) * MASTER_OUTPUT_TRIM;
 
     // Limiter (dynamics compressor configured as limiter)
     this.limiter = this.createMasterLimiter(ctx);
@@ -7918,7 +8116,7 @@ export class AudioEngine {
     const padState = this.getEffectivePadState(state);
 
     // Master volume
-    this.masterGain?.gain.setTargetAtTime(fin(state.masterVolume, 0.5), now, smoothTime);
+    this.masterGain?.gain.setTargetAtTime(fin(state.masterVolume, DEFAULT_MASTER_VOLUME) * MASTER_OUTPUT_TRIM, now, smoothTime);
     this.applyMasterSaturation(state, now);
     this.applyDynamics(state, now);
     this.applySidechainTargetGains(state, now, smoothTime);
@@ -9990,7 +10188,7 @@ export class AudioEngine {
     // Create master output chain if needed
     if (!this.masterGain) {
       this.masterGain = this.ctx.createGain();
-      this.masterGain.gain.value = this.sliderState?.masterVolume ?? 0.7;
+      this.masterGain.gain.value = (this.sliderState?.masterVolume ?? DEFAULT_MASTER_VOLUME) * MASTER_OUTPUT_TRIM;
       this.limiter = this.createMasterLimiter(this.ctx);
       this.wireMasterOutputChain(this.ctx);
       this.limiter.connect(this.ctx.destination);
@@ -10810,6 +11008,35 @@ export class AudioEngine {
   // Recording support - get limiter node (final output before destination)
   getLimiterNode(): DynamicsCompressorNode | null {
     return this.limiter;
+  }
+
+  getDynamicsAnalyser(key: DynamicsAnalyserKey): AnalyserNode | null {
+    const analyser = this.dynamicsAnalysers[key];
+    return analyser && analyser.context === this.ctx ? analyser : null;
+  }
+
+  getDynamicsVisualTelemetry(): DynamicsVisualTelemetrySnapshot {
+    const contextTime = this.ctx?.currentTime ?? 0;
+    this.pruneSidechainVisualEvents(contextTime);
+    const reduction = this.endCompCompressor?.reduction;
+    const reductionValue = typeof reduction === 'number' ? reduction : 0;
+    const nativeReductionDb = Number.isFinite(reductionValue)
+      ? Math.max(0, reductionValue < 0 ? -reductionValue : reductionValue)
+      : 0;
+    const endCompHandledByWorklet = Boolean(
+      this.sliderState &&
+      resolveDynamicsTargets(this.sliderState, this.ctx?.sampleRate ?? 44100).routing.endChainActive &&
+      this.characterProcessorNodeMode === 'worklet',
+    );
+    return {
+      contextTime,
+      endCompHandledByWorklet,
+      endCompReductionDb: endCompHandledByWorklet
+        ? Math.max(0, this.dynamicsWorkletTelemetry?.endReductionDb ?? 0)
+        : nativeReductionDb,
+      worklet: this.dynamicsWorkletTelemetry,
+      sidechainEvents: this.sidechainVisualEvents.slice(),
+    };
   }
 
   // ===== STEM RECORDING SUPPORT =====

@@ -91,6 +91,7 @@ void dynamics_degrade_process_block(int block_size) {
     const float alias_focus = std::pow(g_state.alias, 1.35f);
     const float destructive = clamp01(alias_focus * (0.6f + g_state.corrosion * 0.55f));
     const float damage = clamp01(alias_focus * 0.34f + g_state.generation * 0.2f + g_state.corrosion * 0.14f);
+    const bool clean_media_path = alias_focus <= 0.0001f && g_state.generation <= 0.0001f && g_state.corrosion <= 0.0001f;
     const float rate_ratio = std::fmax(0.2f, 1.0f / (1.0f + alias_focus * 3.2f + g_state.generation * 0.7f + g_state.corrosion * 0.55f));
     const float bit_depth = std::fmax(9.0f, 16.0f - alias_focus * 3.2f - g_state.generation * 1.1f - g_state.corrosion * 1.1f);
     const float quant_steps = std::fmax(8.0f, std::pow(2.0f, bit_depth));
@@ -101,6 +102,7 @@ void dynamics_degrade_process_block(int block_size) {
     const float alpha = std::fmin(1.0f, 1.0f - std::exp((-2.0f * static_cast<float>(M_PI) * cutoff_hz) / g_state.sample_rate));
     const float fold = 1.0f + g_state.corrosion * 0.58f + g_state.generation * 0.2f + destructive * 0.34f;
     const float inv_fold_tanh = 1.0f / std::fmax(1.0e-6f, std::tanh(fold));
+    const float shaper_trim = 1.0f / (1.0f + (fold - 1.0f) * (0.52f + g_state.mix * 0.22f) + destructive * 0.18f + damage * 0.12f);
     const float wet_lift = 0.08f + damage * 0.18f + destructive * 0.18f;
 
     for (int channel = 0; channel < 2; ++channel) {
@@ -112,6 +114,18 @@ void dynamics_degrade_process_block(int block_size) {
             const int index = i * 2 + channel;
             const float dry = std::isfinite(g_state.input[index]) ? g_state.input[index] : 0.0f;
 
+            if (clean_media_path) {
+                held = dry;
+                if (g_state.wear <= 0.0001f) {
+                    lp = dry;
+                    g_state.output[index] = dry;
+                    continue;
+                }
+                lp += (dry - lp) * alpha;
+                g_state.output[index] = dry + (lp - dry) * g_state.mix;
+                continue;
+            }
+
             phase += rate_ratio;
             if (phase >= 1.0f) {
                 phase -= std::floor(phase);
@@ -119,7 +133,7 @@ void dynamics_degrade_process_block(int block_size) {
             }
 
             float wet = std::round(held * quant_steps) / quant_steps;
-            wet = std::tanh(wet * fold) * inv_fold_tanh;
+            wet = std::tanh(wet * fold) * inv_fold_tanh * shaper_trim;
             lp += (wet - lp) * alpha;
             wet = lp + (wet - lp) * wet_lift;
             g_state.output[index] = dry + (wet - dry) * g_state.mix;

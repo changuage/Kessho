@@ -1,6 +1,8 @@
 import AVFoundation
 import Foundation
 
+#if os(iOS)
+
 /// Owns the app's audio session policy and forwards session lifecycle events.
 ///
 /// This service is intentionally separate from the audio engine so the iOS
@@ -190,3 +192,44 @@ public final class AudioSessionManager {
         )
     }
 }
+
+#else
+
+/// macOS no-op implementation matching the iOS audio-session service API.
+public final class AudioSessionManager {
+    public static let shared = AudioSessionManager()
+
+    public private(set) var isConfigured = false
+    public private(set) var isActive = false
+
+    private init() {}
+
+    public func configureForPlayback(
+        preferredSampleRate: Double? = nil,
+        preferredIOBufferDuration: TimeInterval? = nil,
+        mixWithOthers: Bool = true
+    ) throws {
+        isConfigured = true
+    }
+
+    public func activate() throws {
+        isConfigured = true
+        isActive = true
+        NotificationCenter.default.post(name: AudioServiceNotification.didActivate, object: self)
+    }
+
+    public func deactivate() throws {
+        isActive = false
+        NotificationCenter.default.post(name: AudioServiceNotification.didDeactivate, object: self)
+    }
+
+    public func reconfigureForPlayback(
+        preferredSampleRate: Double? = nil,
+        preferredIOBufferDuration: TimeInterval? = nil,
+        mixWithOthers: Bool = true
+    ) throws {
+        isConfigured = true
+    }
+}
+
+#endif

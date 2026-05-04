@@ -1,0 +1,855 @@
+:root {
+  --k-bg-deep: #0a0a12;
+  --k-bg-top: #0a0a18;
+  --k-bg-mid: #101828;
+  --k-bg-low: #182040;
+  --k-glass: rgba(20, 20, 35, 0.5);
+  --k-glass-strong: rgba(15, 25, 40, 0.82);
+  --k-control: rgba(255, 255, 255, 0.055);
+  --k-control-hover: rgba(255, 255, 255, 0.09);
+  --k-border: rgba(247, 250, 252, 0.12);
+  --k-border-strong: rgba(247, 250, 252, 0.24);
+  --k-text: #F7FAFC;
+  --k-text-soft: rgba(247, 250, 252, 0.7);
+  --k-text-muted: rgba(247, 250, 252, 0.44);
+  --k-cream: #E8DCC4;
+  --k-cream-muted: rgba(232, 220, 196, 0.62);
+  --k-icy: #B8E0FF;
+  --k-sage: #7B9A6D;
+  --k-clay: #C4724E;
+  --k-gold: #D4A520;
+  --k-violet: #8B5CF6;
+  --k-slate: #5A7B8A;
+  --k-danger: #FF4444;
+  --k-stop: #ED5A24;
+  --tab-global: #5A9CFF;
+  --tab-synth: #E07A84;
+  --tab-drums: #A870E8;
+  --tab-earth: #4DD88A;
+  --tab-granular: #E8B44A;
+  --tab-delay: #32C8C8;
+  --tab-dynamics: #CC7DB8;
+  --tab-reverb: #D49660;
+  --tab-routing: #7ABFE8;
+  --k-radius-card: 8px;
+  --k-radius-control: 6px;
+  --k-shadow-glass: inset 0 1px 0 rgba(255, 255, 255, 0.035), 0 10px 28px rgba(0, 0, 0, 0.18);
+  --k-shadow-glow: 0 0 14px color-mix(in srgb, var(--page-accent, var(--k-icy)) 26%, transparent);
+  --fx-card-bg:
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--engine-accent, var(--page-accent, var(--k-icy))) 5%, rgba(255, 255, 255, 0.045)),
+      rgba(255, 255, 255, 0.018) 40%,
+      transparent 100%),
+    var(--bg-surface);
+  --fx-card-head-bg: transparent;
+  --fx-card-head-hover-bg: rgba(255, 255, 255, 0.03);
+  --fx-card-head-border: 1px solid color-mix(in srgb, var(--engine-accent, var(--page-accent, var(--k-icy))) 24%, rgba(255, 255, 255, 0.05));
+  --fx-card-head-padding: 9px 12px 8px;
+  --fx-card-body-padding: 10px 12px 12px;
+  --fx-card-title-size: 0.8rem;
+  --fx-card-compact-title-size: 0.72rem;
+  --fx-card-note-size: 0.6rem;
+  --fx-card-title-spacing: 0.02em;
+  --fx-card-note-spacing: 0.02em;
+  --k-gap-cards: 10px;
+  --k-gap-container: 10px;
+  --page-accent: var(--k-icy);
+  --page-accent-soft: color-mix(in srgb, var(--page-accent) 14%, transparent);
+  --page-accent-border: color-mix(in srgb, var(--page-accent) 28%, rgba(255, 255, 255, 0.08));
+}
+
+#root .reverb-root,
+#root .drum-root,
+#root .granular-root,
+#root .dynamics-root,
+#root .routing-root,
+#root .synth-root,
+#root .earth-root,
+#root .global-root,
+#root .delay-root {
+  --bg-base: var(--k-bg-deep);
+  --bg-input: rgba(0, 0, 0, 0.24);
+  --bg-surface: var(--k-glass-strong);
+  --bg-elevated: rgba(255, 255, 255, 0.045);
+  --bg-control: var(--k-control);
+  --bg-control-hover: var(--k-control-hover);
+  --border-subtle: var(--k-border);
+  --border-medium: rgba(247, 250, 252, 0.18);
+  --border-accent: var(--page-accent-border);
+  --text-primary: var(--k-text);
+  --text-secondary: var(--k-text-soft);
+  --text-muted: var(--k-text-muted);
+  --text-dim: rgba(247, 250, 252, 0.32);
+  --accent-primary: var(--page-accent, var(--k-icy));
+  --accent-green: var(--k-sage);
+  --accent-red: var(--k-danger);
+  --accent-stop: var(--k-stop);
+  --accent-orange: var(--k-clay);
+  --accent-amber: var(--k-gold);
+  --accent-cyan: var(--k-icy);
+  --accent-pink: #C997A7;
+  --accent-teal: var(--k-slate);
+  --accent-lavender: #A78BFA;
+  --accent-purple: var(--k-violet);
+  --accent-evolve: var(--k-violet);
+  --radius-sm: var(--k-radius-control);
+  --radius-md: var(--k-radius-card);
+  --radius-lg: var(--k-radius-card);
+  --font-xs: 0.55rem;
+  --font-sm: 0.65rem;
+  --font-md: 0.75rem;
+  --font-lg: 0.85rem;
+  color: var(--k-text);
+}
+
+#root .reverb-root {
+  --page-accent: var(--tab-reverb);
+  --engine-accent: var(--page-accent);
+  --accent-reverb: var(--tab-reverb);
+  --accent-blue: var(--k-icy);
+}
+
+#root .global-root {
+  --page-accent: var(--tab-global);
+  --accent-primary: var(--page-accent);
+  --border-accent: var(--page-accent-border);
+  --font-xs: 0.65rem;
+  --font-sm: 0.7rem;
+}
+
+#root .synth-root {
+  --page-accent: var(--tab-synth);
+  --accent-primary: var(--page-accent);
+  --border-accent: var(--page-accent-border);
+}
+
+#root .synth-root,
+#root .drum-root {
+  --accent-cyan: var(--k-icy);
+  --accent-green: var(--k-sage);
+  --accent-orange: var(--k-gold);
+  --accent-amber: var(--k-gold);
+  --accent-pink: var(--k-icy);
+  --accent-teal: var(--k-slate);
+  --accent-lavender: var(--k-violet);
+  --accent-evolve: var(--k-violet);
+}
+
+#root .drum-root {
+  --page-accent: var(--tab-drums);
+  --engine-accent: var(--page-accent);
+}
+
+#root .earth-root {
+  --page-accent: var(--tab-earth);
+  --accent-primary: var(--page-accent);
+  --border-accent: var(--page-accent-border);
+}
+
+#root .granular-root {
+  --page-accent: var(--tab-granular);
+  --engine-accent: var(--page-accent);
+  --granular-accent: var(--tab-granular);
+  --granular-accent-dim: rgba(242, 177, 52, 0.28);
+  --granular-v1: var(--tab-granular);
+  --granular-v2: var(--k-sage);
+  --granular-v3: var(--k-cream);
+  --granular-v4: var(--tab-delay);
+}
+
+#root .delay-root {
+  --page-accent: var(--tab-delay);
+  --accent-primary: var(--page-accent);
+  --accent-master: var(--page-accent);
+  --border-accent: var(--page-accent-border);
+}
+
+#root .dynamics-root {
+  --page-accent: var(--tab-dynamics);
+  --engine-accent: var(--page-accent);
+  --accent-dynamics: var(--tab-dynamics);
+  --accent-character: var(--k-sage);
+  --accent-degrade: var(--k-violet);
+  --accent-saturation: var(--k-gold);
+  --accent-end: var(--k-clay);
+}
+
+#root .dynamics-character-card {
+  --engine-accent: var(--k-sage);
+}
+
+#root .dynamics-degrade-card {
+  --engine-accent: var(--k-violet);
+}
+
+#root .dynamics-saturation-card {
+  --engine-accent: var(--k-gold);
+}
+
+#root .dynamics-end-card {
+  --engine-accent: var(--k-clay);
+}
+
+#root .dynamics-sidechain-card {
+  --engine-accent: var(--k-icy);
+}
+
+#root .dynamics-preset-card {
+  --engine-accent: var(--page-accent);
+}
+
+#root .routing-root {
+  --page-accent: var(--tab-routing);
+}
+
+#root .app-tab-bar {
+  backdrop-filter: blur(10px);
+  box-shadow: var(--k-shadow-glass);
+}
+
+/*
+ * Gradient boundary rule:
+ * - Keep page titles, page headers, and matrix surfaces on quiet solid glass/rgba surfaces.
+ * - Do not add page-accent gradient washes to headers, title bands, matrix columns, or matrix cells.
+ * - Routing's neutral grid is the baseline for MatrixSurface; identity belongs in dots, chips, rails,
+ *   text accents, borders, and selected outlines.
+ */
+
+/*
+ * Sequencer palette rule:
+ * - Drum and Synth sequencers share the same Journey-derived lane palette.
+ * - Main Euclidean rows use SEQUENCER_LANE_COLORS.
+ * - Sub-lanes use the lane-local --lane-color supplied by SeqLane/SeqSparkline.
+ */
+#root .synth-root .seq-lane-pitch .seq-lane-title,
+#root .drum-root .seq-lane-pitch .seq-lane-title,
+#root .synth-root .seq-lane-expr .seq-lane-title,
+#root .drum-root .seq-lane-expr .seq-lane-title,
+#root .synth-root .seq-lane-morph .seq-lane-title,
+#root .drum-root .seq-lane-morph .seq-lane-title,
+#root .synth-root .seq-lane-dist .seq-lane-title,
+#root .drum-root .seq-lane-dist .seq-lane-title,
+#root .synth-root .seq-lane-slice .seq-lane-title,
+#root .drum-root .seq-lane-slice .seq-lane-title,
+#root .synth-root .seq-lane-reverse .seq-lane-title,
+#root .drum-root .seq-lane-reverse .seq-lane-title {
+  color: var(--lane-color, var(--page-accent));
+}
+
+#root .synth-root .seq-lane-pitch .seq-lane-enable-btn.on,
+#root .drum-root .seq-lane-pitch .seq-lane-enable-btn.on,
+#root .synth-root .seq-lane-expr .seq-lane-enable-btn.on,
+#root .drum-root .seq-lane-expr .seq-lane-enable-btn.on,
+#root .synth-root .seq-lane-morph .seq-lane-enable-btn.on,
+#root .drum-root .seq-lane-morph .seq-lane-enable-btn.on,
+#root .synth-root .seq-lane-dist .seq-lane-enable-btn.on,
+#root .drum-root .seq-lane-dist .seq-lane-enable-btn.on,
+#root .synth-root .seq-lane-slice .seq-lane-enable-btn.on,
+#root .drum-root .seq-lane-slice .seq-lane-enable-btn.on,
+#root .synth-root .seq-lane-reverse .seq-lane-enable-btn.on,
+#root .drum-root .seq-lane-reverse .seq-lane-enable-btn.on {
+  background: var(--lane-color, var(--page-accent));
+}
+
+#root .synth-root .seq-pitch-bar-wrap.selected,
+#root .drum-root .seq-pitch-bar-wrap.selected,
+#root .synth-root .seq-vel-bar-wrap.selected,
+#root .drum-root .seq-vel-bar-wrap.selected,
+#root .synth-root .seq-morph-bar-wrap.selected,
+#root .drum-root .seq-morph-bar-wrap.selected,
+#root .synth-root .seq-dist-bar-wrap.selected,
+#root .drum-root .seq-dist-bar-wrap.selected {
+  border-color: color-mix(in srgb, var(--lane-color, var(--page-accent)) 48%, rgba(255, 255, 255, 0.12));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--lane-color, var(--page-accent)) 20%, transparent);
+}
+
+#root .synth-root .seq-pitch-bar-wrap .pitch-bar,
+#root .drum-root .seq-pitch-bar-wrap .pitch-bar,
+#root .synth-root .seq-morph-bar-wrap .morph-bar,
+#root .drum-root .seq-morph-bar-wrap .morph-bar,
+#root .synth-root .seq-dist-bar-wrap .dist-bar,
+#root .drum-root .seq-dist-bar-wrap .dist-bar,
+#root .synth-root .seq-vel-bar,
+#root .drum-root .seq-vel-bar {
+  background: var(--lane-color, var(--page-accent));
+}
+
+#root .synth-root .seq-pitch-note-name,
+#root .drum-root .seq-pitch-note-name,
+#root .synth-root .seq-pitch-input,
+#root .drum-root .seq-pitch-input,
+#root .synth-root .seq-morph-bar-wrap .morph-label-a,
+#root .drum-root .seq-morph-bar-wrap .morph-label-a,
+#root .synth-root .seq-morph-bar-wrap .morph-label-b,
+#root .drum-root .seq-morph-bar-wrap .morph-label-b,
+#root .synth-root .seq-dist-bar-wrap .dist-label-max,
+#root .drum-root .seq-dist-bar-wrap .dist-label-max,
+#root .synth-root .seq-dist-bar-wrap .dist-label-min,
+#root .drum-root .seq-dist-bar-wrap .dist-label-min {
+  color: var(--lane-color, var(--page-accent));
+}
+
+#root .synth-root .seq-evolve-method.on-t,
+#root .drum-root .seq-evolve-method.on-t {
+  color: var(--k-gold);
+}
+
+#root .synth-root .seq-evolve-checks input[type=checkbox],
+#root .drum-root .seq-evolve-checks input[type=checkbox] {
+  accent-color: var(--k-violet);
+}
+
+#root .fx-card,
+#root .reverb-section-card,
+#root .drum-root .drums-source-preset-bar,
+#root .drum-root .drums-pattern-preset-bar,
+#root .drum-root .master-strip,
+#root .drum-root .seq-transport,
+#root .drum-root .voice-card,
+#root .synth-root .synth-source-preset-bar,
+#root .synth-root .synth-card,
+#root .delay-root .delay-source-preset-bar,
+#root .delay-root .delay-card,
+#root .earth-root .earth-kit-preset-bar,
+#root .earth-root .earth-card,
+#root .earth-root .mixer-section,
+#root .earth-root .earth-scene-container,
+#root .granular-root .granular-section-card,
+#root .granular-root .granular-voice-card,
+#root .dynamics-root .dynamics-section-card {
+  background: var(--fx-card-bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--k-radius-card);
+  box-shadow: var(--k-shadow-glass);
+  backdrop-filter: blur(10px);
+}
+
+#root .drum-root .voice-card {
+  --engine-accent: var(--vc, var(--page-accent));
+}
+
+#root .synth-root .synth-card {
+  --engine-accent: var(--sc, var(--page-accent));
+}
+
+#root .delay-root .delay-card,
+#root .earth-root .earth-card {
+  --engine-accent: var(--sc, var(--page-accent));
+}
+
+#root .earth-root .mixer-section,
+#root .earth-root .earth-scene-container,
+#root .earth-root .earth-active-matrix {
+  --sc: var(--page-accent);
+  --engine-accent: var(--page-accent);
+}
+
+#root .reverb-root .reverb-section-card,
+#root .granular-root .granular-section-card {
+  --engine-accent: var(--page-accent);
+}
+
+#root .drum-root .voice-card,
+#root .synth-root .synth-card,
+#root .delay-root .delay-card,
+#root .earth-root .earth-card,
+#root .earth-root .mixer-section,
+#root .earth-root .earth-scene-container,
+#root .reverb-root .reverb-section-card,
+#root .granular-root .granular-section-card,
+#root .granular-root .granular-voice-card,
+#root .dynamics-root .dynamics-section-card {
+  border-color: color-mix(in srgb, var(--engine-accent, var(--page-accent)) 24%, rgba(255, 255, 255, 0.08));
+}
+
+#root .drum-root .voice-card.editing,
+#root .synth-root .synth-card.editing,
+#root .delay-root .delay-card.expanded,
+#root .earth-root .earth-card.expanded,
+#root .granular-root .granular-voice-card.editing {
+  border-color: color-mix(in srgb, var(--engine-accent, var(--page-accent)) 42%, rgba(255, 255, 255, 0.12));
+  box-shadow:
+    var(--k-shadow-glass),
+    0 0 12px color-mix(in srgb, var(--engine-accent, var(--page-accent)) 16%, transparent);
+}
+
+#root .drum-root .voice-card,
+#root .synth-root .synth-card,
+#root .delay-root .delay-card,
+#root .earth-root .earth-card,
+#root .earth-root .mixer-section,
+#root .earth-root .earth-scene-container,
+#root .routing-root .routing-card {
+  border-left-width: 1px;
+}
+
+#root .fx-card-head,
+#root .reverb-root .reverb-section-head,
+#root .dynamics-root .dynamics-section-head,
+#root .granular-root .granular-section-head,
+#root .granular-root .granular-voice-header,
+#root .synth-root .synth-card-header,
+#root .delay-root .delay-card-header,
+#root .earth-root .earth-card-header,
+#root .earth-root .mixer-section-header,
+#root .earth-root .earth-scene-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: var(--fx-card-head-padding);
+  background: var(--fx-card-head-bg);
+  border-bottom: var(--fx-card-head-border);
+}
+
+#root .granular-root .granular-voice-header,
+#root .delay-root .delay-card-header,
+#root .earth-root .earth-card-header.clickable {
+  cursor: pointer;
+}
+
+#root .granular-root .granular-voice-header:hover,
+#root .synth-root .synth-card-header:hover,
+#root .delay-root .delay-card-header:hover,
+#root .earth-root .earth-card-header.clickable:hover {
+  background: var(--fx-card-head-hover-bg);
+}
+
+#root .fx-card-title,
+#root .reverb-root .reverb-section-title,
+#root .dynamics-root .dynamics-section-title,
+#root .granular-root .granular-section-title,
+#root .synth-root .sc-name,
+#root .delay-root .delay-card-title,
+#root .earth-root .ec-name,
+#root .earth-root .mixer-section-header,
+#root .earth-root .earth-scene-title {
+  min-width: 0;
+  color: var(--engine-accent, var(--page-accent));
+  font-size: var(--fx-card-title-size);
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: var(--fx-card-title-spacing);
+  text-transform: none;
+}
+
+#root .drum-root .vc-name,
+#root .granular-root .granular-voice-name {
+  min-width: 0;
+  color: var(--engine-accent, var(--page-accent));
+  font-size: var(--fx-card-compact-title-size);
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: var(--fx-card-title-spacing);
+  text-transform: none;
+}
+
+#root .fx-card-note,
+#root .reverb-root .reverb-section-note,
+#root .dynamics-root .dynamics-section-note,
+#root .granular-root .granular-section-note,
+#root .delay-root .delay-card-subtitle,
+#root .earth-root .earth-scene-hint,
+#root .granular-root .granular-voice-summary {
+  min-width: 0;
+  color: var(--text-dim);
+  font-size: var(--fx-card-note-size);
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: var(--fx-card-note-spacing);
+  text-transform: none;
+}
+
+#root .fx-card-body,
+#root .reverb-root .reverb-section-body,
+#root .dynamics-root .dynamics-section-body,
+#root .granular-root .granular-section-card > .section-body,
+#root .granular-root .granular-voice-body,
+#root .synth-root .synth-card-simple,
+#root .synth-root .synth-card-advanced,
+#root .delay-root .delay-card-body,
+#root .earth-root .earth-card-body,
+#root .earth-root .mixer-section-body {
+  padding: var(--fx-card-body-padding);
+}
+
+#root .reverb-global-bar,
+#root .global-root .global-page-header,
+#root .granular-global-bar,
+#root .dynamics-global-bar,
+#root .routing-root .routing-page-header,
+#root .drum-root .drums-source-preset-bar,
+#root .synth-root .synth-source-preset-bar,
+#root .delay-root .delay-source-preset-bar,
+#root .earth-root .earth-kit-preset-bar {
+  background: var(--fx-card-head-bg);
+  border-color: var(--page-accent-border);
+  box-shadow: none;
+}
+
+#root .fx-page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: nowrap;
+  gap: 8px;
+  min-height: 50px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  border-radius: var(--k-radius-card);
+}
+
+#root .fx-page-header--identity {
+  min-height: 50px;
+  padding-block: 8px;
+}
+
+#root .fx-page-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-right: auto;
+  color: var(--page-accent);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+#root .fx-page-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+#root .fx-page-actions--identity {
+  flex: 0 0 auto;
+}
+
+#root .fx-page-preset {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+#root .fx-page-preset-label {
+  color: var(--text-muted);
+  font-size: 0.55rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+#root .fx-page-preset .preset-dropdown,
+#root .fx-page-preset select {
+  min-width: 0;
+}
+
+#root .fx-page-preset > div {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+#root .fx-kit-preset-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  background: var(--fx-card-head-bg);
+  border: 1px solid var(--page-accent-border);
+  border-radius: var(--k-radius-card);
+  box-shadow: none;
+}
+
+#root .fx-kit-preset-title {
+  flex: 0 0 auto;
+  min-width: 62px;
+  color: var(--page-accent);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+#root .fx-kit-preset-card > div {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+#root .fx-kit-preset-card select {
+  min-width: 0;
+}
+
+@media (max-width: 560px) {
+  #root .fx-page-header {
+    flex-wrap: wrap;
+  }
+
+  #root .fx-page-actions {
+    flex-basis: 100%;
+    justify-content: flex-start;
+  }
+
+  #root .fx-kit-preset-card {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+#root .reverb-title,
+#root .global-root .global-page-title,
+#root .granular-root .granular-title,
+#root .dynamics-root .dynamics-title,
+#root .routing-root .routing-page-title,
+#root .drum-root .drums-source-preset-label,
+#root .synth-root .synth-source-preset-label,
+#root .delay-root .delay-source-preset-label,
+#root .earth-root .earth-kit-label {
+  color: var(--page-accent);
+  letter-spacing: 0.04em;
+}
+
+#root .drum-root .vc-name,
+#root .synth-root .sc-name,
+#root .delay-root .delay-card-title,
+#root .earth-root .ec-name,
+#root .earth-root .mixer-section-header,
+#root .earth-root .earth-scene-title,
+#root .granular-root .granular-voice-name,
+#root .dynamics-root .dynamics-section-title {
+  color: var(--engine-accent, var(--page-accent));
+}
+
+#root .reverb-enable-btn,
+#root .reverb-freeze-btn,
+#root .reverb-toggle-btn,
+#root .reverb-mode-btn,
+#root .drum-root .drum-enable-btn,
+#root .drum-root .master-anim-btn,
+#root .drum-root .seq-link-btn,
+#root .drum-root .seq-evolve-btn,
+#root .drum-root .seq-lane-enable-btn,
+#root .granular-root .granular-enable-btn,
+#root .granular-root .granular-freeze-btn,
+#root .granular-root .granular-chip-btn,
+#root .granular-root .granular-voice-enable-btn,
+#root .synth-root .sc-enable-btn,
+#root .dynamics-root .dynamics-enable-btn,
+#root .dynamics-root .dynamics-fx-toggle,
+#root .granular-root .seq-link-btn,
+#root .granular-root .seq-evolve-btn {
+  border: 1px solid rgba(247, 250, 252, 0.14);
+  background: rgba(255, 255, 255, 0.045);
+  color: var(--text-muted);
+  border-radius: var(--k-radius-control);
+  box-shadow: none;
+}
+
+#root .reverb-enable-btn,
+#root .reverb-freeze-btn,
+#root .drum-root .drum-enable-btn,
+#root .granular-root .granular-enable-btn,
+#root .granular-root .granular-voice-enable-btn,
+#root .synth-root .sc-enable-btn,
+#root .dynamics-root .dynamics-enable-btn,
+#root .dynamics-root .dynamics-fx-toggle,
+#root .granular-root .granular-freeze-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#root .reverb-enable-btn,
+#root .drum-root .drum-enable-btn,
+#root .granular-root .granular-enable-btn,
+#root .granular-root .granular-voice-enable-btn,
+#root .synth-root .sc-enable-btn,
+#root .dynamics-root .dynamics-enable-btn,
+#root .dynamics-root .dynamics-fx-toggle {
+  --engine-dot-color: var(--engine-accent, var(--page-accent));
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
+  min-height: 24px;
+  padding: 0;
+  justify-content: center;
+  gap: 0;
+  border-radius: 999px;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  font-size: 0;
+  line-height: 1;
+}
+
+#root .dynamics-root .dynamics-fx-toggle.cyan {
+  --engine-dot-color: var(--k-icy);
+}
+
+#root .dynamics-root .dynamics-fx-toggle.green {
+  --engine-dot-color: var(--k-sage);
+}
+
+#root .dynamics-root .dynamics-fx-toggle.purple {
+  --engine-dot-color: var(--k-violet);
+}
+
+#root .dynamics-root .dynamics-fx-toggle.amber {
+  --engine-dot-color: var(--k-gold);
+}
+
+#root .reverb-enable-btn::before,
+#root .drum-root .drum-enable-btn::before,
+#root .granular-root .granular-enable-btn::before,
+#root .granular-root .granular-voice-enable-btn::before,
+#root .synth-root .sc-enable-btn::before,
+#root .dynamics-root .dynamics-enable-btn::before,
+#root .dynamics-root .dynamics-fx-toggle::before {
+  content: '';
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: rgba(210, 214, 220, 0.28);
+  box-shadow: 0 0 4px rgba(255, 255, 255, 0.06);
+  flex: 0 0 auto;
+}
+
+#root .reverb-enable-btn.on::before,
+#root .drum-root .drum-enable-btn.on::before,
+#root .granular-root .granular-enable-btn.on::before,
+#root .granular-root .granular-voice-enable-btn.on::before,
+#root .synth-root .sc-enable-btn.on::before,
+#root .dynamics-root .dynamics-enable-btn.on::before,
+#root .dynamics-root .dynamics-fx-toggle.on::before {
+  background: color-mix(in srgb, var(--engine-dot-color) 86%, white 14%);
+  box-shadow:
+    0 0 5px color-mix(in srgb, var(--engine-dot-color) 48%, transparent),
+    0 0 10px color-mix(in srgb, var(--engine-dot-color) 18%, transparent);
+}
+
+#root .reverb-enable-btn.on,
+#root .reverb-toggle-btn.on,
+#root .reverb-mode-btn.active,
+#root .drum-root .drum-enable-btn.on,
+#root .drum-root .master-anim-btn.on,
+#root .dynamics-root .dynamics-enable-btn.on,
+#root .dynamics-root .dynamics-fx-toggle.on,
+#root .granular-root .granular-enable-btn.on,
+#root .granular-root .granular-chip-btn.active,
+#root .granular-root .granular-voice-enable-btn.on,
+#root .synth-root .sc-enable-btn.on {
+  background: color-mix(in srgb, var(--engine-accent, var(--page-accent)) 16%, transparent);
+  border-color: color-mix(in srgb, var(--engine-accent, var(--page-accent)) 38%, rgba(255, 255, 255, 0.08));
+  color: color-mix(in srgb, var(--engine-accent, var(--page-accent)) 86%, white 14%);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--engine-accent, var(--page-accent)) 16%, transparent);
+}
+
+#root .reverb-enable-btn:hover,
+#root .drum-root .drum-enable-btn:hover,
+#root .granular-root .granular-enable-btn:hover,
+#root .granular-root .granular-voice-enable-btn:hover,
+#root .synth-root .sc-enable-btn:hover,
+#root .dynamics-root .dynamics-enable-btn:hover,
+#root .dynamics-root .dynamics-fx-toggle:hover {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+#root .reverb-enable-btn.on,
+#root .drum-root .drum-enable-btn.on,
+#root .granular-root .granular-enable-btn.on,
+#root .granular-root .granular-voice-enable-btn.on,
+#root .synth-root .sc-enable-btn.on,
+#root .dynamics-root .dynamics-enable-btn.on,
+#root .dynamics-root .dynamics-fx-toggle.on {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+#root .reverb-enable-btn:focus-visible,
+#root .drum-root .drum-enable-btn:focus-visible,
+#root .granular-root .granular-enable-btn:focus-visible,
+#root .granular-root .granular-voice-enable-btn:focus-visible,
+#root .synth-root .sc-enable-btn:focus-visible,
+#root .dynamics-root .dynamics-enable-btn:focus-visible,
+#root .dynamics-root .dynamics-fx-toggle:focus-visible {
+  outline: 1px solid color-mix(in srgb, var(--engine-dot-color, var(--page-accent)) 72%, transparent);
+  outline-offset: 3px;
+}
+
+#root .reverb-freeze-btn.frozen,
+#root .reverb-toggle-btn.freeze-on,
+#root .reverb-mode-btn.reverb-mode-btn-freeze.active,
+#root .granular-root .granular-freeze-btn.frozen {
+  background: rgba(184, 224, 255, 0.12);
+  border-color: rgba(184, 224, 255, 0.34);
+  color: var(--k-icy);
+  box-shadow: 0 0 12px rgba(184, 224, 255, 0.16);
+}
+
+#root .drum-root .seq-source-toggle {
+  border-radius: 999px;
+}
+
+#root .drum-root .seq-source-toggle.active,
+#root .drum-root .seq-spark-badge.on,
+#root .granular-root .seq-source-toggle.active,
+#root .granular-root .seq-spark-badge.on {
+  background: color-mix(in srgb, var(--vc, var(--lane-color, var(--page-accent))) 14%, transparent);
+  border-color: color-mix(in srgb, var(--vc, var(--lane-color, var(--page-accent))) 48%, rgba(255, 255, 255, 0.08));
+  box-shadow: 0 0 10px color-mix(in srgb, var(--vc, var(--lane-color, var(--page-accent))) 18%, transparent);
+}
+
+#root .reverb-root select,
+#root .reverb-root input:not([type='range']),
+#root .drum-root select,
+#root .drum-root input:not([type='range']),
+#root .granular-root select,
+#root .granular-root input:not([type='range']),
+#root .dynamics-root select,
+#root .dynamics-root input:not([type='range']),
+#root .routing-root select,
+#root .routing-root input:not([type='range']) {
+  background: rgba(0, 0, 0, 0.24);
+  border-color: rgba(247, 250, 252, 0.16);
+  color: var(--k-text);
+  border-radius: var(--k-radius-control);
+}
+
+#root input[type='range']:not(.adsr-vertical) {
+  accent-color: var(--page-accent, var(--k-icy));
+}
+
+#root .reverb-envelope-canvas-wrap,
+#root .drum-root .env-visualizer,
+#root .granular-root .granular-buffer-canvas,
+#root .dynamics-root .dynamics-viz-frame {
+  background: rgba(10, 10, 18, 0.72);
+  border: 1px solid var(--page-accent-border);
+  border-radius: var(--k-radius-card);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.025),
+    0 0 18px color-mix(in srgb, var(--page-accent) 10%, transparent);
+}
+
+#root .reverb-viz-pill,
+#root .granular-root .granular-buffer-legend-pill {
+  background: color-mix(in srgb, var(--page-accent) 10%, transparent);
+  border-color: color-mix(in srgb, var(--page-accent) 22%, rgba(255, 255, 255, 0.08));
+  color: color-mix(in srgb, var(--page-accent) 74%, white 26%);
+}
+
+#root .sl-slider {
+  --hero: var(--page-accent, #cfd9e8);
+}

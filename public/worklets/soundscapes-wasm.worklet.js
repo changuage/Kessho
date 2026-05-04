@@ -90,8 +90,13 @@ class SoundscapesWasmProcessor extends AudioWorkletProcessor {
     this._perfCount = 0;
     this._perfSamplesSinceReport = 0;
     this._perfReportInterval = Math.floor(sampleRate * 0.5);
+    this._perfWaterTotal = 0;
+    this._perfInsects1Total = 0;
+    this._perfInsects2Total = 0;
     this._perfWaterPeak = 0;
     this._perfInsectsPeak = 0;
+    this._perfInsects1Peak = 0;
+    this._perfInsects2Peak = 0;
     // Stats reporting (~5 Hz)
     this._statsCounter = 0;
     this._statsInterval = Math.floor(sampleRate / 5);
@@ -426,6 +431,8 @@ class SoundscapesWasmProcessor extends AudioWorkletProcessor {
         this._perfSamplesSinceReport = 0;
         this._perfWaterPeak = 0;
         this._perfInsectsPeak = 0;
+        this._perfInsects1Peak = 0;
+        this._perfInsects2Peak = 0;
         this._perfWaterTotal = 0;
         this._perfInsects1Total = 0;
         this._perfInsects2Total = 0;
@@ -563,19 +570,28 @@ class SoundscapesWasmProcessor extends AudioWorkletProcessor {
       this._perfInsects2Total = (this._perfInsects2Total || 0) + insects2Ms;
       this._perfWaterPeak = Math.max(this._perfWaterPeak || 0, waterMs);
       this._perfInsectsPeak = Math.max(this._perfInsectsPeak || 0, insectsMs);
+      this._perfInsects1Peak = Math.max(this._perfInsects1Peak || 0, insects1Ms);
+      this._perfInsects2Peak = Math.max(this._perfInsects2Peak || 0, insects2Ms);
 
       if (this._perfSamplesSinceReport >= this._perfReportInterval) {
         const avgMs = this._perfTotalTime / this._perfCount;
         const cnt = this._perfCount;
         this.port.postMessage({
           type: 'perf',
+          name: 'soundscapes-wasm',
           avgMs: avgMs,
           budgetMs: budgetMs,
           load: avgMs / budgetMs,
+          cpuPercent: (avgMs / budgetMs) * 100,
+          peakPercent: (this._perfPeakTime / budgetMs) * 100,
           peakMs: this._perfPeakTime,
           missPercent: this._perfBlockCount > 0 ? (this._perfOverBudgetCount / this._perfBlockCount) * 100 : 0,
           waterMs: this._perfWaterTotal / cnt,
           waterPeakMs: this._perfWaterPeak,
+          insects1Ms: this._perfInsects1Total / cnt,
+          insects1PeakMs: this._perfInsects1Peak,
+          insects2Ms: this._perfInsects2Total / cnt,
+          insects2PeakMs: this._perfInsects2Peak,
           insectsMs: (this._perfInsects1Total + this._perfInsects2Total) / cnt,
           insectsPeakMs: this._perfInsectsPeak,
         });
@@ -590,6 +606,8 @@ class SoundscapesWasmProcessor extends AudioWorkletProcessor {
         this._perfInsects2Total = 0;
         this._perfWaterPeak = 0;
         this._perfInsectsPeak = 0;
+        this._perfInsects1Peak = 0;
+        this._perfInsects2Peak = 0;
       }
     }
 

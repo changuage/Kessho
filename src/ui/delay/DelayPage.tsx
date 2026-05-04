@@ -10,7 +10,6 @@ import type { PresetEntry } from '../../presets/types';
 import type { UsePresetsOptions } from '../../presets/usePresets';
 import DelayRhythmMap from './DelayRhythmMap';
 import DelayAlgorithmCard from './DelayAlgorithmCard';
-import DelayScope from './DelayScope';
 import DelayThumbnail from './DelayThumbnail';
 import './delay.css';
 
@@ -107,7 +106,6 @@ const DelayPage: React.FC<DelayPageProps> = ({
   const [expandedCards, setExpandedCards] = useState<Set<string>>(
     () => new Set(['echo-line', 'clocked-space']),
   );
-  const [vizTab, setVizTab] = useState<'rhythm' | 'scope'>('rhythm');
   const [echoPresetName, setEchoPresetName] = useState<string | undefined>();
   const [clockedPresetName, setClockedPresetName] = useState<string | undefined>();
   const [kitPresetName, setKitPresetName] = useState<string | undefined>();
@@ -124,6 +122,7 @@ const DelayPage: React.FC<DelayPageProps> = ({
   const handleSourcePresetLoad = useCallback((_entry: PresetEntry, _data: Record<string, unknown>) => {
     setSourcePresetName(_entry.name);
   }, []);
+
   const toggleCard = useCallback((id: string) => {
     setExpandedCards(prev => {
       const next = new Set(prev);
@@ -189,25 +188,29 @@ const DelayPage: React.FC<DelayPageProps> = ({
     <div className={`delay-root${isMobile ? ' mobile' : ''}`}>
       <div className="delay-container">
 
-      {/* ── Page-Level Source Preset (L3) ── */}
-      <div className="delay-source-preset-bar">
-        <span className="delay-source-preset-label">Delay Source</span>
-        <PresetDropdown
-          level="source"
-          scope="delay"
-          state={state}
-          currentName={sourcePresetName}
-          onLoad={handleSourcePresetLoad}
-          onStateChange={onStateChange}
-          sliderModes={sliderModes}
-          dualSliderRanges={dualSliderRanges}
-          onDualStateChange={onDualStateChange}
-          compact
-        />
-      </div>
-
       {/* ════ LEFT PANEL ════ */}
       <div className="delay-left">
+        {/* ── Page Identity ── */}
+        <div className="delay-source-preset-bar fx-page-header fx-page-header--identity">
+          <span className="delay-source-preset-label fx-page-title">↭ Delay FX</span>
+        </div>
+
+        {/* ── Page-Level Source Preset (L3) ── */}
+        <div className="delay-source-preset-card fx-kit-preset-card">
+          <span className="fx-kit-preset-title">Preset</span>
+          <PresetDropdown
+            level="source"
+            scope="delay"
+            state={state}
+            currentName={sourcePresetName}
+            onLoad={handleSourcePresetLoad}
+            onStateChange={onStateChange}
+            sliderModes={sliderModes}
+            dualSliderRanges={dualSliderRanges}
+            onDualStateChange={onDualStateChange}
+            compact
+          />
+        </div>
 
         {/* ── Echo Line ── */}
         <div
@@ -418,45 +421,21 @@ const DelayPage: React.FC<DelayPageProps> = ({
         {/* ── Delay Visualizer ── */}
         <div className="delay-card" style={{ '--sc': 'var(--accent-primary)' } as React.CSSProperties}>
           <div className="delay-card-body" style={{ padding: '8px 10px 10px' }}>
-            <div className="delay-viz-tabs">
-              <button
-                className={`delay-viz-tab${vizTab === 'rhythm' ? ' active' : ''}`}
-                onClick={() => setVizTab('rhythm')}
-              >
-                Rhythm Map
-              </button>
-              <button
-                className={`delay-viz-tab${vizTab === 'scope' ? ' active' : ''}`}
-                onClick={() => setVizTab('scope')}
-              >
-                Scope
-              </button>
-            </div>
-
-            {vizTab === 'rhythm' ? (
-              <DelayRhythmMap
-                bpm={bpm}
-                echoTimeL={echoTimeL}
-                echoTimeR={echoTimeR}
-                echoFeedback={state.delayAFeedback ?? 0.3}
-                echoPingPong={state.delayAPingPong ?? false}
-                echoWidth={state.delayAWidth ?? 0.5}
-                clockedPattern={state.delayBPattern ?? 'cascade'}
-                clockedWarp={state.delayBWarp ?? 'clean'}
-                clockedActivity={state.granularDelayActivity ?? 0.5}
-                clockedBaseTime={clockedBaseTime}
-                clockedSpread={state.delayBSpread ?? 0.5}
-                aToBSend={state.delayAToBSend ?? 0}
-                bToASend={state.delayBToASend ?? 0}
-              />
-            ) : (
-              <DelayScope
-                echoAnalyser={null}
-                clockedAnalyser={null}
-                echoPingPong={state.delayAPingPong ?? false}
-                clockedWarp={state.delayBWarp ?? 'clean'}
-              />
-            )}
+            <DelayRhythmMap
+              bpm={bpm}
+              echoTimeL={echoTimeL}
+              echoTimeR={echoTimeR}
+              echoFeedback={state.delayAFeedback ?? 0.3}
+              echoPingPong={state.delayAPingPong ?? false}
+              echoWidth={state.delayAWidth ?? 0.5}
+              clockedPattern={state.delayBPattern ?? 'cascade'}
+              clockedWarp={state.delayBWarp ?? 'clean'}
+              clockedActivity={state.granularDelayActivity ?? 0.5}
+              clockedBaseTime={clockedBaseTime}
+              clockedSpread={state.delayBSpread ?? 0.5}
+              aToBSend={state.delayAToBSend ?? 0}
+              bToASend={state.delayBToASend ?? 0}
+            />
           </div>
         </div>
 

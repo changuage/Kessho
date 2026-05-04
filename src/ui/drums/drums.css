@@ -5,36 +5,8 @@
 
 /* ══ Design Tokens (matched to main Kessho webapp) ══ */
 .drum-root {
-  --bg-base: #1a1a2e;
-  --bg-input: rgba(0, 0, 0, 0.3);
-  --bg-surface: rgba(15, 25, 40, 0.95);
-  --bg-elevated: rgba(255,255,255,0.05);
-  --bg-control: rgba(255,255,255,0.08);
-  --bg-control-hover: rgba(255,255,255,0.15);
-  --border-subtle: rgba(255, 255, 255, 0.1);
-  --border-medium: rgba(255, 255, 255, 0.2);
-  --border-accent: rgba(100, 150, 200, 0.3);
-  --text-primary: #e0e0e0;
-  --text-secondary: #9ca3af;
-  --text-muted: #666;
-  --text-dim: #555;
-  --accent-primary: #a5c4d4;
-  --accent-cyan: #00d4ff;
-  --accent-green: #2ecc71;
-  --accent-red: #e74c3c;
-  --accent-stop: #ED5A24;
-  --accent-orange: #ffa502;
-  --accent-pink: #ff6b81;
-  --accent-teal: #2dd4bf;
-  --accent-lavender: #c084fc;
+  /* Engine-specific accents (beyond design system) */
   --accent-evolve: #a855f7;
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --font-xs: 0.55rem;
-  --font-sm: 0.65rem;
-  --font-md: 0.75rem;
-  --font-lg: 0.85rem;
 }
 
 .drum-root * { box-sizing: border-box; }
@@ -51,7 +23,7 @@
   color: #fff;
 }
 
-.drum-root .container { max-width: 1200px; margin: 0 auto; display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
+.drum-root .container { max-width: 1200px; margin: 0 auto; display: flex; gap: var(--k-gap-container, 10px); align-items: flex-start; flex-wrap: wrap; }
 .drum-root .sound-panel { flex: 0 0 460px; min-width: 0; max-width: 100%; }
 .drum-root .sequencer-panel { flex: 1; min-width: 380px; max-width: 100%; }
 @media (max-width: 900px) { .drum-root .sound-panel, .drum-root .sequencer-panel { flex: 1 1 100%; min-width: 0; max-width: 100%; } }
@@ -103,7 +75,6 @@
 .drum-root .voice-card {
   background: var(--bg-surface);
   border: 1px solid var(--border-accent);
-  border-left: 3px solid var(--vc, #888);
   border-radius: var(--radius-md);
   overflow: hidden;
   transition: border-color 0.15s;
@@ -398,13 +369,13 @@
 }
 .drum-root .seq-play-btn.playing { color: #ED5A24; }
 .drum-root .seq-play-btn:hover { transform: scale(1.05); }
-.drum-root .seq-transport label { font-size: 0.65rem; color: #888; display: flex; flex-direction: column; gap: 2px; }
+.drum-root .seq-transport label { font-size: var(--font-sm); color: var(--text-secondary); display: flex; flex-direction: column; gap: 2px; }
 .drum-root .seq-transport input, .drum-root .seq-transport select {
   background: var(--bg-input); color: #fff; border: 1px solid var(--border-medium);
   border-radius: var(--radius-sm); padding: 4px 6px; font-size: 0.75rem; width: 64px;
   transition: border-color 0.15s;
 }
-.drum-root .seq-transport input:focus, .drum-root .seq-transport select:focus { border-color: var(--accent-cyan); outline: none; }
+.drum-root .seq-transport input:focus, .drum-root .seq-transport select:focus { border-color: var(--page-accent); outline: none; }
 
 /* ── Tab Bar ── */
 .drum-root .seq-tab-bar { display: flex; gap: 2px; margin-bottom: 0; }
@@ -446,12 +417,12 @@
   padding: 5px 8px; margin-bottom: 0;
   background: rgba(255,255,255,0.03); border-radius: var(--radius-md);
 }
-.drum-root .seq-sources-label { font-size: 0.6rem; color: #666; text-transform: uppercase; letter-spacing: 0.5px; margin-right: 4px; }
+.drum-root .seq-sources-label { font-size: var(--font-sm); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-right: 4px; }
 .drum-root .seq-source-toggle {
   display: inline-flex; align-items: center; justify-content: center;
   width: 22px; height: 22px; padding: 0; border: 1px solid rgba(255,255,255,0.12);
   border-radius: var(--radius-sm); cursor: pointer;
-  font-size: 0.7rem; font-weight: 700; color: #666; background: rgba(0,0,0,0.3);
+  font-size: 0.7rem; font-weight: 700; color: var(--text-muted); background: rgba(0,0,0,0.3);
   transition: all 0.15s; user-select: none;
 }
 .drum-root .seq-source-toggle input { display: none; }
@@ -468,21 +439,21 @@
   background: none; border-radius: 0;
 }
 .drum-root .seq-per-controls label {
-  font-size: 0.7rem; color: #aaa; display: flex; align-items: center; gap: 4px;
+  font-size: var(--font-sm); color: var(--text-secondary); display: flex; align-items: center; gap: 4px;
 }
 .drum-root .seq-per-controls input, .drum-root .seq-per-controls select {
   background: var(--bg-input); color: #fff; border: 1px solid var(--border-medium);
   border-radius: var(--radius-sm); padding: 3px 5px; font-size: 0.7rem; width: 56px;
   transition: border-color 0.15s;
 }
-.drum-root .seq-per-controls input:focus, .drum-root .seq-per-controls select:focus { border-color: var(--accent-cyan); outline: none; }
+.drum-root .seq-per-controls input:focus, .drum-root .seq-per-controls select:focus { border-color: var(--page-accent); outline: none; }
 .drum-root .seq-per-controls .seq-swing-range { width: 60px; height: 3px; accent-color: var(--sc, var(--accent-cyan)); }
-.drum-root .seq-per-controls .seq-swing-val { font-size: 0.6rem; color: var(--sc, var(--accent-cyan)); min-width: 22px; }
+.drum-root .seq-per-controls .seq-swing-val { font-size: var(--font-xs); color: var(--page-accent); min-width: 22px; }
 .drum-root .seq-per-controls .seq-clock-select { width: 52px; font-size: 0.7rem; }
 .drum-root .seq-link-btn, .drum-root .seq-evolve-btn {
-  padding: 3px 10px; font-size: 0.65rem; font-weight: 700; border: none;
+  padding: 3px 10px; font-size: var(--font-sm); font-weight: 700; border: none;
   border-radius: var(--radius-sm); cursor: pointer; background: var(--bg-control);
-  color: #666; transition: all 0.15s; letter-spacing: 0.3px;
+  color: var(--text-muted); transition: all 0.15s; letter-spacing: 0.3px;
 }
 .drum-root .seq-link-btn.on { background: var(--sc, var(--accent-cyan)); color: #000; }
 .drum-root .seq-evolve-btn.on { background: #a855f7; color: #000; }
@@ -492,7 +463,7 @@
   border-radius: var(--radius-sm); font-size: 0.6rem;
 }
 .drum-root .seq-evolve-panel.open { display: block; }
-.drum-root .seq-evolve-panel label { color: #aaa; display: flex; align-items: center; gap: 3px; font-size: 0.65rem; }
+.drum-root .seq-evolve-panel label { color: var(--text-secondary); display: flex; align-items: center; gap: 3px; font-size: var(--font-sm); }
 .drum-root .seq-evolve-panel input[type=range] { width: 50px; height: 3px; accent-color: #a855f7; }
 .drum-root .seq-evolve-panel input[type=number] { background: var(--bg-input); color: #fff; border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 2px 4px; font-size: 0.6rem; width: 36px; transition: border-color 0.15s; }
 .drum-root .seq-evolve-panel input[type=number]:focus { border-color: var(--accent-evolve); outline: none; }
@@ -577,6 +548,61 @@
 /* ── Trigger always-visible ── */
 .drum-root .seq-trigger-always {
   margin: 6px 0;
+}
+.drum-root .seq-lane-pattern-preset {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: rgba(255,255,255,0.025);
+  border-left: 1px solid var(--border-subtle);
+  border-right: 1px solid var(--border-subtle);
+}
+.drum-root .seq-lane-pattern-preset-label {
+  color: var(--text-secondary);
+  flex: 0 0 auto;
+  font-size: var(--font-sm);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.drum-root .seq-lane-pattern-preset > div {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+.drum-root .seq-lane-pattern-preset select {
+  max-width: none;
+}
+.drum-root .seq-sequence-preset-row {
+  display: flex;
+  align-items: center;
+  padding: 6px 8px;
+  margin: 4px 0 0;
+  background: rgba(255,255,255,0.025);
+  border-radius: var(--radius-md);
+}
+.drum-root .seq-sequence-preset-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+.drum-root .seq-sequence-preset-label {
+  color: var(--text-muted);
+  flex: 0 0 auto;
+  font-size: var(--font-sm);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.drum-root .seq-sequence-preset-dropdown {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.drum-root .seq-per-controls .seq-sequence-preset-dropdown select {
+  width: auto;
+  min-width: 0;
+  max-width: none;
 }
 .drum-root .seq-evolve-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 3px; }
 .drum-root .seq-evolve-checks { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -1048,13 +1074,13 @@
   border: 1px solid rgba(255,255,255,0.12); width: fit-content; margin-left: auto;
 }
 .drum-root .seq-view-btn {
-  padding: 4px 14px; font-size: 0.6rem; font-weight: 700;
-  border: none; cursor: pointer; background: rgba(255,255,255,0.03); color: rgba(255,255,255,0.3);
+  padding: 4px 14px; font-size: var(--font-sm); font-weight: 700;
+  border: none; cursor: pointer; background: rgba(255,255,255,0.03); color: var(--text-muted);
   transition: all 0.15s; letter-spacing: 0.5px; text-transform: uppercase;
 }
 .drum-root .seq-view-btn.active {
-  background: color-mix(in srgb, var(--accent-cyan) 18%, transparent);
-  color: var(--accent-cyan);
+  background: color-mix(in srgb, var(--page-accent) 18%, transparent);
+  color: var(--page-accent);
 }
 .drum-root .seq-view-btn:hover:not(.active) { background: rgba(255,255,255,0.06); }
 
@@ -1583,6 +1609,10 @@
   .drum-root .seq-per-controls select {
     font-size: 0.65rem; padding: 4px 6px; width: 50px; min-height: 32px;
   }
+  .drum-root .seq-sequence-preset-row { padding: 6px 8px; }
+  .drum-root .seq-sequence-preset-control { width: 100%; min-width: 0; flex: 1 1 100%; }
+  .drum-root .seq-sequence-preset-label { font-size: 0.6rem; }
+  .drum-root .seq-sequence-preset-dropdown { width: 100%; }
 
   /* ── Link / Evolve buttons ── */
   .drum-root .seq-link-btn,

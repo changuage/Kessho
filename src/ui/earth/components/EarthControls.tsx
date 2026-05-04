@@ -30,6 +30,8 @@ type EarthCardProps = {
   expandedCards: Set<string>;
   onToggleCard?: (id: string) => void;
   enabled?: boolean;
+  onToggleEnabled?: () => void;
+  enableTitle?: string;
   subtitle?: string;
   children: React.ReactNode;
 };
@@ -41,6 +43,8 @@ export function EarthCard({
   expandedCards,
   onToggleCard,
   enabled,
+  onToggleEnabled,
+  enableTitle,
   subtitle,
   children,
 }: EarthCardProps) {
@@ -61,7 +65,21 @@ export function EarthCard({
         )}
         <div className="ec-header-right">
           {enabled !== undefined && (
-            <span className={`ec-status-dot ${enabled ? 'on' : 'off'}`} />
+            onToggleEnabled ? (
+              <button
+                type="button"
+                className={`ec-status-dot ec-status-dot-button ${enabled ? 'on' : 'off'}`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onToggleEnabled();
+                }}
+                title={enableTitle}
+                aria-label={enableTitle}
+                aria-pressed={enabled}
+              />
+            ) : (
+              <span className={`ec-status-dot ${enabled ? 'on' : 'off'}`} />
+            )
           )}
           {clickable ? <span className="ec-chevron">{expanded ? '▼' : '▶'}</span> : null}
         </div>

@@ -22,6 +22,7 @@ type InsectsCardProps = {
   onPresetRate?: (scope: InsectsScope, option: EarthPresetOption, rating: number) => void;
   ds: EarthDualSliderRenderer;
   enabled?: boolean;
+  onToggleEnabled?: () => void;
   engineName?: string;
 };
 
@@ -38,6 +39,7 @@ export function InsectsCard({
   onPresetRate,
   ds,
   enabled,
+  onToggleEnabled,
   engineName,
 }: InsectsCardProps) {
   const prefix = scope === 'insects1' ? 'insects' : 'insects2';
@@ -51,6 +53,8 @@ export function InsectsCard({
       expandedCards={expandedCards}
       onToggleCard={onToggleCard}
       enabled={enabled}
+      onToggleEnabled={onToggleEnabled}
+      enableTitle={enabled ? `Disable ${title}` : `Enable ${title}`}
       subtitle={engineName}
     >
       <div className="earth-preset-bar">
@@ -75,7 +79,7 @@ export function InsectsCard({
           onClick={() => onPresetSave(scope)}
           title={`Save the current ${title} engine state as an L1 preset`}
         >
-          Save
+          💾
         </button>
       </div>
 

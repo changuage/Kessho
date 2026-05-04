@@ -75,6 +75,68 @@ function normalizePatternData(data: Record<string, unknown>): NormalizedEuclidea
   };
 }
 
+function getLaneNumber(laneIndex: number): 1 | 2 | 3 | 4 {
+  const normalized = Math.max(0, Math.min(3, Math.floor(laneIndex)));
+  return (normalized + 1) as 1 | 2 | 3 | 4;
+}
+
+function extractLanePatternData(
+  state: SliderState,
+  prefix: 'drum' | 'synth',
+  laneIndex: number,
+): Record<string, unknown> {
+  const lane = getLaneNumber(laneIndex);
+  const stateRecord = state as unknown as Record<string, unknown>;
+  return {
+    euclideanPatternEnabled: stateRecord[`${prefix}Euclid${lane}Enabled`],
+    euclideanPatternPreset: stateRecord[`${prefix}Euclid${lane}Preset`],
+    euclideanPatternSteps: stateRecord[`${prefix}Euclid${lane}Steps`],
+    euclideanPatternHits: stateRecord[`${prefix}Euclid${lane}Hits`],
+    euclideanPatternRotation: stateRecord[`${prefix}Euclid${lane}Rotation`],
+  };
+}
+
+function normalizeSpecificLanePatternData(
+  data: Record<string, unknown>,
+  prefix: 'drum' | 'synth',
+  laneIndex: number,
+): NormalizedEuclideanPatternData | null {
+  const lane = getLaneNumber(laneIndex);
+  const lanePrefix = `${prefix}Euclid${lane}`;
+  const hasLaneData = Object.keys(data).some((key) => key.startsWith(lanePrefix));
+  if (!hasLaneData) return null;
+
+  const generic = normalizePatternData(data);
+  return {
+    enabled: coerceBoolean(data[`${lanePrefix}Enabled`], generic.enabled),
+    preset: coerceString(data[`${lanePrefix}Preset`], generic.preset),
+    steps: coerceNumber(data[`${lanePrefix}Steps`], generic.steps),
+    hits: coerceNumber(data[`${lanePrefix}Hits`], generic.hits),
+    rotation: coerceNumber(data[`${lanePrefix}Rotation`], generic.rotation),
+  };
+}
+
+function buildLaneStateFromPatternData(
+  data: Record<string, unknown>,
+  prefix: 'drum' | 'synth',
+  laneIndex: number,
+): Record<string, unknown> {
+  const lane = getLaneNumber(laneIndex);
+  const alternatePrefix = prefix === 'drum' ? 'synth' : 'drum';
+  const pattern = normalizeSpecificLanePatternData(data, prefix, laneIndex)
+    ?? normalizeSpecificLanePatternData(data, alternatePrefix, laneIndex)
+    ?? normalizeSpecificLanePatternData(data, prefix, 0)
+    ?? normalizeSpecificLanePatternData(data, alternatePrefix, 0)
+    ?? normalizePatternData(data);
+  return {
+    [`${prefix}Euclid${lane}Enabled`]: pattern.enabled,
+    [`${prefix}Euclid${lane}Preset`]: pattern.preset,
+    [`${prefix}Euclid${lane}Steps`]: pattern.steps,
+    [`${prefix}Euclid${lane}Hits`]: pattern.hits,
+    [`${prefix}Euclid${lane}Rotation`]: pattern.rotation,
+  };
+}
+
 function buildNeutralDrumLaneDefaults(lane: 2 | 3 | 4): Record<string, unknown> {
   return {
     [`drumEuclid${lane}Enabled`]: false,
@@ -138,6 +200,20 @@ export function extractEuclideanPatternDataFromDrumState(state: SliderState): Re
 
 export function extractEuclideanPatternDataFromSynthState(state: SliderState): Record<string, unknown> {
   return extractParams(state, 1, 'synthEuclidean');
+}
+
+export function extractEuclideanPatternLaneDataFromDrumState(
+  state: SliderState,
+  laneIndex: number,
+): Record<string, unknown> {
+  return extractLanePatternData(state, 'drum', laneIndex);
+}
+
+export function extractEuclideanPatternLaneDataFromSynthState(
+  state: SliderState,
+  laneIndex: number,
+): Record<string, unknown> {
+  return extractLanePatternData(state, 'synth', laneIndex);
 }
 
 function hasSpecificEuclideanData(data: Record<string, unknown>, prefix: 'drum' | 'synth'): boolean {
@@ -205,6 +281,14 @@ export function applyEuclideanPatternToDrumState(
   return applyParams(state, buildDrumEuclideanStateFromPatternData(data), 1, 'drumEuclidean');
 }
 
+export function applyEuclideanPatternToDrumLaneState(
+  state: SliderState,
+  data: Record<string, unknown>,
+  laneIndex: number,
+): SliderState {
+  return applyParams(state, buildLaneStateFromPatternData(data, 'drum', laneIndex), 1, 'drumEuclidean');
+}
+
 export function buildSynthEuclideanStateFromPatternData(
   data: Record<string, unknown>,
 ): Record<string, unknown> {
@@ -239,4 +323,12 @@ export function applyEuclideanPatternToSynthState(
   data: Record<string, unknown>,
 ): SliderState {
   return applyParams(state, buildSynthEuclideanStateFromPatternData(data), 1, 'synthEuclidean');
+}
+
+export function applyEuclideanPatternToSynthLaneState(
+  state: SliderState,
+  data: Record<string, unknown>,
+  laneIndex: number,
+): SliderState {
+  return applyParams(state, buildLaneStateFromPatternData(data, 'synth', laneIndex), 1, 'synthEuclidean');
 }

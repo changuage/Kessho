@@ -6,32 +6,10 @@
 
 /* ══ Design Tokens (matched to Kessho Synth/Drum/Granular) ══ */
 .earth-root {
-  --bg-base: #1a1a2e;
-  --bg-input: rgba(0, 0, 0, 0.3);
-  --bg-surface: rgba(15, 25, 40, 0.95);
-  --bg-elevated: rgba(255,255,255,0.05);
-  --bg-control: rgba(255,255,255,0.08);
-  --bg-control-hover: rgba(255,255,255,0.15);
-  --border-subtle: rgba(255, 255, 255, 0.1);
-  --border-medium: rgba(255, 255, 255, 0.2);
-  --border-accent: rgba(100, 150, 200, 0.3);
-  --text-primary: #e0e0e0;
-  --text-secondary: #9ca3af;
-  --text-muted: #666;
-  --text-dim: #555;
-  --accent-primary: #a5c4d4;
+  /* Engine-specific accents (beyond design system) */
   --accent-water: #4a9eff;
   --accent-ocean: #00d4ff;
   --accent-insects: #2ecc71;
-  --accent-green: #10b981;
-  --accent-red: #e74c3c;
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --font-xs: 0.55rem;
-  --font-sm: 0.65rem;
-  --font-md: 0.75rem;
-  --font-lg: 0.85rem;
 }
 
 .earth-root * { box-sizing: border-box; }
@@ -47,7 +25,7 @@
   max-width: 1200px;
   margin: 0 auto;
   display: flex;
-  gap: 8px;
+  gap: var(--k-gap-container, 10px);
   align-items: flex-start;
   flex-wrap: wrap;
 }
@@ -71,17 +49,12 @@
     min-width: 0;
     max-width: 100%;
   }
-
-  .earth-root .mixer-panel {
-    order: -1;
-  }
 }
 
 /* ── Card ── */
 .earth-root .earth-card {
   background: var(--bg-surface);
   border: 1px solid var(--border-accent);
-  border-left: 3px solid var(--sc, #888);
   border-radius: var(--radius-md);
   overflow: hidden;
   transition: border-color 0.15s, box-shadow 0.2s;
@@ -138,6 +111,8 @@
 
 .earth-root .earth-card-body > .earth-preset-row,
 .earth-root .earth-card-body > .earth-preset-bar,
+.earth-root .earth-card-body > .sc-preset-loader,
+.earth-root .earth-card-body > .sc-morph-row,
 .earth-root .earth-card-body > .layer-row,
 .earth-root .earth-card-body > .earth-section-label,
 .earth-root .earth-card-body > .earth-sub-section {
@@ -194,6 +169,99 @@
   border-color: rgba(255,255,255,0.28);
   background: rgba(255,255,255,0.12);
   color: #fff;
+}
+
+/* ── Pad Synth-style Preset Loader ── */
+.earth-root .sc-preset-loader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  min-width: 0;
+}
+
+.earth-root .sc-preset-loader-select {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.75rem;
+  background: rgba(0, 0, 0, 0.3);
+  color: #ccc;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-sm, 4px);
+  padding: 3px 6px;
+  cursor: pointer;
+  color-scheme: dark;
+}
+
+.earth-root .sc-preset-loader-slot,
+.earth-root .sc-preset-loader-save {
+  flex-shrink: 0;
+  min-width: 26px;
+  min-height: 22px;
+  padding: 3px 8px;
+  border: 1px solid color-mix(in srgb, var(--slot-color, #a5c4d4) 35%, transparent);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--slot-color, #a5c4d4);
+  font-size: 0.6rem;
+  font-weight: 700;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+
+.earth-root .sc-preset-loader-save {
+  --slot-color: #5f8f5f;
+  padding: 3px 6px;
+}
+
+.earth-root .sc-preset-loader-slot:hover,
+.earth-root .sc-preset-loader-save:hover {
+  border-color: color-mix(in srgb, var(--slot-color, #a5c4d4) 65%, transparent);
+  background: color-mix(in srgb, var(--slot-color, #a5c4d4) 14%, transparent);
+  color: #fff;
+}
+
+.earth-root .sc-morph-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  min-width: 0;
+}
+
+.earth-root .sc-morph-row .sc-morph-tag {
+  flex-shrink: 0;
+  font-size: 0.65rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.earth-root .sc-morph-row .sc-preset-slot {
+  flex: 0 1 132px;
+  min-width: 96px;
+}
+
+.earth-root .sc-morph-row .sc-preset-select {
+  width: 100%;
+  min-width: 0;
+  font-size: 0.7rem;
+  background: rgba(0, 0, 0, 0.3);
+  color: #ccc;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-sm, 4px);
+  padding: 3px 6px;
+  cursor: pointer;
+  color-scheme: dark;
+}
+
+.earth-root .sc-morph-row .sc-morph-slider {
+  flex: 1 1 160px;
+  min-width: 140px;
+}
+
+.earth-root .sc-morph-row .earth-slider-row {
+  margin-bottom: 0;
 }
 
 /* ── Param Row ── */
@@ -382,7 +450,6 @@
 .earth-root .mixer-section {
   background: var(--bg-surface);
   border: 1px solid var(--border-accent);
-  border-left: 3px solid var(--accent-primary);
   border-radius: var(--radius-md);
   margin-bottom: 6px;
   overflow: hidden;
@@ -600,7 +667,6 @@
 
 /* ── Earth Kit Preset Bar ── */
 .earth-root .earth-kit-preset-bar {
-  width: 100%;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -670,6 +736,27 @@
   .earth-root .earth-sub-body {
     grid-template-columns: 1fr;
   }
+
+  .earth-root .sc-preset-loader {
+    flex-wrap: wrap;
+  }
+
+  .earth-root .sc-preset-loader-select {
+    flex-basis: 100%;
+  }
+
+  .earth-root .sc-morph-row {
+    flex-wrap: wrap;
+  }
+
+  .earth-root .sc-morph-row .sc-preset-slot {
+    flex: 1 1 calc(50% - 28px);
+  }
+
+  .earth-root .sc-morph-row .sc-morph-slider {
+    flex: 1 1 100%;
+    order: 5;
+  }
 }
 
 /* ── Card Header Status Badge ── */
@@ -686,11 +773,57 @@
   flex-shrink: 0;
 }
 .earth-root .ec-status-dot.on {
-  background: var(--accent-green);
-  box-shadow: 0 0 4px rgba(16,185,129,0.5);
+  background: color-mix(in srgb, var(--sc, var(--accent-green)) 86%, white 14%);
+  box-shadow:
+    0 0 5px color-mix(in srgb, var(--sc, var(--accent-green)) 44%, transparent),
+    0 0 10px color-mix(in srgb, var(--sc, var(--accent-green)) 16%, transparent);
 }
 .earth-root .ec-status-dot.off {
-  background: var(--text-dim);
+  background: rgba(210,214,220,0.28);
+}
+
+.earth-root .ec-status-dot-button {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  cursor: pointer;
+}
+
+.earth-root .ec-status-dot-button.on,
+.earth-root .ec-status-dot-button.off {
+  background: transparent;
+  box-shadow: none;
+}
+
+.earth-root .ec-status-dot-button::before {
+  content: '';
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: rgba(210,214,220,0.28);
+  box-shadow: 0 0 4px rgba(255,255,255,0.06);
+}
+
+.earth-root .ec-status-dot-button.on::before {
+  background: color-mix(in srgb, var(--sc, var(--accent-green)) 86%, white 14%);
+  box-shadow:
+    0 0 5px color-mix(in srgb, var(--sc, var(--accent-green)) 48%, transparent),
+    0 0 10px color-mix(in srgb, var(--sc, var(--accent-green)) 18%, transparent);
+}
+
+.earth-root .ec-status-dot-button:hover {
+  transform: scale(1.08);
+}
+
+.earth-root .ec-status-dot-button:focus-visible {
+  outline: 1px solid color-mix(in srgb, var(--sc, var(--accent-green)) 72%, transparent);
+  outline-offset: 3px;
 }
 
 /* ── Mixer Sub-Group ── */
@@ -709,13 +842,6 @@
 /* ── Active Earth Matrix ── */
 .earth-root .earth-active-matrix {
   border-left-color: rgba(183, 211, 163, 0.5);
-}
-
-.earth-root .earth-active-matrix-note {
-  margin: 0 0 2px;
-  color: rgba(235, 242, 248, 0.84);
-  font-size: var(--font-sm);
-  line-height: 1.35;
 }
 
 .earth-root .earth-matrix-scroll {
@@ -1549,7 +1675,6 @@
 .earth-root .earth-scene-container {
   background: var(--bg-surface);
   border: 1px solid var(--border-accent);
-  border-left: 3px solid var(--accent-primary);
   border-radius: var(--radius-md);
   overflow: hidden;
   margin-bottom: 6px;

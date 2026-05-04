@@ -52,17 +52,16 @@ const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 
 /* ─── colours ─── */
 const BG = '#0e1420';
-const ENVELOPE_FILL_TOP = 'rgba(139, 92, 246, 0.45)';    // --accent-reverb violet
+const ENVELOPE_FILL_TOP = 'rgba(139, 92, 246, 0.45)';
 const ENVELOPE_FILL_BOT = 'rgba(139, 92, 246, 0.05)';
 const ENVELOPE_STROKE = 'rgba(165, 140, 255, 0.7)';
-const ER_COLOR = 'rgba(96, 165, 250, 0.6)';               // blue
-const MOD_COLOR = 'rgba(245, 158, 11, 0.35)';              // amber
-const SHIMMER_COLOR = 'rgba(244, 114, 182, 0.55)';         // pink
-const REVERSE_FILL = 'rgba(52, 211, 153, 0.2)';            // green
+const ER_COLOR = 'rgba(96, 165, 250, 0.6)';
+const MOD_COLOR = 'rgba(245, 158, 11, 0.35)';
+const SHIMMER_COLOR = 'rgba(244, 114, 182, 0.55)';
+const REVERSE_FILL = 'rgba(52, 211, 153, 0.2)';
 const REVERSE_STROKE = 'rgba(52, 211, 153, 0.5)';
 const WIDTH_COLOR = 'rgba(165, 196, 212, 0.4)';
 const FREEZE_OVERLAY = 'rgba(59, 130, 246, 0.15)';
-const GRID_COLOR = 'rgba(255, 255, 255, 0.04)';
 const TAPE_TINT = 'rgba(245, 158, 11, 0.06)';
 const TUBE_TINT = 'rgba(239, 68, 68, 0.06)';
 
@@ -136,23 +135,6 @@ const ReverbEnvelopeCanvas: React.FC<ReverbEnvelopeCanvasProps> = (props) => {
       ctx.textAlign = 'center';
       ctx.fillText('Reverb Bypassed', w / 2, h / 2);
       return;
-    }
-
-    /* ─── grid lines ─── */
-    ctx.strokeStyle = GRID_COLOR;
-    ctx.lineWidth = 1;
-    for (let i = 1; i < 4; i++) {
-      const y = (h * i) / 4;
-      ctx.beginPath();
-      ctx.moveTo(0, y); ctx.lineTo(w, y);
-      ctx.stroke();
-    }
-    const verticalGuideCount = quality === 'ultra' ? 8 : quality === 'balanced' ? 6 : 4;
-    for (let i = 1; i < verticalGuideCount; i++) {
-      const x = (w * i) / verticalGuideCount;
-      ctx.beginPath();
-      ctx.moveTo(x, 0); ctx.lineTo(x, h);
-      ctx.stroke();
     }
 
     /* ─── parameters ─── */

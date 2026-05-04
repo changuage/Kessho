@@ -6,7 +6,7 @@
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import './drums.css';
-import type { SliderState } from '../state';
+import type { SerializedStepOverrides, SliderState } from '../state';
 import type { DrumVoiceType } from '../../audio/drumSynth';
 import type { DrumStepOverrides } from '../../audio/drumSeqTypes';
 import type { ClockDivision } from '../../audio/drumSeqTypes';
@@ -25,20 +25,23 @@ import SeqLane from './SeqLane';
 import SeqSparkline from './SeqSparkline';
 import { useSliderHelp } from '../SliderHelpOverlay';
 import { SliderPrimitive } from '../sliderSystem';
+import { serializeStepOverrides } from '../sequencer/stepOverrideSerialization';
+import { applySequencePresetOverrides, copySequenceLaneForPreset } from '../sequencer/sequencePresetLane';
 import { PresetDropdown } from '../../presets/PresetDropdown';
-import { extractParams } from '../../presets/codec';
+import { SEQUENCER_LANE_COLORS, SEQUENCER_SUB_LANE_COLORS } from '../../designSystem/colors';
 import {
-  applyEuclideanPatternToDrumState,
-  extractEuclideanPatternDataFromDrumState,
+  EUCLIDEAN_PATTERN_STEP_OVERRIDES_KEY,
+  applyEuclideanPatternToDrumLaneState,
+  extractEuclideanPatternLaneDataFromDrumState,
 } from '../../presets/euclideanPatternBank';
 import type { PresetEntry } from '../../presets/types';
 import type { UsePresetsOptions } from '../../presets/usePresets';
 
 const LANE_CONFIGS = [
-  { color: '#00d4ff', name: 'Seq 1' },
-  { color: '#ff6b81', name: 'Seq 2' },
-  { color: '#22c55e', name: 'Seq 3' },
-  { color: '#ffa502', name: 'Seq 4' },
+  { color: SEQUENCER_LANE_COLORS[0], name: 'Seq 1' },
+  { color: SEQUENCER_LANE_COLORS[1], name: 'Seq 2' },
+  { color: SEQUENCER_LANE_COLORS[2], name: 'Seq 3' },
+  { color: SEQUENCER_LANE_COLORS[3], name: 'Seq 4' },
 ];
 
 // ── Keyboard shortcuts: A S D F G H J → voice triggers ──
@@ -173,26 +176,14 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
   }), [announceHelp]);
 
   // ── Shared Euclidean pattern bank ──
-  const [euclidPresetName, setEuclidPresetName] = useState<string | undefined>();
-  const handleEuclidPresetLoad = useCallback((entry: PresetEntry, _data: Record<string, unknown>) => {
-    setEuclidPresetName(entry.name);
+  const [euclidPresetNames, setEuclidPresetNames] = useState<Array<string | undefined>>(() => Array(4).fill(undefined));
+  const [kitPresetName, setKitPresetName] = useState<string | undefined>();
+  const setEuclidPresetNameForLane = useCallback((laneIdx: number, name: string | undefined) => {
+    setEuclidPresetNames(prev => prev.map((value, index) => (index === laneIdx ? name : value)));
   }, []);
-  const drumEuclideanPatternOptions = React.useMemo<UsePresetsOptions>(() => ({
-    customExtract: extractEuclideanPatternDataFromDrumState,
-    customApply: applyEuclideanPatternToDrumState,
-  }), []);
-
-  // ── Composite extract: L3 drums source includes L1 drumEuclidean + L2 drumKit ──
-  const drumsCompositeExtract = React.useMemo<UsePresetsOptions>(() => ({
-    customExtract: (s: SliderState) => {
-      const combined: Record<string, unknown> = {};
-      Object.assign(combined, extractParams(s, 1, 'drumEuclidean'));
-      Object.assign(combined, extractParams(s, 2, 'drumKit'));
-      Object.assign(combined, extractParams(s, 3, 'drums'));
-      return combined;
-    },
-  }), []);
-
+  const handleKitPresetLoad = useCallback((entry: PresetEntry, _data: Record<string, unknown>) => {
+    setKitPresetName(entry.name);
+  }, []);
   // ── Reusable sequencer hook ──
   const seq = useEuclideanSequencer({
     state,
@@ -213,6 +204,46 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     initialEvolveConfigs,
     resetKey: presetVersion,
   });
+
+  const drumEuclideanPatternOptions = React.useMemo<UsePresetsOptions[]>(() => LANE_CONFIGS.map((_, laneIdx) => ({
+    customExtract: (currentState) => {
+      const stepOverrides = serializeStepOverrides(copySequenceLaneForPreset(seq.stepOverrides, laneIdx));
+      return {
+        ...extractEuclideanPatternLaneDataFromDrumState(currentState, laneIdx),
+        ...(stepOverrides ? { [EUCLIDEAN_PATTERN_STEP_OVERRIDES_KEY]: stepOverrides } : {}),
+      };
+    },
+    customApply: (currentState, data) => applyEuclideanPatternToDrumLaneState(currentState, data, laneIdx),
+  })), [seq.stepOverrides]);
+
+  const handleEuclidSequenceLoad = useCallback((laneIdx: number, entry: PresetEntry, data: Record<string, unknown>) => {
+    setEuclidPresetNameForLane(laneIdx, entry.name);
+    const stepOverrides = data[EUCLIDEAN_PATTERN_STEP_OVERRIDES_KEY] as SerializedStepOverrides | undefined;
+    seq.setStepOverrides((current) => applySequencePresetOverrides(current, stepOverrides ?? {}, laneIdx));
+  }, [seq, setEuclidPresetNameForLane]);
+
+  const renderSequencePresetControl = useCallback((laneIdx: number) => (
+    <div className="seq-sequence-preset-control" onClick={(e) => e.stopPropagation()}>
+      <span className="seq-sequence-preset-label">Sequence</span>
+      <PresetDropdown
+        key={`drum-sequence-${laneIdx}`}
+        level="engine"
+        scope="euclideanPattern"
+        state={state}
+        currentName={euclidPresetNames[laneIdx]}
+        onLoad={(entry: PresetEntry, data: Record<string, unknown>) => handleEuclidSequenceLoad(laneIdx, entry, data)}
+        onStateChange={onStateChange}
+        presetOptions={drumEuclideanPatternOptions[laneIdx]}
+        showSaveButton
+        saveButtonLabel="Save Sequence"
+        saveDialogTitle="Save Sequence"
+        defaultSaveName={`${LANE_CONFIGS[laneIdx]?.name ?? `Seq ${laneIdx + 1}`} Sequence`}
+        showFileButtons={false}
+        compact
+        className="seq-sequence-preset-dropdown"
+      />
+    </div>
+  ), [drumEuclideanPatternOptions, euclidPresetNames, handleEuclidSequenceLoad, onStateChange, state]);
 
   const setSharedSequencerBpm = useCallback((bpm: number) => {
     onParamChange('sequencerMasterBPM' as keyof SliderState, bpm);
@@ -678,32 +709,39 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
   return (
     <div className="drum-root">
       <div className="container">
-        {/* ═══ Drums Source Preset (L3) ═══ */}
-        <div className="drums-source-preset-bar">
-          <span className="drums-source-preset-label">Drums Source</span>
-          <PresetDropdown
-            level="source"
-            scope="drums"
-            state={state}
-            onLoad={(_entry: PresetEntry) => {}}
-            onStateChange={onStateChange}
-            presetOptions={drumsCompositeExtract}
-            compact
-          />
-        </div>
-
         {/* ═══ SOUND PANEL (left, 460px) ═══ */}
         <div className="sound-panel">
+          {/* ═══ Drums Source Identity ═══ */}
+          <div className="drums-source-preset-bar fx-page-header fx-page-header--identity">
+            <span className="drums-source-preset-label fx-page-title">⋮⋮ Drums</span>
+            <div className="fx-page-actions fx-page-actions--identity">
+              <button
+                className={`drum-enable-btn${state.drumEnabled ? ' on' : ''}`}
+                onClick={() => onSelectChange('drumEnabled', !state.drumEnabled)}
+                title={state.drumEnabled ? 'Drum engine ON' : 'Drum engine OFF'}
+                aria-pressed={Boolean(state.drumEnabled)}
+                {...bindHelp('drumEngineEnable')}
+              >
+                {state.drumEnabled ? 'ON' : 'OFF'}
+              </button>
+            </div>
+          </div>
+
+          <div className="drums-kit-preset-card fx-kit-preset-card">
+            <span className="fx-kit-preset-title">Kit</span>
+            <PresetDropdown
+              level="kit"
+              scope="drumKit"
+              state={state}
+              currentName={kitPresetName}
+              onLoad={handleKitPresetLoad}
+              onStateChange={onStateChange}
+              compact
+            />
+          </div>
+
           {/* Master strip */}
           <div className="master-strip">
-            <button
-              className={`drum-enable-btn${state.drumEnabled ? ' on' : ''}`}
-              onClick={() => onSelectChange('drumEnabled', !state.drumEnabled)}
-              title={state.drumEnabled ? 'Drum engine ON' : 'Drum engine OFF'}
-              {...bindHelp('drumEngineEnable')}
-            >
-              {state.drumEnabled ? 'ON' : 'OFF'}
-            </button>
             <div className="master-item master-item--slider">
               <Slider
                 label="Level"
@@ -810,22 +848,6 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
               </button>
 
             </div>
-          </div>
-
-          {/* Shared Euclidean pattern preset */}
-          <div className="drums-pattern-preset-bar">
-            <span className="drums-pattern-preset-label">Pattern</span>
-            <PresetDropdown
-              level="engine"
-              scope="euclideanPattern"
-              state={state}
-              currentName={euclidPresetName}
-              onLoad={handleEuclidPresetLoad}
-              onStateChange={onStateChange}
-              presetOptions={drumEuclideanPatternOptions}
-              showSaveButton={false}
-              compact
-            />
           </div>
 
           {/* ── Simple Mode (standalone random trigger) ── */}
@@ -949,6 +971,9 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                   </button>
                   </div>{/* end seq-per-controls */}
                 </div>{/* end seq-sources */}
+                <div className="seq-sequence-preset-row">
+                  {renderSequencePresetControl(seq.activeTab)}
+                </div>
 
                 {/* Evolution panel */}
                 <div className={`seq-evolve-panel${seq.evolveConfigs[seq.activeTab]?.enabled ? ' open' : ''}`}>
@@ -1024,7 +1049,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                           label="Dice"
                           mode="single"
                           value={Math.round(diceIntensity * 100)}
-                          hero="#ffa502"
+                          hero={SEQUENCER_SUB_LANE_COLORS.expression}
                           variant="full"
                           density="compact"
                           displayValue={`${Math.round(diceIntensity * 100)}%`}
@@ -1104,7 +1129,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
 
                 {/* ── TRIGGER LANE – always visible ── */}
                 <div className="seq-trigger-always">
-                  {/* Trigger lane header: Steps / Hits / Rotation / Preset */}
+                  {/* Trigger lane header: Steps / Hits / Rotation */}
                   <div className="seq-lane-header">
                     <button
                       className={`seq-lane-enable-btn trigger-toggle${!activeSeq.muted ? ' on' : ''}`}
@@ -1134,16 +1159,6 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                         <span className="seq-rotation-val">{activeSeq.trigger.rotation}</span>
                         <button onClick={() => seq.setParam(seq.activeTab, 'Rotation', activeSeq.trigger.rotation + 1)}>→</button>
                       </div>
-                      <select
-                        className="seq-preset-select"
-                        value={seq.getParam(seq.activeTab, 'Preset') as string}
-                        onChange={(e) => seq.setParamSelect(seq.activeTab, 'Preset', e.target.value as any)}
-                        {...bindHelp('drumSeqTriggerPreset')}
-                      >
-                        {seq.presetNames.map((name) => (
-                          <option key={name} value={name}>{name}</option>
-                        ))}
-                      </select>
                     </div>
                   </div>
                   <SeqLane
@@ -1166,10 +1181,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                 <div className="seq-spark-container">
                   {(['pitch', 'expression', 'morph', 'distance'] as const).map((laneKind) => {
                     const subState = seq.subLaneStates[seq.activeTab]?.[laneKind];
-                    const laneColor = laneKind === 'pitch' ? '#ff6b81'
-                      : laneKind === 'expression' ? '#ffa502'
-                      : laneKind === 'morph' ? '#c084fc'
-                      : '#2dd4bf';
+                    const laneColor = SEQUENCER_SUB_LANE_COLORS[laneKind];
                     return (
                       <React.Fragment key={laneKind}>
                         <SeqSparkline
@@ -1272,18 +1284,15 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
               <SeqOverview
                 sequencers={seq.sequencerModels}
                 playheads={seq.playheads}
-                presetNames={seq.presetNames}
                 onSelectSequencer={(index) => {
                   seq.setActiveTab(index);
                   seq.setViewMode('detail');
                 }}
                 onSetParam={(seqIdx, param, value) => seq.setParam(seqIdx, param, value)}
-                onSetParamSelect={(seqIdx, param, value) => seq.setParamSelect(seqIdx, param, value as any)}
                 onToggleSource={(seqIdx, voice, on) => seq.setParamSelect(seqIdx, `Target${voice.charAt(0).toUpperCase() + voice.slice(1)}`, on as any)}
                 onToggleMute={(seqIdx) => seq.toggleMute(seqIdx)}
                 onToggleSolo={(seqIdx) => seq.toggleSolo(seqIdx)}
                 onSetClockDiv={(seqIdx, div) => seq.setClockDiv(seqIdx, div)}
-                getParam={(seqIdx, param) => seq.getParam(seqIdx, param)}
                 onToggleTriggerStep={(seqIdx, step) => seq.toggleTriggerStep(seqIdx, step)}
                 onSetProbability={(seqIdx, step, value) => seq.setStepProbability(seqIdx, step, value)}
                 onResetProbability={(seqIdx, step) => seq.resetStepProbability(seqIdx, step)}

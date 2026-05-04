@@ -427,9 +427,9 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
   // Optimistic local rating state (keyed by preset name)
   const [localRatings, setLocalRatings] = useState<Record<string, number>>({});
   const handleRate = useCallback(async (name: string, r: number) => {
+    setLocalRatings(prev => ({ ...prev, [name]: r }));
     try {
       await updateMetadata(name, { rating: r });
-      setLocalRatings(prev => ({ ...prev, [name]: r }));
     } catch (ratingError) {
       console.warn('Failed to update preset rating:', ratingError);
     }

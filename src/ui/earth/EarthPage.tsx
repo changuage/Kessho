@@ -140,6 +140,7 @@ export default function EarthPage({
   const [selectedWaterPreset, setSelectedWaterPreset] = useState(() => String(state.waterPreset));
   const [selectedInsects1Preset, setSelectedInsects1Preset] = useState(() => `stock:${state.insectsEngine}`);
   const [selectedInsects2Preset, setSelectedInsects2Preset] = useState(() => `stock:${state.insects2Engine}`);
+  const [earthKitPresetName, setEarthKitPresetName] = useState<string | undefined>();
   const [waterLocalRatings, setWaterLocalRatings] = useState<Record<string, number>>({});
   const [insectsLocalRatings, setInsectsLocalRatings] = useState<Record<string, number>>({});
   const {
@@ -341,6 +342,7 @@ export default function EarthPage({
   }, [insects2EnginePresets, insectsLocalRatings]);
 
   const handleWaterPresetRate = useCallback(async (option: EarthPresetOption, rating: number) => {
+    setWaterLocalRatings(prev => ({ ...prev, [option.value]: rating }));
     try {
       let targetName = option.presetName;
       if (!targetName && option.stockIndex != null) {
@@ -366,13 +368,13 @@ export default function EarthPage({
 
       if (!targetName) return;
       await updateWaterPresetMetadata(targetName, { rating });
-      setWaterLocalRatings(prev => ({ ...prev, [option.value]: rating }));
     } catch (ratingError) {
       console.warn('Failed to update water preset rating:', ratingError);
     }
   }, [morphWaterPresets, refreshWaterPresets, saveWaterPreset, state, updateWaterPresetMetadata]);
 
   const handleInsectsPresetRate = useCallback(async (scope: 'insects1' | 'insects2', option: EarthPresetOption, rating: number) => {
+    setInsectsLocalRatings(prev => ({ ...prev, [`${scope}:${option.value}`]: rating }));
     try {
       const updatePresetMetadata = scope === 'insects1' ? updateInsects1PresetMetadata : updateInsects2PresetMetadata;
       let targetName = option.presetName;
@@ -419,7 +421,6 @@ export default function EarthPage({
 
       if (!targetName) return;
       await updatePresetMetadata(targetName, { rating });
-      setInsectsLocalRatings(prev => ({ ...prev, [`${scope}:${option.value}`]: rating }));
     } catch (ratingError) {
       console.warn('Failed to update insects preset rating:', ratingError);
     }
@@ -445,6 +446,10 @@ export default function EarthPage({
     }
   }, [onParamChange]);
 
+  const handleEarthKitPresetLoad = useCallback((entry: PresetEntry, _data: Record<string, unknown>) => {
+    setEarthKitPresetName(entry.name);
+  }, []);
+
   const collectWaterPresetMetadata = useCallback(() => {
     const sliderModes: Record<string, SliderMode> = {};
     const dualRanges: Record<string, { min: number; max: number }> = {};
@@ -461,18 +466,30 @@ export default function EarthPage({
     };
   }, [sliderProps]);
 
-  const handleWaterPresetLoad = useCallback((value: string) => {
+  const handleWaterPresetSelect = useCallback((value: string) => {
+    const option = waterPresetOptions.find((entry) => entry.value === value);
+    if (!option) return;
+    setSelectedWaterPreset(option.value);
+  }, [waterPresetOptions]);
+
+  const handleWaterPresetLoad = useCallback((value: string, slot: 'A' | 'B') => {
     const option = waterPresetOptions.find((entry) => entry.value === value);
     if (!option) return;
     const presetId = Number(option.value);
     if (!Number.isFinite(presetId)) return;
 
     setSelectedWaterPreset(option.value);
-    onSelectChange('waterMorphA', presetId as SliderState['waterMorphA']);
-    onSelectChange('waterMorphB', presetId as SliderState['waterMorphB']);
-    onParamChange('waterMorph', 0);
-    onSelectChange('waterPreset', presetId as SliderState['waterPreset']);
-  }, [onParamChange, onSelectChange, waterPresetOptions]);
+    if (slot === 'A') {
+      onSelectChange('waterMorphA', presetId as SliderState['waterMorphA']);
+    } else {
+      onSelectChange('waterMorphB', presetId as SliderState['waterMorphB']);
+    }
+    const currentMorph = Number(state.waterMorph);
+    const slotIsActive = slot === 'A' ? currentMorph < 0.5 : currentMorph >= 0.5;
+    if (slotIsActive) {
+      onSelectChange('waterPreset', presetId as SliderState['waterPreset']);
+    }
+  }, [onSelectChange, state.waterMorph, waterPresetOptions]);
 
   const handleWaterPresetSave = useCallback(async () => {
     const currentId = Number(selectedWaterPreset);
@@ -667,19 +684,24 @@ export default function EarthPage({
   return (
     <div className="earth-root">
       <div className="container">
-        <div className="earth-kit-preset-bar">
-          <span className="earth-kit-label">Earth Kit</span>
-          <PresetDropdown
-            level="kit"
-            scope="earthKit"
-            state={state}
-            onLoad={(_entry: PresetEntry) => {}}
-            onStateChange={onStateChange}
-            compact
-          />
-        </div>
-
         <div className="sound-panel">
+          <div className="earth-kit-preset-bar fx-page-header fx-page-header--identity">
+            <span className="earth-kit-label fx-page-title">≈ Earth</span>
+          </div>
+
+          <div className="earth-kit-preset-card fx-kit-preset-card">
+            <span className="fx-kit-preset-title">Kit</span>
+            <PresetDropdown
+              level="kit"
+              scope="earthKit"
+              state={state}
+              currentName={earthKitPresetName}
+              onLoad={handleEarthKitPresetLoad}
+              onStateChange={onStateChange}
+              compact
+            />
+          </div>
+
           <WaterCard
             state={state}
             ds={ds}
@@ -687,7 +709,8 @@ export default function EarthPage({
             selectedWaterPreset={selectedWaterPreset}
             expandedCards={expandedCards}
             onSelectChange={onSelectChange}
-            onWaterPresetLoad={handleWaterPresetLoad}
+            onWaterPresetSelect={handleWaterPresetSelect}
+            onWaterPresetLoadToSlot={handleWaterPresetLoad}
             onWaterPresetSave={() => { void handleWaterPresetSave(); }}
             onWaterPresetRate={(option, rating) => { void handleWaterPresetRate(option, rating); }}
             enabled={state.waterEnabled}
@@ -697,7 +720,7 @@ export default function EarthPage({
             ds={ds}
             expandedCards={expandedCards}
             onSelectChange={onSelectChange}
-            enabled={expandedCards.has('ocean')}
+            enabled={Boolean(state.oceanSampleEnabled)}
           />
           <NatureCard
             cardId="birds"
@@ -711,7 +734,7 @@ export default function EarthPage({
             ds={ds}
             expandedCards={expandedCards}
             onSelectChange={onSelectChange}
-            enabled={expandedCards.has('birds')}
+            enabled={Boolean(state.birdsEnabled)}
           />
           <NatureCard
             cardId="birds2"
@@ -725,7 +748,7 @@ export default function EarthPage({
             ds={ds}
             expandedCards={expandedCards}
             onSelectChange={onSelectChange}
-            enabled={expandedCards.has('birds2')}
+            enabled={Boolean(state.birds2Enabled)}
           />
           <NatureCard
             cardId="frogs"
@@ -739,7 +762,7 @@ export default function EarthPage({
             ds={ds}
             expandedCards={expandedCards}
             onSelectChange={onSelectChange}
-            enabled={expandedCards.has('frogs')}
+            enabled={Boolean(state.frogsEnabled)}
           />
           <InsectsCard
             scope="insects1"
@@ -752,7 +775,8 @@ export default function EarthPage({
             onPresetSave={(scope) => { void handleInsectsPresetSave(scope); }}
             onPresetRate={handleInsectsPresetRate}
             ds={ds}
-            enabled={expandedCards.has('insects1')}
+            enabled={Boolean(state.insectsEnabled)}
+            onToggleEnabled={() => onSelectChange('insectsEnabled', !state.insectsEnabled)}
             engineName={INSECT_ENGINES[state.insectsEngine] ?? ''}
           />
           <InsectsCard
@@ -766,7 +790,8 @@ export default function EarthPage({
             onPresetSave={(scope) => { void handleInsectsPresetSave(scope); }}
             onPresetRate={handleInsectsPresetRate}
             ds={ds}
-            enabled={expandedCards.has('insects2')}
+            enabled={Boolean(state.insects2Enabled)}
+            onToggleEnabled={() => onSelectChange('insects2Enabled', !state.insects2Enabled)}
             engineName={INSECT_ENGINES[state.insects2Engine] ?? ''}
           />
           {anyWalkMode && (

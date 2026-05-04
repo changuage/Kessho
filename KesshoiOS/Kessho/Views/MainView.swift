@@ -97,7 +97,7 @@ struct MainView: View {
             SliderControlsView()
                 .tag(2)
         }
-        .tabViewStyle(.page(indexDisplayMode: .always))
+        .kesshoCompactPagerStyle()
     }
 
     private var wideContent: some View {
@@ -269,6 +269,26 @@ struct TransportBar: View {
     }
 }
 
+extension View {
+    @ViewBuilder
+    func kesshoCompactPagerStyle() -> some View {
+        #if os(macOS)
+        self
+        #else
+        self.tabViewStyle(.page(indexDisplayMode: .always))
+        #endif
+    }
+
+    @ViewBuilder
+    func kesshoInlineNavigationTitle() -> some View {
+        #if os(macOS)
+        self
+        #else
+        self.navigationBarTitleDisplayMode(.inline)
+        #endif
+    }
+}
+
 /// Recording button with tap/long-press gestures
 struct RecordingButton: View {
     @EnvironmentObject var appState: AppState
@@ -421,7 +441,7 @@ struct SettingsView: View {
                 appState.refreshMIDIInputs()
             }
             .navigationTitle("Settings")
-            .navigationBarTitleDisplayMode(.inline)
+            .kesshoInlineNavigationTitle()
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }

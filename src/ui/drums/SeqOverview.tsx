@@ -9,15 +9,12 @@ const OV_PROB_DRAG_PX = 80;
 interface SeqOverviewProps {
   sequencers: SequencerState[];
   playheads: number[];
-  presetNames: string[];
   onSelectSequencer?: (index: number) => void;
   onSetParam?: (seqIdx: number, param: string, value: number) => void;
-  onSetParamSelect?: (seqIdx: number, param: string, value: string) => void;
   onToggleSource?: (seqIdx: number, voice: string, on: boolean) => void;
   onToggleMute?: (seqIdx: number) => void;
   onToggleSolo?: (seqIdx: number) => void;
   onSetClockDiv?: (seqIdx: number, div: ClockDivision) => void;
-  getParam?: (seqIdx: number, param: string) => unknown;
   onToggleTriggerStep?: (seqIdx: number, step: number) => void;
   onSetProbability?: (seqIdx: number, step: number, value: number) => void;
   onResetProbability?: (seqIdx: number, step: number) => void;
@@ -25,9 +22,9 @@ interface SeqOverviewProps {
 }
 
 const SeqOverview: React.FC<SeqOverviewProps> = ({
-  sequencers, playheads, presetNames, onSelectSequencer,
-  onSetParam, onSetParamSelect, onToggleSource, onToggleMute, onToggleSolo,
-  onSetClockDiv, getParam,
+  sequencers, playheads, onSelectSequencer,
+  onSetParam, onToggleSource, onToggleMute, onToggleSolo,
+  onSetClockDiv,
   onToggleTriggerStep, onSetProbability, onResetProbability,
   onCycleTrigCondition,
 }) => {
@@ -43,7 +40,7 @@ const SeqOverview: React.FC<SeqOverviewProps> = ({
         >
           <div className="seq-ov-header" onClick={() => onSelectSequencer?.(row)}>
             <span className="seq-ov-name">{seq.name}</span>
-            {/* Inline controls: Steps, Hits, Rotation, Preset, Clock, Sources, M/S */}
+            {/* Inline controls: Steps, Hits, Rotation, Clock, Sources, M/S */}
             <div className="seq-ov-controls" onClick={(e) => e.stopPropagation()}>
               <DragNumber
                 value={seq.trigger.steps}
@@ -60,15 +57,6 @@ const SeqOverview: React.FC<SeqOverviewProps> = ({
                 <span className="seq-rotation-val">{seq.trigger.rotation}</span>
                 <button onClick={() => onSetParam?.(row, 'Rotation', seq.trigger.rotation + 1)}>→</button>
               </div>
-              <select
-                className="seq-ov-select"
-                value={(getParam?.(row, 'Preset') as string) ?? 'custom'}
-                onChange={(e) => onSetParamSelect?.(row, 'Preset', e.target.value)}
-              >
-                {presetNames.map((name) => (
-                  <option key={name} value={name}>{name}</option>
-                ))}
-              </select>
               <select
                 className="seq-ov-select seq-ov-clk"
                 value={seq.clockDiv}

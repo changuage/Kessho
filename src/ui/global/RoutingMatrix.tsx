@@ -7,7 +7,6 @@ import { useRuntimeSliderIndicator } from '../runtimeSliderState';
 import {
   LONG_PRESS_MOVE_TOLERANCE_PX,
   LONG_PRESS_MS,
-  SliderFamilyNote,
   TRACK_PAD_PX,
   clamp01,
   getDualHandle,
@@ -126,17 +125,18 @@ export interface RoutingMatrixProps {
   onToggleSource?: (sourceId: string, enabled: boolean) => void;
   sliderProps: (paramKey: keyof SliderState) => RoutingSliderRuntime;
   helpPage?: SliderPageId;
-  showNote?: boolean;
 }
 
 const ROUTING_MATRIX_ACTIVE_FILTER_STORAGE_KEY = 'routing-matrix:show-active-only:v1';
 
-const COLUMNS: Array<{ id: ColumnId; label: string; note?: string }> = [
-  { id: 'level', label: 'Level', note: 'Drag the header left or right to trim every level in this column together.' },
-  { id: 'delayA', label: 'Delay A', note: 'Drag the header left or right to trim every Delay A send in this column together.' },
-  { id: 'delayB', label: 'Delay B', note: 'Drag the header left or right to trim every Delay B send in this column together.' },
-  { id: 'granular', label: 'Granular', note: 'Drag the header left or right to trim every granular feed in this column together.' },
-  { id: 'reverb', label: 'Reverb', note: 'Drag the header left or right to trim every reverb send in this column together.' },
+const ROUTING_MATRIX_OVERVIEW_HELP_KEY = 'routingMatrixOverview';
+
+const COLUMNS: Array<{ id: ColumnId; label: string; helpKey: string; note?: string }> = [
+  { id: 'level', label: 'Level', helpKey: 'routingMatrixLevelColumn', note: 'Drag the header left or right to trim every level in this column together.' },
+  { id: 'delayA', label: 'Delay A', helpKey: 'routingMatrixDelayAColumn', note: 'Drag the header left or right to trim every Delay A send in this column together.' },
+  { id: 'delayB', label: 'Delay B', helpKey: 'routingMatrixDelayBColumn', note: 'Drag the header left or right to trim every Delay B send in this column together.' },
+  { id: 'granular', label: 'Granular', helpKey: 'routingMatrixGranularColumn', note: 'Drag the header left or right to trim every granular feed in this column together.' },
+  { id: 'reverb', label: 'Reverb', helpKey: 'routingMatrixReverbColumn', note: 'Drag the header left or right to trim every reverb send in this column together.' },
 ];
 const DEFAULT_COLUMN = COLUMNS[0]!;
 
@@ -525,9 +525,8 @@ export default function RoutingMatrix({
   onToggleSource,
   sliderProps,
   helpPage = 'routing',
-  showNote = true,
 }: RoutingMatrixProps) {
-  const { announceSlider } = useSliderHelp();
+  const { announceHelp, announceSlider } = useSliderHelp();
   const [draggingId, setDraggingId] = React.useState<string | null>(null);
   const [activeMobileColumn, setActiveMobileColumn] = React.useState<ColumnId>('level');
   const [showActiveOnly, setShowActiveOnly] = React.useState<boolean>(() => {
@@ -548,6 +547,13 @@ export default function RoutingMatrix({
     startY: number;
   } | null>(null);
   const longPressActionRef = React.useRef<(() => void) | null>(null);
+
+  React.useEffect(() => {
+    announceHelp(ROUTING_MATRIX_OVERVIEW_HELP_KEY, {
+      page: helpPage,
+      label: 'FX Routing Matrix',
+    });
+  }, [announceHelp, helpPage]);
   const longPressConsumedRef = React.useRef(false);
   const dblClickGuardRef = React.useRef<{ time: number; cellId: string } | null>(null);
   const activeColumn = React.useMemo(
@@ -848,7 +854,7 @@ export default function RoutingMatrix({
     </button>
   ), [showActiveOnly]);
 
-  const renderColumnHeader = React.useCallback((column: { id: ColumnId; label: string; note?: string }, className?: string) => {
+  const renderColumnHeader = React.useCallback((column: { id: ColumnId; label: string; helpKey: string; note?: string }, className?: string) => {
     const headerId = `column:${column.id}`;
     const targets = getColumnTargets(column.id, visibleRows, state, sliderProps);
 
@@ -859,8 +865,11 @@ export default function RoutingMatrix({
         className={`routing-matrix-header routing-matrix-header-button${className ? ` ${className}` : ''}${draggingId === headerId ? ' dragging' : ''}`}
         title={column.note}
         disabled={targets.length === 0}
+        onMouseEnter={() => announceHelp(column.helpKey, { page: helpPage, label: `${column.label} Column` })}
+        onFocus={() => announceHelp(column.helpKey, { page: helpPage, label: `${column.label} Column` })}
         onPointerDown={(event) => {
           if (targets.length === 0) return;
+          announceHelp(column.helpKey, { page: helpPage, label: `${column.label} Column` });
           clearLongPress();
           startColumnDrag(column.id, headerId, event.pointerId, event.clientX, event.currentTarget.getBoundingClientRect().width, targets);
           event.currentTarget.setPointerCapture(event.pointerId);
@@ -884,9 +893,9 @@ export default function RoutingMatrix({
         <span className="routing-matrix-header-label">{column.label}</span>
       </button>
     );
-  }, [applyColumnDrag, clearLongPress, draggingId, resetInteraction, sliderProps, startColumnDrag, state, stopDrag, visibleRows]);
+  }, [announceHelp, applyColumnDrag, clearLongPress, draggingId, helpPage, resetInteraction, sliderProps, startColumnDrag, state, stopDrag, visibleRows]);
 
-  const renderCell = React.useCallback((row: MatrixRow, rowEnabled: boolean, column: { id: ColumnId; label: string; note?: string }, suffix = '') => {
+  const renderCell = React.useCallback((row: MatrixRow, rowEnabled: boolean, column: { id: ColumnId; label: string; helpKey: string; note?: string }, suffix = '') => {
     const cell = row.cells[column.id];
     const route = cell.kind === 'editable' ? (cell.route ?? null) : null;
     const value = cellValue(state, cell.route);
@@ -1134,13 +1143,13 @@ export default function RoutingMatrix({
   ]);
 
   return (
-    <div className={`routing-matrix${isMobile ? ' mobile' : ''}`}>
-      {showNote && (
-        <SliderFamilyNote className="routing-matrix-note">
-          Routing cells use the same slider family as the full controls, just condensed into a denser matrix surface.
-        </SliderFamilyNote>
-      )}
-
+    <div
+      className={`routing-matrix${isMobile ? ' mobile' : ''}`}
+      onMouseEnter={() => announceHelp(ROUTING_MATRIX_OVERVIEW_HELP_KEY, {
+        page: helpPage,
+        label: 'FX Routing Matrix',
+      })}
+    >
       {isMobile ? (
         <>
           <div className="routing-matrix-mobile-picker" role="tablist" aria-label="Routing matrix columns">
@@ -1149,15 +1158,15 @@ export default function RoutingMatrix({
                 key={column.id}
                 type="button"
                 className={`routing-matrix-mobile-picker-button${activeMobileColumn === column.id ? ' active' : ''}`}
-                onClick={() => setActiveMobileColumn(column.id)}
+                onClick={() => {
+                  setActiveMobileColumn(column.id);
+                  announceHelp(column.helpKey, { page: helpPage, label: `${column.label} Column` });
+                }}
+                onFocus={() => announceHelp(column.helpKey, { page: helpPage, label: `${column.label} Column` })}
               >
                 {column.label}
               </button>
             ))}
-          </div>
-
-          <div className="routing-matrix-mobile-column-note">
-            {activeColumn.note}
           </div>
 
           <div className="routing-matrix-mobile-head">

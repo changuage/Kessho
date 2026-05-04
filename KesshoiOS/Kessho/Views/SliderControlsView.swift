@@ -2849,23 +2849,41 @@ extension CollapsibleSection where HeaderAction == EmptyView {
 }
 
 // MARK: - Corner Radius Extension
+#if os(iOS)
+typealias PlatformRectCorner = UIRectCorner
+#else
+struct PlatformRectCorner: OptionSet {
+    let rawValue: Int
+
+    static let topLeft = PlatformRectCorner(rawValue: 1 << 0)
+    static let topRight = PlatformRectCorner(rawValue: 1 << 1)
+    static let bottomLeft = PlatformRectCorner(rawValue: 1 << 2)
+    static let bottomRight = PlatformRectCorner(rawValue: 1 << 3)
+    static let allCorners: PlatformRectCorner = [.topLeft, .topRight, .bottomLeft, .bottomRight]
+}
+#endif
+
 extension View {
-    func cornerRadius(_ radius: CGFloat, corners: UIRectCorner) -> some View {
+    func cornerRadius(_ radius: CGFloat, corners: PlatformRectCorner) -> some View {
         clipShape(RoundedCorner(radius: radius, corners: corners))
     }
 }
 
 struct RoundedCorner: Shape {
     var radius: CGFloat = .infinity
-    var corners: UIRectCorner = .allCorners
-    
+    var corners: PlatformRectCorner = .allCorners
+
     func path(in rect: CGRect) -> Path {
+        #if os(iOS)
         let path = UIBezierPath(
             roundedRect: rect,
             byRoundingCorners: corners,
             cornerRadii: CGSize(width: radius, height: radius)
         )
         return Path(path.cgPath)
+        #else
+        return Path(roundedRect: rect, cornerRadius: radius)
+        #endif
     }
 }
 

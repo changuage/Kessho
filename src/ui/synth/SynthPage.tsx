@@ -10,8 +10,10 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { formatIndexedDelayDivision, getSliderNumericValue, SliderState } from '../state';
+import { formatIndexedDelayDivision, getSliderNumericValue, type SerializedStepOverrides, type SliderState } from '../state';
 import { useEuclideanSequencer, type EvolveConfig, type StepOverrides, type SubLaneKind, type SubLaneState, type PitchSettings } from '../sequencer/useEuclideanSequencer';
+import { serializeStepOverrides } from '../sequencer/stepOverrideSerialization';
+import { applySequencePresetOverrides, copySequenceLaneForPreset } from '../sequencer/sequencePresetLane';
 // DrumStepOverrides no longer needed — SynthPage uses StepOverrides from the shared hook
 import DragNumber from '../drums/DragNumber';
 import SeqLane from '../drums/SeqLane';
@@ -29,10 +31,10 @@ import SynthPresetManager from './SynthPresetManager';
 import { usePresets } from '../../presets/usePresets';
 import { PresetDropdown } from '../../presets/PresetDropdown';
 import { PresetRatingStars } from '../../presets/PresetRatingStars';
-import { extractParams } from '../../presets/codec';
 import {
-  applyEuclideanPatternToSynthState,
-  extractEuclideanPatternDataFromSynthState,
+  EUCLIDEAN_PATTERN_STEP_OVERRIDES_KEY,
+  applyEuclideanPatternToSynthLaneState,
+  extractEuclideanPatternLaneDataFromSynthState,
 } from '../../presets/euclideanPatternBank';
 import type { PresetEntry, PresetSummary } from '../../presets/types';
 import type { UsePresetsOptions } from '../../presets/usePresets';
@@ -77,22 +79,23 @@ import {
   Lead4opFMEditorOverlay,
   type Lead4opFMEditorApplyRequest,
 } from './Lead4opFMEditorOverlay';
+import { SEQUENCER_LANE_COLORS, SEQUENCER_SUB_LANE_COLORS, SOURCE_COLORS } from '../../designSystem/colors';
 
 const OV_PROB_DRAG_PX = 80;
 
 const LANE_CONFIGS = [
-  { color: '#f59e0b', name: 'Seq 1' },
-  { color: '#10b981', name: 'Seq 2' },
-  { color: '#3b82f6', name: 'Seq 3' },
-  { color: '#ec4899', name: 'Seq 4' },
+  { color: SEQUENCER_LANE_COLORS[0], name: 'Seq 1' },
+  { color: SEQUENCER_LANE_COLORS[1], name: 'Seq 2' },
+  { color: SEQUENCER_LANE_COLORS[2], name: 'Seq 3' },
+  { color: SEQUENCER_LANE_COLORS[3], name: 'Seq 4' },
 ];
 
 const SYNTH_SOURCES = [
-  { value: 'lead1', label: 'Lead 1', color: '#f59e0b' },
-  { value: 'lead2', label: 'Lead 2', color: '#06b6d4' },
-  { value: 'piano', label: 'Piano', color: '#e7c87f' },
-  { value: 'synth1', label: 'Pad 1', color: '#C4724E' },
-  { value: 'synth2', label: 'Pad 2', color: '#D4855E' },
+  { value: 'lead1', label: 'Lead 1', color: SOURCE_COLORS.lead1 },
+  { value: 'lead2', label: 'Lead 2', color: SOURCE_COLORS.lead2 },
+  { value: 'piano', label: 'Piano', color: SOURCE_COLORS.piano },
+  { value: 'synth1', label: 'Pad 1', color: SOURCE_COLORS.pad1 },
+  { value: 'synth2', label: 'Pad 2', color: SOURCE_COLORS.pad2 },
   { value: 'synth3', label: 'Pad 3', color: '#B4624E' },
   { value: 'synth4', label: 'Pad 4', color: '#A45E4E' },
   { value: 'synth5', label: 'Pad 5', color: '#946050' },
@@ -100,17 +103,17 @@ const SYNTH_SOURCES = [
 ];
 
 const RANDOM_TIMING_SOURCES = [
-  { value: 'lead1', label: 'Lead 1', color: '#f59e0b' },
-  { value: 'lead2', label: 'Lead 2', color: '#06b6d4' },
-  { value: 'piano', label: 'Piano', color: '#e7c87f' },
+  { value: 'lead1', label: 'Lead 1', color: SOURCE_COLORS.lead1 },
+  { value: 'lead2', label: 'Lead 2', color: SOURCE_COLORS.lead2 },
+  { value: 'piano', label: 'Piano', color: SOURCE_COLORS.piano },
 ];
 
 const MANUAL_KEYBOARD_SOURCES: Array<{ value: ManualSynthSource; label: string; color: string }> = [
-  { value: 'pad1', label: 'Pad 1', color: '#C4724E' },
-  { value: 'pad2', label: 'Pad 2', color: '#D4855E' },
-  { value: 'lead1', label: 'Lead 1', color: '#f59e0b' },
-  { value: 'lead2', label: 'Lead 2', color: '#06b6d4' },
-  { value: 'piano', label: 'Piano', color: '#e7c87f' },
+  { value: 'pad1', label: 'Pad 1', color: SOURCE_COLORS.pad1 },
+  { value: 'pad2', label: 'Pad 2', color: SOURCE_COLORS.pad2 },
+  { value: 'lead1', label: 'Lead 1', color: SOURCE_COLORS.lead1 },
+  { value: 'lead2', label: 'Lead 2', color: SOURCE_COLORS.lead2 },
+  { value: 'piano', label: 'Piano', color: SOURCE_COLORS.piano },
 ];
 
 const MANUAL_KEYBOARD_LAYOUT = [
@@ -921,30 +924,11 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     handlePadWalkToggle,
   ]);
 
-  // ── Shared Euclidean pattern bank ──
-  const [euclidPresetName, setEuclidPresetName] = useState<string | undefined>();
-  const handleEuclidPresetLoad = useCallback((entry: PresetEntry, _data: Record<string, unknown>) => {
-    setEuclidPresetName(entry.name);
+  // ── Shared Euclidean sequence bank ──
+  const [euclidPresetNames, setEuclidPresetNames] = useState<Array<string | undefined>>(() => Array(4).fill(undefined));
+  const setEuclidPresetNameForLane = useCallback((laneIdx: number, name: string | undefined) => {
+    setEuclidPresetNames(prev => prev.map((value, index) => (index === laneIdx ? name : value)));
   }, []);
-  const synthEuclideanPatternOptions = React.useMemo<UsePresetsOptions>(() => ({
-    customExtract: extractEuclideanPatternDataFromSynthState,
-    customApply: applyEuclideanPatternToSynthState,
-  }), []);
-
-  // ── Composite extract: L3 synth source includes L1 synthEuclidean + L2 kits ──
-  const synthCompositeExtract = React.useMemo<UsePresetsOptions>(() => ({
-    customExtract: (s: SliderState) => {
-      const combined: Record<string, unknown> = {};
-      Object.assign(combined, extractParams(s, 1, 'synthEuclidean'));
-      Object.assign(combined, extractParams(s, 1, 'leadDelay'));
-      Object.assign(combined, extractParams(s, 2, 'pad1Kit'));
-      Object.assign(combined, extractParams(s, 2, 'pad2Kit'));
-      Object.assign(combined, extractParams(s, 2, 'lead1Kit'));
-      Object.assign(combined, extractParams(s, 2, 'lead2Kit'));
-      Object.assign(combined, extractParams(s, 3, 'synth'));
-      return combined;
-    },
-  }), []);
 
   // CollapsiblePanel available from CollapsiblePanelComponent prop if needed
 
@@ -1130,6 +1114,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const handleLeadPresetRate = useCallback(async (option: LeadPresetOption, rating: number) => {
     const summary = findLeadPresetSummary(option);
     const ratingKey = summary?.name ?? option.sourceName ?? option.name;
+    setLeadLocalRatings(prev => ({ ...prev, [ratingKey]: rating }));
     try {
       let targetName = summary?.name ?? option.sourceName;
       if (!targetName) {
@@ -1139,7 +1124,9 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       }
 
       await updateLeadFmPresetMetadata(targetName, { rating });
-      setLeadLocalRatings(prev => ({ ...prev, [ratingKey]: rating }));
+      if (targetName !== ratingKey) {
+        setLeadLocalRatings(prev => ({ ...prev, [targetName]: rating }));
+      }
     } catch (ratingError) {
       console.warn('Failed to update lead preset rating:', ratingError);
     }
@@ -1481,6 +1468,46 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     initialEvolveConfigs,
     resetKey: presetVersion,
   });
+
+  const synthEuclideanPatternOptions = React.useMemo<UsePresetsOptions[]>(() => LANE_CONFIGS.map((_, laneIdx) => ({
+    customExtract: (currentState) => {
+      const stepOverrides = serializeStepOverrides(copySequenceLaneForPreset(seq.stepOverrides, laneIdx));
+      return {
+        ...extractEuclideanPatternLaneDataFromSynthState(currentState, laneIdx),
+        ...(stepOverrides ? { [EUCLIDEAN_PATTERN_STEP_OVERRIDES_KEY]: stepOverrides } : {}),
+      };
+    },
+    customApply: (currentState, data) => applyEuclideanPatternToSynthLaneState(currentState, data, laneIdx),
+  })), [seq.stepOverrides]);
+
+  const handleEuclidSequenceLoad = useCallback((laneIdx: number, entry: PresetEntry, data: Record<string, unknown>) => {
+    setEuclidPresetNameForLane(laneIdx, entry.name);
+    const stepOverrides = data[EUCLIDEAN_PATTERN_STEP_OVERRIDES_KEY] as SerializedStepOverrides | undefined;
+    seq.setStepOverrides((current) => applySequencePresetOverrides(current, stepOverrides ?? {}, laneIdx));
+  }, [seq, setEuclidPresetNameForLane]);
+
+  const renderSequencePresetControl = useCallback((laneIdx: number) => (
+    <div className="seq-sequence-preset-control" onClick={(e) => e.stopPropagation()}>
+      <span className="seq-sequence-preset-label">Sequence</span>
+      <PresetDropdown
+        key={`synth-sequence-${laneIdx}`}
+        level="engine"
+        scope="euclideanPattern"
+        state={state}
+        currentName={euclidPresetNames[laneIdx]}
+        onLoad={(entry: PresetEntry, data: Record<string, unknown>) => handleEuclidSequenceLoad(laneIdx, entry, data)}
+        onStateChange={onStateChange}
+        presetOptions={synthEuclideanPatternOptions[laneIdx]}
+        showSaveButton
+        saveButtonLabel="Save Sequence"
+        saveDialogTitle="Save Sequence"
+        defaultSaveName={`${LANE_CONFIGS[laneIdx]?.name ?? `Seq ${laneIdx + 1}`} Sequence`}
+        showFileButtons={false}
+        compact
+        className="seq-sequence-preset-dropdown"
+      />
+    </div>
+  ), [euclidPresetNames, handleEuclidSequenceLoad, onStateChange, state, synthEuclideanPatternOptions]);
 
   useEffect(() => {
     if (presetVersion === undefined) return;
@@ -2566,25 +2593,15 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   return (
     <div className="synth-root">
       <div className="container">
-        {/* ═══ Synth Source Preset (L3) ═══ */}
-        <div className="synth-source-preset-bar">
-          <span className="synth-source-preset-label">Synth Source</span>
-          <PresetDropdown
-            level="source"
-            scope="synth"
-            state={state}
-            onLoad={(_entry: PresetEntry) => {}}
-            onStateChange={onStateChange}
-            presetOptions={synthCompositeExtract}
-            compact
-          />
-        </div>
-
         {/* ════════ LEFT: Sound Panels ════════ */}
         <div className="sound-panel">
+          {/* ═══ Synth Source Identity ═══ */}
+          <div className="synth-source-preset-bar fx-page-header fx-page-header--identity">
+            <span className="synth-source-preset-label fx-page-title">∿ Synth</span>
+          </div>
 
           {/* ── Pad Synth Card ── */}
-          <div className={`synth-card${padTier > 0 ? ' editing' : ''}`} style={{ '--sc': '#4a9eff' } as React.CSSProperties}>
+          <div className={`synth-card${padTier > 0 ? ' editing' : ''}`} style={{ '--sc': SOURCE_COLORS.pad1 } as React.CSSProperties}>
             <div className="synth-card-header">
               <span className="sc-name">Pad Synth</span>
               <button
@@ -3209,7 +3226,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
           </div>
 
           {/* ── Pad 2 Card ── */}
-          <div className={`synth-card${pad2Tier > 0 ? ' editing' : ''}`} style={{ '--sc': '#8b5cf6' } as React.CSSProperties}>
+          <div className={`synth-card${pad2Tier > 0 ? ' editing' : ''}`} style={{ '--sc': SOURCE_COLORS.pad2 } as React.CSSProperties}>
             <div className="synth-card-header">
               <span className="sc-name">Pad 2</span>
               <button
@@ -3835,7 +3852,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
           </div>
 
           {/* ── Lead 1 Card ── */}
-          <div className={`synth-card${editingSection === 'lead1' ? ' editing' : ''}`} style={{ '--sc': '#f59e0b' } as React.CSSProperties}>
+          <div className={`synth-card${editingSection === 'lead1' ? ' editing' : ''}`} style={{ '--sc': SOURCE_COLORS.lead1 } as React.CSSProperties}>
             <div className="synth-card-header">
               <span className="sc-name">Lead 1</span>
               <button
@@ -3981,7 +3998,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
           </div>
 
           {/* ── Lead 2 Card ── */}
-          <div className={`synth-card${editingSection === 'lead2' ? ' editing' : ''}`} style={{ '--sc': '#06b6d4' } as React.CSSProperties}>
+          <div className={`synth-card${editingSection === 'lead2' ? ' editing' : ''}`} style={{ '--sc': SOURCE_COLORS.lead2 } as React.CSSProperties}>
             <div className="synth-card-header">
               <span className="sc-name">Lead 2</span>
               <button
@@ -4126,7 +4143,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
             )}
           </div>
 
-          <div className={`synth-card${editingSection === 'piano' ? ' editing' : ''}`} style={{ '--sc': '#e7c87f' } as React.CSSProperties}>
+          <div className={`synth-card${editingSection === 'piano' ? ' editing' : ''}`} style={{ '--sc': SOURCE_COLORS.piano } as React.CSSProperties}>
             <div className="synth-card-header">
               <span className="sc-name">Piano</span>
               <button
@@ -4400,22 +4417,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
             </div>
           )}
 
-          {/* Shared Euclidean pattern preset */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', marginBottom: 4, borderRadius: 6, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-            <span style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>Pattern</span>
-            <PresetDropdown
-              level="engine"
-              scope="euclideanPattern"
-              state={state}
-              currentName={euclidPresetName}
-              onLoad={handleEuclidPresetLoad}
-              onStateChange={onStateChange}
-              presetOptions={synthEuclideanPatternOptions}
-              showSaveButton={false}
-              compact
-            />
-          </div>
-
           {/* ══════ SIMPLE MODE ══════ */}
           {seq.viewMode === 'simple' && (
             <div className="synth-simple-seq">
@@ -4651,6 +4652,9 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     </button>
                   </div>
                 </div>
+                <div className="seq-sequence-preset-row">
+                  {renderSequencePresetControl(seq.activeTab)}
+                </div>
 
                 {/* Evolution panel */}
                 <div className={`seq-evolve-panel${seq.evolveConfigs[seq.activeTab]?.enabled ? ' open' : ''}`}>
@@ -4722,7 +4726,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                           label="Dice"
                           mode="single"
                           value={Math.round(diceIntensity * 100)}
-                          hero="#ffa502"
+                          hero={SEQUENCER_SUB_LANE_COLORS.expression}
                           variant="full"
                           density="compact"
                           displayValue={`${Math.round(diceIntensity * 100)}%`}
@@ -4854,16 +4858,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                         <span className="seq-rotation-val">{activeSeq.trigger.rotation}</span>
                         <button onClick={() => seq.setParam(seq.activeTab, 'Rotation', activeSeq.trigger.rotation + 1)}>{'\u2192'}</button>
                       </div>
-                      <select
-                        className="seq-preset-select"
-                        value={seq.getParam(seq.activeTab, 'Preset') as string}
-                        onChange={(e) => seq.setParamSelect(seq.activeTab, 'Preset', e.target.value as any)}
-                        {...bindHelp('synthSeqTriggerPreset')}
-                      >
-                        {seq.presetNames.map((name) => (
-                          <option key={name} value={name}>{name}</option>
-                        ))}
-                      </select>
                     </div>
                   </div>
                   <SeqLane
@@ -4889,9 +4883,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 <div className="seq-spark-container">
                   {(['pitch', 'expression', 'morph', 'distance'] as const).map((laneKind) => {
                     const subState = seq.subLaneStates[seq.activeTab]?.[laneKind];
-                    const laneColor = laneKind === 'pitch' ? '#ff6b81'
-                      : laneKind === 'expression' ? '#ffa502'
-                      : laneKind === 'morph' ? '#c084fc' : '#2dd4bf';
+                    const laneColor = SEQUENCER_SUB_LANE_COLORS[laneKind];
 
                     const noteMinKey = `synthEuclid${seq.activeTab + 1}NoteMin` as keyof SliderState;
                     const noteMaxKey = `synthEuclid${seq.activeTab + 1}NoteMax` as keyof SliderState;
@@ -5065,16 +5057,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                             <span className="seq-rotation-val">{seqModel.trigger.rotation}</span>
                             <button onClick={() => seq.setParam(row, 'Rotation', seqModel.trigger.rotation + 1)}>{'\u2192'}</button>
                           </div>
-                          <select
-                            className="seq-ov-select"
-                            value={(seq.getParam(row, 'Preset') as string) ?? 'custom'}
-                            onChange={(e) => seq.setParamSelect(row, 'Preset', e.target.value as any)}
-                            {...bindHelp('synthSeqTriggerPreset')}
-                          >
-                            {seq.presetNames.map((name) => (
-                              <option key={name} value={name}>{name}</option>
-                            ))}
-                          </select>
                           <select
                             className="seq-ov-select seq-ov-clk"
                             value={seqModel.clockDiv}

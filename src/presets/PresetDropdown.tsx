@@ -36,6 +36,12 @@ export interface PresetDropdownProps {
   showFileButtons?: boolean;
   /** Whether to show the save button. Default: true */
   showSaveButton?: boolean;
+  /** Optional visible label for the save button. Defaults to a compact icon. */
+  saveButtonLabel?: string;
+  /** Optional title shown at the top of the save dialog. */
+  saveDialogTitle?: string;
+  /** Optional fallback name when saving without a selected preset. */
+  defaultSaveName?: string;
   /** Options passed to usePresets (e.g. customExtract for composite presets) */
   presetOptions?: UsePresetsOptions;
   /** Compact mode — smaller font, less padding */
@@ -56,11 +62,12 @@ const dropdownStyles: Record<string, React.CSSProperties> = {
   container: {
     display: 'flex',
     alignItems: 'center',
-    gap: '4px',
+    gap: '3px',
     minWidth: 0,
+    width: '100%',
   },
   select: {
-    flex: 1,
+    flex: '1 1 13rem',
     minWidth: 0,
     fontSize: '0.75rem',
     background: 'rgba(0, 0, 0, 0.3)',
@@ -162,6 +169,9 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
   className,
   showFileButtons = true,
   showSaveButton = true,
+  saveButtonLabel,
+  saveDialogTitle,
+  defaultSaveName,
   presetOptions,
   compact = false,
   sliderModes,
@@ -281,11 +291,11 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
 
   // Open save dialog
   const handleSaveClick = useCallback(() => {
-    setSaveName(selectedName || `My ${scope || level} Preset`);
+    setSaveName(selectedName || defaultSaveName || `My ${scope || level} Preset`);
     setSaveNote('');
     setSavePublic(SHARED_PRESET_TEST_MODE || selectedPresetSummary?.visibility === 'public');
     setShowSaveDialog(true);
-  }, [selectedName, scope, level, selectedPresetSummary]);
+  }, [defaultSaveName, selectedName, scope, level, selectedPresetSummary]);
 
   // Confirm save
   const handleSaveConfirm = useCallback(async () => {
@@ -405,9 +415,9 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
   }, [selectedName, load, refresh]);
 
   const handleRate = useCallback(async (name: string, rating: number) => {
+    setLocalRatings(prev => ({ ...prev, [name]: rating }));
     try {
       await updateMetadata(name, { rating });
-      setLocalRatings(prev => ({ ...prev, [name]: rating }));
     } catch (ratingError) {
       console.warn('Failed to update preset rating:', ratingError);
     }
@@ -421,7 +431,7 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
 
   const selectStyle: React.CSSProperties = {
     ...dropdownStyles.select,
-    ...(compact ? { fontSize: '0.7rem', padding: '2px 4px' } : {}),
+    ...(compact ? { flexBasis: '10rem', fontSize: '0.7rem', padding: '2px 4px' } : {}),
     border: `1px solid ${selectBorderColor}`,
   };
 
@@ -460,18 +470,31 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
             onChange={(rating) => { void handleRate(selectedPresetSummary.name, rating); }}
             color={accentColor}
             size={compact ? '0.62rem' : '0.68rem'}
+            hitSize={compact ? '0.95rem' : '1.05rem'}
+            style={{ gap: 0 }}
           />
         )}
 
         {showSaveButton && (
           <button
+            type="button"
             onClick={handleSaveClick}
-            style={dropdownStyles.iconBtn}
-            title="Save preset"
+            style={{
+              ...dropdownStyles.iconBtn,
+              ...(saveButtonLabel ? {
+                padding: compact ? '3px 7px' : '4px 9px',
+                fontSize: compact ? '0.58rem' : '0.65rem',
+                fontWeight: 700,
+                lineHeight: 1.1,
+                minHeight: compact ? 24 : 26,
+                whiteSpace: 'nowrap',
+              } : {}),
+            }}
+            title={saveButtonLabel ?? 'Save preset'}
             onMouseEnter={e => { e.currentTarget.style.color = '#ddd'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.3)'; }}
             onMouseLeave={e => { e.currentTarget.style.color = '#999'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)'; }}
           >
-            💾
+            {saveButtonLabel ?? '💾'}
           </button>
         )}
 
@@ -528,7 +551,7 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
         <div style={dropdownStyles.saveDialog} onClick={() => setShowSaveDialog(false)}>
           <div style={dropdownStyles.savePanel} onClick={e => e.stopPropagation()}>
             <div style={{ color: '#a5c4d4', fontSize: '0.9rem', marginBottom: '12px', fontWeight: 600 }}>
-              Save {level} Preset
+              {saveDialogTitle ?? `Save ${level} Preset`}
             </div>
             <input
               type="text"

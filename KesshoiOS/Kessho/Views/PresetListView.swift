@@ -48,7 +48,7 @@ struct PresetListView: View {
                 }
             }
             .navigationTitle("Presets")
-            .navigationBarTitleDisplayMode(.inline)
+            .kesshoInlineNavigationTitle()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }

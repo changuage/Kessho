@@ -3,8 +3,12 @@ import PackageDescription
 
 let package = Package(
     name: "KesshoNativeCore",
-    platforms: [.iOS(.v15), .macOS(.v13)],
+    platforms: [.iOS(.v17), .macOS(.v14)],
     products: [
+        .executable(
+            name: "KesshoMac",
+            targets: ["KesshoMac"]
+        ),
         .library(
             name: "KesshoNativeCore",
             targets: ["KesshoNativeCore"]
@@ -20,6 +24,7 @@ let package = Package(
             path: "NativeDSP",
             sources: [
                 "kessho_dynamics_character_unified.cpp",
+                "kessho_reverb_unified.cpp",
             ],
             publicHeadersPath: "include"
         ),
@@ -29,21 +34,28 @@ let package = Package(
             path: "Kessho",
             exclude: [
                 "Assets.xcassets",
-                "ContentView.swift",
                 "Info.plist",
+                "Kessho-Bridging-Header.h",
                 "KesshoApp.swift",
-                "MIDI",
-                "Presets",
-                "State/AppState.swift",
-                "State/PresetManager.swift",
-                "Views",
             ],
             sources: [
                 "Audio",
+                "ContentView.swift",
                 "Harmony",
+                "MIDI",
+                "Platform",
                 "Services",
-                "State/SliderState.swift",
+                "State",
+                "Views",
+            ],
+            resources: [
+                .copy("Presets"),
             ]
+        ),
+        .executableTarget(
+            name: "KesshoMac",
+            dependencies: ["KesshoNativeCore"],
+            path: "KesshoMac"
         )
     ],
     cxxLanguageStandard: .cxx17

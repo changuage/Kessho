@@ -26,18 +26,9 @@ export function OceanCard({
       expandedCards={expandedCards}
       onToggleCard={onToggleCard}
       enabled={enabled}
+      onToggleEnabled={() => onSelectChange('oceanSampleEnabled', !state.oceanSampleEnabled)}
+      enableTitle={state.oceanSampleEnabled ? 'Disable Waves' : 'Enable Waves'}
     >
-      <div className="layer-row" style={{ marginBottom: 4 }}>
-        <button
-          className={`layer-toggle ${state.oceanSampleEnabled ? 'on' : ''}`}
-          onClick={() => onSelectChange('oceanSampleEnabled', !state.oceanSampleEnabled)}
-          title={state.oceanSampleEnabled ? 'Disable Ghetary Waves' : 'Enable Ghetary Waves'}
-        >
-          {state.oceanSampleEnabled ? '●' : '○'}
-        </button>
-        <span className="layer-label" style={{ minWidth: 'clamp(72px, 24vw, 100px)' }}>Ghetary Waves</span>
-        <span className="layer-value">{state.oceanSampleEnabled ? 'ON' : 'OFF'}</span>
-      </div>
       {ds('oceanSampleLevel', 'Waves Level', 'rgba(0,212,255,0.5)')}
       {ds('oceanSliceDuration', 'Slice Duration', 'rgba(0,212,255,0.35)', {
         format: (v) => `${v.toFixed(1)} s`,

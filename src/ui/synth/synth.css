@@ -5,37 +5,8 @@
 
 /* ══ Design Tokens (matched to Kessho) ══ */
 .synth-root {
-  --bg-base: #1a1a2e;
-  --bg-input: rgba(0, 0, 0, 0.3);
-  --bg-surface: rgba(15, 25, 40, 0.95);
-  --bg-elevated: rgba(255,255,255,0.05);
-  --bg-control: rgba(255,255,255,0.08);
-  --bg-control-hover: rgba(255,255,255,0.15);
-  --border-subtle: rgba(255, 255, 255, 0.1);
-  --border-medium: rgba(255, 255, 255, 0.2);
-  --border-accent: rgba(100, 150, 200, 0.3);
-  --text-primary: #e0e0e0;
-  --text-secondary: #9ca3af;
-  --text-muted: #666;
-  --text-dim: #555;
-  --accent-primary: #a5c4d4;
-  --accent-cyan: #00d4ff;
-  --accent-green: #2ecc71;
-  --accent-red: #e74c3c;
-  --accent-orange: #ffa502;
-  --accent-purple: #8b5cf6;
-  --accent-amber: #f59e0b;
-  --accent-teal: #06b6d4;
-  --accent-pink: #ff6b81;
-  --accent-lavender: #c084fc;
+  /* Engine-specific accents (beyond design system) */
   --accent-evolve: #a855f7;
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --font-xs: 0.55rem;
-  --font-sm: 0.65rem;
-  --font-md: 0.75rem;
-  --font-lg: 0.85rem;
 }
 
 .synth-root * { box-sizing: border-box; }
@@ -53,7 +24,7 @@
   max-width: 1200px;
   margin: 0 auto;
   display: flex;
-  gap: 12px;
+  gap: var(--k-gap-container, 10px);
   align-items: flex-start;
   flex-wrap: wrap;
 }
@@ -311,13 +282,13 @@
 }
 .synth-root .seq-play-btn.playing { color: #ED5A24; }
 .synth-root .seq-play-btn:hover { transform: scale(1.05); }
-.synth-root .seq-transport label { font-size: 0.65rem; color: #888; display: flex; flex-direction: column; gap: 2px; }
+.synth-root .seq-transport label { font-size: var(--font-sm); color: var(--text-secondary); display: flex; flex-direction: column; gap: 2px; }
 .synth-root .seq-transport input, .synth-root .seq-transport select {
   background: var(--bg-input); color: #fff; border: 1px solid var(--border-medium);
   border-radius: var(--radius-sm); padding: 4px 6px; font-size: 0.75rem; width: 64px;
   transition: border-color 0.15s;
 }
-.synth-root .seq-transport input:focus, .synth-root .seq-transport select:focus { border-color: var(--accent-cyan); outline: none; }
+.synth-root .seq-transport input:focus, .synth-root .seq-transport select:focus { border-color: var(--page-accent); outline: none; }
 
 /* ── View Toggle ── */
 .synth-root .seq-view-toggle {
@@ -325,13 +296,13 @@
   border: 1px solid rgba(255,255,255,0.12); width: fit-content; margin-left: auto;
 }
 .synth-root .seq-view-btn {
-  padding: 4px 14px; font-size: 0.6rem; font-weight: 700;
-  border: none; cursor: pointer; background: rgba(255,255,255,0.03); color: rgba(255,255,255,0.3);
+  padding: 4px 14px; font-size: var(--font-sm); font-weight: 700;
+  border: none; cursor: pointer; background: rgba(255,255,255,0.03); color: var(--text-muted);
   transition: all 0.15s; letter-spacing: 0.5px; text-transform: uppercase;
 }
 .synth-root .seq-view-btn.active {
-  background: color-mix(in srgb, var(--accent-cyan) 18%, transparent);
-  color: var(--accent-cyan);
+  background: color-mix(in srgb, var(--page-accent) 18%, transparent);
+  color: var(--page-accent);
 }
 .synth-root .seq-view-btn:hover:not(.active) { background: rgba(255,255,255,0.06); }
 
@@ -909,6 +880,63 @@
 /* ── Lane editor & trigger ── */
 .synth-root .seq-lane-editor-wrap { margin-top: 8px; }
 .synth-root .seq-trigger-always { margin: 6px 0; }
+.synth-root .seq-lane-pattern-preset {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: rgba(255,255,255,0.025);
+  border-left: 1px solid var(--border-subtle);
+  border-right: 1px solid var(--border-subtle);
+}
+.synth-root .seq-lane-pattern-preset-label {
+  color: var(--text-secondary);
+  flex: 0 0 auto;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.synth-root .seq-lane-pattern-preset > div {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+.synth-root .seq-lane-pattern-preset select {
+  max-width: none;
+}
+.synth-root .seq-sequence-preset-row {
+  display: flex;
+  align-items: center;
+  padding: 6px 8px;
+  margin: 4px 0 0;
+  background: rgba(255,255,255,0.025);
+  border-radius: var(--radius-md);
+}
+.synth-root .seq-sequence-preset-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+.synth-root .seq-sequence-preset-label {
+  color: #888;
+  flex: 0 0 auto;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.synth-root .seq-sequence-preset-dropdown {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.synth-root .seq-per-controls .seq-sequence-preset-dropdown select {
+  width: auto;
+  min-width: 0;
+  max-width: none;
+}
 
 /* ── Lane enable buttons ── */
 .synth-root .seq-lane-enable-btn {
@@ -1428,7 +1456,6 @@
 .synth-root .synth-card {
   background: var(--bg-surface, rgba(30,30,42,0.85));
   border: 1px solid var(--border-accent, rgba(255,255,255,0.08));
-  border-left: 3px solid var(--sc, #888);
   border-radius: var(--radius-md, 8px);
   overflow: hidden;
   transition: border-color 0.15s, box-shadow 0.2s;
@@ -2683,6 +2710,10 @@
   .synth-root .seq-per-controls { padding: 6px 8px; gap: 6px; flex-wrap: wrap; }
   .synth-root .seq-per-controls label { font-size: 0.62rem; gap: 3px; }
   .synth-root .seq-per-controls input, .synth-root .seq-per-controls select { font-size: 0.65rem; padding: 4px 6px; width: 50px; min-height: 32px; }
+  .synth-root .seq-sequence-preset-row { padding: 6px 8px; }
+  .synth-root .seq-sequence-preset-control { width: 100%; min-width: 0; flex: 1 1 100%; }
+  .synth-root .seq-sequence-preset-label { font-size: 0.6rem; }
+  .synth-root .seq-sequence-preset-dropdown { width: 100%; }
   .synth-root .seq-link-btn, .synth-root .seq-evolve-btn { padding: 6px 10px; font-size: 0.6rem; min-height: 36px; }
   .synth-root .seq-evolve-panel { padding: 8px 10px; }
   .synth-root .seq-evolve-panel label { font-size: 0.62rem; gap: 4px; }

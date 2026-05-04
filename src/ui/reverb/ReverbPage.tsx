@@ -504,27 +504,31 @@ export default function ReverbPage({
         <div className="reverb-left">
 
           {/* ═══ Global bar — Reverb FX ON/OFF + Freeze (left column only) ═══ */}
-          <div className="reverb-global-bar">
-            <span className="reverb-title">⊞ Reverb FX</span>
-            <button
-              className={`reverb-enable-btn${state.reverbEnabled ? ' on' : ''}`}
-              onClick={() => onSelectChange('reverbEnabled', !state.reverbEnabled)}
-            >
-              {state.reverbEnabled ? 'ON' : 'OFF'}
-            </button>
-            <button
-              className={`reverb-freeze-btn${(state.spectralFreezeEnabled && state.spectralFreezeActive) ? ' frozen' : ''}`}
-              onClick={() => {
-                if (!state.spectralFreezeEnabled) {
-                  onSelectChange('spectralFreezeEnabled', true);
-                  onSelectChange('spectralFreezeActive', true);
-                } else {
-                  onSelectChange('spectralFreezeActive', !state.spectralFreezeActive);
-                }
-              }}
-            >
-              {(state.spectralFreezeEnabled && state.spectralFreezeActive) ? '❄ FROZEN' : '❄ Freeze'}
-            </button>
+          <div className="reverb-global-bar fx-page-header">
+            <span className="reverb-title fx-page-title">⊞ Reverb FX</span>
+            <div className="fx-page-actions">
+              <button
+                className={`reverb-enable-btn${state.reverbEnabled ? ' on' : ''}`}
+                onClick={() => onSelectChange('reverbEnabled', !state.reverbEnabled)}
+                aria-pressed={Boolean(state.reverbEnabled)}
+              >
+                {state.reverbEnabled ? 'ON' : 'OFF'}
+              </button>
+              <button
+                className={`reverb-freeze-btn${(state.spectralFreezeEnabled && state.spectralFreezeActive) ? ' frozen' : ''}`}
+                aria-pressed={Boolean(state.spectralFreezeEnabled && state.spectralFreezeActive)}
+                onClick={() => {
+                  if (!state.spectralFreezeEnabled) {
+                    onSelectChange('spectralFreezeEnabled', true);
+                    onSelectChange('spectralFreezeActive', true);
+                  } else {
+                    onSelectChange('spectralFreezeActive', !state.spectralFreezeActive);
+                  }
+                }}
+              >
+                {(state.spectralFreezeEnabled && state.spectralFreezeActive) ? '❄ FROZEN' : '❄ Freeze'}
+              </button>
+            </div>
           </div>
 
           {/* ── Preset card (matches Granular preset card) ── */}

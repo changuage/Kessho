@@ -14,6 +14,7 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { SliderState, formatIndexedDelayDivision, getParamInfo, getSliderNumericValue } from '../state';
 import type { ClockDivision } from '../../audio/drumSeqTypes';
+import type { DynamicsAnalyserKey, DynamicsVisualTelemetrySnapshot } from '../../audio/engine';
 import { computeGranularMacroModel } from '../../audio/granularMacroModel';
 import { audioEngine } from '../../audio/runtime';
 import GranularBufferCanvas from './GranularBufferCanvas';
@@ -23,6 +24,7 @@ import { useVisibleInterval } from '../hooks/useVisibleInterval';
 import { useRuntimeSliderVersion } from '../runtimeSliderState';
 import { PresetDropdown } from '../../presets/PresetDropdown';
 import { extractParams } from '../../presets/codec';
+import { GRANULAR_VOICE_COLORS } from '../../designSystem/colors';
 import type { PresetEntry } from '../../presets/types';
 import type { UsePresetsOptions } from '../../presets/usePresets';
 
@@ -67,7 +69,7 @@ interface VoicePrefix {
 
 const NUM_SLICES = 16;
 
-const VOICE_COLORS = ['#4a9eff', '#a855f7', '#2ecc71', '#f59e0b'];
+const VOICE_COLORS = [...GRANULAR_VOICE_COLORS];
 const VOICE_NAMES = ['Voice 1', 'Voice 2', 'Voice 3', 'Voice 4'];
 const CLEAN_RATE_OPTIONS = [
   { label: '0.25×', value: 0.25 },
@@ -132,6 +134,8 @@ export interface GranularPageProps {
   onStateChange?: React.Dispatch<React.SetStateAction<SliderState>>;
   sliderProps: (paramKey: keyof SliderState) => Record<string, unknown>;
   SliderComponent: React.ComponentType<Record<string, unknown>>;
+  getDynamicsAnalyser?: (key: DynamicsAnalyserKey) => AnalyserNode | null;
+  getDynamicsTelemetry?: () => DynamicsVisualTelemetrySnapshot;
 }
 
 interface BufferRangeSegment {
@@ -580,22 +584,24 @@ const GranularPage: React.FC<GranularPageProps> = ({
 
         {/* ═══════════════ SOUND PANEL (left) ═══════════════ */}
         <div className="granular-sound-panel">
-          <div className="granular-global-bar granular-global-panel">
-            <span className="granular-title">⊞ Granular FX</span>
+          <div className="granular-global-bar granular-global-panel fx-page-header">
+            <span className="granular-title fx-page-title">⊞ Granular FX</span>
 
-            <button
-              className={`granular-enable-btn${state.granularEnabled ? ' on' : ''}`}
-              onClick={() => onSelectChange('granularEnabled' as keyof SliderState, !state.granularEnabled)}
-            >
-              {state.granularEnabled ? 'ON' : 'OFF'}
-            </button>
+            <div className="fx-page-actions">
+              <button
+                className={`granular-enable-btn${state.granularEnabled ? ' on' : ''}`}
+                onClick={() => onSelectChange('granularEnabled' as keyof SliderState, !state.granularEnabled)}
+              >
+                {state.granularEnabled ? 'ON' : 'OFF'}
+              </button>
 
-            <button
-              className={`granular-freeze-btn${state.granularFreeze ? ' frozen' : ''}`}
-              onClick={() => onSelectChange('granularFreeze' as keyof SliderState, !state.granularFreeze)}
-            >
-              {state.granularFreeze ? '❄ FROZEN' : '❄ Freeze'}
-            </button>
+              <button
+                className={`granular-freeze-btn${state.granularFreeze ? ' frozen' : ''}`}
+                onClick={() => onSelectChange('granularFreeze' as keyof SliderState, !state.granularFreeze)}
+              >
+                {state.granularFreeze ? '❄ FROZEN' : '❄ Freeze'}
+              </button>
+            </div>
           </div>
 
           <div className="granular-section-card granular-preset-card">
@@ -1011,6 +1017,10 @@ const GranularPage: React.FC<GranularPageProps> = ({
                 <div
                   key={v}
                   className={`granular-voice-card${isExpanded ? ' editing' : ''}${!isEnabled ? ' disabled' : ''}`}
+                  style={{
+                    '--voice-color': VOICE_COLORS[v],
+                    '--engine-accent': VOICE_COLORS[v],
+                  } as React.CSSProperties}
                 >
                   {/* Header */}
                   <div

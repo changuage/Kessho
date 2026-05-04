@@ -29,6 +29,7 @@ EXPORTS="[
   '_dynamics_character_get_input_ptr',
   '_dynamics_character_get_output_ptr',
   '_dynamics_character_get_params_ptr',
+  '_dynamics_character_get_telemetry_ptr',
   '_dynamics_character_commit_params',
   '_dynamics_character_process_block',
   '_malloc',

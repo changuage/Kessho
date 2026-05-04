@@ -410,7 +410,7 @@ final class DynamicsCharacterProcessor {
         let cyclicFlutter = clamp01(rawFlutter + modeFlutter * (modeActive ? 0.55 + degradeMix * 0.1 : 1))
         let drift = clamp01(rawDrift + depth * (0.06 + contribution.smoothDrift * 0.32) + contribution.materialWear * 0.22 + contribution.crossPatch * 0.12 + modWow * 0.06)
         let tapeWanderDepth = degradeEnabled
-            ? rawDrift * 0.00165 + contribution.materialWear * 0.00082 + contribution.aliasDamage * 0.0002 + modWow * 0.00062
+            ? rawDrift * 0.0021 + contribution.materialWear * 0.0011 + contribution.aliasDamage * 0.00032 + modWow * 0.00085
             : 0
         let tapeFlutterDepth = degradeEnabled
             ? rawFlutter * 0.00022 + contribution.materialWear * 0.00009 + contribution.aliasDamage * 0.0001 + modFlutter * 0.0002
@@ -432,7 +432,7 @@ final class DynamicsCharacterProcessor {
             : 0
         let saturation = clamp01((degradeEnabled ? clamp01(state.degradeSaturation) * degradeInfluence * 0.55 + damage * 0.06 + degradeGeneration * 0.015 : 0) + characterDrive)
         let tone = 0.5 + ((degradeEnabled ? clamp01(state.degradeTone) : 0.5) - 0.5) * degradeInfluence
-        let dropout = clamp01(degradeMix * (mediaWear * 0.17 + corrosion * 0.22 + degradeGeneration * 0.035 + noise * 0.06) + modDropout * 0.08)
+        let dropout = clamp01(degradeMix * (mediaWear * 0.25 + corrosion * 0.28 + degradeGeneration * 0.06 + noise * 0.08 + rawDegradeAlias * 0.035) + modDropout * 0.16)
         let randomDrift = clamp01(
             contribution.randomHold * (0.42 + stereo * 0.24) +
             contribution.smoothDrift * 0.18 +
@@ -450,7 +450,7 @@ final class DynamicsCharacterProcessor {
             characterHoldRateHz = 0.025 + rate * 0.14
         }
         let degradeMotionWeight = degradeEnabled ? clamp01(degradeWetRatio * (0.65 + degradeInfluence * 0.35)) : 0
-        let degradeHoldRateHz = 0.018 + degradeWobbleSpeed * 0.52 + rawDrift * 0.08 + contribution.materialWear * 0.05
+        let degradeHoldRateHz = 0.02 + degradeWobbleSpeed * 0.58 + rawDrift * 0.11 + contribution.materialWear * 0.075 + contribution.aliasDamage * 0.035
         let randomHoldRateHz = characterHoldRateHz + (degradeHoldRateHz - characterHoldRateHz) * degradeMotionWeight
 
         let characterHoldLag: Double
@@ -461,8 +461,11 @@ final class DynamicsCharacterProcessor {
         } else {
             characterHoldLag = 0.75 + damp * 2.1
         }
-        let degradeHoldLag = max(0.22, 1.42 - degradeWobbleSpeed * 1.08 + rawMediaWear * (0.24 + (1 - degradeWobbleSpeed) * 0.18))
+        let degradeHoldLag = max(0.18, 1.3 - degradeWobbleSpeed * 0.98 + rawMediaWear * (0.2 + (1 - degradeWobbleSpeed) * 0.16))
         let randomHoldLag = characterHoldLag + (degradeHoldLag - characterHoldLag) * degradeMotionWeight
+        let degradeLevelTrim = degradeEnabled
+            ? max(0.7, 1 - degradeWetRatio * (0.12 + rawMediaWear * 0.12 + rawCorrosion * 0.16 + rawDegradeAlias * 0.1))
+            : 1
 
         let cleanCombTame = cleanFlavor * clamp01(degradeMix * (0.85 + contribution.materialWear * 0.35 + contribution.aliasDamage * 0.18))
         let cleanBaseDelay = 0.00035 + age * 0.0012 + drift * 0.0006
@@ -476,7 +479,7 @@ final class DynamicsCharacterProcessor {
             ? cleanSpreadDelay + (cleanTamedSpreadDelay - cleanSpreadDelay) * cleanCombTame
             : min(0.095, baseDelay + 0.0012 + stereo * (0.006 + shallowFlavor * 0.006) + drift * 0.0015)
         let randomDelayDepth = cleanFlavor > 0
-            ? randomDrift * (0.000035 + depth * 0.00016 + modFlutter * 0.00014 + contribution.materialWear * 0.00018 + contribution.aliasDamage * 0.00008)
+            ? randomDrift * (0.000035 + depth * 0.00016 + modFlutter * 0.00014 + contribution.materialWear * 0.00024 + contribution.aliasDamage * 0.00011)
             : shallowFlavor > 0
                 ? randomDrift * (0.00028 + depth * 0.0056 + contribution.bbdColor * 0.0014)
                 : randomDrift * (0.00005 + depth * 0.00045)
@@ -527,10 +530,10 @@ final class DynamicsCharacterProcessor {
         set(.rawDegradeGeneration, rawDegradeGeneration)
         set(.rawCorrosion, rawCorrosion)
         set(.rawMediaWear, rawMediaWear)
-        set(.noiseGain, min(0.018, wet * noise * (0.006 + age * 0.014 + corrosion * 0.012)))
+        set(.noiseGain, min(0.018, wet * noise * (0.006 + age * 0.014 + corrosion * 0.012)) * degradeLevelTrim)
         set(.jitterDepth, degradeMix * (0.000014 + contribution.flutterJitter * 0.00008 + corrosion * 0.00006 + contribution.materialWear * 0.00005 + clamp01(contribution.aliasDamage * 0.46 + contribution.crossPatch * 0.4) * 0.00004 + modFlutter * 0.00011))
-        set(.randomDriftFilterHz, randomHoldRateHz * (0.55 + damp * 0.35))
-        set(.randomDriftDepth, randomDrift * (0.00012 + drift * 0.00175 + contribution.materialWear * 0.00165 + contribution.aliasDamage * 0.0005 + contribution.crossPatch * 0.0009 + modWow * 0.00072))
+        set(.randomDriftFilterHz, randomHoldRateHz * (0.6 + damp * 0.32))
+        set(.randomDriftDepth, randomDrift * (0.00016 + drift * 0.00225 + contribution.materialWear * 0.00215 + contribution.aliasDamage * 0.00075 + contribution.crossPatch * 0.00105 + modWow * 0.00095))
         set(.baseDelay, baseDelay)
         set(.spreadBaseDelay, spreadBaseDelay)
         set(.randomDrift, randomDrift)
@@ -548,8 +551,8 @@ final class DynamicsCharacterProcessor {
         set(.damage, damage)
         set(.mainPan, -stereo * (0.25 + shallowFlavor * 0.18))
         set(.spreadPan, stereo * (0.58 + shallowFlavor * 0.24))
-        set(.mainDelayGain, (1 - stereo * (0.14 + shallowFlavor * 0.12)) * (1 - cleanCombTame * 0.08))
-        set(.spreadDelayGain, stereo * (cleanFlavor > 0 ? (0.05 + depth * 0.12) * (1 - cleanCombTame * 0.34) : 0.16 + depth * (0.4 + shallowFlavor * 0.18)))
+        set(.mainDelayGain, (1 - stereo * (0.14 + shallowFlavor * 0.12)) * (1 - cleanCombTame * 0.08) * degradeLevelTrim)
+        set(.spreadDelayGain, stereo * (cleanFlavor > 0 ? (0.05 + depth * 0.12) * (1 - cleanCombTame * 0.34) : 0.16 + depth * (0.4 + shallowFlavor * 0.18)) * degradeLevelTrim)
         set(.wowFrequency, wowFrequency)
         set(.flutterFrequency, 2.2 + rate * (5.4 + shallowFlavor * 3.2 + abyssFlavor * 1.2) + flutter * (4.2 + corrosion * 2.8))
         set(.flutterRandomDepth, degradeMix * clamp01(0.2 + modFlutter * 1.8 + contribution.flutterJitter * 0.5 + corrosion * 0.25) * (0.00004 + flutter * 0.00082 + modFlutter * 0.00048))
@@ -563,14 +566,14 @@ final class DynamicsCharacterProcessor {
         set(.allpassBQ, 0.25 + contribution.bbdColor * 1.8 + shallowFlavor * 0.1 + resonance * (abyssFlavor > 0 ? 0.14 : 0.85))
         set(.headBumpFrequency, 80 + mediaWear * 45 + corrosion * 20)
         set(.headBumpQ, 0.55 + mediaWear * 0.55)
-        set(.headBumpGain, degradeMix * 1.8 * (0.2 + mediaWear * 0.65) + characterMix * (abyssFlavor * 0.28 + shallowFlavor * 0.22))
-        set(.dropoutFilterHz, 0.8 + mediaWear * 8 + corrosion * 18 + digitalDamage * 2 + modDropout * 4)
-        set(.dropoutDepth, dropout * 0.08)
-        set(.dropoutGain, 1 - dropout * 0.07)
+        set(.headBumpGain, degradeMix * 1.1 * (0.2 + mediaWear * 0.65) * degradeLevelTrim + characterMix * (abyssFlavor * 0.28 + shallowFlavor * 0.22))
+        set(.dropoutFilterHz, 0.25 + mediaWear * 1.8 + corrosion * 4.5 + digitalDamage * 1.2 + modDropout * 2.2)
+        set(.dropoutDepth, dropout * 0.16)
+        set(.dropoutGain, 1 - dropout * 0.14)
         set(.envFilterHz, 2.5 + envFollow * 26 + rate * 12)
         set(.envToLowpassGain, envFollow * contribution.envelopeBloom * (abyssFlavor > 0 ? 520 + depth * 2300 + resonance * 1050 : shallowFlavor > 0 ? 140 + depth * 720 : 120 + depth * 420) + modLp * 180)
         set(.envToResonanceGain, envFollow * contribution.envelopeBloom * (abyssFlavor > 0 ? 0.18 + resonance * 0.62 : shallowFlavor > 0 ? 0.08 + resonance * 0.18 : 0.025))
-        set(.envToWetGain, envFollow * contribution.envelopeBloom * characterMix * (abyssFlavor > 0 ? 0.1 : shallowFlavor > 0 ? 0.035 : 0.015) + modWet * degradeMix * 0.07)
+        set(.envToWetGain, envFollow * contribution.envelopeBloom * characterMix * (abyssFlavor > 0 ? 0.1 : shallowFlavor > 0 ? 0.035 : 0.015) + modWet * degradeMix * 0.04)
         set(.lowpassHz, lowpassHz)
         set(.lowpassQ, 0.7 + resonance * (cleanFlavor > 0 ? 0.45 + contribution.cascadedFilter * 0.25 : abyssFlavor > 0 ? 1.1 + contribution.cascadedFilter * 0.75 : 3.2 + contribution.cascadedFilter * 2.6))
         set(.lowpassStage2Hz, lowpassHz * (cleanFlavor > 0 || abyssFlavor > 0 ? 1 : 0.92 - contribution.materialWear * 0.08 + shallowFlavor * 0.04))

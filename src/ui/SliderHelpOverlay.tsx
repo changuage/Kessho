@@ -232,6 +232,15 @@ export const SliderHelpProvider: React.FC<{
             ...(isMobileHelp ? styles.containerMobile : null),
           }}
         >
+          <button
+            type="button"
+            onClick={toggle}
+            style={styles.closeButton}
+            aria-label="Dismiss control help"
+            title="Dismiss control help"
+          >
+            ×
+          </button>
           <div style={styles.kicker}>
             <span>{pageLabel}</span>
             {section && <span style={styles.section}>{section}</span>}
@@ -303,31 +312,37 @@ const styles: Record<string, React.CSSProperties> = {
   },
   toggleButtonActive: {
     background: 'rgba(29, 39, 56, 0.88)',
-    borderColor: 'rgba(165,196,212,0.32)',
+    border: '1px solid rgba(165,196,212,0.32)',
     color: '#eef6ff',
   },
   container: {
     position: 'fixed',
-    top: 42,
-    right: 8,
+    left: '50%',
+    right: 'auto',
+    top: 'auto',
+    bottom: 18,
+    transform: 'translateX(-50%)',
     zIndex: 99998,
-    maxWidth: 'min(360px, calc(100vw - 16px))',
-    background: 'rgba(0,0,0,0.88)',
-    border: '1px solid #333',
+    width: 'min(640px, calc(100vw - 32px))',
+    maxWidth: 'min(640px, calc(100vw - 32px))',
+    background: 'rgba(20, 20, 35, 0.62)',
+    border: '1px solid rgba(247, 250, 252, 0.2)',
     borderRadius: 8,
-    padding: '10px 12px',
-    color: '#d7d7d7',
+    padding: '10px 40px 12px 14px',
+    color: '#F7FAFC',
     fontFamily: "Avenir, 'Avenir Next', -apple-system, BlinkMacSystemFont, sans-serif",
     fontSize: 12,
     lineHeight: 1.45,
-    pointerEvents: 'none',
-    backdropFilter: 'blur(6px)',
-    boxShadow: '0 10px 30px rgba(0,0,0,0.35)',
+    pointerEvents: 'auto',
+    backdropFilter: 'blur(12px)',
+    boxShadow: '0 14px 36px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.04)',
   },
   containerMobile: {
     top: 'auto',
-    right: 'calc(env(safe-area-inset-right) + 8px)',
-    bottom: 'calc(env(safe-area-inset-bottom) + 54px)',
+    right: 'auto',
+    left: '50%',
+    bottom: 'calc(env(safe-area-inset-bottom) + 56px)',
+    width: 'min(340px, calc(100vw - 16px))',
     maxWidth: 'min(340px, calc(100vw - 16px))',
     maxHeight: 'min(46vh, 320px)',
     overflow: 'auto',
@@ -335,6 +350,20 @@ const styles: Record<string, React.CSSProperties> = {
     overscrollBehavior: 'contain',
     touchAction: 'pan-y',
     WebkitOverflowScrolling: 'touch',
+  },
+  closeButton: {
+    position: 'absolute',
+    top: 7,
+    right: 8,
+    width: 24,
+    height: 24,
+    borderRadius: 999,
+    border: '1px solid rgba(247, 250, 252, 0.16)',
+    background: 'rgba(255,255,255,0.05)',
+    color: 'rgba(247, 250, 252, 0.72)',
+    cursor: 'pointer',
+    lineHeight: 1,
+    fontSize: 16,
   },
   kicker: {
     display: 'flex',
@@ -344,27 +373,27 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 10,
     textTransform: 'uppercase',
     letterSpacing: '0.12em',
-    color: '#8f8f8f',
+    color: 'rgba(247, 250, 252, 0.52)',
   },
   section: {
-    color: '#707070',
+    color: 'rgba(184, 224, 255, 0.56)',
   },
   title: {
     marginBottom: 4,
     fontSize: 15,
     fontWeight: 600,
-    color: '#f4f4f4',
+    color: '#F7FAFC',
   },
   short: {
     marginBottom: 6,
-    color: '#e8e8e8',
+    color: 'rgba(247, 250, 252, 0.9)',
   },
   body: {
-    color: '#b9b9b9',
+    color: 'rgba(247, 250, 252, 0.7)',
   },
   note: {
     marginTop: 8,
-    color: '#8fa7b4',
+    color: 'rgba(184, 224, 255, 0.68)',
     fontSize: 11,
   },
 };

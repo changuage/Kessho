@@ -22,6 +22,11 @@ enum MIDIManagerError: LocalizedError {
     }
 }
 
+private struct MIDIPacketSnapshot {
+    let timestamp: TimeInterval
+    let rawBytes: [UInt8]
+}
+
 final class MIDIManager: ObservableObject {
     @Published private(set) var availableInputs: [MIDIEndpointInfo] = []
     @Published private(set) var connectedInputIDs: Set<Int32> = []
@@ -214,21 +219,36 @@ final class MIDIManager: ObservableObject {
     }
 
     private func receive(packetList: UnsafePointer<MIDIPacketList>) {
-        guard isStarted else { return }
-
         var packet = packetList.pointee.packet
         let packetCount = packetList.pointee.numPackets
+        var snapshots: [MIDIPacketSnapshot] = []
+        snapshots.reserveCapacity(Int(packetCount))
 
         for _ in 0..<packetCount {
-            let timestamp = Double(packet.timeStamp) / 1_000_000_000.0
-            let rawBytes = Self.packetBytes(packet)
+            snapshots.append(
+                MIDIPacketSnapshot(
+                    timestamp: Double(packet.timeStamp) / 1_000_000_000.0,
+                    rawBytes: Self.packetBytes(packet)
+                )
+            )
+            packet = MIDIPacketNext(&packet).pointee
+        }
+
+        DispatchQueue.main.async { [weak self] in
+            self?.receive(snapshots)
+        }
+    }
+
+    private func receive(_ snapshots: [MIDIPacketSnapshot]) {
+        guard isStarted else { return }
+
+        for snapshot in snapshots {
             let endpointID = Self.firstConnectedEndpointID(connectedIDs: connectedInputIDs)
             let endpointName = endpointID.flatMap { endpointNamesByID[$0] }
 
             if let message = Self.message(
-                from: packet,
-                timestamp: timestamp,
-                rawBytes: rawBytes,
+                timestamp: snapshot.timestamp,
+                rawBytes: snapshot.rawBytes,
                 endpointUniqueID: endpointID,
                 endpointName: endpointName
             ) {
@@ -236,20 +256,24 @@ final class MIDIManager: ObservableObject {
             } else {
                 publish(
                     MIDIMessage.unknown(
-                        timestamp: timestamp,
-                        status: rawBytes.first ?? 0,
-                        rawBytes: rawBytes,
+                        timestamp: snapshot.timestamp,
+                        status: snapshot.rawBytes.first ?? 0,
+                        rawBytes: snapshot.rawBytes,
                         endpointUniqueID: endpointID,
                         endpointName: endpointName
                     )
                 )
             }
-
-            packet = MIDIPacketNext(&packet).pointee
         }
     }
 
     private func publish(_ message: MIDIMessage) {
+        if Thread.isMainThread {
+            latestMessage = message
+            events.send(message)
+            return
+        }
+
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.latestMessage = message
@@ -258,7 +282,6 @@ final class MIDIManager: ObservableObject {
     }
 
     private static func message(
-        from packet: MIDIPacket,
         timestamp: TimeInterval,
         rawBytes: [UInt8],
         endpointUniqueID: Int32?,

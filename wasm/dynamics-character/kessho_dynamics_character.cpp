@@ -97,6 +97,19 @@ enum ParamIndex {
     P_END_COMP_PROGRAM_RELEASE,
 };
 
+enum TelemetryIndex {
+    T_INPUT_PEAK = 0,
+    T_OUTPUT_PEAK,
+    T_WET_PEAK,
+    T_ENV,
+    T_COMP_GR_DB,
+    T_DROPOUT_GAIN,
+    T_END_INPUT_PEAK,
+    T_END_OUTPUT_PEAK,
+    T_END_GR_DB,
+    T_END_DETECTOR_DB,
+};
+
 inline float clampf(float value, float lo, float hi) {
     if (!std::isfinite(value)) return lo;
     if (value < lo) return lo;
@@ -192,6 +205,7 @@ struct DynamicsCharacterState {
     float input[KESSHO_DYNAMICS_CHARACTER_MAX_BLOCK_SIZE * 2] = {0.0f};
     float output[KESSHO_DYNAMICS_CHARACTER_MAX_BLOCK_SIZE * 2] = {0.0f};
     float param_buffer[KESSHO_DYNAMICS_CHARACTER_PARAM_COUNT] = {0.0f};
+    float telemetry[KESSHO_DYNAMICS_CHARACTER_TELEMETRY_COUNT] = {0.0f};
     float target[KESSHO_DYNAMICS_CHARACTER_PARAM_COUNT] = {0.0f};
     float current[KESSHO_DYNAMICS_CHARACTER_PARAM_COUNT] = {0.0f};
     int params_initialized = 0;
@@ -395,12 +409,14 @@ void process_end_chain(float& l, float& r, const float* p, float attack_coeff) {
     const float dry_l = l;
     const float dry_r = r;
     const float raw_level = std::fmax(std::fabs(l), std::fabs(r));
+    g.telemetry[T_END_INPUT_PEAK] = std::fmax(g.telemetry[T_END_INPUT_PEAK], raw_level);
     const float hp_l = g.end_detector_hp_l.process(l);
     const float hp_r = g.end_detector_hp_r.process(r);
     const float hp_level = std::fmax(std::fabs(hp_l), std::fabs(hp_r));
     const float detector_tilt = clamp01(p[P_END_COMP_DETECTOR_TILT]);
     const float detector_level = raw_level * (1.0f - detector_tilt) + hp_level * detector_tilt;
     const float level_db = gain_to_db(detector_level);
+    g.telemetry[T_END_DETECTOR_DB] = std::fmax(g.telemetry[T_END_DETECTOR_DB], level_db);
     const float target_gain_db = compute_compressor_gain_db(
         level_db,
         p[P_END_COMP_THRESHOLD],
@@ -417,6 +433,7 @@ void process_end_chain(float& l, float& r, const float* p, float attack_coeff) {
     const float release_coeff = smooth_coeff(p[P_END_COMP_RELEASE] * release_scale, g.sample_rate);
     const float coeff = target_gain < g.end_comp_gain ? attack_coeff : release_coeff;
     g.end_comp_gain += (target_gain - g.end_comp_gain) * coeff;
+    g.telemetry[T_END_GR_DB] = std::fmax(g.telemetry[T_END_GR_DB], -gain_to_db(std::fmin(1.0f, g.end_comp_gain)));
 
     const float auto_makeup_db = std::fmax(0.0f, (-p[P_END_COMP_THRESHOLD] - 12.0f) * (1.0f - 1.0f / std::fmax(1.0f, p[P_END_COMP_RATIO])) * 0.34f);
     const float makeup = p[P_END_COMP_MAKEUP] * db_to_gain(auto_makeup_db * clamp01(p[P_END_COMP_AUTO_MAKEUP]));
@@ -425,6 +442,7 @@ void process_end_chain(float& l, float& r, const float* p, float attack_coeff) {
     const float mix = clamp01(p[P_END_COMP_MIX]);
     l = dry_l + (wet_l - dry_l) * mix;
     r = dry_r + (wet_r - dry_r) * mix;
+    g.telemetry[T_END_OUTPUT_PEAK] = std::fmax(g.telemetry[T_END_OUTPUT_PEAK], std::fmax(std::fabs(l), std::fabs(r)));
 }
 
 float degrade_sample(float dry, int channel, float mix, float alias, float generation, float corrosion, float wear) {
@@ -432,13 +450,28 @@ float degrade_sample(float dry, int channel, float mix, float alias, float gener
     const float alias_focus = std::pow(clamp01(alias), 1.35f);
     const float destructive = clamp01(alias_focus * (0.6f + corrosion * 0.55f));
     const float damage = clamp01(alias_focus * 0.34f + generation * 0.2f + corrosion * 0.14f);
+    const bool clean_media_path = alias_focus <= 0.0001f && generation <= 0.0001f && corrosion <= 0.0001f;
+    const float cutoff = std::fmax(1500.0f, g.sample_rate * 0.45f * (1.0f - wear * 0.46f - generation * 0.24f - corrosion * 0.1f));
+    const float alpha = std::fmin(1.0f, 1.0f - std::exp((-2.0f * static_cast<float>(M_PI) * cutoff) / g.sample_rate));
+
+    if (clean_media_path) {
+        if (wear <= 0.0001f) {
+            g.degrade_held[channel] = dry;
+            g.degrade_lp[channel] = dry;
+            return dry;
+        }
+        const float lp = g.degrade_lp[channel] + (dry - g.degrade_lp[channel]) * alpha;
+        g.degrade_held[channel] = dry;
+        g.degrade_lp[channel] = lp;
+        return dry + (lp - dry) * mix;
+    }
+
     const float rate_ratio = std::fmax(0.2f, 1.0f / (1.0f + alias_focus * 3.2f + generation * 0.7f + corrosion * 0.55f));
     const float bit_depth = std::fmax(9.0f, 16.0f - alias_focus * 3.2f - generation * 1.1f - corrosion * 1.1f);
     const float quant_steps = std::fmax(8.0f, std::pow(2.0f, bit_depth));
-    const float cutoff = std::fmax(1500.0f, g.sample_rate * 0.45f * (1.0f - wear * 0.46f - generation * 0.24f - corrosion * 0.1f));
-    const float alpha = std::fmin(1.0f, 1.0f - std::exp((-2.0f * static_cast<float>(M_PI) * cutoff) / g.sample_rate));
     const float fold = 1.0f + corrosion * 0.58f + generation * 0.2f + destructive * 0.34f;
     const float inv_fold_tanh = 1.0f / std::fmax(1.0e-6f, std::tanh(fold));
+    const float shaper_trim = 1.0f / (1.0f + (fold - 1.0f) * (0.52f + mix * 0.22f) + destructive * 0.18f + damage * 0.12f);
 
     float held = g.degrade_held[channel];
     float phase = g.degrade_phase[channel] + rate_ratio;
@@ -447,7 +480,7 @@ float degrade_sample(float dry, int channel, float mix, float alias, float gener
         held = dry;
     }
     float wet = std::round(held * quant_steps) / quant_steps;
-    wet = std::tanh(wet * fold) * inv_fold_tanh;
+    wet = std::tanh(wet * fold) * inv_fold_tanh * shaper_trim;
     float lp = g.degrade_lp[channel] + (wet - g.degrade_lp[channel]) * alpha;
     wet = lp + (wet - lp) * (0.08f + damage * 0.18f + destructive * 0.18f);
 
@@ -557,6 +590,7 @@ void process_compressor(float& l, float& r, const float* p, float attack_coeff, 
     const bool attacking = target_gain < g.compressor_gain;
     const float coeff = attacking ? attack_coeff : release_coeff;
     g.compressor_gain += (target_gain - g.compressor_gain) * coeff;
+    g.telemetry[T_COMP_GR_DB] = std::fmax(g.telemetry[T_COMP_GR_DB], -gain_to_db(std::fmin(1.0f, g.compressor_gain)));
     const float gain = g.compressor_gain * p[P_COMP_MAKEUP];
     l *= gain;
     r *= gain;
@@ -596,6 +630,10 @@ float* dynamics_character_get_params_ptr(void) {
     return g.param_buffer;
 }
 
+float* dynamics_character_get_telemetry_ptr(void) {
+    return g.telemetry;
+}
+
 void dynamics_character_commit_params(void) {
     for (int i = 0; i < KESSHO_DYNAMICS_CHARACTER_PARAM_COUNT; ++i) {
         const float value = std::isfinite(g.param_buffer[i]) ? g.param_buffer[i] : 0.0f;
@@ -608,6 +646,11 @@ void dynamics_character_commit_params(void) {
 void dynamics_character_process_block(int block_size) {
     if (block_size <= 0) return;
     if (block_size > KESSHO_DYNAMICS_CHARACTER_MAX_BLOCK_SIZE) block_size = KESSHO_DYNAMICS_CHARACTER_MAX_BLOCK_SIZE;
+    for (int i = 0; i < KESSHO_DYNAMICS_CHARACTER_TELEMETRY_COUNT; ++i) {
+        g.telemetry[i] = 0.0f;
+    }
+    g.telemetry[T_DROPOUT_GAIN] = 1.0f;
+    g.telemetry[T_END_DETECTOR_DB] = -120.0f;
     if (!g.params_initialized || g.target[P_ACTIVE] < 0.5f) {
         std::memcpy(g.output, g.input, static_cast<size_t>(block_size) * 2 * sizeof(float));
         return;
@@ -632,11 +675,11 @@ void dynamics_character_process_block(int block_size) {
         p[P_DEGRADE_CORROSION] * 0.08f
     );
     const float wow_wander_coeff = one_pole_coeff(
-        0.03f + p[P_WOW_FREQ] * 0.45f + p[P_RANDOM_DRIFT_FILTER_HZ] * 0.18f,
+        0.03f + p[P_WOW_FREQ] * 0.45f + p[P_RANDOM_DRIFT_FILTER_HZ] * 0.24f,
         g.sample_rate
     );
     const float wow_wander_slow_coeff = one_pole_coeff(
-        0.008f + p[P_WOW_FREQ] * 0.11f + p[P_RANDOM_DRIFT_FILTER_HZ] * 0.035f,
+        0.008f + p[P_WOW_FREQ] * 0.11f + p[P_RANDOM_DRIFT_FILTER_HZ] * 0.05f,
         g.sample_rate
     );
     const float dropout_coeff = one_pole_coeff(p[P_DROPOUT_FILTER_HZ], g.sample_rate);
@@ -651,9 +694,11 @@ void dynamics_character_process_block(int block_size) {
         const float in_l = std::isfinite(g.input[i * 2]) ? g.input[i * 2] : 0.0f;
         const float in_r = std::isfinite(g.input[i * 2 + 1]) ? g.input[i * 2 + 1] : in_l;
         const float mono = (in_l + in_r) * 0.5f;
+        g.telemetry[T_INPUT_PEAK] = std::fmax(g.telemetry[T_INPUT_PEAK], std::fmax(std::fabs(in_l), std::fabs(in_r)));
 
         const float abs_mono = std::fabs(mono);
         g.env += (abs_mono - g.env) * env_coeff;
+        g.telemetry[T_ENV] = std::fmax(g.telemetry[T_ENV], g.env);
 
         g.hold_main += (g.hold_main_target - g.hold_main) * hold_coeff;
         g.hold_spread += (g.hold_spread_target - g.hold_spread) * hold_coeff;
@@ -673,14 +718,15 @@ void dynamics_character_process_block(int block_size) {
         if (g.flutter_phase >= 1.0f) g.flutter_phase -= 1.0f;
         const float cyclic_wow = std::sin(2.0f * static_cast<float>(M_PI) * g.wow_phase);
         const float tape_wow = clampf(
-            g.wow_wander * 0.58f +
-            g.wow_wander_slow * 0.42f +
-            g.hold_main * 0.16f,
+            g.wow_wander * 0.64f +
+            g.wow_wander_slow * 0.46f +
+            g.hold_main * 0.22f +
+            g.drift_noise * 0.18f,
             -1.0f,
             1.0f
         );
-        const float unstable_cyclic_wow = cyclic_wow * clampf(0.62f + g.wow_wander_slow * 0.16f, 0.42f, 0.82f);
-        const float wow_blend = clamp01(tape_wow_blend * 0.9f + p[P_DEGRADE_MIX] * 0.12f);
+        const float unstable_cyclic_wow = cyclic_wow * clampf(0.78f + g.wow_wander_slow * 0.16f, 0.62f, 1.0f);
+        const float wow_blend = clampf(tape_wow_blend * 0.42f + p[P_DEGRADE_MIX] * 0.12f, 0.0f, 0.68f);
         const float wow = unstable_cyclic_wow * (1.0f - wow_blend) + tape_wow * wow_blend;
         const float cyclic_flutter = 4.0f * std::fabs(g.flutter_phase - 0.5f) - 1.0f;
         const float tape_flutter = clampf(
@@ -717,6 +763,7 @@ void dynamics_character_process_block(int block_size) {
         pan_mono(spread * p[P_SPREAD_DELAY_GAIN], p[P_SPREAD_PAN], spread_l, spread_r);
         float wet_l = main_l + spread_l;
         float wet_r = main_r + spread_r;
+        g.telemetry[T_WET_PEAK] = std::fmax(g.telemetry[T_WET_PEAK], std::fmax(std::fabs(wet_l), std::fabs(wet_r)));
 
         wet_l = degrade_sample(wet_l, 0, p[P_DEGRADE_MIX], p[P_DEGRADE_ALIAS], p[P_DEGRADE_GENERATION], p[P_DEGRADE_CORROSION], p[P_DEGRADE_WEAR]);
         wet_r = degrade_sample(wet_r, 1, p[P_DEGRADE_MIX], p[P_DEGRADE_ALIAS], p[P_DEGRADE_GENERATION], p[P_DEGRADE_CORROSION], p[P_DEGRADE_WEAR]);
@@ -741,7 +788,9 @@ void dynamics_character_process_block(int block_size) {
         wet_l = saturate_character(wet_l, p[P_SATURATION], p[P_CORROSION]);
         wet_r = saturate_character(wet_r, p[P_SATURATION], p[P_CORROSION]);
 
-        const float dropout_gain = clampf(p[P_DROPOUT_GAIN] + g.dropout_noise * p[P_DROPOUT_DEPTH], 0.0f, 1.25f);
+        const float dropout_dip = std::fmax(0.0f, -g.dropout_noise);
+        const float dropout_gain = clampf(p[P_DROPOUT_GAIN] - dropout_dip * p[P_DROPOUT_DEPTH], 0.0f, 1.25f);
+        g.telemetry[T_DROPOUT_GAIN] = std::fmin(g.telemetry[T_DROPOUT_GAIN], dropout_gain);
         wet_l *= dropout_gain;
         wet_r *= dropout_gain;
 
@@ -751,6 +800,7 @@ void dynamics_character_process_block(int block_size) {
         float out_r = in_r * p[P_DRY] + wet_r * wet_gain + g.noise_lp_r * noise_gain;
         process_master_saturation(out_l, out_r, p);
         process_end_chain(out_l, out_r, p, end_comp_attack_coeff);
+        g.telemetry[T_OUTPUT_PEAK] = std::fmax(g.telemetry[T_OUTPUT_PEAK], std::fmax(std::fabs(out_l), std::fabs(out_r)));
         g.output[i * 2] = out_l;
         g.output[i * 2 + 1] = out_r;
         g.sample_clock++;

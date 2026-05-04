@@ -2241,7 +2241,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
  */
 export const DEFAULT_STATE: SliderState = {
   // Master Mixer
-  masterVolume: 0.7,
+  masterVolume: 0.85,
   synthLevel: 0.6,
   pad2Level: 0.6,
   granularLevel: 0.5,

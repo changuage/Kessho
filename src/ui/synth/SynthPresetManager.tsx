@@ -478,6 +478,7 @@ const SynthPresetManager: React.FC<SynthPresetManagerProps> = ({
   const handleRate = useCallback(async (rating: number) => {
     if (!selectedOption) return;
     const ratingKey = selectedSummary?.name ?? selectedOption.name;
+    setLocalRatings(prev => ({ ...prev, [ratingKey]: rating }));
     try {
       await ratePadPreset({
         scope: engineScope,
@@ -487,7 +488,6 @@ const SynthPresetManager: React.FC<SynthPresetManagerProps> = ({
         save,
         updateMetadata,
       });
-      setLocalRatings(prev => ({ ...prev, [ratingKey]: rating }));
     } catch (ratingError) {
       console.warn('Failed to update pad preset rating:', ratingError);
     }

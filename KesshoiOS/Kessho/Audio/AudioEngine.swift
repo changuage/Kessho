@@ -66,6 +66,8 @@ private struct MobilePerformanceProfile {
     )
 }
 
+private let masterOutputTrim: Float = 1.18
+
 /// Engine state update callback data
 struct EngineStateUpdate {
     var cofCurrentStep: Int
@@ -1299,7 +1301,7 @@ public final class AudioEngine {
         fxParams.spectralFreezeMix *= mobileProfile.freezeMixScale
 
         // Master volume
-        masterMixer.outputVolume = Float(currentParams.masterVolume)
+        masterMixer.outputVolume = Float(currentParams.masterVolume) * masterOutputTrim
         dryMixer.outputVolume = 1
         reverbSend.outputVolume = 1
         outputBridgeMixer.outputVolume = 1
