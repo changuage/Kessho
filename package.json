@@ -10,6 +10,7 @@
     "test:dynamics-character": "node scripts/check-dynamics-character-wasm.mjs",
     "test:dynamics-parity": "node scripts/check-dynamics-parity.mjs",
     "test:ios-mobile-hotpaths": "node scripts/check-ios-mobile-audio-hotpaths.mjs",
+    "test:ios-state-parity": "node scripts/check-ios-state-parity.mjs",
     "test:ios-universal-layout": "node scripts/check-ios-universal-layout.mjs",
     "test:mobile-web-hotpaths": "node scripts/check-mobile-web-hotpaths.mjs",
     "audit:preset-v2": "node scripts/audit-supabase-presets-v2.mjs",

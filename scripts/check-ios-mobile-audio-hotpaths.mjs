@@ -149,4 +149,16 @@ assert(
   'DynamicsCharacterProcessor should reuse parameter storage instead of allocating every update'
 );
 
+const reverb = read('KesshoiOS/Kessho/Audio/ReverbProcessor.swift');
+const reverbWriteInputStart = reverb.indexOf('func writeInput(buffer: AVAudioPCMBuffer)');
+const reverbHardResetStart = reverb.indexOf('func hardReset()');
+const reverbWriteInputBody = reverb.slice(reverbWriteInputStart, reverbHardResetStart);
+assert(
+  reverb.includes('private let inputLock = NSLock()') &&
+    reverb.includes('dequeueInputBlock(frameCount: Int(frameCount))') &&
+    reverbWriteInputBody.includes('guard inputLock.try() else { return }') &&
+    !reverbWriteInputBody.includes('stateLock.try()'),
+  'ReverbProcessor live input ring must use its own non-blocking input lock instead of contending with DSP state'
+);
+
 console.log('iOS mobile audio hotpath checks passed');

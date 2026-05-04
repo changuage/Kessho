@@ -167,6 +167,7 @@ enum ReverbType: String, CaseIterable {
 /// Features: 8-point FDN, 6 diffuser chains, interpolated delays, smooth modulation
 class ReverbProcessor {
     private let stateLock = NSLock()
+    private let inputLock = NSLock()
 
     // `node` is the post-parity return bus that the engine can tap for stems.
     let node: AVAudioMixerNode
@@ -193,8 +194,10 @@ class ReverbProcessor {
             defer { self.stateLock.unlock() }
 
             let shouldRenderCustom = self.useCustomReverb
+            self.dequeueInputBlock(frameCount: Int(frameCount))
             for frame in 0..<Int(frameCount) {
-                let (inputL, inputR) = self.dequeueInputFrame()
+                let inputL = frame < self.renderInputL.count ? self.renderInputL[frame] : 0
+                let inputR = frame < self.renderInputR.count ? self.renderInputR[frame] : 0
                 if shouldRenderCustom {
                     let (wetL, wetR) = self.processStereo(left: inputL, right: inputR)
                     writeReverbStereoFrame(wetL, wetR, frame: frame, to: ablPointer)
@@ -247,6 +250,9 @@ class ReverbProcessor {
     private var inputReadIndex: Int = 0
     private var inputWriteIndex: Int = 0
     private var bufferedInputFrames: Int = 0
+    private let maxRenderFrames = 4096
+    private var renderInputL: [Float]
+    private var renderInputR: [Float]
 
     // FDN preset configurations (internal - not to be confused with public ReverbType enum)
     enum FDNPresetConfig {
@@ -321,6 +327,8 @@ class ReverbProcessor {
         self.inputBufferSize = max(Int(sampleRate * 0.5), 4096)
         self.inputBufferL = [Float](repeating: 0, count: inputBufferSize)
         self.inputBufferR = [Float](repeating: 0, count: inputBufferSize)
+        self.renderInputL = [Float](repeating: 0, count: maxRenderFrames)
+        self.renderInputR = [Float](repeating: 0, count: maxRenderFrames)
         self.node = AVAudioMixerNode()
         self.customReturnMixer = AVAudioMixerNode()
         self.liteReturnMixer = AVAudioMixerNode()
@@ -371,7 +379,7 @@ class ReverbProcessor {
         liteNode.bypass = useCustomReverb
     }
 
-    private func dequeueInputFrame() -> (Float, Float) {
+    private func dequeueInputFrameUnlocked() -> (Float, Float) {
         guard bufferedInputFrames > 0 else { return (0, 0) }
 
         let left = inputBufferL[inputReadIndex]
@@ -381,7 +389,27 @@ class ReverbProcessor {
         return (left, right)
     }
 
-    private func clearInputBuffer() {
+    private func dequeueInputBlock(frameCount: Int) {
+        let frames = min(frameCount, renderInputL.count, renderInputR.count)
+        guard frames > 0 else { return }
+
+        guard inputLock.try() else {
+            for frame in 0..<frames {
+                renderInputL[frame] = 0
+                renderInputR[frame] = 0
+            }
+            return
+        }
+        defer { inputLock.unlock() }
+
+        for frame in 0..<frames {
+            let (left, right) = dequeueInputFrameUnlocked()
+            renderInputL[frame] = left
+            renderInputR[frame] = right
+        }
+    }
+
+    private func clearInputBufferUnlocked() {
         for index in 0..<inputBufferSize {
             inputBufferL[index] = 0
             inputBufferR[index] = 0
@@ -389,6 +417,12 @@ class ReverbProcessor {
         inputReadIndex = 0
         inputWriteIndex = 0
         bufferedInputFrames = 0
+    }
+
+    private func clearInputBuffer() {
+        inputLock.lock()
+        defer { inputLock.unlock() }
+        clearInputBufferUnlocked()
     }
 
     private func clearDSPState() {
@@ -430,8 +464,8 @@ class ReverbProcessor {
         let left = channelData[0]
         let right = Int(buffer.format.channelCount) > 1 ? channelData[1] : channelData[0]
 
-        guard stateLock.try() else { return }
-        defer { stateLock.unlock() }
+        guard inputLock.try() else { return }
+        defer { inputLock.unlock() }
 
         if frameCount >= inputBufferSize {
             let startIndex = frameCount - inputBufferSize

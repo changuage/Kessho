@@ -72,11 +72,12 @@ Focus on:
 - checking that `reverbLevel` behaves like a return level rather than an insert wet/dry blend
 - verifying reverb tails reset or persist intentionally when `reverbEnabled` changes
 
-#### 2. The send graph is now real, but still incomplete compared with the web surface
+#### 2. The send graph is now real; keep guarding the water/ocean path
 
 - Synth / granular / lead / drum sends now have explicit send mixers.
-- Ocean / water does not yet have a dedicated reverb-send parity path.
+- Ocean and shared nature/water now have dedicated reverb-send mixers feeding the shared custom reverb send bus.
 - There are still web-only routing nuances that are broader than this sweep.
+- `npm run test:ios-state-parity` now guards the critical reverb/water fields and reports broader state drift.
 
 #### 3. State parity is better, but still incomplete
 
@@ -94,8 +95,8 @@ Focus on:
 
 #### 5. Explicit remaining gaps to carry forward
 
-- ocean/water still lacks dedicated reverb-send parity
-- advanced web reverb fields like shimmer/warp/transient smoothing are still missing
+- ocean/water dedicated reverb-send parity is now structurally wired and guarded
+- first-pass shimmer/warp/cross-feed/transient smoothing fields are wired; remaining advanced web-only reverb fields still need deliberate native meanings
 - the new reverb and granular live bridges are still lock-backed, not lock-free
 - web-only engines like spectral freeze and fuller soundscapes are still outside this sweep
 
@@ -105,13 +106,14 @@ Focus on:
 
 ##### Implementation direction
 
-1. Read the web routing for the water / nature / ocean layers in `src/audio/engine.ts`
-2. Identify which web controls actually feed reverb sends, instead of assuming the existing iOS ocean controls already cover that behavior
-3. Add a dedicated native send path for ocean audio:
-   - either one shared ocean reverb send bus
-   - or separate sample-vs-wave send buses if the web behavior clearly distinguishes them
-4. Keep the send pre-fader if the web path is pre-fader
-5. Extend the iOS state bridge only with the minimum fields needed to represent the real send behavior
+Status: structurally wired. `AudioEngine` has dedicated `oceanReverbSendMixer` and `natureReverbSendMixer` paths into `reverbSend`, with `oceanReverbSend`, `natureReverbSend`, and `waterReverbSend` bridged through `SliderState`/`AppState`.
+
+Next work should be validation and refinement:
+
+1. Confirm the dry ocean/water balance does not change when only send fields move.
+2. Capture a physical-device listening pass for sample waves, wave synth, water drops, bubbles, surf, birds/frogs, and insects.
+3. If the web path needs separate sample-vs-wave sends, add that deliberately and document the audible reason.
+4. Keep the send pre-fader unless a measured parity issue proves otherwise.
 
 ##### Watch out for
 
@@ -130,7 +132,9 @@ Focus on:
 
 ##### Implementation direction
 
-Treat these as advanced reverb modifiers, not as excuses to swap the whole reverb engine:
+Status: first-pass native modifiers are wired for `reverbShimmer`, `reverbShimmerPitch`, `reverbShimmerFeedback`, `reverbWarp`, `reverbCrossFeed`, and `reverbTransientSmooth`.
+
+Treat further reverb fields as advanced modifiers, not as excuses to swap the whole reverb engine:
 
 1. Add decode/bridge support only after deciding the native meaning of each field
 2. Implement them as optional modifiers on top of the current custom FDN path
