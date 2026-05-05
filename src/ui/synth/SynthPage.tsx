@@ -4235,6 +4235,16 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
               label="BPM"
               onChange={setSharedSequencerBpm}
             />
+            {!isMobile && (
+              <button
+                className={`synth-keyboard-toggle${showKeyboard ? ' active' : ''}`}
+                onClick={toggleKeyboardPanel}
+                style={{ '--kb-accent': keyboardSourceInfo.color } as React.CSSProperties}
+                type="button"
+              >
+                Keys
+              </button>
+            )}
             <div className="seq-view-toggle">
               <button
                 className={`seq-view-btn${seq.viewMode === 'simple' ? ' active' : ''}`}
@@ -4258,16 +4268,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 Overview
               </button>
             </div>
-            {!isMobile && (
-              <button
-                className={`synth-keyboard-toggle${showKeyboard ? ' active' : ''}`}
-                onClick={toggleKeyboardPanel}
-                style={{ '--kb-accent': keyboardSourceInfo.color } as React.CSSProperties}
-                type="button"
-              >
-                Keys
-              </button>
-            )}
           </div>
 
           {!isMobile && showKeyboard && (

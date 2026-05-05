@@ -1,15 +1,19 @@
 import Foundation
 
-/// SliderState for the current native iOS prototype.
-/// This model is intentionally kept separate from the web app's evolving state
-/// until a dedicated migration/parity layer is introduced.
+/// Native SliderState kept in lockstep with the web app's public state surface.
+/// Native-only fields remain explicit so preset and Supabase codecs can bridge
+/// them without hiding platform differences.
 public struct SliderState: Codable, Equatable {
+    public init() {}
+
     // Master
     var masterVolume: Double = 0.85
     var synthLevel: Double = 0.6
     var granularLevel: Double = 0.4
     var synthReverbSend: Double = 0.7
     var granularReverbSend: Double = 0.8
+    var granularDelayASend: Double = 0
+    var granularDelayBSend: Double = 0
     var leadReverbSend: Double = 0.5
     var lead2Level: Double = 0.6
     var lead2ReverbSend: Double = 0.5
@@ -31,11 +35,11 @@ public struct SliderState: Codable, Equatable {
     var pianoDelayBSend: Double = 0
     var drumDelayASend: Double = 1
     var drumDelayBSend: Double = 0
-    
+
     // Seed
     var seedWindow: String = "hour"  // "hour", "day" (matching web app)
     var randomness: Double = 0.5
-    
+
     // Root Note & CoF Drift
     var rootNote: Int = 4  // 0-11 (C=0, C#=1, ..., B=11), default E=4
     var cofDriftEnabled: Bool = false
@@ -43,14 +47,26 @@ public struct SliderState: Codable, Equatable {
     var cofDriftDirection: String = "cw"  // "cw", "ccw", "random"
     var cofDriftRange: Int = 3
     var cofCurrentStep: Int = 0
-    
+
     // Harmony
     var scaleMode: String = "auto"  // "auto", "manual"
     var manualScale: String = "Major (Ionian)"
     var tension: Double = 0.3
+    var phraseLength: Double = 16
+    var transportPrimaryClock: String = "seconds"
+    var transportBarsPerPhrase: Int = 4
+    var transportBeatsPerBar: Int = 4
+    var harmonyClockSource: String = "globalPhrase"
+    var sequencerMasterBPM: Double = 120
     var chordRate: Int = 32
     var voicingSpread: Double = 0.5
-    
+    var chordProgressionEnabled: Bool = false
+    var chordProgressionPattern: [Int] = [0, 3, 4, 0]
+    var chordProgressionSteps: Int = 4
+    var chordProgressionStepEnabled: [Bool] = [true, true, true, true]
+    var chordProgressionPhraseMultiplier: Int = 1
+    var chordProgressionClockSource: String = "harmony"
+
     // Synth Oscillator
     var waveSpread: Double = 4.0
     var detune: Double = 8.0
@@ -60,7 +76,7 @@ public struct SliderState: Codable, Equatable {
     var synthRelease: Double = 12.0
     var synthVoiceMask: Int = 63  // Bitmask for 6 voices
     var synthOctave: Int = 0
-    
+
     // Synth Timbre
     var hardness: Double = 0.3
     var oscBrightness: Int = 2  // 0=sine, 1=triangle, 2=saw+tri, 3=sawtooth
@@ -73,7 +89,7 @@ public struct SliderState: Codable, Equatable {
     var warmth: Double = 0.4
     var presence: Double = 0.3
     var airNoise: Double = 0.15
-    
+
     // Reverb
     var reverbEnabled: Bool = true
     var reverbEngine: String = "algorithmic"
@@ -88,10 +104,25 @@ public struct SliderState: Codable, Equatable {
     var width: Double = 0.85
     var reverbShimmer: Double = 0
     var reverbShimmerPitch: Double = 12
+    var reverbSlowModRate: Double = 0.05
+    var reverbSlowModDepth: Double = 0
+    var reverbReverse: Double = 0
+    var reverbReverseLength: Double = 2
+    var reverbChorusRate: Double = 0.5
+    var reverbChorusDepth: Double = 12
+    var reverbModCharacter: String = "hybrid"
+    var reverbDampLow: Double = 0.1
+    var reverbDampHigh: Double = 0.3
+    var reverbCrossoverFreq: Double = 800
+    var reverbInputTone: Double = 0
     var reverbShimmerFeedback: Double = 0
     var reverbWarp: Double = 0
     var reverbCrossFeed: Double = 0
+    var reverbEarlyReflections: Double = 0.3
+    var reverbAirAbsorption: Double = 0.2
+    var reverbSaturationMode: String = "clean"
     var reverbTransientSmooth: Double = 0
+    var reverbErLpFreq: Double = 2500
 
     // Spectral Freeze
     var spectralFreezeEnabled: Bool = false
@@ -106,6 +137,11 @@ public struct SliderState: Codable, Equatable {
 
     // Dynamics Character (shared C++ core with web/WASM)
     var dynamicsEnabled: Bool = false
+    var dynamicsSaturationEnabled: Bool = false
+    var dynamicsSaturationMode: String = "clean"
+    var dynamicsSaturationDrive: Double = 0
+    var dynamicsSaturationTone: Double = 0.5
+    var dynamicsSaturationBias: Double = 0.5
     var characterEnabled: Bool = false
     var characterMode: String = "shallowWater"  // clean, shallowWater, abyssWater
     var characterMix: Double = 0.35
@@ -187,9 +223,12 @@ public struct SliderState: Codable, Equatable {
     var pitchSpread: Double = 3
     var stereoSpread: Double = 0.6
     var feedback: Double = 0.1
+    var granularFeedbackLPF: Double = 6000
+    var granularFreeze: Bool = false
+    var granularBufferSeconds: Double = 4
     var wetHPF: Double = 500
     var wetLPF: Double = 8000
-    
+
     // Lead Synth
     var leadEnabled: Bool = false
     var leadLevel: Double = 0.4
@@ -283,11 +322,11 @@ public struct SliderState: Codable, Equatable {
     var granularDelayVibrato: Double = 0
     var granularDelayMix: Double = 1.0
     var granularDelayReverbSend: Double = 0.4
-    
+
     // Euclidean Rhythms
     var synthEuclideanMasterEnabled: Bool = false
     var synthEuclideanTempo: Double = 1.0
-    
+
     var synthEuclid1Enabled: Bool = true
     var synthEuclid1Preset: String = "lancaran"
     var synthEuclid1Steps: Int = 16
@@ -296,7 +335,7 @@ public struct SliderState: Codable, Equatable {
     var synthEuclid1NoteMin: Int = 64
     var synthEuclid1NoteMax: Int = 76
     var synthEuclid1Level: Double = 0.8
-    
+
     var synthEuclid2Enabled: Bool = false
     var synthEuclid2Preset: String = "kotekan"
     var synthEuclid2Steps: Int = 8
@@ -305,7 +344,7 @@ public struct SliderState: Codable, Equatable {
     var synthEuclid2NoteMin: Int = 76
     var synthEuclid2NoteMax: Int = 88
     var synthEuclid2Level: Double = 0.6
-    
+
     var synthEuclid3Enabled: Bool = false
     var synthEuclid3Preset: String = "ketawang"
     var synthEuclid3Steps: Int = 16
@@ -314,7 +353,7 @@ public struct SliderState: Codable, Equatable {
     var synthEuclid3NoteMin: Int = 52
     var synthEuclid3NoteMax: Int = 64
     var synthEuclid3Level: Double = 0.9
-    
+
     var synthEuclid4Enabled: Bool = false
     var synthEuclid4Preset: String = "srepegan"
     var synthEuclid4Steps: Int = 16
@@ -323,7 +362,7 @@ public struct SliderState: Codable, Equatable {
     var synthEuclid4NoteMin: Int = 88
     var synthEuclid4NoteMax: Int = 96
     var synthEuclid4Level: Double = 0.5
-    
+
     // Euclidean Probability & Source (per lane)
     var synthEuclid1Probability: Double = 1.0
     var synthEuclid1Source: String = "lead"  // "lead", "lead1", "lead2", "piano", "synth1"..."synth6"
@@ -333,15 +372,15 @@ public struct SliderState: Codable, Equatable {
     var synthEuclid3Source: String = "lead"
     var synthEuclid4Probability: Double = 1.0
     var synthEuclid4Source: String = "lead"
-    
+
     // Synth Chord Sequencer Toggle
     var synthChordSequencerEnabled: Bool = true
-    
+
     // ─── Ikeda-Style Drum Synth ───
     var drumEnabled: Bool = false
     var drumLevel: Double = 0.7
     var drumReverbSend: Double = 0.06
-    
+
     // ─── Drum Stereo Ping-Pong Delay ───
     var drumDelayEnabled: Bool = false
     var drumDelayNoteL: String = "1/8d"       // Note division for left: 1/4, 1/8, 1/8d, 1/16, etc.
@@ -356,7 +395,7 @@ public struct SliderState: Codable, Equatable {
     var drumBeepHiDelaySend: Double = 0.6
     var drumBeepLoDelaySend: Double = 0.4
     var drumNoiseDelaySend: Double = 0.7
-    
+
     // Voice 1: Sub (deep sine pulse)
     var drumSubFreq: Double = 50
     var drumSubDecay: Double = 150
@@ -367,7 +406,7 @@ public struct SliderState: Codable, Equatable {
     var drumSubPitchDecay: Double = 50      // 5..500 ms pitch envelope decay
     var drumSubDrive: Double = 0            // 0..1 soft saturation
     var drumSubSub: Double = 0              // 0..1 sub-octave mix
-    
+
     // Voice 2: Kick (sine with pitch sweep)
     var drumKickFreq: Double = 55
     var drumKickPitchEnv: Double = 24
@@ -379,7 +418,7 @@ public struct SliderState: Codable, Equatable {
     var drumKickPunch: Double = 0.8         // 0..1 transient sharpness
     var drumKickTail: Double = 0            // 0..1 reverberant tail
     var drumKickTone: Double = 0            // 0..1 harmonic content
-    
+
     // Voice 3: Click (the signature Ikeda "data" sound)
     var drumClickDecay: Double = 5
     var drumClickFilter: Double = 4000
@@ -392,7 +431,7 @@ public struct SliderState: Codable, Equatable {
     var drumClickGrainCount: Int = 1        // 1..8 micro-grains per trigger
     var drumClickGrainSpread: Double = 0    // 0..50 ms grain timing spread
     var drumClickStereoWidth: Double = 0    // 0..1 stereo spread
-    
+
     // Voice 4: Beep Hi (high pitched notification ping)
     var drumBeepHiFreq: Double = 4000
     var drumBeepHiAttack: Double = 1
@@ -404,7 +443,7 @@ public struct SliderState: Codable, Equatable {
     var drumBeepHiShimmer: Double = 0       // 0..1 vibrato/chorus amount
     var drumBeepHiShimmerRate: Double = 4   // 0.5..12 Hz shimmer LFO rate
     var drumBeepHiBrightness: Double = 0.5  // 0..1 spectral tilt
-    
+
     // Voice 5: Beep Lo (lower blip, Morse-code feel)
     var drumBeepLoFreq: Double = 400
     var drumBeepLoAttack: Double = 2
@@ -416,7 +455,7 @@ public struct SliderState: Codable, Equatable {
     var drumBeepLoBody: Double = 0.3        // 0..1 resonance/body warmth
     var drumBeepLoPluck: Double = 0         // 0..1 Karplus-Strong pluck amount
     var drumBeepLoPluckDamp: Double = 0.5   // 0..1 pluck damping (0=bright, 1=muted)
-    
+
     // Voice 6: Noise (hi-hat/texture)
     var drumNoiseFilterFreq: Double = 8000
     var drumNoiseFilterQ: Double = 1
@@ -430,10 +469,10 @@ public struct SliderState: Codable, Equatable {
     var drumNoiseFilterEnvDecay: Double = 100  // 5..2000 ms filter env decay
     var drumNoiseDensity: Double = 1        // 0..1 (0=sparse dust, 1=dense)
     var drumNoiseColorLFO: Double = 0       // 0..10 Hz filter modulation rate
-    
+
     // Per-trigger morph update option
     var drumRandomMorphUpdate: Bool = false  // Update sliders on random morph trigger
-    
+
     // ─── Drum Voice Morph System ───
     // Sub morph
     var drumSubPresetA: String = "Classic Sub"
@@ -442,7 +481,7 @@ public struct SliderState: Codable, Equatable {
     var drumSubMorphAuto: Bool = false
     var drumSubMorphSpeed: Double = 8
     var drumSubMorphMode: String = "linear"  // linear, pingpong, random
-    
+
     // Kick morph
     var drumKickPresetA: String = "Ikeda Kick"
     var drumKickPresetB: String = "Ambient Boom"
@@ -450,7 +489,7 @@ public struct SliderState: Codable, Equatable {
     var drumKickMorphAuto: Bool = false
     var drumKickMorphSpeed: Double = 8
     var drumKickMorphMode: String = "linear"
-    
+
     // Click morph
     var drumClickPresetA: String = "Data Point"
     var drumClickPresetB: String = "Crinkle"
@@ -458,7 +497,7 @@ public struct SliderState: Codable, Equatable {
     var drumClickMorphAuto: Bool = false
     var drumClickMorphSpeed: Double = 8
     var drumClickMorphMode: String = "linear"
-    
+
     // BeepHi morph
     var drumBeepHiPresetA: String = "Data Ping"
     var drumBeepHiPresetB: String = "Glass"
@@ -466,7 +505,7 @@ public struct SliderState: Codable, Equatable {
     var drumBeepHiMorphAuto: Bool = false
     var drumBeepHiMorphSpeed: Double = 8
     var drumBeepHiMorphMode: String = "linear"
-    
+
     // BeepLo morph
     var drumBeepLoPresetA: String = "Blip"
     var drumBeepLoPresetB: String = "Droplet"
@@ -474,7 +513,7 @@ public struct SliderState: Codable, Equatable {
     var drumBeepLoMorphAuto: Bool = false
     var drumBeepLoMorphSpeed: Double = 8
     var drumBeepLoMorphMode: String = "linear"
-    
+
     // Noise morph
     var drumNoisePresetA: String = "Hi-Hat"
     var drumNoisePresetB: String = "Breath"
@@ -482,7 +521,7 @@ public struct SliderState: Codable, Equatable {
     var drumNoiseMorphAuto: Bool = false
     var drumNoiseMorphSpeed: Double = 8
     var drumNoiseMorphMode: String = "linear"
-    
+
     // Random trigger mode
     var drumRandomEnabled: Bool = false
     var drumRandomDensity: Double = 0.3
@@ -494,14 +533,14 @@ public struct SliderState: Codable, Equatable {
     var drumRandomNoiseProb: Double = 0.25
     var drumRandomMinInterval: Double = 80
     var drumRandomMaxInterval: Double = 400
-    
+
     // Euclidean sequencer (4 lanes)
     var drumEuclidMasterEnabled: Bool = false
     var drumEuclidBaseBPM: Double = 120
     var drumEuclidTempo: Double = 1
     var drumEuclidSwing: Double = 0
     var drumEuclidDivision: Int = 16
-    
+
     // Lane 1 - Click pattern (primary rhythm)
     var drumEuclid1Enabled: Bool = true
     var drumEuclid1Preset: String = "lancaran"
@@ -518,7 +557,7 @@ public struct SliderState: Codable, Equatable {
     var drumEuclid1VelocityMin: Double = 0.8
     var drumEuclid1VelocityMax: Double = 0.8
     var drumEuclid1Level: Double = 0.8
-    
+
     // Lane 2 - Sub pattern (bass pulse)
     var drumEuclid2Enabled: Bool = true
     var drumEuclid2Preset: String = "gangsaran"
@@ -535,7 +574,7 @@ public struct SliderState: Codable, Equatable {
     var drumEuclid2VelocityMin: Double = 0.8
     var drumEuclid2VelocityMax: Double = 0.8
     var drumEuclid2Level: Double = 0.9
-    
+
     // Lane 3 - Beep Hi (sparse accents)
     var drumEuclid3Enabled: Bool = false
     var drumEuclid3Preset: String = "sparse"
@@ -552,7 +591,7 @@ public struct SliderState: Codable, Equatable {
     var drumEuclid3VelocityMin: Double = 0.8
     var drumEuclid3VelocityMax: Double = 0.8
     var drumEuclid3Level: Double = 0.6
-    
+
     // Lane 4 - Noise (hi-hat texture)
     var drumEuclid4Enabled: Bool = false
     var drumEuclid4Preset: String = "dense"
@@ -569,7 +608,7 @@ public struct SliderState: Codable, Equatable {
     var drumEuclid4VelocityMin: Double = 0.8
     var drumEuclid4VelocityMax: Double = 0.8
     var drumEuclid4Level: Double = 0.5
-    
+
     // Ocean
     var oceanSampleEnabled: Bool = false
     var oceanSampleLevel: Double = 0.5
@@ -702,10 +741,420 @@ public struct SliderState: Codable, Equatable {
     var granularNatureSend: Double = 0
     var granularWaterSend: Double = 0
     var granularInsectsSend: Double = 0
-    
+
+    // Web app compatibility surface. These fields preserve current web preset/state payloads even
+    // where the native renderer still maps them onto an existing Swift DSP approximation.
+    var pad2Level: Double = 0.6
+    var pad1ReverbSend: Double = 0.7
+    var pad2ReverbSend: Double = 0.7
+    var masterSatDrive: Double = 0
+    var masterSatMode: String = "clean"
+    var masterSatTone: Double = 0.5
+    var sidechainEnabled: Bool = false
+    var sidechainKeyA: String = "kick"
+    var sidechainKeyB: String = "off"
+    var sidechainKeyAWeight: Double = 1
+    var sidechainKeyBWeight: Double = 0.7
+    var sidechainAmount: Double = 0.5
+    var sidechainThreshold: Double = -24
+    var sidechainRatio: Double = 4
+    var sidechainKnee: Double = 6
+    var sidechainAttackMs: Double = 5
+    var sidechainHoldMs: Double = 20
+    var sidechainReleaseMs: Double = 180
+    var sidechainMakeup: Double = 1
+    var sidechainMix: Double = 1
+    var sidechainCurve: Double = 0.5
+    var sidechainDetectorHp: Double = 0
+    var sidechainDetectorLp: Double = 1
+    var sidechainPad1Target: Double = 0
+    var sidechainPad2Target: Double = 0
+    var sidechainLead1Target: Double = 0
+    var sidechainLead2Target: Double = 0
+    var sidechainPianoTarget: Double = 0
+    var sidechainGranularTarget: Double = 0
+    var sidechainDelayATarget: Double = 0
+    var sidechainDelayBTarget: Double = 0
+    var sidechainReverbTarget: Double = 0
+    var characterWow: Double = 0
+    var characterFlutter: Double = 0
+    var characterDrift: Double = 0
+    var characterTone: Double = 0.5
+    var characterHp: Double = 0
+    var characterLp: Double = 1
+    var characterNoise: Double = 0
+    var characterSaturation: Double = 0
+    var characterCorrosion: Double = 0
+    var chordProgressionHits: Double = 4
+    var chordProgressionRotation: Double = 0
+    var padTensionMode: String = "follow"
+    var padTensionValue: Double = 0
+    var leadTensionMode: String = "follow"
+    var leadTensionValue: Double = 0
+    var synthEuclidTensionMode: String = "follow"
+    var synthEuclidTensionValue: Double = 0
+    var granularTensionMode: String = "bypass"
+    var granularTensionValue: Double = 0
+    var reverbTensionMode: String = "bypass"
+    var reverbTensionValue: Double = 0
+    var drumTensionMode: String = "bypass"
+    var drumTensionValue: Double = 0
+    var harmonySyncPolicy: String = "nextPhrase"
+    var leadRandomClockSource: String = "globalPhrase"
+    var leadRandomSyncPolicy: String = "nextPhrase"
+    var synthEuclidClockSource: String = "localBeat"
+    var synthEuclidJoinPolicy: String = "bar"
+    var drumEuclidClockSource: String = "localBeat"
+    var drumEuclidJoinPolicy: String = "bar"
+    var randomWalkMode: String = "localBrownian"
+    var filterSlope: Double = 12
+    var filterKeyTracking: Double = 0
+    var padFoldAmount: Double = 0
+    var padFoldMode: Double = 0
+    var padPresetA: String = "init"
+    var padPresetB: String = "init"
+    var padMorph: Double = 0
+    var padOscAWave: String = "sawtooth"
+    var padOscAOctave: Double = 0
+    var padOscADetune: Double = 0
+    var padOscALevel: Double = 0.6
+    var padOscBWave: String = "triangle"
+    var padOscBOctave: Double = 0
+    var padOscBDetune: Double = 8
+    var padOscBLevel: Double = 0.4
+    var padSubEnabled: Bool = false
+    var padSubOctave: Double = -1
+    var padSubWave: String = "sine"
+    var padSubLevel: Double = 0.3
+    var padNoiseType: String = "white"
+    var padNoiseLevel: Double = 0.15
+    var padFilterBEnabled: Bool = false
+    var padFilterBType: String = "highpass"
+    var padFilterBCutoff: Double = 200
+    var padFilterBResonance: Double = 0.2
+    var padFilterBQ: Double = 1
+    var padFilterRouting: String = "series"
+    var padLfo1Rate: Double = 0.5
+    var padLfo1Depth: Double = 0
+    var padLfo1Wave: String = "sine"
+    var padLfo1Dest: String = "none"
+    var padLfo2Rate: Double = 0.5
+    var padLfo2Depth: Double = 0
+    var padLfo2Wave: String = "sine"
+    var padLfo2Dest: String = "none"
+    var padModEnvEnabled: Bool = false
+    var padModEnvAttack: Double = 0.5
+    var padModEnvDecay: Double = 2
+    var padModEnvSustain: Double = 0
+    var padModEnvRelease: Double = 4
+    var padModEnvDepth: Double = 0.5
+    var padModEnvDest: String = "filterCutoff"
+    var padMorphAuto: Bool = false
+    var padMorphSpeed: Double = 8
+    var padOscMix: Double = 0.5
+    var padDistance: Double = 0
+    var padPostLPF: Double = 18000
+    var padStereoWidth: Double = 1
+    var padDiffuseSend: Double = 0
+    var pad2Enabled: Bool = false
+    var pad2VoiceAssign: Double = 0
+    var pad2Attack: Double = 6.0
+    var pad2Decay: Double = 1.0
+    var pad2Sustain: Double = 0.8
+    var pad2Release: Double = 12.0
+    var pad2Octave: Double = 0
+    var pad2Hardness: Double = 0.3
+    var pad2Warmth: Double = 0.4
+    var pad2Presence: Double = 0.3
+    var pad2FoldAmount: Double = 0
+    var pad2FoldMode: Double = 0
+    var pad2OscMix: Double = 0.5
+    var pad2FilterType: String = "lowpass"
+    var pad2FilterCutoffMin: Double = 400
+    var pad2FilterCutoffMax: Double = 3000
+    var pad2FilterResonance: Double = 0.2
+    var pad2FilterQ: Double = 1.0
+    var pad2FilterSlope: Double = 12
+    var pad2FilterKeyTracking: Double = 0
+    var pad2OscAWave: String = "sawtooth"
+    var pad2OscAOctave: Double = 0
+    var pad2OscADetune: Double = 0
+    var pad2OscALevel: Double = 0.6
+    var pad2OscBWave: String = "triangle"
+    var pad2OscBOctave: Double = 0
+    var pad2OscBDetune: Double = 8
+    var pad2OscBLevel: Double = 0.4
+    var pad2SubEnabled: Bool = false
+    var pad2SubOctave: Double = -1
+    var pad2SubWave: String = "sine"
+    var pad2SubLevel: Double = 0.3
+    var pad2NoiseType: String = "white"
+    var pad2NoiseLevel: Double = 0.15
+    var pad2FilterBEnabled: Bool = false
+    var pad2FilterBType: String = "highpass"
+    var pad2FilterBCutoff: Double = 200
+    var pad2FilterBResonance: Double = 0.2
+    var pad2FilterBQ: Double = 1
+    var pad2FilterRouting: String = "series"
+    var pad2Lfo1Rate: Double = 0.5
+    var pad2Lfo1Depth: Double = 0
+    var pad2Lfo1Wave: String = "sine"
+    var pad2Lfo1Dest: String = "none"
+    var pad2Lfo2Rate: Double = 0.5
+    var pad2Lfo2Depth: Double = 0
+    var pad2Lfo2Wave: String = "sine"
+    var pad2Lfo2Dest: String = "none"
+    var pad2ModEnvEnabled: Bool = false
+    var pad2ModEnvAttack: Double = 0.5
+    var pad2ModEnvDecay: Double = 2
+    var pad2ModEnvSustain: Double = 0
+    var pad2ModEnvRelease: Double = 4
+    var pad2ModEnvDepth: Double = 0.5
+    var pad2ModEnvDest: String = "filterCutoff"
+    var pad2PresetA: String = "init"
+    var pad2PresetB: String = "init"
+    var pad2Morph: Double = 0
+    var pad2MorphAuto: Bool = false
+    var pad2MorphSpeed: Double = 8
+    var pad2Distance: Double = 0
+    var pad2PostLPF: Double = 18000
+    var pad2StereoWidth: Double = 1
+    var pad2DiffuseSend: Double = 0
+    var reverbPreCompThreshold: Double = -18
+    var reverbPreCompKnee: Double = 12
+    var reverbPreCompRatio: Double = 2
+    var reverbPreCompAttackMs: Double = 10
+    var reverbPreCompReleaseMs: Double = 160
+    var reverbPreCompMakeup: Double = 1
+    var reverbScaleShimmer: Bool = false
+    var reverbChordWash: Bool = false
+    var reverbResolutionBloom: Bool = false
+    var grainSize: Double = 50
+    var padEnabled: Bool = true
+    var leadRandomEnabled: Bool = false
+    var leadRandomSource: String = "lead1"
+    var lead1UseCustomAdsr: Bool = false
+    var lead1Attack: Double = 0.01
+    var lead1Decay: Double = 0.8
+    var lead1Sustain: Double = 0.3
+    var lead1Hold: Double = 0.5
+    var lead1Release: Double = 2.0
+    var lead1Density: Double = 0.5
+    var lead1Octave: Double = 1
+    var lead1OctaveRange: Double = 2
+    var leadTimbre: Double = 0.4
+    var lead1PresetA: String = "soft_rhodes"
+    var lead1PresetB: String = "gamelan"
+    var lead1Morph: Double = 0
+    var lead1MorphAuto: Bool = false
+    var lead1MorphSpeed: Double = 8
+    var lead1MorphMode: String = "pingpong"
+    var lead1AlgorithmMode: String = "snap"
+    var lead1Level: Double = 0.8
+    var lead1ReverbSend: Double = 0.5
+    var lead1Distance: Double = 0
+    var lead1PostLPF: Double = 18000
+    var lead1PostLPFKeyTracking: Double = 0
+    var lead1StereoWidth: Double = 1
+    var lead1DiffuseSend: Double = 0
+    var synthEuclidBaseBPM: Double = 120
+    var drumSubAttack: Double = 0
+    var drumSubVariation: Double = 0
+    var drumSubDistance: Double = 0.5
+    var drumKickAttack: Double = 0
+    var drumKickVariation: Double = 0
+    var drumKickDistance: Double = 0.5
+    var drumClickExciterColor: Double = 0
+    var drumClickAttack: Double = 0
+    var drumClickVariation: Double = 0
+    var drumClickDistance: Double = 0.5
+    var drumBeepHiFeedback: Double = 0
+    var drumBeepHiModEnvDecay: Double = 0
+    var drumBeepHiNoiseInMod: Double = 0
+    var drumBeepHiModRatio: Double = 2
+    var drumBeepHiModRatioFine: Double = 0.01
+    var drumBeepHiModPhase: Double = 0
+    var drumBeepHiModEnvEnd: Double = 0.2
+    var drumBeepHiNoiseDecay: Double = 0
+    var drumBeepHiVariation: Double = 0
+    var drumBeepHiDistance: Double = 0.5
+    var drumBeepLoModal: Double = 0
+    var drumBeepLoModalQ: Double = 10
+    var drumBeepLoModalInharmonic: Double = 0
+    var drumBeepLoModalSpread: Double = 0
+    var drumBeepLoModalCut: Double = 0
+    var drumBeepLoOscGain: Double = 1
+    var drumBeepLoModalGain: Double = 1
+    var drumBeepLoVariation: Double = 0
+    var drumBeepLoDistance: Double = 0.5
+    var drumNoiseParticleSize: Double = 5
+    var drumNoiseParticleRandom: Double = 0
+    var drumNoiseParticleRandomRate: Double = 0.5
+    var drumNoiseRatchetCount: Double = 0
+    var drumNoiseRatchetTime: Double = 30
+    var drumNoiseVariation: Double = 0
+    var drumNoiseDistance: Double = 0.5
+    var drumMembraneExciter: String = "impulse"
+    var drumMembraneExcPos: Double = 0.3
+    var drumMembraneExcBright: Double = 0.5
+    var drumMembraneExcDur: Double = 3
+    var drumMembraneSize: Double = 180
+    var drumMembraneStiffness: Double = 0.5
+    var drumMembraneDamping: Double = 0.3
+    var drumMembraneMaterial: String = "skin"
+    var drumMembraneNonlin: Double = 0
+    var drumMembraneWireMix: Double = 0
+    var drumMembraneWireDensity: Double = 0.5
+    var drumMembraneWireTone: Double = 0.5
+    var drumMembraneWireDecay: Double = 0.5
+    var drumMembraneBody: Double = 0.5
+    var drumMembraneRing: Double = 0.2
+    var drumMembraneOvertones: Double = 4
+    var drumMembranePitchEnv: Double = 3
+    var drumMembranePitchDecay: Double = 40
+    var drumMembraneAttack: Double = 0
+    var drumMembraneDecay: Double = 250
+    var drumMembraneLevel: Double = 0.6
+    var drumMembraneVariation: Double = 0
+    var drumMembraneDistance: Double = 0.5
+    var drumMembraneScaleBlend: Double = 0.3
+    var drumMorphSliderAnimate: Bool = false
+    var drumMembranePresetA: String = "Snare Classic"
+    var drumMembranePresetB: String = "Snare Classic"
+    var drumMembraneMorph: Double = 0
+    var drumMembraneMorphAuto: Bool = false
+    var drumMembraneMorphSpeed: Double = 4
+    var drumMembraneMorphMode: String = "pingpong"
+    var drumMembraneDelaySend: Double = 0.2
+    var drumEuclid1TargetMembrane: Bool = false
+    var drumEuclid2TargetMembrane: Bool = false
+    var drumEuclid3TargetMembrane: Bool = false
+    var drumEuclid4TargetMembrane: Bool = false
+    var granularFeedback: Double = 0.1
+    var granularPreset: String = "init"
+    var granularSpaceMode: String = "clocked"
+    var granularPresetBehavior: String = "expressive"
+    var delayBGranularLinked: Bool = true
+    var granularShape: String = "triangle"
+    var granularDiffusion: Double = 0.5
+    var granularReverbLPF: Double = 4000
+    var granularOutputLPF: Double = 12000
+    var granularV1Enabled: Bool = true
+    var granularV1Mode: String = "granular"
+    var granularV1Slice: Double = 0
+    var granularV1Speed: Double = 1
+    var granularV1ScanRate: Double = 1
+    var granularV1Reverse: Bool = false
+    var granularV1Pitch: Double = 0
+    var granularV1Attack: Double = 0.003
+    var granularV1Decay: Double = 0.5
+    var granularV1Blur: Double = 0
+    var granularV1GrainOct: Double = 0
+    var granularV1Spray: Double = 0.3
+    var granularV1Density: Double = 20
+    var granularV1TempoSync: Bool = false
+    var granularV1TempoDiv: String = "1/8"
+    var granularV1GrainSize: Double = 80
+    var granularV1Pan: Double = 0
+    var granularV1Gain: Double = 0.5
+    var granularV1PosLFORate: Double = 0
+    var granularV1PosLFODepth: Double = 0
+    var granularV1PanLFORate: Double = 0
+    var granularV1StereoSpread: Double = 0.5
+    var granularV1ReverseLFORate: Double = 0
+    var granularV1WriteFollow: Double = 0
+    var granularV1RecordLFORate: Double = 0
+    var granularV2Enabled: Bool = false
+    var granularV2Mode: String = "granular"
+    var granularV2Slice: Double = 4
+    var granularV2Speed: Double = 1
+    var granularV2ScanRate: Double = 1
+    var granularV2Reverse: Bool = false
+    var granularV2Pitch: Double = 0
+    var granularV2Attack: Double = 0.003
+    var granularV2Decay: Double = 0.5
+    var granularV2Blur: Double = 0
+    var granularV2GrainOct: Double = 0
+    var granularV2Spray: Double = 0.3
+    var granularV2Density: Double = 20
+    var granularV2TempoSync: Bool = false
+    var granularV2TempoDiv: String = "1/8"
+    var granularV2GrainSize: Double = 80
+    var granularV2Pan: Double = 0
+    var granularV2Gain: Double = 0.5
+    var granularV2PosLFORate: Double = 0
+    var granularV2PosLFODepth: Double = 0
+    var granularV2PanLFORate: Double = 0
+    var granularV2StereoSpread: Double = 0.5
+    var granularV2ReverseLFORate: Double = 0
+    var granularV2WriteFollow: Double = 0
+    var granularV2RecordLFORate: Double = 0
+    var granularV3Enabled: Bool = false
+    var granularV3Mode: String = "granular"
+    var granularV3Slice: Double = 8
+    var granularV3Speed: Double = 1
+    var granularV3ScanRate: Double = 1
+    var granularV3Reverse: Bool = false
+    var granularV3Pitch: Double = 0
+    var granularV3Attack: Double = 0.003
+    var granularV3Decay: Double = 0.5
+    var granularV3Blur: Double = 0
+    var granularV3GrainOct: Double = 0
+    var granularV3Spray: Double = 0.3
+    var granularV3Density: Double = 20
+    var granularV3TempoSync: Bool = false
+    var granularV3TempoDiv: String = "1/8"
+    var granularV3GrainSize: Double = 80
+    var granularV3Pan: Double = 0
+    var granularV3Gain: Double = 0.5
+    var granularV3PosLFORate: Double = 0
+    var granularV3PosLFODepth: Double = 0
+    var granularV3PanLFORate: Double = 0
+    var granularV3StereoSpread: Double = 0.5
+    var granularV3ReverseLFORate: Double = 0
+    var granularV3WriteFollow: Double = 0
+    var granularV3RecordLFORate: Double = 0
+    var granularV4Enabled: Bool = false
+    var granularV4Mode: String = "granular"
+    var granularV4Slice: Double = 12
+    var granularV4Speed: Double = 1
+    var granularV4ScanRate: Double = 1
+    var granularV4Reverse: Bool = false
+    var granularV4Pitch: Double = 0
+    var granularV4Attack: Double = 0.003
+    var granularV4Decay: Double = 0.5
+    var granularV4Blur: Double = 0
+    var granularV4GrainOct: Double = 0
+    var granularV4Spray: Double = 0.3
+    var granularV4Density: Double = 20
+    var granularV4TempoSync: Bool = false
+    var granularV4TempoDiv: String = "1/8"
+    var granularV4GrainSize: Double = 80
+    var granularV4Pan: Double = 0
+    var granularV4Gain: Double = 0.5
+    var granularV4PosLFORate: Double = 0
+    var granularV4PosLFODepth: Double = 0
+    var granularV4PanLFORate: Double = 0
+    var granularV4StereoSpread: Double = 0.5
+    var granularV4ReverseLFORate: Double = 0
+    var granularV4WriteFollow: Double = 0
+    var granularV4RecordLFORate: Double = 0
+    var granularLegacyJitter: Double = 10
+    var granularLegacyProbability: Double = 0.8
+    var granularLegacyPitchMode: String = "harmonic"
+    var granularLegacyPitchSpread: Double = 2
+    var granularLegacyMaxGrains: Double = 64
+    var granularLegacyFeedback: Double = 0.1
+    var granularChordBias: Double = 0
+    var granularMacroActivity: Double = 0.35
+    var granularMacroTexture: Double = 0.3
+    var granularMacroComplexity: Double = 0.2
+    var granularMacroDarkness: Double = 0.3
+    var granularMacroChaos: Double = 0.1
+
     // Random Walk
     var randomWalkSpeed: Double = 1.0
-    
+
     // Legacy fields (for backward compatibility with older presets)
     var oceanMix: Double?
     var oceanWave2OffsetMin: Double?
@@ -725,20 +1174,38 @@ public struct SliderState: Codable, Equatable {
 struct DualRange: Codable, Equatable {
     var min: Double
     var max: Double
-    
+
     init(min: Double, max: Double) {
         self.min = min
         self.max = max
     }
 }
 
-/// Saved preset format for the current iOS prototype.
+/// Saved preset format shared by native local storage and Supabase-backed cloud presets.
 struct SavedPreset: Codable, Identifiable {
-    var id: String { name }
+    var id: String { remoteID ?? name }
     let name: String
     let timestamp: String
     let state: SliderState
     let dualRanges: [String: DualRange]?
+    let remoteID: String?
+    let library: String?
+
+    init(
+        name: String,
+        timestamp: String,
+        state: SliderState,
+        dualRanges: [String: DualRange]? = nil,
+        remoteID: String? = nil,
+        library: String? = nil
+    ) {
+        self.name = name
+        self.timestamp = timestamp
+        self.state = state
+        self.dualRanges = dualRanges
+        self.remoteID = remoteID
+        self.library = library
+    }
 }
 
 typealias SliderStateJSONRecord = [String: Any]
@@ -1098,6 +1565,32 @@ extension SliderState {
 
         let normalizedData = try JSONSerialization.data(withJSONObject: normalized, options: [])
         return try JSONDecoder().decode(SliderState.self, from: normalizedData)
+    }
+
+    func jsonRecord() throws -> SliderStateJSONRecord {
+        let data = try JSONEncoder().encode(self)
+        guard let record = try JSONSerialization.jsonObject(with: data) as? SliderStateJSONRecord else {
+            throw SliderStatePayloadError.invalidJSONObject
+        }
+        return record
+    }
+}
+
+extension SliderState {
+    var phraseDurationFromBeatClock: Double {
+        let bpm = max(1, sequencerMasterBPM)
+        let beats = max(1, transportBeatsPerBar)
+        let bars = max(1, transportBarsPerPhrase)
+        return (60.0 / bpm) * Double(beats * bars)
+    }
+
+    var equivalentBPMFromPhraseClock: Double {
+        let phraseSeconds = max(0.001, phraseLength)
+        return Double(max(1, transportBarsPerPhrase) * max(1, transportBeatsPerBar)) * 60.0 / phraseSeconds
+    }
+
+    var effectivePhraseLength: Double {
+        transportPrimaryClock == "bpm" ? phraseDurationFromBeatClock : max(0.001, phraseLength)
     }
 }
 

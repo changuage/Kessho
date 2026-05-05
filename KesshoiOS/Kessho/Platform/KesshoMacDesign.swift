@@ -24,6 +24,8 @@ enum KesshoMacDesign {
 
     static func accent(for page: KesshoMacPage) -> Color {
         switch page {
+        case .journey:
+            return Color(red: 0.9, green: 0.66, blue: 1.0)
         case .global:
             return purple
         case .synth:
@@ -47,6 +49,7 @@ enum KesshoMacDesign {
 }
 
 enum KesshoMacPage: String, CaseIterable, Identifiable {
+    case journey
     case global
     case synth
     case drums
@@ -61,6 +64,7 @@ enum KesshoMacPage: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
+        case .journey: return "Journey"
         case .global: return "Global"
         case .synth: return "Synth"
         case .drums: return "Drums"
@@ -75,6 +79,7 @@ enum KesshoMacPage: String, CaseIterable, Identifiable {
 
     var symbol: String {
         switch self {
+        case .journey: return "sparkles.rectangle.stack"
         case .global: return "target"
         case .synth: return "waveform"
         case .drums: return "circle.grid.cross"

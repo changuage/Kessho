@@ -55,7 +55,7 @@
   flex-wrap: wrap;
   gap: 8px;
   padding: 8px 12px;
-  background: rgba(15, 25, 40, 0.95);
+  background: var(--k-bg-card);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
 }
@@ -145,7 +145,7 @@
   gap: 6px;
   min-width: 0;
   padding: 4px 12px;
-  background: rgba(15, 25, 40, 0.7);
+  background: var(--k-bg-panel);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
 }
@@ -682,7 +682,7 @@
   align-items: center;
   gap: 6px;
   padding: 6px 10px;
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--k-bg-inset);
   cursor: pointer;
   user-select: none;
 }
@@ -1032,7 +1032,8 @@
 /* ── Transport bar ── */
 .granular-root .seq-transport {
   display: flex; gap: 8px; align-items: center;
-  background: var(--bg-elevated); border-radius: var(--radius-lg);
+  background: var(--k-bg-card); border-radius: var(--radius-lg);
+  border: 1px solid var(--border-subtle);
   padding: 8px 12px; margin-bottom: 8px;
 }
 .granular-root .seq-play-btn {
@@ -1044,13 +1045,13 @@
 }
 .granular-root .seq-play-btn.playing { color: #ED5A24; }
 .granular-root .seq-play-btn:hover { transform: scale(1.05); }
-.granular-root .seq-transport label { font-size: 0.65rem; color: #888; display: flex; flex-direction: column; gap: 2px; }
+.granular-root .seq-transport label { font-size: var(--font-sm); color: var(--text-secondary); display: flex; flex-direction: row; align-items: center; gap: 6px; }
 .granular-root .seq-transport input, .granular-root .seq-transport select {
   background: var(--bg-input); color: #fff; border: 1px solid var(--border-medium);
   border-radius: var(--radius-sm); padding: 4px 6px; font-size: 0.75rem; width: 64px;
   transition: border-color 0.15s;
 }
-.granular-root .seq-transport input:focus, .granular-root .seq-transport select:focus { border-color: var(--accent-cyan); outline: none; }
+.granular-root .seq-transport input:focus, .granular-root .seq-transport select:focus { border-color: var(--page-accent); outline: none; }
 
 /* ── View Toggle ── */
 .granular-root .seq-view-toggle {
@@ -1058,26 +1059,26 @@
   border: 1px solid rgba(255,255,255,0.12); width: fit-content; margin-left: auto;
 }
 .granular-root .seq-view-btn {
-  padding: 4px 14px; font-size: 0.6rem; font-weight: 700;
-  border: none; cursor: pointer; background: rgba(255,255,255,0.03); color: rgba(255,255,255,0.3);
+  padding: 6px 14px; font-size: 0.68rem; font-weight: 700;
+  border: none; cursor: pointer; background: rgba(255,255,255,0.03); color: var(--text-muted);
   transition: all 0.15s; letter-spacing: 0.5px; text-transform: uppercase;
 }
 .granular-root .seq-view-btn.active {
-  background: color-mix(in srgb, var(--accent-cyan) 18%, transparent);
-  color: var(--accent-cyan);
+  background: color-mix(in srgb, var(--page-accent) 18%, transparent);
+  color: var(--page-accent);
 }
 .granular-root .seq-view-btn:hover:not(.active) { background: rgba(255,255,255,0.06); }
 
 /* ── Tab Bar ── */
 .granular-root .seq-tab-bar { display: flex; gap: 2px; margin-bottom: 0; }
 .granular-root .seq-tab {
-  flex: 1; padding: 6px 4px; text-align: center; border: 1px solid rgba(255,255,255,0.06);
+  flex: 1; padding: 9px 8px; text-align: center; border: 1px solid rgba(255,255,255,0.06);
   border-bottom: none;
   border-radius: var(--radius-md) var(--radius-md) 0 0; cursor: pointer;
-  font-size: 0.65rem; font-weight: 600;
-  background: rgba(255,255,255,0.02); color: rgba(255,255,255,0.3);
+  font-size: 0.75rem; font-weight: 600;
+  background: var(--k-bg-tab); color: var(--text-muted);
   transition: all 0.15s; user-select: none;
-  display: flex; align-items: center; justify-content: center; gap: 4px;
+  display: flex; align-items: center; justify-content: center; gap: 5px;
 }
 .granular-root .seq-tab.active {
   color: var(--sc);
@@ -1086,11 +1087,11 @@
 }
 .granular-root .seq-tab:hover:not(.active) { background: rgba(255,255,255,0.05); }
 .granular-root .seq-tab .seq-tab-ms {
-  display: flex; gap: 2px; font-size: 0.5rem;
+  display: flex; gap: 3px; font-size: 0.6rem;
 }
 .granular-root .seq-tab-ms button {
-  border: none; border-radius: var(--radius-sm); padding: 1px 4px; cursor: pointer;
-  font-size: 0.5rem; font-weight: 700; background: rgba(0,0,0,0.3); color: #888;
+  border: none; border-radius: var(--radius-sm); padding: 3px 6px; cursor: pointer;
+  font-size: 0.6rem; font-weight: 700; background: rgba(0,0,0,0.3); color: #888;
   transition: all 0.1s;
 }
 .granular-root .seq-tab-ms button.on { color: #fff; }
@@ -1099,7 +1100,7 @@
 
 /* ── Seq Body ── */
 .granular-root .seq-body {
-  background: rgba(15, 25, 40, 0.6); border: 1px solid var(--border-subtle);
+  background: var(--k-bg-panel); border: 1px solid var(--border-subtle);
   border-top: none; border-radius: 0 0 var(--radius-lg) var(--radius-lg); padding: 8px; margin-bottom: 6px;
 }
 
@@ -1107,9 +1108,9 @@
 .granular-root .seq-sources {
   display: flex; gap: 4px; align-items: center; flex-wrap: wrap;
   padding: 5px 8px; margin-bottom: 0;
-  background: rgba(255,255,255,0.03); border-radius: var(--radius-md);
+  background: var(--k-bg-inset); border-radius: var(--radius-md);
 }
-.granular-root .seq-sources-label { font-size: 0.6rem; color: #666; text-transform: uppercase; letter-spacing: 0.5px; margin-right: 4px; }
+.granular-root .seq-sources-label { font-size: var(--font-sm); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-right: 4px; }
 
 /* ── Per-seq controls ── */
 .granular-root .seq-per-controls {
@@ -1118,35 +1119,35 @@
   background: none; border-radius: 0;
 }
 .granular-root .seq-per-controls label {
-  font-size: 0.7rem; color: #aaa; display: flex; align-items: center; gap: 4px;
+  font-size: 0.68rem; color: var(--text-secondary); display: flex; align-items: center; gap: 4px;
 }
 .granular-root .seq-per-controls input, .granular-root .seq-per-controls select {
   background: var(--bg-input); color: #fff; border: 1px solid var(--border-medium);
-  border-radius: var(--radius-sm); padding: 3px 5px; font-size: 0.7rem; width: 56px;
+  border-radius: var(--radius-sm); padding: 4px 6px; font-size: 0.68rem; width: 56px;
   transition: border-color 0.15s;
 }
-.granular-root .seq-per-controls input:focus, .granular-root .seq-per-controls select:focus { border-color: var(--accent-cyan); outline: none; }
-.granular-root .seq-per-controls .seq-swing-range { width: 60px; height: 3px; accent-color: var(--sc, var(--accent-cyan)); }
-.granular-root .seq-per-controls .seq-swing-val { font-size: 0.6rem; color: var(--sc, var(--accent-cyan)); min-width: 22px; }
+.granular-root .seq-per-controls input:focus, .granular-root .seq-per-controls select:focus { border-color: var(--page-accent); outline: none; }
+.granular-root .seq-per-controls .seq-swing-range { width: 60px; height: 3px; accent-color: var(--page-accent); }
+.granular-root .seq-per-controls .seq-swing-val { font-size: var(--font-xs); color: var(--page-accent); min-width: 22px; }
 .granular-root .seq-per-controls .seq-clock-select { width: 52px; font-size: 0.7rem; }
 
 /* ── Link / Evolve buttons ── */
 .granular-root .seq-link-btn, .granular-root .seq-evolve-btn {
-  padding: 3px 10px; font-size: 0.65rem; font-weight: 700; border: none;
+  padding: 5px 12px; font-size: 0.68rem; font-weight: 700; border: none;
   border-radius: var(--radius-sm); cursor: pointer; background: var(--bg-control);
-  color: #666; transition: all 0.15s; letter-spacing: 0.3px;
+  color: var(--text-muted); transition: all 0.15s; letter-spacing: 0.3px;
 }
 .granular-root .seq-link-btn.on { background: var(--sc, var(--accent-cyan)); color: #000; }
 .granular-root .seq-evolve-btn.on { background: #a855f7; color: #000; }
 
 /* ── Evolve panel ── */
 .granular-root .seq-evolve-panel {
-  display: none; padding: 6px 8px; margin-bottom: 6px;
-  background: rgba(168,85,247,0.06); border: 1px solid rgba(168,85,247,0.15);
-  border-radius: var(--radius-sm); font-size: 0.6rem;
+  display: none; padding: 10px 12px; margin-bottom: 6px;
+  background: var(--k-bg-panel); border: 1px solid color-mix(in srgb, var(--accent-evolve) 20%, var(--border-subtle));
+  border-radius: var(--radius-md); font-size: var(--font-sm);
 }
 .granular-root .seq-evolve-panel.open { display: block; }
-.granular-root .seq-evolve-panel label { color: #aaa; display: flex; align-items: center; gap: 3px; font-size: 0.65rem; }
+.granular-root .seq-evolve-panel label { color: var(--text-secondary); display: flex; align-items: center; gap: 3px; font-size: var(--font-sm); }
 .granular-root .seq-evolve-panel input[type=range] { width: 50px; height: 3px; accent-color: #a855f7; }
 .granular-root .seq-evolve-panel input[type=number] { background: var(--bg-input); color: #fff; border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 2px 4px; font-size: 0.6rem; width: 36px; transition: border-color 0.15s; }
 .granular-root .seq-evolve-panel input[type=number]:focus { border-color: var(--accent-evolve); outline: none; }
@@ -1534,7 +1535,7 @@
 /* ── Mini Overview ── */
 .granular-root .seq-mini-overview {
   display: flex; gap: 4px; padding: 6px 8px;
-  background: rgba(0,0,0,0.2); border-radius: var(--radius-md); margin-top: 4px; flex-wrap: wrap;
+  background: var(--k-bg-inset); border-radius: var(--radius-md); margin-top: 4px; flex-wrap: wrap;
 }
 .granular-root .seq-mini-row {
   flex: 1; cursor: pointer; padding: 4px 6px; border-radius: var(--radius-sm);

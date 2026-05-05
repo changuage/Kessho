@@ -20,6 +20,10 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>KesshoSupabaseAnonKey</key>
+	<string>$(VITE_SUPABASE_ANON_KEY)</string>
+	<key>KesshoSupabaseURL</key>
+	<string>$(VITE_SUPABASE_URL)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>

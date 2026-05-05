@@ -5,15 +5,17 @@ struct PresetListView: View {
     @Environment(\.dismiss) var dismiss
     @EnvironmentObject var appState: AppState
     @State private var showingSaveDialog = false
+    @State private var showingCloudSaveDialog = false
     @State private var showingCompatibilityWarning = false
     @State private var newPresetName = ""
-    
+    @State private var newCloudPresetName = ""
+
     /// Check whether the current preset uses a known native-only reverb mode.
     private var usesNativeOnlyReverbPreset: Bool {
         let webAppCompatibleTypes = ["plate", "hall", "cathedral", "darkHall"]
         return !webAppCompatibleTypes.contains(appState.state.reverbType)
     }
-    
+
     var body: some View {
         NavigationView {
             List {
@@ -26,7 +28,7 @@ struct PresetListView: View {
                         }
                     }
                 }
-                
+
                 // User presets section
                 if !userPresets.isEmpty {
                     Section("My Presets") {
@@ -39,7 +41,49 @@ struct PresetListView: View {
                         .onDelete(perform: deleteUserPreset)
                     }
                 }
-                
+
+                if appState.isSupabaseConfigured {
+                    Section {
+                        if appState.cloudPresetsLoading {
+                            ProgressView()
+                        }
+
+                        if let error = appState.cloudPresetError {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text(error)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Button("Retry") {
+                                    Task { await appState.refreshCloudPresets() }
+                                }
+                            }
+                        }
+
+                        if appState.cloudPresets.isEmpty && !appState.cloudPresetsLoading && appState.cloudPresetError == nil {
+                            Text("No cloud presets")
+                                .foregroundStyle(.secondary)
+                        }
+
+                        ForEach(appState.cloudPresets) { preset in
+                            PresetRow(preset: preset) {
+                                appState.loadCloudPreset(preset)
+                                dismiss()
+                            }
+                        }
+                    } header: {
+                        HStack {
+                            Text("Cloud Presets")
+                            Spacer()
+                            Button {
+                                Task { await appState.refreshCloudPresets() }
+                            } label: {
+                                Image(systemName: "arrow.clockwise")
+                            }
+                            .buttonStyle(.borderless)
+                        }
+                    }
+                }
+
                 // Morph section
                 if appState.morphPresetA != nil {
                     Section("Morph") {
@@ -53,8 +97,17 @@ struct PresetListView: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }
                 }
-                
-                ToolbarItem(placement: .primaryAction) {
+
+                ToolbarItemGroup(placement: .primaryAction) {
+                    if appState.isSupabaseConfigured {
+                        Button {
+                            newCloudPresetName = defaultCloudPresetName
+                            showingCloudSaveDialog = true
+                        } label: {
+                            Image(systemName: "icloud.and.arrow.up")
+                        }
+                    }
+
                     Button {
                         if usesNativeOnlyReverbPreset {
                             showingCompatibilityWarning = true
@@ -65,6 +118,9 @@ struct PresetListView: View {
                         Image(systemName: "plus")
                     }
                 }
+            }
+            .task {
+                await appState.refreshCloudPresetsIfNeeded()
             }
             .alert("Save Preset", isPresented: $showingSaveDialog) {
                 TextField("Preset Name", text: $newPresetName)
@@ -78,7 +134,21 @@ struct PresetListView: View {
             } message: {
                 Text("Enter a name for your preset")
             }
-            .alert("Parity Warning", isPresented: $showingCompatibilityWarning) {
+            .alert("Save Cloud Preset", isPresented: $showingCloudSaveDialog) {
+                TextField("Preset Name", text: $newCloudPresetName)
+                Button("Cancel", role: .cancel) { }
+                Button("Upload") {
+                    let name = newCloudPresetName.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !name.isEmpty else { return }
+                    Task {
+                        await appState.saveCurrentAsCloudPreset(name: name)
+                        newCloudPresetName = ""
+                    }
+                }
+            } message: {
+                Text("Uploads the current state to the configured Supabase project")
+            }
+            .alert("Native Reverb Mode", isPresented: $showingCompatibilityWarning) {
                 Button("Cancel", role: .cancel) { }
                 Button("Save Native Preset") {
                     showingSaveDialog = true
@@ -88,22 +158,26 @@ struct PresetListView: View {
                     showingSaveDialog = true
                 }
             } message: {
-                Text("This native iOS prototype does not guarantee web parity. The current preset also uses a native-only reverb type (\(appState.state.reverbType)).\n\nSave Native Preset keeps the current sound on iOS. Normalize Reverb & Save switches to Cathedral before saving.")
+                Text("The current preset uses the native-only reverb type \(appState.state.reverbType). Save Native Preset preserves that sound on this device. Normalize Reverb & Save switches to Cathedral for the closest web-compatible reverb target.")
             }
         }
     }
-    
+
     private var bundledPresets: [SavedPreset] {
         let bundledNames = Set(PresetManager.bundledPresetNames)
         return appState.savedPresets.filter { preset in
             bundledNames.contains(preset.name.replacingOccurrences(of: " ", with: "_"))
         }
     }
-    
+
     private var userPresets: [SavedPreset] {
         appState.presetManager.loadUserPresets()
     }
-    
+
+    private var defaultCloudPresetName: String {
+        "Native \(Date().formatted(date: .abbreviated, time: .shortened))"
+    }
+
     private func deleteUserPreset(at offsets: IndexSet) {
         for index in offsets {
             let preset = userPresets[index]
@@ -116,30 +190,30 @@ struct PresetListView: View {
 struct PresetRow: View {
     let preset: SavedPreset
     let onTap: () -> Void
-    
+
     @EnvironmentObject var appState: AppState
     @State private var isTargetB = false
-    
+
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
                 Text(preset.name.replacingOccurrences(of: "_", with: " "))
                     .font(.headline)
-                
+
                 HStack(spacing: 12) {
                     Label("\(Int(preset.state.tension * 100))%", systemImage: "waveform")
                         .font(.caption)
                         .foregroundColor(.secondary)
-                    
+
                     Label(preset.state.scaleMode == "manual" ? preset.state.manualScale : "Auto",
                           systemImage: "music.note")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
             }
-            
+
             Spacer()
-            
+
             // Morph target button
             Button {
                 isTargetB.toggle()
@@ -164,7 +238,7 @@ struct PresetRow: View {
 /// Morph slider control with full settings (matching web app)
 struct MorphControl: View {
     @EnvironmentObject var appState: AppState
-    
+
     var body: some View {
         VStack(spacing: 12) {
             // Preset A/B labels
@@ -173,36 +247,36 @@ struct MorphControl: View {
                     .font(.caption)
                     .foregroundColor(appState.morphPresetA != nil ? .white.opacity(0.9) : .secondary)
                     .lineLimit(1)
-                
+
                 Spacer()
-                
+
                 Text(appState.morphPresetB?.name.replacingOccurrences(of: "_", with: " ") ?? "(empty)")
                     .font(.caption)
                     .foregroundColor(appState.morphPresetB != nil ? .white.opacity(0.9) : .secondary)
                     .lineLimit(1)
             }
-            
+
             // Morph slider
             Slider(value: Binding(
                 get: { appState.morphPosition },
                 set: { appState.setMorphPosition($0) }
             ), in: 0...100)
             .disabled(appState.morphPresetB == nil || appState.morphMode == "auto")
-            
+
             Text("\(Int(appState.morphPosition))%")
                 .font(.caption)
                 .foregroundColor(.secondary)
-            
+
             Divider().background(Color.white.opacity(0.2))
-            
+
             // Mode toggle
             HStack {
                 Text("Mode:")
                     .font(.caption)
                     .foregroundColor(.secondary)
-                
+
                 Spacer()
-                
+
                 Picker("Mode", selection: $appState.morphMode) {
                     Text("Manual").tag("manual")
                     Text("Auto-Cycle").tag("auto")
@@ -217,7 +291,7 @@ struct MorphControl: View {
                     }
                 }
             }
-            
+
             // Auto-cycle settings (shown when auto mode)
             if appState.morphMode == "auto" {
                 VStack(spacing: 8) {
@@ -235,7 +309,7 @@ struct MorphControl: View {
                         get: { Double(appState.morphPlayPhrases) },
                         set: { appState.morphPlayPhrases = Int($0) }
                     ), in: 4...64, step: 4)
-                    
+
                     // Morph Phrases slider
                     HStack {
                         Text("Morph Phrases")
@@ -250,14 +324,14 @@ struct MorphControl: View {
                         get: { Double(appState.morphTransitionPhrases) },
                         set: { appState.morphTransitionPhrases = Int($0) }
                     ), in: 2...32, step: 2)
-                    
+
                     // Cycle description
                     Text("Cycle: \(appState.morphPlayPhrases)→morph(\(appState.morphTransitionPhrases))→\(appState.morphPlayPhrases)→morph(\(appState.morphTransitionPhrases))")
                         .font(.caption2)
                         .foregroundColor(.secondary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
-                    
+
                     // Phase countdown (when running)
                     if appState.autoMorphEnabled && !appState.morphPhase.isEmpty {
                         VStack(spacing: 4) {

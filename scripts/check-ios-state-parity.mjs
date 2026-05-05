@@ -25,16 +25,103 @@ function extractSwiftSliderKeys(source) {
   return [...source.slice(structStart).matchAll(/^\s{4}var\s+([A-Za-z_]\w+)\??\s*:/gm)].map(match => match[1]);
 }
 
+function extractSwiftSliderTypes(source) {
+  const structStart = source.indexOf('public struct SliderState');
+  const defaultsStart = source.indexOf('static let `default`');
+  assert(structStart >= 0 && defaultsStart > structStart, 'Could not locate iOS SliderState body');
+  return new Map(
+    [...source.slice(structStart, defaultsStart).matchAll(/^\s{4}var\s+([A-Za-z_]\w+)\??\s*:\s*([A-Za-z0-9_<>?]+)/gm)]
+      .map(match => [match[1], match[2]])
+  );
+}
+
+function extractBalancedCalls(source, callee) {
+  const calls = [];
+  let index = 0;
+  const needle = `${callee}(`;
+
+  while ((index = source.indexOf(needle, index)) >= 0) {
+    let position = index + needle.length;
+    let depth = 1;
+    let inString = false;
+    let escaped = false;
+
+    while (position < source.length && depth > 0) {
+      const char = source[position];
+      if (inString) {
+        if (escaped) escaped = false;
+        else if (char === '\\') escaped = true;
+        else if (char === '"') inString = false;
+      } else if (char === '"') {
+        inString = true;
+      } else if (char === '(') {
+        depth += 1;
+      } else if (char === ')') {
+        depth -= 1;
+      }
+      position += 1;
+    }
+
+    calls.push(source.slice(index, position));
+    index = position;
+  }
+
+  return calls;
+}
+
+function extractUpdateSliderKeys(source) {
+  const updateStart = source.indexOf('private func updateSliderStateValue');
+  const updateEnd = source.indexOf('    private func loadPresets');
+  assert(updateStart >= 0 && updateEnd > updateStart, 'Could not locate AppState.updateSliderStateValue');
+  return new Set(
+    [...source.slice(updateStart, updateEnd).matchAll(/case ([^:\n]+):/g)]
+      .flatMap(match => [...match[1].matchAll(/"([^"]+)"/g)].map(keyMatch => keyMatch[1]))
+  );
+}
+
 const webSource = read('src/ui/state.ts');
 const swiftSource = read('KesshoiOS/Kessho/State/SliderState.swift');
 const appState = read('KesshoiOS/Kessho/State/AppState.swift');
 const audioEngine = read('KesshoiOS/Kessho/Audio/AudioEngine.swift');
 const reverbProcessor = read('KesshoiOS/Kessho/Audio/ReverbProcessor.swift');
+const sliderControls = read('KesshoiOS/Kessho/Views/SliderControlsView.swift');
 
 const webKeys = new Set(extractWebSliderKeys(webSource));
 const swiftKeys = new Set(extractSwiftSliderKeys(swiftSource));
+const swiftTypes = extractSwiftSliderTypes(swiftSource);
+const updateSliderKeys = extractUpdateSliderKeys(appState);
 const missingInIOS = [...webKeys].filter(key => !swiftKeys.has(key)).sort();
 const iosOnly = [...swiftKeys].filter(key => !webKeys.has(key)).sort();
+
+assert(
+  missingInIOS.length === 0,
+  `iOS SliderState must include every web SliderState key; missing ${missingInIOS.length}: ${missingInIOS.slice(0, 40).join(', ')}`
+);
+
+assert(
+  swiftSource.includes('public init() {}'),
+  'SliderState must keep an explicit empty initializer so Swift does not synthesize an enormous memberwise initializer'
+);
+
+const parameterSliderCalls = extractBalancedCalls(sliderControls, 'ParameterSlider');
+const labelDerivedSliders = parameterSliderCalls.filter(call => !/\bkey:\s*(?:"|[A-Za-z_]\w*)/.test(call));
+assert(
+  labelDerivedSliders.length === 0,
+  `iOS ParameterSlider calls must pass explicit state keys; missing ${labelDerivedSliders.length}`
+);
+
+const sliderLiteralKeys = new Set([...sliderControls.matchAll(/\bkey:\s*"([^"]+)"/g)].map(match => match[1]));
+for (const match of sliderControls.matchAll(/\bdelay[AB]Key:\s*"([^"]+)"/g)) {
+  sliderLiteralKeys.add(match[1]);
+}
+
+const missingSliderSetters = [...sliderLiteralKeys]
+  .filter(key => ['Double', 'Int'].includes(swiftTypes.get(key)) && !updateSliderKeys.has(key))
+  .sort();
+assert(
+  missingSliderSetters.length === 0,
+  `iOS numeric sliders must be mutable through AppState.setSliderValue; missing ${missingSliderSetters.length}: ${missingSliderSetters.join(', ')}`
+);
 
 const criticalParityKeys = [
   'reverbEnabled',

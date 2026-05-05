@@ -13,6 +13,7 @@ export const STEM_RECORD_TRACK_IDS = [
   'delayAOut',
   'delayBOut',
   'reverb',
+  'dynamics',
 ] as const;
 
 export type StemRecordTrackId = typeof STEM_RECORD_TRACK_IDS[number];
@@ -33,6 +34,7 @@ export const STEM_RECORD_TRACK_LABELS: Record<StemRecordTrackId, string> = {
   delayAOut: 'Delay A',
   delayBOut: 'Delay B',
   reverb: 'Reverb',
+  dynamics: 'Dynamics',
 };
 
 export const STEM_RECORD_DEFAULTS: Record<StemRecordTrackId, boolean> = {
@@ -50,6 +52,7 @@ export const STEM_RECORD_DEFAULTS: Record<StemRecordTrackId, boolean> = {
   delayAOut: false,
   delayBOut: false,
   reverb: false,
+  dynamics: false,
 };
 
 export const RECORD_TRACK_FILENAME_SUFFIX: Record<RecordTrackId, string> = {
@@ -68,4 +71,69 @@ export const RECORD_TRACK_FILENAME_SUFFIX: Record<RecordTrackId, string> = {
   delayAOut: 'delay-a',
   delayBOut: 'delay-b',
   reverb: 'reverb',
+  dynamics: 'dynamics',
 };
+
+export const SOUND_SOURCE_RECORDING_ROLLUPS = {
+  pad1: 'pad1',
+  pad2: 'pad2',
+  lead1: 'lead1',
+  lead2: 'lead2',
+  piano: 'piano',
+
+  sub: 'drums',
+  kick: 'drums',
+  click: 'drums',
+  beepHi: 'drums',
+  beepLo: 'drums',
+  noise: 'drums',
+  membrane: 'drums',
+  drumSub: 'drums',
+  drumKick: 'drums',
+  drumClick: 'drums',
+  drumBeepHi: 'drums',
+  drumBeepLo: 'drums',
+  drumNoise: 'drums',
+  drumMembrane: 'drums',
+
+  granularV1: 'granular',
+  granularV2: 'granular',
+  granularV3: 'granular',
+  granularV4: 'granular',
+  granularVoice1: 'granular',
+  granularVoice2: 'granular',
+  granularVoice3: 'granular',
+  granularVoice4: 'granular',
+
+  waves: 'waves',
+  hardDrops: 'water',
+  waterLayerHardDrops: 'water',
+  waterHardDrops: 'water',
+  waterLayerWaterDrops: 'water',
+  waterDrops: 'water',
+  waterLayerBubbling: 'water',
+  waterBubbling: 'water',
+  waterLayerTurbulence: 'water',
+  waterTurbulence: 'water',
+  waterLayerChannels: 'water',
+  waterChannels: 'water',
+  waterLayerSurf: 'water',
+  waterSurf: 'water',
+  bubbling: 'water',
+  turbulence: 'water',
+  channels: 'water',
+  surf: 'water',
+  insects: 'insects',
+  insects1: 'insects',
+  insects2: 'insects',
+  birds: 'nature',
+  birds2: 'nature',
+  birdsAlps: 'nature',
+  birdsFujian: 'nature',
+  frogs: 'nature',
+
+  delayA: 'delayAOut',
+  delayB: 'delayBOut',
+  reverb: 'reverb',
+  dynamics: 'dynamics',
+} satisfies Record<string, StemRecordTrackId>;

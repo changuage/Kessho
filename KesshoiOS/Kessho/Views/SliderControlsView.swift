@@ -6,7 +6,7 @@ enum AdvancedTab: String, CaseIterable {
     case synth = "Synth"
     case drums = "Drum Synth"
     case fx = "FX"
-    
+
     var icon: String {
         switch self {
         case .global: return "◎"
@@ -22,7 +22,7 @@ struct SliderControlsView: View {
     @EnvironmentObject var appState: AppState
     @State private var expandedSections: Set<String> = ["Levels", "Character"]
     @State private var activeTab: AdvancedTab = .global
-    
+
     /// Description text for current reverb quality mode
     private var reverbQualityDescription: String {
         switch appState.state.reverbQuality {
@@ -36,13 +36,52 @@ struct SliderControlsView: View {
             return ""
         }
     }
-    
+
     /// Check if current reverb type is compatible with web app
     private var isReverbTypeWebAppCompatible: Bool {
         let webAppCompatibleTypes = ["plate", "hall", "cathedral", "darkHall"]
         return webAppCompatibleTypes.contains(appState.state.reverbType)
     }
-    
+
+    private var progressionStepCount: Int {
+        max(1, min(8, appState.state.chordProgressionSteps))
+    }
+
+    private static let progressionDegreeLabels = ["I", "ii", "iii", "IV", "V", "vi", "VII", "I+"]
+    private static let progressionPresets: [(label: String, pattern: [Int])] = [
+        ("I - IV - V - I", [0, 3, 4, 0]),
+        ("I - vi - IV - V", [0, 5, 3, 4]),
+        ("ii - V - I - I", [1, 4, 0, 0]),
+        ("I - iii - vi - IV", [0, 2, 5, 3]),
+        ("I - V - vi - IV", [0, 4, 5, 3]),
+        ("I - IV - ii - V", [0, 3, 1, 4]),
+        ("i - VII - VI - VII", [0, 6, 5, 6]),
+        ("I - VII - IV - I", [0, 6, 3, 0]),
+    ]
+
+    private func setProgressionSteps(_ steps: Int) {
+        let safeSteps = max(1, min(8, steps))
+        appState.state.chordProgressionSteps = safeSteps
+        while appState.state.chordProgressionPattern.count < safeSteps {
+            appState.state.chordProgressionPattern.append(0)
+        }
+        if appState.state.chordProgressionPattern.count > safeSteps {
+            appState.state.chordProgressionPattern = Array(appState.state.chordProgressionPattern.prefix(safeSteps))
+        }
+        while appState.state.chordProgressionStepEnabled.count < safeSteps {
+            appState.state.chordProgressionStepEnabled.append(true)
+        }
+        if appState.state.chordProgressionStepEnabled.count > safeSteps {
+            appState.state.chordProgressionStepEnabled = Array(appState.state.chordProgressionStepEnabled.prefix(safeSteps))
+        }
+    }
+
+    private func applyProgressionPreset(_ pattern: [Int]) {
+        appState.state.chordProgressionPattern = pattern
+        appState.state.chordProgressionSteps = pattern.count
+        appState.state.chordProgressionStepEnabled = Array(repeating: true, count: pattern.count)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // Tab Bar
@@ -66,7 +105,7 @@ struct SliderControlsView: View {
             .padding(.horizontal)
             .padding(.vertical, 8)
             .background(Color.black.opacity(0.3))
-            
+
             ScrollView {
                 VStack(spacing: 16) {
                     // MARK: - GLOBAL TAB
@@ -75,27 +114,31 @@ struct SliderControlsView: View {
                     CollapsibleSection(title: "Levels", icon: "speaker.wave.3", expanded: $expandedSections) {
                         ParameterSlider(
                             label: "Master",
+                            key: "masterVolume",
                             value: $appState.state.masterVolume,
                             range: 0...1,
                             icon: "speaker.wave.3"
                     )
-                    
+
                     ParameterSlider(
                         label: "Synth",
+                        key: "synthLevel",
                         value: $appState.state.synthLevel,
                         range: 0...1,
                         icon: "waveform"
                     )
-                    
+
                     ParameterSlider(
                         label: "Granular",
+                        key: "granularLevel",
                         value: $appState.state.granularLevel,
                         range: 0...2,
                         icon: "sparkles"
                     )
-                    
+
                     ParameterSlider(
                         label: "Lead",
+                        key: "leadLevel",
                         value: $appState.state.leadLevel,
                         range: 0...1,
                         icon: "music.note"
@@ -103,6 +146,7 @@ struct SliderControlsView: View {
 
                     ParameterSlider(
                         label: "Lead 2",
+                        key: "lead2Level",
                         value: $appState.state.lead2Level,
                         range: 0...1,
                         icon: "music.note.list"
@@ -110,6 +154,7 @@ struct SliderControlsView: View {
 
                     ParameterSlider(
                         label: "Piano",
+                        key: "pianoLevel",
                         value: $appState.state.pianoLevel,
                         range: 0...1,
                         icon: "pianokeys"
@@ -117,6 +162,7 @@ struct SliderControlsView: View {
 
                     ParameterSlider(
                         label: "Ocean",
+                        key: "oceanSampleLevel",
                         value: $appState.state.oceanSampleLevel,
                         range: 0...1,
                         icon: "water.waves"
@@ -124,26 +170,29 @@ struct SliderControlsView: View {
 
                     ParameterSlider(
                         label: "Earth",
+                        key: "earthLevel",
                         value: $appState.state.earthLevel,
                         range: 0...1,
                         icon: "leaf"
                     )
-                    
+
                     ParameterSlider(
                         label: "Drums",
+                        key: "drumLevel",
                         value: $appState.state.drumLevel,
                         range: 0...1,
                         icon: "circle.hexagonpath"
                     )
-                    
+
                     ParameterSlider(
                         label: "Reverb",
+                        key: "reverbLevel",
                         value: $appState.state.reverbLevel,
                         range: 0...2,
                         icon: "waveform.path"
                     )
                 }
-                
+
                 // MARK: - Harmony Section (matching web app's Harmony / Pitch panel)
                 CollapsibleSection(title: "Harmony", icon: "music.quarternote.3", expanded: $expandedSections) {
                     // Root Note picker (0-11 semitones)
@@ -164,7 +213,7 @@ struct SliderControlsView: View {
                         .accentColor(.white)
                     }
                     .padding(.vertical, 4)
-                    
+
                     // Scale Mode picker (auto/manual)
                     HStack {
                         Image(systemName: "slider.horizontal.3")
@@ -182,7 +231,7 @@ struct SliderControlsView: View {
                         .frame(width: 150)
                     }
                     .padding(.vertical, 4)
-                    
+
                     // Manual scale family picker (only shown when scaleMode is "manual")
                     if appState.state.scaleMode == "manual" {
                         HStack {
@@ -205,32 +254,202 @@ struct SliderControlsView: View {
                         .padding(.vertical, 4)
                     }
                 }
-                
+
+                // MARK: - Transport Section
+                CollapsibleSection(title: "Transport + Sync", icon: "metronome", expanded: $expandedSections) {
+                    HStack {
+                        Image(systemName: "clock")
+                            .foregroundColor(.white.opacity(0.5))
+                            .frame(width: 20)
+                        Text("Primary Clock")
+                            .font(.subheadline)
+                            .foregroundColor(.white.opacity(0.8))
+                        Spacer()
+                        Picker("Primary Clock", selection: $appState.state.transportPrimaryClock) {
+                            Text("Phrase").tag("seconds")
+                            Text("BPM").tag("bpm")
+                            Text("Free").tag("decoupled")
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(width: 190)
+                    }
+                    .padding(.vertical, 4)
+
+                    ParameterSlider(
+                        label: "Phrase Seconds",
+                        key: "phraseLength",
+                        value: $appState.state.phraseLength,
+                        range: 4...128,
+                        unit: "s",
+                        icon: "timer"
+                    )
+
+                    ParameterSlider(
+                        label: "Shared BPM",
+                        key: "sequencerMasterBPM",
+                        value: $appState.state.sequencerMasterBPM,
+                        range: 40...300,
+                        unit: " BPM",
+                        icon: "metronome"
+                    )
+
+                    HStack(spacing: 12) {
+                        Stepper("Bars: \(appState.state.transportBarsPerPhrase)", value: $appState.state.transportBarsPerPhrase, in: 1...16)
+                            .foregroundColor(.white.opacity(0.8))
+                        Stepper("Beats: \(appState.state.transportBeatsPerBar)", value: $appState.state.transportBeatsPerBar, in: 2...12)
+                            .foregroundColor(.white.opacity(0.8))
+                    }
+
+                    HStack {
+                        Image(systemName: "point.3.connected.trianglepath.dotted")
+                            .foregroundColor(.white.opacity(0.5))
+                            .frame(width: 20)
+                        Text("Harmony Clock")
+                            .font(.subheadline)
+                            .foregroundColor(.white.opacity(0.8))
+                        Spacer()
+                        Picker("Harmony Clock", selection: $appState.state.harmonyClockSource) {
+                            Text("Global Phrase").tag("globalPhrase")
+                            Text("Local Phrase").tag("localPhrase")
+                            Text("Global Beat").tag("globalBeat")
+                            Text("Local Beat").tag("localBeat")
+                        }
+                        .pickerStyle(.menu)
+                        .accentColor(.white)
+                    }
+                    .padding(.vertical, 4)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Effective phrase \(String(format: "%.2f", appState.state.effectivePhraseLength))s")
+                        Text("Beat phrase \(String(format: "%.2f", appState.state.phraseDurationFromBeatClock))s • equivalent \(String(format: "%.1f", appState.state.equivalentBPMFromPhraseClock)) BPM")
+                    }
+                    .font(.caption2)
+                    .foregroundColor(.white.opacity(0.5))
+                }
+
+                // MARK: - Chord Progression Section
+                CollapsibleSection(title: "Chord Progression", icon: "square.grid.3x3", expanded: $expandedSections) {
+                    Toggle("Progression", isOn: $appState.state.chordProgressionEnabled)
+                        .foregroundColor(.white)
+
+                    if appState.state.chordProgressionEnabled {
+                        HStack {
+                            Image(systemName: "clock.arrow.2.circlepath")
+                                .foregroundColor(.white.opacity(0.5))
+                                .frame(width: 20)
+                            Text("Clock")
+                                .font(.subheadline)
+                                .foregroundColor(.white.opacity(0.8))
+                            Spacer()
+                            Picker("Clock", selection: $appState.state.chordProgressionClockSource) {
+                                Text("Harmony").tag("harmony")
+                                Text("Global Phrase").tag("globalPhrase")
+                                Text("Local Phrase").tag("localPhrase")
+                            }
+                            .pickerStyle(.menu)
+                            .accentColor(.white)
+                        }
+
+                        Picker("Step Length", selection: $appState.state.chordProgressionPhraseMultiplier) {
+                            Text("1 Phrase").tag(1)
+                            Text("2 Phrases").tag(2)
+                            Text("4 Phrases").tag(4)
+                            Text("8 Phrases").tag(8)
+                        }
+                        .pickerStyle(.segmented)
+
+                        Stepper("Pattern Length: \(progressionStepCount)", value: Binding(
+                            get: { appState.state.chordProgressionSteps },
+                            set: { setProgressionSteps($0) }
+                        ), in: 2...8)
+                        .foregroundColor(.white.opacity(0.8))
+
+                        Menu {
+                            ForEach(Self.progressionPresets.indices, id: \.self) { index in
+                                let preset = Self.progressionPresets[index]
+                                Button(preset.label) {
+                                    applyProgressionPreset(preset.pattern)
+                                }
+                            }
+                        } label: {
+                            Label("Preset", systemImage: "music.note.list")
+                                .font(.subheadline)
+                                .foregroundColor(.white.opacity(0.85))
+                        }
+
+                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                            ForEach(0..<progressionStepCount, id: \.self) { index in
+                                let degree = index < appState.state.chordProgressionPattern.count ? appState.state.chordProgressionPattern[index] : 0
+                                let isOn = index < appState.state.chordProgressionStepEnabled.count ? appState.state.chordProgressionStepEnabled[index] : true
+
+                                VStack(alignment: .leading, spacing: 6) {
+                                    HStack {
+                                        Text("Step \(index + 1)")
+                                            .font(.caption2)
+                                            .foregroundColor(.white.opacity(0.5))
+                                        Spacer()
+                                        Button(action: {
+                                            while appState.state.chordProgressionStepEnabled.count <= index {
+                                                appState.state.chordProgressionStepEnabled.append(true)
+                                            }
+                                            appState.state.chordProgressionStepEnabled[index].toggle()
+                                        }) {
+                                            Image(systemName: isOn ? "checkmark.circle.fill" : "circle")
+                                                .foregroundColor(isOn ? .green : .white.opacity(0.35))
+                                        }
+                                    }
+                                    Picker("Degree", selection: Binding(
+                                        get: { degree },
+                                        set: { newValue in
+                                            while appState.state.chordProgressionPattern.count <= index {
+                                                appState.state.chordProgressionPattern.append(0)
+                                            }
+                                            appState.state.chordProgressionPattern[index] = newValue
+                                        }
+                                    )) {
+                                        ForEach(Self.progressionDegreeLabels.indices, id: \.self) { degreeIndex in
+                                            Text(Self.progressionDegreeLabels[degreeIndex]).tag(degreeIndex)
+                                        }
+                                    }
+                                    .pickerStyle(.menu)
+                                }
+                                .padding(8)
+                                .background(isOn ? Color.purple.opacity(0.18) : Color.white.opacity(0.06))
+                                .cornerRadius(8)
+                            }
+                        }
+                    }
+                }
+
                 // MARK: - Character Section
                 CollapsibleSection(title: "Character", icon: "paintpalette", expanded: $expandedSections) {
                     ParameterSlider(
                         label: "Tension",
+                        key: "tension",
                         value: $appState.state.tension,
                         range: 0...1,
                         icon: "gauge.medium"
                     )
-                    
+
                     ParameterSlider(
                         label: "Randomness",
+                        key: "randomness",
                         value: $appState.state.randomness,
                         range: 0...1,
                         icon: "dice"
                     )
-                    
+
                     ParameterSlider(
                         label: "Walk Speed",
+                        key: "randomWalkSpeed",
                         value: $appState.state.randomWalkSpeed,
                         range: 0.1...5,
                         icon: "figure.walk"
                     )
-                    
+
                     ParameterSlider(
                         label: "Chord Rate",
+                        key: "chordRate",
                         value: Binding(
                             get: { Double(appState.state.chordRate) },
                             set: { appState.state.chordRate = Int($0) }
@@ -239,24 +458,25 @@ struct SliderControlsView: View {
                         unit: "s",
                         icon: "clock"
                     )
-                    
+
                     ParameterSlider(
                         label: "Voicing Spread",
+                        key: "voicingSpread",
                         value: $appState.state.voicingSpread,
                         range: 0...1,
                         icon: "arrow.up.and.down"
                     )
-                    
+
                     // Synth Chord Sequencer Toggle
                     Toggle("Synth Chord Sequencer", isOn: $appState.state.synthChordSequencerEnabled)
                         .foregroundColor(.white)
-                    
+
                     Text("When off, synth voices only play from Euclidean triggers")
                         .font(.caption2)
                         .foregroundColor(.white.opacity(0.4))
                 }
                 } // End Global Tab
-                
+
                 // MARK: - SYNTH TAB
                 if activeTab == .synth {
                 // MARK: - Synth Oscillator Section
@@ -264,36 +484,40 @@ struct SliderControlsView: View {
                     // Oscillator Brightness (0-3)
                     ParameterSlider(
                         label: "Brightness",
+                        key: "oscBrightness",
                         value: $appState.state.oscBrightness,
                         range: 0...3,
                         icon: "sun.max"
                     )
-                    
+
                     ParameterSlider(
                         label: "Wave Spread",
+                        key: "waveSpread",
                         value: $appState.state.waveSpread,
                         range: 0...30,
                         icon: "water.waves"
                     )
-                    
+
                     ParameterSlider(
                         label: "Detune",
+                        key: "detune",
                         value: $appState.state.detune,
                         range: 0...25,
                         unit: "¢",
                         icon: "tuningfork"
                     )
-                    
+
                     ParameterSlider(
                         label: "Hardness",
+                        key: "hardness",
                         value: $appState.state.hardness,
                         range: 0...1,
                         icon: "diamond"
                     )
-                    
+
                     // Voice Mask (1-63 bitmask for 6 voices)
                     VoiceMaskControl(voiceMask: $appState.state.synthVoiceMask)
-                    
+
                     // Octave Shift (-2 to +2)
                     HStack {
                         Image(systemName: "arrow.up.arrow.down")
@@ -313,31 +537,34 @@ struct SliderControlsView: View {
                         .frame(width: 200)
                     }
                 }
-                
+
                 // MARK: - Synth Timbre Section
                 CollapsibleSection(title: "Pad Timbre", icon: "slider.horizontal.3", expanded: $expandedSections) {
                     ParameterSlider(
                         label: "Warmth",
+                        key: "warmth",
                         value: $appState.state.warmth,
                         range: 0...1,
                         icon: "flame"
                     )
-                    
+
                     ParameterSlider(
                         label: "Presence",
+                        key: "presence",
                         value: $appState.state.presence,
                         range: 0...1,
                         icon: "waveform.badge.plus"
                     )
-                    
+
                     ParameterSlider(
                         label: "Air/Noise",
+                        key: "airNoise",
                         value: $appState.state.airNoise,
                         range: 0...1,
                         icon: "wind"
                     )
                 }
-                
+
                 // MARK: - Envelope Section
                 CollapsibleSection(title: "Envelope", icon: "chart.xyaxis.line", expanded: $expandedSections) {
                     // ADSR Visualization
@@ -349,39 +576,43 @@ struct SliderControlsView: View {
                     )
                     .frame(height: 80)
                     .padding(.bottom, 8)
-                    
+
                     ParameterSlider(
                         label: "Attack",
+                        key: "synthAttack",
                         value: $appState.state.synthAttack,
                         range: 0.01...16,
                         unit: "s",
                         icon: "arrow.up.right"
                     )
-                    
+
                     ParameterSlider(
                         label: "Decay",
+                        key: "synthDecay",
                         value: $appState.state.synthDecay,
                         range: 0.01...8,
                         unit: "s",
                         icon: "arrow.down.right"
                     )
-                    
+
                     ParameterSlider(
                         label: "Sustain",
+                        key: "synthSustain",
                         value: $appState.state.synthSustain,
                         range: 0...1,
                         icon: "arrow.right"
                     )
-                    
+
                     ParameterSlider(
                         label: "Release",
+                        key: "synthRelease",
                         value: $appState.state.synthRelease,
                         range: 0.01...30,
                         unit: "s",
                         icon: "arrow.down.right.and.arrow.up.left"
                     )
                 }
-                
+
                 // MARK: - Filter Section
                 CollapsibleSection(title: "Filter", icon: "line.3.crossed.swirl.circle", expanded: $expandedSections) {
                     // Filter Type Picker
@@ -401,7 +632,7 @@ struct SliderControlsView: View {
                         .pickerStyle(.menu)
                         .accentColor(.cyan)
                     }
-                    
+
                     // Filter Response Visualization
                     FilterResponseView(
                         filterType: appState.state.filterType,
@@ -413,46 +644,51 @@ struct SliderControlsView: View {
                         isRunning: appState.audioEngine.isRunning
                     )
                     .padding(.vertical, 4)
-                    
+
                     ParameterSlider(
                         label: "Cutoff Min",
+                        key: "filterCutoffMin",
                         value: $appState.state.filterCutoffMin,
                         range: 40...8000,
                         unit: "Hz",
                         icon: "line.diagonal"
                     )
-                    
+
                     ParameterSlider(
                         label: "Cutoff Max",
+                        key: "filterCutoffMax",
                         value: $appState.state.filterCutoffMax,
                         range: 40...8000,
                         unit: "Hz",
                         icon: "line.diagonal"
                     )
-                    
+
                     ParameterSlider(
                         label: "Mod Speed",
+                        key: "filterModSpeed",
                         value: $appState.state.filterModSpeed,
                         range: 0...16,
                         icon: "waveform.path.ecg"
                     )
-                    
+
                     ParameterSlider(
                         label: "Resonance",
+                        key: "filterResonance",
                         value: $appState.state.filterResonance,
                         range: 0...1,
                         icon: "waveform.badge.magnifyingglass"
                     )
-                    
+
                     ParameterSlider(
                         label: "Q",
+                        key: "filterQ",
                         value: $appState.state.filterQ,
                         range: 0.1...12,
                         icon: "q.circle"
                     )
                 }
                 } // End Synth Tab (part 1)
-                
+
                 // MARK: - FX TAB
                 if activeTab == .fx {
                 // MARK: - Reverb Section
@@ -483,7 +719,7 @@ struct SliderControlsView: View {
                         }
                     }
                     .padding(.bottom, 8)
-                    
+
                     // Reverb type picker
                     HStack {
                         Image(systemName: "waveform")
@@ -512,18 +748,18 @@ struct SliderControlsView: View {
                         .pickerStyle(.menu)
                         .accentColor(.cyan)
                     }
-                    
+
                     if !isReverbTypeWebAppCompatible {
                         HStack {
                             Image(systemName: "exclamationmark.triangle.fill")
                                 .foregroundColor(.orange)
-                            Text("iOS only - won't transfer to web app")
+                            Text("Native mode - normalize to Cathedral for web-compatible saves")
                                 .font(.caption)
                                 .foregroundColor(.orange)
                         }
                         .padding(.vertical, 4)
                     }
-                    
+
                     // Quality mode picker
                     HStack {
                         Image(systemName: "sparkles")
@@ -540,57 +776,129 @@ struct SliderControlsView: View {
                         .pickerStyle(.segmented)
                         .frame(width: 180)
                     }
-                    
+
                     Text(reverbQualityDescription)
                         .font(.caption)
                         .foregroundColor(.white.opacity(0.5))
                         .frame(maxWidth: .infinity, alignment: .leading)
-                    
+
                     ParameterSlider(
                         label: "Decay",
+                        key: "reverbDecay",
                         value: $appState.state.reverbDecay,
                         range: 0...1,
                         icon: "arrow.triangle.branch"
                     )
-                    
+
                     ParameterSlider(
                         label: "Size",
+                        key: "reverbSize",
                         value: $appState.state.reverbSize,
                         range: 0.5...3.0,
                         icon: "square.resize"
                     )
-                    
+
                     ParameterSlider(
                         label: "Diffusion",
+                        key: "reverbDiffusion",
                         value: $appState.state.reverbDiffusion,
                         range: 0...1,
                         icon: "circle.hexagongrid"
                     )
-                    
+
                     ParameterSlider(
                         label: "Modulation",
+                        key: "reverbModulation",
                         value: $appState.state.reverbModulation,
                         range: 0...1,
                         icon: "waveform.circle"
                     )
-                    
+
+                    ParameterSlider(
+                        label: "Slow Mod Rate",
+                        key: "reverbSlowModRate",
+                        value: $appState.state.reverbSlowModRate,
+                        range: 0.01...0.2,
+                        icon: "speedometer"
+                    )
+
+                    ParameterSlider(
+                        label: "Slow Mod Depth",
+                        key: "reverbSlowModDepth",
+                        value: $appState.state.reverbSlowModDepth,
+                        range: 0...1,
+                        icon: "waveform.path"
+                    )
+
+                    ParameterSlider(
+                        label: "Chorus Rate",
+                        key: "reverbChorusRate",
+                        value: $appState.state.reverbChorusRate,
+                        range: 0.05...2,
+                        icon: "dot.radiowaves.left.and.right"
+                    )
+
+                    ParameterSlider(
+                        label: "Chorus Depth",
+                        key: "reverbChorusDepth",
+                        value: $appState.state.reverbChorusDepth,
+                        range: 0...40,
+                        icon: "arrow.left.and.right"
+                    )
+
                     ParameterSlider(
                         label: "Predelay",
+                        key: "predelay",
                         value: $appState.state.predelay,
                         range: 0...100,
                         unit: "ms",
                         icon: "clock.arrow.circlepath"
                     )
-                    
+
                     ParameterSlider(
                         label: "Damping",
+                        key: "damping",
                         value: $appState.state.damping,
                         range: 0...1,
                         icon: "line.3.horizontal.decrease"
                     )
-                    
+
+                    ParameterSlider(
+                        label: "Damp Low",
+                        key: "reverbDampLow",
+                        value: $appState.state.reverbDampLow,
+                        range: 0...1,
+                        icon: "line.3.horizontal.decrease.circle"
+                    )
+
+                    ParameterSlider(
+                        label: "Damp High",
+                        key: "reverbDampHigh",
+                        value: $appState.state.reverbDampHigh,
+                        range: 0...1,
+                        icon: "line.3.horizontal.decrease"
+                    )
+
+                    ParameterSlider(
+                        label: "Crossover",
+                        key: "reverbCrossoverFreq",
+                        value: $appState.state.reverbCrossoverFreq,
+                        range: 200...4000,
+                        unit: "Hz",
+                        icon: "arrow.left.and.right"
+                    )
+
+                    ParameterSlider(
+                        label: "Input Tone",
+                        key: "reverbInputTone",
+                        value: $appState.state.reverbInputTone,
+                        range: -1...1,
+                        icon: "dial.medium"
+                    )
+
                     ParameterSlider(
                         label: "Width",
+                        key: "width",
                         value: $appState.state.width,
                         range: 0...1,
                         icon: "arrow.left.and.right"
@@ -606,6 +914,7 @@ struct SliderControlsView: View {
 
                     ParameterSlider(
                         label: "Shimmer",
+                        key: "reverbShimmer",
                         value: $appState.state.reverbShimmer,
                         range: 0...1,
                         icon: "sparkles"
@@ -613,6 +922,7 @@ struct SliderControlsView: View {
 
                     ParameterSlider(
                         label: "Shimmer Pitch",
+                        key: "reverbShimmerPitch",
                         value: $appState.state.reverbShimmerPitch,
                         range: -24...24,
                         unit: "st",
@@ -621,6 +931,7 @@ struct SliderControlsView: View {
 
                     ParameterSlider(
                         label: "Shimmer Feedback",
+                        key: "reverbShimmerFeedback",
                         value: $appState.state.reverbShimmerFeedback,
                         range: 0...1,
                         icon: "arrow.triangle.2.circlepath"
@@ -628,13 +939,89 @@ struct SliderControlsView: View {
 
                     ParameterSlider(
                         label: "Warp",
+                        key: "reverbWarp",
                         value: $appState.state.reverbWarp,
                         range: 0...1,
                         icon: "scribble.variable"
                     )
 
                     ParameterSlider(
+                        label: "Early Reflections",
+                        key: "reverbEarlyReflections",
+                        value: $appState.state.reverbEarlyReflections,
+                        range: 0...1,
+                        icon: "scope"
+                    )
+
+                    ParameterSlider(
+                        label: "Air Absorption",
+                        key: "reverbAirAbsorption",
+                        value: $appState.state.reverbAirAbsorption,
+                        range: 0...1,
+                        icon: "wind"
+                    )
+
+                    ParameterSlider(
+                        label: "ER LPF",
+                        key: "reverbErLpFreq",
+                        value: $appState.state.reverbErLpFreq,
+                        range: 200...12000,
+                        unit: "Hz",
+                        icon: "line.3.horizontal.decrease"
+                    )
+
+                    ParameterSlider(
+                        label: "Reverse",
+                        key: "reverbReverse",
+                        value: $appState.state.reverbReverse,
+                        range: 0...1,
+                        icon: "backward"
+                    )
+
+                    ParameterSlider(
+                        label: "Reverse Length",
+                        key: "reverbReverseLength",
+                        value: $appState.state.reverbReverseLength,
+                        range: 0.1...12,
+                        unit: "s",
+                        icon: "timer"
+                    )
+
+                    HStack {
+                        Image(systemName: "waveform.path")
+                            .foregroundColor(.white.opacity(0.5))
+                            .frame(width: 20)
+                        Text("Mod Shape")
+                            .foregroundColor(.white.opacity(0.8))
+                        Spacer()
+                        Picker("Mod Shape", selection: $appState.state.reverbModCharacter) {
+                            Text("Sine").tag("sine")
+                            Text("Drift").tag("drift")
+                            Text("Hybrid").tag("hybrid")
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(width: 210)
+                    }
+
+                    HStack {
+                        Image(systemName: "bolt")
+                            .foregroundColor(.white.opacity(0.5))
+                            .frame(width: 20)
+                        Text("Saturation")
+                            .foregroundColor(.white.opacity(0.8))
+                        Spacer()
+                        Picker("Saturation", selection: $appState.state.reverbSaturationMode) {
+                            Text("Clean").tag("clean")
+                            Text("Tape").tag("tape")
+                            Text("Tube").tag("tube")
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(width: 190)
+                    }
+
+                    ParameterSlider(
                         label: "Transient Smooth",
+                        key: "reverbTransientSmooth",
                         value: $appState.state.reverbTransientSmooth,
                         range: 0...1,
                         icon: "waveform.path.ecg"
@@ -666,6 +1053,7 @@ struct SliderControlsView: View {
 
                     ParameterSlider(
                         label: "Freeze Speed",
+                        key: "spectralFreezeSpeed",
                         value: $appState.state.spectralFreezeSpeed,
                         range: 0...1,
                         icon: "speedometer"
@@ -673,6 +1061,7 @@ struct SliderControlsView: View {
 
                     ParameterSlider(
                         label: "Freeze Mix",
+                        key: "spectralFreezeMix",
                         value: $appState.state.spectralFreezeMix,
                         range: 0...1,
                         icon: "slider.horizontal.3"
@@ -680,6 +1069,7 @@ struct SliderControlsView: View {
 
                     ParameterSlider(
                         label: "Freeze Decay",
+                        key: "spectralFreezeDecay",
                         value: $appState.state.spectralFreezeDecay,
                         range: 0...1,
                         icon: "snowflake"
@@ -687,6 +1077,7 @@ struct SliderControlsView: View {
 
                     ParameterSlider(
                         label: "Phase Jitter",
+                        key: "spectralFreezePhaseJitter",
                         value: $appState.state.spectralFreezePhaseJitter,
                         range: 0...1,
                         icon: "shuffle"
@@ -701,27 +1092,30 @@ struct SliderControlsView: View {
                     )
 
                     Divider().background(Color.white.opacity(0.2))
-                    
+
                     Text("Send Levels")
                         .font(.subheadline)
                         .foregroundColor(.white.opacity(0.6))
-                    
+
                     ParameterSlider(
                         label: "Synth Send",
+                        key: "synthReverbSend",
                         value: $appState.state.synthReverbSend,
                         range: 0...1,
                         icon: "arrow.right.to.line"
                     )
-                    
+
                     ParameterSlider(
                         label: "Granular Send",
+                        key: "granularReverbSend",
                         value: $appState.state.granularReverbSend,
                         range: 0...1,
                         icon: "arrow.right.to.line"
                     )
-                    
+
                     ParameterSlider(
                         label: "Lead Send",
+                        key: "leadReverbSend",
                         value: $appState.state.leadReverbSend,
                         range: 0...1,
                         icon: "arrow.right.to.line"
@@ -729,6 +1123,7 @@ struct SliderControlsView: View {
 
                     ParameterSlider(
                         label: "Lead 2 Send",
+                        key: "lead2ReverbSend",
                         value: $appState.state.lead2ReverbSend,
                         range: 0...1,
                         icon: "arrow.right.to.line"
@@ -736,6 +1131,7 @@ struct SliderControlsView: View {
 
                     ParameterSlider(
                         label: "Piano Send",
+                        key: "pianoReverbSend",
                         value: $appState.state.pianoReverbSend,
                         range: 0...1,
                         icon: "arrow.right.to.line"
@@ -743,6 +1139,7 @@ struct SliderControlsView: View {
 
                     ParameterSlider(
                         label: "Lead Delay Send",
+                        key: "leadDelayReverbSend",
                         value: $appState.state.leadDelayReverbSend,
                         range: 0...1,
                         icon: "arrow.right.to.line"
@@ -750,6 +1147,7 @@ struct SliderControlsView: View {
 
                     ParameterSlider(
                         label: "Delay A Send",
+                        key: "delayAReverbSend",
                         value: $appState.state.delayAReverbSend,
                         range: 0...1,
                         icon: "arrow.right.to.line"
@@ -757,6 +1155,7 @@ struct SliderControlsView: View {
 
                     ParameterSlider(
                         label: "Nature Send",
+                        key: "natureReverbSend",
                         value: $appState.state.natureReverbSend,
                         range: 0...1,
                         icon: "arrow.right.to.line"
@@ -788,6 +1187,7 @@ struct SliderControlsView: View {
 
 	                    ParameterSlider(
 	                        label: "Mix",
+	                        key: "characterMix",
 	                        value: $appState.state.characterMix,
 	                        range: 0...1,
 	                        icon: "circle.lefthalf.filled"
@@ -795,6 +1195,7 @@ struct SliderControlsView: View {
 
 	                    ParameterSlider(
 	                        label: "Age",
+	                        key: "characterAge",
 	                        value: $appState.state.characterAge,
 	                        range: 0...1,
 	                        icon: "clock.arrow.circlepath"
@@ -802,6 +1203,7 @@ struct SliderControlsView: View {
 
 	                    ParameterSlider(
 	                        label: "Depth",
+	                        key: "characterDepth",
 	                        value: $appState.state.characterDepth,
 	                        range: 0...1,
 	                        icon: "water.waves.and.arrow.down"
@@ -809,6 +1211,7 @@ struct SliderControlsView: View {
 
 	                    ParameterSlider(
 	                        label: "Rate",
+	                        key: "characterRate",
 	                        value: $appState.state.characterRate,
 	                        range: 0...1,
 	                        icon: "speedometer"
@@ -816,6 +1219,7 @@ struct SliderControlsView: View {
 
 	                    ParameterSlider(
 	                        label: "Damp",
+	                        key: "characterDamp",
 	                        value: $appState.state.characterDamp,
 	                        range: 0...1,
 	                        icon: "line.3.horizontal.decrease"
@@ -823,6 +1227,7 @@ struct SliderControlsView: View {
 
 	                    ParameterSlider(
 	                        label: "Env Follow",
+	                        key: "characterEnvFollow",
 	                        value: $appState.state.characterEnvFollow,
 	                        range: 0...1,
 	                        icon: "waveform.path"
@@ -830,6 +1235,7 @@ struct SliderControlsView: View {
 
 	                    ParameterSlider(
 	                        label: "Stereo",
+	                        key: "characterStereo",
 	                        value: $appState.state.characterStereo,
 	                        range: 0...1,
 	                        icon: "speaker.wave.2"
@@ -837,11 +1243,60 @@ struct SliderControlsView: View {
 
 	                    ParameterSlider(
 	                        label: "Resonance",
+	                        key: "characterResonance",
 	                        value: $appState.state.characterResonance,
 	                        range: 0...1,
 	                        icon: "waveform.badge.magnifyingglass"
 	                    )
 	                }
+
+                    // MARK: - Dynamics Saturation Section
+                    CollapsibleSection(title: "Dynamics Saturation", icon: "bolt", expanded: $expandedSections) {
+                        Toggle("Saturation FX", isOn: $appState.state.dynamicsSaturationEnabled)
+                            .foregroundColor(.white)
+
+                        HStack {
+                            Image(systemName: "waveform.path")
+                                .foregroundColor(.white.opacity(0.5))
+                                .frame(width: 20)
+                            Text("Mode")
+                                .foregroundColor(.white.opacity(0.8))
+                            Spacer()
+                            Picker("Mode", selection: $appState.state.dynamicsSaturationMode) {
+                                Text("Clean").tag("clean")
+                                Text("Tape").tag("tape")
+                                Text("Tube").tag("tube")
+                                Text("Diode").tag("diode")
+                                Text("Fold").tag("fold")
+                            }
+                            .pickerStyle(.menu)
+                            .accentColor(.white)
+                        }
+
+                        ParameterSlider(
+                            label: "Drive",
+                            key: "dynamicsSaturationDrive",
+                            value: $appState.state.dynamicsSaturationDrive,
+                            range: 0...1,
+                            icon: "bolt.fill"
+                        )
+
+                        ParameterSlider(
+                            label: "Tone",
+                            key: "dynamicsSaturationTone",
+                            value: $appState.state.dynamicsSaturationTone,
+                            range: 0...1,
+                            icon: "dial.medium"
+                        )
+
+                        ParameterSlider(
+                            label: "Bias",
+                            key: "dynamicsSaturationBias",
+                            value: $appState.state.dynamicsSaturationBias,
+                            range: 0...1,
+                            icon: "circle.lefthalf.filled"
+                        )
+                    }
 
 	                // MARK: - Dynamics Degrade Section
 	                CollapsibleSection(title: "Dynamics Degrade", icon: "waveform.path.ecg.rectangle", expanded: $expandedSections) {
@@ -850,6 +1305,7 @@ struct SliderControlsView: View {
 
 	                    ParameterSlider(
 	                        label: "Mix",
+	                        key: "degradeMix",
 	                        value: $appState.state.degradeMix,
 	                        range: 0...1,
 	                        icon: "circle.lefthalf.filled"
@@ -857,6 +1313,7 @@ struct SliderControlsView: View {
 
 	                    ParameterSlider(
 	                        label: "Age",
+	                        key: "degradeAge",
 	                        value: $appState.state.degradeAge,
 	                        range: 0...1,
 	                        icon: "clock.arrow.circlepath"
@@ -864,6 +1321,7 @@ struct SliderControlsView: View {
 
 	                    ParameterSlider(
 	                        label: "Generation",
+	                        key: "degradeGeneration",
 	                        value: $appState.state.degradeGeneration,
 	                        range: 0...1,
 	                        icon: "square.stack.3d.down.right"
@@ -871,6 +1329,7 @@ struct SliderControlsView: View {
 
 	                    ParameterSlider(
 	                        label: "Alias",
+	                        key: "degradeAlias",
 	                        value: $appState.state.degradeAlias,
 	                        range: 0...1,
 	                        icon: "waveform.path.badge.minus"
@@ -878,6 +1337,7 @@ struct SliderControlsView: View {
 
 	                    ParameterSlider(
 	                        label: "Wow",
+	                        key: "degradeWow",
 	                        value: $appState.state.degradeWow,
 	                        range: 0...1,
 	                        icon: "waveform.path"
@@ -885,6 +1345,7 @@ struct SliderControlsView: View {
 
 	                    ParameterSlider(
 	                        label: "Flutter",
+	                        key: "degradeFlutter",
 	                        value: $appState.state.degradeFlutter,
 	                        range: 0...1,
 	                        icon: "speedometer"
@@ -892,6 +1353,7 @@ struct SliderControlsView: View {
 
                     ParameterSlider(
                         label: "Drift",
+                        key: "degradeDrift",
                         value: $appState.state.degradeDrift,
                         range: 0...1,
                         icon: "arrow.triangle.2.circlepath"
@@ -899,6 +1361,7 @@ struct SliderControlsView: View {
 
                     ParameterSlider(
                         label: "Wobble Speed",
+                        key: "degradeWobbleSpeed",
                         value: $appState.state.degradeWobbleSpeed,
                         range: 0...1,
                         icon: "metronome"
@@ -906,6 +1369,7 @@ struct SliderControlsView: View {
 
                     ParameterSlider(
                         label: "Tone",
+	                        key: "degradeTone",
 	                        value: $appState.state.degradeTone,
 	                        range: 0...1,
 	                        icon: "slider.horizontal.3"
@@ -913,6 +1377,7 @@ struct SliderControlsView: View {
 
 	                    ParameterSlider(
 	                        label: "HP",
+	                        key: "degradeHp",
 	                        value: $appState.state.degradeHp,
 	                        range: 0...1,
 	                        icon: "arrow.up.right"
@@ -920,6 +1385,7 @@ struct SliderControlsView: View {
 
 	                    ParameterSlider(
 	                        label: "LP",
+	                        key: "degradeLp",
 	                        value: $appState.state.degradeLp,
 	                        range: 0...1,
 	                        icon: "arrow.down.right"
@@ -927,6 +1393,7 @@ struct SliderControlsView: View {
 
 	                    ParameterSlider(
 	                        label: "Noise",
+	                        key: "degradeNoise",
 	                        value: $appState.state.degradeNoise,
 	                        range: 0...1,
 	                        icon: "sparkles"
@@ -934,6 +1401,7 @@ struct SliderControlsView: View {
 
 	                    ParameterSlider(
 	                        label: "Clip",
+	                        key: "degradeSaturation",
 	                        value: $appState.state.degradeSaturation,
 	                        range: 0...1,
 	                        icon: "waveform"
@@ -941,6 +1409,7 @@ struct SliderControlsView: View {
 
 	                    ParameterSlider(
 	                        label: "Corrosion",
+	                        key: "degradeCorrosion",
 	                        value: $appState.state.degradeCorrosion,
 	                        range: 0...1,
 	                        icon: "bolt.trianglebadge.exclamationmark"
@@ -1051,61 +1520,70 @@ struct SliderControlsView: View {
                 CollapsibleSection(title: "Granular", icon: "sparkles", expanded: $expandedSections) {
                     Toggle("Enabled", isOn: $appState.state.granularEnabled)
                         .foregroundColor(.white)
-                    
+                    Toggle("Freeze Buffer", isOn: $appState.state.granularFreeze)
+                        .foregroundColor(.white)
+
                     ParameterSlider(
                         label: "Max Grains",
+                        key: "maxGrains",
                         value: $appState.state.maxGrains,
                         range: 0...128,
                         icon: "square.grid.3x3.fill"
                     )
-                    
+
                     ParameterSlider(
                         label: "Probability",
+                        key: "grainProbability",
                         value: $appState.state.grainProbability,
                         range: 0...1,
                         icon: "percent"
                     )
-                    
+
                     ParameterSlider(
                         label: "Density",
+                        key: "density",
                         value: $appState.state.density,
                         range: 5...80,
                         unit: "/s",
                         icon: "square.grid.3x3"
                     )
-                    
+
                     ParameterSlider(
                         label: "Size Min",
+                        key: "grainSizeMin",
                         value: $appState.state.grainSizeMin,
                         range: 5...60,
                         unit: "ms",
                         icon: "circle.dotted"
                     )
-                    
+
                     ParameterSlider(
                         label: "Size Max",
+                        key: "grainSizeMax",
                         value: $appState.state.grainSizeMax,
                         range: 20...200,
                         unit: "ms",
                         icon: "circle"
                     )
-                    
+
                     ParameterSlider(
                         label: "Spray",
+                        key: "spray",
                         value: $appState.state.spray,
                         range: 0...600,
                         unit: "ms",
                         icon: "shower"
                     )
-                    
+
                     ParameterSlider(
                         label: "Jitter",
+                        key: "jitter",
                         value: $appState.state.jitter,
                         range: 0...30,
                         unit: "ms",
                         icon: "waveform.path.badge.minus"
                     )
-                    
+
                     // Pitch Mode
                     HStack {
                         Image(systemName: "music.quarternote.3")
@@ -1121,45 +1599,68 @@ struct SliderControlsView: View {
                         .pickerStyle(.segmented)
                         .frame(width: 160)
                     }
-                    
+
                     ParameterSlider(
                         label: "Pitch Spread",
+                        key: "pitchSpread",
                         value: $appState.state.pitchSpread,
                         range: 0...12,
                         unit: "st",
                         icon: "arrow.up.and.down"
                     )
-                    
+
                     ParameterSlider(
                         label: "Stereo Spread",
+                        key: "stereoSpread",
                         value: $appState.state.stereoSpread,
                         range: 0...1,
                         icon: "speaker.wave.2"
                     )
-                    
+
                     ParameterSlider(
                         label: "Feedback",
+                        key: "feedback",
                         value: $appState.state.feedback,
                         range: 0...0.35,
                         icon: "arrow.triangle.2.circlepath"
                     )
-                    
+
+                    ParameterSlider(
+                        label: "Feedback LPF",
+                        key: "granularFeedbackLPF",
+                        value: $appState.state.granularFeedbackLPF,
+                        range: 200...20000,
+                        unit: "Hz",
+                        icon: "line.3.horizontal.decrease"
+                    )
+
+                    ParameterSlider(
+                        label: "Buffer",
+                        key: "granularBufferSeconds",
+                        value: $appState.state.granularBufferSeconds,
+                        range: 1...16,
+                        unit: "s",
+                        icon: "externaldrive"
+                    )
+
                     Divider().background(Color.white.opacity(0.2))
-                    
+
                     Text("Wet Filters")
                         .font(.subheadline)
                         .foregroundColor(.white.opacity(0.6))
-                    
+
                     ParameterSlider(
                         label: "HPF",
+                        key: "wetHPF",
                         value: $appState.state.wetHPF,
                         range: 200...3000,
                         unit: "Hz",
                         icon: "line.diagonal"
                     )
-                    
+
                     ParameterSlider(
                         label: "LPF",
+                        key: "wetLPF",
                         value: $appState.state.wetLPF,
                         range: 3000...12000,
                         unit: "Hz",
@@ -1167,22 +1668,23 @@ struct SliderControlsView: View {
                     )
                 }
                 } // End FX Tab (part 1)
-                
+
                 // MARK: - SYNTH TAB (continued)
                 if activeTab == .synth {
                 // MARK: - Lead Synth Section
                 CollapsibleSection(title: "Lead Synth", icon: "music.note", expanded: $expandedSections) {
                     Toggle("Enabled", isOn: $appState.state.leadEnabled)
                         .foregroundColor(.white)
-                    
+
                     ParameterSlider(
                         label: "Density",
+                        key: "leadDensity",
                         value: $appState.state.leadDensity,
                         range: 0.1...12,
                         unit: "/phrase",
                         icon: "square.grid.2x2"
                     )
-                    
+
                     // Octave
                     HStack {
                         Image(systemName: "arrow.up.arrow.down")
@@ -1200,9 +1702,10 @@ struct SliderControlsView: View {
                         .pickerStyle(.segmented)
                         .frame(width: 160)
                     }
-                    
+
                     ParameterSlider(
                         label: "Octave Range",
+                        key: "leadOctaveRange",
                         value: Binding(
                             get: { Double(appState.state.leadOctaveRange) },
                             set: { appState.state.leadOctaveRange = Int($0) }
@@ -1210,13 +1713,13 @@ struct SliderControlsView: View {
                         range: 1...4,
                         icon: "arrow.up.and.down.circle"
                     )
-                    
+
                     Divider().background(Color.white.opacity(0.2))
-                    
+
                     Text("Envelope")
                         .font(.subheadline)
                         .foregroundColor(.white.opacity(0.6))
-                    
+
                     // ADSHR Visualization (matching webapp's SVG envelope)
                     ADSRVisualization(
                         attack: appState.state.leadAttack,
@@ -1227,79 +1730,86 @@ struct SliderControlsView: View {
                     )
                     .frame(height: 60)
                     .padding(.bottom, 4)
-                    
+
                     ParameterSlider(
                         label: "Attack",
+                        key: "leadAttack",
                         value: $appState.state.leadAttack,
                         range: 0.001...2,
                         unit: "s",
                         icon: "arrow.up.right"
                     )
-                    
+
                     ParameterSlider(
                         label: "Decay",
+                        key: "leadDecay",
                         value: $appState.state.leadDecay,
                         range: 0.01...4,
                         unit: "s",
                         icon: "arrow.down.right"
                     )
-                    
+
                     ParameterSlider(
                         label: "Sustain",
+                        key: "leadSustain",
                         value: $appState.state.leadSustain,
                         range: 0...1,
                         icon: "arrow.right"
                     )
-                    
+
                     ParameterSlider(
                         label: "Hold",
+                        key: "leadHold",
                         value: $appState.state.leadHold,
                         range: 0...4,
                         unit: "s",
                         icon: "pause.circle"
                     )
-                    
+
                     ParameterSlider(
                         label: "Release",
+                        key: "leadRelease",
                         value: $appState.state.leadRelease,
                         range: 0.01...8,
                         unit: "s",
                         icon: "arrow.down.right.and.arrow.up.left"
                     )
-                    
+
                     Divider().background(Color.white.opacity(0.2))
-                    
+
                     Text("Timbre")
                         .font(.subheadline)
                         .foregroundColor(.white.opacity(0.6))
-                    
+
                     // Timbre Range Visualization (Rhodes → Gamelan gradient)
                     TimbreRangeView(
                         timbreMin: appState.state.leadTimbreMin,
                         timbreMax: appState.state.leadTimbreMax
                     )
                     .padding(.vertical, 4)
-                    
+
                     ParameterSlider(
                         label: "Timbre Min",
+                        key: "leadTimbreMin",
                         value: $appState.state.leadTimbreMin,
                         range: 0...1,
                         icon: "slider.horizontal.below.rectangle"
                     )
-                    
+
                     ParameterSlider(
                         label: "Timbre Max",
+                        key: "leadTimbreMax",
                         value: $appState.state.leadTimbreMax,
                         range: 0...1,
                         icon: "slider.horizontal.below.rectangle"
                     )
-                    
+
                     Divider().background(Color.white.opacity(0.2))
-                    
+
                     Text("Expression")
                         .font(.subheadline)
                         .foregroundColor(.white.opacity(0.6))
-                    
+
                     DualRangeSlider(
                         label: "Vibrato Depth",
                         minValue: $appState.state.leadVibratoDepthMin,
@@ -1308,7 +1818,7 @@ struct SliderControlsView: View {
                         icon: "waveform.path",
                         color: .orange
                     )
-                    
+
                     DualRangeSlider(
                         label: "Vibrato Rate",
                         minValue: $appState.state.leadVibratoRateMin,
@@ -1317,7 +1827,7 @@ struct SliderControlsView: View {
                         icon: "metronome",
                         color: .orange
                     )
-                    
+
                     DualRangeSlider(
                         label: "Glide",
                         minValue: $appState.state.leadGlideMin,
@@ -1326,13 +1836,13 @@ struct SliderControlsView: View {
                         icon: "point.topleft.down.curvedto.point.bottomright.up",
                         color: .orange
                     )
-                    
+
                     Divider().background(Color.white.opacity(0.2))
-                    
+
                     Text("Delay")
                         .font(.subheadline)
                         .foregroundColor(.white.opacity(0.6))
-                    
+
                     DualRangeSlider(
                         label: "Time",
                         minValue: $appState.state.leadDelayTimeMin,
@@ -1342,7 +1852,7 @@ struct SliderControlsView: View {
                         icon: "clock",
                         color: .purple
                     )
-                    
+
                     DualRangeSlider(
                         label: "Feedback",
                         minValue: $appState.state.leadDelayFeedbackMin,
@@ -1351,7 +1861,7 @@ struct SliderControlsView: View {
                         icon: "arrow.triangle.2.circlepath",
                         color: .purple
                     )
-                    
+
                     DualRangeSlider(
                         label: "Mix",
                         minValue: $appState.state.leadDelayMixMin,
@@ -1368,6 +1878,7 @@ struct SliderControlsView: View {
 
                     ParameterSlider(
                         label: "Lead 2 Morph",
+                        key: "lead2Morph",
                         value: $appState.state.lead2Morph,
                         range: 0...1,
                         icon: "arrow.left.and.right"
@@ -1375,6 +1886,7 @@ struct SliderControlsView: View {
 
                     ParameterSlider(
                         label: "Lead 2 Density",
+                        key: "lead2Density",
                         value: $appState.state.lead2Density,
                         range: 0.1...12,
                         unit: "/phrase",
@@ -1383,6 +1895,7 @@ struct SliderControlsView: View {
 
                     ParameterSlider(
                         label: "Lead 2 Attack",
+                        key: "lead2Attack",
                         value: $appState.state.lead2Attack,
                         range: 0.001...2,
                         unit: "s",
@@ -1391,6 +1904,7 @@ struct SliderControlsView: View {
 
                     ParameterSlider(
                         label: "Lead 2 Release",
+                        key: "lead2Release",
                         value: $appState.state.lead2Release,
                         range: 0.01...8,
                         unit: "s",
@@ -1402,6 +1916,7 @@ struct SliderControlsView: View {
 
                     ParameterSlider(
                         label: "Piano Attack",
+                        key: "pianoAttack",
                         value: $appState.state.pianoAttack,
                         range: 0.001...2,
                         unit: "s",
@@ -1410,6 +1925,7 @@ struct SliderControlsView: View {
 
                     ParameterSlider(
                         label: "Piano Release",
+                        key: "pianoRelease",
                         value: $appState.state.pianoRelease,
                         range: 0.01...8,
                         unit: "s",
@@ -1418,6 +1934,7 @@ struct SliderControlsView: View {
 
                     ParameterSlider(
                         label: "Piano LPF",
+                        key: "pianoPostLPF",
                         value: $appState.state.pianoPostLPF,
                         range: 40...18000,
                         unit: "Hz",
@@ -1626,6 +2143,22 @@ struct SliderControlsView: View {
                     )
 
                     ParameterSlider(
+                        label: "Granular Delay A",
+                        key: "granularDelayASend",
+                        value: $appState.state.granularDelayASend,
+                        range: 0...1,
+                        icon: "repeat"
+                    )
+
+                    ParameterSlider(
+                        label: "Granular Delay B",
+                        key: "granularDelayBSend",
+                        value: $appState.state.granularDelayBSend,
+                        range: 0...1,
+                        icon: "repeat.circle"
+                    )
+
+                    ParameterSlider(
                         label: "Delay B Activity",
                         key: "granularDelayActivity",
                         value: $appState.state.granularDelayActivity,
@@ -1681,78 +2214,104 @@ struct SliderControlsView: View {
 
                     DelaySendPairControl(
                         label: "Pad 1",
+                        delayAKey: "pad1DelayASend",
+                        delayBKey: "pad1DelayBSend",
                         delayASend: $appState.state.pad1DelayASend,
                         delayBSend: $appState.state.pad1DelayBSend
                     )
 
                     DelaySendPairControl(
                         label: "Pad 2",
+                        delayAKey: "pad2DelayASend",
+                        delayBKey: "pad2DelayBSend",
                         delayASend: $appState.state.pad2DelayASend,
                         delayBSend: $appState.state.pad2DelayBSend
                     )
 
                     DelaySendPairControl(
                         label: "Lead 1",
+                        delayAKey: "lead1DelayASend",
+                        delayBKey: "lead1DelayBSend",
                         delayASend: $appState.state.lead1DelayASend,
                         delayBSend: $appState.state.lead1DelayBSend
                     )
 
                     DelaySendPairControl(
                         label: "Lead 2",
+                        delayAKey: "lead2DelayASend",
+                        delayBKey: "lead2DelayBSend",
                         delayASend: $appState.state.lead2DelayASend,
                         delayBSend: $appState.state.lead2DelayBSend
                     )
 
                     DelaySendPairControl(
                         label: "Piano",
+                        delayAKey: "pianoDelayASend",
+                        delayBKey: "pianoDelayBSend",
                         delayASend: $appState.state.pianoDelayASend,
                         delayBSend: $appState.state.pianoDelayBSend
                     )
 
                     DelaySendPairControl(
                         label: "Drums",
+                        delayAKey: "drumDelayASend",
+                        delayBKey: "drumDelayBSend",
                         delayASend: $appState.state.drumDelayASend,
                         delayBSend: $appState.state.drumDelayBSend
                     )
 
                     DelaySendPairControl(
                         label: "Ocean",
+                        delayAKey: "oceanDelayASend",
+                        delayBKey: "oceanDelayBSend",
                         delayASend: $appState.state.oceanDelayASend,
                         delayBSend: $appState.state.oceanDelayBSend
                     )
 
                     DelaySendPairControl(
                         label: "Nature",
+                        delayAKey: "natureDelayASend",
+                        delayBKey: "natureDelayBSend",
                         delayASend: $appState.state.natureDelayASend,
                         delayBSend: $appState.state.natureDelayBSend
                     )
 
                     DelaySendPairControl(
                         label: "Water",
+                        delayAKey: "waterDelayASend",
+                        delayBKey: "waterDelayBSend",
                         delayASend: $appState.state.waterDelayASend,
                         delayBSend: $appState.state.waterDelayBSend
                     )
 
                     DelaySendPairControl(
                         label: "Birds",
+                        delayAKey: "birdsDelayASend",
+                        delayBKey: "birdsDelayBSend",
                         delayASend: $appState.state.birdsDelayASend,
                         delayBSend: $appState.state.birdsDelayBSend
                     )
 
                     DelaySendPairControl(
                         label: "Birds 2",
+                        delayAKey: "birds2DelayASend",
+                        delayBKey: "birds2DelayBSend",
                         delayASend: $appState.state.birds2DelayASend,
                         delayBSend: $appState.state.birds2DelayBSend
                     )
 
                     DelaySendPairControl(
                         label: "Frogs",
+                        delayAKey: "frogsDelayASend",
+                        delayBKey: "frogsDelayBSend",
                         delayASend: $appState.state.frogsDelayASend,
                         delayBSend: $appState.state.frogsDelayBSend
                     )
 
                     DelaySendPairControl(
                         label: "Insects",
+                        delayAKey: "insDelayASend",
+                        delayBKey: "insDelayBSend",
                         delayASend: $appState.state.insDelayASend,
                         delayBSend: $appState.state.insDelayBSend
                     )
@@ -1762,15 +2321,16 @@ struct SliderControlsView: View {
                 CollapsibleSection(title: "Euclidean Sequencer", icon: "circle.hexagongrid.fill", expanded: $expandedSections) {
                     Toggle("Master Enable", isOn: $appState.state.synthEuclideanMasterEnabled)
                         .foregroundColor(.white)
-                    
+
                     ParameterSlider(
                         label: "Tempo",
+                        key: "synthEuclideanTempo",
                         value: $appState.state.synthEuclideanTempo,
                         range: 0.25...12,
                         unit: "x",
                         icon: "metronome"
                     )
-                    
+
                     // Lane 1
                     EuclideanLaneView(
                         laneNumber: 1,
@@ -1785,7 +2345,7 @@ struct SliderControlsView: View {
                         probability: $appState.state.synthEuclid1Probability,
                         source: $appState.state.synthEuclid1Source
                     )
-                    
+
                     // Lane 2
                     EuclideanLaneView(
                         laneNumber: 2,
@@ -1800,7 +2360,7 @@ struct SliderControlsView: View {
                         probability: $appState.state.synthEuclid2Probability,
                         source: $appState.state.synthEuclid2Source
                     )
-                    
+
                     // Lane 3
                     EuclideanLaneView(
                         laneNumber: 3,
@@ -1815,7 +2375,7 @@ struct SliderControlsView: View {
                         probability: $appState.state.synthEuclid3Probability,
                         source: $appState.state.synthEuclid3Source
                     )
-                    
+
                     // Lane 4
                     EuclideanLaneView(
                         laneNumber: 4,
@@ -1832,26 +2392,28 @@ struct SliderControlsView: View {
                     )
                 }
                 } // End Synth Tab (part 2)
-                
+
                 // MARK: - FX TAB (continued)
                 if activeTab == .fx {
                 // MARK: - Ocean Section
                 CollapsibleSection(title: "Ocean", icon: "water.waves", expanded: $expandedSections) {
                     Toggle("Sample Enabled", isOn: $appState.state.oceanSampleEnabled)
                         .foregroundColor(.white)
-                    
+
                     ParameterSlider(
                         label: "Sample Level",
+                        key: "oceanSampleLevel",
                         value: $appState.state.oceanSampleLevel,
                         range: 0...1,
                         icon: "speaker.wave.2"
                     )
-                    
+
                     Toggle("Wave Synth Enabled", isOn: $appState.state.oceanWaveSynthEnabled)
                         .foregroundColor(.white)
-                    
+
                     ParameterSlider(
                         label: "Synth Level",
+                        key: "oceanWaveSynthLevel",
                         value: $appState.state.oceanWaveSynthLevel,
                         range: 0...1,
                         icon: "speaker.wave.2"
@@ -1859,17 +2421,18 @@ struct SliderControlsView: View {
 
                     ParameterSlider(
                         label: "Reverb Send",
+                        key: "oceanReverbSend",
                         value: $appState.state.oceanReverbSend,
                         range: 0...1,
                         icon: "dot.radiowaves.left.and.right"
                     )
 
                     Divider().background(Color.white.opacity(0.2))
-                    
+
                     Text("Filter")
                         .font(.subheadline)
                         .foregroundColor(.white.opacity(0.6))
-                    
+
                     HStack {
                         Image(systemName: "waveform.path")
                             .foregroundColor(.white.opacity(0.5))
@@ -1886,28 +2449,30 @@ struct SliderControlsView: View {
                         .pickerStyle(.menu)
                         .accentColor(.cyan)
                     }
-                    
+
                     ParameterSlider(
                         label: "Cutoff",
+                        key: "oceanFilterCutoff",
                         value: $appState.state.oceanFilterCutoff,
                         range: 40...12000,
                         unit: "Hz",
                         icon: "line.diagonal"
                     )
-                    
+
                     ParameterSlider(
                         label: "Resonance",
+                        key: "oceanFilterResonance",
                         value: $appState.state.oceanFilterResonance,
                         range: 0...1,
                         icon: "waveform.badge.magnifyingglass"
                     )
-                    
+
                     Divider().background(Color.white.opacity(0.2))
-                    
+
                     Text("Timing")
                         .font(.subheadline)
                         .foregroundColor(.white.opacity(0.6))
-                    
+
                     DualRangeSlider(
                         label: "Duration",
                         minValue: $appState.state.oceanDurationMin,
@@ -1917,7 +2482,7 @@ struct SliderControlsView: View {
                         icon: "clock",
                         color: .blue
                     )
-                    
+
                     DualRangeSlider(
                         label: "Interval",
                         minValue: $appState.state.oceanIntervalMin,
@@ -1927,13 +2492,13 @@ struct SliderControlsView: View {
                         icon: "timer",
                         color: .blue
                     )
-                    
+
                     Divider().background(Color.white.opacity(0.2))
-                    
+
                     Text("Character")
                         .font(.subheadline)
                         .foregroundColor(.white.opacity(0.6))
-                    
+
                     DualRangeSlider(
                         label: "Foam",
                         minValue: $appState.state.oceanFoamMin,
@@ -1942,7 +2507,7 @@ struct SliderControlsView: View {
                         icon: "bubble.left.and.bubble.right",
                         color: .blue
                     )
-                    
+
                     DualRangeSlider(
                         label: "Depth",
                         minValue: $appState.state.oceanDepthMin,
@@ -1969,13 +2534,98 @@ struct SliderControlsView: View {
 
                     ParameterSlider(
                         label: "Nature Level",
+                        key: "natureLevel",
                         value: $appState.state.natureLevel,
                         range: 0...1,
                         icon: "speaker.wave.2"
                     )
 
                     ParameterSlider(
+                        label: "Earth Bus",
+                        key: "earthLevel",
+                        value: $appState.state.earthLevel,
+                        range: 0...1,
+                        icon: "globe"
+                    )
+
+                    ParameterSlider(
+                        label: "Birds Level",
+                        key: "birdsLevel",
+                        value: $appState.state.birdsLevel,
+                        range: 0...1,
+                        icon: "bird"
+                    )
+
+                    ParameterSlider(
+                        label: "Birds Slice",
+                        key: "birdsSliceDuration",
+                        value: $appState.state.birdsSliceDuration,
+                        range: 2...60,
+                        unit: "s",
+                        icon: "timer"
+                    )
+
+                    ParameterSlider(
+                        label: "Birds Density",
+                        key: "birdsSliceDensity",
+                        value: $appState.state.birdsSliceDensity,
+                        range: 0...1,
+                        icon: "square.grid.3x3"
+                    )
+
+                    ParameterSlider(
+                        label: "Birds 2 Level",
+                        key: "birds2Level",
+                        value: $appState.state.birds2Level,
+                        range: 0...1,
+                        icon: "bird.fill"
+                    )
+
+                    ParameterSlider(
+                        label: "Birds 2 Slice",
+                        key: "birds2SliceDuration",
+                        value: $appState.state.birds2SliceDuration,
+                        range: 2...60,
+                        unit: "s",
+                        icon: "timer"
+                    )
+
+                    ParameterSlider(
+                        label: "Birds 2 Density",
+                        key: "birds2SliceDensity",
+                        value: $appState.state.birds2SliceDensity,
+                        range: 0...1,
+                        icon: "square.grid.3x3"
+                    )
+
+                    ParameterSlider(
+                        label: "Frogs Level",
+                        key: "frogsLevel",
+                        value: $appState.state.frogsLevel,
+                        range: 0...1,
+                        icon: "speaker.wave.1"
+                    )
+
+                    ParameterSlider(
+                        label: "Frogs Slice",
+                        key: "frogsSliceDuration",
+                        value: $appState.state.frogsSliceDuration,
+                        range: 2...60,
+                        unit: "s",
+                        icon: "timer"
+                    )
+
+                    ParameterSlider(
+                        label: "Frogs Density",
+                        key: "frogsSliceDensity",
+                        value: $appState.state.frogsSliceDensity,
+                        range: 0...1,
+                        icon: "square.grid.3x3"
+                    )
+
+                    ParameterSlider(
                         label: "Water Level",
+                        key: "waterLevel",
                         value: $appState.state.waterLevel,
                         range: 0...1,
                         icon: "water.waves"
@@ -1983,34 +2633,151 @@ struct SliderControlsView: View {
 
                     ParameterSlider(
                         label: "Water Intensity",
+                        key: "waterIntensity",
                         value: $appState.state.waterIntensity,
                         range: 0...1,
                         icon: "drop"
                     )
 
                     ParameterSlider(
-                        label: "Drops",
+                        label: "Hard Drops",
+                        key: "waterLayerHardDrops",
+                        value: $appState.state.waterLayerHardDrops,
+                        range: 0...1,
+                        icon: "drop.triangle"
+                    )
+
+                    ParameterSlider(
+                        label: "Hard Drop Rate",
+                        key: "waterHardDropRate",
+                        value: $appState.state.waterHardDropRate,
+                        range: 0...2,
+                        icon: "metronome"
+                    )
+
+                    ParameterSlider(
+                        label: "Hard Drop LPF",
+                        key: "waterHardDropLPF",
+                        value: $appState.state.waterHardDropLPF,
+                        range: 50...16_000,
+                        unit: "Hz",
+                        icon: "line.3.horizontal.decrease",
+                        logarithmic: true
+                    )
+
+                    ParameterSlider(
+                        label: "Water Drops",
+                        key: "waterLayerWaterDrops",
                         value: $appState.state.waterLayerWaterDrops,
                         range: 0...1,
                         icon: "drop.fill"
                     )
 
                     ParameterSlider(
+                        label: "Water Drop Rate",
+                        key: "waterWaterDropRate",
+                        value: $appState.state.waterWaterDropRate,
+                        range: 0...2,
+                        icon: "metronome"
+                    )
+
+                    ParameterSlider(
+                        label: "Water Drop LPF",
+                        key: "waterWaterDropLPF",
+                        value: $appState.state.waterWaterDropLPF,
+                        range: 50...16_000,
+                        unit: "Hz",
+                        icon: "line.3.horizontal.decrease",
+                        logarithmic: true
+                    )
+
+                    ParameterSlider(
+                        label: "Turbulence",
+                        key: "waterLayerTurbulence",
+                        value: $appState.state.waterLayerTurbulence,
+                        range: 0...1,
+                        icon: "tornado"
+                    )
+
+                    ParameterSlider(
                         label: "Bubbles",
+                        key: "waterLayerBubbling",
                         value: $appState.state.waterLayerBubbling,
                         range: 0...1,
                         icon: "bubble.left.and.bubble.right"
                     )
 
                     ParameterSlider(
+                        label: "Bubble Rate",
+                        key: "waterBubblingRate",
+                        value: $appState.state.waterBubblingRate,
+                        range: 0...2,
+                        icon: "metronome"
+                    )
+
+                    ParameterSlider(
+                        label: "Bubble LPF",
+                        key: "waterBubblingLPF",
+                        value: $appState.state.waterBubblingLPF,
+                        range: 50...8_000,
+                        unit: "Hz",
+                        icon: "line.3.horizontal.decrease",
+                        logarithmic: true
+                    )
+
+                    ParameterSlider(
                         label: "Surf",
+                        key: "waterLayerSurf",
                         value: $appState.state.waterLayerSurf,
                         range: 0...1,
                         icon: "water.waves"
                     )
 
                     ParameterSlider(
+                        label: "Surf Foam",
+                        key: "waterSurfFoam",
+                        value: $appState.state.waterSurfFoam,
+                        range: 0...1,
+                        icon: "cloud"
+                    )
+
+                    ParameterSlider(
+                        label: "Foam Bright",
+                        key: "waterSurfFoamBright",
+                        value: $appState.state.waterSurfFoamBright,
+                        range: 0...1,
+                        icon: "sparkle"
+                    )
+
+                    ParameterSlider(
+                        label: "Surf Depth",
+                        key: "waterSurfDepth",
+                        value: $appState.state.waterSurfDepth,
+                        range: 0...1,
+                        icon: "arrow.down"
+                    )
+
+                    ParameterSlider(
+                        label: "Surf Body",
+                        key: "waterSurfBody",
+                        value: $appState.state.waterSurfBody,
+                        range: 150...800,
+                        unit: "Hz",
+                        icon: "waveform"
+                    )
+
+                    ParameterSlider(
+                        label: "Surf Spray",
+                        key: "waterSurfSpray",
+                        value: $appState.state.waterSurfSpray,
+                        range: 2_000...8_000,
+                        unit: "Hz",
+                        icon: "water.waves"
+                    )
+
+                    ParameterSlider(
                         label: "Insects Level",
+                        key: "insectsSharedLevel",
                         value: $appState.state.insectsSharedLevel,
                         range: 0...1,
                         icon: "waveform"
@@ -2018,36 +2785,47 @@ struct SliderControlsView: View {
 
                     ParameterSlider(
                         label: "Insects Density",
+                        key: "insectsDensity",
                         value: $appState.state.insectsDensity,
+                        range: 0...1,
+                        icon: "circle.grid.cross"
+                    )
+
+                    ParameterSlider(
+                        label: "Insects 2 Density",
+                        key: "insects2Density",
+                        value: $appState.state.insects2Density,
                         range: 0...1,
                         icon: "circle.grid.cross"
                     )
                 }
                 } // End FX Tab
-                
+
                 // MARK: - DRUMS TAB
                 if activeTab == .drums {
-                
+
                 // MARK: - Drum Synth Master Section
                 CollapsibleSection(title: "Drum Synth", icon: "metronome", expanded: $expandedSections) {
                     Toggle("Enabled", isOn: $appState.state.drumEnabled)
                         .foregroundColor(.white)
-                    
+
                     ParameterSlider(
                         label: "Level",
+                        key: "drumLevel",
                         value: $appState.state.drumLevel,
                         range: 0...1,
                         icon: "speaker.wave.2"
                     )
-                    
+
                     ParameterSlider(
                         label: "Reverb Send",
+                        key: "drumReverbSend",
                         value: $appState.state.drumReverbSend,
                         range: 0...1,
                         icon: "waveform.path"
                     )
                 }
-                
+
                 // MARK: - Sub Voice Section
                 CollapsibleSection(
                     title: "Sub (Deep Pulse)",
@@ -2057,35 +2835,39 @@ struct SliderControlsView: View {
                     content: {
                         ParameterSlider(
                             label: "Frequency",
+                            key: "drumSubFreq",
                             value: $appState.state.drumSubFreq,
                             range: 30...100,
                             unit: "Hz",
                             icon: "waveform"
                         )
-                        
+
                         ParameterSlider(
                             label: "Decay",
+                            key: "drumSubDecay",
                             value: $appState.state.drumSubDecay,
                             range: 20...15000,
                             unit: "ms",
                             icon: "arrow.down.right",
                             logarithmic: true
                         )
-                        
+
                         ParameterSlider(
                             label: "Level",
+                            key: "drumSubLevel",
                             value: $appState.state.drumSubLevel,
                             range: 0...1,
                             icon: "speaker.wave.2"
                         )
-                        
+
                         ParameterSlider(
                             label: "Harmonics",
+                            key: "drumSubTone",
                             value: $appState.state.drumSubTone,
                             range: 0...1,
                             icon: "waveform.circle"
                         )
-                        
+
                         // Morph controls
                         DrumVoiceMorphView(voice: .sub, voiceColor: .red)
                             .environmentObject(appState)
@@ -2108,7 +2890,7 @@ struct SliderControlsView: View {
                         }
                     }
                 )
-                
+
                 // MARK: - Kick Voice Section
                 CollapsibleSection(
                     title: "Kick (Punch)",
@@ -2118,52 +2900,58 @@ struct SliderControlsView: View {
                     content: {
                         ParameterSlider(
                             label: "Frequency",
+                            key: "drumKickFreq",
                             value: $appState.state.drumKickFreq,
                             range: 40...150,
                             unit: "Hz",
                             icon: "waveform"
                         )
-                        
+
                         ParameterSlider(
                             label: "Pitch Sweep",
+                            key: "drumKickPitchEnv",
                             value: $appState.state.drumKickPitchEnv,
                             range: 0...48,
                             unit: "st",
                             icon: "arrow.up.right"
                         )
-                        
+
                         ParameterSlider(
                             label: "Pitch Decay",
+                            key: "drumKickPitchDecay",
                             value: $appState.state.drumKickPitchDecay,
                             range: 5...1000,
                             unit: "ms",
                             icon: "arrow.down.right",
                             logarithmic: true
                         )
-                        
+
                         ParameterSlider(
                             label: "Amp Decay",
+                            key: "drumKickDecay",
                             value: $appState.state.drumKickDecay,
                             range: 30...15000,
                             unit: "ms",
                             icon: "arrow.down.right",
                             logarithmic: true
                         )
-                        
+
                         ParameterSlider(
                             label: "Level",
+                            key: "drumKickLevel",
                             value: $appState.state.drumKickLevel,
                             range: 0...1,
                             icon: "speaker.wave.2"
                         )
-                        
+
                         ParameterSlider(
                             label: "Click Transient",
+                            key: "drumKickClick",
                             value: $appState.state.drumKickClick,
                             range: 0...1,
                             icon: "hand.tap"
                         )
-                        
+
                         // Morph controls
                         DrumVoiceMorphView(voice: .kick, voiceColor: .orange)
                             .environmentObject(appState)
@@ -2186,7 +2974,7 @@ struct SliderControlsView: View {
                         }
                     }
                 )
-                
+
                 // MARK: - Click Voice Section
                 CollapsibleSection(
                     title: "Click (Data)",
@@ -2196,6 +2984,7 @@ struct SliderControlsView: View {
                     content: {
                         ParameterSlider(
                             label: "Decay",
+                            key: "drumClickDecay",
                             value: $appState.state.drumClickDecay,
                             range: 1...15000,
                             unit: "ms",
@@ -2205,33 +2994,37 @@ struct SliderControlsView: View {
 
                         ParameterSlider(
                             label: "HP Filter",
+                            key: "drumClickFilter",
                             value: $appState.state.drumClickFilter,
                             range: 500...15000,
                             unit: "Hz",
                             icon: "line.diagonal"
                         )
-                        
+
                         ParameterSlider(
                             label: "Tone (Impulse/Noise)",
+                            key: "drumClickTone",
                             value: $appState.state.drumClickTone,
                             range: 0...1,
                             icon: "waveform.circle"
                         )
-                        
+
                         ParameterSlider(
                             label: "Resonance",
+                            key: "drumClickResonance",
                             value: $appState.state.drumClickResonance,
                             range: 0...1,
                             icon: "waveform"
                         )
-                        
+
                         ParameterSlider(
                             label: "Level",
+                            key: "drumClickLevel",
                             value: $appState.state.drumClickLevel,
                             range: 0...1,
                             icon: "speaker.wave.2"
                         )
-                        
+
                         // Morph controls
                         DrumVoiceMorphView(voice: .click, voiceColor: .yellow)
                             .environmentObject(appState)
@@ -2254,7 +3047,7 @@ struct SliderControlsView: View {
                         }
                     }
                 )
-                
+
                 // MARK: - Beep Hi Voice Section
                 CollapsibleSection(
                     title: "Beep Hi (Ping)",
@@ -2264,44 +3057,49 @@ struct SliderControlsView: View {
                     content: {
                         ParameterSlider(
                             label: "Frequency",
+                            key: "drumBeepHiFreq",
                             value: $appState.state.drumBeepHiFreq,
                             range: 2000...12000,
                             unit: "Hz",
                             icon: "waveform"
                         )
-                        
+
                         ParameterSlider(
                             label: "Attack",
+                            key: "drumBeepHiAttack",
                             value: $appState.state.drumBeepHiAttack,
                             range: 0...5000,
                             unit: "ms",
                             icon: "arrow.up.right",
                             logarithmic: true
                         )
-                        
+
                         ParameterSlider(
                             label: "Decay",
+                            key: "drumBeepHiDecay",
                             value: $appState.state.drumBeepHiDecay,
                             range: 10...15000,
                             unit: "ms",
                             icon: "arrow.down.right",
                             logarithmic: true
                         )
-                        
+
                         ParameterSlider(
                             label: "FM Tone",
+                            key: "drumBeepHiTone",
                             value: $appState.state.drumBeepHiTone,
                             range: 0...1,
                             icon: "waveform.circle"
                         )
-                        
+
                         ParameterSlider(
                             label: "Level",
+                            key: "drumBeepHiLevel",
                             value: $appState.state.drumBeepHiLevel,
                             range: 0...1,
                             icon: "speaker.wave.2"
                         )
-                        
+
                         // Morph controls
                         DrumVoiceMorphView(voice: .beepHi, voiceColor: .green)
                             .environmentObject(appState)
@@ -2324,7 +3122,7 @@ struct SliderControlsView: View {
                         }
                     }
                 )
-                
+
                 // MARK: - Beep Lo Voice Section
                 CollapsibleSection(
                     title: "Beep Lo (Blip)",
@@ -2334,44 +3132,49 @@ struct SliderControlsView: View {
                     content: {
                         ParameterSlider(
                             label: "Frequency",
+                            key: "drumBeepLoFreq",
                             value: $appState.state.drumBeepLoFreq,
                             range: 150...2000,
                             unit: "Hz",
                             icon: "waveform"
                         )
-                        
+
                         ParameterSlider(
                             label: "Attack",
+                            key: "drumBeepLoAttack",
                             value: $appState.state.drumBeepLoAttack,
                             range: 0...5000,
                             unit: "ms",
                             icon: "arrow.up.right",
                             logarithmic: true
                         )
-                        
+
                         ParameterSlider(
                             label: "Decay",
+                            key: "drumBeepLoDecay",
                             value: $appState.state.drumBeepLoDecay,
                             range: 10...15000,
                             unit: "ms",
                             icon: "arrow.down.right",
                             logarithmic: true
                         )
-                        
+
                         ParameterSlider(
                             label: "Tone (Sine/Square)",
+                            key: "drumBeepLoTone",
                             value: $appState.state.drumBeepLoTone,
                             range: 0...1,
                             icon: "waveform.circle"
                         )
-                        
+
                         ParameterSlider(
                             label: "Level",
+                            key: "drumBeepLoLevel",
                             value: $appState.state.drumBeepLoLevel,
                             range: 0...1,
                             icon: "speaker.wave.2"
                         )
-                        
+
                         // Morph controls
                         DrumVoiceMorphView(voice: .beepLo, voiceColor: .cyan)
                             .environmentObject(appState)
@@ -2394,7 +3197,7 @@ struct SliderControlsView: View {
                         }
                     }
                 )
-                
+
                 // MARK: - Noise Voice Section
                 CollapsibleSection(
                     title: "Noise (Hi-Hat)",
@@ -2417,47 +3220,52 @@ struct SliderControlsView: View {
                             .pickerStyle(.segmented)
                             .frame(width: 150)
                         }
-                        
+
                         ParameterSlider(
                             label: "Filter Freq",
+                            key: "drumNoiseFilterFreq",
                             value: $appState.state.drumNoiseFilterFreq,
                             range: 500...15000,
                             unit: "Hz",
                             icon: "line.diagonal"
                         )
-                        
+
                         ParameterSlider(
                             label: "Filter Q",
+                            key: "drumNoiseFilterQ",
                             value: $appState.state.drumNoiseFilterQ,
                             range: 0.5...15,
                             icon: "waveform"
                         )
-                        
+
                         ParameterSlider(
                             label: "Attack",
+                            key: "drumNoiseAttack",
                             value: $appState.state.drumNoiseAttack,
                             range: 0...5000,
                             unit: "ms",
                             icon: "arrow.up.right",
                             logarithmic: true
                         )
-                        
+
                         ParameterSlider(
                             label: "Decay",
+                            key: "drumNoiseDecay",
                             value: $appState.state.drumNoiseDecay,
                             range: 5...15000,
                             unit: "ms",
                             icon: "arrow.down.right",
                             logarithmic: true
                         )
-                        
+
                         ParameterSlider(
                             label: "Level",
+                            key: "drumNoiseLevel",
                             value: $appState.state.drumNoiseLevel,
                             range: 0...1,
                             icon: "speaker.wave.2"
                         )
-                        
+
                         // Morph controls
                         DrumVoiceMorphView(voice: .noise, voiceColor: .purple)
                             .environmentObject(appState)
@@ -2480,20 +3288,21 @@ struct SliderControlsView: View {
                         }
                     }
                 )
-                
+
                 // MARK: - Sequencer Section (Random + Euclidean Basic Controls)
                 CollapsibleSection(title: "Sequencer", icon: "metronome.fill", expanded: $expandedSections) {
                     // Random triggers
                     Toggle("Random Triggers", isOn: $appState.state.drumRandomEnabled)
                         .foregroundColor(.white)
-                    
+
                     ParameterSlider(
                         label: "Density",
+                        key: "drumRandomDensity",
                         value: $appState.state.drumRandomDensity,
                         range: 0...1,
                         icon: "square.grid.3x3.fill"
                     )
-                    
+
                     DualRangeSlider(
                         label: "Interval",
                         minValue: $appState.state.drumRandomMinInterval,
@@ -2503,84 +3312,93 @@ struct SliderControlsView: View {
                         icon: "timer",
                         color: .orange
                     )
-                    
+
                     Divider().background(Color.white.opacity(0.2))
-                    
+
                     Text("Voice Probabilities")
                         .font(.subheadline)
                         .foregroundColor(.white.opacity(0.6))
-                    
+
                     ParameterSlider(
                         label: "Sub",
+                        key: "drumRandomSubProb",
                         value: $appState.state.drumRandomSubProb,
                         range: 0...1,
                         icon: "waveform.path.badge.minus"
                     )
-                    
+
                     ParameterSlider(
                         label: "Kick",
+                        key: "drumRandomKickProb",
                         value: $appState.state.drumRandomKickProb,
                         range: 0...1,
                         icon: "circle.fill"
                     )
-                    
+
                     ParameterSlider(
                         label: "Click",
+                        key: "drumRandomClickProb",
                         value: $appState.state.drumRandomClickProb,
                         range: 0...1,
                         icon: "hand.tap"
                     )
-                    
+
                     ParameterSlider(
                         label: "Beep Hi",
+                        key: "drumRandomBeepHiProb",
                         value: $appState.state.drumRandomBeepHiProb,
                         range: 0...1,
                         icon: "bell"
                     )
-                    
+
                     ParameterSlider(
                         label: "Beep Lo",
+                        key: "drumRandomBeepLoProb",
                         value: $appState.state.drumRandomBeepLoProb,
                         range: 0...1,
                         icon: "bell.fill"
                     )
-                    
+
                     ParameterSlider(
                         label: "Noise",
+                        key: "drumRandomNoiseProb",
                         value: $appState.state.drumRandomNoiseProb,
                         range: 0...1,
                         icon: "waveform.circle"
                     )
-                    
+
                     Divider().background(Color.white.opacity(0.2))
-                    
+
                     // Euclidean Basic Controls
                     Toggle("Euclidean Mode", isOn: $appState.state.drumEuclidMasterEnabled)
                         .foregroundColor(.white)
-                    
+
                     ParameterSlider(
                         label: "Base BPM",
+                        key: "drumEuclidBaseBPM",
                         value: $appState.state.drumEuclidBaseBPM,
                         range: 40...240,
                         unit: "BPM",
                         icon: "metronome"
                     )
-                    
+
                     ParameterSlider(
                         label: "Tempo",
+                        key: "drumEuclidTempo",
                         value: $appState.state.drumEuclidTempo,
                         range: 0.25...4,
                         icon: "speedometer"
                     )
-                    
+
                     ParameterSlider(
                         label: "Swing",
+                        key: "drumEuclidSwing",
                         value: $appState.state.drumEuclidSwing,
                         range: 0...100,
                         unit: "%",
                         icon: "arrow.left.and.right"
                     )
-                    
+
                     HStack {
                         Image(systemName: "divide")
                             .foregroundColor(.white.opacity(0.5))
@@ -2598,7 +3416,7 @@ struct SliderControlsView: View {
                         .frame(width: 200)
                     }
                 }
-                
+
                 // MARK: - Euclidean Lane 1 Section
                 CollapsibleSection(title: "Euclidean Lane 1", icon: "circle.dotted", titleColor: .red, expanded: $expandedSections) {
                     DrumEuclidLaneView(
@@ -2619,7 +3437,7 @@ struct SliderControlsView: View {
                         velocityMax: $appState.state.drumEuclid1VelocityMax
                     )
                 }
-                
+
                 // MARK: - Euclidean Lane 2 Section
                 CollapsibleSection(title: "Euclidean Lane 2", icon: "circle.dotted", titleColor: .orange, expanded: $expandedSections) {
                     DrumEuclidLaneView(
@@ -2640,7 +3458,7 @@ struct SliderControlsView: View {
                         velocityMax: $appState.state.drumEuclid2VelocityMax
                     )
                 }
-                
+
                 // MARK: - Euclidean Lane 3 Section
                 CollapsibleSection(title: "Euclidean Lane 3", icon: "circle.dotted", titleColor: .green, expanded: $expandedSections) {
                     DrumEuclidLaneView(
@@ -2661,7 +3479,7 @@ struct SliderControlsView: View {
                         velocityMax: $appState.state.drumEuclid3VelocityMax
                     )
                 }
-                
+
                 // MARK: - Euclidean Lane 4 Section
                 CollapsibleSection(title: "Euclidean Lane 4", icon: "circle.dotted", titleColor: .purple, expanded: $expandedSections) {
                     DrumEuclidLaneView(
@@ -2682,9 +3500,9 @@ struct SliderControlsView: View {
                         velocityMax: $appState.state.drumEuclid4VelocityMax
                     )
                 }
-                
+
                 } // End Drums Tab
-                
+
                 // MARK: - GLOBAL TAB (continued)
                 if activeTab == .global {
                 // MARK: - Seed & Timing Section
@@ -2703,22 +3521,24 @@ struct SliderControlsView: View {
                         .pickerStyle(.segmented)
                         .frame(width: 140)
                     }
-                    
+
                     ParameterSlider(
                         label: "Random Walk Speed",
+                        key: "randomWalkSpeed",
                         value: $appState.state.randomWalkSpeed,
                         range: 0.1...5,
                         icon: "figure.walk"
                     )
                 }
-                
+
                 // MARK: - Circle of Fifths Drift Section
                 CollapsibleSection(title: "CoF Drift", icon: "circle.circle", expanded: $expandedSections) {
                     Toggle("Enabled", isOn: $appState.state.cofDriftEnabled)
                         .foregroundColor(.white)
-                    
+
                     ParameterSlider(
                         label: "Rate",
+                        key: "cofDriftRate",
                         value: Binding(
                             get: { Double(appState.state.cofDriftRate) },
                             set: { appState.state.cofDriftRate = Int($0) }
@@ -2727,7 +3547,7 @@ struct SliderControlsView: View {
                         unit: " phrases",
                         icon: "speedometer"
                     )
-                    
+
                     HStack {
                         Image(systemName: "arrow.triangle.2.circlepath")
                             .foregroundColor(.white.opacity(0.5))
@@ -2743,9 +3563,10 @@ struct SliderControlsView: View {
                         .pickerStyle(.segmented)
                         .frame(width: 160)
                     }
-                    
+
                     ParameterSlider(
                         label: "Range",
+                        key: "cofDriftRange",
                         value: Binding(
                             get: { Double(appState.state.cofDriftRange) },
                             set: { appState.state.cofDriftRange = Int($0) }
@@ -2756,7 +3577,7 @@ struct SliderControlsView: View {
                     )
                 }
                 } // End Global Tab (continued)
-                
+
                 // MARK: - Debug Info Section (visible on all tabs)
                 CollapsibleSection(title: "Debug Info", icon: "ladybug", expanded: $expandedSections) {
                     DebugInfoView()
@@ -2776,7 +3597,7 @@ struct CollapsibleSection<Content: View, HeaderAction: View>: View {
     @Binding var expanded: Set<String>
     @ViewBuilder let content: Content
     var headerAction: (() -> HeaderAction)?
-    
+
     init(title: String, icon: String, titleColor: Color = .white, expanded: Binding<Set<String>>, @ViewBuilder content: () -> Content, headerAction: (() -> HeaderAction)? = nil) {
         self.title = title
         self.icon = icon
@@ -2785,11 +3606,11 @@ struct CollapsibleSection<Content: View, HeaderAction: View>: View {
         self.content = content()
         self.headerAction = headerAction
     }
-    
+
     var isExpanded: Bool {
         expanded.contains(title)
     }
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Header
@@ -2807,19 +3628,19 @@ struct CollapsibleSection<Content: View, HeaderAction: View>: View {
                         Image(systemName: icon)
                             .foregroundColor(titleColor == .white ? .cyan : titleColor)
                             .frame(width: 24)
-                        
+
                         Text(title)
                             .font(.headline)
                             .foregroundColor(titleColor)
-                        
+
                         Spacer()
                     }
                 }
-                
+
                 if let action = headerAction {
                     action()
                 }
-                
+
                 Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                     .foregroundColor(.white.opacity(0.5))
                     .padding(.trailing, 4)
@@ -2827,7 +3648,7 @@ struct CollapsibleSection<Content: View, HeaderAction: View>: View {
             .padding()
             .background(Color.white.opacity(0.08))
             .cornerRadius(isExpanded ? 12 : 12, corners: isExpanded ? [.topLeft, .topRight] : .allCorners)
-            
+
             // Content
             if isExpanded {
                 VStack(spacing: 16) {
@@ -2894,32 +3715,32 @@ struct ADSRVisualization: View {
     let sustain: Double
     var hold: Double = 0.5  // Default for main synth (doesn't have configurable hold)
     let release: Double
-    
+
     var body: some View {
         GeometryReader { geometry in
             let width = geometry.size.width
             let height = geometry.size.height
-            
+
             // Normalize times for display
             let totalTime = attack + decay + hold + release
             let aX = CGFloat(attack / totalTime) * width
             let dX = CGFloat(decay / totalTime) * width
             let sX: CGFloat = hold / CGFloat(totalTime) * width
             let rX = CGFloat(release / totalTime) * width
-            
+
             let sustainY = height * CGFloat(1 - sustain)
-            
+
             Path { path in
                 // Attack
                 path.move(to: CGPoint(x: 0, y: height))
                 path.addLine(to: CGPoint(x: aX, y: 0))
-                
+
                 // Decay
                 path.addLine(to: CGPoint(x: aX + dX, y: sustainY))
-                
+
                 // Sustain
                 path.addLine(to: CGPoint(x: aX + dX + sX, y: sustainY))
-                
+
                 // Release
                 path.addLine(to: CGPoint(x: aX + dX + sX + rX, y: height))
             }
@@ -2931,7 +3752,7 @@ struct ADSRVisualization: View {
                 ),
                 lineWidth: 2
             )
-            
+
             // Fill
             Path { path in
                 path.move(to: CGPoint(x: 0, y: height))
@@ -2957,7 +3778,7 @@ struct ADSRVisualization: View {
 // MARK: - Voice Mask Control
 struct VoiceMaskControl: View {
     @Binding var voiceMask: Int
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -2968,7 +3789,7 @@ struct VoiceMaskControl: View {
                     .foregroundColor(.white.opacity(0.8))
                 Spacer()
             }
-            
+
             HStack(spacing: 8) {
                 ForEach(0..<6, id: \.self) { i in
                     let isEnabled = (voiceMask & (1 << i)) != 0
@@ -3003,9 +3824,9 @@ struct EuclideanLaneView: View {
     @Binding var level: Double
     @Binding var probability: Double
     @Binding var source: String
-    
+
     @State private var isExpanded = false
-    
+
     // Lane colors matching webapp (orange, green, blue, pink)
     private var laneColor: Color {
         switch laneNumber {
@@ -3016,7 +3837,7 @@ struct EuclideanLaneView: View {
         default: return .cyan
         }
     }
-    
+
     // Full preset list matching webapp with all categories
     private let presets: [(category: String, items: [(value: String, label: String)])] = [
         ("Polyrhythmic / Complex", [
@@ -3073,7 +3894,7 @@ struct EuclideanLaneView: View {
             ("custom", "Custom")
         ])
     ]
-    
+
     private let sources = [
         ("lead", "Lead"),
         ("lead2", "Lead 2"),
@@ -3085,7 +3906,7 @@ struct EuclideanLaneView: View {
         ("synth5", "Synth 5"),
         ("synth6", "Synth 6")
     ]
-    
+
     // Convert MIDI note to name
     private func midiToNoteName(_ midi: Int) -> String {
         let noteNames = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
@@ -3093,7 +3914,7 @@ struct EuclideanLaneView: View {
         let note = midi % 12
         return "\(noteNames[note])\(octave)"
     }
-    
+
     var body: some View {
         VStack(spacing: 8) {
             // Lane header with colored toggle button
@@ -3108,32 +3929,32 @@ struct EuclideanLaneView: View {
                             .foregroundColor(enabled ? .white : Color.white.opacity(0.5))
                     }
                 }
-                
+
                 Text("Lane \(laneNumber)")
                     .font(.subheadline)
                     .fontWeight(enabled ? .bold : .regular)
                     .foregroundColor(enabled ? laneColor : Color.white.opacity(0.5))
-                
+
                 Spacer()
-                
+
                 // Note range display
                 if enabled {
                     Text("\(midiToNoteName(noteMin))–\(midiToNoteName(noteMax))")
                         .font(.caption)
                         .foregroundColor(Color.white.opacity(0.6))
                 }
-                
+
                 Button(action: { isExpanded.toggle() }) {
                     Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                         .foregroundColor(.white.opacity(0.5))
                 }
             }
-            
+
             if isExpanded && enabled {
                 // Pattern visualization with lane color
                 EuclideanPatternView(steps: steps, hits: hits, rotation: rotation, color: laneColor)
                     .frame(height: 30)
-                
+
                 // Preset picker with sections
                 Menu {
                     ForEach(presets, id: \.category) { category in
@@ -3165,20 +3986,20 @@ struct EuclideanLaneView: View {
                     .background(laneColor.opacity(0.15))
                     .cornerRadius(6)
                 }
-                
+
                 // Note Range sliders
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Note Range")
                         .font(.caption)
                         .foregroundColor(.white.opacity(0.6))
-                    
+
                     // Visual range bar
                     GeometryReader { geo in
                         ZStack(alignment: .leading) {
                             // Background
                             RoundedRectangle(cornerRadius: 4)
                                 .fill(Color.white.opacity(0.1))
-                            
+
                             // Active range
                             let minPct = CGFloat(noteMin - 36) / 60.0
                             let maxPct = CGFloat(noteMax - 36) / 60.0
@@ -3193,7 +4014,7 @@ struct EuclideanLaneView: View {
                         }
                     }
                     .frame(height: 16)
-                    
+
                     HStack(spacing: 12) {
                         VStack(alignment: .leading) {
                             Text("Low: \(midiToNoteName(noteMin))")
@@ -3217,7 +4038,7 @@ struct EuclideanLaneView: View {
                         }
                     }
                 }
-                
+
                 // Custom Steps/Hits (only when custom preset)
                 if preset == "custom" {
                     HStack(spacing: 16) {
@@ -3228,7 +4049,7 @@ struct EuclideanLaneView: View {
                             Stepper("\(steps)", value: $steps, in: 2...32)
                                 .labelsHidden()
                         }
-                        
+
                         VStack {
                             Text("Hits")
                                 .font(.caption2)
@@ -3238,7 +4059,7 @@ struct EuclideanLaneView: View {
                         }
                     }
                 }
-                
+
                 // Level and Rotation row
                 HStack(spacing: 12) {
                     // Level slider
@@ -3249,7 +4070,7 @@ struct EuclideanLaneView: View {
                         Slider(value: $level, in: 0...1)
                             .tint(laneColor)
                     }
-                    
+
                     // Rotation with arrow buttons
                     VStack {
                         Text("Rotate: \(rotation)")
@@ -3281,7 +4102,7 @@ struct EuclideanLaneView: View {
                         }
                     }
                 }
-                
+
                 // Probability and Source row
                 HStack(spacing: 12) {
                     VStack(alignment: .leading) {
@@ -3291,7 +4112,7 @@ struct EuclideanLaneView: View {
                         Slider(value: $probability, in: 0...1)
                             .tint(laneColor)
                     }
-                    
+
                     // Source picker
                     VStack(alignment: .leading) {
                         Text("Source")
@@ -3329,12 +4150,12 @@ struct EuclideanPatternView: View {
     var pattern: [Bool] {
         Self.generatePattern(steps: steps, hits: hits, rotation: rotation)
     }
-    
+
     var body: some View {
         GeometryReader { geometry in
             let availableWidth = geometry.size.width - CGFloat(steps - 1) * 2
             let stepSize = min(availableWidth / CGFloat(steps), steps > 16 ? 8 : 12)
-            
+
             HStack(spacing: 2) {
                 Spacer()
                 ForEach(0..<steps, id: \.self) { i in
@@ -3347,19 +4168,19 @@ struct EuclideanPatternView: View {
             }
         }
     }
-    
+
     static func generatePattern(steps: Int, hits: Int, rotation: Int) -> [Bool] {
         guard hits > 0 && hits <= steps else {
             return Array(repeating: false, count: steps)
         }
-        
+
         var pattern = [Bool]()
         let remainder = [Int](repeating: 1, count: hits)
         var counts = [Int](repeating: 0, count: steps - hits)
-        
+
         var divisor = steps - hits
         var remainderCount = hits
-        
+
         while remainderCount > 1 {
             let temp = min(divisor, remainderCount)
             for i in 0..<temp {
@@ -3370,7 +4191,7 @@ struct EuclideanPatternView: View {
             divisor = remainderCount - temp
             remainderCount = temp
         }
-        
+
         // Build pattern
         for i in 0..<steps {
             if i < hits {
@@ -3382,19 +4203,19 @@ struct EuclideanPatternView: View {
                 }
             }
         }
-        
+
         // Pad if needed
         while pattern.count < steps {
             pattern.append(false)
         }
         pattern = Array(pattern.prefix(steps))
-        
+
         // Apply rotation
         if rotation > 0 && rotation < steps {
             let rot = rotation % steps
             pattern = Array(pattern[rot...]) + Array(pattern[..<rot])
         }
-        
+
         return pattern
     }
 }
@@ -3402,7 +4223,7 @@ struct EuclideanPatternView: View {
 // MARK: - Debug Info View
 struct DebugInfoView: View {
     @EnvironmentObject var appState: AppState
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             DebugRow(label: "Seed Window", value: appState.state.seedWindow)
@@ -3418,7 +4239,7 @@ struct DebugInfoView: View {
         }
         .font(.system(.caption, design: .monospaced))
     }
-    
+
     func noteNameFromMidi(_ note: Int) -> String {
         let names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
         return names[note % 12]
@@ -3428,7 +4249,7 @@ struct DebugInfoView: View {
 struct DebugRow: View {
     let label: String
     let value: String
-    
+
     var body: some View {
         HStack {
             Text(label)
@@ -3453,23 +4274,23 @@ struct DualRangeSlider: View {
     var unit: String = ""
     var icon: String = "slider.horizontal.3"
     var color: Color = .green
-    
+
     /// Track if we're in dual (range) mode or single mode
     /// Single mode = min and max are the same value
     private var isDualMode: Bool {
         abs(maxValue - minValue) > 0.001
     }
-    
+
     var body: some View {
         VStack(spacing: 8) {
             HStack {
                 Image(systemName: icon)
                     .foregroundColor(color.opacity(0.6))
                     .frame(width: 20)
-                
+
                 Text(label)
                     .foregroundColor(.white.opacity(0.8))
-                
+
                 if isDualMode {
                     Text("RANGE")
                         .font(.system(size: 9, weight: .bold))
@@ -3479,14 +4300,14 @@ struct DualRangeSlider: View {
                         .background(color.opacity(0.2))
                         .cornerRadius(4)
                 }
-                
+
                 Spacer()
-                
+
                 Text(formattedValue)
                     .font(.system(.body, design: .monospaced))
                     .foregroundColor(.white.opacity(0.6))
             }
-            
+
             if isDualMode {
                 // Dual mode: show min/max sliders
                 HStack {
@@ -3509,7 +4330,7 @@ struct DualRangeSlider: View {
                         .foregroundColor(color.opacity(0.8))
                         .frame(width: 44)
                 }
-                
+
                 HStack {
                     Text("Max")
                         .font(.caption)
@@ -3530,17 +4351,17 @@ struct DualRangeSlider: View {
                         .foregroundColor(color)
                         .frame(width: 44)
                 }
-                
+
                 // Range visualization
                 GeometryReader { geo in
                     let rangeSpan = range.upperBound - range.lowerBound
                     let minPos = (minValue - range.lowerBound) / rangeSpan
                     let maxPos = (maxValue - range.lowerBound) / rangeSpan
-                    
+
                     ZStack(alignment: .leading) {
                         RoundedRectangle(cornerRadius: 2)
                             .fill(Color.white.opacity(0.1))
-                        
+
                         RoundedRectangle(cornerRadius: 2)
                             .fill(LinearGradient(
                                 colors: [color.opacity(0.4), color.opacity(0.7)],
@@ -3554,7 +4375,7 @@ struct DualRangeSlider: View {
                 }
                 .frame(height: 6)
                 .padding(.top, 2)
-                
+
                 // Hint text
                 Text("Double-tap for single value")
                     .font(.system(size: 9))
@@ -3572,7 +4393,7 @@ struct DualRangeSlider: View {
                     in: range
                 )
                 .tint(color)
-                
+
                 // Hint text
                 Text("Double-tap for range mode")
                     .font(.system(size: 9))
@@ -3586,7 +4407,7 @@ struct DualRangeSlider: View {
             }
         }
     }
-    
+
     private func toggleMode() {
         if isDualMode {
             // Switch to single mode: set both to midpoint
@@ -3601,7 +4422,7 @@ struct DualRangeSlider: View {
             maxValue = Swift.min(range.upperBound, maxValue + spread)
         }
     }
-    
+
     private var formattedValue: String {
         if isDualMode {
             if range.upperBound >= 100 {
@@ -3617,7 +4438,7 @@ struct DualRangeSlider: View {
             }
         }
     }
-    
+
     private func formatSingleValue(_ val: Double) -> String {
         if range.upperBound >= 100 {
             return String(format: "%.0f", val)
@@ -3644,18 +4465,18 @@ struct DrumEuclidLaneView: View {
     @Binding var probability: Double
     @Binding var velocityMin: Double
     @Binding var velocityMax: Double
-    
+
     // Lane colors matching webapp: red, orange, green, purple
     private var laneColor: Color {
         let colors: [Color] = [
             Color(red: 0.937, green: 0.267, blue: 0.267), // #ef4444 red
-            Color(red: 0.976, green: 0.451, blue: 0.086), // #f97316 orange  
+            Color(red: 0.976, green: 0.451, blue: 0.086), // #f97316 orange
             Color(red: 0.133, green: 0.773, blue: 0.369), // #22c55e green
             Color(red: 0.545, green: 0.361, blue: 0.965)  // #8b5cf6 purple
         ]
         return colors[(laneNumber - 1) % colors.count]
     }
-    
+
     // Voice icons matching webapp
     private let voiceData: [(id: String, icon: String, name: String)] = [
         ("sub", "◉", "Sub (Deep Pulse)"),
@@ -3665,7 +4486,7 @@ struct DrumEuclidLaneView: View {
         ("beepLo", "▽", "Beep Lo (Blip)"),
         ("noise", "≋", "Noise (Hi-Hat)")
     ]
-    
+
     // Full preset list with category groupings matching webapp
     private let presetGroups: [(name: String, presets: [(id: String, label: String, steps: Int, hits: Int, rotation: Int)])] = [
         ("Polyrhythmic / Complex", [
@@ -3709,7 +4530,7 @@ struct DrumEuclidLaneView: View {
             ("drumming", "Drumming (8/6)", 8, 6, 1)
         ])
     ]
-    
+
     // Get preset data by id
     private func getPresetData(_ id: String) -> (steps: Int, hits: Int, rotation: Int)? {
         for group in presetGroups {
@@ -3719,7 +4540,7 @@ struct DrumEuclidLaneView: View {
         }
         return nil
     }
-    
+
     // Calculate pattern values
     private var patternSteps: Int {
         preset == "custom" ? steps : (getPresetData(preset)?.steps ?? 16)
@@ -3731,12 +4552,12 @@ struct DrumEuclidLaneView: View {
         let baseRot = preset == "custom" ? 0 : (getPresetData(preset)?.rotation ?? 0)
         return (baseRot + rotation) % max(1, patternSteps)
     }
-    
+
     // Generate Euclidean pattern
     private var pattern: [Bool] {
         EuclideanPatternView.generatePattern(steps: patternSteps, hits: patternHits, rotation: patternRotation)
     }
-    
+
     // Active voice string for header
     private var activeVoicesString: String {
         var result = ""
@@ -3748,7 +4569,7 @@ struct DrumEuclidLaneView: View {
         if targetNoise { result += "≋" }
         return result
     }
-    
+
     // Check if velocity is in dual range mode
     private var isVelocityDual: Bool { velocityMin != velocityMax }
 
@@ -4008,7 +4829,7 @@ struct DrumEuclidLaneView: View {
         )
         .opacity(enabled ? 1 : 0.6)
     }
-    
+
     // Helper to get binding for voice toggles
     private func voiceBinding(for id: String) -> Binding<Bool> {
         switch id {
@@ -4027,7 +4848,7 @@ struct DrumEuclidLaneView: View {
 struct VoiceToggle: View {
     let label: String
     @Binding var isOn: Bool
-    
+
     var body: some View {
         Button(action: { isOn.toggle() }) {
             Text(label)
@@ -4045,6 +4866,8 @@ struct VoiceToggle: View {
 // MARK: - Delay Send Pair
 struct DelaySendPairControl: View {
     let label: String
+    let delayAKey: String
+    let delayBKey: String
     @Binding var delayASend: Double
     @Binding var delayBSend: Double
 
@@ -4057,6 +4880,7 @@ struct DelaySendPairControl: View {
 
             ParameterSlider(
                 label: "\(label) A",
+                key: delayAKey,
                 value: $delayASend,
                 range: 0...1,
                 icon: "a.circle"
@@ -4064,6 +4888,7 @@ struct DelaySendPairControl: View {
 
             ParameterSlider(
                 label: "\(label) B",
+                key: delayBKey,
                 value: $delayBSend,
                 range: 0...1,
                 icon: "b.circle"
@@ -4081,12 +4906,12 @@ struct ParameterSlider: View {
     var unit: String = ""
     var icon: String = "slider.horizontal.3"
     var logarithmic: Bool = false  // Use exponential curve for fine control at low end
-    
+
     @EnvironmentObject var appState: AppState
-    
+
     // Logarithmic curve constant (matches web LOG_CURVE = 2.5)
     private let logCurve: Double = 2.5
-    
+
     /// Convert actual value to slider position (0-1) with logarithmic scaling
     private func valueToSlider(_ val: Double) -> Double {
         if !logarithmic { return val }
@@ -4094,7 +4919,7 @@ struct ParameterSlider: View {
         let normalized = (val - minVal) / (range.upperBound - minVal)
         return pow(max(0, normalized), 1.0 / logCurve)
     }
-    
+
     /// Convert slider position (0-1) to actual value with logarithmic scaling
     private func sliderToValue(_ pos: Double) -> Double {
         if !logarithmic { return pos }
@@ -4102,32 +4927,32 @@ struct ParameterSlider: View {
         let curved = pow(pos, logCurve)
         return minVal + curved * (range.upperBound - minVal)
     }
-    
+
     /// Check if this slider is in dual mode
     private var isDualMode: Bool {
         appState.dualRanges[paramKey] != nil
     }
-    
+
     /// Get current dual range (if active)
     private var dualRange: DualRange? {
         appState.dualRanges[paramKey]
     }
-    
+
     /// Get current animated walk value
     private var walkValue: Double {
         appState.randomWalkValues[paramKey] ?? value
     }
-    
+
     var body: some View {
         VStack(spacing: 8) {
             HStack {
                 Image(systemName: icon)
                     .foregroundColor(.white.opacity(0.5))
                     .frame(width: 20)
-                
+
                 Text(label)
                     .foregroundColor(.white.opacity(0.8))
-                
+
                 if isDualMode {
                     Text("RANGE")
                         .font(.system(size: 9, weight: .bold))
@@ -4137,14 +4962,14 @@ struct ParameterSlider: View {
                         .background(Color.orange.opacity(0.2))
                         .cornerRadius(4)
                 }
-                
+
                 Spacer()
-                
+
                 Text(formattedValue)
                     .font(.system(.body, design: .monospaced))
                     .foregroundColor(.white.opacity(0.6))
             }
-            
+
             if isDualMode, let dualRange = dualRange {
                 // Dual slider mode - shows min/max range with animated walk indicator
                 VStack(spacing: 4) {
@@ -4196,18 +5021,18 @@ struct ParameterSlider: View {
                             .foregroundColor(.orange)
                             .frame(width: 40)
                     }
-                    
+
                     // Visual indicator of current walk position within range
                     GeometryReader { geo in
                         let rangeWidth = dualRange.max - dualRange.min
                         let normalizedPos = rangeWidth > 0.001 ? (walkValue - dualRange.min) / rangeWidth : 0.5
                         let clampedPos = Swift.max(0, Swift.min(1, normalizedPos))
-                        
+
                         ZStack(alignment: .leading) {
                             // Background track
                             RoundedRectangle(cornerRadius: 2)
                                 .fill(Color.white.opacity(0.1))
-                            
+
                             // Gradient showing range
                             RoundedRectangle(cornerRadius: 2)
                                 .fill(LinearGradient(
@@ -4215,7 +5040,7 @@ struct ParameterSlider: View {
                                     startPoint: .leading,
                                     endPoint: .trailing
                                 ))
-                            
+
                             // Walk position indicator
                             Circle()
                                 .fill(Color.white)
@@ -4227,7 +5052,7 @@ struct ParameterSlider: View {
                     }
                     .frame(height: 8)
                     .padding(.top, 4)
-                    
+
                     // Walk speed indicator
                     HStack {
                         Text("Walk: \(String(format: "%.1fx", appState.state.randomWalkSpeed))")
@@ -4275,7 +5100,7 @@ struct ParameterSlider: View {
             }
         }
     }
-    
+
     private var formattedValue: String {
         if isDualMode, let dualRange = dualRange {
             return String(format: "%.2f~%.2f%@", dualRange.min, dualRange.max, unit)
@@ -4312,7 +5137,7 @@ extension ParameterSlider {
         self.icon = icon
         self.logarithmic = false
     }
-    
+
     init(label: String, value: Binding<Double>, range: ClosedRange<Double>, unit: String = "", icon: String = "slider.horizontal.3", logarithmic: Bool) {
         self.label = label
         self.paramKey = label.lowercased().replacingOccurrences(of: " ", with: "")
@@ -4326,6 +5151,19 @@ extension ParameterSlider {
 
 // MARK: - Integer binding for sliders
 extension ParameterSlider {
+    init(label: String, key: String, value: Binding<Int>, range: ClosedRange<Int>, unit: String = "", icon: String = "slider.horizontal.3") {
+        self.label = label
+        self.paramKey = key
+        self._value = Binding(
+            get: { Double(value.wrappedValue) },
+            set: { value.wrappedValue = Int($0) }
+        )
+        self.range = Double(range.lowerBound)...Double(range.upperBound)
+        self.unit = unit
+        self.icon = icon
+        self.logarithmic = false
+    }
+
     init(label: String, value: Binding<Int>, range: ClosedRange<Int>, unit: String = "", icon: String = "slider.horizontal.3") {
         self.label = label
         self.paramKey = label.lowercased().replacingOccurrences(of: " ", with: "")
@@ -4351,10 +5189,10 @@ struct FilterResponseView: View {
     let modSpeed: Double
     var liveFrequency: Double? = nil
     var isRunning: Bool = false
-    
+
     private let minFreq: Double = 40
     private let maxFreq: Double = 8000
-    
+
     /// Convert frequency to X position (log scale)
     private func freqToX(_ freq: Double, width: CGFloat) -> CGFloat {
         let logMin = log(minFreq)
@@ -4362,60 +5200,60 @@ struct FilterResponseView: View {
         let logFreq = log(max(minFreq, min(maxFreq, freq)))
         return CGFloat((logFreq - logMin) / (logMax - logMin)) * width
     }
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Filter Response (Mod Range)")
                 .font(.caption)
                 .foregroundColor(.white.opacity(0.6))
-            
+
             GeometryReader { geo in
                 let width = geo.size.width
                 let height = geo.size.height
                 let minCutoffX = freqToX(cutoffMin, width: width)
                 let maxCutoffX = freqToX(cutoffMax, width: width)
                 let liveX = liveFrequency.map { freqToX($0, width: width) }
-                
+
                 // Resonance peak height
                 let resPeak = min(resonance * 15, 20)
                 // Q affects slope sharpness
                 let qFactor = min(q, 12)
-                
+
                 let baseY: CGFloat = height * 0.3  // Top of response (0dB)
                 let floorY: CGFloat = height * 0.85  // Bottom (attenuated)
-                
+
                 ZStack {
                     // Background
                     RoundedRectangle(cornerRadius: 8)
                         .fill(Color.black.opacity(0.3))
-                    
+
                     // Grid line
                     Path { path in
                         path.move(to: CGPoint(x: 0, y: height * 0.5))
                         path.addLine(to: CGPoint(x: width, y: height * 0.5))
                     }
                     .stroke(Color.white.opacity(0.1), lineWidth: 0.5)
-                    
+
                     // Mod range indicator (shaded area)
                     Rectangle()
                         .fill(Color.blue.opacity(0.15))
                         .frame(width: max(2, maxCutoffX - minCutoffX))
                         .offset(x: minCutoffX - width/2 + (maxCutoffX - minCutoffX)/2)
-                    
+
                     // Min cutoff line
                     Path { path in
                         path.move(to: CGPoint(x: minCutoffX, y: 0))
                         path.addLine(to: CGPoint(x: minCutoffX, y: height))
                     }
                     .stroke(Color.blue.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
-                    
+
                     // Max cutoff line
                     Path { path in
                         path.move(to: CGPoint(x: maxCutoffX, y: 0))
                         path.addLine(to: CGPoint(x: maxCutoffX, y: height))
                     }
                     .stroke(Color.orange.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
-                    
+
                     // Live frequency indicator (green line)
                     if isRunning, let liveX = liveX {
                         Path { path in
@@ -4423,7 +5261,7 @@ struct FilterResponseView: View {
                             path.addLine(to: CGPoint(x: liveX, y: height))
                         }
                         .stroke(Color.green, style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
-                        
+
                         // Live frequency text
                         Text("\(Int(liveFrequency ?? 0)) Hz")
                             .font(.system(size: 12, weight: .bold))
@@ -4431,19 +5269,19 @@ struct FilterResponseView: View {
                             .shadow(color: .green.opacity(0.5), radius: 4)
                             .position(x: width/2, y: 12)
                     }
-                    
+
                     // Filter curve at min cutoff (faded)
                     filterCurvePath(cutoffX: minCutoffX, width: width, baseY: baseY, floorY: floorY, resPeak: resPeak, qFactor: qFactor)
                         .stroke(Color.blue.opacity(0.5), lineWidth: 1.5)
-                    
+
                     // Filter curve at max cutoff
                     filterCurvePath(cutoffX: maxCutoffX, width: width, baseY: baseY, floorY: floorY, resPeak: resPeak, qFactor: qFactor)
                         .stroke(Color.orange.opacity(0.9), lineWidth: 2)
-                    
+
                     // Fill under max curve
                     filterCurvePath(cutoffX: maxCutoffX, width: width, baseY: baseY, floorY: floorY, resPeak: resPeak, qFactor: qFactor, closed: true)
                         .fill(Color.orange.opacity(0.1))
-                    
+
                     // Frequency labels
                     HStack {
                         Text("40Hz")
@@ -4460,13 +5298,13 @@ struct FilterResponseView: View {
                     }
                     .padding(.horizontal, 4)
                     .offset(y: height/2 - 8)
-                    
+
                     // Q indicator
                     Text("Q:\(String(format: "%.1f", q))")
                         .font(.system(size: 8))
                         .foregroundColor(.blue.opacity(0.6))
                         .position(x: width - 20, y: 10)
-                    
+
                     // Mod speed indicator
                     Text("~\(String(format: "%.1f", modSpeed)) phrases")
                         .font(.system(size: 8))
@@ -4478,14 +5316,14 @@ struct FilterResponseView: View {
             .cornerRadius(8)
         }
     }
-    
+
     /// Generate filter curve path based on filter type
     private func filterCurvePath(cutoffX: CGFloat, width: CGFloat, baseY: CGFloat, floorY: CGFloat, resPeak: CGFloat, qFactor: CGFloat, closed: Bool = false) -> Path {
         Path { path in
             let dropWidth = max(15, 35 - qFactor * 1.5)
             let riseWidth = max(15, 35 - qFactor * 1.5)
             let slopeSharpness = min(5 + qFactor * 1.5, 25)
-            
+
             switch filterType {
             case "lowpass":
                 path.move(to: CGPoint(x: 0, y: baseY))
@@ -4499,7 +5337,7 @@ struct FilterResponseView: View {
                     control: CGPoint(x: cutoffX + slopeSharpness * 0.5, y: baseY + 5)
                 )
                 path.addLine(to: CGPoint(x: width, y: floorY))
-                
+
             case "highpass":
                 path.move(to: CGPoint(x: 0, y: floorY))
                 path.addLine(to: CGPoint(x: max(0, cutoffX - riseWidth), y: floorY - 5))
@@ -4512,7 +5350,7 @@ struct FilterResponseView: View {
                     control: CGPoint(x: cutoffX + 5, y: baseY)
                 )
                 path.addLine(to: CGPoint(x: width, y: baseY))
-                
+
             case "bandpass":
                 let bpWidth = max(20, 50 - qFactor * 3)
                 path.move(to: CGPoint(x: 0, y: floorY))
@@ -4526,7 +5364,7 @@ struct FilterResponseView: View {
                     control: CGPoint(x: cutoffX + bpWidth * 0.4, y: baseY + 8)
                 )
                 path.addLine(to: CGPoint(x: width, y: floorY))
-                
+
             case "notch":
                 let notchWidth = max(15, 40 - qFactor * 2)
                 path.move(to: CGPoint(x: 0, y: baseY))
@@ -4540,12 +5378,12 @@ struct FilterResponseView: View {
                     control: CGPoint(x: cutoffX + notchWidth * 0.3, y: baseY)
                 )
                 path.addLine(to: CGPoint(x: width, y: baseY))
-                
+
             default:
                 path.move(to: CGPoint(x: 0, y: baseY))
                 path.addLine(to: CGPoint(x: width, y: baseY))
             }
-            
+
             if closed {
                 path.addLine(to: CGPoint(x: width, y: floorY + 10))
                 path.addLine(to: CGPoint(x: 0, y: floorY + 10))
@@ -4560,7 +5398,7 @@ struct FilterResponseView: View {
 struct TimbreRangeView: View {
     let timbreMin: Double
     let timbreMax: Double
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
@@ -4572,7 +5410,7 @@ struct TimbreRangeView: View {
                     .font(.caption)
                     .foregroundColor(.cyan.opacity(0.8))
             }
-            
+
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     // Background gradient showing full range
@@ -4589,7 +5427,7 @@ struct TimbreRangeView: View {
                             )
                         )
                         .opacity(0.3)
-                    
+
                     // Active range highlight
                     RoundedRectangle(cornerRadius: 4)
                         .fill(
@@ -4604,13 +5442,13 @@ struct TimbreRangeView: View {
                         )
                         .frame(width: geo.size.width * CGFloat(timbreMax - timbreMin))
                         .offset(x: geo.size.width * CGFloat(timbreMin))
-                    
+
                     // Min/Max markers
                     Rectangle()
                         .fill(Color.white.opacity(0.8))
                         .frame(width: 2, height: 16)
                         .offset(x: geo.size.width * CGFloat(timbreMin) - 1)
-                    
+
                     Rectangle()
                         .fill(Color.white.opacity(0.8))
                         .frame(width: 2, height: 16)
@@ -4618,7 +5456,7 @@ struct TimbreRangeView: View {
                 }
             }
             .frame(height: 16)
-            
+
             // Labels
             HStack {
                 Text("Rhodes")
@@ -4640,12 +5478,12 @@ struct DrumVoiceMorphView: View {
     @EnvironmentObject var appState: AppState
     let voice: DrumVoiceType
     let voiceColor: Color
-    
+
     // Get preset names for this voice
     private var presetNames: [String] {
         getPresetNames(voice: voice)
     }
-    
+
     // Get bindings based on voice type
     private var presetABinding: Binding<String> {
         switch voice {
@@ -4657,7 +5495,7 @@ struct DrumVoiceMorphView: View {
         case .noise: return $appState.state.drumNoisePresetA
         }
     }
-    
+
     private var presetBBinding: Binding<String> {
         switch voice {
         case .sub: return $appState.state.drumSubPresetB
@@ -4668,7 +5506,7 @@ struct DrumVoiceMorphView: View {
         case .noise: return $appState.state.drumNoisePresetB
         }
     }
-    
+
     private var morphBinding: Binding<Double> {
         switch voice {
         case .sub: return $appState.state.drumSubMorph
@@ -4679,7 +5517,7 @@ struct DrumVoiceMorphView: View {
         case .noise: return $appState.state.drumNoiseMorph
         }
     }
-    
+
     private var presetAKey: String {
         switch voice {
         case .sub: return "drumSubPresetA"
@@ -4690,7 +5528,7 @@ struct DrumVoiceMorphView: View {
         case .noise: return "drumNoisePresetA"
         }
     }
-    
+
     private var presetBKey: String {
         switch voice {
         case .sub: return "drumSubPresetB"
@@ -4701,7 +5539,7 @@ struct DrumVoiceMorphView: View {
         case .noise: return "drumNoisePresetB"
         }
     }
-    
+
     var body: some View {
         VStack(spacing: 8) {
             // Preset A/B selectors in a row
@@ -4711,7 +5549,7 @@ struct DrumVoiceMorphView: View {
                     Text("Preset A")
                         .font(.caption2)
                         .foregroundColor(.white.opacity(0.5))
-                    
+
                     Picker("A", selection: Binding(
                         get: { presetABinding.wrappedValue },
                         set: { newValue in
@@ -4729,13 +5567,13 @@ struct DrumVoiceMorphView: View {
                     .background(voiceColor.opacity(0.1))
                     .cornerRadius(6)
                 }
-                
+
                 // Preset B
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Preset B")
                         .font(.caption2)
                         .foregroundColor(.white.opacity(0.5))
-                    
+
                     Picker("B", selection: Binding(
                         get: { presetBBinding.wrappedValue },
                         set: { newValue in
@@ -4754,13 +5592,13 @@ struct DrumVoiceMorphView: View {
                     .cornerRadius(6)
                 }
             }
-            
+
             // Morph slider
             HStack {
                 Text("A")
                     .font(.caption)
                     .foregroundColor(.white.opacity(0.5))
-                
+
                 Slider(value: Binding(
                     get: { morphBinding.wrappedValue },
                     set: { newValue in
@@ -4769,12 +5607,12 @@ struct DrumVoiceMorphView: View {
                     }
                 ), in: 0...1)
                 .tint(voiceColor)
-                
+
                 Text("B")
                     .font(.caption)
                     .foregroundColor(.white.opacity(0.5))
             }
-            
+
             // Morph percentage
             Text("\(Int(morphBinding.wrappedValue * 100))%")
                 .font(.caption2)

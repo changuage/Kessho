@@ -35,12 +35,18 @@
   --k-radius-control: 6px;
   --k-shadow-glass: inset 0 1px 0 rgba(255, 255, 255, 0.035), 0 10px 28px rgba(0, 0, 0, 0.18);
   --k-shadow-glow: 0 0 14px color-mix(in srgb, var(--page-accent, var(--k-icy)) 26%, transparent);
+
+  /* ── Unified background hierarchy ── */
+  --k-bg-card: rgba(12, 18, 30, 0.85);
+  --k-bg-panel: rgba(12, 18, 30, 0.75);
+  --k-bg-tab: rgba(12, 18, 30, 0.6);
+  --k-bg-inset: rgba(0, 0, 0, 0.2);
+
   --fx-card-bg:
     linear-gradient(180deg,
-      color-mix(in srgb, var(--engine-accent, var(--page-accent, var(--k-icy))) 5%, rgba(255, 255, 255, 0.045)),
-      rgba(255, 255, 255, 0.018) 40%,
-      transparent 100%),
-    var(--bg-surface);
+      color-mix(in srgb, var(--engine-accent, var(--page-accent, var(--k-icy))) 4%, transparent),
+      transparent 40%),
+    var(--k-bg-card);
   --fx-card-head-bg: transparent;
   --fx-card-head-hover-bg: rgba(255, 255, 255, 0.03);
   --fx-card-head-border: 1px solid color-mix(in srgb, var(--engine-accent, var(--page-accent, var(--k-icy))) 24%, rgba(255, 255, 255, 0.05));
@@ -301,26 +307,35 @@
 
 #root .fx-card,
 #root .reverb-section-card,
-#root .drum-root .drums-source-preset-bar,
-#root .drum-root .drums-pattern-preset-bar,
-#root .drum-root .master-strip,
-#root .drum-root .seq-transport,
 #root .drum-root .voice-card,
-#root .synth-root .synth-source-preset-bar,
 #root .synth-root .synth-card,
-#root .delay-root .delay-source-preset-bar,
 #root .delay-root .delay-card,
-#root .earth-root .earth-kit-preset-bar,
 #root .earth-root .earth-card,
 #root .earth-root .mixer-section,
 #root .earth-root .earth-scene-container,
 #root .granular-root .granular-section-card,
 #root .granular-root .granular-voice-card,
-#root .dynamics-root .dynamics-section-card {
+#root .dynamics-root .dynamics-section-card,
+#root .global-root .global-card,
+#root .global-root .harmony-card {
   background: var(--fx-card-bg);
   border: 1px solid var(--border-subtle);
   border-radius: var(--k-radius-card);
   box-shadow: var(--k-shadow-glass);
+  backdrop-filter: blur(10px);
+}
+
+/* Toolbars & preset bars: flat card bg, no gradient */
+#root .drum-root .drums-source-preset-bar,
+#root .drum-root .drums-pattern-preset-bar,
+#root .drum-root .master-strip,
+#root .synth-root .synth-source-preset-bar,
+#root .delay-root .delay-source-preset-bar,
+#root .earth-root .earth-kit-preset-bar {
+  background: var(--k-bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--k-radius-card);
+  box-shadow: none;
   backdrop-filter: blur(10px);
 }
 
@@ -358,7 +373,9 @@
 #root .reverb-root .reverb-section-card,
 #root .granular-root .granular-section-card,
 #root .granular-root .granular-voice-card,
-#root .dynamics-root .dynamics-section-card {
+#root .dynamics-root .dynamics-section-card,
+#root .global-root .global-card,
+#root .global-root .harmony-card {
   border-color: color-mix(in srgb, var(--engine-accent, var(--page-accent)) 24%, rgba(255, 255, 255, 0.08));
 }
 
@@ -477,12 +494,8 @@
 #root .global-root .global-page-header,
 #root .granular-global-bar,
 #root .dynamics-global-bar,
-#root .routing-root .routing-page-header,
-#root .drum-root .drums-source-preset-bar,
-#root .synth-root .synth-source-preset-bar,
-#root .delay-root .delay-source-preset-bar,
-#root .earth-root .earth-kit-preset-bar {
-  background: var(--fx-card-head-bg);
+#root .routing-root .routing-page-header {
+  background: var(--k-bg-card);
   border-color: var(--page-accent-border);
   box-shadow: none;
 }
@@ -564,7 +577,7 @@
   min-height: 48px;
   padding: 8px 12px;
   margin-bottom: 8px;
-  background: var(--fx-card-head-bg);
+  background: var(--k-bg-card);
   border: 1px solid var(--page-accent-border);
   border-radius: var(--k-radius-card);
   box-shadow: none;

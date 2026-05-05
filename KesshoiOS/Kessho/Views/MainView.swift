@@ -13,7 +13,7 @@ struct MainView: View {
     private var usesWideLayout: Bool {
         horizontalSizeClass == .regular
     }
-    
+
     var body: some View {
         ZStack {
             // Background gradient
@@ -26,7 +26,7 @@ struct MainView: View {
                 endPoint: .bottom
             )
             .ignoresSafeArea()
-            
+
             VStack(spacing: 0) {
                 // Header
                 HStack {
@@ -34,16 +34,16 @@ struct MainView: View {
                         .font(.title2)
                         .fontWeight(.light)
                         .foregroundColor(.white)
-                    
+
                     Spacer()
-                    
+
                     Button {
                         showingRecording = true
                     } label: {
                         RecordingHeaderButton()
                     }
                     .padding(.horizontal, 8)
-                    
+
                     Button {
                         showingPresets = true
                     } label: {
@@ -51,7 +51,7 @@ struct MainView: View {
                             .foregroundColor(.white.opacity(0.8))
                     }
                     .padding(.horizontal, 8)
-                    
+
                     Button {
                         showingSettings = true
                     } label: {
@@ -60,7 +60,7 @@ struct MainView: View {
                     }
                 }
                 .padding()
-                
+
                 // Main content area
                 if usesWideLayout {
                     wideContent
@@ -94,8 +94,11 @@ struct MainView: View {
             CircleOfFifthsView()
                 .tag(1)
 
-            SliderControlsView()
+            NativePageDeckView()
                 .tag(2)
+
+            SliderControlsView()
+                .tag(3)
         }
         .kesshoCompactPagerStyle()
     }
@@ -127,24 +130,44 @@ struct MainView: View {
                 .background(Color.white.opacity(0.12))
                 .padding(.vertical, 12)
 
-            SliderControlsView()
+            NativePageDeckView()
                 .frame(minWidth: 390, idealWidth: 460, maxWidth: 540, maxHeight: .infinity)
         }
         .padding(.horizontal, 16)
     }
 }
 
+/// Compact host for the same top-level pages as the web and Mac surfaces.
+struct NativePageDeckView: View {
+    @State private var activePage: KesshoMacPage = .global
+
+    var body: some View {
+        VStack(spacing: 8) {
+            KesshoMacTabBar(activePage: $activePage)
+                .padding(.horizontal, 10)
+                .padding(.top, 8)
+
+            ScrollView {
+                KesshoMacPageHost(page: activePage)
+                    .padding(.top, 4)
+            }
+            .scrollIndicators(.hidden)
+        }
+        .background(Color.black.opacity(0.08))
+    }
+}
+
 /// Recording button for header - shows state visually
 struct RecordingHeaderButton: View {
     @EnvironmentObject var appState: AppState
-    
+
     var body: some View {
         ZStack {
             // Background circle
             Circle()
                 .fill(backgroundColor)
                 .frame(width: 28, height: 28)
-            
+
             // Recording indicator
             if appState.recordingState == .recording {
                 Circle()
@@ -164,7 +187,7 @@ struct RecordingHeaderButton: View {
                 .opacity(appState.recordingState == .recording ? 0.8 : 0)
         )
     }
-    
+
     private var backgroundColor: Color {
         switch appState.recordingState {
         case .recording: return Color.red.opacity(0.3)
@@ -172,7 +195,7 @@ struct RecordingHeaderButton: View {
         case .idle: return Color.clear
         }
     }
-    
+
     private var iconColor: Color {
         switch appState.recordingState {
         case .recording: return .red
@@ -185,7 +208,7 @@ struct RecordingHeaderButton: View {
 /// Transport bar with play/stop and info
 struct TransportBar: View {
     @EnvironmentObject var appState: AppState
-    
+
     var body: some View {
         HStack(spacing: 16) {
             // Play/Stop button
@@ -196,16 +219,16 @@ struct TransportBar: View {
                     Circle()
                         .fill(appState.isPlaying ? Color.red.opacity(0.3) : Color.green.opacity(0.3))
                         .frame(width: 56, height: 56)
-                    
+
                     Image(systemName: appState.isPlaying ? "stop.fill" : "play.fill")
                         .font(.title2)
                         .foregroundColor(.white)
                 }
             }
-            
+
             // Recording button
             RecordingButton()
-            
+
             // Auto-Morph toggle button
             Button {
                 appState.toggleAutoMorph()
@@ -214,14 +237,16 @@ struct TransportBar: View {
                     Circle()
                         .fill(appState.autoMorphEnabled ? Color.purple.opacity(0.3) : Color.gray.opacity(0.2))
                         .frame(width: 40, height: 40)
-                    
+
                     Image(systemName: appState.autoMorphEnabled ? "arrow.triangle.2.circlepath.circle.fill" : "arrow.triangle.2.circlepath.circle")
                         .font(.body)
                         .foregroundColor(appState.autoMorphEnabled ? .purple : .white.opacity(0.6))
                 }
             }
             .help("Auto-Morph: Automatically cycle through presets")
-            
+
+            PlaybackTimerButton()
+
             VStack(alignment: .leading, spacing: 4) {
                 // Current scale/chord info or recording duration
                 if appState.recordingState == .recording {
@@ -233,12 +258,16 @@ struct TransportBar: View {
                         .font(.subheadline)
                         .foregroundColor(.white.opacity(0.9))
                 }
-                
+
                 // Seed info or morph status
                 if appState.autoMorphEnabled {
                     Text("Auto-Morph: \(Int(appState.morphPosition))%")
                         .font(.caption)
                         .foregroundColor(.purple.opacity(0.8))
+                } else if appState.playbackTimerEnabled {
+                    Text("Timer: \(appState.formattedPlaybackTimerRemaining)")
+                        .font(.caption)
+                        .foregroundColor(.orange.opacity(0.85))
                 } else if appState.recordingState == .armed {
                     Text("Recording Armed")
                         .font(.caption)
@@ -249,15 +278,15 @@ struct TransportBar: View {
                         .foregroundColor(.white.opacity(0.5))
                 }
             }
-            
+
             Spacer()
-            
+
             // Master volume
             VStack {
                 Image(systemName: "speaker.wave.2")
                     .foregroundColor(.white.opacity(0.6))
                     .font(.caption)
-                
+
                 Slider(value: $appState.state.masterVolume, in: 0...1)
                     .frame(width: 70)
                     .tint(.white.opacity(0.6))
@@ -266,6 +295,109 @@ struct TransportBar: View {
         .padding()
         .background(Color.black.opacity(0.3))
         .cornerRadius(16)
+    }
+}
+
+struct PlaybackTimerButton: View {
+    @EnvironmentObject private var appState: AppState
+    @State private var showTimerPanel = false
+    private let durationOptions = [5, 15, 30, 60, 90, 120]
+
+    var body: some View {
+        Button {
+            if appState.playbackTimerEnabled {
+                showTimerPanel = true
+            } else {
+                appState.setPlaybackTimerEnabled(true)
+            }
+        } label: {
+            ZStack {
+                Circle()
+                    .fill(appState.playbackTimerEnabled ? Color.orange.opacity(0.3) : Color.gray.opacity(0.2))
+                    .frame(width: 40, height: 40)
+
+                Image(systemName: appState.playbackTimerEnabled ? "timer.circle.fill" : "timer")
+                    .font(.body)
+                    .foregroundColor(appState.playbackTimerEnabled ? .orange : .white.opacity(0.6))
+            }
+        }
+        .help(appState.playbackTimerEnabled ? "Playback timer settings" : "Enable playback timer")
+        .simultaneousGesture(
+            LongPressGesture(minimumDuration: 0.35)
+                .onEnded { _ in showTimerPanel = true }
+        )
+        .sheet(isPresented: $showTimerPanel) {
+            timerPanel
+        }
+    }
+
+    private var timerPanel: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Text("Playback Timer")
+                    .font(.headline)
+                Spacer()
+                Button {
+                    showTimerPanel = false
+                } label: {
+                    Image(systemName: "xmark")
+                }
+                .buttonStyle(.plain)
+            }
+
+            Toggle(isOn: Binding(
+                get: { appState.playbackTimerEnabled },
+                set: { appState.setPlaybackTimerEnabled($0) }
+            )) {
+                Text(appState.playbackTimerEnabled ? appState.formattedPlaybackTimerRemaining : "\(appState.playbackTimerMinutes)m")
+                    .font(.system(.body, design: .monospaced))
+            }
+            .tint(.orange)
+
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
+                ForEach(durationOptions, id: \.self) { minutes in
+                    Button {
+                        appState.setPlaybackTimerMinutes(minutes)
+                    } label: {
+                        Text("\(minutes)m")
+                            .font(.system(size: 13, weight: .bold, design: .monospaced))
+                            .frame(maxWidth: .infinity, minHeight: 34)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(appState.playbackTimerMinutes == minutes ? .orange : .gray)
+                }
+            }
+
+            Stepper(value: Binding(
+                get: { appState.playbackTimerMinutes },
+                set: { appState.setPlaybackTimerMinutes($0) }
+            ), in: 1...480) {
+                Text("Custom \(appState.playbackTimerMinutes)m")
+                    .font(.subheadline)
+            }
+
+            HStack {
+                Button {
+                    appState.resetPlaybackTimer()
+                } label: {
+                    Label("Reset", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.bordered)
+                .disabled(!appState.playbackTimerEnabled)
+
+                Spacer()
+
+                Button {
+                    appState.setPlaybackTimerEnabled(false)
+                } label: {
+                    Label("Off", systemImage: "power")
+                }
+                .buttonStyle(.bordered)
+                .tint(.red)
+            }
+        }
+        .padding(18)
+        .frame(minWidth: 280)
     }
 }
 
@@ -293,7 +425,7 @@ extension View {
 struct RecordingButton: View {
     @EnvironmentObject var appState: AppState
     @State private var showRecordingPanel = false
-    
+
     var body: some View {
         Button {
             // Tap to toggle recording
@@ -303,7 +435,7 @@ struct RecordingButton: View {
                 Circle()
                     .fill(recordingColor)
                     .frame(width: 40, height: 40)
-                
+
                 if appState.recordingState == .recording {
                     // Pulsing red circle for recording
                     Circle()
@@ -330,7 +462,7 @@ struct RecordingButton: View {
             RecordingView()
         }
     }
-    
+
     private var recordingColor: Color {
         switch appState.recordingState {
         case .idle:
@@ -358,7 +490,7 @@ struct SettingsView: View {
             }
         )
     }
-    
+
     var body: some View {
         NavigationView {
             Form {
@@ -369,13 +501,13 @@ struct SettingsView: View {
                         Text("Day").tag("day")
                     }
                 }
-                
+
                 Section("Scale") {
                     Picker("Scale Mode", selection: $appState.state.scaleMode) {
                         Text("Auto").tag("auto")
                         Text("Manual").tag("manual")
                     }
-                    
+
                     if appState.state.scaleMode == "manual" {
                         Picker("Scale", selection: $appState.state.manualScale) {
                             ForEach(SCALE_FAMILIES, id: \.name) { scale in
@@ -384,20 +516,20 @@ struct SettingsView: View {
                         }
                     }
                 }
-                
+
                 Section("Circle of Fifths") {
                     Toggle("Enable Drift", isOn: $appState.state.cofDriftEnabled)
-                    
+
                     if appState.state.cofDriftEnabled {
                         Stepper("Drift Rate: \(appState.state.cofDriftRate) phrases",
                                value: $appState.state.cofDriftRate, in: 1...8)
-                        
+
                         Picker("Direction", selection: $appState.state.cofDriftDirection) {
                             Text("Clockwise").tag("cw")
                             Text("Counter-Clockwise").tag("ccw")
                             Text("Random").tag("random")
                         }
-                        
+
                         Stepper("Range: \(appState.state.cofDriftRange) steps",
                                value: $appState.state.cofDriftRange, in: 1...6)
                     }

@@ -34,9 +34,9 @@ private func writeReverbStereoFrame(
 /// Quality modes for reverb processing
 enum ReverbQuality: String, CaseIterable {
     case ultra = "Ultra"        // 32 stages - best sound, most battery
-    case balanced = "Balanced"  // 16 stages - good sound, moderate battery  
+    case balanced = "Balanced"  // 16 stages - good sound, moderate battery
     case lite = "Lite"          // AVAudioUnitReverb - decent sound, best battery
-    
+
     var description: String {
         switch self {
         case .ultra: return "Ultra (32 stages)"
@@ -46,7 +46,7 @@ enum ReverbQuality: String, CaseIterable {
     }
 }
 
-/// Reverb presets used by the current iOS prototype.
+/// Reverb presets used by the native port.
 enum ReverbType: String, CaseIterable {
     // Legacy web-aligned presets
     case plate = "plate"
@@ -66,7 +66,7 @@ enum ReverbType: String, CaseIterable {
     case mediumHall2 = "mediumHall2"
     case mediumHall3 = "mediumHall3"
     case largeHall2 = "largeHall2"
-    
+
     /// Display name for UI
     var displayName: String {
         switch self {
@@ -87,7 +87,7 @@ enum ReverbType: String, CaseIterable {
         case .largeHall2: return "Large Hall 2 ⚠️"
         }
     }
-    
+
     /// Whether this preset maps to a legacy web-aligned name.
     var isWebAppCompatible: Bool {
         switch self {
@@ -97,7 +97,7 @@ enum ReverbType: String, CaseIterable {
             return false
         }
     }
-    
+
     /// Legacy web-aligned presets only
     static var webAppPresets: [ReverbType] {
         [.plate, .hall, .cathedral, .darkHall]
@@ -108,7 +108,7 @@ enum ReverbType: String, CaseIterable {
         [.smallRoom, .mediumRoom, .largeRoom, .mediumHall, .largeHall,
          .mediumChamber, .largeChamber, .largeRoom2, .mediumHall2, .mediumHall3, .largeHall2]
     }
-    
+
     /// Mapping to AVAudioUnitReverb factory preset for Eco mode
     var appleFactoryPreset: AVAudioUnitReverbPreset {
         switch self {
@@ -129,8 +129,8 @@ enum ReverbType: String, CaseIterable {
         case .largeHall2: return .largeHall2
         }
     }
-    
-    /// FDN parameters for the custom algorithmic modes used in the prototype.
+
+    /// FDN parameters for the custom algorithmic modes used in the native port.
     var fdnParams: (decay: Float, damping: Float, diffusion: Float, size: Float, modDepth: Float)? {
         switch self {
         case .plate:     return (0.88, 0.25, 0.8, 0.8, 0.25)
@@ -142,7 +142,7 @@ enum ReverbType: String, CaseIterable {
             return approximateFDNParams
         }
     }
-    
+
     /// Approximate FDN parameters for iOS-only presets
     private var approximateFDNParams: (decay: Float, damping: Float, diffusion: Float, size: Float, modDepth: Float) {
         switch self {
@@ -163,7 +163,8 @@ enum ReverbType: String, CaseIterable {
 }
 
 /// Premium Ambient FDN Reverb for iOS
-/// Algorithmic reverb for the native prototype, loosely aligned with the web flavor.
+/// Algorithmic reverb for the native port, aligned with the web flavor where
+/// the platform-specific DSP shape allows.
 /// Features: 8-point FDN, 6 diffuser chains, interpolated delays, smooth modulation
 class ReverbProcessor {
     private let stateLock = NSLock()
@@ -243,10 +244,25 @@ class ReverbProcessor {
     private var damping: Float = 0.5
     private var shimmer: Float = 0
     private var shimmerPitch: Float = 12
+    private var slowModRate: Float = 0.05
+    private var slowModDepth: Float = 0
+    private var reverse: Float = 0
+    private var reverseLength: Float = 2
+    private var chorusRate: Float = 0.5
+    private var chorusDepth: Float = 12
+    private var modCharacter: String = "hybrid"
+    private var dampLow: Float = 0.1
+    private var dampHigh: Float = 0.3
+    private var crossoverFreq: Float = 800
+    private var inputTone: Float = 0
     private var shimmerFeedback: Float = 0
     private var warp: Float = 0
     private var crossFeed: Float = 0
+    private var earlyReflections: Float = 0.3
+    private var airAbsorption: Float = 0.2
+    private var saturationMode: String = "clean"
     private var transientSmooth: Float = 0
+    private var erLpFreq: Float = 2500
     private var shimmerStateL: Float = 0
     private var shimmerStateR: Float = 0
     private var smoothStateL: Float = 0
@@ -467,11 +483,42 @@ class ReverbProcessor {
         nativeDSP.setExtendedParameters(
             shimmer: shimmer,
             shimmerPitch: shimmerPitch,
+            slowModRate: slowModRate,
+            slowModDepth: slowModDepth,
+            reverse: reverse,
+            reverseLength: reverseLength,
+            chorusRate: chorusRate,
+            chorusDepth: chorusDepth,
+            modCharacter: nativeModCharacterValue,
+            dampLow: dampLow,
+            dampHigh: dampHigh,
+            crossoverFreq: crossoverFreq,
+            inputTone: inputTone,
             shimmerFeedback: shimmerFeedback,
             warp: warp,
             crossFeed: crossFeed,
-            transientSmooth: transientSmooth
+            earlyReflections: earlyReflections,
+            airAbsorption: airAbsorption,
+            saturationMode: nativeSaturationModeValue,
+            transientSmooth: transientSmooth,
+            erLpFreq: erLpFreq
         )
+    }
+
+    private var nativeModCharacterValue: Int32 {
+        switch modCharacter {
+        case "sine": return 0
+        case "drift": return 1
+        default: return 2
+        }
+    }
+
+    private var nativeSaturationModeValue: Int32 {
+        switch saturationMode {
+        case "tape": return 1
+        case "tube": return 2
+        default: return 0
+        }
     }
 
     private func resetNativeDSPUnlocked() {
@@ -600,7 +647,7 @@ class ReverbProcessor {
         clearInputBuffer()
         clearDSPState()
     }
-    
+
     /// Apply a reverb preset
     func applyPreset(_ preset: FDNPresetConfig) {
         let p = preset.params
@@ -613,7 +660,7 @@ class ReverbProcessor {
         updateDiffuserFeedback()
         applyNativeDSPSettingsUnlocked()
     }
-    
+
     /// Process a stereo sample through the FDN reverb
     func processStereo(left: Float, right: Float) -> (Float, Float) {
         // Block-rate modulation update (optimization from web app)
@@ -626,13 +673,13 @@ class ReverbProcessor {
             }
         }
         blockCounter = (blockCounter + 1) % blockSize
-        
+
         // Write to predelay and read with interpolation
         predelayL.write(left)
         predelayR.write(right)
         let delayedL = predelaySamples > 1 ? predelayL.readInterpolated(predelaySamples) : left
         let delayedR = predelaySamples > 1 ? predelayR.readInterpolated(predelaySamples) : right
-        
+
         // Pre-diffusion (6 stages for Ultra, 3 for Balanced)
         var diffInL = delayedL
         var diffInR = delayedR
@@ -640,7 +687,7 @@ class ReverbProcessor {
             diffInL = preDiffuserL.process(delayedL, stages: quality == .ultra ? 6 : 3)
             diffInR = preDiffuserR.process(delayedR, stages: quality == .ultra ? 6 : 3)
         }
-        
+
         // Read from FDN delays with smooth modulation (using pre-allocated array)
         for i in 0..<8 {
             let modIndex = i / 2
@@ -649,37 +696,37 @@ class ReverbProcessor {
             let modOffset = modAmount * fdnDelayTimes[i] * 0.015
             let effectiveSize = max(0.5, size)
             let delayTime = max(1, fdnDelayTimes[i] * effectiveSize + modOffset)
-            
+
             // Use interpolated read for smooth modulation (no zipper noise)
             reads8[i] = fdnDelays[i].readInterpolated(delayTime)
         }
-        
+
         // Apply damping (one-pole lowpass per delay, using pre-allocated array)
         for i in 0..<8 {
             damped8[i] = fdnDampers[i].process(reads8[i], coeff: damping)
         }
-        
+
         // Mid-diffusion (only in Ultra mode for CPU savings)
         if quality == .ultra {
             let midL = (damped8[0] + damped8[2] + damped8[4] + damped8[6]) * 0.5
             let midR = (damped8[1] + damped8[3] + damped8[5] + damped8[7]) * 0.5
             let diffMidL = midDiffuserL.process(midL)
             let diffMidR = midDiffuserR.process(midR)
-            
+
             // Inject mid-diffused signal back
             damped8[0] = damped8[0] * 0.7 + diffMidL * 0.3
             damped8[2] = damped8[2] * 0.7 + diffMidL * 0.3
             damped8[1] = damped8[1] * 0.7 + diffMidR * 0.3
             damped8[3] = damped8[3] * 0.7 + diffMidR * 0.3
         }
-        
+
         // Hadamard mixing (orthogonal 8x8 matrix, in-place to avoid allocation)
         mixFDNInPlace(damped8, out: &mixed8)
-        
+
         // Calculate feedback gain with decay curve
         // Uses web formula: baseDecay + (1 - baseDecay) * userDecay * 0.9 (precomputed in self.decay)
         let feedbackGain = min(0.998, decay)
-        
+
         // Soft clip and write back to delays
         let inputGain: Float = 0.18
         for i in 0..<8 {
@@ -687,19 +734,19 @@ class ReverbProcessor {
             let value = softClip(mixed8[i] * feedbackGain + inject)
             fdnDelays[i].write(value)
         }
-        
+
         // Collect stereo output with decorrelated taps
         var rawL = (reads8[0] * 1.0 + reads8[2] * 0.9 + reads8[4] * 0.8 + reads8[6] * 0.7 +
                     reads8[1] * 0.25 + reads8[3] * 0.2) * 0.4
         var rawR = (reads8[1] * 1.0 + reads8[3] * 0.9 + reads8[5] * 0.8 + reads8[7] * 0.7 +
                     reads8[0] * 0.25 + reads8[2] * 0.2) * 0.4
-        
+
         // Post-diffusion (6 stages for Ultra, 3 for Balanced)
         if quality != .lite {
             rawL = postDiffuserL.process(rawL, stages: quality == .ultra ? 6 : 3)
             rawR = postDiffuserR.process(rawR, stages: quality == .ultra ? 6 : 3)
         }
-        
+
         // Soft clip to prevent harshness
         rawL = softClip(rawL)
         rawR = softClip(rawR)
@@ -738,16 +785,16 @@ class ReverbProcessor {
         // DC blocking (essential for long reverb tails)
         rawL = dcBlockerL.process(rawL)
         rawR = dcBlockerR.process(rawR)
-        
+
         // Width control (mid-side processing)
         let mid = (rawL + rawR) * 0.5
         let side = (rawL - rawR) * 0.5
         let wetL = mid + side * width
         let wetR = mid - side * width
-        
+
         return (wetL, wetR)
     }
-    
+
     /// Hadamard 8x8 mixing matrix
     private func mixFDN(_ state: [Float]) -> [Float] {
         let s = mixScale
@@ -762,7 +809,7 @@ class ReverbProcessor {
             s * (state[0] - state[1] - state[2] + state[3] - state[4] + state[5] + state[6] - state[7])
         ]
     }
-    
+
     /// Hadamard 8x8 mixing matrix (in-place version to avoid allocation in audio thread)
     private func mixFDNInPlace(_ state: [Float], out: inout [Float]) {
         let s = mixScale
@@ -775,20 +822,20 @@ class ReverbProcessor {
         out[6] = s * (state[0] + state[1] - state[2] - state[3] - state[4] - state[5] + state[6] + state[7])
         out[7] = s * (state[0] - state[1] - state[2] + state[3] - state[4] + state[5] + state[6] - state[7])
     }
-    
+
     /// Asymmetric soft clipper (matches web app)
     private func softClip(_ x: Float) -> Float {
         if x > 1 { return 1 - 1 / (x + 1) }
         if x < -1 { return -1 + 1 / (-x + 1) }
         return x
     }
-    
+
     private func updateDiffuserFeedback() {
         let effectiveDiff = 0.5 + diffusion * 0.45
         let preFb = effectiveDiff
         let midFb = effectiveDiff * 0.85
         let postFb = effectiveDiff * 0.75
-        
+
         preDiffuserL.setFeedback(preFb)
         preDiffuserR.setFeedback(preFb)
         midDiffuserL.setFeedback(midFb)
@@ -796,9 +843,9 @@ class ReverbProcessor {
         postDiffuserL.setFeedback(postFb)
         postDiffuserR.setFeedback(postFb)
     }
-    
+
     // MARK: - Parameter Setters
-    
+
     func setDecay(_ decay: Float) {
         stateLock.lock()
         defer { stateLock.unlock() }
@@ -806,12 +853,12 @@ class ReverbProcessor {
         updateEffectiveDecay()
         applyNativeDSPSettingsUnlocked()
     }
-    
+
     /// Calculate effective decay using web formula: baseDecay + (1 - baseDecay) * userDecay * 0.9
     private func updateEffectiveDecay() {
         self.decay = baseDecay + (1 - baseDecay) * userDecay * 0.9
     }
-    
+
     func setWetDryMix(_ mix: Float) {
         stateLock.lock()
         defer { stateLock.unlock() }
@@ -872,7 +919,7 @@ class ReverbProcessor {
         self.predelaySamples = predelayMs * sampleRate / 1000
         resetNativeDSPUnlocked()
     }
-    
+
     /// Set quality mode (affects CPU usage and sound quality)
     func setQuality(_ quality: ReverbQuality) {
         stateLock.lock()
@@ -888,17 +935,17 @@ class ReverbProcessor {
             clearInputBuffer()
         }
     }
-    
+
     /// Get current quality mode
     func getQuality() -> ReverbQuality {
         return quality
     }
-    
+
     /// Check if using custom FDN reverb
     func isUsingCustomReverb() -> Bool {
         return useCustomReverb
     }
-    
+
     /// Update Apple reverb preset based on current type
     private func updateAppleReverbPreset() {
         // Use the direct mapping from ReverbType to Apple factory preset
@@ -928,31 +975,39 @@ class ReverbProcessor {
             updateAppleReverbPreset()
         }
     }
-    
+
     /// Set the reverb type by string name
     func setType(_ typeName: String) {
         if let type = ReverbType(rawValue: typeName) {
             setType(type)
         }
     }
-    
+
     /// Get current reverb type
     func getType() -> ReverbType {
         return currentType
     }
-    
+
     /// Check if current type is compatible with web app
     func isCurrentTypeWebAppCompatible() -> Bool {
         return currentType.isWebAppCompatible
     }
-    
+
     /// Set all parameters at once
     func setParameters(decay: Float, mix: Float, size: Float,
                        diffusion: Float, modulation: Float,
                        predelay: Float, width: Float, damping: Float,
                        shimmer: Float = 0, shimmerPitch: Float = 12,
+                       slowModRate: Float = 0.05, slowModDepth: Float = 0,
+                       reverse: Float = 0, reverseLength: Float = 2,
+                       chorusRate: Float = 0.5, chorusDepth: Float = 12,
+                       modCharacter: String = "hybrid",
+                       dampLow: Float = 0.1, dampHigh: Float = 0.3,
+                       crossoverFreq: Float = 800, inputTone: Float = 0,
                        shimmerFeedback: Float = 0, warp: Float = 0,
-                       crossFeed: Float = 0, transientSmooth: Float = 0) {
+                       crossFeed: Float = 0, earlyReflections: Float = 0.3,
+                       airAbsorption: Float = 0.2, saturationMode: String = "clean",
+                       transientSmooth: Float = 0, erLpFreq: Float = 2500) {
         stateLock.lock()
         defer { stateLock.unlock() }
         self.userDecay = min(max(decay, 0), 1)
@@ -967,10 +1022,25 @@ class ReverbProcessor {
         self.damping = min(max(damping, 0), 1)
         self.shimmer = min(max(shimmer, 0), 1)
         self.shimmerPitch = min(max(shimmerPitch, -24), 24)
+        self.slowModRate = min(max(slowModRate, 0.01), 0.2)
+        self.slowModDepth = min(max(slowModDepth, 0), 1)
+        self.reverse = min(max(reverse, 0), 1)
+        self.reverseLength = min(max(reverseLength, 0.1), 12)
+        self.chorusRate = min(max(chorusRate, 0.05), 2)
+        self.chorusDepth = min(max(chorusDepth, 0), 40)
+        self.modCharacter = modCharacter
+        self.dampLow = min(max(dampLow, 0), 1)
+        self.dampHigh = min(max(dampHigh, 0), 1)
+        self.crossoverFreq = min(max(crossoverFreq, 200), 4_000)
+        self.inputTone = min(max(inputTone, -1), 1)
         self.shimmerFeedback = min(max(shimmerFeedback, 0), 1)
         self.warp = min(max(warp, 0), 1)
         self.crossFeed = min(max(crossFeed, 0), 1)
+        self.earlyReflections = min(max(earlyReflections, 0), 1)
+        self.airAbsorption = min(max(airAbsorption, 0), 1)
+        self.saturationMode = saturationMode
         self.transientSmooth = min(max(transientSmooth, 0), 1)
+        self.erLpFreq = min(max(erLpFreq, 200), 12_000)
         updateDiffuserFeedback()
         applyNativeDSPSettingsUnlocked()
         refreshRouting()
@@ -989,37 +1059,37 @@ class SmoothDelay {
     private var buffer: [Float]
     private var writeIndex: Int = 0
     private let size: Int
-    
+
     init(maxSamples: Int) {
         self.size = maxSamples
         self.buffer = [Float](repeating: 0, count: maxSamples)
     }
-    
+
     func write(_ sample: Float) {
         buffer[writeIndex] = sample
         writeIndex = (writeIndex + 1) % size
     }
-    
+
     /// Linear interpolation read for smooth modulation
     func readInterpolated(_ delaySamples: Float) -> Float {
         let readPos = Float(writeIndex) - delaySamples
         var readIndex = readPos.truncatingRemainder(dividingBy: Float(size))
         if readIndex < 0 { readIndex += Float(size) }
-        
+
         let i0 = Int(readIndex)
         let frac = readIndex - Float(i0)
         let i1 = (i0 + 1) % size
-        
+
         return buffer[i0] * (1 - frac) + buffer[i1] * frac
     }
-    
+
     /// Non-interpolated read
     func read(_ delaySamples: Int) -> Float {
         var readPos = writeIndex - delaySamples
         if readPos < 0 { readPos += size }
         return buffer[readPos % size]
     }
-    
+
     func clear() {
         for index in 0..<size {
             buffer[index] = 0
@@ -1031,7 +1101,7 @@ class SmoothDelay {
 /// Cascaded allpass diffuser chain
 class DiffuserChain {
     private var stages: [(delay: SmoothDelay, feedback: Float, delaySamples: Int)]
-    
+
     init(delays: [Int], feedback: Float) {
         stages = []
         for samples in delays {
@@ -1042,7 +1112,7 @@ class DiffuserChain {
             ))
         }
     }
-    
+
     func process(_ input: Float, stages stageCount: Int? = nil) -> Float {
         var x = input
         let count = min(stageCount ?? stages.count, stages.count)
@@ -1054,13 +1124,13 @@ class DiffuserChain {
         }
         return x
     }
-    
+
     func setFeedback(_ fb: Float) {
         for i in 0..<stages.count {
             stages[i].feedback = fb
         }
     }
-    
+
     func clear() {
         for i in 0..<stages.count {
             stages[i].delay.clear()
@@ -1071,12 +1141,12 @@ class DiffuserChain {
 /// One-pole lowpass filter for damping
 class OnePole {
     private var z1: Float = 0
-    
+
     func process(_ input: Float, coeff: Float) -> Float {
         z1 = input * (1 - coeff) + z1 * coeff
         return z1
     }
-    
+
     func clear() {
         z1 = 0
     }
@@ -1086,14 +1156,14 @@ class OnePole {
 class DCBlocker {
     private var x1: Float = 0
     private var y1: Float = 0
-    
+
     func process(_ input: Float) -> Float {
         let y = input - x1 + 0.9975 * y1
         x1 = input
         y1 = y
         return y
     }
-    
+
     func clear() {
         x1 = 0
         y1 = 0

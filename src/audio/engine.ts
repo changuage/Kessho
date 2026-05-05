@@ -1,6 +1,6 @@
 ﻿/**
  * Audio Engine
- * 
+ *
  * Main audio graph management with:
  * - Poly synth pad (6 voices)
  * - Granular effect (AudioWorklet)
@@ -1102,7 +1102,7 @@ export class AudioEngine {
     lead1: { position: 0.5, velocity: 0, initialized: false },
     lead2: { position: 0.5, velocity: 0, initialized: false },
   };
-  
+
   // Pending morph ranges to apply when drumSynth is created
   private pendingMorphRanges: Record<DrumVoiceType, { min: number; max: number } | null> = {
     sub: null, kick: null, click: null, beepHi: null, beepLo: null, noise: null, membrane: null
@@ -4822,19 +4822,19 @@ export class AudioEngine {
       const isIOSDevice = isIOSLikeDevice();
       this.ctx = new AudioContextClass(isIOSDevice ? { latencyHint: 'playback' } : undefined);
     }
-    
+
     // Resume context if suspended (iOS requirement)
     if (this.ctx.state === 'suspended') {
       await this.ctx.resume();
     }
-    
+
     // Use external state if internal is not available
     const stateToUse = this.sliderState ?? externalState;
     if (!stateToUse) {
       console.warn('No slider state available for drum trigger');
       return;
     }
-    
+
     // If we have an existing drumSynth, update its params and use it
     if (this.drumSynth) {
       if (externalState) {
@@ -4843,7 +4843,7 @@ export class AudioEngine {
       this.drumSynth.triggerVoice(voice, velocity);
       return;
     }
-    
+
     // Dispose any previous temp synth immediately (debounce rapid preview taps)
     this.disposeTempDrumSynth();
 
@@ -4962,7 +4962,7 @@ export class AudioEngine {
   // Play a silent buffer to unlock iOS audio context
   private unlockAudioContext(): void {
     if (!this.ctx) return;
-    
+
     // Create and play a silent buffer
     const buffer = this.ctx.createBuffer(1, 1, 22050);
     const source = this.ctx.createBufferSource();
@@ -5112,7 +5112,7 @@ export class AudioEngine {
       console.log('AudioContext resumed, state:', this.ctx.state);
     }
     this.ensureTransportAnchors();
-    
+
     // iOS audio unlock with silent buffer
     this.unlockAudioContext();
 
@@ -6656,7 +6656,7 @@ export class AudioEngine {
     if (this.pad1PreFaderBus && this.pad1ReverbSend) this.pad1PreFaderBus.connect(this.pad1ReverbSend);
     if (this.pad2PreFaderBus && this.pad2ReverbSend) this.pad2PreFaderBus.connect(this.pad2ReverbSend);
     this.dryBus.connect(this.synthDirect);
-    
+
     this.pad1ReverbSend?.connect(this.reverbInputBus);
     this.pad2ReverbSend?.connect(this.reverbInputBus);
     this.synthDirect.connect(this.masterGain);
@@ -6800,13 +6800,13 @@ export class AudioEngine {
     this.ensureEarthDelaySends(ctx);
 
     this.wireMasterOutputChain(ctx);
-    
+
     // Detect iOS specifically - only iOS needs MediaStream routing for
     // lock-screen/background media session continuity.
     const isIOS = isIOSLikeDevice();
     const isMobile = isMobileDevice();
     this.isMobile = isMobile || isIOS;
-    
+
     try { this.limiter.disconnect(); } catch { /* */ }
 
     if (isIOS) {
@@ -7494,7 +7494,7 @@ export class AudioEngine {
       this.startLeadMorphRandomWalk();
     }
   }
-  
+
   /** Build HarmonyParams from current sliderState */
   private getHarmonyParams(): Partial<HarmonyParams> {
     const s = this.sliderState!;
@@ -7654,12 +7654,12 @@ export class AudioEngine {
       }
 
       const isVoiceEnabled = (voiceMask & (1 << i)) !== 0;
-      
+
       if (!isVoiceEnabled) {
         this.postPadWasmNoteOff(i);
         continue;
       }
-      
+
       // Map enabled voice index to the filtered frequency list
       let enabledIndex = 0;
       for (let j = 0; j < i; j++) {
@@ -8131,7 +8131,7 @@ export class AudioEngine {
       shv('filterCutoffMin', padState.filterCutoffMin ?? 200),
       shv('filterCutoffMax', padState.filterCutoffMax ?? 8000),
     );
-    
+
     // ── LFO computation (Phase 2: all waveshapes, all destinations) ──
     const lfoDepth = shv('padLfo1Depth', padState.padLfo1Depth ?? 0);
     const lfoDest = padState.padLfo1Dest ?? 'none';
@@ -8141,21 +8141,21 @@ export class AudioEngine {
     // Filter cutoff sits at center of min/max range; LFO adds modulation on top
     const modAmount = 0.5;
     const cutoff = minCutoff + (maxCutoff - minCutoff) * modAmount;
-    
+
     // Q (bandwidth/angle) is set directly from filterQ
     const filterQ = shv('filterQ', padState.filterQ);
-    
+
     // Resonance adds a peak boost at the cutoff frequency, modulated by hardness
     const resonanceBoost = shv('filterResonance', padState.filterResonance) * (0.7 + shv('hardness', padState.hardness) * 0.6);
-    
+
     // Combined Q: base Q plus resonance boost
     // At very low cutoffs, increase Q for more aggressive filtering
     const lowCutoffBoost = cutoff < 200 ? (1 - cutoff / 200) * 4 : 0;
     const effectiveQ = filterQ + resonanceBoost * 8 + lowCutoffBoost;
-    
+
     // Warmth: low shelf boost (0 to +8dB)
     const warmthGain = shv('warmth', padState.warmth) * 8;
-    
+
     // Presence: peaking EQ (-6dB to +6dB) - helps cut or boost mids
     // At 0.5 = neutral, below = cut harsh mids, above = boost presence
     const presenceGain = (shv('presence', padState.presence) - 0.5) * 12;
@@ -8961,7 +8961,7 @@ export class AudioEngine {
       // Q: 0.5 to 10.5 based on resonance 0-1
       this.oceanFilter.Q.setTargetAtTime(0.5 + state.oceanFilterResonance * 10, now, smoothTime);
     }
-    
+
     // ── Soundscapes WASM — water + insects + fire ──
     if (this.soundscapesNode && this.soundscapesWasmReady) {
       this.syncEarthFadeState(this.waterFadeState, state.waterEnabled, now, {
@@ -10007,7 +10007,7 @@ export class AudioEngine {
     'ayak': { steps: 16, hits: 3, rotation: 4, name: 'Ayak-ayakan (flowing)' },
     // Bonang panerus - high density interlocking
     'bonang': { steps: 12, hits: 5, rotation: 2, name: 'Bonang (12-beat)' },
-    
+
     // === STEVE REICH / MINIMALIST PATTERNS ===
     // Classic phasing pattern from "Clapping Music"
     'clapping': { steps: 12, hits: 8, rotation: 0, name: 'Clapping Music (12/8)' },
@@ -10029,7 +10029,7 @@ export class AudioEngine {
     'reich18': { steps: 12, hits: 7, rotation: 3, name: 'Reich 18 (12/7)' },
     // Drumming-inspired pattern
     'drumming': { steps: 8, hits: 6, rotation: 1, name: 'Drumming (8/6)' },
-    
+
     // === POLYRHYTHMIC COMBINATIONS ===
     // Very sparse - creates space
     'sparse': { steps: 16, hits: 1, rotation: 0, name: 'Sparse (16/1)' },
@@ -10037,7 +10037,7 @@ export class AudioEngine {
     'dense': { steps: 8, hits: 7, rotation: 0, name: 'Dense (8/7)' },
     // Long cycle sparse
     'longSparse': { steps: 32, hits: 3, rotation: 0, name: 'Long Sparse (32/3)' },
-    
+
     // Custom - uses slider values
     'custom': { steps: 16, hits: 4, rotation: 0, name: 'Custom' },
   };
@@ -10049,7 +10049,7 @@ export class AudioEngine {
   private scheduleLeadMelody(): void {
     if (!this.sliderState || !this.harmonyState || !this.rng) return;
     const anchors = this.ensureTransportAnchors();
-    
+
     // Clear any previously scheduled note timeouts
     for (const timeout of this.leadNoteTimeouts) clearTimeout(timeout);
     this.leadNoteTimeouts = [];
@@ -11041,6 +11041,11 @@ export class AudioEngine {
 
   // ===== STEM RECORDING SUPPORT =====
   // Routing-level taps expose the same signal each row's Level control affects.
+  // Dynamics captures the post-master-dynamics, pre-limiter print.
+
+  private getDynamicsRecordableNode(): AudioNode | null {
+    return this.endCompOutputGain ?? this.satPostGain ?? this.characterOutputGain ?? this.masterGain;
+  }
 
   getRecordableBusNodes(): Record<StemRecordTrackId, RecordableTrackSource> {
     return {
@@ -11060,6 +11065,7 @@ export class AudioEngine {
       delayAOut: { node: this.sharedDelayA?.getDirectOutputNode() ?? null },
       delayBOut: { node: this.sharedDelayB?.getDirectOutputNode() ?? null },
       reverb: { node: this.reverbOutputGain },
+      dynamics: { node: this.getDynamicsRecordableNode() },
     };
   }
 

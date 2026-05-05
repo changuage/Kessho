@@ -23,6 +23,17 @@ struct HarmonyState {
     var nextPhraseTime: Double
     var phrasesUntilChange: Int
     var chordDegrees: [Int]
+    var progression: ChordProgressionState
+}
+
+/// Phrase-step chord sequencer, modeled after the web harmony progression.
+struct ChordProgressionState {
+    var enabled: Bool
+    var pattern: [Int]
+    var step: Int
+    var stepEnabled: [Bool]
+    var phraseMultiplier: Int
+    var phraseCounter: Int
 }
 
 /// Circle of Fifths configuration
@@ -48,22 +59,60 @@ func calculateDriftedRoot(homeRoot: Int, stepOffset: Int) -> Int {
 }
 
 /// Get the next phrase boundary time (epoch seconds)
-func getNextPhraseBoundary() -> Double {
+func getNextPhraseBoundary(phraseLength: Double = PHRASE_LENGTH) -> Double {
     let nowSec = Date().timeIntervalSince1970
-    return ceil(nowSec / PHRASE_LENGTH) * PHRASE_LENGTH
+    let length = max(0.001, phraseLength)
+    return ceil(nowSec / length) * length
 }
 
 /// Get time until next phrase boundary in seconds
-func getTimeUntilNextPhrase() -> Double {
+func getTimeUntilNextPhrase(phraseLength: Double = PHRASE_LENGTH) -> Double {
     let nowSec = Date().timeIntervalSince1970
-    let nextBoundary = ceil(nowSec / PHRASE_LENGTH) * PHRASE_LENGTH
+    let length = max(0.001, phraseLength)
+    let nextBoundary = ceil(nowSec / length) * length
     return nextBoundary - nowSec
 }
 
 /// Get current phrase index (for deterministic scheduling)
-func getCurrentPhraseIndex() -> Int {
+func getCurrentPhraseIndex(phraseLength: Double = PHRASE_LENGTH) -> Int {
     let nowSec = Date().timeIntervalSince1970
-    return Int(floor(nowSec / PHRASE_LENGTH))
+    return Int(floor(nowSec / max(0.001, phraseLength)))
+}
+
+func createDefaultChordProgression(
+    enabled: Bool,
+    pattern: [Int],
+    steps: Int,
+    stepEnabled: [Bool],
+    phraseMultiplier: Int
+) -> ChordProgressionState {
+    let safeSteps = max(1, min(8, steps))
+    let defaultPattern = pattern.isEmpty ? [0, 3, 4, 0] : pattern
+    let normalizedPattern = (0..<safeSteps).map { index in
+        defaultPattern[index % defaultPattern.count]
+    }
+    let normalizedEnabled = (0..<safeSteps).map { index in
+        index < stepEnabled.count ? stepEnabled[index] : true
+    }
+
+    return ChordProgressionState(
+        enabled: enabled,
+        pattern: normalizedPattern,
+        step: 0,
+        stepEnabled: normalizedEnabled,
+        phraseMultiplier: max(1, phraseMultiplier),
+        phraseCounter: 0
+    )
+}
+
+func rootForScaleDegree(rootNote: Int, scale: ScaleFamily, degree: Int) -> Int {
+    guard !scale.intervals.isEmpty else { return ((rootNote % 12) + 12) % 12 }
+    let count = scale.intervals.count
+    let positiveDegree = max(0, degree)
+    let index = positiveDegree % count
+    let octaveOffset = (positiveDegree / count) * 12
+    let semitone = scale.intervals[index] + octaveOffset
+    return ((rootNote + semitone) % 12 + 12) % 12
 }
 
 /// Generate a chord voicing from a scale
@@ -78,7 +127,7 @@ func generateChordVoicing(
 ) -> ChordVoicing {
     // Root at octave 2: C2=36, so root2 = 36 + rootNote
     let rootBase = 36 + rootNote
-    
+
     // Get available notes in playable range (root2 to root5)
     let availableNotes = getScaleNotesInRange(
         scale: scale,
@@ -86,15 +135,15 @@ func generateChordVoicing(
         highMidi: rootBase + 36,
         rootNote: rootNote
     )
-    
+
     // Number of notes in chord based on tension
     let noteCount = tension < 0.5 ? rngInt(rng, min: 3, max: 4) : rngInt(rng, min: 4, max: 5)
-    
+
     // Select chord tones
     // Prefer root and fifth for stability
     let baseRoot = rootBase + (rngInt(rng, min: 0, max: 1) * 12)  // root2 or root3
     var selectedNotes: [Int] = [baseRoot]
-    
+
     // Add fifth if in scale
     let fifthInterval = 7
     if scale.intervals.contains(fifthInterval) {
@@ -103,14 +152,14 @@ func generateChordVoicing(
             selectedNotes.append(fifthNote)
         }
     }
-    
+
     // Fill remaining voices from scale
     let remainingNotes = availableNotes.filter { !selectedNotes.contains($0) }
     var shuffled = rngShuffle(rng, remainingNotes)
-    
+
     while selectedNotes.count < noteCount && !shuffled.isEmpty {
         let note = shuffled.removeLast()
-        
+
         // Apply voicing spread - higher spread = more octave displacement
         if voicingSpread > 0.5 && rng() < voicingSpread {
             // Possibly shift octave up or down
@@ -125,16 +174,16 @@ func generateChordVoicing(
             selectedNotes.append(note)
         }
     }
-    
+
     // Sort and limit to voice count
     let finalNotes = Array(selectedNotes.sorted().prefix(VOICE_COUNT))
-    
+
     // Convert to frequencies with optional detune
     let frequencies = finalNotes.map { midi -> Double in
         let detuneOffset = rngFloat(rng, min: -detuneCents, max: detuneCents)
         return midiToFreq(Double(midi) + detuneOffset / 100.0)
     }
-    
+
     return ChordVoicing(midiNotes: finalNotes, frequencies: frequencies)
 }
 
@@ -147,10 +196,17 @@ func createHarmonyState(
     detuneCents: Double,
     scaleMode: String,
     manualScaleName: String,
-    rootNote: Int = 4
+    rootNote: Int = 4,
+    phraseLength: Double = PHRASE_LENGTH,
+    chordProgressionEnabled: Bool = false,
+    chordProgressionPattern: [Int] = [0, 3, 4, 0],
+    chordProgressionSteps: Int = 4,
+    chordProgressionStepEnabled: [Bool] = [true, true, true, true],
+    chordProgressionPhraseMultiplier: Int = 1
 ) -> HarmonyState {
     let rng = createRng(seedMaterial)
-    
+    let phraseSeconds = max(0.001, phraseLength)
+
     // Select scale
     var scaleFamily: ScaleFamily
     if scaleMode == "manual" {
@@ -158,7 +214,7 @@ func createHarmonyState(
     } else {
         scaleFamily = selectScaleFamily(rng: rng, tension: tension)
     }
-    
+
     // Generate initial chord
     let currentChord = generateChordVoicing(
         rng: rng,
@@ -168,16 +224,23 @@ func createHarmonyState(
         detuneCents: detuneCents,
         rootNote: rootNote
     )
-    
+
     // Calculate phrases per chord change
-    let phrasesPerChord = max(1, Int(round(chordRate / PHRASE_LENGTH)))
-    
+    let phrasesPerChord = max(1, Int(round(chordRate / phraseSeconds)))
+
     return HarmonyState(
         scaleFamily: scaleFamily,
         currentChord: currentChord,
-        nextPhraseTime: getNextPhraseBoundary(),
+        nextPhraseTime: getNextPhraseBoundary(phraseLength: phraseSeconds),
         phrasesUntilChange: phrasesPerChord,
-        chordDegrees: currentChord.midiNotes.map { $0 % 12 }
+        chordDegrees: currentChord.midiNotes.map { $0 % 12 },
+        progression: createDefaultChordProgression(
+            enabled: chordProgressionEnabled,
+            pattern: chordProgressionPattern,
+            steps: chordProgressionSteps,
+            stepEnabled: chordProgressionStepEnabled,
+            phraseMultiplier: chordProgressionPhraseMultiplier
+        )
     )
 }
 
@@ -192,15 +255,51 @@ func updateHarmonyState(
     detuneCents: Double,
     scaleMode: String,
     manualScaleName: String,
-    rootNote: Int = 4
+    rootNote: Int = 4,
+    phraseLength: Double = PHRASE_LENGTH,
+    chordProgressionEnabled: Bool = false,
+    chordProgressionPattern: [Int] = [0, 3, 4, 0],
+    chordProgressionSteps: Int = 4,
+    chordProgressionStepEnabled: [Bool] = [true, true, true, true],
+    chordProgressionPhraseMultiplier: Int = 1,
+    progressionPhraseIndex: Int? = nil,
+    isPhraseBoundary: Bool = true
 ) -> HarmonyState {
     // Create RNG seeded with phrase index for determinism
     let rng = createRng("\(seedMaterial)|phrase:\(phraseIndex)")
-    
-    let phrasesPerChord = max(1, Int(round(chordRate / PHRASE_LENGTH)))
-    
+    let phraseSeconds = max(0.001, phraseLength)
+
+    let phrasesPerChord = max(1, Int(round(chordRate / phraseSeconds)))
+    var progression = state.progression
+    var progressionDegree: Int?
+    var forceNewChord = false
+
+    progression.enabled = chordProgressionEnabled
+    if isPhraseBoundary && progression.enabled {
+        let safeSteps = max(1, min(8, chordProgressionSteps))
+        let fallbackPattern = chordProgressionPattern.isEmpty ? [0, 3, 4, 0] : chordProgressionPattern
+        progression.pattern = (0..<safeSteps).map { index in
+            fallbackPattern[index % fallbackPattern.count]
+        }
+        progression.stepEnabled = (0..<safeSteps).map { index in
+            index < chordProgressionStepEnabled.count ? chordProgressionStepEnabled[index] : true
+        }
+        progression.phraseMultiplier = max(1, chordProgressionPhraseMultiplier)
+
+        let sourcePhraseIndex = max(0, progressionPhraseIndex ?? phraseIndex)
+        let nextStep = (sourcePhraseIndex / progression.phraseMultiplier) % safeSteps
+        let stepChanged = nextStep != progression.step
+        progression.step = nextStep
+        progression.phraseCounter = sourcePhraseIndex % progression.phraseMultiplier
+
+        if stepChanged && progression.stepEnabled[nextStep] {
+            progressionDegree = progression.pattern[nextStep]
+            forceNewChord = true
+        }
+    }
+
     // Check if we need a new chord
-    if state.phrasesUntilChange <= 1 {
+    if !isPhraseBoundary || forceNewChord || state.phrasesUntilChange <= 1 {
         // Select potentially new scale
         var scaleFamily: ScaleFamily
         if scaleMode == "manual" {
@@ -209,7 +308,11 @@ func updateHarmonyState(
             // In auto mode, always re-evaluate scale based on current tension
             scaleFamily = selectScaleFamily(rng: rng, tension: tension)
         }
-        
+
+        let chordRoot = progressionDegree.map {
+            rootForScaleDegree(rootNote: rootNote, scale: scaleFamily, degree: $0)
+        } ?? rootNote
+
         // Generate new chord
         let currentChord = generateChordVoicing(
             rng: rng,
@@ -217,22 +320,24 @@ func updateHarmonyState(
             tension: tension,
             voicingSpread: voicingSpread,
             detuneCents: detuneCents,
-            rootNote: rootNote
+            rootNote: chordRoot
         )
-        
+
         return HarmonyState(
             scaleFamily: scaleFamily,
             currentChord: currentChord,
-            nextPhraseTime: getNextPhraseBoundary(),
-            phrasesUntilChange: phrasesPerChord,
-            chordDegrees: currentChord.midiNotes.map { $0 % 12 }
+            nextPhraseTime: Double(phraseIndex + 1) * phraseSeconds,
+            phrasesUntilChange: isPhraseBoundary ? phrasesPerChord : state.phrasesUntilChange,
+            chordDegrees: currentChord.midiNotes.map { $0 % 12 },
+            progression: progression
         )
     }
-    
+
     // No chord change, just update countdown
     var newState = state
-    newState.nextPhraseTime = getNextPhraseBoundary()
-    newState.phrasesUntilChange = state.phrasesUntilChange - 1
+    newState.nextPhraseTime = Double(phraseIndex + 1) * phraseSeconds
+    newState.phrasesUntilChange = isPhraseBoundary ? state.phrasesUntilChange - 1 : state.phrasesUntilChange
+    newState.progression = progression
     return newState
 }
 

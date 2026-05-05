@@ -516,12 +516,29 @@ final class DynamicsCharacterProcessor {
         let endDetectorTilt = clamp01(state.endCompDetectorTilt)
         let endAutoMakeup = clamp01(state.endCompAutoMakeup)
         let endProgramRelease = clamp01(state.endCompProgramRelease)
+        let masterSatActive = state.dynamicsEnabled && state.dynamicsSaturationEnabled
+        let masterSatDrive = masterSatActive ? clamp01(state.dynamicsSaturationDrive) : 0
+        let masterSatTone = clamp01(state.dynamicsSaturationTone)
+        let masterSatBias = clamp01(state.dynamicsSaturationBias)
+        let masterSatMode: Double
+        switch state.dynamicsSaturationMode {
+        case "tape":
+            masterSatMode = 1
+        case "tube":
+            masterSatMode = 2
+        case "diode":
+            masterSatMode = 3
+        case "fold":
+            masterSatMode = 4
+        default:
+            masterSatMode = 0
+        }
 
         func set(_ index: ParamIndex, _ value: Double) {
             params[index.rawValue] = Float(value.isFinite ? value : 0)
         }
 
-        set(.active, wet > 0.0001 || endActive ? 1 : 0)
+        set(.active, wet > 0.0001 || masterSatDrive > 0.0001 || endActive ? 1 : 0)
         set(.allpassActive, wet > 0.0001 && mode == "shallowWater" ? 1 : 0)
         set(.dry, dry)
         set(.wet, wet)
@@ -586,11 +603,11 @@ final class DynamicsCharacterProcessor {
         set(.compressorMakeup, 1 + characterMix * (shallowFlavor * 0.05 + abyssFlavor * 0.16))
         set(.saturation, saturation)
         set(.corrosion, corrosion)
-        set(.masterSatActive, 0)
-        set(.masterSatMode, 0)
-        set(.masterSatDrive, 0)
-        set(.masterSatTone, 0.5)
-        set(.masterSatBias, 0.5)
+        set(.masterSatActive, masterSatActive ? 1 : 0)
+        set(.masterSatMode, masterSatMode)
+        set(.masterSatDrive, masterSatDrive)
+        set(.masterSatTone, masterSatTone)
+        set(.masterSatBias, masterSatBias)
         set(.endCompActive, endActive ? 1 : 0)
         set(.endCompThreshold, endThreshold)
         set(.endCompKnee, endKnee)

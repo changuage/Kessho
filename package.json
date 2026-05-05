@@ -11,6 +11,8 @@
     "test:dynamics-parity": "node scripts/check-dynamics-parity.mjs",
     "test:native-shared-reverb": "node scripts/check-native-shared-reverb.mjs",
     "test:native-midi-threading": "node scripts/check-native-midi-threading.mjs",
+    "test:native-supabase-parity": "node scripts/check-native-supabase-parity.mjs",
+    "test:native-granular-parity": "node scripts/check-native-granular-parity.mjs",
     "test:ios-mobile-hotpaths": "node scripts/check-ios-mobile-audio-hotpaths.mjs",
     "test:ios-state-parity": "node scripts/check-ios-state-parity.mjs",
     "test:ios-universal-layout": "node scripts/check-ios-universal-layout.mjs",

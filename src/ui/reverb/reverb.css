@@ -29,7 +29,7 @@
   flex-wrap: wrap;
   gap: 8px;
   padding: 8px 12px;
-  background: rgba(15, 25, 40, 0.95);
+  background: var(--k-bg-card);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   margin-bottom: 8px;

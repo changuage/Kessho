@@ -357,7 +357,8 @@
 .drum-root .seq-title { color: var(--accent-cyan); font-size: 1rem; margin-bottom: 8px; text-align: center; }
 .drum-root .seq-transport {
   display: flex; gap: 8px; align-items: center;
-  background: var(--bg-elevated); border-radius: var(--radius-lg);
+  background: var(--k-bg-card); border-radius: var(--radius-lg);
+  border: 1px solid var(--border-subtle);
   padding: 8px 12px; margin-bottom: 8px;
 }
 .drum-root .seq-play-btn {
@@ -369,7 +370,7 @@
 }
 .drum-root .seq-play-btn.playing { color: #ED5A24; }
 .drum-root .seq-play-btn:hover { transform: scale(1.05); }
-.drum-root .seq-transport label { font-size: var(--font-sm); color: var(--text-secondary); display: flex; flex-direction: column; gap: 2px; }
+.drum-root .seq-transport label { font-size: var(--font-sm); color: var(--text-secondary); display: flex; flex-direction: row; align-items: center; gap: 6px; }
 .drum-root .seq-transport input, .drum-root .seq-transport select {
   background: var(--bg-input); color: #fff; border: 1px solid var(--border-medium);
   border-radius: var(--radius-sm); padding: 4px 6px; font-size: 0.75rem; width: 64px;
@@ -380,13 +381,13 @@
 /* ── Tab Bar ── */
 .drum-root .seq-tab-bar { display: flex; gap: 2px; margin-bottom: 0; }
 .drum-root .seq-tab {
-  flex: 1; padding: 6px 4px; text-align: center; border: 1px solid rgba(255,255,255,0.06);
+  flex: 1; padding: 9px 8px; text-align: center; border: 1px solid rgba(255,255,255,0.06);
   border-bottom: none;
   border-radius: var(--radius-md) var(--radius-md) 0 0; cursor: pointer;
-  font-size: 0.65rem; font-weight: 600;
-  background: rgba(255,255,255,0.02); color: rgba(255,255,255,0.3);
+  font-size: 0.75rem; font-weight: 600;
+  background: var(--k-bg-tab); color: var(--text-muted);
   transition: all 0.15s; user-select: none;
-  display: flex; align-items: center; justify-content: center; gap: 4px;
+  display: flex; align-items: center; justify-content: center; gap: 5px;
 }
 .drum-root .seq-tab.active {
   color: var(--sc);
@@ -395,11 +396,11 @@
 }
 .drum-root .seq-tab:hover:not(.active) { background: rgba(255,255,255,0.05); }
 .drum-root .seq-tab .seq-tab-ms {
-  display: flex; gap: 2px; font-size: 0.5rem;
+  display: flex; gap: 3px; font-size: 0.6rem;
 }
 .drum-root .seq-tab-ms button {
-  border: none; border-radius: var(--radius-sm); padding: 1px 4px; cursor: pointer;
-  font-size: 0.5rem; font-weight: 700; background: rgba(0,0,0,0.3); color: #888;
+  border: none; border-radius: var(--radius-sm); padding: 3px 6px; cursor: pointer;
+  font-size: 0.6rem; font-weight: 700; background: rgba(0,0,0,0.3); color: #888;
   transition: all 0.1s;
 }
 .drum-root .seq-tab-ms button.on { color: #fff; }
@@ -408,21 +409,21 @@
 
 /* ── Active sequencer body ── */
 .drum-root .seq-body {
-  background: rgba(15, 25, 40, 0.6); border: 1px solid var(--border-subtle);
+  background: var(--k-bg-panel); border: 1px solid var(--border-subtle);
   border-top: none; border-radius: 0 0 var(--radius-lg) var(--radius-lg); padding: 8px; margin-bottom: 6px;
 }
 
 .drum-root .seq-sources {
   display: flex; gap: 4px; align-items: center; flex-wrap: wrap;
   padding: 5px 8px; margin-bottom: 0;
-  background: rgba(255,255,255,0.03); border-radius: var(--radius-md);
+  background: var(--k-bg-inset); border-radius: var(--radius-md);
 }
 .drum-root .seq-sources-label { font-size: var(--font-sm); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-right: 4px; }
 .drum-root .seq-source-toggle {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 22px; height: 22px; padding: 0; border: 1px solid rgba(255,255,255,0.12);
+  width: 26px; height: 26px; padding: 0; border: 1px solid rgba(255,255,255,0.12);
   border-radius: var(--radius-sm); cursor: pointer;
-  font-size: 0.7rem; font-weight: 700; color: var(--text-muted); background: rgba(0,0,0,0.3);
+  font-size: 0.72rem; font-weight: 700; color: var(--text-muted); background: rgba(0,0,0,0.3);
   transition: all 0.15s; user-select: none;
 }
 .drum-root .seq-source-toggle input { display: none; }
@@ -439,11 +440,11 @@
   background: none; border-radius: 0;
 }
 .drum-root .seq-per-controls label {
-  font-size: var(--font-sm); color: var(--text-secondary); display: flex; align-items: center; gap: 4px;
+  font-size: 0.68rem; color: var(--text-secondary); display: flex; align-items: center; gap: 4px;
 }
 .drum-root .seq-per-controls input, .drum-root .seq-per-controls select {
   background: var(--bg-input); color: #fff; border: 1px solid var(--border-medium);
-  border-radius: var(--radius-sm); padding: 3px 5px; font-size: 0.7rem; width: 56px;
+  border-radius: var(--radius-sm); padding: 4px 6px; font-size: 0.68rem; width: 56px;
   transition: border-color 0.15s;
 }
 .drum-root .seq-per-controls input:focus, .drum-root .seq-per-controls select:focus { border-color: var(--page-accent); outline: none; }
@@ -451,16 +452,16 @@
 .drum-root .seq-per-controls .seq-swing-val { font-size: var(--font-xs); color: var(--page-accent); min-width: 22px; }
 .drum-root .seq-per-controls .seq-clock-select { width: 52px; font-size: 0.7rem; }
 .drum-root .seq-link-btn, .drum-root .seq-evolve-btn {
-  padding: 3px 10px; font-size: var(--font-sm); font-weight: 700; border: none;
+  padding: 5px 12px; font-size: 0.68rem; font-weight: 700; border: none;
   border-radius: var(--radius-sm); cursor: pointer; background: var(--bg-control);
   color: var(--text-muted); transition: all 0.15s; letter-spacing: 0.3px;
 }
 .drum-root .seq-link-btn.on { background: var(--sc, var(--accent-cyan)); color: #000; }
 .drum-root .seq-evolve-btn.on { background: #a855f7; color: #000; }
 .drum-root .seq-evolve-panel {
-  display: none; padding: 6px 8px; margin-bottom: 6px;
-  background: rgba(168,85,247,0.06); border: 1px solid rgba(168,85,247,0.15);
-  border-radius: var(--radius-sm); font-size: 0.6rem;
+  display: none; padding: 10px 12px; margin-bottom: 6px;
+  background: var(--k-bg-panel); border: 1px solid color-mix(in srgb, var(--accent-evolve) 20%, var(--border-subtle));
+  border-radius: var(--radius-md); font-size: var(--font-sm);
 }
 .drum-root .seq-evolve-panel.open { display: block; }
 .drum-root .seq-evolve-panel label { color: var(--text-secondary); display: flex; align-items: center; gap: 3px; font-size: var(--font-sm); }
@@ -554,7 +555,7 @@
   align-items: center;
   gap: 8px;
   padding: 6px 10px;
-  background: rgba(255,255,255,0.025);
+  background: var(--k-bg-inset);
   border-left: 1px solid var(--border-subtle);
   border-right: 1px solid var(--border-subtle);
 }
@@ -577,7 +578,7 @@
   align-items: center;
   padding: 6px 8px;
   margin: 4px 0 0;
-  background: rgba(255,255,255,0.025);
+  background: var(--k-bg-inset);
   border-radius: var(--radius-md);
 }
 .drum-root .seq-sequence-preset-control {
@@ -1042,7 +1043,7 @@
 /* ── Mini Overview Strip ── */
 .drum-root .seq-mini-overview {
   display: flex; gap: 4px; padding: 6px 8px;
-  background: rgba(0,0,0,0.2); border-radius: var(--radius-md); margin-top: 4px;
+  background: var(--k-bg-inset); border-radius: var(--radius-md); margin-top: 4px;
   flex-wrap: wrap;
 }
 @media (max-width: 600px) {
@@ -1074,7 +1075,7 @@
   border: 1px solid rgba(255,255,255,0.12); width: fit-content; margin-left: auto;
 }
 .drum-root .seq-view-btn {
-  padding: 4px 14px; font-size: var(--font-sm); font-weight: 700;
+  padding: 6px 14px; font-size: 0.68rem; font-weight: 700;
   border: none; cursor: pointer; background: rgba(255,255,255,0.03); color: var(--text-muted);
   transition: all 0.15s; letter-spacing: 0.5px; text-transform: uppercase;
 }
@@ -1329,88 +1330,82 @@
 .drum-root .vc-macro-slider .app-slider-group .sl-slider-rail { width: 100%; min-width: 0; }
 
 /* ── Play / Stop ── */
-.drum-root .seq-play-btn { width: 48px; height: 48px; font-size: 1.5rem; }
+.drum-root .seq-play-btn { width: 44px; height: 44px; font-size: 1.5rem; }
 
 /* ── Transport controls ── */
-.drum-root .seq-transport { padding: 10px 14px; gap: 10px; }
-.drum-root .seq-transport label { font-size: 0.75rem; }
+.drum-root .seq-transport { padding: 8px 12px; gap: 8px; }
+.drum-root .seq-transport label { font-size: var(--font-sm); }
 .drum-root .seq-transport input, .drum-root .seq-transport select {
-  font-size: 0.85rem; padding: 6px 8px; min-height: 36px;
+  font-size: 0.75rem; padding: 4px 6px;
 }
 
 /* ── Seq tab bar ── */
-.drum-root .seq-tab-bar { gap: 4px; }
-.drum-root .seq-tab {
-  padding: 10px 6px; min-height: 44px; font-size: 0.75rem;
-}
+.drum-root .seq-tab-bar { gap: 2px; }
 
 /* ── Mute / Solo buttons ── */
-.drum-root .seq-tab .seq-tab-ms { gap: 4px; }
+.drum-root .seq-tab .seq-tab-ms { gap: 3px; }
 .drum-root .seq-tab-ms button {
-  padding: 4px 8px; font-size: 0.65rem; border-radius: var(--radius-sm);
-  min-height: 28px; min-width: 28px;
+  padding: 3px 6px; font-size: 0.6rem; border-radius: var(--radius-sm);
 }
 
 /* ── Source toggle chips ── */
-.drum-root .seq-sources { gap: 6px; padding: 8px 10px; }
+.drum-root .seq-sources { gap: 4px; padding: 5px 8px; }
 .drum-root .seq-source-toggle {
-  padding: 8px 12px; font-size: 0.75rem; min-height: 40px;
-  border-radius: var(--radius-md); gap: 5px;
+  width: 26px; height: 26px; font-size: 0.72rem;
 }
 
 /* ── Per-seq controls ── */
-.drum-root .seq-per-controls { padding: 8px 10px; gap: 10px; }
-.drum-root .seq-per-controls label { font-size: 0.7rem; gap: 4px; }
+.drum-root .seq-per-controls { gap: 8px; }
+.drum-root .seq-per-controls label { font-size: 0.68rem; gap: 4px; }
 .drum-root .seq-per-controls input, .drum-root .seq-per-controls select {
-  font-size: 0.75rem; padding: 6px 8px; width: 60px; min-height: 36px;
+  font-size: 0.68rem; padding: 4px 6px; width: 56px;
 }
 .drum-root .seq-select, .drum-root .seq-spark-select {
-  font-size: 0.75rem; padding: 4px 6px; min-height: 36px;
+  font-size: 0.68rem; padding: 4px 6px;
 }
 
 /* ── Link / Evolve buttons ── */
 .drum-root .seq-link-btn, .drum-root .seq-evolve-btn {
-  padding: 8px 14px; font-size: 0.7rem; min-height: 40px;
-  border-radius: var(--radius-md); display: inline-flex; align-items: center;
+  padding: 5px 12px; font-size: 0.68rem;
 }
 
 /* ── Lane enable buttons ── */
 .drum-root .seq-lane-enable-btn {
-  padding: 6px 12px; font-size: 0.7rem; min-height: 36px; border-radius: var(--radius-sm);
+  padding: 4px 10px; font-size: 0.65rem; border-radius: var(--radius-sm);
 }
 
 /* ── Evolve panel ── */
-.drum-root .seq-evolve-panel { padding: 10px 12px; }
-.drum-root .seq-evolve-panel label { font-size: 0.7rem; gap: 6px; }
-.drum-root .seq-evolve-panel input[type=range] { width: 70px; height: 24px; }
+.drum-root .seq-evolve-panel { padding: 8px 10px; }
+.drum-root .seq-evolve-panel label { font-size: 0.65rem; gap: 5px; }
+.drum-root .seq-evolve-panel input[type=range] { width: 60px; height: 20px; }
 .drum-root .seq-evolve-panel input[type=number] {
-  font-size: 0.75rem; padding: 6px 8px; width: 48px; min-height: 36px;
+  font-size: 0.68rem; padding: 4px 6px; width: 44px;
 }
-.drum-root .seq-evolve-row { gap: 12px; margin-bottom: 6px; }
-.drum-root .seq-evolve-checks { gap: 10px 14px; }
+.drum-root .seq-evolve-row { gap: 10px; margin-bottom: 4px; }
+.drum-root .seq-evolve-checks { gap: 8px 12px; }
 .drum-root .seq-evolve-checks label {
-  font-size: 0.7rem; padding: 6px 2px; min-height: 36px;
-  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 0.65rem; padding: 4px 2px;
+  display: inline-flex; align-items: center; gap: 3px;
 }
 .drum-root .seq-evolve-checks input[type=checkbox] {
-  width: 20px; height: 20px; margin-right: 4px;
+  width: 16px; height: 16px; margin-right: 3px;
 }
 
 /* ── Lane header ── */
-.drum-root .seq-lane-header { padding: 10px 12px; min-height: 44px; }
-.drum-root .seq-lane-title { font-size: 0.8rem; }
+.drum-root .seq-lane-header { padding: 8px 10px; min-height: 36px; }
+.drum-root .seq-lane-title { font-size: 0.72rem; }
 
 /* ── Lane controls ── */
-.drum-root .seq-lane-controls { gap: 10px; flex-wrap: wrap; }
-.drum-root .seq-lane-controls label { font-size: 0.7rem; gap: 4px; }
+.drum-root .seq-lane-controls { gap: 8px; flex-wrap: wrap; }
+.drum-root .seq-lane-controls label { font-size: 0.65rem; gap: 3px; }
 .drum-root .seq-lane-controls input[type=number] {
-  width: 44px; font-size: 0.8rem; padding: 4px 6px; min-height: 36px;
+  width: 40px; font-size: 0.68rem; padding: 3px 5px;
 }
 .drum-root .seq-lane-controls button {
-  width: 36px; height: 36px; font-size: 0.9rem;
-  line-height: 36px; border-radius: var(--radius-md);
+  width: 28px; height: 28px; font-size: 0.8rem;
+  line-height: 28px; border-radius: var(--radius-md);
 }
-.drum-root .seq-lane-controls select { min-height: 36px; font-size: 0.75rem; padding: 4px 6px; }
+.drum-root .seq-lane-controls select { font-size: 0.68rem; padding: 3px 5px; }
 
 /* ── Step grid ── */
 .drum-root .seq-step-grid { gap: 4px; }
@@ -1446,34 +1441,34 @@
 /* ── View toggle ── */
 .drum-root .seq-view-toggle { border-radius: var(--radius-lg); }
 .drum-root .seq-view-btn {
-  padding: 10px 18px; font-size: 0.7rem; min-height: 40px;
+  padding: 6px 14px; font-size: 0.68rem;
 }
 
 /* ── Overview mode ── */
-.drum-root .seq-ov-header { padding: 10px 12px; min-height: 44px; }
-.drum-root .seq-ov-name { font-size: 0.8rem; }
+.drum-root .seq-ov-header { padding: 8px 10px; min-height: 36px; }
+.drum-root .seq-ov-name { font-size: 0.72rem; }
 .drum-root .seq-ov-controls { gap: 8px; flex-wrap: wrap; }
 .drum-root .seq-ov-sources { gap: 4px; }
-.drum-root .seq-ov-src-toggle { width: 24px; height: 24px; line-height: 24px; font-size: 0.75rem; }
-.drum-root .seq-ov-controls label { font-size: 0.7rem; gap: 4px; }
+.drum-root .seq-ov-src-toggle { width: 22px; height: 22px; line-height: 22px; font-size: 0.68rem; }
+.drum-root .seq-ov-controls label { font-size: 0.65rem; gap: 3px; }
 .drum-root .seq-ov-controls input[type=number] {
-  width: 40px; font-size: 0.75rem; padding: 4px 6px; min-height: 32px;
+  width: 38px; font-size: 0.68rem; padding: 3px 5px;
 }
 .drum-root .seq-ov-controls select {
-  font-size: 0.75rem; padding: 4px 6px; min-height: 32px; width: 56px;
+  font-size: 0.68rem; padding: 3px 5px; width: 52px;
 }
 .drum-root .seq-ov-controls button {
-  padding: 6px 10px; font-size: 0.65rem; min-height: 32px; border-radius: var(--radius-sm);
+  padding: 4px 8px; font-size: 0.62rem; border-radius: var(--radius-sm);
 }
 .drum-root .seq-ov-grid-wrap { padding: 6px 10px 8px; }
-.drum-root .seq-ov-grid-wrap .seq-step-cell { min-width: 24px; min-height: 24px; }
+.drum-root .seq-ov-grid-wrap .seq-step-cell { min-width: 22px; min-height: 22px; }
 
 /* ── Drag-number widget ── */
 .drum-root .seq-drag-num {
   display: inline-flex; align-items: center; justify-content: center;
-  min-width: 44px; min-height: 40px; padding: 6px 10px;
+  min-width: 36px; min-height: 32px; padding: 4px 8px;
   background: var(--bg-input); color: #fff; border: 1px solid var(--border-medium);
-  border-radius: var(--radius-lg); font-size: 0.9rem; font-weight: 700;
+  border-radius: var(--radius-lg); font-size: 0.78rem; font-weight: 700;
   cursor: ns-resize; user-select: none; touch-action: none;
   -webkit-tap-highlight-color: transparent;
   font-variant-numeric: tabular-nums;

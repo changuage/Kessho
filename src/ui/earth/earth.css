@@ -53,7 +53,7 @@
 
 /* ── Card ── */
 .earth-root .earth-card {
-  background: var(--bg-surface);
+  background: var(--k-bg-card);
   border: 1px solid var(--border-accent);
   border-radius: var(--radius-md);
   overflow: hidden;
@@ -448,7 +448,7 @@
 
 /* ── Mixer Section ── */
 .earth-root .mixer-section {
-  background: var(--bg-surface);
+  background: var(--k-bg-card);
   border: 1px solid var(--border-accent);
   border-radius: var(--radius-md);
   margin-bottom: 6px;
@@ -523,8 +523,8 @@
   gap: 8px;
   margin-bottom: 8px;
   padding: 8px 12px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-accent);
+  background: var(--k-bg-card);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
 }
 .earth-root .transport-btn {
@@ -576,8 +576,8 @@
   display: flex;
   gap: 8px;
   padding: 6px 12px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-accent);
+  background: var(--k-bg-card);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   margin-bottom: 8px;
 }
@@ -1673,7 +1673,7 @@
 
 /* ── Scene Mixer ── */
 .earth-root .earth-scene-container {
-  background: var(--bg-surface);
+  background: var(--k-bg-card);
   border: 1px solid var(--border-accent);
   border-radius: var(--radius-md);
   overflow: hidden;
@@ -2413,7 +2413,7 @@
 .earth-root .transport-bar,
 .earth-root .stats-bar,
 .earth-root .earth-scene-container {
-  background: var(--bg-surface);
+  background: var(--k-bg-card);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
@@ -2460,12 +2460,12 @@
 .earth-root .mixer-section-header,
 .earth-root .earth-scene-header {
   padding: 9px 12px 8px;
-  background: rgba(255,255,255,0.035);
-  border-bottom: 1px solid rgba(255,255,255,0.08);
+  background: transparent;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
 }
 
 .earth-root .earth-card-header.clickable:hover {
-  background: rgba(255,255,255,0.055);
+  background: rgba(255,255,255,0.03);
 }
 
 .earth-root .ec-name,

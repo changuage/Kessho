@@ -35,6 +35,8 @@ const iosState = read('KesshoiOS/Kessho/State/SliderState.swift');
 const iosAppState = read('KesshoiOS/Kessho/State/AppState.swift');
 const iosControls = read('KesshoiOS/Kessho/Views/SliderControlsView.swift');
 const iosDynamics = read('KesshoiOS/Kessho/Audio/DynamicsCharacterProcessor.swift');
+const iosAudioEngine = read('KesshoiOS/Kessho/Audio/AudioEngine.swift');
+const iosMacPages = read('KesshoiOS/Kessho/Platform/KesshoMacPages.swift');
 
 for (const [label, source] of [
   ['iOS SliderState', iosState],
@@ -82,5 +84,37 @@ assert(
   iosNativeBridge.includes('../../wasm/dynamics-character/kessho_dynamics_character.cpp'),
   'iOS native dynamics bridge must include the shared web/WASM C++ core'
 );
+
+for (const key of [
+  'sidechainEnabled',
+  'sidechainKeyA',
+  'sidechainAmount',
+  'sidechainPad1Target',
+  'sidechainPad2Target',
+  'sidechainLead1Target',
+  'sidechainLead2Target',
+  'sidechainPianoTarget',
+  'sidechainGranularTarget',
+  'sidechainDelayATarget',
+  'sidechainDelayBTarget',
+  'sidechainReverbTarget',
+]) {
+  assert(iosState.includes(key), `iOS SliderState must preserve sidechain key ${key}`);
+  assert(iosMacPages.includes(key), `Native macOS/iOS Dynamics page must expose sidechain key ${key}`);
+}
+
+for (const token of [
+  'NativeSidechainTarget',
+  'triggerSidechainDuck',
+  'sidechainTargetAmount',
+  'scheduleSidechainEnvelope',
+  'targetGain: min(currentGain, computedGain)',
+  'applySidechainTargetGains',
+  'sidechainGain(.delayA)',
+  'sidechainGain(.delayB)',
+  'reverbProcessor?.node.outputVolume = sidechainGain(.reverb)',
+]) {
+  assert(iosAudioEngine.includes(token), `AudioEngine must wire native sidechain parity: ${token}`);
+}
 
 console.log('Dynamics web/iOS parity checks passed');

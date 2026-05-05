@@ -16,6 +16,7 @@ function assert(condition, message) {
 const project = read('KesshoiOS/Kessho.xcodeproj/project.pbxproj');
 const infoPlist = read('KesshoiOS/Kessho/Info.plist');
 const mainView = read('KesshoiOS/Kessho/Views/MainView.swift');
+const macComponents = read('KesshoiOS/Kessho/Platform/KesshoMacComponents.swift');
 
 const targetFamilyMatches = project.match(/TARGETED_DEVICE_FAMILY = "?1,2"?/g) ?? [];
 assert(
@@ -49,5 +50,13 @@ assert(
   mainView.includes('.tabViewStyle(.page(indexDisplayMode: .always))'),
   'MainView must keep the compact iPhone page flow'
 );
+
+for (const token of [
+  'GeometryReader',
+  'var pages: [KesshoMacPage] = KesshoMacPage.allCases',
+  'let tabWidth = min(112, max(82, fittedWidth))',
+]) {
+  assert(macComponents.includes(token), `Mac/iOS native page tabs must stay adaptive and expose all web-parity pages: ${token}`);
+}
 
 console.log('iOS universal target and adaptive layout checks passed');

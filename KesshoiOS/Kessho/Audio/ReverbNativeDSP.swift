@@ -93,17 +93,42 @@ final class ReverbNativeDSP {
     func setExtendedParameters(
         shimmer: Float,
         shimmerPitch: Float,
+        slowModRate: Float,
+        slowModDepth: Float,
+        reverse: Float,
+        reverseLength: Float,
+        chorusRate: Float,
+        chorusDepth: Float,
+        modCharacter: Int32,
+        dampLow: Float,
+        dampHigh: Float,
+        crossoverFreq: Float,
+        inputTone: Float,
         shimmerFeedback: Float,
         warp: Float,
         crossFeed: Float,
-        transientSmooth: Float
+        earlyReflections: Float,
+        airAbsorption: Float,
+        saturationMode: Int32,
+        transientSmooth: Float,
+        erLpFreq: Float
     ) {
         guard initialized else { return }
         reverb_set_shimmer(clamp(shimmer, 0, 1), clamp(shimmerPitch, -24, 24))
+        reverb_set_slow_mod(clamp(slowModRate, 0.01, 0.2), clamp(slowModDepth, 0, 1))
+        reverb_set_reverse(clamp(reverse, 0, 1), clamp(reverseLength, 0.1, 12))
+        reverb_set_chorus(clamp(chorusRate, 0.05, 2), clamp(chorusDepth, 0, 40))
+        reverb_set_mod_character(modCharacter)
+        reverb_set_multiband_damp(clamp(dampLow, 0, 1), clamp(dampHigh, 0, 1), clamp(crossoverFreq, 200, 4_000))
+        reverb_set_input_tone(clamp(inputTone, -1, 1))
         reverb_set_shimmer_feedback(clamp(shimmerFeedback, 0, 1))
         reverb_set_warp(clamp(warp, 0, 1))
         reverb_set_cross_feed(clamp(crossFeed, 0, 1))
+        reverb_set_early_reflections(clamp(earlyReflections, 0, 1))
+        reverb_set_air_absorption(clamp(airAbsorption, 0, 1))
+        reverb_set_saturation_mode(saturationMode)
         reverb_set_transient_smooth(clamp(transientSmooth, 0, 1))
+        reverb_set_er_lp_freq(clamp(erLpFreq, 200, 12_000))
     }
 
     private func destroy() {

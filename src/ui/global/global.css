@@ -87,7 +87,7 @@
   padding: 6px 10px;
   cursor: pointer;
   user-select: none;
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--k-bg-inset);
   transition: background 0.15s;
 }
 .global-root .harmony-section-header:hover {
@@ -242,7 +242,7 @@
 }
 
 .global-root .mixer-bus-group {
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--k-bg-inset);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
   padding: 8px 8px;
@@ -298,7 +298,7 @@
 /* ── CoF Drift block ── */
 .global-root .cof-drift-block {
   padding: 10px 10px;
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--k-bg-inset);
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-subtle);
   display: flex;

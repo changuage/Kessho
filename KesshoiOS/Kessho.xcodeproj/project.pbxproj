@@ -11,7 +11,7 @@
 		A1000001 /* KesshoApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000001; };
 		A1000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000002; };
 		A1000003 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B1000003; };
-		
+
 		/* Audio Engine */
 		A1000010 /* AudioEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000010; };
 		A1000011 /* SynthVoice.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000011; };
@@ -33,19 +33,19 @@
 			A1000091 /* NatureTextureSynth.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000091; };
 			A1000092 /* SharedDelayProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000092; };
 			A1000093 /* SpectralFreezeProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000093; };
-		
+
 		/* Harmony */
 		A1000020 /* Scales.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000020; };
 		A1000021 /* Harmony.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000021; };
 		A1000022 /* CircleOfFifths.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000022; };
 		A1000023 /* RNG.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000023; };
 		A1000064 /* EuclideanRhythm.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000064; };
-		
+
 		/* State */
 		A1000030 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000030; };
 		A1000031 /* PresetManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000031; };
 		A1000032 /* SliderState.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000032; };
-		
+
 		/* Views */
 		A1000040 /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000040; };
 		A1000041 /* CircleOfFifthsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000041; };
@@ -53,17 +53,21 @@
 		A1000043 /* PresetListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000043; };
 		A1000065 /* RecordingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000065; };
 		A1000066 /* SliderControlsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000066; };
-		
+		A1000100 /* KesshoMacDesign.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000100; };
+		A1000101 /* KesshoMacComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000101; };
+		A1000102 /* KesshoMacPages.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000102; };
+
 		/* Services */
 		A1000067 /* AudioServiceNotifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000067; };
 		A1000068 /* AudioSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000068; };
 		A1000069 /* NowPlayingManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000069; };
-		
+		A1000076 /* SupabaseService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000076; };
+
 		/* MIDI */
 		A1000070 /* MIDIModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000070; };
 		A1000071 /* MidiMapStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000071; };
 		A1000072 /* MIDIManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000072; };
-		
+
 		/* Presets */
 		A1000050 /* Presets in Resources */ = {isa = PBXBuildFile; fileRef = B1000050; };
 /* End PBXBuildFile section */
@@ -76,7 +80,7 @@
 			B1000003 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 			B1000004 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 			B1000005 /* Kessho-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Kessho-Bridging-Header.h"; sourceTree = "<group>"; };
-		
+
 		/* Audio */
 		B1000010 /* AudioEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioEngine.swift; sourceTree = "<group>"; };
 		B1000011 /* SynthVoice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SynthVoice.swift; sourceTree = "<group>"; };
@@ -98,19 +102,19 @@
 			B1000091 /* NatureTextureSynth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NatureTextureSynth.swift; sourceTree = "<group>"; };
 			B1000092 /* SharedDelayProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedDelayProcessor.swift; sourceTree = "<group>"; };
 			B1000093 /* SpectralFreezeProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpectralFreezeProcessor.swift; sourceTree = "<group>"; };
-		
+
 		/* Harmony */
 		B1000020 /* Scales.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Scales.swift; sourceTree = "<group>"; };
 		B1000021 /* Harmony.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Harmony.swift; sourceTree = "<group>"; };
 		B1000022 /* CircleOfFifths.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CircleOfFifths.swift; sourceTree = "<group>"; };
 		B1000023 /* RNG.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RNG.swift; sourceTree = "<group>"; };
 		B1000064 /* EuclideanRhythm.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EuclideanRhythm.swift; sourceTree = "<group>"; };
-		
+
 		/* State */
 		B1000030 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		B1000031 /* PresetManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetManager.swift; sourceTree = "<group>"; };
 		B1000032 /* SliderState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SliderState.swift; sourceTree = "<group>"; };
-		
+
 		/* Views */
 		B1000040 /* MainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainView.swift; sourceTree = "<group>"; };
 		B1000041 /* CircleOfFifthsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CircleOfFifthsView.swift; sourceTree = "<group>"; };
@@ -118,17 +122,21 @@
 		B1000043 /* PresetListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetListView.swift; sourceTree = "<group>"; };
 		B1000065 /* RecordingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingView.swift; sourceTree = "<group>"; };
 		B1000066 /* SliderControlsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SliderControlsView.swift; sourceTree = "<group>"; };
-		
+		B1000100 /* KesshoMacDesign.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KesshoMacDesign.swift; sourceTree = "<group>"; };
+		B1000101 /* KesshoMacComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KesshoMacComponents.swift; sourceTree = "<group>"; };
+		B1000102 /* KesshoMacPages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KesshoMacPages.swift; sourceTree = "<group>"; };
+
 		/* Services */
 		B1000067 /* AudioServiceNotifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioServiceNotifications.swift; sourceTree = "<group>"; };
 		B1000068 /* AudioSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioSessionManager.swift; sourceTree = "<group>"; };
 		B1000069 /* NowPlayingManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingManager.swift; sourceTree = "<group>"; };
-		
+		B1000076 /* SupabaseService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseService.swift; sourceTree = "<group>"; };
+
 		/* MIDI */
 		B1000070 /* MIDIModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MIDIModels.swift; sourceTree = "<group>"; };
 		B1000071 /* MidiMapStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MidiMapStore.swift; sourceTree = "<group>"; };
 		B1000072 /* MIDIManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MIDIManager.swift; sourceTree = "<group>"; };
-		
+
 		/* Presets folder */
 		B1000050 /* Presets */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Presets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -172,6 +180,7 @@
 				E1000010 /* Audio */,
 				E1000020 /* Harmony */,
 				E1000030 /* State */,
+				E1000080 /* Platform */,
 				E1000050 /* Services */,
 				E1000060 /* MIDI */,
 				E1000040 /* Views */,
@@ -233,6 +242,7 @@
 				B1000067 /* AudioServiceNotifications.swift */,
 				B1000068 /* AudioSessionManager.swift */,
 				B1000069 /* NowPlayingManager.swift */,
+				B1000076 /* SupabaseService.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -258,6 +268,16 @@
 				B1000066 /* SliderControlsView.swift */,
 			);
 			path = Views;
+				sourceTree = "<group>";
+			};
+			E1000080 /* Platform */ = {
+				isa = PBXGroup;
+				children = (
+					B1000100 /* KesshoMacDesign.swift */,
+					B1000101 /* KesshoMacComponents.swift */,
+					B1000102 /* KesshoMacPages.swift */,
+				);
+				path = Platform;
 				sourceTree = "<group>";
 			};
 			E1000070 /* NativeDSP */ = {
@@ -375,9 +395,13 @@
 				A1000043 /* PresetListView.swift in Sources */,
 				A1000065 /* RecordingView.swift in Sources */,
 				A1000066 /* SliderControlsView.swift in Sources */,
+				A1000100 /* KesshoMacDesign.swift in Sources */,
+				A1000101 /* KesshoMacComponents.swift in Sources */,
+				A1000102 /* KesshoMacPages.swift in Sources */,
 				A1000067 /* AudioServiceNotifications.swift in Sources */,
 				A1000068 /* AudioSessionManager.swift in Sources */,
 				A1000069 /* NowPlayingManager.swift in Sources */,
+				A1000076 /* SupabaseService.swift in Sources */,
 				A1000070 /* MIDIModels.swift in Sources */,
 				A1000071 /* MidiMapStore.swift in Sources */,
 				A1000072 /* MIDIManager.swift in Sources */,

@@ -198,10 +198,6 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
       <div className="global-container">
       {/* Master Mixer */}
       <div className="global-mixer-panel">
-          <div className="global-page-header fx-page-header fx-page-header--identity">
-            <span className="global-page-title fx-page-title">◎ Global</span>
-          </div>
-
           <div className="mixer-card">
             <h3 className="mixer-card-title">Master Mixer</h3>
             <div className="harmony-section">

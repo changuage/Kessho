@@ -31,10 +31,6 @@ export default function RoutingPage({
   return (
     <div className={`routing-root${isMobile ? ' mobile' : ''}`}>
       <div className="routing-container">
-        <div className="routing-page-header fx-page-header fx-page-header--identity">
-          <span className="routing-page-title fx-page-title">▦ Routing</span>
-        </div>
-
         <section
           className="routing-card"
           style={{ '--sc': '#a5c4d4' } as React.CSSProperties}

@@ -1,4 +1,13 @@
 import AVFoundation
+import Darwin
+
+@inline(__always)
+private func silenceDrumBuffers(_ buffers: UnsafeMutableAudioBufferListPointer) {
+    for buffer in buffers {
+        guard let data = buffer.mData else { continue }
+        memset(data, 0, Int(buffer.mDataByteSize))
+    }
+}
 
 @inline(__always)
 private func writeDrumStereoFrame(
@@ -54,24 +63,18 @@ class DrumSynth {
         return AVAudioSourceNode(format: renderFormat) { _, _, frameCount, audioBufferList -> OSStatus in
             let ablPointer = UnsafeMutableAudioBufferListPointer(audioBufferList)
             guard let self else {
-                for frame in 0..<Int(frameCount) {
-                    writeDrumStereoFrame(0, 0, frame: frame, to: ablPointer)
-                }
+                silenceDrumBuffers(ablPointer)
                 return noErr
             }
 
             guard self.voiceLock.try() else {
-                for frame in 0..<Int(frameCount) {
-                    writeDrumStereoFrame(0, 0, frame: frame, to: ablPointer)
-                }
+                silenceDrumBuffers(ablPointer)
                 return noErr
             }
             defer { self.voiceLock.unlock() }
 
             guard self.enabled else {
-                for frame in 0..<Int(frameCount) {
-                    writeDrumStereoFrame(0, 0, frame: frame, to: ablPointer)
-                }
+                silenceDrumBuffers(ablPointer)
                 return noErr
             }
 
@@ -84,54 +87,54 @@ class DrumSynth {
             return noErr
         }
     }()
-    
+
     // Parameters
     private var params: SliderState = .default
     private var enabled: Bool = false
     private var masterLevel: Float = 0.7
     private var reverbSendLevel: Float = 0.3
-    
+
     // Noise buffer for click and noise voices
     private var noiseBuffer: [Float] = []
     private let noiseBufferSize: Int  // 1 second at render sample rate
-    
+
     // Active voice state for per-sample processing
     private var activeVoices: [ActiveVoice] = []
     private let maxActiveVoices = 32
     private let voiceLock = NSLock()
     private let schedulerQueue = DispatchQueue(label: "com.kessho.drumsynth.scheduler", qos: .userInitiated)
-    
+
     // RNG for deterministic randomness
     private var rngFn: (() -> Double)?
-    
+
     // Sample rate
     private let sampleRate: Float
     private let invSampleRate: Float
-    
+
     // Callback for UI visualization
     var onDrumTrigger: ((DrumVoiceType, Float) -> Void)?
-    
+
     // Callback for morph trigger visualization (per-trigger random position)
     var onMorphTrigger: ((DrumVoiceType, Double) -> Void)?
-    
+
     // Morph ranges for per-trigger randomization (like delay/expression)
     private var morphRanges: [DrumVoiceType: (min: Double, max: Double)?] = [
         .sub: nil, .kick: nil, .click: nil, .beepHi: nil, .beepLo: nil, .noise: nil
     ]
-    
+
     // Morph manager for auto-morph (exposed for external access)
     let morphManager = DrumMorphManager()
-    
+
     // Per-voice delay send levels (used for output mixing)
     private var delaySendLevels: [DrumVoiceType: Float] = [
         .sub: 0, .kick: 0.2, .click: 0.5, .beepHi: 0.6, .beepLo: 0.4, .noise: 0.7
     ]
-    
+
     // Separate delay output buffer for stereo ping-pong delay
     private var delayOutputBuffer: [Float] = []
     private var delayBufferWriteIndex: Int = 0
     private let delayBufferSize: Int  // ~100ms at render sample rate
-    
+
     // Euclidean scheduling
     private var euclidCurrentStep: [Int] = [0, 0, 0, 0]
     private var lastScheduleTime: TimeInterval = 0
@@ -142,7 +145,7 @@ class DrumSynth {
     private var lastRandomTimes: [DrumVoiceType: TimeInterval] = [
         .sub: 0, .kick: 0, .click: 0, .beepHi: 0, .beepLo: 0, .noise: 0
     ]
-    
+
     // Euclidean preset data (matching web app)
     private let presetData: [String: (steps: Int, hits: Int, rotation: Int)] = [
         "sparse": (16, 1, 0),
@@ -178,7 +181,7 @@ class DrumSynth {
         "reich18": (12, 7, 3),
         "drumming": (8, 6, 1)
     ]
-    
+
     /// Active voice structure for per-sample processing
     private struct ActiveVoice {
         let type: DrumVoiceType
@@ -197,7 +200,7 @@ class DrumSynth {
         var pluckIndex: Int = 0
         var shimmerPhase: Float = 0  // For shimmer LFO
         var delaySend: Float = 0     // Per-voice delay send level
-        
+
         struct VoiceParams {
             // Sub
             var subFreq: Float = 50
@@ -208,7 +211,7 @@ class DrumSynth {
             var subPitchDecay: Float = 0.05   // seconds
             var subDrive: Float = 0           // saturation
             var subSub: Float = 0             // sub-octave mix
-            
+
             // Kick
             var kickFreq: Float = 55
             var kickPitchEnv: Float = 24
@@ -219,7 +222,7 @@ class DrumSynth {
             var kickPunch: Float = 0.8        // transient sharpness
             var kickTail: Float = 0           // reverberant tail
             var kickTone: Float = 0           // harmonic content
-            
+
             // Click
             var clickDecay: Float = 0.005
             var clickFilter: Float = 4000
@@ -231,7 +234,7 @@ class DrumSynth {
             var clickGrainCount: Int = 1
             var clickGrainSpread: Float = 0
             var clickStereoWidth: Float = 0
-            
+
             // BeepHi
             var beepHiFreq: Float = 4000
             var beepHiAttack: Float = 0.001
@@ -242,7 +245,7 @@ class DrumSynth {
             var beepHiShimmer: Float = 0      // vibrato/chorus
             var beepHiShimmerRate: Float = 4  // LFO rate Hz
             var beepHiBrightness: Float = 0.5 // spectral tilt
-            
+
             // BeepLo
             var beepLoFreq: Float = 400
             var beepLoAttack: Float = 0.002
@@ -257,7 +260,7 @@ class DrumSynth {
             var beepLoPitchEnvCoeff: Float = -1 / (0.05 * 0.3)
             var beepLoPitchDelta: Float = 0
             var beepLoPluckDampGain: Float = 0.85
-            
+
             // Noise
             var noiseFilterFreq: Float = 8000
             var noiseFilterQ: Float = 1
@@ -272,7 +275,7 @@ class DrumSynth {
             var noiseColorLFO: Float = 0      // filter mod rate Hz
         }
     }
-    
+
     init(sampleRate: Float = 44_100) {
         self.sampleRate = max(sampleRate, 1_000)
         self.invSampleRate = 1.0 / self.sampleRate
@@ -284,23 +287,23 @@ class DrumSynth {
         for i in 0..<noiseBufferSize {
             noiseBuffer[i] = Float.random(in: -1...1)
         }
-        
+
     }
-    
+
     /// Set seeded RNG for deterministic randomness
     func setRng(_ rng: @escaping () -> Double) {
         voiceLock.lock()
         defer { voiceLock.unlock() }
         self.rngFn = rng
     }
-    
+
     private func rng() -> Float {
         if let fn = rngFn {
             return Float(fn())
         }
         return Float.random(in: 0...1)
     }
-    
+
     /// Generate one audio sample by summing all active voices
     /// Returns (mainOutput, delayOutput) for routing to delay send
     private func generateSampleWithDelayLocked() -> (main: Float, delay: Float) {
@@ -327,20 +330,20 @@ class DrumSynth {
         // Soft clip both outputs
         return (tanh(output), tanh(delayOutput))
     }
-    
+
     /// Get current delay output level for routing
     func getDelayOutputLevel() -> Float {
         return params.drumDelayEnabled ? Float(params.drumDelayMix) : 0
     }
-    
+
     /// Process a single voice and return (sample, isFinished)
     private func processVoice(_ voice: inout ActiveVoice) -> (Float, Bool) {
         let dt = invSampleRate
         voice.time += dt
-        
+
         var sample: Float = 0
         var finished = false
-        
+
         switch voice.type {
         case .sub:
             (sample, finished) = processSubVoice(&voice)
@@ -355,21 +358,21 @@ class DrumSynth {
         case .noise:
             (sample, finished) = processNoiseVoice(&voice)
         }
-        
+
         return (sample * voice.velocity * voice.level, finished)
     }
-    
+
     // MARK: - Voice Processing
-    
+
     private func processSubVoice(_ voice: inout ActiveVoice) -> (Float, Bool) {
         let p = voice.params
         let decay = p.subDecay
-        
+
         // Exponential decay envelope
         if voice.time >= decay * 3 { return (0, true) }
-        
+
         voice.envelope = exp(-voice.time / (decay * 0.3))
-        
+
         // Pitch envelope
         var freq = p.subFreq
         if abs(p.subPitchEnv) > 0.1 {
@@ -377,11 +380,11 @@ class DrumSynth {
             let pitchEnvVal = exp(-voice.time / (p.subPitchDecay * 0.3))
             freq = p.subFreq + (p.subFreq * (pitchMult - 1)) * pitchEnvVal
         }
-        
+
         // Main oscillator with shape morphing
         voice.phase += freq * invSampleRate
         if voice.phase >= 1 { voice.phase -= 1 }
-        
+
         var osc: Float
         if p.subShape < 0.33 {
             // Sine to triangle blend
@@ -399,7 +402,7 @@ class DrumSynth {
             // Mostly saw
             osc = 2 * voice.phase - 1
         }
-        
+
         // Sub-octave
         if p.subSub > 0.05 {
             voice.phase2 += (freq * 0.5) * invSampleRate
@@ -407,33 +410,33 @@ class DrumSynth {
             let subOsc = sin(voice.phase2 * 2 * .pi)
             osc = osc * (1 - p.subSub) + subOsc * p.subSub
         }
-        
+
         // Optional overtone
         if p.subTone > 0.05 {
             voice.modPhase += freq * 2 * invSampleRate
             if voice.modPhase >= 1 { voice.modPhase -= 1 }
             osc += sin(voice.modPhase * 2 * .pi) * p.subTone * 0.3
         }
-        
+
         // Drive/saturation
         if p.subDrive > 0.05 {
             osc = tanh(osc * (1 + p.subDrive * 3))
         }
-        
+
         return (osc * voice.envelope, false)
     }
-    
+
     private func processKickVoice(_ voice: inout ActiveVoice) -> (Float, Bool) {
         let p = voice.params
         let ampDecay = p.kickDecay * (1 + p.kickBody * 2)  // Body extends decay
-        
+
         if voice.time >= ampDecay * 3 { return (0, true) }
-        
+
         // Pitch envelope
         let pitchDecay = p.kickPitchDecay * (1 - p.kickPunch * 0.5)  // Punch shortens pitch decay
         let startFreq = p.kickFreq * pow(2, p.kickPitchEnv / 12)
         let currentFreq = p.kickFreq + (startFreq - p.kickFreq) * exp(-voice.time / (pitchDecay * 0.3))
-        
+
         // Amplitude envelope with tail
         var env = exp(-voice.time / (ampDecay * 0.3))
         if p.kickTail > 0.1 {
@@ -441,19 +444,19 @@ class DrumSynth {
             env = env * (1 - p.kickTail) + tailEnv * p.kickTail
         }
         voice.envelope = env
-        
+
         // Main oscillator
         voice.phase += currentFreq * invSampleRate
         if voice.phase >= 1 { voice.phase -= 1 }
         var osc = sin(voice.phase * 2 * .pi)
-        
+
         // Harmonic content (tone)
         if p.kickTone > 0.1 {
             voice.modPhase += currentFreq * 2 * invSampleRate
             if voice.modPhase >= 1 { voice.modPhase -= 1 }
             osc += sin(voice.modPhase * 2 * .pi) * p.kickTone * 0.3
         }
-        
+
         // Click transient with punch control
         if p.kickClick > 0.05 && voice.time < 0.015 {
             let clickDecay: Float = 0.002 / (1 + p.kickPunch)
@@ -462,21 +465,21 @@ class DrumSynth {
             let clickEnv = exp(-voice.time / clickDecay)
             osc += sin(voice.phase2 * 2 * .pi) * p.kickClick * clickEnv * 0.5
         }
-        
+
         return (osc * voice.envelope, false)
     }
-    
+
     private func processClickVoice(_ voice: inout ActiveVoice) -> (Float, Bool) {
         let p = voice.params
         let decay = p.clickDecay
-        
+
         if voice.time >= decay * 3 { return (0, true) }
-        
+
         // Envelope
         voice.envelope = exp(-voice.time / (decay * 0.3))
-        
+
         var sample: Float = 0
-        
+
         if p.clickMode == "tonal" {
             // Tonal click with pitch envelope
             var freq = p.clickPitch
@@ -493,7 +496,7 @@ class DrumSynth {
             let noiseIdx = (voice.noiseIndex + 1) % noiseBufferSize
             voice.noiseIndex = noiseIdx
             var noise = noiseBuffer[noiseIdx]
-            
+
             // Density modulation for granular
             if p.clickMode == "granular" || p.clickTone > 0.5 {
                 // Add some tonal content
@@ -501,34 +504,34 @@ class DrumSynth {
                 if voice.phase >= 1 { voice.phase -= 1 }
                 noise = noise * (1 - p.clickTone) + sin(voice.phase * 2 * .pi) * p.clickTone
             }
-            
+
             // Highpass filter
             let hpCoeff = exp(-2 * .pi * p.clickFilter * invSampleRate)
             let hpOut = noise - voice.filterState
             voice.filterState = noise * (1 - hpCoeff) + voice.filterState * hpCoeff
-            
+
             // Add resonance
             sample = hpOut + voice.filterState * p.clickResonance
         }
-        
+
         return (sample * voice.envelope, false)
     }
-    
+
     private func processBeepHiVoice(_ voice: inout ActiveVoice) -> (Float, Bool) {
         let p = voice.params
         let attack = p.beepHiAttack
         let decay = p.beepHiDecay
         let totalTime = attack + decay
-        
+
         if voice.time >= totalTime * 3 { return (0, true) }
-        
+
         // Attack/decay envelope
         if voice.time < attack {
             voice.envelope = attack > 0 ? voice.time / attack : 1.0
         } else {
             voice.envelope = exp(-(voice.time - attack) / (decay * 0.3))
         }
-        
+
         // Shimmer LFO
         var freqMod: Float = 0
         if p.beepHiShimmer > 0.01 {
@@ -536,14 +539,14 @@ class DrumSynth {
             if voice.shimmerPhase >= 1 { voice.shimmerPhase -= 1 }
             freqMod = sin(voice.shimmerPhase * 2 * .pi) * p.beepHiShimmer * 0.02
         }
-        
+
         // Main oscillator with partials
         let baseFreq = p.beepHiFreq * (1 + freqMod)
         voice.phase += baseFreq * invSampleRate
         if voice.phase >= 1 { voice.phase -= 1 }
-        
+
         var osc = sin(voice.phase * 2 * .pi) * (1 - p.beepHiBrightness * 0.3)
-        
+
         // Add partials
         for i in 2...p.beepHiPartials {
             let partialRatio = Float(i) * (1 + p.beepHiInharmonic * 0.03 * Float(i - 1))
@@ -552,7 +555,7 @@ class DrumSynth {
             if voice.modPhase >= 1 { voice.modPhase -= 1 }
             osc += sin(voice.modPhase * 2 * .pi) * partialAmp
         }
-        
+
         // FM modulation for metallic character
         if p.beepHiTone > 0.1 {
             let modFreq = baseFreq * 2.01
@@ -562,18 +565,18 @@ class DrumSynth {
             let fm = sin(voice.phase2 * 2 * .pi) * modDepth / baseFreq
             osc = osc * 0.7 + sin((voice.phase + fm) * 2 * .pi) * 0.3
         }
-        
+
         return (osc * voice.envelope, false)
     }
-    
+
     private func processBeepLoVoice(_ voice: inout ActiveVoice) -> (Float, Bool) {
         let p = voice.params
         let attack = p.beepLoAttack
         let decay = p.beepLoDecay
         let totalTime = attack + decay
-        
+
         if voice.time >= totalTime * 3 { return (0, true) }
-        
+
         // Attack/decay envelope
         if voice.time < attack {
             voice.envelope = attack > 0 ? voice.time / attack : 1.0
@@ -587,10 +590,10 @@ class DrumSynth {
             let pitchEnvVal = exp(voice.time * p.beepLoPitchEnvCoeff)
             freq = p.beepLoFreq + p.beepLoPitchDelta * pitchEnvVal
         }
-        
+
         voice.phase += freq * invSampleRate
         if voice.phase >= 1 { voice.phase -= 1 }
-        
+
         var osc: Float
         if p.beepLoTone > 0.5 {
             // Square-ish (filtered square)
@@ -601,7 +604,7 @@ class DrumSynth {
         } else {
             osc = sin(voice.phase * 2 * .pi)
         }
-        
+
         // Body resonance (2-pole filter for warmth)
         if p.beepLoBody > 0.1 {
             let bodyFreq = freq * 1.5
@@ -609,7 +612,7 @@ class DrumSynth {
             voice.filterState2 = voice.filterState2 * bodyCoeff + osc * (1 - bodyCoeff) * p.beepLoBody
             osc += voice.filterState2 * 0.3
         }
-        
+
         // Karplus-Strong pluck simulation (buffer is prepared at trigger time).
         if p.beepLoPluck > 0.1 && !voice.pluckBuffer.isEmpty {
             let bufSize = voice.pluckBuffer.count
@@ -620,25 +623,25 @@ class DrumSynth {
             voice.pluckIndex += 1
             osc = osc * (1 - p.beepLoPluck) + pluckSample * p.beepLoPluck
         }
-        
+
         return (osc * voice.envelope, false)
     }
-    
+
     private func processNoiseVoice(_ voice: inout ActiveVoice) -> (Float, Bool) {
         let p = voice.params
         let attack = p.noiseAttack
         let decay = p.noiseDecay
         let totalTime = attack + decay
-        
+
         if voice.time >= totalTime * 3 { return (0, true) }
-        
+
         // Attack/decay envelope
         if voice.time < attack {
             voice.envelope = attack > 0 ? voice.time / attack : 1.0
         } else {
             voice.envelope = exp(-(voice.time - attack) / (decay * 0.3))
         }
-        
+
         // Filter envelope
         var filterFreq = p.noiseFilterFreq
         if abs(p.noiseFilterEnv) > 0.01 {
@@ -646,7 +649,7 @@ class DrumSynth {
             filterFreq = p.noiseFilterFreq * (1 + p.noiseFilterEnv * filterEnvVal)
             filterFreq = max(200, min(15000, filterFreq))
         }
-        
+
         // Filter color LFO
         if p.noiseColorLFO > 0.1 {
             voice.shimmerPhase += p.noiseColorLFO * invSampleRate
@@ -654,12 +657,12 @@ class DrumSynth {
             let lfoMod = sin(voice.shimmerPhase * 2 * .pi) * 0.3
             filterFreq = filterFreq * (1 + lfoMod)
         }
-        
+
         // Noise source with density
         let noiseIdx = (voice.noiseIndex + 1) % noiseBufferSize
         voice.noiseIndex = noiseIdx
         var noise = noiseBuffer[noiseIdx]
-        
+
         // Sparse noise for dust-like sounds
         if p.noiseDensity < 0.9 {
             let threshold = 1 - p.noiseDensity
@@ -667,7 +670,7 @@ class DrumSynth {
                 noise = 0
             }
         }
-        
+
         // Breath/breathiness (add formant-like character)
         if p.noiseBreath > 0.1 {
             // Simple resonant filter for breath
@@ -676,10 +679,10 @@ class DrumSynth {
             voice.filterState2 = voice.filterState2 * breathCoeff * 0.9 + noise * (1 - breathCoeff)
             noise = noise * (1 - p.noiseBreath) + voice.filterState2 * p.noiseBreath
         }
-        
+
         // Main filter
         let coeff = exp(-2 * .pi * filterFreq * invSampleRate)
-        
+
         var filtered: Float
         if p.noiseFilterType == "highpass" {
             filtered = noise - voice.filterState
@@ -693,17 +696,17 @@ class DrumSynth {
             filtered = voice.filterState * coeff + noise * (1 - coeff)
             voice.filterState = filtered
         }
-        
+
         return (filtered * voice.envelope, false)
     }
-    
+
     // MARK: - Morph System
-    
+
     /// Set morph range for per-trigger randomization
     func setMorphRange(_ voice: DrumVoiceType, range: (min: Double, max: Double)?) {
         morphRanges[voice] = range
     }
-    
+
     /// Get morphed parameter value, respecting morph range for per-trigger randomization
     private func getMorphedParamValue(
         for type: DrumVoiceType,
@@ -716,18 +719,18 @@ class DrumSynth {
         }
         return sliderValue
     }
-    
+
     // MARK: - Voice Triggering
-    
+
     func triggerVoice(_ type: DrumVoiceType, velocity: Float = 0.8) {
         voiceLock.lock()
         defer { voiceLock.unlock() }
-        
+
         // Limit active voices
         if activeVoices.count >= maxActiveVoices {
             activeVoices.removeFirst()
         }
-        
+
         // Get random morph value within range if range is set (per-trigger randomization)
         let range = morphRanges[type] ?? nil
         var morphValue: Double? = nil
@@ -741,15 +744,15 @@ class DrumSynth {
                 self?.onMorphTrigger?(type, normalizedPos)
             }
         }
-        
+
         // Only use morphed params when per-trigger randomization is active
         // Otherwise use slider values directly (which already have morph applied in UI)
         let morphedParams = range != nil ? getMorphedParams(state: params, voice: type, morphOverride: morphValue) : [:]
-        
+
         var voiceParams = ActiveVoice.VoiceParams()
         var level: Float = 1.0
         var delaySend: Float = 0
-        
+
         switch type {
         case .sub:
             voiceParams.subFreq = Float(morphedParams["drumSubFreq"] as? Double ?? params.drumSubFreq)
@@ -762,7 +765,7 @@ class DrumSynth {
             voiceParams.subSub = Float(morphedParams["drumSubSub"] as? Double ?? params.drumSubSub)
             level = Float(morphedParams["drumSubLevel"] as? Double ?? params.drumSubLevel)
             delaySend = Float(params.drumSubDelaySend)
-            
+
         case .kick:
             voiceParams.kickFreq = Float(morphedParams["drumKickFreq"] as? Double ?? params.drumKickFreq)
             voiceParams.kickPitchEnv = Float(morphedParams["drumKickPitchEnv"] as? Double ?? params.drumKickPitchEnv)
@@ -775,7 +778,7 @@ class DrumSynth {
             voiceParams.kickTone = Float(morphedParams["drumKickTone"] as? Double ?? params.drumKickTone)
             level = Float(morphedParams["drumKickLevel"] as? Double ?? params.drumKickLevel)
             delaySend = Float(params.drumKickDelaySend)
-            
+
         case .click:
             voiceParams.clickDecay = Float(morphedParams["drumClickDecay"] as? Double ?? params.drumClickDecay) / 1000
             voiceParams.clickFilter = Float(morphedParams["drumClickFilter"] as? Double ?? params.drumClickFilter)
@@ -789,7 +792,7 @@ class DrumSynth {
             voiceParams.clickStereoWidth = Float(morphedParams["drumClickStereoWidth"] as? Double ?? params.drumClickStereoWidth)
             level = Float(morphedParams["drumClickLevel"] as? Double ?? params.drumClickLevel)
             delaySend = Float(params.drumClickDelaySend)
-            
+
         case .beepHi:
             voiceParams.beepHiFreq = Float(morphedParams["drumBeepHiFreq"] as? Double ?? params.drumBeepHiFreq)
             voiceParams.beepHiAttack = Float(morphedParams["drumBeepHiAttack"] as? Double ?? params.drumBeepHiAttack) / 1000
@@ -802,7 +805,7 @@ class DrumSynth {
             voiceParams.beepHiBrightness = Float(morphedParams["drumBeepHiBrightness"] as? Double ?? params.drumBeepHiBrightness)
             level = Float(morphedParams["drumBeepHiLevel"] as? Double ?? params.drumBeepHiLevel)
             delaySend = Float(params.drumBeepHiDelaySend)
-            
+
         case .beepLo:
             voiceParams.beepLoFreq = Float(morphedParams["drumBeepLoFreq"] as? Double ?? params.drumBeepLoFreq)
             voiceParams.beepLoAttack = Float(morphedParams["drumBeepLoAttack"] as? Double ?? params.drumBeepLoAttack) / 1000
@@ -820,7 +823,7 @@ class DrumSynth {
             voiceParams.beepLoPluckDampGain = 1 - voiceParams.beepLoPluckDamp * 0.3
             level = Float(morphedParams["drumBeepLoLevel"] as? Double ?? params.drumBeepLoLevel)
             delaySend = Float(params.drumBeepLoDelaySend)
-            
+
         case .noise:
             voiceParams.noiseFilterFreq = Float(morphedParams["drumNoiseFilterFreq"] as? Double ?? params.drumNoiseFilterFreq)
             voiceParams.noiseFilterQ = Float(morphedParams["drumNoiseFilterQ"] as? Double ?? params.drumNoiseFilterQ)
@@ -836,10 +839,10 @@ class DrumSynth {
             level = Float(morphedParams["drumNoiseLevel"] as? Double ?? params.drumNoiseLevel)
             delaySend = Float(params.drumNoiseDelaySend)
         }
-        
+
         // Store delay send level for this voice
         delaySendLevels[type] = delaySend
-        
+
         var pluckBuffer: [Float] = []
         if type == .beepLo && voiceParams.beepLoPluck > 0.1 {
             let bufferSize = max(1, Int(sampleRate / max(voiceParams.beepLoFreq, 1)))
@@ -859,15 +862,15 @@ class DrumSynth {
             pluckBuffer: pluckBuffer,
             delaySend: delaySend
         )
-        
+
         activeVoices.append(voice)
-        
+
         // Notify UI
         DispatchQueue.main.async { [weak self] in
             self?.onDrumTrigger?(type, velocity)
         }
     }
-    
+
     // MARK: - Parameter Updates
 
     func updateParams(_ params: SliderState) {
@@ -895,7 +898,7 @@ class DrumSynth {
             } else if !params.drumRandomEnabled {
                 stopRandomScheduler()
             }
-            
+
             if params.drumEuclidMasterEnabled && euclidScheduleTimer == nil {
                 startEuclidScheduler()
             } else if !params.drumEuclidMasterEnabled {
@@ -906,10 +909,10 @@ class DrumSynth {
             stopEuclidScheduler()
         }
     }
-    
+
     func start() {
         if !params.drumEnabled { return }
-        
+
         if params.drumRandomEnabled {
             startRandomScheduler()
         }
@@ -917,7 +920,7 @@ class DrumSynth {
             startEuclidScheduler()
         }
     }
-    
+
     func stop() {
         stopRandomScheduler()
         stopEuclidScheduler()
@@ -964,7 +967,7 @@ class DrumSynth {
         let now = Date().timeIntervalSince1970
         let density = params.drumRandomDensity
         let minInterval = params.drumRandomMinInterval / 1000
-        
+
         let voices: [(type: DrumVoiceType, prob: Double)] = [
             (.sub, params.drumRandomSubProb),
             (.kick, params.drumRandomKickProb),
@@ -973,7 +976,7 @@ class DrumSynth {
             (.beepLo, params.drumRandomBeepLoProb),
             (.noise, params.drumRandomNoiseProb)
         ]
-        
+
         for v in voices {
             let effectiveProb = v.prob * density
             let lastTime = lastRandomTimes[v.type] ?? 0
@@ -1022,11 +1025,11 @@ class DrumSynth {
         let tempo = params.drumEuclidTempo
         let division = params.drumEuclidDivision
         let swing = params.drumEuclidSwing / 100
-        
+
         // Calculate step duration
         let beatDuration = 60.0 / (baseBPM * tempo)
         let stepDuration = (beatDuration * 4) / Double(division)
-        
+
         // Get lane configurations
         let lanes = [
             getLaneConfig(1, params: params),
@@ -1034,33 +1037,33 @@ class DrumSynth {
             getLaneConfig(3, params: params),
             getLaneConfig(4, params: params)
         ]
-        
+
         // Schedule while we're behind
         while lastScheduleTime < now {
             let stepTime = lastScheduleTime
-            
+
             // Apply swing (delay offbeats)
             let stepIndex = Int(stepTime / stepDuration)
             let isOffbeat = stepIndex % 2 == 1
-            let actualTime = isOffbeat && swing > 0 ? 
+            let actualTime = isOffbeat && swing > 0 ?
                 stepTime + stepDuration * swing * 0.5 : stepTime
-            
+
             // Only trigger if not too far in the past
             if actualTime >= now - 0.1 {
                 for (laneIndex, lane) in lanes.enumerated() {
                     guard lane.enabled else { continue }
-                    
+
                     let voices = lane.enabledVoices
                     guard !voices.isEmpty else { continue }
-                    
+
                     let pattern = generateEuclideanPattern(
                         steps: lane.steps,
                         hits: lane.hits,
                         rotation: lane.rotation
                     )
-                    
+
                     let currentStep = euclidCurrentStep[laneIndex] % lane.steps
-                    
+
                     if pattern[currentStep] {
                         // Probability check
                         if Double(randomUnit(snapshot.rng)) <= lane.probability {
@@ -1072,15 +1075,15 @@ class DrumSynth {
                             triggerVoice(selectedVoice, velocity: velocity * Float(lane.level))
                         }
                     }
-                    
+
                     euclidCurrentStep[laneIndex] = (euclidCurrentStep[laneIndex] + 1) % lane.steps
                 }
             }
-            
+
             lastScheduleTime += stepDuration
         }
     }
-    
+
     private struct LaneConfig {
         var enabled: Bool
         var steps: Int
@@ -1124,7 +1127,7 @@ class DrumSynth {
             velocityMax: 0.8,
             level: 0.8
         )
-        
+
         switch lane {
         case 1:
             config.enabled = params.drumEuclid1Enabled
@@ -1148,7 +1151,7 @@ class DrumSynth {
             config.velocityMin = params.drumEuclid1VelocityMin
             config.velocityMax = params.drumEuclid1VelocityMax
             config.level = params.drumEuclid1Level
-            
+
         case 2:
             config.enabled = params.drumEuclid2Enabled
             let preset = params.drumEuclid2Preset
@@ -1171,7 +1174,7 @@ class DrumSynth {
             config.velocityMin = params.drumEuclid2VelocityMin
             config.velocityMax = params.drumEuclid2VelocityMax
             config.level = params.drumEuclid2Level
-            
+
         case 3:
             config.enabled = params.drumEuclid3Enabled
             let preset = params.drumEuclid3Preset
@@ -1194,7 +1197,7 @@ class DrumSynth {
             config.velocityMin = params.drumEuclid3VelocityMin
             config.velocityMax = params.drumEuclid3VelocityMax
             config.level = params.drumEuclid3Level
-            
+
         case 4:
             config.enabled = params.drumEuclid4Enabled
             let preset = params.drumEuclid4Preset
@@ -1217,35 +1220,35 @@ class DrumSynth {
             config.velocityMin = params.drumEuclid4VelocityMin
             config.velocityMax = params.drumEuclid4VelocityMax
             config.level = params.drumEuclid4Level
-            
+
         default:
             break
         }
-        
+
         return config
     }
-    
+
     /// Generate Euclidean rhythm pattern using Bresenham's algorithm
     private func generateEuclideanPattern(steps: Int, hits: Int, rotation: Int) -> [Bool] {
         guard steps > 0 else { return [] }
         let clampedHits = max(0, min(hits, steps))
-        
+
         if clampedHits >= steps { return [Bool](repeating: true, count: steps) }
         if clampedHits <= 0 { return [Bool](repeating: false, count: steps) }
-        
+
         // Bresenham's line algorithm for even distribution
         var pattern = [Bool](repeating: false, count: steps)
         for i in 0..<clampedHits {
             let pos = (i * steps) / clampedHits
             pattern[pos] = true
         }
-        
+
         // Apply rotation
         var rotated = [Bool](repeating: false, count: steps)
         for i in 0..<steps {
             rotated[i] = pattern[(i + rotation) % steps]
         }
-        
+
         return rotated
     }
 }
