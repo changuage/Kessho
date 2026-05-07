@@ -19,6 +19,8 @@ export interface KesshoCoreMidiTimingOptions {
 }
 
 const MAX_RAW_BYTES = 16;
+const MAX_MIDI_CHANNEL = 0x0f;
+const MAX_MIDI_DATA_BYTE = 0x7f;
 const DEFAULT_MAX_SAMPLE_OFFSET = 0x3fffffff;
 
 function clampInteger(value: unknown, fallback: number, min: number, max: number): number {
@@ -93,9 +95,11 @@ export function toKesshoCoreMidiEventPayload(
     ? message.rawBytes.slice(0, MAX_RAW_BYTES).map((byte) => clampInteger(byte, 0, 0, 255))
     : [];
   const status = clampInteger(message.status ?? rawBytes[0], rawBytes[0] ?? 0, 0, 255);
-  const data1 = clampInteger(message.data1 ?? rawBytes[1], rawBytes[1] ?? 0, 0, 255);
-  const data2 = clampInteger(message.data2 ?? rawBytes[2], rawBytes[2] ?? 0, 0, 255);
-  const channel = clampInteger(message.channel, status < 0xf0 ? status & 0x0f : 0, 0, 255);
+  const data1 = clampInteger(message.data1 ?? rawBytes[1], rawBytes[1] ?? 0, 0, MAX_MIDI_DATA_BYTE);
+  const data2 = clampInteger(message.data2 ?? rawBytes[2], rawBytes[2] ?? 0, 0, MAX_MIDI_DATA_BYTE);
+  const channel = status < 0xf0
+    ? clampInteger(message.channel, status & MAX_MIDI_CHANNEL, 0, MAX_MIDI_CHANNEL)
+    : 0;
 
   return {
     sampleOffset: midiSampleOffset(message, options),

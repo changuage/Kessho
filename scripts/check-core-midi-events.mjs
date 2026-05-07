@@ -75,6 +75,37 @@ const pitchBend = toKesshoCoreMidiEventPayload(
 assert(Math.abs(pitchBend.normalizedValue - 8192 / 16383) < 1.0e-7, 'pitch bend normalization mismatch');
 assert(pitchBend.sampleOffset === 0, 'timestamp without origin should queue at current block');
 
+const clampedControl = toKesshoCoreMidiEventPayload(
+  {
+    timestamp: 0,
+    kind: 'controlChange',
+    status: 0xb9,
+    channel: 42,
+    data1: 255,
+    data2: -12,
+    rawBytes: [0xb9, 200, 255],
+  },
+  { sampleRate: 48000 },
+);
+assert(clampedControl.channel === 15, 'channel messages must clamp to 4-bit MIDI channels');
+assert(clampedControl.data1 === 127, 'data1 must clamp to 7-bit MIDI data bytes');
+assert(clampedControl.data2 === 0, 'data2 must clamp negative MIDI data bytes');
+assert(clampedControl.rawBytes[1] === 200, 'raw bytes should preserve 8-bit payload values');
+assert(clampedControl.rawBytes[2] === 255, 'raw bytes should preserve 8-bit payload values');
+
+const derivedChannel = toKesshoCoreMidiEventPayload(
+  {
+    timestamp: 0,
+    kind: 'noteOn',
+    status: 0x9c,
+    data1: 64,
+    data2: 127,
+    rawBytes: [0x9c, 64, 127],
+  },
+  { sampleRate: 48000 },
+);
+assert(derivedChannel.channel === 12, 'missing channel should derive from channel voice status nibble');
+
 const sysex = toKesshoCoreMidiEventPayload(
   {
     timestamp: 0,
@@ -86,6 +117,7 @@ const sysex = toKesshoCoreMidiEventPayload(
 );
 assert(sysex.rawBytes.length === 16, 'raw bytes must be truncated to the C ABI limit');
 assert(sysex.status === 0xf0, 'sysex status mismatch');
+assert(sysex.channel === 0, 'system messages should not carry channel voice numbers');
 
 assert(
   midiSampleOffset({ timestamp: 1 }, {
