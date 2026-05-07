@@ -13,7 +13,6 @@ namespace kessho::core {
 void Engine::render(float* out_l, float* out_r, int frames) {
   sortEvents();
 
-  int running_frames = 0;
   int event_index = 0;
   for (int i = 0; i < frames; ++i) {
     while (
@@ -35,20 +34,19 @@ void Engine::render(float* out_l, float* out_r, int frames) {
       if (smoke_phase_ >= kTwoPi) {
         smoke_phase_ -= kTwoPi * std::floor(smoke_phase_ / kTwoPi);
       }
-      ++running_frames;
+      transport_.advance(1);
     } else {
       out_l[i] = 0.0f;
       out_r[i] = 0.0f;
       if (transport_.running) {
         master_gain_.next();
         smoke_amplitude_.next();
-        ++running_frames;
+        transport_.advance(1);
       }
     }
   }
 
   compactEventsAfterRender(frames, event_index);
-  transport_.advance(running_frames);
 }
 
 void Engine::renderSilence(float* out_l, float* out_r, int frames) {

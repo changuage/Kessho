@@ -263,12 +263,79 @@ int main() {
       kessho_get_midi_events_processed(engine) == midi_before + 1,
       "MIDI event was not processed at its sample offset");
 
+  KesshoMidiEvent future_midi_event = midi_event;
+  future_midi_event.sample_offset = block_size + 5;
+  future_midi_event.raw_size = KESSHO_CORE_MIDI_RAW_BYTES + 4;
+  for (uint8_t i = 0; i < KESSHO_CORE_MIDI_RAW_BYTES; ++i) {
+    future_midi_event.raw_bytes[i] = i;
+  }
+  const uint32_t midi_after_immediate = kessho_get_midi_events_processed(engine);
+  require(kessho_push_midi_event(engine, &future_midi_event) == 1, "failed to push future MIDI event");
+  kessho_render(engine, event_left.data(), event_right.data(), block_size);
+  require(
+      kessho_get_midi_events_processed(engine) == midi_after_immediate,
+      "future MIDI event fired before its carried offset");
+  require(kessho_get_event_queue_depth(engine) == 1, "future MIDI event should remain queued");
+  kessho_render(engine, event_left.data(), event_right.data(), 6);
+  require(
+      kessho_get_midi_events_processed(engine) == midi_after_immediate + 1,
+      "future MIDI event did not fire after block carry-over");
+  require(kessho_get_event_queue_depth(engine) == 0, "future MIDI event should be consumed");
+
+  KesshoTransportEvent invalid_transport_event{};
+  invalid_transport_event.sample_offset = 0;
+  invalid_transport_event.command = 999;
+  require(
+      kessho_push_transport_event(engine, &invalid_transport_event) == 0,
+      "invalid transport command should be rejected");
+
+  KesshoTransportEvent start_event{};
+  start_event.sample_offset = block_size / 4;
+  start_event.command = KESSHO_TRANSPORT_START;
+  kessho_reset(engine);
+  kessho_stop(engine);
+  require(kessho_push_transport_event(engine, &start_event) == 1, "failed to push transport start event");
+  kessho_render(engine, event_left.data(), event_right.data(), block_size);
+  require(kessho_is_running(engine) == 1, "transport start event did not start engine");
+  require(
+      kessho_get_sample_frame(engine) == static_cast<uint64_t>(block_size - start_event.sample_offset),
+      "transport start event did not advance only post-start frames");
+  require(maxAbsRange(event_left, 0, start_event.sample_offset) == 0.0f, "transport start event fired too early");
+  require(
+      maxAbsRange(event_left, start_event.sample_offset, block_size) > 0.05f,
+      "transport start event did not render post-start signal");
+
   KesshoTransportEvent stop_event{};
-  stop_event.sample_offset = 0;
+  stop_event.sample_offset = (block_size * 3) / 4;
   stop_event.command = KESSHO_TRANSPORT_STOP;
+  kessho_reset(engine);
+  kessho_start(engine);
   require(kessho_push_transport_event(engine, &stop_event) == 1, "failed to push transport stop event");
   kessho_render(engine, event_left.data(), event_right.data(), block_size);
   require(kessho_is_running(engine) == 0, "transport stop event did not stop engine");
+  require(
+      kessho_get_sample_frame(engine) == static_cast<uint64_t>(stop_event.sample_offset),
+      "transport stop event did not advance only pre-stop frames");
+  require(maxAbsRange(event_left, 0, stop_event.sample_offset) > 0.05f, "transport stop event fired too early");
+  require(
+      maxAbsRange(event_left, stop_event.sample_offset, block_size) == 0.0f,
+      "transport stop event did not silence post-stop frames");
+
+  KesshoTransportEvent reset_event{};
+  reset_event.sample_offset = block_size / 2;
+  reset_event.command = KESSHO_TRANSPORT_RESET;
+  kessho_reset(engine);
+  kessho_start(engine);
+  require(kessho_push_transport_event(engine, &reset_event) == 1, "failed to push transport reset event");
+  kessho_render(engine, event_left.data(), event_right.data(), block_size);
+  require(kessho_is_running(engine) == 1, "transport reset event should leave engine running");
+  require(
+      kessho_get_sample_frame(engine) == static_cast<uint64_t>(block_size - reset_event.sample_offset),
+      "transport reset event did not restart sample frame at its sample offset");
+  require(maxAbsRange(event_left, 0, reset_event.sample_offset) > 0.05f, "transport reset pre-roll missing");
+  require(
+      maxAbsRange(event_left, reset_event.sample_offset, block_size) > 0.05f,
+      "transport reset post-roll missing");
 
   KesshoMixer* mixer = kessho_mixer_create();
   require(mixer != nullptr, "mixer create returned null");

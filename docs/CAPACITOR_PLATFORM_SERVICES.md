@@ -65,6 +65,11 @@ product direction changes again.
 
 ## Device Test
 
+Use the full device gate in
+[CAPACITOR_DEVICE_VALIDATION.md](/Users/panguroo/Documents/generativemusic/docs/CAPACITOR_DEVICE_VALIDATION.md)
+before treating Capacitor background playback, route changes, CPU, battery, or
+hardware MIDI as release-ready.
+
 1. Run `npm run cap:sync:ios`.
 2. Open the generated project with `npm run cap:open:ios`.
 3. Launch the iOS app and verify the displayed name is `Kessho Capacitor`.
