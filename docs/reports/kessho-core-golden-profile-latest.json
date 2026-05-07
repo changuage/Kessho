@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-06T11:08:45.306Z",
+  "generatedAt": "2026-05-07T17:03:53.491Z",
   "wasm": "public/worklets/kessho_core.wasm",
   "nativeFixture": "cpp/KesshoCore/tests/kessho_core_golden_profile_fixture.cpp",
   "renderContract": {
@@ -21,7 +21,7 @@
         "renderSeconds": 30,
         "seed": 10134563,
         "bpm": 120,
-        "masterGain": 0.65,
+        "masterGain": 0.767,
         "smokeAmplitude": 0.10666666666666666,
         "beatsPerBar": 4,
         "barsPerPhrase": 4,
@@ -29,70 +29,70 @@
         "midiEvents": 0
       },
       "sourceOnly": {
-        "peak": 0.2626093029975891,
-        "rms": 0.06519712999677243,
-        "lufsLikeDb": -23.715430433213886,
-        "dcOffsetLeft": 0.00003192116681296583,
-        "dcOffsetRight": 0.00003192116681296583,
-        "spectralCentroidHz": 270.1303810993497,
+        "peak": 1.8584463596343994,
+        "rms": 0.5048621639707311,
+        "lufsLikeDb": -5.93654351080592,
+        "dcOffsetLeft": 0.008488568402747549,
+        "dcOffsetRight": 0.008488568402747549,
+        "spectralCentroidHz": 329.7568701790238,
         "spectralCentroidWindows": 60,
         "nullResidualRms": 0,
         "nullResidualPeak": 0,
         "cpu": {
-          "elapsedMs": 516.7123989999982,
-          "avgPercent": 1.7223746633333272,
-          "peakBlockPercent": 34.053112500009775,
+          "elapsedMs": 369.4956959999872,
+          "avgPercent": 1.2316523199999574,
+          "peakBlockPercent": 11.854687499976535,
           "missedBlocks": 0,
           "missedBlockPercent": 0,
           "blocks": 11250
         },
         "memory": {
-          "rssBeforeBytes": 46972928,
-          "rssAfterBytes": 72351744,
-          "rssDeltaBytes": 25378816,
+          "rssBeforeBytes": 52084736,
+          "rssAfterBytes": 75923456,
+          "rssDeltaBytes": 23838720,
           "wasmMemoryBytes": 16777216
         }
       },
       "dryDynamics": {
-        "peak": 0.2626093029975891,
-        "rms": 0.06519712999677243,
-        "lufsLikeDb": -23.715430433213886,
-        "dcOffsetLeft": 0.00003192116681296583,
-        "dcOffsetRight": 0.00003192116681296583,
-        "spectralCentroidHz": 270.1303810993497,
+        "peak": 1.8584463596343994,
+        "rms": 0.5048621639707311,
+        "lufsLikeDb": -5.93654351080592,
+        "dcOffsetLeft": 0.008488568402747549,
+        "dcOffsetRight": 0.008488568402747549,
+        "spectralCentroidHz": 329.7568701790238,
         "spectralCentroidWindows": 60,
         "nullResidualRms": 0,
         "nullResidualPeak": 0,
         "cpu": {
-          "elapsedMs": 713.8739189999978,
-          "avgPercent": 2.379579729999993,
-          "peakBlockPercent": 46.14843750000546,
+          "elapsedMs": 478.8871929999714,
+          "avgPercent": 1.596290643333238,
+          "peakBlockPercent": 36.5234249999844,
           "missedBlocks": 0,
           "missedBlockPercent": 0,
           "blocks": 11250
         },
         "memory": {
-          "rssBeforeBytes": 73170944,
-          "rssAfterBytes": 87769088,
-          "rssDeltaBytes": 14598144,
+          "rssBeforeBytes": 76972032,
+          "rssAfterBytes": 94830592,
+          "rssDeltaBytes": 17858560,
           "wasmMemoryBytes": 16777216
         }
       },
       "native": {
         "sourceOnly": {
-          "peak": 0.26260969042778015,
-          "rms": 0.0651971322093757,
-          "lufsLikeDb": -23.715430138439753,
-          "dcOffsetLeft": 0.000031930214889291576,
-          "dcOffsetRight": 0.000031930214889291576,
-          "spectralCentroidHz": 270.1305191968103,
+          "peak": 1.8584485054016113,
+          "rms": 0.5048621706653298,
+          "lufsLikeDb": -5.936543395628849,
+          "dcOffsetLeft": 0.008488601254515546,
+          "dcOffsetRight": 0.008488601254515546,
+          "spectralCentroidHz": 329.7568114605555,
           "spectralCentroidWindows": 60,
           "nullResidualRms": 0,
           "nullResidualPeak": 0,
           "cpu": {
-            "elapsedMs": 387.5232620000102,
-            "avgPercent": 1.2917442066667009,
-            "peakBlockPercent": 48.4562625,
+            "elapsedMs": 248.9702120000047,
+            "avgPercent": 0.8299007066666824,
+            "peakBlockPercent": 3.3000000000000003,
             "missedBlocks": 0,
             "missedBlockPercent": 0,
             "blocks": 11250
@@ -105,19 +105,19 @@
           }
         },
         "dryDynamics": {
-          "peak": 0.26260969042778015,
-          "rms": 0.0651971322093757,
-          "lufsLikeDb": -23.715430138439753,
-          "dcOffsetLeft": 0.000031930214889291576,
-          "dcOffsetRight": 0.000031930214889291576,
-          "spectralCentroidHz": 270.1305191968103,
+          "peak": 1.8584485054016113,
+          "rms": 0.5048621706653298,
+          "lufsLikeDb": -5.936543395628849,
+          "dcOffsetLeft": 0.008488601254515546,
+          "dcOffsetRight": 0.008488601254515546,
+          "spectralCentroidHz": 329.7568114605555,
           "spectralCentroidWindows": 60,
           "nullResidualRms": 0,
           "nullResidualPeak": 0,
           "cpu": {
-            "elapsedMs": 493.93761100000495,
-            "avgPercent": 1.6464587033333498,
-            "peakBlockPercent": 24.77655,
+            "elapsedMs": 348.1676930000027,
+            "avgPercent": 1.1605589766666757,
+            "peakBlockPercent": 23.939062500000002,
             "missedBlocks": 0,
             "missedBlockPercent": 0,
             "blocks": 11250
@@ -130,12 +130,12 @@
           }
         },
         "sourceResidual": {
-          "rms": 7.066271111646811e-7,
-          "peak": 0.000003337860107421875
+          "rms": 0.000004979663091359945,
+          "peak": 0.00003618001937866211
         },
         "dryResidual": {
-          "rms": 7.066271111646811e-7,
-          "peak": 0.000003337860107421875
+          "rms": 0.000004979663091359945,
+          "peak": 0.00003618001937866211
         }
       }
     },
@@ -150,7 +150,7 @@
         "renderSeconds": 30,
         "seed": 5693774,
         "bpm": 120,
-        "masterGain": 0.7,
+        "masterGain": 0.826,
         "smokeAmplitude": 0.08533333333333333,
         "beatsPerBar": 4,
         "barsPerPhrase": 4,
@@ -158,70 +158,70 @@
         "midiEvents": 0
       },
       "sourceOnly": {
-        "peak": 0.24097704887390137,
-        "rms": 0.05659684511694169,
-        "lufsLikeDb": -24.94415554107228,
-        "dcOffsetLeft": 0.000028527918639770454,
-        "dcOffsetRight": 0.000028527918639770454,
-        "spectralCentroidHz": 267.2905213128808,
+        "peak": 1.4895415306091309,
+        "rms": 0.4358358453803016,
+        "lufsLikeDb": -7.213541080203911,
+        "dcOffsetLeft": 0.008780507646293095,
+        "dcOffsetRight": 0.008780507646293095,
+        "spectralCentroidHz": 421.2058245033149,
         "spectralCentroidWindows": 60,
         "nullResidualRms": 0,
         "nullResidualPeak": 0,
         "cpu": {
-          "elapsedMs": 513.9278519999643,
-          "avgPercent": 1.7130928399998813,
-          "peakBlockPercent": 28.107787500039194,
+          "elapsedMs": 368.467477999995,
+          "avgPercent": 1.22822492666665,
+          "peakBlockPercent": 12.042187500014734,
           "missedBlocks": 0,
           "missedBlockPercent": 0,
           "blocks": 11250
         },
         "memory": {
-          "rssBeforeBytes": 159350784,
-          "rssAfterBytes": 161431552,
-          "rssDeltaBytes": 2080768,
+          "rssBeforeBytes": 163430400,
+          "rssAfterBytes": 163807232,
+          "rssDeltaBytes": 376832,
           "wasmMemoryBytes": 16777216
         }
       },
       "dryDynamics": {
-        "peak": 0.24097704887390137,
-        "rms": 0.05659684511694169,
-        "lufsLikeDb": -24.94415554107228,
-        "dcOffsetLeft": 0.000028527918639770454,
-        "dcOffsetRight": 0.000028527918639770454,
-        "spectralCentroidHz": 267.2905213128808,
+        "peak": 1.4895415306091309,
+        "rms": 0.4358358453803016,
+        "lufsLikeDb": -7.213541080203911,
+        "dcOffsetLeft": 0.008780507646293095,
+        "dcOffsetRight": 0.008780507646293095,
+        "spectralCentroidHz": 421.2058245033149,
         "spectralCentroidWindows": 60,
         "nullResidualRms": 0,
         "nullResidualPeak": 0,
         "cpu": {
-          "elapsedMs": 669.1574890001884,
-          "avgPercent": 2.2305249633339614,
-          "peakBlockPercent": 51.01875000002565,
+          "elapsedMs": 464.5426300000008,
+          "avgPercent": 1.5484754333333361,
+          "peakBlockPercent": 10.52812499999618,
           "missedBlocks": 0,
           "missedBlockPercent": 0,
           "blocks": 11250
         },
         "memory": {
-          "rssBeforeBytes": 161579008,
-          "rssAfterBytes": 163774464,
-          "rssDeltaBytes": 2195456,
+          "rssBeforeBytes": 164544512,
+          "rssAfterBytes": 176619520,
+          "rssDeltaBytes": 12075008,
           "wasmMemoryBytes": 16777216
         }
       },
       "native": {
         "sourceOnly": {
-          "peak": 0.24096766114234924,
-          "rms": 0.05659607408087369,
-          "lufsLikeDb": -24.944273872399737,
-          "dcOffsetLeft": 0.000028526570692236792,
-          "dcOffsetRight": 0.000028526570692236792,
-          "spectralCentroidHz": 267.28756563413356,
+          "peak": 1.489540457725525,
+          "rms": 0.435835089127422,
+          "lufsLikeDb": -7.213556151783771,
+          "dcOffsetLeft": 0.008783070229127032,
+          "dcOffsetRight": 0.008783070229127032,
+          "spectralCentroidHz": 421.2044072901173,
           "spectralCentroidWindows": 60,
           "nullResidualRms": 0,
           "nullResidualPeak": 0,
           "cpu": {
-            "elapsedMs": 378.9636410000072,
-            "avgPercent": 1.2632121366666906,
-            "peakBlockPercent": 34.2796875,
+            "elapsedMs": 242.7552540000076,
+            "avgPercent": 0.8091841800000252,
+            "peakBlockPercent": 1.3656,
             "missedBlocks": 0,
             "missedBlockPercent": 0,
             "blocks": 11250
@@ -234,19 +234,19 @@
           }
         },
         "dryDynamics": {
-          "peak": 0.24096766114234924,
-          "rms": 0.05659607408087369,
-          "lufsLikeDb": -24.944273872399737,
-          "dcOffsetLeft": 0.000028526570692236792,
-          "dcOffsetRight": 0.000028526570692236792,
-          "spectralCentroidHz": 267.28756563413356,
+          "peak": 1.489540457725525,
+          "rms": 0.435835089127422,
+          "lufsLikeDb": -7.213556151783771,
+          "dcOffsetLeft": 0.008783070229127032,
+          "dcOffsetRight": 0.008783070229127032,
+          "spectralCentroidHz": 421.2044072901173,
           "spectralCentroidWindows": 60,
           "nullResidualRms": 0,
           "nullResidualPeak": 0,
           "cpu": {
-            "elapsedMs": 508.92738999999926,
-            "avgPercent": 1.6964246333333308,
-            "peakBlockPercent": 27.176587500000004,
+            "elapsedMs": 332.51757499998996,
+            "avgPercent": 1.1083919166666334,
+            "peakBlockPercent": 9.1281375,
             "missedBlocks": 0,
             "missedBlockPercent": 0,
             "blocks": 11250
@@ -259,141 +259,12 @@
           }
         },
         "sourceResidual": {
-          "rms": 0.000002994080993988737,
-          "peak": 0.000013133510947227478
+          "rms": 0.000024025054237223522,
+          "peak": 0.00018778443336486816
         },
         "dryResidual": {
-          "rms": 0.000002994080993988737,
-          "peak": 0.000013133510947227478
-        }
-      }
-    },
-    {
-      "id": "WaveOut",
-      "name": "Wave Out",
-      "scenario": "granular-heavy-preview",
-      "source": "KesshoNativeSwift/Kessho/Presets/WaveOut.json",
-      "scalars": {
-        "sampleRate": 48000,
-        "blockSize": 128,
-        "renderSeconds": 30,
-        "seed": 10682411,
-        "bpm": 120,
-        "masterGain": 0.7,
-        "smokeAmplitude": 0.04586666666666667,
-        "beatsPerBar": 4,
-        "barsPerPhrase": 4,
-        "automationEvents": 0,
-        "midiEvents": 0
-      },
-      "sourceOnly": {
-        "peak": 0.03405369818210602,
-        "rms": 0.0088913160769716,
-        "lufsLikeDb": -41.020679015323694,
-        "dcOffsetLeft": 0.000005022925369781015,
-        "dcOffsetRight": 0.000005022925369781015,
-        "spectralCentroidHz": 249.12669690443826,
-        "spectralCentroidWindows": 60,
-        "nullResidualRms": 0,
-        "nullResidualPeak": 0,
-        "cpu": {
-          "elapsedMs": 555.4639950000219,
-          "avgPercent": 1.851546650000073,
-          "peakBlockPercent": 27.26249999996071,
-          "missedBlocks": 0,
-          "missedBlockPercent": 0,
-          "blocks": 11250
-        },
-        "memory": {
-          "rssBeforeBytes": 180158464,
-          "rssAfterBytes": 180895744,
-          "rssDeltaBytes": 737280,
-          "wasmMemoryBytes": 16777216
-        }
-      },
-      "dryDynamics": {
-        "peak": 0.03405369818210602,
-        "rms": 0.0088913160769716,
-        "lufsLikeDb": -41.020679015323694,
-        "dcOffsetLeft": 0.000005022925369781015,
-        "dcOffsetRight": 0.000005022925369781015,
-        "spectralCentroidHz": 249.12669690443826,
-        "spectralCentroidWindows": 60,
-        "nullResidualRms": 0,
-        "nullResidualPeak": 0,
-        "cpu": {
-          "elapsedMs": 700.7074060002051,
-          "avgPercent": 2.335691353334017,
-          "peakBlockPercent": 29.918775000032838,
-          "missedBlocks": 0,
-          "missedBlockPercent": 0,
-          "blocks": 11250
-        },
-        "memory": {
-          "rssBeforeBytes": 181551104,
-          "rssAfterBytes": 182222848,
-          "rssDeltaBytes": 671744,
-          "wasmMemoryBytes": 16777216
-        }
-      },
-      "native": {
-        "sourceOnly": {
-          "peak": 0.034053608775138855,
-          "rms": 0.008891315678621265,
-          "lufsLikeDb": -41.020679404470485,
-          "dcOffsetLeft": 0.000005021804949740701,
-          "dcOffsetRight": 0.000005021804949740701,
-          "spectralCentroidHz": 249.12667996169048,
-          "spectralCentroidWindows": 60,
-          "nullResidualRms": 0,
-          "nullResidualPeak": 0,
-          "cpu": {
-            "elapsedMs": 409.76735700000717,
-            "avgPercent": 1.365891190000024,
-            "peakBlockPercent": 34.184362500000006,
-            "missedBlocks": 0,
-            "missedBlockPercent": 0,
-            "blocks": 11250
-          },
-          "memory": {
-            "rssBeforeBytes": null,
-            "rssAfterBytes": null,
-            "rssDeltaBytes": null,
-            "wasmMemoryBytes": 0
-          }
-        },
-        "dryDynamics": {
-          "peak": 0.034053608775138855,
-          "rms": 0.008891315678621265,
-          "lufsLikeDb": -41.020679404470485,
-          "dcOffsetLeft": 0.000005021804949740701,
-          "dcOffsetRight": 0.000005021804949740701,
-          "spectralCentroidHz": 249.12667996169048,
-          "spectralCentroidWindows": 60,
-          "nullResidualRms": 0,
-          "nullResidualPeak": 0,
-          "cpu": {
-            "elapsedMs": 566.3532199999962,
-            "avgPercent": 1.887844066666654,
-            "peakBlockPercent": 28.5218625,
-            "missedBlocks": 0,
-            "missedBlockPercent": 0,
-            "blocks": 11250
-          },
-          "memory": {
-            "rssBeforeBytes": null,
-            "rssAfterBytes": null,
-            "rssDeltaBytes": null,
-            "wasmMemoryBytes": 0
-          }
-        },
-        "sourceResidual": {
-          "rms": 9.390223677632698e-8,
-          "peak": 4.414469003677368e-7
-        },
-        "dryResidual": {
-          "rms": 9.390223677632698e-8,
-          "peak": 4.414469003677368e-7
+          "rms": 0.000024025054237223522,
+          "peak": 0.00018778443336486816
         }
       }
     },
@@ -408,7 +279,7 @@
         "renderSeconds": 30,
         "seed": 144378,
         "bpm": 120,
-        "masterGain": 0.675,
+        "masterGain": 0.7965,
         "smokeAmplitude": 0.088,
         "beatsPerBar": 4,
         "barsPerPhrase": 4,
@@ -416,70 +287,70 @@
         "midiEvents": 0
       },
       "sourceOnly": {
-        "peak": 0.2898348569869995,
-        "rms": 0.0660040608946547,
-        "lufsLikeDb": -23.60858687404578,
-        "dcOffsetLeft": 0.00003269355490650632,
-        "dcOffsetRight": 0.00003269355490650632,
-        "spectralCentroidHz": 270.01842239849935,
+        "peak": 1.7616419792175293,
+        "rms": 0.49898303669250144,
+        "lufsLikeDb": -6.0382843659315855,
+        "dcOffsetLeft": 0.011283291719994412,
+        "dcOffsetRight": 0.011283291719994412,
+        "spectralCentroidHz": 374.434334751972,
         "spectralCentroidWindows": 60,
         "nullResidualRms": 0,
         "nullResidualPeak": 0,
         "cpu": {
-          "elapsedMs": 556.4894549999299,
-          "avgPercent": 1.8549648499997664,
-          "peakBlockPercent": 35.290612499920826,
+          "elapsedMs": 363.9575099999147,
+          "avgPercent": 1.2131916999997157,
+          "peakBlockPercent": 11.053124999966712,
           "missedBlocks": 0,
           "missedBlockPercent": 0,
           "blocks": 11250
         },
         "memory": {
-          "rssBeforeBytes": 213106688,
-          "rssAfterBytes": 213106688,
-          "rssDeltaBytes": 0,
+          "rssBeforeBytes": 193216512,
+          "rssAfterBytes": 194265088,
+          "rssDeltaBytes": 1048576,
           "wasmMemoryBytes": 16777216
         }
       },
       "dryDynamics": {
-        "peak": 0.2898348569869995,
-        "rms": 0.0660040608946547,
-        "lufsLikeDb": -23.60858687404578,
-        "dcOffsetLeft": 0.00003269355490650632,
-        "dcOffsetRight": 0.00003269355490650632,
-        "spectralCentroidHz": 270.01842239849935,
+        "peak": 1.7616419792175293,
+        "rms": 0.49898303669250144,
+        "lufsLikeDb": -6.0382843659315855,
+        "dcOffsetLeft": 0.011283291719994412,
+        "dcOffsetRight": 0.011283291719994412,
+        "spectralCentroidHz": 374.434334751972,
         "spectralCentroidWindows": 60,
         "nullResidualRms": 0,
         "nullResidualPeak": 0,
         "cpu": {
-          "elapsedMs": 699.8540460002623,
-          "avgPercent": 2.3328468200008743,
-          "peakBlockPercent": 90.56718749998254,
+          "elapsedMs": 465.2887199997731,
+          "avgPercent": 1.5509623999992437,
+          "peakBlockPercent": 10.223437499985266,
           "missedBlocks": 0,
           "missedBlockPercent": 0,
           "blocks": 11250
         },
         "memory": {
-          "rssBeforeBytes": 213843968,
-          "rssAfterBytes": 208224256,
-          "rssDeltaBytes": -5619712,
+          "rssBeforeBytes": 195018752,
+          "rssAfterBytes": 195575808,
+          "rssDeltaBytes": 557056,
           "wasmMemoryBytes": 16777216
         }
       },
       "native": {
         "sourceOnly": {
-          "peak": 0.2898544669151306,
-          "rms": 0.06600396477362525,
-          "lufsLikeDb": -23.608599523225998,
-          "dcOffsetLeft": 0.00003269050337202546,
-          "dcOffsetRight": 0.00003269050337202546,
-          "spectralCentroidHz": 270.03216772171817,
+          "peak": 1.7616465091705322,
+          "rms": 0.4989820477019901,
+          "lufsLikeDb": -6.03830158148866,
+          "dcOffsetLeft": 0.011274487122737294,
+          "dcOffsetRight": 0.011274487122737294,
+          "spectralCentroidHz": 374.4380795524866,
           "spectralCentroidWindows": 60,
           "nullResidualRms": 0,
           "nullResidualPeak": 0,
           "cpu": {
-            "elapsedMs": 385.99985100000237,
-            "avgPercent": 1.286666170000008,
-            "peakBlockPercent": 73.760925,
+            "elapsedMs": 243.16752300000627,
+            "avgPercent": 0.8105584100000208,
+            "peakBlockPercent": 1.38435,
             "missedBlocks": 0,
             "missedBlockPercent": 0,
             "blocks": 11250
@@ -492,19 +363,19 @@
           }
         },
         "dryDynamics": {
-          "peak": 0.2898544669151306,
-          "rms": 0.06600396477362525,
-          "lufsLikeDb": -23.608599523225998,
-          "dcOffsetLeft": 0.00003269050337202546,
-          "dcOffsetRight": 0.00003269050337202546,
-          "spectralCentroidHz": 270.03216772171817,
+          "peak": 1.7616465091705322,
+          "rms": 0.4989820477019901,
+          "lufsLikeDb": -6.03830158148866,
+          "dcOffsetLeft": 0.011274487122737294,
+          "dcOffsetRight": 0.011274487122737294,
+          "spectralCentroidHz": 374.4380795524866,
           "spectralCentroidWindows": 60,
           "nullResidualRms": 0,
           "nullResidualPeak": 0,
           "cpu": {
-            "elapsedMs": 516.127484000006,
-            "avgPercent": 1.7204249466666865,
-            "peakBlockPercent": 49.7875125,
+            "elapsedMs": 351.3229039999928,
+            "avgPercent": 1.1710763466666425,
+            "peakBlockPercent": 2.3312625,
             "missedBlocks": 0,
             "missedBlockPercent": 0,
             "blocks": 11250
@@ -517,12 +388,12 @@
           }
         },
         "sourceResidual": {
-          "rms": 0.000009721890475397103,
-          "peak": 0.00004003569483757019
+          "rms": 0.00007255974400768213,
+          "peak": 0.00044038891792297363
         },
         "dryResidual": {
-          "rms": 0.000009721890475397103,
-          "peak": 0.00004003569483757019
+          "rms": 0.00007255974400768213,
+          "peak": 0.00044038891792297363
         }
       }
     }

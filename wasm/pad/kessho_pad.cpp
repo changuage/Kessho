@@ -393,9 +393,10 @@ static void render_voice(PadVoice& v, float* out_l, float* out_r,
     float* target_post_l = (v.pad_idx == 0) ? post_pad1_l : post_pad2_l;
     float* target_post_r = (v.pad_idx == 0) ? post_pad1_r : post_pad2_r;
 
-    // Compute osc mix levels: cosine crossfade
-    float osc_a_mix = cosf(p.osc_mix * KESSHO_HALF_PI);
-    float osc_b_mix = sinf(p.osc_mix * KESSHO_HALF_PI);
+    // Match the Web Audio pad path: oscMix=0.5 keeps both oscillators at full
+    // level, rather than equal-power attenuating both sides.
+    const float osc_a_mix = std::min(1.0f, 2.0f * (1.0f - p.osc_mix));
+    const float osc_b_mix = std::min(1.0f, 2.0f * p.osc_mix);
 
     // Frequencies
     float freq_a = v.base_freq * semitones_to_ratio((float)(p.osc_a_octave * 12));
