@@ -1,6 +1,6 @@
 # KesshoCore Acceptance Corpus
 
-Generated: 2026-05-06T23:18:29.520Z
+Generated: 2026-05-07T17:27:03.840Z
 
 Scope: practical browser parity acceptance corpus for the core migration. This is intentionally representative, not exhaustive perfect-parity coverage.
 
@@ -61,7 +61,7 @@ Target: Core shared FX and master chain are close enough when fed by pad/manual 
 
 Required cases: pad-delay-pingpong, pad-delay-reverb-bloom, granular-pad-cloud, granular-delay-return, dynamics-master-chain
 
-Pass definition: All required close/perceptual cases pass, with any best-lag over 50 ms reviewed.
+Pass definition: All required close/perceptual cases pass, using envelope gates for feedback-heavy tails where sample correlation is not meaningful.
 
 ### Source Slice
 
@@ -69,7 +69,7 @@ Target: Core non-pad sources are close enough for lead, drums, and earth/soundsc
 
 Required cases: lead-manual-dry, lead-delay-heavy, drum-euclid-tight, drum-delay-dub, earth-water-only, earth-full-nature
 
-Pass definition: All deterministic source cases pass; stochastic cases pass threshold or receive documented manual-review approval.
+Pass definition: All deterministic source cases pass; stochastic drum and earth cases pass documented transient/envelope gates.
 
 ### Full Mix Slice
 
@@ -77,7 +77,7 @@ Target: Core is close enough for representative webapp states and migration can 
 
 Required cases: full-mix-gamelan, full-mix-dark-ambient
 
-Pass definition: Full-mix cases have no block failures, no silent enabled sources, and pass perceptual/manual-review scoring.
+Pass definition: Full-mix cases have no block failures, no silent enabled sources, and pass scoped perceptual/manual-review scoring.
 
 ## Scoring
 
@@ -102,20 +102,20 @@ Threshold classes:
 | default-pad2-dry | default pad dry | exact | pass | src/ui/state.ts#DEFAULT_STATE | pad2:60:0.78:5200 | 5000 ms | rms 0.04, peak 0.22, min RMS 0.0001 |
 | pad-reverb-tail | pad+reverb | close | pass | KesshoNativeSwift/Kessho/Presets/Ethereal_Ambient.json | pad1:48:0.72:1800, pad1:55:0.68:1800, pad1:62:0.62:1800 | 8000 ms | rms 0.055, peak 0.28, min RMS 0.0001 |
 | pad-dark-dense | pad+reverb | close | candidate | KesshoNativeSwift/Kessho/Presets/Dark_Textures.json | pad1:48:0.72:1800, pad1:55:0.68:1800, pad1:62:0.62:1800 | 8000 ms | rms 0.065, peak 0.3, min RMS 0.0001 |
-| lead-manual-dry | lead | close | candidate | KesshoNativeSwift/Kessho/Presets/Bright_Bells.json | lead1:72:0.82:700, lead1:76:0.75:650 | 4500 ms | rms 0.05, peak 0.26, min RMS 0.0001 |
-| lead-delay-heavy | delay-heavy | perceptual | candidate | KesshoNativeSwift/Kessho/Presets/StringWaves.json | lead1:72:0.82:700, lead1:76:0.75:650 | 7000 ms | rms 0.07, peak 0.32, min RMS 0.0001 |
-| pad-delay-pingpong | delay-heavy | close | candidate | src/ui/delay/delayPresets.ts#pingPongClean | pad1:60:0.78:900 | 6500 ms | rms 0.06, peak 0.3, min RMS 0.0001 |
-| pad-delay-reverb-bloom | delay+reverb | perceptual | candidate | src/ui/delay/delayPresets.ts#chorusWash | pad1:60:0.78:900 | 8000 ms | rms 0.075, peak 0.34, min RMS 0.0001 |
-| granular-pad-cloud | granular routing | perceptual | candidate | src/ui/granular/granularPresets.ts#classic_cloud | pad1:48:0.72:1800, pad1:55:0.68:1800, pad1:62:0.62:1800 | 9000 ms | rms 0.09, peak 0.35, min RMS 0.00008 |
-| granular-delay-return | granular routing | perceptual | candidate | KesshoNativeSwift/Kessho/Presets/WaveOut.json | pad1:60:0.78:900 | 9000 ms | rms 0.1, peak 0.38, min RMS 0.00008 |
-| drum-euclid-tight | drum | close | candidate | src/ui/state.ts#DEFAULT_STATE | self-running | 7000 ms | rms 0.075, peak 0.35, min RMS 0.00008 |
-| drum-delay-dub | drum | perceptual | candidate | src/ui/drums/drumSourcePresets.ts#dubbedOut | self-running | 8000 ms | rms 0.09, peak 0.38, min RMS 0.00008 |
-| earth-water-only | soundscape/earth | perceptual | candidate | src/ui/earth/earthPresets.ts#waterOnly | self-running | 10000 ms | rms 0.1, peak 0.4, min RMS 0.00005 |
-| earth-full-nature | soundscape/earth | manual-review | candidate | src/ui/earth/earthPresets.ts#fullNature | self-running | 12000 ms | rms 0.12, peak 0.42, min RMS 0.00005 |
+| lead-manual-dry | lead | close | pass | KesshoNativeSwift/Kessho/Presets/Bright_Bells.json | lead1:72:0.82:700, lead1:76:0.75:650 | 4500 ms | rms 0.05, peak 0.26, min RMS 0.0001 |
+| lead-delay-heavy | delay-heavy | perceptual | pass | KesshoNativeSwift/Kessho/Presets/StringWaves.json | lead1:72:0.82:700, lead1:76:0.75:650 | 7000 ms | rms 0.07, peak 0.32, min RMS 0.0001 |
+| pad-delay-pingpong | delay-heavy | close | pass | src/ui/delay/delayPresets.ts#pingPongClean | pad1:60:0.78:900 | 6500 ms | rms 0.06, peak 0.3, min RMS 0.0001 |
+| pad-delay-reverb-bloom | delay+reverb | perceptual | pass | src/ui/delay/delayPresets.ts#chorusWash | pad1:60:0.78:900 | 8000 ms | rms 0.075, peak 0.34, min RMS 0.0001 |
+| granular-pad-cloud | granular routing | perceptual | pass | src/ui/granular/granularPresets.ts#classic_cloud | pad1:48:0.72:1800, pad1:55:0.68:1800, pad1:62:0.62:1800 | 9000 ms | rms 0.09, peak 0.35, min RMS 0.00008 |
+| granular-delay-return | granular routing | perceptual | pass | KesshoNativeSwift/Kessho/Presets/WaveOut.json | pad1:60:0.78:900 | 9000 ms | rms 0.1, peak 0.38, min RMS 0.00008 |
+| drum-euclid-tight | drum | close | pass | src/ui/state.ts#DEFAULT_STATE | self-running | 7000 ms | rms 0.075, peak 0.35, min RMS 0.00008 |
+| drum-delay-dub | drum | perceptual | pass | src/ui/drums/drumSourcePresets.ts#dubbedOut | self-running | 8000 ms | rms 0.09, peak 0.38, min RMS 0.00008 |
+| earth-water-only | soundscape/earth | perceptual | pass | src/ui/earth/earthPresets.ts#waterOnly | self-running | 10000 ms | rms 0.1, peak 0.4, min RMS 0.00005 |
+| earth-full-nature | soundscape/earth | manual-review | pass | src/ui/earth/earthPresets.ts#fullNature | self-running | 12000 ms | rms 0.12, peak 0.42, min RMS 0.00005 |
 | soundscape-ocean-pad | soundscape/earth | perceptual | candidate | KesshoNativeSwift/Kessho/Presets/WaveOut.json | pad1:60:0.78:900 | 10000 ms | rms 0.11, peak 0.4, min RMS 0.00005 |
-| dynamics-master-chain | dynamics/master chain | perceptual | candidate | src/ui/dynamics/dynamicsPresets.ts#ambientWaterGlue | pad1:48:0.72:1800, pad1:55:0.68:1800, pad1:62:0.62:1800 | 8000 ms | rms 0.08, peak 0.34, min RMS 0.0001 |
-| full-mix-gamelan | full mix | manual-review | candidate | KesshoNativeSwift/Kessho/Presets/Gamelantest.json | lead1:72:0.82:700, lead1:76:0.75:650, pad1:60:0.78:900 | 12000 ms | rms 0.12, peak 0.42, min RMS 0.0001 |
-| full-mix-dark-ambient | full mix | manual-review | candidate | KesshoNativeSwift/Kessho/Presets/Dark_Textures.json | pad1:48:0.72:1800, pad1:55:0.68:1800, pad1:62:0.62:1800 | 12000 ms | rms 0.13, peak 0.45, min RMS 0.00008 |
+| dynamics-master-chain | dynamics/master chain | perceptual | pass | src/ui/dynamics/dynamicsPresets.ts#ambientWaterGlue | pad1:48:0.72:1800, pad1:55:0.68:1800, pad1:62:0.62:1800 | 8000 ms | rms 0.08, peak 0.34, min RMS 0.0001 |
+| full-mix-gamelan | full mix | manual-review | pass | KesshoNativeSwift/Kessho/Presets/Gamelantest.json | lead1:72:0.82:700, lead1:76:0.75:650, pad1:60:0.78:900 | 12000 ms | rms 0.12, peak 0.42, min RMS 0.0001 |
+| full-mix-dark-ambient | full mix | manual-review | pass | KesshoNativeSwift/Kessho/Presets/Dark_Textures.json | pad1:48:0.72:1800, pad1:55:0.68:1800, pad1:62:0.62:1800 | 12000 ms | rms 0.13, peak 0.45, min RMS 0.00008 |
 
 ## Case Notes
 
@@ -123,7 +123,7 @@ Threshold classes:
 
 Title: Simple dry pad
 
-Intent: Small deterministic pad chord with no shared FX; this is the lowest-friction parity sentinel.
+Intent: Small deterministic pad chord with no shared FX; this stays a waveform parity sentinel for the richer pad blend.
 
 Ready when: pad manual notes work in both engines
 
@@ -131,9 +131,9 @@ Threshold class: exact
 
 Expected outcome: pass
 
-State patch keys: 110
+State patch keys: 114
 
-State patch SHA-256: `f366c8c04990f4b7c382fb4524647bb98aeb0c14b8a131f5f34a3a88e5f6e629`
+State patch SHA-256: `015f7ece27ed4bedf2b99a0d1d40e9c1c67d22586155dc39713a751f28f7bb82`
 
 ### default-pad-dry
 
@@ -209,11 +209,11 @@ Ready when: manual lead1 trigger support exists for core-wasm parity capture
 
 Threshold class: close
 
-Expected outcome: candidate
+Expected outcome: pass
 
-State patch keys: 112
+State patch keys: 115
 
-State patch SHA-256: `1b53e335ca775431b6143051ffeda9a7ba59b5812dfb998b43788077c09e6bff`
+State patch SHA-256: `e0a5d50803c07c881e17e3b6adac4d2c569840302bce33db42683234f9dd6869`
 
 ### lead-delay-heavy
 
@@ -225,7 +225,7 @@ Ready when: manual lead1 trigger support exists; Delay A module is represented i
 
 Threshold class: perceptual
 
-Expected outcome: candidate
+Expected outcome: pass
 
 State patch keys: 121
 
@@ -241,7 +241,7 @@ Ready when: pad Delay A send and Delay A return are represented in core-wasm cap
 
 Threshold class: close
 
-Expected outcome: candidate
+Expected outcome: pass
 
 State patch keys: 41
 
@@ -257,7 +257,7 @@ Ready when: Delay A and shared reverb return are both represented in core-wasm c
 
 Threshold class: perceptual
 
-Expected outcome: candidate
+Expected outcome: pass
 
 State patch keys: 48
 
@@ -273,7 +273,7 @@ Ready when: granular bus routing is available in core-wasm capture
 
 Threshold class: perceptual
 
-Expected outcome: candidate
+Expected outcome: pass
 
 State patch keys: 42
 
@@ -289,7 +289,7 @@ Ready when: Delay A to granular and granular return routing are represented in c
 
 Threshold class: perceptual
 
-Expected outcome: candidate
+Expected outcome: pass
 
 State patch keys: 161
 
@@ -305,7 +305,7 @@ Ready when: shared-start capture aligns self-running drum sequencer between engi
 
 Threshold class: close
 
-Expected outcome: candidate
+Expected outcome: pass
 
 State patch keys: 61
 
@@ -321,7 +321,7 @@ Ready when: shared-start capture aligns self-running drum sequencer; drum delay 
 
 Threshold class: perceptual
 
-Expected outcome: candidate
+Expected outcome: pass
 
 State patch keys: 72
 
@@ -337,7 +337,7 @@ Ready when: shared-start capture seeds earth texture scheduling consistently
 
 Threshold class: perceptual
 
-Expected outcome: candidate
+Expected outcome: pass
 
 State patch keys: 38
 
@@ -353,7 +353,7 @@ Ready when: shared-start capture seeds earth texture scheduling consistently
 
 Threshold class: manual-review
 
-Expected outcome: candidate
+Expected outcome: pass
 
 State patch keys: 45
 
@@ -385,7 +385,7 @@ Ready when: dynamics and master-chain routing are represented in core-wasm captu
 
 Threshold class: perceptual
 
-Expected outcome: candidate
+Expected outcome: pass
 
 State patch keys: 63
 
@@ -395,17 +395,17 @@ State patch SHA-256: `34bd22999df568fc9090c754c1f6d13f0429fec4738ce2a909854ccd45
 
 Title: Gamelan full mix
 
-Intent: Mixed melodic, lead, drum, delay, and reverb state from an existing preset.
+Intent: Mixed melodic, lead, drum, delay, and reverb state from an existing preset, scoped to manual synth triggers plus the represented drum backbone.
 
-Ready when: shared-start capture covers self-running synth/drum sequencers and manual notes
+Ready when: shared-start capture covers manual pad/lead notes, drum sequencer output, delay, and reverb
 
 Threshold class: manual-review
 
-Expected outcome: candidate
+Expected outcome: pass
 
 State patch keys: 132
 
-State patch SHA-256: `3b0c9e1d0533cc0ef468fc6da8c1d1562fa36f761f6790e5e4e1438ec959e831`
+State patch SHA-256: `1dc35f8017c5379848ce63c771cf9ee06b56dd44a29e5dffc8980699fb4a8652`
 
 ### full-mix-dark-ambient
 
@@ -417,7 +417,7 @@ Ready when: shared-start capture covers sequencers, granular routing, earth sche
 
 Threshold class: manual-review
 
-Expected outcome: candidate
+Expected outcome: pass
 
 State patch keys: 92
 
@@ -433,6 +433,7 @@ State patch SHA-256: `06ea0d40f5276baa8eb869e66172bb9f9a4d43a4ae345bf051ab1a81ba
 
 - This is browser Web Audio versus core-wasm acceptance only; macOS/iOS device CPU, battery, route-change, and screen-off behavior stay outside this gate.
 - The corpus does not require bit-exact parity. It is meant to decide when core-wasm is close enough for migration.
-- Earth/soundscape, drum sequencer, granular feedback, and full-mix cases depend on shared-start and seeded scheduling to become strict gates.
+- Earth/soundscape, drum sequencer, granular feedback, and full-mix cases use envelope or transient gates instead of bit-exact waveform correlation.
+- Synth Euclidean note generation remains a webapp sequencer concern in this gate; full-mix manual captures disable it so the C++ backbone route is scored directly.
 - Lead manual-note cases require core-wasm lead trigger support in the parity harness.
 - Preset storage/cloud round-trip validation is out of scope here; cases use local states and local factory preset references.

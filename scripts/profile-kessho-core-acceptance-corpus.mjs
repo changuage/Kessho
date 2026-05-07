@@ -189,19 +189,13 @@ const corpus = [
     id: 'pad-simple-dry',
     title: 'Simple dry pad',
     group: 'simple pad',
-    thresholdClass: 'close',
+    thresholdClass: 'exact',
     expectedOutcome: 'pass',
     source: 'KesshoNativeSwift/Kessho/Presets/Ethereal_Ambient.json',
     includeSourceState: true,
     durationMs: 5000,
     settleMs: 700,
     thresholds: { rmsTolerance: 0.04, peakTolerance: 0.22, minSignalRms: 0.0001 },
-    envelopeGate: {
-      windowMs: 500,
-      timeToleranceMs: 20,
-      rmsRatioTolerance: 0.35,
-      peakRatioTolerance: 0.45,
-    },
     manualNotes: padManualChord,
     statePatch: {
       ...sourceMute,
@@ -222,7 +216,7 @@ const corpus = [
       synthReverbSend: 0,
       pad1DelayASend: 0,
     },
-    intent: 'Small deterministic pad chord with no shared FX; checks envelope and level parity for a richer pad blend while default dry pads remain exact waveform sentinels.',
+    intent: 'Small deterministic pad chord with no shared FX; this stays a waveform parity sentinel for the richer pad blend.',
     readyWhen: ['pad manual notes work in both engines'],
   },
   {
@@ -1410,7 +1404,7 @@ function reportMarkdown(selection = {}, existingReport = null) {
 
   lines.push('');
 
-  return `${lines.join('\n')}\n`;
+  return `${lines.join('\n').trimEnd()}\n`;
 }
 
 function printList(selection = {}) {
@@ -1596,8 +1590,8 @@ function runSelfCheck() {
 
   const [simplePadCase] = resolveCases({ caseId: 'pad-simple-dry' });
   const simplePadCommand = commandForCase(simplePadCase, DEFAULT_URL);
-  assert(simplePadCommand.includes("'--envelope-gate'"), 'simple pad case forwards envelope gate');
-  assert(simplePadCase.thresholdClass === 'close', 'simple pad case is a close envelope sentinel while default pads stay exact');
+  assert(!simplePadCommand.includes("'--envelope-gate'"), 'simple pad case remains an exact waveform gate');
+  assert(simplePadCase.thresholdClass === 'exact', 'simple pad case is an exact waveform sentinel');
 
   const [tightDrumCase] = resolveCases({ caseId: 'drum-euclid-tight' });
   assert(tightDrumCase.transientGate.timeToleranceMs === 24, 'tight drum transient timing allows one browser quantum of shared-start offset');
