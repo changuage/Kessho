@@ -68,6 +68,7 @@ import { SliderHelpProvider, useSliderHelp } from './ui/SliderHelpOverlay';
 import { CircleOfFifths, getMorphedRootNote } from './ui/CircleOfFifths';
 import { useJourney } from './ui/journeyState';
 import { SOURCE_COLORS } from './designSystem/colors';
+import { APP_TAB_SYMBOLS, TEXT_SYMBOLS } from './designSystem/textSymbols';
 import type { SeqSimpleState } from './ui/drums/SeqSimple';
 import { getVersionData } from './presets/codec';
 import type { IPresetStore } from './presets/PresetStore';
@@ -122,30 +123,6 @@ const EarthPage = React.lazy(() => import('./ui/earth/EarthPage'));
 
 // Note names for display
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-
-// Unicode symbols with text variation selector (U+FE0E) to prevent emoji rendering on mobile
-const TEXT_SYMBOLS = {
-  play: '▶\uFE0E',
-  stop: '■\uFE0E',
-  record: '●\uFE0E',
-  range: '⟷\uFE0E',
-  random: '⟷\uFE0E',
-  download: '⬇\uFE0E',
-  upload: '⬆\uFE0E',
-  hexagon: '⬡\uFE0E',
-  sparkle: '✲\uFE0E',
-  target: '◎\uFE0E',
-  filledCircle: '●\uFE0E',
-  emptyCircle: '○\uFE0E',
-  // Drum voice icons
-  drumSub: '◉\uFE0E',
-  drumKick: '⬤\uFE0E',
-  drumClick: '▫\uFE0E',
-  drumBeepHi: '⊡\uFE0E',
-  drumBeepLo: '⋰\uFE0E',
-  drumNoise: '≋\uFE0E',
-  drumMembrane: '※\uFE0E',
-} as const;
 
 const DEFAULT_AUTO_START_PRESET_NAME = 'String Waves';
 const CLOUD_ENABLED = isCloudPresetConfigEnabled();
@@ -7058,7 +7035,7 @@ const App: React.FC = () => {
           }}
           onClick={() => setActiveTab('global')}
         >
-          <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>{TEXT_SYMBOLS.target}</span>
+          <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>{APP_TAB_SYMBOLS.global}</span>
           <span>Global</span>
         </HelpButton>
         <HelpButton
@@ -7070,7 +7047,7 @@ const App: React.FC = () => {
           }}
           onClick={() => setActiveTab('synth')}
         >
-          <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>∿</span>
+          <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>{APP_TAB_SYMBOLS.synth}</span>
           <span>Synth</span>
         </HelpButton>
         <HelpButton
@@ -7082,7 +7059,7 @@ const App: React.FC = () => {
           }}
           onClick={() => setActiveTab('drums')}
         >
-          <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>⋮⋮</span>
+          <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>{APP_TAB_SYMBOLS.drums}</span>
           <span>Drums</span>
         </HelpButton>
         <HelpButton
@@ -7094,7 +7071,7 @@ const App: React.FC = () => {
           }}
           onClick={() => setActiveTab('earth')}
         >
-          <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>{"\u2248"}</span>
+          <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>{APP_TAB_SYMBOLS.earth}</span>
           <span>Earth</span>
         </HelpButton>
         <HelpButton
@@ -7106,7 +7083,7 @@ const App: React.FC = () => {
           }}
           onClick={() => setActiveTab('granular')}
         >
-          <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>⊞</span>
+          <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>{APP_TAB_SYMBOLS.granular}</span>
           <span>Granular</span>
         </HelpButton>
         <HelpButton
@@ -7118,7 +7095,7 @@ const App: React.FC = () => {
           }}
           onClick={() => setActiveTab('delay')}
         >
-          <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>↭</span>
+          <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>{APP_TAB_SYMBOLS.delay}</span>
           <span>Delay</span>
         </HelpButton>
         <HelpButton
@@ -7130,7 +7107,7 @@ const App: React.FC = () => {
           }}
           onClick={() => setActiveTab('reverb')}
         >
-          <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>◈</span>
+          <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>{APP_TAB_SYMBOLS.reverb}</span>
           <span>Reverb</span>
         </HelpButton>
         <HelpButton
@@ -7142,7 +7119,7 @@ const App: React.FC = () => {
           }}
           onClick={() => setActiveTab('dynamics')}
         >
-          <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>≋</span>
+          <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>{APP_TAB_SYMBOLS.dynamics}</span>
           <span>Dynamics</span>
         </HelpButton>
         <HelpButton
@@ -7154,7 +7131,7 @@ const App: React.FC = () => {
           }}
           onClick={() => setActiveTab('routing')}
         >
-          <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>▦</span>
+          <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>{APP_TAB_SYMBOLS.routing}</span>
           <span>Routing</span>
         </HelpButton>
       </div>

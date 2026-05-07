@@ -302,6 +302,307 @@
   white-space: nowrap;
 }
 
+.global-root .scene-card-ultra {
+  display: grid;
+  gap: 9px;
+}
+
+.global-root .scene-ultra-top {
+  display: grid;
+  gap: 7px;
+}
+
+.global-root .scene-ultra-header {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.global-root .scene-harmony-line {
+  min-width: 0;
+  min-height: 27px;
+  display: flex;
+  align-items: center;
+  margin: 0 10px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.045);
+  overflow: hidden;
+}
+
+.global-root .scene-harmony-line span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.66rem;
+  font-weight: 760;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.global-root .scene-signal-graph {
+  position: relative;
+  min-width: 0;
+  margin: 0 10px;
+  border: 1px solid rgba(232, 220, 196, 0.09);
+  border-radius: 8px;
+  overflow: hidden;
+  background: linear-gradient(180deg, rgba(10, 10, 18, 0.96), rgba(15, 25, 40, 0.94));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.035),
+    inset 0 0 18px rgba(184, 224, 255, 0.03);
+}
+
+.global-root .scene-signal-map {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+}
+
+.global-root .scene-send-line {
+  fill: none;
+  stroke: rgba(var(--rgb), calc(0.15 + var(--send) * 0.6));
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: calc(0.75px + var(--send) * 3.8px);
+  opacity: calc(0.24 + var(--send) * 0.72);
+  filter: drop-shadow(0 0 calc(1px + var(--send) * 5px) rgba(var(--rgb), calc(0.08 + var(--send) * 0.22)));
+  pointer-events: none;
+}
+
+.global-root .scene-send-line.muted {
+  opacity: 0.07;
+  filter: none;
+}
+
+.global-root .scene-send-line.selected {
+  opacity: calc(0.48 + var(--send) * 0.52);
+  stroke-width: calc(1.5px + var(--send) * 5.2px);
+  filter: drop-shadow(0 0 calc(3px + var(--send) * 8px) rgba(var(--rgb), calc(0.14 + var(--send) * 0.32)));
+}
+
+.global-root .scene-send-line.master {
+  stroke-dasharray: 0 0;
+  stroke-width: calc(1.2px + var(--send) * 3px);
+  opacity: calc(0.34 + var(--send) * 0.46);
+}
+
+.global-root .scene-signal-node {
+  color: rgb(var(--rgb));
+  cursor: pointer;
+  outline: none;
+  transition: opacity 0.14s ease;
+}
+
+.global-root .scene-signal-node.muted {
+  opacity: 0.34;
+}
+
+.global-root .scene-signal-node.selected {
+  opacity: 1;
+}
+
+.global-root .scene-signal-node-halo {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1;
+  opacity: calc(0.08 + var(--level) * 0.22);
+  filter: blur(2px);
+}
+
+.global-root .scene-signal-node-shell {
+  fill: rgba(var(--rgb), calc(0.07 + var(--level) * 0.16));
+  stroke: rgba(var(--rgb), calc(0.34 + var(--level) * 0.58));
+  stroke-width: calc(0.8px + var(--level) * 1px);
+  filter: drop-shadow(0 0 calc(2px + var(--level) * 8px) rgba(var(--rgb), calc(0.10 + var(--level) * 0.24)));
+}
+
+.global-root .scene-signal-node-core {
+  fill: rgba(10, 10, 18, 0.66);
+  stroke: rgba(232, 220, 196, 0.12);
+  stroke-width: 1;
+}
+
+.global-root .scene-signal-node.fx .scene-signal-node-core {
+  fill: rgba(15, 25, 40, 0.72);
+}
+
+.global-root .scene-signal-node.master .scene-signal-node-shell {
+  fill: rgba(var(--rgb), calc(0.08 + var(--level) * 0.18));
+  stroke: rgba(var(--rgb), calc(0.4 + var(--level) * 0.5));
+}
+
+.global-root .scene-signal-node.master .scene-signal-node-core {
+  fill: rgba(8, 12, 22, 0.82);
+}
+
+.global-root .scene-signal-node.selected .scene-signal-node-halo {
+  opacity: calc(0.18 + var(--level) * 0.34);
+  filter: blur(3px);
+}
+
+.global-root .scene-signal-node.selected .scene-signal-node-shell {
+  stroke: color-mix(in srgb, rgb(var(--rgb)) 72%, white 28%);
+  stroke-width: 2.2px;
+  filter: drop-shadow(0 0 14px rgba(var(--rgb), 0.36));
+}
+
+.global-root .scene-signal-node:focus-visible .scene-signal-node-shell {
+  stroke: color-mix(in srgb, rgb(var(--rgb)) 72%, white 28%);
+  stroke-width: 2;
+  filter: drop-shadow(0 0 12px rgba(var(--rgb), 0.36));
+}
+
+.global-root .scene-signal-node-icon {
+  fill: currentColor;
+  stroke: none;
+  dominant-baseline: middle;
+  font-family: "Avenir Next", Avenir, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 23px;
+  font-weight: 800;
+  text-anchor: middle;
+  opacity: calc(0.70 + var(--level) * 0.30);
+  filter: brightness(calc(0.76 + var(--level) * 0.58));
+}
+
+.global-root .scene-signal-node-name {
+  fill: var(--text-primary);
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.global-root .scene-signal-node-value {
+  fill: rgba(232, 220, 196, 0.78);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.global-root .scene-signal-popover {
+  --rgb: 232, 220, 196;
+  position: fixed;
+  width: 238px;
+  max-width: calc(100vw - 24px);
+  z-index: 1000;
+  transform: var(--scene-popover-transform, translate(-50%, -100%) translateY(-12px));
+  border: 1px solid rgba(232, 220, 196, 0.3);
+  border-radius: 12px;
+  background: rgba(20, 20, 35, 0.5);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.4),
+    0 0 1px rgba(232, 220, 196, 0.1),
+    inset 0 1px 0 rgba(232, 220, 196, 0.1);
+  color: #e8dcc4;
+  font-family: "Avenir", "Avenir Next", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  padding: 13px 15px;
+  pointer-events: auto;
+}
+
+.global-root .scene-signal-popover-title {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  color: rgb(var(--rgb));
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.global-root .scene-signal-popover-title span:nth-child(2) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.global-root .scene-signal-popover-title strong {
+  color: #e8dcc4;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.global-root .scene-signal-popover-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: rgb(var(--rgb));
+  box-shadow: 0 0 8px rgba(var(--rgb), 0.58);
+}
+
+.global-root .scene-signal-popover-section + .scene-signal-popover-section,
+.global-root .scene-signal-popover-empty {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(232, 220, 196, 0.18);
+}
+
+.global-root .scene-signal-popover-kicker {
+  margin-bottom: 6px;
+  color: rgba(232, 220, 196, 0.5);
+  font-size: 0.56rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.global-root .scene-signal-popover-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 36px;
+  align-items: center;
+  gap: 8px;
+  min-height: 20px;
+  color: rgba(232, 220, 196, 0.86);
+  font-size: 0.65rem;
+}
+
+.global-root .scene-signal-popover-row + .scene-signal-popover-row {
+  margin-top: 5px;
+}
+
+.global-root .scene-signal-popover-row > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.global-root .scene-signal-popover-row > span:nth-child(2) {
+  color: rgb(var(--rgb));
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.62rem;
+  font-weight: 800;
+  text-align: right;
+}
+
+.global-root .scene-signal-popover-meter {
+  grid-column: 1 / -1;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.global-root .scene-signal-popover-meter > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: rgb(var(--rgb));
+  box-shadow: 0 0 8px rgba(var(--rgb), 0.34);
+}
+
+.global-root .scene-signal-popover-empty {
+  color: rgba(232, 220, 196, 0.58);
+  font-size: 0.64rem;
+  font-weight: 650;
+}
+
 .global-root .scene-engine-switch {
   display: grid;
   grid-template-columns: auto minmax(148px, 1fr);
@@ -381,6 +682,11 @@
   white-space: nowrap;
 }
 
+.global-root .scene-engine-card .scene-engine-switch {
+  margin-top: 10px;
+  padding-bottom: 10px;
+}
+
 .global-root .scene-master-control {
   margin: 0 10px;
   padding: 8px 0 9px;
@@ -396,57 +702,6 @@
 .global-root .scene-master-control .sl-slider-head {
   gap: 4px;
   font-size: var(--font-xs);
-}
-
-.global-root .balance-row-track {
-  position: relative;
-  overflow: hidden;
-  background: rgba(255,255,255,0.07);
-}
-
-.global-root .balance-row-track > span {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: var(--scene-accent);
-}
-
-.global-root .balance-overview {
-  padding: 9px 10px 10px;
-}
-
-.global-root .balance-row {
-  --scene-accent: #67e8f9;
-  display: grid;
-  grid-template-columns: 50px minmax(0, 1fr) 34px;
-  align-items: center;
-  gap: 8px;
-  min-height: 18px;
-}
-
-.global-root .balance-row + .balance-row {
-  margin-top: 4px;
-}
-
-.global-root .balance-row-label,
-.global-root .balance-row-value {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--text-muted);
-  font-size: 0.62rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.global-root .balance-row-value {
-  color: var(--text-secondary);
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-}
-
-.global-root .balance-row-track {
-  height: 4px;
-  border-radius: 999px;
 }
 
 /* Inline slider rows inside harmony card */
@@ -485,6 +740,7 @@
     grid-template-columns: 1fr;
     align-items: stretch;
   }
+
 }
 
 /* ── CoF Drift block ── */

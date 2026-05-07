@@ -10,11 +10,16 @@ import { SCALE_FAMILIES } from '../../audio/scales';
 import { isAtEndpoint0, isAtEndpoint1 } from '../../audio/morphUtils';
 import { getTransportMetrics } from '../../audio/transport';
 import { STEM_RECORD_TRACK_IDS, STEM_RECORD_TRACK_LABELS } from '../../audio/recordingTracks';
+import { DYNAMICS_ENGINE_COLORS, SOURCE_COLORS } from '../../designSystem/colors';
+import { APP_TAB_SYMBOLS, TEXT_SYMBOLS } from '../../designSystem/textSymbols';
 import { useSliderHelp } from '../SliderHelpOverlay';
+import { getRuntimeSliderPosition } from '../runtimeSliderState';
+import { useVisibleInterval } from '../hooks/useVisibleInterval';
 import './global.css';
 
 // Note names for display
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+const DEGREE_LABELS = ['I', 'ii', 'iii', 'IV', 'V', 'vi', 'vii°'];
 const GLOBAL_EXPANDED_SECTIONS_STORAGE_KEY = 'global:expanded-sections:v1';
 const DEFAULT_GLOBAL_EXPANDED_SECTIONS = ['morph', 'state-presets', 'root-cof', 'chord-progression', 'scale-tension', 'transport-sync'];
 type AudioEngineMode = 'web-audio' | 'core-wasm';
@@ -25,17 +30,753 @@ type AudioEngineCpuSummary = {
   moduleCount: number;
   updatedAt: number;
 };
+type SceneHarmonyState = NonNullable<EngineState['harmonyState']>;
 
 function clamp01(value: number | undefined): number {
   return Math.max(0, Math.min(1, typeof value === 'number' && Number.isFinite(value) ? value : 0));
 }
 
-function formatPercent(value: number | undefined): string {
-  return `${Math.round(clamp01(value) * 100)}%`;
-}
-
 function formatCpuPercent(value: number | null | undefined): string {
   return typeof value === 'number' && Number.isFinite(value) ? `${value.toFixed(1)}%` : '--';
+}
+
+const SCENE_SIGNAL_EPSILON = 0.001;
+const SCENE_SIGNAL_VIEWBOX_WIDTH = 760;
+const SCENE_SIGNAL_VIEWBOX_HEIGHT = 510;
+const SCENE_SIGNAL_NODE_WIDTH = 160;
+const SCENE_SIGNAL_NODE_LAYOUT_WIDTH = 168;
+const SCENE_SIGNAL_NODE_LAYOUT_HEIGHT = 64;
+const SCENE_SIGNAL_NODE_LAYOUT_GAP = 4;
+const SCENE_SIGNAL_NODE_LAYOUT_LEFT_MARGIN = 92;
+const SCENE_SIGNAL_NODE_LAYOUT_RIGHT_MARGIN = 84;
+const SCENE_SIGNAL_MAIN_LAYOUT_BOTTOM = 378;
+const SCENE_SIGNAL_MASTER_CHAIN_Y = 458;
+const SCENE_SIGNAL_MASTER_CHAIN_X = [92, 284, 476, 668] as const;
+const SCENE_SIGNAL_LAYOUT_PASSES = 24;
+const SCENE_SIGNAL_POPOVER_WIDTH = 238;
+const SCENE_SIGNAL_POPOVER_MARGIN = 12;
+const SCENE_SIGNAL_RUNTIME_POLL_MS = 250;
+
+type SceneSignalKind =
+  | 'pad'
+  | 'lead'
+  | 'piano'
+  | 'drum'
+  | 'earth'
+  | 'grain'
+  | 'delay'
+  | 'reverb'
+  | 'freeze'
+  | 'character'
+  | 'degrade'
+  | 'saturation'
+  | 'end';
+
+type SceneSignalNode = {
+  id: string;
+  label: string;
+  kind: SceneSignalKind;
+  role: 'sound' | 'fx' | 'master';
+  x: number;
+  y: number;
+  level: number;
+  rgb: string;
+};
+
+type SceneSignalSend = {
+  id: string;
+  from: SceneSignalNode;
+  to: SceneSignalNode;
+  amount: number;
+  rgb: string;
+  hidden?: boolean;
+  lane?: 'fx' | 'master';
+};
+
+type SceneSignalSendOptions = Pick<SceneSignalSend, 'hidden' | 'lane'> & {
+  force?: boolean;
+};
+
+type SceneSignalModel = {
+  nodes: SceneSignalNode[];
+  sends: SceneSignalSend[];
+};
+
+type SceneSourceSpec = SceneSignalNode & {
+  sends: {
+    delayA: number;
+    delayB: number;
+    granular: number;
+    reverb: number;
+  };
+};
+
+const SCENE_SIGNAL_POSITIONS: Record<string, { x: number; y: number }> = {
+  pad1: { x: 92, y: 52 },
+  pad2: { x: 92, y: 120 },
+  lead1: { x: 92, y: 188 },
+  lead2: { x: 92, y: 256 },
+  piano: { x: 92, y: 324 },
+  drums: { x: 248, y: 72 },
+  waves: { x: 248, y: 140 },
+  water: { x: 248, y: 208 },
+  nature: { x: 248, y: 276 },
+  insects: { x: 248, y: 344 },
+  granular: { x: 412, y: 88 },
+  freeze: { x: 412, y: 286 },
+  degrade: { x: 412, y: 354 },
+  delayA: { x: 552, y: 68 },
+  delayB: { x: 552, y: 174 },
+  saturation: { x: 552, y: 326 },
+  reverb: { x: 674, y: 150 },
+  masterCharacter: { x: 92, y: 458 },
+  masterDegrade: { x: 284, y: 458 },
+  masterSaturation: { x: 476, y: 458 },
+  masterEnd: { x: 668, y: 458 },
+};
+
+function hexToRgbTriplet(hex: string): string {
+  const raw = hex.trim().replace(/^#/, '');
+  const full = raw.length === 3 ? raw.split('').map((char) => `${char}${char}`).join('') : raw;
+  const value = Number.parseInt(full, 16);
+  if (full.length !== 6 || !Number.isFinite(value)) return '232, 220, 196';
+  return `${(value >> 16) & 255}, ${(value >> 8) & 255}, ${value & 255}`;
+}
+
+const SCENE_SIGNAL_RGB = {
+  pad1: hexToRgbTriplet(SOURCE_COLORS.pad1),
+  pad2: hexToRgbTriplet(SOURCE_COLORS.pad2),
+  lead1: hexToRgbTriplet(SOURCE_COLORS.lead1),
+  lead2: hexToRgbTriplet(SOURCE_COLORS.lead2),
+  piano: hexToRgbTriplet(SOURCE_COLORS.piano),
+  drums: hexToRgbTriplet(SOURCE_COLORS.drums),
+  waves: hexToRgbTriplet(SOURCE_COLORS.waves),
+  water: hexToRgbTriplet(SOURCE_COLORS.water),
+  nature: hexToRgbTriplet(SOURCE_COLORS.nature),
+  insects: hexToRgbTriplet(SOURCE_COLORS.insects),
+  granular: hexToRgbTriplet(SOURCE_COLORS.granular),
+  delayA: hexToRgbTriplet(SOURCE_COLORS.delayA),
+  delayB: hexToRgbTriplet(SOURCE_COLORS.delayB),
+  reverb: hexToRgbTriplet(SOURCE_COLORS.reverb),
+  freeze: hexToRgbTriplet(DYNAMICS_ENGINE_COLORS.sidechain),
+  character: hexToRgbTriplet(DYNAMICS_ENGINE_COLORS.character),
+  degrade: hexToRgbTriplet(DYNAMICS_ENGINE_COLORS.degrade),
+  saturation: hexToRgbTriplet(DYNAMICS_ENGINE_COLORS.saturation),
+  end: hexToRgbTriplet(DYNAMICS_ENGINE_COLORS.endChain),
+} as const;
+
+const SCENE_SIGNAL_SYMBOLS: Record<SceneSignalKind, string> = {
+  pad: APP_TAB_SYMBOLS.synth,
+  lead: APP_TAB_SYMBOLS.synth,
+  piano: APP_TAB_SYMBOLS.synth,
+  drum: APP_TAB_SYMBOLS.drums,
+  earth: APP_TAB_SYMBOLS.earth,
+  grain: APP_TAB_SYMBOLS.granular,
+  delay: APP_TAB_SYMBOLS.delay,
+  reverb: APP_TAB_SYMBOLS.reverb,
+  freeze: TEXT_SYMBOLS.sparkle,
+  character: APP_TAB_SYMBOLS.dynamics,
+  degrade: APP_TAB_SYMBOLS.dynamics,
+  saturation: TEXT_SYMBOLS.filledCircle,
+  end: APP_TAB_SYMBOLS.dynamics,
+};
+
+const SCENE_SIGNAL_RUNTIME_KEYS = [
+  'synthLevel',
+  'pad1DelayASend',
+  'pad1DelayBSend',
+  'granularPad1Send',
+  'pad1ReverbSend',
+  'pad2Level',
+  'pad2DelayASend',
+  'pad2DelayBSend',
+  'granularPad2Send',
+  'pad2ReverbSend',
+  'lead1Level',
+  'lead1DelayASend',
+  'lead1DelayBSend',
+  'granularLead1Send',
+  'lead1ReverbSend',
+  'lead2Level',
+  'lead2DelayASend',
+  'lead2DelayBSend',
+  'granularLead2Send',
+  'lead2ReverbSend',
+  'pianoLevel',
+  'pianoDelayASend',
+  'pianoDelayBSend',
+  'granularPianoSend',
+  'pianoReverbSend',
+  'drumLevel',
+  'drumDelayASend',
+  'drumDelayBSend',
+  'granularDrumSend',
+  'drumReverbSend',
+  'earthLevel',
+  'oceanSampleLevel',
+  'oceanDelayASend',
+  'oceanDelayBSend',
+  'granularWavesSend',
+  'oceanReverbSend',
+  'waterLevel',
+  'waterDelayASend',
+  'waterDelayBSend',
+  'granularWaterSend',
+  'waterReverbSend',
+  'natureLevel',
+  'birdsLevel',
+  'birds2Level',
+  'frogsLevel',
+  'natureDelayASend',
+  'natureDelayBSend',
+  'granularNatureSend',
+  'natureReverbSend',
+  'insectsSharedLevel',
+  'insectsLevel',
+  'insects2Level',
+  'insDelayASend',
+  'insDelayBSend',
+  'granularInsectsSend',
+  'insectsReverbSend',
+  'granularLevel',
+  'granularDelayASend',
+  'granularDelayBSend',
+  'granularReverbSend',
+  'delayAMix',
+  'delayAToBSend',
+  'delayAGranularSend',
+  'delayAReverbSend',
+  'granularDelayMix',
+  'delayBToASend',
+  'delayBGranularSend',
+  'granularDelayReverbSend',
+  'spectralFreezeMix',
+  'sidechainAmount',
+  'characterMix',
+  'degradeMix',
+  'degradeAge',
+  'degradeGeneration',
+  'degradeSaturation',
+  'dynamicsSaturationDrive',
+  'endCompMix',
+  'masterSatDrive',
+] as const satisfies readonly (keyof SliderState)[];
+
+function hasSceneLevel(value: number): boolean {
+  return clamp01(value) > SCENE_SIGNAL_EPSILON;
+}
+
+function scenePercent(level: number): string {
+  return `${Math.round(clamp01(level) * 100)}`;
+}
+
+function pitchClass(note: number | undefined): number {
+  return ((Math.round(note ?? 0) % 12) + 12) % 12;
+}
+
+function formatSceneSeconds(value: number | null | undefined, prefix = ''): string | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  return `${prefix}${Math.max(0, value).toFixed(1)}s`;
+}
+
+function getSceneChordRootPc(harmonyState: SceneHarmonyState | null | undefined, fallbackRoot: number): number {
+  const degree = harmonyState?.scaleFamily.degrees?.[harmonyState.currentDegree];
+  return pitchClass((harmonyState?.effectiveRoot ?? fallbackRoot) + (degree?.root ?? 0));
+}
+
+function formatSceneChordNotes(notes: number[] | undefined, rootPc: number): string | null {
+  if (!notes?.length) return null;
+  const seen = new Set<number>();
+  const pitchClasses = notes
+    .map(pitchClass)
+    .filter((pc) => {
+      if (seen.has(pc)) return false;
+      seen.add(pc);
+      return true;
+    })
+    .sort((a, b) => ((a - rootPc + 12) % 12) - ((b - rootPc + 12) % 12));
+
+  return pitchClasses.length ? pitchClasses.map((pc) => NOTE_NAMES[pc]).join(' ') : null;
+}
+
+function formatSceneChordName(harmonyState: SceneHarmonyState | null | undefined, fallbackRoot: number): string | null {
+  const notes = harmonyState?.currentChord.midiNotes;
+  if (!notes?.length) return null;
+
+  const rootPc = getSceneChordRootPc(harmonyState, fallbackRoot);
+  const rootLabel = NOTE_NAMES[rootPc] ?? 'C';
+  const intervals = new Set(notes.map((note) => (pitchClass(note) - rootPc + 12) % 12));
+  const degreeQuality = harmonyState?.scaleFamily.degrees?.[harmonyState.currentDegree]?.quality;
+  const has = (interval: number) => intervals.has(interval);
+
+  let suffix = '';
+  if (degreeQuality === 'minor') {
+    suffix = has(11) ? 'mMaj7' : has(10) ? 'm7' : 'm';
+  } else if (degreeQuality === 'diminished') {
+    suffix = has(10) ? 'm7b5' : has(9) ? 'dim7' : 'dim';
+  } else if (degreeQuality === 'augmented') {
+    suffix = has(11) ? 'augMaj7' : has(10) ? 'aug7' : 'aug';
+  } else if (degreeQuality === 'dominant') {
+    suffix = has(10) ? '7' : '';
+  } else if (degreeQuality === 'major') {
+    suffix = has(11) ? 'maj7' : '';
+  } else if (has(3)) {
+    suffix = has(11) ? 'mMaj7' : has(10) ? 'm7' : 'm';
+  } else if (has(4)) {
+    suffix = has(11) ? 'maj7' : has(10) ? '7' : '';
+  }
+
+  const extensions = [
+    has(1) ? 'b9' : null,
+    has(2) ? 'add9' : null,
+    has(5) ? '11' : null,
+    has(6) ? '#11' : null,
+    has(8) ? 'b13' : null,
+    has(9) && (has(10) || has(11)) ? '13' : null,
+  ].filter(Boolean).join('');
+
+  return `${rootLabel}${suffix}${extensions}`;
+}
+
+function nodeStyle(node: SceneSignalNode): React.CSSProperties {
+  return {
+    '--rgb': node.rgb,
+    '--level': clamp01(node.level),
+  } as React.CSSProperties;
+}
+
+function sendStyle(send: SceneSignalSend): React.CSSProperties {
+  return {
+    '--rgb': send.rgb,
+    '--send': clamp01(send.amount),
+  } as React.CSSProperties;
+}
+
+function sceneSignalPopoverStyle(point: { x: number; y: number; placement: 'top' | 'bottom' } | null): React.CSSProperties | undefined {
+  if (!point) return undefined;
+  return {
+    left: point.x,
+    top: point.y,
+    '--scene-popover-transform': point.placement === 'top'
+      ? 'translate(-50%, -100%) translateY(-12px)'
+      : 'translate(-50%, 12px)',
+  } as React.CSSProperties;
+}
+
+function sceneSendLabel(send: SceneSignalSend, selectedNodeId: string): string {
+  return send.from.id === selectedNodeId
+    ? `${send.from.label} → ${send.to.label}`
+    : `${send.from.label} → ${send.to.label}`;
+}
+
+function getSceneRuntimeNumber(
+  state: SliderState,
+  key: keyof SliderState,
+  sliderModes?: Record<string, SliderMode>,
+  dualSliderRanges?: Record<string, { min: number; max: number }>,
+): number | null {
+  const keyString = String(key);
+  const mode = sliderModes?.[keyString] ?? 'single';
+  const range = dualSliderRanges?.[keyString];
+  const authored = state[key];
+  if (
+    mode === 'single' ||
+    !range ||
+    typeof authored !== 'number' ||
+    !Number.isFinite(authored)
+  ) {
+    return typeof authored === 'number' && Number.isFinite(authored) ? authored : null;
+  }
+
+  const min = Math.min(range.min, range.max);
+  const max = Math.max(range.min, range.max);
+  if (!Number.isFinite(min) || !Number.isFinite(max) || Math.abs(max - min) < 0.000001) return authored;
+
+  const fallbackPosition = clamp01((authored - min) / (max - min));
+  const runtimePosition = getRuntimeSliderPosition(keyString, mode) ?? fallbackPosition;
+  return min + clamp01(runtimePosition) * (max - min);
+}
+
+function hasSceneRuntimeDualParams(
+  sliderModes?: Record<string, SliderMode>,
+  dualSliderRanges?: Record<string, { min: number; max: number }>,
+): boolean {
+  if (!sliderModes || !dualSliderRanges) return false;
+  return SCENE_SIGNAL_RUNTIME_KEYS.some((key) => {
+    const keyString = String(key);
+    const mode = sliderModes[keyString] ?? 'single';
+    return mode !== 'single' && !!dualSliderRanges[keyString];
+  });
+}
+
+function createSceneRuntimeSignature(
+  state: SliderState,
+  sliderModes?: Record<string, SliderMode>,
+  dualSliderRanges?: Record<string, { min: number; max: number }>,
+): string {
+  if (!hasSceneRuntimeDualParams(sliderModes, dualSliderRanges)) return '';
+  return SCENE_SIGNAL_RUNTIME_KEYS.map((key) => {
+    const keyString = String(key);
+    const mode = sliderModes?.[keyString] ?? 'single';
+    if (mode === 'single' || !dualSliderRanges?.[keyString]) return '';
+    const value = getSceneRuntimeNumber(state, key, sliderModes, dualSliderRanges);
+    return value === null ? '' : `${keyString}:${value.toFixed(4)}`;
+  }).filter(Boolean).join('|');
+}
+
+function resolveSceneRuntimeState(
+  state: SliderState,
+  sliderModes?: Record<string, SliderMode>,
+  dualSliderRanges?: Record<string, { min: number; max: number }>,
+): SliderState {
+  if (!hasSceneRuntimeDualParams(sliderModes, dualSliderRanges)) return state;
+
+  let nextState: SliderState | null = null;
+  for (const key of SCENE_SIGNAL_RUNTIME_KEYS) {
+    const keyString = String(key);
+    const mode = sliderModes?.[keyString] ?? 'single';
+    if (mode === 'single' || !dualSliderRanges?.[keyString]) continue;
+    const value = getSceneRuntimeNumber(state, key, sliderModes, dualSliderRanges);
+    if (value === null || Object.is(value, state[key])) continue;
+    nextState ??= { ...state };
+    (nextState as unknown as Record<string, unknown>)[keyString] = value;
+  }
+
+  return nextState ?? state;
+}
+
+function createSceneNode(
+  id: string,
+  label: string,
+  kind: SceneSignalKind,
+  role: 'sound' | 'fx' | 'master',
+  level: number,
+  rgb: string,
+): SceneSignalNode {
+  const position = SCENE_SIGNAL_POSITIONS[id] ?? { x: 500, y: 205 };
+  return {
+    id,
+    label,
+    kind,
+    role,
+    x: position.x,
+    y: position.y,
+    level: clamp01(level),
+    rgb,
+  };
+}
+
+function createSceneSource(
+  id: string,
+  label: string,
+  kind: SceneSignalKind,
+  level: number,
+  rgb: string,
+  sends: SceneSourceSpec['sends'],
+): SceneSourceSpec | null {
+  if (!hasSceneLevel(level)) return null;
+  return {
+    ...createSceneNode(id, label, kind, 'sound', level, rgb),
+    sends,
+  };
+}
+
+function maxSend(sources: SceneSourceSpec[], key: keyof SceneSourceSpec['sends']): number {
+  return sources.reduce((max, source) => Math.max(max, source.sends[key]), 0);
+}
+
+function sceneSendPath(from: SceneSignalNode, to: SceneSignalNode): string {
+  const startX = from.x + SCENE_SIGNAL_NODE_WIDTH / 2 - 8;
+  const endX = to.x - SCENE_SIGNAL_NODE_WIDTH / 2 - 4;
+  const midX = (startX + endX) / 2;
+  const lift = Math.min(58, Math.abs(to.y - from.y) * 0.24);
+  return `M${startX} ${from.y} C${midX} ${from.y - lift} ${midX} ${to.y + lift} ${endX} ${to.y}`;
+}
+
+function clampSceneSignalLayoutNode(node: SceneSignalNode): void {
+  const halfHeight = SCENE_SIGNAL_NODE_LAYOUT_HEIGHT / 2;
+  node.x = Math.max(
+    SCENE_SIGNAL_NODE_LAYOUT_LEFT_MARGIN,
+    Math.min(SCENE_SIGNAL_VIEWBOX_WIDTH - SCENE_SIGNAL_NODE_LAYOUT_RIGHT_MARGIN, node.x),
+  );
+  node.y = Math.max(halfHeight, Math.min(SCENE_SIGNAL_MAIN_LAYOUT_BOTTOM, node.y));
+}
+
+function layoutSceneSignalModel(model: SceneSignalModel): SceneSignalModel {
+  const unlockedNodes = model.nodes
+    .filter((node) => node.role !== 'master')
+    .map((node) => ({ ...node }));
+  const lockedNodes = model.nodes
+    .filter((node) => node.role === 'master')
+    .map((node) => ({ ...node }));
+  const minXDistance = SCENE_SIGNAL_NODE_LAYOUT_WIDTH + SCENE_SIGNAL_NODE_LAYOUT_GAP;
+  const minYDistance = SCENE_SIGNAL_NODE_LAYOUT_HEIGHT + SCENE_SIGNAL_NODE_LAYOUT_GAP;
+
+  unlockedNodes.forEach(clampSceneSignalLayoutNode);
+
+  for (let pass = 0; pass < SCENE_SIGNAL_LAYOUT_PASSES; pass += 1) {
+    for (let i = 0; i < unlockedNodes.length; i += 1) {
+      for (let j = i + 1; j < unlockedNodes.length; j += 1) {
+        const a = unlockedNodes[i];
+        const b = unlockedNodes[j];
+        if (!a || !b) continue;
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const overlapX = minXDistance - Math.abs(dx);
+        const overlapY = minYDistance - Math.abs(dy);
+        if (overlapX <= 0 || overlapY <= 0) continue;
+
+        const separateOnY = overlapY <= overlapX;
+        const direction = separateOnY
+          ? (dy === 0 ? (b.y >= a.y ? 1 : -1) : Math.sign(dy))
+          : (dx === 0 ? (b.x >= a.x ? 1 : -1) : Math.sign(dx));
+        const movement = (separateOnY ? overlapY : overlapX) / 2 + 0.5;
+
+        if (separateOnY) {
+          a.y -= direction * movement;
+          b.y += direction * movement;
+        } else {
+          a.x -= direction * movement;
+          b.x += direction * movement;
+        }
+        clampSceneSignalLayoutNode(a);
+        clampSceneSignalLayoutNode(b);
+      }
+    }
+  }
+
+  const nodes = [...unlockedNodes, ...lockedNodes];
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const sends = model.sends.map((send) => ({
+    ...send,
+    from: byId.get(send.from.id) ?? send.from,
+    to: byId.get(send.to.id) ?? send.to,
+  }));
+  return { nodes, sends };
+}
+
+function buildSceneSignalModel(state: SliderState): SceneSignalModel {
+  const earthMaster = clamp01(state.earthLevel);
+  const natureSourceLevel = Math.max(
+    state.birdsEnabled ? clamp01(state.birdsLevel) : 0,
+    state.birds2Enabled ? clamp01(state.birds2Level) : 0,
+    state.frogsEnabled ? clamp01(state.frogsLevel) : 0,
+  );
+  const insectsSourceLevel = Math.max(
+    state.insectsEnabled ? clamp01(state.insectsLevel) : 0,
+    state.insects2Enabled ? clamp01(state.insects2Level) : 0,
+  );
+
+  const sources = [
+    createSceneSource('pad1', 'Pad 1', 'pad', state.padEnabled !== false ? state.synthLevel : 0, SCENE_SIGNAL_RGB.pad1, {
+      delayA: clamp01(state.pad1DelayASend),
+      delayB: clamp01(state.pad1DelayBSend),
+      granular: clamp01(state.granularPad1Send),
+      reverb: clamp01(state.pad1ReverbSend),
+    }),
+    createSceneSource('pad2', 'Pad 2', 'pad', state.pad2Enabled ? state.pad2Level : 0, SCENE_SIGNAL_RGB.pad2, {
+      delayA: clamp01(state.pad2DelayASend),
+      delayB: clamp01(state.pad2DelayBSend),
+      granular: clamp01(state.granularPad2Send),
+      reverb: clamp01(state.pad2ReverbSend),
+    }),
+    createSceneSource('lead1', 'Lead 1', 'lead', state.leadEnabled ? state.lead1Level : 0, SCENE_SIGNAL_RGB.lead1, {
+      delayA: clamp01(state.lead1DelayASend),
+      delayB: clamp01(state.lead1DelayBSend),
+      granular: clamp01(state.granularLead1Send),
+      reverb: clamp01(state.lead1ReverbSend),
+    }),
+    createSceneSource('lead2', 'Lead 2', 'lead', state.lead2Enabled ? state.lead2Level : 0, SCENE_SIGNAL_RGB.lead2, {
+      delayA: clamp01(state.lead2DelayASend),
+      delayB: clamp01(state.lead2DelayBSend),
+      granular: clamp01(state.granularLead2Send),
+      reverb: clamp01(state.lead2ReverbSend),
+    }),
+    createSceneSource('piano', 'Piano', 'piano', state.pianoEnabled ? state.pianoLevel : 0, SCENE_SIGNAL_RGB.piano, {
+      delayA: clamp01(state.pianoDelayASend),
+      delayB: clamp01(state.pianoDelayBSend),
+      granular: clamp01(state.granularPianoSend),
+      reverb: clamp01(state.pianoReverbSend),
+    }),
+    createSceneSource('drums', 'Drums', 'drum', (state.drumEnabled || state.drumEuclidMasterEnabled) ? state.drumLevel : 0, SCENE_SIGNAL_RGB.drums, {
+      delayA: clamp01(state.drumDelayASend),
+      delayB: clamp01(state.drumDelayBSend),
+      granular: clamp01(state.granularDrumSend),
+      reverb: clamp01(state.drumReverbSend),
+    }),
+    createSceneSource('waves', 'Waves', 'earth', state.oceanSampleEnabled ? earthMaster * clamp01(state.oceanSampleLevel) : 0, SCENE_SIGNAL_RGB.waves, {
+      delayA: clamp01(state.oceanDelayASend),
+      delayB: clamp01(state.oceanDelayBSend),
+      granular: clamp01(state.granularWavesSend),
+      reverb: clamp01(state.oceanReverbSend),
+    }),
+    createSceneSource('water', 'Water', 'earth', state.waterEnabled ? earthMaster * clamp01(state.waterLevel) : 0, SCENE_SIGNAL_RGB.water, {
+      delayA: clamp01(state.waterDelayASend),
+      delayB: clamp01(state.waterDelayBSend),
+      granular: clamp01(state.granularWaterSend),
+      reverb: clamp01(state.waterReverbSend),
+    }),
+    createSceneSource('nature', 'Nature', 'earth', earthMaster * clamp01(state.natureLevel) * natureSourceLevel, SCENE_SIGNAL_RGB.nature, {
+      delayA: clamp01(state.natureDelayASend),
+      delayB: clamp01(state.natureDelayBSend),
+      granular: clamp01(state.granularNatureSend),
+      reverb: clamp01(state.natureReverbSend),
+    }),
+    createSceneSource('insects', 'Insects', 'earth', earthMaster * clamp01(state.insectsSharedLevel) * insectsSourceLevel, SCENE_SIGNAL_RGB.insects, {
+      delayA: clamp01(state.insDelayASend),
+      delayB: clamp01(state.insDelayBSend),
+      granular: clamp01(state.granularInsectsSend),
+      reverb: clamp01(state.insectsReverbSend),
+    }),
+  ].filter((source): source is SceneSourceSpec => source !== null);
+
+  const sourceDelayAFeed = maxSend(sources, 'delayA');
+  const sourceDelayBFeed = maxSend(sources, 'delayB');
+  const sourceGranularFeed = maxSend(sources, 'granular');
+  const sourceReverbFeed = maxSend(sources, 'reverb');
+  const granularLevel = state.granularEnabled ? clamp01(state.granularLevel) : 0;
+  const delayAActive = hasSceneLevel(state.delayAMix) && (
+    hasSceneLevel(sourceDelayAFeed) ||
+    hasSceneLevel(state.delayBToASend)
+  );
+  const delayBActive = !!state.granularDelayEnabled && hasSceneLevel(state.granularDelayMix) && (
+    hasSceneLevel(sourceDelayBFeed) ||
+    hasSceneLevel(state.delayAToBSend) ||
+    hasSceneLevel(state.granularDelayBSend)
+  );
+  const granularActive = !!state.granularEnabled && (
+    hasSceneLevel(granularLevel) ||
+    hasSceneLevel(sourceGranularFeed) ||
+    hasSceneLevel(state.delayAGranularSend) ||
+    hasSceneLevel(state.delayBGranularSend)
+  );
+  const reverbActive = !!state.reverbEnabled && hasSceneLevel(state.reverbLevel) && (
+    hasSceneLevel(sourceReverbFeed) ||
+    (delayAActive && hasSceneLevel(state.delayAReverbSend)) ||
+    (delayBActive && hasSceneLevel(state.granularDelayReverbSend)) ||
+    (granularActive && hasSceneLevel(state.granularReverbSend))
+  );
+  const freezeActive = !!state.spectralFreezeEnabled && hasSceneLevel(state.spectralFreezeMix);
+  const characterEnabled = !!state.dynamicsEnabled && !!state.characterEnabled;
+  const degradeEnabled = !!state.dynamicsEnabled && !!state.degradeEnabled;
+  const saturationEnabled = (
+    (!!state.dynamicsEnabled && !!state.dynamicsSaturationEnabled) ||
+    (!state.dynamicsEnabled && hasSceneLevel(state.masterSatDrive))
+  );
+  const endCompEnabled = !!state.dynamicsEnabled && !!state.endCompEnabled;
+  const characterLevel = characterEnabled ? clamp01(state.characterMix) : 0;
+  const degradeLevel = degradeEnabled
+    ? Math.max(
+        clamp01(state.degradeMix),
+        clamp01(state.degradeAge),
+        clamp01(state.degradeGeneration),
+        clamp01(state.degradeSaturation),
+      )
+    : 0;
+  const saturationLevel = Math.max(
+    state.dynamicsEnabled && state.dynamicsSaturationEnabled ? clamp01(state.dynamicsSaturationDrive) : 0,
+    !state.dynamicsEnabled ? clamp01(state.masterSatDrive) : 0,
+  );
+  const endCompLevel = endCompEnabled ? clamp01(state.endCompMix ?? 1) : 0;
+
+  const fxNodes = [
+    granularActive ? createSceneNode('granular', 'Granular', 'grain', 'fx', Math.max(granularLevel, sourceGranularFeed), SCENE_SIGNAL_RGB.granular) : null,
+    freezeActive ? createSceneNode('freeze', 'Freeze', 'freeze', 'fx', state.spectralFreezeMix, SCENE_SIGNAL_RGB.freeze) : null,
+    delayAActive ? createSceneNode('delayA', 'Delay A', 'delay', 'fx', Math.max(clamp01(state.delayAMix), sourceDelayAFeed), SCENE_SIGNAL_RGB.delayA) : null,
+    delayBActive ? createSceneNode('delayB', 'Delay B', 'delay', 'fx', Math.max(clamp01(state.granularDelayMix), sourceDelayBFeed), SCENE_SIGNAL_RGB.delayB) : null,
+    reverbActive ? createSceneNode('reverb', 'Reverb', 'reverb', 'fx', Math.max(clamp01(state.reverbLevel), sourceReverbFeed), SCENE_SIGNAL_RGB.reverb) : null,
+  ].filter((node): node is SceneSignalNode => node !== null);
+
+  const masterInputNodes = [
+    ...sources,
+    ...fxNodes.filter((node) => node.id === 'granular' || node.id === 'delayA' || node.id === 'delayB' || node.id === 'reverb'),
+  ];
+  const masterChainActive = masterInputNodes.length > 0 && (
+    characterEnabled ||
+    degradeEnabled ||
+    saturationEnabled ||
+    endCompEnabled
+  );
+  const masterChainNodes = masterChainActive
+    ? [
+        characterEnabled
+          ? createSceneNode('masterCharacter', 'Character', 'character', 'master', characterLevel, SCENE_SIGNAL_RGB.character)
+          : null,
+        degradeEnabled
+          ? createSceneNode('masterDegrade', 'Degrade', 'degrade', 'master', degradeLevel, SCENE_SIGNAL_RGB.degrade)
+          : null,
+        saturationEnabled
+          ? createSceneNode('masterSaturation', 'Saturation', 'saturation', 'master', saturationLevel, SCENE_SIGNAL_RGB.saturation)
+          : null,
+        endCompEnabled
+          ? createSceneNode('masterEnd', 'End Comp', 'end', 'master', endCompLevel, SCENE_SIGNAL_RGB.end)
+          : null,
+      ]
+        .filter((node): node is SceneSignalNode => node !== null)
+        .map((node, index) => ({
+          ...node,
+          x: SCENE_SIGNAL_MASTER_CHAIN_X[index] ?? node.x,
+          y: SCENE_SIGNAL_MASTER_CHAIN_Y,
+        }))
+    : [];
+
+  const nodes = [...sources, ...fxNodes, ...masterChainNodes];
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const sends: SceneSignalSend[] = [];
+  const addSend = (
+    from: SceneSignalNode | undefined,
+    toId: string,
+    amount: number,
+    rgb = from?.rgb,
+    options: SceneSignalSendOptions = {},
+  ) => {
+    const { force = false, ...sendOptions } = options;
+    const to = byId.get(toId);
+    if (!from || !to || (!force && !hasSceneLevel(amount)) || !rgb) return;
+    sends.push({
+      id: `${from.id}-${to.id}`,
+      from,
+      to,
+      amount: clamp01(amount),
+      rgb,
+      ...sendOptions,
+    });
+  };
+
+  for (const source of sources) {
+    addSend(source, 'delayA', source.sends.delayA);
+    addSend(source, 'delayB', source.sends.delayB);
+    addSend(source, 'granular', source.sends.granular);
+    addSend(source, 'reverb', source.sends.reverb);
+  }
+
+  addSend(byId.get('granular'), 'delayA', state.granularDelayASend);
+  addSend(byId.get('granular'), 'delayB', state.granularDelayBSend);
+  addSend(byId.get('granular'), 'reverb', state.granularReverbSend);
+  addSend(byId.get('delayA'), 'delayB', state.delayAToBSend);
+  addSend(byId.get('delayA'), 'granular', state.delayAGranularSend);
+  addSend(byId.get('delayA'), 'reverb', state.delayAReverbSend);
+  addSend(byId.get('delayB'), 'delayA', state.delayBToASend);
+  addSend(byId.get('delayB'), 'granular', state.delayBGranularSend);
+  addSend(byId.get('delayB'), 'reverb', state.granularDelayReverbSend);
+  addSend(byId.get('reverb'), 'freeze', freezeActive ? state.spectralFreezeMix : 0, SCENE_SIGNAL_RGB.reverb);
+
+  if (masterChainActive) {
+    const firstMasterProcessor = masterChainNodes[0];
+    for (const input of masterInputNodes) {
+      if (firstMasterProcessor) {
+        addSend(input, firstMasterProcessor.id, input.level, input.rgb, { hidden: true, lane: 'master' });
+      }
+    }
+    for (let index = 0; index < masterChainNodes.length - 1; index += 1) {
+      const from = masterChainNodes[index];
+      const to = masterChainNodes[index + 1];
+      if (!from || !to) continue;
+      addSend(from, to.id, Math.max(from.level, to.level), to.rgb, { lane: 'master', force: true });
+    }
+  }
+
+  return layoutSceneSignalModel({ nodes, sends });
 }
 
 // ═══════════════ Props ═══════════════
@@ -205,7 +946,6 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
       .concat(new Array(Math.max(0, progressionSteps - (state.chordProgressionStepEnabled?.length ?? 0))).fill(true)),
     [progressionSteps, state.chordProgressionStepEnabled],
   );
-  const DEGREE_LABELS = ['I', 'ii', 'iii', 'IV', 'V', 'vi', 'vii°'];
   const primaryClock = state.transportPrimaryClock ?? 'seconds';
   const isSecondsMaster = primaryClock === 'seconds';
   const isBpmMaster = primaryClock === 'bpm';
@@ -221,78 +961,133 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
     });
   };
   const rootNoteLabel = NOTE_NAMES[state.rootNote] ?? 'C';
-  const earthActive = !!(
-    state.oceanSampleEnabled ||
-    state.birdsEnabled ||
-    state.birds2Enabled ||
-    state.frogsEnabled ||
-    state.waterEnabled ||
-    state.insectsEnabled ||
-    state.insects2Enabled
+  const sceneHasRuntimeDualParams = React.useMemo(
+    () => hasSceneRuntimeDualParams(sliderModes, dualSliderRanges),
+    [dualSliderRanges, sliderModes],
   );
-  const earthFamilyLevel = clamp01(state.earthLevel) * Math.max(
-    state.oceanSampleEnabled ? clamp01(state.oceanSampleLevel) : 0,
-    state.birdsEnabled || state.birds2Enabled || state.frogsEnabled ? clamp01(state.natureLevel) : 0,
-    state.waterEnabled ? clamp01(state.waterLevel) : 0,
-    state.insectsEnabled || state.insects2Enabled ? clamp01(state.insectsSharedLevel) : 0,
+  const [sceneRuntimeSignature, setSceneRuntimeSignature] = React.useState('');
+  const updateSceneRuntimeSignature = React.useCallback(() => {
+    if (!sceneHasRuntimeDualParams) {
+      setSceneRuntimeSignature((current) => current === '' ? current : '');
+      return;
+    }
+    const nextSignature = createSceneRuntimeSignature(state, sliderModes, dualSliderRanges);
+    setSceneRuntimeSignature((current) => current === nextSignature ? current : nextSignature);
+  }, [dualSliderRanges, sceneHasRuntimeDualParams, sliderModes, state]);
+
+  // Poll the external runtime store at UI-rate instead of subscribing the SVG to every engine tick.
+  useVisibleInterval(updateSceneRuntimeSignature, SCENE_SIGNAL_RUNTIME_POLL_MS, {
+    enabled: sceneHasRuntimeDualParams,
+    immediate: true,
+    pauseWhenHidden: true,
+  });
+
+  React.useEffect(() => {
+    if (!sceneHasRuntimeDualParams) {
+      setSceneRuntimeSignature((current) => current === '' ? current : '');
+    }
+  }, [sceneHasRuntimeDualParams]);
+
+  const sceneRuntimeState = React.useMemo(
+    () => resolveSceneRuntimeState(state, sliderModes, dualSliderRanges),
+    [dualSliderRanges, sceneRuntimeSignature, sliderModes, state],
   );
-  const padsLevel = Math.max(state.padEnabled !== false ? clamp01(state.synthLevel) : 0, state.pad2Enabled ? clamp01(state.pad2Level) : 0);
-  const leadsLevel = Math.max(state.leadEnabled ? clamp01(state.lead1Level) : 0, state.lead2Enabled ? clamp01(state.lead2Level) : 0);
-  const rhythmLevel = state.drumEnabled || state.drumEuclidMasterEnabled ? clamp01(state.drumLevel) : 0;
-  const textureLevel = state.granularEnabled ? clamp01(state.granularLevel) : 0;
-  const fxWetLevel = Math.max(
-    state.reverbEnabled ? clamp01(state.reverbLevel) : 0,
-    clamp01(state.delayAMix),
-    state.granularDelayEnabled ? clamp01(state.granularDelayMix) : 0,
-    state.dynamicsEnabled ? Math.max(clamp01(state.sidechainAmount), clamp01(state.dynamicsSaturationDrive)) : 0,
+  const sceneSignal = React.useMemo(() => buildSceneSignalModel(sceneRuntimeState), [sceneRuntimeState]);
+  const [hoveredSceneNodeId, setHoveredSceneNodeId] = React.useState<string | null>(null);
+  const [pinnedSceneNodeId, setPinnedSceneNodeId] = React.useState<string | null>(null);
+  const [scenePopoverPoint, setScenePopoverPoint] = React.useState<{ x: number; y: number; placement: 'top' | 'bottom' } | null>(null);
+  const activeSceneNodeId = pinnedSceneNodeId ?? hoveredSceneNodeId;
+  const activeSceneNode = sceneSignal.nodes.find((node) => node.id === activeSceneNodeId) ?? null;
+  const activeSceneConnections = React.useMemo(
+    () => activeSceneNodeId
+      ? sceneSignal.sends.filter((send) => send.from.id === activeSceneNodeId || send.to.id === activeSceneNodeId)
+      : [],
+    [activeSceneNodeId, sceneSignal.sends],
   );
-  const activeEngineCount = [
-    state.padEnabled !== false && clamp01(state.synthLevel) > 0.001,
-    state.pad2Enabled && clamp01(state.pad2Level) > 0.001,
-    state.leadEnabled && clamp01(state.lead1Level) > 0.001,
-    state.lead2Enabled && clamp01(state.lead2Level) > 0.001,
-    (state.drumEnabled || state.drumEuclidMasterEnabled) && clamp01(state.drumLevel) > 0.001,
-    state.granularEnabled && clamp01(state.granularLevel) > 0.001,
-    earthActive && earthFamilyLevel > 0.001,
-  ].filter(Boolean).length;
-  const balanceRows = [
-    {
-      id: 'pads',
-      label: 'Pads',
-      level: padsLevel,
-      accent: '#6ee7b7',
-    },
-    {
-      id: 'leads',
-      label: 'Leads',
-      level: leadsLevel,
-      accent: '#f472b6',
-    },
-    {
-      id: 'rhythm',
-      label: 'Rhythm',
-      level: rhythmLevel,
-      accent: '#f59e0b',
-    },
-    {
-      id: 'texture',
-      label: 'Texture',
-      level: textureLevel,
-      accent: '#2dd4bf',
-    },
-    {
-      id: 'earth',
-      label: 'Earth',
-      level: earthFamilyLevel,
-      accent: '#84cc16',
-    },
-    {
-      id: 'fx',
-      label: 'FX',
-      level: fxWetLevel,
-      accent: '#a78bfa',
-    },
-  ];
+  const activeSceneConnectionIds = React.useMemo(
+    () => new Set(activeSceneConnections.map((send) => send.id)),
+    [activeSceneConnections],
+  );
+  const activeSceneConnectedNodeIds = React.useMemo(() => {
+    const ids = new Set<string>();
+    if (activeSceneNodeId) ids.add(activeSceneNodeId);
+    for (const send of activeSceneConnections) {
+      ids.add(send.from.id);
+      ids.add(send.to.id);
+    }
+    return ids;
+  }, [activeSceneConnections, activeSceneNodeId]);
+  const activeSceneOutgoingSends = activeSceneConnections.filter((send) => send.from.id === activeSceneNodeId);
+  const activeSceneIncomingSends = activeSceneConnections.filter((send) => send.to.id === activeSceneNodeId);
+  const updateScenePopoverPoint = React.useCallback((element: Element) => {
+    if (typeof window === 'undefined') return;
+    const rect = element.getBoundingClientRect();
+    const halfWidth = SCENE_SIGNAL_POPOVER_WIDTH / 2;
+    const x = Math.min(
+      window.innerWidth - SCENE_SIGNAL_POPOVER_MARGIN - halfWidth,
+      Math.max(SCENE_SIGNAL_POPOVER_MARGIN + halfWidth, rect.left + rect.width / 2),
+    );
+    const placement = rect.top > 190 ? 'top' : 'bottom';
+    const y = placement === 'top' ? rect.top : rect.bottom;
+    setScenePopoverPoint({ x, y, placement });
+  }, []);
+  const showSceneNodeDetails = React.useCallback((nodeId: string, element: Element) => {
+    setHoveredSceneNodeId(nodeId);
+    updateScenePopoverPoint(element);
+  }, [updateScenePopoverPoint]);
+  const togglePinnedSceneNode = React.useCallback((nodeId: string, element: Element) => {
+    updateScenePopoverPoint(element);
+    setHoveredSceneNodeId(nodeId);
+    setPinnedSceneNodeId((current) => current === nodeId ? null : nodeId);
+  }, [updateScenePopoverPoint]);
+  React.useEffect(() => {
+    if (activeSceneNodeId && !sceneSignal.nodes.some((node) => node.id === activeSceneNodeId)) {
+      setHoveredSceneNodeId(null);
+      setPinnedSceneNodeId(null);
+      setScenePopoverPoint(null);
+    }
+  }, [activeSceneNodeId, sceneSignal.nodes]);
+  React.useEffect(() => {
+    if (!pinnedSceneNodeId || typeof document === 'undefined') return;
+    const closePinnedPopover = (event: PointerEvent) => {
+      const target = event.target as Element | null;
+      if (target?.closest('.scene-signal-node, [data-scene-signal-popover]')) return;
+      setPinnedSceneNodeId(null);
+      setHoveredSceneNodeId(null);
+    };
+    document.addEventListener('pointerdown', closePinnedPopover);
+    return () => document.removeEventListener('pointerdown', closePinnedPopover);
+  }, [pinnedSceneNodeId]);
+  const sceneHarmony = engineState.harmonyState;
+  const sceneKeyRootLabel = NOTE_NAMES[pitchClass(sceneHarmony?.effectiveRoot ?? state.rootNote)] ?? rootNoteLabel;
+  const sceneScaleLabel = sceneHarmony?.scaleFamily.name ?? (state.scaleMode === 'manual' ? state.manualScale : 'Auto');
+  const sceneChordRootPc = getSceneChordRootPc(sceneHarmony, state.rootNote);
+  const sceneChordLabel = formatSceneChordName(sceneHarmony, state.rootNote);
+  const sceneChordNotes = formatSceneChordNotes(sceneHarmony?.currentChord.midiNotes, sceneChordRootPc);
+  const sceneDegreeLabel = DEGREE_LABELS[sceneHarmony?.currentDegree ?? state.chordProgressionPattern?.[0] ?? 0] ?? 'I';
+  const sceneArc = sceneHarmony?.tensionArc;
+  const sceneArcPhase = sceneArc && sceneArc.type !== 'sustain'
+    ? sceneArc.type.charAt(0).toUpperCase() + sceneArc.type.slice(1)
+    : null;
+  const sceneArcLeft = sceneArc && sceneArc.phrasesRemaining > 0 ? `${sceneArc.phrasesRemaining} left` : null;
+  const sceneHarmonyTimer = engineState.isRunning ? engineState.transportDebug?.nextHarmonyEventIn : null;
+  const scenePhraseTimer = engineState.isRunning ? engineState.transportDebug?.nextPhraseBoundaryIn : null;
+  const sceneTimerTokens = sceneHarmonyTimer !== null &&
+    sceneHarmonyTimer !== undefined &&
+    scenePhraseTimer !== null &&
+    scenePhraseTimer !== undefined &&
+    Math.abs(sceneHarmonyTimer - scenePhraseTimer) > 0.05
+    ? [`${formatSceneSeconds(sceneHarmonyTimer, 'H')} ${formatSceneSeconds(scenePhraseTimer, 'P')}`]
+    : [formatSceneSeconds(sceneHarmonyTimer ?? scenePhraseTimer ?? phraseSeconds)];
+  const sceneHarmonyLine = [
+    `${sceneKeyRootLabel} ${sceneScaleLabel}`,
+    sceneChordLabel,
+    sceneChordNotes,
+    sceneDegreeLabel,
+    sceneArcPhase,
+    sceneArcLeft,
+    ...sceneTimerTokens,
+  ].filter(Boolean).join(' · ');
 
   return (
     <div className="global-root">
@@ -453,36 +1248,170 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
           </div>
         </div>
 
-        <div className="scene-card">
-          <div className="scene-card-header">
-            <h3 className="scene-card-title">Snapshot</h3>
-            <span className={`scene-run-pill ${engineState.isRunning ? 'running' : 'stopped'}`}>
-              {engineState.isRunning ? 'Running' : 'Stopped'}
-            </span>
-          </div>
+        <div className="scene-card scene-card-ultra">
+          <div className="scene-ultra-top">
+            <div className="scene-card-header scene-ultra-header">
+              <h3 className="scene-card-title">Snapshot</h3>
+            </div>
 
-          <div className="scene-status-grid">
-            <div className="scene-status-item">
-              <span className="scene-status-label">Engines</span>
-              <span className="scene-status-value">{activeEngineCount}/7</span>
-            </div>
-            <div className="scene-status-item">
-              <span className="scene-status-label">Clock</span>
-              <span className="scene-status-value">
-                {isSecondsMaster ? `${phraseSeconds.toFixed(1)}s` : `${beatBpm.toFixed(1)} BPM`}
-              </span>
-            </div>
-            <div className="scene-status-item">
-              <span className="scene-status-label">Key</span>
-              <span className="scene-status-value">
-                {state.scaleMode === 'manual' ? `${rootNoteLabel} ${state.manualScale}` : `${rootNoteLabel} Auto`}
-              </span>
+            <div className="scene-harmony-line" title={sceneHarmonyLine}>
+              <span>{sceneHarmonyLine}</span>
             </div>
           </div>
 
-          {showAudioEngineSwitcher && onAudioEngineModeChange && (
+          <div className="scene-signal-graph" aria-label="Active sound engines and FX sends">
+            <svg className="scene-signal-map" viewBox={`0 0 ${SCENE_SIGNAL_VIEWBOX_WIDTH} ${SCENE_SIGNAL_VIEWBOX_HEIGHT}`} role="img" aria-labelledby="global-scene-signal-title">
+              <title id="global-scene-signal-title">Active sound engines and FX sends</title>
+              <g className="scene-send-layer">
+                {sceneSignal.sends.filter((send) => !send.hidden).map((send) => (
+                  <path
+                    key={send.id}
+                    className={`scene-send-line${send.lane === 'master' ? ' master' : ''}${activeSceneNodeId ? (activeSceneConnectionIds.has(send.id) ? ' selected' : ' muted') : ''}`}
+                    style={sendStyle(send)}
+                    d={sceneSendPath(send.from, send.to)}
+                  />
+                ))}
+              </g>
+              <g className="scene-node-layer">
+                {sceneSignal.nodes.map((node) => {
+                  const isSelected = activeSceneNodeId === node.id;
+                  const isConnected = activeSceneConnectedNodeIds.has(node.id);
+                  return (
+                    <g
+                      key={node.id}
+                      className={`scene-signal-node ${node.role}${isSelected ? ' selected' : ''}${activeSceneNodeId && !isConnected ? ' muted' : ''}`}
+                      transform={`translate(${node.x} ${node.y})`}
+                      style={nodeStyle(node)}
+                      tabIndex={0}
+                      role="button"
+                      aria-haspopup="dialog"
+                      aria-expanded={isSelected}
+                      aria-label={`${node.label} ${scenePercent(node.level)} percent`}
+                      onPointerEnter={(event) => {
+                        if (!pinnedSceneNodeId || pinnedSceneNodeId === node.id) showSceneNodeDetails(node.id, event.currentTarget);
+                      }}
+                      onPointerLeave={() => {
+                        if (!pinnedSceneNodeId) {
+                          setHoveredSceneNodeId(null);
+                          setScenePopoverPoint(null);
+                        }
+                      }}
+                      onFocus={(event) => {
+                        if (!pinnedSceneNodeId || pinnedSceneNodeId === node.id) showSceneNodeDetails(node.id, event.currentTarget);
+                      }}
+                      onBlur={() => {
+                        if (!pinnedSceneNodeId) {
+                          setHoveredSceneNodeId(null);
+                          setScenePopoverPoint(null);
+                        }
+                      }}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        togglePinnedSceneNode(node.id, event.currentTarget);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          togglePinnedSceneNode(node.id, event.currentTarget);
+                        } else if (event.key === 'Escape') {
+                          setPinnedSceneNodeId(null);
+                          setHoveredSceneNodeId(null);
+                          setScenePopoverPoint(null);
+                        }
+                      }}
+                    >
+                      <rect className="scene-signal-node-halo" x="-88" y="-32" width="168" height="64" rx="32" />
+                      <rect className="scene-signal-node-shell" x="-82" y="-28" width="160" height="56" rx="28" />
+                      <rect className="scene-signal-node-core" x="-70" y="-22" width="136" height="44" rx="22" />
+                      <text className="scene-signal-node-icon" x="-51" y="3">{SCENE_SIGNAL_SYMBOLS[node.kind]}</text>
+                      <text className="scene-signal-node-name" x="-30" y="-5">{node.label}</text>
+                      <text className="scene-signal-node-value" x="-30" y="15">{scenePercent(node.level)}</text>
+                    </g>
+                  );
+                })}
+              </g>
+            </svg>
+
+            {activeSceneNode && scenePopoverPoint && (
+              <div
+                className="scene-signal-popover"
+                data-scene-signal-popover="true"
+                style={{
+                  ...sceneSignalPopoverStyle(scenePopoverPoint),
+                  '--rgb': activeSceneNode.rgb,
+                } as React.CSSProperties}
+                role="dialog"
+                aria-label={`${activeSceneNode.label} sends`}
+                onPointerDown={(event) => event.stopPropagation()}
+              >
+                <div className="scene-signal-popover-title">
+                  <span className="scene-signal-popover-dot" aria-hidden="true" />
+                  <span>{activeSceneNode.label}</span>
+                  <strong>{scenePercent(activeSceneNode.level)}%</strong>
+                </div>
+                <div className="scene-signal-popover-section">
+                  <div className="scene-signal-popover-kicker">Output</div>
+                  <div className="scene-signal-popover-row">
+                    <span>Level</span>
+                    <span>{scenePercent(activeSceneNode.level)}%</span>
+                    <span className="scene-signal-popover-meter" aria-hidden="true">
+                      <span style={{ width: `${clamp01(activeSceneNode.level) * 100}%` }} />
+                    </span>
+                  </div>
+                </div>
+
+                {activeSceneOutgoingSends.length > 0 && (
+                  <div className="scene-signal-popover-section">
+                    <div className="scene-signal-popover-kicker">Sends</div>
+                    {activeSceneOutgoingSends.map((send) => (
+                      <div className="scene-signal-popover-row" key={send.id}>
+                        <span>{sceneSendLabel(send, activeSceneNode.id)}</span>
+                        <span>{scenePercent(send.amount)}%</span>
+                        <span className="scene-signal-popover-meter" aria-hidden="true">
+                          <span style={{ width: `${clamp01(send.amount) * 100}%` }} />
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {activeSceneIncomingSends.length > 0 && (
+                  <div className="scene-signal-popover-section">
+                    <div className="scene-signal-popover-kicker">Receives</div>
+                    {activeSceneIncomingSends.map((send) => (
+                      <div className="scene-signal-popover-row" key={send.id}>
+                        <span>{sceneSendLabel(send, activeSceneNode.id)}</span>
+                        <span>{scenePercent(send.amount)}%</span>
+                        <span className="scene-signal-popover-meter" aria-hidden="true">
+                          <span style={{ width: `${clamp01(send.amount) * 100}%` }} />
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {activeSceneConnections.length === 0 && (
+                  <div className="scene-signal-popover-empty">No active sends</div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="scene-master-control">
+            <Slider label="Master Output" value={state.masterVolume} paramKey="masterVolume" onChange={onParamChange} {...sliderProps('masterVolume')} />
+          </div>
+        </div>
+
+        {showAudioEngineSwitcher && onAudioEngineModeChange && (
+          <div className="scene-card scene-engine-card">
+            <div className="scene-card-header">
+              <h3 className="scene-card-title">Audio Engine Test</h3>
+              <span className={`scene-run-pill ${audioEngineMode === 'core-wasm' ? 'running' : 'stopped'}`}>
+                {audioEngineMode === 'core-wasm' ? 'Core' : 'Web'}
+              </span>
+            </div>
             <div className="scene-engine-switch">
-              <span className="scene-status-label">Audio Engine</span>
+              <span className="scene-status-label">Runtime</span>
               <div className="scene-engine-switch-stack">
                 <div className="scene-engine-switch-buttons" role="group" aria-label="Audio engine">
                   <button
@@ -518,28 +1447,8 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
                 </div>
               </div>
             </div>
-          )}
-
-          <div className="scene-master-control">
-            <Slider label="Master Output" value={state.masterVolume} paramKey="masterVolume" onChange={onParamChange} {...sliderProps('masterVolume')} />
           </div>
-
-          <div className="balance-overview">
-            {balanceRows.map((row) => (
-              <div
-                key={row.id}
-                className="balance-row"
-                style={{ '--scene-accent': row.accent } as React.CSSProperties}
-              >
-                <span className="balance-row-label">{row.label}</span>
-                <span className="balance-row-track" aria-hidden="true">
-                  <span style={{ width: `${row.level * 100}%` }} />
-                </span>
-                <span className="balance-row-value">{formatPercent(row.level)}</span>
-              </div>
-            ))}
-          </div>
-        </div>
+        )}
       </div>
 
       {/* Harmony Engine */}

@@ -1,0 +1,34 @@
+// Unicode text symbols with U+FE0E to keep mobile browsers from emoji-rendering them.
+export const TEXT_SYMBOLS = {
+  play: '\u25B6\uFE0E',
+  stop: '\u25A0\uFE0E',
+  record: '\u25CF\uFE0E',
+  range: '\u27F7\uFE0E',
+  random: '\u27F7\uFE0E',
+  download: '\u2B07\uFE0E',
+  upload: '\u2B06\uFE0E',
+  hexagon: '\u2B21\uFE0E',
+  sparkle: '\u2732\uFE0E',
+  target: '\u25CE\uFE0E',
+  filledCircle: '\u25CF\uFE0E',
+  emptyCircle: '\u25CB\uFE0E',
+  drumSub: '\u25C9\uFE0E',
+  drumKick: '\u2B24\uFE0E',
+  drumClick: '\u25AB\uFE0E',
+  drumBeepHi: '\u22A1\uFE0E',
+  drumBeepLo: '\u22F0\uFE0E',
+  drumNoise: '\u224B\uFE0E',
+  drumMembrane: '\u203B\uFE0E',
+} as const;
+
+export const APP_TAB_SYMBOLS = {
+  global: TEXT_SYMBOLS.target,
+  synth: '\u223F\uFE0E',
+  drums: '\u22EE\uFE0E\u22EE\uFE0E',
+  earth: '\u2248\uFE0E',
+  granular: '\u229E\uFE0E',
+  delay: '\u21AD\uFE0E',
+  reverb: '\u25C8\uFE0E',
+  dynamics: '\u224B\uFE0E',
+  routing: '\u25A6\uFE0E',
+} as const;
