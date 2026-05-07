@@ -305,10 +305,16 @@
 .global-root .scene-engine-switch {
   display: grid;
   grid-template-columns: auto minmax(148px, 1fr);
-  align-items: center;
+  align-items: start;
   gap: 8px;
   margin: 0 10px;
   padding: 0 0 9px;
+}
+
+.global-root .scene-engine-switch-stack {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
 }
 
 .global-root .scene-engine-switch-buttons {
@@ -346,6 +352,33 @@
 .global-root .scene-engine-switch-btn.active {
   background: rgba(103,232,249,0.14);
   color: #67e8f9;
+}
+
+.global-root .scene-engine-cpu-compare {
+  display: grid;
+  gap: 3px;
+}
+
+.global-root .scene-engine-cpu-row {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) minmax(0, 1fr);
+  gap: 6px;
+  min-width: 0;
+  color: var(--text-dim);
+  font-size: 0.58rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+}
+
+.global-root .scene-engine-cpu-row.active {
+  color: var(--text-secondary);
+}
+
+.global-root .scene-engine-cpu-row span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .global-root .scene-master-control {

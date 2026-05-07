@@ -155,6 +155,24 @@ const isSonicParityMode = () =>
 type AudioEngineRuntimeMode = 'web-audio' | 'core-wasm';
 const AUDIO_ENGINE_SWITCHER_PARAM = 'engineAB';
 const AUDIO_ENGINE_PARAM = 'engine';
+const AUDIO_ENGINE_CPU_SUMMARY_STORAGE_KEY = 'kessho:audio-engine-cpu-summary:v1';
+
+type AudioEnginePerfMetric = {
+  avgPercent: number;
+  peakPercent: number;
+  missPercent: number | null;
+  scope?: 'worklet' | 'source';
+};
+
+type AudioEngineCpuSummary = {
+  avgPercent: number;
+  peakPercent: number;
+  missPercent: number | null;
+  moduleCount: number;
+  updatedAt: number;
+};
+
+type AudioEngineCpuSummaries = Partial<Record<AudioEngineRuntimeMode, AudioEngineCpuSummary>>;
 
 function isDevRuntime(): boolean {
   return Boolean((import.meta.env as unknown as { DEV?: boolean }).DEV);
@@ -204,6 +222,47 @@ function buildAudioEngineSwitchUrl(mode: AudioEngineRuntimeMode, state: SliderSt
 
   url.search = nextParams.toString();
   return url.toString();
+}
+
+function summarizeAudioEngineCpu(data: Record<string, AudioEnginePerfMetric>): AudioEngineCpuSummary | null {
+  const primaryMetrics = Object.values(data).filter((entry) => entry && entry.scope !== 'source');
+  if (primaryMetrics.length === 0) return null;
+
+  const avgPercent = primaryMetrics.reduce((sum, entry) => sum + entry.avgPercent, 0);
+  const peakPercent = primaryMetrics.reduce((peak, entry) => Math.max(peak, entry.peakPercent), 0);
+  const missValues = primaryMetrics
+    .map((entry) => entry.missPercent)
+    .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+
+  return {
+    avgPercent: Math.round(avgPercent * 10) / 10,
+    peakPercent: Math.round(peakPercent * 10) / 10,
+    missPercent: missValues.length > 0 ? Math.round(Math.max(...missValues) * 10) / 10 : null,
+    moduleCount: primaryMetrics.length,
+    updatedAt: Date.now(),
+  };
+}
+
+function readAudioEngineCpuSummaries(): AudioEngineCpuSummaries {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = window.sessionStorage.getItem(AUDIO_ENGINE_CPU_SUMMARY_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as AudioEngineCpuSummaries;
+    if (!parsed || typeof parsed !== 'object') return {};
+    return parsed;
+  } catch {
+    return {};
+  }
+}
+
+function writeAudioEngineCpuSummaries(summaries: AudioEngineCpuSummaries): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.setItem(AUDIO_ENGINE_CPU_SUMMARY_STORAGE_KEY, JSON.stringify(summaries));
+  } catch {
+    // Ignore storage failures; the live readout still works.
+  }
 }
 
 const LAZY_PAGE_FALLBACK = (
@@ -1715,6 +1774,7 @@ const App: React.FC = () => {
     }
     window.location.assign(buildAudioEngineSwitchUrl(mode, stateRef.current));
   }, [audioEngineRuntimeMode]);
+  const [audioEngineCpuSummaries, setAudioEngineCpuSummaries] = useState<AudioEngineCpuSummaries>(() => readAudioEngineCpuSummaries());
 
   const [engineState, setEngineState] = useState<EngineState>({
     isRunning: false,
@@ -1733,6 +1793,32 @@ const App: React.FC = () => {
     },
     transportDebug: null,
   });
+
+  useEffect(() => {
+    if (!showAudioEngineSwitcher) return;
+
+    const perfHost = audioEngine as unknown as {
+      setPerfMonitorEnabled?: (enabled: boolean) => void;
+      setPerfUpdateCallback?: (callback: ((data: Record<string, AudioEnginePerfMetric>) => void) | null) => void;
+    };
+
+    perfHost.setPerfMonitorEnabled?.(true);
+    perfHost.setPerfUpdateCallback?.((data) => {
+      const summary = summarizeAudioEngineCpu(data);
+      if (!summary) return;
+      setAudioEngineCpuSummaries((prev) => {
+        const next = { ...prev, [audioEngineRuntimeMode]: summary };
+        writeAudioEngineCpuSummaries(next);
+        return next;
+      });
+    });
+
+    return () => {
+      perfHost.setPerfUpdateCallback?.(null);
+      perfHost.setPerfMonitorEnabled?.(false);
+    };
+  }, [audioEngineRuntimeMode, showAudioEngineSwitcher]);
+
   const [capacitorAudioSessionDiagnosticActive, setCapacitorAudioSessionDiagnosticActive] = useState(false);
   const capacitorAudioSessionRemoteCommandCleanupRef = useRef<(() => Promise<void>) | null>(null);
   const capacitorAudioSessionRemoteCommandHandlerRef = useRef<(command: KesshoRemoteCommand) => void>(() => {});
@@ -7091,6 +7177,7 @@ const App: React.FC = () => {
             CircleOfFifthsComponent={CircleOfFifths as unknown as React.ComponentType<Record<string, unknown>>}
             engineState={engineState}
             audioEngineMode={audioEngineRuntimeMode}
+            audioEngineCpuSummaries={audioEngineCpuSummaries}
             showAudioEngineSwitcher={showAudioEngineSwitcher}
             onAudioEngineModeChange={handleAudioEngineRuntimeModeChange}
             onResetCofDrift={() => audioEngine.resetCofDrift()}

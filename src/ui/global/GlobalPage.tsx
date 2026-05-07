@@ -18,6 +18,13 @@ const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 
 const GLOBAL_EXPANDED_SECTIONS_STORAGE_KEY = 'global:expanded-sections:v1';
 const DEFAULT_GLOBAL_EXPANDED_SECTIONS = ['morph', 'state-presets', 'root-cof', 'chord-progression', 'scale-tension', 'transport-sync'];
 type AudioEngineMode = 'web-audio' | 'core-wasm';
+type AudioEngineCpuSummary = {
+  avgPercent: number;
+  peakPercent: number;
+  missPercent: number | null;
+  moduleCount: number;
+  updatedAt: number;
+};
 
 function clamp01(value: number | undefined): number {
   return Math.max(0, Math.min(1, typeof value === 'number' && Number.isFinite(value) ? value : 0));
@@ -25,6 +32,10 @@ function clamp01(value: number | undefined): number {
 
 function formatPercent(value: number | undefined): string {
   return `${Math.round(clamp01(value) * 100)}%`;
+}
+
+function formatCpuPercent(value: number | null | undefined): string {
+  return typeof value === 'number' && Number.isFinite(value) ? `${value.toFixed(1)}%` : '--';
 }
 
 // ═══════════════ Props ═══════════════
@@ -49,6 +60,7 @@ export interface GlobalPageProps {
   // Engine state
   engineState: EngineState;
   audioEngineMode?: AudioEngineMode;
+  audioEngineCpuSummaries?: Partial<Record<AudioEngineMode, AudioEngineCpuSummary>>;
   showAudioEngineSwitcher?: boolean;
   onAudioEngineModeChange?: (mode: AudioEngineMode) => void;
   onResetCofDrift: () => void;
@@ -117,6 +129,7 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
   CircleOfFifthsComponent: CircleOfFifths,
   engineState,
   audioEngineMode = 'web-audio',
+  audioEngineCpuSummaries,
   showAudioEngineSwitcher = false,
   onAudioEngineModeChange,
   onResetCofDrift,
@@ -470,25 +483,39 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
           {showAudioEngineSwitcher && onAudioEngineModeChange && (
             <div className="scene-engine-switch">
               <span className="scene-status-label">Audio Engine</span>
-              <div className="scene-engine-switch-buttons" role="group" aria-label="Audio engine">
-                <button
-                  type="button"
-                  className={`scene-engine-switch-btn${audioEngineMode === 'web-audio' ? ' active' : ''}`}
-                  aria-pressed={audioEngineMode === 'web-audio'}
-                  onClick={() => onAudioEngineModeChange('web-audio')}
-                  title="Switch to WebAudio"
-                >
-                  Web
-                </button>
-                <button
-                  type="button"
-                  className={`scene-engine-switch-btn${audioEngineMode === 'core-wasm' ? ' active' : ''}`}
-                  aria-pressed={audioEngineMode === 'core-wasm'}
-                  onClick={() => onAudioEngineModeChange('core-wasm')}
-                  title="Switch to Kessho Core"
-                >
-                  Core
-                </button>
+              <div className="scene-engine-switch-stack">
+                <div className="scene-engine-switch-buttons" role="group" aria-label="Audio engine">
+                  <button
+                    type="button"
+                    className={`scene-engine-switch-btn${audioEngineMode === 'web-audio' ? ' active' : ''}`}
+                    aria-pressed={audioEngineMode === 'web-audio'}
+                    onClick={() => onAudioEngineModeChange('web-audio')}
+                    title="Switch to WebAudio"
+                  >
+                    Web
+                  </button>
+                  <button
+                    type="button"
+                    className={`scene-engine-switch-btn${audioEngineMode === 'core-wasm' ? ' active' : ''}`}
+                    aria-pressed={audioEngineMode === 'core-wasm'}
+                    onClick={() => onAudioEngineModeChange('core-wasm')}
+                    title="Switch to Kessho Core"
+                  >
+                    Core
+                  </button>
+                </div>
+                <div className="scene-engine-cpu-compare" aria-label="Audio engine CPU comparison">
+                  {(['web-audio', 'core-wasm'] as const).map((mode) => {
+                    const summary = audioEngineCpuSummaries?.[mode];
+                    return (
+                      <div key={mode} className={`scene-engine-cpu-row${audioEngineMode === mode ? ' active' : ''}`}>
+                        <span>{mode === 'web-audio' ? 'Web' : 'Core'}</span>
+                        <span>avg {formatCpuPercent(summary?.avgPercent)}</span>
+                        <span>peak {formatCpuPercent(summary?.peakPercent)}</span>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           )}
