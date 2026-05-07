@@ -144,7 +144,7 @@ const ROWS: MatrixRow[] = [
   {
     id: 'pad1',
     label: 'Pad 1',
-    accent: '#d7a96d',
+    accent: '#E07A84',
     note: 'Pad 1 now has its own Delay A, Delay B, Granular, and Reverb sends.',
     cells: {
       level: { kind: 'editable', route: { key: 'synthLevel', label: 'Pad 1 Level' } },
@@ -157,7 +157,7 @@ const ROWS: MatrixRow[] = [
   {
     id: 'pad2',
     label: 'Pad 2',
-    accent: '#c79457',
+    accent: '#B96A72',
     note: 'Pad 2 now has its own Delay A, Delay B, Granular, and Reverb sends.',
     cells: {
       level: { kind: 'editable', route: { key: 'pad2Level', label: 'Pad 2 Level' } },
@@ -170,7 +170,7 @@ const ROWS: MatrixRow[] = [
   {
     id: 'lead1',
     label: 'Lead 1',
-    accent: '#9fc1ff',
+    accent: '#D4A520',
     cells: {
       level: { kind: 'editable', route: { key: 'lead1Level', label: 'Lead 1 Level' } },
       delayA: { kind: 'editable', route: { key: 'lead1DelayASend', label: 'Lead 1 → Delay A' } },
@@ -182,7 +182,7 @@ const ROWS: MatrixRow[] = [
   {
     id: 'lead2',
     label: 'Lead 2',
-    accent: '#7da3ff',
+    accent: '#BFA45A',
     cells: {
       level: { kind: 'editable', route: { key: 'lead2Level', label: 'Lead 2 Level' } },
       delayA: { kind: 'editable', route: { key: 'lead2DelayASend', label: 'Lead 2 → Delay A' } },
@@ -194,7 +194,7 @@ const ROWS: MatrixRow[] = [
   {
     id: 'piano',
     label: 'Piano',
-    accent: '#e7c87f',
+    accent: '#E8DCC4',
     cells: {
       level: { kind: 'editable', route: { key: 'pianoLevel', label: 'Piano Level' } },
       delayA: { kind: 'editable', route: { key: 'pianoDelayASend', label: 'Piano → Delay A' } },
@@ -206,7 +206,7 @@ const ROWS: MatrixRow[] = [
   {
     id: 'drums',
     label: 'Drums',
-    accent: '#f29f78',
+    accent: '#A870E8',
     note: 'Drums now trim straight into the shared Delay A and Delay B buses. Delay A timing and tone live with the shared Simple Delay controls.',
     cells: {
       level: { kind: 'editable', route: { key: 'drumLevel', label: 'Drums Level' } },
@@ -219,7 +219,7 @@ const ROWS: MatrixRow[] = [
   {
     id: 'granular',
     label: 'Granular',
-    accent: '#93d7d1',
+    accent: '#E8B44A',
     note: 'Granular → Delay B uses the current Clocked Space frontend for bus voicing. The matrix cell trims the source-send amount.',
     cells: {
       level: { kind: 'editable', route: { key: 'granularLevel', label: 'Granular Level' } },
@@ -232,7 +232,7 @@ const ROWS: MatrixRow[] = [
   {
     id: 'waves',
     label: 'Waves',
-    accent: '#78d8f6',
+    accent: '#5A7B8A',
     cells: {
       level: { kind: 'editable', route: { key: 'oceanSampleLevel', label: 'Waves Level' } },
       delayA: { kind: 'editable', route: { key: 'oceanDelayASend', label: 'Waves → Delay A' } },
@@ -244,7 +244,7 @@ const ROWS: MatrixRow[] = [
   {
     id: 'water',
     label: 'Water',
-    accent: '#62b5ff',
+    accent: '#6F9AB1',
     cells: {
       level: { kind: 'editable', route: { key: 'waterLevel', label: 'Water Level' } },
       delayA: { kind: 'editable', route: { key: 'waterDelayASend', label: 'Water → Delay A' } },
@@ -256,7 +256,7 @@ const ROWS: MatrixRow[] = [
   {
     id: 'insects',
     label: 'Insects',
-    accent: '#78d98d',
+    accent: '#7B9A6D',
     note: 'The current Earth engine exposes one shared insects dry master plus combined wet sends for both insect layers, so this row controls the family-level routing.',
     cells: {
       level: { kind: 'editable', route: { key: 'insectsSharedLevel', label: 'Insects Level' } },
@@ -269,7 +269,7 @@ const ROWS: MatrixRow[] = [
   {
     id: 'nature',
     label: 'Nature',
-    accent: '#b7d3a3',
+    accent: '#A6B98A',
     note: 'Nature now has a shared dry master plus one wet bus for Birds Alps, Birds Fujian, and Frogs. Individual source levels and texture shaping still live in the Active Earth Matrix.',
     cells: {
       level: { kind: 'editable', route: { key: 'natureLevel', label: 'Nature Level' } },
@@ -282,7 +282,7 @@ const ROWS: MatrixRow[] = [
   {
     id: 'delayAOut',
     label: 'Delay A Out',
-    accent: '#b9c9ff',
+    accent: '#32C8C8',
     cells: {
       level: { kind: 'editable', route: { key: 'delayAMix', label: 'Delay A Level' } },
       delayA: { kind: 'self' },
@@ -294,7 +294,7 @@ const ROWS: MatrixRow[] = [
   {
     id: 'delayBOut',
     label: 'Delay B Out',
-    accent: '#9fe5f0',
+    accent: '#32C7C7',
     note: 'Level trims the direct Clocked Space return. Reverb and Granular sends stay independent, so mute those too for total silence.',
     cells: {
       level: { kind: 'editable', route: { key: 'granularDelayMix', label: 'Delay B Level' } },
@@ -307,7 +307,7 @@ const ROWS: MatrixRow[] = [
   {
     id: 'reverb',
     label: 'Reverb',
-    accent: '#d9c7a0',
+    accent: '#D49660',
     note: 'Reverb is a return bus here. Its routing row trims the wet output level while source sends still live on their own rows.',
     cells: {
       level: { kind: 'editable', route: { key: 'reverbLevel', label: 'Reverb Level' } },

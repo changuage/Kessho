@@ -22,6 +22,8 @@
 extern "C" {
 #endif
 
+typedef struct KesshoPadInstance KesshoPadInstance;
+
 // ═══════════════ Constants ═══════════════
 
 #define PAD_NUM_VOICES          6    // 6 voices total, assigned to pad 1 or 2
@@ -197,6 +199,99 @@ void pad_set_reverb_send(float level);
 // ═══════════════ Status ═══════════════
 
 int pad_get_active_count(void);
+
+// ═══════════════ Instance API ═══════════════
+//
+// Legacy functions above keep the existing singleton ABI for the web worklet.
+// KesshoCore uses this instance API so concurrent native/WASM modules do not
+// share voices, modulation RNG, routing buffers, or output state.
+
+KesshoPadInstance* pad_instance_create(float sample_rate);
+void pad_instance_destroy(KesshoPadInstance* instance);
+int pad_instance_reset(KesshoPadInstance* instance, float sample_rate);
+
+float* pad_instance_get_output_ptr(KesshoPadInstance* instance);
+float* pad_instance_get_reverb_send_ptr(KesshoPadInstance* instance);
+float* pad_instance_get_prefader_pad1_ptr(KesshoPadInstance* instance);
+float* pad_instance_get_prefader_pad2_ptr(KesshoPadInstance* instance);
+float* pad_instance_get_postfader_pad1_ptr(KesshoPadInstance* instance);
+float* pad_instance_get_postfader_pad2_ptr(KesshoPadInstance* instance);
+
+void pad_instance_process_block(KesshoPadInstance* instance, int block_size);
+
+void pad_instance_note_on(KesshoPadInstance* instance, int voice_idx, float frequency, float velocity);
+void pad_instance_note_off(KesshoPadInstance* instance, int voice_idx);
+void pad_instance_kill_voice(KesshoPadInstance* instance, int voice_idx);
+void pad_instance_set_voice_pad(KesshoPadInstance* instance, int voice_idx, int pad);
+
+void pad_instance_set_osc_a_wave(KesshoPadInstance* instance, int pad_idx, int wave);
+void pad_instance_set_osc_a_octave(KesshoPadInstance* instance, int pad_idx, int octave);
+void pad_instance_set_osc_a_detune(KesshoPadInstance* instance, int pad_idx, float cents);
+void pad_instance_set_osc_a_level(KesshoPadInstance* instance, int pad_idx, float level);
+
+void pad_instance_set_osc_b_wave(KesshoPadInstance* instance, int pad_idx, int wave);
+void pad_instance_set_osc_b_octave(KesshoPadInstance* instance, int pad_idx, int octave);
+void pad_instance_set_osc_b_detune(KesshoPadInstance* instance, int pad_idx, float cents);
+void pad_instance_set_osc_b_level(KesshoPadInstance* instance, int pad_idx, float level);
+
+void pad_instance_set_osc_mix(KesshoPadInstance* instance, int pad_idx, float mix);
+
+void pad_instance_set_sub_enabled(KesshoPadInstance* instance, int pad_idx, int enabled);
+void pad_instance_set_sub_octave(KesshoPadInstance* instance, int pad_idx, int octave);
+void pad_instance_set_sub_wave(KesshoPadInstance* instance, int pad_idx, int wave);
+void pad_instance_set_sub_level(KesshoPadInstance* instance, int pad_idx, float level);
+
+void pad_instance_set_noise_type(KesshoPadInstance* instance, int pad_idx, int type);
+void pad_instance_set_noise_level(KesshoPadInstance* instance, int pad_idx, float level);
+
+void pad_instance_set_hardness(KesshoPadInstance* instance, int pad_idx, float hardness);
+void pad_instance_set_warmth(KesshoPadInstance* instance, int pad_idx, float warmth);
+void pad_instance_set_presence(KesshoPadInstance* instance, int pad_idx, float presence);
+void pad_instance_set_fold_amount(KesshoPadInstance* instance, int pad_idx, float amount);
+void pad_instance_set_fold_mode(KesshoPadInstance* instance, int pad_idx, int mode);
+
+void pad_instance_set_filter_type(KesshoPadInstance* instance, int pad_idx, int type);
+void pad_instance_set_filter_cutoff_min(KesshoPadInstance* instance, int pad_idx, float hz);
+void pad_instance_set_filter_cutoff_max(KesshoPadInstance* instance, int pad_idx, float hz);
+void pad_instance_set_filter_resonance(KesshoPadInstance* instance, int pad_idx, float resonance);
+void pad_instance_set_filter_q(KesshoPadInstance* instance, int pad_idx, float q);
+void pad_instance_set_filter_slope(KesshoPadInstance* instance, int pad_idx, float db_per_oct);
+void pad_instance_set_filter_key_tracking(KesshoPadInstance* instance, int pad_idx, float amount);
+
+void pad_instance_set_filter_b_enabled(KesshoPadInstance* instance, int pad_idx, int enabled);
+void pad_instance_set_filter_b_type(KesshoPadInstance* instance, int pad_idx, int type);
+void pad_instance_set_filter_b_cutoff(KesshoPadInstance* instance, int pad_idx, float hz);
+void pad_instance_set_filter_b_resonance(KesshoPadInstance* instance, int pad_idx, float resonance);
+void pad_instance_set_filter_b_q(KesshoPadInstance* instance, int pad_idx, float q);
+void pad_instance_set_filter_routing(KesshoPadInstance* instance, int pad_idx, int routing);
+
+void pad_instance_set_attack(KesshoPadInstance* instance, int pad_idx, float seconds);
+void pad_instance_set_decay(KesshoPadInstance* instance, int pad_idx, float seconds);
+void pad_instance_set_sustain(KesshoPadInstance* instance, int pad_idx, float level);
+void pad_instance_set_release(KesshoPadInstance* instance, int pad_idx, float seconds);
+
+void pad_instance_set_lfo1_rate(KesshoPadInstance* instance, int pad_idx, float hz);
+void pad_instance_set_lfo1_depth(KesshoPadInstance* instance, int pad_idx, float depth);
+void pad_instance_set_lfo1_wave(KesshoPadInstance* instance, int pad_idx, int wave);
+void pad_instance_set_lfo1_dest(KesshoPadInstance* instance, int pad_idx, int dest);
+
+void pad_instance_set_lfo2_rate(KesshoPadInstance* instance, int pad_idx, float hz);
+void pad_instance_set_lfo2_depth(KesshoPadInstance* instance, int pad_idx, float depth);
+void pad_instance_set_lfo2_wave(KesshoPadInstance* instance, int pad_idx, int wave);
+void pad_instance_set_lfo2_dest(KesshoPadInstance* instance, int pad_idx, int dest);
+
+void pad_instance_set_mod_env_enabled(KesshoPadInstance* instance, int pad_idx, int enabled);
+void pad_instance_set_mod_env_attack(KesshoPadInstance* instance, int pad_idx, float seconds);
+void pad_instance_set_mod_env_decay(KesshoPadInstance* instance, int pad_idx, float seconds);
+void pad_instance_set_mod_env_sustain(KesshoPadInstance* instance, int pad_idx, float level);
+void pad_instance_set_mod_env_release(KesshoPadInstance* instance, int pad_idx, float seconds);
+void pad_instance_set_mod_env_depth(KesshoPadInstance* instance, int pad_idx, float depth);
+void pad_instance_set_mod_env_dest(KesshoPadInstance* instance, int pad_idx, int dest);
+
+void pad_instance_set_level(KesshoPadInstance* instance, int pad_idx, float level);
+void pad_instance_set_reverb_send(KesshoPadInstance* instance, float level);
+
+int pad_instance_get_active_count(KesshoPadInstance* instance);
 
 #ifdef __cplusplus
 }

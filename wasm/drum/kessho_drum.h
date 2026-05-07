@@ -19,6 +19,8 @@
 extern "C" {
 #endif
 
+typedef struct KesshoDrumInstance KesshoDrumInstance;
+
 // ═══════════════ Constants ═══════════════
 
 #define DRUM_NUM_VOICE_TYPES   7
@@ -238,6 +240,152 @@ void drum_set_rng_seed(unsigned int seed);
 
 /** Get number of currently active voices (for CPU overlay). */
 int drum_get_active_count(void);
+
+// ═══════════════ Instance API ═══════════════
+//
+// Legacy functions above keep the existing singleton ABI for the web worklet.
+// KesshoCore uses this instance API so concurrent native/WASM modules do not
+// share voice pools, trigger queues, RNG, delay lines, or output buffers.
+
+KesshoDrumInstance* drum_instance_create(float sample_rate);
+void drum_instance_destroy(KesshoDrumInstance* instance);
+int drum_instance_reset(KesshoDrumInstance* instance, float sample_rate);
+
+float* drum_instance_get_output_ptr(KesshoDrumInstance* instance);
+float* drum_instance_get_reverb_send_ptr(KesshoDrumInstance* instance);
+void drum_instance_process_block(KesshoDrumInstance* instance, int block_size);
+void drum_instance_trigger(KesshoDrumInstance* instance, int voice_type, float velocity, int sample_offset);
+
+void drum_instance_set_sub_freq(KesshoDrumInstance* instance, float freq);
+void drum_instance_set_sub_decay(KesshoDrumInstance* instance, float decay_ms);
+void drum_instance_set_sub_level(KesshoDrumInstance* instance, float level);
+void drum_instance_set_sub_tone(KesshoDrumInstance* instance, float tone);
+void drum_instance_set_sub_shape(KesshoDrumInstance* instance, float shape);
+void drum_instance_set_sub_pitch_env(KesshoDrumInstance* instance, float semitones);
+void drum_instance_set_sub_pitch_decay(KesshoDrumInstance* instance, float decay_ms);
+void drum_instance_set_sub_drive(KesshoDrumInstance* instance, float drive);
+void drum_instance_set_sub_sub_octave(KesshoDrumInstance* instance, float amount);
+void drum_instance_set_sub_attack(KesshoDrumInstance* instance, float attack_ms);
+void drum_instance_set_sub_variation(KesshoDrumInstance* instance, float variation);
+void drum_instance_set_sub_distance(KesshoDrumInstance* instance, float distance);
+
+void drum_instance_set_kick_freq(KesshoDrumInstance* instance, float freq);
+void drum_instance_set_kick_pitch_env(KesshoDrumInstance* instance, float semitones);
+void drum_instance_set_kick_pitch_decay(KesshoDrumInstance* instance, float decay_ms);
+void drum_instance_set_kick_decay(KesshoDrumInstance* instance, float decay_ms);
+void drum_instance_set_kick_level(KesshoDrumInstance* instance, float level);
+void drum_instance_set_kick_click(KesshoDrumInstance* instance, float click);
+void drum_instance_set_kick_body(KesshoDrumInstance* instance, float body);
+void drum_instance_set_kick_punch(KesshoDrumInstance* instance, float punch);
+void drum_instance_set_kick_tail(KesshoDrumInstance* instance, float tail);
+void drum_instance_set_kick_tone(KesshoDrumInstance* instance, float tone);
+void drum_instance_set_kick_attack(KesshoDrumInstance* instance, float attack_ms);
+void drum_instance_set_kick_variation(KesshoDrumInstance* instance, float variation);
+void drum_instance_set_kick_distance(KesshoDrumInstance* instance, float distance);
+
+void drum_instance_set_click_decay(KesshoDrumInstance* instance, float decay_ms);
+void drum_instance_set_click_filter(KesshoDrumInstance* instance, float freq);
+void drum_instance_set_click_tone(KesshoDrumInstance* instance, float tone);
+void drum_instance_set_click_level(KesshoDrumInstance* instance, float level);
+void drum_instance_set_click_resonance(KesshoDrumInstance* instance, float resonance);
+void drum_instance_set_click_pitch(KesshoDrumInstance* instance, float freq);
+void drum_instance_set_click_pitch_env(KesshoDrumInstance* instance, float semitones);
+void drum_instance_set_click_mode(KesshoDrumInstance* instance, int mode);
+void drum_instance_set_click_grain_count(KesshoDrumInstance* instance, int count);
+void drum_instance_set_click_grain_spread(KesshoDrumInstance* instance, float spread_ms);
+void drum_instance_set_click_stereo_width(KesshoDrumInstance* instance, float width);
+void drum_instance_set_click_exciter_color(KesshoDrumInstance* instance, float color);
+void drum_instance_set_click_attack(KesshoDrumInstance* instance, float attack_ms);
+void drum_instance_set_click_variation(KesshoDrumInstance* instance, float variation);
+void drum_instance_set_click_distance(KesshoDrumInstance* instance, float distance);
+
+void drum_instance_set_beep_hi_freq(KesshoDrumInstance* instance, float freq);
+void drum_instance_set_beep_hi_attack(KesshoDrumInstance* instance, float attack_ms);
+void drum_instance_set_beep_hi_decay(KesshoDrumInstance* instance, float decay_ms);
+void drum_instance_set_beep_hi_level(KesshoDrumInstance* instance, float level);
+void drum_instance_set_beep_hi_tone(KesshoDrumInstance* instance, float tone);
+void drum_instance_set_beep_hi_inharmonic(KesshoDrumInstance* instance, float inharmonic);
+void drum_instance_set_beep_hi_partials(KesshoDrumInstance* instance, int partials);
+void drum_instance_set_beep_hi_shimmer(KesshoDrumInstance* instance, float shimmer);
+void drum_instance_set_beep_hi_shimmer_rate(KesshoDrumInstance* instance, float rate);
+void drum_instance_set_beep_hi_brightness(KesshoDrumInstance* instance, float brightness);
+void drum_instance_set_beep_hi_feedback(KesshoDrumInstance* instance, float feedback);
+void drum_instance_set_beep_hi_mod_env_decay(KesshoDrumInstance* instance, float decay);
+void drum_instance_set_beep_hi_noise_in_mod(KesshoDrumInstance* instance, float amount);
+void drum_instance_set_beep_hi_mod_ratio(KesshoDrumInstance* instance, float ratio);
+void drum_instance_set_beep_hi_mod_ratio_fine(KesshoDrumInstance* instance, float fine);
+void drum_instance_set_beep_hi_mod_env_end(KesshoDrumInstance* instance, float end);
+void drum_instance_set_beep_hi_noise_decay(KesshoDrumInstance* instance, float decay);
+void drum_instance_set_beep_hi_variation(KesshoDrumInstance* instance, float variation);
+void drum_instance_set_beep_hi_distance(KesshoDrumInstance* instance, float distance);
+
+void drum_instance_set_beep_lo_freq(KesshoDrumInstance* instance, float freq);
+void drum_instance_set_beep_lo_attack(KesshoDrumInstance* instance, float attack_ms);
+void drum_instance_set_beep_lo_decay(KesshoDrumInstance* instance, float decay_ms);
+void drum_instance_set_beep_lo_level(KesshoDrumInstance* instance, float level);
+void drum_instance_set_beep_lo_tone(KesshoDrumInstance* instance, float tone);
+void drum_instance_set_beep_lo_pitch_env(KesshoDrumInstance* instance, float semitones);
+void drum_instance_set_beep_lo_pitch_decay(KesshoDrumInstance* instance, float decay_ms);
+void drum_instance_set_beep_lo_body(KesshoDrumInstance* instance, float body);
+void drum_instance_set_beep_lo_pluck(KesshoDrumInstance* instance, float pluck);
+void drum_instance_set_beep_lo_pluck_damp(KesshoDrumInstance* instance, float damp);
+void drum_instance_set_beep_lo_modal(KesshoDrumInstance* instance, float modal);
+void drum_instance_set_beep_lo_modal_q(KesshoDrumInstance* instance, float q);
+void drum_instance_set_beep_lo_modal_inharmonic(KesshoDrumInstance* instance, float inharmonic);
+void drum_instance_set_beep_lo_modal_spread(KesshoDrumInstance* instance, float spread);
+void drum_instance_set_beep_lo_modal_cut(KesshoDrumInstance* instance, float cut);
+void drum_instance_set_beep_lo_osc_gain(KesshoDrumInstance* instance, float gain);
+void drum_instance_set_beep_lo_modal_gain(KesshoDrumInstance* instance, float gain);
+void drum_instance_set_beep_lo_variation(KesshoDrumInstance* instance, float variation);
+void drum_instance_set_beep_lo_distance(KesshoDrumInstance* instance, float distance);
+
+void drum_instance_set_noise_freq(KesshoDrumInstance* instance, float freq);
+void drum_instance_set_noise_decay(KesshoDrumInstance* instance, float decay_ms);
+void drum_instance_set_noise_level(KesshoDrumInstance* instance, float level);
+void drum_instance_set_noise_q(KesshoDrumInstance* instance, float q);
+void drum_instance_set_noise_filter_type(KesshoDrumInstance* instance, int type);
+void drum_instance_set_noise_attack(KesshoDrumInstance* instance, float attack_ms);
+void drum_instance_set_noise_formant(KesshoDrumInstance* instance, float formant);
+void drum_instance_set_noise_breath(KesshoDrumInstance* instance, float breath);
+void drum_instance_set_noise_filter_env_depth(KesshoDrumInstance* instance, float depth);
+void drum_instance_set_noise_filter_env_decay(KesshoDrumInstance* instance, float decay_ms);
+void drum_instance_set_noise_density(KesshoDrumInstance* instance, float density);
+void drum_instance_set_noise_color_lfo(KesshoDrumInstance* instance, float rate);
+void drum_instance_set_noise_variation(KesshoDrumInstance* instance, float variation);
+void drum_instance_set_noise_distance(KesshoDrumInstance* instance, float distance);
+
+void drum_instance_set_membrane_freq(KesshoDrumInstance* instance, float freq);
+void drum_instance_set_membrane_decay(KesshoDrumInstance* instance, float decay_ms);
+void drum_instance_set_membrane_level(KesshoDrumInstance* instance, float level);
+void drum_instance_set_membrane_tension(KesshoDrumInstance* instance, float tension);
+void drum_instance_set_membrane_material(KesshoDrumInstance* instance, float material);
+void drum_instance_set_membrane_size(KesshoDrumInstance* instance, float size);
+void drum_instance_set_membrane_damping(KesshoDrumInstance* instance, float damping);
+void drum_instance_set_membrane_strike(KesshoDrumInstance* instance, float strike);
+void drum_instance_set_membrane_wire_buzz(KesshoDrumInstance* instance, float buzz);
+void drum_instance_set_membrane_attack(KesshoDrumInstance* instance, float attack_ms);
+void drum_instance_set_membrane_variation(KesshoDrumInstance* instance, float variation);
+void drum_instance_set_membrane_distance(KesshoDrumInstance* instance, float distance);
+
+void drum_instance_set_delay_enabled(KesshoDrumInstance* instance, int enabled);
+void drum_instance_set_delay_time_l(KesshoDrumInstance* instance, float samples);
+void drum_instance_set_delay_time_r(KesshoDrumInstance* instance, float samples);
+void drum_instance_set_delay_feedback(KesshoDrumInstance* instance, float feedback);
+void drum_instance_set_delay_filter(KesshoDrumInstance* instance, float cutoff_hz);
+void drum_instance_set_delay_mix(KesshoDrumInstance* instance, float mix);
+void drum_instance_set_delay_send(KesshoDrumInstance* instance, int voice_type, float level);
+
+void drum_instance_set_trigger_morph(KesshoDrumInstance* instance, float morph_position);
+void drum_instance_set_trigger_distance(KesshoDrumInstance* instance, float distance);
+void drum_instance_set_trigger_pitch(KesshoDrumInstance* instance, float semitones);
+void drum_instance_set_trigger_ratchet_cap(KesshoDrumInstance* instance, float decay_cap_sec, float attack_cap_sec);
+void drum_instance_clear_trigger_overrides(KesshoDrumInstance* instance);
+
+void drum_instance_set_master_level(KesshoDrumInstance* instance, float level);
+void drum_instance_set_reverb_send(KesshoDrumInstance* instance, float level);
+void drum_instance_set_rng_seed(KesshoDrumInstance* instance, unsigned int seed);
+
+int drum_instance_get_active_count(KesshoDrumInstance* instance);
 
 #ifdef __cplusplus
 }

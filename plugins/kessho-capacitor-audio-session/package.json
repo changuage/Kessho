@@ -1,0 +1,18 @@
+{
+  "name": "@kessho/capacitor-audio-session",
+  "version": "0.0.1",
+  "description": "Capacitor audio-session bridge for the Kessho webapp wrapper",
+  "private": true,
+  "files": [
+    "Package.swift",
+    "ios",
+    "README.md",
+    "index.js"
+  ],
+  "main": "index.js",
+  "capacitor": {
+    "ios": {
+      "src": "ios"
+    }
+  }
+}

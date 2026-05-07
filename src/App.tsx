@@ -61,6 +61,7 @@ import {
   isGranularDelayBStateKey,
 } from './ui/granular/granularPresets';
 import SnowflakeUI from './ui/SnowflakeUI';
+import SnowflakePrototypePage from './ui/SnowflakePrototypePage';
 import { CpuOverlay } from './ui/CpuOverlay';
 import { SliderHelpProvider, useSliderHelp } from './ui/SliderHelpOverlay';
 import { CircleOfFifths, getMorphedRootNote } from './ui/CircleOfFifths';
@@ -86,16 +87,18 @@ import type { SliderPageId } from './ui/sliderHelpCatalog';
 import { isIOSLikeDevice, isMobileDevice } from './platform';
 import { useVisibleInterval } from './ui/hooks/useVisibleInterval';
 import {
-  addCapacitorRemoteCommandListener,
-  getCapacitorBackgroundAudioStatus,
-  isCapacitorBackgroundAudioAvailable,
+  addCapacitorAudioSessionRemoteCommandListener,
+  getCapacitorAudioSessionStatus,
+  isCapacitorAudioSessionAvailable,
   isCapacitorNativeShell,
-  setCapacitorNowPlaying,
-  shouldUseCapacitorNativeAudioSpike,
-  startCapacitorNativePlayback,
-  stopCapacitorNativePlayback,
-  syncCapacitorNativeAudioState,
-} from './native/capacitorBackgroundAudio';
+  setCapacitorAudioSessionNowPlaying,
+  shouldUseCapacitorAudioSessionDiagnostics,
+  startCapacitorAudioSessionPlayback,
+  stopCapacitorAudioSessionPlayback,
+  syncCapacitorAudioSessionState,
+  type KesshoRemoteCommand,
+} from './native/capacitorAudioSession';
+import { setCapacitorMacPlaybackState } from './native/capacitorMacShell';
 import type { SynthKeyboardUiState } from './ui/synth/SynthPage';
 import {
   RECORD_TRACK_FILENAME_SUFFIX,
@@ -146,6 +149,8 @@ const TEXT_SYMBOLS = {
 const DEFAULT_AUTO_START_PRESET_NAME = 'String Waves';
 const CLOUD_ENABLED = isCloudPresetConfigEnabled();
 const CAPACITOR_LOCAL_STATE_PRESET_SCOPE = 'global';
+const isSonicParityMode = () =>
+  typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('parity') === '1';
 
 const LAZY_PAGE_FALLBACK = (
   <div style={{ padding: '24px', color: '#9ca3af', textAlign: 'center' }}>
@@ -905,7 +910,7 @@ const styles = {
     gap: '4px',
     padding: '8px 16px',
     background: 'transparent',
-    border: 'none',
+    border: '1px solid transparent',
     borderRadius: '8px',
     color: '#666',
     fontSize: '0.75rem',
@@ -1390,7 +1395,10 @@ const App: React.FC = () => {
 
   // Initialize cloud preset store if Supabase is configured
   useEffect(() => {
-    if (!CLOUD_ENABLED) return;
+    if (!CLOUD_ENABLED || isSonicParityMode()) {
+      markCloudPresetStoreReady();
+      return;
+    }
     if (isCapacitorNativeShell()) {
       markCloudPresetStoreReady();
       return;
@@ -1477,7 +1485,7 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (!CLOUD_ENABLED || typeof window === 'undefined') return;
+    if (!CLOUD_ENABLED || typeof window === 'undefined' || isSonicParityMode()) return;
 
     const target = window as typeof window & {
       kesshoPresetV2Migration?: {
@@ -1591,7 +1599,7 @@ const App: React.FC = () => {
   const autoStartPresetSourceRef = useRef<'cloud' | 'device-local' | 'bundled' | null>(null);
   const cloudPresetStoreRef = useRef<IPresetStore | null>(null);
   const cloudAutoStartStoreInitPromiseRef = useRef<Promise<IPresetStore | null> | null>(null);
-  const cloudPresetStoreReadyRef = useRef(!CLOUD_ENABLED);
+  const cloudPresetStoreReadyRef = useRef(!CLOUD_ENABLED || isSonicParityMode());
   const cloudPresetStoreReadyResolveRef = useRef<(() => void) | null>(null);
   const cloudPresetStoreReadyPromiseRef = useRef<Promise<void> | null>(null);
   if (cloudPresetStoreReadyPromiseRef.current === null) {
@@ -1660,9 +1668,9 @@ const App: React.FC = () => {
     },
     transportDebug: null,
   });
-  const [nativeBackgroundAudioMode, setNativeBackgroundAudioMode] = useState(false);
-  const [nativePlaybackState, setNativePlaybackState] = useState(false);
-  const nativeRemoteCommandCleanupRef = useRef<(() => Promise<void>) | null>(null);
+  const [capacitorAudioSessionDiagnosticActive, setCapacitorAudioSessionDiagnosticActive] = useState(false);
+  const capacitorAudioSessionRemoteCommandCleanupRef = useRef<(() => Promise<void>) | null>(null);
+  const capacitorAudioSessionRemoteCommandHandlerRef = useRef<(command: KesshoRemoteCommand) => void>(() => {});
   
   // Saved presets list - start empty, load from folder on mount
   const [savedPresets, setSavedPresets] = useState<SavedPreset[]>([]);
@@ -1722,6 +1730,10 @@ const App: React.FC = () => {
   useEffect(() => { morphPlayPhrasesRef.current = morphPlayPhrases; }, [morphPlayPhrases]);
   useEffect(() => { morphTransitionPhrasesRef.current = morphTransitionPhrases; }, [morphTransitionPhrases]);
   
+  const isSnowflakePrototypeRoute = typeof window !== 'undefined'
+    ? new URLSearchParams(window.location.search).get('snowflakePrototype') === '1'
+    : false;
+
   // UI mode: 'snowflake', 'advanced', or 'journey'
   const [uiMode, setUiMode] = useState<'snowflake' | 'advanced' | 'journey'>('snowflake');
 
@@ -1854,10 +1866,38 @@ const App: React.FC = () => {
   const [sliderModes, setSliderModes] = useState<Record<string, SliderMode>>({});
   const [dualSliderRanges, setDualSliderRanges] = useState<DualSliderState>({});
   const usesCapacitorLocalPresetLibrary = isCapacitorNativeShell();
-  const playbackIsRunning = nativeBackgroundAudioMode ? nativePlaybackState : engineState.isRunning;
+  const playbackIsRunning = engineState.isRunning;
+
+  useEffect(() => {
+    if (!capacitorAudioSessionDiagnosticActive) return;
+    void setCapacitorAudioSessionNowPlaying({
+      title: statePresetName || morphSlotAName || 'Generative Ambient',
+      artist: 'Kessho',
+      album: 'Kessho Capacitor',
+      isLiveStream: true,
+      isPlaying: playbackIsRunning || isJourneyPlaying,
+      elapsedTime: 0,
+    });
+  }, [capacitorAudioSessionDiagnosticActive, playbackIsRunning, isJourneyPlaying, statePresetName, morphSlotAName]);
+
+  useEffect(() => {
+    const title = statePresetName || morphSlotAName || 'Generative Ambient';
+    void setCapacitorMacPlaybackState({
+      isPlaying: playbackIsRunning || isJourneyPlaying,
+      title,
+    }).catch((error) => {
+      console.warn('Failed to sync macOS native playback activity:', error);
+    });
+  }, [playbackIsRunning, isJourneyPlaying, statePresetName, morphSlotAName]);
+
+  useEffect(() => {
+    return () => {
+      void setCapacitorMacPlaybackState({ isPlaying: false });
+    };
+  }, []);
 
   const ensureCloudAutoStartPresetStore = useCallback(async (): Promise<IPresetStore | null> => {
-    if (!CLOUD_ENABLED) return null;
+    if (!CLOUD_ENABLED || isSonicParityMode()) return null;
     if (cloudPresetStoreRef.current) return cloudPresetStoreRef.current;
     if (!cloudAutoStartStoreInitPromiseRef.current) {
       cloudAutoStartStoreInitPromiseRef.current = (async () => {
@@ -1933,7 +1973,7 @@ const App: React.FC = () => {
       };
     }
 
-    if (CLOUD_ENABLED) {
+    if (CLOUD_ENABLED && !isSonicParityMode()) {
       const timeoutMs = 1500;
       const timedCloudPreset = await Promise.race<SavedPreset | null>([
         loadCloudAutoStartPreset(),
@@ -1978,63 +2018,46 @@ const App: React.FC = () => {
     let cancelled = false;
     let retryTimer: number | null = null;
 
-    const setupNativeMode = () => {
+    const setupAudioSessionDiagnostics = () => {
       if (cancelled) return;
-      if (!shouldUseCapacitorNativeAudioSpike() || !isCapacitorBackgroundAudioAvailable()) {
-        retryTimer = window.setTimeout(setupNativeMode, 250);
+      if (!shouldUseCapacitorAudioSessionDiagnostics()) {
+        return;
+      }
+      if (!isCapacitorAudioSessionAvailable()) {
+        retryTimer = window.setTimeout(setupAudioSessionDiagnostics, 250);
         return;
       }
 
-      setNativeBackgroundAudioMode(true);
+      setCapacitorAudioSessionDiagnosticActive(true);
 
-      void getCapacitorBackgroundAudioStatus().then((status) => {
-        if (!cancelled && status) {
-          setNativePlaybackState(!!status.isPlaying);
-        }
+      void getCapacitorAudioSessionStatus().catch((error) => {
+        console.warn('Failed to read Capacitor audio-session status:', error);
       });
 
-      void addCapacitorRemoteCommandListener((command) => {
+      void addCapacitorAudioSessionRemoteCommandListener((command) => {
         if (cancelled) return;
-        if (command === 'play') {
-          setNativePlaybackState(true);
-        } else if (command === 'pause') {
-          setNativePlaybackState(false);
-        } else {
-          setNativePlaybackState((prev) => !prev);
-        }
+        capacitorAudioSessionRemoteCommandHandlerRef.current(command);
       }).then((cleanup) => {
         if (cancelled) {
           void cleanup?.();
           return;
         }
-        nativeRemoteCommandCleanupRef.current = cleanup;
+        capacitorAudioSessionRemoteCommandCleanupRef.current = cleanup;
       });
     };
 
-    setupNativeMode();
+    setupAudioSessionDiagnostics();
 
     return () => {
       cancelled = true;
       if (retryTimer !== null) {
         window.clearTimeout(retryTimer);
       }
-      const cleanup = nativeRemoteCommandCleanupRef.current;
-      nativeRemoteCommandCleanupRef.current = null;
+      const cleanup = capacitorAudioSessionRemoteCommandCleanupRef.current;
+      capacitorAudioSessionRemoteCommandCleanupRef.current = null;
       if (cleanup) void cleanup();
     };
   }, []);
-
-  useEffect(() => {
-    if (!nativeBackgroundAudioMode) return;
-    void setCapacitorNowPlaying({
-      title: statePresetName || 'Generative Ambient',
-      artist: 'Kessho',
-      album: 'Kessho Native',
-      isLiveStream: true,
-      isPlaying: nativePlaybackState,
-      elapsedTime: 0,
-    });
-  }, [nativeBackgroundAudioMode, nativePlaybackState, statePresetName]);
 
   const applyDualRangesFromPreset = useCallback((
     dualRanges?: Record<string, { min: number; max: number }>,
@@ -2593,7 +2616,7 @@ const App: React.FC = () => {
 
   // Keep the runtime walk indicator store live while hidden so walk-mode sliders
   // do not resubscribe to a stale snapshot and visibly jump on tab restore.
-  const shouldMirrorRuntimeWalkPositions = uiMode === 'advanced';
+  const shouldMirrorRuntimeWalkPositions = uiMode === 'advanced' || isSnowflakePrototypeRoute;
 
   useEffect(() => {
     if (!shouldMirrorRuntimeWalkPositions) {
@@ -2627,7 +2650,7 @@ const App: React.FC = () => {
     // Check for cloud preset in URL (?cloud=presetId)
     const urlParams = new URLSearchParams(window.location.search);
     const cloudPresetId = urlParams.get('cloud');
-    if (cloudPresetId && CLOUD_ENABLED) {
+    if (cloudPresetId && CLOUD_ENABLED && !isSonicParityMode()) {
       void import('./cloud/supabase').then(({ fetchPresetById }) => fetchPresetById(cloudPresetId)).then((preset) => {
         if (cancelled || !preset) return;
 
@@ -3132,17 +3155,16 @@ const App: React.FC = () => {
   // Web audio does not consume dual-slider ranges, so avoid re-sending params when
   // only the UI runtime range model changes.
   useEffect(() => {
-    if (nativeBackgroundAudioMode) return;
     audioEngine.updateParams(state);
-  }, [state, nativeBackgroundAudioMode]);
+  }, [state]);
 
   useEffect(() => {
-    if (!nativeBackgroundAudioMode) return;
-    void syncCapacitorNativeAudioState({
+    if (!capacitorAudioSessionDiagnosticActive) return;
+    void syncCapacitorAudioSessionState({
       state,
       dualRanges: nativeDualRanges,
     });
-  }, [state, nativeBackgroundAudioMode, nativeDualRanges]);
+  }, [state, capacitorAudioSessionDiagnosticActive, nativeDualRanges]);
 
   type SliderChangeOptions = {
     preserveEnabledFlags?: boolean;
@@ -4134,6 +4156,23 @@ const App: React.FC = () => {
     state.leadRandomSource,
   ]);
 
+  useEffect(() => {
+    if (!isSonicParityMode()) return;
+    let cancelled = false;
+    import('./audio/sonicParityHarness')
+      .then(({ installSonicParityHarness }) => {
+        if (cancelled) return;
+        installSonicParityHarness({ getState: () => stateRef.current });
+      })
+      .catch((error) => {
+        console.error('Failed to install sonic parity harness:', error);
+      });
+    return () => {
+      cancelled = true;
+      window.__kesshoSonicParity?.teardown();
+    };
+  }, []);
+
   // Start/Stop
   const handleStart = async () => {
     try {
@@ -4157,40 +4196,41 @@ const App: React.FC = () => {
         }
       }
 
-      if (!nativeBackgroundAudioMode && isCapacitorNativeShell() && isCapacitorBackgroundAudioAvailable()) {
-        setNativeBackgroundAudioMode(true);
+      const audioSessionDiagnosticEnabled =
+        capacitorAudioSessionDiagnosticActive ||
+        (
+          shouldUseCapacitorAudioSessionDiagnostics() &&
+          isCapacitorNativeShell() &&
+          isCapacitorAudioSessionAvailable()
+        );
+      if (!capacitorAudioSessionDiagnosticActive && audioSessionDiagnosticEnabled) {
+        setCapacitorAudioSessionDiagnosticActive(true);
       }
 
-      if (nativeBackgroundAudioMode) {
-        await startCapacitorNativePlayback(
+      // Setup iOS media session FIRST (must be synchronous from user gesture)
+      setupIOSMediaSession();
+
+      // Then start the audio engine
+      await audioEngine.start(stateToStart);
+
+      // Connect the MediaStream to the audio element for iOS background playback
+      connectMediaSessionToWebAudio();
+
+      if (audioSessionDiagnosticEnabled) {
+        await startCapacitorAudioSessionPlayback(
           {
             state: stateToStart,
             dualRanges: extractNativeDualRanges(dualSliderRanges),
           },
           {
-            title: 'Generative Ambient',
+            title: statePresetName || 'Generative Ambient',
             artist: 'Kessho',
-            album: 'Kessho Native',
+            album: 'Kessho Capacitor',
             isLiveStream: true,
             isPlaying: true,
           },
         );
-        setNativePlaybackState(true);
-        return;
       }
-
-      if (isCapacitorNativeShell()) {
-        throw new Error('Native background audio plugin is not ready yet. Relaunch the app after sync if this persists.');
-      }
-
-      // Setup iOS media session FIRST (must be synchronous from user gesture)
-      setupIOSMediaSession();
-      
-      // Then start the audio engine
-      await audioEngine.start(stateToStart);
-      
-      // Connect the MediaStream to the audio element for iOS background playback
-      connectMediaSessionToWebAudio();
       
       // If recording was armed, start recording now
       if (isRecordingArmed) {
@@ -4207,10 +4247,8 @@ const App: React.FC = () => {
   };
 
   const handleStop = () => {
-    if (nativeBackgroundAudioMode) {
-      void stopCapacitorNativePlayback();
-      setNativePlaybackState(false);
-      return;
+    if (capacitorAudioSessionDiagnosticActive) {
+      void stopCapacitorAudioSessionPlayback();
     }
 
     // Don't stop recording when stopping playback - let tails continue
@@ -4232,6 +4270,22 @@ const App: React.FC = () => {
     setPlaybackTimerRemaining(null);
   };
 
+  capacitorAudioSessionRemoteCommandHandlerRef.current = (command) => {
+    if (command === 'play') {
+      if (!playbackIsRunning) void handleStart();
+      return;
+    }
+    if (command === 'pause') {
+      if (playbackIsRunning) handleStop();
+      return;
+    }
+    if (playbackIsRunning) {
+      handleStop();
+    } else {
+      void handleStart();
+    }
+  };
+
   const updatePlaybackTimerCountdown = useCallback(() => {
     if (!playbackIsRunning || !playbackTimerEnabled) return;
 
@@ -4244,20 +4298,18 @@ const App: React.FC = () => {
       setPlaybackTimerRemaining(null);
 
       window.setTimeout(() => {
-        if (nativeBackgroundAudioMode) {
-          void stopCapacitorNativePlayback();
-          setNativePlaybackState(false);
-        } else {
-          audioEngine.stop();
-          stopIOSMediaSession();
+        if (capacitorAudioSessionDiagnosticActive) {
+          void stopCapacitorAudioSessionPlayback();
         }
+        audioEngine.stop();
+        stopIOSMediaSession();
       }, 0);
       return;
     }
 
     const nextRemaining = Math.ceil(remainingMs / 1000);
     setPlaybackTimerRemaining(prev => (prev === nextRemaining ? prev : nextRemaining));
-  }, [playbackIsRunning, playbackTimerEnabled, nativeBackgroundAudioMode]);
+  }, [playbackIsRunning, playbackTimerEnabled, capacitorAudioSessionDiagnosticActive]);
 
   // Playback timer effect - keeps countdown based on absolute time so hidden tabs do not drift.
   useEffect(() => {
@@ -6257,8 +6309,12 @@ const App: React.FC = () => {
     if (!playbackIsRunning) {
       console.log('[Journey] Starting audio engine');
       try {
-        if (nativeBackgroundAudioMode) {
-          await startCapacitorNativePlayback(
+        setupIOSMediaSession();
+        await audioEngine.start(preset.state);
+        connectMediaSessionToWebAudio();
+
+        if (capacitorAudioSessionDiagnosticActive) {
+          await startCapacitorAudioSessionPlayback(
             {
               state: preset.state,
               dualRanges: extractNativeDualRanges(dualSliderRanges),
@@ -6266,22 +6322,17 @@ const App: React.FC = () => {
             {
               title: preset.name,
               artist: 'Kessho',
-              album: 'Kessho Native',
+              album: 'Kessho Capacitor',
               isLiveStream: true,
               isPlaying: true,
             },
           );
-          setNativePlaybackState(true);
-        } else {
-          setupIOSMediaSession();
-          await audioEngine.start(preset.state);
-          connectMediaSessionToWebAudio();
         }
       } catch (err) {
         console.error('[Journey] Failed to start audio:', err);
       }
     }
-  }, [savedPresets, handleLoadPresetFromList, playbackIsRunning, nativeBackgroundAudioMode, dualSliderRanges, audioEngine, setupIOSMediaSession, connectMediaSessionToWebAudio]);
+  }, [savedPresets, handleLoadPresetFromList, playbackIsRunning, capacitorAudioSessionDiagnosticActive, dualSliderRanges, audioEngine, setupIOSMediaSession, connectMediaSessionToWebAudio]);
 
   const getEarthTextureDebugState = useCallback(() => audioEngine.getEarthTextureDebugState(), []);
 
@@ -6546,6 +6597,31 @@ const App: React.FC = () => {
     });
   }, []);
 
+  if (isSnowflakePrototypeRoute) {
+    const clearPrototypeRoute = () => {
+      if (typeof window === 'undefined') return;
+      window.history.replaceState(null, '', `${window.location.pathname}${window.location.hash}`);
+    };
+
+    return (
+      <SnowflakePrototypePage
+        state={state}
+        dualRanges={dualSliderRanges}
+        sliderModes={sliderModes}
+        isPlaying={playbackIsRunning || isJourneyPlaying}
+        onTogglePlay={(playbackIsRunning || isJourneyPlaying) ? handleStop : handleStart}
+        onBack={() => {
+          clearPrototypeRoute();
+          setUiMode('snowflake');
+        }}
+        onShowAdvanced={() => {
+          clearPrototypeRoute();
+          setUiMode('advanced');
+        }}
+      />
+    );
+  }
+
   // Render journey mode UI
   if (uiMode === 'journey') {
     return (
@@ -6702,8 +6778,6 @@ const App: React.FC = () => {
           onClick={() => {
             if (isRecording) {
               void handleStopRecording();
-            } else if (nativeBackgroundAudioMode) {
-              return;
             } else if (playbackIsRunning) {
               void handleStartRecording();
             } else {
@@ -6711,15 +6785,12 @@ const App: React.FC = () => {
             }
           }}
           title={
-            nativeBackgroundAudioMode
-              ? 'Recording is unavailable in the Capacitor native audio spike'
-              : isRecording
-                ? `Recording ${formatRecordingTime(recordingDuration)} - Click to stop`
-                : isRecordingArmed
-                  ? 'Recording armed - will start with playback (click to disarm)'
-                  : (playbackIsRunning ? 'Start Recording' : 'Arm Recording (will start with playback)')
+            isRecording
+              ? `Recording ${formatRecordingTime(recordingDuration)} - Click to stop`
+              : isRecordingArmed
+                ? 'Recording armed - will start with playback (click to disarm)'
+                : (playbackIsRunning ? 'Start Recording' : 'Arm Recording (will start with playback)')
           }
-          disabled={nativeBackgroundAudioMode}
         >
           {TEXT_SYMBOLS.record}
           {isRecording && (

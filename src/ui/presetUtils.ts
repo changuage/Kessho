@@ -220,7 +220,10 @@ export function applyPreset(
 
   // 6. Update audio engine
   if (updateEngine) {
-    audioEngine.updateParams(newState);
+    audioEngine.updateParams(newState, {
+      presetId: migrated.name,
+      presetName: migrated.name,
+    });
   }
   if (resetCofDrift) {
     audioEngine.resetCofDrift();

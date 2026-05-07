@@ -2,6 +2,7 @@ import React from 'react';
 import RoutingMatrix from '../global/RoutingMatrix';
 import type { DualSliderRange } from '../DualSlider';
 import type { SliderMode, SliderState } from '../state';
+import MidiRoutingPanel from './MidiRoutingPanel';
 import './routing.css';
 
 export interface RoutingPageProps {
@@ -51,6 +52,8 @@ export default function RoutingPage({
             />
           </div>
         </section>
+
+        <MidiRoutingPanel onParamChange={onParamChange} />
       </div>
     </div>
   );

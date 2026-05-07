@@ -1,0 +1,18 @@
+{
+  "name": "@kessho/capacitor-midi-routing",
+  "version": "0.0.1",
+  "description": "Native iOS MIDI routing bridge for the Kessho Capacitor wrapper",
+  "private": true,
+  "files": [
+    "Package.swift",
+    "ios",
+    "README.md",
+    "index.js"
+  ],
+  "main": "index.js",
+  "capacitor": {
+    "ios": {
+      "src": "ios"
+    }
+  }
+}

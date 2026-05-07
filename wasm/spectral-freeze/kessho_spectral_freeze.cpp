@@ -16,16 +16,19 @@
  * Build: python build.py (Emscripten → kessho_spectral_freeze.wasm)
  */
 
+#include "kessho_spectral_freeze.h"
+
 #include <cmath>
+#include <cstdint>
 #include <cstring>
+#include <new>
 
 // ═══════════════ Configuration ═══════════════
 
 static constexpr int FFT_SIZE = 2048;
 static constexpr int HALF_FFT = FFT_SIZE / 2 + 1;  // 1025 bins (DC to Nyquist)
 static constexpr int HOP_SIZE = 512;                // 4x overlap
-static constexpr int OVERLAP_FACTOR = FFT_SIZE / HOP_SIZE;  // 4
-static constexpr int MAX_BLOCK_SIZE = 128;
+static constexpr int MAX_BLOCK_SIZE = KESSHO_SPECTRAL_FREEZE_MAX_BLOCK_SIZE;
 static constexpr float PI = 3.14159265358979323846f;
 static constexpr float TWO_PI = 6.28318530717958647692f;
 
@@ -179,7 +182,32 @@ struct SpectralFreezeState {
     int   outputRingReadPos;
 };
 
-static SpectralFreezeState g_sf;
+static SpectralFreezeState g_default_sf;
+static thread_local SpectralFreezeState* g_sf_slot = &g_default_sf;
+
+static SpectralFreezeState& spectral_freeze_current_state() {
+    return *g_sf_slot;
+}
+
+class ScopedSpectralFreezeState {
+public:
+    explicit ScopedSpectralFreezeState(SpectralFreezeState* state) : previous_(g_sf_slot) {
+        g_sf_slot = state != nullptr ? state : &g_default_sf;
+    }
+
+    ~ScopedSpectralFreezeState() {
+        g_sf_slot = previous_;
+    }
+
+private:
+    SpectralFreezeState* previous_;
+};
+
+struct KesshoSpectralFreezeInstance {
+    SpectralFreezeState state;
+};
+
+#define g_sf spectral_freeze_current_state()
 
 // ═══════════════ Analysis: windowed FFT → magnitude + phase ═══════════════
 
@@ -434,12 +462,6 @@ static void processHop() {
     // ── Resynthesize ──
     int olaPos = s.outputRingWritePos;
 
-    // Clear the region we're about to write into (only the hop-sized new portion)
-    for (int i = 0; i < HOP_SIZE; i++) {
-        int idx = (olaPos + FFT_SIZE - HOP_SIZE + i) % (FFT_SIZE * 2);
-        // Don't clear — the overlap-add accumulates appropriately
-    }
-
     synthesizeFrame(outMagL, s.synthPhaseL, s.outputRingL, olaPos, s.fftRe, s.fftIm);
     synthesizeFrame(outMagR, s.synthPhaseR, s.outputRingR, olaPos, s.fftRe, s.fftIm);
 
@@ -576,3 +598,123 @@ void spectral_freeze_process_block(int block_size) {
 }
 
 } // extern "C"
+
+KesshoSpectralFreezeInstance* spectral_freeze_instance_create(float sample_rate) {
+    KesshoSpectralFreezeInstance* instance = new (std::nothrow) KesshoSpectralFreezeInstance{};
+    if (instance == nullptr) {
+        return nullptr;
+    }
+
+    {
+        ScopedSpectralFreezeState scoped(&instance->state);
+        if (spectral_freeze_init(sample_rate) != 0) {
+            delete instance;
+            return nullptr;
+        }
+    }
+
+    return instance;
+}
+
+void spectral_freeze_instance_destroy(KesshoSpectralFreezeInstance* instance) {
+    if (instance == nullptr) {
+        return;
+    }
+
+    {
+        ScopedSpectralFreezeState scoped(&instance->state);
+        spectral_freeze_destroy();
+    }
+
+    delete instance;
+}
+
+int spectral_freeze_instance_reset(KesshoSpectralFreezeInstance* instance, float sample_rate) {
+    if (instance == nullptr) {
+        return 0;
+    }
+
+    ScopedSpectralFreezeState scoped(&instance->state);
+    return spectral_freeze_init(sample_rate) == 0 ? 1 : 0;
+}
+
+float* spectral_freeze_instance_get_input_ptr(KesshoSpectralFreezeInstance* instance) {
+    if (instance == nullptr) {
+        return nullptr;
+    }
+
+    ScopedSpectralFreezeState scoped(&instance->state);
+    return spectral_freeze_get_input_ptr();
+}
+
+float* spectral_freeze_instance_get_output_ptr(KesshoSpectralFreezeInstance* instance) {
+    if (instance == nullptr) {
+        return nullptr;
+    }
+
+    ScopedSpectralFreezeState scoped(&instance->state);
+    return spectral_freeze_get_output_ptr();
+}
+
+void spectral_freeze_instance_process_block(KesshoSpectralFreezeInstance* instance, int block_size) {
+    if (instance == nullptr) {
+        return;
+    }
+
+    ScopedSpectralFreezeState scoped(&instance->state);
+    spectral_freeze_process_block(block_size);
+}
+
+void spectral_freeze_instance_set_freeze(KesshoSpectralFreezeInstance* instance, int active) {
+    if (instance == nullptr) {
+        return;
+    }
+
+    ScopedSpectralFreezeState scoped(&instance->state);
+    spectral_freeze_set_freeze(active);
+}
+
+void spectral_freeze_instance_set_slushy(KesshoSpectralFreezeInstance* instance, int slushy) {
+    if (instance == nullptr) {
+        return;
+    }
+
+    ScopedSpectralFreezeState scoped(&instance->state);
+    spectral_freeze_set_slushy(slushy);
+}
+
+void spectral_freeze_instance_set_speed(KesshoSpectralFreezeInstance* instance, float speed) {
+    if (instance == nullptr) {
+        return;
+    }
+
+    ScopedSpectralFreezeState scoped(&instance->state);
+    spectral_freeze_set_speed(speed);
+}
+
+void spectral_freeze_instance_set_mix(KesshoSpectralFreezeInstance* instance, float mix) {
+    if (instance == nullptr) {
+        return;
+    }
+
+    ScopedSpectralFreezeState scoped(&instance->state);
+    spectral_freeze_set_mix(mix);
+}
+
+void spectral_freeze_instance_set_decay(KesshoSpectralFreezeInstance* instance, float decay) {
+    if (instance == nullptr) {
+        return;
+    }
+
+    ScopedSpectralFreezeState scoped(&instance->state);
+    spectral_freeze_set_decay(decay);
+}
+
+void spectral_freeze_instance_set_phase_jitter(KesshoSpectralFreezeInstance* instance, float jitter) {
+    if (instance == nullptr) {
+        return;
+    }
+
+    ScopedSpectralFreezeState scoped(&instance->state);
+    spectral_freeze_set_phase_jitter(jitter);
+}

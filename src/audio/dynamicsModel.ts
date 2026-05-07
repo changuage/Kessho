@@ -199,10 +199,9 @@ export function resolveDynamicsTargets(state: SliderState, sampleRate = 44100): 
   const abyssFlavor = mode === 'abyssWater' ? 1 : 0;
   const characterMix = characterEnabled ? clampUnitInterval(state.characterMix) : 0;
   const degradeMix = degradeEnabled ? clampUnitInterval(state.degradeMix ?? 0) : 0;
-  const wet = clampUnitInterval(1 - (1 - characterMix) * (1 - degradeMix));
-  const degradeWetRatio = wet > 0.0001 ? clampUnitInterval(degradeMix / wet) : 0;
+  const baseWet = clampUnitInterval(1 - (1 - characterMix) * (1 - degradeMix));
   const degradeInfluence = Math.sqrt(degradeMix);
-  const dry = 1 - wet;
+  const baseDry = 1 - baseWet;
   const characterAge = characterEnabled ? Math.max(clampUnitInterval(state.characterAge), modeActive ? defaults.age : 0) : 0;
   const rawDegradeAge = degradeEnabled ? clampUnitInterval(state.degradeAge ?? 0) : 0;
   const rawDegradeGeneration = degradeEnabled ? clampUnitInterval(state.degradeGeneration ?? 0) : 0;
@@ -316,6 +315,10 @@ export function resolveDynamicsTargets(state: SliderState, sampleRate = 44100): 
     ? rawFlutter * 0.00022 + contribution.materialWear * 0.00009 + contribution.aliasDamage * 0.0001 + modFlutter * 0.0002
     : 0;
   const cleanTapePitchFocus = cleanFlavor * degradeMix * clampUnitInterval(baseDegradeWow + baseDegradeDrift * 0.15 + modWow * 0.45);
+  const cleanTapeSerialWeight = clampUnitInterval(cleanTapePitchFocus * 3.2);
+  const dry = baseDry * (1 - cleanTapeSerialWeight);
+  const wet = clampUnitInterval(1 - dry);
+  const degradeWetRatio = wet > 0.0001 ? clampUnitInterval(degradeMix / wet) : 0;
   const wowDepthBase = (
     cyclicWow * (0.0095 + cleanTapePitchFocus * 0.012) +
     tapeWanderDepth

@@ -18,6 +18,8 @@
 extern "C" {
 #endif
 
+typedef struct KesshoGranularInstance KesshoGranularInstance;
+
 // ═══════════════ Constants ═══════════════
 
 #define KESSHO_NUM_VOICES       4
@@ -306,6 +308,49 @@ float* granular_get_buffer_ptr_l(void);
  * Get current circular buffer size in samples.
  */
 int granular_get_buffer_size(void);
+
+// ═══════════════ Instance-owned API for shared KesshoCore wrappers ═══════════════
+
+KesshoGranularInstance* granular_instance_create(float sample_rate, float buffer_seconds);
+void granular_instance_destroy(KesshoGranularInstance* instance);
+int granular_instance_reset(KesshoGranularInstance* instance, float sample_rate, float buffer_seconds);
+
+float* granular_instance_get_input_ptr(KesshoGranularInstance* instance);
+float* granular_instance_get_output_ptr(KesshoGranularInstance* instance);
+
+void granular_instance_process_block(KesshoGranularInstance* instance, int block_size);
+void granular_instance_set_enabled(KesshoGranularInstance* instance, int enabled);
+void granular_instance_set_freeze(KesshoGranularInstance* instance, int frozen, int with_feedback);
+void granular_instance_set_dry_wet(KesshoGranularInstance* instance, float level);
+void granular_instance_set_feedback(KesshoGranularInstance* instance, float amount, float lpf_hz);
+void granular_instance_set_scale(KesshoGranularInstance* instance, const int* intervals, int count);
+void granular_instance_set_chord_bias(KesshoGranularInstance* instance, const int* pitches, int count, float bias);
+void granular_instance_set_buffer_size(KesshoGranularInstance* instance, float buffer_seconds);
+void granular_instance_set_grain_shape(KesshoGranularInstance* instance, int shape);
+void granular_instance_set_bus_diffusion(KesshoGranularInstance* instance, float amount);
+void granular_instance_set_timing_randomness(KesshoGranularInstance* instance, float amount);
+void granular_instance_set_voice_mode(KesshoGranularInstance* instance, int voice, int enabled, int mode);
+void granular_instance_set_voice_position(KesshoGranularInstance* instance, int voice, int slice, float speed,
+                                          float scan_rate, int reverse, float pitch, float write_follow);
+void granular_instance_set_voice_grain(KesshoGranularInstance* instance, int voice, float density, float grain_size,
+                                       float spray, float grain_oct, float attack, float decay);
+void granular_instance_set_voice_output(KesshoGranularInstance* instance, int voice, float gain, float pan,
+                                        float blur, float stereo_spread);
+void granular_instance_set_voice_lfo(KesshoGranularInstance* instance, int voice, float pos_rate, float pos_depth,
+                                     float pan_rate, float reverse_rate, float record_rate);
+void granular_instance_set_voice_euclid_gated(KesshoGranularInstance* instance, int voice, int gated);
+void granular_instance_set_voice_euclid_muted(KesshoGranularInstance* instance, int voice, int muted);
+void granular_instance_set_legacy_params(KesshoGranularInstance* instance, float jitter, float probability,
+                                         int pitch_mode, float pitch_spread, int max_grains, float feedback);
+void granular_instance_euclid_trigger(KesshoGranularInstance* instance, int voice, float velocity,
+                                      int slice_override, float pitch_override, int has_pitch,
+                                      int reverse_override, int has_reverse);
+void granular_instance_set_random_sequence(KesshoGranularInstance* instance, const float* data, int count);
+float granular_instance_get_write_head(KesshoGranularInstance* instance);
+void granular_instance_get_voice_positions(KesshoGranularInstance* instance, float* out);
+int granular_instance_get_active_grain_count(KesshoGranularInstance* instance);
+float* granular_instance_get_buffer_ptr_l(KesshoGranularInstance* instance);
+int granular_instance_get_buffer_size(KesshoGranularInstance* instance);
 
 #ifdef __cplusplus
 }

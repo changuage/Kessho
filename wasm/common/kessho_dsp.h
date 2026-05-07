@@ -375,30 +375,57 @@ struct ADEnvelope {
     float attack = 0.001f;  // seconds
     float peak = 1.0f;
     float decay = 0.1f;     // seconds
+    int   decay_samples_remaining = -1;
+    float decay_multiplier = 1.0f;
 
-    void reset() { value = 0.0f; attacking = false; active = false; }
+    void reset() {
+        value = 0.0f;
+        attacking = false;
+        active = false;
+        decay_samples_remaining = -1;
+        decay_multiplier = 1.0f;
+    }
 
     void trigger(float p, float att, float dec) {
         peak = p;
         attack = std::max(0.0001f, att);
         decay = std::max(0.001f, dec);
-        attacking = true;
         active = true;
+        decay_samples_remaining = -1;
+        decay_multiplier = 1.0f;
+        if (attack > 0.0005f) {
+            value = 0.0f;
+            attacking = true;
+        } else {
+            value = peak;
+            attacking = false;
+        }
+    }
+
+    void begin_decay(float sr) {
+        decay_samples_remaining = std::max(1, (int)ceilf(decay * sr));
+        const float target = 0.001f;
+        const float start = std::max(fabsf(value), target);
+        decay_multiplier = powf(target / start, 1.0f / (float)decay_samples_remaining);
     }
 
     /** Process one sample. Returns envelope value. */
     float process(float sr) {
         if (!active) return 0.0f;
         if (attacking) {
-            value += (peak - value) * (1.0f / (attack * sr));
+            value += peak * (1.0f / (attack * sr));
             if (value >= peak * 0.999f) {
                 value = peak;
                 attacking = false;
+                decay_samples_remaining = -1;
             }
         } else {
-            // Exponential decay
-            value *= fast_expf(-1.0f / (decay * sr));
-            if (value < 0.0001f) {
+            if (decay_samples_remaining < 0) {
+                begin_decay(sr);
+            }
+            value *= decay_multiplier;
+            decay_samples_remaining -= 1;
+            if (decay_samples_remaining <= 0 || value < 0.0001f) {
                 value = 0.0f;
                 active = false;
             }

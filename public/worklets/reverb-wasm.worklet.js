@@ -33,6 +33,7 @@ class ReverbWasmProcessor extends AudioWorkletProcessor {
     this.outputPtr = 0;
     this.ready = false;
     this.missingExportWarnings = new Set();
+    this.resetOnNextInput = false;
 
     // Perf measurement
     this.perfEnabled = false;
@@ -46,6 +47,7 @@ class ReverbWasmProcessor extends AudioWorkletProcessor {
 
     // Buffer params that arrive before WASM is ready
     this.pendingParams = null;
+    this.lastParams = null;
 
     this.port.onmessage = (event) => this.handleMessage(event.data);
   }
@@ -105,6 +107,13 @@ class ReverbWasmProcessor extends AudioWorkletProcessor {
         }
         break;
 
+      case 'reset':
+        if (this.ready && this.wasm) {
+          this.resetReverbState();
+          this.resetOnNextInput = true;
+        }
+        break;
+
       case 'enablePerf':
         this.perfEnabled = data.enabled;
         this.perfTotalTime = 0;
@@ -138,8 +147,16 @@ class ReverbWasmProcessor extends AudioWorkletProcessor {
     return false;
   }
 
+  resetReverbState() {
+    this.wasm.reverb_init(sampleRate);
+    this.inputPtr = this.wasm.reverb_get_input_ptr();
+    this.outputPtr = this.wasm.reverb_get_output_ptr();
+    if (this.lastParams) this.applyParams(this.lastParams);
+  }
+
   /** Translate reverb params object → C API calls */
   applyParams(p) {
+    this.lastParams = { ...(p ?? {}) };
     const w = this.wasm;
 
     // Type
@@ -262,11 +279,28 @@ class ReverbWasmProcessor extends AudioWorkletProcessor {
     const output = outputs[0];
     const blockSize = output[0]?.length || 128;
     const heap = this.getHeapF32();
+    const inL = input?.[0];
+    const inR = input?.[1] || inL;
+    let inputPeak = 0;
+    if (inL) {
+      for (let i = 0; i < blockSize; i++) {
+        inputPeak = Math.max(inputPeak, Math.abs(inL[i] || 0), Math.abs(inR ? inR[i] || 0 : inL[i] || 0));
+      }
+    }
+    if (this.resetOnNextInput && inputPeak <= 1e-7) {
+      const outL = output[0];
+      const outR = output[1] || outL;
+      if (outL) outL.fill(0);
+      if (outR && outR !== outL) outR.fill(0);
+      return true;
+    }
+    if (this.resetOnNextInput) {
+      this.resetReverbState();
+      this.resetOnNextInput = false;
+    }
 
     // ── Copy input to WASM (interleaved stereo) ──
     const inOffset = this.inputPtr >> 2;
-    const inL = input?.[0];
-    const inR = input?.[1] || inL;
     if (inL) {
       for (let i = 0; i < blockSize; i++) {
         heap[inOffset + i * 2] = inL[i];

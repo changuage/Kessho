@@ -25,6 +25,8 @@
 extern "C" {
 #endif
 
+typedef struct KesshoReverbInstance KesshoReverbInstance;
+
 /* ────── Lifecycle ────── */
 
 int   reverb_init(float sample_rate);
@@ -111,6 +113,49 @@ void  reverb_set_transient_smooth(float amount);
 
 /** Early-reflection low-pass filter frequency.  200-12000 Hz */
 void  reverb_set_er_lp_freq(float freq);
+
+/* ────── Instance-owned API for shared KesshoCore wrappers ────── */
+
+KesshoReverbInstance* reverb_instance_create(float sample_rate);
+void  reverb_instance_destroy(KesshoReverbInstance* instance);
+int   reverb_instance_reset(KesshoReverbInstance* instance, float sample_rate);
+
+float* reverb_instance_get_input_ptr(KesshoReverbInstance* instance);
+float* reverb_instance_get_output_ptr(KesshoReverbInstance* instance);
+
+void  reverb_instance_process_block(KesshoReverbInstance* instance, int block_size);
+void  reverb_instance_set_type(KesshoReverbInstance* instance, int type);
+void  reverb_instance_set_quality(KesshoReverbInstance* instance, int quality);
+void  reverb_instance_set_params(
+    KesshoReverbInstance* instance,
+    float decay,
+    float size,
+    float damping,
+    float diffusion,
+    float modulation,
+    float predelay,
+    float width
+);
+void  reverb_instance_set_shimmer(KesshoReverbInstance* instance, float amount, float pitch_semitones);
+void  reverb_instance_set_slow_mod(KesshoReverbInstance* instance, float rate_hz, float depth);
+void  reverb_instance_set_reverse(KesshoReverbInstance* instance, float amount, float length_seconds);
+void  reverb_instance_set_chorus(KesshoReverbInstance* instance, float rate_hz, float depth);
+void  reverb_instance_set_mod_character(KesshoReverbInstance* instance, int mode);
+void  reverb_instance_set_multiband_damp(
+    KesshoReverbInstance* instance,
+    float damp_low,
+    float damp_high,
+    float crossover_hz
+);
+void  reverb_instance_set_input_tone(KesshoReverbInstance* instance, float tone);
+void  reverb_instance_set_shimmer_feedback(KesshoReverbInstance* instance, float feedback);
+void  reverb_instance_set_warp(KesshoReverbInstance* instance, float amount);
+void  reverb_instance_set_cross_feed(KesshoReverbInstance* instance, float amount);
+void  reverb_instance_set_early_reflections(KesshoReverbInstance* instance, float amount);
+void  reverb_instance_set_air_absorption(KesshoReverbInstance* instance, float amount);
+void  reverb_instance_set_saturation_mode(KesshoReverbInstance* instance, int mode);
+void  reverb_instance_set_transient_smooth(KesshoReverbInstance* instance, float amount);
+void  reverb_instance_set_er_lp_freq(KesshoReverbInstance* instance, float freq);
 
 #ifdef __cplusplus
 }

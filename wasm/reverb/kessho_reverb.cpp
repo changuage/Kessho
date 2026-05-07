@@ -20,6 +20,7 @@
 #include <cmath>
 #include <cstring>
 #include <cstdlib>
+#include <new>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -78,7 +79,6 @@ static const float STEREO_TAPS_R[16] = {
 
 // Dattorro plate reverb delay times (samples at 48 kHz)
 // Scaled from Jon Dattorro, "Effect Design Pt.1", JAES 1997 (29761 Hz → 48000 Hz)
-static constexpr float DAT_SCALE = 48000.0f / 29761.0f;  // ≈1.613
 
 // Input diffusion allpass delay lengths (samples at 48k)
 static const int DAT_IN_AP[4] = {229, 173, 611, 447};
@@ -116,7 +116,6 @@ static const float ER_GAINS[ER_TAP_COUNT]   = { 0.85f, 0.72f, 0.60f, 0.50f, 0.42
 
 // Multi-tap read — additional prime-spaced taps per FDN line for denser echoes
 static constexpr int MULTITAP_COUNT = 3;
-static const float MULTITAP_OFFSETS[MULTITAP_COUNT] = { 0.0f, 0.381966f, 0.618034f };  // golden ratio positions
 static const float MULTITAP_GAINS[MULTITAP_COUNT]   = { 0.6f, 0.25f, 0.15f };
 
 // ═══════════════ Fast Sine Approximation ═══════════════
@@ -460,7 +459,7 @@ struct SimpleRNG {
 
 // ═══════════════ Engine State ═══════════════
 
-static struct {
+struct ReverbState {
     float sampleRate;
     float twoPiOverSr;
     float scale;  // sampleRate / 48000
@@ -625,7 +624,38 @@ static struct {
     float bloomGain;
 
     int initialized;
-} g_reverb;
+};
+
+static ReverbState g_default_reverb;
+static thread_local ReverbState* g_current_reverb = &g_default_reverb;
+
+static inline ReverbState& reverb_current_state() {
+    return *g_current_reverb;
+}
+
+class ScopedReverbState {
+public:
+    explicit ScopedReverbState(ReverbState& state)
+        : previous_(g_current_reverb) {
+        g_current_reverb = &state;
+    }
+
+    ~ScopedReverbState() {
+        g_current_reverb = previous_;
+    }
+
+    ScopedReverbState(const ScopedReverbState&) = delete;
+    ScopedReverbState& operator=(const ScopedReverbState&) = delete;
+
+private:
+    ReverbState* previous_;
+};
+
+#define g_reverb reverb_current_state()
+
+struct KesshoReverbInstance {
+    ReverbState state;
+};
 
 // ═══════════════ Internal helpers ═══════════════
 
@@ -745,6 +775,9 @@ static inline void mixFDN4(const float* state, float* out) {
 // ═══════════════ Public API ═══════════════
 
 int reverb_init(float sample_rate) {
+    if (g_reverb.initialized) {
+        reverb_destroy();
+    }
     memset(&g_reverb, 0, sizeof(g_reverb));
     g_reverb.sampleRate = sample_rate;
     g_reverb.twoPiOverSr = 2.0f * (float)M_PI / sample_rate;
@@ -928,6 +961,9 @@ int reverb_init(float sample_rate) {
 }
 
 void reverb_destroy(void) {
+    if (!g_reverb.initialized) {
+        return;
+    }
     for (int i = 0; i < FDN_MAX_CHANNELS; i++) {
         g_reverb.fdnDelays[i].destroy();
         g_reverb.fdnInLoopAP[i].destroy();
@@ -940,6 +976,9 @@ void reverb_destroy(void) {
     g_reverb.transSmoothL.destroy(); g_reverb.transSmoothR.destroy();
     free(g_reverb.reverseBufL);
     free(g_reverb.reverseBufR);
+    g_reverb.reverseBufL = nullptr;
+    g_reverb.reverseBufR = nullptr;
+    g_reverb.reverseBufSize = 0;
     // Early reflections
     g_reverb.erDelayL.destroy();
     g_reverb.erDelayR.destroy();
@@ -969,6 +1008,7 @@ void reverb_set_quality(int quality) {
 
 void reverb_set_params(float decay, float size, float damping, float diffusion,
                        float modulation, float predelay, float width) {
+    (void)damping;
     g_reverb.decay = decay;
     g_reverb.size = size;
     // Legacy `damping` parameter ignored — multi-band damping (dampLow/dampHigh)
@@ -1054,6 +1094,248 @@ void reverb_set_transient_smooth(float amount) {
 
 void reverb_set_er_lp_freq(float freq) {
     g_reverb.erLpFreq = fmaxf(200.0f, fminf(12000.0f, freq));
+}
+
+KesshoReverbInstance* reverb_instance_create(float sample_rate) {
+    KesshoReverbInstance* instance = new (std::nothrow) KesshoReverbInstance{};
+    if (instance == nullptr) {
+        return nullptr;
+    }
+
+    int init_result = 0;
+    {
+        ScopedReverbState scoped(instance->state);
+        init_result = reverb_init(sample_rate);
+    }
+
+    if (init_result != 0) {
+        delete instance;
+        return nullptr;
+    }
+
+    return instance;
+}
+
+void reverb_instance_destroy(KesshoReverbInstance* instance) {
+    if (instance == nullptr) {
+        return;
+    }
+
+    {
+        ScopedReverbState scoped(instance->state);
+        reverb_destroy();
+    }
+    delete instance;
+}
+
+int reverb_instance_reset(KesshoReverbInstance* instance, float sample_rate) {
+    if (instance == nullptr) {
+        return 0;
+    }
+
+    ScopedReverbState scoped(instance->state);
+    return reverb_init(sample_rate) == 0 ? 1 : 0;
+}
+
+float* reverb_instance_get_input_ptr(KesshoReverbInstance* instance) {
+    if (instance == nullptr) {
+        return nullptr;
+    }
+
+    ScopedReverbState scoped(instance->state);
+    return reverb_get_input_ptr();
+}
+
+float* reverb_instance_get_output_ptr(KesshoReverbInstance* instance) {
+    if (instance == nullptr) {
+        return nullptr;
+    }
+
+    ScopedReverbState scoped(instance->state);
+    return reverb_get_output_ptr();
+}
+
+void reverb_instance_process_block(KesshoReverbInstance* instance, int block_size) {
+    if (instance == nullptr) {
+        return;
+    }
+
+    ScopedReverbState scoped(instance->state);
+    reverb_process_block(block_size);
+}
+
+void reverb_instance_set_type(KesshoReverbInstance* instance, int type) {
+    if (instance == nullptr) {
+        return;
+    }
+
+    ScopedReverbState scoped(instance->state);
+    reverb_set_type(type);
+}
+
+void reverb_instance_set_quality(KesshoReverbInstance* instance, int quality) {
+    if (instance == nullptr) {
+        return;
+    }
+
+    ScopedReverbState scoped(instance->state);
+    reverb_set_quality(quality);
+}
+
+void reverb_instance_set_params(
+    KesshoReverbInstance* instance,
+    float decay,
+    float size,
+    float damping,
+    float diffusion,
+    float modulation,
+    float predelay,
+    float width) {
+    if (instance == nullptr) {
+        return;
+    }
+
+    ScopedReverbState scoped(instance->state);
+    reverb_set_params(decay, size, damping, diffusion, modulation, predelay, width);
+}
+
+void reverb_instance_set_shimmer(KesshoReverbInstance* instance, float amount, float pitch_semitones) {
+    if (instance == nullptr) {
+        return;
+    }
+
+    ScopedReverbState scoped(instance->state);
+    reverb_set_shimmer(amount, pitch_semitones);
+}
+
+void reverb_instance_set_slow_mod(KesshoReverbInstance* instance, float rate_hz, float depth) {
+    if (instance == nullptr) {
+        return;
+    }
+
+    ScopedReverbState scoped(instance->state);
+    reverb_set_slow_mod(rate_hz, depth);
+}
+
+void reverb_instance_set_reverse(KesshoReverbInstance* instance, float amount, float length_seconds) {
+    if (instance == nullptr) {
+        return;
+    }
+
+    ScopedReverbState scoped(instance->state);
+    reverb_set_reverse(amount, length_seconds);
+}
+
+void reverb_instance_set_chorus(KesshoReverbInstance* instance, float rate_hz, float depth) {
+    if (instance == nullptr) {
+        return;
+    }
+
+    ScopedReverbState scoped(instance->state);
+    reverb_set_chorus(rate_hz, depth);
+}
+
+void reverb_instance_set_mod_character(KesshoReverbInstance* instance, int mode) {
+    if (instance == nullptr) {
+        return;
+    }
+
+    ScopedReverbState scoped(instance->state);
+    reverb_set_mod_character(mode);
+}
+
+void reverb_instance_set_multiband_damp(
+    KesshoReverbInstance* instance,
+    float damp_low,
+    float damp_high,
+    float crossover_hz) {
+    if (instance == nullptr) {
+        return;
+    }
+
+    ScopedReverbState scoped(instance->state);
+    reverb_set_multiband_damp(damp_low, damp_high, crossover_hz);
+}
+
+void reverb_instance_set_input_tone(KesshoReverbInstance* instance, float tone) {
+    if (instance == nullptr) {
+        return;
+    }
+
+    ScopedReverbState scoped(instance->state);
+    reverb_set_input_tone(tone);
+}
+
+void reverb_instance_set_shimmer_feedback(KesshoReverbInstance* instance, float feedback) {
+    if (instance == nullptr) {
+        return;
+    }
+
+    ScopedReverbState scoped(instance->state);
+    reverb_set_shimmer_feedback(feedback);
+}
+
+void reverb_instance_set_warp(KesshoReverbInstance* instance, float amount) {
+    if (instance == nullptr) {
+        return;
+    }
+
+    ScopedReverbState scoped(instance->state);
+    reverb_set_warp(amount);
+}
+
+void reverb_instance_set_cross_feed(KesshoReverbInstance* instance, float amount) {
+    if (instance == nullptr) {
+        return;
+    }
+
+    ScopedReverbState scoped(instance->state);
+    reverb_set_cross_feed(amount);
+}
+
+void reverb_instance_set_early_reflections(KesshoReverbInstance* instance, float amount) {
+    if (instance == nullptr) {
+        return;
+    }
+
+    ScopedReverbState scoped(instance->state);
+    reverb_set_early_reflections(amount);
+}
+
+void reverb_instance_set_air_absorption(KesshoReverbInstance* instance, float amount) {
+    if (instance == nullptr) {
+        return;
+    }
+
+    ScopedReverbState scoped(instance->state);
+    reverb_set_air_absorption(amount);
+}
+
+void reverb_instance_set_saturation_mode(KesshoReverbInstance* instance, int mode) {
+    if (instance == nullptr) {
+        return;
+    }
+
+    ScopedReverbState scoped(instance->state);
+    reverb_set_saturation_mode(mode);
+}
+
+void reverb_instance_set_transient_smooth(KesshoReverbInstance* instance, float amount) {
+    if (instance == nullptr) {
+        return;
+    }
+
+    ScopedReverbState scoped(instance->state);
+    reverb_set_transient_smooth(amount);
+}
+
+void reverb_instance_set_er_lp_freq(KesshoReverbInstance* instance, float freq) {
+    if (instance == nullptr) {
+        return;
+    }
+
+    ScopedReverbState scoped(instance->state);
+    reverb_set_er_lp_freq(freq);
 }
 
 // ═══════════════ Dattorro Plate Reverb ═══════════════

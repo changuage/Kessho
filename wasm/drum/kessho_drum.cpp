@@ -17,6 +17,7 @@
 #include <cstring>
 #include <cmath>
 #include <algorithm>
+#include <new>
 
 using namespace kessho;
 
@@ -298,49 +299,101 @@ struct DrumTriggerEntry {
 // Engine State
 // ═══════════════════════════════════════════════════════════════════════════════
 
-static float g_sample_rate = 48000;
-static SineTable g_sine;
-static PRNG g_rng;
+struct DrumState {
+    float g_sample_rate = 48000;
+    SineTable g_sine;
+    PRNG g_rng;
 
-// Voice pool
-static DrumVoice g_voices[DRUM_TOTAL_VOICES];
+    DrumVoice g_voices[DRUM_TOTAL_VOICES];
 
-// Per-voice-type params
-static SubParams      g_sub;
-static KickParams     g_kick;
-static ClickParams    g_click;
-static BeepHiParams   g_beep_hi;
-static BeepLoParams   g_beep_lo;
-static NoiseParams    g_noise;
-static MembraneParams g_membrane;
+    SubParams      g_sub;
+    KickParams     g_kick;
+    ClickParams    g_click;
+    BeepHiParams   g_beep_hi;
+    BeepLoParams   g_beep_lo;
+    NoiseParams    g_noise;
+    MembraneParams g_membrane;
 
-// Trigger queue (ring buffer)
-static DrumTriggerEntry g_trigger_queue[DRUM_TRIGGER_QUEUE_SIZE];
-static int g_trigger_read = 0;
-static int g_trigger_write = 0;
+    DrumTriggerEntry g_trigger_queue[DRUM_TRIGGER_QUEUE_SIZE] = {};
+    int g_trigger_read = 0;
+    int g_trigger_write = 0;
 
-// Per-trigger overrides
-static float g_morph_override = -1;   // <0 = no override
-static float g_distance_override = -1;
-static float g_pitch_override = 0;    // semitones
-static float g_ratchet_decay_cap = 1e10f;
-static float g_ratchet_attack_cap = 1e10f;
+    float g_morph_override = -1;
+    float g_distance_override = -1;
+    float g_pitch_override = 0;
+    float g_ratchet_decay_cap = 1e10f;
+    float g_ratchet_attack_cap = 1e10f;
 
-// Delay
-static StereoPingPongDelay g_delay;
-static float g_delay_sends[DRUM_NUM_VOICE_TYPES] = {};
+    StereoPingPongDelay g_delay;
+    float g_delay_sends[DRUM_NUM_VOICE_TYPES] = {};
 
-// Master output
-static float g_master_level = 0.8f;
-static float g_reverb_send_level = 0.1f;
+    float g_master_level = 0.8f;
+    float g_reverb_send_level = 0.1f;
 
-// Output buffers
-static float g_output[DRUM_MAX_BLOCK_SIZE * 2];
-static float g_reverb_output[DRUM_MAX_BLOCK_SIZE * 2];
+    float g_output[DRUM_MAX_BLOCK_SIZE * 2] = {};
+    float g_reverb_output[DRUM_MAX_BLOCK_SIZE * 2] = {};
 
-// Scratch buffers for per-voice rendering
-static float g_voice_buf_l[DRUM_MAX_BLOCK_SIZE];
-static float g_voice_buf_r[DRUM_MAX_BLOCK_SIZE];
+    float g_voice_buf_l[DRUM_MAX_BLOCK_SIZE] = {};
+    float g_voice_buf_r[DRUM_MAX_BLOCK_SIZE] = {};
+    int initialized = 0;
+};
+
+static DrumState g_default_drum;
+static thread_local DrumState* g_drum_slot = &g_default_drum;
+
+static DrumState& drum_current_state() {
+    return *g_drum_slot;
+}
+
+class ScopedDrumState {
+public:
+    explicit ScopedDrumState(DrumState* state) : previous_(g_drum_slot) {
+        g_drum_slot = state != nullptr ? state : &g_default_drum;
+    }
+
+    ~ScopedDrumState() {
+        g_drum_slot = previous_;
+    }
+
+    ScopedDrumState(const ScopedDrumState&) = delete;
+    ScopedDrumState& operator=(const ScopedDrumState&) = delete;
+
+private:
+    DrumState* previous_;
+};
+
+struct KesshoDrumInstance {
+    DrumState state;
+};
+
+#define g_sample_rate drum_current_state().g_sample_rate
+#define g_sine drum_current_state().g_sine
+#define g_rng drum_current_state().g_rng
+#define g_voices drum_current_state().g_voices
+#define g_sub drum_current_state().g_sub
+#define g_kick drum_current_state().g_kick
+#define g_click drum_current_state().g_click
+#define g_beep_hi drum_current_state().g_beep_hi
+#define g_beep_lo drum_current_state().g_beep_lo
+#define g_noise drum_current_state().g_noise
+#define g_membrane drum_current_state().g_membrane
+#define g_trigger_queue drum_current_state().g_trigger_queue
+#define g_trigger_read drum_current_state().g_trigger_read
+#define g_trigger_write drum_current_state().g_trigger_write
+#define g_morph_override drum_current_state().g_morph_override
+#define g_distance_override drum_current_state().g_distance_override
+#define g_pitch_override drum_current_state().g_pitch_override
+#define g_ratchet_decay_cap drum_current_state().g_ratchet_decay_cap
+#define g_ratchet_attack_cap drum_current_state().g_ratchet_attack_cap
+#define g_delay drum_current_state().g_delay
+#define g_delay_sends drum_current_state().g_delay_sends
+#define g_master_level drum_current_state().g_master_level
+#define g_reverb_send_level drum_current_state().g_reverb_send_level
+#define g_output drum_current_state().g_output
+#define g_reverb_output drum_current_state().g_reverb_output
+#define g_voice_buf_l drum_current_state().g_voice_buf_l
+#define g_voice_buf_r drum_current_state().g_voice_buf_r
+#define g_initialized drum_current_state().initialized
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Helpers
@@ -430,8 +483,6 @@ static void trigger_sub(DrumVoice& v, float velocity) {
     v.delay_send = g_delay_sends[DRUM_VOICE_SUB];
 
     // Main oscillator
-    Waveform wave = (p.shape < 0.33f) ? WAVE_SINE :
-                    (p.shape < 0.66f) ? WAVE_TRIANGLE : WAVE_SAWTOOTH;
     v.osc1.freq = freq;
     v.osc1.phase = 0;
     v.filter_mode = SVF_LOWPASS;
@@ -813,7 +864,6 @@ static void trigger_beep_lo(DrumVoice& v, float velocity) {
             v.env.trigger(osc_amp * level, attack, decay);
         } else {
             // Standard oscillator
-            float eff_tone = p.tone * dist.dBright;
             v.osc1.freq = freq;
             v.osc1.phase = 0;
 
@@ -1360,6 +1410,11 @@ static void render_voice(DrumVoice& v, float* out_l, float* out_r, int block_siz
 extern "C" {
 
 int drum_init(float sample_rate) {
+    if (g_initialized) {
+        g_delay.destroy();
+        g_initialized = 0;
+    }
+
     g_sample_rate = sample_rate;
     g_sine.init();
     g_rng.seed(42);
@@ -1379,12 +1434,18 @@ int drum_init(float sample_rate) {
     memset(g_output, 0, sizeof(g_output));
     memset(g_reverb_output, 0, sizeof(g_reverb_output));
     memset(g_delay_sends, 0, sizeof(g_delay_sends));
+    g_initialized = 1;
 
     return 0;
 }
 
 void drum_destroy(void) {
-    g_delay.destroy();
+    if (g_initialized) {
+        g_delay.destroy();
+        g_initialized = 0;
+    }
+    memset(g_output, 0, sizeof(g_output));
+    memset(g_reverb_output, 0, sizeof(g_reverb_output));
 }
 
 float* drum_get_output_ptr(void) {
@@ -1637,6 +1698,220 @@ int drum_get_active_count(void) {
         if (g_voices[i].active) count++;
     }
     return count;
+}
+
+KesshoDrumInstance* drum_instance_create(float sample_rate) {
+    KesshoDrumInstance* instance = new (std::nothrow) KesshoDrumInstance{};
+    if (!instance) return nullptr;
+
+    int init_result = 0;
+    {
+        ScopedDrumState scoped(&instance->state);
+        init_result = drum_init(sample_rate);
+    }
+
+    if (init_result != 0) {
+        delete instance;
+        return nullptr;
+    }
+
+    return instance;
+}
+
+void drum_instance_destroy(KesshoDrumInstance* instance) {
+    if (!instance) return;
+    {
+        ScopedDrumState scoped(&instance->state);
+        drum_destroy();
+    }
+    delete instance;
+}
+
+int drum_instance_reset(KesshoDrumInstance* instance, float sample_rate) {
+    if (!instance) return 0;
+    ScopedDrumState scoped(&instance->state);
+    return drum_init(sample_rate) == 0 ? 1 : 0;
+}
+
+float* drum_instance_get_output_ptr(KesshoDrumInstance* instance) {
+    if (!instance) return nullptr;
+    ScopedDrumState scoped(&instance->state);
+    return drum_get_output_ptr();
+}
+
+float* drum_instance_get_reverb_send_ptr(KesshoDrumInstance* instance) {
+    if (!instance) return nullptr;
+    ScopedDrumState scoped(&instance->state);
+    return drum_get_reverb_send_ptr();
+}
+
+void drum_instance_process_block(KesshoDrumInstance* instance, int block_size) {
+    if (!instance) return;
+    ScopedDrumState scoped(&instance->state);
+    drum_process_block(block_size);
+}
+
+void drum_instance_trigger(KesshoDrumInstance* instance, int voice_type, float velocity, int sample_offset) {
+    if (!instance) return;
+    ScopedDrumState scoped(&instance->state);
+    drum_trigger(voice_type, velocity, sample_offset);
+}
+
+#define DRUM_INSTANCE_SETTER1(name, type_a) \
+    void drum_instance_##name(KesshoDrumInstance* instance, type_a a) { \
+        if (!instance) return; \
+        ScopedDrumState scoped(&instance->state); \
+        drum_##name(a); \
+    }
+
+#define DRUM_INSTANCE_SETTER2(name, type_a, type_b) \
+    void drum_instance_##name(KesshoDrumInstance* instance, type_a a, type_b b) { \
+        if (!instance) return; \
+        ScopedDrumState scoped(&instance->state); \
+        drum_##name(a, b); \
+    }
+
+DRUM_INSTANCE_SETTER1(set_sub_freq, float)
+DRUM_INSTANCE_SETTER1(set_sub_decay, float)
+DRUM_INSTANCE_SETTER1(set_sub_level, float)
+DRUM_INSTANCE_SETTER1(set_sub_tone, float)
+DRUM_INSTANCE_SETTER1(set_sub_shape, float)
+DRUM_INSTANCE_SETTER1(set_sub_pitch_env, float)
+DRUM_INSTANCE_SETTER1(set_sub_pitch_decay, float)
+DRUM_INSTANCE_SETTER1(set_sub_drive, float)
+DRUM_INSTANCE_SETTER1(set_sub_sub_octave, float)
+DRUM_INSTANCE_SETTER1(set_sub_attack, float)
+DRUM_INSTANCE_SETTER1(set_sub_variation, float)
+DRUM_INSTANCE_SETTER1(set_sub_distance, float)
+
+DRUM_INSTANCE_SETTER1(set_kick_freq, float)
+DRUM_INSTANCE_SETTER1(set_kick_pitch_env, float)
+DRUM_INSTANCE_SETTER1(set_kick_pitch_decay, float)
+DRUM_INSTANCE_SETTER1(set_kick_decay, float)
+DRUM_INSTANCE_SETTER1(set_kick_level, float)
+DRUM_INSTANCE_SETTER1(set_kick_click, float)
+DRUM_INSTANCE_SETTER1(set_kick_body, float)
+DRUM_INSTANCE_SETTER1(set_kick_punch, float)
+DRUM_INSTANCE_SETTER1(set_kick_tail, float)
+DRUM_INSTANCE_SETTER1(set_kick_tone, float)
+DRUM_INSTANCE_SETTER1(set_kick_attack, float)
+DRUM_INSTANCE_SETTER1(set_kick_variation, float)
+DRUM_INSTANCE_SETTER1(set_kick_distance, float)
+
+DRUM_INSTANCE_SETTER1(set_click_decay, float)
+DRUM_INSTANCE_SETTER1(set_click_filter, float)
+DRUM_INSTANCE_SETTER1(set_click_tone, float)
+DRUM_INSTANCE_SETTER1(set_click_level, float)
+DRUM_INSTANCE_SETTER1(set_click_resonance, float)
+DRUM_INSTANCE_SETTER1(set_click_pitch, float)
+DRUM_INSTANCE_SETTER1(set_click_pitch_env, float)
+DRUM_INSTANCE_SETTER1(set_click_mode, int)
+DRUM_INSTANCE_SETTER1(set_click_grain_count, int)
+DRUM_INSTANCE_SETTER1(set_click_grain_spread, float)
+DRUM_INSTANCE_SETTER1(set_click_stereo_width, float)
+DRUM_INSTANCE_SETTER1(set_click_exciter_color, float)
+DRUM_INSTANCE_SETTER1(set_click_attack, float)
+DRUM_INSTANCE_SETTER1(set_click_variation, float)
+DRUM_INSTANCE_SETTER1(set_click_distance, float)
+
+DRUM_INSTANCE_SETTER1(set_beep_hi_freq, float)
+DRUM_INSTANCE_SETTER1(set_beep_hi_attack, float)
+DRUM_INSTANCE_SETTER1(set_beep_hi_decay, float)
+DRUM_INSTANCE_SETTER1(set_beep_hi_level, float)
+DRUM_INSTANCE_SETTER1(set_beep_hi_tone, float)
+DRUM_INSTANCE_SETTER1(set_beep_hi_inharmonic, float)
+DRUM_INSTANCE_SETTER1(set_beep_hi_partials, int)
+DRUM_INSTANCE_SETTER1(set_beep_hi_shimmer, float)
+DRUM_INSTANCE_SETTER1(set_beep_hi_shimmer_rate, float)
+DRUM_INSTANCE_SETTER1(set_beep_hi_brightness, float)
+DRUM_INSTANCE_SETTER1(set_beep_hi_feedback, float)
+DRUM_INSTANCE_SETTER1(set_beep_hi_mod_env_decay, float)
+DRUM_INSTANCE_SETTER1(set_beep_hi_noise_in_mod, float)
+DRUM_INSTANCE_SETTER1(set_beep_hi_mod_ratio, float)
+DRUM_INSTANCE_SETTER1(set_beep_hi_mod_ratio_fine, float)
+DRUM_INSTANCE_SETTER1(set_beep_hi_mod_env_end, float)
+DRUM_INSTANCE_SETTER1(set_beep_hi_noise_decay, float)
+DRUM_INSTANCE_SETTER1(set_beep_hi_variation, float)
+DRUM_INSTANCE_SETTER1(set_beep_hi_distance, float)
+
+DRUM_INSTANCE_SETTER1(set_beep_lo_freq, float)
+DRUM_INSTANCE_SETTER1(set_beep_lo_attack, float)
+DRUM_INSTANCE_SETTER1(set_beep_lo_decay, float)
+DRUM_INSTANCE_SETTER1(set_beep_lo_level, float)
+DRUM_INSTANCE_SETTER1(set_beep_lo_tone, float)
+DRUM_INSTANCE_SETTER1(set_beep_lo_pitch_env, float)
+DRUM_INSTANCE_SETTER1(set_beep_lo_pitch_decay, float)
+DRUM_INSTANCE_SETTER1(set_beep_lo_body, float)
+DRUM_INSTANCE_SETTER1(set_beep_lo_pluck, float)
+DRUM_INSTANCE_SETTER1(set_beep_lo_pluck_damp, float)
+DRUM_INSTANCE_SETTER1(set_beep_lo_modal, float)
+DRUM_INSTANCE_SETTER1(set_beep_lo_modal_q, float)
+DRUM_INSTANCE_SETTER1(set_beep_lo_modal_inharmonic, float)
+DRUM_INSTANCE_SETTER1(set_beep_lo_modal_spread, float)
+DRUM_INSTANCE_SETTER1(set_beep_lo_modal_cut, float)
+DRUM_INSTANCE_SETTER1(set_beep_lo_osc_gain, float)
+DRUM_INSTANCE_SETTER1(set_beep_lo_modal_gain, float)
+DRUM_INSTANCE_SETTER1(set_beep_lo_variation, float)
+DRUM_INSTANCE_SETTER1(set_beep_lo_distance, float)
+
+DRUM_INSTANCE_SETTER1(set_noise_freq, float)
+DRUM_INSTANCE_SETTER1(set_noise_decay, float)
+DRUM_INSTANCE_SETTER1(set_noise_level, float)
+DRUM_INSTANCE_SETTER1(set_noise_q, float)
+DRUM_INSTANCE_SETTER1(set_noise_filter_type, int)
+DRUM_INSTANCE_SETTER1(set_noise_attack, float)
+DRUM_INSTANCE_SETTER1(set_noise_formant, float)
+DRUM_INSTANCE_SETTER1(set_noise_breath, float)
+DRUM_INSTANCE_SETTER1(set_noise_filter_env_depth, float)
+DRUM_INSTANCE_SETTER1(set_noise_filter_env_decay, float)
+DRUM_INSTANCE_SETTER1(set_noise_density, float)
+DRUM_INSTANCE_SETTER1(set_noise_color_lfo, float)
+DRUM_INSTANCE_SETTER1(set_noise_variation, float)
+DRUM_INSTANCE_SETTER1(set_noise_distance, float)
+
+DRUM_INSTANCE_SETTER1(set_membrane_freq, float)
+DRUM_INSTANCE_SETTER1(set_membrane_decay, float)
+DRUM_INSTANCE_SETTER1(set_membrane_level, float)
+DRUM_INSTANCE_SETTER1(set_membrane_tension, float)
+DRUM_INSTANCE_SETTER1(set_membrane_material, float)
+DRUM_INSTANCE_SETTER1(set_membrane_size, float)
+DRUM_INSTANCE_SETTER1(set_membrane_damping, float)
+DRUM_INSTANCE_SETTER1(set_membrane_strike, float)
+DRUM_INSTANCE_SETTER1(set_membrane_wire_buzz, float)
+DRUM_INSTANCE_SETTER1(set_membrane_attack, float)
+DRUM_INSTANCE_SETTER1(set_membrane_variation, float)
+DRUM_INSTANCE_SETTER1(set_membrane_distance, float)
+
+DRUM_INSTANCE_SETTER1(set_delay_enabled, int)
+DRUM_INSTANCE_SETTER1(set_delay_time_l, float)
+DRUM_INSTANCE_SETTER1(set_delay_time_r, float)
+DRUM_INSTANCE_SETTER1(set_delay_feedback, float)
+DRUM_INSTANCE_SETTER1(set_delay_filter, float)
+DRUM_INSTANCE_SETTER1(set_delay_mix, float)
+DRUM_INSTANCE_SETTER2(set_delay_send, int, float)
+
+DRUM_INSTANCE_SETTER1(set_trigger_morph, float)
+DRUM_INSTANCE_SETTER1(set_trigger_distance, float)
+DRUM_INSTANCE_SETTER1(set_trigger_pitch, float)
+DRUM_INSTANCE_SETTER2(set_trigger_ratchet_cap, float, float)
+
+void drum_instance_clear_trigger_overrides(KesshoDrumInstance* instance) {
+    if (!instance) return;
+    ScopedDrumState scoped(&instance->state);
+    drum_clear_trigger_overrides();
+}
+
+DRUM_INSTANCE_SETTER1(set_master_level, float)
+DRUM_INSTANCE_SETTER1(set_reverb_send, float)
+DRUM_INSTANCE_SETTER1(set_rng_seed, unsigned int)
+
+#undef DRUM_INSTANCE_SETTER1
+#undef DRUM_INSTANCE_SETTER2
+
+int drum_instance_get_active_count(KesshoDrumInstance* instance) {
+    if (!instance) return 0;
+    ScopedDrumState scoped(&instance->state);
+    return drum_get_active_count();
 }
 
 } // extern "C"

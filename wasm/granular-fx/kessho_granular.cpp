@@ -13,6 +13,7 @@
 #include <cmath>
 #include <cstring>
 #include <cstdlib>
+#include <new>
 
 #ifdef __wasm_simd128__
 #include <wasm_simd128.h>
@@ -249,8 +250,38 @@ struct GranularState {
 
 };
 
-// Global singleton
-static GranularState* g_state = nullptr;
+// Legacy callers use the default state. KesshoCore wrappers scope this slot to
+// an instance-owned state pointer without changing the existing C API symbols.
+static GranularState* g_default_state = nullptr;
+static thread_local GranularState** g_state_slot = &g_default_state;
+
+static inline GranularState*& granular_current_state() {
+    return *g_state_slot;
+}
+
+class ScopedGranularState {
+public:
+    explicit ScopedGranularState(GranularState*& state)
+        : previous_(g_state_slot) {
+        g_state_slot = &state;
+    }
+
+    ~ScopedGranularState() {
+        g_state_slot = previous_;
+    }
+
+    ScopedGranularState(const ScopedGranularState&) = delete;
+    ScopedGranularState& operator=(const ScopedGranularState&) = delete;
+
+private:
+    GranularState** previous_;
+};
+
+#define g_state granular_current_state()
+
+struct KesshoGranularInstance {
+    GranularState* state;
+};
 
 // ═══════════════ Harmonic Intervals (legacy mode) ═══════════════
 
@@ -464,27 +495,6 @@ static float diffuser_process_r(AllpassDiffuser* d, float input) {
 }
 
 // ═══════════════ Buffer Interpolation ═══════════════
-
-static inline float read_buffer_cubic(const float* buf, int size, float position) {
-    float pos = fmodf(position, (float)size);
-    if (pos < 0.0f) pos += (float)size;
-    int i0 = (int)pos;
-    float frac = pos - (float)i0;
-
-    int im1 = i0 > 0 ? i0 - 1 : size - 1;
-    int i1  = i0 < size - 1 ? i0 + 1 : 0;
-    int i2  = i0 < size - 2 ? i0 + 2 : (i0 + 2) % size;
-
-    float xm1 = buf[im1];
-    float x0  = buf[i0];
-    float x1  = buf[i1];
-    float x2  = buf[i2];
-
-    float c1 = 0.5f * (x1 - xm1);
-    float c2 = xm1 - 2.5f * x0 + 2.0f * x1 - 0.5f * x2;
-    float c3 = 0.5f * (x2 - xm1) + 1.5f * (x0 - x1);
-    return ((c3 * frac + c2) * frac + c1) * frac + x0;
-}
 
 /** 8-point Kaiser-windowed sinc interpolation — higher fidelity than cubic. */
 static inline float read_buffer_sinc(const GranularState* s, const float* buf, int size, float position) {
@@ -1080,7 +1090,6 @@ static void process_granular_voice(GranularState* s, int v, float* out_l, float*
     Grain* pool = s->grain_pool[v];
     int* active_indices = s->active_grain_indices[v];
     int is_gated = vp->euclid_gated;
-    float sr = s->sample_rate;
     float euclidSchedulerThrottle = is_gated ? 0.42f : 1.0f;
 
     // Anti-alias: max absolute rate across active grains
@@ -1892,6 +1901,7 @@ void granular_set_voice_euclid_muted(int voice, int muted) {
 void granular_set_legacy_params(float jitter, float probability, int pitch_mode,
                                float pitch_spread, int max_grains, float feedback) {
     if (!g_state) return;
+    (void)max_grains;
     g_state->legacy.jitter = jitter;
     g_state->legacy.probability = clampf(probability, 0.0f, 1.0f);
     g_state->legacy.pitch_mode = pitch_mode;
@@ -1998,4 +2008,212 @@ float* granular_get_buffer_ptr_l(void) {
 
 int granular_get_buffer_size(void) {
     return g_state ? g_state->buffer_size : 0;
+}
+
+KesshoGranularInstance* granular_instance_create(float sample_rate, float buffer_seconds) {
+    KesshoGranularInstance* instance = new (std::nothrow) KesshoGranularInstance{};
+    if (!instance) return nullptr;
+
+    int init_result = 0;
+    {
+        ScopedGranularState scoped(instance->state);
+        init_result = granular_init(sample_rate, buffer_seconds);
+    }
+
+    if (init_result != 0) {
+        delete instance;
+        return nullptr;
+    }
+
+    return instance;
+}
+
+void granular_instance_destroy(KesshoGranularInstance* instance) {
+    if (!instance) return;
+    {
+        ScopedGranularState scoped(instance->state);
+        granular_destroy();
+    }
+    delete instance;
+}
+
+int granular_instance_reset(KesshoGranularInstance* instance, float sample_rate, float buffer_seconds) {
+    if (!instance) return 0;
+    ScopedGranularState scoped(instance->state);
+    return granular_init(sample_rate, buffer_seconds) == 0 ? 1 : 0;
+}
+
+float* granular_instance_get_input_ptr(KesshoGranularInstance* instance) {
+    if (!instance) return nullptr;
+    ScopedGranularState scoped(instance->state);
+    return granular_get_input_ptr();
+}
+
+float* granular_instance_get_output_ptr(KesshoGranularInstance* instance) {
+    if (!instance) return nullptr;
+    ScopedGranularState scoped(instance->state);
+    return granular_get_output_ptr();
+}
+
+void granular_instance_process_block(KesshoGranularInstance* instance, int block_size) {
+    if (!instance) return;
+    ScopedGranularState scoped(instance->state);
+    granular_process_block(block_size);
+}
+
+void granular_instance_set_enabled(KesshoGranularInstance* instance, int enabled) {
+    if (!instance) return;
+    ScopedGranularState scoped(instance->state);
+    granular_set_enabled(enabled);
+}
+
+void granular_instance_set_freeze(KesshoGranularInstance* instance, int frozen, int with_feedback) {
+    if (!instance) return;
+    ScopedGranularState scoped(instance->state);
+    granular_set_freeze(frozen, with_feedback);
+}
+
+void granular_instance_set_dry_wet(KesshoGranularInstance* instance, float level) {
+    if (!instance) return;
+    ScopedGranularState scoped(instance->state);
+    granular_set_dry_wet(level);
+}
+
+void granular_instance_set_feedback(KesshoGranularInstance* instance, float amount, float lpf_hz) {
+    if (!instance) return;
+    ScopedGranularState scoped(instance->state);
+    granular_set_feedback(amount, lpf_hz);
+}
+
+void granular_instance_set_scale(KesshoGranularInstance* instance, const int* intervals, int count) {
+    if (!instance) return;
+    ScopedGranularState scoped(instance->state);
+    granular_set_scale(intervals, count);
+}
+
+void granular_instance_set_chord_bias(KesshoGranularInstance* instance, const int* pitches, int count, float bias) {
+    if (!instance) return;
+    ScopedGranularState scoped(instance->state);
+    granular_set_chord_bias(pitches, count, bias);
+}
+
+void granular_instance_set_buffer_size(KesshoGranularInstance* instance, float buffer_seconds) {
+    if (!instance) return;
+    ScopedGranularState scoped(instance->state);
+    granular_set_buffer_size(buffer_seconds);
+}
+
+void granular_instance_set_grain_shape(KesshoGranularInstance* instance, int shape) {
+    if (!instance) return;
+    ScopedGranularState scoped(instance->state);
+    granular_set_grain_shape(shape);
+}
+
+void granular_instance_set_bus_diffusion(KesshoGranularInstance* instance, float amount) {
+    if (!instance) return;
+    ScopedGranularState scoped(instance->state);
+    granular_set_bus_diffusion(amount);
+}
+
+void granular_instance_set_timing_randomness(KesshoGranularInstance* instance, float amount) {
+    if (!instance) return;
+    ScopedGranularState scoped(instance->state);
+    granular_set_timing_randomness(amount);
+}
+
+void granular_instance_set_voice_mode(KesshoGranularInstance* instance, int voice, int enabled, int mode) {
+    if (!instance) return;
+    ScopedGranularState scoped(instance->state);
+    granular_set_voice_mode(voice, enabled, mode);
+}
+
+void granular_instance_set_voice_position(KesshoGranularInstance* instance, int voice, int slice, float speed,
+                                          float scan_rate, int reverse, float pitch, float write_follow) {
+    if (!instance) return;
+    ScopedGranularState scoped(instance->state);
+    granular_set_voice_position(voice, slice, speed, scan_rate, reverse, pitch, write_follow);
+}
+
+void granular_instance_set_voice_grain(KesshoGranularInstance* instance, int voice, float density, float grain_size,
+                                       float spray, float grain_oct, float attack, float decay) {
+    if (!instance) return;
+    ScopedGranularState scoped(instance->state);
+    granular_set_voice_grain(voice, density, grain_size, spray, grain_oct, attack, decay);
+}
+
+void granular_instance_set_voice_output(KesshoGranularInstance* instance, int voice, float gain, float pan,
+                                        float blur, float stereo_spread) {
+    if (!instance) return;
+    ScopedGranularState scoped(instance->state);
+    granular_set_voice_output(voice, gain, pan, blur, stereo_spread);
+}
+
+void granular_instance_set_voice_lfo(KesshoGranularInstance* instance, int voice, float pos_rate, float pos_depth,
+                                     float pan_rate, float reverse_rate, float record_rate) {
+    if (!instance) return;
+    ScopedGranularState scoped(instance->state);
+    granular_set_voice_lfo(voice, pos_rate, pos_depth, pan_rate, reverse_rate, record_rate);
+}
+
+void granular_instance_set_voice_euclid_gated(KesshoGranularInstance* instance, int voice, int gated) {
+    if (!instance) return;
+    ScopedGranularState scoped(instance->state);
+    granular_set_voice_euclid_gated(voice, gated);
+}
+
+void granular_instance_set_voice_euclid_muted(KesshoGranularInstance* instance, int voice, int muted) {
+    if (!instance) return;
+    ScopedGranularState scoped(instance->state);
+    granular_set_voice_euclid_muted(voice, muted);
+}
+
+void granular_instance_set_legacy_params(KesshoGranularInstance* instance, float jitter, float probability,
+                                         int pitch_mode, float pitch_spread, int max_grains, float feedback) {
+    if (!instance) return;
+    ScopedGranularState scoped(instance->state);
+    granular_set_legacy_params(jitter, probability, pitch_mode, pitch_spread, max_grains, feedback);
+}
+
+void granular_instance_euclid_trigger(KesshoGranularInstance* instance, int voice, float velocity,
+                                      int slice_override, float pitch_override, int has_pitch,
+                                      int reverse_override, int has_reverse) {
+    if (!instance) return;
+    ScopedGranularState scoped(instance->state);
+    granular_euclid_trigger(voice, velocity, slice_override, pitch_override, has_pitch, reverse_override, has_reverse);
+}
+
+void granular_instance_set_random_sequence(KesshoGranularInstance* instance, const float* data, int count) {
+    if (!instance) return;
+    ScopedGranularState scoped(instance->state);
+    granular_set_random_sequence(data, count);
+}
+
+float granular_instance_get_write_head(KesshoGranularInstance* instance) {
+    if (!instance) return 0.0f;
+    ScopedGranularState scoped(instance->state);
+    return granular_get_write_head();
+}
+
+void granular_instance_get_voice_positions(KesshoGranularInstance* instance, float* out) {
+    if (!instance) return;
+    ScopedGranularState scoped(instance->state);
+    granular_get_voice_positions(out);
+}
+
+int granular_instance_get_active_grain_count(KesshoGranularInstance* instance) {
+    if (!instance) return 0;
+    ScopedGranularState scoped(instance->state);
+    return granular_get_active_grain_count();
+}
+
+float* granular_instance_get_buffer_ptr_l(KesshoGranularInstance* instance) {
+    if (!instance) return nullptr;
+    ScopedGranularState scoped(instance->state);
+    return granular_get_buffer_ptr_l();
+}
+
+int granular_instance_get_buffer_size(KesshoGranularInstance* instance) {
+    if (!instance) return 0;
+    ScopedGranularState scoped(instance->state);
+    return granular_get_buffer_size();
 }

@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <cstring>
+#include <new>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -26,7 +27,24 @@ struct DynamicsDegradeState {
     float output[KESSHO_DYNAMICS_DEGRADE_MAX_BLOCK_SIZE * 2] = {0.0f};
 };
 
-DynamicsDegradeState g_state;
+DynamicsDegradeState g_default;
+thread_local DynamicsDegradeState* g_current = &g_default;
+
+DynamicsDegradeState& dynamics_degrade_current_state() {
+    return *g_current;
+}
+
+struct ScopedDynamicsDegradeState {
+    explicit ScopedDynamicsDegradeState(DynamicsDegradeState& next) : previous(g_current) {
+        g_current = &next;
+    }
+
+    ~ScopedDynamicsDegradeState() {
+        g_current = previous;
+    }
+
+    DynamicsDegradeState* previous;
+};
 
 inline float clamp01(float value) {
     if (!std::isfinite(value) || value <= 0.0f) return 0.0f;
@@ -38,7 +56,12 @@ inline float clamp01(float value) {
 
 extern "C" {
 
+struct KesshoDynamicsDegradeInstance {
+    DynamicsDegradeState state;
+};
+
 int dynamics_degrade_init(float sample_rate) {
+    DynamicsDegradeState& g_state = dynamics_degrade_current_state();
     std::memset(&g_state, 0, sizeof(g_state));
     g_state.sample_rate = std::isfinite(sample_rate) && sample_rate > 1000.0f ? sample_rate : 44100.0f;
     g_state.phase[0] = 1.0f;
@@ -47,6 +70,7 @@ int dynamics_degrade_init(float sample_rate) {
 }
 
 void dynamics_degrade_destroy(void) {
+    DynamicsDegradeState& g_state = dynamics_degrade_current_state();
     std::memset(&g_state, 0, sizeof(g_state));
     g_state.sample_rate = 44100.0f;
     g_state.phase[0] = 1.0f;
@@ -54,11 +78,11 @@ void dynamics_degrade_destroy(void) {
 }
 
 float* dynamics_degrade_get_input_ptr(void) {
-    return g_state.input;
+    return dynamics_degrade_current_state().input;
 }
 
 float* dynamics_degrade_get_output_ptr(void) {
-    return g_state.output;
+    return dynamics_degrade_current_state().output;
 }
 
 void dynamics_degrade_set_params(
@@ -69,6 +93,7 @@ void dynamics_degrade_set_params(
     float corrosion,
     float wear
 ) {
+    DynamicsDegradeState& g_state = dynamics_degrade_current_state();
     g_state.enabled = enabled ? 1 : 0;
     g_state.mix = clamp01(mix);
     g_state.alias = clamp01(alias);
@@ -78,6 +103,7 @@ void dynamics_degrade_set_params(
 }
 
 void dynamics_degrade_process_block(int block_size) {
+    DynamicsDegradeState& g_state = dynamics_degrade_current_state();
     if (block_size <= 0) return;
     if (block_size > KESSHO_DYNAMICS_DEGRADE_MAX_BLOCK_SIZE) {
         block_size = KESSHO_DYNAMICS_DEGRADE_MAX_BLOCK_SIZE;
@@ -143,6 +169,53 @@ void dynamics_degrade_process_block(int block_size) {
         g_state.phase[channel] = phase;
         g_state.lowpass[channel] = lp;
     }
+}
+
+KesshoDynamicsDegradeInstance* dynamics_degrade_instance_create(float sample_rate) {
+    auto* instance = new (std::nothrow) KesshoDynamicsDegradeInstance{};
+    if (instance == nullptr) return nullptr;
+    ScopedDynamicsDegradeState scoped(instance->state);
+    dynamics_degrade_init(sample_rate);
+    return instance;
+}
+
+void dynamics_degrade_instance_destroy(KesshoDynamicsDegradeInstance* instance) {
+    delete instance;
+}
+
+int dynamics_degrade_instance_reset(KesshoDynamicsDegradeInstance* instance, float sample_rate) {
+    if (instance == nullptr) return 0;
+    ScopedDynamicsDegradeState scoped(instance->state);
+    dynamics_degrade_init(sample_rate);
+    return 1;
+}
+
+float* dynamics_degrade_instance_get_input_ptr(KesshoDynamicsDegradeInstance* instance) {
+    return instance != nullptr ? instance->state.input : nullptr;
+}
+
+float* dynamics_degrade_instance_get_output_ptr(KesshoDynamicsDegradeInstance* instance) {
+    return instance != nullptr ? instance->state.output : nullptr;
+}
+
+void dynamics_degrade_instance_set_params(
+    KesshoDynamicsDegradeInstance* instance,
+    int enabled,
+    float mix,
+    float alias,
+    float generation,
+    float corrosion,
+    float wear
+) {
+    if (instance == nullptr) return;
+    ScopedDynamicsDegradeState scoped(instance->state);
+    dynamics_degrade_set_params(enabled, mix, alias, generation, corrosion, wear);
+}
+
+void dynamics_degrade_instance_process_block(KesshoDynamicsDegradeInstance* instance, int block_size) {
+    if (instance == nullptr) return;
+    ScopedDynamicsDegradeState scoped(instance->state);
+    dynamics_degrade_process_block(block_size);
 }
 
 } // extern "C"

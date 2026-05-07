@@ -10,6 +10,7 @@
 #include <cmath>
 #include <cstring>
 #include <cstdint>
+#include <new>
 #include "kessho_soundscapes.h"
 
 // ═══════════════════════════════════════════════════════════
@@ -59,7 +60,7 @@ static inline float fast_exp(float x) {
     return v.f;
 }
 
-static inline float fast_pow_decay(float base, float exp_val) {
+[[maybe_unused]] static inline float fast_pow_decay(float base, float exp_val) {
     if (base <= 0.0f) return 0.0f;
     if (base >= 1.0f) return 1.0f;
     return fast_exp(exp_val * logf(base));
@@ -87,7 +88,7 @@ static inline float fast_powf(float base, float exp_val) {
 
 // Wave envelope: gentle rise, peak, long decay.
 // Keep Surf aligned with Ocean's slower crest so the two engines track more closely.
-static inline float wave_envelope(float phase) {
+[[maybe_unused]] static inline float wave_envelope(float phase) {
     if (phase < 0.25f) {
         float t = phase / 0.25f;
         return t * t;
@@ -101,7 +102,7 @@ static inline float wave_envelope(float phase) {
 }
 
 // Foam/spray envelope: peaks during wave crest.
-static inline float foam_envelope(float phase) {
+[[maybe_unused]] static inline float foam_envelope(float phase) {
     if (phase < 0.2f || phase > 0.6f) return 0.0f;
     float t = (phase - 0.2f) / 0.4f;
     return sinf(t * PI_F);
@@ -547,7 +548,7 @@ struct DropletVoice {
     int   max_samples;
 };
 
-static void droplet_trigger(DropletVoice* v, float base_freq, float hardness,
+[[maybe_unused]] static void droplet_trigger(DropletVoice* v, float base_freq, float hardness,
                             float drop_size, float decay_time, Rng* rng, float sr) {
     v->active = 1;
     v->samples_alive = 0;
@@ -675,7 +676,7 @@ static void droplet_trigger(DropletVoice* v, float base_freq, float hardness,
     v->pan_r = fast_sin((pan + 1.0f) * PI_F * 0.25f);
 }
 
-static void droplet_process(DropletVoice* v, float* outL, float* outR,
+[[maybe_unused]] static void droplet_process(DropletVoice* v, float* outL, float* outR,
                             int block_size, Rng* rng, float sr) {
     if (!v->active) return;
 
@@ -1094,6 +1095,8 @@ struct BubblingLayer {
 };
 
 static void bubbling_init(BubblingLayer* b, Rng* rng, float sr) {
+    (void)rng;
+    (void)sr;
     for (int i = 0; i < WATER_BUBBLE_SUBVOICES; i++) {
         b->voices[i].active = 0;
         b->voices[i].next_trigger = 0;
@@ -1410,6 +1413,7 @@ static void surf_configure_generator_filters(SurfGenerator* gen, float rumble_fr
                                              float body_freq, float spray_freq,
                                              float proximity,
                                              float sr) {
+    (void)rumble_freq;
     float prox_t = clamp01(proximity);
     prox_t = prox_t * prox_t * (3.0f - 2.0f * prox_t);
     float body_freq_norm = clamp01((body_freq - 150.0f) / 650.0f);
@@ -1525,7 +1529,6 @@ static void surf_process(SurfLayer* s, float* outL, float* outR,
     if (!s->inited) surf_init(s, sr);
     if (s->filters_dirty) surf_init_filters(s, sr);
 
-    float inv_sr = 1.0f / sr;
     float density_scale = 0.25f + s->density * 0.75f;
 
     for (int i = 0; i < block_size; i++) {
@@ -1761,6 +1764,7 @@ struct GlassResonator {
 };
 
 static void glass_init(GlassResonator* g, float sr) {
+    (void)sr;
     for (int m = 0; m < 4; m++) {
         g->modes[m].active = 0;
     }
@@ -1770,6 +1774,7 @@ static void glass_init(GlassResonator* g, float sr) {
 }
 
 static void glass_set_thickness(GlassResonator* g, float thickness, float sr) {
+    (void)sr;
     g->thickness = thickness;
     // Matches JS: baseFreq = 400 + (1-thickness)*300 (thicker = lower)
     float base_freq = 400.0f + (1.0f - thickness) * 300.0f;
@@ -1943,7 +1948,31 @@ struct WaterState {
     int    stat_samples;
 };
 
-static WaterState* g_water = nullptr;
+static thread_local WaterState* g_water = nullptr;
+
+struct KesshoWaterInstance {
+    WaterState* state = nullptr;
+};
+
+class ScopedWaterInstance {
+public:
+    explicit ScopedWaterInstance(KesshoWaterInstance* instance)
+        : instance_(instance), previous_(g_water) {
+        g_water = instance_ ? instance_->state : nullptr;
+    }
+
+    ~ScopedWaterInstance() {
+        if (instance_) instance_->state = g_water;
+        g_water = previous_;
+    }
+
+    ScopedWaterInstance(const ScopedWaterInstance&) = delete;
+    ScopedWaterInstance& operator=(const ScopedWaterInstance&) = delete;
+
+private:
+    KesshoWaterInstance* instance_;
+    WaterState* previous_;
+};
 
 static void water_update_layer_detail_filters(WaterState* s) {
     float sr = s->sample_rate;
@@ -2963,6 +2992,176 @@ float water_get_surf_trigger_foam_bright_pos(void) {
     return g_water ? g_water->surf.trigger_pos_foam_bright : 0.5f;
 }
 
+KesshoWaterInstance* water_instance_create(float sample_rate) {
+    KesshoWaterInstance* instance = new (std::nothrow) KesshoWaterInstance{};
+    if (!instance) return nullptr;
+
+    int result = 0;
+    {
+        ScopedWaterInstance scoped(instance);
+        result = water_init(sample_rate);
+    }
+
+    if (result != 0) {
+        {
+            ScopedWaterInstance scoped(instance);
+            water_destroy();
+        }
+        delete instance;
+        return nullptr;
+    }
+    return instance;
+}
+
+void water_instance_destroy(KesshoWaterInstance* instance) {
+    if (!instance) return;
+    {
+        ScopedWaterInstance scoped(instance);
+        water_destroy();
+    }
+    delete instance;
+}
+
+int water_instance_reset(KesshoWaterInstance* instance, float sample_rate) {
+    if (!instance) return 0;
+    ScopedWaterInstance scoped(instance);
+    water_destroy();
+    return water_init(sample_rate) == 0 ? 1 : 0;
+}
+
+float* water_instance_get_output_ptr(KesshoWaterInstance* instance) {
+    if (!instance) return nullptr;
+    ScopedWaterInstance scoped(instance);
+    return water_get_output_ptr();
+}
+
+void water_instance_process_block(KesshoWaterInstance* instance, int block_size) {
+    if (!instance) return;
+    ScopedWaterInstance scoped(instance);
+    water_process_block(block_size);
+}
+
+void water_instance_set_preset(KesshoWaterInstance* instance, int preset) {
+    if (!instance) return;
+    ScopedWaterInstance scoped(instance);
+    water_set_preset(preset);
+}
+
+void water_instance_set_params(KesshoWaterInstance* instance,
+                               float intensity_min, float intensity_max,
+                               float distance_min, float distance_max,
+                               float hard_drop_base_freq_min, float hard_drop_base_freq_max,
+                               float water_drop_base_freq_min, float water_drop_base_freq_max,
+                               float drop_size_min, float drop_size_max,
+                               float hardness_min, float hardness_max,
+                               float glass_thickness_min, float glass_thickness_max) {
+    if (!instance) return;
+    ScopedWaterInstance scoped(instance);
+    water_set_params(
+        intensity_min, intensity_max,
+        distance_min, distance_max,
+        hard_drop_base_freq_min, hard_drop_base_freq_max,
+        water_drop_base_freq_min, water_drop_base_freq_max,
+        drop_size_min, drop_size_max,
+        hardness_min, hardness_max,
+        glass_thickness_min, glass_thickness_max);
+}
+
+void water_instance_set_layer_detail_params(KesshoWaterInstance* instance,
+                                            float hard_rate, float hard_tone_hz, float hard_character,
+                                            float water_rate, float water_tone_hz,
+                                            float bubble_rate, float bubble_tone_hz) {
+    if (!instance) return;
+    ScopedWaterInstance scoped(instance);
+    water_set_layer_detail_params(
+        hard_rate, hard_tone_hz, hard_character,
+        water_rate, water_tone_hz,
+        bubble_rate, bubble_tone_hz);
+}
+
+void water_instance_set_layer_mix(KesshoWaterInstance* instance,
+                                  float hard_drops, float water_drops, float turbulence,
+                                  float bubbling, float surf, float channels) {
+    if (!instance) return;
+    ScopedWaterInstance scoped(instance);
+    water_set_layer_mix(hard_drops, water_drops, turbulence, bubbling, surf, channels);
+}
+
+void water_instance_set_layer_density(KesshoWaterInstance* instance,
+                                      float hard_drops, float water_drops, float turbulence,
+                                      float bubbling, float surf, float channels) {
+    if (!instance) return;
+    ScopedWaterInstance scoped(instance);
+    water_set_layer_density(hard_drops, water_drops, turbulence, bubbling, surf, channels);
+}
+
+void water_instance_set_density_loop_params(KesshoWaterInstance* instance,
+                                            float hard_send, float water_send,
+                                            float bubble_send, float feedback, float tone_hz,
+                                            float ring, float wet) {
+    if (!instance) return;
+    ScopedWaterInstance scoped(instance);
+    water_set_density_loop_params(hard_send, water_send, bubble_send, feedback, tone_hz, ring, wet);
+}
+
+void water_instance_start(KesshoWaterInstance* instance) {
+    if (!instance) return;
+    ScopedWaterInstance scoped(instance);
+    water_start();
+}
+
+void water_instance_stop(KesshoWaterInstance* instance) {
+    if (!instance) return;
+    ScopedWaterInstance scoped(instance);
+    water_stop();
+}
+
+void water_instance_set_seed(KesshoWaterInstance* instance, int seed) {
+    if (!instance) return;
+    ScopedWaterInstance scoped(instance);
+    water_set_seed(seed);
+}
+
+void water_instance_set_surf_params(KesshoWaterInstance* instance,
+                                    float duration_min, float duration_max,
+                                    float interval_min, float interval_max,
+                                    float foam_min, float foam_max,
+                                    float proximity_min, float proximity_max,
+                                    float depth_min, float depth_max,
+                                    float body_freq_min, float body_freq_max,
+                                    float spray_freq_min, float spray_freq_max,
+                                    float foam_bright_min, float foam_bright_max) {
+    if (!instance) return;
+    ScopedWaterInstance scoped(instance);
+    water_set_surf_params(
+        duration_min, duration_max,
+        interval_min, interval_max,
+        foam_min, foam_max,
+        proximity_min, proximity_max,
+        depth_min, depth_max,
+        body_freq_min, body_freq_max,
+        spray_freq_min, spray_freq_max,
+        foam_bright_min, foam_bright_max);
+}
+
+void water_instance_set_channels_params(KesshoWaterInstance* instance, float morph, float speed) {
+    if (!instance) return;
+    ScopedWaterInstance scoped(instance);
+    water_set_channels_params(morph, speed);
+}
+
+int water_instance_get_active_voices(KesshoWaterInstance* instance) {
+    if (!instance) return 0;
+    ScopedWaterInstance scoped(instance);
+    return water_get_active_voices();
+}
+
+int water_instance_get_events_per_sec(KesshoWaterInstance* instance) {
+    if (!instance) return 0;
+    ScopedWaterInstance scoped(instance);
+    return water_get_events_per_sec();
+}
+
 } // extern "C" (water API)
 
 
@@ -3056,6 +3255,7 @@ static void cricket_set_params(CricketVoice* v, Rng* rng, float sr,
 
 static void cricket_init_voice(CricketVoice* v, int index, Rng* rng, float sr,
                                float density, float temperature) {
+    (void)index;
     memset(v, 0, sizeof(CricketVoice));
     v->tooth_phase = rng_next(rng);
     v->noise_state = 0.0f;
@@ -3193,6 +3393,7 @@ static void tree_cricket_set_params(TreeCricketVoice* v, Rng* rng, float sr,
 
 static void tree_cricket_init_voice(TreeCricketVoice* v, int index, Rng* rng,
                                     float sr, float temperature, float density) {
+    (void)index;
     memset(v, 0, sizeof(TreeCricketVoice));
     v->phase = rng_next(rng);
     v->am_phase = rng_next(rng);
@@ -3291,6 +3492,7 @@ struct KatydidVoice {
 static void katydid_set_params(KatydidVoice* v, int index, Rng* rng,
                                float sr, float temperature, float antiphony, float density,
                                float pan_param, float dist_param) {
+    (void)index;
     v->active = 1;
     v->activity_rate = insect_density_rate_scale(density);
     v->temperature = temperature;
@@ -3462,6 +3664,7 @@ static void cicada_set_params(CicadaVoice* v, Rng* rng,
 
 static void cicada_init_voice(CicadaVoice* v, int index, Rng* rng,
                               float sr, float temperature, float click_rate, float density) {
+    (void)index;
     memset(v, 0, sizeof(CicadaVoice));
     v->mod_phase = rng_next(rng);
     v->breath_phase = rng_next(rng);
@@ -3549,6 +3752,8 @@ static void grasshopper_set_params(GrasshopperVoice* v, Rng* rng,
 
 static void grasshopper_init_voice(GrasshopperVoice* v, int index, Rng* rng,
                                    float sr, float temperature, float click_rate, float density) {
+    (void)index;
+    (void)click_rate;
     memset(v, 0, sizeof(GrasshopperVoice));
     v->noise_state = 0.0f;
     v->stroke_env = 0.0f;
@@ -3644,6 +3849,7 @@ static void mole_cricket_set_params(MoleCricketVoice* v, Rng* rng,
 
 static void mole_cricket_init_voice(MoleCricketVoice* v, int index, Rng* rng,
                                     float sr, float temperature, float density) {
+    (void)index;
     memset(v, 0, sizeof(MoleCricketVoice));
     v->osc_phase = 0.0f;
     v->trill_phase = 0.0f;
@@ -3653,6 +3859,7 @@ static void mole_cricket_init_voice(MoleCricketVoice* v, int index, Rng* rng,
 
 static void mole_cricket_process_voice(MoleCricketVoice* v, float* outL, float* outR,
                                        int block_size, Rng* rng, float sr) {
+    (void)rng;
     if (!v->active) return;
 
     float inv_sr = 1.0f / sr;
@@ -3783,6 +3990,7 @@ static void fly_bee_set_params(FlyBeeVoice* v, Rng* rng, float sr,
 }
 
 static void fly_bee_init_voice(FlyBeeVoice* v, int index, Rng* rng, float sr, float density) {
+    (void)index;
     memset(v, 0, sizeof(FlyBeeVoice));
     v->wing_phase = rng_next(rng);
     // Default init as fly
@@ -3942,7 +4150,56 @@ struct InsectsState {
     float output[256];
 };
 
-static InsectsState* g_insects = nullptr;
+static thread_local InsectsState* g_insects = nullptr;
+static thread_local InsectsState* g_insects2 = nullptr;
+
+struct KesshoInsectsInstance {
+    InsectsState* state = nullptr;
+};
+
+struct KesshoInsects2Instance {
+    InsectsState* state = nullptr;
+};
+
+class ScopedInsectsInstance {
+public:
+    explicit ScopedInsectsInstance(KesshoInsectsInstance* instance)
+        : instance_(instance), previous_(g_insects) {
+        g_insects = instance_ ? instance_->state : nullptr;
+    }
+
+    ~ScopedInsectsInstance() {
+        if (instance_) instance_->state = g_insects;
+        g_insects = previous_;
+    }
+
+    ScopedInsectsInstance(const ScopedInsectsInstance&) = delete;
+    ScopedInsectsInstance& operator=(const ScopedInsectsInstance&) = delete;
+
+private:
+    KesshoInsectsInstance* instance_;
+    InsectsState* previous_;
+};
+
+class ScopedInsects2Instance {
+public:
+    explicit ScopedInsects2Instance(KesshoInsects2Instance* instance)
+        : instance_(instance), previous_(g_insects2) {
+        g_insects2 = instance_ ? instance_->state : nullptr;
+    }
+
+    ~ScopedInsects2Instance() {
+        if (instance_) instance_->state = g_insects2;
+        g_insects2 = previous_;
+    }
+
+    ScopedInsects2Instance(const ScopedInsects2Instance&) = delete;
+    ScopedInsects2Instance& operator=(const ScopedInsects2Instance&) = delete;
+
+private:
+    KesshoInsects2Instance* instance_;
+    InsectsState* previous_;
+};
 
 static void insects_update_voices(InsectsState* s) {
     float sr = s->sample_rate;
@@ -4159,12 +4416,6 @@ void insects_process_block(int block_size) {
     // Temp voice buffers
     float voice_l[128] = {0}, voice_r[128] = {0};
 
-    // Fade
-    float fade_step = 0.0f;
-    if (s->fade_gain != s->fade_target) {
-        fade_step = (s->fade_target > s->fade_gain) ? s->fade_inc : -s->fade_inc;
-    }
-
     // Process active voices
     switch (s->engine) {
         case INSECT_CRICKET:
@@ -4315,13 +4566,116 @@ int insects_get_engine_type(void) {
     return g_insects ? g_insects->engine : 0;
 }
 
+KesshoInsectsInstance* insects_instance_create(float sample_rate) {
+    KesshoInsectsInstance* instance = new (std::nothrow) KesshoInsectsInstance{};
+    if (!instance) return nullptr;
+
+    int result = 0;
+    {
+        ScopedInsectsInstance scoped(instance);
+        result = insects_init(sample_rate);
+    }
+
+    if (result != 0) {
+        {
+            ScopedInsectsInstance scoped(instance);
+            insects_destroy();
+        }
+        delete instance;
+        return nullptr;
+    }
+    return instance;
+}
+
+void insects_instance_destroy(KesshoInsectsInstance* instance) {
+    if (!instance) return;
+    {
+        ScopedInsectsInstance scoped(instance);
+        insects_destroy();
+    }
+    delete instance;
+}
+
+int insects_instance_reset(KesshoInsectsInstance* instance, float sample_rate) {
+    if (!instance) return 0;
+    ScopedInsectsInstance scoped(instance);
+    insects_destroy();
+    return insects_init(sample_rate) == 0 ? 1 : 0;
+}
+
+float* insects_instance_get_output_ptr(KesshoInsectsInstance* instance) {
+    if (!instance) return nullptr;
+    ScopedInsectsInstance scoped(instance);
+    return insects_get_output_ptr();
+}
+
+void insects_instance_process_block(KesshoInsectsInstance* instance, int block_size) {
+    if (!instance) return;
+    ScopedInsectsInstance scoped(instance);
+    insects_process_block(block_size);
+}
+
+void insects_instance_set_engine(KesshoInsectsInstance* instance, int engine) {
+    if (!instance) return;
+    ScopedInsectsInstance scoped(instance);
+    insects_set_engine(engine);
+}
+
+void insects_instance_set_params(KesshoInsectsInstance* instance,
+                                 float density_min, float density_max,
+                                 float temperature_min, float temperature_max,
+                                 float distance_min, float distance_max,
+                                 float proximity_min, float proximity_max,
+                                 float antiphony_min, float antiphony_max,
+                                 float click_rate_min, float click_rate_max,
+                                 float motion_min, float motion_max) {
+    if (!instance) return;
+    ScopedInsectsInstance scoped(instance);
+    insects_set_params(
+        density_min, density_max,
+        temperature_min, temperature_max,
+        distance_min, distance_max,
+        proximity_min, proximity_max,
+        antiphony_min, antiphony_max,
+        click_rate_min, click_rate_max,
+        motion_min, motion_max);
+}
+
+void insects_instance_start(KesshoInsectsInstance* instance) {
+    if (!instance) return;
+    ScopedInsectsInstance scoped(instance);
+    insects_start();
+}
+
+void insects_instance_stop(KesshoInsectsInstance* instance) {
+    if (!instance) return;
+    ScopedInsectsInstance scoped(instance);
+    insects_stop();
+}
+
+void insects_instance_set_seed(KesshoInsectsInstance* instance, int seed) {
+    if (!instance) return;
+    ScopedInsectsInstance scoped(instance);
+    insects_set_seed(seed);
+}
+
+int insects_instance_get_active_voices(KesshoInsectsInstance* instance) {
+    if (!instance) return 0;
+    ScopedInsectsInstance scoped(instance);
+    return insects_get_active_voices();
+}
+
+int insects_instance_get_engine_type(KesshoInsectsInstance* instance) {
+    if (!instance) return 0;
+    ScopedInsectsInstance scoped(instance);
+    return insects_get_engine_type();
+}
+
 // ═══════════════════════════════════════════════════════════
 //  INSECTS ENGINE 2 — Second independent layer for dual layering
 //  Reuses all voice types and processing functions from engine 1.
 //  Separate state, voice pools, params, output buffer, and RNG.
 // ═══════════════════════════════════════════════════════════
-
-static InsectsState* g_insects2 = nullptr;
 
 int insects2_init(float sample_rate) {
     g_insects2 = new InsectsState();
@@ -4385,11 +4739,6 @@ void insects2_process_block(int block_size) {
     float dist_coeff = 0.1f + s->smoothed_distance * 0.85f;
 
     float voice_l[128] = {0}, voice_r[128] = {0};
-
-    float fade_step = 0.0f;
-    if (s->fade_gain != s->fade_target) {
-        fade_step = (s->fade_target > s->fade_gain) ? s->fade_inc : -s->fade_inc;
-    }
 
     // Process active voices (same switch as engine 1)
     switch (s->engine) {
@@ -4532,6 +4881,111 @@ int insects2_get_active_voices(void) {
 
 int insects2_get_engine_type(void) {
     return g_insects2 ? g_insects2->engine : 0;
+}
+
+KesshoInsects2Instance* insects2_instance_create(float sample_rate) {
+    KesshoInsects2Instance* instance = new (std::nothrow) KesshoInsects2Instance{};
+    if (!instance) return nullptr;
+
+    int result = 0;
+    {
+        ScopedInsects2Instance scoped(instance);
+        result = insects2_init(sample_rate);
+    }
+
+    if (result != 0) {
+        {
+            ScopedInsects2Instance scoped(instance);
+            insects2_destroy();
+        }
+        delete instance;
+        return nullptr;
+    }
+    return instance;
+}
+
+void insects2_instance_destroy(KesshoInsects2Instance* instance) {
+    if (!instance) return;
+    {
+        ScopedInsects2Instance scoped(instance);
+        insects2_destroy();
+    }
+    delete instance;
+}
+
+int insects2_instance_reset(KesshoInsects2Instance* instance, float sample_rate) {
+    if (!instance) return 0;
+    ScopedInsects2Instance scoped(instance);
+    insects2_destroy();
+    return insects2_init(sample_rate) == 0 ? 1 : 0;
+}
+
+float* insects2_instance_get_output_ptr(KesshoInsects2Instance* instance) {
+    if (!instance) return nullptr;
+    ScopedInsects2Instance scoped(instance);
+    return insects2_get_output_ptr();
+}
+
+void insects2_instance_process_block(KesshoInsects2Instance* instance, int block_size) {
+    if (!instance) return;
+    ScopedInsects2Instance scoped(instance);
+    insects2_process_block(block_size);
+}
+
+void insects2_instance_set_engine(KesshoInsects2Instance* instance, int engine) {
+    if (!instance) return;
+    ScopedInsects2Instance scoped(instance);
+    insects2_set_engine(engine);
+}
+
+void insects2_instance_set_params(KesshoInsects2Instance* instance,
+                                  float density_min, float density_max,
+                                  float temperature_min, float temperature_max,
+                                  float distance_min, float distance_max,
+                                  float proximity_min, float proximity_max,
+                                  float antiphony_min, float antiphony_max,
+                                  float click_rate_min, float click_rate_max,
+                                  float motion_min, float motion_max) {
+    if (!instance) return;
+    ScopedInsects2Instance scoped(instance);
+    insects2_set_params(
+        density_min, density_max,
+        temperature_min, temperature_max,
+        distance_min, distance_max,
+        proximity_min, proximity_max,
+        antiphony_min, antiphony_max,
+        click_rate_min, click_rate_max,
+        motion_min, motion_max);
+}
+
+void insects2_instance_start(KesshoInsects2Instance* instance) {
+    if (!instance) return;
+    ScopedInsects2Instance scoped(instance);
+    insects2_start();
+}
+
+void insects2_instance_stop(KesshoInsects2Instance* instance) {
+    if (!instance) return;
+    ScopedInsects2Instance scoped(instance);
+    insects2_stop();
+}
+
+void insects2_instance_set_seed(KesshoInsects2Instance* instance, int seed) {
+    if (!instance) return;
+    ScopedInsects2Instance scoped(instance);
+    insects2_set_seed(seed);
+}
+
+int insects2_instance_get_active_voices(KesshoInsects2Instance* instance) {
+    if (!instance) return 0;
+    ScopedInsects2Instance scoped(instance);
+    return insects2_get_active_voices();
+}
+
+int insects2_instance_get_engine_type(KesshoInsects2Instance* instance) {
+    if (!instance) return 0;
+    ScopedInsects2Instance scoped(instance);
+    return insects2_get_engine_type();
 }
 
 } // extern "C" (insects API)

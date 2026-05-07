@@ -16,7 +16,15 @@ import './global.css';
 // Note names for display
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const GLOBAL_EXPANDED_SECTIONS_STORAGE_KEY = 'global:expanded-sections:v1';
-const DEFAULT_GLOBAL_EXPANDED_SECTIONS = ['mixer-buses', 'morph', 'state-presets', 'scale-tension', 'transport-sync', 'root-cof', 'chord-progression'];
+const DEFAULT_GLOBAL_EXPANDED_SECTIONS = ['morph', 'state-presets', 'root-cof', 'chord-progression', 'scale-tension', 'transport-sync'];
+
+function clamp01(value: number | undefined): number {
+  return Math.max(0, Math.min(1, typeof value === 'number' && Number.isFinite(value) ? value : 0));
+}
+
+function formatPercent(value: number | undefined): string {
+  return `${Math.round(clamp01(value) * 100)}%`;
+}
 
 // ═══════════════ Props ═══════════════
 
@@ -192,64 +200,85 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
       return next;
     });
   };
+  const rootNoteLabel = NOTE_NAMES[state.rootNote] ?? 'C';
+  const earthActive = !!(
+    state.oceanSampleEnabled ||
+    state.birdsEnabled ||
+    state.birds2Enabled ||
+    state.frogsEnabled ||
+    state.waterEnabled ||
+    state.insectsEnabled ||
+    state.insects2Enabled
+  );
+  const earthFamilyLevel = clamp01(state.earthLevel) * Math.max(
+    state.oceanSampleEnabled ? clamp01(state.oceanSampleLevel) : 0,
+    state.birdsEnabled || state.birds2Enabled || state.frogsEnabled ? clamp01(state.natureLevel) : 0,
+    state.waterEnabled ? clamp01(state.waterLevel) : 0,
+    state.insectsEnabled || state.insects2Enabled ? clamp01(state.insectsSharedLevel) : 0,
+  );
+  const padsLevel = Math.max(state.padEnabled !== false ? clamp01(state.synthLevel) : 0, state.pad2Enabled ? clamp01(state.pad2Level) : 0);
+  const leadsLevel = Math.max(state.leadEnabled ? clamp01(state.lead1Level) : 0, state.lead2Enabled ? clamp01(state.lead2Level) : 0);
+  const rhythmLevel = state.drumEnabled || state.drumEuclidMasterEnabled ? clamp01(state.drumLevel) : 0;
+  const textureLevel = state.granularEnabled ? clamp01(state.granularLevel) : 0;
+  const fxWetLevel = Math.max(
+    state.reverbEnabled ? clamp01(state.reverbLevel) : 0,
+    clamp01(state.delayAMix),
+    state.granularDelayEnabled ? clamp01(state.granularDelayMix) : 0,
+    state.dynamicsEnabled ? Math.max(clamp01(state.sidechainAmount), clamp01(state.dynamicsSaturationDrive)) : 0,
+  );
+  const activeEngineCount = [
+    state.padEnabled !== false && clamp01(state.synthLevel) > 0.001,
+    state.pad2Enabled && clamp01(state.pad2Level) > 0.001,
+    state.leadEnabled && clamp01(state.lead1Level) > 0.001,
+    state.lead2Enabled && clamp01(state.lead2Level) > 0.001,
+    (state.drumEnabled || state.drumEuclidMasterEnabled) && clamp01(state.drumLevel) > 0.001,
+    state.granularEnabled && clamp01(state.granularLevel) > 0.001,
+    earthActive && earthFamilyLevel > 0.001,
+  ].filter(Boolean).length;
+  const balanceRows = [
+    {
+      id: 'pads',
+      label: 'Pads',
+      level: padsLevel,
+      accent: '#6ee7b7',
+    },
+    {
+      id: 'leads',
+      label: 'Leads',
+      level: leadsLevel,
+      accent: '#f472b6',
+    },
+    {
+      id: 'rhythm',
+      label: 'Rhythm',
+      level: rhythmLevel,
+      accent: '#f59e0b',
+    },
+    {
+      id: 'texture',
+      label: 'Texture',
+      level: textureLevel,
+      accent: '#2dd4bf',
+    },
+    {
+      id: 'earth',
+      label: 'Earth',
+      level: earthFamilyLevel,
+      accent: '#84cc16',
+    },
+    {
+      id: 'fx',
+      label: 'FX',
+      level: fxWetLevel,
+      accent: '#a78bfa',
+    },
+  ];
 
   return (
     <div className="global-root">
       <div className="global-container">
-      {/* Master Mixer */}
-      <div className="global-mixer-panel">
-          <div className="mixer-card">
-            <h3 className="mixer-card-title">Master Mixer</h3>
-            <div className="harmony-section">
-            <div className="harmony-section-header" onClick={() => toggleSection('mixer-buses')}>
-              <span className={`harmony-section-chevron ${expandedSections.has('mixer-buses') ? 'expanded' : ''}`}>▶</span>
-              <span className="harmony-section-name">Channel Buses</span>
-            </div>
-            {expandedSections.has('mixer-buses') && (
-              <div className="harmony-section-body">
-                <div className="mixer-bus-grid">
-                  <div className="mixer-bus-group">
-                    <div className="mixer-bus-label">Pad</div>
-                    <Slider label="Pad 1" value={state.synthLevel} paramKey="synthLevel" onChange={onParamChange} {...sliderProps('synthLevel')} />
-                    <Slider label="Pad 2" value={state.pad2Level} paramKey="pad2Level" onChange={onParamChange} {...sliderProps('pad2Level')} />
-                    <Slider label="Reverb 1" value={state.pad1ReverbSend} paramKey="pad1ReverbSend" onChange={onParamChange} {...sliderProps('pad1ReverbSend')} />
-                    <Slider label="Reverb 2" value={state.pad2ReverbSend} paramKey="pad2ReverbSend" onChange={onParamChange} {...sliderProps('pad2ReverbSend')} />
-                  </div>
-                  <div className="mixer-bus-group">
-                    <div className="mixer-bus-label">Lead</div>
-                    <Slider label="Lead 1" value={state.lead1Level} paramKey="lead1Level" onChange={onParamChange} {...sliderProps('lead1Level')} />
-                    <Slider label="Lead 2" value={state.lead2Level} paramKey="lead2Level" onChange={onParamChange} {...sliderProps('lead2Level')} />
-                    <Slider label="Reverb 1" value={state.lead1ReverbSend} paramKey="lead1ReverbSend" onChange={onParamChange} {...sliderProps('lead1ReverbSend')} />
-                    <Slider label="Reverb 2" value={state.lead2ReverbSend} paramKey="lead2ReverbSend" onChange={onParamChange} {...sliderProps('lead2ReverbSend')} />
-                  </div>
-                  <div className="mixer-bus-group">
-                    <div className="mixer-bus-label">Drum</div>
-                    <Slider label="Level" value={state.drumLevel} paramKey="drumLevel" onChange={onParamChange} {...sliderProps('drumLevel')} />
-                    <Slider label="Reverb" value={state.drumReverbSend} paramKey="drumReverbSend" onChange={onParamChange} {...sliderProps('drumReverbSend')} />
-                  </div>
-                  <div className="mixer-bus-group">
-                    <div className="mixer-bus-label">Granular</div>
-                    <Slider label="Level" value={state.granularLevel} paramKey="granularLevel" onChange={onParamChange} {...sliderProps('granularLevel')} />
-                    <Slider label="Reverb" value={state.granularReverbSend} paramKey="granularReverbSend" onChange={onParamChange} {...sliderProps('granularReverbSend')} />
-                  </div>
-                  <div className="mixer-bus-group">
-                    <div className="mixer-bus-label">Earth</div>
-                    <Slider label="Waves" value={state.oceanSampleLevel} paramKey="oceanSampleLevel" onChange={onParamChange} {...sliderProps('oceanSampleLevel')} />
-                    <Slider label="Water" value={state.waterLevel} paramKey="waterLevel" onChange={onParamChange} {...sliderProps('waterLevel')} />
-                    <Slider label="Insects" value={state.insectsSharedLevel} paramKey="insectsSharedLevel" onChange={onParamChange} {...sliderProps('insectsSharedLevel')} />
-                  </div>
-                  <div className="mixer-bus-group">
-                    <div className="mixer-bus-label">Output</div>
-                    <Slider label="Master" value={state.masterVolume} paramKey="masterVolume" onChange={onParamChange} {...sliderProps('masterVolume')} />
-                    <Slider label="Reverb" value={state.reverbLevel} paramKey="reverbLevel" onChange={onParamChange} {...sliderProps('reverbLevel')} />
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Presets Card (under Mixer) */}
+        <div className="global-summary-panel">
+        {/* Presets Card */}
         <div className="presets-card">
           <h3 className="presets-card-title">Presets</h3>
 
@@ -403,12 +432,303 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
             )}
           </div>
         </div>
+
+        <div className="scene-card">
+          <div className="scene-card-header">
+            <h3 className="scene-card-title">Snapshot</h3>
+            <span className={`scene-run-pill ${engineState.isRunning ? 'running' : 'stopped'}`}>
+              {engineState.isRunning ? 'Running' : 'Stopped'}
+            </span>
+          </div>
+
+          <div className="scene-status-grid">
+            <div className="scene-status-item">
+              <span className="scene-status-label">Engines</span>
+              <span className="scene-status-value">{activeEngineCount}/7</span>
+            </div>
+            <div className="scene-status-item">
+              <span className="scene-status-label">Clock</span>
+              <span className="scene-status-value">
+                {isSecondsMaster ? `${phraseSeconds.toFixed(1)}s` : `${beatBpm.toFixed(1)} BPM`}
+              </span>
+            </div>
+            <div className="scene-status-item">
+              <span className="scene-status-label">Key</span>
+              <span className="scene-status-value">
+                {state.scaleMode === 'manual' ? `${rootNoteLabel} ${state.manualScale}` : `${rootNoteLabel} Auto`}
+              </span>
+            </div>
+          </div>
+
+          <div className="scene-master-control">
+            <Slider label="Master Output" value={state.masterVolume} paramKey="masterVolume" onChange={onParamChange} {...sliderProps('masterVolume')} />
+          </div>
+
+          <div className="balance-overview">
+            {balanceRows.map((row) => (
+              <div
+                key={row.id}
+                className="balance-row"
+                style={{ '--scene-accent': row.accent } as React.CSSProperties}
+              >
+                <span className="balance-row-label">{row.label}</span>
+                <span className="balance-row-track" aria-hidden="true">
+                  <span style={{ width: `${row.level * 100}%` }} />
+                </span>
+                <span className="balance-row-value">{formatPercent(row.level)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* Harmony Engine */}
       <div className="global-engine-panel">
         <div className="harmony-card">
           <h3 className="harmony-card-title">Harmony Engine</h3>
+
+          {/* Root & CoF + Chord Progression side by side */}
+          <div className="harmony-row-2col">
+            {/* Root & CoF Drift */}
+            <div className="harmony-section">
+              <div className="harmony-section-header" onClick={() => toggleSection('root-cof')}>
+                <span className={`harmony-section-chevron ${expandedSections.has('root-cof') ? 'expanded' : ''}`}>▶</span>
+                <span className="harmony-section-name">Root & CoF Drift</span>
+              </div>
+              {expandedSections.has('root-cof') && (
+                <div className="harmony-section-body">
+                  <Select
+                    label="Root Note"
+                    value={String(state.rootNote)}
+                    options={[
+                      { value: '0', label: 'C' },
+                      { value: '1', label: 'C#' },
+                      { value: '2', label: 'D' },
+                      { value: '3', label: 'D#' },
+                      { value: '4', label: 'E' },
+                      { value: '5', label: 'F' },
+                      { value: '6', label: 'F#' },
+                      { value: '7', label: 'G' },
+                      { value: '8', label: 'G#' },
+                      { value: '9', label: 'A' },
+                      { value: '10', label: 'A#' },
+                      { value: '11', label: 'B' },
+                    ]}
+                    onChange={(v: string) => onSelectChange('rootNote', parseInt(v, 10))}
+                  />
+                  <div className="cof-drift-block">
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                      <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: state.cofDriftEnabled ? '#4ade80' : '#666' }}>
+                        CoF Drift
+                      </span>
+                      <button
+                        onClick={() => onSelectChange('cofDriftEnabled', !state.cofDriftEnabled)}
+                        style={{
+                          padding: '3px 10px',
+                          fontSize: '0.7rem',
+                          fontWeight: 'bold',
+                          background: state.cofDriftEnabled ? '#22c55e' : '#333',
+                          border: 'none',
+                          borderRadius: '4px',
+                          color: state.cofDriftEnabled ? '#000' : '#888',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s ease',
+                        }}
+                      >
+                        {state.cofDriftEnabled ? 'ON' : 'OFF'}
+                      </button>
+                    </div>
+                    <CircleOfFifths
+                      homeRoot={state.rootNote}
+                      currentStep={morphCoFViz ? morphCoFViz.cofStep : engineState.cofCurrentStep}
+                      driftRange={state.cofDriftRange}
+                      driftDirection={state.cofDriftDirection}
+                      enabled={state.cofDriftEnabled}
+                      size={140}
+                      isMorphing={!!morphCoFViz}
+                      morphStartRoot={morphCoFViz?.startRoot}
+                      morphTargetRoot={morphCoFViz?.targetRoot}
+                      morphProgress={morphPosition}
+                      onSelectRoot={(semitone: number) => {
+                        onSelectChange('rootNote', semitone);
+                        onResetCofDrift();
+                      }}
+                    />
+                    {state.cofDriftEnabled && (
+                      <>
+                        <Slider label="Rate (phrases)" value={state.cofDriftRate} paramKey="cofDriftRate" onChange={onParamChange} />
+                        <Select
+                          label="Direction"
+                          value={state.cofDriftDirection}
+                          options={[
+                            { value: 'cw', label: 'CW' },
+                            { value: 'ccw', label: 'CCW' },
+                            { value: 'random', label: 'Rnd' },
+                          ]}
+                          onChange={(v: string) => onSelectChange('cofDriftDirection', v)}
+                        />
+                        <Slider label="Range (steps)" value={state.cofDriftRange} paramKey="cofDriftRange" onChange={onParamChange} />
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Chord Progression */}
+            <div className="harmony-section">
+              <div className="harmony-section-header" onClick={() => toggleSection('chord-progression')}>
+                <span className={`harmony-section-chevron ${expandedSections.has('chord-progression') ? 'expanded' : ''}`}>▶</span>
+                <span className="harmony-section-name">Chord Progression</span>
+                <button
+                  onClick={(e) => { e.stopPropagation(); onSelectChange('chordProgressionEnabled', !state.chordProgressionEnabled); }}
+                  style={{
+                    marginLeft: 'auto',
+                    padding: '3px 10px',
+                    fontSize: '0.75rem',
+                    fontWeight: 'bold',
+                    background: state.chordProgressionEnabled ? '#22c55e' : '#333',
+                    border: 'none',
+                    borderRadius: '4px',
+                    color: state.chordProgressionEnabled ? '#000' : '#888',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {state.chordProgressionEnabled ? 'ON' : 'OFF'}
+                </button>
+              </div>
+              {expandedSections.has('chord-progression') && state.chordProgressionEnabled && (
+                <div className="harmony-section-body">
+                  <div className="harmony-grid-2">
+                    <Select
+                      label="Clock Source"
+                      value={state.chordProgressionClockSource}
+                      options={[
+                        { value: 'harmony', label: 'Follow Harmony' },
+                        { value: 'globalPhrase', label: 'Global Phrase' },
+                        { value: 'localPhrase', label: 'Local Phrase' },
+                      ]}
+                      onChange={(v: string) => onSelectChange('chordProgressionClockSource', v)}
+                      {...bindHelp('chordProgressionClockSource')}
+                    />
+                    <Select
+                      label="Step Length"
+                      value={String(state.chordProgressionPhraseMultiplier)}
+                      options={[
+                        { value: '1', label: '1 Phrase' },
+                        { value: '2', label: '2 Phrases' },
+                        { value: '4', label: '4 Phrases' },
+                        { value: '8', label: '8 Phrases' },
+                      ]}
+                      onChange={(v: string) => onSelectChange('chordProgressionPhraseMultiplier', parseInt(v, 10))}
+                      {...bindHelp('chordProgressionPhraseMultiplier')}
+                    />
+                  </div>
+                  <Slider
+                    label="Pattern Length"
+                    value={state.chordProgressionSteps}
+                    paramKey="chordProgressionSteps"
+                    onChange={onParamChange}
+                    {...sliderProps('chordProgressionSteps')}
+                  />
+                  <Select
+                    label="Preset"
+                    value="custom"
+                    options={[
+                      { value: 'custom', label: 'Custom' },
+                      { value: '0,3,4,0', label: 'I – IV – V – I' },
+                      { value: '0,5,3,4', label: 'I – vi – IV – V' },
+                      { value: '1,4,0,0', label: 'ii – V – I – I' },
+                      { value: '0,2,5,3', label: 'I – iii – vi – IV' },
+                      { value: '0,4,5,3', label: 'I – V – vi – IV' },
+                      { value: '0,3,1,4', label: 'I – IV – ii – V' },
+                      { value: '0,5,3,4,0,3,4,0', label: 'I – vi – IV – V – I – IV – V – I' },
+                      { value: '0,6,5,6', label: 'i – VII – VI – VII' },
+                      { value: '0,6,3,0', label: 'I – bVII – IV – I' },
+                    ]}
+                    onChange={(v: string) => {
+                      if (v !== 'custom') {
+                        const degrees = v.split(',').map(Number);
+                        onSelectChange('chordProgressionPattern', degrees);
+                        onSelectChange('chordProgressionSteps', degrees.length);
+                        onSelectChange('chordProgressionStepEnabled', new Array(degrees.length).fill(true));
+                      }
+                    }}
+                  />
+                  <div style={{ marginTop: '6px' }}>
+                    <div style={{ fontSize: '0.65rem', color: '#888', marginBottom: '5px' }}>Progression Steps</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(62px, 1fr))', gap: '6px' }}>
+                      {Array.from({ length: progressionSteps }, (_, i) => {
+                        const deg = (state.chordProgressionPattern ?? [])[i] ?? 0;
+                        const isActive = progressionStepEnabled[i] ?? true;
+                        return (
+                          <div
+                            key={i}
+                            style={{
+                              border: `1px solid ${isActive ? '#7c3aed' : '#333'}`,
+                              background: isActive ? 'rgba(124, 58, 237, 0.14)' : '#171717',
+                              borderRadius: '8px',
+                              padding: '6px 5px',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '5px',
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                              <span style={{ fontSize: '0.6rem', color: '#888' }}>{`S${i + 1}`}</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const nextEnabled = progressionStepEnabled.slice();
+                                  nextEnabled[i] = !isActive;
+                                  onSelectChange('chordProgressionStepEnabled', nextEnabled);
+                                }}
+                                style={{
+                                  fontSize: '0.56rem',
+                                  fontWeight: 700,
+                                  color: isActive ? '#ede9fe' : '#777',
+                                  background: isActive ? 'rgba(167, 139, 250, 0.18)' : '#222',
+                                  border: '1px solid #3a3a3a',
+                                  borderRadius: '999px',
+                                  padding: '2px 5px',
+                                  cursor: 'pointer',
+                                }}
+                                {...bindHelp('chordProgressionStepEnabled', { label: 'Step On/Off' })}
+                              >
+                                {isActive ? 'on' : 'off'}
+                              </button>
+                            </div>
+                            <select
+                              value={deg}
+                              onChange={(e) => {
+                                const newPattern = [...(state.chordProgressionPattern ?? [0, 3, 4, 0])];
+                                while (newPattern.length < progressionSteps) newPattern.push(0);
+                                newPattern[i] = parseInt(e.target.value, 10);
+                                onSelectChange('chordProgressionPattern', newPattern);
+                              }}
+                              style={{
+                                background: '#222',
+                                color: '#ddd',
+                                border: '1px solid #3a3a3a',
+                                borderRadius: '6px',
+                                padding: '4px 3px',
+                                fontSize: '0.65rem',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              {DEGREE_LABELS.map((label, d) => (
+                                <option key={d} value={d}>{label}</option>
+                              ))}
+                            </select>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
 
           {/* Scale & Tension */}
           <div className="harmony-section">
@@ -678,249 +998,6 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
                 </div>
               </div>
             )}
-          </div>
-
-          {/* Root & CoF + Chord Progression side by side */}
-          <div className="harmony-row-2col">
-            {/* Root & CoF Drift */}
-            <div className="harmony-section">
-              <div className="harmony-section-header" onClick={() => toggleSection('root-cof')}>
-                <span className={`harmony-section-chevron ${expandedSections.has('root-cof') ? 'expanded' : ''}`}>▶</span>
-                <span className="harmony-section-name">Root & CoF Drift</span>
-              </div>
-              {expandedSections.has('root-cof') && (
-                <div className="harmony-section-body">
-                  <Select
-                    label="Root Note"
-                    value={String(state.rootNote)}
-                    options={[
-                      { value: '0', label: 'C' },
-                      { value: '1', label: 'C#' },
-                      { value: '2', label: 'D' },
-                      { value: '3', label: 'D#' },
-                      { value: '4', label: 'E' },
-                      { value: '5', label: 'F' },
-                      { value: '6', label: 'F#' },
-                      { value: '7', label: 'G' },
-                      { value: '8', label: 'G#' },
-                      { value: '9', label: 'A' },
-                      { value: '10', label: 'A#' },
-                      { value: '11', label: 'B' },
-                    ]}
-                    onChange={(v: string) => onSelectChange('rootNote', parseInt(v, 10))}
-                  />
-                  <div className="cof-drift-block">
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                      <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: state.cofDriftEnabled ? '#4ade80' : '#666' }}>
-                        CoF Drift
-                      </span>
-                      <button
-                        onClick={() => onSelectChange('cofDriftEnabled', !state.cofDriftEnabled)}
-                        style={{
-                          padding: '3px 10px',
-                          fontSize: '0.7rem',
-                          fontWeight: 'bold',
-                          background: state.cofDriftEnabled ? '#22c55e' : '#333',
-                          border: 'none',
-                          borderRadius: '4px',
-                          color: state.cofDriftEnabled ? '#000' : '#888',
-                          cursor: 'pointer',
-                          transition: 'all 0.2s ease',
-                        }}
-                      >
-                        {state.cofDriftEnabled ? 'ON' : 'OFF'}
-                      </button>
-                    </div>
-                    <CircleOfFifths
-                      homeRoot={state.rootNote}
-                      currentStep={morphCoFViz ? morphCoFViz.cofStep : engineState.cofCurrentStep}
-                      driftRange={state.cofDriftRange}
-                      driftDirection={state.cofDriftDirection}
-                      enabled={state.cofDriftEnabled}
-                      size={140}
-                      isMorphing={!!morphCoFViz}
-                      morphStartRoot={morphCoFViz?.startRoot}
-                      morphTargetRoot={morphCoFViz?.targetRoot}
-                      morphProgress={morphPosition}
-                      onSelectRoot={(semitone: number) => {
-                        onSelectChange('rootNote', semitone);
-                        onResetCofDrift();
-                      }}
-                    />
-                    {state.cofDriftEnabled && (
-                      <>
-                        <Slider label="Rate (phrases)" value={state.cofDriftRate} paramKey="cofDriftRate" onChange={onParamChange} />
-                        <Select
-                          label="Direction"
-                          value={state.cofDriftDirection}
-                          options={[
-                            { value: 'cw', label: 'CW' },
-                            { value: 'ccw', label: 'CCW' },
-                            { value: 'random', label: 'Rnd' },
-                          ]}
-                          onChange={(v: string) => onSelectChange('cofDriftDirection', v)}
-                        />
-                        <Slider label="Range (steps)" value={state.cofDriftRange} paramKey="cofDriftRange" onChange={onParamChange} />
-                      </>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Chord Progression */}
-            <div className="harmony-section">
-              <div className="harmony-section-header" onClick={() => toggleSection('chord-progression')}>
-                <span className={`harmony-section-chevron ${expandedSections.has('chord-progression') ? 'expanded' : ''}`}>▶</span>
-                <span className="harmony-section-name">Chord Progression</span>
-                <button
-                  onClick={(e) => { e.stopPropagation(); onSelectChange('chordProgressionEnabled', !state.chordProgressionEnabled); }}
-                  style={{
-                    marginLeft: 'auto',
-                    padding: '3px 10px',
-                    fontSize: '0.75rem',
-                    fontWeight: 'bold',
-                    background: state.chordProgressionEnabled ? '#22c55e' : '#333',
-                    border: 'none',
-                    borderRadius: '4px',
-                    color: state.chordProgressionEnabled ? '#000' : '#888',
-                    cursor: 'pointer',
-                  }}
-                >
-                  {state.chordProgressionEnabled ? 'ON' : 'OFF'}
-                </button>
-              </div>
-              {expandedSections.has('chord-progression') && state.chordProgressionEnabled && (
-                <div className="harmony-section-body">
-                  <div className="harmony-grid-2">
-                    <Select
-                      label="Clock Source"
-                      value={state.chordProgressionClockSource}
-                      options={[
-                        { value: 'harmony', label: 'Follow Harmony' },
-                        { value: 'globalPhrase', label: 'Global Phrase' },
-                        { value: 'localPhrase', label: 'Local Phrase' },
-                      ]}
-                      onChange={(v: string) => onSelectChange('chordProgressionClockSource', v)}
-                      {...bindHelp('chordProgressionClockSource')}
-                    />
-                    <Select
-                      label="Step Length"
-                      value={String(state.chordProgressionPhraseMultiplier)}
-                      options={[
-                        { value: '1', label: '1 Phrase' },
-                        { value: '2', label: '2 Phrases' },
-                        { value: '4', label: '4 Phrases' },
-                        { value: '8', label: '8 Phrases' },
-                      ]}
-                      onChange={(v: string) => onSelectChange('chordProgressionPhraseMultiplier', parseInt(v, 10))}
-                      {...bindHelp('chordProgressionPhraseMultiplier')}
-                    />
-                  </div>
-                  <Slider
-                    label="Pattern Length"
-                    value={state.chordProgressionSteps}
-                    paramKey="chordProgressionSteps"
-                    onChange={onParamChange}
-                    {...sliderProps('chordProgressionSteps')}
-                  />
-                  <Select
-                    label="Preset"
-                    value="custom"
-                    options={[
-                      { value: 'custom', label: 'Custom' },
-                      { value: '0,3,4,0', label: 'I – IV – V – I' },
-                      { value: '0,5,3,4', label: 'I – vi – IV – V' },
-                      { value: '1,4,0,0', label: 'ii – V – I – I' },
-                      { value: '0,2,5,3', label: 'I – iii – vi – IV' },
-                      { value: '0,4,5,3', label: 'I – V – vi – IV' },
-                      { value: '0,3,1,4', label: 'I – IV – ii – V' },
-                      { value: '0,5,3,4,0,3,4,0', label: 'I – vi – IV – V – I – IV – V – I' },
-                      { value: '0,6,5,6', label: 'i – VII – VI – VII' },
-                      { value: '0,6,3,0', label: 'I – bVII – IV – I' },
-                    ]}
-                    onChange={(v: string) => {
-                      if (v !== 'custom') {
-                        const degrees = v.split(',').map(Number);
-                        onSelectChange('chordProgressionPattern', degrees);
-                        onSelectChange('chordProgressionSteps', degrees.length);
-                        onSelectChange('chordProgressionStepEnabled', new Array(degrees.length).fill(true));
-                      }
-                    }}
-                  />
-                  <div style={{ marginTop: '6px' }}>
-                    <div style={{ fontSize: '0.65rem', color: '#888', marginBottom: '5px' }}>Progression Steps</div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(62px, 1fr))', gap: '6px' }}>
-                      {Array.from({ length: progressionSteps }, (_, i) => {
-                        const deg = (state.chordProgressionPattern ?? [])[i] ?? 0;
-                        const isActive = progressionStepEnabled[i] ?? true;
-                        return (
-                          <div
-                            key={i}
-                            style={{
-                              border: `1px solid ${isActive ? '#7c3aed' : '#333'}`,
-                              background: isActive ? 'rgba(124, 58, 237, 0.14)' : '#171717',
-                              borderRadius: '8px',
-                              padding: '6px 5px',
-                              display: 'flex',
-                              flexDirection: 'column',
-                              gap: '5px',
-                            }}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                              <span style={{ fontSize: '0.6rem', color: '#888' }}>{`S${i + 1}`}</span>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const nextEnabled = progressionStepEnabled.slice();
-                                  nextEnabled[i] = !isActive;
-                                  onSelectChange('chordProgressionStepEnabled', nextEnabled);
-                                }}
-                                style={{
-                                  fontSize: '0.56rem',
-                                  fontWeight: 700,
-                                  color: isActive ? '#ede9fe' : '#777',
-                                  background: isActive ? 'rgba(167, 139, 250, 0.18)' : '#222',
-                                  border: '1px solid #3a3a3a',
-                                  borderRadius: '999px',
-                                  padding: '2px 5px',
-                                  cursor: 'pointer',
-                                }}
-                                {...bindHelp('chordProgressionStepEnabled', { label: 'Step On/Off' })}
-                              >
-                                {isActive ? 'on' : 'off'}
-                              </button>
-                            </div>
-                            <select
-                              value={deg}
-                              onChange={(e) => {
-                                const newPattern = [...(state.chordProgressionPattern ?? [0, 3, 4, 0])];
-                                while (newPattern.length < progressionSteps) newPattern.push(0);
-                                newPattern[i] = parseInt(e.target.value, 10);
-                                onSelectChange('chordProgressionPattern', newPattern);
-                              }}
-                              style={{
-                                background: '#222',
-                                color: '#ddd',
-                                border: '1px solid #3a3a3a',
-                                borderRadius: '6px',
-                                padding: '4px 3px',
-                                fontSize: '0.65rem',
-                                cursor: 'pointer',
-                              }}
-                            >
-                              {DEGREE_LABELS.map((label, d) => (
-                                <option key={d} value={d}>{label}</option>
-                              ))}
-                            </select>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
           </div>
 
           {/* Per-Engine Tension */}

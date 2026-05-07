@@ -19,6 +19,7 @@
 #include <cstring>
 #include <cmath>
 #include <algorithm>
+#include <new>
 
 using namespace kessho;
 
@@ -188,21 +189,62 @@ struct LeadNote {
 // Engine State
 // ═══════════════════════════════════════════════════════════════════════════════
 
-static float g_sample_rate = 48000;
-static SineTable g_sine;
-static PRNG g_rng;
+struct LeadFmState {
+    float g_sample_rate = 48000;
+    SineTable g_sine;
+    PRNG g_rng;
 
-static LeadNote g_notes[LEAD_FM_MAX_POLYPHONY];
-static LeadPresetParams g_params;
+    LeadNote g_notes[LEAD_FM_MAX_POLYPHONY];
+    LeadPresetParams g_params;
 
-// Delay
-static StereoPingPongDelay g_delay_lead1;
-static StereoPingPongDelay g_delay_lead2;
-static float g_delay_send = 0.3f;
+    StereoPingPongDelay g_delay_lead1;
+    StereoPingPongDelay g_delay_lead2;
+    float g_delay_send = 0.3f;
 
-// Output buffers (one per lead for separate routing)
-static float g_output[LEAD_FM_MAX_BLOCK_SIZE * 2];       // lead 1
-static float g_output_lead2[LEAD_FM_MAX_BLOCK_SIZE * 2]; // lead 2
+    float g_output[LEAD_FM_MAX_BLOCK_SIZE * 2] = {};       // lead 1
+    float g_output_lead2[LEAD_FM_MAX_BLOCK_SIZE * 2] = {}; // lead 2
+    int initialized = 0;
+};
+
+static LeadFmState g_default_lead_fm;
+static thread_local LeadFmState* g_lead_fm_slot = &g_default_lead_fm;
+
+static LeadFmState& lead_fm_current_state() {
+    return *g_lead_fm_slot;
+}
+
+class ScopedLeadFmState {
+public:
+    explicit ScopedLeadFmState(LeadFmState* state) : previous_(g_lead_fm_slot) {
+        g_lead_fm_slot = state != nullptr ? state : &g_default_lead_fm;
+    }
+
+    ~ScopedLeadFmState() {
+        g_lead_fm_slot = previous_;
+    }
+
+    ScopedLeadFmState(const ScopedLeadFmState&) = delete;
+    ScopedLeadFmState& operator=(const ScopedLeadFmState&) = delete;
+
+private:
+    LeadFmState* previous_;
+};
+
+struct KesshoLeadFmInstance {
+    LeadFmState state;
+};
+
+#define g_sample_rate lead_fm_current_state().g_sample_rate
+#define g_sine lead_fm_current_state().g_sine
+#define g_rng lead_fm_current_state().g_rng
+#define g_notes lead_fm_current_state().g_notes
+#define g_params lead_fm_current_state().g_params
+#define g_delay_lead1 lead_fm_current_state().g_delay_lead1
+#define g_delay_lead2 lead_fm_current_state().g_delay_lead2
+#define g_delay_send lead_fm_current_state().g_delay_send
+#define g_output lead_fm_current_state().g_output
+#define g_output_lead2 lead_fm_current_state().g_output_lead2
+#define g_initialized lead_fm_current_state().initialized
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Helpers
@@ -506,6 +548,12 @@ static void render_note(LeadNote& note, float* out_l, float* out_r, int block_si
 extern "C" {
 
 int lead_fm_init(float sample_rate) {
+    if (g_initialized) {
+        g_delay_lead1.destroy();
+        g_delay_lead2.destroy();
+        g_initialized = 0;
+    }
+
     g_sample_rate = sample_rate;
     g_sine.init();
     g_rng.seed(1337);
@@ -522,12 +570,18 @@ int lead_fm_init(float sample_rate) {
 
     memset(g_output, 0, sizeof(g_output));
     memset(g_output_lead2, 0, sizeof(g_output_lead2));
+    g_initialized = 1;
     return 0;
 }
 
 void lead_fm_destroy(void) {
-    g_delay_lead1.destroy();
-    g_delay_lead2.destroy();
+    if (g_initialized) {
+        g_delay_lead1.destroy();
+        g_delay_lead2.destroy();
+        g_initialized = 0;
+    }
+    memset(g_output, 0, sizeof(g_output));
+    memset(g_output_lead2, 0, sizeof(g_output_lead2));
 }
 
 float* lead_fm_get_output_ptr(void) {
@@ -540,6 +594,7 @@ float* lead_fm_get_output2_ptr(void) {
 
 void lead_fm_process_block(int block_size) {
     if (block_size > LEAD_FM_MAX_BLOCK_SIZE) block_size = LEAD_FM_MAX_BLOCK_SIZE;
+    if (block_size <= 0) return;
 
     // Separate dry buffers per lead
     float lead1_dry_l[LEAD_FM_MAX_BLOCK_SIZE] = {};
@@ -790,6 +845,378 @@ int lead_fm_get_active_count(void) {
         if (g_notes[i].active) count++;
     }
     return count;
+}
+
+KesshoLeadFmInstance* lead_fm_instance_create(float sample_rate) {
+    KesshoLeadFmInstance* instance = new (std::nothrow) KesshoLeadFmInstance{};
+    if (!instance) return nullptr;
+
+    int init_result = 0;
+    {
+        ScopedLeadFmState scoped(&instance->state);
+        init_result = lead_fm_init(sample_rate);
+    }
+
+    if (init_result != 0) {
+        delete instance;
+        return nullptr;
+    }
+
+    return instance;
+}
+
+void lead_fm_instance_destroy(KesshoLeadFmInstance* instance) {
+    if (!instance) return;
+    {
+        ScopedLeadFmState scoped(&instance->state);
+        lead_fm_destroy();
+    }
+    delete instance;
+}
+
+int lead_fm_instance_reset(KesshoLeadFmInstance* instance, float sample_rate) {
+    if (!instance) return 0;
+    ScopedLeadFmState scoped(&instance->state);
+    return lead_fm_init(sample_rate) == 0 ? 1 : 0;
+}
+
+float* lead_fm_instance_get_output_ptr(KesshoLeadFmInstance* instance) {
+    if (!instance) return nullptr;
+    ScopedLeadFmState scoped(&instance->state);
+    return lead_fm_get_output_ptr();
+}
+
+float* lead_fm_instance_get_output2_ptr(KesshoLeadFmInstance* instance) {
+    if (!instance) return nullptr;
+    ScopedLeadFmState scoped(&instance->state);
+    return lead_fm_get_output2_ptr();
+}
+
+void lead_fm_instance_process_block(KesshoLeadFmInstance* instance, int block_size) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_process_block(block_size);
+}
+
+void lead_fm_instance_note_on(KesshoLeadFmInstance* instance, float frequency, float velocity, float hold_seconds) {
+    lead_fm_instance_note_on_ex(instance, frequency, velocity, hold_seconds, 0);
+}
+
+void lead_fm_instance_note_on_ex(
+    KesshoLeadFmInstance* instance,
+    float frequency,
+    float velocity,
+    float hold_seconds,
+    int lead_index) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_note_on_ex(frequency, velocity, hold_seconds, lead_index);
+}
+
+void lead_fm_instance_all_notes_off(KesshoLeadFmInstance* instance) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_all_notes_off();
+}
+
+void lead_fm_instance_set_algorithm(KesshoLeadFmInstance* instance, int algo) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_algorithm(algo);
+}
+
+void lead_fm_instance_set_beat_detune(KesshoLeadFmInstance* instance, float cents) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_beat_detune(cents);
+}
+
+void lead_fm_instance_set_carrier2_mix(KesshoLeadFmInstance* instance, float mix) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_carrier2_mix(mix);
+}
+
+void lead_fm_instance_set_op_ratio(KesshoLeadFmInstance* instance, int op_idx, float ratio) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_op_ratio(op_idx, ratio);
+}
+
+void lead_fm_instance_set_op_index(KesshoLeadFmInstance* instance, int op_idx, float index) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_op_index(op_idx, index);
+}
+
+void lead_fm_instance_set_op_decay(KesshoLeadFmInstance* instance, int op_idx, float decay_sec) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_op_decay(op_idx, decay_sec);
+}
+
+void lead_fm_instance_set_op_sustain(KesshoLeadFmInstance* instance, int op_idx, float sustain) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_op_sustain(op_idx, sustain);
+}
+
+void lead_fm_instance_set_op_level(KesshoLeadFmInstance* instance, int op_idx, float level) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_op_level(op_idx, level);
+}
+
+void lead_fm_instance_set_op_feedback(KesshoLeadFmInstance* instance, int op_idx, float feedback) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_op_feedback(op_idx, feedback);
+}
+
+void lead_fm_instance_set_op_detune(KesshoLeadFmInstance* instance, int op_idx, float cents) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_op_detune(op_idx, cents);
+}
+
+void lead_fm_instance_set_op_env_rate(KesshoLeadFmInstance* instance, int op_idx, float rate) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_op_env_rate(op_idx, rate);
+}
+
+void lead_fm_instance_set_op_mod_attack(KesshoLeadFmInstance* instance, int op_idx, float attack_sec) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_op_mod_attack(op_idx, attack_sec);
+}
+
+void lead_fm_instance_set_op_mod_delay(KesshoLeadFmInstance* instance, int op_idx, float delay_sec) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_op_mod_delay(op_idx, delay_sec);
+}
+
+void lead_fm_instance_set_attack(KesshoLeadFmInstance* instance, float seconds) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_attack(seconds);
+}
+
+void lead_fm_instance_set_decay(KesshoLeadFmInstance* instance, float seconds) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_decay(seconds);
+}
+
+void lead_fm_instance_set_sustain(KesshoLeadFmInstance* instance, float level) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_sustain(level);
+}
+
+void lead_fm_instance_set_release(KesshoLeadFmInstance* instance, float seconds) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_release(seconds);
+}
+
+void lead_fm_instance_set_filter_freq(KesshoLeadFmInstance* instance, float hz) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_filter_freq(hz);
+}
+
+void lead_fm_instance_set_filter_q(KesshoLeadFmInstance* instance, float q) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_filter_q(q);
+}
+
+void lead_fm_instance_set_filter_type(KesshoLeadFmInstance* instance, int type) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_filter_type(type);
+}
+
+void lead_fm_instance_set_filter_env_attack(KesshoLeadFmInstance* instance, float seconds) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_filter_env_attack(seconds);
+}
+
+void lead_fm_instance_set_filter_env_decay(KesshoLeadFmInstance* instance, float seconds) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_filter_env_decay(seconds);
+}
+
+void lead_fm_instance_set_filter_env_sustain(KesshoLeadFmInstance* instance, float level) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_filter_env_sustain(level);
+}
+
+void lead_fm_instance_set_filter_env_release(KesshoLeadFmInstance* instance, float seconds) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_filter_env_release(seconds);
+}
+
+void lead_fm_instance_set_filter_env_depth(KesshoLeadFmInstance* instance, float hz) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_filter_env_depth(hz);
+}
+
+void lead_fm_instance_set_drive(KesshoLeadFmInstance* instance, float amount) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_drive(amount);
+}
+
+void lead_fm_instance_set_transient_click(KesshoLeadFmInstance* instance, float click) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_transient_click(click);
+}
+
+void lead_fm_instance_set_transient_noise(KesshoLeadFmInstance* instance, float noise) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_transient_noise(noise);
+}
+
+void lead_fm_instance_set_transient_duration_ms(KesshoLeadFmInstance* instance, float ms) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_transient_duration_ms(ms);
+}
+
+void lead_fm_instance_set_transient_decay(KesshoLeadFmInstance* instance, float decay) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_transient_decay(decay);
+}
+
+void lead_fm_instance_set_transient_filter(KesshoLeadFmInstance* instance, float freq) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_transient_filter(freq);
+}
+
+void lead_fm_instance_set_transient_type(KesshoLeadFmInstance* instance, int type) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_transient_type(type);
+}
+
+void lead_fm_instance_set_gain(KesshoLeadFmInstance* instance, float gain) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_gain(gain);
+}
+
+void lead_fm_instance_set_x_level(KesshoLeadFmInstance* instance, float level) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_x_level(level);
+}
+
+void lead_fm_instance_set_x_pan(KesshoLeadFmInstance* instance, float pan) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_x_pan(pan);
+}
+
+void lead_fm_instance_set_y_level(KesshoLeadFmInstance* instance, float level) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_y_level(level);
+}
+
+void lead_fm_instance_set_y_pan(KesshoLeadFmInstance* instance, float pan) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_y_pan(pan);
+}
+
+void lead_fm_instance_set_lfo_rate(KesshoLeadFmInstance* instance, float hz) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_lfo_rate(hz);
+}
+
+void lead_fm_instance_set_lfo_depth(KesshoLeadFmInstance* instance, float depth) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_lfo_depth(depth);
+}
+
+void lead_fm_instance_set_lfo_target(KesshoLeadFmInstance* instance, int target) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_lfo_target(target);
+}
+
+void lead_fm_instance_set_unison_voices(KesshoLeadFmInstance* instance, int count) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_unison_voices(count);
+}
+
+void lead_fm_instance_set_unison_detune(KesshoLeadFmInstance* instance, float cents) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_unison_detune(cents);
+}
+
+void lead_fm_instance_set_delay_enabled(KesshoLeadFmInstance* instance, int enabled) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_delay_enabled(enabled);
+}
+
+void lead_fm_instance_set_delay_time_l(KesshoLeadFmInstance* instance, float samples) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_delay_time_l(samples);
+}
+
+void lead_fm_instance_set_delay_time_r(KesshoLeadFmInstance* instance, float samples) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_delay_time_r(samples);
+}
+
+void lead_fm_instance_set_delay_feedback(KesshoLeadFmInstance* instance, float feedback) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_delay_feedback(feedback);
+}
+
+void lead_fm_instance_set_delay_filter(KesshoLeadFmInstance* instance, float cutoff_hz) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_delay_filter(cutoff_hz);
+}
+
+void lead_fm_instance_set_delay_mix(KesshoLeadFmInstance* instance, float mix) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_delay_mix(mix);
+}
+
+void lead_fm_instance_set_delay_send(KesshoLeadFmInstance* instance, float level) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_delay_send(level);
+}
+
+int lead_fm_instance_get_active_count(KesshoLeadFmInstance* instance) {
+    if (!instance) return 0;
+    ScopedLeadFmState scoped(&instance->state);
+    return lead_fm_get_active_count();
 }
 
 } // extern "C"

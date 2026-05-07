@@ -21,6 +21,8 @@
 extern "C" {
 #endif
 
+typedef struct KesshoLeadFmInstance KesshoLeadFmInstance;
+
 // ═══════════════ Constants ═══════════════
 
 #define LEAD_FM_MAX_POLYPHONY     8   // max simultaneous notes
@@ -168,6 +170,90 @@ void lead_fm_set_delay_send(float level);
 // ═══════════════ Status ═══════════════
 
 int lead_fm_get_active_count(void);
+
+// ═══════════════ Instance API ═══════════════
+//
+// Legacy functions above keep the existing singleton ABI for the web worklet.
+// KesshoCore uses this instance API so concurrent native/WASM modules do not
+// share note, delay, RNG, or output-buffer state.
+
+KesshoLeadFmInstance* lead_fm_instance_create(float sample_rate);
+void lead_fm_instance_destroy(KesshoLeadFmInstance* instance);
+int lead_fm_instance_reset(KesshoLeadFmInstance* instance, float sample_rate);
+
+float* lead_fm_instance_get_output_ptr(KesshoLeadFmInstance* instance);
+float* lead_fm_instance_get_output2_ptr(KesshoLeadFmInstance* instance);
+void lead_fm_instance_process_block(KesshoLeadFmInstance* instance, int block_size);
+
+void lead_fm_instance_note_on(KesshoLeadFmInstance* instance, float frequency, float velocity, float hold_seconds);
+void lead_fm_instance_note_on_ex(
+    KesshoLeadFmInstance* instance,
+    float frequency,
+    float velocity,
+    float hold_seconds,
+    int lead_index);
+void lead_fm_instance_all_notes_off(KesshoLeadFmInstance* instance);
+
+void lead_fm_instance_set_algorithm(KesshoLeadFmInstance* instance, int algo);
+void lead_fm_instance_set_beat_detune(KesshoLeadFmInstance* instance, float cents);
+void lead_fm_instance_set_carrier2_mix(KesshoLeadFmInstance* instance, float mix);
+
+void lead_fm_instance_set_op_ratio(KesshoLeadFmInstance* instance, int op_idx, float ratio);
+void lead_fm_instance_set_op_index(KesshoLeadFmInstance* instance, int op_idx, float index);
+void lead_fm_instance_set_op_decay(KesshoLeadFmInstance* instance, int op_idx, float decay_sec);
+void lead_fm_instance_set_op_sustain(KesshoLeadFmInstance* instance, int op_idx, float sustain);
+void lead_fm_instance_set_op_level(KesshoLeadFmInstance* instance, int op_idx, float level);
+void lead_fm_instance_set_op_feedback(KesshoLeadFmInstance* instance, int op_idx, float feedback);
+void lead_fm_instance_set_op_detune(KesshoLeadFmInstance* instance, int op_idx, float cents);
+void lead_fm_instance_set_op_env_rate(KesshoLeadFmInstance* instance, int op_idx, float rate);
+void lead_fm_instance_set_op_mod_attack(KesshoLeadFmInstance* instance, int op_idx, float attack_sec);
+void lead_fm_instance_set_op_mod_delay(KesshoLeadFmInstance* instance, int op_idx, float delay_sec);
+
+void lead_fm_instance_set_attack(KesshoLeadFmInstance* instance, float seconds);
+void lead_fm_instance_set_decay(KesshoLeadFmInstance* instance, float seconds);
+void lead_fm_instance_set_sustain(KesshoLeadFmInstance* instance, float level);
+void lead_fm_instance_set_release(KesshoLeadFmInstance* instance, float seconds);
+
+void lead_fm_instance_set_filter_freq(KesshoLeadFmInstance* instance, float hz);
+void lead_fm_instance_set_filter_q(KesshoLeadFmInstance* instance, float q);
+void lead_fm_instance_set_filter_type(KesshoLeadFmInstance* instance, int type);
+void lead_fm_instance_set_filter_env_attack(KesshoLeadFmInstance* instance, float seconds);
+void lead_fm_instance_set_filter_env_decay(KesshoLeadFmInstance* instance, float seconds);
+void lead_fm_instance_set_filter_env_sustain(KesshoLeadFmInstance* instance, float level);
+void lead_fm_instance_set_filter_env_release(KesshoLeadFmInstance* instance, float seconds);
+void lead_fm_instance_set_filter_env_depth(KesshoLeadFmInstance* instance, float hz);
+
+void lead_fm_instance_set_drive(KesshoLeadFmInstance* instance, float amount);
+
+void lead_fm_instance_set_transient_click(KesshoLeadFmInstance* instance, float click);
+void lead_fm_instance_set_transient_noise(KesshoLeadFmInstance* instance, float noise);
+void lead_fm_instance_set_transient_duration_ms(KesshoLeadFmInstance* instance, float ms);
+void lead_fm_instance_set_transient_decay(KesshoLeadFmInstance* instance, float decay);
+void lead_fm_instance_set_transient_filter(KesshoLeadFmInstance* instance, float freq);
+void lead_fm_instance_set_transient_type(KesshoLeadFmInstance* instance, int type);
+
+void lead_fm_instance_set_gain(KesshoLeadFmInstance* instance, float gain);
+void lead_fm_instance_set_x_level(KesshoLeadFmInstance* instance, float level);
+void lead_fm_instance_set_x_pan(KesshoLeadFmInstance* instance, float pan);
+void lead_fm_instance_set_y_level(KesshoLeadFmInstance* instance, float level);
+void lead_fm_instance_set_y_pan(KesshoLeadFmInstance* instance, float pan);
+
+void lead_fm_instance_set_lfo_rate(KesshoLeadFmInstance* instance, float hz);
+void lead_fm_instance_set_lfo_depth(KesshoLeadFmInstance* instance, float depth);
+void lead_fm_instance_set_lfo_target(KesshoLeadFmInstance* instance, int target);
+
+void lead_fm_instance_set_unison_voices(KesshoLeadFmInstance* instance, int count);
+void lead_fm_instance_set_unison_detune(KesshoLeadFmInstance* instance, float cents);
+
+void lead_fm_instance_set_delay_enabled(KesshoLeadFmInstance* instance, int enabled);
+void lead_fm_instance_set_delay_time_l(KesshoLeadFmInstance* instance, float samples);
+void lead_fm_instance_set_delay_time_r(KesshoLeadFmInstance* instance, float samples);
+void lead_fm_instance_set_delay_feedback(KesshoLeadFmInstance* instance, float feedback);
+void lead_fm_instance_set_delay_filter(KesshoLeadFmInstance* instance, float cutoff_hz);
+void lead_fm_instance_set_delay_mix(KesshoLeadFmInstance* instance, float mix);
+void lead_fm_instance_set_delay_send(KesshoLeadFmInstance* instance, float level);
+
+int lead_fm_instance_get_active_count(KesshoLeadFmInstance* instance);
 
 #ifdef __cplusplus
 }

@@ -313,7 +313,7 @@ Examples:
 | A Pad handle is being edited with no warning | Focus/selection styling can show on top of Pad identity |
 | A normal active engine has no stronger state | Engine color appears as the normal musical identity |
 
-Implementation checks Codex can own:
+Implementation checks the implementation should cover:
 
 | Check | What to verify |
 | --- | --- |

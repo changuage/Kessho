@@ -31,6 +31,16 @@ const getterFallbacks: Partial<Record<EngineMethod, (...args: unknown[]) => unkn
   getCurrentFilterFreq: () => 1000,
   getCurrentLfoValue: () => 0,
   getCurrentLfo2Value: () => 0,
+  getCurrentPadFilterFreq: () => 1000,
+  getCurrentPadLfoValue: () => 0,
+  getDynamicsAnalyser: () => null,
+  getDynamicsVisualTelemetry: () => ({
+    contextTime: 0,
+    endCompHandledByWorklet: false,
+    endCompReductionDb: 0,
+    worklet: null,
+    sidechainEvents: [],
+  }),
   getDrumVoiceAnalyser: () => undefined,
   getEarthTextureDebugState: () => EMPTY_EARTH_TEXTURE_DEBUG_STATE,
   getGranularActiveGrainCount: () => 0,
@@ -54,6 +64,22 @@ const eagerVoidMethods = new Set<EngineMethod>([
   'resume',
   'suspend',
 ]);
+
+const missingNoopMethods = new Set<string>([
+  'startJourneyMorphClock',
+  'stopJourneyMorphClock',
+  'triggerDrumVoice',
+]);
+
+function shouldUseCoreWasmEngine(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('engine') === 'core-wasm';
+  } catch {
+    return false;
+  }
+}
 
 function isQueueableMethod(method: EngineMethod): boolean {
   return (
@@ -81,11 +107,17 @@ function flushQueuedCalls(engine: AudioEngine): void {
 async function loadAudioEngine(): Promise<AudioEngine> {
   if (loadedAudioEngine) return loadedAudioEngine;
   if (!audioEngineLoadPromise) {
-    audioEngineLoadPromise = import('./engine').then((module) => {
-      loadedAudioEngine = module.audioEngine;
-      flushQueuedCalls(loadedAudioEngine);
-      return loadedAudioEngine;
-    });
+    audioEngineLoadPromise = shouldUseCoreWasmEngine()
+      ? import('./coreEngineHost').then((module) => {
+        loadedAudioEngine = module.coreEngineHost as unknown as AudioEngine;
+        flushQueuedCalls(loadedAudioEngine);
+        return loadedAudioEngine;
+      })
+      : import('./engine').then((module) => {
+        loadedAudioEngine = module.audioEngine;
+        flushQueuedCalls(loadedAudioEngine);
+        return loadedAudioEngine;
+      });
   }
   return audioEngineLoadPromise;
 }
@@ -109,7 +141,7 @@ function createMethodProxy(method: EngineMethod): (...args: unknown[]) => unknow
       if (typeof candidate === 'function') {
         return (candidate as (...invokeArgs: unknown[]) => unknown).apply(engine, args);
       }
-      return candidate;
+      if (candidate !== undefined) return candidate;
     }
 
     if (eagerAsyncMethods.has(method)) {
@@ -135,7 +167,14 @@ function createMethodProxy(method: EngineMethod): (...args: unknown[]) => unknow
     }
 
     if (isQueueableMethod(method)) {
-      queueCall(method, args);
+      if (!loadedAudioEngine) {
+        queueCall(method, args);
+      }
+      return undefined;
+    }
+
+    if (missingNoopMethods.has(method)) {
+      return undefined;
     }
 
     return undefined;
@@ -158,7 +197,9 @@ export const audioEngine = new Proxy(proxyTarget, {
       if (typeof candidate === 'function') {
         return (candidate as (...args: unknown[]) => unknown).bind(engine);
       }
-      return candidate;
+      if (candidate !== undefined) return candidate;
+
+      return createMethodProxy(property as EngineMethod);
     }
 
     return createMethodProxy(property as EngineMethod);

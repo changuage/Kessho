@@ -4,7 +4,15 @@ node_modules/
 
 # Build output
 dist/
-KesshoiOS/.build/
+build/
+KesshoNativeSwift/.build/
+KesshoNativeSwift/.swiftpm/
+.swift-cache/
+**/.swiftpm-cache/
+CapacitorMac/.build/
+CapacitorMac/.swiftpm/
+ios/App/CapApp-SPM/.swiftpm/
+plugins/*/.swiftpm/
 
 # Editor / IDE
 .vscode/
@@ -13,6 +21,11 @@ KesshoiOS/.build/
 *.swo
 *~
 *.orig
+*.xcuserstate
+**/xcuserdata/
+**/*.xcuserdatad/
+KesshoNativeSwift/Kessho.xcodeproj/project.xcworkspace/
+**/project.xcworkspace/xcshareddata/swiftpm/configuration/
 
 # OS
 .DS_Store
@@ -40,6 +53,8 @@ wasm_build_log.txt
 wasm_check.txt
 wasm/build_out.txt
 wasm/*/build_log.txt
+wasm/*/*.o
+wasm/*/*.wasm
 wasm/lead-fm/_ts1.txt
 
 # Large local sample assets (keep out of Git)

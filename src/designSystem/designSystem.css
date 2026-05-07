@@ -840,6 +840,33 @@
   border-radius: var(--k-radius-control);
 }
 
+@media (hover: hover) and (pointer: fine) {
+  #root .app-container select {
+    min-height: 30px !important;
+    padding: 4px 7px !important;
+    font-size: 0.72rem !important;
+    line-height: 1.2;
+  }
+
+  #root .app-container .app-select {
+    min-height: 32px !important;
+    padding: 5px 8px !important;
+    font-size: 0.78rem !important;
+  }
+
+  #root .reverb-root .app-slider-group:has(.app-select) .app-slider-label {
+    margin-bottom: 3px !important;
+    font-size: var(--font-sm) !important;
+    color: var(--text-secondary);
+  }
+
+  #root .reverb-root .app-select {
+    min-height: 30px !important;
+    padding: 4px 7px !important;
+    font-size: 0.72rem !important;
+  }
+}
+
 #root input[type='range']:not(.adsr-vertical) {
   accent-color: var(--page-accent, var(--k-icy));
 }

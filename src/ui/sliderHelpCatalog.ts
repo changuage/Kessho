@@ -91,26 +91,26 @@ const mixEntries: Record<string, SliderHelpEntry> = {
     'Sets the overall output level.',
     'keep the whole app quiet or silent',
     'raise the full mix without changing the balance between engines',
-    [g('Master Mixer / Output', 'Master')],
+    [g('Scene Snapshot / Output', 'Master')],
   ),
   synthLevel: lowHigh(
     'Sets Pad 1 dry level in the main mix.',
     'pull Pad 1 back or mute its dry signal',
     'bring Pad 1 forward before any granular processing or shared returns',
-    [g('Master Mixer / Pad', 'Pad 1')],
+    [g('Scene Snapshot / Pads', 'Pad 1')],
   ),
   pad2Level: lowHigh(
     'Sets Pad 2 dry level in the main mix.',
     'pull Pad 2 back or mute its dry signal',
     'bring Pad 2 forward before any granular processing or shared returns',
-    [g('Master Mixer / Pad', 'Pad 2')],
+    [g('Scene Snapshot / Pads', 'Pad 2')],
   ),
   pad1ReverbSend: lowHigh(
     'Sets how much Pad 1 feeds the shared reverb.',
     'keep Pad 1 mostly dry and direct',
     'push more of Pad 1 into the shared reverb tail',
     [
-      g('Master Mixer / Pad', 'Reverb 1'),
+      g('Scene Snapshot / FX', 'Pad 1 Reverb'),
       rt('Routing Matrix', 'Pad 1 → Reverb'),
     ],
   ),
@@ -119,7 +119,7 @@ const mixEntries: Record<string, SliderHelpEntry> = {
     'keep Pad 2 mostly dry and direct',
     'push more of Pad 2 into the shared reverb tail',
     [
-      g('Master Mixer / Pad', 'Reverb 2'),
+      g('Scene Snapshot / FX', 'Pad 2 Reverb'),
       rt('Routing Matrix', 'Pad 2 → Reverb'),
     ],
   ),
@@ -152,7 +152,7 @@ const mixEntries: Record<string, SliderHelpEntry> = {
     'tuck Lead 1 behind the rest of the texture or mute it',
     'bring Lead 1 forward without changing its preset morph or note logic',
     [
-      g('Master Mixer / Lead', 'Lead 1'),
+      g('Scene Snapshot / Leads', 'Lead 1'),
       sy('Lead 1 / Performance', 'Lead 1 Level'),
     ],
   ),
@@ -161,7 +161,7 @@ const mixEntries: Record<string, SliderHelpEntry> = {
     'tuck Lead 2 behind the rest of the texture or mute it',
     'bring Lead 2 forward without changing its preset morph or note logic',
     [
-      g('Master Mixer / Lead', 'Lead 2'),
+      g('Scene Snapshot / Leads', 'Lead 2'),
       sy('Lead 2 / Performance', 'Lead 2 Level'),
     ],
   ),
@@ -170,7 +170,7 @@ const mixEntries: Record<string, SliderHelpEntry> = {
     'keep Lead 1 mostly dry and focused',
     'surround Lead 1 with a larger, wetter tail',
     [
-      g('Master Mixer / Lead', 'Reverb 1'),
+      g('Scene Snapshot / FX', 'Lead 1 Reverb'),
       rt('Routing Matrix', 'Lead 1 → Reverb'),
     ],
   ),
@@ -179,7 +179,7 @@ const mixEntries: Record<string, SliderHelpEntry> = {
     'keep Lead 2 mostly dry and focused',
     'surround Lead 2 with a larger, wetter tail',
     [
-      g('Master Mixer / Lead', 'Reverb 2'),
+      g('Scene Snapshot / FX', 'Lead 2 Reverb'),
       rt('Routing Matrix', 'Lead 2 → Reverb'),
     ],
   ),
@@ -275,7 +275,7 @@ const mixEntries: Record<string, SliderHelpEntry> = {
     'keep the whole kit quiet or fully out of the mix',
     'push the full drum engine forward without changing per-voice balances',
     [
-      g('Master Mixer / Drum', 'Level'),
+      g('Scene Snapshot / Rhythm', 'Drums'),
       dr('Master Strip', 'Level'),
     ],
   ),
@@ -284,7 +284,7 @@ const mixEntries: Record<string, SliderHelpEntry> = {
     'keep the kit tighter and drier',
     'send more of the kit into the common reverb wash',
     [
-      g('Master Mixer / Drum', 'Reverb'),
+      g('Scene Snapshot / FX', 'Drum Reverb'),
       rt('Routing Matrix', 'Drums → Reverb'),
       dr('Master Strip', 'Reverb'),
     ],
@@ -294,7 +294,7 @@ const mixEntries: Record<string, SliderHelpEntry> = {
     'keep the granular layer subtle or silent',
     'bring the chopped cloud forward in the mix',
     [
-      g('Master Mixer / Granular', 'Level'),
+      g('Scene Snapshot / Texture', 'Granular'),
       gr('Space', 'Granular Level'),
     ],
   ),
@@ -303,7 +303,7 @@ const mixEntries: Record<string, SliderHelpEntry> = {
     'keep the granular layer relatively dry',
     'stack a longer reverb tail on top of the granular texture',
     [
-      g('Master Mixer / Granular', 'Reverb'),
+      g('Scene Snapshot / FX', 'Granular Reverb'),
       rt('Routing Matrix', 'Granular → Reverb'),
       gr('Space', 'Reverb Send'),
     ],
@@ -325,7 +325,7 @@ const mixEntries: Record<string, SliderHelpEntry> = {
     'keep the surf bed quiet or fully muted',
     'make the recorded waves more prominent in the Earth mix',
     [
-      g('Master Mixer / Earth', 'Waves'),
+      g('Scene Snapshot / Earth', 'Waves'),
       ea('Waves', 'Waves Level'),
       ea('Earth Mixer', 'Waves'),
     ],
@@ -335,7 +335,7 @@ const mixEntries: Record<string, SliderHelpEntry> = {
     'keep the synthesized water layers subtle or silent while also pulling their shared space routing down',
     'bring the water engine forward and feed more of that same water balance into the shared FX',
     [
-      g('Master Mixer / Earth', 'Water'),
+      g('Scene Snapshot / Earth', 'Water'),
       ea('Earth Mixer', 'Water'),
     ],
   ),
@@ -350,7 +350,7 @@ const mixEntries: Record<string, SliderHelpEntry> = {
     'pull both insect layers and their shared routing down together without changing their internal balance',
     'raise the combined insects presence while leaving Insects 1 and Insects 2 relative levels intact',
     [
-      g('Master Mixer / Earth', 'Insects'),
+      g('Scene Snapshot / Earth', 'Insects'),
       rt('Routing Matrix', 'Insects Level'),
       ea('Earth Mixer', 'Insects Level'),
     ],
@@ -372,7 +372,7 @@ const mixEntries: Record<string, SliderHelpEntry> = {
     'leave more of the mix dry and direct',
     'make the common reverb tail a larger part of the overall sound',
     [
-      g('Master Mixer / Output', 'Reverb'),
+      g('Scene Snapshot / FX', 'Reverb'),
       rv('Core', 'Return'),
     ],
   ),

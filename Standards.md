@@ -276,9 +276,9 @@ When renaming or removing state fields:
 
 ---
 
-## iOS Port Considerations
+## KesshoNativeSwift Considerations
 
-When porting slider functionality to SwiftUI:
+When using the paused native Swift port as a reference for slider behavior:
 
 1. **`SliderMode` enum:** `enum SliderMode: String, Codable { case single, walk, sampleHold }`
 2. **DualSlider SwiftUI view:** Two draggable thumbs + colored range track + walk/trigger indicator dot
@@ -286,4 +286,4 @@ When porting slider functionality to SwiftUI:
 4. **Engine reads:** Use `dualRanges[key]` for per-trigger sampling; fall back to `state[key]` if absent
 5. **Preset migration:** Port `migratePreset()` logic — handles old `*Min/*Max` → new format
 6. **Color constants:** Walk = `#a5c4d4` (blue), S&H = `#D4A520` (gold)
-7. **See:** `docs/ios_port/04-PARAMETER-MAPPING.md` § "Unified 3-Mode Slider System" for full mapping table
+7. **See:** `docs/kessho-native-swift/04-PARAMETER-MAPPING.md` § "Unified 3-Mode Slider System" for full mapping table

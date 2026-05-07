@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <cstring>
+#include <new>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -249,7 +250,39 @@ struct DynamicsCharacterState {
     float degrade_lp[2] = {0.0f, 0.0f};
 };
 
-DynamicsCharacterState g;
+DynamicsCharacterState g_default;
+thread_local DynamicsCharacterState* g_current = &g_default;
+
+DynamicsCharacterState& dynamics_character_current_state() {
+    return *g_current;
+}
+
+struct ScopedDynamicsCharacterState {
+    explicit ScopedDynamicsCharacterState(DynamicsCharacterState& next) : previous(g_current) {
+        g_current = &next;
+    }
+
+    ~ScopedDynamicsCharacterState() {
+        g_current = previous;
+    }
+
+    DynamicsCharacterState* previous;
+};
+
+#define g dynamics_character_current_state()
+
+void init_dynamics_character_state(DynamicsCharacterState& state, float sample_rate) {
+    std::memset(&state, 0, sizeof(state));
+    state.sample_rate = std::isfinite(sample_rate) && sample_rate > 1000.0f ? sample_rate : 44100.0f;
+    state.delay_size = static_cast<int>(std::fmin(static_cast<float>(kDelayMaxSamples), state.sample_rate * 0.12f));
+    if (state.delay_size < 512) state.delay_size = 512;
+    state.degrade_phase[0] = 1.0f;
+    state.degrade_phase[1] = 1.0f;
+    state.compressor_gain = 1.0f;
+    state.end_comp_gain = 1.0f;
+    state.end_detector_hp_cache = -1.0f;
+    state.rng = 0x9e3779b9u ^ static_cast<unsigned int>(state.sample_rate);
+}
 
 float rand01() {
     unsigned int t = (g.rng += 0x6d2b79f5u);
@@ -600,17 +633,12 @@ void process_compressor(float& l, float& r, const float* p, float attack_coeff, 
 
 extern "C" {
 
+struct KesshoDynamicsCharacterInstance {
+    DynamicsCharacterState state;
+};
+
 int dynamics_character_init(float sample_rate) {
-    std::memset(&g, 0, sizeof(g));
-    g.sample_rate = std::isfinite(sample_rate) && sample_rate > 1000.0f ? sample_rate : 44100.0f;
-    g.delay_size = static_cast<int>(std::fmin(static_cast<float>(kDelayMaxSamples), g.sample_rate * 0.12f));
-    if (g.delay_size < 512) g.delay_size = 512;
-    g.degrade_phase[0] = 1.0f;
-    g.degrade_phase[1] = 1.0f;
-    g.compressor_gain = 1.0f;
-    g.end_comp_gain = 1.0f;
-    g.end_detector_hp_cache = -1.0f;
-    g.rng = 0x9e3779b9u ^ static_cast<unsigned int>(g.sample_rate);
+    init_dynamics_character_state(g, sample_rate);
     return 0;
 }
 
@@ -805,6 +833,51 @@ void dynamics_character_process_block(int block_size) {
         g.output[i * 2 + 1] = out_r;
         g.sample_clock++;
     }
+}
+
+KesshoDynamicsCharacterInstance* dynamics_character_instance_create(float sample_rate) {
+    auto* instance = new (std::nothrow) KesshoDynamicsCharacterInstance{};
+    if (instance == nullptr) return nullptr;
+    init_dynamics_character_state(instance->state, sample_rate);
+    return instance;
+}
+
+void dynamics_character_instance_destroy(KesshoDynamicsCharacterInstance* instance) {
+    delete instance;
+}
+
+int dynamics_character_instance_reset(KesshoDynamicsCharacterInstance* instance, float sample_rate) {
+    if (instance == nullptr) return 0;
+    init_dynamics_character_state(instance->state, sample_rate);
+    return 1;
+}
+
+float* dynamics_character_instance_get_input_ptr(KesshoDynamicsCharacterInstance* instance) {
+    return instance != nullptr ? instance->state.input : nullptr;
+}
+
+float* dynamics_character_instance_get_output_ptr(KesshoDynamicsCharacterInstance* instance) {
+    return instance != nullptr ? instance->state.output : nullptr;
+}
+
+float* dynamics_character_instance_get_params_ptr(KesshoDynamicsCharacterInstance* instance) {
+    return instance != nullptr ? instance->state.param_buffer : nullptr;
+}
+
+float* dynamics_character_instance_get_telemetry_ptr(KesshoDynamicsCharacterInstance* instance) {
+    return instance != nullptr ? instance->state.telemetry : nullptr;
+}
+
+void dynamics_character_instance_commit_params(KesshoDynamicsCharacterInstance* instance) {
+    if (instance == nullptr) return;
+    ScopedDynamicsCharacterState scoped(instance->state);
+    dynamics_character_commit_params();
+}
+
+void dynamics_character_instance_process_block(KesshoDynamicsCharacterInstance* instance, int block_size) {
+    if (instance == nullptr) return;
+    ScopedDynamicsCharacterState scoped(instance->state);
+    dynamics_character_process_block(block_size);
 }
 
 } // extern "C"

@@ -18,6 +18,22 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SRC="$SCRIPT_DIR/kessho_spectral_freeze.cpp"
 OUT="$SCRIPT_DIR/kessho_spectral_freeze.wasm"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+LOCAL_EMSDK="$REPO_ROOT/emsdk"
+LOCAL_EMCC="$LOCAL_EMSDK/upstream/emscripten/emcc.py"
+LOCAL_PY312="$REPO_ROOT/.venv312/bin/python"
+
+if [[ -f "$LOCAL_EMCC" ]]; then
+    EMCC_CMD=()
+    if [[ -x "$LOCAL_PY312" ]]; then
+        EMCC_CMD=("$LOCAL_PY312" "$LOCAL_EMCC")
+    else
+        EMCC_CMD=("python3" "$LOCAL_EMCC")
+    fi
+    export PATH="$LOCAL_EMSDK/upstream/emscripten:$LOCAL_EMSDK/upstream/bin:$LOCAL_EMSDK/node/22.16.0_64bit/bin:$PATH"
+else
+    EMCC_CMD=("emcc")
+fi
 
 # Exported functions (must match extern "C" API)
 EXPORTS="[
@@ -32,13 +48,25 @@ EXPORTS="[
   '_spectral_freeze_set_mix',
   '_spectral_freeze_set_decay',
   '_spectral_freeze_set_phase_jitter',
+  '_spectral_freeze_instance_create',
+  '_spectral_freeze_instance_destroy',
+  '_spectral_freeze_instance_reset',
+  '_spectral_freeze_instance_get_input_ptr',
+  '_spectral_freeze_instance_get_output_ptr',
+  '_spectral_freeze_instance_process_block',
+  '_spectral_freeze_instance_set_freeze',
+  '_spectral_freeze_instance_set_slushy',
+  '_spectral_freeze_instance_set_speed',
+  '_spectral_freeze_instance_set_mix',
+  '_spectral_freeze_instance_set_decay',
+  '_spectral_freeze_instance_set_phase_jitter',
   '_malloc',
   '_free'
 ]"
 
 if [[ "${1:-}" == "debug" ]]; then
     echo "Building DEBUG..."
-    emcc "$SRC" \
+    "${EMCC_CMD[@]}" "$SRC" \
         -o "$OUT" \
         -std=c++17 \
         -O0 \
@@ -53,7 +81,7 @@ if [[ "${1:-}" == "debug" ]]; then
         -s "EXPORTED_FUNCTIONS=$EXPORTS"
 else
     echo "Building RELEASE..."
-    emcc "$SRC" \
+    "${EMCC_CMD[@]}" "$SRC" \
         -o "$OUT" \
         -std=c++17 \
         -O3 \

@@ -208,6 +208,7 @@ export const PresetRatingStars = React.memo(function PresetRatingStars({
               type="button"
               role="radio"
               aria-checked={selected}
+              aria-pressed={currentValue === rating}
               aria-label={rating === 0 ? 'Clear preset rating' : `Set preset rating to ${rating} of 5`}
               title={rating === 0 ? 'No rating' : `${rating}/5`}
               onClick={(event) => handleOptionSelect(rating, event)}

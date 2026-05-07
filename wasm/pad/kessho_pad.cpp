@@ -20,6 +20,7 @@
 #include <cstring>
 #include <cmath>
 #include <algorithm>
+#include <new>
 
 using namespace kessho;
 
@@ -119,7 +120,6 @@ struct LFOState {
     float process(float rate, int wave_type, float sample_rate, const SineTable& sine) {
         if (rate <= 0) { value = 0; return 0; }
 
-        float prev_phase = phase;
         phase += rate / sample_rate;
         if (phase >= 1.0f) {
             phase -= 1.0f;
@@ -239,22 +239,64 @@ struct PadVoice {
 // Engine State
 // ═══════════════════════════════════════════════════════════════════════════════
 
-static float g_sample_rate = 48000;
-static SineTable g_sine;
-static PRNG g_rng;
+struct PadState {
+    float g_sample_rate = 48000;
+    SineTable g_sine;
+    PRNG g_rng;
 
-static PadVoice g_voices[PAD_NUM_VOICES];
-static PadParams g_pads[PAD_NUM_PADS];
+    PadVoice g_voices[PAD_NUM_VOICES];
+    PadParams g_pads[PAD_NUM_PADS];
 
-// Output buffers
-static float g_output[PAD_MAX_BLOCK_SIZE * 2];
-static float g_reverb_output[PAD_MAX_BLOCK_SIZE * 2];
-static float g_prefader_pad1_output[PAD_MAX_BLOCK_SIZE * 2];
-static float g_prefader_pad2_output[PAD_MAX_BLOCK_SIZE * 2];
-static float g_postfader_pad1_output[PAD_MAX_BLOCK_SIZE * 2];
-static float g_postfader_pad2_output[PAD_MAX_BLOCK_SIZE * 2];
+    float g_output[PAD_MAX_BLOCK_SIZE * 2] = {};
+    float g_reverb_output[PAD_MAX_BLOCK_SIZE * 2] = {};
+    float g_prefader_pad1_output[PAD_MAX_BLOCK_SIZE * 2] = {};
+    float g_prefader_pad2_output[PAD_MAX_BLOCK_SIZE * 2] = {};
+    float g_postfader_pad1_output[PAD_MAX_BLOCK_SIZE * 2] = {};
+    float g_postfader_pad2_output[PAD_MAX_BLOCK_SIZE * 2] = {};
 
-static float g_reverb_send_level = 0.1f;
+    float g_reverb_send_level = 0.1f;
+};
+
+static PadState g_default_pad;
+static thread_local PadState* g_pad_slot = &g_default_pad;
+
+static PadState& pad_current_state() {
+    return *g_pad_slot;
+}
+
+class ScopedPadState {
+public:
+    explicit ScopedPadState(PadState* state) : previous_(g_pad_slot) {
+        g_pad_slot = state != nullptr ? state : &g_default_pad;
+    }
+
+    ~ScopedPadState() {
+        g_pad_slot = previous_;
+    }
+
+    ScopedPadState(const ScopedPadState&) = delete;
+    ScopedPadState& operator=(const ScopedPadState&) = delete;
+
+private:
+    PadState* previous_;
+};
+
+struct KesshoPadInstance {
+    PadState state;
+};
+
+#define g_sample_rate pad_current_state().g_sample_rate
+#define g_sine pad_current_state().g_sine
+#define g_rng pad_current_state().g_rng
+#define g_voices pad_current_state().g_voices
+#define g_pads pad_current_state().g_pads
+#define g_output pad_current_state().g_output
+#define g_reverb_output pad_current_state().g_reverb_output
+#define g_prefader_pad1_output pad_current_state().g_prefader_pad1_output
+#define g_prefader_pad2_output pad_current_state().g_prefader_pad2_output
+#define g_postfader_pad1_output pad_current_state().g_postfader_pad1_output
+#define g_postfader_pad2_output pad_current_state().g_postfader_pad2_output
+#define g_reverb_send_level pad_current_state().g_reverb_send_level
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Helpers
@@ -750,6 +792,195 @@ int pad_get_active_count(void) {
         if (g_voices[i].active) count++;
     }
     return count;
+}
+
+KesshoPadInstance* pad_instance_create(float sample_rate) {
+    KesshoPadInstance* instance = new (std::nothrow) KesshoPadInstance{};
+    if (!instance) return nullptr;
+
+    int init_result = 0;
+    {
+        ScopedPadState scoped(&instance->state);
+        init_result = pad_init(sample_rate);
+    }
+
+    if (init_result != 0) {
+        delete instance;
+        return nullptr;
+    }
+
+    return instance;
+}
+
+void pad_instance_destroy(KesshoPadInstance* instance) {
+    if (!instance) return;
+    {
+        ScopedPadState scoped(&instance->state);
+        pad_destroy();
+    }
+    delete instance;
+}
+
+int pad_instance_reset(KesshoPadInstance* instance, float sample_rate) {
+    if (!instance) return 0;
+    ScopedPadState scoped(&instance->state);
+    return pad_init(sample_rate) == 0 ? 1 : 0;
+}
+
+float* pad_instance_get_output_ptr(KesshoPadInstance* instance) {
+    if (!instance) return nullptr;
+    ScopedPadState scoped(&instance->state);
+    return pad_get_output_ptr();
+}
+
+float* pad_instance_get_reverb_send_ptr(KesshoPadInstance* instance) {
+    if (!instance) return nullptr;
+    ScopedPadState scoped(&instance->state);
+    return pad_get_reverb_send_ptr();
+}
+
+float* pad_instance_get_prefader_pad1_ptr(KesshoPadInstance* instance) {
+    if (!instance) return nullptr;
+    ScopedPadState scoped(&instance->state);
+    return pad_get_prefader_pad1_ptr();
+}
+
+float* pad_instance_get_prefader_pad2_ptr(KesshoPadInstance* instance) {
+    if (!instance) return nullptr;
+    ScopedPadState scoped(&instance->state);
+    return pad_get_prefader_pad2_ptr();
+}
+
+float* pad_instance_get_postfader_pad1_ptr(KesshoPadInstance* instance) {
+    if (!instance) return nullptr;
+    ScopedPadState scoped(&instance->state);
+    return pad_get_postfader_pad1_ptr();
+}
+
+float* pad_instance_get_postfader_pad2_ptr(KesshoPadInstance* instance) {
+    if (!instance) return nullptr;
+    ScopedPadState scoped(&instance->state);
+    return pad_get_postfader_pad2_ptr();
+}
+
+void pad_instance_process_block(KesshoPadInstance* instance, int block_size) {
+    if (!instance) return;
+    ScopedPadState scoped(&instance->state);
+    pad_process_block(block_size);
+}
+
+void pad_instance_note_on(KesshoPadInstance* instance, int voice_idx, float frequency, float velocity) {
+    if (!instance) return;
+    ScopedPadState scoped(&instance->state);
+    pad_note_on(voice_idx, frequency, velocity);
+}
+
+void pad_instance_note_off(KesshoPadInstance* instance, int voice_idx) {
+    if (!instance) return;
+    ScopedPadState scoped(&instance->state);
+    pad_note_off(voice_idx);
+}
+
+void pad_instance_kill_voice(KesshoPadInstance* instance, int voice_idx) {
+    if (!instance) return;
+    ScopedPadState scoped(&instance->state);
+    pad_kill_voice(voice_idx);
+}
+
+void pad_instance_set_voice_pad(KesshoPadInstance* instance, int voice_idx, int pad) {
+    if (!instance) return;
+    ScopedPadState scoped(&instance->state);
+    pad_set_voice_pad(voice_idx, pad);
+}
+
+#define PAD_INSTANCE_SETTER2(name, type_a, type_b) \
+    void pad_instance_##name(KesshoPadInstance* instance, type_a a, type_b b) { \
+        if (!instance) return; \
+        ScopedPadState scoped(&instance->state); \
+        pad_##name(a, b); \
+    }
+
+#define PAD_INSTANCE_SETTER1(name, type_a) \
+    void pad_instance_##name(KesshoPadInstance* instance, type_a a) { \
+        if (!instance) return; \
+        ScopedPadState scoped(&instance->state); \
+        pad_##name(a); \
+    }
+
+PAD_INSTANCE_SETTER2(set_osc_a_wave, int, int)
+PAD_INSTANCE_SETTER2(set_osc_a_octave, int, int)
+PAD_INSTANCE_SETTER2(set_osc_a_detune, int, float)
+PAD_INSTANCE_SETTER2(set_osc_a_level, int, float)
+
+PAD_INSTANCE_SETTER2(set_osc_b_wave, int, int)
+PAD_INSTANCE_SETTER2(set_osc_b_octave, int, int)
+PAD_INSTANCE_SETTER2(set_osc_b_detune, int, float)
+PAD_INSTANCE_SETTER2(set_osc_b_level, int, float)
+
+PAD_INSTANCE_SETTER2(set_osc_mix, int, float)
+
+PAD_INSTANCE_SETTER2(set_sub_enabled, int, int)
+PAD_INSTANCE_SETTER2(set_sub_octave, int, int)
+PAD_INSTANCE_SETTER2(set_sub_wave, int, int)
+PAD_INSTANCE_SETTER2(set_sub_level, int, float)
+
+PAD_INSTANCE_SETTER2(set_noise_type, int, int)
+PAD_INSTANCE_SETTER2(set_noise_level, int, float)
+
+PAD_INSTANCE_SETTER2(set_hardness, int, float)
+PAD_INSTANCE_SETTER2(set_warmth, int, float)
+PAD_INSTANCE_SETTER2(set_presence, int, float)
+PAD_INSTANCE_SETTER2(set_fold_amount, int, float)
+PAD_INSTANCE_SETTER2(set_fold_mode, int, int)
+
+PAD_INSTANCE_SETTER2(set_filter_type, int, int)
+PAD_INSTANCE_SETTER2(set_filter_cutoff_min, int, float)
+PAD_INSTANCE_SETTER2(set_filter_cutoff_max, int, float)
+PAD_INSTANCE_SETTER2(set_filter_resonance, int, float)
+PAD_INSTANCE_SETTER2(set_filter_q, int, float)
+PAD_INSTANCE_SETTER2(set_filter_slope, int, float)
+PAD_INSTANCE_SETTER2(set_filter_key_tracking, int, float)
+
+PAD_INSTANCE_SETTER2(set_filter_b_enabled, int, int)
+PAD_INSTANCE_SETTER2(set_filter_b_type, int, int)
+PAD_INSTANCE_SETTER2(set_filter_b_cutoff, int, float)
+PAD_INSTANCE_SETTER2(set_filter_b_resonance, int, float)
+PAD_INSTANCE_SETTER2(set_filter_b_q, int, float)
+PAD_INSTANCE_SETTER2(set_filter_routing, int, int)
+
+PAD_INSTANCE_SETTER2(set_attack, int, float)
+PAD_INSTANCE_SETTER2(set_decay, int, float)
+PAD_INSTANCE_SETTER2(set_sustain, int, float)
+PAD_INSTANCE_SETTER2(set_release, int, float)
+
+PAD_INSTANCE_SETTER2(set_lfo1_rate, int, float)
+PAD_INSTANCE_SETTER2(set_lfo1_depth, int, float)
+PAD_INSTANCE_SETTER2(set_lfo1_wave, int, int)
+PAD_INSTANCE_SETTER2(set_lfo1_dest, int, int)
+
+PAD_INSTANCE_SETTER2(set_lfo2_rate, int, float)
+PAD_INSTANCE_SETTER2(set_lfo2_depth, int, float)
+PAD_INSTANCE_SETTER2(set_lfo2_wave, int, int)
+PAD_INSTANCE_SETTER2(set_lfo2_dest, int, int)
+
+PAD_INSTANCE_SETTER2(set_mod_env_enabled, int, int)
+PAD_INSTANCE_SETTER2(set_mod_env_attack, int, float)
+PAD_INSTANCE_SETTER2(set_mod_env_decay, int, float)
+PAD_INSTANCE_SETTER2(set_mod_env_sustain, int, float)
+PAD_INSTANCE_SETTER2(set_mod_env_release, int, float)
+PAD_INSTANCE_SETTER2(set_mod_env_depth, int, float)
+PAD_INSTANCE_SETTER2(set_mod_env_dest, int, int)
+
+PAD_INSTANCE_SETTER2(set_level, int, float)
+PAD_INSTANCE_SETTER1(set_reverb_send, float)
+
+#undef PAD_INSTANCE_SETTER2
+#undef PAD_INSTANCE_SETTER1
+
+int pad_instance_get_active_count(KesshoPadInstance* instance) {
+    if (!instance) return 0;
+    ScopedPadState scoped(&instance->state);
+    return pad_get_active_count();
 }
 
 } // extern "C"

@@ -21,7 +21,7 @@ Use this document systematically when making changes to either platform.
 
 Reference files:
 - Web: `src/ui/state.ts` (SliderState interface, QUANTIZATION object)
-- iOS: `KesshoiOS/Kessho/State/SliderState.swift`
+- iOS: `KesshoNativeSwift/Kessho/State/SliderState.swift`
 
 ### 1.1 Master Mixer
 

@@ -8,7 +8,7 @@
  * Message types received:
  *   'wasmBinary'  – ArrayBuffer of compiled WASM module
  *   'params'      – per-pad parameter updates { pad, params }
- *   'noteOn'      – { voiceIndex, frequency, velocity }
+ *   'noteOn'      – { voiceIndex, frequency, velocity, holdSeconds? }
  *   'noteOff'     – { voiceIndex }
  *   'killVoice'   – { voiceIndex } hard-stops one stale audition voice
  *   'voicePad'    – { voiceIndex, pad } (0=pad1, 1=pad2)
@@ -222,6 +222,7 @@ class PadSynthWasmProcessor extends AudioWorkletProcessor {
 
     this.pendingParams = [];
     this.pendingNotes = [];
+    this.pendingNoteOffs = [];
     this.pendingVoicePads = new Map();
     this.lastNonFiniteReportTime = 0;
 
@@ -286,6 +287,7 @@ class PadSynthWasmProcessor extends AudioWorkletProcessor {
       this.pendingVoicePads.clear();
       for (const n of this.pendingNotes) {
         this.wasm.pad_note_on(n.voiceIndex, n.frequency, n.velocity);
+        this.scheduleNoteOff(n.voiceIndex, n.holdSeconds);
       }
       this.pendingNotes = [];
     } catch (error) {
@@ -308,21 +310,24 @@ class PadSynthWasmProcessor extends AudioWorkletProcessor {
           const voiceIndex = Number.isInteger(data.voiceIndex) ? data.voiceIndex : -1;
           const frequency = isFiniteNumber(data.frequency) ? Math.max(0, data.frequency) : NaN;
           const velocity = isFiniteNumber(data.velocity) ? Math.max(0, Math.min(1, data.velocity)) : NaN;
+          const holdSeconds = isFiniteNumber(data.holdSeconds) ? Math.max(0, data.holdSeconds) : 0;
           if (voiceIndex < 0 || !Number.isFinite(frequency) || !Number.isFinite(velocity)) {
             this.port.postMessage({ type: 'error', stage: 'noteOn', message: `Invalid noteOn payload: ${JSON.stringify(data)}` });
             break;
           }
           if (this.ready) {
             this.wasm.pad_note_on(voiceIndex, frequency, velocity);
+            this.scheduleNoteOff(voiceIndex, holdSeconds);
           } else {
             this.pendingNotes = this.pendingNotes.filter((note) => note.voiceIndex !== voiceIndex);
-            this.pendingNotes.push({ ...data, voiceIndex, frequency, velocity });
+            this.pendingNotes.push({ ...data, voiceIndex, frequency, velocity, holdSeconds });
           }
           break;
         }
 
         case 'noteOff':
           if (Number.isInteger(data.voiceIndex)) {
+            this.clearScheduledNoteOff(data.voiceIndex);
             if (this.ready) this.wasm.pad_note_off(data.voiceIndex);
             else this.pendingNotes = this.pendingNotes.filter((note) => note.voiceIndex !== data.voiceIndex);
           }
@@ -330,6 +335,7 @@ class PadSynthWasmProcessor extends AudioWorkletProcessor {
 
         case 'killVoice':
           if (Number.isInteger(data.voiceIndex)) {
+            this.clearScheduledNoteOff(data.voiceIndex);
             if (this.ready && typeof this.wasm.pad_kill_voice === 'function') {
               this.wasm.pad_kill_voice(data.voiceIndex);
             } else {
@@ -374,6 +380,7 @@ class PadSynthWasmProcessor extends AudioWorkletProcessor {
           this.wasm = null;
           this.pendingParams = [];
           this.pendingNotes = [];
+          this.pendingNoteOffs = [];
           this.pendingVoicePads.clear();
           break;
       }
@@ -459,6 +466,32 @@ class PadSynthWasmProcessor extends AudioWorkletProcessor {
     return this.heap;
   }
 
+  scheduleNoteOff(voiceIndex, holdSeconds) {
+    this.clearScheduledNoteOff(voiceIndex);
+    const holdSamples = Math.max(0, Math.floor((Number(holdSeconds) || 0) * sampleRate));
+    if (holdSamples > 0) {
+      this.pendingNoteOffs.push({ voiceIndex, samplesUntil: holdSamples });
+    }
+  }
+
+  clearScheduledNoteOff(voiceIndex) {
+    this.pendingNoteOffs = this.pendingNoteOffs.filter((pending) => pending.voiceIndex !== voiceIndex);
+  }
+
+  advanceScheduledNoteOffs(frames) {
+    if (!this.ready || !this.wasm || this.pendingNoteOffs.length === 0) return;
+    const remaining = [];
+    for (const pending of this.pendingNoteOffs) {
+      pending.samplesUntil -= frames;
+      if (pending.samplesUntil <= 0) {
+        this.wasm.pad_note_off(pending.voiceIndex);
+      } else {
+        remaining.push(pending);
+      }
+    }
+    this.pendingNoteOffs = remaining;
+  }
+
   process(_inputs, outputs, _params) {
     if (!this.ready || !this.wasm) return true;
 
@@ -472,6 +505,7 @@ class PadSynthWasmProcessor extends AudioWorkletProcessor {
       const postfaderPad2Out = outputs[5];  // Pad 2 post-level stereo
       const blockSize = output[0]?.length || 128;
 
+      this.advanceScheduledNoteOffs(blockSize);
       this.wasm.pad_process_block(blockSize);
 
       const heap = this.getHeapF32();

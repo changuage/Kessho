@@ -67,7 +67,7 @@
 /* ─── Card Pattern ─── */
 
 .delay-card {
-  background: var(--bg-surface);
+  background: var(--k-bg-card);
   border: 1px solid var(--border-accent);
   border-radius: var(--radius-md);
   overflow: hidden;
@@ -357,7 +357,7 @@
 /* Unified surface pass: match Granular/Reverb section-card aesthetics. */
 .delay-root .delay-source-preset-bar,
 .delay-root .delay-card {
-  background: var(--bg-surface);
+  background: var(--k-bg-card);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
@@ -391,12 +391,12 @@
 
 .delay-root .delay-card-header {
   padding: 9px 12px 8px;
-  background: rgba(255,255,255,0.035);
-  border-bottom: 1px solid rgba(255,255,255,0.08);
+  background: transparent;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
 }
 
 .delay-root .delay-card-header:hover {
-  background: rgba(255,255,255,0.055);
+  background: rgba(255,255,255,0.03);
 }
 
 .delay-root .delay-card-title {

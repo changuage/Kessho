@@ -12,7 +12,8 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/ionic-team/capacitor-swift-pm.git", exact: "8.3.0"),
-        .package(name: "KesshoCapacitorBackgroundAudioSpike", path: "../../../plugins/kessho-background-audio-spike")
+        .package(name: "KesshoCapacitorAudioSession", path: "../../../plugins/kessho-capacitor-audio-session"),
+        .package(name: "KesshoCapacitorMidiRouting", path: "../../../plugins/kessho-capacitor-midi-routing")
     ],
     targets: [
         .target(
@@ -20,7 +21,8 @@ let package = Package(
             dependencies: [
                 .product(name: "Capacitor", package: "capacitor-swift-pm"),
                 .product(name: "Cordova", package: "capacitor-swift-pm"),
-                .product(name: "KesshoCapacitorBackgroundAudioSpike", package: "KesshoCapacitorBackgroundAudioSpike")
+                .product(name: "KesshoCapacitorAudioSession", package: "KesshoCapacitorAudioSession"),
+                .product(name: "KesshoCapacitorMidiRouting", package: "KesshoCapacitorMidiRouting")
             ]
         )
     ]

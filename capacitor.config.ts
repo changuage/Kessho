@@ -1,11 +1,14 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'app.kessho.web',
-  appName: 'Kessho Web',
+  appId: 'app.kessho.capacitor',
+  appName: 'Kessho Capacitor',
   webDir: 'dist',
   ios: {
-    includePlugins: ['@kessho/capacitor-background-audio-spike'],
+    includePlugins: [
+      '@kessho/capacitor-audio-session',
+      '@kessho/capacitor-midi-routing',
+    ],
   },
 };
 

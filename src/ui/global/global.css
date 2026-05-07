@@ -23,7 +23,7 @@
   flex-wrap: wrap;
 }
 
-.global-root .global-mixer-panel {
+.global-root .global-summary-panel {
   flex: 0 0 460px;
   min-width: 0;
   max-width: 100%;
@@ -36,7 +36,7 @@
 }
 
 @media (max-width: 900px) {
-  .global-root .global-mixer-panel,
+  .global-root .global-summary-panel,
   .global-root .global-engine-panel {
     flex: 1 1 100%;
     min-width: 0;
@@ -46,7 +46,7 @@
 
 /* ── Card (shared base for panels) ── */
 .global-root .global-card {
-  background: var(--bg-surface);
+  background: var(--k-bg-card);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   padding: 15px;
@@ -56,7 +56,7 @@
 
 /* ── Harmony Card ── */
 .global-root .harmony-card {
-  background: var(--bg-surface);
+  background: var(--k-bg-card);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   overflow: hidden;
@@ -215,73 +215,176 @@
   border-bottom: 1px solid rgba(255,255,255,0.05);
 }
 
-/* ── Mixer Card ── */
-.global-root .mixer-card {
-  background: var(--bg-surface);
+/* ── Snapshot ── */
+.global-root .scene-card {
+  background: var(--k-bg-card);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   overflow: hidden;
   margin-bottom: 10px;
 }
 
-.global-root .mixer-card-title {
-  padding: 8px 10px;
+.global-root .scene-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px 7px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+
+.global-root .scene-card-title {
   font-size: var(--font-lg);
   font-weight: 700;
-  color: var(--accent-primary);
-  border-bottom: 1px solid rgba(255,255,255,0.05);
+  color: var(--text-primary);
   margin: 0;
 }
 
-/* ── Mixer Bus Grid ── */
-.global-root .mixer-bus-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
-  padding: 8px 10px;
-}
-
-.global-root .mixer-bus-group {
-  background: var(--k-bg-inset);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
-  padding: 8px 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  min-width: 0;
-  max-width: 100%;
-  overflow: hidden;
-}
-
-.global-root .mixer-bus-label {
+.global-root .scene-run-pill {
+  flex-shrink: 0;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: transparent;
+  color: var(--text-muted);
   font-size: var(--font-xs);
   font-weight: 700;
-  color: var(--accent-primary);
-  text-transform: uppercase;
-  letter-spacing: 0.8px;
-  margin-bottom: 2px;
 }
 
-/* Inline slider rows inside bus groups AND harmony card */
-.global-root .mixer-bus-group .app-slider-group,
+.global-root .scene-run-pill.running {
+  color: #86efac;
+}
+
+.global-root .scene-run-pill.stopped {
+  color: var(--text-muted);
+}
+
+.global-root .scene-status-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  padding: 10px;
+}
+
+.global-root .scene-status-item {
+  background: transparent;
+  border-right: 1px solid rgba(255,255,255,0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding: 1px 9px 2px;
+}
+
+.global-root .scene-status-item:first-child {
+  padding-left: 0;
+}
+
+.global-root .scene-status-item:last-child {
+  border-right: none;
+  padding-right: 0;
+}
+
+.global-root .scene-status-label {
+  font-size: 0.58rem;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.global-root .scene-status-value {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.global-root .scene-master-control {
+  margin: 0 10px;
+  padding: 8px 0 9px;
+  border-top: 1px solid rgba(255,255,255,0.05);
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+
+.global-root .scene-master-control .app-slider-group {
+  width: 100%;
+  margin-bottom: 0 !important;
+}
+
+.global-root .scene-master-control .sl-slider-head {
+  gap: 4px;
+  font-size: var(--font-xs);
+}
+
+.global-root .balance-row-track {
+  position: relative;
+  overflow: hidden;
+  background: rgba(255,255,255,0.07);
+}
+
+.global-root .balance-row-track > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--scene-accent);
+}
+
+.global-root .balance-overview {
+  padding: 9px 10px 10px;
+}
+
+.global-root .balance-row {
+  --scene-accent: #67e8f9;
+  display: grid;
+  grid-template-columns: 50px minmax(0, 1fr) 34px;
+  align-items: center;
+  gap: 8px;
+  min-height: 18px;
+}
+
+.global-root .balance-row + .balance-row {
+  margin-top: 4px;
+}
+
+.global-root .balance-row-label,
+.global-root .balance-row-value {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 0.62rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.global-root .balance-row-value {
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.global-root .balance-row-track {
+  height: 4px;
+  border-radius: 999px;
+}
+
+/* Inline slider rows inside harmony card */
 .global-root .harmony-card .app-slider-group {
   width: 100%;
   margin-bottom: 0 !important;
   min-width: 0;
   max-width: 100%;
 }
-.global-root .mixer-bus-group .app-slider-group .sl-slider-head,
 .global-root .harmony-card .app-slider-group .sl-slider-head {
   gap: 4px;
   font-size: var(--font-xs);
   max-width: 100%;
 }
-.global-root .mixer-bus-group .app-slider-group .sl-slider-rail,
 .global-root .harmony-card .app-slider-group .sl-slider-rail {
   width: 100%;
 }
-.global-root .mixer-bus-group .app-slider-value,
 .global-root .harmony-card .app-slider-value {
   min-width: 0 !important;
   max-width: 100%;
@@ -290,8 +393,13 @@
 }
 
 @media (max-width: 600px) {
-  .global-root .mixer-bus-grid {
-    grid-template-columns: 1fr;
+  .global-root .scene-status-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .global-root .scene-status-item {
+    padding-left: 7px;
+    padding-right: 7px;
   }
 }
 
@@ -307,13 +415,11 @@
 }
 
 /* ── Uniform select/dropdown sizing within cards ── */
-.global-root .mixer-card .app-select,
 .global-root .harmony-card .app-select {
   font-size: var(--font-sm) !important;
   padding: 5px 6px !important;
   min-height: unset !important;
 }
-.global-root .mixer-card .app-slider-group,
 .global-root .harmony-card .app-slider-group {
   margin-bottom: 2px !important;
 }
@@ -507,7 +613,7 @@
 
 /* ══ Utility Card (Recording & Timer) ══ */
 .global-root .utility-card {
-  background: var(--bg-surface);
+  background: var(--k-bg-card);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   overflow: hidden;
@@ -750,7 +856,7 @@
 
 /* ══ Presets Card ══ */
 .global-root .presets-card {
-  background: var(--bg-surface);
+  background: var(--k-bg-card);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   overflow: hidden;

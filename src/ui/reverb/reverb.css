@@ -130,7 +130,7 @@
 
 /* ── Section Card (matches granular-section-card — NO border-left accent) ── */
 .reverb-root .reverb-section-card {
-  background: var(--bg-surface);
+  background: var(--k-bg-card);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   overflow: hidden;

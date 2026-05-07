@@ -38,6 +38,8 @@ import type { SynthEvolveConfig, SynthEvolveState, SynthLaneOverrides } from './
 import { computeGranularMacroModel } from './granularMacroModel';
 import { SharedDelayBusA, SharedDelayBusB, delayNoteToSeconds } from './delayBuses';
 import { resolveDynamicsTargets, type DynamicsRoutingTargets, type DynamicsTargets } from './dynamicsModel';
+import { toDynamicsCharacterParamObject } from './dynamicsCharacterParams';
+import { DEFAULT_MASTER_VOLUME, ENGINE_TRIMS, MASTER_OUTPUT_TRIM } from './outputTrims';
 import { isIOSLikeDevice, isMobileDevice } from '../platform';
 import {
   EarthTexturePlayer,
@@ -52,6 +54,7 @@ import {
   getPianoSampleMidi,
   PIANO_SAMPLE_COUNT,
 } from './pianoSamples';
+import type { KesshoMidiMessage } from '../native/capacitorMidiRouting';
 import {
   type TransportAnchors,
   type TransportDebugSnapshot,
@@ -79,6 +82,8 @@ export interface RecordableTrackSource {
   node: AudioNode | null;
   outputIndex?: number;
 }
+
+type DiagnosticRecordTrackId = StemRecordTrackId | 'pad1Pre' | 'reverbFeed';
 
 type StereoWidthProcessor = {
   input: GainNode;
@@ -497,6 +502,7 @@ const resolvePublicSampleUrl = (relativePath: string): string => {
 };
 // Reverb uses WASM path — kessho_reverb.wasm loaded at init
 const reverbWasmWorkletUrl = getWorkletUrl('reverb-wasm.worklet.js');
+const reverbPreconditionerWorkletUrl = getWorkletUrl('reverb-preconditioner.worklet.js');
 // Waves sample uses the shared Earth filter path — no separate waves synth worklet
 // Granular FX uses WASM-only path
 const granularFxWasmWorkletUrl = getWorkletUrl('granular-fx-wasm.worklet.js');
@@ -511,24 +517,6 @@ const GRANULAR_WORKLET_DISPATCH_INTERVAL_MS = 16;
 const RUNTIME_RANDOM_WALK_INTERVAL_MS = 100;
 const RANDOM_WALK_MAX_CATCHUP_STEPS = 600;
 const PIANO_SAMPLE_CACHE_LIMIT_PER_VARIANT = 24;
-
-/**
- * Single source of truth for per-engine output scaling.
- * Values < 1 attenuate; values > 1 boost.  Applied at each engine's
- * final output gain node — do NOT duplicate in QUANTIZATION or worklets.
- */
-const ENGINE_TRIMS = {
-  pad:      0.5,   // pad synth 1 & 2 — dense oscillator stack needs attenuation
-  lead:     0.5,   // lead FM — attenuate before the master limiter so dry level behaves more linearly
-  piano:    0.8,   // piano sampler — keep chromatic samples below the master limiter
-  drum:     1.0,   // drum synth — unity
-  granular: 2.0,   // granular FX — boost to compensate for FX processing loss
-  reverb:   2.0,   // reverb return — wet signal needs headroom above unity
-  earth:    1.0,   // earth bus (water + insects + waves) — unity
-};
-
-const DEFAULT_MASTER_VOLUME = 0.85;
-const MASTER_OUTPUT_TRIM = 1.18;
 
 const FX_OWNERSHIP_WINDOW_MS = 140;
 const FX_OWNERSHIP_STEAL_MARGIN = 0.05;
@@ -715,6 +703,8 @@ export class AudioEngine {
   private reverbOutputGain: GainNode | null = null;
   private reverbPreCompressor: DynamicsCompressorNode | null = null;
   private reverbPreMakeupGain: GainNode | null = null;
+  private reverbPreConditionerNode: AudioWorkletNode | null = null;
+  private reverbPreConditionerLoaded = false;
 
   // Spectral Freeze (STFT WASM)
   private spectralFreezeNode: AudioWorkletNode | null = null;
@@ -3629,90 +3619,7 @@ export class AudioEngine {
 
   private sendCharacterProcessorParams(targets: DynamicsTargets): void {
     if (!(this.characterProcessorNode instanceof AudioWorkletNode)) return;
-    const params = {
-      active: targets.routing.characterPathActive ? 1 : 0,
-      allpassActive: targets.routing.allpassStackActive ? 1 : 0,
-      dry: targets.dry,
-      wet: targets.wet,
-      degradeMix: targets.degradeWetRatio,
-      workletAlias: targets.workletAlias,
-      rawDegradeGeneration: targets.rawDegradeGeneration,
-      rawCorrosion: targets.rawCorrosion,
-      rawMediaWear: targets.rawMediaWear,
-      noiseGain: targets.noiseGain,
-      jitterDepth: targets.jitterDepth,
-      randomDriftFilterHz: targets.randomDriftFilterHz,
-      randomDriftDepth: targets.randomDriftDepth,
-      baseDelay: targets.baseDelay,
-      spreadBaseDelay: targets.spreadBaseDelay,
-      randomDrift: targets.randomDrift,
-      randomHoldRateHz: targets.randomHoldRateHz,
-      randomHoldLag: targets.randomHoldLag,
-      randomDelayDepth: targets.randomDelayDepth,
-      randomSpreadDelayDepth: targets.randomSpreadDelayDepth,
-      randomFilterDepth: targets.randomFilterDepth,
-      randomSpreadFilterDepth: targets.randomSpreadFilterDepth,
-      depth: targets.depth,
-      rate: targets.rate,
-      shallowFlavor: targets.shallowFlavor,
-      abyssFlavor: targets.abyssFlavor,
-      stereo: targets.stereo,
-      damage: targets.damage,
-      mainPan: targets.mainPan,
-      spreadPan: targets.spreadPan,
-      mainDelayGain: targets.mainDelayGain,
-      spreadDelayGain: targets.spreadDelayGain,
-      wowFrequency: targets.wowFrequency,
-      flutterFrequency: targets.flutterFrequency,
-      flutterRandomDepth: targets.flutterRandomDepth,
-      wowDepth: targets.wowDepth,
-      flutterDepth: targets.flutterDepth,
-      highpassHz: targets.highpassHz,
-      highpassQ: targets.highpassQ,
-      allpassAFrequency: targets.allpassAFrequency,
-      allpassAQ: targets.allpassAQ,
-      allpassBFrequency: targets.allpassBFrequency,
-      allpassBQ: targets.allpassBQ,
-      headBumpFrequency: targets.headBumpFrequency,
-      headBumpQ: targets.headBumpQ,
-      headBumpGain: targets.headBumpGain,
-      dropoutFilterHz: targets.dropoutFilterHz,
-      dropoutDepth: targets.dropoutDepth,
-      dropoutGain: targets.dropoutGain,
-      envFilterHz: targets.envFilterHz,
-      envToLowpassGain: targets.envToLowpassGain,
-      envToResonanceGain: targets.envToResonanceGain,
-      envToWetGain: targets.envToWetGain,
-      lowpassHz: targets.lowpassHz,
-      lowpassQ: targets.lowpassQ,
-      lowpassStage2Hz: targets.lowpassStage2Hz,
-      lowpassStage2Q: targets.lowpassStage2Q,
-      compressorThreshold: targets.compressorThreshold,
-      compressorKnee: targets.compressorKnee,
-      compressorRatio: targets.compressorRatio,
-      compressorAttack: targets.compressorAttack,
-      compressorRelease: targets.compressorRelease,
-      compressorMakeup: targets.compressorMakeup,
-      saturation: targets.saturation,
-      corrosion: targets.corrosion,
-      masterSatActive: targets.masterSatActive ? 1 : 0,
-      masterSatMode: targets.masterSatMode,
-      masterSatDrive: targets.masterSatDrive,
-      masterSatTone: targets.masterSatTone,
-      masterSatBias: targets.masterSatBias,
-      endCompActive: targets.routing.endChainActive ? 1 : 0,
-      endCompThreshold: targets.endThreshold,
-      endCompKnee: targets.endKnee,
-      endCompRatio: targets.endRatio,
-      endCompAttack: targets.endAttack,
-      endCompRelease: targets.endRelease,
-      endCompMakeup: targets.endMakeup,
-      endCompMix: targets.endWet,
-      endCompDetectorHpHz: targets.endDetectorHpHz,
-      endCompDetectorTilt: targets.endDetectorTilt,
-      endCompAutoMakeup: targets.endAutoMakeup,
-      endCompProgramRelease: targets.endProgramRelease,
-    };
+    const params = toDynamicsCharacterParamObject(targets);
     this.postCachedWorkletMessage(
       'dynamics:character',
       this.characterProcessorNode,
@@ -4939,6 +4846,97 @@ export class AudioEngine {
     }
   }
 
+  async auditionSynthNotes(notes: ManualSynthNoteOptions[], externalState?: SliderState): Promise<void> {
+    if (!Array.isArray(notes) || notes.length === 0) return;
+
+    const firstSource = notes[0]?.source;
+    const canBatchPad = (
+      (firstSource === 'pad1' || firstSource === 'pad2') &&
+      notes.every((note) => note.source === firstSource)
+    );
+    if (!canBatchPad) {
+      for (const note of notes) {
+        await this.auditionSynthNote(note, externalState);
+      }
+      return;
+    }
+
+    const baseState = externalState ?? this.sliderState;
+    if (!baseState) {
+      console.warn('No slider state available for synth audition');
+      return;
+    }
+
+    const source = firstSource as 'pad1' | 'pad2';
+    const entries: Array<{
+      note: ManualSynthNoteOptions;
+      safeMidi: number;
+      frequency: number;
+      velocity: number;
+      voiceIndex: number;
+      originalIsPad2: boolean;
+    }> = [];
+    let effectiveState = baseState;
+    for (const note of notes) {
+      const safeMidi = Math.max(24, Math.min(108, Math.round(note.midi)));
+      const voiceIndex = this.pickManualPadVoice(source, effectiveState);
+      const bit = 1 << voiceIndex;
+      entries.push({
+        note,
+        safeMidi,
+        frequency: midiToFreq(safeMidi),
+        velocity: Math.max(0.05, Math.min(1, note.velocity ?? 0.82)),
+        voiceIndex,
+        originalIsPad2: ((baseState.pad2VoiceAssign ?? 0) & bit) !== 0,
+      });
+      effectiveState = this.createManualAuditionState(source, effectiveState, voiceIndex);
+    }
+
+    const previousState = this.sliderState ?? baseState;
+    const noteState = this.buildPadTriggerState(source, effectiveState) ?? effectiveState;
+    await this.prepareManualSynthChain(noteState, source, entries[0]?.safeMidi);
+
+    try {
+      const isPad2 = source === 'pad2';
+      this.clearManualPadAuditionTails();
+      for (const entry of entries) {
+        const noteDuration = entry.note.durationMs !== undefined
+          ? Math.max(80, entry.note.durationMs) / 1000
+          : this.getManualPadTapDuration(noteState, source);
+        const release = Math.max(0.05, isPad2 ? (noteState.pad2Release ?? 0.6) : (noteState.synthRelease ?? 0.6));
+
+        this.setPadVoiceTarget(entry.voiceIndex, isPad2);
+        this.triggerSynthVoice(entry.voiceIndex, entry.frequency, entry.velocity, noteDuration, noteState);
+
+        if (entry.originalIsPad2 !== isPad2) {
+          const existingRestore = this.manualPadRouteRestoreTimers[entry.voiceIndex];
+          if (existingRestore !== null) {
+            clearTimeout(existingRestore);
+          }
+          const generation = this.synthVoiceNoteGen[entry.voiceIndex];
+          this.manualPadRouteRestoreTimers[entry.voiceIndex] = window.setTimeout(() => {
+            this.manualPadRouteRestoreTimers[entry.voiceIndex] = null;
+            if (this.synthVoiceNoteGen[entry.voiceIndex] === generation) {
+              this.setPadVoiceTarget(entry.voiceIndex, entry.originalIsPad2);
+            }
+          }, Math.round((noteDuration + release + 0.08) * 1000));
+        }
+      }
+    } finally {
+      this.sliderState = previousState;
+      this._sliderStateJsonDirty = true;
+    }
+  }
+
+  resetSonicParityFx(): void {
+    if (this.reverbPreConditionerNode) {
+      this.reverbPreConditionerNode.port.postMessage({ type: 'reset' });
+    }
+    if (this.reverbNode && (this.reverbNode as any).port) {
+      (this.reverbNode as AudioWorkletNode).port.postMessage({ type: 'reset' });
+    }
+  }
+
   /** Tear down the temporary one-shot drum synth and clear its timer */
   private disposeTempDrumSynth(): void {
     if (this.tempDrumSynthTimer !== null) {
@@ -4990,7 +4988,7 @@ export class AudioEngine {
     };
   }
 
-  async start(sliderState: SliderState): Promise<void> {
+  async start(sliderState: SliderState, _coreOptions?: unknown): Promise<void> {
     if (this.isRunning || this.isStarting) return;
     this.isStarting = true;
 
@@ -5141,9 +5139,16 @@ export class AudioEngine {
           const reverbWasmUrl = getWorkletUrl('kessho_reverb.wasm');
           const reverbWasmResp = await fetch(reverbWasmUrl);
           if (!reverbWasmResp.ok) throw new Error(`Reverb WASM fetch failed: ${reverbWasmResp.status}`);
+          const preconditionerLoad = this.ctx!.audioWorklet.addModule(reverbPreconditionerWorkletUrl)
+            .then(() => { this.reverbPreConditionerLoaded = true; })
+            .catch((e) => {
+              this.reverbPreConditionerLoaded = false;
+              console.warn('Reverb preconditioner worklet unavailable, falling back to native DynamicsCompressorNode:', e);
+            });
           const [binary] = await Promise.all([
             reverbWasmResp.arrayBuffer(),
             this.ctx!.audioWorklet.addModule(reverbWasmWorkletUrl),
+            preconditionerLoad,
           ]);
           this.wasmReverbBinary = binary;
           console.log('Reverb WASM worklet loaded (%d KB)', Math.round(binary.byteLength / 1024));
@@ -5578,6 +5583,12 @@ export class AudioEngine {
       try { this.reverbPreMakeupGain.disconnect(); } catch { /* */ }
       this.reverbPreMakeupGain = null;
     }
+    if (this.reverbPreConditionerNode) {
+      try { this.reverbPreConditionerNode.port.postMessage({ type: 'reset' }); } catch { /* */ }
+      try { this.reverbPreConditionerNode.port.close(); } catch { /* */ }
+      try { this.reverbPreConditionerNode.disconnect(); } catch { /* */ }
+      this.reverbPreConditionerNode = null;
+    }
     if (this.reverbPreCompressor) {
       try { this.reverbPreCompressor.disconnect(); } catch { /* */ }
       this.reverbPreCompressor = null;
@@ -5772,6 +5783,8 @@ export class AudioEngine {
     this.reverbOutputGain = null;
     this.reverbPreCompressor = null;
     this.reverbPreMakeupGain = null;
+    this.reverbPreConditionerNode = null;
+    this.reverbPreConditionerLoaded = false;
     this.reverbInputBus = null;
     this.reverbDirectSend = null;
     this.transportAnchors = null;
@@ -5795,7 +5808,7 @@ export class AudioEngine {
     this.stop();
   }
 
-  updateParams(sliderState: SliderState): void {
+  updateParams(sliderState: SliderState, _coreOptions?: unknown): void {
     // Always update stored state and CoF config, even when not running
     const prevSourceState = this.sourceSliderState;
     this.sourceSliderState = sliderState;
@@ -5916,6 +5929,8 @@ export class AudioEngine {
         this.reverbOutputGain = null;
         this.reverbPreCompressor = null;
         this.reverbPreMakeupGain = null;
+        this.reverbPreConditionerNode = null;
+        this.reverbPreConditionerLoaded = false;
         this.reverbInputBus = null;
         this.reverbDirectSend = null;
         this.sharedDelayA?.dispose();
@@ -6079,6 +6094,11 @@ export class AudioEngine {
     }
   }
 
+  pushMidiMessage(_message: KesshoMidiMessage): void {
+    // The legacy web engine keeps MIDI as a UI routing layer. The core-wasm host
+    // overrides this method to feed normalized MIDI events into KesshoCore.
+  }
+
   private async createAudioGraph(): Promise<void> {
     if (!this.ctx) return;
 
@@ -6142,13 +6162,22 @@ export class AudioEngine {
     this.reverbInputBus = ctx.createGain();
     this.reverbInputBus.gain.value = 1.0;
 
-    // Shared pre-reverb dynamics: smooth source transients before they hit the
-    // reverb/spectral-freeze path so long presets bloom more evenly.
-    this.reverbPreCompressor = this.createSharedReverbPreCompressor(ctx);
-    this.reverbPreMakeupGain = ctx.createGain();
-    this.reverbPreMakeupGain.gain.value = this.sliderState?.reverbPreCompMakeup ?? DEFAULT_REVERB_PRE_COMP.makeup;
-    this.reverbInputBus.connect(this.reverbPreCompressor);
-    this.reverbPreCompressor.connect(this.reverbPreMakeupGain);
+    // Shared pre-reverb dynamics: use a deterministic worklet when available so
+    // browser and core parity are not at the mercy of native compressor internals.
+    if (this.reverbPreConditionerLoaded) {
+      this.reverbPreConditionerNode = new AudioWorkletNode(ctx, 'reverb-preconditioner', {
+        numberOfInputs: 1,
+        numberOfOutputs: 1,
+        outputChannelCount: [2],
+      });
+      this.reverbInputBus.connect(this.reverbPreConditionerNode);
+    } else {
+      this.reverbPreCompressor = this.createSharedReverbPreCompressor(ctx);
+      this.reverbPreMakeupGain = ctx.createGain();
+      this.reverbPreMakeupGain.gain.value = this.sliderState?.reverbPreCompMakeup ?? DEFAULT_REVERB_PRE_COMP.makeup;
+      this.reverbInputBus.connect(this.reverbPreCompressor);
+      this.reverbPreCompressor.connect(this.reverbPreMakeupGain);
+    }
 
     // Direct send — crossfade-controlled path from sources to reverb (used in pre-mode)
     this.reverbDirectSend = ctx.createGain();
@@ -7930,27 +7959,14 @@ export class AudioEngine {
     if (padParamsOverride) {
       this.sendPadWasmParams(padParamsOverride);
     }
-    const gen = (this.synthVoiceNoteGen[voiceIndex] ?? 0) + 1;
-    this.synthVoiceNoteGen[voiceIndex] = gen;
+    this.synthVoiceNoteGen[voiceIndex] = (this.synthVoiceNoteGen[voiceIndex] ?? 0) + 1;
     this.padWasmNode.port.postMessage({
       type: 'noteOn',
       voiceIndex,
       frequency,
       velocity: clampedVelocity,
+      holdSeconds: noteDuration ?? 0,
     });
-    if (noteDuration !== undefined) {
-      const existingTimer = this.synthVoiceNoteOffTimers[voiceIndex];
-      if (existingTimer !== null) {
-        clearTimeout(existingTimer);
-      }
-      const noteOffTimerId = window.setTimeout(() => {
-        this.synthVoiceNoteOffTimers[voiceIndex] = null;
-        if (this.synthVoiceNoteGen[voiceIndex] === gen) {
-          this.postPadWasmNoteOff(voiceIndex);
-        }
-      }, noteDuration * 1000);
-      this.synthVoiceNoteOffTimers[voiceIndex] = noteOffTimerId;
-    }
   }
 
   // Current spectral freeze routing mode (to detect changes)
@@ -7971,7 +7987,7 @@ export class AudioEngine {
    *   reverbInputBus → pre-comp/makeup → reverbNode → reverbOutputGain
    */
   private applySpectralFreezeRouting(): void {
-    const reverbSourceNode = this.reverbPreMakeupGain ?? this.reverbPreCompressor ?? this.reverbInputBus;
+    const reverbSourceNode = this.reverbPreConditionerNode ?? this.reverbPreMakeupGain ?? this.reverbPreCompressor ?? this.reverbInputBus;
     if (!this.reverbNode || !this.reverbOutputGain || !this.reverbInputBus || !this.reverbDirectSend || !reverbSourceNode) return;
     const state = this.sliderState;
     const routing = state?.spectralFreezeRouting ?? 'pre';
@@ -8873,12 +8889,24 @@ export class AudioEngine {
     const reverbPreCompAttack = Math.max(0, Math.min(1, shv('reverbPreCompAttackMs', state.reverbPreCompAttackMs ?? DEFAULT_REVERB_PRE_COMP.attackMs) / 1000));
     const reverbPreCompRelease = Math.max(0, Math.min(1, shv('reverbPreCompReleaseMs', state.reverbPreCompReleaseMs ?? DEFAULT_REVERB_PRE_COMP.releaseMs) / 1000));
     const reverbPreCompMakeup = shv('reverbPreCompMakeup', state.reverbPreCompMakeup ?? DEFAULT_REVERB_PRE_COMP.makeup);
-    this.reverbPreCompressor?.threshold.setTargetAtTime(reverbPreCompThreshold, now, 0.05);
-    this.reverbPreCompressor?.knee.setTargetAtTime(reverbPreCompKnee, now, 0.05);
-    this.reverbPreCompressor?.ratio.setTargetAtTime(reverbPreCompRatio, now, 0.05);
-    this.reverbPreCompressor?.attack.setTargetAtTime(reverbPreCompAttack, now, 0.05);
-    this.reverbPreCompressor?.release.setTargetAtTime(reverbPreCompRelease, now, 0.05);
-    this.reverbPreMakeupGain?.gain.setTargetAtTime(reverbPreCompMakeup, now, 0.08);
+    if (this.reverbPreConditionerNode) {
+      this.reverbPreConditionerNode.port.postMessage({
+        type: 'params',
+        thresholdDb: reverbPreCompThreshold,
+        kneeDb: reverbPreCompKnee,
+        ratio: reverbPreCompRatio,
+        attackMs: reverbPreCompAttack * 1000,
+        releaseMs: reverbPreCompRelease * 1000,
+        inputMakeupGain: reverbPreCompMakeup,
+      });
+    } else {
+      this.reverbPreCompressor?.threshold.setTargetAtTime(reverbPreCompThreshold, now, 0.05);
+      this.reverbPreCompressor?.knee.setTargetAtTime(reverbPreCompKnee, now, 0.05);
+      this.reverbPreCompressor?.ratio.setTargetAtTime(reverbPreCompRatio, now, 0.05);
+      this.reverbPreCompressor?.attack.setTargetAtTime(reverbPreCompAttack, now, 0.05);
+      this.reverbPreCompressor?.release.setTargetAtTime(reverbPreCompRelease, now, 0.05);
+      this.reverbPreMakeupGain?.gain.setTargetAtTime(reverbPreCompMakeup, now, 0.08);
+    }
 
     // Spectral Freeze parameters
     if (this.spectralFreezeNode && (this.spectralFreezeNode as any).port) {
@@ -11047,7 +11075,7 @@ export class AudioEngine {
     return this.endCompOutputGain ?? this.satPostGain ?? this.characterOutputGain ?? this.masterGain;
   }
 
-  getRecordableBusNodes(): Record<StemRecordTrackId, RecordableTrackSource> {
+  getRecordableBusNodes(): Record<DiagnosticRecordTrackId, RecordableTrackSource> {
     return {
       pad1: { node: this.pad1SpatialChain?.output ?? (this.padWasmNode ? this.padWasmNode : this.pad1Bus), outputIndex: this.pad1SpatialChain ? undefined : (this.padWasmNode ? 4 : undefined) },
       pad2: { node: this.pad2SpatialChain?.output ?? (this.padWasmNode ? this.padWasmNode : this.pad2Bus), outputIndex: this.pad2SpatialChain ? undefined : (this.padWasmNode ? 5 : undefined) },
@@ -11058,6 +11086,8 @@ export class AudioEngine {
         ? { node: this.drumWasmNode, outputIndex: 0 }
         : { node: this.drumSynth?.getMasterGain() ?? null },
       granular: { node: this.granularFxDirect },
+      pad1Pre: { node: this.padWasmNode ?? this.pad1PreFaderBus, outputIndex: this.padWasmNode ? 2 : undefined },
+      reverbFeed: { node: this.reverbPreConditionerNode ?? this.reverbPreMakeupGain ?? this.reverbPreCompressor ?? this.reverbInputBus },
       waves: { node: this.oceanLevelGain },
       water: { node: this.waterLevelGain },
       insects: { node: this.insectsLevelGain },
@@ -11069,7 +11099,7 @@ export class AudioEngine {
     };
   }
 
-  getAllStemNodes(): Record<StemRecordTrackId, RecordableTrackSource> {
+  getAllStemNodes(): Record<DiagnosticRecordTrackId, RecordableTrackSource> {
     return this.getRecordableBusNodes();
   }
 }

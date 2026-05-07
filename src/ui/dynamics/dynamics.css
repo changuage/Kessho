@@ -69,7 +69,7 @@
   flex-wrap: wrap;
   gap: 8px;
   padding: 8px 12px;
-  background: var(--bg-surface);
+  background: var(--k-bg-card);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   margin-bottom: 8px;
@@ -114,7 +114,7 @@
 }
 
 .dynamics-section-card {
-  background: var(--bg-surface);
+  background: var(--k-bg-card);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   overflow: hidden;

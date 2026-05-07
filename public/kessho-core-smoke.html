@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>KesshoCore Smoke</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #101312;
+        color: #edf4ef;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+      }
+
+      main {
+        width: min(520px, calc(100vw - 32px));
+        display: grid;
+        gap: 18px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 28px;
+        font-weight: 650;
+      }
+
+      button {
+        width: fit-content;
+        border: 1px solid #6ba582;
+        background: #d7f5df;
+        color: #101312;
+        padding: 10px 14px;
+        border-radius: 6px;
+        font: inherit;
+        font-weight: 650;
+        cursor: pointer;
+      }
+
+      dl {
+        display: grid;
+        grid-template-columns: max-content 1fr;
+        gap: 8px 16px;
+        margin: 0;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+
+      dt {
+        color: #9fb0a8;
+      }
+
+      dd {
+        margin: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>KesshoCore Smoke</h1>
+      <button type="button" data-testid="start-core">Start Core</button>
+      <dl>
+        <dt>Status</dt>
+        <dd data-testid="status">idle</dd>
+        <dt>RMS</dt>
+        <dd data-testid="rms">0</dd>
+        <dt>Peak</dt>
+        <dd data-testid="peak">0</dd>
+      </dl>
+    </main>
+    <script>
+      const state = {
+        status: 'idle',
+        ready: false,
+        rms: 0,
+        peak: 0,
+      };
+      window.__kesshoCoreSmoke = state;
+
+      const statusEl = document.querySelector('[data-testid="status"]');
+      const rmsEl = document.querySelector('[data-testid="rms"]');
+      const peakEl = document.querySelector('[data-testid="peak"]');
+      const startButton = document.querySelector('[data-testid="start-core"]');
+
+      function update(next) {
+        Object.assign(state, next);
+        statusEl.textContent = state.status;
+        rmsEl.textContent = state.rms.toFixed(6);
+        peakEl.textContent = state.peak.toFixed(6);
+      }
+
+      function measure(analyser) {
+        const samples = new Float32Array(analyser.fftSize);
+        let attempts = 0;
+
+        function tick() {
+          analyser.getFloatTimeDomainData(samples);
+          let sumSq = 0;
+          let peak = 0;
+          for (const sample of samples) {
+            const abs = Math.abs(sample);
+            peak = Math.max(peak, abs);
+            sumSq += sample * sample;
+          }
+
+          const rms = Math.sqrt(sumSq / Math.max(1, samples.length));
+          update({ status: rms > 0.01 ? 'rendering' : 'waiting', rms, peak });
+          attempts += 1;
+          if (rms <= 0.01 && attempts < 90) {
+            requestAnimationFrame(tick);
+          }
+        }
+
+        requestAnimationFrame(tick);
+      }
+
+      startButton.addEventListener('click', async () => {
+        startButton.disabled = true;
+        update({ status: 'loading', rms: 0, peak: 0 });
+
+        try {
+          const context = new AudioContext({ latencyHint: 'interactive' });
+          await context.audioWorklet.addModule('/worklets/kessho-core.worklet.js');
+
+          const node = new AudioWorkletNode(context, 'kessho-core', {
+            numberOfInputs: 0,
+            numberOfOutputs: 1,
+            outputChannelCount: [2],
+            processorOptions: {
+              wasmUrl: '/worklets/kessho_core.wasm',
+            },
+          });
+          const analyser = new AnalyserNode(context, { fftSize: 2048 });
+          const mute = new GainNode(context, { gain: 0 });
+
+          node.port.onmessage = (event) => {
+            if (event.data?.type === 'ready') {
+              update({ status: 'ready', ready: true });
+              node.port.postMessage({ type: 'setRenderMode', renderMode: 1 });
+              node.port.postMessage({ type: 'setSmokeTone', frequencyHz: 440, amplitude: 0.2 });
+              node.port.postMessage({ type: 'start' });
+              measure(analyser);
+            }
+
+            if (event.data?.type === 'error') {
+              update({ status: `error: ${event.data.message}` });
+            }
+          };
+
+          node.connect(analyser).connect(mute).connect(context.destination);
+          await context.resume();
+        } catch (error) {
+          update({ status: `error: ${error instanceof Error ? error.message : String(error)}` });
+          startButton.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>

@@ -34,6 +34,9 @@ export default defineConfig(({ mode }) => ({
       },
     },
   },
+  optimizeDeps: {
+    entries: ['index.html', 'public/kessho-core-smoke.html'],
+  },
   worker: {
     format: 'es',
   },
