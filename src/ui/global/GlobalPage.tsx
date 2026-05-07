@@ -17,6 +17,7 @@ import './global.css';
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const GLOBAL_EXPANDED_SECTIONS_STORAGE_KEY = 'global:expanded-sections:v1';
 const DEFAULT_GLOBAL_EXPANDED_SECTIONS = ['morph', 'state-presets', 'root-cof', 'chord-progression', 'scale-tension', 'transport-sync'];
+type AudioEngineMode = 'web-audio' | 'core-wasm';
 
 function clamp01(value: number | undefined): number {
   return Math.max(0, Math.min(1, typeof value === 'number' && Number.isFinite(value) ? value : 0));
@@ -47,6 +48,9 @@ export interface GlobalPageProps {
 
   // Engine state
   engineState: EngineState;
+  audioEngineMode?: AudioEngineMode;
+  showAudioEngineSwitcher?: boolean;
+  onAudioEngineModeChange?: (mode: AudioEngineMode) => void;
   onResetCofDrift: () => void;
 
   // Morph CoF visualization
@@ -112,6 +116,9 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
   SelectComponent: Select,
   CircleOfFifthsComponent: CircleOfFifths,
   engineState,
+  audioEngineMode = 'web-audio',
+  showAudioEngineSwitcher = false,
+  onAudioEngineModeChange,
   onResetCofDrift,
   morphCoFViz,
   morphPresetA,
@@ -459,6 +466,32 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
               </span>
             </div>
           </div>
+
+          {showAudioEngineSwitcher && onAudioEngineModeChange && (
+            <div className="scene-engine-switch">
+              <span className="scene-status-label">Audio Engine</span>
+              <div className="scene-engine-switch-buttons" role="group" aria-label="Audio engine">
+                <button
+                  type="button"
+                  className={`scene-engine-switch-btn${audioEngineMode === 'web-audio' ? ' active' : ''}`}
+                  aria-pressed={audioEngineMode === 'web-audio'}
+                  onClick={() => onAudioEngineModeChange('web-audio')}
+                  title="Switch to WebAudio"
+                >
+                  Web
+                </button>
+                <button
+                  type="button"
+                  className={`scene-engine-switch-btn${audioEngineMode === 'core-wasm' ? ' active' : ''}`}
+                  aria-pressed={audioEngineMode === 'core-wasm'}
+                  onClick={() => onAudioEngineModeChange('core-wasm')}
+                  title="Switch to Kessho Core"
+                >
+                  Core
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className="scene-master-control">
             <Slider label="Master Output" value={state.masterVolume} paramKey="masterVolume" onChange={onParamChange} {...sliderProps('masterVolume')} />

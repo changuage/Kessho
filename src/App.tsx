@@ -12,6 +12,7 @@ import {
   DEFAULT_STATE,
   MOBILE_STATE,
   quantize,
+  encodeStateToUrl,
   decodeStateFromUrl,
   getParamInfo,
   getSliderNumericValue,
@@ -151,6 +152,59 @@ const CLOUD_ENABLED = isCloudPresetConfigEnabled();
 const CAPACITOR_LOCAL_STATE_PRESET_SCOPE = 'global';
 const isSonicParityMode = () =>
   typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('parity') === '1';
+type AudioEngineRuntimeMode = 'web-audio' | 'core-wasm';
+const AUDIO_ENGINE_SWITCHER_PARAM = 'engineAB';
+const AUDIO_ENGINE_PARAM = 'engine';
+
+function isDevRuntime(): boolean {
+  return Boolean((import.meta.env as unknown as { DEV?: boolean }).DEV);
+}
+
+function getAudioEngineRuntimeMode(): AudioEngineRuntimeMode {
+  if (typeof window === 'undefined') return 'web-audio';
+  try {
+    return new URLSearchParams(window.location.search).get(AUDIO_ENGINE_PARAM) === 'core-wasm'
+      ? 'core-wasm'
+      : 'web-audio';
+  } catch {
+    return 'web-audio';
+  }
+}
+
+function shouldShowAudioEngineSwitcher(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return (
+      isDevRuntime() ||
+      params.get(AUDIO_ENGINE_SWITCHER_PARAM) === '1' ||
+      params.get(AUDIO_ENGINE_PARAM) === 'core-wasm'
+    );
+  } catch {
+    return isDevRuntime();
+  }
+}
+
+function buildAudioEngineSwitchUrl(mode: AudioEngineRuntimeMode, state: SliderState): string {
+  const url = new URL(window.location.href);
+  const currentParams = new URLSearchParams(window.location.search);
+  const nextParams = new URLSearchParams(encodeStateToUrl(state));
+
+  for (const key of [AUDIO_ENGINE_SWITCHER_PARAM, 'parity', 'snowflakePrototype']) {
+    const value = currentParams.get(key);
+    if (value !== null) nextParams.set(key, value);
+  }
+  nextParams.set(AUDIO_ENGINE_SWITCHER_PARAM, '1');
+
+  if (mode === 'core-wasm') {
+    nextParams.set(AUDIO_ENGINE_PARAM, 'core-wasm');
+  } else {
+    nextParams.delete(AUDIO_ENGINE_PARAM);
+  }
+
+  url.search = nextParams.toString();
+  return url.toString();
+}
 
 const LAZY_PAGE_FALLBACK = (
   <div style={{ padding: '24px', color: '#9ca3af', textAlign: 'center' }}>
@@ -1650,6 +1704,17 @@ const App: React.FC = () => {
   });
   const stateRef = useRef(state);
   stateRef.current = state;
+  const audioEngineRuntimeMode = useMemo(() => getAudioEngineRuntimeMode(), []);
+  const showAudioEngineSwitcher = useMemo(() => shouldShowAudioEngineSwitcher(), []);
+  const handleAudioEngineRuntimeModeChange = useCallback((mode: AudioEngineRuntimeMode) => {
+    if (mode === audioEngineRuntimeMode) return;
+    try {
+      void audioEngine.stop();
+    } catch {
+      // The page reload is the actual switch boundary.
+    }
+    window.location.assign(buildAudioEngineSwitchUrl(mode, stateRef.current));
+  }, [audioEngineRuntimeMode]);
 
   const [engineState, setEngineState] = useState<EngineState>({
     isRunning: false,
@@ -7025,6 +7090,9 @@ const App: React.FC = () => {
             SelectComponent={Select as unknown as React.ComponentType<Record<string, unknown>>}
             CircleOfFifthsComponent={CircleOfFifths as unknown as React.ComponentType<Record<string, unknown>>}
             engineState={engineState}
+            audioEngineMode={audioEngineRuntimeMode}
+            showAudioEngineSwitcher={showAudioEngineSwitcher}
+            onAudioEngineModeChange={handleAudioEngineRuntimeModeChange}
             onResetCofDrift={() => audioEngine.resetCofDrift()}
             morphCoFViz={morphCoFViz}
             morphPresetA={morphPresetA}

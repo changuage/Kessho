@@ -302,6 +302,52 @@
   white-space: nowrap;
 }
 
+.global-root .scene-engine-switch {
+  display: grid;
+  grid-template-columns: auto minmax(148px, 1fr);
+  align-items: center;
+  gap: 8px;
+  margin: 0 10px;
+  padding: 0 0 9px;
+}
+
+.global-root .scene-engine-switch-buttons {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-height: 30px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: var(--radius-sm);
+  background: rgba(0,0,0,0.22);
+}
+
+.global-root .scene-engine-switch-btn {
+  min-width: 0;
+  border: 0;
+  border-right: 1px solid rgba(255,255,255,0.08);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: var(--font-xs);
+  font-weight: 700;
+  line-height: 1;
+  padding: 7px 8px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.global-root .scene-engine-switch-btn:last-child {
+  border-right: 0;
+}
+
+.global-root .scene-engine-switch-btn:hover {
+  background: rgba(255,255,255,0.05);
+}
+
+.global-root .scene-engine-switch-btn.active {
+  background: rgba(103,232,249,0.14);
+  color: #67e8f9;
+}
+
 .global-root .scene-master-control {
   margin: 0 10px;
   padding: 8px 0 9px;
@@ -400,6 +446,11 @@
   .global-root .scene-status-item {
     padding-left: 7px;
     padding-right: 7px;
+  }
+
+  .global-root .scene-engine-switch {
+    grid-template-columns: 1fr;
+    align-items: stretch;
   }
 }
 
