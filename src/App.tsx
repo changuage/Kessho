@@ -204,7 +204,6 @@ function shouldShowAudioEngineSwitcher(): boolean {
 }
 
 function buildAudioEngineSwitchUrl(mode: AudioEngineRuntimeMode, state: SliderState): string {
-  const url = new URL(window.location.href);
   const currentParams = new URLSearchParams(window.location.search);
   const nextParams = new URLSearchParams(encodeStateToUrl(state));
 
@@ -220,8 +219,8 @@ function buildAudioEngineSwitchUrl(mode: AudioEngineRuntimeMode, state: SliderSt
     nextParams.delete(AUDIO_ENGINE_PARAM);
   }
 
-  url.search = nextParams.toString();
-  return url.toString();
+  const query = nextParams.toString();
+  return `${window.location.pathname || '/'}${query ? `?${query}` : ''}${window.location.hash}`;
 }
 
 function summarizeAudioEngineCpu(data: Record<string, AudioEnginePerfMetric>): AudioEngineCpuSummary | null {
