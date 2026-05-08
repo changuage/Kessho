@@ -438,7 +438,7 @@ export interface SliderState {
   waveSpread: number;         // 0..1 fraction of chordRate - stagger time between voice entries
   detune: number;             // 0..25 cents step 1
   // Synth voice ADSR
-  synthAttack: number;        // 0.01..8 seconds
+  synthAttack: number;        // 0.001..16 seconds
   synthDecay: number;         // 0.01..8 seconds
   synthSustain: number;       // 0..1 level
   synthRelease: number;       // 0.01..16 seconds
@@ -522,7 +522,7 @@ export interface SliderState {
 
   // Mod Envelope
   padModEnvEnabled: boolean;
-  padModEnvAttack: number;      // 0.01..8s
+  padModEnvAttack: number;      // 0.001..8s
   padModEnvDecay: number;       // 0.01..8s
   padModEnvSustain: number;     // 0..1
   padModEnvRelease: number;     // 0.01..16s
@@ -3502,7 +3502,7 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   voicingSpread: { min: 0, max: 1, step: 0.01 },
   waveSpread: { min: 0, max: 1, step: 0.01 },
   detune: { min: 0, max: 25, step: 1 },
-  synthAttack: { min: 0.01, max: 16, step: 0.01 },
+  synthAttack: { min: 0.001, max: 16, step: 0.001 },
   synthDecay: { min: 0.01, max: 8, step: 0.01 },
   synthSustain: { min: 0, max: 1, step: 0.01 },
   synthRelease: { min: 0.01, max: 30, step: 0.01 },
@@ -3537,7 +3537,7 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   padLfo1Depth: { min: 0, max: 1, step: 0.01 },
   padLfo2Rate: { min: 0.01, max: 20, step: 0.01 },
   padLfo2Depth: { min: 0, max: 1, step: 0.01 },
-  padModEnvAttack: { min: 0.01, max: 8, step: 0.01 },
+  padModEnvAttack: { min: 0.001, max: 8, step: 0.001 },
   padModEnvDecay: { min: 0.01, max: 8, step: 0.01 },
   padModEnvSustain: { min: 0, max: 1, step: 0.01 },
   padModEnvRelease: { min: 0.01, max: 16, step: 0.01 },
@@ -3550,7 +3550,7 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   padDiffuseSend: { min: 0, max: 1, step: 0.01 },
   // Pad Synth 2
   pad2VoiceAssign: { min: 0, max: 63, step: 1 },
-  pad2Attack: { min: 0.01, max: 16, step: 0.01 },
+  pad2Attack: { min: 0.001, max: 16, step: 0.001 },
   pad2Decay: { min: 0.01, max: 8, step: 0.01 },
   pad2Sustain: { min: 0, max: 1, step: 0.01 },
   pad2Release: { min: 0.01, max: 30, step: 0.01 },
@@ -3583,7 +3583,7 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   pad2Lfo1Depth: { min: 0, max: 1, step: 0.01 },
   pad2Lfo2Rate: { min: 0.01, max: 20, step: 0.01 },
   pad2Lfo2Depth: { min: 0, max: 1, step: 0.01 },
-  pad2ModEnvAttack: { min: 0.01, max: 8, step: 0.01 },
+  pad2ModEnvAttack: { min: 0.001, max: 8, step: 0.001 },
   pad2ModEnvDecay: { min: 0.01, max: 8, step: 0.01 },
   pad2ModEnvSustain: { min: 0, max: 1, step: 0.01 },
   pad2ModEnvRelease: { min: 0.01, max: 16, step: 0.01 },

@@ -1768,8 +1768,8 @@
 }
 .synth-root .sc-compact-grid-4 {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr 1fr;
-  gap: 0 4px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px 8px;
 }
 
 /* ── Oscillator 2-col grid ── */

@@ -1,7 +1,7 @@
 /**
  * FilterLfoViz — Real-time canvas visualization showing:
  *   1. Filter A/B response curves driven by engine's live filter frequency
- *   2. ADSR amplitude envelope shape (from params — illustrative)
+ *   2. ADSR amplitude envelope shape (from params) plus optional mod envelope overlay
  *   3. LFO strip showing the engine's real LFO output value
  *
  * Interactive: drag filter min/max markers, drag ADSR breakpoints.
@@ -118,6 +118,13 @@ const LFO_HISTORY_LEN = 120; // ~2 seconds at 50ms polling + 60fps interp
 // Drag target types
 type DragTarget = 'filterMin' | 'filterMax' | 'adsrAttack' | 'adsrDecay' | 'adsrSustain' | 'adsrRelease' | null;
 const DRAG_HIT_PX = 10; // hit zone radius for drag handles
+
+const hasModEnvelope = (props: FilterLfoVizProps): boolean =>
+  !!props.modEnvEnabled && props.modEnvDest !== 'none';
+
+const quantizeEnvelopeTime = (value: number): number => (
+  value < 0.1 ? parseFloat(value.toFixed(3)) : parseFloat(value.toFixed(2))
+);
 
 const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -338,13 +345,13 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
     ctx.fillStyle = 'rgba(255,255,255,0.15)';
     ctx.fillText('FILTER', 4, 11);
 
-    // ── Envelope shape. When the mod envelope is active, this section shows
-    // the modulation ADSR; otherwise it shows the pad's amp ADSR.
-    const showModEnv = props.modEnvEnabled && props.modEnvDest !== 'none';
-    const a = showModEnv ? props.modEnvAttack ?? props.synthAttack : props.synthAttack;
-    const d = showModEnv ? props.modEnvDecay ?? props.synthDecay : props.synthDecay;
-    const s = showModEnv ? props.modEnvSustain ?? props.synthSustain : props.synthSustain;
-    const r = showModEnv ? props.modEnvRelease ?? props.synthRelease : props.synthRelease;
+    // ── Amp envelope shape. This is the editable ADSR shown in the main
+    // envelope controls; an active modulation envelope is drawn as an overlay.
+    const showModEnv = hasModEnvelope(props);
+    const a = props.synthAttack;
+    const d = props.synthDecay;
+    const s = props.synthSustain;
+    const r = props.synthRelease;
     const envDepth = props.modEnvDepth ?? 0;
     const noteLen = Math.max(0.5, a + d + 1 + r);
     const totalTime = noteLen + 0.1;
@@ -357,8 +364,7 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
     for (let px = 0; px < w; px++) {
       const t = (px / w) * totalTime;
       const env = adsrValue(t, a, d, s, r, noteLen);
-      const displayEnv = showModEnv && envDepth < 0 ? 1 - env : env;
-      const y = envY + envH - 4 - displayEnv * (envH - 8);
+      const y = envY + envH - 4 - env * (envH - 8);
       px === 0 ? ctx.moveTo(px, y) : ctx.lineTo(px, y);
     }
     ctx.stroke();
@@ -369,6 +375,31 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
     ctx.fillStyle = '#f59e0b';
     ctx.fill();
     ctx.globalAlpha = 1;
+
+    if (showModEnv) {
+      const modA = props.modEnvAttack ?? props.synthAttack;
+      const modD = props.modEnvDecay ?? props.synthDecay;
+      const modS = props.modEnvSustain ?? props.synthSustain;
+      const modR = props.modEnvRelease ?? props.synthRelease;
+      const modNoteLen = Math.max(0.5, modA + modD + 1 + modR);
+      const modTotalTime = modNoteLen + 0.1;
+
+      ctx.beginPath();
+      ctx.strokeStyle = '#fde68a';
+      ctx.lineWidth = 1;
+      ctx.globalAlpha = 0.45;
+      ctx.setLineDash([4, 3]);
+      for (let px = 0; px < w; px++) {
+        const t = (px / w) * modTotalTime;
+        const env = adsrValue(t, modA, modD, modS, modR, modNoteLen);
+        const displayEnv = envDepth < 0 ? 1 - env : env;
+        const y = envY + envH - 4 - displayEnv * (envH - 8);
+        px === 0 ? ctx.moveTo(px, y) : ctx.lineTo(px, y);
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+    }
 
     // ADSR phase labels
     ctx.font = '7px monospace';
@@ -392,33 +423,30 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
 
     ctx.fillStyle = 'rgba(255,255,255,0.15)';
     ctx.font = '8px monospace';
-    const envLabel = showModEnv
-      ? props.modEnvDest === 'filterCutoff' ? 'FILTER ENV'
-        : props.modEnvDest === 'pitch' ? 'PITCH ENV'
-          : props.modEnvDest === 'oscBLevel' ? 'OSC B ENV'
-            : 'MOD ENV'
-      : 'AMP ENV';
-    ctx.fillText(envLabel, 4, envY + envH - 3);
+    ctx.fillText('AMP ENV', 4, envY + envH - 3);
 
     if (showModEnv) {
       ctx.font = '7px monospace';
       ctx.fillStyle = 'rgba(245,158,11,0.38)';
       ctx.textAlign = 'right';
+      const envLabel = props.modEnvDest === 'filterCutoff' ? 'filter env'
+        : props.modEnvDest === 'pitch' ? 'pitch env'
+          : props.modEnvDest === 'oscBLevel' ? 'osc b env'
+            : 'mod env';
       const depthLabel = props.modEnvDest === 'filterCutoff'
         ? `${envDepth >= 0 ? '+' : ''}${Math.round(envDepth * 50)}% range`
         : `${envDepth >= 0 ? '+' : ''}${envDepth.toFixed(2)}`;
-      ctx.fillText(depthLabel, w - 4, envY + envH - 3);
+      ctx.fillText(`${envLabel} ${depthLabel}`, w - 4, envY + envH - 3);
       ctx.textAlign = 'start';
     }
 
-    // ADSR drag handles (at the breakpoints A, D, S, R)
-    if (props.onAdsrChange || props.onModEnvChange) {
+    // Amp ADSR drag handles (at the breakpoints A, D, S, R)
+    if (props.onAdsrChange) {
       // A handle: top of attack at (ax, envY + 4)
       const aHandleY = envY + 4;
       drawHandle(ax, aHandleY, 'adsrAttack', '#f59e0b');
       // D handle: end of decay at (dx, sustainLineY)
-      const displaySustain = showModEnv && envDepth < 0 ? 1 - s : s;
-      const sustainLineY = envY + envH - 4 - displaySustain * (envH - 8);
+      const sustainLineY = envY + envH - 4 - s * (envH - 8);
       drawHandle(dx, sustainLineY, 'adsrDecay', '#f59e0b');
       // S handle: sustain level (middle of sustain phase)
       const sMidX = (dx + sx) / 2;
@@ -666,20 +694,21 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
     if (props.onFilterMinChange && Math.abs(cx - minX) < DRAG_HIT_PX && Math.abs(cy - filterHandleY) < DRAG_HIT_PX * 2) return 'filterMin';
     if (props.onFilterMaxChange && Math.abs(cx - maxX) < DRAG_HIT_PX && Math.abs(cy - filterHandleY) < DRAG_HIT_PX * 2) return 'filterMax';
 
-    // Check ADSR handles
-    if (props.onAdsrChange || props.onModEnvChange) {
-      const showModEnv = props.modEnvEnabled && props.modEnvDest !== 'none';
-      const a = showModEnv ? props.modEnvAttack ?? props.synthAttack : props.synthAttack;
-      const d = showModEnv ? props.modEnvDecay ?? props.synthDecay : props.synthDecay;
-      const s = showModEnv ? props.modEnvSustain ?? props.synthSustain : props.synthSustain;
-      const r = showModEnv ? props.modEnvRelease ?? props.synthRelease : props.synthRelease;
-      const envDepth = props.modEnvDepth ?? 0;
+    // Check amp ADSR handles. Fall back to mod-envelope editing only if there
+    // is no amp ADSR callback, so the visible ADSR controls stay in sync.
+    const editModEnv = !props.onAdsrChange && !!props.onModEnvChange && hasModEnvelope(props);
+    if (props.onAdsrChange || editModEnv) {
+      const a = editModEnv ? props.modEnvAttack ?? props.synthAttack : props.synthAttack;
+      const d = editModEnv ? props.modEnvDecay ?? props.synthDecay : props.synthDecay;
+      const s = editModEnv ? props.modEnvSustain ?? props.synthSustain : props.synthSustain;
+      const r = editModEnv ? props.modEnvRelease ?? props.synthRelease : props.synthRelease;
+      const envDepth = editModEnv ? props.modEnvDepth ?? 0 : 0;
       const noteLen = Math.max(0.5, a + d + 1 + r);
       const totalTime = noteLen + 0.1;
       const ax = (a / totalTime) * w;
       const dx = ((a + d) / totalTime) * w;
       const sx = ((noteLen - r) / totalTime) * w;
-      const displaySustain = showModEnv && envDepth < 0 ? 1 - s : s;
+      const displaySustain = editModEnv && envDepth < 0 ? 1 - s : s;
       const sustainLineY = envY + envH - 4 - displaySustain * (envH - 8);
       const aHandleY = envY + 4;
       const sMidX = (dx + sx) / 2;
@@ -722,49 +751,49 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
       }
     } else if (target === 'adsrAttack') {
       // Attack: horizontal drag = attack time
-      const showModEnv = props.modEnvEnabled && props.modEnvDest !== 'none';
-      const d = showModEnv ? props.modEnvDecay ?? props.synthDecay : props.synthDecay;
-      const r = showModEnv ? props.modEnvRelease ?? props.synthRelease : props.synthRelease;
-      const currentA = showModEnv ? props.modEnvAttack ?? props.synthAttack : props.synthAttack;
+      const editModEnv = !props.onAdsrChange && !!props.onModEnvChange && hasModEnvelope(props);
+      const d = editModEnv ? props.modEnvDecay ?? props.synthDecay : props.synthDecay;
+      const r = editModEnv ? props.modEnvRelease ?? props.synthRelease : props.synthRelease;
+      const currentA = editModEnv ? props.modEnvAttack ?? props.synthAttack : props.synthAttack;
       const noteLen = Math.max(0.5, currentA + d + 1 + r);
       const totalTime = noteLen + 0.1;
-      const newA = Math.max(0.01, Math.min(8, (cx / w) * totalTime));
-      if (showModEnv && props.onModEnvChange) props.onModEnvChange('attack', parseFloat(newA.toFixed(2)));
-      else props.onAdsrChange?.('synthAttack', parseFloat(newA.toFixed(2)));
+      const newA = Math.max(0.001, Math.min(editModEnv ? 8 : 16, (cx / w) * totalTime));
+      if (editModEnv && props.onModEnvChange) props.onModEnvChange('attack', quantizeEnvelopeTime(newA));
+      else props.onAdsrChange?.('synthAttack', quantizeEnvelopeTime(newA));
     } else if (target === 'adsrDecay') {
       // Decay: horizontal drag from attack end
-      const showModEnv = props.modEnvEnabled && props.modEnvDest !== 'none';
-      const a = showModEnv ? props.modEnvAttack ?? props.synthAttack : props.synthAttack;
-      const currentD = showModEnv ? props.modEnvDecay ?? props.synthDecay : props.synthDecay;
-      const r = showModEnv ? props.modEnvRelease ?? props.synthRelease : props.synthRelease;
+      const editModEnv = !props.onAdsrChange && !!props.onModEnvChange && hasModEnvelope(props);
+      const a = editModEnv ? props.modEnvAttack ?? props.synthAttack : props.synthAttack;
+      const currentD = editModEnv ? props.modEnvDecay ?? props.synthDecay : props.synthDecay;
+      const r = editModEnv ? props.modEnvRelease ?? props.synthRelease : props.synthRelease;
       const noteLen = Math.max(0.5, a + currentD + 1 + r);
       const totalTime = noteLen + 0.1;
       const tAtX = (cx / w) * totalTime;
       const newD = Math.max(0.01, Math.min(8, tAtX - a));
-      if (showModEnv && props.onModEnvChange) props.onModEnvChange('decay', parseFloat(newD.toFixed(2)));
-      else props.onAdsrChange?.('synthDecay', parseFloat(newD.toFixed(2)));
+      if (editModEnv && props.onModEnvChange) props.onModEnvChange('decay', quantizeEnvelopeTime(newD));
+      else props.onAdsrChange?.('synthDecay', quantizeEnvelopeTime(newD));
     } else if (target === 'adsrSustain') {
       // Sustain: vertical drag = level
       const relY = (cy - envY - 4) / (envH - 8);
-      const showModEnv = props.modEnvEnabled && props.modEnvDest !== 'none';
-      const envDepth = props.modEnvDepth ?? 0;
+      const editModEnv = !props.onAdsrChange && !!props.onModEnvChange && hasModEnvelope(props);
+      const envDepth = editModEnv ? props.modEnvDepth ?? 0 : 0;
       const rawS = Math.max(0, Math.min(1, 1 - relY));
-      const newS = showModEnv && envDepth < 0 ? 1 - rawS : rawS;
-      if (showModEnv && props.onModEnvChange) props.onModEnvChange('sustain', parseFloat(newS.toFixed(2)));
+      const newS = editModEnv && envDepth < 0 ? 1 - rawS : rawS;
+      if (editModEnv && props.onModEnvChange) props.onModEnvChange('sustain', parseFloat(newS.toFixed(2)));
       else props.onAdsrChange?.('synthSustain', parseFloat(newS.toFixed(2)));
     } else if (target === 'adsrRelease') {
       // Release: horizontal drag from sustain end
-      const showModEnv = props.modEnvEnabled && props.modEnvDest !== 'none';
-      const a = showModEnv ? props.modEnvAttack ?? props.synthAttack : props.synthAttack;
-      const d = showModEnv ? props.modEnvDecay ?? props.synthDecay : props.synthDecay;
-      const currentR = showModEnv ? props.modEnvRelease ?? props.synthRelease : props.synthRelease;
+      const editModEnv = !props.onAdsrChange && !!props.onModEnvChange && hasModEnvelope(props);
+      const a = editModEnv ? props.modEnvAttack ?? props.synthAttack : props.synthAttack;
+      const d = editModEnv ? props.modEnvDecay ?? props.synthDecay : props.synthDecay;
+      const currentR = editModEnv ? props.modEnvRelease ?? props.synthRelease : props.synthRelease;
       const noteLen = Math.max(0.5, a + d + 1 + currentR);
       const totalTime = noteLen + 0.1;
       const tAtX = (cx / w) * totalTime;
       // Release extends from sustain end to end. Moving left = longer release
-      const newR2 = Math.max(0.01, Math.min(16, totalTime - tAtX));
-      if (showModEnv && props.onModEnvChange) props.onModEnvChange('release', parseFloat(newR2.toFixed(2)));
-      else props.onAdsrChange?.('synthRelease', parseFloat(newR2.toFixed(2)));
+      const newR2 = Math.max(0.01, Math.min(editModEnv ? 16 : 30, totalTime - tAtX));
+      if (editModEnv && props.onModEnvChange) props.onModEnvChange('release', quantizeEnvelopeTime(newR2));
+      else props.onAdsrChange?.('synthRelease', quantizeEnvelopeTime(newR2));
     }
   }, [props]);
 

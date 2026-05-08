@@ -83,6 +83,15 @@ import { SEQUENCER_LANE_COLORS, SEQUENCER_SUB_LANE_COLORS, SOURCE_COLORS } from 
 
 const OV_PROB_DRAG_PX = 80;
 
+const formatEnvelopeSeconds = (value: number): string => {
+  const safeValue = Math.max(0, value);
+  if (safeValue < 1) return `${Math.round(safeValue * 1000)}ms`;
+  if (safeValue < 10) return `${safeValue.toFixed(2)}s`;
+  return `${safeValue.toFixed(1)}s`;
+};
+
+const formatEnvelopeSustain = (value: number): string => `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`;
+
 const LANE_CONFIGS = [
   { color: SEQUENCER_LANE_COLORS[0], name: 'Seq 1' },
   { color: SEQUENCER_LANE_COLORS[1], name: 'Seq 2' },
@@ -2778,10 +2787,10 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 <div className="sc-advanced-section">
                   <div className="sc-section-label">Envelope</div>
                   <div className="sc-compact-grid-4">
-                    <Slider label="Attack" value={state.synthAttack} paramKey="synthAttack" unit="s" ghostValue={getPreviewValue(pad1DistancePreview, 'synthAttack')} onChange={onParamChange} {...sliderProps('synthAttack')} />
-                    <Slider label="Decay" value={state.synthDecay} paramKey="synthDecay" unit="s" ghostValue={getPreviewValue(pad1DistancePreview, 'synthDecay')} onChange={onParamChange} {...sliderProps('synthDecay')} />
-                    <Slider label="Sustain" value={state.synthSustain} paramKey="synthSustain" ghostValue={getPreviewValue(pad1DistancePreview, 'synthSustain')} onChange={onParamChange} {...sliderProps('synthSustain')} />
-                    <Slider label="Release" value={state.synthRelease} paramKey="synthRelease" unit="s" ghostValue={getPreviewValue(pad1DistancePreview, 'synthRelease')} onChange={onParamChange} {...sliderProps('synthRelease')} />
+                    <Slider label="Attack" value={state.synthAttack} paramKey="synthAttack" format={formatEnvelopeSeconds} ghostValue={getPreviewValue(pad1DistancePreview, 'synthAttack')} onChange={onParamChange} {...sliderProps('synthAttack')} />
+                    <Slider label="Decay" value={state.synthDecay} paramKey="synthDecay" format={formatEnvelopeSeconds} ghostValue={getPreviewValue(pad1DistancePreview, 'synthDecay')} onChange={onParamChange} {...sliderProps('synthDecay')} />
+                    <Slider label="Sustain" value={state.synthSustain} paramKey="synthSustain" format={formatEnvelopeSustain} ghostValue={getPreviewValue(pad1DistancePreview, 'synthSustain')} onChange={onParamChange} {...sliderProps('synthSustain')} />
+                    <Slider label="Release" value={state.synthRelease} paramKey="synthRelease" format={formatEnvelopeSeconds} ghostValue={getPreviewValue(pad1DistancePreview, 'synthRelease')} onChange={onParamChange} {...sliderProps('synthRelease')} />
                   </div>
                 </div>
 
@@ -3108,10 +3117,10 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                       />
                       <Slider label="Depth" value={state.padModEnvDepth ?? 0} paramKey="padModEnvDepth" onChange={onParamChange} {...sliderProps('padModEnvDepth')} />
                       <div className="sc-compact-grid-4">
-                        <Slider label="Attack" value={state.padModEnvAttack ?? 0.1} paramKey="padModEnvAttack" unit="s" onChange={onParamChange} {...sliderProps('padModEnvAttack')} />
-                        <Slider label="Decay" value={state.padModEnvDecay ?? 0.3} paramKey="padModEnvDecay" unit="s" onChange={onParamChange} {...sliderProps('padModEnvDecay')} />
-                        <Slider label="Sustain" value={state.padModEnvSustain ?? 0} paramKey="padModEnvSustain" onChange={onParamChange} {...sliderProps('padModEnvSustain')} />
-                        <Slider label="Release" value={state.padModEnvRelease ?? 0.5} paramKey="padModEnvRelease" unit="s" onChange={onParamChange} {...sliderProps('padModEnvRelease')} />
+                        <Slider label="Attack" value={state.padModEnvAttack ?? 0.1} paramKey="padModEnvAttack" format={formatEnvelopeSeconds} onChange={onParamChange} {...sliderProps('padModEnvAttack')} />
+                        <Slider label="Decay" value={state.padModEnvDecay ?? 0.3} paramKey="padModEnvDecay" format={formatEnvelopeSeconds} onChange={onParamChange} {...sliderProps('padModEnvDecay')} />
+                        <Slider label="Sustain" value={state.padModEnvSustain ?? 0} paramKey="padModEnvSustain" format={formatEnvelopeSustain} onChange={onParamChange} {...sliderProps('padModEnvSustain')} />
+                        <Slider label="Release" value={state.padModEnvRelease ?? 0.5} paramKey="padModEnvRelease" format={formatEnvelopeSeconds} onChange={onParamChange} {...sliderProps('padModEnvRelease')} />
                       </div>
                     </>
                   )}
@@ -3446,10 +3455,10 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 <div className="sc-advanced-section">
                   <div className="sc-section-label">Envelope</div>
                   <div className="sc-compact-grid-4">
-                    <Slider label="Attack" value={state.pad2Attack} paramKey="pad2Attack" unit="s" ghostValue={getPreviewValue(pad2DistancePreview, 'pad2Attack')} onChange={onParamChange} {...sliderProps('pad2Attack')} />
-                    <Slider label="Decay" value={state.pad2Decay} paramKey="pad2Decay" unit="s" ghostValue={getPreviewValue(pad2DistancePreview, 'pad2Decay')} onChange={onParamChange} {...sliderProps('pad2Decay')} />
-                    <Slider label="Sustain" value={state.pad2Sustain} paramKey="pad2Sustain" ghostValue={getPreviewValue(pad2DistancePreview, 'pad2Sustain')} onChange={onParamChange} {...sliderProps('pad2Sustain')} />
-                    <Slider label="Release" value={state.pad2Release} paramKey="pad2Release" unit="s" ghostValue={getPreviewValue(pad2DistancePreview, 'pad2Release')} onChange={onParamChange} {...sliderProps('pad2Release')} />
+                    <Slider label="Attack" value={state.pad2Attack} paramKey="pad2Attack" format={formatEnvelopeSeconds} ghostValue={getPreviewValue(pad2DistancePreview, 'pad2Attack')} onChange={onParamChange} {...sliderProps('pad2Attack')} />
+                    <Slider label="Decay" value={state.pad2Decay} paramKey="pad2Decay" format={formatEnvelopeSeconds} ghostValue={getPreviewValue(pad2DistancePreview, 'pad2Decay')} onChange={onParamChange} {...sliderProps('pad2Decay')} />
+                    <Slider label="Sustain" value={state.pad2Sustain} paramKey="pad2Sustain" format={formatEnvelopeSustain} ghostValue={getPreviewValue(pad2DistancePreview, 'pad2Sustain')} onChange={onParamChange} {...sliderProps('pad2Sustain')} />
+                    <Slider label="Release" value={state.pad2Release} paramKey="pad2Release" format={formatEnvelopeSeconds} ghostValue={getPreviewValue(pad2DistancePreview, 'pad2Release')} onChange={onParamChange} {...sliderProps('pad2Release')} />
                   </div>
                 </div>
 
@@ -3771,10 +3780,10 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                       />
                       <Slider label="Depth" value={state.pad2ModEnvDepth ?? 0} paramKey="pad2ModEnvDepth" onChange={onParamChange} {...sliderProps('pad2ModEnvDepth')} />
                       <div className="sc-compact-grid-4">
-                        <Slider label="Attack" value={state.pad2ModEnvAttack ?? 0.1} paramKey="pad2ModEnvAttack" unit="s" onChange={onParamChange} {...sliderProps('pad2ModEnvAttack')} />
-                        <Slider label="Decay" value={state.pad2ModEnvDecay ?? 0.3} paramKey="pad2ModEnvDecay" unit="s" onChange={onParamChange} {...sliderProps('pad2ModEnvDecay')} />
-                        <Slider label="Sustain" value={state.pad2ModEnvSustain ?? 0} paramKey="pad2ModEnvSustain" onChange={onParamChange} {...sliderProps('pad2ModEnvSustain')} />
-                        <Slider label="Release" value={state.pad2ModEnvRelease ?? 0.5} paramKey="pad2ModEnvRelease" unit="s" onChange={onParamChange} {...sliderProps('pad2ModEnvRelease')} />
+                        <Slider label="Attack" value={state.pad2ModEnvAttack ?? 0.1} paramKey="pad2ModEnvAttack" format={formatEnvelopeSeconds} onChange={onParamChange} {...sliderProps('pad2ModEnvAttack')} />
+                        <Slider label="Decay" value={state.pad2ModEnvDecay ?? 0.3} paramKey="pad2ModEnvDecay" format={formatEnvelopeSeconds} onChange={onParamChange} {...sliderProps('pad2ModEnvDecay')} />
+                        <Slider label="Sustain" value={state.pad2ModEnvSustain ?? 0} paramKey="pad2ModEnvSustain" format={formatEnvelopeSustain} onChange={onParamChange} {...sliderProps('pad2ModEnvSustain')} />
+                        <Slider label="Release" value={state.pad2ModEnvRelease ?? 0.5} paramKey="pad2ModEnvRelease" format={formatEnvelopeSeconds} onChange={onParamChange} {...sliderProps('pad2ModEnvRelease')} />
                       </div>
                     </>
                   )}
