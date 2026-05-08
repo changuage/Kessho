@@ -32,6 +32,12 @@ export function getPianoSamplePath(variant: PianoSampleVariant, index: number): 
   return `${PIANO_SAMPLE_ROOT}/${fileName}`;
 }
 
+export function choosePianoSampleVariant(midiNote: number, velocity = 0.8): PianoSampleVariant {
+  const noteKey = Math.max(0, Math.round(midiNote));
+  const velocityKey = Math.max(0, Math.min(127, Math.round(velocity * 127)));
+  return ((noteKey * 31 + velocityKey) % 2) === 0 ? 'regular' : 'short';
+}
+
 export function frequencyToMidiNote(frequency: number): number {
   const safeFrequency = Math.max(frequency, 1e-6);
   return 69 + 12 * Math.log2(safeFrequency / 440);

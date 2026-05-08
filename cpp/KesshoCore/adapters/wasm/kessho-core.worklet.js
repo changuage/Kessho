@@ -7,6 +7,7 @@ const KESSHO_MODULE_DRUM = 8;
 const KESSHO_MODULE_SOUNDSCAPES = 9;
 const KESSHO_MODULE_DELAY_A = 10;
 const KESSHO_MODULE_DELAY_B = 11;
+const KESSHO_DRUM_PARAM_TRIGGER = 117;
 const KESSHO_MODULE_PAD_OUTPUT_TAP_COUNT = 6;
 const KESSHO_MODULE_DELAY_A_OUTPUT_TAP_COUNT = 4;
 const KESSHO_MODULE_DELAY_B_OUTPUT_TAP_COUNT = 4;
@@ -23,6 +24,10 @@ const KESSHO_MODULE_DELAY_B_TAP_REVERB_SEND = 1;
 const KESSHO_MODULE_DELAY_B_TAP_DELAY_A_SEND = 2;
 const KESSHO_MODULE_DELAY_B_TAP_GRANULAR_SEND = 3;
 const KESSHO_PAD_VOICE_COUNT = 6;
+const KESSHO_CORE_INPUT_REVERB = 0;
+const KESSHO_CORE_INPUT_DELAY_A = 1;
+const KESSHO_CORE_INPUT_DELAY_B = 2;
+const KESSHO_CORE_INPUT_GRANULAR = 3;
 const KESSHO_CORE_REVERB_BUS = 6;
 const KESSHO_CORE_DELAY_A_BUS = 7;
 const KESSHO_CORE_MIXER_INPUT_BUS_COUNT = 8;
@@ -31,6 +36,7 @@ const KESSHO_CORE_LEAD_RECORDABLE_TRIM_COMPENSATION = 2.0;
 const MIXER_ROUTE_BYTES = 20;
 const UINT32_BYTES = 4;
 const WEB_AUDIO_LOW_PASS_Q_0_7 = Math.pow(10, 0.7 / 20);
+const KESSHO_CORE_SOFT_STOP_FADE_SECONDS = 0.18;
 
 class KesshoCoreProcessor extends AudioWorkletProcessor {
   constructor(options = {}) {
@@ -138,7 +144,14 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
     this.sourceDelayASendGain = 0;
     this.sourceDelayBSendGain = 0;
     this.sourceGranularSendGain = 0;
+    this.sourceDryGainTarget = 1;
+    this.sourceReverbSendGainTarget = 0;
+    this.sourceDelayASendGainTarget = 0;
+    this.sourceDelayBSendGainTarget = 0;
+    this.sourceGranularSendGainTarget = 0;
+    this.sourceGainRampRemainingSamples = 0;
     this.sourceLeadIndex = 0;
+    this.sourceBaseParams = [];
     this.sourceNoteKey = '';
     this.sourceChordSets = [];
     this.sourceChordIndex = 0;
@@ -148,6 +161,11 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
     this.sourcePendingNoteOffs = [];
     this.sourceTapLeftPtrs = [];
     this.sourceTapRightPtrs = [];
+    this.noteParamsOverrideActiveByModule = new Map();
+    this.externalReverbInputActive = false;
+    this.externalDelayAInputActive = false;
+    this.externalDelayBInputActive = false;
+    this.externalGranularInputActive = false;
     this.auxSourceSlots = KESSHO_AUX_SOURCE_SLOT_IDS.map((slotId) => this.createSourceSlot(slotId));
     this.padPostChains = [
       this.createPadPostChain(),
@@ -423,7 +441,14 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
       delayASendGain: 0,
       delayBSendGain: 0,
       granularSendGain: 0,
+      dryGainTarget: 1,
+      reverbSendGainTarget: 0,
+      delayASendGainTarget: 0,
+      delayBSendGainTarget: 0,
+      granularSendGainTarget: 0,
+      gainRampRemainingSamples: 0,
       leadIndex: 0,
+      baseParams: [],
       noteKey: '',
       chordSets: [],
       chordIndex: 0,
@@ -1166,6 +1191,7 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
   destroySourceSlot(slot) {
     if (!slot) return;
     if (slot.module) {
+      this.noteParamsOverrideActiveByModule?.delete?.(slot.module);
       this.api.moduleDestroy(slot.module);
     }
     slot.module = 0;
@@ -1177,7 +1203,14 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
     slot.delayASendGain = 0;
     slot.delayBSendGain = 0;
     slot.granularSendGain = 0;
+    slot.dryGainTarget = 1;
+    slot.reverbSendGainTarget = 0;
+    slot.delayASendGainTarget = 0;
+    slot.delayBSendGainTarget = 0;
+    slot.granularSendGainTarget = 0;
+    slot.gainRampRemainingSamples = 0;
     slot.leadIndex = 0;
+    slot.baseParams = [];
     slot.noteKey = '';
     slot.chordSets = [];
     slot.chordIndex = 0;
@@ -1189,6 +1222,7 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
 
   destroySourceModule() {
     if (this.sourceModule) {
+      this.noteParamsOverrideActiveByModule?.delete?.(this.sourceModule);
       this.api.moduleDestroy(this.sourceModule);
     }
     this.sourceModule = 0;
@@ -1198,8 +1232,16 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
     this.sourceDryGain = 1;
     this.sourceReverbSendGain = 0;
     this.sourceDelayASendGain = 0;
+    this.sourceDelayBSendGain = 0;
     this.sourceGranularSendGain = 0;
+    this.sourceDryGainTarget = 1;
+    this.sourceReverbSendGainTarget = 0;
+    this.sourceDelayASendGainTarget = 0;
+    this.sourceDelayBSendGainTarget = 0;
+    this.sourceGranularSendGainTarget = 0;
+    this.sourceGainRampRemainingSamples = 0;
     this.sourceLeadIndex = 0;
+    this.sourceBaseParams = [];
     this.sourceNoteKey = '';
     this.sourceChordSets = [];
     this.sourceChordIndex = 0;
@@ -1207,6 +1249,146 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
     this.sourceSamplesUntilChord = 0;
     this.sourcePendingNotes = [];
     this.sourcePendingNoteOffs = [];
+  }
+
+  setSourceGains(dryGain, reverbSendGain, delayASendGain, delayBSendGain, granularSendGain) {
+    this.sourceDryGain = dryGain;
+    this.sourceReverbSendGain = reverbSendGain;
+    this.sourceDelayASendGain = delayASendGain;
+    this.sourceDelayBSendGain = delayBSendGain;
+    this.sourceGranularSendGain = granularSendGain;
+    this.sourceDryGainTarget = dryGain;
+    this.sourceReverbSendGainTarget = reverbSendGain;
+    this.sourceDelayASendGainTarget = delayASendGain;
+    this.sourceDelayBSendGainTarget = delayBSendGain;
+    this.sourceGranularSendGainTarget = granularSendGain;
+    this.sourceGainRampRemainingSamples = 0;
+  }
+
+  setSlotGains(slot, dryGain, reverbSendGain, delayASendGain, delayBSendGain, granularSendGain) {
+    if (!slot) return;
+    slot.dryGain = dryGain;
+    slot.reverbSendGain = reverbSendGain;
+    slot.delayASendGain = delayASendGain;
+    slot.delayBSendGain = delayBSendGain;
+    slot.granularSendGain = granularSendGain;
+    slot.dryGainTarget = dryGain;
+    slot.reverbSendGainTarget = reverbSendGain;
+    slot.delayASendGainTarget = delayASendGain;
+    slot.delayBSendGainTarget = delayBSendGain;
+    slot.granularSendGainTarget = granularSendGain;
+    slot.gainRampRemainingSamples = 0;
+  }
+
+  scheduleSourceGainFade(dryGain, reverbSendGain, delayASendGain, delayBSendGain, granularSendGain, fadeSeconds = KESSHO_CORE_SOFT_STOP_FADE_SECONDS) {
+    const fadeSamples = Math.max(this.frames, Math.floor(Math.max(0.01, Number(fadeSeconds) || KESSHO_CORE_SOFT_STOP_FADE_SECONDS) * sampleRate));
+    this.sourceDryGainTarget = dryGain;
+    this.sourceReverbSendGainTarget = reverbSendGain;
+    this.sourceDelayASendGainTarget = delayASendGain;
+    this.sourceDelayBSendGainTarget = delayBSendGain;
+    this.sourceGranularSendGainTarget = granularSendGain;
+    this.sourceGainRampRemainingSamples = fadeSamples;
+  }
+
+  scheduleSlotGainFade(slot, dryGain, reverbSendGain, delayASendGain, delayBSendGain, granularSendGain, fadeSeconds = KESSHO_CORE_SOFT_STOP_FADE_SECONDS) {
+    if (!slot) return;
+    const fadeSamples = Math.max(this.frames, Math.floor(Math.max(0.01, Number(fadeSeconds) || KESSHO_CORE_SOFT_STOP_FADE_SECONDS) * sampleRate));
+    slot.dryGainTarget = dryGain;
+    slot.reverbSendGainTarget = reverbSendGain;
+    slot.delayASendGainTarget = delayASendGain;
+    slot.delayBSendGainTarget = delayBSendGain;
+    slot.granularSendGainTarget = granularSendGain;
+    slot.gainRampRemainingSamples = fadeSamples;
+  }
+
+  stepSourceGainRamp(frames) {
+    if (this.sourceGainRampRemainingSamples <= 0) return;
+    const progress = Math.min(1, frames / this.sourceGainRampRemainingSamples);
+    this.sourceDryGain += (this.sourceDryGainTarget - this.sourceDryGain) * progress;
+    this.sourceReverbSendGain += (this.sourceReverbSendGainTarget - this.sourceReverbSendGain) * progress;
+    this.sourceDelayASendGain += (this.sourceDelayASendGainTarget - this.sourceDelayASendGain) * progress;
+    this.sourceDelayBSendGain += (this.sourceDelayBSendGainTarget - this.sourceDelayBSendGain) * progress;
+    this.sourceGranularSendGain += (this.sourceGranularSendGainTarget - this.sourceGranularSendGain) * progress;
+    this.sourceGainRampRemainingSamples = Math.max(0, this.sourceGainRampRemainingSamples - frames);
+    if (this.sourceGainRampRemainingSamples <= 0) {
+      this.sourceDryGain = this.sourceDryGainTarget;
+      this.sourceReverbSendGain = this.sourceReverbSendGainTarget;
+      this.sourceDelayASendGain = this.sourceDelayASendGainTarget;
+      this.sourceDelayBSendGain = this.sourceDelayBSendGainTarget;
+      this.sourceGranularSendGain = this.sourceGranularSendGainTarget;
+    }
+  }
+
+  stepSlotGainRamp(slot, frames) {
+    if (!slot || slot.gainRampRemainingSamples <= 0) return;
+    const progress = Math.min(1, frames / slot.gainRampRemainingSamples);
+    slot.dryGain += (slot.dryGainTarget - slot.dryGain) * progress;
+    slot.reverbSendGain += (slot.reverbSendGainTarget - slot.reverbSendGain) * progress;
+    slot.delayASendGain += (slot.delayASendGainTarget - slot.delayASendGain) * progress;
+    slot.delayBSendGain += (slot.delayBSendGainTarget - slot.delayBSendGain) * progress;
+    slot.granularSendGain += (slot.granularSendGainTarget - slot.granularSendGain) * progress;
+    slot.gainRampRemainingSamples = Math.max(0, slot.gainRampRemainingSamples - frames);
+    if (slot.gainRampRemainingSamples <= 0) {
+      slot.dryGain = slot.dryGainTarget;
+      slot.reverbSendGain = slot.reverbSendGainTarget;
+      slot.delayASendGain = slot.delayASendGainTarget;
+      slot.delayBSendGain = slot.delayBSendGainTarget;
+      slot.granularSendGain = slot.granularSendGainTarget;
+    }
+  }
+
+  releasePrimarySourceVoices() {
+    if (!this.sourceModule) return;
+    this.sourcePendingNotes = [];
+    this.sourcePendingNoteOffs = [];
+    if (this.sourceModuleType === KESSHO_MODULE_PAD) {
+      for (let voiceIndex = 0; voiceIndex < KESSHO_PAD_VOICE_COUNT; voiceIndex += 1) {
+        this.api.moduleNoteOff(this.sourceModule, voiceIndex);
+      }
+      return;
+    }
+    this.api.moduleAllNotesOff(this.sourceModule);
+  }
+
+  releaseSourceSlotVoices(slot) {
+    if (!slot?.module) return;
+    slot.pendingNotes = [];
+    slot.pendingNoteOffs = [];
+    this.api.moduleAllNotesOff(slot.module);
+  }
+
+  softStopPrimarySource(fadeSeconds = KESSHO_CORE_SOFT_STOP_FADE_SECONDS) {
+    if (!this.sourceModule) return;
+    this.releasePrimarySourceVoices();
+    this.sourceChordSets = [];
+    this.sourceChordIndex = 0;
+    this.sourceChordIntervalSamples = 0;
+    this.sourceSamplesUntilChord = 0;
+    this.sourceNoteKey = '';
+    this.scheduleSourceGainFade(0, 0, 0, 0, 0, fadeSeconds);
+  }
+
+  softStopSourceSlot(slot, fadeSeconds = KESSHO_CORE_SOFT_STOP_FADE_SECONDS) {
+    if (!slot?.module) return;
+    this.releaseSourceSlotVoices(slot);
+    slot.chordSets = [];
+    slot.chordIndex = 0;
+    slot.chordIntervalSamples = 0;
+    slot.samplesUntilChord = 0;
+    slot.noteKey = '';
+    this.scheduleSlotGainFade(slot, 0, 0, 0, 0, 0, fadeSeconds);
+  }
+
+  softStopSources(message) {
+    const fadeSeconds = Number.isFinite(Number(message.fadeSeconds))
+      ? Math.max(0.01, Number(message.fadeSeconds))
+      : KESSHO_CORE_SOFT_STOP_FADE_SECONDS;
+    const queued = this.writeTransportEvent(message.sampleOffset, 0);
+    if (!queued) this.postQueueFailure('softStop');
+    this.softStopPrimarySource(fadeSeconds);
+    for (const slot of (this.auxSourceSlots || [])) {
+      this.softStopSourceSlot(slot, fadeSeconds);
+    }
   }
 
   killSourceVoices() {
@@ -1227,9 +1409,71 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
     }
   }
 
+  applyNoteParamsOverride(module, moduleType, note, baseParams) {
+    if (
+      !module ||
+      !note ||
+      typeof note !== 'object' ||
+      (moduleType !== KESSHO_MODULE_LEAD_FM && moduleType !== KESSHO_MODULE_PAD)
+    ) {
+      return;
+    }
+    const override = Array.isArray(note.paramsOverride) ? note.paramsOverride : null;
+    this.noteParamsOverrideActiveByModule = this.noteParamsOverrideActiveByModule || new Map();
+    const wasActive = this.noteParamsOverrideActiveByModule.get(module) === true;
+    if (!override && !wasActive) return;
+    const params = override || (Array.isArray(baseParams) ? baseParams : null);
+    if (!params) return;
+    const paramsPtr = this.api.moduleGetParamsPtr(module);
+    const paramCount = this.api.moduleGetParamCount(module);
+    if (!paramsPtr || paramCount <= 0) return;
+    const offset = paramsPtr >> 2;
+    const count = Math.min(paramCount, params.length);
+    for (let i = 0; i < count; i += 1) {
+      this.heap[offset + i] = Number(params[i]) || 0;
+    }
+    for (let i = count; i < paramCount; i += 1) {
+      this.heap[offset + i] = 0;
+    }
+    this.api.moduleCommitParams(module);
+    this.noteParamsOverrideActiveByModule.set(module, Boolean(override));
+  }
+
+  applyDrumNoteOverrides(module, moduleType, note) {
+    if (moduleType !== KESSHO_MODULE_DRUM || !module || !note || typeof note !== 'object') return;
+    const paramsPtr = this.api.moduleGetParamsPtr(module);
+    const paramCount = this.api.moduleGetParamCount(module);
+    if (!paramsPtr || paramCount <= KESSHO_DRUM_PARAM_TRIGGER + 4) return;
+
+    const offset = paramsPtr >> 2;
+    const morph = note.morphOverride;
+    const distance = note.distanceOverride;
+    const pitch = note.pitchOverride;
+    const ratchetDecayCap = note.ratchetDecayCap;
+    const ratchetAttackCap = note.ratchetAttackCap;
+    const hasOverride = morph !== null && morph !== undefined ||
+      distance !== null && distance !== undefined ||
+      pitch !== null && pitch !== undefined ||
+      ratchetDecayCap !== null && ratchetDecayCap !== undefined ||
+      ratchetAttackCap !== null && ratchetAttackCap !== undefined;
+    this.drumNoteOverrideActiveByModule = this.drumNoteOverrideActiveByModule || new Map();
+    const wasActive = this.drumNoteOverrideActiveByModule.get(module) === true;
+    if (!hasOverride && !wasActive) return;
+
+    this.heap[offset + KESSHO_DRUM_PARAM_TRIGGER + 0] = morph === null || morph === undefined ? -1 : Number(morph) || 0;
+    this.heap[offset + KESSHO_DRUM_PARAM_TRIGGER + 1] = distance === null || distance === undefined ? -1 : Number(distance) || 0;
+    this.heap[offset + KESSHO_DRUM_PARAM_TRIGGER + 2] = pitch === null || pitch === undefined ? 0 : Number(pitch) || 0;
+    this.heap[offset + KESSHO_DRUM_PARAM_TRIGGER + 3] = Number.isFinite(Number(ratchetDecayCap)) ? Number(ratchetDecayCap) : 1.0e10;
+    this.heap[offset + KESSHO_DRUM_PARAM_TRIGGER + 4] = Number.isFinite(Number(ratchetAttackCap)) ? Number(ratchetAttackCap) : 1.0e10;
+    this.api.moduleCommitParams(module);
+    this.drumNoteOverrideActiveByModule.set(module, hasOverride);
+  }
+
   triggerSourceNote(note) {
     if (!this.sourceModule) return;
     if (!note || typeof note !== 'object') return;
+    this.applyNoteParamsOverride(this.sourceModule, this.sourceModuleType, note, this.sourceBaseParams);
+    this.applyDrumNoteOverrides(this.sourceModule, this.sourceModuleType, note);
     const ok = this.api.moduleNoteOn(
       this.sourceModule,
       Number(note.frequency) || 0,
@@ -1316,6 +1560,8 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
   triggerSlotNote(slot, note) {
     if (!slot?.module) return;
     if (!note || typeof note !== 'object') return;
+    this.applyNoteParamsOverride(slot.module, slot.moduleType, note, slot.baseParams);
+    this.applyDrumNoteOverrides(slot.module, slot.moduleType, note);
     const ok = this.api.moduleNoteOn(
       slot.module,
       Number(note.frequency) || 0,
@@ -1435,26 +1681,33 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
     for (let i = count; i < paramCount; i += 1) {
       this.heap[offset + i] = 0;
     }
+    this.sourceBaseParams = Array.from({ length: paramCount }, (_, index) =>
+      index < count ? (Number(params[index]) || 0) : 0,
+    );
+    this.noteParamsOverrideActiveByModule = this.noteParamsOverrideActiveByModule || new Map();
+    this.noteParamsOverrideActiveByModule.set(this.sourceModule, false);
     this.api.moduleCommitParams(this.sourceModule);
-    this.sourceDryGain = Number.isFinite(Number(message.dryGain))
-      ? Math.max(0, Math.min(2, Number(message.dryGain)))
-      : 1;
-    this.sourceReverbSendGain = Number.isFinite(Number(message.reverbSendGain))
-      ? Math.max(0, Math.min(2, Number(message.reverbSendGain)))
-      : 0;
-    this.sourceDelayASendGain = Number.isFinite(Number(message.delayASendGain))
-      ? Math.max(0, Math.min(2, Number(message.delayASendGain)))
-      : sourceKind === 'lead-fm'
-        ? (Number(message.leadIndex) > 0 ? this.delayALead2SendGain : this.delayALead1SendGain)
-        : 0;
-    this.sourceDelayBSendGain = Number.isFinite(Number(message.delayBSendGain))
-      ? Math.max(0, Math.min(2, Number(message.delayBSendGain)))
-      : sourceKind === 'lead-fm'
-        ? (Number(message.leadIndex) > 0 ? this.delayBLead2SendGain : this.delayBLead1SendGain)
-        : 0;
-    this.sourceGranularSendGain = Number.isFinite(Number(message.granularSendGain))
-      ? Math.max(0, Math.min(2, Number(message.granularSendGain)))
-      : 0;
+    this.setSourceGains(
+      Number.isFinite(Number(message.dryGain))
+        ? Math.max(0, Math.min(2, Number(message.dryGain)))
+        : 1,
+      Number.isFinite(Number(message.reverbSendGain))
+        ? Math.max(0, Math.min(2, Number(message.reverbSendGain)))
+        : 0,
+      Number.isFinite(Number(message.delayASendGain))
+        ? Math.max(0, Math.min(2, Number(message.delayASendGain)))
+        : sourceKind === 'lead-fm'
+          ? (Number(message.leadIndex) > 0 ? this.delayALead2SendGain : this.delayALead1SendGain)
+          : 0,
+      Number.isFinite(Number(message.delayBSendGain))
+        ? Math.max(0, Math.min(2, Number(message.delayBSendGain)))
+        : sourceKind === 'lead-fm'
+          ? (Number(message.leadIndex) > 0 ? this.delayBLead2SendGain : this.delayBLead1SendGain)
+          : 0,
+      Number.isFinite(Number(message.granularSendGain))
+        ? Math.max(0, Math.min(2, Number(message.granularSendGain)))
+        : 0,
+    );
     this.sourceLeadIndex = Number(message.leadIndex) > 0 ? 1 : 0;
     this.configurePadPostChain(
       this.padPostChains[0],
@@ -1566,36 +1819,44 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
     for (let i = count; i < paramCount; i += 1) {
       this.heap[offset + i] = 0;
     }
+    slot.baseParams = Array.from({ length: paramCount }, (_, index) =>
+      index < count ? (Number(params[index]) || 0) : 0,
+    );
+    this.noteParamsOverrideActiveByModule = this.noteParamsOverrideActiveByModule || new Map();
+    this.noteParamsOverrideActiveByModule.set(slot.module, false);
     this.api.moduleCommitParams(slot.module);
 
-    slot.dryGain = Number.isFinite(Number(message.dryGain))
-      ? Math.max(0, Math.min(2, Number(message.dryGain)))
-      : 1;
-    slot.reverbSendGain = Number.isFinite(Number(message.reverbSendGain))
-      ? Math.max(0, Math.min(2, Number(message.reverbSendGain)))
-      : 0;
     slot.leadIndex = Number(message.leadIndex) > 0 ? 1 : 0;
-    slot.delayASendGain = Number.isFinite(Number(message.delayASendGain))
-      ? Math.max(0, Math.min(2, Number(message.delayASendGain)))
-      : sourceKind === 'lead-fm'
-        ? (slot.leadIndex > 0 ? this.delayALead2SendGain : this.delayALead1SendGain)
-        : sourceKind === 'drum'
-          ? this.delayADrumSendGain
-          : this.delayASoundscapeSendGain;
-    slot.delayBSendGain = Number.isFinite(Number(message.delayBSendGain))
-      ? Math.max(0, Math.min(2, Number(message.delayBSendGain)))
-      : sourceKind === 'lead-fm'
-        ? (slot.leadIndex > 0 ? this.delayBLead2SendGain : this.delayBLead1SendGain)
-        : sourceKind === 'drum'
-          ? this.delayBDrumSendGain
-          : this.delayBSoundscapeSendGain;
-    slot.granularSendGain = Number.isFinite(Number(message.granularSendGain))
-      ? Math.max(0, Math.min(2, Number(message.granularSendGain)))
-      : sourceKind === 'lead-fm'
-        ? (slot.leadIndex > 0 ? this.granularLead2SendGain : this.granularLead1SendGain)
-        : sourceKind === 'drum'
-          ? this.granularDrumSendGain
-          : this.granularSoundscapeSendGain;
+    this.setSlotGains(
+      slot,
+      Number.isFinite(Number(message.dryGain))
+        ? Math.max(0, Math.min(2, Number(message.dryGain)))
+        : 1,
+      Number.isFinite(Number(message.reverbSendGain))
+        ? Math.max(0, Math.min(2, Number(message.reverbSendGain)))
+        : 0,
+      Number.isFinite(Number(message.delayASendGain))
+        ? Math.max(0, Math.min(2, Number(message.delayASendGain)))
+        : sourceKind === 'lead-fm'
+          ? (slot.leadIndex > 0 ? this.delayALead2SendGain : this.delayALead1SendGain)
+          : sourceKind === 'drum'
+            ? this.delayADrumSendGain
+            : this.delayASoundscapeSendGain,
+      Number.isFinite(Number(message.delayBSendGain))
+        ? Math.max(0, Math.min(2, Number(message.delayBSendGain)))
+        : sourceKind === 'lead-fm'
+          ? (slot.leadIndex > 0 ? this.delayBLead2SendGain : this.delayBLead1SendGain)
+          : sourceKind === 'drum'
+            ? this.delayBDrumSendGain
+            : this.delayBSoundscapeSendGain,
+      Number.isFinite(Number(message.granularSendGain))
+        ? Math.max(0, Math.min(2, Number(message.granularSendGain)))
+        : sourceKind === 'lead-fm'
+          ? (slot.leadIndex > 0 ? this.granularLead2SendGain : this.granularLead1SendGain)
+          : sourceKind === 'drum'
+            ? this.granularDrumSendGain
+            : this.granularSoundscapeSendGain,
+    );
 
     this.configurePadPostChain(
       slot.postChain,
@@ -1684,6 +1945,17 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
       if (!queued) this.postQueueFailure('stop');
     }
 
+    if (message.type === 'softStop' && this.ready) {
+      this.softStopSources(message);
+    }
+
+    if (message.type === 'configureExternalInputs') {
+      this.externalReverbInputActive = Boolean(message.reverbActive);
+      this.externalDelayAInputActive = Boolean(message.delayAActive);
+      this.externalDelayBInputActive = Boolean(message.delayBActive);
+      this.externalGranularInputActive = Boolean(message.granularActive);
+    }
+
     if (message.type === 'enablePerf') {
       this.perfEnabled = Boolean(message.enabled);
       this.perfBlocks = 0;
@@ -1766,6 +2038,7 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
         this.postQueueFailure(`${slot.slotId}SourceProcess`);
       }
       this.processPostChain(slot.postChain, slot.leftPtr, slot.rightPtr, frames);
+      this.stepSlotGainRamp(slot, frames);
       const dryGain = Number.isFinite(slot.dryGain) ? slot.dryGain : 1;
       if (Math.abs(dryGain - 1) > 1e-7) {
         for (let i = 0; i < frames; i += 1) {
@@ -1824,6 +2097,59 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
       value += (channel === 'left' ? slot.left[index] : slot.right[index]) * sendGain;
     }
     return value;
+  }
+
+  hasActiveExternalInputs() {
+    return this.externalReverbInputActive ||
+      this.externalDelayAInputActive ||
+      this.externalDelayBInputActive ||
+      this.externalGranularInputActive;
+  }
+
+  externalInputSample(inputs, inputIndex, index, channel) {
+    const input = inputs[inputIndex];
+    if (!input || input.length === 0) return 0;
+    const left = input[0];
+    const right = input[1] || input[0];
+    const source = channel === 'left' ? left : right;
+    return source && index < source.length ? source[index] : 0;
+  }
+
+  addExternalInputToPlanarInput(inputs, inputIndex, leftPtr, rightPtr, frames) {
+    const input = inputs[inputIndex];
+    if (!input || input.length === 0) return;
+    const inputLeft = input[0];
+    const inputRight = input[1] || input[0];
+    if (!inputLeft) return;
+    const leftOffset = leftPtr >> 2;
+    const rightOffset = rightPtr >> 2;
+    for (let i = 0; i < frames; i += 1) {
+      this.heap[leftOffset + i] += inputLeft[i] || 0;
+      this.heap[rightOffset + i] += (inputRight?.[i] ?? inputLeft[i]) || 0;
+    }
+  }
+
+  addExternalDelayAInput(inputs, frames) {
+    if (!this.delayAModule || !this.externalDelayAInputActive) return;
+    this.addExternalInputToPlanarInput(
+      inputs,
+      KESSHO_CORE_INPUT_DELAY_A,
+      this.delayAInputLeftPtr,
+      this.delayAInputRightPtr,
+      frames,
+    );
+  }
+
+  addExternalDelayBInput(inputs, frames) {
+    if (!this.delayBModule || !this.externalDelayBInputActive) return;
+        this.stepSourceGainRamp(frames);
+    this.addExternalInputToPlanarInput(
+      inputs,
+      KESSHO_CORE_INPUT_DELAY_B,
+      this.delayBInputLeftPtr,
+      this.delayBInputRightPtr,
+      frames,
+    );
   }
 
   addAuxDryToMix(activeAuxSlots, frames) {
@@ -2052,6 +2378,7 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
   }
 
   process(_inputs, outputs) {
+    const inputs = Array.isArray(_inputs) ? _inputs : [];
     const output = outputs[0];
     const reverbStemOutput = outputs[1];
     const delayAStemOutput = outputs[2];
@@ -2073,7 +2400,7 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
       const startMs = globalThis.performance?.now?.() ?? 0;
       let mixerInputBusCount = 1;
       let activeAuxSlots = [];
-      const hasConfiguredSources = this.sourceModule || this.hasActiveAuxSources();
+      const hasConfiguredSources = this.sourceModule || this.hasActiveAuxSources() || this.hasActiveExternalInputs();
       if (hasConfiguredSources) {
         if (this.sourceModule) {
           this.advanceSourceSequencer(frames);
@@ -2139,11 +2466,13 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
           }
           if (this.delayAModule) {
             this.addAuxDelaySendsToInput(activeAuxSlots, frames);
+            this.addExternalDelayAInput(inputs, frames);
             this.addDeferredDelayAInput(frames);
             this.processDelayAReturn(frames);
           }
           if (this.delayBModule) {
             this.addAuxDelayBSendsToInput(activeAuxSlots, frames);
+            this.addExternalDelayBInput(inputs, frames);
             this.addDelayAToDelayBInput(frames);
             if (this.delayBGranularInputGain <= 0.0001) {
               this.processDelayBReturn(frames);
@@ -2159,10 +2488,12 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
             for (let i = 0; i < frames; i += 1) {
               this.heap[granularInputLeftOffset + i] =
                 this.auxGranularInputSample(activeAuxSlots, i, 'left') +
+                (this.externalGranularInputActive ? this.externalInputSample(inputs, KESSHO_CORE_INPUT_GRANULAR, i, 'left') : 0) +
                 (this.delayAModule ? this.heap[delayAGranularLeftOffset + i] * this.granularDelayASendGain : 0) +
                 (this.delayBModule ? this.heap[delayBGranularLeftOffset + i] : 0);
               this.heap[granularInputRightOffset + i] =
                 this.auxGranularInputSample(activeAuxSlots, i, 'right') +
+                (this.externalGranularInputActive ? this.externalInputSample(inputs, KESSHO_CORE_INPUT_GRANULAR, i, 'right') : 0) +
                 (this.delayAModule ? this.heap[delayAGranularRightOffset + i] * this.granularDelayASendGain : 0) +
                 (this.delayBModule ? this.heap[delayBGranularRightOffset + i] : 0);
             }
@@ -2185,11 +2516,13 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
             for (let i = 0; i < frames; i += 1) {
               const reverbInLeft =
                 this.auxReverbInputSample(activeAuxSlots, i, 'left') +
+                (this.externalReverbInputActive ? this.externalInputSample(inputs, KESSHO_CORE_INPUT_REVERB, i, 'left') : 0) +
                 (this.granularModule ? this.heap[granularOutputLeftOffset + i] * this.granularReverbSendGain : 0) +
                 (this.delayAModule ? this.heap[delayAReverbLeftOffset + i] : 0) +
                 (this.delayBModule ? this.heap[delayBReverbLeftOffset + i] : 0);
               const reverbInRight =
                 this.auxReverbInputSample(activeAuxSlots, i, 'right') +
+                (this.externalReverbInputActive ? this.externalInputSample(inputs, KESSHO_CORE_INPUT_REVERB, i, 'right') : 0) +
                 (this.granularModule ? this.heap[granularOutputRightOffset + i] * this.granularReverbSendGain : 0) +
                 (this.delayAModule ? this.heap[delayAReverbRightOffset + i] : 0) +
                 (this.delayBModule ? this.heap[delayBReverbRightOffset + i] : 0);
@@ -2257,6 +2590,7 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
               this.heap[pad2RightOffset + i] * this.delayAPad2SendGain;
           }
           this.addAuxDelaySendsToInput(activeAuxSlots, frames);
+          this.addExternalDelayAInput(inputs, frames);
           this.addDeferredDelayAInput(frames);
           this.processDelayAReturn(frames);
         }
@@ -2276,6 +2610,7 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
               this.heap[pad2RightOffset + i] * this.delayBPad2SendGain;
           }
           this.addAuxDelayBSendsToInput(activeAuxSlots, frames);
+          this.addExternalDelayBInput(inputs, frames);
           this.addDelayAToDelayBInput(frames);
           if (this.delayBGranularInputGain <= 0.0001) {
             this.processDelayBReturn(frames);
@@ -2297,12 +2632,14 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
               this.heap[pad1LeftOffset + i] * this.granularPad1SendGain +
               this.heap[pad2LeftOffset + i] * this.granularPad2SendGain +
               this.auxGranularInputSample(activeAuxSlots, i, 'left') +
+              (this.externalGranularInputActive ? this.externalInputSample(inputs, KESSHO_CORE_INPUT_GRANULAR, i, 'left') : 0) +
               (this.delayAModule ? this.heap[delayAGranularLeftOffset + i] * this.granularDelayASendGain : 0) +
               (this.delayBModule ? this.heap[delayBGranularLeftOffset + i] : 0);
             this.heap[granularInputRightOffset + i] =
               this.heap[pad1RightOffset + i] * this.granularPad1SendGain +
               this.heap[pad2RightOffset + i] * this.granularPad2SendGain +
               this.auxGranularInputSample(activeAuxSlots, i, 'right') +
+              (this.externalGranularInputActive ? this.externalInputSample(inputs, KESSHO_CORE_INPUT_GRANULAR, i, 'right') : 0) +
               (this.delayAModule ? this.heap[delayAGranularRightOffset + i] * this.granularDelayASendGain : 0) +
               (this.delayBModule ? this.heap[delayBGranularRightOffset + i] : 0);
           }
@@ -2331,6 +2668,7 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
               this.heap[pad1LeftOffset + i] * this.reverbPad1SendGain +
               this.heap[pad2LeftOffset + i] * this.reverbPad2SendGain +
               this.auxReverbInputSample(activeAuxSlots, i, 'left') +
+              (this.externalReverbInputActive ? this.externalInputSample(inputs, KESSHO_CORE_INPUT_REVERB, i, 'left') : 0) +
               (this.granularModule ? this.heap[granularOutputLeftOffset + i] * this.granularReverbSendGain : 0) +
               (this.delayAModule ? this.heap[delayAReverbLeftOffset + i] : 0) +
               (this.delayBModule ? this.heap[delayBReverbLeftOffset + i] : 0);
@@ -2338,6 +2676,7 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
               this.heap[pad1RightOffset + i] * this.reverbPad1SendGain +
               this.heap[pad2RightOffset + i] * this.reverbPad2SendGain +
               this.auxReverbInputSample(activeAuxSlots, i, 'right') +
+              (this.externalReverbInputActive ? this.externalInputSample(inputs, KESSHO_CORE_INPUT_REVERB, i, 'right') : 0) +
               (this.granularModule ? this.heap[granularOutputRightOffset + i] * this.granularReverbSendGain : 0) +
               (this.delayAModule ? this.heap[delayAReverbRightOffset + i] : 0) +
               (this.delayBModule ? this.heap[delayBReverbRightOffset + i] : 0);
@@ -2387,6 +2726,7 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
               this.heap[delayInputRightOffset + i] = this.right[i] * sourceDelaySendGain;
             }
             this.addAuxDelaySendsToInput(activeAuxSlots, frames);
+            this.addExternalDelayAInput(inputs, frames);
             this.addDeferredDelayAInput(frames);
             this.processDelayAReturn(frames);
           }
@@ -2401,6 +2741,7 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
               this.heap[delayBInputRightOffset + i] = this.right[i] * sourceDelayBSendGain;
             }
             this.addAuxDelayBSendsToInput(activeAuxSlots, frames);
+            this.addExternalDelayBInput(inputs, frames);
             this.addDelayAToDelayBInput(frames);
             if (this.delayBGranularInputGain <= 0.0001) {
               this.processDelayBReturn(frames);
@@ -2420,11 +2761,13 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
               this.heap[granularInputLeftOffset + i] =
                 this.left[i] * sourceGranularSendGain +
                 this.auxGranularInputSample(activeAuxSlots, i, 'left') +
+                (this.externalGranularInputActive ? this.externalInputSample(inputs, KESSHO_CORE_INPUT_GRANULAR, i, 'left') : 0) +
                 (this.delayAModule ? this.heap[delayAGranularLeftOffset + i] * this.granularDelayASendGain : 0) +
                 (this.delayBModule ? this.heap[delayBGranularLeftOffset + i] : 0);
               this.heap[granularInputRightOffset + i] =
                 this.right[i] * sourceGranularSendGain +
                 this.auxGranularInputSample(activeAuxSlots, i, 'right') +
+                (this.externalGranularInputActive ? this.externalInputSample(inputs, KESSHO_CORE_INPUT_GRANULAR, i, 'right') : 0) +
                 (this.delayAModule ? this.heap[delayAGranularRightOffset + i] * this.granularDelayASendGain : 0) +
                 (this.delayBModule ? this.heap[delayBGranularRightOffset + i] : 0);
             }
@@ -2451,12 +2794,14 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
               const reverbInLeft =
                 this.left[i] * sourceReverbSendGain +
                 this.auxReverbInputSample(activeAuxSlots, i, 'left') +
+                (this.externalReverbInputActive ? this.externalInputSample(inputs, KESSHO_CORE_INPUT_REVERB, i, 'left') : 0) +
                 (this.granularModule ? this.heap[granularOutputLeftOffset + i] * this.granularReverbSendGain : 0) +
                 (this.delayAModule ? this.heap[delayAReverbLeftOffset + i] : 0) +
                 (this.delayBModule ? this.heap[delayBReverbLeftOffset + i] : 0);
               const reverbInRight =
                 this.right[i] * sourceReverbSendGain +
                 this.auxReverbInputSample(activeAuxSlots, i, 'right') +
+                (this.externalReverbInputActive ? this.externalInputSample(inputs, KESSHO_CORE_INPUT_REVERB, i, 'right') : 0) +
                 (this.granularModule ? this.heap[granularOutputRightOffset + i] * this.granularReverbSendGain : 0) +
                 (this.delayAModule ? this.heap[delayAReverbRightOffset + i] : 0) +
                 (this.delayBModule ? this.heap[delayBReverbRightOffset + i] : 0);

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-08T00:59:56.688Z",
+  "generatedAt": "2026-05-08T10:59:06.125Z",
   "contract": {
     "purpose": "Practical Web Audio versus KesshoCore browser acceptance corpus for core migration parity.",
     "parityScript": "scripts/check-web-core-sonic-parity.mjs",
@@ -39,6 +39,7 @@
         "requiredCases": [
           "lead-manual-dry",
           "lead-delay-heavy",
+          "piano-manual-dry",
           "synth-euclid-lead-grid",
           "drum-euclid-tight",
           "drum-delay-dub",
@@ -95,13 +96,14 @@
     "markdown": "docs/reports/kessho-core-acceptance-corpus.md",
     "json": "docs/reports/kessho-core-acceptance-corpus.json"
   },
-  "caseCount": 20,
+  "caseCount": 21,
   "coverageGroups": [
     "simple pad",
     "default pad dry",
     "pad+reverb",
     "lead",
     "delay-heavy",
+    "piano",
     "delay+reverb",
     "granular routing",
     "drum",
@@ -1112,6 +1114,111 @@
         "--envelope-time-tolerance-ms=20",
         "--envelope-rms-ratio-tolerance=0.45",
         "--envelope-peak-ratio-tolerance=0.45"
+      ]
+    },
+    {
+      "id": "piano-manual-dry",
+      "title": "Manual dry piano",
+      "group": "piano",
+      "thresholdClass": "perceptual",
+      "expectedOutcome": "pass",
+      "source": "src/ui/state.ts#DEFAULT_STATE",
+      "sourceName": null,
+      "includeSourceState": false,
+      "intent": "Sampled piano dry source parity. Core mode uses a bounded host-side sample bridge so piano no longer goes silent while keeping idle Core CPU unchanged.",
+      "durationMs": 4500,
+      "settleMs": 600,
+      "thresholds": {
+        "rmsTolerance": 0.2,
+        "peakTolerance": 0.55,
+        "minSignalRms": 0.00004
+      },
+      "transientGate": null,
+      "envelopeGate": {
+        "windowMs": 500,
+        "timeToleranceMs": 45,
+        "rmsRatioTolerance": 0.7,
+        "peakRatioTolerance": 0.7
+      },
+      "manualNotes": [
+        {
+          "source": "piano",
+          "midi": 60,
+          "velocity": 0.78,
+          "durationMs": 900
+        },
+        {
+          "source": "piano",
+          "midi": 64,
+          "velocity": 0.72,
+          "durationMs": 850
+        }
+      ],
+      "readyWhen": [
+        "manual piano trigger support exists for core-wasm parity capture"
+      ],
+      "statePatchKeyCount": 43,
+      "statePatchSha256": "db41c098429d47ba95a0c74c6f06ba9b3f5efa06c8f3b7e4db6aae80ef533cc2",
+      "statePatch": {
+        "padEnabled": false,
+        "pad2Enabled": false,
+        "synthEuclideanMasterEnabled": false,
+        "leadEnabled": false,
+        "lead2Enabled": false,
+        "leadRandomEnabled": false,
+        "pianoEnabled": true,
+        "drumEnabled": false,
+        "drumEuclidMasterEnabled": false,
+        "waterEnabled": false,
+        "insectsEnabled": false,
+        "insects2Enabled": false,
+        "birdsEnabled": false,
+        "birds2Enabled": false,
+        "frogsEnabled": false,
+        "oceanSampleEnabled": false,
+        "oceanWaveSynthEnabled": false,
+        "granularEnabled": false,
+        "granularFreeze": false,
+        "reverbEnabled": false,
+        "spectralFreezeEnabled": false,
+        "delayAEnabled": false,
+        "delayAMix": 0,
+        "delayAFeedback": 0,
+        "delayAToBSend": 0,
+        "delayBToASend": 0,
+        "delayAGranularSend": 0,
+        "delayBGranularSend": 0,
+        "masterSatDrive": 0,
+        "dynamicsEnabled": false,
+        "characterEnabled": false,
+        "sidechainEnabled": false,
+        "pianoLevel": 0.78,
+        "pianoAttack": 0.005,
+        "pianoDecay": 0.65,
+        "pianoSustain": 0.72,
+        "pianoHold": 0.2,
+        "pianoRelease": 1.4,
+        "pianoReverbSend": 0,
+        "pianoDelayASend": 0,
+        "pianoDelayBSend": 0,
+        "granularPianoSend": 0,
+        "masterVolume": 0.78
+      },
+      "browserParityArgs": [
+        "--duration-ms=4500",
+        "--settle-ms=600",
+        "--rms-tolerance=0.2",
+        "--peak-tolerance=0.55",
+        "--min-signal-rms=0.00004",
+        "--state-patch={\"birds2Enabled\":false,\"birdsEnabled\":false,\"characterEnabled\":false,\"delayAEnabled\":false,\"delayAFeedback\":0,\"delayAGranularSend\":0,\"delayAMix\":0,\"delayAToBSend\":0,\"delayBGranularSend\":0,\"delayBToASend\":0,\"drumEnabled\":false,\"drumEuclidMasterEnabled\":false,\"dynamicsEnabled\":false,\"frogsEnabled\":false,\"granularEnabled\":false,\"granularFreeze\":false,\"granularPianoSend\":0,\"insects2Enabled\":false,\"insectsEnabled\":false,\"lead2Enabled\":false,\"leadEnabled\":false,\"leadRandomEnabled\":false,\"masterSatDrive\":0,\"masterVolume\":0.78,\"oceanSampleEnabled\":false,\"oceanWaveSynthEnabled\":false,\"pad2Enabled\":false,\"padEnabled\":false,\"pianoAttack\":0.005,\"pianoDecay\":0.65,\"pianoDelayASend\":0,\"pianoDelayBSend\":0,\"pianoEnabled\":true,\"pianoHold\":0.2,\"pianoLevel\":0.78,\"pianoRelease\":1.4,\"pianoReverbSend\":0,\"pianoSustain\":0.72,\"reverbEnabled\":false,\"sidechainEnabled\":false,\"spectralFreezeEnabled\":false,\"synthEuclideanMasterEnabled\":false,\"waterEnabled\":false}",
+        "--manual-note=piano:60:0.78:900",
+        "--manual-note=piano:64:0.72:850",
+        "--manual-no-warmup",
+        "--envelope-gate",
+        "--envelope-window-ms=500",
+        "--envelope-time-tolerance-ms=45",
+        "--envelope-rms-ratio-tolerance=0.7",
+        "--envelope-peak-ratio-tolerance=0.7"
       ]
     },
     {

@@ -47,6 +47,7 @@ import {
 } from './earthTexturePlayer';
 import {
   type PianoSampleVariant,
+  choosePianoSampleVariant,
   frequencyToMidiNote,
   getManualPianoPrioritySampleIndices,
   getNearestPianoSample,
@@ -262,6 +263,8 @@ type BootCapabilities = {
 
 const EARTH_LAYER_FADE_SECONDS = 5;
 const EARTH_LAYER_FADE_MS = EARTH_LAYER_FADE_SECONDS * 1000;
+const SOFT_STOP_SOURCE_FADE_SECONDS = 0.18;
+const SOFT_STOP_SOURCE_FADE_MS = Math.round(SOFT_STOP_SOURCE_FADE_SECONDS * 1000);
 
 function createEarthFadeState(): EarthFadeState {
   return {
@@ -987,6 +990,8 @@ export class AudioEngine {
   private _lastPadEnabled: boolean | undefined = undefined;  // Track effective pad activity transitions
   private voiceReleaseTimers = new Set<number>();  // Track triggerSynthVoice release timeouts
   private ratchetTimers = new Set<number>();  // Track ratchet retrigger timeouts
+  private padChordTriggerTimers = new Set<number>();  // Track delayed chord note-ons from waveSpread
+  private softStopCleanupTimers = new Set<number>();
   private synthVoiceNoteGen: Hex<number> = [0, 0, 0, 0, 0, 0];  // Per-voice WASM noteOff generation counter
   private synthVoiceNoteOffTimers: Hex<number | null> = [null, null, null, null, null, null];
   private manualPadRouteRestoreTimers: Hex<number | null> = [null, null, null, null, null, null];
@@ -1110,6 +1115,10 @@ export class AudioEngine {
 
   // Pending step overrides from UI (full step data per lane)
   private pendingStepOverrides: DrumStepOverrides | null = null;
+  // Pending drum clock divs, swings, sub-lane enabled (applied when DrumSynth is created)
+  private pendingDrumClockDivs: ClockDivision[] | null = null;
+  private pendingDrumSwings: number[] | null = null;
+  private pendingDrumSubLaneEnabled: Record<string, boolean>[] | null = null;
 
   // Lead Euclidean step overrides from UI (pitch, expression, trigger toggles, etc.)
   private synthStepOverrides: {
@@ -1773,11 +1782,207 @@ export class AudioEngine {
     }
   }
 
-  private clearManualPadAuditionTails(): void {
-    if (this.isRunning) return;
+  private clearPadChordTriggerTimers(): void {
+    if (this.padChordTriggerTimers.size === 0) return;
+    for (const timerId of this.padChordTriggerTimers) {
+      clearTimeout(timerId);
+    }
+    this.padChordTriggerTimers.clear();
+  }
+
+  private clearSoftStopCleanupTimers(): void {
+    if (this.softStopCleanupTimers.size === 0) return;
+    for (const timerId of this.softStopCleanupTimers) {
+      clearTimeout(timerId);
+    }
+    this.softStopCleanupTimers.clear();
+  }
+
+  private scheduleSoftStopCleanup(callback: () => void, delayMs = SOFT_STOP_SOURCE_FADE_MS + 24): void {
+    const timerId = window.setTimeout(() => {
+      this.softStopCleanupTimers.delete(timerId);
+      callback();
+    }, Math.max(0, delayMs));
+    this.softStopCleanupTimers.add(timerId);
+  }
+
+  private fadeAudioParamToZero(
+    param: AudioParam | null | undefined,
+    now: number,
+    endTime: number,
+  ): void {
+    if (!param) return;
+    const current = Number.isFinite(param.value) ? param.value : 0;
+    this.rampAudioParam(param, current, 0, now, endTime);
+  }
+
+  private softStopActivePianoVoices(now: number, endTime: number): void {
+    if (this.activePianoVoices.size === 0) return;
+
+    const voices = Array.from(this.activePianoVoices);
+    for (const voice of voices) {
+      this.fadeAudioParamToZero(voice.gain.gain, now, endTime);
+    }
+
+    this.scheduleSoftStopCleanup(() => {
+      if (this.isRunning) return;
+      for (const voice of voices) {
+        try { voice.source.stop(); } catch { /* ignore stale piano source */ }
+        try { voice.source.disconnect(); } catch { /* ignore stale piano source */ }
+        try { voice.gain.disconnect(); } catch { /* ignore stale piano gain */ }
+        try { voice.filter?.disconnect(); } catch { /* ignore stale piano filter */ }
+        this.activePianoVoices.delete(voice);
+      }
+    });
+  }
+
+  private softStopEarthTextureRuntime(runtime: EarthTextureRuntime | null, now: number, endTime: number): void {
+    if (!runtime) return;
+    this.fadeAudioParamToZero(runtime.gateGain.gain, now, endTime);
+    this.fadeAudioParamToZero(runtime.levelGain.gain, now, endTime);
+    this.fadeAudioParamToZero(runtime.reverbSend.gain, now, endTime);
+    this.fadeAudioParamToZero(runtime.delayASend?.gain, now, endTime);
+    this.fadeAudioParamToZero(runtime.delayBSend?.gain, now, endTime);
+    this.fadeAudioParamToZero(runtime.granularSend?.gain, now, endTime);
+    this.resetEarthFadeState(runtime.fadeState);
+    this.scheduleSoftStopCleanup(() => {
+      if (!this.isRunning) {
+        runtime.player.stop();
+      }
+    });
+  }
+
+  private softStopGraphSources(now: number): void {
+    const endTime = now + SOFT_STOP_SOURCE_FADE_SECONDS;
+
+    this.clearPadChordTriggerTimers();
+
+    this.fadeAudioParamToZero(this.synthDirect?.gain, now, endTime);
+    this.fadeAudioParamToZero(this.pad1Bus?.gain, now, endTime);
+    this.fadeAudioParamToZero(this.pad2Bus?.gain, now, endTime);
+    this.fadeAudioParamToZero(this.pad1PreFaderBus?.gain, now, endTime);
+    this.fadeAudioParamToZero(this.pad2PreFaderBus?.gain, now, endTime);
+    this.fadeAudioParamToZero(this.pad1ReverbSend?.gain, now, endTime);
+    this.fadeAudioParamToZero(this.pad2ReverbSend?.gain, now, endTime);
+    this.fadeAudioParamToZero(this.pad1DelayASend?.gain, now, endTime);
+    this.fadeAudioParamToZero(this.pad1DelayBSend?.gain, now, endTime);
+    this.fadeAudioParamToZero(this.pad2DelayASend?.gain, now, endTime);
+    this.fadeAudioParamToZero(this.pad2DelayBSend?.gain, now, endTime);
+    this.fadeAudioParamToZero(this.granularPad1Send?.gain, now, endTime);
+    this.fadeAudioParamToZero(this.granularPad2Send?.gain, now, endTime);
+
+    this.voices.forEach((voice) => {
+      if (!voice.active) return;
+      voice.envelope.gain.cancelScheduledValues(now);
+      voice.envelope.gain.setValueAtTime(voice.envelope.gain.value, now);
+      voice.envelope.gain.linearRampToValueAtTime(0, endTime);
+      voice.active = false;
+    });
+    this.postPadWasmAllNotesOff();
+
+    this.fadeAudioParamToZero(this.leadDry?.gain, now, endTime);
+    this.fadeAudioParamToZero(this.lead1LevelGain?.gain, now, endTime);
+    this.fadeAudioParamToZero(this.lead2LevelGain?.gain, now, endTime);
+    this.fadeAudioParamToZero(this.leadWasmLevelGain?.gain, now, endTime);
+    this.fadeAudioParamToZero(this.leadWasmLead2LevelGain?.gain, now, endTime);
+    this.fadeAudioParamToZero(this.lead1ReverbSend?.gain, now, endTime);
+    this.fadeAudioParamToZero(this.lead2ReverbSend?.gain, now, endTime);
+    this.fadeAudioParamToZero(this.lead1DelayASend?.gain, now, endTime);
+    this.fadeAudioParamToZero(this.lead1DelayBSend?.gain, now, endTime);
+    this.fadeAudioParamToZero(this.lead2DelayASend?.gain, now, endTime);
+    this.fadeAudioParamToZero(this.lead2DelayBSend?.gain, now, endTime);
+    this.fadeAudioParamToZero(this.granularLead1Send?.gain, now, endTime);
+    this.fadeAudioParamToZero(this.granularLead2Send?.gain, now, endTime);
+    if (this.leadFmWasmReady && this.leadFmWasmNode) {
+      this.leadFmWasmNode.port.postMessage({ type: 'allNotesOff' });
+    }
+
+    this.fadeAudioParamToZero(this.pianoLevelGain?.gain, now, endTime);
+    this.fadeAudioParamToZero(this.pianoReverbSend?.gain, now, endTime);
+    this.fadeAudioParamToZero(this.pianoDelayASend?.gain, now, endTime);
+    this.fadeAudioParamToZero(this.pianoDelayBSend?.gain, now, endTime);
+    this.fadeAudioParamToZero(this.granularPianoSend?.gain, now, endTime);
+    this.softStopActivePianoVoices(now, endTime);
+
+    this.fadeAudioParamToZero(this.oceanGateGain?.gain, now, endTime);
+    this.fadeAudioParamToZero(this.oceanLevelGain?.gain, now, endTime);
+    this.fadeAudioParamToZero(this.oceanReverbSendNode?.gain, now, endTime);
+    this.fadeAudioParamToZero(this.oceanDelayASend?.gain, now, endTime);
+    this.fadeAudioParamToZero(this.oceanDelayBSend?.gain, now, endTime);
+    this.fadeAudioParamToZero(this.granularWavesSend?.gain, now, endTime);
+    this.resetEarthFadeState(this.oceanFadeState);
+    this.scheduleSoftStopCleanup(() => {
+      if (!this.isRunning) {
+        this.oceanTexturePlayer?.stop();
+      }
+    });
+
+    this.fadeAudioParamToZero(this.waterGateGain?.gain, now, endTime);
+    this.fadeAudioParamToZero(this.waterLevelGain?.gain, now, endTime);
+    this.fadeAudioParamToZero(this.waterReverbSend?.gain, now, endTime);
+    this.fadeAudioParamToZero(this.waterDelayASend?.gain, now, endTime);
+    this.fadeAudioParamToZero(this.waterDelayBSend?.gain, now, endTime);
+    this.fadeAudioParamToZero(this.granularWaterSend?.gain, now, endTime);
+    this.resetEarthFadeState(this.waterFadeState);
+
+    this.fadeAudioParamToZero(this.insectsLevelGain?.gain, now, endTime);
+    this.fadeAudioParamToZero(this.insectsReverbSendNode?.gain, now, endTime);
+    this.fadeAudioParamToZero(this.insectsDelayASend?.gain, now, endTime);
+    this.fadeAudioParamToZero(this.insectsDelayBSend?.gain, now, endTime);
+    this.fadeAudioParamToZero(this.granularInsectsSend?.gain, now, endTime);
+    this.resetEarthFadeState(this.insects1FadeState);
+    this.resetEarthFadeState(this.insects2FadeState);
+
+    this.fadeAudioParamToZero(this.natureLevelGain?.gain, now, endTime);
+    this.softStopEarthTextureRuntime(this.birdsTexture, now, endTime);
+    this.softStopEarthTextureRuntime(this.birds2Texture, now, endTime);
+    this.softStopEarthTextureRuntime(this.frogsTexture, now, endTime);
+
+    if (this.soundscapesNode && this.soundscapesWasmReady) {
+      try {
+        this.soundscapesNode.port.postMessage({
+          type: 'insectsGate',
+          enabled: false,
+          fadeSeconds: SOFT_STOP_SOURCE_FADE_SECONDS,
+        });
+        this.soundscapesNode.port.postMessage({
+          type: 'insects2Gate',
+          enabled: false,
+          fadeSeconds: SOFT_STOP_SOURCE_FADE_SECONDS,
+        });
+      } catch {
+        // Ignore stale worklet ports during soft-stop.
+      }
+
+      this.scheduleSoftStopCleanup(() => {
+        if (this.isRunning || !this.soundscapesNode) return;
+        try {
+          if (this._scWaterStarted) this.soundscapesNode.port.postMessage({ type: 'waterStop' });
+          if (this._scInsects1Started) this.soundscapesNode.port.postMessage({ type: 'insectsStop' });
+          if (this._scInsects2Started) this.soundscapesNode.port.postMessage({ type: 'insects2Stop' });
+        } catch {
+          // Ignore stale worklet ports during delayed cleanup.
+        }
+        this._scWaterStarted = false;
+        this._scInsects1Started = false;
+        this._scInsects2Started = false;
+      });
+    }
+
+    this.fadeAudioParamToZero(this.granularDrumSend?.gain, now, endTime);
+    this.drumSynth?.softStop(SOFT_STOP_SOURCE_FADE_SECONDS);
+  }
+
+  private killAllPadVoicesNow(): void {
+    this.clearPadChordTriggerTimers();
     for (let voiceIndex = 0; voiceIndex < PAD_VOICE_COUNT; voiceIndex += 1) {
       this.killPadVoiceNow(voiceIndex);
     }
+  }
+
+  private clearManualPadAuditionTails(): void {
+    if (this.isRunning) return;
+    this.killAllPadVoicesNow();
   }
 
   private warnPadWasmUnavailable(context: string): void {
@@ -4461,6 +4666,7 @@ export class AudioEngine {
 
   /** Set per-lane clock divisions for the drum Euclidean sequencer. */
   setDrumEuclidClockDivs(divs: ClockDivision[]) {
+    this.pendingDrumClockDivs = divs;
     if (this.drumSynth) {
       this.drumSynth.setEuclidClockDivs(divs);
     }
@@ -4468,6 +4674,7 @@ export class AudioEngine {
 
   /** Set per-lane swing amounts for the drum Euclidean sequencer. */
   setDrumEuclidSwings(swings: number[]) {
+    this.pendingDrumSwings = swings;
     if (this.drumSynth) {
       this.drumSynth.setEuclidSwings(swings);
     }
@@ -4546,6 +4753,7 @@ export class AudioEngine {
 
   /** Set per-lane sub-lane enabled state for drum Euclidean sequencer. */
   setDrumSubLaneEnabled(states: Record<string, boolean>[]) {
+    this.pendingDrumSubLaneEnabled = states;
     if (this.drumSynth) {
       this.drumSynth.setEuclidSubLaneEnabled(states);
     }
@@ -4625,6 +4833,15 @@ export class AudioEngine {
     this.drumSynth.setEuclidEvolveConfigs(this.pendingDrumEuclidEvolveConfigs);
     if (this.pendingStepOverrides) {
       this.drumSynth.setStepOverrides(this.pendingStepOverrides);
+    }
+    if (this.pendingDrumClockDivs) {
+      this.drumSynth.setEuclidClockDivs(this.pendingDrumClockDivs);
+    }
+    if (this.pendingDrumSwings) {
+      this.drumSynth.setEuclidSwings(this.pendingDrumSwings);
+    }
+    if (this.pendingDrumSubLaneEnabled) {
+      this.drumSynth.setEuclidSubLaneEnabled(this.pendingDrumSubLaneEnabled);
     }
   }
 
@@ -4989,6 +5206,7 @@ export class AudioEngine {
   }
 
   async start(sliderState: SliderState, _coreOptions?: unknown): Promise<void> {
+    this.clearSoftStopCleanupTimers();
     if (this.isRunning || this.isStarting) return;
     this.isStarting = true;
 
@@ -5326,6 +5544,9 @@ export class AudioEngine {
   stop(): void {
     if (!this.isRunning && !this.forceHardGraphTeardown) return;
 
+    this.clearSoftStopCleanupTimers();
+    this.clearPadChordTriggerTimers();
+
     // Stop CPU perf monitor interval (must be cleared here — survives start/stop otherwise)
     if (this.synthPerfTimer !== null) {
       clearInterval(this.synthPerfTimer);
@@ -5383,14 +5604,6 @@ export class AudioEngine {
       if (restoreTimerId !== null) clearTimeout(restoreTimerId);
       this.manualPadRouteRestoreTimers[i] = null;
     }
-    for (const voice of Array.from(this.activePianoVoices)) {
-      try { voice.source.stop(); } catch { /* ignore stale piano source */ }
-      try { voice.source.disconnect(); } catch { /* ignore stale piano source */ }
-      try { voice.gain.disconnect(); } catch { /* ignore stale piano gain */ }
-      try { voice.filter?.disconnect(); } catch { /* ignore stale piano filter */ }
-    }
-    this.activePianoVoices.clear();
-
     // Stop lead morph random-walk timer
     if (this.leadMorphTimer !== null) {
       clearInterval(this.leadMorphTimer);
@@ -5399,67 +5612,22 @@ export class AudioEngine {
     this.stopJourneyMorphClock();
 
     const now = this.ctx?.currentTime ?? 0;
-    this.setAudioParamImmediate(this.oceanGateGain?.gain, 0, now);
-    this.setAudioParamImmediate(this.waterGateGain?.gain, 0, now);
-    this.setAudioParamImmediate(this.birdsTexture?.gateGain.gain, 0, now);
-    this.setAudioParamImmediate(this.birds2Texture?.gateGain.gain, 0, now);
-    this.setAudioParamImmediate(this.frogsTexture?.gateGain.gain, 0, now);
-    this.resetEarthFadeState(this.oceanFadeState);
-    this.resetEarthFadeState(this.waterFadeState);
-    this.resetEarthFadeState(this.insects1FadeState);
-    this.resetEarthFadeState(this.insects2FadeState);
-    if (this.birdsTexture) this.resetEarthFadeState(this.birdsTexture.fadeState);
-    if (this.birds2Texture) this.resetEarthFadeState(this.birds2Texture.fadeState);
-    if (this.frogsTexture) this.resetEarthFadeState(this.frogsTexture.fadeState);
 
     if (this.graphBootstrapped && !this.forceHardGraphTeardown) {
       this.cancelPianoPriorityWarmup();
-      if (this.soundscapesNode && this.soundscapesWasmReady) {
-        try {
-          this.soundscapesNode.port.postMessage({ type: 'insectsGate', enabled: false, fadeSeconds: 0 });
-          this.soundscapesNode.port.postMessage({ type: 'insects2Gate', enabled: false, fadeSeconds: 0 });
-          if (this._scWaterStarted) this.soundscapesNode.port.postMessage({ type: 'waterStop' });
-          if (this._scInsects1Started) this.soundscapesNode.port.postMessage({ type: 'insectsStop' });
-          if (this._scInsects2Started) this.soundscapesNode.port.postMessage({ type: 'insects2Stop' });
-        } catch {
-          // Ignore stale worklet ports during soft-stop.
-        }
-      }
-      this._scWaterStarted = false;
-      this._scInsects1Started = false;
-      this._scInsects2Started = false;
-
-      // Mute soundscapes outputs immediately so water/insects cannot linger if a
-      // suspended context defers worklet stop messages until the next resume.
-      this.waterLevelGain?.gain.cancelScheduledValues(now);
-      this.waterLevelGain?.gain.setValueAtTime(0, now);
-      this.waterReverbSend?.gain.cancelScheduledValues(now);
-      this.waterReverbSend?.gain.setValueAtTime(0, now);
-      this.waterDelayASend?.gain.cancelScheduledValues(now);
-      this.waterDelayASend?.gain.setValueAtTime(0, now);
-      this.waterDelayBSend?.gain.cancelScheduledValues(now);
-      this.waterDelayBSend?.gain.setValueAtTime(0, now);
-      this.insectsLevelGain?.gain.cancelScheduledValues(now);
-      this.insectsLevelGain?.gain.setValueAtTime(0, now);
-      this.insectsReverbSendNode?.gain.cancelScheduledValues(now);
-      this.insectsReverbSendNode?.gain.setValueAtTime(0, now);
-      this.insectsDelayASend?.gain.cancelScheduledValues(now);
-      this.insectsDelayASend?.gain.setValueAtTime(0, now);
-      this.insectsDelayBSend?.gain.cancelScheduledValues(now);
-      this.insectsDelayBSend?.gain.setValueAtTime(0, now);
-
-      this.drumSynth?.stop();
-      this.oceanTexturePlayer?.stop();
-      this.birdsTexture?.player.stop();
-      this.birds2Texture?.player.stop();
-      this.frogsTexture?.player.stop();
-      if (this.ctx?.state === 'running') {
-        void this.ctx.suspend();
-      }
+      this.softStopGraphSources(now);
       this.isRunning = false;
       this.notifyStateChange();
       return;
     }
+
+    for (const voice of Array.from(this.activePianoVoices)) {
+      try { voice.source.stop(); } catch { /* ignore stale piano source */ }
+      try { voice.source.disconnect(); } catch { /* ignore stale piano source */ }
+      try { voice.gain.disconnect(); } catch { /* ignore stale piano gain */ }
+      try { voice.filter?.disconnect(); } catch { /* ignore stale piano filter */ }
+    }
+    this.activePianoVoices.clear();
 
     // Stop voices
     for (const voice of this.voices) {
@@ -5980,9 +6148,9 @@ export class AudioEngine {
     }
 
     // Synth Euclidean scheduler operates independently of master play (like drum sequencer)
-    if (effectiveState.synthEuclideanMasterEnabled && !this.synthEuclidScheduleTimer) {
+    if (effectiveState.synthEuclideanMasterEnabled && !this.synthEuclidScheduleTimer && !this.synthEuclidStarting) {
       this.startSynthEuclidScheduler();
-    } else if (!effectiveState.synthEuclideanMasterEnabled && this.synthEuclidScheduleTimer) {
+    } else if (!effectiveState.synthEuclideanMasterEnabled && (this.synthEuclidScheduleTimer || this.synthEuclidStarting)) {
       this.stopSynthEuclidScheduler();
     }
 
@@ -6052,6 +6220,7 @@ export class AudioEngine {
     // If synth chord sequencer was just disabled, silence all synth voices
     // BUT only if no Euclidean lanes are using synth sources
     if (effectiveState.synthChordSequencerEnabled === false) {
+      this.clearPadChordTriggerTimers();
       const isLeadSrc = (s: string) => this.isNonPadMelodicSource(s);
       const euclideanUsesSynth = [
         effectiveState.synthEuclid1Enabled && !isLeadSrc(effectiveState.synthEuclid1Source),
@@ -6061,16 +6230,7 @@ export class AudioEngine {
       ].some(Boolean);
 
       if (!euclideanUsesSynth) {
-        const now = this.ctx.currentTime;
-        const release = Math.max(0.001, effectiveState.synthRelease || 1.0);
-        this.voices.forEach((voice) => {
-          if (voice.active) {
-            voice.envelope.gain.cancelScheduledValues(now);
-            voice.envelope.gain.setTargetAtTime(0, now, release / 4);
-            voice.active = false;
-          }
-        });
-        this.postPadWasmAllNotesOff();
+        this.killAllPadVoicesNow();
       }
     }
 
@@ -7631,6 +7791,7 @@ export class AudioEngine {
       this.warnPadWasmUnavailable('applyChord');
       return;
     }
+    this.clearPadChordTriggerTimers();
     this.sendPadWasmParams(state);
 
     // Build set of voice indices owned by active Euclidean synth lanes
@@ -7698,8 +7859,12 @@ export class AudioEngine {
       const voiceDelay = voiceOffsets[i] ?? 0; // Staggered entry time for this voice
 
       padChordTriggered = true;
+      const padNode = this.padWasmNode;
       const trigger = () => {
-        this.padWasmNode?.port.postMessage({
+        if (!this.isRunning || this.sliderState?.synthChordSequencerEnabled === false || this.padWasmNode !== padNode) {
+          return;
+        }
+        padNode?.port.postMessage({
           type: 'noteOn',
           voiceIndex: i,
           frequency: freq,
@@ -7707,8 +7872,15 @@ export class AudioEngine {
         });
       };
       const delayMs = Math.max(0, voiceDelay * 1000);
-      if (delayMs > 1) window.setTimeout(trigger, delayMs);
-      else trigger();
+      if (delayMs > 1) {
+        const timerId = window.setTimeout(() => {
+          this.padChordTriggerTimers.delete(timerId);
+          trigger();
+        }, delayMs);
+        this.padChordTriggerTimers.add(timerId);
+      } else {
+        trigger();
+      }
     }
 
     if (padChordTriggered) {
@@ -9906,7 +10078,7 @@ export class AudioEngine {
     if (!this.isPianoRouteActive(this.sliderState)) return;
 
     const midiNote = frequencyToMidiNote(frequency);
-    const preferredVariant: PianoSampleVariant = Math.random() < 0.5 ? 'regular' : 'short';
+    const preferredVariant = choosePianoSampleVariant(midiNote, velocity);
     const fallbackVariant: PianoSampleVariant = preferredVariant === 'regular' ? 'short' : 'regular';
     const { index, sampleMidi } = getNearestPianoSample(midiNote);
     let resolvedSampleMidi = sampleMidi;
@@ -10478,7 +10650,7 @@ export class AudioEngine {
           await this.ensurePadWasmForIndependentSynth();
         }
 
-        if (!this.ctx || !this.sliderState || !this.sliderState.synthEuclideanMasterEnabled || this.synthEuclidScheduleTimer) {
+        if (!this.ctx || !this.sliderState || !this.sliderState.synthEuclideanMasterEnabled || this.synthEuclidScheduleTimer || !this.synthEuclidStarting) {
           return;
         }
 
@@ -10894,6 +11066,7 @@ export class AudioEngine {
    * Stop the continuous lead Euclidean scheduler
    */
   private stopSynthEuclidScheduler(): void {
+    this.synthEuclidStarting = false; // Cancel any in-flight async startup
     if (this.synthEuclidScheduleTimer) {
       clearTimeout(this.synthEuclidScheduleTimer);
       this.synthEuclidScheduleTimer = null;

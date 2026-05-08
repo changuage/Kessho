@@ -359,6 +359,7 @@ public:
       drum_instance_set_delay_send(instance_, voice, params_[kParamDelaySends + voice]);
     }
 
+    drum_instance_clear_trigger_overrides(instance_);
     if (params_[kParamTrigger + 0] >= 0.0f) {
       drum_instance_set_trigger_morph(instance_, params_[kParamTrigger + 0]);
     }

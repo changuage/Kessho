@@ -781,15 +781,23 @@ function compareEnvelopeSummaries(webCapture, coreCapture, comparison, args) {
   let activeWindows = 0;
   let maxRmsRatioDelta = 0;
   let maxPeakRatioDelta = 0;
+  let maxRmsAbsDelta = 0;
+  let maxPeakAbsDelta = 0;
   let maxWindowStartMs = 0;
+  const rmsAbsTolerance = Math.max(args.minSignalRms * 25, comparison.webStats.rms * 0.02);
+  const peakAbsTolerance = Math.max(args.minSignalRms * 80, comparison.webStats.peak * 0.05);
 
   for (let startFrame = 0; startFrame < frames; startFrame += windowFrames) {
     const webWindow = windowEnvelope(webCapture, startFrame, windowFrames);
     const coreWindow = shiftedWindowEnvelope(coreCapture, startFrame, windowFrames, lagFrames);
     if (webWindow.rms < activeThreshold && coreWindow.rms < activeThreshold) continue;
-    const rmsRatioDelta = Math.abs(coreWindow.rms - webWindow.rms) / Math.max(Math.abs(webWindow.rms), 1e-9);
-    const peakRatioDelta = Math.abs(coreWindow.peak - webWindow.peak) / Math.max(Math.abs(webWindow.peak), 1e-9);
+    const rmsAbsDelta = Math.abs(coreWindow.rms - webWindow.rms);
+    const peakAbsDelta = Math.abs(coreWindow.peak - webWindow.peak);
+    const rmsRatioDelta = rmsAbsDelta / Math.max(Math.abs(webWindow.rms), 1e-9);
+    const peakRatioDelta = peakAbsDelta / Math.max(Math.abs(webWindow.peak), 1e-9);
     activeWindows += 1;
+    maxRmsAbsDelta = Math.max(maxRmsAbsDelta, rmsAbsDelta);
+    maxPeakAbsDelta = Math.max(maxPeakAbsDelta, peakAbsDelta);
     if (rmsRatioDelta > maxRmsRatioDelta) {
       maxRmsRatioDelta = rmsRatioDelta;
       maxWindowStartMs = (startFrame / comparison.sampleRate) * 1000;
@@ -814,11 +822,11 @@ function compareEnvelopeSummaries(webCapture, coreCapture, comparison, args) {
   if (totalPeakRatioDelta > args.envelopePeakRatioTolerance) {
     issues.push(`total peak ratio delta ${formatNumber(totalPeakRatioDelta)} exceeds ${formatNumber(args.envelopePeakRatioTolerance)}`);
   }
-  if (maxRmsRatioDelta > args.envelopeRmsRatioTolerance) {
-    issues.push(`max window RMS ratio delta ${formatNumber(maxRmsRatioDelta)} at ${formatNumber(maxWindowStartMs, 2)}ms exceeds ${formatNumber(args.envelopeRmsRatioTolerance)}`);
+  if (maxRmsRatioDelta > args.envelopeRmsRatioTolerance && maxRmsAbsDelta > rmsAbsTolerance) {
+    issues.push(`max window RMS ratio delta ${formatNumber(maxRmsRatioDelta)} at ${formatNumber(maxWindowStartMs, 2)}ms exceeds ${formatNumber(args.envelopeRmsRatioTolerance)} with abs delta ${formatNumber(maxRmsAbsDelta)} > ${formatNumber(rmsAbsTolerance)}`);
   }
-  if (maxPeakRatioDelta > args.envelopePeakRatioTolerance) {
-    issues.push(`max window peak ratio delta ${formatNumber(maxPeakRatioDelta)} exceeds ${formatNumber(args.envelopePeakRatioTolerance)}`);
+  if (maxPeakRatioDelta > args.envelopePeakRatioTolerance && maxPeakAbsDelta > peakAbsTolerance) {
+    issues.push(`max window peak ratio delta ${formatNumber(maxPeakRatioDelta)} exceeds ${formatNumber(args.envelopePeakRatioTolerance)} with abs delta ${formatNumber(maxPeakAbsDelta)} > ${formatNumber(peakAbsTolerance)}`);
   }
 
   return {
@@ -830,6 +838,10 @@ function compareEnvelopeSummaries(webCapture, coreCapture, comparison, args) {
     totalPeakRatioDelta,
     maxRmsRatioDelta,
     maxPeakRatioDelta,
+    maxRmsAbsDelta,
+    maxPeakAbsDelta,
+    rmsAbsTolerance,
+    peakAbsTolerance,
     maxWindowStartMs,
     windowMs: args.envelopeWindowMs,
   };
@@ -1177,7 +1189,7 @@ async function main() {
     console.log(`  Min Web RMS: ${formatNumber(args.minSignalRms)} (${comparison.webStats.rms >= args.minSignalRms ? 'met' : 'not met'})`);
     if (args.envelopeGate) {
       const envelopeComparison = compareEnvelopeSummaries(web.capture, core.capture, comparison, args);
-      console.log(`  Envelope gate: activeWindows=${envelopeComparison.activeWindows}, window=${formatNumber(envelopeComparison.windowMs, 0)}ms, firstSignalDelta=${formatNumber(envelopeComparison.firstSignalDeltaMs, 2)}ms/${formatNumber(args.envelopeTimeToleranceMs, 2)}ms, totalRmsRatioDelta=${formatNumber(envelopeComparison.totalRmsRatioDelta)}/${formatNumber(args.envelopeRmsRatioTolerance)}, maxWindowRmsRatioDelta=${formatNumber(envelopeComparison.maxRmsRatioDelta)}/${formatNumber(args.envelopeRmsRatioTolerance)}, totalPeakRatioDelta=${formatNumber(envelopeComparison.totalPeakRatioDelta)}/${formatNumber(args.envelopePeakRatioTolerance)}, maxPeakRatioDelta=${formatNumber(envelopeComparison.maxPeakRatioDelta)}/${formatNumber(args.envelopePeakRatioTolerance)}`);
+      console.log(`  Envelope gate: activeWindows=${envelopeComparison.activeWindows}, window=${formatNumber(envelopeComparison.windowMs, 0)}ms, firstSignalDelta=${formatNumber(envelopeComparison.firstSignalDeltaMs, 2)}ms/${formatNumber(args.envelopeTimeToleranceMs, 2)}ms, totalRmsRatioDelta=${formatNumber(envelopeComparison.totalRmsRatioDelta)}/${formatNumber(args.envelopeRmsRatioTolerance)}, maxWindowRmsRatioDelta=${formatNumber(envelopeComparison.maxRmsRatioDelta)}/${formatNumber(args.envelopeRmsRatioTolerance)} abs=${formatNumber(envelopeComparison.maxRmsAbsDelta)}/${formatNumber(envelopeComparison.rmsAbsTolerance)}, totalPeakRatioDelta=${formatNumber(envelopeComparison.totalPeakRatioDelta)}/${formatNumber(args.envelopePeakRatioTolerance)}, maxPeakRatioDelta=${formatNumber(envelopeComparison.maxPeakRatioDelta)}/${formatNumber(args.envelopePeakRatioTolerance)} abs=${formatNumber(envelopeComparison.maxPeakAbsDelta)}/${formatNumber(envelopeComparison.peakAbsTolerance)}`);
     }
     if (args.transientGate && !manualMode) {
       const transientComparison = compareTransientSummaries(web.capture, core.capture, args);

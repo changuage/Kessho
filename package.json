@@ -45,6 +45,7 @@
     "core:delay-b-module-regression": "node scripts/check-kessho-core-delay-b-module-regression.mjs",
     "core:web-module": "node scripts/check-kessho-core-web-module-preview.mjs",
     "core:browser-sonic-parity": "node scripts/check-web-core-sonic-parity.mjs",
+    "core:architecture-parity": "node scripts/audit-kessho-core-architecture-parity.mjs",
     "core:golden-profile": "node scripts/profile-kessho-core-golden-candidates.mjs",
     "core:readiness": "node scripts/check-kessho-core-parity-readiness.mjs",
     "core:readiness:browser": "node scripts/check-kessho-core-parity-readiness.mjs --browser-corpus",

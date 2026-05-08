@@ -174,6 +174,31 @@ function stereoRms(signal) {
   return Math.sqrt(sumSq / Math.max(1, count));
 }
 
+function blockRms(signal, framesPerBlock = blockSize) {
+  const values = [];
+  const samplesPerBlock = framesPerBlock * 2;
+  for (let offset = 0; offset < signal.length; offset += samplesPerBlock) {
+    let sumSq = 0;
+    let count = 0;
+    for (let i = offset; i < Math.min(signal.length, offset + samplesPerBlock); i++) {
+      sumSq += signal[i] * signal[i];
+      count++;
+    }
+    values.push(Math.sqrt(sumSq / Math.max(1, count)));
+  }
+  return values;
+}
+
+function longestRun(values, predicate) {
+  let current = 0;
+  let longest = 0;
+  for (const value of values) {
+    current = predicate(value) ? current + 1 : 0;
+    longest = Math.max(longest, current);
+  }
+  return longest;
+}
+
 function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
@@ -218,6 +243,93 @@ assert(cleanStats.finite, 'Clean Character render produced non-finite samples');
 assert(cleanStats.rms > 0.01 && cleanStats.rms < 0.6, `Clean Character RMS is out of range: ${cleanStats.rms}`);
 assert(diffRms(clean, cleanInput) > 0.001, 'Clean Character render is too close to dry input');
 
+const abyss = processBlocks(
+  baseParams({
+    dry: 0,
+    wet: 1,
+    shallowFlavor: 0,
+    abyssFlavor: 1,
+    depth: 0.72,
+    rate: 0.38,
+    stereo: 0.88,
+    randomDrift: 0.92,
+    randomHoldRateHz: 2.2,
+    randomHoldLag: 1.55,
+    randomDelayDepth: 0.00032,
+    randomSpreadDelayDepth: 0.00046,
+    randomFilterDepth: 300,
+    randomSpreadFilterDepth: 210,
+    lowpassHz: 760,
+    lowpassStage2Hz: 720,
+    lowpassQ: 2.1,
+    lowpassStage2Q: 1.35,
+    envToLowpassGain: 1200,
+    envToResonanceGain: 0.55,
+    envToWetGain: 0.12,
+    dropoutDepth: 0,
+    dropoutGain: 1,
+  }),
+  (block, i) => {
+    const t = (block * blockSize + i) / sampleRate;
+    const sample = Math.sin(2 * Math.PI * 196 * t) * 0.16 + Math.sin(2 * Math.PI * 588 * t) * 0.035;
+    return [sample, sample];
+  },
+  520,
+);
+const abyssStats = stats(abyss);
+const abyssBlocks = blockRms(abyss).slice(40);
+const abyssMinBlockRms = Math.min(...abyssBlocks);
+const abyssSilentRun = longestRun(abyssBlocks, (value) => value < 0.00012);
+assert(abyssStats.finite, 'Abyss render produced non-finite samples');
+assert(abyssStats.maxAbs < 2, `Abyss render clipped unexpectedly: ${abyssStats.maxAbs}`);
+assert(abyssStats.rms > 0.006, `Abyss render collapsed to near silence: ${abyssStats.rms}`);
+assert(abyssMinBlockRms > 0.00012, `Abyss wet path produced a near-silent block after warmup: ${abyssMinBlockRms}`);
+assert(abyssSilentRun === 0, `Abyss wet path produced repeated near-silent blocks: ${abyssSilentRun}`);
+
+const abyssSpreadOnlyParams = baseParams({
+  dry: 0,
+  wet: 1,
+  shallowFlavor: 0,
+  abyssFlavor: 1,
+  depth: 0.52,
+  rate: 0.34,
+  stereo: 0.72,
+  randomDrift: 0.84,
+  randomHoldRateHz: 0.34,
+  randomHoldLag: 1.1,
+  randomDelayDepth: 0,
+  randomSpreadDelayDepth: 0,
+  randomFilterDepth: 0,
+  randomSpreadFilterDepth: 0,
+  randomDriftDepth: 0,
+  wowDepth: 0,
+  flutterDepth: 0,
+  lowpassHz: 1200,
+  lowpassStage2Hz: 1200,
+  envToLowpassGain: 900,
+  envToWetGain: 0,
+  dropoutDepth: 0,
+  dropoutGain: 1,
+});
+const abyssSpreadOnlyInput = (block, i) => {
+  const t = (block * blockSize + i) / sampleRate;
+  const sample = Math.sin(2 * Math.PI * 174 * t) * 0.14 + Math.sin(2 * Math.PI * 522 * t) * 0.03;
+  return [sample, sample];
+};
+const abyssSpreadOnly = processBlocks(abyssSpreadOnlyParams, abyssSpreadOnlyInput, 180);
+const abyssExtremeIgnored = processBlocks({
+  ...abyssSpreadOnlyParams,
+  randomDelayDepth: 0.03,
+  randomSpreadDelayDepth: 0.03,
+  randomFilterDepth: 5000,
+  randomSpreadFilterDepth: 5000,
+  randomDriftDepth: 0.03,
+  wowDepth: 0.03,
+  flutterDepth: 0.03,
+}, abyssSpreadOnlyInput, 180);
+const abyssIgnoredModDiff = diffRms(abyssSpreadOnly, abyssExtremeIgnored);
+assert(abyssIgnoredModDiff < 1e-7, `Abyss delay/filter/pitch CV destinations are still audible: ${abyssIgnoredModDiff}`);
+
 const harsh = processBlocks(
   baseParams({
     dry: 0.25,
@@ -255,6 +367,12 @@ console.log(JSON.stringify({
     impulseStereoRms: stereoRms(impulse),
     clean: cleanStats,
     cleanDiffRms: diffRms(clean, cleanInput),
+    abyss: {
+      ...abyssStats,
+      minBlockRms: abyssMinBlockRms,
+      silentRun: abyssSilentRun,
+      ignoredDelayFilterPitchDiffRms: abyssIgnoredModDiff,
+    },
     harsh: harshStats,
   },
 }, null, 2));

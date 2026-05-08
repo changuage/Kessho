@@ -135,6 +135,10 @@ export class DrumSynth {
   private euclidGlobalStepCount = 0;
   private euclidSequencers: SequencerState[] = [];
   private prevLaneEnabled: boolean[] = [false, false, false, false];
+  /** Persistent storage for per-lane clock divisions (survives sequencer recreation). */
+  private euclidClockDivs: ClockDivision[] = ['1/8', '1/16', '1/8T', '1/4'];
+  /** Persistent storage for per-lane swing (survives sequencer recreation). */
+  private euclidSwings: number[] = [0, 0, 0, 0];
   // Per-lane, per-step visit counters for Elektron-style trig conditions [n:N]
   private trigConditionCounters: number[][] = [[], [], [], []];
   private euclidEvolveConfigs: DrumEuclidEvolveConfig[] = [
@@ -999,6 +1003,7 @@ export class DrumSynth {
   /** Update per-lane clock divisions from the UI. */
   setEuclidClockDivs(divs: ClockDivision[]): void {
     divs.forEach((div, i) => {
+      this.euclidClockDivs[i] = div;
       if (i < this.euclidSequencers.length && this.euclidSequencers[i]) {
         this.euclidSequencers[i].clockDiv = div;
       }
@@ -1008,6 +1013,7 @@ export class DrumSynth {
   /** Update per-lane swing amounts from the UI. */
   setEuclidSwings(swings: number[]): void {
     swings.forEach((swing, i) => {
+      this.euclidSwings[i] = swing;
       if (i < this.euclidSequencers.length && this.euclidSequencers[i]) {
         this.euclidSequencers[i].swing = swing;
       }
@@ -1110,6 +1116,34 @@ export class DrumSynth {
 
     if (this.params.drumEuclidMasterEnabled) {
       this.startEuclidScheduler();
+    }
+  }
+
+  private rampGainToZero(node: GainNode | null | undefined, now: number, endTime: number): void {
+    const param = node?.gain;
+    if (!param) return;
+    param.cancelScheduledValues(now);
+    param.setValueAtTime(param.value, now);
+    param.linearRampToValueAtTime(0, endTime);
+  }
+
+  softStop(fadeSeconds = 0.18): void {
+    if (this.euclidScheduleTimer) {
+      clearTimeout(this.euclidScheduleTimer);
+      this.euclidScheduleTimer = null;
+    }
+    this.clearEuclidVisualTimers(true);
+    this.prevLaneEnabled = [false, false, false, false];
+    this.euclidSequencers = [];
+    this.onStepPositionChange?.([0, 0, 0, 0], [0, 0, 0, 0]);
+
+    const now = this.ctx.currentTime;
+    const endTime = now + Math.max(0.01, fadeSeconds);
+    this.rampGainToZero(this.masterGain, now, endTime);
+    this.rampGainToZero(this.reverbSend, now, endTime);
+    this.rampGainToZero(this.sharedDelayMasterSend, now, endTime);
+    for (const sendNode of Object.values(this.delaySends)) {
+      this.rampGainToZero(sendNode, now, endTime);
     }
   }
   
@@ -3070,6 +3104,9 @@ export class DrumSynth {
     this.euclidSequencers = [0, 1, 2, 3].map((id) => {
       const sequencer = createSequencer(id, `drum-euclid-${id}`);
       sequencer.nextTime = 0; // Align to shared transport grid on first scheduler tick
+      // Apply persisted clock div & swing (survives sequencer recreation)
+      sequencer.clockDiv = this.euclidClockDivs[id] ?? sequencer.clockDiv;
+      sequencer.swing = this.euclidSwings[id] ?? 0;
       const evolveConfig = this.euclidEvolveConfigs[id] || defaultEvolveConfig();
       sequencer.evolve.enabled = evolveConfig.enabled;
       sequencer.evolve.everyBars = evolveConfig.everyBars;
@@ -3323,6 +3360,9 @@ export class DrumSynth {
           // Evolve at bar boundaries
           sequencer.totalStepCount++;
           if (sequencer.stepIndex === 0 && sequencer.totalStepCount > 1) {
+            // Double-gate on both the sequencer state and the persistent config
+            const evolveEnabled = sequencer.evolve.enabled && (this.euclidEvolveConfigs[laneIndex]?.enabled ?? false);
+            if (evolveEnabled) {
             const bar = Math.floor(sequencer.totalStepCount / lane.steps);
             const drumTension = getEffectiveTension(
               this.params.tension ?? 0.3,
@@ -3342,6 +3382,7 @@ export class DrumSynth {
               this.onEuclidEvolveTrigger?.(laneIndex);
               // Push evolved sub-lane values back to UI visualizer
               this.pushEvolvedOverridesToUI(laneIndex, sequencer);
+            }
             }
           }
 
@@ -3482,6 +3523,24 @@ export class DrumSynth {
     this.prevLaneEnabled = [false, false, false, false];
     this.euclidSequencers = [];
     this.onStepPositionChange?.([0, 0, 0, 0], [0, 0, 0, 0]);
+
+    // Release all active voice pool entries so sounds don't sustain past stop
+    const now = this.ctx.currentTime;
+    for (const voice of Object.keys(this.voicePools) as DrumVoiceType[]) {
+      const pool = this.voicePools[voice];
+      for (const entry of pool) {
+        try {
+          entry.outGain.gain.cancelScheduledValues(now);
+          entry.outGain.gain.setValueAtTime(entry.outGain.gain.value, now);
+          entry.outGain.gain.linearRampToValueAtTime(0, now + 0.01);
+        } catch { /* already disconnected */ }
+      }
+      pool.length = 0;
+    }
+    // Tell WASM drum worklet to silence all voices
+    if (this.wasmReady && this.wasmNode) {
+      this.wasmNode.port.postMessage({ type: 'allNotesOff' });
+    }
   }
   
   // ═══════════════════════════════════════════════════════════════════════════

@@ -36,7 +36,7 @@ const acceptanceContract = {
     sourceSlice: {
       label: 'Source Slice',
       target: 'Core non-pad sources are close enough for lead, drums, and earth/soundscape migration.',
-      requiredCases: ['lead-manual-dry', 'lead-delay-heavy', 'synth-euclid-lead-grid', 'drum-euclid-tight', 'drum-delay-dub', 'earth-water-only', 'earth-full-nature', 'soundscape-ocean-pad'],
+      requiredCases: ['lead-manual-dry', 'lead-delay-heavy', 'piano-manual-dry', 'synth-euclid-lead-grid', 'drum-euclid-tight', 'drum-delay-dub', 'earth-water-only', 'earth-full-nature', 'soundscape-ocean-pad'],
       passDefinition: 'All deterministic source cases pass; stochastic drum and earth cases pass documented transient/envelope gates.',
     },
     fullMixSlice: {
@@ -141,6 +141,11 @@ const leadManualLine = [
 
 const lead2ManualLine = [
   { source: 'lead2', midi: 67, velocity: 0.8, durationMs: 800 },
+];
+
+const pianoManualLine = [
+  { source: 'piano', midi: 60, velocity: 0.78, durationMs: 900 },
+  { source: 'piano', midi: 64, velocity: 0.72, durationMs: 850 },
 ];
 
 const drumEuclidCore = {
@@ -406,6 +411,45 @@ const corpus = [
     },
     intent: 'High-feedback shared Delay A with a lead source, including ping-pong width and reverb send.',
     readyWhen: ['manual lead1 trigger support exists', 'Delay A module is represented in core-wasm capture'],
+  },
+  {
+    id: 'piano-manual-dry',
+    title: 'Manual dry piano',
+    group: 'piano',
+    thresholdClass: 'perceptual',
+    expectedOutcome: 'pass',
+    source: 'src/ui/state.ts#DEFAULT_STATE',
+    includeSourceState: false,
+    durationMs: 4500,
+    settleMs: 600,
+    thresholds: { rmsTolerance: 0.2, peakTolerance: 0.55, minSignalRms: 0.00004 },
+    envelopeGate: {
+      windowMs: 500,
+      timeToleranceMs: 45,
+      rmsRatioTolerance: 0.7,
+      peakRatioTolerance: 0.7,
+    },
+    manualNotes: pianoManualLine,
+    statePatch: {
+      ...sourceMute,
+      pianoEnabled: true,
+      pianoLevel: 0.78,
+      pianoAttack: 0.005,
+      pianoDecay: 0.65,
+      pianoSustain: 0.72,
+      pianoHold: 0.2,
+      pianoRelease: 1.4,
+      pianoReverbSend: 0,
+      pianoDelayASend: 0,
+      pianoDelayBSend: 0,
+      granularPianoSend: 0,
+      reverbEnabled: false,
+      delayAEnabled: false,
+      granularEnabled: false,
+      masterVolume: 0.78,
+    },
+    intent: 'Sampled piano dry source parity. Core mode uses a bounded host-side sample bridge so piano no longer goes silent while keeping idle Core CPU unchanged.',
+    readyWhen: ['manual piano trigger support exists for core-wasm parity capture'],
   },
   {
     id: 'synth-euclid-lead-grid',

@@ -173,6 +173,7 @@ function assertCoreHostFxConfigContract(source) {
     'reverbFeed: { node: this.node, outputIndex: 6 }',
     'lead1: { node: this.node, outputIndex: 7 }',
     'lead2: { node: this.node, outputIndex: 8 }',
+    'piano: { node: this.hostPianoOutput }',
     'reverb: { node: this.node, outputIndex: 1 }',
     'delayAOut: { node: this.node, outputIndex: 2 }',
     'dynamics: { node: this.masterGain }',
@@ -223,6 +224,35 @@ function assertCoreHostFxConfigContract(source) {
     'boundedNumber(state.delayAReverbSend, 0.4, 0, 1)',
   ]) {
     assert(delayAConfig.includes(token), `CoreEngineHost Delay A config must preserve ${token}`);
+  }
+
+  for (const token of [
+    'coreEuclideanUsesPianoSource',
+    'playHostPianoNote',
+    'configureHostPianoEuclid',
+    "note.source === 'piano'",
+    'HOST_PIANO_SAMPLE_CACHE_LIMIT_PER_VARIANT',
+  ]) {
+    assert(source.includes(token), `CoreEngineHost must preserve host piano parity support: ${token}`);
+  }
+
+  for (const token of [
+    'setSynthStepOverrides(',
+    'setSynthEuclidEvolveConfigs(',
+    'setSynthSubLaneEnabled(',
+    'setSynthEuclidEvolveTriggerCallback(',
+    'setSynthEvolveOverridesChangedCallback(',
+    'setSynthPitchSettings(',
+    'setSynthPitchBindingModes(',
+    'setSynthNoteRangeEvolvedCallback(',
+    'resetSynthEuclidLaneHome(',
+    'diceSynthEuclidLane(',
+    'seqLaneIndex(',
+    'triggerToggles',
+    'distanceOverride',
+    'note.distanceOverride ?? null',
+  ]) {
+    assert(source.includes(token), `CoreEngineHost must preserve Synth Euclid parity support: ${token}`);
   }
 }
 
@@ -1731,8 +1761,15 @@ for (const token of [
   '* ENGINE_TRIMS.pad',
   'finiteNumber(state.masterVolume, DEFAULT_MASTER_VOLUME) * MASTER_OUTPUT_TRIM',
   'getEffectivePadState(sliderState)',
-  'const padState = getEffectivePadState(sliderState);',
+  'const runtimeSliderState = this.getEffectiveRuntimeRandomWalkState(this.getEffectiveDualRangeState(sliderState));',
+  'const padState = getEffectivePadState(runtimeSliderState);',
   'createCorePreviewSourceGroup(padState, {',
+  'CORE_DRUM_EUCLID_CLOCK_DIVS',
+  'setDrumEuclidClockDivs',
+  'setDrumStepOverrides',
+  'setDrumSubLaneEnabled',
+  'diceDrumEuclidLane',
+  'triggerDrumVoice',
   'CORE_SYNTH_EUCLID_CLOCK_DIVS',
   'createSynthEuclidPreview',
   'createLeadEuclidPreviewSource',
